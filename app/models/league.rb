@@ -1,0 +1,2 @@
+class League < ApplicationRecord
+end
