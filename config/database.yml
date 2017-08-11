@@ -80,6 +80,18 @@ test:
 #
 production:
   <<: *default
-  database: saisonmanager-api_production
-  username: saisonmanager-api
-  password: <%= ENV['SAISONMANAGER-API_DATABASE_PASSWORD'] %>
+  database: saisonmanager
+
+  # The specified database role being used to connect to postgres.
+  # To create additional roles in postgres see `$ createuser --help`.
+  # When left blank, postgres will use the default role. This is
+  # the same name as the operating system user that initialized the database.
+  username: pg
+
+  # The password associated with the postgres role (username).
+  password: pg
+
+  # Connect on a TCP socket. Omitted by default since the client uses a
+  # domain socket that doesn't need configuration. Windows does not have
+  # domain sockets, so uncomment these lines.
+  host: localhost
