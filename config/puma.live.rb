@@ -12,7 +12,7 @@ threads threads_count, threads_count
 environment ENV.fetch("RAILS_ENV") { "production" }
 
 pidfile '/var/www/shared/pids/puma.pid'
-state_path 'var/www/shared/pids/pids/puma.state'
+state_path 'var/www/shared/pids/puma.state'
 
 bind 'unix:///var/www/shared/sockets/puma.sock'
 
