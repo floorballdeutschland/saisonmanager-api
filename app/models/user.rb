@@ -1,11 +1,12 @@
 class User < ApplicationRecord
 
-  
+
   def self.login(user_name, password)
-    hashed_password = Digest::MD5.hexdigest password
+    return nil if user_name.blank? || password.blank?
+    hashed_password = Digest::MD5.hexdigest(password)
     user = User.where(user_name: user_name).first
 
-    generate_token(user.id, user.user_name) if user.password == hashed_password
+    user if user && user.password == hashed_password
   end
 
   def self.check_token(token)
@@ -17,10 +18,10 @@ class User < ApplicationRecord
     nil
   end
 
-  def self.generate_token(number, user_name, expires_at=(Time.now.to_i + 1.days))
+  def self.generate_token(user, expires_at=(Time.now.to_i + 1.days))
     payload = {
-      id: number,
-      user_name: user_name,
+      id: user.id,
+      user_name: user.user_name,
       exp: expires_at
     }
     secret = Rails.application.secrets.secret_key_base
