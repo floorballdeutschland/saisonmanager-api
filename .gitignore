@@ -12,5 +12,6 @@
 /tmp/*
 !/log/.keep
 !/tmp/.keep
+/config/puma.rb
 
 .byebug_history
