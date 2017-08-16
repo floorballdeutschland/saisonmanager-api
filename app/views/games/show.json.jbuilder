@@ -1,0 +1,9 @@
+json.id @game.id
+json.game_number @game.game_number
+json.start_time @game.start_time
+json.game_number @game.game_number
+json.audience @game.audience
+json.home_team_name @game.home_team.name
+json.guest_team_name @game.guest_team.name
+json.events @game.events
+json.players @game.players

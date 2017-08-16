@@ -1,0 +1,16 @@
+json.id @player.id
+json.birthdate @player.birthdate
+json.first_name @player.first_name
+json.last_name @player.last_name
+json.created_at @player.created_at
+json.created_by @player.created_by
+json.created_by_string @player.created_by_string
+json.updated_at @player.updated_at
+json.updated_by @player.updated_by
+json.updated_by_string @player.updated_by_string
+json.old_licenses_deleted_for_transfer @player.old_licenses_deleted_for_transfer
+json.licenses @player.licenses
+json.clubs @player.clubs
+json.male @player.male
+json.nation_id @player.nation_id
+json.nation_string @player.nation_string

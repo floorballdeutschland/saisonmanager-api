@@ -1,9 +1,13 @@
 class GamesController < ApplicationController
+  skip_before_action :authenticate_user
 
   # GET /games
   def index
-    @games = Arena.all
+    @games = Game.all
+  end
 
-    render json: @games
+  # GET /games/1
+  def show
+    @game = Game.find(params[:id])
   end
 end
