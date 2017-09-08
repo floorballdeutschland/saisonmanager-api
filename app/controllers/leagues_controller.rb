@@ -3,9 +3,9 @@ class LeaguesController < ApplicationController
 
   # GET /leagues
   def index
-    @leagues = League.all
-
-    render json: @leagues
+    @leagues = League.all.order(season_id: :desc, game_operation_id: :asc).order("order_key::int")
+    @gos = {}
+    GameOperation.all.each { |go| @gos[go.id] = go }
   end
 
   # GET /leagues/1
