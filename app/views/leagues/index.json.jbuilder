@@ -8,4 +8,5 @@ json.array! @leagues do |league|
   json.name league.name
   json.order_key league.order_key
   json.link league_path(league.id, format: :json)
+  json.link_schedule schedule_league_path(league.id, format: :json)
 end
