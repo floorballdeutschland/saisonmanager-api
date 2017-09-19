@@ -1,10 +1,15 @@
 Rails.application.routes.draw do
+  apipie
   resources :arenas
   resources :clubs
   resources :games
   resources :game_day
   resources :game_operations
-  resources :leagues
+  resources :leagues do
+    member do
+      get :schedule
+    end
+  end
   resources :players
   resources :settings
   resources :teams
