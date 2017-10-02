@@ -1,10 +1,18 @@
 Rails.application.routes.draw do
   apipie
   resources :arenas
-  resources :clubs
+  resources :clubs 
   resources :games
   resources :game_day
-  resources :game_operations
+  resources :game_operations do
+    member do
+      get :leagues, to: 'game_operations#index_leagues'
+    end
+
+    collection do
+      get 'by_shortname/:name', to: 'game_operations#by_shortname'
+    end
+  end
   resources :leagues do
     member do
       get :schedule
