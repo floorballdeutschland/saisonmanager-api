@@ -1,5 +1,5 @@
 json.array! @leagues do |league|
- json.id league.game_operation_id
+ json.id league.id
  json.game_operation_id league.game_operation_id
  json.league_category_id league.league_category_id
  json.league_class_id league.league_class_id
