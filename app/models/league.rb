@@ -21,6 +21,10 @@ class League < ApplicationRecord
     games.map(&:schedule_item)
   end
 
+  def meta_item
+    attributes.select {|key, value| ['name', 'short_name', 'order_key'].include?(key) }
+  end
+
   def scorer
     [
       {

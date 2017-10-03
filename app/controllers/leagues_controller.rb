@@ -26,4 +26,10 @@ class LeaguesController < ApplicationController
 
     render json:@league.schedule
   end
+
+  def meta
+    @league = League.find(params[:id])
+
+    render json:@league.meta_item
+  end
 end

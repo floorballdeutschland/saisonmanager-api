@@ -16,6 +16,7 @@ Rails.application.routes.draw do
   resources :leagues do
     member do
       get :schedule
+      get :meta
     end
   end
   resources :players
