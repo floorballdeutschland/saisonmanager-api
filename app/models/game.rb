@@ -48,17 +48,38 @@ class Game < ApplicationRecord
     "#{res[:home_goals]}:#{res[:guest_goals]}#{res[:overtime] ? ' n.V' : ''}" if res
   end
 
+  def state
+    if record_created_at.present?
+      if false
+        :running
+      elsif false
+        :ended
+      else
+        #:not_started
+        :record_created
+      end
+    else
+      :no_record
+    end
+  end
+
   def schedule_item
     item = {
       game_id: id,
       game_number: game_number.to_i,
       game_day: game_day.number,
+      arena: game_day.arena_id,
+      arena_name: game_day.arena.name,
+      arena_address: game_day.arena.address,
+      arena_short: game_day.arena.schedule_item,
+      hosting_club: game_day.hosting_club,
       game_day_id: game_day_id,
       date: game_day.date,
       time: start_time,
       home_team_name: home_team_name,
       guest_team_name: guest_team_name,
-      nominated_referee_string: nominated_referee_string
+      nominated_referee_string: nominated_referee_string,
+      state: state
     }
 
     item[:result_string] = result_string if record_created_at.present?
