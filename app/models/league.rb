@@ -69,4 +69,10 @@ class League < ApplicationRecord
 
   def evaluate_table
   end
+
+  def teams
+    Rails.cache.fetch("#{cache_key}/teams", expires_in: 12.hours) do
+      Team.where("league_id = ? OR ? IN (select(unnest(cup_leagues)))", id, id)
+    end
+  end
 end
