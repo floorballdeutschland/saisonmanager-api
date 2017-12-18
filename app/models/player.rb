@@ -38,7 +38,7 @@ class Player < ApplicationRecord
 
     p.merge!(home_club_id: home_club.id,
              home_club: home_club.name,
-             home_club_operation: home_club.home_game_operation.name if home_club
+             home_club_operation: home_club.home_game_operation.name) if home_club
 
   end
 
