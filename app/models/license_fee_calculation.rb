@@ -15,10 +15,11 @@ class LicenseFeeCalculation < ApplicationRecord
     end
   end
 
-  def self.start_calculation(season = Setting.current_season, deadline = Date.today)
+  def self.start_calculation(user_id,season = Setting.current_season, deadline = Date.today)
     c = LicenseFeeCalculation.new
     c.started_at = Time.now
     c.season_id = season
+    c.user_id = user_id
     c.prefix = "#{c.started_at.strftime('%Y%m%d%I%M%S')}_license_fee_calculation"
     c.save
 
@@ -42,12 +43,26 @@ class LicenseFeeCalculation < ApplicationRecord
     update_attributes(filename_json: filename_json )
   end
 
+  def load_json
+    full_path = path + filename_json
+
+    file = File.open(full_path, "r")
+    file.read if file
+  end
+
   def save_csv
     filename_csv = "#{prefix}.csv"
 
     full_path = path+filename_csv
     File.open(full_path, 'w') {|f| f.write(to_csv) }
     update_attributes(filename_csv: filename_csv )
+  end
+
+  def load_csv
+    full_path = path + filename_csv
+
+    file = File.open(full_path, "r")
+    file.read if file
   end
 
   def to_csv
@@ -62,7 +77,7 @@ class LicenseFeeCalculation < ApplicationRecord
 
   def save_xlsx
     filename_xlsx = "#{prefix}.xlsx"
-    full_path = path+filename_xlsx
+    full_path = path + filename_xlsx
 
     Xlsxtream::Workbook.open(full_path) do |xlsx|
       xlsx.write_worksheet prefix do |sheet|
@@ -76,6 +91,13 @@ class LicenseFeeCalculation < ApplicationRecord
 
 
     update_attributes(filename_xls: filename_xlsx )
+  end
+
+  def load_xlsx
+    full_path = path+filename_xls
+
+    file = File.open(full_path, "r")
+    file.read if file
   end
 
   def path

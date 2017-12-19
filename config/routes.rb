@@ -1,7 +1,7 @@
 Rails.application.routes.draw do
   apipie
   resources :arenas
-  resources :clubs 
+  resources :clubs
   resources :games
   resources :game_day
   resources :game_operations do
@@ -24,6 +24,8 @@ Rails.application.routes.draw do
   resources :teams
   resources :transfers
   resources :users
+
+  resources :license_fees
 
   post 'login' => 'sessions#login'
   # For details on the DSL available within this file, see http://guides.rubyonrails.org/routing.html

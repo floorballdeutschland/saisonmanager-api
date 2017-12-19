@@ -12,10 +12,10 @@ class Club < ApplicationRecord
     return if postcode.empty?
 
     states = Club.postcodes.select { |pc| pc[:from] < postcode.to_i && pc[:till] > postcode.to_i }
-    
+
     if states.present?
       state = states.first[:isocode]
       update_attributes(state: state)
-    end    
+    end
   end
 end
