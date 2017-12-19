@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema.define(version: 0) do
+ActiveRecord::Schema.define(version: 20171218141634) do
 
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
@@ -43,7 +43,7 @@ ActiveRecord::Schema.define(version: 0) do
     t.text "_rev"
     t.text "old_id"
     t.text "city"
-    t.jsonb "game_operations"
+    t.jsonb "game_operations_hash"
     t.text "homepage_club"
     t.text "homepage_divison"
     t.text "homepage_division"
@@ -53,6 +53,7 @@ ActiveRecord::Schema.define(version: 0) do
     t.text "postcode"
     t.text "street"
     t.text "short_name"
+    t.string "state", limit: 20, comment: "ISO 3166-2:DE"
   end
 
   create_table "game_days", id: :integer, default: -> { "nextval('tbl_game_day_id_seq'::regclass)" }, force: :cascade do |t|
@@ -157,6 +158,19 @@ ActiveRecord::Schema.define(version: 0) do
     t.datetime "updated_at"
     t.integer "updated_by"
     t.text "updated_by_hash"
+  end
+
+  create_table "license_fee_calculations", force: :cascade do |t|
+    t.integer "user_id"
+    t.datetime "started_at"
+    t.string "filename_json"
+    t.string "filename_csv"
+    t.string "filename_xls"
+    t.integer "current_dataset"
+    t.integer "percent"
+    t.integer "season_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
   end
 
   create_table "players", id: :integer, default: -> { "nextval('tbl_player_id_seq'::regclass)" }, force: :cascade do |t|

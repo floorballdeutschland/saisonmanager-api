@@ -1,0 +1,19 @@
+# Read about fixtures at http://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one:
+  user_id: 1
+  started_at: 2017-12-18 15:16:34
+  filename_json: MyString
+  filename_csv: MyString
+  filename_xls: MyString
+  current_dataset: 1
+  percent: 1
+
+two:
+  user_id: 1
+  started_at: 2017-12-18 15:16:34
+  filename_json: MyString
+  filename_csv: MyString
+  filename_xls: MyString
+  current_dataset: 1
+  percent: 1

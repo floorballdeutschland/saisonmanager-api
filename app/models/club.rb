@@ -3,7 +3,7 @@ class Club < ApplicationRecord
 
   def home_game_operation
     Rails.cache.fetch("#{cache_key}/home_game_operation", expires_in: 1.week) do
-      go = game_operations.select { |g| g['home_game_operation'] == true }
+      go = game_operations_hash.select { |g| g['home_game_operation'] == true }
       GameOperation.find_by_id go.first['game_operation_id']
     end
   end
