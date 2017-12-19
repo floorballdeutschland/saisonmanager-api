@@ -15,3 +15,5 @@
 /config/puma.rb
 
 .byebug_history
+
+.testcases
