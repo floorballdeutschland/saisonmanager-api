@@ -2,7 +2,7 @@ class LicenseFeeCalculation < ApplicationRecord
   require 'csv'
   require 'json'
 
-  attr_accessor :hash, :prefix
+  attr_accessor :hash, :other_hash, :prefix
 
   def self.load_saved(id)
     c = LicenseFeeCalculation.find id
@@ -10,6 +10,8 @@ class LicenseFeeCalculation < ApplicationRecord
     if c
       file = File.read(c.path + c.filename_json)
       c.hash = JSON.parse(file)
+      file_other = File.read(c.path + c.filename_other_json)
+      c.other_hash = JSON.parse(file_other)
       c.prefix = "#{c.started_at.strftime('%Y%m%d%I%M%S')}_license_fee_calculation"
       c
     end
@@ -26,21 +28,38 @@ class LicenseFeeCalculation < ApplicationRecord
     players = Player.all
     count = players.count
 
-    c.hash = players.each_with_index.map do |p,i|
+    c.hash = []
+    c.other_hash = []
+
+    players.each_with_index.each do |p,i|
       percent = 100.0 * (i+1)/count
       c.update_attributes(current_dataset: p.id, percent: percent )
-      p.license_hash(season)
+      c.hash << p.main_license_hash(season)
+      c.other_hash << p.secondary_license_hash(season)
     end
+
+    c.other_hash = c.other_hash.flatten.compact
 
     c
   end
 
+  def save_files
+    save_json
+    save_csv
+    save_xlsx
+  end
+
   def save_json
     filename_json = "#{prefix}.json"
+    filename_other_json = "#{prefix}_other.json"
 
     full_path = path+filename_json
     File.open(full_path, 'w') {|f| f.write(hash.to_json) }
     update_attributes(filename_json: filename_json )
+
+    full_path = path+filename_other_json
+    File.open(full_path, 'w') {|f| f.write(other_hash.to_json) }
+    update_attributes(filename_other_json: filename_other_json )
   end
 
   def load_json
@@ -80,7 +99,7 @@ class LicenseFeeCalculation < ApplicationRecord
     full_path = path + filename_xlsx
 
     Xlsxtream::Workbook.open(full_path) do |xlsx|
-      xlsx.write_worksheet prefix do |sheet|
+      xlsx.write_worksheet "Lizenzen" do |sheet|
         sheet << table_fields
 
         hash.each do |player|
@@ -89,8 +108,21 @@ class LicenseFeeCalculation < ApplicationRecord
       end
     end
 
+    filename_xlsx = "#{prefix}_other.xlsx"
+    full_path = path + filename_xlsx
 
-    update_attributes(filename_xls: filename_xlsx )
+    Xlsxtream::Workbook.open(full_path) do |xlsx|
+      xlsx.write_worksheet "Lizenzen" do |sheet|
+        sheet << table_fields
+
+        other_hash.each do |player|
+          sheet << table_fields.map{ |attr|
+            puts player.to_json unless player
+            player[attr]
+          }
+        end
+      end
+    end
   end
 
   def load_xlsx
@@ -105,7 +137,7 @@ class LicenseFeeCalculation < ApplicationRecord
   end
 
   def table_fields
-    %w{id first_name last_name birthdate male home_club_id home_club home_club_operation home_club_state clubs club_ids team_id league_class_id league_class league_category_id league_category license_clubs license_club license_club_state}
+    %w{id first_name last_name birthdate male home_club_id home_club home_club_operation home_club_state clubs club_ids license_id team_id league_id league_class_id league_class league_category_id league_category license_clubs license_club license_club_state}
   end
 end
 

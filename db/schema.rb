@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema.define(version: 20171218141634) do
+ActiveRecord::Schema.define(version: 20180106230650) do
 
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
@@ -167,10 +167,11 @@ ActiveRecord::Schema.define(version: 20171218141634) do
     t.string "filename_csv"
     t.string "filename_xls"
     t.integer "current_dataset"
-    t.integer "percent"
-    t.integer "season_id"
+    t.float "percent", default: 0.0, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "season_id"
+    t.string "filename_other_json"
   end
 
   create_table "players", id: :integer, default: -> { "nextval('tbl_player_id_seq'::regclass)" }, force: :cascade do |t|

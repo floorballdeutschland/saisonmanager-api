@@ -3,6 +3,8 @@ class Player < ApplicationRecord
   belongs_to :created_at_user, class_name: "User"
   belongs_to :updated_at_user, class_name: "User"
 
+  attr_accessor :hash, :prefix
+
   def nation_string
     setting = Setting.first
     nations = setting["nations"]
@@ -18,7 +20,7 @@ class Player < ApplicationRecord
     updated_at_user.user_name if updated_at_user.present?
   end
 
-  def license_hash(season_id, deadline = Date.today)
+  def main_license_hash(season_id, deadline = Date.today)
     # player clubs
     club_names = valid_clubs(deadline).map do |club_item|
       club = Club.find_by_id(club_item['club_id'])
@@ -33,6 +35,32 @@ class Player < ApplicationRecord
     sorted_licenses = current_licenses(season_id).map! { |x| x["sorting"]= (x["league_category_id"].to_s.rjust(3,'0') + x["league_class_id"].to_s.rjust(3,'0')).to_i; x } if current_licenses(season_id)
     license = select_license sorted_licenses if sorted_licenses
 
+    p=create_license_hash(license, sorted_licenses, club_names, club_ids, deadline)
+    p.merge(other_license_count: (sorted_licenses || []).count - 1) if p
+  end
+
+  def secondary_license_hash(season_id, deadline = Date.today)
+    # player clubs
+    club_names = valid_clubs(deadline).map do |club_item|
+      club = Club.find_by_id(club_item['club_id'])
+      club ? club.name : 'CLUB(FEHLER)'
+    end
+
+    club_ids = valid_clubs(deadline).map do |club_item|
+      club = Club.find_by_id(club_item['club_id'])
+      club ? club.id : nil
+    end.compact
+
+    sorted_licenses = current_licenses(season_id).map! { |x| x["sorting"]= (x["league_category_id"].to_s.rjust(3,'0') + x["league_class_id"].to_s.rjust(3,'0')).to_i; x } if current_licenses(season_id)
+    licenses = other_licenses sorted_licenses if sorted_licenses
+
+    licenses.map do |license|
+      create_license_hash(license, sorted_licenses, club_names, club_ids, deadline)
+    end if sorted_licenses
+  end
+
+
+  def create_license_hash(license, sorted_licenses, club_names, club_ids, deadline)
     p = HashWithIndifferentAccess.new({
           id: id,
           last_name: last_name,
@@ -47,20 +75,21 @@ class Player < ApplicationRecord
 
     valid_home_club = home_club(deadline)
     p.merge!(home_club_id: valid_home_club.id,
-             home_club: valid_home_club.name,
-             home_club_operation: valid_home_club.home_game_operation.name,
-             home_club_state: valid_home_club.state) if valid_home_club
+            home_club: valid_home_club.name,
+            home_club_operation: valid_home_club.home_game_operation.name,
+            home_club_state: valid_home_club.state) if valid_home_club
 
     p.merge!(team_id: license['team_id'],
-             league_class_id: license['league_class_id'],
-             league_class: Setting.league_class(license['league_class_id']),
-             league_category_id: license['league_category_id'],
-             league_category: Setting.league_category(license['league_category_id'])) if license
+            license_id: license['id'],
+            league_class_id: license['league_class_id'],
+            league_class: Setting.league_class(license['league_class_id']),
+            league_category_id: license['league_category_id'],
+            league_category: Setting.league_category(license['league_category_id'])) if license
 
     team = Team.find_by_id license['team_id'] if license
     team_clubs = team.all_clubs if team
     if team_clubs.present?
-      p.merge!(license_clubs: team_clubs.to_json, license_club: '')
+      p.merge!(license_clubs: team_clubs.to_json, license_club: '', league_id: team.league_id)
 
       if team_clubs.map(&:id).include? p[:license_hash_id]
         p[:license_club] = p[:home_club]
@@ -94,7 +123,7 @@ class Player < ApplicationRecord
   end
 
   def current_licenses(sid)
-    result = licenses.reject { |l| !Team.teams_by_season(sid).map(&:id).include?(l['team_id']) } if licenses
+    result = licenses.reject { |l| !Team.teams_by_season(sid).map(&:id).map(&:to_s).include?(l['team_id'].to_s) } if licenses
     result.map { |x| x["sorting"]= (x["league_category_id"].to_s.rjust(3,'0') + x["league_class_id"].to_s.rjust(3,'0')).to_i; x } if result
   end
 
@@ -112,5 +141,11 @@ class Player < ApplicationRecord
     #licenses.min_by{|x| x['sorting'] }
     sorted = licenses.sort_by{|x| x['sorting'] }
     sorted.first
+  end
+
+  def other_licenses(licenses)
+    selected = select_license(licenses)
+
+    licenses.reject{ |l| l["id"] == selected["id"] }
   end
 end
