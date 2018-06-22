@@ -18,6 +18,9 @@ class LicenseFeeCalculation < ApplicationRecord
   end
 
   def self.start_calculation(user_id,season = Setting.current_season, deadline = Date.today)
+    # update clubs where state is not set right now (by postcode)
+    Club.where(state: nil).each(&:update_state)
+
     c = LicenseFeeCalculation.new
     c.started_at = Time.now
     c.season_id = season
@@ -107,6 +110,7 @@ class LicenseFeeCalculation < ApplicationRecord
         end
       end
     end
+    update_attributes(filename_xls: filename_xlsx )
 
     filename_xlsx = "#{prefix}_other.xlsx"
     full_path = path + filename_xlsx
