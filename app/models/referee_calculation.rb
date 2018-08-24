@@ -32,12 +32,12 @@ class RefereeCalculation < ApplicationRecord
     c.save
 
     leagues = League.where season_id: season
-    self.league_ids = leagues.map(&:id)
+    league_ids = leagues.map(&:id)
 
     league_ids.each do |league_id|
       puts "league: #{league_id}"
       game_days = GameDay.where league_id: league_id
-      self.game_day_ids = game_days.map(&:id)
+      game_day_ids = game_days.map(&:id)
 
       l = League.find league_id
 
@@ -63,104 +63,6 @@ class RefereeCalculation < ApplicationRecord
 
 
     c
-  end
-
-  def save_files
-    save_json
-    save_csv
-    save_xlsx
-  end
-
-  def save_json
-    filename_json = "#{prefix}.json"
-    filename_other_json = "#{prefix}_other.json"
-
-    full_path = path+filename_json
-    File.open(full_path, 'w') {|f| f.write(hash.to_json) }
-    update_attributes(filename_json: filename_json )
-
-    full_path = path+filename_other_json
-    File.open(full_path, 'w') {|f| f.write(other_hash.to_json) }
-    update_attributes(filename_other_json: filename_other_json )
-  end
-
-  def load_json
-    full_path = path + filename_json
-
-    file = File.open(full_path, "r")
-    file.read if file
-  end
-
-  def save_csv
-    filename_csv = "#{prefix}.csv"
-
-    full_path = path+filename_csv
-    File.open(full_path, 'w') {|f| f.write(to_csv) }
-    update_attributes(filename_csv: filename_csv )
-  end
-
-  def load_csv
-    full_path = path + filename_csv
-
-    file = File.open(full_path, "r")
-    file.read if file
-  end
-
-  def to_csv
-    CSV.generate(headers: true) do |csv|
-      csv << table_fields
-
-      hash.each do |player|
-        csv << table_fields.map{ |attr| player[attr] }
-      end
-    end
-  end
-
-  def save_xlsx
-    filename_xlsx = "#{prefix}.xlsx"
-    full_path = path + filename_xlsx
-
-    Xlsxtream::Workbook.open(full_path) do |xlsx|
-      xlsx.write_worksheet "Lizenzen" do |sheet|
-        sheet << table_fields
-
-        hash.each do |player|
-          sheet << table_fields.map{ |attr| player[attr] }
-        end
-      end
-    end
-    update_attributes(filename_xls: filename_xlsx )
-
-    filename_xlsx = "#{prefix}_other.xlsx"
-    full_path = path + filename_xlsx
-
-    Xlsxtream::Workbook.open(full_path) do |xlsx|
-      xlsx.write_worksheet "Lizenzen" do |sheet|
-        sheet << table_fields
-
-        other_hash.each do |player|
-          sheet << table_fields.map{ |attr|
-            puts player.to_json unless player
-            player[attr]
-          }
-        end
-      end
-    end
-  end
-
-  def load_xlsx
-    full_path = path+filename_xls
-
-    file = File.open(full_path, "r")
-    file.read if file
-  end
-
-  def path
-    path = "#{Rails.root}/tmp/"
-  end
-
-  def table_fields
-    %w{id first_name last_name birthdate male home_club_id home_club home_club_operation home_club_state clubs club_ids license_id team_id league_id league_class_id league_class league_category_id league_category license_clubs license_club license_club_state}
   end
 end
 
