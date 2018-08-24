@@ -1,4 +1,4 @@
-class CreateLicenseFeeCalculations < ActiveRecord::Migration[5.1]
+class CreateRefereeCalculations < ActiveRecord::Migration[5.1]
   def change
     create_table :referee_calculations do |t|
       t.integer :user_id
