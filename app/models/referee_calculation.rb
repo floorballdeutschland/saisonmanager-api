@@ -50,15 +50,55 @@ class RefereeCalculation < ApplicationRecord
             puts "Fehler bei Spiel: #{game.id}, Liga: #{league_id}: Spiel noch nicht gespielt"
           elsif game.referee_ids.nil? || game.referee_ids.count != 2
             puts "Fehler bei Spiel: #{game.id}, Liga: #{league_id}"
-            errors["#{l.game_operation_id} - #{game.id}"] = 'Schiri Anzahl falsch'
+            c.errors["#{l.game_operation_id} - #{game.id}"] = 'Schiri Anzahl falsch'
           else
             game.referee_ids.each do |ref_id|
-              referees[ref_id] ||= []
-              referees[ref_id] << { game_id: game.id, league_id: league_id, game_operation_id: l.game_operation_id, league_class_id: l.league_class_id, league_category_id: l.league_category_id, league_female: l.female, league_name: l.name}
+              c.referees[ref_id] ||= []
+              c.referees[ref_id] << { game_id: game.id, league_id: league_id, game_operation_id: l.game_operation_id, league_class_id: l.league_class_id, league_category_id: l.league_category_id, league_female: l.female, league_name: l.name}
             end
           end
         end
       end
+    end
+
+    # Do the calculation
+    c.referees.each do |license_number, entries|
+      num = license_number.to_s.rjust(4, ' ')
+      c.referees_count[num] = {}
+      entries.each do |entry|
+        key = "#{entry[:game_operation_id]}-#{entry[:league_name]}"
+        c.league_names << key
+        c.referees_count[num][key] ||= 0
+        c.referees_count[num][key] += 1
+      end
+    end
+
+    c.league_names.uniq!.sort!
+
+    docs = ({ref: c.referees, errors: c.errors, leagues: c.league_docs, counted_games: c.referees_count})
+    File.open("referees#{Time.now.to_i}.json", 'w') do |file|
+      file.write JSON.pretty_generate(docs)
+    end
+
+    File.open("referees#{Time.now.to_i}_errors.json", 'w') do |file|
+      file.write JSON.pretty_generate(c.errors)
+    end
+
+    data = 'id,'
+    c.league_names.each { |ln| data += '"' + ln + '", ' }
+    data += "\n"
+
+    c.referees_count.sort.each do |license_number, entries|
+      ref = "#{license_number.strip}, "
+      c.league_names.each do |ln|
+        ref += "#{entries[ln]}, "
+      end
+      ref += "\n"
+      data += ref
+    end
+
+    File.open("referees#{Time.now.to_i}.csv", 'w') do |file|
+      file.write data
     end
 
 
@@ -68,6 +108,7 @@ end
 
 =begin
  gem install json2csv
+rc=RefereeCalculation.start_calculation(689, 9)
 
 =end
 
