@@ -9,7 +9,7 @@ class Club < ApplicationRecord
   end
 
   def update_state
-    return if postcode.empty?
+    return if postcode.blank?
 
     states = Club.postcodes.select { |pc| pc[:from] < postcode.to_i && pc[:till] > postcode.to_i }
 
