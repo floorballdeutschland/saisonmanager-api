@@ -97,7 +97,7 @@ class RefereeCalculation < ApplicationRecord
       data += ref
     end
 
-    File.open("referees#{Time.now.to_i}.csv", 'w') do |file|
+    File.open("#{c.prefix}.csv", 'w') do |file|
       file.write data
     end
 
