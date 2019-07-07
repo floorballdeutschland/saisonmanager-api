@@ -76,11 +76,11 @@ class RefereeCalculation < ApplicationRecord
     c.league_names.uniq!.sort!
 
     docs = ({ref: c.referees, errors: c.errors, leagues: c.league_docs, counted_games: c.referees_count})
-    File.open("referees#{Time.now.to_i}.json", 'w') do |file|
+    File.open("#{c.prefix}.json", 'w') do |file|
       file.write JSON.pretty_generate(docs)
     end
 
-    File.open("referees#{Time.now.to_i}_errors.json", 'w') do |file|
+    File.open("#{c.prefix}_errors.json", 'w') do |file|
       file.write JSON.pretty_generate(c.errors)
     end
 
