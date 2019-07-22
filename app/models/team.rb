@@ -17,4 +17,17 @@ class Team < ApplicationRecord
       League.where(season_id: season_id).map(&:teams).flatten.uniq
     end
   end
+
+  # {
+  #     shortName: String, // Kürzel, das wir verwenden, wenn kein Logo hinterlegt ist
+  #     name: String,
+  #     logoUrl: String
+  #   }
+  def ticker_hash
+    {
+      shortName: short_name.slice(0,5).split(' ').first.to_s,
+      name: name,
+      logoUrl: "https://robohash.org/#{name.gsub(/\W/, '').downcase}"
+    }
+  end
 end

@@ -8,7 +8,7 @@ class League < ApplicationRecord
   def league_category
     'league_category'
   end
-  
+
   def league_class
     'league_class'
   end
@@ -73,6 +73,77 @@ class League < ApplicationRecord
   def teams
     Rails.cache.fetch("#{cache_key}/teams", expires_in: 12.hours) do
       Team.where("league_id = ? OR ? IN (select(unnest(cup_leagues)))", id, id)
+    end
+  end
+
+  # returns:
+  # {
+  #   id: Int,
+  #   leagueName: String,
+  #   leagueShortName: String,
+  #   matchDays: [
+  #     {
+  #       games: [ Int ] // Liste von Spiel ids
+  #     }
+  #   ]
+  # }
+  def ticker_hash
+    {
+      id: id,
+      leagueName: name,
+      leagueShortName: short_name,
+      sortKey: order_key,
+      gameDays: game_days_for_ticker
+    }
+  end
+
+  def game_days_for_ticker
+    #game_days.includes(:games).map(&:ticker_hash)
+
+
+    temp = {}
+    game_days.includes(:games).each do |gd|
+      temp[gd.number] ||= []
+      temp[gd.number] << gd.game_ids
+      temp[gd.number].flatten!
+    end
+
+    temp.map do |k,v|
+      {
+        gameDayNumber: k,
+        title: ['3', '4'].include?(league_category_id) ? game_day_title_cup(k.to_s) : "#{k}. Spieltag",
+        games: v
+      }
+    end.sort { |a,b| a[:gameDayNumber] <=> b[:gameDayNumber] }
+  end
+
+  def game_day_title_cup(game_day_number)
+    if female.present?
+      case game_day_number
+      when "1"
+        'Runde 1'
+      when "2"
+        'Achtenfinale'
+      when "3"
+        'Viertelfinale'
+      when "4"
+        'Halbfinale'
+      when "5"
+        'Finale'
+      end
+    else
+      case game_day_number
+      when "4"
+        'Achtenfinale'
+      when "5"
+        'Viertelfinale'
+      when "6"
+        'Halbfinale'
+      when "7"
+        'Finale'
+      else
+        "Runde #{game_day_number}"
+      end
     end
   end
 end

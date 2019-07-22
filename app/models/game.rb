@@ -11,7 +11,7 @@ class Game < ApplicationRecord
     penalty_5: 0,
     penalty_10: 0,
     penalty_ms: 0
-  } 
+  }
 
 
   def home_team_name
@@ -34,7 +34,7 @@ class Game < ApplicationRecord
     last_item = nil
     events.sort_by{ |e| e[:row] }.each { |e| last_item = e if e["home_goals"].present? && e["guest_goals"].present? }
 
-    { 
+    {
       home_goals: last_item["home_goals"],
       guest_goals: last_item["guest_goals"],
       home_goals_period: [0,0,0],
@@ -91,13 +91,13 @@ class Game < ApplicationRecord
     result = {}
 
     player_ids = [home_team_player_number.values, guest_team_player_number.values].flatten.sort
-    player_ids.each do |p| 
+    player_ids.each do |p|
       result[p] = EMPTY_SCORE
     end
 
     events.each do |event|
       if event['penalty_id'].present?
-        player_id = event['home_number'].present? ? guest_team_player_number[event['home_number']]  : guest_team_player_number[event['guest_number']] 
+        player_id = event['home_number'].present? ? guest_team_player_number[event['home_number']]  : guest_team_player_number[event['guest_number']]
         puts player_id
         # skip if no player
         # register penalty for player
@@ -110,5 +110,53 @@ class Game < ApplicationRecord
     end
 
     result
+  end
+
+  # {
+  #   id: Int,
+  #   home: {
+  #     shortName: String, // Kürzel, das wir verwenden, wenn kein Logo hinterlegt ist
+  #     name: String,
+  #     logoUrl: String
+  #   },
+  #   guest: {
+  #     shortName: String,
+  #     name: String,
+  #     logoUrl: String
+  #   },
+  #   periods: Int, // Anzahl der Spielzeiten / Spiel
+  #   events: [
+  #     {
+  #       period: Int,
+  #       eventType: String // Momentan "HOME_GOAL" oder "GUEST_GOAL"
+  #     }
+  #   ],
+  #   isLive: Boolean
+  # }
+  def ticker_hash
+    isLive = [true, false].sample
+    hasEnded = !isLive && [true, false].sample
+    {
+      id: id,
+      home: home_team.ticker_hash,
+      guest: guest_team.ticker_hash,
+      periods: 3,
+      events: ticker_events,
+      resultString: result_string,
+      isLive: isLive,
+      hasEnded: hasEnded,
+      startingTime: start_time,
+      date: game_day.date
+    }
+  end
+
+  def ticker_events
+    events.map do |e|
+      if e['penalty_code_id']
+        e['home_number'].present? ? 'HOME_PENALTY' : 'GUEST_PENALTY'
+      else
+        e['home_number'].present? ? 'HOME_GOAL' : 'GUEST_GOAL'
+      end
+    end
   end
 end

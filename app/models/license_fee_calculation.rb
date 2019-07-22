@@ -147,6 +147,7 @@ end
 
 =begin
  gem install json2csv
-
+ c = LicenseFeeCalculation.start_calculation 689
+ c.save_files
 =end
 
