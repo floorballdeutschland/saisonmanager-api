@@ -146,7 +146,8 @@ class Game < ApplicationRecord
       isLive: isLive,
       hasEnded: hasEnded,
       startingTime: start_time,
-      date: game_day.date
+      date: game_day.date,
+      url: "https://fvd.saisonmanager.de/index.php?seite=game&game=#{id}"
     }
   end
 
