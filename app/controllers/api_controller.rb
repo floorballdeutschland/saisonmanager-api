@@ -4,7 +4,8 @@ class ApiController < ApplicationController
   # GET api/v1/ticker/fvd/10/leagues
   def leagues
     goid = params[:game_operation_id] == 'fvd' ? 1 : 1
-    result = League.where(season_id: params[:season_id], game_operation_id: goid).includes(:game_days).map(&:ticker_hash)
+    #result = League.where(season_id: params[:season_id], game_operation_id: goid).includes(:game_days).map(&:ticker_hash)
+    result = League.where(id: [601,727,605,778]).includes(:game_days).map(&:ticker_hash)
 
     render json: result
   end
