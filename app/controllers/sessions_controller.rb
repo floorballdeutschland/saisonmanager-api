@@ -8,10 +8,11 @@ class SessionsController < ApplicationController
     password = params[:password]
 
     user = User.login(username, password)
-    token = User.generate_token(user) if user
+    expiration = (Time.now + 1.days).to_i
+    token = User.generate_token(user, expiration) if user
 
     if user
-      render json: {user: user, token: token}
+      render json: {user: user, token: token, expiresAt: expiration}
     else
       render json: {success: false}, status: 401
     end

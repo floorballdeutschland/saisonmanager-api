@@ -18,7 +18,7 @@ class User < ApplicationRecord
     nil
   end
 
-  def self.generate_token(user, expires_at=(Time.now.to_i + 1.days))
+  def self.generate_token(user, expires_at=(Time.now + 1.days).to_i)
     payload = {
       id: user.id,
       user_name: user.user_name,
