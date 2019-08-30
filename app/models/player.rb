@@ -127,6 +127,54 @@ class Player < ApplicationRecord
     result.map { |x| x["sorting"]= (x["league_category_id"].to_s.rjust(3,'0') + x["league_class_id"].to_s.rjust(3,'0')).to_i; x } if result
   end
 
+  def transfer(new_club_id, user_id)
+    # get clubs
+    player_clubs = clubs
+    # find old club
+    old_club = nil
+    player_clubs.each do |c|
+      old_club = c["club_id"] if c["home_club"] == true && c["valid_until"].nil?
+    end
+
+    player_clubs.map! do |c|
+      # only valid entries
+      if c["valid_until"].nil? || c["valid_until"] > Time.now
+        if c["home_club"] == true
+          # set all home clubs unvalid
+          c["valid_until"] = Time.now
+          c["valid_set_by"] = user_id
+        else
+          # set all non home clubs unvalid
+          c["valid_until"] = Time.now
+          c["valid_set_by"] = user_id
+        end
+      end
+
+      c
+    end
+
+    # set new home club
+    player_clubs << {
+      "club_id"=>new_club_id,
+      "home_club"=>true,
+      "created_at"=>Time.now,
+      "created_by"=>user_id
+    }
+
+    updated_by_user = User.find user_id
+
+    Transfer.create({
+      created_by: user_id,
+      former_club_id: old_club,
+      new_club_id: new_club_id,
+      player_id: id,
+      season_id: Setting.current_season
+    })
+
+    save!(:validate => false)
+
+  end
+
   private
   def valid?(time, deadline)
     !time.nil? && Date.parse(time) < deadline
