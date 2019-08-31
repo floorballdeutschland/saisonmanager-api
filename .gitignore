@@ -17,3 +17,6 @@
 .byebug_history
 
 .testcases
+
+*_backup_saisonmanager.sql
+*_calculation*

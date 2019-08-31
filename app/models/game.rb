@@ -154,9 +154,17 @@ class Game < ApplicationRecord
   def ticker_events
     events.map do |e|
       if e['penalty_code_id']
-        e['home_number'].present? ? 'HOME_PENALTY' : 'GUEST_PENALTY'
+        {
+          period: e['period'],
+          time: e['time'],
+          eventType: e['home_number'].present? ? 'HOME_PENALTY' : 'GUEST_PENALTY'
+        }
       else
-        e['home_number'].present? ? 'HOME_GOAL' : 'GUEST_GOAL'
+        {
+          period: e['period'],
+          time: e['time'],
+          eventType: e['home_number'].present? ? 'HOME_GOAL' : 'GUEST_GOAL'
+        }
       end
     end
   end
