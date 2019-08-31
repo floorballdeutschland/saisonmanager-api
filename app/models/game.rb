@@ -152,7 +152,7 @@ class Game < ApplicationRecord
   end
 
   def ticker_events
-    events.map do |e|
+    (events || []).map do |e|
       if e['penalty_code_id']
         {
           period: e['period'],
