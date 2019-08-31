@@ -18,6 +18,11 @@ class Team < ApplicationRecord
     end
   end
 
+  def logo_url_with_fallback
+    return "https://www.saisonmanager.de/team_logos/#{team_logo_path}" if team_logo_path.present?
+    #"https://robohash.org/#{name.gsub(/\W/, '').downcase}"
+  end
+
   # {
   #     shortName: String, // Kürzel, das wir verwenden, wenn kein Logo hinterlegt ist
   #     name: String,
