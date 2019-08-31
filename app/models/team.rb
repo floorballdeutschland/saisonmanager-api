@@ -32,7 +32,7 @@ class Team < ApplicationRecord
     {
       shortName: short_name.slice(0,5).split(' ').first.to_s,
       name: name,
-      logoUrl: "https://robohash.org/#{name.gsub(/\W/, '').downcase}"
+      logoUrl: logo_url_with_fallback
     }
   end
 end
