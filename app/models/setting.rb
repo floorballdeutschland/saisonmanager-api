@@ -30,8 +30,8 @@ class Setting < ApplicationRecord
     self.current.liveticker['game_day_for_league'][season_id.to_s].try(:keys)
   end
 
-  def self.game_day_for_league(league_id)
-    self.current.liveticker['game_day_for_league'][league_id.to_s]
+  def self.game_day_for_league(league_id, season_id = self.current_season)
+    self.current.liveticker['game_day_for_league'][season_id.to_s][league_id.to_s]
   end
 
   def self.start_best_of_eight(league_id)

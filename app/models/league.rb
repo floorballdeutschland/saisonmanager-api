@@ -98,7 +98,7 @@ class League < ApplicationRecord
   end
 
   def game_days_for_ticker
-    gameday_whitelist = Setting.game_day_for_league id
+    gameday_whitelist = Setting.game_day_for_league id, season_id
 
     temp = {}
     game_days.where(number: gameday_whitelist).includes(:games).each do |gd|
