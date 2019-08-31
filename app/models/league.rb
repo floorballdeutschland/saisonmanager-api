@@ -98,11 +98,10 @@ class League < ApplicationRecord
   end
 
   def game_days_for_ticker
-    #game_days.includes(:games).map(&:ticker_hash)
-
+    gameday_whitelist = Setting.game_day_for_league id
 
     temp = {}
-    game_days.includes(:games).each do |gd|
+    game_days.where(number: gameday_whitelist).includes(:games).each do |gd|
       temp[gd.number] ||= []
       temp[gd.number] << gd.game_ids
       temp[gd.number].flatten!
@@ -118,32 +117,62 @@ class League < ApplicationRecord
   end
 
   def game_day_title_cup(game_day_number)
-    if female.present?
+    best_of_eight = Setting.start_best_of_eight id
+
+    if best_of_eight.present?
       case game_day_number
-      when "1"
-        'Runde 1'
-      when "2"
-        'Achtenfinale'
-      when "3"
-        'Viertelfinale'
-      when "4"
-        'Halbfinale'
-      when "5"
-        'Finale'
-      end
+        when best_of_eight.to_s
+          'Achtenfinale'
+        when (best_of_eight + 1).to_s
+          'Viertelfinale'
+        when (best_of_eight + 2).to_s
+          'Halbfinale'
+        when (best_of_eight + 3).to_s
+          'Finale'
+        else
+          "Runde #{game_day_number}"
+        end
     else
       case game_day_number
-      when "4"
-        'Achtenfinale'
-      when "5"
-        'Viertelfinale'
-      when "6"
-        'Halbfinale'
-      when "7"
-        'Finale'
-      else
-        "Runde #{game_day_number}"
-      end
+        when "4"
+          'Achtenfinale'
+        when "5"
+          'Viertelfinale'
+        when "6"
+          'Halbfinale'
+        when "7"
+          'Finale'
+        else
+          "Runde #{game_day_number}"
+        end
     end
+
+    # if female.present?
+    #   case game_day_number
+    #   when "1"
+    #     'Runde 1'
+    #   when "2"
+    #     'Achtenfinale'
+    #   when "3"
+    #     'Viertelfinale'
+    #   when "4"
+    #     'Halbfinale'
+    #   when "5"
+    #     'Finale'
+    #   end
+    # else
+    #   case game_day_number
+    #   when "4"
+    #     'Achtenfinale'
+    #   when "5"
+    #     'Viertelfinale'
+    #   when "6"
+    #     'Halbfinale'
+    #   when "7"
+    #     'Finale'
+    #   else
+    #     "Runde #{game_day_number}"
+    #   end
+    # end
   end
 end
