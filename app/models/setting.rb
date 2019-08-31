@@ -26,8 +26,8 @@ class Setting < ApplicationRecord
   #   }
   # }.with_indifferent_access
 
-  def self.liveticker_leagues
-    self.current.liveticker['game_day_for_league'].try(:keys)
+  def self.liveticker_leagues(season_id = self.current_season, goid = 1)
+    self.current.liveticker['game_day_for_league'][season_id.to_s].try(:keys)
   end
 
   def self.game_day_for_league(league_id)
