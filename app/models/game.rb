@@ -31,6 +31,8 @@ class Game < ApplicationRecord
   end
 
   def result
+    return unless events.present?
+
     last_item = nil
     events.sort_by{ |e| e[:row] }.each { |e| last_item = e if e["home_goals"].present? && e["guest_goals"].present? }
 
