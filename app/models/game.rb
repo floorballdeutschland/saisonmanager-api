@@ -136,8 +136,8 @@ class Game < ApplicationRecord
   #   isLive: Boolean
   # }
   def ticker_hash
-    isLive = [true, false].sample
-    hasEnded = !isLive && [true, false].sample
+    isLive = started && !ended
+    hasEnded = !isLive && ended
     {
       id: id,
       home: home_team.ticker_hash,
