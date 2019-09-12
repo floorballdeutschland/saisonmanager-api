@@ -16,4 +16,8 @@ class GamesController < ApplicationController
 
     @games = game_days.map(&:games).flatten
   end
+
+  def update_start_end
+    Game.start_end_games
+  end
 end
