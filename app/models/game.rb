@@ -170,4 +170,27 @@ class Game < ApplicationRecord
       end
     end
   end
+
+  def self.start_end_games
+    gds = GameDay.where date: Date.today
+    games = gds.map(&:games).map(&:all).flatten
+    t = Time.now
+
+    filtered_games = games.select do |g|
+      hour, minute = g.start_time.split(":")
+
+      hour.to_i <= t.hour && minute.to_i < t.min
+    end
+
+    filtered_games.each do |g|
+      if !g.started? && g.players.present? && g.players["home"].present? && g.players["guest"].present?
+        g.started = true
+        g.save
+      end
+      if g.started? && !g.ended? && g.time_keeper_signed? && g.record_keeper_signed? && g.referee1_signed? && g.referee2_signed?
+        g.ended = true
+        g.save
+      end
+    end
+  end
 end
