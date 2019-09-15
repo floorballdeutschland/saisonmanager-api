@@ -155,7 +155,7 @@ class Game < ApplicationRecord
 
   def ticker_events
     (events || []).map do |e|
-      if e['penalty_code_id']
+      if e['penalty_code_id'] && e['penalty_code_id'].to_i != 23 # penalty_shot should be goal, not penalty.
         {
           period: e['period'],
           time: e['time'],
