@@ -18,4 +18,8 @@ class Club < ApplicationRecord
       update_attributes(state: state)
     end
   end
+
+  def export_hash
+
+  end
 end

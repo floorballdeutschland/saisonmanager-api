@@ -71,9 +71,7 @@ class League < ApplicationRecord
   end
 
   def teams
-    Rails.cache.fetch("#{cache_key}/teams", expires_in: 12.hours) do
-      Team.where("league_id = ? OR ? IN (select(unnest(cup_leagues)))", id, id)
-    end
+    Team.where(league_id: id).or(Team.where("#{id} = ANY (cup_leagues)")).order(:name)
   end
 
   # returns:
@@ -174,5 +172,67 @@ class League < ApplicationRecord
     #     "Runde #{game_day_number}"
     #   end
     # end
+  end
+
+
+  def licenses_csv
+    team_ids = teams.map(&:id)
+
+    team_licenses = {}
+    teams.each do |team|
+      team_licenses[team.id.to_s] = Player.find_by_team_id team.id
+    end
+
+    status = {"1"=> "erteilt", "2"=> "beantragt", "3"=> "abgelehnt", "4"=> "gelöscht", "5"=> "Löschung beantragt", "6"=> "Transfer", "7"=> "ignoriert"}
+
+    teams.each do |team|
+      puts team.name
+      team_licenses[team.id.to_s].each do |player|
+        license = player.licenses.select{|l| l["team_id"]==team.id.to_s}.first
+      
+        last_status = license["history"].last
+        last_status_id = last_status["license_status_id"]
+        last_status_code = status[last_status_id.to_s]
+      
+        approved_at = if last_status_id == 1
+          last_status["created_at"].to_datetime.strftime("%d.%m.%Y %H:%M:%S")
+        end
+        requested_at = license["history"].select{|lh| lh["license_status_id"]==2}.last["created_at"].to_datetime.strftime("%d.%m.%Y %H:%M:%S")
+      
+        puts "#{player.last_name},#{player.first_name},#{last_status_code},#{requested_at},#{approved_at ? approved_at : '-'},#{team.name}"
+      end
+      
+      nil
+    end
+  end
+
+  def fix_wrong_settings(female, league_category_id, league_class_id)
+
+    team_ids = teams.map(&:id)
+
+    team_licenses = {}
+    teams.each do |team|
+      team_licenses[team.id.to_s] = Player.find_by_team_id team.id
+    end
+
+    teams.each do |team|
+      team_licenses[team.id.to_s].each do |player|
+        player.licenses.map! do |license|
+          if license["team_id"] == team.id.to_s
+            license["male"] = !female
+            license["league_category_id"] = league_category_id
+            license["league_class_id"] = league_class_id
+          end
+          license
+        end
+        player.save
+      end  
+    end
+
+    self.female = female
+    self.league_category_id = league_category_id
+    self.league_class_id = league_class_id
+
+    self.save
   end
 end

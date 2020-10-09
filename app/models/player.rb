@@ -1,7 +1,7 @@
 class Player < ApplicationRecord
 
-  belongs_to :created_at_user, class_name: "User"
-  belongs_to :updated_at_user, class_name: "User"
+  belongs_to :created_at_user, class_name: "User", optional: true
+  belongs_to :updated_at_user, class_name: "User", optional: true
 
   attr_accessor :hash, :prefix
 
@@ -111,7 +111,7 @@ class Player < ApplicationRecord
   end
 
   def valid_clubs(deadline)
-    clubs.reject { |l| valid?(l['valid_until'], deadline) } if clubs
+    clubs.reject { |l| valid_time?(l['valid_until'], deadline) } if clubs
   end
 
   def home_club(deadline)
@@ -119,7 +119,7 @@ class Player < ApplicationRecord
   end
 
   def home_club_hash(deadline)
-    valid_clubs(deadline).reject { |l| !l['home_club'] || valid?(l['valid_until'], deadline) } if clubs
+    valid_clubs(deadline).reject { |l| !l['home_club'] || valid_time?(l['valid_until'], deadline) } if clubs
   end
 
   def current_licenses(sid)
@@ -175,8 +175,15 @@ class Player < ApplicationRecord
 
   end
 
+  def self.find_by_team_id(team_id)
+    # alternative for array: extr_licenses->>'team_id' IN ('#{team_ids.join '\', \''
+    Player.find_by_sql "select * from (SELECT *, jsonb_array_elements(licenses) as extr_licenses FROM players ) as subqry WHERE extr_licenses->>'team_id' ='#{team_id}' ORDER BY extr_licenses->>'team_id', last_name, first_name"
+  end
+
+  
+
   private
-  def valid?(time, deadline)
+  def valid_time?(time, deadline)
     !time.nil? && Date.parse(time) < deadline
   end
 
