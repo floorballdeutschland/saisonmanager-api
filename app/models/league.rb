@@ -2,7 +2,7 @@ class League < ApplicationRecord
   has_many :game_days
 
   def games
-    game_days.map(&:games).flatten.sort_by{|i| i.game_number.to_i}
+    game_days.includes(:games).map(&:games).flatten.sort_by{|i| i.game_number.to_i}
   end
 
   def league_category
@@ -25,49 +25,200 @@ class League < ApplicationRecord
     attributes.select {|key, value| ['name', 'short_name', 'order_key'].include?(key) }
   end
 
+  def won_points
+    # TODO: old replace with parameter in new system
+    league_system_id.to_i == 1 ? 3 : 2
+  end
+
+  def draw_points
+    # TODO: old replace with parameter in new system
+    league_system_id.to_i == 1 ? 1 : 0
+  end
+
+  def won_overtime_points
+    # TODO: old replace with parameter in new system
+    league_system_id.to_i == 1 ? 2 : 0
+  end
+
+  def lost_overtime_points
+    draw_points
+  end
+
   def scorer
-    [
-      {
-        name: 'Jan Hoffmann',
-        id: 815,
-        place: 1,
-        order_key: 1,
-        games: 5,
-        goals: 10,
-        assists: 20,
-        penalty_2: 0,
-        penalty_5: 0,
-        penalty_10: 0,
-        penalty_ms: 0
-      }
-    ]
+    results = evaluate_scorer
+    last_entry = nil
+    sorted_results = results.values.sort_by { |player_result| [-(player_result[:goals] + player_result[:assists]), -player_result[:goals], -player_result[:games]] }
+    sorted_results.reject! do |player_result|
+      (player_result.values.sum - player_result[:games] - player_result[:player_id]).zero? # no goals or penalties.
+    end
+
+    player_ids = sorted_results.map { |sr| sr[:player_id] }
+    players = Player.where(id: player_ids).select(:id, :first_name, :last_name)
+    player_lookup = {}
+    players.each { |player| player_lookup[player.id] = player }
+
+    next_position_diff = 1
+    sorted_results.each_with_index do |player_result, index|
+      player = player_lookup[player_result[:player_id]]
+      puts player_result[:player_id]
+      puts player
+      player_result[:first_name] = player.first_name
+      player_result[:last_name] = player.last_name
+      player_result[:sort] = index
+      if last_entry.nil?
+        player_result[:position] = 1
+      elsif (player_result[:goals] == last_entry[:goals]) &&
+            (player_result[:assists] == last_entry[:assists])
+        player_result[:position] = last_entry[:position]
+        next_position_diff += 1
+      else
+        player_result[:position] = last_entry[:position] + next_position_diff
+        next_position_diff = 1
+      end
+
+      last_entry = player_result
+    end
+
+    sorted_results.compact
   end
 
   def table
-    [
-      {
-        name: "TSV Neuwittenbek",
-        id: 123,
-        place: 1,
-        order_key: 1,
-        games: 1,
-        points: 3,
-        goals_scored: 2,
-        goals_received: 0,
-        games_won: 1,
-        games_draw: 0,
-        games_lost: 0,
-        games_otwin: 0,
-        games_otlost: 0
-      }
-    ]
+    results = evaluate_table_results
+    last_entry = nil
+
+    sorted_results = results.values.sort_by { |team_result| [-team_result[:points], -team_result[:goals_diff], -team_result[:goals_scored]] }
+
+    next_position_diff = 1
+    sorted_results.each_with_index do |team_result, index|
+      team_result[:sort] = index
+      if last_entry.nil?
+        team_result[:position] = 1
+      elsif (team_result[:points] == last_entry[:points]) &&
+            (team_result[:goals_diff] == last_entry[:goals_diff]) &&
+            (team_result[:goals_scored] == last_entry[:goals_scored])
+        team_result[:position] = last_entry[:position]
+        next_position_diff += 1
+      else
+        team_result[:position] = last_entry[:position] + next_position_diff
+        next_position_diff = 1
+      end
+
+      last_entry = team_result
+    end
+
+    sorted_results
   end
 
   def evaluate_scorer
-    player = {}
+    game_scores = games.map do |game|
+      next unless game.ended?
+
+      game.evaluate_scorer
+    end.compact
+
+    result = {}
+
+    game_scores.each do |game_score|
+      game_score.each do |player_id, score|
+        if result.include?(player_id)
+          # sum the items
+          result[player_id].each do |key, _|
+            next if key == :player_id
+            result[player_id][key] += score[key]
+          end
+        else
+          # otherwise just set the score
+          result[player_id] = score
+        end
+      end
+    end
+
+    result
   end
 
-  def evaluate_table
+  def empty_table_item(team)
+    league_point_corrections = Setting.point_corrections(id)
+    team_point_corrections = league_point_corrections.present? ? league_point_corrections[team.id.to_s] : nil
+
+    {
+      games: 0,
+      won: 0,
+      draw: 0,
+      lost: 0,
+      won_ot: 0,
+      lost_ot: 0,
+      goals_scored: 0,
+      goals_received: 0,
+      goals_diff: 0,
+      points: team_point_corrections.present? ? team_point_corrections['points'] : 0,
+      team_name: team.name,
+      team_id: team.id,
+      point_corrections: team_point_corrections
+    }
+  end
+
+  def evaluate_table_results
+    results = {}
+
+    games.each do |game|
+      next unless game.ended?
+
+      [game.home_team, game.guest_team].each do |team|
+        results[team.id] = empty_table_item(team) unless results[team.id].present?
+
+        results[team.id][:games] += 1
+      end
+
+      results[game.home_team.id][:goals_scored] += game.result[:home_goals]
+      results[game.home_team.id][:goals_received] += game.result[:guest_goals]
+      results[game.guest_team.id][:goals_scored] += game.result[:guest_goals]
+      results[game.guest_team.id][:goals_received] += game.result[:home_goals]
+
+      # won_points won_overtime_points lost_overtime_points draw_points
+      if game.result[:home_goals] == game.result[:guest_goals]
+        # draw
+        results[game.home_team.id][:draw] += 1
+        results[game.guest_team.id][:draw] += 1
+        results[game.home_team.id][:points] += draw_points
+        results[game.guest_team.id][:points] += draw_points
+      elsif game.result[:home_goals] > game.result[:guest_goals]
+        # home won
+        if game.overtime
+          # home won overtime
+          results[game.home_team.id][:won_ot] += 1
+          results[game.guest_team.id][:lost_ot] += 1
+          results[game.home_team.id][:points] += won_overtime_points
+          results[game.guest_team.id][:points] += lost_overtime_points
+        else
+          # home won regular time
+          results[game.home_team.id][:won] += 1
+          results[game.guest_team.id][:lost] += 1
+          results[game.home_team.id][:points] += won_points
+        end
+      elsif game.result[:home_goals] < game.result[:guest_goals]
+        # guest won
+        if game.overtime
+          # guest won overtime
+          results[game.guest_team.id][:won_ot] += 1
+          results[game.home_team.id][:lost_ot] += 1
+          results[game.guest_team.id][:points] += won_overtime_points
+          results[game.home_team.id][:points] += lost_overtime_points
+        else
+          # guest won regular time
+          results[game.guest_team.id][:won] += 1
+          results[game.home_team.id][:lost] += 1
+          results[game.guest_team.id][:points] += won_points
+        end
+      end
+    end
+
+    results.each_key do |team_id|
+      # calculate goal difference
+      results[team_id][:goals_diff] = results[team_id][:goals_scored] - results[team_id][:goals_received]
+    end
+
+    # point corrections
+    results
   end
 
   def teams
@@ -189,19 +340,19 @@ class League < ApplicationRecord
       puts team.name
       team_licenses[team.id.to_s].each do |player|
         license = player.licenses.select{|l| l["team_id"]==team.id.to_s}.first
-      
+
         last_status = license["history"].last
         last_status_id = last_status["license_status_id"]
         last_status_code = status[last_status_id.to_s]
-      
+
         approved_at = if last_status_id == 1
           last_status["created_at"].to_datetime.strftime("%d.%m.%Y %H:%M:%S")
         end
         requested_at = license["history"].select{|lh| lh["license_status_id"]==2}.last["created_at"].to_datetime.strftime("%d.%m.%Y %H:%M:%S")
-      
+
         puts "#{player.last_name},#{player.first_name},#{last_status_code},#{requested_at},#{approved_at ? approved_at : '-'},#{team.name}"
       end
-      
+
       nil
     end
   end
@@ -226,7 +377,7 @@ class League < ApplicationRecord
           license
         end
         player.save
-      end  
+      end
     end
 
     self.female = female

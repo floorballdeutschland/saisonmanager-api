@@ -3,16 +3,9 @@ class Game < ApplicationRecord
   belongs_to :guest_team, class_name: "Team"
   belongs_to :game_day
 
-  EMPTY_SCORE = {
-    games: 1,
-    goals: 0,
-    assists: 0,
-    penalty_2: 0,
-    penalty_5: 0,
-    penalty_10: 0,
-    penalty_ms: 0
-  }
-
+  def league
+    game_day.league
+  end
 
   def home_team_name
     home_team.name
@@ -30,17 +23,42 @@ class Game < ApplicationRecord
     players["guest"].map { |p| { p['trikot_number'] => p['player_id'] } }.reduce(&:merge)
   end
 
+  def penalty_mapping(event)
+    Setting.current.penalties[event['penalty_id'].to_s]['mapping'].to_sym
+  end
+
   def result
     return unless events.present?
 
+    home_goals_period = [0,0,0,0]
+    guest_goals_period = [0,0,0,0]
+
     last_item = nil
-    events.sort_by{ |e| e[:row] }.each { |e| last_item = e if e["home_goals"].present? && e["guest_goals"].present? }
+    home_previous_goals = 0
+    guest_previous_goals = 0
+
+    events.sort_by{ |e| e[:row] }.each do |e|
+      home_goals = e["home_goals"].to_i
+      guest_goals = e["guest_goals"].to_i
+
+      if home_goals.present? && guest_goals.present?
+        if last_item.present? && (e['period'] > last_item['period'])
+          home_previous_goals = last_item["home_goals"].to_i
+          guest_previous_goals = last_item["guest_goals"].to_i
+        end
+
+        home_goals_period[e['period'].to_i - 1] = home_goals - home_previous_goals
+        guest_goals_period[e['period'].to_i - 1] = guest_goals - guest_previous_goals
+
+        last_item = e
+      end
+    end
 
     {
       home_goals: last_item["home_goals"],
       guest_goals: last_item["guest_goals"],
-      home_goals_period: [0,0,0],
-      guest_goals_period: [1,1,1],
+      home_goals_period: home_goals_period,
+      guest_goals_period: guest_goals_period,
       overtime: (overtime == true)
     }
   end
@@ -89,30 +107,61 @@ class Game < ApplicationRecord
     item
   end
 
+  def empty_score(player_id)
+    {
+      games: 1,
+      goals: 0,
+      assists: 0,
+      penalty_2: 0,
+      penalty_2and2: 0,
+      penalty_5: 0,
+      penalty_10: 0,
+      penalty_ms: 0,
+      player_id: player_id
+    }
+  end
+
   def evaluate_scorer
     result = {}
 
-    player_ids = [home_team_player_number.values, guest_team_player_number.values].flatten.sort
+    player_ids = [home_team_player_number.values, guest_team_player_number.values].flatten.compact.sort
     player_ids.each do |p|
-      result[p] = EMPTY_SCORE
+      result[p] = empty_score(p)
     end
 
     events.each do |event|
       if event['penalty_id'].present?
-        player_id = event['home_number'].present? ? guest_team_player_number[event['home_number']]  : guest_team_player_number[event['guest_number']]
-        puts player_id
-        # skip if no player
+        # penalty?
+        player_id = event['home_number'].present? ? home_team_player_number[event['home_number']] : guest_team_player_number[event['guest_number']]
+
         # register penalty for player
+        result[player_id][penalty_mapping(event)] += 1 if player_id.present?  # skip if no player
+      elsif event['home_goals'].present? && event['guest_goals'].present?
+        # goal?
+        if event['home_number'].present? && event['home_number'].to_i < 1000 # owngoal: 1000
+          player_id = home_team_player_number[event['home_number']]
+          result[player_id][:goals] += 1 if player_id.present?
 
+          if event['home_assist'].present?
+            player_id = home_team_player_number[event['home_assist']]
+            result[player_id][:assists] += 1 if player_id.present?
+          end
+        elsif event['guest_number'].present? && event['guest_number'].to_i < 1000 # owngoal: 1000
+          player_id = guest_team_player_number[event['guest_number']]
+          result[player_id][:goals] += 1 if player_id.present?
+
+          if event['guest_assist'].present?
+            player_id = guest_team_player_number[event['guest_assist']]
+            result[player_id][:assists] += 1 if player_id.present?
+          end
+        end
       end
-
-      #penalty
-      #{"1": {"name": "2'", "description": null}, "2": {"name": "5'", "description": null}, "3": {"name": "10'", "description": null}, "4": {"name": "M I", "description": null}, "5": {"name": "M II", "description": null}, "6": {"name": "M III", "description": null}}
-
     end
 
     result
   end
+  # code to debug [24454,24446,24443,24435,24430].each {|g| puts [g, Game.find(g).evaluate_scorer[4413].to_json].join ' ' }
+
 
   # {
   #   id: Int,

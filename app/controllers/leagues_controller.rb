@@ -27,6 +27,34 @@ class LeaguesController < ApplicationController
     render json:@league.schedule
   end
 
+  # GET /leagues/1/scorer
+  api :GET, '/leagues/:id/scorer.json'
+  param :id, :number,
+        required: true, desc: 'league id'
+  #short_description 'Prints the scorer table for league :id.'
+  description <<-EOS
+      Prints the scorer table for league :id.
+    EOS
+  def scorer
+    @league = League.find(params[:id])
+
+    render json:@league.scorer
+  end
+
+  # GET /leagues/1/table
+  api :GET, '/leagues/:id/table.json'
+  param :id, :number,
+        required: true, desc: 'league id'
+  #short_description 'Prints the table for league :id.'
+  description <<-EOS
+      Prints the table for league :id.
+    EOS
+  def table
+    @league = League.find(params[:id])
+
+    render json:@league.table
+  end
+
   def meta
     @league = League.find(params[:id])
 
