@@ -9,11 +9,15 @@ class Setting < ApplicationRecord
   end
 
   def self.current
-    Setting.first
+    @current_settings ||= Setting.first
   end
 
   def self.current_season
     self.current.systems['1']['current_season_id']
+  end
+
+  def self.point_corrections(league_id)
+    current.point_corrections[league_id.to_s]
   end
 
 
