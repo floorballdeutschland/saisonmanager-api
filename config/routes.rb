@@ -45,6 +45,8 @@ Rails.application.routes.draw do
         end
       end
 
+      resources :games
+
       get 'init', to: 'settings#init'
     end
   end
