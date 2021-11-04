@@ -22,7 +22,6 @@ Rails.application.routes.draw do
     end
   end
   resources :players
-  resources :settings
   resources :teams
   resources :transfers
   resources :users
@@ -34,6 +33,21 @@ Rails.application.routes.draw do
   get 'api/v1/upcoming_games', to: 'games#users_games'
 
   get 'internal/update_games/update_start_end', to: 'games#update_start_end'
+
+  scope 'api' do
+    scope 'v2' do
+      resources :leagues do
+        member do
+          get :schedule
+          get :table
+          get :scorer
+          get :meta
+        end
+      end
+
+      get 'init', to: 'settings#init'
+    end
+  end
 
   post 'login' => 'sessions#login'
   # For details on the DSL available within this file, see http://guides.rubyonrails.org/routing.html
