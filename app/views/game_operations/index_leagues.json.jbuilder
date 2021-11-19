@@ -5,6 +5,8 @@ json.array! @leagues do |league|
  json.league_class_id league.league_class_id
  json.league_system_id league.league_system_id
  json.name league.name
+ json.female league.female
+ json.enable_scorer league.enable_scorer
  json.short_name league.short_name
  json.season_id league.season_id
  json.order_key league.order_key

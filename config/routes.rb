@@ -45,6 +45,9 @@ Rails.application.routes.draw do
         end
       end
 
+      get 'game_operations/:id/leagues/:season_id', to: 'game_operations#index_leagues'
+      get 'game_operations/:id/leagues', to: 'game_operations#index_leagues'
+
       resources :games
 
       get 'init', to: 'settings#init'
