@@ -1,5 +1,5 @@
 class LeaguesController < ApplicationController
-  skip_before_action :authenticate_user, except: [:show]
+  skip_before_action :authenticate_user
 
   # GET /leagues
   def index
