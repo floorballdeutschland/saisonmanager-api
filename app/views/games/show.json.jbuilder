@@ -1,6 +1,7 @@
 json.id @game.id
 json.game_number @game.game_number
 json.start_time @game.start_time
+json.date @game.game_day.date
 json.game_number @game.game_number
 json.audience @game.audience
 json.home_team_name @game.home_team.name
@@ -15,3 +16,9 @@ json.started @game.started
 json.ended @game.ended
 json.result_string @game.result_string
 json.result @game.result
+json.league_id @game.league.id
+json.league_name @game.league.name
+json.league_short_name @game.league.short_name
+json.game_operation_id @game.league.game_operation.id
+json.game_operation_name @game.league.game_operation.name
+json.game_operation_short_name @game.league.game_operation.short_name
