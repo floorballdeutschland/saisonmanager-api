@@ -49,7 +49,7 @@ class League < ApplicationRecord
     last_entry = nil
     sorted_results = results.values.sort_by { |player_result| [-(player_result[:goals] + player_result[:assists]), -player_result[:goals], -player_result[:games]] }
     sorted_results.reject! do |player_result|
-      (player_result.values.sum - player_result[:games] - player_result[:player_id]).zero? # no goals or penalties.
+      (player_result.slice(:goals, :assists, :penalty_2, :penalty_2and2, :penalty_5, :penalty_10, :penalty_ms).values.sum - player_result[:games] - player_result[:player_id]).zero? # no goals or penalties.
     end
 
     player_ids = sorted_results.map { |sr| sr[:player_id] }
@@ -123,7 +123,8 @@ class League < ApplicationRecord
         if result.include?(player_id)
           # sum the items
           result[player_id].each do |key, _|
-            next if key == :player_id
+            next if [:player_id, :team_id, :team_name].include?(key)
+
             result[player_id][key] += score[key]
           end
         else

@@ -107,7 +107,7 @@ class Game < ApplicationRecord
     item
   end
 
-  def empty_score(player_id)
+  def empty_score(player_id, team)
     {
       games: 1,
       goals: 0,
@@ -117,16 +117,23 @@ class Game < ApplicationRecord
       penalty_5: 0,
       penalty_10: 0,
       penalty_ms: 0,
-      player_id: player_id
+      player_id: player_id,
+      team_id: team.id,
+      team_name: team.name
     }
   end
 
   def evaluate_scorer
     result = {}
 
-    player_ids = [home_team_player_number.values, guest_team_player_number.values].flatten.compact.sort
-    player_ids.each do |p|
-      result[p] = empty_score(p)
+    home_player_ids = [home_team_player_number.values].flatten.compact.sort
+    home_player_ids.each do |p|
+      result[p] = empty_score(p, home_team)
+    end
+
+    guest_player_ids = [guest_team_player_number.values].flatten.compact.sort
+    guest_player_ids.each do |p|
+      result[p] = empty_score(p, guest_team)
     end
 
     events.each do |event|
