@@ -10,4 +10,4 @@ json.home_team_small_logo @game.home_team.logo_small_url
 json.guest_team_logo @game.guest_team.logo_url
 json.guest_team_small_logo @game.guest_team.logo_small_url
 json.events @game.events
-json.players @game.players
+json.players @game.players_with_position

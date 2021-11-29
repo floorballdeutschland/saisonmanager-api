@@ -12,7 +12,7 @@ class Game < ApplicationRecord
   end
 
   def home_team_player_number
-    players["home"].map { |p| { p['trikot_number'] => p['player_id'] } }.reduce(&:merge)
+    players['home'].map { |p| { p['trikot_number'] => p['player_id'] } }.reduce(&:merge)
   end
 
   def guest_team_name
@@ -20,11 +20,24 @@ class Game < ApplicationRecord
   end
 
   def guest_team_player_number
-    players["guest"].map { |p| { p['trikot_number'] => p['player_id'] } }.reduce(&:merge)
+    players['guest'].map { |p| { p['trikot_number'] => p['player_id'] } }.reduce(&:merge)
   end
 
   def penalty_mapping(event)
     Setting.current.penalties[event['penalty_id'].to_s]['mapping'].to_sym
+  end
+
+  def players_with_position
+    result = {}
+
+    ['home', 'guest'].each do |team|
+      result[team] = players[team].map do |player|
+        player['position'] = player['goalkeeper'].present? && player['goalkeeper'] == true ? 'Tor' : ['Sturm', 'Center', 'Verteidigung'].sample
+        player
+      end
+    end
+
+    result
   end
 
   def result
@@ -243,7 +256,7 @@ class Game < ApplicationRecord
     end
 
     filtered_games.each do |g|
-      if !g.started? && g.players.present? && g.players["home"].present? && g.players["guest"].present?
+      if !g.started? && g.players.present? && g.players['home'].present? && g.players['guest'].present?
         g.started = true
         g.save
       end
