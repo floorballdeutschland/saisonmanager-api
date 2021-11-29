@@ -51,13 +51,13 @@ class Game < ApplicationRecord
     guest_previous_goals = 0
 
     events.sort_by{ |e| e[:row] }.each do |e|
-      home_goals = e["home_goals"].to_i
-      guest_goals = e["guest_goals"].to_i
+      home_goals = e['home_goals'].to_i
+      guest_goals = e['guest_goals'].to_i
 
       if home_goals.present? && guest_goals.present?
         if last_item.present? && (e['period'] > last_item['period'])
-          home_previous_goals = last_item["home_goals"].to_i
-          guest_previous_goals = last_item["guest_goals"].to_i
+          home_previous_goals = last_item['home_goals'].to_i
+          guest_previous_goals = last_item['guest_goals'].to_i
         end
 
         home_goals_period[e['period'].to_i - 1] = home_goals - home_previous_goals
@@ -68,8 +68,8 @@ class Game < ApplicationRecord
     end
 
     {
-      home_goals: last_item["home_goals"],
-      guest_goals: last_item["guest_goals"],
+      home_goals: last_item['home_goals'],
+      guest_goals: last_item['guest_goals'],
       home_goals_period: home_goals_period,
       guest_goals_period: guest_goals_period,
       overtime: (overtime == true)

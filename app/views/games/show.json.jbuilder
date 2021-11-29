@@ -11,3 +11,7 @@ json.guest_team_logo @game.guest_team.logo_url
 json.guest_team_small_logo @game.guest_team.logo_small_url
 json.events @game.events
 json.players @game.players_with_position
+json.started @game.started
+json.ended @game.ended
+json.result_string @game.result_string
+json.result @game.result
