@@ -22,3 +22,7 @@ json.league_short_name @game.league.short_name
 json.game_operation_id @game.league.game_operation.id
 json.game_operation_name @game.league.game_operation.name
 json.game_operation_short_name @game.league.game_operation.short_name
+json.arena @game.game_day.arena_id
+json.arena_name @game.game_day.arena.name
+json.arena_address @game.game_day.arena.address
+json.arena_short @game.game_day.arena.schedule_item
