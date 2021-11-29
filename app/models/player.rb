@@ -175,6 +175,14 @@ class Player < ApplicationRecord
 
   end
 
+  def image
+    "https://robohash.org/#{id}-#{CGI.escape last_name.downcase}.png?size=400x400"
+  end
+
+  def image_small
+    "https://robohash.org/#{id}-#{CGI.escape last_name.downcase}.png?size=90x90"
+  end
+
   def self.find_by_team_id(team_id)
     # alternative for array: extr_licenses->>'team_id' IN ('#{team_ids.join '\', \''
     Player.find_by_sql "select * from (SELECT *, jsonb_array_elements(licenses) as extr_licenses FROM players ) as subqry WHERE extr_licenses->>'team_id' ='#{team_id}' ORDER BY extr_licenses->>'team_id', last_name, first_name"

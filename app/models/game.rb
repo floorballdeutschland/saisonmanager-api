@@ -97,7 +97,11 @@ class Game < ApplicationRecord
       date: game_day.date,
       time: start_time,
       home_team_name: home_team_name,
+      home_team_logo: home_team.logo_url,
+      home_team_small_logo: home_team.logo_small_url,
       guest_team_name: guest_team_name,
+      guest_team_logo: guest_team.logo_url,
+      guest_team_small_logo: guest_team.logo_small_url,
       nominated_referee_string: nominated_referee_string,
       state: state
     }

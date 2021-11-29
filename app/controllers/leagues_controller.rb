@@ -52,7 +52,7 @@ class LeaguesController < ApplicationController
   def table
     @league = League.find(params[:id])
 
-    render json:@league.table
+    render json: @league.table
   end
 
   def meta

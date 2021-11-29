@@ -64,6 +64,8 @@ class League < ApplicationRecord
       puts player
       player_result[:first_name] = player.first_name
       player_result[:last_name] = player.last_name
+      player_result[:image] = player.image
+      player_result[:image_small] = player.image_small
       player_result[:sort] = index
       if last_entry.nil?
         player_result[:position] = 1
@@ -154,6 +156,8 @@ class League < ApplicationRecord
       points: team_point_corrections.present? ? team_point_corrections['points'] : 0,
       team_name: team.name,
       team_id: team.id,
+      team_logo: team.logo_url,
+      team_logo_small: team.logo_small_url,
       point_corrections: team_point_corrections
     }
   end
