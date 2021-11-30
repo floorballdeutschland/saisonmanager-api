@@ -10,4 +10,5 @@ json.array! @leagues do |league|
  json.short_name league.short_name
  json.season_id league.season_id
  json.order_key league.order_key
+ json.game_day_numbers @league.game_days.pluck(:number).uniq.sort
 end
