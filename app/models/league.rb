@@ -2,8 +2,11 @@ class League < ApplicationRecord
   has_many :game_days
   belongs_to :game_operation
 
-  def games
-    game_days.includes(:games).map(&:games).flatten.sort_by{|i| i.game_number.to_i}
+  def games(game_day_number)
+    gd = game_day_number.present? ? game_days.where(number: game_day_number) : game_days
+    gd.includes(:games).map(&:games).flatten.sort_by{ |i| i.game_number.to_i }
+  end
+
   end
 
   def league_category
@@ -20,6 +23,15 @@ class League < ApplicationRecord
 
   def schedule
     games.map(&:schedule_item)
+  end
+
+  def game_day_schedule(game_day_number)
+    games(game_day_number).map(&:schedule_item)
+  end
+
+  def current_schedule
+    game_day_number = game_days.pluck(:number).max
+    games(game_day_number).map(&:schedule_item)
   end
 
   def meta_item

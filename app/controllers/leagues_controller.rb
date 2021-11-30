@@ -27,6 +27,21 @@ class LeaguesController < ApplicationController
     render json:@league.schedule
   end
 
+
+  # GET /leagues/1/game_days/15/schedule
+  def game_day_schedule
+    @league = League.find(params[:id])
+
+    render json: @league.game_day_schedule(params[:game_day_number])
+  end
+
+  # GET /leagues/1/game_days/current/schedule
+  def current_schedule
+    @league = League.find(params[:id])
+
+    render json: @league.current_schedule
+  end
+
   # GET /leagues/1/scorer
   api :GET, '/leagues/:id/scorer.json'
   param :id, :number,

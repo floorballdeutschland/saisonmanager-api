@@ -119,7 +119,10 @@ class Game < ApplicationRecord
       state: state
     }
 
-    item[:result_string] = result_string if record_created_at.present?
+    if started?
+      item[:result_string] = result_string
+      item[:result] = result
+    end
 
     item
   end

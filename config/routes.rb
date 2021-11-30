@@ -38,6 +38,8 @@ Rails.application.routes.draw do
     scope 'v2' do
       resources :leagues do
         member do
+          get 'game_days/current/schedule', to: 'leagues#current_schedule'
+          get 'game_days/:game_day_number/schedule', to: 'leagues#game_day_schedule'
           get :schedule
           get :table
           get :scorer
