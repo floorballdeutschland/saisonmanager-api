@@ -7,6 +7,8 @@ class League < ApplicationRecord
     gd.includes(:games).map(&:games).flatten.sort_by{ |i| i.game_number.to_i }
   end
 
+  def teams
+    Team.where(league_id: id).or(Team.where("'?' = ANY (cup_leagues)", id))
   end
 
   def league_category
