@@ -11,6 +11,32 @@ class League < ApplicationRecord
     Team.where(league_id: id).or(Team.where("'?' = ANY (cup_leagues)", id))
   end
 
+  def similar_leagues
+    League.where(season_id: season_id, league_system_id: league_system_id, league_class_id: league_class_id).where.not(id: id)
+  end
+
+  def full_hash(include_similar_leagues = false)
+    result = {
+      id: id,
+      game_operation_id: game_operation_id,
+      game_operation_name: game_operation.name,
+      league_category_id: league_category_id,
+      league_class_id: league_class_id,
+      league_system_id: league_system_id,
+      name: name,
+      female: female,
+      enable_scorer: enable_scorer,
+      short_name: short_name,
+      season_id: season_id,
+      order_key: order_key,
+      game_day_numbers: game_days.pluck(:number).uniq.sort
+    }
+
+    result[:similar_leagues] = similar_leagues.map(&:full_hash) if include_similar_leagues
+
+    result
+  end
+
   def league_category
     'league_category'
   end

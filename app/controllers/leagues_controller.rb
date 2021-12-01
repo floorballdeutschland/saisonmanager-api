@@ -10,7 +10,9 @@ class LeaguesController < ApplicationController
 
   # GET /leagues/1
   def show
-    @league = League.find(params[:id])
+    league = League.find(params[:id])
+
+    render json: league.full_hash(true)
   end
 
   # GET /leagues/1/schedule
@@ -68,6 +70,11 @@ class LeaguesController < ApplicationController
     @league = League.find(params[:id])
 
     render json: @league.table
+  end
+
+  def license_list
+    @league = League.find(params[:id])
+
   end
 
   def meta

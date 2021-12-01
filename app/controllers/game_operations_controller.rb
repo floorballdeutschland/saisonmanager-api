@@ -14,11 +14,13 @@ class GameOperationsController < ApplicationController
     current_season = Setting.current_season
 
     leagues = @game_operation.leagues.order('order_key::int')
-    @leagues = if params[:season_id]
+    leagues = if params[:season_id]
                  leagues.where(season_id: params[:season_id])
                else
                  leagues.where(season_id: current_season)
                end
+
+    render json: leagues.map(&:full_hash)
   end
 
   # GET /game_operations/by_shortname/:name
