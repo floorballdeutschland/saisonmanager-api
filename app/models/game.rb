@@ -136,7 +136,9 @@ class Game < ApplicationRecord
       penalty_2and2: 0,
       penalty_5: 0,
       penalty_10: 0,
-      penalty_ms: 0,
+      penalty_ms1: 0,
+      penalty_ms2: 0,
+      penalty_ms3: 0,
       player_id: player_id,
       team_id: team.id,
       team_name: team.name

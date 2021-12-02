@@ -3,6 +3,10 @@ class Team < ApplicationRecord
     Task.where("home_team = ? OR guest_team = ?", self.id, self.id)
   end
 
+  def licenses
+    Player.find_by_team_id(id)
+  end
+
   def all_clubs
     Rails.cache.fetch("#{cache_key}/all_clubs", expires_in: 1.week) do
       ids = [club_id]

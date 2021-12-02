@@ -90,7 +90,7 @@ class League < ApplicationRecord
     last_entry = nil
     sorted_results = results.values.sort_by { |player_result| [-(player_result[:goals] + player_result[:assists]), -player_result[:goals], -player_result[:games]] }
     sorted_results.reject! do |player_result|
-      (player_result.slice(:goals, :assists, :penalty_2, :penalty_2and2, :penalty_5, :penalty_10, :penalty_ms).values.sum - player_result[:games] - player_result[:player_id]).zero? # no goals or penalties.
+      (player_result.slice(:goals, :assists, :penalty_2, :penalty_2and2, :penalty_5, :penalty_10, :penalty_ms1, :penalty_ms2, :penalty_ms3).values.sum - player_result[:games] - player_result[:player_id]).zero? # no goals or penalties.
     end
 
     player_ids = sorted_results.map { |sr| sr[:player_id] }
