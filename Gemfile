@@ -56,6 +56,13 @@ gem 'tzinfo-data', platforms: [:mingw, :mswin, :x64_mingw, :jruby]
 # xlsx export
 gem 'xlsxtream'
 
+# pdf rendering
+gem 'wicked_pdf'
+gem 'wkhtmltopdf-binary'
+
 # 6.0 update
 gem "webpacker"
 gem "bootsnap"
+
+gem "sentry-ruby"
+gem "sentry-rails"
