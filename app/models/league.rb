@@ -2,7 +2,7 @@ class League < ApplicationRecord
   has_many :game_days
   belongs_to :game_operation
 
-  def games(game_day_number)
+  def games(game_day_number = nil)
     gd = game_day_number.present? ? game_days.where(number: game_day_number) : game_days
     gd.includes(:games).map(&:games).flatten.sort_by{ |i| i.game_number.to_i }
   end
@@ -400,6 +400,57 @@ class League < ApplicationRecord
       end
 
       nil
+    end
+  end
+
+  def license_pdf
+    file = "#{id}lizenzliste.pdf"
+    #return File.open(file) if !force && File.exist?(file)
+
+    pdf = ApplicationController.render pdf: "report_filename",
+                                       save_to_file: file,
+                                       save_only: true,
+                                       locals: {
+                                         league: self
+                                       },
+                                       disposition: 'inline',
+                                       dpi: '300',
+                                       lowquality: true,
+                                       template: 'leagues/licenses',
+                                       header: {
+                                         html: {
+                                           template: 'leagues/licenses_header',
+                                           locals: {
+                                             image: ""
+                                           }
+                                         }
+                                       },
+                                       footer: {
+                                         html: {
+                                           template: "leagues/licenses_footer",
+                                           locals: {
+                                            league: self
+                                           }
+                                         }
+                                       },
+                                       # show_as_html: true,
+                                       # model: model,
+                                       # dpi: 250,
+                                       # viewportSize: "1280x1024",
+                                       # footerCenter: "",
+                                       # footerLeft: "",
+                                       # footerFontSize: 8,
+                                       # footerLine: false,
+                                       enable_local_file_access: true,
+
+                                       page_size: 'A4',
+                                       margin: { top: 24,
+                                                 bottom: 20,
+                                                 left: 15,
+                                                 right: 10 }
+
+    File.open(file, 'wb') do |f|
+      f << pdf
     end
   end
 
