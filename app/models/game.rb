@@ -35,7 +35,7 @@ class Game < ApplicationRecord
         player['position'] = player['goalkeeper'].present? && player['goalkeeper'] == true ? 'Tor' : ['Sturm', 'Center', 'Verteidigung'].sample
         player
       end
-    end
+    end if players.present?
 
     result
   end
