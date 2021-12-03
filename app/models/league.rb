@@ -23,6 +23,7 @@ class League < ApplicationRecord
       league_category_id: league_category_id,
       league_class_id: league_class_id,
       league_system_id: league_system_id,
+      league_type: league_type,
       name: name,
       female: female,
       enable_scorer: enable_scorer,
@@ -47,6 +48,12 @@ class League < ApplicationRecord
 
   def league_system
     'league_system'
+  end
+
+  def league_type
+    return 'league' if [1,2,5].include? league_category_id.to_i
+    return 'cup' if [3,4].include? league_category_id.to_i
+    return 'champ' if league_category_id.to_i >= 100
   end
 
   def schedule
