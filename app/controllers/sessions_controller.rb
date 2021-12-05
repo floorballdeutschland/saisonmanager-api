@@ -9,15 +9,15 @@ class SessionsController < ApplicationController
     user = User.login(username, password)
 
     if user
-      cookies.signed[:user_id] = user.id
+      cookies.signed[:user_id] = { value: user.id, httponly: true, expires: 7.days }
 
-      render json: { success:true, user: user.as_json(only: [:id, :email]) }
+      render json: { success: true, user: user.as_json(only: [:id, :email]) }
     else
-      render json: {success: false}, status: :unauthorized
+      render json: { success: false }, status: :unauthorized
     end
   end
 
-  def destroy
+  def logout
     cookies.delete :user_id
     render json: { success: true }, status: :ok
   end

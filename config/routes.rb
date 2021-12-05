@@ -36,6 +36,10 @@ Rails.application.routes.draw do
 
   scope 'api' do
     scope 'v2' do
+      # session handling
+      post 'login' => 'sessions#login'
+      post 'logout' => 'sessions#logout'
+
       resources :leagues do
         member do
           get 'game_days/current/schedule', to: 'leagues#current_schedule'
