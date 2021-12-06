@@ -8,7 +8,9 @@ class GamesController < ApplicationController
 
   # GET /games/1
   def show
-    @game = Game.find(params[:id])
+    game = Game.find(params[:id])
+
+    render json: game.full_hash
   end
 
   def users_games

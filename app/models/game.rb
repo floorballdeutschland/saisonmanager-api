@@ -27,6 +27,26 @@ class Game < ApplicationRecord
     Setting.current.penalties[event['penalty_id'].to_s]['mapping'].to_sym
   end
 
+  def referees
+    referees = []
+
+    [g.referee1_string, g.referee2_string].each do |ref|
+      next unless ref.present?
+
+      match = ref.match(/(?<license_number>\d+)\s(?<last_name>.*)\,\s(?<first_name>.*)/)
+
+      next unless match.present?
+
+      referees << {
+        license_id: match[:license_number],
+        first_name: match[:first_name],
+        last_name: match[:last_name]
+      }
+    end
+
+    referees
+  end
+
   def players_with_position
     result = {}
 
@@ -191,6 +211,39 @@ class Game < ApplicationRecord
   end
   # code to debug [24454,24446,24443,24435,24430].each {|g| puts [g, Game.find(g).evaluate_scorer[4413].to_json].join ' ' }
 
+  def full_hash
+    {
+      id: id,
+      game_number: game_number,
+      start_time: start_time,
+      date: game_day.date,
+      audience: audience,
+      home_team_name: home_team.name,
+      guest_team_name: guest_team.name,
+      home_team_logo: home_team.logo_url,
+      home_team_small_logo: home_team.logo_small_url,
+      guest_team_logo: guest_team.logo_url,
+      guest_team_small_logo: guest_team.logo_small_url,
+      events: events,
+      players: players_with_position,
+      started: started,
+      ended: ended,
+      result_string: result_string,
+      result: result,
+      league_id: league.id,
+      league_name: league.name,
+      league_short_name: league.short_name,
+      game_operation_id: league.game_operation.id,
+      game_operation_name: league.game_operation.name,
+      game_operation_short_name: league.game_operation.short_name,
+      arena: game_day.arena_id,
+      arena_name: game_day.arena.name,
+      arena_address: game_day.arena.address,
+      arena_short: game_day.arena.schedule_item,
+      nominated_referees: nominated_referee_string,
+      referees: referees
+    }
+  end
 
   # {
   #   id: Int,
