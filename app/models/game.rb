@@ -30,7 +30,7 @@ class Game < ApplicationRecord
   def referees
     referees = []
 
-    [g.referee1_string, g.referee2_string].each do |ref|
+    [referee1_string, referee2_string].each do |ref|
       next unless ref.present?
 
       match = ref.match(/(?<license_number>\d+)\s(?<last_name>.*)\,\s(?<first_name>.*)/)
