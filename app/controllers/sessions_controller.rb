@@ -1,5 +1,5 @@
 class SessionsController < ApplicationController
-  #skip_before_action :authenticate_request!, only: %i[create]
+  skip_before_action :authenticate_user, only: %i[login]
 
   # POST /login
   def login

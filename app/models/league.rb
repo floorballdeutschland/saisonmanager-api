@@ -2,6 +2,8 @@ class League < ApplicationRecord
   has_many :game_days
   belongs_to :game_operation
 
+  scope :current_season, -> { where(season_id: Setting.current_season) }
+
   def games(game_day_number = nil)
     gd = game_day_number.present? ? game_days.where(number: game_day_number) : game_days
     gd.includes(:games).map(&:games).flatten.sort_by{ |i| i.game_number.to_i }
