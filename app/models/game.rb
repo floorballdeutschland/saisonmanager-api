@@ -365,40 +365,45 @@ class Game < ApplicationRecord
   end
 
   def formatted_events
-    result = (events || []).map do |e|
+    result = (events || []).map do |event|
       e = {
         event_type: nil,
         event_team: nil,
-        period: e['period'],
-        time: e['time']
+        period: event['period'],
+        time: event['time']
       }
 
-      if e['home_number'].present?
+      if event['home_number'].present?
         e[:event_team] = 'home'
-        e[:number] = e['home_number']
-        e[:assist] = e['home_assist'] if e['home_assist'].present?
-      else
+        e[:number] = event['home_number']
+        e[:assist] = event['home_assist'] if event['home_assist'].present?
+      elsif event['guest_number'].present?
+
         e[:event_team] = 'guest'
 
-        e[:number] = e['guest_number']
-        e[:assist] = e['guest_assist'] if e['guest_assist'].present?
+        e[:number] = event['guest_number']
+        e[:assist] = event['guest_assist'] if event['guest_assist'].present?
+      else
+        byebug
+        puts "PROBLEM!!!!"
+        puts event.to_json
       end
 
-      if e['penalty_code_id'] && e['penalty_code_id'].to_i != 23 # penalty_shot should be goal, not penalty.
+      if event['penalty_code_id'] && event['penalty_code_id'].to_i != 23 # penalty_shot should be goal, not penalty.
         e[:event_type] = :penalty
 
-        e[:penalty_type] = penalty_mapping(e)
-        e[:penalty_type_string] = penalty_mapping_string(e)
-        reason = penalty_reason(e)
+        e[:penalty_type] = penalty_mapping(event)
+        e[:penalty_type_string] = penalty_mapping_string(event)
+        reason = penalty_reason(event)
         e[:penalty_reason] = reason['code']
         e[:penalty_reason_string] = reason['description']
 
       else
         e[:event_type] = :goal
-        if e['penalty_code_id'].to_i != 23
+        if event['penalty_code_id'].to_i != 23
           e[:goal_type] = :regular
           e[:goal_type_string] = 'Tor'
-        elsif e['time'] == '70:00'
+        elsif event['time'] == '70:00'
           e[:goal_type] = :penalty_shots
           e[:goal_type_string] = 'Entscheidung im Penalty-Schießen'
         else
