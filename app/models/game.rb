@@ -360,7 +360,8 @@ class Game < ApplicationRecord
       event_type: 'timeout',
       event_team: team,
       period: period,
-      time: match['time']
+      time: match['time'],
+      sortkey: "#{period}-#{match['time'].rjust(5, "0")}"
     }
   end
 
@@ -370,7 +371,8 @@ class Game < ApplicationRecord
         event_type: nil,
         event_team: nil,
         period: event['period'],
-        time: event['time']
+        time: event['time'],
+        sortkey: "#{event['period']}-#{event['time'].rjust(5, "0")}"
       }
 
       if event['home_number'].present?
@@ -415,7 +417,7 @@ class Game < ApplicationRecord
       e
     end
 
-    result + timeout_events
+    (result + timeout_events).sort_by { |e| e[:sortkey] }
   end
 
   def self.start_end_games
