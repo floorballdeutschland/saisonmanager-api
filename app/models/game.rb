@@ -27,6 +27,14 @@ class Game < ApplicationRecord
     Setting.current.penalties[event['penalty_id'].to_s]['mapping'].to_sym
   end
 
+  def penalty_mapping_string(event)
+    Setting.current.penalties[event['penalty_id'].to_s]['name']
+  end
+
+  def penalty_reason(event)
+    Setting.current.penalty_codes[event['penalty_code_id'].to_s]
+  end
+
   def referees
     referees = []
 
@@ -224,7 +232,8 @@ class Game < ApplicationRecord
       home_team_small_logo: home_team.logo_small_url,
       guest_team_logo: guest_team.logo_url,
       guest_team_small_logo: guest_team.logo_small_url,
-      events: events,
+      events_legacy: events,
+      events: formatted_events,
       players: players_with_position,
       started: started,
       ended: ended,
@@ -300,6 +309,108 @@ class Game < ApplicationRecord
         }
       end
     end
+  end
+
+  def timeout_events
+    [
+      extract_timeout_information(home_timeout_string, 'home'),
+      extract_timeout_information(guest_timeout_string, 'guest')
+    ].compact
+  end
+
+  def extract_timeout_information(timeout_string, team)
+    # some examples
+    # 16:22 / III
+    # 17:21 / III
+    # 17:21 / III
+    # 19:01 / 2
+    # 5:50   II
+    # 12:42/I
+    # 1:02 | I
+    # 13:53/2
+    # III 8:50
+    # III / 8:45
+    # III - 9:58
+    match = /(?<time>\d?\d:\d\d)/.match timeout_string
+
+    return unless match.present? && match['time'].present?
+
+    match_period = /(?<period>I+)|\/(?<period_number>\d{1})/.match timeout_string
+
+    return unless match_period.present? && (match_period['period'].present? || match_period['period_number'].present?)
+
+    period = if match_period['period'].present?
+               case match_period['period']
+               when 'I'
+                 1
+               when 'II'
+                 2
+               when 'III'
+                 3
+               when 'IV'
+                 4
+               when 'V'
+                 5
+               end
+             elsif match_period['period_number'].present?
+               match_period['period_number'].to_i
+             end
+
+    {
+      event_type: 'timeout',
+      event_team: team,
+      period: period,
+      time: match['time']
+    }
+  end
+
+  def formatted_events
+    result = (events || []).map do |e|
+      e = {
+        event_type: nil,
+        event_team: nil,
+        period: e['period'],
+        time: e['time']
+      }
+
+      if e['home_number'].present?
+        e[:event_team] = 'home'
+        e[:number] = e['home_number']
+        e[:assist] = e['home_assist'] if e['home_assist'].present?
+      else
+        e[:event_team] = 'guest'
+
+        e[:number] = e['guest_number']
+        e[:assist] = e['guest_assist'] if e['guest_assist'].present?
+      end
+
+      if e['penalty_code_id'] && e['penalty_code_id'].to_i != 23 # penalty_shot should be goal, not penalty.
+        e[:event_type] = :penalty
+
+        e[:penalty_type] = penalty_mapping(e)
+        e[:penalty_type_string] = penalty_mapping_string(e)
+        reason = penalty_reason(e)
+        e[:penalty_reason] = reason['code']
+        e[:penalty_reason_string] = reason['description']
+
+      else
+        e[:event_type] = :goal
+        if e['penalty_code_id'].to_i != 23
+          e[:goal_type] = :regular
+          e[:goal_type_string] = 'Tor'
+        elsif e['time'] == '70:00'
+          e[:goal_type] = :penalty_shots
+          e[:goal_type_string] = 'Entscheidung im Penalty-Schießen'
+        else
+          e[:goal_type] = :penalty_shot
+          e[:goal_type_string] = 'Strafschuss'
+        end
+      end
+
+      e
+    end
+
+    result + timeout_events
   end
 
   def self.start_end_games
