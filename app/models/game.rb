@@ -371,6 +371,8 @@ class Game < ApplicationRecord
         event_type: nil,
         event_team: nil,
         period: event['period'],
+        home_goals: event['home_goals'],
+        guest_goals: event['guest_goals'],
         time: event['time'],
         sortkey: "#{event['period']}-#{event['time'].rjust(5, "0")}"
       }
