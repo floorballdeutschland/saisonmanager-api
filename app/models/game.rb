@@ -137,6 +137,8 @@ class Game < ApplicationRecord
       game_day_id: game_day_id,
       date: game_day.date,
       time: start_time,
+      started: started,
+      ended: ended,
       home_team_name: home_team_name,
       home_team_logo: home_team.logo_url,
       home_team_small_logo: home_team.logo_small_url,
