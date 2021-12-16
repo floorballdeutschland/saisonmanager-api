@@ -235,7 +235,6 @@ class Game < ApplicationRecord
       home_team_small_logo: home_team.logo_small_url,
       guest_team_logo: guest_team.logo_url,
       guest_team_small_logo: guest_team.logo_small_url,
-      events_legacy: events,
       events: formatted_events,
       players: players_with_position,
       started: started,
