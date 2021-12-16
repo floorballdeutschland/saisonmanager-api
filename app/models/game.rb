@@ -144,6 +144,7 @@ class Game < ApplicationRecord
       guest_team_logo: guest_team.logo_url,
       guest_team_small_logo: guest_team.logo_small_url,
       nominated_referee_string: nominated_referee_string,
+      referees: referees,
       state: state
     }
 
