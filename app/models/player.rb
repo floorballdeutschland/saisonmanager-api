@@ -176,10 +176,14 @@ class Player < ApplicationRecord
   end
 
   def image
+    return if id % 10 > 4
+
     "https://robohash.org/#{id}-#{CGI.escape last_name.downcase}.png?size=400x400"
   end
 
   def image_small
+    return if id % 10 > 4
+
     "https://robohash.org/#{id}-#{CGI.escape last_name.downcase}.png?size=90x90"
   end
 
