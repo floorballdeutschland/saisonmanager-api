@@ -247,6 +247,7 @@ class Game < ApplicationRecord
       game_operation_id: league.game_operation.id,
       game_operation_name: league.game_operation.name,
       game_operation_short_name: league.game_operation.short_name,
+      period_titles: period_titles,
       arena: game_day.arena_id,
       arena_name: game_day.arena.name,
       arena_address: game_day.arena.address,
@@ -422,6 +423,26 @@ class Game < ApplicationRecord
     end
 
     (result + timeout_events).sort_by { |e| e[:sortkey] }
+  end
+
+  def period_titles
+    case league.league_category_id.to_i
+    when 1, 4, 102 # GF, Pokal GF, GF DM
+      {
+        1 => '1. Drittel',
+        2 => '2. Drittel',
+        3 => '3. Drittel',
+        4 => 'Verlängerung',
+        5 => 'Penalty-Schießen'
+      }
+    else
+      {
+        1 => '1. Hälfte',
+        2 => '2. Hälfte',
+        3 => 'Verlängerung',
+        4 => 'Penalty-Schießen'
+      }
+    end
   end
 
   def self.start_end_games
