@@ -67,7 +67,17 @@ class League < ApplicationRecord
   end
 
   def current_schedule
-    game_day_number = game_days.pluck(:number).max
+    game_day_numbers = game_days.pluck(:number).uniq.sort
+
+    today = Time.zone.today
+    game_day_distance = {}
+    game_day_numbers.each do |gdn|
+      dates = game_days.where(number: gdn).pluck(:date).map { |d| d.try(:to_date) }.compact
+      date_diffs = dates.map {|d| (d - today).to_i.abs }
+      game_day_distance[date_diffs.sum(0.0) / date_diffs.size] = gdn
+    end
+
+    game_day_number = game_day_distance[game_day_distance.keys.min] rescue game_days.pluck(:number).max
     games(game_day_number).map(&:schedule_item)
   end
 
