@@ -32,7 +32,8 @@ class League < ApplicationRecord
       short_name: short_name,
       season_id: season_id,
       order_key: order_key,
-      game_day_numbers: game_days.pluck(:number).uniq.sort
+      game_day_numbers: game_day_numbers,
+      game_day_titles: game_day_titles
     }
 
     result[:similar_leagues] = similar_leagues.map(&:full_hash) if include_similar_leagues
@@ -58,6 +59,10 @@ class League < ApplicationRecord
     return 'champ' if league_category_id.to_i >= 100
   end
 
+  def game_day_numbers
+    game_days.pluck(:number).uniq.sort
+  end
+
   def schedule
     games.map(&:schedule_item)
   end
@@ -67,8 +72,6 @@ class League < ApplicationRecord
   end
 
   def current_schedule
-    game_day_numbers = game_days.pluck(:number).uniq.sort
-
     today = Time.zone.today
     game_day_distance = {}
     game_day_numbers.each do |gdn|
@@ -321,13 +324,28 @@ class League < ApplicationRecord
       temp[gd.number].flatten!
     end
 
-    temp.map do |k,v|
+    temp.map do |k, v|
       {
         gameDayNumber: k,
-        title: ['3', '4'].include?(league_category_id) ? game_day_title_cup(k.to_s) : "#{k}. Spieltag",
+        title: game_day_title(k.to_s),
         games: v
       }
     end.sort { |a,b| a[:gameDayNumber] <=> b[:gameDayNumber] }
+  end
+
+  def game_day_titles
+    titles = {}
+    game_day_numbers.each do |game_day_number|
+      titles[game_day_number] = game_day_title(game_day_number)
+    end
+
+    titles
+  end
+
+  def game_day_title(game_day_number)
+    return game_day_title_cup(game_day_number.to_s) if %w[3 4].include?(league_category_id)
+
+    "#{game_day_number}. Spieltag"
   end
 
   def game_day_title_cup(game_day_number)
@@ -335,59 +353,31 @@ class League < ApplicationRecord
 
     if best_of_eight.present?
       case game_day_number
-        when best_of_eight.to_s
-          'Achtenfinale'
-        when (best_of_eight + 1).to_s
-          'Viertelfinale'
-        when (best_of_eight + 2).to_s
-          'Halbfinale'
-        when (best_of_eight + 3).to_s
-          'Finale'
-        else
-          "Runde #{game_day_number}"
-        end
+      when best_of_eight.to_s
+        'Achtenfinale'
+      when (best_of_eight + 1).to_s
+        'Viertelfinale'
+      when (best_of_eight + 2).to_s
+        'Halbfinale'
+      when (best_of_eight + 3).to_s
+        'Finale'
+      else
+        "Runde #{game_day_number}"
+      end
     else
       case game_day_number
-        when "4"
-          'Achtenfinale'
-        when "5"
-          'Viertelfinale'
-        when "6"
-          'Halbfinale'
-        when "7"
-          'Finale'
-        else
-          "Runde #{game_day_number}"
-        end
+      when '4'
+        'Achtenfinale'
+      when '5'
+        'Viertelfinale'
+      when '6'
+        'Halbfinale'
+      when '7'
+        'Finale'
+      else
+        "Runde #{game_day_number}"
+      end
     end
-
-    # if female.present?
-    #   case game_day_number
-    #   when "1"
-    #     'Runde 1'
-    #   when "2"
-    #     'Achtenfinale'
-    #   when "3"
-    #     'Viertelfinale'
-    #   when "4"
-    #     'Halbfinale'
-    #   when "5"
-    #     'Finale'
-    #   end
-    # else
-    #   case game_day_number
-    #   when "4"
-    #     'Achtenfinale'
-    #   when "5"
-    #     'Viertelfinale'
-    #   when "6"
-    #     'Halbfinale'
-    #   when "7"
-    #     'Finale'
-    #   else
-    #     "Runde #{game_day_number}"
-    #   end
-    # end
   end
 
 
