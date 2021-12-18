@@ -100,13 +100,36 @@ class Game < ApplicationRecord
       guest_goals: last_item['guest_goals'],
       home_goals_period: home_goals_period,
       guest_goals_period: guest_goals_period,
+      postfix: result_postfix,
       overtime: (overtime == true)
+    }
+  end
+
+  def result_postfix
+
+    if overtime == true
+      if false # penalty schießen
+        return {
+          short: 'n. PS',
+          long: 'nach Penalty-Schießen'
+        }
+      else
+        return {
+          short: 'n.V.',
+          long: 'nach Verlängerung'
+        }
+      end
+    end
+
+    {
+      short: '',
+      long: ''
     }
   end
 
   def result_string
     res = result
-    "#{res[:home_goals]}:#{res[:guest_goals]}#{res[:overtime] ? ' n.V' : ''}" if res
+    "#{res[:home_goals]}:#{res[:guest_goals]}#{res[:overtime] ? " #{result_postfix[:short]}" : ''}" if res
   end
 
   def state
