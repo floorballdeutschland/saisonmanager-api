@@ -8,7 +8,7 @@ class GameOperation < ApplicationRecord
   end
 
   def top_leagues
-    leagues.current_season.sample(3)
+    leagues.current_season.first(5)
   end
 
   def short_hash
