@@ -251,6 +251,7 @@ class Game < ApplicationRecord
       game_number: game_number,
       start_time: start_time,
       date: game_day.date,
+      game_day: league.game_day_title_hash(game_day.number),
       audience: audience,
       home_team_name: home_team.name,
       guest_team_name: guest_team.name,
