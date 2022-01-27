@@ -451,20 +451,20 @@ class Game < ApplicationRecord
   def period_titles
     case league.league_category_id.to_i
     when 1, 4, 102 # GF, Pokal GF, GF DM
-      {
-        1 => '1. Drittel',
-        2 => '2. Drittel',
-        3 => '3. Drittel',
-        4 => 'Verlängerung',
-        5 => 'Penalty-Schießen'
-      }
+      [
+        { period: 1, title: '1. Drittel' },
+        { period: 2, title: '2. Drittel' },
+        { period: 3, title: '3. Drittel' },
+        { period: 4, title: 'Verlängerung' },
+        { period: 5, title: 'Penalty-Schießen' }
+      ]
     else
-      {
-        1 => '1. Hälfte',
-        2 => '2. Hälfte',
-        3 => 'Verlängerung',
-        4 => 'Penalty-Schießen'
-      }
+      [
+        { period: 1, title: '1. Hälfte' },
+        { period: 2, title: '2. Hälfte' },
+        { period: 3, title: 'Verlängerung' },
+        { period: 4, title: 'Penalty-Schießen' }
+      ]
     end
   end
 
