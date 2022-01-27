@@ -335,9 +335,9 @@ class League < ApplicationRecord
   end
 
   def game_day_titles
-    titles = {}
+    titles = []
     game_day_numbers.each do |game_day_number|
-      titles[game_day_number] = game_day_title(game_day_number)
+      titles << { game_day_number: game_day_number, title: game_day_title(game_day_number) }
     end
 
     titles
