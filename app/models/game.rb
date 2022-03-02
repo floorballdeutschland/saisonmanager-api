@@ -60,7 +60,7 @@ class Game < ApplicationRecord
 
     ['home', 'guest'].each do |team|
       result[team] = players[team].map do |player|
-        player['position'] = player['goalkeeper'].present? && player['goalkeeper'] == true ? 'Tor' : ['Sturm', 'Center', 'Verteidigung'].sample
+        player['position'] = player['goalkeeper'].present? && player['goalkeeper'] == true ? 'Tor' : 'Feld' # ['Sturm', 'Center', 'Verteidigung'].sample
         player
       end
     end if players.present?
@@ -71,14 +71,14 @@ class Game < ApplicationRecord
   def result
     return unless events.present?
 
-    home_goals_period = [0,0,0,0]
-    guest_goals_period = [0,0,0,0]
+    home_goals_period = [0, 0, 0, 0]
+    guest_goals_period = [0, 0, 0, 0]
 
     last_item = nil
     home_previous_goals = 0
     guest_previous_goals = 0
 
-    events.sort_by{ |e| e[:row] }.each do |e|
+    events.sort_by { |e| e[:row] }.each do |e|
       home_goals = e['home_goals'].to_i
       guest_goals = e['guest_goals'].to_i
 
@@ -134,9 +134,9 @@ class Game < ApplicationRecord
 
   def state
     if record_created_at.present?
-      if false
+      if started && !ended
         :running
-      elsif false
+      elsif started && ended
         :ended
       else
         #:not_started

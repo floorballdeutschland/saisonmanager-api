@@ -176,12 +176,14 @@ class Player < ApplicationRecord
   end
 
   def image
+    return nil
     return if id % 10 > 4
 
     "https://robohash.org/#{id}-#{CGI.escape last_name.downcase}.png?size=400x400"
   end
 
   def image_small
+    return nil
     return if id % 10 > 4
 
     "https://robohash.org/#{id}-#{CGI.escape last_name.downcase}.png?size=90x90"
@@ -192,7 +194,6 @@ class Player < ApplicationRecord
     Player.find_by_sql "select * from (SELECT *, jsonb_array_elements(licenses) as extr_licenses FROM players ) as subqry WHERE extr_licenses->>'team_id' ='#{team_id}' ORDER BY extr_licenses->>'team_id', last_name, first_name"
   end
 
-  
 
   private
   def valid_time?(time, deadline)
