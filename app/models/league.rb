@@ -359,7 +359,7 @@ class League < ApplicationRecord
     if best_of_eight.present?
       case game_day_number
       when best_of_eight.to_s
-        'Achtenfinale'
+        'Achtelfinale'
       when (best_of_eight + 1).to_s
         'Viertelfinale'
       when (best_of_eight + 2).to_s
