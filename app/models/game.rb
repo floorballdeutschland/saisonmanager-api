@@ -259,7 +259,7 @@ class Game < ApplicationRecord
       home_team_small_logo: home_team.logo_small_url,
       guest_team_logo: guest_team.logo_url,
       guest_team_small_logo: guest_team.logo_small_url,
-      live_stream_link: 'https://www.twitch.tv/floorballdeutschland',
+      live_stream_link: live_stream_link,
       events: formatted_events,
       players: players_with_position,
       started: started,
