@@ -416,9 +416,8 @@ class Game < ApplicationRecord
         e[:number] = event['guest_number']
         e[:assist] = event['guest_assist'] if event['guest_assist'].present?
       else
-        byebug
-        puts "PROBLEM!!!!"
-        puts event.to_json
+        Sentry.capture_message("game: #{id}, event: #{event.to_json}")
+        next
       end
 
       if event['penalty_code_id'] && event['penalty_code_id'].to_i != 23 # penalty_shot should be goal, not penalty.
