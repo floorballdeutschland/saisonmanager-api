@@ -35,6 +35,10 @@ class Game < ApplicationRecord
     Setting.current.penalty_codes[event['penalty_code_id'].to_s]
   end
 
+  def forfait?
+    forfait > 0
+  end
+
   def referees
     referees = []
 
@@ -69,29 +73,44 @@ class Game < ApplicationRecord
   end
 
   def result
-    return unless events.present?
+    return unless events.present? || forfait?
 
     home_goals_period = [0, 0, 0, 0]
     guest_goals_period = [0, 0, 0, 0]
 
     last_item = nil
-    home_previous_goals = 0
-    guest_previous_goals = 0
 
-    events.sort_by { |e| e[:row] }.each do |e|
-      home_goals = e['home_goals'].to_i
-      guest_goals = e['guest_goals'].to_i
+    if !forfait?
+      home_previous_goals = 0
+      guest_previous_goals = 0
 
-      if home_goals.present? && guest_goals.present?
-        if last_item.present? && (e['period'] > last_item['period'])
-          home_previous_goals = last_item['home_goals'].to_i
-          guest_previous_goals = last_item['guest_goals'].to_i
+      events.sort_by { |e| e[:row] }.each do |e|
+        home_goals = e['home_goals'].to_i
+        guest_goals = e['guest_goals'].to_i
+
+        if home_goals.present? && guest_goals.present?
+          if last_item.present? && (e['period'] > last_item['period'])
+            home_previous_goals = last_item['home_goals'].to_i
+            guest_previous_goals = last_item['guest_goals'].to_i
+          end
+
+          home_goals_period[e['period'].to_i - 1] = home_goals - home_previous_goals
+          guest_goals_period[e['period'].to_i - 1] = guest_goals - guest_previous_goals
+
+          last_item = e
         end
-
-        home_goals_period[e['period'].to_i - 1] = home_goals - home_previous_goals
-        guest_goals_period[e['period'].to_i - 1] = guest_goals - guest_previous_goals
-
-        last_item = e
+      end
+    else
+      if forfait == 1
+        last_item = {
+          'home_goals' => league.forfait_goals,
+          'guest_goals' => 0
+        }
+      elsif forfait == 2
+        last_item = {
+          'home_goals' => 0,
+          'guest_goals' => league.forfait_goals
+        }
       end
     end
 
@@ -101,11 +120,18 @@ class Game < ApplicationRecord
       home_goals_period: home_goals_period,
       guest_goals_period: guest_goals_period,
       postfix: result_postfix,
+      forfait: forfait?,
       overtime: (overtime == true)
     }
   end
 
   def result_postfix
+    if forfait > 0
+      return {
+        short: ' (forfait)',
+        long: ' kampflos'
+      }
+    end
 
     if overtime == true
       if false # penalty schießen

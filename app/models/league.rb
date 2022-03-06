@@ -18,6 +18,12 @@ class League < ApplicationRecord
     League.where(season_id: season_id, league_system_id: league_system_id, league_class_id: league_class_id).where.not(id: id)
   end
 
+  def forfait_goals
+    return 5 if [1, 4, 102].include? league_category_id.to_i # GF, Pokal GF, GF DM
+
+    8
+  end
+
   def full_hash(include_similar_leagues = false)
     result = {
       id: id,
