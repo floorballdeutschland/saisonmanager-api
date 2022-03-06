@@ -444,7 +444,7 @@ class Game < ApplicationRecord
       end
 
       e
-    end
+    end.compact
 
     (result + timeout_events).sort_by { |e| e[:sortkey] }
   end
