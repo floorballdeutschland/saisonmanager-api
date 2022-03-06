@@ -228,6 +228,8 @@ class Game < ApplicationRecord
   def evaluate_scorer
     result = {}
 
+    return result if forfait?
+
     home_player_ids = [home_team_player_number.values].flatten.compact.sort
     home_player_ids.each do |p|
       result[p] = empty_score(p, home_team)
