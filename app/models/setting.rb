@@ -8,7 +8,7 @@ class Setting < ApplicationRecord
   end
 
   def self.current
-    @current ||= Setting.first
+    Setting.first
   end
 
   def self.current_season
@@ -16,7 +16,7 @@ class Setting < ApplicationRecord
   end
 
   def self.seasons
-    @seasons ||= current.seasons.map{ |k, v| { id: k.to_i, name: v['name'], current: (k.to_i == current_season) } }.reverse
+    @seasons ||= current.seasons.map { |k, v| { id: k.to_i, name: v['name'], current: (k.to_i == current_season) } }.reverse
   end
 
   def self.point_corrections(league_id)
