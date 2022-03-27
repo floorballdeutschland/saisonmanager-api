@@ -183,7 +183,7 @@ class League < ApplicationRecord
 
   def evaluate_scorer
     game_scores = games.map do |game|
-      next unless game.ended?
+      next unless game.ended? && !game.result.nil?
 
       game.evaluate_scorer
     end.compact
@@ -236,7 +236,7 @@ class League < ApplicationRecord
     results = {}
 
     games.each do |game|
-      next unless game.ended?
+      next unless game.ended? && !game.result.nil?
 
       [game.home_team, game.guest_team].each do |team|
         results[team.id] = empty_table_item(team) unless results[team.id].present?
