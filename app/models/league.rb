@@ -2,7 +2,7 @@ class League < ApplicationRecord
   has_many :game_days
   belongs_to :game_operation
 
-  default_scope { order(:season_id, :game_operation_id, :order_key) }
+  default_scope { order(:season_id, :game_operation_id).order('order_key::int') }
   scope :current_season, -> { where(season_id: Setting.current_season) }
 
   def games(game_day_number = nil)

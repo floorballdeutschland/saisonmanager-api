@@ -13,7 +13,7 @@ class GameOperationsController < ApplicationController
   def index_leagues
     current_season = Setting.current_season
 
-    leagues = @game_operation.leagues.order('order_key::int')
+    leagues = @game_operation.leagues
     leagues = if params[:season_id]
                  leagues.where(season_id: params[:season_id])
                else
