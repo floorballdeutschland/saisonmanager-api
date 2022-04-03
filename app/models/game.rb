@@ -433,15 +433,18 @@ class Game < ApplicationRecord
         sortkey: "#{event['period']}-#{event['time'].rjust(5, "0")}"
       }
 
+      owngoal = false
+
       if event['home_number'].present?
         e[:event_team] = 'home'
         e[:number] = event['home_number']
+        owngoal = true if event['home_number'] == 1000
         e[:assist] = event['home_assist'] if event['home_assist'].present?
+
       elsif event['guest_number'].present?
-
         e[:event_team] = 'guest'
-
         e[:number] = event['guest_number']
+        owngoal = true if event['guest_number'] == 1000
         e[:assist] = event['guest_assist'] if event['guest_assist'].present?
       else
         Sentry.capture_message("game: #{id}, event: #{event.to_json}")
@@ -461,7 +464,7 @@ class Game < ApplicationRecord
         e[:event_type] = :goal
         if event['penalty_code_id'].to_i != 23
           e[:goal_type] = :regular
-          e[:goal_type_string] = 'Tor'
+          e[:goal_type_string] = owngoal ? 'Eigentor' : 'Tor'
         elsif event['time'] == '70:00'
           e[:goal_type] = :penalty_shots
           e[:goal_type_string] = 'Entscheidung im Penalty-Schießen'
