@@ -229,13 +229,14 @@ class Game < ApplicationRecord
     result = {}
 
     return result if forfait?
+    return result if home_team_player_number.blank? && guest_team_player_number.blank?
 
-    home_player_ids = [home_team_player_number.values].flatten.compact.sort
+    home_player_ids = home_team_player_number.present? ? [home_team_player_number.values].flatten.compact.sort : []
     home_player_ids.each do |p|
       result[p] = empty_score(p, home_team)
     end
 
-    guest_player_ids = [guest_team_player_number.values].flatten.compact.sort
+    guest_player_ids = guest_team_player_number.present? ? [guest_team_player_number.values].flatten.compact.sort : []
     guest_player_ids.each do |p|
       result[p] = empty_score(p, guest_team)
     end
