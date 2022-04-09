@@ -111,6 +111,11 @@ class Game < ApplicationRecord
           'home_goals' => 0,
           'guest_goals' => league.forfait_goals
         }
+      elsif forfait == 3
+        last_item = {
+          'home_goals' => league.forfait_goals * -1,
+          'guest_goals' => league.forfait_goals * -1
+        }
       end
     end
 
