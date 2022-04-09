@@ -66,7 +66,7 @@ class Game < ApplicationRecord
       result[team] = players[team].map do |player|
         player['position'] = player['goalkeeper'].present? && player['goalkeeper'] == true ? 'Tor' : 'Feld' # ['Sturm', 'Center', 'Verteidigung'].sample
         player
-      end
+      end if players[team].present?
     end if players.present?
 
     result
