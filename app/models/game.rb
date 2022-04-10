@@ -35,6 +35,10 @@ class Game < ApplicationRecord
     Setting.current.penalty_codes[event['penalty_code_id'].to_s]
   end
 
+  def error_meta_info
+    "league: #{league.name}, go: #{league.game_operation.short_name}"
+  end
+
   def forfait?
     forfait > 0
   end
@@ -453,7 +457,7 @@ class Game < ApplicationRecord
         owngoal = true if event['guest_number'] == 1000
         e[:assist] = event['guest_assist'] if event['guest_assist'].present?
       else
-        Sentry.capture_message("missing scorer, game: #{id}, event: #{event.to_json}")
+        Sentry.capture_message("missing scorer, game: #{id}, event: #{event.to_json}, #{error_meta_info}")
         next
       end
 
@@ -482,7 +486,7 @@ class Game < ApplicationRecord
 
       # penalty code without a penalty
       if !event['penalty_id'].present? && event['penalty_code_id'] && event['penalty_code_id'].to_i != 23
-        Sentry.capture_message("missing penalty code, game: #{id}, event: #{event.to_json}")
+        Sentry.capture_message("missing penalty code, game: #{id}, event: #{event.to_json}, #{error_meta_info}")
       end
 
       e
