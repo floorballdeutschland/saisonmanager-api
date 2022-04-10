@@ -457,7 +457,7 @@ class Game < ApplicationRecord
         next
       end
 
-      if event['penalty_code_id'] && event['penalty_code_id'].to_i != 23 # penalty_shot should be goal, not penalty.
+      if event['penalty_id'].present? && event['penalty_code_id'] && event['penalty_code_id'].to_i != 23 # penalty_shot should be goal, not penalty.
         e[:event_type] = :penalty
 
         e[:penalty_type] = penalty_mapping(event)
@@ -478,6 +478,11 @@ class Game < ApplicationRecord
           e[:goal_type] = :penalty_shot
           e[:goal_type_string] = 'Strafschuss'
         end
+      end
+
+      # penalty code without a penalty
+      if !event['penalty_id'].present? && event['penalty_code_id'] && event['penalty_code_id'].to_i != 23
+        Sentry.capture_message("game: #{id}, event: #{event.to_json}")
       end
 
       e
