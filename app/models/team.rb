@@ -12,12 +12,16 @@ class Team < ApplicationRecord
     Player.find_by_team_id(id)
   end
 
+  def all_club_ids
+    ids = [club_id]
+    ids += syndicate_clubs if syndicate && syndicate_clubs
+
+    ids
+  end
+
   def all_clubs
     Rails.cache.fetch("#{cache_key}/all_clubs", expires_in: 1.week) do
-      ids = [club_id]
-      ids += syndicate_clubs if syndicate && syndicate_clubs
-
-      ids.uniq.compact.map { |id| Club.find_by_id(id) }
+      all_club_ids.uniq.compact.map { |id| Club.find_by_id(id) }
     end
   end
 
