@@ -310,7 +310,7 @@ class Game < ApplicationRecord
       game_operation_id: league.game_operation.id,
       game_operation_name: league.game_operation.name,
       game_operation_short_name: league.game_operation.short_name,
-      period_titles: period_titles,
+      period_titles: league.period_titles,
       arena: game_day.arena_id,
       arena_name: game_day.arena.name,
       arena_address: game_day.arena.address,
@@ -495,24 +495,72 @@ class Game < ApplicationRecord
     (result + timeout_events).sort_by { |e| e[:sortkey] }
   end
 
-  def period_titles
-    case league.league_category_id.to_i
-    when 1, 4, 102 # GF, Pokal GF, GF DM
-      [
-        { period: 1, title: '1. Drittel' },
-        { period: 2, title: '2. Drittel' },
-        { period: 3, title: '3. Drittel' },
-        { period: 4, title: 'Verlängerung' },
-        { period: 5, title: 'Penalty-Schießen' }
-      ]
-    else
-      [
-        { period: 1, title: '1. Hälfte' },
-        { period: 2, title: '2. Hälfte' },
-        { period: 3, title: 'Verlängerung' },
-        { period: 4, title: 'Penalty-Schießen' }
-      ]
+  def error_missing_overtime_checkbox?
+    return false if overtime? # cant be missing, is set
+    return false unless events.present? # no events recorded, cant be missing
+
+    # we have overtime entries, but the checkbox is not set (see line 1)
+    return true if events.map { |event| event['period'] }.max > league.period_count_normal_game
+
+    false
+  end
+
+  def error_overtime_wrong_period?
+    return false unless events.present? # no events recorded
+
+    # cant be higher then penalty shots
+    return true if events.map { |event| event['period'] }.max > league.period_penalty_shots
+
+    # if its equal to ps, we check the clock to end with :00, normal ps time should be: 70:00 (GF), 50 (KF), youth (35)
+    period_penalty_shots = league.period_penalty_shots
+    events.map do |event|
+      event['period'] == period_penalty_shots && event['time'].last(3) != ':00'
+    end.reduce(&:|)
+  end
+
+  def error_result_zero_after_goals?
+    return false unless events.present? # no events recorded
+
+    scores = events.map {|event| [event['home_goals'], event['guest_goals']] }.map(&:sum)
+
+    error = false
+    non_zero = false
+
+    scores.each do |s|
+      if s > 0
+        non_zero = true
+      elsif s == 0 && non_zero
+        error = true
+        break
+      end
     end
+
+    error
+  end
+
+  def error_result_not_increasing?
+    return false unless events.present? # no events recorded
+
+    scores = events.map {|event| [event['home_goals'], event['guest_goals']] }.map(&:sum)
+
+    # if they dont match, we had an error.
+    !(scores == scores.clone.sort)
+  end
+
+  def error_last_result_zero_after_goals?
+
+  end
+
+  def error_checker
+    errors = []
+
+    errors << { key: 'missing_overtime_checkbox', text: 'Die Checkbox für Verlängerung wurde nicht ausgewählt, aber es wurde ein Tor in der Verlängerung erzielt', level: :serious } if error_missing_overtime_checkbox?
+    errors << { key: 'overtime_wrong_period', text: 'nach der regulären Spielzeit wurden Einträge in der falschen Periode erfasst', level: :serious } if error_overtime_wrong_period?
+    errors << { key: 'last_result_zero_after_goals', text: 'Der letzte Eintrag im Spielbericht ist 0:0, obwohl Tore gefallen sind', level: :serious } if error_last_result_zero_after_goals?
+    errors << { key: 'result_not_increasing', text: 'Die Anzahl der Tore steigt nicht an.', level: :serious } if error_result_not_increasing?
+    errors << { key: 'result_zero_after_goals', text: 'Ein Eintrag im Spielbericht ist 0:0, obwohl vorher Tore gefallen sind', level: :minor } if error_result_zero_after_goals?
+
+    errors
   end
 
   def self.start_end_games

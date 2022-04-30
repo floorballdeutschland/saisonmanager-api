@@ -24,6 +24,42 @@ class League < ApplicationRecord
     8
   end
 
+  def period_count_normal_game
+    case league_category_id.to_i
+    when 1, 4, 102 # GF, Pokal GF, GF DM
+      3
+    else
+      2
+    end
+  end
+
+  def period_overtime
+    period_count_normal_game + 1
+  end
+
+  def period_penalty_shots
+    period_overtime + 1
+  end
+
+  def period_titles
+    if period_count_normal_game == 3
+      [
+        { period: 1, title: '1. Drittel' },
+        { period: 2, title: '2. Drittel' },
+        { period: 3, title: '3. Drittel' },
+        { period: 4, title: 'Verlängerung' },
+        { period: 5, title: 'Penalty-Schießen' }
+      ]
+    else
+      [
+        { period: 1, title: '1. Hälfte' },
+        { period: 2, title: '2. Hälfte' },
+        { period: 3, title: 'Verlängerung' },
+        { period: 4, title: 'Penalty-Schießen' }
+      ]
+    end
+  end
+
   def full_hash(include_similar_leagues = false)
     result = {
       id: id,
