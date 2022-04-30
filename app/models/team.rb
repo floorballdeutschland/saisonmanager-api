@@ -1,4 +1,9 @@
 class Team < ApplicationRecord
+  belongs_to :league
+  belongs_to :club
+
+  scope :by_club_id, ->(cid) { where(club_id: cid).or(Team.where("#{cid} = ANY (syndicate_clubs)")) }
+
   def tasks
     Task.where("home_team = ? OR guest_team = ?", self.id, self.id)
   end
@@ -32,6 +37,37 @@ class Team < ApplicationRecord
     #"https://robohash.org/#{name.gsub(/\W/, '').downcase}"
   end
 
+  def logo_url_fallback
+    return logo_url if logo_url.present?
+
+    club.logo_url
+  end
+
+  def logo_small_url_fallback
+    return logo_small_url if logo_small_url.present?
+
+    club.logo_small_url
+  end
+
+  def full_hash
+    {
+      id: id,
+      name: name,
+      short_name: short_name,
+      logo: logo_url,
+      league_id: league_id,
+      cup_leagues: cup_leagues,
+      club_id: club_id,
+      league_name: league.name,
+      league_short_name: league.short_name,
+      game_operation_id: league.game_operation.id,
+      game_operation_name: league.game_operation.name,
+      game_operation_short_name: league.game_operation.short_name,
+      syndicate: syndicate,
+      logo_url: logo_url_fallback,
+      logo_small: logo_small_url_fallback
+    }
+  end
   # {
   #     shortName: String, // Kürzel, das wir verwenden, wenn kein Logo hinterlegt ist
   #     name: String,
