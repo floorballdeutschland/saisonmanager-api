@@ -526,7 +526,12 @@ class Game < ApplicationRecord
       hour.to_i <= t.hour && minute.to_i < t.min
     end
 
-    filtered_games.each do |g|
+    gds_yesterday = GameDay.where date: Date.yesterday
+    games_yesterday = gds_yesterday.map(&:games).map(&:all).flatten
+
+    all_games = [filtered_games, games_yesterday].flatten.compact
+
+    all_games.each do |g|
       if !g.started? && g.players.present? && g.players['home'].present? && g.players['guest'].present?
         g.started = true
         g.save
