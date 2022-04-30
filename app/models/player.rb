@@ -191,7 +191,20 @@ class Player < ApplicationRecord
 
   def self.find_by_team_id(team_id)
     # alternative for array: extr_licenses->>'team_id' IN ('#{team_ids.join '\', \''
-    Player.find_by_sql "select * from (SELECT *, jsonb_array_elements(licenses) as extr_licenses FROM players ) as subqry WHERE extr_licenses->>'team_id' ='#{team_id}' ORDER BY extr_licenses->>'team_id', last_name, first_name"
+
+    # Player.find_by_sql(
+    #   [
+    #     "SELECT *, extr_license
+    #     FROM
+    #       (SELECT *, jsonb_array_elements(licenses) as extr_license
+    #       FROM players) as subqry
+    #     WHERE
+    #       extr_license->>'team_id' = '?'
+    #     ORDER BY last_name, first_name", id
+    #   ]
+    # )
+
+    Player.find_by_sql ["select *, extr_license from (SELECT *, jsonb_array_elements(licenses) as extr_license FROM players ) as subqry WHERE extr_license->>'team_id' ='?' ORDER BY extr_license->>'team_id', last_name, first_name", team_id]
   end
 
 
