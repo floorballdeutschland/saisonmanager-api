@@ -105,18 +105,18 @@ class Game < ApplicationRecord
         end
       end
     else
-      if forfait == 1
-        last_item = {
-          'home_goals' => league.forfait_goals,
-          'guest_goals' => 0
-        }
-      elsif forfait == 2
-        last_item = {
+      last_item = if forfait == 1
+        {
           'home_goals' => 0,
           'guest_goals' => league.forfait_goals
         }
+      elsif forfait == 2
+        {
+          'home_goals' => league.forfait_goals,
+          'guest_goals' => 0
+        }
       elsif forfait == 3
-        last_item = {
+        {
           'home_goals' => league.forfait_goals * -1,
           'guest_goals' => league.forfait_goals * -1
         }
