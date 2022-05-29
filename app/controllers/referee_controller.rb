@@ -5,6 +5,6 @@ class RefereeController < ApplicationController
   def games
     games = Game.by_referee_id(params[:id])
 
-    render json: games.map(&full_hash)
+    render json: games.map(&:full_hash)
   end
 end
