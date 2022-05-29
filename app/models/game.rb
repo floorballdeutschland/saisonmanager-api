@@ -315,9 +315,9 @@ class Game < ApplicationRecord
       game_operation_short_name: league.game_operation.short_name,
       period_titles: league.period_titles,
       arena: game_day.arena_id,
-      arena_name: game_day.arena?.name,
-      arena_address: game_day.arena?.address,
-      arena_short: game_day.arena?.schedule_item,
+      arena_name: game_day.arena&.name,
+      arena_address: game_day.arena&.address,
+      arena_short: game_day.arena&.schedule_item,
       nominated_referees: nominated_referee_string,
       referees: referees
     }
