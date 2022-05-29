@@ -323,6 +323,38 @@ class Game < ApplicationRecord
     }
   end
 
+  def referee_export_hash
+    {
+      id: id,
+      game_number: game_number,
+      start_time: start_time,
+      date: game_day.date,
+      game_day: league.game_day_title_hash(game_day.number),
+      audience: audience,
+      home_team_name: home_team.name,
+      guest_team_name: guest_team.name,
+      home_team_logo: home_team.logo_url,
+      home_team_small_logo: home_team.logo_small_url,
+      guest_team_logo: guest_team.logo_url,
+      guest_team_small_logo: guest_team.logo_small_url,
+      live_stream_link: live_stream_link,
+      result_string: result_string,
+      result: result,
+      league_id: league.id,
+      league_name: league.name,
+      league_short_name: league.short_name,
+      game_operation_id: league.game_operation.id,
+      game_operation_name: league.game_operation.name,
+      game_operation_short_name: league.game_operation.short_name,
+      arena: game_day.arena_id,
+      arena_name: game_day.arena&.name,
+      arena_address: game_day.arena&.address,
+      arena_short: game_day.arena&.schedule_item,
+      nominated_referees: nominated_referee_string,
+      referees: referees
+    }
+  end
+
   # {
   #   id: Int,
   #   home: {
