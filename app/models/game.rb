@@ -3,6 +3,9 @@ class Game < ApplicationRecord
   belongs_to :guest_team, class_name: "Team"
   belongs_to :game_day
 
+  scope :by_referee_id, ->(referee_id) { where('? = any (referee_ids)', referee_id) }
+  scope :by_referee_name, ->(referee_name) { where("referee1_string LIKE :refname OR referee2_string LIKE :refname", refname:  "%#{referee_name}%") }
+
   def league
     game_day.league
   end
