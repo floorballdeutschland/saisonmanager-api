@@ -166,8 +166,6 @@ class League < ApplicationRecord
     next_position_diff = 1
     sorted_results.each_with_index do |player_result, index|
       player = player_lookup[player_result[:player_id]]
-      puts player_result[:player_id]
-      puts player
       player_result[:first_name] = player.first_name
       player_result[:last_name] = player.last_name
       player_result[:image] = player.image
