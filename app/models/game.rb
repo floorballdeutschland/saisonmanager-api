@@ -625,4 +625,36 @@ class Game < ApplicationRecord
       end
     end
   end
+
+  def user_permissions(user)
+    perm = []
+
+    go = league.game_operation_id
+    game_day_club_id = game_day.club_id
+
+    # we calculate the intersection between this and the users permissions
+    #  e.g. [0,1] & [0] => [0]
+    #  if we have a non empty array, the permission is present.
+    global_or_go = [0, go]
+
+    admin = user.permission_hash[:admin].present? && (global_or_go & user.permission_hash[:admin]).present?
+    sbk = user.permission_hash[:sbk].present? && (global_or_go & user.permission_hash[:sbk]).present?
+    rsk = user.permission_hash[:rsk].present? && (global_or_go & user.permission_hash[:rsk]).present?
+
+    # edit home team players before game
+    perm << :pregame_edit_home if admin || sbk || (user.permission_hash[:vm].to_a & home_team.all_club_ids).present? || user.permission_hash[:vm].to_a.include?(home_team_id)
+    # edit guest team players before game
+    perm << :pregame_edit_guest if admin || sbk || (user.permission_hash[:vm].to_a & guest_team.all_club_ids).present? || user.permission_hash[:vm].to_a.include?(guest_team_id)
+
+    # only allowed to edit nominated_referees
+    perm << :edit_referee_nomination if admin || sbk || rsk
+
+    # edit all game info
+    perm << :edit_game_report if admin || sbk || user.permission_hash[:vm].to_a.include?(game_day_club_id)
+
+    # edit all game info
+    perm << :edit_game if admin || sbk
+
+    perm
+  end
 end

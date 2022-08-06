@@ -10,7 +10,10 @@ class GamesController < ApplicationController
   def show
     game = Game.find(params[:id])
 
-    render json: game.full_hash
+    hash = game.full_hash
+    hash[:permission] = game.user_permissions(current_user) if current_user
+
+    render json: hash
   end
 
   def users_games
