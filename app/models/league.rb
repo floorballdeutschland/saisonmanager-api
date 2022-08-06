@@ -7,7 +7,7 @@ class League < ApplicationRecord
 
   def games(game_day_number = nil)
     gd = game_day_number.present? ? game_days.where(number: game_day_number) : game_days
-    gd.includes(:games).map(&:games).flatten.sort_by{ |i| i.game_number.to_i }
+    gd.includes(:games).map(&:games).flatten.sort_by { |i| i.game_number.to_i }
   end
 
   def teams
@@ -15,7 +15,8 @@ class League < ApplicationRecord
   end
 
   def similar_leagues
-    League.where(season_id: season_id, league_system_id: league_system_id, league_class_id: league_class_id).where.not(id: id)
+    League.where(season_id: season_id, league_system_id: league_system_id,
+                 league_class_id: league_class_id).where.not(id: id)
   end
 
   def forfait_goals
@@ -97,8 +98,8 @@ class League < ApplicationRecord
   end
 
   def league_type
-    return 'league' if [1,2,5].include? league_category_id.to_i
-    return 'cup' if [3,4].include? league_category_id.to_i
+    return 'league' if [1, 2, 5].include? league_category_id.to_i
+    return 'cup' if [3, 4].include? league_category_id.to_i
     return 'champ' if league_category_id.to_i >= 100
   end
 
@@ -119,16 +120,20 @@ class League < ApplicationRecord
     game_day_distance = {}
     game_day_numbers.each do |gdn|
       dates = game_days.where(number: gdn).pluck(:date).map { |d| d.try(:to_date) }.compact
-      date_diffs = dates.map {|d| (d - today).to_i.abs }
+      date_diffs = dates.map { |d| (d - today).to_i.abs }
       game_day_distance[date_diffs.sum(0.0) / date_diffs.size] = gdn
     end
 
-    game_day_number = game_day_distance[game_day_distance.keys.min] rescue game_days.pluck(:number).max
+    game_day_number = begin
+      game_day_distance[game_day_distance.keys.min]
+    rescue StandardError
+      game_days.pluck(:number).max
+    end
     games(game_day_number).map(&:schedule_item)
   end
 
   def meta_item
-    attributes.select {|key, value| ['name', 'short_name', 'order_key'].include?(key) }
+    attributes.select { |key, _value| %w[name short_name order_key].include?(key) }
   end
 
   def won_points
@@ -153,7 +158,9 @@ class League < ApplicationRecord
   def scorer
     results = evaluate_scorer
     last_entry = nil
-    sorted_results = results.values.sort_by { |player_result| [-(player_result[:goals] + player_result[:assists]), -player_result[:goals], -player_result[:games]] }
+    sorted_results = results.values.sort_by do |player_result|
+      [-(player_result[:goals] + player_result[:assists]), -player_result[:goals], -player_result[:games]]
+    end
     sorted_results.reject! do |player_result|
       (player_result.slice(:goals, :assists, :penalty_2, :penalty_2and2, :penalty_5, :penalty_10, :penalty_ms1, :penalty_ms2, :penalty_ms3).values.sum - player_result[:games] - player_result[:player_id]).zero? # no goals or penalties.
     end
@@ -192,7 +199,9 @@ class League < ApplicationRecord
     results = evaluate_table_results
     last_entry = nil
 
-    sorted_results = results.values.sort_by { |team_result| [-team_result[:points], -team_result[:goals_diff], -team_result[:goals_scored]] }
+    sorted_results = results.values.sort_by do |team_result|
+      [-team_result[:points], -team_result[:goals_diff], -team_result[:goals_scored]]
+    end
 
     next_position_diff = 1
     sorted_results.each_with_index do |team_result, index|
@@ -229,7 +238,7 @@ class League < ApplicationRecord
         if result.include?(player_id)
           # sum the items
           result[player_id].each do |key, _|
-            next if [:player_id, :team_id, :team_name].include?(key)
+            next if %i[player_id team_id team_name].include?(key)
 
             result[player_id][key] += score[key]
           end
@@ -371,7 +380,7 @@ class League < ApplicationRecord
         title: game_day_title(k.to_s),
         games: v
       }
-    end.sort { |a,b| a[:gameDayNumber] <=> b[:gameDayNumber] }
+    end.sort { |a, b| a[:gameDayNumber] <=> b[:gameDayNumber] }
   end
 
   def game_day_titles
@@ -425,7 +434,6 @@ class League < ApplicationRecord
     end
   end
 
-
   def licenses_csv
     team_ids = teams.map(&:id)
 
@@ -434,23 +442,24 @@ class League < ApplicationRecord
       team_licenses[team.id.to_s] = Player.find_by_team_id team.id
     end
 
-    status = {"1"=> "erteilt", "2"=> "beantragt", "3"=> "abgelehnt", "4"=> "gelöscht", "5"=> "Löschung beantragt", "6"=> "Transfer", "7"=> "ignoriert"}
+    status = { '1' => 'erteilt', '2' => 'beantragt', '3' => 'abgelehnt', '4' => 'gelöscht', '5' => 'Löschung beantragt',
+               '6' => 'Transfer', '7' => 'ignoriert' }
 
     teams.each do |team|
       puts team.name
       team_licenses[team.id.to_s].each do |player|
-        license = player.licenses.select{|l| l["team_id"]==team.id.to_s}.first
+        license = player.licenses.select { |l| l['team_id'] == team.id.to_s }.first
 
-        last_status = license["history"].last
-        last_status_id = last_status["license_status_id"]
+        last_status = license['history'].last
+        last_status_id = last_status['license_status_id']
         last_status_code = status[last_status_id.to_s]
 
-        approved_at = if last_status_id == 1
-          last_status["created_at"].to_datetime.strftime("%d.%m.%Y %H:%M:%S")
-        end
-        requested_at = license["history"].select{|lh| lh["license_status_id"]==2}.last["created_at"].to_datetime.strftime("%d.%m.%Y %H:%M:%S")
+        approved_at = (last_status['created_at'].to_datetime.strftime('%d.%m.%Y %H:%M:%S') if last_status_id == 1)
+        requested_at = license['history'].select do |lh|
+                         lh['license_status_id'] == 2
+                       end.last['created_at'].to_datetime.strftime('%d.%m.%Y %H:%M:%S')
 
-        puts "#{player.last_name},#{player.first_name},#{last_status_code},#{requested_at},#{approved_at ? approved_at : '-'},#{team.name}"
+        puts "#{player.last_name},#{player.first_name},#{last_status_code},#{requested_at},#{approved_at || '-'},#{team.name}"
       end
 
       nil
@@ -459,9 +468,9 @@ class League < ApplicationRecord
 
   def license_pdf
     file = "#{id}lizenzliste.pdf"
-    #return File.open(file) if !force && File.exist?(file)
+    # return File.open(file) if !force && File.exist?(file)
 
-    pdf = ApplicationController.render pdf: "report_filename",
+    pdf = ApplicationController.render pdf: 'report_filename',
                                        save_to_file: file,
                                        save_only: true,
                                        locals: {
@@ -475,15 +484,15 @@ class League < ApplicationRecord
                                          html: {
                                            template: 'leagues/licenses_header',
                                            locals: {
-                                             image: ""
+                                             image: ''
                                            }
                                          }
                                        },
                                        footer: {
                                          html: {
-                                           template: "leagues/licenses_footer",
+                                           template: 'leagues/licenses_footer',
                                            locals: {
-                                            league: self
+                                             league: self
                                            }
                                          }
                                        },
@@ -509,7 +518,6 @@ class League < ApplicationRecord
   end
 
   def fix_wrong_settings(female, league_category_id, league_class_id)
-
     team_ids = teams.map(&:id)
 
     team_licenses = {}
@@ -520,10 +528,10 @@ class League < ApplicationRecord
     teams.each do |team|
       team_licenses[team.id.to_s].each do |player|
         player.licenses.map! do |license|
-          if license["team_id"] == team.id.to_s
-            license["male"] = !female
-            license["league_category_id"] = league_category_id
-            license["league_class_id"] = league_class_id
+          if license['team_id'] == team.id.to_s
+            license['male'] = !female
+            license['league_category_id'] = league_category_id
+            license['league_class_id'] = league_class_id
           end
           license
         end
@@ -535,6 +543,92 @@ class League < ApplicationRecord
     self.league_category_id = league_category_id
     self.league_class_id = league_class_id
 
-    self.save
+    save
+  end
+
+  def user_permissions(user)
+    perm = []
+
+    go = game_operation_id
+
+    # we calculate the intersection between this and the users permissions
+    #  e.g. [0,1] & [0] => [0]
+    #  if we have a non empty array, the permission is present.
+    global_or_go = [0, go]
+
+    admin = user.permission_hash[:admin].present? && (global_or_go & user.permission_hash[:admin]).present?
+    sbk = user.permission_hash[:sbk].present? && (global_or_go & user.permission_hash[:sbk]).present?
+    rsk = user.permission_hash[:rsk].present? && (global_or_go & user.permission_hash[:rsk]).present?
+
+    # # edit home team players before game
+    # perm << :pregame_edit_home if admin || sbk || (user.permission_hash[:vm].to_a & home_team.all_club_ids).present? || user.permission_hash[:vm].to_a.include?(home_team_id)
+    # # edit guest team players before game
+    # perm << :pregame_edit_guest if admin || sbk || (user.permission_hash[:vm].to_a & guest_team.all_club_ids).present? || user.permission_hash[:vm].to_a.include?(guest_team_id)
+
+    # # only allowed to edit nominated_referees
+    # perm << :edit_referee_nomination if admin || sbk || rsk
+
+    # # edit all game info
+    # perm << :edit_game_report if admin || sbk || user.permission_hash[:vm].to_a.include?(game_day_club_id)
+
+    # # edit league
+    # perm << :create_league if admin || sbk
+    # perm << :update_league if admin || sbk
+    # perm << :delete_league if admin || sbk
+
+    perm
+  end
+
+  def self.admin_user_leagues(user)
+    result = []
+    leagues = League.current_season.order(season_id: :desc, game_operation_id: :asc).order('order_key::int')
+
+    # für jeden verband:
+    # name, id, kuerzel, ligen
+    go_ids = []
+
+    # wenn admin oder sbk global: füge alle hinzu
+    ph = user.permission_hash
+    if ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
+      go_ids = GameOperation.all.pluck(:id)
+    elsif ph[:admin].present? || ph[:sbk].present?
+      go_ids << ph[:admin] if ph[:admin].present?
+      go_ids << ph[:sbk] if ph[:sbk].present?
+      go_ids.flatten
+    end
+
+    GameOperation.find(go_ids).each do |go|
+      item = go.meta_hash
+      item[:leagues] = leagues.where(game_operation_id: go.id).map(&:full_hash)
+      result << item
+    end
+
+    result
+  end
+
+  def self.admin_league_permissions(user)
+    result = []
+
+    # für jeden verband:
+    # name, id, kuerzel, ligen
+    go_ids = []
+
+    # wenn admin oder sbk global: füge alle hinzu
+    ph = user.permission_hash
+    if ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
+      go_ids = GameOperation.all.pluck(:id)
+    elsif ph[:admin].present? || ph[:sbk].present?
+      go_ids << ph[:admin] if ph[:admin].present?
+      go_ids << ph[:sbk] if ph[:sbk].present?
+      go_ids.flatten
+    end
+
+    GameOperation.find(go_ids).each do |go|
+      item = go.meta_hash
+      item[:leagues] = leagues.where(game_operation_id: go.id).map(&:full_hash)
+      result << item
+    end
+
+    result
   end
 end

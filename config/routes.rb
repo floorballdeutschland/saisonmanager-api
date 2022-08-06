@@ -48,8 +48,11 @@ Rails.application.routes.draw do
           get :table
           get :scorer
           get :meta
+          get :license_list
         end
       end
+
+      get 'admin/leagues', to: 'leagues#admin_league_index'
 
       get 'game_operations/:id/leagues/:season_id', to: 'game_operations#index_leagues'
       get 'game_operations/:id/leagues', to: 'game_operations#index_leagues'
