@@ -1,4 +1,32 @@
 class User < ApplicationRecord
+  def login_hash
+    {
+      id: id,
+      email: email,
+      username: user_name,
+      name: fullname,
+      permissions: permissions_items
+    }
+  end
+
+  def fullname
+    [first_name, last_name].join ' '
+  end
+
+  def permissions_items
+    result = {}
+    ph = permission_hash
+
+    result[:login_blocked] = !(ph[:admin].present? || ph[:sbk].present?)
+
+    # show league admin menu item
+    result[:menu_item_league_admin] = ph[:admin].present? || ph[:sbk].present?
+
+    # show permissions
+    result[:show_league_index_admin] = ph[:admin].present? || ph[:sbk].present?
+
+    result
+  end
 
   def permission_hash
     result = {}
@@ -48,10 +76,9 @@ class User < ApplicationRecord
 
   def self.login(user_name, password)
     return nil if user_name.blank? || password.blank?
+
     hashed_password = Digest::MD5.hexdigest(password)
     user = User.where(user_name: user_name).first
-
-
 
     user if user && user.password == hashed_password
   end

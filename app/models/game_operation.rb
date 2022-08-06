@@ -11,8 +11,12 @@ class GameOperation < ApplicationRecord
     leagues.current_season.first(5)
   end
 
+  def meta_hash
+    attributes.with_indifferent_access.slice(:id, :name, :short_name, :path, :logo_url, :logo_quad_url)
+  end
+
   def short_hash
-    result = attributes.with_indifferent_access.slice(:id, :name, :short_name, :path, :logo_url, :logo_quad_url)
+    result = meta_hash
     result[:top_leagues] = top_leagues.map(&:full_hash)
     result
   end

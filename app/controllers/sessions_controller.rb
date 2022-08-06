@@ -11,7 +11,7 @@ class SessionsController < ApplicationController
     if user
       cookies.signed[:user_id] = { value: user.id, httponly: true, expires: 7.days }
 
-      render json: { success: true, user: user.as_json(only: [:id, :email]) }
+      render json: { success: true, user: user.login_hash }
     else
       render json: { success: false }, status: :unauthorized
     end

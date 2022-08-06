@@ -1,11 +1,31 @@
 class LeaguesController < ApplicationController
-  skip_before_action :authenticate_user
+  skip_before_action :authenticate_user, except: [:admin_league_index]
 
   # GET /leagues
   def index
-    @leagues = League.all.order(season_id: :desc, game_operation_id: :asc).order("order_key::int")
+    @leagues = League.all.order(season_id: :desc, game_operation_id: :asc).order('order_key::int')
     @gos = {}
     GameOperation.all.each { |go| @gos[go.id] = go }
+  end
+
+  def admin_league_index
+    if current_user
+      result = League.admin_user_leagues(current_user)
+
+      render json: result
+    else
+      render json: { error: 'Nicht eingeloggt.' }, status: :unauthorized
+    end
+  end
+
+  def admin_league_permissions
+    if current_user
+      result = League.admin_league_permissions(current_user)
+
+      render json: result
+    else
+      render json: { error: 'Nicht eingeloggt.' }, status: :unauthorized
+    end
   end
 
   # GET /leagues/1
@@ -19,16 +39,15 @@ class LeaguesController < ApplicationController
   api :GET, '/leagues/:id/schedule.json'
   param :id, :number,
         required: true, desc: 'league id'
-  #short_description 'Prints the game schedule for league :id.'
+  # short_description 'Prints the game schedule for league :id.'
   description <<-EOS
       Prints the game schedule for league :id. If the game was already played a result_string is included.
-    EOS
+  EOS
   def schedule
     @league = League.find(params[:id])
 
-    render json:@league.schedule
+    render json: @league.schedule
   end
-
 
   # GET /leagues/1/game_days/15/schedule
   def game_day_schedule
@@ -48,24 +67,24 @@ class LeaguesController < ApplicationController
   api :GET, '/leagues/:id/scorer.json'
   param :id, :number,
         required: true, desc: 'league id'
-  #short_description 'Prints the scorer table for league :id.'
+  # short_description 'Prints the scorer table for league :id.'
   description <<-EOS
       Prints the scorer table for league :id.
-    EOS
+  EOS
   def scorer
     @league = League.find(params[:id])
 
-    render json:@league.scorer
+    render json: @league.scorer
   end
 
   # GET /leagues/1/table
   api :GET, '/leagues/:id/table.json'
   param :id, :number,
         required: true, desc: 'league id'
-  #short_description 'Prints the table for league :id.'
+  # short_description 'Prints the table for league :id.'
   description <<-EOS
       Prints the table for league :id.
-    EOS
+  EOS
   def table
     @league = League.find(params[:id])
 
@@ -74,12 +93,11 @@ class LeaguesController < ApplicationController
 
   def license_list
     @league = League.find(params[:id])
-
   end
 
   def meta
     @league = League.find(params[:id])
 
-    render json:@league.meta_item
+    render json: @league.meta_item
   end
 end
