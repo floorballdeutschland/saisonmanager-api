@@ -1,4 +1,5 @@
 Rails.application.routes.draw do
+  # For details on the DSL available within this file, see https://guides.rubyonrails.org/routing.html
   apipie
   resources :arenas
   resources :clubs
@@ -53,6 +54,9 @@ Rails.application.routes.draw do
       end
 
       get 'admin/leagues', to: 'leagues#admin_league_index'
+      get 'admin/league_classes', to: 'leagues#admin_league_classes'
+
+      post 'admin/leagues', to: 'leagues#admin_league_update'
 
       get 'game_operations/:id/leagues/:season_id', to: 'game_operations#index_leagues'
       get 'game_operations/:id/leagues', to: 'game_operations#index_leagues'

@@ -1,4 +1,6 @@
 class User < ApplicationRecord
+  include UserTracker
+
   def login_hash
     {
       id: id,

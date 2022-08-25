@@ -28,6 +28,50 @@ class LeaguesController < ApplicationController
     end
   end
 
+  def admin_league_update
+    if current_user
+      createModus = (params[:id] == 0)
+      # check: game operation permission if createmodus
+      #   has: create league for that go?
+      #   else : unpermitted!
+      # check: league permission unless createmodus
+      #   has: update league for that league?
+      #   else : unpermitted!
+      if createModus && GameOperation.find(params[:game_operation_id])&.user_permissions(current_user)&.include?(:create_league) # create
+
+        lp = league_params
+        lp[:season_id] = Setting.current_season
+        league = League.create(lp)
+
+        render json: league, status: :created
+      elsif !createModus && League.find(params[:id])&.user_permissions(current_user)&.include?(:update_league) # update
+        # update
+        l = League.find(params[:id])
+        if l.update(league_params)
+          render json: league
+        else
+          render json: l.errors, status: :unprocessable_entity
+        end
+      else
+        render json: { error: 'Keine Berechtigung' }, status: :forbidden
+      end
+
+    else
+      render json: { error: 'Nicht eingeloggt.' }, status: :unauthorized
+    end
+  end
+
+  def admin_league_classes
+    if current_user
+      render json: Setting.current.league_classes.map { |k, v|
+                     v['id'] = k
+                     v
+                   }
+    else
+      render json: { error: 'Nicht eingeloggt.' }, status: :unauthorized
+    end
+  end
+
   # GET /leagues/1
   def show
     league = League.find(params[:id])
@@ -99,5 +143,13 @@ class LeaguesController < ApplicationController
     @league = League.find(params[:id])
 
     render json: @league.meta_item
+  end
+
+  def league_params
+    params.require(:league).permit(:before_deadline, :deadline, :female, :game_operation_id,
+                                   :league_category_id, :league_class_id, :league_system_id, :name, :order_key,
+                                   :short_name, :enable_scorer, :field_size, :league_modus, :league_id_preseason,
+                                   :league_id_preround, :has_preround, :preround_point_modus, :preround_scorer_modus,
+                                   :table_modus, :legacy_league, :periods, :period_length, :overtime_length)
   end
 end

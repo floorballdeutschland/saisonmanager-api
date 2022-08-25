@@ -4,7 +4,7 @@ class GameOperation < ApplicationRecord
   default_scope { order(id: :asc) }
 
   def games
-    leagues.map(&:games).flatten.sort_by{|i| i.game_number.to_i}
+    leagues.map(&:games).flatten.sort_by { |i| i.game_number.to_i }
   end
 
   def top_leagues
@@ -19,5 +19,24 @@ class GameOperation < ApplicationRecord
     result = meta_hash
     result[:top_leagues] = top_leagues.map(&:full_hash)
     result
+  end
+
+  def user_permissions(user)
+    perm = []
+
+    go = id
+
+    # we calculate the intersection between this and the users permissions
+    #  e.g. [0,1] & [0] => [0]
+    #  if we have a non empty array, the permission is present.
+    global_or_go = [0, go]
+
+    admin = user.permission_hash[:admin].present? && (global_or_go & user.permission_hash[:admin]).present?
+    sbk = user.permission_hash[:sbk].present? && (global_or_go & user.permission_hash[:sbk]).present?
+    rsk = user.permission_hash[:rsk].present? && (global_or_go & user.permission_hash[:rsk]).present?
+
+    perm << :create_league if admin || sbk
+
+    perm
   end
 end

@@ -1,9 +1,13 @@
 class League < ApplicationRecord
+  include UserTrackable
+
   has_many :game_days
   belongs_to :game_operation
 
   default_scope { order(:season_id, :game_operation_id).order('order_key::int') }
   scope :current_season, -> { where(season_id: Setting.current_season) }
+
+  before_create :set_defaults
 
   def games(game_day_number = nil)
     gd = game_day_number.present? ? game_days.where(number: game_day_number) : game_days
@@ -15,8 +19,8 @@ class League < ApplicationRecord
   end
 
   def similar_leagues
-    League.where(season_id: season_id, league_system_id: league_system_id,
-                 league_class_id: league_class_id).where.not(id: id)
+    League.where(season_id:, league_system_id:,
+                 league_class_id:).where.not(id:)
   end
 
   def forfait_goals
@@ -63,21 +67,35 @@ class League < ApplicationRecord
 
   def full_hash(include_similar_leagues = false)
     result = {
-      id: id,
-      game_operation_id: game_operation_id,
+      id:,
+      game_operation_id:,
       game_operation_name: game_operation.name,
-      league_category_id: league_category_id,
-      league_class_id: league_class_id,
-      league_system_id: league_system_id,
-      league_type: league_type,
-      name: name,
-      female: female,
-      enable_scorer: enable_scorer,
-      short_name: short_name,
-      season_id: season_id,
-      order_key: order_key,
-      game_day_numbers: game_day_numbers,
-      game_day_titles: game_day_titles
+      league_category_id:,
+      league_class_id:,
+      league_system_id:,
+      league_type:, # legacy!
+      name:,
+      female:,
+      enable_scorer:,
+      short_name:,
+      season_id:,
+      order_key:,
+      game_day_numbers:,
+      game_day_titles:,
+
+      legacy_league:,
+      field_size:,
+      league_modus:,
+      has_preround:,
+
+      # league_id_preseason: league_id_preseason,
+      # league_id_preround: league_id_preround,
+      # preround_point_modus: preround_point_modus,
+      # preround_scorer_modus: preround_scorer_modus,
+      table_modus:,
+      periods:,
+      period_length:,
+      overtime_length:
     }
 
     result[:similar_leagues] = similar_leagues.map(&:full_hash) if include_similar_leagues
@@ -356,7 +374,7 @@ class League < ApplicationRecord
   # }
   def ticker_hash
     {
-      id: id,
+      id:,
       leagueName: name,
       leagueShortName: short_name,
       sortKey: order_key,
@@ -393,7 +411,7 @@ class League < ApplicationRecord
   end
 
   def game_day_title_hash(game_day_number)
-    { game_day_number: game_day_number, title: game_day_title(game_day_number) }
+    { game_day_number:, title: game_day_title(game_day_number) }
   end
 
   def game_day_title(game_day_number)
@@ -572,8 +590,7 @@ class League < ApplicationRecord
     # perm << :edit_game_report if admin || sbk || user.permission_hash[:vm].to_a.include?(game_day_club_id)
 
     # # edit league
-    # perm << :create_league if admin || sbk
-    # perm << :update_league if admin || sbk
+    perm << :update_league if admin || sbk
     # perm << :delete_league if admin || sbk
 
     perm
@@ -630,5 +647,11 @@ class League < ApplicationRecord
     end
 
     result
+  end
+
+  private
+
+  def set_defaults
+    season_id = Setting.current_season if season_id.blank?
   end
 end
