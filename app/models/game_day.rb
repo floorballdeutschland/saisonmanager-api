@@ -11,5 +11,20 @@ class GameDay < ApplicationRecord
     club.name if club.present?
   end
 
+  def full_hash(with_games = false)
+    h = {
+      id:,
+      arena_id:,
+      arena: arena&.full_hash,
+      club_id:,
+      club: club&.full_hash,
+      date:,
+      league_id:,
+      number:
+    }
 
+    h[:games] = games.order(:game_number).map(&:meta_hash) if with_games
+
+    h
+  end
 end

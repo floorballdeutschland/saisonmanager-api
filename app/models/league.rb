@@ -83,6 +83,9 @@ class League < ApplicationRecord
       game_day_numbers:,
       game_day_titles:,
 
+      deadline:,
+      before_deadline:,
+
       legacy_league:,
       field_size:,
       league_modus:,

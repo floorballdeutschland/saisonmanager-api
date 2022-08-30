@@ -319,7 +319,29 @@ class Game < ApplicationRecord
       arena_address: game_day.arena&.address,
       arena_short: game_day.arena&.schedule_item,
       nominated_referees: nominated_referee_string,
-      referees: referees
+    }
+  end
+
+  def meta_hash
+    {
+      id:,
+      game_number:,
+      start_time:,
+      game_day_id:,
+      audience:,
+      home_team_name: home_team.name,
+      guest_team_name: guest_team.name,
+      home_team_id:,
+      guest_team_id:,
+      home_team_logo: home_team.logo_url,
+      home_team_small_logo: home_team.logo_small_url,
+      guest_team_logo: guest_team.logo_url,
+      guest_team_small_logo: guest_team.logo_small_url,
+      live_stream_link:,
+      started:,
+      ended:,
+      nominated_referees: nominated_referee_string,
+      referees:
     }
   end
 

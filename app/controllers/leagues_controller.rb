@@ -55,6 +55,7 @@ class LeaguesController < ApplicationController
 
         lp = league_params
         lp[:season_id] = Setting.current_season
+        tp[:legacy_league] = false
         league = League.create(lp)
 
         render json: league, status: :created
@@ -81,6 +82,20 @@ class LeaguesController < ApplicationController
                      v['id'] = k
                      v
                    }
+    else
+      render json: { error: 'Nicht eingeloggt.' }, status: :unauthorized
+    end
+  end
+
+  def admin_game_schedule
+    if current_user
+      league = League.find(params[:id])
+
+      if league
+        render json: league.game_days.includes(:arena, :club, :games).map { |gd| gd.full_hash(true) }
+      else
+        render json: { error: 'Keine passende Liga gefunden.' }, status: :not_found
+      end
     else
       render json: { error: 'Nicht eingeloggt.' }, status: :unauthorized
     end
@@ -164,6 +179,6 @@ class LeaguesController < ApplicationController
                                    :league_category_id, :league_class_id, :league_system_id, :name, :order_key,
                                    :short_name, :enable_scorer, :field_size, :league_modus, :league_id_preseason,
                                    :league_id_preround, :has_preround, :preround_point_modus, :preround_scorer_modus,
-                                   :table_modus, :legacy_league, :periods, :period_length, :overtime_length)
+                                   :table_modus, :periods, :period_length, :overtime_length)
   end
 end

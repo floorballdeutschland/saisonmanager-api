@@ -59,6 +59,7 @@ Rails.application.routes.draw do
       post 'admin/leagues', to: 'leagues#admin_league_update'
 
       get 'admin/leagues/:id/teams', to: 'leagues#admin_league_team_index'
+      get 'admin/leagues/:id/game_schedule', to: 'leagues#admin_game_schedule'
       get 'admin/teams/:id', to: 'teams#admin_get_team'
       get 'admin/league/clubs/:callType/:id', to: 'clubs#admin_get_go_clubs'
 
