@@ -103,6 +103,14 @@ class League < ApplicationRecord
     result
   end
 
+  def hash_with_teams
+    hash = full_hash
+
+    hash[:teams] = teams.map(&:full_hash)
+
+    hash
+  end
+
   def league_category
     'league_category'
   end

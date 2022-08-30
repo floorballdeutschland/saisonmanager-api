@@ -15,11 +15,18 @@ class Club < ApplicationRecord
 
     if states.present?
       state = states.first[:isocode]
-      update_attributes(state: state)
+      update_attributes(state:)
     end
   end
 
-  def export_hash
-
+  def full_hash
+    {
+      id:,
+      long_name:,
+      name:,
+      state:,
+      logo_url:,
+      logo_small_url:
+    }
   end
 end

@@ -18,6 +18,20 @@ class LeaguesController < ApplicationController
     end
   end
 
+  def admin_league_team_index
+    if current_user
+      league = League.find(params[:id])
+
+      if league
+        render json: league.hash_with_teams
+      else
+        render json: { error: 'Keine passende Liga gefunden.' }, status: :not_found
+      end
+    else
+      render json: { error: 'Nicht eingeloggt.' }, status: :unauthorized
+    end
+  end
+
   def admin_league_permissions
     if current_user
       result = League.admin_league_permissions(current_user)
@@ -30,27 +44,27 @@ class LeaguesController < ApplicationController
 
   def admin_league_update
     if current_user
-      createModus = (params[:id] == 0)
-      # check: game operation permission if createmodus
+      create_modus = params[:id].zero?
+      # check: game operation permission if create_modus
       #   has: create league for that go?
       #   else : unpermitted!
-      # check: league permission unless createmodus
+      # check: league permission unless create_modus
       #   has: update league for that league?
       #   else : unpermitted!
-      if createModus && GameOperation.find(params[:game_operation_id])&.user_permissions(current_user)&.include?(:create_league) # create
+      if create_modus && GameOperation.find(params[:game_operation_id])&.user_permissions(current_user)&.include?(:create_league) # create
 
         lp = league_params
         lp[:season_id] = Setting.current_season
         league = League.create(lp)
 
         render json: league, status: :created
-      elsif !createModus && League.find(params[:id])&.user_permissions(current_user)&.include?(:update_league) # update
+      elsif !create_modus && League.find(params[:id])&.user_permissions(current_user)&.include?(:update_league) # update
         # update
-        l = League.find(params[:id])
-        if l.update(league_params)
+        league = League.find(params[:id])
+        if league.update(league_params)
           render json: league
         else
-          render json: l.errors, status: :unprocessable_entity
+          render json: league.errors, status: :unprocessable_entity
         end
       else
         render json: { error: 'Keine Berechtigung' }, status: :forbidden

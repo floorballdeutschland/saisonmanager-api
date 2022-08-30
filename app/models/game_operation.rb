@@ -3,6 +3,10 @@ class GameOperation < ApplicationRecord
 
   default_scope { order(id: :asc) }
 
+  def clubs
+    Club.where("clubs.game_operations_hash @> '[{\"game_operation_id\": ?}]'", id).order(:name)
+  end
+
   def games
     leagues.map(&:games).flatten.sort_by { |i| i.game_number.to_i }
   end
@@ -36,6 +40,8 @@ class GameOperation < ApplicationRecord
     rsk = user.permission_hash[:rsk].present? && (global_or_go & user.permission_hash[:rsk]).present?
 
     perm << :create_league if admin || sbk
+    perm << :create_team if admin || sbk
+    perm << :index_clubs if admin || sbk
 
     perm
   end

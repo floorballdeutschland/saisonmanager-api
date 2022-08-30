@@ -53,25 +53,34 @@ class Team < ApplicationRecord
     club.logo_small_url
   end
 
-  def full_hash
-    {
-      id: id,
-      name: name,
-      short_name: short_name,
+  def full_hash(with_contact_person = false)
+    h = {
+      id:,
+      name:,
+      short_name:,
       logo: logo_url,
-      league_id: league_id,
-      cup_leagues: cup_leagues,
-      club_id: club_id,
+      league_id:,
+      cup_leagues:,
+      club_id:,
       league_name: league.name,
       league_short_name: league.short_name,
       game_operation_id: league.game_operation.id,
       game_operation_name: league.game_operation.name,
       game_operation_short_name: league.game_operation.short_name,
-      syndicate: syndicate,
+      syndicate:,
+      syndicate_clubs:,
       logo_url: logo_url_fallback,
       logo_small: logo_small_url_fallback
     }
+
+    if with_contact_person
+      h[:contact_email] = contact_email
+      h[:contact_person] = contact_person
+    end
+
+    h
   end
+
   # {
   #     shortName: String, // Kürzel, das wir verwenden, wenn kein Logo hinterlegt ist
   #     name: String,
@@ -83,5 +92,25 @@ class Team < ApplicationRecord
       name: name,
       logoUrl: logo_url
     }
+  end
+
+  def user_permissions(user)
+    perm = []
+
+    go = league&.game_operation_id
+
+    # we calculate the intersection between this and the users permissions
+    #  e.g. [0,1] & [0] => [0]
+    #  if we have a non empty array, the permission is present.
+    global_or_go = go.present? ? [0, go] : [0]
+
+    admin = user.permission_hash[:admin].present? && (global_or_go & user.permission_hash[:admin]).present?
+    sbk = user.permission_hash[:sbk].present? && (global_or_go & user.permission_hash[:sbk]).present?
+
+    # # edit league
+    perm << :update_team if admin || sbk
+    # perm << :delete_league if admin || sbk
+
+    perm
   end
 end
