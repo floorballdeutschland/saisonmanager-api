@@ -29,4 +29,16 @@ class Club < ApplicationRecord
       logo_small_url:
     }
   end
+
+  def fix_game_operations_hash!
+    game_operations_hash.map! do |goh|
+      if goh['game_operation_id'].present? && goh['game_operation_id'].instance_of?(String)
+        goh['game_operation_id'] = goh['game_operation_id'].to_i
+      end
+
+      goh
+    end
+
+    save
+  end
 end
