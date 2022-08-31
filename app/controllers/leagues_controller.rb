@@ -14,7 +14,7 @@ class LeaguesController < ApplicationController
 
       render json: result
     else
-      render json: { error: 'Nicht eingeloggt.' }, status: :unauthorized
+      render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
     end
   end
 
@@ -25,10 +25,10 @@ class LeaguesController < ApplicationController
       if league
         render json: league.hash_with_teams
       else
-        render json: { error: 'Keine passende Liga gefunden.' }, status: :not_found
+        render json: { message: 'Keine passende Liga gefunden.' }, status: :not_found
       end
     else
-      render json: { error: 'Nicht eingeloggt.' }, status: :unauthorized
+      render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
     end
   end
 
@@ -38,7 +38,7 @@ class LeaguesController < ApplicationController
 
       render json: result
     else
-      render json: { error: 'Nicht eingeloggt.' }, status: :unauthorized
+      render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
     end
   end
 
@@ -68,11 +68,11 @@ class LeaguesController < ApplicationController
           render json: league.errors, status: :unprocessable_entity
         end
       else
-        render json: { error: 'Keine Berechtigung' }, status: :forbidden
+        render json: { message: 'Keine Berechtigung' }, status: :forbidden
       end
 
     else
-      render json: { error: 'Nicht eingeloggt.' }, status: :unauthorized
+      render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
     end
   end
 
@@ -83,7 +83,7 @@ class LeaguesController < ApplicationController
                      v
                    }
     else
-      render json: { error: 'Nicht eingeloggt.' }, status: :unauthorized
+      render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
     end
   end
 
@@ -92,12 +92,37 @@ class LeaguesController < ApplicationController
       league = League.find(params[:id])
 
       if league
-        render json: league.game_days.includes(:arena, :club, :games).map { |gd| gd.full_hash(true) }
+        render json: league.game_days.includes(:arena, :club, :games).map { |gd|
+                       gd.full_hash(true)
+                     }
       else
-        render json: { error: 'Keine passende Liga gefunden.' }, status: :not_found
+        render json: { message: 'Keine passende Liga gefunden.' }, status: :not_found
       end
     else
-      render json: { error: 'Nicht eingeloggt.' }, status: :unauthorized
+      render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
+    end
+  end
+
+  def admin_schedule_import_template
+    if current_user
+      @league = League.find(params[:id])
+
+      if @league
+        if @league.user_permissions(current_user)&.include?(:download_template)
+          @arenas = Arena.active.order(:city, :name)
+          @teams = @league.teams
+          @clubs = @teams.map(&:all_clubs).flatten.uniq
+
+          render xlsx: 'admin_schedule_import_template', filename: "import_template_#{@league.id}.xlsx"
+        else
+          render json: { message: 'Kein Zugriff' }, status: :forbidden
+        end
+
+      else
+        render json: { message: 'Keine passende Liga gefunden.' }, status: :not_found
+      end
+    else
+      render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
     end
   end
 

@@ -1,10 +1,12 @@
 class Game < ApplicationRecord
-  belongs_to :home_team, class_name: "Team"
-  belongs_to :guest_team, class_name: "Team"
+  belongs_to :home_team, class_name: 'Team'
+  belongs_to :guest_team, class_name: 'Team'
   belongs_to :game_day
 
   scope :by_referee_id, ->(referee_id) { where('? = any (referee_ids)', referee_id) }
-  scope :by_referee_name, ->(referee_name) { where("referee1_string LIKE :refname OR referee2_string LIKE :refname", refname:  "%#{referee_name}%") }
+  scope :by_referee_name, lambda { |referee_name|
+                            where('referee1_string LIKE :refname OR referee2_string LIKE :refname', refname: "%#{referee_name}%")
+                          }
 
   def league
     game_day.league
@@ -52,7 +54,7 @@ class Game < ApplicationRecord
     [referee1_string, referee2_string].each do |ref|
       next unless ref.present?
 
-      match = ref.match(/(?<license_number>\d+)\s(?<last_name>.*)\,\s(?<first_name>.*)/)
+      match = ref.match(/(?<license_number>\d+)\s(?<last_name>.*),\s(?<first_name>.*)/)
 
       next unless match.present?
 
@@ -69,12 +71,16 @@ class Game < ApplicationRecord
   def players_with_position
     result = {}
 
-    ['home', 'guest'].each do |team|
-      result[team] = players[team].map do |player|
-        player['position'] = player['goalkeeper'].present? && player['goalkeeper'] == true ? 'Tor' : 'Feld' # ['Sturm', 'Center', 'Verteidigung'].sample
-        player
-      end if players[team].present?
-    end if players.present?
+    if players.present?
+      %w[home guest].each do |team|
+        next unless players[team].present?
+
+        result[team] = players[team].map do |player|
+          player['position'] = player['goalkeeper'].present? && player['goalkeeper'] == true ? 'Tor' : 'Feld' # ['Sturm', 'Center', 'Verteidigung'].sample
+          player
+        end
+      end
+    end
 
     result
   end
@@ -95,42 +101,42 @@ class Game < ApplicationRecord
         home_goals = e['home_goals'].to_i
         guest_goals = e['guest_goals'].to_i
 
-        if home_goals.present? && guest_goals.present?
-          if last_item.present? && (e['period'] > last_item['period'])
-            home_previous_goals = last_item['home_goals'].to_i
-            guest_previous_goals = last_item['guest_goals'].to_i
-          end
+        next unless home_goals.present? && guest_goals.present?
 
-          home_goals_period[e['period'].to_i - 1] = home_goals - home_previous_goals
-          guest_goals_period[e['period'].to_i - 1] = guest_goals - guest_previous_goals
-
-          last_item = e
+        if last_item.present? && (e['period'] > last_item['period'])
+          home_previous_goals = last_item['home_goals'].to_i
+          guest_previous_goals = last_item['guest_goals'].to_i
         end
+
+        home_goals_period[e['period'].to_i - 1] = home_goals - home_previous_goals
+        guest_goals_period[e['period'].to_i - 1] = guest_goals - guest_previous_goals
+
+        last_item = e
       end
     else
       last_item = if forfait == 1
-        {
-          'home_goals' => 0,
-          'guest_goals' => league.forfait_goals
-        }
-      elsif forfait == 2
-        {
-          'home_goals' => league.forfait_goals,
-          'guest_goals' => 0
-        }
-      elsif forfait == 3
-        {
-          'home_goals' => league.forfait_goals * -1,
-          'guest_goals' => league.forfait_goals * -1
-        }
-      end
+                    {
+                      'home_goals' => 0,
+                      'guest_goals' => league.forfait_goals
+                    }
+                  elsif forfait == 2
+                    {
+                      'home_goals' => league.forfait_goals,
+                      'guest_goals' => 0
+                    }
+                  elsif forfait == 3
+                    {
+                      'home_goals' => league.forfait_goals * -1,
+                      'guest_goals' => league.forfait_goals * -1
+                    }
+                  end
     end
 
     {
       home_goals: last_item['home_goals'],
       guest_goals: last_item['guest_goals'],
-      home_goals_period: home_goals_period,
-      guest_goals_period: guest_goals_period,
+      home_goals_period:,
+      guest_goals_period:,
       postfix: result_postfix,
       forfait: forfait?,
       overtime: (overtime == true)
@@ -177,7 +183,7 @@ class Game < ApplicationRecord
       elsif started && ended
         :ended
       else
-        #:not_started
+        # :not_started
         :record_created
       end
     else
@@ -195,20 +201,20 @@ class Game < ApplicationRecord
       arena_address: game_day.arena.address,
       arena_short: game_day.arena.schedule_item,
       hosting_club: game_day.hosting_club,
-      game_day_id: game_day_id,
+      game_day_id:,
       date: game_day.date,
       time: start_time,
-      started: started,
-      ended: ended,
-      home_team_name: home_team_name,
+      started:,
+      ended:,
+      home_team_name:,
       home_team_logo: home_team.logo_url,
       home_team_small_logo: home_team.logo_small_url,
-      guest_team_name: guest_team_name,
+      guest_team_name:,
       guest_team_logo: guest_team.logo_url,
       guest_team_small_logo: guest_team.logo_small_url,
-      nominated_referee_string: nominated_referee_string,
-      referees: referees,
-      state: state
+      nominated_referee_string:,
+      referees:,
+      state:
     }
 
     if started?
@@ -231,7 +237,7 @@ class Game < ApplicationRecord
       penalty_ms1: 0,
       penalty_ms2: 0,
       penalty_ms3: 0,
-      player_id: player_id,
+      player_id:,
       team_id: team.id,
       team_name: team.name
     }
@@ -259,7 +265,7 @@ class Game < ApplicationRecord
         player_id = event['home_number'].present? ? home_team_player_number[event['home_number']] : guest_team_player_number[event['guest_number']]
 
         # register penalty for player
-        result[player_id][penalty_mapping(event)] += 1 if player_id.present?  # skip if no player
+        result[player_id][penalty_mapping(event)] += 1 if player_id.present? # skip if no player
       elsif event['home_goals'].present? && event['guest_goals'].present?
         # goal?
         if event['home_number'].present? && event['home_number'].to_i < 1000 # owngoal: 1000
@@ -288,25 +294,25 @@ class Game < ApplicationRecord
 
   def full_hash
     {
-      id: id,
-      game_number: game_number,
-      start_time: start_time,
+      id:,
+      game_number:,
+      start_time:,
       date: game_day.date,
       game_day: league.game_day_title_hash(game_day.number),
-      audience: audience,
+      audience:,
       home_team_name: home_team.name,
       guest_team_name: guest_team.name,
       home_team_logo: home_team.logo_url,
       home_team_small_logo: home_team.logo_small_url,
       guest_team_logo: guest_team.logo_url,
       guest_team_small_logo: guest_team.logo_small_url,
-      live_stream_link: live_stream_link,
+      live_stream_link:,
       events: formatted_events,
       players: players_with_position,
-      started: started,
-      ended: ended,
-      result_string: result_string,
-      result: result,
+      started:,
+      ended:,
+      result_string:,
+      result:,
       league_id: league.id,
       league_name: league.name,
       league_short_name: league.short_name,
@@ -319,6 +325,7 @@ class Game < ApplicationRecord
       arena_address: game_day.arena&.address,
       arena_short: game_day.arena&.schedule_item,
       nominated_referees: nominated_referee_string,
+      referees:
     }
   end
 
@@ -347,21 +354,21 @@ class Game < ApplicationRecord
 
   def referee_export_hash
     {
-      id: id,
-      game_number: game_number,
-      start_time: start_time,
+      id:,
+      game_number:,
+      start_time:,
       date: game_day.date,
       game_day: league.game_day_title_hash(game_day.number),
-      audience: audience,
+      audience:,
       home_team_name: home_team.name,
       guest_team_name: guest_team.name,
       home_team_logo: home_team.logo_url,
       home_team_small_logo: home_team.logo_small_url,
       guest_team_logo: guest_team.logo_url,
       guest_team_small_logo: guest_team.logo_small_url,
-      live_stream_link: live_stream_link,
-      result_string: result_string,
-      result: result,
+      live_stream_link:,
+      result_string:,
+      result:,
       league_id: league.id,
       league_name: league.name,
       league_short_name: league.short_name,
@@ -373,7 +380,7 @@ class Game < ApplicationRecord
       arena_address: game_day.arena&.address,
       arena_short: game_day.arena&.schedule_item,
       nominated_referees: nominated_referee_string,
-      referees: referees
+      referees:
     }
   end
 
@@ -402,14 +409,14 @@ class Game < ApplicationRecord
     isLive = started && !ended
     hasEnded = !isLive && ended
     {
-      id: id,
+      id:,
       home: home_team.ticker_hash,
       guest: guest_team.ticker_hash,
       periods: 3,
       events: ticker_events,
       resultString: result_string,
-      isLive: isLive,
-      hasEnded: hasEnded,
+      isLive:,
+      hasEnded:,
       startingTime: start_time,
       date: game_day.date,
       url: "https://fvd.saisonmanager.de/index.php?seite=game&game=#{id}"
@@ -458,7 +465,7 @@ class Game < ApplicationRecord
 
     return unless match.present? && match['time'].present?
 
-    match_period = /(?<period>I+)|\/(?<period_number>\d{1})/.match timeout_string
+    match_period = %r{(?<period>I+)|/(?<period_number>\d{1})}.match timeout_string
 
     return unless match_period.present? && (match_period['period'].present? || match_period['period_number'].present?)
 
@@ -482,9 +489,9 @@ class Game < ApplicationRecord
     {
       event_type: 'timeout',
       event_team: team,
-      period: period,
+      period:,
       time: match['time'],
-      sortkey: "#{period}-#{match['time'].rjust(5, "0")}"
+      sortkey: "#{period}-#{match['time'].rjust(5, '0')}"
     }
   end
 
@@ -497,7 +504,7 @@ class Game < ApplicationRecord
         home_goals: event['home_goals'],
         guest_goals: event['guest_goals'],
         time: event['time'],
-        sortkey: "#{event['period']}-#{event['time'].rjust(5, "0")}"
+        sortkey: "#{event['period']}-#{event['time'].rjust(5, '0')}"
       }
 
       owngoal = false
@@ -578,7 +585,7 @@ class Game < ApplicationRecord
   def error_result_zero_after_goals?
     return false unless events.present? # no events recorded
 
-    scores = events.map {|event| [event['home_goals'], event['guest_goals']] }.map(&:sum)
+    scores = events.map { |event| [event['home_goals'], event['guest_goals']] }.map(&:sum)
 
     error = false
     non_zero = false
@@ -598,24 +605,37 @@ class Game < ApplicationRecord
   def error_result_not_increasing?
     return false unless events.present? # no events recorded
 
-    scores = events.map {|event| [event['home_goals'], event['guest_goals']] }.map(&:sum)
+    scores = events.map { |event| [event['home_goals'], event['guest_goals']] }.map(&:sum)
 
     # if they dont match, we had an error.
     !(scores == scores.clone.sort)
   end
 
-  def error_last_result_zero_after_goals?
-
-  end
+  def error_last_result_zero_after_goals?; end
 
   def error_checker
     errors = []
 
-    errors << { key: 'missing_overtime_checkbox', text: 'Die Checkbox für Verlängerung wurde nicht ausgewählt, aber es wurde ein Tor in der Verlängerung erzielt', level: :serious } if error_missing_overtime_checkbox?
-    errors << { key: 'overtime_wrong_period', text: 'nach der regulären Spielzeit wurden Einträge in der falschen Periode erfasst', level: :serious } if error_overtime_wrong_period?
-    errors << { key: 'last_result_zero_after_goals', text: 'Der letzte Eintrag im Spielbericht ist 0:0, obwohl Tore gefallen sind', level: :serious } if error_last_result_zero_after_goals?
-    errors << { key: 'result_not_increasing', text: 'Die Anzahl der Tore steigt nicht an.', level: :serious } if error_result_not_increasing?
-    errors << { key: 'result_zero_after_goals', text: 'Ein Eintrag im Spielbericht ist 0:0, obwohl vorher Tore gefallen sind', level: :minor } if error_result_zero_after_goals?
+    if error_missing_overtime_checkbox?
+      errors << { key: 'missing_overtime_checkbox',
+                  text: 'Die Checkbox für Verlängerung wurde nicht ausgewählt, aber es wurde ein Tor in der Verlängerung erzielt', level: :serious }
+    end
+    if error_overtime_wrong_period?
+      errors << { key: 'overtime_wrong_period',
+                  text: 'nach der regulären Spielzeit wurden Einträge in der falschen Periode erfasst', level: :serious }
+    end
+    if error_last_result_zero_after_goals?
+      errors << { key: 'last_result_zero_after_goals',
+                  text: 'Der letzte Eintrag im Spielbericht ist 0:0, obwohl Tore gefallen sind', level: :serious }
+    end
+    if error_result_not_increasing?
+      errors << { key: 'result_not_increasing', text: 'Die Anzahl der Tore steigt nicht an.',
+                  level: :serious }
+    end
+    if error_result_zero_after_goals?
+      errors << { key: 'result_zero_after_goals',
+                  text: 'Ein Eintrag im Spielbericht ist 0:0, obwohl vorher Tore gefallen sind', level: :minor }
+    end
 
     errors
   end
@@ -626,7 +646,7 @@ class Game < ApplicationRecord
     t = Time.now
 
     filtered_games = games.select do |g|
-      hour, minute = g.start_time.split(":")
+      hour, minute = g.start_time.split(':')
 
       hour.to_i <= t.hour && minute.to_i < t.min
     end
@@ -664,9 +684,13 @@ class Game < ApplicationRecord
     rsk = user.permission_hash[:rsk].present? && (global_or_go & user.permission_hash[:rsk]).present?
 
     # edit home team players before game
-    perm << :pregame_edit_home if admin || sbk || (user.permission_hash[:vm].to_a & home_team.all_club_ids).present? || user.permission_hash[:vm].to_a.include?(home_team_id)
+    if admin || sbk || (user.permission_hash[:vm].to_a & home_team.all_club_ids).present? || user.permission_hash[:vm].to_a.include?(home_team_id)
+      perm << :pregame_edit_home
+    end
     # edit guest team players before game
-    perm << :pregame_edit_guest if admin || sbk || (user.permission_hash[:vm].to_a & guest_team.all_club_ids).present? || user.permission_hash[:vm].to_a.include?(guest_team_id)
+    if admin || sbk || (user.permission_hash[:vm].to_a & guest_team.all_club_ids).present? || user.permission_hash[:vm].to_a.include?(guest_team_id)
+      perm << :pregame_edit_guest
+    end
 
     # only allowed to edit nominated_referees
     perm << :edit_referee_nomination if admin || sbk || rsk

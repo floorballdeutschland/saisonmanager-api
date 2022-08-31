@@ -5,7 +5,9 @@ class GameDay < ApplicationRecord
   belongs_to :club
 
   # 14
-  scope :past_games, -> { where("TO_DATE(date, 'YYYY-MM-DD') > (now()::date - interval '14 days') AND TO_DATE(date, 'YYYY-MM-DD') <= (now()::date + interval '100 days') ") }
+  scope :past_games, lambda {
+                       where("TO_DATE(date, 'YYYY-MM-DD') > (now()::date - interval '14 days') AND TO_DATE(date, 'YYYY-MM-DD') <= (now()::date + interval '100 days') ")
+                     }
 
   def hosting_club
     club.name if club.present?

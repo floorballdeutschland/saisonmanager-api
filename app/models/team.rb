@@ -5,7 +5,7 @@ class Team < ApplicationRecord
   scope :by_club_id, ->(cid) { where(club_id: cid).or(Team.where("#{cid} = ANY (syndicate_clubs)")) }
 
   def tasks
-    Task.where("home_team = ? OR guest_team = ?", self.id, self.id)
+    Task.where('home_team = ? OR guest_team = ?', id, id)
   end
 
   def licenses
@@ -27,18 +27,18 @@ class Team < ApplicationRecord
 
   def self.teams_by_season(season_id)
     Rails.cache.fetch("Team/teams_by_season/#{season_id}", expires_in: 12.hours) do
-      League.where(season_id: season_id).map(&:teams).flatten.uniq
+      League.where(season_id:).map(&:teams).flatten.uniq
     end
   end
 
   def logo_url
     return "https://www.saisonmanager.de/team_logos/#{team_logo_path}" if team_logo_path.present?
-    #"https://robohash.org/#{name.gsub(/\W/, '').downcase}"
+    # "https://robohash.org/#{name.gsub(/\W/, '').downcase}"
   end
 
   def logo_small_url
     return "https://www.saisonmanager.de/team_logos/#{team_logo_path}" if team_logo_path.present?
-    #"https://robohash.org/#{name.gsub(/\W/, '').downcase}"
+    # "https://robohash.org/#{name.gsub(/\W/, '').downcase}"
   end
 
   def logo_url_fallback
@@ -88,8 +88,8 @@ class Team < ApplicationRecord
   #   }
   def ticker_hash
     {
-      shortName: short_name.slice(0,5).split(' ').first.to_s,
-      name: name,
+      shortName: short_name.slice(0, 5).split(' ').first.to_s,
+      name:,
       logoUrl: logo_url
     }
   end

@@ -70,3 +70,10 @@ gem 'paper_trail', '~> 13.0.0'
 
 # https://gist.github.com/kule/9425fb7d4c2a13e556ef
 gem 'request_store'
+
+# excel export
+gem 'caxlsx'
+gem 'caxlsx_rails'
+
+# excel import
+gem 'creek'

@@ -13,10 +13,10 @@ class TeamsController < ApplicationController
       if team
         render json: team.full_hash(true)
       else
-        render json: { error: 'Keine passendes Team gefunden.' }, status: :not_found
+        render json: { message: 'Keine passendes Team gefunden.' }, status: :not_found
       end
     else
-      render json: { error: 'Nicht eingeloggt.' }, status: :unauthorized
+      render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
     end
   end
 
@@ -46,11 +46,11 @@ class TeamsController < ApplicationController
           render json: team.errors, status: :unprocessable_entity
         end
       else
-        render json: { error: 'Keine Berechtigung' }, status: :forbidden
+        render json: { message: 'Keine Berechtigung' }, status: :forbidden
       end
 
     else
-      render json: { error: 'Nicht eingeloggt.' }, status: :unauthorized
+      render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
     end
   end
 
