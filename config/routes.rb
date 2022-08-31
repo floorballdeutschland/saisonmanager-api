@@ -58,6 +58,8 @@ Rails.application.routes.draw do
 
       post 'admin/leagues', to: 'leagues#admin_league_update'
 
+      post 'admin/leagues/import_schedule', to: 'leagues#admin_schedule_import_games'
+
       get 'admin/leagues/:id/teams', to: 'leagues#admin_league_team_index'
       get 'admin/leagues/:id/game_schedule', to: 'leagues#admin_game_schedule'
       get 'admin/leagues/:id/schedule_import_template', to:'leagues#admin_schedule_import_template'

@@ -126,6 +126,180 @@ class LeaguesController < ApplicationController
     end
   end
 
+  def admin_schedule_import_games
+    if current_user && params[:file].present?
+
+      creek = Creek::Book.new params[:file], with_headers: false
+      sheet = creek.sheets[0]
+
+      errors = []
+      warnings = []
+
+      user_id = current_user.id
+
+      if sheet.name == 'Import'
+        league = League.find(sheet.simple_rows.to_a[1]['A'])
+        if league
+
+          if league.user_permissions(current_user)&.include?(:import_games)
+
+            arena_ids = Arena.active.pluck(:id)
+            teams = league.teams
+            team_ids = teams.map(&:id)
+            club_ids = teams.map(&:all_club_ids).flatten.compact.uniq
+
+            game_days = {}
+            games = {}
+            used_game_numbers = []
+
+            sheet.simple_rows.each_with_index do |row, i|
+              next if i < 9
+              break if row['A'].blank? || errors.present?
+
+              game_days[row['C'].to_i] ||= {}
+              games[row['C'].to_i] ||= []
+
+              home_team_id = if row['H'].present? && team_ids.include?(row['H'].to_i)
+                               row['H'].to_i
+                             else
+                               errors << "Zeile #{i + 1}: Heimteam nicht erkannt"
+                               nil
+                             end
+
+              guest_team_id = if row['I'].present? && team_ids.include?(row['I'].to_i)
+                                row['I'].to_i
+                              else
+                                errors << "Zeile #{i + 1}: Gastteam nicht erkannt"
+                                nil
+                              end
+
+              game_number = if row['B'].present? && !used_game_numbers.include?(row['B'].to_i)
+                              number = row['B'].to_i
+                              used_game_numbers << number
+
+                              number
+                            else
+                              errors << "Zeile #{i + 1}: Spielnummer nicht erkannt, oder doppelt verwendet"
+                              nil
+                            end
+
+              parsed_start_time = if row['E'].instance_of?(Time)
+                                    row['E'].strftime('%H:%M')
+                                  elsif row['E'].instance_of?(String) && /^[0-2]\d{1}:\d{2}$/.match(row['E'])
+                                    row['E']
+                                  elsif row['E'].instance_of?(String) && /^[0-2]\d{1}:\d{2}:\d{2}$/.match(row['E'])
+                                    row['E'][0..4]
+                                  else
+                                    errors << "Zeile #{i + 1}: Startzeit nicht erkannt, falsches Format?"
+                                    nil
+                                  end
+
+              games[row['C'].to_i] << {
+                home_team_id:,
+                game_number:,
+                guest_team_id:,
+                start_time: parsed_start_time,
+                nominated_referee_string: row['J'].present? ? row['J'] : '',
+                created_by: user_id
+              }
+
+              next if game_days[row['C'].to_i].present?
+
+              parsed_date = if row['D'].instance_of?(Date)
+                              row['D'].to_s
+                            elsif row['D'].instance_of?(Time)
+                              row['D'].to_date.to_s
+                            elsif row['D'].instance_of?(String)
+                              Date.parse(row['D']).to_s
+                            else
+                              errors << "Zeile #{i + 1}: Datum nicht erkannt #{row['D'].class}"
+                              nil
+                            end
+
+              arena_id = if row['F'].present?
+                           if arena_ids.include?(row['F'].to_i)
+                             row['F'].to_i
+                           else
+                             errors << "Zeile #{i + 1}: Halle nicht erkannt"
+                             nil
+                           end
+                         else
+                           warning << "Zeile #{i + 1}: Keine Halle hinterlegt"
+                           nil
+                         end
+
+              club_id = if row['G'].present?
+                          if club_ids.include?(row['G'].to_i)
+                            row['G'].to_i
+                          else
+                            errors << "Zeile #{i + 1}: Ausrichter nicht erkannt"
+                            nil
+                          end
+                        else
+                          warning << "Zeile #{i + 1}: Kein Ausrichter hinterlegt"
+                          nil
+                        end
+
+              game_day_number = if row['A'].present?
+                                  row['A'].to_i
+                                else
+                                  errors << "Zeile #{i + 1}: Spieltagsnummer nicht erkannt"
+                                  nil
+                                end
+
+              game_days[row['C'].to_i] = {
+                date: parsed_date,
+                number: game_day_number,
+                league_id: league.id,
+                arena_id:,
+                club_id:,
+                created_by: user_id
+              }
+
+              # test
+            end
+          else
+            errors << 'fehlende Berechtigung'
+          end
+        else
+          errors << 'Liga konnte nicht gefunden werden, Abbruch.'
+        end
+      else
+        errors << 'Datei ungütig, Vorlage verwenden!'
+      end
+
+      if errors.present?
+        render json: { message: 'Es sind Fehler aufgetreten', errors:, warnings:, game_days:, games: },
+               status: :bad_request
+      else
+        ActiveRecord::Base.transaction do
+          # erzeuge spieltage
+          game_days.each do |k, v|
+            gd = GameDay.create(v)
+
+            game_days[k][:gd] = gd
+          end
+
+          # erzeuge Spiele
+          games.map do |k, v|
+            gd_id = game_days[k][:gd].id
+            v.map do |game_hash|
+              game_hash[:game_day_id] = gd_id
+              game_hash[:started] = false
+              game_hash[:ended] = false
+              game_hash[:game_ended] = false
+              Game.create(game_hash)
+            end
+          end
+        end
+
+        render json: { errors:, warnings: }
+      end
+    else
+      render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
+    end
+  end
+
   # GET /leagues/1
   def show
     league = League.find(params[:id])

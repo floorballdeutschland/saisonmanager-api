@@ -127,9 +127,13 @@ class League < ApplicationRecord
   end
 
   def league_type
-    return 'league' if [1, 2, 5].include? league_category_id.to_i
-    return 'cup' if [3, 4].include? league_category_id.to_i
-    return 'champ' if league_category_id.to_i >= 100
+    if legacy_league
+      return 'league' if [1, 2, 5].include? league_category_id.to_i
+      return 'cup' if [3, 4].include? league_category_id.to_i
+      return 'champ' if league_category_id.to_i >= 100
+    else
+      league_modus
+    end
   end
 
   def game_day_numbers
@@ -603,6 +607,7 @@ class League < ApplicationRecord
     # # edit league
     perm << :update_league if admin || sbk
     perm << :download_template if admin || sbk
+    perm << :import_games if admin || sbk
     # perm << :delete_league if admin || sbk
 
     perm
