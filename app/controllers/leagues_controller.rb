@@ -55,7 +55,7 @@ class LeaguesController < ApplicationController
 
         lp = league_params
         lp[:season_id] = Setting.current_season
-        tp[:legacy_league] = false
+        lp[:legacy_league] = false
         league = League.create(lp)
 
         render json: league, status: :created
@@ -142,6 +142,8 @@ class LeaguesController < ApplicationController
         if league
 
           if league.user_permissions(current_user)&.include?(:import_games)
+
+            errors << 'Liga hat bereits Spiele und/oder Spieltage' if league.games.present? || league.game_days.present?
 
             arena_ids = Arena.active.pluck(:id)
             teams = league.teams
@@ -269,7 +271,7 @@ class LeaguesController < ApplicationController
       end
 
       if errors.present?
-        render json: { message: 'Es sind Fehler aufgetreten', errors:, warnings:, game_days:, games: },
+        render json: { message: { errors:, warnings: }.to_json },
                status: :bad_request
       else
         ActiveRecord::Base.transaction do
