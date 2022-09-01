@@ -3,8 +3,8 @@ class User < ApplicationRecord
 
   def login_hash
     {
-      id: id,
-      email: email,
+      id:,
+      email:,
       username: user_name,
       name: fullname,
       permissions: permissions_items
@@ -23,6 +23,7 @@ class User < ApplicationRecord
 
     # show league admin menu item
     result[:menu_item_league_admin] = ph[:admin].present? || ph[:sbk].present?
+    result[:menu_item_club_admin] = ph[:admin].present? || ph[:sbk].present?
 
     # show permissions
     result[:show_league_index_admin] = ph[:admin].present? || ph[:sbk].present?
@@ -80,7 +81,7 @@ class User < ApplicationRecord
     return nil if user_name.blank? || password.blank?
 
     hashed_password = Digest::MD5.hexdigest(password)
-    user = User.where(user_name: user_name).first
+    user = User.where(user_name:).first
 
     user if user && user.password == hashed_password
   end

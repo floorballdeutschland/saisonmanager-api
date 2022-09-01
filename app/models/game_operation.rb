@@ -42,6 +42,7 @@ class GameOperation < ApplicationRecord
     perm << :create_league if admin || sbk
     perm << :create_team if admin || sbk
     perm << :index_clubs if admin || sbk
+    perm << :create_club if admin || sbk
 
     perm
   end

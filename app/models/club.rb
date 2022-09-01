@@ -24,10 +24,21 @@ class Club < ApplicationRecord
       id:,
       long_name:,
       name:,
+      short_name:,
       state:,
       logo_url:,
-      logo_small_url:
+      logo_small_url:,
+      game_operation_id: main_game_operation_id,
+      additional_game_operation_ids:
     }
+  end
+
+  def main_game_operation_id
+    game_operations_hash.filter { |h| h['home_game_operation'] }.map { |h| h['game_operation_id'].to_i }.first
+  end
+
+  def additional_game_operation_ids
+    game_operations_hash.filter { |h| !h['home_game_operation'] }.map { |h| h['game_operation_id'].to_i }
   end
 
   def fix_game_operations_hash!
@@ -40,5 +51,78 @@ class Club < ApplicationRecord
     end
 
     save
+  end
+
+  def self.admin_club_permissions(user)
+    result = []
+
+    # für jeden verband:
+    # name, id, kuerzel, ligen
+    go_ids = []
+
+    # wenn admin oder sbk global: füge alle hinzu
+    ph = user.permission_hash
+    if ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
+      go_ids = GameOperation.all.pluck(:id)
+    elsif ph[:admin].present? || ph[:sbk].present?
+      go_ids << ph[:admin] if ph[:admin].present?
+      go_ids << ph[:sbk] if ph[:sbk].present?
+      go_ids.flatten
+    end
+
+    GameOperation.find(go_ids).each do |go|
+      item = go.meta_hash
+      item[:leagues] = leagues.where(game_operation_id: go.id).map(&:full_hash)
+      result << item
+    end
+
+    result
+  end
+
+  def user_permissions(user)
+    perm = []
+
+    go = main_game_operation_id
+
+    # we calculate the intersection between this and the users permissions
+    #  e.g. [0,1] & [0] => [0]
+    #  if we have a non empty array, the permission is present.
+    global_or_go = [0, go]
+
+    admin = user.permission_hash[:admin].present? && (global_or_go & user.permission_hash[:admin]).present?
+    sbk = user.permission_hash[:sbk].present? && (global_or_go & user.permission_hash[:sbk]).present?
+    rsk = user.permission_hash[:rsk].present? && (global_or_go & user.permission_hash[:rsk]).present?
+
+    # # edit league
+    perm << :update_club if admin || sbk
+    # perm << :delete_league if admin || sbk
+
+    perm
+  end
+
+  def self.admin_user_clubs(user)
+    result = []
+
+    # für jeden verband:
+    # name, id, kuerzel, ligen
+    go_ids = []
+
+    # wenn admin oder sbk global: füge alle hinzu
+    ph = user.permission_hash
+    if ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
+      go_ids = GameOperation.all.pluck(:id)
+    elsif ph[:admin].present? || ph[:sbk].present?
+      go_ids << ph[:admin] if ph[:admin].present?
+      go_ids << ph[:sbk] if ph[:sbk].present?
+      go_ids.flatten
+    end
+
+    GameOperation.find(go_ids).each do |go|
+      item = go.meta_hash
+      item[:clubs] = go.clubs.map(&:full_hash)
+      result << item
+    end
+
+    result
   end
 end
