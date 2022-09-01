@@ -58,7 +58,7 @@ class ClubsController < ApplicationController
       if create_modus && GameOperation.find(params[:game_operation_id])&.user_permissions(current_user)&.include?(:create_club) # create
 
         cp = club_params
-        cp[:game_operation_hash] = [{ home_game_operation: true, game_operation_id: params[:game_operation_id] }]
+        cp[:game_operations_hash] = [{ home_game_operation: true, game_operation_id: params[:game_operation_id] }]
         club = Club.create(cp)
 
         render json: club, status: :created
