@@ -579,7 +579,7 @@ class League < ApplicationRecord
     save
   end
 
-  def delete_games_and_game_days
+  def delete_games_and_game_days!
     # check for played games
     if games.map(&:deletable).reduce(&:&)
       ActiveRecord::Base.transaction do
