@@ -668,6 +668,10 @@ class Game < ApplicationRecord
     end
   end
 
+  def deletable
+    !started?
+  end
+
   def user_permissions(user)
     perm = []
 

@@ -583,8 +583,8 @@ class League < ApplicationRecord
     # check for played games
     if games.map(&:deletable).reduce(&:&)
       ActiveRecord::Base.transaction do
-        games.delete_all
-        game_days.delete_all
+        game_days.each { |gd| gd.games.destroy_all }
+        game_days.destroy_all
       end
     end
   end
