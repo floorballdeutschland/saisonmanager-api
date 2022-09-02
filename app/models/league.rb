@@ -579,6 +579,16 @@ class League < ApplicationRecord
     save
   end
 
+  def delete_games_and_game_days
+    # check for played games
+    if games.map(&:deletable).reduce(&:&)
+      ActiveRecord::Base.transaction do
+        games.delete_all
+        game_days.delete_all
+      end
+    end
+  end
+
   def user_permissions(user)
     perm = []
 
