@@ -208,6 +208,10 @@ class Player < ApplicationRecord
     #   ]
     # )
 
+    Player.find_by_sql [
+      "select *, extr_license from (SELECT *, jsonb_array_elements(licenses) as extr_license FROM players ) as subqry WHERE extr_license->>'team_id' ='?' ORDER BY extr_license->>'team_id', last_name, first_name", team_id
+    ]
+  end
 
   def self.admin_user_players(user, club_id)
     club_object = Club.find(club_id)
