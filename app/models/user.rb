@@ -83,6 +83,6 @@ class User < ApplicationRecord
     hashed_password = Digest::MD5.hexdigest(password)
     user = User.where(user_name:).first
 
-    user if user && user.password == hashed_password
+    user if user && user.old_password == hashed_password
   end
 end
