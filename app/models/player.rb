@@ -226,7 +226,7 @@ class Player < ApplicationRecord
              go_ids << ph[:sbk] if ph[:sbk].present?
 
              # if club and permission share a go_id we are allowed to see this
-             club_object if go_ids.flatten.intersection(game_operations_hash.map do |go|
+             club_object if go_ids.flatten.intersection(club_object.game_operations_hash.map do |go|
                                                           go['game_operation_id']
                                                         end).present?
            elsif ph[:vm].present?
