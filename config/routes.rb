@@ -76,6 +76,8 @@ Rails.application.routes.draw do
       get 'admin/clubs/:club_id/players', to: 'players#admin_players_index'
       get 'admin/game_operations/:id/clubs', to: 'game_operations#admin_club_index'
 
+      get 'admin/player/:id', to: 'players#admin_player'
+
       get 'game_operations/:id/leagues/:season_id', to: 'game_operations#index_leagues'
       get 'game_operations/:id/leagues', to: 'game_operations#index_leagues'
 
