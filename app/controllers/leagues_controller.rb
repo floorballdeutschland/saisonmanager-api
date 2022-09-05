@@ -212,9 +212,13 @@ class LeaguesController < ApplicationController
                             elsif row['D'].instance_of?(Time)
                               row['D'].to_date.to_s
                             elsif row['D'].instance_of?(String)
-                              Date.parse(row['D']).to_s
+                              begin
+                                Date.parse(row['D']).to_s
+                              rescue Date::Error => e
+                                errors << "Zeile #{i + 1}: Fehlerhaftes Datum #{row['D'].class}, #{row['D']}"
+                              end
                             else
-                              errors << "Zeile #{i + 1}: Datum nicht erkannt #{row['D'].class}"
+                              errors << "Zeile #{i + 1}: Datum nicht erkannt #{row['D'].class}, #{row['D']}"
                               nil
                             end
 
