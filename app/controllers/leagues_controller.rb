@@ -226,7 +226,7 @@ class LeaguesController < ApplicationController
                              nil
                            end
                          else
-                           warning << "Zeile #{i + 1}: Keine Halle hinterlegt"
+                           warnings << "Zeile #{i + 1}: Keine Halle hinterlegt"
                            nil
                          end
 
@@ -238,7 +238,7 @@ class LeaguesController < ApplicationController
                             nil
                           end
                         else
-                          warning << "Zeile #{i + 1}: Kein Ausrichter hinterlegt"
+                          warnings << "Zeile #{i + 1}: Kein Ausrichter hinterlegt"
                           nil
                         end
 
