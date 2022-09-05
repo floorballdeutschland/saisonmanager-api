@@ -1,6 +1,9 @@
 class User < ApplicationRecord
   include UserTracker
 
+  has_secure_password
+  validates :user_name, presence: true, uniqueness: true
+
   def login_hash
     {
       id:,
@@ -80,9 +83,19 @@ class User < ApplicationRecord
   def self.login(user_name, password)
     return nil if user_name.blank? || password.blank?
 
-    hashed_password = Digest::MD5.hexdigest(password)
     user = User.where(user_name:).first
+    hashed_password = Digest::MD5.hexdigest(password)
 
-    user if user && user.old_password == hashed_password
+    return nil if user.blank?
+
+    # old md5 password
+    if user.password_digest.blank? && user.old_password == hashed_password
+      user.password = password
+      user.password_confirmation = password
+      user.old_password = nil
+      user if user.save
+    elsif user.password_digest.present? && user.authenticate(password)
+      user
+    end
   end
 end
