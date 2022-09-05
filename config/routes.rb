@@ -41,6 +41,9 @@ Rails.application.routes.draw do
       post 'login' => 'sessions#login'
       post 'logout' => 'sessions#logout'
 
+      post 'lost_password' => 'sessions#lost_password'
+      post 'reset_password' => 'users#reset_password_token'
+
       resources :leagues do
         member do
           get 'game_days/current/schedule', to: 'leagues#current_schedule'
@@ -75,6 +78,8 @@ Rails.application.routes.draw do
 
       get 'admin/clubs/:club_id/players', to: 'players#admin_players_index'
       get 'admin/players/:id', to: 'players#admin_player'
+      post 'admin/players', to: 'players#admin_players_update'
+
       get 'admin/game_operations/:id/clubs', to: 'game_operations#admin_club_index'
 
       get 'game_operations/:id/leagues/:season_id', to: 'game_operations#index_leagues'

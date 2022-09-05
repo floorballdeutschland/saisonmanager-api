@@ -18,6 +18,11 @@ class User < ApplicationRecord
     [first_name, last_name].join ' '
   end
 
+  def send_reset_information
+    success = update(password_reset_token: Digest::UUID.uuid_v5(Digest::UUID::DNS_NAMESPACE, 'saisonmanager.de'))
+    UserMailer.reset_password(self).deliver_now if success
+  end
+
   def permissions_items
     result = {}
     ph = permission_hash

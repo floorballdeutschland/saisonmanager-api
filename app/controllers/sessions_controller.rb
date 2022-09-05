@@ -1,5 +1,5 @@
 class SessionsController < ApplicationController
-  skip_before_action :authenticate_user, only: %i[login logout]
+  skip_before_action :authenticate_user, only: %i[login logout lost_password]
 
   # POST /login
   def login
@@ -19,6 +19,14 @@ class SessionsController < ApplicationController
 
   def logout
     cookies.delete :user_id
+    render json: { success: true }, status: :ok
+  end
+
+  def lost_password
+    cookies.delete :user_id
+
+    User.find_by(user_name: params[:username])&.send_reset_information
+
     render json: { success: true }, status: :ok
   end
 end
