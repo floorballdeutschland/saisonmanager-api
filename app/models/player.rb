@@ -221,6 +221,7 @@ class Player < ApplicationRecord
     club = if ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
              club_object
            elsif ph[:admin].present? || ph[:sbk].present?
+             go_ids = []
              go_ids << ph[:admin] if ph[:admin].present?
              go_ids << ph[:sbk] if ph[:sbk].present?
 
