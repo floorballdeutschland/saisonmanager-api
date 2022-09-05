@@ -6,7 +6,20 @@ class Player < ApplicationRecord
   attr_accessor :hash, :prefix
 
   def meta_hash
-    attributes.with_indifferent_access.slice(:id, :last_name, :first_name, :birthdate, :male)
+    attributes.with_indifferent_access.slice(:id, :last_name, :first_name, :birthdate, :male, :security_id)
+  end
+
+  def full_hash
+    {
+      id:,
+      last_name:,
+      first_name:,
+      birthdate:,
+      male:,
+      nation_id:,
+      nation_string:,
+      security_id:
+    }
   end
 
   def nation_string
