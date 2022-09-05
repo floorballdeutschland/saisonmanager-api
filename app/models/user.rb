@@ -27,6 +27,7 @@ class User < ApplicationRecord
     # show league admin menu item
     result[:menu_item_league_admin] = ph[:admin].present? || ph[:sbk].present?
     result[:menu_item_club_admin] = ph[:admin].present? || ph[:sbk].present?
+    result[:menu_item_player_admin] = ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
 
     # show permissions
     result[:show_league_index_admin] = ph[:admin].present? || ph[:sbk].present?
