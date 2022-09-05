@@ -73,6 +73,7 @@ Rails.application.routes.draw do
       get 'admin/clubs/:id', to: 'clubs#admin_club'
       post 'admin/clubs', to: 'clubs#admin_club_update'
 
+      get 'admin/clubs/:club_id/players', to: 'players#admin_players_index'
       get 'admin/game_operations/:id/clubs', to: 'game_operations#admin_club_index'
 
       get 'game_operations/:id/leagues/:season_id', to: 'game_operations#index_leagues'

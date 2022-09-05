@@ -92,6 +92,7 @@ class User < ApplicationRecord
     if user.password_digest.blank? && user.old_password == hashed_password
       user.password = password
       user.password_confirmation = password
+      user.password_reset_token = nil
       user.old_password = nil
       user if user.save
     elsif user.password_digest.present? && user.authenticate(password)

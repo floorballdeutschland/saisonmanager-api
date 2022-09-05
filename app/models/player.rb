@@ -5,6 +5,10 @@ class Player < ApplicationRecord
 
   attr_accessor :hash, :prefix
 
+  def meta_hash
+    attributes.with_indifferent_access.slice(:id, :last_name, :first_name, :birthdate, :male)
+  end
+
   def nation_string
     setting = Setting.first
     nations = setting["nations"]
@@ -204,9 +208,50 @@ class Player < ApplicationRecord
     #   ]
     # )
 
-    Player.find_by_sql ["select *, extr_license from (SELECT *, jsonb_array_elements(licenses) as extr_license FROM players ) as subqry WHERE extr_license->>'team_id' ='?' ORDER BY extr_license->>'team_id', last_name, first_name", team_id]
-  end
 
+  def self.admin_user_players(user, club_id)
+    club_object = Club.find(club_id)
+
+    # wenn admin oder sbk global: füge alle hinzu
+    ph = user.permission_hash
+    club = if ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
+             club_object
+           elsif ph[:admin].present? || ph[:sbk].present?
+             go_ids << ph[:admin] if ph[:admin].present?
+             go_ids << ph[:sbk] if ph[:sbk].present?
+
+             # if club and permission share a go_id we are allowed to see this
+             club_object if go_ids.flatten.intersection(game_operations_hash.map do |go|
+                                                          go['game_operation_id']
+                                                        end).present?
+           elsif ph[:vm].present?
+             club_object if ph[:vm].include?(club_id)
+           end
+
+    return unless club
+
+    result = club.full_hash
+    result[:players] = club.players.map(&:meta_hash)
+
+    # this was the all club index code:
+    # clubs = []
+
+    # GameOperation.find(go_ids).each do |go|
+    #   clubs << go.clubs
+    # end
+
+    # clubs << Club.find(ph[:vm]) if ph[:vm]&.present?
+
+    # clubs = clubs.flatten.uniq
+
+    # clubs.each do |c|
+    #   item = c.full_hash
+    #   item[:players] = c.players
+    #   result << item
+    # end
+
+    result
+  end
 
   private
   def valid_time?(time, deadline)

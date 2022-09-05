@@ -1,6 +1,10 @@
 class Club < ApplicationRecord
   has_many :game_days
 
+  def players
+    Player.where("players.clubs @> '[{\"club_id\": ?}]'", id).order(:last_name, :first_name)
+  end
+
   def home_game_operation
     Rails.cache.fetch("#{cache_key}/home_game_operation", expires_in: 1.week) do
       go = game_operations_hash.select { |g| g['home_game_operation'] == true }
