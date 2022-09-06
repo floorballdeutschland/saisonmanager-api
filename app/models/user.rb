@@ -42,6 +42,9 @@ class User < ApplicationRecord
     # show permissions
     result[:show_league_index_admin] = ph[:admin].present? || ph[:sbk].present?
 
+    # update permissions
+    result[:update_player] = ph[:admin].present? || ph[:sbk].present?
+
     result
   end
 
