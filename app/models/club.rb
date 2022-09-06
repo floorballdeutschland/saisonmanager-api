@@ -118,6 +118,11 @@ class Club < ApplicationRecord
 
     # # edit league
     perm << :update_club if admin || sbk
+
+    if user.permission_hash[:vm].present? && user.permission_hash[:vm].include?(id)
+      perm << :create_player
+      perm << :update_player
+    end
     # perm << :delete_league if admin || sbk
 
     perm

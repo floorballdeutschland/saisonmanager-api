@@ -27,7 +27,7 @@ class PlayersController < ApplicationController
         id: k,
         name: v['name'],
         eu: v['eu'],
-        eu: v['short_name']
+        short_name: v['short_name']
       }
 
       result << item
@@ -136,9 +136,55 @@ class PlayersController < ApplicationController
     end
   end
 
+  def admin_player_update
+    if current_user
+      create_modus = params[:id].zero?
+      # check: game operation permission if create_modus
+      #   has: create team for that go?
+      #   else : unpermitted!
+      # check: league permission unless create_modus
+      #   has: update league for that league?
+      #   else : unpermitted!
+      if create_modus && Club.find(params[:club_id])&.user_permissions(current_user)&.include?(:create_player) # create
+
+        pp = player_params
+        player = Player.new(pp)
+        player.clubs = [{
+          club_id: params[:club_id],
+          home_club: true,
+          created_at: Time.now,
+          created_by: current_user.ids
+        }]
+        player.created_by = current_user.ids
+
+        player.save
+
+        render json: player, status: :created
+      elsif !create_modus && Club.find(params[:club_id])&.user_permissions(current_user)&.include?(:update_player) # update
+        # update
+        player = Player.find(params[:id])
+        player.updated_by = current_user.ids
+        if player.update(player_params)
+          render json: player
+        else
+          render json: player.errors, status: :unprocessable_entity
+        end
+      else
+        render json: { message: 'Keine Berechtigung' }, status: :forbidden
+      end
+
+    else
+      render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
+    end
+  end
+
   private
 
   def set_player
     @player = Player.find(params[:id])
+  end
+
+  def player_params
+    params.require(:player).permit(:birthdate, :first_name, :last_name, :male, :nation_id)
   end
 end
