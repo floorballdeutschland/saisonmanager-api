@@ -21,7 +21,7 @@ class PlayersController < ApplicationController
 
   def admin_player
     if current_user
-      result = Plyer.find(params[:id])
+      result = Player.find(params[:id])
 
       render json: result.full_hash
     else
