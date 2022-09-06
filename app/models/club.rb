@@ -1,8 +1,27 @@
 class Club < ApplicationRecord
   has_many :game_days
 
+  def teams
+    Team.by_club_id(id)
+  end
+
+  def current_teams
+    teams.current_season
+  end
+
   def players
-    Player.where("players.clubs @> '[{\"club_id\": ?}]'", id).order(:last_name, :first_name)
+    p = Player.where("players.clubs @> '[{\"club_id\": ?}]'", id).order(:last_name, :first_name)
+    p.select do |pl|
+      pl.clubs.map do |c|
+        if c['club_id'] != id
+          false
+        elsif c['valid_until'].present?
+          (c['valid_until'].to_date >= Time.now)
+        else
+          true
+        end
+      end.reduce(&:|)
+    end
   end
 
   def home_game_operation

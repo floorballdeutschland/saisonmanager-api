@@ -2,7 +2,8 @@ class Team < ApplicationRecord
   belongs_to :league
   belongs_to :club
 
-  scope :by_club_id, ->(cid) { where(club_id: cid).or(Team.where("#{cid} = ANY (syndicate_clubs)")) }
+  scope :by_club_id, ->(cid) { where(club_id: cid).or(Team.where('? = ANY (syndicate_clubs)', cid)) }
+  scope :current_season, -> { where(league_id: Setting.current_min_league..) }
 
   def tasks
     Task.where('home_team = ? OR guest_team = ?', id, id)
@@ -16,7 +17,7 @@ class Team < ApplicationRecord
     ids = [club_id]
     ids += syndicate_clubs if syndicate && syndicate_clubs
 
-    ids
+    ids.uniq
   end
 
   def all_clubs

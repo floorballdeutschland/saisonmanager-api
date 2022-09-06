@@ -18,6 +18,10 @@ class User < ApplicationRecord
     [first_name, last_name].join ' '
   end
 
+  def full_with_username
+    "#{fullname} (#{user_name})"
+  end
+
   def send_reset_information
     self.password_reset_token = Digest::UUID.uuid_v5(Digest::UUID::DNS_NAMESPACE, 'saisonmanager.de')
     UserMailer.reset_password(self).deliver_now if save(validate: false)
@@ -27,12 +31,13 @@ class User < ApplicationRecord
     result = {}
     ph = permission_hash
 
-    result[:login_blocked] = !(ph[:admin].present? || ph[:sbk].present?)
+    result[:login_blocked] = false
 
     # show league admin menu item
     result[:menu_item_league_admin] = ph[:admin].present? || ph[:sbk].present?
     result[:menu_item_club_admin] = ph[:admin].present? || ph[:sbk].present?
     result[:menu_item_player_admin] = ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
+    result[:menu_item_licence_club_admin] = ph[:vm].present? || ph[:tm].present?
 
     # show permissions
     result[:show_league_index_admin] = ph[:admin].present? || ph[:sbk].present?
@@ -56,7 +61,7 @@ class User < ApplicationRecord
 
       case perm['user_group_id'].to_i
       when 5 # Teammanager
-        tm_team_ids << Team.where(id: teams, league_id: all_league_ids)
+        tm_team_ids << Team.where(id: teams, league_id: all_league_ids).pluck(:id)
       when 4 # Vereinsmanager
         vm_club_ids << perm['club_id'] if perm['club_id'].present?
       when 3 # RSK

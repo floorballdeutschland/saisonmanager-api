@@ -12,11 +12,15 @@ class Setting < ApplicationRecord
   end
 
   def self.current_season
-    current.seasons[current_season_id]
+    current.seasons[current_season_id.to_s]
   end
 
   def self.current_season_id
     current.systems['1']['current_season_id']
+  end
+
+  def self.current_min_league
+    @current_min_league ||= current_season['min_league_id']
   end
 
   def self.seasons

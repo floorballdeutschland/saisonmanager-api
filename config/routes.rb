@@ -76,6 +76,12 @@ Rails.application.routes.draw do
       get 'admin/clubs/:id', to: 'clubs#admin_club'
       post 'admin/clubs', to: 'clubs#admin_club_update'
 
+      get 'user/clubs_and_teams', to: 'clubs#user_clubs_and_teams'
+      get 'user/team/:id/licenses', to: 'clubs#user_team_licenses'
+
+      post 'user/players/:id/request_license', to: 'players#request_license'
+      post 'user/players/:id/withdraw_license', to: 'players#withdraw_license_request'
+
       get 'admin/clubs/:club_id/players', to: 'players#admin_players_index'
       get 'admin/players/:id', to: 'players#admin_player'
       post 'admin/players', to: 'players#admin_players_update'

@@ -6,6 +6,130 @@ class ClubsController < ApplicationController
     render json: @clubs
   end
 
+  def user_clubs_and_teams
+    ph = current_user.permission_hash
+    clubs = if ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
+              Club.all
+            elsif ph[:admin].present? || ph[:sbk].present?
+              go_ids = []
+              go_ids << ph[:admin] if ph[:admin].present?
+              go_ids << ph[:sbk] if ph[:sbk].present?
+
+              GameOperation.find(go_ids).map(&:clubs).flatten.uniq
+            elsif ph[:vm].present?
+              Club.where(id: ph[:vm])
+            elsif ph[:tm].present?
+              teams = Team.current_season.where(id: ph[:tm])
+              teams.map(&:all_clubs).flatten.uniq
+            end
+
+    result = []
+
+    clubs.each do |club|
+      item = club.full_hash
+      teams = if ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
+                club.current_teams
+              elsif ph[:tm].present?
+                club.current_teams.select { |team| ph[:tm].include?(team.id) }
+              else
+                []
+              end
+      item[:teams] = teams.map(&:full_hash)
+      result << item
+    end
+
+    render json: result
+  end
+
+  def user_team_licenses
+    ph = current_user.permission_hash
+
+    team = Team.find(params[:id])
+
+    allowed = if ph[:admin].present? || ph[:sbk].present?
+                true
+              elsif ph[:vm].present?
+                ph[:vm].include?(team.club_id) || ph[:vm].intersection(team.syndicate_clubs).present?
+              elsif ph[:tm].present?
+                ph[:tm].include?(team.id)
+              end
+
+    if allowed
+      result = {}
+
+      result[:team] = team.full_hash
+
+      clubs = Club.find(team.all_club_ids)
+      all_players = clubs.map(&:players).flatten.compact
+
+      result[:current_requests] = []
+      result[:other_players] = []
+
+      all_players.each do |p|
+        l = p.licenses_by_team(team.id)
+        if l.present?
+          item = p.full_hash
+          item[:team_license] = l
+          cs = p.current_license_status(l)
+          item[:current_status] = cs
+          item[:can_withdraw] = (cs['license_status_id'] == License::REQUESTED)
+          result[:current_requests] << item
+        else
+          result[:other_players] << p.meta_hash
+        end
+      end
+
+      render json: result
+    else
+      render json: { success: false }, status: :forbidden
+    end
+  end
+
+  def self.admin_user_players(user, club_id)
+    club_object = Club.find(club_id)
+
+    # wenn admin oder sbk global: füge alle hinzu
+    ph = user.permission_hash
+    club = if ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
+             club_object
+           elsif ph[:admin].present? || ph[:sbk].present?
+             go_ids = []
+             go_ids << ph[:admin] if ph[:admin].present?
+             go_ids << ph[:sbk] if ph[:sbk].present?
+
+             # if club and permission share a go_id we are allowed to see this
+             club_object if go_ids.flatten.intersection(club_object.game_operations_hash.map do |go|
+                                                          go['game_operation_id']
+                                                        end).present?
+           elsif ph[:vm].present?
+             club_object if ph[:vm].include?(club_id)
+           end
+
+    return unless club
+
+    result = club.full_hash
+    result[:players] = club.players.map(&:meta_hash)
+
+    # this was the all club index code:
+    # clubs = []
+
+    # GameOperation.find(go_ids).each do |go|
+    #   clubs << go.clubs
+    # end
+
+    # clubs << Club.find(ph[:vm]) if ph[:vm]&.present?
+
+    # clubs = clubs.flatten.uniq
+
+    # clubs.each do |c|
+    #   item = c.full_hash
+    #   item[:players] = c.players
+    #   result << item
+    # end
+
+    result
+  end
+
   def admin_get_go_clubs
     if current_user
       league = if params[:callType] == 'l'
