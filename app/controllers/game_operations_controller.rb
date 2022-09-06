@@ -11,13 +11,13 @@ class GameOperationsController < ApplicationController
 
   # GET /game_operations/1/leagues
   def index_leagues
-    current_season = Setting.current_season
+    current_season_id = Setting.current_season_id
 
     leagues = @game_operation.leagues
     leagues = if params[:season_id]
                 leagues.where(season_id: params[:season_id])
               else
-                leagues.where(season_id: current_season)
+                leagues.where(season_id: current_season_id)
               end
 
     render json: leagues.map(&:full_hash)

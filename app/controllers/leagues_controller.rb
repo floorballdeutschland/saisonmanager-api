@@ -54,7 +54,7 @@ class LeaguesController < ApplicationController
       if create_modus && GameOperation.find(params[:game_operation_id])&.user_permissions(current_user)&.include?(:create_league) # create
 
         lp = league_params
-        lp[:season_id] = Setting.current_season
+        lp[:season_id] = Setting.current_season_id
         lp[:legacy_league] = false
         league = League.create(lp)
 

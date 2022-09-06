@@ -11,7 +11,7 @@ class SettingsController < ApplicationController
   def init
     @result ||= {
       seasons: Setting.seasons,
-      current_season_id: Setting.current_season,
+      current_season_id: Setting.current_season_id,
       game_operations: GameOperation.all.map(&:short_hash)
     }
 

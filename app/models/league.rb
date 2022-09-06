@@ -5,7 +5,7 @@ class League < ApplicationRecord
   belongs_to :game_operation
 
   default_scope { order(:season_id, :game_operation_id).order('order_key::int') }
-  scope :current_season, -> { where(season_id: Setting.current_season) }
+  scope :current_season, -> { where(season_id: Setting.current_season_id) }
 
   before_create :set_defaults
 
@@ -679,6 +679,6 @@ class League < ApplicationRecord
   private
 
   def set_defaults
-    season_id = Setting.current_season if season_id.blank?
+    season_id = Setting.current_season_id if season_id.blank?
   end
 end

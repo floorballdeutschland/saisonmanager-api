@@ -12,11 +12,17 @@ class Setting < ApplicationRecord
   end
 
   def self.current_season
+    current.seasons[current_season_id]
+  end
+
+  def self.current_season_id
     current.systems['1']['current_season_id']
   end
 
   def self.seasons
-    @seasons ||= current.seasons.map { |k, v| { id: k.to_i, name: v['name'], current: (k.to_i == current_season) } }.reverse
+    @seasons ||= current.seasons.map do |k, v|
+      { id: k.to_i, name: v['name'], current: (k.to_i == current_season_id) }
+    end.reverse
   end
 
   def self.point_corrections(league_id)
@@ -32,11 +38,11 @@ class Setting < ApplicationRecord
   #   }
   # }.with_indifferent_access
 
-  def self.liveticker_leagues(season_id = current_season, goid = 1)
+  def self.liveticker_leagues(season_id = current_season_id, _goid = 1)
     current.liveticker['game_day_for_league'][season_id.to_s].try(:keys)
   end
 
-  def self.game_day_for_league(league_id, season_id = current_season)
+  def self.game_day_for_league(league_id, season_id = current_season_id)
     current.liveticker['game_day_for_league'][season_id.to_s][league_id.to_s]
   end
 
