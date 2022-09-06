@@ -81,6 +81,7 @@ Rails.application.routes.draw do
 
       post 'user/players/:id/request_license', to: 'players#request_license'
       post 'user/players/:id/withdraw_license', to: 'players#withdraw_license_request'
+      get 'user/players/nations', to: 'players#user_get_nations'
 
       get 'admin/clubs/:club_id/players', to: 'players#admin_players_index'
       get 'admin/players/:id', to: 'players#admin_player'

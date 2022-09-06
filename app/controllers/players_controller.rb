@@ -19,6 +19,23 @@ class PlayersController < ApplicationController
     end
   end
 
+  def user_get_nations
+    result = []
+
+    Setting.current.nations.each do |k, v|
+      item = {
+        id: k,
+        name: v['name'],
+        eu: v['eu'],
+        eu: v['short_name']
+      }
+
+      result << item
+    end
+
+    render json: result
+  end
+
   def admin_player
     if current_user
       result = Player.find(params[:id])
