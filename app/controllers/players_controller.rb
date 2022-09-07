@@ -11,7 +11,7 @@ class PlayersController < ApplicationController
 
   def admin_players_index
     if current_user
-      result = Player.admin_user_players(current_user, params[:club_id])
+      result = Player.admin_user_players(current_user, params[:club_id].to_i) || []
 
       render json: result
     else

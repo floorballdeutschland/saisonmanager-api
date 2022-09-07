@@ -10,7 +10,8 @@ class User < ApplicationRecord
       email:,
       username: user_name,
       name: fullname,
-      permissions: permissions_items
+      permissions: permissions_items,
+      club_ids:
     }
   end
 
@@ -38,6 +39,7 @@ class User < ApplicationRecord
     result[:menu_item_club_admin] = ph[:admin].present? || ph[:sbk].present?
     result[:menu_item_player_admin] = ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
     result[:menu_item_licence_club_admin] = ph[:vm].present? || ph[:tm].present?
+    result[:menu_item_licence_admin] = ph[:admin].present? || ph[:sbk].present?
 
     # show permissions
     result[:show_league_index_admin] = ph[:admin].present? || ph[:sbk].present?
@@ -46,6 +48,10 @@ class User < ApplicationRecord
     result[:update_player] = ph[:admin].present? || ph[:sbk].present?
 
     result
+  end
+
+  def club_ids
+    permission_hash[:vm]
   end
 
   def permission_hash
@@ -66,7 +72,7 @@ class User < ApplicationRecord
       when 5 # Teammanager
         tm_team_ids << Team.where(id: teams, league_id: all_league_ids).pluck(:id)
       when 4 # Vereinsmanager
-        vm_club_ids << perm['club_id'] if perm['club_id'].present?
+        vm_club_ids << perm['club_id'].to_i if perm['club_id'].present?
       when 3 # RSK
         rsk_go_ids << go_id
       when 2 # 2 SBK
