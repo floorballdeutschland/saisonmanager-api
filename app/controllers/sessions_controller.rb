@@ -3,7 +3,7 @@ class SessionsController < ApplicationController
 
   # POST /login
   def login
-    username = params[:username]
+    username = params[:username].downcase
     password = params[:password]
 
     user = User.login(username, password)
@@ -25,7 +25,7 @@ class SessionsController < ApplicationController
   def lost_password
     cookies.delete :user_id
 
-    User.find_by(user_name: params[:username])&.send_reset_information
+    User.find_by(user_name: params[:username].downcase)&.send_reset_information
 
     render json: { success: true }, status: :ok
   end
