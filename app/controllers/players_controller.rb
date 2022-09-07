@@ -262,14 +262,18 @@ class PlayersController < ApplicationController
           # check for licenses for that club
           if current_licenses.empty?
 
-            player.clubs.map! do |club|
+            old_club_id = nil
+
+            player.clubs.map! do |c|
               # if it's a current entry for the home_club
-              if club['valid_until'].nil? && club['home_club']
-                club['valid_until'] = Time.now
-                club['valid_set_by'] = current_user.id
+              if c['valid_until'].nil? && c['home_club']
+                c['valid_until'] = Time.now
+                c['valid_set_by'] = current_user.id
+
+                old_club_id = c['club_id']
               end
 
-              club
+              c
             end
 
             new_club_entry = {
@@ -282,10 +286,32 @@ class PlayersController < ApplicationController
             # add club to clubs array
             player.clubs << new_club_entry
 
-            if player.save
-              render json: { success: true }
+            if old_club_id.present?
+              transfer = Transfer.new({
+                                        created_by: current_user.id,
+                                        former_club_id: old_club_id,
+                                        new_club_id: club.id,
+                                        player_id: player.id,
+                                        season_id: Setting.current_season_id
+                                      })
+
+              success = false
+
+              Player.transaction do
+                transfer.save!
+                player.save!
+
+                success = true
+              end
+
+              if success
+                render json: { success: true }
+              else
+                render json: { message: player.errors }, status: :unprocessable_entity
+              end
             else
-              render json: { message: player.errors }, status: :unprocessable_entity
+              render json: { message: 'Konnte alten Verein nicht finden. Abbruch.' },
+                     status: :unprocessable_entity
             end
           else
             render json: { message: "Spieler hat für diesen Verein eine Lizenz (Team: #{current_licenses.join ','})" },
