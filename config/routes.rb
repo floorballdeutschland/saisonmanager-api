@@ -72,6 +72,7 @@ Rails.application.routes.draw do
 
       post 'admin/teams', to: 'teams#admin_team_update'
 
+      get 'admin/clubs/all', to: 'clubs#admin_club_all'
       get 'admin/clubs', to: 'clubs#admin_club_index'
       get 'admin/clubs/:id', to: 'clubs#admin_club'
       post 'admin/clubs', to: 'clubs#admin_club_update'

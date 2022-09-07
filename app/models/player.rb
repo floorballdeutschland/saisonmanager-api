@@ -18,8 +18,15 @@ class Player < ApplicationRecord
       male:,
       nation_id:,
       nation_string:,
+      clubs:,
       security_id:
     }
+  end
+
+  def admin_players_clubs
+  {
+    club_id:
+  }
   end
 
   def nation_string

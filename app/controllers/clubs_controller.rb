@@ -150,6 +150,12 @@ class ClubsController < ApplicationController
     end
   end
 
+  def admin_club_all
+    result = Club.all
+
+    render json: result
+  end
+
   def admin_club_index
     if current_user
       result = Club.admin_user_clubs(current_user)
