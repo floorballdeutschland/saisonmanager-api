@@ -189,6 +189,50 @@ class PlayersController < ApplicationController
     end
   end
 
+  def add_additional_club
+    # hole spieler
+    player = Player.find(params[:id])
+    club = Club.find(params[:club_id])
+
+    ph = current_user.permission_hash
+
+    if ph[:admin].present? || ph[:sbk].present?
+
+      # if player and club present, we check if the club.id is already in the players clubs hash
+      if player.present? &&
+         club.present? &&
+         !player.clubs.select do |c|
+            c['valid_until'].nil? || c['valid_until'].to_date > Date.today
+          end.map do |c|
+            c['club_id']
+          end.include?(club.id)
+        # füge lizenz zu lizenzhash hinzu
+        valid_until = Date.new(Date.today.year, 7, 15)
+        valid_until += 1.year if valid_until < Date.today
+
+        club_entry = {
+          club_id: club.id,
+          home_club: false,
+          created_by: current_user.id,
+          valid_set_by: current_user.id,
+          created_at: Time.now,
+          valid_until:
+        }
+        player.clubs << club_entry
+
+        if player.save
+          render json: { success: true }
+        else
+          render json: { message: player.errors }, status: :unprocessable_entity
+        end
+      else
+        render json: { message: 'Verein oder Spieler nicht gefunden' }, status: :unprocessable_entity
+      end
+    else
+      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+  end
+
   private
 
   def set_player
