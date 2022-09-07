@@ -160,12 +160,12 @@ class PlayersController < ApplicationController
           pp = player_params
           player = Player.new(pp)
           player.clubs = [{
-            club_id: params[:club_id],
+            club_id: params[:club_id].to_i,
             home_club: true,
             created_at: Time.now,
-            created_by: current_user.ids
+            created_by: current_user.id
           }]
-          player.created_by = current_user.ids
+          player.created_by = current_user.id
 
           player.save
 
@@ -174,7 +174,7 @@ class PlayersController < ApplicationController
       elsif !create_modus && Club.find(params[:club_id])&.user_permissions(current_user)&.include?(:update_player) # update
         # update
         player = Player.find(params[:id])
-        player.updated_by = current_user.ids
+        player.updated_by = current_user.id
         if player.update(player_params)
           render json: player
         else
