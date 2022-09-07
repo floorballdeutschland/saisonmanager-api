@@ -155,9 +155,13 @@ class Player < ApplicationRecord
   end
 
   def current_licenses(sid)
+    current_licenses_meta(Team.teams_by_season(sid))
+  end
+
+  def current_licenses_meta(teams)
     if licenses
       result = licenses.reject do |l|
-        !Team.teams_by_season(sid).map(&:id).map(&:to_s).include?(l['team_id'].to_s)
+        !teams.map(&:id).map(&:to_s).include?(l['team_id'].to_s)
       end
     end
     if result

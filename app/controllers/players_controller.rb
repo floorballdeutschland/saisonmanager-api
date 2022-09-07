@@ -200,30 +200,100 @@ class PlayersController < ApplicationController
 
       # if player and club present, we check if the club.id is already in the players clubs hash
       if player.present? &&
-         club.present? &&
-         !player.clubs.select do |c|
-            c['valid_until'].nil? || c['valid_until'].to_date > Date.today
-          end.map do |c|
-            c['club_id']
-          end.include?(club.id)
-        # füge lizenz zu lizenzhash hinzu
-        valid_until = Date.new(Date.today.year, 7, 15)
-        valid_until += 1.year if valid_until < Date.today
+         club.present?
 
-        club_entry = {
-          club_id: club.id,
-          home_club: false,
-          created_by: current_user.id,
-          valid_set_by: current_user.id,
-          created_at: Time.now,
-          valid_until:
-        }
-        player.clubs << club_entry
+        if !player.clubs.select do |c|
+              c['valid_until'].nil? || c['valid_until'].to_date > Date.today
+            end.map do |c|
+             c['club_id']
+           end.include?(club.id)
+          # valid until next 15.07.20XX
+          valid_until = Date.new(Date.today.year, 7, 15)
+          valid_until += 1.year if valid_until < Date.today
 
-        if player.save
-          render json: { success: true }
+          club_entry = {
+            club_id: club.id,
+            home_club: false,
+            created_by: current_user.id,
+            valid_set_by: current_user.id,
+            created_at: Time.now,
+            valid_until:
+          }
+          # add club to clubs array
+          player.clubs << club_entry
+
+          if player.save
+            render json: { success: true }
+          else
+            render json: { message: player.errors }, status: :unprocessable_entity
+          end
         else
-          render json: { message: player.errors }, status: :unprocessable_entity
+          render json: { message: 'Spieler bereits in dem Verein vorhanden' }, status: :unprocessable_entity
+        end
+      else
+        render json: { message: 'Verein oder Spieler nicht gefunden' }, status: :unprocessable_entity
+      end
+    else
+      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+  end
+
+  def transfer
+    # hole spieler
+    player = Player.find(params[:id])
+    club = Club.find(params[:club_id])
+
+    ph = current_user.permission_hash
+
+    if ph[:admin].present? || ph[:sbk].present?
+
+      # if player and club present, we check if the club.id is already in the players clubs hash
+      if player.present? &&
+         club.present?
+
+        if !player.clubs.select do |c|
+              c['valid_until'].nil? || c['valid_until'].to_date > Date.today
+            end.map do |c|
+             c['club_id']
+           end.include?(club.id)
+
+          current_teams = club.current_teams
+          current_licenses = player.current_licenses_meta(current_teams).map { |l| l['team_id'] }
+          # check for licenses for that club
+          if current_licenses.empty?
+
+            player.clubs.map! do |club|
+              # if it's a current entry for the home_club
+              if club['valid_until'].nil? && club['home_club']
+                club['valid_until'] = Time.now
+                club['valid_set_by'] = current_user.id
+              end
+
+              club
+            end
+
+            new_club_entry = {
+              club_id: club.id,
+              home_club: true,
+              created_by: current_user.id,
+              created_at: Time.now
+            }
+
+            # add club to clubs array
+            player.clubs << new_club_entry
+
+            if player.save
+              render json: { success: true }
+            else
+              render json: { message: player.errors }, status: :unprocessable_entity
+            end
+          else
+            render json: { message: "Spieler hat für diesen Verein eine Lizenz (Team: #{current_licenses.join ','})" },
+                   status: :unprocessable_entity
+          end
+
+        else
+          render json: { message: 'Spieler bereits in dem Verein vorhanden' }, status: :unprocessable_entity
         end
       else
         render json: { message: 'Verein oder Spieler nicht gefunden' }, status: :unprocessable_entity
