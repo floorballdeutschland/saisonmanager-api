@@ -208,8 +208,8 @@ class PlayersController < ApplicationController
              c['club_id']
            end.include?(club.id)
           # valid until next 15.07.20XX
-          valid_until = Date.new(Date.today.year, 7, 15)
-          valid_until += 1.year if valid_until < Date.today
+          valid_until = Date.new(Date.today.year, 7, 15).to_time
+          valid_until += 1.year if valid_until < Time.now
 
           club_entry = {
             club_id: club.id,
