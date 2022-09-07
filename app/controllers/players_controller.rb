@@ -147,19 +147,30 @@ class PlayersController < ApplicationController
       #   else : unpermitted!
       if create_modus && Club.find(params[:club_id])&.user_permissions(current_user)&.include?(:create_player) # create
 
-        pp = player_params
-        player = Player.new(pp)
-        player.clubs = [{
-          club_id: params[:club_id],
-          home_club: true,
-          created_at: Time.now,
-          created_by: current_user.ids
-        }]
-        player.created_by = current_user.ids
+        first_name = "%#{params['first_name'].downcase.strip}%"
+        last_name = "%#{params['last_name'].downcase.strip}%"
+        birthdate = params['birthdate'].to_date
+        existing_player_id = Player.where('first_name ILIKE ? AND last_name ILIKE ? AND birthdate = ?', first_name,
+                                          last_name, birthdate).limit(1).pluck(:id).first
 
-        player.save
+        if existing_player_id.present?
+          render json: { message: "Es existiert ein Spieler mit diesen Daten (ID: #{existing_player_id}). Anlegen nicht möglich." },
+                 status: :unprocessable_entity
+        else
+          pp = player_params
+          player = Player.new(pp)
+          player.clubs = [{
+            club_id: params[:club_id],
+            home_club: true,
+            created_at: Time.now,
+            created_by: current_user.ids
+          }]
+          player.created_by = current_user.ids
 
-        render json: player, status: :created
+          player.save
+
+          render json: player, status: :created
+        end
       elsif !create_modus && Club.find(params[:club_id])&.user_permissions(current_user)&.include?(:update_player) # update
         # update
         player = Player.find(params[:id])
