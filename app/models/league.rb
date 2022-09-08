@@ -467,7 +467,7 @@ class League < ApplicationRecord
     end
   end
 
-  def licenses(full_license_hash = true)
+  def licenses(full_license_hash = true, only_current_licenses = true)
     team_licenses = {}
     teams.each do |team|
       team_licenses[team.id.to_s] = Player.find_by_team_id team.id
@@ -479,7 +479,7 @@ class League < ApplicationRecord
 
       team_item[:players] = []
       team_licenses[team.id.to_s].each do |player|
-        player_item = player.full_hash(full_license_hash)
+        player_item = player.full_hash(full_license_hash, only_current_licenses)
 
         license = player.licenses.select { |l| l['team_id'].to_i == team.id }.first
 

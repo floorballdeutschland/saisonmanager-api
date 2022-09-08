@@ -23,6 +23,10 @@ class Setting < ApplicationRecord
     @current_min_league ||= current_season['min_league_id']
   end
 
+  def self.current_min_team
+    @current_min_team ||= current_season['min_team_id']
+  end
+
   def self.seasons
     @seasons ||= current.seasons.map do |k, v|
       { id: k.to_i, name: v['name'], current: (k.to_i == current_season_id) }

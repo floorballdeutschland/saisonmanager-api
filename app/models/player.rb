@@ -9,7 +9,7 @@ class Player < ApplicationRecord
     attributes.with_indifferent_access.slice(:id, :last_name, :first_name, :birthdate, :male, :security_id)
   end
 
-  def full_hash(with_licenses = false)
+  def full_hash(with_licenses = false, only_current_licenses = false)
     p = {
       id:,
       last_name:,
@@ -22,7 +22,13 @@ class Player < ApplicationRecord
       security_id:
     }
 
-    p[:licenses] = licenses if with_licenses
+    if with_licenses
+      p[:licenses] = if only_current_licenses
+                       licenses.select { |l| l['team_id'].to_i >= Setting.current_min_team }
+                     else
+                       licenses
+                     end
+    end
 
     p
   end
