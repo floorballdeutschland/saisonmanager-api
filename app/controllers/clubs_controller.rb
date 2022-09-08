@@ -189,12 +189,15 @@ class ClubsController < ApplicationController
 
         cp = club_params
         cp[:game_operations_hash] = [{ home_game_operation: true, game_operation_id: params[:game_operation_id] }]
+        cp[:created_by] = current_user.id
+        cp[:updated_by] = current_user.id
         club = Club.create(cp)
 
         render json: club, status: :created
       elsif !create_modus && Club.find(params[:id])&.user_permissions(current_user)&.include?(:update_club) # update
         # update
         club = Club.find(params[:id])
+        club.updated_by = current_user.id
         if club.update(club_params)
           render json: club
         else
