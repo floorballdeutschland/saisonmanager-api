@@ -467,6 +467,48 @@ class League < ApplicationRecord
     end
   end
 
+  def licenses(full_license_hash = true)
+    team_licenses = {}
+    teams.each do |team|
+      team_licenses[team.id.to_s] = Player.find_by_team_id team.id
+    end
+
+    result = []
+    teams.each do |team|
+      team_item = team.full_hash(full_license_hash)
+
+      team_item[:players] = []
+      team_licenses[team.id.to_s].each do |player|
+        player_item = player.full_hash
+
+        license = player.licenses.select { |l| l['team_id'].to_i == team.id }.first
+
+        last_status = license['history'].sort_by { |h| h['created_at'] }.last
+        last_status_id = last_status['license_status_id']
+        last_status_code = License::NAMES[last_status_id.to_i]
+
+        approved_at = (last_status['created_at'].to_datetime.strftime('%d.%m.%Y %H:%M:%S') if last_status_id == 1)
+        requested_at = license['history'].select do |lh|
+                         lh['license_status_id'] == 2
+                       end.last['created_at'].to_datetime.strftime('%d.%m.%Y %H:%M:%S')
+
+        player_item[:team_license] = {
+          license:,
+          last_status:,
+          last_status_id: last_status_code,
+          approved_at:,
+          requested_at:
+        }
+
+        team_item[:players] << player
+      end
+
+      result << team_item
+    end
+
+    result
+  end
+
   def licenses_csv
     team_ids = teams.map(&:id)
 

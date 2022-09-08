@@ -91,6 +91,19 @@ class PlayersController < ApplicationController
     end
   end
 
+  def admin_licenses
+    # hole spieler
+    league = League.find(params[:id])
+
+    ph = current_user.permission_hash
+
+    if ph[:admin].present? || ph[:sbk].present?
+      render json: league.licenses(true)
+    else
+      render json: { message: 'Keine Berechtigung!' }, status: :forbidden
+    end
+  end
+
   def withdraw_license_request
     # hole spieler
     player = Player.find(params[:id])
