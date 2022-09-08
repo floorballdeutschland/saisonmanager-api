@@ -500,7 +500,7 @@ class League < ApplicationRecord
           requested_at:
         }
 
-        team_item[:players] << player
+        team_item[:players] << player_item
       end
 
       result << team_item
