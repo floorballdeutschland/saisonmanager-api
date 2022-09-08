@@ -475,11 +475,11 @@ class League < ApplicationRecord
 
     result = []
     teams.each do |team|
-      team_item = team.full_hash(full_license_hash)
+      team_item = team.full_hash
 
       team_item[:players] = []
       team_licenses[team.id.to_s].each do |player|
-        player_item = player.full_hash
+        player_item = player.full_hash(full_license_hash)
 
         license = player.licenses.select { |l| l['team_id'].to_i == team.id }.first
 
