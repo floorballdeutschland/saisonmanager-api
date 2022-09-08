@@ -78,6 +78,7 @@ class PlayersController < ApplicationController
           created_at: Time.now
         }]
       }
+      player.licenses ||= []
       player.licenses << new_license
 
       if player.save
