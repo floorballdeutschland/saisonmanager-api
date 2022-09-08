@@ -89,6 +89,8 @@ Rails.application.routes.draw do
       post 'admin/players/:id/transfer', to: 'players#transfer'
       post 'admin/players/:id/add_additional_club', to: 'players#add_additional_club'
 
+      post 'admin/players/:id/handle_license_request', to: 'players#handle_license_request'
+
       get 'admin/clubs/:club_id/players', to: 'players#admin_players_index'
       get 'admin/players/:id', to: 'players#admin_player'
       post 'admin/players', to: 'players#admin_player_update'

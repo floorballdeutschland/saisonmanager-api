@@ -9,8 +9,8 @@ class Player < ApplicationRecord
     attributes.with_indifferent_access.slice(:id, :last_name, :first_name, :birthdate, :male, :security_id)
   end
 
-  def full_hash
-    {
+  def full_hash(with_licenses = false)
+    p = {
       id:,
       last_name:,
       first_name:,
@@ -21,12 +21,16 @@ class Player < ApplicationRecord
       clubs:,
       security_id:
     }
+
+    p[:licenses] = licenses if with_licenses
+
+    p
   end
 
   def admin_players_clubs
-  {
-    club_id:
-  }
+    {
+      club_id:
+    }
   end
 
   def nation_string

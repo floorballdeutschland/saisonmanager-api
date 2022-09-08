@@ -91,6 +91,39 @@ class PlayersController < ApplicationController
     end
   end
 
+  def handle_license_request
+    player = Player.find(params[:id])
+    ph = current_user.permission_hash
+
+    if (ph[:admin].present? || ph[:sbk].present?) && player.present?
+      player.licenses.map! do |lic|
+        if lic['id'] == params[:license_id]
+          last_status = license['history'].sort_by { |h| h['created_at'] }.last
+
+          if last_status['license_status_id'].to_i != params[:license_status_id].to_i && [License::APPROVED,
+                                                                                          License::DENIED].include?(params[:license_status_id].to_i)
+            license['history'] << {
+              license_status_id: params[:license_status_id].to_i,
+              reason: params[:reason] || '',
+              created_by: current_user.id,
+              created_at: Time.now
+            }
+          end
+        end
+
+        lic
+      end
+
+      if player.save
+        render json: { success: true }
+      else
+        render json: { message: player.errors }, status: :unprocessable_entity
+      end
+    else
+      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+  end
+
   def admin_licenses
     # hole spieler
     league = League.find(params[:id])
