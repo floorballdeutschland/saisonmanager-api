@@ -640,34 +640,6 @@ class Game < ApplicationRecord
     errors
   end
 
-  def self.start_end_games
-    gds = GameDay.where date: Date.today
-    games = gds.map(&:games).map(&:all).flatten
-    t = Time.now
-
-    filtered_games = games.select do |g|
-      hour, minute = g.start_time.split(':')
-
-      hour.to_i <= t.hour && minute.to_i < t.min
-    end
-
-    gds_yesterday = GameDay.where date: Date.yesterday
-    games_yesterday = gds_yesterday.map(&:games).map(&:all).flatten
-
-    all_games = [filtered_games, games_yesterday].flatten.compact
-
-    all_games.each do |g|
-      if !g.started? && g.players.present? && g.players['home'].present? && g.players['guest'].present?
-        g.started = true
-        g.save
-      end
-      if g.started? && !g.ended? && g.time_keeper_signed? && g.record_keeper_signed? && g.referee1_signed? && g.referee2_signed?
-        g.ended = true
-        g.save
-      end
-    end
-  end
-
   def deletable
     !started?
   end
@@ -706,5 +678,33 @@ class Game < ApplicationRecord
     perm << :edit_game if admin || sbk
 
     perm
+  end
+
+  def self.start_end_games
+    gds = GameDay.where date: Date.today
+    games = gds.map(&:games).map(&:all).flatten
+    t = Time.now
+
+    filtered_games = games.select do |g|
+      hour, minute = g.start_time.split(':')
+
+      hour.to_i <= t.hour && minute.to_i < t.min
+    end
+
+    gds_yesterday = GameDay.where date: Date.yesterday
+    games_yesterday = gds_yesterday.map(&:games).map(&:all).flatten
+
+    all_games = [filtered_games, games_yesterday].flatten.compact
+
+    all_games.each do |g|
+      if !g.started? && g.players.present? && g.players['home'].present? && g.players['guest'].present?
+        g.started = true
+        g.save
+      end
+      if g.started? && !g.ended? && g.time_keeper_signed? && g.record_keeper_signed? && g.referee1_signed? && g.referee2_signed?
+        g.ended = true
+        g.save
+      end
+    end
   end
 end
