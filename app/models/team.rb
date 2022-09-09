@@ -114,4 +114,14 @@ class Team < ApplicationRecord
 
     perm
   end
+
+  def self.add_teams_to_cup!(team_ids, cup_id)
+    teams = Team.find(team_ids)
+
+    teams.each do |team|
+      team.cup_leagues ||= []
+      team.cup_leagues << cup_id
+      team.save
+    end
+  end
 end
