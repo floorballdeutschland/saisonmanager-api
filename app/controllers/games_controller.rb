@@ -68,7 +68,7 @@ class GamesController < ApplicationController
       # ensure we have the hash set
       game.players ||= {}
 
-      side = params[:team_side]
+      side = params[:side]
 
       # ensure we have the hash set
       game.players[side] ||= []
@@ -124,7 +124,7 @@ class GamesController < ApplicationController
       # ensure we have the hash set
       game.players ||= {}
 
-      side = params[:team_side]
+      side = params[:side]
 
       # ensure we have the hash set
       game.players[side] ||= []
