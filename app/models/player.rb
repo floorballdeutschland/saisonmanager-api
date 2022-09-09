@@ -340,6 +340,19 @@ class Player < ApplicationRecord
     result
   end
 
+  def fix_player_licenses!
+    team_ids = []
+    licenses.reject! do |l|
+      doublication = team_ids.include?(l['team_id'])
+      team_ids << l['team_id']
+
+      # filter licenses from current season
+      doublication && Setting.current_min_team <= l['team_id']
+    end
+
+    save!
+  end
+
   private
 
   def valid_time?(time, deadline)

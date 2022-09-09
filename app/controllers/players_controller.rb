@@ -128,6 +128,17 @@ class PlayersController < ApplicationController
     end
   end
 
+  def handle_license_doublication
+    if current_user && %w[jho_admin buettner_sbk].include?(current_user.user_name)
+      player = Player.find(params[:id])
+      player.fix_player_licenses!
+
+      render json: { success: true }
+    else
+      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+  end
+
   def admin_licenses
     # hole spieler
     league = League.find(params[:id])

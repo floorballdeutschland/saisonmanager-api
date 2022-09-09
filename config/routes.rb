@@ -105,6 +105,8 @@ Rails.application.routes.draw do
       resources :games
 
       get 'init', to: 'settings#init'
+
+      get 'admin/fixer/players/:id/fix_double_license', to: 'players#handle_license_doublication'
     end
   end
 
