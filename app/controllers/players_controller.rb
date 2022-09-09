@@ -98,11 +98,11 @@ class PlayersController < ApplicationController
     if (ph[:admin].present? || ph[:sbk].present?) && player.present?
       player.licenses.map! do |lic|
         if lic['id'] == params[:license_id]
-          last_status = license['history'].sort_by { |h| h['created_at'] }.last
+          last_status = lic['history'].sort_by { |h| h['created_at'] }.last
 
           if last_status['license_status_id'].to_i != params[:license_status_id].to_i && [License::APPROVED,
                                                                                           License::DENIED].include?(params[:license_status_id].to_i)
-            license['history'] << {
+            lic['history'] << {
               license_status_id: params[:license_status_id].to_i,
               reason: params[:reason] || '',
               created_by: current_user.id,

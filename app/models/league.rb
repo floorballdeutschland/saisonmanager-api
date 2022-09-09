@@ -495,7 +495,8 @@ class League < ApplicationRecord
         player_item[:team_license] = {
           license:,
           last_status:,
-          last_status_id: last_status_code,
+          last_status_id:,
+          last_status_code:,
           approved_at:,
           requested_at:
         }
