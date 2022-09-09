@@ -98,6 +98,8 @@ Rails.application.routes.draw do
 
       post 'user/games/:id/lineup/:side/add_player', to: 'games#add_player_to_lineup'
       post 'user/games/:id/lineup/:side/remove_player', to: 'games#remove_player'
+      post 'user/games/:id/lineup/:side/add_coach/:number', to: 'games#add_coach'
+      post 'user/games/:id/lineup/:side/remove_coach/:number', to: 'games#remove_coach'
       post 'user/games/:id/lineup/:side/set_captain', to: 'games#set_captain'
       post 'user/games/:id/events/add', to: 'games#add_event'
       post 'user/games/:id/events/remove', to: 'games#remove_event'

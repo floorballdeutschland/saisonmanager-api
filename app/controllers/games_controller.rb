@@ -110,6 +110,64 @@ class GamesController < ApplicationController
     end
   end
 
+  def add_coach
+    game = Game.find(params[:id])
+    # check if allowed
+
+    ph = current_user.permission_hash
+    allowed = if ph[:admin].present? || ph[:sbk].present?
+                true
+              elsif ph[:vm].present?
+                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
+                  ph[:vm].intersection([game.home_team.syndicate_clubs,
+                                        game.guest_team.syndicate_clubs].flatten.compact).present?
+              elsif ph[:tm].present?
+                ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
+              end
+
+    if allowed
+      side = params[:side]
+
+      # ensure we have the hash set
+      game.home_team_coaches ||= {}
+      game.guest_team_coaches ||= {}
+
+      last_name = params[:last_name].trim
+      first_name = params[:first_name].trim
+
+      full_name = [last_name, first_name].join ', '
+
+      if side == 'home'
+        prefix = "coach#{params[:number]}"
+        game.home_team_coaches["#{prefix}_string"] = full_name
+        game.home_team_coaches["#{prefix}_first_name"] = first_name
+        game.home_team_coaches["#{prefix}_last_name"] = last_name
+        key = "#{prefix}_signed"
+        game.home_team_coaches[key] = true if params[key]
+      else
+        prefix = "coach#{params[:number]}"
+        game.guest_team_coaches["#{prefix}_string"] = full_name
+        game.guest_team_coaches["#{prefix}_first_name"] = first_name
+        game.guest_team_coaches["#{prefix}_last_name"] = last_name
+        key = "#{prefix}_signed"
+        game.guest_team_coaches[key] = true if params[key]
+      end
+
+      game.record_created_at ||= Time.now
+      game.record_updated_at = Time.now
+      game.record_created_by ||= current_user.id
+      game.record_updated_by = current_user.id
+
+      if game.save
+        render json: game.players[side]
+      else
+        render json: { message: game.errors }, status: :unprocessable_entity
+      end
+    else
+      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+  end
+
   def set_captain
     game = Game.find(params[:id])
     # check if allowed
@@ -190,6 +248,50 @@ class GamesController < ApplicationController
 
       game.players[side].reject! do |p|
         p['trikot_number'].to_i == params[:trikot_number]
+      end
+
+      game.record_created_at ||= Time.now
+      game.record_updated_at = Time.now
+      game.record_created_by ||= current_user.id
+      game.record_updated_by = current_user.id
+
+      if game.save
+        render json: game.players[side]
+      else
+        render json: { message: game.errors }, status: :unprocessable_entity
+      end
+    else
+      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+  end
+
+  def remove_coach
+    game = Game.find(params[:id])
+    # check if allowed
+
+    ph = current_user.permission_hash
+    allowed = if ph[:admin].present? || ph[:sbk].present?
+                true
+              elsif ph[:vm].present?
+                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
+                  ph[:vm].intersection([game.home_team.syndicate_clubs,
+                                        game.guest_team.syndicate_clubs].flatten.compact).present?
+              elsif ph[:tm].present?
+                ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
+              end
+
+    if allowed
+      side = params[:side]
+
+      # ensure we have the hash set
+      game.home_team_coaches ||= {}
+      game.guest_team_coaches ||= {}
+
+      prefix = "coach#{params[:number]}"
+      if side == 'home'
+        game.home_team_coaches.reject! { |k, _v| k.starts_with?(prefix) }
+      else
+        game.guest_team_coaches.reject! { |k, _v| k.starts_with?(prefix) }
       end
 
       game.record_created_at ||= Time.now
