@@ -79,13 +79,6 @@ Rails.application.routes.draw do
       get 'admin/clubs/:id', to: 'clubs#admin_club'
       post 'admin/clubs', to: 'clubs#admin_club_update'
 
-      get 'user/clubs_and_teams', to: 'clubs#user_clubs_and_teams'
-      get 'user/team/:id/licenses', to: 'clubs#user_team_licenses'
-
-      post 'user/players/:id/request_license', to: 'players#request_license'
-      post 'user/players/:id/withdraw_license', to: 'players#withdraw_license_request'
-      get 'user/players/nations', to: 'players#user_get_nations'
-
       post 'admin/players/:id/transfer', to: 'players#transfer'
       post 'admin/players/:id/add_additional_club', to: 'players#add_additional_club'
 
@@ -99,6 +92,15 @@ Rails.application.routes.draw do
 
       get 'game_operations/:id/leagues/:season_id', to: 'game_operations#index_leagues'
       get 'game_operations/:id/leagues', to: 'game_operations#index_leagues'
+
+      get 'user/clubs_and_teams', to: 'clubs#user_clubs_and_teams'
+      get 'user/team/:id/licenses', to: 'clubs#user_team_licenses'
+
+      post 'user/games/:id/lineup/:side/add_player', to: 'games#add_player_to_lineup'
+
+      post 'user/players/:id/request_license', to: 'players#request_license'
+      post 'user/players/:id/withdraw_license', to: 'players#withdraw_license_request'
+      get 'user/players/nations', to: 'players#user_get_nations'
 
       get 'referees/:id/games', to: 'referee#games'
 
