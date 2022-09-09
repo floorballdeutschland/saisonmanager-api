@@ -302,6 +302,8 @@ class Game < ApplicationRecord
       audience:,
       home_team_name: home_team.name,
       guest_team_name: guest_team.name,
+      home_team_id:,
+      guest_team_id:,
       home_team_logo: home_team.logo_url,
       home_team_small_logo: home_team.logo_small_url,
       guest_team_logo: guest_team.logo_url,
