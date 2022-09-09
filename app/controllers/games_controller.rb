@@ -95,7 +95,7 @@ class GamesController < ApplicationController
         game.players[side] << item
 
         if game.save
-          render json: game.players[side]
+          render json: game.full_hash
         else
           render json: { message: game.errors }, status: :unprocessable_entity
         end
@@ -145,7 +145,7 @@ class GamesController < ApplicationController
       end
 
       if captain_set && game.save
-        render json: game.players[side]
+        render json: game.full_hash
       else
         render json: { message: game.errors }, status: :unprocessable_entity
       end
