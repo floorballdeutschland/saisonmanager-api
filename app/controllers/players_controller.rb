@@ -305,7 +305,7 @@ class PlayersController < ApplicationController
            end.include?(club.id)
 
           current_teams = club.current_teams
-          current_licenses = player.current_licenses_meta(current_teams).map { |l| l['team_id'] }
+          current_licenses = (player.current_licenses_meta(current_teams) || []).map { |l| l['team_id'] }
           # check for licenses for that club
           if current_licenses.empty?
 
