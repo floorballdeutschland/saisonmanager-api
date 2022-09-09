@@ -62,29 +62,33 @@ class PlayersController < ApplicationController
                 ph[:tm].include?(team.id)
               end
 
-    # TODO:
-    # prüfe ob eine lizenz für das team bereits vorliegt
-
     if allowed
-      # füge lizenz zu lizenzhash hinzu
-      new_license = {
-        id: Digest::UUID.uuid_v4,
-        team_id: team.id,
-        league_class_id: league.league_class_id,
-        male: !league.female,
-        history: [{
-          license_status_id: License::REQUESTED,
-          created_by: current_user.id,
-          created_at: Time.now
-        }]
-      }
-      player.licenses ||= []
-      player.licenses << new_license
+      # prüfe ob eine lizenz für das team bereits vorliegt
+      if !player.licenses.map { |l| l['team_id'].to_i }.include?(team.id)
 
-      if player.save
-        render json: { success: true }
+        # füge lizenz zu lizenzhash hinzu
+        new_license = {
+          id: Digest::UUID.uuid_v4,
+          team_id: team.id,
+          league_class_id: league.league_class_id,
+          male: !league.female,
+          history: [{
+            license_status_id: License::REQUESTED,
+            created_by: current_user.id,
+            created_at: Time.now
+          }]
+        }
+        player.licenses ||= []
+        player.licenses << new_license
+
+        if player.save
+          render json: { success: true }
+        else
+          render json: { message: player.errors }, status: :unprocessable_entity
+        end
       else
-        render json: { message: player.errors }, status: :unprocessable_entity
+        render json: { message: 'Der Spieler hat schon einen Lizenzantrag für dieses Team' },
+               status: :unprocessable_entity
       end
     else
       render json: { message: 'Keine Berechtigung für dieses Team!' }, status: :forbidden
