@@ -153,6 +153,14 @@ class PlayersController < ApplicationController
   end
 
   def withdraw_license_request
+    meta_user_license_change(License::WITHDRAWN)
+  end
+
+  def reenable_license_request
+    meta_user_license_change(License::REQUESTED)
+  end
+
+  def meta_user_license_change(status)
     # hole spieler
     player = Player.find(params[:id])
 
@@ -166,7 +174,7 @@ class PlayersController < ApplicationController
         found_license = license
 
         license['history'] << {
-          license_status_id: License::WITHDRAWN,
+          license_status_id: status,
           created_by: current_user.id,
           created_at: Time.now
         }
