@@ -226,7 +226,7 @@ class GamesController < ApplicationController
       # ensure we have the hash set
       game.events ||= []
 
-      max_row = game.events.map { |e| e['row'] }
+      max_row = game.events.map { |e| e['row'] }.max
 
       item = {
         row: max_row + 1,
