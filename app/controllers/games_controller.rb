@@ -191,4 +191,94 @@ class GamesController < ApplicationController
       render json: { message: 'Keine Berechtigung.' }, status: :forbidden
     end
   end
+
+  def add_event
+    game = Game.find(params[:id])
+    # check if allowed
+
+    ph = current_user.permission_hash
+    allowed = if ph[:admin].present? || ph[:sbk].present?
+                true
+              elsif ph[:vm].present?
+                ph[:vm].intersection?([game.home_team.club_id, game.guest_team.club_id]) ||
+                  ph[:vm].intersection([game.home_team.syndicate_clubs,
+                                        game.guest_team.syndicate_clubs].flatten.compact).present?
+              elsif ph[:tm].present?
+                ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
+              end
+
+    if allowed
+      # ensure we have the hash set
+      game.events ||= []
+
+      max_row = game.events.map { |e| e['row'] }
+
+      item = {
+        row: max_row + 1,
+        time: params[:time],
+        period: params[:period],
+        home_goals: params[:home_goals],
+        guest_goals: params[:guest_goals]
+      }
+
+      item[:home_number] = params[:home_number] if params[:home_number].present?
+      item[:home_assist] = params[:home_assist] if params[:home_assist].present?
+      item[:guest_number] = params[:guest_number] if params[:guest_number].present?
+      item[:guest_assist] = params[:guest_assist] if params[:guest_assist].present?
+
+      item[:event_type] = params[:event_type]
+
+      case params[:event_type]
+      when 'penalty'
+        item[:penalty_id] = params[:penalty_id]
+        item[:penalty_code_id] = params[:penalty_code_id]
+      when 'goal'
+        item[:goal_type] = params[:goal_type] if params[:goal_type].present?
+        item[:penalty_code_id] = params[:penalty_code_id] if params[:penalty_code_id].present?
+      end
+
+      game.events << item
+
+      if game.save
+        render json: game.events
+      else
+        render json: { message: game.errors }, status: :unprocessable_entity
+      end
+    else
+      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+  end
+
+  def remove_event
+    game = Game.find(params[:id])
+    # check if allowed
+
+    ph = current_user.permission_hash
+    allowed = if ph[:admin].present? || ph[:sbk].present?
+                true
+              elsif ph[:vm].present?
+                ph[:vm].intersection?([game.home_team.club_id, game.guest_team.club_id]) ||
+                  ph[:vm].intersection([game.home_team.syndicate_clubs,
+                                        game.guest_team.syndicate_clubs].flatten.compact).present?
+              elsif ph[:tm].present?
+                ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
+              end
+
+    if allowed
+      # ensure we have the hash set
+      game.events ||= []
+
+      game.events.reject! do |p|
+        p['row'].to_i == params[:row]
+      end
+
+      if game.save
+        render json: game.events
+      else
+        render json: { message: game.errors }, status: :unprocessable_entity
+      end
+    else
+      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+  end
 end
