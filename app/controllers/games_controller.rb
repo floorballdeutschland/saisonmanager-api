@@ -1,5 +1,5 @@
 class GamesController < ApplicationController
-  skip_before_action :authenticate_user
+  skip_before_action :authenticate_user, only: %i[index show]
 
   # GET /games
   def index
@@ -14,6 +14,24 @@ class GamesController < ApplicationController
     hash[:permission] = game.user_permissions(current_user) if current_user
 
     render json: hash
+  end
+
+  def editable
+    game = Game.find(params[:id])
+    # check if allowed
+
+      ph = current_user.permission_hash
+      allowed = if ph[:admin].present? || ph[:sbk].present?
+                  true
+                elsif ph[:vm].present?
+                  ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
+                    ph[:vm].intersection([game.home_team.syndicate_clubs,
+                                          game.guest_team.syndicate_clubs].flatten.compact).present?
+                elsif ph[:tm].present?
+                  ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
+                end
+
+    render json: allowed
   end
 
   def users_games
