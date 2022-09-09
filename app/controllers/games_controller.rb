@@ -94,6 +94,11 @@ class GamesController < ApplicationController
 
         game.players[side] << item
 
+      game.record_created_at ||= Time.now
+      game.record_updated_at = Time.now
+      game.record_created_by ||= current_user.id
+      game.record_updated_by = current_user.id
+
         if game.save
           render json: game.players[side]
         else
@@ -144,6 +149,11 @@ class GamesController < ApplicationController
         p
       end
 
+      game.record_created_at ||= Time.now
+      game.record_updated_at = Time.now
+      game.record_created_by ||= current_user.id
+      game.record_updated_by = current_user.id
+
       if captain_set && game.save
         render json: game.players[side]
       else
@@ -181,6 +191,11 @@ class GamesController < ApplicationController
       game.players[side].reject! do |p|
         p['trikot_number'].to_i == params[:trikot_number]
       end
+
+      game.record_created_at ||= Time.now
+      game.record_updated_at = Time.now
+      game.record_created_by ||= current_user.id
+      game.record_updated_by = current_user.id
 
       if game.save
         render json: game.players[side]
@@ -239,6 +254,11 @@ class GamesController < ApplicationController
 
       game.events << item
 
+      game.record_created_at ||= Time.now
+      game.record_updated_at = Time.now
+      game.record_created_by ||= current_user.id
+      game.record_updated_by = current_user.id
+
       if game.save
         render json: game.events
       else
@@ -271,6 +291,10 @@ class GamesController < ApplicationController
       game.events.reject! do |p|
         p['row'].to_i == params[:row]
       end
+      game.record_created_at ||= Time.now
+      game.record_updated_at = Time.now
+      game.record_created_by ||= current_user.id
+      game.record_updated_by = current_user.id
 
       if game.save
         render json: game.events
@@ -280,5 +304,79 @@ class GamesController < ApplicationController
     else
       render json: { message: 'Keine Berechtigung.' }, status: :forbidden
     end
+  end
+
+  def set_flag
+    game = Game.find(params[:id])
+    # check if allowed
+
+    ph = current_user.permission_hash
+    allowed = if ph[:admin].present? || ph[:sbk].present?
+                true
+              elsif ph[:vm].present?
+                ph[:vm].intersection?([game.home_team.club_id, game.guest_team.club_id]) ||
+                  ph[:vm].intersection([game.home_team.syndicate_clubs,
+                                        game.guest_team.syndicate_clubs].flatten.compact).present?
+              elsif ph[:tm].present?
+                ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
+              end
+
+    if allowed
+      game.record_created_at ||= Time.now
+      game.record_updated_at = Time.now
+      game.record_created_by ||= current_user.id
+      game.record_updated_by = current_user.id
+
+      if game.update(game_flag_params)
+        render json: game.events
+      else
+        render json: { message: game.errors }, status: :unprocessable_entity
+      end
+    else
+      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+  end
+
+  def set_string
+    game = Game.find(params[:id])
+    # check if allowed
+
+    ph = current_user.permission_hash
+    allowed = if ph[:admin].present? || ph[:sbk].present?
+                true
+              elsif ph[:vm].present?
+                ph[:vm].intersection?([game.home_team.club_id, game.guest_team.club_id]) ||
+                  ph[:vm].intersection([game.home_team.syndicate_clubs,
+                                        game.guest_team.syndicate_clubs].flatten.compact).present?
+              elsif ph[:tm].present?
+                ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
+              end
+
+    if allowed
+      game.record_created_at ||= Time.now
+      game.record_updated_at = Time.now
+      game.record_created_by ||= current_user.id
+      game.record_updated_by = current_user.id
+      if game.update(game_value_params)
+        render json: game.events
+      else
+        render json: { message: game.errors }, status: :unprocessable_entity
+      end
+    else
+      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+  end
+
+  def game_flag_params
+    params.require(:game).permit(:started, :ended,
+                                 :time_keeper_signed, :record_keeper_signed, :referee1_signed, :referee2_signed,
+                                 :protest, :special_event, :playoff, :overtime,
+                                 :home_captain_signed, :guest_captain_signed)
+  end
+
+  def game_value_params
+    params.require(:game).permit(:audience, :start_time,
+                                 :guest_timeout_string, :referee1_signed,
+                                 :time_keeper_string, :record_keeper_string)
   end
 end

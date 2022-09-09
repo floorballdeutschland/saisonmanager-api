@@ -102,6 +102,9 @@ Rails.application.routes.draw do
       post 'user/games/:id/events/add', to: 'games#add_event'
       post 'user/games/:id/events/remove', to: 'games#remove_event'
 
+      post 'user/games/:id/set_flag', to: 'games#set_flag'
+      post 'user/games/:id/set_field', to: 'games#set_string'
+
       get 'user/leagues/penalties', to: 'leagues#penalties'
       get 'user/leagues/penalty_codes', to: 'leagues#penalty_codes'
 
