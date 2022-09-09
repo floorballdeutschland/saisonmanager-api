@@ -57,7 +57,7 @@ class GamesController < ApplicationController
     allowed = if ph[:admin].present? || ph[:sbk].present?
                 true
               elsif ph[:vm].present?
-                ph[:vm].intersection?([game.home_team.club_id, game.guest_team.club_id]) ||
+                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
                   ph[:vm].intersection([game.home_team.syndicate_clubs,
                                         game.guest_team.syndicate_clubs].flatten.compact).present?
               elsif ph[:tm].present?
@@ -94,10 +94,10 @@ class GamesController < ApplicationController
 
         game.players[side] << item
 
-      game.record_created_at ||= Time.now
-      game.record_updated_at = Time.now
-      game.record_created_by ||= current_user.id
-      game.record_updated_by = current_user.id
+        game.record_created_at ||= Time.now
+        game.record_updated_at = Time.now
+        game.record_created_by ||= current_user.id
+        game.record_updated_by = current_user.id
 
         if game.save
           render json: game.players[side]
@@ -118,7 +118,7 @@ class GamesController < ApplicationController
     allowed = if ph[:admin].present? || ph[:sbk].present?
                 true
               elsif ph[:vm].present?
-                ph[:vm].intersection?([game.home_team.club_id, game.guest_team.club_id]) ||
+                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
                   ph[:vm].intersection([game.home_team.syndicate_clubs,
                                         game.guest_team.syndicate_clubs].flatten.compact).present?
               elsif ph[:tm].present?
@@ -172,7 +172,7 @@ class GamesController < ApplicationController
     allowed = if ph[:admin].present? || ph[:sbk].present?
                 true
               elsif ph[:vm].present?
-                ph[:vm].intersection?([game.home_team.club_id, game.guest_team.club_id]) ||
+                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
                   ph[:vm].intersection([game.home_team.syndicate_clubs,
                                         game.guest_team.syndicate_clubs].flatten.compact).present?
               elsif ph[:tm].present?
@@ -215,7 +215,7 @@ class GamesController < ApplicationController
     allowed = if ph[:admin].present? || ph[:sbk].present?
                 true
               elsif ph[:vm].present?
-                ph[:vm].intersection?([game.home_team.club_id, game.guest_team.club_id]) ||
+                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
                   ph[:vm].intersection([game.home_team.syndicate_clubs,
                                         game.guest_team.syndicate_clubs].flatten.compact).present?
               elsif ph[:tm].present?
@@ -277,7 +277,7 @@ class GamesController < ApplicationController
     allowed = if ph[:admin].present? || ph[:sbk].present?
                 true
               elsif ph[:vm].present?
-                ph[:vm].intersection?([game.home_team.club_id, game.guest_team.club_id]) ||
+                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
                   ph[:vm].intersection([game.home_team.syndicate_clubs,
                                         game.guest_team.syndicate_clubs].flatten.compact).present?
               elsif ph[:tm].present?
@@ -314,7 +314,7 @@ class GamesController < ApplicationController
     allowed = if ph[:admin].present? || ph[:sbk].present?
                 true
               elsif ph[:vm].present?
-                ph[:vm].intersection?([game.home_team.club_id, game.guest_team.club_id]) ||
+                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
                   ph[:vm].intersection([game.home_team.syndicate_clubs,
                                         game.guest_team.syndicate_clubs].flatten.compact).present?
               elsif ph[:tm].present?
@@ -345,7 +345,7 @@ class GamesController < ApplicationController
     allowed = if ph[:admin].present? || ph[:sbk].present?
                 true
               elsif ph[:vm].present?
-                ph[:vm].intersection?([game.home_team.club_id, game.guest_team.club_id]) ||
+                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
                   ph[:vm].intersection([game.home_team.syndicate_clubs,
                                         game.guest_team.syndicate_clubs].flatten.compact).present?
               elsif ph[:tm].present?
