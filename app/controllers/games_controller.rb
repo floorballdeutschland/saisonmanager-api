@@ -104,4 +104,53 @@ class GamesController < ApplicationController
       render json: { message: 'Keine Berechtigung.' }, status: :forbidden
     end
   end
+
+  def set_captain
+    game = Game.find(params[:id])
+    # check if allowed
+
+    ph = current_user.permission_hash
+    allowed = if ph[:admin].present? || ph[:sbk].present?
+                true
+              elsif ph[:vm].present?
+                ph[:vm].intersection?([game.home_team.club_id, game.guest_team.club_id]) ||
+                  ph[:vm].intersection([game.home_team.syndicate_clubs,
+                                        game.guest_team.syndicate_clubs].flatten.compact).present?
+              elsif ph[:tm].present?
+                ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
+              end
+
+    if allowed
+      # ensure we have the hash set
+      game.players ||= {}
+
+      side = params[:team_side]
+
+      # ensure we have the hash set
+      game.players[side] ||= []
+
+      captain_set = false
+
+      # check if we have a entry for that player
+
+      game.players[side].map! do |p|
+        p.except!('captain') if p['captain'].present?
+
+        if p['trikot_number'].to_i == params[:trikot_number].to_i
+          captain_set = true
+          p['captain'] = true
+        end
+
+        p
+      end
+
+      if captain_set && game.save
+        render json: game.players[side]
+      else
+        render json: { message: game.errors }, status: :unprocessable_entity
+      end
+    else
+      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+  end
 end
