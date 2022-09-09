@@ -47,7 +47,13 @@ class League < ApplicationRecord
   end
 
   def period_titles
-    if period_count_normal_game == 3
+    thirds = if legacy_league
+               period_count_normal_game == 3
+             else
+               periods == 3
+             end
+
+    if thirds
       [
         { period: 1, title: '1. Drittel' },
         { period: 2, title: '2. Drittel' },
