@@ -379,6 +379,14 @@ class LeaguesController < ApplicationController
     render json: @league.meta_item
   end
 
+  def penalties
+    render json: Setting.current.penalties.reject{ |k,v| v['disabled'].present? }.map{ |k,v| v['id'] = k; v}.sort_by { |i| i['order'] }
+  end
+
+  def penalty_codes
+    render json: Setting.current.penalty_codes.select{ |k,v| v['active'].present? }.map{ |k,v| v['id'] = k; v}
+  end
+
   def league_params
     params.require(:league).permit(:before_deadline, :deadline, :female, :game_operation_id,
                                    :league_category_id, :league_class_id, :league_system_id, :name, :order_key,
