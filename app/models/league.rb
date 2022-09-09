@@ -490,7 +490,7 @@ class League < ApplicationRecord
         approved_at = (last_status['created_at'].to_datetime.strftime('%d.%m.%Y %H:%M:%S') if last_status_id == 1)
         requested_at = license['history'].select do |lh|
                          lh['license_status_id'] == 2
-                       end.last['created_at'].to_datetime.strftime('%d.%m.%Y %H:%M:%S')
+                       end.last['created_at'].to_datetime
 
         player_item[:team_license] = {
           license:,
