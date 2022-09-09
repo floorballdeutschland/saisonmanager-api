@@ -65,6 +65,22 @@ class League < ApplicationRecord
     end
   end
 
+  def period_title(period)
+    period_titles.select { |pt| pt[:period] == period }.first
+  end
+
+  def period_time(period)
+    return period_length if period <= periods
+
+    return overtime_length if period == periods + 1
+
+    0
+  end
+
+  def period_is_extratime(period)
+    period == periods + 1
+  end
+
   def full_hash(include_similar_leagues = false)
     result = {
       id:,
