@@ -63,6 +63,8 @@ class PlayersController < ApplicationController
               end
 
     if allowed
+      player.licenses ||= []
+
       # prüfe ob eine lizenz für das team bereits vorliegt
       if !player.licenses.map { |l| l['team_id'].to_i }.include?(team.id)
 
