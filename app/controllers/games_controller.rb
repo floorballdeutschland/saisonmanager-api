@@ -500,6 +500,48 @@ class GamesController < ApplicationController
     end
   end
 
+  def set_referee
+    game = Game.find(params[:id])
+    # check if allowed
+
+    ph = current_user.permission_hash
+    allowed = if ph[:admin].present? || ph[:sbk].present?
+                true
+              elsif ph[:vm].present?
+                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
+                  ph[:vm].intersection([game.home_team.syndicate_clubs,
+                                        game.guest_team.syndicate_clubs].flatten.compact).present?
+              elsif ph[:tm].present?
+                ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
+              end
+
+    if allowed
+      ref_num = params[:referee_number].to_i
+
+      game.referee_ids ||= []
+      game.referee_ids[ref_num] = (params[:license_id] || 0).to_i
+
+      name = "#{game.referee_ids[ref_num]} #{params[:lastname]}, #{params[:firstname]}"
+
+      if ref_num == 1
+        game.referee1_string = name
+      else
+        game.referee2_string = name
+      end
+
+      game.record_updated_at = Time.now
+      game.record_updated_by = current_user.id
+
+      if game.save
+        render json: game.referees
+      else
+        render json: { message: game.errors }, status: :unprocessable_entity
+      end
+    else
+      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+  end
+
   def game_flag_params
     params.require(:game).permit(:started, :ended,
                                  :time_keeper_signed, :record_keeper_signed, :referee1_signed, :referee2_signed,

@@ -103,6 +103,7 @@ Rails.application.routes.draw do
       post 'user/games/:id/lineup/:side/set_captain', to: 'games#set_captain'
       post 'user/games/:id/events/add', to: 'games#add_event'
       post 'user/games/:id/events/remove', to: 'games#remove_event'
+      post 'user/games/:id/referees/:referee_number', to: 'games#set_referee'
 
       get 'user/games/:id/editable', to: 'games#editable'
 
