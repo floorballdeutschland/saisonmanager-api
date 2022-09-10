@@ -664,6 +664,15 @@ class Game < ApplicationRecord
     errors
   end
 
+  def sort_events!
+    events.sort_by! { |e| [e['period'], e['time'].rjust(5, '0'), e['id'], e['row']] }
+    events.map!.with_index do |e, i|
+      e['row'] = i + 1
+
+      e
+    end
+  end
+
   def deletable
     !started?
   end

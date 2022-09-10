@@ -28,16 +28,16 @@ class GamesController < ApplicationController
     game = Game.find(params[:id])
     # check if allowed
 
-      ph = current_user.permission_hash
-      allowed = if ph[:admin].present? || ph[:sbk].present?
-                  true
-                elsif ph[:vm].present?
-                  ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
-                    ph[:vm].intersection([game.home_team.syndicate_clubs,
-                                          game.guest_team.syndicate_clubs].flatten.compact).present?
-                elsif ph[:tm].present?
-                  ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
-                end
+    ph = current_user.permission_hash
+    allowed = if ph[:admin].present? || ph[:sbk].present?
+                true
+              elsif ph[:vm].present?
+                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
+                  ph[:vm].intersection([game.home_team.syndicate_clubs,
+                                        game.guest_team.syndicate_clubs].flatten.compact).present?
+              elsif ph[:tm].present?
+                ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
+              end
 
     render json: allowed
   end
@@ -354,10 +354,10 @@ class GamesController < ApplicationController
       # ensure we have the hash set
       game.events ||= []
 
-      max_row = game.events.map { |e| e['row'] }.max || 0
+      max_id = game.events.map { |e| e['id'] }.max || 0
 
       item = {
-        row: max_row + 1,
+        id: max_id + 1,
         time: params[:time],
         period: params[:period],
         home_goals: params[:home_goals],
@@ -381,6 +381,8 @@ class GamesController < ApplicationController
       end
 
       game.events << item
+
+      game.sort_events!
 
       game.record_created_at ||= Time.now
       game.record_updated_at = Time.now
@@ -417,8 +419,11 @@ class GamesController < ApplicationController
       game.events ||= []
 
       game.events.reject! do |p|
-        p['row'].to_i == params[:row]
+        p['id'].to_i == params[:event_id].to_i
       end
+
+      game.sort_events!
+
       game.record_created_at ||= Time.now
       game.record_updated_at = Time.now
       game.record_created_by ||= current_user.id
