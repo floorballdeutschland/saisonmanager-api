@@ -390,7 +390,7 @@ class GamesController < ApplicationController
       game.record_updated_by = current_user.id
 
       if game.save
-        render json: game.events
+        render json: game.formatted_events
       else
         render json: { message: game.errors }, status: :unprocessable_entity
       end
@@ -430,7 +430,7 @@ class GamesController < ApplicationController
       game.record_updated_by = current_user.id
 
       if game.save
-        render json: game.events
+        render json: game.formatted_events
       else
         render json: { message: game.errors }, status: :unprocessable_entity
       end
