@@ -331,6 +331,28 @@ class Game < ApplicationRecord
     }
   end
 
+  def hidden_elements
+    {
+      time_keeper_signed:,
+      record_keeper_signed:,
+      referee1_signed:,
+      referee2_signed:,
+
+      home_captain_signed:,
+      guest_captain_signed:,
+
+      protest:,
+      special_event:,
+      playoff:,
+      overtime:,
+
+      home_timeout_string:,
+      guest_timeout_string:,
+      time_keeper_string:,
+      record_keeper_string:
+    }
+  end
+
   def meta_hash
     {
       id:,
@@ -683,6 +705,7 @@ class Game < ApplicationRecord
   end
 
   def self.start_end_games
+    return
     gds = GameDay.where date: Date.today
     games = gds.map(&:games).map(&:all).flatten
     t = Time.now

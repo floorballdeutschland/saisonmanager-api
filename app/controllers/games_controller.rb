@@ -16,6 +16,14 @@ class GamesController < ApplicationController
     render json: hash
   end
 
+  def show_hidden
+    game = Game.find(params[:id])
+
+    hash = game.hidden_elements
+
+    render json: hash
+  end
+
   def editable
     game = Game.find(params[:id])
     # check if allowed
@@ -496,7 +504,7 @@ class GamesController < ApplicationController
 
   def game_value_params
     params.require(:game).permit(:audience, :start_time,
-                                 :guest_timeout_string, :referee1_signed,
+                                 :home_timeout_string, :guest_timeout_string,
                                  :time_keeper_string, :record_keeper_string)
   end
 end
