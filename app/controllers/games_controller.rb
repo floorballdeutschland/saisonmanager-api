@@ -362,7 +362,7 @@ class GamesController < ApplicationController
         period: params[:period],
         home_goals: params[:home_goals],
         guest_goals: params[:guest_goals]
-      }
+      }.with_indifferent_access
 
       item[:home_number] = params[:home_number] if params[:home_number].present?
       item[:home_assist] = params[:home_assist] if params[:home_assist].present?
