@@ -511,6 +511,7 @@ class Game < ApplicationRecord
              end
 
     {
+      event_id: 9000 + (team == 'home' ? 1 : 2),
       event_type: 'timeout',
       event_team: team,
       period:,
@@ -522,6 +523,7 @@ class Game < ApplicationRecord
   def formatted_events
     result = (events || []).map do |event|
       e = {
+        event_id: event['id'],
         event_type: nil,
         event_team: nil,
         period: event['period'],
