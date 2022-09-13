@@ -297,6 +297,7 @@ class Game < ApplicationRecord
       id:,
       game_number:,
       start_time:,
+      actual_start_time:,
       date: game_day.date,
       game_day: league.game_day_title_hash(game_day.number),
       audience:,

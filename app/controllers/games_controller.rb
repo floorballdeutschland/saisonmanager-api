@@ -550,7 +550,7 @@ class GamesController < ApplicationController
   end
 
   def game_value_params
-    params.require(:game).permit(:audience, :start_time,
+    params.require(:game).permit(:audience, :actual_start_time,
                                  :home_timeout_string, :guest_timeout_string,
                                  :time_keeper_string, :record_keeper_string)
   end
