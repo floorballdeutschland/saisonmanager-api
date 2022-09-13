@@ -86,7 +86,7 @@ class Game < ApplicationRecord
   end
 
   def result
-    return unless events.present? || forfait?
+    return if (legacy && !(events.present? || forfait?)) || (!legacy && !started)
 
     home_goals_period = [0, 0, 0, 0]
     guest_goals_period = [0, 0, 0, 0]
@@ -94,24 +94,32 @@ class Game < ApplicationRecord
     last_item = nil
 
     if !forfait?
-      home_previous_goals = 0
-      guest_previous_goals = 0
+      if events.present?
 
-      events.sort_by { |e| e[:row] }.each do |e|
-        home_goals = e['home_goals'].to_i
-        guest_goals = e['guest_goals'].to_i
+        home_previous_goals = 0
+        guest_previous_goals = 0
 
-        next unless home_goals.present? && guest_goals.present?
+        events.sort_by { |e| e[:row] }.each do |e|
+          home_goals = e['home_goals'].to_i
+          guest_goals = e['guest_goals'].to_i
 
-        if last_item.present? && (e['period'] > last_item['period'])
-          home_previous_goals = last_item['home_goals'].to_i
-          guest_previous_goals = last_item['guest_goals'].to_i
+          next unless home_goals.present? && guest_goals.present?
+
+          if last_item.present? && (e['period'] > last_item['period'])
+            home_previous_goals = last_item['home_goals'].to_i
+            guest_previous_goals = last_item['guest_goals'].to_i
+          end
+
+          home_goals_period[e['period'].to_i - 1] = home_goals - home_previous_goals
+          guest_goals_period[e['period'].to_i - 1] = guest_goals - guest_previous_goals
+
+          last_item = e
         end
-
-        home_goals_period[e['period'].to_i - 1] = home_goals - home_previous_goals
-        guest_goals_period[e['period'].to_i - 1] = guest_goals - guest_previous_goals
-
-        last_item = e
+      else
+        last_item = {
+          'home_goals' => 0,
+          'guest_goals' => 0
+        }
       end
     else
       last_item = if forfait == 1
