@@ -370,6 +370,7 @@ class GamesController < ApplicationController
       item[:guest_assist] = params[:guest_assist] if params[:guest_assist].present?
 
       item[:event_type] = params[:event_type]
+      item[:event_team] = params[:event_team]
 
       case params[:event_type]
       when 'penalty'

@@ -536,14 +536,16 @@ class Game < ApplicationRecord
 
       owngoal = false
 
+      e[:event_team] = event['event_team']
+
       if event['home_number'].present?
-        e[:event_team] = 'home'
+        e[:event_team] = 'home' if legacy
         e[:number] = event['home_number']
         owngoal = true if event['home_number'] == 1000
         e[:assist] = event['home_assist'] if event['home_assist'].present?
 
       elsif event['guest_number'].present?
-        e[:event_team] = 'guest'
+        e[:event_team] = 'guest' if legacy
         e[:number] = event['guest_number']
         owngoal = true if event['guest_number'] == 1000
         e[:assist] = event['guest_assist'] if event['guest_assist'].present?
@@ -669,8 +671,24 @@ class Game < ApplicationRecord
 
   def sort_events!
     events.sort_by! { |e| [e['period'], e['time'].rjust(5, '0'), e['id'], e['row']] }
+    home_score = 0
+    guest_score = 0
+
     events.map!.with_index do |e, i|
       e['row'] = i + 1
+
+      unless legacy
+        if e['event_type'] == 'goal'
+          if e['event_team'] == 'home'
+            home_score += 1
+          else
+            guest_score += 1
+          end
+        end
+
+        e['home_goals'] = home_score
+        e['guest_goals'] = guest_score
+      end
 
       e
     end
