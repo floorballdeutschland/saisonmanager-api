@@ -735,6 +735,7 @@ class Game < ApplicationRecord
 
     # edit all game info
     perm << :edit_game_report if admin || sbk || user.permission_hash[:vm].to_a.include?(game_day_club_id)
+    # TODO: add TM access on club level
 
     # edit all game info
     perm << :edit_game if admin || sbk
