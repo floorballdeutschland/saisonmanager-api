@@ -192,18 +192,42 @@ class League < ApplicationRecord
   end
 
   def won_points
-    # TODO: old replace with parameter in new system
-    league_system_id.to_i == 1 ? 3 : 2
+    if legacy_league
+      league_system_id.to_i == 1 ? 3 : 2
+    else
+      case table_modus
+      when 'classic'
+        3
+      else
+        10
+      end
+    end
   end
 
   def draw_points
-    # TODO: old replace with parameter in new system
-    league_system_id.to_i == 1 ? 1 : 0
+    if legacy_league
+      league_system_id.to_i == 1 ? 1 : 0
+    else
+      case table_modus
+      when 'classic'
+        1
+      else
+        1
+      end
+    end
   end
 
   def won_overtime_points
-    # TODO: old replace with parameter in new system
-    league_system_id.to_i == 1 ? 2 : 0
+    if legacy_league
+      league_system_id.to_i == 1 ? 2 : 0
+    else
+      case table_modus
+      when 'classic'
+        2
+      else
+        0
+      end
+    end
   end
 
   def lost_overtime_points
