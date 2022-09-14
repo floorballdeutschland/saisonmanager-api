@@ -355,6 +355,9 @@ class Game < ApplicationRecord
       playoff:,
       overtime:,
 
+      home_team_coaches:,
+      guest_team_coaches:,
+
       home_timeout_string:,
       guest_timeout_string:,
       time_keeper_string:,
