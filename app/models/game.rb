@@ -498,7 +498,7 @@ class Game < ApplicationRecord
 
     return unless match.present? && match['time'].present?
 
-    match_period = %r{(?<period>I+)|/(?<period_number>\d{1})}.match timeout_string
+    match_period = %r{(?<period>(I|V)+)|/\s?(?<period_number>\d{1})}.match timeout_string
 
     return unless match_period.present? && (match_period['period'].present? || match_period['period_number'].present?)
 
