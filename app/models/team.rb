@@ -9,6 +9,14 @@ class Team < ApplicationRecord
     Task.where('home_team = ? OR guest_team = ?', id, id)
   end
 
+  def all_league_ids
+    [cup_leagues, league_id].compact.flatten
+  end
+
+  def leagues
+    League.where(id: all_league_ids)
+  end
+
   def licenses
     Player.find_by_team_id(id)
   end

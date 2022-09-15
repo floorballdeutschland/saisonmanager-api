@@ -46,12 +46,22 @@ class ClubsController < ApplicationController
 
     team = Team.find(params[:id])
 
+    # get leagues for team
+    leagues = team.leagues
+    # get playing clubs, including sg
+    teams = leagues.map(&:teams).flatten.compact.uniq
+    club_ids = teams.map(&:all_club_ids).flatten.compact.uniq
+    # get hosting clubs
+    all_club_ids = [club_ids, leagues.map { |l| l.game_days.map(&:club_id) }].flatten.compact.uniq
+
     allowed = if ph[:admin].present? || ph[:sbk].present?
                 true
               elsif ph[:vm].present?
-                ph[:vm].include?(team.club_id) || ph[:vm].intersection(team.syndicate_clubs).present?
+                # vm: permission for one of those clubs?
+                ph[:vm].intersection(all_club_ids).present?
               elsif ph[:tm].present?
-                ph[:tm].include?(team.id)
+                # tm: get clubs for league teams of given team, permission for one of those?
+                ph[:tm].intersection(teams.map(&:id)).present?
               end
 
     if allowed
