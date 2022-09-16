@@ -361,7 +361,8 @@ class Game < ApplicationRecord
       home_timeout_string:,
       guest_timeout_string:,
       time_keeper_string:,
-      record_keeper_string:
+      record_keeper_string:,
+      record_comment:
     }
   end
 
