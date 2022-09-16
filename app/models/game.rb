@@ -242,6 +242,8 @@ class Game < ApplicationRecord
       penalty_2and2: 0,
       penalty_5: 0,
       penalty_10: 0,
+      penalty_ms_tech: 0,
+      penalty_ms_full: 0,
       penalty_ms1: 0,
       penalty_ms2: 0,
       penalty_ms3: 0,
