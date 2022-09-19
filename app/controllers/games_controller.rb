@@ -158,8 +158,8 @@ class GamesController < ApplicationController
       game.home_team_coaches ||= {}
       game.guest_team_coaches ||= {}
 
-      last_name = params[:last_name].trim
-      first_name = params[:first_name].trim
+      last_name = params[:last_name].strip
+      first_name = params[:first_name].strip
 
       full_name = [last_name, first_name].join ', '
 
