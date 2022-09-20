@@ -543,6 +543,17 @@ class GamesController < ApplicationController
     end
   end
 
+  def reopen_game
+    if current_user && %w[jho_admin buettner_sbk].include?(current_user.user_name)
+      game = Game.find(params[:id])
+      game.update(ended: false)
+
+      render json: { success: true }
+    else
+      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+  end
+
   def game_flag_params
     params.require(:game).permit(:started, :ended,
                                  :time_keeper_signed, :record_keeper_signed, :referee1_signed, :referee2_signed,
