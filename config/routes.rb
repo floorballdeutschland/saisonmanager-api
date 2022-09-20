@@ -129,7 +129,7 @@ Rails.application.routes.draw do
       get 'init', to: 'settings#init'
 
       get 'admin/fixer/players/:id/fix_double_license', to: 'players#handle_license_doublication'
-      get 'admin/fixer/game/:id/reopen', to: 'games#reopen_game'
+      get 'admin/fixer/games/:id/reopen', to: 'games#reopen_game'
     end
   end
 
