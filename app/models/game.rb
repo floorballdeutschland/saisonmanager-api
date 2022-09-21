@@ -549,6 +549,7 @@ class Game < ApplicationRecord
       }
 
       owngoal = false
+      nagoal = false
 
       e[:event_team] = event['event_team']
 
@@ -556,12 +557,14 @@ class Game < ApplicationRecord
         e[:event_team] = 'home' if legacy
         e[:number] = event['home_number']
         owngoal = true if event['home_number'] == 1000
+        nagoal  = true if event['home_number'] == 2000
         e[:assist] = event['home_assist'] if event['home_assist'].present?
 
       elsif event['guest_number'].present?
         e[:event_team] = 'guest' if legacy
         e[:number] = event['guest_number']
         owngoal = true if event['guest_number'] == 1000
+        nagoal  = true if event['guest_number'] == 2000
         e[:assist] = event['guest_assist'] if event['guest_assist'].present?
       else
         Sentry.capture_message("missing scorer, game: #{id}, event: #{event.to_json}, #{error_meta_info}")
@@ -580,8 +583,17 @@ class Game < ApplicationRecord
       else
         e[:event_type] = :goal
         if event['penalty_code_id'].to_i != 23
-          e[:goal_type] = :regular
-          e[:goal_type_string] = owngoal ? 'Eigentor' : 'Tor'
+          if owngoal
+            e[:goal_type] = :owngoal
+            e[:goal_type_string] = 'Eigentor'
+          elsif nagoal
+            e[:goal_type] = :not_assigned
+            e[:goal_type_string] = 'nicht angegeben'
+          else
+            e[:goal_type] = :regular
+            e[:goal_type_string] = 'Tor'
+          end
+
         elsif event['time'] == '70:00'
           e[:goal_type] = :penalty_shots
           e[:goal_type_string] = 'Entscheidung im Penalty-Schießen'
