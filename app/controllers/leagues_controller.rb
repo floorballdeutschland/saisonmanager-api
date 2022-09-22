@@ -379,6 +379,16 @@ class LeaguesController < ApplicationController
     render json: @league.meta_item
   end
 
+  def additional_references
+    league = League.find(params[:id])
+
+    render json: {
+      arenas: Arena.active.order(:city, :name).map(&:full_hash),
+      teams: league.teams.map(&:full_hash),
+      clubs: teams.map(&:all_clubs).flatten.uniq.map(&:full_hash)
+    }
+  end
+
   def penalties
     render json: Setting.current.penalties.reject{ |k,v| v['disabled'].present? }.map{ |k,v| v['id'] = k; v}.sort_by { |i| i['order'] }
   end

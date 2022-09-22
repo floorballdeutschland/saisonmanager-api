@@ -71,6 +71,7 @@ Rails.application.routes.draw do
       get 'admin/leagues/:id/teams', to: 'leagues#admin_league_team_index'
       get 'admin/leagues/:id/game_schedule', to: 'leagues#admin_game_schedule'
       get 'admin/leagues/:id/schedule_import_template', to: 'leagues#admin_schedule_import_template'
+      get 'admin/leagues/:id/additional_references', to: 'leagues#additional_references'
       get 'admin/leagues/:id/licenses', to: 'players#admin_licenses'
 
       get 'admin/teams/:id', to: 'teams#admin_get_team'
