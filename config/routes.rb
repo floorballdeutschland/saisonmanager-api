@@ -115,6 +115,8 @@ Rails.application.routes.draw do
       get 'user/leagues/penalties', to: 'leagues#penalties'
       get 'user/leagues/penalty_codes', to: 'leagues#penalty_codes'
 
+      get 'user/leagues/:id/licenses', to: 'players#user_licenses_temp'
+
       post 'user/players/:id/request_license', to: 'players#request_license'
       post 'user/players/:id/withdraw_license', to: 'players#withdraw_license_request'
       post 'user/players/:id/reenable_license_request', to: 'players#reenable_license_request'
