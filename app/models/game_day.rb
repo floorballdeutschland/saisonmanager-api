@@ -13,6 +13,10 @@ class GameDay < ApplicationRecord
     club.name if club.present?
   end
 
+  def deletable?
+    !games.present?
+  end
+
   def full_hash(with_games = false)
     h = {
       id:,
@@ -22,6 +26,7 @@ class GameDay < ApplicationRecord
       club: club&.full_hash,
       date:,
       league_id:,
+      deletable: deletable?,
       number:
     }
 

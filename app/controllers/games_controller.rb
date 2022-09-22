@@ -16,6 +16,74 @@ class GamesController < ApplicationController
     render json: hash
   end
 
+  # POST /games
+  def create
+    game = Game.new(game_create_update_params)
+
+    allowed = if ph[:admin].present? || ph[:sbk].present?
+                # TODO: Check if correct association
+                true
+              else
+                false
+              end
+
+    if allowed
+      if game.save
+
+        render json: { success: true }, status: :created
+      else
+        render json: { success: false, error: game.errors }, status: 400
+      end
+    else
+      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+  end
+
+  # PATCH /games/1
+  def update
+    allowed = if ph[:admin].present? || ph[:sbk].present?
+                # TODO: Check if correct association
+                true
+              else
+                false
+              end
+
+    if allowed
+      game = Game.find(params[:id])
+      if game.update(game_create_update_params)
+
+        render json: { success: true }
+      else
+        render json: { success: false, error: game.errors }, status: 400
+      end
+    else
+      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+  end
+
+  # DELETE /games/1
+  def destroy
+    game = Game.find(params[:id])
+
+    allowed = if ph[:admin].present? || ph[:sbk].present?
+                # TODO: Check if correct association
+                true
+              else
+                false
+              end
+
+    # TODO: check if game can be deleted!
+    if allowed
+      if game.destroy
+        render json: { success: true }
+      else
+        render json: { success: false, error: game.errors }, status: 400
+      end
+    else
+      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+  end
+
   def show_hidden
     game = Game.find(params[:id])
 
@@ -565,5 +633,11 @@ class GamesController < ApplicationController
     params.require(:game).permit(:audience, :actual_start_time, :live_stream_link,
                                  :home_timeout_string, :guest_timeout_string,
                                  :time_keeper_string, :record_keeper_string, :record_comment)
+  end
+
+  def game_create_update_params
+    params.require(:game).permit(:forfait, :game_day_id, :game_number, :start_time,
+                                 :nominated_referee_string, :notice_type, :notice_string,
+                                 :home_team_id, :guest_team_id)
   end
 end

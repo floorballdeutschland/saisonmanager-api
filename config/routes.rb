@@ -56,6 +56,11 @@ Rails.application.routes.draw do
         end
       end
 
+      scope 'admin' do
+        resources :game
+        resources :game_day
+      end
+
       get 'admin/leagues', to: 'leagues#admin_league_index'
       get 'admin/league_classes', to: 'leagues#admin_league_classes'
 
