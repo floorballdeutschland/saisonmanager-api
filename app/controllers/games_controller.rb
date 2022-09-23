@@ -18,6 +18,7 @@ class GamesController < ApplicationController
 
   # POST /games
   def create
+    ph = current_user.permission_hash
     game = Game.new(game_create_update_params)
 
     allowed = if ph[:admin].present? || ph[:sbk].present?
@@ -41,6 +42,7 @@ class GamesController < ApplicationController
 
   # PATCH /games/1
   def update
+    ph = current_user.permission_hash
     allowed = if ph[:admin].present? || ph[:sbk].present?
                 # TODO: Check if correct association
                 true
@@ -63,6 +65,7 @@ class GamesController < ApplicationController
 
   # DELETE /games/1
   def destroy
+    ph = current_user.permission_hash
     game = Game.find(params[:id])
 
     allowed = if ph[:admin].present? || ph[:sbk].present?
