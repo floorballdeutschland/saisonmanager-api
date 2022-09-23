@@ -161,10 +161,10 @@ class PlayersController < ApplicationController
     ph = current_user.permission_hash
 
     # get playing clubs, including sg
-    teams = league.teams.flatten.compact.uniq
+    teams = league.teams
     club_ids = teams.map(&:all_club_ids).flatten.compact.uniq
     # get hosting clubs
-    all_club_ids = [club_ids, leagues.game_days.map(&:club_id)].flatten.compact.uniq
+    all_club_ids = [club_ids, league.game_days.map(&:club_id)].flatten.compact.uniq
 
     allowed = if ph[:admin].present? || ph[:sbk].present?
                 true
