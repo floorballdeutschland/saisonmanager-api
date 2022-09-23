@@ -133,6 +133,7 @@ Rails.application.routes.draw do
       get 'referees/:id/games', to: 'referee#games'
 
       resources :games
+      resources :game_days
 
       get 'init', to: 'settings#init'
 

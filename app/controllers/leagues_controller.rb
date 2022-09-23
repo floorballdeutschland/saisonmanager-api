@@ -381,6 +381,7 @@ class LeaguesController < ApplicationController
 
   def additional_references
     league = League.find(params[:id])
+    teams = league.teams
 
     render json: {
       arenas: Arena.active.order(:city, :name).map(&:full_hash),

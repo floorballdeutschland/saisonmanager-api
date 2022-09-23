@@ -8,6 +8,7 @@ class GameDaysController < ApplicationController
 
   # POST /game_days
   def create
+    ph = current_user.permission_hash
     game_day = GameDay.new(game_day_params)
 
     allowed = if ph[:admin].present? || ph[:sbk].present?
@@ -31,6 +32,7 @@ class GameDaysController < ApplicationController
 
   # PATCH /game_days/1
   def update
+    ph = current_user.permission_hash
     allowed = if ph[:admin].present? || ph[:sbk].present?
                 # TODO: Check if correct association
                 true
@@ -53,6 +55,7 @@ class GameDaysController < ApplicationController
 
   # DELETE /game_days/1
   def destroy
+    ph = current_user.permission_hash
     game_day = GameDay.find(params[:id])
 
     allowed = if ph[:admin].present? || ph[:sbk].present?
