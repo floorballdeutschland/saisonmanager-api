@@ -765,6 +765,56 @@ class League < ApplicationRecord
     result
   end
 
+  def self.user_leagues_license_list(user)
+    result = []
+    leagues = nil
+
+    # für jeden verband:
+    # name, id, kuerzel, ligen
+    go_ids = []
+
+    # wenn admin oder sbk global: füge alle hinzu
+    ph = user.permission_hash
+
+    if ph[:admin].present? || ph[:sbk].present?
+      leagues = League.current_season.order(season_id: :desc, game_operation_id: :asc).order('order_key::int')
+      if ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
+        go_ids = GameOperation.all.pluck(:id)
+      else
+        go_ids << ph[:admin] if ph[:admin].present?
+        go_ids << ph[:sbk] if ph[:sbk].present?
+        go_ids.flatten
+      end
+
+      GameOperation.find(go_ids).each do |go|
+        item = go.meta_hash
+        item[:leagues] = leagues.where(game_operation_id: go.id).map(&:full_hash)
+        result << item
+      end
+    elsif ph[:vm].present? || ph[:tm].present? # VM / TM
+      # find teams
+      teams = if ph[:vm].present?
+                clubs = Club.where(id: ph[:vm])
+                clubs.map(&:current_teams).flatten.uniq
+              elsif ph[:tm].present?
+                Team.current_season.where(id: ph[:tm])
+              end
+
+      # get all leagues
+      leagues = teams.map(&:leagues).flatten.uniq
+
+      go_ids = GameOperation.all.pluck(:id)
+
+      GameOperation.find(go_ids).each do |go|
+        item = go.meta_hash
+        item[:leagues] = leagues.where(game_operation_id: go.id).map(&:full_hash)
+        result << item
+      end
+    end
+
+    result
+  end
+
   private
 
   def set_defaults

@@ -306,6 +306,16 @@ class LeaguesController < ApplicationController
     end
   end
 
+  def user_leagues_license_list_index
+    if current_user
+      result = League.user_leagues_license_list(current_user)
+
+      render json: result
+    else
+      render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
+    end
+  end
+
   # GET /leagues/1
   def show
     league = League.find(params[:id])
