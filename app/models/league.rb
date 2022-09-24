@@ -807,7 +807,9 @@ class League < ApplicationRecord
 
       GameOperation.find(go_ids).each do |go|
         item = go.meta_hash
-        item[:leagues] = leagues.where(game_operation_id: go.id).map(&:full_hash)
+        item[:leagues] = leagues.select do |l|
+                           l.game_operation_id == go.id
+                         end.sort_by { |l| l.order_key.to_i }.map(&:full_hash)
         result << item
       end
     end
