@@ -6,6 +6,15 @@ class GameDaysController < ApplicationController
     render json: @game_day_days
   end
 
+  # GET /game_days/1
+    def show
+      game_day = GameDay.find(params[:id])
+
+      hash = game_day.full_hash
+
+      render json: hash
+    end
+
   # POST /game_days
   def create
     ph = current_user.permission_hash
@@ -79,8 +88,7 @@ class GameDaysController < ApplicationController
   end
 
   def game_day_params
-    params.require(:game_day).permit(:forfait, :game_day_day_id, :game_day_number, :start_time,
-                                     :nominated_referee_string, :notice_type, :notice_string,
-                                     :home_team_id, :guest_team_id)
+    params.require(:game_day).permit(:id, :arena_id, :club_id, :date,
+                                     :league_id, :number)
   end
 end
