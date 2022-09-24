@@ -39,6 +39,9 @@ class User < ApplicationRecord
     result[:menu_item_club_admin] = ph[:admin].present? || ph[:sbk].present?
     result[:menu_item_player_admin] = ph[:admin].present? || ph[:sbk].present?
     result[:menu_item_player_admin_vm] = ph[:vm].present?
+
+    result[:menu_item_licence_list] =
+      ph[:admin].present? || ph[:sbk].present? || ph[:vm].present? || ph[:tm].present?
     result[:menu_item_licence_club_admin] = ph[:vm].present? || ph[:tm].present?
     result[:menu_item_licence_admin] = ph[:admin].present? || ph[:sbk].present?
 
