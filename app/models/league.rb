@@ -128,21 +128,6 @@ class League < ApplicationRecord
     result
   end
 
-  def short_hash(include_licenses = false)
-    result = {
-      id:,
-      game_operation_id:,
-      game_operation_name: game_operation.name,
-      game_operation_short_name: game_operation.short_name,
-      name:,
-      short_name:
-    }
-
-    result[:teams] = licenses(false, true, :short) if include_licenses
-
-    result
-  end
-
   def hash_with_teams
     hash = full_hash
 
@@ -528,10 +513,44 @@ class League < ApplicationRecord
     end
   end
 
-  def licenses(full_license_hash = true, only_current_licenses = true, player_hash_type = :full)
+  def licenses(full_license_hash = true, only_current_licenses = true)
+    team_licenses = {}
+    teams.each do |team|
+      team_licenses[team.id.to_s] = Player.find_by_team_id team.id
+    end
+
     result = []
     teams.each do |team|
-      result << team.licenses(full_license_hash, only_current_licenses, player_hash_type)
+      team_item = team.full_hash
+
+      team_item[:players] = []
+      team_licenses[team.id.to_s].each do |player|
+        player_item = player.full_hash(full_license_hash, only_current_licenses)
+
+        license = player.licenses.select { |l| l['team_id'].to_i == team.id }.first
+
+        last_status = license['history'].sort_by { |h| h['created_at'] }.last
+        last_status_id = last_status['license_status_id']
+        last_status_code = License::NAMES[last_status_id.to_i]
+
+        approved_at = (last_status['created_at'].to_datetime.strftime('%d.%m.%Y %H:%M:%S') if last_status_id == 1)
+        requested_at = license['history'].select do |lh|
+                         lh['license_status_id'] == 2
+                       end.last['created_at'].to_datetime
+
+        player_item[:team_license] = {
+          license:,
+          last_status:,
+          last_status_id:,
+          last_status_code:,
+          approved_at:,
+          requested_at:
+        }
+
+        team_item[:players] << player_item
+      end
+
+      result << team_item
     end
 
     result
