@@ -380,7 +380,11 @@ class LeaguesController < ApplicationController
   end
 
   def license_list
-    @league = League.find(params[:id])
+    league = League.find(params[:id])
+
+    hash = league.short_hash true
+
+    render json: hash
   end
 
   def meta
@@ -401,11 +405,23 @@ class LeaguesController < ApplicationController
   end
 
   def penalties
-    render json: Setting.current.penalties.reject{ |k,v| v['disabled'].present? }.map{ |k,v| v['id'] = k; v}.sort_by { |i| i['order'] }
+    penalties = Setting.current.penalties.reject do |_k, v|
+                  v['disabled'].present?
+                end.map do |k, v|
+                  v['id'] = k
+                  v
+                end.sort_by { |i| i['order'] }
+
+    render json: penalties
   end
 
   def penalty_codes
-    render json: Setting.current.penalty_codes.select{ |k,v| v['active'].present? }.map{ |k,v| v['id'] = k; v}
+    penalty_codes = Setting.current.penalty_codes.select { |_k, v| v['active'].present? }.map do |k, v|
+      v['id'] = k
+      v
+    end
+
+    render json: penalty_codes
   end
 
   def league_params
