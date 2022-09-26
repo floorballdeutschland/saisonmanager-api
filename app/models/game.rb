@@ -389,6 +389,9 @@ class Game < ApplicationRecord
       live_stream_link:,
       started:,
       ended:,
+      forfait:,
+      notice_type:,
+      notice_string:,
       nominated_referees: nominated_referee_string,
       referees:
     }
