@@ -24,7 +24,10 @@ class League < ApplicationRecord
   end
 
   def forfait_goals
-    return 5 if [1, 4, 102].include? league_category_id.to_i # GF, Pokal GF, GF DM
+    return 5 if legacy_league && [1, 4, 102].include?(league_category_id.to_i) # GF, Pokal GF, GF DM
+    return 8 if legacy_league
+
+    return 5 if field_size == 'GF'
 
     8
   end
