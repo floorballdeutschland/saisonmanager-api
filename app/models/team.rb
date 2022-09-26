@@ -29,15 +29,11 @@ class Team < ApplicationRecord
   end
 
   def all_clubs
-    Rails.cache.fetch("#{cache_key}/all_clubs", expires_in: 1.week) do
-      all_club_ids.uniq.compact.map { |id| Club.find_by_id(id) }
-    end
+    all_club_ids.uniq.compact.map { |id| Club.find_by_id(id) }
   end
 
   def self.teams_by_season(season_id)
-    Rails.cache.fetch("Team/teams_by_season/#{season_id}", expires_in: 12.hours) do
-      League.where(season_id:).map(&:teams).flatten.uniq
-    end
+    League.where(season_id:).map(&:teams).flatten.uniq
   end
 
   def logo_url
