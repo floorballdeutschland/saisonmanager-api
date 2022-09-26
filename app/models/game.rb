@@ -339,6 +339,8 @@ class Game < ApplicationRecord
       arena_short: game_day.arena&.schedule_item,
       nominated_referees: nominated_referee_string,
       deletable: deletable?,
+      notice_type:,
+      notice_string:,
       referees:
     }
   end
@@ -721,7 +723,7 @@ class Game < ApplicationRecord
     end
   end
 
-  def deletable
+  def deletable?
     !started?
   end
 
