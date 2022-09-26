@@ -338,6 +338,7 @@ class Game < ApplicationRecord
       arena_address: game_day.arena&.address,
       arena_short: game_day.arena&.schedule_item,
       nominated_referees: nominated_referee_string,
+      deletable: deletable?,
       referees:
     }
   end
