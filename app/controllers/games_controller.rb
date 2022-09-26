@@ -20,10 +20,12 @@ class GamesController < ApplicationController
   def create
     ph = current_user.permission_hash
     game = Game.new(game_create_update_params)
+    game_operation_id = game.league.game_operation_id.to_i
 
     allowed = if ph[:admin].present? || ph[:sbk].present?
-                # TODO: Check if correct association
-                true
+                gos = [ph[:admin], ph[:sbk]].flatten.compact.map(&:to_i)
+
+                gos.include?(0) || gos.include?(game_operation_id)
               else
                 false
               end
@@ -43,15 +45,18 @@ class GamesController < ApplicationController
   # PATCH /games/1
   def update
     ph = current_user.permission_hash
+    game = Game.find(params[:id])
+    game_operation_id = game.league.game_operation_id.to_i
+
     allowed = if ph[:admin].present? || ph[:sbk].present?
-                # TODO: Check if correct association
-                true
+                gos = [ph[:admin], ph[:sbk]].flatten.compact.map(&:to_i)
+
+                gos.include?(0) || gos.include?(game_operation_id)
               else
                 false
               end
 
     if allowed
-      game = Game.find(params[:id])
       if game.update(game_create_update_params)
 
         render json: { success: true }
@@ -67,23 +72,28 @@ class GamesController < ApplicationController
   def destroy
     ph = current_user.permission_hash
     game = Game.find(params[:id])
+    game_operation_id = game.league.game_operation_id.to_i
 
     allowed = if ph[:admin].present? || ph[:sbk].present?
-                # TODO: Check if correct association
-                true
+                gos = [ph[:admin], ph[:sbk]].flatten.compact.map(&:to_i)
+
+                gos.include?(0) || gos.include?(game_operation_id)
               else
                 false
               end
 
-    # TODO: check if game can be deleted!
-    if allowed
-      if game.destroy
-        render json: { success: true }
+    if game.deletable?
+      if allowed
+        if game.destroy
+          render json: { success: true }
+        else
+          render json: { success: false, error: game.errors }, status: 400
+        end
       else
-        render json: { success: false, error: game.errors }, status: 400
+        render json: { message: 'Keine Berechtigung.' }, status: :forbidden
       end
     else
-      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+      render json: { message: 'Spiel darf nicht gelöscht werden.' }, status: 400
     end
   end
 

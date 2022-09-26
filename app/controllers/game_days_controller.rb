@@ -7,22 +7,24 @@ class GameDaysController < ApplicationController
   end
 
   # GET /game_days/1
-    def show
-      game_day = GameDay.find(params[:id])
+  def show
+    game_day = GameDay.find(params[:id])
 
-      hash = game_day.full_hash
+    hash = game_day.full_hash
 
-      render json: hash
-    end
+    render json: hash
+  end
 
   # POST /game_days
   def create
     ph = current_user.permission_hash
     game_day = GameDay.new(game_day_params)
+    game_operation_id = game_day.league.game_operation_id.to_i
 
     allowed = if ph[:admin].present? || ph[:sbk].present?
-                # TODO: Check if correct association
-                true
+                gos = [ph[:admin], ph[:sbk]].flatten.compact.map(&:to_i)
+
+                gos.include?(0) || gos.include?(game_operation_id)
               else
                 false
               end
@@ -42,15 +44,18 @@ class GameDaysController < ApplicationController
   # PATCH /game_days/1
   def update
     ph = current_user.permission_hash
+    game_day = GameDay.find(params[:id])
+    game_operation_id = game_day.league.game_operation_id.to_i
+
     allowed = if ph[:admin].present? || ph[:sbk].present?
-                # TODO: Check if correct association
-                true
+                gos = [ph[:admin], ph[:sbk]].flatten.compact.map(&:to_i)
+
+                gos.include?(0) || gos.include?(game_operation_id)
               else
                 false
               end
 
     if allowed
-      game_day = GameDay.find(params[:id])
       if game_day.update(game_day_params)
 
         render json: { success: true }
@@ -66,15 +71,16 @@ class GameDaysController < ApplicationController
   def destroy
     ph = current_user.permission_hash
     game_day = GameDay.find(params[:id])
+    game_operation_id = game_day.league.game_operation_id.to_i
 
     allowed = if ph[:admin].present? || ph[:sbk].present?
-                # TODO: Check if correct association
-                true
+                gos = [ph[:admin], ph[:sbk]].flatten.compact.map(&:to_i)
+
+                gos.include?(0) || gos.include?(game_operation_id)
               else
                 false
               end
 
-    # TODO: check if game_day can be deleted!
     if allowed
       if game_day.deletable?
         game_day.destroy
