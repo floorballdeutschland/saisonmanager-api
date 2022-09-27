@@ -222,6 +222,8 @@ class Game < ApplicationRecord
       guest_team_small_logo: guest_team.logo_small_url,
       nominated_referee_string:,
       referees:,
+      notice_type:,
+      notice_string:,
       state:
     }
 
