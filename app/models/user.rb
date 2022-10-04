@@ -24,7 +24,7 @@ class User < ApplicationRecord
   end
 
   def send_reset_information
-    self.password_reset_token = Digest::UUID.uuid_v5(Digest::UUID::DNS_NAMESPACE, 'saisonmanager.de')
+    self.password_reset_token = SecureRandom.uuid
     UserMailer.reset_password(self).deliver_now if save(validate: false)
   end
 
