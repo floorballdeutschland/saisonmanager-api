@@ -166,11 +166,15 @@ class League < ApplicationRecord
   end
 
   def schedule
-    games.map(&:schedule_item)
+    games.map(&:schedule_item).sort_by do |game|
+      [game[:game_day].to_i, game[:date], game[:time], game[:game_number]]
+    end
   end
 
   def game_day_schedule(game_day_number)
     games(game_day_number).map(&:schedule_item).sort_by do |game|
+      [game[:game_day].to_i, game[:date], game[:time], game[:game_number]]
+    end
   end
 
   def current_schedule
