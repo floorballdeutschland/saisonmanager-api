@@ -92,9 +92,13 @@ class LeaguesController < ApplicationController
       league = League.find(params[:id])
 
       if league
-        render json: league.game_days.includes(:arena, :club, :games).map { |gd|
-                       gd.full_hash(true)
-                     }
+        items = league.game_days.includes(:arena, :club, :games).map do |gd|
+                  gd.full_hash(true)
+                end.sort_by do |gd|
+                  first_game_number = gd[:games].present? ? gd[:games].first[:number].to_i : 0
+                  [gd[:number].to_i, gd[:date], first_game_number]
+                end
+        render json: items
       else
         render json: { message: 'Keine passende Liga gefunden.' }, status: :not_found
       end
