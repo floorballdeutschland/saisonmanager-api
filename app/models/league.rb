@@ -170,7 +170,7 @@ class League < ApplicationRecord
   end
 
   def game_day_schedule(game_day_number)
-    games(game_day_number).map(&:schedule_item)
+    games(game_day_number).map(&:schedule_item).sort_by do |game|
   end
 
   def current_schedule
