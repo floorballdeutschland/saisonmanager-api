@@ -77,3 +77,8 @@ gem 'caxlsx_rails'
 
 # excel import
 gem 'creek'
+
+# active storage
+gem 'image_processing', '>= 1.2'
+
+gem 'letter_opener', groups: %i[development]
