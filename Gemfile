@@ -79,6 +79,7 @@ gem 'caxlsx_rails'
 gem 'creek'
 
 # active storage
+gem 'azure-storage-blob', '~> 2.0', require: false
 gem 'image_processing', '>= 1.2'
 
 gem 'letter_opener', groups: %i[development]

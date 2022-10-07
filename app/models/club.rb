@@ -1,6 +1,8 @@
 class Club < ApplicationRecord
   has_many :game_days
 
+  has_one_attached :logo
+
   def teams
     Team.by_club_id(id)
   end
@@ -75,6 +77,11 @@ class Club < ApplicationRecord
 
     save
   end
+
+  def logo_url
+    Rails.application.routes.url_helpers.rails_blob_path(logo, only_path: true) if logo.present?
+  end
+  alias logo_small_url logo_url
 
   def self.admin_club_permissions(user)
     result = []
@@ -154,5 +161,19 @@ class Club < ApplicationRecord
     end
 
     result
+  end
+
+  def self.add_logos
+    Club.all.each do |club|
+      next if club.logo.present?
+
+      dir = Dir["tmp/logovereine/#{club.id}*.png"]
+      next unless dir.present?
+
+      path = dir.first
+      filename = path.split('/').last
+
+      club.logo.attach(io: File.open(path), filename:, content_type: 'image/png')
+    end
   end
 end

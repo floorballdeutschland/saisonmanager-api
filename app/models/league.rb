@@ -355,8 +355,8 @@ class League < ApplicationRecord
       points: team_point_corrections.present? ? team_point_corrections['points'] : 0,
       team_name: team.name,
       team_id: team.id,
-      team_logo: team.logo_url,
-      team_logo_small: team.logo_small_url,
+      team_logo: team.logo_url_fallback,
+      team_logo_small: team.logo_small_url_fallback,
       point_corrections: team_point_corrections
     }
   end
