@@ -2,6 +2,8 @@ class Team < ApplicationRecord
   belongs_to :league
   belongs_to :club
 
+  has_one_attached :logo
+
   scope :by_club_id, ->(cid) { where(club_id: cid).or(Team.where('? = ANY (syndicate_clubs)', cid)) }
   scope :current_season, -> { where(league_id: Setting.current_min_league..) }
 
@@ -37,13 +39,15 @@ class Team < ApplicationRecord
   end
 
   def logo_url
-    return "https://www.saisonmanager.de/team_logos/#{team_logo_path}" if team_logo_path.present?
+    return Rails.application.routes.url_helpers.rails_blob_path(logo, only_path: true) if logo.present?
+    # return "https://www.saisonmanager.de/team_logos/#{team_logo_path}" if team_logo_path.present?
     # "https://robohash.org/#{name.gsub(/\W/, '').downcase}"
   end
 
   def logo_small_url
-    return "https://www.saisonmanager.de/team_logos/#{team_logo_path}" if team_logo_path.present?
+    # return "https://www.saisonmanager.de/team_logos/#{team_logo_path}" if team_logo_path.present?
     # "https://robohash.org/#{name.gsub(/\W/, '').downcase}"
+    logo_url
   end
 
   def logo_url_fallback
