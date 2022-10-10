@@ -624,6 +624,45 @@ class GamesController < ApplicationController
     end
   end
 
+  def set_game_status
+    game = Game.find(params[:id])
+    # check if allowed
+
+    ph = current_user.permission_hash
+    sbk = false
+    allowed = if ph[:admin].present? || ph[:sbk].present?
+                sbk = true
+                true
+              elsif ph[:vm].present?
+                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
+                  ph[:vm].intersection([game.home_team.syndicate_clubs,
+                                        game.guest_team.syndicate_clubs].flatten.compact).present?
+              elsif ph[:tm].present?
+                ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
+              end
+
+    if allowed
+      if params[:game_status].present?
+        old_status = game.game_status
+        game.game_status = params[:game_status]
+
+        # TODO: check order
+        # TODO: check if allowed to set new status?
+        game.save
+      elsif params[:ingame_status].present?
+        old_ingame_status = game.ingame_status
+        game.ingame_status = params[:ingame_status]
+
+        # TODO: check order
+        game.save
+      end
+
+      render json: game
+    else
+      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+  end
+
   def reopen_game
     if current_user && %w[jho_admin buettner_sbk].include?(current_user.user_name)
       game = Game.find(params[:id])
