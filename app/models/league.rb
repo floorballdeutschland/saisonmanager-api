@@ -58,18 +58,25 @@ class League < ApplicationRecord
 
     if thirds
       [
-        { period: 1, title: '1. Drittel' },
-        { period: 2, title: '2. Drittel' },
-        { period: 3, title: '3. Drittel' },
-        { period: 4, title: 'Verlängerung' },
-        { period: 5, title: 'Penalty-Schießen' }
+        { period: 1, title: '1. Drittel', status_id: 'period1', running: true },
+        { period: 1.5, title: '1. Drittelpause', status_id: 'pause1', running: false },
+        { period: 2, title: '2. Drittel', status_id: 'period2', running: true },
+        { period: 2.5, title: '2. Drittelpause', status_id: 'pause2', running: false },
+        { period: 3, title: '3. Drittel', status_id: 'period3', running: true },
+        { period: 3.5, title: 'Pause vor Verlängerung', status_id: 'pause_et', running: false },
+        { period: 4, title: 'Verlängerung', status_id: 'extratime', running: true },
+        { period: 4.5, title: 'Pause vor Penalty-Schießen', status_id: 'pause_ps', running: false },
+        { period: 5, title: 'Penalty-Schießen', status_id: 'penalty_shots', running: true }
       ]
     else
       [
-        { period: 1, title: '1. Hälfte' },
-        { period: 2, title: '2. Hälfte' },
-        { period: 3, title: 'Verlängerung' },
-        { period: 4, title: 'Penalty-Schießen' }
+        { period: 1, title: '1. Hälfte', status_id: 'period1', running: true },
+        { period: 1.5, title: 'Halbzeitpause', status_id: 'pause1', running: false },
+        { period: 2, title: '2. Hälfte', status_id: 'period2', running: true },
+        { period: 3.5, title: 'Pause vor Verlängerung', status_id: 'pause_et', running: false },
+        { period: 3, title: 'Verlängerung', status_id: 'extratime', running: true },
+        { period: 4.5, title: 'Pause vor Penalty-Schießen', status_id: 'pause_ps', running: false },
+        { period: 4, title: 'Penalty-Schießen', status_id: 'penalty_shots', running: true }
       ]
     end
   end
