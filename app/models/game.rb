@@ -766,6 +766,9 @@ class Game < ApplicationRecord
     # edit all game info
     perm << :edit_game if admin || sbk
 
+    # check match record after entry by club users
+    perm << :check_game if admin || sbk
+
     perm
   end
 
