@@ -85,6 +85,10 @@ class League < ApplicationRecord
     period_titles.select { |pt| pt[:period] == period }.first
   end
 
+  def period_title_by_id(status_id)
+    period_titles.select { |pt| pt[:status_id] == status_id }.first
+  end
+
   def period_time(period)
     return period_length if period <= periods
 

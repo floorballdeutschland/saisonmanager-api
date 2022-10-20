@@ -48,6 +48,10 @@ class Game < ApplicationRecord
     forfait > 0
   end
 
+  def current_period_title
+    league.period_title_by_id(ingame_status) if ingame_status.present?
+  end
+
   def referees
     referees = []
 
@@ -312,6 +316,8 @@ class Game < ApplicationRecord
       actual_start_time:,
       date: game_day.date,
       game_day: league.game_day_title_hash(game_day.number),
+      game_status:,
+      ingame_status:,
       audience:,
       home_team_name: home_team.name,
       guest_team_name: guest_team.name,
@@ -335,6 +341,7 @@ class Game < ApplicationRecord
       game_operation_name: league.game_operation.name,
       game_operation_short_name: league.game_operation.short_name,
       period_titles: league.period_titles,
+      current_period_title:,
       arena: game_day.arena_id,
       arena_name: game_day.arena&.name,
       arena_address: game_day.arena&.address,
@@ -765,6 +772,9 @@ class Game < ApplicationRecord
 
     # edit all game info
     perm << :edit_game if admin || sbk
+
+    # check match record after entry by club users
+    perm << :check_game if admin || sbk
 
     perm
   end
