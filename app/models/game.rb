@@ -48,6 +48,10 @@ class Game < ApplicationRecord
     forfait > 0
   end
 
+  def current_period_title
+    league.period_title_by_id(ingame_status) if ingame_status.present?
+  end
+
   def referees
     referees = []
 
@@ -335,6 +339,7 @@ class Game < ApplicationRecord
       game_operation_name: league.game_operation.name,
       game_operation_short_name: league.game_operation.short_name,
       period_titles: league.period_titles,
+      current_period_title:,
       arena: game_day.arena_id,
       arena_name: game_day.arena&.name,
       arena_address: game_day.arena&.address,
