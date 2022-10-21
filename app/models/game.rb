@@ -228,7 +228,8 @@ class Game < ApplicationRecord
       referees:,
       notice_type:,
       notice_string:,
-      state:
+      state:,
+      current_period_title:
     }
 
     if started?
@@ -401,6 +402,7 @@ class Game < ApplicationRecord
       forfait:,
       notice_type:,
       notice_string:,
+      current_period_title:,
       nominated_referees: nominated_referee_string,
       referees:
     }
