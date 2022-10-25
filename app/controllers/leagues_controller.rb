@@ -402,7 +402,7 @@ class LeaguesController < ApplicationController
     teams = league.teams
 
     render json: {
-      arenas: Arena.active.order(:city, :name).map(&:full_hash),
+      arenas: Arena.active.order(:city, :name).sort_by { |a| a.city.present? ? 0 : 1 }.map(&:full_hash),
       teams: league.teams.map(&:full_hash),
       clubs: teams.map(&:all_clubs).flatten.uniq.map(&:full_hash)
     }
