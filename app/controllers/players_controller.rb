@@ -359,9 +359,10 @@ class PlayersController < ApplicationController
            end.include?(club.id)
 
           current_teams = club.current_teams
-          current_licenses = (player.current_licenses_meta(current_teams) || []).reject do |l|
-                               [6, 7].include?(l[license_status_id].to_i)
+          current_licenses = (player.current_licenses || []).reject do |l|
+                               [6, 7].include?(l['history'].last['license_status_id'].to_i)
                              end.map { |l| l['team_id'] }
+
           # check for licenses for that club
           if current_licenses.empty?
 
