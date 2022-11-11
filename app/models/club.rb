@@ -164,7 +164,7 @@ class Club < ApplicationRecord
   end
 
   def add_logo(force = false)
-    return if logo.present?
+    return if force || logo.present?
 
     dir = Dir["tmp/logovereine/#{id}*.png"]
     return unless dir.present?
