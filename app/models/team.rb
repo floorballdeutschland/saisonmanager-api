@@ -168,18 +168,22 @@ class Team < ApplicationRecord
     end
   end
 
+  def add_teamlogos
+    return if logo.present?
+
+    dir = Dir["tmp/logoteams/#{id}*.png"]
+    return unless dir.present?
+
+    path = dir.first
+    filename = path.split('/').last
+
+    logo.attach(io: File.open(path), filename:, content_type: 'image/png')
+  end
+
   def self.add_teamlogos
     teams = Team.all
     teams.each do |team|
-      next if team.logo.present?
-
-      dir = Dir["tmp/logoteams/#{team.id}*.png"]
-      next unless dir.present?
-
-      path = dir.first
-      filename = path.split('/').last
-
-      team.logo.attach(io: File.open(path), filename:, content_type: 'image/png')
+      team.add_teamlogos
     end
   end
 end

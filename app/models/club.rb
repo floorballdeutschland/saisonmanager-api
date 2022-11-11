@@ -29,7 +29,7 @@ class Club < ApplicationRecord
   def home_game_operation
     Rails.cache.fetch("#{cache_key}/home_game_operation", expires_in: 1.week) do
       go = game_operations_hash.select { |g| g['home_game_operation'] == true }
-      GameOperation.find_by_id go.first['game_operation_id']
+      GameOperation.find_by_id go.first['game_operation_id'] if go.present?
     end
   end
 
@@ -163,17 +163,21 @@ class Club < ApplicationRecord
     result
   end
 
+  def add_logo
+    return if logo.present?
+
+    dir = Dir["tmp/logovereine/#{id}*.png"]
+    return unless dir.present?
+
+    path = dir.first
+    filename = path.split('/').last
+
+    logo.attach(io: File.open(path), filename:, content_type: 'image/png')
+  end
+
   def self.add_logos
     Club.all.each do |club|
-      next if club.logo.present?
-
-      dir = Dir["tmp/logovereine/#{club.id}*.png"]
-      next unless dir.present?
-
-      path = dir.first
-      filename = path.split('/').last
-
-      club.logo.attach(io: File.open(path), filename:, content_type: 'image/png')
+      club.add_logo
     end
   end
 end
