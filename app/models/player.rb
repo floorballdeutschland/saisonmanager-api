@@ -171,7 +171,7 @@ class Player < ApplicationRecord
     valid_clubs(deadline).reject { |l| !l['home_club'] || valid_time?(l['valid_until'], deadline) } if clubs
   end
 
-  def current_licenses(sid)
+  def current_licenses(sid = Setting.current_season_id)
     current_licenses_meta(Team.teams_by_season(sid))
   end
 
