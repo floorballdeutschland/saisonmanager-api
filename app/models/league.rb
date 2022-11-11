@@ -58,25 +58,41 @@ class League < ApplicationRecord
 
     if thirds
       [
-        { period: 1, short_title: '1', title: '1. Drittel', status_id: 'period1', can_end_game: false, optional: false, running: true },
-        { period: 1.5, short_title: 'P1', title: '1. Drittelpause', status_id: 'pause1', can_end_game: false, optional: false, running: false },
-        { period: 2, short_title: '2', title: '2. Drittel', status_id: 'period2', can_end_game: false, optional: false, running: true },
-        { period: 2.5, short_title: 'P2', title: '2. Drittelpause', status_id: 'pause2', can_end_game: false, optional: false, running: false },
-        { period: 3, short_title: '3', title: '3. Drittel', status_id: 'period3', can_end_game: true, optional: false, running: true },
-        { period: 3.5, short_title: 'PV', title: 'Pause vor Verlängerung', status_id: 'pause_et', can_end_game: false, optional: true, running: false },
-        { period: 4, short_title: 'V', title: 'Verlängerung', status_id: 'extratime', can_end_game: true, optional: true, running: true },
-        { period: 4.5, short_title: 'PP', title: 'Pause vor Penalty-Schießen', status_id: 'pause_ps', can_end_game: false, optional: true, running: false },
-        { period: 5, short_title: 'P', title: 'Penalty-Schießen', status_id: 'penalty_shots', can_end_game: true, optional: true, running: true }
+        { period: 1, short_title: '1', title: '1. Drittel', status_id: 'period1', can_end_game: false, optional: false,
+          running: true },
+        { period: 1.5, short_title: 'P1', title: '1. Drittelpause', status_id: 'pause1', can_end_game: false,
+          optional: false, running: false },
+        { period: 2, short_title: '2', title: '2. Drittel', status_id: 'period2', can_end_game: false, optional: false,
+          running: true },
+        { period: 2.5, short_title: 'P2', title: '2. Drittelpause', status_id: 'pause2', can_end_game: false,
+          optional: false, running: false },
+        { period: 3, short_title: '3', title: '3. Drittel', status_id: 'period3', can_end_game: true, optional: false,
+          running: true },
+        { period: 3.5, short_title: 'PV', title: 'Pause vor Verlängerung', status_id: 'pause_et', can_end_game: false,
+          optional: true, running: false },
+        { period: 4, short_title: 'V', title: 'Verlängerung', status_id: 'extratime', can_end_game: true,
+          optional: true, running: true },
+        { period: 4.5, short_title: 'PP', title: 'Pause vor Penalty-Schießen', status_id: 'pause_ps',
+          can_end_game: false, optional: true, running: false },
+        { period: 5, short_title: 'P', title: 'Penalty-Schießen', status_id: 'penalty_shots', can_end_game: true,
+          optional: true, running: true }
       ]
     else
       [
-        { period: 1, short_title: '1', title: '1. Hälfte', status_id: 'period1', can_end_game: false, optional: false, running: true },
-        { period: 1.5, short_title: 'HZ', title: 'Halbzeitpause', status_id: 'pause1', can_end_game: false, optional: false, running: false },
-        { period: 2, short_title: '2', title: '2. Hälfte', status_id: 'period2', can_end_game: true, optional: false, running: true },
-        { period: 2.5, short_title: 'PV', title: 'Pause vor Verlängerung', status_id: 'pause_et', can_end_game: false, optional: true, running: false },
-        { period: 3, short_title: 'V', title: 'Verlängerung', status_id: 'extratime', can_end_game: true, optional: true, running: true },
-        { period: 4.5, short_title: 'PP', title: 'Pause vor Penalty-Schießen', status_id: 'pause_ps', can_end_game: false, optional: true, running: false },
-        { period: 4, short_title: 'P', title: 'Penalty-Schießen', status_id: 'penalty_shots', can_end_game: true, optional: true, running: true }
+        { period: 1, short_title: '1', title: '1. Hälfte', status_id: 'period1', can_end_game: false, optional: false,
+          running: true },
+        { period: 1.5, short_title: 'HZ', title: 'Halbzeitpause', status_id: 'pause1', can_end_game: false,
+          optional: false, running: false },
+        { period: 2, short_title: '2', title: '2. Hälfte', status_id: 'period2', can_end_game: true, optional: false,
+          running: true },
+        { period: 2.5, short_title: 'PV', title: 'Pause vor Verlängerung', status_id: 'pause_et', can_end_game: false,
+          optional: true, running: false },
+        { period: 3, short_title: 'V', title: 'Verlängerung', status_id: 'extratime', can_end_game: true,
+          optional: true, running: true },
+        { period: 4.5, short_title: 'PP', title: 'Pause vor Penalty-Schießen', status_id: 'pause_ps',
+          can_end_game: false, optional: true, running: false },
+        { period: 4, short_title: 'P', title: 'Penalty-Schießen', status_id: 'penalty_shots', can_end_game: true,
+          optional: true, running: true }
       ]
     end
   end
@@ -106,8 +122,8 @@ class League < ApplicationRecord
       id:,
       game_operation_id:,
       game_operation_name: game_operation.name,
-      game_operation_short_name: league.game_operation.short_name,
-      game_operation_slug: league.game_operation.path,
+      game_operation_short_name: game_operation.short_name,
+      game_operation_slug: game_operation.path,
       league_category_id:,
       league_class_id:,
       league_system_id:,
