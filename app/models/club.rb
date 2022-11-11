@@ -163,7 +163,7 @@ class Club < ApplicationRecord
     result
   end
 
-  def add_logo
+  def add_logo(force = false)
     return if logo.present?
 
     dir = Dir["tmp/logovereine/#{id}*.png"]

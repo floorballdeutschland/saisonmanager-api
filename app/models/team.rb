@@ -168,7 +168,7 @@ class Team < ApplicationRecord
     end
   end
 
-  def add_teamlogos
+  def add_teamlogos(force = false)
     return if logo.present?
 
     dir = Dir["tmp/logoteams/#{id}*.png"]
