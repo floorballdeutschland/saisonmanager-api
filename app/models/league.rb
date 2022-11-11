@@ -106,6 +106,8 @@ class League < ApplicationRecord
       id:,
       game_operation_id:,
       game_operation_name: game_operation.name,
+      game_operation_short_name: league.game_operation.short_name,
+      game_operation_slug: league.game_operation.path,
       league_category_id:,
       league_class_id:,
       league_system_id:,

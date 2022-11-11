@@ -76,6 +76,7 @@ class Team < ApplicationRecord
       game_operation_id: league.game_operation.id,
       game_operation_name: league.game_operation.name,
       game_operation_short_name: league.game_operation.short_name,
+      game_operation_slug: league.game_operation.path,
       syndicate:,
       syndicate_clubs:,
       logo_url: logo_url_fallback,
@@ -88,6 +89,40 @@ class Team < ApplicationRecord
     end
 
     h
+  end
+
+  def licenses(full_license_hash = true, only_current_licenses = true, player_hash_type = :full)
+    team_item = full_hash
+    team_players = Player.find_by_team_id id
+
+    team_item[:players] = []
+    team_players.each do |player|
+      player_item = player.some_hash(player_hash_type, full_license_hash, only_current_licenses)
+
+      license = player.licenses.select { |l| l['team_id'].to_i == id }.first
+
+      last_status = license['history'].sort_by { |h| h['created_at'] }.last
+      last_status_id = last_status['license_status_id']
+      last_status_code = License::NAMES[last_status_id.to_i]
+
+      approved_at = (last_status['created_at'].to_datetime.strftime('%d.%m.%Y %H:%M:%S') if last_status_id == 1)
+      requested_at = license['history'].select do |lh|
+                       lh['license_status_id'] == 2
+                     end.last['created_at'].to_datetime
+
+      player_item[:team_license] = {
+        license:,
+        last_status:,
+        last_status_id:,
+        last_status_code:,
+        approved_at:,
+        requested_at:
+      }
+
+      team_item[:players] << player_item
+    end
+
+    team_item
   end
 
   # {
@@ -130,6 +165,21 @@ class Team < ApplicationRecord
       team.cup_leagues ||= []
       team.cup_leagues << cup_id
       team.save
+    end
+  end
+
+  def self.add_teamlogos
+    teams = Team.all
+    teams.each do |team|
+      next if team.logo.present?
+
+      dir = Dir["tmp/logoteams/#{team.id}*.png"]
+      next unless dir.present?
+
+      path = dir.first
+      filename = path.split('/').last
+
+      team.logo.attach(io: File.open(path), filename:, content_type: 'image/png')
     end
   end
 end
