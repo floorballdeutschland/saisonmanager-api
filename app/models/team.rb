@@ -169,7 +169,7 @@ class Team < ApplicationRecord
   end
 
   def add_teamlogos(force = false)
-    return if force || logo.present?
+    return if !force && logo.present?
 
     dir = Dir["tmp/logoteams/#{id}*.png"]
     return unless dir.present?
