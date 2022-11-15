@@ -12,10 +12,10 @@ class License < ApplicationRecord
     License::APPROVED => 'erteilt',
     License::REQUESTED => 'beantragt',
     License::DENIED => 'abgelehnt',
-    License::DELETED => 'gelöscht',
-    License::DELETE_REQUESTED => 'Löschung beantragt',
-    License::TRANSFER => 'Transfer',
-    License::IGNORED => 'ignoriert',
+    License::DELETED => 'ungültig: gelöscht',
+    License::DELETE_REQUESTED => 'ungültig: Löschung beantragt',
+    License::TRANSFER => 'ungültig wg. Transfer',
+    License::IGNORED => 'ungültig: ignoriert',
     License::WITHDRAWN => 'zurückgezogen'
   }.freeze
 end
