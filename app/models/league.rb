@@ -706,11 +706,28 @@ class League < ApplicationRecord
 
   def delete_games_and_game_days!
     # check for played games
-    if games.map(&:deletable).reduce(&:&)
+    if games.map(&:deletable?).reduce(&:&)
       ActiveRecord::Base.transaction do
         game_days.each { |gd| gd.games.destroy_all }
         game_days.destroy_all
       end
+    end
+  end
+
+  def delete_all_licenses!
+    teams = Team.where(league_id: id)
+    teams.each do |team|
+      players = Player.find_by_team_id team.id
+      players.each { |p| p.delete_license!(team.id) }
+    end
+  end
+
+  def remove_games_game_days_licensens_teams!
+    ActiveRecord::Base.transaction do
+      delete_all_licenses!
+      delete_games_and_game_days!
+      teams = Team.where(league_id: id)
+      teams.destroy_all
     end
   end
 

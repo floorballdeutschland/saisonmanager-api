@@ -353,6 +353,14 @@ class Player < ApplicationRecord
     save!
   end
 
+  def delete_license!(team_id)
+    licenses.reject! do |l|
+      l['team_id'] == team_id
+    end
+
+    save!
+  end
+
   private
 
   def valid_time?(time, deadline)
