@@ -339,6 +339,46 @@ class PlayersController < ApplicationController
     end
   end
 
+  def remove_additional_club
+    # hole spieler
+    player = Player.find(params[:id])
+    club = Club.find(params[:club_id])
+
+    ph = current_user.permission_hash
+
+    if ph[:admin].present? || ph[:sbk].present?
+
+      # if player and club present, we check if the club.id is already in the players clubs hash
+      if player.present? &&
+         club.present?
+
+        player.clubs.map! do |c|
+          # additional club == ! home
+          # entry only for given club
+          # valid_until should always be present in this case, check to avoid errors and only check for current entries
+          if !c['home_club'] &&
+             c['club_id'] == club.id &&
+             c['valid_until'].present? && c['valid_until'].to_time > Time.now && c['valid_until'] == params[:valid_until]
+            c['valid_until'] = Time.now
+            c['valid_set_by'] = current_user.id
+          end
+
+          c
+        end
+
+        if player.save
+          render json: { success: true }
+        else
+          render json: { message: player.errors }, status: :unprocessable_entity
+        end
+      else
+        render json: { message: 'Verein oder Spieler nicht gefunden' }, status: :unprocessable_entity
+      end
+    else
+      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+  end
+
   def transfer
     # hole spieler
     player = Player.find(params[:id])
