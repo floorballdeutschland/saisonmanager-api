@@ -53,6 +53,7 @@ class User < ApplicationRecord
     result[:create_player] = true
     result[:player_transfer] = ph[:admin].present? || ph[:sbk].present?
     result[:player_add_additional_clubs] = ph[:admin].present? || ph[:sbk].present?
+    result[:player_remove_additional_clubs] = ph[:admin].present? || ph[:sbk].present?
 
     result
   end
