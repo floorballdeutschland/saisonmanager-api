@@ -40,7 +40,7 @@ class PlayersController < ApplicationController
     if current_user
       result = Player.find(params[:id])
 
-      render json: result.full_hash
+      render json: result.full_hash(true, true, true)
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
     end
@@ -106,8 +106,10 @@ class PlayersController < ApplicationController
         if lic['id'] == params[:license_id]
           last_status = lic['history'].sort_by { |h| h['created_at'] }.last
 
-          if last_status['license_status_id'].to_i != params[:license_status_id].to_i && [License::APPROVED,
-                                                                                          License::DENIED].include?(params[:license_status_id].to_i)
+          if last_status['license_status_id'].to_i != params[:license_status_id].to_i &&
+             ([License::APPROVED, License::DENIED].include?(params[:license_status_id].to_i) ||
+              ([License::TRANSFER].include?(params[:license_status_id].to_i) && current_user.special_user)
+             )
             lic['history'] << {
               license_status_id: params[:license_status_id].to_i,
               reason: params[:reason] || '',

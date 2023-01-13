@@ -9,7 +9,7 @@ class Player < ApplicationRecord
     attributes.with_indifferent_access.slice(:id, :last_name, :first_name, :birthdate, :male, :security_id)
   end
 
-  def full_hash(with_licenses = false, only_current_licenses = false)
+  def full_hash(with_licenses = false, only_current_licenses = false, license_with_titles = false)
     p = {
       id:,
       last_name:,
@@ -28,6 +28,27 @@ class Player < ApplicationRecord
                      else
                        licenses
                      end
+
+      if license_with_titles
+        p[:licenses].map! do |lic|
+          last_status_id = nil
+          lic['history'].map! do |lh|
+            lh[:created_by_name] = User.find(lh['created_by'])&.full_with_username
+            lh[:license_status] = License::NAMES[lh['license_status_id'].to_i]
+            last_status_id = lh['license_status_id'].to_i
+
+            lh
+          end
+
+          lic[:set_transfer_allowed] = (last_status_id == License::APPROVED)
+
+          team = Team.find lic['team_id']
+          lic[:team] = team&.full_hash
+          lic[:league] = team&.league&.full_hash
+
+          lic
+        end
+      end
     end
 
     p

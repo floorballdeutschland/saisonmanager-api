@@ -55,11 +55,17 @@ class User < ApplicationRecord
     result[:player_add_additional_clubs] = ph[:admin].present? || ph[:sbk].present?
     result[:player_remove_additional_clubs] = ph[:admin].present? || ph[:sbk].present?
 
+    result[:player_set_license_to_transfer] = ph[:admin].present? || special_user
+
     result
   end
 
   def club_ids
     permission_hash[:vm]
+  end
+
+  def special_user
+    %w[jho_admin buettner_sbk mguenther].include?(user_name)
   end
 
   def permission_hash
