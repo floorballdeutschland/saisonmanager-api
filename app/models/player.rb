@@ -24,7 +24,7 @@ class Player < ApplicationRecord
 
     if with_licenses
       p[:licenses] = if only_current_licenses
-                       licenses.select { |l| l['team_id'].to_i >= Setting.current_min_team }
+                       (licenses || []).select { |l| l['team_id'].to_i >= Setting.current_min_team }
                      else
                        licenses
                      end
