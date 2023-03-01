@@ -666,7 +666,7 @@ class GamesController < ApplicationController
   def reopen_game
     if current_user && %w[jho_admin buettner_sbk].include?(current_user.user_name)
       game = Game.find(params[:id])
-      game.update(ended: false)
+      game.update(ingame_status: 'match_record_closed')
 
       render json: { success: true }
     else
