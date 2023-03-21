@@ -29,6 +29,8 @@ class GameDaysController < ApplicationController
                 false
               end
 
+    game_day.created_by ||= current_user.id
+
     if allowed
       if game_day.save
 
@@ -54,6 +56,8 @@ class GameDaysController < ApplicationController
               else
                 false
               end
+
+    game_day.updated_by ||= current_user.id
 
     if allowed
       if game_day.update(game_day_params)

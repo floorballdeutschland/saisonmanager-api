@@ -30,6 +30,8 @@ class GamesController < ApplicationController
                 false
               end
 
+    game.created_by ||= current_user.id
+
     if allowed
       if game.save
 
@@ -55,6 +57,8 @@ class GamesController < ApplicationController
               else
                 false
               end
+
+    game.updated_by ||= current_user.id
 
     if allowed
       if game.update(game_create_update_params)
