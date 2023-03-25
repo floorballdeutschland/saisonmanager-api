@@ -9,12 +9,14 @@ class SettingsController < ApplicationController
   end
 
   def init
-    @result ||= {
-      seasons: Setting.seasons,
-      current_season_id: Setting.current_season_id,
-      game_operations: GameOperation.all.map(&:short_hash)
-    }
+    result = Rails.cache.fetch('settings/init', expires_in: 30.minutes) do
+      {
+        seasons: Setting.seasons,
+        current_season_id: Setting.current_season_id,
+        game_operations: GameOperation.all.map(&:short_hash)
+      }
+    end
 
-    render json: @result
+    render json: result
   end
 end

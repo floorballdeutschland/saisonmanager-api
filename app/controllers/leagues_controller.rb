@@ -336,9 +336,15 @@ class LeaguesController < ApplicationController
       Prints the game schedule for league :id. If the game was already played a result_string is included.
   EOS
   def schedule
-    @league = League.find(params[:id])
+    id = params[:id]
 
-    render json: @league.schedule
+    schedule = Rails.cache.fetch("leagues/#{id}/schedule", expires_in: 5.minutes) do
+      @league = League.find(id)
+
+      @league.schedule
+    end
+
+    render json: schedule
   end
 
   # GET /leagues/1/game_days/15/schedule
@@ -350,9 +356,15 @@ class LeaguesController < ApplicationController
 
   # GET /leagues/1/game_days/current/schedule
   def current_schedule
-    @league = League.find(params[:id])
+    id = params[:id]
 
-    render json: @league.current_schedule
+    current_schedule = Rails.cache.fetch("leagues/#{id}/current_schedule", expires_in: 5.minutes) do
+      @league = League.find(id)
+
+      @league.current_schedule
+    end
+
+    render json: current_schedule
   end
 
   # GET /leagues/1/scorer
