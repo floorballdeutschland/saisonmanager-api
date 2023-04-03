@@ -164,7 +164,7 @@ class Game < ApplicationRecord
     end
 
     if overtime == true
-      if false # penalty schießen
+      if events.last['period'] == league.period_titles.last[:period] # penalty schießen
         return {
           short: 'n. PS',
           long: 'nach Penalty-Schießen'
