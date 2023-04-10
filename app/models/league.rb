@@ -393,6 +393,7 @@ class League < ApplicationRecord
   def evaluate_table_results
     results = {}
 
+    games.each do |game|
       # add all teams to table
       [game.home_team, game.guest_team].each do |team|
         results[team.id] = empty_table_item(team) unless results[team.id].present?
