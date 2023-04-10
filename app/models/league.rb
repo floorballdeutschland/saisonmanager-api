@@ -339,6 +339,44 @@ class League < ApplicationRecord
     sorted_results
   end
 
+  def grouped_table
+    groups = games.pluck(:group_identifier).uniq.sort
+    grouped = {}
+
+    groups.each do |group|
+      grouped[group] = group_template(group)
+
+      results = evaluate_table_results(games.select{|game| game.group_identifier == group})
+      last_entry = nil
+
+      sorted_results = results.values.sort_by do |team_result|
+        [-team_result[:points], -team_result[:goals_diff], -team_result[:goals_scored]]
+      end
+
+      next_position_diff = 1
+      sorted_results.each_with_index do |team_result, index|
+        team_result[:sort] = index
+        if last_entry.nil?
+          team_result[:position] = 1
+        elsif (team_result[:points] == last_entry[:points]) &&
+              (team_result[:goals_diff] == last_entry[:goals_diff]) &&
+              (team_result[:goals_scored] == last_entry[:goals_scored])
+          team_result[:position] = last_entry[:position]
+          next_position_diff += 1
+        else
+          team_result[:position] = last_entry[:position] + next_position_diff
+          next_position_diff = 1
+        end
+
+        last_entry = team_result
+      end
+
+      grouped[group][:table] = sorted_results
+    end
+
+    grouped
+  end
+
   def evaluate_scorer
     game_scores = games.map do |game|
       next unless game.ended? && !game.result.nil?
@@ -390,10 +428,10 @@ class League < ApplicationRecord
     }
   end
 
-  def evaluate_table_results
+  def evaluate_table_results(g = games)
     results = {}
 
-    games.each do |game|
+    g.each do |game|
       # add all teams to table
       [game.home_team, game.guest_team].each do |team|
         results[team.id] = empty_table_item(team) unless results[team.id].present?
@@ -877,5 +915,14 @@ class League < ApplicationRecord
 
   def set_defaults
     season_id = Setting.current_season_id if season_id.blank?
+  end
+
+  def group_template(group_identifier)
+    group = group_identifier.split('_').last
+
+    {
+      group_identifier: group_identifier,
+      name: ["Gruppe ", group.upcase].join
+    }
   end
 end
