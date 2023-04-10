@@ -918,6 +918,8 @@ class League < ApplicationRecord
   end
 
   def group_template(group_identifier)
+    return {} if group_identifier.nil?
+
     group = group_identifier.split('_').last
 
     {

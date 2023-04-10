@@ -50,6 +50,7 @@ Rails.application.routes.draw do
           get 'game_days/:game_day_number/schedule', to: 'leagues#game_day_schedule'
           get :schedule
           get :table
+          get :grouped_table
           get :scorer
           get :meta
           get :license_list

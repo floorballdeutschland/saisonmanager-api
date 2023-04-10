@@ -395,6 +395,12 @@ class LeaguesController < ApplicationController
     render json: @league.table
   end
 
+  def grouped_table
+    @league = League.find(params[:id])
+
+    render json: @league.grouped_table
+  end
+
   def license_list
     league = League.find(params[:id])
 
