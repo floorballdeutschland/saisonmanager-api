@@ -402,8 +402,6 @@ class League < ApplicationRecord
       next unless game.ended? && !game.result.nil?
 
       [game.home_team, game.guest_team].each do |team|
-        results[team.id] = empty_table_item(team) unless results[team.id].present?
-
         results[team.id][:games] += 1
       end
 
