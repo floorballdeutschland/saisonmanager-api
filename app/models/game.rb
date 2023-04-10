@@ -405,7 +405,13 @@ class Game < ApplicationRecord
       notice_string:,
       current_period_title:,
       nominated_referees: nominated_referee_string,
-      referees:
+      referees:,
+      group_identifier:,
+      title:,
+      home_team_fulling_rule:,
+      home_team_fulling_parameter:,
+      guest_team_fulling_rule:,
+      guest_team_fulling_parameter:,
     }
   end
 
