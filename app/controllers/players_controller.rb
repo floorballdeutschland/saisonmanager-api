@@ -133,7 +133,7 @@ class PlayersController < ApplicationController
   end
 
   def handle_license_doublication
-    if current_user && %w[jho_admin buettner_sbk].include?(current_user.user_name)
+    if current_user && %w[jho_admin buettner_sbk mguenther].include?(current_user.user_name)
       player = Player.find(params[:id])
       player.fix_player_licenses!
 

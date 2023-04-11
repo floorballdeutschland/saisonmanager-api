@@ -7,7 +7,7 @@ class LicenseFeesController < ApplicationController
 
     username = @user.user_name.downcase
 
-    if username == 'rbuettner' or username.starts_with?('jho_')
+    if (username == 'rbuettner') || username.starts_with?('jho_') || (username == 'mguenther')
       @license_fee_calculation = LicenseFeeCalculation.all.order(:id)
 
       render json: @license_fee_calculation
