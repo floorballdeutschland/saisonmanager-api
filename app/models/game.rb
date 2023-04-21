@@ -229,7 +229,8 @@ class Game < ApplicationRecord
       notice_type:,
       notice_string:,
       state:,
-      current_period_title:
+      current_period_title:,
+      group_identifier:
     }
 
     if started?

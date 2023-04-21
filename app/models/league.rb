@@ -340,7 +340,7 @@ class League < ApplicationRecord
   end
 
   def grouped_table
-    groups = games.pluck(:group_identifier).uniq.sort
+    groups = games.select { |game| game.group_identifier.present? }.pluck(:group_identifier).uniq.sort
     grouped = {}
 
     groups.each do |group|
