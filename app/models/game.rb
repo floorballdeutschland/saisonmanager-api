@@ -203,6 +203,42 @@ class Game < ApplicationRecord
     end
   end
 
+  def home_team_fulling_title
+    if home_team_fulling_rule.present?
+      if home_team_fulling_rule.start_with?("game")
+        sourceGame = league.games.select { |game| game.id == self.home_team_fulling_parameter }.first
+
+        if sourceGame.present? && !sourceGame.title.blank?
+          return sourceGame.title
+        else
+          winnerOrLose = home_team_fulling_rule.include?("winner") ? 'Gewinner' : 'Verlierer'
+          return "#{winnerOrLose} Spiel #{sourceGame.game_number}"
+        end
+      else
+        group = home_team_fulling_rule.split('_').last
+        return "Gruppe #{group.upcase} / Platz #{home_team_fulling_parameter}"
+      end
+    end
+  end
+
+  def guest_team_fulling_title
+    if guest_team_fulling_rule.present?
+      if guest_team_fulling_rule.start_with?("game")
+        sourceGame = league.games.select { |game| game.id == self.guest_team_fulling_parameter }.first
+
+        if sourceGame.present? && !sourceGame.title.blank?
+          return sourceGame.title
+        else
+          winnerOrLose = guest_team_fulling_rule.include?("winner") ? 'Gewinner' : 'Verlierer'
+          return "#{winnerOrLose} Spiel #{sourceGame.game_number}"
+        end
+      else
+        group = guest_team_fulling_rule.split('_').last
+        return "Gruppe #{group.upcase} / Platz #{guest_team_fulling_parameter}"
+      end
+    end
+  end
+
   def schedule_item
     item = {
       game_id: id,
@@ -231,7 +267,13 @@ class Game < ApplicationRecord
       state:,
       current_period_title:,
       group_identifier:,
-      title:
+      title:,
+      home_team_fulling_rule:,
+      home_team_fulling_title:,
+      home_team_fulling_parameter:,
+      guest_team_fulling_rule:,
+      guest_team_fulling_title:,
+      guest_team_fulling_parameter:,
     }
 
     if started?
