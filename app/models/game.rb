@@ -204,38 +204,46 @@ class Game < ApplicationRecord
   end
 
   def home_team_filling_title
-    if home_team_filling_rule.present?
-      if home_team_filling_rule.start_with?('game')
-        sourceGame = league.games.select { |game| game.id == home_team_filling_parameter }.first
+    return if home_team_filling_rule.blank?
 
-        if sourceGame.present? && !sourceGame.title.blank?
-          sourceGame.title
+    if home_team_filling_rule.start_with?('game')
+      source_game = league.games.select { |game| game.id == home_team_filling_parameter }.first
+
+      if source_game.present?
+        if source_game.title.present?
+          source_game.title
         else
-          winnerOrLose = home_team_filling_rule.include?('winner') ? 'Gewinner' : 'Verlierer'
-          "#{winnerOrLose} Spiel #{sourceGame.game_number}"
+          winner_or_loser = home_team_filling_rule.include?('winner') ? 'Gewinner' : 'Verlierer'
+          "#{winner_or_loser} Spiel #{source_game.game_number}"
         end
       else
-        group = home_team_filling_rule.split('_').last
-        "Gruppe #{group.upcase} / Platz #{home_team_filling_parameter}"
+        'Fehler'
       end
+    else
+      group = home_team_filling_rule.split('_').last
+      "Gruppe #{group.upcase} / Platz #{home_team_filling_parameter}"
     end
   end
 
   def guest_team_filling_title
-    if guest_team_filling_rule.present?
-      if guest_team_filling_rule.start_with?('game')
-        sourceGame = league.games.select { |game| game.id == guest_team_filling_parameter }.first
+    return if guest_team_filling_rule.blank?
 
-        if sourceGame.present? && !sourceGame.title.blank?
-          sourceGame.title
+    if guest_team_filling_rule.start_with?('game')
+      source_game = league.games.select { |game| game.id == guest_team_filling_parameter }.first
+
+      if source_game.present?
+        if source_game.title.present?
+          source_game.title
         else
-          winnerOrLose = guest_team_filling_rule.include?('winner') ? 'Gewinner' : 'Verlierer'
-          "#{winnerOrLose} Spiel #{sourceGame.game_number}"
+          winner_or_loser = guest_team_filling_rule.include?('winner') ? 'Gewinner' : 'Verlierer'
+          "#{winner_or_loser} Spiel #{source_game.game_number}"
         end
       else
-        group = guest_team_filling_rule.split('_').last
-        "Gruppe #{group.upcase} / Platz #{guest_team_filling_parameter}"
+        'Fehler'
       end
+    else
+      group = guest_team_filling_rule.split('_').last
+      "Gruppe #{group.upcase} / Platz #{guest_team_filling_parameter}"
     end
   end
 
