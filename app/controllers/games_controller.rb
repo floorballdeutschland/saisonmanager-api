@@ -49,6 +49,7 @@ class GamesController < ApplicationController
   def update
     ph = current_user.permission_hash
     game = Game.find(params[:id])
+    game.correct_teams!
     game_operation_id = game.league.game_operation_id.to_i
 
     allowed = if ph[:admin].present? || ph[:sbk].present?

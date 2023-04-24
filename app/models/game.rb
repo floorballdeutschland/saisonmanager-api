@@ -8,6 +8,8 @@ class Game < ApplicationRecord
                             where('referee1_string LIKE :refname OR referee2_string LIKE :refname', refname: "%#{referee_name}%")
                           }
 
+  before_save :correct_teams!
+
   def league
     game_day.league
   end
