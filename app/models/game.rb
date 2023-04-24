@@ -203,6 +203,50 @@ class Game < ApplicationRecord
     end
   end
 
+  def home_team_filling_title
+    return if home_team_filling_rule.blank?
+
+    if home_team_filling_rule.start_with?('game')
+      source_game = league.games.select { |game| game.id == home_team_filling_parameter }.first
+
+      if source_game.present?
+        if source_game.title.present?
+          source_game.title
+        else
+          winner_or_loser = home_team_filling_rule.include?('winner') ? 'Gewinner' : 'Verlierer'
+          "#{winner_or_loser} Spiel #{source_game.game_number}"
+        end
+      else
+        'Fehler'
+      end
+    else
+      group = home_team_filling_rule.split('_').last
+      "Gruppe #{group.upcase} / Platz #{home_team_filling_parameter}"
+    end
+  end
+
+  def guest_team_filling_title
+    return if guest_team_filling_rule.blank?
+
+    if guest_team_filling_rule.start_with?('game')
+      source_game = league.games.select { |game| game.id == guest_team_filling_parameter }.first
+
+      if source_game.present?
+        if source_game.title.present?
+          source_game.title
+        else
+          winner_or_loser = guest_team_filling_rule.include?('winner') ? 'Gewinner' : 'Verlierer'
+          "#{winner_or_loser} Spiel #{source_game.game_number}"
+        end
+      else
+        'Fehler'
+      end
+    else
+      group = guest_team_filling_rule.split('_').last
+      "Gruppe #{group.upcase} / Platz #{guest_team_filling_parameter}"
+    end
+  end
+
   def schedule_item
     item = {
       game_id: id,
@@ -229,7 +273,15 @@ class Game < ApplicationRecord
       notice_type:,
       notice_string:,
       state:,
-      current_period_title:
+      current_period_title:,
+      group_identifier:,
+      title:,
+      home_team_filling_rule:,
+      home_team_filling_title:,
+      home_team_filling_parameter:,
+      guest_team_filling_rule:,
+      guest_team_filling_title:,
+      guest_team_filling_parameter:
     }
 
     if started?
@@ -408,10 +460,10 @@ class Game < ApplicationRecord
       referees:,
       group_identifier:,
       title:,
-      home_team_fulling_rule:,
-      home_team_fulling_parameter:,
-      guest_team_fulling_rule:,
-      guest_team_fulling_parameter:,
+      home_team_filling_rule:,
+      home_team_filling_parameter:,
+      guest_team_filling_rule:,
+      guest_team_filling_parameter:
     }
   end
 

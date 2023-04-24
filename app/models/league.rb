@@ -340,13 +340,13 @@ class League < ApplicationRecord
   end
 
   def grouped_table
-    groups = games.pluck(:group_identifier).uniq.sort
+    groups = games.pluck(:group_identifier).uniq.reject(&:nil?).sort
     grouped = {}
 
     groups.each do |group|
       grouped[group] = group_template(group)
 
-      results = evaluate_table_results(games.select{|game| game.group_identifier == group})
+      results = evaluate_table_results(games.select { |game| game.group_identifier == group })
       last_entry = nil
 
       sorted_results = results.values.sort_by do |team_result|
@@ -923,8 +923,8 @@ class League < ApplicationRecord
     group = group_identifier.split('_').last
 
     {
-      group_identifier: group_identifier,
-      name: ["Gruppe ", group.upcase].join
+      group_identifier:,
+      name: ['Gruppe ', group.upcase].join
     }
   end
 end

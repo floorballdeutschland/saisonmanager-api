@@ -697,9 +697,9 @@ class GamesController < ApplicationController
                                  :home_team_id, :guest_team_id,
                                  :group_identifier,
                                  :title,
-                                 :home_team_fulling_rule,
-                                 :home_team_fulling_parameter,
-                                 :guest_team_fulling_rule,
-                                 :guest_team_fulling_parameter)
+                                 :home_team_filling_rule,
+                                 :home_team_filling_parameter,
+                                 :guest_team_filling_rule,
+                                 :guest_team_filling_parameter)
   end
 end
