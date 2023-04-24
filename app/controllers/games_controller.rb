@@ -20,6 +20,7 @@ class GamesController < ApplicationController
   def create
     ph = current_user.permission_hash
     game = Game.new(game_create_update_params)
+    game.correct_teams!
     game_operation_id = game.league.game_operation_id.to_i
 
     allowed = if ph[:admin].present? || ph[:sbk].present?

@@ -14,7 +14,7 @@ class GameDay < ApplicationRecord
   end
 
   def deletable?
-    !games.present?
+    !games.present? # TODO: current_season?!
   end
 
   def full_hash(with_games = false)

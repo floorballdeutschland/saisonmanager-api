@@ -1,6 +1,6 @@
 class Game < ApplicationRecord
-  belongs_to :home_team, class_name: 'Team'
-  belongs_to :guest_team, class_name: 'Team'
+  belongs_to :home_team, class_name: 'Team', optional: true
+  belongs_to :guest_team, class_name: 'Team', optional: true
   belongs_to :game_day
 
   scope :by_referee_id, ->(referee_id) { where('? = any (referee_ids)', referee_id) }
@@ -13,7 +13,7 @@ class Game < ApplicationRecord
   end
 
   def home_team_name
-    home_team.name
+    home_team&.name
   end
 
   def home_team_player_number
@@ -21,7 +21,7 @@ class Game < ApplicationRecord
   end
 
   def guest_team_name
-    guest_team.name
+    guest_team&.name
   end
 
   def guest_team_player_number
@@ -271,11 +271,11 @@ class Game < ApplicationRecord
       started:,
       ended:,
       home_team_name:,
-      home_team_logo: home_team.logo_url_fallback,
-      home_team_small_logo: home_team.logo_small_url_fallback,
+      home_team_logo: home_team&.logo_url_fallback,
+      home_team_small_logo: home_team&.logo_small_url_fallback,
       guest_team_name:,
-      guest_team_logo: guest_team.logo_url_fallback,
-      guest_team_small_logo: guest_team.logo_small_url_fallback,
+      guest_team_logo: guest_team&.logo_url_fallback,
+      guest_team_small_logo: guest_team&.logo_small_url_fallback,
       nominated_referee_string:,
       referees:,
       notice_type:,
@@ -381,14 +381,14 @@ class Game < ApplicationRecord
       game_status:,
       ingame_status:,
       audience:,
-      home_team_name: home_team.name,
-      guest_team_name: guest_team.name,
+      home_team_name: home_team&.name,
+      guest_team_name: guest_team&.name,
       home_team_id:,
       guest_team_id:,
-      home_team_logo: home_team.logo_url_fallback,
-      home_team_small_logo: home_team.logo_small_url_fallback,
-      guest_team_logo: guest_team.logo_url_fallback,
-      guest_team_small_logo: guest_team.logo_small_url_fallback,
+      home_team_logo: home_team&.logo_url_fallback,
+      home_team_small_logo: home_team&.logo_small_url_fallback,
+      guest_team_logo: guest_team&.logo_url_fallback,
+      guest_team_small_logo: guest_team&.logo_small_url_fallback,
       live_stream_link:,
       events: formatted_events,
       players: players_with_position,
@@ -450,14 +450,14 @@ class Game < ApplicationRecord
       start_time:,
       game_day_id:,
       audience:,
-      home_team_name: home_team.name,
-      guest_team_name: guest_team.name,
+      home_team_name: home_team&.name,
+      guest_team_name: guest_team&.name,
       home_team_id:,
       guest_team_id:,
-      home_team_logo: home_team.logo_url_fallback,
-      home_team_small_logo: home_team.logo_small_url_fallback,
-      guest_team_logo: guest_team.logo_url_fallback,
-      guest_team_small_logo: guest_team.logo_small_url_fallback,
+      home_team_logo: home_team&.logo_url_fallback,
+      home_team_small_logo: home_team&.logo_small_url_fallback,
+      guest_team_logo: guest_team&.logo_url_fallback,
+      guest_team_small_logo: guest_team&.logo_small_url_fallback,
       live_stream_link:,
       started:,
       ended:,
@@ -849,6 +849,11 @@ class Game < ApplicationRecord
     perm << :check_game if admin || sbk
 
     perm
+  end
+
+  def correct_teams!
+    self.home_team_id = nil if home_team_id.zero?
+    self.guest_team_id = nil if guest_team_id.zero?
   end
 
   def self.start_end_games
