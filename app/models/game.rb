@@ -856,8 +856,8 @@ class Game < ApplicationRecord
   end
 
   def correct_teams!
-    self.home_team_id = nil if home_team_id.zero?
-    self.guest_team_id = nil if guest_team_id.zero?
+    self.home_team_id = nil if home_team_id.blank? || home_team_id.zero?
+    self.guest_team_id = nil if guest_team_id.blank? || guest_team_id.zero?
   end
 
   def self.start_end_games
