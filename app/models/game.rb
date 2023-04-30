@@ -213,7 +213,8 @@ class Game < ApplicationRecord
 
       if source_game.present?
         if source_game.series_title.present?
-          result = source_game.series_title
+          winner_or_loser = home_team_filling_rule.include?('winner') ? 'Gewinner' : 'Verlierer'
+          result = "#{winner_or_loser} #{source_game.series_title}"
 
           result += " #{source_game.series_number.strip}" if source_game.series_number.present?
 
@@ -239,7 +240,8 @@ class Game < ApplicationRecord
 
       if source_game.present?
         if source_game.series_title.present?
-          result = source_game.series_title
+          winner_or_loser = guest_team_filling_rule.include?('winner') ? 'Gewinner' : 'Verlierer'
+          result = "#{winner_or_loser} #{source_game.series_title}"
 
           result += " #{source_game.series_number.strip}" if source_game.series_number.present?
 
