@@ -8,7 +8,22 @@ class Game < ApplicationRecord
                             where('referee1_string LIKE :refname OR referee2_string LIKE :refname', refname: "%#{referee_name}%")
                           }
 
+  scope :match_record_closed, -> { where(game_status: %w[match_record_closed finalized]) }
+  scope :match_record_not_closed, -> { where.not(game_status: %w[match_record_closed finalized]) }
+
+  scope :has_autofill_condition, lambda {
+                                   where('(home_team_filling_rule IS NOT NULL AND home_team_filling_parameter IS NOT NULL) OR (guest_team_filling_rule IS NOT NULL AND guest_team_filling_parameter IS NOT NULL)')
+                                 }
+
+  scope :not_started, lambda {
+                        where('(game_status IS NULL OR game_status = ?) AND legacy = false', 'pregame')
+                      }
+
   before_save :correct_teams!
+
+  def match_record_closed?
+    %w[match_record_closed finalized].include? game_status
+  end
 
   def league
     game_day.league
@@ -156,6 +171,22 @@ class Game < ApplicationRecord
       overtime: (overtime == true)
     }
   end
+
+  def winning_team_id
+    return unless result
+    return home_team_id if result[:home_goals] > result[:guest_goals]
+
+    guest_team_id
+  end
+  alias game_winner winning_team_id
+
+  def losing_team_id
+    return unless result
+    return home_team_id if result[:home_goals] < result[:guest_goals]
+
+    guest_team_id
+  end
+  alias game_loser losing_team_id
 
   def result_postfix
     if forfait > 0
@@ -885,5 +916,41 @@ class Game < ApplicationRecord
         g.save
       end
     end
+  end
+
+  def self.autofill_teams!
+    games = Game.not_started.has_autofill_condition
+
+    games.each do |game|
+      %w[home_team guest_team].each do |team|
+        next unless game["#{team}_filling_rule"].present? && game["#{team}_filling_parameter"].present?
+
+        if game["#{team}_filling_rule"].starts_with? 'game_'
+          reference_game = Game.find(game["#{team}_filling_parameter"])
+
+          team_id = reference_game.send(game["#{team}_filling_rule"].to_sym)
+          # we can fill, because the game has a set winner/loser
+          game["#{team}_id"] = team_id if team_id
+        end
+
+        next unless game["#{team}_filling_rule"].starts_with? 'place_'
+
+        group = game["#{team}_filling_rule"].gsub('place_', 'group_')
+        game_day_ids = GameDay.where(league_id: game.game_day.league_id).pluck(:id)
+
+        # we skip this rule, unless all games are played:
+        next if Game.where(game_day_id: game_day_ids).where(group_identifier: group).match_record_not_closed.present?
+
+        place = game["#{team}_filling_parameter"].to_i
+        table = game.league.grouped_table
+        sub_table = table[group][:table]
+        team_id = sub_table[place - 1][:team_id]
+
+        game["#{team}_id"] = team_id if team_id
+      end
+      game.save
+    end
+
+    []
   end
 end
