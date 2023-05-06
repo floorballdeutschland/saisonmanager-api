@@ -921,6 +921,8 @@ class Game < ApplicationRecord
   def self.autofill_teams!
     games = Game.not_started.has_autofill_condition
 
+    changed_leagues = []
+
     games.each do |game|
       %w[home_team guest_team].each do |team|
         next unless game["#{team}_filling_rule"].present? && game["#{team}_filling_parameter"].present?
@@ -936,7 +938,8 @@ class Game < ApplicationRecord
         next unless game["#{team}_filling_rule"].starts_with? 'place_'
 
         group = game["#{team}_filling_rule"].gsub('place_', 'group_')
-        game_day_ids = GameDay.where(league_id: game.game_day.league_id).pluck(:id)
+        league_id = game.game_day.league_id
+        game_day_ids = GameDay.where(league_id:).pluck(:id)
 
         # we skip this rule, unless all games are played:
         next if Game.where(game_day_id: game_day_ids).where(group_identifier: group).match_record_not_closed.present?
@@ -946,9 +949,16 @@ class Game < ApplicationRecord
         sub_table = table[group][:table]
         team_id = sub_table[place - 1][:team_id]
 
-        game["#{team}_id"] = team_id if team_id
+        if team_id && (team_id != game["#{team}_id"])
+          game["#{team}_id"] = team_id
+          changed_leagues << league_id
+        end
       end
       game.save
+    end
+
+    changed_leagues.uniq.each do |league_id|
+      Rails.cache.fetch("leagues/#{league_id}/current_schedule", expires_in: 5.minutes)
     end
 
     []
