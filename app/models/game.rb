@@ -958,7 +958,8 @@ class Game < ApplicationRecord
     end
 
     changed_leagues.uniq.each do |league_id|
-      Rails.cache.fetch("leagues/#{league_id}/current_schedule", expires_in: 5.minutes)
+      Rails.cache.delete("leagues/#{league_id}/current_schedule")
+      Rails.cache.delete("leagues/#{league_id}/schedule")
     end
 
     []
