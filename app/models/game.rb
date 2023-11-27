@@ -697,8 +697,8 @@ class Game < ApplicationRecord
         e[:penalty_type] = penalty_mapping(event)
         e[:penalty_type_string] = penalty_mapping_string(event)
         reason = penalty_reason(event)
-        e[:penalty_reason] = reason['code']
-        e[:penalty_reason_string] = reason['description']
+        e[:penalty_reason] = reason.present? ? reason['code'] : nil
+        e[:penalty_reason_string] = reason.present? ? reason['description'] : nil
 
       else
         e[:event_type] = :goal
