@@ -155,6 +155,7 @@ ActiveRecord::Schema[7.0].define(version: 2022_10_07_223502) do
     t.boolean "started", default: false, null: false
     t.boolean "ended", default: false, null: false
     t.text "live_stream_link"
+    t.text "vod_stream_link"
     t.text "actual_start_time"
     t.boolean "legacy", default: false, null: false
     t.text "notice_type"
