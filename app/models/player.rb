@@ -54,6 +54,19 @@ class Player < ApplicationRecord
     p
   end
 
+  def some_hash(hash_type = :full, with_licenses = false, only_current_licenses = false)
+    case hash_type
+    when :full
+      full_hash(with_licenses, only_current_licenses)
+    when :short
+      full_hash(with_licenses, only_current_licenses).select do |k, _v|
+        %i[id first_name last_name birthdate].include? k
+      end
+    else
+      {}
+    end
+  end
+
   def admin_players_clubs
     {
       club_id:
@@ -89,7 +102,12 @@ class Player < ApplicationRecord
 
     if current_licenses(season_id)
       sorted_licenses = current_licenses(season_id).map! do |x|
-        x['sorting'] = (x['league_category_id'].to_s.rjust(3, '0') + x['league_class_id'].to_s.rjust(3, '0')).to_i
+        x['sorting'] =
+          (x['league_category_id'].to_s.rjust(3,
+                                              '0') + x['league_category_id'].to_s.rjust(3,
+                                                                                        '0') + x['league_class_id'].to_s.rjust(
+                                                                                          3, '0'
+                                                                                        )).to_i
         x
       end
     end
@@ -143,7 +161,7 @@ class Player < ApplicationRecord
     if valid_home_club
       p.merge!(home_club_id: valid_home_club.id,
                home_club: valid_home_club.name,
-               home_club_operation: valid_home_club.home_game_operation.name,
+               home_club_operation: valid_home_club.home_game_operation&.name,
                home_club_state: valid_home_club.state)
     end
 
@@ -151,9 +169,10 @@ class Player < ApplicationRecord
       p.merge!(team_id: license['team_id'],
                license_id: license['id'],
                league_class_id: license['league_class_id'],
+               history: license['history'],
                league_class: Setting.league_class(license['league_class_id']),
                league_category_id: license['league_category_id'],
-               league_category: Setting.league_category(license['league_category_id']))
+               league_category: (license['league_category_id'].present? ? Setting.league_category(license['league_category_id']) : 'x'))
     end
 
     team = Team.find_by_id license['team_id'] if license
