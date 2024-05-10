@@ -128,8 +128,9 @@ class User < ApplicationRecord
       user.password_confirmation = password
       user.password_reset_token = nil
       user.old_password = nil
+      user.last_login_at = Time.now
       user if user.save
-    elsif user.password_digest.present? && user.authenticate(password)
+    elsif user.password_digest.present? && user.authenticate(password) && user.update(last_login_at: Time.now)
       user
     end
   end
