@@ -426,6 +426,7 @@ class Game < ApplicationRecord
       vod_link:,
       events: formatted_events,
       players: players_with_position,
+      starting_players:,
       started:,
       ended:,
       result_string:,
