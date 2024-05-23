@@ -265,9 +265,16 @@ class GamesController < ApplicationController
 
       # Add player to the position if player_id is present
       if params[:player_id].present? && player
-        game.starting_players[side][position] = player.id
+        # Check if the player is already in starting_players
+
+        if game.starting_players[side].values.include?(player.id)
+          render json: { message: 'Spieler kann nur einmal im Startaufgebot vorkommen' }, status: :unprocessable_entity
+          return
+        else
+          game.starting_players[side][position] = player.id
+        end
       else
-        return render json: { message: 'Spieler nicht gefunden' }, status: :unprocessable_entity
+        game.starting_players[side][position] = nil
       end
 
       game.record_created_at ||= Time.now
@@ -276,7 +283,7 @@ class GamesController < ApplicationController
       game.record_updated_by = current_user.id
 
       if game.save
-        render json: game.starting_players
+        render json: game.starting_players_with_numbers
       else
         render json: { message: game.errors.full_messages.join(", ") }, status: :unprocessable_entity
       end

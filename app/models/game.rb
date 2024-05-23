@@ -106,6 +106,33 @@ class Game < ApplicationRecord
     result
   end
 
+  def starting_players_with_numbers
+    result = {}
+
+    if players.present?
+      %w[home guest].each do |team|
+        result[team] = ['goal', 'defender1', 'defender2', 'center', 'forward1', 'forward2'].each_with_object([]) do |position, lineup|
+
+          if starting_players.present? && starting_players[team].present?
+            player_id = starting_players[team][position]
+            lineup_player = players[team].find { |player| player["player_id"] == player_id }
+          end
+
+          lineup << {
+            position: position,
+            team: team === "home" ? home_team_name : guest_team_name,
+            player_id: lineup_player ? lineup_player["player_id"] : '',
+            player_firstname: lineup_player ? lineup_player["player_firstname"] : '',
+            player_name: lineup_player ? lineup_player["player_name"] : '',
+            trikot_number: lineup_player ? lineup_player["trikot_number"] : ''
+          }
+        end
+      end
+    end
+
+    result
+  end
+
   def result
     return if (legacy && !(events.present? || forfait?)) || (!legacy && !started)
 
@@ -426,7 +453,7 @@ class Game < ApplicationRecord
       vod_link:,
       events: formatted_events,
       players: players_with_position,
-      starting_players:,
+      starting_players: starting_players_with_numbers,
       started:,
       ended:,
       result_string:,
