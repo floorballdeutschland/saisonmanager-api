@@ -105,6 +105,7 @@ Rails.application.routes.draw do
       get 'user/team/:id/licenses', to: 'clubs#user_team_licenses'
 
       post 'user/games/:id/starting/:side/:position/set_player', to: 'games#set_starting_player'
+      post 'user/games/:id/award/:side/:award/set_player', to: 'games#set_player_award'
 
       post 'user/games/:id/lineup/:side/add_player', to: 'games#add_player_to_lineup'
       post 'user/games/:id/lineup/:side/remove_player', to: 'games#remove_player'
