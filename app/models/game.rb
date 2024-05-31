@@ -8,7 +8,22 @@ class Game < ApplicationRecord
                             where('referee1_string LIKE :refname OR referee2_string LIKE :refname', refname: "%#{referee_name}%")
                           }
 
+  scope :match_record_closed, -> { where(game_status: %w[match_record_closed finalized]) }
+  scope :match_record_not_closed, -> { where.not(game_status: %w[match_record_closed finalized]) }
+
+  scope :has_autofill_condition, lambda {
+                                   where('(home_team_filling_rule IS NOT NULL AND home_team_filling_parameter IS NOT NULL) OR (guest_team_filling_rule IS NOT NULL AND guest_team_filling_parameter IS NOT NULL)')
+                                 }
+
+  scope :not_started, lambda {
+                        where('(game_status IS NULL OR game_status = ?) AND legacy = false', 'pregame')
+                      }
+
   before_save :correct_teams!
+
+  def match_record_closed?
+    %w[match_record_closed finalized].include? game_status
+  end
 
   def league
     game_day.league
@@ -91,6 +106,59 @@ class Game < ApplicationRecord
     result
   end
 
+  def starting_players_with_numbers
+    result = {}
+
+    if players.present?
+      %w[home guest].each do |team|
+        result[team] = ['goal', 'defender1', 'defender2', 'center', 'forward1', 'forward2'].each_with_object([]) do |position, lineup|
+
+          if starting_players.present? && starting_players[team].present?
+            player_id = starting_players[team][position]
+            lineup_player = players[team].find { |player| player["player_id"] == player_id }
+          end
+
+          lineup << {
+            position: position,
+            team: team === "home" ? home_team_name : guest_team_name,
+            player_id: lineup_player ? lineup_player["player_id"] : '',
+            player_firstname: lineup_player ? lineup_player["player_firstname"] : '',
+            player_name: lineup_player ? lineup_player["player_name"] : '',
+            trikot_number: lineup_player ? lineup_player["trikot_number"] : ''
+          }
+        end
+      end
+    end
+
+    result
+  end
+
+  def awards_with_player_names
+    result = {}
+
+    if players.present?
+      %w[home guest].each do |team|
+        result[team] = %w[mvp].each_with_object([]) do |award_key, lineup|
+          if awards.present? && awards[team].present?
+            player_id = awards[team][award_key]
+            awards_player = players[team].find { |player| player["player_id"] == player_id }
+          end
+
+          lineup << {
+            award: award_key,
+            team: team === "home" ? home_team_name : guest_team_name,
+            player_id: awards_player ? awards_player["player_id"] : '',
+            player_firstname: awards_player ? awards_player["player_firstname"] : '',
+            player_name: awards_player ? awards_player["player_name"] : '',
+            trikot_number: awards_player ? awards_player["trikot_number"] : ''
+          }
+        end
+      end
+    end
+
+    result
+  end
+
   def result
     return if (legacy && !(events.present? || forfait?)) || (!legacy && !started)
 
@@ -156,6 +224,22 @@ class Game < ApplicationRecord
       overtime: (overtime == true)
     }
   end
+
+  def winning_team_id
+    return unless result
+    return home_team_id if result[:home_goals] > result[:guest_goals]
+
+    guest_team_id
+  end
+  alias game_winner winning_team_id
+
+  def losing_team_id
+    return unless result
+    return home_team_id if result[:home_goals] < result[:guest_goals]
+
+    guest_team_id
+  end
+  alias game_loser losing_team_id
 
   def result_postfix
     if forfait > 0
@@ -394,8 +478,11 @@ class Game < ApplicationRecord
       guest_team_logo: guest_team&.logo_url_fallback,
       guest_team_small_logo: guest_team&.logo_small_url_fallback,
       live_stream_link:,
+      vod_link:,
       events: formatted_events,
       players: players_with_position,
+      starting_players: starting_players_with_numbers,
+      awards: awards_with_player_names,
       started:,
       ended:,
       result_string:,
@@ -463,6 +550,7 @@ class Game < ApplicationRecord
       guest_team_logo: guest_team&.logo_url_fallback,
       guest_team_small_logo: guest_team&.logo_small_url_fallback,
       live_stream_link:,
+      vod_link:,
       started:,
       ended:,
       forfait:,
@@ -496,6 +584,7 @@ class Game < ApplicationRecord
       guest_team_logo: guest_team.logo_url_fallback,
       guest_team_small_logo: guest_team.logo_small_url_fallback,
       live_stream_link:,
+      vod_link:,
       result_string:,
       result:,
       league_id: league.id,
@@ -668,8 +757,8 @@ class Game < ApplicationRecord
         e[:penalty_type] = penalty_mapping(event)
         e[:penalty_type_string] = penalty_mapping_string(event)
         reason = penalty_reason(event)
-        e[:penalty_reason] = reason['code']
-        e[:penalty_reason_string] = reason['description']
+        e[:penalty_reason] = reason.present? ? reason['code'] : nil
+        e[:penalty_reason_string] = reason.present? ? reason['description'] : nil
 
       else
         e[:event_type] = :goal
@@ -887,5 +976,52 @@ class Game < ApplicationRecord
         g.save
       end
     end
+  end
+
+  def self.autofill_teams!
+    games = Game.not_started.has_autofill_condition
+
+    changed_leagues = []
+
+    games.each do |game|
+      %w[home_team guest_team].each do |team|
+        next unless game["#{team}_filling_rule"].present? && game["#{team}_filling_parameter"].present?
+
+        if game["#{team}_filling_rule"].starts_with? 'game_'
+          reference_game = Game.find(game["#{team}_filling_parameter"])
+
+          team_id = reference_game.send(game["#{team}_filling_rule"].to_sym)
+          # we can fill, because the game has a set winner/loser
+          game["#{team}_id"] = team_id if team_id
+        end
+
+        next unless game["#{team}_filling_rule"].starts_with? 'place_'
+
+        group = game["#{team}_filling_rule"].gsub('place_', 'group_')
+        league_id = game.game_day.league_id
+        game_day_ids = GameDay.where(league_id:).pluck(:id)
+
+        # we skip this rule, unless all games are played:
+        next if Game.where(game_day_id: game_day_ids).where(group_identifier: group).match_record_not_closed.present?
+
+        place = game["#{team}_filling_parameter"].to_i
+        table = game.league.grouped_table
+        sub_table = table[group][:table]
+        team_id = sub_table[place - 1][:team_id]
+
+        if team_id && (team_id != game["#{team}_id"])
+          game["#{team}_id"] = team_id
+          changed_leagues << league_id
+        end
+      end
+      game.save
+    end
+
+    changed_leagues.uniq.each do |league_id|
+      Rails.cache.delete("leagues/#{league_id}/current_schedule")
+      Rails.cache.delete("leagues/#{league_id}/schedule")
+    end
+
+    []
   end
 end

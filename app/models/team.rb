@@ -168,7 +168,7 @@ class Team < ApplicationRecord
     end
   end
 
-  def add_teamlogos(force = false)
+  def add_logo(force = false)
     return if !force && logo.present?
 
     dir = Dir["tmp/logoteams/#{id}*.png"]
@@ -180,10 +180,10 @@ class Team < ApplicationRecord
     logo.attach(io: File.open(path), filename:, content_type: 'image/png')
   end
 
-  def self.add_teamlogos
+  def self.add_logos
     teams = Team.all
     teams.each do |team|
-      team.add_teamlogos
+      team.add_logo
     end
   end
 end

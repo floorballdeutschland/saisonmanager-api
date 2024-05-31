@@ -2,16 +2,16 @@ class RefereeCalculation < ApplicationRecord
   require 'csv'
   require 'json'
 
-  attr_accessor :hash, :other_hash, :prefix
+  attr_accessor :the_hash, :other_hash, :prefix
 
-  attr_accessor :league_ids, :league_docs, :game_day_ids, :game_docs, :referees, :referees_count, :errors, :league_names
+  attr_accessor :league_ids, :league_docs, :game_day_ids, :game_docs, :referees, :referees_count, :ref_errors, :league_names
 
   # def self.load_saved(id)
   #   c = RefereeCalculation.find id
 
   #   if c
   #     file = File.read(c.path + c.filename_json)
-  #     c.hash = JSON.parse(file)
+  #     c.the_hash = JSON.parse(file)
   #     file_other = File.read(c.path + c.filename_other_json)
   #     c.other_hash = JSON.parse(file_other)
   #     c.prefix = "#{c.started_at.strftime('%Y%m%d%I%M%S')}_referee_calculation"
@@ -19,15 +19,16 @@ class RefereeCalculation < ApplicationRecord
   #   end
   # end
 
-  def self.start_calculation(user_id,season = Setting.current_season)
+  def self.start_calculation(user_id,season = Setting.current_season_id)
     c = RefereeCalculation.new
     c.started_at = Time.now
     c.season_id = season
     c.referees = {}
     c.referees_count = {}
-    c.errors = {}
+    c.ref_errors = {}
     c.league_names = []
     c.user_id = user_id
+    c.percent = 0
     c.prefix = "#{c.started_at.strftime('%Y%m%d%I%M%S')}_referee_calculation"
     c.save
 
@@ -50,7 +51,7 @@ class RefereeCalculation < ApplicationRecord
             puts "Fehler bei Spiel: #{game.id}, Liga: #{league_id}: Spiel noch nicht gespielt"
           elsif game.referee_ids.nil? || game.referee_ids.count != 2
             puts "Fehler bei Spiel: #{game.id}, Liga: #{league_id}"
-            c.errors["#{l.game_operation_id} - #{game.id}"] = 'Schiri Anzahl falsch'
+            c.ref_errors["#{l.game_operation_id} - #{game.id}"] = 'Schiri Anzahl falsch'
           else
             game.referee_ids.each do |ref_id|
               c.referees[ref_id] ||= []
@@ -75,13 +76,13 @@ class RefereeCalculation < ApplicationRecord
 
     c.league_names.uniq!.sort!
 
-    docs = ({ref: c.referees, errors: c.errors, leagues: c.league_docs, counted_games: c.referees_count})
+    docs = ({ref: c.referees, ref_errors: c.ref_errors, leagues: c.league_docs, counted_games: c.referees_count})
     File.open("#{c.prefix}.json", 'w') do |file|
       file.write JSON.pretty_generate(docs)
     end
 
-    File.open("#{c.prefix}_errors.json", 'w') do |file|
-      file.write JSON.pretty_generate(c.errors)
+    File.open("#{c.prefix}_ref_errors.json", 'w') do |file|
+      file.write JSON.pretty_generate(c.ref_errors)
     end
 
     data = 'id,'
