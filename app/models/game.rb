@@ -297,7 +297,8 @@ class Game < ApplicationRecord
 
       if source_game.present?
         if source_game.series_title.present?
-          result = source_game.series_title
+          winner_or_loser = home_team_filling_rule.include?('winner') ? 'Gewinner' : 'Verlierer'
+          result = "#{winner_or_loser} #{source_game.series_title}"
 
           result += " #{source_game.series_number.strip}" if source_game.series_number.present?
 
@@ -323,7 +324,8 @@ class Game < ApplicationRecord
 
       if source_game.present?
         if source_game.series_title.present?
-          result = source_game.series_title
+          winner_or_loser = guest_team_filling_rule.include?('winner') ? 'Gewinner' : 'Verlierer'
+          result = "#{winner_or_loser} #{source_game.series_title}"
 
           result += " #{source_game.series_number.strip}" if source_game.series_number.present?
 
@@ -943,8 +945,8 @@ class Game < ApplicationRecord
   end
 
   def correct_teams!
-    self.home_team_id = nil if home_team_id.present? && home_team_id.zero?
-    self.guest_team_id = nil if guest_team_id.present? && guest_team_id.zero?
+    self.home_team_id = nil if home_team_id.blank? || home_team_id.zero?
+    self.guest_team_id = nil if guest_team_id.blank? || guest_team_id.zero?
   end
 
   def self.start_end_games
