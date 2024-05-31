@@ -223,6 +223,132 @@ class GamesController < ApplicationController
     end
   end
 
+  def set_starting_player
+    game = Game.find(params[:id])
+    player = Player.find(params[:player_id]) if params[:player_id].present?
+
+    # Check if allowed
+    ph = current_user.permission_hash
+    allowed = if ph[:admin].present? || ph[:sbk].present?
+                true
+              elsif ph[:vm].present?
+                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]).present? ||
+                ph[:vm].intersection([game.home_team.syndicate_clubs, game.guest_team.syndicate_clubs].flatten.compact).present?
+              elsif ph[:tm].present?
+                ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
+              else
+                false
+              end
+
+    if allowed
+      # Ensure we have the hash set
+      game.starting_players ||= {}
+
+      side = params[:side]
+      position = params[:position]
+
+      # Ensure we have the hash set for the side
+      game.starting_players[side] ||= {
+        goal: nil,
+        defender1: nil,
+        defender2: nil,
+        center: nil,
+        forward1: nil,
+        forward2: nil
+      }
+
+      # Check if the position exists in the hash
+      unless ['goal', 'defender1', 'defender2', 'center', 'forward1', 'forward2'].include?(position)
+        render json: { message: 'Position existiert nicht' }, status: :unprocessable_entity
+        return
+      end
+
+      # Add player to the position if player_id is present
+      if params[:player_id].present? && player
+        # Check if the player is already in starting_players
+
+        if game.starting_players[side].values.include?(player.id)
+          render json: { message: 'Spieler kann nur einmal im Startaufgebot vorkommen' }, status: :unprocessable_entity
+          return
+        else
+          game.starting_players[side][position] = player.id
+        end
+      else
+        game.starting_players[side][position] = nil
+      end
+
+      game.record_created_at ||= Time.now
+      game.record_updated_at = Time.now
+      game.record_created_by ||= current_user.id
+      game.record_updated_by = current_user.id
+
+      if game.save
+        render json: game.starting_players_with_numbers
+      else
+        render json: { message: game.errors.full_messages.join(", ") }, status: :unprocessable_entity
+      end
+    else
+      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+  end
+
+  def set_player_award
+    game = Game.find(params[:id])
+    player = Player.find(params[:player_id]) if params[:player_id].present?
+
+    # Check if allowed
+    ph = current_user.permission_hash
+    allowed = if ph[:admin].present? || ph[:sbk].present?
+                true
+              elsif ph[:vm].present?
+                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]).present? ||
+                ph[:vm].intersection([game.home_team.syndicate_clubs, game.guest_team.syndicate_clubs].flatten.compact).present?
+              elsif ph[:tm].present?
+                ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
+              else
+                false
+              end
+
+    if allowed
+      # Ensure we have the hash set
+      game.awards ||= {}
+
+      side = params[:side]
+      award = params[:award]
+
+      # Ensure we have the hash set for the side
+      game.awards[side] ||= {
+        mvp: nil,
+      }
+
+      # Check if the position exists in the hash
+      unless ['mvp'].include?(award)
+        render json: { message: 'Auszeichnung konnte nicht gefunden werden' }, status: :unprocessable_entity
+        return
+      end
+
+      # set award if player_id is present
+      if params[:player_id].present? && player
+        game.awards[side][award] = player.id
+      else
+        game.awards[side][award] = nil
+      end
+
+      game.record_created_at ||= Time.now
+      game.record_updated_at = Time.now
+      game.record_created_by ||= current_user.id
+      game.record_updated_by = current_user.id
+
+      if game.save
+        render json: game.awards_with_player_names
+      else
+        render json: { message: game.errors.full_messages.join(", ") }, status: :unprocessable_entity
+      end
+    else
+      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+  end
+
   def add_coach
     game = Game.find(params[:id])
     # check if allowed
