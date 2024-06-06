@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2022_10_07_223502) do
+ActiveRecord::Schema[7.0].define(version: 2024_06_06_203601) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "hstore"
   enable_extension "plpgsql"
@@ -86,7 +86,7 @@ ActiveRecord::Schema[7.0].define(version: 2022_10_07_223502) do
     t.integer "created_by"
     t.text "date"
     t.integer "league_id"
-    t.integer "number"
+    t.integer "number", default: 99, null: false
     t.datetime "updated_at", precision: nil
     t.integer "updated_by"
   end
@@ -155,11 +155,22 @@ ActiveRecord::Schema[7.0].define(version: 2022_10_07_223502) do
     t.boolean "started", default: false, null: false
     t.boolean "ended", default: false, null: false
     t.text "live_stream_link"
-    t.text "vod_link"
     t.text "actual_start_time"
     t.boolean "legacy", default: false, null: false
     t.text "notice_type"
     t.text "notice_string"
+    t.text "game_status"
+    t.text "ingame_status"
+    t.text "home_team_filling_rule"
+    t.bigint "home_team_filling_parameter"
+    t.text "guest_team_filling_rule"
+    t.bigint "guest_team_filling_parameter"
+    t.text "group_identifier"
+    t.text "series_title"
+    t.string "series_number", limit: 3
+    t.text "vod_link"
+    t.jsonb "starting_players"
+    t.jsonb "awards"
   end
 
   create_table "leagues", id: :integer, default: -> { "nextval('tbl_league_id_seq'::regclass)" }, force: :cascade do |t|
@@ -215,12 +226,13 @@ ActiveRecord::Schema[7.0].define(version: 2022_10_07_223502) do
     t.text "first_name"
     t.text "last_name"
     t.jsonb "licenses"
-    t.text "gender"
+    t.boolean "male"
     t.text "nation_id"
     t.jsonb "old_licenses_deleted_for_transfer"
     t.integer "updated_by"
     t.datetime "updated_at", precision: nil
     t.text "security_id", default: "uuid_generate_v4()", null: false
+    t.text "gender"
   end
 
   create_table "referee_calculations", force: :cascade do |t|
@@ -300,6 +312,18 @@ ActiveRecord::Schema[7.0].define(version: 2022_10_07_223502) do
     t.text "security_id"
     t.text "password_digest"
     t.text "password_reset_token"
+    t.datetime "last_login_at", precision: nil
+    t.datetime "deactivated_at", precision: nil
+  end
+
+  create_table "versions", force: :cascade do |t|
+    t.string "item_type", null: false
+    t.bigint "item_id", null: false
+    t.string "event", null: false
+    t.string "whodunnit"
+    t.text "object"
+    t.datetime "created_at"
+    t.index ["item_type", "item_id"], name: "index_versions_on_item_type_and_item_id"
   end
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"

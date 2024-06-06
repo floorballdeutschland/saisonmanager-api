@@ -2,6 +2,7 @@ class ApplicationController < ActionController::Base
   include ActionController::MimeResponds
   before_action :authenticate_user
   before_action :save_current_user # https://gist.github.com/kule/9425fb7d4c2a13e556ef
+  before_action :set_paper_trail_whodunnit
 
   private
 

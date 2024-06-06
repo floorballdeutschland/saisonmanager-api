@@ -1,4 +1,6 @@
 class Player < ApplicationRecord
+  has_paper_trail
+
   belongs_to :created_at_user, class_name: 'User', optional: true
   belongs_to :updated_at_user, class_name: 'User', optional: true
 
