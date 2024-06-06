@@ -215,7 +215,7 @@ ActiveRecord::Schema[7.0].define(version: 2022_10_07_223502) do
     t.text "first_name"
     t.text "last_name"
     t.jsonb "licenses"
-    t.boolean "male"
+    t.text "gender"
     t.text "nation_id"
     t.jsonb "old_licenses_deleted_for_transfer"
     t.integer "updated_by"

@@ -5,8 +5,13 @@ class Player < ApplicationRecord
   # wo kommt das her?
   # attr_accessor :hash, :prefix
 
+  # legacy to replace old db field
+  def male
+    gender == 'M'
+  end
+
   def meta_hash
-    attributes.with_indifferent_access.slice(:id, :last_name, :first_name, :birthdate, :male, :security_id)
+    attributes.with_indifferent_access.slice(:id, :last_name, :first_name, :birthdate, :male, :gender, :security_id)
   end
 
   def full_hash(with_licenses = false, only_current_licenses = false, license_with_titles = false)
@@ -16,6 +21,7 @@ class Player < ApplicationRecord
       first_name:,
       birthdate:,
       male:,
+      gender:,
       nation_id:,
       nation_string:,
       clubs:,
@@ -151,6 +157,7 @@ class Player < ApplicationRecord
                                         first_name:,
                                         birthdate:,
                                         male:,
+                                        gender:,
                                         license_hash: sorted_licenses,
                                         license: license.to_json.to_s,
                                         clubs: club_names.to_json,
