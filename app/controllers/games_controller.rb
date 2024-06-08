@@ -121,7 +121,8 @@ class GamesController < ApplicationController
               elsif ph[:vm].present?
                 ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
                   ph[:vm].intersection([game.home_team.syndicate_clubs,
-                                        game.guest_team.syndicate_clubs].flatten.compact).present?
+                                        game.guest_team.syndicate_clubs].flatten.compact).present? ||
+                  ph[:vm].intersection([game.game_day.club_id]).present? # Ausrichter darf auch
               elsif ph[:tm].present?
                 ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
               end
@@ -172,7 +173,8 @@ class GamesController < ApplicationController
               elsif ph[:vm].present?
                 ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
                   ph[:vm].intersection([game.home_team.syndicate_clubs,
-                                        game.guest_team.syndicate_clubs].flatten.compact).present?
+                                        game.guest_team.syndicate_clubs].flatten.compact).present? ||
+                  ph[:vm].intersection([game.game_day.club_id]).present? # Ausrichter darf auch
               elsif ph[:tm].present?
                 ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
               end
@@ -233,7 +235,8 @@ class GamesController < ApplicationController
                 true
               elsif ph[:vm].present?
                 ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]).present? ||
-                ph[:vm].intersection([game.home_team.syndicate_clubs, game.guest_team.syndicate_clubs].flatten.compact).present?
+                  ph[:vm].intersection([game.home_team.syndicate_clubs, game.guest_team.syndicate_clubs].flatten.compact).present? ||
+                  ph[:vm].intersection([game.game_day.club_id]).present? # Ausrichter darf auch
               elsif ph[:tm].present?
                 ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
               else
@@ -302,7 +305,8 @@ class GamesController < ApplicationController
                 true
               elsif ph[:vm].present?
                 ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]).present? ||
-                ph[:vm].intersection([game.home_team.syndicate_clubs, game.guest_team.syndicate_clubs].flatten.compact).present?
+                  ph[:vm].intersection([game.home_team.syndicate_clubs, game.guest_team.syndicate_clubs].flatten.compact).present? ||
+                  ph[:vm].intersection([game.game_day.club_id]).present? # Ausrichter darf auch
               elsif ph[:tm].present?
                 ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
               else
@@ -359,7 +363,8 @@ class GamesController < ApplicationController
               elsif ph[:vm].present?
                 ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
                   ph[:vm].intersection([game.home_team.syndicate_clubs,
-                                        game.guest_team.syndicate_clubs].flatten.compact).present?
+                                        game.guest_team.syndicate_clubs].flatten.compact).present? ||
+                  ph[:vm].intersection([game.game_day.club_id]).present? # Ausrichter darf auch
               elsif ph[:tm].present?
                 ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
               end
@@ -417,7 +422,8 @@ class GamesController < ApplicationController
               elsif ph[:vm].present?
                 ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
                   ph[:vm].intersection([game.home_team.syndicate_clubs,
-                                        game.guest_team.syndicate_clubs].flatten.compact).present?
+                                        game.guest_team.syndicate_clubs].flatten.compact).present? ||
+                  ph[:vm].intersection([game.game_day.club_id]).present? # Ausrichter darf auch
               elsif ph[:tm].present?
                 ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
               end
@@ -471,7 +477,8 @@ class GamesController < ApplicationController
               elsif ph[:vm].present?
                 ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
                   ph[:vm].intersection([game.home_team.syndicate_clubs,
-                                        game.guest_team.syndicate_clubs].flatten.compact).present?
+                                        game.guest_team.syndicate_clubs].flatten.compact).present? ||
+                  ph[:vm].intersection([game.game_day.club_id]).present? # Ausrichter darf auch
               elsif ph[:tm].present?
                 ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
               end
@@ -514,7 +521,8 @@ class GamesController < ApplicationController
               elsif ph[:vm].present?
                 ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
                   ph[:vm].intersection([game.home_team.syndicate_clubs,
-                                        game.guest_team.syndicate_clubs].flatten.compact).present?
+                                        game.guest_team.syndicate_clubs].flatten.compact).present? ||
+                  ph[:vm].intersection([game.game_day.club_id]).present? # Ausrichter darf auch
               elsif ph[:tm].present?
                 ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
               end
@@ -558,7 +566,8 @@ class GamesController < ApplicationController
               elsif ph[:vm].present?
                 ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
                   ph[:vm].intersection([game.home_team.syndicate_clubs,
-                                        game.guest_team.syndicate_clubs].flatten.compact).present?
+                                        game.guest_team.syndicate_clubs].flatten.compact).present? ||
+                  ph[:vm].intersection([game.game_day.club_id]).present? # Ausrichter darf auch
               elsif ph[:tm].present?
                 ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
               end
@@ -623,7 +632,8 @@ class GamesController < ApplicationController
               elsif ph[:vm].present?
                 ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
                   ph[:vm].intersection([game.home_team.syndicate_clubs,
-                                        game.guest_team.syndicate_clubs].flatten.compact).present?
+                                        game.guest_team.syndicate_clubs].flatten.compact).present? ||
+                  ph[:vm].intersection([game.game_day.club_id]).present? # Ausrichter darf auch
               elsif ph[:tm].present?
                 ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
               end
@@ -663,7 +673,8 @@ class GamesController < ApplicationController
               elsif ph[:vm].present?
                 ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
                   ph[:vm].intersection([game.home_team.syndicate_clubs,
-                                        game.guest_team.syndicate_clubs].flatten.compact).present?
+                                        game.guest_team.syndicate_clubs].flatten.compact).present? ||
+                  ph[:vm].intersection([game.game_day.club_id]).present? # Ausrichter darf auch
               elsif ph[:tm].present?
                 ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
               end
@@ -724,7 +735,8 @@ class GamesController < ApplicationController
               elsif ph[:vm].present?
                 ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
                   ph[:vm].intersection([game.home_team.syndicate_clubs,
-                                        game.guest_team.syndicate_clubs].flatten.compact).present?
+                                        game.guest_team.syndicate_clubs].flatten.compact).present? ||
+                  ph[:vm].intersection([game.game_day.club_id]).present? # Ausrichter darf auch
               elsif ph[:tm].present?
                 ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
               end
@@ -768,7 +780,8 @@ class GamesController < ApplicationController
               elsif ph[:vm].present?
                 ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
                   ph[:vm].intersection([game.home_team.syndicate_clubs,
-                                        game.guest_team.syndicate_clubs].flatten.compact).present?
+                                        game.guest_team.syndicate_clubs].flatten.compact).present? ||
+                  ph[:vm].intersection([game.game_day.club_id]).present? # Ausrichter darf auch
               elsif ph[:tm].present?
                 ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
               end
