@@ -1,0 +1,4 @@
+alias rc='RAILS_ENV=production rails c'
+alias rs='RAILS_ENV=production rails s'
+alias rcd='RAILS_ENV=development rails c'
+alias rsd='RAILS_ENV=development rails s'

@@ -12,6 +12,9 @@ COPY Gemfile Gemfile
 COPY Gemfile.lock Gemfile.lock
 RUN bundle install
 
+RUN echo "source ~/.aliases" >> ~/.bashrc
+
+
 COPY . /app
 
 EXPOSE 3000
