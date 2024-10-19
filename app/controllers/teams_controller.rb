@@ -1,9 +1,35 @@
 class TeamsController < ApplicationController
+  skip_before_action :authenticate_user, only: [:show]
+
   # GET /teams
   def index
     @teams = Team.all
 
     render json: @teams
+  end
+
+  # GET /teams/1.json
+  def show
+    games = Game.by_team_id(params[:id])
+
+    respond_to do |format|
+      format.ics do
+        ical = ::Icalendar::Calendar.new
+        events = games.map(&:ical)
+        events.each { |event| ical.add_event(event) }
+
+        require 'icalendar/tzinfo'
+        tzid = 'Europe/Berlin'
+        tz = TZInfo::Timezone.get tzid
+        timezone = tz.ical_timezone events.first.dtstart
+        ical.add_timezone timezone
+
+        ical.append_custom_property('METHOD', 'REQUEST')
+        ical.publish
+
+        render plain: ical.to_ical
+      end
+    end
   end
 
   def admin_get_team
@@ -52,6 +78,14 @@ class TeamsController < ApplicationController
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
     end
+  end
+
+  def license_list
+    team = Team.find(params[:id])
+
+    hash = league.short_hash true
+
+    render json: team.licenses(false, true, :short)
   end
 
   def team_params

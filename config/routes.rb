@@ -44,6 +44,8 @@ Rails.application.routes.draw do
       post 'lost_password' => 'sessions#lost_password'
       post 'reset_password' => 'users#reset_password_token'
 
+      get 'teams/:id', to: 'teams#show'
+
       resources :leagues do
         member do
           get 'game_days/current/schedule', to: 'leagues#current_schedule'

@@ -8,6 +8,8 @@ class Game < ApplicationRecord
                             where('referee1_string LIKE :refname OR referee2_string LIKE :refname', refname: "%#{referee_name}%")
                           }
 
+  scope :by_team_id, ->(team_id) { where('home_team_id = ? OR guest_team_id = ?', team_id, team_id) }
+
   scope :match_record_closed, -> { where(game_status: %w[match_record_closed finalized]) }
   scope :match_record_not_closed, -> { where.not(game_status: %w[match_record_closed finalized]) }
 
@@ -898,6 +900,48 @@ class Game < ApplicationRecord
 
       e
     end
+  end
+
+  def start_date
+    combined_datetime_string = "#{game_day.date} #{start_time}"
+    berlin_timezone = ActiveSupport::TimeZone['Europe/Berlin']
+
+    berlin_timezone.parse(combined_datetime_string)
+  end
+
+  def end_date
+    start_date + (league.periods.present? && league.periods > 2 ? 2.hours : 1.hour)
+  end
+
+  def game_title
+    "#{home_team_name} - #{guest_team_name} (#{league.name}, #{league.game_operation.short_name})"
+  end
+
+  def url
+    "https://saisonmanager.de/#{league.game_operation.short_name.downcase}/#{league.id}/spiel/#{id}"
+  end
+
+  def ical
+    require 'icalendar'
+
+    event = ::Icalendar::Event.new
+    event.dtstart = Icalendar::Values::DateTime.new start_date
+    event.dtend = Icalendar::Values::DateTime.new end_date
+    event.summary = game_title
+
+    event.description = "Im Saisonmanager findest du das Spiel mit Liveergebnissen unter #{url}"
+    event.uid = "sm_game_#{id}" # important for updating/canceling an event
+    event.sequence = Time.now.to_i # important for updating/canceling an event
+    event.url = url
+
+    event.location = "#{game_day.arena.name}, #{game_day.arena.address}" # location on map
+
+    event.ip_class = 'PUBLIC'
+    event.attach = Icalendar::Values::Uri.new url
+    event.created = created_at
+    event.last_modified = updated_at
+
+    event
   end
 
   def deletable?

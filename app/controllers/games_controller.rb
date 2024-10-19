@@ -13,7 +13,25 @@ class GamesController < ApplicationController
     hash = game.full_hash
     hash[:permission] = game.user_permissions(current_user) if current_user
 
-    render json: hash
+    respond_to do |format|
+      format.json { render json: hash }
+      format.ics do
+        ical = ::Icalendar::Calendar.new
+        event = game.ical
+        ical.add_event(event)
+
+        require 'icalendar/tzinfo'
+        tzid = 'Europe/Berlin'
+        tz = TZInfo::Timezone.get tzid
+        timezone = tz.ical_timezone event.dtstart
+        ical.add_timezone timezone
+
+        ical.append_custom_property('METHOD', 'REQUEST')
+        ical.publish
+
+        render plain: ical.to_ical
+      end
+    end
   end
 
   # POST /games

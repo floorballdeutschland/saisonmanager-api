@@ -324,7 +324,26 @@ class LeaguesController < ApplicationController
   def show
     league = League.find(params[:id])
 
-    render json: league.full_hash(true)
+    respond_to do |format|
+      format.json { render json: league.full_hash(true) }
+      format.ics do
+        ical = ::Icalendar::Calendar.new
+
+        events = league.games.map(&:ical)
+        events.each { |event| ical.add_event(event) }
+
+        require 'icalendar/tzinfo'
+        tzid = 'Europe/Berlin'
+        tz = TZInfo::Timezone.get tzid
+        timezone = tz.ical_timezone events.first.dtstart
+        ical.add_timezone timezone
+
+        ical.append_custom_property('METHOD', 'REQUEST')
+        ical.publish
+
+        render plain: ical.to_ical
+      end
+    end
   end
 
   # GET /leagues/1/schedule

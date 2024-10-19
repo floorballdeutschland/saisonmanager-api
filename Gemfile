@@ -78,6 +78,9 @@ gem 'caxlsx_rails'
 # excel import
 gem 'creek'
 
+# calendar import
+gem 'icalendar'
+
 # active storage
 gem 'azure-storage-blob', '~> 2.0', require: false
 gem 'image_processing', '>= 1.2'
