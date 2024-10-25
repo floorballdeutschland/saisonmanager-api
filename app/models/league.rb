@@ -453,8 +453,8 @@ class League < ApplicationRecord
         # draw
         results[game.home_team.id][:draw] += 1
         results[game.guest_team.id][:draw] += 1
-        results[game.home_team.id][:points] += draw_points
-        results[game.guest_team.id][:points] += draw_points
+        results[game.home_team.id][:points] += draw_points if game.forfait != 3
+        results[game.guest_team.id][:points] += draw_points if game.forfait != 3
       elsif game.result[:home_goals] > game.result[:guest_goals]
         # home won
         if game.overtime
