@@ -66,10 +66,13 @@ Rails.application.configure do
   config.action_mailer.raise_delivery_errors = true
 
   config.action_mailer.delivery_method = :smtp
+  ipv4_address = Resolv::DNS.new.getaddress('saisonmanager-de.mail.protection.outlook.com').to_s
   config.action_mailer.smtp_settings = {
-    address: 'saisonmanager-de.mail.protection.outlook.com',
+    address: ipv4_address,
     port: 25,
     domain: 'saisonmanager.de',
+    local_address: '88.198.193.81',
+    openssl_verify_mode: 'none'
     open_timeout: 5,
     read_timeout: 5
   }
