@@ -1,5 +1,6 @@
 class PlayersController < ApplicationController
   before_action :set_player, only: %i[show update destroy]
+  skip_before_action :authenticate_user, only: %i[transfers_public]
 
   # GET /players
   def index
@@ -473,6 +474,14 @@ class PlayersController < ApplicationController
     else
       render json: { message: 'Keine Berechtigung.' }, status: :forbidden
     end
+  end
+
+  def transfers_public
+    result = Rails.cache.fetch('transfers', expires_in: 30.minutes) do
+      Transfer.includes(:former_club, :new_club, :player).where(season_id: Setting.current_season_id).map(&:as_json)
+    end
+
+    render json: result
   end
 
   private

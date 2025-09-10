@@ -72,7 +72,7 @@ Rails.application.configure do
     port: 25,
     domain: 'saisonmanager.de',
     local_address: '88.198.193.81',
-    openssl_verify_mode: 'none'
+    openssl_verify_mode: 'none',
     open_timeout: 5,
     read_timeout: 5
   }

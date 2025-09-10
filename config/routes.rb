@@ -24,14 +24,13 @@ Rails.application.routes.draw do
   end
   resources :players
   resources :teams
-  resources :transfers
   resources :users
 
   resources :license_fees
 
-  get 'calendar/teams/:id', to: 'teams#show', constraints: lambda { |req| req.format == :ics }
-  get 'calendar/leagues/:id', to: 'leagues#show', constraints: lambda { |req| req.format == :ics }
-  get 'calendar/games/:id', to: 'games#show', constraints: lambda { |req| req.format == :ics }
+  get 'calendar/teams/:id', to: 'teams#show', constraints: ->(req) { req.format == :ics }
+  get 'calendar/leagues/:id', to: 'leagues#show', constraints: ->(req) { req.format == :ics }
+  get 'calendar/games/:id', to: 'games#show', constraints: ->(req) { req.format == :ics }
 
   get 'api/v1/ticker/:game_operation_id/:season_id/leagues', to: 'api#leagues'
   get 'api/v1/ticker/games/:id', to: 'api#games'
@@ -143,7 +142,9 @@ Rails.application.routes.draw do
 
       get 'user/referees/:id', to: 'referees#show'
 
-      get 'referees/:id/games', to: 'referee#games'
+      get 'referees/:id/games', to: 'referees#games'
+
+      get 'transfers/public', to: 'players#transfers_public'
 
       resources :games
       resources :game_days

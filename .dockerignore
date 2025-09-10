@@ -1,2 +1,70 @@
+# Git
 .git
+.gitignore
+
+# IDE/Editor
 .vscode
+.idea
+*.swp
+*.swo
+
+# Dependencies
+node_modules
+vendor/bundle
+
+# Logs (CRITICAL - these are huge!)
+log/*
+tmp/*
+*.log
+
+# Runtime files
+storage/*
+public/packs*
+
+# Ruby specific
+.bundle
+
+# Development/Test databases
+*.sqlite3
+*.sqlite3-journal
+
+# Environment files
+.env.local
+.env.*.local
+
+# Documentation
+README*.md
+docs/
+
+# Test files
+test/
+spec/
+
+# Coverage reports
+coverage/
+
+# Backups and SQL dumps (CRITICAL - very large files!)
+*.sql
+*.dump
+*.backup
+*_backup_*.sql
+
+# CSV and data files (CRITICAL - large calculation files!)
+*.csv
+*.xlsx
+*.json
+*_calculation.*
+*_calculation_*.*
+
+# Large files that don't belong in Docker
+20*_backup_*.sql
+20*_calculation.*
+referees.json
+
+# Cache
+.cache
+angularcache/
+
+# Frontend build artifacts (if any in API folder)
+dist/
+build/
