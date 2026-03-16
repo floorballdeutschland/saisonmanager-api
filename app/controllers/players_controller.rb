@@ -109,7 +109,7 @@ class PlayersController < ApplicationController
 
           if last_status['license_status_id'].to_i != params[:license_status_id].to_i &&
              ([License::APPROVED, License::DENIED].include?(params[:license_status_id].to_i) ||
-              ([License::TRANSFER].include?(params[:license_status_id].to_i) && current_user.special_user)
+              ([License::TRANSFER].include?(params[:license_status_id].to_i) && ph[:admin].present?)
              )
             lic['history'] << {
               license_status_id: params[:license_status_id].to_i,
