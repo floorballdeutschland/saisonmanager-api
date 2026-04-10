@@ -22,13 +22,19 @@ class Referee < ApplicationRecord
 
     known_ids = pluck(:lizenznummer).to_set
 
-    scope.select do |game|
-      [game.referee1_string, game.referee2_string].any? do |ref_string|
-        next false if ref_string.blank?
+    # Process in batches to avoid loading all games into memory at once
+    results = []
+    scope.in_batches(of: 500) do |batch|
+      batch.each do |game|
+        unknown = [game.referee1_string, game.referee2_string].any? do |ref_string|
+          next false if ref_string.blank?
 
-        match = ref_string.match(/\A(\d+)\s/)
-        match && !known_ids.include?(match[1].to_i)
+          match = ref_string.match(/\A(\d+)\s/)
+          match && !known_ids.include?(match[1].to_i)
+        end
+        results << game if unknown
       end
     end
+    results
   end
 end
