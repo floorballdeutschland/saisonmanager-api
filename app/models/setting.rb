@@ -47,14 +47,14 @@ class Setting < ApplicationRecord
   # }.with_indifferent_access
 
   def self.liveticker_leagues(season_id = current_season_id, _goid = 1)
-    current.liveticker['game_day_for_league'][season_id.to_s].try(:keys)
+    current.liveticker['game_day_for_league']&.[](season_id.to_s)&.keys
   end
 
   def self.game_day_for_league(league_id, season_id = current_season_id)
-    current.liveticker['game_day_for_league'][season_id.to_s][league_id.to_s]
+    current.liveticker['game_day_for_league']&.[](season_id.to_s)&.[](league_id.to_s)
   end
 
   def self.start_best_of_eight(league_id)
-    current.liveticker['cup_best_of_eight'][league_id.to_s]
+    current.liveticker['cup_best_of_eight']&.[](league_id.to_s)
   end
 end
