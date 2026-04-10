@@ -44,6 +44,7 @@ class User < ApplicationRecord
       ph[:admin].present? || ph[:sbk].present? || ph[:vm].present? || ph[:tm].present?
     result[:menu_item_licence_club_admin] = ph[:vm].present? || ph[:tm].present?
     result[:menu_item_licence_admin] = ph[:admin].present? || ph[:sbk].present?
+    result[:menu_item_referee_admin] = ph[:admin].present? || ph[:rsk].present?
 
     # show permissions
     result[:show_league_index_admin] = ph[:admin].present? || ph[:sbk].present?

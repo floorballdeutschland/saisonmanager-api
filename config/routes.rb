@@ -144,6 +144,13 @@ Rails.application.routes.draw do
 
       get 'referees/:id/games', to: 'referees#games'
 
+      namespace :admin do
+        resources :referees, only: %i[index show create update destroy] do
+          get :games, on: :member
+          get :incorrect_assignments, on: :collection
+        end
+      end
+
       get 'transfers/public', to: 'players#transfers_public'
 
       resources :games
