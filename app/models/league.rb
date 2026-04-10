@@ -11,7 +11,7 @@ class League < ApplicationRecord
 
   def games(game_day_number = nil)
     gd = game_day_number.present? ? game_days.where(number: game_day_number) : game_days
-    gd.includes(:games).map(&:games).flatten.sort_by { |i| i.game_number.to_i }
+    gd.includes(:arena, games: [home_team: :club, guest_team: :club]).map(&:games).flatten.sort_by { |i| i.game_number.to_i }
   end
 
   def teams
@@ -284,6 +284,8 @@ class League < ApplicationRecord
     players = Player.where(id: player_ids).select(:id, :first_name, :last_name)
     player_lookup = {}
     players.each { |player| player_lookup[player.id] = player }
+
+    sorted_results.reject! { |sr| player_lookup[sr[:player_id]].nil? }
 
     next_position_diff = 1
     sorted_results.each_with_index do |player_result, index|

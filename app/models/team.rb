@@ -53,13 +53,13 @@ class Team < ApplicationRecord
   def logo_url_fallback
     return logo_url if logo_url.present?
 
-    club.logo_url
+    club&.logo_url
   end
 
   def logo_small_url_fallback
     return logo_small_url if logo_small_url.present?
 
-    club.logo_small_url
+    club&.logo_small_url
   end
 
   def full_hash(with_contact_person = false)

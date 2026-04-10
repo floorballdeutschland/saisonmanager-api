@@ -150,6 +150,7 @@ Rails.application.routes.draw do
       resources :game_days
 
       get 'init', to: 'settings#init'
+      get 'version', to: 'version#show'
 
       get 'admin/fixer/players/:id/fix_double_license', to: 'players#handle_license_doublication'
       get 'admin/fixer/games/:id/reopen', to: 'games#reopen_game'

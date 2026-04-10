@@ -30,7 +30,7 @@ class GameDay < ApplicationRecord
       number:
     }
 
-    h[:games] = games.order(:game_number).map(&:meta_hash) if with_games
+    h[:games] = games.order(Arel.sql("NULLIF(game_number, '')::integer NULLS LAST")).map(&:meta_hash) if with_games
 
     h
   end
