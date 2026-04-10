@@ -240,6 +240,7 @@ namespace :import do
     puts "\n=== import:team_clubs (#{threads_count} threads) ==="
 
     cookie = legacy_session
+    conn   = ActiveRecord::Base.connection
 
     team_ids = Team.where(club_id: nil).pluck(:id)
     puts "  #{team_ids.size} teams without club_id"
