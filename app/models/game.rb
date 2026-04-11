@@ -918,7 +918,7 @@ class Game < ApplicationRecord
   end
 
   def url
-    "https://saisonmanager.de/#{league.game_operation.short_name.downcase}/#{league.id}/spiel/#{id}"
+    "https://saisonmanager.org/#{league.game_operation.short_name.downcase}/#{league.id}/spiel/#{id}"
   end
 
   def ical

@@ -10,11 +10,9 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2024_06_06_203601) do
+ActiveRecord::Schema[7.0].define(version: 2026_04_10_120000) do
   # These are extensions that must be enabled in order to support this database
-  enable_extension "hstore"
   enable_extension "plpgsql"
-  enable_extension "uuid-ossp"
 
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
@@ -44,164 +42,153 @@ ActiveRecord::Schema[7.0].define(version: 2024_06_06_203601) do
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
   end
 
-  create_table "arenas", id: :integer, default: -> { "nextval('tbl_arena_id_seq'::regclass)" }, force: :cascade do |t|
-    t.text "capacity"
-    t.text "city"
-    t.text "comment"
-    t.datetime "created_at", precision: nil
-    t.integer "created_by"
-    t.boolean "disabled"
-    t.text "housenumber"
-    t.text "name"
-    t.text "postcode"
-    t.text "public_transport_note"
-    t.text "street"
-    t.text "travel_note"
-    t.datetime "updated_at", precision: nil
-    t.integer "updated_by"
+  create_table "arenas", force: :cascade do |t|
+    t.string "name"
+    t.string "city"
+    t.string "street"
+    t.string "housenumber"
+    t.string "postcode"
+    t.string "address"
+    t.string "schedule_item"
+    t.boolean "active", default: false
+    t.boolean "disabled", default: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
   end
 
-  create_table "clubs", id: :integer, default: -> { "nextval('tbl_club_id_seq'::regclass)" }, force: :cascade do |t|
-    t.text "city"
-    t.jsonb "game_operations_hash"
-    t.text "house_number"
-    t.text "long_name"
-    t.text "name"
-    t.text "postcode"
-    t.text "street"
-    t.text "short_name"
-    t.string "state", limit: 20, comment: "ISO 3166-2:DE"
-    t.text "logo_url", default: "", null: false
-    t.text "logo_small_url", default: "", null: false
-    t.datetime "created_at", precision: nil
-    t.datetime "updated_at", precision: nil
-    t.integer "created_by"
-    t.integer "updated_by"
+  create_table "clubs", force: :cascade do |t|
+    t.string "name"
+    t.string "short_name"
+    t.string "long_name"
+    t.string "city"
+    t.string "state"
+    t.string "postcode"
+    t.jsonb "game_operations_hash", default: []
+    t.bigint "created_by"
+    t.bigint "updated_by"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
   end
 
-  create_table "game_days", id: :integer, default: -> { "nextval('tbl_game_day_id_seq'::regclass)" }, force: :cascade do |t|
-    t.integer "arena_id"
-    t.integer "club_id"
-    t.datetime "created_at", precision: nil
-    t.integer "created_by"
-    t.text "date"
-    t.integer "league_id"
-    t.integer "number", default: 99, null: false
-    t.datetime "updated_at", precision: nil
-    t.integer "updated_by"
+  create_table "game_days", force: :cascade do |t|
+    t.bigint "league_id"
+    t.bigint "arena_id"
+    t.bigint "club_id"
+    t.integer "number"
+    t.string "date"
+    t.bigint "created_by"
+    t.bigint "updated_by"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["arena_id"], name: "index_game_days_on_arena_id"
+    t.index ["club_id"], name: "index_game_days_on_club_id"
+    t.index ["league_id"], name: "index_game_days_on_league_id"
   end
 
-  create_table "game_operations", id: :integer, default: -> { "nextval('tbl_game_operation_id_seq'::regclass)" }, force: :cascade do |t|
-    t.text "name"
-    t.text "path"
-    t.text "short_name"
-    t.text "subdomains", array: true
-    t.text "logo_url"
-    t.text "logo_quad_url"
+  create_table "game_operations", force: :cascade do |t|
+    t.string "name"
+    t.string "short_name"
+    t.string "path"
+    t.string "logo_url"
+    t.string "logo_quad_url"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
   end
 
-  create_table "games", id: :integer, default: -> { "nextval('tbl_game_id_seq'::regclass)" }, force: :cascade do |t|
-    t.text "hash_id"
-    t.text "_rev"
-    t.integer "old_id"
+  create_table "games", force: :cascade do |t|
+    t.bigint "game_day_id"
+    t.bigint "home_team_id"
+    t.bigint "guest_team_id"
+    t.string "game_number"
+    t.string "start_time"
+    t.string "actual_start_time"
+    t.string "game_status"
+    t.string "ingame_status"
+    t.integer "forfait", default: 0
+    t.boolean "overtime", default: false
+    t.boolean "overflow", default: false
+    t.boolean "protest", default: false
+    t.boolean "special_event", default: false
+    t.boolean "playoff", default: false
     t.integer "audience"
-    t.integer "created_by"
-    t.text "created_by_hash"
-    t.datetime "created_at", precision: nil
-    t.jsonb "events"
-    t.integer "forfait", default: 0, null: false
-    t.integer "game_day_id"
-    t.integer "game_days"
-    t.boolean "game_ended", default: false
-    t.text "game_number"
-    t.boolean "guest_captain_signed"
-    t.jsonb "guest_team_coaches"
-    t.integer "guest_team_id"
-    t.text "guest_timeout_string"
-    t.boolean "home_captain_signed"
-    t.jsonb "home_team_coaches"
-    t.integer "home_team_id"
-    t.text "home_timeout_string"
-    t.boolean "matchpenalty1"
-    t.boolean "matchpenalty2"
-    t.boolean "matchpenalty3"
-    t.text "nominated_referee_string"
-    t.boolean "overtime"
-    t.jsonb "players"
-    t.boolean "playoff"
-    t.boolean "protest"
+    t.string "group_identifier"
+    t.string "series_title"
+    t.string "series_number"
+    t.string "home_team_filling_rule"
+    t.string "home_team_filling_parameter"
+    t.string "guest_team_filling_rule"
+    t.string "guest_team_filling_parameter"
+    t.string "nominated_referee_string"
+    t.integer "referee_ids", default: [], array: true
+    t.string "referee1_string"
+    t.string "referee2_string"
+    t.boolean "referee1_signed", default: false
+    t.boolean "referee2_signed", default: false
+    t.string "time_keeper_string"
+    t.boolean "time_keeper_signed", default: false
+    t.string "record_keeper_string"
+    t.boolean "record_keeper_signed", default: false
+    t.boolean "home_captain_signed", default: false
+    t.boolean "guest_captain_signed", default: false
+    t.string "home_timeout_string"
+    t.string "guest_timeout_string"
+    t.string "live_stream_link"
+    t.string "vod_link"
+    t.string "notice_type"
+    t.string "notice_string"
     t.text "record_comment"
-    t.datetime "record_created_at", precision: nil
-    t.integer "record_created_by"
-    t.text "record_created_by_hash"
-    t.boolean "record_keeper_signed"
-    t.text "record_keeper_string"
-    t.datetime "record_updated_at", precision: nil
-    t.integer "record_updated_by"
-    t.text "record_updated_by_hash"
-    t.integer "referee_ids", array: true
-    t.boolean "referee1_signed"
-    t.text "referee1_string"
-    t.boolean "referee2_signed"
-    t.text "referee2_string"
-    t.boolean "special_event"
-    t.text "start_time"
-    t.integer "status"
-    t.boolean "time_keeper_signed"
-    t.text "time_keeper_string"
-    t.datetime "updated_at", precision: nil
-    t.integer "updated_by"
-    t.text "updated_by_hash"
-    t.boolean "started", default: false, null: false
-    t.boolean "ended", default: false, null: false
-    t.text "live_stream_link"
-    t.text "actual_start_time"
-    t.boolean "legacy", default: false, null: false
-    t.text "notice_type"
-    t.text "notice_string"
-    t.text "game_status"
-    t.text "ingame_status"
-    t.text "home_team_filling_rule"
-    t.bigint "home_team_filling_parameter"
-    t.text "guest_team_filling_rule"
-    t.bigint "guest_team_filling_parameter"
-    t.text "group_identifier"
-    t.text "series_title"
-    t.string "series_number", limit: 3
-    t.text "vod_link"
-    t.jsonb "starting_players"
-    t.jsonb "awards"
+    t.jsonb "events", default: []
+    t.jsonb "players", default: {}
+    t.jsonb "starting_players", default: {}
+    t.jsonb "home_team_coaches", default: []
+    t.jsonb "guest_team_coaches", default: []
+    t.jsonb "awards", default: {}
+    t.boolean "legacy", default: false
+    t.bigint "created_by"
+    t.bigint "updated_by"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.boolean "started", default: false
+    t.boolean "ended", default: false
+    t.boolean "game_ended", default: false
+    t.datetime "record_created_at"
+    t.datetime "record_updated_at"
+    t.bigint "record_created_by"
+    t.bigint "record_updated_by"
+    t.index ["game_day_id"], name: "index_games_on_game_day_id"
   end
 
-  create_table "leagues", id: :integer, default: -> { "nextval('tbl_league_id_seq'::regclass)" }, force: :cascade do |t|
-    t.boolean "before_deadline"
-    t.datetime "created_at", precision: nil
-    t.integer "created_by"
-    t.text "deadline"
+  create_table "leagues", force: :cascade do |t|
+    t.bigint "game_operation_id"
+    t.string "name"
+    t.string "short_name"
+    t.string "season_id"
+    t.string "league_class_id"
+    t.string "league_category_id"
+    t.string "league_system_id"
+    t.string "league_type"
     t.boolean "female", default: false
-    t.integer "game_operation_id"
-    t.text "league_category_id", default: "1000"
-    t.text "league_class_id"
-    t.text "league_system_id", default: "4"
-    t.text "name"
-    t.text "order_key"
-    t.text "season_id"
-    t.text "short_name"
-    t.datetime "updated_at", precision: nil
-    t.integer "updated_by"
-    t.boolean "enable_scorer", default: true, null: false
-    t.string "field_size", limit: 10, default: "GF"
-    t.text "league_modus"
-    t.integer "league_id_preseason"
-    t.integer "league_id_preround"
-    t.boolean "has_preround", default: false, null: false
-    t.text "preround_point_modus"
-    t.text "preround_scorer_modus"
-    t.text "table_modus", default: "classic", null: false
+    t.boolean "enable_scorer", default: false
+    t.string "field_size"
+    t.string "league_modus"
+    t.boolean "has_preround", default: false
+    t.bigint "league_id_preseason"
+    t.bigint "league_id_preround"
+    t.string "preround_point_modus"
+    t.string "preround_scorer_modus"
+    t.string "table_modus"
+    t.integer "periods"
+    t.integer "period_length"
+    t.integer "overtime_length"
+    t.string "order_key"
+    t.date "deadline"
+    t.date "before_deadline"
     t.boolean "legacy_league", default: false
-    t.integer "periods", limit: 2, default: 3
-    t.integer "period_length", limit: 2, default: 20
-    t.integer "overtime_length", limit: 2, default: 10
+    t.bigint "created_by"
+    t.bigint "updated_by"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["game_operation_id"], name: "index_leagues_on_game_operation_id"
   end
 
   create_table "license_fee_calculations", force: :cascade do |t|
@@ -211,28 +198,27 @@ ActiveRecord::Schema[7.0].define(version: 2024_06_06_203601) do
     t.string "filename_csv"
     t.string "filename_xls"
     t.integer "current_dataset"
-    t.float "percent", default: 0.0, null: false
+    t.integer "season_id"
+    t.float "percent"
     t.datetime "created_at", precision: nil, null: false
     t.datetime "updated_at", precision: nil, null: false
-    t.integer "season_id"
     t.string "filename_other_json"
   end
 
-  create_table "players", id: :integer, default: -> { "nextval('tbl_player_id_seq'::regclass)" }, force: :cascade do |t|
-    t.text "birthdate"
-    t.jsonb "clubs"
-    t.datetime "created_at", precision: nil
-    t.integer "created_by"
-    t.text "first_name"
-    t.text "last_name"
-    t.jsonb "licenses"
+  create_table "players", force: :cascade do |t|
+    t.string "first_name"
+    t.string "last_name"
+    t.string "birthdate"
+    t.string "gender"
     t.boolean "male"
-    t.text "nation_id"
-    t.jsonb "old_licenses_deleted_for_transfer"
-    t.integer "updated_by"
-    t.datetime "updated_at", precision: nil
-    t.text "security_id", default: "uuid_generate_v4()", null: false
-    t.text "gender"
+    t.string "nation_id"
+    t.string "security_id"
+    t.jsonb "clubs", default: []
+    t.jsonb "licenses", default: []
+    t.bigint "created_by"
+    t.bigint "updated_by"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
   end
 
   create_table "referee_calculations", force: :cascade do |t|
@@ -248,72 +234,87 @@ ActiveRecord::Schema[7.0].define(version: 2024_06_06_203601) do
     t.datetime "updated_at", precision: nil, null: false
   end
 
-  create_table "settings", id: :integer, default: -> { "nextval('tbl_settings_id_seq'::regclass)" }, force: :cascade do |t|
-    t.jsonb "league_categories"
-    t.jsonb "league_classes"
-    t.jsonb "league_systems"
-    t.jsonb "license_states"
-    t.jsonb "nations"
-    t.jsonb "penalties"
-    t.jsonb "penalty_codes"
-    t.jsonb "point_corrections"
-    t.jsonb "systems"
-    t.jsonb "seasons"
-    t.jsonb "user_groups"
-    t.jsonb "liveticker", default: {}, null: false
-  end
-
-  create_table "teams", id: :integer, default: -> { "nextval('tbl_team_id_seq'::regclass)" }, force: :cascade do |t|
-    t.boolean "approved", default: true
-    t.integer "club_id"
-    t.datetime "created_at", precision: nil
-    t.integer "created_by"
-    t.integer "cup_leagues", array: true
-    t.integer "league_id"
-    t.text "name"
-    t.text "short_name"
-    t.boolean "syndicate"
-    t.integer "syndicate_clubs", array: true
-    t.datetime "updated_at", precision: nil
-    t.integer "updated_by"
-    t.text "team_logo_path", default: "", null: false
-    t.text "team_logo_small_path", default: "", null: false
-    t.text "contact_person"
-    t.text "contact_email"
-  end
-
-  create_table "transfers", id: false, force: :cascade do |t|
-    t.integer "id", default: -> { "nextval('tbl_transfer_id_seq'::regclass)" }, null: false
-    t.datetime "created_at", precision: nil
-    t.integer "created_by"
-    t.integer "former_club_id"
+  create_table "referees", force: :cascade do |t|
+    t.integer "lizenznummer", null: false
+    t.string "vorname", null: false
+    t.string "nachname", null: false
+    t.date "geburtsdatum"
+    t.string "email"
+    t.string "verein"
+    t.string "landesverband"
     t.integer "game_operation_id"
-    t.integer "new_club_id"
-    t.integer "player_id"
-    t.integer "season_id"
+    t.string "lizenzstufe"
+    t.date "gueltigkeit"
+    t.string "zusatzqualifikation"
+    t.date "gueltigkeit_z"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["game_operation_id"], name: "index_referees_on_game_operation_id"
+    t.index ["lizenznummer"], name: "index_referees_on_lizenznummer", unique: true
   end
 
-  create_table "users", id: :integer, default: -> { "nextval('tbl_user_id_seq'::regclass)" }, force: :cascade do |t|
-    t.boolean "active"
-    t.datetime "created_at", precision: nil
-    t.integer "created_by"
-    t.integer "club_id"
-    t.text "description"
-    t.text "email"
-    t.text "first_name"
-    t.text "last_name"
-    t.text "old_password"
-    t.jsonb "permissions"
-    t.boolean "privacy_approved"
-    t.integer "teams", array: true
-    t.datetime "updated_at", precision: nil
-    t.integer "updated_by"
-    t.text "user_name"
-    t.text "security_id"
-    t.text "password_digest"
-    t.text "password_reset_token"
-    t.datetime "last_login_at", precision: nil
-    t.datetime "deactivated_at", precision: nil
+  create_table "settings", force: :cascade do |t|
+    t.jsonb "nations", default: {}
+    t.jsonb "league_categories", default: {}
+    t.jsonb "league_classes", default: {}
+    t.jsonb "league_systems", default: {}
+    t.jsonb "seasons", default: {}
+    t.jsonb "systems", default: {}
+    t.jsonb "user_groups", default: {}
+    t.jsonb "penalties", default: {}
+    t.jsonb "penalty_codes", default: {}
+    t.jsonb "point_corrections", default: {}
+    t.jsonb "liveticker", default: {}
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+  end
+
+  create_table "teams", force: :cascade do |t|
+    t.bigint "club_id"
+    t.bigint "league_id"
+    t.string "name"
+    t.string "short_name"
+    t.boolean "approved", default: false
+    t.boolean "syndicate", default: false
+    t.integer "syndicate_clubs", default: [], array: true
+    t.integer "cup_leagues", default: [], array: true
+    t.string "contact_person"
+    t.string "contact_email"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["club_id"], name: "index_teams_on_club_id"
+  end
+
+  create_table "transfers", force: :cascade do |t|
+    t.bigint "player_id"
+    t.bigint "former_club_id"
+    t.bigint "new_club_id"
+    t.string "season_id"
+    t.bigint "created_by"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+  end
+
+  create_table "users", force: :cascade do |t|
+    t.string "user_name", null: false
+    t.string "email"
+    t.string "first_name"
+    t.string "last_name"
+    t.string "password_digest"
+    t.boolean "active", default: true
+    t.bigint "club_id"
+    t.integer "teams", default: [], array: true
+    t.jsonb "permissions", default: []
+    t.string "password_reset_token"
+    t.datetime "last_login_at"
+    t.string "hash_id"
+    t.string "description"
+    t.boolean "privacy_approved", default: false
+    t.bigint "created_by"
+    t.bigint "updated_by"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["user_name"], name: "index_users_on_user_name", unique: true
   end
 
   create_table "versions", force: :cascade do |t|
@@ -328,35 +329,10 @@ ActiveRecord::Schema[7.0].define(version: 2024_06_06_203601) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
-  add_foreign_key "arenas", "users", column: "created_by", name: "tbl_arena_fk"
-  add_foreign_key "arenas", "users", column: "updated_by", name: "tbl_arena_fk1"
-  add_foreign_key "game_days", "arenas", name: "tbl_game_day_fk2"
-  add_foreign_key "game_days", "clubs", name: "tbl_game_day_fk"
-  add_foreign_key "game_days", "leagues", name: "tbl_game_day_fk1"
-  add_foreign_key "game_days", "users", column: "created_by", name: "tbl_game_day_fk3"
-  add_foreign_key "game_days", "users", column: "updated_by", name: "tbl_game_day_fk4"
-  add_foreign_key "games", "game_days", name: "tbl_game_fk2"
-  add_foreign_key "games", "teams", column: "guest_team_id", name: "tbl_game_fk1"
-  add_foreign_key "games", "teams", column: "home_team_id", name: "tbl_game_fk"
-  add_foreign_key "games", "users", column: "created_by", name: "tbl_game_fk3"
-  add_foreign_key "games", "users", column: "record_created_by", name: "tbl_game_fk5"
-  add_foreign_key "games", "users", column: "record_updated_by", name: "tbl_game_fk6"
-  add_foreign_key "games", "users", column: "updated_by", name: "tbl_game_fk4"
-  add_foreign_key "leagues", "game_operations", name: "tbl_league_fk"
-  add_foreign_key "leagues", "users", column: "created_by", name: "tbl_league_fk1"
-  add_foreign_key "leagues", "users", column: "updated_by", name: "tbl_league_fk2"
-  add_foreign_key "players", "users", column: "created_by", name: "tbl_player_fk", deferrable: true
-  add_foreign_key "players", "users", column: "updated_by", name: "tbl_player_fk1", deferrable: true
-  add_foreign_key "teams", "clubs", name: "tbl_team_fk1"
-  add_foreign_key "teams", "leagues", name: "tbl_team_fk"
-  add_foreign_key "teams", "users", column: "created_by", name: "tbl_team_fk2"
-  add_foreign_key "teams", "users", column: "updated_by", name: "tbl_team_fk3"
-  add_foreign_key "transfers", "clubs", column: "former_club_id", name: "tbl_transfer_fk1"
-  add_foreign_key "transfers", "clubs", column: "new_club_id", name: "tbl_transfer_fk2"
-  add_foreign_key "transfers", "game_operations", name: "tbl_transfer_fk"
-  add_foreign_key "transfers", "players", name: "tbl_transfer_fk3"
-  add_foreign_key "transfers", "users", column: "created_by", name: "tbl_transfer_fk4"
-  add_foreign_key "users", "clubs", name: "tbl_user_fk"
-  add_foreign_key "users", "users", column: "created_by", name: "tbl_user_fk1"
-  add_foreign_key "users", "users", column: "updated_by", name: "tbl_user_fk2"
+  add_foreign_key "game_days", "arenas"
+  add_foreign_key "game_days", "clubs"
+  add_foreign_key "game_days", "leagues"
+  add_foreign_key "games", "game_days"
+  add_foreign_key "leagues", "game_operations"
+  add_foreign_key "teams", "clubs"
 end
