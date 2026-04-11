@@ -70,7 +70,7 @@ Rails.application.configure do
   config.action_mailer.smtp_settings = {
     address: ipv4_address,
     port: 25,
-    domain: 'saisonmanager.de',
+    domain: 'saisonmanager.org',
     local_address: '88.198.193.81',
     openssl_verify_mode: 'none',
     open_timeout: 5,

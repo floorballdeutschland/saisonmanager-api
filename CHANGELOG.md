@@ -9,6 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+- Domain-Migration: alle Verweise von `saisonmanager.de` auf `saisonmanager.org` umgestellt (Mailer, Game-URL, Rake-Tasks)
+- `database.yml`: Verbindungsparameter werden jetzt aus ENV-Variablen gelesen (Docker-kompatibel)
+- Seeds aktualisiert: Demo-Daten für Schiedsrichter, Vereine und Teams ergänzt
+- `import_prod_data`: neuer Rake-Task zum Importieren öffentlicher Produktionsdaten
+
 ## [1.1.0] - 2026-04-10
 
 ### Neu
