@@ -34,14 +34,43 @@ class TeamsController < ApplicationController
 
   def stats
     team = Team.find(params[:id])
-    league = team.league
 
-    # All scorer data for the league, filtered to this team
-    team_scorer = if league
-                    league.evaluate_scorer.values.select { |s| s[:team_id] == team.id }
-                  else
-                    []
-                  end
+    # Find primary league via game_days (team.league_id is not populated in production)
+    league = League.joins(:game_days => :games)
+                   .where('games.home_team_id = :tid OR games.guest_team_id = :tid', tid: team.id)
+                   .where(season_id: Setting.current_season_id)
+                   .first
+
+    # Evaluate scorer directly from the team's current-season ended games
+    current_season_games = Game.by_team_id(team.id)
+                               .where(ended: true)
+                               .joins(game_day: :league)
+                               .where(leagues: { season_id: Setting.current_season_id })
+
+    team_scorer_data = {}
+    current_season_games.each do |game|
+      next if game.result.nil?
+
+      begin
+        game_score = game.evaluate_scorer
+        game_score.each do |player_id, score|
+          next unless score[:team_id] == team.id
+
+          if team_scorer_data[player_id]
+            %i[games goals assists penalty_2 penalty_2and2 penalty_5 penalty_10
+               penalty_ms_tech penalty_ms_full penalty_ms1 penalty_ms2 penalty_ms3].each do |k|
+              team_scorer_data[player_id][k] = (team_scorer_data[player_id][k] || 0) + (score[k] || 0)
+            end
+          else
+            team_scorer_data[player_id] = score.dup
+          end
+        end
+      rescue StandardError => e
+        Rails.logger.warn("evaluate_scorer failed for game #{game.id}: #{e.message}")
+      end
+    end
+
+    team_scorer = team_scorer_data.values
 
     # Resolve player names
     player_ids = team_scorer.map { |s| s[:player_id] }
@@ -108,7 +137,23 @@ class TeamsController < ApplicationController
       }
     end
 
-    team_info = league ? team.full_hash : { id: team.id, name: team.name, short_name: team.short_name, league_name: nil }
+    team_info = if league
+                  {
+                    id: team.id,
+                    name: team.name,
+                    short_name: team.short_name,
+                    logo_url: team.logo_url_fallback,
+                    logo_small: team.logo_small_url_fallback,
+                    league_id: league.id,
+                    league_name: league.name,
+                    game_operation_id: league.game_operation.id,
+                    game_operation_name: league.game_operation.name,
+                    game_operation_short_name: league.game_operation.short_name,
+                    game_operation_slug: league.game_operation.path
+                  }
+                else
+                  { id: team.id, name: team.name, short_name: team.short_name, league_name: nil }
+                end
 
     render json: {
       team:           team_info,
