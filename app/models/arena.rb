@@ -4,11 +4,19 @@ class Arena < ApplicationRecord
   scope :active, -> { where(disabled: false) }
 
   def address
-    "#{street} #{housenumber}, #{postcode} #{city}"
+    if street.present? || city.present?
+      "#{street} #{housenumber}, #{postcode} #{city}"
+    else
+      self[:address]
+    end
   end
 
   def schedule_item
-    "#{city}, #{name}"
+    if city.present?
+      "#{city}, #{name}"
+    else
+      self[:schedule_item]
+    end
   end
 
   def full_hash
