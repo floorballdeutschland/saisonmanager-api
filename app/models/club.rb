@@ -81,7 +81,15 @@ class Club < ApplicationRecord
   def logo_url
     Rails.application.routes.url_helpers.rails_blob_path(logo, only_path: true) if logo.present?
   end
-  alias logo_small_url logo_url
+
+  def logo_small_url
+    return nil unless logo.present?
+
+    Rails.application.routes.url_helpers.rails_representation_path(
+      logo.variant(resize_to_fit: [100, 100]),
+      only_path: true
+    )
+  end
 
   def self.admin_club_permissions(user)
     result = []

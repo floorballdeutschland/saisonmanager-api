@@ -28,3 +28,7 @@
 yarn-debug.log*
 .yarn-integrity
 .env
+
+# ActiveStorage local disk uploads
+/storage/*
+!/storage/.keep

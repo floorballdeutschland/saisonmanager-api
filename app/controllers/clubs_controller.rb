@@ -222,6 +222,25 @@ class ClubsController < ApplicationController
     end
   end
 
+  def admin_upload_logo
+    if current_user
+      club = Club.find(params[:id])
+
+      unless club.user_permissions(current_user).include?(:update_club)
+        return render json: { message: 'Keine Berechtigung' }, status: :forbidden
+      end
+
+      unless params[:logo].present?
+        return render json: { message: 'Kein Bild angefügt' }, status: :unprocessable_entity
+      end
+
+      club.logo.attach(params[:logo])
+      render json: { logo_url: club.logo_url, logo_small_url: club.logo_small_url }
+    else
+      render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
+    end
+  end
+
   def club_params
     params.require(:club).permit(:name, :short_name, :long_name, :state)
   end

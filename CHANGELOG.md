@@ -9,6 +9,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+- Logo-Upload für Vereine und Teams: `POST /api/v2/admin/clubs/:id/upload_logo` und `/teams/:id/upload_logo`
+- Club-Logo wird automatisch an Teams vererbt (`logo_url_fallback`)
+- Thumbnail-Variante (100×100) wird serverseitig erzeugt (`logo_small_url`)
+
+### Verbessert
+- ActiveStorage: Umstieg von Azure Blob Storage auf lokalen Disk-Service (`storage/`)
+- Docker: persistentes Volume `rails_storage` für hochgeladene Logos
+
 ## [1.1.1] - 2026-04-11
 
 ### Verbessert

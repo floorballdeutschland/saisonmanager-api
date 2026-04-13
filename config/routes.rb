@@ -48,6 +48,7 @@ Rails.application.routes.draw do
       post 'reset_password' => 'users#reset_password_token'
 
       get 'teams/:id', to: 'teams#show'
+      get 'teams/:id/stats', to: 'teams#stats'
       get 'players/:id/stats', to: 'players#stats'
 
       resources :leagues do

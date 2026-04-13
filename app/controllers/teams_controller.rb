@@ -1,5 +1,5 @@
 class TeamsController < ApplicationController
-  skip_before_action :authenticate_user, only: [:show]
+  skip_before_action :authenticate_user, only: %i[show stats]
 
   # GET /teams
   def index
@@ -30,6 +30,69 @@ class TeamsController < ApplicationController
         render plain: ical.to_ical
       end
     end
+  end
+
+  def stats
+    team = Team.find(params[:id])
+    league = team.league
+
+    # All scorer data for the league, filtered to this team
+    all_scorer = league.evaluate_scorer
+    team_scorer = all_scorer.values.select { |s| s[:team_id] == team.id }
+
+    # Resolve player names
+    player_ids = team_scorer.map { |s| s[:player_id] }
+    players = Player.where(id: player_ids).index_by(&:id)
+
+    scorer_list = team_scorer
+                  .sort_by { |s| [-(s[:goals] + s[:assists]), -s[:goals], -s[:games]] }
+                  .map do |s|
+      player = players[s[:player_id]]
+      next if player.nil?
+      {
+        player_id:    s[:player_id],
+        first_name:   player.first_name,
+        last_name:    player.last_name,
+        games:        s[:games],
+        goals:        s[:goals],
+        assists:      s[:assists],
+        scorer_points: s[:goals] + s[:assists],
+        penalty_minutes: (s[:penalty_2] * 2) + (s[:penalty_2and2] * 4) +
+                         (s[:penalty_5] * 5) + (s[:penalty_10] * 10) +
+                         (s[:penalty_ms_tech] + s[:penalty_ms_full] +
+                          s[:penalty_ms1] + s[:penalty_ms2] + s[:penalty_ms3]) * 25
+      }
+    end.compact
+
+    # Recent results (last 5 ended games)
+    recent_games = Game.by_team_id(team.id)
+                       .where(ended: true)
+                       .order(Arel.sql("NULLIF(game_number, '')::integer NULLS LAST"))
+                       .last(5)
+                       .map do |g|
+      result = g.result
+      {
+        game_id:         g.id,
+        game_number:     g.game_number,
+        home_team_name:  g.home_team_name,
+        guest_team_name: g.guest_team_name,
+        home_goals:      result&.dig(:home_goals),
+        guest_goals:     result&.dig(:guest_goals),
+        date:            g.date
+      }
+    end
+
+    render json: {
+      team:    team.full_hash,
+      scorer:  scorer_list,
+      recent_games:,
+      totals: {
+        games:           scorer_list.sum { |s| s[:games] } / [scorer_list.size, 1].max, # avg
+        goals:           scorer_list.sum { |s| s[:goals] },
+        assists:         scorer_list.sum { |s| s[:assists] },
+        penalty_minutes: scorer_list.sum { |s| s[:penalty_minutes] }
+      }
+    }
   end
 
   def admin_get_team
@@ -86,6 +149,25 @@ class TeamsController < ApplicationController
     hash = league.short_hash true
 
     render json: team.licenses(false, true, :short)
+  end
+
+  def admin_upload_logo
+    if current_user
+      team = Team.find(params[:id])
+
+      unless team.user_permissions(current_user).include?(:update_team)
+        return render json: { message: 'Keine Berechtigung' }, status: :forbidden
+      end
+
+      unless params[:logo].present?
+        return render json: { message: 'Kein Bild angefügt' }, status: :unprocessable_entity
+      end
+
+      team.logo.attach(params[:logo])
+      render json: { logo_url: team.logo_url, logo_small_url: team.logo_small_url }
+    else
+      render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
+    end
   end
 
   def team_params
