@@ -13,6 +13,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - Logo-Upload für Vereine und Teams: `POST /api/v2/admin/clubs/:id/upload_logo` und `/teams/:id/upload_logo`
 - Club-Logo wird automatisch an Teams vererbt (`logo_url_fallback`)
 - Thumbnail-Variante (100×100) wird serverseitig erzeugt (`logo_small_url`)
+- Schiedsrichter-Autocomplete: `GET /api/v2/referees/search?q=…` – sucht nach Name oder Lizenznummer, max. 10 Treffer (kein Login erforderlich)
+- `nominated_referee_ids` (Integer-Array) an Games: SBK kann nominierende Schiedsrichter per ID hinterlegen
 
 ### Verbessert
 - ActiveStorage: Umstieg von Azure Blob Storage auf lokalen Disk-Service (`storage/`)
