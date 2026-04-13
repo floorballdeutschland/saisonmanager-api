@@ -11,7 +11,11 @@ class Referee < ApplicationRecord
   scope :search, ->(q) { where('LOWER(vorname) LIKE :q OR LOWER(nachname) LIKE :q OR lizenznummer::text LIKE :q', q: "%#{q.downcase}%") }
 
   def games(season_id: nil)
-    scope = Game.where('? = ANY(referee_ids)', lizenznummer)
+    license_prefix = "#{lizenznummer} %"
+    scope = Game.where(
+      '? = ANY(referee_ids) OR referee1_string LIKE ? OR referee2_string LIKE ?',
+      lizenznummer, license_prefix, license_prefix
+    )
     scope = scope.where(season_id: season_id) if season_id
     scope
   end

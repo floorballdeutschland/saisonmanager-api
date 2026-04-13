@@ -67,30 +67,54 @@ class TeamsController < ApplicationController
       }
     end.compact
 
-    # Recent results (last 5 ended games)
+    # Recent results (last 5 ended games, ordered by game day date)
     recent_games = Game.by_team_id(team.id)
                        .where(ended: true)
-                       .order(Arel.sql("NULLIF(game_number, '')::integer DESC NULLS LAST"))
+                       .joins(:game_day)
+                       .order('game_days.date DESC')
                        .limit(5)
                        .map do |g|
       result = g.result
       {
-        game_id:         g.id,
-        game_number:     g.game_number,
-        home_team_name:  g.home_team_name,
-        guest_team_name: g.guest_team_name,
-        home_goals:      result&.dig(:home_goals),
-        guest_goals:     result&.dig(:guest_goals),
-        date:            g.game_day.date
+        game_id:          g.id,
+        game_number:      g.game_number,
+        home_team_name:   g.home_team_name,
+        home_team_logo:   g.home_team&.logo_small_url_fallback,
+        guest_team_name:  g.guest_team_name,
+        guest_team_logo:  g.guest_team&.logo_small_url_fallback,
+        home_goals:       result&.dig(:home_goals),
+        guest_goals:      result&.dig(:guest_goals),
+        date:             g.game_day.date
+      }
+    end
+
+    # Upcoming games (next 5, not yet started)
+    upcoming_games = Game.by_team_id(team.id)
+                         .where(started: false)
+                         .joins(:game_day)
+                         .where('game_days.date >= ?', Date.today)
+                         .order('game_days.date ASC')
+                         .limit(5)
+                         .map do |g|
+      {
+        game_id:          g.id,
+        game_number:      g.game_number,
+        home_team_name:   g.home_team_name,
+        home_team_logo:   g.home_team&.logo_small_url_fallback,
+        guest_team_name:  g.guest_team_name,
+        guest_team_logo:  g.guest_team&.logo_small_url_fallback,
+        date:             g.game_day.date,
+        start_time:       g.start_time
       }
     end
 
     team_info = league ? team.full_hash : { id: team.id, name: team.name, short_name: team.short_name, league_name: nil }
 
     render json: {
-      team:    team_info,
-      scorer:  scorer_list,
+      team:           team_info,
+      scorer:         scorer_list,
       recent_games:,
+      upcoming_games:,
       totals: {
         games:           scorer_list.sum { |s| s[:games] } / [scorer_list.size, 1].max, # avg
         goals:           scorer_list.sum { |s| s[:goals] },
