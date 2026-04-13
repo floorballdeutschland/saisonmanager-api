@@ -48,6 +48,7 @@ Rails.application.routes.draw do
       post 'reset_password' => 'users#reset_password_token'
 
       get 'teams/:id', to: 'teams#show'
+      get 'players/:id/stats', to: 'players#stats'
 
       resources :leagues do
         member do
@@ -90,6 +91,9 @@ Rails.application.routes.draw do
       get 'admin/clubs', to: 'clubs#admin_club_index'
       get 'admin/clubs/:id', to: 'clubs#admin_club'
       post 'admin/clubs', to: 'clubs#admin_club_update'
+      post 'admin/clubs/:id/upload_logo', to: 'clubs#admin_upload_logo'
+
+      post 'admin/teams/:id/upload_logo', to: 'teams#admin_upload_logo'
 
       post 'admin/players/:id/transfer', to: 'players#transfer'
       post 'admin/players/:id/add_additional_club', to: 'players#add_additional_club'

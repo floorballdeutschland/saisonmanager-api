@@ -1,6 +1,6 @@
 class PlayersController < ApplicationController
   before_action :set_player, only: %i[show update destroy]
-  skip_before_action :authenticate_user, only: %i[transfers_public]
+  skip_before_action :authenticate_user, only: %i[transfers_public stats]
 
   # GET /players
   def index
@@ -474,6 +474,93 @@ class PlayersController < ApplicationController
     else
       render json: { message: 'Keine Berechtigung.' }, status: :forbidden
     end
+  end
+
+  def stats
+    player = Player.find(params[:id])
+    setting = Setting.current
+    seasons_map = setting.seasons.each_with_object({}) { |(k, v), h| h[k.to_i] = v['name'] }
+
+    # Find all ended games where this player was in the lineup
+    player_id = player.id
+    games = Game
+            .joins(game_day: { league: :game_operation })
+            .where(ended: true)
+            .where(
+              "players->'home' @> ? OR players->'guest' @> ?",
+              "[{\"player_id\":#{player_id}}]",
+              "[{\"player_id\":#{player_id}}]"
+            )
+            .includes(game_day: { league: :game_operation })
+
+    # season_id → league_id → aggregated stats
+    by_season = {}
+
+    games.each do |game|
+      scorer_data = game.evaluate_scorer[player_id]
+      next if scorer_data.nil?
+
+      league      = game.game_day.league
+      season_id   = league.season_id.to_i
+      league_id   = league.id
+
+      by_season[season_id] ||= {}
+      entry = by_season[season_id][league_id] ||= {
+        league_id:,
+        league_name:    league.name,
+        league_slug:    "#{league.id}-#{league.short_name&.parameterize}",
+        game_operation: league.game_operation.short_name,
+        team_id:        scorer_data[:team_id],
+        team_name:      scorer_data[:team_name],
+        games: 0, goals: 0, assists: 0, penalty_minutes: 0
+      }
+
+      entry[:games]           += 1
+      entry[:goals]           += scorer_data[:goals]
+      entry[:assists]         += scorer_data[:assists]
+      entry[:penalty_minutes] += (scorer_data[:penalty_2]      * 2) +
+                                 (scorer_data[:penalty_2and2]   * 4) +
+                                 (scorer_data[:penalty_5]       * 5) +
+                                 (scorer_data[:penalty_10]      * 10) +
+                                 (scorer_data[:penalty_ms_tech] + scorer_data[:penalty_ms_full] +
+                                  scorer_data[:penalty_ms1]     + scorer_data[:penalty_ms2] +
+                                  scorer_data[:penalty_ms3]) * 25
+    end
+
+    seasons = by_season
+              .sort_by { |season_id, _| -season_id }
+              .map do |season_id, leagues|
+      league_entries = leagues.values.sort_by { |e| -e[:games] }
+      {
+        season_id:,
+        season_name: seasons_map[season_id] || season_id.to_s,
+        leagues:     league_entries
+      }
+    end
+
+    total_games   = seasons.sum { |s| s[:leagues].sum { |l| l[:games] } }
+    total_goals   = seasons.sum { |s| s[:leagues].sum { |l| l[:goals] } }
+    total_assists = seasons.sum { |s| s[:leagues].sum { |l| l[:assists] } }
+    last_season   = seasons.first
+
+    render json: {
+      player: {
+        id:         player.id,
+        first_name: player.first_name,
+        last_name:  player.last_name,
+        birthdate:  player.birthdate,
+        gender:     player.gender
+      },
+      seasons:,
+      totals: {
+        games:          total_games,
+        goals:          total_goals,
+        assists:        total_assists,
+        scorer_points:  total_goals + total_assists,
+        scorer_per_game: total_games > 0 ? ((total_goals + total_assists).to_f / total_games).round(2) : 0,
+        last_season:    last_season&.dig(:season_name)
+      }
+    }
   end
 
   def transfers_public
