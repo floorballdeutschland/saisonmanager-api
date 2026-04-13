@@ -208,8 +208,15 @@ class ClubsController < ApplicationController
         # update
         club = Club.find(params[:id])
         club.updated_by = current_user.id
+
+        if params[:game_operation_id].present?
+          new_go_id = params[:game_operation_id].to_i
+          others = (club.game_operations_hash || []).reject { |h| h['home_game_operation'] }
+          club.game_operations_hash = others + [{ 'home_game_operation' => true, 'game_operation_id' => new_go_id }]
+        end
+
         if club.update(club_params)
-          render json: club
+          render json: club.full_hash
         else
           render json: club.errors, status: :unprocessable_entity
         end
