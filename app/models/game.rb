@@ -114,10 +114,12 @@ class Game < ApplicationRecord
     if players.present?
       %w[home guest].each do |team|
         result[team] = ['goal', 'defender1', 'defender2', 'center', 'forward1', 'forward2'].each_with_object([]) do |position, lineup|
+          lineup_player = nil
 
           if starting_players.present? && starting_players[team].present?
-            player_id = starting_players[team][position]
-            lineup_player = players[team].find { |player| player["player_id"] == player_id }
+            starting_player = starting_players[team].find { |p| p["position"] == position }
+            player_id = starting_player&.dig("player_id")
+            lineup_player = players[team]&.find { |player| player["player_id"] == player_id } if player_id
           end
 
           lineup << {
@@ -141,9 +143,12 @@ class Game < ApplicationRecord
     if players.present?
       %w[home guest].each do |team|
         result[team] = %w[mvp].each_with_object([]) do |award_key, lineup|
+          awards_player = nil
+
           if awards.present? && awards[team].present?
-            player_id = awards[team][award_key]
-            awards_player = players[team].find { |player| player["player_id"] == player_id }
+            award_entry = awards[team].find { |a| a["award"] == award_key }
+            player_id = award_entry&.dig("player_id")
+            awards_player = players[team]&.find { |player| player["player_id"] == player_id } if player_id
           end
 
           lineup << {
@@ -176,6 +181,8 @@ class Game < ApplicationRecord
         guest_previous_goals = 0
 
         events.sort_by { |e| e[:row] }.each do |e|
+          next if e['home_goals'].nil? || e['guest_goals'].nil?
+
           home_goals = e['home_goals'].to_i
           guest_goals = e['guest_goals'].to_i
 
