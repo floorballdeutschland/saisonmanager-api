@@ -433,10 +433,12 @@ class League < ApplicationRecord
   def evaluate_table_results(g = games)
     results = {}
 
+    # Pre-populate all league teams so teams with no games still appear
+    teams.each { |team| results[team.id] = empty_table_item(team) }
+
     g.each do |game|
-      # add all teams to table
       [game.home_team, game.guest_team].each do |team|
-        results[team.id] = empty_table_item(team) unless results[team.id].present?
+        results[team.id] ||= empty_table_item(team)
       end
 
       next unless game.ended? && !game.result.nil?
