@@ -81,7 +81,7 @@ class TeamsController < ApplicationController
         guest_team_name: g.guest_team_name,
         home_goals:      result&.dig(:home_goals),
         guest_goals:     result&.dig(:guest_goals),
-        date:            g.date
+        date:            g.game_day.date
       }
     end
 
