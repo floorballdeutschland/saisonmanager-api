@@ -117,8 +117,7 @@ class Game < ApplicationRecord
           lineup_player = nil
 
           if starting_players.present? && starting_players[team].present?
-            starting_player = starting_players[team].find { |p| p["position"] == position }
-            player_id = starting_player&.dig("player_id")
+            player_id = starting_players[team][position]
             lineup_player = players[team]&.find { |player| player["player_id"] == player_id } if player_id
           end
 
@@ -146,8 +145,7 @@ class Game < ApplicationRecord
           awards_player = nil
 
           if awards.present? && awards[team].present?
-            award_entry = awards[team].find { |a| a["award"] == award_key }
-            player_id = award_entry&.dig("player_id")
+            player_id = awards[team][award_key]
             awards_player = players[team]&.find { |player| player["player_id"] == player_id } if player_id
           end
 
