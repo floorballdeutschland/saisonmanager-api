@@ -37,8 +37,11 @@ class TeamsController < ApplicationController
     league = team.league
 
     # All scorer data for the league, filtered to this team
-    all_scorer = league.evaluate_scorer
-    team_scorer = all_scorer.values.select { |s| s[:team_id] == team.id }
+    team_scorer = if league
+                    league.evaluate_scorer.values.select { |s| s[:team_id] == team.id }
+                  else
+                    []
+                  end
 
     # Resolve player names
     player_ids = team_scorer.map { |s| s[:player_id] }
