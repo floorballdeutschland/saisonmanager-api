@@ -1,5 +1,5 @@
 class RefereesController < ApplicationController
-  skip_before_action :authenticate_user, only: %i[show]
+  skip_before_action :authenticate_user, only: %i[show search]
 
   # GET /api/v2/user/referees/:id
   # Returns public license info by Lizenznummer (no personal data)
@@ -18,6 +18,25 @@ class RefereesController < ApplicationController
     else
       render json: { error: 'Lizenz nicht gefunden' }, status: :not_found
     end
+  end
+
+  # GET /api/v2/referees/search?q=...
+  # Autocomplete: sucht nach Name oder Lizenznummer, gibt max. 10 Treffer zurück
+  def search
+    q = params[:q].to_s.strip
+    return render json: [] if q.length < 2
+
+    referees = Referee.search(q).order(:nachname, :vorname).limit(10)
+
+    render json: referees.map { |r|
+      {
+        lizenznummer:     r.lizenznummer,
+        vorname:          r.vorname,
+        nachname:         r.nachname,
+        lizenzstufe:      r.lizenzstufe,
+        verein:           r.verein
+      }
+    }
   end
 
   # GET /api/v2/referees/:id/games

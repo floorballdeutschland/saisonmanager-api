@@ -146,7 +146,7 @@ Rails.application.routes.draw do
       get 'user/players/nations', to: 'players#user_get_nations'
 
       get 'user/referees/:id', to: 'referees#show'
-
+      get 'referees/search', to: 'referees#search'
       get 'referees/:id/games', to: 'referees#games'
 
       namespace :admin do

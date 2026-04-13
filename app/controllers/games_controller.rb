@@ -853,6 +853,7 @@ class GamesController < ApplicationController
   def game_create_update_params
     params.require(:game).permit(:forfait, :game_day_id, :game_number, :start_time,
                                  :nominated_referee_string, :notice_type, :notice_string,
+                                 nominated_referee_ids: [],
                                  :home_team_id, :guest_team_id,
                                  :group_identifier,
                                  :series_title,
