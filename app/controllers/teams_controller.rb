@@ -85,8 +85,10 @@ class TeamsController < ApplicationController
       }
     end
 
+    team_info = league ? team.full_hash : { id: team.id, name: team.name, short_name: team.short_name, league_name: nil }
+
     render json: {
-      team:    team.full_hash,
+      team:    team_info,
       scorer:  scorer_list,
       recent_games:,
       totals: {
