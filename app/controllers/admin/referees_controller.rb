@@ -52,8 +52,9 @@ module Admin
     def games
       season_id = params[:season_id]
       games = @referee.games(season_id: season_id)
-                      .includes(:league, :home_team, :guest_team)
-                      .order(date: :desc)
+                      .includes(:league, :home_team, :guest_team, :game_day)
+                      .joins(:game_day)
+                      .order('game_days.date DESC')
 
       render json: games.map { |g| game_summary(g) }
     end
@@ -124,7 +125,7 @@ module Admin
       data = {
         id: game.id,
         game_number: game.game_number,
-        date: game.date,
+        date: game.game_day.date,
         home_team: game.home_team&.name,
         guest_team: game.guest_team&.name,
         league: game.league&.name,
