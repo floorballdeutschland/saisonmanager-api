@@ -16,7 +16,9 @@ class Referee < ApplicationRecord
       '? = ANY(referee_ids) OR referee1_string LIKE ? OR referee2_string LIKE ?',
       lizenznummer, license_prefix, license_prefix
     )
-    scope = scope.where(season_id: season_id) if season_id
+    if season_id
+      scope = scope.joins(game_day: :league).where(leagues: { season_id: season_id })
+    end
     scope
   end
 

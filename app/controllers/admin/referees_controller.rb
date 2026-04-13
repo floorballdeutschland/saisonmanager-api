@@ -52,7 +52,7 @@ module Admin
     def games
       season_id = params[:season_id]
       games = @referee.games(season_id: season_id)
-                      .includes(:league, :home_team, :guest_team, :game_day)
+                      .includes(:home_team, :guest_team, game_day: :league)
                       .joins(:game_day)
                       .order('game_days.date DESC')
 
@@ -129,7 +129,7 @@ module Admin
         home_team: game.home_team&.name,
         guest_team: game.guest_team&.name,
         league: game.league&.name,
-        season_id: game.season_id,
+        season_id: game.game_day.league&.season_id,
         result: game.result_string
       }
 
