@@ -70,8 +70,8 @@ class TeamsController < ApplicationController
     # Recent results (last 5 ended games)
     recent_games = Game.by_team_id(team.id)
                        .where(ended: true)
-                       .order(Arel.sql("NULLIF(game_number, '')::integer NULLS LAST"))
-                       .last(5)
+                       .order(Arel.sql("NULLIF(game_number, '')::integer DESC NULLS LAST"))
+                       .limit(5)
                        .map do |g|
       result = g.result
       {
