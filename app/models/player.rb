@@ -4,6 +4,8 @@ class Player < ApplicationRecord
   belongs_to :created_at_user, class_name: 'User', optional: true
   belongs_to :updated_at_user, class_name: 'User', optional: true
 
+  validates :nation_id, presence: true, numericality: { greater_than: 0 }
+
   # wo kommt das her?
   # attr_accessor :hash, :prefix
 

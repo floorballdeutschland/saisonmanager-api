@@ -17,6 +17,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - `nominated_referee_ids` (Integer-Array) an Games: SBK kann nominierende Schiedsrichter per ID hinterlegen
 
 ### Verbessert
+- Spieler: `nation_id` ist jetzt ein Pflichtfeld (Validierung auf > 0)
 - ActiveStorage: Umstieg von Azure Blob Storage auf lokalen Disk-Service (`storage/`)
 - Docker: persistentes Volume `rails_storage` für hochgeladene Logos
 - Vereinsverwaltung: Heimatverband (`game_operation_id`) kann jetzt korrekt gespeichert werden
