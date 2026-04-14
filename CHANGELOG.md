@@ -25,6 +25,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [1.1.1] - 2026-04-11
 
+### Behoben
+- `GameOperation#meta_hash` gibt jetzt einen Fallback-Slug zurück (`short_name.parameterize`), wenn `path` nicht gesetzt ist – verhindert defekte „Weitere Wettbewerbe"-Links (#221)
+
 ### Verbessert
 - Domain-Migration: alle Verweise von `saisonmanager.de` auf `saisonmanager.org` umgestellt (Mailer, Game-URL, Rake-Tasks)
 - `database.yml`: Verbindungsparameter werden jetzt aus ENV-Variablen gelesen (Docker-kompatibel)
