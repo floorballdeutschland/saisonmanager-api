@@ -1,0 +1,8 @@
+class StateAssociationsController < ApplicationController
+  skip_before_action :authenticate_user
+
+  # GET /api/v2/state_associations
+  def index
+    render json: StateAssociation.order(:name).map(&:short_hash)
+  end
+end

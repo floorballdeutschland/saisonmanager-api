@@ -154,7 +154,10 @@ Rails.application.routes.draw do
           get :games, on: :member
           get :incorrect_assignments, on: :collection
         end
+        resources :state_associations, only: %i[index create update destroy]
       end
+
+      get 'state_associations', to: 'state_associations#index'
 
       get 'transfers/public', to: 'players#transfers_public'
 

@@ -249,6 +249,6 @@ class ClubsController < ApplicationController
   end
 
   def club_params
-    params.require(:club).permit(:name, :short_name, :long_name, :state)
+    params.require(:club).permit(:name, :short_name, :long_name, :state, :state_association_id)
   end
 end

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_04_10_120000) do
+ActiveRecord::Schema[7.0].define(version: 2026_04_14_100001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -68,6 +68,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_10_120000) do
     t.bigint "updated_by"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "state_association_id"
   end
 
   create_table "game_days", force: :cascade do |t|
@@ -155,6 +156,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_10_120000) do
     t.datetime "record_updated_at"
     t.bigint "record_created_by"
     t.bigint "record_updated_by"
+    t.integer "nominated_referee_ids", default: [], array: true
     t.index ["game_day_id"], name: "index_games_on_game_day_id"
   end
 
@@ -265,6 +267,13 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_10_120000) do
     t.jsonb "penalty_codes", default: {}
     t.jsonb "point_corrections", default: {}
     t.jsonb "liveticker", default: {}
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+  end
+
+  create_table "state_associations", force: :cascade do |t|
+    t.string "name", null: false
+    t.string "short_name"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
   end

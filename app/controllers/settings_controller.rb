@@ -13,7 +13,8 @@ class SettingsController < ApplicationController
       {
         seasons: Setting.seasons,
         current_season_id: Setting.current_season_id,
-        game_operations: GameOperation.all.map(&:short_hash)
+        game_operations: GameOperation.all.map(&:short_hash),
+        state_associations: StateAssociation.order(:name).map(&:short_hash)
       }
     end
 
