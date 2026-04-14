@@ -79,7 +79,7 @@ class Team < ApplicationRecord
       game_operation_id: league.game_operation.id,
       game_operation_name: league.game_operation.name,
       game_operation_short_name: league.game_operation.short_name,
-      game_operation_slug: league.game_operation.path,
+      game_operation_slug: league.game_operation.slug,
       syndicate:,
       syndicate_clubs:,
       logo_url: logo_url_fallback,

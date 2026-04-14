@@ -15,9 +15,13 @@ class GameOperation < ApplicationRecord
     leagues.current_season.first(5)
   end
 
+  def slug
+    path.presence || short_name&.parameterize
+  end
+
   def meta_hash
     hash = attributes.with_indifferent_access.slice(:id, :name, :short_name, :path, :logo_url, :logo_quad_url)
-    hash[:path] ||= short_name&.parameterize
+    hash[:path] = slug
     hash
   end
 
