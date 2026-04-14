@@ -106,7 +106,7 @@ class Club < ApplicationRecord
     elsif ph[:admin].present? || ph[:sbk].present?
       go_ids << ph[:admin] if ph[:admin].present?
       go_ids << ph[:sbk] if ph[:sbk].present?
-      go_ids.flatten
+      go_ids.flatten!
     end
 
     GameOperation.find(go_ids).each do |go|
@@ -160,7 +160,7 @@ class Club < ApplicationRecord
     elsif ph[:admin].present? || ph[:sbk].present?
       go_ids << ph[:admin] if ph[:admin].present?
       go_ids << ph[:sbk] if ph[:sbk].present?
-      go_ids.flatten
+      go_ids.flatten!
     end
 
     GameOperation.find(go_ids).each do |go|
