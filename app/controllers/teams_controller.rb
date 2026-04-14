@@ -35,11 +35,9 @@ class TeamsController < ApplicationController
   def stats
     team = Team.find(params[:id])
 
-    # Find primary league via game_days (team.league_id is not populated in production)
-    league = League.joins(:game_days => :games)
-                   .where('games.home_team_id = :tid OR games.guest_team_id = :tid', tid: team.id)
-                   .where(season_id: Setting.current_season_id)
-                   .first
+    # All leagues this team participates in (main league + cup leagues)
+    leagues = team.leagues.where(season_id: Setting.current_season_id).to_a
+    primary_league = leagues.first
 
     # Evaluate scorer directly from the team's current-season ended games
     current_season_games = Game.by_team_id(team.id)
@@ -96,63 +94,81 @@ class TeamsController < ApplicationController
       }
     end.compact
 
-    # Recent results (last 5 ended games, ordered by game day date)
+    # Recent results (last 10 ended games across all leagues, ordered by game day date)
     recent_games = Game.by_team_id(team.id)
                        .where(ended: true)
-                       .joins(:game_day)
+                       .joins(game_day: :league)
+                       .where(leagues: { season_id: Setting.current_season_id })
+                       .includes(game_day: :league)
                        .order('game_days.date DESC')
-                       .limit(5)
+                       .limit(10)
                        .map do |g|
       result = g.result
       {
-        game_id:          g.id,
-        game_number:      g.game_number,
-        home_team_name:   g.home_team_name,
-        home_team_logo:   g.home_team&.logo_small_url_fallback,
-        guest_team_name:  g.guest_team_name,
-        guest_team_logo:  g.guest_team&.logo_small_url_fallback,
-        home_goals:       result&.dig(:home_goals),
-        guest_goals:      result&.dig(:guest_goals),
-        date:             g.game_day.date
+        game_id:            g.id,
+        game_number:        g.game_number,
+        home_team_name:     g.home_team_name,
+        home_team_logo:     g.home_team&.logo_small_url_fallback,
+        guest_team_name:    g.guest_team_name,
+        guest_team_logo:    g.guest_team&.logo_small_url_fallback,
+        home_goals:         result&.dig(:home_goals),
+        guest_goals:        result&.dig(:guest_goals),
+        date:               g.game_day.date,
+        league_name:        g.game_day.league.name,
+        league_short_name:  g.game_day.league.short_name
       }
     end
 
-    # Upcoming games (next 5, not yet started)
+    # Upcoming games (next 10 across all leagues, not yet started)
     upcoming_games = Game.by_team_id(team.id)
                          .where(started: false)
-                         .joins(:game_day)
+                         .joins(game_day: :league)
+                         .where(leagues: { season_id: Setting.current_season_id })
                          .where('game_days.date >= ?', Date.today)
+                         .includes(game_day: :league)
                          .order('game_days.date ASC')
-                         .limit(5)
+                         .limit(10)
                          .map do |g|
       {
-        game_id:          g.id,
-        game_number:      g.game_number,
-        home_team_name:   g.home_team_name,
-        home_team_logo:   g.home_team&.logo_small_url_fallback,
-        guest_team_name:  g.guest_team_name,
-        guest_team_logo:  g.guest_team&.logo_small_url_fallback,
-        date:             g.game_day.date,
-        start_time:       g.start_time
+        game_id:            g.id,
+        game_number:        g.game_number,
+        home_team_name:     g.home_team_name,
+        home_team_logo:     g.home_team&.logo_small_url_fallback,
+        guest_team_name:    g.guest_team_name,
+        guest_team_logo:    g.guest_team&.logo_small_url_fallback,
+        date:               g.game_day.date,
+        start_time:         g.start_time,
+        league_name:        g.game_day.league.name,
+        league_short_name:  g.game_day.league.short_name
       }
     end
 
-    team_info = if league
+    leagues_info = leagues.map do |l|
+      {
+        id: l.id,
+        name: l.name,
+        short_name: l.short_name,
+        game_operation_slug: l.game_operation.path
+      }
+    end
+
+    team_info = if primary_league
                   {
                     id: team.id,
                     name: team.name,
                     short_name: team.short_name,
                     logo_url: team.logo_url_fallback,
                     logo_small: team.logo_small_url_fallback,
-                    league_id: league.id,
-                    league_name: league.name,
-                    game_operation_id: league.game_operation.id,
-                    game_operation_name: league.game_operation.name,
-                    game_operation_short_name: league.game_operation.short_name,
-                    game_operation_slug: league.game_operation.path
+                    league_id: primary_league.id,
+                    league_name: primary_league.name,
+                    leagues: leagues_info,
+                    game_operation_id: primary_league.game_operation.id,
+                    game_operation_name: primary_league.game_operation.name,
+                    game_operation_short_name: primary_league.game_operation.short_name,
+                    game_operation_slug: primary_league.game_operation.path
                   }
                 else
-                  { id: team.id, name: team.name, short_name: team.short_name, league_name: nil }
+                  { id: team.id, name: team.name, short_name: team.short_name, league_name: nil, leagues: [] }
                 end
 
     render json: {
