@@ -6,6 +6,7 @@ class Player < ApplicationRecord
 
   validates :nation_id, presence: true
   validate :nation_id_is_positive, if: -> { nation_id.present? }
+  validates :email, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
 
   # wo kommt das her?
   # attr_accessor :hash, :prefix
