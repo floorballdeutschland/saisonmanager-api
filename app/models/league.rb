@@ -123,7 +123,7 @@ class League < ApplicationRecord
       game_operation_id:,
       game_operation_name: game_operation.name,
       game_operation_short_name: game_operation.short_name,
-      game_operation_slug: game_operation.path,
+      game_operation_slug: game_operation.slug,
       league_category_id:,
       league_class_id:,
       league_system_id:,

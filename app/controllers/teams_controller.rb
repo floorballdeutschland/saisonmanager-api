@@ -148,7 +148,7 @@ class TeamsController < ApplicationController
         id: l.id,
         name: l.name,
         short_name: l.short_name,
-        game_operation_slug: l.game_operation.path
+        game_operation_slug: l.game_operation.slug
       }
     end
 
@@ -165,7 +165,7 @@ class TeamsController < ApplicationController
                     game_operation_id: primary_league.game_operation.id,
                     game_operation_name: primary_league.game_operation.name,
                     game_operation_short_name: primary_league.game_operation.short_name,
-                    game_operation_slug: primary_league.game_operation.path
+                    game_operation_slug: primary_league.game_operation.slug
                   }
                 else
                   { id: team.id, name: team.name, short_name: team.short_name, league_name: nil, leagues: [] }
