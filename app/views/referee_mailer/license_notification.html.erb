@@ -1,0 +1,30 @@
+<h2>Schiedsrichterausweis <%= @action == :created ? 'angelegt' : 'aktualisiert' %></h2>
+
+<p>Hallo <%= @referee.vorname %> <%= @referee.nachname %>,</p>
+
+<% if @action == :created %>
+<p>
+  dein Schiedsrichterausweis wurde im Saisonmanager angelegt.
+</p>
+<% else %>
+<p>
+  dein Schiedsrichterausweis wurde im Saisonmanager aktualisiert.
+</p>
+<% end %>
+
+<% if @referee.lizenznummer.present? %>
+<p><strong>Lizenznummer:</strong> <%= @referee.lizenznummer %></p>
+<% end %>
+
+<% if @referee.lizenzstufe.present? %>
+<p><strong>Lizenzstufe:</strong> <%= @referee.lizenzstufe %></p>
+<% end %>
+
+<% if @referee.gueltigkeit.present? %>
+<p><strong>Gültigkeit:</strong> <%= @referee.gueltigkeit.strftime('%d.%m.%Y') %></p>
+<% end %>
+
+<p>
+  Bei Fragen oder Unstimmigkeiten wende dich an deinen Landesverband.<br>
+  <a href="https://saisonmanager.org">saisonmanager.org</a>
+</p>

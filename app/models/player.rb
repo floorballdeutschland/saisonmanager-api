@@ -42,7 +42,8 @@ class Player < ApplicationRecord
       nation_id:,
       nation_string:,
       clubs:,
-      security_id:
+      security_id:,
+      email:
     }
 
     if with_licenses
