@@ -150,6 +150,7 @@ class League < ApplicationRecord
       # preround_point_modus: preround_point_modus,
       # preround_scorer_modus: preround_scorer_modus,
       table_modus:,
+      direct_comparison:,
       periods:,
       period_length:,
       overtime_length:
@@ -313,13 +314,18 @@ class League < ApplicationRecord
   end
 
   def table
-    results = evaluate_table_results
+    g = games
+    results = evaluate_table_results(g)
+
+    sorted_results = if direct_comparison
+                       sort_by_direct_comparison(results.values, g)
+                     else
+                       results.values.sort_by do |r|
+                         [-r[:points], -r[:goals_diff], -r[:goals_scored]]
+                       end
+                     end
+
     last_entry = nil
-
-    sorted_results = results.values.sort_by do |team_result|
-      [-team_result[:points], -team_result[:goals_diff], -team_result[:goals_scored]]
-    end
-
     next_position_diff = 1
     sorted_results.each_with_index do |team_result, index|
       team_result[:sort] = index
@@ -342,19 +348,25 @@ class League < ApplicationRecord
   end
 
   def grouped_table
-    groups = games.pluck(:group_identifier).uniq.reject(&:nil?).sort
+    all_games = games
+    groups = all_games.map(&:group_identifier).uniq.reject(&:nil?).sort
     grouped = {}
 
     groups.each do |group|
       grouped[group] = group_template(group)
 
-      results = evaluate_table_results(games.select { |game| game.group_identifier == group })
+      group_games = all_games.select { |game| game.group_identifier == group }
+      results = evaluate_table_results(group_games)
+
+      sorted_results = if direct_comparison
+                         sort_by_direct_comparison(results.values, group_games)
+                       else
+                         results.values.sort_by do |r|
+                           [-r[:points], -r[:goals_diff], -r[:goals_scored]]
+                         end
+                       end
+
       last_entry = nil
-
-      sorted_results = results.values.sort_by do |team_result|
-        [-team_result[:points], -team_result[:goals_diff], -team_result[:goals_scored]]
-      end
-
       next_position_diff = 1
       sorted_results.each_with_index do |team_result, index|
         team_result[:sort] = index
@@ -930,5 +942,66 @@ class League < ApplicationRecord
       group_identifier:,
       name: ['Gruppe ', group.upcase].join
     }
+  end
+
+  def sort_by_direct_comparison(results_array, all_games)
+    by_points = results_array.group_by { |r| r[:points] }
+    sorted = []
+
+    by_points.keys.sort.reverse.each do |pts|
+      group = by_points[pts]
+      if group.size == 1
+        sorted << group.first
+        next
+      end
+
+      group_ids = group.map { |r| r[:team_id] }.to_set
+      h2h_games = all_games.select do |g|
+        g.ended? && !g.result.nil? &&
+          group_ids.include?(g.home_team_id) &&
+          group_ids.include?(g.guest_team_id)
+      end
+
+      h2h = group.each_with_object({}) do |r, h|
+        h[r[:team_id]] = { points: 0, goals_scored: 0, goals_received: 0 }
+      end
+
+      h2h_games.each do |game|
+        home_id = game.home_team_id
+        guest_id = game.guest_team_id
+        h2h[home_id][:goals_scored] += game.result[:home_goals]
+        h2h[home_id][:goals_received] += game.result[:guest_goals]
+        h2h[guest_id][:goals_scored] += game.result[:guest_goals]
+        h2h[guest_id][:goals_received] += game.result[:home_goals]
+
+        if game.result[:home_goals] == game.result[:guest_goals]
+          h2h[home_id][:points] += draw_points
+          h2h[guest_id][:points] += draw_points
+        elsif game.result[:home_goals] > game.result[:guest_goals]
+          if game.overtime
+            h2h[home_id][:points] += won_overtime_points
+            h2h[guest_id][:points] += lost_overtime_points
+          else
+            h2h[home_id][:points] += won_points
+          end
+        else
+          if game.overtime
+            h2h[guest_id][:points] += won_overtime_points
+            h2h[home_id][:points] += lost_overtime_points
+          else
+            h2h[guest_id][:points] += won_points
+          end
+        end
+      end
+
+      sorted.concat(group.sort_by do |r|
+        tid = r[:team_id]
+        h = h2h[tid]
+        h2h_diff = h[:goals_scored] - h[:goals_received]
+        [-h[:points], -h2h_diff, -h[:goals_scored], -r[:goals_diff], -r[:goals_scored]]
+      end)
+    end
+
+    sorted
   end
 end
