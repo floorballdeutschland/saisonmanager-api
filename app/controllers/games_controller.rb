@@ -582,6 +582,8 @@ class GamesController < ApplicationController
     ph = current_user.permission_hash
     allowed = if ph[:admin].present? || ph[:sbk].present?
                 true
+              elsif %w[match_record_closed finalized].include?(game.game_status)
+                false
               elsif ph[:vm].present?
                 ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
                   ph[:vm].intersection([game.home_team.syndicate_clubs,
@@ -648,6 +650,8 @@ class GamesController < ApplicationController
     ph = current_user.permission_hash
     allowed = if ph[:admin].present? || ph[:sbk].present?
                 true
+              elsif %w[match_record_closed finalized].include?(game.game_status)
+                false
               elsif ph[:vm].present?
                 ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
                   ph[:vm].intersection([game.home_team.syndicate_clubs,
