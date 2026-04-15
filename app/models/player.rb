@@ -19,6 +19,18 @@ class Player < ApplicationRecord
     attributes.with_indifferent_access.slice(:id, :last_name, :first_name, :birthdate, :male, :gender, :security_id)
   end
 
+  def search_hash
+    club_id = clubs&.first&.dig('club_id')
+    {
+      id:,
+      last_name:,
+      first_name:,
+      birthdate:,
+      gender:,
+      club_id:
+    }
+  end
+
   def full_hash(with_licenses = false, only_current_licenses = false, license_with_titles = false)
     p = {
       id:,
