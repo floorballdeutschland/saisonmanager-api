@@ -20,11 +20,11 @@ class Setting < ApplicationRecord
   end
 
   def self.current_min_league
-    @current_min_league ||= current_season['min_league_id']
+    @current_min_league ||= current_season['min_league_id'] || 0
   end
 
   def self.current_min_team
-    @current_min_team ||= current_season['min_team_id']
+    @current_min_team ||= current_season['min_team_id'] || 0
   end
 
   def self.seasons

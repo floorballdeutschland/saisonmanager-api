@@ -58,7 +58,7 @@ class Player < ApplicationRecord
         p[:licenses].map! do |lic|
           last_status_id = nil
           lic['history'].map! do |lh|
-            lh[:created_by_name] = User.find(lh['created_by'])&.full_with_username
+            lh[:created_by_name] = User.find_by(id: lh['created_by'])&.full_with_username
             lh[:license_status] = License::NAMES[lh['license_status_id'].to_i]
             last_status_id = lh['license_status_id'].to_i
 
@@ -67,7 +67,7 @@ class Player < ApplicationRecord
 
           lic[:set_transfer_allowed] = (last_status_id == License::APPROVED)
 
-          team = Team.find lic['team_id']
+          team = Team.find_by(id: lic['team_id'])
           lic[:team] = team&.full_hash
           lic[:league] = team&.league&.full_hash
 
