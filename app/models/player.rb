@@ -4,7 +4,8 @@ class Player < ApplicationRecord
   belongs_to :created_at_user, class_name: 'User', optional: true
   belongs_to :updated_at_user, class_name: 'User', optional: true
 
-  validates :nation_id, presence: true, numericality: { greater_than: 0 }
+  validates :nation_id, presence: true
+  validate :nation_id_is_positive, if: -> { nation_id.present? }
 
   # wo kommt das her?
   # attr_accessor :hash, :prefix
@@ -433,5 +434,11 @@ class Player < ApplicationRecord
     selected = select_license(licenses)
 
     licenses.reject { |l| l['id'] == selected['id'] }
+  end
+
+  private
+
+  def nation_id_is_positive
+    errors.add(:nation_id, 'muss größer als 0 sein') unless nation_id.to_i > 0
   end
 end
