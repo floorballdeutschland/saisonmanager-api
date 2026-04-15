@@ -20,6 +20,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - `GameOperation#slug` Methode als einheitlicher Fallback (`short_name.parameterize`) wenn `path` nicht gesetzt ist; alle `game_operation_slug`-Felder in `Game`, `League`, `Team` und `TeamsController` nutzen jetzt `slug` – verhindert defekte „Weitere Wettbewerbe"-Links und inkonsistente Routen (#221)
 
 ### Verbessert
+- Spieler: `nation_id` ist jetzt ein Pflichtfeld (Validierung auf > 0)
 - ActiveStorage: Umstieg von Azure Blob Storage auf lokalen Disk-Service (`storage/`)
 - Docker: persistentes Volume `rails_storage` für hochgeladene Logos
 - Vereinsverwaltung: Heimatverband (`game_operation_id`) kann jetzt korrekt gespeichert werden
