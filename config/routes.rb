@@ -127,6 +127,7 @@ Rails.application.routes.draw do
       post 'user/games/:id/events/remove', to: 'games#remove_event'
       post 'user/games/:id/referees/:referee_number', to: 'games#set_referee'
       post 'user/games/:id/game_status', to: 'games#set_game_status'
+      post 'user/games/:id/reopen', to: 'games#reopen_game'
 
       get 'user/games/:id/editable', to: 'games#editable'
 
