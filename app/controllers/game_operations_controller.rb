@@ -41,7 +41,7 @@ class GameOperationsController < ApplicationController
     elsif ph[:admin].present? || ph[:sbk].present?
       go_ids << ph[:admin] if ph[:admin].present?
       go_ids << ph[:sbk] if ph[:sbk].present?
-      go_ids.flatten
+      go_ids.flatten!
     end
 
     render json: GameOperation.find(go_ids)
