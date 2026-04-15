@@ -507,6 +507,7 @@ class Game < ApplicationRecord
       arena_name: game_day.arena&.name,
       arena_address: game_day.arena&.address,
       arena_short: game_day.arena&.schedule_item,
+      hosting_club: game_day.hosting_club,
       nominated_referees: nominated_referee_string,
       deletable: deletable?,
       notice_type:,
