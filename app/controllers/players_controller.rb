@@ -37,6 +37,28 @@ class PlayersController < ApplicationController
     render json: result
   end
 
+  def global_search
+    if current_user
+      ph = current_user.permission_hash
+      unless ph[:admin].present? || ph[:sbk].present?
+        return render json: { message: 'Keine Berechtigung' }, status: :forbidden
+      end
+
+      q = params[:q].to_s.strip
+      return render json: [] if q.length < 2
+
+      term = "%#{q}%"
+      players = Player.where(
+        'last_name ILIKE :q OR first_name ILIKE :q OR concat(first_name, \' \', last_name) ILIKE :q OR concat(last_name, \', \', first_name) ILIKE :q',
+        q: term
+      ).order(:last_name, :first_name).limit(20)
+
+      render json: players.map(&:search_hash)
+    else
+      render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
+    end
+  end
+
   def admin_player
     if current_user
       result = Player.find(params[:id])
