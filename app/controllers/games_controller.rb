@@ -828,13 +828,23 @@ class GamesController < ApplicationController
   end
 
   def reopen_game
-    if current_user && %w[jho_admin buettner_sbk mguenther].include?(current_user.user_name)
-      game = Game.find(params[:id])
-      game.update(game_status: 'match_record_closed')
+    game = Game.find(params[:id])
+    ph = current_user.permission_hash
+    game_operation_id = game.game_day.league.game_operation_id.to_i
 
-      render json: { success: true }
+    gos = [ph[:admin], ph[:sbk]].flatten.compact.map(&:to_i)
+    unless gos.include?(0) || gos.include?(game_operation_id)
+      return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+
+    if %w[match_record_closed finalized].include?(game.game_status)
+      if game.update(game_status: 'aftergame')
+        render json: { success: true }
+      else
+        render json: { errors: game.errors.full_messages }, status: :unprocessable_entity
+      end
     else
-      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+      render json: { message: 'Spielbericht hat keinen abgeschlossenen Status.' }, status: :unprocessable_entity
     end
   end
 
