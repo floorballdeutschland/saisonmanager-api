@@ -582,6 +582,8 @@ class GamesController < ApplicationController
     ph = current_user.permission_hash
     allowed = if ph[:admin].present? || ph[:sbk].present?
                 true
+              elsif %w[match_record_closed finalized].include?(game.game_status)
+                false
               elsif ph[:vm].present?
                 ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
                   ph[:vm].intersection([game.home_team.syndicate_clubs,
@@ -648,6 +650,8 @@ class GamesController < ApplicationController
     ph = current_user.permission_hash
     allowed = if ph[:admin].present? || ph[:sbk].present?
                 true
+              elsif %w[match_record_closed finalized].include?(game.game_status)
+                false
               elsif ph[:vm].present?
                 ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
                   ph[:vm].intersection([game.home_team.syndicate_clubs,
@@ -808,10 +812,13 @@ class GamesController < ApplicationController
     if allowed
       if params[:game_status].present?
         old_status = game.game_status
-        game.game_status = params[:game_status]
 
-        # TODO: check order
-        # TODO: check if allowed to set new status?
+        # VM/TM dürfen abgeschlossene Spielberichte nicht selbst wieder öffnen
+        if !sbk && %w[match_record_closed finalized].include?(old_status)
+          return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+        end
+
+        game.game_status = params[:game_status]
         game.save
       elsif params[:ingame_status].present?
         old_ingame_status = game.ingame_status
