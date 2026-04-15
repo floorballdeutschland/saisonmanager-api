@@ -220,6 +220,7 @@ class GamesController < ApplicationController
           item[:player_id] = player.id
           item[:player_firstname] = player.first_name
           item[:player_name] = player.last_name
+          item[:gender] = player.gender
         else
           item[:player_firstname] = params[:player_firstname]
           item[:player_name] = params[:player_name]
