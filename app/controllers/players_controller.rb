@@ -125,6 +125,8 @@ class PlayersController < ApplicationController
     ph = current_user.permission_hash
 
     if (ph[:admin].present? || ph[:sbk].present?) && player.present?
+      approved_team_id = nil
+
       player.licenses.map! do |lic|
         if lic['id'] == params[:license_id]
           last_status = lic['history'].sort_by { |h| h['created_at'] }.last
@@ -139,6 +141,7 @@ class PlayersController < ApplicationController
               created_by: current_user.id,
               created_at: Time.now
             }
+            approved_team_id = lic['team_id'] if params[:license_status_id].to_i == License::APPROVED
           end
         end
 
@@ -146,6 +149,10 @@ class PlayersController < ApplicationController
       end
 
       if player.save
+        if approved_team_id && player.email.present?
+          team = Team.find_by(id: approved_team_id)
+          PlayerMailer.license_approved(player, team).deliver_later if team
+        end
         render json: { success: true }
       else
         render json: { message: player.errors }, status: :unprocessable_entity
@@ -600,6 +607,6 @@ class PlayersController < ApplicationController
   end
 
   def player_params
-    params.require(:player).permit(:birthdate, :first_name, :last_name, :male, :gender, :nation_id)
+    params.require(:player).permit(:birthdate, :first_name, :last_name, :male, :gender, :nation_id, :email)
   end
 end

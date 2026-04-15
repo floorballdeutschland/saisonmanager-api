@@ -27,6 +27,9 @@ module Admin
       referee = Referee.new(referee_params)
 
       if referee.save
+        if referee.email.present? && referee.lizenznummer.present?
+          RefereeMailer.license_notification(referee, action: :created).deliver_later
+        end
         render json: referee_json(referee, full: true), status: :created
       else
         render json: { errors: referee.errors.full_messages }, status: :unprocessable_entity
@@ -35,7 +38,12 @@ module Admin
 
     # PUT /api/v2/admin/referees/:id
     def update
-      if @referee.update(referee_params)
+      @referee.assign_attributes(referee_params)
+      license_fields_changed = (@referee.changed & %w[lizenznummer gueltigkeit gueltigkeit_z lizenzstufe]).any?
+      notify = @referee.email.present? && license_fields_changed
+
+      if @referee.save
+        RefereeMailer.license_notification(@referee, action: :updated).deliver_later if notify
         render json: referee_json(@referee, full: true)
       else
         render json: { errors: @referee.errors.full_messages }, status: :unprocessable_entity
