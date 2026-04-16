@@ -211,7 +211,8 @@ class ClubsController < ApplicationController
 
         if params[:game_operation_id].present?
           new_go_id = params[:game_operation_id].to_i
-          others = (club.game_operations_hash || []).reject { |h| h['home_game_operation'] }
+          current = club.game_operations_hash.is_a?(Array) ? club.game_operations_hash : []
+          others = current.reject { |h| h['home_game_operation'] }
           club.game_operations_hash = others + [{ 'home_game_operation' => true, 'game_operation_id' => new_go_id }]
         end
 

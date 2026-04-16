@@ -26,6 +26,11 @@ class Club < ApplicationRecord
     end
   end
 
+  def game_operations_hash
+    val = super
+    val.is_a?(Array) ? val : []
+  end
+
   def home_game_operation
     Rails.cache.fetch("#{cache_key}/home_game_operation", expires_in: 1.week) do
       go = game_operations_hash.select { |g| g['home_game_operation'] == true }
