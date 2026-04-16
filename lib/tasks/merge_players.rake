@@ -134,10 +134,11 @@ module PlayerMergeHelper
     # jsonb_path_exists funktioniert korrekt mit nativen jsonb-Spalten und
     # findet Integer-Werte bei beliebiger Verschachtelung — unabhängig vom Speicherformat
     # (Normal-Hash oder Legacy-Array). Deckt beide Formate in starting_players und awards ab.
+    path = '$.** ? (@ == $v)'
     in_sp_awards = Game.where(
-      "jsonb_path_exists(starting_players, '$.** ? (@ == $v)', jsonb_build_object('v', ?)) OR " \
-      "jsonb_path_exists(awards, '$.** ? (@ == $v)', jsonb_build_object('v', ?))",
-      old_id, old_id
+      "jsonb_path_exists(starting_players, ?::jsonpath, jsonb_build_object('v', ?)) OR " \
+      "jsonb_path_exists(awards, ?::jsonpath, jsonb_build_object('v', ?))",
+      path, old_id, path, old_id
     )
     Game.where(id: in_players).or(Game.where(id: in_sp_awards))
   end
