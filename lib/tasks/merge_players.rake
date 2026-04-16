@@ -61,11 +61,16 @@ namespace :players do
       if dry_run
         puts "  => Würde ##{old_p.id} in ##{new_p.id} mergen [DRY RUN]"
       else
-        ActiveRecord::Base.transaction do
-          PlayerMergeHelper.merge!(old_p, new_p)
+        begin
+          ActiveRecord::Base.transaction do
+            PlayerMergeHelper.merge!(old_p, new_p)
+          end
+          puts "  => Gemergt."
+          merged += 1
+        rescue => e
+          puts "  FEHLER: #{e.class}: #{e.message}"
+          skipped += 1
         end
-        puts "  => Gemergt."
-        merged += 1
       end
       puts
     end
@@ -124,11 +129,16 @@ module PlayerMergeHelper
 
   # Alle Spiele, die old_id in players, starting_players oder awards referenzieren.
   def affected_games(old_id)
-    in_players   = Game.where('players @> ?', { 'home'  => [{ 'player_id' => old_id }] }.to_json)
-                       .or(Game.where('players @> ?', { 'guest' => [{ 'player_id' => old_id }] }.to_json))
-    # starting_players und awards speichern player_ids als Integer-Werte ohne Anführungszeichen
-    in_sp_awards = Game.where('starting_players::text ~ ? OR awards::text ~ ?',
-                              ":#{old_id}[,}]", ":#{old_id}[,}]")
+    in_players = Game.where('players @> ?', { 'home'  => [{ 'player_id' => old_id }] }.to_json)
+                     .or(Game.where('players @> ?', { 'guest' => [{ 'player_id' => old_id }] }.to_json))
+    # jsonb_path_exists funktioniert korrekt mit nativen jsonb-Spalten und
+    # findet Integer-Werte bei beliebiger Verschachtelung — unabhängig vom Speicherformat
+    # (Normal-Hash oder Legacy-Array). Deckt beide Formate in starting_players und awards ab.
+    in_sp_awards = Game.where(
+      "jsonb_path_exists(starting_players, '$.** ? (@ == $v)', jsonb_build_object('v', ?)) OR " \
+      "jsonb_path_exists(awards, '$.** ? (@ == $v)', jsonb_build_object('v', ?))",
+      old_id, old_id
+    )
     Game.where(id: in_players).or(Game.where(id: in_sp_awards))
   end
 
@@ -154,10 +164,22 @@ module PlayerMergeHelper
   def in_game?(game, pid)
     return true if game.players&.dig('home')&.any? { |p| p['player_id'] == pid }
     return true if game.players&.dig('guest')&.any? { |p| p['player_id'] == pid }
-    return true if game.starting_players&.dig('home')&.values&.include?(pid)
-    return true if game.starting_players&.dig('guest')&.values&.include?(pid)
-    return true if game.awards&.dig('home')&.values&.include?(pid)
-    return true if game.awards&.dig('guest')&.values&.include?(pid)
+
+    %w[home guest].each do |side|
+      sp = game.starting_players&.dig(side)
+      if sp.is_a?(Hash)
+        return true if sp.values.include?(pid)
+      elsif sp.is_a?(Array)
+        return true if sp.any? { |entry| entry['player_id'] == pid }
+      end
+
+      aw = game.awards&.dig(side)
+      if aw.is_a?(Hash)
+        return true if aw.values.include?(pid)
+      elsif aw.is_a?(Array)
+        return true if aw.any? { |entry| entry['player_id'] == pid }
+      end
+    end
 
     false
   end
@@ -194,7 +216,7 @@ module PlayerMergeHelper
 
       if existing
         combined = ((existing['history'] || []) + (old_lic['history'] || []))
-          .uniq { |h| h['created_at'].to_s }
+          .uniq { |h| [h['created_at'].to_s, h['license_status_id'].to_s] }
           .sort_by { |h| h['created_at'].to_s }
         existing['history'] = combined
       else
