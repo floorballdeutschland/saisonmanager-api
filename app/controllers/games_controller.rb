@@ -1,5 +1,6 @@
 class GamesController < ApplicationController
   skip_before_action :authenticate_user, only: %i[index show]
+  before_action :authenticate_public_request, only: %i[index show]
 
   # GET /games
   def index

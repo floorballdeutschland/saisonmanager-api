@@ -1,6 +1,7 @@
 class PlayersController < ApplicationController
   before_action :set_player, only: %i[show update destroy]
   skip_before_action :authenticate_user, only: %i[transfers_public stats]
+  before_action :authenticate_public_request, only: %i[transfers_public stats]
 
   # GET /players
   def index

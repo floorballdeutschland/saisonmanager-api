@@ -1,5 +1,6 @@
 class LeaguesController < ApplicationController
   skip_before_action :authenticate_user, except: [:admin_league_index]
+  before_action :authenticate_public_request, except: [:admin_league_index]
 
   # GET /leagues
   def index

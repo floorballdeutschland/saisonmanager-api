@@ -1,5 +1,6 @@
 class TeamsController < ApplicationController
   skip_before_action :authenticate_user, only: %i[show stats]
+  before_action :authenticate_public_request, only: %i[show stats]
 
   # GET /teams
   def index
