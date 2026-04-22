@@ -1,6 +1,7 @@
 class GameOperationsController < ApplicationController
   before_action :set_game_operation, only: [:index_leagues]
   skip_before_action :authenticate_user, except: [:admin_game_operations]
+  before_action :authenticate_public_request, except: [:admin_game_operations]
 
   # GET /game_operations
   def index

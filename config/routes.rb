@@ -157,6 +157,7 @@ Rails.application.routes.draw do
           get :incorrect_assignments, on: :collection
         end
         resources :state_associations, only: %i[index create update destroy]
+        resources :api_keys, only: %i[index create update destroy]
       end
 
       get 'state_associations', to: 'state_associations#index'

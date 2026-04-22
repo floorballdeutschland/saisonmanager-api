@@ -1,5 +1,6 @@
 class SettingsController < ApplicationController
   skip_before_action :authenticate_user
+  before_action :authenticate_public_request
 
   # GET /settings
   def index

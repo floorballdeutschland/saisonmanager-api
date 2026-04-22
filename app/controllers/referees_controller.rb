@@ -1,5 +1,6 @@
 class RefereesController < ApplicationController
   skip_before_action :authenticate_user, only: %i[show search]
+  before_action :authenticate_public_request, only: %i[show search]
 
   # GET /api/v2/user/referees/:id
   # Returns public license info by Lizenznummer (no personal data)

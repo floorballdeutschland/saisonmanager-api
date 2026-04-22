@@ -11,6 +11,15 @@ class ApplicationController < ActionController::Base
     render json: { success: false, message: 'Not authenticated' }, status: 401 unless @user
   end
 
+  def authenticate_public_request
+    return if current_user
+
+    raw_key = request.headers['X-Api-Key']
+    return if ApiKey.authenticate(raw_key)
+
+    render json: { success: false, message: 'API key required' }, status: :unauthorized
+  end
+
   def current_user
     user_id = cookies.signed[:user_id]
     User.find_by_id user_id if user_id

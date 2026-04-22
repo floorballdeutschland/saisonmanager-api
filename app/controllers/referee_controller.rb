@@ -1,5 +1,6 @@
 class RefereeController < ApplicationController
   skip_before_action :authenticate_user
+  before_action :authenticate_public_request
 
   # GET /referee/id/games.json
   def games
