@@ -8,7 +8,23 @@ class Referee < ApplicationRecord
   scope :active, -> { where('gueltigkeit >= ?', Date.today) }
   scope :by_landesverband, ->(lv) { where(landesverband: lv) }
   scope :by_lizenzstufe, ->(stufe) { where(lizenzstufe: stufe) }
-  scope :search, ->(q) { where('LOWER(vorname) LIKE :q OR LOWER(nachname) LIKE :q OR lizenznummer::text LIKE :q', q: "%#{q.downcase}%") }
+  scope :search, lambda { |q|
+    tokens = q.to_s.downcase.split(/\s+/).reject(&:empty?).first(5)
+    return none if tokens.empty?
+
+    # Jeder Token muss in vorname, nachname oder lizenznummer vorkommen –
+    # dadurch matchen Multi-Wort-Queries wie "Max Müller" auch, wenn Vor-
+    # und Nachname in separaten Spalten stehen.
+    relation = all
+    tokens.each do |t|
+      like = "%#{t}%"
+      relation = relation.where(
+        'LOWER(vorname) LIKE :t OR LOWER(nachname) LIKE :t OR lizenznummer::text LIKE :t',
+        t: like
+      )
+    end
+    relation
+  }
 
   def games(season_id: nil)
     license_prefix = "#{lizenznummer} %"
