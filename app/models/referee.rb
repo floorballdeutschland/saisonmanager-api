@@ -9,7 +9,7 @@ class Referee < ApplicationRecord
   scope :by_landesverband, ->(lv) { where(landesverband: lv) }
   scope :by_lizenzstufe, ->(stufe) { where(lizenzstufe: stufe) }
   scope :search, lambda { |q|
-    tokens = q.to_s.downcase.split(/\s+/).reject(&:empty?)
+    tokens = q.to_s.downcase.split(/\s+/).reject(&:empty?).first(5)
     return none if tokens.empty?
 
     # Jeder Token muss in vorname, nachname oder lizenznummer vorkommen –

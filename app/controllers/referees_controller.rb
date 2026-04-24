@@ -27,6 +27,9 @@ class RefereesController < ApplicationController
     q = params[:q].to_s.strip
     return render json: [] if q.empty?
 
+    # Query auf sinnvolle Länge begrenzen, bevor nach Tokens gesplittet wird
+    q = q[0, 100]
+
     referees = Referee.search(q).order(:nachname, :vorname).limit(10)
 
     render json: referees.map { |r|
