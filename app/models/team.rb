@@ -108,7 +108,7 @@ class Team < ApplicationRecord
       last_status_id = last_status['license_status_id']
       last_status_code = License::NAMES[last_status_id.to_i]
 
-      approved_at = (last_status['created_at'].to_datetime.strftime('%d.%m.%Y %H:%M:%S') if last_status_id == 1)
+      approved_at = (last_status['created_at'].to_datetime if last_status_id == 1)
       requested_at = license['history'].select do |lh|
                        lh['license_status_id'] == 2
                      end.last['created_at'].to_datetime
