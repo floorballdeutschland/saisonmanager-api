@@ -5,13 +5,15 @@ class User < ApplicationRecord
   validates :user_name, presence: true, uniqueness: true
 
   def login_hash
+    perms = permissions_items
     {
       id:,
       email:,
       username: user_name,
       name: fullname,
-      permissions: permissions_items,
-      club_ids:
+      permissions: perms,
+      club_ids:,
+      login_blocked_message: perms[:login_blocked] ? 'Keine Teams in der aktuellen Saison.' : nil
     }
   end
 
@@ -32,7 +34,11 @@ class User < ApplicationRecord
     result = {}
     ph = permission_hash
 
-    result[:login_blocked] = false
+    has_tm_role = permissions.any? { |p| p['user_group_id'].to_i == 5 }
+    tm_blocked = has_tm_role && ph[:tm].blank? && ph[:admin].blank? && ph[:sbk].blank? && ph[:vm].blank?
+    result[:login_blocked] = tm_blocked
+
+    return result if tm_blocked
 
     # show league admin menu item
     result[:menu_item_league_admin] = ph[:admin].present? || ph[:sbk].present?
