@@ -25,7 +25,7 @@ class RefereesController < ApplicationController
   # Autocomplete: sucht nach Name oder Lizenznummer, gibt max. 10 Treffer zurück
   def search
     q = params[:q].to_s.strip
-    return render json: [] if q.length < 2
+    return render json: [] if q.empty?
 
     referees = Referee.search(q).order(:nachname, :vorname).limit(10)
 
