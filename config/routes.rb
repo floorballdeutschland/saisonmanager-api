@@ -154,6 +154,7 @@ Rails.application.routes.draw do
       namespace :admin do
         resources :referees, only: %i[index show create update destroy] do
           get :games, on: :member
+          post :wallet_pass, on: :member
           get :incorrect_assignments, on: :collection
         end
         resources :state_associations, only: %i[index create update destroy]
