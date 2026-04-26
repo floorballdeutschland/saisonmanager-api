@@ -1,7 +1,7 @@
 module Admin
   class RefereesController < ApplicationController
     before_action :authorize_rsk!
-    before_action :set_referee, only: %i[show update destroy games]
+    before_action :set_referee, only: %i[show update destroy games wallet_pass]
 
     # GET /api/v2/admin/referees
     def index
@@ -54,6 +54,21 @@ module Admin
     def destroy
       @referee.destroy
       head :no_content
+    end
+
+    # POST /api/v2/admin/referees/:id/wallet_pass
+    def wallet_pass
+      result = PassmeisterService.create_or_update_pass(@referee)
+      pass_url = result['passUrl'] || result['url'] || result['passDownloadUrl']
+
+      @referee.update_columns(
+        wallet_pass_issued_at: Time.current,
+        wallet_pass_url: pass_url
+      )
+
+      render json: { url: pass_url }
+    rescue RuntimeError => e
+      render json: { error: e.message }, status: :unprocessable_entity
     end
 
     # GET /api/v2/admin/referees/:id/games
@@ -113,7 +128,9 @@ module Admin
         landesverband: referee.landesverband,
         lizenzstufe: referee.lizenzstufe,
         gueltigkeit: referee.gueltigkeit&.strftime('%d.%m.%Y'),
-        active: referee.gueltigkeit.present? && referee.gueltigkeit >= Date.today
+        active: referee.gueltigkeit.present? && referee.gueltigkeit >= Date.today,
+        wallet_pass_issued_at: referee.wallet_pass_issued_at&.iso8601,
+        wallet_pass_url: referee.wallet_pass_url
       }
 
       if full
