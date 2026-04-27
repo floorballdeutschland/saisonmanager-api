@@ -44,7 +44,7 @@ class User < ApplicationRecord
 
     return result if tm_blocked
 
-    if has_schiri_role && !ph[:admin].present? && !ph[:sbk].present? && !ph[:rsk].present?
+    if has_schiri_role && !ph[:admin].present? && !ph[:sbk].present? && !ph[:rsk].present? && !ph[:vm].present? && !ph[:tm].present?
       result[:menu_item_referee_profile] = true
       result[:show_page_referee_profile] = true
       return result

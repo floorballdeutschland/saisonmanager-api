@@ -1,7 +1,7 @@
 module Admin
   class RefereesController < ApplicationController
     before_action :authorize_rsk!
-    before_action :set_referee, only: %i[show update destroy games wallet_pass]
+    before_action :set_referee, only: %i[show update destroy games wallet_pass club_stats]
 
     # GET /api/v2/admin/referees
     def index
@@ -40,7 +40,7 @@ module Admin
     def update
       @referee.assign_attributes(referee_params)
       license_fields_changed = (@referee.changed & %w[lizenznummer gueltigkeit gueltigkeit_z lizenzstufe]).any?
-      notify = @referee.email.present? && license_fields_changed
+      notify = @referee.email.present? && license_fields_changed && !@referee.guest?
 
       if @referee.save
         RefereeMailer.license_notification(@referee, action: :updated).deliver_later if notify
@@ -80,6 +80,38 @@ module Admin
                       .order('game_days.date DESC')
 
       render json: games.map { |g| game_summary(g) }
+    end
+
+    # GET /api/v2/admin/referees/:id/club_stats
+    def club_stats
+      season_id = params[:season_id]
+
+      games = @referee.games(season_id: season_id)
+                      .includes(
+                        game_day: :league,
+                        home_team: :club,
+                        guest_team: :club
+                      )
+
+      counts = Hash.new(0)
+      club_names = {}
+
+      games.each do |game|
+        s = game.game_day.league&.season_id
+        [game.home_team&.club, game.guest_team&.club].compact.each do |club|
+          key = [club.id, s]
+          counts[key] += 1
+          club_names[club.id] = club.name
+        end
+      end
+
+      result = counts.map do |(club_id, s), count|
+        { club_id:, club_name: club_names[club_id], season_id: s, game_count: count }
+      end
+
+      result.sort_by! { |r| [-r[:game_count], r[:club_name].to_s] }
+
+      render json: result
     end
 
     # GET /api/v2/admin/referees/incorrect_assignments

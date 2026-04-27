@@ -20,7 +20,7 @@ class RefereeProfileController < ApplicationController
 
   def require_referee_account
     @referee = current_user.referee
-    render json: { error: 'Kein Schiedsrichter-Profil verknüpft' }, status: :forbidden if @referee.nil?
+    return render json: { error: 'Kein Schiedsrichter-Profil verknüpft' }, status: :forbidden if @referee.nil?
   end
 
   def profile_params

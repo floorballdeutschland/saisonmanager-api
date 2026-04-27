@@ -1,6 +1,7 @@
 class Referee < ApplicationRecord
   belongs_to :game_operation, optional: true
   has_one :user
+  has_many :referee_blocked_dates, dependent: :destroy
 
   validates :lizenznummer,
             uniqueness: { allow_nil: true },
@@ -38,6 +39,8 @@ class Referee < ApplicationRecord
   }
 
   def games(season_id: nil)
+    return Game.none if lizenznummer.nil?
+
     license_prefix = "#{lizenznummer} %"
     scope = Game.where(
       '? = ANY(referee_ids) OR referee1_string LIKE ? OR referee2_string LIKE ?',
@@ -61,7 +64,7 @@ class Referee < ApplicationRecord
     scope = Game.where.not(referee1_string: [nil, '']).or(Game.where.not(referee2_string: [nil, '']))
     scope = scope.where(season_id: season_id) if season_id
 
-    known_ids = pluck(:lizenznummer).to_set
+    known_ids = pluck(:lizenznummer).compact.to_set
 
     # Process in batches to avoid loading all games into memory at once
     results = []
