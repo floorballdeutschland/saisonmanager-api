@@ -57,6 +57,7 @@ class Club < ApplicationRecord
       short_name:,
       state:,
       state_association_id:,
+      contact_email:,
       logo_url:,
       logo_small_url:,
       game_operation_id: main_game_operation_id,

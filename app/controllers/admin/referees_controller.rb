@@ -1,7 +1,7 @@
 module Admin
   class RefereesController < ApplicationController
     before_action :authorize_rsk!
-    before_action :set_referee, only: %i[show update destroy games wallet_pass]
+    before_action :set_referee, only: %i[show update destroy games wallet_pass club_stats]
 
     # GET /api/v2/admin/referees
     def index
@@ -27,7 +27,7 @@ module Admin
       referee = Referee.new(referee_params)
 
       if referee.save
-        if referee.email.present? && referee.lizenznummer.present?
+        if referee.email.present? && referee.lizenznummer.present? && !referee.guest?
           RefereeMailer.license_notification(referee, action: :created).deliver_later
         end
         render json: referee_json(referee, full: true), status: :created
@@ -40,7 +40,7 @@ module Admin
     def update
       @referee.assign_attributes(referee_params)
       license_fields_changed = (@referee.changed & %w[lizenznummer gueltigkeit gueltigkeit_z lizenzstufe]).any?
-      notify = @referee.email.present? && license_fields_changed
+      notify = @referee.email.present? && license_fields_changed && !@referee.guest?
 
       if @referee.save
         RefereeMailer.license_notification(@referee, action: :updated).deliver_later if notify
@@ -82,6 +82,38 @@ module Admin
       render json: games.map { |g| game_summary(g) }
     end
 
+    # GET /api/v2/admin/referees/:id/club_stats
+    def club_stats
+      season_id = params[:season_id]
+
+      games = @referee.games(season_id: season_id)
+                      .includes(
+                        game_day: :league,
+                        home_team: :club,
+                        guest_team: :club
+                      )
+
+      counts = Hash.new(0)
+      club_names = {}
+
+      games.each do |game|
+        s = game.game_day.league&.season_id
+        [game.home_team&.club, game.guest_team&.club].compact.each do |club|
+          key = [club.id, s]
+          counts[key] += 1
+          club_names[club.id] = club.name
+        end
+      end
+
+      result = counts.map do |(club_id, s), count|
+        { club_id:, club_name: club_names[club_id], season_id: s, game_count: count }
+      end
+
+      result.sort_by! { |r| [-r[:game_count], r[:club_name].to_s] }
+
+      render json: result
+    end
+
     # GET /api/v2/admin/referees/incorrect_assignments
     def incorrect_assignments
       season_id = params[:season_id] || Setting.current_season_id
@@ -102,7 +134,8 @@ module Admin
       params.require(:referee).permit(
         :lizenznummer, :vorname, :nachname, :geburtsdatum, :email,
         :verein, :landesverband, :game_operation_id,
-        :lizenzstufe, :gueltigkeit, :zusatzqualifikation, :gueltigkeit_z
+        :lizenzstufe, :gueltigkeit, :zusatzqualifikation, :gueltigkeit_z,
+        :strasse, :hausnummer, :plz, :ort, :partner_lizenznummer, :guest
       )
     end
 
@@ -122,13 +155,15 @@ module Admin
       data = {
         id: referee.id,
         lizenznummer: referee.lizenznummer,
+        lizenznummer_display: referee.lizenznummer_display,
+        guest: referee.guest,
         vorname: referee.vorname,
         nachname: referee.nachname,
         verein: referee.verein,
         landesverband: referee.landesverband,
         lizenzstufe: referee.lizenzstufe,
         gueltigkeit: referee.gueltigkeit&.strftime('%d.%m.%Y'),
-        active: referee.gueltigkeit.present? && referee.gueltigkeit >= Date.today,
+        active: !referee.guest? && referee.gueltigkeit.present? && referee.gueltigkeit >= Date.today,
         wallet_pass_issued_at: referee.wallet_pass_issued_at&.iso8601,
         wallet_pass_url: referee.wallet_pass_url
       }
@@ -139,7 +174,12 @@ module Admin
           email: referee.email,
           game_operation_id: referee.game_operation_id,
           zusatzqualifikation: referee.zusatzqualifikation,
-          gueltigkeit_z: referee.gueltigkeit_z&.strftime('%d.%m.%Y')
+          gueltigkeit_z: referee.gueltigkeit_z&.strftime('%d.%m.%Y'),
+          strasse: referee.strasse,
+          hausnummer: referee.hausnummer,
+          plz: referee.plz,
+          ort: referee.ort,
+          partner_lizenznummer: referee.partner_lizenznummer
         )
       end
 

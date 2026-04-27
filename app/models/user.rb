@@ -4,6 +4,8 @@ class User < ApplicationRecord
   has_secure_password
   validates :user_name, presence: true, uniqueness: true
 
+  belongs_to :referee, optional: true
+
   def login_hash
     perms = permissions_items
     {
@@ -13,6 +15,7 @@ class User < ApplicationRecord
       name: fullname,
       permissions: perms,
       club_ids:,
+      referee_id: referee_id,
       login_blocked_message: perms[:login_blocked] ? 'Keine Teams in der aktuellen Saison.' : nil
     }
   end
@@ -35,10 +38,17 @@ class User < ApplicationRecord
     ph = permission_hash
 
     has_tm_role = permissions.any? { |p| p['user_group_id'].to_i == 5 }
+    has_schiri_role = permissions.any? { |p| p['user_group_id'].to_i == 6 }
     tm_blocked = has_tm_role && ph[:tm].blank? && ph[:admin].blank? && ph[:sbk].blank? && ph[:vm].blank?
     result[:login_blocked] = tm_blocked
 
     return result if tm_blocked
+
+    if has_schiri_role && !ph[:admin].present? && !ph[:sbk].present? && !ph[:rsk].present? && !ph[:vm].present? && !ph[:tm].present?
+      result[:menu_item_referee_profile] = true
+      result[:show_page_referee_profile] = true
+      return result
+    end
 
     # show league admin menu item
     result[:menu_item_league_admin] = ph[:admin].present? || ph[:sbk].present?
@@ -51,6 +61,7 @@ class User < ApplicationRecord
     result[:menu_item_licence_club_admin] = ph[:vm].present? || ph[:tm].present?
     result[:menu_item_licence_admin] = ph[:admin].present? || ph[:sbk].present?
     result[:menu_item_referee_admin] = ph[:admin].present? || ph[:rsk].present?
+    result[:menu_item_referee_assignments] = ph[:admin].present? || ph[:rsk].present?
     result[:menu_item_state_association_admin] = ph[:admin].present?
     result[:menu_item_api_key_admin] = ph[:admin].present?
 
@@ -98,10 +109,12 @@ class User < ApplicationRecord
         vm_club_ids << perm['club_id'].to_i if perm['club_id'].present?
       when 3 # RSK
         rsk_go_ids << go_id
-      when 2 # 2 SBK
+      when 2 # SBK
         sbk_go_ids << go_id
-      when 1 # 1 Admin
+      when 1 # Admin
         admin_go_ids << go_id
+      when 6 # Schiedsrichter (self-service, no go_id needed)
+        nil
       end
     end
 

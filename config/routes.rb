@@ -147,6 +147,9 @@ Rails.application.routes.draw do
       post 'user/players/:id/reenable_license_request', to: 'players#reenable_license_request'
       get 'user/players/nations', to: 'players#user_get_nations'
 
+      get 'referee/profile', to: 'referee_profile#show'
+      put 'referee/profile', to: 'referee_profile#update'
+
       get 'user/referees/:id', to: 'referees#show'
       get 'referees/search', to: 'referees#search'
       get 'referees/:id/games', to: 'referees#games'
