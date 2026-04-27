@@ -62,6 +62,7 @@ class User < ApplicationRecord
     result[:menu_item_licence_admin] = ph[:admin].present? || ph[:sbk].present?
     result[:menu_item_referee_admin] = ph[:admin].present? || ph[:rsk].present?
     result[:menu_item_referee_assignments] = ph[:admin].present? || ph[:rsk].present?
+    result[:menu_item_referee_vm] = ph[:vm].present?
     result[:menu_item_state_association_admin] = ph[:admin].present?
     result[:menu_item_api_key_admin] = ph[:admin].present?
 

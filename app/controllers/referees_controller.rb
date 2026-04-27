@@ -5,16 +5,21 @@ class RefereesController < ApplicationController
   # GET /api/v2/user/referees/:id
   # Returns public license info by Lizenznummer (no personal data)
   def show
-    referee = Referee.find_by(lizenznummer: params[:id].to_i)
+    referee = Referee.includes(club: :state_association, referee_qualifications: :referee_qualification_type)
+                     .find_by(lizenznummer: params[:id].to_i)
 
     if referee
       render json: {
         lizenznummer: referee.lizenznummer,
         lizenzstufe: referee.lizenzstufe,
         gueltigkeit: referee.gueltigkeit&.strftime('%d.%m.%Y'),
-        zusatzqualifikation: referee.zusatzqualifikation,
-        gueltigkeit_z: referee.gueltigkeit_z&.strftime('%d.%m.%Y'),
-        verein: referee.verein
+        landesverband: referee.landesverband,
+        qualifications: referee.referee_qualifications.map do |q|
+          {
+            qualification_type_name: q.referee_qualification_type&.name,
+            valid_until: q.valid_until&.strftime('%d.%m.%Y')
+          }
+        end
       }
     else
       render json: { error: 'Lizenz nicht gefunden' }, status: :not_found
@@ -32,13 +37,13 @@ class RefereesController < ApplicationController
 
     referees = Referee.search(q).order(:nachname, :vorname).limit(10)
 
-    render json: referees.map { |r|
+    render json: referees.includes(club: :state_association).map { |r|
       {
-        lizenznummer:     r.lizenznummer,
-        vorname:          r.vorname,
-        nachname:         r.nachname,
-        lizenzstufe:      r.lizenzstufe,
-        verein:           r.verein
+        lizenznummer: r.lizenznummer,
+        vorname:      r.vorname,
+        nachname:     r.nachname,
+        lizenzstufe:  r.lizenzstufe,
+        landesverband: r.landesverband
       }
     }
   end

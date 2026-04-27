@@ -154,14 +154,29 @@ Rails.application.routes.draw do
       get 'referees/search', to: 'referees#search'
       get 'referees/:id/games', to: 'referees#games'
 
+      get 'referee/blocked_dates', to: 'referee_blocked_dates#index'
+      post 'referee/blocked_dates', to: 'referee_blocked_dates#create'
+      delete 'referee/blocked_dates/:id', to: 'referee_blocked_dates#destroy'
+
       namespace :admin do
         resources :referees, only: %i[index show create update destroy] do
           get :games, on: :member
+          get :club_stats, on: :member
           post :wallet_pass, on: :member
           get :incorrect_assignments, on: :collection
         end
+        resources :referee_qualification_types, only: %i[index create update destroy]
+        resources :referee_assignments, only: %i[index create update] do
+          post :notify, on: :member
+          post :publish, on: :member
+          get :available, on: :collection
+        end
         resources :state_associations, only: %i[index create update destroy]
         resources :api_keys, only: %i[index create update destroy]
+      end
+
+      namespace :vm do
+        resources :referees, only: %i[index]
       end
 
       get 'state_associations', to: 'state_associations#index'

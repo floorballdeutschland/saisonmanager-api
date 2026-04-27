@@ -5,7 +5,8 @@ module Admin
 
     # GET /api/v2/admin/referees
     def index
-      referees = Referee.all
+      referees = Referee.includes(club: :state_association,
+                                  referee_qualifications: :referee_qualification_type)
 
       referees = referees.search(params[:q]) if params[:q].present?
       referees = referees.by_landesverband(params[:landesverband]) if params[:landesverband].present?
@@ -27,10 +28,11 @@ module Admin
       referee = Referee.new(referee_params)
 
       if referee.save
+        sync_qualifications(referee)
         if referee.email.present? && referee.lizenznummer.present? && !referee.guest?
           RefereeMailer.license_notification(referee, action: :created).deliver_later
         end
-        render json: referee_json(referee, full: true), status: :created
+        render json: referee_json(referee.reload, full: true), status: :created
       else
         render json: { errors: referee.errors.full_messages }, status: :unprocessable_entity
       end
@@ -39,12 +41,13 @@ module Admin
     # PUT /api/v2/admin/referees/:id
     def update
       @referee.assign_attributes(referee_params)
-      license_fields_changed = (@referee.changed & %w[lizenznummer gueltigkeit gueltigkeit_z lizenzstufe]).any?
+      license_fields_changed = (@referee.changed & %w[lizenznummer gueltigkeit lizenzstufe]).any?
       notify = @referee.email.present? && license_fields_changed && !@referee.guest?
 
       if @referee.save
+        sync_qualifications(@referee)
         RefereeMailer.license_notification(@referee, action: :updated).deliver_later if notify
-        render json: referee_json(@referee, full: true)
+        render json: referee_json(@referee.reload, full: true)
       else
         render json: { errors: @referee.errors.full_messages }, status: :unprocessable_entity
       end
@@ -125,7 +128,9 @@ module Admin
     private
 
     def set_referee
-      @referee = Referee.find(params[:id])
+      @referee = Referee.includes(club: :state_association,
+                                  referee_qualifications: :referee_qualification_type)
+                        .find(params[:id])
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Schiedsrichter nicht gefunden' }, status: :not_found
     end
@@ -133,20 +138,40 @@ module Admin
     def referee_params
       params.require(:referee).permit(
         :lizenznummer, :vorname, :nachname, :geburtsdatum, :email,
-        :verein, :landesverband, :game_operation_id,
-        :lizenzstufe, :gueltigkeit, :zusatzqualifikation, :gueltigkeit_z,
+        :club_id, :game_operation_id,
+        :lizenzstufe, :gueltigkeit,
         :strasse, :hausnummer, :plz, :ort, :partner_lizenznummer, :guest
       )
+    end
+
+    def sync_qualifications(referee)
+      return unless params[:referee][:qualifications]
+
+      incoming = Array(params[:referee][:qualifications]).filter_map do |q|
+        type_id = q[:qualification_type_id].to_i
+        next unless type_id.positive?
+
+        valid_until = q[:valid_until].presence ? Date.strptime(q[:valid_until], '%d.%m.%Y') : nil
+        { qualification_type_id: type_id, valid_until: valid_until }
+      rescue Date::Error
+        nil
+      end
+
+      ActiveRecord::Base.transaction do
+        referee.referee_qualifications.destroy_all
+        incoming.each do |attrs|
+          referee.referee_qualifications.create!(
+            referee_qualification_type_id: attrs[:qualification_type_id],
+            valid_until: attrs[:valid_until]
+          )
+        end
+      end
     end
 
     def authorize_rsk!
       ph = current_user.permission_hash
       return if ph[:admin].present?
-
-      if ph[:rsk].present?
-        # RSK-Benutzer: immer erlaubt (GO-Filterung folgt in Phase 2)
-        return
-      end
+      return if ph[:rsk].present?
 
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
@@ -159,7 +184,8 @@ module Admin
         guest: referee.guest,
         vorname: referee.vorname,
         nachname: referee.nachname,
-        verein: referee.verein,
+        club_id: referee.club_id,
+        club_name: referee.club&.name,
         landesverband: referee.landesverband,
         lizenzstufe: referee.lizenzstufe,
         gueltigkeit: referee.gueltigkeit&.strftime('%d.%m.%Y'),
@@ -173,17 +199,25 @@ module Admin
           geburtsdatum: referee.geburtsdatum&.strftime('%d.%m.%Y'),
           email: referee.email,
           game_operation_id: referee.game_operation_id,
-          zusatzqualifikation: referee.zusatzqualifikation,
-          gueltigkeit_z: referee.gueltigkeit_z&.strftime('%d.%m.%Y'),
           strasse: referee.strasse,
           hausnummer: referee.hausnummer,
           plz: referee.plz,
           ort: referee.ort,
-          partner_lizenznummer: referee.partner_lizenznummer
+          partner_lizenznummer: referee.partner_lizenznummer,
+          qualifications: referee.referee_qualifications.map { |q| qualification_json(q) }
         )
       end
 
       data
+    end
+
+    def qualification_json(q)
+      {
+        id: q.id,
+        qualification_type_id: q.referee_qualification_type_id,
+        qualification_type_name: q.referee_qualification_type&.name,
+        valid_until: q.valid_until&.strftime('%d.%m.%Y')
+      }
     end
 
     def game_summary(game, include_refs: false)
