@@ -31,11 +31,8 @@ class GameOperationsController < ApplicationController
   end
 
   def admin_game_operations
-    # für jeden verband:
-    # name, id, kuerzel, ligen
     go_ids = []
 
-    # wenn admin oder sbk global: füge alle hinzu
     ph = current_user.permission_hash
     if ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
       go_ids = GameOperation.all.pluck(:id)
@@ -43,9 +40,11 @@ class GameOperationsController < ApplicationController
       go_ids << ph[:admin] if ph[:admin].present?
       go_ids << ph[:sbk] if ph[:sbk].present?
       go_ids.flatten!
+    elsif ph[:vm].present?
+      go_ids = Club.where(id: ph[:vm]).pluck(:game_operation_id).uniq.compact
     end
 
-    render json: GameOperation.find(go_ids)
+    render json: GameOperation.where(id: go_ids).order(:id)
   end
 
   private
