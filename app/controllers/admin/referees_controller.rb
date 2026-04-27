@@ -27,7 +27,7 @@ module Admin
       referee = Referee.new(referee_params)
 
       if referee.save
-        if referee.email.present? && referee.lizenznummer.present?
+        if referee.email.present? && referee.lizenznummer.present? && !referee.guest?
           RefereeMailer.license_notification(referee, action: :created).deliver_later
         end
         render json: referee_json(referee, full: true), status: :created
@@ -102,7 +102,8 @@ module Admin
       params.require(:referee).permit(
         :lizenznummer, :vorname, :nachname, :geburtsdatum, :email,
         :verein, :landesverband, :game_operation_id,
-        :lizenzstufe, :gueltigkeit, :zusatzqualifikation, :gueltigkeit_z
+        :lizenzstufe, :gueltigkeit, :zusatzqualifikation, :gueltigkeit_z,
+        :strasse, :hausnummer, :plz, :ort, :partner_lizenznummer, :guest
       )
     end
 
@@ -122,13 +123,15 @@ module Admin
       data = {
         id: referee.id,
         lizenznummer: referee.lizenznummer,
+        lizenznummer_display: referee.lizenznummer_display,
+        guest: referee.guest,
         vorname: referee.vorname,
         nachname: referee.nachname,
         verein: referee.verein,
         landesverband: referee.landesverband,
         lizenzstufe: referee.lizenzstufe,
         gueltigkeit: referee.gueltigkeit&.strftime('%d.%m.%Y'),
-        active: referee.gueltigkeit.present? && referee.gueltigkeit >= Date.today,
+        active: !referee.guest? && referee.gueltigkeit.present? && referee.gueltigkeit >= Date.today,
         wallet_pass_issued_at: referee.wallet_pass_issued_at&.iso8601,
         wallet_pass_url: referee.wallet_pass_url
       }
@@ -139,7 +142,12 @@ module Admin
           email: referee.email,
           game_operation_id: referee.game_operation_id,
           zusatzqualifikation: referee.zusatzqualifikation,
-          gueltigkeit_z: referee.gueltigkeit_z&.strftime('%d.%m.%Y')
+          gueltigkeit_z: referee.gueltigkeit_z&.strftime('%d.%m.%Y'),
+          strasse: referee.strasse,
+          hausnummer: referee.hausnummer,
+          plz: referee.plz,
+          ort: referee.ort,
+          partner_lizenznummer: referee.partner_lizenznummer
         )
       end
 
