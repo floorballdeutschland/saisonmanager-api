@@ -20,6 +20,6 @@ class Arena < ApplicationRecord
   end
 
   def full_hash
-    attributes
+    attributes.merge('schedule_item' => schedule_item)
   end
 end
