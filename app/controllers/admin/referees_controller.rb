@@ -147,23 +147,24 @@ module Admin
     def sync_qualifications(referee)
       return unless params[:referee][:qualifications]
 
-      incoming = Array(params[:referee][:qualifications]).map do |q|
-        {
-          qualification_type_id: q[:qualification_type_id].to_i,
-          valid_until: q[:valid_until].presence
-        }
-      end.select { |q| q[:qualification_type_id].positive? }
+      incoming = Array(params[:referee][:qualifications]).filter_map do |q|
+        type_id = q[:qualification_type_id].to_i
+        next unless type_id.positive?
 
-      referee.referee_qualifications.destroy_all
-
-      incoming.each do |attrs|
-        valid_until = attrs[:valid_until].present? ? Date.strptime(attrs[:valid_until], '%d.%m.%Y') : nil
-        referee.referee_qualifications.create!(
-          referee_qualification_type_id: attrs[:qualification_type_id],
-          valid_until: valid_until
-        )
+        valid_until = q[:valid_until].presence ? Date.strptime(q[:valid_until], '%d.%m.%Y') : nil
+        { qualification_type_id: type_id, valid_until: valid_until }
       rescue Date::Error
         nil
+      end
+
+      ActiveRecord::Base.transaction do
+        referee.referee_qualifications.destroy_all
+        incoming.each do |attrs|
+          referee.referee_qualifications.create!(
+            referee_qualification_type_id: attrs[:qualification_type_id],
+            valid_until: attrs[:valid_until]
+          )
+        end
       end
     end
 

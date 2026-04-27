@@ -6,7 +6,8 @@ module Admin
     # GET /api/v2/admin/referee_qualification_types
     def index
       types = RefereeQualificationType.order(:name)
-      render json: types.map { |t| type_json(t) }
+      counts = RefereeQualification.group(:referee_qualification_type_id).count
+      render json: types.map { |t| type_json(t, usage_count: counts[t.id] || 0) }
     end
 
     # POST /api/v2/admin/referee_qualification_types
@@ -58,13 +59,13 @@ module Admin
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
 
-    def type_json(type)
+    def type_json(type, usage_count: type.referee_qualifications.count)
       {
         id: type.id,
         name: type.name,
         short_name: type.short_name,
         active: type.active,
-        usage_count: type.referee_qualifications.count
+        usage_count: usage_count
       }
     end
   end

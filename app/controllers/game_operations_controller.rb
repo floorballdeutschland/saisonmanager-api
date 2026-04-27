@@ -41,7 +41,9 @@ class GameOperationsController < ApplicationController
       go_ids << ph[:sbk] if ph[:sbk].present?
       go_ids.flatten!
     elsif ph[:vm].present?
-      go_ids = Club.where(id: ph[:vm]).pluck(:game_operation_id).uniq.compact
+      go_ids = Club.where(id: ph[:vm])
+                   .flat_map { |c| [c.main_game_operation_id, *c.additional_game_operation_ids] }
+                   .compact.uniq
     end
 
     render json: GameOperation.where(id: go_ids).order(:id)
