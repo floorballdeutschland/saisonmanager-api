@@ -1,7 +1,10 @@
 class Referee < ApplicationRecord
   belongs_to :game_operation, optional: true
+  belongs_to :club, optional: true
   has_one :user
   has_many :referee_blocked_dates, dependent: :destroy
+  has_many :referee_qualifications, dependent: :destroy
+  has_many :referee_qualification_types, through: :referee_qualifications
 
   validates :lizenznummer,
             uniqueness: { allow_nil: true },
@@ -17,8 +20,14 @@ class Referee < ApplicationRecord
     guest? ? "G-#{id}" : lizenznummer.to_s
   end
 
+  def landesverband
+    club&.state_association&.name
+  end
+
   scope :active, -> { where('gueltigkeit >= ?', Date.today) }
-  scope :by_landesverband, ->(lv) { where(landesverband: lv) }
+  scope :by_landesverband, lambda { |lv|
+    joins(club: :state_association).where(state_associations: { name: lv })
+  }
   scope :by_lizenzstufe, ->(stufe) { where(lizenzstufe: stufe) }
   scope :search, lambda { |q|
     tokens = q.to_s.downcase.split(/\s+/).reject(&:empty?).first(5)
