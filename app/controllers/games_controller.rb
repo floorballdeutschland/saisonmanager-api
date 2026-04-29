@@ -132,19 +132,7 @@ class GamesController < ApplicationController
 
   def editable
     game = Game.find(params[:id])
-    # check if allowed
-
-    ph = current_user.permission_hash
-    allowed = if ph[:admin].present? || ph[:sbk].present?
-                true
-              elsif ph[:vm].present?
-                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
-                  ph[:vm].intersection([game.home_team.syndicate_clubs,
-                                        game.guest_team.syndicate_clubs].flatten.compact).present? ||
-                  ph[:vm].intersection([game.game_day.club_id]).present? # Ausrichter darf auch
-              elsif ph[:tm].present?
-                ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
-              end
+    allowed = game.can_edit_lineup?(current_user)
 
     render json: allowed
   end
@@ -184,19 +172,8 @@ class GamesController < ApplicationController
   def add_player_to_lineup
     game = Game.find(params[:id])
     player = Player.find(params[:player_id]) if params[:player_id].present?
-    # check if allowed
 
-    ph = current_user.permission_hash
-    allowed = if ph[:admin].present? || ph[:sbk].present?
-                true
-              elsif ph[:vm].present?
-                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
-                  ph[:vm].intersection([game.home_team.syndicate_clubs,
-                                        game.guest_team.syndicate_clubs].flatten.compact).present? ||
-                  ph[:vm].intersection([game.game_day.club_id]).present? # Ausrichter darf auch
-              elsif ph[:tm].present?
-                ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
-              end
+    allowed = game.can_edit_lineup?(current_user)
 
     if allowed
       # ensure we have the hash set
@@ -250,19 +227,7 @@ class GamesController < ApplicationController
     game = Game.find(params[:id])
     player = Player.find(params[:player_id]) if params[:player_id].present?
 
-    # Check if allowed
-    ph = current_user.permission_hash
-    allowed = if ph[:admin].present? || ph[:sbk].present?
-                true
-              elsif ph[:vm].present?
-                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]).present? ||
-                  ph[:vm].intersection([game.home_team.syndicate_clubs, game.guest_team.syndicate_clubs].flatten.compact).present? ||
-                  ph[:vm].intersection([game.game_day.club_id]).present? # Ausrichter darf auch
-              elsif ph[:tm].present?
-                ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
-              else
-                false
-              end
+    allowed = game.can_edit_lineup?(current_user)
 
     if allowed
       # Ensure we have the hash set
@@ -320,19 +285,7 @@ class GamesController < ApplicationController
     game = Game.find(params[:id])
     player = Player.find(params[:player_id]) if params[:player_id].present?
 
-    # Check if allowed
-    ph = current_user.permission_hash
-    allowed = if ph[:admin].present? || ph[:sbk].present?
-                true
-              elsif ph[:vm].present?
-                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]).present? ||
-                  ph[:vm].intersection([game.home_team.syndicate_clubs, game.guest_team.syndicate_clubs].flatten.compact).present? ||
-                  ph[:vm].intersection([game.game_day.club_id]).present? # Ausrichter darf auch
-              elsif ph[:tm].present?
-                ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
-              else
-                false
-              end
+    allowed = game.can_edit_lineup?(current_user)
 
     if allowed
       # Ensure we have the hash set
@@ -376,19 +329,8 @@ class GamesController < ApplicationController
 
   def add_coach
     game = Game.find(params[:id])
-    # check if allowed
 
-    ph = current_user.permission_hash
-    allowed = if ph[:admin].present? || ph[:sbk].present?
-                true
-              elsif ph[:vm].present?
-                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
-                  ph[:vm].intersection([game.home_team.syndicate_clubs,
-                                        game.guest_team.syndicate_clubs].flatten.compact).present? ||
-                  ph[:vm].intersection([game.game_day.club_id]).present? # Ausrichter darf auch
-              elsif ph[:tm].present?
-                ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
-              end
+    allowed = game.can_edit_lineup?(current_user)
 
     if allowed
       side = params[:side]
@@ -435,19 +377,8 @@ class GamesController < ApplicationController
 
   def set_captain
     game = Game.find(params[:id])
-    # check if allowed
 
-    ph = current_user.permission_hash
-    allowed = if ph[:admin].present? || ph[:sbk].present?
-                true
-              elsif ph[:vm].present?
-                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
-                  ph[:vm].intersection([game.home_team.syndicate_clubs,
-                                        game.guest_team.syndicate_clubs].flatten.compact).present? ||
-                  ph[:vm].intersection([game.game_day.club_id]).present? # Ausrichter darf auch
-              elsif ph[:tm].present?
-                ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
-              end
+    allowed = game.can_edit_lineup?(current_user)
 
     if allowed
       # ensure we have the hash set
@@ -490,19 +421,8 @@ class GamesController < ApplicationController
 
   def remove_player
     game = Game.find(params[:id])
-    # check if allowed
 
-    ph = current_user.permission_hash
-    allowed = if ph[:admin].present? || ph[:sbk].present?
-                true
-              elsif ph[:vm].present?
-                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
-                  ph[:vm].intersection([game.home_team.syndicate_clubs,
-                                        game.guest_team.syndicate_clubs].flatten.compact).present? ||
-                  ph[:vm].intersection([game.game_day.club_id]).present? # Ausrichter darf auch
-              elsif ph[:tm].present?
-                ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
-              end
+    allowed = game.can_edit_lineup?(current_user)
 
     if allowed
       # ensure we have the hash set
@@ -534,19 +454,8 @@ class GamesController < ApplicationController
 
   def remove_coach
     game = Game.find(params[:id])
-    # check if allowed
 
-    ph = current_user.permission_hash
-    allowed = if ph[:admin].present? || ph[:sbk].present?
-                true
-              elsif ph[:vm].present?
-                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
-                  ph[:vm].intersection([game.home_team.syndicate_clubs,
-                                        game.guest_team.syndicate_clubs].flatten.compact).present? ||
-                  ph[:vm].intersection([game.game_day.club_id]).present? # Ausrichter darf auch
-              elsif ph[:tm].present?
-                ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
-              end
+    allowed = game.can_edit_lineup?(current_user)
 
     if allowed
       side = params[:side]
@@ -579,20 +488,13 @@ class GamesController < ApplicationController
 
   def add_event
     game = Game.find(params[:id])
-    # check if allowed
 
     ph = current_user.permission_hash
-    allowed = if ph[:admin].present? || ph[:sbk].present?
-                true
-              elsif %w[match_record_closed finalized].include?(game.game_status)
+    admin_or_sbk = ph[:admin].present? || ph[:sbk].present?
+    allowed = if !admin_or_sbk && game.match_record_closed?
                 false
-              elsif ph[:vm].present?
-                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
-                  ph[:vm].intersection([game.home_team.syndicate_clubs,
-                                        game.guest_team.syndicate_clubs].flatten.compact).present? ||
-                  ph[:vm].intersection([game.game_day.club_id]).present? # Ausrichter darf auch
-              elsif ph[:tm].present?
-                ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
+              else
+                game.can_edit_lineup?(current_user)
               end
 
     if allowed
@@ -647,20 +549,13 @@ class GamesController < ApplicationController
 
   def remove_event
     game = Game.find(params[:id])
-    # check if allowed
 
     ph = current_user.permission_hash
-    allowed = if ph[:admin].present? || ph[:sbk].present?
-                true
-              elsif %w[match_record_closed finalized].include?(game.game_status)
+    admin_or_sbk = ph[:admin].present? || ph[:sbk].present?
+    allowed = if !admin_or_sbk && game.match_record_closed?
                 false
-              elsif ph[:vm].present?
-                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
-                  ph[:vm].intersection([game.home_team.syndicate_clubs,
-                                        game.guest_team.syndicate_clubs].flatten.compact).present? ||
-                  ph[:vm].intersection([game.game_day.club_id]).present? # Ausrichter darf auch
-              elsif ph[:tm].present?
-                ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
+              else
+                game.can_edit_lineup?(current_user)
               end
 
     if allowed
@@ -690,19 +585,8 @@ class GamesController < ApplicationController
 
   def set_flag
     game = Game.find(params[:id])
-    # check if allowed
 
-    ph = current_user.permission_hash
-    allowed = if ph[:admin].present? || ph[:sbk].present?
-                true
-              elsif ph[:vm].present?
-                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
-                  ph[:vm].intersection([game.home_team.syndicate_clubs,
-                                        game.guest_team.syndicate_clubs].flatten.compact).present? ||
-                  ph[:vm].intersection([game.game_day.club_id]).present? # Ausrichter darf auch
-              elsif ph[:tm].present?
-                ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
-              end
+    allowed = game.can_edit_lineup?(current_user)
 
     if allowed
       game.record_created_at ||= Time.now
@@ -752,19 +636,8 @@ class GamesController < ApplicationController
 
   def set_referee
     game = Game.find(params[:id])
-    # check if allowed
 
-    ph = current_user.permission_hash
-    allowed = if ph[:admin].present? || ph[:sbk].present?
-                true
-              elsif ph[:vm].present?
-                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
-                  ph[:vm].intersection([game.home_team.syndicate_clubs,
-                                        game.guest_team.syndicate_clubs].flatten.compact).present? ||
-                  ph[:vm].intersection([game.game_day.club_id]).present? # Ausrichter darf auch
-              elsif ph[:tm].present?
-                ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
-              end
+    allowed = game.can_edit_lineup?(current_user)
 
     if allowed
       ref_num = params[:referee_number].to_i
@@ -795,21 +668,10 @@ class GamesController < ApplicationController
 
   def set_game_status
     game = Game.find(params[:id])
-    # check if allowed
 
     ph = current_user.permission_hash
-    sbk = false
-    allowed = if ph[:admin].present? || ph[:sbk].present?
-                sbk = true
-                true
-              elsif ph[:vm].present?
-                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
-                  ph[:vm].intersection([game.home_team.syndicate_clubs,
-                                        game.guest_team.syndicate_clubs].flatten.compact).present? ||
-                  ph[:vm].intersection([game.game_day.club_id]).present? # Ausrichter darf auch
-              elsif ph[:tm].present?
-                ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
-              end
+    sbk = ph[:admin].present? || ph[:sbk].present?
+    allowed = game.can_edit_lineup?(current_user)
 
     if allowed
       if params[:game_status].present?
@@ -822,6 +684,10 @@ class GamesController < ApplicationController
 
         game.game_status = params[:game_status]
         game.save
+
+        if params[:game_status] == 'match_record_closed'
+          _maybe_send_incident_report_reminder(game)
+        end
       elsif params[:ingame_status].present?
         old_ingame_status = game.ingame_status
         game.ingame_status = params[:ingame_status]
@@ -855,6 +721,21 @@ class GamesController < ApplicationController
     else
       render json: { message: 'Spielbericht hat keinen abgeschlossenen Status.' }, status: :unprocessable_entity
     end
+  end
+
+  def _maybe_send_incident_report_reminder(game)
+    has_spielausschluss = (game.events || []).any? { |e| e['penalty_id'].to_s == '5' }
+    return unless game.special_event? || has_spielausschluss
+
+    assignment = game.referee_assignment
+    return unless assignment
+
+    r1 = assignment.referee1
+    r2 = assignment.referee2
+    return unless r1 && r2
+
+    deadline = Time.current + 24.hours
+    RefereeMailer.incident_report_reminder(r1, r2, game, deadline).deliver_later
   end
 
   def game_flag_params
