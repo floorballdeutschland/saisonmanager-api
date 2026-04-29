@@ -1,5 +1,6 @@
 class Club < ApplicationRecord
   has_many :game_days
+  belongs_to :state_association, optional: true
 
   has_one_attached :logo
 
