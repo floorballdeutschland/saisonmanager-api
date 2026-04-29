@@ -4,6 +4,9 @@ class League < ApplicationRecord
   has_many :game_days
   belongs_to :game_operation
 
+  validates :name, presence: true
+  validates :season_id, presence: true
+
   default_scope { order(:season_id, :game_operation_id).order('order_key::int') }
   scope :current_season, -> { where(season_id: Setting.current_season_id) }
 

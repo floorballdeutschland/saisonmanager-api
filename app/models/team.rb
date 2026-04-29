@@ -2,6 +2,8 @@ class Team < ApplicationRecord
   belongs_to :league
   belongs_to :club
 
+  validates :name, presence: true
+
   has_one_attached :logo
 
   scope :by_club_id, ->(cid) { where(club_id: cid).or(Team.where('? = ANY (syndicate_clubs)', cid)) }
