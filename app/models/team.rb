@@ -31,7 +31,7 @@ class Team < ApplicationRecord
   end
 
   def all_clubs
-    all_club_ids.uniq.compact.map { |id| Club.find_by_id(id) }
+    Club.where(id: all_club_ids)
   end
 
   def self.teams_by_season(season_id)
