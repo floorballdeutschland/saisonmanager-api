@@ -615,6 +615,22 @@ class League < ApplicationRecord
       team_licenses[team.id.to_s] = Player.find_by_team_id team.id
     end
 
+    our_team_ids = teams.map(&:id).to_set
+
+    # Collect all foreign team IDs referenced in player licenses for batch loading
+    foreign_team_ids = Set.new
+    team_licenses.each_value do |players|
+      players.each do |player|
+        player.licenses.each do |l|
+          t_id = l['team_id'].to_i
+          foreign_team_ids << t_id unless our_team_ids.include?(t_id)
+        end
+      end
+    end
+    foreign_teams = Team.includes(:leagues).where(id: foreign_team_ids.to_a).index_by(&:id)
+
+    active_statuses = [License::APPROVED, License::REQUESTED].to_set
+
     result = []
     teams.each do |team|
       team_item = team.full_hash
@@ -623,9 +639,9 @@ class League < ApplicationRecord
       team_licenses[team.id.to_s].each do |player|
         player_item = player.full_hash(full_license_hash, only_current_licenses)
 
-        license = player.licenses.select { |l| l['team_id'].to_i == team.id }.first
+        license = player.licenses.find { |l| l['team_id'].to_i == team.id }
 
-        last_status = license['history'].sort_by { |h| h['created_at'] }.last
+        last_status = license['history'].max_by { |h| h['created_at'] }
         last_status_id = last_status['license_status_id']
         last_status_code = License::NAMES[last_status_id.to_i]
 
@@ -642,6 +658,19 @@ class League < ApplicationRecord
           approved_at:,
           requested_at:
         }
+
+        player_item[:other_licenses] = player.licenses.filter_map do |l|
+          t_id = l['team_id'].to_i
+          next if t_id == team.id
+
+          current_status = l['history'].max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
+          next unless active_statuses.include?(current_status)
+
+          other_team = foreign_teams[t_id]
+          next unless other_team
+
+          { team_name: other_team.name, league_name: other_team.leagues.first&.short_name }
+        end
 
         team_item[:players] << player_item
       end
