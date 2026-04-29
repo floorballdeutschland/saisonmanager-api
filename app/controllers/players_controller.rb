@@ -71,13 +71,10 @@ class PlayersController < ApplicationController
   end
 
   def request_license
-    # hole spieler
-    player = Player.find(params[:id])
     team = Team.find(params[:team_id])
     league = team.league
 
     ph = current_user.permission_hash
-    # prüfe ob user lizenz für team beantragen darf
     allowed = if ph[:admin].present? || ph[:sbk].present?
                 true
               elsif ph[:vm].present?
@@ -86,38 +83,44 @@ class PlayersController < ApplicationController
                 ph[:tm].include?(team.id)
               end
 
-    if allowed
+    return render json: { message: 'Keine Berechtigung für dieses Team!' }, status: :forbidden unless allowed
+
+    result = :ok
+    player = nil
+
+    ActiveRecord::Base.transaction do
+      player = Player.lock.find(params[:id])
       player.licenses ||= []
 
-      # prüfe ob eine lizenz für das team bereits vorliegt
-      if !player.licenses.map { |l| l['team_id'].to_i }.include?(team.id)
-
-        # füge lizenz zu lizenzhash hinzu
-        new_license = {
-          id: Digest::UUID.uuid_v4,
-          team_id: team.id,
-          league_class_id: league.league_class_id,
-          male: !league.female,
-          history: [{
-            license_status_id: License::REQUESTED,
-            created_by: current_user.id,
-            created_at: Time.now
-          }]
-        }
-        player.licenses ||= []
-        player.licenses << new_license
-
-        if player.save
-          render json: { success: true }
-        else
-          render json: { message: player.errors }, status: :unprocessable_entity
-        end
-      else
-        render json: { message: 'Der Spieler hat schon einen Lizenzantrag für dieses Team' },
-               status: :unprocessable_entity
+      if player.licenses.any? { |l| l['team_id'].to_i == team.id }
+        result = :duplicate
+        raise ActiveRecord::Rollback
       end
+
+      new_license = {
+        id: Digest::UUID.uuid_v4,
+        team_id: team.id,
+        league_class_id: league.league_class_id,
+        male: !league.female,
+        history: [{
+          license_status_id: License::REQUESTED,
+          created_by: current_user.id,
+          created_at: Time.now
+        }]
+      }
+      player.licenses << new_license
+
+      result = :save_failed unless player.save
+    end
+
+    case result
+    when :duplicate
+      render json: { message: 'Der Spieler hat schon einen Lizenzantrag für dieses Team' },
+             status: :unprocessable_entity
+    when :save_failed
+      render json: { message: player.errors }, status: :unprocessable_entity
     else
-      render json: { message: 'Keine Berechtigung für dieses Team!' }, status: :forbidden
+      render json: { success: true }
     end
   end
 
