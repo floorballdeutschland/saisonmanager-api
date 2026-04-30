@@ -83,6 +83,9 @@ class ClubsController < ApplicationController
           cs = p.current_license_status(l)
           item[:current_status] = cs
           item[:can_withdraw] = (cs['license_status_id'] == License::REQUESTED)
+          last_requested = l['history'].select { |h| h['license_status_id'].to_i == License::REQUESTED }
+                                       .max_by { |h| h['created_at'] }
+          item[:grace_period_ends_at] = last_requested ? (last_requested['created_at'].to_time + 24.hours).iso8601 : nil
           result[:current_requests] << item
         else
           result[:other_players] << p.meta_hash
