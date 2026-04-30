@@ -220,7 +220,43 @@ class PlayersController < ApplicationController
   end
 
   def withdraw_license_request
-    meta_user_license_change(License::WITHDRAWN)
+    player = Player.find(params[:id])
+
+    player.licenses.each { |l| l['id'] ||= l.delete('_id') }
+    found_license = player.licenses.find { |l| l['id'] == params[:license_id] }
+    return render json: { message: 'Lizenz nicht gefunden.' }, status: :not_found unless found_license
+
+    team = Team.find(found_license['team_id'])
+    ph = current_user.permission_hash
+    allowed = if ph[:admin].present? || ph[:sbk].present?
+                true
+              elsif ph[:vm].present?
+                ph[:vm].include?(team.club_id) || ph[:vm].intersection(team.syndicate_clubs).present?
+              elsif ph[:tm].present?
+                ph[:tm].include?(team.id)
+              end
+    return render json: { message: 'Keine Berechtigung für dieses Team!' }, status: :forbidden unless allowed
+
+    last_status_id = found_license['history'].max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
+    unless last_status_id == License::REQUESTED
+      return render json: { message: 'Nur beantragte Lizenzen können zurückgezogen werden.' },
+                    status: :unprocessable_entity
+    end
+
+    last_requested = found_license['history']
+                       .select { |h| h['license_status_id'].to_i == License::REQUESTED }
+                       .max_by { |h| h['created_at'] }
+
+    if last_requested && (Time.now - last_requested['created_at'].to_time) < 24.hours
+      player.licenses.reject! { |l| l['id'] == params[:license_id] }
+      if player.save
+        render json: { success: true, grace_period_deletion: true }
+      else
+        render json: { message: player.errors }, status: :unprocessable_entity
+      end
+    else
+      meta_user_license_change(License::WITHDRAWN)
+    end
   end
 
   def reenable_license_request
