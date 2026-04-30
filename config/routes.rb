@@ -125,6 +125,7 @@ Rails.application.routes.draw do
       post 'user/games/:id/lineup/:side/set_captain', to: 'games#set_captain'
       post 'user/games/:id/events/add', to: 'games#add_event'
       post 'user/games/:id/events/remove', to: 'games#remove_event'
+      post 'user/games/:id/events/update', to: 'games#update_event'
       post 'user/games/:id/referees/:referee_number', to: 'games#set_referee'
       post 'user/games/:id/game_status', to: 'games#set_game_status'
       post 'user/games/:id/reopen', to: 'games#reopen_game'

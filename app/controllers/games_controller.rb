@@ -583,6 +583,57 @@ class GamesController < ApplicationController
     end
   end
 
+  def update_event
+    game = Game.find(params[:id])
+    ph = current_user.permission_hash
+    admin_or_sbk = ph[:admin].present? || ph[:sbk].present?
+    allowed = if !admin_or_sbk && game.match_record_closed?
+                false
+              else
+                game.can_edit_lineup?(current_user)
+              end
+
+    if allowed
+      game.events ||= []
+      event = game.events.find { |e| e['id'].to_i == params[:event_id].to_i }
+      return render json: { message: 'Ereignis nicht gefunden.' }, status: :not_found unless event
+
+      event['time'] = params[:time]
+      event['period'] = params[:period]
+      event['home_goals'] = params[:home_goals]
+      event['guest_goals'] = params[:guest_goals]
+      event['home_number'] = params[:home_number].presence
+      event['home_assist'] = params[:home_assist].presence
+      event['guest_number'] = params[:guest_number].presence
+      event['guest_assist'] = params[:guest_assist].presence
+      event['event_type'] = params[:event_type]
+      event['event_team'] = params[:event_team]
+
+      case params[:event_type]
+      when 'penalty'
+        event['penalty_id'] = params[:penalty_id]
+        event['penalty_code_id'] = params[:penalty_code_id]
+        event.delete('goal_type')
+      when 'goal'
+        event['goal_type'] = params[:goal_type].presence
+        event['penalty_code_id'] = params[:penalty_code_id].presence
+        event.delete('penalty_id')
+      end
+
+      game.sort_events!
+      game.record_updated_at = Time.now
+      game.record_updated_by = current_user.id
+
+      if game.save
+        render json: game.formatted_events
+      else
+        render json: { message: game.errors }, status: :unprocessable_entity
+      end
+    else
+      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+  end
+
   def set_flag
     game = Game.find(params[:id])
 
