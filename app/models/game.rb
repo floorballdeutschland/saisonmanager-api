@@ -762,6 +762,8 @@ class Game < ApplicationRecord
 
       if event['penalty_id'].present? && event['penalty_code_id'] && event['penalty_code_id'].to_i != 23 # penalty_shot should be goal, not penalty.
         e[:event_type] = :penalty
+        e[:penalty_id] = event['penalty_id'].to_i
+        e[:penalty_code_id] = event['penalty_code_id'].to_i
 
         e[:penalty_type] = penalty_mapping(event)
         e[:penalty_type_string] = penalty_mapping_string(event)
@@ -771,6 +773,7 @@ class Game < ApplicationRecord
 
       else
         e[:event_type] = :goal
+        e[:penalty_code_id] = event['penalty_code_id'].to_i if event['penalty_code_id'].present?
         if event['penalty_code_id'].to_i != 23
           if owngoal
             e[:goal_type] = :owngoal
