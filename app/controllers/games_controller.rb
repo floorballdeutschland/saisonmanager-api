@@ -602,12 +602,20 @@ class GamesController < ApplicationController
       event['period'] = params[:period]
       event['home_goals'] = params[:home_goals]
       event['guest_goals'] = params[:guest_goals]
-      event['home_number'] = params[:home_number].presence
-      event['home_assist'] = params[:home_assist].presence
-      event['guest_number'] = params[:guest_number].presence
-      event['guest_assist'] = params[:guest_assist].presence
       event['event_type'] = params[:event_type]
       event['event_team'] = params[:event_team]
+
+      if params[:event_team] == 'home'
+        event['home_number'] = params[:home_number].presence
+        event['home_assist'] = params[:home_assist].presence
+        event.delete('guest_number')
+        event.delete('guest_assist')
+      else
+        event['guest_number'] = params[:guest_number].presence
+        event['guest_assist'] = params[:guest_assist].presence
+        event.delete('home_number')
+        event.delete('home_assist')
+      end
 
       case params[:event_type]
       when 'penalty'
@@ -640,6 +648,14 @@ class GamesController < ApplicationController
     allowed = game.can_edit_lineup?(current_user)
 
     if allowed
+      if params.dig(:game, :started).present? && params[:game][:started].to_s == 'true'
+        home_present = game.players&.dig('home').present?
+        guest_present = game.players&.dig('guest').present?
+        unless home_present && guest_present
+          return render json: { message: 'Aufstellung muss für beide Teams vorhanden sein.' }, status: :unprocessable_entity
+        end
+      end
+
       game.record_created_at ||= Time.now
       game.record_updated_at = Time.now
       game.record_created_by ||= current_user.id
