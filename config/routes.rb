@@ -185,6 +185,10 @@ Rails.application.routes.draw do
       get 'transfers/public', to: 'players#transfers_public'
 
       get 'public/license_list', to: 'public_license_list#show'
+      get 'public/secretary', to: 'public_secretary#show'
+
+      post 'user/game_days/:game_day_id/secretary_link', to: 'game_day_secretary_links#create'
+      get  'user/game_days/:game_day_id/secretary_link', to: 'game_day_secretary_links#show'
 
       resources :games
       resources :game_days

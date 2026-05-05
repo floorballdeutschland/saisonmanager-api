@@ -1,6 +1,16 @@
 class GamesController < ApplicationController
-  skip_before_action :authenticate_user, only: %i[index show]
+  include SecretaryTokenAuthenticatable
+
+  SECRETARY_ACTIONS = %i[
+    add_player_to_lineup remove_player add_coach remove_coach set_captain
+    set_starting_player set_player_award
+    add_event remove_event update_event
+    set_referee set_game_status set_flag set_string
+  ].freeze
+
+  skip_before_action :authenticate_user, only: %i[index show] + SECRETARY_ACTIONS
   before_action :authenticate_public_request, only: %i[index show]
+  before_action :authenticate_with_secretary_token_or_user, only: SECRETARY_ACTIONS
 
   # GET /games
   def index
@@ -173,7 +183,7 @@ class GamesController < ApplicationController
     game = Game.find(params[:id])
     player = Player.find(params[:player_id]) if params[:player_id].present?
 
-    allowed = game.can_edit_lineup?(current_user)
+    allowed = can_edit_game?(game)
 
     if allowed
       # ensure we have the hash set
@@ -209,8 +219,8 @@ class GamesController < ApplicationController
 
         game.record_created_at ||= Time.now
         game.record_updated_at = Time.now
-        game.record_created_by ||= current_user.id
-        game.record_updated_by = current_user.id
+        game.record_created_by ||= author_user_id
+        game.record_updated_by = author_user_id
 
         if game.save
           render json: game.players[side]
@@ -227,7 +237,7 @@ class GamesController < ApplicationController
     game = Game.find(params[:id])
     player = Player.find(params[:player_id]) if params[:player_id].present?
 
-    allowed = game.can_edit_lineup?(current_user)
+    allowed = can_edit_game?(game)
 
     if allowed
       # Ensure we have the hash set
@@ -268,8 +278,8 @@ class GamesController < ApplicationController
 
       game.record_created_at ||= Time.now
       game.record_updated_at = Time.now
-      game.record_created_by ||= current_user.id
-      game.record_updated_by = current_user.id
+      game.record_created_by ||= author_user_id
+      game.record_updated_by = author_user_id
 
       if game.save
         render json: game.starting_players_with_numbers
@@ -285,7 +295,7 @@ class GamesController < ApplicationController
     game = Game.find(params[:id])
     player = Player.find(params[:player_id]) if params[:player_id].present?
 
-    allowed = game.can_edit_lineup?(current_user)
+    allowed = can_edit_game?(game)
 
     if allowed
       # Ensure we have the hash set
@@ -314,8 +324,8 @@ class GamesController < ApplicationController
 
       game.record_created_at ||= Time.now
       game.record_updated_at = Time.now
-      game.record_created_by ||= current_user.id
-      game.record_updated_by = current_user.id
+      game.record_created_by ||= author_user_id
+      game.record_updated_by = author_user_id
 
       if game.save
         render json: game.awards_with_player_names
@@ -330,7 +340,7 @@ class GamesController < ApplicationController
   def add_coach
     game = Game.find(params[:id])
 
-    allowed = game.can_edit_lineup?(current_user)
+    allowed = can_edit_game?(game)
 
     if allowed
       side = params[:side]
@@ -362,8 +372,8 @@ class GamesController < ApplicationController
 
       game.record_created_at ||= Time.now
       game.record_updated_at = Time.now
-      game.record_created_by ||= current_user.id
-      game.record_updated_by = current_user.id
+      game.record_created_by ||= author_user_id
+      game.record_updated_by = author_user_id
 
       if game.save
         render json: game.players[side]
@@ -378,7 +388,7 @@ class GamesController < ApplicationController
   def set_captain
     game = Game.find(params[:id])
 
-    allowed = game.can_edit_lineup?(current_user)
+    allowed = can_edit_game?(game)
 
     if allowed
       # ensure we have the hash set
@@ -406,8 +416,8 @@ class GamesController < ApplicationController
 
       game.record_created_at ||= Time.now
       game.record_updated_at = Time.now
-      game.record_created_by ||= current_user.id
-      game.record_updated_by = current_user.id
+      game.record_created_by ||= author_user_id
+      game.record_updated_by = author_user_id
 
       if captain_set && game.save
         render json: game.players[side]
@@ -422,7 +432,7 @@ class GamesController < ApplicationController
   def remove_player
     game = Game.find(params[:id])
 
-    allowed = game.can_edit_lineup?(current_user)
+    allowed = can_edit_game?(game)
 
     if allowed
       # ensure we have the hash set
@@ -439,8 +449,8 @@ class GamesController < ApplicationController
 
       game.record_created_at ||= Time.now
       game.record_updated_at = Time.now
-      game.record_created_by ||= current_user.id
-      game.record_updated_by = current_user.id
+      game.record_created_by ||= author_user_id
+      game.record_updated_by = author_user_id
 
       if game.save
         render json: game.players[side]
@@ -455,7 +465,7 @@ class GamesController < ApplicationController
   def remove_coach
     game = Game.find(params[:id])
 
-    allowed = game.can_edit_lineup?(current_user)
+    allowed = can_edit_game?(game)
 
     if allowed
       side = params[:side]
@@ -473,8 +483,8 @@ class GamesController < ApplicationController
 
       game.record_created_at ||= Time.now
       game.record_updated_at = Time.now
-      game.record_created_by ||= current_user.id
-      game.record_updated_by = current_user.id
+      game.record_created_by ||= author_user_id
+      game.record_updated_by = author_user_id
 
       if game.save
         render json: game.players[side]
@@ -489,12 +499,12 @@ class GamesController < ApplicationController
   def add_event
     game = Game.find(params[:id])
 
-    ph = current_user.permission_hash
+    ph = current_user&.permission_hash || {}
     admin_or_sbk = ph[:admin].present? || ph[:sbk].present?
     allowed = if !admin_or_sbk && game.match_record_closed?
                 false
               else
-                game.can_edit_lineup?(current_user)
+                can_edit_game?(game)
               end
 
     if allowed
@@ -534,8 +544,8 @@ class GamesController < ApplicationController
 
       game.record_created_at ||= Time.now
       game.record_updated_at = Time.now
-      game.record_created_by ||= current_user.id
-      game.record_updated_by = current_user.id
+      game.record_created_by ||= author_user_id
+      game.record_updated_by = author_user_id
 
       if game.save
         render json: game.formatted_events
@@ -550,12 +560,12 @@ class GamesController < ApplicationController
   def remove_event
     game = Game.find(params[:id])
 
-    ph = current_user.permission_hash
+    ph = current_user&.permission_hash || {}
     admin_or_sbk = ph[:admin].present? || ph[:sbk].present?
     allowed = if !admin_or_sbk && game.match_record_closed?
                 false
               else
-                game.can_edit_lineup?(current_user)
+                can_edit_game?(game)
               end
 
     if allowed
@@ -570,8 +580,8 @@ class GamesController < ApplicationController
 
       game.record_created_at ||= Time.now
       game.record_updated_at = Time.now
-      game.record_created_by ||= current_user.id
-      game.record_updated_by = current_user.id
+      game.record_created_by ||= author_user_id
+      game.record_updated_by = author_user_id
 
       if game.save
         render json: game.formatted_events
@@ -585,12 +595,12 @@ class GamesController < ApplicationController
 
   def update_event
     game = Game.find(params[:id])
-    ph = current_user.permission_hash
+    ph = current_user&.permission_hash || {}
     admin_or_sbk = ph[:admin].present? || ph[:sbk].present?
     allowed = if !admin_or_sbk && game.match_record_closed?
                 false
               else
-                game.can_edit_lineup?(current_user)
+                can_edit_game?(game)
               end
 
     if allowed
@@ -630,7 +640,7 @@ class GamesController < ApplicationController
 
       game.sort_events!
       game.record_updated_at = Time.now
-      game.record_updated_by = current_user.id
+      game.record_updated_by = author_user_id
 
       if game.save
         render json: game.formatted_events
@@ -645,7 +655,7 @@ class GamesController < ApplicationController
   def set_flag
     game = Game.find(params[:id])
 
-    allowed = game.can_edit_lineup?(current_user)
+    allowed = can_edit_game?(game)
 
     if allowed
       if params.dig(:game, :started).present? && params[:game][:started].to_s == 'true'
@@ -658,8 +668,8 @@ class GamesController < ApplicationController
 
       game.record_created_at ||= Time.now
       game.record_updated_at = Time.now
-      game.record_created_by ||= current_user.id
-      game.record_updated_by = current_user.id
+      game.record_created_by ||= author_user_id
+      game.record_updated_by = author_user_id
 
       if game.update(game_flag_params)
         render json: game.events
@@ -675,7 +685,7 @@ class GamesController < ApplicationController
     game = Game.find(params[:id])
     # check if allowed
 
-    ph = current_user.permission_hash
+    ph = current_user&.permission_hash || {}
     allowed = if ph[:admin].present? || ph[:sbk].present?
                 true
               elsif ph[:vm].present?
@@ -684,13 +694,15 @@ class GamesController < ApplicationController
                                         game.guest_team.syndicate_clubs].flatten.compact).present?
               elsif ph[:tm].present?
                 ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
+              else
+                can_edit_game?(game)
               end
 
     if allowed
       game.record_created_at ||= Time.now
       game.record_updated_at = Time.now
-      game.record_created_by ||= current_user.id
-      game.record_updated_by = current_user.id
+      game.record_created_by ||= author_user_id
+      game.record_updated_by = author_user_id
       if game.update(game_value_params)
         render json: game.events
       else
@@ -704,7 +716,7 @@ class GamesController < ApplicationController
   def set_referee
     game = Game.find(params[:id])
 
-    allowed = game.can_edit_lineup?(current_user)
+    allowed = can_edit_game?(game)
 
     if allowed
       ref_num = params[:referee_number].to_i
@@ -721,7 +733,7 @@ class GamesController < ApplicationController
       end
 
       game.record_updated_at = Time.now
-      game.record_updated_by = current_user.id
+      game.record_updated_by = author_user_id
 
       if game.save
         render json: game.referees
@@ -736,9 +748,9 @@ class GamesController < ApplicationController
   def set_game_status
     game = Game.find(params[:id])
 
-    ph = current_user.permission_hash
+    ph = current_user&.permission_hash || {}
     sbk = ph[:admin].present? || ph[:sbk].present?
-    allowed = game.can_edit_lineup?(current_user)
+    allowed = can_edit_game?(game)
 
     if allowed
       if params[:game_status].present?
@@ -803,6 +815,16 @@ class GamesController < ApplicationController
 
     deadline = Time.current + 24.hours
     RefereeMailer.incident_report_reminder(r1, r2, game, deadline).deliver_later
+  end
+
+  def can_edit_game?(game)
+    return secretary_token_permits_game?(game) if @secretary_link
+    return false unless current_user
+    game.can_edit_lineup?(current_user)
+  end
+
+  def author_user_id
+    secretary_or_current_user_id
   end
 
   def game_flag_params
