@@ -1,0 +1,37 @@
+<h2>Spielbericht Nr. <%= @game.game_number %> eingereicht</h2>
+
+<p>
+  Der Ausrichterverein <strong><%= @hosting_club.name %></strong> hat den Spielbericht für
+  Spiel Nr. <strong><%= @game.game_number %></strong>
+  (<%= @game.home_team_name %> vs. <%= @game.guest_team_name %>,
+  <%= @game.game_day.date.strftime('%d.%m.%Y') %>) eingereicht.
+</p>
+
+<% if @all_ok %>
+<p>
+  Alle Voraussetzungen für die ordnungsgemäße Durchführung des Spiels wurden bestätigt.
+</p>
+<% else %>
+<p>
+  <strong>Hinweis:</strong> Der Ausrichter hat angegeben, dass folgende Voraussetzungen
+  für die ordnungsgemäße Durchführung <strong>nicht</strong> erfüllt wurden:
+</p>
+<ul>
+  <% @failed_items.each do |item| %>
+  <li><%= item['question'] %></li>
+  <% end %>
+</ul>
+<p>
+  Die zuständige SBK wurde über diese Einschränkungen informiert.
+</p>
+<% end %>
+
+<p>
+  Die Schiedsrichter haben <strong>24 Stunden</strong> Zeit, um bei Einwänden gegen den
+  eingereichten Spielbericht die zuständige SBK des <%= @state_association.name %> zu kontaktieren.
+</p>
+
+<hr>
+<p style="font-size: 0.85em; color: #666;">
+  Diese E-Mail wurde automatisch vom Floorball Saisonmanager versandt.
+</p>

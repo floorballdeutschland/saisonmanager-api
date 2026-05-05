@@ -1,0 +1,67 @@
+class GameRefereeReportsController < ApplicationController
+  before_action :authenticate_user
+  before_action :set_game
+
+  # GET /api/v2/games/:game_id/referee_report
+  def show
+    report = @game.game_referee_report
+    unless report&.file&.attached?
+      return render json: { uploaded: false }
+    end
+
+    render json: {
+      uploaded: true,
+      filename: report.file.filename.to_s,
+      content_type: report.file.content_type,
+      uploaded_at: report.created_at,
+      url: rails_blob_url(report.file, disposition: 'inline')
+    }
+  end
+
+  # POST /api/v2/games/:game_id/referee_report
+  def create
+    unless authorized_referee?
+      return render json: { message: 'Nur angesetzte Schiedsrichter können einen Bericht hochladen.' }, status: :forbidden
+    end
+
+    report = @game.game_referee_report || @game.build_game_referee_report(uploaded_by: current_user)
+    report.uploaded_by = current_user
+    report.file.attach(params[:file])
+
+    if report.save
+      _send_to_vsk(report)
+      render json: { success: true, filename: report.file.filename.to_s }, status: :created
+    else
+      render json: { errors: report.errors.full_messages }, status: :unprocessable_entity
+    end
+  end
+
+  private
+
+  def set_game
+    @game = Game.find(params[:game_id])
+  rescue ActiveRecord::RecordNotFound
+    render json: { error: 'Spiel nicht gefunden' }, status: :not_found
+  end
+
+  def authorized_referee?
+    assignment = @game.referee_assignment
+    return false unless assignment
+
+    referee = current_user.referee
+    return false unless referee
+
+    [assignment.referee1_id, assignment.referee2_id].include?(referee.id)
+  end
+
+  def _send_to_vsk(report)
+    vsk_email = @game.game_day.club&.state_association&.vsk_email
+    return if vsk_email.blank?
+
+    assignment = @game.referee_assignment
+    r1 = assignment&.referee1
+    r2 = assignment&.referee2
+
+    RefereeMailer.referee_report_to_vsk(vsk_email, current_user, @game, report, r1, r2).deliver_later
+  end
+end

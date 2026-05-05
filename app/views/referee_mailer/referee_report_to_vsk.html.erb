@@ -1,0 +1,20 @@
+<h2>Berichtsformular eingereicht – Spielnummer <%= @game.game_number %></h2>
+
+<p>
+  Ein Schiedsrichter hat das Berichtsformular für Spielnummer
+  <strong><%= @game.game_number %></strong>
+  (<%= @game.home_team_name %> vs. <%= @game.guest_team_name %>,
+  <%= @game.game_day.date.strftime('%d.%m.%Y') %>) hochgeladen.
+</p>
+
+<p><strong>Hochgeladen von:</strong> <%= @uploader.fullname %></p>
+
+<% if @referee1 || @referee2 %>
+<p>
+  <strong>Schiedsrichter:</strong>
+  <%= [[@referee1&.vorname, @referee1&.nachname].compact.join(' '),
+       [@referee2&.vorname, @referee2&.nachname].compact.join(' ')].reject(&:blank?).join(' / ') %>
+</p>
+<% end %>
+
+<p>Das Berichtsformular ist dieser E-Mail als Anhang beigefügt.</p>

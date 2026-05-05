@@ -3,6 +3,7 @@ class Game < ApplicationRecord
   belongs_to :guest_team, class_name: 'Team', optional: true
   belongs_to :game_day
   has_one :referee_assignment, dependent: :destroy
+  has_one :game_referee_report, dependent: :destroy
 
   scope :by_referee_id, ->(referee_id) { where('? = any (referee_ids)', referee_id) }
   scope :by_referee_name, lambda { |referee_name|
