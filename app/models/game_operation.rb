@@ -20,7 +20,7 @@ class GameOperation < ApplicationRecord
   end
 
   def meta_hash
-    hash = attributes.with_indifferent_access.slice(:id, :name, :short_name, :path, :logo_url, :logo_quad_url)
+    hash = attributes.with_indifferent_access.slice(:id, :name, :short_name, :path, :logo_url, :logo_quad_url, :scan_required)
     hash[:path] = slug
     hash
   end

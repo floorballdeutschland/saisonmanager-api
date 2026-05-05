@@ -9,6 +9,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+- Spielbericht-Scan: Ausrichtende Vereine erhalten nach Spieltagsabschluss eine E-Mail mit Links zum Hochladen des physischen Spielberichtsbogens (PDF/PNG/JPEG, max. 5 MB); Scans sind 3 Monate einsehbar und werden danach automatisch gelöscht
+- Spielbericht-Scan: Feature pro Verband (GameOperation) konfigurierbar über `scan_required`-Flag
+- Rake Task `game_scans:cleanup` zum automatisierten Entfernen abgelaufener Scan-Dateien
+
 ---
 
 ## [1.5.0] - 2026-04-30

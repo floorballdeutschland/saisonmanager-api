@@ -754,6 +754,7 @@ class GamesController < ApplicationController
 
         if params[:game_status] == 'match_record_closed'
           _maybe_send_incident_report_reminder(game)
+          _maybe_send_game_day_scan_reminder(game)
         end
       elsif params[:ingame_status].present?
         old_ingame_status = game.ingame_status
@@ -830,5 +831,20 @@ class GamesController < ApplicationController
                                  :guest_team_filling_rule,
                                  :guest_team_filling_parameter,
                                  nominated_referee_ids: [])
+  end
+
+  def _maybe_send_game_day_scan_reminder(game)
+    game_day = game.game_day
+    return unless game_day.league.game_operation.scan_required?
+
+    all_closed = game_day.games.reload.all? do |g|
+      %w[match_record_closed finalized].include?(g.game_status)
+    end
+    return unless all_closed
+
+    hosting_club = game_day.club
+    return unless hosting_club&.contact_email.present?
+
+    ClubMailer.game_day_scan_reminder(hosting_club, game_day).deliver_later
   end
 end
