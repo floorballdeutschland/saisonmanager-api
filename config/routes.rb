@@ -184,6 +184,8 @@ Rails.application.routes.draw do
 
       get 'transfers/public', to: 'players#transfers_public'
 
+      get 'public/license_list', to: 'public_license_list#show'
+
       resources :games
       resources :game_days
 

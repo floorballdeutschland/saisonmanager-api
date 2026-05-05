@@ -1,0 +1,15 @@
+<h2>Vorläufige Ansetzung</h2>
+
+<p>Hallo <%= @referee.vorname %> <%= @referee.nachname %>,</p>
+
+<p>
+  du bist vorläufig für den <strong><%= I18n.l(@date, format: :long) %></strong> eingeplant.
+</p>
+
+<p>
+  Weitere Details (Spielort, Partnerin/Partner) folgen mit der Veröffentlichung der Ansetzung.
+</p>
+
+<p>
+  Bei Fragen antworte auf diese E-Mail oder wende dich an <a href="mailto:sr-ansetzungen@floorball.de">sr-ansetzungen@floorball.de</a>.
+</p>
