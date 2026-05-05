@@ -20,7 +20,7 @@ class GameScansController < ApplicationController
     scan = GameScan.new(
       game: @game,
       uploaded_by: current_user,
-      expires_at: @game.game_day.date + 3.months
+      expires_at: @game.game_day.date + 12.months
     )
     scan.scan_file.attach(params[:file])
 
