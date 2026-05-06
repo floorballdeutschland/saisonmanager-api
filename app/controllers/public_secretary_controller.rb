@@ -1,6 +1,5 @@
 class PublicSecretaryController < ApplicationController
   skip_before_action :authenticate_user
-  skip_before_action :authenticate_public_request
 
   # GET /api/v2/public/secretary?token=XXX
   # Returns game day info + license lists for all games
