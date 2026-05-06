@@ -24,7 +24,7 @@ class GamesController < ApplicationController
 
     hash = game.full_hash
     hash[:permission] = game.user_permissions(current_user) if current_user
-    hash.merge!(_checklist_hash(game))
+    hash.merge!(_checklist_hash(game)) if current_user || @secretary_link
 
     respond_to do |format|
       format.json { render json: hash }
@@ -814,7 +814,7 @@ class GamesController < ApplicationController
     game = Game.find(params[:id])
     return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless can_edit_game?(game)
 
-    answers = params.require(:answers)
+    answers = params.require(:answers).map { |a| a.permit(:item_id, :question, :answer).to_h }
     unless answers.is_a?(Array) && answers.all? { |a| a.key?('item_id') && [true, false].include?(a['answer']) }
       return render json: { message: 'Ungültiges Format.' }, status: :unprocessable_entity
     end

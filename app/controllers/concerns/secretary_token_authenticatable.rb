@@ -23,7 +23,6 @@ module SecretaryTokenAuthenticatable
 
   # Game is within scope of the secretary token?
   def secretary_token_permits_game?(game)
-    return true if current_user
     @secretary_link&.game_day_id == game.game_day_id
   end
 end

@@ -4,7 +4,7 @@
   Der Ausrichterverein <strong><%= @hosting_club.name %></strong> hat den Spielbericht für
   Spiel Nr. <strong><%= @game.game_number %></strong>
   (<%= @game.home_team_name %> vs. <%= @game.guest_team_name %>,
-  <%= @game.game_day.date.strftime('%d.%m.%Y') %>) eingereicht.
+  <%= Date.parse(@game.game_day.date).strftime('%d.%m.%Y') %>) eingereicht.
 </p>
 
 <% if @all_ok %>
