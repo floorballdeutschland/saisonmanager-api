@@ -3,10 +3,26 @@
 <p>Hallo <%= @referee1.vorname %> und <%= @referee2.vorname %>,</p>
 
 <p>
-  bitte schickt das Berichtsformular für Spielnummer <strong><%= @game.game_number %></strong>
-  bis zum <strong><%= @deadline.strftime('%d.%m.%Y %H:%M') %> Uhr</strong> an die zuständige SBK.
+  für Spielnummer <strong><%= @game.game_number %></strong>
+  (<%= @game.home_team_name %> vs. <%= @game.guest_team_name %>, <%= Date.parse(@game.game_day.date).strftime('%d.%m.%Y') %>)
+  ist ein besonderes Ereignis oder ein Spielausschluss vermerkt worden.
 </p>
 
 <p>
-  Bei Fragen antworte auf diese E-Mail oder wende dich an <a href="mailto:sr-ansetzungen@floorball.de">sr-ansetzungen@floorball.de</a>.
+  Bitte ladet das ausgefüllte Berichtsformular bis spätestens
+  <strong><%= @deadline.strftime('%d.%m.%Y %H:%M') %> Uhr</strong> direkt im Saisonmanager hoch:
+</p>
+
+<p>
+  <a href="<%= @upload_url %>"><%= @upload_url %></a>
+</p>
+
+<p>
+  Ihr findet das Formular nach dem Login unter dem Tab <em>Schiedsrichter</em> beim entsprechenden Spiel.
+  Nach dem Upload wird das Formular automatisch an die zuständige VSK weitergeleitet.
+</p>
+
+<p>
+  Bei Fragen antwortet auf diese E-Mail oder wendet euch an
+  <a href="mailto:sr-ansetzungen@floorball.de">sr-ansetzungen@floorball.de</a>.
 </p>

@@ -6,6 +6,7 @@ class GamesController < ApplicationController
     set_starting_player set_player_award
     add_event remove_event update_event
     set_referee set_game_status set_flag set_string
+    set_checklist_answers
   ].freeze
 
   skip_before_action :authenticate_user, only: %i[index show] + SECRETARY_ACTIONS
@@ -23,6 +24,7 @@ class GamesController < ApplicationController
 
     hash = game.full_hash
     hash[:permission] = game.user_permissions(current_user) if current_user
+    hash.merge!(_checklist_hash(game)) if current_user || @secretary_link
 
     respond_to do |format|
       format.json { render json: hash }
@@ -761,11 +763,17 @@ class GamesController < ApplicationController
           return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
         end
 
+        if params[:game_status] == 'match_record_closed'
+          checklist_error = _checklist_incomplete_error(game)
+          return render json: { message: checklist_error }, status: :unprocessable_entity if checklist_error
+        end
+
         game.game_status = params[:game_status]
         game.save
 
         if params[:game_status] == 'match_record_closed'
           _maybe_send_incident_report_reminder(game)
+          _maybe_send_checklist_confirmation(game)
           _maybe_send_game_day_scan_reminder(game)
         end
       elsif params[:ingame_status].present?
@@ -803,6 +811,46 @@ class GamesController < ApplicationController
     end
   end
 
+  def set_checklist_answers
+    game = Game.find(params[:id])
+    return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless can_edit_game?(game)
+
+    answers = params.require(:answers).map { |a| a.permit(:item_id, :question, :answer).to_h }
+    unless answers.is_a?(Array) && answers.all? { |a| a.key?('item_id') && [true, false].include?(a['answer']) }
+      return render json: { message: 'Ungültiges Format.' }, status: :unprocessable_entity
+    end
+
+    game.update!(checklist_answers: answers)
+    render json: { success: true }
+  end
+
+  def _checklist_incomplete_error(game)
+    sa = game.game_day.club&.state_association
+    return nil unless sa&.checklist_items&.any?
+
+    required_ids = sa.checklist_items.pluck(:id).sort
+    answered_ids = (game.checklist_answers || []).map { |a| a['item_id'].to_i }.sort
+    return nil if answered_ids == required_ids
+
+    'Die Spieltagscheckliste muss vollständig ausgefüllt sein, bevor der Spielbericht abgeschlossen werden kann.'
+  end
+
+  def _maybe_send_checklist_confirmation(game)
+    sa = game.game_day.club&.state_association
+    return unless sa&.checklist_items&.any?
+
+    answers = game.checklist_answers || []
+    return if answers.empty?
+
+    assignment = game.referee_assignment
+    r1 = assignment&.referee1
+    r2 = assignment&.referee2
+    hosting_club = game.game_day.club
+    return unless hosting_club&.contact_email.present?
+
+    GameMailer.checklist_confirmation(game, sa, answers, hosting_club, r1, r2).deliver_later
+  end
+
   def _maybe_send_incident_report_reminder(game)
     has_spielausschluss = (game.events || []).any? { |e| e['penalty_id'].to_s == '5' }
     return unless game.special_event? || has_spielausschluss
@@ -816,6 +864,16 @@ class GamesController < ApplicationController
 
     deadline = Time.current + 24.hours
     RefereeMailer.incident_report_reminder(r1, r2, game, deadline).deliver_later
+  end
+
+  def _checklist_hash(game)
+    sa = game.game_day.club&.state_association
+    items = sa&.checklist_items&.to_a || []
+    {
+      checklist_active: items.any?,
+      checklist_items: items.map { |i| { id: i.id, question: i.question, position: i.position } },
+      checklist_answers: game.checklist_answers || []
+    }
   end
 
   def can_edit_game?(game)

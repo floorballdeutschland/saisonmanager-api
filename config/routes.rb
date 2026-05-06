@@ -136,6 +136,11 @@ Rails.application.routes.draw do
       post 'user/games/:id/set_flag', to: 'games#set_flag'
       post 'user/games/:id/set_field', to: 'games#set_string'
 
+      post 'user/games/:id/checklist_answers', to: 'games#set_checklist_answers'
+
+      get  'games/:game_id/referee_report', to: 'game_referee_reports#show'
+      post 'games/:game_id/referee_report', to: 'game_referee_reports#create'
+
       get  'user/games/:game_id/scan', to: 'game_scans#show'
       post 'user/games/:game_id/scan', to: 'game_scans#create'
       delete 'user/games/:game_id/scan', to: 'game_scans#destroy'
@@ -177,7 +182,10 @@ Rails.application.routes.draw do
           post :publish, on: :member
           get :available, on: :collection
         end
-        resources :state_associations, only: %i[index create update destroy]
+        resources :state_associations, only: %i[index show create update destroy] do
+          resources :checklist_items, only: %i[create update destroy],
+                                      controller: 'state_association_checklist_items'
+        end
         resources :api_keys, only: %i[index create update destroy]
       end
 

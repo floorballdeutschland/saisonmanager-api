@@ -45,11 +45,33 @@ class RefereeMailer < ApplicationMailer
     @referee2 = referee2
     @game = game
     @deadline = deadline
+    @upload_url = "https://saisonmanager.org/spielbericht/#{game.id}"
 
     mail(
       to: [referee1.email, referee2.email].compact,
       reply_to: REPLY_TO,
       subject: "Spielnummer #{game.game_number} | 24h Zeit für Berichtsformular"
+    )
+  end
+
+  def referee_report_to_vsk(vsk_email, uploader, game, report, referee1, referee2)
+    @uploader = uploader
+    @game = game
+    @referee1 = referee1
+    @referee2 = referee2
+
+    if report.file.attached?
+      blob = report.file.blob
+      attachments[blob.filename.to_s] = {
+        mime_type: blob.content_type,
+        content: blob.download
+      }
+    end
+
+    mail(
+      to: vsk_email,
+      reply_to: REPLY_TO,
+      subject: "Berichtsformular eingereicht – Spielnummer #{game.game_number}"
     )
   end
 end
