@@ -1,0 +1,12 @@
+<h2>Berichtsformular – Spielnummer <%= @game.game_number %></h2>
+
+<p>Hallo <%= @referee1.vorname %> und <%= @referee2.vorname %>,</p>
+
+<p>
+  bitte schickt das Berichtsformular für Spielnummer <strong><%= @game.game_number %></strong>
+  bis zum <strong><%= @deadline.strftime('%d.%m.%Y %H:%M') %> Uhr</strong> an die zuständige SBK.
+</p>
+
+<p>
+  Bei Fragen antworte auf diese E-Mail oder wende dich an <a href="mailto:sr-ansetzungen@floorball.de">sr-ansetzungen@floorball.de</a>.
+</p>
