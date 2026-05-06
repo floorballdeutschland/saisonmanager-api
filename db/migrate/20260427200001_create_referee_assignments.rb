@@ -1,7 +1,7 @@
 class CreateRefereeAssignments < ActiveRecord::Migration[7.0]
   def change
     create_table :referee_assignments do |t|
-      t.references :game, null: false, foreign_key: true
+      t.references :game, null: false, foreign_key: true, index: false
       t.integer :referee1_id
       t.integer :referee2_id
       t.string :status, null: false, default: 'tentative'

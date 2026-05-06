@@ -1,6 +1,5 @@
 class PublicLicenseListController < ApplicationController
   skip_before_action :authenticate_user
-  skip_before_action :authenticate_public_request
 
   def show
     payload = Rails.application.message_verifier('license_list').verified(params[:token])
