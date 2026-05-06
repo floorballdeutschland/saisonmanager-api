@@ -7,11 +7,17 @@ class GameScan < ApplicationRecord
   MAX_FILE_SIZE = 5.megabytes
 
   validates :expires_at, presence: true
+  validates :game_id, uniqueness: true
+  validate :scan_file_attached
   validate :scan_file_valid, if: -> { scan_file.attached? }
 
   scope :active, -> { where('expires_at > ?', Time.current) }
 
   private
+
+  def scan_file_attached
+    errors.add(:scan_file, 'muss hochgeladen werden') unless scan_file.attached?
+  end
 
   def scan_file_valid
     unless scan_file.content_type.in?(ALLOWED_CONTENT_TYPES)

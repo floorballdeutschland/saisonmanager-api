@@ -13,6 +13,8 @@ class GameScansController < ApplicationController
   end
 
   def create
+    return render json: { errors: ['Datei fehlt'] }, status: :unprocessable_entity if params[:file].blank?
+
     existing = @game.game_scan
     existing&.scan_file&.purge
     existing&.destroy
@@ -20,7 +22,7 @@ class GameScansController < ApplicationController
     scan = GameScan.new(
       game: @game,
       uploaded_by: current_user,
-      expires_at: @game.game_day.date + 12.months
+      expires_at: Time.current + 12.months
     )
     scan.scan_file.attach(params[:file])
 
@@ -33,7 +35,9 @@ class GameScansController < ApplicationController
 
   def destroy
     ph = current_user.permission_hash
-    unless ph[:admin].present? || ph[:sbk].present?
+    game_operation_id = @game.game_day.league.game_operation_id.to_i
+    gos = [ph[:admin], ph[:sbk]].flatten.compact.map(&:to_i)
+    unless gos.include?(0) || gos.include?(game_operation_id)
       return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
     end
 
