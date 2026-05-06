@@ -85,6 +85,7 @@ Rails.application.routes.draw do
       get 'admin/teams/:id', to: 'teams#admin_get_team'
       get 'admin/league/clubs/:callType/:id', to: 'clubs#admin_get_go_clubs'
       get 'admin/game_operations', to: 'game_operations#admin_game_operations'
+      patch 'admin/game_operations/:id', to: 'game_operations#admin_update'
 
       post 'admin/teams', to: 'teams#admin_team_update'
 
@@ -139,6 +140,10 @@ Rails.application.routes.draw do
 
       get  'games/:game_id/referee_report', to: 'game_referee_reports#show'
       post 'games/:game_id/referee_report', to: 'game_referee_reports#create'
+
+      get  'user/games/:game_id/scan', to: 'game_scans#show'
+      post 'user/games/:game_id/scan', to: 'game_scans#create'
+      delete 'user/games/:game_id/scan', to: 'game_scans#destroy'
 
       get 'user/games/:id/additional_fields', to: 'games#show_hidden'
 

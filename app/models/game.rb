@@ -4,6 +4,7 @@ class Game < ApplicationRecord
   belongs_to :game_day
   has_one :referee_assignment, dependent: :destroy
   has_one :game_referee_report, dependent: :destroy
+  has_one :game_scan, dependent: :destroy
 
   scope :by_referee_id, ->(referee_id) { where('? = any (referee_ids)', referee_id) }
   scope :by_referee_name, lambda { |referee_name|
@@ -503,6 +504,7 @@ class Game < ApplicationRecord
       game_operation_name: league.game_operation.name,
       game_operation_short_name: league.game_operation.short_name,
       game_operation_slug: league.game_operation.slug,
+      scan_required: league.game_operation.scan_required,
       period_titles: league.period_titles,
       current_period_title:,
       arena: game_day.arena_id,
