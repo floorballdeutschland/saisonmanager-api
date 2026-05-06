@@ -42,7 +42,9 @@ class GameDaySecretaryLinksController < ApplicationController
 
   def authorize_vm_or_tm!
     ph = current_user.permission_hash
-    return if ph[:admin].present? || ph[:sbk].present?
+    go_id = @game_day.league.game_operation_id
+    return if ph[:admin].present?
+    return if ph[:sbk].present? && (ph[:sbk].include?(0) || ph[:sbk].include?(go_id))
 
     game_ids = @game_day.games.pluck(:home_team_id, :guest_team_id).flatten.compact
     club_id = @game_day.club_id
