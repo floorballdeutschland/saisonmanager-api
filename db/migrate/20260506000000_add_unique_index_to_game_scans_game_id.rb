@@ -1,4 +1,4 @@
-class AddUniqueIndexToGameScansGameId < ActiveRecord::Migration[7.1]
+class AddUniqueIndexToGameScansGameId < ActiveRecord::Migration[7.0]
   def change
     add_index :game_scans, :game_id, unique: true
   end

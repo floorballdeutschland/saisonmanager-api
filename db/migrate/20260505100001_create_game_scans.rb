@@ -1,4 +1,4 @@
-class CreateGameScans < ActiveRecord::Migration[7.1]
+class CreateGameScans < ActiveRecord::Migration[7.0]
   def change
     create_table :game_scans do |t|
       t.references :game, null: false, foreign_key: true
