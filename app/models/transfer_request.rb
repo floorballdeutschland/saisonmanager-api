@@ -1,5 +1,5 @@
 class TransferRequest < ApplicationRecord
-  STATUSES = %w[pending_club pending_lv approved rejected_by_club rejected_by_lv].freeze
+  STATUSES = %w[pending_club pending_lv scheduled approved rejected_by_club rejected_by_lv].freeze
 
   belongs_to :player
   belongs_to :requesting_club, class_name: 'Club'
@@ -8,7 +8,7 @@ class TransferRequest < ApplicationRecord
   validates :status, inclusion: { in: STATUSES }
   validates :rejection_reason, presence: true, if: -> { status.in?(%w[rejected_by_club rejected_by_lv]) }
 
-  scope :active, -> { where(status: %w[pending_club pending_lv]) }
+  scope :active, -> { where(status: %w[pending_club pending_lv scheduled]) }
   scope :pending_for_club, ->(club_id) { where(former_club_id: club_id, status: 'pending_club') }
   scope :pending_for_lv, lambda { |go_ids|
     club_ids = go_ids.include?(0) ? Club.pluck(:id) : Club.all.select { |c| go_ids.include?(c.main_game_operation_id) }.map(&:id)
@@ -23,6 +23,7 @@ class TransferRequest < ApplicationRecord
       status:,
       season_id:,
       rejection_reason:,
+      effective_date: effective_date&.iso8601,
       created_at: created_at&.iso8601,
       player: player_hash,
       requesting_club: club_hash(requesting_club),
@@ -30,8 +31,8 @@ class TransferRequest < ApplicationRecord
     }
   end
 
-  def execute_transfer!(user_id)
-    raise ActiveRecord::RecordInvalid, self unless status == 'pending_lv'
+  def execute_transfer!(user_id = nil)
+    raise ActiveRecord::RecordInvalid, self unless status.in?(%w[pending_lv scheduled])
 
     secondary_club_ids = player.clubs.select do |c|
       c['home_club'] == false && c['valid_until'].nil?
@@ -39,11 +40,11 @@ class TransferRequest < ApplicationRecord
 
     TransferRequest.transaction do
       invalidate_licenses!
-      player.transfer(requesting_club_id, user_id)
+      player.transfer(requesting_club_id, user_id || approved_by_lv_user_id)
       update!(
         status: 'approved',
-        approved_by_lv_user_id: user_id,
-        lv_approved_at: Time.current
+        approved_by_lv_user_id: approved_by_lv_user_id || user_id,
+        lv_approved_at: lv_approved_at || Time.current
       )
     end
 

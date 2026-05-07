@@ -194,6 +194,7 @@ Rails.application.routes.draw do
             patch :reject_club
             patch :approve_lv
             patch :reject_lv
+            patch :execute
           end
         end
       end

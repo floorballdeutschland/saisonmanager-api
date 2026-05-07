@@ -94,13 +94,26 @@ module Admin
       former_club = Club.find_by(id: former_club_id)
       return render json: { error: 'Abgebender Verein nicht gefunden' }, status: :not_found unless former_club
 
+      effective_date = nil
+      if params[:effective_date].present?
+        begin
+          effective_date = Date.parse(params[:effective_date].to_s)
+          if effective_date < Date.today + 7
+            return render json: { error: 'Wunschdatum muss mindestens 7 Tage in der Zukunft liegen' }, status: :unprocessable_entity
+          end
+        rescue ArgumentError
+          return render json: { error: 'Ungültiges Datum' }, status: :unprocessable_entity
+        end
+      end
+
       tr = TransferRequest.new(
         player_id: player.id,
         requesting_club_id: requesting_club_id,
         former_club_id: former_club_id,
         status: 'pending_club',
         created_by: current_user.id,
-        season_id: Setting.current_season_id
+        season_id: Setting.current_season_id,
+        effective_date:
       )
 
       if tr.save
@@ -181,7 +194,38 @@ module Admin
         return render json: { error: 'Nicht berechtigt' }, status: :forbidden
       end
 
-      tr.execute_transfer!(current_user.id)
+      if tr.effective_date.nil? || tr.effective_date <= Date.today
+        tr.execute_transfer!(current_user.id)
+      else
+        tr.update!(
+          status: 'scheduled',
+          approved_by_lv_user_id: current_user.id,
+          lv_approved_at: Time.current
+        )
+      end
+
+      render json: tr.as_json
+    end
+
+    # PATCH /api/v2/admin/transfer_requests/:id/execute
+    def execute
+      tr = find_transfer_request
+      return unless tr
+
+      unless tr.status == 'scheduled'
+        return render json: { error: 'Ungültiger Status für diese Aktion' }, status: :unprocessable_entity
+      end
+
+      ph = current_user.permission_hash
+      unless ph[:admin].present? || lv_authorized?(ph, tr)
+        return render json: { error: 'Nicht berechtigt' }, status: :forbidden
+      end
+
+      if tr.effective_date.present? && tr.effective_date > Date.today
+        return render json: { error: "Transfer wird erst am #{tr.effective_date.strftime('%d.%m.%Y')} wirksam" }, status: :unprocessable_entity
+      end
+
+      tr.execute_transfer!
       render json: tr.as_json
     end
 
