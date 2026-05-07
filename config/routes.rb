@@ -187,6 +187,15 @@ Rails.application.routes.draw do
                                       controller: 'state_association_checklist_items'
         end
         resources :api_keys, only: %i[index create update destroy]
+        resources :transfer_requests, only: %i[index create] do
+          collection { get :search_player }
+          member do
+            patch :approve_club
+            patch :reject_club
+            patch :approve_lv
+            patch :reject_lv
+          end
+        end
       end
 
       namespace :vm do

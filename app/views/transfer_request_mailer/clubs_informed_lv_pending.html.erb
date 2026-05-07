@@ -1,0 +1,24 @@
+<h2>Transferantrag beim Landesverband</h2>
+
+<p>Hallo,</p>
+
+<p>
+  der abgebende Verein hat den folgenden Transferantrag bestätigt. Er liegt jetzt beim
+  Landesverband <strong><%= @transfer_request.former_club.state_association&.name %></strong>
+  zur abschließenden Genehmigung.
+</p>
+
+<p>
+  <strong>Spieler:</strong> <%= @transfer_request.player.first_name %> <%= @transfer_request.player.last_name %><br>
+  <strong>Abgebender Verein:</strong> <%= @transfer_request.former_club.name %><br>
+  <strong>Aufnehmender Verein:</strong> <%= @transfer_request.requesting_club.name %>
+</p>
+
+<p>
+  Ihr werdet informiert, sobald der Landesverband entschieden hat.
+</p>
+
+<p>
+  Das Saisonmanager-Team<br>
+  <a href="https://saisonmanager.org">saisonmanager.org</a>
+</p>

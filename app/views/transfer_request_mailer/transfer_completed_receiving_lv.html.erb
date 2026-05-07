@@ -1,0 +1,20 @@
+<h2>Transfer vollzogen – Information aufnehmender Landesverband</h2>
+
+<p>Hallo,</p>
+
+<p>
+  ein Spieler aus einem anderen Landesverband hat zu einem Verein in Ihrem Landesverband gewechselt:
+</p>
+
+<p>
+  <strong>Spieler:</strong> <%= @transfer_request.player.first_name %> <%= @transfer_request.player.last_name %><br>
+  <strong>Von:</strong> <%= @transfer_request.former_club.name %>
+    (<%= @transfer_request.former_club.state_association&.name %>)<br>
+  <strong>Nach:</strong> <%= @transfer_request.requesting_club.name %>
+    (<%= @transfer_request.requesting_club.state_association&.name %>)
+</p>
+
+<p>
+  Das Saisonmanager-Team<br>
+  <a href="https://saisonmanager.org">saisonmanager.org</a>
+</p>

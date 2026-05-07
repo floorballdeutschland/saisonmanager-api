@@ -1,0 +1,243 @@
+module Admin
+  class TransferRequestsController < ApplicationController
+    before_action :authenticate_user
+    before_action :authorize_transfer_access!
+
+    # GET /api/v2/admin/transfer_requests
+    def index
+      ph = current_user.permission_hash
+      requests = if ph[:admin].present?
+        TransferRequest.all
+      elsif ph[:sbk].present?
+        go_ids = ph[:sbk].include?(0) ? Club.distinct.pluck(:id) : derive_club_ids_for_go(ph[:sbk])
+        TransferRequest.active.or(
+          TransferRequest.where(status: %w[approved rejected_by_club rejected_by_lv])
+        ).where(former_club_id: go_ids).or(
+          TransferRequest.pending_for_lv(ph[:sbk])
+        )
+      elsif ph[:vm].present?
+        TransferRequest
+          .for_requesting_club(ph[:vm])
+          .or(TransferRequest.for_former_club(ph[:vm]))
+      else
+        TransferRequest.none
+      end
+
+      render json: requests.order(created_at: :desc).map(&:as_json)
+    end
+
+    # GET /api/v2/admin/transfer_requests/search_player
+    def search_player
+      ph = current_user.permission_hash
+      return render json: { error: 'Nicht berechtigt' }, status: :forbidden unless ph[:vm].present? || ph[:admin].present? || ph[:sbk].present?
+
+      first_name = params[:first_name]&.strip
+      last_name = params[:last_name]&.strip
+      birthdate = params[:birthdate]&.strip
+
+      if first_name.blank? || last_name.blank? || birthdate.blank?
+        return render json: { error: 'Vorname, Nachname und Geburtsdatum sind erforderlich' }, status: :unprocessable_entity
+      end
+
+      player = Player.where(
+        'LOWER(first_name) = ? AND LOWER(last_name) = ? AND birthdate = ?',
+        first_name.downcase, last_name.downcase, birthdate
+      ).first
+
+      return render json: { player: nil } unless player
+
+      requesting_club_id = params[:requesting_club_id].to_i
+      if requesting_club_id > 0
+        home_club = player.clubs.find { |c| c['home_club'] == true && c['valid_until'].nil? }
+        if home_club&.dig('club_id') == requesting_club_id
+          return render json: { error: 'Spieler ist bereits in diesem Verein' }, status: :unprocessable_entity
+        end
+      end
+
+      if TransferRequest.active.where(player_id: player.id).exists?
+        return render json: { error: 'Für diesen Spieler ist bereits ein Transferantrag aktiv' }, status: :unprocessable_entity
+      end
+
+      render json: { player: player.search_hash }
+    end
+
+    # POST /api/v2/admin/transfer_requests
+    def create
+      ph = current_user.permission_hash
+      return render json: { error: 'Nicht berechtigt' }, status: :forbidden unless ph[:vm].present? || ph[:admin].present?
+
+      player = Player.find_by(id: params[:player_id])
+      return render json: { error: 'Spieler nicht gefunden' }, status: :not_found unless player
+
+      requesting_club_id = params[:requesting_club_id].to_i
+      if ph[:vm].present? && !ph[:vm].include?(requesting_club_id)
+        return render json: { error: 'Nicht berechtigt für diesen Verein' }, status: :forbidden
+      end
+
+      requesting_club = Club.find_by(id: requesting_club_id)
+      return render json: { error: 'Verein nicht gefunden' }, status: :not_found unless requesting_club
+
+      if TransferRequest.active.where(player_id: player.id).exists?
+        return render json: { error: 'Für diesen Spieler ist bereits ein Transferantrag aktiv' }, status: :unprocessable_entity
+      end
+
+      home_club_entry = player.clubs.find { |c| c['home_club'] == true && c['valid_until'].nil? }
+      former_club_id = home_club_entry&.dig('club_id')
+      return render json: { error: 'Spieler hat keinen aktiven Heimverein' }, status: :unprocessable_entity unless former_club_id
+
+      if former_club_id == requesting_club_id
+        return render json: { error: 'Spieler ist bereits in diesem Verein' }, status: :unprocessable_entity
+      end
+
+      former_club = Club.find_by(id: former_club_id)
+      return render json: { error: 'Abgebender Verein nicht gefunden' }, status: :not_found unless former_club
+
+      tr = TransferRequest.new(
+        player_id: player.id,
+        requesting_club_id: requesting_club_id,
+        former_club_id: former_club_id,
+        status: 'pending_club',
+        created_by: current_user.id,
+        season_id: Setting.current_season_id
+      )
+
+      if tr.save
+        TransferRequestMailer.new_request_to_former_club(tr).deliver_later
+        render json: tr.as_json, status: :created
+      else
+        render json: { errors: tr.errors.full_messages }, status: :unprocessable_entity
+      end
+    end
+
+    # PATCH /api/v2/admin/transfer_requests/:id/approve_club
+    def approve_club
+      tr = find_transfer_request
+      return unless tr
+
+      unless tr.status == 'pending_club'
+        return render json: { error: 'Ungültiger Status für diese Aktion' }, status: :unprocessable_entity
+      end
+
+      ph = current_user.permission_hash
+      unless ph[:admin].present? || ph[:vm]&.include?(tr.former_club_id)
+        return render json: { error: 'Nicht berechtigt' }, status: :forbidden
+      end
+
+      tr.update!(
+        status: 'pending_lv',
+        approved_by_club_user_id: current_user.id,
+        club_approved_at: Time.current
+      )
+
+      TransferRequestMailer.pending_lv_notification(tr).deliver_later
+      TransferRequestMailer.clubs_informed_lv_pending(tr).deliver_later
+
+      render json: tr.as_json
+    end
+
+    # PATCH /api/v2/admin/transfer_requests/:id/reject_club
+    def reject_club
+      tr = find_transfer_request
+      return unless tr
+
+      unless tr.status == 'pending_club'
+        return render json: { error: 'Ungültiger Status für diese Aktion' }, status: :unprocessable_entity
+      end
+
+      ph = current_user.permission_hash
+      unless ph[:admin].present? || ph[:vm]&.include?(tr.former_club_id)
+        return render json: { error: 'Nicht berechtigt' }, status: :forbidden
+      end
+
+      reason = params[:rejection_reason]&.strip
+      if reason.blank?
+        return render json: { error: 'Begründung ist erforderlich' }, status: :unprocessable_entity
+      end
+
+      tr.update!(
+        status: 'rejected_by_club',
+        rejected_by: current_user.id,
+        rejected_at: Time.current,
+        rejection_reason: reason
+      )
+
+      TransferRequestMailer.rejected_notification(tr).deliver_later
+      render json: tr.as_json
+    end
+
+    # PATCH /api/v2/admin/transfer_requests/:id/approve_lv
+    def approve_lv
+      tr = find_transfer_request
+      return unless tr
+
+      unless tr.status == 'pending_lv'
+        return render json: { error: 'Ungültiger Status für diese Aktion' }, status: :unprocessable_entity
+      end
+
+      ph = current_user.permission_hash
+      unless ph[:admin].present? || lv_authorized?(ph, tr)
+        return render json: { error: 'Nicht berechtigt' }, status: :forbidden
+      end
+
+      tr.execute_transfer!(current_user.id)
+      render json: tr.as_json
+    end
+
+    # PATCH /api/v2/admin/transfer_requests/:id/reject_lv
+    def reject_lv
+      tr = find_transfer_request
+      return unless tr
+
+      unless tr.status == 'pending_lv'
+        return render json: { error: 'Ungültiger Status für diese Aktion' }, status: :unprocessable_entity
+      end
+
+      ph = current_user.permission_hash
+      unless ph[:admin].present? || lv_authorized?(ph, tr)
+        return render json: { error: 'Nicht berechtigt' }, status: :forbidden
+      end
+
+      reason = params[:rejection_reason]&.strip
+      if reason.blank?
+        return render json: { error: 'Begründung ist erforderlich' }, status: :unprocessable_entity
+      end
+
+      tr.update!(
+        status: 'rejected_by_lv',
+        rejected_by: current_user.id,
+        rejected_at: Time.current,
+        rejection_reason: reason
+      )
+
+      TransferRequestMailer.rejected_notification(tr).deliver_later
+      render json: tr.as_json
+    end
+
+    private
+
+    def authorize_transfer_access!
+      ph = current_user.permission_hash
+      return if ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
+
+      render json: { error: 'Nicht berechtigt' }, status: :forbidden
+    end
+
+    def find_transfer_request
+      tr = TransferRequest.find_by(id: params[:id])
+      render json: { error: 'Nicht gefunden' }, status: :not_found unless tr
+      tr
+    end
+
+    def lv_authorized?(ph, tr)
+      return false unless ph[:sbk].present?
+      return true if ph[:sbk].include?(0)
+
+      former_club_go_id = tr.former_club.main_game_operation_id
+      ph[:sbk].include?(former_club_go_id)
+    end
+
+    def derive_club_ids_for_go(go_ids)
+      Club.all.select { |c| go_ids.include?(c.main_game_operation_id) }.map(&:id)
+    end
+  end
+end
