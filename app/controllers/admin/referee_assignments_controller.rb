@@ -124,8 +124,10 @@ module Admin
 
       assignment.update!(status: 'published', published_at: Time.current, updated_by: current_user.id)
 
-      parts = assignment.referees.map { |r| "#{r.lizenznummer_display} #{r.nachname}, #{r.vorname}" }
-      assignment.game.update_column(:nominated_referee_string, parts.join(' / '))
+      parts = assignment.referees.map do |r|
+        [r.lizenznummer_display.presence, "#{r.nachname}, #{r.vorname}"].compact.join(' ')
+      end
+      assignment.game.update_column(:nominated_referee_string, parts.join(' / ')) if parts.any?
 
       expires_at = 72.hours.from_now
       license_token = Rails.application.message_verifier('license_list').generate(
