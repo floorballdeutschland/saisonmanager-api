@@ -26,10 +26,17 @@
 </p>
 <% end %>
 
+<% if @veto_url %>
+<hr>
 <p>
-  Die Schiedsrichter haben <strong>24 Stunden</strong> Zeit, um bei Einwänden gegen den
-  eingereichten Spielbericht die zuständige SBK des <%= @state_association.name %> zu kontaktieren.
+  <strong>Nicht einverstanden mit den Antworten?</strong><br>
+  Schiedsrichter:innen und der Ausrichterverein können über den folgenden Link Einspruch einlegen
+  und die Checkliste neu beantworten. Der erste Einspruch zählt – der Link kann nur einmal genutzt werden.
 </p>
+<p>
+  <a href="<%= @veto_url %>">Einspruch einlegen</a>
+</p>
+<% end %>
 
 <hr>
 <p style="font-size: 0.85em; color: #666;">

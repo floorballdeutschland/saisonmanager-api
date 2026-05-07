@@ -1,0 +1,50 @@
+<h2>Einspruch eingereicht – Spielbericht Nr. <%= @game.game_number %></h2>
+
+<p>
+  Für Spiel Nr. <strong><%= @game.game_number %></strong>
+  (<%= @game.home_team_name %> vs. <%= @game.guest_team_name %>,
+  <%= Date.parse(@game.game_day.date).strftime('%d.%m.%Y') %>) wurde ein Einspruch
+  gegen die eingereichte Spieltagscheckliste eingereicht.
+</p>
+
+<h3>Neue Einschätzung</h3>
+
+<% if @all_ok %>
+<p>Alle Punkte wurden als erfüllt bewertet.</p>
+<% else %>
+<p>Folgende Punkte wurden als <strong>nicht erfüllt</strong> bewertet:</p>
+<ul>
+  <% @failed_items.each do |item| %>
+  <li><%= item['question'] %></li>
+  <% end %>
+</ul>
+<% end %>
+
+<h3>Vollständige neue Bewertung</h3>
+<table style="border-collapse: collapse; width: 100%;">
+  <thead>
+    <tr>
+      <th style="text-align: left; padding: 4px 8px; border-bottom: 1px solid #ccc;">Frage</th>
+      <th style="text-align: center; padding: 4px 8px; border-bottom: 1px solid #ccc;">Einspruch</th>
+      <th style="text-align: center; padding: 4px 8px; border-bottom: 1px solid #ccc;">Original</th>
+    </tr>
+  </thead>
+  <tbody>
+    <% @veto_answers.each do |veto| %>
+      <% original = @original_answers.find { |o| o['item_id'].to_i == veto['item_id'].to_i } %>
+      <% changed = original && original['answer'] != veto['answer'] %>
+      <tr style="<%= changed ? 'background: #fff3cd;' : '' %>">
+        <td style="padding: 4px 8px;"><%= veto['question'] %></td>
+        <td style="text-align: center; padding: 4px 8px;"><%= veto['answer'] ? 'Ja' : 'Nein' %></td>
+        <td style="text-align: center; padding: 4px 8px; color: #666;"><%= original ? (original['answer'] ? 'Ja' : 'Nein') : '–' %></td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>
+
+<p style="font-size: 0.85em; color: #666; margin-top: 12px;">Gelb hinterlegt = Abweichung zur ursprünglichen Bewertung.</p>
+
+<hr>
+<p style="font-size: 0.85em; color: #666;">
+  Diese E-Mail wurde automatisch vom Floorball Saisonmanager versandt.
+</p>

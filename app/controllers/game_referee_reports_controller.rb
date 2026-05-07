@@ -62,6 +62,13 @@ class GameRefereeReportsController < ApplicationController
     r1 = assignment&.referee1
     r2 = assignment&.referee2
 
-    RefereeMailer.referee_report_to_vsk(vsk_email, current_user, @game, report, r1, r2).deliver_later
+    frontend_base = Rails.env.production? ? 'https://saisonmanager.org' : 'http://localhost:4200'
+    game_url = "#{frontend_base}/spielbericht/#{@game.id}"
+    checklist_answers = @game.checklist_answers || []
+
+    RefereeMailer.referee_report_to_vsk(
+      vsk_email, current_user, @game, report, r1, r2,
+      game_url: game_url, checklist_answers: checklist_answers
+    ).deliver_later
   end
 end

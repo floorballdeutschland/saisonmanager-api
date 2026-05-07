@@ -9,8 +9,10 @@ class GamesController < ApplicationController
     set_checklist_answers
   ].freeze
 
-  skip_before_action :authenticate_user, only: %i[index show] + SECRETARY_ACTIONS
-  before_action :authenticate_public_request, only: %i[index show]
+  VETO_ACTIONS = %i[show_checklist_veto submit_checklist_veto].freeze
+
+  skip_before_action :authenticate_user, only: %i[index show] + SECRETARY_ACTIONS + VETO_ACTIONS
+  before_action :authenticate_public_request, only: %i[index show] + VETO_ACTIONS
   before_action :authenticate_with_secretary_token_or_user, only: SECRETARY_ACTIONS
 
   # GET /games
@@ -848,7 +850,69 @@ class GamesController < ApplicationController
     hosting_club = game.game_day.club
     return unless hosting_club&.contact_email.present?
 
-    GameMailer.checklist_confirmation(game, sa, answers, hosting_club, r1, r2).deliver_later
+    raw_token = SecureRandom.urlsafe_base64(32)
+    game.update_columns(
+      checklist_veto_token_digest: Digest::SHA256.hexdigest(raw_token),
+      checklist_veto_submitted_at: nil,
+      checklist_veto_answers: []
+    )
+
+    GameMailer.checklist_confirmation(game, sa, answers, hosting_club, r1, r2, raw_token).deliver_later
+  end
+
+  def show_checklist_veto
+    game = Game.find(params[:id])
+    return render json: { error: 'Ungültiger Link.' }, status: :unauthorized unless valid_veto_token?(game, params[:token])
+
+    sa = game.game_day.club&.state_association
+    items = sa&.checklist_items&.order(:position).to_a || []
+
+    render json: {
+      already_submitted: game.checklist_veto_submitted_at.present?,
+      submitted_at: game.checklist_veto_submitted_at&.iso8601,
+      game_number: game.game_number,
+      home_team_name: game.home_team_name,
+      guest_team_name: game.guest_team_name,
+      date: game.game_day.date,
+      original_answers: game.checklist_answers || [],
+      checklist_items: items.map { |i| { id: i.id, question: i.question } }
+    }
+  end
+
+  def submit_checklist_veto
+    game = Game.find(params[:id])
+    return render json: { error: 'Ungültiger Link.' }, status: :unauthorized unless valid_veto_token?(game, params[:token])
+
+    if game.checklist_veto_submitted_at.present?
+      return render json: { error: 'Ein Einspruch wurde bereits eingereicht.' }, status: :unprocessable_entity
+    end
+
+    answers = params.require(:answers).map { |a| a.permit(:item_id, :question, :answer).to_h }
+    game.update_columns(checklist_veto_answers: answers, checklist_veto_submitted_at: Time.current)
+
+    _send_checklist_veto_notification(game)
+
+    render json: { success: true }
+  end
+
+  def _send_checklist_veto_notification(game)
+    sa = game.game_day.club&.state_association
+    return unless sa
+
+    assignment = game.referee_assignment
+    r1 = assignment&.referee1
+    r2 = assignment&.referee2
+    hosting_club = game.game_day.club
+
+    GameMailer.checklist_veto_notification(game, sa, game.checklist_veto_answers, hosting_club, r1, r2).deliver_later
+  end
+
+  def valid_veto_token?(game, token)
+    token.present? && game.checklist_veto_token_digest.present? &&
+      ActiveSupport::SecurityUtils.secure_compare(
+        Digest::SHA256.hexdigest(token),
+        game.checklist_veto_token_digest
+      )
   end
 
   def _maybe_send_incident_report_reminder(game)
