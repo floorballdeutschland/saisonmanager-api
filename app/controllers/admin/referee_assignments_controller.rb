@@ -121,13 +121,17 @@ module Admin
     # POST /api/v2/admin/referee_assignments/:id/publish
     def publish
       assignment = RefereeAssignment.find(params[:id])
-
-      assignment.update!(status: 'published', published_at: Time.current, updated_by: current_user.id)
+      game = assignment.game
+      raise ActiveRecord::RecordNotFound unless game
 
       parts = assignment.referees.map do |r|
         [r.lizenznummer_display.presence, "#{r.nachname}, #{r.vorname}"].compact.join(' ')
       end
-      assignment.game.update_column(:nominated_referee_string, parts.join(' / ')) if parts.any?
+
+      ActiveRecord::Base.transaction do
+        assignment.update!(status: 'published', published_at: Time.current, updated_by: current_user.id)
+        game.update!(nominated_referee_string: parts.join(' / ')) if parts.any?
+      end
 
       expires_at = 72.hours.from_now
       license_token = Rails.application.message_verifier('license_list').generate(
@@ -142,9 +146,9 @@ module Admin
         partner = assignment.referees.find { |r| r.id != referee.id }
         RefereeMailer.published_assignment_notification(
           referee,
-          assignment.game,
+          game,
           partner,
-          assignment.game.game_day.club&.contact_email,
+          game.game_day.club&.contact_email,
           license_list_url:,
           license_expires_at: expires_at
         ).deliver_later
