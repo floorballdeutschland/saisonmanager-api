@@ -11,10 +11,8 @@ class TransferRequest < ApplicationRecord
   scope :active, -> { where(status: %w[pending_club pending_lv]) }
   scope :pending_for_club, ->(club_id) { where(former_club_id: club_id, status: 'pending_club') }
   scope :pending_for_lv, lambda { |go_ids|
-    joins('INNER JOIN clubs ON clubs.id = transfer_requests.former_club_id')
-      .where("clubs.game_operations_hash @> ANY(ARRAY[?]::jsonb[])",
-             go_ids.map { |id| [{ game_operation_id: id, home_game_operation: true }].to_json })
-      .where(status: 'pending_lv')
+    club_ids = go_ids.include?(0) ? Club.pluck(:id) : Club.all.select { |c| go_ids.include?(c.main_game_operation_id) }.map(&:id)
+    where(former_club_id: club_ids, status: 'pending_lv')
   }
   scope :for_requesting_club, ->(club_id) { where(requesting_club_id: club_id) }
   scope :for_former_club, ->(club_id) { where(former_club_id: club_id) }
@@ -33,18 +31,21 @@ class TransferRequest < ApplicationRecord
   end
 
   def execute_transfer!(user_id)
+    raise ActiveRecord::RecordInvalid, self unless status == 'pending_lv'
+
     secondary_club_ids = player.clubs.select do |c|
       c['home_club'] == false && c['valid_until'].nil?
     end.map { |c| c['club_id'] }
 
-    invalidate_licenses!
-    player.transfer(requesting_club_id, user_id)
-
-    update!(
-      status: 'approved',
-      approved_by_lv_user_id: user_id,
-      lv_approved_at: Time.current
-    )
+    TransferRequest.transaction do
+      invalidate_licenses!
+      player.transfer(requesting_club_id, user_id)
+      update!(
+        status: 'approved',
+        approved_by_lv_user_id: user_id,
+        lv_approved_at: Time.current
+      )
+    end
 
     send_completion_emails(secondary_club_ids)
   end

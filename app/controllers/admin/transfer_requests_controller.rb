@@ -9,12 +9,8 @@ module Admin
       requests = if ph[:admin].present?
         TransferRequest.all
       elsif ph[:sbk].present?
-        go_ids = ph[:sbk].include?(0) ? Club.distinct.pluck(:id) : derive_club_ids_for_go(ph[:sbk])
-        TransferRequest.active.or(
-          TransferRequest.where(status: %w[approved rejected_by_club rejected_by_lv])
-        ).where(former_club_id: go_ids).or(
-          TransferRequest.pending_for_lv(ph[:sbk])
-        )
+        club_ids = ph[:sbk].include?(0) ? Club.pluck(:id) : derive_club_ids_for_go(ph[:sbk])
+        TransferRequest.where(former_club_id: club_ids)
       elsif ph[:vm].present?
         TransferRequest
           .for_requesting_club(ph[:vm])
@@ -47,6 +43,12 @@ module Admin
       return render json: { player: nil } unless player
 
       requesting_club_id = params[:requesting_club_id].to_i
+      if ph[:vm].present?
+        unless ph[:vm].include?(requesting_club_id)
+          return render json: { error: 'Nicht berechtigt für diesen Verein' }, status: :forbidden
+        end
+      end
+
       if requesting_club_id > 0
         home_club = player.clubs.find { |c| c['home_club'] == true && c['valid_until'].nil? }
         if home_club&.dig('club_id') == requesting_club_id
