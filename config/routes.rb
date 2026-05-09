@@ -187,6 +187,9 @@ Rails.application.routes.draw do
                                       controller: 'state_association_checklist_items'
         end
         resources :api_keys, only: %i[index create update destroy]
+        resources :users, only: %i[index show update] do
+          member { post :trigger_password_reset }
+        end
       end
 
       namespace :vm do

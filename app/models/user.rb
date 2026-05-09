@@ -65,6 +65,8 @@ class User < ApplicationRecord
     result[:menu_item_referee_vm] = ph[:vm].present?
     result[:menu_item_state_association_admin] = ph[:admin].present?
     result[:menu_item_api_key_admin] = ph[:admin].present?
+    result[:menu_item_user_admin] = ph[:admin].present? || ph[:sbk].present?
+    result[:menu_item_user_vm] = ph[:vm].present?
 
     # show permissions
     result[:show_league_index_admin] = ph[:admin].present? || ph[:sbk].present?
