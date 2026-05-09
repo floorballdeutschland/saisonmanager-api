@@ -103,13 +103,13 @@ module Admin
     def license_category_name(category_id)
       return nil if category_id.blank?
 
-      Setting.current.dig('league_categories', category_id.to_s, 'name') || category_id
+      Setting.current['league_categories']&.dig(category_id.to_s, 'name') || category_id
     end
 
     def license_class_name(class_id)
       return nil if class_id.blank?
 
-      Setting.current.dig('league_classes', class_id.to_s, 'name') || class_id
+      Setting.current['league_classes']&.dig(class_id.to_s, 'name') || class_id
     end
   end
 end
