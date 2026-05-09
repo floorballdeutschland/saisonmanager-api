@@ -187,6 +187,7 @@ Rails.application.routes.draw do
                                       controller: 'state_association_checklist_items'
         end
         resources :api_keys, only: %i[index create update destroy]
+        resources :licenses, only: [:index]
       end
 
       namespace :vm do

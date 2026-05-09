@@ -9,6 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+
+### Neu
+- Globale Lizenzliste für SBK/Admin: `GET /api/v2/admin/licenses.json` gibt alle Lizenzen einer Saison als flache Liste zurück, inkl. Erst-/Zweitlizenz-Kennzeichnung, Expresslizenz-Flag, Wettbewerbskontext und Dokumentenstatus-Platzhalter; filterbar nach Saison und Spielbetrieb (#193, #258, #268)
+
+### Verbessert
+- Lizenzstatus kann durch SBK nachträglich auf "beantragt" zurückgesetzt werden (`handle_license_request` erlaubt jetzt `license_status_id: 2`) (#198)
 ---
 
 ## [1.6.0] - 2026-05-06
