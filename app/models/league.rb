@@ -648,7 +648,7 @@ class League < ApplicationRecord
         approved_at = (last_status['created_at'].to_datetime if last_status_id == 1)
         requested_at = license['history'].select do |lh|
                          lh['license_status_id'] == 2
-                       end.last['created_at'].to_datetime
+                       end.last&.dig('created_at')&.then { |ts| ts.to_datetime }
 
         player_item[:team_license] = {
           license:,
@@ -704,7 +704,7 @@ class League < ApplicationRecord
         approved_at = (last_status['created_at'].to_datetime.strftime('%d.%m.%Y %H:%M:%S') if last_status_id == 1)
         requested_at = license['history'].select do |lh|
                          lh['license_status_id'] == 2
-                       end.last['created_at'].to_datetime.strftime('%d.%m.%Y %H:%M:%S')
+                       end.last&.dig('created_at')&.then { |ts| ts.to_datetime }.strftime('%d.%m.%Y %H:%M:%S')
 
         puts "#{player.last_name},#{player.first_name},#{last_status_code},#{requested_at},#{approved_at || '-'},#{team.name}"
       end

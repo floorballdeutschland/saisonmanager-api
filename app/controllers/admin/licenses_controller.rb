@@ -21,6 +21,7 @@ module Admin
         leagues = leagues.where(game_operation_id: go_ids) if go_ids
       end
 
+      leagues         = leagues.to_a
       game_operations = GameOperation.where(id: leagues.map(&:game_operation_id).uniq).index_by(&:id)
       team_club_map   = Team.where(league_id: leagues.map(&:id)).pluck(:id, :club_id).to_h
       clubs           = Club.where(id: team_club_map.values.uniq).index_by(&:id)
@@ -35,7 +36,11 @@ module Admin
           club = clubs[team_club_map[team_data[:id]]]
 
           team_data[:players].each do |player_data|
-            lic            = player_data[:team_license][:license]
+            lic = player_data[:team_license][:license]
+            unless lic
+              Rails.logger.error("Admin::LicensesController: nil license for player #{player_data[:id]} in team #{team_data[:id]}")
+              next
+            end
             last_status_id = player_data[:team_license][:last_status_id].to_i
 
             result << {
@@ -98,17 +103,13 @@ module Admin
     def license_category_name(category_id)
       return nil if category_id.blank?
 
-      Setting.league_category(category_id)
-    rescue StandardError
-      category_id
+      Setting.current.dig('league_categories', category_id.to_s, 'name') || category_id
     end
 
     def license_class_name(class_id)
       return nil if class_id.blank?
 
-      Setting.league_class(class_id)
-    rescue StandardError
-      class_id
+      Setting.current.dig('league_classes', class_id.to_s, 'name') || class_id
     end
   end
 end
