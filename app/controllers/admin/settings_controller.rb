@@ -9,6 +9,19 @@ module Admin
       }
     end
 
+    def create_season
+      name = params[:name].to_s.strip
+      return render json: { error: 'Name darf nicht leer sein' }, status: :unprocessable_entity if name.blank?
+
+      setting = Setting.first
+      next_id = (setting.seasons.keys.map(&:to_i).max || 0) + 1
+
+      setting.seasons = setting.seasons.merge(next_id.to_s => { 'name' => name })
+      setting.save!
+
+      render json: { id: next_id, name: name, current: false }, status: :created
+    end
+
     def update_season
       new_id = params[:season_id].to_i
       setting = Setting.first
