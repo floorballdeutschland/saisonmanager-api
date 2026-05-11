@@ -55,16 +55,21 @@ module Admin
         return render json: { error: 'SBK darf nur VM- und TM-Nutzer anlegen' }, status: :forbidden
       end
 
+      if club_id && !ph[:admin].present?
+        allowed = ph[:sbk].include?(0) ? Club.pluck(:id) : derive_club_ids_for_go(ph[:sbk])
+        return render json: { error: 'Verein nicht im eigenen Zuständigkeitsbereich' }, status: :forbidden unless allowed.include?(club_id)
+      end
+
+      perm = { 'user_group_id' => role_id }
+      perm['club_id']           = club_id.to_s if club_id
+      perm['game_operation_id'] = go_id.to_s   if go_id
+
       user = User.new(user_create_params)
-      user.password = SecureRandom.hex(12)
-      user.club_id  = club_id if club_id
+      user.password    = SecureRandom.hex(12)
+      user.club_id     = club_id if club_id
+      user.permissions = [perm]
 
       if user.save
-        perm = { 'user_group_id' => role_id }
-        perm['club_id']           = club_id.to_s if club_id
-        perm['game_operation_id'] = go_id.to_s   if go_id
-        user.permissions = [perm]
-        user.save!(validate: false)
         user.send_reset_information
         render json: user_json(user), status: :created
       else
@@ -174,7 +179,7 @@ module Admin
         email: user.email,
         club_id: user.club_id,
         active: user.active,
-        inactive: user.last_login_at.present? && user.last_login_at < 3.years.ago,
+        inactive: user.last_login_at.present? ? user.last_login_at < 3.years.ago : user.created_at < 3.years.ago,
         last_login_at: user.last_login_at,
         created_at: user.created_at,
         updated_at: user.updated_at,

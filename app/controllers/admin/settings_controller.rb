@@ -11,15 +11,20 @@ module Admin
 
     def update_season
       new_id = params[:season_id].to_i
-      unless Setting.first.seasons.key?(new_id.to_s)
+      setting = Setting.first
+      unless setting.seasons.key?(new_id.to_s)
         return render json: { error: 'Unbekannte Saison-ID' }, status: :unprocessable_entity
       end
 
-      setting = Setting.first
+      setting.systems ||= {}
+      setting.systems['1'] ||= {}
       setting.systems['1']['current_season_id'] = new_id
       setting.save!
 
       Setting.instance_variable_set(:@current_min_league, nil)
+      Setting.instance_variable_set(:@current_min_team, nil)
+      Setting.instance_variable_set(:@seasons, nil)
+
       render json: { current_season_id: new_id }
     end
 
