@@ -212,14 +212,23 @@ class TeamsController < ApplicationController
       l = League.find(params[:league_id])
 
       if create_modus && League.find(params[:league_id])&.game_operation&.user_permissions(current_user)&.include?(:create_team) # create
+        if params[:team][:cup_leagues].present?
+          valid_ids = League.where(game_operation_id: l.game_operation_id).pluck(:id)
+          invalid = Array(params[:team][:cup_leagues]).map(&:to_i) - valid_ids
+          return render json: { errors: ["Ungültige Liga-IDs: #{invalid.join(', ')}"] }, status: :unprocessable_entity if invalid.any?
+        end
 
         tp = team_params
         team = Team.create(tp)
 
         render json: team, status: :created
       elsif !create_modus && Team.find(params[:id])&.user_permissions(current_user)&.include?(:update_team) # update
-        # update
         team = Team.find(params[:id])
+        if params[:team][:cup_leagues].present?
+          valid_ids = League.where(game_operation_id: team.league.game_operation_id).pluck(:id)
+          invalid = Array(params[:team][:cup_leagues]).map(&:to_i) - valid_ids
+          return render json: { errors: ["Ungültige Liga-IDs: #{invalid.join(', ')}"] }, status: :unprocessable_entity if invalid.any?
+        end
         if team.update(team_params)
           render json: team
         else
@@ -263,6 +272,6 @@ class TeamsController < ApplicationController
 
   def team_params
     params.require(:team).permit(:club_id, :contact_email, :contact_person, :league_id, :name, :short_name, :syndicate,
-                                 syndicate_clubs: [])
+                                 syndicate_clubs: [], cup_leagues: [])
   end
 end

@@ -20,15 +20,15 @@ class Setting < ApplicationRecord
   end
 
   def self.current_min_league
-    @current_min_league ||= current_season['min_league_id'] || 0
+    current_season['min_league_id'] || 0
   end
 
   def self.current_min_team
-    @current_min_team ||= current_season['min_team_id'] || 0
+    current_season['min_team_id'] || 0
   end
 
   def self.seasons
-    @seasons ||= current.seasons.map do |k, v|
+    current.seasons.map do |k, v|
       { id: k.to_i, name: v['name'], current: (k.to_i == current_season_id) }
     end.reverse
   end
