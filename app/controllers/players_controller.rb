@@ -640,7 +640,36 @@ class PlayersController < ApplicationController
     render json: result
   end
 
+  # POST /admin/players/:id/deactivate
+  def deactivate
+    player = Player.find_by(id: params[:id])
+    return render json: { message: 'Spieler nicht gefunden.' }, status: :not_found unless player
+    return render json: { message: 'Spieler ist bereits deaktiviert.' }, status: :unprocessable_entity if player.deactivated_at.present?
+
+    ph = current_user.permission_hash
+    unless ph[:admin].present? || sbk_can_access_player?(ph, player)
+      return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+
+    player.deactivate!(current_user.id)
+    render json: player.full_hash(false, false, false)
+  end
+
   private
+
+  def sbk_can_access_player?(ph, player)
+    return false unless ph[:sbk].present?
+    return true if ph[:sbk].include?(0)
+
+    home_club_entry = player.clubs.find { |c| c['home_club'] == true }
+    return false unless home_club_entry
+
+    home_club = Club.find_by(id: home_club_entry['club_id'])
+    return false unless home_club
+
+    go_id = home_club.main_game_operation_id
+    ph[:sbk].include?(go_id)
+  end
 
   def set_player
     @player = Player.find(params[:id])
