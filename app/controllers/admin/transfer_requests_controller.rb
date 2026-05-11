@@ -225,7 +225,7 @@ module Admin
         return render json: { error: "Transfer wird erst am #{tr.effective_date.strftime('%d.%m.%Y')} wirksam" }, status: :unprocessable_entity
       end
 
-      tr.execute_transfer!
+      tr.execute_transfer!(current_user.id)
       render json: tr.as_json
     end
 
