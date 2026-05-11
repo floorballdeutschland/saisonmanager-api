@@ -1,0 +1,23 @@
+<h2>Transfer vollzogen</h2>
+
+<p>Hallo,</p>
+
+<p>
+  der folgende Transfer wurde vollzogen:
+</p>
+
+<p>
+  <strong>Spieler:</strong> <%= @transfer_request.player.first_name %> <%= @transfer_request.player.last_name %><br>
+  <strong>Von:</strong> <%= @transfer_request.former_club.name %><br>
+  <strong>Nach:</strong> <%= @transfer_request.requesting_club.name %>
+</p>
+
+<p>
+  Alle bestehenden Lizenzen des Spielers wurden auf „ungültig wg. Transfer" gesetzt.
+  Lizenzen für den neuen Verein können ab sofort beantragt werden.
+</p>
+
+<p>
+  Das Saisonmanager-Team<br>
+  <a href="https://saisonmanager.org">saisonmanager.org</a>
+</p>

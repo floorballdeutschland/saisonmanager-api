@@ -17,4 +17,35 @@
 </p>
 <% end %>
 
+<% if @game_url %>
+<p>
+  <strong>Spielverlauf:</strong>
+  <a href="<%= @game_url %>"><%= @game_url %></a>
+</p>
+<% end %>
+
+<% if @checklist_answers.any? %>
+<h3>Spieltagscheckliste</h3>
+<% if @checklist_all_ok %>
+<p>Alle Punkte wurden als erfüllt bestätigt.</p>
+<% else %>
+<p>Folgende Punkte wurden als <strong>nicht erfüllt</strong> angegeben:</p>
+<ul>
+  <% @checklist_failed_items.each do |item| %>
+  <li><%= item['question'] %></li>
+  <% end %>
+</ul>
+<% end %>
+<table style="border-collapse: collapse; width: 100%;">
+  <tbody>
+    <% @checklist_answers.each do |a| %>
+    <tr>
+      <td style="padding: 3px 8px;"><%= a['question'] %></td>
+      <td style="padding: 3px 8px; font-weight: bold; color: <%= a['answer'] ? '#2d6a2d' : '#b91c1c' %>;"><%= a['answer'] ? 'Ja' : 'Nein' %></td>
+    </tr>
+    <% end %>
+  </tbody>
+</table>
+<% end %>
+
 <p>Das Berichtsformular ist dieser E-Mail als Anhang beigefügt.</p>

@@ -54,11 +54,15 @@ class RefereeMailer < ApplicationMailer
     )
   end
 
-  def referee_report_to_vsk(vsk_email, uploader, game, report, referee1, referee2)
+  def referee_report_to_vsk(vsk_email, uploader, game, report, referee1, referee2, game_url: nil, checklist_answers: [])
     @uploader = uploader
     @game = game
     @referee1 = referee1
     @referee2 = referee2
+    @game_url = game_url
+    @checklist_answers = checklist_answers
+    @checklist_all_ok = checklist_answers.all? { |a| a['answer'] == true }
+    @checklist_failed_items = checklist_answers.select { |a| a['answer'] == false }
 
     if report.file.attached?
       blob = report.file.blob

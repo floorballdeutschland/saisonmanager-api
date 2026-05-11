@@ -24,6 +24,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ---
 
+## [1.7.0] - 2026-05-07
+
+### Neu
+- Vereinsinitiierter Transferprozess: VM des aufnehmenden Vereins kann einen Transferantrag per Spielersuche (Name + Geburtsdatum) stellen. Der abgebende Verein und anschließend der abgebende Landesverband (SBK) müssen bestätigen. Bei Vollzug werden alle Lizenzen auf „ungültig wg. Transfer" gesetzt, beide Vereine, der Spieler und die beteiligten SBKs per E-Mail informiert. Sekundäre Vereine (Zweitlizenzen/Freigaben) werden ebenfalls benachrichtigt.
+- Spielplan: Spiele können auf einen anderen Spieltag verschoben werden (#191)
+
+---
+
 ## [1.6.0] - 2026-05-06
 
 ### Neu

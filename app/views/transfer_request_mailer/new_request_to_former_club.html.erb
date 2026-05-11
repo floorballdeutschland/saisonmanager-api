@@ -1,0 +1,26 @@
+<h2>Neue Transferanfrage</h2>
+
+<p>Hallo,</p>
+
+<p>
+  der Verein <strong><%= @transfer_request.requesting_club.name %></strong> hat eine Transferanfrage
+  für den folgenden Spieler gestellt:
+</p>
+
+<p>
+  <strong><%= @transfer_request.player.first_name %> <%= @transfer_request.player.last_name %></strong><br>
+  Aktueller Verein: <strong><%= @transfer_request.former_club.name %></strong>
+</p>
+
+<p>
+  Bitte melde dich im Saisonmanager an, um die Anfrage zu bestätigen oder abzulehnen.
+</p>
+
+<p>
+  <a href="https://saisonmanager.org/verwaltung/transfer-anfragen">Zur Transferanfrage</a>
+</p>
+
+<p>
+  Das Saisonmanager-Team<br>
+  <a href="https://saisonmanager.org">saisonmanager.org</a>
+</p>

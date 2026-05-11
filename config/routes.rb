@@ -138,6 +138,9 @@ Rails.application.routes.draw do
 
       post 'user/games/:id/checklist_answers', to: 'games#set_checklist_answers'
 
+      get  'games/:id/checklist_veto', to: 'games#show_checklist_veto'
+      post 'games/:id/checklist_veto', to: 'games#submit_checklist_veto'
+
       get  'games/:game_id/referee_report', to: 'game_referee_reports#show'
       post 'games/:game_id/referee_report', to: 'game_referee_reports#create'
 
@@ -188,6 +191,16 @@ Rails.application.routes.draw do
         end
         resources :api_keys, only: %i[index create update destroy]
         resources :licenses, only: [:index]
+        resources :transfer_requests, only: %i[index create] do
+          collection { get :search_player }
+          member do
+            patch :approve_club
+            patch :reject_club
+            patch :approve_lv
+            patch :reject_lv
+            patch :execute
+          end
+        end
       end
 
       namespace :vm do
