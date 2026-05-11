@@ -9,9 +9,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.10.1] - 2026-05-11
+
 ### Behoben
 - Schiri-Link: Server-Fehler beim Generieren behoben (`name` → `fullname`)
-- Spielplan: Spiele mit `deletable?=true` konnten nicht gelöscht werden (falscher URL-Aufbau im Frontend)
+- Spielplan: Spiele konnten nicht gelöscht/gespeichert werden (URL-Bug durch falsche Operator-Precedenz)
+
+### Verbessert
+- Spielplan-Icons: Hover-Tooltips für alle Aktions-Buttons
+- Spielberichts-Scan: Einstellung von Verbands- auf Landesverbands-Ebene verschoben
+- Vereinsverwaltung: Hinweistext unter Kontakt-E-Mail entfernt
 
 ### Verbessert
 - Spielplan-Icons: Hover-Tooltips für alle Icon-Buttons
