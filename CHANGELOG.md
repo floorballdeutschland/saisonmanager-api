@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.9.0] - 2026-05-11
+
 ### Neu
 - Spielorte-Verwaltung: SBK und Admin können Spielorte selbst anlegen (`POST admin/arenas`) und bearbeiten (`PATCH admin/arenas/:id`); Pflichtfelder Name und Stadt; Duplikatswarnung bei gleicher Stadt+Name oder gleicher Adresse (überschreibbar) (#270)
 
