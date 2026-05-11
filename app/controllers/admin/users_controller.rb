@@ -2,6 +2,7 @@ module Admin
   class UsersController < ApplicationController
     before_action :authorize_user_management!
     before_action :set_managed_user, only: %i[show update trigger_password_reset]
+    before_action :require_sbk_or_admin!, only: %i[create]
 
     # GET /api/v2/admin/users
     def index
@@ -43,6 +44,34 @@ module Admin
       end
     end
 
+    # POST /api/v2/admin/users
+    def create
+      ph = current_user.permission_hash
+      role_id = params.dig(:role, :user_group_id).to_i
+      club_id = params.dig(:role, :club_id).to_i.nonzero?
+      go_id   = params.dig(:role, :game_operation_id).to_i.nonzero?
+
+      unless ph[:admin].present? || [4, 5].include?(role_id)
+        return render json: { error: 'SBK darf nur VM- und TM-Nutzer anlegen' }, status: :forbidden
+      end
+
+      user = User.new(user_create_params)
+      user.password = SecureRandom.hex(12)
+      user.club_id  = club_id if club_id
+
+      if user.save
+        perm = { 'user_group_id' => role_id }
+        perm['club_id']           = club_id.to_s if club_id
+        perm['game_operation_id'] = go_id.to_s   if go_id
+        user.permissions = [perm]
+        user.save!(validate: false)
+        user.send_reset_information
+        render json: user_json(user), status: :created
+      else
+        render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
+      end
+    end
+
     # POST /api/v2/admin/users/:id/trigger_password_reset
     def trigger_password_reset
       @managed_user.send_reset_information
@@ -75,6 +104,17 @@ module Admin
       return if ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
 
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
+    end
+
+    def require_sbk_or_admin!
+      ph = current_user.permission_hash
+      return if ph[:admin].present? || ph[:sbk].present?
+
+      render json: { error: 'Nicht berechtigt' }, status: :forbidden
+    end
+
+    def user_create_params
+      params.require(:user).permit(:user_name, :first_name, :last_name, :email)
     end
 
     def apply_role_change(user, new_role, ph)
@@ -134,6 +174,7 @@ module Admin
         email: user.email,
         club_id: user.club_id,
         active: user.active,
+        inactive: user.last_login_at.present? && user.last_login_at < 3.years.ago,
         last_login_at: user.last_login_at,
         created_at: user.created_at,
         updated_at: user.updated_at,

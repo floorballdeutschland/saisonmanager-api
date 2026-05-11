@@ -995,7 +995,7 @@ class GamesController < ApplicationController
 
   def _maybe_send_game_day_scan_reminder(game)
     game_day = game.game_day
-    return unless game_day.league.game_operation.scan_required?
+    return unless game_day.league.game_operation.state_association&.scan_required?
 
     all_closed = game_day.games.reload.all? do |g|
       %w[match_record_closed finalized].include?(g.game_status)

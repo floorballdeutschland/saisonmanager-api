@@ -203,10 +203,12 @@ Rails.application.routes.draw do
             patch :revoke
           end
         end
-        resources :users, only: %i[index show update] do
+        resources :users, only: %i[index show create update] do
           member { post :trigger_password_reset }
         end
         resources :arenas, only: %i[index create update]
+        get  'settings/seasons',        to: 'settings#seasons'
+        patch 'settings/current_season', to: 'settings#update_season'
       end
 
       namespace :vm do
