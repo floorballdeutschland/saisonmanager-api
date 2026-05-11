@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.8.0] - 2026-05-11
+
 ### Neu
 - Spielerfreigaben zurückziehen: SBK des abgebenden Landesverbands kann erteilte Spielerfreigaben pro Verein einzeln zurückziehen (PATCH `admin/transfer_requests/:id/revoke`). Beim Zurückziehen werden alle beantragten und erteilten Lizenzen des Spielers für Teams des freigegebenen Vereins auf „zurückgezogen" gesetzt, die Sekundärmitgliedschaft deaktiviert und Datum sowie Begründung für das Protokoll gespeichert. Der Datensatz bleibt erhalten und ist weiterhin einsehbar (#224)
 - Vereinsinitiierter Transferprozess: VM des aufnehmenden Vereins kann einen Transferantrag per Spielersuche (Name + Geburtsdatum) stellen. Der abgebende Verein und anschließend der abgebende Landesverband (SBK) müssen bestätigen. Bei Vollzug werden alle Lizenzen auf „ungültig wg. Transfer" gesetzt, beide Vereine, der Spieler und die beteiligten SBKs per E-Mail informiert. Sekundäre Vereine (Zweitlizenzen/Freigaben) werden ebenfalls benachrichtigt.
