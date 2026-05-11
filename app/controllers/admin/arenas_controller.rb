@@ -13,7 +13,7 @@ module Admin
       ph = current_user.permission_hash
       return render json: { error: 'Nicht berechtigt' }, status: :forbidden unless ph[:admin].present? || ph[:sbk].present?
 
-      unless params[:force].present?
+      unless ActiveModel::Type::Boolean.new.cast(params[:force])
         duplicates = find_duplicates
         if duplicates.any?
           return render json: { warning: 'Möglicherweise existiert bereits ein Spielort an dieser Adresse.',
