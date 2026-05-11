@@ -3,6 +3,9 @@ class Arena < ApplicationRecord
 
   scope :active, -> { where(disabled: false) }
 
+  validates :name, presence: true
+  validates :city, presence: true
+
   def address
     if street.present? || city.present?
       "#{street} #{housenumber}, #{postcode} #{city}"

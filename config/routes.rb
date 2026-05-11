@@ -206,6 +206,7 @@ Rails.application.routes.draw do
         resources :users, only: %i[index show update] do
           member { post :trigger_password_reset }
         end
+        resources :arenas, only: %i[index create update]
       end
 
       namespace :vm do
