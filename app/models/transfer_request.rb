@@ -126,7 +126,7 @@ class TransferRequest < ApplicationRecord
     team_ids = Team.where(club_id: requesting_club_id).pluck(:id).to_set
 
     player.licenses.each do |license|
-      next unless team_ids.include?(license['team_id'])
+      next unless team_ids.include?(license['team_id'].to_i)
 
       last_status = license['history']&.last&.dig('license_status_id').to_i
       next unless last_status.in?([License::APPROVED, License::REQUESTED])
