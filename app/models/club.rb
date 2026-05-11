@@ -13,7 +13,7 @@ class Club < ApplicationRecord
   end
 
   def players
-    p = Player.where("players.clubs @> '[{\"club_id\": ?}]'", id).order(:last_name, :first_name)
+    p = Player.active.where("players.clubs @> '[{\"club_id\": ?}]'", id).order(:last_name, :first_name)
     p.select do |pl|
       pl.clubs.map do |c|
         if c['club_id'] != id

@@ -16,8 +16,10 @@ class Player < ApplicationRecord
     gender == 'M'
   end
 
+  scope :active, -> { where(deactivated_at: nil) }
+
   def meta_hash
-    attributes.with_indifferent_access.slice(:id, :last_name, :first_name, :birthdate, :male, :gender, :security_id)
+    attributes.with_indifferent_access.slice(:id, :last_name, :first_name, :birthdate, :male, :gender, :security_id, :deactivated_at)
   end
 
   def search_hash
@@ -44,7 +46,8 @@ class Player < ApplicationRecord
       nation_string:,
       clubs:,
       security_id:,
-      email:
+      email:,
+      deactivated_at:
     }
 
     if with_licenses
@@ -324,6 +327,32 @@ class Player < ApplicationRecord
                       season_id: Setting.current_season_id
                     })
 
+    save!(validate: false)
+  end
+
+  def deactivate!(user_id)
+    clubs.map! do |c|
+      if c['valid_until'].nil? || c['valid_until'].to_time > Time.now
+        c['valid_until'] = Time.now
+        c['valid_set_by'] = user_id
+      end
+      c
+    end
+
+    licenses.each do |license|
+      last_status = license['history']&.last&.dig('license_status_id').to_i
+      next unless last_status.in?([License::APPROVED, License::REQUESTED])
+
+      license['history'] << {
+        'license_status_id' => License::DELETED,
+        'reason' => 'Vereinsaustritt',
+        'created_by' => user_id,
+        'created_at' => Time.now
+      }
+    end
+
+    self.deactivated_at = Time.current
+    self.deactivated_by = user_id
     save!(validate: false)
   end
 
