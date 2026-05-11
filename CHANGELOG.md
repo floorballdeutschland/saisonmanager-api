@@ -14,6 +14,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - Benutzerverwaltung: Inaktive Nutzer (kein Login seit > 3 Jahren) werden markiert (#255)
 - Team-Ligazuordnung: Teams können zusätzlichen Ligen desselben Verbandes zugewiesen werden (#253)
 - Saison-Wechsel: Admin kann die aktive Saison umstellen (neuer Endpunkt `PATCH admin/settings/current_season`)
+- Saison anlegen: Admin kann neue Saisons anlegen (neuer Endpunkt `POST admin/settings/seasons`)
 
 ---
 
