@@ -208,6 +208,7 @@ Rails.application.routes.draw do
         end
         resources :arenas, only: %i[index create update]
         get  'settings/seasons',        to: 'settings#seasons'
+        post 'settings/seasons',        to: 'settings#create_season'
         patch 'settings/current_season', to: 'settings#update_season'
       end
 
