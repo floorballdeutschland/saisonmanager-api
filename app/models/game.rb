@@ -504,7 +504,7 @@ class Game < ApplicationRecord
       game_operation_name: league.game_operation.name,
       game_operation_short_name: league.game_operation.short_name,
       game_operation_slug: league.game_operation.slug,
-      scan_required: league.game_operation.scan_required,
+      scan_required: league.game_operation.state_association&.scan_required || false,
       period_titles: league.period_titles,
       current_period_title:,
       arena: game_day.arena_id,

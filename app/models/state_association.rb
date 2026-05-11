@@ -12,6 +12,7 @@ class StateAssociation < ApplicationRecord
       id:,
       name:,
       short_name:,
+      scan_required:,
       vsk_email:,
       sbk_email:,
       checklist_items: checklist_items.map { |i| { id: i.id, question: i.question, position: i.position } }

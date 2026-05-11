@@ -14,7 +14,7 @@ class GameDaySecretaryLinksController < ApplicationController
       url: "#{frontend_base}/spielsekretariat/#{first_game&.id}?token=#{raw_token}",
       token: raw_token,
       expires_at: link.expires_at.iso8601,
-      created_by: current_user.name,
+      created_by: current_user.fullname,
       game_day_id: @game_day.id
     }, status: :created
   end
@@ -25,7 +25,7 @@ class GameDaySecretaryLinksController < ApplicationController
     if link
       render json: {
         expires_at: link.expires_at.iso8601,
-        created_by: link.created_by&.name
+        created_by: link.created_by&.fullname
       }
     else
       render json: { active: false }

@@ -47,7 +47,7 @@ module Admin
     end
 
     def state_association_params
-      params.require(:state_association).permit(:name, :short_name, :vsk_email, :sbk_email)
+      params.require(:state_association).permit(:name, :short_name, :vsk_email, :sbk_email, :scan_required)
     end
 
     def authorize_admin!

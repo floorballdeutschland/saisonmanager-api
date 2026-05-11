@@ -92,6 +92,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_15_140000) do
     t.string "path"
     t.string "logo_url"
     t.string "logo_quad_url"
+    t.integer "state_association_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
   end
@@ -277,6 +278,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_15_140000) do
   create_table "state_associations", force: :cascade do |t|
     t.string "name", null: false
     t.string "short_name"
+    t.boolean "scan_required", default: false, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
   end

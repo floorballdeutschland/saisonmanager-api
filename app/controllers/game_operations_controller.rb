@@ -71,6 +71,6 @@ class GameOperationsController < ApplicationController
   end
 
   def game_operation_admin_params
-    params.require(:game_operation).permit(:scan_required)
+    params.require(:game_operation).permit(:state_association_id)
   end
 end

@@ -1,5 +1,6 @@
 class GameOperation < ApplicationRecord
   has_many :leagues
+  belongs_to :state_association, optional: true
 
   default_scope { order(id: :asc) }
 
@@ -20,7 +21,7 @@ class GameOperation < ApplicationRecord
   end
 
   def meta_hash
-    hash = attributes.with_indifferent_access.slice(:id, :name, :short_name, :path, :logo_url, :logo_quad_url, :scan_required)
+    hash = attributes.with_indifferent_access.slice(:id, :name, :short_name, :path, :logo_url, :logo_quad_url, :state_association_id)
     hash[:path] = slug
     hash
   end
