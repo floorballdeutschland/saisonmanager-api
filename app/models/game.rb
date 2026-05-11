@@ -516,6 +516,7 @@ class Game < ApplicationRecord
       deletable: deletable?,
       notice_type:,
       notice_string:,
+      special_event_string:,
       referees:
     }
   end
@@ -542,7 +543,8 @@ class Game < ApplicationRecord
       guest_timeout_string:,
       time_keeper_string:,
       record_keeper_string:,
-      record_comment:
+      record_comment:,
+      special_event_string:
     }
   end
 

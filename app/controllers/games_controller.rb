@@ -896,7 +896,7 @@ class GamesController < ApplicationController
   def game_value_params
     params.require(:game).permit(:audience, :actual_start_time, :live_stream_link, :vod_link,
                                  :home_timeout_string, :guest_timeout_string,
-                                 :time_keeper_string, :record_keeper_string, :record_comment)
+                                 :time_keeper_string, :record_keeper_string, :record_comment, :special_event_string)
   end
 
   def game_create_update_params
