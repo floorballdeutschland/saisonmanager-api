@@ -198,6 +198,7 @@ Rails.application.routes.draw do
             patch :approve_lv
             patch :reject_lv
             patch :execute
+            patch :revoke
           end
         end
       end
