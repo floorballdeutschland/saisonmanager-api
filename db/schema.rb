@@ -157,6 +157,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_15_140000) do
     t.bigint "record_created_by"
     t.bigint "record_updated_by"
     t.integer "nominated_referee_ids", default: [], array: true
+    t.datetime "match_record_closed_at"
     t.index ["game_day_id"], name: "index_games_on_game_day_id"
   end
 

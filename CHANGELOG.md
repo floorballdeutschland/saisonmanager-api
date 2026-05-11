@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+- Spielbericht: SBK und Admin sehen Bearbeitungszeitpunkt und -person des Spielberichts (#272)
+- Spielbericht: Nachbearbeitungen nach Abschluss werden mit einem Hinweis angezeigt (#284)
+
 ---
 
 ## [1.9.0] - 2026-05-11

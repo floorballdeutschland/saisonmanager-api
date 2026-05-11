@@ -27,6 +27,19 @@ class GamesController < ApplicationController
     hash = game.full_hash
     hash[:permission] = game.user_permissions(current_user) if current_user
     hash.merge!(_checklist_hash(game)) if current_user || @secretary_link
+    if current_user
+      ph = current_user.permission_hash
+      go_id = game.game_day.league.game_operation_id.to_i
+      admin_or_sbk = ph[:admin].to_a.intersect?([0, go_id]) || ph[:sbk].to_a.intersect?([0, go_id])
+      if admin_or_sbk
+        hash[:record_updated_at] = game.record_updated_at
+        hash[:record_updated_by_name] = User.find_by(id: game.record_updated_by)&.fullname
+        hash[:post_submission_edited] = game.match_record_closed? &&
+                                        game.match_record_closed_at.present? &&
+                                        game.record_updated_at.present? &&
+                                        game.record_updated_at > game.match_record_closed_at
+      end
+    end
 
     respond_to do |format|
       format.json { render json: hash }
@@ -771,6 +784,9 @@ class GamesController < ApplicationController
         end
 
         game.game_status = params[:game_status]
+        if %w[match_record_closed finalized].include?(params[:game_status]) && game.match_record_closed_at.nil?
+          game.match_record_closed_at = Time.now
+        end
         game.save
 
         if params[:game_status] == 'match_record_closed'
