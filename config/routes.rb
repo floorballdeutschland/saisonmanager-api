@@ -202,6 +202,9 @@ Rails.application.routes.draw do
             patch :revoke
           end
         end
+        resources :users, only: %i[index show update] do
+          member { post :trigger_password_reset }
+        end
       end
 
       namespace :vm do
