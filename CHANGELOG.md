@@ -15,6 +15,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - Spielplan: Spiele können auf einen anderen Spieltag verschoben werden (#191)
 - Benutzerverwaltung (`GET/PATCH /api/v2/admin/users`, `POST /api/v2/admin/users/:id/trigger_password_reset`): Admin und SBK sehen alle Benutzer im eigenen Verband; VM sieht VM/TM des eigenen Vereins; Rollen-Toggle TM↔VM, Deaktivierung (nur SBK/Admin), Passwort-Reset-Mail ohne direktes Passwortsetzen (#197)
 - Spieler deaktivieren: SBK und Admin können Spieler bei Vereinsaustritt deaktivieren (`POST admin/players/:id/deactivate`). Deaktivierte Spieler erscheinen nicht mehr in der aktiven Spielerliste des Vereins, bleiben aber im System erhalten. Beim Deaktivieren werden alle aktiven Vereinsmitgliedschaften (`valid_until`) und APPROVED/REQUESTED-Lizenzen (→ `DELETED`) geschlossen. Die Aktion ist auf Spieler beschränkt, deren Heimverein im zuständigen Spielbetrieb der SBK liegt (#286)
+- Spielbericht: Freitext für besondere Ereignisse (Spielverzögerungen, technische Störungen etc.) erfassbar und öffentlich in den Spielinfos sichtbar (#199)
 
 ### Verbessert
 - Schiedsrichter-Ansetzung: Beim Veröffentlichen einer RSK-Ansetzung wird `nominated_referee_string` des Spiels automatisch mit den Namen der angesetzten Schiedsrichter überschrieben (Format: `"LIZENZNR NACHNAME, Vorname / LIZENZNR NACHNAME, Vorname"`)
