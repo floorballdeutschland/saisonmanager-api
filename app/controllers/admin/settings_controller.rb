@@ -21,10 +21,6 @@ module Admin
       setting.systems['1']['current_season_id'] = new_id
       setting.save!
 
-      Setting.instance_variable_set(:@current_min_league, nil)
-      Setting.instance_variable_set(:@current_min_team, nil)
-      Setting.instance_variable_set(:@seasons, nil)
-
       render json: { current_season_id: new_id }
     end
 

@@ -55,6 +55,10 @@ module Admin
         return render json: { error: 'SBK darf nur VM- und TM-Nutzer anlegen' }, status: :forbidden
       end
 
+      if [2, 3].include?(role_id) && !go_id
+        return render json: { error: 'Verbund muss für SBK/RSK angegeben werden' }, status: :unprocessable_entity
+      end
+
       if club_id && !ph[:admin].present?
         allowed = ph[:sbk].include?(0) ? Club.pluck(:id) : derive_club_ids_for_go(ph[:sbk])
         return render json: { error: 'Verein nicht im eigenen Zuständigkeitsbereich' }, status: :forbidden unless allowed.include?(club_id)

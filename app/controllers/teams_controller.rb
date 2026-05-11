@@ -214,7 +214,7 @@ class TeamsController < ApplicationController
       if create_modus && League.find(params[:league_id])&.game_operation&.user_permissions(current_user)&.include?(:create_team) # create
         if params[:team][:cup_leagues].present?
           valid_ids = League.where(game_operation_id: l.game_operation_id).pluck(:id)
-          invalid = params[:team][:cup_leagues].map(&:to_i) - valid_ids
+          invalid = Array(params[:team][:cup_leagues]).map(&:to_i) - valid_ids
           return render json: { errors: ["Ungültige Liga-IDs: #{invalid.join(', ')}"] }, status: :unprocessable_entity if invalid.any?
         end
 
@@ -226,7 +226,7 @@ class TeamsController < ApplicationController
         team = Team.find(params[:id])
         if params[:team][:cup_leagues].present?
           valid_ids = League.where(game_operation_id: team.league.game_operation_id).pluck(:id)
-          invalid = params[:team][:cup_leagues].map(&:to_i) - valid_ids
+          invalid = Array(params[:team][:cup_leagues]).map(&:to_i) - valid_ids
           return render json: { errors: ["Ungültige Liga-IDs: #{invalid.join(', ')}"] }, status: :unprocessable_entity if invalid.any?
         end
         if team.update(team_params)
