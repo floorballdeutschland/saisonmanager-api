@@ -1,0 +1,13 @@
+one:
+  lizenznummer: 10001
+  vorname: Max
+  nachname: Mustermann
+  email: max@example.com
+  lizenzstufe: A
+
+two:
+  lizenznummer: 10002
+  vorname: Lisa
+  nachname: Musterfrau
+  email: lisa@example.com
+  lizenzstufe: B
