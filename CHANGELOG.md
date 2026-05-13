@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.10.2] - 2026-05-13
+
 ### Behoben
 - Verband-Zuordnung: 500er wenn Session abgelaufen war (`game_operations#admin_update` fehlender `current_user`-Check)
 - Saison-Wechsel: `current_season_id` wurde durch JSONB-In-Place-Mutation nicht gespeichert
