@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+- Expresslizenzen: `express_license_enabled` wird jetzt korrekt aus der Landesverbands-Hierarchie abgeleitet und im Team-Lizenz-Endpunkt zurückgegeben; `express`-Flag wird beim Lizenzantrag gespeichert
+
 ### Verbessert
 - Vereinsansicht: `parent_id` in `StateAssociation#short_hash` ergänzt (für Sportverbund-Anzeige im Frontend)
 
