@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+- Landesverbände: Übergeordneter Verbund wird jetzt korrekt gespeichert und zurückgegeben (`parent_id` in Strong Params und `full_hash` ergänzt, Migration ausgeführt)
+
 ---
 
 ## [1.11.0] - 2026-05-13
