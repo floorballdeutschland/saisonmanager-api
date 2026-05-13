@@ -35,6 +35,37 @@ class LeagueTest < ActiveSupport::TestCase
     assert_equal l.draw_points, l.lost_overtime_points
   end
 
+  # Legacy-League-Zweig (league_system_id == 1 → 3-Punkte-System)
+  test 'won_points: legacy System 1 ergibt 3' do
+    l = League.new(legacy_league: true, league_system_id: '1')
+    assert_equal 3, l.won_points
+  end
+
+  test 'won_points: legacy anderes System ergibt 2' do
+    l = League.new(legacy_league: true, league_system_id: '2')
+    assert_equal 2, l.won_points
+  end
+
+  test 'draw_points: legacy System 1 ergibt 1' do
+    l = League.new(legacy_league: true, league_system_id: '1')
+    assert_equal 1, l.draw_points
+  end
+
+  test 'draw_points: legacy anderes System ergibt 0' do
+    l = League.new(legacy_league: true, league_system_id: '2')
+    assert_equal 0, l.draw_points
+  end
+
+  test 'won_overtime_points: legacy System 1 ergibt 2' do
+    l = League.new(legacy_league: true, league_system_id: '1')
+    assert_equal 2, l.won_overtime_points
+  end
+
+  test 'won_overtime_points: legacy anderes System ergibt 0' do
+    l = League.new(legacy_league: true, league_system_id: '2')
+    assert_equal 0, l.won_overtime_points
+  end
+
   # ---------------------------------------------------------------------------
   # evaluate_table_results (full object graph needed)
   # ---------------------------------------------------------------------------

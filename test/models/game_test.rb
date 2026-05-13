@@ -195,21 +195,24 @@ class GameTest < ActiveSupport::TestCase
   end
 
   test 'error_checker: error_result_not_increasing wenn Tore sinken' do
+    # Scores [2, 1]: strictly decreasing but never zero → only result_not_increasing fires
     events = [
-      { 'period' => 1, 'home_goals' => 1, 'guest_goals' => 0 },
-      { 'period' => 1, 'home_goals' => 0, 'guest_goals' => 0 } # sinkt → Fehler
+      { 'period' => 1, 'home_goals' => 2, 'guest_goals' => 0 },
+      { 'period' => 1, 'home_goals' => 1, 'guest_goals' => 0 }
     ]
     g = build_game(events: events)
     g.stub(:league, mock_league) do
       errors = g.error_checker
       assert errors.any? { |e| e[:key] == 'result_not_increasing' }
+      assert_not errors.any? { |e| e[:key] == 'result_zero_after_goals' }
     end
   end
 
   test 'error_checker: error_result_zero_after_goals wenn 0:0 nach Toren' do
+    # Scores [1, 0]: zero after non-zero. Also triggers result_not_increasing (inseparable).
     events = [
       { 'period' => 1, 'home_goals' => 1, 'guest_goals' => 0 },
-      { 'period' => 1, 'home_goals' => 0, 'guest_goals' => 0 } # 0:0 nach Tor → Fehler
+      { 'period' => 1, 'home_goals' => 0, 'guest_goals' => 0 }
     ]
     g = build_game(events: events)
     g.stub(:league, mock_league) do
