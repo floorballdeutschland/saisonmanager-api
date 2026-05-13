@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.11.0] - 2026-05-13
+
 ### Neu
 - Onlineprüfungen für Schiedsrichter: RSK kann Tests anlegen, Fragen (Szenario + Matrix) erfassen, SR manuell zuweisen und veröffentlichen; SR absolvieren Tests mit Countdown-Timer (max. 2 Versuche); Ergebnisse nach Deadline automatisch sichtbar
 
