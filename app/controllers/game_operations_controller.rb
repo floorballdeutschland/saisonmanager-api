@@ -49,30 +49,9 @@ class GameOperationsController < ApplicationController
     render json: GameOperation.where(id: go_ids).order(:id)
   end
 
-  def admin_update
-    return render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized unless current_user
-
-    ph = current_user.permission_hash
-    unless ph[:admin]&.include?(0)
-      return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
-    end
-
-    game_operation = GameOperation.find(params[:id])
-    if game_operation.update(game_operation_admin_params)
-      render json: game_operation.meta_hash
-    else
-      render json: { errors: game_operation.errors.full_messages }, status: :unprocessable_entity
-    end
-  end
-
   private
 
-  # Use callbacks to share common setup or constraints between actions.
   def set_game_operation
     @game_operation = GameOperation.find(params[:id])
-  end
-
-  def game_operation_admin_params
-    params.require(:game_operation).permit(:state_association_id)
   end
 end
