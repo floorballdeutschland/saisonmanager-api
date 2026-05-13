@@ -1,7 +1,205 @@
 require 'test_helper'
 
 class LeagueTest < ActiveSupport::TestCase
-  # test "the truth" do
-  #   assert true
-  # end
+  # ---------------------------------------------------------------------------
+  # Pure point calculation methods (no DB needed)
+  # ---------------------------------------------------------------------------
+
+  test 'won_points: classic Modus ergibt 3' do
+    l = League.new(table_modus: 'classic')
+    assert_equal 3, l.won_points
+  end
+
+  test 'won_points: non-classic Modus ergibt 10' do
+    l = League.new(table_modus: 'points10')
+    assert_equal 10, l.won_points
+  end
+
+  test 'draw_points: immer 1' do
+    assert_equal 1, League.new(table_modus: 'classic').draw_points
+    assert_equal 1, League.new(table_modus: 'points10').draw_points
+  end
+
+  test 'won_overtime_points: classic ergibt 2' do
+    l = League.new(table_modus: 'classic')
+    assert_equal 2, l.won_overtime_points
+  end
+
+  test 'won_overtime_points: non-classic ergibt 0' do
+    l = League.new(table_modus: 'points10')
+    assert_equal 0, l.won_overtime_points
+  end
+
+  test 'lost_overtime_points: gleich draw_points' do
+    l = League.new(table_modus: 'classic')
+    assert_equal l.draw_points, l.lost_overtime_points
+  end
+
+  # ---------------------------------------------------------------------------
+  # evaluate_table_results (full object graph needed)
+  # ---------------------------------------------------------------------------
+
+  def build_go
+    GameOperation.create!(name: 'Test GO', short_name: 'TGO')
+  end
+
+  def build_league(go)
+    League.create!(
+      game_operation: go,
+      name: 'Testliga',
+      season_id: '1',
+      table_modus: 'classic'
+    )
+  end
+
+  def build_club
+    Club.create!
+  end
+
+  def build_arena
+    Arena.create!(name: 'Testhalle', city: 'Teststadt')
+  end
+
+  def build_game_day(league, arena, club)
+    GameDay.create!(league: league, arena: arena, club: club, number: 1, date: '2025-01-01')
+  end
+
+  def build_team(league, club, name)
+    Team.create!(league: league, club: club, name: name)
+  end
+
+  def build_game(game_day, home_team, guest_team, attrs = {})
+    Game.create!({
+      game_day: game_day,
+      home_team: home_team,
+      guest_team: guest_team,
+      started: true,
+      ended: true,
+      forfait: 0,
+      overtime: false,
+      legacy: false,
+      events: []
+    }.merge(attrs))
+  end
+
+  test 'evaluate_table_results: Heimsieg ergibt 3 Punkte (classic)' do
+    go = build_go
+    league = build_league(go)
+    club = build_club
+    arena = build_arena
+    game_day = build_game_day(league, arena, club)
+    home = build_team(league, club, 'Heim')
+    guest = build_team(league, club, 'Gast')
+
+    events = [
+      { 'period' => 1, 'home_goals' => 1, 'guest_goals' => 0, 'row' => 1 }
+    ]
+    build_game(game_day, home, guest, events: events)
+
+    results = league.evaluate_table_results(league.games)
+    assert_equal 3, results[home.id][:points]
+    assert_equal 0, results[guest.id][:points]
+    assert_equal 1, results[home.id][:won]
+    assert_equal 1, results[guest.id][:lost]
+  end
+
+  test 'evaluate_table_results: Unentschieden ergibt je 1 Punkt' do
+    go = build_go
+    league = build_league(go)
+    club = build_club
+    arena = build_arena
+    game_day = build_game_day(league, arena, club)
+    home = build_team(league, club, 'Heim')
+    guest = build_team(league, club, 'Gast')
+
+    events = [
+      { 'period' => 1, 'home_goals' => 1, 'guest_goals' => 1, 'row' => 1 }
+    ]
+    build_game(game_day, home, guest, events: events)
+
+    results = league.evaluate_table_results(league.games)
+    assert_equal 1, results[home.id][:points]
+    assert_equal 1, results[guest.id][:points]
+    assert_equal 1, results[home.id][:draw]
+    assert_equal 1, results[guest.id][:draw]
+  end
+
+  test 'evaluate_table_results: OT-Sieg ergibt 2 Punkte für Sieger, 1 für Verlierer (classic)' do
+    go = build_go
+    league = build_league(go)
+    club = build_club
+    arena = build_arena
+    game_day = build_game_day(league, arena, club)
+    home = build_team(league, club, 'Heim')
+    guest = build_team(league, club, 'Gast')
+
+    events = [
+      { 'period' => 3, 'home_goals' => 2, 'guest_goals' => 1, 'row' => 1 }
+    ]
+    build_game(game_day, home, guest, events: events, overtime: true)
+
+    results = league.evaluate_table_results(league.games)
+    assert_equal 2, results[home.id][:points]
+    assert_equal 1, results[guest.id][:points]
+    assert_equal 1, results[home.id][:won_ot]
+    assert_equal 1, results[guest.id][:lost_ot]
+  end
+
+  test 'evaluate_table_results: Gaststieg ergibt korrekte Punkte' do
+    go = build_go
+    league = build_league(go)
+    club = build_club
+    arena = build_arena
+    game_day = build_game_day(league, arena, club)
+    home = build_team(league, club, 'Heim')
+    guest = build_team(league, club, 'Gast')
+
+    events = [
+      { 'period' => 1, 'home_goals' => 0, 'guest_goals' => 2, 'row' => 1 }
+    ]
+    build_game(game_day, home, guest, events: events)
+
+    results = league.evaluate_table_results(league.games)
+    assert_equal 0, results[home.id][:points]
+    assert_equal 3, results[guest.id][:points]
+  end
+
+  test 'table: Teams werden nach Punkten sortiert' do
+    go = build_go
+    league = build_league(go)
+    club = build_club
+    arena = build_arena
+    game_day = build_game_day(league, arena, club)
+    team_a = build_team(league, club, 'Team A')
+    team_b = build_team(league, club, 'Team B')
+
+    # Team A gewinnt 3:0
+    events = [{ 'period' => 1, 'home_goals' => 3, 'guest_goals' => 0, 'row' => 1 }]
+    build_game(game_day, team_a, team_b, events: events)
+
+    sorted = league.table
+    assert_equal 1, sorted.find { |r| r[:team_id] == team_a.id }[:position]
+    assert_equal 2, sorted.find { |r| r[:team_id] == team_b.id }[:position]
+  end
+
+  test 'table: Punktgleiche Teams erhalten gleiche Position' do
+    go = build_go
+    league = build_league(go)
+    club = build_club
+    arena = build_arena
+    game_day = build_game_day(league, arena, club)
+    team_a = build_team(league, club, 'Team A')
+    team_b = build_team(league, club, 'Team B')
+    team_c = build_team(league, club, 'Team C')
+
+    # Team A schlägt Team C, Team B schlägt Team C → A und B je 3 Punkte, C 0
+    events_1 = [{ 'period' => 1, 'home_goals' => 1, 'guest_goals' => 0, 'row' => 1 }]
+    build_game(game_day, team_a, team_c, events: events_1)
+    build_game(game_day, team_b, team_c, events: events_1)
+
+    sorted = league.table
+    a_pos = sorted.find { |r| r[:team_id] == team_a.id }[:position]
+    b_pos = sorted.find { |r| r[:team_id] == team_b.id }[:position]
+    assert_equal a_pos, b_pos
+  end
 end
