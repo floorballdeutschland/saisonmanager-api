@@ -129,40 +129,39 @@ class Club < ApplicationRecord
     perm = []
 
     go = main_game_operation_id
-
-    # we calculate the intersection between this and the users permissions
-    #  e.g. [0,1] & [0] => [0]
-    #  if we have a non empty array, the permission is present.
     global_or_go = [0, go]
+    ph = user.permission_hash
 
-    admin = user.permission_hash[:admin].present? && (global_or_go & user.permission_hash[:admin]).present?
-    sbk = user.permission_hash[:sbk].present? && (global_or_go & user.permission_hash[:sbk]).present?
-    rsk = user.permission_hash[:rsk].present? && (global_or_go & user.permission_hash[:rsk]).present?
+    admin = ph[:admin].present? && (global_or_go & ph[:admin]).any?
+    sbk = ph[:sbk].present? && (global_or_go & ph[:sbk]).any?
 
-    # # edit league
+    unless admin || sbk
+      user_go_ids = ((ph[:admin] || []) + (ph[:sbk] || [])).reject { |gid| gid == 0 }
+      if state_association_id.present? && user_go_ids.any?
+        sbk = StateAssociationRelease.exists?(
+          grantor_state_association_id: state_association_id,
+          recipient_game_operation_id: user_go_ids
+        )
+      end
+    end
+
     perm << :update_club if admin || sbk
-
-    # edit player
     perm << :update_player if admin || sbk
 
-    if admin || sbk || user.permission_hash[:vm].present? && user.permission_hash[:vm].include?(id)
+    if admin || sbk || ph[:vm].present? && ph[:vm].include?(id)
       perm << :create_player
     end
-    # perm << :delete_league if admin || sbk
 
     perm
   end
 
   def self.admin_user_clubs(user)
     result = []
-
-    # für jeden verband:
-    # name, id, kuerzel, ligen
     go_ids = []
-
-    # wenn admin oder sbk global: füge alle hinzu
     ph = user.permission_hash
-    if ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
+    global_access = ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
+
+    if global_access
       go_ids = GameOperation.all.pluck(:id)
     elsif ph[:admin].present? || ph[:sbk].present?
       go_ids << ph[:admin] if ph[:admin].present?
@@ -174,6 +173,26 @@ class Club < ApplicationRecord
       item = go.meta_hash
       item[:clubs] = go.clubs.map(&:full_hash)
       result << item
+    end
+
+    unless global_access
+      released_sa_ids = StateAssociationRelease
+        .where(recipient_game_operation_id: go_ids)
+        .pluck(:grantor_state_association_id)
+
+      StateAssociation.where(id: released_sa_ids).order(:name).each do |sa|
+        result << {
+          id: nil,
+          name: "#{sa.name} (freigegeben)",
+          short_name: sa.short_name,
+          path: nil,
+          logo_url: nil,
+          logo_quad_url: nil,
+          state_association_id: sa.id,
+          released: true,
+          clubs: Club.where(state_association_id: sa.id).order(:name).map(&:full_hash)
+        }
+      end
     end
 
     result
