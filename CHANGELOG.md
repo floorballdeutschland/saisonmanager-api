@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+- Vereinsansicht: `parent_id` in `StateAssociation#short_hash` ergänzt (für Sportverbund-Anzeige im Frontend)
+
 ### Behoben
 - Landesverbände: Übergeordneter Verbund wird jetzt korrekt gespeichert und zurückgegeben (`parent_id` in Strong Params und `full_hash` ergänzt, Migration ausgeführt)
 

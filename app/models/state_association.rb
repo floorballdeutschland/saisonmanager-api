@@ -6,7 +6,7 @@ class StateAssociation < ApplicationRecord
   validates :name, presence: true
 
   def short_hash
-    { id:, name:, short_name: }
+    { id:, name:, short_name:, parent_id: }
   end
 
   def full_hash
