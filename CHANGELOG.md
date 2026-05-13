@@ -11,6 +11,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ---
 
+## [1.10.3] - 2026-05-13
+
+### Entfernt
+- LV-Zuordnung je Verband (Dropdown auf Ligaverwaltungs-Seite und `PATCH admin/game_operations/:id`): `scan_required` wird künftig direkt in den Landesverband-Einstellungen konfiguriert
+
+---
+
 ## [1.10.2] - 2026-05-13
 
 ### Behoben
