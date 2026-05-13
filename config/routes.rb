@@ -168,6 +168,11 @@ Rails.application.routes.draw do
       get 'referees/search', to: 'referees#search'
       get 'referees/:id/games', to: 'referees#games'
 
+      get  'referee/online_tests',            to: 'referee_online_tests#index'
+      get  'referee/online_tests/:id',        to: 'referee_online_tests#show'
+      post 'referee/online_tests/:id/start',  to: 'referee_online_tests#start'
+      post 'referee/online_tests/:id/submit', to: 'referee_online_tests#submit'
+
       get 'referee/blocked_dates', to: 'referee_blocked_dates#index'
       post 'referee/blocked_dates', to: 'referee_blocked_dates#create'
       delete 'referee/blocked_dates/:id', to: 'referee_blocked_dates#destroy'
@@ -206,6 +211,14 @@ Rails.application.routes.draw do
           member { post :trigger_password_reset }
         end
         resources :arenas, only: %i[index create update]
+        resources :online_tests do
+          member do
+            post :publish
+            get  :results
+          end
+          resources :questions, controller: 'online_test_questions', only: %i[create update destroy]
+          resources :assignments, controller: 'online_test_assignments', only: %i[index create destroy]
+        end
         get  'settings/seasons',        to: 'settings#seasons'
         post 'settings/seasons',        to: 'settings#create_season'
         patch 'settings/current_season', to: 'settings#update_season'
