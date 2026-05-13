@@ -29,9 +29,9 @@ module Admin
         return render json: { error: 'Unbekannte Saison-ID' }, status: :unprocessable_entity
       end
 
-      setting.systems ||= {}
-      setting.systems['1'] ||= {}
-      setting.systems['1']['current_season_id'] = new_id
+      systems = (setting.systems || {}).dup
+      systems['1'] = (systems['1'] || {}).merge('current_season_id' => new_id)
+      setting.systems = systems
       setting.save!
 
       render json: { current_season_id: new_id }

@@ -50,6 +50,8 @@ class GameOperationsController < ApplicationController
   end
 
   def admin_update
+    return render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized unless current_user
+
     ph = current_user.permission_hash
     unless ph[:admin]&.include?(0)
       return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
