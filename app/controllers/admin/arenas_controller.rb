@@ -1,18 +1,13 @@
 module Admin
   class ArenasController < ApplicationController
     before_action :authenticate_user
+    before_action :authorize!
 
     def index
-      ph = current_user.permission_hash
-      return render json: { error: 'Nicht berechtigt' }, status: :forbidden unless ph[:admin].present? || ph[:sbk].present?
-
       render json: Arena.order(:city, :name).map(&:full_hash)
     end
 
     def create
-      ph = current_user.permission_hash
-      return render json: { error: 'Nicht berechtigt' }, status: :forbidden unless ph[:admin].present? || ph[:sbk].present?
-
       unless ActiveModel::Type::Boolean.new.cast(params[:force])
         duplicates = find_duplicates
         if duplicates.any?
@@ -30,9 +25,6 @@ module Admin
     end
 
     def update
-      ph = current_user.permission_hash
-      return render json: { error: 'Nicht berechtigt' }, status: :forbidden unless ph[:admin].present? || ph[:sbk].present?
-
       arena = Arena.find_by(id: params[:id])
       return render json: { error: 'Nicht gefunden' }, status: :not_found unless arena
 
@@ -43,10 +35,36 @@ module Admin
       end
     end
 
+    def destroy
+      arena = Arena.find_by(id: params[:id])
+      return render json: { error: 'Nicht gefunden' }, status: :not_found unless arena
+
+      current_season_id = Setting.current_season_id
+      used_in_season = arena.game_days
+                            .joins(:league)
+                            .where(leagues: { season_id: current_season_id })
+                            .exists?
+
+      if used_in_season
+        return render json: { error: 'Spielort wird in der aktuellen Saison verwendet und kann nicht gelöscht werden.' },
+                      status: :unprocessable_entity
+      end
+
+      arena.destroy
+      head :no_content
+    end
+
     private
 
+    def authorize!
+      ph = current_user.permission_hash
+      return if ph[:admin].present? || ph[:sbk].present?
+
+      render json: { error: 'Nicht berechtigt' }, status: :forbidden
+    end
+
     def arena_params
-      params.permit(:name, :city, :street, :housenumber, :postcode, :disabled)
+      params.permit(:name, :city, :street, :housenumber, :postcode)
     end
 
     def find_duplicates

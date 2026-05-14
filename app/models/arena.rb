@@ -1,7 +1,7 @@
 class Arena < ApplicationRecord
   has_many :game_days
 
-  scope :active, -> { where(disabled: false) }
+  scope :active, -> { where(active: true) }
 
   validates :name, presence: true
   validates :city, presence: true

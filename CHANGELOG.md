@@ -10,20 +10,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ## [Unreleased]
 
 ### Neu
-- Lizenz-Dokumente: VM/TM und SBK/Admin können Dokumente (Ausweiskopie, Elternzustimmung) pro Lizenz hochladen, einsehen und löschen (`LicenseDocument` mit Active Storage, #257/#258)
-
-
-- Freigaben: Landesverbände können Sportverbünden Lesezugriff auf ihre Vereine erteilen (`state_association_releases`). Freigegebene Vereine erscheinen in der Vereinsverwaltung des begünstigten Sportverbunds und können dort bearbeitet werden.
+- Spielorte: SBK und Admin können Spielorte löschen, sofern sie in der aktuellen Saison nicht verwendet werden
+- Spielorte: Duplikate (gleicher Name und gleiche Adresse) werden per Datenmigration bereinigt; Spieltage werden auf den meistgenutzten Eintrag umgezogen
 
 ### Behoben
-- Expresslizenzen: `express_license_enabled` wird jetzt korrekt aus der Landesverbands-Hierarchie abgeleitet und im Team-Lizenz-Endpunkt zurückgegeben; `express`-Flag wird beim Lizenzantrag gespeichert
-
-### Verbessert
-- Vereinsansicht: `parent_id` in `StateAssociation#short_hash` ergänzt (für Sportverbund-Anzeige im Frontend)
-- Spieler-Geschlecht: `male`-Boolean durch `gender` (M/W/D) ersetzt; bestehende Datensätze migriert; `male`-Spalte entfernt (#237)
-
-### Behoben
-- Landesverbände: Übergeordneter Verbund wird jetzt korrekt gespeichert und zurückgegeben (`parent_id` in Strong Params und `full_hash` ergänzt, Migration ausgeführt)
+- Spielorte: `disabled`-Feld entfernt; die Deaktivieren-Funktion wurde nie genutzt und wird nicht länger unterstützt
 
 ---
 

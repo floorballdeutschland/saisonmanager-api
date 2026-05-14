@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_05_19_100000) do
+ActiveRecord::Schema[7.0].define(version: 2026_05_20_200000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -61,7 +61,6 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_19_100000) do
     t.string "address"
     t.string "schedule_item"
     t.boolean "active", default: false
-    t.boolean "disabled", default: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
   end
@@ -253,11 +252,9 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_19_100000) do
     t.string "license_id", null: false
     t.string "document_type", null: false
     t.bigint "uploaded_by_id"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
+    t.datetime "created_at", precision: nil, null: false
+    t.datetime "updated_at", precision: nil, null: false
     t.index ["player_id", "license_id", "document_type"], name: "idx_license_documents_unique", unique: true
-    t.index ["player_id"], name: "index_license_documents_on_player_id"
-    t.index ["uploaded_by_id"], name: "index_license_documents_on_uploaded_by_id"
   end
 
   create_table "license_fee_calculations", force: :cascade do |t|
@@ -578,6 +575,8 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_19_100000) do
   add_foreign_key "game_scans", "users", column: "uploaded_by_id"
   add_foreign_key "games", "game_days"
   add_foreign_key "leagues", "game_operations"
+  add_foreign_key "license_documents", "players", name: "license_documents_player_id_fkey"
+  add_foreign_key "license_documents", "users", column: "uploaded_by_id", name: "license_documents_uploaded_by_id_fkey"
   add_foreign_key "online_test_assignments", "online_tests"
   add_foreign_key "online_test_assignments", "referees"
   add_foreign_key "online_test_attempts", "online_tests"
@@ -596,7 +595,5 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_19_100000) do
   add_foreign_key "transfer_requests", "clubs", column: "former_club_id"
   add_foreign_key "transfer_requests", "clubs", column: "requesting_club_id"
   add_foreign_key "transfer_requests", "players"
-  add_foreign_key "license_documents", "players"
-  add_foreign_key "license_documents", "users", column: "uploaded_by_id"
   add_foreign_key "users", "referees"
 end
