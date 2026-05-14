@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_05_17_100000) do
+ActiveRecord::Schema[7.0].define(version: 2026_05_18_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -246,6 +246,18 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_17_100000) do
     t.datetime "updated_at", null: false
     t.boolean "direct_comparison", default: false, null: false
     t.index ["game_operation_id"], name: "index_leagues_on_game_operation_id"
+  end
+
+  create_table "license_documents", force: :cascade do |t|
+    t.bigint "player_id", null: false
+    t.string "license_id", null: false
+    t.string "document_type", null: false
+    t.bigint "uploaded_by_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["player_id", "license_id", "document_type"], name: "idx_license_documents_unique", unique: true
+    t.index ["player_id"], name: "index_license_documents_on_player_id"
+    t.index ["uploaded_by_id"], name: "index_license_documents_on_uploaded_by_id"
   end
 
   create_table "license_fee_calculations", force: :cascade do |t|
@@ -584,5 +596,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_17_100000) do
   add_foreign_key "transfer_requests", "clubs", column: "former_club_id"
   add_foreign_key "transfer_requests", "clubs", column: "requesting_club_id"
   add_foreign_key "transfer_requests", "players"
+  add_foreign_key "license_documents", "players"
+  add_foreign_key "license_documents", "users", column: "uploaded_by_id"
   add_foreign_key "users", "referees"
 end

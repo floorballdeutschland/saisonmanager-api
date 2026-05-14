@@ -4,6 +4,8 @@ class Player < ApplicationRecord
   belongs_to :created_at_user, class_name: 'User', optional: true
   belongs_to :updated_at_user, class_name: 'User', optional: true
 
+  has_many :license_documents, dependent: :destroy
+
   validates :nation_id, presence: true
   validate :nation_id_is_positive, if: -> { nation_id.present? }
   validates :email, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true

@@ -26,6 +26,12 @@ module Admin
       team_club_map   = Team.where(league_id: leagues.map(&:id)).pluck(:id, :club_id).to_h
       clubs           = Club.where(id: team_club_map.values.uniq).index_by(&:id)
 
+      # Pre-load all license documents for players in these leagues (grouped by [player_id, license_id, doc_type])
+      all_player_ids = leagues.flat_map { |l| l.licenses(true, true).flat_map { |t| t[:players].map { |p| p[:id] } } }.uniq
+      license_docs_by_key = LicenseDocument.where(player_id: all_player_ids)
+                                           .includes(file_attachment: :blob)
+                                           .group_by { |d| [d.player_id, d.license_id, d.document_type] }
+
       result = []
       leagues.each do |league|
         game_op       = game_operations[league.game_operation_id]
@@ -72,7 +78,7 @@ module Admin
               express:              lic['express'] || false,
               requested_at:         player_data[:team_license][:requested_at],
               approved_at:          player_data[:team_license][:approved_at],
-              documents:            nil
+              documents:            documents_for(player_data[:id], lic['id'], license_docs_by_key)
             }
           end
         end
@@ -82,6 +88,17 @@ module Admin
     end
 
     private
+
+    def documents_for(player_id, license_id, docs_by_key)
+      id_copy_docs          = docs_by_key[[player_id, license_id, 'id_copy']]
+      parental_consent_docs = docs_by_key[[player_id, license_id, 'parental_consent']]
+      {
+        id_copy:          id_copy_docs.present?,
+        parental_consent: parental_consent_docs.present?,
+        id_copy_url:      id_copy_docs&.first&.then { |d| rails_blob_url(d.file, disposition: 'inline') if d.file.attached? },
+        parental_consent_url: parental_consent_docs&.first&.then { |d| rails_blob_url(d.file, disposition: 'inline') if d.file.attached? }
+      }
+    end
 
     def license_type(player_lics, current_lic, all_season_leagues, team_league_id_map)
       lics = Array(player_lics)

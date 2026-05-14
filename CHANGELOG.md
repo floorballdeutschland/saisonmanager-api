@@ -10,6 +10,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ## [Unreleased]
 
 ### Neu
+- Lizenz-Dokumente: VM/TM und SBK/Admin können Dokumente (Ausweiskopie, Elternzustimmung) pro Lizenz hochladen, einsehen und löschen (`LicenseDocument` mit Active Storage, #257/#258)
+
+
 - Freigaben: Landesverbände können Sportverbünden Lesezugriff auf ihre Vereine erteilen (`state_association_releases`). Freigegebene Vereine erscheinen in der Vereinsverwaltung des begünstigten Sportverbunds und können dort bearbeitet werden.
 
 ### Behoben

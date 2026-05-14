@@ -103,6 +103,11 @@ Rails.application.routes.draw do
 
       post 'admin/players/:id/handle_license_request', to: 'players#handle_license_request'
 
+      get    'admin/players/:player_id/license_documents',     to: 'admin/license_documents#index'
+      post   'admin/players/:player_id/license_documents',     to: 'admin/license_documents#create'
+      get    'admin/players/:player_id/license_documents/:id', to: 'admin/license_documents#show'
+      delete 'admin/players/:player_id/license_documents/:id', to: 'admin/license_documents#destroy'
+
       get 'admin/clubs/:club_id/players', to: 'players#admin_players_index'
       get 'admin/players/search', to: 'players#global_search'
       get 'admin/players/:id', to: 'players#admin_player'
