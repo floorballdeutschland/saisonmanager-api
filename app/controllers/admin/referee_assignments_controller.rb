@@ -33,6 +33,52 @@ module Admin
       render json: scope.map { |a| assignment_json(a) }
     end
 
+    # GET /api/v2/admin/referee_assignments/games?season_id=X&date_from=Y&date_to=Z
+    def games
+      ph = current_user.permission_hash
+      go_ids = ph[:admin].present? ? nil : (ph[:rsk] || [])
+
+      scope = Game.includes(
+        :home_team, :guest_team, :referee_assignment,
+        game_day: [:league, :arena, :club]
+      ).joins(game_day: :league)
+
+      unless go_ids.nil?
+        if go_ids.include?(0)
+          # global RSK access – no additional filter
+        else
+          scope = scope.where(leagues: { game_operation_id: go_ids })
+        end
+      end
+
+      scope = scope.where(leagues: { season_id: params[:season_id] }) if params[:season_id].present?
+
+      if params[:date_from].present?
+        scope = scope.where("TO_DATE(game_days.date, 'YYYY-MM-DD') >= ?", params[:date_from])
+      end
+      if params[:date_to].present?
+        scope = scope.where("TO_DATE(game_days.date, 'YYYY-MM-DD') <= ?", params[:date_to])
+      end
+
+      scope = scope.order("game_days.date ASC, games.start_time ASC NULLS LAST")
+
+      render json: scope.map { |g|
+        a = g.referee_assignment
+        {
+          id: g.id,
+          game_number: g.game_number,
+          date: g.game_day.date,
+          start_time: g.start_time,
+          home_team: g.home_team&.name,
+          guest_team: g.guest_team&.name,
+          league: g.game_day.league&.name,
+          arena: g.game_day.arena&.name,
+          assignment_id: a&.id,
+          assignment_status: a&.status
+        }
+      }
+    end
+
     # GET /api/v2/admin/referee_assignments/available?date=YYYY-MM-DD&game_id=X
     def available
       date = Date.parse(params[:date]) rescue nil

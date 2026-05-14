@@ -194,6 +194,7 @@ Rails.application.routes.draw do
           post :notify, on: :member
           post :publish, on: :member
           get :available, on: :collection
+          get :games, on: :collection
         end
         resources :state_associations, only: %i[index show create update destroy] do
           resources :checklist_items, only: %i[create update destroy],
