@@ -87,11 +87,11 @@ class Club < ApplicationRecord
   end
 
   def logo_url
-    Rails.application.routes.url_helpers.rails_blob_path(logo, only_path: true) if logo.present?
+    Rails.application.routes.url_helpers.rails_blob_path(logo, only_path: true) if logo.attached?
   end
 
   def logo_small_url
-    return nil unless logo.present?
+    return nil unless logo.attached?
 
     Rails.application.routes.url_helpers.rails_representation_path(
       logo.variant(resize_to_fit: [100, 100]),
@@ -199,7 +199,7 @@ class Club < ApplicationRecord
   end
 
   def add_logo(force = false)
-    return if !force && logo.present?
+    return if !force && logo.attached?
 
     dir = Dir["tmp/logovereine/#{id}*.png"]
     return unless dir.present?

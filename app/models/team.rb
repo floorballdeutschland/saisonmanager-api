@@ -41,13 +41,11 @@ class Team < ApplicationRecord
   end
 
   def logo_url
-    return Rails.application.routes.url_helpers.rails_blob_path(logo, only_path: true) if logo.present?
-    # return "https://www.saisonmanager.de/team_logos/#{team_logo_path}" if team_logo_path.present?
-    # "https://robohash.org/#{name.gsub(/\W/, '').downcase}"
+    Rails.application.routes.url_helpers.rails_blob_path(logo, only_path: true) if logo.attached?
   end
 
   def logo_small_url
-    return nil unless logo.present?
+    return nil unless logo.attached?
 
     Rails.application.routes.url_helpers.rails_representation_path(
       logo.variant(resize_to_fit: [100, 100]),
@@ -174,7 +172,7 @@ class Team < ApplicationRecord
   end
 
   def add_logo(force = false)
-    return if !force && logo.present?
+    return if !force && logo.attached?
 
     dir = Dir["tmp/logoteams/#{id}*.png"]
     return unless dir.present?

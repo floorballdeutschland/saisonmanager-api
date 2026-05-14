@@ -4,6 +4,6 @@ class StateAssociationsController < ApplicationController
 
   # GET /api/v2/state_associations
   def index
-    render json: StateAssociation.order(:name).map(&:short_hash)
+    render json: StateAssociation.with_attached_logo.order(:name).map(&:short_hash)
   end
 end

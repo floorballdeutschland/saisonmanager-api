@@ -5,7 +5,7 @@ module Admin
 
     # GET /api/v2/admin/state_associations
     def index
-      render json: StateAssociation.order(:name).map(&:short_hash)
+      render json: StateAssociation.with_attached_logo.order(:name).map(&:short_hash)
     end
 
     # GET /api/v2/admin/state_associations/:id
@@ -48,7 +48,7 @@ module Admin
 
     def state_association_params
       params.require(:state_association).permit(:name, :short_name, :vsk_email, :sbk_email, :scan_required,
-                                                :parent_id, :express_license_enabled)
+                                                :parent_id, :express_license_enabled, :logo)
     end
 
     def authorize_admin!
