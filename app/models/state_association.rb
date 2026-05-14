@@ -6,7 +6,7 @@ class StateAssociation < ApplicationRecord
   validates :name, presence: true
 
   def effective_express_license_enabled
-    parent_id? ? parent&.express_license_enabled : express_license_enabled
+    express_license_enabled || parent&.express_license_enabled
   end
 
   def short_hash
