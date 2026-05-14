@@ -1,0 +1,7 @@
+inherit_from: .rubocop_todo.yml
+
+AllCops:
+  NewCops: disable
+  Exclude:
+    - 'db/schema.rb'
+    - 'vendor/**/*'

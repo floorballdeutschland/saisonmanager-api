@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: saisonmanager
+          POSTGRES_PASSWORD: saisonmanager
+          POSTGRES_DB: saisonmanager-api_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      RAILS_ENV: test
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USERNAME: saisonmanager
+      DB_PASSWORD: saisonmanager
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2.4'
+          bundler-cache: true
+
+      - name: Create and migrate database
+        run: bundle exec rails db:create db:migrate
+
+      - name: Test
+        run: bundle exec rails test
+
+      - name: RuboCop
+        run: bundle exec rubocop --no-color
+        # --no-color for cleaner CI output
