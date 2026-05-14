@@ -193,6 +193,8 @@ Rails.application.routes.draw do
         resources :state_associations, only: %i[index show create update destroy] do
           resources :checklist_items, only: %i[create update destroy],
                                       controller: 'state_association_checklist_items'
+          resources :releases, only: %i[create destroy],
+                               controller: 'state_association_releases'
         end
         resources :api_keys, only: %i[index create update destroy]
         resources :licenses, only: [:index]

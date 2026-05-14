@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+- Freigaben: Landesverbände können Sportverbünden Lesezugriff auf ihre Vereine erteilen (`state_association_releases`). Freigegebene Vereine erscheinen in der Vereinsverwaltung des begünstigten Sportverbunds und können dort bearbeitet werden.
+
 ### Behoben
 - Expresslizenzen: `express_license_enabled` wird jetzt korrekt aus der Landesverbands-Hierarchie abgeleitet und im Team-Lizenz-Endpunkt zurückgegeben; `express`-Flag wird beim Lizenzantrag gespeichert
 
