@@ -1,5 +1,5 @@
 class TransferRequest < ApplicationRecord
-  STATUSES = %w[pending_club pending_lv scheduled approved rejected_by_club rejected_by_lv revoked].freeze
+  STATUSES = %w[pending_club pending_lv scheduled approved rejected_by_club rejected_by_lv revoked withdrawn].freeze
 
   belongs_to :player
   belongs_to :requesting_club, class_name: 'Club'

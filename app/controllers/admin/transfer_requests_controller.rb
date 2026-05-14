@@ -288,6 +288,24 @@ module Admin
       render json: tr.as_json
     end
 
+    # PATCH /api/v2/admin/transfer_requests/:id/withdraw
+    def withdraw
+      tr = find_transfer_request
+      return unless tr
+
+      unless %w[pending_club pending_lv].include?(tr.status)
+        return render json: { error: 'Ungültiger Status für diese Aktion' }, status: :unprocessable_entity
+      end
+
+      ph = current_user.permission_hash
+      unless ph[:admin].present? || ph[:vm]&.include?(tr.requesting_club_id)
+        return render json: { error: 'Nicht berechtigt' }, status: :forbidden
+      end
+
+      tr.update!(status: 'withdrawn')
+      render json: tr.as_json
+    end
+
     private
 
     def authorize_transfer_access!

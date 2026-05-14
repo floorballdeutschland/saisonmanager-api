@@ -213,6 +213,7 @@ Rails.application.routes.draw do
             patch :reject_lv
             patch :execute
             patch :revoke
+            patch :withdraw
           end
         end
         resources :users, only: %i[index show create update] do
