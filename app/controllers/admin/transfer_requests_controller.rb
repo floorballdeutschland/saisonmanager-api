@@ -194,7 +194,9 @@ module Admin
         return render json: { error: 'Nicht berechtigt' }, status: :forbidden
       end
 
-      if tr.effective_date.nil? || tr.effective_date <= Date.today
+      if tr.request_type == 'release'
+        tr.execute_release!(current_user.id)
+      elsif tr.effective_date.nil? || tr.effective_date <= Date.today
         tr.execute_transfer!(current_user.id)
       else
         tr.update!(
@@ -204,6 +206,33 @@ module Admin
         )
       end
 
+      render json: tr.as_json
+    end
+
+    # PATCH /api/v2/admin/transfer_requests/:id/revoke
+    def revoke
+      tr = find_transfer_request
+      return unless tr
+
+      unless tr.request_type == 'release'
+        return render json: { error: 'Nur Freigaben können zurückgezogen werden' }, status: :unprocessable_entity
+      end
+
+      unless tr.status == 'approved'
+        return render json: { error: 'Ungültiger Status für diese Aktion' }, status: :unprocessable_entity
+      end
+
+      ph = current_user.permission_hash
+      unless ph[:admin].present? || lv_authorized?(ph, tr)
+        return render json: { error: 'Nicht berechtigt' }, status: :forbidden
+      end
+
+      reason = params[:revocation_reason]&.strip
+      if reason.blank?
+        return render json: { error: 'Begründung ist erforderlich' }, status: :unprocessable_entity
+      end
+
+      tr.revoke_release!(current_user.id, reason)
       render json: tr.as_json
     end
 
