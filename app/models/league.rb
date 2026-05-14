@@ -156,7 +156,8 @@ class League < ApplicationRecord
       direct_comparison:,
       periods:,
       period_length:,
-      overtime_length:
+      overtime_length:,
+      required_documents: required_documents || []
     }
 
     result[:similar_leagues] = similar_leagues.map(&:full_hash) if include_similar_leagues

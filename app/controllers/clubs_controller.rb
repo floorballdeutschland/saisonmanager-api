@@ -75,6 +75,7 @@ class ClubsController < ApplicationController
       result[:is_buli] = leagues.any? { |l|
         Setting.current['league_classes']&.dig(l.league_class_id.to_s, 'isBuli') == true
       }
+      result[:required_documents] = leagues.flat_map { |l| l.required_documents || [] }.uniq
 
       clubs = Club.find(team.all_club_ids)
       all_players = clubs.map(&:players).flatten.compact
