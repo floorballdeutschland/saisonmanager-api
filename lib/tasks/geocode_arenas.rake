@@ -27,7 +27,9 @@ namespace :arenas do
     total = scope.count
     puts "#{dry_run ? '[DRY RUN] ' : ''}Geocoding #{total} arenas..."
 
-    found = 0; no_result = 0; errors = 0
+    found = 0
+    no_result = 0
+    errors = 0
 
     scope.find_each do |arena|
       city_hint = ArenaGeocoder.city_from_name(arena.name)
@@ -71,13 +73,17 @@ namespace :arenas do
 end
 
 module ArenaGeocoder
-  KNOWN_CITIES = %w[
-    Augsburg Aschersleben Bad\ Hersfeld Bad\ Langensalza Bad\ Wildungen Bautzen Berlin Bielefeld Bonn
-    Bochum Bremen Brunsbüttel Chemnitz Cottbus Dessau Döbeln Dresden Duisburg Düsseldorf Erfurt
-    Erlensee Espenau Frankfurt Freital Genthin Grimma Halle Hamburg Hannover Heidenau Heidelberg
-    Hoyerswerda Ingolstadt Jena Kaufering Kiel Köln Leipzig Lintorf Lübeck Magdeburg Mainz Marburg
-    München Münster Nürnberg Oldenburg Osnabrück Quedlinburg Regensburg Rosenheim Schkeuditz
-    Schleswig Schwerin Sömmerda Stuttgart Ulm Weißenfels Weimar Wernigerode Wolfsburg Zwickau
+  KNOWN_CITIES = [
+    'Augsburg', 'Aschersleben', 'Bad Hersfeld', 'Bad Langensalza', 'Bad Wildungen',
+    'Bautzen', 'Berlin', 'Bielefeld', 'Bochum', 'Bonn', 'Bremen', 'Brunsbüttel',
+    'Chemnitz', 'Cottbus', 'Dessau', 'Döbeln', 'Dresden', 'Duisburg', 'Düsseldorf',
+    'Erfurt', 'Erlensee', 'Espenau', 'Frankfurt', 'Freital', 'Genthin', 'Grimma',
+    'Halle', 'Hamburg', 'Hannover', 'Heidenau', 'Heidelberg', 'Hoyerswerda',
+    'Ingolstadt', 'Jena', 'Kaufering', 'Kiel', 'Köln', 'Leipzig', 'Lintorf',
+    'Lübeck', 'Magdeburg', 'Mainz', 'Marburg', 'München', 'Münster', 'Nürnberg',
+    'Oldenburg', 'Osnabrück', 'Quedlinburg', 'Regensburg', 'Rosenheim', 'Schkeuditz',
+    'Schleswig', 'Schwerin', 'Sömmerda', 'Stuttgart', 'Ulm', 'Weißenfels', 'Weimar',
+    'Wernigerode', 'Wolfsburg', 'Zwickau'
   ].freeze
 
   # "Leipzig (SSC)" → "Leipzig", "Hamburg, Sporthalle X" → "Hamburg"
@@ -106,6 +112,7 @@ module ArenaGeocoder
     queries.each do |params|
       result = nominatim_get(params)
       return result if result
+
       sleep 1
     end
     nil
