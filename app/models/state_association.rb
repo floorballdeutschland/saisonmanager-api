@@ -27,7 +27,7 @@ class StateAssociation < ApplicationRecord
       express_license_enabled:,
       children: children.order(:name).map(&:short_hash),
       checklist_items: checklist_items.map { |i| { id: i.id, question: i.question, position: i.position } },
-      releases: releases.map do |r|
+      releases: releases.includes(:recipient_game_operation).map do |r|
         {
           id: r.id,
           recipient_game_operation_id: r.recipient_game_operation_id,
