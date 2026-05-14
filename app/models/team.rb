@@ -41,9 +41,7 @@ class Team < ApplicationRecord
   end
 
   def logo_url
-    return Rails.application.routes.url_helpers.rails_blob_path(logo, only_path: true) if logo.present?
-    # return "https://www.saisonmanager.de/team_logos/#{team_logo_path}" if team_logo_path.present?
-    # "https://robohash.org/#{name.gsub(/\W/, '').downcase}"
+    Rails.application.routes.url_helpers.rails_blob_path(logo, only_path: true) if logo.present?
   end
 
   def logo_small_url
