@@ -2,6 +2,7 @@ module Admin
   class UsersController < ApplicationController
     before_action :authorize_user_management!
     before_action :set_managed_user, only: %i[show update trigger_password_reset]
+    before_action :require_admin_for_elevated_target!, only: %i[update trigger_password_reset]
     before_action :require_sbk_or_admin!, only: %i[create]
 
     # GET /api/v2/admin/users
@@ -95,11 +96,30 @@ module Admin
         User.all
       elsif ph[:sbk].present?
         club_ids = ph[:sbk].include?(0) ? Club.pluck(:id) : derive_club_ids_for_go(ph[:sbk])
-        User.where(club_id: club_ids)
+        club_user_ids = User.where(club_id: club_ids).pluck(:id)
+        lv_user_ids = lv_scoped_user_ids(ph[:sbk])
+        User.where(id: (club_user_ids + lv_user_ids).uniq)
       elsif ph[:vm].present?
         User.where(club_id: ph[:vm])
       else
         User.none
+      end
+    end
+
+    def lv_scoped_user_ids(go_ids)
+      if go_ids.include?(0)
+        User.where(
+          "permissions @> '[{\"user_group_id\": 2}]' OR permissions @> '[{\"user_group_id\": 3}]'"
+        ).pluck(:id)
+      else
+        conditions = go_ids.flat_map { |go_id|
+          gid = go_id.to_i
+          [
+            "permissions @> '[{\"user_group_id\": 2, \"game_operation_id\": \"#{gid}\"}]'",
+            "permissions @> '[{\"user_group_id\": 3, \"game_operation_id\": \"#{gid}\"}]'"
+          ]
+        }.join(' OR ')
+        User.where(conditions).pluck(:id)
       end
     end
 
@@ -113,6 +133,15 @@ module Admin
       return if ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
 
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
+    end
+
+    def require_admin_for_elevated_target!
+      return if current_user.permission_hash[:admin].present?
+
+      target_roles = @managed_user.permissions.map { |p| p['user_group_id'].to_i }
+      if (target_roles & [1, 2, 3]).any?
+        render json: { error: 'Nicht berechtigt' }, status: :forbidden
+      end
     end
 
     def require_sbk_or_admin!
