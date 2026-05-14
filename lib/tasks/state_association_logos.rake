@@ -1,5 +1,4 @@
 require 'open-uri'
-require 'net/http'
 
 namespace :state_associations do
   # Mapping: StateAssociation#name → logo URL
@@ -30,21 +29,28 @@ namespace :state_associations do
       end
 
       begin
-        filename = File.basename(URI.parse(url).path)
-        content_type = filename.end_with?('.png') ? 'image/png' : 'image/jpeg'
-        image_data = URI.open(url, 'User-Agent' => 'saisonmanager/1.0', read_timeout: 20, open_timeout: 10)
+        uri = URI.parse(url)
+        raise ArgumentError, "Unsafe URL scheme: #{uri.scheme}" unless %w[http https].include?(uri.scheme)
+
+        image_data = uri.open('User-Agent' => 'saisonmanager/1.0', read_timeout: 20, open_timeout: 10)
+        content_type = image_data.content_type.presence || 'image/png'
+        filename = File.basename(uri.path).presence || "logo-#{sa.id}.png"
+
         sa.logo.attach(io: image_data, filename: filename, content_type: content_type)
         puts "  OK – #{name}"
         imported += 1
-      rescue OpenURI::HTTPError, SocketError, Timeout::Error => e
-        puts "  ERROR – #{name}: #{e.message[0..80]}"
+      rescue StandardError => e
+        puts "  ERROR – #{name}: #{e.class} #{e.message[0..80]}"
         errors += 1
       end
     end
 
     puts "\nDone. Imported: #{imported}, Skipped: #{skipped}, Errors: #{errors}"
-    puts "\nNote: Most Landesverband logos are not yet available on floorball.de." if imported < LOGO_URL_MAPPING.size
-    puts "Add entries to LOGO_URL_MAPPING in lib/tasks/state_association_logos.rake as they become available."
+    if imported < LOGO_URL_MAPPING.size - skipped
+      puts "\nNote: Most Landesverband logos are not yet available on floorball.de."
+      puts "Add entries to LOGO_URL_MAPPING in lib/tasks/state_association_logos.rake as they become available."
+    end
+    exit(1) if errors.positive?
   end
 
   desc "Remove all logos from StateAssociation records (use before re-importing)"

@@ -5,7 +5,7 @@ module Admin
 
     # GET /api/v2/admin/state_associations
     def index
-      render json: StateAssociation.order(:name).map(&:short_hash)
+      render json: StateAssociation.with_attached_logo.order(:name).map(&:short_hash)
     end
 
     # GET /api/v2/admin/state_associations/:id

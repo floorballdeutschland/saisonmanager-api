@@ -652,7 +652,7 @@ class Game < ApplicationRecord
       hasEnded:,
       startingTime: start_time,
       date: game_day.date,
-      url: "https://saisonmanager.org"
+      url: "https://saisonmanager.org/spiel/#{id}"
     }
   end
 
