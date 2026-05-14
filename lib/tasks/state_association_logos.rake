@@ -1,20 +1,20 @@
 require 'open-uri'
 
-namespace :state_associations do
-  # Mapping: StateAssociation#name → logo URL
-  # Extend this list as more logos become available.
-  LOGO_URL_MAPPING = {
-    'Baden-Württemberg' => 'https://b3257445.smushcdn.com/3257445/wp-content/uploads/2022/05/FloorballBW2022-1024x296.png',
-    'Bayern'            => 'https://b3257445.smushcdn.com/3257445/wp-content/uploads/2022/03/floorballbayern_weissBlau-1024x349.png'
-  }.freeze
+# Mapping: StateAssociation#name → logo URL
+# Extend this list as more logos become available.
+STATE_ASSOCIATION_LOGO_URLS = {
+  'Baden-Württemberg' => 'https://b3257445.smushcdn.com/3257445/wp-content/uploads/2022/05/FloorballBW2022-1024x296.png',
+  'Bayern'            => 'https://b3257445.smushcdn.com/3257445/wp-content/uploads/2022/03/floorballbayern_weissBlau-1024x349.png'
+}.freeze
 
+namespace :state_associations do
   desc "Download and attach logos to StateAssociation records"
   task import_logos: :environment do
     imported = 0
     skipped  = 0
     errors   = 0
 
-    LOGO_URL_MAPPING.each do |name, url|
+    STATE_ASSOCIATION_LOGO_URLS.each do |name, url|
       sa = StateAssociation.find_by(name: name)
       unless sa
         puts "  SKIP – no StateAssociation found for '#{name}'"
@@ -46,9 +46,9 @@ namespace :state_associations do
     end
 
     puts "\nDone. Imported: #{imported}, Skipped: #{skipped}, Errors: #{errors}"
-    if imported < LOGO_URL_MAPPING.size - skipped
+    if imported < STATE_ASSOCIATION_LOGO_URLS.size - skipped
       puts "\nNote: Most Landesverband logos are not yet available on floorball.de."
-      puts "Add entries to LOGO_URL_MAPPING in lib/tasks/state_association_logos.rake as they become available."
+      puts "Add entries to STATE_ASSOCIATION_LOGO_URLS in lib/tasks/state_association_logos.rake as they become available."
     end
     exit(1) if errors.positive?
   end
