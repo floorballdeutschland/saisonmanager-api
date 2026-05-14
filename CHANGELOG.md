@@ -9,8 +9,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.12.0] - 2026-05-14
+
 ### Neu
-- GitHub Actions CI: RuboCop und Tests laufen automatisch bei jedem PR gegen main
+- GitHub Actions CI: RuboCop und Tests laufen automatisch bei jedem PR gegen main (API und Frontend)
+- Spielhistorie: Spielabschnitte ohne Ereignisse werden jetzt angezeigt; optionale Abschnitte (Verlängerung, Penalty-Schießen) erscheinen nur, wenn sie stattgefunden haben
 - Benutzerverwaltung: SBK-Benutzer sehen jetzt auch sich selbst sowie andere SBK- und RSK-Benutzer des gleichen Verbunds (nicht nur VM/TM)
 - Benutzerverwaltung: Rollenfilter im Frontend (Admin, SBK, RSK, VM, TM, Schiedsrichter)
 - Navigation: Menüeintrag „Lizenzwesen (Verband)" heißt jetzt „Lizenzverwaltung"
