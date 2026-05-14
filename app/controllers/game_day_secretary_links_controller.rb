@@ -8,10 +8,9 @@ class GameDaySecretaryLinksController < ApplicationController
     link, raw_token = GameDaySecretaryLink.generate!(game_day: @game_day, created_by: current_user)
 
     frontend_base = Rails.env.production? ? 'https://saisonmanager.org' : 'http://localhost:4200'
-    first_game = @game_day.games.order(:start_time).first
 
     render json: {
-      url: "#{frontend_base}/spielsekretariat/#{first_game&.id}?token=#{raw_token}",
+      url: "#{frontend_base}/spielsekretariat?token=#{raw_token}",
       token: raw_token,
       expires_at: link.expires_at.iso8601,
       created_by: current_user.fullname,
