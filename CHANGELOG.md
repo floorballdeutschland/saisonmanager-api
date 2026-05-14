@@ -10,6 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ## [Unreleased]
 
 ### Neu
+- Benutzerverwaltung: Vereinsmanager (VM) können Teammanager (TM) für ihren Verein anlegen und Teams zuweisen; Team-Zuweisung wird auf eigene Vereinsteams beschränkt
 - Landesverbände: Logo-Upload und -Auslieferung via ActiveStorage (`has_one_attached :logo`); `logo_url` in allen API-Responses
 - Rake-Task `state_associations:import_logos` lädt verfügbare Logos von floorball.de herunter
 - Ansetzungen: `GET /api/v2/admin/referee_assignments/games` liefert Spiele für RSK-Ansetzungen (mit Ansetzungsstatus falls vorhanden)

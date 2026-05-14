@@ -3,7 +3,6 @@ module Admin
     before_action :authorize_user_management!
     before_action :set_managed_user, only: %i[show update trigger_password_reset]
     before_action :require_admin_for_elevated_target!, only: %i[update trigger_password_reset]
-    before_action :require_sbk_or_admin!, only: %i[create]
 
     # GET /api/v2/admin/users
     def index
@@ -21,7 +20,15 @@ module Admin
       updates = {}
 
       updates[:email] = params[:email] if params.key?(:email)
-      updates[:teams] = params[:teams] if params.key?(:teams)
+
+      if params.key?(:teams)
+        if ph[:vm].present? && !ph[:admin].present? && !ph[:sbk].present?
+          allowed_team_ids = Team.current_season.where(club_id: ph[:vm]).pluck(:id)
+          updates[:teams] = Array(params[:teams]).map(&:to_i).select { |t| allowed_team_ids.include?(t) }
+        else
+          updates[:teams] = params[:teams]
+        end
+      end
 
       if params.key?(:active)
         unless ph[:admin].present? || ph[:sbk].present?
@@ -51,6 +58,33 @@ module Admin
       role_id = params.dig(:role, :user_group_id).to_i
       club_id = params.dig(:role, :club_id).to_i.nonzero?
       go_id   = params.dig(:role, :game_operation_id).to_i.nonzero?
+
+      if ph[:vm].present? && !ph[:admin].present? && !ph[:sbk].present?
+        return render json: { error: 'VM darf nur TM-Nutzer anlegen' }, status: :forbidden unless role_id == 5
+        return render json: { error: 'Verein nicht im eigenen Zuständigkeitsbereich' }, status: :forbidden unless club_id && ph[:vm].include?(club_id)
+
+        perm = { 'user_group_id' => 5 }
+        user = User.new(user_create_params)
+        user.password    = SecureRandom.hex(12)
+        user.club_id     = club_id
+        user.permissions = [perm]
+
+        if params[:teams].is_a?(Array)
+          allowed_team_ids = Team.current_season.where(club_id: ph[:vm]).pluck(:id)
+          user.teams = params[:teams].map(&:to_i).select { |t| allowed_team_ids.include?(t) }
+        end
+
+        if user.save
+          user.send_reset_information
+          return render json: user_json(user), status: :created
+        else
+          return render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
+        end
+      end
+
+      unless ph[:admin].present? || ph[:sbk].present?
+        return render json: { error: 'Nicht berechtigt' }, status: :forbidden
+      end
 
       unless ph[:admin].present? || [4, 5].include?(role_id)
         return render json: { error: 'SBK darf nur VM- und TM-Nutzer anlegen' }, status: :forbidden
