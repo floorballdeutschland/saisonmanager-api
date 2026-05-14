@@ -1,4 +1,4 @@
-class MigratePlayerGenderAndDropMale < ActiveRecord::Migration[7.1]
+class MigratePlayerGenderAndDropMale < ActiveRecord::Migration[7.0]
   def up
     execute <<~SQL
       UPDATE players
