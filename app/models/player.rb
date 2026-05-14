@@ -11,15 +11,10 @@ class Player < ApplicationRecord
   # wo kommt das her?
   # attr_accessor :hash, :prefix
 
-  # legacy to replace old db field
-  def male
-    gender == 'M'
-  end
-
   scope :active, -> { where(deactivated_at: nil) }
 
   def meta_hash
-    attributes.with_indifferent_access.slice(:id, :last_name, :first_name, :birthdate, :male, :gender, :security_id, :deactivated_at)
+    attributes.with_indifferent_access.slice(:id, :last_name, :first_name, :birthdate, :gender, :security_id, :deactivated_at)
   end
 
   def search_hash
@@ -40,7 +35,6 @@ class Player < ApplicationRecord
       last_name:,
       first_name:,
       birthdate:,
-      male:,
       gender:,
       nation_id:,
       nation_string:,
@@ -178,7 +172,6 @@ class Player < ApplicationRecord
                                         last_name:,
                                         first_name:,
                                         birthdate:,
-                                        male:,
                                         gender:,
                                         license_hash: sorted_licenses,
                                         license: license.to_json.to_s,

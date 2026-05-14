@@ -141,7 +141,7 @@ class LicenseFeeCalculation < ApplicationRecord
   end
 
   def table_fields
-    %w[id first_name last_name birthdate male home_club_id home_club home_club_operation home_club_state clubs club_ids
+    %w[id first_name last_name birthdate gender home_club_id home_club home_club_operation home_club_state clubs club_ids
        license_id team_id league_id league_class_id league_class league_category_id league_category license_clubs license_club license_club_state history]
   end
 end

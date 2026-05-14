@@ -11,7 +11,6 @@ json.updated_by_string @player.updated_by_string
 json.old_licenses_deleted_for_transfer @player.old_licenses_deleted_for_transfer
 json.licenses @player.licenses
 json.clubs @player.clubs
-json.male @player.male
 json.gender @player.gender
 json.nation_id @player.nation_id
 json.nation_string @player.nation_string

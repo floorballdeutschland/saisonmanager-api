@@ -286,7 +286,6 @@ players = players_data.map.with_index(1) do |pd, i|
     birthdate:  pd[:birthdate],
     nation_id:  pd[:nation_id],
     gender:     pd[:gender],
-    male:       pd[:gender] == 'M',
     clubs:      [{ 'club_id' => pd[:club].id, 'team_id' => pd[:team].id }],
     licenses: [
       {

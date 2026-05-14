@@ -101,7 +101,6 @@ class PlayersController < ApplicationController
         id: Digest::UUID.uuid_v4,
         team_id: team.id,
         league_class_id: league.league_class_id,
-        male: !league.female,
         express: params[:express] == true || params[:express] == 'true',
         history: [{
           license_status_id: License::REQUESTED,
@@ -677,6 +676,6 @@ class PlayersController < ApplicationController
   end
 
   def player_params
-    params.require(:player).permit(:birthdate, :first_name, :last_name, :male, :gender, :nation_id, :email)
+    params.require(:player).permit(:birthdate, :first_name, :last_name, :gender, :nation_id, :email)
   end
 end

@@ -181,7 +181,7 @@ namespace :import do
           db_mutex.synchronize do
             conn.execute(<<~SQL)
               INSERT INTO players (
-                id, last_name, first_name, birthdate, gender, male,
+                id, last_name, first_name, birthdate, gender,
                 nation_id, clubs, licenses,
                 security_id, created_at, updated_at
               ) VALUES (
@@ -190,7 +190,6 @@ namespace :import do
                 #{conn.quote(detail['first_name'].to_s)},
                 #{conn.quote(detail['birthdate'])},
                 #{conn.quote(gender)},
-                #{gender == 'M'},
                 #{conn.quote(detail['nation_id']&.to_s)},
                 #{conn.quote(clubs)}::jsonb,
                 #{conn.quote(licenses)}::jsonb,
@@ -202,7 +201,6 @@ namespace :import do
                 first_name  = EXCLUDED.first_name,
                 birthdate   = EXCLUDED.birthdate,
                 gender      = EXCLUDED.gender,
-                male        = EXCLUDED.male,
                 nation_id   = EXCLUDED.nation_id,
                 clubs       = EXCLUDED.clubs,
                 licenses    = EXCLUDED.licenses,

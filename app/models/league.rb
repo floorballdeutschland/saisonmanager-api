@@ -776,7 +776,6 @@ class League < ApplicationRecord
       team_licenses[team.id.to_s].each do |player|
         player.licenses.map! do |license|
           if license['team_id'] == team.id.to_s
-            license['male'] = !female
             license['league_category_id'] = league_category_id
             license['league_class_id'] = league_class_id
           end

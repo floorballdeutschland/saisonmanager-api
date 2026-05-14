@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_04_15_140000) do
+ActiveRecord::Schema[7.0].define(version: 2026_05_17_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -42,6 +42,16 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_15_140000) do
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
   end
 
+  create_table "api_keys", force: :cascade do |t|
+    t.string "name", null: false
+    t.string "key_digest", null: false
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.datetime "last_used_at"
+    t.index ["key_digest"], name: "index_api_keys_on_key_digest", unique: true
+  end
+
   create_table "arenas", force: :cascade do |t|
     t.string "name"
     t.string "city"
@@ -69,6 +79,19 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_15_140000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.integer "state_association_id"
+    t.string "contact_email"
+  end
+
+  create_table "game_day_secretary_links", force: :cascade do |t|
+    t.bigint "game_day_id", null: false
+    t.bigint "created_by_id", null: false
+    t.string "token_digest", null: false
+    t.datetime "expires_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_by_id"], name: "index_game_day_secretary_links_on_created_by_id"
+    t.index ["game_day_id"], name: "index_game_day_secretary_links_on_game_day_id"
+    t.index ["token_digest"], name: "index_game_day_secretary_links_on_token_digest", unique: true
   end
 
   create_table "game_days", force: :cascade do |t|
@@ -92,9 +115,29 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_15_140000) do
     t.string "path"
     t.string "logo_url"
     t.string "logo_quad_url"
-    t.integer "state_association_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "state_association_id"
+    t.index ["state_association_id"], name: "index_game_operations_on_state_association_id"
+  end
+
+  create_table "game_referee_reports", force: :cascade do |t|
+    t.bigint "game_id", null: false
+    t.bigint "uploaded_by_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["game_id"], name: "index_game_referee_reports_on_game_id", unique: true
+    t.index ["uploaded_by_id"], name: "index_game_referee_reports_on_uploaded_by_id"
+  end
+
+  create_table "game_scans", force: :cascade do |t|
+    t.bigint "game_id", null: false
+    t.bigint "uploaded_by_id"
+    t.datetime "expires_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["game_id"], name: "index_game_scans_on_game_id", unique: true
+    t.index ["uploaded_by_id"], name: "index_game_scans_on_uploaded_by_id"
   end
 
   create_table "games", force: :cascade do |t|
@@ -158,8 +201,17 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_15_140000) do
     t.bigint "record_created_by"
     t.bigint "record_updated_by"
     t.integer "nominated_referee_ids", default: [], array: true
+    t.jsonb "checklist_answers", default: []
+    t.string "checklist_veto_token_digest"
+    t.datetime "checklist_veto_submitted_at"
+    t.jsonb "checklist_veto_answers", default: []
+    t.text "special_event_string"
     t.datetime "match_record_closed_at"
+    t.index ["checklist_veto_token_digest"], name: "index_games_on_checklist_veto_token_digest", unique: true, where: "(checklist_veto_token_digest IS NOT NULL)"
     t.index ["game_day_id"], name: "index_games_on_game_day_id"
+    t.index ["guest_team_id"], name: "index_games_on_guest_team_id"
+    t.index ["home_team_id"], name: "index_games_on_home_team_id"
+    t.index ["referee_ids"], name: "index_games_on_referee_ids", using: :gin
   end
 
   create_table "leagues", force: :cascade do |t|
@@ -210,12 +262,64 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_15_140000) do
     t.string "filename_other_json"
   end
 
+  create_table "online_test_assignments", force: :cascade do |t|
+    t.bigint "online_test_id", null: false
+    t.bigint "referee_id", null: false
+    t.bigint "assigned_by"
+    t.datetime "assigned_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["online_test_id", "referee_id"], name: "index_online_test_assignments_on_online_test_id_and_referee_id", unique: true
+    t.index ["online_test_id"], name: "index_online_test_assignments_on_online_test_id"
+    t.index ["referee_id"], name: "index_online_test_assignments_on_referee_id"
+  end
+
+  create_table "online_test_attempts", force: :cascade do |t|
+    t.bigint "online_test_id", null: false
+    t.bigint "referee_id", null: false
+    t.integer "attempt_number", null: false
+    t.string "status", default: "in_progress", null: false
+    t.jsonb "answers", default: [], null: false
+    t.integer "error_points"
+    t.datetime "started_at", null: false
+    t.datetime "completed_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["online_test_id", "referee_id", "attempt_number"], name: "idx_online_test_attempts_unique", unique: true
+    t.index ["online_test_id"], name: "index_online_test_attempts_on_online_test_id"
+    t.index ["referee_id"], name: "index_online_test_attempts_on_referee_id"
+  end
+
+  create_table "online_test_questions", force: :cascade do |t|
+    t.bigint "online_test_id", null: false
+    t.integer "position", default: 0, null: false
+    t.text "scenario", null: false
+    t.jsonb "rows", default: [], null: false
+    t.jsonb "solution", default: [], null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["online_test_id", "position"], name: "index_online_test_questions_on_online_test_id_and_position"
+    t.index ["online_test_id"], name: "index_online_test_questions_on_online_test_id"
+  end
+
+  create_table "online_tests", force: :cascade do |t|
+    t.string "name", null: false
+    t.string "lizenzstufe"
+    t.integer "time_limit_minutes"
+    t.integer "max_attempts", default: 2, null: false
+    t.integer "pass_threshold_points"
+    t.datetime "deadline"
+    t.string "status", default: "draft", null: false
+    t.bigint "created_by"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+  end
+
   create_table "players", force: :cascade do |t|
     t.string "first_name"
     t.string "last_name"
     t.string "birthdate"
     t.string "gender"
-    t.boolean "male"
     t.string "nation_id"
     t.string "security_id"
     t.jsonb "clubs", default: []
@@ -225,6 +329,32 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_15_140000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.string "email"
+    t.datetime "deactivated_at"
+    t.integer "deactivated_by"
+    t.index ["deactivated_at"], name: "index_players_on_deactivated_at"
+  end
+
+  create_table "referee_assignments", force: :cascade do |t|
+    t.bigint "game_id", null: false
+    t.integer "referee1_id"
+    t.integer "referee2_id"
+    t.string "status", default: "tentative", null: false
+    t.datetime "notified_tentative_at"
+    t.datetime "published_at"
+    t.bigint "created_by"
+    t.bigint "updated_by"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["game_id"], name: "index_referee_assignments_on_game_id", unique: true
+  end
+
+  create_table "referee_blocked_dates", force: :cascade do |t|
+    t.bigint "referee_id", null: false
+    t.date "date", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["referee_id", "date"], name: "index_referee_blocked_dates_on_referee_id_and_date", unique: true
+    t.index ["referee_id"], name: "index_referee_blocked_dates_on_referee_id"
   end
 
   create_table "referee_calculations", force: :cascade do |t|
@@ -240,23 +370,48 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_15_140000) do
     t.datetime "updated_at", precision: nil, null: false
   end
 
+  create_table "referee_qualification_types", force: :cascade do |t|
+    t.string "name", null: false
+    t.string "short_name"
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["name"], name: "index_referee_qualification_types_on_name", unique: true
+  end
+
+  create_table "referee_qualifications", force: :cascade do |t|
+    t.bigint "referee_id", null: false
+    t.bigint "referee_qualification_type_id", null: false
+    t.date "valid_until"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["referee_id"], name: "index_referee_qualifications_on_referee_id"
+    t.index ["referee_qualification_type_id"], name: "index_referee_qualifications_on_referee_qualification_type_id"
+  end
+
   create_table "referees", force: :cascade do |t|
-    t.integer "lizenznummer", null: false
+    t.integer "lizenznummer"
     t.string "vorname", null: false
     t.string "nachname", null: false
     t.date "geburtsdatum"
     t.string "email"
-    t.string "verein"
-    t.string "landesverband"
     t.integer "game_operation_id"
     t.string "lizenzstufe"
     t.date "gueltigkeit"
-    t.string "zusatzqualifikation"
-    t.date "gueltigkeit_z"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.datetime "wallet_pass_issued_at"
+    t.string "wallet_pass_url"
+    t.string "strasse"
+    t.string "hausnummer"
+    t.string "plz"
+    t.string "ort"
+    t.integer "partner_lizenznummer"
+    t.boolean "guest", default: false, null: false
+    t.integer "club_id"
+    t.index ["club_id"], name: "index_referees_on_club_id"
     t.index ["game_operation_id"], name: "index_referees_on_game_operation_id"
-    t.index ["lizenznummer"], name: "index_referees_on_lizenznummer", unique: true
+    t.index ["lizenznummer"], name: "index_referees_on_lizenznummer", unique: true, where: "(lizenznummer IS NOT NULL)"
   end
 
   create_table "settings", force: :cascade do |t|
@@ -275,12 +430,37 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_15_140000) do
     t.datetime "updated_at", null: false
   end
 
+  create_table "state_association_checklist_items", force: :cascade do |t|
+    t.bigint "state_association_id", null: false
+    t.text "question", null: false
+    t.integer "position", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["state_association_id"], name: "index_state_association_checklist_items_on_state_association_id"
+  end
+
+  create_table "state_association_releases", force: :cascade do |t|
+    t.bigint "grantor_state_association_id", null: false
+    t.bigint "recipient_game_operation_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["grantor_state_association_id", "recipient_game_operation_id"], name: "index_sa_releases_on_grantor_and_recipient", unique: true
+    t.index ["grantor_state_association_id"], name: "index_sa_releases_on_grantor_id"
+    t.index ["recipient_game_operation_id"], name: "index_sa_releases_on_recipient_go_id"
+  end
+
   create_table "state_associations", force: :cascade do |t|
     t.string "name", null: false
     t.string "short_name"
-    t.boolean "scan_required", default: false, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "vsk_email"
+    t.string "sbk_email"
+    t.integer "parent_id"
+    t.boolean "express_license_enabled", default: false
+    t.boolean "require_paper_game_report", default: false
+    t.boolean "scan_required", default: false, null: false
+    t.index ["parent_id"], name: "index_state_associations_on_parent_id"
   end
 
   create_table "teams", force: :cascade do |t|
@@ -297,6 +477,35 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_15_140000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["club_id"], name: "index_teams_on_club_id"
+  end
+
+  create_table "transfer_requests", force: :cascade do |t|
+    t.bigint "player_id", null: false
+    t.bigint "requesting_club_id", null: false
+    t.bigint "former_club_id", null: false
+    t.string "status", default: "pending_club", null: false
+    t.integer "created_by", null: false
+    t.integer "approved_by_club_user_id"
+    t.datetime "club_approved_at"
+    t.integer "approved_by_lv_user_id"
+    t.datetime "lv_approved_at"
+    t.integer "rejected_by"
+    t.datetime "rejected_at"
+    t.text "rejection_reason"
+    t.integer "season_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.date "effective_date"
+    t.string "request_type", default: "transfer", null: false
+    t.integer "revoked_by"
+    t.datetime "revoked_at"
+    t.text "revocation_reason"
+    t.index ["former_club_id"], name: "index_transfer_requests_on_former_club_id"
+    t.index ["player_id"], name: "index_transfer_requests_on_player_id"
+    t.index ["player_id"], name: "index_transfer_requests_on_player_id_active", unique: true, where: "((status)::text = ANY ((ARRAY['pending_club'::character varying, 'pending_lv'::character varying])::text[]))"
+    t.index ["request_type"], name: "index_transfer_requests_on_request_type"
+    t.index ["requesting_club_id"], name: "index_transfer_requests_on_requesting_club_id"
+    t.index ["status"], name: "index_transfer_requests_on_status"
   end
 
   create_table "transfers", force: :cascade do |t|
@@ -328,6 +537,9 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_15_140000) do
     t.bigint "updated_by"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "referee_id"
+    t.index ["referee_id"], name: "index_users_on_referee_id"
+    t.index ["referee_id"], name: "index_users_on_referee_id_unique", unique: true, where: "(referee_id IS NOT NULL)"
     t.index ["user_name"], name: "index_users_on_user_name", unique: true
   end
 
@@ -343,10 +555,34 @@ ActiveRecord::Schema[7.0].define(version: 2026_04_15_140000) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "game_day_secretary_links", "game_days"
+  add_foreign_key "game_day_secretary_links", "users", column: "created_by_id"
   add_foreign_key "game_days", "arenas"
   add_foreign_key "game_days", "clubs"
   add_foreign_key "game_days", "leagues"
+  add_foreign_key "game_referee_reports", "games"
+  add_foreign_key "game_referee_reports", "users", column: "uploaded_by_id"
+  add_foreign_key "game_scans", "games"
+  add_foreign_key "game_scans", "users", column: "uploaded_by_id"
   add_foreign_key "games", "game_days"
   add_foreign_key "leagues", "game_operations"
+  add_foreign_key "online_test_assignments", "online_tests"
+  add_foreign_key "online_test_assignments", "referees"
+  add_foreign_key "online_test_attempts", "online_tests"
+  add_foreign_key "online_test_attempts", "referees"
+  add_foreign_key "online_test_questions", "online_tests"
+  add_foreign_key "referee_assignments", "games"
+  add_foreign_key "referee_assignments", "referees", column: "referee1_id"
+  add_foreign_key "referee_assignments", "referees", column: "referee2_id"
+  add_foreign_key "referee_blocked_dates", "referees"
+  add_foreign_key "referee_qualifications", "referee_qualification_types"
+  add_foreign_key "referee_qualifications", "referees"
+  add_foreign_key "state_association_checklist_items", "state_associations"
+  add_foreign_key "state_association_releases", "game_operations", column: "recipient_game_operation_id"
+  add_foreign_key "state_association_releases", "state_associations", column: "grantor_state_association_id"
   add_foreign_key "teams", "clubs"
+  add_foreign_key "transfer_requests", "clubs", column: "former_club_id"
+  add_foreign_key "transfer_requests", "clubs", column: "requesting_club_id"
+  add_foreign_key "transfer_requests", "players"
+  add_foreign_key "users", "referees"
 end
