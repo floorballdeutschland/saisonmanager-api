@@ -1,12 +1,14 @@
 module Admin
   class RefereesController < ApplicationController
-    before_action :authorize_rsk!
+    before_action :authorize_referee_access!
     before_action :set_referee, only: %i[show update destroy games wallet_pass club_stats]
 
     # GET /api/v2/admin/referees
     def index
       referees = Referee.includes(club: :state_association,
                                   referee_qualifications: :referee_qualification_type)
+
+      referees = scope_to_permitted_referees(referees)
 
       referees = referees.search(params[:q]) if params[:q].present?
       referees = referees.by_landesverband(params[:landesverband]) if params[:landesverband].present?
@@ -20,15 +22,20 @@ module Admin
 
     # GET /api/v2/admin/referees/:id
     def show
+      return forbidden_response unless can_access_referee?(@referee)
+
       render json: referee_json(@referee, full: true)
     end
 
     # POST /api/v2/admin/referees
     def create
-      referee = Referee.new(referee_params)
+      return forbidden_response unless can_create_referee?
+
+      referee = Referee.new(safe_referee_params)
+      referee.game_operation_id = assigned_game_operation_id if restricted_user? && referee.game_operation_id.blank?
 
       if referee.save
-        sync_qualifications(referee)
+        sync_qualifications(referee) if can_edit_full?
         if referee.email.present? && referee.lizenznummer.present? && !referee.guest?
           RefereeMailer.license_notification(referee, action: :created).deliver_later
         end
@@ -40,12 +47,14 @@ module Admin
 
     # PUT /api/v2/admin/referees/:id
     def update
-      @referee.assign_attributes(referee_params)
+      return forbidden_response unless can_access_referee?(@referee)
+
+      @referee.assign_attributes(safe_referee_params)
       license_fields_changed = (@referee.changed & %w[lizenznummer gueltigkeit lizenzstufe]).any?
       notify = @referee.email.present? && license_fields_changed && !@referee.guest?
 
       if @referee.save
-        sync_qualifications(@referee)
+        sync_qualifications(@referee) if can_edit_full?
         RefereeMailer.license_notification(@referee, action: :updated).deliver_later if notify
         render json: referee_json(@referee.reload, full: true)
       else
@@ -55,12 +64,16 @@ module Admin
 
     # DELETE /api/v2/admin/referees/:id
     def destroy
+      return forbidden_response unless can_edit_full?
+
       @referee.destroy
       head :no_content
     end
 
     # POST /api/v2/admin/referees/:id/wallet_pass
     def wallet_pass
+      return forbidden_response unless can_access_referee?(@referee)
+
       result = PassmeisterService.create_or_update_pass(@referee)
       pass_url = result['passUrl'] || result['url'] || result['passDownloadUrl']
 
@@ -76,6 +89,8 @@ module Admin
 
     # GET /api/v2/admin/referees/:id/games
     def games
+      return forbidden_response unless can_access_referee?(@referee)
+
       season_id = params[:season_id]
       games = @referee.games(season_id: season_id)
                       .includes(:home_team, :guest_team, game_day: :league)
@@ -87,6 +102,8 @@ module Admin
 
     # GET /api/v2/admin/referees/:id/club_stats
     def club_stats
+      return forbidden_response unless can_access_referee?(@referee)
+
       season_id = params[:season_id]
 
       games = @referee.games(season_id: season_id)
@@ -119,6 +136,8 @@ module Admin
 
     # GET /api/v2/admin/referees/incorrect_assignments
     def incorrect_assignments
+      return forbidden_response unless can_edit_full?
+
       season_id = params[:season_id] || Setting.current_season_id
       games = Referee.incorrect_assignments(season_id: season_id)
 
@@ -142,6 +161,17 @@ module Admin
         :lizenzstufe, :gueltigkeit,
         :strasse, :hausnummer, :plz, :ort, :partner_lizenznummer, :guest
       )
+    end
+
+    def restricted_referee_params
+      params.require(:referee).permit(
+        :vorname, :nachname, :geburtsdatum, :email,
+        :strasse, :hausnummer, :plz, :ort, :partner_lizenznummer, :guest
+      )
+    end
+
+    def safe_referee_params
+      can_edit_full? ? referee_params : restricted_referee_params
     end
 
     def sync_qualifications(referee)
@@ -168,12 +198,73 @@ module Admin
       end
     end
 
-    def authorize_rsk!
+    def authorize_referee_access!
       ph = current_user.permission_hash
       return if ph[:admin].present?
       return if ph[:rsk].present?
+      return if ph[:sbk].present?
+      return if ph[:vm].present?
 
+      forbidden_response
+    end
+
+    def forbidden_response
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
+    end
+
+    def scope_to_permitted_referees(referees)
+      ph = current_user.permission_hash
+      return referees if ph[:admin].present?
+      return referees if ph[:rsk].present? && ph[:rsk].include?(0)
+
+      if ph[:rsk].present? || ph[:sbk].present?
+        referees.where(club_id: lv_club_ids(ph))
+      elsif ph[:vm].present?
+        referees.where(club_id: ph[:vm])
+      else
+        referees.none
+      end
+    end
+
+    def can_access_referee?(referee)
+      ph = current_user.permission_hash
+      return true if ph[:admin].present?
+      return true if ph[:rsk].present? && ph[:rsk].include?(0)
+
+      if ph[:rsk].present? || ph[:sbk].present?
+        lv_club_ids(ph).include?(referee.club_id)
+      elsif ph[:vm].present?
+        ph[:vm].include?(referee.club_id)
+      else
+        false
+      end
+    end
+
+    # Returns club IDs belonging to the LVs associated with the user's go_ids.
+    def lv_club_ids(ph)
+      go_ids = ((ph[:rsk] || []) + (ph[:sbk] || [])).reject { |id| id.zero? }.uniq
+      sa_ids = GameOperation.where(id: go_ids).pluck(:state_association_id).compact
+      Club.where(state_association_id: sa_ids).pluck(:id)
+    end
+
+    def can_create_referee?
+      ph = current_user.permission_hash
+      ph[:admin].present? || ph[:rsk].present?
+    end
+
+    def can_edit_full?
+      ph = current_user.permission_hash
+      ph[:admin].present? || (ph[:rsk].present? && ph[:rsk].include?(0))
+    end
+
+    def restricted_user?
+      !can_edit_full?
+    end
+
+    # Returns the single go_id for an LV-RSK user (used to auto-assign on create)
+    def assigned_game_operation_id
+      ph = current_user.permission_hash
+      ph[:rsk]&.reject { |id| id.zero? }&.first
     end
 
     def referee_json(referee, full: false)
