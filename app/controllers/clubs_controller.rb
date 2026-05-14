@@ -69,6 +69,10 @@ class ClubsController < ApplicationController
 
       result[:team] = team.full_hash
 
+      primary_club = Club.find(team.club_id)
+      sa = primary_club.state_association
+      result[:express_license_enabled] = sa ? sa.effective_express_license_enabled : false
+
       clubs = Club.find(team.all_club_ids)
       all_players = clubs.map(&:players).flatten.compact
 

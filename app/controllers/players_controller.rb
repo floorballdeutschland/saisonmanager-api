@@ -102,6 +102,7 @@ class PlayersController < ApplicationController
         team_id: team.id,
         league_class_id: league.league_class_id,
         male: !league.female,
+        express: params[:express] == true || params[:express] == 'true',
         history: [{
           license_status_id: License::REQUESTED,
           created_by: current_user.id,
