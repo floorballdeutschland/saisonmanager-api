@@ -20,7 +20,7 @@ require 'uri'
 #   rails arenas:geocode[force,dry_run]      # re-geocode all, print only
 namespace :arenas do
   desc "Geocode arenas via OpenStreetMap Nominatim"
-  task :geocode, [:mode, :mode2] => :environment do |_, args|
+  task :geocode, %i[mode mode2] => :environment do |_, args|
     modes   = [args[:mode].to_s, args[:mode2].to_s]
     force   = modes.include?('force')
     dry_run = modes.include?('dry_run')
