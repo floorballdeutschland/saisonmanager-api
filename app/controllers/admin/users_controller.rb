@@ -95,7 +95,17 @@ module Admin
         User.all
       elsif ph[:sbk].present?
         club_ids = ph[:sbk].include?(0) ? Club.pluck(:id) : derive_club_ids_for_go(ph[:sbk])
-        User.where(club_id: club_ids)
+        club_user_ids = User.where(club_id: club_ids).pluck(:id)
+
+        # Also include SBK/RSK users (no club_id) scoped to the same game operations
+        lv_user_ids = User.all.select { |u|
+          u.permissions.any? { |p|
+            [2, 3].include?(p['user_group_id'].to_i) &&
+              (ph[:sbk].include?(0) || ph[:sbk].include?(p['game_operation_id'].to_i))
+          }
+        }.map(&:id)
+
+        User.where(id: (club_user_ids + lv_user_ids).uniq)
       elsif ph[:vm].present?
         User.where(club_id: ph[:vm])
       else
