@@ -48,3 +48,4 @@ jobs:
 
       - name: RuboCop
         run: bundle exec rubocop --no-color
+        # --no-color for cleaner CI output
