@@ -72,6 +72,9 @@ class ClubsController < ApplicationController
       primary_club = Club.find(team.club_id)
       sa = primary_club.state_association
       result[:express_license_enabled] = sa ? sa.effective_express_license_enabled : false
+      result[:is_buli] = leagues.any? { |l|
+        Setting.current['league_classes']&.dig(l.league_class_id.to_s, 'isBuli') == true
+      }
 
       clubs = Club.find(team.all_club_ids)
       all_players = clubs.map(&:players).flatten.compact

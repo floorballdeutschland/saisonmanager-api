@@ -85,6 +85,14 @@ class PlayersController < ApplicationController
 
     return render json: { message: 'Keine Berechtigung für dieses Team!' }, status: :forbidden unless allowed
 
+    guardian_email   = params[:guardian_email].is_a?(String) ? params[:guardian_email].presence : nil
+    minor_consent_at = params[:minor_consent_at].is_a?(String) ? params[:minor_consent_at].presence : nil
+
+    if guardian_email && !URI::MailTo::EMAIL_REGEXP.match?(guardian_email)
+      return render json: { message: 'Ungültige E-Mail-Adresse der gesetzlichen Vertretung.' },
+                    status: :unprocessable_entity
+    end
+
     result = :ok
     player = nil
 
@@ -108,6 +116,8 @@ class PlayersController < ApplicationController
           created_at: Time.now
         }]
       }
+      new_license[:guardian_email]   = guardian_email   if guardian_email
+      new_license[:minor_consent_at] = minor_consent_at if minor_consent_at
       player.licenses << new_license
 
       result = :save_failed unless player.save

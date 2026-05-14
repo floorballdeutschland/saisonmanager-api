@@ -12,6 +12,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Neu
 - Spielorte: SBK und Admin können Spielorte löschen, sofern sie in der aktuellen Saison nicht verwendet werden
 - Spielorte: Duplikate (gleicher Name und gleiche Adresse) werden per Datenmigration bereinigt; Spieltage werden auf den meistgenutzten Eintrag umgezogen
+- Datenschutz: Bei Bundesliga-Teams enthält die Lizenz-Hash-Response `is_buli`; bei minderjährigen Spieler*innen werden `guardian_email` und `minor_consent_at` im Lizenzantrag gespeichert (§ 4.12 SPO / Art. 13 DSGVO)
 
 ### Behoben
 - Spielorte: `disabled`-Feld entfernt; die Deaktivieren-Funktion wurde nie genutzt und wird nicht länger unterstützt
