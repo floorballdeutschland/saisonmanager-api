@@ -1,8 +1,10 @@
 class CreateStateAssociationReleases < ActiveRecord::Migration[7.0]
   def change
     create_table :state_association_releases do |t|
-      t.references :grantor_state_association, null: false, foreign_key: { to_table: :state_associations }
-      t.references :recipient_game_operation, null: false, foreign_key: { to_table: :game_operations }
+      t.references :grantor_state_association, null: false, foreign_key: { to_table: :state_associations },
+                                              index: { name: 'index_sa_releases_on_grantor_id' }
+      t.references :recipient_game_operation, null: false, foreign_key: { to_table: :game_operations },
+                                             index: { name: 'index_sa_releases_on_recipient_go_id' }
       t.timestamps
     end
 
