@@ -108,6 +108,7 @@ class PlayersController < ApplicationController
       new_license = {
         id: Digest::UUID.uuid_v4,
         team_id: team.id,
+        season_id: league.season_id,
         league_class_id: league.league_class_id,
         express: params[:express] == true || params[:express] == 'true',
         history: [{

@@ -640,7 +640,7 @@ class League < ApplicationRecord
       team_licenses[team.id.to_s].each do |player|
         license = player.licenses.find do |l|
           l['team_id'].to_i == team.id &&
-            l['league']&.dig('season_id').to_s == season_id.to_s
+            (l['season_id'].nil? || l['season_id'].to_s == season_id.to_s)
         end
         next unless license
 
