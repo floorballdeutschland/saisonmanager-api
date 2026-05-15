@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_05_20_200000) do
+ActiveRecord::Schema[7.0].define(version: 2026_05_21_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -244,6 +244,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_20_200000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.boolean "direct_comparison", default: false, null: false
+    t.string "required_documents", default: [], array: true
     t.index ["game_operation_id"], name: "index_leagues_on_game_operation_id"
   end
 
