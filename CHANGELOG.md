@@ -19,6 +19,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - Ansetzungen: `GET /api/v2/admin/referee_assignments/games` liefert Spiele für RSK-Ansetzungen (mit Ansetzungsstatus falls vorhanden)
 
 ### Behoben
+- Transferanträge: `GET /admin/transfer_requests/:id` fehlte als Route – Detailseite lieferte immer 404
 - Berechtigungen: SBK/RSK für nationales GO (kein Landesverband, z. B. FD) erhält globalen Zugriff auf Schiedsrichter- und Benutzerverwaltung
 - Schiedsrichterverwaltung: globaler SBK (`[0]`) sieht jetzt alle Schiedsrichter (fehlender Early-Return analog zu RSK)
 - Benutzerverwaltung: globaler SBK sieht jetzt alle Benutzer inkl. solcher ohne `club_id` (z. B. SBK-Nutzer selbst)
