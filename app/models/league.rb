@@ -628,7 +628,7 @@ class League < ApplicationRecord
         end
       end
     end
-    foreign_teams = Team.includes(:leagues).where(id: foreign_team_ids.to_a).index_by(&:id)
+    foreign_teams = Team.includes(:league).where(id: foreign_team_ids.to_a).index_by(&:id)
 
     active_statuses = [License::APPROVED, License::REQUESTED].to_set
 
@@ -670,7 +670,7 @@ class League < ApplicationRecord
           other_team = foreign_teams[t_id]
           next unless other_team
 
-          { team_name: other_team.name, league_name: other_team.leagues.first&.short_name }
+          { team_name: other_team.name, league_name: other_team.league&.short_name }
         end
 
         team_item[:players] << player_item
