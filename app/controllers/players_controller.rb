@@ -103,6 +103,7 @@ class PlayersController < ApplicationController
       active_statuses = [License::APPROVED, License::REQUESTED, License::DELETE_REQUESTED].map(&:to_s).to_set
       if player.licenses.any? do |l|
            next false unless l['team_id'].to_i == team.id && l['season_id'].to_s == league.season_id.to_s
+
            last = l['history']&.max_by { |h| h['created_at'] }
            last && active_statuses.include?(last['license_status_id'].to_s)
          end

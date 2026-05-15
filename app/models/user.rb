@@ -33,6 +33,7 @@ class User < ApplicationRecord
     UserMailer.reset_password(self).deliver_now if save(validate: false)
   end
 
+  # rubocop:disable Metrics/AbcSize
   def permissions_items
     result = {}
     ph = permission_hash
@@ -93,6 +94,7 @@ class User < ApplicationRecord
 
     result
   end
+  # rubocop:enable Metrics/AbcSize
 
   def club_ids
     permission_hash[:vm]
