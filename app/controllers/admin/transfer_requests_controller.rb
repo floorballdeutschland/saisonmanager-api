@@ -63,6 +63,14 @@ module Admin
       render json: { player: player.search_hash }
     end
 
+    # GET /api/v2/admin/transfer_requests/:id
+    def show
+      tr = find_transfer_request
+      return unless tr
+
+      render json: tr.as_json
+    end
+
     # POST /api/v2/admin/transfer_requests
     def create
       ph = current_user.permission_hash
