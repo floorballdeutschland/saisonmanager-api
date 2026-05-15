@@ -100,7 +100,13 @@ class PlayersController < ApplicationController
       player = Player.lock.find(params[:id])
       player.licenses ||= []
 
-      if player.licenses.any? { |l| l['team_id'].to_i == team.id && l['season_id'].to_s == league.season_id.to_s }
+      active_statuses = [License::APPROVED, License::REQUESTED, License::DELETE_REQUESTED].map(&:to_s).to_set
+      if player.licenses.any? do |l|
+           next false unless l['team_id'].to_i == team.id && l['season_id'].to_s == league.season_id.to_s
+
+           last = l['history']&.max_by { |h| h['created_at'] }
+           last && active_statuses.include?(last['license_status_id'].to_s)
+         end
         result = :duplicate
         raise ActiveRecord::Rollback
       end
@@ -625,11 +631,12 @@ class PlayersController < ApplicationController
 
     render json: {
       player: {
-        id:         player.id,
-        first_name: player.first_name,
-        last_name:  player.last_name,
-        birthdate:  player.birthdate,
-        gender:     player.gender
+        id:             player.id,
+        first_name:     player.first_name,
+        last_name:      player.last_name,
+        birthdate:      player.birthdate,
+        gender:         player.gender,
+        deactivated_at: player.deactivated_at
       },
       seasons:,
       totals: {
@@ -658,7 +665,7 @@ class PlayersController < ApplicationController
     return render json: { message: 'Spieler ist bereits deaktiviert.' }, status: :unprocessable_entity if player.deactivated_at.present?
 
     ph = current_user.permission_hash
-    unless ph[:admin].present? || sbk_can_access_player?(ph, player)
+    unless ph[:admin].present? || sbk_can_access_player?(ph, player) || vm_can_access_player?(ph, player)
       return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
     end
 
@@ -666,7 +673,40 @@ class PlayersController < ApplicationController
     render json: player.full_hash(false, false, false)
   end
 
+  def reactivate
+    player = Player.find_by(id: params[:id])
+    return render json: { message: 'Spieler nicht gefunden.' }, status: :not_found unless player
+    return render json: { message: 'Spieler ist nicht deaktiviert.' }, status: :unprocessable_entity if player.deactivated_at.nil?
+
+    ph = current_user.permission_hash
+    unless ph[:admin].present? || sbk_can_access_player?(ph, player) || vm_can_access_player?(ph, player)
+      return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+
+    player.reactivate!
+    render json: player.full_hash(false, false, false)
+  end
+
+  def vm_players_index
+    ph = current_user.permission_hash
+    club_id = params[:club_id]&.to_i
+    return render json: { message: 'club_id fehlt.' }, status: :bad_request unless club_id.present? && club_id > 0
+
+    sbk_ok = ph[:sbk].present? && (ph[:sbk].include?(0) || derive_club_ids_for_go(ph[:sbk]).include?(club_id))
+    allowed = ph[:admin].present? || sbk_ok || (ph[:vm].present? && ph[:vm].include?(club_id))
+    return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless allowed
+
+    players = Player.where("clubs @> ?", [{ club_id: club_id }].to_json).order(:last_name, :first_name)
+    render json: players.map(&:meta_hash)
+  end
+
   private
+
+  def vm_can_access_player?(ph, player)
+    return false unless ph[:vm].present?
+
+    player.clubs.any? { |c| ph[:vm].include?(c['club_id'].to_i) }
+  end
 
   def sbk_can_access_player?(ph, player)
     return false unless ph[:sbk].present?
@@ -680,6 +720,10 @@ class PlayersController < ApplicationController
 
     go_id = home_club.main_game_operation_id
     ph[:sbk].include?(go_id)
+  end
+
+  def derive_club_ids_for_go(go_ids)
+    Club.all.select { |c| go_ids.include?(c.main_game_operation_id) }.map(&:id)
   end
 
   def set_player
