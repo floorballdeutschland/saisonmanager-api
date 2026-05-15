@@ -4,6 +4,16 @@ class Club < ApplicationRecord
 
   has_one_attached :logo
 
+  scope :active, -> { where(deactivated_at: nil) }
+
+  def deactivate!(user_id)
+    update!(deactivated_at: Time.current, deactivated_by: user_id)
+  end
+
+  def reactivate!
+    update!(deactivated_at: nil, deactivated_by: nil)
+  end
+
   def teams
     Team.by_club_id(id)
   end
@@ -62,7 +72,9 @@ class Club < ApplicationRecord
       logo_url:,
       logo_small_url:,
       game_operation_id: main_game_operation_id,
-      additional_game_operation_ids:
+      additional_game_operation_ids:,
+      deactivated_at:,
+      deactivated_by:
     }
   end
 
@@ -155,11 +167,13 @@ class Club < ApplicationRecord
     perm
   end
 
-  def self.admin_user_clubs(user)
+  def self.admin_user_clubs(user, include_deactivated: false)
     result = []
     go_ids = []
     ph = user.permission_hash
     global_access = ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
+
+    club_scope = include_deactivated ? Club.all : Club.active
 
     if global_access
       go_ids = GameOperation.all.pluck(:id)
@@ -171,7 +185,7 @@ class Club < ApplicationRecord
 
     GameOperation.find(go_ids).each do |go|
       item = go.meta_hash
-      item[:clubs] = go.clubs.map(&:full_hash)
+      item[:clubs] = club_scope.where(id: go.clubs.pluck(:id)).order(:name).map(&:full_hash)
       result << item
     end
 
@@ -190,7 +204,7 @@ class Club < ApplicationRecord
           logo_quad_url: nil,
           state_association_id: sa.id,
           released: true,
-          clubs: Club.where(state_association_id: sa.id).order(:name).map(&:full_hash)
+          clubs: club_scope.where(state_association_id: sa.id).order(:name).map(&:full_hash)
         }
       end
     end
