@@ -100,7 +100,7 @@ class PlayersController < ApplicationController
       player = Player.lock.find(params[:id])
       player.licenses ||= []
 
-      if player.licenses.any? { |l| l['team_id'].to_i == team.id }
+      if player.licenses.any? { |l| l['team_id'].to_i == team.id && l['season_id'].to_s == league.season_id.to_s }
         result = :duplicate
         raise ActiveRecord::Rollback
       end

@@ -639,14 +639,16 @@ class League < ApplicationRecord
       team_item[:players] = []
       team_licenses[team.id.to_s].each do |player|
         license = player.licenses.find do |l|
-          l['team_id'].to_i == team.id &&
-            (l['season_id'].nil? || l['season_id'].to_s == season_id.to_s)
+          next false unless l['team_id'].to_i == team.id
+          lic_season = l['season_id'] || l.dig('league', 'season_id')
+          lic_season.nil? || lic_season.to_s == season_id.to_s
         end
         next unless license
 
         player_item = player.full_hash(full_license_hash, only_current_licenses)
 
-        last_status = license['history'].max_by { |h| h['created_at'] }
+        last_status = license['history']&.max_by { |h| h['created_at'] }
+        next unless last_status
         last_status_id = last_status['license_status_id']
         last_status_code = License::NAMES[last_status_id.to_i]
 
@@ -700,7 +702,11 @@ class League < ApplicationRecord
     teams.each do |team|
       puts team.name
       team_licenses[team.id.to_s].each do |player|
-        license = player.licenses.select { |l| l['team_id'] == team.id.to_s }.first
+        license = player.licenses.find do |l|
+          next false unless l['team_id'].to_i == team.id
+          lic_season = l['season_id'] || l.dig('league', 'season_id')
+          lic_season.nil? || lic_season.to_s == season_id.to_s
+        end
 
         last_status = license['history'].last
         last_status_id = last_status['license_status_id']
