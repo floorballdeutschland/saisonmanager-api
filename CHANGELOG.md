@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+- Benutzerverwaltung: JSONB-Typmismatch beim Suchen von SBK/RSK-Nutzern behoben (Integer vs. String in `game_operation_id`); RSK-Nutzer erhalten Zugriff; eingeloggter Nutzer immer in der eigenen Liste sichtbar (#114)
+
 ---
 
 ## [1.13.0] - 2026-05-15
