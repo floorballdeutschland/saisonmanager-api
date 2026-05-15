@@ -689,12 +689,13 @@ class PlayersController < ApplicationController
   def vm_players_index
     ph = current_user.permission_hash
     club_id = params[:club_id]&.to_i
-    return render json: { message: 'club_id fehlt.' }, status: :bad_request unless club_id.present?
+    return render json: { message: 'club_id fehlt.' }, status: :bad_request unless club_id.present? && club_id > 0
 
-    allowed = ph[:admin].present? || ph[:sbk].present? || (ph[:vm].present? && ph[:vm].include?(club_id))
+    sbk_ok = ph[:sbk].present? && (ph[:sbk].include?(0) || derive_club_ids_for_go(ph[:sbk]).include?(club_id))
+    allowed = ph[:admin].present? || sbk_ok || (ph[:vm].present? && ph[:vm].include?(club_id))
     return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless allowed
 
-    players = Player.where("clubs @> ?", [{ club_id: }].to_json).order(:last_name, :first_name)
+    players = Player.where("clubs @> ?", [{ club_id: club_id }].to_json).order(:last_name, :first_name)
     render json: players.map(&:meta_hash)
   end
 
@@ -718,6 +719,10 @@ class PlayersController < ApplicationController
 
     go_id = home_club.main_game_operation_id
     ph[:sbk].include?(go_id)
+  end
+
+  def derive_club_ids_for_go(go_ids)
+    Club.all.select { |c| go_ids.include?(c.main_game_operation_id) }.map(&:id)
   end
 
   def set_player
