@@ -10,6 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ## [Unreleased]
 
 ### Neu
+- Benutzerverwaltung: Verbund-Zuweisung (SBK/RSK) und Verein-Zuweisung (VM/TM) können nachträglich bearbeitet werden; TM-Team-Liste zeigt nur Vereins-eigene Teams
 - Liga: Neues Feld `required_documents` (String-Array); konfiguriert welche Dokumente bei Lizenzanträgen erforderlich sind; wird in `user/team/:id/licenses.json` als `required_documents`-Feld ausgeliefert
 - Transferanträge: Initiierender Verein (VM) kann offene Anträge im Status `pending_club` oder `pending_lv` zurückziehen (`PATCH /admin/transfer_requests/:id/withdraw`); neuer Status `withdrawn`
 - Benutzerverwaltung: Vereinsmanager (VM) können Teammanager (TM) für ihren Verein anlegen und Teams zuweisen; Team-Zuweisung wird auf eigene Vereinsteams beschränkt
