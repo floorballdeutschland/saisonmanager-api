@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+- Schiedsrichter-Admin-Menü: VM-Nutzer sehen den Eintrag „Lizenzverwaltung" nicht mehr (führte zu leerer Liste); VM-spezifischer Schiedsrichter-View bleibt über `menu_item_referee_vm` erreichbar (#92)
+
 ---
 
 ## [1.13.0] - 2026-05-15
