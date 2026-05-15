@@ -216,6 +216,7 @@ module Admin
       ph = current_user.permission_hash
       return referees if ph[:admin].present?
       return referees if ph[:rsk].present? && ph[:rsk].include?(0)
+      return referees if ph[:sbk].present? && ph[:sbk].include?(0)
 
       if ph[:rsk].present? || ph[:sbk].present?
         referees.where(club_id: lv_club_ids(ph))
@@ -230,6 +231,7 @@ module Admin
       ph = current_user.permission_hash
       return true if ph[:admin].present?
       return true if ph[:rsk].present? && ph[:rsk].include?(0)
+      return true if ph[:sbk].present? && ph[:sbk].include?(0)
 
       if ph[:rsk].present? || ph[:sbk].present?
         lv_club_ids(ph).include?(referee.club_id)

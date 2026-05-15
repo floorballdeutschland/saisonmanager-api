@@ -19,6 +19,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Behoben
 - Berechtigungen: SBK/RSK für nationales GO (kein Landesverband, z. B. FD) erhält globalen Zugriff auf Schiedsrichter- und Benutzerverwaltung
+- Schiedsrichterverwaltung: globaler SBK (`[0]`) sieht jetzt alle Schiedsrichter (fehlender Early-Return analog zu RSK)
+- Benutzerverwaltung: globaler SBK sieht jetzt alle Benutzer inkl. solcher ohne `club_id` (z. B. SBK-Nutzer selbst)
 - Spielsekretariats-Link: URL enthielt Game-ID-Pfadsegment, das im Frontend nicht ausgewertet wird; bei Spieltagen ohne Spiele entstand dadurch eine ungültige URL (`/spielsekretariat/?token=…`)
 - Ticker-API: URL-Feld zeigt jetzt auf `saisonmanager.org/spiel/:id` statt veralteter `fvd.saisonmanager.de`-Domain
 - `Club`, `Team`, `StateAssociation`: Logo-Checks einheitlich auf `logo.attached?` umgestellt

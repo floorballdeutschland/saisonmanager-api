@@ -126,10 +126,10 @@ module Admin
 
     def scoped_users
       ph = current_user.permission_hash
-      if ph[:admin].present?
+      if ph[:admin].present? || (ph[:sbk].present? && ph[:sbk].include?(0))
         User.all
       elsif ph[:sbk].present?
-        club_ids = ph[:sbk].include?(0) ? Club.pluck(:id) : derive_club_ids_for_go(ph[:sbk])
+        club_ids = derive_club_ids_for_go(ph[:sbk])
         club_user_ids = User.where(club_id: club_ids).pluck(:id)
         lv_user_ids = lv_scoped_user_ids(ph[:sbk])
         User.where(id: (club_user_ids + lv_user_ids).uniq)
