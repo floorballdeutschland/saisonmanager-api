@@ -16,8 +16,8 @@ module Admin
 
     def create
       return render json: { errors: ['Datei fehlt'] }, status: :unprocessable_entity if params[:file].blank?
-      return render json: { errors: ['Dokumenttyp fehlt oder ungültig'] }, status: :unprocessable_entity unless
-        params[:document_type].in?(LicenseDocument::ALLOWED_TYPES)
+      return render json: { errors: ['Dokumenttyp fehlt'] }, status: :unprocessable_entity if
+        params[:document_type].blank?
 
       doc = LicenseDocument.new(
         player: @player,
