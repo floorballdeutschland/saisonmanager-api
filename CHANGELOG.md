@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+- Vereinsverwaltung: Vereine können von SBK/Admin deaktiviert und reaktiviert werden; deaktivierte Vereine erscheinen standardmäßig nicht in der Vereinsliste; neues Permission-Flag `club_deactivate` (#113)
+
 ---
 
 ## [1.13.0] - 2026-05-15

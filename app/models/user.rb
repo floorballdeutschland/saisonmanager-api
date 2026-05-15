@@ -92,6 +92,8 @@ class User < ApplicationRecord
     result[:player_deactivate] = ph[:admin].present? || ph[:sbk].present?
     result[:player_set_license_to_transfer] = ph[:admin].present? || special_user
 
+    result[:club_deactivate] = ph[:admin].present? || ph[:sbk].present?
+
     result
   end
   # rubocop:enable Metrics/AbcSize

@@ -194,9 +194,8 @@ class ClubsController < ApplicationController
     club = Club.find_by(id: params[:id])
     return render json: { error: 'Nicht gefunden' }, status: :not_found unless club
 
-    ph = current_user.permission_hash
-    unless ph[:admin].present? || ph[:sbk].present?
-      return render json: { error: 'Nicht berechtigt' }, status: :forbidden
+    unless club.user_permissions(current_user).include?(:update_club)
+      return render json: { error: 'Keine Berechtigung' }, status: :forbidden
     end
 
     club.deactivate!(current_user.id)
@@ -209,9 +208,8 @@ class ClubsController < ApplicationController
     club = Club.find_by(id: params[:id])
     return render json: { error: 'Nicht gefunden' }, status: :not_found unless club
 
-    ph = current_user.permission_hash
-    unless ph[:admin].present? || ph[:sbk].present?
-      return render json: { error: 'Nicht berechtigt' }, status: :forbidden
+    unless club.user_permissions(current_user).include?(:update_club)
+      return render json: { error: 'Keine Berechtigung' }, status: :forbidden
     end
 
     club.reactivate!
