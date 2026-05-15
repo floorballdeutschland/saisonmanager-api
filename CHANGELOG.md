@@ -9,8 +9,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.13.2] - 2026-05-15
+
 ### Verbessert
 - Ansetzungen: Seite lädt standardmäßig nur Spiele ab dem heutigen Tag; "Von"-Filter ist vorausgefüllt und kann manuell geleert werden
+- Navigation: Menüpunkte für Onlineprüfungen ausgeblendet
+
+### Behoben
+- Transferantrag-Detail und -Liste: Kontrast auf weißem Hintergrund korrigiert (dark-theme-Farben ersetzt, Hover-Farbe, Badge-Klassen, yellow-Status)
 
 ---
 
