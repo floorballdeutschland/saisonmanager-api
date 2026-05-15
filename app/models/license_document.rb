@@ -3,12 +3,11 @@ class LicenseDocument < ApplicationRecord
   belongs_to :uploaded_by, class_name: 'User', optional: true
   has_one_attached :file
 
-  ALLOWED_TYPES = %w[id_copy parental_consent].freeze
   ALLOWED_CONTENT_TYPES = %w[application/pdf image/png image/jpeg].freeze
   MAX_FILE_SIZE = 10.megabytes
 
   validates :license_id, presence: true
-  validates :document_type, inclusion: { in: ALLOWED_TYPES }
+  validates :document_type, presence: true
   validates :player_id, uniqueness: { scope: %i[license_id document_type] }
   validate :file_attached
   validate :file_valid, if: -> { file.attached? }

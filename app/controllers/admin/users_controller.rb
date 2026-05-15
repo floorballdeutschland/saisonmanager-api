@@ -140,18 +140,21 @@ module Admin
 
     def scoped_users
       ph = current_user.permission_hash
-      if ph[:admin].present? || (ph[:sbk].present? && ph[:sbk].include?(0))
-        User.all
-      elsif ph[:sbk].present?
-        club_ids = derive_club_ids_for_go(ph[:sbk])
-        club_user_ids = User.where(club_id: club_ids).pluck(:id)
-        lv_user_ids = lv_scoped_user_ids(ph[:sbk])
-        User.where(id: (club_user_ids + lv_user_ids).uniq)
-      elsif ph[:vm].present?
-        User.where(club_id: ph[:vm])
-      else
-        User.none
-      end
+      ids = if ph[:admin].present? || (ph[:sbk].present? && ph[:sbk].include?(0)) ||
+               (ph[:rsk].present? && ph[:rsk].include?(0))
+              return User.all
+            elsif ph[:sbk].present? || ph[:rsk].present?
+              go_ids = (ph[:sbk] || []) + (ph[:rsk] || [])
+              club_ids = derive_club_ids_for_go(go_ids)
+              club_user_ids = User.where(club_id: club_ids).pluck(:id)
+              lv_user_ids = lv_scoped_user_ids(go_ids)
+              (club_user_ids + lv_user_ids).uniq
+            elsif ph[:vm].present?
+              User.where(club_id: ph[:vm]).pluck(:id)
+            else
+              []
+            end
+      User.where(id: (ids + [current_user.id]).uniq)
     end
 
     def lv_scoped_user_ids(go_ids)
@@ -164,7 +167,9 @@ module Admin
           gid = go_id.to_i
           [
             "permissions @> '[{\"user_group_id\": 2, \"game_operation_id\": \"#{gid}\"}]'",
-            "permissions @> '[{\"user_group_id\": 3, \"game_operation_id\": \"#{gid}\"}]'"
+            "permissions @> '[{\"user_group_id\": 3, \"game_operation_id\": \"#{gid}\"}]'",
+            "permissions @> '[{\"user_group_id\": 2, \"game_operation_id\": #{gid}}]'",
+            "permissions @> '[{\"user_group_id\": 3, \"game_operation_id\": #{gid}}]'"
           ]
         }.join(' OR ')
         User.where(conditions).pluck(:id)
@@ -178,7 +183,7 @@ module Admin
 
     def authorize_user_management!
       ph = current_user.permission_hash
-      return if ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
+      return if ph[:admin].present? || ph[:sbk].present? || ph[:rsk].present? || ph[:vm].present?
 
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
