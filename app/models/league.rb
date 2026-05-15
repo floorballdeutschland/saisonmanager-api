@@ -638,9 +638,13 @@ class League < ApplicationRecord
 
       team_item[:players] = []
       team_licenses[team.id.to_s].each do |player|
-        player_item = player.full_hash(full_license_hash, only_current_licenses)
+        license = player.licenses.find do |l|
+          l['team_id'].to_i == team.id &&
+            l['league']&.dig('season_id').to_s == season_id.to_s
+        end
+        next unless license
 
-        license = player.licenses.find { |l| l['team_id'].to_i == team.id }
+        player_item = player.full_hash(full_license_hash, only_current_licenses)
 
         last_status = license['history'].max_by { |h| h['created_at'] }
         last_status_id = last_status['license_status_id']
