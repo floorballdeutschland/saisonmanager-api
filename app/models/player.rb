@@ -352,12 +352,24 @@ class Player < ApplicationRecord
   end
 
   def reactivate!
+    deactivated_user = deactivated_by
+
     clubs.map! do |c|
-      if c['valid_until'].present? && c['valid_until'].to_time <= Time.now
+      if c['valid_until'].present? && c['valid_set_by'] == deactivated_user
         c.delete('valid_until')
         c.delete('valid_set_by')
       end
       c
+    end
+
+    licenses.each do |license|
+      last = license['history']&.last
+      next unless last &&
+                  last['license_status_id'].to_i == License::DELETED &&
+                  last['reason'] == 'Vereinsaustritt' &&
+                  last['created_by'] == deactivated_user
+
+      license['history'].pop
     end
 
     self.deactivated_at = nil
