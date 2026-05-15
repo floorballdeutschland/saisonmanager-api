@@ -45,6 +45,20 @@ module Admin
         updates[:permissions] = result[:permissions]
       end
 
+      if params.key?(:club_id)
+        result = apply_club_change(@managed_user, params[:club_id].to_i, ph)
+        return render json: { error: result[:error] }, status: result[:status] if result[:error]
+
+        updates.merge!(result[:updates])
+      end
+
+      if params.key?(:game_operation_id)
+        result = apply_go_change(@managed_user, params[:game_operation_id].to_i, ph)
+        return render json: { error: result[:error] }, status: result[:status] if result[:error]
+
+        updates.merge!(result[:updates])
+      end
+
       if @managed_user.update(updates)
         render json: user_json(@managed_user.reload, full: true)
       else
@@ -226,6 +240,61 @@ module Admin
       end
 
       { permissions: new_perms }
+    end
+
+    def apply_club_change(user, new_club_id, ph)
+      return { error: 'Kann eigene Zuweisung nicht ändern', status: :forbidden } if user.id == current_user.id
+
+      return { error: 'Ungültiger Verein', status: :unprocessable_entity } unless Club.exists?(new_club_id)
+
+      unless ph[:admin].present? || ph[:sbk]&.include?(0) ||
+             (ph[:sbk].present? && derive_club_ids_for_go(ph[:sbk]).include?(new_club_id)) ||
+             (ph[:vm].present? && ph[:vm].include?(new_club_id))
+        return { error: 'Nicht berechtigt', status: :forbidden }
+      end
+
+      role_ids = user.permissions.map { |p| p['user_group_id'].to_i }
+      unless role_ids.any? { |id| [4, 5].include?(id) }
+        return { error: 'Benutzer hat keine VM/TM-Rolle', status: :unprocessable_entity }
+      end
+
+      vm_entries = user.permissions.count { |p| p['user_group_id'].to_i == 4 }
+      if vm_entries > 1
+        return { error: 'Benutzer verwaltet mehrere Vereine – Einzelzuweisung nicht möglich', status: :unprocessable_entity }
+      end
+
+      updates = { club_id: new_club_id }
+
+      if role_ids.include?(4)
+        updates[:permissions] = user.permissions.map do |p|
+          p['user_group_id'].to_i == 4 ? p.merge('club_id' => new_club_id.to_s) : p
+        end
+      end
+
+      updates[:teams] = [] if role_ids.include?(5)
+
+      { updates: updates }
+    end
+
+    def apply_go_change(user, new_go_id, ph)
+      return { error: 'Kann eigene Zuweisung nicht ändern', status: :forbidden } if user.id == current_user.id
+
+      return { error: 'Ungültiger Verbund', status: :unprocessable_entity } unless new_go_id.positive? && GameOperation.exists?(new_go_id)
+
+      unless ph[:admin].present? || (ph[:sbk].present? && ph[:sbk].include?(0))
+        return { error: 'Nur Admin oder globaler SBK kann Verbund-Zuweisung ändern', status: :forbidden }
+      end
+
+      role_ids = user.permissions.map { |p| p['user_group_id'].to_i }
+      unless role_ids.any? { |id| [2, 3].include?(id) }
+        return { error: 'Benutzer hat keine SBK/RSK-Rolle', status: :unprocessable_entity }
+      end
+
+      new_perms = user.permissions.map do |p|
+        [2, 3].include?(p['user_group_id'].to_i) ? p.merge('game_operation_id' => new_go_id.to_s) : p
+      end
+
+      { updates: { permissions: new_perms } }
     end
 
     def derive_club_ids_for_go(go_ids)
