@@ -39,14 +39,8 @@ module Admin
       arena = Arena.find_by(id: params[:id])
       return render json: { error: 'Nicht gefunden' }, status: :not_found unless arena
 
-      current_season_id = Setting.current_season_id
-      used_in_season = arena.game_days
-                            .joins(:league)
-                            .where(leagues: { season_id: current_season_id })
-                            .exists?
-
-      if used_in_season
-        return render json: { error: 'Spielort wird in der aktuellen Saison verwendet und kann nicht gelöscht werden.' },
+      if arena.game_days.exists?
+        return render json: { error: 'Spielort wird in Spieltagen verwendet und kann nicht gelöscht werden.' },
                       status: :unprocessable_entity
       end
 
