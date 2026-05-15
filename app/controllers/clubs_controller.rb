@@ -179,12 +179,43 @@ class ClubsController < ApplicationController
 
   def admin_club_index
     if current_user
-      result = Club.admin_user_clubs(current_user)
+      include_deactivated = ActiveModel::Type::Boolean.new.cast(params[:include_deactivated])
+      result = Club.admin_user_clubs(current_user, include_deactivated:)
 
       render json: result
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
     end
+  end
+
+  def admin_club_deactivate
+    return render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized unless current_user
+
+    club = Club.find_by(id: params[:id])
+    return render json: { error: 'Nicht gefunden' }, status: :not_found unless club
+
+    ph = current_user.permission_hash
+    unless ph[:admin].present? || ph[:sbk].present?
+      return render json: { error: 'Nicht berechtigt' }, status: :forbidden
+    end
+
+    club.deactivate!(current_user.id)
+    render json: club.full_hash
+  end
+
+  def admin_club_reactivate
+    return render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized unless current_user
+
+    club = Club.find_by(id: params[:id])
+    return render json: { error: 'Nicht gefunden' }, status: :not_found unless club
+
+    ph = current_user.permission_hash
+    unless ph[:admin].present? || ph[:sbk].present?
+      return render json: { error: 'Nicht berechtigt' }, status: :forbidden
+    end
+
+    club.reactivate!
+    render json: club.full_hash
   end
 
   def admin_club

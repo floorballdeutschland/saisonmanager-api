@@ -93,6 +93,8 @@ Rails.application.routes.draw do
       get 'admin/clubs/:id', to: 'clubs#admin_club'
       post 'admin/clubs', to: 'clubs#admin_club_update'
       post 'admin/clubs/:id/upload_logo', to: 'clubs#admin_upload_logo'
+      post 'admin/clubs/:id/deactivate', to: 'clubs#admin_club_deactivate'
+      post 'admin/clubs/:id/reactivate', to: 'clubs#admin_club_reactivate'
 
       post 'admin/teams/:id/upload_logo', to: 'teams#admin_upload_logo'
 
