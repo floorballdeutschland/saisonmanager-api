@@ -243,7 +243,10 @@ module Admin
     end
 
     def apply_club_change(user, new_club_id, ph)
-      # Authorization: admin, global SBK, scoped SBK within their clubs, or VM for own clubs
+      return { error: 'Kann eigene Zuweisung nicht ändern', status: :forbidden } if user.id == current_user.id
+
+      return { error: 'Ungültiger Verein', status: :unprocessable_entity } unless Club.exists?(new_club_id)
+
       unless ph[:admin].present? || ph[:sbk]&.include?(0) ||
              (ph[:sbk].present? && derive_club_ids_for_go(ph[:sbk]).include?(new_club_id)) ||
              (ph[:vm].present? && ph[:vm].include?(new_club_id))
@@ -255,23 +258,29 @@ module Admin
         return { error: 'Benutzer hat keine VM/TM-Rolle', status: :unprocessable_entity }
       end
 
+      vm_entries = user.permissions.count { |p| p['user_group_id'].to_i == 4 }
+      if vm_entries > 1
+        return { error: 'Benutzer verwaltet mehrere Vereine – Einzelzuweisung nicht möglich', status: :unprocessable_entity }
+      end
+
       updates = { club_id: new_club_id }
 
-      # For VM: update club_id in permission entry too
       if role_ids.include?(4)
         updates[:permissions] = user.permissions.map do |p|
           p['user_group_id'].to_i == 4 ? p.merge('club_id' => new_club_id.to_s) : p
         end
       end
 
-      # For TM: reset teams (they belong to the old club)
       updates[:teams] = [] if role_ids.include?(5)
 
       { updates: updates }
     end
 
     def apply_go_change(user, new_go_id, ph)
-      # Only admin or global SBK may reassign SBK/RSK game operations
+      return { error: 'Kann eigene Zuweisung nicht ändern', status: :forbidden } if user.id == current_user.id
+
+      return { error: 'Ungültiger Verbund', status: :unprocessable_entity } unless new_go_id.positive? && GameOperation.exists?(new_go_id)
+
       unless ph[:admin].present? || (ph[:sbk].present? && ph[:sbk].include?(0))
         return { error: 'Nur Admin oder globaler SBK kann Verbund-Zuweisung ändern', status: :forbidden }
       end
