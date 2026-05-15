@@ -652,6 +652,8 @@ class League < ApplicationRecord
         next unless last_status
 
         last_status_id = last_status['license_status_id']
+        next unless active_statuses.include?(last_status_id.to_i)
+
         last_status_code = License::NAMES[last_status_id.to_i]
 
         approved_at = (last_status['created_at'].to_datetime if last_status_id == 1)
@@ -671,6 +673,9 @@ class League < ApplicationRecord
         player_item[:other_licenses] = player.licenses.filter_map do |l|
           t_id = l['team_id'].to_i
           next if t_id == team.id
+
+          lic_season = l['season_id'] || l.dig('league', 'season_id')
+          next unless lic_season.nil? || lic_season.to_s == season_id.to_s
 
           current_status = l['history'].max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
           next unless active_statuses.include?(current_status)
