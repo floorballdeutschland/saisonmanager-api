@@ -42,6 +42,25 @@ class UserTest < ActiveSupport::TestCase
     assert_nil u.permission_hash[:admin]
   end
 
+  test 'permission_hash: SBK für nationales GO (kein state_association_id) ergibt [0]' do
+    national_go = GameOperation.create!(name: 'FD Test', short_name: 'FDT', path: 'fd-test')
+    u = build_user(permissions: [{ 'user_group_id' => 2, 'game_operation_id' => national_go.id }])
+    assert_equal [0], u.permission_hash[:sbk]
+  end
+
+  test 'permission_hash: RSK für nationales GO (kein state_association_id) ergibt [0]' do
+    national_go = GameOperation.create!(name: 'FD RSK Test', short_name: 'FDRT', path: 'fd-rsk-test')
+    u = build_user(permissions: [{ 'user_group_id' => 3, 'game_operation_id' => national_go.id }])
+    assert_equal [0], u.permission_hash[:rsk]
+  end
+
+  test 'permission_hash: SBK für regionales GO (hat state_association_id) behält spezifische ID' do
+    sa = StateAssociation.create!(name: 'Test LV', short_name: 'TLV')
+    regional_go = GameOperation.create!(name: 'SBK Test', short_name: 'SBT', path: 'sbk-test', state_association: sa)
+    u = build_user(permissions: [{ 'user_group_id' => 2, 'game_operation_id' => regional_go.id }])
+    assert_equal [regional_go.id], u.permission_hash[:sbk]
+  end
+
   test 'permission_hash: VM mit club_id ergibt club_ids-Array' do
     u = build_user(permissions: [
       { 'user_group_id' => 4, 'club_id' => 42 },

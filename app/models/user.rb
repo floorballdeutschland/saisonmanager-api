@@ -138,6 +138,14 @@ class User < ApplicationRecord
     sbk_go_ids.sort!.uniq!
     admin_go_ids.sort!.uniq!
 
+    # SBK/RSK for a national-level GO (no state_association_id, e.g. FD) gets global scope
+    if sbk_go_ids.any? && !sbk_go_ids.include?(0) && GameOperation.where(id: sbk_go_ids, state_association_id: nil).exists?
+      sbk_go_ids = [0]
+    end
+    if rsk_go_ids.any? && !rsk_go_ids.include?(0) && GameOperation.where(id: rsk_go_ids, state_association_id: nil).exists?
+      rsk_go_ids = [0]
+    end
+
     all_go = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11]
 
     result[:tm] = tm_team_ids if tm_team_ids.present?
