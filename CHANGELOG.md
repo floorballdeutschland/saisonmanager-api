@@ -12,6 +12,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Neu
 - Vereinsverwaltung: Vereine können von SBK/Admin deaktiviert und reaktiviert werden; deaktivierte Vereine erscheinen standardmäßig nicht in der Vereinsliste; neues Permission-Flag `club_deactivate` (#113)
 
+### Verbessert
+- Codequalität: überflüssige `Metrics/CyclomaticComplexity`-RuboCop-Direktive in `User#permissions_items` entfernt
+
 ### Behoben
 - Lizenzdokumente: Whitelist für `document_type` entfernt – beliebige, vom Verband konfigurierte Dokumenttypen können jetzt hochgeladen werden (#112)
 - Spielort löschen: Prüfung auf zugeordnete Spieltage ist nun saison-unabhängig; verhindert 500er bei Spielorten mit Spieltagen aus vergangenen Saisons (#90)
