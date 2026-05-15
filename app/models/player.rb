@@ -351,6 +351,20 @@ class Player < ApplicationRecord
     save!(validate: false)
   end
 
+  def reactivate!
+    clubs.map! do |c|
+      if c['valid_until'].present? && c['valid_until'].to_time <= Time.now
+        c.delete('valid_until')
+        c.delete('valid_set_by')
+      end
+      c
+    end
+
+    self.deactivated_at = nil
+    self.deactivated_by = nil
+    save!(validate: false)
+  end
+
   def image
     return nil
     return if id % 10 > 4

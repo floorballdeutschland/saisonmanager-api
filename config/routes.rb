@@ -100,6 +100,8 @@ Rails.application.routes.draw do
       post 'admin/players/:id/add_additional_club', to: 'players#add_additional_club'
       post 'admin/players/:id/remove_additional_club', to: 'players#remove_additional_club'
       post 'admin/players/:id/deactivate', to: 'players#deactivate'
+      post 'admin/players/:id/reactivate', to: 'players#reactivate'
+      get  'admin/vm/players', to: 'players#vm_players_index'
 
       post 'admin/players/:id/handle_license_request', to: 'players#handle_license_request'
 
