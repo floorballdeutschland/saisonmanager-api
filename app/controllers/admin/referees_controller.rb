@@ -219,7 +219,9 @@ module Admin
       return referees if ph[:sbk].present? && ph[:sbk].include?(0)
 
       if ph[:rsk].present? || ph[:sbk].present?
-        referees.where(club_id: lv_club_ids(ph))
+        club_ids = lv_club_ids(ph)
+        go_ids = ((ph[:rsk] || []) + (ph[:sbk] || [])).reject { |id| id.zero? }.uniq
+        referees.where(club_id: club_ids).or(referees.where(game_operation_id: go_ids))
       elsif ph[:vm].present?
         referees.where(club_id: ph[:vm])
       else
@@ -234,7 +236,8 @@ module Admin
       return true if ph[:sbk].present? && ph[:sbk].include?(0)
 
       if ph[:rsk].present? || ph[:sbk].present?
-        lv_club_ids(ph).include?(referee.club_id)
+        go_ids = ((ph[:rsk] || []) + (ph[:sbk] || [])).reject { |id| id.zero? }.uniq
+        lv_club_ids(ph).include?(referee.club_id) || go_ids.include?(referee.game_operation_id)
       elsif ph[:vm].present?
         ph[:vm].include?(referee.club_id)
       else
