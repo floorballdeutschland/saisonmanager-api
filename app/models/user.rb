@@ -70,6 +70,9 @@ class User < ApplicationRecord
     result[:menu_item_referee_vm] = ph[:vm].present?
     result[:menu_item_player_vm] = ph[:vm].present?
     result[:menu_item_state_association_admin] = ph[:admin].present?
+    result[:menu_item_state_association_sbk] = !ph[:admin].present? &&
+                                               (ph[:sbk].present? || ph[:rsk].present?) &&
+                                               !(ph[:sbk]&.include?(0)) && !(ph[:rsk]&.include?(0))
     result[:menu_item_api_key_admin] = ph[:admin].present?
     result[:menu_item_transfer_requests] = ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
     result[:menu_item_transfer_requests_sbk] = ph[:admin].present? || ph[:sbk].present?
