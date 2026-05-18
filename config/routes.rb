@@ -192,6 +192,7 @@ Rails.application.routes.draw do
           get :club_stats, on: :member
           post :wallet_pass, on: :member
           get :incorrect_assignments, on: :collection
+          get :next_lizenznummer, on: :collection
         end
         resources :referee_qualification_types, only: %i[index create update destroy]
         resources :referee_assignments, only: %i[index create update] do

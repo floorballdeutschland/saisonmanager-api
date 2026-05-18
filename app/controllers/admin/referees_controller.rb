@@ -134,6 +134,14 @@ module Admin
       render json: result
     end
 
+    # GET /api/v2/admin/referees/next_lizenznummer
+    def next_lizenznummer
+      return forbidden_response unless can_create_referee?
+
+      max = Referee.where(guest: false).maximum(:lizenznummer) || 0
+      render json: { next_lizenznummer: max + 1 }
+    end
+
     # GET /api/v2/admin/referees/incorrect_assignments
     def incorrect_assignments
       return forbidden_response unless can_edit_full?
