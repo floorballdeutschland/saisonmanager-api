@@ -24,7 +24,7 @@ class Referee < ApplicationRecord
     club&.state_association&.name
   end
 
-  scope :active, -> { where('gueltigkeit >= ?', Date.today) }
+  scope :active, -> { where('gueltigkeit >= ?', Date.today).where(merged_into_id: nil) }
   scope :by_landesverband, lambda { |lv|
     joins(club: :state_association).where(state_associations: { name: lv })
   }
@@ -61,10 +61,57 @@ class Referee < ApplicationRecord
     scope
   end
 
+  def merge_into!(master)
+    raise ArgumentError, 'Master und Secondary dürfen nicht identisch sein' if id == master.id
+
+    scalar_fields = %w[
+      vorname nachname geburtsdatum email club_id game_operation_id
+      lizenzstufe gueltigkeit strasse hausnummer plz ort
+    ]
+    scalar_fields.each do |field|
+      master[field] = self[field] if master[field].blank? && self[field].present?
+    end
+    master.save!(validate: false)
+
+    existing_qt_ids = master.referee_qualifications.pluck(:qualification_type_id)
+    referee_qualifications.where.not(qualification_type_id: existing_qt_ids).update_all(referee_id: master.id)
+
+    referee_blocked_dates.update_all(referee_id: master.id)
+
+    if user.present?
+      if master.user.nil?
+        user.update!(referee_id: master.id)
+      else
+        user.update!(referee_id: nil)
+      end
+    end
+
+    _rewrite_referee_game_references(master)
+
+    update!(merged_into_id: master.id)
+  end
+
   private
 
   def partner_must_exist
     errors.add(:partner_lizenznummer, 'nicht gefunden') unless Referee.exists?(lizenznummer: partner_lizenznummer)
+  end
+
+  def _rewrite_referee_game_references(master)
+    return if lizenznummer.nil?
+
+    if master.lizenznummer.present?
+      Game.where('? = ANY(referee_ids)', lizenznummer)
+          .update_all("referee_ids = array_replace(referee_ids, #{lizenznummer}, #{master.lizenznummer})")
+
+      Game.where('referee1_string LIKE ?', "#{lizenznummer} %")
+          .update_all("referee1_string = REPLACE(referee1_string, '#{lizenznummer} ', '#{master.lizenznummer} ')")
+      Game.where('referee2_string LIKE ?', "#{lizenznummer} %")
+          .update_all("referee2_string = REPLACE(referee2_string, '#{lizenznummer} ', '#{master.lizenznummer} ')")
+    end
+
+    Game.where('? = ANY(nominated_referee_ids)', id)
+        .update_all("nominated_referee_ids = array_replace(nominated_referee_ids, #{id}, #{master.id})")
   end
 
   public

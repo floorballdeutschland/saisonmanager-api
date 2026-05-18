@@ -70,6 +70,19 @@ module Admin
       head :no_content
     end
 
+    # POST /api/v2/admin/referees/:id/merge
+    def merge
+      return forbidden_response unless can_access_referee?(@referee)
+
+      secondary = Referee.find_by(id: params[:secondary_id])
+      return render json: { message: 'Secondary-Schiedsrichter nicht gefunden.' }, status: :not_found unless secondary
+
+      secondary.merge_into!(@referee)
+      render json: { message: 'Schiedsrichter erfolgreich zusammengeführt.', master_id: @referee.id }
+    rescue ArgumentError => e
+      render json: { message: e.message }, status: :unprocessable_entity
+    end
+
     # POST /api/v2/admin/referees/:id/wallet_pass
     def wallet_pass
       return forbidden_response unless can_access_referee?(@referee)

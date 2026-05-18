@@ -325,6 +325,31 @@ class Player < ApplicationRecord
     save!(validate: false)
   end
 
+  def merge_into!(master, user_id)
+    raise ArgumentError, 'Master und Secondary dürfen nicht identisch sein' if id == master.id
+
+    %w[first_name last_name birthdate gender nation_id security_id email].each do |field|
+      master[field] = self[field] if master[field].blank? && self[field].present?
+    end
+
+    existing_club_ids = master.clubs.map { |c| c['club_id'] }
+    clubs.each do |club|
+      master.clubs << club unless existing_club_ids.include?(club['club_id'])
+    end
+
+    existing_team_ids = master.licenses.map { |l| l['team_id'] }
+    licenses.each do |license|
+      master.licenses << license unless existing_team_ids.include?(license['team_id'])
+    end
+
+    master.save!(validate: false)
+
+    _rewrite_player_game_references(master.id)
+
+    self.merged_into_id = master.id
+    deactivate!(user_id)
+  end
+
   def deactivate!(user_id)
     clubs.map! do |c|
       if c['valid_until'].nil? || c['valid_until'].to_time > Time.now
@@ -504,5 +529,23 @@ class Player < ApplicationRecord
 
   def nation_id_is_positive
     errors.add(:nation_id, 'muss größer als 0 sein') unless nation_id.to_i > 0
+  end
+
+  def _rewrite_player_game_references(master_id)
+    secondary_id = id
+
+    Game.where("players->'home' @> ?", [{ player_id: secondary_id }].to_json)
+        .or(Game.where("players->'guest' @> ?", [{ player_id: secondary_id }].to_json))
+        .find_each do |game|
+      %w[home guest].each do |side|
+        game.players[side]&.each { |p| p['player_id'] = master_id if p['player_id'] == secondary_id }
+      end
+      if game.starting_players.present?
+        game.starting_players.each_value do |positions|
+          positions.transform_values! { |pid| pid == secondary_id ? master_id : pid }
+        end
+      end
+      game.save!(validate: false)
+    end
   end
 end

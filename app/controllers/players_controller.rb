@@ -659,6 +659,24 @@ class PlayersController < ApplicationController
   end
 
   # POST /admin/players/:id/deactivate
+  def merge
+    master = Player.find_by(id: params[:id])
+    return render json: { message: 'Master-Spieler nicht gefunden.' }, status: :not_found unless master
+
+    secondary = Player.find_by(id: params[:secondary_id])
+    return render json: { message: 'Secondary-Spieler nicht gefunden.' }, status: :not_found unless secondary
+
+    ph = current_user.permission_hash
+    unless ph[:admin].present? || sbk_can_access_player?(ph, master)
+      return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+
+    secondary.merge_into!(master, current_user.id)
+    render json: { message: 'Spieler erfolgreich zusammengeführt.', master_id: master.id }
+  rescue ArgumentError => e
+    render json: { message: e.message }, status: :unprocessable_entity
+  end
+
   def deactivate
     player = Player.find_by(id: params[:id])
     return render json: { message: 'Spieler nicht gefunden.' }, status: :not_found unless player
