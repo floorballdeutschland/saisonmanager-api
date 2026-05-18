@@ -20,6 +20,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Behoben
 - Schiedsrichterliste: RSK/SBK-Nutzer sehen nun alle ihnen zugeordneten Schiedsrichter, auch wenn die game_operation_id der Schiedsrichter direkt zugewiesen ist (#427)
+- Schiedsrichterliste: Landes-SBK/RSK-Nutzer sehen nur noch Schiedsrichter ihres eigenen Landesverbands; fehlende `state_association_id` an GameOperations führte zuvor zu falschem globalem Scope (#427)
 
 ---
 
