@@ -74,16 +74,17 @@ module Admin
       go_id   = params.dig(:role, :game_operation_id).to_i.nonzero?
 
       if ph[:vm].present? && !ph[:admin].present? && !ph[:sbk].present?
-        return render json: { error: 'VM darf nur TM-Nutzer anlegen' }, status: :forbidden unless role_id == 5
+        return render json: { error: 'VM darf nur TM- oder VM-Nutzer anlegen' }, status: :forbidden unless [4, 5].include?(role_id)
         return render json: { error: 'Verein nicht im eigenen Zuständigkeitsbereich' }, status: :forbidden unless club_id && ph[:vm].include?(club_id)
 
-        perm = { 'user_group_id' => 5 }
+        perm = { 'user_group_id' => role_id }
+        perm['club_id'] = club_id.to_s if role_id == 4
         user = User.new(user_create_params)
         user.password    = SecureRandom.hex(12)
         user.club_id     = club_id
         user.permissions = [perm]
 
-        if params[:teams].is_a?(Array)
+        if params[:teams].is_a?(Array) && role_id == 5
           allowed_team_ids = Team.current_season.where(club_id: ph[:vm]).pluck(:id)
           user.teams = params[:teams].map(&:to_i).select { |t| allowed_team_ids.include?(t) }
         end
