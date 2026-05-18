@@ -78,14 +78,25 @@ Setting.create!(
 puts '  Settings created.'
 
 # ============================================================
+# STATE ASSOCIATIONS (Landesverbände)
+# ============================================================
+StateAssociation.delete_all
+
+sa_ost = StateAssociation.create!(name: 'SBK Ost',     short_name: 'SBK Ost')
+sa_wst = StateAssociation.create!(name: 'SBK West',    short_name: 'SBK West')
+sa_bay = StateAssociation.create!(name: 'SBK Bayern',  short_name: 'SBK Bay')
+
+puts '  State associations created.'
+
+# ============================================================
 # GAME OPERATIONS (Spielbetriebe)
 # ============================================================
 GameOperation.delete_all
 
-fd  = GameOperation.create!(name: 'Floorball Deutschland', short_name: 'FD',  path: 'fd')
-ost = GameOperation.create!(name: 'SBK Ost',               short_name: 'SBK Ost',  path: 'sbk-ost')
-wst = GameOperation.create!(name: 'SBK West',              short_name: 'SBK West', path: 'sbk-west')
-bay = GameOperation.create!(name: 'SBK Bayern',            short_name: 'SBK Bayern', path: 'sbk-bayern')
+fd  = GameOperation.create!(name: 'Floorball Deutschland', short_name: 'FD',         path: 'fd')
+ost = GameOperation.create!(name: 'SBK Ost',               short_name: 'SBK Ost',   path: 'sbk-ost',    state_association_id: sa_ost.id)
+wst = GameOperation.create!(name: 'SBK West',              short_name: 'SBK West',  path: 'sbk-west',   state_association_id: sa_wst.id)
+bay = GameOperation.create!(name: 'SBK Bayern',            short_name: 'SBK Bayern', path: 'sbk-bayern', state_association_id: sa_bay.id)
 
 puts '  Game operations created.'
 
@@ -106,12 +117,12 @@ puts '  Arenas created.'
 # ============================================================
 Club.delete_all
 
-club_berlin  = Club.create!(name: 'Floorball Berlin',  short_name: 'FBB',  city: 'Berlin')
-club_hamburg = Club.create!(name: 'Floorball Hamburg', short_name: 'FBH',  city: 'Hamburg')
-club_munich  = Club.create!(name: 'Floorball München', short_name: 'FBM',  city: 'München')
-club_koeln   = Club.create!(name: 'Floorball Köln',    short_name: 'FBK',  city: 'Köln')
-club_bremen  = Club.create!(name: 'Floorball Bremen',  short_name: 'FBBr', city: 'Bremen')
-club_dresden = Club.create!(name: 'Floorball Dresden', short_name: 'FBD',  city: 'Dresden')
+club_berlin  = Club.create!(name: 'Floorball Berlin',  short_name: 'FBB',  city: 'Berlin',  state_association_id: sa_ost.id)
+club_hamburg = Club.create!(name: 'Floorball Hamburg', short_name: 'FBH',  city: 'Hamburg', state_association_id: sa_ost.id)
+club_munich  = Club.create!(name: 'Floorball München', short_name: 'FBM',  city: 'München', state_association_id: sa_bay.id)
+club_koeln   = Club.create!(name: 'Floorball Köln',    short_name: 'FBK',  city: 'Köln',    state_association_id: sa_wst.id)
+club_bremen  = Club.create!(name: 'Floorball Bremen',  short_name: 'FBBr', city: 'Bremen',  state_association_id: sa_ost.id)
+club_dresden = Club.create!(name: 'Floorball Dresden', short_name: 'FBD',  city: 'Dresden', state_association_id: sa_ost.id)
 
 puts '  Clubs created.'
 
@@ -360,6 +371,17 @@ User.create!(
   permissions:     [{ 'user_group_id' => '2', 'game_operation_id' => wst.id.to_s }]
 )
 
+# Demo SBK Bayern
+User.create!(
+  user_name:       'demo_sbk_bay',
+  email:           'sbk_bay@saisonmanager.dev',
+  first_name:      'Demo SBK',
+  last_name:       'Bayern',
+  password_digest: password_hash,
+  active:          true,
+  permissions:     [{ 'user_group_id' => '2', 'game_operation_id' => bay.id.to_s }]
+)
+
 # VM Berlin (Vereinsmanager für Floorball Berlin)
 User.create!(
   user_name:       'vm_berlin',
@@ -388,20 +410,22 @@ User.create!(
 puts '  Users created.'
 puts ''
 puts 'Done! Seed data summary:'
-puts "  Settings:       1"
-puts "  Game operations: #{GameOperation.count}"
-puts "  Arenas:         #{Arena.count}"
-puts "  Clubs:          #{Club.count}"
-puts "  Teams:          #{Team.count}"
-puts "  Leagues:        #{League.count}"
-puts "  Game days:      #{GameDay.count}"
-puts "  Games:          #{Game.count} (incl. 1 finalized for reopen test)"
-puts "  Players:        #{Player.count}"
-puts "  Users:          #{User.count}"
+puts "  Settings:            1"
+puts "  State associations:  #{StateAssociation.count}"
+puts "  Game operations:     #{GameOperation.count}"
+puts "  Arenas:              #{Arena.count}"
+puts "  Clubs:               #{Club.count}"
+puts "  Teams:               #{Team.count}"
+puts "  Leagues:             #{League.count}"
+puts "  Game days:           #{GameDay.count}"
+puts "  Games:               #{Game.count} (incl. 1 finalized for reopen test)"
+puts "  Players:             #{Player.count}"
+puts "  Users:               #{User.count}"
 puts ''
 puts 'Login credentials (password: password123):'
-puts '  admin    – Admin, alle Rechte'
-puts '  sbk_ost  – SBK Ost'
-puts '  sbk_west – SBK West'
-puts '  vm_berlin – VM Floorball Berlin'
-puts '  tm_berlin1 – TM Berlin Team 1'
+puts '  admin        – Admin, alle Rechte'
+puts '  sbk_ost      – SBK Ost'
+puts '  sbk_west     – SBK West'
+puts '  demo_sbk_bay – SBK Bayern (Demo)'
+puts '  vm_berlin    – VM Floorball Berlin'
+puts '  tm_berlin1   – TM Berlin Team 1'

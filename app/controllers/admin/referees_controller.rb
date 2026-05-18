@@ -219,8 +219,8 @@ module Admin
       return referees if ph[:sbk].present? && ph[:sbk].include?(0)
 
       if ph[:rsk].present? || ph[:sbk].present?
-        club_ids = lv_club_ids(ph)
         go_ids = ((ph[:rsk] || []) + (ph[:sbk] || [])).reject { |id| id.zero? }.uniq
+        club_ids = lv_club_ids(go_ids)
         referees.where(club_id: club_ids).or(referees.where(game_operation_id: go_ids))
       elsif ph[:vm].present?
         referees.where(club_id: ph[:vm])
@@ -237,7 +237,7 @@ module Admin
 
       if ph[:rsk].present? || ph[:sbk].present?
         go_ids = ((ph[:rsk] || []) + (ph[:sbk] || [])).reject { |id| id.zero? }.uniq
-        lv_club_ids(ph).include?(referee.club_id) || go_ids.include?(referee.game_operation_id)
+        lv_club_ids(go_ids).include?(referee.club_id) || go_ids.include?(referee.game_operation_id)
       elsif ph[:vm].present?
         ph[:vm].include?(referee.club_id)
       else
@@ -245,9 +245,7 @@ module Admin
       end
     end
 
-    # Returns club IDs belonging to the LVs associated with the user's go_ids.
-    def lv_club_ids(ph)
-      go_ids = ((ph[:rsk] || []) + (ph[:sbk] || [])).reject { |id| id.zero? }.uniq
+    def lv_club_ids(go_ids)
       sa_ids = GameOperation.where(id: go_ids).pluck(:state_association_id).compact
       Club.where(state_association_id: sa_ids).pluck(:id)
     end
