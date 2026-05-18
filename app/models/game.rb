@@ -1055,7 +1055,6 @@ class Game < ApplicationRecord
     games = Game.not_started.has_autofill_condition
     games = games.where(game_day_id: GameDay.where(league_id:).select(:id)) if league_id
     changed_leagues = []
-
     games.each do |game|
       %w[home_team guest_team].each do |team|
         next unless game["#{team}_filling_rule"].present? && game["#{team}_filling_parameter"].present?
