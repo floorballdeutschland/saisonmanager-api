@@ -103,10 +103,10 @@ class User < ApplicationRecord
     permission_hash[:vm]
   end
 
-  def sbk_state_association_menu_item?(ph)
-    !ph[:admin].present? &&
-      (ph[:sbk].present? || ph[:rsk].present?) &&
-      !ph[:sbk]&.include?(0) && !ph[:rsk]&.include?(0)
+  def sbk_state_association_menu_item?(perm_hash)
+    !perm_hash[:admin].present? &&
+      (perm_hash[:sbk].present? || perm_hash[:rsk].present?) &&
+      !perm_hash[:sbk]&.include?(0) && !perm_hash[:rsk]&.include?(0)
   end
 
   def special_user
