@@ -471,6 +471,7 @@ class LeaguesController < ApplicationController
                                    :league_category_id, :league_class_id, :league_system_id, :name, :order_key,
                                    :short_name, :enable_scorer, :field_size, :league_modus, :league_id_preseason,
                                    :league_id_preround, :has_preround, :preround_point_modus, :preround_scorer_modus,
+                                   :league_id_direct_encounters,
                                    :table_modus, :direct_comparison, :periods, :period_length, :overtime_length,
                                    required_documents: [])
   end
