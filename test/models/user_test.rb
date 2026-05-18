@@ -126,6 +126,7 @@ class UserTest < ActiveSupport::TestCase
     assert items[:menu_item_user_vm]
     assert_not items[:menu_item_league_admin]
     assert_not items[:menu_item_state_association_admin]
+    assert_not items[:menu_item_referee_admin]
     assert_not items[:login_blocked]
   end
 
