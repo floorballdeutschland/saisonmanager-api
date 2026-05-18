@@ -793,6 +793,7 @@ class GamesController < ApplicationController
           _maybe_send_incident_report_reminder(game)
           _maybe_send_checklist_confirmation(game)
           _maybe_send_game_day_scan_reminder(game)
+          Game.autofill_teams!(league_id: game.game_day.league_id)
         end
       elsif params[:ingame_status].present?
         old_ingame_status = game.ingame_status
