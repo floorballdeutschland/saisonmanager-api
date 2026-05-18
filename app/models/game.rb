@@ -1051,8 +1051,13 @@ class Game < ApplicationRecord
     end
   end
 
-  def self.autofill_teams!
-    games = Game.not_started.has_autofill_condition
+  def self.autofill_teams!(league_id: nil)
+    scope = Game.not_started.has_autofill_condition
+    if league_id
+      game_day_ids = GameDay.where(league_id:).pluck(:id)
+      scope = scope.where(game_day_id: game_day_ids)
+    end
+    games = scope
 
     changed_leagues = []
 
