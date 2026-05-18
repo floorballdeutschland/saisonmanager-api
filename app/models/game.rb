@@ -1051,11 +1051,10 @@ class Game < ApplicationRecord
     end
   end
 
-  def self.autofill_teams!
+  def self.autofill_teams!(league_id: nil)
     games = Game.not_started.has_autofill_condition
-
+    games = games.where(game_day_id: GameDay.where(league_id:).select(:id)) if league_id
     changed_leagues = []
-
     games.each do |game|
       %w[home_team guest_team].each do |team|
         next unless game["#{team}_filling_rule"].present? && game["#{team}_filling_parameter"].present?
@@ -1071,8 +1070,8 @@ class Game < ApplicationRecord
         next unless game["#{team}_filling_rule"].starts_with? 'place_'
 
         group = game["#{team}_filling_rule"].gsub('place_', 'group_')
-        league_id = game.game_day.league_id
-        game_day_ids = GameDay.where(league_id:).pluck(:id)
+        game_league_id = game.game_day.league_id
+        game_day_ids = GameDay.where(league_id: game_league_id).pluck(:id)
 
         # we skip this rule, unless all games are played:
         next if Game.where(game_day_id: game_day_ids).where(group_identifier: group).match_record_not_closed.present?
@@ -1084,15 +1083,15 @@ class Game < ApplicationRecord
 
         if team_id && (team_id != game["#{team}_id"])
           game["#{team}_id"] = team_id
-          changed_leagues << league_id
+          changed_leagues << game_league_id
         end
       end
       game.save
     end
 
-    changed_leagues.uniq.each do |league_id|
-      Rails.cache.delete("leagues/#{league_id}/current_schedule")
-      Rails.cache.delete("leagues/#{league_id}/schedule")
+    changed_leagues.uniq.each do |lid|
+      Rails.cache.delete("leagues/#{lid}/current_schedule")
+      Rails.cache.delete("leagues/#{lid}/schedule")
     end
 
     []
