@@ -64,7 +64,7 @@ module Admin
 
     def scoped_state_associations
       ph = current_user.permission_hash
-      go_ids = ((ph[:sbk] || []) + (ph[:rsk] || [])).reject { |id| id.zero? }.uniq
+      go_ids = ((ph[:sbk] || []) + (ph[:rsk] || [])).reject(&:zero?).uniq
       sa_ids = GameOperation.where(id: go_ids).pluck(:state_association_id).compact
       StateAssociation.where(id: sa_ids)
     end
