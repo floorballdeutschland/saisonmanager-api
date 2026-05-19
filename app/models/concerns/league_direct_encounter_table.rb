@@ -41,17 +41,15 @@ module LeagueDirectEncounterTable
           results[guest_id][:lost] += 1
           results[home_id][:points] += won_points
         end
+      elsif game.overtime
+        results[guest_id][:won_ot] += 1
+        results[home_id][:lost_ot] += 1
+        results[guest_id][:points] += won_overtime_points
+        results[home_id][:points] += lost_overtime_points
       else
-        if game.overtime
-          results[guest_id][:won_ot] += 1
-          results[home_id][:lost_ot] += 1
-          results[guest_id][:points] += won_overtime_points
-          results[home_id][:points] += lost_overtime_points
-        else
-          results[guest_id][:won] += 1
-          results[home_id][:lost] += 1
-          results[guest_id][:points] += won_points
-        end
+        results[guest_id][:won] += 1
+        results[home_id][:lost] += 1
+        results[guest_id][:points] += won_points
       end
 
       affected_team_ids << home_id << guest_id
