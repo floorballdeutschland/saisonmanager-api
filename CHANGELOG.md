@@ -17,6 +17,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - GitHub-Release-Workflow: Bei jedem Merge auf `main` mit Versions-Bump wird automatisch ein GitHub Release mit den Changelog-Einträgen angelegt (#126)
 
 ### Behoben
+- Schiedsrichter-Zusammenführung: `set_referee` wurde nicht für die `merge`-Action geladen, wodurch der Endpoint mit NoMethodError abstürzte; `merge` der `only:`-Liste hinzugefügt
 - RuboCop-Verstöße in `state_associations_controller` und `user.rb` behoben (Style/SymbolProc, Style/RedundantParentheses, Metrics/CyclomaticComplexity)
 
 ### Verbessert

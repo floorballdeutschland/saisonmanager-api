@@ -1,7 +1,7 @@
 module Admin
   class RefereesController < ApplicationController
     before_action :authorize_referee_access!
-    before_action :set_referee, only: %i[show update destroy games wallet_pass club_stats]
+    before_action :set_referee, only: %i[show update destroy games wallet_pass club_stats merge]
 
     # GET /api/v2/admin/referees
     def index
