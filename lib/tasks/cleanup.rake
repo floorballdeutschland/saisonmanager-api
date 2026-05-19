@@ -23,13 +23,25 @@ namespace :cleanup do
       threshold:
     )
 
-    count = users_to_delete.count
-    message = if dry_run
-                "[DRY RUN] #{count} inaktive VM/TM-Benutzerkonten würden gelöscht."
-              else
-                User.transaction { users_to_delete.destroy_all }
-                "#{count} inaktive VM/TM-Benutzerkonten gelöscht."
-              end
+    total = users_to_delete.count
+    if dry_run
+      message = "[DRY RUN] #{total} inaktive VM/TM-Benutzerkonten würden gelöscht."
+    else
+      deleted = 0
+      skipped = []
+      # Jeden Nutzer einzeln in eigener Transaktion löschen, damit FK-Fehler
+      # (z. B. von hochgeladenen Lizenz-Dokumenten, Spielberichten, Sekretariats-Links)
+      # einzelne Datensätze nicht den gesamten Cleanup-Lauf abbrechen.
+      users_to_delete.find_each do |user|
+        User.transaction { user.destroy! }
+        deleted += 1
+      rescue ActiveRecord::InvalidForeignKey => e
+        skipped << "##{user.id} (#{user.user_name})"
+        Rails.logger.warn("[cleanup:inactive_users] Skip user ##{user.id}: #{e.message}")
+      end
+      message = "#{deleted}/#{total} inaktive VM/TM-Benutzerkonten gelöscht."
+      message += " Übersprungen wegen Fremdschlüssel-Referenzen: #{skipped.join(', ')}." if skipped.any?
+    end
     puts message
     Rails.logger.info("[cleanup:inactive_users] #{message}")
   end
