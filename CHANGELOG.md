@@ -18,6 +18,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Behoben
 - Schiedsrichter-Zusammenführung: `set_referee` wurde nicht für die `merge`-Action geladen, wodurch der Endpoint mit NoMethodError abstürzte; `merge` der `only:`-Liste hinzugefügt
+- Vorrunden-Lizenzübernahme: `copy_preround_licenses` prüft jetzt vor der Berechtigungslogik, dass eine Cookie-Session existiert (verhinderte NoMethodError bei reinem API-Key-Aufruf); zudem läuft die Lizenzanlage in einer Transaktion, damit Teilausfälle keine inkonsistenten Daten hinterlassen
 - RuboCop-Verstöße in `state_associations_controller` und `user.rb` behoben (Style/SymbolProc, Style/RedundantParentheses, Metrics/CyclomaticComplexity)
 
 ### Verbessert

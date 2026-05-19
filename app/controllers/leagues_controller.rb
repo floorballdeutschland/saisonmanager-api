@@ -312,6 +312,8 @@ class LeaguesController < ApplicationController
   end
 
   def copy_preround_licenses
+    return render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized unless current_user
+
     league = League.find(params[:id])
 
     unless league.user_permissions(current_user).include?(:update_league)
@@ -333,31 +335,33 @@ class LeaguesController < ApplicationController
 
     copied_count = 0
 
-    current_team_by_club.each do |club_id, current_team|
-      preround_team = preround_team_by_club[club_id]
-      next unless preround_team
+    ActiveRecord::Base.transaction do
+      current_team_by_club.each do |club_id, current_team|
+        preround_team = preround_team_by_club[club_id]
+        next unless preround_team
 
-      preround_players = Player.find_by_team_id(preround_team.id).uniq(&:id)
+        preround_players = Player.find_by_team_id(preround_team.id).uniq(&:id)
 
-      preround_players.each do |player|
-        preround_license = (player.licenses || []).find do |l|
-          l['team_id'].to_i == preround_team.id &&
-            l['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i == License::APPROVED
+        preround_players.each do |player|
+          preround_license = (player.licenses || []).find do |l|
+            l['team_id'].to_i == preround_team.id &&
+              l['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i == License::APPROVED
+          end
+          next unless preround_license
+          next if (player.licenses || []).any? { |l| l['team_id'].to_i == current_team.id }
+
+          fresh_player = Player.find(player.id)
+          new_license = {
+            'id' => SecureRandom.uuid,
+            'team_id' => current_team.id,
+            'history' => [{
+              'license_status_id' => License::APPROVED,
+              'created_at' => Time.current.iso8601
+            }]
+          }
+          fresh_player.licenses = (fresh_player.licenses || []) + [new_license]
+          copied_count += 1 if fresh_player.save
         end
-        next unless preround_license
-        next if (player.licenses || []).any? { |l| l['team_id'].to_i == current_team.id }
-
-        fresh_player = Player.find(player.id)
-        new_license = {
-          'id' => SecureRandom.uuid,
-          'team_id' => current_team.id,
-          'history' => [{
-            'license_status_id' => License::APPROVED,
-            'created_at' => Time.current.iso8601
-          }]
-        }
-        fresh_player.licenses = (fresh_player.licenses || []) + [new_license]
-        copied_count += 1 if fresh_player.save
       end
     end
 
