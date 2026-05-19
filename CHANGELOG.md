@@ -19,6 +19,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Behoben
 - RuboCop-Verstöße in `state_associations_controller` und `user.rb` behoben (Style/SymbolProc, Style/RedundantParentheses, Metrics/CyclomaticComplexity)
 - Duplikat-Zusammenführung Schiedsrichter: fehlende `set_referee`-Bindung für Merge-Action, falscher Spaltenname `qualification_type_id` (statt `referee_qualification_type_id`) sowie fehlende Transaktion und Berechtigungsprüfung für den Secondary-Datensatz behoben (#422)
+- Duplikat-Zusammenführung Schiedsrichter: Lizenznummer der Secondary wird auf den Master übertragen, falls dieser keine besitzt; Game-Referenzen (`referee_ids`, `referee1_string`, `referee2_string`) werden in diesem Fall ebenfalls korrekt umgeschrieben (#422)
 - Duplikat-Zusammenführung Spieler: Merge läuft jetzt in einer Transaktion, Berechtigung wird auch für den Secondary-Datensatz geprüft, bereits zusammengeführte Datensätze werden abgewiesen (#422)
 
 ### Verbessert

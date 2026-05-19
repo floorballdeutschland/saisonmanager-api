@@ -74,6 +74,16 @@ class Referee < ApplicationRecord
       scalar_fields.each do |field|
         master[field] = self[field] if master[field].blank? && self[field].present?
       end
+
+      # Falls Master keine Lizenznummer hat, übertrage die der Secondary.
+      # Wegen UNIQUE-Index auf lizenznummer muss die Secondary erst geleert werden.
+      transferred_lizenznummer = nil
+      if master.lizenznummer.blank? && lizenznummer.present?
+        transferred_lizenznummer = lizenznummer
+        update_columns(lizenznummer: nil)
+        master.lizenznummer = transferred_lizenznummer
+      end
+
       master.save!(validate: false)
 
       existing_qt_ids = master.referee_qualifications.pluck(:referee_qualification_type_id)
@@ -89,9 +99,12 @@ class Referee < ApplicationRecord
         end
       end
 
-      _rewrite_referee_game_references(master)
+      _rewrite_referee_game_references(master, secondary_lizenznummer: transferred_lizenznummer || lizenznummer)
 
-      update!(merged_into_id: master.id)
+      # validate: false – die Secondary kann nach dem Lizenznummern-Transfer
+      # die Pflicht-Validierung (Lizenznummer für Nicht-Gäste) nicht mehr erfüllen.
+      self.merged_into_id = master.id
+      save!(validate: false)
     end
   end
 
@@ -101,21 +114,22 @@ class Referee < ApplicationRecord
     errors.add(:partner_lizenznummer, 'nicht gefunden') unless Referee.exists?(lizenznummer: partner_lizenznummer)
   end
 
-  def _rewrite_referee_game_references(master)
-    return if lizenznummer.nil?
+  def _rewrite_referee_game_references(master, secondary_lizenznummer: lizenznummer)
+    if secondary_lizenznummer.present? && master.lizenznummer.present? &&
+       secondary_lizenznummer != master.lizenznummer
+      Game.where('? = ANY(referee_ids)', secondary_lizenznummer)
+          .update_all("referee_ids = array_replace(referee_ids, #{secondary_lizenznummer.to_i}, #{master.lizenznummer.to_i})")
 
-    if master.lizenznummer.present?
-      Game.where('? = ANY(referee_ids)', lizenznummer)
-          .update_all("referee_ids = array_replace(referee_ids, #{lizenznummer}, #{master.lizenznummer})")
-
-      Game.where('referee1_string LIKE ?', "#{lizenznummer} %")
-          .update_all("referee1_string = REPLACE(referee1_string, '#{lizenznummer} ', '#{master.lizenznummer} ')")
-      Game.where('referee2_string LIKE ?', "#{lizenznummer} %")
-          .update_all("referee2_string = REPLACE(referee2_string, '#{lizenznummer} ', '#{master.lizenznummer} ')")
+      Game.where('referee1_string LIKE ?', "#{secondary_lizenznummer} %")
+          .update_all("referee1_string = REPLACE(referee1_string, '#{secondary_lizenznummer.to_i} ', '#{master.lizenznummer.to_i} ')")
+      Game.where('referee2_string LIKE ?', "#{secondary_lizenznummer} %")
+          .update_all("referee2_string = REPLACE(referee2_string, '#{secondary_lizenznummer.to_i} ', '#{master.lizenznummer.to_i} ')")
     end
 
-    Game.where('? = ANY(nominated_referee_ids)', id)
-        .update_all("nominated_referee_ids = array_replace(nominated_referee_ids, #{id}, #{master.id})")
+    if id != master.id
+      Game.where('? = ANY(nominated_referee_ids)', id)
+          .update_all("nominated_referee_ids = array_replace(nominated_referee_ids, #{id.to_i}, #{master.id.to_i})")
+    end
   end
 
   public
