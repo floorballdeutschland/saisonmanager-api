@@ -212,6 +212,12 @@ Rails.application.routes.draw do
         end
         resources :api_keys, only: %i[index create update destroy]
         resources :licenses, only: [:index]
+        resources :player_change_requests, only: %i[index create] do
+          member do
+            patch :approve
+            patch :reject
+          end
+        end
         resources :transfer_requests, only: %i[index show create] do
           collection { get :search_player }
           member do
