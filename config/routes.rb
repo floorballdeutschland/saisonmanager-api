@@ -103,6 +103,7 @@ Rails.application.routes.draw do
       post 'admin/players/:id/remove_additional_club', to: 'players#remove_additional_club'
       post 'admin/players/:id/deactivate', to: 'players#deactivate'
       post 'admin/players/:id/reactivate', to: 'players#reactivate'
+      post 'admin/players/:id/merge', to: 'players#merge'
       get  'admin/vm/players', to: 'players#vm_players_index'
 
       post 'admin/players/:id/handle_license_request', to: 'players#handle_license_request'
@@ -191,6 +192,7 @@ Rails.application.routes.draw do
           get :games, on: :member
           get :club_stats, on: :member
           post :wallet_pass, on: :member
+          post :merge, on: :member
           get :incorrect_assignments, on: :collection
           get :next_lizenznummer, on: :collection
         end
