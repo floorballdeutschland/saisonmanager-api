@@ -24,7 +24,7 @@ class Referee < ApplicationRecord
     club&.state_association&.name
   end
 
-  scope :active, -> { where('gueltigkeit >= ?', Date.today) }
+  scope :active, -> { where('gueltigkeit >= ?', Date.today).where(merged_into_id: nil) }
   scope :by_landesverband, lambda { |lv|
     joins(club: :state_association).where(state_associations: { name: lv })
   }
@@ -61,10 +61,75 @@ class Referee < ApplicationRecord
     scope
   end
 
+  def merge_into!(master)
+    raise ArgumentError, 'Master und Secondary dürfen nicht identisch sein' if id == master.id
+    raise ArgumentError, 'Secondary ist bereits zusammengeführt' if merged_into_id.present?
+    raise ArgumentError, 'Master ist bereits zusammengeführt' if master.merged_into_id.present?
+
+    ActiveRecord::Base.transaction do
+      scalar_fields = %w[
+        vorname nachname geburtsdatum email club_id game_operation_id
+        lizenzstufe gueltigkeit strasse hausnummer plz ort
+      ]
+      scalar_fields.each do |field|
+        master[field] = self[field] if master[field].blank? && self[field].present?
+      end
+
+      # Falls Master keine Lizenznummer hat, übertrage die der Secondary.
+      # Wegen UNIQUE-Index auf lizenznummer muss die Secondary erst geleert werden.
+      transferred_lizenznummer = nil
+      if master.lizenznummer.blank? && lizenznummer.present?
+        transferred_lizenznummer = lizenznummer
+        update_columns(lizenznummer: nil)
+        master.lizenznummer = transferred_lizenznummer
+      end
+
+      master.save!(validate: false)
+
+      existing_qt_ids = master.referee_qualifications.pluck(:referee_qualification_type_id)
+      referee_qualifications.where.not(referee_qualification_type_id: existing_qt_ids).update_all(referee_id: master.id)
+
+      referee_blocked_dates.update_all(referee_id: master.id)
+
+      if user.present?
+        if master.user.nil?
+          user.update!(referee_id: master.id)
+        else
+          user.update!(referee_id: nil)
+        end
+      end
+
+      _rewrite_referee_game_references(master, secondary_lizenznummer: transferred_lizenznummer || lizenznummer)
+
+      # validate: false – die Secondary kann nach dem Lizenznummern-Transfer
+      # die Pflicht-Validierung (Lizenznummer für Nicht-Gäste) nicht mehr erfüllen.
+      self.merged_into_id = master.id
+      save!(validate: false)
+    end
+  end
+
   private
 
   def partner_must_exist
     errors.add(:partner_lizenznummer, 'nicht gefunden') unless Referee.exists?(lizenznummer: partner_lizenznummer)
+  end
+
+  def _rewrite_referee_game_references(master, secondary_lizenznummer: lizenznummer)
+    if secondary_lizenznummer.present? && master.lizenznummer.present? &&
+       secondary_lizenznummer != master.lizenznummer
+      Game.where('? = ANY(referee_ids)', secondary_lizenznummer)
+          .update_all("referee_ids = array_replace(referee_ids, #{secondary_lizenznummer.to_i}, #{master.lizenznummer.to_i})")
+
+      Game.where('referee1_string LIKE ?', "#{secondary_lizenznummer} %")
+          .update_all("referee1_string = REPLACE(referee1_string, '#{secondary_lizenznummer.to_i} ', '#{master.lizenznummer.to_i} ')")
+      Game.where('referee2_string LIKE ?', "#{secondary_lizenznummer} %")
+          .update_all("referee2_string = REPLACE(referee2_string, '#{secondary_lizenznummer.to_i} ', '#{master.lizenznummer.to_i} ')")
+    end
+
+    return unless id != master.id
+
+    Game.where('? = ANY(nominated_referee_ids)', id)
+        .update_all("nominated_referee_ids = array_replace(nominated_referee_ids, #{id.to_i}, #{master.id.to_i})")
   end
 
   public

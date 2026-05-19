@@ -150,9 +150,9 @@ class League < ApplicationRecord
       has_preround:,
 
       league_id_direct_encounters:,
+      league_id_preround:,
+      preround_point_modus:,
       # league_id_preseason: league_id_preseason,
-      # league_id_preround: league_id_preround,
-      # preround_point_modus: preround_point_modus,
       # preround_scorer_modus: preround_scorer_modus,
       table_modus:,
       direct_comparison:,
@@ -324,6 +324,7 @@ class League < ApplicationRecord
     results = evaluate_table_results(g)
 
     apply_direct_encounter_games!(results) if league_id_direct_encounters.present?
+    apply_preround_points!(results) if league_id_preround.present? && preround_point_modus.present?
 
     sorted_results = if direct_comparison
                        sort_by_direct_comparison(results.values, g)
@@ -448,6 +449,32 @@ class League < ApplicationRecord
       team_logo_small: team.logo_small_url_fallback,
       point_corrections: team_point_corrections
     }
+  end
+
+  def apply_preround_points!(results)
+    preround_league = League.find_by(id: league_id_preround)
+    return unless preround_league
+
+    multiplier = preround_point_modus == 'half' ? 0.5 : 1.0
+    preround_table = preround_league.table
+
+    preround_team_ids = preround_table.map { |e| e[:team_id] }
+    preround_club_map = Team.where(id: preround_team_ids).pluck(:id, :club_id).to_h
+    preround_points_by_club = preround_table.each_with_object({}) do |entry, map|
+      club_id = preround_club_map[entry[:team_id]]
+      map[club_id] = (entry[:points] * multiplier).floor if club_id
+    end
+
+    current_club_map = Team.where(id: results.keys).pluck(:id, :club_id).to_h
+
+    results.each do |team_id, entry|
+      club_id = current_club_map[team_id]
+      bonus = preround_points_by_club[club_id] || 0
+      next if bonus.zero?
+
+      entry[:points] += bonus
+      entry[:preround_points] = bonus
+    end
   end
 
   def evaluate_table_results(g = games)

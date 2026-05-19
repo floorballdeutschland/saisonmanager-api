@@ -81,6 +81,7 @@ Rails.application.routes.draw do
       get 'admin/leagues/:id/schedule_import_template', to: 'leagues#admin_schedule_import_template'
       get 'admin/leagues/:id/additional_references', to: 'leagues#additional_references'
       get 'admin/leagues/:id/licenses', to: 'players#admin_licenses'
+      post 'admin/leagues/:id/copy_preround_licenses', to: 'leagues#copy_preround_licenses'
 
       get 'admin/teams/:id', to: 'teams#admin_get_team'
       get 'admin/league/clubs/:callType/:id', to: 'clubs#admin_get_go_clubs'
@@ -103,6 +104,7 @@ Rails.application.routes.draw do
       post 'admin/players/:id/remove_additional_club', to: 'players#remove_additional_club'
       post 'admin/players/:id/deactivate', to: 'players#deactivate'
       post 'admin/players/:id/reactivate', to: 'players#reactivate'
+      post 'admin/players/:id/merge', to: 'players#merge'
       get  'admin/vm/players', to: 'players#vm_players_index'
 
       post 'admin/players/:id/handle_license_request', to: 'players#handle_license_request'
@@ -191,7 +193,9 @@ Rails.application.routes.draw do
           get :games, on: :member
           get :club_stats, on: :member
           post :wallet_pass, on: :member
+          post :merge, on: :member
           get :incorrect_assignments, on: :collection
+          get :next_lizenznummer, on: :collection
         end
         resources :referee_qualification_types, only: %i[index create update destroy]
         resources :referee_assignments, only: %i[index create update] do
