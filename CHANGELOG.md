@@ -11,11 +11,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Neu
 - Schiedsrichter-Neuanlage: Lizenznummer wird automatisch mit der nächsten freien Nummer vorbefüllt (höchste vorhandene + 1) (#446)
+- Vereinsmanager können jetzt weitere VM- und TM-Nutzer für ihren Verein anlegen (#441)
 - Landesverbände: Landes-SBK/RSK-Nutzer sehen jetzt ihren eigenen Landesverband unter `/verwaltung/landesverbaende`; Anlegen/Bearbeiten/Löschen bleibt Admin-Funktion
 - GitHub-Release-Workflow: Bei jedem Merge auf `main` mit Versions-Bump wird automatisch ein GitHub Release mit den Changelog-Einträgen angelegt (#126)
 
 ### Behoben
 - RuboCop-Verstöße in `state_associations_controller` und `user.rb` behoben (Style/SymbolProc, Style/RedundantParentheses, Metrics/CyclomaticComplexity)
+- Ansetzungen: RSK-Nutzer konnten `admin/settings/seasons` nicht aufrufen → 403-Fehler beim Laden der Ansetzungsseite behoben
 
 ### Verbessert
 - Spielplan: Platzhalterteams in K.o.-Runden werden automatisch zugewiesen, sobald ein referenziertes Spiel abgeschlossen wird (#227)
