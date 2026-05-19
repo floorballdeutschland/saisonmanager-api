@@ -1,6 +1,7 @@
 module Admin
   class SettingsController < ApplicationController
-    before_action :require_admin!
+    before_action :require_admin!, only: %i[create_season update_season]
+    before_action :require_admin_or_rsk!, only: %i[seasons]
 
     def seasons
       render json: {
@@ -42,6 +43,13 @@ module Admin
     def require_admin!
       ph = current_user.permission_hash
       return if ph[:admin].present?
+
+      render json: { error: 'Nicht berechtigt' }, status: :forbidden
+    end
+
+    def require_admin_or_rsk!
+      ph = current_user.permission_hash
+      return if ph[:admin].present? || ph[:rsk].present?
 
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
