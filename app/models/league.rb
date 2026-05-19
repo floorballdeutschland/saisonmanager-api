@@ -1,5 +1,6 @@
 class League < ApplicationRecord
   include UserTrackable
+  include LeagueDirectEncounterTable
 
   has_many :game_days
   belongs_to :game_operation
@@ -148,6 +149,7 @@ class League < ApplicationRecord
       league_modus:,
       has_preround:,
 
+      league_id_direct_encounters:,
       league_id_preround:,
       preround_point_modus:,
       # league_id_preseason: league_id_preseason,
@@ -321,6 +323,7 @@ class League < ApplicationRecord
     g = games
     results = evaluate_table_results(g)
 
+    apply_direct_encounter_games!(results) if league_id_direct_encounters.present?
     apply_preround_points!(results) if league_id_preround.present? && preround_point_modus.present?
 
     sorted_results = if direct_comparison

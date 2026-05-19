@@ -16,6 +16,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - Vereinsmanager können jetzt weitere VM- und TM-Nutzer für ihren Verein anlegen (#441)
 - Landesverbände: Landes-SBK/RSK-Nutzer sehen jetzt ihren eigenen Landesverband unter `/verwaltung/landesverbaende`; Anlegen/Bearbeiten/Löschen bleibt Admin-Funktion
 - GitHub-Release-Workflow: Bei jedem Merge auf `main` mit Versions-Bump wird automatisch ein GitHub Release mit den Changelog-Einträgen angelegt (#126)
+- Tabelle: Direktbegegnungen aus einer Hinrunden-Liga können in die Rückrunden-Tabelle übernommen werden (`league_id_direct_encounters`); Spiele aus der Quell-Liga werden über Club-Zuordnung den Teams der aktuellen Liga zugeschrieben (#280)
 - Rake-Task `cleanup:inactive_users`: Löscht VM/TM-Benutzerkonten ohne Login seit mehr als 3 Jahren; Admin/SBK/RSK/Schiedsrichter-Konten sind nicht betroffen. `DRY_RUN=1` zeigt nur den Effekt an (#442)
 - Rake-Task `cleanup:old_transfer_requests`: Löscht abgeschlossene Transferanträge (approved/rejected/revoked/withdrawn) nach 3 Jahren Abschluss (status-spezifischer Zeitstempel, Fallback `created_at`). `DRY_RUN=1` zeigt nur den Effekt an (#444)
 - Rake-Task `cleanup:all`: Führt beide Bereinigungsaufgaben in einem Schritt aus
