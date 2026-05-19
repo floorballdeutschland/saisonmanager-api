@@ -667,7 +667,7 @@ class PlayersController < ApplicationController
     return render json: { message: 'Secondary-Spieler nicht gefunden.' }, status: :not_found unless secondary
 
     ph = current_user.permission_hash
-    unless ph[:admin].present? || sbk_can_access_player?(ph, master)
+    unless ph[:admin].present? || (sbk_can_access_player?(ph, master) && sbk_can_access_player?(ph, secondary))
       return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
     end
 

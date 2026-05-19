@@ -327,27 +327,31 @@ class Player < ApplicationRecord
 
   def merge_into!(master, user_id)
     raise ArgumentError, 'Master und Secondary dürfen nicht identisch sein' if id == master.id
+    raise ArgumentError, 'Secondary ist bereits zusammengeführt' if merged_into_id.present?
+    raise ArgumentError, 'Master ist bereits zusammengeführt' if master.merged_into_id.present?
 
-    %w[first_name last_name birthdate gender nation_id security_id email].each do |field|
-      master[field] = self[field] if master[field].blank? && self[field].present?
+    ActiveRecord::Base.transaction do
+      %w[first_name last_name birthdate gender nation_id security_id email].each do |field|
+        master[field] = self[field] if master[field].blank? && self[field].present?
+      end
+
+      existing_club_ids = master.clubs.map { |c| c['club_id'] }
+      clubs.each do |club|
+        master.clubs << club unless existing_club_ids.include?(club['club_id'])
+      end
+
+      existing_team_ids = master.licenses.map { |l| l['team_id'] }
+      licenses.each do |license|
+        master.licenses << license unless existing_team_ids.include?(license['team_id'])
+      end
+
+      master.save!(validate: false)
+
+      _rewrite_player_game_references(master.id)
+
+      self.merged_into_id = master.id
+      deactivate!(user_id)
     end
-
-    existing_club_ids = master.clubs.map { |c| c['club_id'] }
-    clubs.each do |club|
-      master.clubs << club unless existing_club_ids.include?(club['club_id'])
-    end
-
-    existing_team_ids = master.licenses.map { |l| l['team_id'] }
-    licenses.each do |license|
-      master.licenses << license unless existing_team_ids.include?(license['team_id'])
-    end
-
-    master.save!(validate: false)
-
-    _rewrite_player_game_references(master.id)
-
-    self.merged_into_id = master.id
-    deactivate!(user_id)
   end
 
   def deactivate!(user_id)

@@ -63,32 +63,36 @@ class Referee < ApplicationRecord
 
   def merge_into!(master)
     raise ArgumentError, 'Master und Secondary dürfen nicht identisch sein' if id == master.id
+    raise ArgumentError, 'Secondary ist bereits zusammengeführt' if merged_into_id.present?
+    raise ArgumentError, 'Master ist bereits zusammengeführt' if master.merged_into_id.present?
 
-    scalar_fields = %w[
-      vorname nachname geburtsdatum email club_id game_operation_id
-      lizenzstufe gueltigkeit strasse hausnummer plz ort
-    ]
-    scalar_fields.each do |field|
-      master[field] = self[field] if master[field].blank? && self[field].present?
-    end
-    master.save!(validate: false)
-
-    existing_qt_ids = master.referee_qualifications.pluck(:qualification_type_id)
-    referee_qualifications.where.not(qualification_type_id: existing_qt_ids).update_all(referee_id: master.id)
-
-    referee_blocked_dates.update_all(referee_id: master.id)
-
-    if user.present?
-      if master.user.nil?
-        user.update!(referee_id: master.id)
-      else
-        user.update!(referee_id: nil)
+    ActiveRecord::Base.transaction do
+      scalar_fields = %w[
+        vorname nachname geburtsdatum email club_id game_operation_id
+        lizenzstufe gueltigkeit strasse hausnummer plz ort
+      ]
+      scalar_fields.each do |field|
+        master[field] = self[field] if master[field].blank? && self[field].present?
       end
+      master.save!(validate: false)
+
+      existing_qt_ids = master.referee_qualifications.pluck(:referee_qualification_type_id)
+      referee_qualifications.where.not(referee_qualification_type_id: existing_qt_ids).update_all(referee_id: master.id)
+
+      referee_blocked_dates.update_all(referee_id: master.id)
+
+      if user.present?
+        if master.user.nil?
+          user.update!(referee_id: master.id)
+        else
+          user.update!(referee_id: nil)
+        end
+      end
+
+      _rewrite_referee_game_references(master)
+
+      update!(merged_into_id: master.id)
     end
-
-    _rewrite_referee_game_references(master)
-
-    update!(merged_into_id: master.id)
   end
 
   private

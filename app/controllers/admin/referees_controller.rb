@@ -1,7 +1,7 @@
 module Admin
   class RefereesController < ApplicationController
     before_action :authorize_referee_access!
-    before_action :set_referee, only: %i[show update destroy games wallet_pass club_stats]
+    before_action :set_referee, only: %i[show update destroy games wallet_pass club_stats merge]
 
     # GET /api/v2/admin/referees
     def index
@@ -76,6 +76,7 @@ module Admin
 
       secondary = Referee.find_by(id: params[:secondary_id])
       return render json: { message: 'Secondary-Schiedsrichter nicht gefunden.' }, status: :not_found unless secondary
+      return forbidden_response unless can_access_referee?(secondary)
 
       secondary.merge_into!(@referee)
       render json: { message: 'Schiedsrichter erfolgreich zusammengeführt.', master_id: @referee.id }
