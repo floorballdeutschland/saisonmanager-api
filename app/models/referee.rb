@@ -126,10 +126,10 @@ class Referee < ApplicationRecord
           .update_all("referee2_string = REPLACE(referee2_string, '#{secondary_lizenznummer.to_i} ', '#{master.lizenznummer.to_i} ')")
     end
 
-    if id != master.id
-      Game.where('? = ANY(nominated_referee_ids)', id)
-          .update_all("nominated_referee_ids = array_replace(nominated_referee_ids, #{id.to_i}, #{master.id.to_i})")
-    end
+    return unless id != master.id
+
+    Game.where('? = ANY(nominated_referee_ids)', id)
+        .update_all("nominated_referee_ids = array_replace(nominated_referee_ids, #{id.to_i}, #{master.id.to_i})")
   end
 
   public
