@@ -794,6 +794,24 @@ class PlayersController < ApplicationController
     end
   end
 
+  def update_email
+    player = Player.find_by(id: params[:id])
+    return render json: { message: 'Spieler nicht gefunden.' }, status: :not_found unless player
+
+    ph = current_user.permission_hash
+    allowed = ph[:admin].present? || sbk_can_access_player?(ph, player) ||
+              vm_can_access_player?(ph, player) || tm_can_access_player?(ph, player)
+    return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless allowed
+
+    email = params[:email].presence
+    if email && !URI::MailTo::EMAIL_REGEXP.match?(email)
+      return render json: { message: 'Ungültige E-Mail-Adresse.' }, status: :unprocessable_entity
+    end
+
+    player.update!(email: email)
+    render json: { id: player.id, email: player.email }
+  end
+
   private
 
   def can_manage_player?(player)
