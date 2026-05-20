@@ -1,6 +1,7 @@
 module Admin
   class RefereeQualificationTypesController < ApplicationController
-    before_action :authorize_rsk!
+    before_action :authorize_referee_read!, only: %i[index]
+    before_action :authorize_rsk!, only: %i[create update destroy]
     before_action :set_type, only: %i[update destroy]
 
     # GET /api/v2/admin/referee_qualification_types
@@ -50,6 +51,13 @@ module Admin
 
     def type_params
       params.require(:referee_qualification_type).permit(:name, :short_name, :active)
+    end
+
+    def authorize_referee_read!
+      ph = current_user.permission_hash
+      return if ph[:admin].present? || ph[:rsk].present? || ph[:sbk].present?
+
+      render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
 
     def authorize_rsk!

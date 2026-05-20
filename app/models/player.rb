@@ -43,7 +43,8 @@ class Player < ApplicationRecord
       clubs:,
       security_id:,
       email:,
-      deactivated_at:
+      deactivated_at:,
+      deactivation_reason:
     }
 
     if with_licenses
@@ -354,7 +355,7 @@ class Player < ApplicationRecord
     end
   end
 
-  def deactivate!(user_id)
+  def deactivate!(user_id, reason: nil)
     clubs.map! do |c|
       if c['valid_until'].nil? || c['valid_until'].to_time > Time.now
         c['valid_until'] = Time.now
@@ -377,6 +378,7 @@ class Player < ApplicationRecord
 
     self.deactivated_at = Time.current
     self.deactivated_by = user_id
+    self.deactivation_reason = reason
     save!(validate: false)
   end
 

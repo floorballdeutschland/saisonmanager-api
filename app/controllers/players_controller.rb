@@ -683,11 +683,13 @@ class PlayersController < ApplicationController
     return render json: { message: 'Spieler ist bereits deaktiviert.' }, status: :unprocessable_entity if player.deactivated_at.present?
 
     ph = current_user.permission_hash
-    unless ph[:admin].present? || sbk_can_access_player?(ph, player) || vm_can_access_player?(ph, player)
+    unless ph[:admin].present? || sbk_can_access_player?(ph, player) ||
+           vm_can_access_player?(ph, player) || tm_can_access_player?(ph, player)
       return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
     end
 
-    player.deactivate!(current_user.id)
+    reason = params[:reason].presence
+    player.deactivate!(current_user.id, reason: reason)
     render json: player.full_hash(false, false, false)
   end
 
@@ -697,7 +699,8 @@ class PlayersController < ApplicationController
     return render json: { message: 'Spieler ist nicht deaktiviert.' }, status: :unprocessable_entity if player.deactivated_at.nil?
 
     ph = current_user.permission_hash
-    unless ph[:admin].present? || sbk_can_access_player?(ph, player) || vm_can_access_player?(ph, player)
+    unless ph[:admin].present? || sbk_can_access_player?(ph, player) ||
+           vm_can_access_player?(ph, player) || tm_can_access_player?(ph, player)
       return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
     end
 
@@ -711,11 +714,31 @@ class PlayersController < ApplicationController
     return render json: { message: 'club_id fehlt.' }, status: :bad_request unless club_id.present? && club_id > 0
 
     sbk_ok = ph[:sbk].present? && (ph[:sbk].include?(0) || derive_club_ids_for_go(ph[:sbk]).include?(club_id))
-    allowed = ph[:admin].present? || sbk_ok || (ph[:vm].present? && ph[:vm].include?(club_id))
+    allowed = ph[:admin].present? || sbk_ok ||
+              (ph[:vm].present? && ph[:vm].include?(club_id)) ||
+              tm_can_access_club?(ph, club_id)
     return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless allowed
 
     players = Player.where("clubs @> ?", [{ club_id: club_id }].to_json).order(:last_name, :first_name)
     render json: players.map(&:meta_hash)
+  end
+
+  def update_email
+    player = Player.find_by(id: params[:id])
+    return render json: { message: 'Spieler nicht gefunden.' }, status: :not_found unless player
+
+    ph = current_user.permission_hash
+    allowed = ph[:admin].present? || sbk_can_access_player?(ph, player) ||
+              vm_can_access_player?(ph, player) || tm_can_access_player?(ph, player)
+    return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless allowed
+
+    email = params[:email].presence
+    if email && !URI::MailTo::EMAIL_REGEXP.match?(email)
+      return render json: { message: 'Ungültige E-Mail-Adresse.' }, status: :unprocessable_entity
+    end
+
+    player.update!(email: email)
+    render json: { id: player.id, email: player.email }
   end
 
   private
@@ -724,6 +747,19 @@ class PlayersController < ApplicationController
     return false unless ph[:vm].present?
 
     player.clubs.any? { |c| ph[:vm].include?(c['club_id'].to_i) }
+  end
+
+  def tm_can_access_player?(ph, player)
+    return false unless ph[:tm].present?
+
+    team_club_ids = Team.where(id: ph[:tm]).flat_map(&:all_club_ids).uniq
+    player.clubs.any? { |c| team_club_ids.include?(c['club_id'].to_i) }
+  end
+
+  def tm_can_access_club?(ph, club_id)
+    return false unless ph[:tm].present?
+
+    Team.where(id: ph[:tm]).any? { |t| t.all_club_ids.include?(club_id) }
   end
 
   def sbk_can_access_player?(ph, player)
