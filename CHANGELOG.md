@@ -11,6 +11,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ---
 
+## [1.15.0] - 2026-05-20
+
+### Neu
+- Spielerdaten-Korrekturantragsworkflow: VM können Korrekturen für Stammdaten (Vorname, Nachname, Geburtsdatum, Nationalität, vertauschte Namen) beantragen; Admin/SBK genehmigen oder lehnen ab (#460/#138)
+- Spielerprofil: Hinweistext am E-Mail-Feld erklärt die Verwendung der optionalen E-Mail-Adresse
+
+---
+
 ## [1.14.0] - 2026-05-19
 
 ### Neu
