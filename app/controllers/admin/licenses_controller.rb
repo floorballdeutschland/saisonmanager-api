@@ -101,7 +101,7 @@ module Admin
     end
 
     def license_type(player_lics, current_lic, all_season_leagues, team_league_id_map)
-      lics = Array(player_lics)
+      lics = Array(player_lics).select { |l| team_league_id_map.key?(l['team_id'].to_i) }
       return 'primary' if lics.size <= 1
 
       primary_id = lics
