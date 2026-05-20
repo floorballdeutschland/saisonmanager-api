@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+- Globale Lizenzliste: Lizenzen aus Vorsaisons wurden fälschlicherweise in die Erstlizenz-Bestimmung einbezogen und ließen neue Lizenzen als „Zweitlizenz" erscheinen
+
 ---
 
 ## [1.15.0] - 2026-05-20
