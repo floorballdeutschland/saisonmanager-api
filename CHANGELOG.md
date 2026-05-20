@@ -9,6 +9,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.16.0] - 2026-05-20
+
+### Neu
+- Spieler*innen-Übersicht (VM): Spielernamen sind jetzt klickbar und führen direkt zur Detailseite, von der aus Korrekturanträge gestellt werden können
+
 ### Behoben
 - Globale Lizenzliste: Lizenzen aus Vorsaisons wurden fälschlicherweise in die Erstlizenz-Bestimmung einbezogen und ließen neue Lizenzen als „Zweitlizenz" erscheinen
 
