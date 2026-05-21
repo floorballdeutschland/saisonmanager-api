@@ -681,14 +681,11 @@ class PlayersController < ApplicationController
     player = Player.find_by(id: params[:id])
     return render json: { message: 'Spieler nicht gefunden.' }, status: :not_found unless player
     return render json: { message: 'Spieler ist bereits deaktiviert.' }, status: :unprocessable_entity if player.deactivated_at.present?
+    return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless can_manage_player?(player)
 
-    ph = current_user.permission_hash
-    unless ph[:admin].present? || sbk_can_access_player?(ph, player) ||
-           vm_can_access_player?(ph, player) || tm_can_access_player?(ph, player)
-      return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
-    end
+    reason = sanitize_deactivation_reason(params[:reason])
+    return render json: { message: 'Ungültiger Deaktivierungsgrund.' }, status: :unprocessable_entity if reason == :invalid
 
-    reason = params[:reason].presence
     player.deactivate!(current_user.id, reason: reason)
     render json: player.full_hash(false, false, false)
   end
@@ -697,12 +694,7 @@ class PlayersController < ApplicationController
     player = Player.find_by(id: params[:id])
     return render json: { message: 'Spieler nicht gefunden.' }, status: :not_found unless player
     return render json: { message: 'Spieler ist nicht deaktiviert.' }, status: :unprocessable_entity if player.deactivated_at.nil?
-
-    ph = current_user.permission_hash
-    unless ph[:admin].present? || sbk_can_access_player?(ph, player) ||
-           vm_can_access_player?(ph, player) || tm_can_access_player?(ph, player)
-      return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
-    end
+    return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless can_manage_player?(player)
 
     player.reactivate!
     render json: player.full_hash(false, false, false)
@@ -726,22 +718,27 @@ class PlayersController < ApplicationController
   def update_email
     player = Player.find_by(id: params[:id])
     return render json: { message: 'Spieler nicht gefunden.' }, status: :not_found unless player
+    return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless can_manage_player?(player)
 
-    ph = current_user.permission_hash
-    allowed = ph[:admin].present? || sbk_can_access_player?(ph, player) ||
-              vm_can_access_player?(ph, player) || tm_can_access_player?(ph, player)
-    return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless allowed
-
-    email = params[:email].presence
+    email = params[:email].is_a?(String) ? params[:email].presence : nil
     if email && !URI::MailTo::EMAIL_REGEXP.match?(email)
       return render json: { message: 'Ungültige E-Mail-Adresse.' }, status: :unprocessable_entity
     end
 
-    player.update!(email: email)
-    render json: { id: player.id, email: player.email }
+    if player.update(email: email)
+      render json: { id: player.id, email: player.email }
+    else
+      render json: { message: player.errors.full_messages.to_sentence }, status: :unprocessable_entity
+    end
   end
 
   private
+
+  def can_manage_player?(player)
+    ph = current_user.permission_hash
+    ph[:admin].present? || sbk_can_access_player?(ph, player) ||
+      vm_can_access_player?(ph, player) || tm_can_access_player?(ph, player)
+  end
 
   def vm_can_access_player?(ph, player)
     return false unless ph[:vm].present?
@@ -750,16 +747,32 @@ class PlayersController < ApplicationController
   end
 
   def tm_can_access_player?(ph, player)
-    return false unless ph[:tm].present?
+    club_ids = tm_club_ids(ph)
+    return false if club_ids.empty?
 
-    team_club_ids = Team.where(id: ph[:tm]).flat_map(&:all_club_ids).uniq
-    player.clubs.any? { |c| team_club_ids.include?(c['club_id'].to_i) }
+    player.clubs.any? { |c| club_ids.include?(c['club_id'].to_i) }
   end
 
   def tm_can_access_club?(ph, club_id)
-    return false unless ph[:tm].present?
+    tm_club_ids(ph).include?(club_id)
+  end
 
-    Team.where(id: ph[:tm]).any? { |t| t.all_club_ids.include?(club_id) }
+  def tm_club_ids(ph)
+    return [] unless ph[:tm].present?
+
+    Team.where(id: ph[:tm]).flat_map(&:all_club_ids).uniq
+  end
+
+  VALID_DEACTIVATION_REASONS = %w[Vereinsaustritt Karriereende].freeze
+  VALID_DEACTIVATION_REASONS_WITH_UMLAUT = ['Temporäre Pause'].freeze
+
+  def sanitize_deactivation_reason(raw)
+    value = raw.is_a?(String) ? raw.strip.slice(0, 255) : nil
+    return nil if value.blank?
+    return value if (VALID_DEACTIVATION_REASONS + VALID_DEACTIVATION_REASONS_WITH_UMLAUT).include?(value)
+    return value if value.start_with?('Sonstiges: ') && value.length > 'Sonstiges: '.length
+
+    :invalid
   end
 
   def sbk_can_access_player?(ph, player)

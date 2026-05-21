@@ -370,7 +370,7 @@ class Player < ApplicationRecord
 
       license['history'] << {
         'license_status_id' => License::DELETED,
-        'reason' => 'Vereinsaustritt',
+        'reason' => reason || 'Deaktiviert',
         'created_by' => user_id,
         'created_at' => Time.now
       }
