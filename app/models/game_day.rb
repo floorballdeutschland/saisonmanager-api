@@ -1,5 +1,6 @@
 class GameDay < ApplicationRecord
   has_many :games
+  has_many :game_day_referee_confirmations, dependent: :destroy
   belongs_to :league
   belongs_to :arena
   belongs_to :club

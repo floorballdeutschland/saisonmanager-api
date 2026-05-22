@@ -4,6 +4,7 @@ class Referee < ApplicationRecord
   has_one :user
   has_many :referee_blocked_dates, dependent: :destroy
   has_many :referee_qualifications, dependent: :destroy
+  has_many :game_day_referee_confirmations, dependent: :destroy
   has_many :referee_qualification_types, through: :referee_qualifications
 
   validates :lizenznummer,

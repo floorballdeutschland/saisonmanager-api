@@ -185,11 +185,18 @@ Rails.application.routes.draw do
       post 'referee/online_tests/:id/start',  to: 'referee_online_tests#start'
       post 'referee/online_tests/:id/submit', to: 'referee_online_tests#submit'
 
+      get  'referee/game_days',                        to: 'referee_game_day_confirmations#index'
+      post 'referee/game_days/:game_day_id/confirm',   to: 'referee_game_day_confirmations#confirm'
+
       get 'referee/blocked_dates', to: 'referee_blocked_dates#index'
       post 'referee/blocked_dates', to: 'referee_blocked_dates#create'
       delete 'referee/blocked_dates/:id', to: 'referee_blocked_dates#destroy'
 
       namespace :admin do
+        resources :leagues, only: [] do
+          resources :qualifications, only: %i[create update destroy],
+                                     controller: 'league_qualifications'
+        end
         resources :referees, only: %i[index show create update destroy] do
           get :games, on: :member
           get :club_stats, on: :member

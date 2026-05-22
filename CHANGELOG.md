@@ -18,6 +18,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - Deaktivierungsgrund "Sonstiges": leere Begründung wird jetzt korrekt abgelehnt
 
 ### Neu
+- Schiedsrichter: Spieltage können im Schiri-Portal als ordnungsgemäß durchgeführt bestätigt werden; werden sie nicht innerhalb von 48 Stunden bestätigt, gilt der Spieltag automatisch als bestätigt (beide Schiris einzeln)
+- Admin: Qualifikationsregeln für Ligen – Platzierungsbereiche können mit Typen (Aufstieg, Playoffs, Playdowns, Abstieg, DM, Pokal) und optionaler Ziel-Liga hinterlegt werden; in der Ligatabelle farblich markiert
 - TM: Zugriff auf Spieler*innenliste des Vereins (Meine Spieler*innen)
 - VM/TM: E-Mail-Adresse von Spieler*innen kann direkt bearbeitet werden
 - VM/TM: Spieler*innen können jetzt auch aus der Vereinsansicht heraus deaktiviert werden
