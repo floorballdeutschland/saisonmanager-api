@@ -190,6 +190,10 @@ Rails.application.routes.draw do
       delete 'referee/blocked_dates/:id', to: 'referee_blocked_dates#destroy'
 
       namespace :admin do
+        resources :leagues, only: [] do
+          resources :qualifications, only: %i[create update destroy],
+                                     controller: 'league_qualifications'
+        end
         resources :referees, only: %i[index show create update destroy] do
           get :games, on: :member
           get :club_stats, on: :member

@@ -13,6 +13,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - SBK: Fehler beim Öffnen des Schiedsrichter-Bearbeiten-Formulars behoben (Qualifikationstypen konnten nicht geladen werden)
 
 ### Neu
+- Admin: Qualifikationsregeln für Ligen – Platzierungsbereiche können mit Typen (Aufstieg, Playoffs, Playdowns, Abstieg, DM, Pokal) und optionaler Ziel-Liga hinterlegt werden; in der Ligatabelle farblich markiert
 - TM: Zugriff auf Spieler*innenliste des Vereins (Meine Spieler*innen)
 - VM/TM: E-Mail-Adresse von Spieler*innen kann direkt bearbeitet werden
 - VM/TM: Spieler*innen können jetzt auch aus der Vereinsansicht heraus deaktiviert werden

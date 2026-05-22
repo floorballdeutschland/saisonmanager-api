@@ -3,6 +3,8 @@ class League < ApplicationRecord
   include LeagueDirectEncounterTable
 
   has_many :game_days
+  has_many :qualifications, class_name: 'LeagueQualification',
+                            foreign_key: :source_league_id, dependent: :destroy
   belongs_to :game_operation
 
   validates :name, presence: true
@@ -159,7 +161,18 @@ class League < ApplicationRecord
       periods:,
       period_length:,
       overtime_length:,
-      required_documents: required_documents || []
+      required_documents: required_documents || [],
+      qualifications: qualifications.order(:rank_from).map do |q|
+        {
+          id: q.id,
+          rank_from: q.rank_from,
+          rank_to: q.rank_to,
+          qualification_type: q.qualification_type,
+          label: q.label,
+          target_league_id: q.target_league_id,
+          target_league_name: q.target_league&.name
+        }
+      end
     }
 
     result[:similar_leagues] = similar_leagues.map(&:full_hash) if include_similar_leagues
@@ -353,6 +366,8 @@ class League < ApplicationRecord
       last_entry = team_result
     end
 
+    annotate_with_qualifications!(sorted_results)
+
     sorted_results
   end
 
@@ -449,6 +464,17 @@ class League < ApplicationRecord
       team_logo_small: team.logo_small_url_fallback,
       point_corrections: team_point_corrections
     }
+  end
+
+  def annotate_with_qualifications!(results)
+    quals = qualifications.order(:rank_from).to_a
+    return if quals.empty?
+
+    results.each do |entry|
+      qual = quals.find { |q| entry[:position].between?(q.rank_from, q.rank_to) }
+      entry[:qualification_type] = qual&.qualification_type
+      entry[:qualification_label] = qual&.label
+    end
   end
 
   def apply_preround_points!(results)
