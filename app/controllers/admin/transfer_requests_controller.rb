@@ -2,8 +2,9 @@ module Admin
   class TransferRequestsController < ApplicationController
     before_action :authenticate_user
     before_action :authorize_transfer_access!
+    skip_before_action :authenticate_user, only: %i[player_approve player_reject]
+    skip_before_action :authorize_transfer_access!, only: %i[player_approve player_reject]
 
-    # GET /api/v2/admin/transfer_requests
     def index
       ph = current_user.permission_hash
       requests = if ph[:admin].present?
@@ -22,14 +23,13 @@ module Admin
       render json: requests.order(created_at: :desc).map(&:as_json)
     end
 
-    # GET /api/v2/admin/transfer_requests/search_player
     def search_player
       ph = current_user.permission_hash
       return render json: { error: 'Nicht berechtigt' }, status: :forbidden unless ph[:vm].present? || ph[:admin].present? || ph[:sbk].present?
 
       first_name = params[:first_name]&.strip
-      last_name = params[:last_name]&.strip
-      birthdate = params[:birthdate]&.strip
+      last_name  = params[:last_name]&.strip
+      birthdate  = params[:birthdate]&.strip
 
       if first_name.blank? || last_name.blank? || birthdate.blank?
         return render json: { error: 'Vorname, Nachname und Geburtsdatum sind erforderlich' }, status: :unprocessable_entity
@@ -45,7 +45,7 @@ module Admin
       requesting_club_id = params[:requesting_club_id].to_i
       if ph[:vm].present?
         unless ph[:vm].include?(requesting_club_id)
-          return render json: { error: 'Nicht berechtigt für diesen Verein' }, status: :forbidden
+          return render json: { error: 'Nicht berechtigt fuer diesen Verein' }, status: :forbidden
         end
       end
 
@@ -57,13 +57,12 @@ module Admin
       end
 
       if TransferRequest.active.where(player_id: player.id).exists?
-        return render json: { error: 'Für diesen Spieler ist bereits ein Transferantrag aktiv' }, status: :unprocessable_entity
+        return render json: { error: 'Fuer diesen Spieler ist bereits ein Transferantrag aktiv' }, status: :unprocessable_entity
       end
 
       render json: { player: player.search_hash }
     end
 
-    # GET /api/v2/admin/transfer_requests/:id
     def show
       tr = find_transfer_request
       return unless tr
@@ -71,7 +70,6 @@ module Admin
       render json: tr.as_json
     end
 
-    # POST /api/v2/admin/transfer_requests
     def create
       ph = current_user.permission_hash
       return render json: { error: 'Nicht berechtigt' }, status: :forbidden unless ph[:vm].present? || ph[:admin].present?
@@ -81,14 +79,14 @@ module Admin
 
       requesting_club_id = params[:requesting_club_id].to_i
       if ph[:vm].present? && !ph[:vm].include?(requesting_club_id)
-        return render json: { error: 'Nicht berechtigt für diesen Verein' }, status: :forbidden
+        return render json: { error: 'Nicht berechtigt fuer diesen Verein' }, status: :forbidden
       end
 
       requesting_club = Club.find_by(id: requesting_club_id)
       return render json: { error: 'Verein nicht gefunden' }, status: :not_found unless requesting_club
 
       if TransferRequest.active.where(player_id: player.id).exists?
-        return render json: { error: 'Für diesen Spieler ist bereits ein Transferantrag aktiv' }, status: :unprocessable_entity
+        return render json: { error: 'Fuer diesen Spieler ist bereits ein Transferantrag aktiv' }, status: :unprocessable_entity
       end
 
       home_club_entry = player.clubs.find { |c| c['home_club'] == true && c['valid_until'].nil? }
@@ -132,13 +130,12 @@ module Admin
       end
     end
 
-    # PATCH /api/v2/admin/transfer_requests/:id/approve_club
     def approve_club
       tr = find_transfer_request
       return unless tr
 
       unless tr.status == 'pending_club'
-        return render json: { error: 'Ungültiger Status für diese Aktion' }, status: :unprocessable_entity
+        return render json: { error: 'Ungültiger Status fuer diese Aktion' }, status: :unprocessable_entity
       end
 
       ph = current_user.permission_hash
@@ -146,25 +143,29 @@ module Admin
         return render json: { error: 'Nicht berechtigt' }, status: :forbidden
       end
 
+      unless tr.player.email.present?
+        return render json: {
+          error: 'Der Spieler hat keine E-Mail-Adresse hinterlegt. Bitte zuerst die E-Mail-Adresse im Spielerprofil eintragen.'
+        }, status: :unprocessable_entity
+      end
+
       tr.update!(
-        status: 'pending_lv',
+        status: 'pending_player',
         approved_by_club_user_id: current_user.id,
         club_approved_at: Time.current
       )
 
-      TransferRequestMailer.pending_lv_notification(tr).deliver_later
-      TransferRequestMailer.clubs_informed_lv_pending(tr).deliver_later
+      TransferRequestMailer.player_confirmation_request(tr).deliver_later
 
       render json: tr.as_json
     end
 
-    # PATCH /api/v2/admin/transfer_requests/:id/reject_club
     def reject_club
       tr = find_transfer_request
       return unless tr
 
       unless tr.status == 'pending_club'
-        return render json: { error: 'Ungültiger Status für diese Aktion' }, status: :unprocessable_entity
+        return render json: { error: 'Ungültiger Status fuer diese Aktion' }, status: :unprocessable_entity
       end
 
       ph = current_user.permission_hash
@@ -174,7 +175,7 @@ module Admin
 
       reason = params[:rejection_reason]&.strip
       if reason.blank?
-        return render json: { error: 'Begründung ist erforderlich' }, status: :unprocessable_entity
+        return render json: { error: 'Begruendung ist erforderlich' }, status: :unprocessable_entity
       end
 
       tr.update!(
@@ -188,13 +189,12 @@ module Admin
       render json: tr.as_json
     end
 
-    # PATCH /api/v2/admin/transfer_requests/:id/approve_lv
     def approve_lv
       tr = find_transfer_request
       return unless tr
 
       unless tr.status == 'pending_lv'
-        return render json: { error: 'Ungültiger Status für diese Aktion' }, status: :unprocessable_entity
+        return render json: { error: 'Ungültiger Status fuer diese Aktion' }, status: :unprocessable_entity
       end
 
       ph = current_user.permission_hash
@@ -217,17 +217,16 @@ module Admin
       render json: tr.as_json
     end
 
-    # PATCH /api/v2/admin/transfer_requests/:id/revoke
     def revoke
       tr = find_transfer_request
       return unless tr
 
       unless tr.request_type == 'release'
-        return render json: { error: 'Nur Freigaben können zurückgezogen werden' }, status: :unprocessable_entity
+        return render json: { error: 'Nur Freigaben koennen zurueckgezogen werden' }, status: :unprocessable_entity
       end
 
       unless tr.status == 'approved'
-        return render json: { error: 'Ungültiger Status für diese Aktion' }, status: :unprocessable_entity
+        return render json: { error: 'Ungültiger Status fuer diese Aktion' }, status: :unprocessable_entity
       end
 
       ph = current_user.permission_hash
@@ -237,20 +236,19 @@ module Admin
 
       reason = params[:revocation_reason]&.strip
       if reason.blank?
-        return render json: { error: 'Begründung ist erforderlich' }, status: :unprocessable_entity
+        return render json: { error: 'Begruendung ist erforderlich' }, status: :unprocessable_entity
       end
 
       tr.revoke_release!(current_user.id, reason)
       render json: tr.as_json
     end
 
-    # PATCH /api/v2/admin/transfer_requests/:id/execute
     def execute
       tr = find_transfer_request
       return unless tr
 
       unless tr.status == 'scheduled'
-        return render json: { error: 'Ungültiger Status für diese Aktion' }, status: :unprocessable_entity
+        return render json: { error: 'Ungültiger Status fuer diese Aktion' }, status: :unprocessable_entity
       end
 
       ph = current_user.permission_hash
@@ -266,13 +264,12 @@ module Admin
       render json: tr.as_json
     end
 
-    # PATCH /api/v2/admin/transfer_requests/:id/reject_lv
     def reject_lv
       tr = find_transfer_request
       return unless tr
 
       unless tr.status == 'pending_lv'
-        return render json: { error: 'Ungültiger Status für diese Aktion' }, status: :unprocessable_entity
+        return render json: { error: 'Ungültiger Status fuer diese Aktion' }, status: :unprocessable_entity
       end
 
       ph = current_user.permission_hash
@@ -282,7 +279,7 @@ module Admin
 
       reason = params[:rejection_reason]&.strip
       if reason.blank?
-        return render json: { error: 'Begründung ist erforderlich' }, status: :unprocessable_entity
+        return render json: { error: 'Begruendung ist erforderlich' }, status: :unprocessable_entity
       end
 
       tr.update!(
@@ -296,13 +293,12 @@ module Admin
       render json: tr.as_json
     end
 
-    # PATCH /api/v2/admin/transfer_requests/:id/withdraw
     def withdraw
       tr = find_transfer_request
       return unless tr
 
-      unless %w[pending_club pending_lv].include?(tr.status)
-        return render json: { error: 'Ungültiger Status für diese Aktion' }, status: :unprocessable_entity
+      unless %w[pending_club pending_player pending_lv].include?(tr.status)
+        return render json: { error: 'Ungültiger Status fuer diese Aktion' }, status: :unprocessable_entity
       end
 
       ph = current_user.permission_hash
@@ -312,6 +308,47 @@ module Admin
 
       tr.update!(status: 'withdrawn')
       render json: tr.as_json
+    end
+
+    def player_approve
+      tr = TransferRequest.find_by(player_confirmation_token: params[:token])
+      base_url = 'https://saisonmanager.org/transfer-bestaetigung'
+
+      unless tr
+        return redirect_to "#{base_url}?result=error", allow_other_host: true
+      end
+
+      unless tr.status == 'pending_player'
+        result = tr.status.in?(%w[pending_lv scheduled approved]) ? 'already_approved' : 'error'
+        return redirect_to "#{base_url}?result=#{result}", allow_other_host: true
+      end
+
+      tr.update!(status: 'pending_lv', player_approved_at: Time.current)
+
+      TransferRequestMailer.pending_lv_notification(tr).deliver_later
+      TransferRequestMailer.clubs_informed_lv_pending(tr).deliver_later
+
+      redirect_to "#{base_url}?result=approved", allow_other_host: true
+    end
+
+    def player_reject
+      tr = TransferRequest.find_by(player_confirmation_token: params[:token])
+      base_url = 'https://saisonmanager.org/transfer-bestaetigung'
+
+      unless tr
+        return redirect_to "#{base_url}?result=error", allow_other_host: true
+      end
+
+      unless tr.status == 'pending_player'
+        result = tr.status == 'rejected_by_player' ? 'already_rejected' : 'error'
+        return redirect_to "#{base_url}?result=#{result}", allow_other_host: true
+      end
+
+      tr.update!(status: 'rejected_by_player', player_rejected_at: Time.current)
+
+      TransferRequestMailer.player_rejected_clubs_notification(tr).deliver_later
+
+      redirect_to "#{base_url}?result=rejected", allow_other_host: true
     end
 
     private
@@ -333,8 +370,7 @@ module Admin
       return false unless ph[:sbk].present?
       return true if ph[:sbk].include?(0)
 
-      former_club_go_id = tr.former_club.main_game_operation_id
-      ph[:sbk].include?(former_club_go_id)
+      ph[:sbk].include?(tr.former_club.main_game_operation_id)
     end
 
     def derive_club_ids_for_go(go_ids)

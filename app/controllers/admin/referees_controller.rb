@@ -15,7 +15,13 @@ module Admin
       referees = referees.by_lizenzstufe(params[:lizenzstufe]) if params[:lizenzstufe].present?
       referees = referees.active if params[:active] == 'true'
 
-      referees = referees.order(:nachname, :vorname)
+      sort_col = params[:sort] == 'lizenznummer' ? 'lizenznummer' : 'nachname'
+      sort_dir = params[:sort_dir] == 'desc' ? 'DESC' : 'ASC'
+      referees = if sort_col == 'lizenznummer'
+                   referees.order(Arel.sql("lizenznummer #{sort_dir} NULLS LAST"))
+                 else
+                   referees.order(Arel.sql("nachname #{sort_dir}, vorname #{sort_dir}"))
+                 end
 
       render json: referees.map { |r| referee_json(r) }
     end

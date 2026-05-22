@@ -31,15 +31,18 @@ class Referee < ApplicationRecord
   }
   scope :by_lizenzstufe, ->(stufe) { where(lizenzstufe: stufe) }
   scope :search, lambda { |q|
-    tokens = q.to_s.downcase.split(/\s+/).reject(&:empty?).first(5)
+    tokens = q.to_s.strip.split(/\s+/).reject(&:empty?).first(5)
     return none if tokens.empty?
+
+    # Reine Zahl → exakte Lizenznummer-Suche
+    return where(lizenznummer: tokens[0].to_i) if tokens.size == 1 && tokens[0].match?(/\A\d+\z/)
 
     # Jeder Token muss in vorname, nachname oder lizenznummer vorkommen –
     # dadurch matchen Multi-Wort-Queries wie "Max Müller" auch, wenn Vor-
     # und Nachname in separaten Spalten stehen.
     relation = all
     tokens.each do |t|
-      like = "%#{t}%"
+      like = "%#{t.downcase}%"
       relation = relation.where(
         'LOWER(vorname) LIKE :t OR LOWER(nachname) LIKE :t OR lizenznummer::text LIKE :t',
         t: like

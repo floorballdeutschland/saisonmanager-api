@@ -227,7 +227,11 @@ Rails.application.routes.draw do
           end
         end
         resources :transfer_requests, only: %i[index show create] do
-          collection { get :search_player }
+          collection do
+            get :search_player
+            get :player_approve
+            get :player_reject
+          end
           member do
             patch :approve_club
             patch :reject_club

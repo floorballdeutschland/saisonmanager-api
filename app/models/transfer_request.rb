@@ -1,5 +1,6 @@
 class TransferRequest < ApplicationRecord
-  STATUSES = %w[pending_club pending_lv scheduled approved rejected_by_club rejected_by_lv revoked withdrawn].freeze
+  STATUSES = %w[pending_club pending_player pending_lv scheduled approved
+                rejected_by_club rejected_by_player rejected_by_lv revoked withdrawn].freeze
 
   belongs_to :player
   belongs_to :requesting_club, class_name: 'Club'
@@ -9,7 +10,9 @@ class TransferRequest < ApplicationRecord
   validates :rejection_reason, presence: true, if: -> { status.in?(%w[rejected_by_club rejected_by_lv]) }
   validates :revocation_reason, presence: true, if: -> { status == 'revoked' }
 
-  scope :active, -> { where(status: %w[pending_club pending_lv scheduled]) }
+  before_create :generate_player_confirmation_token
+
+  scope :active, -> { where(status: %w[pending_club pending_player pending_lv scheduled]) }
   scope :pending_for_club, ->(club_id) { where(former_club_id: club_id, status: 'pending_club') }
   scope :pending_for_lv, lambda { |go_ids|
     club_ids = go_ids.include?(0) ? Club.pluck(:id) : Club.all.select { |c| go_ids.include?(c.main_game_operation_id) }.map(&:id)
@@ -88,6 +91,10 @@ class TransferRequest < ApplicationRecord
 
   private
 
+  def generate_player_confirmation_token
+    self.player_confirmation_token = SecureRandom.urlsafe_base64(32)
+  end
+
   def add_secondary_club_membership!(user_id)
     already_member = player.clubs.any? do |c|
       c['club_id'] == requesting_club_id &&
@@ -133,7 +140,7 @@ class TransferRequest < ApplicationRecord
 
       license['history'] << {
         'license_status_id' => License::WITHDRAWN,
-        'reason' => 'Freigabe zurückgezogen',
+        'reason' => 'Freigabe zurueckgezogen',
         'created_by' => user_id,
         'created_at' => Time.now
       }
