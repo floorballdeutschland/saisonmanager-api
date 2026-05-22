@@ -9,6 +9,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+- SBK: Fehler beim Öffnen des Schiedsrichter-Bearbeiten-Formulars behoben (Qualifikationstypen konnten nicht geladen werden)
+- Reaktivierung: Lizenzhistorie wird jetzt auch bei anderen Deaktivierungsgründen als "Vereinsaustritt" korrekt bereinigt
+- Spielerzusammenführung: Deaktivierungsgrund wird als "Zusammenführung" gespeichert statt leer zu bleiben
+- TM-Zugriff auf Spieler*innenliste auf aktuelle Saison beschränkt (historische TM-Rollen hatten keinen Zugriff mehr)
+- Deaktivierungsgrund "Sonstiges": leere Begründung wird jetzt korrekt abgelehnt
+
+### Neu
+- TM: Zugriff auf Spieler*innenliste des Vereins (Meine Spieler*innen)
+- VM/TM: E-Mail-Adresse von Spieler*innen kann direkt bearbeitet werden
+- VM/TM: Spieler*innen können jetzt auch aus der Vereinsansicht heraus deaktiviert werden
+- Spieler*in deaktivieren: Deaktivierungsgrund muss jetzt angegeben werden (Vereinsaustritt, Karriereende, Temporäre Pause, Sonstiges)
+
 ---
 
 ## [1.16.0] - 2026-05-20

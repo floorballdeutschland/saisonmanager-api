@@ -105,7 +105,8 @@ Rails.application.routes.draw do
       post 'admin/players/:id/deactivate', to: 'players#deactivate'
       post 'admin/players/:id/reactivate', to: 'players#reactivate'
       post 'admin/players/:id/merge', to: 'players#merge'
-      get  'admin/vm/players', to: 'players#vm_players_index'
+      get   'admin/vm/players', to: 'players#vm_players_index'
+      patch 'admin/vm/players/:id/email', to: 'players#update_email'
 
       post 'admin/players/:id/handle_license_request', to: 'players#handle_license_request'
 

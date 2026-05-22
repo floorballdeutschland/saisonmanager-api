@@ -43,7 +43,8 @@ class Player < ApplicationRecord
       clubs:,
       security_id:,
       email:,
-      deactivated_at:
+      deactivated_at:,
+      deactivation_reason:
     }
 
     if with_licenses
@@ -350,11 +351,11 @@ class Player < ApplicationRecord
       _rewrite_player_game_references(master.id)
 
       self.merged_into_id = master.id
-      deactivate!(user_id)
+      deactivate!(user_id, reason: 'Zusammenführung')
     end
   end
 
-  def deactivate!(user_id)
+  def deactivate!(user_id, reason: nil)
     clubs.map! do |c|
       if c['valid_until'].nil? || c['valid_until'].to_time > Time.now
         c['valid_until'] = Time.now
@@ -369,7 +370,7 @@ class Player < ApplicationRecord
 
       license['history'] << {
         'license_status_id' => License::DELETED,
-        'reason' => 'Vereinsaustritt',
+        'reason' => reason || 'Deaktiviert',
         'created_by' => user_id,
         'created_at' => Time.now
       }
@@ -377,6 +378,7 @@ class Player < ApplicationRecord
 
     self.deactivated_at = Time.current
     self.deactivated_by = user_id
+    self.deactivation_reason = reason
     save!(validate: false)
   end
 
@@ -391,11 +393,13 @@ class Player < ApplicationRecord
       c
     end
 
+    deactivation_system_reasons = ['Vereinsaustritt', 'Deaktiviert', 'Karriereende', 'Temporäre Pause']
+
     licenses.each do |license|
       last = license['history']&.last
       next unless last &&
                   last['license_status_id'].to_i == License::DELETED &&
-                  last['reason'] == 'Vereinsaustritt' &&
+                  (deactivation_system_reasons.include?(last['reason']) || last['reason']&.start_with?('Sonstiges: ')) &&
                   last['created_by'] == deactivated_user
 
       license['history'].pop

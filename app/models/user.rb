@@ -68,7 +68,7 @@ class User < ApplicationRecord
     result[:menu_item_referee_assignments] = ph[:admin].present? || ph[:rsk].present?
     result[:menu_item_online_test_admin] = ph[:admin].present? || ph[:rsk].present?
     result[:menu_item_referee_vm] = ph[:vm].present?
-    result[:menu_item_player_vm] = ph[:vm].present?
+    result[:menu_item_player_vm] = ph[:vm].present? || ph[:tm].present?
     result[:menu_item_state_association_admin] = ph[:admin].present?
     result[:menu_item_state_association_sbk] = sbk_state_association_menu_item?(ph)
     result[:menu_item_api_key_admin] = ph[:admin].present?
@@ -93,7 +93,8 @@ class User < ApplicationRecord
     result[:player_add_additional_clubs] = ph[:admin].present? || ph[:sbk].present?
     result[:player_remove_additional_clubs] = ph[:admin].present? || ph[:sbk].present?
 
-    result[:player_deactivate] = ph[:admin].present? || ph[:sbk].present?
+    result[:player_deactivate] = ph[:admin].present? || ph[:sbk].present? || ph[:vm].present? || ph[:tm].present?
+    result[:update_player_email] = ph[:vm].present? || ph[:tm].present?
     result[:player_set_license_to_transfer] = ph[:admin].present? || special_user
     result[:player_merge] = ph[:admin].present? || ph[:sbk].present?
     result[:referee_merge] = ph[:admin].present? || ph[:rsk].present?
