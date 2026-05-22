@@ -1,0 +1,18 @@
+<h2>Transferantrag abgelehnt durch Spieler</h2>
+
+<p>Hallo,</p>
+
+<p>
+  der folgende Transferantrag wurde vom Spieler abgelehnt und ist damit beendet.
+</p>
+
+<p>
+  <strong>Spieler:</strong> <%= @transfer_request.player.first_name %> <%= @transfer_request.player.last_name %><br>
+  <strong>Abgebender Verein:</strong> <%= @transfer_request.former_club.name %><br>
+  <strong>Aufnehmender Verein:</strong> <%= @transfer_request.requesting_club.name %>
+</p>
+
+<p>
+  Das Saisonmanager-Team<br>
+  <a href="https://saisonmanager.org">saisonmanager.org</a>
+</p>
