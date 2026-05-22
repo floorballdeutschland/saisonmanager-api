@@ -66,6 +66,7 @@ module Admin
     def show
       tr = find_transfer_request
       return unless tr
+
       render json: tr.as_json
     end
 
@@ -355,6 +356,7 @@ module Admin
     def authorize_transfer_access!
       ph = current_user.permission_hash
       return if ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
+
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
 
