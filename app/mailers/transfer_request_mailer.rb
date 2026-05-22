@@ -5,6 +5,7 @@ class TransferRequestMailer < ApplicationMailer
                   transfer_request.player.email].compact.uniq.select(&:present?)
     return if recipients.empty?
 
+
     mail(to: recipients, subject: "Neue Transferanfrage: #{player_name(transfer_request)}")
   end
 
@@ -12,6 +13,7 @@ class TransferRequestMailer < ApplicationMailer
     @transfer_request = transfer_request
     sbk_email = transfer_request.former_club.state_association&.sbk_email
     return unless sbk_email.present?
+
 
     mail(to: sbk_email, subject: "Transferantrag zur Genehmigung: #{player_name(transfer_request)}")
   end
@@ -25,6 +27,7 @@ class TransferRequestMailer < ApplicationMailer
     ].compact.uniq.select(&:present?)
     return if recipients.empty?
 
+
     mail(to: recipients, subject: "Transferantrag liegt beim Landesverband: #{player_name(transfer_request)}")
   end
 
@@ -32,7 +35,6 @@ class TransferRequestMailer < ApplicationMailer
     @transfer_request = transfer_request
     recipient = transfer_request.requesting_club.contact_email
     return unless recipient.present?
-
     mail(to: recipient, subject: "Transferantrag abgelehnt: #{player_name(transfer_request)}")
   end
 
@@ -40,6 +42,7 @@ class TransferRequestMailer < ApplicationMailer
     @transfer_request = transfer_request
     recipient = transfer_request.player.email
     return unless recipient.present?
+
 
     mail(to: recipient, subject: "Transferanfrage: Deine Zustimmung wird benoetigt - #{player_name(transfer_request)}")
   end
@@ -51,6 +54,7 @@ class TransferRequestMailer < ApplicationMailer
       transfer_request.former_club.contact_email
     ].compact.uniq.select(&:present?)
     return if recipients.empty?
+
 
     mail(to: recipients, subject: "Transferantrag abgelehnt durch Spieler: #{player_name(transfer_request)}")
   end
@@ -66,6 +70,7 @@ class TransferRequestMailer < ApplicationMailer
     ].compact.uniq.select(&:present?)
     return if recipients.empty?
 
+
     mail(to: recipients, subject: "Transfer vollzogen: #{player_name(transfer_request)}")
   end
 
@@ -74,6 +79,7 @@ class TransferRequestMailer < ApplicationMailer
     sbk_email = transfer_request.requesting_club.state_association&.sbk_email
     return unless sbk_email.present?
 
+
     mail(to: sbk_email, subject: "Transfer vollzogen (aufnehmender LV): #{player_name(transfer_request)}")
   end
 
@@ -81,6 +87,7 @@ class TransferRequestMailer < ApplicationMailer
     @transfer_request = transfer_request
     @club = club
     return unless club.contact_email.present?
+
 
     mail(to: club.contact_email, subject: "Zweitlizenz/Freigabe entzogen durch Transfer: #{player_name(transfer_request)}")
   end
