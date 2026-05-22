@@ -14,9 +14,9 @@ class LeagueQualification < ApplicationRecord
 
   def ranges_do_not_overlap
     overlapping = LeagueQualification
-      .where(source_league_id:)
-      .where.not(id:)
-      .where('rank_from <= ? AND rank_to >= ?', rank_to, rank_from)
+                  .where(source_league_id:)
+                  .where.not(id:)
+                  .where('rank_from <= ? AND rank_to >= ?', rank_to, rank_from)
     errors.add(:base, 'Platzbereiche dürfen sich nicht überschneiden') if overlapping.exists?
   end
 end
