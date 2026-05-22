@@ -195,16 +195,30 @@ class PlayersController < ApplicationController
   end
 
   def admin_licenses
-    # hole spieler
     league = League.find(params[:id])
-
     ph = current_user.permission_hash
+    return render json: { message: 'Keine Berechtigung!' }, status: :forbidden unless ph[:admin].present? || ph[:sbk].present?
 
-    if ph[:admin].present? || ph[:sbk].present?
-      render json: league.licenses(true)
-    else
-      render json: { message: 'Keine Berechtigung!' }, status: :forbidden
+    result = league.licenses(true)
+
+    all_player_ids = result.flat_map { |t| t[:players].map { |p| p[:id] } }.uniq
+    if all_player_ids.present?
+      docs_by_key = LicenseDocument.where(player_id: all_player_ids)
+                                   .includes(file_attachment: :blob)
+                                   .group_by { |d| [d.player_id, d.license_id, d.document_type] }
+      result.each do |team_data|
+        team_data[:players].each do |player_data|
+          license_id = player_data.dig(:team_license, :license, 'id')
+          player_id = player_data[:id]
+          player_data[:team_license][:documents] = {
+            id_copy: docs_by_key[[player_id, license_id, 'id_copy']].present?,
+            parental_consent: docs_by_key[[player_id, license_id, 'parental_consent']].present?
+          }
+        end
+      end
     end
+
+    render json: result
   end
 
   def user_licenses_temp
@@ -712,7 +726,21 @@ class PlayersController < ApplicationController
     return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless allowed
 
     players = Player.where("clubs @> ?", [{ club_id: club_id }].to_json).order(:last_name, :first_name)
-    render json: players.map(&:meta_hash)
+    current_team_ids = Team.joins(:league).where(leagues: { season_id: Setting.current_season_id }).pluck(:id).to_set
+
+    render json: players.map { |p|
+      base = p.meta_hash
+      current_lics = (p.licenses || []).select { |l| current_team_ids.include?(l['team_id'].to_i) }
+      if current_lics.present?
+        primary = current_lics.min_by { |l| (l['league_category_id'].to_s.rjust(3, '0') + l['league_class_id'].to_s.rjust(3, '0')).to_i }
+        last_status_id = primary['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id')&.to_i
+        if last_status_id && License::NAMES.key?(last_status_id)
+          base[:current_license_status_id] = last_status_id
+          base[:current_license_status] = License::NAMES[last_status_id]
+        end
+      end
+      base
+    }
   end
 
   def update_email
