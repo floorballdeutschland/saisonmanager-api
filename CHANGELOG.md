@@ -15,6 +15,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Verbessert
 - Lizenzen: Backend ignoriert Express-Anträge außerhalb des 3-Tage-Fensters bzw. ohne LV-Freigabe und speichert sie als reguläre Lizenz (kein versehentlicher Mailversand)
+- Lizenzverwaltung (Admin): API liefert `age_group` und `season_id` je Lizenzeintrag — Voraussetzung für die überarbeiteten Altersklassen- und Saison-Filter im Frontend
 
 ---
 
