@@ -71,7 +71,9 @@ class ClubsController < ApplicationController
 
       primary_club = Club.find(team.club_id)
       sa = primary_club.state_association
-      result[:express_license_enabled] = sa ? sa.effective_express_license_enabled : false
+      lv_allows_express = sa ? sa.effective_express_license_enabled : false
+      within_window = leagues.any?(&:express_license_window_open?)
+      result[:express_license_enabled] = lv_allows_express && within_window
       result[:is_buli] = leagues.any? { |l|
         Setting.current['league_classes']&.dig(l.league_class_id.to_s, 'isBuli') == true
       }

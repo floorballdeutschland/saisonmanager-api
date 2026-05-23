@@ -233,4 +233,56 @@ class LeagueTest < ActiveSupport::TestCase
     b_pos = sorted.find { |r| r[:team_id] == team_b.id }[:position]
     assert_equal a_pos, b_pos
   end
+
+  # ---------------------------------------------------------------------------
+  # express_license_window_open?
+  # ---------------------------------------------------------------------------
+
+  test 'express_license_window_open?: false ohne Spieltage' do
+    go = build_go
+    league = build_league(go)
+    refute league.express_license_window_open?
+  end
+
+  test 'express_license_window_open?: false wenn erster Spieltag > 3 Tage in der Zukunft' do
+    go = build_go
+    league = build_league(go)
+    club = build_club
+    arena = build_arena
+    GameDay.create!(league: league, arena: arena, club: club, number: 1,
+                    date: (Date.current + 10).to_s)
+    refute league.express_license_window_open?
+  end
+
+  test 'express_license_window_open?: true wenn erster Spieltag genau 3 Tage entfernt' do
+    go = build_go
+    league = build_league(go)
+    club = build_club
+    arena = build_arena
+    GameDay.create!(league: league, arena: arena, club: club, number: 1,
+                    date: (Date.current + 3).to_s)
+    assert league.express_license_window_open?
+  end
+
+  test 'express_license_window_open?: true wenn erster Spieltag in der Vergangenheit' do
+    go = build_go
+    league = build_league(go)
+    club = build_club
+    arena = build_arena
+    GameDay.create!(league: league, arena: arena, club: club, number: 1,
+                    date: (Date.current - 14).to_s)
+    assert league.express_license_window_open?
+  end
+
+  test 'express_license_window_open?: nutzt frühesten Spieltag' do
+    go = build_go
+    league = build_league(go)
+    club = build_club
+    arena = build_arena
+    GameDay.create!(league: league, arena: arena, club: club, number: 2,
+                    date: (Date.current + 20).to_s)
+    GameDay.create!(league: league, arena: arena, club: club, number: 1,
+                    date: (Date.current + 1).to_s)
+    assert league.express_license_window_open?
+  end
 end
