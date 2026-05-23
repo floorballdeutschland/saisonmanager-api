@@ -1,5 +1,6 @@
 class SessionsController < ApplicationController
   skip_before_action :authenticate_user, only: %i[login logout lost_password]
+  skip_before_action :verify_authenticity_token, only: %i[login logout lost_password]
 
   # POST /login
   def login
