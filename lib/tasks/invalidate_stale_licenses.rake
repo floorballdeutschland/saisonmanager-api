@@ -19,7 +19,6 @@ namespace :seasons do
     invalidated = 0
     updated_players = 0
     skipped_team_missing = 0
-    skipped_other_season = 0
     now = Time.now
 
     Player.where.not(licenses: nil).find_each do |player|
@@ -39,8 +38,7 @@ namespace :seasons do
 
         next if sid.to_s == current_season_id.to_s
 
-        # Lizenz gehört zu einem Team in einer anderen (= alten/zukünftigen) Saison
-        skipped_other_season += 1 unless dry_run
+        # Lizenz gehört zu einem Team in einer anderen (= alten/zukünftigen) Saison → invalidieren
         license['history'] << {
           'license_status_id' => License::DELETED,
           'reason' => 'Saisonwechsel — Lizenz aus Vorsaison',
