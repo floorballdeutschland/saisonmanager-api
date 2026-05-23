@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.18.1] - 2026-05-23
+
 ### Behoben
 - Landesverband: Logo-Upload funktioniert (`upload_logo` / `delete_logo` Actions ergänzt)
 - Landesverband: Banner (`banner_url`, `banner_link_url`) ist im öffentlichen Init-Endpoint enthalten und kann im Frontend angezeigt werden
