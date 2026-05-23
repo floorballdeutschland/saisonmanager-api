@@ -22,7 +22,7 @@ class StateAssociation < ApplicationRecord
   end
 
   def short_hash
-    { id:, name:, short_name:, parent_id:, logo_url: }
+    { id:, name:, short_name:, parent_id:, logo_url:, banner_url:, banner_link_url: }
   end
 
   def full_hash

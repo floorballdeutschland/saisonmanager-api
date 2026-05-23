@@ -226,6 +226,8 @@ Rails.application.routes.draw do
           member do
             post :upload_banner
             delete :banner, action: :delete_banner
+            post :upload_logo
+            delete :logo, action: :delete_logo
           end
         end
         resources :api_keys, only: %i[index create update destroy]
