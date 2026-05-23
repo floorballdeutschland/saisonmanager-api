@@ -9,6 +9,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+- Landesverband: Logo-Upload funktioniert (`upload_logo` / `delete_logo` Actions ergänzt)
+- Landesverband: Banner (`banner_url`, `banner_link_url`) ist im öffentlichen Init-Endpoint enthalten und kann im Frontend angezeigt werden
+- Landesverband: Banner-/Logo-Änderungen sind sofort sichtbar (Cache `settings/init` wird nach Upload/Löschen invalidiert)
+- Schiedsrichter: Lizenznummer wird in der öffentlichen Spielansicht nicht mehr angezeigt
+- Analyse: Ausstehende Migrationen (u. a. `daily_metrics`) nachgezogen — Endpoint liefert wieder Daten
+
+### Sicherheit
+- Landesverband-Logo akzeptiert kein SVG mehr (Stored-XSS-Risiko durch eingebettete Scripts)
+
 ---
 
 ## [1.18.0] - 2026-05-23

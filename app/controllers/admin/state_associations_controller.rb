@@ -1,8 +1,8 @@
 module Admin
   class StateAssociationsController < ApplicationController
     before_action :authorize_sa_access!
-    before_action :authorize_admin!, only: %i[create update destroy upload_banner delete_banner]
-    before_action :set_state_association, only: %i[show update destroy upload_banner delete_banner]
+    before_action :authorize_admin!, only: %i[create update destroy upload_banner delete_banner upload_logo delete_logo]
+    before_action :set_state_association, only: %i[show update destroy upload_banner delete_banner upload_logo delete_logo]
 
     # GET /api/v2/admin/state_associations
     def index
@@ -63,6 +63,7 @@ module Admin
 
       begin
         @state_association.banner.attach(params[:banner])
+        Rails.cache.delete('settings/init')
         render json: { banner_url: @state_association.banner_url }
       rescue StandardError => e
         Rails.logger.error("Banner-Upload fehlgeschlagen (StateAssociation #{@state_association.id}): #{e.class}: #{e.message}")
@@ -73,10 +74,43 @@ module Admin
     # DELETE /api/v2/admin/state_associations/:id/banner
     def delete_banner
       @state_association.banner.purge
+      Rails.cache.delete('settings/init')
       render json: { success: true }
     rescue StandardError => e
       Rails.logger.error("Banner-Löschen fehlgeschlagen (StateAssociation #{@state_association.id}): #{e.class}: #{e.message}")
       render json: { message: 'Banner konnte nicht gelöscht werden.' }, status: :internal_server_error
+    end
+
+    # POST /api/v2/admin/state_associations/:id/upload_logo
+    def upload_logo
+      return render json: { message: 'Kein Bild angefügt' }, status: :unprocessable_entity unless params[:logo].present?
+
+      unless %w[image/png image/jpeg].include?(params[:logo].content_type)
+        return render json: { message: 'Nur PNG oder JPG erlaubt' }, status: :unprocessable_entity
+      end
+
+      if params[:logo].size > 5.megabytes
+        return render json: { message: 'Maximale Dateigröße: 5 MB' }, status: :unprocessable_entity
+      end
+
+      begin
+        @state_association.logo.attach(params[:logo])
+        Rails.cache.delete('settings/init')
+        render json: { logo_url: @state_association.logo_url }
+      rescue StandardError => e
+        Rails.logger.error("Logo-Upload fehlgeschlagen (StateAssociation #{@state_association.id}): #{e.class}: #{e.message}")
+        render json: { message: 'Logo konnte nicht gespeichert werden.' }, status: :internal_server_error
+      end
+    end
+
+    # DELETE /api/v2/admin/state_associations/:id/logo
+    def delete_logo
+      @state_association.logo.purge
+      Rails.cache.delete('settings/init')
+      render json: { success: true }
+    rescue StandardError => e
+      Rails.logger.error("Logo-Löschen fehlgeschlagen (StateAssociation #{@state_association.id}): #{e.class}: #{e.message}")
+      render json: { message: 'Logo konnte nicht gelöscht werden.' }, status: :internal_server_error
     end
 
     private
