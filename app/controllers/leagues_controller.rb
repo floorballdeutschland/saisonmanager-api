@@ -1,7 +1,9 @@
 class LeaguesController < ApplicationController
   skip_before_action :authenticate_user, except: %i[admin_league_index admin_upload_banner admin_delete_banner]
   before_action :authenticate_public_request, except: %i[admin_league_index admin_upload_banner admin_delete_banner]
-  after_action :track_public_view, only: %i[schedule current_schedule game_day_schedule table grouped_table scorer]
+  after_action :track_public_view,
+               only: %i[schedule current_schedule game_day_schedule table grouped_table scorer],
+               if: -> { response.successful? }
 
   # GET /leagues
   def index

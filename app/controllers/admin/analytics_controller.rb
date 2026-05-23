@@ -11,14 +11,18 @@ module Admin
 
       last_year = DailyMetric
         .where(metric_key: 'public_views', date: 12.months.ago.to_date..)
-        .group("DATE_TRUNC('month', date)")
-        .order("DATE_TRUNC('month', date)")
+        .group("TO_CHAR(date, 'YYYY-MM')")
+        .order("TO_CHAR(date, 'YYYY-MM')")
         .sum(:count)
 
       render json: {
         last_30_days: last_30.map { |d, c| { date: d, count: c } },
-        last_year: last_year.map { |m, c| { month: m.strftime('%Y-%m'), count: c } }
+        last_year: last_year.map { |month_str, c| { month: month_str, count: c } }
       }
+    rescue ActiveRecord::StatementInvalid, ActiveRecord::ConnectionNotEstablished => e
+      Rails.logger.error("AnalyticsController#show failed: #{e.class}: #{e.message}")
+      Sentry.capture_exception(e)
+      render json: { error: 'Analysedaten konnten nicht geladen werden.' }, status: :service_unavailable
     end
 
     private
