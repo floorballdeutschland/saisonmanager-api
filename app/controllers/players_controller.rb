@@ -760,40 +760,6 @@ class PlayersController < ApplicationController
     end
   end
 
-  def update_email
-    player = Player.find_by(id: params[:id])
-    return render json: { message: 'Spieler nicht gefunden.' }, status: :not_found unless player
-    return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless can_manage_player?(player)
-
-    email = params[:email].is_a?(String) ? params[:email].presence : nil
-    if email && !URI::MailTo::EMAIL_REGEXP.match?(email)
-      return render json: { message: 'Ungültige E-Mail-Adresse.' }, status: :unprocessable_entity
-    end
-
-    if player.update(email: email)
-      render json: { id: player.id, email: player.email }
-    else
-      render json: { message: player.errors.full_messages.to_sentence }, status: :unprocessable_entity
-    end
-  end
-
-  def update_email
-    player = Player.find_by(id: params[:id])
-    return render json: { message: 'Spieler nicht gefunden.' }, status: :not_found unless player
-    return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless can_manage_player?(player)
-
-    email = params[:email].is_a?(String) ? params[:email].presence : nil
-    if email && !URI::MailTo::EMAIL_REGEXP.match?(email)
-      return render json: { message: 'Ungültige E-Mail-Adresse.' }, status: :unprocessable_entity
-    end
-
-    if player.update(email: email)
-      render json: { id: player.id, email: player.email }
-    else
-      render json: { message: player.errors.full_messages.to_sentence }, status: :unprocessable_entity
-    end
-  end
-
   private
 
   def can_manage_player?(player)
