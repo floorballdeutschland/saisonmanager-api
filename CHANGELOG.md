@@ -24,6 +24,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - VM/TM: E-Mail-Adresse von Spieler*innen kann direkt bearbeitet werden
 - VM/TM: Spieler*innen können jetzt auch aus der Vereinsansicht heraus deaktiviert werden
 - Spieler*in deaktivieren: Deaktivierungsgrund muss jetzt angegeben werden (Vereinsaustritt, Karriereende, Temporäre Pause, Sonstiges)
+- Transfer: Spieler*innen erhalten eine E-Mail zur Bestätigung des Vereinswechsels; Transfer erst nach Zustimmung aktiv (pending_player-Schritt)
 
 ---
 
