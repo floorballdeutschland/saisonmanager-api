@@ -82,6 +82,12 @@ Rails.application.routes.draw do
       get 'admin/leagues/:id/additional_references', to: 'leagues#additional_references'
       get 'admin/leagues/:id/licenses', to: 'players#admin_licenses'
       post 'admin/leagues/:id/copy_preround_licenses', to: 'leagues#copy_preround_licenses'
+      post 'admin/leagues/:id/upload_banner', to: 'leagues#admin_upload_banner'
+      delete 'admin/leagues/:id/banner', to: 'leagues#admin_delete_banner'
+
+      post 'admin/game_operations/:id/upload_banner', to: 'game_operations#admin_upload_banner'
+      delete 'admin/game_operations/:id/banner', to: 'game_operations#admin_delete_banner'
+      patch 'admin/game_operations/:id/banner_link', to: 'game_operations#admin_update_banner_link'
 
       get 'admin/teams/:id', to: 'teams#admin_get_team'
       get 'admin/league/clubs/:callType/:id', to: 'clubs#admin_get_go_clubs'
@@ -217,6 +223,10 @@ Rails.application.routes.draw do
                                       controller: 'state_association_checklist_items'
           resources :releases, only: %i[create destroy],
                                controller: 'state_association_releases'
+          member do
+            post :upload_banner
+            delete :banner, action: :delete_banner
+          end
         end
         resources :api_keys, only: %i[index create update destroy]
         resources :licenses, only: [:index]

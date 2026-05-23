@@ -5,6 +5,7 @@ class StateAssociation < ApplicationRecord
   has_many :releases, class_name: 'StateAssociationRelease', foreign_key: :grantor_state_association_id,
                       dependent: :destroy
   has_one_attached :logo
+  has_one_attached :banner
 
   validates :name, presence: true
 
@@ -14,6 +15,10 @@ class StateAssociation < ApplicationRecord
 
   def logo_url
     Rails.application.routes.url_helpers.rails_blob_path(logo, only_path: true) if logo.attached?
+  end
+
+  def banner_url
+    Rails.application.routes.url_helpers.rails_blob_path(banner, only_path: true) if banner.attached?
   end
 
   def short_hash
@@ -31,6 +36,8 @@ class StateAssociation < ApplicationRecord
       parent_id:,
       express_license_enabled:,
       logo_url:,
+      banner_url:,
+      banner_link_url:,
       children: children.order(:name).map(&:short_hash),
       checklist_items: checklist_items.map { |i| { id: i.id, question: i.question, position: i.position } },
       releases: releases.includes(:recipient_game_operation).map do |r|

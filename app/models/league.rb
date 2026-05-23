@@ -1,6 +1,7 @@
 class League < ApplicationRecord
   include UserTrackable
   include LeagueDirectEncounterTable
+  include LeagueBanner
 
   has_many :game_days
   has_many :qualifications, class_name: 'LeagueQualification',
@@ -174,7 +175,7 @@ class League < ApplicationRecord
         }
       end
     }
-
+    result.merge!(resolved_banner)
     result[:similar_leagues] = similar_leagues.map(&:full_hash) if include_similar_leagues
 
     result

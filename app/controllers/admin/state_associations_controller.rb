@@ -1,8 +1,8 @@
 module Admin
   class StateAssociationsController < ApplicationController
     before_action :authorize_sa_access!
-    before_action :authorize_admin!, only: %i[create update destroy]
-    before_action :set_state_association, only: %i[show update destroy]
+    before_action :authorize_admin!, only: %i[create update destroy upload_banner delete_banner]
+    before_action :set_state_association, only: %i[show update destroy upload_banner delete_banner]
 
     # GET /api/v2/admin/state_associations
     def index
@@ -49,6 +49,36 @@ module Admin
       head :no_content
     end
 
+    # POST /api/v2/admin/state_associations/:id/upload_banner
+    def upload_banner
+      return render json: { message: 'Kein Bild angefügt' }, status: :unprocessable_entity unless params[:banner].present?
+
+      unless params[:banner].content_type == 'image/webp'
+        return render json: { message: 'Nur WebP-Dateien erlaubt' }, status: :unprocessable_entity
+      end
+
+      if params[:banner].size > 500.kilobytes
+        return render json: { message: 'Maximale Dateigröße: 500 KB' }, status: :unprocessable_entity
+      end
+
+      begin
+        @state_association.banner.attach(params[:banner])
+        render json: { banner_url: @state_association.banner_url }
+      rescue StandardError => e
+        Rails.logger.error("Banner-Upload fehlgeschlagen (StateAssociation #{@state_association.id}): #{e.class}: #{e.message}")
+        render json: { message: 'Banner konnte nicht gespeichert werden.' }, status: :internal_server_error
+      end
+    end
+
+    # DELETE /api/v2/admin/state_associations/:id/banner
+    def delete_banner
+      @state_association.banner.purge
+      render json: { success: true }
+    rescue StandardError => e
+      Rails.logger.error("Banner-Löschen fehlgeschlagen (StateAssociation #{@state_association.id}): #{e.class}: #{e.message}")
+      render json: { message: 'Banner konnte nicht gelöscht werden.' }, status: :internal_server_error
+    end
+
     private
 
     def set_state_association
@@ -59,7 +89,7 @@ module Admin
 
     def state_association_params
       params.require(:state_association).permit(:name, :short_name, :vsk_email, :sbk_email, :scan_required,
-                                                :parent_id, :express_license_enabled, :logo)
+                                                :parent_id, :express_license_enabled, :logo, :banner_link_url)
     end
 
     def scoped_state_associations
