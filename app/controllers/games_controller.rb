@@ -226,7 +226,8 @@ class GamesController < ApplicationController
           item[:player_firstname] = player.first_name
           item[:player_name] = player.last_name
           item[:gender] = player.gender
-          item[:youth] = player.birthdate.present? && player.birthdate > 18.years.ago.to_date
+          birthdate = player.birthdate.present? ? (Date.parse(player.birthdate.to_s) rescue nil) : nil
+          item[:youth] = birthdate.present? && birthdate > 18.years.ago.to_date
         else
           item[:player_firstname] = params[:player_firstname]
           item[:player_name] = params[:player_name]

@@ -9,10 +9,11 @@ module Admin
               .order(:date)
               .pluck(:date, :count)
 
+      month_expr = Arel.sql("TO_CHAR(date, 'YYYY-MM')")
       monthly = DailyMetric
                 .where(metric_key: 'public_views', date: 12.months.ago.to_date..)
-                .group("TO_CHAR(date, 'YYYY-MM')")
-                .order("TO_CHAR(date, 'YYYY-MM')")
+                .group(month_expr)
+                .order(month_expr)
                 .sum(:count)
 
       render json: {
