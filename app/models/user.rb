@@ -82,6 +82,7 @@ class User < ApplicationRecord
     result[:menu_item_user_vm] = ph[:vm].present?
     result[:menu_item_arena_admin] = ph[:admin].present? || ph[:sbk].present?
     result[:menu_item_season_admin] = ph[:admin].present?
+    result[:menu_item_analytics_admin] = ph[:admin].present?
 
     # show permissions
     result[:show_league_index_admin] = ph[:admin].present? || ph[:sbk].present?
