@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.17.0] - 2026-05-23
+
 ### Behoben
 - VM-Spielerliste: N+1-Query beim Lizenzstatus-Lookup durch JOIN ersetzt; team_id-Vergleich auf Integer vereinheitlicht
 - SBK: Fehler beim Öffnen des Schiedsrichter-Bearbeiten-Formulars behoben (Qualifikationstypen konnten nicht geladen werden)
@@ -16,6 +20,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - Spielerzusammenführung: Deaktivierungsgrund wird als "Zusammenführung" gespeichert statt leer zu bleiben
 - TM-Zugriff auf Spieler*innenliste auf aktuelle Saison beschränkt (historische TM-Rollen hatten keinen Zugriff mehr)
 - Deaktivierungsgrund "Sonstiges": leere Begründung wird jetzt korrekt abgelehnt
+- Security: CORS eingeschränkt auf saisonmanager.org; CSRF-Schutz für alle authentifizierten Requests; Login/Logout/Lost-Password vom CSRF-Check ausgenommen
 
 ### Neu
 - Werbeflächen: Admins können Werbegrafiken (WebP, max. 500 KB, Verhältnis 6:1) auf Liga-, Landesverband- und Spielverbund-Ebene hinterlegen; Liga überschreibt Landesverband, Landesverband überschreibt Spielverbund; optionale Klick-URL pro Grafik
