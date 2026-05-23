@@ -523,6 +523,40 @@ class LeaguesController < ApplicationController
     render json: penalty_codes
   end
 
+  def admin_upload_banner
+    return render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized unless current_user
+
+    league = League.find(params[:id])
+    unless league.user_permissions(current_user).include?(:update_league)
+      return render json: { message: 'Keine Berechtigung' }, status: :forbidden
+    end
+
+    return render json: { message: 'Kein Bild angefügt' }, status: :unprocessable_entity unless params[:banner].present?
+
+    unless params[:banner].content_type == 'image/webp'
+      return render json: { message: 'Nur WebP-Dateien erlaubt' }, status: :unprocessable_entity
+    end
+
+    if params[:banner].size > 500.kilobytes
+      return render json: { message: 'Maximale Dateigröße: 500 KB' }, status: :unprocessable_entity
+    end
+
+    league.banner.attach(params[:banner])
+    render json: { banner_url: league.banner_url }
+  end
+
+  def admin_delete_banner
+    return render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized unless current_user
+
+    league = League.find(params[:id])
+    unless league.user_permissions(current_user).include?(:update_league)
+      return render json: { message: 'Keine Berechtigung' }, status: :forbidden
+    end
+
+    league.banner.purge
+    render json: { success: true }
+  end
+
   def league_params
     params.require(:league).permit(:before_deadline, :deadline, :female, :game_operation_id,
                                    :league_category_id, :league_class_id, :league_system_id, :name, :order_key,
@@ -530,6 +564,7 @@ class LeaguesController < ApplicationController
                                    :league_id_preround, :has_preround, :preround_point_modus, :preround_scorer_modus,
                                    :league_id_direct_encounters,
                                    :table_modus, :direct_comparison, :periods, :period_length, :overtime_length,
+                                   :banner_link_url,
                                    required_documents: [])
   end
 end

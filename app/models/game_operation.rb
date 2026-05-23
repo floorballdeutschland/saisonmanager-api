@@ -1,6 +1,7 @@
 class GameOperation < ApplicationRecord
   has_many :leagues
   belongs_to :state_association, optional: true
+  has_one_attached :banner
 
   default_scope { order(id: :asc) }
 
@@ -20,9 +21,15 @@ class GameOperation < ApplicationRecord
     path.presence || short_name&.parameterize
   end
 
+  def banner_url
+    Rails.application.routes.url_helpers.rails_blob_path(banner, only_path: true) if banner.attached?
+  end
+
   def meta_hash
-    hash = attributes.with_indifferent_access.slice(:id, :name, :short_name, :path, :logo_url, :logo_quad_url, :state_association_id)
+    hash = attributes.with_indifferent_access.slice(:id, :name, :short_name, :path, :logo_url, :logo_quad_url,
+                                                    :state_association_id, :banner_link_url)
     hash[:path] = slug
+    hash[:banner_url] = banner_url
     hash
   end
 
