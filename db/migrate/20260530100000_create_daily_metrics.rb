@@ -7,6 +7,6 @@ class CreateDailyMetrics < ActiveRecord::Migration[7.0]
       t.timestamps
     end
 
-    add_index :daily_metrics, [:date, :metric_key], unique: true
+    add_index :daily_metrics, %i[date metric_key], unique: true
   end
 end
