@@ -72,13 +72,11 @@ module Admin
 
     # DELETE /api/v2/admin/state_associations/:id/banner
     def delete_banner
-      begin
-        @state_association.banner.purge
-        render json: { success: true }
-      rescue StandardError => e
-        Rails.logger.error("Banner-Löschen fehlgeschlagen (StateAssociation #{@state_association.id}): #{e.class}: #{e.message}")
-        render json: { message: 'Banner konnte nicht gelöscht werden.' }, status: :internal_server_error
-      end
+      @state_association.banner.purge
+      render json: { success: true }
+    rescue StandardError => e
+      Rails.logger.error("Banner-Löschen fehlgeschlagen (StateAssociation #{@state_association.id}): #{e.class}: #{e.message}")
+      render json: { message: 'Banner konnte nicht gelöscht werden.' }, status: :internal_server_error
     end
 
     private

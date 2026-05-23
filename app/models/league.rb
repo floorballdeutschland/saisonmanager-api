@@ -1,12 +1,12 @@
 class League < ApplicationRecord
   include UserTrackable
   include LeagueDirectEncounterTable
+  include LeagueBanner
 
   has_many :game_days
   has_many :qualifications, class_name: 'LeagueQualification',
                             foreign_key: :source_league_id, dependent: :destroy
   belongs_to :game_operation
-  has_one_attached :banner
 
   validates :name, presence: true
   validates :season_id, presence: true
@@ -124,22 +124,6 @@ class League < ApplicationRecord
     period == periods + 1
   end
 
-  def banner_url
-    Rails.application.routes.url_helpers.rails_blob_path(banner, only_path: true) if banner.attached?
-  end
-
-  def resolved_banner
-    return { url: banner_url, link: banner_link_url } if banner.attached?
-
-    sa = game_operation&.state_association
-    return { url: sa.banner_url, link: sa.banner_link_url } if sa&.banner&.attached?
-
-    go = game_operation
-    return { url: go.banner_url, link: go.banner_link_url } if go&.banner&.attached?
-
-    nil
-  end
-
   def full_hash(include_similar_leagues = false)
     result = {
       id:,
@@ -191,11 +175,7 @@ class League < ApplicationRecord
         }
       end
     }
-
-    resolved = resolved_banner
-    result[:banner_url] = resolved&.dig(:url)
-    result[:banner_link_url] = resolved&.dig(:link)
-
+    result.merge!(resolved_banner)
     result[:similar_leagues] = similar_leagues.map(&:full_hash) if include_similar_leagues
 
     result

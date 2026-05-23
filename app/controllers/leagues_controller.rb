@@ -524,7 +524,7 @@ class LeaguesController < ApplicationController
   end
 
   def admin_upload_banner
-    league = find_league_or_404 or return
+    league = find_league_or_not_found or return
     unless league.user_permissions(current_user).include?(:update_league)
       return render json: { message: 'Keine Berechtigung' }, status: :forbidden
     end
@@ -549,7 +549,7 @@ class LeaguesController < ApplicationController
   end
 
   def admin_delete_banner
-    league = find_league_or_404 or return
+    league = find_league_or_not_found or return
     unless league.user_permissions(current_user).include?(:update_league)
       return render json: { message: 'Keine Berechtigung' }, status: :forbidden
     end
@@ -563,13 +563,13 @@ class LeaguesController < ApplicationController
     end
   end
 
-  def find_league_or_404
+  def find_league_or_not_found
     League.find(params[:id])
   rescue ActiveRecord::RecordNotFound
     render json: { message: 'Liga nicht gefunden' }, status: :not_found
     nil
   end
-  private :find_league_or_404
+  private :find_league_or_not_found
 
   def league_params
     params.require(:league).permit(:before_deadline, :deadline, :female, :game_operation_id,

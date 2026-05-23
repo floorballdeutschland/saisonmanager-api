@@ -22,8 +22,8 @@ class GameOperationsController < ApplicationController
               end
 
     render json: leagues.includes(:banner_attachment,
-                                   game_operation: { state_association: { banner_attachment: :blob },
-                                                     banner_attachment: :blob }).map(&:full_hash)
+                                  game_operation: { state_association: { banner_attachment: :blob },
+                                                    banner_attachment: :blob }).map(&:full_hash)
   end
 
   # GET /game_operations/by_shortname/:name
