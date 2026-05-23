@@ -93,6 +93,14 @@ class PlayersController < ApplicationController
                     status: :unprocessable_entity
     end
 
+    express_requested = params[:express] == true || params[:express] == 'true'
+    if express_requested
+      sa = team.club&.state_association
+      lv_allows_express = sa ? sa.effective_express_license_enabled : false
+      within_window = team.leagues.any?(&:express_license_window_open?)
+      express_requested = lv_allows_express && within_window
+    end
+
     result = :ok
     player = nil
 
@@ -116,7 +124,7 @@ class PlayersController < ApplicationController
         team_id: team.id,
         season_id: league.season_id,
         league_class_id: league.league_class_id,
-        express: params[:express] == true || params[:express] == 'true',
+        express: express_requested,
         history: [{
           license_status_id: License::REQUESTED,
           created_by: current_user.id,
@@ -137,6 +145,7 @@ class PlayersController < ApplicationController
     when :save_failed
       render json: { message: player.errors }, status: :unprocessable_entity
     else
+      PlayerMailer.express_license_requested(player, team, league).deliver_later if express_requested
       render json: { success: true }
     end
   end

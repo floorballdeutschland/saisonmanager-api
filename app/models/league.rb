@@ -216,6 +216,17 @@ class League < ApplicationRecord
     game_days.pluck(:number).uniq.sort
   end
 
+  def first_game_day_date
+    game_days.pluck(:date).map { |d| d.try(:to_date) }.compact.min
+  end
+
+  def express_license_window_open?(today: Date.current, days: 3)
+    d = first_game_day_date
+    return false unless d
+
+    (d - today).to_i <= days
+  end
+
   def schedule
     games.map(&:schedule_item).sort_by do |game|
       [game[:game_day].to_i, game[:date], game[:time], game[:game_number]]
