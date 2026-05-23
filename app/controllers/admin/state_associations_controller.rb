@@ -63,6 +63,7 @@ module Admin
 
       begin
         @state_association.banner.attach(params[:banner])
+        Rails.cache.delete('settings/init')
         render json: { banner_url: @state_association.banner_url }
       rescue StandardError => e
         Rails.logger.error("Banner-Upload fehlgeschlagen (StateAssociation #{@state_association.id}): #{e.class}: #{e.message}")
@@ -73,6 +74,7 @@ module Admin
     # DELETE /api/v2/admin/state_associations/:id/banner
     def delete_banner
       @state_association.banner.purge
+      Rails.cache.delete('settings/init')
       render json: { success: true }
     rescue StandardError => e
       Rails.logger.error("Banner-Löschen fehlgeschlagen (StateAssociation #{@state_association.id}): #{e.class}: #{e.message}")
@@ -83,8 +85,8 @@ module Admin
     def upload_logo
       return render json: { message: 'Kein Bild angefügt' }, status: :unprocessable_entity unless params[:logo].present?
 
-      unless %w[image/png image/jpeg image/svg+xml].include?(params[:logo].content_type)
-        return render json: { message: 'Nur PNG, JPG oder SVG erlaubt' }, status: :unprocessable_entity
+      unless %w[image/png image/jpeg].include?(params[:logo].content_type)
+        return render json: { message: 'Nur PNG oder JPG erlaubt' }, status: :unprocessable_entity
       end
 
       if params[:logo].size > 5.megabytes
@@ -93,6 +95,7 @@ module Admin
 
       begin
         @state_association.logo.attach(params[:logo])
+        Rails.cache.delete('settings/init')
         render json: { logo_url: @state_association.logo_url }
       rescue StandardError => e
         Rails.logger.error("Logo-Upload fehlgeschlagen (StateAssociation #{@state_association.id}): #{e.class}: #{e.message}")
@@ -103,6 +106,7 @@ module Admin
     # DELETE /api/v2/admin/state_associations/:id/logo
     def delete_logo
       @state_association.logo.purge
+      Rails.cache.delete('settings/init')
       render json: { success: true }
     rescue StandardError => e
       Rails.logger.error("Logo-Löschen fehlgeschlagen (StateAssociation #{@state_association.id}): #{e.class}: #{e.message}")
