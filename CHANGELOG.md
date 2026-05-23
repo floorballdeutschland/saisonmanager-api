@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.18.2] - 2026-05-23
+
 ### Behoben
 - Analyse: `ActiveRecord::UnknownAttributeReference` durch `Arel.sql()` für `TO_CHAR`-Gruppierung behoben (#161)
 - Spielbericht: 500er beim Eintragen der Trikotnummer im Kader-Editor; `player.birthdate` ist `varchar`, wurde fälschlich direkt mit `Date` verglichen — jetzt defensiv über `Date.parse` (#162)
