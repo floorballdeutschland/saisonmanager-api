@@ -1,6 +1,6 @@
 class LeaguesController < ApplicationController
-  skip_before_action :authenticate_user, except: [:admin_league_index]
-  before_action :authenticate_public_request, except: [:admin_league_index]
+  skip_before_action :authenticate_user, except: %i[admin_league_index admin_upload_banner admin_delete_banner]
+  before_action :authenticate_public_request, except: %i[admin_league_index admin_upload_banner admin_delete_banner]
 
   # GET /leagues
   def index
@@ -524,9 +524,7 @@ class LeaguesController < ApplicationController
   end
 
   def admin_upload_banner
-    return render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized unless current_user
-
-    league = League.find(params[:id])
+    league = find_league_or_404 or return
     unless league.user_permissions(current_user).include?(:update_league)
       return render json: { message: 'Keine Berechtigung' }, status: :forbidden
     end
@@ -541,21 +539,37 @@ class LeaguesController < ApplicationController
       return render json: { message: 'Maximale Dateigröße: 500 KB' }, status: :unprocessable_entity
     end
 
-    league.banner.attach(params[:banner])
-    render json: { banner_url: league.banner_url }
+    begin
+      league.banner.attach(params[:banner])
+      render json: { banner_url: league.banner_url }
+    rescue StandardError => e
+      Rails.logger.error("Banner-Upload fehlgeschlagen (League #{league.id}): #{e.class}: #{e.message}")
+      render json: { message: 'Banner konnte nicht gespeichert werden.' }, status: :internal_server_error
+    end
   end
 
   def admin_delete_banner
-    return render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized unless current_user
-
-    league = League.find(params[:id])
+    league = find_league_or_404 or return
     unless league.user_permissions(current_user).include?(:update_league)
       return render json: { message: 'Keine Berechtigung' }, status: :forbidden
     end
 
-    league.banner.purge
-    render json: { success: true }
+    begin
+      league.banner.purge
+      render json: { success: true }
+    rescue StandardError => e
+      Rails.logger.error("Banner-Löschen fehlgeschlagen (League #{league.id}): #{e.class}: #{e.message}")
+      render json: { message: 'Banner konnte nicht gelöscht werden.' }, status: :internal_server_error
+    end
   end
+
+  def find_league_or_404
+    League.find(params[:id])
+  rescue ActiveRecord::RecordNotFound
+    render json: { message: 'Liga nicht gefunden' }, status: :not_found
+    nil
+  end
+  private :find_league_or_404
 
   def league_params
     params.require(:league).permit(:before_deadline, :deadline, :female, :game_operation_id,

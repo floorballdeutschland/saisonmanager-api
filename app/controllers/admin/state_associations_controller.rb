@@ -1,7 +1,7 @@
 module Admin
   class StateAssociationsController < ApplicationController
     before_action :authorize_sa_access!
-    before_action :authorize_admin!, only: %i[create update destroy]
+    before_action :authorize_admin!, only: %i[create update destroy upload_banner delete_banner]
     before_action :set_state_association, only: %i[show update destroy upload_banner delete_banner]
 
     # GET /api/v2/admin/state_associations
@@ -61,14 +61,24 @@ module Admin
         return render json: { message: 'Maximale Dateigröße: 500 KB' }, status: :unprocessable_entity
       end
 
-      @state_association.banner.attach(params[:banner])
-      render json: { banner_url: @state_association.banner_url }
+      begin
+        @state_association.banner.attach(params[:banner])
+        render json: { banner_url: @state_association.banner_url }
+      rescue StandardError => e
+        Rails.logger.error("Banner-Upload fehlgeschlagen (StateAssociation #{@state_association.id}): #{e.class}: #{e.message}")
+        render json: { message: 'Banner konnte nicht gespeichert werden.' }, status: :internal_server_error
+      end
     end
 
     # DELETE /api/v2/admin/state_associations/:id/banner
     def delete_banner
-      @state_association.banner.purge
-      render json: { success: true }
+      begin
+        @state_association.banner.purge
+        render json: { success: true }
+      rescue StandardError => e
+        Rails.logger.error("Banner-Löschen fehlgeschlagen (StateAssociation #{@state_association.id}): #{e.class}: #{e.message}")
+        render json: { message: 'Banner konnte nicht gelöscht werden.' }, status: :internal_server_error
+      end
     end
 
     private

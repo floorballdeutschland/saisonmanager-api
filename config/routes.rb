@@ -87,6 +87,7 @@ Rails.application.routes.draw do
 
       post 'admin/game_operations/:id/upload_banner', to: 'game_operations#admin_upload_banner'
       delete 'admin/game_operations/:id/banner', to: 'game_operations#admin_delete_banner'
+      patch 'admin/game_operations/:id/banner_link', to: 'game_operations#admin_update_banner_link'
 
       get 'admin/teams/:id', to: 'teams#admin_get_team'
       get 'admin/league/clubs/:callType/:id', to: 'clubs#admin_get_go_clubs'
