@@ -137,6 +137,7 @@ class League < ApplicationRecord
       league_type:, # legacy!
       name:,
       female:,
+      age_group:,
       enable_scorer:,
       short_name:,
       season_id:,

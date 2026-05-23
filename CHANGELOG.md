@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+- Liga: Altersklasse (`age_group`) als eigenes Pflichtfeld; bestehende Ligen werden automatisch auf „Damen" oder „Herren" migriert
+- Liga: 1. und 2. Floorball Bundesliga als Ligaklasse können nur noch von Admin- oder SBK-FD-Nutzern gesetzt werden
+
 ---
 
 ## [1.17.0] - 2026-05-23

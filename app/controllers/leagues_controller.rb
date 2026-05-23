@@ -55,15 +55,24 @@ class LeaguesController < ApplicationController
       if create_modus && GameOperation.find(params[:game_operation_id])&.user_permissions(current_user)&.include?(:create_league) # create
 
         lp = league_params
+        if BUNDESLIGA_CLASSES.include?(lp[:league_class_id]) && !buli_permitted?(current_user)
+          return render json: { message: 'Keine Berechtigung für diese Ligaklasse' }, status: :forbidden
+        end
+
         lp[:season_id] = Setting.current_season_id
         lp[:legacy_league] = false
         league = League.create(lp)
 
         render json: league, status: :created
       elsif !create_modus && League.find(params[:id])&.user_permissions(current_user)&.include?(:update_league) # update
-        # update
         league = League.find(params[:id])
-        if league.update(league_params)
+        lp = league_params
+        effective_class = lp[:league_class_id] || league.league_class_id
+        if BUNDESLIGA_CLASSES.include?(effective_class) && !buli_permitted?(current_user)
+          return render json: { message: 'Keine Berechtigung für diese Ligaklasse' }, status: :forbidden
+        end
+
+        if league.update(lp)
           render json: league
         else
           render json: league.errors, status: :unprocessable_entity
@@ -571,8 +580,15 @@ class LeaguesController < ApplicationController
   end
   private :find_league_or_not_found
 
+  BUNDESLIGA_CLASSES = %w[1fbl 2fbl].freeze
+
+  def buli_permitted?(user)
+    ph = user.permission_hash
+    ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
+  end
+
   def league_params
-    params.require(:league).permit(:before_deadline, :deadline, :female, :game_operation_id,
+    params.require(:league).permit(:before_deadline, :deadline, :female, :age_group, :game_operation_id,
                                    :league_category_id, :league_class_id, :league_system_id, :name, :order_key,
                                    :short_name, :enable_scorer, :field_size, :league_modus, :league_id_preseason,
                                    :league_id_preround, :has_preround, :preround_point_modus, :preround_scorer_modus,
