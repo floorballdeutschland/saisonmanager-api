@@ -18,10 +18,13 @@ namespace :seasons do
       min_league = league_ids.min
       min_team   = team_ids.min
 
-      # Saisons ohne eigene Ligen (z. B. frisch angelegt) bekommen max(id)+1 — dieselbe Logik
-      # wie beim Anlegen einer neuen Saison.
-      min_league ||= (League.maximum(:id) || 0) + 1
-      min_team   ||= (Team.maximum(:id) || 0) + 1
+      # Archivierte Saisons (keine Ligen oder Teams in der live-DB) werden übersprungen;
+      # ein max(id)+1-Fallback würde dort Müllwerte produzieren, die später bei einem
+      # versehentlichen Reaktivieren der Saison falsche Filter-Schranken setzen.
+      if min_league.nil? || min_team.nil?
+        puts "  Saison #{season_id} (#{data['name']}): keine #{min_league.nil? ? 'Ligen' : 'Teams'} in der DB — übersprungen"
+        next
+      end
 
       changes << {
         season_id: season_id,

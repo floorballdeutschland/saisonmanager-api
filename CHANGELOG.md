@@ -12,6 +12,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Neu
 - Lizenzen: Expresslizenz-Option erscheint im VM-Antragsdialog nur noch, wenn der zuständige Landesverband Expresslizenzen aktiviert hat **und** der erste Spieltag einer Liga des Teams höchstens drei Tage entfernt ist oder bereits stattgefunden hat
 - Lizenzen: Beim Anlegen einer Expresslizenz wird zusätzlich eine separate E-Mail an die zuständige Spielbetriebskommission (`sbk_email` des Landesverbands) verschickt
+- Saisonen: Rake-Task `seasons:invalidate_stale_licenses` markiert aktive Lizenzen (Status APPROVED/REQUESTED) als `DELETED` mit Reason „Saisonwechsel — Lizenz aus Vorsaison", wenn das zugehörige Team zu einer Liga außerhalb der aktuellen Saison gehört. Strukturelle Antwort auf bisher fehlende Saisonwechsel-Routine; nach Aktivierung einer neuen Saison aufrufen. `ADMIN_USER_ID=…` Pflicht (für History-Audit), `DRY_RUN=1` zeigt nur den Effekt an
 
 ### Behoben
 - Saisonen: Beim Anlegen einer neuen Saison werden `min_league_id` und `min_team_id` automatisch gesetzt (`max(id) + 1`). Ohne diese Werte fiel `Setting.current_min_team` auf `0` zurück, dadurch wurden Vorsaison-Lizenzen weiterhin als „aktuell" gewertet (z. B. in der SBK-Lizenzansicht)
@@ -19,6 +20,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - Vorrunden-Lizenzübernahme: Übernommene Lizenzen erhalten jetzt `season_id` (und `league_class_id`) der Zielliga. Ohne `season_id` ließen Saison-Filter (`lic_season.nil?` Bypass in `League#licenses`) sie als saisonunabhängig durchgehen, sodass übernommene Vorrunden-Lizenzen auch nach Saisonwechsel als „aktuell" galten
 - Vorrunden-Lizenzübernahme: History-Eintrag enthält jetzt `created_by` (`current_user.id`); fehlte bisher und ließ `Player#current_license_status` über `User.find(nil)` ins `ActiveRecord::RecordNotFound` laufen
 - Lizenzen: Rake-Task `licenses:backfill_season_ids` setzt `season_id` (und `league_class_id`) auf Bestandslizenzen ohne diese Felder anhand des verknüpften Teams/Liga. Nötig, damit bereits per Vorrunden-Übernahme erzeugte Lizenzen ebenfalls saisonkorrekt gefiltert werden. `DRY_RUN=1` zeigt nur den Effekt an
+- Saisonen: Rake-Task `seasons:backfill_min_ids` setzt für archivierte Saisons (Ligen ohne Teams in der live-DB) keine Werte mehr; der bisherige `max(id)+1`-Fallback hat dort Müllwerte produziert, die im Falle einer Reaktivierung der Saison als falsche Filter-Schranke gewirkt hätten
 
 ### Verbessert
 - Lizenzen: Backend ignoriert Express-Anträge außerhalb des 3-Tage-Fensters bzw. ohne LV-Freigabe und speichert sie als reguläre Lizenz (kein versehentlicher Mailversand)
