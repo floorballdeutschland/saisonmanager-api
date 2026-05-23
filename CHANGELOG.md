@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.18.0] - 2026-05-23
+
 ### Behoben
 - CSRF-Token: Frontend sendet den Token jetzt im Header `X-CSRF-Token` (Rails-Standard) statt `X-XSRF-TOKEN`; behebt „CSRF token ungültig." beim Speichern (z. B. Liga anlegen)
 
@@ -16,6 +20,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - Liga: Altersklasse (`age_group`) als eigenes Pflichtfeld; bestehende Ligen werden automatisch auf „Damen" oder „Herren" migriert
 - Liga: 1. und 2. Floorball Bundesliga als Ligaklasse können nur noch von Admin- oder SBK-FD-Nutzern gesetzt werden
 - Analyse: Tägliche Erfassung öffentlicher Seitenaufrufe (Spielplan, Tabelle, Torschützen); Admin-Bereich zeigt Übersicht der letzten 30 Tage und 12 Monate
+- Transferliste (SBK): Zeigt nur erfolgreich abgeschlossene Transfers; CSV-Export der genehmigten Transfers
 
 ---
 
