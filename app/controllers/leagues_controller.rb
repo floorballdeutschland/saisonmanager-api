@@ -366,8 +366,11 @@ class LeaguesController < ApplicationController
           new_license = {
             'id' => SecureRandom.uuid,
             'team_id' => current_team.id,
+            'season_id' => league.season_id,
+            'league_class_id' => league.league_class_id,
             'history' => [{
               'license_status_id' => License::APPROVED,
+              'created_by' => current_user.id,
               'created_at' => Time.current.iso8601
             }]
           }
