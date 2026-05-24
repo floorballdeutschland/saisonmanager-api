@@ -420,13 +420,6 @@ class LeaguesController < ApplicationController
   end
 
   # GET /leagues/1/schedule
-  api :GET, '/leagues/:id/schedule.json'
-  param :id, :number,
-        required: true, desc: 'league id'
-  # short_description 'Prints the game schedule for league :id.'
-  description <<-EOS
-      Prints the game schedule for league :id. If the game was already played a result_string is included.
-  EOS
   def schedule
     id = params[:id]
 
@@ -460,13 +453,6 @@ class LeaguesController < ApplicationController
   end
 
   # GET /leagues/1/scorer
-  api :GET, '/leagues/:id/scorer.json'
-  param :id, :number,
-        required: true, desc: 'league id'
-  # short_description 'Prints the scorer table for league :id.'
-  description <<-EOS
-      Prints the scorer table for league :id.
-  EOS
   def scorer
     @league = League.find(params[:id])
 
@@ -474,13 +460,6 @@ class LeaguesController < ApplicationController
   end
 
   # GET /leagues/1/table
-  api :GET, '/leagues/:id/table.json'
-  param :id, :number,
-        required: true, desc: 'league id'
-  # short_description 'Prints the table for league :id.'
-  description <<-EOS
-      Prints the table for league :id.
-  EOS
   def table
     @league = League.find(params[:id])
 

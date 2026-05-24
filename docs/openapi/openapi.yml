@@ -1,0 +1,319 @@
+openapi: 3.0.3
+
+info:
+  title: Saisonmanager API
+  version: "2.0.0"
+  description: |
+    Öffentliche und interne API des Saisonmanagers.
+
+    **Diese Spec ist die Single Source of Truth für API-Verträge.**
+    Im Test-Modus validiert `committee-rails` automatisch die Response
+    gegen die hier definierten Schemas (siehe `test/test_helper.rb`).
+
+    Stand: Erstaufbau der Spec. Nur eine kleine Menge öffentlicher
+    Endpunkte ist bereits dokumentiert; weitere Endpunkte folgen in
+    Folge-PRs (siehe `docs/openapi/README.md`).
+
+    Auth-Modelle:
+    - `cookieAuth` – signierter `user_id` Cookie (interaktive Sessions)
+    - `apiKeyAuth` – Header `X-Api-Key` (Server-zu-Server / Frontend)
+
+    Öffentliche Read-Only-Endpoints akzeptieren beide; admin-Endpunkte
+    verlangen `cookieAuth`.
+
+servers:
+  - url: https://saisonmanager.org/api/v2
+    description: Produktion
+  - url: http://localhost:3001/api/v2
+    description: Lokale Entwicklung (Docker)
+
+tags:
+  - name: Leagues (public)
+    description: Öffentliche Liga-Endpunkte (Spielplan, Tabelle, Scorer)
+
+paths:
+  /leagues/{id}/schedule:
+    get:
+      operationId: getLeagueSchedule
+      summary: Spielplan einer Liga
+      description: |
+        Gibt alle Spiele der Liga zurück. Bereits gespielte Spiele
+        enthalten zusätzlich `result_string`.
+
+        Response wird serverseitig 5 Minuten gecacht
+        (`leagues/:id/schedule`).
+      tags: [Leagues (public)]
+      parameters:
+        - $ref: "#/components/parameters/LeagueId"
+      responses:
+        "200":
+          description: Spielplan, sortiert nach Spieltag, Datum, Zeit, Spielnummer.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScheduleItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /leagues/{id}/table:
+    get:
+      operationId: getLeagueTable
+      summary: Tabelle einer Liga
+      description: |
+        Berechnete Tabelle inkl. Position und Sortierwert. Berücksichtigt
+        Direktbegegnungen (`league_id_direct_encounters`) und Vorrunden-
+        Punkte (`league_id_preround`), falls konfiguriert.
+      tags: [Leagues (public)]
+      parameters:
+        - $ref: "#/components/parameters/LeagueId"
+      responses:
+        "200":
+          description: Tabelle, sortiert nach Punkten / Tordifferenz / Toren.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TableRow"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /leagues/{id}/scorer:
+    get:
+      operationId: getLeagueScorer
+      summary: Scorer-Liste einer Liga
+      description: |
+        Spieler mit Toren, Assists und Strafen, sortiert nach Scorerpunkten
+        (`goals + assists`), dann Toren, dann Spielen. Spieler ohne Tore
+        und ohne Strafen werden ausgefiltert.
+      tags: [Leagues (public)]
+      parameters:
+        - $ref: "#/components/parameters/LeagueId"
+      responses:
+        "200":
+          description: Scorer-Liste, sortiert.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScorerEntry"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: user_id
+      description: Signierter Cookie nach erfolgreichem POST /login.
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+      description: |
+        API-Key aus `/verwaltung/api-keys`. Nur für lesende öffentliche
+        Endpunkte und v1-Ticker-Endpunkte; admin-Endpunkte erfordern
+        `cookieAuth`.
+
+  parameters:
+    LeagueId:
+      name: id
+      in: path
+      required: true
+      description: Liga-ID
+      schema:
+        type: integer
+        minimum: 1
+
+  responses:
+    Unauthorized:
+      description: API-Key oder Cookie fehlt/ungültig
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            success: false
+            message: "API key required"
+
+    NotFound:
+      description: Liga nicht gefunden
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [message]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+
+    ScheduleItem:
+      type: object
+      description: |
+        Ein Spiel im Spielplan. Felder mit `nullable: true` können
+        bei noch nicht angesetzten Spielen leer sein.
+      required:
+        - game_id
+        - game_day
+        - home_team_name
+        - guest_team_name
+      additionalProperties: true
+      properties:
+        game_id:
+          type: integer
+        game_number:
+          type: integer
+        game_day:
+          type: integer
+        game_day_id:
+          type: integer
+        arena:
+          type: integer
+          nullable: true
+        arena_name:
+          type: string
+          nullable: true
+        arena_address:
+          type: string
+          nullable: true
+        hosting_club:
+          type: integer
+          nullable: true
+        date:
+          type: string
+          format: date
+          nullable: true
+        time:
+          type: string
+          nullable: true
+        started:
+          type: boolean
+          nullable: true
+        ended:
+          type: boolean
+          nullable: true
+        home_team_name:
+          type: string
+        home_team_logo:
+          type: string
+          nullable: true
+        guest_team_name:
+          type: string
+        guest_team_logo:
+          type: string
+          nullable: true
+        state:
+          type: string
+          nullable: true
+        result_string:
+          type: string
+          nullable: true
+        notice_type:
+          type: string
+          nullable: true
+        notice_string:
+          type: string
+          nullable: true
+        nominated_referee_string:
+          type: string
+          nullable: true
+        group_identifier:
+          type: string
+          nullable: true
+        series_title:
+          type: string
+          nullable: true
+        series_number:
+          type: integer
+          nullable: true
+
+    TableRow:
+      type: object
+      description: Tabelleneintrag eines Teams in einer Liga.
+      additionalProperties: true
+      required:
+        - team_id
+        - team_name
+        - games
+        - points
+      properties:
+        team_id:
+          type: integer
+        team_name:
+          type: string
+        games:
+          type: integer
+        wins:
+          type: integer
+        draws:
+          type: integer
+        losses:
+          type: integer
+        goals_scored:
+          type: integer
+        goals_against:
+          type: integer
+        goals_diff:
+          type: integer
+        points:
+          type: integer
+        position:
+          type: integer
+        sort:
+          type: integer
+
+    ScorerEntry:
+      type: object
+      description: Scorer-Eintrag eines Spielers (Tore, Assists, Strafen).
+      additionalProperties: true
+      required:
+        - player_id
+        - games
+        - goals
+        - assists
+      properties:
+        player_id:
+          type: integer
+        first_name:
+          type: string
+          nullable: true
+        last_name:
+          type: string
+          nullable: true
+        team_id:
+          type: integer
+          nullable: true
+        games:
+          type: integer
+        goals:
+          type: integer
+        assists:
+          type: integer
+        penalty_2:
+          type: integer
+        penalty_2and2:
+          type: integer
+        penalty_5:
+          type: integer
+        penalty_10:
+          type: integer
+
+security:
+  - cookieAuth: []
+  - apiKeyAuth: []
