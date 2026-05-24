@@ -40,11 +40,12 @@ class StateAssociation < ApplicationRecord
       banner_link_url:,
       children: children.order(:name).map(&:short_hash),
       checklist_items: checklist_items.map { |i| { id: i.id, question: i.question, position: i.position } },
-      releases: releases.includes(:recipient_game_operation).map do |r|
+      releases: releases.current_season.includes(:recipient_game_operation).map do |r|
         {
           id: r.id,
           recipient_game_operation_id: r.recipient_game_operation_id,
-          recipient_game_operation_name: r.recipient_game_operation.name
+          recipient_game_operation_name: r.recipient_game_operation.name,
+          season_id: r.season_id
         }
       end
     }

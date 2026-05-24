@@ -17,6 +17,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - Admin: E-Mail-Log – Übersicht aller in den letzten 30 Tagen versendeten E-Mails (Empfänger, CC, Betreff, Mailer-Aktion, Zeitpunkt); Einträge älter als 30 Tage werden beim Laden automatisch gelöscht. Zusätzlich: Testmail an beliebige Adresse versendbar
 - Schiedsrichterverwaltung: Lizenzstufen sind jetzt konfigurierbar – neue Seite „Lizenzstufen" analog zu Zusatzqualifikationen; Lizenzstufen-Dropdown im Schiri-Bearbeitungsformular wird aus der konfigurierten Liste befüllt statt aus einer festen Auswahl
 - Schiedsrichter: Wird beim Schiedsrichter A eine Partner-Lizenznummer (bevorzugter Partner) gesetzt und der Partner B besitzt selbst noch keinen Partner-Eintrag, wird B automatisch mit A als Partner verknüpft – beide stehen sich danach gegenseitig drin. Bereits gesetzte Partner-Einträge bleiben unverändert. Existiert die angegebene Lizenznummer nicht, wird kein Fehler mehr erzeugt (zuvor: Validierungsfehler „nicht gefunden")
+- Vereinsfreigaben (Landesverband → Sportverband): Freigaben sind jetzt an die Saison gekoppelt. Beim Anlegen wird `season_id` automatisch auf die aktuelle Saison gesetzt; in der Übersicht (`StateAssociation#full_hash`) erscheinen nur Freigaben der aktuellen Saison. Bestandsfreigaben werden per Migration auf die aktuelle Saison gesetzt. Bei Saisonwechsel erlischt eine Freigabe automatisch, es bleibt ein Audit-Eintrag in der Datenbank zurück
+- Vereinsfreigaben: Aufnehmender Sportverband erhält bei freigegebenen Vereinen jetzt einen Read-only-Modus. Die Auflistung in der Vereinsverwaltung (`Club.admin_user_clubs`) liefert dafür das neue Flag `released_readonly: true` (Frontend-Anbindung folgt in einem separaten PR)
 
 ### Verbessert
 - API-Dokumentation: OpenAPI-3-Spec unter `docs/openapi/openapi.yml` als Single Source of Truth für API-Verträge eingeführt (Foundation: drei öffentliche Liga-Endpunkte `/leagues/:id/schedule|table|scorer`). Im Test-Modus validiert `committee-rails` Responses automatisch gegen das Schema; in Folge-PRs werden Admin- und Workflow-Endpunkte ergänzt (siehe Issue #150 und Phase 2 von Issue #174)
@@ -28,6 +30,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Behoben
 - Spielsekretariats-Link: Aufruf des öffentlichen Endpoints (`GET /api/v2/public/secretary`) crashte mit `NoMethodError: undefined method 'name' for User`. Im Frontend erschien dadurch „Server-Fehler. Bitte versuche es später erneut." statt der Spieltagsansicht. `link.created_by&.name` durch `&.fullname` ersetzt — konsistent mit `GameDaySecretaryLinksController#create`
+- Vereinsfreigaben: Ein Sportverband mit aktiver Vereinsfreigabe eines anderen Landesverbands konnte über `Club#user_permissions` automatisch `:update_club` und `:update_player` für die freigegebenen Vereine und deren Spieler bekommen. Stammdaten von Fremd-LV-Vereinen ließen sich damit komplett ändern. Der Release-Pfad in `user_permissions` ist entfernt — Sichtbarkeit bleibt erhalten über die Auflistung in `Club.admin_user_clubs`, Schreibrechte gibt es nicht mehr
 
 ---
 

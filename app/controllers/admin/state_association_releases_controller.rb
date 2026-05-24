@@ -6,7 +6,8 @@ module Admin
     # POST /api/v2/admin/state_associations/:state_association_id/releases
     def create
       release = @state_association.releases.new(
-        recipient_game_operation_id: params[:recipient_game_operation_id]
+        recipient_game_operation_id: params[:recipient_game_operation_id],
+        season_id: Setting.current_season_id
       )
       if release.save
         render json: release_hash(release), status: :created
