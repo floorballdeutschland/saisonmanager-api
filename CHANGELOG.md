@@ -27,6 +27,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - Test-Suite wächst von 76 auf 103 Tests (+27 neu, +35 Assertions); Issue #173 (Phase 1 von #174/#175) damit abgeschlossen
 
 ### Behoben
+- Schiedsrichter Wallet-Ausweis: `POST admin/referees/:id/wallet_pass` crashte mit `NoMethodError: undefined method 'verein' for Referee` — im Frontend erschien „Wallet-Pass konnte nicht erstellt werden.". `PassmeisterService#create_or_update_pass` greift jetzt über die `belongs_to :club`-Assoziation (`referee.club&.name`) auf den Vereinsnamen zu (vorher: das nicht existierende Attribut `referee.verein`)
 - Spielsekretariats-Link: Aufruf des öffentlichen Endpoints (`GET /api/v2/public/secretary`) crashte mit `NoMethodError: undefined method 'name' for User`. Im Frontend erschien dadurch „Server-Fehler. Bitte versuche es später erneut." statt der Spieltagsansicht. `link.created_by&.name` durch `&.fullname` ersetzt — konsistent mit `GameDaySecretaryLinksController#create`
 
 ---
