@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+- Schiedsrichter: Wird beim Schiedsrichter A eine Partner-Lizenznummer (bevorzugter Partner) gesetzt und der Partner B besitzt selbst noch keinen Partner-Eintrag, wird B automatisch mit A als Partner verknüpft – beide stehen sich danach gegenseitig drin. Bereits gesetzte Partner-Einträge bleiben unverändert. Existiert die angegebene Lizenznummer nicht, wird kein Fehler mehr erzeugt (zuvor: Validierungsfehler „nicht gefunden")
+
 ### Behoben
 - Spielsekretariats-Link: Aufruf des öffentlichen Endpoints (`GET /api/v2/public/secretary`) crashte mit `NoMethodError: undefined method 'name' for User`. Im Frontend erschien dadurch „Server-Fehler. Bitte versuche es später erneut." statt der Spieltagsansicht. `link.created_by&.name` durch `&.fullname` ersetzt — konsistent mit `GameDaySecretaryLinksController#create`
 
