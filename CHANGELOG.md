@@ -14,8 +14,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Verbessert
 - API-Dokumentation: OpenAPI-3-Spec unter `docs/openapi/openapi.yml` als Single Source of Truth für API-Verträge eingeführt (Foundation: drei öffentliche Liga-Endpunkte `/leagues/:id/schedule|table|scorer`). Im Test-Modus validiert `committee-rails` Responses automatisch gegen das Schema; in Folge-PRs werden Admin- und Workflow-Endpunkte ergänzt (siehe Issue #150 und Phase 2 von Issue #174)
-- Test-Infrastruktur: `committee-rails` als Test-Gem hinzugefügt, `assert_schema_conform` in `ActionDispatch::IntegrationTest` verfügbar; Smoke-Test für `LeaguesControllerTest` validiert die drei Foundation-Endpunkte gegen das Schema
+- Test-Infrastruktur: `committee-rails` als Test-Gem hinzugefügt, `assert_schema_conform` in `ActionDispatch::IntegrationTest` verfügbar; Smoke-Test für `LeaguesControllerTest` validiert die drei Foundation-Endpunkte gegen das Schema; `factory_bot_rails` als Test-Gem hinzugefügt, Factories für `Setting`, `GameOperation`, `Club`, `Arena`, `League` (mit Saison-Traits), `Team`, `Player`, `User` — YAML-Fixtures bleiben als Stubs erhalten, siehe `test/README.md`
 - Aufgeräumt: `apipie-rails` aus Gemfile entfernt (war nur in einer Datei mit drei Annotationen genutzt und nicht aktiv gepflegt); ersetzt durch OpenAPI-Workflow
+- Regressionsschutz Lizenz/Saison-Filter: `Setting.current_season_id` / `current_min_team` / `current_min_league` modelltestet (inkl. Fallback auf 0 aus PR #168), `Player#full_hash` / `Player#current_licenses` getestet auf Saison-, Status- und `min_team`-Filter, `League#licenses` getestet auf APPROVED-/REQUESTED-/DELETED-/DENIED-Filter, Vorsaison-Filter und `other_licenses`-Listing über mehrere Ligen
+- Regressionsschutz Saisonwechsel-Routinen: Rake-Tasks `seasons:invalidate_stale_licenses` (Happy Path, Idempotenz, DRY_RUN, gelöschtes Team, unbekannte/fehlende `ADMIN_USER_ID`) und `seasons:backfill_min_ids` (gesetzt / unverändert / ohne Teams aus PR #171 / ohne Ligen / DRY_RUN) getestet
+- Test-Suite wächst von 76 auf 103 Tests (+27 neu, +35 Assertions); Issue #173 (Phase 1 von #174/#175) damit abgeschlossen
 
 ### Behoben
 - Spielsekretariats-Link: Aufruf des öffentlichen Endpoints (`GET /api/v2/public/secretary`) crashte mit `NoMethodError: undefined method 'name' for User`. Im Frontend erschien dadurch „Server-Fehler. Bitte versuche es später erneut." statt der Spieltagsansicht. `link.created_by&.name` durch `&.fullname` ersetzt — konsistent mit `GameDaySecretaryLinksController#create`
