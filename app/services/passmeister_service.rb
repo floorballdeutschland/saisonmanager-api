@@ -12,7 +12,7 @@ class PassmeisterService
       'uid'        => "referee-#{referee.lizenznummer}",
       'templateId' => TEMPLATE_ID,
       'memberName' => { 'value' => "#{referee.vorname} #{referee.nachname}" },
-      'club'       => { 'value' => referee.verein.to_s },
+      'club'       => { 'value' => referee.club&.name.to_s },
       'memberNumber' => { 'value' => referee.lizenznummer.to_s },
       'barcode'    => { 'label' => referee.lizenznummer.to_s },
       'expirationDate' => next_rotation_expiry.iso8601
