@@ -147,16 +147,6 @@ class Club < ApplicationRecord
     admin = ph[:admin].present? && (global_or_go & ph[:admin]).any?
     sbk = ph[:sbk].present? && (global_or_go & ph[:sbk]).any?
 
-    unless admin || sbk
-      user_go_ids = ((ph[:admin] || []) + (ph[:sbk] || [])).reject { |gid| gid == 0 }
-      if state_association_id.present? && user_go_ids.any?
-        sbk = StateAssociationRelease.exists?(
-          grantor_state_association_id: state_association_id,
-          recipient_game_operation_id: user_go_ids
-        )
-      end
-    end
-
     perm << :update_club if admin || sbk
     perm << :update_player if admin || sbk
 
@@ -191,6 +181,7 @@ class Club < ApplicationRecord
 
     unless global_access
       released_sa_ids = StateAssociationRelease
+        .current_season
         .where(recipient_game_operation_id: go_ids)
         .pluck(:grantor_state_association_id)
 
