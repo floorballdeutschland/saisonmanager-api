@@ -73,6 +73,8 @@ module Admin
           guest_team: g.guest_team&.name,
           league: g.game_day.league&.name,
           arena: g.game_day.arena&.name,
+          arena_postcode: g.game_day.arena&.postcode,
+          arena_city: g.game_day.arena&.city,
           assignment_id: a&.id,
           assignment_status: a&.status
         }
@@ -253,6 +255,8 @@ module Admin
         league_category_id: g.league&.league_category_id,
         season_id: g.game_day.league&.season_id,
         arena: g.game_day.arena&.name,
+        arena_postcode: g.game_day.arena&.postcode,
+        arena_city: g.game_day.arena&.city,
         club: g.game_day.club&.name,
         result: g.result_string
       }
