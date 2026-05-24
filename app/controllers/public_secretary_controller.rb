@@ -33,7 +33,7 @@ class PublicSecretaryController < ApplicationController
       },
       license_lists: build_license_lists(games),
       expires_at: link.expires_at.iso8601,
-      created_by: link.created_by&.name
+      created_by: link.created_by&.fullname
     }
   end
 
