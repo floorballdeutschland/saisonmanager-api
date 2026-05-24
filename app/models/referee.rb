@@ -116,8 +116,7 @@ class Referee < ApplicationRecord
   private
 
   def sync_partner_lizenznummer
-    return if partner_lizenznummer.blank? || lizenznummer.blank?
-    return if partner_lizenznummer == lizenznummer
+    return if partner_lizenznummer.blank? || lizenznummer.blank? || partner_lizenznummer == lizenznummer
 
     partner = Referee.where(lizenznummer: partner_lizenznummer).where(partner_lizenznummer: nil).first
     partner&.update_column(:partner_lizenznummer, lizenznummer)
