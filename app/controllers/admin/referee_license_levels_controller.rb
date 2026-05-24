@@ -31,7 +31,7 @@ module Admin
 
     # DELETE /api/v2/admin/referee_license_levels/:id
     def destroy
-      if @level.usage_count > 0
+      if @level.usage_count.positive?
         render json: { error: 'Lizenzstufe wird noch verwendet und kann nicht gelöscht werden.' },
                status: :unprocessable_entity
       else
