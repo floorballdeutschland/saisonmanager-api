@@ -1,0 +1,1 @@
+Mail.register_observer(EmailLogObserver)

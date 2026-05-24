@@ -230,6 +230,9 @@ Rails.application.routes.draw do
           end
         end
         resources :api_keys, only: %i[index create update destroy]
+        resources :email_logs, only: [:index] do
+          collection { post :send_test }
+        end
         resources :licenses, only: [:index]
         resources :player_change_requests, only: %i[index create] do
           member do
