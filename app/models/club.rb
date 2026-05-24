@@ -195,7 +195,6 @@ class Club < ApplicationRecord
           logo_quad_url: nil,
           state_association_id: sa.id,
           released: true,
-          released_readonly: true,
           clubs: club_scope.where(state_association_id: sa.id).order(:name).map(&:full_hash)
         }
       end

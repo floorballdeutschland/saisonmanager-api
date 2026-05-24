@@ -2,9 +2,14 @@ class AddSeasonIdToStateAssociationReleases < ActiveRecord::Migration[7.0]
   def up
     add_column :state_association_releases, :season_id, :integer
 
-    current_season_id = Setting.current.systems.dig('1', 'current_season_id')
     StateAssociationRelease.reset_column_information
-    StateAssociationRelease.where(season_id: nil).update_all(season_id: current_season_id) if current_season_id
+
+    if StateAssociationRelease.where(season_id: nil).any?
+      current_season_id = Setting.first&.systems&.dig('1', 'current_season_id')
+      raise 'Cannot backfill state_association_releases.season_id: Setting.current_season_id is missing' if current_season_id.nil?
+
+      StateAssociationRelease.where(season_id: nil).update_all(season_id: current_season_id)
+    end
 
     change_column_null :state_association_releases, :season_id, false
 

@@ -37,7 +37,8 @@ module Admin
       {
         id: release.id,
         recipient_game_operation_id: release.recipient_game_operation_id,
-        recipient_game_operation_name: release.recipient_game_operation.name
+        recipient_game_operation_name: release.recipient_game_operation.name,
+        season_id: release.season_id
       }
     end
 
