@@ -40,6 +40,10 @@ group :development, :test do
 
   gem 'guard'
   gem 'guard-rspec', require: false
+
+  # Test-Daten als Factories statt YAML-Fixtures. Lizenz-/History-JSONB lässt
+  # sich pro Test gezielter komponieren als statisch in fixtures/*.yml.
+  gem 'factory_bot_rails'
 end
 
 group :development do
