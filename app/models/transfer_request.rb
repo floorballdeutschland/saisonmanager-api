@@ -57,7 +57,8 @@ class TransferRequest < ApplicationRecord
       update!(
         status: 'approved',
         approved_by_lv_user_id: approved_by_lv_user_id || user_id,
-        lv_approved_at: lv_approved_at || Time.current
+        lv_approved_at: lv_approved_at || Time.current,
+        player_confirmation_token: nil
       )
     end
 
@@ -74,7 +75,8 @@ class TransferRequest < ApplicationRecord
       update!(
         status: 'approved',
         approved_by_lv_user_id: user_id,
-        lv_approved_at: Time.current
+        lv_approved_at: Time.current,
+        player_confirmation_token: nil
       )
     end
   end
@@ -90,7 +92,8 @@ class TransferRequest < ApplicationRecord
         status: 'revoked',
         revoked_by: user_id,
         revoked_at: Time.current,
-        revocation_reason: reason
+        revocation_reason: reason,
+        player_confirmation_token: nil
       )
     end
   end
