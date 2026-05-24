@@ -211,6 +211,7 @@ Rails.application.routes.draw do
           get :next_lizenznummer, on: :collection
         end
         resources :referee_qualification_types, only: %i[index create update destroy]
+        resources :referee_license_levels, only: %i[index create update destroy]
         resources :referee_assignments, only: %i[index create update] do
           post :notify, on: :member
           post :publish, on: :member
