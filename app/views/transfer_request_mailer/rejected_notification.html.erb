@@ -1,9 +1,10 @@
-<h2>Transferantrag abgelehnt</h2>
+<% release = @transfer_request.request_type == 'release' %>
+<h2><%= release ? 'Spielerfreigabe-Antrag abgelehnt' : 'Transferantrag abgelehnt' %></h2>
 
 <p>Hallo,</p>
 
 <p>
-  der Transferantrag für den folgenden Spieler wurde abgelehnt:
+  der <%= release ? 'Spielerfreigabe-Antrag' : 'Transferantrag' %> für den folgenden Spieler wurde abgelehnt:
 </p>
 
 <p>

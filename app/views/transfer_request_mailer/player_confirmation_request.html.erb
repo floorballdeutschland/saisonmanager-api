@@ -1,17 +1,18 @@
-<h2>Transferanfrage: Deine Zustimmung wird benötigt</h2>
+<% release = @transfer_request.request_type == 'release' %>
+<h2><%= release ? 'Spielerfreigabe-Anfrage' : 'Transferanfrage' %>: Deine Zustimmung wird benötigt</h2>
 
 <p>Hallo <%= @transfer_request.player.first_name %> <%= @transfer_request.player.last_name %>,</p>
 
 <p>
   <strong><%= @transfer_request.requesting_club.name %></strong> möchte dich
-  <% if @transfer_request.request_type == 'release' %>als Spieler mit einer Zweitlizenz aufnehmen<% else %>als Spieler transferieren<% end %>.
+  <%= release ? 'als Spieler mit einer Zweitlizenz aufnehmen' : 'als Spieler transferieren' %>.
   Dein bisheriger Verein <strong><%= @transfer_request.former_club.name %></strong> hat dem bereits zugestimmt.
-  Damit der Transfer wirksam werden kann, ist auch deine Zustimmung erforderlich.
+  Damit <%= release ? 'die Freigabe' : 'der Transfer' %> wirksam werden kann, ist auch deine Zustimmung erforderlich.
 </p>
 
 <p>
-  <strong>Von:</strong> <%= @transfer_request.former_club.name %><br>
-  <strong>Nach:</strong> <%= @transfer_request.requesting_club.name %><br>
+  <strong><%= release ? 'Heimverein' : 'Von' %>:</strong> <%= @transfer_request.former_club.name %><br>
+  <strong><%= release ? 'Freigegeben an' : 'Nach' %>:</strong> <%= @transfer_request.requesting_club.name %><br>
   <% if @transfer_request.effective_date %>
     <strong>Datum:</strong> <%= @transfer_request.effective_date.strftime('%d.%m.%Y') %>
   <% else %>
@@ -23,15 +24,15 @@
 
 <p>
   <a href="https://saisonmanager.org/api/v2/admin/transfer_requests/player_approve?token=<%= @transfer_request.player_confirmation_token %>" style="display:inline-block;padding:8px 16px;background:#1a56db;color:#fff;text-decoration:none;border-radius:4px;margin-right:8px;">
-    Transfer zustimmen
+    <%= release ? 'Freigabe zustimmen' : 'Transfer zustimmen' %>
   </a>
   <a href="https://saisonmanager.org/api/v2/admin/transfer_requests/player_reject?token=<%= @transfer_request.player_confirmation_token %>" style="display:inline-block;padding:8px 16px;background:#e02424;color:#fff;text-decoration:none;border-radius:4px;">
-    Transfer ablehnen
+    <%= release ? 'Freigabe ablehnen' : 'Transfer ablehnen' %>
   </a>
 </p>
 
 <p style="font-size:0.85em;color:#666;">
-  Wenn du diesen Transfer nicht kennst oder die Links nicht mehr funktionieren, wende dich bitte an deinen Verein.
+  Wenn du <%= release ? 'diese Freigabe-Anfrage' : 'diesen Transfer' %> nicht kennst oder die Links nicht mehr funktionieren, wende dich bitte an deinen Verein.
 </p>
 
 <p>

@@ -100,8 +100,10 @@ module Admin
       former_club = Club.find_by(id: former_club_id)
       return render json: { error: 'Abgebender Verein nicht gefunden' }, status: :not_found unless former_club
 
+      request_type = params[:request_type].to_s == 'release' ? 'release' : 'transfer'
+
       effective_date = nil
-      if params[:effective_date].present?
+      if request_type == 'transfer' && params[:effective_date].present?
         begin
           effective_date = Date.parse(params[:effective_date].to_s)
           if effective_date < Date.today + 7
@@ -119,7 +121,8 @@ module Admin
         status: 'pending_club',
         created_by: current_user.id,
         season_id: Setting.current_season_id,
-        effective_date:
+        effective_date:,
+        request_type:
       )
 
       if tr.save
@@ -182,7 +185,8 @@ module Admin
         status: 'rejected_by_club',
         rejected_by: current_user.id,
         rejected_at: Time.current,
-        rejection_reason: reason
+        rejection_reason: reason,
+        player_confirmation_token: nil
       )
 
       TransferRequestMailer.rejected_notification(tr).deliver_later
@@ -286,7 +290,8 @@ module Admin
         status: 'rejected_by_lv',
         rejected_by: current_user.id,
         rejected_at: Time.current,
-        rejection_reason: reason
+        rejection_reason: reason,
+        player_confirmation_token: nil
       )
 
       TransferRequestMailer.rejected_notification(tr).deliver_later
@@ -306,7 +311,7 @@ module Admin
         return render json: { error: 'Nicht berechtigt' }, status: :forbidden
       end
 
-      tr.update!(status: 'withdrawn')
+      tr.update!(status: 'withdrawn', player_confirmation_token: nil)
       render json: tr.as_json
     end
 
@@ -344,7 +349,7 @@ module Admin
         return redirect_to "#{base_url}?result=#{result}", allow_other_host: true
       end
 
-      tr.update!(status: 'rejected_by_player', player_rejected_at: Time.current)
+      tr.update!(status: 'rejected_by_player', player_rejected_at: Time.current, player_confirmation_token: nil)
 
       TransferRequestMailer.player_rejected_clubs_notification(tr).deliver_later
 
