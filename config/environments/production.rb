@@ -66,15 +66,16 @@ Rails.application.configure do
   config.action_mailer.raise_delivery_errors = true
 
   config.action_mailer.delivery_method = :smtp
-  ipv4_address = Resolv::DNS.new.getaddress('saisonmanager-de.mail.protection.outlook.com').to_s
   config.action_mailer.smtp_settings = {
-    address: ipv4_address,
-    port: 25,
+    address: 'smtp.office365.com',
+    port: 587,
     domain: 'saisonmanager.org',
-    local_address: '88.198.193.81',
-    openssl_verify_mode: 'none',
-    open_timeout: 5,
-    read_timeout: 5
+    user_name: ENV['SMTP_USERNAME'],
+    password: ENV['SMTP_PASSWORD'],
+    authentication: :login,
+    enable_starttls_auto: true,
+    open_timeout: 10,
+    read_timeout: 10
   }
 
   # Enable locale fallbacks for I18n (makes lookups for any locale fall back to
