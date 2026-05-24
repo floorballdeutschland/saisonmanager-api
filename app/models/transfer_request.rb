@@ -61,6 +61,7 @@ class TransferRequest < ApplicationRecord
       )
     end
 
+    Rails.cache.delete('transfers')
     send_completion_emails(secondary_club_ids)
   end
 

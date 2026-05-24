@@ -182,7 +182,8 @@ module Admin
         status: 'rejected_by_club',
         rejected_by: current_user.id,
         rejected_at: Time.current,
-        rejection_reason: reason
+        rejection_reason: reason,
+        player_confirmation_token: nil
       )
 
       TransferRequestMailer.rejected_notification(tr).deliver_later
@@ -286,7 +287,8 @@ module Admin
         status: 'rejected_by_lv',
         rejected_by: current_user.id,
         rejected_at: Time.current,
-        rejection_reason: reason
+        rejection_reason: reason,
+        player_confirmation_token: nil
       )
 
       TransferRequestMailer.rejected_notification(tr).deliver_later
@@ -306,7 +308,7 @@ module Admin
         return render json: { error: 'Nicht berechtigt' }, status: :forbidden
       end
 
-      tr.update!(status: 'withdrawn')
+      tr.update!(status: 'withdrawn', player_confirmation_token: nil)
       render json: tr.as_json
     end
 
@@ -344,7 +346,7 @@ module Admin
         return redirect_to "#{base_url}?result=#{result}", allow_other_host: true
       end
 
-      tr.update!(status: 'rejected_by_player', player_rejected_at: Time.current)
+      tr.update!(status: 'rejected_by_player', player_rejected_at: Time.current, player_confirmation_token: nil)
 
       TransferRequestMailer.player_rejected_clubs_notification(tr).deliver_later
 
