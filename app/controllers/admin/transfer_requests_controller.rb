@@ -100,8 +100,10 @@ module Admin
       former_club = Club.find_by(id: former_club_id)
       return render json: { error: 'Abgebender Verein nicht gefunden' }, status: :not_found unless former_club
 
+      request_type = params[:request_type].to_s == 'release' ? 'release' : 'transfer'
+
       effective_date = nil
-      if params[:effective_date].present?
+      if request_type == 'transfer' && params[:effective_date].present?
         begin
           effective_date = Date.parse(params[:effective_date].to_s)
           if effective_date < Date.today + 7
@@ -119,7 +121,8 @@ module Admin
         status: 'pending_club',
         created_by: current_user.id,
         season_id: Setting.current_season_id,
-        effective_date:
+        effective_date:,
+        request_type:
       )
 
       if tr.save
