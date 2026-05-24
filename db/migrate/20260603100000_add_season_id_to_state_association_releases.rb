@@ -16,7 +16,7 @@ class AddSeasonIdToStateAssociationReleases < ActiveRecord::Migration[7.0]
     remove_index :state_association_releases, name: 'index_sa_releases_on_grantor_and_recipient'
 
     add_index :state_association_releases,
-              [:grantor_state_association_id, :recipient_game_operation_id, :season_id],
+              %i[grantor_state_association_id recipient_game_operation_id season_id],
               unique: true,
               name: 'index_sa_releases_on_grantor_recipient_season'
     add_index :state_association_releases, :season_id, name: 'index_sa_releases_on_season_id'
@@ -27,7 +27,7 @@ class AddSeasonIdToStateAssociationReleases < ActiveRecord::Migration[7.0]
     remove_index :state_association_releases, name: 'index_sa_releases_on_season_id'
 
     add_index :state_association_releases,
-              [:grantor_state_association_id, :recipient_game_operation_id],
+              %i[grantor_state_association_id recipient_game_operation_id],
               unique: true,
               name: 'index_sa_releases_on_grantor_and_recipient'
 
