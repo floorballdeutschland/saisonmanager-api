@@ -112,6 +112,8 @@ module Admin
         end
       end
 
+      request_type = params[:request_type].to_s == 'release' ? 'release' : 'transfer'
+
       tr = TransferRequest.new(
         player_id: player.id,
         requesting_club_id: requesting_club_id,
@@ -119,7 +121,8 @@ module Admin
         status: 'pending_club',
         created_by: current_user.id,
         season_id: Setting.current_season_id,
-        effective_date:
+        effective_date:,
+        request_type:
       )
 
       if tr.save

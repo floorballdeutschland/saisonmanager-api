@@ -1,9 +1,14 @@
-<h2>Transfer vollzogen – Information aufnehmender Landesverband</h2>
+<% release = @transfer_request.request_type == 'release' %>
+<h2><%= release ? 'Spielerfreigabe erteilt – Information aufnehmender Landesverband' : 'Transfer vollzogen – Information aufnehmender Landesverband' %></h2>
 
 <p>Hallo,</p>
 
 <p>
-  ein Spieler aus einem anderen Landesverband hat zu einem Verein in Ihrem Landesverband gewechselt:
+  <% if release %>
+    ein Spieler aus einem anderen Landesverband wurde für einen Verein in Ihrem Landesverband freigegeben (Zweitspielrecht):
+  <% else %>
+    ein Spieler aus einem anderen Landesverband hat zu einem Verein in Ihrem Landesverband gewechselt:
+  <% end %>
 </p>
 
 <p>

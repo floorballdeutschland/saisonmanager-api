@@ -71,6 +71,11 @@ class TransferRequest < ApplicationRecord
         lv_approved_at: Time.current
       )
     end
+
+    TransferRequestMailer.transfer_completed(self).deliver_later
+    return if requesting_club.state_association_id == former_club.state_association_id
+
+    TransferRequestMailer.transfer_completed_receiving_lv(self).deliver_later
   end
 
   def revoke_release!(user_id, reason)

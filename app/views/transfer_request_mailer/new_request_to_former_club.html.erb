@@ -1,9 +1,11 @@
-<h2>Neue Transferanfrage</h2>
+<% release = @transfer_request.request_type == 'release' %>
+<h2><%= release ? 'Neue Spielerfreigabe-Anfrage' : 'Neue Transferanfrage' %></h2>
 
 <p>Hallo,</p>
 
 <p>
-  der Verein <strong><%= @transfer_request.requesting_club.name %></strong> hat eine Transferanfrage
+  der Verein <strong><%= @transfer_request.requesting_club.name %></strong> hat
+  <%= release ? 'eine Spielerfreigabe (Zweitspielrecht)' : 'eine Transferanfrage' %>
   für den folgenden Spieler gestellt:
 </p>
 

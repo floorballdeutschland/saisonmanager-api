@@ -1,9 +1,10 @@
-<h2>Transferantrag beim Landesverband</h2>
+<% release = @transfer_request.request_type == 'release' %>
+<h2><%= release ? 'Spielerfreigabe-Antrag beim Landesverband' : 'Transferantrag beim Landesverband' %></h2>
 
 <p>Hallo,</p>
 
 <p>
-  der abgebende Verein hat den folgenden Transferantrag bestätigt. Er liegt jetzt beim
+  der abgebende Verein hat den folgenden <%= release ? 'Spielerfreigabe-Antrag' : 'Transferantrag' %> bestätigt. Er liegt jetzt beim
   Landesverband <strong><%= @transfer_request.former_club.state_association&.name %></strong>
   zur abschließenden Genehmigung.
 </p>

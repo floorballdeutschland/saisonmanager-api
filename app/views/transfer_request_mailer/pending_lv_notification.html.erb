@@ -1,9 +1,10 @@
-<h2>Transferantrag zur Genehmigung</h2>
+<% release = @transfer_request.request_type == 'release' %>
+<h2><%= release ? 'Spielerfreigabe-Antrag zur Genehmigung' : 'Transferantrag zur Genehmigung' %></h2>
 
 <p>Hallo,</p>
 
 <p>
-  ein Transferantrag wartet auf die Genehmigung des Landesverbands
+  ein <%= release ? 'Spielerfreigabe-Antrag' : 'Transferantrag' %> wartet auf die Genehmigung des Landesverbands
   <strong><%= @transfer_request.former_club.state_association&.name %></strong>.
 </p>
 
