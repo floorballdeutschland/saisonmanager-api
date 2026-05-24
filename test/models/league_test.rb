@@ -285,4 +285,140 @@ class LeagueTest < ActiveSupport::TestCase
                     date: (Date.current + 1).to_s)
     assert league.express_license_window_open?
   end
+
+  # ---------------------------------------------------------------------------
+  # League#licenses — Filter über Saison/Status. Tests via Factories, decken
+  # die Pfade aus dem „Bonner-Vorfall" ab.
+  # ---------------------------------------------------------------------------
+
+  test 'licenses: Spieler mit APPROVED-Lizenz der Liga-Saison ist enthalten' do
+    create(:setting, current_season_id: '18')
+    league = create(:league, :current_season)
+    team   = create(:team, league: league)
+
+    player = create(:player, with_licenses: [
+      { team: team, status: License::APPROVED, season_id: '18' }
+    ])
+
+    result = league.licenses
+    player_ids = result.flat_map { |t| t[:players].map { |p| p[:id] } }
+    assert_includes player_ids, player.id
+  end
+
+  test 'licenses: Lizenz mit season_id einer Vorsaison wird ausgefiltert' do
+    create(:setting, current_season_id: '18')
+    current_league = create(:league, :current_season)
+    current_team   = create(:team, league: current_league)
+
+    player = create(:player, with_licenses: [
+      { team: current_team, status: License::APPROVED, season_id: '17' }
+    ])
+
+    result = current_league.licenses
+    player_ids = result.flat_map { |t| t[:players].map { |p| p[:id] } }
+    refute_includes player_ids, player.id
+  end
+
+  test 'licenses: Lizenz mit season_id == nil rutscht aktuell durch (nil-Bypass in league.rb:715)' do
+    # Dokumentiert das aktuelle Verhalten explizit. Wenn jemand das Tightening
+    # angeht (z. B. künftig `lic_season.nil?` entfernen), bricht dieser Test
+    # bewusst — als Erinnerung, dass das eine Verhaltensänderung ist.
+    create(:setting, current_season_id: '18')
+    current_league = create(:league, :current_season)
+    current_team   = create(:team, league: current_league)
+
+    player = create(:player, with_licenses: [
+      { team: current_team, status: License::APPROVED, season_id: nil }
+    ])
+
+    result = current_league.licenses
+    player_ids = result.flat_map { |t| t[:players].map { |p| p[:id] } }
+    assert_includes player_ids, player.id,
+                    'nil-Bypass aktiv: season_id=nil durchgelassen — bewusst getestet'
+  end
+
+  test 'licenses: DELETED-Lizenz wird ausgefiltert' do
+    create(:setting, current_season_id: '18')
+    league = create(:league, :current_season)
+    team   = create(:team, league: league)
+
+    player = create(:player, with_licenses: [
+      { team: team, status: License::DELETED, season_id: '18' }
+    ])
+
+    result = league.licenses
+    player_ids = result.flat_map { |t| t[:players].map { |p| p[:id] } }
+    refute_includes player_ids, player.id
+  end
+
+  test 'licenses: DENIED-Lizenz wird ausgefiltert (nicht in active_statuses)' do
+    create(:setting, current_season_id: '18')
+    league = create(:league, :current_season)
+    team   = create(:team, league: league)
+
+    player = create(:player, with_licenses: [
+      { team: team, status: License::DENIED, season_id: '18' }
+    ])
+
+    result = league.licenses
+    player_ids = result.flat_map { |t| t[:players].map { |p| p[:id] } }
+    refute_includes player_ids, player.id
+  end
+
+  test 'licenses: REQUESTED zählt als aktiv (player taucht auf)' do
+    create(:setting, current_season_id: '18')
+    league = create(:league, :current_season)
+    team   = create(:team, league: league)
+
+    player = create(:player, with_licenses: [
+      { team: team, status: License::REQUESTED, season_id: '18' }
+    ])
+
+    result = league.licenses
+    player_ids = result.flat_map { |t| t[:players].map { |p| p[:id] } }
+    assert_includes player_ids, player.id
+  end
+
+  test 'licenses: other_licenses listet Lizenzen anderer Teams derselben Saison' do
+    create(:setting, current_season_id: '18')
+    target_league = create(:league, :current_season)
+    other_league  = create(:league, :current_season)
+    target_team   = create(:team, league: target_league)
+    other_team    = create(:team, league: other_league)
+
+    player = create(:player, with_licenses: [
+      { team: target_team, status: License::APPROVED, season_id: '18' },
+      { team: other_team,  status: License::APPROVED, season_id: '18' }
+    ])
+
+    result = target_league.licenses
+    target_team_block = result.find { |t| t[:id] == target_team.id }
+    player_entry = target_team_block[:players].find { |p| p[:id] == player.id }
+
+    refute_nil player_entry
+    assert_kind_of Array, player_entry[:other_licenses]
+    assert_equal 1, player_entry[:other_licenses].size,
+                 'Andere Liga in derselben Saison: in other_licenses sichtbar'
+  end
+
+  test 'licenses: other_licenses listet keine Lizenzen aus Vorsaisons' do
+    create(:setting, current_season_id: '18')
+    target_league   = create(:league, :current_season)
+    previous_league = create(:league, :previous_season)
+    target_team     = create(:team, league: target_league)
+    previous_team   = create(:team, league: previous_league)
+
+    player = create(:player, with_licenses: [
+      { team: target_team,   status: License::APPROVED, season_id: '18' },
+      { team: previous_team, status: License::APPROVED, season_id: '17' }
+    ])
+
+    result = target_league.licenses
+    target_team_block = result.find { |t| t[:id] == target_team.id }
+    player_entry = target_team_block[:players].find { |p| p[:id] == player.id }
+
+    refute_nil player_entry
+    assert_empty player_entry[:other_licenses],
+                 'Vorsaison-Lizenz nicht in other_licenses'
+  end
 end
