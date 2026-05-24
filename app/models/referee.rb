@@ -15,7 +15,8 @@ class Referee < ApplicationRecord
   validates :nachname, presence: true
   validates :partner_lizenznummer,
             numericality: { only_integer: true, greater_than: 0, allow_nil: true }
-  validate :partner_must_exist, if: -> { partner_lizenznummer.present? }
+
+  after_save :sync_partner_lizenznummer, if: :saved_change_to_partner_lizenznummer?
 
   def lizenznummer_display
     guest? ? "G-#{id}" : lizenznummer.to_s
@@ -114,8 +115,11 @@ class Referee < ApplicationRecord
 
   private
 
-  def partner_must_exist
-    errors.add(:partner_lizenznummer, 'nicht gefunden') unless Referee.exists?(lizenznummer: partner_lizenznummer)
+  def sync_partner_lizenznummer
+    return if partner_lizenznummer.blank? || lizenznummer.blank? || partner_lizenznummer == lizenznummer
+
+    partner = Referee.where(lizenznummer: partner_lizenznummer).where(partner_lizenznummer: nil).first
+    partner&.update_column(:partner_lizenznummer, lizenznummer)
   end
 
   def _rewrite_referee_game_references(master, secondary_lizenznummer: lizenznummer)
