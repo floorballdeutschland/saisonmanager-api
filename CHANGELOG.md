@@ -28,6 +28,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Behoben
 - Spielsekretariats-Link: Aufruf des öffentlichen Endpoints (`GET /api/v2/public/secretary`) crashte mit `NoMethodError: undefined method 'name' for User`. Im Frontend erschien dadurch „Server-Fehler. Bitte versuche es später erneut." statt der Spieltagsansicht. `link.created_by&.name` durch `&.fullname` ersetzt — konsistent mit `GameDaySecretaryLinksController#create`
+- Transfer-Vollzug: Beim finalen LV-Approval (`TransferRequest#execute_transfer!`) wurden **alle** aktiven Lizenzen des Spielers auf `License::TRANSFER` invalidiert — auch bestehende Lizenzen beim **aufnehmenden** Verein (z.B. aus einer zuvor erteilten Zweitlizenz). Lizenzen für Teams des aufnehmenden Vereins (`requesting_club_id`) werden jetzt explizit ausgeschlossen
+- Transfer-Vollzug: `execute_transfer!` läuft jetzt mit einem Pessimistic Lock (`lock!`) auf dem TransferRequest und einer erneuten Status-Prüfung innerhalb der Transaktion. Vorher konnten zwei parallele `/execute`-Calls (z.B. Doppelklick im Admin-UI oder beim manuellen Vorziehen aus Status `scheduled`) doppelte `Transfer`-Records erzeugen und die Lizenz-History zweifach beschreiben
 
 ---
 

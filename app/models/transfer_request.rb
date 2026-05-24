@@ -42,11 +42,16 @@ class TransferRequest < ApplicationRecord
   def execute_transfer!(user_id = nil)
     raise ActiveRecord::RecordInvalid, self unless status.in?(%w[pending_lv scheduled])
 
-    secondary_club_ids = player.clubs.select do |c|
-      c['home_club'] == false && c['valid_until'].nil?
-    end.map { |c| c['club_id'] }
+    secondary_club_ids = nil
 
     TransferRequest.transaction do
+      lock!
+      raise ActiveRecord::RecordInvalid, self unless status.in?(%w[pending_lv scheduled])
+
+      secondary_club_ids = player.clubs.select do |c|
+        c['home_club'] == false && c['valid_until'].nil?
+      end.map { |c| c['club_id'] }
+
       invalidate_licenses!
       player.transfer(requesting_club_id, user_id || approved_by_lv_user_id)
       update!(
@@ -149,7 +154,11 @@ class TransferRequest < ApplicationRecord
   end
 
   def invalidate_licenses!
+    requesting_team_ids = Team.where(club_id: requesting_club_id).pluck(:id).to_set
+
     player.licenses.each do |license|
+      next if requesting_team_ids.include?(license['team_id'].to_i)
+
       last_status = license['history']&.last&.dig('license_status_id').to_i
       next unless last_status.in?([License::APPROVED, License::REQUESTED])
 
