@@ -1,0 +1,7 @@
+# SHA256 von "test-key-for-smoke-tests".
+# In Tests via: ApiKey.authenticate("test-key-for-smoke-tests") oder
+# Header X-Api-Key übergeben.
+smoke_test:
+  name: Smoke-Test-Key
+  key_digest: 6776814aa0f825d2a29d8184ea45c16bc31994a4231b04f868a3ac9d178aa34f
+  active: true
