@@ -3,13 +3,12 @@ require 'json'
 
 class PassmeisterService
   TEMPLATE_ID = 'P428195'.freeze
-  # Basis-URL aus der Passmeister-Swagger-UI verifizieren (Dashboard → Developers)
-  API_BASE = 'https://app.passmeister.com/api/'.freeze
+  API_BASE = 'https://www.passmeister.com/api/v1'.freeze
 
   def self.create_or_update_pass(referee)
-    uri = URI("#{API_BASE}pass/")
+    uri = URI("#{API_BASE}/pass")
     payload = {
-      'uid'        => "referee-#{referee.lizenznummer}",
+      'passId'     => "referee-#{referee.lizenznummer}",
       'templateId' => TEMPLATE_ID,
       'memberName' => { 'value' => "#{referee.vorname} #{referee.nachname}" },
       'club'       => { 'value' => referee.club&.name.to_s },
@@ -20,7 +19,7 @@ class PassmeisterService
 
     req = Net::HTTP::Post.new(uri)
     req['Content-Type'] = 'application/json'
-    req['Authorization'] = "ApiKey #{api_key}"
+    req['Authorization'] = "Bearer #{api_key}"
     req.body = payload.to_json
 
     response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) do |http|

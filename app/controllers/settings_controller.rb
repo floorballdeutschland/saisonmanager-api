@@ -14,7 +14,7 @@ class SettingsController < ApplicationController
       {
         seasons: Setting.seasons,
         current_season_id: Setting.current_season_id,
-        game_operations: GameOperation.all.map(&:short_hash),
+        game_operations: GameOperation.includes(state_association: { logo_attachment: :blob }).map(&:short_hash),
         state_associations: StateAssociation.with_attached_logo.with_attached_banner.order(:name).map(&:short_hash)
       }
     end

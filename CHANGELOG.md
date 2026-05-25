@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+- Schiedsrichter-Ausweis (Wallet): Passmeister-API-URL auf `www.passmeister.com/api/v1` aktualisiert (alte Subdomain `app.passmeister.com` nicht mehr auflösbar), Auth-Header auf `Bearer` umgestellt, `passId`-Feld korrekt benannt
+- Startseite: GameOperation-Logo zeigt jetzt das Logo des verknüpften Landesverbands (hochladbar in der LV-Verwaltung) statt einer veralteten hartkodierten URL
+
 ### Verbessert
 - Ansetzungsübersicht: PLZ und Ort der Spielstätte werden im API-Response der Spielliste (`GET admin/referee_assignments/games`) und der Ansetzungsliste (`GET admin/referee_assignments`) mitgeliefert (`arena_postcode`, `arena_city`)
 
