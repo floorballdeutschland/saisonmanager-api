@@ -97,13 +97,18 @@ module Admin
       result = PassmeisterService.create_or_update_pass(@referee)
       pass_url = result['passUrl'] || result['url'] || result['passDownloadUrl']
 
+      if pass_url.blank?
+        render json: { error: 'Passmeister lieferte keine Pass-URL' }, status: :unprocessable_entity
+        return
+      end
+
       @referee.update_columns(
         wallet_pass_issued_at: Time.current,
         wallet_pass_url: pass_url
       )
 
       render json: { url: pass_url }
-    rescue RuntimeError => e
+    rescue PassmeisterService::Error => e
       render json: { error: e.message }, status: :unprocessable_entity
     end
 
