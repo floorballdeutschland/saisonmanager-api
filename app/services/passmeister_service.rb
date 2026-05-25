@@ -2,18 +2,20 @@ require 'net/http'
 require 'json'
 
 class PassmeisterService
+  class Error < StandardError; end
+
   TEMPLATE_ID = 'P428195'.freeze
   API_BASE = 'https://www.passmeister.com/api/v1'.freeze
 
   def self.create_or_update_pass(referee)
     uri = URI("#{API_BASE}/pass")
     payload = {
-      'passId'     => "referee-#{referee.lizenznummer}",
-      'templateId' => TEMPLATE_ID,
-      'memberName' => { 'value' => "#{referee.vorname} #{referee.nachname}" },
-      'club'       => { 'value' => referee.club&.name.to_s },
-      'memberNumber' => { 'value' => referee.lizenznummer.to_s },
-      'barcode'    => { 'label' => referee.lizenznummer.to_s },
+      'passId'         => "referee-#{referee.lizenznummer}",
+      'templateId'     => TEMPLATE_ID,
+      'memberName'     => { 'value' => "#{referee.vorname} #{referee.nachname}" },
+      'club'           => { 'value' => referee.club&.name.to_s },
+      'memberNumber'   => { 'value' => referee.lizenznummer.to_s },
+      'barcode'        => { 'label' => referee.lizenznummer.to_s },
       'expirationDate' => next_rotation_expiry.iso8601
     }
 
@@ -26,11 +28,14 @@ class PassmeisterService
       http.request(req)
     end
 
-    unless response.is_a?(Net::HTTPSuccess)
-      raise "Passmeister-Fehler #{response.code}: #{response.body}"
-    end
+    raise Error, "Passmeister-Fehler #{response.code}: #{response.body}" unless response.is_a?(Net::HTTPSuccess)
 
     JSON.parse(response.body)
+  rescue SocketError, Errno::ECONNREFUSED, Errno::ETIMEDOUT, Errno::ECONNRESET,
+         Net::OpenTimeout, Net::ReadTimeout, OpenSSL::SSL::SSLError => e
+    raise Error, "Passmeister nicht erreichbar: #{e.message}"
+  rescue JSON::ParserError => e
+    raise Error, "Passmeister-Antwort ungültig: #{e.message}"
   end
 
   def self.next_rotation_expiry
@@ -41,8 +46,9 @@ class PassmeisterService
   end
 
   def self.api_key
-    ENV.fetch('PASSMEISTER_API_KEY') do
-      Rails.application.credentials.passmeister_api_key
-    end
+    key = ENV['PASSMEISTER_API_KEY'].presence || Rails.application.credentials.passmeister_api_key
+    raise Error, 'PASSMEISTER_API_KEY ist nicht konfiguriert' if key.blank?
+
+    key
   end
 end
