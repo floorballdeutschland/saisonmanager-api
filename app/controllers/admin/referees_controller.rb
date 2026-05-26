@@ -95,9 +95,14 @@ module Admin
       return forbidden_response unless can_access_referee?(@referee)
 
       result = PassmeisterService.create_or_update_pass(@referee)
-      pass_url = result['passUrl'] || result['url'] || result['passDownloadUrl']
+      pass_url = result.dig('pass', 'walletSafe', 'urls', 'default')
 
       if pass_url.blank?
+        Rails.logger.warn(
+          "Passmeister: keine URL für Referee #{@referee.id} (Lizenz #{@referee.lizenznummer}). " \
+          "Response-Top-Level-Keys: #{result.keys.inspect}, " \
+          "walletSafe-Keys: #{result.dig('pass', 'walletSafe')&.keys.inspect}"
+        )
         render json: { error: 'Passmeister lieferte keine Pass-URL' }, status: :unprocessable_entity
         return
       end

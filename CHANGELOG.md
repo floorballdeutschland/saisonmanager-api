@@ -11,6 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Behoben
 - Schiedsrichter-Ausweis (Wallet): Passmeister-API-URL auf `www.passmeister.com/api/v1` aktualisiert (alte Subdomain `app.passmeister.com` nicht mehr auflösbar), Auth-Header auf `Bearer` umgestellt, `passId`-Feld korrekt benannt
+- Schiedsrichter-Ausweis (Wallet): Request-Schema an die tatsächliche Passmeister-API angepasst. `passTypeId`/`passId` werden als Query-Parameter übergeben statt im Body; Feldwerte nutzen die geforderte Dot-Notation (`field.memberName.value`, `field.memberNumber.value`, `field.club.value.de`/`.en`, `field.barcode.label`); `expirationDate` → `expiresAt` mit vollständigem ISO-8601-Zeitstempel. Die Wallet-URL wird jetzt aus `pass.walletSafe.urls.default` der Response gelesen. Barcode-Label zeigt auf `https://sr.floorball.de/lizenzcheck/?q={Lizenznummer}`
 - Startseite: GameOperation-Logo zeigt jetzt das Logo des verknüpften Landesverbands (hochladbar in der LV-Verwaltung) statt einer veralteten hartkodierten URL
 
 ### Verbessert
