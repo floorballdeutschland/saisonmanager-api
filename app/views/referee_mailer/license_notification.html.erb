@@ -1,16 +1,10 @@
-<h2>Schiedsrichterausweis <%= @action == :created ? 'angelegt' : 'aktualisiert' %></h2>
+<h2>Schiedsrichterausweis aktualisiert</h2>
 
 <p>Hallo <%= @referee.vorname %> <%= @referee.nachname %>,</p>
 
-<% if @action == :created %>
-<p>
-  dein Schiedsrichterausweis wurde im Saisonmanager angelegt.
-</p>
-<% else %>
 <p>
   dein Schiedsrichterausweis wurde im Saisonmanager aktualisiert.
 </p>
-<% end %>
 
 <% if @referee.lizenznummer.present? %>
 <p><strong>Lizenznummer:</strong> <%= @referee.lizenznummer %></p>

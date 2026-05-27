@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+- Schiedsrichter-Neuanlage: Beim Anlegen eines Schiedsrichters (kein Gast, mit Lizenznummer) wird jetzt automatisch der Wallet-Ausweis erzeugt und die Wallet-E-Mail an den Schiedsrichter verschickt – sofern eine E-Mail-Adresse hinterlegt ist. Die bisherige „Schiedsrichterausweis angelegt"-E-Mail entfällt dadurch. Schlägt die Pass-Erzeugung bei Passmeister fehl, wird der Fehler nur geloggt und die Anlage bleibt erfolgreich
+
 ### Verbessert
 - Schiedsrichter-Wallet-Ausweis-E-Mail: Betreff jetzt „Dein Schiedsrichterausweis | <Name>", Antwort-an auf `rsk@floorball.de` umgestellt und der Hinweis am Ende verweist auf die Regel- und Schiedsrichterkommission von Floorball Deutschland. Zusätzlich erklärt die E-Mail nun die Gültigkeit des Ausweises (bis zum nächsten Regeljahr) und verlinkt den Lizenzchecker mit der persönlichen Lizenznummer zur Prüfung der laufenden Saisonlizenz
 
