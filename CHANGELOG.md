@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.21.1] - 2026-05-27
+
 ### Behoben
 - Schiedsrichter-Wallet-Ausweis: Ausstellen schlug komplett fehl („Wallet-Pass konnte nicht erstellt werden"), weil der Barcode-Inhalt fälschlich als Top-Level-Felder `barcodeValue`/`barcodeAlternativeText` (Passcreator-Schema) übergeben wurde – die Passmeister-API lehnt diese mit `400 unknown or locked fields` ab. Korrekt sind die Dot-Notation-Felder `field.barcode.value` (zu codierender Lizenzcheck-Link) und `field.barcode.label` (Lizenznummer als Klartext). Damit wird der Pass wieder erstellt und der QR-Code gerendert
 
