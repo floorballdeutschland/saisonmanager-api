@@ -79,6 +79,17 @@ class PlayerSuspensionTest < ActiveSupport::TestCase
     refute suspension.reload.active?
   end
 
+  test 'suspended_for_team? erkennt aktive Ebene-1-Sperre nur für das betroffene Team' do
+    player = create(:player, with_licenses: [
+      { team: @team_a, status: License::APPROVED },
+      { team: @team_b, status: License::APPROVED }
+    ])
+    player.suspend!(team_id: @team_a.id, valid_until: Date.current + 7, user_id: @user.id)
+
+    assert player.suspended_for_team?(@team_a.id)
+    refute player.suspended_for_team?(@team_b.id)
+  end
+
   test 'lift lässt manuell geänderte Lizenzen unangetastet' do
     player = create(:player, with_licenses: [
       { team: @team_a, status: License::APPROVED }

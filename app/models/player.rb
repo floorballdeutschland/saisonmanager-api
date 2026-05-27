@@ -419,11 +419,16 @@ class Player < ApplicationRecord
     suspension = nil
 
     ActiveRecord::Base.transaction do
+      lock! if persisted?
       self.licenses ||= []
       affected = []
 
       licenses.each do |license|
         next if team_id.present? && license['team_id'].to_i != team_id.to_i
+
+        # Altdaten-Lizenzen können `_id` statt `id` oder gar keine id haben — vor dem
+        # Speichern stabilisieren, damit lift_suspension! exakt dieselbe Lizenz findet.
+        license['id'] ||= license.delete('_id') || Digest::UUID.uuid_v4
 
         last_status_id = license['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
         next unless License::ACTIVE_STATUSES.include?(last_status_id)
@@ -457,9 +462,12 @@ class Player < ApplicationRecord
     return if suspension.lifted_at.present?
 
     ActiveRecord::Base.transaction do
+      lock! if persisted?
       self.licenses ||= []
 
       Array(suspension.affected_licenses).each do |entry|
+        next if entry['license_id'].blank?
+
         license = licenses.find { |l| l['id'] == entry['license_id'] }
         next unless license
 
@@ -491,6 +499,13 @@ class Player < ApplicationRecord
   def application_blocked?(date: Date.current)
     expire_due_suspensions!(date:)
     suspensions.active.player_wide.covering(date).exists?
+  end
+
+  # Besteht eine aktive Lizenzaussetzung (Ebene 1) für ein konkretes Team?
+  # Verhindert, dass eine gesperrte Team-Lizenz durch einen Neuantrag umgangen wird.
+  def suspended_for_team?(team_id, date: Date.current)
+    expire_due_suspensions!(date:)
+    suspensions.active.where(team_id:).covering(date).exists?
   end
 
   def image

@@ -85,11 +85,6 @@ class PlayersController < ApplicationController
 
     return render json: { message: 'Keine Berechtigung für dieses Team!' }, status: :forbidden unless allowed
 
-    if Player.find(params[:id]).application_blocked?
-      return render json: { message: 'Für diesen Spieler besteht eine aktive Sperre. Es können keine Lizenzen beantragt werden.' },
-                    status: :unprocessable_entity
-    end
-
     guardian_email   = params[:guardian_email].is_a?(String) ? params[:guardian_email].presence : nil
     minor_consent_at = params[:minor_consent_at].is_a?(String) ? params[:minor_consent_at].presence : nil
 
@@ -112,6 +107,16 @@ class PlayersController < ApplicationController
     ActiveRecord::Base.transaction do
       player = Player.lock.find(params[:id])
       player.licenses ||= []
+
+      if player.application_blocked?
+        result = :blocked
+        raise ActiveRecord::Rollback
+      end
+
+      if player.suspended_for_team?(team.id)
+        result = :team_suspended
+        raise ActiveRecord::Rollback
+      end
 
       active_statuses = [License::APPROVED, License::REQUESTED, License::DELETE_REQUESTED].map(&:to_s).to_set
       if player.licenses.any? do |l|
@@ -138,12 +143,20 @@ class PlayersController < ApplicationController
       }
       new_license[:guardian_email]   = guardian_email   if guardian_email
       new_license[:minor_consent_at] = minor_consent_at if minor_consent_at
+      # Die Sperr-Checks oben können via Lazy-Ablauf ein reload auslösen — Liste erneut absichern.
+      player.licenses ||= []
       player.licenses << new_license
 
       result = :save_failed unless player.save
     end
 
     case result
+    when :blocked
+      render json: { message: 'Für diesen Spieler besteht eine aktive Sperre. Es können keine Lizenzen beantragt werden.' },
+             status: :unprocessable_entity
+    when :team_suspended
+      render json: { message: 'Die Lizenz dieses Spielers für dieses Team ist gesperrt. Ein neuer Antrag ist erst nach Ablauf der Sperre möglich.' },
+             status: :unprocessable_entity
     when :duplicate
       render json: { message: 'Der Spieler hat schon einen Lizenzantrag für dieses Team' },
              status: :unprocessable_entity
