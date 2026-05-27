@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.22.1] - 2026-05-27
+
 ### Behoben
 - Schiedsrichter-Berichts-E-Mails: Die Antwort-an-Adresse der Berichtsformular-Erinnerung (`incident_report_reminder`) und der VSK-Bericht-Mail (`referee_report_to_vsk`) zeigte auf die Ansetzungs-Adresse statt auf die zuständige SBK. Sie verweist nun auf die SBK-Adresse des jeweiligen Spielbetriebs (`sbk_email` des Landesverbands des game_operation), mit Fallback auf die Ansetzungs-Adresse, falls keine hinterlegt ist. Die Ansetzungs-Mails (`tentative_assignment_notification`, `published_assignment_notification`) bleiben unverändert bei der Ansetzungs-Adresse
 
