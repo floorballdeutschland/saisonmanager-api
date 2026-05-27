@@ -21,7 +21,8 @@ class PassmeisterService
       'field.memberNumber.value' => referee.lizenznummer.to_s,
       'field.club.value.de'      => club_name,
       'field.club.value.en'      => club_name,
-      'field.barcode.label'      => barcode_link,
+      'barcodeValue'             => barcode_link,
+      'barcodeAlternativeText'   => referee.lizenznummer.to_s,
       'expiresAt'                => next_rotation_expiry.utc.iso8601
     }
 
