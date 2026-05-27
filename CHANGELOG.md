@@ -11,6 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Neu
 - Schiedsrichter-Wallet-Ausweis: Beim Ausstellen eines Wallet-Ausweises (`POST admin/referees/:id/wallet_pass`) erhält der Schiedsrichter jetzt eine E-Mail mit dem Wallet-Link – sofern eine E-Mail-Adresse hinterlegt ist. Vorher wurde der Pass nur erstellt, aber nicht an den Schiedsrichter kommuniziert
+- Schiedsrichter-Wallet-Ausweis: Für Gast-Schiedsrichter (`guest`) wird kein Wallet-Ausweis mehr ausgestellt – der Endpoint lehnt die Anfrage ab
 
 ### Behoben
 - Schiedsrichter-Wallet-Ausweis: Der Barcode (QR-Code) wurde nicht gerendert, weil der Lizenzcheck-Link fälschlich als `field.barcode.label` (ein nicht existierendes Custom-Field) statt als Barcode-Inhalt übergeben wurde. Der Link wird jetzt als `barcodeValue` (zu codierender Inhalt) gesendet, die Lizenznummer als `barcodeAlternativeText` (Klartext unter dem Code)
