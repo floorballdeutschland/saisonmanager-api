@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.21.0] - 2026-05-27
+
 ### Neu
 - Schiedsrichter-Wallet-Ausweis: Beim Ausstellen eines Wallet-Ausweises (`POST admin/referees/:id/wallet_pass`) erhält der Schiedsrichter jetzt eine E-Mail mit dem Wallet-Link – sofern eine E-Mail-Adresse hinterlegt ist. Vorher wurde der Pass nur erstellt, aber nicht an den Schiedsrichter kommuniziert
 - Schiedsrichter-Wallet-Ausweis: Für Gast-Schiedsrichter (`guest`) wird kein Wallet-Ausweis mehr ausgestellt – der Endpoint lehnt die Anfrage ab
