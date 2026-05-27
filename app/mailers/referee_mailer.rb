@@ -20,8 +20,8 @@ class RefereeMailer < ApplicationMailer
 
     mail(
       to: referee.email,
-      reply_to: REPLY_TO,
-      subject: "Wallet-Ausweis – #{referee.vorname} #{referee.nachname}"
+      reply_to: 'rsk@floorball.de',
+      subject: "Dein Schiedsrichterausweis | #{referee.vorname} #{referee.nachname}"
     )
   end
 
