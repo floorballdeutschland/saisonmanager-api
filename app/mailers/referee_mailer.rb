@@ -14,6 +14,17 @@ class RefereeMailer < ApplicationMailer
     mail(to: referee.email, subject:)
   end
 
+  def wallet_pass_issued(referee, pass_url)
+    @referee = referee
+    @pass_url = pass_url
+
+    mail(
+      to: referee.email,
+      reply_to: REPLY_TO,
+      subject: "Wallet-Ausweis – #{referee.vorname} #{referee.nachname}"
+    )
+  end
+
   def tentative_assignment_notification(referee, date)
     @referee = referee
     @date = date

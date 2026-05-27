@@ -1,0 +1,20 @@
+<h2>Dein Wallet-Ausweis ist bereit</h2>
+
+<p>Hallo <%= @referee.vorname %> <%= @referee.nachname %>,</p>
+
+<p>
+  dein digitaler Schiedsrichterausweis steht zum Hinzufügen zu Apple Wallet bzw. Google Wallet bereit.
+</p>
+
+<% if @referee.lizenznummer.present? %>
+<p><strong>Lizenznummer:</strong> <%= @referee.lizenznummer %></p>
+<% end %>
+
+<p>
+  <a href="<%= @pass_url %>">Ausweis zur Wallet hinzufügen</a>
+</p>
+
+<p>
+  Bei Fragen oder Unstimmigkeiten wende dich an deinen Landesverband.<br>
+  <a href="https://saisonmanager.org">saisonmanager.org</a>
+</p>

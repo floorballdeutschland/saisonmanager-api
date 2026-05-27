@@ -94,6 +94,11 @@ module Admin
     def wallet_pass
       return forbidden_response unless can_access_referee?(@referee)
 
+      if @referee.guest?
+        render json: { error: 'Gast-Schiedsrichter erhalten keinen Wallet-Ausweis' }, status: :unprocessable_entity
+        return
+      end
+
       result = PassmeisterService.create_or_update_pass(@referee)
       pass_url = result.dig('pass', 'walletSafe', 'urls', 'default')
 
@@ -111,6 +116,8 @@ module Admin
         wallet_pass_issued_at: Time.current,
         wallet_pass_url: pass_url
       )
+
+      RefereeMailer.wallet_pass_issued(@referee, pass_url).deliver_later if @referee.email.present?
 
       render json: { url: pass_url }
     rescue PassmeisterService::Error => e
