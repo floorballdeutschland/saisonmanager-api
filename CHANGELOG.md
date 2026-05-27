@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.20.0] - 2026-05-27
+
 ### Behoben
 - Schiedsrichter-Ausweis (Wallet): Passmeister-API-URL auf `www.passmeister.com/api/v1` aktualisiert (alte Subdomain `app.passmeister.com` nicht mehr auflösbar), Auth-Header auf `Bearer` umgestellt, `passId`-Feld korrekt benannt
 - Schiedsrichter-Ausweis (Wallet): Request-Schema an die tatsächliche Passmeister-API angepasst. `passTypeId`/`passId` werden als Query-Parameter übergeben statt im Body; Feldwerte nutzen die geforderte Dot-Notation (`field.memberName.value`, `field.memberNumber.value`, `field.club.value.de`/`.en`, `field.barcode.label`); `expirationDate` → `expiresAt` mit vollständigem ISO-8601-Zeitstempel. Die Wallet-URL wird jetzt aus `pass.walletSafe.urls.default` der Response gelesen. Barcode-Label zeigt auf `https://sr.floorball.de/lizenzcheck/?q={Lizenznummer}`
@@ -46,6 +50,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - Transfer-Vollzug: Öffentliche Transfer-Liste (`GET /api/v2/players/transfers`) zeigte vollzogene Transfers bis zu 30 Minuten verspätet, weil der `'transfers'`-Cache nicht invalidiert wurde. `execute_transfer!` ruft jetzt nach Abschluss der Transaktion `Rails.cache.delete('transfers')` auf
 - Transferanträge: Der Bestätigungs-Token (`player_confirmation_token`) für den E-Mail-Link an den Spieler wird jetzt beim Übergang in jeden Endzustand entwertet (`withdrawn`, `rejected_by_club`, `rejected_by_lv`, `rejected_by_player`, `approved`, `revoked`). Vorher blieb der Link gültig und konnte auch nach Abschluss/Rücknahme noch aufgerufen werden (lief dann ins „error"-Redirect, exponierte aber den Token weiter)
 - Vereinsfreigaben: Ein Sportverband mit aktiver Vereinsfreigabe eines anderen Landesverbands konnte über `Club#user_permissions` automatisch `:update_club` und `:update_player` für die freigegebenen Vereine und deren Spieler bekommen. Stammdaten von Fremd-LV-Vereinen ließen sich damit komplett ändern. Der Release-Pfad in `user_permissions` ist entfernt — Sichtbarkeit bleibt erhalten über die Auflistung in `Club.admin_user_clubs`, Schreibrechte gibt es nicht mehr
+- Startseite: `GameOperation#meta_hash` lieferte bei Verbänden ohne hochgeladenes SA-Logo die veraltete `logo_url`-Textspalte als Fallback (hartcodierte externe URLs, z. B. `api.saisonmanager.de/verband/sbkost.png`). Der Fallback ist entfernt — `logo_url` ist jetzt `nil` wenn kein Logo hochgeladen wurde
 
 ---
 
