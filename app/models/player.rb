@@ -5,6 +5,7 @@ class Player < ApplicationRecord
   belongs_to :updated_at_user, class_name: 'User', optional: true
 
   has_many :license_documents, dependent: :destroy
+  has_many :suspensions, class_name: 'PlayerSuspension', dependent: :destroy
 
   validates :nation_id, presence: true
   validate :nation_id_is_positive, if: -> { nation_id.present? }
@@ -408,6 +409,103 @@ class Player < ApplicationRecord
     self.deactivated_at = nil
     self.deactivated_by = nil
     save!(validate: false)
+  end
+
+  # Einheitlicher Einstieg für beide Sperr-Ebenen aus Issue #508.
+  # team_id == nil  → Beantragungssperre (Ebene 2): blockiert neue Anträge und
+  #                   setzt ALLE aktuell aktiven Lizenzen auf "gesperrt".
+  # team_id gesetzt → Lizenzaussetzung (Ebene 1): setzt nur die Lizenz dieses Teams aus.
+  def suspend!(valid_until:, user_id:, team_id: nil, valid_from: Date.current, reason: nil)
+    suspension = nil
+
+    ActiveRecord::Base.transaction do
+      lock! if persisted?
+      self.licenses ||= []
+      affected = []
+
+      licenses.each do |license|
+        next if team_id.present? && license['team_id'].to_i != team_id.to_i
+
+        # Altdaten-Lizenzen können `_id` statt `id` oder gar keine id haben — vor dem
+        # Speichern stabilisieren, damit lift_suspension! exakt dieselbe Lizenz findet.
+        license['id'] ||= license.delete('_id') || Digest::UUID.uuid_v4
+
+        last_status_id = license['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
+        next unless License::ACTIVE_STATUSES.include?(last_status_id)
+
+        license['history'] << {
+          'license_status_id' => License::SUSPENDED,
+          'reason' => reason.presence || 'Spielersperre',
+          'created_by' => user_id,
+          'created_at' => Time.now
+        }
+        affected << { 'license_id' => license['id'], 'previous_status_id' => last_status_id }
+      end
+
+      suspension = suspensions.create!(
+        team_id:,
+        valid_from:,
+        valid_until:,
+        reason:,
+        affected_licenses: affected,
+        created_by: user_id
+      )
+
+      save!(validate: false)
+    end
+
+    suspension
+  end
+
+  # Hebt eine Sperre auf: reaktiviert die betroffenen Lizenzen auf ihren vorherigen Status.
+  def lift_suspension!(suspension, user_id:, reason: 'Sperre aufgehoben')
+    return if suspension.lifted_at.present?
+
+    ActiveRecord::Base.transaction do
+      lock! if persisted?
+      self.licenses ||= []
+
+      Array(suspension.affected_licenses).each do |entry|
+        next if entry['license_id'].blank?
+
+        license = licenses.find { |l| l['id'] == entry['license_id'] }
+        next unless license
+
+        last_status_id = license['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
+        # Nur reaktivieren, wenn die Lizenz seit der Sperre nicht manuell anders gesetzt wurde.
+        next unless last_status_id == License::SUSPENDED
+
+        license['history'] << {
+          'license_status_id' => entry['previous_status_id'].to_i,
+          'reason' => reason,
+          'created_by' => user_id,
+          'created_at' => Time.now
+        }
+      end
+
+      suspension.update!(lifted_at: Time.current, lifted_by: user_id)
+      save!(validate: false)
+    end
+  end
+
+  # Lazy-Ablauf: hebt fällige Sperren dieses Spielers auf (auch ohne Cron korrekt).
+  def expire_due_suspensions!(date: Date.current, user_id: nil)
+    suspensions.due(date).each do |suspension|
+      lift_suspension!(suspension, user_id: user_id || suspension.created_by, reason: 'Sperre abgelaufen')
+    end
+  end
+
+  # Greift die Beantragungssperre (Ebene 2) zu einem bestimmten Datum?
+  def application_blocked?(date: Date.current)
+    expire_due_suspensions!(date:)
+    suspensions.active.player_wide.covering(date).exists?
+  end
+
+  # Besteht eine aktive Lizenzaussetzung (Ebene 1) für ein konkretes Team?
+  # Verhindert, dass eine gesperrte Team-Lizenz durch einen Neuantrag umgangen wird.
+  def suspended_for_team?(team_id, date: Date.current)
+    expire_due_suspensions!(date:)
+    suspensions.active.where(team_id:).covering(date).exists?
   end
 
   def image

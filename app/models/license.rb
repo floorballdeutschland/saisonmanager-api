@@ -7,6 +7,11 @@ class License < ApplicationRecord
   TRANSFER = 6
   IGNORED = 7
   WITHDRAWN = 8
+  SUSPENDED = 9
+
+  # Status, die als "aktiv" gelten (spielberechtigt oder beantragt) und durch eine
+  # Sperre ausgesetzt werden können.
+  ACTIVE_STATUSES = [APPROVED, REQUESTED].freeze
 
   NAMES = {
     License::APPROVED => 'erteilt',
@@ -16,6 +21,7 @@ class License < ApplicationRecord
     License::DELETE_REQUESTED => 'ungültig: Löschung beantragt',
     License::TRANSFER => 'ungültig wg. Transfer',
     License::IGNORED => 'ungültig: ignoriert',
-    License::WITHDRAWN => 'zurückgezogen'
+    License::WITHDRAWN => 'zurückgezogen',
+    License::SUSPENDED => 'gesperrt'
   }.freeze
 end

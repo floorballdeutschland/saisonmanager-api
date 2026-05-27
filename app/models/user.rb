@@ -99,6 +99,7 @@ class User < ApplicationRecord
     result[:update_player_email] = ph[:vm].present? || ph[:tm].present?
     result[:player_set_license_to_transfer] = ph[:admin].present? || special_user
     result[:player_merge] = ph[:admin].present? || ph[:sbk].present?
+    result[:player_suspend] = ph[:admin].present? || ph[:sbk].present?
     result[:referee_merge] = ph[:admin].present? || ph[:rsk].present?
 
     result[:club_deactivate] = ph[:admin].present? || ph[:sbk].present?

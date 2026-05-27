@@ -108,6 +108,16 @@ class PlayersController < ApplicationController
       player = Player.lock.find(params[:id])
       player.licenses ||= []
 
+      if player.application_blocked?
+        result = :blocked
+        raise ActiveRecord::Rollback
+      end
+
+      if player.suspended_for_team?(team.id)
+        result = :team_suspended
+        raise ActiveRecord::Rollback
+      end
+
       active_statuses = [License::APPROVED, License::REQUESTED, License::DELETE_REQUESTED].map(&:to_s).to_set
       if player.licenses.any? do |l|
            next false unless l['team_id'].to_i == team.id && l['season_id'].to_s == league.season_id.to_s
@@ -133,12 +143,20 @@ class PlayersController < ApplicationController
       }
       new_license[:guardian_email]   = guardian_email   if guardian_email
       new_license[:minor_consent_at] = minor_consent_at if minor_consent_at
+      # Die Sperr-Checks oben können via Lazy-Ablauf ein reload auslösen — Liste erneut absichern.
+      player.licenses ||= []
       player.licenses << new_license
 
       result = :save_failed unless player.save
     end
 
     case result
+    when :blocked
+      render json: { message: 'Für diesen Spieler besteht eine aktive Sperre. Es können keine Lizenzen beantragt werden.' },
+             status: :unprocessable_entity
+    when :team_suspended
+      render json: { message: 'Die Lizenz dieses Spielers für dieses Team ist gesperrt. Ein neuer Antrag ist erst nach Ablauf der Sperre möglich.' },
+             status: :unprocessable_entity
     when :duplicate
       render json: { message: 'Der Spieler hat schon einen Lizenzantrag für dieses Team' },
              status: :unprocessable_entity
@@ -155,6 +173,11 @@ class PlayersController < ApplicationController
     ph = current_user.permission_hash
 
     if (ph[:admin].present? || ph[:sbk].present?) && player.present?
+      if params[:license_status_id].to_i == License::APPROVED && player.application_blocked?
+        return render json: { message: 'Für diesen Spieler besteht eine aktive Sperre. Lizenzen können nicht erteilt werden.' },
+                      status: :unprocessable_entity
+      end
+
       approved_team_id = nil
 
       player.licenses.map! do |lic|
