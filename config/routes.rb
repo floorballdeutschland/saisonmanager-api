@@ -120,6 +120,10 @@ Rails.application.routes.draw do
       get    'admin/players/:player_id/license_documents/:id', to: 'admin/license_documents#show'
       delete 'admin/players/:player_id/license_documents/:id', to: 'admin/license_documents#destroy'
 
+      get    'admin/players/:player_id/suspensions',     to: 'admin/player_suspensions#index'
+      post   'admin/players/:player_id/suspensions',     to: 'admin/player_suspensions#create'
+      delete 'admin/players/:player_id/suspensions/:id', to: 'admin/player_suspensions#destroy'
+
       get 'admin/clubs/:club_id/players', to: 'players#admin_players_index'
       get 'admin/players/search', to: 'players#global_search'
       get 'admin/players/:id', to: 'players#admin_player'

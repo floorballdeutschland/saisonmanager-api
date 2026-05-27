@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+- Zeitlich begrenzte Spielersperren (#508): Eine bestehende Team-Lizenz kann auf den Status „gesperrt" gesetzt werden (Lizenzaussetzung), oder es kann eine spielerweite Beantragungssperre mit Beginn- und Ablaufdatum eingerichtet werden. Eine Beantragungssperre setzt alle aktiven Lizenzen des Spielers automatisch aus und verhindert neue Lizenzanträge sowie das Erteilen wartender Anträge. Mit Ablauf des Datums werden betroffene Lizenzen automatisch auf ihren vorherigen Status reaktiviert (lazy beim nächsten Zugriff bzw. über die Rake-Task `licenses:expire_suspensions`). Verwaltung über `admin/players/:id/suspensions` (nur Admin/SBK)
+
 ### Behoben
 - Release-Workflow: Die Changelog-Release-Notes wurden direkt in den Shell-Befehl interpoliert, wodurch ein gerades Anführungszeichen oder ein Backtick im Changelog-Text den `gh release create`-Aufruf zerschoss (z. B. `no matches found for entfällt` beim Release von 1.22.0). Die Notes werden jetzt sicher über eine Umgebungsvariable übergeben
 

@@ -85,6 +85,11 @@ class PlayersController < ApplicationController
 
     return render json: { message: 'Keine Berechtigung für dieses Team!' }, status: :forbidden unless allowed
 
+    if Player.find(params[:id]).application_blocked?
+      return render json: { message: 'Für diesen Spieler besteht eine aktive Sperre. Es können keine Lizenzen beantragt werden.' },
+                    status: :unprocessable_entity
+    end
+
     guardian_email   = params[:guardian_email].is_a?(String) ? params[:guardian_email].presence : nil
     minor_consent_at = params[:minor_consent_at].is_a?(String) ? params[:minor_consent_at].presence : nil
 
@@ -155,6 +160,11 @@ class PlayersController < ApplicationController
     ph = current_user.permission_hash
 
     if (ph[:admin].present? || ph[:sbk].present?) && player.present?
+      if params[:license_status_id].to_i == License::APPROVED && player.application_blocked?
+        return render json: { message: 'Für diesen Spieler besteht eine aktive Sperre. Lizenzen können nicht erteilt werden.' },
+                      status: :unprocessable_entity
+      end
+
       approved_team_id = nil
 
       player.licenses.map! do |lic|

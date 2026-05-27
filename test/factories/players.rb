@@ -25,6 +25,7 @@ FactoryBot.define do
         league_class_id = spec.fetch(:league_class_id, spec[:team]&.league&.league_class_id)
 
         {
+          'id' => spec.fetch(:id, Digest::UUID.uuid_v4),
           'team_id' => team_id,
           'season_id' => season_id,
           'league_class_id' => league_class_id,
