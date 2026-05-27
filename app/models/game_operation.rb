@@ -30,7 +30,7 @@ class GameOperation < ApplicationRecord
                                                     :state_association_id, :banner_link_url)
     hash[:path] = slug
     hash[:banner_url] = banner_url
-    hash[:logo_url] = state_association&.logo_url || hash[:logo_url]
+    hash[:logo_url] = state_association&.logo_url
     hash
   end
 
