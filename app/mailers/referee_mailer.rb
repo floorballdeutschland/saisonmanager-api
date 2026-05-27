@@ -57,7 +57,7 @@ class RefereeMailer < ApplicationMailer
 
     mail(
       to: [referee1.email, referee2.email].compact,
-      reply_to: REPLY_TO,
+      reply_to: sbk_reply_to(game),
       subject: "Spielnummer #{game.game_number} | 24h Zeit für Berichtsformular"
     )
   end
@@ -82,8 +82,16 @@ class RefereeMailer < ApplicationMailer
 
     mail(
       to: vsk_email,
-      reply_to: REPLY_TO,
+      reply_to: sbk_reply_to(game),
       subject: "Berichtsformular eingereicht – Spielnummer #{game.game_number}"
     )
+  end
+
+  private
+
+  # SBK-Adresse des Spielbetriebs (Landesverband des game_operation);
+  # Fallback auf die Ansetzungs-Adresse, falls keine SBK-Adresse hinterlegt ist.
+  def sbk_reply_to(game)
+    game.league.game_operation.state_association&.sbk_email.presence || REPLY_TO
   end
 end
