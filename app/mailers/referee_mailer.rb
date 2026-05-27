@@ -6,7 +6,8 @@ class RefereeMailer < ApplicationMailer
 
     mail(
       to: referee.email,
-      subject: "Schiedsrichterausweis aktualisiert – #{referee.vorname} #{referee.nachname}"
+      reply_to: 'rsk@floorball.de',
+      subject: "Schiedsrichterlizenz aktualisiert – #{referee.vorname} #{referee.nachname}"
     )
   end
 

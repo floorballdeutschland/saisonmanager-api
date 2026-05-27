@@ -1,9 +1,9 @@
-<h2>Schiedsrichterausweis aktualisiert</h2>
+<h2>Schiedsrichterlizenz aktualisiert</h2>
 
 <p>Hallo <%= @referee.vorname %> <%= @referee.nachname %>,</p>
 
 <p>
-  dein Schiedsrichterausweis wurde im Saisonmanager aktualisiert.
+  deine Schiedsrichterlizenz wurde im Saisonmanager aktualisiert.
 </p>
 
 <% if @referee.lizenznummer.present? %>
@@ -19,6 +19,10 @@
 <% end %>
 
 <p>
-  Bei Fragen oder Unstimmigkeiten wende dich an deinen Landesverband.<br>
+  Ob für die laufende Saison eine gültige Lizenz hinterlegt ist, kannst du jederzeit unter Angabe deiner Lizenznummer hier im <a href="https://sr.floorball.de/lizenzcheck/?q=<%= @referee.lizenznummer %>">Lizenzchecker</a> prüfen.
+</p>
+
+<p>
+  Bei Fragen oder Unstimmigkeiten wende dich bitte an die Regel- und Schiedsrichterkommission von Floorball Deutschland (rsk@floorball.de).<br>
   <a href="https://saisonmanager.org">saisonmanager.org</a>
 </p>
