@@ -1,17 +1,14 @@
 class RefereeMailer < ApplicationMailer
   REPLY_TO = 'sr-ansetzungen@floorball.de'
 
-  def license_notification(referee, action:)
+  def license_notification(referee)
     @referee = referee
-    @action = action # :created or :updated
 
-    subject = if action == :created
-                "Schiedsrichterausweis angelegt – #{referee.vorname} #{referee.nachname}"
-              else
-                "Schiedsrichterausweis aktualisiert – #{referee.vorname} #{referee.nachname}"
-              end
-
-    mail(to: referee.email, subject:)
+    mail(
+      to: referee.email,
+      reply_to: 'rsk@floorball.de',
+      subject: "Schiedsrichterlizenz aktualisiert – #{referee.vorname} #{referee.nachname}"
+    )
   end
 
   def wallet_pass_issued(referee, pass_url)
@@ -20,8 +17,8 @@ class RefereeMailer < ApplicationMailer
 
     mail(
       to: referee.email,
-      reply_to: REPLY_TO,
-      subject: "Wallet-Ausweis – #{referee.vorname} #{referee.nachname}"
+      reply_to: 'rsk@floorball.de',
+      subject: "Dein Schiedsrichterausweis | #{referee.vorname} #{referee.nachname}"
     )
   end
 

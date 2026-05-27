@@ -42,9 +42,7 @@ module Admin
 
       if referee.save
         sync_qualifications(referee) if can_edit_full?
-        if referee.email.present? && referee.lizenznummer.present? && !referee.guest?
-          RefereeMailer.license_notification(referee, action: :created).deliver_later
-        end
+        deliver_wallet_pass_on_create(referee)
         render json: referee_json(referee.reload, full: true), status: :created
       else
         render json: { errors: referee.errors.full_messages }, status: :unprocessable_entity
@@ -61,7 +59,7 @@ module Admin
 
       if @referee.save
         sync_qualifications(@referee) if can_edit_full?
-        RefereeMailer.license_notification(@referee, action: :updated).deliver_later if notify
+        RefereeMailer.license_notification(@referee).deliver_later if notify
         render json: referee_json(@referee.reload, full: true)
       else
         render json: { errors: @referee.errors.full_messages }, status: :unprocessable_entity
@@ -99,23 +97,12 @@ module Admin
         return
       end
 
-      result = PassmeisterService.create_or_update_pass(@referee)
-      pass_url = result.dig('pass', 'walletSafe', 'urls', 'default')
+      pass_url = issue_wallet_pass(@referee)
 
       if pass_url.blank?
-        Rails.logger.warn(
-          "Passmeister: keine URL für Referee #{@referee.id} (Lizenz #{@referee.lizenznummer}). " \
-          "Response-Top-Level-Keys: #{result.keys.inspect}, " \
-          "walletSafe-Keys: #{result.dig('pass', 'walletSafe')&.keys.inspect}"
-        )
         render json: { error: 'Passmeister lieferte keine Pass-URL' }, status: :unprocessable_entity
         return
       end
-
-      @referee.update_columns(
-        wallet_pass_issued_at: Time.current,
-        wallet_pass_url: pass_url
-      )
 
       RefereeMailer.wallet_pass_issued(@referee, pass_url).deliver_later if @referee.email.present?
 
@@ -190,6 +177,39 @@ module Admin
     end
 
     private
+
+    # Erzeugt/aktualisiert den Passmeister-Wallet-Pass und speichert die URL am Referee.
+    # Gibt die Pass-URL zurück, oder nil falls Passmeister keine lieferte (geloggt).
+    def issue_wallet_pass(referee)
+      result = PassmeisterService.create_or_update_pass(referee)
+      pass_url = result.dig('pass', 'walletSafe', 'urls', 'default')
+
+      if pass_url.blank?
+        Rails.logger.warn(
+          "Passmeister: keine URL für Referee #{referee.id} (Lizenz #{referee.lizenznummer}). " \
+          "Response-Top-Level-Keys: #{result.keys.inspect}, " \
+          "walletSafe-Keys: #{result.dig('pass', 'walletSafe')&.keys.inspect}"
+        )
+        return nil
+      end
+
+      referee.update_columns(
+        wallet_pass_issued_at: Time.current,
+        wallet_pass_url: pass_url
+      )
+      pass_url
+    end
+
+    # Bei Neuanlage: Wallet-Pass erzeugen und Wallet-Mail verschicken (kein Gast).
+    # Ein Passmeister-Fehler wird geloggt, blockiert die Anlage aber nicht.
+    def deliver_wallet_pass_on_create(referee)
+      return if referee.guest? || referee.lizenznummer.blank?
+
+      pass_url = issue_wallet_pass(referee)
+      RefereeMailer.wallet_pass_issued(referee, pass_url).deliver_later if pass_url.present? && referee.email.present?
+    rescue PassmeisterService::Error => e
+      Rails.logger.warn("Wallet-Pass bei Anlage von Referee #{referee.id} (Lizenz #{referee.lizenznummer}) fehlgeschlagen: #{e.message}")
+    end
 
     def set_referee
       @referee = Referee.includes(club: :state_association,
