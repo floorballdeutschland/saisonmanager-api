@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+- Release-Workflow: Die Changelog-Release-Notes wurden direkt in den Shell-Befehl interpoliert, wodurch ein gerades Anführungszeichen oder ein Backtick im Changelog-Text den `gh release create`-Aufruf zerschoss (z. B. `no matches found for entfällt` beim Release von 1.22.0). Die Notes werden jetzt sicher über eine Umgebungsvariable übergeben
+
 ---
 
 ## [1.22.1] - 2026-05-27
