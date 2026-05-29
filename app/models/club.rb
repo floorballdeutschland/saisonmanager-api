@@ -128,7 +128,7 @@ class Club < ApplicationRecord
       go_ids.flatten!
     end
 
-    GameOperation.find(go_ids).each do |go|
+    GameOperation.includes(state_association: { logo_attachment: :blob }).find(go_ids).each do |go|
       item = go.meta_hash
       item[:leagues] = leagues.where(game_operation_id: go.id).map(&:full_hash)
       result << item
@@ -173,7 +173,7 @@ class Club < ApplicationRecord
       go_ids.flatten!
     end
 
-    GameOperation.find(go_ids).each do |go|
+    GameOperation.includes(state_association: { logo_attachment: :blob }).find(go_ids).each do |go|
       item = go.meta_hash
       item[:clubs] = club_scope.where(id: go.clubs.pluck(:id)).order(:name).map(&:full_hash)
       result << item

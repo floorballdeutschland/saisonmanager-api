@@ -29,7 +29,7 @@ module Admin
         return render json: { error: 'Nicht berechtigt' }, status: :forbidden
       end
 
-      render json: @state_association.full_hash
+      render json: @state_association.full_hash(season_id: params[:season_id])
     end
 
     # POST /api/v2/admin/state_associations

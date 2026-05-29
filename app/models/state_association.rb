@@ -38,7 +38,12 @@ class StateAssociation < ApplicationRecord
     { id:, name:, short_name:, parent_id:, logo_url:, banner_url:, banner_link_url: }
   end
 
-  def full_hash
+  # season_id (optional): Blickt in die Freigaben einer vergangenen Saison
+  # zurück. Ohne Param bleibt der Default die aktuelle Saison – damit eine
+  # künftige Saisonenauswahl in der UI auch historische Audit-Einträge zeigen
+  # kann (siehe Issue #191).
+  def full_hash(season_id: nil)
+    release_scope = season_id.present? ? releases.where(season_id:) : releases.current_season
     {
       id:,
       name:,
@@ -56,7 +61,7 @@ class StateAssociation < ApplicationRecord
       banner_link_url:,
       children: children.order(:name).map(&:short_hash),
       checklist_items: checklist_items.map { |i| { id: i.id, question: i.question, position: i.position } },
-      releases: releases.current_season.includes(:recipient_game_operation).map do |r|
+      releases: release_scope.includes(:recipient_game_operation).map do |r|
         {
           id: r.id,
           recipient_game_operation_id: r.recipient_game_operation_id,
