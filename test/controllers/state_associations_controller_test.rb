@@ -66,6 +66,29 @@ class StateAssociationsControllerTest < ActionDispatch::IntegrationTest
     assert_response :forbidden
   end
 
+  # Issue #191: full_hash filtert Releases standardmäßig auf die aktuelle
+  # Saison. Mit ?season_id=… lassen sich Audit-Einträge vergangener Saisons
+  # zurückblicken.
+  test 'show: Releases zeigen per Default nur die aktuelle Saison, season_id öffnet vergangene' do
+    create(:setting, current_season_id: '18')
+    StateAssociationRelease.create!(grantor_state_association: @own_sa,
+                                    recipient_game_operation: @own_go, season_id: 18)
+    StateAssociationRelease.create!(grantor_state_association: @own_sa,
+                                    recipient_game_operation: @own_go, season_id: 17)
+
+    login(@admin)
+
+    get "/api/v2/admin/state_associations/#{@own_sa.id}"
+    assert_response :success
+    current_season_ids = JSON.parse(response.body)['releases'].map { |r| r['season_id'] }
+    assert_equal [18], current_season_ids
+
+    get "/api/v2/admin/state_associations/#{@own_sa.id}", params: { season_id: '17' }
+    assert_response :success
+    past_season_ids = JSON.parse(response.body)['releases'].map { |r| r['season_id'] }
+    assert_equal [17], past_season_ids
+  end
+
   private
 
   def create_user(user_group_id:, game_operation_id:)

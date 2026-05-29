@@ -11,6 +11,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ---
 
+## [1.25.1] - 2026-05-29
+
+### Verbessert
+- Landesverband-Detail (`GET admin/state_associations/:id`): Optionaler Query-Param `season_id` reicht bis zu `StateAssociation#full_hash` durch und zeigt die Lizenz-Freigaben (`releases`) der angefragten Saison statt nur der aktuellen. Ohne Param bleibt der Default die aktuelle Saison. Damit bleibt die Audit-Spur vergangener Saisons abrufbar, sobald die UI eine Saisonenauswahl erhält (#191)
+
+### Behoben
+- Performance: N+1-Queries in `meta_hash` durch den LV-Logo-Fallback behoben. `Club.admin_user_clubs`, `Club.admin_club_permissions` sowie die Liga-/Lizenzlisten in `league.rb` laden den Landesverband samt Logo-Attachment jetzt per Eager-Loading vor (`includes(state_association: { logo_attachment: :blob })`) statt pro GameOperation einzeln (#193)
+
+---
+
 ## [1.25.0] - 2026-05-29
 
 ### Neu

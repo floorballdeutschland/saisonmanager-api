@@ -960,7 +960,7 @@ class League < ApplicationRecord
       go_ids.flatten!
     end
 
-    GameOperation.find(go_ids).each do |go|
+    GameOperation.includes(state_association: { logo_attachment: :blob }).find(go_ids).each do |go|
       item = go.meta_hash
       item[:leagues] = leagues.where(game_operation_id: go.id).map(&:full_hash)
       result << item
@@ -986,7 +986,7 @@ class League < ApplicationRecord
       go_ids.flatten!
     end
 
-    GameOperation.find(go_ids).each do |go|
+    GameOperation.includes(state_association: { logo_attachment: :blob }).find(go_ids).each do |go|
       item = go.meta_hash
       item[:leagues] = leagues.where(game_operation_id: go.id).map(&:full_hash)
       result << item
@@ -1016,7 +1016,7 @@ class League < ApplicationRecord
         go_ids.flatten!
       end
 
-      GameOperation.find(go_ids).each do |go|
+      GameOperation.includes(state_association: { logo_attachment: :blob }).find(go_ids).each do |go|
         item = go.meta_hash
         item[:leagues] = leagues.where(game_operation_id: go.id).map(&:full_hash)
         result << item
@@ -1035,7 +1035,7 @@ class League < ApplicationRecord
 
       go_ids = GameOperation.all.pluck(:id)
 
-      GameOperation.find(go_ids).each do |go|
+      GameOperation.includes(state_association: { logo_attachment: :blob }).find(go_ids).each do |go|
         item = go.meta_hash
         item[:leagues] = leagues.select do |l|
                            l.game_operation_id == go.id
