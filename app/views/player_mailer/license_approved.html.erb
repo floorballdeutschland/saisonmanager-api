@@ -3,7 +3,7 @@
 <p>Hallo <%= @player.first_name %> <%= @player.last_name %>,</p>
 
 <p>
-  deine Lizenz für das Team <strong><%= @team.name %></strong> wurde erteilt.
+  deine Lizenz für das Team <strong><%= @team.name %><%= " (#{@league.name})" if @league %></strong> wurde erteilt.
   Du kannst jetzt in Spielen dieses Teams eingesetzt werden.
 </p>
 
