@@ -2,7 +2,12 @@ class PlayerMailer < ApplicationMailer
   def license_approved(player, team)
     @player = player
     @team = team
-    mail(to: player.email, subject: "Lizenz erteilt – #{team.name}")
+    @league = team.league
+    season = Setting.current_season['name']
+    subject = "Lizenz erteilt – #{team.name}"
+    subject += " (#{@league.name})" if @league
+    subject += " - #{season}"
+    mail(to: player.email, subject:)
   end
 
   def express_license_requested(player, team, league)
