@@ -573,6 +573,12 @@ class LeaguesController < ApplicationController
   end
 
   def track_public_view
+    fingerprint = [request.remote_ip, params[:controller], params[:action], params[:id]].compact.join('|')
+    cache_key = "analytics:view:#{Digest::SHA256.hexdigest(fingerprint)}"
+    # unless_exist macht read+write atomar: nur der erste parallele Request gewinnt das Write
+    # und darf inkrementieren; alle anderen sehen das Cache-Eintragsergebnis und brechen ab.
+    return unless Rails.cache.write(cache_key, true, expires_in: 30.minutes, unless_exist: true)
+
     DailyMetric.increment!('public_views')
   end
 
