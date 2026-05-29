@@ -10,7 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ## [Unreleased]
 
 ### Neu
-- Landesverband-Selbstverwaltung für SBK: Der SBK eines Landesverbands kann jetzt seinen **eigenen** Landesverband bearbeiten (Stammdaten, Logo, Banner). Bisher war jeder Schreibzugriff (`update`, `upload_logo`/`delete_logo`, `upload_banner`/`delete_banner`) auf globale Admins beschränkt und scheiterte für SBK mit `403`. Der Zugriff ist strikt auf den gescopten LV begrenzt (`scoped_state_associations`); das Anlegen/Löschen ganzer Landesverbände sowie das Umhängen des übergeordneten Verbands (`parent_id`) bleiben globalen Admins vorbehalten
+- Landesverband-Selbstverwaltung für SBK: Der SBK eines Landesverbands kann jetzt seinen **eigenen** Landesverband vollständig selbst verwalten — Stammdaten und Einstellungen (`update`), Logo/Banner (`upload_logo`/`delete_logo`, `upload_banner`/`delete_banner`), Lizenz-Freigaben (`releases`) sowie Kontrollprozess-Fragen (`checklist_items`). Bisher war jeder Schreibzugriff auf globale Admins beschränkt und scheiterte für SBK mit `403`. Die Autorisierung ist in der Concern `StateAssociationWritable` gebündelt und strikt auf den gescopten LV begrenzt (`scoped_state_associations`); das Anlegen/Löschen ganzer Landesverbände sowie das Umhängen des übergeordneten Verbands (`parent_id`) bleiben globalen Admins vorbehalten
 
 ### Behoben
 - Landesverband-Verwaltung: RSK sah fälschlich den LV-Verwaltungs-Menüpunkt und konnte auf den Controller zugreifen, obwohl die Verwaltung dem SBK vorbehalten ist. `menu_item_state_association_sbk`, `authorize_sa_access!` und `scoped_state_associations` berücksichtigen jetzt nur noch `sbk` (nicht mehr `rsk`)

@@ -1,7 +1,11 @@
 module Admin
   class StateAssociationChecklistItemsController < ApplicationController
-    before_action :authorize_admin!
+    include StateAssociationWritable
+
+    # Kontrollprozess-Fragen gehören zur Selbstverwaltung des eigenen
+    # Landesverbands: globaler Admin überall, SBK auf seinem gescopten LV.
     before_action :set_state_association
+    before_action :authorize_state_association_write!
 
     # POST /api/v2/admin/state_associations/:state_association_id/checklist_items
     def create
@@ -48,13 +52,6 @@ module Admin
 
     def item_hash(item)
       { id: item.id, question: item.question, position: item.position }
-    end
-
-    def authorize_admin!
-      ph = current_user.permission_hash
-      return if ph[:admin].present?
-
-      render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
   end
 end

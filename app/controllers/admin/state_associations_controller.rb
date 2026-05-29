@@ -1,5 +1,7 @@
 module Admin
   class StateAssociationsController < ApplicationController
+    include StateAssociationWritable
+
     before_action :authorize_sa_access!
     before_action :set_state_association, only: %i[show update destroy upload_banner delete_banner upload_logo delete_logo]
     # Anlegen/Löschen ganzer Landesverbände bleibt globalen Admins vorbehalten.
@@ -7,7 +9,8 @@ module Admin
     # Eigene LV-Verwaltung (Stammdaten, Logo, Banner) ist zusätzlich für den
     # SBK des jeweiligen Landesverbands erlaubt. Muss nach set_state_association
     # laufen, da @state_association für den Scope-Check benötigt wird.
-    before_action :authorize_write!, only: %i[update upload_banner delete_banner upload_logo delete_logo]
+    before_action :authorize_state_association_write!,
+                  only: %i[update upload_banner delete_banner upload_logo delete_logo]
 
     # GET /api/v2/admin/state_associations
     def index
@@ -140,13 +143,6 @@ module Admin
       attrs
     end
 
-    def scoped_state_associations
-      ph = current_user.permission_hash
-      go_ids = (ph[:sbk] || []).reject(&:zero?).uniq
-      sa_ids = GameOperation.where(id: go_ids).pluck(:state_association_id).compact
-      StateAssociation.where(id: sa_ids)
-    end
-
     def authorize_sa_access!
       ph = current_user.permission_hash
       return if ph[:admin].present?
@@ -158,16 +154,6 @@ module Admin
     def authorize_admin!
       ph = current_user.permission_hash
       return if ph[:admin].present?
-
-      render json: { error: 'Nicht berechtigt' }, status: :forbidden
-    end
-
-    # Schreibzugriff auf einen konkreten Landesverband: globaler Admin überall,
-    # SBK ausschließlich auf den eigenen (gescopten) Landesverband.
-    def authorize_write!
-      ph = current_user.permission_hash
-      return if ph[:admin].present?
-      return if ph[:sbk].present? && scoped_state_associations.exists?(@state_association.id)
 
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
