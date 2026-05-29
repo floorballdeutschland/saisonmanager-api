@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.25.0] - 2026-05-29
+
 ### Neu
 - Landesverband-Selbstverwaltung für SBK: Der SBK eines Landesverbands kann jetzt seinen **eigenen** Landesverband vollständig selbst verwalten — Stammdaten und Einstellungen (`update`), Logo/Banner (`upload_logo`/`delete_logo`, `upload_banner`/`delete_banner`), Lizenz-Freigaben (`releases`) sowie Kontrollprozess-Fragen (`checklist_items`). Bisher war jeder Schreibzugriff auf globale Admins beschränkt und scheiterte für SBK mit `403`. Die Autorisierung ist in der Concern `StateAssociationWritable` gebündelt und strikt auf den gescopten LV begrenzt (`scoped_state_associations`); das Anlegen/Löschen ganzer Landesverbände sowie das Umhängen des übergeordneten Verbands (`parent_id`) bleiben globalen Admins vorbehalten
 - "Lizenz erteilt"-E-Mail: Betreff und Textkörper enthalten jetzt zusätzlich die Liga (in Klammern) und die Saison (`Lizenz erteilt – Teamname (Liganame) - Saison XX/XX`); fehlt die Liga-Zuordnung, wird die Klammer weggelassen
