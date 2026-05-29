@@ -1,8 +1,13 @@
 module Admin
   class StateAssociationsController < ApplicationController
     before_action :authorize_sa_access!
-    before_action :authorize_admin!, only: %i[create update destroy upload_banner delete_banner upload_logo delete_logo]
     before_action :set_state_association, only: %i[show update destroy upload_banner delete_banner upload_logo delete_logo]
+    # Anlegen/Löschen ganzer Landesverbände bleibt globalen Admins vorbehalten.
+    before_action :authorize_admin!, only: %i[create destroy]
+    # Eigene LV-Verwaltung (Stammdaten, Logo, Banner) ist zusätzlich für den
+    # SBK des jeweiligen Landesverbands erlaubt. Muss nach set_state_association
+    # laufen, da @state_association für den Scope-Check benötigt wird.
+    before_action :authorize_write!, only: %i[update upload_banner delete_banner upload_logo delete_logo]
 
     # GET /api/v2/admin/state_associations
     def index
@@ -122,10 +127,12 @@ module Admin
     end
 
     def state_association_params
-      attrs = params.require(:state_association).permit(:name, :short_name, :vsk_email, :sbk_email, :scan_required,
-                                                        :parent_id, :express_license_enabled,
-                                                        :referee_license_review_enabled,
-                                                        :logo, :banner_link_url)
+      permitted = %i[name short_name vsk_email sbk_email scan_required
+                     express_license_enabled referee_license_review_enabled
+                     logo banner_link_url]
+      # Den übergeordneten Verband darf nur ein globaler Admin (um-)hängen.
+      permitted << :parent_id if current_user.permission_hash[:admin].present?
+      attrs = params.require(:state_association).permit(*permitted)
       # Kontrollprozess-Flag wird ausschließlich am Root-Landesverband
       # konfiguriert; ein Kind erbt den Wert über
       # `effective_referee_license_review_enabled`.
@@ -135,7 +142,7 @@ module Admin
 
     def scoped_state_associations
       ph = current_user.permission_hash
-      go_ids = ((ph[:sbk] || []) + (ph[:rsk] || [])).reject(&:zero?).uniq
+      go_ids = (ph[:sbk] || []).reject(&:zero?).uniq
       sa_ids = GameOperation.where(id: go_ids).pluck(:state_association_id).compact
       StateAssociation.where(id: sa_ids)
     end
@@ -143,7 +150,7 @@ module Admin
     def authorize_sa_access!
       ph = current_user.permission_hash
       return if ph[:admin].present?
-      return if ph[:sbk].present? || ph[:rsk].present?
+      return if ph[:sbk].present?
 
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
@@ -151,6 +158,16 @@ module Admin
     def authorize_admin!
       ph = current_user.permission_hash
       return if ph[:admin].present?
+
+      render json: { error: 'Nicht berechtigt' }, status: :forbidden
+    end
+
+    # Schreibzugriff auf einen konkreten Landesverband: globaler Admin überall,
+    # SBK ausschließlich auf den eigenen (gescopten) Landesverband.
+    def authorize_write!
+      ph = current_user.permission_hash
+      return if ph[:admin].present?
+      return if ph[:sbk].present? && scoped_state_associations.exists?(@state_association.id)
 
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end

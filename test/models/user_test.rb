@@ -138,6 +138,30 @@ class UserTest < ActiveSupport::TestCase
     assert items[:menu_item_online_test_admin]
     assert items[:menu_item_referee_assignments]
     assert_not items[:menu_item_league_admin]
+    # RSK darf seinen Landesverband NICHT verwalten (nur SBK).
+    assert_not items[:menu_item_state_association_sbk]
+  end
+
+  test 'permissions_items: regionaler SBK bekommt den eigenen LV-Verwaltungseintrag' do
+    sa = StateAssociation.create!(name: 'SBK-LV Test', short_name: 'SLT')
+    regional_go = GameOperation.create!(name: 'SBK Region', short_name: 'SBR', path: 'sbk-region',
+                                        state_association: sa)
+    u = build_user(permissions: [{ 'user_group_id' => 2, 'game_operation_id' => regional_go.id }])
+    items = u.permissions_items
+
+    assert items[:menu_item_state_association_sbk]
+    assert_not items[:menu_item_state_association_admin]
+  end
+
+  test 'permissions_items: regionaler RSK bekommt KEINEN LV-Verwaltungseintrag' do
+    sa = StateAssociation.create!(name: 'RSK-LV Test', short_name: 'RLT')
+    regional_go = GameOperation.create!(name: 'RSK Region', short_name: 'RSR', path: 'rsk-region',
+                                        state_association: sa)
+    u = build_user(permissions: [{ 'user_group_id' => 3, 'game_operation_id' => regional_go.id }])
+    items = u.permissions_items
+
+    assert_not items[:menu_item_state_association_sbk]
+    assert_not items[:menu_item_state_association_admin]
   end
 
   test 'permissions_items: Schiri-only bekommt nur Profil-Zugriff' do
