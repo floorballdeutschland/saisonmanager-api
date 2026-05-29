@@ -122,8 +122,15 @@ module Admin
     end
 
     def state_association_params
-      params.require(:state_association).permit(:name, :short_name, :vsk_email, :sbk_email, :scan_required,
-                                                :parent_id, :express_license_enabled, :logo, :banner_link_url)
+      attrs = params.require(:state_association).permit(:name, :short_name, :vsk_email, :sbk_email, :scan_required,
+                                                        :parent_id, :express_license_enabled,
+                                                        :referee_license_review_enabled,
+                                                        :logo, :banner_link_url)
+      # Kontrollprozess-Flag wird ausschließlich am Root-Landesverband
+      # konfiguriert; ein Kind erbt den Wert über
+      # `effective_referee_license_review_enabled`.
+      attrs[:referee_license_review_enabled] = false if attrs[:parent_id].present?
+      attrs
     end
 
     def scoped_state_associations

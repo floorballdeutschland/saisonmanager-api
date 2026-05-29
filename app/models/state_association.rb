@@ -13,6 +13,19 @@ class StateAssociation < ApplicationRecord
     express_license_enabled || parent&.express_license_enabled
   end
 
+  # Abweichende Semantik zu effective_express_license_enabled (oben): Parent-LV
+  # dominiert; das eigene Flag wird ignoriert, sobald ein Parent gesetzt ist.
+  # Hintergrund: Der Schiedsrichter-Kursergebnis-Import wird vom uebergeordneten
+  # LV kontrolliert. StateAssociationsController erzwingt zusaetzlich
+  # referee_license_review_enabled = false fuer Kinder-LVs, damit dieses Feld
+  # nicht aus Versehen lokal gesetzt wird. Tests in
+  # referee_course_submit_policy_test.rb verankern diese Semantik.
+  def effective_referee_license_review_enabled
+    return parent.referee_license_review_enabled if parent
+
+    referee_license_review_enabled
+  end
+
   def logo_url
     Rails.application.routes.url_helpers.rails_blob_path(logo, only_path: true) if logo.attached?
   end
@@ -35,6 +48,8 @@ class StateAssociation < ApplicationRecord
       sbk_email:,
       parent_id:,
       express_license_enabled:,
+      referee_license_review_enabled:,
+      effective_referee_license_review_enabled:,
       logo_url:,
       banner_url:,
       banner_link_url:,

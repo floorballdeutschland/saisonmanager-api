@@ -216,6 +216,13 @@ Rails.application.routes.draw do
         end
         resources :referee_qualification_types, only: %i[index create update destroy]
         resources :referee_license_levels, only: %i[index create update destroy]
+        resources :referee_course_imports, only: %i[index show create destroy] do
+          post :submit, on: :member
+        end
+        resources :referee_course_results, only: %i[index update] do
+          post :approve, on: :member
+          post :reject, on: :member
+        end
         resources :referee_assignments, only: %i[index create update] do
           post :notify, on: :member
           post :publish, on: :member
