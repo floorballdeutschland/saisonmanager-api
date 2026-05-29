@@ -45,6 +45,7 @@ class TransferRequest < ApplicationRecord
     secondary_club_ids = nil
 
     TransferRequest.transaction do
+      player.lock!
       lock!
       raise ActiveRecord::RecordInvalid, self unless status.in?(%w[pending_lv scheduled])
 
@@ -71,6 +72,10 @@ class TransferRequest < ApplicationRecord
     raise ActiveRecord::RecordInvalid, self unless request_type == 'release'
 
     TransferRequest.transaction do
+      player.lock!
+      lock!
+      raise ActiveRecord::RecordInvalid, self unless status == 'pending_lv'
+
       add_secondary_club_membership!(user_id)
       update!(
         status: 'approved',
@@ -80,6 +85,7 @@ class TransferRequest < ApplicationRecord
       )
     end
 
+    Rails.cache.delete('transfers')
     TransferRequestMailer.transfer_completed(self).deliver_later
     return if requesting_club.state_association_id == former_club.state_association_id
 
@@ -91,6 +97,10 @@ class TransferRequest < ApplicationRecord
     raise ActiveRecord::RecordInvalid, self unless request_type == 'release'
 
     TransferRequest.transaction do
+      player.lock!
+      lock!
+      raise ActiveRecord::RecordInvalid, self unless status == 'approved'
+
       invalidate_release_licenses!(user_id)
       expire_secondary_club_membership!(user_id)
       update!(
@@ -101,6 +111,8 @@ class TransferRequest < ApplicationRecord
         player_confirmation_token: nil
       )
     end
+
+    Rails.cache.delete('transfers')
   end
 
   private

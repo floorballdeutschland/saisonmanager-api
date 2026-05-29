@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+- TransferRequest-Workflow: `execute_transfer!`, `execute_release!` und `revoke_release!` lockten zwar den `TransferRequest`, aber nicht den `Player`. Damit war ein theoretischer Lost-Update auf `Player#clubs`/`Player#licenses` möglich, wenn parallel eine Freigabe zurückgezogen wurde. Innerhalb der Transaktion wird jetzt zuerst der Player und dann der TransferRequest gelockt (einheitliche Lock-Reihenfolge mit `players_controller.rb` zur Vermeidung von Deadlocks), und in `execute_release!` / `revoke_release!` wird der Status nach dem Lock erneut geprüft, um eine Lost-Update-Race zwischen Status-Check und Transaktion zu schließen. Zusätzlich invalidieren beide Methoden nun den `transfers`-Cache wie bereits `execute_transfer!` (#190)
+
 ---
 
 ## [1.23.0] - 2026-05-27
