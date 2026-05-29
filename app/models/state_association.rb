@@ -47,6 +47,7 @@ class StateAssociation < ApplicationRecord
       vsk_email:,
       sbk_email:,
       parent_id:,
+      parent_name: parent&.name,
       express_license_enabled:,
       referee_license_review_enabled:,
       effective_referee_license_review_enabled:,

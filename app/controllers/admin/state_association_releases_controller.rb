@@ -1,7 +1,11 @@
 module Admin
   class StateAssociationReleasesController < ApplicationController
-    before_action :authorize_admin!
+    include StateAssociationWritable
+
+    # Freigaben gehören zur Selbstverwaltung des eigenen Landesverbands:
+    # globaler Admin überall, SBK auf seinem gescopten LV.
     before_action :set_state_association
+    before_action :authorize_state_association_write!
 
     # POST /api/v2/admin/state_associations/:state_association_id/releases
     def create
@@ -40,13 +44,6 @@ module Admin
         recipient_game_operation_name: release.recipient_game_operation.name,
         season_id: release.season_id
       }
-    end
-
-    def authorize_admin!
-      ph = current_user.permission_hash
-      return if ph[:admin].present?
-
-      render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
   end
 end
