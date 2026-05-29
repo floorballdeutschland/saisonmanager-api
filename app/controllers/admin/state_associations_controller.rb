@@ -85,8 +85,8 @@ module Admin
     def upload_logo
       return render json: { message: 'Kein Bild angefügt' }, status: :unprocessable_entity unless params[:logo].present?
 
-      unless %w[image/png image/jpeg].include?(params[:logo].content_type)
-        return render json: { message: 'Nur PNG oder JPG erlaubt' }, status: :unprocessable_entity
+      unless %w[image/webp].include?(params[:logo].content_type)
+        return render json: { message: 'Nur WebP erlaubt' }, status: :unprocessable_entity
       end
 
       if params[:logo].size > 5.megabytes

@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+- Logo-Upload (Landesverband): Nur noch WebP erlaubt (statt PNG/JPEG); Fehlermeldung vom Backend wird im Frontend direkt angezeigt
+
 ---
 
 ## [1.24.0] - 2026-05-29
