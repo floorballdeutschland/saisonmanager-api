@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.24.0] - 2026-05-29
+
 ### Neu
 - Schiedsrichter-Kursergebnis-Import: CSV-Import für Kursergebnisse (Lizenznummer, Stammdaten, Kurs-Stufe/Datum/Punkte, Ausbilder) durch RSK FD und Admin. Pro Datensatz wird beim Review die Lizenzstufe gewählt; das Gültigkeitsdatum ist automatisch der 30.09. des Folgejahres vom letzten Kursdatum. Duplikatsprüfung über 6 Stammdatenfelder (Lizenznummer, Vor-/Nachname, Geburtsdatum, Verein, E-Mail) — leeres Feld auf einer Seite zählt symmetrisch als Match. Bei 6/6-Match wird ohne Freigabe übernommen; bei Teilmatch (≥3) bietet der Workflow Master-Wahl pro abweichendem Feld an. Korrekturen und Neuanlagen werden — sofern der Landesverband den Kontrollprozess aktiviert hat — dem RSK des Landesverbands zur Freigabe vorgelegt; er kann zustimmen oder die Stammdaten selbst korrigieren. Lizenzstufe und Gültigkeit sind für den LV-Reviewer read-only. Fehlende Lizenznummern werden bei der Anlage automatisch vergeben (höchste Nummer + 1)
 - Landesverband-Einstellung: Neuer Schalter `referee_license_review_enabled` aktiviert/deaktiviert den Kontrollprozess für Schiedsrichterlizenzen pro Landesverband. Wird nur am Root-Landesverband konfiguriert; Kinder erben den Wert (`effective_referee_license_review_enabled`) analog zu `express_license_enabled` und `scan_required`
