@@ -108,7 +108,15 @@ module Admin
 
       render json: { url: pass_url }
     rescue PassmeisterService::Error => e
+      Rails.logger.warn("Admin::RefereesController#wallet_pass passmeister error for referee #{@referee&.id}: #{e.message}")
       render json: { error: e.message }, status: :unprocessable_entity
+    rescue StandardError => e
+      Rails.logger.error("Admin::RefereesController#wallet_pass failed for referee #{@referee&.id}: #{e.class}: #{e.message}")
+      sentry_id = Sentry.capture_exception(e)
+      render json: {
+        error: 'Wallet-Pass konnte nicht erstellt werden. Bitte später erneut versuchen.',
+        sentry_id: sentry_id
+      }, status: :unprocessable_entity
     end
 
     # GET /api/v2/admin/referees/:id/games
