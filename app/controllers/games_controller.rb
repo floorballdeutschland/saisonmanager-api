@@ -241,7 +241,7 @@ class GamesController < ApplicationController
         game.record_updated_by = author_user_id
 
         if game.save
-          render json: game.players[side]
+          render json: { players: game.players[side], warning: lineup_license_warning(game, player, side) }
         else
           render json: { message: game.errors }, status: :unprocessable_entity
         end
@@ -974,6 +974,32 @@ class GamesController < ApplicationController
 
     Date.parse(value.to_s)
   rescue ArgumentError, TypeError
+    nil
+  end
+
+  # Weicher Lizenz-Check: erzeugt eine Warnmeldung, wenn der Spieler keine erteilte
+  # Lizenz fuer das Team in der Liga des Spiels hat. Blockiert das Hinzufuegen nicht.
+  def lineup_license_warning(game, player, side)
+    return nil if player.nil?
+
+    team_id = side == 'home' ? game.home_team_id : game.guest_team_id
+    return nil if team_id.blank?
+
+    license = player.licenses_by_team(team_id)
+    return "Kein Lizenzantrag für #{player.first_name} #{player.last_name} im aufstellenden Team" if license.blank?
+
+    last_status = license['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
+    if last_status != License::APPROVED
+      status_name = License::NAMES[last_status] || 'unbekannt'
+      return "Lizenz von #{player.first_name} #{player.last_name} ist nicht erteilt (Status: #{status_name})"
+    end
+
+    game_league = game.league
+    if game_league && license['league_class_id'].present? &&
+       license['league_class_id'].to_i != game_league.league_class_id.to_i
+      return "Lizenzklasse von #{player.first_name} #{player.last_name} passt nicht zur Spielklasse"
+    end
+
     nil
   end
 
