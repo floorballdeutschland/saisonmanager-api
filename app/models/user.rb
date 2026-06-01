@@ -71,8 +71,15 @@ class User < ApplicationRecord
     result[:menu_item_online_test_admin] = ph[:admin].present? || ph[:rsk].present?
     result[:menu_item_referee_vm] = ph[:vm].present?
     result[:menu_item_player_vm] = ph[:vm].present? || ph[:tm].present?
-    result[:menu_item_state_association_admin] = ph[:admin].present?
+    # Globaler Admin und global gescopter SBK (z. B. FD-SBK, ph[:sbk] enthält 0)
+    # bekommen den vollen Verbandsverwaltungs-View über alle Landesverbände.
+    global_sbk = ph[:sbk].present? && ph[:sbk].include?(0)
+    result[:menu_item_state_association_admin] = ph[:admin].present? || global_sbk
     result[:menu_item_state_association_sbk] = sbk_state_association_menu_item?(ph)
+    # Anlegen/Löschen ganzer Landesverbände sowie das Umhängen des übergeordneten
+    # Verbands bleiben globalen Admins vorbehalten (Backend: authorize_admin! /
+    # parent_id-Strip). Der globale SBK verwaltet alle LVs, aber nicht deren Lebenszyklus.
+    result[:state_association_manage_lifecycle] = ph[:admin].present?
     result[:menu_item_api_key_admin] = ph[:admin].present?
     result[:menu_item_transfer_requests] = ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
     result[:menu_item_transfer_requests_sbk] = ph[:admin].present? || ph[:sbk].present?
