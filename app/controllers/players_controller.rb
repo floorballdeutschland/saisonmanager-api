@@ -172,7 +172,9 @@ class PlayersController < ApplicationController
     player = Player.find(params[:id])
     ph = current_user.permission_hash
 
-    if (ph[:admin].present? || ph[:sbk].present?) && player.present?
+    license = player.licenses.find { |lic| lic['id'] == params[:license_id] }
+
+    if (ph[:admin].present? || sbk_can_access_license?(ph, license)) && player.present?
       if params[:license_status_id].to_i == License::APPROVED && player.application_blocked?
         return render json: { message: 'Für diesen Spieler besteht eine aktive Sperre. Lizenzen können nicht erteilt werden.' },
                       status: :unprocessable_entity
@@ -847,6 +849,21 @@ class PlayersController < ApplicationController
 
     go_id = home_club.main_game_operation_id
     ph[:sbk].include?(go_id)
+  end
+
+  # Scope für mutierende Lizenz-Aktionen: Die Lizenz hängt über ihr Team an einer
+  # Liga und damit an einer game_operation_id. Ein nicht-globaler SBK darf nur
+  # Lizenzen bearbeiten, deren Liga-game_operation_id in seinem Scope liegt.
+  def sbk_can_access_license?(ph, license)
+    return false unless ph[:sbk].present?
+    return true if ph[:sbk].include?(0)
+    return false if license.blank?
+
+    team = Team.find_by(id: license['team_id'])
+    return false unless team
+
+    go_ids = team.leagues.pluck(:game_operation_id).compact
+    (go_ids & ph[:sbk]).any?
   end
 
   def derive_club_ids_for_go(go_ids)
