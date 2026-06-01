@@ -851,19 +851,20 @@ class PlayersController < ApplicationController
     ph[:sbk].include?(go_id)
   end
 
-  # Scope für mutierende Lizenz-Aktionen: Die Lizenz hängt über ihr Team an einer
-  # Liga und damit an einer game_operation_id. Ein nicht-globaler SBK darf nur
-  # Lizenzen bearbeiten, deren Liga-game_operation_id in seinem Scope liegt.
+  # Scope für mutierende Lizenz-Aktionen: Die Lizenz ist über ihr Team an dessen
+  # (primäre) Liga und damit an einer game_operation_id gebunden – exakt die GO,
+  # nach der auch die Anzeige (Admin::LicensesController#index) filtert. Ein
+  # nicht-globaler SBK darf nur Lizenzen bearbeiten, deren Liga-game_operation_id
+  # in seinem Scope liegt. Bewusst NICHT team.leagues (inkl. Cup-Ligen), da eine
+  # Cup-Liga zu einer anderen GO/LV gehören kann und sonst den Scope aufweichen
+  # würde.
   def sbk_can_access_license?(ph, license)
     return false unless ph[:sbk].present?
     return true if ph[:sbk].include?(0)
     return false if license.blank?
 
-    team = Team.find_by(id: license['team_id'])
-    return false unless team
-
-    go_ids = team.leagues.pluck(:game_operation_id).compact
-    (go_ids & ph[:sbk]).any?
+    go_id = Team.find_by(id: license['team_id'])&.league&.game_operation_id
+    go_id.present? && ph[:sbk].include?(go_id)
   end
 
   def derive_club_ids_for_go(go_ids)

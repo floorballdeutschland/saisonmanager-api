@@ -241,14 +241,13 @@ module Admin
     # game_operation-Scope ansetzen/benachrichtigen/veröffentlichen.
     # Gibt false zurück und rendert 403, wenn das Spiel außerhalb des Scopes liegt.
     def authorize_game_scope!(game)
-      ph = current_user.permission_hash
-      return true if ph[:admin].present?
-
       unless game
         render json: { error: 'Spiel nicht gefunden' }, status: :not_found
         return false
       end
 
+      ph = current_user.permission_hash
+      return true if ph[:admin].present?
       return true if ph[:rsk].present? && ph[:rsk].include?(0)
 
       go_id = game.game_day&.league&.game_operation_id
