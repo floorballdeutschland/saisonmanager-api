@@ -9,6 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+- Vereinsmanager können jetzt im Frontend Benutzerkonten anlegen: Das Flag `menu_item_user_create` ist nun auch für VM gesetzt. Die serverseitige Logik (`Admin::UsersController#create`, auf Rolle TM/VM und den eigenen Verein gescoped) bestand bereits, war aber im UI nicht erreichbar (#518)
+
+### Verbessert
+- Benutzer-Übersicht (`GET admin/users`): Die Rollen-Einträge enthalten jetzt zusätzlich die aufgelösten Klartext-Namen `club_name` und `game_operation_name`, und pro Benutzer werden die zugeordneten Team-Namen (`team_names`) mitgeliefert. Damit kann das Frontend eine Zuordnungs-Spalte anzeigen (VM→Verein, TM→Team, SBK/RSK→Sportverbund). Die Namens-Lookups werden gebatcht (kein N+1) (#519)
+
 ---
 
 ## [1.25.1] - 2026-05-29

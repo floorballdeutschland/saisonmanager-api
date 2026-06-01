@@ -6,7 +6,9 @@ module Admin
 
     # GET /api/v2/admin/users
     def index
-      render json: scoped_users.order(:last_name, :first_name, :user_name).map { |u| user_json(u) }
+      users = scoped_users.order(:last_name, :first_name, :user_name).to_a
+      lookups = assignment_lookups(users)
+      render json: users.map { |u| user_json(u, lookups: lookups) }
     end
 
     # GET /api/v2/admin/users/:id
@@ -311,7 +313,7 @@ module Admin
       { 1 => 'Admin', 2 => 'SBK', 3 => 'RSK', 4 => 'VM', 5 => 'TM', 6 => 'Schiedsrichter' }[user_group_id] || 'Unbekannt'
     end
 
-    def user_json(user, full: false)
+    def user_json(user, full: false, lookups: nil)
       result = {
         id: user.id,
         username: user.user_name,
@@ -326,16 +328,57 @@ module Admin
         created_at: user.created_at,
         updated_at: user.updated_at,
         roles: user.permissions.map do |p|
+          club_id = p['club_id'].presence&.to_i
+          go_id   = p['game_operation_id'].presence&.to_i
           {
             user_group_id: p['user_group_id'].to_i,
             role_name: role_name(p['user_group_id'].to_i),
-            club_id: p['club_id']&.to_i,
-            game_operation_id: p['game_operation_id']&.to_i
+            club_id: club_id,
+            club_name: lookup_club_name(club_id, lookups),
+            game_operation_id: go_id,
+            game_operation_name: lookup_go_name(go_id, lookups)
           }
-        end
+        end,
+        # Aufgelöste Team-Namen für die Zuordnungs-Anzeige (relevant für TM).
+        team_names: lookup_team_names(user.teams, lookups)
       }
       result[:teams] = user.teams if full
       result
+    end
+
+    # Namens-Lookups für die Zuordnungs-Spalte vorab batchen (kein N+1 in #index).
+    def assignment_lookups(users)
+      club_ids = users.flat_map { |u| u.permissions.map { |p| p['club_id'].presence&.to_i } }.compact.uniq
+      go_ids   = users.flat_map { |u| u.permissions.map { |p| p['game_operation_id'].presence&.to_i } }.compact.uniq
+      team_ids = users.flat_map { |u| Array(u.teams) }.compact.uniq
+      {
+        clubs: Club.where(id: club_ids).pluck(:id, :name).to_h,
+        game_operations: GameOperation.where(id: go_ids).pluck(:id, :name).to_h,
+        teams: Team.where(id: team_ids).pluck(:id, :name).to_h
+      }
+    end
+
+    def lookup_club_name(club_id, lookups)
+      return nil unless club_id
+
+      lookups ? lookups[:clubs][club_id] : Club.find_by(id: club_id)&.name
+    end
+
+    def lookup_go_name(go_id, lookups)
+      return nil unless go_id
+
+      lookups ? lookups[:game_operations][go_id] : GameOperation.find_by(id: go_id)&.name
+    end
+
+    def lookup_team_names(team_ids, lookups)
+      ids = Array(team_ids).compact
+      return [] if ids.empty?
+
+      if lookups
+        ids.map { |tid| lookups[:teams][tid] }.compact
+      else
+        Team.where(id: ids).pluck(:name)
+      end
     end
   end
 end
