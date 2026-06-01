@@ -154,9 +154,10 @@ module Admin
       # Sowohl das bestehende als auch das Ziel-Spiel müssen im Scope liegen
       # (game_id ist über assignment_params änderbar).
       return unless authorize_game_scope!(assignment.game)
-      if assignment_params[:game_id].present?
-        return unless authorize_game_scope!(Game.find_by(id: assignment_params[:game_id]))
-      end
+
+      target_game_id = assignment_params[:game_id]
+      return if target_game_id.present? && !authorize_game_scope!(Game.find_by(id: target_game_id))
+
       assignment.updated_by = current_user.id
 
       if assignment.update(assignment_params)

@@ -86,12 +86,12 @@ module Admin
 
     # Analog zu PlayerChangeRequest.for_go: Ein nicht-globaler SBK darf nur
     # Anträge entscheiden, deren Verein in seinem game_operation-Scope liegt.
-    def sbk_can_access_request?(ph, request)
-      return false unless ph[:sbk].present?
-      return true if ph[:sbk].include?(0)
+    def sbk_can_access_request?(perm_hash, request)
+      return false unless perm_hash[:sbk].present?
+      return true if perm_hash[:sbk].include?(0)
 
       club = Club.find_by(id: request.club_id)
-      club.present? && ph[:sbk].include?(club.main_game_operation_id)
+      club.present? && perm_hash[:sbk].include?(club.main_game_operation_id)
     end
   end
 end
