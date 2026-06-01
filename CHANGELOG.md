@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+- Platzierungs-/K.-o.-Spiele (z. B. DM-Halbfinals) wurden teils schon mit Teams befüllt, bevor die zugehörige Gruppenphase begonnen hatte. Ursache: Die Auffüll-Sperre in `Game.autofill_teams!` nutzte `match_record_not_closed` (SQL `NOT IN (...)`), das ungespielte Spiele mit `game_status = NULL` nicht erfasste – bei noch leerer Gruppentabelle wurden so Platzierungen aus der Anfangsreihenfolge übernommen. Es wird jetzt explizit geprüft, dass die Gruppe existiert und **alle** Gruppenspiele abgeschlossen sind, bevor `place_`-Regeln aufgelöst werden; zusätzlich Schutz gegen fehlende Tabellen-/Platz-Einträge (#515)
+
 ---
 
 ## [1.25.1] - 2026-05-29
