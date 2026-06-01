@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+- Neuer Endpoint `GET admin/state_associations/:state_association_id/releases/candidates`: liefert die für eine Lizenz-Freigabe möglichen **Empfänger-Sportverbünde** (alle Sportverbünde außer den eigenen des freigebenden Landesverbands). Bisher bot das Frontend im Ziel-Dropdown nur den eigenen Verbund an, was für eine Freigabe sinnlos ist. Der Endpoint ist über `StateAssociationWritable` auf Schreibberechtigte des jeweiligen LV beschränkt (#517)
+
 ---
 
 ## [1.25.1] - 2026-05-29
