@@ -3,10 +3,13 @@ class RefereeBlockedDatesController < ApplicationController
   before_action :require_referee_account
 
   def index
-    dates = @referee.referee_blocked_dates
-                    .where('date > ?', Date.today)
-                    .order(:date)
-    render json: dates.map { |d| blocked_date_json(d) }
+    from = params[:date_from].presence
+    to   = params[:date_to].presence
+    scope = @referee.referee_blocked_dates
+    scope = scope.where('date >= ?', from) if from
+    scope = scope.where('date <= ?', to)   if to
+    scope = scope.where('date > ?', Date.today) unless from || to
+    render json: scope.order(:date).map { |d| blocked_date_json(d) }
   end
 
   def create
@@ -16,6 +19,33 @@ class RefereeBlockedDatesController < ApplicationController
     else
       render json: { errors: date.errors.full_messages }, status: :unprocessable_entity
     end
+  end
+
+  def bulk_create
+    dates_param = params[:dates]
+    unless dates_param.is_a?(Array)
+      return render json: { error: 'dates muss ein Array sein' }, status: :unprocessable_entity
+    end
+
+    created = []
+    skipped = []
+
+    dates_param.each do |raw|
+      date_val = Date.iso8601(raw.to_s) rescue nil
+      unless date_val
+        skipped << { date: raw, reason: 'Ungültiges Datum' }
+        next
+      end
+
+      record = RefereeBlockedDate.new(date: date_val, referee: @referee)
+      if record.save
+        created << blocked_date_json(record)
+      else
+        skipped << { date: date_val.iso8601, reason: record.errors.full_messages.first }
+      end
+    end
+
+    render json: { created: created, skipped: skipped }, status: :ok
   end
 
   def destroy

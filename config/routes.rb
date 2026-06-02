@@ -198,9 +198,10 @@ Rails.application.routes.draw do
       get  'referee/game_days',                        to: 'referee_game_day_confirmations#index'
       post 'referee/game_days/:game_day_id/confirm',   to: 'referee_game_day_confirmations#confirm'
 
-      get 'referee/blocked_dates', to: 'referee_blocked_dates#index'
-      post 'referee/blocked_dates', to: 'referee_blocked_dates#create'
-      delete 'referee/blocked_dates/:id', to: 'referee_blocked_dates#destroy'
+      get  'referee/blocked_dates',          to: 'referee_blocked_dates#index'
+      post 'referee/blocked_dates',          to: 'referee_blocked_dates#create'
+      post 'referee/blocked_dates/bulk',     to: 'referee_blocked_dates#bulk_create'
+      delete 'referee/blocked_dates/:id',    to: 'referee_blocked_dates#destroy'
 
       namespace :admin do
         resources :leagues, only: [] do
