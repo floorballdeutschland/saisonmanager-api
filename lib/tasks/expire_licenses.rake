@@ -28,7 +28,11 @@ namespace :licenses do
         valid_until_str = license['valid_until']
         next if valid_until_str.blank?
 
-        valid_until = Date.parse(valid_until_str) rescue nil
+        valid_until = begin
+          Date.parse(valid_until_str)
+        rescue ArgumentError
+          nil
+        end
         next if valid_until.nil? || valid_until >= today
 
         last = (license['history'] || []).max_by { |h| h['created_at'] }

@@ -517,6 +517,64 @@ class LeaguesController < ApplicationController
     render json: penalty_codes
   end
 
+  def admin_import_teams
+    league = find_league_or_not_found or return
+    unless league.user_permissions(current_user).include?(:update_league)
+      return render json: { message: 'Keine Berechtigung' }, status: :forbidden
+    end
+
+    source_league = League.find_by(id: params[:source_league_id])
+    return render json: { message: 'Quell-Liga nicht gefunden' }, status: :not_found unless source_league
+
+    # Grundcheck: nur Admin oder SBK darf Daten aus beliebigen Ligen lesen.
+    # Eine feinere GO-Einschränkung entfällt bewusst, da das Feature explizit
+    # das Importieren aus Ligen anderer LVs (z.B. für Playoffs) ermöglicht.
+    ph = current_user.permission_hash
+    unless ph[:admin].present? || ph[:sbk].present?
+      return render json: { message: 'Keine Berechtigung' }, status: :forbidden
+    end
+
+    top_n = params[:top_n].to_i
+    ranked_team_ids = source_league.table.map { |e| e[:team_id] }
+    ranked_team_ids = ranked_team_ids.first(top_n) if top_n.positive?
+
+    existing_club_ids = league.teams.pluck(:club_id).to_set
+    source_teams = Team.where(id: ranked_team_ids).index_by(&:id)
+
+    imported = 0
+    skipped  = 0
+    failed   = 0
+
+    ranked_team_ids.each do |team_id|
+      source_team = source_teams[team_id]
+      next unless source_team
+
+      if existing_club_ids.include?(source_team.club_id)
+        skipped += 1
+        next
+      end
+
+      new_team = Team.new(
+        club_id:        source_team.club_id,
+        league_id:      league.id,
+        name:           source_team.name,
+        short_name:     source_team.short_name,
+        contact_person: source_team.contact_person.presence || '',
+        contact_email:  source_team.contact_email.presence || '',
+        approved:       false
+      )
+
+      if new_team.save
+        imported += 1
+        existing_club_ids.add(source_team.club_id)
+      else
+        failed += 1
+      end
+    end
+
+    render json: { imported: imported, skipped: skipped, failed: failed }
+  end
+
   def admin_upload_banner
     league = find_league_or_not_found or return
     unless league.user_permissions(current_user).include?(:update_league)

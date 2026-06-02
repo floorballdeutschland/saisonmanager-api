@@ -885,11 +885,11 @@ class PlayersController < ApplicationController
   def default_license_valid_until(season_id)
     season = Setting.current.seasons[season_id.to_s]
     end_year = if season
-      first_year = season['name'].to_s.split('/').first.to_i
-      first_year.positive? ? first_year + 1 : Date.today.year
-    else
-      Date.today.year
-    end
+                 first_year = season['name'].to_s.split('/').first.to_i
+                 first_year.positive? ? first_year + 1 : Date.today.year
+               else
+                 Date.today.year
+               end
     Date.new(end_year, 7, 31)
   end
 end
