@@ -15,6 +15,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Verbessert
 - Benutzer-Übersicht (`GET admin/users`): Die Rollen-Einträge enthalten jetzt zusätzlich die aufgelösten Klartext-Namen `club_name` und `game_operation_name`, und pro Benutzer werden die zugeordneten Team-Namen (`team_names`) mitgeliefert. Damit kann das Frontend eine Zuordnungs-Spalte anzeigen (VM→Verein, TM→Team, SBK/RSK→Sportverbund). Die Namens-Lookups werden gebatcht (kein N+1) (#519)
 
+### Behoben
+- Der SBK von Floorball Deutschland (global gescopter SBK, `ph[:sbk]` enthält `0`) hatte bisher **keinen** Zugang zur Verbandsverwaltung: Das Admin-Menü ist nur für echte Admins sichtbar, das regionale SBK-Menü blendet globale SBKs gezielt aus, und `scoped_state_associations` war für den globalen Scope leer. Ein globaler SBK bekommt jetzt den vollen Verbandsverwaltungs-View über **alle** Landesverbände (`menu_item_state_association_admin`) und darf deren Stammdaten/Einstellungen, Logo, Banner, Lizenz-Freigaben und Kontrollprozess-Fragen bearbeiten. Das Anlegen/Löschen ganzer Landesverbände sowie das Umhängen des übergeordneten Verbands (`parent_id`) bleiben weiterhin globalen Admins vorbehalten (neues Flag `state_association_manage_lifecycle`) (#215)
+- Sicherheit: Mehrere mutierende SBK-/RSK-Aktionen prüften bisher nur, _ob_ ein Benutzer überhaupt SBK/RSK ist, aber nicht _für welchen Landesverband_. Anzeige/`index` waren jeweils korrekt gescoped, die mutierenden Aktionen jedoch nicht:
+  - Lizenz-Genehmigung/-Ablehnung (`PlayersController#handle_license_request`): prüft jetzt die `game_operation_id` der zur Lizenz gehörenden Liga gegen den SBK-Scope (`0` = global) (#212)
+  - Schiedsrichter-Ansetzungen (`Admin::RefereeAssignmentsController`): `create`/`update`/`notify`/`publish` prüfen jetzt, dass das (Ziel-)Spiel im RSK-Scope liegt; `index` filtert serverseitig analog zu `#games`. Ein RSK-LV kann damit keine Spiele fremder Landesverbände mehr ansetzen oder veröffentlichen (#213)
+  - Spielerdaten-Korrekturen (`Admin::PlayerChangeRequestsController#approve`/`#reject`): prüfen jetzt, dass der Verein des Antrags im SBK-Scope liegt (analog `PlayerChangeRequest.for_go`) (#214)
+
 ---
 
 ## [1.25.1] - 2026-05-29
