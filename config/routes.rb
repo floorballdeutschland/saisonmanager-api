@@ -203,6 +203,9 @@ Rails.application.routes.draw do
       post 'referee/blocked_dates/bulk',     to: 'referee_blocked_dates#bulk_create'
       delete 'referee/blocked_dates/:id',    to: 'referee_blocked_dates#destroy'
 
+      get 'referee/history/games', to: 'referee_history#games'
+      get 'referee/history/tests', to: 'referee_history#tests'
+
       namespace :admin do
         resources :leagues, only: [] do
           resources :qualifications, only: %i[create update destroy],
