@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+- Schiedsrichter: Sperrtermine können jetzt für beliebige Tage (nicht nur Wochenenden) gesetzt werden; neuer Bulk-Create-Endpunkt für Bereichsauswahl im Kalender (`POST referee/blocked_dates/bulk`)
+
 ### Behoben
 - Team-Bearbeitung: Bei der Vereinsauswahl fehlten Vereine, die ein Landesverband für den Sportverbund der Liga freigegeben hat. `admin_get_go_clubs` berücksichtigt jetzt zusätzlich zu den eigenen Vereinen des Sportverbunds alle Vereine aus Landesverbänden, die per `StateAssociationRelease` für den jeweiligen Sportverbund und die Saison der Liga freigegeben sind
 

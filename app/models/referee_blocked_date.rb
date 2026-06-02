@@ -2,18 +2,11 @@ class RefereeBlockedDate < ApplicationRecord
   belongs_to :referee
 
   validates :date, presence: true
-  validate :date_must_be_weekend
+  validates :date, uniqueness: { scope: :referee_id }
   validate :date_must_be_future
   validate :no_tentative_assignment
 
   private
-
-  def date_must_be_weekend
-    return unless date.present?
-    unless date.saturday? || date.sunday?
-      errors.add(:date, 'muss ein Samstag oder Sonntag sein')
-    end
-  end
 
   def date_must_be_future
     return unless date.present?
