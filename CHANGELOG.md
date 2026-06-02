@@ -14,6 +14,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ---
 
+## [1.27.0] - 2026-06-02
+
+### Neu
+- Spielorte-Verwaltung: Suchfeld filtert die Arena-Liste nach Name und Stadt in Echtzeit (saisonmanager#530)
+- Lizenzerteilung: Das neue Pflichtfeld „Gültig bis" wird beim Erteilen einer Lizenz gesetzt und standardmäßig auf den 31.07. des Saison-Endjahres vorbelegt. Abgelaufene Lizenzen erscheinen in der Globalübersicht rot und können automatisch per Rake-Task `licenses:expire` invalidiert werden (saisonmanager#536, #227)
+- Teams-Import-Funktion für Playoffs/Meisterschaften geplant: LV-Admins können qualifizierte Teams aus einer Quell-Liga inkl. freigegebener Vereine anderer Landesverbände direkt in eine neue Liga importieren (saisonmanager#533, in Entwicklung)
+
+### Verbessert
+- Ligeneditor: Spielereinstellungs-Felder „Stichtag" / „vor Stichtag?" zu einer klar lesbaren Zeile zusammengefasst: „Spielberechtigt: geboren ab/bis [Datum]" (saisonmanager#535)
+- Lizenzverwaltung: Nachträglich zur Liga hinzugefügte Pflichtdokument-Anforderungen (z.B. Anti-Doping) werden jetzt bei allen bestehenden Lizenzanträgen angezeigt; `documents_for` und der Lizenz-Endpunkt sind dynamisch erweiterbar (saisonmanager#534, #226)
+
+### Behoben
+- SBK-Spieler-View: Der „Reaktivieren"-Button fehlte im Admin/SBK-Bereich; VM-Nutzer konnten deaktivierte Spieler bereits reaktivieren, SBK-Nutzer nicht. Der API-Permission-Check erlaubte SBK bereits, der Button fehlte nur im Frontend (saisonmanager#531)
+- Transferantrag: Fehlermeldungen der Spielersuche (z.B. „Spieler bereits in diesem Verein") wurden durch den `ErrorInterceptor` zu einem leeren String transformiert und als generisches „Fehler bei der Suche." angezeigt (saisonmanager#532)
+- Datenfehler: 12 Vereine waren historisch dem falschen Landesverband zugeordnet (Bundesland ≠ LV-Zugehörigkeit). Betroffen: 4 BW-Vereine bei Bayern-LV, 5 Hessen-Vereine bei NRW-LV, 1 BW-Verein bei NRW-LV, 1 BW-Verein bei Hessen-LV, 1 Niedersachsen-Verein bei NRW-LV — direkt in Produktion korrigiert
+
+---
+
 ## [1.26.0] - 2026-06-02
 
 ### Neu
