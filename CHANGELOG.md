@@ -12,6 +12,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Neu
 - Schiedsrichter: Sperrtermine können jetzt für beliebige Tage (nicht nur Wochenenden) gesetzt werden; neuer Bulk-Create-Endpunkt für Bereichsauswahl im Kalender (`POST referee/blocked_dates/bulk`)
 - Schiedsrichter: Neuer Bereich „Meine Historie" — gepfiffene Spiele aller Saisons (`GET referee/history/games`) und Prüfungsergebnisse vergangener Onlineprüfungen (`GET referee/history/tests`)
+- Schiedsrichterverwaltung: Benutzerkonto-Status (`user_id`, `user_name`) im Referee-JSON; neuer Endpunkt `POST admin/referees/:id/create_user` legt automatisch ein verknüpftes Schiri-Konto an
 
 ### Behoben
 - Team-Bearbeitung: Bei der Vereinsauswahl fehlten Vereine, die ein Landesverband für den Sportverbund der Liga freigegeben hat. `admin_get_go_clubs` berücksichtigt jetzt zusätzlich zu den eigenen Vereinen des Sportverbunds alle Vereine aus Landesverbänden, die per `StateAssociationRelease` für den jeweiligen Sportverbund und die Saison der Liga freigegeben sind

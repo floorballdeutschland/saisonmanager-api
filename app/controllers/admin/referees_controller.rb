@@ -1,7 +1,7 @@
 module Admin
   class RefereesController < ApplicationController
     before_action :authorize_referee_access!
-    before_action :set_referee, only: %i[show update destroy games wallet_pass club_stats merge]
+    before_action :set_referee, only: %i[show update destroy games wallet_pass club_stats merge create_user]
 
     # GET /api/v2/admin/referees
     def index
@@ -175,6 +175,37 @@ module Admin
     end
 
     # GET /api/v2/admin/referees/incorrect_assignments
+    # POST /api/v2/admin/referees/:id/create_user
+    # Legt ein Schiedsrichter-Benutzerkonto an und verknüpft es mit dem Referee.
+    def create_user
+      return forbidden_response unless can_create_referee?
+      return forbidden_response unless can_access_referee?(@referee)
+
+      if @referee.user.present?
+        return render json: { error: 'Diesem Schiedsrichter ist bereits ein Benutzerkonto zugeordnet.' },
+                      status: :unprocessable_entity
+      end
+
+      user_name = @referee.lizenznummer.present? ? "sr-#{@referee.lizenznummer}" : "sr-g#{@referee.id}"
+
+      user = User.new(
+        user_name: user_name,
+        first_name: @referee.vorname,
+        last_name: @referee.nachname,
+        email: @referee.email.presence,
+        password: SecureRandom.hex(12),
+        permissions: [{ 'user_group_id' => 6 }],
+        referee_id: @referee.id
+      )
+
+      if user.save
+        user.send_reset_information if user.email.present?
+        render json: referee_json(@referee.reload, full: true)
+      else
+        render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
+      end
+    end
+
     def incorrect_assignments
       return forbidden_response unless can_edit_full?
 
@@ -358,7 +389,9 @@ module Admin
         gueltigkeit: referee.gueltigkeit&.strftime('%d.%m.%Y'),
         active: !referee.guest? && referee.gueltigkeit.present? && referee.gueltigkeit >= Date.today,
         wallet_pass_issued_at: referee.wallet_pass_issued_at&.iso8601,
-        wallet_pass_url: referee.wallet_pass_url
+        wallet_pass_url: referee.wallet_pass_url,
+        user_id: referee.user&.id,
+        user_name: referee.user&.user_name
       }
 
       if full
