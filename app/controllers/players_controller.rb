@@ -196,7 +196,10 @@ class PlayersController < ApplicationController
               created_by: current_user.id,
               created_at: Time.now
             }
-            approved_team_id = lic['team_id'] if params[:license_status_id].to_i == License::APPROVED
+            if params[:license_status_id].to_i == License::APPROVED
+              approved_team_id = lic['team_id']
+              lic['valid_until'] = params[:valid_until].presence || default_license_valid_until(lic['season_id']).iso8601
+            end
           end
         end
 
@@ -877,5 +880,16 @@ class PlayersController < ApplicationController
 
   def player_params
     params.require(:player).permit(:birthdate, :first_name, :last_name, :gender, :nation_id, :email)
+  end
+
+  def default_license_valid_until(season_id)
+    season = Setting.current.seasons[season_id.to_s]
+    end_year = if season
+      first_year = season['name'].to_s.split('/').first.to_i
+      first_year.positive? ? first_year + 1 : Date.today.year
+    else
+      Date.today.year
+    end
+    Date.new(end_year, 7, 31)
   end
 end

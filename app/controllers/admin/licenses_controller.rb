@@ -81,6 +81,7 @@ module Admin
               requested_at:         player_data[:team_license][:requested_at],
               approved_at:          player_data[:team_license][:approved_at],
               required_documents:   league.required_documents || [],
+              valid_until:          lic['valid_until'],
               documents:            documents_for(player_data[:id], lic['id'], license_docs_by_key, league.required_documents)
             }
           end
