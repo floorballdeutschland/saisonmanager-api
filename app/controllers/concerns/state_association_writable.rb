@@ -3,9 +3,19 @@ module StateAssociationWritable
 
   private
 
-  # Landesverbände, in die der aktuelle Nutzer als SBK schreiben darf
-  # (eigene, gescopte LVs; globaler SBK `0` zählt hier nicht als Scope).
+  # Globaler Admin oder ein global gescopter SBK (`ph[:sbk]` enthält `0`, z. B.
+  # der SBK von Floorball Deutschland) darf alle Landesverbände verwalten.
+  def global_state_association_manager?
+    ph = current_user.permission_hash
+    ph[:admin].present? || (ph[:sbk].present? && ph[:sbk].include?(0))
+  end
+
+  # Landesverbände, in die der aktuelle Nutzer als SBK schreiben darf.
+  # Globaler Admin / globaler SBK: alle LVs; regionaler SBK: nur die eigenen
+  # (gescopten) LVs.
   def scoped_state_associations
+    return StateAssociation.all if global_state_association_manager?
+
     ph = current_user.permission_hash
     go_ids = (ph[:sbk] || []).reject(&:zero?).uniq
     sa_ids = GameOperation.where(id: go_ids).pluck(:state_association_id).compact
