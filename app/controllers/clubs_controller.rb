@@ -166,8 +166,8 @@ class ClubsController < ApplicationController
       if game_operation && game_operation&.user_permissions(current_user)&.include?(:index_clubs)
         own_ids = game_operation.clubs.pluck(:id)
         released_sa_ids = StateAssociationRelease
-          .where(recipient_game_operation_id: game_operation.id, season_id: league.season_id)
-          .pluck(:grantor_state_association_id)
+                          .where(recipient_game_operation_id: game_operation.id, season_id: league.season_id)
+                          .pluck(:grantor_state_association_id)
         released_ids = released_sa_ids.any? ? Club.where(state_association_id: released_sa_ids).pluck(:id) : []
         render json: Club.where(id: (own_ids + released_ids).uniq).order(:name).map(&:full_hash)
       else
