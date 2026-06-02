@@ -9,6 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+- Vereinsmanager können jetzt im Frontend Benutzerkonten anlegen: Das Flag `menu_item_user_create` ist nun auch für VM gesetzt. Die serverseitige Logik (`Admin::UsersController#create`, auf Rolle TM/VM und den eigenen Verein gescoped) bestand bereits, war aber im UI nicht erreichbar (#518)
+
+### Verbessert
+- Benutzer-Übersicht (`GET admin/users`): Die Rollen-Einträge enthalten jetzt zusätzlich die aufgelösten Klartext-Namen `club_name` und `game_operation_name`, und pro Benutzer werden die zugeordneten Team-Namen (`team_names`) mitgeliefert. Damit kann das Frontend eine Zuordnungs-Spalte anzeigen (VM→Verein, TM→Team, SBK/RSK→Sportverbund). Die Namens-Lookups werden gebatcht (kein N+1) (#519)
+
 ### Behoben
 - Der SBK von Floorball Deutschland (global gescopter SBK, `ph[:sbk]` enthält `0`) hatte bisher **keinen** Zugang zur Verbandsverwaltung: Das Admin-Menü ist nur für echte Admins sichtbar, das regionale SBK-Menü blendet globale SBKs gezielt aus, und `scoped_state_associations` war für den globalen Scope leer. Ein globaler SBK bekommt jetzt den vollen Verbandsverwaltungs-View über **alle** Landesverbände (`menu_item_state_association_admin`) und darf deren Stammdaten/Einstellungen, Logo, Banner, Lizenz-Freigaben und Kontrollprozess-Fragen bearbeiten. Das Anlegen/Löschen ganzer Landesverbände sowie das Umhängen des übergeordneten Verbands (`parent_id`) bleiben weiterhin globalen Admins vorbehalten (neues Flag `state_association_manage_lifecycle`) (#215)
 - Sicherheit: Mehrere mutierende SBK-/RSK-Aktionen prüften bisher nur, _ob_ ein Benutzer überhaupt SBK/RSK ist, aber nicht _für welchen Landesverband_. Anzeige/`index` waren jeweils korrekt gescoped, die mutierenden Aktionen jedoch nicht:
