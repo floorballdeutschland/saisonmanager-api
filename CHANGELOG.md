@@ -10,6 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ## [Unreleased]
 
 ### Neu
+- Neuer Endpoint `GET admin/state_associations/:state_association_id/releases/candidates`: liefert die für eine Lizenz-Freigabe möglichen **Empfänger-Sportverbünde** (alle Sportverbünde außer den eigenen des freigebenden Landesverbands). Bisher bot das Frontend im Ziel-Dropdown nur den eigenen Verbund an, was für eine Freigabe sinnlos ist. Der Endpoint ist über `StateAssociationWritable` auf Schreibberechtigte des jeweiligen LV beschränkt (#517)
 - Vereinsmanager können jetzt im Frontend Benutzerkonten anlegen: Das Flag `menu_item_user_create` ist nun auch für VM gesetzt. Die serverseitige Logik (`Admin::UsersController#create`, auf Rolle TM/VM und den eigenen Verein gescoped) bestand bereits, war aber im UI nicht erreichbar (#518)
 
 ### Verbessert
