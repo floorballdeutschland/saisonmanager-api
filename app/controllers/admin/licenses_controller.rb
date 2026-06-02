@@ -80,7 +80,8 @@ module Admin
               express:              lic['express'] || false,
               requested_at:         player_data[:team_license][:requested_at],
               approved_at:          player_data[:team_license][:approved_at],
-              documents:            documents_for(player_data[:id], lic['id'], license_docs_by_key)
+              required_documents:   league.required_documents || [],
+              documents:            documents_for(player_data[:id], lic['id'], license_docs_by_key, league.required_documents)
             }
           end
         end
@@ -91,15 +92,23 @@ module Admin
 
     private
 
-    def documents_for(player_id, license_id, docs_by_key)
+    def documents_for(player_id, license_id, docs_by_key, required_documents = [])
       id_copy_docs          = docs_by_key[[player_id, license_id, 'id_copy']]
       parental_consent_docs = docs_by_key[[player_id, license_id, 'parental_consent']]
-      {
-        id_copy:          id_copy_docs.present?,
-        parental_consent: parental_consent_docs.present?,
-        id_copy_url:      id_copy_docs&.first&.then { |d| rails_blob_url(d.file, disposition: 'inline') if d.file.attached? },
+      result = {
+        id_copy:              id_copy_docs.present?,
+        parental_consent:     parental_consent_docs.present?,
+        id_copy_url:          id_copy_docs&.first&.then { |d| rails_blob_url(d.file, disposition: 'inline') if d.file.attached? },
         parental_consent_url: parental_consent_docs&.first&.then { |d| rails_blob_url(d.file, disposition: 'inline') if d.file.attached? }
       }
+
+      (Array(required_documents) - %w[id_copy parental_consent]).each do |doc_type|
+        docs = docs_by_key[[player_id, license_id, doc_type]]
+        result[doc_type.to_sym]             = docs.present?
+        result["#{doc_type}_url".to_sym]    = docs&.first&.then { |d| rails_blob_url(d.file, disposition: 'inline') if d.file.attached? }
+      end
+
+      result
     end
 
     def license_type(player_lics, current_lic, all_season_leagues, team_league_id_map)
