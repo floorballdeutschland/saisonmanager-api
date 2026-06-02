@@ -1,5 +1,5 @@
 class PlayerChangeRequest < ApplicationRecord
-  CORRECTION_TYPES = %w[birthdate first_name last_name names_swapped nationality].freeze
+  CORRECTION_TYPES = %w[birthdate first_name last_name names_swapped nationality gender].freeze
   STATUSES = %w[pending approved rejected].freeze
 
   belongs_to :player
@@ -8,6 +8,7 @@ class PlayerChangeRequest < ApplicationRecord
   validates :correction_type, inclusion: { in: CORRECTION_TYPES }
   validates :status, inclusion: { in: STATUSES }
   validates :new_value, presence: true, unless: -> { correction_type == 'names_swapped' }
+  validates :new_value, inclusion: { in: %w[M W D] }, if: -> { correction_type == 'gender' }
   validates :rejection_reason, presence: true, if: -> { status == 'rejected' }
 
   scope :pending, -> { where(status: 'pending') }
@@ -29,6 +30,8 @@ class PlayerChangeRequest < ApplicationRecord
       player.update!(first_name: player.last_name, last_name: player.first_name)
     when 'nationality'
       player.update!(nation_id: new_value.to_i)
+    when 'gender'
+      player.update!(gender: new_value)
     end
 
     update!(status: 'approved', reviewed_by_user_id: reviewed_by_user_id)
