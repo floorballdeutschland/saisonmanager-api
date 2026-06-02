@@ -216,6 +216,7 @@ Rails.application.routes.draw do
           get :club_stats, on: :member
           post :wallet_pass, on: :member
           post :merge, on: :member
+          post :create_user, on: :member
           get :incorrect_assignments, on: :collection
           get :next_lizenznummer, on: :collection
         end
