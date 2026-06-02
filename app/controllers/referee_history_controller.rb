@@ -21,7 +21,9 @@ class RefereeHistoryController < ApplicationController
         season_name: season_info&.dig(:name) || season_id.to_s,
         games: season_games.map { |g| game_summary(g) }
       }
-    end.sort_by { |s| -(s[:season_id] || 0) }
+    end
+
+    result.sort_by { |s| -(s[:season_id] || 0) }
 
     render json: result
   end
@@ -30,9 +32,9 @@ class RefereeHistoryController < ApplicationController
   # Returns all completed online test attempts for the referee.
   def tests
     attempts = OnlineTestAttempt
-                 .where(referee: @referee, status: 'completed')
-                 .includes(:online_test)
-                 .order(completed_at: :desc)
+               .where(referee: @referee, status: 'completed')
+               .includes(:online_test)
+               .order(completed_at: :desc)
 
     render json: attempts.map { |a| test_attempt_summary(a) }
   end
