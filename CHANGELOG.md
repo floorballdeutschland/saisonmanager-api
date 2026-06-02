@@ -9,6 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+- Sicherheit: Mehrere mutierende SBK-/RSK-Aktionen prüften bisher nur, _ob_ ein Benutzer überhaupt SBK/RSK ist, aber nicht _für welchen Landesverband_. Anzeige/`index` waren jeweils korrekt gescoped, die mutierenden Aktionen jedoch nicht:
+  - Lizenz-Genehmigung/-Ablehnung (`PlayersController#handle_license_request`): prüft jetzt die `game_operation_id` der zur Lizenz gehörenden Liga gegen den SBK-Scope (`0` = global) (#212)
+  - Schiedsrichter-Ansetzungen (`Admin::RefereeAssignmentsController`): `create`/`update`/`notify`/`publish` prüfen jetzt, dass das (Ziel-)Spiel im RSK-Scope liegt; `index` filtert serverseitig analog zu `#games`. Ein RSK-LV kann damit keine Spiele fremder Landesverbände mehr ansetzen oder veröffentlichen (#213)
+  - Spielerdaten-Korrekturen (`Admin::PlayerChangeRequestsController#approve`/`#reject`): prüfen jetzt, dass der Verein des Antrags im SBK-Scope liegt (analog `PlayerChangeRequest.for_go`) (#214)
+
 ---
 
 ## [1.25.1] - 2026-05-29
