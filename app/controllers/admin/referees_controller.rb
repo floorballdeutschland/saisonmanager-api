@@ -199,7 +199,11 @@ module Admin
       )
 
       if user.save
-        user.send_reset_information if user.email.present?
+        begin
+          user.send_reset_information if user.email.present?
+        rescue StandardError => e
+          Rails.logger.warn("create_user: Passwort-Mail für User #{user.id} fehlgeschlagen: #{e.message}")
+        end
         render json: referee_json(@referee.reload, full: true)
       else
         render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
@@ -389,9 +393,7 @@ module Admin
         gueltigkeit: referee.gueltigkeit&.strftime('%d.%m.%Y'),
         active: !referee.guest? && referee.gueltigkeit.present? && referee.gueltigkeit >= Date.today,
         wallet_pass_issued_at: referee.wallet_pass_issued_at&.iso8601,
-        wallet_pass_url: referee.wallet_pass_url,
-        user_id: referee.user&.id,
-        user_name: referee.user&.user_name
+        wallet_pass_url: referee.wallet_pass_url
       }
 
       if full
@@ -404,7 +406,9 @@ module Admin
           plz: referee.plz,
           ort: referee.ort,
           partner_lizenznummer: referee.partner_lizenznummer,
-          qualifications: referee.referee_qualifications.map { |q| qualification_json(q) }
+          qualifications: referee.referee_qualifications.map { |q| qualification_json(q) },
+          user_id: referee.user&.id,
+          user_name: referee.user&.user_name
         )
       end
 
