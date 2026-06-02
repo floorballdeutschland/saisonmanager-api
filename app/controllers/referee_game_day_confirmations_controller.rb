@@ -9,8 +9,8 @@ class RefereeGameDayConfirmationsController < ApplicationController
     game_days = GameDay
                 .joins(games: :referee_assignment)
                 .where(
-                  'referee_assignments.status = ? AND (referee_assignments.referee1_id = :id OR referee_assignments.referee2_id = :id)',
-                  'published', id: @referee.id
+                  'referee_assignments.status = :status AND (referee_assignments.referee1_id = :id OR referee_assignments.referee2_id = :id)',
+                  status: 'published', id: @referee.id
                 )
                 .where("TO_DATE(game_days.date, 'YYYY-MM-DD') >= ?", 60.days.ago.to_date)
                 .includes(:league, :arena, :club, games: %i[home_team guest_team referee_assignment])
