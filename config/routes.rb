@@ -233,7 +233,9 @@ Rails.application.routes.draw do
           resources :checklist_items, only: %i[create update destroy],
                                       controller: 'state_association_checklist_items'
           resources :releases, only: %i[create destroy],
-                               controller: 'state_association_releases'
+                               controller: 'state_association_releases' do
+            get :candidates, on: :collection
+          end
           member do
             post :upload_banner
             delete :banner, action: :delete_banner

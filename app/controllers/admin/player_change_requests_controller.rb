@@ -49,6 +49,9 @@ module Admin
       end
 
       request = PlayerChangeRequest.find(params[:id])
+      unless ph[:admin].present? || sbk_can_access_request?(ph, request)
+        return render json: { error: 'Keine Berechtigung' }, status: :forbidden
+      end
       return render json: { error: 'Antrag nicht mehr ausstehend' }, status: :unprocessable_entity unless request.status == 'pending'
 
       PlayerChangeRequest.transaction do
@@ -67,6 +70,9 @@ module Admin
       end
 
       request = PlayerChangeRequest.find(params[:id])
+      unless ph[:admin].present? || sbk_can_access_request?(ph, request)
+        return render json: { error: 'Keine Berechtigung' }, status: :forbidden
+      end
       return render json: { error: 'Antrag nicht mehr ausstehend' }, status: :unprocessable_entity unless request.status == 'pending'
 
       if request.update(status: 'rejected', rejection_reason: params[:rejection_reason], reviewed_by_user_id: current_user.id)
@@ -74,6 +80,18 @@ module Admin
       else
         render json: { errors: request.errors.full_messages }, status: :unprocessable_entity
       end
+    end
+
+    private
+
+    # Analog zu PlayerChangeRequest.for_go: Ein nicht-globaler SBK darf nur
+    # Anträge entscheiden, deren Verein in seinem game_operation-Scope liegt.
+    def sbk_can_access_request?(perm_hash, request)
+      return false unless perm_hash[:sbk].present?
+      return true if perm_hash[:sbk].include?(0)
+
+      club = Club.find_by(id: request.club_id)
+      club.present? && perm_hash[:sbk].include?(club.main_game_operation_id)
     end
   end
 end
