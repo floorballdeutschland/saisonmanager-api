@@ -31,7 +31,11 @@ class RefereeBlockedDatesController < ApplicationController
     skipped = []
 
     dates_param.each do |raw|
-      date_val = Date.iso8601(raw.to_s) rescue nil
+      date_val = begin
+        Date.iso8601(raw.to_s)
+      rescue ArgumentError, TypeError
+        nil
+      end
       unless date_val
         skipped << { date: raw, reason: 'Ungültiges Datum' }
         next
