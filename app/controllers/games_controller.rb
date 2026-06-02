@@ -794,6 +794,12 @@ class GamesController < ApplicationController
           _maybe_send_incident_report_reminder(game)
           _maybe_send_checklist_confirmation(game)
           _maybe_send_game_day_scan_reminder(game)
+        end
+
+        # Platzierungsspiele füllen, sobald ein Spiel einen abgeschlossenen
+        # Status erreicht – auch direkt `finalized`. Sonst bliebe der K.-o.-Baum
+        # leer, wenn das letzte Gruppenspiel direkt finalisiert wird (vgl. #515).
+        if %w[match_record_closed finalized].include?(params[:game_status])
           Game.autofill_teams!(league_id: game.game_day.league_id)
         end
       elsif params[:ingame_status].present?

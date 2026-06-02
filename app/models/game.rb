@@ -1073,12 +1073,21 @@ class Game < ApplicationRecord
         game_league_id = game.game_day.league_id
         game_day_ids = GameDay.where(league_id: game_league_id).pluck(:id)
 
-        # we skip this rule, unless all games are played:
-        next if Game.where(game_day_id: game_day_ids).where(group_identifier: group).match_record_not_closed.present?
+        group_games = Game.where(game_day_id: game_day_ids, group_identifier: group)
+        # Erst füllen, wenn die Gruppe existiert UND ALLE Gruppenspiele
+        # abgeschlossen sind. Wir zählen die abgeschlossenen Spiele explizit:
+        # die frühere Prüfung via `match_record_not_closed` (SQL `NOT IN (...)`)
+        # übersah ungespielte Spiele mit `game_status = NULL` und füllte
+        # Platzierungsspiele teils schon vor Beginn der Gruppenphase aus der
+        # noch leeren Tabelle (#515).
+        closed_count = group_games.where(game_status: %w[match_record_closed finalized]).count
+        next if group_games.empty? || closed_count < group_games.count
 
         place = game["#{team}_filling_parameter"].to_i
         table = game.league.grouped_table
-        sub_table = table[group][:table]
+        sub_table = table[group]&.fetch(:table, nil)
+        next if sub_table.nil? || sub_table[place - 1].nil?
+
         team_id = sub_table[place - 1][:team_id]
 
         if team_id && (team_id != game["#{team}_id"])
