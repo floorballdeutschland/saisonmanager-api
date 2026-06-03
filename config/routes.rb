@@ -275,7 +275,7 @@ Rails.application.routes.draw do
             patch :withdraw
           end
         end
-        resources :users, only: %i[index show create update] do
+        resources :users, only: %i[index show create update destroy] do
           member { post :trigger_password_reset }
         end
         resource :analytics, only: [:show]

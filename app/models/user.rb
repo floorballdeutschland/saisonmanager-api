@@ -87,6 +87,7 @@ class User < ApplicationRecord
     result[:create_player_change_request] = ph[:vm].present? || ph[:admin].present?
     result[:approve_player_change_request] = ph[:admin].present? || ph[:sbk].present?
     result[:menu_item_user_admin] = ph[:admin].present? || ph[:sbk].present?
+    result[:user_delete] = ph[:admin].present?
     # VM dürfen TM-/VM-Konten im Scope ihres Vereins anlegen (Backend:
     # UsersController#create + authorize_user_management!).
     result[:menu_item_user_create] = ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?

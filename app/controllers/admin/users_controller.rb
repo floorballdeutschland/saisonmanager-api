@@ -1,7 +1,7 @@
 module Admin
   class UsersController < ApplicationController
     before_action :authorize_user_management!
-    before_action :set_managed_user, only: %i[show update trigger_password_reset]
+    before_action :set_managed_user, only: %i[show update destroy trigger_password_reset]
     before_action :require_admin_for_elevated_target!, only: %i[update trigger_password_reset]
 
     # GET /api/v2/admin/users
@@ -131,6 +131,15 @@ module Admin
       else
         render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
       end
+    end
+
+    # DELETE /api/v2/admin/users/:id
+    def destroy
+      return render json: { error: 'Nur Admins können Benutzer löschen' }, status: :forbidden unless current_user.permission_hash[:admin].present?
+      return render json: { error: 'Eigenes Konto kann nicht gelöscht werden' }, status: :forbidden if @managed_user.id == current_user.id
+
+      @managed_user.destroy
+      head :no_content
     end
 
     # POST /api/v2/admin/users/:id/trigger_password_reset
