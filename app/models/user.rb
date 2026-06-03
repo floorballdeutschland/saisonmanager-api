@@ -68,7 +68,7 @@ class User < ApplicationRecord
     result[:referee_wallet] = has_full_referee_access if result[:menu_item_referee_admin]
     result[:menu_item_referee_assignments] = ph[:admin].present? || ph[:rsk].present?
     result[:menu_item_referee_course_import] = has_full_referee_access
-    result[:menu_item_referee_course_review] = ph[:admin].present? || ph[:rsk].present?
+    result[:menu_item_referee_course_review] = has_full_referee_access || lv_rsk_review_enabled?(ph)
     result[:menu_item_online_test_admin] = ph[:admin].present? || ph[:rsk].present?
     result[:menu_item_referee_vm] = ph[:vm].present?
     result[:menu_item_player_vm] = ph[:vm].present? || ph[:tm].present?
@@ -129,6 +129,18 @@ class User < ApplicationRecord
     !perm_hash[:admin].present? &&
       perm_hash[:sbk].present? &&
       !perm_hash[:sbk]&.include?(0)
+  end
+
+  # LV-RSK sieht die Kursergebnis-Freigabe nur, wenn mindestens einer seiner
+  # Landesverbände den Kontrollprozess aktiviert hat
+  # (effective_referee_license_review_enabled). Admin/globaler FD-RSK sind über
+  # has_full_referee_access bereits abgedeckt.
+  def lv_rsk_review_enabled?(perm_hash)
+    go_ids = perm_hash[:rsk].to_a.reject(&:zero?)
+    return false if go_ids.empty?
+
+    sa_ids = GameOperation.where(id: go_ids).pluck(:state_association_id).compact.uniq
+    StateAssociation.where(id: sa_ids).any?(&:effective_referee_license_review_enabled)
   end
 
   def special_user
