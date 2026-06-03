@@ -138,8 +138,11 @@ module Admin
       return render json: { error: 'Nur Admins können Benutzer löschen' }, status: :forbidden unless current_user.permission_hash[:admin].present?
       return render json: { error: 'Eigenes Konto kann nicht gelöscht werden' }, status: :forbidden if @managed_user.id == current_user.id
 
-      @managed_user.destroy
+      @managed_user.destroy!
       head :no_content
+    rescue ActiveRecord::InvalidForeignKey
+      render json: { error: 'Benutzer kann nicht gelöscht werden: Es existieren noch verknüpfte Einträge (z.B. Spielberichte oder Dokumente).' },
+             status: :unprocessable_entity
     end
 
     # POST /api/v2/admin/users/:id/trigger_password_reset
