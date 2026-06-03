@@ -10,6 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ## [Unreleased]
 
 ### Neu
+- Merge-Protokoll (Grundlage): Zusammenlegungen werden jetzt in der neuen Tabelle `merge_logs` (`MergeLog`) festgehalten — mit Objekttyp, Ziel-/Quell-ID und -Bezeichnung sowie ausführendem Benutzer. Spieler- und Schiedsrichter-Merge protokollieren ab sofort; die Auswertungs-Ansicht (SBK FD, letzte 6 Monate) folgt separat (saisonmanager-api#249)
 - Schiedsrichter: Sperrtermine können jetzt für beliebige Tage (nicht nur Wochenenden) gesetzt werden; neuer Bulk-Create-Endpunkt für Bereichsauswahl im Kalender (`POST referee/blocked_dates/bulk`)
 - Schiedsrichter: Neuer Bereich „Meine Historie" — gepfiffene Spiele aller Saisons (`GET referee/history/games`) und Prüfungsergebnisse vergangener Onlineprüfungen (`GET referee/history/tests`)
 - Schiedsrichterverwaltung: Benutzerkonto-Status (`user_id`, `user_name`) im Referee-JSON; neuer Endpunkt `POST admin/referees/:id/create_user` legt automatisch ein verknüpftes Schiri-Konto an

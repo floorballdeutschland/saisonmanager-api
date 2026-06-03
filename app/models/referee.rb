@@ -66,10 +66,12 @@ class Referee < ApplicationRecord
     scope
   end
 
-  def merge_into!(master)
+  def merge_into!(master, user_id = nil)
     raise ArgumentError, 'Master und Secondary dürfen nicht identisch sein' if id == master.id
     raise ArgumentError, 'Secondary ist bereits zusammengeführt' if merged_into_id.present?
     raise ArgumentError, 'Master ist bereits zusammengeführt' if master.merged_into_id.present?
+
+    merged_label = "#{nachname}, #{vorname}"
 
     ActiveRecord::Base.transaction do
       scalar_fields = %w[
@@ -110,6 +112,13 @@ class Referee < ApplicationRecord
       # die Pflicht-Validierung (Lizenznummer für Nicht-Gäste) nicht mehr erfüllen.
       self.merged_into_id = master.id
       save!(validate: false)
+
+      MergeLog.record!(
+        object_type: 'referee',
+        master_id: master.id, master_label: "#{master.nachname}, #{master.vorname}",
+        merged_id: id, merged_label: merged_label,
+        user_id: user_id
+      )
     end
   end
 
