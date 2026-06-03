@@ -10,6 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ## [Unreleased]
 
 ### Neu
+- Transfer: SBK kann einen Spieler direkt einem anderen Verein zuweisen (`POST admin/transfer_requests/direct_assign`), ohne den mehrstufigen Genehmigungsprozess. Die Direktzuweisung erzeugt einen sofort vollzogenen Transfer (`direct: true`) und erscheint in der Transferliste (für die Abrechnung). Erlaubt nur innerhalb des eigenen Landesverbands; SBK FD (global) und Admin auch verbandsübergreifend. Zusätzlich kann SBK laufende Transfers annullieren (`PATCH admin/transfer_requests/:id/cancel`) (saisonmanager-api#244)
 - Schiedsrichter: Sperrtermine können jetzt für beliebige Tage (nicht nur Wochenenden) gesetzt werden; neuer Bulk-Create-Endpunkt für Bereichsauswahl im Kalender (`POST referee/blocked_dates/bulk`)
 - Schiedsrichter: Neuer Bereich „Meine Historie" — gepfiffene Spiele aller Saisons (`GET referee/history/games`) und Prüfungsergebnisse vergangener Onlineprüfungen (`GET referee/history/tests`)
 - Schiedsrichterverwaltung: Benutzerkonto-Status (`user_id`, `user_name`) im Referee-JSON; neuer Endpunkt `POST admin/referees/:id/create_user` legt automatisch ein verknüpftes Schiri-Konto an

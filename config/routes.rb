@@ -265,6 +265,7 @@ Rails.application.routes.draw do
             get :search_player
             get :player_approve
             get :player_reject
+            post :direct_assign
           end
           member do
             patch :approve_club
@@ -274,6 +275,7 @@ Rails.application.routes.draw do
             patch :execute
             patch :revoke
             patch :withdraw
+            patch :cancel
           end
         end
         resources :users, only: %i[index show create update destroy] do
