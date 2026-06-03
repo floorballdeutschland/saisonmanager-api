@@ -862,17 +862,20 @@ class GamesController < ApplicationController
   end
 
   def _maybe_send_checklist_confirmation(game)
-    answers = game.checklist_answers || []
-    return if answers.empty?
-
-    _send_hosting_club_checklist_mail(game, answers)
+    # Beide Mails unabhängig voneinander auslösen: Die Ausrichter-Mail hängt an
+    # der Checkliste des Vereins-LV, die Schiri-Portal-Mail am LV der Liga – diese
+    # können bei ligaübergreifenden Konstellationen abweichen.
+    _send_hosting_club_checklist_mail(game)
     _send_referee_portal_notice(game)
   end
 
   # Ausrichter-Mail mit Token-Veto-Link (Checkliste des LV des Ausrichtervereins).
-  def _send_hosting_club_checklist_mail(game, answers)
+  def _send_hosting_club_checklist_mail(game)
     sa = game.game_day.club&.state_association
     return unless sa&.checklist_items&.any?
+
+    answers = game.checklist_answers || []
+    return if answers.empty?
 
     hosting_club = game.game_day.club
     return if hosting_club&.contact_email.blank?
@@ -895,7 +898,7 @@ class GamesController < ApplicationController
     return unless league_sa&.checklist_items&.any?
 
     assignment = game.referee_assignment
-    emails = [assignment&.referee1&.email, assignment&.referee2&.email].compact.uniq
+    emails = [assignment&.referee1&.email, assignment&.referee2&.email].reject(&:blank?).uniq
     return if emails.empty?
 
     GameMailer.checklist_referee_portal_notice(game, emails).deliver_later
