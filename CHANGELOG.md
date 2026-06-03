@@ -18,7 +18,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - Schiedsrichter: Spieltag-Bestätigung im Portal „Meine Spieltage" greift jetzt die Spieltagscheckliste auf. Eine Bestätigung ist nur nötig, wenn der Landesverband der Liga mindestens eine Checklisten-Frage hinterlegt hat. Schiris können den Spieltag als „ordnungsgemäß durchgeführt" bestätigen oder als „nicht ordnungsgemäß" melden und die Checkliste mit Ja/Nein beantworten; bei einer Meldung wird die zuständige SBK per E-Mail informiert (`GameDayMailer#referee_checklist_veto`). Das Referee-JSON liefert `checklist_required`, `checklist_items`, `properly_conducted` und `my_checklist_answers`
 
 ### Verbessert
-- Schiedsrichter: Spieltag-Bestätigung („ordnungsgemäß durchgeführt") ist erst ab Beginn des letzten Spiels eines Spieltags möglich; vorher wird sie abgelehnt. Das Referee-JSON liefert dafür `confirmable_from`
+- Schiedsrichter: Spieltag-Bewertung (Bestätigung „ordnungsgemäß" wie auch Meldung „nicht ordnungsgemäß") ist erst ab Beginn des letzten Spiels eines Spieltags möglich; vorher wird sie abgelehnt. Das Referee-JSON liefert dafür `confirmable_from`
 
 ### Behoben
 - Schiedsrichter: „Meine Spieltage" warf einen Server-Fehler (500), weil die Abfrage `SELECT DISTINCT` mit `ORDER BY game_days.date` kombinierte (in Postgres unzulässig, wenn die Sortierspalte nicht in der Select-Liste steht). Die Filterung über den Assignment-Join wird jetzt von der Präsentations-Query getrennt

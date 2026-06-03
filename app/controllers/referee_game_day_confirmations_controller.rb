@@ -43,15 +43,28 @@ class RefereeGameDayConfirmationsController < ApplicationController
       return render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
 
+    # Idempotent: bereits abgegebene Bewertung unverändert zurückgeben, bevor
+    # weitere Vorbedingungen (Checkliste/Zeitfenster) greifen.
+    existing = GameDayRefereeConfirmation.find_by(game_day: game_day, referee: @referee)
+    return render json: confirmation_payload(existing) if existing
+
     items = checklist_items_for(game_day)
     if items.empty?
       return render json: { error: 'Für diesen Spieltag ist keine Checkliste hinterlegt.' },
                     status: :unprocessable_entity
     end
 
+    # properly_conducted muss explizit als Boolean angegeben werden – sonst würde
+    # eine Meldung mit fehlendem Flag still als "ordnungsgemäß" gespeichert.
+    properly = params[:properly_conducted]
+    unless [true, false].include?(properly)
+      return render json: { error: 'Angabe ordnungsgemäß (true/false) erforderlich.' },
+                    status: :unprocessable_entity
+    end
+
     threshold = last_game_start(game_day)
     if threshold && Time.current < threshold
-      return render json: { error: 'Bestätigung erst ab Beginn des letzten Spiels möglich.' },
+      return render json: { error: 'Bewertung erst ab Beginn des letzten Spiels möglich.' },
                     status: :unprocessable_entity
     end
 
@@ -60,12 +73,7 @@ class RefereeGameDayConfirmationsController < ApplicationController
                     status: :unprocessable_entity
     end
 
-    existing = GameDayRefereeConfirmation.find_by(game_day: game_day, referee: @referee)
-    return render json: confirmation_payload(existing) if existing
-
-    # properly_conducted: standardmäßig true ("ordnungsgemäß"). Bei false muss die
-    # Spieltagscheckliste vollständig mit Ja/Nein beantwortet werden.
-    properly = params[:properly_conducted] != false
+    # Bei "nicht ordnungsgemäß" muss die Checkliste vollständig mit Ja/Nein beantwortet sein.
     answers = []
     unless properly
       answers = normalize_answers(params[:answers], items)
