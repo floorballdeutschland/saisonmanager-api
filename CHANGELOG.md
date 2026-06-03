@@ -10,6 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ## [Unreleased]
 
 ### Neu
+- Transfer: Offene Transferanträge, die nicht innerhalb von 14 Tagen abgeschlossen werden (Genehmigungen unvollständig), werden automatisch annulliert (neuer Status `expired`). Umsetzung über den täglichen Rake-Task `transfers:expire` (per Cron); bereits vollständig genehmigte, auf das Wirksamkeitsdatum wartende Anträge (`scheduled`) sind ausgenommen. Keine Erinnerungsmail vor Fristablauf (saisonmanager-api#243)
 - Schiedsrichter: Sperrtermine können jetzt für beliebige Tage (nicht nur Wochenenden) gesetzt werden; neuer Bulk-Create-Endpunkt für Bereichsauswahl im Kalender (`POST referee/blocked_dates/bulk`)
 - Schiedsrichter: Neuer Bereich „Meine Historie" — gepfiffene Spiele aller Saisons (`GET referee/history/games`) und Prüfungsergebnisse vergangener Onlineprüfungen (`GET referee/history/tests`)
 - Schiedsrichterverwaltung: Benutzerkonto-Status (`user_id`, `user_name`) im Referee-JSON; neuer Endpunkt `POST admin/referees/:id/create_user` legt automatisch ein verknüpftes Schiri-Konto an

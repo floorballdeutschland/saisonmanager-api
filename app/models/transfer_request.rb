@@ -1,6 +1,10 @@
 class TransferRequest < ApplicationRecord
   STATUSES = %w[pending_club pending_player pending_lv scheduled approved
-                rejected_by_club rejected_by_player rejected_by_lv revoked withdrawn].freeze
+                rejected_by_club rejected_by_player rejected_by_lv revoked withdrawn expired].freeze
+
+  # Offene Anträge ohne vollständige Genehmigung werden nach dieser Frist
+  # automatisch annulliert (siehe rake transfers:expire / Status "expired").
+  EXPIRE_AFTER_DAYS = 14
 
   belongs_to :player
   belongs_to :requesting_club, class_name: 'Club'
@@ -13,6 +17,13 @@ class TransferRequest < ApplicationRecord
   before_create :generate_player_confirmation_token
 
   scope :active, -> { where(status: %w[pending_club pending_player pending_lv scheduled]) }
+  # Noch nicht abgeschlossene Anträge (Genehmigungen unvollständig), die die
+  # Frist überschritten haben. "scheduled" ist bereits vollständig genehmigt und
+  # wartet nur auf das Wirksamkeitsdatum – wird daher NICHT annulliert.
+  scope :expirable, lambda {
+    where(status: %w[pending_club pending_player pending_lv])
+      .where('created_at < ?', EXPIRE_AFTER_DAYS.days.ago)
+  }
   scope :pending_for_club, ->(club_id) { where(former_club_id: club_id, status: 'pending_club') }
   scope :pending_for_lv, lambda { |go_ids|
     club_ids = go_ids.include?(0) ? Club.pluck(:id) : Club.all.select { |c| go_ids.include?(c.main_game_operation_id) }.map(&:id)
@@ -20,6 +31,11 @@ class TransferRequest < ApplicationRecord
   }
   scope :for_requesting_club, ->(club_id) { where(requesting_club_id: club_id) }
   scope :for_former_club, ->(club_id) { where(former_club_id: club_id) }
+
+  # Annulliert einen noch offenen Antrag automatisch (Fristablauf).
+  def expire!
+    update!(status: 'expired', player_confirmation_token: nil)
+  end
 
   def as_json(*)
     {
