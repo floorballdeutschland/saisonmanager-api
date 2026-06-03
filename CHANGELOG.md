@@ -15,6 +15,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - Schiedsrichterverwaltung: Benutzerkonto-Status (`user_id`, `user_name`) im Referee-JSON; neuer Endpunkt `POST admin/referees/:id/create_user` legt automatisch ein verknüpftes Schiri-Konto an
 
 ### Behoben
+- Schiedsrichter: „Meine Spieltage" warf einen Server-Fehler (500), weil die Abfrage `SELECT DISTINCT` mit `ORDER BY game_days.date` kombinierte (in Postgres unzulässig, wenn die Sortierspalte nicht in der Select-Liste steht). Die Filterung über den Assignment-Join wird jetzt von der Präsentations-Query getrennt
 - Team-Bearbeitung: Bei der Vereinsauswahl fehlten Vereine, die ein Landesverband für den Sportverbund der Liga freigegeben hat. `admin_get_go_clubs` berücksichtigt jetzt zusätzlich zu den eigenen Vereinen des Sportverbunds alle Vereine aus Landesverbänden, die per `StateAssociationRelease` für den jeweiligen Sportverbund und die Saison der Liga freigegeben sind
 
 ---

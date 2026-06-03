@@ -6,19 +6,26 @@ class RefereeGameDayConfirmationsController < ApplicationController
 
   # GET /api/v2/referee/game_days
   def index
+    # Schritt 1: gefilterte Spieltag-IDs über den Assignment-Join ermitteln.
+    # Getrennt von der Präsentations-Query, da SELECT DISTINCT + ORDER BY auf
+    # einer nicht-selektierten Spalte (game_days.date) in Postgres scheitert.
+    game_day_ids = GameDay
+                   .joins(games: :referee_assignment)
+                   .where(
+                     'referee_assignments.status = :status AND (referee_assignments.referee1_id = :id OR referee_assignments.referee2_id = :id)',
+                     status: 'published', id: @referee.id
+                   )
+                   .where("TO_DATE(game_days.date, 'YYYY-MM-DD') >= ?", 60.days.ago.to_date)
+                   .distinct
+                   .pluck(:id)
+
     game_days = GameDay
-                .joins(games: :referee_assignment)
-                .where(
-                  'referee_assignments.status = :status AND (referee_assignments.referee1_id = :id OR referee_assignments.referee2_id = :id)',
-                  status: 'published', id: @referee.id
-                )
-                .where("TO_DATE(game_days.date, 'YYYY-MM-DD') >= ?", 60.days.ago.to_date)
+                .where(id: game_day_ids)
                 .includes(:league, :arena, :club, games: %i[home_team guest_team referee_assignment])
-                .distinct
                 .order('game_days.date DESC')
 
     confirmations = GameDayRefereeConfirmation
-                    .where(game_day: game_days)
+                    .where(game_day_id: game_day_ids)
                     .group_by(&:game_day_id)
 
     render json: game_days.map { |gd| game_day_json(gd, confirmations[gd.id] || []) }
