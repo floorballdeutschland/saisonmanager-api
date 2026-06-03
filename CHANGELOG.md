@@ -10,6 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ## [Unreleased]
 
 ### Neu
+- Spielorte: Doppelt angelegte Spielorte können zusammengelegt werden (`POST admin/arenas/:id/merge`). Alle Spieltage des Quell-Spielorts werden auf den verbleibenden Spielort umgehängt, der doppelte Eintrag wird danach gelöscht (saisonmanager-api#247)
 - Schiedsrichter: Sperrtermine können jetzt für beliebige Tage (nicht nur Wochenenden) gesetzt werden; neuer Bulk-Create-Endpunkt für Bereichsauswahl im Kalender (`POST referee/blocked_dates/bulk`)
 - Schiedsrichter: Neuer Bereich „Meine Historie" — gepfiffene Spiele aller Saisons (`GET referee/history/games`) und Prüfungsergebnisse vergangener Onlineprüfungen (`GET referee/history/tests`)
 - Schiedsrichterverwaltung: Benutzerkonto-Status (`user_id`, `user_name`) im Referee-JSON; neuer Endpunkt `POST admin/referees/:id/create_user` legt automatisch ein verknüpftes Schiri-Konto an

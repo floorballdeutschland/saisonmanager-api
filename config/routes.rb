@@ -280,7 +280,9 @@ Rails.application.routes.draw do
           member { post :trigger_password_reset }
         end
         resource :analytics, only: [:show]
-        resources :arenas, only: %i[index create update destroy]
+        resources :arenas, only: %i[index create update destroy] do
+          member { post :merge }
+        end
         resources :online_tests do
           member do
             post :publish
