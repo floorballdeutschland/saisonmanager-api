@@ -30,7 +30,11 @@ class GameOperation < ApplicationRecord
                                                     :state_association_id, :banner_link_url)
     hash[:path] = slug
     hash[:banner_url] = banner_url
-    hash[:logo_url] = state_association&.logo_url
+    # LV-Logo (ActiveStorage) hat Vorrang; faellt aber auf das eigene logo_url
+    # der GameOperation (alte Textspalte) zurueck, solange nicht alle
+    # Landesverbaende ein Logo hinterlegt haben. Ohne diesen Fallback fehlt das
+    # Logo in der Ligaverwaltung fuer jeden Verband ohne attached LV-Logo.
+    hash[:logo_url] = state_association&.logo_url || hash[:logo_url]
     hash
   end
 
