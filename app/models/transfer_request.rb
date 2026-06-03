@@ -33,8 +33,16 @@ class TransferRequest < ApplicationRecord
   scope :for_former_club, ->(club_id) { where(former_club_id: club_id) }
 
   # Annulliert einen noch offenen Antrag automatisch (Fristablauf).
+  # Sperrt und prüft den Status erneut innerhalb der Transaktion, damit eine
+  # zwischenzeitliche Genehmigung (execute_transfer!/approve_lv) nicht
+  # überschrieben wird (gleiches Muster wie execute_transfer!/revoke_release!).
   def expire!
-    update!(status: 'expired', player_confirmation_token: nil)
+    TransferRequest.transaction do
+      lock!
+      return unless status.in?(%w[pending_club pending_player pending_lv])
+
+      update!(status: 'expired', player_confirmation_token: nil)
+    end
   end
 
   def as_json(*)

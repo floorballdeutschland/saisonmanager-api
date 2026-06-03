@@ -17,10 +17,7 @@ namespace :transfers do
     due = TransferRequest.expirable
     count = due.count
 
-    unless dry_run
-      due.find_each(&:expire!)
-      Rails.cache.delete('transfers') unless count.zero?
-    end
+    due.find_each(&:expire!) unless dry_run
 
     msg = "#{count} offene(r) Transferantrag/-anträge automatisch annulliert (älter als #{TransferRequest::EXPIRE_AFTER_DAYS} Tage)"
     puts(dry_run ? "[DRY RUN] #{msg}." : "#{msg}.")
