@@ -21,7 +21,11 @@ class RefereeGameDayConfirmationsController < ApplicationController
 
     game_days = GameDay
                 .where(id: game_day_ids)
-                .includes(:league, :arena, :club, games: %i[home_team guest_team referee_assignment])
+                .includes(
+                  :arena, :club,
+                  games: %i[home_team guest_team referee_assignment],
+                  league: { game_operation: { state_association: :checklist_items } }
+                )
                 .order('game_days.date DESC')
 
     confirmations = GameDayRefereeConfirmation
@@ -39,26 +43,54 @@ class RefereeGameDayConfirmationsController < ApplicationController
       return render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
 
+    items = checklist_items_for(game_day)
+    if items.empty?
+      return render json: { error: 'Für diesen Spieltag ist keine Checkliste hinterlegt.' },
+                    status: :unprocessable_entity
+    end
+
+    threshold = last_game_start(game_day)
+    if threshold && Time.current < threshold
+      return render json: { error: 'Bestätigung erst ab Beginn des letzten Spiels möglich.' },
+                    status: :unprocessable_entity
+    end
+
     if auto_confirmed?(game_day)
       return render json: { error: 'Spieltag wurde automatisch bestätigt', auto_confirmed: true },
                     status: :unprocessable_entity
     end
 
     existing = GameDayRefereeConfirmation.find_by(game_day: game_day, referee: @referee)
-    return render json: { confirmed_at: existing.confirmed_at.iso8601 } if existing
+    return render json: confirmation_payload(existing) if existing
+
+    # properly_conducted: standardmäßig true ("ordnungsgemäß"). Bei false muss die
+    # Spieltagscheckliste vollständig mit Ja/Nein beantwortet werden.
+    properly = params[:properly_conducted] != false
+    answers = []
+    unless properly
+      answers = normalize_answers(params[:answers], items)
+      if answers.nil?
+        return render json: { error: 'Bitte alle Checklisten-Fragen mit Ja/Nein beantworten.' },
+                      status: :unprocessable_entity
+      end
+    end
 
     confirmation = GameDayRefereeConfirmation.create!(
       game_day: game_day,
       referee: @referee,
-      confirmed_at: Time.current
+      confirmed_at: Time.current,
+      properly_conducted: properly,
+      checklist_answers: answers
     )
 
-    render json: { confirmed_at: confirmation.confirmed_at.iso8601 }, status: :created
+    notify_sbk_of_veto(game_day, confirmation) unless properly
+
+    render json: confirmation_payload(confirmation), status: :created
   rescue ActiveRecord::RecordNotFound
     head :not_found
   rescue ActiveRecord::RecordNotUnique
     existing = GameDayRefereeConfirmation.find_by(game_day: game_day, referee: @referee)
-    render json: { confirmed_at: existing.confirmed_at.iso8601 } if existing
+    render json: confirmation_payload(existing) if existing
   end
 
   private
@@ -78,6 +110,22 @@ class RefereeGameDayConfirmationsController < ApplicationController
             .exists?
   end
 
+  # Beginn des letzten Spiels eines Spieltags (spätester Anpfiff in Europe/Berlin).
+  # Bestätigung ist erst ab diesem Zeitpunkt möglich. nil, wenn keine Startzeit
+  # ermittelbar ist (dann keine zeitliche Sperre).
+  def last_game_start(game_day)
+    return nil if game_day.date.blank?
+
+    tz = ActiveSupport::TimeZone['Europe/Berlin']
+    game_day.games.filter_map do |g|
+      next if g.start_time.blank?
+
+      tz.parse("#{game_day.date} #{g.start_time}")
+    rescue ArgumentError, TypeError
+      nil
+    end.max
+  end
+
   def auto_confirmed?(game_day)
     return false if game_day.date.blank?
 
@@ -89,6 +137,49 @@ class RefereeGameDayConfirmationsController < ApplicationController
       "date=#{game_day.date.inspect}: #{e.class}: #{e.message}"
     )
     false
+  end
+
+  # Spieltagscheckliste des LV der Liga/des Sportverbunds (nicht des Ausrichtervereins).
+  def checklist_items_for(game_day)
+    game_day.league&.game_operation&.state_association&.checklist_items&.to_a || []
+  end
+
+  # Normalisiert die eingereichten Antworten gegen die Checklisten-Items.
+  # nil, wenn nicht jede Frage eindeutig mit true/false beantwortet wurde.
+  def normalize_answers(raw, items)
+    return nil unless raw.respond_to?(:each)
+
+    by_id = {}
+    raw.each do |a|
+      id = (a[:item_id] || a['item_id']).to_i
+      by_id[id] = a.key?(:answer) ? a[:answer] : a['answer']
+    end
+
+    answers = items.map do |item|
+      { 'item_id' => item.id, 'question' => item.question, 'answer' => by_id[item.id] }
+    end
+    return nil unless answers.all? { |a| [true, false].include?(a['answer']) }
+
+    answers
+  end
+
+  def confirmation_payload(confirmation)
+    {
+      confirmed_at: confirmation.confirmed_at.iso8601,
+      properly_conducted: confirmation.properly_conducted,
+      checklist_answers: confirmation.checklist_answers
+    }
+  end
+
+  # Benachrichtigt die SBK des LV, wenn ein Spieltag als nicht ordnungsgemäß
+  # gemeldet wurde. Fehler hier dürfen die Antwort nicht scheitern lassen.
+  def notify_sbk_of_veto(game_day, confirmation)
+    sa = game_day.league&.game_operation&.state_association
+    return if sa&.sbk_email.blank?
+
+    GameDayMailer.referee_checklist_veto(game_day, @referee, confirmation.checklist_answers, sa).deliver_later
+  rescue StandardError => e
+    Rails.logger.warn("notify_sbk_of_veto failed for game_day_id=#{game_day.id}: #{e.class}: #{e.message}")
   end
 
   def game_day_json(game_day, day_confirmations)
@@ -104,6 +195,7 @@ class RefereeGameDayConfirmationsController < ApplicationController
     my_confirmation = day_confirmations.find { |c| c.referee_id == @referee.id }
     partner_confirmation = partner_id ? day_confirmations.find { |c| c.referee_id == partner_id } : nil
     auto_conf = auto_confirmed?(game_day)
+    items = checklist_items_for(game_day)
 
     {
       id: game_day.id,
@@ -114,6 +206,13 @@ class RefereeGameDayConfirmationsController < ApplicationController
       my_confirmed_at: my_confirmation&.confirmed_at&.iso8601,
       partner_confirmed_at: partner_confirmation&.confirmed_at&.iso8601,
       auto_confirmed: auto_conf,
+      confirmable_from: last_game_start(game_day)&.iso8601,
+      # Bestätigung nur nötig, wenn der LV der Liga eine Checkliste hinterlegt hat.
+      checklist_required: items.any?,
+      checklist_items: items.map { |i| { id: i.id, question: i.question } },
+      properly_conducted: my_confirmation&.properly_conducted,
+      my_checklist_answers: my_confirmation&.checklist_answers || [],
+      partner_properly_conducted: partner_confirmation&.properly_conducted,
       games: game_day.games
                      .sort_by { |g| g.start_time || '' }
                      .map do |g|
