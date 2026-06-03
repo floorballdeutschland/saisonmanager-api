@@ -16,6 +16,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - Schiedsrichter: Spieltag-Bestätigung im Portal „Meine Spieltage" greift jetzt die Spieltagscheckliste auf. Eine Bestätigung ist nur nötig, wenn der Landesverband der Liga mindestens eine Checklisten-Frage hinterlegt hat. Schiris können den Spieltag als „ordnungsgemäß durchgeführt" bestätigen oder als „nicht ordnungsgemäß" melden und die Checkliste mit Ja/Nein beantworten; bei einer Meldung wird die zuständige SBK per E-Mail informiert (`GameDayMailer#referee_checklist_veto`). Das Referee-JSON liefert `checklist_required`, `checklist_items`, `properly_conducted` und `my_checklist_answers`
 
 ### Verbessert
+- Login: Nach dem Logout wird jetzt zur Login-Seite weitergeleitet statt zur Startseite (saisonmanager#554)
+- Vereins-/Verbandsverwaltung: Der nutzersichtbare Begriff „Sportverbund" wurde zu „Spielverbund" vereinheitlicht (saisonmanager#555)
 - Schiedsrichter: Spieltag-Bewertung (Bestätigung „ordnungsgemäß" wie auch Meldung „nicht ordnungsgemäß") ist erst ab Beginn des letzten Spiels eines Spieltags möglich; vorher wird sie abgelehnt. Das Referee-JSON liefert dafür `confirmable_from`
 - Spielbericht-Checkliste: Die Bestätigungs-E-Mail wird jetzt getrennt versandt — der Ausrichterverein erhält weiterhin die E-Mail mit Token-Einspruchslink, Schiedsrichter:innen erhalten stattdessen eine eigene E-Mail mit Link zum Portal „Meine Spieltage" (kein Token). Die Schiri-Mail wird nur ausgelöst, wenn der LV der Liga eine Checkliste hinterlegt hat
 
