@@ -14,6 +14,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - Schiedsrichter: Neuer Bereich „Meine Historie" — gepfiffene Spiele aller Saisons (`GET referee/history/games`) und Prüfungsergebnisse vergangener Onlineprüfungen (`GET referee/history/tests`)
 - Schiedsrichterverwaltung: Benutzerkonto-Status (`user_id`, `user_name`) im Referee-JSON; neuer Endpunkt `POST admin/referees/:id/create_user` legt automatisch ein verknüpftes Schiri-Konto an
 
+### Verbessert
+- Spielbericht-Checkliste: Die Bestätigungs-E-Mail wird jetzt getrennt versandt — der Ausrichterverein erhält weiterhin die E-Mail mit Token-Einspruchslink, Schiedsrichter:innen erhalten stattdessen eine eigene E-Mail mit Link zum Portal „Meine Spieltage" (kein Token). Die Schiri-Mail wird nur ausgelöst, wenn der LV der Liga eine Checkliste hinterlegt hat
+
 ### Behoben
 - Schiedsrichter-Kursergebnisse: Der Menüpunkt „Freigabe" (`menu_item_referee_course_review`) wurde Landesverbands-RSK auch dann angezeigt, wenn der Kontrollprozess (`referee_license_review_enabled`) für ihren LV deaktiviert war. Er erscheint jetzt nur noch, wenn mindestens einer der zugeordneten Landesverbände den Prozess aktiviert hat (Admin/globaler FD-RSK weiterhin immer)
 - Schiedsrichter: „Meine Spieltage" warf einen Server-Fehler (500), weil die Abfrage `SELECT DISTINCT` mit `ORDER BY game_days.date` kombinierte (in Postgres unzulässig, wenn die Sortierspalte nicht in der Select-Liste steht). Die Filterung über den Assignment-Join wird jetzt von der Präsentations-Query getrennt

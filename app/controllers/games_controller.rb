@@ -862,17 +862,23 @@ class GamesController < ApplicationController
   end
 
   def _maybe_send_checklist_confirmation(game)
+    # Beide Mails unabhängig voneinander auslösen: Die Ausrichter-Mail hängt an
+    # der Checkliste des Vereins-LV, die Schiri-Portal-Mail am LV der Liga – diese
+    # können bei ligaübergreifenden Konstellationen abweichen.
+    _send_hosting_club_checklist_mail(game)
+    _send_referee_portal_notice(game)
+  end
+
+  # Ausrichter-Mail mit Token-Veto-Link (Checkliste des LV des Ausrichtervereins).
+  def _send_hosting_club_checklist_mail(game)
     sa = game.game_day.club&.state_association
     return unless sa&.checklist_items&.any?
 
     answers = game.checklist_answers || []
     return if answers.empty?
 
-    assignment = game.referee_assignment
-    r1 = assignment&.referee1
-    r2 = assignment&.referee2
     hosting_club = game.game_day.club
-    return unless hosting_club&.contact_email.present?
+    return if hosting_club&.contact_email.blank?
 
     raw_token = SecureRandom.urlsafe_base64(32)
     game.update_columns(
@@ -881,7 +887,21 @@ class GamesController < ApplicationController
       checklist_veto_answers: []
     )
 
-    GameMailer.checklist_confirmation(game, sa, answers, hosting_club, r1, r2, raw_token).deliver_later
+    GameMailer.checklist_confirmation(game, sa, answers, hosting_club, raw_token).deliver_later
+  end
+
+  # Schiri-Mail mit Portal-Link – nur wenn der LV der Liga (maßgeblich fürs Portal)
+  # eine Checkliste hat. Pro Spielbericht-Abschluss; bei mehreren Spielen eines
+  # Spieltags kann das mehrfach pro Schiri auslösen (Link zeigt stets denselben Spieltag).
+  def _send_referee_portal_notice(game)
+    league_sa = game.game_day.league&.game_operation&.state_association
+    return unless league_sa&.checklist_items&.any?
+
+    assignment = game.referee_assignment
+    emails = [assignment&.referee1&.email, assignment&.referee2&.email].reject(&:blank?).uniq
+    return if emails.empty?
+
+    GameMailer.checklist_referee_portal_notice(game, emails).deliver_later
   end
 
   def show_checklist_veto
