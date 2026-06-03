@@ -65,6 +65,7 @@ class User < ApplicationRecord
     result[:menu_item_referee_admin] = ph[:admin].present? || ph[:rsk].present? || ph[:sbk].present?
     result[:referee_edit_restricted] = !has_full_referee_access if result[:menu_item_referee_admin]
     result[:referee_can_create] = ph[:admin].present? || ph[:rsk].present? if result[:menu_item_referee_admin]
+    result[:referee_can_delete_user] = ph[:admin].present? if result[:menu_item_referee_admin]
     result[:referee_wallet] = has_full_referee_access if result[:menu_item_referee_admin]
     result[:menu_item_referee_assignments] = ph[:admin].present? || ph[:rsk].present?
     result[:menu_item_referee_course_import] = has_full_referee_access

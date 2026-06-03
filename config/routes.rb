@@ -217,6 +217,7 @@ Rails.application.routes.draw do
           post :wallet_pass, on: :member
           post :merge, on: :member
           post :create_user, on: :member
+          delete :destroy_user, on: :member
           get :incorrect_assignments, on: :collection
           get :next_lizenznummer, on: :collection
         end
