@@ -186,6 +186,8 @@ module Admin
                       status: :unprocessable_entity
       end
 
+      duplicate_email = @referee.email.present? && User.exists?(email: @referee.email)
+
       user_name = @referee.lizenznummer.present? ? "sr-#{@referee.lizenznummer}" : "sr-g#{@referee.id}"
 
       user = User.new(
@@ -199,12 +201,16 @@ module Admin
       )
 
       if user.save
+        email_sent = false
         begin
-          user.send_reset_information if user.email.present?
+          if user.email.present?
+            user.send_reset_information
+            email_sent = true
+          end
         rescue StandardError => e
           Rails.logger.warn("create_user: Passwort-Mail für User #{user.id} fehlgeschlagen: #{e.message}")
         end
-        render json: referee_json(@referee.reload, full: true)
+        render json: referee_json(@referee.reload, full: true).merge(email_sent:, duplicate_email:)
       else
         render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
       end
