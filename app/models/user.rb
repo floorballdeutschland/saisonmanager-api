@@ -72,6 +72,8 @@ class User < ApplicationRecord
     result[:menu_item_online_test_admin] = ph[:admin].present? || ph[:rsk].present?
     result[:menu_item_referee_vm] = ph[:vm].present?
     result[:menu_item_player_vm] = ph[:vm].present? || ph[:tm].present?
+    # Portal „Meine Spieltage" für Gastmannschafts-Bestätigung (TM/VM).
+    result[:menu_item_team_game_days] = ph[:tm].present? || ph[:vm].present?
     # Globaler Admin und global gescopter SBK (z. B. FD-SBK, ph[:sbk] enthält 0)
     # bekommen den vollen Verbandsverwaltungs-View über alle Landesverbände.
     global_sbk = ph[:sbk].present? && ph[:sbk].include?(0)
