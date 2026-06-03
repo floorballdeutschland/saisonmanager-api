@@ -1,5 +1,7 @@
 class GameMailer < ApplicationMailer
-  def checklist_confirmation(game, state_association, answers, hosting_club, referee1, referee2, veto_token = nil)
+  # Geht nur noch an den Ausrichterverein (mit Token-Veto-Link). Schiedsrichter
+  # bestätigen/beanstanden Spieltage stattdessen im Portal (s. checklist_referee_portal_notice).
+  def checklist_confirmation(game, state_association, answers, hosting_club, veto_token = nil)
     @game = game
     @state_association = state_association
     @answers = answers
@@ -12,13 +14,26 @@ class GameMailer < ApplicationMailer
       @veto_url = "#{frontend_base}/spielbericht/#{game.id}/einspruch?token=#{veto_token}"
     end
 
-    recipients = [hosting_club.contact_email, referee1&.email, referee2&.email].compact.uniq
     bcc = !@all_ok ? state_association.sbk_email : nil
 
     mail(
-      to: recipients,
+      to: hosting_club.contact_email,
       bcc: bcc.presence,
       subject: "Spielbericht Nr. #{game.game_number} eingereicht – #{game.home_team_name} vs. #{game.guest_team_name}"
+    )
+  end
+
+  # Hinweis an die Schiedsrichter: Spieltag im Portal „Meine Spieltage" bestätigen
+  # oder als nicht ordnungsgemäß melden (kein Token, Login erforderlich).
+  def checklist_referee_portal_notice(game, referee_emails)
+    @game = game
+    @game_day = game.game_day
+    frontend_base = Rails.env.production? ? 'https://saisonmanager.org' : 'http://localhost:4200'
+    @portal_url = "#{frontend_base}/schiedsrichter/spieltage"
+
+    mail(
+      to: referee_emails,
+      subject: "Spieltag bestätigen – #{game.home_team_name} vs. #{game.guest_team_name}"
     )
   end
 

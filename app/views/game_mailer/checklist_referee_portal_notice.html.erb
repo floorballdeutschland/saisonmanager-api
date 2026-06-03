@@ -1,0 +1,27 @@
+<h2>Spieltag bestätigen</h2>
+
+<p>
+  Hallo,
+</p>
+
+<p>
+  für den Spieltag am
+  <strong><%= Date.parse(@game_day.date).strftime('%d.%m.%Y') %></strong>
+  (<%= @game.home_team_name %> vs. <%= @game.guest_team_name %>) wurde der
+  Spielbericht eingereicht.
+</p>
+
+<p>
+  Bitte bestätige den Spieltag als ordnungsgemäß durchgeführt – oder melde ihn
+  als nicht ordnungsgemäß und beantworte die Spieltagscheckliste – im
+  Saisonmanager unter „Meine Spieltage":
+</p>
+
+<p>
+  <a href="<%= @portal_url %>">Zu „Meine Spieltage"</a>
+</p>
+
+<hr>
+<p style="font-size: 0.85em; color: #666;">
+  Diese E-Mail wurde automatisch vom Floorball Saisonmanager versandt.
+</p>
