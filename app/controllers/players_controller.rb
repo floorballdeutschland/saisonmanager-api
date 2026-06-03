@@ -247,9 +247,15 @@ class PlayersController < ApplicationController
         team_data[:players].each do |player_data|
           license_id = player_data.dig(:team_license, :license, 'id')
           player_id = player_data[:id]
+          id_copy_docs = docs_by_key[[player_id, license_id, 'id_copy']]
+          parental_consent_docs = docs_by_key[[player_id, license_id, 'parental_consent']]
           player_data[:team_license][:documents] = {
-            id_copy: docs_by_key[[player_id, license_id, 'id_copy']].present?,
-            parental_consent: docs_by_key[[player_id, license_id, 'parental_consent']].present?
+            id_copy: id_copy_docs.present?,
+            parental_consent: parental_consent_docs.present?,
+            # Direktlinks zum Ansehen des Dokuments, damit die Liga-Detailseite
+            # dieselben (klickbaren) Dokument-Icons wie die Übersicht zeigen kann.
+            id_copy_url: id_copy_docs&.first&.then { |d| rails_blob_url(d.file, disposition: 'inline') if d.file.attached? },
+            parental_consent_url: parental_consent_docs&.first&.then { |d| rails_blob_url(d.file, disposition: 'inline') if d.file.attached? }
           }
         end
       end
