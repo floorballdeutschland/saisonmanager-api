@@ -10,6 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ## [Unreleased]
 
 ### Neu
+- Liga-Altersvoraussetzung: Der in der Liga hinterlegte Stichtag (`deadline`) wird jetzt beim Lizenzantrag ausgewertet. Spieler:innen, die die Altersvoraussetzung nicht erfüllen, können keine Lizenz für die Liga beantragen (`request_license` lehnt mit klarer Meldung ab). `before_deadline` bestimmt die Richtung: `true` = „geboren bis", `false` = „geboren ab". Ohne gesetzten Stichtag gibt es keine Einschränkung; bei fehlendem Geburtsdatum wird nicht blockiert. `before_deadline` wurde dafür von `date` auf `boolean` migriert (saisonmanager-api#248)
 - Schiedsrichter: Sperrtermine können jetzt für beliebige Tage (nicht nur Wochenenden) gesetzt werden; neuer Bulk-Create-Endpunkt für Bereichsauswahl im Kalender (`POST referee/blocked_dates/bulk`)
 - Schiedsrichter: Neuer Bereich „Meine Historie" — gepfiffene Spiele aller Saisons (`GET referee/history/games`) und Prüfungsergebnisse vergangener Onlineprüfungen (`GET referee/history/tests`)
 - Schiedsrichterverwaltung: Benutzerkonto-Status (`user_id`, `user_name`) im Referee-JSON; neuer Endpunkt `POST admin/referees/:id/create_user` legt automatisch ein verknüpftes Schiri-Konto an
