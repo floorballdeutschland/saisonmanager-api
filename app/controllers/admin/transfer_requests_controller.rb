@@ -393,19 +393,28 @@ module Admin
                       status: :unprocessable_entity
       end
 
-      tr = TransferRequest.create!(
-        player_id: player.id,
-        requesting_club_id: requesting_club.id,
-        former_club_id: former_club_id,
-        status: 'pending_lv',
-        direct: true,
-        created_by: current_user.id,
-        season_id: Setting.current_season_id,
-        request_type: 'transfer'
-      )
-      tr.execute_transfer!(current_user.id)
+      tr = nil
+      # create! und execute_transfer! atomar klammern: andernfalls bleibt die
+      # committete pending_lv-Zeile stehen, wenn execute_transfer! danach noch
+      # scheitert, und blockiert via active-Guard jeden Retry.
+      TransferRequest.transaction do
+        tr = TransferRequest.create!(
+          player_id: player.id,
+          requesting_club_id: requesting_club.id,
+          former_club_id: former_club_id,
+          status: 'pending_lv',
+          direct: true,
+          created_by: current_user.id,
+          season_id: Setting.current_season_id,
+          request_type: 'transfer'
+        )
+        tr.execute_transfer!(current_user.id)
+      end
 
       render json: tr.as_json, status: :created
+    rescue ActiveRecord::RecordNotUnique
+      render json: { error: 'Für diesen Spieler ist bereits ein Transfer aktiv. Bitte zuerst annullieren.' },
+             status: :unprocessable_entity
     rescue ActiveRecord::RecordInvalid => e
       render json: { error: e.message }, status: :unprocessable_entity
     end
