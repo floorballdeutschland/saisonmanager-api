@@ -10,6 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ## [Unreleased]
 
 ### Neu
+- Spieltag-Bestätigung für Gastmannschaften: Team- und Vereinsmanager bestätigen über das neue Portal „Meine Spieltage" die Spieltagscheckliste auch für ihre Gastmannschaften (Teams, die nicht zum Ausrichterverein gehören). Jede Gastmannschaft bestätigt eigenständig „ordnungsgemäß" oder meldet „nicht ordnungsgemäß" mit Ja/Nein-Checkliste; bei einer Meldung wird die zuständige SBK per E-Mail informiert (`GameDayMailer#team_checklist_veto`). Gab es an einem Spieltag mehrere Gastmannschaften, muss jede einzeln bestätigen; ohne Bestätigung innerhalb von 48 Stunden gilt sie automatisch als erteilt. Neue Endpunkte `GET user/team_game_days` und `POST user/team_game_days/:game_day_id/teams/:team_id/confirm`
 - Schiedsrichter: Sperrtermine können jetzt für beliebige Tage (nicht nur Wochenenden) gesetzt werden; neuer Bulk-Create-Endpunkt für Bereichsauswahl im Kalender (`POST referee/blocked_dates/bulk`)
 - Schiedsrichter: Neuer Bereich „Meine Historie" — gepfiffene Spiele aller Saisons (`GET referee/history/games`) und Prüfungsergebnisse vergangener Onlineprüfungen (`GET referee/history/tests`)
 - Schiedsrichterverwaltung: Benutzerkonto-Status (`user_id`, `user_name`) im Referee-JSON; neuer Endpunkt `POST admin/referees/:id/create_user` legt automatisch ein verknüpftes Schiri-Konto an

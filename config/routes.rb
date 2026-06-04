@@ -308,6 +308,9 @@ Rails.application.routes.draw do
       post 'user/game_days/:game_day_id/secretary_link', to: 'game_day_secretary_links#create'
       get  'user/game_days/:game_day_id/secretary_link', to: 'game_day_secretary_links#show'
 
+      get  'user/team_game_days',                                     to: 'team_game_day_confirmations#index'
+      post 'user/team_game_days/:game_day_id/teams/:team_id/confirm', to: 'team_game_day_confirmations#confirm'
+
       resources :games
       resources :game_days
 
