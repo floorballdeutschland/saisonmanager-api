@@ -83,7 +83,7 @@ module Admin
       return render json: { message: 'Secondary-Schiedsrichter nicht gefunden.' }, status: :not_found unless secondary
       return forbidden_response unless can_access_referee?(secondary)
 
-      secondary.merge_into!(@referee)
+      secondary.merge_into!(@referee, current_user.id)
       render json: { message: 'Schiedsrichter erfolgreich zusammengeführt.', master_id: @referee.id }
     rescue ArgumentError => e
       render json: { message: e.message }, status: :unprocessable_entity
