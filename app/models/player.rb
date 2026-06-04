@@ -353,6 +353,13 @@ class Player < ApplicationRecord
 
       self.merged_into_id = master.id
       deactivate!(user_id, reason: 'Zusammenführung')
+
+      MergeLog.record!(
+        object_type: 'player',
+        master_id: master.id, master_label: "#{master.last_name}, #{master.first_name}",
+        merged_id: id, merged_label: "#{last_name}, #{first_name}",
+        user_id: user_id
+      )
     end
   end
 

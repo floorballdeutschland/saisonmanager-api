@@ -25,4 +25,18 @@ class Arena < ApplicationRecord
   def full_hash
     attributes.merge('schedule_item' => schedule_item)
   end
+
+  # Legt diesen (doppelten) Spielort mit `master` zusammen: hängt alle Spieltage
+  # auf den verbleibenden Spielort um und löscht anschließend diesen Eintrag.
+  # Gibt die Anzahl der umgehängten Spieltage zurück.
+  def merge_into!(master)
+    raise ArgumentError, 'Quell- und Ziel-Spielort dürfen nicht identisch sein' if id == master.id
+
+    moved = 0
+    Arena.transaction do
+      moved = GameDay.where(arena_id: id).update_all(arena_id: master.id)
+      destroy!
+    end
+    moved
+  end
 end

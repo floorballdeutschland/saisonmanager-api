@@ -30,7 +30,10 @@ class GameOperation < ApplicationRecord
                                                     :state_association_id, :banner_link_url)
     hash[:path] = slug
     hash[:banner_url] = banner_url
-    hash[:logo_url] = state_association&.logo_url
+    # Angehängtes LV-Logo hat Vorrang; fällt sonst auf das in der logo_url-
+    # Textspalte hinterlegte Logo zurück, damit Verbände ohne Datei-Upload
+    # (z. B. in der Ligaverwaltung) weiterhin ihr Logo anzeigen.
+    hash[:logo_url] = state_association&.logo_url || hash[:logo_url]
     hash
   end
 

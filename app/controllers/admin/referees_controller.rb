@@ -1,7 +1,8 @@
 module Admin
   class RefereesController < ApplicationController
     before_action :authorize_referee_access!
-    before_action :set_referee, only: %i[show update destroy games wallet_pass club_stats merge create_user]
+    before_action :set_referee,
+                  only: %i[show update destroy games wallet_pass club_stats merge create_user destroy_user]
 
     # GET /api/v2/admin/referees
     def index
@@ -82,7 +83,7 @@ module Admin
       return render json: { message: 'Secondary-Schiedsrichter nicht gefunden.' }, status: :not_found unless secondary
       return forbidden_response unless can_access_referee?(secondary)
 
-      secondary.merge_into!(@referee)
+      secondary.merge_into!(@referee, current_user.id)
       render json: { message: 'Schiedsrichter erfolgreich zusammengeführt.', master_id: @referee.id }
     rescue ArgumentError => e
       render json: { message: e.message }, status: :unprocessable_entity
@@ -214,6 +215,30 @@ module Admin
       else
         render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
       end
+    end
+
+    # DELETE /api/v2/admin/referees/:id/destroy_user
+    # Löscht das verknüpfte Benutzerkonto eines Schiedsrichters vollständig.
+    # Bewusst Admin-only (wie users#destroy) — Anlegen darf auch der RSK,
+    # das Löschen eines Benutzer-Datensatzes bleibt der Verwaltung vorbehalten.
+    def destroy_user
+      return forbidden_response unless current_user.permission_hash[:admin].present?
+
+      user = @referee.user
+      if user.nil?
+        return render json: { error: 'Diesem Schiedsrichter ist kein Benutzerkonto zugeordnet.' },
+                      status: :unprocessable_entity
+      end
+      if user.id == current_user.id
+        return render json: { error: 'Eigenes Konto kann nicht gelöscht werden.' }, status: :forbidden
+      end
+
+      user.destroy!
+      render json: referee_json(@referee.reload, full: true)
+    rescue ActiveRecord::InvalidForeignKey
+      render json: { error: 'Benutzerkonto kann nicht gelöscht werden: Es existieren noch verknüpfte ' \
+                            'Einträge (z.B. Spielberichte oder Dokumente).' },
+             status: :unprocessable_entity
     end
 
     def incorrect_assignments
