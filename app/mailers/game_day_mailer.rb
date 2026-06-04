@@ -13,4 +13,19 @@ class GameDayMailer < ApplicationMailer
       subject: "Spieltag nicht ordnungsgemäß gemeldet – #{@league_name} am #{game_day.date}"
     )
   end
+
+  # Informiert die SBK des Landesverbands, wenn eine Gastmannschaft einen
+  # Spieltag über das Portal als nicht ordnungsgemäß durchgeführt meldet.
+  def team_checklist_veto(game_day, team, answers, state_association)
+    @game_day = game_day
+    @team = team
+    @answers = answers || []
+    @failed_items = @answers.select { |a| a['answer'] == false }
+    @league_name = game_day.league&.name
+
+    mail(
+      to: state_association.sbk_email,
+      subject: "Spieltag nicht ordnungsgemäß gemeldet – #{@league_name} am #{game_day.date}"
+    )
+  end
 end

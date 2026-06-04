@@ -1,0 +1,26 @@
+<p>Hallo,</p>
+
+<p>
+  Die Mannschaft <strong><%= @team.name %></strong>
+  hat den Spieltag <strong><%= @league_name %></strong> am
+  <strong><%= @game_day.date %></strong>
+  als <strong>nicht ordnungsgemäß durchgeführt</strong> gemeldet.
+</p>
+
+<p>Antworten der Spieltagscheckliste:</p>
+<ul>
+  <% @answers.each do |a| %>
+    <li><%= a['question'] %>: <strong><%= a['answer'] ? 'Ja' : 'Nein' %></strong></li>
+  <% end %>
+</ul>
+
+<% if @failed_items.any? %>
+  <p>Mit „Nein" beantwortet (nicht erfüllt):</p>
+  <ul>
+    <% @failed_items.each do |a| %>
+      <li><%= a['question'] %></li>
+    <% end %>
+  </ul>
+<% end %>
+
+<p>Bitte prüfen.</p>
