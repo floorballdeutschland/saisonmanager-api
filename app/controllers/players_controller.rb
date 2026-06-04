@@ -129,6 +129,11 @@ class PlayersController < ApplicationController
         raise ActiveRecord::Rollback
       end
 
+      unless league.age_eligible?(player.birthdate)
+        result = :age_ineligible
+        raise ActiveRecord::Rollback
+      end
+
       new_license = {
         id: Digest::UUID.uuid_v4,
         team_id: team.id,
@@ -159,6 +164,10 @@ class PlayersController < ApplicationController
              status: :unprocessable_entity
     when :duplicate
       render json: { message: 'Der Spieler hat schon einen Lizenzantrag für dieses Team' },
+             status: :unprocessable_entity
+    when :age_ineligible
+      direction = league.before_deadline ? 'geboren bis' : 'geboren ab'
+      render json: { message: "Der Spieler erfüllt die Altersvoraussetzung dieser Liga nicht (spielberechtigt: #{direction} #{league.deadline.strftime('%d.%m.%Y')})." },
              status: :unprocessable_entity
     when :save_failed
       render json: { message: player.errors }, status: :unprocessable_entity

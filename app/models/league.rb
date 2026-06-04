@@ -124,6 +124,18 @@ class League < ApplicationRecord
     period == periods + 1
   end
 
+  # Erfüllt das Geburtsdatum die Altersvoraussetzung (Stichtag) der Liga?
+  # before_deadline: true = "geboren bis" (<= Stichtag), false = "geboren ab" (>= Stichtag).
+  # Ohne Stichtag oder bei fehlendem/unlesbarem Geburtsdatum keine Sperre.
+  def age_eligible?(birthdate)
+    return true if deadline.blank?
+
+    dob = Date.parse(birthdate.to_s)
+    before_deadline ? dob <= deadline : dob >= deadline
+  rescue ArgumentError, TypeError
+    true
+  end
+
   def full_hash(include_similar_leagues = false)
     result = {
       id:,
