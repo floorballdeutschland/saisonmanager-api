@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.28.0] - 2026-06-04
+
 ### Behoben
 - Lizenzübersicht: Ausweiskopie wird nicht mehr für alle Ligen pauschal angezeigt. `id_copy` wird jetzt wie jedes andere Pflichtdokument behandelt: nur wenn es in `required_documents` der Liga eingetragen ist, erscheint das Dokument in der Übersicht
 
