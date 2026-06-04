@@ -62,8 +62,11 @@ namespace :games do
     end
 
     summary = "#{cleared} verfrühte Team-Zuweisung(en) in #{affected_leagues.compact.uniq.size} Liga/Ligen"
-    puts(apply ? "#{summary} zurückgesetzt." : "[REPORT — nichts geschrieben] #{summary} würden zurückgesetzt. " \
-                                               'Mit APPLY=1 ausführen.')
+    if apply
+      puts "#{summary} zurückgesetzt."
+    else
+      puts "[REPORT — nichts geschrieben] #{summary} würden zurückgesetzt. Mit APPLY=1 ausführen."
+    end
   end
 
   # Spiegelt exakt die Füllbedingung aus Game.autofill_teams!:
