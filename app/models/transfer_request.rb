@@ -50,6 +50,7 @@ class TransferRequest < ApplicationRecord
       id:,
       status:,
       request_type:,
+      direct:,
       season_id:,
       rejection_reason:,
       revocation_reason:,

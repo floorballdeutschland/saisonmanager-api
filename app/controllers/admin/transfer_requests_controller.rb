@@ -364,7 +364,99 @@ module Admin
       redirect_to "#{base_url}?result=rejected", allow_other_host: true
     end
 
+    # POST /api/v2/admin/transfer_requests/direct_assign
+    # SBK/Admin weist einen Spieler direkt einem anderen Verein zu (ohne den
+    # mehrstufigen Genehmigungsprozess). Es entsteht ein TransferRequest
+    # (direct: true), der sofort vollzogen wird und in der Liste erscheint.
+    def direct_assign
+      ph = current_user.permission_hash
+      unless ph[:admin].present? || ph[:sbk].present?
+        return render json: { error: 'Nicht berechtigt' }, status: :forbidden
+      end
+
+      player = Player.find_by(id: params[:player_id])
+      return render json: { error: 'Spieler nicht gefunden' }, status: :not_found unless player
+
+      requesting_club = Club.find_by(id: params[:requesting_club_id].to_i)
+      return render json: { error: 'Verein nicht gefunden' }, status: :not_found unless requesting_club
+
+      home_club_entry = player.clubs.find { |c| c['home_club'] == true && c['valid_until'].nil? }
+      former_club_id = home_club_entry&.dig('club_id')
+      return render json: { error: 'Spieler hat keinen aktiven Heimverein' }, status: :unprocessable_entity unless former_club_id
+
+      former_club = Club.find_by(id: former_club_id)
+      return render json: { error: 'Abgebender Verein nicht gefunden' }, status: :not_found unless former_club
+
+      if former_club_id == requesting_club.id
+        return render json: { error: 'Spieler ist bereits in diesem Verein' }, status: :unprocessable_entity
+      end
+
+      unless sbk_may_assign?(ph, former_club, requesting_club)
+        return render json: { error: 'Nicht berechtigt für diese Vereine (nur innerhalb des eigenen Landesverbands).' },
+                      status: :forbidden
+      end
+
+      if TransferRequest.active.where(player_id: player.id).exists?
+        return render json: { error: 'Für diesen Spieler ist bereits ein Transfer aktiv. Bitte zuerst annullieren.' },
+                      status: :unprocessable_entity
+      end
+
+      tr = nil
+      # create! und execute_transfer! atomar klammern: andernfalls bleibt die
+      # committete pending_lv-Zeile stehen, wenn execute_transfer! danach noch
+      # scheitert, und blockiert via active-Guard jeden Retry.
+      TransferRequest.transaction do
+        tr = TransferRequest.create!(
+          player_id: player.id,
+          requesting_club_id: requesting_club.id,
+          former_club_id: former_club_id,
+          status: 'pending_lv',
+          direct: true,
+          created_by: current_user.id,
+          season_id: Setting.current_season_id,
+          request_type: 'transfer'
+        )
+        tr.execute_transfer!(current_user.id)
+      end
+
+      render json: tr.as_json, status: :created
+    rescue ActiveRecord::RecordNotUnique
+      render json: { error: 'Für diesen Spieler ist bereits ein Transfer aktiv. Bitte zuerst annullieren.' },
+             status: :unprocessable_entity
+    rescue ActiveRecord::RecordInvalid => e
+      render json: { error: e.message }, status: :unprocessable_entity
+    end
+
+    # PATCH /api/v2/admin/transfer_requests/:id/cancel
+    # SBK/Admin annulliert einen laufenden (noch nicht abgeschlossenen) Transfer.
+    def cancel
+      tr = find_transfer_request
+      return unless tr
+
+      unless %w[pending_club pending_player pending_lv scheduled].include?(tr.status)
+        return render json: { error: 'Nur laufende Transfers können annulliert werden' }, status: :unprocessable_entity
+      end
+
+      ph = current_user.permission_hash
+      unless ph[:admin].present? || lv_authorized?(ph, tr)
+        return render json: { error: 'Nicht berechtigt' }, status: :forbidden
+      end
+
+      tr.update!(status: 'withdrawn', player_confirmation_token: nil)
+      render json: tr.as_json
+    end
+
     private
+
+    # SBK darf nur Vereinswechsel innerhalb des eigenen Landesverbands direkt
+    # durchführen; global gescopte SBK (FD) und Admin auch verbandsübergreifend.
+    def sbk_may_assign?(ph, former_club, requesting_club)
+      return true if ph[:admin].present?
+      return false unless ph[:sbk].present?
+      return true if ph[:sbk].include?(0)
+
+      [former_club, requesting_club].all? { |c| ph[:sbk].include?(c.main_game_operation_id) }
+    end
 
     def authorize_transfer_access!
       ph = current_user.permission_hash
