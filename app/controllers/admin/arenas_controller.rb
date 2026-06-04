@@ -48,6 +48,20 @@ module Admin
       head :no_content
     end
 
+    # POST /api/v2/admin/arenas/:id/merge  (id = verbleibender Ziel-Spielort)
+    def merge
+      master = Arena.find_by(id: params[:id])
+      return render json: { error: 'Ziel-Spielort nicht gefunden' }, status: :not_found unless master
+
+      secondary = Arena.find_by(id: params[:secondary_id])
+      return render json: { error: 'Quell-Spielort nicht gefunden' }, status: :not_found unless secondary
+
+      moved = secondary.merge_into!(master)
+      render json: { message: 'Spielorte zusammengeführt.', master: master.full_hash, moved_game_days: moved }
+    rescue ArgumentError => e
+      render json: { error: e.message }, status: :unprocessable_entity
+    end
+
     private
 
     def authorize!

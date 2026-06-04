@@ -77,6 +77,14 @@ module Admin
       player = Player.find_by(id: params[:player_id])
       return render json: { error: 'Spieler nicht gefunden' }, status: :not_found unless player
 
+      # Ohne E-Mail-Adresse kann der Spieler den Transfer später nicht bestätigen,
+      # daher den Antrag gar nicht erst starten (gleiche Meldung wie in approve_club).
+      unless player.email.present?
+        return render json: {
+          error: 'Der Spieler hat keine E-Mail-Adresse hinterlegt. Bitte zuerst die E-Mail-Adresse im Spielerprofil eintragen.'
+        }, status: :unprocessable_entity
+      end
+
       requesting_club_id = params[:requesting_club_id].to_i
       if ph[:vm].present? && !ph[:vm].include?(requesting_club_id)
         return render json: { error: 'Nicht berechtigt fuer diesen Verein' }, status: :forbidden
