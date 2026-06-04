@@ -19,6 +19,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - Schiedsrichter: Spieltag-Bestätigung im Portal „Meine Spieltage" greift jetzt die Spieltagscheckliste auf. Eine Bestätigung ist nur nötig, wenn der Landesverband der Liga mindestens eine Checklisten-Frage hinterlegt hat. Schiris können den Spieltag als „ordnungsgemäß durchgeführt" bestätigen oder als „nicht ordnungsgemäß" melden und die Checkliste mit Ja/Nein beantworten; bei einer Meldung wird die zuständige SBK per E-Mail informiert (`GameDayMailer#referee_checklist_veto`). Das Referee-JSON liefert `checklist_required`, `checklist_items`, `properly_conducted` und `my_checklist_answers`
 
 ### Verbessert
+- Lizenzverwaltung: Der Liga-Lizenz-Endpunkt (`admin/leagues/:id/licenses`) liefert zu jedem Spieler nun auch Direktlinks (`id_copy_url`, `parental_consent_url`) zu den hochgeladenen Dokumenten, damit die Liga-Detailseite die Dokument-Icons klickbar anzeigen kann (saisonmanager#552)
 - Login: Nach dem Logout wird jetzt zur Login-Seite weitergeleitet statt zur Startseite (saisonmanager#554)
 - Vereins-/Verbandsverwaltung: Der nutzersichtbare Begriff „Sportverbund" wurde zu „Spielverbund" vereinheitlicht (saisonmanager#555)
 - Schiedsrichter: Spieltag-Bewertung (Bestätigung „ordnungsgemäß" wie auch Meldung „nicht ordnungsgemäß") ist erst ab Beginn des letzten Spiels eines Spieltags möglich; vorher wird sie abgelehnt. Das Referee-JSON liefert dafür `confirmable_from`
