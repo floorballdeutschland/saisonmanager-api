@@ -256,16 +256,19 @@ class PlayersController < ApplicationController
         team_data[:players].each do |player_data|
           license_id = player_data.dig(:team_license, :license, 'id')
           player_id = player_data[:id]
-          id_copy_docs = docs_by_key[[player_id, license_id, 'id_copy']]
           parental_consent_docs = docs_by_key[[player_id, license_id, 'parental_consent']]
-          player_data[:team_license][:documents] = {
-            id_copy: id_copy_docs.present?,
-            parental_consent: parental_consent_docs.present?,
-            # Direktlinks zum Ansehen des Dokuments, damit die Liga-Detailseite
-            # dieselben (klickbaren) Dokument-Icons wie die Übersicht zeigen kann.
-            id_copy_url: id_copy_docs&.first&.then { |d| rails_blob_url(d.file, disposition: 'inline') if d.file.attached? },
+          documents = {
+            parental_consent:     parental_consent_docs.present?,
             parental_consent_url: parental_consent_docs&.first&.then { |d| rails_blob_url(d.file, disposition: 'inline') if d.file.attached? }
           }
+          (league.required_documents || []).each do |doc_type|
+            next if doc_type == 'parental_consent'
+
+            docs = docs_by_key[[player_id, license_id, doc_type]]
+            documents[doc_type.to_sym]          = docs.present?
+            documents["#{doc_type}_url".to_sym] = docs&.first&.then { |d| rails_blob_url(d.file, disposition: 'inline') if d.file.attached? }
+          end
+          player_data[:team_license][:documents] = documents
         end
       end
     end

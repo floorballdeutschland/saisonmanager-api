@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+- Lizenzübersicht: Ausweiskopie wird nicht mehr für alle Ligen pauschal angezeigt. `id_copy` wird jetzt wie jedes andere Pflichtdokument behandelt: nur wenn es in `required_documents` der Liga eingetragen ist, erscheint das Dokument in der Übersicht
+
 ### Neu
 - Transfer: SBK kann einen Spieler direkt einem anderen Verein zuweisen (`POST admin/transfer_requests/direct_assign`), ohne den mehrstufigen Genehmigungsprozess. Die Direktzuweisung erzeugt einen sofort vollzogenen Transfer (`direct: true`) und erscheint in der Transferliste (für die Abrechnung). Erlaubt nur innerhalb des eigenen Landesverbands; SBK FD (global) und Admin auch verbandsübergreifend. Zusätzlich kann SBK laufende Transfers annullieren (`PATCH admin/transfer_requests/:id/cancel`) (saisonmanager-api#244)
 - Merge-Protokoll (Grundlage): Zusammenlegungen werden jetzt in der neuen Tabelle `merge_logs` (`MergeLog`) festgehalten — mit Objekttyp, Ziel-/Quell-ID und -Bezeichnung sowie ausführendem Benutzer. Spieler- und Schiedsrichter-Merge protokollieren ab sofort; die Auswertungs-Ansicht (SBK FD, letzte 6 Monate) folgt separat (saisonmanager-api#249)
