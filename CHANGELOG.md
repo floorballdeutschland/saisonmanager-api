@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.28.1] - 2026-06-05
+
 ### Behoben
 - Schiedsrichter: Benutzerkonto wird beim Löschen einer Schiedsrichter-Lizenz automatisch mitgelöscht (saisonmanager-api#234)
 - Liga-Qualifikationsregeln: Verband-Scope-Prüfung im Controller korrigiert – ein auf einen Spielverband eingeschränkter Admin konnte bislang Regeln für Ligen anderer Spielverbände bearbeiten (saisonmanager-api#145)
