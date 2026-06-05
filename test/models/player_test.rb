@@ -124,4 +124,376 @@ class PlayerTest < ActiveSupport::TestCase
     result = player.current_licenses('18')
     assert(result.nil? || result.empty?)
   end
+
+  # --- Extensions from Phase 2 ---
+
+  # ---------------------------------------------------------------------------
+  # Player#deactivate!(user_id, reason: nil)
+  # ---------------------------------------------------------------------------
+
+  test 'deactivate! setzt valid_until auf allen Clubs ohne Ablaufdatum' do
+    create(:setting, current_season_id: '18')
+    user = create(:user)
+    player = create(:player)
+    player.clubs = [
+      { 'club_id' => 1, 'home_club' => true },
+      { 'club_id' => 2, 'home_club' => false }
+    ]
+    player.save!(validate: false)
+
+    player.deactivate!(user.id)
+    player.reload
+
+    player.clubs.each do |c|
+      assert_not_nil c['valid_until'], "club_id #{c['club_id']} sollte valid_until haben"
+      assert_equal user.id, c['valid_set_by']
+    end
+  end
+
+  test 'deactivate! überschreibt nicht Clubs, die bereits abgelaufen sind' do
+    create(:setting, current_season_id: '18')
+    user    = create(:user)
+    other   = create(:user)
+    past_ts = 1.year.ago.iso8601
+    player  = create(:player)
+    player.clubs = [
+      { 'club_id' => 1, 'valid_until' => past_ts, 'valid_set_by' => other.id }
+    ]
+    player.save!(validate: false)
+
+    player.deactivate!(user.id)
+    player.reload
+
+    # Club war bereits abgelaufen — valid_set_by darf nicht überschrieben werden
+    assert_equal other.id, player.clubs.first['valid_set_by']
+  end
+
+  test 'deactivate! hängt DELETED-Eintrag an APPROVED-Lizenzen an' do
+    create(:setting, current_season_id: '18')
+    user   = create(:user)
+    league = create(:league, :current_season)
+    team   = create(:team, league: league)
+    player = create(:player, with_licenses: [
+      { team: team, status: License::APPROVED }
+    ])
+
+    player.deactivate!(user.id, reason: 'Karriereende')
+    player.reload
+
+    last = player.licenses.first['history'].last
+    assert_equal License::DELETED, last['license_status_id'].to_i
+    assert_equal 'Karriereende',   last['reason']
+    assert_equal user.id,          last['created_by']
+  end
+
+  test 'deactivate! hängt DELETED-Eintrag an REQUESTED-Lizenzen an' do
+    create(:setting, current_season_id: '18')
+    user   = create(:user)
+    league = create(:league, :current_season)
+    team   = create(:team, league: league)
+    player = create(:player, with_licenses: [
+      { team: team, status: License::REQUESTED }
+    ])
+
+    player.deactivate!(user.id)
+    player.reload
+
+    last = player.licenses.first['history'].last
+    assert_equal License::DELETED, last['license_status_id'].to_i
+  end
+
+  test 'deactivate! berührt keine nicht-aktiven Lizenzen' do
+    create(:setting, current_season_id: '18')
+    user   = create(:user)
+    league = create(:league, :current_season)
+    team   = create(:team, league: league)
+    player = create(:player, with_licenses: [
+      { team: team, status: License::DENIED }
+    ])
+    original_history_size = player.licenses.first['history'].size
+
+    player.deactivate!(user.id)
+    player.reload
+
+    assert_equal original_history_size, player.licenses.first['history'].size
+  end
+
+  test 'deactivate! setzt deactivated_at, deactivated_by und deactivation_reason' do
+    create(:setting, current_season_id: '18')
+    user   = create(:user)
+    player = create(:player)
+
+    player.deactivate!(user.id, reason: 'Vereinsaustritt')
+    player.reload
+
+    assert_not_nil player.deactivated_at
+    assert_equal   user.id, player.deactivated_by
+    assert_equal   'Vereinsaustritt', player.deactivation_reason
+  end
+
+  test 'deactivate! ohne reason verwendet Standard-Grund Deaktiviert' do
+    create(:setting, current_season_id: '18')
+    user   = create(:user)
+    league = create(:league, :current_season)
+    team   = create(:team, league: league)
+    player = create(:player, with_licenses: [
+      { team: team, status: License::APPROVED }
+    ])
+
+    player.deactivate!(user.id)
+    player.reload
+
+    last = player.licenses.first['history'].last
+    assert_equal 'Deaktiviert', last['reason']
+  end
+
+  # ---------------------------------------------------------------------------
+  # Player#reactivate!
+  # ---------------------------------------------------------------------------
+
+  test 'reactivate! löscht deactivated_at und deactivated_by' do
+    create(:setting, current_season_id: '18')
+    user   = create(:user)
+    player = create(:player)
+    player.deactivate!(user.id)
+    player.reload
+
+    player.reactivate!
+    player.reload
+
+    assert_nil player.deactivated_at
+    assert_nil player.deactivated_by
+  end
+
+  test 'reactivate! lässt deactivation_reason stehen (Modell löscht es nicht)' do
+    # Hinweis: reactivate! räumt deactivation_reason bewusst nicht auf —
+    # nur deactivated_at und deactivated_by werden zurückgesetzt.
+    create(:setting, current_season_id: '18')
+    user   = create(:user)
+    player = create(:player)
+    player.deactivate!(user.id, reason: 'Karriereende')
+    player.reload
+
+    player.reactivate!
+    player.reload
+
+    assert_equal 'Karriereende', player.deactivation_reason
+  end
+
+  test 'reactivate! stellt valid_until auf Clubs wieder her, die durch deactivate! gesetzt wurden' do
+    create(:setting, current_season_id: '18')
+    user   = create(:user)
+    player = create(:player)
+    player.clubs = [{ 'club_id' => 1, 'home_club' => true }]
+    player.save!(validate: false)
+
+    player.deactivate!(user.id)
+    player.reload
+    player.reactivate!
+    player.reload
+
+    assert_nil player.clubs.first['valid_until'],
+               'valid_until sollte nach reactivate! entfernt sein'
+  end
+
+  test 'reactivate! lässt Clubs unberührt, die von einem anderen Nutzer gesetzt wurden' do
+    create(:setting, current_season_id: '18')
+    user  = create(:user)
+    other = create(:user)
+    # Club ist bereits durch einen anderen Nutzer abgelaufen — deactivate! überspringt ihn
+    player = create(:player)
+    player.clubs = [
+      { 'club_id' => 1, 'valid_until' => 1.year.ago.iso8601, 'valid_set_by' => other.id }
+    ]
+    player.save!(validate: false)
+
+    player.deactivate!(user.id)
+    player.reload
+    player.reactivate!
+    player.reload
+
+    # valid_set_by gehört other — reactivate! darf diesen Club nicht anfassen
+    assert_equal other.id, player.clubs.first['valid_set_by']
+    assert_not_nil player.clubs.first['valid_until']
+  end
+
+  test 'reactivate! entfernt DELETED-History-Eintrag bei System-Grund und gleichem Nutzer' do
+    create(:setting, current_season_id: '18')
+    user   = create(:user)
+    league = create(:league, :current_season)
+    team   = create(:team, league: league)
+    player = create(:player, with_licenses: [
+      { team: team, status: License::APPROVED }
+    ])
+
+    player.deactivate!(user.id, reason: 'Deaktiviert')
+    player.reload
+    original_size = player.licenses.first['history'].size
+
+    player.reactivate!
+    player.reload
+
+    assert_equal original_size - 1, player.licenses.first['history'].size,
+                 'DELETED-Eintrag mit System-Grund soll nach reactivate! entfernt sein'
+  end
+
+  test 'reactivate! bewahrt manuellen DELETED-Eintrag von anderem Nutzer' do
+    create(:setting, current_season_id: '18')
+    user  = create(:user)
+    other = create(:user)
+    league = create(:league, :current_season)
+    team   = create(:team, league: league)
+
+    player = create(:player, with_licenses: [
+      { team: team, status: License::APPROVED, created_by: other.id }
+    ])
+    # Manuell DELETED durch anderen Nutzer hinzufügen (kein deactivate!-Aufruf)
+    player.licenses.first['history'] << {
+      'license_status_id' => License::DELETED,
+      'reason'            => 'Deaktiviert',
+      'created_by'        => other.id,
+      'created_at'        => Time.now.iso8601
+    }
+    player.deactivated_by = user.id
+    player.deactivated_at = Time.current
+    player.save!(validate: false)
+    player.reload
+    history_size_before = player.licenses.first['history'].size
+
+    player.reactivate!
+    player.reload
+
+    # created_by != deactivated_by → Eintrag bleibt erhalten
+    assert_equal history_size_before, player.licenses.first['history'].size
+  end
+
+  test 'reactivate! bewahrt DELETED-Eintrag mit nicht-systemischem Grund' do
+    create(:setting, current_season_id: '18')
+    user   = create(:user)
+    league = create(:league, :current_season)
+    team   = create(:team, league: league)
+
+    player = create(:player, with_licenses: [
+      { team: team, status: License::APPROVED, created_by: user.id }
+    ])
+    # DELETED mit eigenem Grund (kein System-Grund, kein 'Sonstiges: '-Präfix)
+    player.licenses.first['history'] << {
+      'license_status_id' => License::DELETED,
+      'reason'            => 'Eigener Grund',
+      'created_by'        => user.id,
+      'created_at'        => Time.now.iso8601
+    }
+    player.deactivated_by = user.id
+    player.deactivated_at = Time.current
+    player.save!(validate: false)
+    player.reload
+    history_size_before = player.licenses.first['history'].size
+
+    player.reactivate!
+    player.reload
+
+    assert_equal history_size_before, player.licenses.first['history'].size
+  end
+
+  # ---------------------------------------------------------------------------
+  # Player#merge_into!(master, user_id)
+  # ---------------------------------------------------------------------------
+
+  test 'merge_into! wirft ArgumentError wenn Secondary und Master identisch sind' do
+    create(:setting, current_season_id: '18')
+    player = create(:player)
+
+    assert_raises(ArgumentError) { player.merge_into!(player, 1) }
+  end
+
+  test 'merge_into! wirft ArgumentError wenn Secondary bereits zusammengeführt wurde' do
+    create(:setting, current_season_id: '18')
+    master    = create(:player)
+    secondary = create(:player)
+    other     = create(:player)
+    secondary.update_column(:merged_into_id, other.id)
+
+    assert_raises(ArgumentError) { secondary.merge_into!(master, 1) }
+  end
+
+  test 'merge_into! wirft ArgumentError wenn Master bereits zusammengeführt wurde' do
+    create(:setting, current_season_id: '18')
+    master    = create(:player)
+    secondary = create(:player)
+    other     = create(:player)
+    master.update_column(:merged_into_id, other.id)
+
+    assert_raises(ArgumentError) { secondary.merge_into!(master, 1) }
+  end
+
+  test 'merge_into! überträgt Clubs ohne Duplikate' do
+    create(:setting, current_season_id: '18')
+    user      = create(:user)
+    master    = create(:player)
+    secondary = create(:player)
+
+    master.clubs    = [{ 'club_id' => 1, 'home_club' => true }]
+    secondary.clubs = [{ 'club_id' => 1, 'home_club' => false }, { 'club_id' => 2, 'home_club' => false }]
+    master.save!(validate: false)
+    secondary.save!(validate: false)
+
+    secondary.merge_into!(master, user.id)
+    master.reload
+
+    club_ids = master.clubs.map { |c| c['club_id'] }
+    assert_equal [1, 2], club_ids.sort, 'Clubs sollen zusammengeführt werden, club_id 1 darf nur einmal vorkommen'
+  end
+
+  test 'merge_into! überträgt Lizenzen ohne Duplikate nach team_id' do
+    create(:setting, current_season_id: '18')
+    user      = create(:user)
+    league    = create(:league, :current_season)
+    team1     = create(:team, league: league)
+    team2     = create(:team, league: league)
+    master    = create(:player, with_licenses: [{ team: team1, status: License::APPROVED }])
+    secondary = create(:player, with_licenses: [
+      { team: team1, status: License::APPROVED },
+      { team: team2, status: License::APPROVED }
+    ])
+
+    secondary.merge_into!(master, user.id)
+    master.reload
+
+    team_ids = master.licenses.map { |l| l['team_id'] }
+    assert_equal 2, team_ids.uniq.size, 'Lizenzen sollen zusammengeführt sein; team1 darf nur einmal vorkommen'
+    assert_includes team_ids, team2.id
+  end
+
+  test 'merge_into! deaktiviert Secondary mit Grund Zusammenführung' do
+    create(:setting, current_season_id: '18')
+    user      = create(:user)
+    master    = create(:player)
+    secondary = create(:player)
+
+    secondary.merge_into!(master, user.id)
+    secondary.reload
+
+    assert_not_nil secondary.deactivated_at
+    assert_equal   'Zusammenführung', secondary.deactivation_reason
+    assert_equal   master.id,         secondary.merged_into_id
+  end
+
+  test 'merge_into! schreibt Spieler-Referenzen in Spielen um' do
+    create(:setting, current_season_id: '18')
+    user      = create(:user)
+    master    = create(:player)
+    secondary = create(:player)
+
+    game = Game.new(
+      players: { 'home' => [{ 'player_id' => secondary.id, 'number' => 10 }], 'guest' => [] },
+      events: []
+    )
+    game.save!(validate: false)
+
+    secondary.merge_into!(master, user.id)
+    game.reload
+
+    assert_equal master.id, game.players['home'].first['player_id'],
+                 'player_id im Spiel soll auf Master umgeschrieben sein'
+  end
 end

@@ -46,4 +46,65 @@ class RefereeTest < ActiveSupport::TestCase
       a.update!(partner_lizenznummer: a.lizenznummer)
     end
   end
+
+  # --- Phase 2 ---
+
+  test 'valid referee with lizenznummer saves successfully' do
+    ref = Referee.new(lizenznummer: 30_001, vorname: 'Max', nachname: 'Muster')
+    assert ref.valid?, ref.errors.full_messages.inspect
+    assert ref.save
+  end
+
+  test 'missing vorname is invalid' do
+    ref = Referee.new(lizenznummer: 30_002, vorname: nil, nachname: 'Muster')
+    assert_not ref.valid?
+    assert_includes ref.errors[:vorname], "can't be blank"
+  end
+
+  test 'non-integer lizenznummer is invalid' do
+    ref = Referee.new(lizenznummer: 'abc', vorname: 'Max', nachname: 'Muster')
+    assert_not ref.valid?
+    assert ref.errors[:lizenznummer].any?
+  end
+
+  test 'lizenznummer 0 is invalid' do
+    ref = Referee.new(lizenznummer: 0, vorname: 'Max', nachname: 'Muster')
+    assert_not ref.valid?
+    assert ref.errors[:lizenznummer].any?
+  end
+
+  test 'guest referee without lizenznummer is valid' do
+    ref = Referee.new(lizenznummer: nil, vorname: 'Gast', nachname: 'Schiri', guest: true)
+    assert ref.valid?, ref.errors.full_messages.inspect
+  end
+
+  test 'games returns matching games filtered by season_id' do
+    ref = make_referee(lizenznummer: 30_010)
+
+    go    = GameOperation.create!(name: 'GO Referee Test', short_name: 'GRT')
+    club  = Club.create!
+    arena = Arena.create!(name: 'Testhalle', city: 'Teststadt')
+
+    league_a = League.create!(game_operation: go, season_id: '10', name: 'Liga A', table_modus: 'classic')
+    league_b = League.create!(game_operation: go, season_id: '11', name: 'Liga B', table_modus: 'classic')
+
+    day_a = GameDay.create!(league: league_a, arena: arena, club: club, number: 1, date: '2024-01-01')
+    day_b = GameDay.create!(league: league_b, arena: arena, club: club, number: 1, date: '2025-01-01')
+
+    game_a = Game.create!(game_day: day_a, referee_ids: [ref.lizenznummer],
+                          events: [], players: { 'home' => [], 'guest' => [] },
+                          forfait: 0, overtime: false, legacy: false)
+    game_b = Game.create!(game_day: day_b, referee_ids: [ref.lizenznummer],
+                          events: [], players: { 'home' => [], 'guest' => [] },
+                          forfait: 0, overtime: false, legacy: false)
+
+    result = ref.games(season_id: '10')
+    assert_includes result, game_a
+    assert_not_includes result, game_b
+  end
+
+  test 'games returns Game.none for referee without lizenznummer' do
+    ref = Referee.create!(lizenznummer: nil, vorname: 'Gast', nachname: 'Schiri', guest: true)
+    assert_equal Game.none.to_a, ref.games(season_id: '10').to_a
+  end
 end

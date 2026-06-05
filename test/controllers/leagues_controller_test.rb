@@ -66,4 +66,91 @@ class LeaguesControllerTest < ActionDispatch::IntegrationTest
     assert_kind_of Array, body
     assert_schema_conform 200
   end
+
+  # --- copy_preround_licenses (Phase 2) ---
+
+  test 'copy_preround_licenses: Admin mit Berechtigung kopiert genehmigte Lizenzen und gibt {copied: N} zurück' do
+    go = GameOperation.create!(name: 'GO CopyTest', short_name: 'GCT')
+    club = Club.create!(name: 'Kopier-Club', short_name: 'KC')
+
+    preround_league = League.create!(
+      game_operation: go, name: 'Vorrunde', season_id: '17', table_modus: 'classic'
+    )
+    final_league = League.create!(
+      game_operation: go, name: 'Finalrunde', season_id: '18', table_modus: 'classic',
+      league_id_preround: preround_league.id
+    )
+
+    preround_team = Team.create!(league: preround_league, club: club, name: 'VR Team')
+    Team.create!(league: final_league, club: club, name: 'Finale Team')
+
+    player = create(:player, with_licenses: [{ team: preround_team, status: License::APPROVED }])
+
+    admin = User.create!(
+      user_name: "admin_cpl_#{SecureRandom.hex(4)}",
+      password: 'password123',
+      password_confirmation: 'password123',
+      permissions: [{ 'user_group_id' => 1, 'game_operation_id' => 0 }],
+      teams: []
+    )
+
+    post '/api/v2/login', params: { username: admin.user_name, password: 'password123' }
+    assert_response :success
+
+    post "/api/v2/admin/leagues/#{final_league.id}/copy_preround_licenses"
+    assert_response :success
+
+    body = JSON.parse(response.body)
+    assert_equal 1, body['copied']
+
+    player.reload
+    final_team = final_league.teams.find_by(club: club)
+    copied = player.licenses.find { |l| l['team_id'].to_i == final_team.id }
+    assert_not_nil copied
+    assert_equal License::APPROVED,
+                 copied['history'].max_by { |h| h['created_at'] }['license_status_id'].to_i
+  end
+
+  test 'copy_preround_licenses: Liga ohne league_id_preround gibt 422 zurück' do
+    go = GameOperation.create!(name: 'GO NoPre', short_name: 'GNP')
+    league_no_pre = League.create!(
+      game_operation: go, name: 'Ohne Vorrunde', season_id: '18', table_modus: 'classic'
+    )
+
+    admin = User.create!(
+      user_name: "admin_nopre_#{SecureRandom.hex(4)}",
+      password: 'password123',
+      password_confirmation: 'password123',
+      permissions: [{ 'user_group_id' => 1, 'game_operation_id' => 0 }],
+      teams: []
+    )
+
+    post '/api/v2/login', params: { username: admin.user_name, password: 'password123' }
+    assert_response :success
+
+    post "/api/v2/admin/leagues/#{league_no_pre.id}/copy_preround_licenses"
+    assert_response :unprocessable_entity
+  end
+
+  test 'copy_preround_licenses: Nicht-Admin-Benutzer erhält 403' do
+    go = GameOperation.create!(name: 'GO Unauth', short_name: 'GUA')
+    league_with_pre = League.create!(
+      game_operation: go, name: 'Liga mit Pre', season_id: '18', table_modus: 'classic',
+      league_id_preround: 9999
+    )
+
+    vm_user = User.create!(
+      user_name: "vm_cpl_#{SecureRandom.hex(4)}",
+      password: 'password123',
+      password_confirmation: 'password123',
+      permissions: [{ 'user_group_id' => 4, 'game_operation_id' => 0, 'club_id' => 1 }],
+      teams: []
+    )
+
+    post '/api/v2/login', params: { username: vm_user.user_name, password: 'password123' }
+    assert_response :success
+
+    post "/api/v2/admin/leagues/#{league_with_pre.id}/copy_preround_licenses"
+    assert_response :forbidden
+  end
 end
