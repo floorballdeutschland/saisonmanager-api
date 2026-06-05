@@ -1,0 +1,15 @@
+version: 2
+updates:
+  - package-ecosystem: bundler
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      sentry:
+        patterns:
+          - "sentry-*"
+      rubocop:
+        patterns:
+          - "rubocop*"
