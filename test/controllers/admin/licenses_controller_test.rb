@@ -9,8 +9,14 @@ class Admin::LicensesControllerTest < ActionDispatch::IntegrationTest
   setup do
     @setting = create(:setting, current_season_id: '18')
 
-    @go1 = create(:game_operation)
-    @go2 = create(:game_operation)
+    # GOs müssen eine state_association haben – sonst löst sich das SBK-Permission
+    # auf [0] (global) auf, weil GOs ohne state_association als national gelten.
+    @sa1 = create(:state_association)
+    @sa2 = create(:state_association)
+    @go1 = GameOperation.create!(name: "GO1 #{SecureRandom.hex(4)}", short_name: "G1#{SecureRandom.hex(2)}",
+                                 state_association: @sa1)
+    @go2 = GameOperation.create!(name: "GO2 #{SecureRandom.hex(4)}", short_name: "G2#{SecureRandom.hex(2)}",
+                                 state_association: @sa2)
 
     @club1 = create(:club)
     @club2 = create(:club)
