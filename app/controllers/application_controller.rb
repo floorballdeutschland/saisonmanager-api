@@ -34,9 +34,14 @@ class ApplicationController < ActionController::Base
     return if current_user
 
     raw_key = request.headers['X-Api-Key']
-    return if ApiKey.authenticate(raw_key)
+    @api_key = ApiKey.authenticate(raw_key)
+    return if @api_key
 
     render json: { success: false, message: 'API key required' }, status: :unauthorized
+  end
+
+  def api_key_request?
+    @api_key.present?
   end
 
   def current_user

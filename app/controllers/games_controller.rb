@@ -24,6 +24,11 @@ class GamesController < ApplicationController
   def show
     game = Game.find(params[:id])
 
+    if api_key_request? && !@api_key.realtime
+      cutoff = Time.current.to_i - 10.minutes.to_i
+      game.events = (game.events || []).select { |e| e['added_at'].nil? || e['added_at'] < cutoff }
+    end
+
     hash = game.full_hash
     hash[:permission] = game.user_permissions(current_user) if current_user
     hash.merge!(_checklist_hash(game)) if current_user || @secretary_link
@@ -536,7 +541,8 @@ class GamesController < ApplicationController
         time: params[:time],
         period: params[:period],
         home_goals: params[:home_goals],
-        guest_goals: params[:guest_goals]
+        guest_goals: params[:guest_goals],
+        added_at: Time.current.to_i
       }.with_indifferent_access
 
       item[:home_number] = params[:home_number] if params[:home_number].present?

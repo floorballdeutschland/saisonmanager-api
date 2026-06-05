@@ -42,7 +42,7 @@ module Admin
     end
 
     def api_key_params
-      params.require(:api_key).permit(:name, :active)
+      params.require(:api_key).permit(:name, :active, :rate_limit, :realtime)
     end
 
     def authorize_admin!

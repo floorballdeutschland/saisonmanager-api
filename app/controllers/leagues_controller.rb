@@ -425,11 +425,10 @@ class LeaguesController < ApplicationController
 
     schedule = Rails.cache.fetch("leagues/#{id}/schedule", expires_in: 5.minutes) do
       @league = League.find(id)
-
       @league.schedule
     end
 
-    render json: schedule
+    render json: delay_live_scores(schedule)
   end
 
   # GET /leagues/1/game_days/15/schedule
@@ -445,11 +444,10 @@ class LeaguesController < ApplicationController
 
     current_schedule = Rails.cache.fetch("leagues/#{id}/current_schedule", expires_in: 5.minutes) do
       @league = League.find(id)
-
       @league.current_schedule
     end
 
-    render json: current_schedule
+    render json: delay_live_scores(current_schedule)
   end
 
   # GET /leagues/1/scorer
@@ -649,5 +647,17 @@ class LeaguesController < ApplicationController
                                    :table_modus, :direct_comparison, :periods, :period_length, :overtime_length,
                                    :banner_link_url,
                                    required_documents: [])
+  end
+
+  # Entfernt Ergebnis-Daten für laufende Spiele bei nicht-Echtzeit-API-Keys.
+  # Der Cache bleibt global – die Filterung erfolgt nach dem Cache-Fetch.
+  def delay_live_scores(schedule)
+    return schedule unless api_key_request? && !@api_key&.realtime
+
+    schedule.map do |game|
+      next game unless game[:state].to_s == 'running'
+
+      game.merge(result: nil, result_string: nil)
+    end
   end
 end

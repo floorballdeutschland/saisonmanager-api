@@ -237,6 +237,8 @@ GEM
       nio4r (~> 2.0)
     racc (1.6.0)
     rack (2.2.4)
+    rack-attack (6.7.0)
+      rack (>= 1.0, < 4)
     rack-cors (1.1.1)
       rack (>= 2.0.0)
     rack-proxy (0.7.2)
@@ -372,6 +374,7 @@ DEPENDENCIES
   paper_trail (~> 13.0.0)
   pg (~> 1.4.0)
   puma (~> 5.6)
+  rack-attack
   rack-cors
   rails (~> 7.0.0)
   request_store

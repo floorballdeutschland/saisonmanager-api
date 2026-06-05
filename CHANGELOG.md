@@ -9,6 +9,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+- API-Rate-Limiting: Pro API-Key konfigurierbares Request-Limit (Requests/Minute); Keys ohne Limit sind unbegrenzt
+- API-Live-Delay: Keys ohne Echtzeit-Flag erhalten Spielereignisse mit 10 Minuten Verzögerung (USP-Schutz für Liveticker)
+- API-Key-Verwaltung: Neue Felder `rate_limit` (Integer) und `realtime` (Boolean) über Admin-UI einstellbar
+
 ---
 
 ## [1.28.1] - 2026-06-05
