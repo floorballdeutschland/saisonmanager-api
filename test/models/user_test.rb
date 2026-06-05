@@ -183,4 +183,65 @@ class UserTest < ActiveSupport::TestCase
 
     assert items[:login_blocked]
   end
+
+  # --- Phase 2 Extensions ---
+
+  test 'club_ids: VM-Nutzer gibt permission_hash[:vm] zurück' do
+    u = build_user(permissions: [
+      { 'user_group_id' => 4, 'club_id' => 15 },
+      { 'user_group_id' => 4, 'club_id' => 3 }
+    ])
+    assert_equal u.permission_hash[:vm], u.club_ids
+    assert_equal [3, 15], u.club_ids
+  end
+
+  test 'club_ids: Admin gibt nil/leeres Ergebnis zurück (kein :vm im Hash)' do
+    perms = ALL_GO.map { |go| { 'user_group_id' => 1, 'game_operation_id' => go } }
+    u = build_user(permissions: perms)
+    assert_nil u.club_ids
+  end
+
+  test 'club_ids: SBK gibt nil/leeres Ergebnis zurück (kein :vm im Hash)' do
+    perms = ALL_GO.map { |go| { 'user_group_id' => 2, 'game_operation_id' => go } }
+    u = build_user(permissions: perms)
+    assert_nil u.club_ids
+  end
+
+  test 'Club.admin_user_clubs: globaler Admin erhält Einträge für alle GameOperations' do
+    perms = ALL_GO.map { |go| { 'user_group_id' => 1, 'game_operation_id' => go } }
+    admin = build_user(permissions: perms)
+    # global_access path: fetches all GameOperations
+    result = Club.admin_user_clubs(admin)
+    expected_go_count = GameOperation.count
+    assert_equal expected_go_count, result.size
+  end
+
+  test 'permission_hash: deterministisch – gleicher Nutzer ergibt immer denselben Hash' do
+    u = build_user(permissions: [
+      { 'user_group_id' => 1, 'game_operation_id' => 3 },
+      { 'user_group_id' => 4, 'club_id' => 7 }
+    ])
+    first_call  = u.permission_hash
+    second_call = u.permission_hash
+    assert_equal first_call, second_call
+  end
+
+  test 'permissions_items: special_user ohne Admin-Rechte darf Lizenzstatus auf TRANSFER setzen' do
+    # special_user is determined by user_name; give the user a non-admin role
+    u = User.create!(
+      user_name: 'jho_admin',
+      password: 'password123',
+      password_confirmation: 'password123',
+      permissions: [{ 'user_group_id' => 4, 'club_id' => 1 }],
+      teams: []
+    )
+    assert u.special_user
+    assert u.permissions_items[:player_set_license_to_transfer]
+  end
+
+  test 'permissions_items: normaler VM-Nutzer (kein special_user, kein Admin) darf NICHT Lizenzstatus auf TRANSFER setzen' do
+    u = build_user(permissions: [{ 'user_group_id' => 4, 'club_id' => 99 }])
+    assert_not u.special_user
+    assert_not u.permissions_items[:player_set_license_to_transfer]
+  end
 end
