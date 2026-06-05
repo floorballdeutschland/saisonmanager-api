@@ -20,7 +20,7 @@ module Admin
 
     # PATCH /api/v2/admin/api_keys/:id
     def update
-      if @api_key.update(api_key_params.slice(:active))
+      if @api_key.update(api_key_params.slice(:active, :rate_limit, :realtime))
         render json: @api_key.short_hash
       else
         render json: { errors: @api_key.errors.full_messages }, status: :unprocessable_entity
