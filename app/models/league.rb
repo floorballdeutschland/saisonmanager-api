@@ -434,6 +434,7 @@ class League < ApplicationRecord
         last_entry = team_result
       end
 
+      annotate_with_qualifications!(sorted_results)
       grouped[group][:table] = sorted_results
     end
 
