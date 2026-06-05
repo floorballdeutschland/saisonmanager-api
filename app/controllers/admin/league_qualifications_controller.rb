@@ -1,7 +1,7 @@
 module Admin
   class LeagueQualificationsController < ApplicationController
-    before_action :authorize_admin!
     before_action :set_league
+    before_action :authorize_admin!
 
     # POST /api/v2/admin/leagues/:league_id/qualifications
     def create
@@ -60,7 +60,7 @@ module Admin
 
     def authorize_admin!
       ph = current_user.permission_hash
-      return if ph[:admin].present?
+      return if ph[:admin].present? && (ph[:admin].include?(0) || ph[:admin].include?(@league.game_operation_id))
 
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
