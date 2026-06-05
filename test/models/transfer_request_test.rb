@@ -45,7 +45,7 @@ class TransferRequestTest < ActiveSupport::TestCase
     assert_nil tr.player_confirmation_token, 'Vor dem Speichern darf kein Token gesetzt sein'
     tr.save!
     assert_not_nil tr.player_confirmation_token
-    assert tr.player_confirmation_token.length > 0
+    assert_not tr.player_confirmation_token.empty?
   end
 
   # ---------------------------------------------------------------------------

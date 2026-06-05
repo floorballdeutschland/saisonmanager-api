@@ -231,7 +231,6 @@ module Admin
 
     test 'player_reject bei bereits abgelehntem Antrag → 302 Redirect mit already_rejected' do
       tr = create_transfer_request(status: 'rejected_by_player')
-      token = tr.player_confirmation_token
       # Token wird bei rejected_by_player auf nil gesetzt; neuen erzeugen für Lookup-Test
       tr.update_columns(player_confirmation_token: 'dummy_already_rejected')
       get '/api/v2/admin/transfer_requests/player_reject',
@@ -337,10 +336,10 @@ module Admin
 
     def create_user(user_group_id:, game_operation_id: 0, club_id: nil)
       permissions = if club_id
-        [{ 'user_group_id' => user_group_id, 'game_operation_id' => game_operation_id, 'club_id' => club_id }]
-      else
-        [{ 'user_group_id' => user_group_id, 'game_operation_id' => game_operation_id }]
-      end
+                      [{ 'user_group_id' => user_group_id, 'game_operation_id' => game_operation_id, 'club_id' => club_id }]
+                    else
+                      [{ 'user_group_id' => user_group_id, 'game_operation_id' => game_operation_id }]
+                    end
       User.create!(
         user_name: "user_#{SecureRandom.hex(6)}",
         password: 'password123',
@@ -366,7 +365,9 @@ module Admin
     end
 
     def create_transfer_request(status:, effective_date: nil)
-      tr = TransferRequest.create!(
+      # token wird im before_create callback generiert; bei direkt gesetztem
+      # Status (z.B. pending_lv) ist er trotzdem vorhanden.
+      TransferRequest.create!(
         player: @player,
         requesting_club: @requesting_club,
         former_club: @former_club,
@@ -375,9 +376,6 @@ module Admin
         season_id: 18,
         effective_date: effective_date
       )
-      # token wird im before_create callback generiert; bei direkt gesetztem
-      # Status (z.B. pending_lv) ist er trotzdem vorhanden.
-      tr
     end
   end
 end

@@ -1,4 +1,3 @@
-
 require 'test_helper'
 
 class PlayersControllerTest < ActionDispatch::IntegrationTest
@@ -69,13 +68,11 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
   # 3. Admin kann Lizenz genehmigen (handle_license_request mit APPROVED) → 200
   test 'Admin genehmigt Lizenzantrag erfolgreich' do
     license_id = Digest::UUID.uuid_v4
-    @player.update!(licenses: [{
-      'id' => license_id,
-      'team_id' => @team.id,
-      'season_id' => @league.season_id,
-      'league_class_id' => @league.league_class_id,
-      'history' => [{ 'license_status_id' => License::REQUESTED, 'created_at' => 1.day.ago.iso8601, 'created_by' => nil }]
-    }])
+    license = { 'id' => license_id, 'team_id' => @team.id, 'season_id' => @league.season_id,
+                'league_class_id' => @league.league_class_id,
+                'history' => [{ 'license_status_id' => License::REQUESTED,
+                                'created_at' => 1.day.ago.iso8601, 'created_by' => nil }] }
+    @player.update!(licenses: [license])
 
     admin = create(:user, :admin)
     login_as(admin)
@@ -96,13 +93,11 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
   # 4. Nicht-Admin kann nicht genehmigen → 403
   test 'Nicht-Admin kann keinen Lizenzantrag genehmigen' do
     license_id = Digest::UUID.uuid_v4
-    @player.update!(licenses: [{
-      'id' => license_id,
-      'team_id' => @team.id,
-      'season_id' => @league.season_id,
-      'league_class_id' => @league.league_class_id,
-      'history' => [{ 'license_status_id' => License::REQUESTED, 'created_at' => 1.day.ago.iso8601, 'created_by' => nil }]
-    }])
+    license = { 'id' => license_id, 'team_id' => @team.id, 'season_id' => @league.season_id,
+                'league_class_id' => @league.league_class_id,
+                'history' => [{ 'license_status_id' => License::REQUESTED,
+                                'created_at' => 1.day.ago.iso8601, 'created_by' => nil }] }
+    @player.update!(licenses: [license])
 
     vm_user = create(:user, :vm, club_id: @club.id)
     login_as(vm_user)
@@ -117,13 +112,11 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
   # 5. Rücknahme innerhalb 24h → Lizenz komplett gelöscht
   test 'Lizenzantrag innerhalb 24h zurückgezogen – Lizenz wird gelöscht' do
     license_id = Digest::UUID.uuid_v4
-    @player.update!(licenses: [{
-      'id' => license_id,
-      'team_id' => @team.id,
-      'season_id' => @league.season_id,
-      'league_class_id' => @league.league_class_id,
-      'history' => [{ 'license_status_id' => License::REQUESTED, 'created_at' => 1.hour.ago.iso8601, 'created_by' => nil }]
-    }])
+    license = { 'id' => license_id, 'team_id' => @team.id, 'season_id' => @league.season_id,
+                'league_class_id' => @league.league_class_id,
+                'history' => [{ 'license_status_id' => License::REQUESTED,
+                                'created_at' => 1.hour.ago.iso8601, 'created_by' => nil }] }
+    @player.update!(licenses: [license])
 
     vm_user = create(:user, :vm, club_id: @club.id)
     login_as(vm_user)
@@ -144,13 +137,11 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
   # 6. Rücknahme nach 24h → Status WITHDRAWN, Lizenz bleibt
   test 'Lizenzantrag nach 24h zurückgezogen – Status wird WITHDRAWN' do
     license_id = Digest::UUID.uuid_v4
-    @player.update!(licenses: [{
-      'id' => license_id,
-      'team_id' => @team.id,
-      'season_id' => @league.season_id,
-      'league_class_id' => @league.league_class_id,
-      'history' => [{ 'license_status_id' => License::REQUESTED, 'created_at' => 2.days.ago.iso8601, 'created_by' => nil }]
-    }])
+    license = { 'id' => license_id, 'team_id' => @team.id, 'season_id' => @league.season_id,
+                'league_class_id' => @league.league_class_id,
+                'history' => [{ 'license_status_id' => License::REQUESTED,
+                                'created_at' => 2.days.ago.iso8601, 'created_by' => nil }] }
+    @player.update!(licenses: [license])
 
     vm_user = create(:user, :vm, club_id: @club.id)
     login_as(vm_user)
@@ -170,13 +161,11 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
   # 7. Rücknahme einer bereits genehmigten Lizenz → 422
   test 'Rücknahme einer genehmigten Lizenz ergibt 422' do
     license_id = Digest::UUID.uuid_v4
-    @player.update!(licenses: [{
-      'id' => license_id,
-      'team_id' => @team.id,
-      'season_id' => @league.season_id,
-      'league_class_id' => @league.league_class_id,
-      'history' => [{ 'license_status_id' => License::APPROVED, 'created_at' => 1.day.ago.iso8601, 'created_by' => nil }]
-    }])
+    license = { 'id' => license_id, 'team_id' => @team.id, 'season_id' => @league.season_id,
+                'league_class_id' => @league.league_class_id,
+                'history' => [{ 'license_status_id' => License::APPROVED,
+                                'created_at' => 1.day.ago.iso8601, 'created_by' => nil }] }
+    @player.update!(licenses: [license])
 
     admin = create(:user, :admin)
     login_as(admin)
