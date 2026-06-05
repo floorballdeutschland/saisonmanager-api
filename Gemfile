@@ -77,7 +77,7 @@ gem 'webpacker'
 gem 'sentry-rails'
 gem 'sentry-ruby'
 
-gem 'paper_trail', '~> 13.0.0'
+gem 'paper_trail', '~> 15.1'
 
 # https://gist.github.com/kule/9425fb7d4c2a13e556ef
 gem 'request_store'
