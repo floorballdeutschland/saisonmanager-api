@@ -71,6 +71,8 @@ module Admin
     def destroy
       return forbidden_response unless can_edit_full?
 
+      user = @referee.user
+      user.destroy if user && user.id != current_user.id
       @referee.destroy
       head :no_content
     end

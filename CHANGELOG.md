@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+- Schiedsrichter: Benutzerkonto wird beim Löschen einer Schiedsrichter-Lizenz automatisch mitgelöscht (saisonmanager-api#234)
+
 ---
 
 ## [1.28.0] - 2026-06-04
