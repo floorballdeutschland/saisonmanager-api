@@ -50,6 +50,7 @@ group :test do
   # OpenAPI-Schema-Validierung der API-Responses in Tests.
   # Spec liegt in docs/openapi/openapi.yml.
   gem 'committee-rails', '~> 0.7'
+  gem 'simplecov', require: false
 end
 
 group :development do

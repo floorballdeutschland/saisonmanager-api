@@ -363,6 +363,19 @@ class Player < ApplicationRecord
     end
   end
 
+  # Einheitlicher Helper für License-History-Mutationen.
+  # Garantiert, dass season_id, created_by und created_at immer vorhanden sind,
+  # um History-Inkonsistenzen (Bonner-Vorfall-Klasse) zu vermeiden.
+  def append_license_history(license, status:, user_id:, reason: nil)
+    license['history'] ||= []
+    license['history'] << {
+      'license_status_id' => status,
+      'created_at' => Time.current.iso8601,
+      'created_by' => user_id,
+      'reason' => reason
+    }.compact
+  end
+
   def deactivate!(user_id, reason: nil)
     clubs.map! do |c|
       if c['valid_until'].nil? || c['valid_until'].to_time > Time.now

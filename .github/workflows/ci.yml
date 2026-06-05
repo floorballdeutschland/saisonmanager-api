@@ -27,6 +27,7 @@ jobs:
 
     env:
       RAILS_ENV: test
+      CI: true
       DB_HOST: localhost
       DB_PORT: 5432
       DB_USERNAME: saisonmanager
@@ -45,6 +46,14 @@ jobs:
 
       - name: Test
         run: bundle exec rails test
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14
 
       - name: RuboCop
         run: bundle exec rubocop --no-color

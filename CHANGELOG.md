@@ -13,6 +13,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - API-Rate-Limiting: Pro API-Key konfigurierbares Request-Limit (Requests/Minute); Keys ohne Limit sind unbegrenzt
 - API-Live-Delay: Keys ohne Echtzeit-Flag erhalten Spielereignisse mit 10 Minuten Verzögerung (USP-Schutz für Liveticker)
 - API-Key-Verwaltung: Neue Felder `rate_limit` (Integer) und `realtime` (Boolean) über Admin-UI einstellbar
+- Tests Phase 3: 25 Invarianten-Tests in `test/invariants/` (Saisonwechsel, Lizenz-, Transfer- und Permission-Konsistenz)
+- `rake data_health:check_all` – 6 read-only Konsistenz-Checks für Produktion (exit 1 bei Funden, `FORMAT=json` für Monitoring)
+- `Player#append_license_history` – einheitlicher Helper für License-History-Mutationen (garantiert Pflichtfelder)
+- SimpleCov: Coverage-Bericht in CI-Artifacts, 70%-Mindestabdeckung pro Datei, `coverage/cobertura.xml` für PR-Anzeige
+- `docs/data-model.md`: State-Machine-Diagramme (TransferRequest, Lizenz), Permission-Tabelle, JSONB-Schemas
 
 ---
 

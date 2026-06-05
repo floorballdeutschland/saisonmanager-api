@@ -108,6 +108,7 @@ GEM
       rubyzip (>= 1.0.0)
     diff-lcs (1.5.0)
     digest (3.1.0)
+    docile (1.4.0)
     dotenv (2.8.1)
     dotenv-rails (2.8.1)
       dotenv (= 2.8.1)
@@ -323,6 +324,12 @@ GEM
     sentry-ruby (5.4.1)
       concurrent-ruby (~> 1.0, >= 1.0.2)
     shellany (0.0.1)
+    simplecov (0.22.0)
+      docile (~> 1.1)
+      simplecov-html (~> 0.11)
+      simplecov_json_formatter (~> 0.1)
+    simplecov-html (0.12.3)
+    simplecov_json_formatter (0.1.4)
     spring (2.1.1)
     spring-watcher-listen (2.0.1)
       listen (>= 2.7, < 4.0)
@@ -383,6 +390,7 @@ DEPENDENCIES
   rubocop-rspec
   sentry-rails
   sentry-ruby
+  simplecov
   spring
   spring-watcher-listen (~> 2.0.0)
   tzinfo-data
