@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+- Dockerfile-Basis-Image von `ruby:3.1` auf `ruby:3.2.4` angehoben — passend zu `.ruby-version` und der CI-Ruby-Version (3.2.4). Image-Build + Boot auf 3.2.4 verifiziert.
+
 ---
 
 ## [1.29.4] - 2026-06-06
