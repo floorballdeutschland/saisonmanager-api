@@ -11,6 +11,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ---
 
+## [1.29.3] - 2026-06-06
+
+### Behoben
+- `puma` von `~> 5.6` auf `~> 6.4` angehoben. Rails 7.1 nutzt Rack 3 / rackup; puma 5.6 registriert sich nicht beim neuen Server-Handler, sodass `rails server` in Produktion mit „Could not find a server gem" abbrach (Boot-Loop, 502). In Tests fiel das nicht auf, da dort kein Puma-Server gestartet wird.
+
+---
+
 ## [1.29.2] - 2026-06-06
 
 ### Verbessert
