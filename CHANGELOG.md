@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+- `League#set_defaults` entfernt: Der `before_create`-Callback war wegen eines Ruby-Scope-Fehlers (`season_id = …` legte eine lokale Variable an) ein No-op und konnte das Defaulting nie ausführen — `season_id` ist ohnehin `presence`-validiert. Sein einziger Effekt war ein überflüssiger `Setting.first`-Zugriff bei jeder Liga-Erzeugung, der unter Last sporadisch `TransferConsistencyTest` zum Absturz brachte (`undefined method 'systems' for nil`).
+
 ---
 
 ## [1.29.0] - 2026-06-05
