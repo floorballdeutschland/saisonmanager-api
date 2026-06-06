@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+- PostgreSQL-16-Vorbereitung: CI-Service-Postgres auf 16 angehoben, `pg`-Gem von `~> 1.4` auf `~> 1.5`. Volle Test-Suite gegen pg16 grün; Dump/Restore-Migration 12→16 lokal verifiziert (siehe Issue #275). Die produktive Daten-Migration erfolgt separat im Wartungsfenster.
+
 ---
 
 ## [1.29.4] - 2026-06-06
