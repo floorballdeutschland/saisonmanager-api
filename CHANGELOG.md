@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.29.4] - 2026-06-06
+
 ### Behoben
 - Entwicklungsumgebung: `listen` von `< 3.2` auf `~> 3.8` angehoben. Unter Rails 7.1 verlangen `spring-watcher-listen` und der Dev-File-Watcher `listen ~> 3.5`, wodurch `rails server` lokal mit `Gem::LoadError` abbrach. Nur Dev-Group (`group :development`) — kein Produktions- oder Testeinfluss.
 
