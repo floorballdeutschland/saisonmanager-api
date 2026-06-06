@@ -9,6 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+- Rails 7.0 → 7.1 und paper_trail 13 → 15 aktualisiert (Rails 7.0 ist seit März 2025 EOL). `config.load_defaults` bleibt bewusst auf 5.1, damit bestehende `cookies.signed[:user_id]`-Sessions gültig bleiben.
+
+### Behoben
+- Test-Umgebung: ActiveJob-Queue-Adapter auf `:test` gesetzt. Der bisherige Default `:async` führte `deliver_later`-Mailer-Jobs (u. a. Transfer-Abschluss) in einem Hintergrund-Thread aus, der sich unter Rails' transaktionalen Tests die DB-Connection mit dem Test-Thread teilte und sie unter PostgreSQL 15 sporadisch desynchronisierte — sichtbar als „message type … arrived from server while idle", nil-Reads und Hänger.
+
 ---
 
 ## [1.29.1] - 2026-06-06

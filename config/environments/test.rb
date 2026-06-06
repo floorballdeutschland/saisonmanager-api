@@ -43,6 +43,16 @@ Rails.application.configure do
   # ActionMailer::Base.deliveries array.
   config.action_mailer.delivery_method = :test
 
+  # Run jobs inline-controlled via the test adapter instead of the default
+  # :async adapter. The async adapter executes `deliver_later` mailer jobs on a
+  # background thread that grabs its own ActiveRecord connection; under Rails'
+  # transactional tests (which share one connection across threads) this races
+  # the test thread and desyncs the PostgreSQL connection — observed as
+  # "message type 0x.. arrived from server while idle" and intermittent nil
+  # reads/hangs (notably in the transfer flow, which sends mail via
+  # deliver_later). The :test adapter enqueues without spawning threads.
+  config.active_job.queue_adapter = :test
+
   # Print deprecation notices to the stderr.
   config.active_support.deprecation = :stderr
 

@@ -6,7 +6,7 @@ git_source(:github) do |repo_name|
 end
 
 # Bundle edge Rails instead: gem 'rails', github: 'rails/rails'
-gem 'rails', '~> 7.0.0'
+gem 'rails', '~> 7.1.0'
 # Use postgresql as the database for Active Record
 gem 'pg', '~>  1.4.0'
 # Use Puma as the app server
@@ -77,7 +77,7 @@ gem 'webpacker'
 gem 'sentry-rails'
 gem 'sentry-ruby'
 
-gem 'paper_trail', '~> 13.0.0'
+gem 'paper_trail', '~> 15.1'
 
 # https://gist.github.com/kule/9425fb7d4c2a13e556ef
 gem 'request_store'
