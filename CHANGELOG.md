@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.29.2] - 2026-06-06
+
 ### Verbessert
 - Rails 7.0 → 7.1 und paper_trail 13 → 15 aktualisiert (Rails 7.0 ist seit März 2025 EOL). `config.load_defaults` bleibt bewusst auf 5.1, damit bestehende `cookies.signed[:user_id]`-Sessions gültig bleiben.
 
