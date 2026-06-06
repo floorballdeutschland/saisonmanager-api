@@ -14,8 +14,6 @@ class League < ApplicationRecord
   default_scope { order(:season_id, :game_operation_id).order('order_key::int') }
   scope :current_season, -> { where(season_id: Setting.current_season_id) }
 
-  before_create :set_defaults
-
   def games(game_day_number = nil)
     gd = game_day_number.present? ? game_days.where(number: game_day_number) : game_days
     gd.includes(:arena, games: [home_team: :club, guest_team: :club]).map(&:games).flatten.sort_by { |i| i.game_number.to_i }
@@ -1061,10 +1059,6 @@ class League < ApplicationRecord
   end
 
   private
-
-  def set_defaults
-    season_id = Setting.current_season_id if season_id.blank?
-  end
 
   def group_template(group_identifier)
     return {} if group_identifier.nil?
