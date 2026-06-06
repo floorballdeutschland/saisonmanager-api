@@ -11,6 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Verbessert
 - Dockerfile-Basis-Image von `ruby:3.1` auf `ruby:3.2.4` angehoben — passend zu `.ruby-version` und der CI-Ruby-Version (3.2.4). Image-Build + Boot auf 3.2.4 verifiziert.
+- PostgreSQL-16-Vorbereitung: CI-Service-Postgres auf 16 angehoben, `pg`-Gem von `~> 1.4` auf `~> 1.5`. Volle Test-Suite gegen pg16 grün; Dump/Restore-Migration 12→16 lokal verifiziert (siehe Issue #275). Die produktive Daten-Migration erfolgt separat im Wartungsfenster.
 
 ---
 
