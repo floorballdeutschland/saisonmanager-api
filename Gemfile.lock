@@ -411,7 +411,7 @@ GEM
     websocket-extensions (0.1.5)
     wicked_pdf (2.6.3)
       activesupport
-    wkhtmltopdf-binary (0.12.6.5)
+    wkhtmltopdf-binary (0.12.6.10)
     xlsxtream (2.4.0)
       zip_tricks (>= 4.5, < 6)
     zeitwerk (2.6.18)
