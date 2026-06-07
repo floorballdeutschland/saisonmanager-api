@@ -51,6 +51,10 @@ group :test do
   # Spec liegt in docs/openapi/openapi.yml.
   gem 'committee-rails', '~> 0.7'
   gem 'simplecov', require: false
+
+  # Auf der 5er-Linie halten: test_helper.rb nutzt `require 'minitest/mock'`,
+  # das minitest 6 entfernt/verschiebt. Ohne Pin zieht bundler 6.0 → LoadError.
+  gem 'minitest', '~> 5.27'
 end
 
 group :development do

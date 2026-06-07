@@ -445,6 +445,7 @@ DEPENDENCIES
   jwt
   letter_opener
   listen (~> 3.8)
+  minitest (~> 5.27)
   paper_trail (~> 15.1)
   pg (~> 1.5)
   puma (~> 6.4)
