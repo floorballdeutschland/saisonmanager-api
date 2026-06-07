@@ -10,6 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ## [Unreleased]
 
 ### Behoben
+- Erst-/Zweitlizenz wurde bei nicht-numerischem `league_class_id` (z.B. `"rl"` für Regionalliga) falsch bestimmt: Die niedrigere Liga wurde fälschlich als Erstlizenz markiert, weil die Rangfolge über `(category+class).to_i` auf konkatenierten IDs lief und an der ersten Nicht-Ziffer abbrach. Die Ligastufe wird jetzt über eine zentrale, robuste Methode `League.class_rank` bestimmt (numerisch nach Zahlenwert, `"rl"` an Regionalliga-Position, Unbekannte ans Ende); bei gleicher Ligastufe entscheidet der frühere Genehmigungszeitpunkt (`License.approval_time`). Das fünffach duplizierte Muster (inkl. Copy-Paste-Fehler in `Player#main_license_hash`) ist entfernt. (#291)
 - Kostenfreies Zurückziehen eines Lizenzantrags: Karenzzeit war fälschlich auf 24 Stunden statt 60 Minuten kodiert. Dadurch blieb das kostenfreie Zurückziehen viel zu lange möglich und die Anzeige „kostenfrei bis HH:MM Uhr" wirkte wie die aktuelle Uhrzeit. Die Karenzzeit ist jetzt zentral als `License::GRACE_PERIOD = 1.hour` definiert und an beiden Stellen (Anzeige + Löschlogik) genutzt (#290).
 
 ---

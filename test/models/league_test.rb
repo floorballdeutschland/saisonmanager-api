@@ -67,6 +67,34 @@ class LeagueTest < ActiveSupport::TestCase
   end
 
   # ---------------------------------------------------------------------------
+  # class_rank — Ligastufen-Rang für Erst-/Zweitlizenz-Bestimmung (#291)
+  # ---------------------------------------------------------------------------
+
+  test 'class_rank: numerische Klassen sortieren nach Zahlenwert (kleiner = höher)' do
+    assert League.class_rank('1') < League.class_rank('2')
+    assert League.class_rank('2') < League.class_rank('10')
+    assert League.class_rank('10') < League.class_rank('30')
+  end
+
+  test 'class_rank: Regionalliga ("rl") liegt unter 1./2. Bundesliga, aber über Sentinel' do
+    assert League.class_rank('1') < League.class_rank('rl'), '1. Bundesliga höher als Regionalliga'
+    assert League.class_rank('2') < League.class_rank('rl'), '2. Bundesliga höher als Regionalliga'
+    assert League.class_rank('rl') < League.class_rank('unbekannt'), 'Regionalliga über unbekannt'
+  end
+
+  test 'class_rank: unbekannte nicht-numerische Klasse landet am Ende' do
+    assert_equal League::UNKNOWN_CLASS_RANK, League.class_rank('foo')
+    assert_equal League::UNKNOWN_CLASS_RANK, League.class_rank(nil)
+    assert_equal League::UNKNOWN_CLASS_RANK, League.class_rank('')
+  end
+
+  test 'class_rank: liefert JSON-sicheren Integer (kein Float::INFINITY)' do
+    assert_kind_of Integer, League.class_rank('1')
+    assert_kind_of Integer, League.class_rank('rl')
+    assert_kind_of Integer, League.class_rank('foo')
+  end
+
+  # ---------------------------------------------------------------------------
   # evaluate_table_results (full object graph needed)
   # ---------------------------------------------------------------------------
 

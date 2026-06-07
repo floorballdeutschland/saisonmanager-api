@@ -117,9 +117,8 @@ module Admin
         .sort_by do |l|
           league_id = team_league_id_map[l['team_id'].to_i]
           lg        = all_season_leagues[league_id]
-          cat = lg&.league_category_id.to_s.rjust(3, '0')
-          cls = lg&.league_class_id.to_s.rjust(3, '0')
-          (cat + cls).to_i
+          # Höchste Liga = Erstlizenz; bei gleicher Ligastufe die früher genehmigte.
+          [League.class_rank(lg&.league_class_id), License.approval_time(l)]
         end
         .first&.fetch('id', current_lic['id'])
 

@@ -128,12 +128,7 @@ class Player < ApplicationRecord
 
     if current_licenses(season_id)
       sorted_licenses = current_licenses(season_id).map! do |x|
-        x['sorting'] =
-          (x['league_category_id'].to_s.rjust(3,
-                                              '0') + x['league_category_id'].to_s.rjust(3,
-                                                                                        '0') + x['league_class_id'].to_s.rjust(
-                                                                                          3, '0'
-                                                                                        )).to_i
+        x['sorting'] = League.class_rank(x['league_class_id'])
         x
       end
     end
@@ -157,7 +152,7 @@ class Player < ApplicationRecord
 
     if current_licenses(season_id)
       sorted_licenses = current_licenses(season_id).map! do |x|
-        x['sorting'] = (x['league_category_id'].to_s.rjust(3, '0') + x['league_class_id'].to_s.rjust(3, '0')).to_i
+        x['sorting'] = League.class_rank(x['league_class_id'])
         x
       end
     end
@@ -249,7 +244,7 @@ class Player < ApplicationRecord
     end
     if result
       result.map do |x|
-        x['sorting'] = (x['league_category_id'].to_s.rjust(3, '0') + x['league_class_id'].to_s.rjust(3, '0')).to_i
+        x['sorting'] = League.class_rank(x['league_class_id'])
         x
       end
     end
@@ -640,8 +635,9 @@ class Player < ApplicationRecord
       license.merge last_status
     end
 
-    # licenses.min_by{|x| x['sorting'] }
-    sorted = licenses.sort_by { |x| x['sorting'] }
+    # Höchste Liga (kleinstes 'sorting') = Erstlizenz; bei gleicher Ligastufe
+    # die zeitlich früher genehmigte Lizenz.
+    sorted = licenses.sort_by { |x| [x['sorting'], License.approval_time(x)] }
     sorted.first
   end
 

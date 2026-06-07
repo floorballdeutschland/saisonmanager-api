@@ -787,7 +787,7 @@ class PlayersController < ApplicationController
       base = p.meta_hash
       current_lics = (p.licenses || []).select { |l| current_team_ids.include?(l['team_id'].to_i) }
       if current_lics.present?
-        primary = current_lics.min_by { |l| (l['league_category_id'].to_s.rjust(3, '0') + l['league_class_id'].to_s.rjust(3, '0')).to_i }
+        primary = current_lics.min_by { |l| [League.class_rank(l['league_class_id']), License.approval_time(l)] }
         last_status_id = primary['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id')&.to_i
         if last_status_id && License::NAMES.key?(last_status_id)
           base[:current_license_status_id] = last_status_id

@@ -78,5 +78,55 @@ module Admin
       get '/api/v2/admin/licenses'
       assert_response :forbidden
     end
+
+    # -------------------------------------------------------------------------
+    # license_type — Erst-/Zweitlizenz-Bestimmung (#291)
+    # -------------------------------------------------------------------------
+
+    test 'Erstlizenz ist die höhere Liga – Bundesliga ("1") vor Regionalliga ("rl")' do
+      buli_league = create(:league, game_operation: @go1, season_id: '18', league_class_id: '1')
+      buli_team   = create(:team, league: buli_league, club: @club1)
+      rl_league   = create(:league, game_operation: @go1, season_id: '18', league_class_id: 'rl')
+      rl_team     = create(:team, league: rl_league, club: @club1)
+
+      create(:player, with_licenses: [
+        { team: buli_team, status: License::APPROVED, season_id: '18' },
+        { team: rl_team,   status: License::APPROVED, season_id: '18' }
+      ])
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses', params: { season_id: '18' }
+      assert_response :success
+      rows = JSON.parse(response.body)
+
+      buli_row = rows.find { |r| r['team_id'] == buli_team.id }
+      rl_row   = rows.find { |r| r['team_id'] == rl_team.id }
+      refute_nil buli_row, '1.-Bundesliga-Zeile muss vorhanden sein'
+      refute_nil rl_row,   'Regionalliga-Zeile muss vorhanden sein'
+      assert_equal 'primary',   buli_row['license_type'], '1. Bundesliga muss Erstlizenz sein'
+      assert_equal 'secondary', rl_row['license_type'],   'Regionalliga (nicht-numerisch "rl") muss Zweitlizenz sein'
+    end
+
+    test 'Bei gleicher Ligastufe ist die früher genehmigte Lizenz die Erstlizenz' do
+      league_a = create(:league, game_operation: @go1, season_id: '18', league_class_id: '20')
+      team_a   = create(:team, league: league_a, club: @club1)
+      league_b = create(:league, game_operation: @go1, season_id: '18', league_class_id: '20')
+      team_b   = create(:team, league: league_b, club: @club1)
+
+      create(:player, with_licenses: [
+        { team: team_a, status: License::APPROVED, season_id: '18', created_at: 10.days.ago.iso8601 },
+        { team: team_b, status: License::APPROVED, season_id: '18', created_at: 2.days.ago.iso8601 }
+      ])
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses', params: { season_id: '18' }
+      assert_response :success
+      rows = JSON.parse(response.body)
+
+      row_a = rows.find { |r| r['team_id'] == team_a.id }
+      row_b = rows.find { |r| r['team_id'] == team_b.id }
+      assert_equal 'primary',   row_a['license_type'], 'früher genehmigte Lizenz ist Erstlizenz'
+      assert_equal 'secondary', row_b['license_type'], 'später genehmigte Lizenz ist Zweitlizenz'
+    end
   end
 end

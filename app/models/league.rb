@@ -14,6 +14,27 @@ class League < ApplicationRecord
   default_scope { order(:season_id, :game_operation_id).order('order_key::int') }
   scope :current_season, -> { where(season_id: Setting.current_season_id) }
 
+  # Definierte Ränge für nicht-numerische league_class_id-Werte. Aktuell ist "rl"
+  # (Regionalliga) der einzige nicht-numerische Wert im Datenbestand; er liegt
+  # unter der 1./2. Bundesliga ("1"/"2"), aber über tieferen Klassen.
+  NON_NUMERIC_CLASS_RANKS = { 'rl' => 3 }.freeze
+  # Sentinel-Rang für unbekannte nicht-numerische Klassen: sortiert ans Ende
+  # (= niedrigste Liga). Bewusst ein großer Integer statt Float::INFINITY, damit
+  # der Wert JSON-serialisierbar bleibt (er landet via 'sorting' im Response).
+  UNKNOWN_CLASS_RANK = 999_999
+
+  # Rang einer Ligaklasse für die Erst-/Zweitlizenz-Bestimmung.
+  # Kleinerer Rang = höhere Liga. Numerische league_class_id werden nach ihrem
+  # Zahlenwert sortiert (kleiner = höher), bekannte nicht-numerische Codes über
+  # NON_NUMERIC_CLASS_RANKS, unbekannte landen am Ende.
+  def self.class_rank(league_class_id)
+    id = league_class_id.to_s.strip
+    return NON_NUMERIC_CLASS_RANKS[id] if NON_NUMERIC_CLASS_RANKS.key?(id)
+    return id.to_i if id.match?(/\A\d+\z/)
+
+    UNKNOWN_CLASS_RANK
+  end
+
   def games(game_day_number = nil)
     gd = game_day_number.present? ? game_days.where(number: game_day_number) : game_days
     gd.includes(:arena, games: [home_team: :club, guest_team: :club]).map(&:games).flatten.sort_by { |i| i.game_number.to_i }
