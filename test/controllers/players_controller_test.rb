@@ -109,13 +109,13 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_response :forbidden
   end
 
-  # 5. Rücknahme innerhalb 24h → Lizenz komplett gelöscht
-  test 'Lizenzantrag innerhalb 24h zurückgezogen – Lizenz wird gelöscht' do
+  # 5. Rücknahme innerhalb der Karenzzeit → Lizenz komplett gelöscht
+  test 'Lizenzantrag innerhalb der Karenzzeit zurückgezogen – Lizenz wird gelöscht' do
     license_id = Digest::UUID.uuid_v4
     license = { 'id' => license_id, 'team_id' => @team.id, 'season_id' => @league.season_id,
                 'league_class_id' => @league.league_class_id,
                 'history' => [{ 'license_status_id' => License::REQUESTED,
-                                'created_at' => 1.hour.ago.iso8601, 'created_by' => nil }] }
+                                'created_at' => 30.minutes.ago.iso8601, 'created_by' => nil }] }
     @player.update!(licenses: [license])
 
     vm_user = create(:user, :vm, club_id: @club.id)
@@ -134,13 +134,13 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_empty @player.licenses
   end
 
-  # 6. Rücknahme nach 24h → Status WITHDRAWN, Lizenz bleibt
-  test 'Lizenzantrag nach 24h zurückgezogen – Status wird WITHDRAWN' do
+  # 6. Rücknahme nach der Karenzzeit → Status WITHDRAWN, Lizenz bleibt
+  test 'Lizenzantrag nach der Karenzzeit zurückgezogen – Status wird WITHDRAWN' do
     license_id = Digest::UUID.uuid_v4
     license = { 'id' => license_id, 'team_id' => @team.id, 'season_id' => @league.season_id,
                 'league_class_id' => @league.league_class_id,
                 'history' => [{ 'license_status_id' => License::REQUESTED,
-                                'created_at' => 2.days.ago.iso8601, 'created_by' => nil }] }
+                                'created_at' => 2.hours.ago.iso8601, 'created_by' => nil }] }
     @player.update!(licenses: [license])
 
     vm_user = create(:user, :vm, club_id: @club.id)

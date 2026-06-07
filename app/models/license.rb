@@ -13,6 +13,10 @@ class License < ApplicationRecord
   # Sperre ausgesetzt werden können.
   ACTIVE_STATUSES = [APPROVED, REQUESTED].freeze
 
+  # Zeitfenster, in dem ein beantragter Lizenzantrag kostenfrei (= ersatzlose Löschung
+  # statt Status WITHDRAWN) zurückgezogen werden kann.
+  GRACE_PERIOD = 1.hour
+
   NAMES = {
     License::APPROVED => 'erteilt',
     License::REQUESTED => 'beantragt',

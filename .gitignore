@@ -32,3 +32,6 @@ yarn-debug.log*
 # ActiveStorage local disk uploads
 /storage/*
 !/storage/.keep
+
+# SimpleCov test coverage reports
+/coverage

@@ -333,7 +333,7 @@ class PlayersController < ApplicationController
                        .select { |h| h['license_status_id'].to_i == License::REQUESTED }
                        .max_by { |h| h['created_at'] }
 
-    if last_requested && (Time.now - last_requested['created_at'].to_time) < 24.hours
+    if last_requested && (Time.now - last_requested['created_at'].to_time) < License::GRACE_PERIOD
       player.licenses.reject! { |l| l['id'] == params[:license_id] }
       if player.save
         render json: { success: true, grace_period_deletion: true }
