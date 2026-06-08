@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.29.7] - 2026-06-08
+
 ### Verbessert
 - Lizenzgültigkeit („gültig bis") wird jetzt auch in den öffentlichen Lizenzlisten mitgeliefert (Vereins-Lizenzliste pro Spiel und Spielsekretariat). Bisher war das Feld `valid_until` nur im Admin-Lizenzerteilungsbereich verfügbar. (#294)
 
