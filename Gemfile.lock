@@ -407,10 +407,10 @@ GEM
       simplecov_json_formatter (~> 0.1)
     simplecov-html (0.12.3)
     simplecov_json_formatter (0.1.4)
-    spring (2.1.1)
-    spring-watcher-listen (2.0.1)
+    spring (4.6.0)
+    spring-watcher-listen (2.1.0)
       listen (>= 2.7, < 4.0)
-      spring (>= 1.2, < 3.0)
+      spring (>= 4)
     stringio (3.2.0)
     thor (1.5.0)
     timeout (0.6.1)
@@ -475,7 +475,7 @@ DEPENDENCIES
   sentry-ruby
   simplecov
   spring
-  spring-watcher-listen (~> 2.0.0)
+  spring-watcher-listen (~> 2.1.0)
   tzinfo-data
   webpacker
   wicked_pdf
