@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_05_30_100000) do
+ActiveRecord::Schema[7.1].define(version: 2026_06_11_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -49,6 +49,8 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_30_100000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.datetime "last_used_at"
+    t.integer "rate_limit", comment: "Max requests per minute; nil = unlimited"
+    t.boolean "realtime", default: false, null: false
     t.index ["key_digest"], name: "index_api_keys_on_key_digest", unique: true
   end
 
@@ -92,12 +94,25 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_30_100000) do
     t.index ["date", "metric_key"], name: "index_daily_metrics_on_date_and_metric_key", unique: true
   end
 
+  create_table "email_logs", force: :cascade do |t|
+    t.string "recipient", null: false
+    t.string "cc"
+    t.string "subject", null: false
+    t.string "mailer_action"
+    t.datetime "sent_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["sent_at"], name: "index_email_logs_on_sent_at"
+  end
+
   create_table "game_day_referee_confirmations", force: :cascade do |t|
     t.bigint "game_day_id", null: false
     t.bigint "referee_id", null: false
     t.datetime "confirmed_at", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "properly_conducted", default: true, null: false
+    t.jsonb "checklist_answers", default: [], null: false
     t.index ["game_day_id", "referee_id"], name: "index_game_day_referee_confirmations_unique", unique: true
     t.index ["game_day_id"], name: "index_game_day_referee_confirmations_on_game_day_id"
     t.index ["referee_id"], name: "index_game_day_referee_confirmations_on_referee_id"
@@ -113,6 +128,20 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_30_100000) do
     t.index ["created_by_id"], name: "index_game_day_secretary_links_on_created_by_id"
     t.index ["game_day_id"], name: "index_game_day_secretary_links_on_game_day_id"
     t.index ["token_digest"], name: "index_game_day_secretary_links_on_token_digest", unique: true
+  end
+
+  create_table "game_day_team_confirmations", force: :cascade do |t|
+    t.bigint "game_day_id", null: false
+    t.bigint "team_id", null: false
+    t.datetime "confirmed_at", null: false
+    t.boolean "properly_conducted", default: true, null: false
+    t.jsonb "checklist_answers", default: [], null: false
+    t.bigint "confirmed_by_user_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["game_day_id", "team_id"], name: "index_game_day_team_confirmations_unique", unique: true
+    t.index ["game_day_id"], name: "index_game_day_team_confirmations_on_game_day_id"
+    t.index ["team_id"], name: "index_game_day_team_confirmations_on_team_id"
   end
 
   create_table "game_days", force: :cascade do |t|
@@ -273,7 +302,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_30_100000) do
     t.integer "overtime_length"
     t.string "order_key"
     t.date "deadline"
-    t.date "before_deadline"
+    t.boolean "before_deadline", default: false
     t.boolean "legacy_league", default: false
     t.bigint "created_by"
     t.bigint "updated_by"
@@ -292,9 +321,11 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_30_100000) do
     t.string "license_id", null: false
     t.string "document_type", null: false
     t.bigint "uploaded_by_id"
-    t.datetime "created_at", precision: nil, null: false
-    t.datetime "updated_at", precision: nil, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
     t.index ["player_id", "license_id", "document_type"], name: "idx_license_documents_unique", unique: true
+    t.index ["player_id"], name: "index_license_documents_on_player_id"
+    t.index ["uploaded_by_id"], name: "index_license_documents_on_uploaded_by_id"
   end
 
   create_table "license_fee_calculations", force: :cascade do |t|
@@ -309,6 +340,19 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_30_100000) do
     t.datetime "created_at", precision: nil, null: false
     t.datetime "updated_at", precision: nil, null: false
     t.string "filename_other_json"
+  end
+
+  create_table "merge_logs", force: :cascade do |t|
+    t.string "object_type", null: false
+    t.bigint "master_id", null: false
+    t.string "master_label"
+    t.bigint "merged_id", null: false
+    t.string "merged_label"
+    t.bigint "performed_by_user_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_merge_logs_on_created_at"
+    t.index ["object_type"], name: "index_merge_logs_on_object_type"
   end
 
   create_table "online_test_assignments", force: :cascade do |t|
@@ -380,6 +424,23 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_30_100000) do
     t.index ["status"], name: "index_player_change_requests_on_status"
   end
 
+  create_table "player_suspensions", force: :cascade do |t|
+    t.bigint "player_id", null: false
+    t.bigint "team_id"
+    t.date "valid_from", null: false
+    t.date "valid_until", null: false
+    t.text "reason"
+    t.jsonb "affected_licenses", default: [], null: false
+    t.bigint "created_by"
+    t.datetime "lifted_at"
+    t.bigint "lifted_by"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["player_id", "lifted_at"], name: "index_player_suspensions_on_player_id_and_lifted_at"
+    t.index ["player_id"], name: "index_player_suspensions_on_player_id"
+    t.index ["valid_until"], name: "index_player_suspensions_on_valid_until"
+  end
+
   create_table "players", force: :cascade do |t|
     t.string "first_name"
     t.string "last_name"
@@ -435,6 +496,70 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_30_100000) do
     t.float "percent"
     t.datetime "created_at", precision: nil, null: false
     t.datetime "updated_at", precision: nil, null: false
+  end
+
+  create_table "referee_course_imports", force: :cascade do |t|
+    t.bigint "uploaded_by_user_id", null: false
+    t.string "filename"
+    t.string "status", default: "in_review", null: false
+    t.integer "total_rows", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["uploaded_by_user_id"], name: "index_referee_course_imports_on_uploaded_by_user_id"
+  end
+
+  create_table "referee_course_results", force: :cascade do |t|
+    t.bigint "referee_course_import_id", null: false
+    t.bigint "referee_id"
+    t.bigint "state_association_id"
+    t.integer "csv_lizenznummer"
+    t.string "csv_vorname"
+    t.string "csv_nachname"
+    t.date "csv_geburtsdatum"
+    t.string "csv_verein"
+    t.string "csv_email"
+    t.integer "master_lizenznummer_by_importer"
+    t.string "master_vorname_by_importer"
+    t.string "master_nachname_by_importer"
+    t.date "master_geburtsdatum_by_importer"
+    t.integer "master_club_id_by_importer"
+    t.string "master_email_by_importer"
+    t.integer "master_lizenznummer_final"
+    t.string "master_vorname_final"
+    t.string "master_nachname_final"
+    t.date "master_geburtsdatum_final"
+    t.integer "master_club_id_final"
+    t.string "master_email_final"
+    t.string "lizenzstufe"
+    t.date "gueltigkeit"
+    t.date "kursstichtag"
+    t.jsonb "course_data", default: {}, null: false
+    t.jsonb "import_warnings", default: [], null: false
+    t.string "match_type", null: false
+    t.integer "match_field_count", default: 0, null: false
+    t.boolean "new_referee_created", default: false, null: false
+    t.string "status", default: "pending_review", null: false
+    t.bigint "reviewed_by_user_id"
+    t.datetime "reviewed_at"
+    t.datetime "applied_at"
+    t.text "rejection_reason"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["referee_course_import_id"], name: "index_referee_course_results_on_referee_course_import_id"
+    t.index ["referee_id"], name: "index_referee_course_results_on_referee_id"
+    t.index ["reviewed_by_user_id"], name: "index_referee_course_results_on_reviewed_by_user_id"
+    t.index ["state_association_id", "status"], name: "index_referee_course_results_on_state_association_id_and_status"
+    t.index ["state_association_id"], name: "index_referee_course_results_on_state_association_id"
+    t.index ["status"], name: "index_referee_course_results_on_status"
+  end
+
+  create_table "referee_license_levels", force: :cascade do |t|
+    t.string "name", null: false
+    t.boolean "active", default: true, null: false
+    t.integer "position"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["name"], name: "index_referee_license_levels_on_name", unique: true
   end
 
   create_table "referee_qualification_types", force: :cascade do |t|
@@ -512,9 +637,11 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_30_100000) do
     t.bigint "recipient_game_operation_id", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["grantor_state_association_id", "recipient_game_operation_id"], name: "index_sa_releases_on_grantor_and_recipient", unique: true
+    t.integer "season_id", null: false
+    t.index ["grantor_state_association_id", "recipient_game_operation_id", "season_id"], name: "index_sa_releases_on_grantor_recipient_season", unique: true
     t.index ["grantor_state_association_id"], name: "index_sa_releases_on_grantor_id"
     t.index ["recipient_game_operation_id"], name: "index_sa_releases_on_recipient_go_id"
+    t.index ["season_id"], name: "index_sa_releases_on_season_id"
   end
 
   create_table "state_associations", force: :cascade do |t|
@@ -529,6 +656,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_30_100000) do
     t.boolean "require_paper_game_report", default: false
     t.boolean "scan_required", default: false, null: false
     t.string "banner_link_url"
+    t.boolean "referee_license_review_enabled", default: false, null: false
     t.index ["parent_id"], name: "index_state_associations_on_parent_id"
   end
 
@@ -572,10 +700,11 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_30_100000) do
     t.string "player_confirmation_token"
     t.datetime "player_approved_at"
     t.datetime "player_rejected_at"
+    t.boolean "direct", default: false, null: false
     t.index ["former_club_id"], name: "index_transfer_requests_on_former_club_id"
     t.index ["player_confirmation_token"], name: "index_transfer_requests_on_player_confirmation_token", unique: true
     t.index ["player_id"], name: "index_transfer_requests_on_player_id"
-    t.index ["player_id"], name: "index_transfer_requests_on_player_id_active", unique: true, where: "((status)::text = ANY ((ARRAY['pending_club'::character varying, 'pending_lv'::character varying])::text[]))"
+    t.index ["player_id"], name: "index_transfer_requests_on_player_id_active", unique: true, where: "((status)::text = ANY ((ARRAY['pending_club'::character varying, 'pending_player'::character varying, 'pending_lv'::character varying, 'scheduled'::character varying])::text[]))"
     t.index ["request_type"], name: "index_transfer_requests_on_request_type"
     t.index ["requesting_club_id"], name: "index_transfer_requests_on_requesting_club_id"
     t.index ["status"], name: "index_transfer_requests_on_status"
@@ -632,6 +761,8 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_30_100000) do
   add_foreign_key "game_day_referee_confirmations", "referees"
   add_foreign_key "game_day_secretary_links", "game_days"
   add_foreign_key "game_day_secretary_links", "users", column: "created_by_id"
+  add_foreign_key "game_day_team_confirmations", "game_days"
+  add_foreign_key "game_day_team_confirmations", "teams"
   add_foreign_key "game_days", "arenas"
   add_foreign_key "game_days", "clubs"
   add_foreign_key "game_days", "leagues"
@@ -643,8 +774,8 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_30_100000) do
   add_foreign_key "league_qualifications", "leagues", column: "source_league_id"
   add_foreign_key "league_qualifications", "leagues", column: "target_league_id"
   add_foreign_key "leagues", "game_operations"
-  add_foreign_key "license_documents", "players", name: "license_documents_player_id_fkey"
-  add_foreign_key "license_documents", "users", column: "uploaded_by_id", name: "license_documents_uploaded_by_id_fkey"
+  add_foreign_key "license_documents", "players"
+  add_foreign_key "license_documents", "users", column: "uploaded_by_id"
   add_foreign_key "online_test_assignments", "online_tests"
   add_foreign_key "online_test_assignments", "referees"
   add_foreign_key "online_test_attempts", "online_tests"
@@ -656,6 +787,11 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_30_100000) do
   add_foreign_key "referee_assignments", "referees", column: "referee1_id"
   add_foreign_key "referee_assignments", "referees", column: "referee2_id"
   add_foreign_key "referee_blocked_dates", "referees"
+  add_foreign_key "referee_course_imports", "users", column: "uploaded_by_user_id"
+  add_foreign_key "referee_course_results", "referee_course_imports"
+  add_foreign_key "referee_course_results", "referees"
+  add_foreign_key "referee_course_results", "state_associations"
+  add_foreign_key "referee_course_results", "users", column: "reviewed_by_user_id"
   add_foreign_key "referee_qualifications", "referee_qualification_types"
   add_foreign_key "referee_qualifications", "referees"
   add_foreign_key "referees", "referees", column: "merged_into_id"
