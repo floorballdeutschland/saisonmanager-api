@@ -37,6 +37,20 @@ class PublicSecretaryControllerTest < ActionDispatch::IntegrationTest
     assert_kind_of Hash, body['license_lists']
   end
 
+  test 'GET /public/secretary liefert valid_until je Lizenz mit aus' do
+    player = create(:player, with_licenses: [{ team: @home, status: License::APPROVED }])
+    player.licenses.first['valid_until'] = '2026-07-31'
+    player.save!
+
+    _link, raw_token = GameDaySecretaryLink.generate!(game_day: @game_day, created_by: @user)
+
+    get '/api/v2/public/secretary', params: { token: raw_token }
+
+    assert_response :success
+    entry = JSON.parse(response.body).dig('license_lists', @home.id.to_s, 'players').first
+    assert_equal '2026-07-31', entry['valid_until']
+  end
+
   test 'GET /public/secretary ohne Token liefert 400' do
     get '/api/v2/public/secretary'
     assert_response :bad_request

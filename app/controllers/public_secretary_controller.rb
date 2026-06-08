@@ -62,7 +62,8 @@ class PublicSecretaryController < ApplicationController
           name: "#{player.first_name} #{player.last_name}",
           birthdate: player.birthdate,
           license_status: License::NAMES[last_status_id],
-          approved_at: approved_entry&.dig('created_at')
+          approved_at: approved_entry&.dig('created_at'),
+          valid_until: license['valid_until']
         }
       end.sort_by { |p| p[:name] }
 
