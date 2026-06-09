@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+- Strafcode-Verwaltung im Schiedsrichterwesen: Administratoren können Strafcodes (3-stelliger Code + Bezeichnung, z. B. „902 – Stockschlag") anlegen, bearbeiten und (de)aktivieren. Aktive Codes erscheinen im Strafcode-Dropdown der Spielbericht-Eingabe, das bislang mangels gepflegter Codes leer war. Bestehende `penalty_code_id`-Referenzen in Spiel-Ereignissen bleiben stabil (ids werden nie neu vergeben). (#605)
+
 ### Verbessert
 - Ein Spielbericht kann nicht mehr abgeschlossen oder freigegeben werden, solange nicht mindestens Schiedsrichter 1 eingetragen ist. Bislang war die Schiedsrichter-Eingabe kein Pflichtfeld. Schiedsrichter 2 bleibt optional (unterklassige Spiele haben oft nur einen Schiedsrichter). (#604)
 - Wallet-Ausweis-Erstellung meldet jetzt zurück, ob eine Benachrichtigungs-E-Mail versendet wurde. Hat der Schiedsrichter keine E-Mail-Adresse hinterlegt, wurde der Pass zwar erstellt, die Mail aber still übersprungen (kein Versand, kein Eintrag im E-Mail-Log). Die Antwort enthält nun `mail_sent`, sodass die Oberfläche „Pass erstellt, aber keine Benachrichtigung versendet (keine E-Mail hinterlegt)" anzeigen kann.

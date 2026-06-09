@@ -68,6 +68,8 @@ class User < ApplicationRecord
     result[:referee_can_delete_user] = ph[:admin].present? if result[:menu_item_referee_admin]
     result[:referee_wallet] = has_full_referee_access if result[:menu_item_referee_admin]
     result[:menu_item_referee_assignments] = ph[:admin].present? || ph[:rsk].present?
+    # Strafcode-Verwaltung („Einstellungen" im Schiedsrichterwesen) – nur Admin.
+    result[:menu_item_referee_settings] = ph[:admin].present?
     result[:menu_item_referee_course_import] = has_full_referee_access
     result[:menu_item_referee_course_review] = has_full_referee_access || lv_rsk_review_enabled?(ph)
     result[:menu_item_online_test_admin] = ph[:admin].present? || ph[:rsk].present?
