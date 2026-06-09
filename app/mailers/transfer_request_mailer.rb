@@ -85,7 +85,7 @@ class TransferRequestMailer < ApplicationMailer
     @club = club
     return unless club.contact_email.present?
 
-    mail(to: club.contact_email, subject: "Zweitlizenz/Freigabe entzogen durch Transfer: #{player_name(transfer_request)}")
+    mail(to: club.contact_email, subject: "Zusatzlizenz/Freigabe entzogen durch Transfer: #{player_name(transfer_request)}")
   end
 
   private

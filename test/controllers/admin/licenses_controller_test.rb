@@ -128,5 +128,91 @@ module Admin
       assert_equal 'primary',   row_a['license_type'], 'früher genehmigte Lizenz ist Erstlizenz'
       assert_equal 'secondary', row_b['license_type'], 'später genehmigte Lizenz ist Zweitlizenz'
     end
+
+    # -------------------------------------------------------------------------
+    # is_zweitlizenz — echte Zweitlizenz nur bei zwei Großfeld-Lizenzen (#310)
+    # -------------------------------------------------------------------------
+
+    test 'Zwei Großfeld-Lizenzen: höhere Liga = Erstlizenz, niedrigere = Zweitlizenz' do
+      gf_buli = create(:league, game_operation: @go1, season_id: '18', league_class_id: '1', field_size: 'GF')
+      buli_team = create(:team, league: gf_buli, club: @club1)
+      gf_rl = create(:league, game_operation: @go1, season_id: '18', league_class_id: 'rl', field_size: 'GF')
+      rl_team = create(:team, league: gf_rl, club: @club1)
+
+      create(:player, with_licenses: [
+        { team: buli_team, status: License::APPROVED, season_id: '18' },
+        { team: rl_team,   status: License::APPROVED, season_id: '18' }
+      ])
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses', params: { season_id: '18' }
+      assert_response :success
+      rows = JSON.parse(response.body)
+
+      buli_row = rows.find { |r| r['team_id'] == buli_team.id }
+      rl_row   = rows.find { |r| r['team_id'] == rl_team.id }
+
+      assert_equal false, buli_row['is_zweitlizenz'], 'höhere Großfeld-Liga ist Erstlizenz, keine Zweitlizenz'
+      assert_equal true,  rl_row['is_zweitlizenz'],   'niedrigere Großfeld-Liga ist Zweitlizenz'
+      # Invariante: eine Zweitlizenz ist immer auch eine Zusatzlizenz (secondary).
+      assert_equal 'secondary', rl_row['license_type']
+    end
+
+    test 'Kleinfeld-Zusatzlizenz ist keine Zweitlizenz' do
+      gf_buli = create(:league, game_operation: @go1, season_id: '18', league_class_id: '1', field_size: 'GF')
+      buli_team = create(:team, league: gf_buli, club: @club1)
+      kf_league = create(:league, game_operation: @go1, season_id: '18', league_class_id: 'rl', field_size: 'KF')
+      kf_team = create(:team, league: kf_league, club: @club1)
+
+      create(:player, with_licenses: [
+        { team: buli_team, status: License::APPROVED, season_id: '18' },
+        { team: kf_team,   status: License::APPROVED, season_id: '18' }
+      ])
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses', params: { season_id: '18' }
+      assert_response :success
+      rows = JSON.parse(response.body)
+
+      buli_row = rows.find { |r| r['team_id'] == buli_team.id }
+      kf_row   = rows.find { |r| r['team_id'] == kf_team.id }
+
+      assert_equal false, buli_row['is_zweitlizenz'], 'einzelne Großfeld-Lizenz ist keine Zweitlizenz'
+      assert_equal false, kf_row['is_zweitlizenz'],   'Kleinfeld-Lizenz ist nie eine Zweitlizenz'
+      assert_equal 'secondary', kf_row['license_type'], 'bleibt aber eine Zusatzlizenz'
+    end
+
+    test 'Zwei Großfeld-Lizenzen mit identischem Rang+Genehmigung: Invariante Zweitlizenz ⟹ secondary hält' do
+      # Gleiche Ligaklasse + identischer Genehmigungszeitpunkt = vollständiger
+      # Gleichstand. Ohne deterministischen Tiebreaker könnten license_type
+      # (sort_by, instabil) und zweitlizenz? (min_by) unterschiedliche
+      # Erstlizenzen wählen → is_zweitlizenz=true bei license_type='primary'.
+      same_time = 5.days.ago.iso8601
+      gf_a = create(:league, game_operation: @go1, season_id: '18', league_class_id: '20', field_size: 'GF')
+      team_a = create(:team, league: gf_a, club: @club1)
+      gf_b = create(:league, game_operation: @go1, season_id: '18', league_class_id: '20', field_size: 'GF')
+      team_b = create(:team, league: gf_b, club: @club1)
+
+      create(:player, with_licenses: [
+        { team: team_a, status: License::APPROVED, season_id: '18', created_at: same_time },
+        { team: team_b, status: License::APPROVED, season_id: '18', created_at: same_time }
+      ])
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses', params: { season_id: '18' }
+      assert_response :success
+      rows = JSON.parse(response.body)
+      gf_rows = rows.select { |r| [team_a.id, team_b.id].include?(r['team_id']) }
+
+      assert_equal 2, gf_rows.size
+      # Invariante: keine Zeile darf gleichzeitig Zweitlizenz und Erstlizenz sein.
+      gf_rows.each do |r|
+        refute(r['is_zweitlizenz'] && r['license_type'] == 'primary',
+               'Zweitlizenz muss immer secondary sein')
+      end
+      # Genau eine der beiden ist die Zweitlizenz.
+      zweit_count = gf_rows.count { |r| r['is_zweitlizenz'] }
+      assert_equal 1, zweit_count
+    end
   end
 end

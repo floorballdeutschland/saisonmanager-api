@@ -75,6 +75,7 @@ module Admin
               season_id:            league.season_id,
               license_id:           lic['id'],
               license_type:         license_type(player_data[:licenses], lic, all_season_leagues, team_league_id_map),
+              is_zweitlizenz:       zweitlizenz?(player_data[:licenses], lic, all_season_leagues, team_league_id_map),
               license_status_id:    last_status_id,
               license_status:       License::NAMES[last_status_id],
               express:              lic['express'] || false,
@@ -118,11 +119,43 @@ module Admin
           league_id = team_league_id_map[l['team_id'].to_i]
           lg        = all_season_leagues[league_id]
           # Höchste Liga = Erstlizenz; bei gleicher Ligastufe die früher genehmigte.
-          [League.class_rank(lg&.league_class_id), License.approval_time(l)]
+          # l['id'] als letzter Tiebreaker, damit die Auswahl bei vollständigem
+          # Gleichstand deterministisch und identisch zu zweitlizenz? ist
+          # (sort_by ist nicht stabil).
+          [League.class_rank(lg&.league_class_id), License.approval_time(l), l['id'].to_s]
         end
         .first&.fetch('id', current_lic['id'])
 
       primary_id == current_lic['id'] ? 'primary' : 'secondary'
+    end
+
+    # Eine "Zweitlizenz" (Unterart der Zusatzlizenz) liegt vor, wenn eine Person
+    # mehr als eine GROSSFELD-Lizenz hat: Die höchste Großfeld-Liga ist die
+    # Erstlizenz, jede niedrigere Großfeld-Lizenz ist eine Zweitlizenz.
+    # Der Begriff gilt ausschließlich für Großfeld (field_size == 'GF') – eine
+    # Zweitlizenz ist damit immer auch eine Zusatzlizenz (license_type 'secondary').
+    def zweitlizenz?(player_lics, current_lic, all_season_leagues, team_league_id_map)
+      gf_lics = Array(player_lics).select do |l|
+        next false unless team_league_id_map.key?(l['team_id'].to_i)
+
+        lg = all_season_leagues[team_league_id_map[l['team_id'].to_i]]
+        lg&.field_size == 'GF'
+      end
+      return false if gf_lics.size <= 1
+
+      # Aktuelle Lizenz muss selbst eine Großfeld-Lizenz sein.
+      return false unless gf_lics.any? { |l| l['id'] == current_lic['id'] }
+
+      primary_gf_id = gf_lics
+        .min_by do |l|
+          lg = all_season_leagues[team_league_id_map[l['team_id'].to_i]]
+          # Gleicher Tiebreaker wie license_type, damit die Erstlizenz-Wahl bei
+          # Gleichstand übereinstimmt (Invariante: Zweitlizenz ⟹ secondary).
+          [League.class_rank(lg&.league_class_id), License.approval_time(l), l['id'].to_s]
+        end
+        &.fetch('id', nil)
+
+      current_lic['id'] != primary_gf_id
     end
 
     def license_category_name(category_id)
