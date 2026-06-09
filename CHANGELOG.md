@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.30.0] - 2026-06-09
+
 ### Neu
 - Strafcode-Verwaltung im Schiedsrichterwesen: Administratoren können Strafcodes (3-stelliger Code + Bezeichnung, z. B. „902 – Stockschlag") anlegen, bearbeiten und (de)aktivieren. Aktive Codes erscheinen im Strafcode-Dropdown der Spielbericht-Eingabe, das bislang mangels gepflegter Codes leer war. Bestehende `penalty_code_id`-Referenzen in Spiel-Ereignissen bleiben stabil (ids werden nie neu vergeben). (#605)
 
