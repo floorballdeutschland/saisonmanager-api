@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+- Wallet-Ausweis-Erstellung meldet jetzt zurück, ob eine Benachrichtigungs-E-Mail versendet wurde. Hat der Schiedsrichter keine E-Mail-Adresse hinterlegt, wurde der Pass zwar erstellt, die Mail aber still übersprungen (kein Versand, kein Eintrag im E-Mail-Log). Die Antwort enthält nun `mail_sent`, sodass die Oberfläche „Pass erstellt, aber keine Benachrichtigung versendet (keine E-Mail hinterlegt)" anzeigen kann.
+
 ---
 
 ## [1.29.7] - 2026-06-08

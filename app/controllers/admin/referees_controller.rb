@@ -107,9 +107,13 @@ module Admin
         return
       end
 
-      RefereeMailer.wallet_pass_issued(@referee, pass_url).deliver_later if @referee.email.present?
+      mail_sent = @referee.email.present?
+      RefereeMailer.wallet_pass_issued(@referee, pass_url).deliver_later if mail_sent
 
-      render json: { url: pass_url }
+      # mail_sent meldet dem Frontend, ob eine Benachrichtigung rausging. Ohne
+      # hinterlegte E-Mail wird der Pass erstellt, aber keine Mail versendet –
+      # das soll sichtbar zurückgemeldet und nicht still übersprungen werden.
+      render json: { url: pass_url, mail_sent: mail_sent }
     rescue PassmeisterService::Error => e
       Rails.logger.warn("Admin::RefereesController#wallet_pass passmeister error for referee #{@referee&.id}: #{e.message}")
       render json: { error: e.message }, status: :unprocessable_entity
