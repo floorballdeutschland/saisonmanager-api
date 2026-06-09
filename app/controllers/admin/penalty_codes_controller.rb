@@ -96,14 +96,19 @@ module Admin
     end
 
     def serialize(codes)
-      codes.map { |id, v| entry_json(id, v) }.sort_by { |e| e[:code] }
+      codes.map { |id, v| entry_json(id, v) }.sort_by { |e| e[:code].to_s }
     end
 
+    # Robust gegen Legacy-/Fremdformate: ältere penalty_codes-Einträge tragen
+    # teils nur {"name"=>...} ohne code/description/active. Solche Einträge dürfen
+    # nicht gelöscht werden (historische penalty_code_id-Referenzen), die Liste
+    # darf an ihnen aber auch nicht scheitern (sonst 500 + nil-Sortierfehler).
     def entry_json(id, entry)
+      entry = {} unless entry.is_a?(Hash)
       {
         id: id,
-        code: entry['code'],
-        description: entry['description'],
+        code: entry['code'].to_s,
+        description: (entry['description'] || entry['name']).to_s,
         active: [true, 'true'].include?(entry['active'])
       }
     end

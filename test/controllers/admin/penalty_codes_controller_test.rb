@@ -19,6 +19,21 @@ module Admin
       assert_equal %w[201 902], body.map { |e| e['code'] }.sort
     end
 
+    test 'index toleriert Legacy-Einträge ohne code/description (kein 500)' do
+      # Alt-Bestand: ältere Einträge tragen nur {"name"=>...} ohne code/active.
+      @setting.update!(penalty_codes: @setting.penalty_codes.merge(
+        '1' => { 'name' => 'Behinderung' }
+      ))
+      login(@admin)
+      get '/api/v2/admin/penalty_codes'
+      assert_response :success
+      body = JSON.parse(response.body)
+      legacy = body.find { |e| e['id'] == '1' }
+      assert_equal '', legacy['code']
+      assert_equal 'Behinderung', legacy['description']
+      assert_equal false, legacy['active']
+    end
+
     test 'create vergibt id = max+1 und reindiziert nicht' do
       login(@admin)
       post '/api/v2/admin/penalty_codes', params: { penalty_code: { code: '533', description: 'Halten' } }
