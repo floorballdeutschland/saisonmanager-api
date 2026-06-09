@@ -220,4 +220,26 @@ class GameTest < ActiveSupport::TestCase
       assert errors.any? { |e| e[:key] == 'result_zero_after_goals' }
     end
   end
+
+  # ---------------------------------------------------------------------------
+  # referee1_present?
+  # ---------------------------------------------------------------------------
+
+  test 'referee1_present?: false ohne referee1_string' do
+    assert_not build_game(referee1_string: nil).referee1_present?
+    assert_not build_game(referee1_string: '').referee1_present?
+  end
+
+  test 'referee1_present?: false bei leerem Platzhalter "0 , "' do
+    assert_not build_game(referee1_string: '0 , ').referee1_present?
+    assert_not build_game(referee1_string: '0 ,').referee1_present?
+  end
+
+  test 'referee1_present?: true bei echter Lizenz' do
+    assert build_game(referee1_string: '12345 Mustermann, Max').referee1_present?
+  end
+
+  test 'referee1_present?: true bei Namenseintrag ohne Lizenz' do
+    assert build_game(referee1_string: '0 Mustermann, Max').referee1_present?
+  end
 end

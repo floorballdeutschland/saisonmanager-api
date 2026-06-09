@@ -785,6 +785,11 @@ class GamesController < ApplicationController
           return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
         end
 
+        if %w[match_record_closed finalized].include?(params[:game_status])
+          referee_error = _missing_referee_error(game)
+          return render json: { message: referee_error }, status: :unprocessable_entity if referee_error
+        end
+
         if params[:game_status] == 'match_record_closed'
           checklist_error = _checklist_incomplete_error(game)
           return render json: { message: checklist_error }, status: :unprocessable_entity if checklist_error
@@ -854,6 +859,12 @@ class GamesController < ApplicationController
 
     game.update!(checklist_answers: answers)
     render json: { success: true }
+  end
+
+  def _missing_referee_error(game)
+    return nil if game.referee1_present?
+
+    'Es muss mindestens Schiedsrichter 1 eingetragen sein, bevor der Spielbericht abgeschlossen werden kann.'
   end
 
   def _checklist_incomplete_error(game)

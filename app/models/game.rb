@@ -94,6 +94,16 @@ class Game < ApplicationRecord
     referees
   end
 
+  # Schiedsrichter 1 gilt als eingetragen, sobald referee1_string einen Inhalt
+  # hat, der über einen leeren Platzhalter hinausgeht. set_referee speichert das
+  # Format "<license_id> <lastname>, <firstname>"; ein leerer Eintrag ist "0 , ".
+  # Eine echte Lizenz (>0) oder ein eingetragener Name zählt als gesetzt.
+  def referee1_present?
+    return false if referee1_string.blank?
+
+    referee1_string.sub(/\A0\s/, '').gsub(/[\s,]/, '').present?
+  end
+
   def players_with_position
     result = {}
 

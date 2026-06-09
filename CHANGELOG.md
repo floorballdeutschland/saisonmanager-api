@@ -10,6 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ## [Unreleased]
 
 ### Verbessert
+- Ein Spielbericht kann nicht mehr abgeschlossen oder freigegeben werden, solange nicht mindestens Schiedsrichter 1 eingetragen ist. Bislang war die Schiedsrichter-Eingabe kein Pflichtfeld. Schiedsrichter 2 bleibt optional (unterklassige Spiele haben oft nur einen Schiedsrichter). (#604)
 - Wallet-Ausweis-Erstellung meldet jetzt zurück, ob eine Benachrichtigungs-E-Mail versendet wurde. Hat der Schiedsrichter keine E-Mail-Adresse hinterlegt, wurde der Pass zwar erstellt, die Mail aber still übersprungen (kein Versand, kein Eintrag im E-Mail-Log). Die Antwort enthält nun `mail_sent`, sodass die Oberfläche „Pass erstellt, aber keine Benachrichtigung versendet (keine E-Mail hinterlegt)" anzeigen kann.
 
 ---
