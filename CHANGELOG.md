@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.30.1] - 2026-06-09
+
 ### Behoben
 - Strafcode-Verwaltung (Schiedsrichterwesen → Einstellungen) warf einen Server-Fehler (500), wenn im Bestand noch alte Strafcode-Einträge im Legacy-Format `{"name"=>…}` ohne `code` lagen: Die Sortierung verglich `nil` mit String. Der Admin-Endpoint ist nun robust gegen solche Alt-Einträge (leerer Code, `name` als Bezeichnung) und stürzt nicht mehr ab. Legacy-Einträge bleiben erhalten (mögliche historische `penalty_code_id`-Referenzen). (#605)
 
