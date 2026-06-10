@@ -368,12 +368,15 @@ class GamesController < ApplicationController
     if allowed
       side = params[:side]
 
-      # ensure we have the hash set
-      game.home_team_coaches ||= {}
-      game.guest_team_coaches ||= {}
+      # Die JSONB-Spalten haben historisch den Default [] (Array). `||= {}`
+      # greift dann nicht, weil [] truthy ist – ein anschließender
+      # String-Key-Zugriff (coaches["coach1_string"] = …) würde auf einem Array
+      # einen TypeError (500) werfen. Daher hart auf Hash normalisieren.
+      game.home_team_coaches = {} unless game.home_team_coaches.is_a?(Hash)
+      game.guest_team_coaches = {} unless game.guest_team_coaches.is_a?(Hash)
 
-      last_name = params[:last_name].strip
-      first_name = params[:first_name].strip
+      last_name = params[:last_name].to_s.strip
+      first_name = params[:first_name].to_s.strip
 
       full_name = [last_name, first_name].join ', '
 
@@ -493,9 +496,10 @@ class GamesController < ApplicationController
     if allowed
       side = params[:side]
 
-      # ensure we have the hash set
-      game.home_team_coaches ||= {}
-      game.guest_team_coaches ||= {}
+      # Siehe add_coach: [] (Array-Default) ist truthy, daher hart auf Hash
+      # normalisieren, bevor wir per String-Key zugreifen.
+      game.home_team_coaches = {} unless game.home_team_coaches.is_a?(Hash)
+      game.guest_team_coaches = {} unless game.guest_team_coaches.is_a?(Hash)
 
       prefix = "coach#{params[:number]}"
       if side == 'home'
