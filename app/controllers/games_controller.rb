@@ -688,6 +688,12 @@ class GamesController < ApplicationController
         unless home_present && guest_present
           return render json: { message: 'Aufstellung muss für beide Teams vorhanden sein.' }, status: :unprocessable_entity
         end
+
+        unless game.referee1_present?
+          return render json: {
+            message: 'Es muss mindestens Schiedsrichter 1 eingetragen sein, bevor das Spiel gestartet werden kann.'
+          }, status: :unprocessable_entity
+        end
       end
 
       game.record_created_at ||= Time.now

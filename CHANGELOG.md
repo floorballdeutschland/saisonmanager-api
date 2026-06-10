@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+- Spielbericht: Der fehlende Schiedsrichter (Schiri-Pflicht) wird jetzt bereits beim **Spielstart** geprüft und als Fehler angezeigt – nicht erst beim Abschluss des Spielberichts. (#318)
+
 ---
 
 ## [1.30.1] - 2026-06-09
