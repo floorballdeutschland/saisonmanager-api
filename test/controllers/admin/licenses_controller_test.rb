@@ -84,7 +84,7 @@ module Admin
     # -------------------------------------------------------------------------
 
     test 'Erstlizenz ist die höhere Liga – Bundesliga ("1") vor Regionalliga ("rl")' do
-      buli_league = create(:league, game_operation: @go1, season_id: '18', league_class_id: '1')
+      buli_league = create(:league, game_operation: @go1, season_id: '18', league_class_id: '1fbl')
       buli_team   = create(:team, league: buli_league, club: @club1)
       rl_league   = create(:league, game_operation: @go1, season_id: '18', league_class_id: 'rl')
       rl_team     = create(:team, league: rl_league, club: @club1)
@@ -108,9 +108,9 @@ module Admin
     end
 
     test 'Bei gleicher Ligastufe ist die früher genehmigte Lizenz die Erstlizenz' do
-      league_a = create(:league, game_operation: @go1, season_id: '18', league_class_id: '20')
+      league_a = create(:league, game_operation: @go1, season_id: '18', league_class_id: '2fbl')
       team_a   = create(:team, league: league_a, club: @club1)
-      league_b = create(:league, game_operation: @go1, season_id: '18', league_class_id: '20')
+      league_b = create(:league, game_operation: @go1, season_id: '18', league_class_id: '2fbl')
       team_b   = create(:team, league: league_b, club: @club1)
 
       create(:player, with_licenses: [
@@ -134,7 +134,7 @@ module Admin
     # -------------------------------------------------------------------------
 
     test 'Zwei Großfeld-Lizenzen: höhere Liga = Erstlizenz, niedrigere = Zweitlizenz' do
-      gf_buli = create(:league, game_operation: @go1, season_id: '18', league_class_id: '1', field_size: 'GF')
+      gf_buli = create(:league, game_operation: @go1, season_id: '18', league_class_id: '1fbl', field_size: 'GF')
       buli_team = create(:team, league: gf_buli, club: @club1)
       gf_rl = create(:league, game_operation: @go1, season_id: '18', league_class_id: 'rl', field_size: 'GF')
       rl_team = create(:team, league: gf_rl, club: @club1)
@@ -159,7 +159,7 @@ module Admin
     end
 
     test 'Kleinfeld-Zusatzlizenz ist keine Zweitlizenz' do
-      gf_buli = create(:league, game_operation: @go1, season_id: '18', league_class_id: '1', field_size: 'GF')
+      gf_buli = create(:league, game_operation: @go1, season_id: '18', league_class_id: '1fbl', field_size: 'GF')
       buli_team = create(:team, league: gf_buli, club: @club1)
       kf_league = create(:league, game_operation: @go1, season_id: '18', league_class_id: 'rl', field_size: 'KF')
       kf_team = create(:team, league: kf_league, club: @club1)
@@ -188,9 +188,9 @@ module Admin
       # (sort_by, instabil) und zweitlizenz? (min_by) unterschiedliche
       # Erstlizenzen wählen → is_zweitlizenz=true bei license_type='primary'.
       same_time = 5.days.ago.iso8601
-      gf_a = create(:league, game_operation: @go1, season_id: '18', league_class_id: '20', field_size: 'GF')
+      gf_a = create(:league, game_operation: @go1, season_id: '18', league_class_id: '2fbl', field_size: 'GF')
       team_a = create(:team, league: gf_a, club: @club1)
-      gf_b = create(:league, game_operation: @go1, season_id: '18', league_class_id: '20', field_size: 'GF')
+      gf_b = create(:league, game_operation: @go1, season_id: '18', league_class_id: '2fbl', field_size: 'GF')
       team_b = create(:team, league: gf_b, club: @club1)
 
       create(:player, with_licenses: [

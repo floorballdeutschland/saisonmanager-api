@@ -69,7 +69,6 @@ Rails.application.routes.draw do
       end
 
       get 'admin/leagues', to: 'leagues#admin_league_index'
-      get 'admin/league_classes', to: 'leagues#admin_league_classes'
 
       post 'admin/leagues', to: 'leagues#admin_league_update'
 

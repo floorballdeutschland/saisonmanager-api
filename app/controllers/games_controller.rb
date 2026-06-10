@@ -1047,9 +1047,12 @@ class GamesController < ApplicationController
       return "Lizenz von #{player.first_name} #{player.last_name} ist nicht erteilt (Status: #{status_name})"
     end
 
+    # String-Vergleich der Ligaklassen-Codes (1fbl/2fbl/rl/vl/ll). Wettbewerbe
+    # ohne Ligaklasse (DM, Pokal, Trophy: league_class_id leer) werden nicht
+    # geprüft — dort treten Teams mit Lizenzen ihrer Stammliga an.
     game_league = game.league
-    if game_league && license['league_class_id'].present? &&
-       license['league_class_id'].to_i != game_league.league_class_id.to_i
+    if game_league&.league_class_id.present? && license['league_class_id'].present? &&
+       license['league_class_id'].to_s != game_league.league_class_id.to_s
       return "Lizenzklasse von #{player.first_name} #{player.last_name} passt nicht zur Spielklasse"
     end
 

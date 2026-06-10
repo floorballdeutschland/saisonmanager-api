@@ -24,12 +24,11 @@ Setting.create!(
     '1002' => { 'name' => 'Freundschaftsspiel' }
   },
   league_classes: {
-    '1' => { 'name' => '1. Bundesliga' },
-    '2' => { 'name' => '2. Bundesliga' },
-    '3' => { 'name' => 'Regionalliga' },
-    '4' => { 'name' => 'Oberliga' },
-    '5' => { 'name' => 'Verbandsliga' },
-    '6' => { 'name' => 'Landesliga' }
+    '1fbl' => { 'name' => '1. Floorball Bundesliga' },
+    '2fbl' => { 'name' => '2. Floorball Bundesliga' },
+    'rl' => { 'name' => 'Regionalliga' },
+    'vl' => { 'name' => 'Verbandsliga' },
+    'll' => { 'name' => 'Landesliga' }
   },
   league_systems: {
     '1' => { 'name' => 'Einfachrunde' },
@@ -136,7 +135,7 @@ buli = League.create!(
   short_name: 'BuLi H 24/25',
   game_operation_id: fd.id,
   season_id: '2',
-  league_class_id: '1',
+  league_class_id: '1fbl',
   league_category_id: '1000',
   league_system_id: '2',
   female: false,
@@ -149,7 +148,7 @@ buli_f = League.create!(
   short_name: 'BuLi D 24/25',
   game_operation_id: fd.id,
   season_id: '2',
-  league_class_id: '1',
+  league_class_id: '1fbl',
   league_category_id: '1000',
   league_system_id: '2',
   female: true,
@@ -162,7 +161,7 @@ rliga_ost = League.create!(
   short_name: 'RL Ost 24/25',
   game_operation_id: ost.id,
   season_id: '2',
-  league_class_id: '3',
+  league_class_id: 'rl',
   league_category_id: '1000',
   league_system_id: '2',
   female: false,
@@ -303,7 +302,7 @@ players = players_data.map.with_index(1) do |pd, i|
         'id'                => i,
         'team_id'           => pd[:team].id,
         'league_id'         => pd[:team].league_id,
-        'league_class_id'   => '1',
+        'league_class_id'   => '1fbl',
         'league_category_id'=> '1000',
         'requested_at'      => '2024-09-01',
         'set_transfer_allowed' => true,

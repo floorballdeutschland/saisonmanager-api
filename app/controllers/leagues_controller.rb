@@ -66,7 +66,11 @@ class LeaguesController < ApplicationController
         lp[:legacy_league] = false
         league = League.create(lp)
 
-        render json: league, status: :created
+        if league.persisted?
+          render json: league, status: :created
+        else
+          render json: { message: league.errors.full_messages.join(', ') }, status: :unprocessable_entity
+        end
       elsif !create_modus && League.find(params[:id])&.user_permissions(current_user)&.include?(:update_league) # update
         league = League.find(params[:id])
         lp = league_params
@@ -78,23 +82,13 @@ class LeaguesController < ApplicationController
         if league.update(lp)
           render json: league
         else
-          render json: league.errors, status: :unprocessable_entity
+          # message-Key, damit der Frontend-ErrorInterceptor den Text durchreicht
+          render json: { message: league.errors.full_messages.join(', ') }, status: :unprocessable_entity
         end
       else
         render json: { message: 'Keine Berechtigung' }, status: :forbidden
       end
 
-    else
-      render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
-    end
-  end
-
-  def admin_league_classes
-    if current_user
-      render json: Setting.current.league_classes.map { |k, v|
-                     v['id'] = k
-                     v
-                   }
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
     end

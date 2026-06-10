@@ -1,6 +1,6 @@
 class Setting < ApplicationRecord
   def self.league_class(league_class_id)
-    current['league_classes'][league_class_id.to_s]['name'].to_s
+    current['league_classes']&.dig(league_class_id.to_s, 'name').to_s
   end
 
   def self.league_category(league_category_id)

@@ -43,6 +43,21 @@ class SettingTest < ActiveSupport::TestCase
     assert_equal 4200, Setting.current_min_league
   end
 
+  test 'league_class liefert den Namen zum Code' do
+    create(:setting, league_classes: { 'rl' => { 'name' => 'Regionalliga' } })
+
+    assert_equal 'Regionalliga', Setting.league_class('rl')
+  end
+
+  test 'league_class liefert für unbekannte Keys und fehlende Map leeren String (kein Crash, #297)' do
+    create(:setting, league_classes: { 'rl' => { 'name' => 'Regionalliga' } })
+    assert_equal '', Setting.league_class('30')
+    assert_equal '', Setting.league_class(nil)
+
+    Setting.first.update_columns(league_classes: nil)
+    assert_equal '', Setting.league_class('rl')
+  end
+
   test 'seasons liefert sortierte Liste mit current-Markierung' do
     create(:setting, current_season_id: '18')
 

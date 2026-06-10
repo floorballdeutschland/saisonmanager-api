@@ -67,31 +67,50 @@ class LeagueTest < ActiveSupport::TestCase
   end
 
   # ---------------------------------------------------------------------------
-  # class_rank — Ligastufen-Rang für Erst-/Zweitlizenz-Bestimmung (#291)
+  # class_rank — Ligastufen-Rang für Erst-/Zweitlizenz-Bestimmung (#291, #297)
   # ---------------------------------------------------------------------------
 
-  test 'class_rank: numerische Klassen sortieren nach Zahlenwert (kleiner = höher)' do
-    assert League.class_rank('1') < League.class_rank('2')
-    assert League.class_rank('2') < League.class_rank('10')
-    assert League.class_rank('10') < League.class_rank('30')
+  test 'class_rank: Codes sortieren nach Ligastufe (kleiner = höher)' do
+    assert League.class_rank('1fbl') < League.class_rank('2fbl')
+    assert League.class_rank('2fbl') < League.class_rank('rl')
+    assert League.class_rank('rl') < League.class_rank('vl')
+    assert League.class_rank('vl') < League.class_rank('ll')
   end
 
-  test 'class_rank: Regionalliga ("rl") liegt unter 1./2. Bundesliga, aber über Sentinel' do
-    assert League.class_rank('1') < League.class_rank('rl'), '1. Bundesliga höher als Regionalliga'
-    assert League.class_rank('2') < League.class_rank('rl'), '2. Bundesliga höher als Regionalliga'
-    assert League.class_rank('rl') < League.class_rank('unbekannt'), 'Regionalliga über unbekannt'
-  end
-
-  test 'class_rank: unbekannte nicht-numerische Klasse landet am Ende' do
+  test 'class_rank: unbekannte oder leere Klasse landet am Ende' do
     assert_equal League::UNKNOWN_CLASS_RANK, League.class_rank('foo')
     assert_equal League::UNKNOWN_CLASS_RANK, League.class_rank(nil)
     assert_equal League::UNKNOWN_CLASS_RANK, League.class_rank('')
+    assert League.class_rank('ll') < League.class_rank('foo'), 'Landesliga über unbekannt'
   end
 
   test 'class_rank: liefert JSON-sicheren Integer (kein Float::INFINITY)' do
-    assert_kind_of Integer, League.class_rank('1')
+    assert_kind_of Integer, League.class_rank('1fbl')
     assert_kind_of Integer, League.class_rank('rl')
     assert_kind_of Integer, League.class_rank('foo')
+  end
+
+  # ---------------------------------------------------------------------------
+  # league_class_id-Validierung (#297)
+  # ---------------------------------------------------------------------------
+
+  test 'league_class_id: Codes und leer sind gültig, Legacy-Werte nicht mehr' do
+    league = build(:league)
+
+    %w[1fbl 2fbl rl vl ll].each do |code|
+      league.league_class_id = code
+      assert league.valid?, "#{code} sollte gültig sein"
+    end
+
+    [nil, ''].each do |blank|
+      league.league_class_id = blank
+      assert league.valid?, 'leer sollte gültig sein'
+    end
+
+    %w[1 30 520 xx].each do |legacy|
+      league.league_class_id = legacy
+      assert_not league.valid?, "#{legacy} sollte ungültig sein"
+    end
   end
 
   # ---------------------------------------------------------------------------

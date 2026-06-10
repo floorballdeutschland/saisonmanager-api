@@ -5,7 +5,7 @@ FactoryBot.define do
     season_id { '18' }                  # aktuelle Saison; per Trait änderbar
     table_modus { 'classic' }
     league_category_id { '1' }
-    league_class_id { '1' }
+    league_class_id { '1fbl' }
 
     # Mit Trait klare Saison-Semantik im Test ablesbar:
     trait :current_season do

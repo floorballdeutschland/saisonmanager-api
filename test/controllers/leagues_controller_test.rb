@@ -153,4 +153,54 @@ class LeaguesControllerTest < ActionDispatch::IntegrationTest
     post "/api/v2/admin/leagues/#{league_with_pre.id}/copy_preround_licenses"
     assert_response :forbidden
   end
+
+  # --- admin_league_update: Ligaklassen-Validierung (#297) ---
+
+  test 'admin_league_update: unbekannte Ligaklasse beim Anlegen ergibt 422 mit message statt stillem 201' do
+    # Settings-Fixture liefert kein brauchbares current_season_id — Factory ersetzt sie.
+    create(:setting)
+    go = GameOperation.create!(name: 'GO KlasseTest', short_name: 'GKT')
+    admin = User.create!(
+      user_name: "admin_lcl_#{SecureRandom.hex(4)}",
+      password: 'password123',
+      password_confirmation: 'password123',
+      permissions: [{ 'user_group_id' => 1, 'game_operation_id' => 0 }],
+      teams: []
+    )
+
+    post '/api/v2/login', params: { username: admin.user_name, password: 'password123' }
+    assert_response :success
+
+    post '/api/v2/admin/leagues',
+         params: { id: 0, game_operation_id: go.id,
+                   league: { game_operation_id: go.id, name: 'Oberliga Nord',
+                             league_class_id: 'oberliga', table_modus: 'classic' } },
+         as: :json
+    assert_response :unprocessable_entity
+    assert JSON.parse(response.body)['message'].present?, '422-Body braucht message-Key (ErrorInterceptor)'
+    assert_equal 0, League.where(name: 'Oberliga Nord').count
+  end
+
+  test 'admin_league_update: gültiger Ligaklassen-Code wird angelegt (201)' do
+    create(:setting)
+    go = GameOperation.create!(name: 'GO KlasseOk', short_name: 'GKO')
+    admin = User.create!(
+      user_name: "admin_lcl_#{SecureRandom.hex(4)}",
+      password: 'password123',
+      password_confirmation: 'password123',
+      permissions: [{ 'user_group_id' => 1, 'game_operation_id' => 0 }],
+      teams: []
+    )
+
+    post '/api/v2/login', params: { username: admin.user_name, password: 'password123' }
+    assert_response :success
+
+    post '/api/v2/admin/leagues',
+         params: { id: 0, game_operation_id: go.id,
+                   league: { game_operation_id: go.id, name: 'Verbandsliga Test',
+                             league_class_id: 'vl', table_modus: 'classic' } },
+         as: :json
+    assert_response :created
+    assert_equal 'vl', League.find_by(name: 'Verbandsliga Test').league_class_id
+  end
 end

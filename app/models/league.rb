@@ -10,29 +10,26 @@ class League < ApplicationRecord
 
   validates :name, presence: true
   validates :season_id, presence: true
+  validates :league_class_id, inclusion: { in: %w[1fbl 2fbl rl vl ll] }, allow_blank: true
 
   default_scope { order(:season_id, :game_operation_id).order('order_key::int') }
   scope :current_season, -> { where(season_id: Setting.current_season_id) }
 
-  # Definierte Ränge für nicht-numerische league_class_id-Werte. Aktuell ist "rl"
-  # (Regionalliga) der einzige nicht-numerische Wert im Datenbestand; er liegt
-  # unter der 1./2. Bundesliga ("1"/"2"), aber über tieferen Klassen.
-  NON_NUMERIC_CLASS_RANKS = { 'rl' => 3 }.freeze
-  # Sentinel-Rang für unbekannte nicht-numerische Klassen: sortiert ans Ende
+  # Kanonische Ligaklassen-Codes mit Rang für die Erst-/Zweitlizenz-Bestimmung
+  # (kleinerer Rang = höhere Liga). Seit der Normalisierungs-Migration (#297)
+  # enthält der Datenbestand (leagues.league_class_id und die Kopien in
+  # players.licenses) nur noch diese Codes bzw. leer (''/NULL) für Wettbewerbe
+  # ohne Ligaklasse (DM, Pokal, Trophy). Vorwärts sichern das die Inclusion-
+  # Validierung unten (Ligen) und das Kopieren von league_class_id bei der
+  # Lizenzanlage (players_controller).
+  CLASS_RANKS = { '1fbl' => 1, '2fbl' => 2, 'rl' => 3, 'vl' => 4, 'll' => 5 }.freeze
+  # Sentinel-Rang für unbekannte/leere Klassen: sortiert ans Ende
   # (= niedrigste Liga). Bewusst ein großer Integer statt Float::INFINITY, damit
   # der Wert JSON-serialisierbar bleibt (er landet via 'sorting' im Response).
   UNKNOWN_CLASS_RANK = 999_999
 
-  # Rang einer Ligaklasse für die Erst-/Zweitlizenz-Bestimmung.
-  # Kleinerer Rang = höhere Liga. Numerische league_class_id werden nach ihrem
-  # Zahlenwert sortiert (kleiner = höher), bekannte nicht-numerische Codes über
-  # NON_NUMERIC_CLASS_RANKS, unbekannte landen am Ende.
   def self.class_rank(league_class_id)
-    id = league_class_id.to_s.strip
-    return NON_NUMERIC_CLASS_RANKS[id] if NON_NUMERIC_CLASS_RANKS.key?(id)
-    return id.to_i if id.match?(/\A\d+\z/)
-
-    UNKNOWN_CLASS_RANK
+    CLASS_RANKS.fetch(league_class_id.to_s.strip, UNKNOWN_CLASS_RANK)
   end
 
   def games(game_day_number = nil)
