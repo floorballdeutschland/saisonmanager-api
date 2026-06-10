@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_06_11_100000) do
+ActiveRecord::Schema[7.1].define(version: 2026_06_12_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -313,6 +313,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_11_100000) do
     t.string "age_group"
     t.bigint "league_id_direct_encounters"
     t.string "banner_link_url"
+    t.boolean "parental_consent_required", default: false, null: false
     t.index ["game_operation_id"], name: "index_leagues_on_game_operation_id"
   end
 

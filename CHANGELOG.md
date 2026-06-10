@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+- Elternzustimmung ist jetzt **pro Liga** über eine Checkbox in der Ligaverwaltung aktivierbar (`parental_consent_required`). Ist sie aktiv, müssen minderjährige Spieler*innen bei der Lizenzbeantragung für diese Liga eine Elternzustimmung hochladen. Die bisherige automatische Ableitung über die Bundesliga-Klassen (`is_buli`) entfällt. (#317)
+
 ### Behoben
 - Spielbericht: Das Eintragen eines Betreuers (und damit dessen Auswahl bei einer Betreuer-Strafe) schlug mit einem Server-Fehler (500) fehl. Die JSONB-Spalten `home_team_coaches`/`guest_team_coaches` haben den Alt-Default `[]` (Array); der String-Key-Zugriff beim Speichern warf darauf einen `TypeError`. Die Spalten werden nun vor dem Schreiben auf einen Hash normalisiert. Behebt zugleich eine häufige Quelle des generischen „Server-Fehler" bei der Spielberichtseingabe. (#614, #319)
 

@@ -645,7 +645,7 @@ class LeaguesController < ApplicationController
                                    :league_id_preround, :has_preround, :preround_point_modus, :preround_scorer_modus,
                                    :league_id_direct_encounters,
                                    :table_modus, :direct_comparison, :periods, :period_length, :overtime_length,
-                                   :banner_link_url,
+                                   :banner_link_url, :parental_consent_required,
                                    required_documents: [])
   end
 

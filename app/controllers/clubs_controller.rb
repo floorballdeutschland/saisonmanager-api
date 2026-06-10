@@ -74,9 +74,10 @@ class ClubsController < ApplicationController
       lv_allows_express = sa ? sa.effective_express_license_enabled : false
       within_window = leagues.any?(&:express_license_window_open?)
       result[:express_license_enabled] = lv_allows_express && within_window
-      result[:is_buli] = leagues.any? { |l|
-        Setting.current['league_classes']&.dig(l.league_class_id.to_s, 'isBuli') == true
-      }
+      # Elternzustimmung: wird pro Liga über das Flag parental_consent_required
+      # gesteuert (löst nur noch zusammen mit Minderjährigkeit im Frontend die
+      # Pflicht aus). Ersetzt die frühere is_buli-Ableitung über league_classes.
+      result[:parental_consent_required] = leagues.any?(&:parental_consent_required)
       result[:required_documents] = leagues.flat_map { |l| l.required_documents || [] }.uniq
 
       clubs = Club.find(team.all_club_ids)

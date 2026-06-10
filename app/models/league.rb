@@ -178,6 +178,7 @@ class League < ApplicationRecord
 
       deadline:,
       before_deadline:,
+      parental_consent_required:,
 
       legacy_league:,
       field_size:,
