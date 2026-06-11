@@ -45,7 +45,10 @@ class RefereeProfileController < ApplicationController
       ort: @referee.ort,
       partner_lizenznummer: @referee.partner_lizenznummer,
       lizenzstufe: @referee.lizenzstufe,
-      gueltigkeit: @referee.gueltigkeit&.strftime('%d.%m.%Y')
+      gueltigkeit: @referee.gueltigkeit&.strftime('%d.%m.%Y'),
+      geburtsdatum: @referee.geburtsdatum&.strftime('%d.%m.%Y'),
+      verein: @referee.club&.name,
+      landesverband: @referee.landesverband
     }
   end
 end

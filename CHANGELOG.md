@@ -10,6 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ## [Unreleased]
 
 ### Neu
+- Digitaler Schiedsrichterausweis „Mein Ausweis": Schiedsrichter*innen rufen ihren Ausweis direkt im Saisonmanager als mobil optimierte Karte ab – mit Name, Verein, Geburtsdatum, Lizenznummer, Lizenzstufe, Gültigkeit und QR-Code (verweist auf den öffentlichen Lizenzcheck). Ersetzt die bisherige Wallet-Datei-Ausstellung über die Passmeister-API als primären Weg. Der Self-Service-Endpoint `referee/profile` liefert dafür zusätzlich `geburtsdatum`, `verein` und `landesverband`. Der bisherige automatische Versand der Passmeister-Wallet-Datei per E-Mail beim Anlegen eines Schiedsrichters entfällt (der Wallet-Endpoint und die Daten bleiben bestehen).
 - Elternzustimmung ist jetzt **pro Liga** über eine Checkbox in der Ligaverwaltung aktivierbar (`parental_consent_required`). Ist sie aktiv, müssen minderjährige Spieler*innen bei der Lizenzbeantragung für diese Liga eine Elternzustimmung hochladen. Die bisherige automatische Ableitung über die Bundesliga-Klassen (`is_buli`) entfällt. (#317)
 
 ### Behoben

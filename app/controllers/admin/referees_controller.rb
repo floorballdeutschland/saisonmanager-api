@@ -43,7 +43,6 @@ module Admin
 
       if referee.save
         sync_qualifications(referee) if can_edit_full?
-        deliver_wallet_pass_on_create(referee)
         render json: referee_json(referee.reload, full: true), status: :created
       else
         render json: { errors: referee.errors.full_messages }, status: :unprocessable_entity
@@ -278,17 +277,6 @@ module Admin
         wallet_pass_url: pass_url
       )
       pass_url
-    end
-
-    # Bei Neuanlage: Wallet-Pass erzeugen und Wallet-Mail verschicken (kein Gast).
-    # Ein Passmeister-Fehler wird geloggt, blockiert die Anlage aber nicht.
-    def deliver_wallet_pass_on_create(referee)
-      return if referee.guest? || referee.lizenznummer.blank?
-
-      pass_url = issue_wallet_pass(referee)
-      RefereeMailer.wallet_pass_issued(referee, pass_url).deliver_later if pass_url.present? && referee.email.present?
-    rescue PassmeisterService::Error => e
-      Rails.logger.warn("Wallet-Pass bei Anlage von Referee #{referee.id} (Lizenz #{referee.lizenznummer}) fehlgeschlagen: #{e.message}")
     end
 
     def set_referee
