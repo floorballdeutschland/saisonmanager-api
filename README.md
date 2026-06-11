@@ -6,7 +6,7 @@ Rails 7 API backend for the Floorball Saisonmanager — a league management syst
 
 | Repo | Description |
 |---|---|
-| [saisonmanager](https://github.com/floorballverband-deutschland/saisonmanager) | Angular 18 frontend |
+| [saisonmanager](https://github.com/floorballverband-deutschland/saisonmanager) | Angular 22 frontend |
 | [saisonmanager-api](https://github.com/floorballverband-deutschland/saisonmanager-api) | This repo – Rails 7 API |
 | [saisonmanager-docker](https://github.com/floorballverband-deutschland/saisonmanager-docker) | Docker Compose setup for local development |
 
@@ -15,6 +15,7 @@ Rails 7 API backend for the Floorball Saisonmanager — a league management syst
 - **Ruby on Rails 7** (API mode)
 - **PostgreSQL** with JSONB columns for flexible data (settings, player licenses, game events)
 - **Docker** for local development (see saisonmanager-docker)
+- **Minitest + FactoryBot** for tests
 - **RuboCop** for linting
 
 ## Quick Start
@@ -56,9 +57,15 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm rails-ap
 docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm rails-api \
   bundle exec rails <command> RAILS_ENV=development
 
+# Tests
+bundle exec rails test
+# single test file:
+bundle exec rails test test/controllers/foo_controller_test.rb
+
 # Lint
 bundle exec rubocop
-# or inside Docker:
+
+# Both also work inside Docker:
 docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm rails-api \
   bundle exec rubocop
 ```
@@ -153,11 +160,11 @@ Semantic versioning defined in `config/initializers/version.rb`, exposed at `GET
 - **Minor** (1.x.0): new user-facing features
 - **Major** (x.0.0): breaking API changes
 
-Changelog lives in `CHANGELOG.md` using `## [Unreleased]` → versioned entry workflow.
+Changelog lives in `CHANGELOG.md` using `## [Unreleased]` → versioned entry workflow. When a version bump in `version.rb` lands on `main`, a GitHub Actions workflow automatically creates the matching `vX.Y.Z` tag and GitHub release.
 
 ## Deployment
 
-No CI/CD — manual deploy via:
+CI (GitHub Actions) gates every PR with RuboCop + Minitest, but there is no CD — deploys are manual via:
 
 ```bash
 ssh saisonmanager /opt/saisonmanager/deploy.sh
@@ -169,4 +176,4 @@ The script runs `git pull` on saisonmanager-docker, `git reset --hard origin/mai
 
 - Branch from `main`: `git checkout -b fix/description` or `feat/description`
 - Add an entry under `## [Unreleased]` in `CHANGELOG.md` for every PR
-- Open a PR — no direct pushes to `main`
+- Open a PR — no direct pushes to `main`; CI runs RuboCop and the Minitest suite
