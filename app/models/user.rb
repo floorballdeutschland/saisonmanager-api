@@ -1,8 +1,11 @@
 class User < ApplicationRecord
   include UserTracker
 
+  LANGUAGES = %w[de en].freeze
+
   has_secure_password
   validates :user_name, presence: true, uniqueness: true
+  validates :language, inclusion: { in: LANGUAGES }
 
   belongs_to :referee, optional: true
 
@@ -16,6 +19,7 @@ class User < ApplicationRecord
       permissions: perms,
       club_ids:,
       referee_id: referee_id,
+      language:,
       login_blocked_message: perms[:login_blocked] ? 'Keine Teams in der aktuellen Saison.' : nil
     }
   end

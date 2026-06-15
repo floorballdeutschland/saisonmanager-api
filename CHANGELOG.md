@@ -11,6 +11,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ---
 
+## [1.32.0] - 2026-06-15
+
+### Neu
+- Mehrsprachigkeit des eingeloggten Bereichs: Nutzer*innen können ihre Oberflächensprache (Deutsch/Englisch) selbst wählen. Die Sprache wird am User gespeichert (`users.language`, Default `de`) und im `login_hash` mitgeliefert, sodass sie geräteübergreifend erhalten bleibt. Neuer Self-Service-Endpoint `PATCH user/language`.
+- Self-Service „Passwort ändern": Eingeloggte Nutzer*innen können ihr eigenes Passwort über `PUT user/password` ändern (Verifikation des aktuellen Passworts; das neue Passwort muss mindestens 8 Zeichen lang sein).
+
+---
+
 ## [1.31.0] - 2026-06-11
 
 ### Neu

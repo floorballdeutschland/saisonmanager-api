@@ -46,6 +46,10 @@ Rails.application.routes.draw do
       post 'lost_password' => 'sessions#lost_password'
       post 'reset_password' => 'users#reset_password_token'
 
+      # Self-Service-Einstellungen des eingeloggten Users (Sprache, Passwort)
+      patch 'user/language' => 'user_settings#update_language'
+      put 'user/password' => 'user_settings#update_password'
+
       get 'teams/:id', to: 'teams#show'
       get 'teams/:id/stats', to: 'teams#stats'
       get 'players/:id/stats', to: 'players#stats'
