@@ -1,3 +1,9 @@
+# Dependabot ist auf "nur Security-Updates" gestellt:
+# open-pull-requests-limit: 0 deaktiviert die regulären Versions-Update-PRs.
+# Dependabot Security Updates (per GitHub-Repo-Setting aktiviert) sind von
+# diesem Limit ausgenommen und öffnen weiterhin PRs für Sicherheitslücken.
+# Die groups/commit-message-Einstellungen bleiben dokumentiert, falls
+# Versions-Updates später wieder aktiviert werden (Limit > 0).
 version: 2
 updates:
   - package-ecosystem: bundler
@@ -5,7 +11,7 @@ updates:
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 0
     commit-message:
       prefix: chore
     groups:
@@ -20,5 +26,6 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    open-pull-requests-limit: 0
     commit-message:
       prefix: chore
