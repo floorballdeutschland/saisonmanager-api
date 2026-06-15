@@ -293,7 +293,7 @@ GEM
     rack-cors (3.0.0)
       logger
       rack (>= 3.0.14)
-    rack-proxy (0.7.2)
+    rack-proxy (0.8.2)
       rack
     rack-session (2.1.2)
       base64 (>= 0.1.0)
@@ -388,7 +388,7 @@ GEM
     ruby2_keywords (0.0.5)
     rubyzip (3.3.1)
     securerandom (0.4.1)
-    semantic_range (3.0.0)
+    semantic_range (3.1.1)
     sentry-rails (6.6.0)
       railties (>= 5.2.0)
       sentry-ruby (~> 6.6.0)
@@ -416,7 +416,7 @@ GEM
     unicode-display_width (3.2.0)
       unicode-emoji (~> 4.1)
     unicode-emoji (4.2.0)
-    webpacker (5.4.3)
+    webpacker (5.4.4)
       activesupport (>= 5.2)
       rack-proxy (>= 0.6.1)
       railties (>= 5.2)
