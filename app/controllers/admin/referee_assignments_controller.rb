@@ -329,7 +329,9 @@ module Admin
         vorname: r.vorname,
         nachname: r.nachname,
         lizenzstufe: r.lizenzstufe,
-        partner_lizenznummer: r.partner_lizenznummer
+        partner_lizenznummer: r.partner_lizenznummer,
+        # Nur für die RSK in der Ansetzungs-Ansicht sichtbar (dringender Fall, #643).
+        telefonnummer: r.telefonnummer
       }
     end
 

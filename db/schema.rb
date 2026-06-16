@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_06_16_150000) do
+ActiveRecord::Schema[7.1].define(version: 2026_06_16_150100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -632,6 +632,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_16_150000) do
     t.boolean "guest", default: false, null: false
     t.integer "club_id"
     t.integer "merged_into_id"
+    t.string "telefonnummer"
     t.index ["club_id"], name: "index_referees_on_club_id"
     t.index ["game_operation_id"], name: "index_referees_on_game_operation_id"
     t.index ["lizenznummer"], name: "index_referees_on_lizenznummer", unique: true, where: "(lizenznummer IS NOT NULL)"

@@ -25,7 +25,7 @@ class RefereeProfileController < ApplicationController
 
   def profile_params
     params.require(:referee).permit(
-      :vorname, :nachname, :email,
+      :vorname, :nachname, :email, :telefonnummer,
       :strasse, :hausnummer, :plz, :ort,
       :partner_lizenznummer
     )
@@ -39,6 +39,7 @@ class RefereeProfileController < ApplicationController
       vorname: @referee.vorname,
       nachname: @referee.nachname,
       email: @referee.email,
+      telefonnummer: @referee.telefonnummer,
       strasse: @referee.strasse,
       hausnummer: @referee.hausnummer,
       plz: @referee.plz,
