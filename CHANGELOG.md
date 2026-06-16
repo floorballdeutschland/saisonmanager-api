@@ -12,6 +12,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Verbessert
 - Schiedsrichteransetzungen: Die Ansetzungs-Liste (`GET …/referee_assignments/games`) liefert nun zusätzlich den Ausrichter-Verein (`club`) je Spiel mit (Grundlage für den CSV-Export im Frontend).
 
+### Neu
+- Schiedsrichteransetzungen: Sobald für einen Spieltag **alle** Spiele eine veröffentlichte Ansetzung haben, erhält der Ausrichter (`game_day.club.contact_email`) **genau eine** zusammenfassende E-Mail mit allen Spielen und den jeweils angesetzten Schiedsrichtern (`GameDayMailer#published_referees_to_host`, als E-Mail-Vorlage pflegbar). Der Versandzeitpunkt wird in `game_days.host_notified_at` festgehalten, sodass erneutes/nachträgliches Veröffentlichen keine zweite Mail auslöst (#350).
+
 ### Behoben
 - Schiedsrichteransetzungen: Die Liste der ansetzbaren Spiele (`GET /api/v2/admin/referee_assignments/games`) zeigt nun nur noch Spiele, die im Spiel-Editor für die Ansetzung durch die RSK markiert wurden (Sentinel „Ansetzung durch RSK" in `nominated_referee_string`) bzw. für die bereits eine Ansetzung existiert. Zuvor erschienen alle Spiele im Saison-/Zeitraum-Scope unabhängig von der Markierung.
 - Schiedsrichteransetzungen: Bereits begonnene oder abgeschlossene Spiele erscheinen nicht mehr in der Ansetzungs-Liste (`GET …/referee_assignments/games`); es werden nur noch nicht angepfiffene Spiele (`game_status` leer/`pregame`) berücksichtigt (#351, 4.2).

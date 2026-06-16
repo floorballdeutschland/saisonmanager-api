@@ -1,0 +1,52 @@
+<h2>Schiedsrichteransetzungen</h2>
+
+<p>Hallo,</p>
+
+<p>
+  für den folgenden Spieltag sind nun alle Schiedsrichter-Ansetzungen
+  veröffentlicht:
+</p>
+
+<table>
+  <tr><td><strong>Liga</strong></td><td><%= @league_name %></td></tr>
+  <tr><td><strong>Datum</strong></td><td><%= @game_day.date %></td></tr>
+  <% if @game_day.arena&.name.present? %>
+  <tr><td><strong>Halle</strong></td><td><%= @game_day.arena.name %></td></tr>
+  <% end %>
+</table>
+
+<p><strong>Ansetzungen je Spiel:</strong></p>
+
+<table>
+  <thead>
+    <tr>
+      <th align="left">Anpfiff</th>
+      <th align="left">Spiel</th>
+      <th align="left">Schiedsrichter</th>
+    </tr>
+  </thead>
+  <tbody>
+    <% @games.each do |game| %>
+      <% referees = game.referee_assignment&.referees.to_a %>
+      <tr>
+        <td><%= game.start_time.presence || '–' %></td>
+        <td>
+          <%= game.home_team&.name %> vs. <%= game.guest_team&.name %>
+          <% if game.game_number.present? %>(<%= game.game_number %>)<% end %>
+        </td>
+        <td>
+          <% if referees.any? %>
+            <%= referees.map { |r| "#{r.vorname} #{r.nachname}" }.join(', ') %>
+          <% else %>
+            –
+          <% end %>
+        </td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>
+
+<p>
+  Bei Fragen wende dich an
+  <a href="mailto:sr-ansetzungen@floorball.de">sr-ansetzungen@floorball.de</a>.
+</p>

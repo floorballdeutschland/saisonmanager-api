@@ -232,12 +232,29 @@ module Admin
         ).deliver_later
       end
 
+      notify_host_if_complete(game.game_day)
+
       render json: assignment_json(assignment.reload)
     rescue ActiveRecord::RecordNotFound
       head :not_found
     end
 
     private
+
+    # Genau eine zusammenfassende Mail an den Ausrichter, sobald *alle* Spiele
+    # des Spieltags eine veröffentlichte Ansetzung haben. host_notified_at
+    # verhindert Doppelversand bei erneutem/nachträglichem Veröffentlichen.
+    def notify_host_if_complete(game_day)
+      return if game_day.nil? || game_day.host_notified_at.present?
+      return if game_day.club&.contact_email.blank?
+
+      game_ids = game_day.games.pluck(:id)
+      return if game_ids.empty?
+      return unless RefereeAssignment.published.where(game_id: game_ids).count == game_ids.size
+
+      GameDayMailer.published_referees_to_host(game_day).deliver_later
+      game_day.update_column(:host_notified_at, Time.current)
+    end
 
     def authorize_rsk!
       ph = current_user.permission_hash

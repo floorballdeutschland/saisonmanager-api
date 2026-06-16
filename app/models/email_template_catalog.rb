@@ -271,6 +271,18 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'game_day_date', description: 'Datum des Spieltags' }
       ]
     },
+    'GameDayMailer#published_referees_to_host' => {
+      mailer_class: 'GameDayMailer',
+      action_name: 'published_referees_to_host',
+      description: 'Zusammenfassung an den Ausrichter, sobald alle Spiele eines Spieltags veröffentlichte Schiedsrichter-Ansetzungen haben.',
+      default_subject: 'Schiedsrichteransetzungen – {{league_name}} am {{game_day_date}}',
+      default_from: nil,
+      default_reply_to: 'sr-ansetzungen@floorball.de',
+      placeholders: [
+        { key: 'league_name', description: 'Name der Liga' },
+        { key: 'game_day_date', description: 'Datum des Spieltags' }
+      ]
+    },
     'PlayerMailer#express_license_requested' => {
       mailer_class: 'PlayerMailer',
       action_name: 'express_license_requested',
