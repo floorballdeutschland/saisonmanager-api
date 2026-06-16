@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+- Schiedsrichteransetzungen: Die Liste der ansetzbaren Spiele (`GET /api/v2/admin/referee_assignments/games`) zeigt nun nur noch Spiele, die im Spiel-Editor für die Ansetzung durch die RSK markiert wurden (Sentinel „Ansetzung durch RSK" in `nominated_referee_string`) bzw. für die bereits eine Ansetzung existiert. Zuvor erschienen alle Spiele im Saison-/Zeitraum-Scope unabhängig von der Markierung.
+
 ---
 
 ## [1.34.0] - 2026-06-16

@@ -3,6 +3,10 @@ module Admin
     before_action :authenticate_user
     before_action :authorize_rsk!
 
+    # Sentinel, den der Spiel-Editor in Game#nominated_referee_string schreibt,
+    # wenn die Ansetzung durch die RSK erfolgen soll.
+    RSK_ASSIGNMENT_MARKER = 'Ansetzung durch RSK'.freeze
+
     # GET /api/v2/admin/referee_assignments
     def index
       scope = RefereeAssignment.includes(
@@ -69,6 +73,16 @@ module Admin
       if params[:date_to].present?
         scope = scope.where("TO_DATE(game_days.date, 'YYYY-MM-DD') <= ?", params[:date_to])
       end
+
+      # Nur Spiele, die für die RSK-Ansetzung markiert sind (Sentinel im
+      # nominated_referee_string) oder für die bereits eine Ansetzung existiert.
+      # Letzteres ist nötig, weil der Sentinel beim Veröffentlichen durch die
+      # Schiedsrichter-Namen überschrieben wird – das Spiel soll dennoch sichtbar bleiben.
+      scope = scope.where(
+        'games.nominated_referee_string = ? OR games.id IN (?)',
+        RSK_ASSIGNMENT_MARKER,
+        RefereeAssignment.where.not(game_id: nil).select(:game_id)
+      )
 
       scope = scope.order("game_days.date ASC, games.start_time ASC NULLS LAST")
 
