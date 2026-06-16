@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.34.0] - 2026-06-16
+
 ### Neu
 - E-Mail-Vorlagen: zusätzlich zum Betreff ist nun auch der **Body** pro Vorlage pflegbar (`email_templates.body`). Ein gepflegter HTML-Body (mit `{{platzhalter}}`) ersetzt das Code-ERB-View; ist er leer, bleibt unverändert das bisherige View aktiv. Platzhalterwerte werden HTML-escaped, das Admin-HTML wird auf eine Tag-/Attribut-Whitelist sanitisiert. Über `GET/PATCH /api/v2/admin/email_templates` mitpflegbar.
 
