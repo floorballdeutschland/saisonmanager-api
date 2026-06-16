@@ -93,6 +93,8 @@ class User < ApplicationRecord
     result[:menu_item_api_key_admin] = ph[:admin].present?
     result[:menu_item_transfer_requests] = ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
     result[:menu_item_transfer_requests_sbk] = ph[:admin].present? || ph[:sbk].present?
+    # SBK-Menüpunkt „Verfahrensvorschläge" (manueller VSK-Workflow).
+    result[:menu_item_proceeding_proposal_admin] = ph[:admin].present? || ph[:sbk].present?
     result[:menu_item_player_change_requests] = ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
     result[:create_player_change_request] = ph[:vm].present? || ph[:admin].present?
     result[:approve_player_change_request] = ph[:admin].present? || ph[:sbk].present?

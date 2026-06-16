@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_06_16_130000) do
+ActiveRecord::Schema[7.1].define(version: 2026_06_16_140100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -477,6 +477,20 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_16_130000) do
     t.index ["deactivated_at"], name: "index_players_on_deactivated_at"
   end
 
+  create_table "proceeding_proposals", force: :cascade do |t|
+    t.bigint "game_id", null: false
+    t.bigint "state_association_id", null: false
+    t.string "status", default: "pending", null: false, comment: "pending | rejected | opened"
+    t.bigint "created_by_id", comment: "uploadender Schiri/User; ohne FK, User können gelöscht werden"
+    t.bigint "decided_by_id"
+    t.datetime "decided_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["game_id"], name: "index_proceeding_proposals_on_game_id", unique: true
+    t.index ["state_association_id"], name: "index_proceeding_proposals_on_state_association_id"
+    t.index ["status"], name: "index_proceeding_proposals_on_status"
+  end
+
   create_table "referee_assignments", force: :cascade do |t|
     t.bigint "game_id", null: false
     t.integer "referee1_id"
@@ -672,6 +686,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_16_130000) do
     t.boolean "scan_required", default: false, null: false
     t.string "banner_link_url"
     t.boolean "referee_license_review_enabled", default: false, null: false
+    t.boolean "manual_proceeding_creation", default: false, null: false, comment: "Wenn true: keine automatische VSK-Mail, stattdessen Verfahrensvorschlag an die SBK"
     t.index ["parent_id"], name: "index_state_associations_on_parent_id"
   end
 

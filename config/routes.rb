@@ -224,6 +224,12 @@ Rails.application.routes.draw do
           get :incorrect_assignments, on: :collection
           get :next_lizenznummer, on: :collection
         end
+        resources :proceeding_proposals, only: %i[index show] do
+          member do
+            post :reject
+            post :open
+          end
+        end
         resources :email_templates, only: %i[index]
         patch 'email_templates', to: 'email_templates#update'
         resources :referee_qualification_types, only: %i[index create update destroy]

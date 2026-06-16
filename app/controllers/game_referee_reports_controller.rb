@@ -55,7 +55,16 @@ class GameRefereeReportsController < ApplicationController
   end
 
   def _send_to_vsk(report)
-    vsk_email = @game.game_day.club&.state_association&.vsk_email
+    state_association = @game.game_day.club&.state_association
+
+    # Manueller Workflow: kein automatischer VSK-Versand, stattdessen ein
+    # Verfahrensvorschlag an die SBK (idempotent bei erneutem Upload).
+    if state_association&.manual_proceeding_creation?
+      _create_proceeding_proposal(state_association)
+      return
+    end
+
+    vsk_email = state_association&.vsk_email
     return if vsk_email.blank?
 
     assignment = @game.referee_assignment
@@ -70,5 +79,13 @@ class GameRefereeReportsController < ApplicationController
       vsk_email, current_user, @game, report, r1, r2,
       game_url: game_url, checklist_answers: checklist_answers
     ).deliver_later
+  end
+
+  def _create_proceeding_proposal(state_association)
+    ProceedingProposal.find_or_create_by(game_id: @game.id) do |proposal|
+      proposal.state_association = state_association
+      proposal.status = 'pending'
+      proposal.created_by_id = current_user.id
+    end
   end
 end
