@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.33.0] - 2026-06-16
+
 ### Neu
 - Optionaler manueller VSK-Workflow: Landesverbände können per Flag „Manuelle Erstellung von Protesten durch die SBK" (`state_associations.manual_proceeding_creation`) einstellen, dass nach Upload eines Berichtsformulars nicht automatisch die VSK benachrichtigt wird, sondern ein **Verfahrensvorschlag** für die SBK entsteht. Neue SBK-Endpoints `GET /api/v2/admin/proceeding_proposals` (offene Vorschläge im eigenen Scope), `GET …/:id`, `POST …/:id/reject` (Vorschlag ablehnen, Unterlagen verwerfen) und `POST …/:id/open` (Verfahren eröffnen → VSK-Mail mit SBK-Reply-To). Permission `menu_item_proceeding_proposal_admin`. Default `false` → bisheriges Automatik-Verhalten unverändert.
 - Admin-pflegbare E-Mail-Vorlagen: Betreff, Absender (From) und Reply-To der vom System verschickten E-Mails können pro Mailer-Action über `GET/PATCH /api/v2/admin/email_templates` gepflegt werden (Permission `menu_item_email_template_admin`, nur Admin). Ohne gepflegten Datensatz greifen unverändert die bisherigen Code-Defaults; der Katalog (`EmailTemplateCatalog`) liefert je Vorlage die verfügbaren `{{platzhalter}}` für den Betreff. Das Pflegen des E-Mail-Bodys ist für eine spätere Ausbaustufe vorgesehen (Spalte `email_templates.body` bereits angelegt).
