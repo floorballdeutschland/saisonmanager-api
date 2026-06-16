@@ -9,8 +9,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+- Schiedsrichteransetzungen: Die Ansetzungs-Liste (`GET …/referee_assignments/games`) liefert nun zusätzlich den Ausrichter-Verein (`club`) je Spiel mit (Grundlage für den CSV-Export im Frontend).
+
 ### Behoben
 - Schiedsrichteransetzungen: Die Liste der ansetzbaren Spiele (`GET /api/v2/admin/referee_assignments/games`) zeigt nun nur noch Spiele, die im Spiel-Editor für die Ansetzung durch die RSK markiert wurden (Sentinel „Ansetzung durch RSK" in `nominated_referee_string`) bzw. für die bereits eine Ansetzung existiert. Zuvor erschienen alle Spiele im Saison-/Zeitraum-Scope unabhängig von der Markierung.
+- Schiedsrichteransetzungen: Bereits begonnene oder abgeschlossene Spiele erscheinen nicht mehr in der Ansetzungs-Liste (`GET …/referee_assignments/games`); es werden nur noch nicht angepfiffene Spiele (`game_status` leer/`pregame`) berücksichtigt (#351, 4.2).
+- Schiedsrichteransetzungen: Die RSK eines Bundes-Spielbetriebs (z. B. FD) sieht und bearbeitet jetzt ausschließlich Ansetzungen ihres eigenen Spielbetriebs. Zuvor wurde eine Bundes-RSK in `permission_hash` auf „alle Verbände" hochgestuft und sah dadurch auch Spiele fremder Landesverbände. Das Scoping in `referee_assignments` (Liste, Ansetzungs-Liste, Berechtigungsprüfung) leitet die `game_operation_id`(s) nun direkt aus den RSK-Berechtigungen ab (#351, 4.3).
 
 ---
 

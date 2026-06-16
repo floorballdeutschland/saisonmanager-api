@@ -16,10 +16,10 @@ module Admin
 
       # Serverseitiger LV-Scope: ein nicht-globaler RSK sieht nur Ansetzungen
       # für Spiele in seinem game_operation-Scope (analog zu #games).
-      ph = current_user.permission_hash
-      unless ph[:admin].present? || (ph[:rsk].present? && ph[:rsk].include?(0))
+      go_ids = rsk_scope_go_ids
+      if go_ids
         scoped_game_ids = Game.joins(game_day: :league)
-                              .where(leagues: { game_operation_id: ph[:rsk] || [] })
+                              .where(leagues: { game_operation_id: go_ids })
                               .select(:id)
         scope = scope.where(game_id: scoped_game_ids)
       end
@@ -49,21 +49,14 @@ module Admin
 
     # GET /api/v2/admin/referee_assignments/games?season_id=X&date_from=Y&date_to=Z
     def games
-      ph = current_user.permission_hash
-      go_ids = ph[:admin].present? ? nil : (ph[:rsk] || [])
+      go_ids = rsk_scope_go_ids
 
-      scope = Game.includes(
+      scope = Game.not_started.includes(
         :home_team, :guest_team, :referee_assignment,
         game_day: [:league, :arena, :club]
       ).joins(game_day: :league)
 
-      unless go_ids.nil?
-        if go_ids.include?(0)
-          # global RSK access – no additional filter
-        else
-          scope = scope.where(leagues: { game_operation_id: go_ids })
-        end
-      end
+      scope = scope.where(leagues: { game_operation_id: go_ids }) if go_ids
 
       scope = scope.where(leagues: { season_id: params[:season_id] }) if params[:season_id].present?
 
@@ -99,6 +92,7 @@ module Admin
           arena: g.game_day.arena&.name,
           arena_postcode: g.game_day.arena&.postcode,
           arena_city: g.game_day.arena&.city,
+          club: g.game_day.club&.name,
           assignment_id: a&.id,
           assignment_status: a&.status
         }
@@ -260,15 +254,38 @@ module Admin
         return false
       end
 
-      ph = current_user.permission_hash
-      return true if ph[:admin].present?
-      return true if ph[:rsk].present? && ph[:rsk].include?(0)
+      go_ids = rsk_scope_go_ids
+      return true if go_ids.nil? # Admin
 
       go_id = game.game_day&.league&.game_operation_id
-      return true if go_id.present? && (ph[:rsk] || []).include?(go_id)
+      return true if go_id.present? && go_ids.include?(go_id)
 
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
       false
+    end
+
+    # game_operation_ids, für die der aktuelle Nutzer ansetzen darf.
+    # nil = unbeschränkt (Admin).
+    #
+    # Liest die game_operation_ids direkt aus den Roh-Permissions der RSK-Rolle
+    # (user_group_id == 3) statt aus permission_hash[:rsk]. Damit umgehen wir die
+    # in User#permission_hash enthaltene Hochstufung einer Bundes-GO (FD, ohne
+    # state_association_id) auf [0] = „alle Verbände" – sonst sähe die FD-RSK auch
+    # Spiele fremder Landesverbände (#351, 4.3). Jede RSK setzt nur für ihre
+    # eigene(n) game_operation_id(s) an.
+    def rsk_scope_go_ids
+      return nil if current_user.permission_hash[:admin].present?
+
+      go_ids = current_user.permissions
+                           .select { |p| p['user_group_id'].to_i == 3 }
+                           .map { |p| p['game_operation_id'].to_i }
+                           .uniq
+      # Explizit global (0) oder einzeln auf *alle* Spielbetriebe berechtigt →
+      # keine Einschränkung. Nur die permission_hash-Hochstufung einer einzelnen
+      # Bundes-GO auf „alle Verbände" wird hier bewusst NICHT übernommen.
+      return nil if go_ids.include?(0) || (GameOperation.pluck(:id) - go_ids).empty?
+
+      go_ids
     end
 
     def assignment_params
