@@ -7,10 +7,11 @@ class ClubMailer < ApplicationMailer
     @games = game_day.games.order(:start_time)
     @frontend_base_url = Rails.env.production? ? 'https://saisonmanager.org' : 'http://localhost:4200'
 
-    mail(
+    templated_mail(
       to: club.contact_email,
-      reply_to: REPLY_TO,
-      subject: "Spielbericht-Scans einreichen – Spieltag #{I18n.l(game_day.date, format: :long)}"
+      subject: "Spielbericht-Scans einreichen – Spieltag #{I18n.l(game_day.date, format: :long)}",
+      default_reply_to: REPLY_TO,
+      placeholders: { game_day_date: I18n.l(game_day.date, format: :long) }
     )
   end
 end

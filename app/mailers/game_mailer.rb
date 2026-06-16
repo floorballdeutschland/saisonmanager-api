@@ -16,10 +16,15 @@ class GameMailer < ApplicationMailer
 
     bcc = !@all_ok ? state_association.sbk_email : nil
 
-    mail(
+    templated_mail(
       to: hosting_club.contact_email,
       bcc: bcc.presence,
-      subject: "Spielbericht Nr. #{game.game_number} eingereicht – #{game.home_team_name} vs. #{game.guest_team_name}"
+      subject: "Spielbericht Nr. #{game.game_number} eingereicht – #{game.home_team_name} vs. #{game.guest_team_name}",
+      placeholders: {
+        game_number: game.game_number,
+        home_team: game.home_team_name,
+        guest_team: game.guest_team_name
+      }
     )
   end
 
@@ -31,9 +36,13 @@ class GameMailer < ApplicationMailer
     frontend_base = Rails.env.production? ? 'https://saisonmanager.org' : 'http://localhost:4200'
     @portal_url = "#{frontend_base}/schiedsrichter/spieltage"
 
-    mail(
+    templated_mail(
       to: referee_emails,
-      subject: "Spieltag bestätigen – #{game.home_team_name} vs. #{game.guest_team_name}"
+      subject: "Spieltag bestätigen – #{game.home_team_name} vs. #{game.guest_team_name}",
+      placeholders: {
+        home_team: game.home_team_name,
+        guest_team: game.guest_team_name
+      }
     )
   end
 
@@ -53,9 +62,14 @@ class GameMailer < ApplicationMailer
       referee2&.email
     ].compact.uniq
 
-    mail(
+    templated_mail(
       to: recipients,
-      subject: "Einspruch eingereicht – Spielbericht Nr. #{game.game_number} – #{game.home_team_name} vs. #{game.guest_team_name}"
+      subject: "Einspruch eingereicht – Spielbericht Nr. #{game.game_number} – #{game.home_team_name} vs. #{game.guest_team_name}",
+      placeholders: {
+        game_number: game.game_number,
+        home_team: game.home_team_name,
+        guest_team: game.guest_team_name
+      }
     )
   end
 end

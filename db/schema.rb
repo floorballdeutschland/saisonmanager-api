@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_06_16_120000) do
+ActiveRecord::Schema[7.1].define(version: 2026_06_16_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -103,6 +103,19 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_16_120000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["sent_at"], name: "index_email_logs_on_sent_at"
+  end
+
+  create_table "email_templates", force: :cascade do |t|
+    t.string "mailer_class", null: false, comment: "z. B. RefereeMailer"
+    t.string "action_name", null: false, comment: "z. B. published_assignment_notification"
+    t.string "locale", default: "de", null: false
+    t.string "subject"
+    t.text "body", comment: "Optionaler HTML-Body mit {{platzhalter}}; leer = Code-Default (ERB-View)"
+    t.string "from_address"
+    t.string "reply_to_address"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["mailer_class", "action_name", "locale"], name: "index_email_templates_on_key", unique: true
   end
 
   create_table "game_day_referee_confirmations", force: :cascade do |t|

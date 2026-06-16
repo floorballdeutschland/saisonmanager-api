@@ -1,4 +1,6 @@
 class ApplicationMailer < ActionMailer::Base
+  include TemplatedMailer
+
   default from: 'system@saisonmanager.org'
   layout 'mailer'
 

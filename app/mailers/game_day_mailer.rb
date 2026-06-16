@@ -8,9 +8,10 @@ class GameDayMailer < ApplicationMailer
     @failed_items = @answers.select { |a| a['answer'] == false }
     @league_name = game_day.league&.name
 
-    mail(
+    templated_mail(
       to: state_association.sbk_email,
-      subject: "Spieltag nicht ordnungsgemäß gemeldet – #{@league_name} am #{game_day.date}"
+      subject: "Spieltag nicht ordnungsgemäß gemeldet – #{@league_name} am #{game_day.date}",
+      placeholders: { league_name: @league_name, game_day_date: game_day.date }
     )
   end
 
@@ -23,9 +24,10 @@ class GameDayMailer < ApplicationMailer
     @failed_items = @answers.select { |a| a['answer'] == false }
     @league_name = game_day.league&.name
 
-    mail(
+    templated_mail(
       to: state_association.sbk_email,
-      subject: "Spieltag nicht ordnungsgemäß gemeldet – #{@league_name} am #{game_day.date}"
+      subject: "Spieltag nicht ordnungsgemäß gemeldet – #{@league_name} am #{game_day.date}",
+      placeholders: { league_name: @league_name, game_day_date: game_day.date }
     )
   end
 end

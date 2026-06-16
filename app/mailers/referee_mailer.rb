@@ -4,10 +4,11 @@ class RefereeMailer < ApplicationMailer
   def license_notification(referee)
     @referee = referee
 
-    mail(
+    templated_mail(
       to: referee.email,
-      reply_to: 'rsk@floorball.de',
-      subject: "Schiedsrichterlizenz aktualisiert – #{referee.vorname} #{referee.nachname}"
+      subject: "Schiedsrichterlizenz aktualisiert – #{referee.vorname} #{referee.nachname}",
+      default_reply_to: 'rsk@floorball.de',
+      placeholders: { referee_name: "#{referee.vorname} #{referee.nachname}" }
     )
   end
 
@@ -15,10 +16,11 @@ class RefereeMailer < ApplicationMailer
     @referee = referee
     @pass_url = pass_url
 
-    mail(
+    templated_mail(
       to: referee.email,
-      reply_to: 'rsk@floorball.de',
-      subject: "Dein Schiedsrichterausweis | #{referee.vorname} #{referee.nachname}"
+      subject: "Dein Schiedsrichterausweis | #{referee.vorname} #{referee.nachname}",
+      default_reply_to: 'rsk@floorball.de',
+      placeholders: { referee_name: "#{referee.vorname} #{referee.nachname}" }
     )
   end
 
@@ -26,10 +28,11 @@ class RefereeMailer < ApplicationMailer
     @referee = referee
     @date = date
 
-    mail(
+    templated_mail(
       to: referee.email,
-      reply_to: REPLY_TO,
-      subject: "Vorläufige Ansetzung – #{I18n.l(date, format: :long)}"
+      subject: "Vorläufige Ansetzung – #{I18n.l(date, format: :long)}",
+      default_reply_to: REPLY_TO,
+      placeholders: { date: I18n.l(date, format: :long) }
     )
   end
 
@@ -41,10 +44,15 @@ class RefereeMailer < ApplicationMailer
     @license_list_url = license_list_url
     @license_expires_at = license_expires_at
 
-    mail(
+    templated_mail(
       to: referee.email,
-      reply_to: REPLY_TO,
-      subject: "Ansetzung – #{game.game_day.date} #{game.home_team&.name} vs. #{game.guest_team&.name}"
+      subject: "Ansetzung – #{game.game_day.date} #{game.home_team&.name} vs. #{game.guest_team&.name}",
+      default_reply_to: REPLY_TO,
+      placeholders: {
+        game_date: game.game_day.date,
+        home_team: game.home_team&.name,
+        guest_team: game.guest_team&.name
+      }
     )
   end
 
@@ -55,10 +63,11 @@ class RefereeMailer < ApplicationMailer
     @deadline = deadline
     @upload_url = "https://saisonmanager.org/spielbericht/#{game.id}"
 
-    mail(
+    templated_mail(
       to: [referee1.email, referee2.email].compact,
-      reply_to: sbk_reply_to(game),
-      subject: "Spielnummer #{game.game_number} | 24h Zeit für Berichtsformular"
+      subject: "Spielnummer #{game.game_number} | 24h Zeit für Berichtsformular",
+      default_reply_to: sbk_reply_to(game),
+      placeholders: { game_number: game.game_number }
     )
   end
 
@@ -80,10 +89,11 @@ class RefereeMailer < ApplicationMailer
       }
     end
 
-    mail(
+    templated_mail(
       to: vsk_email,
-      reply_to: sbk_reply_to(game),
-      subject: "Berichtsformular eingereicht – Spielnummer #{game.game_number}"
+      subject: "Berichtsformular eingereicht – Spielnummer #{game.game_number}",
+      default_reply_to: sbk_reply_to(game),
+      placeholders: { game_number: game.game_number }
     )
   end
 

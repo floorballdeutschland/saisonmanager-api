@@ -7,7 +7,11 @@ class PlayerMailer < ApplicationMailer
     subject = "Lizenz erteilt – #{team.name}"
     subject += " (#{@league.name})" if @league
     subject += " - #{season}"
-    mail(to: player.email, subject:)
+    templated_mail(
+      to: player.email,
+      subject:,
+      placeholders: { team_name: team.name, league_name: @league&.name, season: }
+    )
   end
 
   def express_license_requested(player, team, league)
@@ -18,9 +22,13 @@ class PlayerMailer < ApplicationMailer
     sbk_email = sa&.sbk_email
     return if sbk_email.blank?
 
-    mail(
+    templated_mail(
       to: sbk_email,
-      subject: "Expresslizenz beantragt: #{player.first_name} #{player.last_name} (#{team.name})"
+      subject: "Expresslizenz beantragt: #{player.first_name} #{player.last_name} (#{team.name})",
+      placeholders: {
+        player_name: "#{player.first_name} #{player.last_name}",
+        team_name: team.name
+      }
     )
   end
 end

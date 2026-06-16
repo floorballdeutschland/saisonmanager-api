@@ -10,6 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ## [Unreleased]
 
 ### Neu
+- Admin-pflegbare E-Mail-Vorlagen: Betreff, Absender (From) und Reply-To der vom System verschickten E-Mails können pro Mailer-Action über `GET/PATCH /api/v2/admin/email_templates` gepflegt werden (Permission `menu_item_email_template_admin`, nur Admin). Ohne gepflegten Datensatz greifen unverändert die bisherigen Code-Defaults; der Katalog (`EmailTemplateCatalog`) liefert je Vorlage die verfügbaren `{{platzhalter}}` für den Betreff. Das Pflegen des E-Mail-Bodys ist für eine spätere Ausbaustufe vorgesehen (Spalte `email_templates.body` bereits angelegt).
 - Konfigurierbare angenommene Spieldauer als Grundlage für Hallenbelegungs- und Schiedsrichter-Konfliktprüfungen. Die Dauer (inkl. Puffer) kann pro Liga gepflegt werden (`leagues.game_duration_minutes`); ohne Pflege greift ein optionaler globaler Default und sonst das bisherige perioden-basierte Verhalten (Großfeld 2 h, sonst 1 h).
 - Neuer Endpoint `GET games/scheduling_conflicts`: prüft vor dem Speichern, ob ein (geplantes) Spiel mit anderen Spielen in derselben Halle am selben Tag zeitlich kollidiert. Nicht-blockierend (Speichern bleibt erlaubt, z. B. für Turnierformate mit mehreren Feldern).
 
