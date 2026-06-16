@@ -324,7 +324,7 @@ Metrics/AbcSize:
 # Configuration parameters: CountComments, CountAsOne, AllowedMethods, AllowedPatterns.
 # AllowedMethods: refine
 Metrics/BlockLength:
-  Max: 276
+  Max: 280
 
 # Offense count: 9
 # Configuration parameters: CountBlocks, CountModifierForms.
@@ -334,7 +334,7 @@ Metrics/BlockNesting:
 # Offense count: 42
 # Configuration parameters: CountComments, CountAsOne.
 Metrics/ClassLength:
-  Max: 890
+  Max: 900
 
 # Offense count: 167
 # Configuration parameters: AllowedMethods, AllowedPatterns.

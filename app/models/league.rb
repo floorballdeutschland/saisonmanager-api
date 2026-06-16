@@ -136,6 +136,23 @@ class League < ApplicationRecord
     0
   end
 
+  # Perioden-basierter Fallback für die angenommene Spieldauer, wenn weder an der
+  # Liga noch global etwas gepflegt ist (entspricht dem bisherigen iCal-Verhalten:
+  # Großfeld 2 h, sonst 1 h).
+  FALLBACK_GAME_DURATION_MINUTES = 60
+  LARGE_FIELD_GAME_DURATION_MINUTES = 120
+
+  # Angenommene Spieldauer (inkl. Puffer) in Minuten für die Hallenbelegungs-/
+  # Konfliktprüfung. Reihenfolge: Liga-Override → globaler Default → Fallback.
+  def effective_game_duration_minutes
+    return game_duration_minutes if game_duration_minutes.present?
+
+    global_default = Setting.default_game_duration_minutes
+    return global_default if global_default.present?
+
+    periods.to_i > 2 ? LARGE_FIELD_GAME_DURATION_MINUTES : FALLBACK_GAME_DURATION_MINUTES
+  end
+
   def period_is_extratime(period)
     period == periods + 1
   end
@@ -192,6 +209,7 @@ class League < ApplicationRecord
       periods:,
       period_length:,
       overtime_length:,
+      game_duration_minutes:,
       required_documents: required_documents || [],
       qualifications: qualifications.order(:rank_from).map do |q|
         {

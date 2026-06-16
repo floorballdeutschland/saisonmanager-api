@@ -9,6 +9,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+- Konfigurierbare angenommene Spieldauer als Grundlage für Hallenbelegungs- und Schiedsrichter-Konfliktprüfungen. Die Dauer (inkl. Puffer) kann pro Liga gepflegt werden (`leagues.game_duration_minutes`); ohne Pflege greift ein optionaler globaler Default und sonst das bisherige perioden-basierte Verhalten (Großfeld 2 h, sonst 1 h).
+- Neuer Endpoint `GET games/scheduling_conflicts`: prüft vor dem Speichern, ob ein (geplantes) Spiel mit anderen Spielen in derselben Halle am selben Tag zeitlich kollidiert. Nicht-blockierend (Speichern bleibt erlaubt, z. B. für Turnierformate mit mehreren Feldern).
+
+### Verbessert
+- Das Spiel-Endzeit-/Kalender-Feld (`Game#end_date`, iCal-Export) nutzt nun die effektive Spieldauer statt einer fest verdrahteten Stundenzahl.
+
 ---
 
 ## [1.32.0] - 2026-06-15

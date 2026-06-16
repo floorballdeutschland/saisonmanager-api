@@ -935,7 +935,17 @@ class Game < ApplicationRecord
   end
 
   def end_date
-    start_date + (league.periods.present? && league.periods > 2 ? 2.hours : 1.hour)
+    start_date + league.effective_game_duration_minutes.minutes
+  end
+
+  # Belegungszeitfenster (Start...Ende) für die Hallen-/Konfliktprüfung.
+  # nil, wenn kein Spieltagsdatum oder keine Startzeit gepflegt ist — ein Spiel
+  # ohne bekannte Startzeit kann nicht zuverlässig auf Überschneidung geprüft
+  # werden und löst daher keinen Konflikt aus.
+  def occupancy_window
+    return nil if game_day&.date.blank? || start_time.blank?
+
+    start_date...end_date
   end
 
   def game_title

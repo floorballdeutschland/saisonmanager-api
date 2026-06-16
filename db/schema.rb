@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_06_15_100000) do
+ActiveRecord::Schema[7.1].define(version: 2026_06_16_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -314,6 +314,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_15_100000) do
     t.bigint "league_id_direct_encounters"
     t.string "banner_link_url"
     t.boolean "parental_consent_required", default: false, null: false
+    t.integer "game_duration_minutes", comment: "Angenommene Spieldauer inkl. Puffer in Minuten für die Hallenbelegungs-/Konfliktprüfung; nil = globaler Default / perioden-basierter Fallback"
     t.index ["game_operation_id"], name: "index_leagues_on_game_operation_id"
   end
 

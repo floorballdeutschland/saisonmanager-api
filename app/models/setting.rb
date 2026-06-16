@@ -15,6 +15,16 @@ class Setting < ApplicationRecord
     current.seasons[current_season_id.to_s]
   end
 
+  # Global konfigurierbare Standard-Spieldauer (inkl. Puffer) in Minuten für die
+  # Hallenbelegungs-/Konfliktprüfung. nil, solange nichts gepflegt ist — die
+  # League fällt dann auf ihr perioden-basiertes Verhalten zurück.
+  def self.default_game_duration_minutes
+    systems = current.systems
+    return nil unless systems.is_a?(Hash)
+
+    systems.dig('1', 'game_duration_minutes').presence&.to_i
+  end
+
   def self.current_season_id
     current.systems['1']['current_season_id']
   end

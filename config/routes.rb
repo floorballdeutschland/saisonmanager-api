@@ -320,7 +320,12 @@ Rails.application.routes.draw do
       get  'user/team_game_days',                                     to: 'team_game_day_confirmations#index'
       post 'user/team_game_days/:game_day_id/teams/:team_id/confirm', to: 'team_game_day_confirmations#confirm'
 
-      resources :games
+      resources :games do
+        collection do
+          # Hallen-Belegungskonflikte für ein (geplantes) Spiel prüfen, ohne zu speichern.
+          get :scheduling_conflicts
+        end
+      end
       resources :game_days
 
       get 'init', to: 'settings#init'

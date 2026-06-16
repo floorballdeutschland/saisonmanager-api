@@ -67,6 +67,25 @@ class GamesController < ApplicationController
     end
   end
 
+  # GET /games/scheduling_conflicts
+  # Liefert Hallen-Belegungskonflikte für ein (geplantes) Spiel, ohne zu speichern.
+  # Nicht-blockierend: das Frontend kann damit warnen, das Speichern bleibt erlaubt
+  # (z. B. Turnierformate mit mehreren Feldern in einer Halle).
+  def scheduling_conflicts
+    game_day = GameDay.find_by(id: params[:game_day_id])
+    return render json: { message: 'Spieltag nicht gefunden.' }, status: :not_found if game_day.nil?
+    return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless game_scheduling_allowed?(game_day.league)
+
+    conflicts = GameScheduleConflicts.new(
+      game_day: game_day,
+      start_time: params[:start_time],
+      exclude_game_id: params[:game_id],
+      duration_minutes: params[:duration_minutes]
+    ).arena_conflicts
+
+    render json: { conflicts: conflicts.map { |game| scheduling_conflict_hash(game) } }
+  end
+
   # POST /games
   def create
     ph = current_user.permission_hash
@@ -1084,6 +1103,27 @@ class GamesController < ApplicationController
                                  :guest_team_filling_rule,
                                  :guest_team_filling_parameter,
                                  nominated_referee_ids: [])
+  end
+
+  # Spielverwaltung ist Admins und SBK (global oder im Verband des Spiels) erlaubt
+  # — gleiche Logik wie bei create/update.
+  def game_scheduling_allowed?(league)
+    ph = current_user.permission_hash
+    return false unless ph[:admin].present? || ph[:sbk].present?
+
+    gos = [ph[:admin], ph[:sbk]].flatten.compact.map(&:to_i)
+    gos.include?(0) || gos.include?(league.game_operation_id.to_i)
+  end
+
+  def scheduling_conflict_hash(game)
+    {
+      id: game.id,
+      game_number: game.game_number,
+      start_time: game.start_time,
+      home_team: game.home_team_name,
+      guest_team: game.guest_team_name,
+      league_name: game.league.name
+    }
   end
 
   def _maybe_send_game_day_scan_reminder(game)
