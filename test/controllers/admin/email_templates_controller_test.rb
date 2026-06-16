@@ -21,6 +21,26 @@ module Admin
       assert EmailTemplate.exists?(mailer_class: 'UserMailer', action_name: 'reset_password')
     end
 
+    test 'Admin überschreibt den Body einer Vorlage' do
+      login(create_admin)
+      patch '/api/v2/admin/email_templates', params: {
+        email_template: { mailer_class: 'UserMailer', action_name: 'reset_password', body: '<p>Hallo</p>' }
+      }
+      assert_response :success
+      assert_equal '<p>Hallo</p>', JSON.parse(response.body)['body']
+      assert EmailTemplate.exists?(mailer_class: 'UserMailer', action_name: 'reset_password')
+    end
+
+    test 'nur gepflegter Body: leere Anpassung (auch body) entfernt den Datensatz' do
+      EmailTemplate.create!(mailer_class: 'UserMailer', action_name: 'reset_password', locale: 'de', body: '<p>X</p>')
+      login(create_admin)
+      patch '/api/v2/admin/email_templates', params: {
+        email_template: { mailer_class: 'UserMailer', action_name: 'reset_password', subject: '', body: '' }
+      }
+      assert_response :success
+      assert_not EmailTemplate.exists?(mailer_class: 'UserMailer', action_name: 'reset_password')
+    end
+
     test 'vollständig leere Anpassung entfernt den Datensatz wieder' do
       EmailTemplate.create!(mailer_class: 'UserMailer', action_name: 'reset_password', locale: 'de', subject: 'X')
       login(create_admin)

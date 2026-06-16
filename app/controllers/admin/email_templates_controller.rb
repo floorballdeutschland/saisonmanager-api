@@ -25,10 +25,11 @@ module Admin
       template = EmailTemplate.find_or_initialize_by(
         mailer_class: attrs[:mailer_class], action_name: attrs[:action_name], locale: locale
       )
-      template.assign_attributes(attrs.slice(:subject, :from_address, :reply_to_address))
+      template.assign_attributes(attrs.slice(:subject, :body, :from_address, :reply_to_address))
 
       # Vollständig leere Anpassung → Datensatz entfernen (zurück auf Code-Default).
-      if template.subject.blank? && template.from_address.blank? && template.reply_to_address.blank?
+      if template.subject.blank? && template.body.blank? &&
+         template.from_address.blank? && template.reply_to_address.blank?
         template.destroy if template.persisted?
         return render json: serialize(entry, nil)
       end
@@ -53,6 +54,7 @@ module Admin
         default_from: entry[:default_from],
         default_reply_to: entry[:default_reply_to],
         subject: template&.subject,
+        body: template&.body,
         from_address: template&.from_address,
         reply_to_address: template&.reply_to_address,
         customized: template.present?
@@ -61,7 +63,7 @@ module Admin
 
     def email_template_params
       params.require(:email_template).permit(:mailer_class, :action_name, :locale,
-                                             :subject, :from_address, :reply_to_address)
+                                             :subject, :body, :from_address, :reply_to_address)
     end
 
     def require_admin!

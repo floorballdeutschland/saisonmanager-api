@@ -35,15 +35,37 @@ module TemplatedMailer
     opts[:from] = from if from.present?
     opts[:reply_to] = reply_to if reply_to.present?
 
-    mail(opts, &block)
+    # Gepflegter Body (HTML mit {{platzhalter}}) ersetzt das ERB-View; leerer
+    # Body → unverändert das ERB-View (bzw. der übergebene Block). Platzhalter-
+    # Werte werden HTML-escaped, das Admin-HTML zusätzlich sanitisiert.
+    if template&.body.present?
+      body_html = sanitize_body(render_placeholders(template.body, placeholders, escape: true))
+      mail(opts) do |format|
+        # layout: 'mailer' erzwingt den Standard-Rahmen (render(html:) wendet
+        # sonst kein Layout an) → konsistent zu den ERB-Views.
+        format.html { render(html: body_html.html_safe, layout: 'mailer') }
+      end
+    else
+      mail(opts, &block)
+    end
   end
 
-  def render_placeholders(text, placeholders)
+  # Betreffzeilen sind kein HTML → standardmäßig kein HTML-Escaping (sonst würde
+  # z. B. "Verein & Co" zu "Verein &amp; Co"). Für den HTML-Body werden die Werte
+  # via escape:true escaped, um Injection zu vermeiden.
+  def render_placeholders(text, placeholders, escape: false)
     indexed = placeholders.transform_keys { |k| k.to_s.downcase }
-    # Betreffzeilen sind kein HTML → kein HTML-Escaping (sonst würde z. B.
-    # "Verein & Co" zu "Verein &amp; Co"). Body-Pflege ist Folge-Ausbaustufe.
     text.gsub(PLACEHOLDER_PATTERN) do
-      indexed[Regexp.last_match(1).downcase].to_s
+      value = indexed[Regexp.last_match(1).downcase].to_s
+      escape ? ERB::Util.html_escape(value) : value
     end
+  end
+
+  ALLOWED_BODY_TAGS = %w[p br strong em b i u s a ul ol li h1 h2 h3 h4 h5 span div
+                         table thead tbody tr td th hr blockquote].freeze
+  ALLOWED_BODY_ATTRS = %w[href style class target rel colspan rowspan].freeze
+
+  def sanitize_body(html)
+    ActionController::Base.helpers.sanitize(html, tags: ALLOWED_BODY_TAGS, attributes: ALLOWED_BODY_ATTRS)
   end
 end
