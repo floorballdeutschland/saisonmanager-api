@@ -11,6 +11,16 @@ module Admin
       assert(body.all? { |t| t.key?('default_subject') && t.key?('placeholders') })
     end
 
+    test 'index liefert den Code-Default-Body (ERB-View-Quelltext) je Vorlage' do
+      login(create_admin)
+      get '/api/v2/admin/email_templates'
+      assert_response :success
+      body = JSON.parse(response.body)
+      entry = body.find { |t| t['key'] == 'RefereeMailer#license_notification' }
+      assert entry.key?('default_body')
+      assert_includes entry['default_body'], 'Schiedsrichterlizenz aktualisiert'
+    end
+
     test 'Admin überschreibt den Betreff einer Vorlage' do
       login(create_admin)
       patch '/api/v2/admin/email_templates', params: {

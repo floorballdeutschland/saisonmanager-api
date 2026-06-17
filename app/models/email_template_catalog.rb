@@ -317,4 +317,17 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
   def self.find(mailer_class, action_name)
     ENTRIES["#{mailer_class}##{action_name}"]
   end
+
+  # Roh-Quelltext des ERB-Views einer Action = Code-Default-Body, der verschickt
+  # wird, solange kein eigener Body gepflegt ist. Dient der Admin-UI als Referenz
+  # ("was geht aktuell raus?"). Bevorzugt das HTML-View, fällt auf das Text-View
+  # zurück; nil, wenn kein View existiert.
+  def self.default_body(mailer_class, action_name)
+    dir = Rails.root.join('app', 'views', mailer_class.underscore)
+    %w[html text].each do |type|
+      path = dir.join("#{action_name}.#{type}.erb")
+      return path.read if path.exist?
+    end
+    nil
+  end
 end

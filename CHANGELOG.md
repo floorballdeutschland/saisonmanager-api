@@ -11,6 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Verbessert
 - Schiedsrichteransetzungen: Die Ansetzungs-Liste (`GET …/referee_assignments/games`) liefert nun zusätzlich den Ausrichter-Verein (`club`) je Spiel mit (Grundlage für den CSV-Export im Frontend).
+- E-Mail-Vorlagen: `GET /api/v2/admin/email_templates` liefert je Vorlage nun zusätzlich `default_body` – den Quelltext des Code-Standard-Views (ERB), der versendet wird, solange kein eigener Body gepflegt ist. Damit kann die Admin-UI auch ohne Anpassung anzeigen, was aktuell tatsächlich verschickt wird.
 
 ### Neu
 - Schiedsrichteransetzungen: Sobald für einen Spieltag **alle** Spiele eine veröffentlichte Ansetzung haben, erhält der Ausrichter (`game_day.club.contact_email`) **genau eine** zusammenfassende E-Mail mit allen Spielen und den jeweils angesetzten Schiedsrichtern (`GameDayMailer#published_referees_to_host`, als E-Mail-Vorlage pflegbar). Der Versandzeitpunkt wird in `game_days.host_notified_at` festgehalten, sodass erneutes/nachträgliches Veröffentlichen keine zweite Mail auslöst (#350).

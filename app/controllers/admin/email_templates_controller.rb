@@ -51,6 +51,7 @@ module Admin
         description: entry[:description],
         placeholders: entry[:placeholders],
         default_subject: entry[:default_subject],
+        default_body: EmailTemplateCatalog.default_body(entry[:mailer_class], entry[:action_name]),
         default_from: entry[:default_from],
         default_reply_to: entry[:default_reply_to],
         subject: template&.subject,
