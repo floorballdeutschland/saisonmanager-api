@@ -1,5 +1,7 @@
 module Admin
   class RefereesController < ApplicationController
+    include RefereeScoping
+
     before_action :authorize_referee_access!
     before_action :set_referee,
                   only: %i[show update destroy games wallet_pass club_stats merge create_user destroy_user]
@@ -346,24 +348,6 @@ module Admin
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
 
-    def scope_to_permitted_referees(referees)
-      ph = current_user.permission_hash
-      return referees if ph[:admin].present?
-      return referees if ph[:rsk].present? && ph[:rsk].include?(0)
-      return referees if ph[:ansetzer].present? && ph[:ansetzer].include?(0)
-      return referees if ph[:sbk].present? && ph[:sbk].include?(0)
-
-      if ph[:rsk].present? || ph[:ansetzer].present? || ph[:sbk].present?
-        go_ids = referee_scope_go_ids(ph)
-        club_ids = lv_club_ids(go_ids)
-        referees.where(club_id: club_ids).or(referees.where(game_operation_id: go_ids))
-      elsif ph[:vm].present?
-        referees.where(club_id: ph[:vm])
-      else
-        referees.none
-      end
-    end
-
     def can_access_referee?(referee)
       ph = current_user.permission_hash
       return true if ph[:admin].present?
@@ -379,17 +363,6 @@ module Admin
       else
         false
       end
-    end
-
-    # game_operation_ids der LV-gescopten Schiedsrichter-Rollen (RSK/Ansetzer/SBK),
-    # globale (0) Scopes werden vorab gesondert behandelt.
-    def referee_scope_go_ids(ph)
-      ((ph[:rsk] || []) + (ph[:ansetzer] || []) + (ph[:sbk] || [])).reject(&:zero?).uniq
-    end
-
-    def lv_club_ids(go_ids)
-      sa_ids = GameOperation.where(id: go_ids).pluck(:state_association_id).compact
-      Club.where(state_association_id: sa_ids).pluck(:id)
     end
 
     def can_create_referee?

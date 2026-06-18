@@ -1,5 +1,7 @@
 module Admin
   class RefereeAssignmentsController < ApplicationController
+    include RefereeScoping
+
     before_action :authenticate_user
     before_action :authorize_assigner!
 
@@ -318,9 +320,12 @@ module Admin
         assigned[r2] << date_str if r2
       end
 
-      referees = Referee.active.where(guest: false)
-      referees = referees.where(game_operation_id: go_ids) if go_ids
-      referees = referees.order(:nachname, :vorname)
+      # Schiri-Bestand identisch zum Schiri-Admin: globale Rolle (inkl. Bundes-
+      # Spielbetrieb FD) sieht alle Referees, sonst die des eigenen LV. Bewusst
+      # über scope_to_permitted_referees statt go_ids – referees.game_operation_id
+      # ist oft leer, die Verbandszuordnung läuft v. a. über den Verein.
+      referees = scope_to_permitted_referees(Referee.active.where(guest: false))
+                 .order(:nachname, :vorname)
 
       sorted_keys = weekends.keys.sort
       render json: {
