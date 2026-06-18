@@ -23,6 +23,18 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_reply_to: nil,
       placeholders: []
     },
+    'UserMailer#referee_account_created' => {
+      mailer_class: 'UserMailer',
+      action_name: 'referee_account_created',
+      description: 'Begrüßung beim Anlegen eines Schiedsrichter-Benutzerkontos (Benutzername + Link zum Passwort-Setzen).',
+      default_subject: 'Dein Schiedsrichteraccount im Saisonmanager',
+      default_from: nil,
+      default_reply_to: 'rsk@floorball.de',
+      placeholders: [
+        { key: 'username', description: 'Benutzername des Kontos (z. B. sr-3204)' },
+        { key: 'link', description: 'Link zum (erstmaligen) Setzen des Passworts' }
+      ]
+    },
     'ClubMailer#game_day_scan_reminder' => {
       mailer_class: 'ClubMailer',
       action_name: 'game_day_scan_reminder',

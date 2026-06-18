@@ -37,6 +37,13 @@ class User < ApplicationRecord
     UserMailer.reset_password(self).deliver_now if save(validate: false)
   end
 
+  # Wie send_reset_information, aber mit Begrüßungs-Mail (Benutzername + Link zum
+  # erstmaligen Passwort-Setzen) für ein frisch angelegtes Schiedsrichter-Konto.
+  def send_referee_account_information
+    self.password_reset_token = SecureRandom.uuid
+    UserMailer.referee_account_created(self).deliver_now if save(validate: false)
+  end
+
   # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
   def permissions_items
     result = {}

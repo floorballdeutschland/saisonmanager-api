@@ -210,11 +210,11 @@ module Admin
         email_sent = false
         begin
           if user.email.present?
-            user.send_reset_information
+            user.send_referee_account_information
             email_sent = true
           end
         rescue StandardError => e
-          Rails.logger.warn("create_user: Passwort-Mail für User #{user.id} fehlgeschlagen: #{e.message}")
+          Rails.logger.warn("create_user: Begrüßungs-Mail für User #{user.id} fehlgeschlagen: #{e.message}")
         end
         render json: referee_json(@referee.reload, full: true).merge(email_sent:, duplicate_email:)
       else
