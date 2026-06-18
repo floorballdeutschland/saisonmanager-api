@@ -77,7 +77,8 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       placeholders: [
         { key: 'game_date', description: 'Datum des Spieltags' },
         { key: 'home_team', description: 'Name der Heimmannschaft' },
-        { key: 'guest_team', description: 'Name der Gastmannschaft' }
+        { key: 'guest_team', description: 'Name der Gastmannschaft' },
+        { key: 'coach_name', description: 'Name des/der Schiedsrichtercoach/in (leer, falls keine/r angesetzt)' }
       ]
     },
     'RefereeMailer#incident_report_reminder' => {

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_06_18_100000) do
+ActiveRecord::Schema[7.1].define(version: 2026_06_18_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -503,6 +503,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_18_100000) do
     t.bigint "updated_by"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "coach_id"
+    t.index ["coach_id"], name: "index_referee_assignments_on_coach_id"
     t.index ["game_id"], name: "index_referee_assignments_on_game_id", unique: true
   end
 

@@ -10,7 +10,7 @@ module Admin
     # GET /api/v2/admin/referee_assignments
     def index
       scope = RefereeAssignment.includes(
-        :referee1, :referee2,
+        :referee1, :referee2, :coach,
         game: { game_day: [:league, :arena, :club] }
       )
 
@@ -141,6 +141,35 @@ module Admin
       }
     end
 
+    # GET /api/v2/admin/referee_assignments/available_coaches?date=YYYY-MM-DD
+    # Mögliche Schiedsrichtercoaches: Schiedsrichter mit gültiger Beobachtungs-
+    # Zusatzlizenz (Qualifikationstyp „B…") und ohne Sperrtermin am Spieltag.
+    def available_coaches
+      date = Date.parse(params[:date]) rescue nil
+      return render json: { error: 'Ungültiges Datum' }, status: :bad_request unless date
+
+      blocked_ids = RefereeBlockedDate.where(date: date).pluck(:referee_id)
+
+      referees = Referee.where(guest: false)
+                        .where.not(id: blocked_ids)
+                        .joins(referee_qualifications: :referee_qualification_type)
+                        .where('referee_qualification_types.name LIKE ?', 'B%')
+                        .where('referee_qualifications.valid_until IS NULL OR referee_qualifications.valid_until >= ?', date)
+                        .distinct
+                        .order(:nachname, :vorname)
+
+      render json: referees.map { |r|
+        {
+          id: r.id,
+          lizenznummer: r.lizenznummer,
+          lizenznummer_display: r.lizenznummer_display,
+          vorname: r.vorname,
+          nachname: r.nachname,
+          lizenzstufe: r.lizenzstufe
+        }
+      }
+    end
+
     # POST /api/v2/admin/referee_assignments
     def create
       return unless authorize_game_scope!(Game.find_by(id: assignment_params[:game_id]))
@@ -219,6 +248,7 @@ module Admin
       frontend_base = Rails.env.production? ? 'https://saisonmanager.org' : 'http://localhost:4200'
       license_list_url = "#{frontend_base}/lizenzliste?token=#{CGI.escape(license_token)}"
 
+      coach = assignment.coach
       assignment.referees.each do |referee|
         next unless referee.email.present?
         partner = assignment.referees.find { |r| r.id != referee.id }
@@ -227,6 +257,7 @@ module Admin
           game,
           partner,
           game.game_day.club&.contact_email,
+          coach:,
           license_list_url:,
           license_expires_at: expires_at
         ).deliver_later
@@ -306,7 +337,7 @@ module Admin
     end
 
     def assignment_params
-      params.require(:assignment).permit(:game_id, :referee1_id, :referee2_id, :status)
+      params.require(:assignment).permit(:game_id, :referee1_id, :referee2_id, :coach_id, :status)
     end
 
     def assignment_json(a)
@@ -318,6 +349,7 @@ module Admin
         published_at: a.published_at&.iso8601,
         referee1: a.referee1 ? referee_stub(a.referee1) : nil,
         referee2: a.referee2 ? referee_stub(a.referee2) : nil,
+        coach: a.coach ? referee_stub(a.coach) : nil,
         game: game_stub(a.game)
       }
     end

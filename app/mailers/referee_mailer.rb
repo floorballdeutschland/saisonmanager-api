@@ -36,10 +36,11 @@ class RefereeMailer < ApplicationMailer
     )
   end
 
-  def published_assignment_notification(referee, game, partner, club_contact_email, license_list_url: nil, license_expires_at: nil)
+  def published_assignment_notification(referee, game, partner, club_contact_email, coach: nil, license_list_url: nil, license_expires_at: nil)
     @referee = referee
     @game = game
     @partner = partner
+    @coach = coach
     @club_contact_email = club_contact_email
     @license_list_url = license_list_url
     @license_expires_at = license_expires_at
@@ -51,7 +52,8 @@ class RefereeMailer < ApplicationMailer
       placeholders: {
         game_date: game.game_day.date,
         home_team: game.home_team&.name,
-        guest_team: game.guest_team&.name
+        guest_team: game.guest_team&.name,
+        coach_name: coach ? "#{coach.vorname} #{coach.nachname}" : ''
       }
     )
   end
