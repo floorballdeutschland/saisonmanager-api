@@ -49,7 +49,7 @@ class User < ApplicationRecord
 
     return result if tm_blocked
 
-    if has_schiri_role && !ph[:admin].present? && !ph[:sbk].present? && !ph[:rsk].present? && !ph[:vm].present? && !ph[:tm].present?
+    if has_schiri_role && !ph[:admin].present? && !ph[:sbk].present? && !ph[:rsk].present? && !ph[:ansetzer].present? && !ph[:vm].present? && !ph[:tm].present?
       result[:menu_item_referee_profile] = true
       result[:show_page_referee_profile] = true
       return result
@@ -66,12 +66,15 @@ class User < ApplicationRecord
     result[:menu_item_licence_club_admin] = ph[:vm].present? || ph[:tm].present?
     result[:menu_item_licence_admin] = ph[:admin].present? || ph[:sbk].present?
     has_full_referee_access = ph[:admin].present? || (ph[:rsk].present? && ph[:rsk].include?(0))
-    result[:menu_item_referee_admin] = ph[:admin].present? || ph[:rsk].present? || ph[:sbk].present?
+    # Ansetzer brauchen Lesezugriff auf die Schiedsrichterdaten (für die Ansetzung),
+    # bekommen aber – wie LV-RSK – nur eingeschränkten Zugriff (kein Anlegen/Volledit).
+    result[:menu_item_referee_admin] = ph[:admin].present? || ph[:rsk].present? || ph[:sbk].present? || ph[:ansetzer].present?
     result[:referee_edit_restricted] = !has_full_referee_access if result[:menu_item_referee_admin]
     result[:referee_can_create] = ph[:admin].present? || ph[:rsk].present? if result[:menu_item_referee_admin]
     result[:referee_can_delete_user] = ph[:admin].present? if result[:menu_item_referee_admin]
     result[:referee_wallet] = has_full_referee_access if result[:menu_item_referee_admin]
-    result[:menu_item_referee_assignments] = ph[:admin].present? || ph[:rsk].present?
+    # Ansetzungen macht die Ansetzer-Rolle (in manchen LV von der RSK getrennt).
+    result[:menu_item_referee_assignments] = ph[:admin].present? || ph[:ansetzer].present?
     # Strafcode-Verwaltung („Einstellungen" im Schiedsrichterwesen) – nur Admin.
     result[:menu_item_referee_settings] = ph[:admin].present?
     result[:menu_item_referee_course_import] = has_full_referee_access
@@ -166,6 +169,7 @@ class User < ApplicationRecord
     vm_club_ids = []
     sbk_go_ids = []
     rsk_go_ids = []
+    ans_go_ids = []
     admin_go_ids = []
 
     all_league_ids = League.current_season.pluck(:id)
@@ -178,6 +182,8 @@ class User < ApplicationRecord
         tm_team_ids << Team.where(id: teams, league_id: all_league_ids).pluck(:id)
       when 4 # Vereinsmanager
         vm_club_ids << perm['club_id'].to_i if perm['club_id'].present?
+      when 7 # Ansetzer
+        ans_go_ids << go_id
       when 3 # RSK
         rsk_go_ids << go_id
       when 2 # SBK
@@ -193,15 +199,19 @@ class User < ApplicationRecord
     tm_team_ids.uniq!
     tm_team_ids.sort!
     rsk_go_ids.sort!.uniq!
+    ans_go_ids.sort!.uniq!
     sbk_go_ids.sort!.uniq!
     admin_go_ids.sort!.uniq!
 
-    # SBK/RSK for a national-level GO (no state_association_id, e.g. FD) gets global scope
+    # SBK/RSK/Ansetzer for a national-level GO (no state_association_id, e.g. FD) gets global scope
     if sbk_go_ids.any? && !sbk_go_ids.include?(0) && GameOperation.where(id: sbk_go_ids, state_association_id: nil).exists?
       sbk_go_ids = [0]
     end
     if rsk_go_ids.any? && !rsk_go_ids.include?(0) && GameOperation.where(id: rsk_go_ids, state_association_id: nil).exists?
       rsk_go_ids = [0]
+    end
+    if ans_go_ids.any? && !ans_go_ids.include?(0) && GameOperation.where(id: ans_go_ids, state_association_id: nil).exists?
+      ans_go_ids = [0]
     end
 
     all_go = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11]
@@ -209,6 +219,7 @@ class User < ApplicationRecord
     result[:tm] = tm_team_ids if tm_team_ids.present?
     result[:vm] = vm_club_ids.uniq.sort if vm_club_ids.present?
     result[:rsk] = (all_go == rsk_go_ids ? [0] : rsk_go_ids) if rsk_go_ids.present?
+    result[:ansetzer] = (all_go == ans_go_ids ? [0] : ans_go_ids) if ans_go_ids.present?
     result[:sbk] = (all_go == sbk_go_ids ? [0] : sbk_go_ids) if sbk_go_ids.present?
     result[:admin] = (all_go == admin_go_ids ? [0] : admin_go_ids) if admin_go_ids.present?
 

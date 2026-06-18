@@ -335,6 +335,7 @@ module Admin
       ph = current_user.permission_hash
       return if ph[:admin].present?
       return if ph[:rsk].present?
+      return if ph[:ansetzer].present?
       return if ph[:sbk].present?
       return if ph[:vm].present?
 
@@ -349,10 +350,11 @@ module Admin
       ph = current_user.permission_hash
       return referees if ph[:admin].present?
       return referees if ph[:rsk].present? && ph[:rsk].include?(0)
+      return referees if ph[:ansetzer].present? && ph[:ansetzer].include?(0)
       return referees if ph[:sbk].present? && ph[:sbk].include?(0)
 
-      if ph[:rsk].present? || ph[:sbk].present?
-        go_ids = ((ph[:rsk] || []) + (ph[:sbk] || [])).reject { |id| id.zero? }.uniq
+      if ph[:rsk].present? || ph[:ansetzer].present? || ph[:sbk].present?
+        go_ids = referee_scope_go_ids(ph)
         club_ids = lv_club_ids(go_ids)
         referees.where(club_id: club_ids).or(referees.where(game_operation_id: go_ids))
       elsif ph[:vm].present?
@@ -366,16 +368,23 @@ module Admin
       ph = current_user.permission_hash
       return true if ph[:admin].present?
       return true if ph[:rsk].present? && ph[:rsk].include?(0)
+      return true if ph[:ansetzer].present? && ph[:ansetzer].include?(0)
       return true if ph[:sbk].present? && ph[:sbk].include?(0)
 
-      if ph[:rsk].present? || ph[:sbk].present?
-        go_ids = ((ph[:rsk] || []) + (ph[:sbk] || [])).reject { |id| id.zero? }.uniq
+      if ph[:rsk].present? || ph[:ansetzer].present? || ph[:sbk].present?
+        go_ids = referee_scope_go_ids(ph)
         lv_club_ids(go_ids).include?(referee.club_id) || go_ids.include?(referee.game_operation_id)
       elsif ph[:vm].present?
         ph[:vm].include?(referee.club_id)
       else
         false
       end
+    end
+
+    # game_operation_ids der LV-gescopten Schiedsrichter-Rollen (RSK/Ansetzer/SBK),
+    # globale (0) Scopes werden vorab gesondert behandelt.
+    def referee_scope_go_ids(ph)
+      ((ph[:rsk] || []) + (ph[:ansetzer] || []) + (ph[:sbk] || [])).reject(&:zero?).uniq
     end
 
     def lv_club_ids(go_ids)

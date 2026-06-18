@@ -48,7 +48,8 @@ Setting.create!(
     '2' => { 'name' => 'SBK' },
     '3' => { 'name' => 'RSK' },
     '4' => { 'name' => 'VM' },
-    '5' => { 'name' => 'TM' }
+    '5' => { 'name' => 'TM' },
+    '7' => { 'name' => 'Ansetzer' }
   },
   penalties: {
     '1' => { 'name' => '2 Minuten' },

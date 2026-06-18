@@ -130,16 +130,57 @@ class UserTest < ActiveSupport::TestCase
     assert_not items[:login_blocked]
   end
 
-  test 'permissions_items: RSK bekommt Schiri-Admin und Online-Test-Admin' do
+  test 'permissions_items: RSK bekommt Schiri-Admin und Online-Test-Admin, aber KEINE Ansetzungen' do
     u = build_user(permissions: [{ 'user_group_id' => 3, 'game_operation_id' => 1 }])
     items = u.permissions_items
 
     assert items[:menu_item_referee_admin]
     assert items[:menu_item_online_test_admin]
-    assert items[:menu_item_referee_assignments]
+    # Ansetzungen sind eine eigene Rolle (Ansetzer) – die reine RSK sieht sie nicht.
+    assert_not items[:menu_item_referee_assignments]
     assert_not items[:menu_item_league_admin]
     # RSK darf seinen Landesverband NICHT verwalten (nur SBK).
     assert_not items[:menu_item_state_association_sbk]
+  end
+
+  test 'permissions_items: Ansetzer bekommt Ansetzungen und Schiri-Admin, aber KEINE Online-Tests' do
+    u = build_user(permissions: [{ 'user_group_id' => 7, 'game_operation_id' => 1 }])
+    items = u.permissions_items
+
+    assert items[:menu_item_referee_assignments]
+    # Ansetzer braucht (eingeschränkten) Lesezugriff auf die Schiedsrichterdaten.
+    assert items[:menu_item_referee_admin]
+    assert items[:referee_edit_restricted]
+    assert_not items[:referee_can_create]
+    # Online-Tests bleiben der RSK vorbehalten.
+    assert_not items[:menu_item_online_test_admin]
+    assert_not items[:menu_item_league_admin]
+  end
+
+  test 'permission_hash: Ansetzer mit allen GOs ergibt [0]' do
+    perms = ALL_GO.map { |go| { 'user_group_id' => 7, 'game_operation_id' => go } }
+    u = build_user(permissions: perms)
+    assert_equal [0], u.permission_hash[:ansetzer]
+  end
+
+  test 'permission_hash: Ansetzer mit spezifischen GOs ergibt sortiertes Array' do
+    u = build_user(permissions: [
+      { 'user_group_id' => 7, 'game_operation_id' => 5 },
+      { 'user_group_id' => 7, 'game_operation_id' => 2 }
+    ])
+    assert_equal [2, 5], u.permission_hash[:ansetzer]
+  end
+
+  test 'permissions_items: kombinierte RSK+Ansetzer-Rolle bekommt alle drei Funktionen' do
+    u = build_user(permissions: [
+      { 'user_group_id' => 3, 'game_operation_id' => 1 },
+      { 'user_group_id' => 7, 'game_operation_id' => 1 }
+    ])
+    items = u.permissions_items
+
+    assert items[:menu_item_referee_admin]
+    assert items[:menu_item_referee_assignments]
+    assert items[:menu_item_online_test_admin]
   end
 
   test 'permissions_items: regionaler SBK bekommt den eigenen LV-Verwaltungseintrag' do

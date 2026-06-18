@@ -107,8 +107,8 @@ module Admin
         return render json: { error: 'SBK darf nur VM- und TM-Nutzer anlegen' }, status: :forbidden
       end
 
-      if [2, 3].include?(role_id) && !go_id
-        return render json: { error: 'Verbund muss für SBK/RSK angegeben werden' }, status: :unprocessable_entity
+      if [2, 3, 7].include?(role_id) && !go_id
+        return render json: { error: 'Verbund muss für SBK/RSK/Ansetzer angegeben werden' }, status: :unprocessable_entity
       end
 
       if club_id && !ph[:admin].present?
@@ -175,17 +175,18 @@ module Admin
     def lv_scoped_user_ids(go_ids)
       if go_ids.include?(0)
         User.where(
-          "permissions @> '[{\"user_group_id\": 2}]' OR permissions @> '[{\"user_group_id\": 3}]'"
+          "permissions @> '[{\"user_group_id\": 2}]' OR permissions @> '[{\"user_group_id\": 3}]' " \
+          "OR permissions @> '[{\"user_group_id\": 7}]'"
         ).pluck(:id)
       else
         conditions = go_ids.flat_map { |go_id|
           gid = go_id.to_i
-          [
-            "permissions @> '[{\"user_group_id\": 2, \"game_operation_id\": \"#{gid}\"}]'",
-            "permissions @> '[{\"user_group_id\": 3, \"game_operation_id\": \"#{gid}\"}]'",
-            "permissions @> '[{\"user_group_id\": 2, \"game_operation_id\": #{gid}}]'",
-            "permissions @> '[{\"user_group_id\": 3, \"game_operation_id\": #{gid}}]'"
-          ]
+          [2, 3, 7].flat_map do |group|
+            [
+              "permissions @> '[{\"user_group_id\": #{group}, \"game_operation_id\": \"#{gid}\"}]'",
+              "permissions @> '[{\"user_group_id\": #{group}, \"game_operation_id\": #{gid}}]'"
+            ]
+          end
         }.join(' OR ')
         User.where(conditions).pluck(:id)
       end
@@ -207,7 +208,7 @@ module Admin
       return if current_user.permission_hash[:admin].present?
 
       target_roles = @managed_user.permissions.map { |p| p['user_group_id'].to_i }
-      if (target_roles & [1, 2, 3]).any?
+      if (target_roles & [1, 2, 3, 7]).any?
         render json: { error: 'Nicht berechtigt' }, status: :forbidden
       end
     end
@@ -306,12 +307,12 @@ module Admin
       end
 
       role_ids = user.permissions.map { |p| p['user_group_id'].to_i }
-      unless role_ids.any? { |id| [2, 3].include?(id) }
-        return { error: 'Benutzer hat keine SBK/RSK-Rolle', status: :unprocessable_entity }
+      unless role_ids.any? { |id| [2, 3, 7].include?(id) }
+        return { error: 'Benutzer hat keine SBK/RSK/Ansetzer-Rolle', status: :unprocessable_entity }
       end
 
       new_perms = user.permissions.map do |p|
-        [2, 3].include?(p['user_group_id'].to_i) ? p.merge('game_operation_id' => new_go_id.to_s) : p
+        [2, 3, 7].include?(p['user_group_id'].to_i) ? p.merge('game_operation_id' => new_go_id.to_s) : p
       end
 
       { updates: { permissions: new_perms } }
@@ -322,7 +323,7 @@ module Admin
     end
 
     def role_name(user_group_id)
-      { 1 => 'Admin', 2 => 'SBK', 3 => 'RSK', 4 => 'VM', 5 => 'TM', 6 => 'Schiedsrichter' }[user_group_id] || 'Unbekannt'
+      { 1 => 'Admin', 2 => 'SBK', 3 => 'RSK', 4 => 'VM', 5 => 'TM', 6 => 'Schiedsrichter', 7 => 'Ansetzer' }[user_group_id] || 'Unbekannt'
     end
 
     def user_json(user, full: false, lookups: nil)

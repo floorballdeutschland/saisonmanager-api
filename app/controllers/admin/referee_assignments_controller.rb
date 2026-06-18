@@ -1,7 +1,7 @@
 module Admin
   class RefereeAssignmentsController < ApplicationController
     before_action :authenticate_user
-    before_action :authorize_rsk!
+    before_action :authorize_assigner!
 
     # Sentinel, den der Spiel-Editor in Game#nominated_referee_string schreibt,
     # wenn die Ansetzung durch die RSK erfolgen soll.
@@ -14,9 +14,9 @@ module Admin
         game: { game_day: [:league, :arena, :club] }
       )
 
-      # Serverseitiger LV-Scope: ein nicht-globaler RSK sieht nur Ansetzungen
+      # Serverseitiger LV-Scope: ein nicht-globaler Ansetzer sieht nur Ansetzungen
       # für Spiele in seinem game_operation-Scope (analog zu #games).
-      go_ids = rsk_scope_go_ids
+      go_ids = assigner_scope_go_ids
       if go_ids
         scoped_game_ids = Game.joins(game_day: :league)
                               .where(leagues: { game_operation_id: go_ids })
@@ -49,7 +49,7 @@ module Admin
 
     # GET /api/v2/admin/referee_assignments/games?season_id=X&date_from=Y&date_to=Z
     def games
-      go_ids = rsk_scope_go_ids
+      go_ids = assigner_scope_go_ids
 
       scope = Game.not_started.includes(
         :home_team, :guest_team, :referee_assignment,
@@ -256,13 +256,13 @@ module Admin
       game_day.update_column(:host_notified_at, Time.current)
     end
 
-    def authorize_rsk!
+    def authorize_assigner!
       ph = current_user.permission_hash
-      return if ph[:admin].present? || ph[:rsk].present?
+      return if ph[:admin].present? || ph[:ansetzer].present?
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
 
-    # Fine-grained: Ein nicht-globaler RSK darf nur Spiele in seinem
+    # Fine-grained: Ein nicht-globaler Ansetzer darf nur Spiele in seinem
     # game_operation-Scope ansetzen/benachrichtigen/veröffentlichen.
     # Gibt false zurück und rendert 403, wenn das Spiel außerhalb des Scopes liegt.
     def authorize_game_scope!(game)
@@ -271,7 +271,7 @@ module Admin
         return false
       end
 
-      go_ids = rsk_scope_go_ids
+      go_ids = assigner_scope_go_ids
       return true if go_ids.nil? # Admin
 
       go_id = game.game_day&.league&.game_operation_id
@@ -284,17 +284,17 @@ module Admin
     # game_operation_ids, für die der aktuelle Nutzer ansetzen darf.
     # nil = unbeschränkt (Admin).
     #
-    # Liest die game_operation_ids direkt aus den Roh-Permissions der RSK-Rolle
-    # (user_group_id == 3) statt aus permission_hash[:rsk]. Damit umgehen wir die
+    # Liest die game_operation_ids direkt aus den Roh-Permissions der Ansetzer-Rolle
+    # (user_group_id == 7) statt aus permission_hash[:ansetzer]. Damit umgehen wir die
     # in User#permission_hash enthaltene Hochstufung einer Bundes-GO (FD, ohne
-    # state_association_id) auf [0] = „alle Verbände" – sonst sähe die FD-RSK auch
-    # Spiele fremder Landesverbände (#351, 4.3). Jede RSK setzt nur für ihre
+    # state_association_id) auf [0] = „alle Verbände" – sonst sähe der FD-Ansetzer auch
+    # Spiele fremder Landesverbände (#351, 4.3). Jeder Ansetzer setzt nur für seine
     # eigene(n) game_operation_id(s) an.
-    def rsk_scope_go_ids
+    def assigner_scope_go_ids
       return nil if current_user.permission_hash[:admin].present?
 
       go_ids = current_user.permissions
-                           .select { |p| p['user_group_id'].to_i == 3 }
+                           .select { |p| p['user_group_id'].to_i == 7 }
                            .map { |p| p['game_operation_id'].to_i }
                            .uniq
       # Explizit global (0) oder einzeln auf *alle* Spielbetriebe berechtigt →
