@@ -27,7 +27,7 @@ class RefereeProfileController < ApplicationController
     params.require(:referee).permit(
       :vorname, :nachname, :email, :telefonnummer,
       :strasse, :hausnummer, :plz, :ort,
-      :partner_lizenznummer
+      :partner_lizenznummer, :kurzfristig_mobil
     )
   end
 
@@ -45,6 +45,7 @@ class RefereeProfileController < ApplicationController
       plz: @referee.plz,
       ort: @referee.ort,
       partner_lizenznummer: @referee.partner_lizenznummer,
+      kurzfristig_mobil: @referee.kurzfristig_mobil,
       lizenzstufe: @referee.lizenzstufe,
       gueltigkeit: @referee.gueltigkeit&.strftime('%d.%m.%Y'),
       geburtsdatum: @referee.geburtsdatum&.strftime('%d.%m.%Y'),
