@@ -270,7 +270,105 @@ module Admin
       head :not_found
     end
 
+    # GET /api/v2/admin/referee_assignments/availability?season_id=X&date_from=&date_to=
+    # Wochenend-Verfügbarkeitsmatrix („war room") für alle aktiven Schiedsrichter
+    # des eigenen Verbands: je Schiri × Spielwochenende ein Status
+    # frei | gesperrt (Sperrtermin) | angesetzt (bereits eingeteilt).
+    def availability
+      go_ids = assigner_scope_go_ids
+
+      gd_scope = GameDay.joins(:league, :games)
+      gd_scope = gd_scope.where(leagues: { game_operation_id: go_ids }) if go_ids
+      gd_scope = gd_scope.where(leagues: { season_id: params[:season_id] }) if params[:season_id].present?
+      if params[:date_from].present?
+        gd_scope = gd_scope.where("TO_DATE(game_days.date, 'YYYY-MM-DD') >= ?", params[:date_from])
+      end
+      if params[:date_to].present?
+        gd_scope = gd_scope.where("TO_DATE(game_days.date, 'YYYY-MM-DD') <= ?", params[:date_to])
+      end
+
+      # Spielanzahl je Datum (string 'YYYY-MM-DD').
+      games_per_date = gd_scope.group('game_days.date').count
+      game_dates = games_per_date.keys.compact
+
+      # Wochenenden (Sa) aus den Spieldaten ableiten.
+      weekends = {} # sat_str => { dates: Array, game_count: Integer }
+      game_dates.each do |date_str|
+        d = Date.parse(date_str) rescue next
+        sat = weekend_saturday(d)
+        bucket = (weekends[sat.to_s] ||= { dates: [], game_count: 0 })
+        bucket[:dates] << date_str
+        bucket[:game_count] += games_per_date[date_str]
+      end
+
+      # Sperrtermine und Ansetzungen nur für die relevanten Spieldaten vorladen.
+      date_objs = game_dates.filter_map { |s| Date.parse(s) rescue nil }
+      blocked = Hash.new { |h, k| h[k] = [] }
+      RefereeBlockedDate.where(date: date_objs).pluck(:referee_id, :date).each do |rid, d|
+        blocked[rid] << d.to_s
+      end
+
+      assigned = Hash.new { |h, k| h[k] = [] }
+      RefereeAssignment.where(status: %w[tentative published])
+                       .joins(game: :game_day)
+                       .where(game_days: { date: game_dates })
+                       .pluck(:referee1_id, :referee2_id, 'game_days.date')
+                       .each do |r1, r2, date_str|
+        assigned[r1] << date_str if r1
+        assigned[r2] << date_str if r2
+      end
+
+      referees = Referee.active.where(guest: false)
+      referees = referees.where(game_operation_id: go_ids) if go_ids
+      referees = referees.order(:nachname, :vorname)
+
+      sorted_keys = weekends.keys.sort
+      render json: {
+        weekends: sorted_keys.map do |sat|
+          {
+            key: sat,
+            saturday: sat,
+            sunday: (Date.parse(sat) + 1).to_s,
+            game_count: weekends[sat][:game_count]
+          }
+        end,
+        referees: referees.map do |r|
+          blocked_dates = blocked[r.id]
+          assigned_dates = assigned[r.id]
+          states = {}
+          sorted_keys.each do |sat|
+            wdates = weekends[sat][:dates]
+            states[sat] = if wdates.any? { |d| assigned_dates.include?(d) }
+                            'assigned'
+                          elsif wdates.any? { |d| blocked_dates.include?(d) }
+                            'blocked'
+                          else
+                            'free'
+                          end
+          end
+          {
+            id: r.id,
+            lizenznummer_display: r.lizenznummer_display,
+            vorname: r.vorname,
+            nachname: r.nachname,
+            lizenzstufe: r.lizenzstufe,
+            states:
+          }
+        end
+      }
+    end
+
     private
+
+    # Samstag des Spielwochenendes für ein Datum: So → Vortag (Sa),
+    # Sa → selbst, Mo–Fr → kommender Sa (Fr-Spiele zählen zum folgenden Wochenende).
+    def weekend_saturday(date)
+      case date.wday
+      when 0 then date - 1
+      when 6 then date
+      else date + (6 - date.wday)
+      end
+    end
 
     # Genau eine zusammenfassende Mail an den Ausrichter, sobald *alle* Spiele
     # des Spieltags eine veröffentlichte Ansetzung haben. host_notified_at

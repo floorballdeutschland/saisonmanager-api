@@ -75,6 +75,8 @@ class User < ApplicationRecord
     result[:referee_wallet] = has_full_referee_access if result[:menu_item_referee_admin]
     # Ansetzungen macht die Ansetzer-Rolle (in manchen LV von der RSK getrennt).
     result[:menu_item_referee_assignments] = ph[:admin].present? || ph[:ansetzer].present?
+    # Wochenend-Verfügbarkeitsübersicht der Schiris („war room") – für die Ansetzung.
+    result[:menu_item_referee_availability] = ph[:admin].present? || ph[:ansetzer].present?
     # Strafcode-Verwaltung („Einstellungen" im Schiedsrichterwesen) – nur Admin.
     result[:menu_item_referee_settings] = ph[:admin].present?
     result[:menu_item_referee_course_import] = has_full_referee_access

@@ -247,6 +247,7 @@ Rails.application.routes.draw do
           post :publish, on: :member
           get :available, on: :collection
           get :available_coaches, on: :collection
+          get :availability, on: :collection
           get :games, on: :collection
         end
         resources :state_associations, only: %i[index show create update destroy] do
