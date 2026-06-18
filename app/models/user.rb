@@ -105,6 +105,8 @@ class User < ApplicationRecord
     result[:approve_player_change_request] = ph[:admin].present? || ph[:sbk].present?
     result[:menu_item_user_admin] = ph[:admin].present? || ph[:sbk].present?
     result[:user_delete] = ph[:admin].present?
+    # Mehrfachrollen (Rollen je Konto hinzufügen/entfernen, z. B. RSK + Ansetzer) – nur Admin.
+    result[:manage_user_roles] = ph[:admin].present?
     # VM dürfen TM-/VM-Konten im Scope ihres Vereins anlegen (Backend:
     # UsersController#create + authorize_user_management!).
     result[:menu_item_user_create] = ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?

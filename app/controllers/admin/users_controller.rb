@@ -1,7 +1,7 @@
 module Admin
   class UsersController < ApplicationController
     before_action :authorize_user_management!
-    before_action :set_managed_user, only: %i[show update destroy trigger_password_reset]
+    before_action :set_managed_user, only: %i[show update destroy trigger_password_reset add_role remove_role]
     before_action :require_admin_for_elevated_target!, only: %i[update trigger_password_reset]
 
     # GET /api/v2/admin/users
@@ -151,7 +151,80 @@ module Admin
       render json: { success: true }
     end
 
+    # POST /api/v2/admin/users/:id/add_role
+    # Fügt einem Konto eine weitere Rolle hinzu (Mehrfachrollen, z. B. RSK + Ansetzer).
+    # Nur Admin; Admin-Rolle (1) wird hierüber bewusst nicht vergeben.
+    def add_role
+      return render json: { error: 'Nur Admins können Rollen verwalten' }, status: :forbidden unless current_user.permission_hash[:admin].present?
+      return render json: { error: 'Eigene Rollen können nicht geändert werden' }, status: :forbidden if @managed_user.id == current_user.id
+
+      role_id = params[:user_group_id].to_i
+      go_id   = params[:game_operation_id].to_i.nonzero?
+      club_id = params[:club_id].to_i.nonzero?
+
+      return render json: { error: 'Ungültige Rolle' }, status: :unprocessable_entity unless [2, 3, 4, 5, 7].include?(role_id)
+
+      if [2, 3, 7].include?(role_id)
+        return render json: { error: 'Verbund erforderlich' }, status: :unprocessable_entity unless go_id
+        return render json: { error: 'Ungültiger Verbund' }, status: :unprocessable_entity unless GameOperation.exists?(go_id)
+      end
+
+      if [4, 5].include?(role_id)
+        return render json: { error: 'Verein erforderlich' }, status: :unprocessable_entity unless club_id
+        return render json: { error: 'Ungültiger Verein' }, status: :unprocessable_entity unless Club.exists?(club_id)
+      end
+
+      perm = { 'user_group_id' => role_id }
+      perm['game_operation_id'] = go_id.to_s if go_id && [2, 3, 7].include?(role_id)
+      perm['club_id'] = club_id.to_s if club_id && [4, 5].include?(role_id)
+
+      if @managed_user.permissions.any? { |p| same_permission?(p, perm) }
+        return render json: { error: 'Diese Rolle ist bereits vorhanden' }, status: :unprocessable_entity
+      end
+
+      updates = { permissions: @managed_user.permissions + [perm] }
+      # club_id-Feld am Konto setzen, wenn (noch) keiner gesetzt ist und eine VM-Rolle dazukommt.
+      updates[:club_id] = club_id if role_id == 4 && @managed_user.club_id.blank?
+
+      if @managed_user.update(updates)
+        render json: user_json(@managed_user.reload, full: true)
+      else
+        render json: { errors: @managed_user.errors.full_messages }, status: :unprocessable_entity
+      end
+    end
+
+    # DELETE /api/v2/admin/users/:id/remove_role
+    def remove_role
+      return render json: { error: 'Nur Admins können Rollen verwalten' }, status: :forbidden unless current_user.permission_hash[:admin].present?
+      return render json: { error: 'Eigene Rollen können nicht geändert werden' }, status: :forbidden if @managed_user.id == current_user.id
+
+      target = {
+        'user_group_id' => params[:user_group_id].to_i,
+        'game_operation_id' => params[:game_operation_id].to_i.nonzero?&.to_s,
+        'club_id' => params[:club_id].to_i.nonzero?&.to_s
+      }
+
+      remaining = @managed_user.permissions.reject { |p| same_permission?(p, target) }
+
+      return render json: { error: 'Rolle nicht gefunden' }, status: :unprocessable_entity if remaining.length == @managed_user.permissions.length
+      return render json: { error: 'Mindestens eine Rolle muss bestehen bleiben' }, status: :unprocessable_entity if remaining.empty?
+
+      if @managed_user.update(permissions: remaining)
+        render json: user_json(@managed_user.reload, full: true)
+      else
+        render json: { errors: @managed_user.errors.full_messages }, status: :unprocessable_entity
+      end
+    end
+
     private
+
+    # Gleiche Rolle = gleiche Gruppe und gleicher Scope (Verbund/Verein),
+    # leere/fehlende Scope-Werte einheitlich als '' verglichen.
+    def same_permission?(a, b)
+      a['user_group_id'].to_i == b['user_group_id'].to_i &&
+        a['game_operation_id'].to_s == b['game_operation_id'].to_s &&
+        a['club_id'].to_s == b['club_id'].to_s
+    end
 
     def scoped_users
       ph = current_user.permission_hash

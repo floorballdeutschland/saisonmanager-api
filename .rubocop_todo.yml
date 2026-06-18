@@ -325,6 +325,10 @@ Metrics/AbcSize:
 # AllowedMethods: refine
 Metrics/BlockLength:
   Max: 290
+  # Die Routen-Definition ist naturgemäß ein einzelner großer Block und wächst
+  # mit jedem neuen Endpoint – idiomatisch von der Block-Längenprüfung ausgenommen.
+  Exclude:
+    - 'config/routes.rb'
 
 # Offense count: 9
 # Configuration parameters: CountBlocks, CountModifierForms.

@@ -294,7 +294,11 @@ Rails.application.routes.draw do
           end
         end
         resources :users, only: %i[index show create update destroy] do
-          member { post :trigger_password_reset }
+          member do
+            post :trigger_password_reset
+            post :add_role
+            delete :remove_role
+          end
         end
         resource :analytics, only: [:show]
         resources :arenas, only: %i[index create update destroy] do
