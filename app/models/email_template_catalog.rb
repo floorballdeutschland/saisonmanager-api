@@ -93,6 +93,20 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'coach_name', description: 'Name des/der Schiedsrichtercoach/in (leer, falls keine/r angesetzt)' }
       ]
     },
+    'RefereeMailer#published_coach_notification' => {
+      mailer_class: 'RefereeMailer',
+      action_name: 'published_coach_notification',
+      description: 'Veröffentlichte Ansetzung an den/die Schiedsrichtercoach/in (mit Lizenzlisten und Spieltag-Details).',
+      default_subject: 'Schiedsrichtercoach-Ansetzung – {{game_date}} {{home_team}} vs. {{guest_team}}',
+      default_from: nil,
+      default_reply_to: 'sr-ansetzungen@floorball.de',
+      placeholders: [
+        { key: 'game_date', description: 'Datum des Spieltags' },
+        { key: 'home_team', description: 'Name der Heimmannschaft' },
+        { key: 'guest_team', description: 'Name der Gastmannschaft' },
+        { key: 'officials', description: 'Namen der angesetzten Schiedsrichter/innen' }
+      ]
+    },
     'RefereeMailer#incident_report_reminder' => {
       mailer_class: 'RefereeMailer',
       action_name: 'incident_report_reminder',

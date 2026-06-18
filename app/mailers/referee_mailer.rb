@@ -58,6 +58,29 @@ class RefereeMailer < ApplicationMailer
     )
   end
 
+  # Ansetzungs-Mail an den Schiedsrichtercoach: gleiche Spieltag-Details und
+  # Lizenzlisten wie für die Schiris, plus die Namen der angesetzten Schiris.
+  def published_coach_notification(coach, game, official_names, club_contact_email, license_list_url: nil, license_expires_at: nil)
+    @coach = coach
+    @game = game
+    @official_names = official_names
+    @club_contact_email = club_contact_email
+    @license_list_url = license_list_url
+    @license_expires_at = license_expires_at
+
+    templated_mail(
+      to: coach.email,
+      subject: "Schiedsrichtercoach-Ansetzung – #{game.game_day.date} #{game.home_team&.name} vs. #{game.guest_team&.name}",
+      default_reply_to: REPLY_TO,
+      placeholders: {
+        game_date: game.game_day.date,
+        home_team: game.home_team&.name,
+        guest_team: game.guest_team&.name,
+        officials: official_names.to_s
+      }
+    )
+  end
+
   def incident_report_reminder(referee1, referee2, game, deadline)
     @referee1 = referee1
     @referee2 = referee2

@@ -265,6 +265,19 @@ module Admin
         ).deliver_later
       end
 
+      # Der Coach erhält dieselben Details/Lizenzlisten plus die Namen der Schiris.
+      if coach&.email.present?
+        official_names = assignment.referees.map { |r| "#{r.vorname} #{r.nachname}" }.join(', ')
+        RefereeMailer.published_coach_notification(
+          coach,
+          game,
+          official_names,
+          game.game_day.club&.contact_email,
+          license_list_url:,
+          license_expires_at: expires_at
+        ).deliver_later
+      end
+
       notify_host_if_complete(game.game_day)
 
       render json: assignment_json(assignment.reload)

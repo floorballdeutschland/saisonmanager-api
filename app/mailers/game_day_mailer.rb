@@ -22,7 +22,7 @@ class GameDayMailer < ApplicationMailer
     @game_day = game_day
     @league_name = game_day.league&.name
     @games = game_day.games
-                     .includes(:home_team, :guest_team, referee_assignment: %i[referee1 referee2])
+                     .includes(:home_team, :guest_team, referee_assignment: %i[referee1 referee2 coach])
                      .sort_by { |g| g.start_time.to_s }
 
     templated_mail(

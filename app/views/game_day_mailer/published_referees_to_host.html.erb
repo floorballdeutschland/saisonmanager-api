@@ -27,7 +27,9 @@
   </thead>
   <tbody>
     <% @games.each do |game| %>
-      <% referees = game.referee_assignment&.referees.to_a %>
+      <% assignment = game.referee_assignment %>
+      <% referees = assignment&.referees.to_a %>
+      <% coach = assignment&.coach %>
       <tr>
         <td><%= game.start_time.presence || '–' %></td>
         <td>
@@ -39,6 +41,9 @@
             <%= referees.map { |r| "#{r.vorname} #{r.nachname}" }.join(', ') %>
           <% else %>
             –
+          <% end %>
+          <% if coach.present? %>
+            <br><span style="color:#555;">Coach: <%= coach.vorname %> <%= coach.nachname %></span>
           <% end %>
         </td>
       </tr>
