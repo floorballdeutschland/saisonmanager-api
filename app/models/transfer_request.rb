@@ -6,6 +6,12 @@ class TransferRequest < ApplicationRecord
   # automatisch annulliert (siehe rake transfers:expire / Status "expired").
   EXPIRE_AFTER_DAYS = 14
 
+  # Transfersperrfrist: Nach einem erfolgreich abgeschlossenen Transfer kann für
+  # den Spieler für diesen Zeitraum (ab Abschlusszeitpunkt) kein neuer
+  # Transferantrag gestellt werden. Freigaben (request_type "release") lösen die
+  # Sperre nicht aus.
+  TRANSFER_LOCK_PERIOD = 4.weeks
+
   belongs_to :player
   belongs_to :requesting_club, class_name: 'Club'
   belongs_to :former_club, class_name: 'Club'

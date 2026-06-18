@@ -110,6 +110,26 @@ module Admin
 
       request_type = params[:request_type].to_s == 'release' ? 'release' : 'transfer'
 
+      # Transfersperrfrist: nach einem erfolgreich abgeschlossenen Transfer ist
+      # für den Spieler TRANSFER_LOCK_PERIOD lang kein neuer Transferantrag
+      # möglich. Maßgeblich ist der tatsächliche Abschlusszeitpunkt
+      # (Transfer.created_at), nicht das LV-Genehmigungsdatum – relevant bei
+      # geplanten Transfers mit Wunschdatum. Freigaben sind nicht betroffen.
+      if request_type == 'transfer'
+        last_transfer = Transfer.where(player_id: player.id)
+                                .where('created_at > ?', TransferRequest::TRANSFER_LOCK_PERIOD.ago)
+                                .order(created_at: :desc)
+                                .first
+        if last_transfer
+          lock_until = last_transfer.created_at + TransferRequest::TRANSFER_LOCK_PERIOD
+          return render json: {
+            error: "Für diesen Spieler wurde am #{last_transfer.created_at.strftime('%d.%m.%Y')} ein Transfer " \
+                   "abgeschlossen. Ein neuer Transferantrag ist erst ab dem #{lock_until.strftime('%d.%m.%Y')} möglich " \
+                   '(Transfersperrfrist von 4 Wochen).'
+          }, status: :unprocessable_entity
+        end
+      end
+
       effective_date = nil
       if request_type == 'transfer' && params[:effective_date].present?
         begin
