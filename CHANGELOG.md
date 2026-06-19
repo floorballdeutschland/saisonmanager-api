@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.35.0] - 2026-06-19
+
 ### Verbessert
 - Schiedsrichter-Benutzerkonten: Beim Anlegen eines Kontos über den Button im Schiedsrichter-Admin wird nun eine eigene **Begrüßungs-E-Mail** verschickt (Betreff „Dein Schiedsrichteraccount im Saisonmanager"), die den **Benutzernamen** (z. B. `sr-3204`) enthält und zum erstmaligen Setzen des Passworts auffordert – statt der bisherigen „Passwort vergessen"-Mail. Neue, in den E-Mail-Vorlagen pflegbare Vorlage `UserMailer#referee_account_created` (Platzhalter `{{username}}`, `{{link}}`).
 - Schiedsrichteransetzungen: Die Ansetzungs-Liste (`GET …/referee_assignments/games`) liefert nun zusätzlich den Ausrichter-Verein (`club`) je Spiel mit (Grundlage für den CSV-Export im Frontend).
