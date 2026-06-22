@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.37.0] - 2026-06-22
+
 ### Neu
 - Schiedsrichter-Ansetzung: Eine bereits **veröffentlichte** Ansetzung kann nachträglich umbesetzt werden (`PUT …/referee_assignments/:id`). Ändert sich dabei die Besetzung tatsächlich (Schiri-Menge oder Coach – ein reiner Positionstausch Schiri 1 ↔ 2 zählt nicht), wird der öffentliche Spielplan (`nominated_referee_string`) aktualisiert und **eine Update-Mail** an die **alten und neuen** Schiris sowie den Coach (`RefereeMailer#updated_assignment_notification`) und an den **Ausrichter** (`GameDayMailer#updated_referees_to_host`) versendet – beide als E-Mail-Vorlagen pflegbar. Ohne echte Änderung wird nichts versendet; nicht veröffentlichte (vorläufige) Ansetzungen lösen beim Speichern weiterhin keine Mail aus.
 
