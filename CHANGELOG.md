@@ -10,7 +10,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ## [Unreleased]
 
 ### Behoben
+- Schiedsrichter-Scope: Der gemeinsame Verbands-Scope (`RefereeScoping#lv_club_ids`) berücksichtigt jetzt **Vereins-Freigaben** (`StateAssociationRelease`). Gibt ein Landesverband seine Vereine an einen Spielbetrieb frei, gehören deren Schiedsrichter nun zum ansetzbaren/sichtbaren Bestand – konsistent in Ansetzungs-Dropdown, Verfügbarkeits-Matrix und Schiedsrichter-Admin-Liste (bisher nur die Vereine des eigenen LV).
 - Ansetzer-Rolle: Die Ansichten **Ansetzungen** und **Verfügbarkeiten** sowie das **Schiedsrichter-Bearbeiten** brachen für reine Ansetzer (ohne RSK) mit „Berechtigungsfehler: Nicht berechtigt" ab, obwohl die Menüpunkte sichtbar waren. Ursache: Die unterstützenden Lese-Endpoints `GET …/settings/seasons`, `GET …/referee_qualification_types` und `GET …/referee_license_levels` (von diesen Seiten beim Laden aufgerufen) ließen die Ansetzer-Rolle nicht zu. Diese Lese-Endpoints erlauben jetzt zusätzlich `ansetzer`.
+
+### Verbessert
+- Schiedsrichter-Ansetzung: Die Auswahl-Dropdowns (`GET …/referee_assignments/available`) sind jetzt **verbandsgescopt** (analog zur Verfügbarkeits-Matrix, inkl. Freigaben) statt bundesweit alle Schiedsrichter zu liefern, und geben je Kandidat zusätzlich `kurzfristig_mobil` zurück (Grundlage für den „kurzfristig mobil"-Filter im Frontend). Die Ansetzungs-Liste (`GET …/referee_assignments/games`) liefert je Spiel zusätzlich `national` (Bundesspielbetrieb ohne Landesverband) für die clientseitige Lizenz-Vorauswahl.
 
 ---
 

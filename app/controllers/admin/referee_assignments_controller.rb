@@ -55,7 +55,7 @@ module Admin
 
       scope = Game.not_started.includes(
         :home_team, :guest_team, :referee_assignment,
-        game_day: [:league, :arena, :club]
+        game_day: [{ league: :game_operation }, :arena, :club]
       ).joins(game_day: :league)
 
       scope = scope.where(leagues: { game_operation_id: go_ids }) if go_ids
@@ -83,6 +83,7 @@ module Admin
 
       render json: scope.map { |g|
         a = g.referee_assignment
+        go = g.game_day.league&.game_operation
         {
           id: g.id,
           game_number: g.game_number,
@@ -91,6 +92,9 @@ module Admin
           home_team: g.home_team&.name,
           guest_team: g.guest_team&.name,
           league: g.game_day.league&.name,
+          # Bundesspielbetrieb (Spielbetrieb ohne Landesverband) → für die
+          # clientseitige Lizenz-Vorauswahl (FD-Spiele defaulten auf N-Lizenz).
+          national: go.present? && go.state_association_id.nil?,
           arena: g.game_day.arena&.name,
           arena_postcode: g.game_day.arena&.postcode,
           arena_city: g.game_day.arena&.city,
@@ -126,9 +130,11 @@ module Admin
 
       unavailable = (blocked_ids + assigned_ids).uniq
 
-      referees = Referee.where.not(id: unavailable)
-                        .where(guest: false)
-                        .order(:nachname, :vorname)
+      # Verbands-Scope wie in der Verfügbarkeits-Matrix: ein LV-Ansetzer sieht nur
+      # Schiris seines Verbands (inkl. via Freigabe zugeordneter Vereine), ein
+      # globaler/FD-Ansetzer alle. Die Lizenz-Vorauswahl passiert clientseitig.
+      referees = scope_to_permitted_referees(Referee.where(guest: false).where.not(id: unavailable))
+                 .order(:nachname, :vorname)
 
       render json: referees.map { |r|
         {
@@ -138,6 +144,7 @@ module Admin
           vorname: r.vorname,
           nachname: r.nachname,
           lizenzstufe: r.lizenzstufe,
+          kurzfristig_mobil: r.kurzfristig_mobil,
           partner_lizenznummer: r.partner_lizenznummer
         }
       }

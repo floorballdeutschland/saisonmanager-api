@@ -31,7 +31,13 @@ module RefereeScoping
   end
 
   def lv_club_ids(go_ids)
-    sa_ids = GameOperation.where(id: go_ids).pluck(:state_association_id).compact
-    Club.where(state_association_id: sa_ids).pluck(:id)
+    own_sa_ids = GameOperation.where(id: go_ids).pluck(:state_association_id).compact
+    # Vereins-Freigaben: Hat ein anderer LV seine Vereine an einen dieser
+    # Spielbetriebe freigegeben (StateAssociationRelease), gehören dessen Schiris
+    # ebenfalls zum ansetzbaren Bestand (analog Club.admin_user_clubs).
+    released_sa_ids = StateAssociationRelease.current_season
+                                             .where(recipient_game_operation_id: go_ids)
+                                             .pluck(:grantor_state_association_id)
+    Club.where(state_association_id: (own_sa_ids + released_sa_ids).uniq).pluck(:id)
   end
 end
