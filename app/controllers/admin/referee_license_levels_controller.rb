@@ -54,7 +54,9 @@ module Admin
 
     def authorize_read!
       ph = current_user.permission_hash
-      return if ph[:admin].present? || ph[:rsk].present? || ph[:sbk].present?
+      # Ansetzer haben Lesezugriff auf die Schiedsrichterdaten (Schiri-Bearbeiten-Ansicht
+      # lädt die Lizenzstufen mit), daher hier ebenfalls erlaubt.
+      return if ph[:admin].present? || ph[:rsk].present? || ph[:sbk].present? || ph[:ansetzer].present?
 
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end

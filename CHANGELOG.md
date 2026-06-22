@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+- Ansetzer-Rolle: Die Ansichten **Ansetzungen** und **Verfügbarkeiten** sowie das **Schiedsrichter-Bearbeiten** brachen für reine Ansetzer (ohne RSK) mit „Berechtigungsfehler: Nicht berechtigt" ab, obwohl die Menüpunkte sichtbar waren. Ursache: Die unterstützenden Lese-Endpoints `GET …/settings/seasons`, `GET …/referee_qualification_types` und `GET …/referee_license_levels` (von diesen Seiten beim Laden aufgerufen) ließen die Ansetzer-Rolle nicht zu. Diese Lese-Endpoints erlauben jetzt zusätzlich `ansetzer`.
+
 ---
 
 ## [1.35.0] - 2026-06-19

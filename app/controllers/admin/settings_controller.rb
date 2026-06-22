@@ -63,7 +63,9 @@ module Admin
 
     def require_admin_or_rsk!
       ph = current_user.permission_hash
-      return if ph[:admin].present? || ph[:rsk].present?
+      # Ansetzer brauchen die Saisonliste für die Ansetzungs-/Verfügbarkeits-Ansichten
+      # (deren Frontend ruft seasons beim Laden auf), daher hier ebenfalls erlaubt.
+      return if ph[:admin].present? || ph[:rsk].present? || ph[:ansetzer].present?
 
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
