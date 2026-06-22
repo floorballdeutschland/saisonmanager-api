@@ -206,8 +206,18 @@ module Admin
 
       assignment.updated_by = current_user.id
 
+      # Besetzung vor dem Update merken, um bei veröffentlichten Ansetzungen eine
+      # echte Änderung (Schiri-Menge oder Coach) zu erkennen.
+      was_published = assignment.status == 'published'
+      previous_lineup = assignment_lineup(assignment)
+      previous_official_ids = assignment_official_ids(assignment)
+
       if assignment.update(assignment_params)
-        render json: assignment_json(assignment.reload)
+        assignment.reload
+        if was_published && assignment_lineup(assignment) != previous_lineup
+          notify_published_lineup_change(assignment, previous_official_ids)
+        end
+        render json: assignment_json(assignment)
       else
         render json: { errors: assignment.errors.full_messages }, status: :unprocessable_entity
       end
@@ -408,6 +418,44 @@ module Admin
 
       GameDayMailer.published_referees_to_host(game_day).deliver_later
       game_day.update_column(:host_notified_at, Time.current)
+    end
+
+    # Vergleichsstruktur der Besetzung: Schiris als Menge (Positionstausch
+    # Schiri 1 ↔ 2 ist keine echte Änderung), Coach separat.
+    def assignment_lineup(assignment)
+      {
+        referees: [assignment.referee1_id, assignment.referee2_id].compact.sort,
+        coach: assignment.coach_id
+      }
+    end
+
+    def assignment_official_ids(assignment)
+      [assignment.referee1_id, assignment.referee2_id, assignment.coach_id].compact
+    end
+
+    # Eine veröffentlichte Ansetzung wurde umbesetzt: öffentlichen Spielplan
+    # (nominated_referee_string) aktualisieren und je *eine* Update-Mail an die
+    # alten und neuen Schiris/den Coach sowie an den Ausrichter senden.
+    def notify_published_lineup_change(assignment, previous_official_ids)
+      game = assignment.game
+
+      parts = assignment.referees.map do |r|
+        [r.lizenznummer_display.presence, "#{r.nachname}, #{r.vorname}"].compact.join(' ')
+      end
+      # Immer schreiben (auch leer): Werden alle Schiris entfernt, muss der
+      # öffentliche Spielplan die alten Namen verlieren – nicht stehen lassen.
+      game.update!(nominated_referee_string: parts.join(' / '))
+
+      official_names = assignment.referees.map { |r| "#{r.vorname} #{r.nachname}" }.join(', ')
+      coach = assignment.coach
+
+      affected_ids = (previous_official_ids + assignment_official_ids(assignment)).uniq
+      Referee.where(id: affected_ids).each do |referee|
+        next if referee.email.blank?
+        RefereeMailer.updated_assignment_notification(referee, game, official_names, coach).deliver_later
+      end
+
+      GameDayMailer.updated_referees_to_host(game).deliver_later if game.game_day.club&.contact_email.present?
     end
 
     def authorize_assigner!

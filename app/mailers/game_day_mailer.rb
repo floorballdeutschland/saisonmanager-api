@@ -33,6 +33,22 @@ class GameDayMailer < ApplicationMailer
     )
   end
 
+  # Informiert den Ausrichter, wenn die Schiedsrichter-/Coach-Besetzung eines
+  # bereits veröffentlichten Spiels nachträglich geändert wurde (je Spiel).
+  def updated_referees_to_host(game)
+    @game = game
+    @game_day = game.game_day
+    @league_name = game.game_day.league&.name
+    @assignment = game.referee_assignment
+
+    templated_mail(
+      to: game.game_day.club&.contact_email,
+      subject: "Schiedsrichteransetzung geändert – #{@league_name} am #{game.game_day.date}",
+      default_reply_to: 'sr-ansetzungen@floorball.de',
+      placeholders: { league_name: @league_name.to_s, game_day_date: game.game_day.date.to_s }
+    )
+  end
+
   # Informiert die SBK des Landesverbands, wenn eine Gastmannschaft einen
   # Spieltag über das Portal als nicht ordnungsgemäß durchgeführt meldet.
   def team_checklist_veto(game_day, team, answers, state_association)

@@ -81,6 +81,29 @@ class RefereeMailer < ApplicationMailer
     )
   end
 
+  # Eine veröffentlichte Ansetzung wurde umbesetzt. Geht an die alten *und* neuen
+  # Schiris sowie den Coach – jede:r sieht die aktuelle Besetzung und damit, ob
+  # sie/er noch angesetzt ist (eine Update-Mail statt Storno + Neu).
+  def updated_assignment_notification(referee, game, official_names, coach)
+    @referee = referee
+    @game = game
+    @official_names = official_names
+    @coach = coach
+
+    templated_mail(
+      to: referee.email,
+      subject: "Ansetzung geändert – #{game.game_day.date} #{game.home_team&.name} vs. #{game.guest_team&.name}",
+      default_reply_to: REPLY_TO,
+      placeholders: {
+        game_date: game.game_day.date,
+        home_team: game.home_team&.name,
+        guest_team: game.guest_team&.name,
+        officials: official_names.to_s,
+        coach_name: coach ? "#{coach.vorname} #{coach.nachname}" : ''
+      }
+    )
+  end
+
   def incident_report_reminder(referee1, referee2, game, deadline)
     @referee1 = referee1
     @referee2 = referee2

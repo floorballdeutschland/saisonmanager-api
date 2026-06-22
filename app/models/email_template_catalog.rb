@@ -107,6 +107,21 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'officials', description: 'Namen der angesetzten Schiedsrichter/innen' }
       ]
     },
+    'RefereeMailer#updated_assignment_notification' => {
+      mailer_class: 'RefereeMailer',
+      action_name: 'updated_assignment_notification',
+      description: 'Änderung der Besetzung einer bereits veröffentlichten Ansetzung – an alte und neue Schiris/Coach.',
+      default_subject: 'Ansetzung geändert – {{game_date}} {{home_team}} vs. {{guest_team}}',
+      default_from: nil,
+      default_reply_to: 'sr-ansetzungen@floorball.de',
+      placeholders: [
+        { key: 'game_date', description: 'Datum des Spieltags' },
+        { key: 'home_team', description: 'Name der Heimmannschaft' },
+        { key: 'guest_team', description: 'Name der Gastmannschaft' },
+        { key: 'officials', description: 'Namen der aktuell angesetzten Schiedsrichter/innen' },
+        { key: 'coach_name', description: 'Name des/der Schiedsrichtercoach/in (leer, falls keine/r angesetzt)' }
+      ]
+    },
     'RefereeMailer#incident_report_reminder' => {
       mailer_class: 'RefereeMailer',
       action_name: 'incident_report_reminder',
@@ -303,6 +318,18 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       action_name: 'published_referees_to_host',
       description: 'Zusammenfassung an den Ausrichter, sobald alle Spiele eines Spieltags veröffentlichte Schiedsrichter-Ansetzungen haben.',
       default_subject: 'Schiedsrichteransetzungen – {{league_name}} am {{game_day_date}}',
+      default_from: nil,
+      default_reply_to: 'sr-ansetzungen@floorball.de',
+      placeholders: [
+        { key: 'league_name', description: 'Name der Liga' },
+        { key: 'game_day_date', description: 'Datum des Spieltags' }
+      ]
+    },
+    'GameDayMailer#updated_referees_to_host' => {
+      mailer_class: 'GameDayMailer',
+      action_name: 'updated_referees_to_host',
+      description: 'Hinweis an den Ausrichter, dass sich die Schiedsrichter-/Coach-Besetzung eines bereits veröffentlichten Spiels geändert hat.',
+      default_subject: 'Schiedsrichteransetzung geändert – {{league_name}} am {{game_day_date}}',
       default_from: nil,
       default_reply_to: 'sr-ansetzungen@floorball.de',
       placeholders: [

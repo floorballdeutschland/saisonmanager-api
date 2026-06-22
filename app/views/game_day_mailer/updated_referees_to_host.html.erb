@@ -1,0 +1,30 @@
+<h2>Schiedsrichteransetzung geändert</h2>
+
+<p>Hallo,</p>
+
+<p>
+  für ein bereits veröffentlichtes Spiel hat sich die Schiedsrichter-Besetzung
+  geändert. Hier die aktuelle Ansetzung:
+</p>
+
+<table>
+  <tr><td><strong>Liga</strong></td><td><%= @league_name %></td></tr>
+  <tr><td><strong>Datum</strong></td><td><%= @game_day.date %></td></tr>
+  <tr><td><strong>Spiel</strong></td><td><%= @game.home_team&.name %> vs. <%= @game.guest_team&.name %><% if @game.game_number.present? %> (<%= @game.game_number %>)<% end %></td></tr>
+  <% if @game_day.arena&.name.present? %>
+  <tr><td><strong>Halle</strong></td><td><%= @game_day.arena.name %></td></tr>
+  <% end %>
+  <% referees = @assignment&.referees.to_a %>
+  <tr>
+    <td><strong>Schiedsrichter/innen</strong></td>
+    <td><%= referees.any? ? referees.map { |r| "#{r.vorname} #{r.nachname}" }.join(', ') : '–' %></td>
+  </tr>
+  <% if @assignment&.coach.present? %>
+  <tr><td><strong>Schiedsrichtercoach/in</strong></td><td><%= @assignment.coach.vorname %> <%= @assignment.coach.nachname %></td></tr>
+  <% end %>
+</table>
+
+<p>
+  Bei Fragen wende dich an
+  <a href="mailto:sr-ansetzungen@floorball.de">sr-ansetzungen@floorball.de</a>.
+</p>
