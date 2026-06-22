@@ -200,6 +200,11 @@ class RefereeGameDayConfirmationsController < ApplicationController
                  .compact
                  .first
 
+    # Nur die Spiele auflisten, auf die der Schiri tatsächlich (veröffentlicht)
+    # angesetzt ist – nicht alle Spiele des Spieltags. Sonst tauchten z. B.
+    # frühere Parallelspiele in derselben Halle fälschlich in „Meine Spieltage" auf.
+    assigned_game_ids = published_assignments.map(&:game_id).to_set
+
     my_confirmation = day_confirmations.find { |c| c.referee_id == @referee.id }
     partner_confirmation = partner_id ? day_confirmations.find { |c| c.referee_id == partner_id } : nil
     auto_conf = auto_confirmed?(game_day)
@@ -222,6 +227,7 @@ class RefereeGameDayConfirmationsController < ApplicationController
       my_checklist_answers: my_confirmation&.checklist_answers || [],
       partner_properly_conducted: partner_confirmation&.properly_conducted,
       games: game_day.games
+                     .select { |g| assigned_game_ids.include?(g.id) }
                      .sort_by { |g| g.start_time || '' }
                      .map do |g|
                {
