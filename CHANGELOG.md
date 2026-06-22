@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.37.1] - 2026-06-22
+
 ### Behoben
 - Schiedsrichter „Meine Spieltage": Ein Spieltag listete bislang **alle** Spiele des Tages auf statt nur jene, auf die der eingeloggte Schiri tatsächlich (veröffentlicht) angesetzt ist. Dadurch erschien z. B. ein früheres Parallelspiel in derselben Halle fälschlich in der eigenen Spielübersicht (`GET /api/v2/referee/game_days`). Die Spiel-Liste je Spieltag ist jetzt auf die eigenen Ansetzungen eingeschränkt.
 
