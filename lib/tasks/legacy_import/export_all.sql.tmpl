@@ -69,7 +69,20 @@ SELECT JSON_OBJECT(
         FROM `__PFX___spielbericht` sb
         WHERE sb.id_begegnung IN (
           SELECT b.id_begegnung FROM `__PFX___begegnung` b
-          JOIN `__PFX___spieltag` s ON s.id_spieltag = b.id_spieltag WHERE s.id_liga = l.id_liga))
+          JOIN `__PFX___spieltag` s ON s.id_spieltag = b.id_spieltag WHERE s.id_liga = l.id_liga)),
+      'lizenz', (
+        SELECT COALESCE(JSON_ARRAYAGG(JSON_OBJECT(
+          'id_lizenz', lz.id_lizenz, 'id_spieler', lz.id_spieler, 'id_mannschaft', lz.id_mannschaft,
+          'id_klasse', lz.id_klasse, 'id_kategorie', lz.id_kategorie, 'weiblich', lz.weiblich)), JSON_ARRAY())
+        FROM `__PFX___lizenz` lz
+        WHERE lz.id_mannschaft IN (SELECT id_mannschaft FROM `__PFX___mannschaft` WHERE id_liga = l.id_liga)),
+      'lizenzverlauf', (
+        SELECT COALESCE(JSON_ARRAYAGG(JSON_OBJECT(
+          'id_lizenz', lv.id_lizenz, 'id_lizenzstatus', lv.id_lizenzstatus, 'timestamp', lv.timestamp)), JSON_ARRAY())
+        FROM `__PFX___lizenzverlauf` lv
+        WHERE lv.id_lizenz IN (
+          SELECT lz.id_lizenz FROM `__PFX___lizenz` lz
+          WHERE lz.id_mannschaft IN (SELECT id_mannschaft FROM `__PFX___mannschaft` WHERE id_liga = l.id_liga)))
     )), JSON_ARRAY())
     FROM `__PFX___liga` l
   ),

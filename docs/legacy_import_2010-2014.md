@@ -158,6 +158,11 @@ Events) über die JSON-Brücke gegen die prod-nahe Dev-DB:
    (Live-Hash `coachN_string`/`coach1_signed`); `spielbericht` → `referee1/2_string`,
    Unterschriften, `home/guest_timeout_string`, `record_comment`, `protest`, `overtime`.
    Export-SQL, `legacy:league` und der JSON-Pfad liefern beide Tabellen mit.
+5. ✅ **Lizenzen** – `*_lizenz` + `*_lizenzverlauf` → `players.licenses` (`team_id`,
+   `league_class_id`, `league_category_id`, chronologische `history`). Idempotenter
+   Merge in den Spieler über `id = LIC:<verband>:<saison>:<id_lizenz>` (Phase 3 der
+   Saison-Transaktion). Status 1:1 (`Vocab::LIZENZSTATUS_TO_STATUS_ID`).
+   `Transformer.license_attrs` ist unit-getestet; der Merge selbst läuft gegen die DB.
 
 ### Deployment-Checkliste (echter Prod-Import)
 
