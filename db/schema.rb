@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_06_18_110000) do
+ActiveRecord::Schema[7.1].define(version: 2026_06_23_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -329,6 +329,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_18_110000) do
     t.string "banner_link_url"
     t.boolean "parental_consent_required", default: false, null: false
     t.integer "game_duration_minutes", comment: "Angenommene Spieldauer inkl. Puffer in Minuten für die Hallenbelegungs-/Konfliktprüfung; nil = globaler Default / perioden-basierter Fallback"
+    t.boolean "referee_feedback_enabled", default: false, null: false
     t.index ["game_operation_id"], name: "index_leagues_on_game_operation_id"
   end
 
@@ -585,6 +586,29 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_18_110000) do
     t.index ["status"], name: "index_referee_course_results_on_status"
   end
 
+  create_table "referee_feedbacks", force: :cascade do |t|
+    t.bigint "game_id", null: false
+    t.bigint "team_id", null: false
+    t.bigint "club_id"
+    t.bigint "submitted_by_user_id"
+    t.bigint "referee_1_id"
+    t.bigint "referee_2_id"
+    t.string "referee_names"
+    t.integer "line_rating", null: false
+    t.text "line_comment"
+    t.integer "communication_rating", null: false
+    t.text "communication_comment"
+    t.text "general_comment"
+    t.string "status", default: "visible", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["game_id", "team_id"], name: "index_referee_feedbacks_on_game_id_and_team_id", unique: true
+    t.index ["game_id"], name: "index_referee_feedbacks_on_game_id"
+    t.index ["referee_1_id"], name: "index_referee_feedbacks_on_referee_1_id"
+    t.index ["referee_2_id"], name: "index_referee_feedbacks_on_referee_2_id"
+    t.index ["team_id"], name: "index_referee_feedbacks_on_team_id"
+  end
+
   create_table "referee_license_levels", force: :cascade do |t|
     t.string "name", null: false
     t.boolean "active", default: true, null: false
@@ -828,6 +852,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_18_110000) do
   add_foreign_key "referee_course_results", "referees"
   add_foreign_key "referee_course_results", "state_associations"
   add_foreign_key "referee_course_results", "users", column: "reviewed_by_user_id"
+  add_foreign_key "referee_feedbacks", "games"
   add_foreign_key "referee_qualifications", "referee_qualification_types"
   add_foreign_key "referee_qualifications", "referees"
   add_foreign_key "referees", "referees", column: "merged_into_id"

@@ -86,6 +86,12 @@ class User < ApplicationRecord
     result[:menu_item_referee_availability] = ph[:admin].present? || ph[:ansetzer].present?
     # Strafcode-Verwaltung („Einstellungen" im Schiedsrichterwesen) – nur Admin.
     result[:menu_item_referee_settings] = ph[:admin].present?
+    # Schiri-Feedback der Vereine ist nur am Schiri-Profil sichtbar – für Admin
+    # sowie die global gescopten FD-Rollen (RSK/Ansetzer mit Spielbetrieb 0).
+    result[:referee_feedback_view] =
+      ph[:admin].present? ||
+      (ph[:rsk].present? && ph[:rsk].include?(0)) ||
+      (ph[:ansetzer].present? && ph[:ansetzer].include?(0))
     result[:menu_item_referee_course_import] = has_full_referee_access
     result[:menu_item_referee_course_review] = has_full_referee_access || lv_rsk_review_enabled?(ph)
     result[:menu_item_online_test_admin] = ph[:admin].present? || ph[:rsk].present?
@@ -93,6 +99,9 @@ class User < ApplicationRecord
     result[:menu_item_player_vm] = ph[:vm].present? || ph[:tm].present?
     # Portal „Meine Spieltage" für Gastmannschafts-Bestätigung (TM/VM).
     result[:menu_item_team_game_days] = ph[:tm].present? || ph[:vm].present?
+    # Portal „Schiri-Feedback" – verpflichtende Rückmeldung der Vereine nach dem
+    # Spiel (nur Ligen mit referee_feedback_enabled), abgegeben von TM/VM.
+    result[:menu_item_referee_feedback] = ph[:tm].present? || ph[:vm].present?
     # Globaler Admin und global gescopter SBK (z. B. FD-SBK, ph[:sbk] enthält 0)
     # bekommen den vollen Verbandsverwaltungs-View über alle Landesverbände.
     global_sbk = ph[:sbk].present? && ph[:sbk].include?(0)

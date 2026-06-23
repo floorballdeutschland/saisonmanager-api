@@ -5,6 +5,7 @@ class Game < ApplicationRecord
   has_one :referee_assignment, dependent: :destroy
   has_one :game_referee_report, dependent: :destroy
   has_one :game_scan, dependent: :destroy
+  has_many :referee_feedbacks, dependent: :destroy
 
   scope :by_referee_id, ->(referee_id) { where('? = any (referee_ids)', referee_id) }
   scope :by_referee_name, lambda { |referee_name|
@@ -102,6 +103,18 @@ class Game < ApplicationRecord
     return false if referee1_string.blank?
 
     referee1_string.sub(/\A0\s/, '').gsub(/[\s,]/, '').present?
+  end
+
+  # Angesetztes Schiri-Gespann als Referee-Datensätze (max. 2), aufgelöst aus den
+  # nominated_referee_ids (Referee-PKs). Reihenfolge wie gespeichert. Für das
+  # Schiri-Feedback: zeigt dem Team, wer angesetzt war, und verknüpft die Abgabe
+  # mit den konkreten Schiedsrichtern.
+  def nominated_referees
+    ids = Array(nominated_referee_ids).reject(&:zero?).first(2)
+    return [] if ids.empty?
+
+    by_id = Referee.where(id: ids).index_by(&:id)
+    ids.filter_map { |rid| by_id[rid] }
   end
 
   def players_with_position

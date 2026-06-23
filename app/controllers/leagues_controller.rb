@@ -641,6 +641,7 @@ class LeaguesController < ApplicationController
                                    :table_modus, :direct_comparison, :periods, :period_length, :overtime_length,
                                    :game_duration_minutes,
                                    :banner_link_url, :parental_consent_required,
+                                   :referee_feedback_enabled,
                                    required_documents: [])
   end
 
