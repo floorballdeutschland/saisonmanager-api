@@ -48,11 +48,14 @@ namespace :legacy do
     beg_ids      = begegnungen.map { |b| b['id_begegnung'].to_i }
     ereignisse   = beg_ids.empty? ? [] : query_all(client, "SELECT * FROM `#{prefix}_ereignis` WHERE id_begegnung IN (#{beg_ids.join(',')})")
     mitspieler   = beg_ids.empty? ? [] : query_all(client, "SELECT * FROM `#{prefix}_mitspieler` WHERE id_begegnung IN (#{beg_ids.join(',')})")
+    betreuer     = beg_ids.empty? ? [] : query_all(client, "SELECT * FROM `#{prefix}_betreuer` WHERE id_begegnung IN (#{beg_ids.join(',')})")
+    spielbericht = beg_ids.empty? ? [] : query_all(client, "SELECT * FROM `#{prefix}_spielbericht` WHERE id_begegnung IN (#{beg_ids.join(',')})")
     spieler_ids  = mitspieler.map { |m| m['id_spieler'].to_i }.select(&:positive?).uniq
     spieler      = spieler_ids.empty? ? {} : query_all(client, "SELECT id_spieler, name, vorname, geb_datum, geschlecht FROM global_spieler WHERE id_spieler IN (#{spieler_ids.join(',')})").to_h { |r| [r['id_spieler'].to_s, r] }
 
     entry = { 'liga' => liga, 'mannschaft' => mannschaften, 'spieltag' => spieltage,
-              'begegnung' => begegnungen, 'ereignis' => ereignisse, 'mitspieler' => mitspieler }
+              'begegnung' => begegnungen, 'ereignis' => ereignisse, 'mitspieler' => mitspieler,
+              'betreuer' => betreuer, 'spielbericht' => spielbericht }
     import_bundles([{ 'verband' => verband, 'season' => season, 'leagues' => [entry], 'spieler' => spieler,
                       'verein_names' => name_map(client, 'global_verein', 'id_verein', 'name'),
                       'spielort_names' => name_map(client, 'global_spielort', 'id_spielort', 'name') }])
@@ -178,6 +181,8 @@ namespace :legacy do
   def write_games(entry, league, verband, season, team_map, spielort_names, player_id_map)
     ev_by_beg = (entry['ereignis'] || []).group_by { |e| e['id_begegnung'].to_i }
     ms_by_beg = (entry['mitspieler'] || []).group_by { |m| m['id_begegnung'].to_i }
+    bt_by_beg = (entry['betreuer'] || []).group_by { |x| x['id_begegnung'].to_i }
+    sb_by_beg = (entry['spielbericht'] || []).index_by { |x| x['id_begegnung'].to_i }
     spieltag_by_id = (entry['spieltag'] || []).index_by { |s| s['id_spieltag'].to_i }
     gd_cache = {} # Spieltag lazy – nur wenn ein Spiel ihn nutzt (keine verwaisten GameDays)
 
@@ -200,6 +205,10 @@ namespace :legacy do
       end
 
       attrs = LegacyImport::Transformer.game_attrs(b, game_day_id: gd.id, home_team_id: home.id, guest_team_id: guest.id)
+      attrs.merge!(LegacyImport::Transformer.spielbericht_attrs(sb_by_beg[bid]))
+      coaches = LegacyImport::Transformer.build_coaches(bt_by_beg[bid] || [])
+      attrs[:home_team_coaches]  = coaches['home']  if coaches['home'].present?
+      attrs[:guest_team_coaches] = coaches['guest'] if coaches['guest'].present?
       attrs[:events]  = LegacyImport::Transformer.build_events(ev_by_beg[bid] || [])
       attrs[:players] = LegacyImport::Transformer.build_players(ms_by_beg[bid] || [], player_id_map:)
       upsert(Game, "G:#{verband}:#{season}:#{b['id_begegnung']}", attrs)

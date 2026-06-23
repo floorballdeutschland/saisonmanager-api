@@ -153,17 +153,43 @@ module LegacyImport
       result
     end
 
-    # global_*_betreuer-Zeilen → { 'home' => [...], 'guest' => [...] }.
+    # global_*_betreuer-Zeilen → { 'home' => {...}, 'guest' => {...} } im Format
+    # der Live-Spalten home_team_coaches/guest_team_coaches: ein Hash mit Keys
+    # "coachN_string"/"coachN_signed" (vgl. GamesController). Altdaten kennen nur
+    # den vollen Namen (betreuer1..5) ohne Vor-/Nachname-Split und eine
+    # Unterschrift nur für betreuer1.
     def build_coaches(betreuer_rows)
-      result = { 'home' => [], 'guest' => [] }
+      result = { 'home' => {}, 'guest' => {} }
       betreuer_rows.each do |b|
-        team = b['team'].to_i == 1 ? 'home' : 'guest'
+        side = b['team'].to_i == 1 ? 'home' : 'guest'
         (1..5).each do |i|
           name = b["betreuer#{i}"]
-          result[team] << name if name.present?
+          result[side]["coach#{i}_string"] = name if name.present?
         end
+        result[side]['coach1_signed'] = true if to_bool(b['betreuer1_unterschrift'])
       end
       result
+    end
+
+    # global_*_spielbericht-Zeile → Felder auf games. Schiris bleiben bewusst
+    # Freitext (referee1/2_string, keine Verknüpfung zu referees). Liefert {}
+    # ohne Bericht, damit der Aufrufer bedenkenlos mergen kann.
+    def spielbericht_attrs(spielbericht)
+      return {} if spielbericht.blank?
+
+      {
+        referee1_string: spielbericht['schiedsrichter1'].presence,
+        referee2_string: spielbericht['schiedsrichter2'].presence,
+        referee1_signed: to_bool(spielbericht['unterschrift_schiri1']),
+        referee2_signed: to_bool(spielbericht['unterschrift_schiri2']),
+        home_captain_signed: to_bool(spielbericht['unterschrift_kapitain1']),
+        guest_captain_signed: to_bool(spielbericht['unterschrift_kapitain2']),
+        home_timeout_string: spielbericht['timeout1'].presence,
+        guest_timeout_string: spielbericht['timeout2'].presence,
+        record_comment: spielbericht['kommentar'].presence,
+        protest: to_bool(spielbericht['protest']),
+        overtime: to_bool(spielbericht['verlaengerung'])
+      }.compact
     end
 
     # ── intern ────────────────────────────────────────────────────────────────

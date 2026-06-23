@@ -109,6 +109,64 @@ class LegacyImport::TransformerTest < ActiveSupport::TestCase # rubocop:disable 
     assert_equal 99_001, goalie['player_id']
   end
 
+  # global_*_betreuer (eine Zeile je Begegnung+Team; betreuer1..5 Freitext,
+  # Unterschrift nur für betreuer1).
+  BETREUER_488 = [
+    { 'id_begegnung' => 488, 'team' => 1, 'betreuer1' => 'Schmidt, Anna', 'betreuer2' => 'Weber, Tom',
+      'betreuer3' => nil, 'betreuer4' => nil, 'betreuer5' => nil, 'betreuer1_unterschrift' => 1 },
+    { 'id_begegnung' => 488, 'team' => 2, 'betreuer1' => 'Klein, Eva', 'betreuer2' => nil,
+      'betreuer3' => nil, 'betreuer4' => nil, 'betreuer5' => nil, 'betreuer1_unterschrift' => 0 }
+  ].freeze
+
+  # global_*_spielbericht-Zeile (eine je Begegnung).
+  SPIELBERICHT_488 = {
+    'id_begegnung' => 488,
+    'schiedsrichter1' => 'Müller, Max', 'schiedsrichter2' => 'Lang, Lea',
+    'unterschrift_schiri1' => 1, 'unterschrift_schiri2' => 0,
+    'unterschrift_kapitain1' => 1, 'unterschrift_kapitain2' => 1,
+    'timeout1' => '45:12', 'timeout2' => nil,
+    'kommentar' => 'Verspäteter Anpfiff', 'protest' => 0, 'verlaengerung' => 1
+  }.freeze
+
+  # ── build_coaches ───────────────────────────────────────────────────────────────
+  test 'build_coaches baut den Hash home_team_coaches/guest_team_coaches im Live-Format' do
+    coaches = LegacyImport::Transformer.build_coaches(BETREUER_488)
+
+    assert_equal 'Schmidt, Anna', coaches['home']['coach1_string']
+    assert_equal 'Weber, Tom', coaches['home']['coach2_string']
+    assert coaches['home']['coach1_signed'] # betreuer1_unterschrift = 1
+    refute coaches['home'].key?('coach3_string') # leere Betreuer nicht gesetzt
+
+    assert_equal 'Klein, Eva', coaches['guest']['coach1_string']
+    refute coaches['guest'].key?('coach1_signed') # Unterschrift = 0
+  end
+
+  test 'build_coaches liefert leere Hashes ohne Betreuer' do
+    coaches = LegacyImport::Transformer.build_coaches([])
+    assert_empty coaches['home']
+    assert_empty coaches['guest']
+  end
+
+  # ── spielbericht_attrs ────────────────────────────────────────────────────────────
+  test 'spielbericht_attrs mappt Schiri-Freitext, Timeouts, Kommentar, Protest, Verlängerung' do
+    attrs = LegacyImport::Transformer.spielbericht_attrs(SPIELBERICHT_488)
+
+    assert_equal 'Müller, Max', attrs[:referee1_string]
+    assert_equal 'Lang, Lea', attrs[:referee2_string]
+    assert attrs[:referee1_signed]
+    refute attrs[:referee2_signed]
+    assert attrs[:home_captain_signed]
+    assert_equal '45:12', attrs[:home_timeout_string]
+    refute attrs.key?(:guest_timeout_string) # timeout2 war nil → via compact entfernt
+    assert_equal 'Verspäteter Anpfiff', attrs[:record_comment]
+    refute attrs[:protest]
+    assert attrs[:overtime]
+  end
+
+  test 'spielbericht_attrs liefert {} ohne Bericht' do
+    assert_empty LegacyImport::Transformer.spielbericht_attrs(nil)
+  end
+
   # ── league_attrs (Vokabular) ────────────────────────────────────────────────────
   test 'league_attrs mappt Klasse, Feldgröße, Saison und setzt legacy_league' do
     liga = {
