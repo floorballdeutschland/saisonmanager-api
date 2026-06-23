@@ -4,7 +4,7 @@ module Admin
 
     before_action :authorize_referee_access!
     before_action :set_referee,
-                  only: %i[show update destroy games wallet_pass club_stats merge create_user destroy_user]
+                  only: %i[show update destroy games wallet_pass club_stats merge create_user destroy_user feedbacks]
 
     # GET /api/v2/admin/referees
     def index
@@ -34,6 +34,28 @@ module Admin
       return forbidden_response unless can_access_referee?(@referee)
 
       render json: referee_json(@referee, full: true)
+    end
+
+    # GET /api/v2/admin/referees/:id/feedbacks
+    # Schiri-Feedback der Vereine zu diesem Schiedsrichter. Nur für Admin,
+    # FD-RSK (global) und FD-Ansetzer (global) sichtbar.
+    def feedbacks
+      return forbidden_response unless can_view_feedback?
+
+      feedbacks = RefereeFeedback
+                  .for_referee(@referee.id)
+                  .includes(:team, game: { game_day: :league })
+                  .order(created_at: :desc)
+
+      visible = feedbacks.select(&:visible?)
+      render json: {
+        summary: {
+          count: visible.size,
+          avg_line_rating: average_rating(visible, :line_rating),
+          avg_communication_rating: average_rating(visible, :communication_rating)
+        },
+        feedbacks: feedbacks.map { |f| feedback_json(f) }
+      }
     end
 
     # POST /api/v2/admin/referees
@@ -370,6 +392,21 @@ module Admin
       ph[:admin].present? || ph[:rsk].present?
     end
 
+    # Schiri-Feedback ist nur für Admin sowie die FD-Rollen (global gescopt, d. h.
+    # rsk/ansetzer enthalten 0) sichtbar – nicht für LV-RSK, SBK oder VM.
+    def can_view_feedback?
+      ph = current_user.permission_hash
+      ph[:admin].present? ||
+        (ph[:rsk].present? && ph[:rsk].include?(0)) ||
+        (ph[:ansetzer].present? && ph[:ansetzer].include?(0))
+    end
+
+    def average_rating(feedbacks, attribute)
+      return nil if feedbacks.empty?
+
+      (feedbacks.sum(&attribute).to_f / feedbacks.size).round(1)
+    end
+
     def can_edit_full?
       ph = current_user.permission_hash
       ph[:admin].present? || (ph[:rsk].present? && ph[:rsk].include?(0))
@@ -420,6 +457,26 @@ module Admin
       end
 
       data
+    end
+
+    def feedback_json(feedback)
+      game = feedback.game
+      {
+        id: feedback.id,
+        game_id: feedback.game_id,
+        game_number: game&.game_number,
+        date: game&.game_day&.date,
+        league: game&.league&.name,
+        team_name: feedback.team&.name,
+        referee_names: feedback.referee_names,
+        line_rating: feedback.line_rating,
+        line_comment: feedback.line_comment,
+        communication_rating: feedback.communication_rating,
+        communication_comment: feedback.communication_comment,
+        general_comment: feedback.general_comment,
+        status: feedback.status,
+        created_at: feedback.created_at.iso8601
+      }
     end
 
     def qualification_json(q)

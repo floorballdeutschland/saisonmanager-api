@@ -86,6 +86,12 @@ class User < ApplicationRecord
     result[:menu_item_referee_availability] = ph[:admin].present? || ph[:ansetzer].present?
     # Strafcode-Verwaltung („Einstellungen" im Schiedsrichterwesen) – nur Admin.
     result[:menu_item_referee_settings] = ph[:admin].present?
+    # Schiri-Feedback der Vereine ist nur am Schiri-Profil sichtbar – für Admin
+    # sowie die global gescopten FD-Rollen (RSK/Ansetzer mit Spielbetrieb 0).
+    result[:referee_feedback_view] =
+      ph[:admin].present? ||
+      (ph[:rsk].present? && ph[:rsk].include?(0)) ||
+      (ph[:ansetzer].present? && ph[:ansetzer].include?(0))
     result[:menu_item_referee_course_import] = has_full_referee_access
     result[:menu_item_referee_course_review] = has_full_referee_access || lv_rsk_review_enabled?(ph)
     result[:menu_item_online_test_admin] = ph[:admin].present? || ph[:rsk].present?
@@ -93,6 +99,11 @@ class User < ApplicationRecord
     result[:menu_item_player_vm] = ph[:vm].present? || ph[:tm].present?
     # Portal „Meine Spieltage" für Gastmannschafts-Bestätigung (TM/VM).
     result[:menu_item_team_game_days] = ph[:tm].present? || ph[:vm].present?
+    # Portal „Schiri-Feedback" – verpflichtende Rückmeldung der Vereine nach dem
+    # Spiel. Nur sichtbar, wenn der/die Nutzer:in tatsächlich eine Mannschaft in
+    # einer feedback-pflichtigen Liga (referee_feedback_enabled, z. B. 1. BL)
+    # verantwortet – als TM (eigene Teams) oder VM (Teams des eigenen Vereins).
+    result[:menu_item_referee_feedback] = manages_referee_feedback_team?(ph)
     # Globaler Admin und global gescopter SBK (z. B. FD-SBK, ph[:sbk] enthält 0)
     # bekommen den vollen Verbandsverwaltungs-View über alle Landesverbände.
     global_sbk = ph[:sbk].present? && ph[:sbk].include?(0)
@@ -171,6 +182,23 @@ class User < ApplicationRecord
 
   def special_user
     %w[jho_admin buettner_sbk mguenther].include?(user_name)
+  end
+
+  # True, wenn der/die Nutzer:in mindestens eine Mannschaft verantwortet, die in
+  # einer feedback-pflichtigen Liga der aktuellen Saison aktiv ist (TM: eigene
+  # Teams; VM: Teams des eigenen Vereins). Berücksichtigt auch Pokal-/Zusatzligen
+  # eines Teams (Team#all_league_ids).
+  def manages_referee_feedback_team?(perm_hash)
+    return false unless perm_hash[:tm].present? || perm_hash[:vm].present?
+
+    enabled_league_ids = League.current_season.where(referee_feedback_enabled: true).pluck(:id)
+    return false if enabled_league_ids.empty?
+
+    team_ids = Array(perm_hash[:tm])
+    team_ids += Team.where(club_id: Array(perm_hash[:vm])).pluck(:id) if perm_hash[:vm].present?
+    return false if team_ids.empty?
+
+    Team.where(id: team_ids).any? { |team| (team.all_league_ids & enabled_league_ids).present? }
   end
 
   def permission_hash

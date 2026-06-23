@@ -223,7 +223,9 @@ Rails.application.routes.draw do
           delete :destroy_user, on: :member
           get :incorrect_assignments, on: :collection
           get :next_lizenznummer, on: :collection
+          get :feedbacks, on: :member
         end
+        resources :referee_feedbacks, only: %i[update]
         resources :proceeding_proposals, only: %i[index show] do
           member do
             post :reject
@@ -333,6 +335,9 @@ Rails.application.routes.draw do
 
       get  'user/team_game_days',                                     to: 'team_game_day_confirmations#index'
       post 'user/team_game_days/:game_day_id/teams/:team_id/confirm', to: 'team_game_day_confirmations#confirm'
+
+      get  'user/referee_feedbacks', to: 'user_referee_feedbacks#index'
+      post 'user/referee_feedbacks', to: 'user_referee_feedbacks#create'
 
       resources :games do
         collection do
