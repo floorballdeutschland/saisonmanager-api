@@ -9,8 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+---
+
+## [1.38.0] - 2026-06-23
+
 ### Neu
-- **Schiri-Feedback**: Vereine geben nach dem Spiel eine verpflichtende Rückmeldung zum Schiedsrichtergespann ab (`GET`/`POST /api/v2/user/referee_feedbacks`). Pro Spiel und Mannschaft genau eine Abgabe (TM/VM), frühestens 24 Stunden nach Anpfiff. Liga, Spielnummer, angesetzte Schiedsrichter und die eigene Mannschaft werden automatisch aus dem Spiel vorbelegt; abgefragt werden zwei Bewertungen (Linie/Konstanz und Kommunikation, je 1–10) sowie drei Freitextfelder. Freigeschaltet wird das Feedback je Liga über das neue Flag `referee_feedback_enabled` (z. B. 1. FBL Herren/Damen). Die abgebende Seite sieht nur den Status (offen/erledigt). Auswertung ausschließlich in der Schiriverwaltung am Schiri-Profil (`GET /api/v2/admin/referees/:id/feedbacks`, Durchschnitte + Einzelrückmeldungen) – sichtbar nur für Admin, FD-RSK und FD-Ansetzer; unsachliche Rückmeldungen lassen sich ausblenden (`PATCH /api/v2/admin/referee_feedbacks/:id`).
+- **Schiri-Feedback**: Vereine geben nach dem Spiel eine verpflichtende Rückmeldung zum Schiedsrichtergespann ab (`GET`/`POST /api/v2/user/referee_feedbacks`). Pro Spiel und Mannschaft genau eine Abgabe (TM/VM), frühestens 24 Stunden nach Anpfiff. Liga, Spielnummer, angesetzte Schiedsrichter und die eigene Mannschaft werden automatisch aus dem Spiel vorbelegt; abgefragt werden zwei Bewertungen (Linie/Konstanz und Kommunikation, je 1–10) sowie drei Freitextfelder. Freigeschaltet wird das Feedback je Liga über das neue Flag `referee_feedback_enabled` (z. B. 1. FBL Herren/Damen); der Menüpunkt erscheint nur für TM/VM mit einer Mannschaft in einer solchen Liga. Die abgebende Seite sieht nur den Status (offen/erledigt). Auswertung ausschließlich in der Schiriverwaltung am Schiri-Profil (`GET /api/v2/admin/referees/:id/feedbacks`, Durchschnitte + Einzelrückmeldungen) – sichtbar nur für Admin, FD-RSK und FD-Ansetzer; unsachliche Rückmeldungen lassen sich ausblenden (`PATCH /api/v2/admin/referee_feedbacks/:id`).
 
 ---
 
