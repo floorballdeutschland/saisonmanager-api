@@ -6,9 +6,9 @@ Rails 7 API backend for the Floorball Saisonmanager — a league management syst
 
 | Repo | Description |
 |---|---|
-| [saisonmanager](https://github.com/floorballverband-deutschland/saisonmanager) | Angular 22 frontend |
-| [saisonmanager-api](https://github.com/floorballverband-deutschland/saisonmanager-api) | This repo – Rails 7 API |
-| [saisonmanager-docker](https://github.com/floorballverband-deutschland/saisonmanager-docker) | Docker Compose setup for local development |
+| [saisonmanager](https://github.com/floorballdeutschland/saisonmanager) | Angular 22 frontend |
+| [saisonmanager-api](https://github.com/floorballdeutschland/saisonmanager-api) | This repo – Rails 7 API |
+| [saisonmanager-docker](https://github.com/floorballdeutschland/saisonmanager-docker) | Docker Compose setup for local development |
 
 ## Tech Stack
 
@@ -20,7 +20,7 @@ Rails 7 API backend for the Floorball Saisonmanager — a league management syst
 
 ## Quick Start
 
-The API is designed to run in Docker. See [saisonmanager-docker](https://github.com/floorballverband-deutschland/saisonmanager-docker) for the full setup.
+The API is designed to run in Docker. See [saisonmanager-docker](https://github.com/floorballdeutschland/saisonmanager-docker) for the full setup.
 
 ```bash
 cd ~/saisonmanager-docker
