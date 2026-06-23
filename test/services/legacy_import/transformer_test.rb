@@ -167,6 +167,47 @@ class LegacyImport::TransformerTest < ActiveSupport::TestCase # rubocop:disable 
     assert_empty LegacyImport::Transformer.spielbericht_attrs(nil)
   end
 
+  # global_*_lizenz-Zeile + zugehörige *_lizenzverlauf-Zeilen.
+  LIZENZ_42 = {
+    'id_lizenz' => 42, 'id_spieler' => 476, 'id_mannschaft' => 7,
+    'id_klasse' => 30, 'id_kategorie' => 1, 'weiblich' => 0
+  }.freeze
+
+  # Bewusst verkehrt herum → testet die chronologische Sortierung nach timestamp.
+  LIZENZVERLAUF_42 = [
+    { 'id_lizenz' => 42, 'id_lizenzstatus' => 1, 'timestamp' => '2013-08-05 12:30:00' }, # erteilt
+    { 'id_lizenz' => 42, 'id_lizenzstatus' => 2, 'timestamp' => '2013-08-01 10:00:00' }  # beantragt
+  ].freeze
+
+  # ── license_attrs ─────────────────────────────────────────────────────────────────
+  test 'license_attrs baut einen players.licenses-Eintrag mit chronologischer History' do
+    lic = LegacyImport::Transformer.license_attrs(
+      LIZENZ_42, LIZENZVERLAUF_42, team_id: 99_007, license_id: 'LIC:fvd:2013_2014:42'
+    )
+
+    assert_equal 'LIC:fvd:2013_2014:42', lic['id']
+    assert_equal 99_007, lic['team_id']
+    assert_equal 'rl', lic['league_class_id'] # id_klasse 30
+    assert_equal '1', lic['league_category_id'] # id_kategorie 1 (Passthrough)
+    refute lic['female']
+
+    assert_equal 2, lic['history'].size
+    assert_equal License::REQUESTED, lic['history'].first['license_status_id'] # beantragt zuerst
+    assert_equal License::APPROVED, lic['history'].last['license_status_id']
+    assert_equal '2013-08-05T12:30:00', lic['history'].last['created_at'] # Space → ISO-T
+  end
+
+  test 'license_attrs mappt Lizenzstatus 1:1 auf die License-Konstanten' do
+    verlauf = [{ 'id_lizenz' => 42, 'id_lizenzstatus' => 6, 'timestamp' => '2014-01-01 00:00:00' }]
+    lic = LegacyImport::Transformer.license_attrs(LIZENZ_42, verlauf, team_id: 1, license_id: 'x')
+    assert_equal License::TRANSFER, lic['history'].first['license_status_id']
+  end
+
+  test 'license_attrs kommt ohne Verlauf aus (leere History)' do
+    lic = LegacyImport::Transformer.license_attrs(LIZENZ_42, nil, team_id: 1, license_id: 'x')
+    assert_equal [], lic['history']
+  end
+
   # ── league_attrs (Vokabular) ────────────────────────────────────────────────────
   test 'league_attrs mappt Klasse, Feldgröße, Saison und setzt legacy_league' do
     liga = {
