@@ -192,3 +192,8 @@ Events) über die JSON-Brücke gegen die prod-nahe Dev-DB:
   und aktualisiert, **löscht aber nie**. Schrumpft die Quelle (korrigierter Dump
   ohne eine zuvor importierte Liga/Spiel), bleibt der alte Datensatz als Waise
   stehen – ein echter Re-Import braucht ggf. einen separaten Aufräumschritt.
+  Dasselbe gilt für **Lizenzen**: Der Merge dedupliziert pro Spieler über die
+  license-`id` (`LIC:…`); matcht eine `id_spieler` zwischen zwei Läufen auf einen
+  anderen Spieler (geänderter `player_index`), bleibt der alte Eintrag beim zuvor
+  gematchten Spieler stehen. Betreuer/Spielbericht werden beim Re-Run überschrieben,
+  aber bei entfernter Quell-Zeile nicht zurückgesetzt.
