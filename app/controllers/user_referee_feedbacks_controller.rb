@@ -45,7 +45,8 @@ class UserRefereeFeedbacksController < ApplicationController
     existing = RefereeFeedback.find_by(game: game, team: team)
     return render json: status_payload(existing) if existing
 
-    if Time.current < fillable_from(game)
+    fillable = fillable_from(game)
+    if fillable.nil? || Time.current < fillable
       return render json: { error: 'Feedback ist erst 24 Stunden nach dem Spiel möglich.' },
                     status: :unprocessable_entity
     end
@@ -130,8 +131,21 @@ class UserRefereeFeedbacksController < ApplicationController
     game.home_team_id == team.id || game.guest_team_id == team.id
   end
 
+  # Frühester Abgabezeitpunkt (Anpfiff + 24 h). nil, wenn sich kein Zeitpunkt
+  # ermitteln lässt (kein Datum). Fehlt nur die Startzeit, wird vom Tagesbeginn
+  # des Spieltags gerechnet, damit ein Spiel ohne gepflegte Uhrzeit nicht crasht.
   def fillable_from(game)
-    game.start_date + FILLABLE_AFTER_HOURS.hours
+    base = game_start(game)
+    base && base + FILLABLE_AFTER_HOURS.hours
+  end
+
+  def game_start(game)
+    return nil if game.game_day&.date.blank?
+
+    tz = ActiveSupport::TimeZone['Europe/Berlin']
+    tz.parse("#{game.game_day.date} #{game.start_time}".strip)
+  rescue ArgumentError, TypeError
+    nil
   end
 
   def game_feedback_json(game, team, feedback)
@@ -147,7 +161,7 @@ class UserRefereeFeedbacksController < ApplicationController
       date: game.game_day.date,
       start_time: game.start_time,
       referees: game.nominated_referees.map { |r| "#{r.vorname} #{r.nachname}".strip },
-      fillable_from: fillable_from(game).iso8601,
+      fillable_from: fillable_from(game)&.iso8601,
       done: feedback.present?,
       submitted_at: feedback&.created_at&.iso8601
     }
