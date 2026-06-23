@@ -239,11 +239,18 @@ namespace :legacy do
     puts "  → League ##{league.id} #{league.name}: #{written} Spiele#{note}"
   end
 
-  # global_*_lizenz + *_lizenzverlauf → player.licenses (idempotenter Merge über
-  # die license 'id'). Spieler via player_id_map (Name+Geburtsdatum), Team via
-  # team_map. Nicht auflösbare Lizenzen (Spieler/Team unbekannt) werden gezählt,
-  # nicht still verworfen. Legacy-Teams liegen außerhalb von current_min_team →
-  # die importierten Lizenzen tauchen nicht in der aktuellen Saison auf.
+  # global_*_lizenz + *_lizenzverlauf → player.licenses. Spieler via player_id_map
+  # (Name+Geburtsdatum), Team via team_map. Nicht auflösbare Lizenzen (Spieler/Team
+  # unbekannt) werden gezählt, nicht still verworfen. Legacy-Teams liegen außerhalb
+  # von current_min_team → die importierten Lizenzen tauchen nicht in der aktuellen
+  # Saison auf.
+  #
+  # Idempotenz: Der Merge dedupliziert PRO SPIELER über die license 'id'
+  # (LIC:<verband>:<saison>:<id_lizenz>) – ein zweiter Lauf ersetzt den Eintrag
+  # statt anzuhängen. Forward-only wie der übrige Import: matcht eine id_spieler
+  # zwischen zwei Läufen auf einen ANDEREN Spieler (geänderter player_index),
+  # bleibt der alte Eintrag beim zuvor gematchten Spieler stehen. Für einen echten
+  # Re-Import nach Änderung der Spieler-Basis ggf. die LIC:-Einträge vorab wegräumen.
   def merge_licenses(entry, verband, season, team_map, player_id_map)
     lizenzen = entry['lizenz'] || []
     return if lizenzen.empty?
