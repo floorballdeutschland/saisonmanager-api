@@ -192,6 +192,32 @@ module LegacyImport
       }.compact
     end
 
+    # global_*_lizenz-Zeile (+ zugehörige *_lizenzverlauf-Zeilen) → ein Eintrag
+    # im players.licenses-JSONB. team_id ist die remappte Team-ID; license_id eine
+    # herkunftsstabile ID (z. B. "LIC:fvd:2013_2014:42") für den idempotenten
+    # Merge in player.licenses. Status-Verlauf wird chronologisch (nach timestamp)
+    # in die history übernommen.
+    def license_attrs(lizenz, verlauf_rows, team_id:, license_id:)
+      kl = Vocab.klasse_attrs(lizenz['id_klasse'])
+      kat = Vocab.kategorie_attrs(lizenz['id_kategorie'])
+
+      history = (verlauf_rows || []).sort_by { |v| v['timestamp'].to_s }.map do |v|
+        {
+          'license_status_id' => Vocab::LIZENZSTATUS_TO_STATUS_ID[v['id_lizenzstatus'].to_i] || v['id_lizenzstatus'].to_i,
+          'created_at' => v['timestamp'].to_s.tr(' ', 'T').presence
+        }.compact
+      end
+
+      {
+        'id' => license_id,
+        'team_id' => team_id,
+        'league_class_id' => kl[:league_class_id],
+        'league_category_id' => kat[:league_category_id],
+        'female' => to_bool(lizenz['weiblich']),
+        'history' => history
+      }.compact
+    end
+
     # ── intern ────────────────────────────────────────────────────────────────
     def event_team(penalty:, row:, home_goals:, guest_goals:, prev_home:, prev_guest:)
       unless penalty

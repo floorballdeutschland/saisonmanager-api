@@ -50,12 +50,17 @@ namespace :legacy do
     mitspieler   = beg_ids.empty? ? [] : query_all(client, "SELECT * FROM `#{prefix}_mitspieler` WHERE id_begegnung IN (#{beg_ids.join(',')})")
     betreuer     = beg_ids.empty? ? [] : query_all(client, "SELECT * FROM `#{prefix}_betreuer` WHERE id_begegnung IN (#{beg_ids.join(',')})")
     spielbericht = beg_ids.empty? ? [] : query_all(client, "SELECT * FROM `#{prefix}_spielbericht` WHERE id_begegnung IN (#{beg_ids.join(',')})")
+    mann_ids     = mannschaften.map { |m| m['id_mannschaft'].to_i }
+    lizenz        = mann_ids.empty? ? [] : query_all(client, "SELECT * FROM `#{prefix}_lizenz` WHERE id_mannschaft IN (#{mann_ids.join(',')})")
+    liz_ids       = lizenz.map { |l| l['id_lizenz'].to_i }
+    lizenzverlauf = liz_ids.empty? ? [] : query_all(client, "SELECT * FROM `#{prefix}_lizenzverlauf` WHERE id_lizenz IN (#{liz_ids.join(',')})")
     spieler_ids  = mitspieler.map { |m| m['id_spieler'].to_i }.select(&:positive?).uniq
     spieler      = spieler_ids.empty? ? {} : query_all(client, "SELECT id_spieler, name, vorname, geb_datum, geschlecht FROM global_spieler WHERE id_spieler IN (#{spieler_ids.join(',')})").to_h { |r| [r['id_spieler'].to_s, r] }
 
     entry = { 'liga' => liga, 'mannschaft' => mannschaften, 'spieltag' => spieltage,
               'begegnung' => begegnungen, 'ereignis' => ereignisse, 'mitspieler' => mitspieler,
-              'betreuer' => betreuer, 'spielbericht' => spielbericht }
+              'betreuer' => betreuer, 'spielbericht' => spielbericht,
+              'lizenz' => lizenz, 'lizenzverlauf' => lizenzverlauf }
     import_bundles([{ 'verband' => verband, 'season' => season, 'leagues' => [entry], 'spieler' => spieler,
                       'verein_names' => name_map(client, 'global_verein', 'id_verein', 'name'),
                       'spielort_names' => name_map(client, 'global_spielort', 'id_spielort', 'name') }])
@@ -124,12 +129,14 @@ namespace :legacy do
     end
   end
 
-  # Alle Verbände einer Saison in einer Transaktion, zwei Phasen.
+  # Alle Verbände einer Saison in einer Transaktion, drei Phasen
+  # (Ligen/Teams → Spieltage/Spiele → Lizenzen).
   def run_season(season, bundles)
     puts "\n### Saison #{season}: #{bundles.map { |b| b['verband'] }.join(', ')} ###"
     ActiveRecord::Base.transaction do
       team_map = {}    # [verband, id_mannschaft] → Team
       league_recs = {} # [verband, id_liga]       → League
+      player_maps = {} # verband → { alt id_spieler → Player.id } (in Phase 2 befüllt)
 
       # Phase 1 – Ligen + Teams
       bundles.each do |b|
@@ -160,12 +167,25 @@ namespace :legacy do
         verband = b['verband']
         spielort_names = indexed(b['spielort_names'])
         player_id_map = LegacyImport::PlayerResolver.resolve(b['spieler'], player_index)
+        player_maps[verband] = player_id_map
         report_player_match(verband, b['spieler'], player_id_map)
         (b['leagues'] || []).each do |entry|
           league = league_recs[[verband, entry['liga']['id_liga'].to_i]]
           next if league.nil? # übersprungene leere Liga
 
           write_games(entry, league, verband, season, team_map, spielort_names, player_id_map)
+        end
+      end
+
+      # Phase 3 – Lizenzen in player.licenses mergen (idempotent über license 'id').
+      # Braucht team_map (Phase 1) + player_maps (Phase 2) → dritte Iteration.
+      bundles.each do |b|
+        verband = b['verband']
+        pmap = player_maps[verband] || {}
+        (b['leagues'] || []).each do |entry|
+          next if empty_league?(entry)
+
+          merge_licenses(entry, verband, season, team_map, pmap)
         end
       end
       # rubocop:enable Style/CombinableLoops
@@ -219,6 +239,52 @@ namespace :legacy do
     puts "  → League ##{league.id} #{league.name}: #{written} Spiele#{note}"
   end
 
+  # global_*_lizenz + *_lizenzverlauf → player.licenses. Spieler via player_id_map
+  # (Name+Geburtsdatum), Team via team_map. Nicht auflösbare Lizenzen (Spieler/Team
+  # unbekannt) werden gezählt, nicht still verworfen. Legacy-Teams liegen außerhalb
+  # von current_min_team → die importierten Lizenzen tauchen nicht in der aktuellen
+  # Saison auf.
+  #
+  # Idempotenz: Der Merge dedupliziert PRO SPIELER über die license 'id'
+  # (LIC:<verband>:<saison>:<id_lizenz>) – ein zweiter Lauf ersetzt den Eintrag
+  # statt anzuhängen. Forward-only wie der übrige Import: matcht eine id_spieler
+  # zwischen zwei Läufen auf einen ANDEREN Spieler (geänderter player_index),
+  # bleibt der alte Eintrag beim zuvor gematchten Spieler stehen. Für einen echten
+  # Re-Import nach Änderung der Spieler-Basis ggf. die LIC:-Einträge vorab wegräumen.
+  def merge_licenses(entry, verband, season, team_map, player_id_map)
+    lizenzen = entry['lizenz'] || []
+    return if lizenzen.empty?
+
+    verlauf_by_lizenz = (entry['lizenzverlauf'] || []).group_by { |v| v['id_lizenz'].to_i }
+    by_player = Hash.new { |h, k| h[k] = [] }
+    unresolved = 0
+
+    lizenzen.each do |lz|
+      pid = player_id_map[lz['id_spieler'].to_i]
+      team = team_map[[verband, lz['id_mannschaft'].to_i]]
+      if pid.nil? || team.nil?
+        unresolved += 1
+        next
+      end
+      license_id = "LIC:#{verband}:#{season}:#{lz['id_lizenz']}"
+      by_player[pid] << LegacyImport::Transformer.license_attrs(
+        lz, verlauf_by_lizenz[lz['id_lizenz'].to_i], team_id: team.id, license_id:
+      )
+    end
+
+    by_player.each do |pid, new_lics|
+      player = Player.find_by(id: pid)
+      next unless player
+
+      kept = (player.licenses || []).reject { |l| new_lics.any? { |n| n['id'] == l['id'] } }
+      player.licenses = kept + new_lics
+      player.save!(validate: false)
+    end
+
+    note = unresolved.positive? ? " (#{unresolved} ohne Spieler/Team-Match)" : ''
+    puts "  Lizenzen #{verband}: #{lizenzen.size - unresolved}/#{lizenzen.size} → #{by_player.size} Spieler#{note}"
+  end
+
   def dry_run_report(entry, verband, season, go_id)
     liga = entry['liga']
     league_attrs = LegacyImport::Transformer.league_attrs(liga, game_operation_id: go_id || 0)
@@ -232,6 +298,8 @@ namespace :legacy do
     events = LegacyImport::Transformer.build_events(ev_by_beg[sample['id_begegnung'].to_i])
     last = events.last
     puts "  Beispiel Begegnung #{sample['id_begegnung']}: #{events.size} Events, Endstand #{last['home_goals']}:#{last['guest_goals']}"
+    lic_count = (entry['lizenz'] || []).size
+    puts "  Lizenzen: #{lic_count}" if lic_count.positive?
   end
 
   # ── Helpers ───────────────────────────────────────────────────────────────────

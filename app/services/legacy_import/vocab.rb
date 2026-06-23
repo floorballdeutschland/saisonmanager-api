@@ -80,6 +80,17 @@ module LegacyImport
       6 => 'transfer'
     }.freeze
 
+    # id_lizenzstatus → license_status_id (License-Konstanten) für die
+    # licenses-History. Glücksfall: Alt 1–6 entspricht 1:1 den neuen IDs.
+    LIZENZSTATUS_TO_STATUS_ID = {
+      1 => License::APPROVED,
+      2 => License::REQUESTED,
+      3 => License::DENIED,
+      4 => License::DELETED,
+      5 => License::DELETE_REQUESTED,
+      6 => License::TRANSFER
+    }.freeze
+
     # Liefert league_class_id + Zusatzattribute (age_group/female) für eine
     # Alt-Klasse. Unbekannte Klassen → class_id nil + :unmapped-Flag, damit der
     # Dry-Run sie reportet, statt still falsch zu mappen.
