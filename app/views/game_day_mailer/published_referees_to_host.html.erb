@@ -38,12 +38,12 @@
         </td>
         <td>
           <% if referees.any? %>
-            <%= referees.map { |r| "#{r.vorname} #{r.nachname}" }.join(', ') %>
+            <%= referees.map { |r| r.email.present? ? "#{r.vorname} #{r.nachname} (#{r.email})" : "#{r.vorname} #{r.nachname}" }.join(', ') %>
           <% else %>
             –
           <% end %>
           <% if coach.present? %>
-            <br><span style="color:#555;">Coach: <%= coach.vorname %> <%= coach.nachname %></span>
+            <br><span style="color:#555;">Coach: <%= coach.vorname %> <%= coach.nachname %><% if coach.email.present? %> (<%= coach.email %>)<% end %></span>
           <% end %>
         </td>
       </tr>

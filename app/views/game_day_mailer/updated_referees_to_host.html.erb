@@ -17,10 +17,11 @@
   <% referees = @assignment&.referees.to_a %>
   <tr>
     <td><strong>Schiedsrichter/innen</strong></td>
-    <td><%= referees.any? ? referees.map { |r| "#{r.vorname} #{r.nachname}" }.join(', ') : '–' %></td>
+    <td><%= referees.any? ? referees.map { |r| r.email.present? ? "#{r.vorname} #{r.nachname} (#{r.email})" : "#{r.vorname} #{r.nachname}" }.join(', ') : '–' %></td>
   </tr>
   <% if @assignment&.coach.present? %>
-  <tr><td><strong>Schiedsrichtercoach/in</strong></td><td><%= @assignment.coach.vorname %> <%= @assignment.coach.nachname %></td></tr>
+  <% coach = @assignment.coach %>
+  <tr><td><strong>Schiedsrichtercoach/in</strong></td><td><%= coach.vorname %> <%= coach.nachname %><% if coach.email.present? %> (<%= coach.email %>)<% end %></td></tr>
   <% end %>
 </table>
 
