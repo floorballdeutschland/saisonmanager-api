@@ -113,10 +113,12 @@ module Admin
       game = Game.find_by(id: params[:game_id])
       is_cup = game&.league&.league_category_id.to_s.in?(%w[3 4])
 
-      blocked_ids = RefereeBlockedDate.where(date: date).pluck(:referee_id)
+      # Nur Schiris, die für den Tag aktiv ihre Verfügbarkeit hinterlegt haben,
+      # kommen für eine Ansetzung infrage.
+      available_ids = RefereeAvailability.where(date: date).pluck(:referee_id)
 
       if is_cup
-        # For cup games, only blocked-date conflicts apply
+        # For cup games, only same-day conflicts are ignored
         assigned_ids = []
       else
         assigned_ids = RefereeAssignment
@@ -128,13 +130,14 @@ module Admin
           .compact
       end
 
-      unavailable = (blocked_ids + assigned_ids).uniq
-
       # Verbands-Scope wie in der Verfügbarkeits-Matrix: ein LV-Ansetzer sieht nur
       # Schiris seines Verbands (inkl. via Freigabe zugeordneter Vereine), ein
       # globaler/FD-Ansetzer alle. Die Lizenz-Vorauswahl passiert clientseitig.
-      referees = scope_to_permitted_referees(Referee.where(guest: false).where.not(id: unavailable))
-                 .order(:nachname, :vorname)
+      # Verfügbar = hat für den Tag eine Verfügbarkeit hinterlegt und ist nicht
+      # bereits tagesgleich angesetzt.
+      referees = scope_to_permitted_referees(
+        Referee.where(guest: false).where(id: available_ids).where.not(id: assigned_ids)
+      ).order(:nachname, :vorname)
 
       render json: referees.map { |r|
         {
@@ -152,15 +155,15 @@ module Admin
 
     # GET /api/v2/admin/referee_assignments/available_coaches?date=YYYY-MM-DD
     # Mögliche Schiedsrichtercoaches: Schiedsrichter mit gültiger Beobachtungs-
-    # Zusatzlizenz (Qualifikationstyp „B…") und ohne Sperrtermin am Spieltag.
+    # Zusatzlizenz (Qualifikationstyp „B…") und hinterlegter Verfügbarkeit am Spieltag.
     def available_coaches
       date = Date.parse(params[:date]) rescue nil
       return render json: { error: 'Ungültiges Datum' }, status: :bad_request unless date
 
-      blocked_ids = RefereeBlockedDate.where(date: date).pluck(:referee_id)
+      available_ids = RefereeAvailability.where(date: date).pluck(:referee_id)
 
       referees = Referee.where(guest: false)
-                        .where.not(id: blocked_ids)
+                        .where(id: available_ids)
                         .joins(referee_qualifications: :referee_qualification_type)
                         .where('referee_qualification_types.name LIKE ?', 'B%')
                         .where('referee_qualifications.valid_until IS NULL OR referee_qualifications.valid_until >= ?', date)
@@ -305,7 +308,7 @@ module Admin
     # GET /api/v2/admin/referee_assignments/availability?season_id=X&date_from=&date_to=
     # Wochenend-Verfügbarkeitsmatrix („war room") für alle aktiven Schiedsrichter
     # des eigenen Verbands: je Schiri × Spielwochenende ein Status
-    # frei | gesperrt (Sperrtermin) | angesetzt (bereits eingeteilt).
+    # verfügbar (Verfügbarkeit hinterlegt) | nicht verfügbar | angesetzt (bereits eingeteilt).
     def availability
       go_ids = assigner_scope_go_ids
 
@@ -333,11 +336,11 @@ module Admin
         bucket[:game_count] += games_per_date[date_str]
       end
 
-      # Sperrtermine und Ansetzungen nur für die relevanten Spieldaten vorladen.
+      # Verfügbarkeiten und Ansetzungen nur für die relevanten Spieldaten vorladen.
       date_objs = game_dates.filter_map { |s| Date.parse(s) rescue nil }
-      blocked = Hash.new { |h, k| h[k] = [] }
-      RefereeBlockedDate.where(date: date_objs).pluck(:referee_id, :date).each do |rid, d|
-        blocked[rid] << d.to_s
+      available = Hash.new { |h, k| h[k] = [] }
+      RefereeAvailability.where(date: date_objs).pluck(:referee_id, :date).each do |rid, d|
+        available[rid] << d.to_s
       end
 
       assigned = Hash.new { |h, k| h[k] = [] }
@@ -368,17 +371,17 @@ module Admin
           }
         end,
         referees: referees.map do |r|
-          blocked_dates = blocked[r.id]
+          available_dates = available[r.id]
           assigned_dates = assigned[r.id]
           states = {}
           sorted_keys.each do |sat|
             wdates = weekends[sat][:dates]
             states[sat] = if wdates.any? { |d| assigned_dates.include?(d) }
                             'assigned'
-                          elsif wdates.any? { |d| blocked_dates.include?(d) }
-                            'blocked'
+                          elsif wdates.any? { |d| available_dates.include?(d) }
+                            'available'
                           else
-                            'free'
+                            'unavailable'
                           end
           end
           {

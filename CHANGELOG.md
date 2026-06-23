@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Geändert
+- **Schiedsrichter-Verfügbarkeiten statt Sperrtermine**: Die Logik wurde umgedreht. Schiedsrichter*innen hinterlegen unter „Meine Verfügbarkeiten" aktiv die Tage, an denen sie pfeifen können, statt ihre Sperrtermine einzutragen. Ansetzer können nur noch Personen wählen, die für den jeweiligen Tag eine Verfügbarkeit hinterlegt haben (`available`/`available_coaches` liefern ausschließlich Schiris mit Eintrag am Spieltag; ohne Eintrag = nicht wählbar). Die Wochenend-Matrix unterscheidet jetzt `verfügbar` (grün) / `angesetzt` (blau) / `nicht verfügbar` (Standard). Endpunkte umbenannt von `referee/blocked_dates` zu `referee/availabilities` (`GET`/`POST`/`POST …/bulk`/`DELETE …/:id`, Body-Schlüssel `availability` statt `blocked_date`), Tabelle `referee_blocked_dates` → `referee_availabilities`. Bestehende Sperrtermine werden bei der Migration verworfen (leerer Start).
+
 ---
 
 ## [1.39.0] - 2026-06-23

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_06_23_140000) do
+ActiveRecord::Schema[7.1].define(version: 2026_06_23_180000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -509,13 +509,13 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_23_140000) do
     t.index ["game_id"], name: "index_referee_assignments_on_game_id", unique: true
   end
 
-  create_table "referee_blocked_dates", force: :cascade do |t|
+  create_table "referee_availabilities", force: :cascade do |t|
     t.bigint "referee_id", null: false
     t.date "date", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["referee_id", "date"], name: "index_referee_blocked_dates_on_referee_id_and_date", unique: true
-    t.index ["referee_id"], name: "index_referee_blocked_dates_on_referee_id"
+    t.index ["referee_id", "date"], name: "index_referee_availabilities_on_referee_id_and_date", unique: true
+    t.index ["referee_id"], name: "index_referee_availabilities_on_referee_id"
   end
 
   create_table "referee_calculations", force: :cascade do |t|
@@ -847,7 +847,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_23_140000) do
   add_foreign_key "referee_assignments", "games"
   add_foreign_key "referee_assignments", "referees", column: "referee1_id"
   add_foreign_key "referee_assignments", "referees", column: "referee2_id"
-  add_foreign_key "referee_blocked_dates", "referees"
+  add_foreign_key "referee_availabilities", "referees"
   add_foreign_key "referee_course_imports", "users", column: "uploaded_by_user_id"
   add_foreign_key "referee_course_results", "referee_course_imports"
   add_foreign_key "referee_course_results", "referees"

@@ -201,10 +201,10 @@ Rails.application.routes.draw do
       get  'referee/game_days',                        to: 'referee_game_day_confirmations#index'
       post 'referee/game_days/:game_day_id/confirm',   to: 'referee_game_day_confirmations#confirm'
 
-      get  'referee/blocked_dates',          to: 'referee_blocked_dates#index'
-      post 'referee/blocked_dates',          to: 'referee_blocked_dates#create'
-      post 'referee/blocked_dates/bulk',     to: 'referee_blocked_dates#bulk_create'
-      delete 'referee/blocked_dates/:id',    to: 'referee_blocked_dates#destroy'
+      get  'referee/availabilities',         to: 'referee_availabilities#index'
+      post 'referee/availabilities',         to: 'referee_availabilities#create'
+      post 'referee/availabilities/bulk',    to: 'referee_availabilities#bulk_create'
+      delete 'referee/availabilities/:id',   to: 'referee_availabilities#destroy'
 
       get 'referee/history/games', to: 'referee_history#games'
       get 'referee/history/tests', to: 'referee_history#tests'

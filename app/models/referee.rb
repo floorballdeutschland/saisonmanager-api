@@ -2,7 +2,7 @@ class Referee < ApplicationRecord
   belongs_to :game_operation, optional: true
   belongs_to :club, optional: true
   has_one :user
-  has_many :referee_blocked_dates, dependent: :destroy
+  has_many :referee_availabilities, dependent: :destroy
   has_many :referee_qualifications, dependent: :destroy
   has_many :game_day_referee_confirmations, dependent: :destroy
   has_many :referee_qualification_types, through: :referee_qualifications
@@ -96,7 +96,7 @@ class Referee < ApplicationRecord
       existing_qt_ids = master.referee_qualifications.pluck(:referee_qualification_type_id)
       referee_qualifications.where.not(referee_qualification_type_id: existing_qt_ids).update_all(referee_id: master.id)
 
-      referee_blocked_dates.update_all(referee_id: master.id)
+      referee_availabilities.update_all(referee_id: master.id)
 
       if user.present?
         if master.user.nil?

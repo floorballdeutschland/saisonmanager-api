@@ -1,23 +1,23 @@
-class RefereeBlockedDatesController < ApplicationController
+class RefereeAvailabilitiesController < ApplicationController
   before_action :authenticate_user
   before_action :require_referee_account
 
   def index
     from = params[:date_from].presence
     to   = params[:date_to].presence
-    scope = @referee.referee_blocked_dates
+    scope = @referee.referee_availabilities
     scope = scope.where('date >= ?', from) if from
     scope = scope.where('date <= ?', to)   if to
     scope = scope.where('date > ?', Date.today) unless from || to
-    render json: scope.order(:date).map { |d| blocked_date_json(d) }
+    render json: scope.order(:date).map { |a| availability_json(a) }
   end
 
   def create
-    date = RefereeBlockedDate.new(blocked_date_params.merge(referee: @referee))
-    if date.save
-      render json: blocked_date_json(date), status: :created
+    availability = RefereeAvailability.new(availability_params.merge(referee: @referee))
+    if availability.save
+      render json: availability_json(availability), status: :created
     else
-      render json: { errors: date.errors.full_messages }, status: :unprocessable_entity
+      render json: { errors: availability.errors.full_messages }, status: :unprocessable_entity
     end
   end
 
@@ -41,9 +41,9 @@ class RefereeBlockedDatesController < ApplicationController
         next
       end
 
-      record = RefereeBlockedDate.new(date: date_val, referee: @referee)
+      record = RefereeAvailability.new(date: date_val, referee: @referee)
       if record.save
-        created << blocked_date_json(record)
+        created << availability_json(record)
       else
         skipped << { date: date_val.iso8601, reason: record.errors.full_messages.first }
       end
@@ -53,21 +53,23 @@ class RefereeBlockedDatesController < ApplicationController
   end
 
   def destroy
-    date = @referee.referee_blocked_dates.find(params[:id])
+    availability = @referee.referee_availabilities.find(params[:id])
 
+    # Eine bereits (vorläufig oder veröffentlicht) angesetzte Person darf ihre
+    # Verfügbarkeit für diesen Termin nicht mehr zurückziehen.
     has_assignment = RefereeAssignment.where(status: %w[tentative published])
                                       .where(
                                         '(referee1_id = :id OR referee2_id = :id)',
                                         id: @referee.id
                                       )
                                       .joins(game: :game_day)
-                                      .where("TO_DATE(game_days.date, 'YYYY-MM-DD') = ?", date.date)
+                                      .where("TO_DATE(game_days.date, 'YYYY-MM-DD') = ?", availability.date)
                                       .exists?
 
     if has_assignment
-      render json: { error: 'Du bist an diesem Termin bereits eingeplant.' }, status: :unprocessable_entity
+      render json: { error: 'Du bist an diesem Termin bereits angesetzt.' }, status: :unprocessable_entity
     else
-      date.destroy
+      availability.destroy
       head :no_content
     end
   rescue ActiveRecord::RecordNotFound
@@ -81,11 +83,11 @@ class RefereeBlockedDatesController < ApplicationController
     head :forbidden unless @referee
   end
 
-  def blocked_date_params
-    params.require(:blocked_date).permit(:date)
+  def availability_params
+    params.require(:availability).permit(:date)
   end
 
-  def blocked_date_json(d)
-    { id: d.id, date: d.date.iso8601 }
+  def availability_json(entry)
+    { id: entry.id, date: entry.date.iso8601 }
   end
 end
