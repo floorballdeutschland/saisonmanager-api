@@ -591,8 +591,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_23_120000) do
     t.bigint "team_id", null: false
     t.bigint "club_id"
     t.bigint "submitted_by_user_id"
-    t.bigint "referee_1_id"
-    t.bigint "referee_2_id"
+    t.bigint "referee1_id"
+    t.bigint "referee2_id"
     t.string "referee_names"
     t.integer "line_rating", null: false
     t.text "line_comment"
@@ -604,8 +604,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_23_120000) do
     t.datetime "updated_at", null: false
     t.index ["game_id", "team_id"], name: "index_referee_feedbacks_on_game_id_and_team_id", unique: true
     t.index ["game_id"], name: "index_referee_feedbacks_on_game_id"
-    t.index ["referee_1_id"], name: "index_referee_feedbacks_on_referee_1_id"
-    t.index ["referee_2_id"], name: "index_referee_feedbacks_on_referee_2_id"
+    t.index ["referee1_id"], name: "index_referee_feedbacks_on_referee1_id"
+    t.index ["referee2_id"], name: "index_referee_feedbacks_on_referee2_id"
     t.index ["team_id"], name: "index_referee_feedbacks_on_team_id"
   end
 
