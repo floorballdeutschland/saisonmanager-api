@@ -177,3 +177,9 @@ The script runs `git pull` on saisonmanager-docker, `git reset --hard origin/mai
 - Branch from `main`: `git checkout -b fix/description` or `feat/description`
 - Add an entry under `## [Unreleased]` in `CHANGELOG.md` for every PR
 - Open a PR — no direct pushes to `main`; CI runs RuboCop and the Minitest suite
+
+## License
+
+This project is licensed under the **GNU Affero General Public License v3.0** (AGPLv3) — see the [LICENSE](LICENSE) file for the full text.
+
+© Floorball Deutschland. As an AGPLv3 work, you may use, study, share, and modify it under the license terms; networked deployments must make their corresponding source available to users.

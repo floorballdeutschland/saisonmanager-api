@@ -15,6 +15,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Neu
 
+- **Lizenz**: Projekt unter der **GNU AGPLv3** veröffentlicht (`LICENSE` ergänzt, Lizenzhinweis im README). Vorbereitung der Open-Source-Veröffentlichung des Repos.
 - **Altdaten-Import 2010/11–2013/14 (PoC, intern)**: Grundgerüst zur Rekonstruktion der vier Saisons vor 2014/15 aus den MariaDB-Dumps des Vorgängersystems. Reine Transformationen (`LegacyImport::Transformer`/`Vocab`) bilden `ereignis`→`events`, `mitspieler`→`players` sowie Liga-/Team-/Spieltag-Attribute ab; Rake-Tasks `legacy:league` (MariaDB), `legacy:league_json`, `legacy:bundle` und `legacy:dir` importieren idempotent (Dry-Run als Default, `WRITE=1` schreibt). Der Import läuft saisonweit in zwei Phasen über alle Verbände: erst Ligen/Teams (`team_map` `(verband, id_mannschaft)`), dann Spieltage/Spiele – der effektive Verband eines Teams kommt aus `begegnung.id_verband_team`, sodass auch verbandsübergreifende Wettbewerbe (FD-Pokal, Deutsche Meisterschaften) auflösen. Spieler-Lineups werden via `LegacyImport::PlayerResolver` (Name + Geburtsdatum) auf echte Player-IDs gemappt, Vereine über normalisierte Namen. Verifiziert: voller Probelauf aller 9 Verbände × 4 Saisons (2010/11–2013/14), 10.104 Spiele in eine Dev-DB; Tabellen/Scorer/Ergebnisse rechnen korrekt. Kein produktiver Endpoint – siehe `docs/legacy_import_2010-2014.md`.
 
 ### Verbessert

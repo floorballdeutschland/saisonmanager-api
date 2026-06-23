@@ -35,3 +35,8 @@ yarn-debug.log*
 
 # SimpleCov test coverage reports
 /coverage
+
+# Secrets / personenbezogene Daten (NIEMALS committen)
+/config/secrets.yml
+/create_user.sql
+/referees.json
