@@ -9,6 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+- **Ansetzungslogik je Landesverband schaltbar**: In den Verbandseinstellungen steuert das neue Flag `referee_assignment_enabled` (Standard: aus), ob die Schiedsrichter-Ansetzung für einen Landesverband genutzt wird. Nur wenn aktiv, bietet der Spiel-Editor die Option „Ansetzung durch RSK" (über `additional_references.referee_assignment_enabled`) und die Rolle Ansetzer sieht die Menüpunkte „Ansetzungen" und „Verfügbarkeiten" (`menu_item_referee_assignments`/`menu_item_referee_availability`). National betriebene Spielbetriebe ohne Landesverband (z. B. FD/1. Bundesliga) bleiben unabhängig vom Flag immer aktiv.
+
 ---
 
 ## [1.38.0] - 2026-06-23

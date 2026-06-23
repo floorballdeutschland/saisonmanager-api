@@ -132,7 +132,8 @@ module Admin
     def state_association_params
       permitted = %i[name short_name vsk_email sbk_email scan_required
                      express_license_enabled referee_license_review_enabled
-                     manual_proceeding_creation logo banner_link_url]
+                     manual_proceeding_creation referee_assignment_enabled
+                     logo banner_link_url]
       # Den übergeordneten Verband darf nur ein globaler Admin (um-)hängen.
       permitted << :parent_id if current_user.permission_hash[:admin].present?
       attrs = params.require(:state_association).permit(*permitted)

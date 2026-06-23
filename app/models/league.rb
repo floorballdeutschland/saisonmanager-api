@@ -169,6 +169,14 @@ class League < ApplicationRecord
     true
   end
 
+  # True, wenn für diese Liga die Ansetzung durch die RSK genutzt werden kann.
+  # National betriebene Spielbetriebe (kein Landesverband, z. B. FD) sind immer
+  # aktiv; sonst entscheidet das LV-Flag referee_assignment_enabled.
+  def referee_assignment_enabled?
+    sa = game_operation&.state_association
+    sa.nil? || sa.referee_assignment_enabled?
+  end
+
   def full_hash(include_similar_leagues = false)
     result = {
       id:,
