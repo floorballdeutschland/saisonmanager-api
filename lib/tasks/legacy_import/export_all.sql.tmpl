@@ -47,6 +47,28 @@ SELECT JSON_OBJECT(
         FROM `__PFX___mitspieler` mi
         WHERE mi.id_begegnung IN (
           SELECT b.id_begegnung FROM `__PFX___begegnung` b
+          JOIN `__PFX___spieltag` s ON s.id_spieltag = b.id_spieltag WHERE s.id_liga = l.id_liga)),
+      'betreuer', (
+        SELECT COALESCE(JSON_ARRAYAGG(JSON_OBJECT(
+          'id_begegnung', bt.id_begegnung, 'team', bt.team,
+          'betreuer1', bt.betreuer1, 'betreuer2', bt.betreuer2, 'betreuer3', bt.betreuer3,
+          'betreuer4', bt.betreuer4, 'betreuer5', bt.betreuer5,
+          'betreuer1_unterschrift', bt.betreuer1_unterschrift)), JSON_ARRAY())
+        FROM `__PFX___betreuer` bt
+        WHERE bt.id_begegnung IN (
+          SELECT b.id_begegnung FROM `__PFX___begegnung` b
+          JOIN `__PFX___spieltag` s ON s.id_spieltag = b.id_spieltag WHERE s.id_liga = l.id_liga)),
+      'spielbericht', (
+        SELECT COALESCE(JSON_ARRAYAGG(JSON_OBJECT(
+          'id_begegnung', sb.id_begegnung,
+          'schiedsrichter1', sb.schiedsrichter1, 'schiedsrichter2', sb.schiedsrichter2,
+          'unterschrift_schiri1', sb.unterschrift_schiri1, 'unterschrift_schiri2', sb.unterschrift_schiri2,
+          'unterschrift_kapitain1', sb.unterschrift_kapitain1, 'unterschrift_kapitain2', sb.unterschrift_kapitain2,
+          'timeout1', sb.timeout1, 'timeout2', sb.timeout2,
+          'kommentar', sb.kommentar, 'protest', sb.protest, 'verlaengerung', sb.verlaengerung)), JSON_ARRAY())
+        FROM `__PFX___spielbericht` sb
+        WHERE sb.id_begegnung IN (
+          SELECT b.id_begegnung FROM `__PFX___begegnung` b
           JOIN `__PFX___spieltag` s ON s.id_spieltag = b.id_spieltag WHERE s.id_liga = l.id_liga))
     )), JSON_ARRAY())
     FROM `__PFX___liga` l

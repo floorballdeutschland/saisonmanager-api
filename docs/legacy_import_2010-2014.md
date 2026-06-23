@@ -58,7 +58,7 @@ Spielorte), Reihenfolge und Risiken: siehe `produktivdaten/MAPPING_KONZEPT_altda
 | Datei | Zweck |
 |---|---|
 | `app/services/legacy_import/vocab.rb` | Kuratierte Vokabular-Mappings (Klasse, Kategorie, Strafe, Saison, Lizenzstatus) |
-| `app/services/legacy_import/transformer.rb` | Reine Transformationen (Zeilen-Hashes → neue Attribute / JSONB) – ohne DB |
+| `app/services/legacy_import/transformer.rb` | Reine Transformationen (Zeilen-Hashes → neue Attribute / JSONB) – ohne DB; inkl. `build_coaches` (`betreuer`→Coaches-Hash) und `spielbericht_attrs` (Schiri-Freitext/Timeouts/Kommentar/Protest/Verlängerung/Unterschriften) |
 | `app/services/legacy_import/player_resolver.rb` | Alte `id_spieler` → echte `players`-ID per (Nachname, Vorname, Geburtsdatum) |
 | `lib/tasks/import_old_seasons.rake` | Tasks `legacy:prepare` (Preflight) / `legacy:league` (MariaDB) / `legacy:league_json` / `legacy:bundle` (ein Verband-Saison) / `legacy:dir` (alle Bundles); Dry-Run (Default) / `WRITE=1` |
 | `lib/tasks/legacy_import/export_all.sql.tmpl` | SQL-Vorlage (`__PFX__`-Platzhalter) – exportiert alle Ligen eines `<verband>_<saison>` als JSON_OBJECT |
@@ -154,6 +154,10 @@ Events) über die JSON-Brücke gegen die prod-nahe Dev-DB:
    `team_map` `(verband, id_mannschaft)`.
 2. ✅ **Spieler-Remap** – `LegacyImport::PlayerResolver` (Name + Geburtsdatum).
 3. ✅ **Stammdaten-Dedup** Vereine/Spielorte (normalisierter Namensabgleich).
+4. ✅ **Betreuer + Spielbericht** – `betreuer` → `home_team_coaches`/`guest_team_coaches`
+   (Live-Hash `coachN_string`/`coach1_signed`); `spielbericht` → `referee1/2_string`,
+   Unterschriften, `home/guest_timeout_string`, `record_comment`, `protest`, `overtime`.
+   Export-SQL, `legacy:league` und der JSON-Pfad liefern beide Tabellen mit.
 
 ### Deployment-Checkliste (echter Prod-Import)
 
@@ -173,7 +177,8 @@ Events) über die JSON-Brücke gegen die prod-nahe Dev-DB:
 
 ### Verbleibende Grenzen / bewusste Auslassungen
 
-- **Schiris** bleiben Freitext (`referee1_string`); keine Verknüpfung zu `referees`.
+- **Schiris** werden als Freitext übernommen (`referee1_string`/`referee2_string` aus
+  `spielbericht`); bewusst **keine** Verknüpfung zu `referees` (kein `referee_ids`).
 - **`nwuv` 2013/14** hat keine `begegnung`-Tabelle (keine Spieldaten) – ausgelassen.
 - **Spieler ohne Geburtsdatum** im Neusystem bzw. Namensdubletten bleiben
   ungematcht (denormalisierter Name im Lineup erhalten; 78–98 % je Verband).
