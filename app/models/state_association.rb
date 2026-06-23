@@ -57,6 +57,7 @@ class StateAssociation < ApplicationRecord
       referee_license_review_enabled:,
       effective_referee_license_review_enabled:,
       manual_proceeding_creation:,
+      referee_assignment_enabled:,
       logo_url:,
       banner_url:,
       banner_link_url:,

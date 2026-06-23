@@ -482,10 +482,16 @@ class LeaguesController < ApplicationController
     league = League.find(params[:id])
     teams = league.teams
 
+    # Ansetzung durch die RSK: national (kein Landesverband, z. B. FD) immer aktiv,
+    # sonst entscheidet das LV-Flag referee_assignment_enabled.
+    sa = league.game_operation&.state_association
+    referee_assignment_enabled = sa.nil? || sa.referee_assignment_enabled?
+
     render json: {
       arenas: Arena.active.order(:city, :name).sort_by { |a| a.city.present? ? 0 : 1 }.map(&:full_hash),
       teams: league.teams.map(&:full_hash),
-      clubs: teams.map(&:all_clubs).flatten.uniq.map(&:full_hash)
+      clubs: teams.map(&:all_clubs).flatten.uniq.map(&:full_hash),
+      referee_assignment_enabled: referee_assignment_enabled
     }
   end
 

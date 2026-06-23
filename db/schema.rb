@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_06_23_120000) do
+ActiveRecord::Schema[7.1].define(version: 2026_06_23_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -716,6 +716,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_23_120000) do
     t.string "banner_link_url"
     t.boolean "referee_license_review_enabled", default: false, null: false
     t.boolean "manual_proceeding_creation", default: false, null: false, comment: "Wenn true: keine automatische VSK-Mail, stattdessen Verfahrensvorschlag an die SBK"
+    t.boolean "referee_assignment_enabled", default: false, null: false
     t.index ["parent_id"], name: "index_state_associations_on_parent_id"
   end
 

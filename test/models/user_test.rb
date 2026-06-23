@@ -144,10 +144,13 @@ class UserTest < ActiveSupport::TestCase
   end
 
   test 'permissions_items: Ansetzer bekommt Ansetzungen und Schiri-Admin, aber KEINE Online-Tests' do
-    u = build_user(permissions: [{ 'user_group_id' => 7, 'game_operation_id' => 1 }])
+    sa = create(:state_association, referee_assignment_enabled: true)
+    go = create(:game_operation, state_association: sa)
+    u = build_user(permissions: [{ 'user_group_id' => 7, 'game_operation_id' => go.id }])
     items = u.permissions_items
 
     assert items[:menu_item_referee_assignments]
+    assert items[:menu_item_referee_availability]
     # Ansetzer braucht (eingeschränkten) Lesezugriff auf die Schiedsrichterdaten.
     assert items[:menu_item_referee_admin]
     assert items[:referee_edit_restricted]
@@ -155,6 +158,18 @@ class UserTest < ActiveSupport::TestCase
     # Online-Tests bleiben der RSK vorbehalten.
     assert_not items[:menu_item_online_test_admin]
     assert_not items[:menu_item_league_admin]
+  end
+
+  test 'permissions_items: Ansetzer ohne freigeschalteten Landesverband sieht keine Ansetzungen' do
+    sa = create(:state_association, referee_assignment_enabled: false)
+    go = create(:game_operation, state_association: sa)
+    u = build_user(permissions: [{ 'user_group_id' => 7, 'game_operation_id' => go.id }])
+    items = u.permissions_items
+
+    assert_not items[:menu_item_referee_assignments]
+    assert_not items[:menu_item_referee_availability]
+    # Lesezugriff auf die Schiedsrichterdaten bleibt davon unberührt.
+    assert items[:menu_item_referee_admin]
   end
 
   test 'permission_hash: Ansetzer mit allen GOs ergibt [0]' do
@@ -172,9 +187,11 @@ class UserTest < ActiveSupport::TestCase
   end
 
   test 'permissions_items: kombinierte RSK+Ansetzer-Rolle bekommt alle drei Funktionen' do
+    sa = create(:state_association, referee_assignment_enabled: true)
+    go = create(:game_operation, state_association: sa)
     u = build_user(permissions: [
-      { 'user_group_id' => 3, 'game_operation_id' => 1 },
-      { 'user_group_id' => 7, 'game_operation_id' => 1 }
+      { 'user_group_id' => 3, 'game_operation_id' => go.id },
+      { 'user_group_id' => 7, 'game_operation_id' => go.id }
     ])
     items = u.permissions_items
 

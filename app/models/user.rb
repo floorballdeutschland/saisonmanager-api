@@ -81,9 +81,13 @@ class User < ApplicationRecord
     result[:referee_can_delete_user] = ph[:admin].present? if result[:menu_item_referee_admin]
     result[:referee_wallet] = has_full_referee_access if result[:menu_item_referee_admin]
     # Ansetzungen macht die Ansetzer-Rolle (in manchen LV von der RSK getrennt).
-    result[:menu_item_referee_assignments] = ph[:admin].present? || ph[:ansetzer].present?
-    # Wochenend-Verfügbarkeitsübersicht der Schiris („war room") – für die Ansetzung.
-    result[:menu_item_referee_availability] = ph[:admin].present? || ph[:ansetzer].present?
+    # Sichtbar nur, wenn die Ansetzungslogik für den Landesverband freigeschaltet
+    # ist (referee_assignment_enabled). National (FD, ohne LV) ist immer aktiv.
+    ansetzer_active = referee_assignment_active_for_ansetzer?(ph)
+    result[:menu_item_referee_assignments] = ph[:admin].present? || ansetzer_active
+    # Wochenend-Verfügbarkeitsübersicht der Schiris („war room") – Teil derselben
+    # Ansetzungslogik, daher identisch gegated.
+    result[:menu_item_referee_availability] = ph[:admin].present? || ansetzer_active
     # Strafcode-Verwaltung („Einstellungen" im Schiedsrichterwesen) – nur Admin.
     result[:menu_item_referee_settings] = ph[:admin].present?
     # Schiri-Feedback der Vereine ist nur am Schiri-Profil sichtbar – für Admin
@@ -182,6 +186,18 @@ class User < ApplicationRecord
 
   def special_user
     %w[jho_admin buettner_sbk mguenther].include?(user_name)
+  end
+
+  # True, wenn die Ansetzungslogik für den/die Ansetzer:in aktiv ist. Globale
+  # (nationale, FD-)Ansetzer (Spielbetrieb 0) sind immer aktiv; sonst muss
+  # mindestens einer der zugeordneten Landesverbände referee_assignment_enabled
+  # gesetzt haben.
+  def referee_assignment_active_for_ansetzer?(perm_hash)
+    return false unless perm_hash[:ansetzer].present?
+    return true if perm_hash[:ansetzer].include?(0)
+
+    sa_ids = GameOperation.where(id: perm_hash[:ansetzer]).pluck(:state_association_id).compact.uniq
+    StateAssociation.where(id: sa_ids, referee_assignment_enabled: true).exists?
   end
 
   # True, wenn der/die Nutzer:in mindestens eine Mannschaft verantwortet, die in
