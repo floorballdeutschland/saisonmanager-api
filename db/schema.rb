@@ -168,8 +168,10 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_23_180000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.datetime "host_notified_at"
+    t.string "legacy_ref"
     t.index ["arena_id"], name: "index_game_days_on_arena_id"
     t.index ["club_id"], name: "index_game_days_on_club_id"
+    t.index ["legacy_ref"], name: "index_game_days_on_legacy_ref", unique: true, where: "(legacy_ref IS NOT NULL)"
     t.index ["league_id"], name: "index_game_days_on_league_id"
   end
 
@@ -272,10 +274,12 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_23_180000) do
     t.jsonb "checklist_veto_answers", default: []
     t.text "special_event_string"
     t.datetime "match_record_closed_at"
+    t.string "legacy_ref"
     t.index ["checklist_veto_token_digest"], name: "index_games_on_checklist_veto_token_digest", unique: true, where: "(checklist_veto_token_digest IS NOT NULL)"
     t.index ["game_day_id"], name: "index_games_on_game_day_id"
     t.index ["guest_team_id"], name: "index_games_on_guest_team_id"
     t.index ["home_team_id"], name: "index_games_on_home_team_id"
+    t.index ["legacy_ref"], name: "index_games_on_legacy_ref", unique: true, where: "(legacy_ref IS NOT NULL)"
     t.index ["referee_ids"], name: "index_games_on_referee_ids", using: :gin
   end
 
@@ -330,7 +334,9 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_23_180000) do
     t.boolean "parental_consent_required", default: false, null: false
     t.integer "game_duration_minutes", comment: "Angenommene Spieldauer inkl. Puffer in Minuten für die Hallenbelegungs-/Konfliktprüfung; nil = globaler Default / perioden-basierter Fallback"
     t.boolean "referee_feedback_enabled", default: false, null: false
+    t.string "legacy_ref"
     t.index ["game_operation_id"], name: "index_leagues_on_game_operation_id"
+    t.index ["legacy_ref"], name: "index_leagues_on_legacy_ref", unique: true, where: "(legacy_ref IS NOT NULL)"
   end
 
   create_table "license_documents", force: :cascade do |t|
@@ -733,7 +739,9 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_23_180000) do
     t.string "contact_email"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "legacy_ref"
     t.index ["club_id"], name: "index_teams_on_club_id"
+    t.index ["legacy_ref"], name: "index_teams_on_legacy_ref", unique: true, where: "(legacy_ref IS NOT NULL)"
   end
 
   create_table "transfer_requests", force: :cascade do |t|

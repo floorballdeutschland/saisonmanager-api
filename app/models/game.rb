@@ -52,11 +52,15 @@ class Game < ApplicationRecord
   end
 
   def penalty_mapping(event)
-    Setting.current.penalties[event['penalty_id'].to_s]['mapping'].to_sym
+    # nil, wenn die Strafe in Setting.penalties fehlt oder kein 'mapping' hat
+    # (z. B. Basis-Seeds ohne Mapping-Feld). Der Aufrufer überspringt dann die
+    # Strafenwertung, statt mit nil.to_sym hart abzubrechen.
+    Setting.current.penalties.dig(event['penalty_id'].to_s, 'mapping')&.to_sym
   end
 
   def penalty_mapping_string(event)
-    Setting.current.penalties[event['penalty_id'].to_s]['name']
+    # dig: nil statt NoMethodError, falls die Strafe nicht in Setting.penalties steht
+    Setting.current.penalties.dig(event['penalty_id'].to_s, 'name')
   end
 
   def penalty_reason(event)
@@ -463,8 +467,9 @@ class Game < ApplicationRecord
         # penalty?
         player_id = event['home_number'].present? ? home_team_player_number[event['home_number']] : guest_team_player_number[event['guest_number']]
 
-        # register penalty for player
-        result[player_id][penalty_mapping(event)] += 1 if player_id.present? # skip if no player
+        # register penalty for player (nur bekannte Strafkategorie zählen)
+        mapping = penalty_mapping(event)
+        result[player_id][mapping] += 1 if player_id.present? && mapping && result[player_id].key?(mapping)
       elsif event['home_goals'].present? && event['guest_goals'].present?
         # goal?
         if event['home_number'].present? && event['home_number'].to_i < 1000 # owngoal: 1000

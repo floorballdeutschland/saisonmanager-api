@@ -9,9 +9,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Scorerwertung**: `Game#penalty_mapping` brach mit `nil.to_sym` ab, wenn eine Strafe in `Setting.penalties` kein `mapping`-Feld hatte (z. B. Basis-Seeds). Jetzt wird die Strafenwertung für solche Events übersprungen statt die gesamte Liga-Scorerliste fehlschlagen zu lassen.
+
+### Neu
+
+- **Altdaten-Import 2010/11–2013/14 (PoC, intern)**: Grundgerüst zur Rekonstruktion der vier Saisons vor 2014/15 aus den MariaDB-Dumps des Vorgängersystems. Reine Transformationen (`LegacyImport::Transformer`/`Vocab`) bilden `ereignis`→`events`, `mitspieler`→`players` sowie Liga-/Team-/Spieltag-Attribute ab; Rake-Tasks `legacy:league` (MariaDB), `legacy:league_json`, `legacy:bundle` und `legacy:dir` importieren idempotent (Dry-Run als Default, `WRITE=1` schreibt). Der Import läuft saisonweit in zwei Phasen über alle Verbände: erst Ligen/Teams (`team_map` `(verband, id_mannschaft)`), dann Spieltage/Spiele – der effektive Verband eines Teams kommt aus `begegnung.id_verband_team`, sodass auch verbandsübergreifende Wettbewerbe (FD-Pokal, Deutsche Meisterschaften) auflösen. Spieler-Lineups werden via `LegacyImport::PlayerResolver` (Name + Geburtsdatum) auf echte Player-IDs gemappt, Vereine über normalisierte Namen. Verifiziert: voller Probelauf aller 9 Verbände × 4 Saisons (2010/11–2013/14), 10.104 Spiele in eine Dev-DB; Tabellen/Scorer/Ergebnisse rechnen korrekt. Kein produktiver Endpoint – siehe `docs/legacy_import_2010-2014.md`.
+
 ### Verbessert
 - Ausrichter-Mails zur Schiedsrichter-Ansetzung (`GameDayMailer#published_referees_to_host` bei vollständigem Spieltag sowie `GameDayMailer#updated_referees_to_host` bei nachträglicher Umbesetzung) führen jetzt – sofern hinterlegt – die **E-Mail-Adressen** der angesetzten Schiedsrichter und des Schiedsrichtercoachs in Klammern hinter dem Namen auf, damit der Ausrichter die Beteiligten direkt kontaktieren kann.
 ### Geändert
+
 - **Schiedsrichter-Verfügbarkeiten statt Sperrtermine**: Die Logik wurde umgedreht. Schiedsrichter*innen hinterlegen unter „Meine Verfügbarkeiten" aktiv die Tage, an denen sie pfeifen können, statt ihre Sperrtermine einzutragen. Ansetzer können nur noch Personen wählen, die für den jeweiligen Tag eine Verfügbarkeit hinterlegt haben (`available`/`available_coaches` liefern ausschließlich Schiris mit Eintrag am Spieltag; ohne Eintrag = nicht wählbar). Die Wochenend-Matrix unterscheidet jetzt `verfügbar` (grün) / `angesetzt` (blau) / `nicht verfügbar` (Standard). Endpunkte umbenannt von `referee/blocked_dates` zu `referee/availabilities` (`GET`/`POST`/`POST …/bulk`/`DELETE …/:id`, Body-Schlüssel `availability` statt `blocked_date`), Tabelle `referee_blocked_dates` → `referee_availabilities`. Bestehende Sperrtermine werden bei der Migration verworfen (leerer Start).
 
 ---

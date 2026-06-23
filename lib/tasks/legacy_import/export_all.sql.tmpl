@@ -1,0 +1,68 @@
+SET SESSION group_concat_max_len = 1024*1024*512;
+SELECT JSON_OBJECT(
+  'verband', '__VERBAND__',
+  'season', '__SEASON__',
+  'leagues', (
+    SELECT COALESCE(JSON_ARRAYAGG(JSON_OBJECT(
+      'liga', JSON_OBJECT(
+        'id_liga', l.id_liga, 'id_spielsystem', l.id_spielsystem, 'id_klasse', l.id_klasse,
+        'id_kategorie', l.id_kategorie, 'id_saison', l.id_saison, 'name', l.name,
+        'kurzname', l.kurzname, 'stichtag', l.stichtag, 'weiblich', l.weiblich, 'ordnungsnr', l.ordnungsnr,
+        'klasse_name', (SELECT name FROM global_klasse k WHERE k.id_klasse = l.id_klasse)
+      ),
+      'mannschaft', (
+        SELECT COALESCE(JSON_ARRAYAGG(JSON_OBJECT(
+          'id_mannschaft', m.id_mannschaft, 'id_verein', m.id_verein, 'id_liga', m.id_liga,
+          'name', m.name, 'kurzname', m.kurzname, 'genehmigt', m.genehmigt, 'sg', m.sg)), JSON_ARRAY())
+        FROM `__PFX___mannschaft` m WHERE m.id_liga = l.id_liga),
+      'spieltag', (
+        SELECT COALESCE(JSON_ARRAYAGG(JSON_OBJECT(
+          'id_spieltag', s.id_spieltag, 'id_spielort', s.id_spielort, 'id_liga', s.id_liga,
+          'spieltag_nr', s.spieltag_nr, 'datum', s.datum)), JSON_ARRAY())
+        FROM `__PFX___spieltag` s WHERE s.id_liga = l.id_liga),
+      'begegnung', (
+        SELECT COALESCE(JSON_ARRAYAGG(JSON_OBJECT(
+          'id_begegnung', b.id_begegnung, 'id_spieltag', b.id_spieltag,
+          'id_mannschaft1', b.id_mannschaft1, 'id_mannschaft2', b.id_mannschaft2,
+          'id_verband_team1', b.id_verband_team1, 'id_verband_team2', b.id_verband_team2,
+          'uhrzeit', b.uhrzeit, 'schiedsrichter', b.schiedsrichter,
+          'spielnummer', b.spielnummer, 'forfeit', b.forfeit)), JSON_ARRAY())
+        FROM `__PFX___begegnung` b
+        WHERE b.id_spieltag IN (SELECT id_spieltag FROM `__PFX___spieltag` WHERE id_liga = l.id_liga)),
+      'ereignis', (
+        SELECT COALESCE(JSON_ARRAYAGG(JSON_OBJECT(
+          'id_ereignis', e.id_ereignis, 'id_begegnung', e.id_begegnung, 'zeile', e.zeile,
+          'nr_team1', e.nr_team1, 'ass_team1', e.ass_team1, 'periode', e.periode, 'zeit', e.zeit,
+          'tore_team1', e.tore_team1, 'tore_team2', e.tore_team2, 'id_strafe', e.id_strafe,
+          'id_strafcode', e.id_strafcode, 'nr_team2', e.nr_team2, 'ass_team2', e.ass_team2)), JSON_ARRAY())
+        FROM `__PFX___ereignis` e
+        WHERE e.id_begegnung IN (
+          SELECT b.id_begegnung FROM `__PFX___begegnung` b
+          JOIN `__PFX___spieltag` s ON s.id_spieltag = b.id_spieltag WHERE s.id_liga = l.id_liga)),
+      'mitspieler', (
+        SELECT COALESCE(JSON_ARRAYAGG(JSON_OBJECT(
+          'id_begegnung', mi.id_begegnung, 'id_spieler', mi.id_spieler, 'trikotnr', mi.trikotnr,
+          'torwart', mi.torwart, 'kapitain', mi.kapitain, 'team', mi.team,
+          'name', mi.name, 'vorname', mi.vorname)), JSON_ARRAY())
+        FROM `__PFX___mitspieler` mi
+        WHERE mi.id_begegnung IN (
+          SELECT b.id_begegnung FROM `__PFX___begegnung` b
+          JOIN `__PFX___spieltag` s ON s.id_spieltag = b.id_spieltag WHERE s.id_liga = l.id_liga))
+    )), JSON_ARRAY())
+    FROM `__PFX___liga` l
+  ),
+  'verein_names', (
+    SELECT COALESCE(JSON_OBJECTAGG(CAST(v.id_verein AS CHAR), v.name), JSON_OBJECT())
+    FROM global_verein v
+    WHERE v.id_verein IN (SELECT id_verein FROM `__PFX___mannschaft`)),
+  'spielort_names', (
+    SELECT COALESCE(JSON_OBJECTAGG(CAST(o.id_spielort AS CHAR), o.name), JSON_OBJECT())
+    FROM global_spielort o
+    WHERE o.id_spielort IN (SELECT id_spielort FROM `__PFX___spieltag`)),
+  -- Spieler-Stammdaten (für Remap alte id_spieler → neue Player.id per Name+Geburtsdatum)
+  'spieler', (
+    SELECT COALESCE(JSON_OBJECTAGG(CAST(sp.id_spieler AS CHAR),
+             JSON_OBJECT('name', sp.name, 'vorname', sp.vorname, 'geb_datum', sp.geb_datum, 'geschlecht', sp.geschlecht)), JSON_OBJECT())
+    FROM global_spieler sp
+    WHERE sp.id_spieler IN (SELECT DISTINCT id_spieler FROM `__PFX___mitspieler` WHERE id_spieler > 0))
+) AS bundle;
