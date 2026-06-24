@@ -45,8 +45,8 @@ namespace :games do
       begin
         game.update_column(:players, players)
         fixed += 1
-        print "." if fixed % 500 == 0
-      rescue => e
+        print "." if (fixed % 500).zero?
+      rescue StandardError => e
         errors += 1
         puts "\n  ERROR game #{game.id}: #{e.message}"
       end
