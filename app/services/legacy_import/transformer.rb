@@ -241,6 +241,20 @@ module LegacyImport
       }.compact
     end
 
+    # global_spieler-Zeile → players-Attribute (für die Anlage fehlender Spieler).
+    # Geschlecht alt: 0=weiblich, 1=männlich → 'W'/'M' (Live-Konvention). nation_id
+    # wird nicht gesetzt (kein zuverlässiges Alt-Mapping im Bundle). birthdate auf
+    # 'YYYY-MM-DD' normalisiert – identisch zum PlayerResolver-Matchschlüssel, damit
+    # ein frisch angelegter Spieler beim nächsten Lauf wiedergefunden wird.
+    def player_attrs(spieler)
+      {
+        last_name: spieler['name'],
+        first_name: spieler['vorname'],
+        birthdate: spieler['geb_datum'].to_s.strip[0, 10].presence,
+        gender: { 0 => 'W', 1 => 'M' }[spieler['geschlecht'].to_i]
+      }.compact
+    end
+
     # ── intern ────────────────────────────────────────────────────────────────
     def event_team(penalty:, row:, home_goals:, guest_goals:, prev_home:, prev_guest:)
       unless penalty

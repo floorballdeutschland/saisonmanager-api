@@ -167,7 +167,12 @@ Events) über die JSON-Brücke gegen die prod-nahe Dev-DB:
    beim Import angelegt (`Transformer.club_attrs`/`arena_attrs`), wenn kein
    normalisierter Namens-Treffer existiert. Idempotent über den Namensindex
    (frisch Angelegte werden registriert). Export/`legacy:league` liefern volle
-   `vereine`/`spielorte`-Datensätze. Spieler/Schiris bleiben Verknüpfung-only.
+   `vereine`/`spielorte`-Datensätze.
+7. ✅ **Spieler-Anlage** – Aufstellungs-/Lizenz-Spieler ohne Match werden angelegt
+   (`Transformer.player_attrs`, `global_spieler` → `players`), **konservativ nur mit
+   Geburtsdatum** (sonst denormalisiert im Lineup). Idempotent über den
+   Namensindex (Name+Geburtsdatum) → mehr Lizenzen docken an. Schiedsrichter
+   bleiben Freitext (keine Anlage).
 
 ### Deployment-Checkliste (echter Prod-Import)
 
@@ -192,9 +197,11 @@ Events) über die JSON-Brücke gegen die prod-nahe Dev-DB:
 - **`nwuv` 2013/14** hat keine `begegnung`-Tabelle (keine Spieldaten) – ausgelassen.
 - **Spieler ohne Geburtsdatum** im Neusystem bzw. Namensdubletten bleiben
   ungematcht (denormalisierter Name im Lineup erhalten; 78–98 % je Verband).
-- **Vereine/Spielorte** werden bei fehlendem Treffer angelegt; **Spieler/Schiris**
-  bleiben Verknüpfung-only (kein Anlegen neuer Stammdaten – Dubletten-Risiko mit
-  Live-Karrieren).
+- **Vereine/Spielorte** werden bei fehlendem Treffer angelegt. **Spieler** ebenfalls,
+  aber konservativ **nur mit Geburtsdatum** – ohne Geburtsdatum bleibt der Lineup-Eintrag
+  denormalisiert (Dubletten-Risiko mit Live-Karrieren bewusst begrenzt; das vorhandene
+  `merged_into_id`-Sicherheitsnetz erlaubt nachträgliches Zusammenführen).
+- **Schiedsrichter** bleiben Freitext (kein Anlegen, kein `referee_ids`) – bewusst.
 - **Idempotenz nur bei stabiler Eingabe**: Der Upsert (per `legacy_ref`) legt an
   und aktualisiert, **löscht aber nie**. Schrumpft die Quelle (korrigierter Dump
   ohne eine zuvor importierte Liga/Spiel), bleibt der alte Datensatz als Waise
