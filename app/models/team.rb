@@ -7,7 +7,12 @@ class Team < ApplicationRecord
   has_one_attached :logo
 
   scope :by_club_id, ->(cid) { where(club_id: cid).or(Team.where('? = ANY (syndicate_clubs)', cid)) }
-  scope :current_season, -> { where(league_id: Setting.current_min_league..) }
+  # "Aktuelle Saison" = Teams, deren Liga in der aktuellen Saison (season_id) liegt.
+  # Subquery statt joins, damit nachgelagerte .where(id:/club_id:) eindeutig bleiben.
+  # (Früher: league_id >= Setting.current_min_league — eine reine ID-Schwelle, die
+  # frisch importierte Alt-Saisons mit hohen league_ids fälschlich als aktuell
+  # einstufte; season_id ist die korrekte Abgrenzung.)
+  scope :current_season, -> { where(league_id: League.current_season.select(:id)) }
 
   def tasks
     Task.where('home_team = ? OR guest_team = ?', id, id)
