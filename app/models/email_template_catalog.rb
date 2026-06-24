@@ -23,6 +23,20 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_reply_to: nil,
       placeholders: []
     },
+    'RefereeFeedbackMailer#form_available' => {
+      mailer_class: 'RefereeFeedbackMailer',
+      action_name: 'form_available',
+      description: 'Info an Teammanager, dass das Schiri-Feedback-Formular für ein gespieltes Spiel ausfüllbar ist (mit Link und 24-h-Hinweis).',
+      default_subject: 'Schiri-Feedback möglich – {{team_name}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'team_name', description: 'Name der eigenen Mannschaft' },
+        { key: 'opponent_name', description: 'Name der gegnerischen Mannschaft' },
+        { key: 'league_name', description: 'Name der Liga' },
+        { key: 'link', description: 'Link zur Feedback-Seite' }
+      ]
+    },
     'UserMailer#referee_account_created' => {
       mailer_class: 'UserMailer',
       action_name: 'referee_account_created',
