@@ -40,16 +40,29 @@ class RefereeCourseResultApplierTest < ActiveSupport::TestCase
     RefereeCourseResult.create!(defaults.merge(overrides))
   end
 
-  test 'wendet Lizenz auf bestehenden Referee an' do
+  test 'wendet Lizenz auf bestehenden Referee an (gueltigkeit aus validity_years)' do
+    RefereeLicenseLevel.create!(name: 'G', validity_years: 1)
     ref = create(:referee, lizenzstufe: nil, gueltigkeit: nil)
-    result = make_result(referee: ref)
+    result = make_result(referee: ref) # kursstichtag 2025-08-03
 
     RefereeCourseResultApplier.new(result, performed_by_user: @admin)
                               .call(review_required: false)
 
     assert_equal 'applied', result.reload.status
     assert_equal 'G', ref.reload.lizenzstufe
+    # Gültigkeit aus der Stufe abgeleitet: validity_years 1 + Kursjahr 2025 → 30.09.2026
     assert_equal Date.new(2026, 9, 30), ref.gueltigkeit
+  end
+
+  test 'leitet gueltigkeit ohne passende Lizenzstufe mit der Default-Dauer ab' do
+    ref = create(:referee, lizenzstufe: nil, gueltigkeit: nil)
+    result = make_result(referee: ref) # lizenzstufe 'G' ohne RefereeLicenseLevel-Definition
+
+    RefereeCourseResultApplier.new(result, performed_by_user: @admin)
+                              .call(review_required: false)
+
+    # Default 2 Jahre + Kursjahr 2025 → 30.09.2027
+    assert_equal Date.new(2027, 9, 30), ref.reload.gueltigkeit
   end
 
   test 'belässt Stammdaten unverändert bei review_required' do

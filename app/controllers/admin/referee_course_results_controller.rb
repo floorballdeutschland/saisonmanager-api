@@ -37,7 +37,15 @@ module Admin
       sync_final_with_importer(@result)
       sync_state_association(@result)
 
-      @result.lizenzstufe = attrs[:lizenzstufe] if attrs.key?(:lizenzstufe)
+      if attrs.key?(:lizenzstufe)
+        @result.lizenzstufe = attrs[:lizenzstufe]
+        # Gültigkeit aus der Dauer der Stufe ableiten, sofern nicht explizit
+        # mitgesendet (manueller Wert hat Vorrang, siehe unten).
+        unless attrs.key?(:gueltigkeit)
+          derived = RefereeLicenseLevel.gueltigkeit_for(@result.lizenzstufe, @result.kursstichtag)
+          @result.gueltigkeit = derived if derived
+        end
+      end
       @result.gueltigkeit = parse_date(attrs[:gueltigkeit]) if attrs.key?(:gueltigkeit)
       @result.match_field_count = recompute_match_field_count(@result)
       @result.match_type = recompute_match_type(@result)
