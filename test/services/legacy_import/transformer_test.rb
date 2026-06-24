@@ -208,6 +208,38 @@ class LegacyImport::TransformerTest < ActiveSupport::TestCase # rubocop:disable 
     assert_equal [], lic['history']
   end
 
+  # ── club_attrs / arena_attrs (Stammdaten-Anlage) ──────────────────────────────────
+  test 'club_attrs bildet einen global_verein auf clubs-Attribute ab' do
+    verein = { 'name' => 'TSV Calw 1846', 'kurzname' => 'TSV Calw', 'kuerzel' => 'CAL',
+               'strasse' => 'Hauptstr.', 'hausnummer' => '1', 'plz' => '75365', 'ort' => 'Calw' }
+    attrs = LegacyImport::Transformer.club_attrs(verein)
+
+    assert_equal 'TSV Calw 1846', attrs[:name]
+    assert_equal 'TSV Calw', attrs[:short_name]
+    assert_equal 'Calw', attrs[:city]
+    assert_equal '75365', attrs[:postcode]
+    refute attrs.key?(:state_association_id) # kein Alt-Pendant
+  end
+
+  test 'club_attrs lässt leere Felder weg' do
+    attrs = LegacyImport::Transformer.club_attrs({ 'name' => 'SV Ohne', 'kurzname' => '', 'plz' => '', 'ort' => '' })
+    assert_equal 'SV Ohne', attrs[:name]
+    refute attrs.key?(:short_name)
+    refute attrs.key?(:city)
+  end
+
+  test 'arena_attrs bildet einen global_spielort auf arenas-Attribute ab' do
+    spielort = { 'name' => 'Sporthalle Mitte', 'strasse' => 'Ringstr.', 'hausnummer' => '7',
+                 'plz' => '10115', 'ort' => 'Berlin' }
+    attrs = LegacyImport::Transformer.arena_attrs(spielort)
+
+    assert_equal 'Sporthalle Mitte', attrs[:name]
+    assert_equal 'Ringstr.', attrs[:street]
+    assert_equal '7', attrs[:housenumber]
+    assert_equal '10115', attrs[:postcode]
+    assert_equal 'Berlin', attrs[:city]
+  end
+
   # ── league_attrs (Vokabular) ────────────────────────────────────────────────────
   test 'league_attrs mappt Klasse, Feldgröße, Saison und setzt legacy_league' do
     liga = {

@@ -163,6 +163,11 @@ Events) über die JSON-Brücke gegen die prod-nahe Dev-DB:
    Merge in den Spieler über `id = LIC:<verband>:<saison>:<id_lizenz>` (Phase 3 der
    Saison-Transaktion). Status 1:1 (`Vocab::LIZENZSTATUS_TO_STATUS_ID`).
    `Transformer.license_attrs` ist unit-getestet; der Merge selbst läuft gegen die DB.
+6. ✅ **Stammdaten-Anlage Vereine/Spielorte** – fehlende `clubs`/`arenas` werden
+   beim Import angelegt (`Transformer.club_attrs`/`arena_attrs`), wenn kein
+   normalisierter Namens-Treffer existiert. Idempotent über den Namensindex
+   (frisch Angelegte werden registriert). Export/`legacy:league` liefern volle
+   `vereine`/`spielorte`-Datensätze. Spieler/Schiris bleiben Verknüpfung-only.
 
 ### Deployment-Checkliste (echter Prod-Import)
 
@@ -187,7 +192,9 @@ Events) über die JSON-Brücke gegen die prod-nahe Dev-DB:
 - **`nwuv` 2013/14** hat keine `begegnung`-Tabelle (keine Spieldaten) – ausgelassen.
 - **Spieler ohne Geburtsdatum** im Neusystem bzw. Namensdubletten bleiben
   ungematcht (denormalisierter Name im Lineup erhalten; 78–98 % je Verband).
-- **Spieler-/Schiri-Dedup** schreibt keine neuen Stammdaten; nur Verknüpfung.
+- **Vereine/Spielorte** werden bei fehlendem Treffer angelegt; **Spieler/Schiris**
+  bleiben Verknüpfung-only (kein Anlegen neuer Stammdaten – Dubletten-Risiko mit
+  Live-Karrieren).
 - **Idempotenz nur bei stabiler Eingabe**: Der Upsert (per `legacy_ref`) legt an
   und aktualisiert, **löscht aber nie**. Schrumpft die Quelle (korrigierter Dump
   ohne eine zuvor importierte Liga/Spiel), bleibt der alte Datensatz als Waise

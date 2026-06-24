@@ -218,6 +218,29 @@ module LegacyImport
       }.compact
     end
 
+    # global_verein-Zeile → clubs-Attribute (für die Anlage fehlender Vereine).
+    # clubs kennt keine Straße/Hausnummer auf Vereinsebene; nur Ort/PLZ werden
+    # übernommen. state_association_id bleibt leer (kein Alt-Pendant).
+    def club_attrs(verein)
+      {
+        name: verein['name'],
+        short_name: verein['kurzname'].presence,
+        city: verein['ort'].presence,
+        postcode: verein['plz'].presence
+      }.compact
+    end
+
+    # global_spielort-Zeile → arenas-Attribute (für die Anlage fehlender Spielorte).
+    def arena_attrs(spielort)
+      {
+        name: spielort['name'],
+        street: spielort['strasse'].presence,
+        housenumber: spielort['hausnummer'].presence,
+        postcode: spielort['plz'].presence,
+        city: spielort['ort'].presence
+      }.compact
+    end
+
     # ── intern ────────────────────────────────────────────────────────────────
     def event_team(penalty:, row:, home_goals:, guest_goals:, prev_home:, prev_guest:)
       unless penalty
