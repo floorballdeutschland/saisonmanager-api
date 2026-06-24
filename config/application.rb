@@ -24,6 +24,11 @@ module SaisonmanagerApi
     # Skip views, helpers and assets when generating a new resource.
     config.api_only = false
 
+    # ActiveStorage-Varianten (z. B. verkleinerte Vereins-/Team-Logos) über libvips
+    # erzeugen. Bei load_defaults 5.1 wäre der Default sonst :mini_magick, dessen Gem
+    # nicht installiert ist – die kleine Logo-Variante schlug dadurch fehl.
+    config.active_storage.variant_processor = :vips
+
     config.middleware.use Rack::Attack
   end
 end

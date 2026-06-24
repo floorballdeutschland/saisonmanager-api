@@ -99,5 +99,6 @@ gem 'icalendar'
 # active storage
 gem 'azure-storage-blob', '~> 2.0', require: false
 gem 'image_processing', '>= 1.2'
+gem 'ruby-vips', '~> 2.2' # libvips-Backend für ActiveStorage-Varianten (Logo-Verkleinerung)
 
 gem 'letter_opener', groups: %i[development]
