@@ -49,7 +49,7 @@ module Admin
     end
 
     def level_params
-      params.require(:referee_license_level).permit(:name, :active, :position)
+      params.require(:referee_license_level).permit(:name, :active, :position, :validity_years)
     end
 
     def authorize_read!
@@ -74,6 +74,7 @@ module Admin
         name: level.name,
         active: level.active,
         position: level.position,
+        validity_years: level.validity_years,
         usage_count: level.usage_count
       }
     end
