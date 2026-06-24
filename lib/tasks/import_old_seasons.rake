@@ -62,8 +62,8 @@ namespace :legacy do
               'betreuer' => betreuer, 'spielbericht' => spielbericht,
               'lizenz' => lizenz, 'lizenzverlauf' => lizenzverlauf }
     import_bundles([{ 'verband' => verband, 'season' => season, 'leagues' => [entry], 'spieler' => spieler,
-                      'verein_names' => name_map(client, 'global_verein', 'id_verein', 'name'),
-                      'spielort_names' => name_map(client, 'global_spielort', 'id_spielort', 'name') }])
+                      'vereine' => record_map(client, 'global_verein', 'id_verein', %w[name kurzname kuerzel strasse hausnummer plz ort]),
+                      'spielorte' => record_map(client, 'global_spielort', 'id_spielort', %w[name strasse hausnummer plz ort]) }])
   end
 
   desc 'Preflight: prüft Voraussetzungen für den Altdaten-Import (read-only)'
@@ -143,7 +143,7 @@ namespace :legacy do
         verband = b['verband']
         go_id = go_id_for(verband)
         abort "Unbekannter Verband #{verband} (kein GO)" if go_id.nil?
-        verein_names = indexed(b['verein_names'])
+        vereine = indexed(b['vereine'])
         (b['leagues'] || []).each do |entry|
           next if empty_league?(entry) # leere Platzhalterligen (z. B. "… (falsch)") überspringen
 
@@ -152,7 +152,7 @@ namespace :legacy do
                           LegacyImport::Transformer.league_attrs(liga, game_operation_id: go_id))
           league_recs[[verband, liga['id_liga'].to_i]] = league
           (entry['mannschaft'] || []).each do |m|
-            club = match_club(verein_names[m['id_verein'].to_i])
+            club = match_or_create_club(vereine[m['id_verein'].to_i])
             attrs = LegacyImport::Transformer.team_attrs(m, league_id: league.id, club_id: club&.id)
             team_map[[verband, m['id_mannschaft'].to_i]] = upsert(Team, "T:#{verband}:#{season}:#{m['id_mannschaft']}", attrs)
           end
@@ -165,7 +165,7 @@ namespace :legacy do
       # rubocop:disable Style/CombinableLoops
       bundles.each do |b|
         verband = b['verband']
-        spielort_names = indexed(b['spielort_names'])
+        spielorte = indexed(b['spielorte'])
         player_id_map = LegacyImport::PlayerResolver.resolve(b['spieler'], player_index)
         player_maps[verband] = player_id_map
         report_player_match(verband, b['spieler'], player_id_map)
@@ -173,7 +173,7 @@ namespace :legacy do
           league = league_recs[[verband, entry['liga']['id_liga'].to_i]]
           next if league.nil? # übersprungene leere Liga
 
-          write_games(entry, league, verband, season, team_map, spielort_names, player_id_map)
+          write_games(entry, league, verband, season, team_map, spielorte, player_id_map)
         end
       end
 
@@ -198,7 +198,7 @@ namespace :legacy do
     (entry['begegnung'] || []).empty? && (entry['mannschaft'] || []).empty?
   end
 
-  def write_games(entry, league, verband, season, team_map, spielort_names, player_id_map)
+  def write_games(entry, league, verband, season, team_map, spielorte, player_id_map)
     ev_by_beg = (entry['ereignis'] || []).group_by { |e| e['id_begegnung'].to_i }
     ms_by_beg = (entry['mitspieler'] || []).group_by { |m| m['id_begegnung'].to_i }
     bt_by_beg = (entry['betreuer'] || []).group_by { |x| x['id_begegnung'].to_i }
@@ -219,7 +219,7 @@ namespace :legacy do
       end
 
       gd = gd_cache[st['id_spieltag'].to_i] ||= begin
-        arena = match_arena(spielort_names[st['id_spielort'].to_i])
+        arena = match_or_create_arena(spielorte[st['id_spielort'].to_i])
         attrs = LegacyImport::Transformer.game_day_attrs(st, league_id: league.id, arena_id: arena&.id, club_id: nil)
         upsert(GameDay, "GD:#{verband}:#{season}:#{st['id_spieltag']}", attrs)
       end
@@ -360,8 +360,9 @@ namespace :legacy do
     query_all(client, sql).first
   end
 
-  def name_map(client, table, id_col, name_col)
-    query_all(client, "SELECT #{id_col}, #{name_col} FROM #{table}").to_h { |r| [r[id_col].to_i, r[name_col]] }
+  # id → vollständiger Datensatz (für die Anlage fehlender Stammdaten).
+  def record_map(client, table, id_col, cols)
+    query_all(client, "SELECT #{id_col}, #{cols.join(', ')} FROM #{table}").to_h { |r| [r[id_col].to_i, r] }
   rescue StandardError
     {}
   end
@@ -377,20 +378,35 @@ namespace :legacy do
     record
   end
 
-  # Bestehende Stammdaten matchen, NICHT neu anlegen. Vereine werden normalisiert
-  # gegen name/short_name/long_name gematcht (Dedup gegen Live-Bestand).
-  def match_club(name)
-    return nil if name.blank?
+  # Verein über den normalisierten Namen gegen den Live-Bestand matchen
+  # (name/short_name/long_name); bei keinem Treffer aus dem Alt-Record anlegen.
+  # Der frisch angelegte Verein wird im Index registriert → idempotent (Re-Runs
+  # matchen ihn, kein Duplikat) und innerhalb eines Laufs wiederverwendbar.
+  def match_or_create_club(record)
+    return nil if record.nil? || record['name'].blank?
 
-    cid = club_index[norm_name(name)]
-    cid ? Club.find_by(id: cid) : nil
+    key = norm_name(record['name'])
+    cid = club_index[key]
+    return Club.find_by(id: cid) if cid
+
+    club = Club.new(LegacyImport::Transformer.club_attrs(record))
+    club.save!(validate: false)
+    club_index[key] = club.id
+    club
   end
 
-  def match_arena(name)
-    return nil if name.blank?
+  # Spielort über den normalisierten Namen matchen; bei keinem Treffer anlegen.
+  def match_or_create_arena(record)
+    return nil if record.nil? || record['name'].blank?
 
-    aid = arena_index[norm_name(name)]
-    aid ? Arena.find_by(id: aid) : nil
+    key = norm_name(record['name'])
+    aid = arena_index[key]
+    return Arena.find_by(id: aid) if aid
+
+    arena = Arena.new(LegacyImport::Transformer.arena_attrs(record))
+    arena.save!(validate: false)
+    arena_index[key] = arena.id
+    arena
   end
 
   # name/short_name/long_name (Club) bzw. name (Arena), normalisiert → id. Erste

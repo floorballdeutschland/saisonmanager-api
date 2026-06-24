@@ -86,12 +86,17 @@ SELECT JSON_OBJECT(
     )), JSON_ARRAY())
     FROM `__PFX___liga` l
   ),
-  'verein_names', (
-    SELECT COALESCE(JSON_OBJECTAGG(CAST(v.id_verein AS CHAR), v.name), JSON_OBJECT())
+  -- Vereine/Spielorte als vollständige Datensätze (Match gegen Live-Bestand per
+  -- normalisiertem Namen; fehlende werden beim Import angelegt).
+  'vereine', (
+    SELECT COALESCE(JSON_OBJECTAGG(CAST(v.id_verein AS CHAR),
+             JSON_OBJECT('name', v.name, 'kurzname', v.kurzname, 'kuerzel', v.kuerzel,
+                         'strasse', v.strasse, 'hausnummer', v.hausnummer, 'plz', v.plz, 'ort', v.ort)), JSON_OBJECT())
     FROM global_verein v
     WHERE v.id_verein IN (SELECT id_verein FROM `__PFX___mannschaft`)),
-  'spielort_names', (
-    SELECT COALESCE(JSON_OBJECTAGG(CAST(o.id_spielort AS CHAR), o.name), JSON_OBJECT())
+  'spielorte', (
+    SELECT COALESCE(JSON_OBJECTAGG(CAST(o.id_spielort AS CHAR),
+             JSON_OBJECT('name', o.name, 'strasse', o.strasse, 'hausnummer', o.hausnummer, 'plz', o.plz, 'ort', o.ort)), JSON_OBJECT())
     FROM global_spielort o
     WHERE o.id_spielort IN (SELECT id_spielort FROM `__PFX___spieltag`)),
   -- Spieler-Stammdaten (für Remap alte id_spieler → neue Player.id per Name+Geburtsdatum)
