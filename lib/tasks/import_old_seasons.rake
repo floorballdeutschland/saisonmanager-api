@@ -166,9 +166,8 @@ namespace :legacy do
       bundles.each do |b|
         verband = b['verband']
         spielorte = indexed(b['spielorte'])
-        player_id_map = LegacyImport::PlayerResolver.resolve(b['spieler'], player_index)
+        player_id_map = resolve_or_create_players(verband, b['spieler'])
         player_maps[verband] = player_id_map
-        report_player_match(verband, b['spieler'], player_id_map)
         (b['leagues'] || []).each do |entry|
           league = league_recs[[verband, entry['liga']['id_liga'].to_i]]
           next if league.nil? # übersprungene leere Liga
@@ -317,12 +316,33 @@ namespace :legacy do
     )
   end
 
-  def report_player_match(verband, spieler, player_id_map)
-    total = (spieler || {}).size
-    return if total.zero?
+  # Alte id_spieler → neue Player.id. Erst gegen den Live-Bestand matchen
+  # (Name+Geburtsdatum); fehlende Spieler werden – konservativ NUR mit Geburtsdatum –
+  # angelegt und im Namensindex registriert (idempotent: Re-Runs matchen sie, kein
+  # Duplikat; Spieler ohne Geburtsdatum bleiben im Lineup denormalisiert). Schiris
+  # werden bewusst NICHT angelegt (bleiben Freitext).
+  def resolve_or_create_players(verband, spieler_map)
+    map = LegacyImport::PlayerResolver.resolve(spieler_map, player_index)
+    matched = map.size
+    created = 0
 
-    pct = (player_id_map.size * 100.0 / total).round(1)
-    puts "  [#{verband}] Spieler-Remap: #{player_id_map.size}/#{total} (#{pct}%) auf echte Player-IDs gematcht"
+    (spieler_map || {}).each do |old_id, data|
+      oid = old_id.to_i
+      next if map.key?(oid) || data['geb_datum'].to_s.strip.empty?
+
+      player = Player.new(LegacyImport::Transformer.player_attrs(data))
+      player.save!(validate: false)
+      player_index[LegacyImport::PlayerResolver.key(data['name'], data['vorname'], data['geb_datum'])] = player.id
+      map[oid] = player.id
+      created += 1
+    end
+
+    total = (spieler_map || {}).size
+    if total.positive?
+      puts "  [#{verband}] Spieler: #{matched} gematcht, #{created} angelegt, " \
+           "#{total - matched - created} ohne Geburtsdatum übersprungen (von #{total})"
+    end
+    map
   end
 
   def write?

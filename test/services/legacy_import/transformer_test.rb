@@ -240,6 +240,25 @@ class LegacyImport::TransformerTest < ActiveSupport::TestCase # rubocop:disable 
     assert_equal 'Berlin', attrs[:city]
   end
 
+  # ── player_attrs (Stammdaten-Anlage Spieler) ──────────────────────────────────────
+  test 'player_attrs bildet einen global_spieler auf players-Attribute ab' do
+    spieler = { 'name' => 'Jäger', 'vorname' => 'Louis', 'geb_datum' => '1990-05-17', 'geschlecht' => '1' }
+    attrs = LegacyImport::Transformer.player_attrs(spieler)
+
+    assert_equal 'Jäger', attrs[:last_name]
+    assert_equal 'Louis', attrs[:first_name]
+    assert_equal '1990-05-17', attrs[:birthdate]
+    assert_equal 'M', attrs[:gender] # geschlecht 1 = männlich
+  end
+
+  test 'player_attrs mappt geschlecht 0 auf W und normalisiert geb_datum auf 10 Zeichen' do
+    spieler = { 'name' => 'Muster', 'vorname' => 'Eva', 'geb_datum' => '1988-01-02 00:00:00', 'geschlecht' => '0' }
+    attrs = LegacyImport::Transformer.player_attrs(spieler)
+
+    assert_equal 'W', attrs[:gender]
+    assert_equal '1988-01-02', attrs[:birthdate] # Zeitanteil abgeschnitten
+  end
+
   # ── league_attrs (Vokabular) ────────────────────────────────────────────────────
   test 'league_attrs mappt Klasse, Feldgröße, Saison und setzt legacy_league' do
     liga = {
