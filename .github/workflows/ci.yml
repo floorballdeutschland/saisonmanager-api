@@ -36,6 +36,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # libvips wird von ruby-vips beim Boot via FFI geladen (ActiveStorage variant_processor :vips).
+      # Paketname auf Ubuntu 24.04 ist libvips42t64; Fallback für ältere Runner-Images.
+      - name: Install libvips
+        run: sudo apt-get update && sudo apt-get install -y libvips42t64 || sudo apt-get install -y libvips42
+
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.2.4'

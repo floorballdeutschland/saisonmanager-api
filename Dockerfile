@@ -1,6 +1,6 @@
 FROM ruby:3.2.4
 
-RUN apt-get update -qq && apt-get install -y nodejs postgresql-client
+RUN apt-get update -qq && apt-get install -y nodejs postgresql-client libvips42
 
 ENV RAILS_ROOT /app
 RUN mkdir -p $RAILS_ROOT
