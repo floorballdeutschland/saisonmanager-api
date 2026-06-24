@@ -1,0 +1,30 @@
+<h2>Schiedsrichter-Feedback möglich</h2>
+
+<p>Hallo,</p>
+
+<p>
+  für ein gespieltes Spiel deiner Mannschaft <strong><%= @team.name %></strong>
+  kann jetzt ein Schiedsrichter-Feedback abgegeben werden:
+</p>
+
+<p>
+  <strong><%= @team.name %></strong><% if @opponent_name.present? %> – <%= @opponent_name %><% end %><br>
+  <% if @league_name.present? %><%= @league_name %><br><% end %>
+  <% if @game_date.present? %>Spieltag: <%= @game_date %><% end %><% if @game.start_time.present? %>, <%= @game.start_time %> Uhr<% end %>
+</p>
+
+<p>
+  Das Feedback-Fenster ist nun geöffnet (ab 24 Stunden nach dem Spiel).
+  <strong>Bitte innerhalb von 24 Stunden abgeben.</strong>
+</p>
+
+<p>
+  <a href="<%= @feedback_url %>">Hier Feedback abgeben</a><br>
+  (<%= @feedback_url %>)
+</p>
+
+<p>
+  Du erhältst diese E-Mail als Teammanager. Im Profil unter „Mein Konto" kannst du
+  Info-E-Mails des Systems deaktivieren.<br>
+  <a href="https://saisonmanager.org">saisonmanager.org</a>
+</p>

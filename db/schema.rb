@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_06_24_120000) do
+ActiveRecord::Schema[7.1].define(version: 2026_06_24_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -274,6 +274,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_24_120000) do
     t.jsonb "checklist_veto_answers", default: []
     t.text "special_event_string"
     t.datetime "match_record_closed_at"
+    t.datetime "referee_feedback_notified_at"
     t.string "legacy_ref"
     t.index ["checklist_veto_token_digest"], name: "index_games_on_checklist_veto_token_digest", unique: true, where: "(checklist_veto_token_digest IS NOT NULL)"
     t.index ["game_day_id"], name: "index_games_on_game_day_id"
