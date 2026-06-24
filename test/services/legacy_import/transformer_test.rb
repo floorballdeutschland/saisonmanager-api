@@ -95,12 +95,12 @@ class LegacyImport::TransformerTest < ActiveSupport::TestCase # rubocop:disable 
     goalie = players['home'].find { |p| p['trikot_number'] == 1 }
     assert_equal 476, goalie['player_id']
     assert goalie['goalkeeper']
-    assert_equal 'Jäger', goalie['last_name']
+    assert_equal 'Jäger', goalie['player_name']
 
     guest = players['guest'].first
     assert_nil guest['player_id'] # id_spieler war 0 → Gastspieler
     assert guest['captain']
-    assert_equal 'Gast', guest['last_name']
+    assert_equal 'Gast', guest['player_name']
   end
 
   test 'build_players bildet alte Spieler-ID via player_id_map auf neue ID ab' do
