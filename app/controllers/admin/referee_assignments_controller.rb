@@ -91,6 +91,10 @@ module Admin
           start_time: g.start_time,
           home_team: g.home_team&.name,
           guest_team: g.guest_team&.name,
+          # Vereins-IDs der beiden Mannschaften → clientseitige Befangenheits-Warnung,
+          # wenn ein angesetzter Schiri/Coach Mitglied eines dieser Vereine ist.
+          home_team_club_id: g.home_team&.club_id,
+          guest_team_club_id: g.guest_team&.club_id,
           league: g.game_day.league&.name,
           # Bundesspielbetrieb (Spielbetrieb ohne Landesverband) → für die
           # clientseitige Lizenz-Vorauswahl (FD-Spiele defaulten auf N-Lizenz).
@@ -148,7 +152,8 @@ module Admin
           nachname: r.nachname,
           lizenzstufe: r.lizenzstufe,
           kurzfristig_mobil: r.kurzfristig_mobil,
-          partner_lizenznummer: r.partner_lizenznummer
+          partner_lizenznummer: r.partner_lizenznummer,
+          club_id: r.club_id
         }
       }
     end
@@ -177,7 +182,8 @@ module Admin
           lizenznummer_display: r.lizenznummer_display,
           vorname: r.vorname,
           nachname: r.nachname,
-          lizenzstufe: r.lizenzstufe
+          lizenzstufe: r.lizenzstufe,
+          club_id: r.club_id
         }
       }
     end
