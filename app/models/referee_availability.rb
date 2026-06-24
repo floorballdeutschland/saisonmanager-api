@@ -3,13 +3,15 @@ class RefereeAvailability < ApplicationRecord
 
   validates :date, presence: true
   validates :date, uniqueness: { scope: :referee_id }
-  validate :date_must_be_future
+  validate :date_not_in_past
 
   private
 
-  def date_must_be_future
+  # Verfügbarkeiten dürfen ab heute (inkl. heutigem Tag) eingetragen werden,
+  # nicht für vergangene Tage.
+  def date_not_in_past
     return unless date.present?
 
-    errors.add(:date, 'muss in der Zukunft liegen') if date <= Date.today
+    errors.add(:date, 'darf nicht in der Vergangenheit liegen') if date < Date.today
   end
 end

@@ -8,7 +8,7 @@ class RefereeAvailabilitiesController < ApplicationController
     scope = @referee.referee_availabilities
     scope = scope.where('date >= ?', from) if from
     scope = scope.where('date <= ?', to)   if to
-    scope = scope.where('date > ?', Date.today) unless from || to
+    scope = scope.where('date >= ?', Date.today) unless from || to
     render json: scope.order(:date).map { |a| availability_json(a) }
   end
 
