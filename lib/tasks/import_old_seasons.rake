@@ -325,24 +325,41 @@ namespace :legacy do
     map = LegacyImport::PlayerResolver.resolve(spieler_map, player_index)
     matched = map.size
     created = 0
+    reused = 0
 
     (spieler_map || {}).each do |old_id, data|
       oid = old_id.to_i
-      next if map.key?(oid) || data['geb_datum'].to_s.strip.empty?
+      next if map.key?(oid) || !valid_birthdate?(data['geb_datum'])
+
+      key = LegacyImport::PlayerResolver.key(data['name'], data['vorname'], data['geb_datum'])
+      # Namensgleiche mit identischem Geburtsdatum (auch ein eben erst angelegter
+      # Spieler) auf denselben Datensatz abbilden statt zu duplizieren.
+      if (existing_id = player_index[key])
+        map[oid] = existing_id
+        reused += 1
+        next
+      end
 
       player = Player.new(LegacyImport::Transformer.player_attrs(data))
       player.save!(validate: false)
-      player_index[LegacyImport::PlayerResolver.key(data['name'], data['vorname'], data['geb_datum'])] = player.id
+      player_index[key] = player.id
       map[oid] = player.id
       created += 1
     end
 
     total = (spieler_map || {}).size
     if total.positive?
-      puts "  [#{verband}] Spieler: #{matched} gematcht, #{created} angelegt, " \
-           "#{total - matched - created} ohne Geburtsdatum übersprungen (von #{total})"
+      puts "  [#{verband}] Spieler: #{matched} gematcht, #{created} angelegt, #{reused} per Namensgleichheit verknüpft, " \
+           "#{total - matched - created - reused} ohne gültiges Geburtsdatum übersprungen (von #{total})"
     end
     map
+  end
+
+  # Plausibles Geburtsdatum (YYYY-MM-DD, Jahr != 0000). MariaDB-Nulldaten
+  # ("0000-00-00") gelten als fehlend → kein Spieler wird dafür angelegt.
+  def valid_birthdate?(geb_datum)
+    str = geb_datum.to_s.strip
+    str.match?(/\A\d{4}-\d{2}-\d{2}/) && !str.start_with?('0000')
   end
 
   def write?

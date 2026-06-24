@@ -251,7 +251,9 @@ module LegacyImport
         last_name: spieler['name'],
         first_name: spieler['vorname'],
         birthdate: spieler['geb_datum'].to_s.strip[0, 10].presence,
-        gender: { 0 => 'W', 1 => 'M' }[spieler['geschlecht'].to_i]
+        # Nur explizite Werte mappen (0=weiblich, 1=männlich); fehlend/unbekannt → nil
+        # (statt fälschlich 'W' bei leerem geschlecht).
+        gender: { '0' => 'W', '1' => 'M' }[spieler['geschlecht'].to_s]
       }.compact
     end
 

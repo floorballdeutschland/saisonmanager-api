@@ -24,7 +24,14 @@ class UserSettingsController < ApplicationController
       return render json: { success: false, message: 'Nicht berechtigt.' }, status: :forbidden
     end
 
-    current_user.update!(receive_info_mails: ActiveModel::Type::Boolean.new.cast(params[:receive_info_mails]))
+    # Fehlender/uneindeutiger Wert würde via cast → nil zu einer NOT-NULL-Verletzung
+    # (500) führen; daher explizit prüfen (analog zu update_language/update_password).
+    value = ActiveModel::Type::Boolean.new.cast(params[:receive_info_mails])
+    if value.nil?
+      return render json: { success: false, message: 'Ungültiger Wert.' }, status: :unprocessable_entity
+    end
+
+    current_user.update!(receive_info_mails: value)
     render json: { success: true, user: current_user.login_hash }
   end
 

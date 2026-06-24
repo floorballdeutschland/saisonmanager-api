@@ -11,6 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Behoben
 
+- **PR-Review-Nachbesserungen (unveröffentlichte Features)**: Altdaten-Spieleranlage legt namensgleiche Spieler mit identischem Geburtsdatum nicht mehr doppelt an (Abgleich über den Namensindex) und überspringt MariaDB-Nulldaten (`0000-00-00`); `player_attrs` setzt `gender` nur bei explizitem `geschlecht` 0/1 (sonst `nil` statt fälschlich „W"). `PATCH user/mail-preferences` antwortet bei fehlendem Wert mit `422` statt `500`. `RefereeFeedbackMailer#form_available` hat nun auch eine Text-Variante (multipart).
 - **Scorerwertung**: `Game#penalty_mapping` brach mit `nil.to_sym` ab, wenn eine Strafe in `Setting.penalties` kein `mapping`-Feld hatte (z. B. Basis-Seeds). Jetzt wird die Strafenwertung für solche Events übersprungen statt die gesamte Liga-Scorerliste fehlschlagen zu lassen.
 
 ### Neu

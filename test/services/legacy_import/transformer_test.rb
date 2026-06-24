@@ -259,6 +259,13 @@ class LegacyImport::TransformerTest < ActiveSupport::TestCase # rubocop:disable 
     assert_equal '1988-01-02', attrs[:birthdate] # Zeitanteil abgeschnitten
   end
 
+  test 'player_attrs lässt gender bei fehlendem/unbekanntem geschlecht weg (nicht W)' do
+    attrs = LegacyImport::Transformer.player_attrs(
+      { 'name' => 'Ohne', 'vorname' => 'Geschlecht', 'geb_datum' => '1990-01-01', 'geschlecht' => '' }
+    )
+    refute attrs.key?(:gender)
+  end
+
   # ── league_attrs (Vokabular) ────────────────────────────────────────────────────
   test 'league_attrs mappt Klasse, Feldgröße, Saison und setzt legacy_league' do
     liga = {
