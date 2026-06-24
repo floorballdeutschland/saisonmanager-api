@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_06_23_180000) do
+ActiveRecord::Schema[7.1].define(version: 2026_06_24_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -809,6 +809,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_23_180000) do
     t.datetime "updated_at", null: false
     t.bigint "referee_id"
     t.string "language", default: "de", null: false
+    t.boolean "receive_info_mails", default: true, null: false
     t.index ["referee_id"], name: "index_users_on_referee_id"
     t.index ["referee_id"], name: "index_users_on_referee_id_unique", unique: true, where: "(referee_id IS NOT NULL)"
     t.index ["user_name"], name: "index_users_on_user_name", unique: true

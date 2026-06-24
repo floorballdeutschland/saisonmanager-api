@@ -16,6 +16,18 @@ class UserSettingsController < ApplicationController
     render json: { success: true, user: current_user.login_hash }
   end
 
+  # PATCH /api/v2/user/mail-preferences
+  # Schaltet den Empfang informeller System-Mails an/aus. Nur für Teammanager;
+  # andere Rollen (VM o. a.) dürfen die Einstellung nicht ändern.
+  def update_mail_preferences
+    unless current_user.permission_hash[:tm].present?
+      return render json: { success: false, message: 'Nicht berechtigt.' }, status: :forbidden
+    end
+
+    current_user.update!(receive_info_mails: ActiveModel::Type::Boolean.new.cast(params[:receive_info_mails]))
+    render json: { success: true, user: current_user.login_hash }
+  end
+
   # PUT /api/v2/user/password
   def update_password
     unless current_user.authenticate(params[:current_password].to_s)

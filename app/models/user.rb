@@ -20,6 +20,9 @@ class User < ApplicationRecord
       club_ids:,
       referee_id: referee_id,
       language:,
+      receive_info_mails:,
+      # Info-Mail-Opt-out ist NUR für Teammanager wählbar (nicht für VM o. a.).
+      can_manage_mail_preferences: permission_hash[:tm].present?,
       login_blocked_message: perms[:login_blocked] ? 'Keine Teams in der aktuellen Saison.' : nil
     }
   end
