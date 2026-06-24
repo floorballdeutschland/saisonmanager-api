@@ -145,8 +145,10 @@ module LegacyImport
           'trikot_number' => m['trikotnr'].to_i,
           'goalkeeper' => to_bool(m['torwart']),
           'captain' => to_bool(m['kapitain']),
-          'last_name' => m['name'],
-          'first_name' => m['vorname']
+          # Keys wie im Live-Erfassungspfad (GamesController#add_player_to_lineup),
+          # damit Lesepfad/Frontend (full-name-Pipe) die Namen anzeigen.
+          'player_name' => m['name'],
+          'player_firstname' => m['vorname']
         }.compact
       end
 
