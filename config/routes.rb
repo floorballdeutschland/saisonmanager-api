@@ -48,6 +48,7 @@ Rails.application.routes.draw do
 
       # Self-Service-Einstellungen des eingeloggten Users (Sprache, Passwort)
       patch 'user/language' => 'user_settings#update_language'
+      patch 'user/mail-preferences' => 'user_settings#update_mail_preferences'
       put 'user/password' => 'user_settings#update_password'
 
       get 'teams/:id', to: 'teams#show'
