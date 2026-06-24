@@ -44,10 +44,10 @@ namespace :referee_feedback do
   end
 
   # Anpfiff (Spieltag-Datum + Startzeit) in Europe/Berlin; nil ohne Datum.
-  def referee_feedback_game_start(game, tz)
+  def referee_feedback_game_start(game, time_zone)
     return nil if game.game_day&.date.blank?
 
-    tz.parse("#{game.game_day.date} #{game.start_time}".strip)
+    time_zone.parse("#{game.game_day.date} #{game.start_time}".strip)
   rescue ArgumentError, TypeError
     nil
   end
