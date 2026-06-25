@@ -341,7 +341,7 @@ Metrics/BlockNesting:
 # Offense count: 42
 # Configuration parameters: CountComments, CountAsOne.
 Metrics/ClassLength:
-  Max: 900
+  Max: 950
 
 # Offense count: 167
 # Configuration parameters: AllowedMethods, AllowedPatterns.
@@ -413,6 +413,7 @@ Naming/VariableNumber:
     - 'app/models/game.rb'
     - 'app/models/league.rb'
     - 'db/seeds.rb'
+    - 'test/models/game_test.rb'
     - 'test/models/league_test.rb'
 
 # Offense count: 2

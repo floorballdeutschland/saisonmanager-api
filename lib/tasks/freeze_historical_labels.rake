@@ -25,7 +25,7 @@ namespace :events do
       next if game.events == before
 
       changed += 1
-      game.update_columns(events: game.events) unless dry_run # rubocop:disable Rails/SkipsModelValidations
+      game.update_columns(events: game.events) unless dry_run
     end
 
     puts "#{dry_run ? '[DRY_RUN] ' : ''}#{scanned} Spiele geprüft, #{changed} mit aktualisierten Straf-Labels."
@@ -59,7 +59,7 @@ namespace :leagues do
       next if attrs.empty?
 
       changed += 1
-      league.update_columns(attrs) unless dry_run # rubocop:disable Rails/SkipsModelValidations
+      league.update_columns(attrs) unless dry_run
     end
 
     puts "#{dry_run ? '[DRY_RUN] ' : ''}#{changed} Ligen mit eingefrorenen Labels/Korrekturen aktualisiert."
