@@ -446,22 +446,34 @@ class LeaguesController < ApplicationController
 
   # GET /leagues/1/scorer
   def scorer
-    @league = League.find(params[:id])
+    id = params[:id]
 
-    render json: @league.scorer
+    scorer = Rails.cache.fetch("leagues/#{id}/scorer", expires_in: 5.minutes) do
+      League.find(id).scorer
+    end
+
+    render json: scorer
   end
 
   # GET /leagues/1/table
   def table
-    @league = League.find(params[:id])
+    id = params[:id]
 
-    render json: @league.table
+    table = Rails.cache.fetch("leagues/#{id}/table", expires_in: 5.minutes) do
+      League.find(id).table
+    end
+
+    render json: table
   end
 
   def grouped_table
-    @league = League.find(params[:id])
+    id = params[:id]
 
-    render json: @league.grouped_table
+    grouped_table = Rails.cache.fetch("leagues/#{id}/grouped_table", expires_in: 5.minutes) do
+      League.find(id).grouped_table
+    end
+
+    render json: grouped_table
   end
 
   def license_list
