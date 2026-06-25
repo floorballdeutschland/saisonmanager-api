@@ -1,10 +1,10 @@
 class Setting < ApplicationRecord
   # Die Setting-Konfiguration (Single-Row) wird pro Request vielfach gelesen
   # (Saisons, Strafen, Liga-Kategorien …), aber selten geschrieben. Daher das
-  # AR-Objekt cachen und bei jeder Änderung gezielt invalidieren. Die TTL ist
-  # nur ein Sicherheitsnetz – maßgeblich ist der after_commit-Hook. Geschrieben
-  # wird ausschließlich über `Setting.first` (nicht über den Cache), daher ist
-  # das gecachte Objekt reiner Lesepfad.
+  # AR-Objekt cachen und per after_commit invalidieren. Die TTL ist nur ein
+  # Sicherheitsnetz – maßgeblich ist der Hook, der bei jedem Commit feuert,
+  # unabhängig davon, ob die Instanz über `Setting.first` oder `Setting.current`
+  # geladen wurde (z. B. admin/penalty_codes schreibt über `Setting.current`).
   after_commit :flush_caches
 
   def self.current

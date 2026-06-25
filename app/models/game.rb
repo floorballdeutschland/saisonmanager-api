@@ -26,6 +26,12 @@ class Game < ApplicationRecord
                       }
 
   before_save :correct_teams!
+  # Tabelle/Scorer/Spielplan einer Liga werden aus den Spiel-JSONB-Spalten
+  # (events/players/game_status …) berechnet und im Controller gecacht. Jede
+  # Spieländerung – Ergebniseingabe, Statuswechsel, Autofill, Löschung – muss
+  # diese Caches der zugehörigen Liga invalidieren, daher zentral hier statt in
+  # jeder Controller-Action.
+  after_commit :flush_league_caches
 
   def match_record_closed?
     %w[match_record_closed finalized].include? game_status
@@ -1092,7 +1098,6 @@ class Game < ApplicationRecord
   def self.autofill_teams!(league_id: nil)
     games = Game.not_started.has_autofill_condition
     games = games.where(game_day_id: GameDay.where(league_id:).select(:id)) if league_id
-    changed_leagues = []
     games.each do |game|
       %w[home_team guest_team].each do |team|
         next unless game["#{team}_filling_rule"].present? && game["#{team}_filling_parameter"].present?
@@ -1128,22 +1133,22 @@ class Game < ApplicationRecord
 
         team_id = sub_table[place - 1][:team_id]
 
-        if team_id && (team_id != game["#{team}_id"])
-          game["#{team}_id"] = team_id
-          changed_leagues << game_league_id
-        end
+        game["#{team}_id"] = team_id if team_id && (team_id != game["#{team}_id"])
       end
       game.save
     end
 
-    changed_leagues.uniq.each do |lid|
-      Rails.cache.delete("leagues/#{lid}/current_schedule")
-      Rails.cache.delete("leagues/#{lid}/schedule")
-      Rails.cache.delete("leagues/#{lid}/table")
-      Rails.cache.delete("leagues/#{lid}/grouped_table")
-      Rails.cache.delete("leagues/#{lid}/scorer")
-    end
-
     []
+  end
+
+  private
+
+  def flush_league_caches
+    league_id = game_day&.league_id
+    return if league_id.blank?
+
+    %w[schedule current_schedule table grouped_table scorer].each do |key|
+      Rails.cache.delete("leagues/#{league_id}/#{key}")
+    end
   end
 end
