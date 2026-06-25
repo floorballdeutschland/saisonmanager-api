@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_06_24_140000) do
+ActiveRecord::Schema[7.1].define(version: 2026_06_25_120100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -336,6 +336,9 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_24_140000) do
     t.integer "game_duration_minutes", comment: "Angenommene Spieldauer inkl. Puffer in Minuten für die Hallenbelegungs-/Konfliktprüfung; nil = globaler Default / perioden-basierter Fallback"
     t.boolean "referee_feedback_enabled", default: false, null: false
     t.string "legacy_ref"
+    t.jsonb "point_corrections", default: {}, null: false, comment: "Punktekorrekturen je Team ({ team_id => { points: ... } }); ersetzt das globale Setting.point_corrections"
+    t.string "league_class_name"
+    t.string "league_category_name"
     t.index ["game_operation_id"], name: "index_leagues_on_game_operation_id"
     t.index ["legacy_ref"], name: "index_leagues_on_legacy_ref", unique: true, where: "(legacy_ref IS NOT NULL)"
   end

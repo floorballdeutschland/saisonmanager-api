@@ -64,6 +64,10 @@ class LeaguesController < ApplicationController
 
         lp[:season_id] = Setting.current_season_id
         lp[:legacy_league] = false
+        # Anzeige-Namen der Klasse/Kategorie einfrieren, damit eine spätere
+        # Umbenennung in Setting alte Ligen nicht rückwirkend verändert.
+        lp[:league_class_name] = Setting.league_class(lp[:league_class_id]).presence if lp[:league_class_id].present?
+        lp[:league_category_name] = Setting.league_category(lp[:league_category_id]).presence if lp[:league_category_id].present?
         league = League.create(lp)
 
         if league.persisted?

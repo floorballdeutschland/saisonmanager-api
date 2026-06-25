@@ -57,19 +57,54 @@ class Game < ApplicationRecord
     players['guest'].map { |p| { p['trikot_number'] => p['player_id'] } }.reduce(&:merge)
   end
 
+  # Friert die zum Schreibzeitpunkt gültigen Straf-Labels (Mapping, Name,
+  # Code, Beschreibung) ins Event-JSONB ein. Dadurch bleiben historische
+  # Spielberichte ohne Live-Lookup auf Setting.penalties/penalty_codes lesbar,
+  # und alte Strafcodes lassen sich gefahrlos deaktivieren oder entfernen.
+  FROZEN_PENALTY_KEYS = %w[penalty_mapping penalty_name penalty_code penalty_code_description].freeze
+
+  def self.freeze_penalty_labels(event)
+    unless event['penalty_id'].present?
+      FROZEN_PENALTY_KEYS.each { |k| event.delete(k) }
+      return event
+    end
+
+    penalty = Setting.current.penalties[event['penalty_id'].to_s]
+    if penalty.present?
+      event['penalty_mapping'] = penalty['mapping'] if penalty['mapping'].present?
+      event['penalty_name'] = penalty['name'] if penalty['name'].present?
+    end
+
+    if event['penalty_code_id'].present?
+      code = Setting.current.penalty_codes[event['penalty_code_id'].to_s]
+      if code.present?
+        event['penalty_code'] = code['code']
+        event['penalty_code_description'] = code['description']
+      end
+    end
+
+    event
+  end
+
+  # Bevorzugt das eingefrorene Label am Event; nur Alt-Ereignisse ohne
+  # gespeichertes Label lösen weiterhin live aus Setting auf (dig: nil statt
+  # NoMethodError, falls die Strafe dort fehlt – der Aufrufer überspringt dann
+  # die Strafenwertung, statt mit nil.to_sym hart abzubrechen).
   def penalty_mapping(event)
-    # nil, wenn die Strafe in Setting.penalties fehlt oder kein 'mapping' hat
-    # (z. B. Basis-Seeds ohne Mapping-Feld). Der Aufrufer überspringt dann die
-    # Strafenwertung, statt mit nil.to_sym hart abzubrechen.
+    return event['penalty_mapping'].to_sym if event['penalty_mapping'].present?
+
     Setting.current.penalties.dig(event['penalty_id'].to_s, 'mapping')&.to_sym
   end
 
   def penalty_mapping_string(event)
-    # dig: nil statt NoMethodError, falls die Strafe nicht in Setting.penalties steht
+    return event['penalty_name'] if event['penalty_name'].present?
+
     Setting.current.penalties.dig(event['penalty_id'].to_s, 'name')
   end
 
   def penalty_reason(event)
+    return { 'code' => event['penalty_code'], 'description' => event['penalty_code_description'] } if event['penalty_code'].present?
+
     Setting.current.penalty_codes[event['penalty_code_id'].to_s]
   end
 
@@ -432,7 +467,20 @@ class Game < ApplicationRecord
     item
   end
 
-  def empty_score(player_id, team)
+  # player_id => { first_name:, last_name: } aus dem Spielbericht-Snapshot
+  # (players-JSONB). Damit ist die Scorerliste self-contained für Altsaisons –
+  # ein nachträglich umbenannter oder gelöschter Spieler verfälscht sie nicht.
+  def lineup_player_names
+    %w[home guest].each_with_object({}) do |side, names|
+      (players[side] || []).each do |p|
+        next if p['player_id'].blank?
+
+        names[p['player_id']] = { first_name: p['player_firstname'], last_name: p['player_name'] }
+      end
+    end
+  end
+
+  def empty_score(player_id, team, name = {})
     {
       games: 1,
       goals: 0,
@@ -448,7 +496,9 @@ class Game < ApplicationRecord
       penalty_ms3: 0,
       player_id:,
       team_id: team.id,
-      team_name: team.name
+      team_name: team.name,
+      first_name: name[:first_name],
+      last_name: name[:last_name]
     }
   end
 
@@ -458,14 +508,16 @@ class Game < ApplicationRecord
     return result if forfait?
     return result if home_team_player_number.blank? && guest_team_player_number.blank?
 
+    names = lineup_player_names
+
     home_player_ids = home_team_player_number.present? ? [home_team_player_number.values].flatten.compact.sort : []
     home_player_ids.each do |p|
-      result[p] = empty_score(p, home_team)
+      result[p] = empty_score(p, home_team, names[p] || {})
     end
 
     guest_player_ids = guest_team_player_number.present? ? [guest_team_player_number.values].flatten.compact.sort : []
     guest_player_ids.each do |p|
-      result[p] = empty_score(p, guest_team)
+      result[p] = empty_score(p, guest_team, names[p] || {})
     end
 
     events.each do |event|

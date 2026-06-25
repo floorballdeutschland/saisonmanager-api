@@ -468,4 +468,60 @@ class LeagueTest < ActiveSupport::TestCase
     assert_empty player_entry[:other_licenses],
                  'Vorsaison-Lizenz nicht in other_licenses'
   end
+
+  # ---------------------------------------------------------------------------
+  # Scorer aus dem Spielbericht-Snapshot (R2)
+  # ---------------------------------------------------------------------------
+
+  test 'scorer: Namen aus dem Snapshot, kein stiller Wegfall ohne Player-Record' do
+    go = build_go
+    league = build_league(go)
+    club = build_club
+    arena = build_arena
+    game_day = build_game_day(league, arena, club)
+    home = build_team(league, club, 'Heim')
+    guest = build_team(league, club, 'Gast')
+
+    # player_id 999999 existiert bewusst NICHT als Player-Record
+    players = {
+      'home' => [{ 'trikot_number' => 7, 'player_id' => 999_999, 'player_firstname' => 'Max', 'player_name' => 'Muster' }],
+      'guest' => []
+    }
+    events = [
+      { 'period' => 1, 'time' => '05:00', 'home_number' => 7, 'home_goals' => 1, 'guest_goals' => 0, 'row' => 1 }
+    ]
+    build_game(game_day, home, guest, players: players, events: events)
+
+    entry = league.scorer.find { |s| s[:player_id] == 999_999 }
+    refute_nil entry, 'Scorer mit fehlendem Player-Record darf nicht still wegfallen'
+    assert_equal 'Max', entry[:first_name]
+    assert_equal 'Muster', entry[:last_name]
+    assert_equal 1, entry[:goals]
+  end
+
+  # ---------------------------------------------------------------------------
+  # Punktekorrekturen & eingefrorene Labels an der Liga (R3)
+  # ---------------------------------------------------------------------------
+
+  test 'empty_table_item: Punktekorrektur aus der Liga-Spalte wird angewandt' do
+    go = build_go
+    league = build_league(go)
+    club = build_club
+    home = build_team(league, club, 'Heim')
+    league.update!(point_corrections: { home.id.to_s => { 'points' => -3 } })
+
+    item = league.empty_table_item(home)
+    assert_equal(-3, item[:points])
+    assert_equal({ 'points' => -3 }, item[:point_corrections])
+  end
+
+  test 'full_hash: liefert eingefrorene Klassen-/Kategorie-Namen' do
+    go = build_go
+    league = build_league(go)
+    league.update!(league_class_name: 'Bundesliga', league_category_name: 'Herren')
+
+    h = league.full_hash
+    assert_equal 'Bundesliga', h[:league_class_name]
+    assert_equal 'Herren', h[:league_category_name]
+  end
 end
