@@ -81,7 +81,7 @@ module Admin
       # daher den Antrag gar nicht erst starten (gleiche Meldung wie in approve_club).
       unless player.email.present?
         return render json: {
-          error: 'Der Spieler hat keine E-Mail-Adresse hinterlegt. Bitte zuerst die E-Mail-Adresse im Spielerprofil eintragen.'
+          error: 'Für das Spielerprofil ist keine E-Mailadresse hinterlegt. Bitte den aktuellen Verein oder die zuständige SBK kontaktieren.'
         }, status: :unprocessable_entity
       end
 
@@ -176,7 +176,7 @@ module Admin
 
       unless tr.player.email.present?
         return render json: {
-          error: 'Der Spieler hat keine E-Mail-Adresse hinterlegt. Bitte zuerst die E-Mail-Adresse im Spielerprofil eintragen.'
+          error: 'Für das Spielerprofil ist keine E-Mailadresse hinterlegt. Bitte den aktuellen Verein oder die zuständige SBK kontaktieren.'
         }, status: :unprocessable_entity
       end
 
