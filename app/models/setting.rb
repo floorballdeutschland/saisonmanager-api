@@ -1,14 +1,24 @@
 class Setting < ApplicationRecord
+  # Die Setting-Konfiguration (Single-Row) wird pro Request vielfach gelesen
+  # (Saisons, Strafen, Liga-Kategorien …), aber selten geschrieben. Daher das
+  # AR-Objekt cachen und bei jeder Änderung gezielt invalidieren. Die TTL ist
+  # nur ein Sicherheitsnetz – maßgeblich ist der after_commit-Hook. Geschrieben
+  # wird ausschließlich über `Setting.first` (nicht über den Cache), daher ist
+  # das gecachte Objekt reiner Lesepfad.
+  after_commit :flush_caches
+
+  def self.current
+    Rails.cache.fetch('settings/current', expires_in: 1.hour) do
+      Setting.first
+    end
+  end
+
   def self.league_class(league_class_id)
     current['league_classes']&.dig(league_class_id.to_s, 'name').to_s
   end
 
   def self.league_category(league_category_id)
     current['league_categories'][league_category_id.to_s]['name'].to_s
-  end
-
-  def self.current
-    Setting.first
   end
 
   def self.current_season
@@ -66,5 +76,16 @@ class Setting < ApplicationRecord
 
   def self.start_best_of_eight(league_id)
     current.liveticker['cup_best_of_eight']&.[](league_id.to_s)
+  end
+
+  private
+
+  # settings/init enthält abgeleitete Setting-Daten (seasons, current_season_id);
+  # beim Saison-Anlegen/Wechsel (admin/settings#create_season/update_season) muss
+  # dieser Cache ebenfalls fallen, sonst erscheint die neue Saison bis zu 30 min
+  # verzögert.
+  def flush_caches
+    Rails.cache.delete('settings/current')
+    Rails.cache.delete('settings/init')
   end
 end

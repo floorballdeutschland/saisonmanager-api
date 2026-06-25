@@ -1139,6 +1139,9 @@ class Game < ApplicationRecord
     changed_leagues.uniq.each do |lid|
       Rails.cache.delete("leagues/#{lid}/current_schedule")
       Rails.cache.delete("leagues/#{lid}/schedule")
+      Rails.cache.delete("leagues/#{lid}/table")
+      Rails.cache.delete("leagues/#{lid}/grouped_table")
+      Rails.cache.delete("leagues/#{lid}/scorer")
     end
 
     []
