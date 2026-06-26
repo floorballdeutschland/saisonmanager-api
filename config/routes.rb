@@ -252,6 +252,7 @@ Rails.application.routes.draw do
           get :available_coaches, on: :collection
           get :availability, on: :collection
           get :games, on: :collection
+          get :clubs, on: :collection
         end
         resources :state_associations, only: %i[index show create update destroy] do
           resources :checklist_items, only: %i[create update destroy],
