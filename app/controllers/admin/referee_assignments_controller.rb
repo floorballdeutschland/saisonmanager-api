@@ -236,10 +236,13 @@ module Admin
         assignment.reload
         if was_published
           if assignment.club_assignment?
-            # Vereins-Ansetzung: nur den öffentlichen Spielplan aktualisieren,
-            # keine (Schiri-)Benachrichtigungen.
+            # Vereins-Ansetzung: öffentlichen Spielplan auf den Vereinsnamen
+            # setzen. Es geht keine Mail an den Verein – aber zuvor angesetzte
+            # (und bereits benachrichtigte) Schiris/Coach müssen über ihre
+            # Abberufung informiert werden.
             new_string = assignment_public_string(assignment)
             assignment.game.update!(nominated_referee_string: new_string.to_s) if new_string != previous_public_string
+            notify_removed_officials(assignment, previous_official_ids, new_string)
           elsif assignment_lineup(assignment) != previous_lineup
             notify_published_lineup_change(assignment, previous_official_ids)
           end
@@ -307,9 +310,14 @@ module Admin
         ).deliver_later
       end
 
-      # Der Coach erhält dieselben Details/Lizenzlisten plus die Namen der Schiris.
+      # Der Coach erhält dieselben Details/Lizenzlisten plus die Namen der Schiris
+      # (bzw. bei einer Vereins-Ansetzung den Namen des angesetzten Vereins).
       if coach&.email.present?
-        official_names = assignment.referees.map { |r| "#{r.vorname} #{r.nachname}" }.join(', ')
+        official_names = if assignment.club_assignment?
+                           assignment.club&.name.to_s
+                         else
+                           assignment.referees.map { |r| "#{r.vorname} #{r.nachname}" }.join(', ')
+                         end
         RefereeMailer.published_coach_notification(
           coach,
           game,
@@ -456,6 +464,21 @@ module Admin
 
     def assignment_official_ids(assignment)
       [assignment.referee1_id, assignment.referee2_id, assignment.coach_id].compact
+    end
+
+    # Zuvor angesetzte (und bereits benachrichtigte) Schiris/Coach, die durch die
+    # neue Besetzung nicht mehr angesetzt sind – etwa beim Wechsel einer
+    # veröffentlichten Ansetzung auf einen Verein – über die Änderung informieren.
+    def notify_removed_officials(assignment, previous_official_ids, new_official_names)
+      removed_ids = previous_official_ids - assignment_official_ids(assignment)
+      return if removed_ids.empty?
+
+      game = assignment.game
+      Referee.where(id: removed_ids).each do |referee|
+        next if referee.email.blank?
+
+        RefereeMailer.updated_assignment_notification(referee, game, new_official_names.to_s, nil).deliver_later
+      end
     end
 
     # Eine veröffentlichte Ansetzung wurde umbesetzt: öffentlichen Spielplan
