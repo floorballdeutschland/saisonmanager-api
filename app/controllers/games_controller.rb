@@ -814,6 +814,18 @@ class GamesController < ApplicationController
           return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
         end
 
+        # Die Spielberichtseingabe ("Events eintragen", Status ingame) darf erst
+        # am Spieltag gestartet werden – nicht vorab. Späteres Nacherfassen (am
+        # Spieltag oder danach) bleibt möglich. Admins dürfen für Korrekturen
+        # übersteuern.
+        if params[:game_status] == 'ingame' && old_status != 'ingame' && ph[:admin].blank?
+          game_date = Date.parse(game.game_day.date) rescue nil
+          if game_date && Time.zone.today < game_date
+            message = "Die Spielberichtseingabe kann erst am Spieltag (#{game_date.strftime('%d.%m.%Y')}) gestartet werden."
+            return render json: { message: message }, status: :unprocessable_entity
+          end
+        end
+
         if %w[match_record_closed finalized].include?(params[:game_status])
           referee_error = _missing_referee_error(game)
           return render json: { message: referee_error }, status: :unprocessable_entity if referee_error
