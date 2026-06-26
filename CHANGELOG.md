@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.40.0] - 2026-06-26
+
 ### Behoben
 
 - **Spielplan-Server-Fehler bei Spielen ohne Halle**: `GET /leagues/:id/schedule.json` (Spielplan-/„Alle Spiele"-Ansicht) lieferte `500`, sobald ein Spiel einen Spieltag ohne zugeordnete Halle hatte – `Game#schedule_item` griff mit `game_day.arena.name`/`.address`/`.schedule_item` ohne Safe-Navigation zu, und der `NoMethodError` ließ den gesamten Spielplan fehlschlagen. Jetzt `game_day.arena&.…` analog zum Spiel-Detail (`full_hash`). Betraf v. a. importierte Altdaten-Spiele.
