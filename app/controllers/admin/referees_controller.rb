@@ -360,7 +360,6 @@ module Admin
       return if ph[:admin].present?
       return if ph[:rsk].present?
       return if ph[:ansetzer].present?
-      return if ph[:sbk].present?
       return if ph[:vm].present?
 
       forbidden_response
@@ -375,9 +374,8 @@ module Admin
       return true if ph[:admin].present?
       return true if ph[:rsk].present? && ph[:rsk].include?(0)
       return true if ph[:ansetzer].present? && ph[:ansetzer].include?(0)
-      return true if ph[:sbk].present? && ph[:sbk].include?(0)
 
-      if ph[:rsk].present? || ph[:ansetzer].present? || ph[:sbk].present?
+      if ph[:rsk].present? || ph[:ansetzer].present?
         go_ids = referee_scope_go_ids(ph)
         lv_club_ids(go_ids).include?(referee.club_id) || go_ids.include?(referee.game_operation_id)
       elsif ph[:vm].present?

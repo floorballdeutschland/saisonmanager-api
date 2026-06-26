@@ -76,9 +76,11 @@ class User < ApplicationRecord
     result[:menu_item_licence_club_admin] = ph[:vm].present? || ph[:tm].present?
     result[:menu_item_licence_admin] = ph[:admin].present? || ph[:sbk].present?
     has_full_referee_access = ph[:admin].present? || (ph[:rsk].present? && ph[:rsk].include?(0))
-    # Ansetzer brauchen Lesezugriff auf die Schiedsrichterdaten (für die Ansetzung),
-    # bekommen aber – wie LV-RSK – nur eingeschränkten Zugriff (kein Anlegen/Volledit).
-    result[:menu_item_referee_admin] = ph[:admin].present? || ph[:rsk].present? || ph[:sbk].present? || ph[:ansetzer].present?
+    # Schiedsrichterdaten (inkl. Lizenzlisten) sind dem Schiedsrichterwesen
+    # vorbehalten: Admin und RSK. Ansetzer brauchen Lesezugriff für die
+    # Ansetzung, bekommen aber – wie LV-RSK – nur eingeschränkten Zugriff (kein
+    # Anlegen/Volledit). Die SBK (Spielbetrieb) hat hier bewusst KEINEN Zugriff.
+    result[:menu_item_referee_admin] = ph[:admin].present? || ph[:rsk].present? || ph[:ansetzer].present?
     result[:referee_edit_restricted] = !has_full_referee_access if result[:menu_item_referee_admin]
     result[:referee_can_create] = ph[:admin].present? || ph[:rsk].present? if result[:menu_item_referee_admin]
     result[:referee_can_delete_user] = ph[:admin].present? if result[:menu_item_referee_admin]
