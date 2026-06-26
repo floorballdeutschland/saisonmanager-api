@@ -819,7 +819,11 @@ class GamesController < ApplicationController
         # Spieltag oder danach) bleibt möglich. Admins dürfen für Korrekturen
         # übersteuern.
         if params[:game_status] == 'ingame' && old_status != 'ingame' && ph[:admin].blank?
-          game_date = Date.parse(game.game_day.date) rescue nil
+          game_date = begin
+            Date.parse(game.game_day.date)
+          rescue ArgumentError, TypeError
+            nil
+          end
           if game_date && Time.zone.today < game_date
             message = "Die Spielberichtseingabe kann erst am Spieltag (#{game_date.strftime('%d.%m.%Y')}) gestartet werden."
             return render json: { message: message }, status: :unprocessable_entity
