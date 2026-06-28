@@ -12,9 +12,8 @@ module RefereeScoping
     return referees if ph[:admin].present?
     return referees if ph[:rsk].present? && ph[:rsk].include?(0)
     return referees if ph[:ansetzer].present? && ph[:ansetzer].include?(0)
-    return referees if ph[:sbk].present? && ph[:sbk].include?(0)
 
-    if ph[:rsk].present? || ph[:ansetzer].present? || ph[:sbk].present?
+    if ph[:rsk].present? || ph[:ansetzer].present?
       go_ids = referee_scope_go_ids(ph)
       club_ids = lv_club_ids(go_ids)
       referees.where(club_id: club_ids).or(referees.where(game_operation_id: go_ids))
@@ -26,7 +25,7 @@ module RefereeScoping
   end
 
   def referee_scope_go_ids(perm_hash)
-    ((perm_hash[:rsk] || []) + (perm_hash[:ansetzer] || []) + (perm_hash[:sbk] || []))
+    ((perm_hash[:rsk] || []) + (perm_hash[:ansetzer] || []))
       .reject(&:zero?).uniq
   end
 

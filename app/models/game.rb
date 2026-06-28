@@ -1,7 +1,7 @@
 class Game < ApplicationRecord
   belongs_to :home_team, class_name: 'Team', optional: true
   belongs_to :guest_team, class_name: 'Team', optional: true
-  belongs_to :game_day
+  belongs_to :game_day, inverse_of: :games
   has_one :referee_assignment, dependent: :destroy
   has_one :game_referee_report, dependent: :destroy
   has_one :game_scan, dependent: :destroy

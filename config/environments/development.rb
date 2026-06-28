@@ -71,4 +71,14 @@ Rails.application.configure do
   # Use an evented file watcher to asynchronously detect changes in source code,
   # routes, locales, etc. This feature depends on the listen gem.
   config.file_watcher = ActiveSupport::EventedFileUpdateChecker
+
+  # Bullet: N+1-Queries (und überflüssige Eager-Loads) im Log/der Konsole
+  # melden. Nur development; bewusst kein raise, damit der Dev-Flow nicht
+  # bricht. Siehe Issue #26.
+  config.after_initialize do
+    Bullet.enable        = true
+    Bullet.bullet_logger = true
+    Bullet.rails_logger  = true
+    Bullet.console       = true
+  end
 end

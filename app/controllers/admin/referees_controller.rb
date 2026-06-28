@@ -26,7 +26,9 @@ module Admin
                    referees.order(Arel.sql("nachname #{sort_dir}, vorname #{sort_dir}"))
                  end
 
-      render json: referees.map { |r| referee_json(r) }
+      referees = referees.to_a
+      counts = season_game_counts(referees)
+      render json: referees.map { |r| referee_json(r, season_game_count: counts[r.lizenznummer].to_i) }
     end
 
     # GET /api/v2/admin/referees/:id
@@ -360,7 +362,6 @@ module Admin
       return if ph[:admin].present?
       return if ph[:rsk].present?
       return if ph[:ansetzer].present?
-      return if ph[:sbk].present?
       return if ph[:vm].present?
 
       forbidden_response
@@ -375,9 +376,8 @@ module Admin
       return true if ph[:admin].present?
       return true if ph[:rsk].present? && ph[:rsk].include?(0)
       return true if ph[:ansetzer].present? && ph[:ansetzer].include?(0)
-      return true if ph[:sbk].present? && ph[:sbk].include?(0)
 
-      if ph[:rsk].present? || ph[:ansetzer].present? || ph[:sbk].present?
+      if ph[:rsk].present? || ph[:ansetzer].present?
         go_ids = referee_scope_go_ids(ph)
         lv_club_ids(go_ids).include?(referee.club_id) || go_ids.include?(referee.game_operation_id)
       elsif ph[:vm].present?
@@ -422,7 +422,41 @@ module Admin
       ph[:rsk]&.reject { |id| id.zero? }&.first
     end
 
-    def referee_json(referee, full: false)
+    # Anzahl der Spiele in der aktuellen Saison je Lizenznummer – in EINER Query
+    # (Aggregation in Ruby), um N+1-Count-Queries über die gesamte Schiri-Liste zu
+    # vermeiden. Zählung analog zu Referee#games: Treffer über referee_ids
+    # (Live-Erfassung) ODER den Lizenznummer-Präfix in referee1/2_string
+    # (Freitext/Altdaten); pro Spiel/Schiri genau einmal.
+    def season_game_counts(referees)
+      season_id = Setting.current_season_id
+      return {} if season_id.blank?
+
+      liz = referees.filter_map(&:lizenznummer)
+      return {} if liz.empty?
+
+      lookup = liz.to_set
+      counts = Hash.new(0)
+
+      Game.joins(game_day: :league)
+          .where(leagues: { season_id: season_id })
+          .pluck(:referee_ids, :referee1_string, :referee2_string)
+          .each do |ids, str1, str2|
+            matched = []
+            Array(ids).each { |l| matched << l if lookup.include?(l) }
+            [str1, str2].each do |str|
+              prefix = str.to_s[/\A\d+/]
+              next unless prefix
+
+              lz = prefix.to_i
+              matched << lz if lookup.include?(lz)
+            end
+            matched.uniq.each { |l| counts[l] += 1 }
+          end
+
+      counts
+    end
+
+    def referee_json(referee, full: false, season_game_count: nil)
       data = {
         id: referee.id,
         lizenznummer: referee.lizenznummer,
@@ -439,6 +473,8 @@ module Admin
         wallet_pass_issued_at: referee.wallet_pass_issued_at&.iso8601,
         wallet_pass_url: referee.wallet_pass_url
       }
+
+      data[:season_game_count] = season_game_count unless season_game_count.nil?
 
       if full
         data.merge!(

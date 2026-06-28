@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_06_25_120100) do
+ActiveRecord::Schema[7.1].define(version: 2026_06_28_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -171,8 +171,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_25_120100) do
     t.string "legacy_ref"
     t.index ["arena_id"], name: "index_game_days_on_arena_id"
     t.index ["club_id"], name: "index_game_days_on_club_id"
+    t.index ["league_id", "number"], name: "index_game_days_on_league_id_and_number"
     t.index ["legacy_ref"], name: "index_game_days_on_legacy_ref", unique: true, where: "(legacy_ref IS NOT NULL)"
-    t.index ["league_id"], name: "index_game_days_on_league_id"
   end
 
   create_table "game_operations", force: :cascade do |t|
@@ -274,8 +274,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_25_120100) do
     t.jsonb "checklist_veto_answers", default: []
     t.text "special_event_string"
     t.datetime "match_record_closed_at"
-    t.datetime "referee_feedback_notified_at"
     t.string "legacy_ref"
+    t.datetime "referee_feedback_notified_at"
     t.index ["checklist_veto_token_digest"], name: "index_games_on_checklist_veto_token_digest", unique: true, where: "(checklist_veto_token_digest IS NOT NULL)"
     t.index ["game_day_id"], name: "index_games_on_game_day_id"
     t.index ["guest_team_id"], name: "index_games_on_guest_team_id"
@@ -348,11 +348,9 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_25_120100) do
     t.string "license_id", null: false
     t.string "document_type", null: false
     t.bigint "uploaded_by_id"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
+    t.datetime "created_at", precision: nil, null: false
+    t.datetime "updated_at", precision: nil, null: false
     t.index ["player_id", "license_id", "document_type"], name: "idx_license_documents_unique", unique: true
-    t.index ["player_id"], name: "index_license_documents_on_player_id"
-    t.index ["uploaded_by_id"], name: "index_license_documents_on_uploaded_by_id"
   end
 
   create_table "license_fee_calculations", force: :cascade do |t|
@@ -515,6 +513,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_25_120100) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.integer "coach_id"
+    t.integer "club_id"
+    t.index ["club_id"], name: "index_referee_assignments_on_club_id"
     t.index ["coach_id"], name: "index_referee_assignments_on_coach_id"
     t.index ["game_id"], name: "index_referee_assignments_on_game_id", unique: true
   end
@@ -623,9 +623,9 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_25_120100) do
     t.string "name", null: false
     t.boolean "active", default: true, null: false
     t.integer "position"
-    t.integer "validity_years", default: 2, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "validity_years", default: 2, null: false
     t.index ["name"], name: "index_referee_license_levels_on_name", unique: true
   end
 
@@ -849,8 +849,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_25_120100) do
   add_foreign_key "league_qualifications", "leagues", column: "source_league_id"
   add_foreign_key "league_qualifications", "leagues", column: "target_league_id"
   add_foreign_key "leagues", "game_operations"
-  add_foreign_key "license_documents", "players"
-  add_foreign_key "license_documents", "users", column: "uploaded_by_id"
+  add_foreign_key "license_documents", "players", name: "license_documents_player_id_fkey"
+  add_foreign_key "license_documents", "users", column: "uploaded_by_id", name: "license_documents_uploaded_by_id_fkey"
   add_foreign_key "online_test_assignments", "online_tests"
   add_foreign_key "online_test_assignments", "referees"
   add_foreign_key "online_test_attempts", "online_tests"

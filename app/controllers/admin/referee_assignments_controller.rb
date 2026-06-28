@@ -12,7 +12,7 @@ module Admin
     # GET /api/v2/admin/referee_assignments
     def index
       scope = RefereeAssignment.includes(
-        :referee1, :referee2, :coach,
+        :referee1, :referee2, :coach, :club,
         game: { game_day: [:league, :arena, :club] }
       )
 
@@ -107,6 +107,16 @@ module Admin
           assignment_status: a&.status
         }
       }
+    end
+
+    # GET /api/v2/admin/referee_assignments/clubs
+    # Vereine, die als „angesetzter Verein" gewählt werden können: die Vereine
+    # des eigenen Landesverbands (bzw. der via Freigabe geteilten LV), analog
+    # zum Schiri-Bestands-Scope. Admins (kein Scope) erhalten alle Vereine.
+    def clubs
+      go_ids = assigner_scope_go_ids
+      scope = go_ids ? Club.where(id: lv_club_ids(go_ids)) : Club.all
+      render json: scope.order(:name).map { |c| { id: c.id, name: c.name } }
     end
 
     # GET /api/v2/admin/referee_assignments/available?date=YYYY-MM-DD&game_id=X
@@ -220,11 +230,22 @@ module Admin
       was_published = assignment.status == 'published'
       previous_lineup = assignment_lineup(assignment)
       previous_official_ids = assignment_official_ids(assignment)
+      previous_public_string = assignment_public_string(assignment)
 
       if assignment.update(assignment_params)
         assignment.reload
-        if was_published && assignment_lineup(assignment) != previous_lineup
-          notify_published_lineup_change(assignment, previous_official_ids)
+        if was_published
+          if assignment.club_assignment?
+            # Vereins-Ansetzung: öffentlichen Spielplan auf den Vereinsnamen
+            # setzen. Es geht keine Mail an den Verein – aber zuvor angesetzte
+            # (und bereits benachrichtigte) Schiris/Coach müssen über ihre
+            # Abberufung informiert werden.
+            new_string = assignment_public_string(assignment)
+            assignment.game.update!(nominated_referee_string: new_string.to_s) if new_string != previous_public_string
+            notify_removed_officials(assignment, previous_official_ids, new_string)
+          elsif assignment_lineup(assignment) != previous_lineup
+            notify_published_lineup_change(assignment, previous_official_ids)
+          end
         end
         render json: assignment_json(assignment)
       else
@@ -259,13 +280,11 @@ module Admin
 
       return unless authorize_game_scope!(game)
 
-      parts = assignment.referees.map do |r|
-        [r.lizenznummer_display.presence, "#{r.nachname}, #{r.vorname}"].compact.join(' ')
-      end
+      public_string = assignment_public_string(assignment)
 
       ActiveRecord::Base.transaction do
         assignment.update!(status: 'published', published_at: Time.current, updated_by: current_user.id)
-        game.update!(nominated_referee_string: parts.join(' / ')) if parts.any?
+        game.update!(nominated_referee_string: public_string) if public_string.present?
       end
 
       expires_at = 72.hours.from_now
@@ -291,9 +310,14 @@ module Admin
         ).deliver_later
       end
 
-      # Der Coach erhält dieselben Details/Lizenzlisten plus die Namen der Schiris.
+      # Der Coach erhält dieselben Details/Lizenzlisten plus die Namen der Schiris
+      # (bzw. bei einer Vereins-Ansetzung den Namen des angesetzten Vereins).
       if coach&.email.present?
-        official_names = assignment.referees.map { |r| "#{r.vorname} #{r.nachname}" }.join(', ')
+        official_names = if assignment.club_assignment?
+                           assignment.club&.name.to_s
+                         else
+                           assignment.referees.map { |r| "#{r.vorname} #{r.nachname}" }.join(', ')
+                         end
         RefereeMailer.published_coach_notification(
           coach,
           game,
@@ -442,6 +466,21 @@ module Admin
       [assignment.referee1_id, assignment.referee2_id, assignment.coach_id].compact
     end
 
+    # Zuvor angesetzte (und bereits benachrichtigte) Schiris/Coach, die durch die
+    # neue Besetzung nicht mehr angesetzt sind – etwa beim Wechsel einer
+    # veröffentlichten Ansetzung auf einen Verein – über die Änderung informieren.
+    def notify_removed_officials(assignment, previous_official_ids, new_official_names)
+      removed_ids = previous_official_ids - assignment_official_ids(assignment)
+      return if removed_ids.empty?
+
+      game = assignment.game
+      Referee.where(id: removed_ids).each do |referee|
+        next if referee.email.blank?
+
+        RefereeMailer.updated_assignment_notification(referee, game, new_official_names.to_s, nil).deliver_later
+      end
+    end
+
     # Eine veröffentlichte Ansetzung wurde umbesetzt: öffentlichen Spielplan
     # (nominated_referee_string) aktualisieren und je *eine* Update-Mail an die
     # alten und neuen Schiris/den Coach sowie an den Ausrichter senden.
@@ -517,7 +556,7 @@ module Admin
     end
 
     def assignment_params
-      params.require(:assignment).permit(:game_id, :referee1_id, :referee2_id, :coach_id, :status)
+      params.require(:assignment).permit(:game_id, :referee1_id, :referee2_id, :coach_id, :club_id, :status)
     end
 
     def assignment_json(a)
@@ -530,8 +569,21 @@ module Admin
         referee1: a.referee1 ? referee_stub(a.referee1) : nil,
         referee2: a.referee2 ? referee_stub(a.referee2) : nil,
         coach: a.coach ? referee_stub(a.coach) : nil,
+        club: a.club ? { id: a.club.id, name: a.club.name } : nil,
         game: game_stub(a.game)
       }
+    end
+
+    # Öffentliche Schiedsrichter-Angabe im Spielplan (nominated_referee_string):
+    # bei Vereins-Ansetzung der Vereinsname, sonst die Schiedsrichter-Namen.
+    def assignment_public_string(assignment)
+      if assignment.club_assignment?
+        assignment.club&.name.to_s
+      else
+        assignment.referees.map do |r|
+          [r.lizenznummer_display.presence, "#{r.nachname}, #{r.vorname}"].compact.join(' ')
+        end.join(' / ')
+      end
     end
 
     def referee_stub(r)
