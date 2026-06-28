@@ -557,6 +557,33 @@ class Player < ApplicationRecord
     ]
   end
 
+  # Batch-Variante von find_by_team_id: lädt die Spieler für mehrere Teams in
+  # EINER Query statt einer pro Team (vermeidet die N+1 in League#licenses, die
+  # über alle Teams einer Liga schleift – und in admin/licenses_controller pro
+  # Liga erneut). Liefert ein Hash { team_id(int) => [Player, …] }; jeder Key
+  # ist vorbelegt (leeres Array, falls kein Spieler). Pro (Spieler, Team) ein
+  # Eintrag – Duplikate werden, anders als bei jsonb_array_elements, vermieden
+  # (Aufrufer wie leagues_controller#preround_players riefen dafür bisher
+  # .uniq(&:id) auf).
+  def self.find_by_team_ids(team_ids)
+    ids = Array(team_ids).map(&:to_i).uniq
+    result = ids.index_with { [] }
+    return result if ids.empty?
+
+    players = Player.where(
+      "EXISTS (SELECT 1 FROM jsonb_array_elements(licenses) AS l " \
+      "WHERE (l->>'team_id')::int = ANY (ARRAY[?]::int[]))", ids
+    ).order(:last_name, :first_name)
+
+    id_set = ids.to_set
+    players.each do |player|
+      (player.licenses || []).map { |l| l['team_id'].to_i }.uniq.each do |t_id|
+        result[t_id] << player if id_set.include?(t_id)
+      end
+    end
+    result
+  end
+
   def self.admin_user_players(user, club_id)
     club_object = Club.find(club_id)
 

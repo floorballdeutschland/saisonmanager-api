@@ -34,7 +34,9 @@ class League < ApplicationRecord
 
   def games(game_day_number = nil)
     gd = game_day_number.present? ? game_days.where(number: game_day_number) : game_days
-    gd.includes(:arena, games: [home_team: :club, guest_team: :club]).map(&:games).flatten.sort_by { |i| i.game_number.to_i }
+    # :club zusätzlich, weil schedule_item game_day.hosting_club (= club.name)
+    # liest – sonst eine Club-Query pro Spieltag.
+    gd.includes(:arena, :club, games: [home_team: :club, guest_team: :club]).map(&:games).flatten.sort_by { |i| i.game_number.to_i }
   end
 
   def teams
@@ -730,12 +732,10 @@ class League < ApplicationRecord
   end
 
   def licenses(full_license_hash = true, only_current_licenses = true)
-    team_licenses = {}
-    teams.each do |team|
-      team_licenses[team.id.to_s] = Player.find_by_team_id team.id
-    end
+    league_teams = teams.to_a
+    team_licenses = Player.find_by_team_ids(league_teams.map(&:id))
 
-    our_team_ids = teams.map(&:id).to_set
+    our_team_ids = league_teams.map(&:id).to_set
 
     # Collect all foreign team IDs referenced in player licenses for batch loading
     foreign_team_ids = Set.new
@@ -752,11 +752,11 @@ class League < ApplicationRecord
     active_statuses = [License::APPROVED, License::REQUESTED].to_set
 
     result = []
-    teams.each do |team|
+    league_teams.each do |team|
       team_item = team.full_hash
 
       team_item[:players] = []
-      team_licenses[team.id.to_s].each do |player|
+      team_licenses[team.id].each do |player|
         license = player.licenses.find do |l|
           next false unless l['team_id'].to_i == team.id
 
@@ -815,19 +815,15 @@ class League < ApplicationRecord
   end
 
   def licenses_csv
-    team_ids = teams.map(&:id)
-
-    team_licenses = {}
-    teams.each do |team|
-      team_licenses[team.id.to_s] = Player.find_by_team_id team.id
-    end
+    league_teams = teams.to_a
+    team_licenses = Player.find_by_team_ids(league_teams.map(&:id))
 
     status = { '1' => 'erteilt', '2' => 'beantragt', '3' => 'abgelehnt', '4' => 'gelöscht', '5' => 'Löschung beantragt',
                '6' => 'Transfer', '7' => 'ignoriert' }
 
-    teams.each do |team|
+    league_teams.each do |team|
       puts team.name
-      team_licenses[team.id.to_s].each do |player|
+      team_licenses[team.id].each do |player|
         license = player.licenses.find do |l|
           next false unless l['team_id'].to_i == team.id
 
