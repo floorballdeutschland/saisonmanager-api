@@ -180,6 +180,10 @@ class League < ApplicationRecord
       game_operation_slug: game_operation.slug,
       league_category_id:,
       league_class_id:,
+      # Eingefrorene Anzeige-Namen (beim Anlegen aus Setting übernommen), damit
+      # eine spätere Umbenennung in Setting alte Ligen nicht rückwirkend ändert.
+      league_class_name:,
+      league_category_name:,
       league_system_id:,
       league_type:, # legacy!
       name:,
@@ -364,19 +368,20 @@ class League < ApplicationRecord
     end
 
     player_ids = sorted_results.map { |sr| sr[:player_id] }
-    players = Player.where(id: player_ids).select(:id, :first_name, :last_name)
-    player_lookup = {}
-    players.each { |player| player_lookup[player.id] = player }
-
-    sorted_results.reject! { |sr| player_lookup[sr[:player_id]].nil? }
+    # Namen stammen aus dem Spielbericht-Snapshot (players-JSONB) und sind damit
+    # self-contained für Altsaisons; Bilder werden best-effort live ergänzt.
+    # Fehlt der Spieler-Datensatz, bleibt der Scorer trotzdem erhalten (kein
+    # stiller Wegfall). Nur wenn der Snapshot keinen Namen trägt (sehr alte
+    # Importe), greift der Name aus dem Player-Datensatz als Fallback.
+    player_lookup = Player.where(id: player_ids).index_by(&:id)
 
     next_position_diff = 1
     sorted_results.each_with_index do |player_result, index|
       player = player_lookup[player_result[:player_id]]
-      player_result[:first_name] = player.first_name
-      player_result[:last_name] = player.last_name
-      player_result[:image] = player.image
-      player_result[:image_small] = player.image_small
+      player_result[:first_name] = player_result[:first_name].presence || player&.first_name
+      player_result[:last_name] = player_result[:last_name].presence || player&.last_name
+      player_result[:image] = player&.image
+      player_result[:image_small] = player&.image_small
       player_result[:sort] = index
       if last_entry.nil?
         player_result[:position] = 1
@@ -493,7 +498,7 @@ class League < ApplicationRecord
         if result.include?(player_id)
           # sum the items
           result[player_id].each do |key, _|
-            next if %i[player_id team_id team_name].include?(key)
+            next if %i[player_id team_id team_name first_name last_name].include?(key)
 
             result[player_id][key] += score[key]
           end
@@ -508,7 +513,10 @@ class League < ApplicationRecord
   end
 
   def empty_table_item(team)
-    league_point_corrections = Setting.point_corrections(id)
+    # Punktekorrekturen liegen an der Liga (self-contained pro Saison). Solange
+    # eine Liga noch nicht backfilled ist, greift der Fallback auf die globale
+    # Setting.point_corrections, damit bestehende Korrekturen weiter wirken.
+    league_point_corrections = point_corrections.presence || Setting.point_corrections(id)
     team_point_corrections = league_point_corrections.present? ? league_point_corrections[team.id.to_s] : nil
 
     {

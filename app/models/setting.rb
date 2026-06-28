@@ -18,7 +18,9 @@ class Setting < ApplicationRecord
   end
 
   def self.league_category(league_category_id)
-    current['league_categories'][league_category_id.to_s]['name'].to_s
+    # &.dig: nil/"" statt NoMethodError, falls die Kategorie-ID nicht (mehr) in
+    # Setting.league_categories existiert (analog zu league_class).
+    current['league_categories']&.dig(league_category_id.to_s, 'name').to_s
   end
 
   def self.current_season

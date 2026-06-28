@@ -242,4 +242,99 @@ class GameTest < ActiveSupport::TestCase
   test 'referee1_present?: true bei Namenseintrag ohne Lizenz' do
     assert build_game(referee1_string: '0 Mustermann, Max').referee1_present?
   end
+
+  # ---------------------------------------------------------------------------
+  # Eingefrorene Straf-Labels (R1)
+  # ---------------------------------------------------------------------------
+
+  test 'penalty_mapping: bevorzugt eingefrorenes Label am Event (kein Setting-Lookup)' do
+    g = build_game
+    assert_equal :penalty_2, g.penalty_mapping('penalty_id' => 1, 'penalty_mapping' => 'penalty_2')
+  end
+
+  test 'penalty_mapping_string: bevorzugt eingefrorenen Namen' do
+    g = build_game
+    assert_equal '2 Minuten', g.penalty_mapping_string('penalty_id' => 1, 'penalty_name' => '2 Minuten')
+  end
+
+  test 'penalty_reason: baut Reason aus eingefrorenen Werten' do
+    g = build_game
+    event = { 'penalty_code_id' => 902, 'penalty_code' => '902', 'penalty_code_description' => 'Stockschlag' }
+    assert_equal({ 'code' => '902', 'description' => 'Stockschlag' }, g.penalty_reason(event))
+  end
+
+  test 'freeze_penalty_labels: entfernt Labels bei Nicht-Straf-Event' do
+    event = { 'penalty_mapping' => 'penalty_2', 'penalty_name' => '2 Minuten', 'goal_type' => 'regular' }
+    Game.freeze_penalty_labels(event)
+    assert_not event.key?('penalty_mapping')
+    assert_not event.key?('penalty_name')
+    assert_equal 'regular', event['goal_type']
+  end
+
+  test 'freeze_penalty_labels: schreibt Labels aus Setting ins Event' do
+    event = { 'penalty_id' => 1, 'penalty_code_id' => 902 }
+    setting = OpenStruct.new(
+      penalties: { '1' => { 'mapping' => 'penalty_2', 'name' => '2 Minuten' } },
+      penalty_codes: { '902' => { 'code' => '902', 'description' => 'Stockschlag' } }
+    )
+    Setting.stub(:current, setting) do
+      Game.freeze_penalty_labels(event)
+    end
+    assert_equal 'penalty_2', event['penalty_mapping']
+    assert_equal '2 Minuten', event['penalty_name']
+    assert_equal '902', event['penalty_code']
+    assert_equal 'Stockschlag', event['penalty_code_description']
+  end
+
+  # ---------------------------------------------------------------------------
+  # Scorer-Namen aus dem Snapshot (R2)
+  # ---------------------------------------------------------------------------
+
+  test 'empty_score: enthält Namen aus dem Snapshot' do
+    g = build_game
+    team = OpenStruct.new(id: 5, name: 'Team A')
+    score = g.empty_score(42, team, { first_name: 'Max', last_name: 'Muster' })
+    assert_equal 'Max', score[:first_name]
+    assert_equal 'Muster', score[:last_name]
+    assert_equal 42, score[:player_id]
+  end
+
+  test 'lineup_player_names: mappt player_id auf Snapshot-Namen' do
+    players = {
+      'home' => [{ 'trikot_number' => 7, 'player_id' => 42, 'player_firstname' => 'Max', 'player_name' => 'Muster' }],
+      'guest' => [{ 'trikot_number' => 9, 'player_id' => 99, 'player_firstname' => 'Erika', 'player_name' => 'Beispiel' }]
+    }
+    names = build_game(players: players).lineup_player_names
+    assert_equal({ first_name: 'Max', last_name: 'Muster' }, names[42])
+    assert_equal({ first_name: 'Erika', last_name: 'Beispiel' }, names[99])
+  end
+
+  # Regression: die Spielerstatistik (PlayersController#stats) und die
+  # Team-Scorerliste lesen aus dem Score-Hash gezielt numerische Keys – die
+  # neuen Snapshot-Namen dürfen die Werte nicht verändern.
+  test 'evaluate_scorer: Statistik-Keys bleiben numerisch korrekt, Namen zusätzlich' do
+    players = {
+      'home' => [{ 'trikot_number' => 7, 'player_id' => 42, 'player_firstname' => 'Max', 'player_name' => 'Muster' }],
+      'guest' => []
+    }
+    events = [
+      { 'home_number' => 7, 'home_goals' => 1, 'guest_goals' => 0 },
+      { 'penalty_id' => 1, 'penalty_mapping' => 'penalty_2', 'home_number' => 7, 'home_goals' => 1, 'guest_goals' => 0 }
+    ]
+    g = build_game(players: players, events: events)
+    score = nil
+    g.stub(:home_team, OpenStruct.new(id: 1, name: 'Heim')) do
+      g.stub(:guest_team, OpenStruct.new(id: 2, name: 'Gast')) do
+        score = g.evaluate_scorer[42]
+      end
+    end
+    assert_equal 1, score[:goals]
+    assert_equal 0, score[:assists]
+    assert_equal 1, score[:penalty_2]
+    assert_equal 1, score[:games]
+    assert_equal 1, score[:team_id]
+    assert_equal 'Heim', score[:team_name]
+    assert_equal 'Max', score[:first_name]
+    assert_equal 'Muster', score[:last_name]
+  end
 end

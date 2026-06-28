@@ -585,6 +585,9 @@ class GamesController < ApplicationController
         item[:penalty_code_id] = params[:penalty_code_id] if params[:penalty_code_id].present?
       end
 
+      # Straf-Labels einfrieren, damit der Spielbericht ohne Live-Lookup lesbar bleibt.
+      Game.freeze_penalty_labels(item)
+
       game.events << item
 
       game.sort_events!
@@ -684,6 +687,9 @@ class GamesController < ApplicationController
         event['penalty_code_id'] = params[:penalty_code_id].presence
         event.delete('penalty_id')
       end
+
+      # Straf-Labels neu einfrieren (bzw. bei Wechsel auf 'goal' entfernen).
+      Game.freeze_penalty_labels(event)
 
       game.sort_events!
       game.record_updated_at = Time.now
