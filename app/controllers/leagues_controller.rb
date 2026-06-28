@@ -99,7 +99,10 @@ class LeaguesController < ApplicationController
       league = League.find(params[:id])
 
       if league
-        items = league.game_days.includes(:arena, :club, :games).map do |gd|
+        # :games hier bewusst NICHT preloaden – full_hash(true) lädt die Spiele
+        # ohnehin neu (mit eigener .order + Team/Club-includes), der Preload
+        # wäre verworfen.
+        items = league.game_days.includes(:arena, :club).map do |gd|
                   gd.full_hash(true)
                 end.sort_by do |gd|
                   first_game_number = gd[:games].present? ? gd[:games].first[:number].to_i : 0

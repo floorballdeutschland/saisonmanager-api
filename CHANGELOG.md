@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **N+1-Queries in Lizenzlisten und Spielplan-/Spieltagsansicht beseitigt** (Issue #26): `League#licenses` (Lizenzliste je Liga, über `admin/licenses` je Liga erneut aufgerufen) lud die Spieler bisher mit einer separaten SQL-Query **pro Team**. Neu sammelt `Player.find_by_team_ids` alle Teams einer Liga in **einer** Query (Beispiel: 8 Teams → von 8 auf 1 Query). `GameDay#full_hash(with_games: true)` (Spieltagsansicht/`admin_game_schedule`) und `League#schedule`/`#games` (öffentlicher Spielplan) laden Heim-/Gastteam samt Verein bzw. Spieltags-Halle/-Verein jetzt gebündelt vor (`includes`/`inverse_of`), statt sie pro Spiel nachzuladen. Zur laufenden Erkennung weiterer N+1 ist das `bullet`-Gem in Development aktiviert. Regressions-Tests sichern die Query-Anzahl ab.
+
 ## [1.40.0] - 2026-06-26
 
 ### Behoben

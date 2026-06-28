@@ -496,4 +496,56 @@ class PlayerTest < ActiveSupport::TestCase
     assert_equal master.id, game.players['home'].first['player_id'],
                  'player_id im Spiel soll auf Master umgeschrieben sein'
   end
+
+  # ---------------------------------------------------------------------------
+  # Player.find_by_team_ids – Batch-Laden statt N+1 (Issue #26)
+  # ---------------------------------------------------------------------------
+
+  test 'find_by_team_ids gruppiert Spieler je Team' do
+    league = create(:league, :current_season)
+    team_a = create(:team, league:)
+    team_b = create(:team, league:)
+
+    p1 = create(:player, last_name: 'Aaa', with_licenses: [{ team: team_a }])
+    p2 = create(:player, last_name: 'Bbb', with_licenses: [{ team: team_a }, { team: team_b }])
+
+    result = Player.find_by_team_ids([team_a.id, team_b.id])
+
+    assert_equal [p1.id, p2.id].sort, result[team_a.id].map(&:id).sort
+    assert_equal [p2.id], result[team_b.id].map(&:id)
+  end
+
+  test 'find_by_team_ids belegt jeden angefragten Team-Key (auch ohne Spieler)' do
+    league = create(:league, :current_season)
+    team   = create(:team, league:)
+
+    result = Player.find_by_team_ids([team.id])
+    assert_equal [], result[team.id]
+  end
+
+  test 'find_by_team_ids fuehrt fuer viele Teams nur eine Query aus' do
+    league = create(:league, :current_season)
+    teams = Array.new(5) { create(:team, league:) }
+    teams.each { |t| create(:player, with_licenses: [{ team: t }]) }
+
+    queries = capture_player_sql { Player.find_by_team_ids(teams.map(&:id)) }
+    assert_equal 1, queries.size,
+                 "Erwartet genau eine Query, war: #{queries.size}\n#{queries.join("\n")}"
+  end
+
+  private
+
+  def capture_player_sql
+    sqls = []
+    subscriber = ActiveSupport::Notifications.subscribe('sql.active_record') do |*, payload|
+      next if payload[:name] == 'SCHEMA'
+      next if payload[:sql] =~ /^\s*(BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)/i
+
+      sqls << payload[:sql]
+    end
+    yield
+    sqls
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber)
+  end
 end

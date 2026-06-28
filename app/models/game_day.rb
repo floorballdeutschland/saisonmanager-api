@@ -1,5 +1,5 @@
 class GameDay < ApplicationRecord
-  has_many :games
+  has_many :games, inverse_of: :game_day
   has_many :game_day_referee_confirmations, dependent: :destroy
   has_many :game_day_team_confirmations, dependent: :destroy
   belongs_to :league
@@ -32,7 +32,13 @@ class GameDay < ApplicationRecord
       number:
     }
 
-    h[:games] = games.order(Arel.sql("NULLIF(game_number, '')::integer NULLS LAST")).map(&:meta_hash) if with_games
+    # home_team/guest_team (+ club für die Logo-Fallbacks) eager laden, sonst
+    # zieht meta_hash pro Spiel je eine Team-/Club-Query nach.
+    if with_games
+      h[:games] = games.includes(home_team: :club, guest_team: :club)
+                       .order(Arel.sql("NULLIF(game_number, '')::integer NULLS LAST"))
+                       .map(&:meta_hash)
+    end
 
     h
   end
