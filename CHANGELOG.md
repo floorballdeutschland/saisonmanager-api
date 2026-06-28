@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Zusammengesetzter Index auf `game_days (league_id, number)`** (Issue #27): `League#games`/`#game_day_schedule` filtern Spieltage über `league_id` (und `number`) – der heißeste Lesepfad, seit #25 Tabelle/Scorer beim Cache-Miss neu aufbaut. Bisher war nur `league_id` allein indiziert. Der neue Composite-Index bedient beide Fälle (kombinierte Filterung und – via Leftmost-Prefix – reine `league_id`-Lookups); der dadurch redundante Einzelindex auf `league_id` entfällt.
+
 ## [1.40.0] - 2026-06-26
 
 ### Behoben
