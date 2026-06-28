@@ -44,6 +44,10 @@ group :development, :test do
   # Test-Daten als Factories statt YAML-Fixtures. Lizenz-/History-JSONB lässt
   # sich pro Test gezielter komponieren als statisch in fixtures/*.yml.
   gem 'factory_bot_rails'
+
+  # N+1-Queries beim Entwickeln/Testen sichtbar machen (siehe Issue #26).
+  # Aktivierung in config/environments/development.rb.
+  gem 'bullet'
 end
 
 group :test do
