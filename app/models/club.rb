@@ -78,6 +78,23 @@ class Club < ApplicationRecord
     }
   end
 
+  # Öffentliche Variante von full_hash – ohne contact_email und interne Felder
+  # (deactivated_*), für key-geschützte öffentliche Endpunkte.
+  def public_hash
+    {
+      id:,
+      long_name:,
+      name:,
+      short_name:,
+      state:,
+      state_association_id:,
+      logo_url:,
+      logo_small_url:,
+      game_operation_id: main_game_operation_id,
+      additional_game_operation_ids:
+    }
+  end
+
   def main_game_operation_id
     game_operations_hash.filter { |h| h['home_game_operation'] }.map { |h| h['game_operation_id'].to_i }.first
   end

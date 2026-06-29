@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Öffentlicher Endpunkt „Vereine mit Teams je Saison"**: Neuer key-geschützter Endpunkt `GET /api/v2/game_operations/:id/clubs/:season_id` (sowie ohne `:season_id` für die aktuelle Saison) liefert alle Vereine eines Spielbetriebs samt der Teams, die in der angegebenen Saison im Einsatz sind. Die Vereinsliste wird aus den tatsächlich gemeldeten Teams abgeleitet (inkl. Spielgemeinschafts-Vereinen über `syndicate_clubs`), nicht aus der reinen Vereinsregistrierung. Ausgabe analog zu `game_operations/:id/leagues/:season_id` per `X-Api-Key`; `contact_email` und interne Felder werden über die neue `Club#public_hash`-Variante nicht ausgeliefert. Schließt die bisherige Lücke, dass es keinen direkten Weg gab, die Verein-↔-Team-↔-Saison-Zuordnung auszulesen.
+
 ## [1.40.1] - 2026-06-28
 
 ### Verbessert
