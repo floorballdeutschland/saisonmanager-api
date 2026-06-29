@@ -16,10 +16,13 @@
 namespace :staging do
   desc 'Anonymisiert PII auf der Staging-DB und setzt alle Login-Passwörter zurück.'
   task anonymize: :environment do
-    db_host = ENV.fetch('DB_HOST', '')
-    unless db_host.include?('staging')
+    # Schutz gegen die TATSÄCHLICHE Verbindung (nicht nur eine ENV-Variable):
+    # die Staging-DB läuft auf Host `postgres-staging`. So kann der Task nicht
+    # versehentlich gegen die Prod-DB laufen, egal welche ENV gesetzt ist.
+    current_host = ActiveRecord::Base.connection_db_config.configuration_hash[:host].to_s
+    unless current_host.include?('staging')
       abort "ABBRUCH: staging:anonymize läuft nur gegen die Staging-DB " \
-            "(DB_HOST muss 'staging' enthalten, ist: #{db_host.inspect})."
+            "(verbundener Host muss 'staging' enthalten, ist: #{current_host.inspect})."
     end
 
     require 'bcrypt'
