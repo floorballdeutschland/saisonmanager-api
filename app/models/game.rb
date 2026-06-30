@@ -1101,8 +1101,10 @@ class Game < ApplicationRecord
     perm << :edit_referee_nomination if admin || sbk || rsk
 
     # edit all game info
-    perm << :edit_game_report if admin || sbk || user.permission_hash[:vm].to_a.include?(game_day_club_id)
-    # TODO: add TM access on club level
+    tm = user.permission_hash[:tm].to_a
+    perm << :edit_game_report if admin || sbk ||
+                                 user.permission_hash[:vm].to_a.include?(game_day_club_id) ||
+                                 tm.include?(home_team_id) || tm.include?(guest_team_id)
 
     # edit all game info
     perm << :edit_game if admin || sbk
