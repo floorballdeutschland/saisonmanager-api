@@ -1,5 +1,5 @@
 class GameOperationsController < ApplicationController
-  before_action :set_game_operation, only: %i[index_leagues admin_upload_banner admin_delete_banner admin_update_banner_link]
+  before_action :set_game_operation, only: %i[index_leagues index_clubs admin_upload_banner admin_delete_banner admin_update_banner_link]
   skip_before_action :authenticate_user, except: %i[admin_game_operations admin_upload_banner admin_delete_banner admin_update_banner_link]
   before_action :authenticate_public_request, except: %i[admin_game_operations admin_upload_banner admin_delete_banner admin_update_banner_link]
 
@@ -24,6 +24,34 @@ class GameOperationsController < ApplicationController
     render json: leagues.includes(:banner_attachment,
                                   game_operation: { state_association: { banner_attachment: :blob },
                                                     banner_attachment: :blob }).map(&:full_hash)
+  end
+
+  # GET /game_operations/1/clubs/:season_id
+  # Vereine eines Spielbetriebs samt der Teams, die in der angegebenen Saison
+  # (Default: aktuelle Saison) im Einsatz sind. Vereine werden aus den tatsächlich
+  # gemeldeten Teams abgeleitet (inkl. Spielgemeinschafts-Vereinen über syndicate_clubs),
+  # nicht aus der reinen Vereinsregistrierung. Öffentlich (X-Api-Key) – ohne contact_email.
+  def index_clubs
+    season_id = params[:season_id].presence || Setting.current_season_id
+
+    league_ids = @game_operation.leagues.where(season_id:).select(:id)
+    teams = Team.where(league_id: league_ids)
+                .includes(:club, logo_attachment: :blob, league: :game_operation)
+
+    teams_by_club_id = Hash.new { |h, k| h[k] = [] }
+    teams.each { |team| team.all_club_ids.each { |cid| teams_by_club_id[cid] << team } }
+
+    clubs = Club.where(id: teams_by_club_id.keys)
+                .includes(logo_attachment: :blob)
+                .order(:name)
+
+    result = clubs.map do |club|
+      item = club.public_hash
+      item[:teams] = teams_by_club_id[club.id].sort_by(&:name).map(&:full_hash)
+      item
+    end
+
+    render json: result
   end
 
   # GET /game_operations/by_shortname/:name

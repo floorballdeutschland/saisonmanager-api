@@ -139,6 +139,9 @@ Rails.application.routes.draw do
       get 'game_operations/:id/leagues/:season_id', to: 'game_operations#index_leagues'
       get 'game_operations/:id/leagues', to: 'game_operations#index_leagues'
 
+      get 'game_operations/:id/clubs/:season_id', to: 'game_operations#index_clubs'
+      get 'game_operations/:id/clubs', to: 'game_operations#index_clubs'
+
       get 'user/clubs_and_teams', to: 'clubs#user_clubs_and_teams'
       get 'user/team/:id/licenses', to: 'clubs#user_team_licenses'
 
