@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Schiedsrichter-Tags für die Ansetzung**: Ansetzer (und RSK/Admin) können Schiedsrichter frei mit Tags versehen (z. B. „Spitzenschiri", „Finalspiel-tauglich") und so ihren Bestand kategorisieren. In der Ansetzungs-Ansicht lässt sich die Liste der verfügbaren Schiris per Tag vorfiltern – analog zu den bestehenden Lizenzstufen-Chips und dem „kurzfristig mobil"-Filter. Der Tag-Katalog (`GET/POST/PUT/DELETE /api/v2/admin/referee_tags`) ist pro Spielbetrieb gescopt: ein LV-Ansetzer pflegt seine eigenen Tags, globale Tags (ohne Spielbetrieb) sind allen sichtbar und nur von Admin/FD verwaltbar. Tags werden über `tag_ids` beim Schiri-Update zugewiesen sowie in `admin/referees` (inkl. neuem `tag_id`-Filter) und im Ansetzungs-Endpoint `referee_assignments/available` mitgeliefert. Datenmodell analog zu den Zusatzqualifikationen über Katalog (`referee_tags`) + Zuordnung (`referee_taggings`); beim Zusammenführen zweier Schiedsrichter werden die Tags mit übernommen.
+
 ### Behoben
 
 - **Teammanager konnten den Spielbericht nicht pflegen**: Der Bearbeiten-Tab im Spielbericht wird im Frontend nur bei der Permission `edit_game_report` angezeigt. `Game#user_permissions` vergab diese aber nur an Admin, SBK und den Vereinsmanager des ausrichtenden Vereins – **nie an Teammanager** (offener `TODO`-Kommentar). Dadurch sah ein TM keinerlei Eingabemöglichkeit, obwohl die einzelnen Schreib-Aktionen (Aufstellung über `can_edit_lineup?`, Spielinfos über `set_string`) TM längst zuließen. `edit_game_report` wird jetzt auch an den TM des Heim- bzw. Gastteams vergeben, sodass UI-Gate und Aktions-Autorisierung wieder zusammenpassen.

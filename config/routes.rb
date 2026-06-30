@@ -236,6 +236,7 @@ Rails.application.routes.draw do
         resources :email_templates, only: %i[index]
         patch 'email_templates', to: 'email_templates#update'
         resources :referee_qualification_types, only: %i[index create update destroy]
+        resources :referee_tags, only: %i[index create update destroy]
         resources :referee_license_levels, only: %i[index create update destroy]
         resources :penalty_codes, only: %i[index create update destroy]
         resources :referee_course_imports, only: %i[index show create destroy] do
