@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Teammanager konnten den Spielbericht nicht pflegen**: Der Bearbeiten-Tab im Spielbericht wird im Frontend nur bei der Permission `edit_game_report` angezeigt. `Game#user_permissions` vergab diese aber nur an Admin, SBK und den Vereinsmanager des ausrichtenden Vereins – **nie an Teammanager** (offener `TODO`-Kommentar). Dadurch sah ein TM keinerlei Eingabemöglichkeit, obwohl die einzelnen Schreib-Aktionen (Aufstellung über `can_edit_lineup?`, Spielinfos über `set_string`) TM längst zuließen. `edit_game_report` wird jetzt auch an den TM des Heim- bzw. Gastteams vergeben, sodass UI-Gate und Aktions-Autorisierung wieder zusammenpassen.
+
 ## [1.40.1] - 2026-06-28
 
 ### Verbessert
