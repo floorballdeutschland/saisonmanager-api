@@ -9,7 +9,8 @@ module Admin
     # GET /api/v2/admin/referees
     def index
       referees = Referee.includes(club: :state_association,
-                                  referee_qualifications: :referee_qualification_type)
+                                  referee_qualifications: :referee_qualification_type,
+                                  referee_taggings: :referee_tag)
 
       referees = scope_to_permitted_referees(referees)
 
@@ -17,6 +18,9 @@ module Admin
       referees = referees.by_landesverband(params[:landesverband]) if params[:landesverband].present?
       referees = referees.by_lizenzstufe(params[:lizenzstufe]) if params[:lizenzstufe].present?
       referees = referees.active if params[:active] == 'true'
+      if params[:tag_id].present?
+        referees = referees.where(id: RefereeTagging.where(referee_tag_id: params[:tag_id]).select(:referee_id))
+      end
 
       sort_col = params[:sort] == 'lizenznummer' ? 'lizenznummer' : 'nachname'
       sort_dir = params[:sort_dir] == 'desc' ? 'DESC' : 'ASC'
@@ -69,6 +73,7 @@ module Admin
 
       if referee.save
         sync_qualifications(referee) if can_edit_full?
+        sync_tags(referee) if can_manage_tags?
         render json: referee_json(referee.reload, full: true), status: :created
       else
         render json: { errors: referee.errors.full_messages }, status: :unprocessable_entity
@@ -85,6 +90,7 @@ module Admin
 
       if @referee.save
         sync_qualifications(@referee) if can_edit_full?
+        sync_tags(@referee) if can_manage_tags?
         RefereeMailer.license_notification(@referee).deliver_later if notify
         render json: referee_json(@referee.reload, full: true)
       else
@@ -307,7 +313,8 @@ module Admin
 
     def set_referee
       @referee = Referee.includes(club: :state_association,
-                                  referee_qualifications: :referee_qualification_type)
+                                  referee_qualifications: :referee_qualification_type,
+                                  referee_taggings: :referee_tag)
                         .find(params[:id])
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Schiedsrichter nicht gefunden' }, status: :not_found
@@ -355,6 +362,33 @@ module Admin
           )
         end
       end
+    end
+
+    # Setzt die Tag-Zuordnungen eines Schiris neu (nur die Tags, die der Nutzer
+    # auch sehen/verwalten darf – ein LV-Ansetzer kann keine fremden Verbands-Tags
+    # zuweisen). Wird nur aufgerufen, wenn `tag_ids` mitgeschickt wurde.
+    def sync_tags(referee)
+      return unless params[:referee].key?(:tag_ids)
+
+      ids = Array(params[:referee][:tag_ids]).map(&:to_i).select(&:positive?).uniq
+      allowed = assignable_tag_ids
+      ids &= allowed unless allowed.nil?
+      referee.referee_tag_ids = ids
+    end
+
+    def can_manage_tags?
+      ph = current_user.permission_hash
+      ph[:admin].present? || ph[:rsk].present? || ph[:ansetzer].present?
+    end
+
+    # IDs der zuweisbaren Tags; nil = alle erlaubt (Admin/global gescopter Nutzer).
+    def assignable_tag_ids
+      ph = current_user.permission_hash
+      return nil if ph[:admin].present?
+      return nil if ph[:rsk].present? && ph[:rsk].include?(0)
+      return nil if ph[:ansetzer].present? && ph[:ansetzer].include?(0)
+
+      RefereeTag.for_game_operations(referee_scope_go_ids(ph)).pluck(:id)
     end
 
     def authorize_referee_access!
@@ -471,7 +505,9 @@ module Admin
         gueltigkeit: referee.gueltigkeit&.strftime('%d.%m.%Y'),
         active: !referee.guest? && referee.gueltigkeit.present? && referee.gueltigkeit >= Date.today,
         wallet_pass_issued_at: referee.wallet_pass_issued_at&.iso8601,
-        wallet_pass_url: referee.wallet_pass_url
+        wallet_pass_url: referee.wallet_pass_url,
+        tags: referee_tags_for(referee).map { |t| tag_summary(t) },
+        tag_ids: referee_tags_for(referee).map(&:id)
       }
 
       data[:season_game_count] = season_game_count unless season_game_count.nil?
@@ -513,6 +549,16 @@ module Admin
         status: feedback.status,
         created_at: feedback.created_at.iso8601
       }
+    end
+
+    # Tags aus den (per includes vorgeladenen) Taggings ableiten, damit die Liste
+    # keine N+1-Query je Schiri auslöst.
+    def referee_tags_for(referee)
+      referee.referee_taggings.map(&:referee_tag).compact.sort_by { |t| t.name.to_s.downcase }
+    end
+
+    def tag_summary(tag)
+      { id: tag.id, name: tag.name, color: tag.color }
     end
 
     def qualification_json(q)

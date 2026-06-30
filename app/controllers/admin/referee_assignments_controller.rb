@@ -151,9 +151,10 @@ module Admin
       # bereits tagesgleich angesetzt.
       referees = scope_to_permitted_referees(
         Referee.where(guest: false).where(id: available_ids).where.not(id: assigned_ids)
-      ).order(:nachname, :vorname)
+      ).includes(referee_taggings: :referee_tag).order(:nachname, :vorname)
 
       render json: referees.map { |r|
+        tags = r.referee_taggings.map(&:referee_tag).compact.sort_by { |t| t.name.to_s.downcase }
         {
           id: r.id,
           lizenznummer: r.lizenznummer,
@@ -163,7 +164,8 @@ module Admin
           lizenzstufe: r.lizenzstufe,
           kurzfristig_mobil: r.kurzfristig_mobil,
           partner_lizenznummer: r.partner_lizenznummer,
-          club_id: r.club_id
+          club_id: r.club_id,
+          tags: tags.map { |t| { id: t.id, name: t.name, color: t.color } }
         }
       }
     end
