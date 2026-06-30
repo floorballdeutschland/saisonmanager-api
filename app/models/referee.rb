@@ -4,8 +4,10 @@ class Referee < ApplicationRecord
   has_one :user
   has_many :referee_availabilities, dependent: :destroy
   has_many :referee_qualifications, dependent: :destroy
+  has_many :referee_taggings, dependent: :destroy
   has_many :game_day_referee_confirmations, dependent: :destroy
   has_many :referee_qualification_types, through: :referee_qualifications
+  has_many :referee_tags, through: :referee_taggings
 
   validates :lizenznummer,
             uniqueness: { allow_nil: true },
@@ -95,6 +97,9 @@ class Referee < ApplicationRecord
 
       existing_qt_ids = master.referee_qualifications.pluck(:referee_qualification_type_id)
       referee_qualifications.where.not(referee_qualification_type_id: existing_qt_ids).update_all(referee_id: master.id)
+
+      existing_tag_ids = master.referee_taggings.pluck(:referee_tag_id)
+      referee_taggings.where.not(referee_tag_id: existing_tag_ids).update_all(referee_id: master.id)
 
       referee_availabilities.update_all(referee_id: master.id)
 

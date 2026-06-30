@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_06_28_100000) do
+ActiveRecord::Schema[7.1].define(version: 2026_06_30_120100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -648,6 +648,24 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_28_100000) do
     t.index ["referee_qualification_type_id"], name: "index_referee_qualifications_on_referee_qualification_type_id"
   end
 
+  create_table "referee_taggings", force: :cascade do |t|
+    t.bigint "referee_id", null: false
+    t.bigint "referee_tag_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["referee_id", "referee_tag_id"], name: "index_referee_taggings_on_referee_id_and_referee_tag_id", unique: true
+    t.index ["referee_tag_id"], name: "index_referee_taggings_on_referee_tag_id"
+  end
+
+  create_table "referee_tags", force: :cascade do |t|
+    t.string "name", null: false
+    t.string "color"
+    t.bigint "game_operation_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["game_operation_id", "name"], name: "index_referee_tags_on_game_operation_id_and_name", unique: true
+  end
+
   create_table "referees", force: :cascade do |t|
     t.integer "lizenznummer"
     t.string "vorname", null: false
@@ -870,6 +888,9 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_28_100000) do
   add_foreign_key "referee_feedbacks", "games"
   add_foreign_key "referee_qualifications", "referee_qualification_types"
   add_foreign_key "referee_qualifications", "referees"
+  add_foreign_key "referee_taggings", "referee_tags"
+  add_foreign_key "referee_taggings", "referees"
+  add_foreign_key "referee_tags", "game_operations"
   add_foreign_key "referees", "referees", column: "merged_into_id"
   add_foreign_key "state_association_checklist_items", "state_associations"
   add_foreign_key "state_association_releases", "game_operations", column: "recipient_game_operation_id"
