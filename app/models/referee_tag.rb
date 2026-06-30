@@ -4,6 +4,7 @@ class RefereeTag < ApplicationRecord
   has_many :referees, through: :referee_taggings
 
   validates :name, presence: true,
+                   length: { maximum: 24 },
                    uniqueness: { scope: :game_operation_id, case_sensitive: false }
 
   # Sichtbarer Tag-Bestand für einen Ansetzer/RSK mit Verbands-Scope: die Tags
