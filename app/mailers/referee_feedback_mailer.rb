@@ -1,8 +1,9 @@
 class RefereeFeedbackMailer < ApplicationMailer
   FEEDBACK_URL = 'https://saisonmanager.org/verein/schiri-feedback'.freeze
 
-  # Info an einen Teammanager, dass für ein gespieltes Spiel seiner Mannschaft das
-  # Schiri-Feedback-Formular ausfüllbar ist (Fenster öffnet 24 h nach Anpfiff).
+  # Info an einen Teammanager, dass für ein Spiel seiner Mannschaft das
+  # Schiri-Feedback-Formular ausfüllbar ist (Fenster öffnet mit dem Abschluss des
+  # Spielberichts).
   def form_available(user, game, team)
     @user = user
     @game = game
