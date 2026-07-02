@@ -162,6 +162,45 @@ class Game < ApplicationRecord
     ids.filter_map { |rid| by_id[rid] }
   end
 
+  # Lizenznummern der tatsächlich im Spielbericht eingesetzten Schiedsrichter,
+  # in Bericht-Reihenfolge (Slot 1 = referee1_string, Slot 2 = referee2_string).
+  # Fällt je Slot auf die Live-Erfassung (referee_ids, enthält Lizenznummern)
+  # zurück, falls der jeweilige String leer ist. Positionstreu: referee_ids wird
+  # NICHT vorab verdichtet, damit ein leerer Slot 1 nicht den Slot-2-Schiri nach
+  # vorne zieht. Leere/ungültige (0) Slots bleiben als nil erhalten.
+  def officiating_referee_licenses
+    from_strings = [referee1_string, referee2_string].map do |str|
+      lic = str.to_s[/\A(\d+)\s/, 1].to_i
+      lic.positive? ? lic : nil
+    end
+    live = Array(referee_ids).map(&:to_i)
+    [0, 1].map do |slot|
+      lic = from_strings[slot] || live[slot]
+      lic&.positive? ? lic : nil
+    end
+  end
+
+  # Tatsächlich eingesetzte Schiedsrichter als Referee-Datensätze (max. 2),
+  # aufgelöst über die Lizenznummer aus dem Spielbericht. Reihenfolge wie im
+  # Bericht; nicht auflösbare Lizenzen (Gäste/Altdaten ohne Referee-Record)
+  # entfallen. Für das Schiri-Feedback: verknüpft die Abgabe mit den Schiris,
+  # die das Spiel wirklich gepfiffen haben – nicht mit der (oft leeren)
+  # Ansetzung (nominated_referees).
+  def officiating_referees
+    licenses = officiating_referee_licenses.compact.uniq
+    return [] if licenses.empty?
+
+    by_license = Referee.where(lizenznummer: licenses).index_by(&:lizenznummer)
+    licenses.filter_map { |lic| by_license[lic] }
+  end
+
+  # Klartext-Namen der eingesetzten Schiedsrichter aus dem Spielbericht
+  # ("Vorname Nachname"), unabhängig davon, ob ein Referee-Record existiert –
+  # dient als Anzeige-/Fallback-Name (referee_names) auch für Gäste/Altdaten.
+  def officiating_referee_names
+    referees.map { |r| "#{r[:first_name]} #{r[:last_name]}".strip }.reject(&:empty?)
+  end
+
   def players_with_position
     result = {}
 

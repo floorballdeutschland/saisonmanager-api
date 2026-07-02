@@ -47,7 +47,7 @@ class UserRefereeFeedbacksController < ApplicationController
                     status: :unprocessable_entity
     end
 
-    referees = game.nominated_referees
+    referees, referee_names = resolve_feedback_referees(game)
     feedback = RefereeFeedback.new(
       game: game,
       team: team,
@@ -55,7 +55,7 @@ class UserRefereeFeedbacksController < ApplicationController
       submitted_by_user_id: current_user.id,
       referee1_id: referees[0]&.id,
       referee2_id: referees[1]&.id,
-      referee_names: referees.map { |r| "#{r.vorname} #{r.nachname}".strip }.join(' / ').presence,
+      referee_names: referee_names.join(' / ').presence,
       line_rating: params[:line_rating],
       line_comment: params[:line_comment].to_s.strip.presence,
       communication_rating: params[:communication_rating],
@@ -76,6 +76,20 @@ class UserRefereeFeedbacksController < ApplicationController
   end
 
   private
+
+  # Verknüpft das Feedback mit den tatsächlich eingesetzten Schiedsrichtern aus
+  # dem Spielbericht (Game#officiating_referees). Nur wenn der Bericht keine
+  # auflösbaren Schiris liefert, wird ersatzweise die Ansetzung herangezogen.
+  # Liefert [referees, names]. names werden konsistent aus DENSELBEN verknüpften
+  # Records abgeleitet (damit referee_names nie andere Personen benennt als
+  # referee1_id/referee2_id); nur wenn gar kein Schiri auflösbar ist, dienen die
+  # Bericht-Klartextnamen als informativer Fallback.
+  def resolve_feedback_referees(game)
+    referees = game.officiating_referees.presence || game.nominated_referees
+    names = referees.map { |r| "#{r.vorname} #{r.nachname}".strip }
+    names = game.officiating_referee_names if names.empty?
+    [referees, names]
+  end
 
   # Team-IDs, die der/die Benutzer:in als Teammanager (direkt) oder als
   # Vereinsmanager (alle Teams der eigenen Vereine) verantwortet.
@@ -149,7 +163,7 @@ class UserRefereeFeedbacksController < ApplicationController
       league: game.league&.name,
       date: game.game_day.date,
       start_time: game.start_time,
-      referees: game.nominated_referees.map { |r| "#{r.vorname} #{r.nachname}".strip },
+      referees: resolve_feedback_referees(game).last,
       fillable_from: fillable_from(game)&.iso8601,
       done: feedback.present?,
       submitted_at: feedback&.created_at&.iso8601

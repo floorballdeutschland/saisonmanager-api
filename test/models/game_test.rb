@@ -337,4 +337,44 @@ class GameTest < ActiveSupport::TestCase
     assert_equal 'Max', score[:first_name]
     assert_equal 'Muster', score[:last_name]
   end
+
+  # ---------------------------------------------------------------------------
+  # officiating_referees – tatsächlich im Spielbericht eingesetzte Schiris
+  # ---------------------------------------------------------------------------
+
+  test 'officiating_referee_licenses: liest Lizenzen aus den Bericht-Strings' do
+    g = build_game(referee1_string: '1 Partanen, Aleksi', referee2_string: '2 Muster, Max')
+    assert_equal [1, 2], g.officiating_referee_licenses
+  end
+
+  test 'officiating_referee_licenses: leerer Slot fällt auf referee_ids zurück' do
+    g = build_game(referee1_string: '0 , ', referee2_string: nil, referee_ids: [7])
+    assert_equal [7, nil], g.officiating_referee_licenses
+  end
+
+  test 'officiating_referee_licenses: ohne jede Angabe leer' do
+    g = build_game(referee1_string: nil, referee2_string: nil, referee_ids: [])
+    assert_equal [nil, nil], g.officiating_referee_licenses
+  end
+
+  test 'officiating_referee_licenses: positionstreu bei leerem Slot 1 in referee_ids' do
+    g = build_game(referee1_string: nil, referee2_string: nil, referee_ids: [0, 7])
+    assert_equal [nil, 7], g.officiating_referee_licenses
+  end
+
+  test 'officiating_referee_names: extrahiert Klartextnamen aus den Strings' do
+    g = build_game(referee1_string: '1 Partanen, Aleksi', referee2_string: '2 Muster, Max')
+    assert_equal ['Aleksi Partanen', 'Max Muster'], g.officiating_referee_names
+  end
+
+  test 'officiating_referees: löst Schiris über die Lizenznummer auf' do
+    ref = create(:referee, lizenznummer: 4242, vorname: 'Aleksi', nachname: 'Partanen')
+    g = build_game(referee1_string: "#{ref.lizenznummer} Partanen, Aleksi")
+    assert_equal [ref.id], g.officiating_referees.map(&:id)
+  end
+
+  test 'officiating_referees: leer, wenn keine Lizenz einem Referee entspricht' do
+    g = build_game(referee1_string: '999999 Unbekannt, Gast')
+    assert_empty g.officiating_referees
+  end
 end
