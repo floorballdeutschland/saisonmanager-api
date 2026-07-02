@@ -62,12 +62,11 @@ namespace :penalty_codes do
       next unless game.events.any? { |e| legacy_ids.include?(e['penalty_code_id'].to_s) }
 
       before = game.events.map(&:dup)
-      game.events.each { |event| Game.freeze_penalty_labels(event) }
+      game.events.each do |event|
+        Game.freeze_penalty_labels(event)
+        next unless legacy_ids.include?(event['penalty_code_id'].to_s)
 
-      game.events.each do |e|
-        next unless legacy_ids.include?(e['penalty_code_id'].to_s)
-
-        unfreezable += 1 if e['penalty_code_description'].to_s.strip.empty?
+        unfreezable += 1 if event['penalty_code_description'].to_s.strip.empty?
       end
 
       next if game.events == before

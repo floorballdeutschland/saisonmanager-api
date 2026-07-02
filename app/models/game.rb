@@ -79,11 +79,10 @@ class Game < ApplicationRecord
       code = Setting.current.penalty_codes[event['penalty_code_id'].to_s]
       if code.present?
         event['penalty_code'] = code['code'] if code['code'].present?
-        # Alt-Codes tragen die Bezeichnung nur unter 'name' (ohne 'description').
-        # Diese als Beschreibung einfrieren, damit der Straf-Grund im Spielbericht
-        # sichtbar bleibt, auch wenn der Katalog-Eintrag später entfernt wird.
-        description = code['description'].presence || code['name']
-        event['penalty_code_description'] = description if description.present?
+        # Alt-Codes tragen die Bezeichnung nur unter 'name': als Beschreibung
+        # einfrieren, damit der Grund auch nach dem Entfernen des Katalog-
+        # Eintrags im Spielbericht sichtbar bleibt.
+        event['penalty_code_description'] = code['description'].presence || code['name']
       end
     end
 
@@ -106,17 +105,12 @@ class Game < ApplicationRecord
     Setting.current.penalties.dig(event['penalty_id'].to_s, 'name')
   end
 
+  # Bevorzugt eingefrorene Label; sonst Live-Auflösung aus Setting. Alt-Codes
+  # tragen die Bezeichnung nur unter 'name' – daher als description-Fallback.
   def penalty_reason(event)
-    if event['penalty_code'].present? || event['penalty_code_description'].present?
-      return { 'code' => event['penalty_code'], 'description' => event['penalty_code_description'] }
-    end
-
-    code = Setting.current.penalty_codes[event['penalty_code_id'].to_s]
-    return nil if code.blank?
-
-    # Alt-Codes haben nur 'name'; als Beschreibung durchreichen, damit der Grund
-    # auch bei noch nicht eingefrorenen Events erscheint (Live-Fallback).
-    { 'code' => code['code'], 'description' => code['description'].presence || code['name'] }
+    code = Setting.current.penalty_codes[event['penalty_code_id'].to_s] || {}
+    description = event['penalty_code_description'].presence || code['description'].presence || code['name']
+    { 'code' => event['penalty_code'].presence || code['code'], 'description' => description }
   end
 
   def error_meta_info
