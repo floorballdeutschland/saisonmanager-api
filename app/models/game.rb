@@ -78,8 +78,11 @@ class Game < ApplicationRecord
     if event['penalty_code_id'].present?
       code = Setting.current.penalty_codes[event['penalty_code_id'].to_s]
       if code.present?
-        event['penalty_code'] = code['code']
-        event['penalty_code_description'] = code['description']
+        event['penalty_code'] = code['code'] if code['code'].present?
+        # Alt-Codes tragen die Bezeichnung nur unter 'name': als Beschreibung
+        # einfrieren, damit der Grund auch nach dem Entfernen des Katalog-
+        # Eintrags im Spielbericht sichtbar bleibt.
+        event['penalty_code_description'] = code['description'].presence || code['name']
       end
     end
 
@@ -102,10 +105,12 @@ class Game < ApplicationRecord
     Setting.current.penalties.dig(event['penalty_id'].to_s, 'name')
   end
 
+  # Bevorzugt eingefrorene Label; sonst Live-Auflösung aus Setting. Alt-Codes
+  # tragen die Bezeichnung nur unter 'name' – daher als description-Fallback.
   def penalty_reason(event)
-    return { 'code' => event['penalty_code'], 'description' => event['penalty_code_description'] } if event['penalty_code'].present?
-
-    Setting.current.penalty_codes[event['penalty_code_id'].to_s]
+    code = Setting.current.penalty_codes[event['penalty_code_id'].to_s] || {}
+    description = event['penalty_code_description'].presence || code['description'].presence || code['name']
+    { 'code' => event['penalty_code'].presence || code['code'], 'description' => description }
   end
 
   def error_meta_info

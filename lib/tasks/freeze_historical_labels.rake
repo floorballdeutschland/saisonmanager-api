@@ -32,6 +32,67 @@ namespace :events do
   end
 end
 
+namespace :penalty_codes do
+  desc 'Friert Alt-Straf-Gründe (name-only Codes) in Events ein und entfernt die verwaisten Katalog-Einträge (DRY_RUN=1 zum Testen)'
+  task cleanup_legacy: :environment do
+    dry_run = ENV['DRY_RUN'].present?
+    setting = Setting.current
+    codes = (setting.penalty_codes || {}).deep_dup
+
+    # Alt-Codes: nur eine Bezeichnung ('name'), kein 3-stelliger 'code', nicht aktiv.
+    legacy = codes.select do |_id, v|
+      next false unless v.is_a?(Hash)
+
+      active = [true, 'true'].include?(v['active'])
+      v['name'].present? && v['code'].blank? && !active
+    end
+    legacy_ids = legacy.keys
+
+    if legacy_ids.empty?
+      puts 'Keine Alt-Codes (name-only) gefunden – nichts zu tun.'
+      next
+    end
+    puts "Alt-Codes: #{legacy_ids.map { |id| "#{id}=#{codes[id]['name']}" }.join(', ')}"
+
+    # 1) Nur Spiele einfrieren, die einen Alt-Code referenzieren.
+    frozen_games = 0
+    unfreezable = 0
+    Game.find_each do |game|
+      next if game.events.blank?
+      next unless game.events.any? { |e| legacy_ids.include?(e['penalty_code_id'].to_s) }
+
+      before = game.events.map(&:dup)
+      game.events.each do |event|
+        Game.freeze_penalty_labels(event)
+        next unless legacy_ids.include?(event['penalty_code_id'].to_s)
+
+        unfreezable += 1 if event['penalty_code_description'].to_s.strip.empty?
+      end
+
+      next if game.events == before
+
+      frozen_games += 1
+      game.update_columns(events: game.events) unless dry_run
+    end
+    puts "#{dry_run ? '[DRY_RUN] ' : ''}#{frozen_games} Spiele mit eingefrorenen Alt-Straf-Gründen."
+
+    # 2) Sicherung: kein Alt-Code-Event darf ohne eingefrorene Beschreibung bleiben.
+    if unfreezable.positive?
+      abort "ABBRUCH: #{unfreezable} Alt-Code-Events lassen sich nicht einfrieren – Katalog NICHT verändert."
+    end
+
+    # 3) Verwaiste Katalog-Einträge entfernen (Grund bleibt in den Events erhalten).
+    legacy_ids.each { |id| codes.delete(id) }
+    if dry_run
+      puts "[DRY_RUN] Würde Katalog-Einträge entfernen: #{legacy_ids.join(', ')}"
+    else
+      setting.penalty_codes = codes
+      setting.save! # after_commit :flush_caches invalidiert settings/current + settings/init
+      puts "Entfernte Katalog-Einträge: #{legacy_ids.join(', ')}"
+    end
+  end
+end
+
 namespace :leagues do
   desc 'Friert Klassen-/Kategorie-Namen und Punktekorrekturen an die Liga (aus Setting) (DRY_RUN=1 zum Testen)'
   task freeze_labels: :environment do
