@@ -9,7 +9,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
-## [1.41.1] - 2026-07-02
+### Behoben
+
+- **Vereinsmanager: „Berechtigungsfehler" nach Lizenzantrag blockierte die Lizenzverwaltung**: Nach dem Beantragen einer Lizenz lud das Frontend im Hintergrund die Lizenzdokumente des Spielers (`GET /api/v2/admin/players/:id/license_documents`). Die dortige VM-Berechtigungsprüfung war jedoch enger als die Prüfung beim Beantragen: Sie verglich die vom VM verwalteten Vereine nur mit den Vereinsmitgliedschaften des **Spielers** und zählte dabei ausschließlich Mitgliedschaften mit `valid_until = NULL` als aktiv. Dadurch schlug sie u. a. bei Spielgemeinschafts-/Syndikats-Teams (Spieler eines Partnervereins) und bei zukünftig datiertem `valid_until` mit **403** fehl – der globale Fehler-Interceptor zeigte „Berechtigungsfehler" und leitete auf die Startseite um, sodass sich keine weitere Lizenz mehr lösen ließ. Die Prüfung (`vm_for_player?`) ist jetzt konsistent zu `players#request_license`: Der VM ist berechtigt, wenn er einen aktuell gültigen Verein des Spielers **oder** den Verein/Syndikat-Verein des Teams verwaltet, zu dem die Lizenz gehört; die `valid_until`-Aktiv-Logik (`NULL` oder in der Zukunft) entspricht nun dem übrigen System.
 
 ### Behoben
 
