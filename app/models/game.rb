@@ -180,13 +180,21 @@ class Game < ApplicationRecord
     end
   end
 
-  # Tatsächlich eingesetzte Schiedsrichter als Referee-Datensätze (max. 2),
-  # aufgelöst über die Lizenznummer aus dem Spielbericht. Reihenfolge wie im
-  # Bericht; nicht auflösbare Lizenzen (Gäste/Altdaten ohne Referee-Record)
-  # entfallen. Für das Schiri-Feedback: verknüpft die Abgabe mit den Schiris,
-  # die das Spiel wirklich gepfiffen haben – nicht mit der (oft leeren)
-  # Ansetzung (nominated_referees).
+  # Tatsächlich eingesetzte Schiedsrichter als Referee-Datensätze (max. 2).
+  # Bevorzugt die kanonische, stabile PK-Spalte officiating_referee_ids; fällt
+  # für Bestandsspiele ohne befüllte Spalte auf die Lizenznummer aus dem
+  # Spielbericht zurück. Nicht auflösbare Einträge (Gäste/Altdaten ohne
+  # Referee-Record) entfallen. Für das Schiri-Feedback: verknüpft die Abgabe mit
+  # den Schiris, die das Spiel wirklich gepfiffen haben – nicht mit der (oft
+  # leeren) Ansetzung (nominated_referees).
   def officiating_referees
+    pks = Array(officiating_referee_ids).map(&:to_i).reject(&:zero?).uniq
+    if pks.any?
+      by_id = Referee.where(id: pks).index_by(&:id)
+      resolved = pks.filter_map { |pk| by_id[pk] }
+      return resolved if resolved.any?
+    end
+
     licenses = officiating_referee_licenses.compact.uniq
     return [] if licenses.empty?
 
