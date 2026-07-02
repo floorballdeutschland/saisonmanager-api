@@ -78,8 +78,12 @@ class Game < ApplicationRecord
     if event['penalty_code_id'].present?
       code = Setting.current.penalty_codes[event['penalty_code_id'].to_s]
       if code.present?
-        event['penalty_code'] = code['code']
-        event['penalty_code_description'] = code['description']
+        event['penalty_code'] = code['code'] if code['code'].present?
+        # Alt-Codes tragen die Bezeichnung nur unter 'name' (ohne 'description').
+        # Diese als Beschreibung einfrieren, damit der Straf-Grund im Spielbericht
+        # sichtbar bleibt, auch wenn der Katalog-Eintrag später entfernt wird.
+        description = code['description'].presence || code['name']
+        event['penalty_code_description'] = description if description.present?
       end
     end
 
@@ -103,9 +107,16 @@ class Game < ApplicationRecord
   end
 
   def penalty_reason(event)
-    return { 'code' => event['penalty_code'], 'description' => event['penalty_code_description'] } if event['penalty_code'].present?
+    if event['penalty_code'].present? || event['penalty_code_description'].present?
+      return { 'code' => event['penalty_code'], 'description' => event['penalty_code_description'] }
+    end
 
-    Setting.current.penalty_codes[event['penalty_code_id'].to_s]
+    code = Setting.current.penalty_codes[event['penalty_code_id'].to_s]
+    return nil if code.blank?
+
+    # Alt-Codes haben nur 'name'; als Beschreibung durchreichen, damit der Grund
+    # auch bei noch nicht eingefrorenen Events erscheint (Live-Fallback).
+    { 'code' => code['code'], 'description' => code['description'].presence || code['name'] }
   end
 
   def error_meta_info
