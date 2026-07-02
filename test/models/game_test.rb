@@ -286,6 +286,26 @@ class GameTest < ActiveSupport::TestCase
     assert_equal 'Stockschlag', event['penalty_code_description']
   end
 
+  test 'penalty_reason: Alt-Code (nur name) wird live als Beschreibung aufgelöst' do
+    g = build_game
+    setting = OpenStruct.new(penalty_codes: { '1' => { 'name' => 'Behinderung' } })
+    reason = Setting.stub(:current, setting) { g.penalty_reason('penalty_code_id' => 1) }
+    assert_equal({ 'code' => nil, 'description' => 'Behinderung' }, reason)
+  end
+
+  test 'freeze_penalty_labels: friert Alt-Code-Bezeichnung (nur name) als Beschreibung ein' do
+    event = { 'penalty_id' => 1, 'penalty_code_id' => 1 }
+    setting = OpenStruct.new(
+      penalties: { '1' => { 'mapping' => 'penalty_2', 'name' => '2 Minuten' } },
+      penalty_codes: { '1' => { 'name' => 'Behinderung' } }
+    )
+    Setting.stub(:current, setting) do
+      Game.freeze_penalty_labels(event)
+    end
+    assert_equal 'Behinderung', event['penalty_code_description']
+    assert_not event.key?('penalty_code')
+  end
+
   # ---------------------------------------------------------------------------
   # Scorer-Namen aus dem Snapshot (R2)
   # ---------------------------------------------------------------------------
