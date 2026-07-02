@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.41.1] - 2026-07-02
+
 ### Behoben
 
 - **LV-RSK konnte neue Schiedsrichter anlegen**: Die Schiedsrichterkommission eines Landesverbands (RSK LV) verwaltet nur den Bestand des eigenen Verbands und darf keine neuen Schiedsrichter anlegen – konnte es aber. Das Anlegen (`POST /api/v2/admin/referees`) und die automatische Lizenznummern-Vorbelegung (`next_lizenznummer`) sind jetzt auf Vollzugriff (Admin + FD-RSK) beschränkt; das Frontend blendet den „Neuer Schiedsrichter"-Button entsprechend aus (Permission `referee_can_create`). Das **Anlegen eines Benutzerkontos für einen bestehenden Schiri** (`create_user`) bleibt bewusst auch dem LV-RSK erlaubt und hängt nun an der eigenen Permission `referee_can_create_user`.
