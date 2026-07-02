@@ -165,15 +165,19 @@ class Game < ApplicationRecord
   # Lizenznummern der tatsächlich im Spielbericht eingesetzten Schiedsrichter,
   # in Bericht-Reihenfolge (Slot 1 = referee1_string, Slot 2 = referee2_string).
   # Fällt je Slot auf die Live-Erfassung (referee_ids, enthält Lizenznummern)
-  # zurück, falls der jeweilige String leer ist. Leere Slots bleiben als nil
-  # erhalten, damit die Zuordnung slot-treu bleibt.
+  # zurück, falls der jeweilige String leer ist. Positionstreu: referee_ids wird
+  # NICHT vorab verdichtet, damit ein leerer Slot 1 nicht den Slot-2-Schiri nach
+  # vorne zieht. Leere/ungültige (0) Slots bleiben als nil erhalten.
   def officiating_referee_licenses
     from_strings = [referee1_string, referee2_string].map do |str|
       lic = str.to_s[/\A(\d+)\s/, 1].to_i
       lic.positive? ? lic : nil
     end
-    live = Array(referee_ids).map(&:to_i).reject(&:zero?)
-    [from_strings[0] || live[0], from_strings[1] || live[1]]
+    live = Array(referee_ids).map(&:to_i)
+    [0, 1].map do |slot|
+      lic = from_strings[slot] || live[slot]
+      lic&.positive? ? lic : nil
+    end
   end
 
   # Tatsächlich eingesetzte Schiedsrichter als Referee-Datensätze (max. 2),

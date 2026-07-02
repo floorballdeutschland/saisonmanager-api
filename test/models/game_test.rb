@@ -357,6 +357,11 @@ class GameTest < ActiveSupport::TestCase
     assert_equal [nil, nil], g.officiating_referee_licenses
   end
 
+  test 'officiating_referee_licenses: positionstreu bei leerem Slot 1 in referee_ids' do
+    g = build_game(referee1_string: nil, referee2_string: nil, referee_ids: [0, 7])
+    assert_equal [nil, 7], g.officiating_referee_licenses
+  end
+
   test 'officiating_referee_names: extrahiert Klartextnamen aus den Strings' do
     g = build_game(referee1_string: '1 Partanen, Aleksi', referee2_string: '2 Muster, Max')
     assert_equal ['Aleksi Partanen', 'Max Muster'], g.officiating_referee_names

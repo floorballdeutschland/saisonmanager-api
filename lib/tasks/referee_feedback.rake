@@ -46,8 +46,9 @@ namespace :referee_feedback do
       referees = game.officiating_referees.presence || game.nominated_referees
       next if referees.empty?
 
-      names = game.officiating_referee_names
-      names = referees.map { |r| "#{r.vorname} #{r.nachname}".strip } if names.empty?
+      # Namen konsistent aus den verknüpften Records (analog Controller).
+      names = referees.map { |r| "#{r.vorname} #{r.nachname}".strip }
+      names = game.officiating_referee_names if names.empty?
 
       feedback.update_columns(
         referee1_id: referees[0]&.id,
