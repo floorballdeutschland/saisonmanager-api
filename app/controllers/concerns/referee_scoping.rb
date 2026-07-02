@@ -29,6 +29,20 @@ module RefereeScoping
       .reject(&:zero?).uniq
   end
 
+  # Konkrete (nicht auf global 0 kollabierte) Spielbetriebe der RSK-/Ansetzer-
+  # Rollen des Nutzers – gelesen aus den Roh-Permissions. Anders als
+  # referee_scope_go_ids behält dies die echte game_operation_id eines
+  # nationalen Verbands (FD) bei, statt sie auf 0 zu mappen. Dadurch kann FD
+  # einen eigenen, privaten Tag-Bestand pflegen. Leer für Admin bzw. für einen
+  # explizit auf Spielbetrieb 0 gesetzten Nutzer (⇒ global, sieht/verwaltet alles).
+  def tag_scope_go_ids
+    current_user.permissions
+                .select { |p| [3, 7].include?(p['user_group_id'].to_i) }
+                .map { |p| p['game_operation_id'].to_i }
+                .reject(&:zero?)
+                .uniq
+  end
+
   def lv_club_ids(go_ids)
     own_sa_ids = GameOperation.where(id: go_ids).pluck(:state_association_id).compact
     # Vereins-Freigaben: Hat ein anderer LV seine Vereine an einen dieser

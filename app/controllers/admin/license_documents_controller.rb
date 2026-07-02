@@ -92,10 +92,40 @@ module Admin
 
     def vm_for_player?
       ph = current_user.permission_hash
-      return false unless ph[:vm].present?
+      return false if ph[:vm].blank?
 
-      player_club_ids = (@player.clubs || []).filter_map { |c| c['club_id'].to_i if c['valid_until'].nil? }
-      (ph[:vm] & player_club_ids).present?
+      # Der VM darf, wenn er (a) einen aktuell gültigen Verein des Spielers verwaltet
+      # ODER (b) den Verein/Syndikat-Verein des Teams verwaltet, zu dem die Lizenz gehört.
+      # (b) hält die Prüfung konsistent zu players#request_license (SG-/Syndikats-Teams:
+      # der VM darf für einen Partnerclub-Spieler eine Lizenz lösen und muss deren
+      # Dokumente sehen/verwalten können).
+      return true if (ph[:vm] & player_active_club_ids).present?
+      return true if (ph[:vm] & license_team_club_ids).present?
+
+      false
+    end
+
+    # club_ids der aktuell gültigen Vereinsmitgliedschaften des Spielers. Die
+    # valid_until-Logik ist bewusst identisch zum Rest des Systems (vgl. Player):
+    # nil ODER in der Zukunft = aktiv (nicht nur nil).
+    def player_active_club_ids
+      (@player.clubs || []).filter_map do |c|
+        next unless c['valid_until'].nil? || c['valid_until'].to_time > Time.current
+
+        c['club_id'].to_i
+      end
+    end
+
+    # club_ids (inkl. Syndikat) der Teams, zu denen die betreffende Lizenz gehört.
+    # Ist license_id gesetzt (index/show/create), wird auf diese Lizenz gescoped,
+    # sonst werden alle Team-Lizenzen des Spielers berücksichtigt.
+    def license_team_club_ids
+      licenses = @player.licenses || []
+      licenses = licenses.select { |l| l['id'].to_s == params[:license_id].to_s } if params[:license_id].present?
+      team_ids = licenses.filter_map { |l| l['team_id']&.to_i }
+      return [] if team_ids.empty?
+
+      Team.where(id: team_ids).flat_map(&:all_club_ids).uniq
     end
 
     def player_game_operation_ids
