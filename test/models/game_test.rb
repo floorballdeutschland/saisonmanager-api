@@ -377,4 +377,17 @@ class GameTest < ActiveSupport::TestCase
     g = build_game(referee1_string: '999999 Unbekannt, Gast')
     assert_empty g.officiating_referees
   end
+
+  test 'officiating_referees: bevorzugt die kanonische PK-Spalte' do
+    ref = create(:referee, lizenznummer: 5555, vorname: 'Pia', nachname: 'Pfiff')
+    # Der Bericht-String verweist auf eine andere Lizenz – die PK-Spalte gewinnt.
+    g = build_game(officiating_referee_ids: [ref.id, 0], referee1_string: '9999 Anders, Wer')
+    assert_equal [ref.id], g.officiating_referees.map(&:id)
+  end
+
+  test 'officiating_referees: fällt auf die Lizenz zurück, wenn PK-Spalte leer' do
+    ref = create(:referee, lizenznummer: 6161, vorname: 'Rudi', nachname: 'Recht')
+    g = build_game(officiating_referee_ids: [], referee1_string: "#{ref.lizenznummer} Recht, Rudi")
+    assert_equal [ref.id], g.officiating_referees.map(&:id)
+  end
 end

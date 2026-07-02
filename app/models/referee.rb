@@ -152,6 +152,9 @@ class Referee < ApplicationRecord
 
     Game.where('? = ANY(nominated_referee_ids)', id)
         .update_all("nominated_referee_ids = array_replace(nominated_referee_ids, #{id.to_i}, #{master.id.to_i})")
+
+    Game.where('? = ANY(officiating_referee_ids)', id)
+        .update_all("officiating_referee_ids = array_replace(officiating_referee_ids, #{id.to_i}, #{master.id.to_i})")
   end
 
   public

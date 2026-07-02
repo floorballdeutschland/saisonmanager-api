@@ -107,4 +107,22 @@ class RefereeTest < ActiveSupport::TestCase
     ref = Referee.create!(lizenznummer: nil, vorname: 'Gast', nachname: 'Schiri', guest: true)
     assert_equal Game.none.to_a, ref.games(season_id: '10').to_a
   end
+
+  test 'merge_into!: officiating_referee_ids werden auf die Master-PK umgeschrieben' do
+    secondary = make_referee(lizenznummer: 40_001)
+    master    = make_referee(lizenznummer: 40_002)
+
+    go     = GameOperation.create!(name: 'GO Merge Test', short_name: 'GMT')
+    club   = Club.create!
+    arena  = Arena.create!(name: 'Mergehalle', city: 'Mergestadt')
+    league = League.create!(game_operation: go, season_id: '10', name: 'Liga M', table_modus: 'classic')
+    day    = GameDay.create!(league: league, arena: arena, club: club, number: 1, date: '2024-01-01')
+    game   = Game.create!(game_day: day, officiating_referee_ids: [secondary.id, 0],
+                          events: [], players: { 'home' => [], 'guest' => [] },
+                          forfait: 0, overtime: false, legacy: false)
+
+    secondary.merge_into!(master)
+
+    assert_equal [master.id, 0], game.reload.officiating_referee_ids
+  end
 end

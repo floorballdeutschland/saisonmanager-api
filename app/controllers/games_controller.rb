@@ -779,11 +779,18 @@ class GamesController < ApplicationController
 
     if allowed
       ref_num = params[:referee_number].to_i
+      license = (params[:license_id] || 0).to_i
 
       game.referee_ids ||= []
-      game.referee_ids[ref_num - 1] = (params[:license_id] || 0).to_i
+      game.referee_ids[ref_num - 1] = license
 
-      name = "#{game.referee_ids[ref_num - 1]} #{params[:lastname]}, #{params[:firstname]}"
+      # Kanonische, stabile Verknüpfung über die Referee-PK (die Lizenznummer ist
+      # über den Schiri-Merge wanderbar). 0 = nicht auflösbar (Gast/Freitext).
+      game.officiating_referee_ids ||= []
+      game.officiating_referee_ids[ref_num - 1] =
+        (license.positive? && Referee.where(lizenznummer: license).pick(:id)) || 0
+
+      name = "#{license} #{params[:lastname]}, #{params[:firstname]}"
 
       if ref_num == 1
         game.referee1_string = name
