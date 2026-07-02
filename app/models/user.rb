@@ -82,7 +82,11 @@ class User < ApplicationRecord
     # Anlegen/Volledit). Die SBK (Spielbetrieb) hat hier bewusst KEINEN Zugriff.
     result[:menu_item_referee_admin] = ph[:admin].present? || ph[:rsk].present? || ph[:ansetzer].present?
     result[:referee_edit_restricted] = !has_full_referee_access if result[:menu_item_referee_admin]
-    result[:referee_can_create] = ph[:admin].present? || ph[:rsk].present? if result[:menu_item_referee_admin]
+    # Neue Schiedsrichter anlegen: nur Admin + FD-RSK (global). LV-RSK bearbeitet
+    # nur Bestandsdaten.
+    result[:referee_can_create] = has_full_referee_access if result[:menu_item_referee_admin]
+    # Benutzerkonto für einen bestehenden Schiri anlegen: auch LV-RSK erlaubt.
+    result[:referee_can_create_user] = ph[:admin].present? || ph[:rsk].present? if result[:menu_item_referee_admin]
     result[:referee_can_delete_user] = ph[:admin].present? if result[:menu_item_referee_admin]
     result[:referee_wallet] = has_full_referee_access if result[:menu_item_referee_admin]
     # Ansetzungen macht die Ansetzer-Rolle (in manchen LV von der RSK getrennt).

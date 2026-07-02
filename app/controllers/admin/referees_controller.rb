@@ -216,7 +216,7 @@ module Admin
     # POST /api/v2/admin/referees/:id/create_user
     # Legt ein Schiedsrichter-Benutzerkonto an und verknüpft es mit dem Referee.
     def create_user
-      return forbidden_response unless can_create_referee?
+      return forbidden_response unless can_create_referee_login?
       return forbidden_response unless can_access_referee?(@referee)
 
       if @referee.user.present?
@@ -421,7 +421,17 @@ module Admin
       end
     end
 
+    # Neue Schiedsrichter anlegen darf nur, wer Vollzugriff hat (Admin oder
+    # FD-RSK). Ein LV-RSK verwaltet nur bestehende Schiris (siehe can_edit_full?).
     def can_create_referee?
+      can_edit_full?
+    end
+
+    # Ein Benutzerkonto für einen *bestehenden* Schiri anzulegen ist vom Anlegen
+    # des Schiris getrennt und bleibt daher auch dem LV-RSK erlaubt (nicht nur
+    # FD/Admin). Der Zugriff auf den konkreten Schiri wird zusätzlich über
+    # can_access_referee? geprüft.
+    def can_create_referee_login?
       ph = current_user.permission_hash
       ph[:admin].present? || ph[:rsk].present?
     end
