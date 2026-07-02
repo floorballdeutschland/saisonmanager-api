@@ -12,7 +12,7 @@ module Admin
     end
 
     test 'FD-RSK legt einen Tag als FD-eigenen (nicht globalen) Tag an' do
-      login(rsk_user(@fd.id))
+      login(create(:user, :rsk_scoped, game_operation_id: @fd.id))
 
       post '/api/v2/admin/referee_tags', params: {
         referee_tag: { name: 'Spitzenschiri', color: '#ff0000' }
@@ -24,9 +24,20 @@ module Admin
                    'FD-Tag muss an den FD-Spielbetrieb gebunden sein, nicht global (nil)'
     end
 
+    test 'LV-Ansetzer legt einen verbandseigenen Tag an' do
+      login(create(:user, :assigner_scoped, game_operation_id: @lv_go.id))
+
+      post '/api/v2/admin/referee_tags', params: {
+        referee_tag: { name: 'Nachwuchs', color: '#00ff00' }
+      }
+
+      assert_response :created
+      assert_equal @lv_go.id, JSON.parse(response.body)['game_operation_id']
+    end
+
     test 'LV-RSK sieht FD-eigene Tags nicht' do
       RefereeTag.create!(name: 'FD-Only', game_operation_id: @fd.id)
-      login(rsk_user(@lv_go.id))
+      login(create(:user, :rsk_scoped, game_operation_id: @lv_go.id))
 
       get '/api/v2/admin/referee_tags'
 
@@ -37,7 +48,7 @@ module Admin
 
     test 'LV-RSK sieht globale Tags' do
       RefereeTag.create!(name: 'Global', game_operation_id: nil)
-      login(rsk_user(@lv_go.id))
+      login(create(:user, :rsk_scoped, game_operation_id: @lv_go.id))
 
       get '/api/v2/admin/referee_tags'
 
@@ -48,7 +59,7 @@ module Admin
 
     test 'LV-RSK darf einen globalen Tag nicht verwalten' do
       tag = RefereeTag.create!(name: 'Global', game_operation_id: nil)
-      login(rsk_user(@lv_go.id))
+      login(create(:user, :rsk_scoped, game_operation_id: @lv_go.id))
 
       put "/api/v2/admin/referee_tags/#{tag.id}", params: {
         referee_tag: { name: 'Umbenannt' }
@@ -58,17 +69,19 @@ module Admin
       assert_equal 'Global', tag.reload.name
     end
 
-    private
+    test 'Gescopter Nutzer kann keinen Tag mit fremdem Spielbetrieb anlegen' do
+      login(create(:user, :rsk_scoped, game_operation_id: @lv_go.id))
 
-    def rsk_user(go_id)
-      User.create!(
-        user_name: "rsk_#{SecureRandom.hex(4)}",
-        password: 'password123',
-        password_confirmation: 'password123',
-        permissions: [{ 'user_group_id' => 3, 'game_operation_id' => go_id }],
-        teams: []
-      )
+      assert_no_difference -> { RefereeTag.count } do
+        post '/api/v2/admin/referee_tags', params: {
+          referee_tag: { name: 'Fremd', game_operation_id: @fd.id }
+        }
+      end
+
+      assert_response :forbidden
     end
+
+    private
 
     def login(user)
       post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
