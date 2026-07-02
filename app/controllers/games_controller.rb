@@ -863,6 +863,10 @@ class GamesController < ApplicationController
         # leer, wenn das letzte Gruppenspiel direkt finalisiert wird (vgl. #515).
         if %w[match_record_closed finalized].include?(params[:game_status])
           Game.autofill_teams!(league_id: game.game_day.league_id)
+
+          # Schiri-Feedback-Fenster öffnet mit dem Bericht-Abschluss: TMs beider
+          # Mannschaften informieren (idempotent; No-Op ohne referee_feedback_enabled).
+          RefereeFeedbackNotifier.new(game).notify
         end
       elsif params[:ingame_status].present?
         old_ingame_status = game.ingame_status

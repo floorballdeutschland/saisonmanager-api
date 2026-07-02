@@ -8,9 +8,6 @@
 class UserRefereeFeedbacksController < ApplicationController
   before_action :authenticate_user
 
-  # Frühestens 24 h nach Anpfiff ausfüllbar ("24–48 h nach dem Spiel und
-  # keinesfalls vorher").
-  FILLABLE_AFTER_HOURS = 24
   # Wie weit zurück gespielte Spiele in der Übersicht erscheinen.
   LOOKBACK_DAYS = 120
 
@@ -45,9 +42,8 @@ class UserRefereeFeedbacksController < ApplicationController
     existing = RefereeFeedback.find_by(game: game, team: team)
     return render json: status_payload(existing) if existing
 
-    fillable = fillable_from(game)
-    if fillable.nil? || Time.current < fillable
-      return render json: { error: 'Feedback ist erst 24 Stunden nach dem Spiel möglich.' },
+    unless game.match_record_closed?
+      return render json: { error: 'Feedback ist erst möglich, sobald der Spielbericht abgeschlossen ist.' },
                     status: :unprocessable_entity
     end
 
@@ -99,13 +95,16 @@ class UserRefereeFeedbacksController < ApplicationController
     @managed_club_ids ||= Array(current_user.permission_hash[:vm]).map(&:to_i)
   end
 
-  # Bereits gespielte Spiele feedback-pflichtiger Ligen, an denen eine eigene
-  # Mannschaft beteiligt ist (Lookback-Fenster, nicht in der Zukunft).
+  # Spiele mit abgeschlossenem Spielbericht in feedback-pflichtigen Ligen, an
+  # denen eine eigene Mannschaft beteiligt ist (Lookback-Fenster). Erst mit dem
+  # Bericht-Abschluss öffnet das Feedback-Fenster, daher werden offene Berichte
+  # noch nicht gelistet.
   def eligible_games
     Game
       .joins(game_day: :league)
       .includes(:home_team, :guest_team, game_day: :league)
       .where(leagues: { referee_feedback_enabled: true })
+      .where(game_status: %w[match_record_closed finalized])
       .where('games.home_team_id IN (:t) OR games.guest_team_id IN (:t)', t: managed_team_ids)
       .where("TO_DATE(game_days.date, 'YYYY-MM-DD') BETWEEN ? AND ?",
              LOOKBACK_DAYS.days.ago.to_date, Date.current)
@@ -131,21 +130,11 @@ class UserRefereeFeedbacksController < ApplicationController
     game.home_team_id == team.id || game.guest_team_id == team.id
   end
 
-  # Frühester Abgabezeitpunkt (Anpfiff + 24 h). nil, wenn sich kein Zeitpunkt
-  # ermitteln lässt (kein Datum). Fehlt nur die Startzeit, wird vom Tagesbeginn
-  # des Spieltags gerechnet, damit ein Spiel ohne gepflegte Uhrzeit nicht crasht.
+  # Ab wann das Formular ausfüllbar ist: mit dem Abschluss des Spielberichts
+  # (match_record_closed_at). nil, solange der Bericht offen ist – dann ist noch
+  # kein Feedback möglich.
   def fillable_from(game)
-    base = game_start(game)
-    base && base + FILLABLE_AFTER_HOURS.hours
-  end
-
-  def game_start(game)
-    return nil if game.game_day&.date.blank?
-
-    tz = ActiveSupport::TimeZone['Europe/Berlin']
-    tz.parse("#{game.game_day.date} #{game.start_time}".strip)
-  rescue ArgumentError, TypeError
-    nil
+    game.match_record_closed? ? game.match_record_closed_at : nil
   end
 
   def game_feedback_json(game, team, feedback)
