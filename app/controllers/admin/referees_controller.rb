@@ -381,14 +381,16 @@ module Admin
       ph[:admin].present? || ph[:rsk].present? || ph[:ansetzer].present?
     end
 
-    # IDs der zuweisbaren Tags; nil = alle erlaubt (Admin/global gescopter Nutzer).
+    # IDs der zuweisbaren Tags; nil = alle erlaubt (nur Admin bzw. ein explizit
+    # auf Spielbetrieb 0 gesetzter Nutzer). Ein verbandsgebundener Nutzer – auch
+    # FD – darf nur die eigenen Verbands-Tags plus globale Tags zuweisen.
     def assignable_tag_ids
-      ph = current_user.permission_hash
-      return nil if ph[:admin].present?
-      return nil if ph[:rsk].present? && ph[:rsk].include?(0)
-      return nil if ph[:ansetzer].present? && ph[:ansetzer].include?(0)
+      return nil if current_user.permission_hash[:admin].present?
 
-      RefereeTag.for_game_operations(referee_scope_go_ids(ph)).pluck(:id)
+      go_ids = tag_scope_go_ids
+      return nil if go_ids.empty?
+
+      RefereeTag.for_game_operations(go_ids).pluck(:id)
     end
 
     def authorize_referee_access!

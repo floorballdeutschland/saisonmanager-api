@@ -88,34 +88,34 @@ module Admin
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
 
-    # Sichtbarer Tag-Bestand: globale Rolle (Admin oder FD-RSK/-Ansetzer mit 0)
-    # sieht alles, ein gescopter Nutzer nur die eigenen Verbands-Tags + globale.
+    # Sichtbarer Tag-Bestand: nur der Admin (unscoped) sieht alles inkl. globaler
+    # Tags fremder Verbände. Jeder verbandsgebundene Nutzer – auch FD – sieht nur
+    # die eigenen Verbands-Tags plus die globalen (game_operation_id IS NULL).
     def visible_tags(relation)
       return relation unless scoped_role?
 
-      relation.for_game_operations(referee_scope_go_ids(current_user.permission_hash))
+      relation.for_game_operations(tag_scope_go_ids)
     end
 
+    # Eigene Verbands-Tags darf ein gescopter Nutzer verwalten; globale Tags
+    # (game_operation_id NULL) bleiben dem Admin vorbehalten.
     def can_manage_tag?(tag)
       return true unless scoped_role?
 
-      tag.game_operation_id.present? &&
-        referee_scope_go_ids(current_user.permission_hash).include?(tag.game_operation_id)
+      tag.game_operation_id.present? && tag_scope_go_ids.include?(tag.game_operation_id)
     end
 
-    # True, wenn der Nutzer einen eingeschränkten Verbands-Scope hat (also weder
-    # Admin noch global gescopter RSK/Ansetzer mit Spielbetrieb 0).
+    # True, wenn der Nutzer an einen konkreten Verband gebunden ist (LV oder FD).
+    # Nur der Admin (bzw. ein explizit auf Spielbetrieb 0 gesetzter Nutzer) ist
+    # unscoped und sieht/verwaltet den globalen Tag-Bestand.
     def scoped_role?
-      ph = current_user.permission_hash
-      return false if ph[:admin].present?
-      return false if ph[:rsk].present? && ph[:rsk].include?(0)
-      return false if ph[:ansetzer].present? && ph[:ansetzer].include?(0)
+      return false if current_user.permission_hash[:admin].present?
 
-      true
+      tag_scope_go_ids.present?
     end
 
     def default_game_operation_id
-      referee_scope_go_ids(current_user.permission_hash).first
+      tag_scope_go_ids.first
     end
 
     def tag_json(tag, usage_count: tag.referee_taggings.count)
