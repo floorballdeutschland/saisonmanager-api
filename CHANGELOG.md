@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **LV-RSK konnte neue Schiedsrichter anlegen**: Die Schiedsrichterkommission eines Landesverbands (RSK LV) verwaltet nur den Bestand des eigenen Verbands und darf keine neuen Schiedsrichter anlegen – konnte es aber. Das Anlegen (`POST /api/v2/admin/referees`) und die automatische Lizenznummern-Vorbelegung (`next_lizenznummer`) sind jetzt auf Vollzugriff (Admin + FD-RSK) beschränkt; das Frontend blendet den „Neuer Schiedsrichter"-Button entsprechend aus (Permission `referee_can_create`). Das **Anlegen eines Benutzerkontos für einen bestehenden Schiri** (`create_user`) bleibt bewusst auch dem LV-RSK erlaubt und hängt nun an der eigenen Permission `referee_can_create_user`.
+
 ### Verbessert
 
 - **SMTP-Ziel per ENV konfigurierbar (Staging-Mail-Catcher)**: Die produktive Mailer-Konfiguration nutzt jetzt `SMTP_ADDRESS`/`SMTP_PORT`, falls gesetzt, und schickt dann ohne Auth/TLS an dieses Ziel – damit kann die Staging-Umgebung (`saisonmanager.dev`) alle E-Mails in einen lokalen Catcher (Mailpit) statt an echte Empfänger leiten. Ohne `SMTP_ADDRESS` bleibt das Office-365-Setup unverändert. Zusätzlich anonymisiert der neue Rake-Task `staging:anonymize` einen Prod-Klon auf der Staging-DB (Namen, E-Mails, Geburtsdaten, Pass-/Sicherheitsnummern) und setzt Test-Logins; er läuft per Schutzprüfung ausschließlich gegen die Staging-DB.
