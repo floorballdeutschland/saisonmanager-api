@@ -469,6 +469,68 @@ class LeagueTest < ActiveSupport::TestCase
                  'Vorsaison-Lizenz nicht in other_licenses'
   end
 
+  test 'licenses: other_licenses liefert GF-Kontext für die Erst-/Zweitlizenz-Zuordnung' do
+    create(:setting, current_season_id: '18')
+    target_league = create(:league, :current_season, field_size: 'GF')
+    other_league  = create(:league, :current_season, field_size: 'GF', female: false)
+    target_team   = create(:team, league: target_league)
+    other_team    = create(:team, league: other_league)
+
+    player = create(:player, with_licenses: [
+      { team: target_team, status: License::APPROVED, season_id: '18' },
+      { team: other_team,  status: License::APPROVED, season_id: '18', gf_role: 'erstlizenz' }
+    ])
+
+    result = target_league.licenses
+    target_team_block = result.find { |t| t[:id] == target_team.id }
+    player_entry = target_team_block[:players].find { |p| p[:id] == player.id }
+    entry = player_entry[:other_licenses].first
+
+    refute_nil entry
+    # Diese Felder steuern, ob die Genehmigungskarte die Erst-/Zweitlizenz-
+    # Auswahl anzeigt – ohne sie verschwindet das Feature stillschweigend.
+    assert_equal true, entry[:gf_adult]
+    assert_equal false, entry[:female]
+    assert_equal 'erstlizenz', entry[:gf_role]
+    assert_equal player.licenses.find { |l| l['team_id'] == other_team.id }['id'], entry[:license_id]
+    assert_equal License::APPROVED, entry[:last_status_id]
+  end
+
+  test 'licenses: other_licenses löst auch Teams derselben Liga auf' do
+    create(:setting, current_season_id: '18')
+    league = create(:league, :current_season)
+    team_a = create(:team, league: league)
+    team_b = create(:team, league: league)
+
+    player = create(:player, with_licenses: [
+      { team: team_a, status: License::APPROVED, season_id: '18' },
+      { team: team_b, status: License::APPROVED, season_id: '18' }
+    ])
+
+    result = league.licenses
+    team_a_block = result.find { |t| t[:id] == team_a.id }
+    player_entry = team_a_block[:players].find { |p| p[:id] == player.id }
+
+    assert_equal 1, player_entry[:other_licenses].size,
+                 'Lizenz beim anderen Team derselben Liga muss auflösbar sein'
+    assert_equal team_b.name, player_entry[:other_licenses].first[:team_name]
+  end
+
+  # ---------------------------------------------------------------------------
+  # gf_adult? — Erst-/Zweitlizenz gibt es nur im GF-Erwachsenenbereich
+  # ---------------------------------------------------------------------------
+
+  test 'gf_adult?: GF-Erwachsenenligen ja, Jugend und Kleinfeld nein' do
+    go = create(:game_operation)
+    assert create(:league, game_operation: go, field_size: 'GF').gf_adult?, 'GF ohne age_group = Erwachsene'
+    assert create(:league, game_operation: go, field_size: 'GF', age_group: 'Herren').gf_adult?
+    assert create(:league, game_operation: go, field_size: 'GF', age_group: 'Ü30').gf_adult?,
+           'Ü30 ist Erwachsenenbereich (Regex-Anker \\AU\\d greift nicht auf Ü)'
+    refute create(:league, game_operation: go, field_size: 'GF', age_group: 'U17 Junioren').gf_adult?
+    refute create(:league, game_operation: go, field_size: 'GF', age_group: 'U19 Juniorinnen').gf_adult?
+    refute create(:league, game_operation: go, field_size: 'KF').gf_adult?, 'Kleinfeld nie'
+  end
+
   # ---------------------------------------------------------------------------
   # Scorer aus dem Spielbericht-Snapshot (R2)
   # ---------------------------------------------------------------------------

@@ -400,12 +400,14 @@ class Player < ApplicationRecord
   end
 
   # Anzahl bereits erfolgter Tausch-Operationen in diesem Wettbewerb. Jeder
-  # Tausch schreibt auf beide beteiligten Lizenzen einen 'swap'-Eintrag, daher
-  # zählt das Maximum über die Lizenzen die Tausch-Vorgänge.
+  # Tausch schreibt genau einen 'swap'-Eintrag auf die gewechselte Lizenz
+  # (die Partner-Lizenz wird mit 'auto' gegengebucht); die Summe über alle
+  # Wettbewerbs-Lizenzen zählt daher die Tausch-Vorgänge unabhängig davon,
+  # von welcher Lizenz aus getauscht wurde.
   def gf_role_swap_count(license, league)
-    ([license] + gf_competition_licenses(license, league)).map do |l|
+    ([license] + gf_competition_licenses(license, league)).sum do |l|
       Array(l['gf_role_history']).count { |h| h['source'] == 'swap' }
-    end.max || 0
+    end
   end
 
   # Setzt die Zuordnung einer Lizenz und bucht die Partner-Lizenzen des
