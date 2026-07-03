@@ -371,6 +371,79 @@ class Player < ApplicationRecord
     }.compact
   end
 
+  # --- Erst-/Zweitlizenz im Großfeld-Erwachsenenbereich ----------------------
+  #
+  # Die Zuordnung ist eine manuelle Entscheidung (Wahl des Spielers, dokumentiert
+  # durch SBK/Admin) und wird pro Wettbewerb (GF Erwachsene, getrennt nach
+  # männlich/weiblich = League#female) im Lizenz-Eintrag gespeichert:
+  #   gf_role:         'erstlizenz' | 'zweitlizenz' | nicht gesetzt
+  #   gf_role_history: [{ gf_role, source, created_by, created_at }]
+  # source: 'assign' = Erstzuordnung, 'swap' = Tausch (max. 1x/Saison),
+  #         'auto' = automatische Gegenbuchung der Partner-Lizenz.
+
+  GF_ROLES = %w[erstlizenz zweitlizenz].freeze
+  GF_ROLE_SWAP_LIMIT = 1
+
+  # Aktive Lizenz-Einträge desselben GF-Erwachsenen-Wettbewerbs (gleiche Saison,
+  # gleiches female-Flag) – ohne den übergebenen Eintrag selbst.
+  def gf_competition_licenses(license, league)
+    (licenses || []).select do |l|
+      next false if l['id'] == license['id']
+      next false unless l['season_id'].to_s == license['season_id'].to_s
+
+      last_status = l['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
+      next false unless License::ACTIVE_STATUSES.include?(last_status)
+
+      other_league = Team.find_by(id: l['team_id'])&.league
+      other_league.present? && other_league.gf_adult? && other_league.female == league.female
+    end
+  end
+
+  # Anzahl bereits erfolgter Tausch-Operationen in diesem Wettbewerb. Jeder
+  # Tausch schreibt genau einen 'swap'-Eintrag auf die gewechselte Lizenz
+  # (die Partner-Lizenz wird mit 'auto' gegengebucht); die Summe über alle
+  # Wettbewerbs-Lizenzen zählt daher die Tausch-Vorgänge unabhängig davon,
+  # von welcher Lizenz aus getauscht wurde.
+  def gf_role_swap_count(license, league)
+    ([license] + gf_competition_licenses(license, league)).sum do |l|
+      Array(l['gf_role_history']).count { |h| h['source'] == 'swap' }
+    end
+  end
+
+  # Setzt die Zuordnung einer Lizenz und bucht die Partner-Lizenzen des
+  # Wettbewerbs gegen (mutiert nur, speichert nicht):
+  # - Wird eine Lizenz Erstlizenz, werden alle anderen zur Zweitlizenz.
+  # - Wird eine Lizenz Zweitlizenz und die einzige Partner-Lizenz ist noch
+  #   nicht markiert, wird diese zur Erstlizenz.
+  # role = nil entfernt die Zuordnung ohne Gegenbuchung.
+  def apply_gf_role(license, role, league, user_id, source:)
+    assign_gf_role(license, role, user_id, source)
+    return if role.blank?
+
+    partners = gf_competition_licenses(license, league)
+    if role == 'erstlizenz'
+      partners.each do |l|
+        assign_gf_role(l, 'zweitlizenz', user_id, 'auto') unless l['gf_role'] == 'zweitlizenz'
+      end
+    elsif partners.size == 1 && partners.first['gf_role'] != 'erstlizenz'
+      assign_gf_role(partners.first, 'erstlizenz', user_id, 'auto')
+    end
+  end
+
+  def assign_gf_role(license, role, user_id, source)
+    if role.blank?
+      license.delete('gf_role')
+    else
+      license['gf_role'] = role
+    end
+    (license['gf_role_history'] ||= []) << {
+      'gf_role' => role,
+      'source' => source,
+      'created_by' => user_id,
+      'created_at' => Time.current.iso8601
+    }
+  end
+
   def deactivate!(user_id, reason: nil)
     clubs.map! do |c|
       if c['valid_until'].nil? || c['valid_until'].to_time > Time.now
@@ -662,7 +735,8 @@ class Player < ApplicationRecord
       license.merge last_status
     end
 
-    # Höchste Liga (kleinstes 'sorting') = Erstlizenz; bei gleicher Ligastufe
+    # Höchste Liga (kleinstes 'sorting') = Hauptlizenz (Anzeige-Konzept, nicht
+    # die manuelle Erst-/Zweitlizenz-Zuordnung gf_role); bei gleicher Ligastufe
     # die zeitlich früher genehmigte Lizenz.
     sorted = licenses.sort_by { |x| [x['sorting'], License.approval_time(x)] }
     sorted.first

@@ -24,7 +24,7 @@ FactoryBot.define do
         season_id = spec.fetch(:season_id, spec[:team]&.league&.season_id)
         league_class_id = spec.fetch(:league_class_id, spec[:team]&.league&.league_class_id)
 
-        {
+        license = {
           'id' => spec.fetch(:id, Digest::UUID.uuid_v4),
           'team_id' => team_id,
           'season_id' => season_id,
@@ -41,6 +41,9 @@ FactoryBot.define do
             }
           ]
         }
+        # Manuelle Erst-/Zweitlizenz-Zuordnung (GF-Erwachsenenbereich)
+        license['gf_role'] = spec[:gf_role] if spec[:gf_role]
+        license
       end
     end
   end

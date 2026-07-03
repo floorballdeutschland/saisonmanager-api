@@ -119,6 +119,7 @@ Rails.application.routes.draw do
       patch 'admin/vm/players/:id/email', to: 'players#update_email'
 
       post 'admin/players/:id/handle_license_request', to: 'players#handle_license_request'
+      post 'admin/players/:id/set_gf_license_role', to: 'players#set_gf_license_role'
 
       get    'admin/players/:player_id/license_documents',     to: 'admin/license_documents#index'
       post   'admin/players/:player_id/license_documents',     to: 'admin/license_documents#create'

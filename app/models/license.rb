@@ -30,10 +30,10 @@ class License < ApplicationRecord
   }.freeze
 
   # Frühester Genehmigungszeitpunkt (APPROVED) eines Lizenz-Hashes als Tiebreaker
-  # für die Erst-/Zweitlizenz-Bestimmung bei gleicher Ligastufe: die zeitlich
-  # früher genehmigte Lizenz ist die Erstlizenz. ISO8601-Strings sind lexikografisch
-  # = chronologisch vergleichbar. Ohne Genehmigung wird ein ferner Zeitpunkt
-  # zurückgegeben, damit solche Lizenzen nicht als Erstlizenz gewinnen.
+  # für die Haupt-/Zusatzlizenz-Bestimmung (license_type) bei gleicher Ligastufe:
+  # die zeitlich früher genehmigte Lizenz gewinnt. ISO8601-Strings sind
+  # lexikografisch = chronologisch vergleichbar. Ohne Genehmigung wird ein ferner
+  # Zeitpunkt zurückgegeben, damit solche Lizenzen nicht als Hauptlizenz gewinnen.
   def self.approval_time(license)
     approvals = Array(license && license['history'])
                 .select { |h| h['license_status_id'].to_i == APPROVED }
