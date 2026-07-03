@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.42.0] - 2026-07-03
+
 ### Neu
 
 - **Erst-/Zweitlizenz im GF-Erwachsenenbereich: manuelle Zuordnung statt Heuristik**: Ob eine Großfeld-Lizenz Erst- oder Zweitlizenz ist, hat weder mit der Ligahöhe noch mit dem Beantragungszeitpunkt zu tun – es ist die Wahl des Spielers und betrifft die Spielberechtigung (mit der Zweitlizenz ist z. B. der FD-Pokal ausgeschlossen). Die bisherige automatische Ableitung (`is_zweitlizenz`: höchste GF-Liga = Erstlizenz) ist daher entfernt. Stattdessen wird die Zuordnung jetzt manuell dokumentiert und im Lizenz-Eintrag gespeichert (`gf_role`: `erstlizenz`/`zweitlizenz`, mit Historie `gf_role_history`): Die SBK kann sie **bei der Lizenz-Genehmigung** setzen (wird die neue Lizenz Erstlizenz, wird die bestehende GF-Lizenz im selben Wettbewerb automatisch zur Zweitlizenz) und später **im Spielerprofil** ändern (neuer Endpoint `POST admin/players/:id/set_gf_license_role`). Die Zuordnung gilt pro Wettbewerb (GF Erwachsene, getrennt männlich/weiblich – Damen können so je Wettbewerb eine Erstlizenz haben) und nur für GF-Erwachsenen-Ligen (nicht U-Altersklassen). Ein **Tausch** ist einmal pro Saison erlaubt (Umgehungsschutz der Zweitlizenz-Beschränkungen); weitere Täusche kann nur ein Admin durchführen. Alle Wechsel sind mit Nutzer und Zeitpunkt nachvollziehbar. Bestehende Lizenzen starten ohne Zuordnung („nicht zugeordnet") – eine Alt-Befüllung entfällt bewusst, da die Lizenzen zum 15.07.2026 verfallen. Die Anzeige „Hauptlizenz/Zusatzlizenz" (`license_type`) bleibt davon unberührt und wird weiterhin automatisch bestimmt.
