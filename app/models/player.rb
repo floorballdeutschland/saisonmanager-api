@@ -735,7 +735,8 @@ class Player < ApplicationRecord
       license.merge last_status
     end
 
-    # Höchste Liga (kleinstes 'sorting') = Erstlizenz; bei gleicher Ligastufe
+    # Höchste Liga (kleinstes 'sorting') = Hauptlizenz (Anzeige-Konzept, nicht
+    # die manuelle Erst-/Zweitlizenz-Zuordnung gf_role); bei gleicher Ligastufe
     # die zeitlich früher genehmigte Lizenz.
     sorted = licenses.sort_by { |x| [x['sorting'], License.approval_time(x)] }
     sorted.first

@@ -15,8 +15,8 @@ class League < ApplicationRecord
   default_scope { order(:season_id, :game_operation_id).order('order_key::int') }
   scope :current_season, -> { where(season_id: Setting.current_season_id) }
 
-  # Kanonische Ligaklassen-Codes mit Rang für die Erst-/Zweitlizenz-Bestimmung
-  # (kleinerer Rang = höhere Liga). Seit der Normalisierungs-Migration (#297)
+  # Kanonische Ligaklassen-Codes mit Rang für die Haupt-/Zusatzlizenz-
+  # Bestimmung (license_type; kleinerer Rang = höhere Liga). Seit der Normalisierungs-Migration (#297)
   # enthält der Datenbestand (leagues.league_class_id und die Kopien in
   # players.licenses) nur noch diese Codes bzw. leer (''/NULL) für Wettbewerbe
   # ohne Ligaklasse (DM, Pokal, Trophy). Vorwärts sichern das die Inclusion-
