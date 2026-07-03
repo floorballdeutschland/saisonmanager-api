@@ -161,6 +161,8 @@ class User < ApplicationRecord
     result[:player_deactivate] = ph[:admin].present? || ph[:sbk].present? || ph[:vm].present? || ph[:tm].present?
     result[:update_player_email] = ph[:vm].present? || ph[:tm].present?
     result[:player_set_license_to_transfer] = ph[:admin].present? || special_user
+    # Erst-/Zweitlizenz-Zuordnung (GF-Erwachsenenbereich) setzen/tauschen
+    result[:player_set_gf_role] = ph[:admin].present? || ph[:sbk].present?
     result[:player_merge] = ph[:admin].present? || ph[:sbk].present?
     result[:player_suspend] = ph[:admin].present? || ph[:sbk].present?
     result[:referee_merge] = ph[:admin].present? || ph[:rsk].present?

@@ -189,6 +189,20 @@ class PlayersController < ApplicationController
                       status: :unprocessable_entity
       end
 
+      # Optionale Erst-/Zweitlizenz-Zuordnung bei der Genehmigung (nur GF-Erwachsenenbereich).
+      gf_role = params[:gf_role].presence
+      if gf_role
+        unless Player::GF_ROLES.include?(gf_role)
+          return render json: { message: 'Ungültige Erst-/Zweitlizenz-Zuordnung.' }, status: :unprocessable_entity
+        end
+
+        gf_league = license && Team.find_by(id: license['team_id'])&.league
+        unless gf_league&.gf_adult?
+          return render json: { message: 'Eine Erst-/Zweitlizenz-Zuordnung gibt es nur im Großfeld-Erwachsenenbereich.' },
+                        status: :unprocessable_entity
+        end
+      end
+
       approved_team_id = nil
 
       player.licenses.map! do |lic|
@@ -215,6 +229,13 @@ class PlayersController < ApplicationController
         lic
       end
 
+      # Zuordnung erst nach erfolgtem Statuswechsel setzen – inkl. automatischer
+      # Gegenbuchung der bestehenden GF-Lizenz im selben Wettbewerb.
+      if approved_team_id && gf_role
+        approved_license = player.licenses.find { |l| l['id'] == params[:license_id] }
+        player.apply_gf_role(approved_license, gf_role, gf_league, current_user.id, source: 'assign')
+      end
+
       if player.save
         if approved_team_id && player.email.present?
           team = Team.find_by(id: approved_team_id)
@@ -226,6 +247,59 @@ class PlayersController < ApplicationController
       end
     else
       render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+  end
+
+  # Setzt oder tauscht die Erst-/Zweitlizenz-Zuordnung einer Lizenz im
+  # GF-Erwachsenenbereich (gf_role: 'erstlizenz' | 'zweitlizenz' | leer =
+  # Zuordnung entfernen). Ein Tausch einer bestehenden Zuordnung ist pro Saison
+  # und Wettbewerb nur einmal erlaubt – Admins dürfen das Limit überstimmen.
+  def set_gf_license_role
+    player = Player.find(params[:id])
+    ph = current_user.permission_hash
+
+    license = (player.licenses || []).find { |l| l['id'] == params[:license_id] }
+    return render json: { message: 'Lizenz nicht gefunden.' }, status: :not_found unless license
+
+    unless ph[:admin].present? || sbk_can_access_license?(ph, license)
+      return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+
+    role = params[:gf_role].presence
+    if role && !Player::GF_ROLES.include?(role)
+      return render json: { message: 'Ungültige Erst-/Zweitlizenz-Zuordnung.' }, status: :unprocessable_entity
+    end
+
+    league = Team.find_by(id: license['team_id'])&.league
+    unless league&.gf_adult?
+      return render json: { message: 'Eine Erst-/Zweitlizenz-Zuordnung gibt es nur im Großfeld-Erwachsenenbereich.' },
+                    status: :unprocessable_entity
+    end
+
+    last_status = license['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
+    unless License::ACTIVE_STATUSES.include?(last_status)
+      return render json: { message: 'Nur aktive Lizenzen (erteilt oder beantragt) können zugeordnet werden.' },
+                    status: :unprocessable_entity
+    end
+
+    if license['gf_role'].to_s == role.to_s
+      return render json: { message: 'Die Zuordnung ist unverändert.' }, status: :unprocessable_entity
+    end
+
+    # Wechsel einer bestehenden Zuordnung = Tausch → Saisonlimit prüfen.
+    is_swap = role.present? && license['gf_role'].present?
+    if is_swap && ph[:admin].blank? && player.gf_role_swap_count(license, league) >= Player::GF_ROLE_SWAP_LIMIT
+      return render json: { message: 'Die Erst-/Zweitlizenz-Zuordnung wurde in dieser Saison bereits getauscht. ' \
+                                     'Ein weiterer Tausch ist nur durch die FD-Administration möglich.' },
+                    status: :unprocessable_entity
+    end
+
+    player.apply_gf_role(license, role, league, current_user.id, source: is_swap ? 'swap' : 'assign')
+
+    if player.save
+      render json: { success: true }
+    else
+      render json: { message: player.errors }, status: :unprocessable_entity
     end
   end
 

@@ -158,6 +158,142 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_equal License::WITHDRAWN, last_status
   end
 
+  # --- Erst-/Zweitlizenz-Zuordnung im GF-Erwachsenenbereich ------------------
+
+  # Zwei GF-Erwachsenen-Ligen im selben Wettbewerb (male) + je ein Team.
+  def create_gf_teams
+    gf_league_a = create(:league, :current_season, game_operation: @game_operation,
+                                                   field_size: 'GF', league_class_id: '1fbl')
+    gf_league_b = create(:league, :current_season, game_operation: @game_operation,
+                                                   field_size: 'GF', league_class_id: 'rl')
+    [create(:team, league: gf_league_a, club: @club), create(:team, league: gf_league_b, club: @club)]
+  end
+
+  def license_for(player, team)
+    player.reload.licenses.find { |l| l['team_id'].to_i == team.id }
+  end
+
+  test 'Genehmigung mit gf_role=erstlizenz stuft die bestehende Erstlizenz zur Zweitlizenz herab' do
+    team_a, team_b = create_gf_teams
+    requested_id = Digest::UUID.uuid_v4
+    player = create(:player, with_licenses: [
+      { team: team_a, status: License::APPROVED, gf_role: 'erstlizenz' },
+      { team: team_b, status: License::REQUESTED, id: requested_id }
+    ])
+
+    login_as(create(:user, :admin))
+    post "/api/v2/admin/players/#{player.id}/handle_license_request",
+         params: { license_id: requested_id, license_status_id: License::APPROVED, gf_role: 'erstlizenz' },
+         as: :json
+
+    assert_response :ok
+    lic_a = license_for(player, team_a)
+    lic_b = license_for(player, team_b)
+    assert_equal 'zweitlizenz', lic_a['gf_role'], 'alte Erstlizenz muss automatisch Zweitlizenz werden'
+    assert_equal 'erstlizenz',  lic_b['gf_role']
+    assert_equal 'auto',   lic_a['gf_role_history'].last['source']
+    assert_equal 'assign', lic_b['gf_role_history'].last['source']
+    assert_equal License::APPROVED, lic_b['history'].max_by { |h| h['created_at'] }['license_status_id'].to_i
+  end
+
+  test 'Genehmigung mit gf_role für Kleinfeld-Lizenz ergibt 422 und ändert nichts' do
+    kf_league = create(:league, :current_season, game_operation: @game_operation, field_size: 'KF')
+    kf_team = create(:team, league: kf_league, club: @club)
+    requested_id = Digest::UUID.uuid_v4
+    player = create(:player, with_licenses: [{ team: kf_team, status: License::REQUESTED, id: requested_id }])
+
+    login_as(create(:user, :admin))
+    post "/api/v2/admin/players/#{player.id}/handle_license_request",
+         params: { license_id: requested_id, license_status_id: License::APPROVED, gf_role: 'zweitlizenz' },
+         as: :json
+
+    assert_response :unprocessable_entity
+    lic = license_for(player, kf_team)
+    assert_nil lic['gf_role']
+    assert_equal License::REQUESTED, lic['history'].max_by { |h| h['created_at'] }['license_status_id'].to_i,
+                 'Lizenz darf bei ungültiger Zuordnung nicht genehmigt werden'
+  end
+
+  test 'set_gf_license_role: Erstzuordnung bucht die Partner-Lizenz automatisch gegen' do
+    team_a, team_b = create_gf_teams
+    player = create(:player, with_licenses: [
+      { team: team_a, status: License::APPROVED },
+      { team: team_b, status: License::APPROVED }
+    ])
+    lic_b_id = license_for(player, team_b)['id']
+
+    login_as(create(:user, :admin))
+    post "/api/v2/admin/players/#{player.id}/set_gf_license_role",
+         params: { license_id: lic_b_id, gf_role: 'zweitlizenz' },
+         as: :json
+
+    assert_response :ok
+    assert_equal 'erstlizenz',  license_for(player, team_a)['gf_role'], 'einzige Partner-Lizenz wird Erstlizenz'
+    assert_equal 'zweitlizenz', license_for(player, team_b)['gf_role']
+  end
+
+  test 'set_gf_license_role: Tausch nur einmal pro Saison für SBK, Admin darf überstimmen' do
+    team_a, team_b = create_gf_teams
+    player = create(:player, with_licenses: [
+      { team: team_a, status: License::APPROVED, gf_role: 'erstlizenz' },
+      { team: team_b, status: License::APPROVED, gf_role: 'zweitlizenz' }
+    ])
+    lic_b_id = license_for(player, team_b)['id']
+    lic_a_id = license_for(player, team_a)['id']
+
+    login_as(create(:user, :sbk_global))
+
+    # 1. Tausch: Zweitlizenz wird Erstlizenz → Partner wird Zweitlizenz.
+    post "/api/v2/admin/players/#{player.id}/set_gf_license_role",
+         params: { license_id: lic_b_id, gf_role: 'erstlizenz' }, as: :json
+    assert_response :ok
+    assert_equal 'zweitlizenz', license_for(player, team_a)['gf_role']
+    assert_equal 'erstlizenz',  license_for(player, team_b)['gf_role']
+
+    # 2. Tausch in derselben Saison → für SBK gesperrt.
+    post "/api/v2/admin/players/#{player.id}/set_gf_license_role",
+         params: { license_id: lic_a_id, gf_role: 'erstlizenz' }, as: :json
+    assert_response :unprocessable_entity
+    assert_match(/bereits getauscht/, JSON.parse(response.body)['message'])
+
+    # Admin darf das Limit überstimmen.
+    login_as(create(:user, :admin))
+    post "/api/v2/admin/players/#{player.id}/set_gf_license_role",
+         params: { license_id: lic_a_id, gf_role: 'erstlizenz' }, as: :json
+    assert_response :ok
+    assert_equal 'erstlizenz',  license_for(player, team_a)['gf_role']
+    assert_equal 'zweitlizenz', license_for(player, team_b)['gf_role']
+  end
+
+  test 'set_gf_license_role: leere gf_role entfernt die Zuordnung ohne Gegenbuchung' do
+    team_a, team_b = create_gf_teams
+    player = create(:player, with_licenses: [
+      { team: team_a, status: License::APPROVED, gf_role: 'erstlizenz' },
+      { team: team_b, status: License::APPROVED, gf_role: 'zweitlizenz' }
+    ])
+    lic_b_id = license_for(player, team_b)['id']
+
+    login_as(create(:user, :admin))
+    post "/api/v2/admin/players/#{player.id}/set_gf_license_role",
+         params: { license_id: lic_b_id, gf_role: '' }, as: :json
+
+    assert_response :ok
+    assert_nil license_for(player, team_b)['gf_role']
+    assert_equal 'erstlizenz', license_for(player, team_a)['gf_role'], 'Partner-Lizenz bleibt unverändert'
+  end
+
+  test 'set_gf_license_role: VM hat keine Berechtigung' do
+    team_a, = create_gf_teams
+    player = create(:player, with_licenses: [{ team: team_a, status: License::APPROVED }])
+    lic_id = license_for(player, team_a)['id']
+
+    login_as(create(:user, :vm, club_id: @club.id))
+    post "/api/v2/admin/players/#{player.id}/set_gf_license_role",
+         params: { license_id: lic_id, gf_role: 'erstlizenz' }, as: :json
+
+    assert_response :forbidden
+  end
+
   # 7. Rücknahme einer bereits genehmigten Lizenz → 422
   test 'Rücknahme einer genehmigten Lizenz ergibt 422' do
     license_id = Digest::UUID.uuid_v4

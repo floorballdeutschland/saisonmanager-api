@@ -32,6 +32,13 @@ class League < ApplicationRecord
     CLASS_RANKS.fetch(league_class_id.to_s.strip, UNKNOWN_CLASS_RANK)
   end
 
+  # Großfeld-Erwachsenenbereich: nur hier gibt es die Erst-/Zweitlizenz-
+  # Zuordnung. Jugendligen tragen ein age_group wie "U17 Junioren" –
+  # Erwachsenen-Ligen haben age_group leer oder z. B. "Herren"/"Damen"/"Ü30".
+  def gf_adult?
+    field_size == 'GF' && !age_group.to_s.match?(/\AU\d/)
+  end
+
   def games(game_day_number = nil)
     gd = game_day_number.present? ? game_days.where(number: game_day_number) : game_days
     # :club zusätzlich, weil schedule_item game_day.hosting_club (= club.name)
@@ -756,6 +763,9 @@ class League < ApplicationRecord
       end
     end
     foreign_teams = Team.includes(:league).where(id: foreign_team_ids.to_a).index_by(&:id)
+    # Auch Teams dieser Liga auflösen – ein Spieler kann eine weitere Lizenz bei
+    # einem anderen Team derselben Liga haben.
+    teams_by_id = league_teams.index_by(&:id).merge(foreign_teams)
 
     active_statuses = [License::APPROVED, License::REQUESTED].to_set
 
@@ -807,10 +817,21 @@ class League < ApplicationRecord
           current_status = l['history'].max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
           next unless active_statuses.include?(current_status)
 
-          other_team = foreign_teams[t_id]
+          other_team = teams_by_id[t_id]
           next unless other_team
 
-          { team_name: other_team.name, league_name: other_team.league&.short_name }
+          other_league = other_team.league
+          {
+            license_id: l['id'],
+            team_name: other_team.name,
+            league_name: other_league&.short_name,
+            last_status_id: current_status,
+            # Kontext für die Erst-/Zweitlizenz-Zuordnung bei der Genehmigung:
+            # liegt die andere Lizenz im selben GF-Erwachsenen-Wettbewerb?
+            gf_adult: other_league&.gf_adult? || false,
+            female: other_league&.female,
+            gf_role: l['gf_role']
+          }
         end
 
         team_item[:players] << player_item
