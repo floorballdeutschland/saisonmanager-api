@@ -108,13 +108,17 @@ class Team < ApplicationRecord
       player_item = player.some_hash(player_hash_type, full_license_hash, only_current_licenses)
 
       license = player.licenses.select { |l| l['team_id'].to_i == id }.first
+      # license bzw. dessen history kann fehlen/leer sein (z. B. Preround-Kopie
+      # ohne "beantragt"-Eintrag oder kein Team-Match) – dann bleiben die
+      # Status-Felder nil statt die Team-Lizenzliste abzubrechen.
+      history = license&.dig('history') || []
 
-      last_status = license['history'].sort_by { |h| h['created_at'] }.last
-      last_status_id = last_status['license_status_id']
-      last_status_code = License::NAMES[last_status_id.to_i]
+      last_status = history.sort_by { |h| h['created_at'] }.last
+      last_status_id = last_status&.dig('license_status_id')
+      last_status_code = last_status_id && License::NAMES[last_status_id.to_i]
 
       approved_at = (last_status['created_at'].to_datetime if last_status_id == 1)
-      requested_at = license['history'].select do |lh|
+      requested_at = history.select do |lh|
                        lh['license_status_id'] == 2
                      end.last&.dig('created_at')&.to_datetime
 
