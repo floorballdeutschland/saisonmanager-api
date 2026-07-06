@@ -3,19 +3,25 @@ class GameRefereeReportsController < ApplicationController
   before_action :set_game
 
   # GET /api/v2/games/:game_id/referee_report
+  #
+  # Nicht berechtigte Nutzer bekommen bewusst kein 403, sondern { uploaded: false }:
+  # Die Spieldetailseite ruft diesen Endpoint für jeden eingeloggten Nutzer auf, und
+  # ein 403 triggert im Frontend den globalen ErrorInterceptor (Popup + Redirect auf
+  # "/"). Die Blob-URL selbst bleibt geschützt (nur Admin/SBK-im-Scope/angesetzte
+  # Schiris sehen `uploaded: true` + `url`).
   def show
     report = @game.game_referee_report
-    unless report&.file&.attached?
-      return render json: { uploaded: false }
+    if report&.file&.attached? && (admin_or_sbk_for_game? || authorized_referee?)
+      render json: {
+        uploaded: true,
+        filename: report.file.filename.to_s,
+        content_type: report.file.content_type,
+        uploaded_at: report.created_at,
+        url: rails_blob_url(report.file, disposition: 'inline')
+      }
+    else
+      render json: { uploaded: false }
     end
-
-    render json: {
-      uploaded: true,
-      filename: report.file.filename.to_s,
-      content_type: report.file.content_type,
-      uploaded_at: report.created_at,
-      url: rails_blob_url(report.file, disposition: 'inline')
-    }
   end
 
   # POST /api/v2/games/:game_id/referee_report
@@ -42,6 +48,15 @@ class GameRefereeReportsController < ApplicationController
     @game = Game.find(params[:game_id])
   rescue ActiveRecord::RecordNotFound
     render json: { error: 'Spiel nicht gefunden' }, status: :not_found
+  end
+
+  def admin_or_sbk_for_game?
+    ph = current_user.permission_hash
+    return true if ph[:admin].present?
+    return false if ph[:sbk].blank?
+    return true if ph[:sbk].include?(0)
+
+    ph[:sbk].include?(@game.league.game_operation_id)
   end
 
   def authorized_referee?

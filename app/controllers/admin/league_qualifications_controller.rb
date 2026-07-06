@@ -1,7 +1,7 @@
 module Admin
   class LeagueQualificationsController < ApplicationController
     before_action :set_league
-    before_action :authorize_admin!
+    before_action :authorize_league_update!
 
     # POST /api/v2/admin/leagues/:league_id/qualifications
     def create
@@ -58,9 +58,11 @@ module Admin
       }
     end
 
-    def authorize_admin!
-      ph = current_user.permission_hash
-      return if ph[:admin].present? && (ph[:admin].include?(0) || ph[:admin].include?(@league.game_operation_id))
+    # Qualifikationsregeln sind Teil der Liga-Bearbeitung und daher denselben
+    # Nutzern erlaubt wie das Bearbeiten der Liga selbst (admin || SBK im
+    # Spielbetrieb der Liga) – nicht nur Admin.
+    def authorize_league_update!
+      return if @league.user_permissions(current_user).include?(:update_league)
 
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end

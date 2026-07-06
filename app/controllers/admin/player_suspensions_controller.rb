@@ -42,9 +42,26 @@ module Admin
 
     def check_permission
       ph = current_user.permission_hash
-      return if ph[:admin].present? || ph[:sbk].present?
+      return if ph[:admin].present?
+      return if sbk_for_player?(ph)
 
       render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+
+    # Ein nicht-global gescopter SBK darf nur Spieler sperren, deren Verein(e) in
+    # seinem Spielbetrieb liegen (analog Admin::LicenseDocumentsController).
+    def sbk_for_player?(perm_hash)
+      return false if perm_hash[:sbk].blank?
+      return true if perm_hash[:sbk].include?(0)
+
+      (perm_hash[:sbk] & player_game_operation_ids).present?
+    end
+
+    def player_game_operation_ids
+      club_ids = (@player.clubs || []).filter_map { |c| c['club_id'].to_i }
+      Club.where(id: club_ids).flat_map do |club|
+        club.game_operations_hash.map { |go| go['game_operation_id'].to_i }
+      end.uniq
     end
 
     def parse_date(value)
