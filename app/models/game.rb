@@ -560,8 +560,7 @@ class Game < ApplicationRecord
     return result if forfait?
 
     # Einseitige Aufstellung (nur Heim/Gast erfasst) nicht als nil behandeln.
-    home_numbers = home_team_player_number || {}
-    guest_numbers = guest_team_player_number || {}
+    home_numbers, guest_numbers = home_team_player_number || {}, guest_team_player_number || {} # rubocop:disable Style/ParallelAssignment
     return result if home_numbers.blank? && guest_numbers.blank?
 
     names = lineup_player_names
