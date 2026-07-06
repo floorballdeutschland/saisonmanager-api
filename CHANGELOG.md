@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Zentrales Fehler-Handling: nicht behandelte Fehler und veraltete IDs liefern jetzt sauberes JSON statt „Server-Fehler"**: Bislang hatte der `ApplicationController` nur einen einzigen `rescue_from` (für ungültige CSRF-Token). Mit `config.consider_all_requests_local = false` in Produktion führte das dazu, dass ein `ActiveRecord::RecordNotFound` (z. B. bei veralteten, gelöschten oder fremden Datensatz-IDs) die statische HTML-Seite `public/404.html` auslieferte – die das Angular-Frontend nicht als JSON parsen kann – und dass **jede** sonstige Ausnahme (`NoMethodError`, `ArgumentError`, `TypeError`, `PG::Error`, versehentliche `save!`/`update!`/`create!`-Fehler) als generischer 500 „Server-Fehler" im Frontend landete. Der Controller behandelt Fehler jetzt zentral und antwortet konsistent im App-Format `{ success: false, message: ... }`: `ActiveRecord::RecordNotFound` → **404** („Nicht gefunden."), `ActionController::ParameterMissing`/`UnpermittedParameters` → **422**, `ActiveRecord::RecordInvalid` → **422** (inkl. `errors`), und ein Last-Resort-Handler für alle übrigen `StandardError` → **500** („Server-Fehler."), der den Fehler samt Backtrace protokolliert und an Sentry meldet. In Entwicklung/Test wird der generische Fehler weiterhin durchgereicht (Stacktraces bleiben sichtbar, Test-Suiten werden nicht maskiert). Das behebt einen Großteil der von Nutzern gemeldeten „Server-Fehler"-Popups.
+
 ## [1.42.0] - 2026-07-03
 
 ### Neu
