@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Lizenzstufen und Qualifikationstypen: Pflege jetzt Admin-only**: Beide Kataloge gelten bundesweit (Lizenzstufen steuern u. a. die Gültigkeits-Ableitung beim Kurs-Import, Qualifikationstypen die Coach-Auswahl bei der Ansetzung – für alle Verbände gleich). Anlegen/Ändern/Löschen war bisher auch jedem LV-RSK erlaubt, was einem einzelnen Landesverband ungewollten Einfluss auf bundesweite Standards gab. Lesezugriff (für RSK/SBK/Ansetzer, die die Listen z. B. im Schiri-Bearbeiten-Formular brauchen) bleibt unverändert.
+
 ## [1.42.0] - 2026-07-03
 
 ### Neu

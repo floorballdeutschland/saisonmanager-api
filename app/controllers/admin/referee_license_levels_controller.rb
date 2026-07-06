@@ -61,9 +61,11 @@ module Admin
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
 
+    # Lizenzstufen sind ein bundesweiter Katalog (steuert u. a. die
+    # Gültigkeits-Ableitung beim Kurs-Import für alle Verbände) – Pflege daher
+    # bewusst Admin-only, nicht per LV-RSK.
     def authorize_write!
-      ph = current_user.permission_hash
-      return if ph[:admin].present? || ph[:rsk].present?
+      return if current_user.permission_hash[:admin].present?
 
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end

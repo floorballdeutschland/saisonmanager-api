@@ -1,7 +1,7 @@
 module Admin
   class RefereeQualificationTypesController < ApplicationController
     before_action :authorize_referee_read!, only: %i[index]
-    before_action :authorize_rsk!, only: %i[create update destroy]
+    before_action :authorize_admin!, only: %i[create update destroy]
     before_action :set_type, only: %i[update destroy]
 
     # GET /api/v2/admin/referee_qualification_types
@@ -62,9 +62,11 @@ module Admin
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
 
-    def authorize_rsk!
-      ph = current_user.permission_hash
-      return if ph[:admin].present? || ph[:rsk].present?
+    # Qualifikationstypen sind ein bundesweiter Katalog (steuert u. a. die
+    # Coach-Auswahl bei der Schiri-Ansetzung für alle Verbände) – Pflege daher
+    # bewusst Admin-only, nicht per LV-RSK.
+    def authorize_admin!
+      return if current_user.permission_hash[:admin].present?
 
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
