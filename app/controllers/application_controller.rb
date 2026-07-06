@@ -6,8 +6,35 @@ class ApplicationController < ActionController::Base
   before_action :set_paper_trail_whodunnit
   after_action :set_csrf_cookie
 
+  # rescue_from-Handler werden von Rails in umgekehrter Definitionsreihenfolge
+  # geprüft: Der zuletzt passende (= zuerst definierte) fängt zuletzt. Deshalb
+  # steht der generische StandardError-Fallback OBEN und die spezifischen
+  # Handler darunter, damit sie zuerst greifen.
+  rescue_from StandardError do |e|
+    # In dev/test durchreichen, damit Stacktraces sichtbar bleiben und
+    # Test-Suiten nicht maskiert werden.
+    raise if Rails.env.development? || Rails.env.test?
+
+    Rails.logger.error("#{e.class}: #{e.message}")
+    Rails.logger.error(e.backtrace.join("\n")) if e.backtrace
+    Sentry.capture_exception(e) if defined?(Sentry)
+    render json: { success: false, message: 'Server-Fehler.' }, status: :internal_server_error
+  end
+
   rescue_from ActionController::InvalidAuthenticityToken do
     render json: { success: false, message: 'CSRF token ungültig.' }, status: :forbidden
+  end
+
+  rescue_from ActiveRecord::RecordNotFound do
+    render json: { success: false, message: 'Nicht gefunden.' }, status: :not_found
+  end
+
+  rescue_from ActionController::ParameterMissing, ActionController::UnpermittedParameters do |e|
+    render json: { success: false, message: e.message }, status: :unprocessable_entity
+  end
+
+  rescue_from ActiveRecord::RecordInvalid do |e|
+    render json: { success: false, message: e.message, errors: e.record.errors }, status: :unprocessable_entity
   end
 
   private
