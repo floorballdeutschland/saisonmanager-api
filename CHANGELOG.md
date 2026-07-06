@@ -9,6 +9,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Ein einzelner unvollständiger Datensatz legte nicht mehr ganze geteilte Ansichten lahm (500 für alle Nutzer)**: Mehrere öffentliche bzw. für alle sichtbare Ansichten warfen einen Server-Fehler, sobald ein einzelner Datensatz unvollständig war – z. B. ein **Playoff-Platzhalterspiel ohne Heim-/Gastteam**, ein **Spiel ohne gepflegte Halle oder Startzeit**, eine **einseitig erfasste Aufstellung** (nur Heim oder nur Gast), eine **Lizenz ohne Historie bzw. ohne Antrags-/Genehmigungseintrag** oder eine **unbekannte Nation-ID**. Da diese Ansichten über die gesamte Liga bzw. das gesamte Spiel iterieren, riss ein einziger solcher Datensatz die komplette Ansicht für alle Nutzer ab. Betroffen und jetzt abgesichert (nur defensive nil-/Typ-Prüfungen, keine Änderung der Ausgabe bei vollständigen Daten):
+  - **Tabelle** (`/leagues/:id/table`, gruppierte Tabelle): Platzhalterspiele ohne Teams werden bei der Ergebnisauswertung übersprungen statt `nil.id` aufzurufen.
+  - **Spielplan** (`schedule`, `game_day_schedule`): Sortierung ist nun robust gegen fehlende Datums-/Startzeit-Werte (kein `ArgumentError` mehr beim Vergleich `nil`/String).
+  - **Scorer-Auswertung / Ticker / Spielansicht**: einseitige Aufstellungen (`players` `nil`/`{}`/nur Heim oder nur Gast), Platzhalterspiele ohne Teams, Ereignisse ohne Zeit/Periode sowie fehlende `last_item`-Ergebnisse führen nicht mehr zum Absturz; Ergebnisberechnung sortiert Ereignisse nun korrekt nach `row` (JSONB-String-Key statt Symbol) und vergleicht Perioden typsicher.
+  - **Lizenzlisten** (Liga- und Team-Lizenzen): Lizenzen ohne Historie oder ohne Antrags-/Genehmigungseintrag sowie gelöschte/fehlende History-Ersteller (`User.find` → `find_by`) brechen die Liste nicht mehr ab.
+  - **iCal-Export** (`.ics`): Spiele ohne hinterlegte Halle bzw. ohne gültiges Start-/Enddatum brechen den Kalender-Export nicht mehr ab.
+  - **Nation-Anzeige**: eine nicht im Katalog hinterlegte `nation_id` liefert `nil` statt eines Server-Fehlers.
+
 ## [1.42.0] - 2026-07-03
 
 ### Neu

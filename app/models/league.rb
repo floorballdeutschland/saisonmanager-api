@@ -290,13 +290,13 @@ class League < ApplicationRecord
 
   def schedule
     games.map(&:schedule_item).sort_by do |game|
-      [game[:game_day].to_i, game[:date], game[:time], game[:game_number]]
+      [game[:game_day].to_i, game[:date].to_s, game[:time].to_s, game[:game_number]]
     end
   end
 
   def game_day_schedule(game_day_number)
     games(game_day_number).map(&:schedule_item).sort_by do |game|
-      [game[:game_day].to_i, game[:date], game[:time], game[:game_number]]
+      [game[:game_day].to_i, game[:date].to_s, game[:time].to_s, game[:game_number]]
     end
   end
 
@@ -590,6 +590,8 @@ class League < ApplicationRecord
 
     g.each do |game|
       [game.home_team, game.guest_team].each do |team|
+        next unless team
+
         results[team.id] ||= empty_table_item(team)
       end
 
@@ -814,7 +816,7 @@ class League < ApplicationRecord
           lic_season = l['season_id'] || l.dig('league', 'season_id')
           next unless lic_season.nil? || lic_season.to_s == season_id.to_s
 
-          current_status = l['history'].max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
+          current_status = l['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
           next unless active_statuses.include?(current_status)
 
           other_team = teams_by_id[t_id]

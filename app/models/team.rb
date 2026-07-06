@@ -116,7 +116,7 @@ class Team < ApplicationRecord
       approved_at = (last_status['created_at'].to_datetime if last_status_id == 1)
       requested_at = license['history'].select do |lh|
                        lh['license_status_id'] == 2
-                     end.last['created_at'].to_datetime
+                     end.last&.dig('created_at')&.to_datetime
 
       player_item[:team_license] = {
         license:,
