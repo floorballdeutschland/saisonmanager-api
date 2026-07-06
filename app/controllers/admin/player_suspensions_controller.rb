@@ -50,11 +50,11 @@ module Admin
 
     # Ein nicht-global gescopter SBK darf nur Spieler sperren, deren Verein(e) in
     # seinem Spielbetrieb liegen (analog Admin::LicenseDocumentsController).
-    def sbk_for_player?(ph)
-      return false if ph[:sbk].blank?
-      return true if ph[:sbk].include?(0)
+    def sbk_for_player?(perm_hash)
+      return false if perm_hash[:sbk].blank?
+      return true if perm_hash[:sbk].include?(0)
 
-      (ph[:sbk] & player_game_operation_ids).present?
+      (perm_hash[:sbk] & player_game_operation_ids).present?
     end
 
     def player_game_operation_ids
