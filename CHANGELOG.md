@@ -9,6 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Sicherheit: Passwort-Reset ohne Token konnte fremde Konten übernehmen**: Der öffentliche Endpoint `reset_password_token` suchte den Nutzer per `find_by(password_reset_token: params[:reset_token])`. Fehlte der Token, matchte `find_by(password_reset_token: nil)` den ersten Account ohne Token (i. d. R. der Admin), sodass ein unauthentifizierter Request ohne Token dessen Passwort setzen konnte; ein abgelaufener Token führte zudem zu `nil.update` (500). Leere Tokens und ein fehlender Treffer werden jetzt vorab als „Ungültiger oder abgelaufener Link" (404) abgewiesen.
+- **Sicherheit: `GET /users` gab Passwort-Hashes aller Konten preis**: Der Legacy-Endpoint war nur durch `authenticate_user` geschützt und serialisierte `User.all` ungefiltert – jeder eingeloggte Nutzer (auch ein Teammanager) erhielt `password_digest`, `password_reset_token`, E-Mail und Berechtigungen aller Konten. Der Endpoint ist jetzt auf Admin/SBK beschränkt und liefert `password_digest`/`password_reset_token` nicht mehr aus.
+- **Sicherheit: RSK-Rollenausweitung auf VM-/TM-Konten unterbunden**: Ein reiner Landesverbands-RSK konnte über die Benutzerverwaltung E-Mail-Adresse eines VM-/TM-Kontos ändern und einen Passwort-Reset auslösen und so das Konto samt VM-/TM-Rechten übernehmen. `require_admin_for_elevated_target!` behandelt VM/TM jetzt auch als geschützte Zielrollen, wenn der verwaltende Nutzer nur RSK-Rechte (ohne Admin/SBK/VM-Scope) hat; der Schutz greift zusätzlich beim Löschen. Team-Zuweisungen durch Nicht-VM-Manager außerhalb des eigenen Scopes werden abgelehnt. Admin, SBK und VM verwalten VM/TM weiterhin regulär im Rahmen ihres Scopes.
+
 ## [1.42.0] - 2026-07-03
 
 ### Neu

@@ -2,7 +2,7 @@ module Admin
   class UsersController < ApplicationController
     before_action :authorize_user_management!
     before_action :set_managed_user, only: %i[show update destroy trigger_password_reset add_role remove_role]
-    before_action :require_admin_for_elevated_target!, only: %i[update trigger_password_reset]
+    before_action :require_admin_for_elevated_target!, only: %i[update destroy trigger_password_reset]
 
     # GET /api/v2/admin/users
     def index
@@ -27,8 +27,12 @@ module Admin
         if ph[:vm].present? && !ph[:admin].present? && !ph[:sbk].present?
           allowed_team_ids = Team.current_season.where(club_id: ph[:vm]).pluck(:id)
           updates[:teams] = Array(params[:teams]).map(&:to_i).select { |t| allowed_team_ids.include?(t) }
-        else
+        elsif ph[:admin].present? || ph[:sbk].present?
           updates[:teams] = params[:teams]
+        else
+          # Manager ohne VM-/SBK-/Admin-Scope (z. B. reiner RSK) darf keine Teams
+          # zuweisen – sonst ließen sich beliebige Teams an ein Konto hängen.
+          return render json: { error: 'Nicht berechtigt, Teams zuzuweisen' }, status: :forbidden
         end
       end
 
@@ -278,10 +282,18 @@ module Admin
     end
 
     def require_admin_for_elevated_target!
-      return if current_user.permission_hash[:admin].present?
+      ph = current_user.permission_hash
+      return if ph[:admin].present?
 
       target_roles = @managed_user.permissions.map { |p| p['user_group_id'].to_i }
-      if (target_roles & [1, 2, 3, 7]).any?
+      elevated = [1, 2, 3, 7]
+      # Reine RSK-Manager (ohne Admin/SBK/VM-Scope) dürfen keine VM-/TM-Konten
+      # verwalten: sonst ließe sich per E-Mail-Änderung + Passwort-Reset ein
+      # VM-/TM-Konto übernehmen (Rechteausweitung quer zur Rolle). Admin/SBK/VM
+      # verwalten VM/TM weiterhin regulär im Rahmen ihres Scopes.
+      elevated += [4, 5] if ph[:sbk].blank? && ph[:vm].blank?
+
+      if (target_roles & elevated).any?
         render json: { error: 'Nicht berechtigt' }, status: :forbidden
       end
     end
