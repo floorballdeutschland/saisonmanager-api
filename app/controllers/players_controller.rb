@@ -63,6 +63,9 @@ class PlayersController < ApplicationController
   def admin_player
     if current_user
       result = Player.find(params[:id])
+      unless can_manage_player?(result)
+        return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+      end
 
       render json: result.full_hash(true, true, true)
     else
@@ -480,9 +483,18 @@ class PlayersController < ApplicationController
       #   else : unpermitted!
       if create_modus && Club.find(params[:club_id])&.user_permissions(current_user)&.include?(:create_player) # create
 
-        first_name = "%#{params['first_name'].downcase.strip}%"
-        last_name = "%#{params['last_name'].downcase.strip}%"
-        birthdate = params['birthdate'].to_date
+        if params['first_name'].blank? || params['last_name'].blank? || params['birthdate'].blank?
+          return render json: { message: 'Vorname, Nachname und Geburtsdatum sind erforderlich.' }, status: :unprocessable_entity
+        end
+
+        begin
+          birthdate = params['birthdate'].to_date
+        rescue ArgumentError, TypeError
+          return render json: { message: 'Ungültiges Geburtsdatum.' }, status: :unprocessable_entity
+        end
+
+        first_name = "%#{params['first_name'].to_s.downcase.strip}%"
+        last_name = "%#{params['last_name'].to_s.downcase.strip}%"
         existing_player_id = Player.where('first_name ILIKE ? AND last_name ILIKE ? AND birthdate = ?', first_name,
                                           last_name, birthdate).limit(1).pluck(:id).first
 
@@ -507,6 +519,14 @@ class PlayersController < ApplicationController
       elsif !create_modus && Club.find(params[:club_id])&.user_permissions(current_user)&.include?(:update_player) # update
         # update
         player = Player.find(params[:id])
+        # IDOR-Schutz: Die :update_player-Berechtigung wird gegen params[:club_id]
+        # geprüft – der Spieler muss auch tatsächlich diesem Verein angehören,
+        # sonst ließe sich über einen beliebigen eigenen Verein jeder Spieler
+        # überschreiben.
+        unless (player.clubs || []).any? { |c| c['club_id'].to_i == params[:club_id].to_i }
+          return render json: { message: 'Spieler gehört nicht zu diesem Verein.' }, status: :forbidden
+        end
+
         player.updated_by = current_user.id
         if player.update(player_params)
           render json: player
