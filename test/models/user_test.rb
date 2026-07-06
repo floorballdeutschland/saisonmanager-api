@@ -110,7 +110,6 @@ class UserTest < ActiveSupport::TestCase
 
     assert items[:menu_item_league_admin]
     assert items[:menu_item_referee_admin]
-    assert items[:menu_item_online_test_admin]
     assert items[:menu_item_state_association_admin]
     assert items[:menu_item_api_key_admin]
     assert items[:menu_item_season_admin]
@@ -130,12 +129,11 @@ class UserTest < ActiveSupport::TestCase
     assert_not items[:login_blocked]
   end
 
-  test 'permissions_items: RSK bekommt Schiri-Admin und Online-Test-Admin, aber KEINE Ansetzungen' do
+  test 'permissions_items: RSK bekommt Schiri-Admin, aber KEINE Ansetzungen' do
     u = build_user(permissions: [{ 'user_group_id' => 3, 'game_operation_id' => 1 }])
     items = u.permissions_items
 
     assert items[:menu_item_referee_admin]
-    assert items[:menu_item_online_test_admin]
     # Ansetzungen sind eine eigene Rolle (Ansetzer) – die reine RSK sieht sie nicht.
     assert_not items[:menu_item_referee_assignments]
     assert_not items[:menu_item_league_admin]
@@ -143,7 +141,7 @@ class UserTest < ActiveSupport::TestCase
     assert_not items[:menu_item_state_association_sbk]
   end
 
-  test 'permissions_items: Ansetzer bekommt Ansetzungen und Schiri-Admin, aber KEINE Online-Tests' do
+  test 'permissions_items: Ansetzer bekommt Ansetzungen und Schiri-Admin' do
     sa = create(:state_association, referee_assignment_enabled: true)
     go = create(:game_operation, state_association: sa)
     u = build_user(permissions: [{ 'user_group_id' => 7, 'game_operation_id' => go.id }])
@@ -155,8 +153,6 @@ class UserTest < ActiveSupport::TestCase
     assert items[:menu_item_referee_admin]
     assert items[:referee_edit_restricted]
     assert_not items[:referee_can_create]
-    # Online-Tests bleiben der RSK vorbehalten.
-    assert_not items[:menu_item_online_test_admin]
     assert_not items[:menu_item_league_admin]
   end
 
@@ -186,7 +182,7 @@ class UserTest < ActiveSupport::TestCase
     assert_equal [2, 5], u.permission_hash[:ansetzer]
   end
 
-  test 'permissions_items: kombinierte RSK+Ansetzer-Rolle bekommt alle drei Funktionen' do
+  test 'permissions_items: kombinierte RSK+Ansetzer-Rolle bekommt beide Funktionen' do
     sa = create(:state_association, referee_assignment_enabled: true)
     go = create(:game_operation, state_association: sa)
     u = build_user(permissions: [
@@ -197,7 +193,6 @@ class UserTest < ActiveSupport::TestCase
 
     assert items[:menu_item_referee_admin]
     assert items[:menu_item_referee_assignments]
-    assert items[:menu_item_online_test_admin]
   end
 
   test 'permissions_items: regionaler SBK bekommt den eigenen LV-Verwaltungseintrag' do

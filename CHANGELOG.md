@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Entfernt
+
+- **Online-Prüfungen (Onlineprüfungen im Saisonmanager) entfernt**: Die Funktion, mit der Schiedsrichter Prüfungen direkt im Saisonmanager ablegen (RSK legt Test + Fragenkatalog an, weist Schiris zu, Schiri absolviert die Prüfung mit Countdown), wird nicht mehr benötigt und ist entfernt (Models, Controller, Routen, DB-Tabellen `online_tests`/`online_test_questions`/`online_test_assignments`/`online_test_attempts`). Die Menüpunkte waren bereits seit Kurzem nach Einführung ausgeblendet, es gab keine produktiven Testdaten.
+- **„Meine Historie" → „Prüfungsergebnisse" zeigt jetzt die eigenen Kurs-Import-Ergebnisse**: Der Tab bezog seine Daten bisher aus den (jetzt entfernten) Online-Prüfungen. `GET referee/history/tests` liefert stattdessen die eigenen `RefereeCourseResult`-Einträge aus dem CSV-Kurs-Import (Lizenzstufe, Gültigkeit, Kursstichtag, Status inkl. Ablehnungsgrund, Kursdaten Kurs 1/2 inkl. Testversion/Punkte/Ausbilder) – unabhängig vom Review-Status, damit auch offene/abgelehnte Fälle sichtbar sind.
 ### Behoben
 
 - **Ein einzelner unvollständiger Datensatz legte nicht mehr ganze geteilte Ansichten lahm (500 für alle Nutzer)**: Mehrere öffentliche bzw. für alle sichtbare Ansichten warfen einen Server-Fehler, sobald ein einzelner Datensatz unvollständig war – z. B. ein **Playoff-Platzhalterspiel ohne Heim-/Gastteam**, ein **Spiel ohne gepflegte Halle oder Startzeit**, eine **einseitig erfasste Aufstellung** (nur Heim oder nur Gast), eine **Lizenz ohne Historie bzw. ohne Antrags-/Genehmigungseintrag** oder eine **unbekannte Nation-ID**. Da diese Ansichten über die gesamte Liga bzw. das gesamte Spiel iterieren, riss ein einziger solcher Datensatz die komplette Ansicht für alle Nutzer ab. Betroffen und jetzt abgesichert (nur defensive nil-/Typ-Prüfungen, keine Änderung der Ausgabe bei vollständigen Daten):

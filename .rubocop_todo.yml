@@ -148,7 +148,6 @@ Layout/LeadingCommentSpace:
 Layout/MultilineMethodCallIndentation:
   Exclude:
     - 'app/controllers/admin/licenses_controller.rb'
-    - 'app/controllers/admin/online_tests_controller.rb'
     - 'app/controllers/admin/referee_assignments_controller.rb'
     - 'app/controllers/players_controller.rb'
     - 'app/models/club.rb'
@@ -678,7 +677,6 @@ Style/RedundantReturn:
   Exclude:
     - 'app/controllers/concerns/secretary_token_authenticatable.rb'
     - 'app/controllers/referee_game_day_confirmations_controller.rb'
-    - 'app/controllers/referee_online_tests_controller.rb'
     - 'app/controllers/referee_profile_controller.rb'
     - 'app/models/league.rb'
 
@@ -750,7 +748,6 @@ Style/StringLiterals:
 # SupportedStyles: percent, brackets
 Style/SymbolArray:
   Exclude:
-    - 'app/controllers/admin/online_test_questions_controller.rb'
     - 'app/controllers/admin/referee_assignments_controller.rb'
     - 'app/controllers/license_fees_controller.rb'
     - 'app/controllers/tests_controller.rb'
@@ -763,9 +760,7 @@ Style/SymbolArray:
 # AllowedMethods: define_method
 Style/SymbolProc:
   Exclude:
-    - 'app/controllers/admin/online_tests_controller.rb'
     - 'app/controllers/admin/referees_controller.rb'
-    - 'app/controllers/referee_online_tests_controller.rb'
     - 'app/models/club.rb'
     - 'app/models/league.rb'
     - 'app/models/team.rb'
