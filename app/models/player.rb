@@ -58,7 +58,7 @@ class Player < ApplicationRecord
       if license_with_titles
         p[:licenses].map! do |lic|
           last_status_id = nil
-          lic['history'].map! do |lh|
+          lic['history']&.map! do |lh|
             lh[:created_by_name] = User.find_by(id: lh['created_by'])&.full_with_username
             lh[:license_status] = License::NAMES[lh['license_status_id'].to_i]
             last_status_id = lh['license_status_id'].to_i
@@ -103,7 +103,7 @@ class Player < ApplicationRecord
     setting = Setting.first
     nations = setting['nations']
 
-    nations[nation_id.to_s]['name']
+    nations&.dig(nation_id.to_s, 'name')
   end
 
   def created_by_string
@@ -221,11 +221,14 @@ class Player < ApplicationRecord
   end
 
   def valid_clubs(deadline)
-    clubs.reject { |l| valid_time?(l['valid_until'], deadline) } if clubs
+    return [] unless clubs
+
+    clubs.reject { |l| valid_time?(l['valid_until'], deadline) }
   end
 
   def home_club(deadline)
-    Club.find_by_id home_club_hash(deadline).last['club_id']
+    last_home_club = home_club_hash(deadline)&.last
+    Club.find_by_id last_home_club['club_id'] if last_home_club
   end
 
   def home_club_hash(deadline)
@@ -261,9 +264,10 @@ class Player < ApplicationRecord
   end
 
   def current_license_status(license)
-    status = license['history'].sort_by { |h| h['created_at'] }.last
+    status = license['history']&.sort_by { |h| h['created_at'] }&.last
+    return unless status
 
-    status[:created_by_name] = User.find(status['created_by'])&.full_with_username
+    status[:created_by_name] = User.find_by(id: status['created_by'])&.full_with_username
     status[:license_status] = License::NAMES[status['license_status_id'].to_i]
 
     status
@@ -731,8 +735,8 @@ class Player < ApplicationRecord
 
   def select_license(licenses)
     licenses.map! do |license|
-      last_status = license['history'].last
-      license.merge last_status
+      last_status = license['history']&.last
+      last_status ? license.merge(last_status) : license
     end
 
     # Höchste Liga (kleinstes 'sorting') = Hauptlizenz (Anzeige-Konzept, nicht
