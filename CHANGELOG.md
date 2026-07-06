@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **SBK bekam 403 beim Anlegen/Ändern/Löschen von Auf-/Abstiegsregeln (Qualifikationsregeln)**: Der Regel-Block in der Liga-Bearbeitung ist für dieselben Nutzer sichtbar, die die Liga selbst bearbeiten dürfen (Admin und SBK im Spielbetrieb der Liga), das Backend ließ aber bislang nur Admin durch. `Admin::LeagueQualificationsController` prüft jetzt dieselbe Berechtigung wie das Bearbeiten der Liga selbst (`League#user_permissions` → `:update_league`).
+
 ## [1.42.0] - 2026-07-03
 
 ### Neu
