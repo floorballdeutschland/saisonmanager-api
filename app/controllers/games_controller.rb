@@ -745,12 +745,21 @@ class GamesController < ApplicationController
     # check if allowed
 
     ph = current_user&.permission_hash || {}
-    allowed = if ph[:admin].present? || ph[:sbk].present?
+    home = game.home_team
+    guest = game.guest_team
+    allowed = if ph[:admin].present?
                 true
+              elsif ph[:sbk].present?
+                # Auf den Spielbetrieb des Spiels scopen – ein LV-SBK darf nicht
+                # jedes Spiel bundesweit bearbeiten.
+                ph[:sbk].include?(0) || ph[:sbk].include?(game.league.game_operation_id)
               elsif ph[:vm].present?
-                ph[:vm].intersection([game.home_team.club_id, game.guest_team.club_id]) ||
-                  ph[:vm].intersection([game.home_team.syndicate_clubs,
-                                        game.guest_team.syndicate_clubs].flatten.compact).present?
+                # .present? auch auf den ersten Treffer – ein leeres
+                # Array ist truthy und ließ sonst jeden VM jedes Spiel bearbeiten.
+                # home/guest können bei Platzhalter-Spielen nil sein.
+                ph[:vm].intersection([home&.club_id, guest&.club_id].compact).present? ||
+                  ph[:vm].intersection([home&.syndicate_clubs,
+                                        guest&.syndicate_clubs].flatten.compact).present?
               elsif ph[:tm].present?
                 ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
               else
