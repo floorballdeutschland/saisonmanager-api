@@ -9,6 +9,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Entfernt
+
+- **Online-Prüfungen (Onlineprüfungen im Saisonmanager) entfernt**: Die Funktion, mit der Schiedsrichter Prüfungen direkt im Saisonmanager ablegen (RSK legt Test + Fragenkatalog an, weist Schiris zu, Schiri absolviert die Prüfung mit Countdown), wird nicht mehr benötigt und ist entfernt (Models, Controller, Routen, DB-Tabellen `online_tests`/`online_test_questions`/`online_test_assignments`/`online_test_attempts`). Die Menüpunkte waren bereits seit Kurzem nach Einführung ausgeblendet, es gab keine produktiven Testdaten.
+- **„Meine Historie" → „Prüfungsergebnisse" zeigt jetzt die eigenen Kurs-Import-Ergebnisse**: Der Tab bezog seine Daten bisher aus den (jetzt entfernten) Online-Prüfungen. `GET referee/history/tests` liefert stattdessen die eigenen `RefereeCourseResult`-Einträge aus dem CSV-Kurs-Import (Lizenzstufe, Gültigkeit, Kursstichtag, Status inkl. Ablehnungsgrund, Kursdaten Kurs 1/2 inkl. Testversion/Punkte/Ausbilder) – unabhängig vom Review-Status, damit auch offene/abgelehnte Fälle sichtbar sind.
+
 ## [1.42.0] - 2026-07-03
 
 ### Neu

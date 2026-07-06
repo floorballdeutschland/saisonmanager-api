@@ -29,14 +29,14 @@ class RefereeHistoryController < ApplicationController
   end
 
   # GET /api/v2/referee/history/tests
-  # Returns all completed online test attempts for the referee.
+  # Liefert die eigenen Kurs-Ergebnisse aus dem CSV-Kurs-Import (unabhängig
+  # vom Review-Status, damit der Schiri auch offene/abgelehnte Fälle sieht).
   def tests
-    attempts = OnlineTestAttempt
-               .where(referee: @referee, status: 'completed')
-               .includes(:online_test)
-               .order(completed_at: :desc)
+    results = RefereeCourseResult
+              .where(referee: @referee)
+              .order(kursstichtag: :desc, created_at: :desc)
 
-    render json: attempts.map { |a| test_attempt_summary(a) }
+    render json: results.map { |r| course_result_summary(r) }
   end
 
   private
@@ -59,18 +59,16 @@ class RefereeHistoryController < ApplicationController
     }
   end
 
-  def test_attempt_summary(attempt)
-    test = attempt.online_test
+  def course_result_summary(result)
     {
-      id: attempt.id,
-      online_test_id: test.id,
-      test_name: test.name,
-      lizenzstufe: test.lizenzstufe,
-      attempt_number: attempt.attempt_number,
-      completed_at: attempt.completed_at&.iso8601,
-      error_points: attempt.error_points,
-      passed: attempt.passed?,
-      pass_threshold_points: test.pass_threshold_points
+      id: result.id,
+      lizenzstufe: result.lizenzstufe,
+      gueltigkeit: result.gueltigkeit&.strftime('%d.%m.%Y'),
+      kursstichtag: result.kursstichtag&.strftime('%d.%m.%Y'),
+      status: result.status,
+      applied_at: result.applied_at&.iso8601,
+      rejection_reason: result.rejection_reason,
+      course_data: result.course_data || {}
     }
   end
 end

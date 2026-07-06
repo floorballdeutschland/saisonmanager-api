@@ -198,11 +198,6 @@ Rails.application.routes.draw do
       get 'referees/search', to: 'referees#search'
       get 'referees/:id/games', to: 'referees#games'
 
-      get  'referee/online_tests',            to: 'referee_online_tests#index'
-      get  'referee/online_tests/:id',        to: 'referee_online_tests#show'
-      post 'referee/online_tests/:id/start',  to: 'referee_online_tests#start'
-      post 'referee/online_tests/:id/submit', to: 'referee_online_tests#submit'
-
       get  'referee/game_days',                        to: 'referee_game_day_confirmations#index'
       post 'referee/game_days/:game_day_id/confirm',   to: 'referee_game_day_confirmations#confirm'
 
@@ -312,14 +307,6 @@ Rails.application.routes.draw do
         resource :analytics, only: [:show]
         resources :arenas, only: %i[index create update destroy] do
           member { post :merge }
-        end
-        resources :online_tests do
-          member do
-            post :publish
-            get  :results
-          end
-          resources :questions, controller: 'online_test_questions', only: %i[create update destroy]
-          resources :assignments, controller: 'online_test_assignments', only: %i[index create destroy]
         end
         get  'settings/seasons',        to: 'settings#seasons'
         post 'settings/seasons',        to: 'settings#create_season'

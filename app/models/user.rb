@@ -107,7 +107,6 @@ class User < ApplicationRecord
       (ph[:ansetzer].present? && ph[:ansetzer].include?(0))
     result[:menu_item_referee_course_import] = has_full_referee_access
     result[:menu_item_referee_course_review] = has_full_referee_access || lv_rsk_review_enabled?(ph)
-    result[:menu_item_online_test_admin] = ph[:admin].present? || ph[:rsk].present?
     result[:menu_item_referee_vm] = ph[:vm].present?
     result[:menu_item_player_vm] = ph[:vm].present? || ph[:tm].present?
     # Portal „Meine Spieltage" für Gastmannschafts-Bestätigung (TM/VM).

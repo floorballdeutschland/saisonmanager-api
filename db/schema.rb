@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_07_02_120000) do
+ActiveRecord::Schema[7.1].define(version: 2026_07_06_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -380,59 +380,6 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_02_120000) do
     t.datetime "updated_at", null: false
     t.index ["created_at"], name: "index_merge_logs_on_created_at"
     t.index ["object_type"], name: "index_merge_logs_on_object_type"
-  end
-
-  create_table "online_test_assignments", force: :cascade do |t|
-    t.bigint "online_test_id", null: false
-    t.bigint "referee_id", null: false
-    t.bigint "assigned_by"
-    t.datetime "assigned_at", null: false
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["online_test_id", "referee_id"], name: "index_online_test_assignments_on_online_test_id_and_referee_id", unique: true
-    t.index ["online_test_id"], name: "index_online_test_assignments_on_online_test_id"
-    t.index ["referee_id"], name: "index_online_test_assignments_on_referee_id"
-  end
-
-  create_table "online_test_attempts", force: :cascade do |t|
-    t.bigint "online_test_id", null: false
-    t.bigint "referee_id", null: false
-    t.integer "attempt_number", null: false
-    t.string "status", default: "in_progress", null: false
-    t.jsonb "answers", default: [], null: false
-    t.integer "error_points"
-    t.datetime "started_at", null: false
-    t.datetime "completed_at"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["online_test_id", "referee_id", "attempt_number"], name: "idx_online_test_attempts_unique", unique: true
-    t.index ["online_test_id"], name: "index_online_test_attempts_on_online_test_id"
-    t.index ["referee_id"], name: "index_online_test_attempts_on_referee_id"
-  end
-
-  create_table "online_test_questions", force: :cascade do |t|
-    t.bigint "online_test_id", null: false
-    t.integer "position", default: 0, null: false
-    t.text "scenario", null: false
-    t.jsonb "rows", default: [], null: false
-    t.jsonb "solution", default: [], null: false
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["online_test_id", "position"], name: "index_online_test_questions_on_online_test_id_and_position"
-    t.index ["online_test_id"], name: "index_online_test_questions_on_online_test_id"
-  end
-
-  create_table "online_tests", force: :cascade do |t|
-    t.string "name", null: false
-    t.string "lizenzstufe"
-    t.integer "time_limit_minutes"
-    t.integer "max_attempts", default: 2, null: false
-    t.integer "pass_threshold_points"
-    t.datetime "deadline"
-    t.string "status", default: "draft", null: false
-    t.bigint "created_by"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
   end
 
   create_table "player_change_requests", force: :cascade do |t|
@@ -871,11 +818,6 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_02_120000) do
   add_foreign_key "leagues", "game_operations"
   add_foreign_key "license_documents", "players", name: "license_documents_player_id_fkey"
   add_foreign_key "license_documents", "users", column: "uploaded_by_id", name: "license_documents_uploaded_by_id_fkey"
-  add_foreign_key "online_test_assignments", "online_tests"
-  add_foreign_key "online_test_assignments", "referees"
-  add_foreign_key "online_test_attempts", "online_tests"
-  add_foreign_key "online_test_attempts", "referees"
-  add_foreign_key "online_test_questions", "online_tests"
   add_foreign_key "player_change_requests", "players"
   add_foreign_key "players", "players", column: "merged_into_id"
   add_foreign_key "referee_assignments", "games"
