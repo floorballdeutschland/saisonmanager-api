@@ -1,6 +1,7 @@
 class GameRefereeReportsController < ApplicationController
   before_action :authenticate_user
   before_action :set_game
+  before_action :authorize_report_access!, only: %i[show]
 
   # GET /api/v2/games/:game_id/referee_report
   def show
@@ -42,6 +43,25 @@ class GameRefereeReportsController < ApplicationController
     @game = Game.find(params[:game_id])
   rescue ActiveRecord::RecordNotFound
     render json: { error: 'Spiel nicht gefunden' }, status: :not_found
+  end
+
+  # Der Schiri-Bericht (Blob-URL) darf nur von Berechtigten abgerufen werden:
+  # Admin, SBK im Spielbetrieb des Spiels sowie die angesetzten Schiris. Zuvor
+  # genügte irgendein Login, um an jede Bericht-URL zu kommen.
+  def authorize_report_access!
+    return if admin_or_sbk_for_game?
+    return if authorized_referee?
+
+    render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+  end
+
+  def admin_or_sbk_for_game?
+    ph = current_user.permission_hash
+    return true if ph[:admin].present?
+    return false if ph[:sbk].blank?
+    return true if ph[:sbk].include?(0)
+
+    ph[:sbk].include?(@game.league.game_operation_id)
   end
 
   def authorized_referee?
