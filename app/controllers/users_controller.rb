@@ -17,8 +17,9 @@ class UsersController < ApplicationController
   def reset_password_token
     # Leere/fehlende Tokens würden per find_by(password_reset_token: nil) das erste
     # Konto ohne Token (meist Admin) treffen → Account-Übernahme. Daher zuerst
-    # Token normalisieren und fehlenden Treffer als ungültigen Link abweisen.
-    token = params[:reset_token].presence
+    # Token normalisieren (to_s, damit z. B. ein Array-Param nicht versehentlich
+    # zu einem NULL-Vergleich führt) und fehlenden Treffer als ungültigen Link abweisen.
+    token = params[:reset_token].to_s.presence
     user = token && User.find_by(password_reset_token: token)
 
     unless user
