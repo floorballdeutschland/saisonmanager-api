@@ -344,9 +344,7 @@ class Game < ApplicationRecord
                   end
     end
 
-    return if last_item.nil?
-
-    {
+    last_item && {
       home_goals: last_item['home_goals'],
       guest_goals: last_item['guest_goals'],
       home_goals_period:,
@@ -561,11 +559,8 @@ class Game < ApplicationRecord
 
     return result if forfait?
 
-    # Einseitige Aufstellungen (nur Heim oder nur Gast erfasst) dürfen die
-    # Scorer-Auswertung nicht abbrechen: fehlt eine Seite, wird sie als leere
-    # Zuordnung behandelt statt als nil (nil[…] => NoMethodError).
-    home_numbers = home_team_player_number || {}
-    guest_numbers = guest_team_player_number || {}
+    # Einseitige Aufstellung (nur Heim/Gast erfasst) nicht als nil behandeln.
+    home_numbers, guest_numbers = home_team_player_number || {}, guest_team_player_number || {}
     return result if home_numbers.blank? && guest_numbers.blank?
 
     names = lineup_player_names
@@ -1066,16 +1061,11 @@ class Game < ApplicationRecord
   def start_date
     return nil if game_day&.date.blank? || start_time.blank?
 
-    combined_datetime_string = "#{game_day.date} #{start_time}"
-    berlin_timezone = ActiveSupport::TimeZone['Europe/Berlin']
-
-    berlin_timezone.parse(combined_datetime_string)
+    ActiveSupport::TimeZone['Europe/Berlin'].parse("#{game_day.date} #{start_time}")
   end
 
   def end_date
-    return nil if start_date.nil?
-
-    start_date + league.effective_game_duration_minutes.minutes
+    start_date && start_date + league.effective_game_duration_minutes.minutes
   end
 
   # Belegungszeitfenster (Start...Ende) für die Hallen-/Konfliktprüfung.
@@ -1100,10 +1090,8 @@ class Game < ApplicationRecord
     require 'icalendar'
 
     event = ::Icalendar::Event.new
-    if start_date
-      event.dtstart = Icalendar::Values::DateTime.new start_date
-      event.dtend = Icalendar::Values::DateTime.new end_date
-    end
+    event.dtstart = Icalendar::Values::DateTime.new(start_date) if start_date
+    event.dtend = Icalendar::Values::DateTime.new(end_date) if start_date
     event.summary = game_title
 
     event.description = "Im Saisonmanager findest du das Spiel mit Liveergebnissen unter #{url}"
