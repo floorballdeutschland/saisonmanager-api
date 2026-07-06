@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Sicherheit: Vereinsmanager konnte Schiedsrichter bearbeiten, zusammenführen und Wallet-Ausweise ausstellen**: Für den VM war in `Admin::RefereesController` nur Lesezugriff (`vm/referees#index`) vorgesehen, das Backend erlaubte ihm über `can_access_referee?` aber zusätzlich `update` (inkl. E-Mail-Adresse und Gast-Flag), `merge` (irreversibles Zusammenführen zweier Schiris) und `wallet_pass` für Schiris seines Vereins. `can_access_referee?` schließt den VM-Zweig jetzt für diese drei Schreibaktionen aus (`include_vm: false`); Lesezugriff (`show`/`games`/`club_stats`) bleibt für VM unverändert.
+
 ## [1.42.0] - 2026-07-03
 
 ### Neu
