@@ -747,8 +747,12 @@ class GamesController < ApplicationController
     ph = current_user&.permission_hash || {}
     home = game.home_team
     guest = game.guest_team
-    allowed = if ph[:admin].present? || ph[:sbk].present?
+    allowed = if ph[:admin].present?
                 true
+              elsif ph[:sbk].present?
+                # Auf den Spielbetrieb des Spiels scopen – ein LV-SBK darf nicht
+                # jedes Spiel bundesweit bearbeiten.
+                ph[:sbk].include?(0) || ph[:sbk].include?(game.league.game_operation_id)
               elsif ph[:vm].present?
                 # .present? auch auf den ersten Treffer – ein leeres
                 # Array ist truthy und ließ sonst jeden VM jedes Spiel bearbeiten.

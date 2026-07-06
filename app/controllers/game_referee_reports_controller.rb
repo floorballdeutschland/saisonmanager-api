@@ -1,22 +1,27 @@
 class GameRefereeReportsController < ApplicationController
   before_action :authenticate_user
   before_action :set_game
-  before_action :authorize_report_access!, only: %i[show]
 
   # GET /api/v2/games/:game_id/referee_report
+  #
+  # Nicht berechtigte Nutzer bekommen bewusst kein 403, sondern { uploaded: false }:
+  # Die Spieldetailseite ruft diesen Endpoint für jeden eingeloggten Nutzer auf, und
+  # ein 403 triggert im Frontend den globalen ErrorInterceptor (Popup + Redirect auf
+  # "/"). Die Blob-URL selbst bleibt geschützt (nur Admin/SBK-im-Scope/angesetzte
+  # Schiris sehen `uploaded: true` + `url`).
   def show
     report = @game.game_referee_report
-    unless report&.file&.attached?
-      return render json: { uploaded: false }
+    if report&.file&.attached? && (admin_or_sbk_for_game? || authorized_referee?)
+      render json: {
+        uploaded: true,
+        filename: report.file.filename.to_s,
+        content_type: report.file.content_type,
+        uploaded_at: report.created_at,
+        url: rails_blob_url(report.file, disposition: 'inline')
+      }
+    else
+      render json: { uploaded: false }
     end
-
-    render json: {
-      uploaded: true,
-      filename: report.file.filename.to_s,
-      content_type: report.file.content_type,
-      uploaded_at: report.created_at,
-      url: rails_blob_url(report.file, disposition: 'inline')
-    }
   end
 
   # POST /api/v2/games/:game_id/referee_report
@@ -43,16 +48,6 @@ class GameRefereeReportsController < ApplicationController
     @game = Game.find(params[:game_id])
   rescue ActiveRecord::RecordNotFound
     render json: { error: 'Spiel nicht gefunden' }, status: :not_found
-  end
-
-  # Der Schiri-Bericht (Blob-URL) darf nur von Berechtigten abgerufen werden:
-  # Admin, SBK im Spielbetrieb des Spiels sowie die angesetzten Schiris. Zuvor
-  # genügte irgendein Login, um an jede Bericht-URL zu kommen.
-  def authorize_report_access!
-    return if admin_or_sbk_for_game?
-    return if authorized_referee?
-
-    render json: { message: 'Keine Berechtigung.' }, status: :forbidden
   end
 
   def admin_or_sbk_for_game?
