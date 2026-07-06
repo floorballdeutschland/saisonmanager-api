@@ -82,7 +82,7 @@ module Admin
 
     # PUT /api/v2/admin/referees/:id
     def update
-      return forbidden_response unless can_access_referee?(@referee)
+      return forbidden_response unless can_access_referee?(@referee, include_vm: false)
 
       @referee.assign_attributes(safe_referee_params)
       license_fields_changed = (@referee.changed & %w[lizenznummer gueltigkeit lizenzstufe]).any?
@@ -110,11 +110,11 @@ module Admin
 
     # POST /api/v2/admin/referees/:id/merge
     def merge
-      return forbidden_response unless can_access_referee?(@referee)
+      return forbidden_response unless can_access_referee?(@referee, include_vm: false)
 
       secondary = Referee.find_by(id: params[:secondary_id])
       return render json: { message: 'Secondary-Schiedsrichter nicht gefunden.' }, status: :not_found unless secondary
-      return forbidden_response unless can_access_referee?(secondary)
+      return forbidden_response unless can_access_referee?(secondary, include_vm: false)
 
       secondary.merge_into!(@referee, current_user.id)
       render json: { message: 'Schiedsrichter erfolgreich zusammengeführt.', master_id: @referee.id }
@@ -124,7 +124,7 @@ module Admin
 
     # POST /api/v2/admin/referees/:id/wallet_pass
     def wallet_pass
-      return forbidden_response unless can_access_referee?(@referee)
+      return forbidden_response unless can_access_referee?(@referee, include_vm: false)
 
       if @referee.guest?
         render json: { error: 'Gast-Schiedsrichter erhalten keinen Wallet-Ausweis' }, status: :unprocessable_entity
@@ -407,7 +407,10 @@ module Admin
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
 
-    def can_access_referee?(referee)
+    # include_vm: false schließt den VM-Zweig aus – VM darf die Schiris seines
+    # Vereins nur lesen (show/games/club_stats), nicht bearbeiten/mergen/einen
+    # Wallet-Pass ausstellen (update/merge/wallet_pass übergeben false).
+    def can_access_referee?(referee, include_vm: true)
       ph = current_user.permission_hash
       return true if ph[:admin].present?
       return true if ph[:rsk].present? && ph[:rsk].include?(0)
@@ -416,7 +419,7 @@ module Admin
       if ph[:rsk].present? || ph[:ansetzer].present?
         go_ids = referee_scope_go_ids(ph)
         lv_club_ids(go_ids).include?(referee.club_id) || go_ids.include?(referee.game_operation_id)
-      elsif ph[:vm].present?
+      elsif include_vm && ph[:vm].present?
         ph[:vm].include?(referee.club_id)
       else
         false
