@@ -67,6 +67,10 @@ module Admin
       tr = find_transfer_request
       return unless tr
 
+      unless transfer_visible?(tr)
+        return render json: { error: 'Nicht berechtigt' }, status: :forbidden
+      end
+
       render json: tr.as_json
     end
 
@@ -483,6 +487,25 @@ module Admin
       return if ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
 
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
+    end
+
+    # Einzelabruf spiegelt exakt die Sichtbarkeit aus #index: Admin sieht alles,
+    # SBK die Anträge der Vereine im eigenen Spielbetrieb, VM nur Anträge des
+    # eigenen (abgebenden oder aufnehmenden) Vereins.
+    def transfer_visible?(tr)
+      ph = current_user.permission_hash
+      return true if ph[:admin].present?
+
+      if ph[:sbk].present?
+        return true if ph[:sbk].include?(0)
+        return true if derive_club_ids_for_go(ph[:sbk]).include?(tr.former_club_id)
+      end
+
+      if ph[:vm].present?
+        return true if ph[:vm].include?(tr.requesting_club_id) || ph[:vm].include?(tr.former_club_id)
+      end
+
+      false
     end
 
     def find_transfer_request
