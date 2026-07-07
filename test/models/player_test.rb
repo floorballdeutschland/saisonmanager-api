@@ -497,6 +497,78 @@ class PlayerTest < ActiveSupport::TestCase
                  'player_id im Spiel soll auf Master umgeschrieben sein'
   end
 
+  test 'merge_into! schreibt awards und Legacy-starting_players-Array um' do
+    create(:setting, current_season_id: '18')
+    user      = create(:user)
+    master    = create(:player)
+    secondary = create(:player)
+
+    game = Game.new(
+      players: { 'home' => [{ 'player_id' => secondary.id, 'trikot_number' => 7 }], 'guest' => [] },
+      # Legacy-Array-Format
+      starting_players: { 'home' => [{ 'position' => 'goal', 'player_id' => secondary.id }], 'guest' => [] },
+      awards: { 'home' => { 'mvp' => secondary.id }, 'guest' => {} },
+      events: []
+    )
+    game.save!(validate: false)
+
+    secondary.merge_into!(master, user.id)
+    game.reload
+
+    assert_equal master.id, game.players['home'].first['player_id']
+    assert_equal master.id, game.starting_players['home'].first['player_id']
+    assert_equal master.id, game.awards['home']['mvp']
+  end
+
+  test 'merge_into! haengt Transfers auf den Master um' do
+    user      = create(:user)
+    master    = create(:player)
+    secondary = create(:player)
+    transfer  = Transfer.new(player_id: secondary.id)
+    transfer.save!(validate: false)
+
+    secondary.merge_into!(master, user.id)
+
+    assert_equal master.id, transfer.reload.player_id
+  end
+
+  test 'merge_into! fuehrt Lizenz-History bei gleichem Team+Saison zusammen' do
+    league = create(:league, :current_season)
+    team   = create(:team, league:)
+    user   = create(:user)
+
+    master = create(:player, with_licenses: [
+                      { team:, status: License::REQUESTED, created_at: 3.days.ago.iso8601 }
+                    ])
+    secondary = create(:player, with_licenses: [
+                         { team:, status: License::APPROVED, created_at: 2.days.ago.iso8601 }
+                       ])
+
+    secondary.merge_into!(master, user.id)
+    master.reload
+
+    licenses_for_team = master.licenses.select { |l| l['team_id'] == team.id }
+    assert_equal 1, licenses_for_team.size, 'gleiche Team+Saison-Lizenz nicht dupliziert'
+    status_ids = licenses_for_team.first['history'].map { |h| h['license_status_id'] }
+    assert_includes status_ids, License::REQUESTED
+    assert_includes status_ids, License::APPROVED
+  end
+
+  test 'merge_into! haelt Lizenzen unterschiedlicher Saisons desselben Teams getrennt' do
+    league = create(:league, :current_season)
+    team   = create(:team, league:)
+    user   = create(:user)
+
+    master    = create(:player, with_licenses: [{ team:, season_id: 17 }])
+    secondary = create(:player, with_licenses: [{ team:, season_id: 18 }])
+
+    secondary.merge_into!(master, user.id)
+    master.reload
+
+    assert_equal 2, master.licenses.count { |l| l['team_id'] == team.id },
+                 'unterschiedliche Saisons desselben Teams bleiben getrennte Lizenzen'
+  end
+
   # ---------------------------------------------------------------------------
   # Player.find_by_team_ids – Batch-Laden statt N+1 (Issue #26)
   # ---------------------------------------------------------------------------

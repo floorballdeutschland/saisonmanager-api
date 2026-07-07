@@ -1,81 +1,91 @@
 # lib/tasks/merge_players.rake
 #
-# Findet und mergt doppelte Spielereinträge anhand Name + Geburtsdatum (±1 Tag).
-# Behalte den Datensatz mit der höheren ID (neuerer Eintrag).
+# Findet und mergt doppelte Spielereinträge anhand Name + Geburtsdatum.
+# Gemergt wird jeweils in den Datensatz mit der KLEINSTEN ID; alle übrigen
+# Datensätze der Gruppe werden dort verlustfrei zusammengeführt (Clubs, Lizenzen,
+# Spieleinsätze, Transfers, Sperren etc. – siehe Player#merge_into!).
+#
+# Als Duplikat gelten Spieler mit gleichem Namen (case-insensitive) UND einem
+# Geburtsdatum, das entweder identisch ist, sich um höchstens einen Tag
+# unterscheidet oder in genau einer Ziffer abweicht (Tippfehler, z. B. Jahr
+# 1872 statt 1972). Das verbleibende Geburtsdatum wird aufgelöst:
+#   - weicht nur der Tag ab  → das frühere Datum
+#   - weicht das Jahr ab     → das plausiblere (realistisches Alter)
 #
 # Dry-Run (Standard):
 #   bundle exec rails players:merge_duplicates
 #
 # Ausführen:
-#   bundle exec rails players:merge_duplicates DRY_RUN=false
+#   bundle exec rails players:merge_duplicates DRY_RUN=false [USER_ID=<id>]
 
 namespace :players do
-  desc 'Doppelte Spieler zusammenlegen (Name + Geburtsdatum ±1 Tag). DRY_RUN=false zum Ausführen.'
+  desc 'Doppelte Spieler in den Datensatz mit kleinster ID zusammenlegen. DRY_RUN=false zum Ausführen.'
   task merge_duplicates: :environment do
     dry_run = ENV['DRY_RUN'] != 'false'
+    user_id = ENV['USER_ID'].presence&.to_i
     puts "=== Spieler-Merge #{dry_run ? '[DRY RUN]' : '[LIVE]'} ==="
     puts
 
-    pairs = PlayerMergeHelper.find_duplicate_pairs
-    puts "#{pairs.size} Duplikat-Paar(e) gefunden.\n\n"
+    groups = PlayerMergeHelper.find_duplicate_groups
+    puts "#{groups.size} Duplikat-Gruppe(n) gefunden.\n\n"
 
     merged = 0
     skipped = 0
 
-    pairs.each_with_index do |(old_p, new_p), idx|
-      puts "--- Paar #{idx + 1} ---"
-      puts "  ALT: ##{old_p.id} #{old_p.last_name}, #{old_p.first_name} | #{old_p.birthdate} | security_id=#{old_p.security_id}"
-      puts "  NEU: ##{new_p.id} #{new_p.last_name}, #{new_p.first_name} | #{new_p.birthdate} | security_id=#{new_p.security_id}"
+    groups.each_with_index do |(survivor, secondaries), idx|
+      survivor = Player.find(survivor.id)
+      resolved = PlayerMergeHelper.resolve_birthdate([survivor] + secondaries)
 
-      # Prüfen ob beide Spieler noch existieren (könnten aus früherem Merge weg sein)
-      unless Player.exists?(old_p.id)
-        puts "  SKIP: Spieler ##{old_p.id} (ALT) existiert nicht mehr (bereits gemergt?)"
-        skipped += 1
-        next
-      end
-      unless Player.exists?(new_p.id)
-        puts "  SKIP: Spieler ##{new_p.id} (NEU) existiert nicht mehr (bereits gemergt?)"
-        skipped += 1
-        next
+      puts "--- Gruppe #{idx + 1}: #{survivor.last_name}, #{survivor.first_name} ---"
+      puts "  BEHALTEN: ##{survivor.id} | Geburtsdatum #{survivor.birthdate}" \
+           "#{resolved != survivor.birthdate ? " → #{resolved}" : ''}"
+      secondaries.each do |sec|
+        puts "  MERGE:    ##{sec.id} | Geburtsdatum #{sec.birthdate}"
       end
 
-      # Frisch aus DB laden damit keine eingefrorenen/veralteten Objekte verwendet werden
-      old_p = Player.find(old_p.id)
-      new_p = Player.find(new_p.id)
-
-      conflicts = PlayerMergeHelper.games_with_both(old_p.id, new_p.id)
-      if conflicts.any?
-        puts "  KONFLIKT: Beide IDs in #{conflicts.size} Spiel(en) — übersprungen"
-        puts "  Game-IDs: #{conflicts.map(&:id).join(', ')}"
-        skipped += 1
-        next
-      end
-
-      game_count     = PlayerMergeHelper.affected_games(old_p.id).count
-      transfer_count = Transfer.where(player_id: old_p.id).count
-
-      puts "  Betroffene Spiele: #{game_count}, Transfers: #{transfer_count}"
-      puts "  Clubs alt: #{old_p.clubs&.size || 0}, Lizenzen alt: #{old_p.licenses&.size || 0}"
-      puts "  Clubs neu: #{new_p.clubs&.size || 0}, Lizenzen neu: #{new_p.licenses&.size || 0}"
-
-      if dry_run
-        puts "  => Würde ##{old_p.id} in ##{new_p.id} mergen [DRY RUN]"
-      else
-        begin
-          ActiveRecord::Base.transaction do
-            PlayerMergeHelper.merge!(old_p, new_p)
-          end
-          puts "  => Gemergt."
-          merged += 1
-        rescue => e
-          puts "  FEHLER: #{e.class}: #{e.message}"
+      secondaries.each do |sec|
+        sec = Player.find_by(id: sec.id)
+        unless sec && Player.exists?(survivor.id)
+          puts "    SKIP ##{sec&.id}: Datensatz existiert nicht mehr"
           skipped += 1
+          next
+        end
+
+        conflicts = PlayerMergeHelper.games_with_both(survivor.id, sec.id)
+        if conflicts.any?
+          puts "    SKIP ##{sec.id}: beide IDs in #{conflicts.size} Spiel(en) (#{conflicts.map(&:id).join(', ')})"
+          skipped += 1
+          next
+        end
+
+        game_count = Game.referencing_player(sec.id).count
+        puts "    ##{sec.id}: Spiele #{game_count}, Clubs #{sec.clubs&.size || 0}, " \
+             "Lizenzen #{sec.licenses&.size || 0}, Transfers #{Transfer.where(player_id: sec.id).count}"
+
+        if dry_run
+          puts "    => würde ##{sec.id} in ##{survivor.id} mergen [DRY RUN]"
+          merged += 1
+        else
+          begin
+            ActiveRecord::Base.transaction do
+              if survivor.birthdate != resolved
+                survivor.birthdate = resolved
+                survivor.save!(validate: false)
+              end
+              sec.merge_into!(survivor, user_id)
+            end
+            puts "    => gemergt."
+            merged += 1
+          rescue StandardError => e
+            puts "    FEHLER ##{sec.id}: #{e.class}: #{e.message}"
+            skipped += 1
+          end
         end
       end
       puts
     end
 
-    puts "Ergebnis: #{merged} gemergt, #{skipped} übersprungen"
+    puts "Ergebnis: #{merged} #{dry_run ? 'zu mergen' : 'gemergt'}, #{skipped} übersprungen"
     puts "[DRY RUN] Zum Ausführen: rails players:merge_duplicates DRY_RUN=false" if dry_run
   end
 end
@@ -83,83 +93,112 @@ end
 module PlayerMergeHelper
   module_function
 
-  # Alle Duplikat-Paare: gleicher Name (case-insensitive) + Geburtsdatum ±1 Tag.
-  # Gibt [[old_player, new_player], ...] zurück (old = kleinere ID).
-  PLACEHOLDER_SECURITY_ID = 'uuid_generate_v4()'.freeze
+  # Plausibles Geburtsjahr → Alter zwischen diesen Grenzen (zum Erkennen von
+  # Jahres-Tippfehlern wie 1872 statt 1972).
+  PLAUSIBLE_MIN_AGE = 3
+  PLAUSIBLE_MAX_AGE = 100
 
-  def find_duplicate_pairs
-    groups = Player.all.group_by do |p|
+  # Duplikat-Gruppen: gleicher Name + ähnliches Geburtsdatum.
+  # Gibt [[survivor(kleinste ID), [secondary, ...]], ...] zurück.
+  # Nur aktive, noch nicht zusammengeführte Spieler werden berücksichtigt.
+  def find_duplicate_groups
+    scope = Player.where(merged_into_id: nil, deactivated_at: nil)
+    by_name = scope.group_by do |p|
       [p.first_name.to_s.strip.downcase, p.last_name.to_s.strip.downcase]
     end
 
-    pairs = []
-    groups.each do |(first, last), players|
+    groups = []
+    by_name.each do |(first, last), players|
       next if players.size < 2
-      # Platzhalter-Datensätze (leerer Name oder Dummy-Geburtsdatum 1900-01-01) überspringen
-      next if (first.blank? || first == '-') && (last.blank? || last == '-')
+      next if first.blank? && last.blank?
 
-      players.combination(2) do |a, b|
-        date_a = parse_date(a.birthdate)
-        date_b = parse_date(b.birthdate)
-        next unless date_a && date_b
-        next unless (date_a - date_b).abs <= 1
+      cluster_by_birthdate(players).each do |cluster|
+        next if cluster.size < 2
 
-        # Standard: kleinere ID = alt, größere = neu
-        old_p, new_p = [a, b].sort_by(&:id)
+        sorted = cluster.sort_by(&:id)
+        groups << [sorted.first, sorted[1..]]
+      end
+    end
+    groups
+  end
 
-        # Ausnahme: hat der "neue" Datensatz eine kaputte security_id,
-        # der "alte" aber eine echte UUID → alten behalten, neuen auflösen
-        if new_p.security_id == PLACEHOLDER_SECURITY_ID && old_p.security_id != PLACEHOLDER_SECURITY_ID
-          old_p, new_p = new_p, old_p
-        end
+  # Spieler eines Namens anhand Geburtsdatum-Ähnlichkeit in zusammenhängende
+  # Komponenten gruppieren. Spieler ohne parsbares Geburtsdatum bleiben außen vor.
+  def cluster_by_birthdate(players)
+    dated = players.map { |p| [p, parse_date(p.birthdate)] }.select { |_, d| d }
+    n = dated.size
+    return [] if n < 2
 
-        pairs << [old_p, new_p]
+    adjacency = Array.new(n) { [] }
+    (0...n).each do |i|
+      ((i + 1)...n).each do |j|
+        next unless similar_dates?(dated[i][1], dated[j][1])
+
+        adjacency[i] << j
+        adjacency[j] << i
       end
     end
 
-    pairs
+    connected_components(adjacency).map { |component| component.map { |k| dated[k][0] } }
   end
 
-  # Spiele, in denen BEIDE IDs vorkommen → Konflikt, nicht automatisch mergebar.
+  def connected_components(adjacency)
+    seen = Array.new(adjacency.size, false)
+    components = []
+    adjacency.each_index do |start|
+      next if seen[start]
+
+      stack = [start]
+      component = []
+      until stack.empty?
+        node = stack.pop
+        next if seen[node]
+
+        seen[node] = true
+        component << node
+        adjacency[node].each { |m| stack << m unless seen[m] }
+      end
+      components << component
+    end
+    components
+  end
+
+  # Geburtsdaten gelten als „gleich genug": identisch, um höchstens einen Tag
+  # abweichend oder in genau einer Ziffer verschieden.
+  def similar_dates?(date_a, date_b)
+    return true if date_a == date_b
+    return true if (date_a - date_b).abs <= 1
+
+    one_digit_diff?(date_a.iso8601, date_b.iso8601)
+  end
+
+  def one_digit_diff?(str_a, str_b)
+    return false unless str_a.length == str_b.length
+
+    diff_positions = (0...str_a.length).reject { |i| str_a[i] == str_b[i] }
+    diff_positions.size == 1 &&
+      str_a[diff_positions.first].match?(/\d/) && str_b[diff_positions.first].match?(/\d/)
+  end
+
+  # Verbleibendes Geburtsdatum: plausible Jahre bevorzugen (Jahres-Tippfehler
+  # aussortieren), unter den Kandidaten das früheste Datum wählen. iso8601-String.
+  def resolve_birthdate(players)
+    dates = players.map { |p| parse_date(p.birthdate) }.compact.uniq
+    return players.first.birthdate if dates.empty?
+
+    current_year = Date.current.year
+    plausible = dates.select do |d|
+      (current_year - d.year).between?(PLAUSIBLE_MIN_AGE, PLAUSIBLE_MAX_AGE)
+    end
+    (plausible.presence || dates).min.iso8601
+  end
+
+  # Spiele, in denen BEIDE IDs vorkommen → Konflikt (derselbe Spieler doppelt in
+  # einer Aufstellung), nicht automatisch mergebar.
   def games_with_both(id_a, id_b)
-    (affected_games(id_a) & affected_games(id_b)).select do |game|
+    (Game.referencing_player(id_a).to_a & Game.referencing_player(id_b).to_a).select do |game|
       in_game?(game, id_a) && in_game?(game, id_b)
     end
-  end
-
-  # Alle Spiele, die old_id in players, starting_players oder awards referenzieren.
-  def affected_games(old_id)
-    in_players = Game.where('players @> ?', { 'home'  => [{ 'player_id' => old_id }] }.to_json)
-                     .or(Game.where('players @> ?', { 'guest' => [{ 'player_id' => old_id }] }.to_json))
-    # jsonb_path_exists funktioniert korrekt mit nativen jsonb-Spalten und
-    # findet Integer-Werte bei beliebiger Verschachtelung — unabhängig vom Speicherformat
-    # (Normal-Hash oder Legacy-Array). Deckt beide Formate in starting_players und awards ab.
-    path = '$.** ? (@ == $v)'
-    in_sp_awards = Game.where(
-      "jsonb_path_exists(starting_players, ?::jsonpath, jsonb_build_object('v', ?)) OR " \
-      "jsonb_path_exists(awards, ?::jsonpath, jsonb_build_object('v', ?))",
-      path, old_id, path, old_id
-    )
-    Game.where(id: in_players).or(Game.where(id: in_sp_awards))
-  end
-
-  # Mergt old_p in new_p und löscht old_p. Muss in einer Transaktion aufgerufen werden.
-  def merge!(old_p, new_p)
-    new_p.clubs    = merge_clubs(old_p.clubs, new_p.clubs)
-    new_p.licenses = merge_licenses(old_p.licenses, new_p.licenses)
-    new_p.save!(validate: false)
-
-    Transfer.where(player_id: old_p.id).update_all(player_id: new_p.id)
-    update_game_references(old_p.id, new_p.id)
-
-    old_p.destroy!
-  end
-
-  def parse_date(str)
-    return nil if str.blank?
-    Date.parse(str.to_s[0, 10])
-  rescue ArgumentError
-    nil
   end
 
   def in_game?(game, pid)
@@ -167,135 +206,22 @@ module PlayerMergeHelper
     return true if game.players&.dig('guest')&.any? { |p| p['player_id'] == pid }
 
     %w[home guest].each do |side|
-      sp = game.starting_players&.dig(side)
-      if sp.is_a?(Hash)
-        return true if sp.values.include?(pid)
-      elsif sp.is_a?(Array)
-        return true if sp.any? { |entry| entry['player_id'] == pid }
-      end
-
-      aw = game.awards&.dig(side)
-      if aw.is_a?(Hash)
-        return true if aw.values.include?(pid)
-      elsif aw.is_a?(Array)
-        return true if aw.any? { |entry| entry['player_id'] == pid }
+      [game.starting_players&.dig(side), game.awards&.dig(side)].each do |entry|
+        if entry.is_a?(Hash)
+          return true if entry.value?(pid)
+        elsif entry.is_a?(Array)
+          return true if entry.any? { |e| e.is_a?(Hash) && e['player_id'] == pid }
+        end
       end
     end
-
     false
   end
 
-  # Clubs: alle Einträge des neuen Spielers behalten; vom alten nur ergänzen,
-  # was noch nicht durch denselben club_id + aktiven Zeitraum abgedeckt ist.
-  def merge_clubs(old_clubs, new_clubs)
-    old_clubs ||= []
-    new_clubs ||= []
+  def parse_date(str)
+    return nil if str.blank?
 
-    new_active_club_ids = new_clubs
-      .select { |c| c['valid_until'].nil? }
-      .map { |c| c['club_id'] }
-      .to_set
-
-    additional = old_clubs.reject do |c|
-      # Alten Eintrag weglassen, wenn neuer Spieler denselben Club aktiv hat
-      c['valid_until'].nil? && new_active_club_ids.include?(c['club_id'])
-    end
-
-    (new_clubs + additional).sort_by { |c| c['created_at'].to_s }
-  end
-
-  # Lizenzen: bei gleichem team_id die History-Arrays zusammenführen;
-  # sonst einfach anhängen.
-  def merge_licenses(old_licenses, new_licenses)
-    old_licenses ||= []
-    new_licenses ||= []
-
-    result = new_licenses.map(&:dup)
-
-    old_licenses.each do |old_lic|
-      existing = result.find { |l| l['team_id'].to_s == old_lic['team_id'].to_s }
-
-      if existing
-        combined = ((existing['history'] || []) + (old_lic['history'] || []))
-          .uniq { |h| [h['created_at'].to_s, h['license_status_id'].to_s] }
-          .sort_by { |h| h['created_at'].to_s }
-        existing['history'] = combined
-      else
-        result << old_lic
-      end
-    end
-
-    result
-  end
-
-  def update_game_references(old_id, new_id)
-    affected_games(old_id).each do |game|
-      changed = false
-
-      if game.players.present?
-        %w[home guest].each do |side|
-          game.players[side]&.each do |p|
-            next unless p['player_id'] == old_id
-
-            p['player_id'] = new_id
-            changed = true
-          end
-        end
-      end
-
-      if game.starting_players.present?
-        %w[home guest].each do |side|
-          sp = game.starting_players[side]
-          next unless sp.present?
-
-          if sp.is_a?(Hash)
-            # Normalformat: {"goal" => 123, "defender1" => 456, ...}
-            sp.transform_values! do |pid|
-              if pid == old_id
-                changed = true
-                new_id
-              else
-                pid
-              end
-            end
-          elsif sp.is_a?(Array)
-            # Legacy-Format: [{"position" => "goal", "player_id" => 123, ...}, ...]
-            sp.each do |entry|
-              next unless entry['player_id'] == old_id
-
-              entry['player_id'] = new_id
-              changed = true
-            end
-          end
-        end
-      end
-
-      if game.awards.present?
-        %w[home guest].each do |side|
-          aw = game.awards[side]
-          next unless aw.present?
-
-          if aw.is_a?(Hash)
-            aw.transform_values! do |pid|
-              if pid == old_id
-                changed = true
-                new_id
-              else
-                pid
-              end
-            end
-          elsif aw.is_a?(Array)
-            aw.each do |entry|
-              next unless entry['player_id'] == old_id
-
-              entry['player_id'] = new_id
-              changed = true
-            end
-          end
-        end
-      end
-
-      game.save!(validate: false) if changed
-    end
+    Date.parse(str.to_s[0, 10])
+  rescue ArgumentError, TypeError
+    nil
   end
 end
