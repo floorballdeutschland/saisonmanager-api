@@ -605,9 +605,9 @@ class PlayerTest < ActiveSupport::TestCase
     user      = create(:user)
     master    = create(:player)
     secondary = create(:player)
-    LicenseDocument.create!(player: master,    license_id: 'L1', document_type: 'pass')
-    dup      = LicenseDocument.create!(player: secondary, license_id: 'L1', document_type: 'pass')
-    distinct = LicenseDocument.create!(player: secondary, license_id: 'L2', document_type: 'pass')
+    build_license_document(player: master,    license_id: 'L1', document_type: 'pass')
+    dup      = build_license_document(player: secondary, license_id: 'L1', document_type: 'pass')
+    distinct = build_license_document(player: secondary, license_id: 'L2', document_type: 'pass')
 
     skipped = secondary.merge_into!(master, user.id)
 
@@ -688,6 +688,12 @@ class PlayerTest < ActiveSupport::TestCase
   end
 
   private
+
+  def build_license_document(attrs = {})
+    doc = LicenseDocument.new({ license_id: 'L1', document_type: 'pass' }.merge(attrs))
+    doc.save!(validate: false)
+    doc
+  end
 
   def build_transfer_request(attrs = {})
     TransferRequest.new({
