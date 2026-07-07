@@ -575,7 +575,7 @@ class PlayerTest < ActiveSupport::TestCase
     secondary = create(:player)
     approved  = build_transfer_request(player: secondary, status: 'approved')
     approved.save!(validate: false)
-    active    = build_transfer_request(player: secondary, status: 'pending_lv')
+    active = build_transfer_request(player: secondary, status: 'pending_lv')
     active.save!(validate: false)
 
     skipped = secondary.merge_into!(master, user.id)
@@ -591,7 +591,7 @@ class PlayerTest < ActiveSupport::TestCase
     secondary  = create(:player)
     master_tr  = build_transfer_request(player: master, status: 'pending_lv')
     master_tr.save!(validate: false)
-    sec_tr     = build_transfer_request(player: secondary, status: 'pending_lv')
+    sec_tr = build_transfer_request(player: secondary, status: 'pending_lv')
     sec_tr.save!(validate: false)
 
     skipped = secondary.merge_into!(master, user.id)
