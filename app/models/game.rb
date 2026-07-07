@@ -793,7 +793,7 @@ class Game < ApplicationRecord
       hasEnded:,
       startingTime: start_time,
       date: game_day.date,
-      url: "https://saisonmanager.org/spiel/#{id}"
+      url: "#{FrontendUrl.base}/spiel/#{id}"
     }
   end
 
@@ -1083,7 +1083,7 @@ class Game < ApplicationRecord
   end
 
   def url
-    "https://saisonmanager.org/#{league.game_operation.short_name.downcase}/#{league.id}/spiel/#{id}"
+    "#{FrontendUrl.base}/#{league.game_operation.short_name.downcase}/#{league.id}/spiel/#{id}"
   end
 
   def ical

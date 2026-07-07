@@ -349,7 +349,7 @@ module Admin
 
     def player_approve
       tr = TransferRequest.find_by(player_confirmation_token: params[:token])
-      base_url = 'https://saisonmanager.org/transfer-bestaetigung'
+      base_url = "#{FrontendUrl.base}/transfer-bestaetigung"
 
       unless tr
         return redirect_to "#{base_url}?result=error", allow_other_host: true
@@ -370,7 +370,7 @@ module Admin
 
     def player_reject
       tr = TransferRequest.find_by(player_confirmation_token: params[:token])
-      base_url = 'https://saisonmanager.org/transfer-bestaetigung'
+      base_url = "#{FrontendUrl.base}/transfer-bestaetigung"
 
       unless tr
         return redirect_to "#{base_url}?result=error", allow_other_host: true

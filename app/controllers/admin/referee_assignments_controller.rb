@@ -294,8 +294,7 @@ module Admin
         { game_id: assignment.game_id, expires_at: expires_at.iso8601 },
         expires_in: 72.hours
       )
-      frontend_base = Rails.env.production? ? 'https://saisonmanager.org' : 'http://localhost:4200'
-      license_list_url = "#{frontend_base}/lizenzliste?token=#{CGI.escape(license_token)}"
+      license_list_url = "#{FrontendUrl.base}/lizenzliste?token=#{CGI.escape(license_token)}"
 
       coach = assignment.coach
       assignment.referees.each do |referee|

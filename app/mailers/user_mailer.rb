@@ -1,6 +1,6 @@
 class UserMailer < ApplicationMailer
   def reset_password(user)
-    @link = "https://saisonmanager.org/neues-passwort/#{user.password_reset_token}"
+    @link = "#{FrontendUrl.base}/neues-passwort/#{user.password_reset_token}"
     templated_mail(to: user.email, subject: 'Anleitung zum Passwort zurücksetzen im Saisonmanager')
   end
 
@@ -8,7 +8,7 @@ class UserMailer < ApplicationMailer
   # Benutzernamen und einen Link zum (erstmaligen) Setzen des Passworts – bewusst
   # KEINE „Passwort vergessen"-Mail, da der Account gerade neu erstellt wurde.
   def referee_account_created(user)
-    @link = "https://saisonmanager.org/neues-passwort/#{user.password_reset_token}"
+    @link = "#{FrontendUrl.base}/neues-passwort/#{user.password_reset_token}"
     @username = user.user_name
     templated_mail(
       to: user.email,

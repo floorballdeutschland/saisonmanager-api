@@ -23,10 +23,10 @@
 <p>Bitte wähle eine der folgenden Optionen:</p>
 
 <p>
-  <a href="https://saisonmanager.org/api/v2/admin/transfer_requests/player_approve?token=<%= @transfer_request.player_confirmation_token %>" style="display:inline-block;padding:8px 16px;background:#1a56db;color:#fff;text-decoration:none;border-radius:4px;margin-right:8px;">
+  <a href="<%= frontend_base_url %>/api/v2/admin/transfer_requests/player_approve?token=<%= @transfer_request.player_confirmation_token %>" style="display:inline-block;padding:8px 16px;background:#1a56db;color:#fff;text-decoration:none;border-radius:4px;margin-right:8px;">
     <%= release ? 'Freigabe zustimmen' : 'Transfer zustimmen' %>
   </a>
-  <a href="https://saisonmanager.org/api/v2/admin/transfer_requests/player_reject?token=<%= @transfer_request.player_confirmation_token %>" style="display:inline-block;padding:8px 16px;background:#e02424;color:#fff;text-decoration:none;border-radius:4px;">
+  <a href="<%= frontend_base_url %>/api/v2/admin/transfer_requests/player_reject?token=<%= @transfer_request.player_confirmation_token %>" style="display:inline-block;padding:8px 16px;background:#e02424;color:#fff;text-decoration:none;border-radius:4px;">
     <%= release ? 'Freigabe ablehnen' : 'Transfer ablehnen' %>
   </a>
 </p>
@@ -37,5 +37,5 @@
 
 <p>
   Das Saisonmanager-Team<br>
-  <a href="https://saisonmanager.org">saisonmanager.org</a>
+  <a href="<%= frontend_base_url %>"><%= frontend_host %></a>
 </p>
