@@ -39,11 +39,9 @@ namespace :players do
       puts "--- Gruppe #{idx + 1}: #{survivor.last_name}, #{survivor.first_name} ---"
       puts "  BEHALTEN: ##{survivor.id} | Geburtsdatum #{survivor.birthdate}" \
            "#{resolved != survivor.birthdate ? " → #{resolved}" : ''}"
-      secondaries.each do |sec|
-        puts "  MERGE:    ##{sec.id} | Geburtsdatum #{sec.birthdate}"
-      end
 
       secondaries.each do |sec|
+        puts "  MERGE:    ##{sec.id} | Geburtsdatum #{sec.birthdate}"
         sec = Player.find_by(id: sec.id)
         unless sec && Player.exists?(survivor.id)
           puts "    SKIP ##{sec&.id}: Datensatz existiert nicht mehr"

@@ -538,11 +538,11 @@ class PlayerTest < ActiveSupport::TestCase
     user   = create(:user)
 
     master = create(:player, with_licenses: [
-                      { team:, status: License::REQUESTED, created_at: 3.days.ago.iso8601 }
-                    ])
+      { team:, status: License::REQUESTED, created_at: 3.days.ago.iso8601 }
+    ])
     secondary = create(:player, with_licenses: [
-                         { team:, status: License::APPROVED, created_at: 2.days.ago.iso8601 }
-                       ])
+      { team:, status: License::APPROVED, created_at: 2.days.ago.iso8601 }
+    ])
 
     secondary.merge_into!(master, user.id)
     master.reload
