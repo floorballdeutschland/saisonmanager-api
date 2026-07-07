@@ -569,6 +569,88 @@ class PlayerTest < ActiveSupport::TestCase
                  'unterschiedliche Saisons desselben Teams bleiben getrennte Lizenzen'
   end
 
+  test 'merge_into! haengt nicht-aktive und aktive Transfer-Anfragen auf den Master um' do
+    user      = create(:user)
+    master    = create(:player)
+    secondary = create(:player)
+    approved  = build_transfer_request(player: secondary, status: 'approved')
+    approved.save!(validate: false)
+    active    = build_transfer_request(player: secondary, status: 'pending_lv')
+    active.save!(validate: false)
+
+    skipped = secondary.merge_into!(master, user.id)
+
+    assert_empty skipped
+    assert_equal master.id, approved.reload.player_id
+    assert_equal master.id, active.reload.player_id
+  end
+
+  test 'merge_into! laesst aktive Transfer-Anfrage bei Kollision am Zweitprofil und meldet sie' do
+    user       = create(:user)
+    master     = create(:player)
+    secondary  = create(:player)
+    master_tr  = build_transfer_request(player: master, status: 'pending_lv')
+    master_tr.save!(validate: false)
+    sec_tr     = build_transfer_request(player: secondary, status: 'pending_lv')
+    sec_tr.save!(validate: false)
+
+    skipped = secondary.merge_into!(master, user.id)
+
+    assert_equal secondary.id, sec_tr.reload.player_id, 'kollidierender aktiver Antrag bleibt am Zweitprofil'
+    assert_equal master.id,    master_tr.reload.player_id
+    assert_includes skipped, { type: 'transfer_request', id: sec_tr.id }
+  end
+
+  test 'merge_into! haengt Lizenzdokumente um und laesst Duplikate am Zweitprofil' do
+    user      = create(:user)
+    master    = create(:player)
+    secondary = create(:player)
+    LicenseDocument.create!(player: master,    license_id: 'L1', document_type: 'pass')
+    dup      = LicenseDocument.create!(player: secondary, license_id: 'L1', document_type: 'pass')
+    distinct = LicenseDocument.create!(player: secondary, license_id: 'L2', document_type: 'pass')
+
+    skipped = secondary.merge_into!(master, user.id)
+
+    assert_equal master.id,    distinct.reload.player_id
+    assert_equal secondary.id, dup.reload.player_id, 'identisches Dokument bleibt am Zweitprofil'
+    assert_includes skipped, { type: 'license_document', id: dup.id }
+  end
+
+  test 'merge_into! haengt Sperren auf den Master um' do
+    user      = create(:user)
+    master    = create(:player)
+    secondary = create(:player)
+    suspension = PlayerSuspension.new(player: secondary, valid_from: Date.current, valid_until: Date.current + 7)
+    suspension.save!(validate: false)
+
+    secondary.merge_into!(master, user.id)
+
+    assert_equal master.id, suspension.reload.player_id
+  end
+
+  test 'merge_into! bevorzugt echte security_id gegenueber Platzhalter des Masters' do
+    user      = create(:user)
+    master    = create(:player, security_id: Player::PLACEHOLDER_SECURITY_ID)
+    secondary = create(:player, security_id: 'echte-uuid-123')
+
+    secondary.merge_into!(master, user.id)
+
+    assert_equal 'echte-uuid-123', master.reload.security_id
+  end
+
+  test 'merge_into! verweigert Merge wenn beide Spieler im selben Spiel stehen' do
+    user      = create(:user)
+    master    = create(:player)
+    secondary = create(:player)
+    game = Game.new(
+      players: { 'home' => [{ 'player_id' => master.id }, { 'player_id' => secondary.id }], 'guest' => [] },
+      events: []
+    )
+    game.save!(validate: false)
+
+    assert_raises(ArgumentError) { secondary.merge_into!(master, user.id) }
+  end
+
   # ---------------------------------------------------------------------------
   # Player.find_by_team_ids – Batch-Laden statt N+1 (Issue #26)
   # ---------------------------------------------------------------------------
@@ -606,6 +688,16 @@ class PlayerTest < ActiveSupport::TestCase
   end
 
   private
+
+  def build_transfer_request(attrs = {})
+    TransferRequest.new({
+      requesting_club: create(:club),
+      former_club:     create(:club),
+      created_by:      create(:user).id,
+      season_id:       18,
+      request_type:    'transfer'
+    }.merge(attrs))
+  end
 
   def capture_player_sql
     sqls = []

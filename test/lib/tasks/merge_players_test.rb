@@ -90,6 +90,33 @@ class MergePlayersTest < ActiveSupport::TestCase
     assert_not_nil dup.deactivated_at
   end
 
+  test 'Live-Merge legt eine Gruppe mit mehr als zwei Datensaetzen in die kleinste ID' do
+    keep = create(:player, first_name: 'Max', last_name: 'Muster', birthdate: '1972-03-15')
+    dup1 = create(:player, first_name: 'Max', last_name: 'Muster', birthdate: '1972-03-16')
+    dup2 = create(:player, first_name: 'Max', last_name: 'Muster', birthdate: '1872-03-15')
+
+    run_task('DRY_RUN' => 'false')
+
+    assert_nil   keep.reload.merged_into_id
+    assert_equal keep.id, dup1.reload.merged_into_id
+    assert_equal keep.id, dup2.reload.merged_into_id
+    assert_equal '1972-03-15', keep.birthdate
+  end
+
+  test 'Live-Merge ueberspringt Gruppe wenn beide IDs im selben Spiel stehen' do
+    keep = create(:player, first_name: 'Max', last_name: 'Muster', birthdate: '1990-01-01')
+    dup  = create(:player, first_name: 'Max', last_name: 'Muster', birthdate: '1990-01-01')
+    game = Game.new(
+      players: { 'home' => [{ 'player_id' => keep.id }, { 'player_id' => dup.id }], 'guest' => [] },
+      events: []
+    )
+    game.save!(validate: false)
+
+    run_task('DRY_RUN' => 'false')
+
+    assert_nil dup.reload.merged_into_id, 'Konflikt-Gruppe wird nicht gemergt'
+  end
+
   test 'DRY_RUN veraendert keine Daten' do
     keep = create(:player, first_name: 'Max', last_name: 'Muster', birthdate: '1972-03-15')
     dup  = create(:player, first_name: 'Max', last_name: 'Muster', birthdate: '1972-03-16')

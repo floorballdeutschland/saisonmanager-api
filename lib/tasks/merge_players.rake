@@ -31,6 +31,8 @@ namespace :players do
 
     merged = 0
     skipped = 0
+    errors = 0
+    stranded = 0
 
     groups.each_with_index do |(survivor, secondaries), idx|
       survivor = Player.find(survivor.id)
@@ -39,6 +41,14 @@ namespace :players do
       puts "--- Gruppe #{idx + 1}: #{survivor.last_name}, #{survivor.first_name} ---"
       puts "  BEHALTEN: ##{survivor.id} | Geburtsdatum #{survivor.birthdate}" \
            "#{resolved != survivor.birthdate ? " → #{resolved}" : ''}"
+
+      # Geburtsdatum einmal pro Gruppe persistieren (unabhängig vom Erfolg der
+      # einzelnen Merges), damit ein zurückgerolltes Merge das Datum nicht
+      # dauerhaft unkorrigiert lässt.
+      if !dry_run && survivor.birthdate != resolved
+        survivor.birthdate = resolved
+        survivor.save!(validate: false)
+      end
 
       secondaries.each do |sec|
         puts "  MERGE:    ##{sec.id} | Geburtsdatum #{sec.birthdate}"
@@ -65,26 +75,33 @@ namespace :players do
           merged += 1
         else
           begin
-            ActiveRecord::Base.transaction do
-              if survivor.birthdate != resolved
-                survivor.birthdate = resolved
-                survivor.save!(validate: false)
-              end
-              sec.merge_into!(survivor, user_id)
-            end
-            puts "    => gemergt."
+            left = sec.merge_into!(survivor, user_id)
             merged += 1
+            if left.any?
+              stranded += left.size
+              details = left.map { |a| "#{a[:type]} ##{a[:id]}" }.join(', ')
+              puts "    => gemergt – #{left.size} Verknüpfung(en) blieben am Zweitprofil ##{sec.id}: #{details}"
+            else
+              puts "    => gemergt."
+            end
           rescue StandardError => e
             puts "    FEHLER ##{sec.id}: #{e.class}: #{e.message}"
-            skipped += 1
+            puts "      #{e.backtrace.first(3).join("\n      ")}" if e.backtrace
+            errors += 1
           end
         end
       end
       puts
     end
 
-    puts "Ergebnis: #{merged} #{dry_run ? 'zu mergen' : 'gemergt'}, #{skipped} übersprungen"
+    summary = "Ergebnis: #{merged} #{dry_run ? 'zu mergen' : 'gemergt'}, #{skipped} übersprungen (Regel)"
+    summary += ", #{errors} FEHLER" if errors.positive?
+    summary += ", #{stranded} Verknüpfung(en) am Zweitprofil belassen" if stranded.positive?
+    puts summary
     puts "[DRY RUN] Zum Ausführen: rails players:merge_duplicates DRY_RUN=false" if dry_run
+
+    # Nicht-null Exit-Code, damit echte Fehler nicht in einem grün wirkenden Lauf untergehen.
+    exit 1 if errors.positive?
   end
 end
 
@@ -195,24 +212,8 @@ module PlayerMergeHelper
   # einer Aufstellung), nicht automatisch mergebar.
   def games_with_both(id_a, id_b)
     (Game.referencing_player(id_a).to_a & Game.referencing_player(id_b).to_a).select do |game|
-      in_game?(game, id_a) && in_game?(game, id_b)
+      game.player_in_lineup?(id_a) && game.player_in_lineup?(id_b)
     end
-  end
-
-  def in_game?(game, pid)
-    return true if game.players&.dig('home')&.any? { |p| p['player_id'] == pid }
-    return true if game.players&.dig('guest')&.any? { |p| p['player_id'] == pid }
-
-    %w[home guest].each do |side|
-      [game.starting_players&.dig(side), game.awards&.dig(side)].each do |entry|
-        if entry.is_a?(Hash)
-          return true if entry.value?(pid)
-        elsif entry.is_a?(Array)
-          return true if entry.any? { |e| e.is_a?(Hash) && e['player_id'] == pid }
-        end
-      end
-    end
-    false
   end
 
   def parse_date(str)

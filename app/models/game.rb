@@ -1190,6 +1190,24 @@ class Game < ApplicationRecord
     where(id: in_players).or(where(id: in_sp_awards))
   end
 
+  # Kommt der Spieler in diesem Spiel vor – in players, starting_players oder
+  # awards (Hash- oder Legacy-Array-Format)?
+  def player_in_lineup?(player_id)
+    return true if players&.dig('home')&.any? { |p| p['player_id'] == player_id }
+    return true if players&.dig('guest')&.any? { |p| p['player_id'] == player_id }
+
+    %w[home guest].each do |side|
+      [starting_players&.dig(side), awards&.dig(side)].each do |entry|
+        if entry.is_a?(Hash)
+          return true if entry.value?(player_id)
+        elsif entry.is_a?(Array)
+          return true if entry.any? { |e| e.is_a?(Hash) && e['player_id'] == player_id }
+        end
+      end
+    end
+    false
+  end
+
   def self.start_end_games
     return
     gds = GameDay.where date: Date.today

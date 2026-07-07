@@ -326,14 +326,28 @@ class Player < ApplicationRecord
     save!(validate: false)
   end
 
+  # Kaputter SQL-Default, der versehentlich als String in security_id landete.
+  PLACEHOLDER_SECURITY_ID = 'uuid_generate_v4()'.freeze
+
+  # Führt die Secondary (self) in den Master zusammen und deaktiviert self.
+  # Gibt die Liste der Verknüpfungen zurück, die wegen Unique-Index-Kollision
+  # NICHT auf den Master umgehängt werden konnten und am (deaktivierten)
+  # Secondary-Datensatz verbleiben – der Aufrufer muss diese sichtbar machen.
   def merge_into!(master, user_id)
     raise ArgumentError, 'Master und Secondary dürfen nicht identisch sein' if id == master.id
     raise ArgumentError, 'Secondary ist bereits zusammengeführt' if merged_into_id.present?
     raise ArgumentError, 'Master ist bereits zusammengeführt' if master.merged_into_id.present?
+    raise ArgumentError, 'Beide Spieler kommen im selben Spiel vor' if _shares_game_with?(master)
 
+    skipped_associations = []
     ActiveRecord::Base.transaction do
-      %w[first_name last_name birthdate gender nation_id security_id email].each do |field|
+      %w[first_name last_name birthdate gender nation_id email].each do |field|
         master[field] = self[field] if master[field].blank? && self[field].present?
+      end
+      # Eine echte security_id des Secondary schlägt einen Platzhalter des Masters,
+      # auch wenn der Master (kleinste ID) bestehen bleibt.
+      if _blank_security_id?(master.security_id) && !_blank_security_id?(security_id)
+        master.security_id = security_id
       end
 
       # deep_dup: die zusammengeführten Einträge landen auf dem Master; das
@@ -344,7 +358,7 @@ class Player < ApplicationRecord
       master.save!(validate: false)
 
       _rewrite_player_game_references(master.id)
-      _repoint_player_associations(master.id)
+      skipped_associations = _repoint_player_associations(master.id)
 
       self.merged_into_id = master.id
       deactivate!(user_id, reason: 'Zusammenführung')
@@ -356,6 +370,7 @@ class Player < ApplicationRecord
         user_id: user_id
       )
     end
+    skipped_associations
   end
 
   # Einheitlicher Helper für License-History-Mutationen.
@@ -849,10 +864,20 @@ class Player < ApplicationRecord
     changed
   end
 
+  def _blank_security_id?(value)
+    value.blank? || value == PLACEHOLDER_SECURITY_ID
+  end
+
+  # Kommen self und master gemeinsam in mindestens einer Aufstellung vor? Dann
+  # würde ein Merge einen doppelten player_id-Eintrag im selben Spiel erzeugen.
+  def _shares_game_with?(master)
+    shared = Game.referencing_player(id).to_a & Game.referencing_player(master.id).to_a
+    shared.any? { |game| game.player_in_lineup?(id) && game.player_in_lineup?(master.id) }
+  end
+
   # Alle Kind-Datensätze mit player_id-Fremdschlüssel auf den Master umhängen.
-  # Kollisionen mit Unique-Indizes (aktiver Transfer-Antrag, Lizenzdokument)
-  # werden übersprungen – der betroffene Datensatz verbleibt am (deaktivierten)
-  # Secondary-Datensatz und geht damit nicht verloren.
+  # Gibt die Verknüpfungen zurück, die wegen Unique-Index-Kollision am Secondary
+  # verbleiben mussten (aktiver Transfer-Antrag, identisches Lizenzdokument).
   def _repoint_player_associations(master_id)
     secondary_id = id
 
@@ -860,8 +885,8 @@ class Player < ApplicationRecord
     PlayerChangeRequest.where(player_id: secondary_id).update_all(player_id: master_id)
     PlayerSuspension.where(player_id: secondary_id).update_all(player_id: master_id)
 
-    _repoint_transfer_requests(secondary_id, master_id)
-    _repoint_license_documents(secondary_id, master_id)
+    _repoint_transfer_requests(secondary_id, master_id) +
+      _repoint_license_documents(secondary_id, master_id)
   end
 
   ACTIVE_TRANSFER_REQUEST_STATUSES = %w[pending_club pending_player pending_lv scheduled].freeze
@@ -873,23 +898,41 @@ class Player < ApplicationRecord
     # Partieller Unique-Index: höchstens ein aktiver Antrag pro Spieler.
     master_has_active = TransferRequest.where(player_id: master_id,
                                               status: ACTIVE_TRANSFER_REQUEST_STATUSES).exists?
+    skipped = []
     scope.where(status: ACTIVE_TRANSFER_REQUEST_STATUSES).find_each do |tr|
-      next if master_has_active
+      if master_has_active
+        Rails.logger.warn(
+          "merge_into!: aktiver Transfer-Antrag ##{tr.id} bleibt bei Spieler ##{secondary_id} " \
+          "(Master ##{master_id} hat bereits einen aktiven Antrag)"
+        )
+        skipped << { type: 'transfer_request', id: tr.id }
+        next
+      end
 
       tr.update_columns(player_id: master_id)
       master_has_active = true
     end
+    skipped
   end
 
   def _repoint_license_documents(secondary_id, master_id)
     existing = LicenseDocument.where(player_id: master_id)
                               .pluck(:license_id, :document_type).to_set
+    skipped = []
     LicenseDocument.where(player_id: secondary_id).find_each do |doc|
       key = [doc.license_id, doc.document_type]
-      next if existing.include?(key)
+      if existing.include?(key)
+        Rails.logger.warn(
+          "merge_into!: Lizenzdokument ##{doc.id} bleibt bei Spieler ##{secondary_id} " \
+          "(Master ##{master_id} hat ein identisches Dokument)"
+        )
+        skipped << { type: 'license_document', id: doc.id }
+        next
+      end
 
       doc.update_columns(player_id: master_id)
       existing << key
     end
+    skipped
   end
 end
