@@ -109,7 +109,7 @@ class RefereeMailer < ApplicationMailer
     @referee2 = referee2
     @game = game
     @deadline = deadline
-    @upload_url = "https://saisonmanager.org/spielbericht/#{game.id}"
+    @upload_url = "#{FrontendUrl.base}/spielbericht/#{game.id}"
 
     templated_mail(
       to: [referee1.email, referee2.email].compact,

@@ -10,7 +10,7 @@ class GameMailer < ApplicationMailer
     @failed_items = answers.select { |a| a['answer'] == false }
 
     if veto_token
-      frontend_base = Rails.env.production? ? 'https://saisonmanager.org' : 'http://localhost:4200'
+      frontend_base = FrontendUrl.base
       @veto_url = "#{frontend_base}/spielbericht/#{game.id}/einspruch?token=#{veto_token}"
     end
 
@@ -33,7 +33,7 @@ class GameMailer < ApplicationMailer
   def checklist_referee_portal_notice(game, referee_emails)
     @game = game
     @game_day = game.game_day
-    frontend_base = Rails.env.production? ? 'https://saisonmanager.org' : 'http://localhost:4200'
+    frontend_base = FrontendUrl.base
     @portal_url = "#{frontend_base}/schiedsrichter/spieltage"
 
     templated_mail(
