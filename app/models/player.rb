@@ -326,29 +326,39 @@ class Player < ApplicationRecord
     save!(validate: false)
   end
 
+  # Kaputter SQL-Default, der versehentlich als String in security_id landete.
+  PLACEHOLDER_SECURITY_ID = 'uuid_generate_v4()'.freeze
+
+  # Führt die Secondary (self) in den Master zusammen und deaktiviert self.
+  # Gibt die Liste der Verknüpfungen zurück, die wegen Unique-Index-Kollision
+  # NICHT auf den Master umgehängt werden konnten und am (deaktivierten)
+  # Secondary-Datensatz verbleiben – der Aufrufer muss diese sichtbar machen.
   def merge_into!(master, user_id)
     raise ArgumentError, 'Master und Secondary dürfen nicht identisch sein' if id == master.id
     raise ArgumentError, 'Secondary ist bereits zusammengeführt' if merged_into_id.present?
     raise ArgumentError, 'Master ist bereits zusammengeführt' if master.merged_into_id.present?
+    raise ArgumentError, 'Beide Spieler kommen im selben Spiel vor' if _shares_game_with?(master)
 
+    skipped_associations = []
     ActiveRecord::Base.transaction do
-      %w[first_name last_name birthdate gender nation_id security_id email].each do |field|
+      %w[first_name last_name birthdate gender nation_id email].each do |field|
         master[field] = self[field] if master[field].blank? && self[field].present?
       end
-
-      existing_club_ids = master.clubs.map { |c| c['club_id'] }
-      clubs.each do |club|
-        master.clubs << club unless existing_club_ids.include?(club['club_id'])
+      # Eine echte security_id des Secondary schlägt einen Platzhalter des Masters,
+      # auch wenn der Master (kleinste ID) bestehen bleibt.
+      if _blank_security_id?(master.security_id) && !_blank_security_id?(security_id)
+        master.security_id = security_id
       end
 
-      existing_team_ids = master.licenses.map { |l| l['team_id'] }
-      licenses.each do |license|
-        master.licenses << license unless existing_team_ids.include?(license['team_id'])
-      end
-
+      # deep_dup: die zusammengeführten Einträge landen auf dem Master; das
+      # anschließende deactivate! mutiert die Clubs/Lizenzen der Secondary und
+      # darf die Master-Kopien nicht mit anfassen.
+      master.clubs    = _merge_clubs(clubs, master.clubs)
+      master.licenses = _merge_licenses(licenses, master.licenses)
       master.save!(validate: false)
 
       _rewrite_player_game_references(master.id)
+      skipped_associations = _repoint_player_associations(master.id)
 
       self.merged_into_id = master.id
       deactivate!(user_id, reason: 'Zusammenführung')
@@ -360,6 +370,7 @@ class Player < ApplicationRecord
         user_id: user_id
       )
     end
+    skipped_associations
   end
 
   # Einheitlicher Helper für License-History-Mutationen.
@@ -758,21 +769,170 @@ class Player < ApplicationRecord
     errors.add(:nation_id, 'muss größer als 0 sein') unless nation_id.to_i > 0
   end
 
+  # Clubs des Secondary auf den Master übernehmen: alle Master-Einträge behalten,
+  # vom Secondary nur ergänzen, was nicht bereits durch denselben aktiven Club
+  # abgedeckt ist. deep_dup entkoppelt die Hashes von der Secondary.
+  def _merge_clubs(secondary_clubs, master_clubs)
+    secondary_clubs = (secondary_clubs || []).map(&:deep_dup)
+    master_clubs    = (master_clubs || []).map(&:deep_dup)
+
+    master_active_club_ids = master_clubs
+                             .select { |c| c['valid_until'].nil? }
+                             .map { |c| c['club_id'] }
+                             .to_set
+    additional = secondary_clubs.reject do |c|
+      c['valid_until'].nil? && master_active_club_ids.include?(c['club_id'])
+    end
+
+    (master_clubs + additional).sort_by { |c| c['created_at'].to_s }
+  end
+
+  # Lizenzen zusammenführen: bei gleichem team_id UND season_id die History-Arrays
+  # mergen (dedupliziert), sonst als eigenständige Lizenz anhängen. Unterschiedliche
+  # Saisons desselben Teams bleiben getrennte Einträge.
+  def _merge_licenses(secondary_licenses, master_licenses)
+    result = (master_licenses || []).map(&:deep_dup)
+
+    (secondary_licenses || []).map(&:deep_dup).each do |lic|
+      existing = result.find do |l|
+        l['team_id'].to_s == lic['team_id'].to_s && l['season_id'].to_s == lic['season_id'].to_s
+      end
+      if existing
+        existing['history'] = ((existing['history'] || []) + (lic['history'] || []))
+                              .uniq { |h| [h['created_at'].to_s, h['license_status_id'].to_s] }
+                              .sort_by { |h| h['created_at'].to_s }
+      else
+        result << lic
+      end
+    end
+
+    result
+  end
+
+  # Referenzen in Spielen (players, starting_players, awards – Hash- und
+  # Legacy-Array-Format) von der Secondary auf den Master umschreiben.
+  # Events referenzieren Spieler über die Trikotnummer und werden durch das
+  # Umschreiben von players automatisch korrekt aufgelöst.
   def _rewrite_player_game_references(master_id)
     secondary_id = id
 
-    Game.where("players->'home' @> ?", [{ player_id: secondary_id }].to_json)
-        .or(Game.where("players->'guest' @> ?", [{ player_id: secondary_id }].to_json))
-        .find_each do |game|
+    Game.referencing_player(secondary_id).find_each do |game|
+      changed = false
+
       %w[home guest].each do |side|
-        game.players[side]&.each { |p| p['player_id'] = master_id if p['player_id'] == secondary_id }
-      end
-      if game.starting_players.present?
-        game.starting_players.each_value do |positions|
-          positions.transform_values! { |pid| pid == secondary_id ? master_id : pid }
+        game.players&.dig(side)&.each do |p|
+          next unless p['player_id'] == secondary_id
+
+          p['player_id'] = master_id
+          changed = true
         end
       end
-      game.save!(validate: false)
+
+      changed = _rewrite_position_map(game.starting_players, secondary_id, master_id) || changed
+      changed = _rewrite_position_map(game.awards, secondary_id, master_id) || changed
+
+      game.save!(validate: false) if changed
     end
+  end
+
+  # starting_players/awards liegen entweder als {"home" => {"goal" => id, ...}}
+  # (Normalformat) oder als {"home" => [{"player_id" => id, ...}]} (Legacy) vor.
+  def _rewrite_position_map(container, old_id, new_id)
+    return false if container.blank?
+
+    changed = false
+    %w[home guest].each do |side|
+      entry = container[side]
+      next if entry.blank?
+
+      if entry.is_a?(Hash)
+        entry.each do |key, value|
+          next unless value == old_id
+
+          entry[key] = new_id
+          changed = true
+        end
+      elsif entry.is_a?(Array)
+        entry.each do |e|
+          next unless e.is_a?(Hash) && e['player_id'] == old_id
+
+          e['player_id'] = new_id
+          changed = true
+        end
+      end
+    end
+    changed
+  end
+
+  def _blank_security_id?(value)
+    value.blank? || value == PLACEHOLDER_SECURITY_ID
+  end
+
+  # Kommen self und master gemeinsam in mindestens einer Aufstellung vor? Dann
+  # würde ein Merge einen doppelten player_id-Eintrag im selben Spiel erzeugen.
+  def _shares_game_with?(master)
+    shared = Game.referencing_player(id).to_a & Game.referencing_player(master.id).to_a
+    shared.any? { |game| game.player_in_lineup?(id) && game.player_in_lineup?(master.id) }
+  end
+
+  # Alle Kind-Datensätze mit player_id-Fremdschlüssel auf den Master umhängen.
+  # Gibt die Verknüpfungen zurück, die wegen Unique-Index-Kollision am Secondary
+  # verbleiben mussten (aktiver Transfer-Antrag, identisches Lizenzdokument).
+  def _repoint_player_associations(master_id)
+    secondary_id = id
+
+    Transfer.where(player_id: secondary_id).update_all(player_id: master_id)
+    PlayerChangeRequest.where(player_id: secondary_id).update_all(player_id: master_id)
+    PlayerSuspension.where(player_id: secondary_id).update_all(player_id: master_id)
+
+    _repoint_transfer_requests(secondary_id, master_id) +
+      _repoint_license_documents(secondary_id, master_id)
+  end
+
+  ACTIVE_TRANSFER_REQUEST_STATUSES = %w[pending_club pending_player pending_lv scheduled].freeze
+
+  def _repoint_transfer_requests(secondary_id, master_id)
+    scope = TransferRequest.where(player_id: secondary_id)
+    scope.where.not(status: ACTIVE_TRANSFER_REQUEST_STATUSES).update_all(player_id: master_id)
+
+    # Partieller Unique-Index: höchstens ein aktiver Antrag pro Spieler.
+    master_has_active = TransferRequest.where(player_id: master_id,
+                                              status: ACTIVE_TRANSFER_REQUEST_STATUSES).exists?
+    skipped = []
+    scope.where(status: ACTIVE_TRANSFER_REQUEST_STATUSES).find_each do |tr|
+      if master_has_active
+        Rails.logger.warn(
+          "merge_into!: aktiver Transfer-Antrag ##{tr.id} bleibt bei Spieler ##{secondary_id} " \
+          "(Master ##{master_id} hat bereits einen aktiven Antrag)"
+        )
+        skipped << { type: 'transfer_request', id: tr.id }
+        next
+      end
+
+      tr.update_columns(player_id: master_id)
+      master_has_active = true
+    end
+    skipped
+  end
+
+  def _repoint_license_documents(secondary_id, master_id)
+    existing = LicenseDocument.where(player_id: master_id)
+                              .pluck(:license_id, :document_type).to_set
+    skipped = []
+    LicenseDocument.where(player_id: secondary_id).find_each do |doc|
+      key = [doc.license_id, doc.document_type]
+      if existing.include?(key)
+        Rails.logger.warn(
+          "merge_into!: Lizenzdokument ##{doc.id} bleibt bei Spieler ##{secondary_id} " \
+          "(Master ##{master_id} hat ein identisches Dokument)"
+        )
+        skipped << { type: 'license_document', id: doc.id }
+        next
+      end
+
+      doc.update_columns(player_id: master_id)
+      existing << key
+    end
+    skipped
   end
 end

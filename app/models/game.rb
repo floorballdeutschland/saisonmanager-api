@@ -1174,6 +1174,40 @@ class Game < ApplicationRecord
     self.guest_team_id = nil if guest_team_id.blank? || guest_team_id.zero?
   end
 
+  # Alle Spiele, die den Spieler referenzieren – in `players` (home/guest),
+  # `starting_players` oder `awards` (jeweils Normal-Hash- oder Legacy-Array-Format).
+  # jsonb_path_exists findet Integer-Werte bei beliebiger Verschachtelung,
+  # unabhängig vom Speicherformat.
+  def self.referencing_player(player_id)
+    in_players = where("players->'home' @> ?", [{ player_id: player_id }].to_json)
+                 .or(where("players->'guest' @> ?", [{ player_id: player_id }].to_json))
+    path = '$.** ? (@ == $v)'
+    in_sp_awards = where(
+      "jsonb_path_exists(starting_players, ?::jsonpath, jsonb_build_object('v', ?)) OR " \
+      "jsonb_path_exists(awards, ?::jsonpath, jsonb_build_object('v', ?))",
+      path, player_id, path, player_id
+    )
+    where(id: in_players).or(where(id: in_sp_awards))
+  end
+
+  # Kommt der Spieler in diesem Spiel vor – in players, starting_players oder
+  # awards (Hash- oder Legacy-Array-Format)?
+  def player_in_lineup?(player_id)
+    return true if players&.dig('home')&.any? { |p| p['player_id'] == player_id }
+    return true if players&.dig('guest')&.any? { |p| p['player_id'] == player_id }
+
+    %w[home guest].each do |side|
+      [starting_players&.dig(side), awards&.dig(side)].each do |entry|
+        if entry.is_a?(Hash)
+          return true if entry.value?(player_id)
+        elsif entry.is_a?(Array)
+          return true if entry.any? { |e| e.is_a?(Hash) && e['player_id'] == player_id }
+        end
+      end
+    end
+    false
+  end
+
   def self.start_end_games
     return
     gds = GameDay.where date: Date.today

@@ -497,6 +497,160 @@ class PlayerTest < ActiveSupport::TestCase
                  'player_id im Spiel soll auf Master umgeschrieben sein'
   end
 
+  test 'merge_into! schreibt awards und Legacy-starting_players-Array um' do
+    create(:setting, current_season_id: '18')
+    user      = create(:user)
+    master    = create(:player)
+    secondary = create(:player)
+
+    game = Game.new(
+      players: { 'home' => [{ 'player_id' => secondary.id, 'trikot_number' => 7 }], 'guest' => [] },
+      # Legacy-Array-Format
+      starting_players: { 'home' => [{ 'position' => 'goal', 'player_id' => secondary.id }], 'guest' => [] },
+      awards: { 'home' => { 'mvp' => secondary.id }, 'guest' => {} },
+      events: []
+    )
+    game.save!(validate: false)
+
+    secondary.merge_into!(master, user.id)
+    game.reload
+
+    assert_equal master.id, game.players['home'].first['player_id']
+    assert_equal master.id, game.starting_players['home'].first['player_id']
+    assert_equal master.id, game.awards['home']['mvp']
+  end
+
+  test 'merge_into! haengt Transfers auf den Master um' do
+    user      = create(:user)
+    master    = create(:player)
+    secondary = create(:player)
+    transfer  = Transfer.new(player_id: secondary.id)
+    transfer.save!(validate: false)
+
+    secondary.merge_into!(master, user.id)
+
+    assert_equal master.id, transfer.reload.player_id
+  end
+
+  test 'merge_into! fuehrt Lizenz-History bei gleichem Team+Saison zusammen' do
+    league = create(:league, :current_season)
+    team   = create(:team, league:)
+    user   = create(:user)
+
+    master = create(:player, with_licenses: [
+      { team:, status: License::REQUESTED, created_at: 3.days.ago.iso8601 }
+    ])
+    secondary = create(:player, with_licenses: [
+      { team:, status: License::APPROVED, created_at: 2.days.ago.iso8601 }
+    ])
+
+    secondary.merge_into!(master, user.id)
+    master.reload
+
+    licenses_for_team = master.licenses.select { |l| l['team_id'] == team.id }
+    assert_equal 1, licenses_for_team.size, 'gleiche Team+Saison-Lizenz nicht dupliziert'
+    status_ids = licenses_for_team.first['history'].map { |h| h['license_status_id'] }
+    assert_includes status_ids, License::REQUESTED
+    assert_includes status_ids, License::APPROVED
+  end
+
+  test 'merge_into! haelt Lizenzen unterschiedlicher Saisons desselben Teams getrennt' do
+    league = create(:league, :current_season)
+    team   = create(:team, league:)
+    user   = create(:user)
+
+    master    = create(:player, with_licenses: [{ team:, season_id: 17 }])
+    secondary = create(:player, with_licenses: [{ team:, season_id: 18 }])
+
+    secondary.merge_into!(master, user.id)
+    master.reload
+
+    assert_equal 2, master.licenses.count { |l| l['team_id'] == team.id },
+                 'unterschiedliche Saisons desselben Teams bleiben getrennte Lizenzen'
+  end
+
+  test 'merge_into! haengt nicht-aktive und aktive Transfer-Anfragen auf den Master um' do
+    user      = create(:user)
+    master    = create(:player)
+    secondary = create(:player)
+    approved  = build_transfer_request(player: secondary, status: 'approved')
+    approved.save!(validate: false)
+    active = build_transfer_request(player: secondary, status: 'pending_lv')
+    active.save!(validate: false)
+
+    skipped = secondary.merge_into!(master, user.id)
+
+    assert_empty skipped
+    assert_equal master.id, approved.reload.player_id
+    assert_equal master.id, active.reload.player_id
+  end
+
+  test 'merge_into! laesst aktive Transfer-Anfrage bei Kollision am Zweitprofil und meldet sie' do
+    user       = create(:user)
+    master     = create(:player)
+    secondary  = create(:player)
+    master_tr  = build_transfer_request(player: master, status: 'pending_lv')
+    master_tr.save!(validate: false)
+    sec_tr = build_transfer_request(player: secondary, status: 'pending_lv')
+    sec_tr.save!(validate: false)
+
+    skipped = secondary.merge_into!(master, user.id)
+
+    assert_equal secondary.id, sec_tr.reload.player_id, 'kollidierender aktiver Antrag bleibt am Zweitprofil'
+    assert_equal master.id,    master_tr.reload.player_id
+    assert_includes skipped, { type: 'transfer_request', id: sec_tr.id }
+  end
+
+  test 'merge_into! haengt Lizenzdokumente um und laesst Duplikate am Zweitprofil' do
+    user      = create(:user)
+    master    = create(:player)
+    secondary = create(:player)
+    build_license_document(player: master,    license_id: 'L1', document_type: 'pass')
+    dup      = build_license_document(player: secondary, license_id: 'L1', document_type: 'pass')
+    distinct = build_license_document(player: secondary, license_id: 'L2', document_type: 'pass')
+
+    skipped = secondary.merge_into!(master, user.id)
+
+    assert_equal master.id,    distinct.reload.player_id
+    assert_equal secondary.id, dup.reload.player_id, 'identisches Dokument bleibt am Zweitprofil'
+    assert_includes skipped, { type: 'license_document', id: dup.id }
+  end
+
+  test 'merge_into! haengt Sperren auf den Master um' do
+    user      = create(:user)
+    master    = create(:player)
+    secondary = create(:player)
+    suspension = PlayerSuspension.new(player: secondary, valid_from: Date.current, valid_until: Date.current + 7)
+    suspension.save!(validate: false)
+
+    secondary.merge_into!(master, user.id)
+
+    assert_equal master.id, suspension.reload.player_id
+  end
+
+  test 'merge_into! bevorzugt echte security_id gegenueber Platzhalter des Masters' do
+    user      = create(:user)
+    master    = create(:player, security_id: Player::PLACEHOLDER_SECURITY_ID)
+    secondary = create(:player, security_id: 'echte-uuid-123')
+
+    secondary.merge_into!(master, user.id)
+
+    assert_equal 'echte-uuid-123', master.reload.security_id
+  end
+
+  test 'merge_into! verweigert Merge wenn beide Spieler im selben Spiel stehen' do
+    user      = create(:user)
+    master    = create(:player)
+    secondary = create(:player)
+    game = Game.new(
+      players: { 'home' => [{ 'player_id' => master.id }, { 'player_id' => secondary.id }], 'guest' => [] },
+      events: []
+    )
+    game.save!(validate: false)
+
+    assert_raises(ArgumentError) { secondary.merge_into!(master, user.id) }
+  end
+
   # ---------------------------------------------------------------------------
   # Player.find_by_team_ids – Batch-Laden statt N+1 (Issue #26)
   # ---------------------------------------------------------------------------
@@ -534,6 +688,22 @@ class PlayerTest < ActiveSupport::TestCase
   end
 
   private
+
+  def build_license_document(attrs = {})
+    doc = LicenseDocument.new({ license_id: 'L1', document_type: 'pass' }.merge(attrs))
+    doc.save!(validate: false)
+    doc
+  end
+
+  def build_transfer_request(attrs = {})
+    TransferRequest.new({
+      requesting_club: create(:club),
+      former_club:     create(:club),
+      created_by:      create(:user).id,
+      season_id:       18,
+      request_type:    'transfer'
+    }.merge(attrs))
+  end
 
   def capture_player_sql
     sqls = []
