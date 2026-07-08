@@ -11,7 +11,7 @@ class PlayerChangeRequestTest < ActiveSupport::TestCase
 
   def build_request(new_value)
     PlayerChangeRequest.new(player: @player, club: @club, correction_type: 'birthdate',
-                            status: 'pending', new_value: new_value)
+                            status: 'pending', new_value: new_value, requested_by_user_id: 1)
   end
 
   test 'unlesbares Geburtsdatum wird schon beim Anlegen abgelehnt' do

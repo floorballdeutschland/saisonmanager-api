@@ -126,7 +126,7 @@ class MergePlayersTest < ActiveSupport::TestCase
     run_task('DRY_RUN' => 'false', 'EXCLUDE_IDS' => keep.id.to_s)
 
     assert_nil dup.reload.merged_into_id, 'ausgeschlossene Gruppe bleibt unangetastet'
-    assert_equal '1872-03-15', keep.reload.birthdate, 'auch das Geburtsdatum bleibt unkorrigiert'
+    assert_equal Date.new(1872, 3, 15), keep.reload.birthdate, 'auch das Geburtsdatum bleibt unkorrigiert'
     assert_equal other_keep.id, other_dup.reload.merged_into_id, 'andere Gruppen werden weiter gemergt'
   end
 
