@@ -26,6 +26,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
   - **Nation-Anzeige**: eine nicht im Katalog hinterlegte `nation_id` liefert `nil` statt eines Server-Fehlers.
 ### Verbessert
 
+- **Geburtsdatum ist jetzt eine echte Datums-Spalte**: `players.birthdate` war historisch ein Textfeld; Altersprüfungen (Liga-Spielberechtigung, Jugend-Kennzeichnung im Spielbericht, Minderjährigen-Erkennung) mussten den Wert bei jeder Verwendung defensiv parsen. Die Migration normalisiert den Altbestand deterministisch (deutsches Format → ISO, Leerwerte/MariaDB-Nulldaten → leer) und bricht bei nicht eindeutig lesbaren Werten ab, statt Geburtsdaten still zu verwerfen – zur Vorab-Analyse gibt es `rake players:birthdate_format_report`. Für API-Antworten ändert sich nichts (Datumsformat bleibt `JJJJ-MM-TT`). Vorarbeit für altersabhängige Lizenz-Pflichtdokumente.
 - **Lizenzstufen und Qualifikationstypen: Pflege jetzt Admin-only**: Beide Kataloge gelten bundesweit (Lizenzstufen steuern u. a. die Gültigkeits-Ableitung beim Kurs-Import, Qualifikationstypen die Coach-Auswahl bei der Ansetzung – für alle Verbände gleich). Anlegen/Ändern/Löschen war bisher auch jedem LV-RSK erlaubt, was einem einzelnen Landesverband ungewollten Einfluss auf bundesweite Standards gab. Lesezugriff (für RSK/SBK/Ansetzer, die die Listen z. B. im Schiri-Bearbeiten-Formular brauchen) bleibt unverändert.
 ### Behoben
 

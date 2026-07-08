@@ -250,7 +250,7 @@ class GamesController < ApplicationController
           item[:player_firstname] = player.first_name
           item[:player_name] = player.last_name
           item[:gender] = player.gender
-          birthdate = parse_player_birthdate(player.birthdate)
+          birthdate = player.birthdate
           item[:youth] = birthdate.present? && birthdate > 18.years.ago.to_date
         else
           item[:player_firstname] = params[:player_firstname]
@@ -1080,15 +1080,6 @@ class GamesController < ApplicationController
 
   def author_user_id
     secretary_or_current_user_id
-  end
-
-  # players.birthdate ist eine varchar-Spalte; direkter Vergleich mit Date schlägt fehl
-  def parse_player_birthdate(value)
-    return nil if value.blank?
-
-    Date.parse(value.to_s)
-  rescue ArgumentError, TypeError
-    nil
   end
 
   # Weicher Lizenz-Check: erzeugt eine Warnmeldung, wenn der Spieler keine erteilte

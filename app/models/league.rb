@@ -172,7 +172,7 @@ class League < ApplicationRecord
   def age_eligible?(birthdate)
     return true if deadline.blank?
 
-    dob = Date.parse(birthdate.to_s)
+    dob = birthdate.is_a?(Date) ? birthdate : Date.parse(birthdate.to_s)
     before_deadline ? dob <= deadline : dob >= deadline
   rescue ArgumentError, TypeError
     true

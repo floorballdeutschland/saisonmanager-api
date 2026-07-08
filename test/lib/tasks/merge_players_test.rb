@@ -85,7 +85,7 @@ class MergePlayersTest < ActiveSupport::TestCase
 
     assert_nil   keep.reload.merged_into_id, 'kleinste ID bleibt bestehen'
     assert_nil   keep.deactivated_at
-    assert_equal '1972-03-15', keep.birthdate, 'plausibles Jahr uebernommen'
+    assert_equal Date.new(1972, 3, 15), keep.birthdate, 'plausibles Jahr uebernommen'
     assert_equal keep.id, dup.reload.merged_into_id
     assert_not_nil dup.deactivated_at
   end
