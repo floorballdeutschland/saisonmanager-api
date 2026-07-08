@@ -455,7 +455,7 @@ class League < ApplicationRecord
       grouped[group] = group_template(group)
 
       group_games = all_games.select { |game| game.group_identifier == group }
-      results = evaluate_table_results(group_games)
+      results = evaluate_table_results(group_games, include_teams_without_games: false)
 
       sorted_results = if direct_comparison
                          sort_by_direct_comparison(results.values, group_games)
@@ -582,11 +582,13 @@ class League < ApplicationRecord
     end
   end
 
-  def evaluate_table_results(g = games)
+  def evaluate_table_results(g = games, include_teams_without_games: true)
     results = {}
 
-    # Pre-populate all league teams so teams with no games still appear
-    teams.each { |team| results[team.id] = empty_table_item(team) }
+    # Pre-populate all league teams so teams with no games still appear.
+    # Nicht für Gruppentabellen: dort ergibt sich die Zugehörigkeit allein aus
+    # den Spielen der Gruppe, sonst landen alle Liga-Teams in jeder Gruppe.
+    teams.each { |team| results[team.id] = empty_table_item(team) } if include_teams_without_games
 
     g.each do |game|
       [game.home_team, game.guest_team].each do |team|
