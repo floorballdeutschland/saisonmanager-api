@@ -368,6 +368,25 @@ class LeagueTest < ActiveSupport::TestCase
     assert table.all? { |r| (r[:games]).zero? }
   end
 
+  test 'grouped_table: Punktekorrekturen wirken auch in der Gruppentabelle' do
+    go = build_go
+    league = build_league(go)
+    club = build_club
+    arena = build_arena
+    game_day = build_game_day(league, arena, club)
+    team_a1 = build_team(league, club, 'A1')
+    team_a2 = build_team(league, club, 'A2')
+    league.update!(point_corrections: { team_a1.id.to_s => { 'points' => -2 } })
+
+    # A1 gewinnt (3 Punkte), Korrektur -2 → 1 Punkt
+    events = [{ 'period' => 1, 'home_goals' => 1, 'guest_goals' => 0, 'row' => 1 }]
+    build_game(game_day, team_a1, team_a2, events: events, group_identifier: 'group_a')
+
+    table = league.grouped_table['group_a'][:table]
+    assert_equal 1, table.find { |r| r[:team_id] == team_a1.id }[:points]
+    assert_equal 0, table.find { |r| r[:team_id] == team_a2.id }[:points]
+  end
+
   # ---------------------------------------------------------------------------
   # express_license_window_open?
   # ---------------------------------------------------------------------------
