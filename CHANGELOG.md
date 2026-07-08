@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Spielorte löschen und zusammenführen ist jetzt Admins vorbehalten**: Spielorte (Arenen) bleiben verbandsübergreifend geteilte Stammdaten, die jeder SBK wie bisher anlegen und bearbeiten kann. Die destruktiven Aktionen Löschen und Zusammenführen (das Zusammenführen hängt Spieltage anderer Verbände um) erfordern jetzt Admin-Rechte – SBK erhalten dort 403. Neuer Berechtigungsschlüssel `arena_manage_lifecycle` für die Oberfläche (#62).
+
 ## [1.43.1] - 2026-07-09
 
 ### Behoben
