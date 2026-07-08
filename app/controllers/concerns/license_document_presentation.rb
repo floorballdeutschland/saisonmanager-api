@@ -35,10 +35,17 @@ module LicenseDocumentPresentation
   end
 
   # Zeitpunkt der Lizenzbeantragung (Stichtag für altersabhängige Dokumente).
+  # Bewusst der LETZTE REQUESTED-Eintrag – konsistent zu requested_at in
+  # League#licenses und zur Grace-Period-Logik (nach Rückzug + Neuantrag zählt
+  # der aktuelle Antrag). Ohne lesbares Antragsdatum greift in
+  # DocumentType.required_keys der Fallback auf das heutige Datum.
   def license_requested_at(license)
-    entry = Array(license && license['history']).find { |h| h['license_status_id'].to_i == License::REQUESTED }
+    entry = Array(license && license['history'])
+            .select { |h| h['license_status_id'].to_i == License::REQUESTED }
+            .max_by { |h| h['created_at'].to_s }
     entry && entry['created_at']&.to_time
   rescue ArgumentError
+    Rails.logger.warn("license_requested_at: unlesbares created_at in Lizenz #{license && license['id']}")
     nil
   end
 

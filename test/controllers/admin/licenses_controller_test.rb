@@ -159,5 +159,58 @@ module Admin
       assert_equal 'erstlizenz',  rl_row['gf_role']
       assert_nil go1_row['gf_role'], 'ohne Zuordnung bleibt gf_role leer'
     end
+
+    # -------------------------------------------------------------------------
+    # Dokumente: saisonübergreifend am Spieler, per_season, Altersauflösung
+    # -------------------------------------------------------------------------
+
+    def attach_pdf(doc)
+      doc.file.attach(io: StringIO.new('%PDF-1.4'), filename: 'doc.pdf', content_type: 'application/pdf')
+      doc.save!
+      doc
+    end
+
+    test 'einmaliges Dokument aus dem Altbestand (mit license_id) erfüllt auch die aktuelle Lizenz' do
+      DocumentType.create!(name: 'Unterstellungserklärung', key: 'use')
+      @league_go1.update!(required_documents: ['use'])
+      attach_pdf(LicenseDocument.new(player: @player_go1, license_id: 'alte-lizenz-uuid', document_type: 'use'))
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses'
+      row = JSON.parse(response.body).find { |r| r['player_id'] == @player_go1.id }
+      assert_includes row['required_documents'], 'use'
+      assert row['documents']['use'], 'Altbestand-Dokument muss saisonübergreifend zählen'
+      assert row['documents']['use_url'].present?
+    end
+
+    test 'per_season-Dokument aus der Vorsaison zählt nicht für die aktuelle Lizenz' do
+      DocumentType.create!(name: 'Sportärztliches Attest', key: 'attest', validity: 'per_season')
+      @league_go1.update!(required_documents: ['attest'])
+      old_doc = attach_pdf(LicenseDocument.new(player: @player_go1, document_type: 'attest', season_id: 17))
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses'
+      row = JSON.parse(response.body).find { |r| r['player_id'] == @player_go1.id }
+      assert_not row['documents']['attest'], 'Vorsaison-Attest darf die Saison-18-Lizenz nicht erfüllen'
+
+      old_doc.destroy!
+      attach_pdf(LicenseDocument.new(player: @player_go1, document_type: 'attest', season_id: 18))
+      get '/api/v2/admin/licenses'
+      row = JSON.parse(response.body).find { |r| r['player_id'] == @player_go1.id }
+      assert row['documents']['attest'], 'Attest der laufenden Saison muss zählen'
+    end
+
+    test 'Volljährige: parental_consent entfällt aus required_documents, bleibt aber in der documents-Map' do
+      DocumentType.create!(name: 'Zustimmung der Erziehungsberechtigten', key: 'parental_consent',
+                           required_below_age: 18)
+      @league_go1.update!(required_documents: ['parental_consent'])
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses'
+      row = JSON.parse(response.body).find { |r| r['player_id'] == @player_go1.id }
+      assert_not_includes row['required_documents'], 'parental_consent',
+                          'Spieler Jahrgang 1990 ist volljährig – Zustimmung nicht erforderlich'
+      assert row['documents'].key?('parental_consent'), 'Frontend-Kontrakt: Key immer vorhanden'
+    end
   end
 end

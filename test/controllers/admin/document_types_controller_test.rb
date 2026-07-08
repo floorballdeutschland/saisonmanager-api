@@ -63,6 +63,20 @@ module Admin
       assert_equal 'Umbenannt', @scoped.reload.name
     end
 
+    test 'gescopte SBK kann den eigenen Eintrag nicht global oder fremd umscopen' do
+      login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+      patch "/api/v2/admin/document_types/#{@scoped.id}",
+            params: { document_type: { name: 'LV-Attest', game_operation_id: nil } }
+      assert_response :success
+      assert_equal @go.id, @scoped.reload.game_operation_id, 'darf nicht zum globalen Eintrag werden'
+
+      patch "/api/v2/admin/document_types/#{@scoped.id}",
+            params: { document_type: { name: 'LV-Attest', game_operation_id: @other_go.id } }
+      assert_response :success
+      assert_equal @go.id, @scoped.reload.game_operation_id, 'darf nicht in fremden Verband wandern'
+    end
+
     test 'Löschen ist blockiert, solange die Dokumentart verwendet wird' do
       league = create(:league, game_operation: @go, required_documents: [@scoped.key])
       login(create(:user, :admin))

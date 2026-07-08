@@ -1,8 +1,9 @@
 module Admin
   # Verwaltung des Dokumentarten-Katalogs (Lizenz-Pflichtdokumente).
   # Lesen: Admin und SBK (für Liga-Formular und Lizenzansichten).
-  # Pflegen: Admin überall; verbands-gescopte SBK nur Einträge des eigenen
-  # Verbands – globale (bundesweite) Einträge sind Admin-Sache (vgl. RefereeTags).
+  # Pflegen: Admin und global gescopte SBK überall (inkl. globaler/bundesweiter
+  # Einträge); verbands-gescopte SBK nur Einträge des eigenen Verbands
+  # (vgl. RefereeTags).
   class DocumentTypesController < ApplicationController
     include LicenseDocumentPresentation
 
@@ -25,7 +26,16 @@ module Admin
 
     def create
       document_type = DocumentType.new(document_type_params)
-      document_type.game_operation_id = sbk_go_ids.first if scoped_sbk? && document_type.game_operation_id.blank?
+      if scoped_sbk? && document_type.game_operation_id.blank?
+        # SBK mit mehreren Verbänden muss den Verband explizit angeben,
+        # sonst würde still ein beliebiger gewählt.
+        if sbk_go_ids.size > 1
+          return render json: { error: 'Bitte den Verband angeben (game_operation_id).' },
+                        status: :unprocessable_entity
+        end
+
+        document_type.game_operation_id = sbk_go_ids.first
+      end
       return render json: { error: 'Nicht berechtigt' }, status: :forbidden unless can_manage?(document_type)
 
       if document_type.save
@@ -40,9 +50,12 @@ module Admin
       # Gescopte SBK dürfen einen Eintrag nicht in einen anderen Verband verschieben.
       attrs = attrs.except(:game_operation_id) if scoped_sbk?
       @document_type.assign_attributes(attrs)
-      @document_type.template.purge if params[:remove_template].present?
 
       if @document_type.save
+        # Erst nach erfolgreichem Save löschen – sonst wäre die Vorlage bei
+        # fehlgeschlagener Validierung trotzdem weg. Ein gleichzeitig
+        # hochgeladenes neues Template hat Vorrang.
+        @document_type.template.purge if params[:remove_template].present? && attrs[:template].blank?
         render json: document_type_json(@document_type)
       else
         render json: { errors: @document_type.errors.full_messages }, status: :unprocessable_entity
@@ -55,7 +68,7 @@ module Admin
                       status: :unprocessable_entity
       end
 
-      @document_type.destroy
+      @document_type.destroy!
       head :no_content
     end
 

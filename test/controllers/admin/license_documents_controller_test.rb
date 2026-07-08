@@ -37,6 +37,28 @@ module Admin
       assert_not_equal old_doc.id, docs.sole.id
     end
 
+    test 'erneuter Upload ersetzt auch ein spielerbezogenes Dokument ohne license_id' do
+      2.times do
+        post "/api/v2/admin/players/#{@player.id}/license_documents",
+             params: { document_type: 'use', file: fixture_file_upload('dokument.pdf', 'application/pdf') }
+        assert_response :created
+      end
+
+      assert_equal 1, @player.license_documents.where(document_type: 'use').count
+    end
+
+    test 'ungültiger Upload lässt das bestehende Dokument unangetastet' do
+      existing = LicenseDocument.new(player: @player, document_type: 'use')
+      existing.file.attach(io: StringIO.new('%PDF-1.4'), filename: 'alt.pdf', content_type: 'application/pdf')
+      existing.save!
+
+      post "/api/v2/admin/players/#{@player.id}/license_documents",
+           params: { document_type: 'use', file: fixture_file_upload('dokument.pdf', 'text/plain') }
+
+      assert_response :unprocessable_entity
+      assert LicenseDocument.exists?(existing.id), 'Rollback muss das alte Dokument erhalten'
+    end
+
     test 'Index liefert ohne license_id-Filter alle Dokumente des Spielers' do
       legacy = LicenseDocument.new(player: @player, license_id: 'lizenz-a', document_type: 'id_copy')
       legacy.file.attach(io: StringIO.new('%PDF-1.4'), filename: 'a.pdf', content_type: 'application/pdf')

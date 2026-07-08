@@ -31,17 +31,22 @@ module Admin
       )
       doc.file.attach(params[:file])
 
-      unless doc.valid?
-        return render json: { errors: doc.errors.full_messages }, status: :unprocessable_entity
-      end
-
-      # Pro Spieler gibt es je Dokumentart genau ein aktuelles Dokument –
-      # ein neuer Upload ersetzt alle vorhandenen dieser Art (auch Altbestand,
-      # der noch an einer konkreten Lizenz hing).
+      # Pro Spieler gibt es je Dokumentart genau ein aktuelles Dokument – ein
+      # neuer Upload ersetzt alle vorhandenen dieser Art (auch Altbestand, der
+      # noch an einer konkreten Lizenz hing). Erst löschen, dann validieren:
+      # sonst schlägt die Eindeutigkeits-Validierung gegen das zu ersetzende
+      # Dokument an. Bei ungültigem Upload rollt die Transaktion das Löschen
+      # zurück, der Bestand bleibt unverändert.
       existing = @player.license_documents.where(document_type: params[:document_type])
+      saved = false
       ActiveRecord::Base.transaction do
         existing.find_each(&:destroy)
-        doc.save!
+        saved = doc.save
+        raise ActiveRecord::Rollback unless saved
+      end
+
+      unless saved
+        return render json: { errors: doc.errors.full_messages }, status: :unprocessable_entity
       end
 
       render json: document_json(doc), status: :created
@@ -50,7 +55,7 @@ module Admin
     def destroy
       doc = @player.license_documents.find(params[:id])
       doc.file.purge
-      doc.destroy
+      doc.destroy!
       render json: { success: true }
     end
 
