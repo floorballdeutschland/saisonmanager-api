@@ -76,7 +76,7 @@ class DocumentType < ApplicationRecord
   def generate_key
     return if key.present? || name.blank?
 
-    base = name.parameterize(separator: '_')
+    base = name.parameterize(separator: '_').tr('-', '_')
     candidate = base
     suffix = 2
     while self.class.exists?(key: candidate)
