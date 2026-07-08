@@ -75,6 +75,8 @@ class User < ApplicationRecord
       ph[:admin].present? || ph[:sbk].present? || ph[:vm].present? || ph[:tm].present?
     result[:menu_item_licence_club_admin] = ph[:vm].present? || ph[:tm].present?
     result[:menu_item_licence_admin] = ph[:admin].present? || ph[:sbk].present?
+    # Dokumentarten-Katalog (Lizenz-Pflichtdokumente): Admin global, SBK für den eigenen Verband
+    result[:menu_item_document_type_admin] = ph[:admin].present? || ph[:sbk].present?
     has_full_referee_access = ph[:admin].present? || (ph[:rsk].present? && ph[:rsk].include?(0))
     # Schiedsrichterdaten (inkl. Lizenzlisten) sind dem Schiedsrichterwesen
     # vorbehalten: Admin und RSK. Ansetzer brauchen Lesezugriff für die

@@ -1,3 +1,9 @@
+# Lizenz-Dokument eines Spielers (z. B. Ausweiskopie, Zustimmung der
+# Erziehungsberechtigten). Dokumente gelten pro Spieler und damit
+# saisonübergreifend; license_id ist nur noch informativ (in welchem
+# Antrag wurde hochgeladen), season_id trägt die per_season-Gültigkeit
+# der zugehörigen Dokumentart (DocumentType, referenziert über den
+# document_type-Key).
 class LicenseDocument < ApplicationRecord
   belongs_to :player
   belongs_to :uploaded_by, class_name: 'User', optional: true
@@ -6,7 +12,6 @@ class LicenseDocument < ApplicationRecord
   ALLOWED_CONTENT_TYPES = %w[application/pdf image/png image/jpeg].freeze
   MAX_FILE_SIZE = 10.megabytes
 
-  validates :license_id, presence: true
   validates :document_type, presence: true
   validates :player_id, uniqueness: { scope: %i[license_id document_type] }
   validate :file_attached

@@ -1,4 +1,6 @@
 class PlayersController < ApplicationController
+  include LicenseDocumentPresentation
+
   before_action :set_player, only: %i[show update destroy]
   skip_before_action :authenticate_user, only: %i[transfers_public stats]
   before_action :authenticate_public_request, only: %i[transfers_public stats]
@@ -326,26 +328,22 @@ class PlayersController < ApplicationController
 
     all_player_ids = result.flat_map { |t| t[:players].map { |p| p[:id] } }.uniq
     if all_player_ids.present?
-      docs_by_key = LicenseDocument.where(player_id: all_player_ids)
-                                   .includes(file_attachment: :blob)
-                                   .group_by { |d| [d.player_id, d.license_id, d.document_type] }
+      # Dokumente gelten pro Spieler (saisonübergreifend); altersabhängige
+      # Dokumentarten werden zum Datum der Lizenzbeantragung aufgelöst.
+      docs_by_key = license_documents_by_player_and_type(all_player_ids)
+      catalog = document_type_catalog((league.required_documents || []) + ['parental_consent'])
       result.each do |team_data|
         team_data[:players].each do |player_data|
-          license_id = player_data.dig(:team_license, :license, 'id')
           player_id = player_data[:id]
-          parental_consent_docs = docs_by_key[[player_id, license_id, 'parental_consent']]
-          documents = {
-            parental_consent:     parental_consent_docs.present?,
-            parental_consent_url: parental_consent_docs&.first&.then { |d| rails_blob_url(d.file, disposition: 'inline') if d.file.attached? }
-          }
-          (league.required_documents || []).each do |doc_type|
-            next if doc_type == 'parental_consent'
-
-            docs = docs_by_key[[player_id, license_id, doc_type]]
-            documents[doc_type.to_sym]          = docs.present?
-            documents["#{doc_type}_url".to_sym] = docs&.first&.then { |d| rails_blob_url(d.file, disposition: 'inline') if d.file.attached? }
-          end
-          player_data[:team_license][:documents] = documents
+          required_keys = DocumentType.required_keys(
+            league.required_documents,
+            birthdate: player_data[:birthdate],
+            requested_at: license_requested_at(player_data.dig(:team_license, :license)),
+            catalog: catalog
+          )
+          player_data[:team_license][:required_documents] = required_keys
+          player_data[:team_license][:documents] =
+            document_map_for(player_id, league.season_id, docs_by_key, required_keys, catalog)
         end
       end
     end
