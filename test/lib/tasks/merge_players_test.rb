@@ -117,6 +117,19 @@ class MergePlayersTest < ActiveSupport::TestCase
     assert_nil dup.reload.merged_into_id, 'Konflikt-Gruppe wird nicht gemergt'
   end
 
+  test 'EXCLUDE_IDS ueberspringt Gruppen anhand der Survivor-ID komplett' do
+    keep = create(:player, first_name: 'Max', last_name: 'Muster', birthdate: '1872-03-15')
+    dup  = create(:player, first_name: 'Max', last_name: 'Muster', birthdate: '1972-03-15')
+    other_keep = create(:player, first_name: 'Anna', last_name: 'Test', birthdate: '1990-01-01')
+    other_dup  = create(:player, first_name: 'Anna', last_name: 'Test', birthdate: '1990-01-01')
+
+    run_task('DRY_RUN' => 'false', 'EXCLUDE_IDS' => keep.id.to_s)
+
+    assert_nil dup.reload.merged_into_id, 'ausgeschlossene Gruppe bleibt unangetastet'
+    assert_equal '1872-03-15', keep.reload.birthdate, 'auch das Geburtsdatum bleibt unkorrigiert'
+    assert_equal other_keep.id, other_dup.reload.merged_into_id, 'andere Gruppen werden weiter gemergt'
+  end
+
   test 'DRY_RUN veraendert keine Daten' do
     keep = create(:player, first_name: 'Max', last_name: 'Muster', birthdate: '1972-03-15')
     dup  = create(:player, first_name: 'Max', last_name: 'Muster', birthdate: '1972-03-16')
