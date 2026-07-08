@@ -35,6 +35,12 @@ module Admin
         return render json: { error: 'Vorname, Nachname und Geburtsdatum sind erforderlich' }, status: :unprocessable_entity
       end
 
+      begin
+        birthdate = Date.iso8601(birthdate)
+      rescue ArgumentError
+        return render json: { error: 'Geburtsdatum muss im Format JJJJ-MM-TT übergeben werden' }, status: :unprocessable_entity
+      end
+
       player = Player.where(
         'LOWER(first_name) = ? AND LOWER(last_name) = ? AND birthdate = ?',
         first_name.downcase, last_name.downcase, birthdate

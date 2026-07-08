@@ -9,6 +9,7 @@ class PlayerChangeRequest < ApplicationRecord
   validates :status, inclusion: { in: STATUSES }
   validates :new_value, presence: true, unless: -> { correction_type == 'names_swapped' }
   validates :new_value, inclusion: { in: %w[M W D] }, if: -> { correction_type == 'gender' }
+  validate :new_value_must_be_a_date, if: -> { correction_type == 'birthdate' && new_value.present? }
   validates :rejection_reason, presence: true, if: -> { status == 'rejected' }
 
   scope :pending, -> { where(status: 'pending') }
@@ -21,7 +22,10 @@ class PlayerChangeRequest < ApplicationRecord
   def apply!(reviewed_by_user_id)
     case correction_type
     when 'birthdate'
-      player.update!(birthdate: new_value)
+      # birthdate ist eine date-Spalte: ein unlesbarer String würde beim
+      # Zuweisen still zu nil gecastet und das Geburtsdatum löschen –
+      # deshalb explizit parsen und bei Unlesbarkeit laut scheitern.
+      player.update!(birthdate: parsed_birthdate!)
     when 'first_name'
       player.update!(first_name: new_value)
     when 'last_name'
@@ -56,5 +60,20 @@ class PlayerChangeRequest < ApplicationRecord
       requested_by_user_id:,
       reviewed_by_user_id:
     }
+  end
+
+  private
+
+  def parsed_birthdate!
+    Date.parse(new_value.to_s)
+  rescue ArgumentError, TypeError
+    errors.add(:new_value, 'muss ein gültiges Datum sein (JJJJ-MM-TT)')
+    raise ActiveRecord::RecordInvalid, self
+  end
+
+  def new_value_must_be_a_date
+    Date.parse(new_value.to_s)
+  rescue ArgumentError, TypeError
+    errors.add(:new_value, 'muss ein gültiges Datum sein (JJJJ-MM-TT)')
   end
 end
