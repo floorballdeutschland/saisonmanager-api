@@ -2,6 +2,38 @@ require 'test_helper'
 
 class LeagueTest < ActiveSupport::TestCase
   # ---------------------------------------------------------------------------
+  # age_eligible? (Stichtag-Spielberechtigung)
+  # ---------------------------------------------------------------------------
+
+  test 'age_eligible?: before_deadline=true erlaubt geboren bis einschließlich Stichtag' do
+    l = League.new(deadline: Date.new(2010, 1, 1), before_deadline: true)
+    assert l.age_eligible?(Date.new(2010, 1, 1)), 'Stichtag selbst ist spielberechtigt'
+    assert l.age_eligible?(Date.new(2009, 12, 31))
+    assert_not l.age_eligible?(Date.new(2010, 1, 2))
+  end
+
+  test 'age_eligible?: before_deadline=false erlaubt geboren ab einschließlich Stichtag' do
+    l = League.new(deadline: Date.new(2010, 1, 1), before_deadline: false)
+    assert l.age_eligible?(Date.new(2010, 1, 1))
+    assert l.age_eligible?(Date.new(2011, 6, 15))
+    assert_not l.age_eligible?(Date.new(2009, 12, 31))
+  end
+
+  test 'age_eligible?: akzeptiert weiterhin String-Geburtsdaten' do
+    l = League.new(deadline: Date.new(2010, 1, 1), before_deadline: false)
+    assert l.age_eligible?('2010-06-01')
+    assert_not l.age_eligible?('2009-06-01')
+  end
+
+  test 'age_eligible?: ohne Stichtag oder ohne (lesbares) Geburtsdatum keine Sperre' do
+    assert League.new(deadline: nil).age_eligible?(Date.new(1990, 1, 1))
+
+    l = League.new(deadline: Date.new(2010, 1, 1), before_deadline: true)
+    assert l.age_eligible?(nil)
+    assert l.age_eligible?('unbekannt')
+  end
+
+  # ---------------------------------------------------------------------------
   # Pure point calculation methods (no DB needed)
   # ---------------------------------------------------------------------------
 

@@ -170,7 +170,7 @@ class League < ApplicationRecord
   # before_deadline: true = "geboren bis" (<= Stichtag), false = "geboren ab" (>= Stichtag).
   # Ohne Stichtag oder bei fehlendem/unlesbarem Geburtsdatum keine Sperre.
   def age_eligible?(birthdate)
-    return true if deadline.blank?
+    return true if deadline.blank? || birthdate.blank?
 
     dob = birthdate.is_a?(Date) ? birthdate : Date.parse(birthdate.to_s)
     before_deadline ? dob <= deadline : dob >= deadline
