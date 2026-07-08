@@ -17,12 +17,17 @@
 #
 # Ausführen:
 #   bundle exec rails players:merge_duplicates DRY_RUN=false [USER_ID=<id>]
+#
+# Einzelne Gruppen ausschließen (z. B. unklare Fuzzy-Matches zur manuellen Prüfung):
+#   EXCLUDE_IDS=<Survivor-IDs, kommagetrennt> – Gruppen, deren kleinste ID
+#   (BEHALTEN-Zeile im Dry-Run) hier steht, werden komplett übersprungen.
 
 namespace :players do
   desc 'Doppelte Spieler in den Datensatz mit kleinster ID zusammenlegen. DRY_RUN=false zum Ausführen.'
   task merge_duplicates: :environment do
     dry_run = ENV['DRY_RUN'] != 'false'
     user_id = ENV['USER_ID'].presence&.to_i
+    exclude_ids = ENV['EXCLUDE_IDS'].to_s.split(',').filter_map { |s| Integer(s.strip, exception: false) }
     puts "=== Spieler-Merge #{dry_run ? '[DRY RUN]' : '[LIVE]'} ==="
     puts
 
@@ -36,6 +41,15 @@ namespace :players do
 
     groups.each_with_index do |(survivor, secondaries), idx|
       survivor = Player.find(survivor.id)
+
+      if exclude_ids.include?(survivor.id)
+        puts "--- Gruppe #{idx + 1}: #{survivor.last_name}, #{survivor.first_name} ---"
+        puts "  AUSGESCHLOSSEN (EXCLUDE_IDS ##{survivor.id}) — #{secondaries.size} Merge(s) übersprungen"
+        puts
+        skipped += secondaries.size
+        next
+      end
+
       resolved = PlayerMergeHelper.resolve_birthdate([survivor] + secondaries)
 
       puts "--- Gruppe #{idx + 1}: #{survivor.last_name}, #{survivor.first_name} ---"
