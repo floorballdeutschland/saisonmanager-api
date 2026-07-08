@@ -23,7 +23,7 @@ module LicenseDocumentPresentation
       doc = current_document(player_id, key, license_season_id, docs_by_key, catalog)
       result[key.to_sym] = doc.present?
       result["#{key}_url".to_sym] =
-        doc && doc.file.attached? ? rails_blob_url(doc.file, disposition: 'inline') : nil
+        doc&.file&.attached? ? rails_blob_url(doc.file, disposition: 'inline') : nil
     end
     result
   end
