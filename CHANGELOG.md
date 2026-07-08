@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.43.0] - 2026-07-08
+
 ### Neu
 
 - **Lizenz-Pflichtdokumente gelten jetzt saisonübergreifend am Spieler, mit zentralem Dokumentarten-Katalog**: Dokumente wie Unterstellungserklärung/Anti-Doping-Erklärung, Schiedsvereinbarung, Zustimmung der Erziehungsberechtigten oder das Sportärztliche Attest werden einmal am Spieler hochgeladen und gelten für alle künftigen Lizenzanträge – sie hängen nicht mehr an der einzelnen Lizenz. Neuer Katalog „Dokumentarten" (`/api/v2/admin/document_types`, Pflege: Admin überall, SBK für den eigenen Verband; globale Einträge gelten bundesweit): je Dokumentart optional Beschreibung, Vorlage zum Download, Gültigkeit (`einmalig` oder `je Saison`) und Altersgrenze (`required_below_age`, z. B. 18 = Zustimmung Erziehungsberechtigte, 16 = Attest). **Altersabhängige Dokumente werden zum Datum der Lizenzbeantragung geprüft.** Ligen wählen ihre Pflichtdokumente weiter über `required_documents` (jetzt Katalog-Keys statt Freitext; Bestand wird automatisch als Katalogeinträge übernommen). Die Lizenzansichten liefern pro Antrag die tatsächlich erforderlichen Dokumente (`required_documents` altersaufgelöst) und den Erfüllungsstand aus dem Spieler-Bestand.
