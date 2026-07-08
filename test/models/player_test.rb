@@ -150,6 +150,20 @@ class PlayerTest < ActiveSupport::TestCase
     end
   end
 
+  test 'deactivate! und reactivate! funktionieren bei nil-Clubs/-Lizenzen (Altdaten)' do
+    create(:setting, current_season_id: '18')
+    user   = create(:user)
+    player = create(:player)
+    player.update_columns(clubs: nil, licenses: nil)
+    player.reload
+
+    player.deactivate!(user.id)
+    assert_not_nil player.reload.deactivated_at
+
+    player.reactivate!
+    assert_nil player.reload.deactivated_at
+  end
+
   test 'deactivate! überschreibt nicht Clubs, die bereits abgelaufen sind' do
     create(:setting, current_season_id: '18')
     user    = create(:user)
