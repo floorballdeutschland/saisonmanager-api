@@ -54,12 +54,12 @@ namespace :players do
 
       puts "--- Gruppe #{idx + 1}: #{survivor.last_name}, #{survivor.first_name} ---"
       puts "  BEHALTEN: ##{survivor.id} | Geburtsdatum #{survivor.birthdate}" \
-           "#{resolved != survivor.birthdate ? " → #{resolved}" : ''}"
+           "#{resolved != survivor.birthdate&.iso8601 ? " → #{resolved}" : ''}"
 
       # Geburtsdatum einmal pro Gruppe persistieren (unabhängig vom Erfolg der
       # einzelnen Merges), damit ein zurückgerolltes Merge das Datum nicht
       # dauerhaft unkorrigiert lässt.
-      if !dry_run && survivor.birthdate != resolved
+      if !dry_run && survivor.birthdate&.iso8601 != resolved
         survivor.birthdate = resolved
         survivor.save!(validate: false)
       end

@@ -433,7 +433,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_08_130000) do
   create_table "players", force: :cascade do |t|
     t.string "first_name"
     t.string "last_name"
-    t.string "birthdate"
+    t.date "birthdate"
     t.string "gender"
     t.string "nation_id"
     t.string "security_id"

@@ -56,6 +56,28 @@ module Admin
     end
 
     # ---------------------------------------------------------------------------
+    # GET /api/v2/admin/transfer_requests/search_player
+    # ---------------------------------------------------------------------------
+
+    test 'search_player findet Spieler über ISO-Geburtsdatum' do
+      login(@admin)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15'
+      }
+      assert_response :success
+      assert_equal @player.id, JSON.parse(response.body).dig('player', 'id')
+    end
+
+    test 'search_player lehnt nicht-ISO-Geburtsdatum mit 422 ab' do
+      login(@admin)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: 'Max', last_name: 'Mustermann', birthdate: '15.03.1995'
+      }
+      assert_response :unprocessable_entity
+      assert_match(/JJJJ-MM-TT/, JSON.parse(response.body)['error'])
+    end
+
+    # ---------------------------------------------------------------------------
     # POST /api/v2/admin/transfer_requests
     # ---------------------------------------------------------------------------
 
