@@ -1,4 +1,6 @@
 class ClubsController < ApplicationController
+  include LicenseDocumentPresentation
+
   # GET /clubs
   def index
     @clubs = Clubs.all
@@ -79,6 +81,10 @@ class ClubsController < ApplicationController
       # Pflicht aus). Ersetzt die frühere is_buli-Ableitung über league_classes.
       result[:parental_consent_required] = leagues.any?(&:parental_consent_required)
       result[:required_documents] = leagues.flat_map { |l| l.required_documents || [] }.uniq
+      # Katalog-Metadaten (Name, Vorlage, Gültigkeit, Altersgrenze) zu den
+      # geforderten Dokumentarten – fürs Upload-UI im Team-Lizenzwesen.
+      catalog = document_type_catalog(result[:required_documents] + ['parental_consent'])
+      result[:document_types] = catalog.values.sort_by(&:name).map { |dt| document_type_json(dt) }
 
       clubs = Club.find(team.all_club_ids)
       all_players = clubs.map(&:players).flatten.compact
@@ -97,6 +103,13 @@ class ClubsController < ApplicationController
           last_requested = l['history'].select { |h| h['license_status_id'].to_i == License::REQUESTED }
                                        .max_by { |h| h['created_at'] }
           item[:grace_period_ends_at] = last_requested ? (last_requested['created_at'].to_time + License::GRACE_PERIOD).iso8601 : nil
+          # Altersabhängige Dokumentarten: Stichtag = Datum der Lizenzbeantragung.
+          item[:required_documents] = DocumentType.required_keys(
+            result[:required_documents],
+            birthdate: p.birthdate,
+            requested_at: license_requested_at(l),
+            catalog: catalog
+          )
           result[:current_requests] << item
         else
           result[:other_players] << p.meta_hash

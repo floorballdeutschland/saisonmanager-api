@@ -1,5 +1,7 @@
 module Admin
   class LicensesController < ApplicationController
+    include LicenseDocumentPresentation
+
     def index
       ph = current_user.permission_hash
       unless ph[:admin].present? || ph[:sbk].present?
@@ -26,11 +28,11 @@ module Admin
       team_club_map   = Team.where(league_id: leagues.map(&:id)).pluck(:id, :club_id).to_h
       clubs           = Club.where(id: team_club_map.values.uniq).index_by(&:id)
 
-      # Pre-load all license documents for players in these leagues (grouped by [player_id, license_id, doc_type])
+      # Pre-load all license documents for players in these leagues (grouped by
+      # [player_id, doc_type] – Dokumente gelten pro Spieler, saisonübergreifend)
       all_player_ids = leagues.flat_map { |l| l.licenses(true, true).flat_map { |t| t[:players].map { |p| p[:id] } } }.uniq
-      license_docs_by_key = LicenseDocument.where(player_id: all_player_ids)
-                                           .includes(file_attachment: :blob)
-                                           .group_by { |d| [d.player_id, d.license_id, d.document_type] }
+      license_docs_by_key = license_documents_by_player_and_type(all_player_ids)
+      catalog = document_type_catalog(leagues.flat_map { |l| l.required_documents || [] } + ['parental_consent'])
 
       result = []
       leagues.each do |league|
@@ -48,6 +50,13 @@ module Admin
               next
             end
             last_status_id = player_data[:team_license][:last_status_id].to_i
+            # Altersabhängige Dokumentarten: Stichtag ist das Datum der Lizenzbeantragung.
+            required_keys = DocumentType.required_keys(
+              league.required_documents,
+              birthdate: player_data[:birthdate],
+              requested_at: player_data[:team_license][:requested_at]&.to_time,
+              catalog: catalog
+            )
 
             result << {
               player_id:            player_data[:id],
@@ -83,9 +92,9 @@ module Admin
               express:              lic['express'] || false,
               requested_at:         player_data[:team_license][:requested_at],
               approved_at:          player_data[:team_license][:approved_at],
-              required_documents:   league.required_documents || [],
+              required_documents:   required_keys,
               valid_until:          lic['valid_until'],
-              documents:            documents_for(player_data[:id], lic['id'], license_docs_by_key, league.required_documents)
+              documents:            document_map_for(player_data[:id], league.season_id, license_docs_by_key, required_keys, catalog)
             }
           end
         end
@@ -95,22 +104,6 @@ module Admin
     end
 
     private
-
-    def documents_for(player_id, license_id, docs_by_key, required_documents = [])
-      parental_consent_docs = docs_by_key[[player_id, license_id, 'parental_consent']]
-      result = {
-        parental_consent:     parental_consent_docs.present?,
-        parental_consent_url: parental_consent_docs&.first&.then { |d| rails_blob_url(d.file, disposition: 'inline') if d.file.attached? }
-      }
-
-      (Array(required_documents) - %w[parental_consent]).each do |doc_type|
-        docs = docs_by_key[[player_id, license_id, doc_type]]
-        result[doc_type.to_sym]          = docs.present?
-        result["#{doc_type}_url".to_sym] = docs&.first&.then { |d| rails_blob_url(d.file, disposition: 'inline') if d.file.attached? }
-      end
-
-      result
-    end
 
     # Haupt-/Zusatzlizenz (Anzeige-Konzept): die Lizenz in der höchsten Liga ist
     # 'primary', alle weiteren sind Zusatzlizenzen ('secondary'). Unabhängig von

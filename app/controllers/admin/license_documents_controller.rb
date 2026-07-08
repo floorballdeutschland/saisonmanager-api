@@ -5,7 +5,10 @@ module Admin
     before_action :check_write_permission, only: %i[create destroy]
 
     def index
-      docs = @player.license_documents.includes(file_attachment: :blob).where(license_id: params[:license_id])
+      # Dokumente gelten pro Spieler (saisonübergreifend). Der license_id-Filter
+      # bleibt für Alt-Aufrufer optional erhalten.
+      docs = @player.license_documents.includes(file_attachment: :blob).order(created_at: :desc)
+      docs = docs.where(license_id: params[:license_id]) if params[:license_id].present?
       render json: docs.map { |d| document_json(d) }
     end
 
@@ -21,20 +24,29 @@ module Admin
 
       doc = LicenseDocument.new(
         player: @player,
-        license_id: params[:license_id],
+        license_id: params[:license_id].presence,
         document_type: params[:document_type],
+        season_id: Setting.current_season_id,
         uploaded_by: current_user
       )
       doc.file.attach(params[:file])
 
-      unless doc.valid?
-        return render json: { errors: doc.errors.full_messages }, status: :unprocessable_entity
+      # Pro Spieler gibt es je Dokumentart genau ein aktuelles Dokument – ein
+      # neuer Upload ersetzt alle vorhandenen dieser Art (auch Altbestand, der
+      # noch an einer konkreten Lizenz hing). Erst löschen, dann validieren:
+      # sonst schlägt die Eindeutigkeits-Validierung gegen das zu ersetzende
+      # Dokument an. Bei ungültigem Upload rollt die Transaktion das Löschen
+      # zurück, der Bestand bleibt unverändert.
+      existing = @player.license_documents.where(document_type: params[:document_type])
+      saved = false
+      ActiveRecord::Base.transaction do
+        existing.find_each(&:destroy)
+        saved = doc.save
+        raise ActiveRecord::Rollback unless saved
       end
 
-      existing = @player.license_documents.find_by(license_id: params[:license_id], document_type: params[:document_type])
-      ActiveRecord::Base.transaction do
-        existing&.destroy
-        doc.save!
+      unless saved
+        return render json: { errors: doc.errors.full_messages }, status: :unprocessable_entity
       end
 
       render json: document_json(doc), status: :created
@@ -43,7 +55,7 @@ module Admin
     def destroy
       doc = @player.license_documents.find(params[:id])
       doc.file.purge
-      doc.destroy
+      doc.destroy!
       render json: { success: true }
     end
 
@@ -139,6 +151,7 @@ module Admin
       {
         id: doc.id,
         document_type: doc.document_type,
+        season_id: doc.season_id,
         filename: doc.file.filename.to_s,
         content_type: doc.file.content_type,
         byte_size: doc.file.byte_size,

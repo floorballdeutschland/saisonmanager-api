@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_07_08_120000) do
+ActiveRecord::Schema[7.1].define(version: 2026_07_08_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -92,6 +92,19 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_08_120000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["date", "metric_key"], name: "index_daily_metrics_on_date_and_metric_key", unique: true
+  end
+
+  create_table "document_types", force: :cascade do |t|
+    t.string "key", null: false
+    t.string "name", null: false
+    t.text "description"
+    t.bigint "game_operation_id"
+    t.string "validity", default: "once", null: false
+    t.integer "required_below_age"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["game_operation_id", "name"], name: "index_document_types_on_game_operation_id_and_name", unique: true
+    t.index ["key"], name: "index_document_types_on_key", unique: true
   end
 
   create_table "email_logs", force: :cascade do |t|
@@ -347,11 +360,13 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_08_120000) do
 
   create_table "license_documents", force: :cascade do |t|
     t.bigint "player_id", null: false
-    t.string "license_id", null: false
+    t.string "license_id"
     t.string "document_type", null: false
     t.bigint "uploaded_by_id"
     t.datetime "created_at", precision: nil, null: false
     t.datetime "updated_at", precision: nil, null: false
+    t.bigint "season_id"
+    t.index ["player_id", "document_type"], name: "index_license_documents_on_player_id_and_document_type"
     t.index ["player_id", "license_id", "document_type"], name: "idx_license_documents_unique", unique: true
   end
 
@@ -799,6 +814,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_08_120000) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "document_types", "game_operations"
   add_foreign_key "game_day_referee_confirmations", "game_days"
   add_foreign_key "game_day_referee_confirmations", "referees"
   add_foreign_key "game_day_secretary_links", "game_days"

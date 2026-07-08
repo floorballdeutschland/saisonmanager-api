@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Lizenz-Pflichtdokumente gelten jetzt saisonübergreifend am Spieler, mit zentralem Dokumentarten-Katalog**: Dokumente wie Unterstellungserklärung/Anti-Doping-Erklärung, Schiedsvereinbarung, Zustimmung der Erziehungsberechtigten oder das Sportärztliche Attest werden einmal am Spieler hochgeladen und gelten für alle künftigen Lizenzanträge – sie hängen nicht mehr an der einzelnen Lizenz. Neuer Katalog „Dokumentarten" (`/api/v2/admin/document_types`, Pflege: Admin überall, SBK für den eigenen Verband; globale Einträge gelten bundesweit): je Dokumentart optional Beschreibung, Vorlage zum Download, Gültigkeit (`einmalig` oder `je Saison`) und Altersgrenze (`required_below_age`, z. B. 18 = Zustimmung Erziehungsberechtigte, 16 = Attest). **Altersabhängige Dokumente werden zum Datum der Lizenzbeantragung geprüft.** Ligen wählen ihre Pflichtdokumente weiter über `required_documents` (jetzt Katalog-Keys statt Freitext; Bestand wird automatisch als Katalogeinträge übernommen). Die Lizenzansichten liefern pro Antrag die tatsächlich erforderlichen Dokumente (`required_documents` altersaufgelöst) und den Erfüllungsstand aus dem Spieler-Bestand.
+
 ### Entfernt
 
 - **Online-Prüfungen (Onlineprüfungen im Saisonmanager) entfernt**: Die Funktion, mit der Schiedsrichter Prüfungen direkt im Saisonmanager ablegen (RSK legt Test + Fragenkatalog an, weist Schiris zu, Schiri absolviert die Prüfung mit Countdown), wird nicht mehr benötigt und ist entfernt (Models, Controller, Routen, DB-Tabellen `online_tests`/`online_test_questions`/`online_test_assignments`/`online_test_attempts`). Die Menüpunkte waren bereits seit Kurzem nach Einführung ausgeblendet, es gab keine produktiven Testdaten.
