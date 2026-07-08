@@ -53,7 +53,7 @@ module Admin
       existing.save!
 
       post "/api/v2/admin/players/#{@player.id}/license_documents",
-           params: { document_type: 'use', file: fixture_file_upload('dokument.pdf', 'text/plain') }
+           params: { document_type: 'use', file: fixture_file_upload('notiz.txt', 'text/plain') }
 
       assert_response :unprocessable_entity
       assert LicenseDocument.exists?(existing.id), 'Rollback muss das alte Dokument erhalten'
