@@ -100,7 +100,7 @@ class MergePlayersTest < ActiveSupport::TestCase
     assert_nil   keep.reload.merged_into_id
     assert_equal keep.id, dup1.reload.merged_into_id
     assert_equal keep.id, dup2.reload.merged_into_id
-    assert_equal '1972-03-15', keep.birthdate
+    assert_equal Date.new(1972, 3, 15), keep.birthdate
   end
 
   test 'Live-Merge ueberspringt Gruppe wenn beide IDs im selben Spiel stehen' do
