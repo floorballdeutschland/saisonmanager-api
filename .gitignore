@@ -40,3 +40,8 @@ yarn-debug.log*
 /config/secrets.yml
 /create_user.sql
 /referees.json
+
+# Personenbezogene Daten (Schiedsrichterliste) niemals committen
+*.xlsx
+referees_stammdaten.csv
+referees_historie.csv

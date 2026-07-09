@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Schiedsrichter-Re-Sync aus der FD-Excel „Schiedsrichterliste 2025"**: Neue Rake-Tasks `referees2025:report` (Read-only-Abgleich DB vs. Excel: Feld-Abweichungen, Tester-Anlagen, fehlende Schiris), `referees2025:sync` (Upsert per Lizenznummer – setzt Tester-Änderungen an den Echtdaten zurück, ohne IDs/Verknüpfungen zu verlieren; löscht Tester-Anlagen ohne Verknüpfungen) und `referees2025:import_history` (historische Kurs-/Testergebnisse 2011–2025 als Course-Results, pro Jahr ein Import-Batch). Karriere-Regel: 5 Jahre ohne Lizenz = beendet – diese Schiedsrichter werden weder importiert noch angetastet. Die CSVs erzeugt `scripts/export_schiedsrichterliste_csvs.py` aus der Excel. Die veralteten Import-Skripte (`scripts/import_referees.rb` mit destruktivem `delete_all`, `scripts/update_referee_licenses.rb`, `lib/tasks/import_referees.rake` – alle referenzieren inzwischen entfernte Spalten) sind ersatzlos entfernt.
+
 ## [1.44.0] - 2026-07-09
 
 ### Neu
