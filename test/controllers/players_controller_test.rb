@@ -458,4 +458,37 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :unprocessable_entity
   end
+
+  # 8. Öffentliche Spielerstatistik: pro Saison aggregiert; laufende und
+  # abgeschlossene Saisons werden getrennt berechnet (Cache-Split in #stats)
+  # und müssen zusammen wieder die komplette Karriere ergeben.
+  test 'GET players/:id/stats aggregiert Tore pro Saison über den Saison-Split' do
+    arena = create(:arena)
+    old_league = create(:league, :previous_season, game_operation: @game_operation)
+    old_team = create(:team, league: old_league, club: @club)
+
+    [[@league, @team, 1], [old_league, old_team, 2]].each do |league, team, goals|
+      game_day = GameDay.create!(league: league, arena: arena, club: @club, number: 1, date: '2025-01-01')
+      guest = create(:team, league: league, club: @club)
+      events = (1..goals).map do |i|
+        { 'period' => 1, 'home_goals' => i, 'guest_goals' => 0, 'home_number' => 7, 'row' => i }
+      end
+      Game.create!(
+        game_day: game_day, home_team: team, guest_team: guest,
+        started: true, ended: true, forfait: 0, overtime: false, legacy: false,
+        events: events,
+        players: { 'home' => [{ 'trikot_number' => 7, 'player_id' => @player.id }], 'guest' => [] }
+      )
+    end
+
+    get "/api/v2/players/#{@player.id}/stats", headers: { 'X-Api-Key' => 'test-key-for-smoke-tests' }
+    assert_response :success
+
+    body = JSON.parse(response.body)
+    assert_equal [18, 17], body['seasons'].map { |s| s['season_id'] }
+    assert_equal 1, body['seasons'][0]['leagues'][0]['goals']
+    assert_equal 2, body['seasons'][1]['leagues'][0]['goals']
+    assert_equal 2, body['totals']['games']
+    assert_equal 3, body['totals']['goals']
+  end
 end

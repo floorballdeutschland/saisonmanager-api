@@ -727,52 +727,21 @@ class PlayersController < ApplicationController
     player = Player.find(params[:id])
     setting = Setting.current
     seasons_map = setting.seasons.each_with_object({}) { |(k, v), h| h[k.to_i] = v['name'] }
+    current_season_id = Setting.current_season_id.to_i
 
-    # Find all ended games where this player was in the lineup
-    player_id = player.id
-    games = Game
-            .joins(game_day: { league: :game_operation })
-            .where(ended: true)
-            .where(
-              "players->'home' @> ? OR players->'guest' @> ?",
-              "[{\"player_id\":#{player_id}}]",
-              "[{\"player_id\":#{player_id}}]"
-            )
-            .includes(game_day: { league: :game_operation })
-
-    # season_id → league_id → aggregated stats
-    by_season = {}
-
-    games.each do |game|
-      scorer_data = game.evaluate_scorer[player_id]
-      next if scorer_data.nil?
-
-      league      = game.game_day.league
-      season_id   = league.season_id.to_i
-      league_id   = league.id
-
-      by_season[season_id] ||= {}
-      entry = by_season[season_id][league_id] ||= {
-        league_id:,
-        league_name:    league.name,
-        league_slug:    "#{league.id}-#{league.short_name&.parameterize}",
-        game_operation: league.game_operation.short_name,
-        team_id:        scorer_data[:team_id],
-        team_name:      scorer_data[:team_name],
-        games: 0, goals: 0, assists: 0, penalty_minutes: 0
-      }
-
-      entry[:games]           += 1
-      entry[:goals]           += scorer_data[:goals]
-      entry[:assists]         += scorer_data[:assists]
-      entry[:penalty_minutes] += (scorer_data[:penalty_2]      * 2) +
-                                 (scorer_data[:penalty_2and2]   * 4) +
-                                 (scorer_data[:penalty_5]       * 5) +
-                                 (scorer_data[:penalty_10]      * 10) +
-                                 (scorer_data[:penalty_ms_tech] + scorer_data[:penalty_ms_full] +
-                                  scorer_data[:penalty_ms1]     + scorer_data[:penalty_ms2] +
-                                  scorer_data[:penalty_ms3]) * 25
+    # Abgeschlossene Saisons sind unveränderlich → lange TTL. Der Key trägt
+    # die aktuelle Saison, damit beim Saisonwechsel die bis dahin laufende
+    # Saison automatisch in den Langzeit-Cache nachrückt. Die laufende Saison
+    # ändert sich mit jedem abgeschlossenen Spielbericht → kurze TTL.
+    closed_seasons = Rails.cache.fetch("players/#{player.id}/stats/closed/#{current_season_id}", expires_in: 1.week) do
+      stats_by_season(player.id, current_season_id, current_season: false)
     end
+    current_season = Rails.cache.fetch("players/#{player.id}/stats/current/#{current_season_id}",
+                                       expires_in: 15.minutes) do
+      stats_by_season(player.id, current_season_id, current_season: true)
+    end
+
+    by_season = closed_seasons.merge(current_season)
 
     seasons = by_season
               .sort_by { |season_id, _| -season_id }
@@ -908,6 +877,66 @@ class PlayersController < ApplicationController
   end
 
   private
+
+  # season_id → league_id → aggregierte Stats aus allen beendeten Spielen mit
+  # diesem Spieler in der Aufstellung. current_season: true rechnet nur die
+  # laufende Saison, false alle übrigen (inkl. Ligen ohne season_id — deren
+  # Wert landet wie bisher unter season_id 0).
+  def stats_by_season(player_id, current_season_id, current_season:)
+    # Top-Level-Containment (players @> …) statt players->'home' @> …, damit
+    # der GIN-Index auf games.players greift (Expression-Queries nutzen einen
+    # Spalten-Index nicht).
+    games = Game
+            .joins(game_day: { league: :game_operation })
+            .where(ended: true)
+            .where(
+              'players @> ? OR players @> ?',
+              { home: [{ player_id: player_id.to_i }] }.to_json,
+              { guest: [{ player_id: player_id.to_i }] }.to_json
+            )
+    # leagues.season_id ist eine String-Spalte.
+    games = if current_season
+              games.where(leagues: { season_id: current_season_id.to_s })
+            else
+              games.where('leagues.season_id IS NULL OR leagues.season_id <> ?', current_season_id.to_s)
+            end
+    games = games.includes(game_day: { league: :game_operation })
+
+    by_season = {}
+
+    games.each do |game|
+      scorer_data = game.evaluate_scorer[player_id]
+      next if scorer_data.nil?
+
+      league      = game.game_day.league
+      season_id   = league.season_id.to_i
+      league_id   = league.id
+
+      by_season[season_id] ||= {}
+      entry = by_season[season_id][league_id] ||= {
+        league_id:,
+        league_name:    league.name,
+        league_slug:    "#{league.id}-#{league.short_name&.parameterize}",
+        game_operation: league.game_operation.short_name,
+        team_id:        scorer_data[:team_id],
+        team_name:      scorer_data[:team_name],
+        games: 0, goals: 0, assists: 0, penalty_minutes: 0
+      }
+
+      entry[:games]           += 1
+      entry[:goals]           += scorer_data[:goals]
+      entry[:assists]         += scorer_data[:assists]
+      entry[:penalty_minutes] += (scorer_data[:penalty_2]      * 2) +
+                                 (scorer_data[:penalty_2and2]   * 4) +
+                                 (scorer_data[:penalty_5]       * 5) +
+                                 (scorer_data[:penalty_10]      * 10) +
+                                 (scorer_data[:penalty_ms_tech] + scorer_data[:penalty_ms_full] +
+                                  scorer_data[:penalty_ms1]     + scorer_data[:penalty_ms2] +
+                                  scorer_data[:penalty_ms3]) * 25
+    end
+
+    by_season
+  end
 
   def can_manage_player?(player)
     ph = current_user.permission_hash

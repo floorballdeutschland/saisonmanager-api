@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_07_08_140000) do
+ActiveRecord::Schema[7.1].define(version: 2026_07_09_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -296,6 +296,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_08_140000) do
     t.index ["home_team_id"], name: "index_games_on_home_team_id"
     t.index ["legacy_ref"], name: "index_games_on_legacy_ref", unique: true, where: "(legacy_ref IS NOT NULL)"
     t.index ["officiating_referee_ids"], name: "index_games_on_officiating_referee_ids", using: :gin
+    t.index ["players"], name: "index_games_on_players", using: :gin
     t.index ["referee_ids"], name: "index_games_on_referee_ids", using: :gin
   end
 
