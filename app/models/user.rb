@@ -164,7 +164,7 @@ class User < ApplicationRecord
 
     result[:player_deactivate] = ph[:admin].present? || ph[:sbk].present? || ph[:vm].present? || ph[:tm].present?
     result[:update_player_email] = ph[:vm].present? || ph[:tm].present?
-    result[:player_set_license_to_transfer] = ph[:admin].present? || special_user
+    result[:player_set_license_to_transfer] = ph[:admin].present?
     # Erst-/Zweitlizenz-Zuordnung (GF-Erwachsenenbereich) setzen/tauschen
     result[:player_set_gf_role] = ph[:admin].present? || ph[:sbk].present?
     result[:player_merge] = ph[:admin].present? || ph[:sbk].present?
@@ -197,10 +197,6 @@ class User < ApplicationRecord
 
     sa_ids = GameOperation.where(id: go_ids).pluck(:state_association_id).compact.uniq
     StateAssociation.where(id: sa_ids).any?(&:effective_referee_license_review_enabled)
-  end
-
-  def special_user
-    %w[jho_admin buettner_sbk mguenther].include?(user_name)
   end
 
   # True, wenn die Ansetzungslogik für den/die Ansetzer:in aktiv ist. Globale

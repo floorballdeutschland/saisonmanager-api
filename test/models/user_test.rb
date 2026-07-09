@@ -279,8 +279,14 @@ class UserTest < ActiveSupport::TestCase
     assert_equal first_call, second_call
   end
 
-  test 'permissions_items: special_user ohne Admin-Rechte darf Lizenzstatus auf TRANSFER setzen' do
-    # special_user is determined by user_name; give the user a non-admin role
+  test 'permissions_items: Admin darf Lizenzstatus auf TRANSFER setzen' do
+    u = build_user(permissions: [{ 'user_group_id' => 1, 'game_operation_id' => 0 }])
+    assert u.permissions_items[:player_set_license_to_transfer]
+  end
+
+  test 'permissions_items: früher hartcodierter Sonder-Nutzer ohne Admin-Rechte darf NICHT mehr Lizenzstatus auf TRANSFER setzen' do
+    # Das frühere special_user-Sonderrecht (hartcodierte Nutzernamen) wurde
+    # entfernt; ohne Admin-Rolle gibt es das Recht nicht mehr.
     u = User.create!(
       user_name: 'jho_admin',
       password: 'password123',
@@ -288,13 +294,11 @@ class UserTest < ActiveSupport::TestCase
       permissions: [{ 'user_group_id' => 4, 'club_id' => 1 }],
       teams: []
     )
-    assert u.special_user
-    assert u.permissions_items[:player_set_license_to_transfer]
+    assert_not u.permissions_items[:player_set_license_to_transfer]
   end
 
-  test 'permissions_items: normaler VM-Nutzer (kein special_user, kein Admin) darf NICHT Lizenzstatus auf TRANSFER setzen' do
+  test 'permissions_items: normaler VM-Nutzer (kein Admin) darf NICHT Lizenzstatus auf TRANSFER setzen' do
     u = build_user(permissions: [{ 'user_group_id' => 4, 'club_id' => 99 }])
-    assert_not u.special_user
     assert_not u.permissions_items[:player_set_license_to_transfer]
   end
 end
