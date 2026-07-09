@@ -365,7 +365,7 @@ class LeagueTest < ActiveSupport::TestCase
     grouped = league.grouped_table
     table = grouped['group_a'][:table]
     assert_equal [team_a1.id, team_a2.id].sort, table.map { |r| r[:team_id] }.sort
-    assert table.all? { |r| (r[:games]).zero? }
+    assert(table.all? { |r| r[:games].zero? })
   end
 
   test 'grouped_table: Punktekorrekturen wirken auch in der Gruppentabelle' do
