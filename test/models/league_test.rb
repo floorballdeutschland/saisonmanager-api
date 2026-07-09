@@ -313,6 +313,80 @@ class LeagueTest < ActiveSupport::TestCase
     assert_equal a_pos, b_pos
   end
 
+  test 'table: Teams ohne Spiele erscheinen in der Gesamttabelle' do
+    go = build_go
+    league = build_league(go)
+    club = build_club
+    arena = build_arena
+    game_day = build_game_day(league, arena, club)
+    team_a = build_team(league, club, 'Team A')
+    team_b = build_team(league, club, 'Team B')
+    team_c = build_team(league, club, 'Ohne Spiele')
+
+    events = [{ 'period' => 1, 'home_goals' => 1, 'guest_goals' => 0, 'row' => 1 }]
+    build_game(game_day, team_a, team_b, events: events)
+
+    sorted = league.table
+    assert_equal [team_a, team_b, team_c].map(&:id).sort, sorted.map { |r| r[:team_id] }.sort
+    assert_equal 0, sorted.find { |r| r[:team_id] == team_c.id }[:games]
+  end
+
+  test 'grouped_table: Gruppentabellen enthalten nur die Teams der jeweiligen Gruppe' do
+    go = build_go
+    league = build_league(go)
+    club = build_club
+    arena = build_arena
+    game_day = build_game_day(league, arena, club)
+    team_a1 = build_team(league, club, 'A1')
+    team_a2 = build_team(league, club, 'A2')
+    team_b1 = build_team(league, club, 'B1')
+    team_b2 = build_team(league, club, 'B2')
+
+    events = [{ 'period' => 1, 'home_goals' => 1, 'guest_goals' => 0, 'row' => 1 }]
+    build_game(game_day, team_a1, team_a2, events: events, group_identifier: 'group_a')
+    build_game(game_day, team_b1, team_b2, events: events, group_identifier: 'group_b')
+
+    grouped = league.grouped_table
+    assert_equal [team_a1.id, team_a2.id].sort, grouped['group_a'][:table].map { |r| r[:team_id] }.sort
+    assert_equal [team_b1.id, team_b2.id].sort, grouped['group_b'][:table].map { |r| r[:team_id] }.sort
+  end
+
+  test 'grouped_table: geplante (nicht beendete) Gruppenspiele bringen ihre Teams in die Gruppentabelle' do
+    go = build_go
+    league = build_league(go)
+    club = build_club
+    arena = build_arena
+    game_day = build_game_day(league, arena, club)
+    team_a1 = build_team(league, club, 'A1')
+    team_a2 = build_team(league, club, 'A2')
+
+    build_game(game_day, team_a1, team_a2, started: false, ended: false, group_identifier: 'group_a')
+
+    grouped = league.grouped_table
+    table = grouped['group_a'][:table]
+    assert_equal [team_a1.id, team_a2.id].sort, table.map { |r| r[:team_id] }.sort
+    assert(table.all? { |r| r[:games].zero? })
+  end
+
+  test 'grouped_table: Punktekorrekturen wirken auch in der Gruppentabelle' do
+    go = build_go
+    league = build_league(go)
+    club = build_club
+    arena = build_arena
+    game_day = build_game_day(league, arena, club)
+    team_a1 = build_team(league, club, 'A1')
+    team_a2 = build_team(league, club, 'A2')
+    league.update!(point_corrections: { team_a1.id.to_s => { 'points' => -2 } })
+
+    # A1 gewinnt (3 Punkte), Korrektur -2 → 1 Punkt
+    events = [{ 'period' => 1, 'home_goals' => 1, 'guest_goals' => 0, 'row' => 1 }]
+    build_game(game_day, team_a1, team_a2, events: events, group_identifier: 'group_a')
+
+    table = league.grouped_table['group_a'][:table]
+    assert_equal 1, table.find { |r| r[:team_id] == team_a1.id }[:points]
+    assert_equal 0, table.find { |r| r[:team_id] == team_a2.id }[:points]
+  end
+
   # ---------------------------------------------------------------------------
   # express_license_window_open?
   # ---------------------------------------------------------------------------
