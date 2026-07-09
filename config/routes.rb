@@ -217,7 +217,6 @@ Rails.application.routes.draw do
         resources :referees, only: %i[index show create update destroy] do
           get :games, on: :member
           get :club_stats, on: :member
-          post :wallet_pass, on: :member
           post :merge, on: :member
           post :create_user, on: :member
           delete :destroy_user, on: :member

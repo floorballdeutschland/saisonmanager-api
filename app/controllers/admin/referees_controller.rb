@@ -4,7 +4,7 @@ module Admin
 
     before_action :authorize_referee_access!
     before_action :set_referee,
-                  only: %i[show update destroy games wallet_pass club_stats merge create_user destroy_user feedbacks]
+                  only: %i[show update destroy games club_stats merge create_user destroy_user feedbacks]
 
     # GET /api/v2/admin/referees
     def index
@@ -120,41 +120,6 @@ module Admin
       render json: { message: 'Schiedsrichter erfolgreich zusammengeführt.', master_id: @referee.id }
     rescue ArgumentError => e
       render json: { message: e.message }, status: :unprocessable_entity
-    end
-
-    # POST /api/v2/admin/referees/:id/wallet_pass
-    def wallet_pass
-      return forbidden_response unless can_access_referee?(@referee, include_vm: false)
-
-      if @referee.guest?
-        render json: { error: 'Gast-Schiedsrichter erhalten keinen Wallet-Ausweis' }, status: :unprocessable_entity
-        return
-      end
-
-      pass_url = issue_wallet_pass(@referee)
-
-      if pass_url.blank?
-        render json: { error: 'Passmeister lieferte keine Pass-URL' }, status: :unprocessable_entity
-        return
-      end
-
-      mail_sent = @referee.email.present?
-      RefereeMailer.wallet_pass_issued(@referee, pass_url).deliver_later if mail_sent
-
-      # mail_sent meldet dem Frontend, ob eine Benachrichtigung rausging. Ohne
-      # hinterlegte E-Mail wird der Pass erstellt, aber keine Mail versendet –
-      # das soll sichtbar zurückgemeldet und nicht still übersprungen werden.
-      render json: { url: pass_url, mail_sent: mail_sent }
-    rescue PassmeisterService::Error => e
-      Rails.logger.warn("Admin::RefereesController#wallet_pass passmeister error for referee #{@referee&.id}: #{e.message}")
-      render json: { error: e.message }, status: :unprocessable_entity
-    rescue StandardError => e
-      Rails.logger.error("Admin::RefereesController#wallet_pass failed for referee #{@referee&.id}: #{e.class}: #{e.message}")
-      sentry_id = Sentry.capture_exception(e)
-      render json: {
-        error: 'Wallet-Pass konnte nicht erstellt werden. Bitte später erneut versuchen.',
-        sentry_id: sentry_id
-      }, status: :unprocessable_entity
     end
 
     # GET /api/v2/admin/referees/:id/games
@@ -289,28 +254,6 @@ module Admin
 
     private
 
-    # Erzeugt/aktualisiert den Passmeister-Wallet-Pass und speichert die URL am Referee.
-    # Gibt die Pass-URL zurück, oder nil falls Passmeister keine lieferte (geloggt).
-    def issue_wallet_pass(referee)
-      result = PassmeisterService.create_or_update_pass(referee)
-      pass_url = result.dig('pass', 'walletSafe', 'urls', 'default')
-
-      if pass_url.blank?
-        Rails.logger.warn(
-          "Passmeister: keine URL für Referee #{referee.id} (Lizenz #{referee.lizenznummer}). " \
-          "Response-Top-Level-Keys: #{result.keys.inspect}, " \
-          "walletSafe-Keys: #{result.dig('pass', 'walletSafe')&.keys.inspect}"
-        )
-        return nil
-      end
-
-      referee.update_columns(
-        wallet_pass_issued_at: Time.current,
-        wallet_pass_url: pass_url
-      )
-      pass_url
-    end
-
     def set_referee
       @referee = Referee.includes(club: :state_association,
                                   referee_qualifications: :referee_qualification_type,
@@ -408,8 +351,8 @@ module Admin
     end
 
     # include_vm: false schließt den VM-Zweig aus – VM darf die Schiris seines
-    # Vereins nur lesen (show/games/club_stats), nicht bearbeiten/mergen/einen
-    # Wallet-Pass ausstellen (update/merge/wallet_pass übergeben false).
+    # Vereins nur lesen (show/games/club_stats), nicht bearbeiten/mergen
+    # (update/merge übergeben false).
     def can_access_referee?(referee, include_vm: true)
       ph = current_user.permission_hash
       return true if ph[:admin].present?
@@ -519,8 +462,6 @@ module Admin
         lizenzstufe: referee.lizenzstufe,
         gueltigkeit: referee.gueltigkeit&.strftime('%d.%m.%Y'),
         active: !referee.guest? && referee.gueltigkeit.present? && referee.gueltigkeit >= Date.today,
-        wallet_pass_issued_at: referee.wallet_pass_issued_at&.iso8601,
-        wallet_pass_url: referee.wallet_pass_url,
         tags: referee_tags_for(referee).map { |t| tag_summary(t) },
         tag_ids: referee_tags_for(referee).map(&:id)
       }

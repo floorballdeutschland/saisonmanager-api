@@ -12,6 +12,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Verbessert
 
 - **Spielorte löschen und zusammenführen ist jetzt Admins vorbehalten**: Spielorte (Arenen) bleiben verbandsübergreifend geteilte Stammdaten, die jeder SBK wie bisher anlegen und bearbeiten kann. Die destruktiven Aktionen Löschen und Zusammenführen (das Zusammenführen hängt Spieltage anderer Verbände um) erfordern jetzt Admin-Rechte – SBK erhalten dort 403. Neuer Berechtigungsschlüssel `arena_manage_lifecycle` für die Oberfläche (#62).
+- **Passmeister-Wallet-Anbindung entfernt**: Der digitale Schiedsrichterausweis als Apple-/Google-Wallet-Pass über den externen Dienst Passmeister wird nicht mehr angeboten (abgelöst durch den Schiri-Ausweis im Schiri-Portal). Entfernt wurden der `PassmeisterService`, der Endpoint `POST admin/referees/:id/wallet_pass`, die Mail `RefereeMailer#wallet_pass_issued` (inkl. Katalog-Eintrag in den E-Mail-Vorlagen; eine ggf. gepflegte Vorlage wird per Migration gelöscht), die Felder `wallet_pass_issued_at`/`wallet_pass_url` an den Schiedsrichtern (DB-Spalten inkl. Staging-Anonymisierung) sowie das Permission-Flag `referee_wallet`.
+
+### Behoben
+
+- **Sicherheit: Vereinsmanager-Zugriff auf Schiedsrichter ist jetzt auch serverseitig vollständig read-only (#60)**: Mit dem Wegfall des Wallet-Endpoints ist der letzte in #60 genannte Schreibpfad entfernt; `update` und `merge` bleiben für VM gesperrt (`can_access_referee?` mit `include_vm: false`, nur Admin/RSK/Ansetzer im Scope) – abgesichert durch neue Controller-Tests (VM: Lesen erlaubt, 403 auf `update`/`merge`).
 
 ## [1.43.1] - 2026-07-09
 
