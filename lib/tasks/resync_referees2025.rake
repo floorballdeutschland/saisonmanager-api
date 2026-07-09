@@ -1,14 +1,13 @@
 require 'csv'
-require 'set'
 
 # Re-Sync der Schiedsrichter-Stammdaten aus der FD-Excel "Schiedsrichterliste
 # 2025" (Echtdaten) + Import der historischen Kurs-/Testergebnisse.
 #
 # Die CSVs erzeugt scripts/export_schiedsrichterliste_csvs.py aus der Excel.
 #
-#   rails referees_2025:report          CSV=tmp/referees_stammdaten.csv
-#   rails referees_2025:sync            CSV=tmp/referees_stammdaten.csv
-#   rails referees_2025:import_history  HISTORY_CSV=tmp/referees_historie.csv [UPLOADED_BY=admin]
+#   rails referees2025:report          CSV=tmp/referees_stammdaten.csv
+#   rails referees2025:sync            CSV=tmp/referees_stammdaten.csv
+#   rails referees2025:import_history  HISTORY_CSV=tmp/referees_historie.csv [UPLOADED_BY=admin]
 #
 # Regeln (siehe Konverter): Karriere gilt nach 5 Jahren ohne Lizenz als beendet
 # (aktiv=0) — diese Schiedsrichter werden weder aktualisiert noch angelegt,
@@ -108,7 +107,7 @@ module Referees2025Resync
   end
 end
 
-namespace :referees_2025 do
+namespace :referees2025 do
   desc 'Read-only-Abgleich DB vs. Excel-CSV (CSV=referees_stammdaten.csv)'
   task report: :environment do
     rows = Referees2025Resync.load_csv('CSV')
@@ -351,6 +350,6 @@ namespace :referees_2025 do
     end
 
     puts 'Hinweis: Die Ergebnisse sind reine Historie (status=applied, ohne Applier) — ' \
-         'lizenzstufe/gueltigkeit am Schiedsrichter setzt referees_2025:sync.'
+         'lizenzstufe/gueltigkeit am Schiedsrichter setzt referees2025:sync.'
   end
 end
