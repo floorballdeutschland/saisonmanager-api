@@ -38,11 +38,17 @@ module Referees2025Resync
     nil
   end
 
-  # Lizenz aus Kursjahr X gilt bis 31.07. des Folgejahres.
+  # Lizenz aus Kursjahr X gilt bis ins Folgejahr: In Regeljahren (alle 4 Jahre:
+  # 2022, 2026, 2030, …) nur bis 31.07., in allen anderen Jahren bis 30.09.
   def gueltigkeit_for_kursjahr(jahr)
     return nil if jahr.blank?
 
-    Date.new(jahr.to_i + 1, 7, 31)
+    folgejahr = jahr.to_i + 1
+    if (folgejahr % 4) == 2
+      Date.new(folgejahr, 7, 31)
+    else
+      Date.new(folgejahr, 9, 30)
+    end
   end
 
   def club_lookup
@@ -260,7 +266,7 @@ namespace :referees_2025 do
     rows.group_by { |row| row['jahr'].to_i }.sort.each do |jahr, jahr_rows|
       filename = "#{Referees2025Resync::HISTORY_IMPORT_FILENAME_PREFIX} #{jahr}"
       if RefereeCourseImport.exists?(filename: filename)
-        puts "#{jahr}: übersprungen (Import „#{filename}" existiert bereits)"
+        puts "#{jahr}: übersprungen (Import '#{filename}' existiert bereits)"
         next
       end
 
