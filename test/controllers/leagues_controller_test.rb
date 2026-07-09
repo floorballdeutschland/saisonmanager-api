@@ -203,4 +203,120 @@ class LeaguesControllerTest < ActionDispatch::IntegrationTest
     assert_response :created
     assert_equal 'vl', League.find_by(name: 'Verbandsliga Test').league_class_id
   end
+
+  # --- admin_copy: Liga aus Vorsaison kopieren (#69) ---
+
+  def login_as(user)
+    post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
+    assert_response :success
+  end
+  private :login_as
+
+  def create_copy_source_league(operation)
+    create(:league, :previous_season, game_operation: operation,
+                                      name: 'Verbandsliga Nord', short_name: 'VL N',
+                                      league_class_id: 'vl', league_category_id: '1',
+                                      league_system_id: '2', league_type: 'league',
+                                      league_modus: 'double', table_modus: 'classic',
+                                      has_preround: true, female: true, enable_scorer: true,
+                                      field_size: 'GF', periods: 3, period_length: 20,
+                                      overtime_length: 10, order_key: '5',
+                                      deadline: Date.new(2025, 7, 31), before_deadline: true,
+                                      referee_feedback_enabled: true)
+  end
+  private :create_copy_source_league
+
+  test 'admin_copy: Admin kopiert Stammdaten in die aktuelle Saison – ohne Spieltage und Teams' do
+    create(:setting) # current_season_id 18
+    go = create(:game_operation)
+    source = create_copy_source_league(go)
+    club = create(:club)
+    GameDay.create!(league: source, arena: create(:arena), club: club, number: 1, date: '2025-01-01')
+    create(:team, league: source, club: club)
+
+    login_as create(:user, :admin)
+
+    post "/api/v2/admin/leagues/#{source.id}/copy", as: :json
+    assert_response :created
+
+    copy = League.find(JSON.parse(response.body)['id'])
+    assert_equal '18', copy.season_id
+    assert_equal Date.new(2026, 7, 31), copy.deadline, 'deadline muss um +1 Jahr verschoben werden'
+    assert_equal source.id, copy.league_id_preseason
+    assert_not copy.legacy_league
+
+    %w[game_operation_id name short_name league_category_id league_class_id league_system_id
+       league_type league_modus table_modus has_preround female enable_scorer field_size
+       periods period_length overtime_length order_key before_deadline
+       referee_feedback_enabled].each do |attr|
+      assert_equal source[attr], copy[attr], "Attribut #{attr} muss kopiert werden"
+    end
+
+    assert_equal 0, copy.game_days.count, 'Spieltage dürfen nicht kopiert werden'
+    assert_equal 0, Team.where(league_id: copy.id).count, 'ohne include_teams keine Teams'
+  end
+
+  test 'admin_copy: include_teams kopiert Teams mit approved=false; nil-deadline bleibt nil' do
+    create(:setting)
+    go = create(:game_operation)
+    source = create(:league, :previous_season, game_operation: go, deadline: nil)
+    club = create(:club)
+    Team.create!(league: source, club: club, name: 'Team Alt', short_name: 'ALT',
+                 syndicate: true, syndicate_clubs: [club.id], approved: true,
+                 contact_person: 'Max Muster', contact_email: 'max@example.org')
+
+    login_as create(:user, :admin)
+
+    post "/api/v2/admin/leagues/#{source.id}/copy", params: { include_teams: true }, as: :json
+    assert_response :created
+
+    copy = League.find(JSON.parse(response.body)['id'])
+    assert_nil copy.deadline
+
+    copied_team = Team.find_by(league_id: copy.id)
+    assert_not_nil copied_team
+    assert_not copied_team.approved, 'kopierte Teams müssen neu bestätigt werden (approved=false)'
+    assert_equal club.id, copied_team.club_id
+    assert_equal 'Team Alt', copied_team.name
+    assert_equal 'ALT', copied_team.short_name
+    assert copied_team.syndicate
+    assert_equal [club.id], copied_team.syndicate_clubs
+    assert_equal 'Max Muster', copied_team.contact_person
+    assert_equal 'max@example.org', copied_team.contact_email
+  end
+
+  test 'admin_copy: SBK des eigenen Verbands darf kopieren' do
+    create(:setting)
+    go = create(:game_operation, state_association: create(:state_association))
+    source = create(:league, :previous_season, game_operation: go, league_class_id: 'vl')
+
+    login_as create(:user, :sbk_scoped, game_operation_id: go.id)
+
+    post "/api/v2/admin/leagues/#{source.id}/copy", as: :json
+    assert_response :created
+  end
+
+  test 'admin_copy: SBK eines anderen Verbands erhält 403' do
+    create(:setting)
+    go = create(:game_operation, state_association: create(:state_association))
+    other_go = create(:game_operation, state_association: create(:state_association))
+    source = create(:league, :previous_season, game_operation: go, league_class_id: 'vl')
+
+    login_as create(:user, :sbk_scoped, game_operation_id: other_go.id)
+
+    post "/api/v2/admin/leagues/#{source.id}/copy", as: :json
+    assert_response :forbidden
+    assert_equal 1, League.where(game_operation_id: go.id).count, 'es darf keine Kopie entstehen'
+  end
+
+  test 'admin_copy: Vereinsmanager erhält 403' do
+    create(:setting)
+    go = create(:game_operation)
+    source = create(:league, :previous_season, game_operation: go, league_class_id: 'vl')
+
+    login_as create(:user, :vm, club_id: 1)
+
+    post "/api/v2/admin/leagues/#{source.id}/copy", as: :json
+    assert_response :forbidden
+  end
 end
