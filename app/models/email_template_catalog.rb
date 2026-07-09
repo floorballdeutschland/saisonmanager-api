@@ -71,17 +71,6 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'referee_name', description: 'Vor- und Nachname des Schiris' }
       ]
     },
-    'RefereeMailer#wallet_pass_issued' => {
-      mailer_class: 'RefereeMailer',
-      action_name: 'wallet_pass_issued',
-      description: 'Benachrichtigung an Schiri über den ausgestellten digitalen Schiedsrichterausweis.',
-      default_subject: 'Dein Schiedsrichterausweis | {{referee_name}}',
-      default_from: nil,
-      default_reply_to: 'rsk@floorball.de',
-      placeholders: [
-        { key: 'referee_name', description: 'Vor- und Nachname des Schiris' }
-      ]
-    },
     'RefereeMailer#tentative_assignment_notification' => {
       mailer_class: 'RefereeMailer',
       action_name: 'tentative_assignment_notification',

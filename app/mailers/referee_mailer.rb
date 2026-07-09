@@ -12,18 +12,6 @@ class RefereeMailer < ApplicationMailer
     )
   end
 
-  def wallet_pass_issued(referee, pass_url)
-    @referee = referee
-    @pass_url = pass_url
-
-    templated_mail(
-      to: referee.email,
-      subject: "Dein Schiedsrichterausweis | #{referee.vorname} #{referee.nachname}",
-      default_reply_to: 'rsk@floorball.de',
-      placeholders: { referee_name: "#{referee.vorname} #{referee.nachname}" }
-    )
-  end
-
   def tentative_assignment_notification(referee, date)
     @referee = referee
     @date = date

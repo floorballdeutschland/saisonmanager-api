@@ -90,7 +90,6 @@ class User < ApplicationRecord
     # Benutzerkonto für einen bestehenden Schiri anlegen: auch LV-RSK erlaubt.
     result[:referee_can_create_user] = ph[:admin].present? || ph[:rsk].present? if result[:menu_item_referee_admin]
     result[:referee_can_delete_user] = ph[:admin].present? if result[:menu_item_referee_admin]
-    result[:referee_wallet] = has_full_referee_access if result[:menu_item_referee_admin]
     # Ansetzungen macht die Ansetzer-Rolle (in manchen LV von der RSK getrennt).
     # Sichtbar nur, wenn die Ansetzungslogik für den Landesverband freigeschaltet
     # ist (referee_assignment_enabled). National (FD, ohne LV) ist immer aktiv.

@@ -59,8 +59,7 @@ namespace :staging do
       log.call("players anonymisiert: #{players}")
 
       # Referees: Name, Geburtsdatum, Kontakt und Adresse scrubben.
-      # lizenznummer bleibt (funktionaler, semi-öffentlicher Schlüssel);
-      # Wallet-Pass-Links auf echte Passmeister-Pässe werden entfernt.
+      # lizenznummer bleibt (funktionaler, semi-öffentlicher Schlüssel).
       referees = conn.update(<<~SQL.squish)
         UPDATE referees SET
           vorname = 'Schiri',
@@ -71,9 +70,7 @@ namespace :staging do
           strasse = NULL,
           hausnummer = NULL,
           plz = NULL,
-          ort = NULL,
-          wallet_pass_url = NULL,
-          wallet_pass_issued_at = NULL
+          ort = NULL
       SQL
       log.call("referees anonymisiert: #{referees}")
     end

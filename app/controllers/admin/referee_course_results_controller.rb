@@ -178,7 +178,7 @@ module Admin
 
     # Ein Referee gilt als Orphan, wenn er bei genau diesem Result als
     # Neuanlage erzeugt wurde und keine anderen Faelle daran haengen (weitere
-    # Results, Game-Verbindungen, Wallet-Pass-Anlage). Sonst muss er bestehen
+    # Results, Game-Verbindungen). Sonst muss er bestehen
     # bleiben, damit nicht versehentlich produktive Daten verschwinden.
     def orphan_referee_for(result)
       return nil unless result.new_referee_created
@@ -186,7 +186,6 @@ module Admin
 
       referee = result.referee
       return nil if RefereeCourseResult.where(referee_id: referee.id).where.not(id: result.id).exists?
-      return nil if referee.wallet_pass_issued_at.present?
       return nil if referee.games.exists?
 
       referee
