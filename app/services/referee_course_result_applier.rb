@@ -95,9 +95,10 @@ class RefereeCourseResultApplier
 
   def apply_license_fields(referee)
     log_downgrade_if_any(referee)
-    # Gültigkeit aus der Dauer der Lizenzstufe ableiten (30.09. = Kursjahr +
-    # validity_years). Fallback auf das ggf. manuell gesetzte @result.gueltigkeit,
-    # wenn kein Kursstichtag vorliegt.
+    # Gültigkeit aus der Dauer der Lizenzstufe ableiten (Stichtag im Jahr
+    # Kursjahr + validity_years — 31.07. im Regeljahr, sonst 30.09.; Regel in
+    # RefereeLicenseLevel.gueltigkeit_for). Fallback auf das ggf. manuell
+    # gesetzte @result.gueltigkeit, wenn kein Kursstichtag vorliegt.
     gueltigkeit = RefereeLicenseLevel.gueltigkeit_for(@result.lizenzstufe, @result.kursstichtag) ||
                   @result.gueltigkeit
     referee.update!(
