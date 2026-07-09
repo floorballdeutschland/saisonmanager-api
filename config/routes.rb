@@ -84,6 +84,7 @@ Rails.application.routes.draw do
       get 'admin/leagues/:id/schedule_import_template', to: 'leagues#admin_schedule_import_template'
       get 'admin/leagues/:id/additional_references', to: 'leagues#additional_references'
       get 'admin/leagues/:id/licenses', to: 'players#admin_licenses'
+      post 'admin/leagues/:id/copy', to: 'leagues#admin_copy'
       post 'admin/leagues/:id/copy_preround_licenses', to: 'leagues#copy_preround_licenses'
       post 'admin/leagues/:id/import_teams', to: 'leagues#admin_import_teams'
       post 'admin/leagues/:id/upload_banner', to: 'leagues#admin_upload_banner'

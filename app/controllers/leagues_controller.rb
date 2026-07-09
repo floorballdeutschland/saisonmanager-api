@@ -384,6 +384,94 @@ class LeaguesController < ApplicationController
     render json: { copied: copied_count }
   end
 
+  # Stammdaten-Spalten, die bei der Liga-Kopie (Saisonwechsel, #69) 1:1
+  # übernommen werden. Bewusst NICHT kopiert:
+  #   - season_id (wird auf die aktuelle Saison gesetzt)
+  #   - deadline (+1 Jahr verschoben)
+  #   - league_id_preseason (zeigt auf die Quell-Liga selbst),
+  #     league_id_preround / league_id_direct_encounters (zeigen auf Ligen der
+  #     Quellsaison und müssen neu gesetzt werden)
+  #   - point_corrections (Team-IDs der Quellsaison als Keys)
+  #   - banner_link_url (das Banner-Attachment wird nicht mitkopiert)
+  #   - legacy_league / legacy_ref / created_by / updated_by
+  COPYABLE_LEAGUE_ATTRIBUTES = %w[
+    game_operation_id name short_name league_category_id league_class_id
+    league_system_id league_type league_modus table_modus has_preround
+    preround_point_modus preround_scorer_modus female enable_scorer field_size
+    periods period_length overtime_length order_key before_deadline
+    direct_comparison required_documents age_group parental_consent_required
+    game_duration_minutes referee_feedback_enabled
+  ].freeze
+
+  # POST /admin/leagues/:id/copy
+  # Kopiert eine Liga (Stammdaten, optional Teams) in die aktuelle Saison (#69).
+  # Spieltage, Spiele und Ergebnisse werden bewusst nicht kopiert.
+  def admin_copy
+    return render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized unless current_user
+
+    source = find_league_or_not_found or return
+
+    # Berechtigung wie beim Anlegen einer Liga (admin_league_update,
+    # create-Zweig), gespiegelt am Verband der Quell-Liga.
+    unless source.game_operation&.user_permissions(current_user)&.include?(:create_league)
+      return render json: { message: 'Keine Berechtigung' }, status: :forbidden
+    end
+
+    if BUNDESLIGA_CLASSES.include?(source.league_class_id) && !buli_permitted?(current_user)
+      return render json: { message: 'Keine Berechtigung für diese Ligaklasse' }, status: :forbidden
+    end
+
+    include_teams = ActiveModel::Type::Boolean.new.cast(params[:include_teams]) || false
+
+    attrs = source.attributes.slice(*COPYABLE_LEAGUE_ATTRIBUTES)
+    attrs['season_id'] = Setting.current_season_id
+    attrs['deadline'] = source.deadline&.advance(years: 1)
+    attrs['league_id_preseason'] = source.id
+    attrs['legacy_league'] = false
+    # Anzeige-Namen wie beim Anlegen aus dem aktuellen Setting einfrieren;
+    # Fallback auf die in der Quell-Liga eingefrorenen Namen.
+    if source.league_class_id.present?
+      attrs['league_class_name'] = Setting.league_class(source.league_class_id).presence || source.league_class_name
+    end
+    if source.league_category_id.present?
+      attrs['league_category_name'] = Setting.league_category(source.league_category_id).presence ||
+                                      source.league_category_name
+    end
+
+    new_league = League.new(attrs)
+
+    begin
+      ActiveRecord::Base.transaction do
+        new_league.save!
+
+        if include_teams
+          # Nur direkt zugeordnete Teams (league_id) – Pokal-Zuordnungen über
+          # Team#cup_leagues zeigen auf Team-Datensätze anderer Ligen und
+          # werden bewusst nicht mitkopiert. TM-Zuordnungen (User#teams)
+          # bleiben unangetastet und müssen neu gesetzt werden.
+          Team.where(league_id: source.id).find_each do |team|
+            Team.create!(
+              league_id:       new_league.id,
+              club_id:         team.club_id,
+              name:            team.name,
+              short_name:      team.short_name,
+              syndicate:       team.syndicate,
+              syndicate_clubs: team.syndicate_clubs,
+              contact_person:  team.contact_person,
+              contact_email:   team.contact_email,
+              approved:        false
+            )
+          end
+        end
+      end
+    rescue ActiveRecord::RecordInvalid => e
+      # message-Key, damit der Frontend-ErrorInterceptor den Text durchreicht
+      return render json: { message: e.record.errors.full_messages.join(', ') }, status: :unprocessable_entity
+    end
+
+    render json: new_league, status: :created
+  end
+
   def user_leagues_license_list_index
     if current_user
       result = League.user_leagues_license_list(current_user)
