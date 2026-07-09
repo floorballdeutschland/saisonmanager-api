@@ -186,14 +186,16 @@ class TeamsController < ApplicationController
     }
   end
 
+  # Team-Details inkl. Kontaktdaten (full_hash(true)) – nur Admin/SBK des
+  # Spielbetriebs sowie VM/TM der eigenen Mannschaft.
   def admin_get_team
     if current_user
       team = Team.find(params[:id])
 
-      if team
+      if can_read_admin_team?(team)
         render json: team.full_hash(true)
       else
-        render json: { message: 'Keine passendes Team gefunden.' }, status: :not_found
+        render json: { message: 'Keine Berechtigung' }, status: :forbidden
       end
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
@@ -273,5 +275,16 @@ class TeamsController < ApplicationController
   def team_params
     params.require(:team).permit(:club_id, :contact_email, :contact_person, :league_id, :name, :short_name, :syndicate,
                                  syndicate_clubs: [], cup_leagues: [])
+  end
+
+  private
+
+  def can_read_admin_team?(team)
+    ph = current_user.permission_hash
+    go_id = team.league&.game_operation_id.to_i
+    return true if ph[:admin].to_a.intersect?([0, go_id]) || ph[:sbk].to_a.intersect?([0, go_id])
+    return true if ph[:vm].present? && ph[:vm].intersect?(team.all_club_ids)
+
+    ph[:tm].present? && ph[:tm].include?(team.id)
   end
 end

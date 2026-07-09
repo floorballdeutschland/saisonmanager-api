@@ -20,6 +20,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Neu
 
 - **Liga aus Vorsaison kopieren (Saisonwechsel-Erleichterung)**: Neuer Endpoint `POST admin/leagues/:id/copy` (Berechtigung wie Liga-Anlage: Admin oder SBK des Quell-Verbands) kopiert die Liga-Stammdaten in die aktuelle Saison – `deadline` wird um +1 Jahr verschoben, die Quell-Liga als Vorsaison-Liga (`league_id_preseason`) verknüpft. Spieltage, Spiele und Ergebnisse werden bewusst nicht kopiert. Optional (`include_teams: true`) werden die Teams der Quell-Liga mit übernommen – mit `approved = false`, die Meldung muss also neu bestätigt werden; Teammanager-Zuordnungen müssen neu gesetzt werden. Frontend-Teil: floorballdeutschland/saisonmanager#41.
+### Behoben
+
+- **Kleinere Berechtigungs- und Robustheitslücken aus dem Sicherheits-Review geschlossen (#64)**: Schiri-Löschung entfernt Benutzerkonten nur noch für Admins; Coach-Auswahl und Ansetzungs-Endpunkte respektieren LV-Scope bzw. das Feature-Flag `referee_assignment_enabled`; Vereins-, Team-, Liga- und Spiel-Verwaltungs-Reads sind auf die berechtigten Rollen/Verbände gescopt (Vereinsliste ohne `contact_email` für nicht-privilegierte Rollen); Banner-Verwaltung prüft den konkreten Spielbetrieb; ungenutzte/kaputte Endpunkte (`tests`-Scaffold, `GET /clubs`) entfernt; Batch-Trigger `update_start_end` ist Admin-only.
 
 ## [1.43.1] - 2026-07-09
 

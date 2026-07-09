@@ -27,7 +27,10 @@ class RefereesController < ApplicationController
   end
 
   # GET /api/v2/referees/search?q=...
-  # Autocomplete: sucht nach Name oder Lizenznummer, gibt max. 10 Treffer zurück
+  # Autocomplete: sucht nach Name oder Lizenznummer, gibt max. 10 Treffer zurück.
+  # Bewusst per X-Api-Key erreichbar (kein Cookie-Zwang): wird vom öffentlichen
+  # Lizenzcheck (/lizenzcheck) und vom Spielbericht mit Kampfgericht-Token
+  # genutzt (#64).
   def search
     q = params[:q].to_s.strip
     return render json: [] if q.empty?

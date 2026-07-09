@@ -173,12 +173,17 @@ class GamesController < ApplicationController
     end
   end
 
+  # Interne Spielbericht-Felder (Unterschriften, besondere Vorkommnisse etc.).
+  # Nur für Rollen mit Bezug zum Spiel: Admin/SBK des Spielbetriebs sowie
+  # VM/TM der beteiligten Mannschaften. Andere eingeloggte Nutzer erhalten ein
+  # leeres Objekt statt 403, weil die Spiel-Detailseite den Endpoint für jeden
+  # Login aufruft und der Frontend-ErrorInterceptor bei 403 hart umleitet.
   def show_hidden
     game = Game.find(params[:id])
 
-    hash = game.hidden_elements
+    return render json: {} unless can_view_hidden_elements?(game)
 
-    render json: hash
+    render json: game.hidden_elements
   end
 
   def editable
@@ -194,8 +199,15 @@ class GamesController < ApplicationController
     @games = game_days.map(&:games).flatten
   end
 
+  # Verbandsweite Batch-Verarbeitung (Spiele automatisch starten/beenden) –
+  # nur für Admins auslösbar.
   def update_start_end
+    unless current_user.permission_hash[:admin].present?
+      return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+
     Game.start_end_games
+    render json: { success: true }
   end
 
   def next_period_info
@@ -1076,6 +1088,19 @@ class GamesController < ApplicationController
     return secretary_token_permits_game?(game) if @secretary_link
     return false unless current_user
     game.can_edit_lineup?(current_user)
+  end
+
+  # Admin/SBK des Spielbetriebs sowie VM/TM der beteiligten Mannschaften
+  # (inkl. Spielgemeinschafts-Vereine) dürfen die internen Felder lesen.
+  def can_view_hidden_elements?(game)
+    ph = current_user.permission_hash
+    go_id = game.league&.game_operation_id.to_i
+    return true if ph[:admin].to_a.intersect?([0, go_id]) || ph[:sbk].to_a.intersect?([0, go_id])
+
+    teams = [game.home_team, game.guest_team].compact
+    return true if ph[:tm].present? && ph[:tm].intersect?(teams.map(&:id))
+
+    ph[:vm].present? && ph[:vm].intersect?(teams.flat_map(&:all_club_ids).compact)
   end
 
   def author_user_id

@@ -125,8 +125,10 @@ class GameOperationsController < ApplicationController
 
   private
 
+  # Banner-Verwaltung: globaler Admin (0) oder Admin des konkreten Spielbetriebs.
   def admin?
-    current_user.permission_hash[:admin].present?
+    admin_go_ids = current_user.permission_hash[:admin].to_a
+    admin_go_ids.include?(0) || admin_go_ids.include?(@game_operation.id)
   end
 
   def set_game_operation
