@@ -328,12 +328,21 @@ class ClubsController < ApplicationController
   def can_read_admin_club?(club)
     return true if club.user_permissions(current_user).include?(:update_club)
 
+    ph = current_user.permission_hash
+    go_ids = (ph[:admin].to_a + ph[:sbk].to_a).reject(&:zero?)
+    return false if go_ids.empty?
+
+    # Admin/SBK, an deren Spielbetrieb der Verein hängt – als Heim- ODER
+    # Gast-Spielbetrieb – dürfen lesen. Deckungsgleich mit Club.admin_user_clubs
+    # (matcht über den gesamten game_operations_hash); ohne diesen Zweig
+    # erschiene ein Gast-Verein zwar in der Liste, ließe sich aber nicht öffnen.
+    club_go_ids = club.game_operations_hash.map { |go| go['game_operation_id'] }
+    return true if go_ids.intersection(club_go_ids).present?
+
     # Vereins-Freigabe: LV-Admin/-SBK dürfen die an ihren Spielbetrieb
     # freigegebenen Vereine lesen (analog Club.admin_user_clubs), auch wenn
     # der Verein einem fremden Spielbetrieb gehört.
-    ph = current_user.permission_hash
-    go_ids = (ph[:admin].to_a + ph[:sbk].to_a).reject(&:zero?)
-    return false if go_ids.empty? || club.state_association_id.blank?
+    return false if club.state_association_id.blank?
 
     StateAssociationRelease.current_season
                            .where(recipient_game_operation_id: go_ids,
