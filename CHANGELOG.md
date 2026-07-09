@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Lizenzstufen- und Qualifikationstypen-Verwaltung war für Admins nicht bedienbar**: Seit der Einschränkung der Katalog-Pflege auf Admins (Frontend #7/#8) prüft die Oberfläche `permissions['admin']`, um die Buttons „Neu/Bearbeiten/Löschen" anzuzeigen. Dieser Schlüssel fehlte im ans Frontend gesendeten `permissions`-Hash (`permissions_items`), sodass die Buttons für **alle** Nutzer inkl. echter Admins ausgeblendet blieben. `permissions_items` liefert jetzt einen expliziten `admin`-Boolean. Admins müssen sich nach dem Deploy einmal neu anmelden, damit die aktualisierten Berechtigungen wirksam werden.
+
 ## [1.45.0] - 2026-07-09
 
 ### Neu
