@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_07_08_140000) do
+ActiveRecord::Schema[7.1].define(version: 2026_07_09_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -589,7 +589,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_08_140000) do
     t.integer "position"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.integer "validity_years", default: 2, null: false
+    t.integer "validity_years", default: 1, null: false
     t.index ["name"], name: "index_referee_license_levels_on_name", unique: true
   end
 

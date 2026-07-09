@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Schiedsrichterlizenz-Gültigkeit: Regeljahr-Stichtag (31.07.) und einheitliche Ableitung**: Alle 4 Jahre ist Regeljahr (2022, 2026, 2030, …) – in Regeljahren laufen Lizenzen am 31.07. ab, sonst am 30.09. Diese Regel kannte bisher keine der Gültigkeits-Ableitungen; außerdem rechnete die Import-Vorschau beim CSV-Upload fix mit Kursjahr + 1, das Anwenden im LV-Review dagegen mit Kursjahr + `validity_years` – Vorschau und Ergebnis wichen still voneinander ab. Jetzt leiten Import-Vorschau, LV-Review und Anwenden alle über `RefereeLicenseLevel.gueltigkeit_for` ab (Ablaufjahr = Kursjahr + Gültigkeitsdauer, Stichtag 31.07./30.09. je nach Regeljahr). Zusätzlich setzt eine Migration die Gültigkeitsdauer aller Lizenzstufen vom unveränderten Default 2 auf die gelebte Praxis 1 Jahr (Kurs 2025 → gültig bis 31.07.2026); abweichende Stufen können danach bewusst konfiguriert werden (#87).
+
 ## [1.45.0] - 2026-07-09
 
 ### Neu

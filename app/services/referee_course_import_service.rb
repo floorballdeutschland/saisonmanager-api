@@ -277,12 +277,14 @@ class RefereeCourseImportService
     dates.max
   end
 
-  # 30.09. des Folgejahres = Stichtag vor Saisonstart; eine neu erworbene
-  # Lizenz gilt also genau eine volle Saison nach dem letzten Kurs.
+  # Beim Import ist die Lizenzstufe noch unbekannt (setzt erst der LV-Review),
+  # daher Ableitung mit der Default-Dauer. Sobald der Reviewer eine Stufe
+  # setzt, leitet der Results-Controller mit deren validity_years neu ab —
+  # Preview und Ergebnis nutzen so dieselbe Regel (inkl. Regeljahr-Stichtag).
   def compute_gueltigkeit(kursstichtag)
     return nil unless kursstichtag
 
-    Date.new(kursstichtag.year + 1, 9, 30)
+    RefereeLicenseLevel.gueltigkeit_for(nil, kursstichtag)
   end
 
   def parse_integer(value, field:, warnings:)
