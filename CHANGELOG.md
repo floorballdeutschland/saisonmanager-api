@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.43.1] - 2026-07-09
+
 ### Behoben
 
 - **Gruppentabellen zeigten alle Liga-Teams statt nur der Gruppen-Teams**: Seit dem Fix „Teams ohne Spiele in Ligatabelle anzeigen" wurden in Ligen mit Gruppenphase (z. B. Deutsche Meisterschaft Kleinfeld) sämtliche Teams der Liga in **jeder** Gruppentabelle vorbefüllt – gruppenfremde Teams standen dort mit 0 Spielen. Die Vorbefüllung greift jetzt nur noch für die Gesamttabelle; Gruppentabellen enthalten wieder ausschließlich die Teams, die in der Gruppe spielen (auch bei noch nicht beendeten Gruppenspielen).
