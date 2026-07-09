@@ -65,6 +65,12 @@ class User < ApplicationRecord
       return result
     end
 
+    # Expliziter Admin-Boolean für das Frontend: Der ans Frontend gesendete
+    # `permissions`-Hash ist dieser permissions_items-Hash (NICHT permission_hash),
+    # daher braucht das Frontend hier einen eigenen Schlüssel, um „ist Admin?" zu
+    # prüfen (z. B. für die Pflege bundesweiter Kataloge wie Lizenzstufen).
+    result[:admin] = ph[:admin].present?
+
     # show league admin menu item
     result[:menu_item_league_admin] = ph[:admin].present? || ph[:sbk].present?
     result[:menu_item_club_admin] = ph[:admin].present? || ph[:sbk].present?
