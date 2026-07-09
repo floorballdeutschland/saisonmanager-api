@@ -1,13 +1,6 @@
 class ClubsController < ApplicationController
   include LicenseDocumentPresentation
 
-  # GET /clubs
-  def index
-    @clubs = Clubs.all
-
-    render json: @clubs
-  end
-
   def user_clubs_and_teams
     ph = current_user.permission_hash
     clubs = if ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
@@ -192,10 +185,18 @@ class ClubsController < ApplicationController
     end
   end
 
+  # Schlanke Vereinsliste für Auswahl-/Anzeige-Zwecke in den Verwaltungs-Views
+  # (Schiri-, User-, Spieler-, Spieltag-Verwaltung, Lizenzlisten). Für alle
+  # Verwaltungsrollen inkl. VM/TM zugänglich, aber ohne contact_email und
+  # interne Felder (public_hash). Reine Schiri-Logins haben keinen Zugriff.
   def admin_club_all
-    result = Club.all
+    ph = current_user.permission_hash
+    unless %i[admin sbk vm tm rsk ansetzer].any? { |role| ph[role].present? }
+      return render json: { message: 'Keine Berechtigung' }, status: :forbidden
+    end
 
-    render json: result
+    clubs = Club.includes(logo_attachment: :blob).order(:name)
+    render json: clubs.map(&:public_hash)
   end
 
   def admin_club_index
@@ -237,11 +238,19 @@ class ClubsController < ApplicationController
     render json: club.full_hash
   end
 
+  # Voller Vereinsdatensatz (inkl. contact_email) für die Vereinsverwaltung –
+  # nur Admin/SBK des Spielbetriebs (analog :update_club) sowie LV-Rollen mit
+  # aktueller Vereins-Freigabe (StateAssociationRelease, Lesezugriff wie in
+  # Club.admin_user_clubs).
   def admin_club
     if current_user
-      result = Club.find(params[:id])
+      club = Club.find(params[:id])
 
-      render json: result.full_hash
+      unless can_read_admin_club?(club)
+        return render json: { message: 'Keine Berechtigung' }, status: :forbidden
+      end
+
+      render json: club.full_hash
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
     end
@@ -312,5 +321,23 @@ class ClubsController < ApplicationController
 
   def club_params
     params.require(:club).permit(:name, :short_name, :long_name, :state, :state_association_id, :contact_email)
+  end
+
+  private
+
+  def can_read_admin_club?(club)
+    return true if club.user_permissions(current_user).include?(:update_club)
+
+    # Vereins-Freigabe: LV-Admin/-SBK dürfen die an ihren Spielbetrieb
+    # freigegebenen Vereine lesen (analog Club.admin_user_clubs), auch wenn
+    # der Verein einem fremden Spielbetrieb gehört.
+    ph = current_user.permission_hash
+    go_ids = (ph[:admin].to_a + ph[:sbk].to_a).reject(&:zero?)
+    return false if go_ids.empty? || club.state_association_id.blank?
+
+    StateAssociationRelease.current_season
+                           .where(recipient_game_operation_id: go_ids,
+                                  grantor_state_association_id: club.state_association_id)
+                           .exists?
   end
 end

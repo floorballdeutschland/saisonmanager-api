@@ -26,21 +26,11 @@ class LeaguesController < ApplicationController
     if current_user
       league = League.find(params[:id])
 
-      if league
+      if league && admin_or_sbk_for_league?(league)
         render json: league.hash_with_teams
       else
-        render json: { message: 'Keine passende Liga gefunden.' }, status: :not_found
+        render json: { message: 'Keine Berechtigung' }, status: :forbidden
       end
-    else
-      render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
-    end
-  end
-
-  def admin_league_permissions
-    if current_user
-      result = League.admin_league_permissions(current_user)
-
-      render json: result
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
     end
@@ -102,7 +92,7 @@ class LeaguesController < ApplicationController
     if current_user
       league = League.find(params[:id])
 
-      if league
+      if league && admin_or_sbk_for_league?(league)
         # :games hier bewusst NICHT preloaden – full_hash(true) lädt die Spiele
         # ohnehin neu (mit eigener .order + Team/Club-includes), der Preload
         # wäre verworfen.
@@ -114,7 +104,7 @@ class LeaguesController < ApplicationController
                 end
         render json: items
       else
-        render json: { message: 'Keine passende Liga gefunden.' }, status: :not_found
+        render json: { message: 'Keine Berechtigung' }, status: :forbidden
       end
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
@@ -733,6 +723,14 @@ class LeaguesController < ApplicationController
   def buli_permitted?(user)
     ph = user.permission_hash
     ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
+  end
+
+  # Admin/SBK des Spielbetriebs der Liga (0 = global) – Scope für die reinen
+  # Verwaltungs-Reads (Team-Index, Spielplan-Verwaltung).
+  def admin_or_sbk_for_league?(league)
+    ph = current_user.permission_hash
+    go_id = league.game_operation_id.to_i
+    ph[:admin].to_a.intersect?([0, go_id]) || ph[:sbk].to_a.intersect?([0, go_id])
   end
 
   def track_public_view

@@ -102,8 +102,15 @@ module Admin
     def destroy
       return forbidden_response unless can_edit_full?
 
+      # Benutzerkonten löschen ist Admin-only (wie users#destroy/destroy_user).
+      # Ein FD-RSK löscht nur den Schiri-Datensatz; ein verknüpftes Konto wird
+      # entkoppelt (users.referee_id ist FK-geschützt) und bleibt bestehen.
       user = @referee.user
-      user.destroy if user && user.id != current_user.id
+      if user && user.id != current_user.id && current_user.permission_hash[:admin].present?
+        user.destroy
+      elsif user
+        user.update_column(:referee_id, nil)
+      end
       @referee.destroy
       head :no_content
     end

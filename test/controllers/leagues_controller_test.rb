@@ -204,13 +204,63 @@ class LeaguesControllerTest < ActionDispatch::IntegrationTest
     assert_equal 'vl', League.find_by(name: 'Verbandsliga Test').league_class_id
   end
 
-  # --- admin_copy: Liga aus Vorsaison kopieren (#69) ---
+  test 'admin_league_team_index erlaubt dem SBK des Spielbetriebs den Zugriff' do
+    create(:setting)
+    sa = create(:state_association)
+    scoped_go = create(:game_operation, state_association_id: sa.id)
+    league = create(:league, game_operation: scoped_go)
+    login_as(create(:user, :sbk_scoped, game_operation_id: scoped_go.id))
+
+    get "/api/v2/admin/leagues/#{league.id}/teams"
+
+    assert_response :success
+  end
+
+  test 'admin_league_team_index sperrt SBK eines fremden Spielbetriebs' do
+    create(:setting)
+    sa = create(:state_association)
+    scoped_go = create(:game_operation, state_association_id: sa.id)
+    league = create(:league, game_operation: scoped_go)
+    other_sa = create(:state_association)
+    other_go = create(:game_operation, state_association_id: other_sa.id)
+    login_as(create(:user, :sbk_scoped, game_operation_id: other_go.id))
+
+    get "/api/v2/admin/leagues/#{league.id}/teams"
+
+    assert_response :forbidden
+  end
+
+  test 'admin_game_schedule sperrt SBK eines fremden Spielbetriebs' do
+    create(:setting)
+    sa = create(:state_association)
+    scoped_go = create(:game_operation, state_association_id: sa.id)
+    league = create(:league, game_operation: scoped_go)
+    other_sa = create(:state_association)
+    other_go = create(:game_operation, state_association_id: other_sa.id)
+    login_as(create(:user, :sbk_scoped, game_operation_id: other_go.id))
+
+    get "/api/v2/admin/leagues/#{league.id}/game_schedule"
+
+    assert_response :forbidden
+  end
+
+  test 'admin_game_schedule erlaubt dem globalen Admin den Zugriff' do
+    create(:setting)
+    league = create(:league)
+    login_as(create(:user, :admin))
+
+    get "/api/v2/admin/leagues/#{league.id}/game_schedule"
+
+    assert_response :success
+  end
 
   def login_as(user)
     post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
     assert_response :success
   end
   private :login_as
+
+  # --- admin_copy: Liga aus Vorsaison kopieren (#69) ---
 
   def create_copy_source_league(operation)
     create(:league, :previous_season, game_operation: operation,

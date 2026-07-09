@@ -113,6 +113,36 @@ module Admin
       assert_equal 'Neu', referee.reload.vorname
     end
 
+    test 'destroy als FD-RSK löscht den Schiri, aber NICHT das verknüpfte Benutzerkonto' do
+      fd = create(:game_operation, state_association_id: nil)
+      referee = create(:referee)
+      linked_user = referee_login_user(referee)
+      login(rsk_user(fd.id))
+
+      assert_no_difference -> { User.count } do
+        assert_difference -> { Referee.count }, -1 do
+          delete "/api/v2/admin/referees/#{referee.id}"
+        end
+      end
+
+      assert_response :no_content
+      assert_nil linked_user.reload.referee_id
+    end
+
+    test 'destroy als Admin löscht auch das verknüpfte Benutzerkonto' do
+      referee = create(:referee)
+      referee_login_user(referee)
+      login(@admin)
+
+      assert_difference -> { User.count }, -1 do
+        assert_difference -> { Referee.count }, -1 do
+          delete "/api/v2/admin/referees/#{referee.id}"
+        end
+      end
+
+      assert_response :no_content
+    end
+
     private
 
     def vm_user(club_id)
@@ -121,6 +151,18 @@ module Admin
         password: 'password123',
         password_confirmation: 'password123',
         permissions: [{ 'user_group_id' => 4, 'club_id' => club_id }],
+        teams: []
+      )
+    end
+
+    # Schiri-Benutzerkonto (user_group 6), das mit dem Referee verknüpft ist.
+    def referee_login_user(referee)
+      User.create!(
+        user_name: "sr_#{SecureRandom.hex(4)}",
+        password: 'password123',
+        password_confirmation: 'password123',
+        permissions: [{ 'user_group_id' => 6 }],
+        referee_id: referee.id,
         teams: []
       )
     end

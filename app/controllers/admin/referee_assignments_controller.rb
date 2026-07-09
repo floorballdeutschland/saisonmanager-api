@@ -179,13 +179,17 @@ module Admin
 
       available_ids = RefereeAvailability.where(date: date).pluck(:referee_id)
 
-      referees = Referee.where(guest: false)
-                        .where(id: available_ids)
-                        .joins(referee_qualifications: :referee_qualification_type)
-                        .where('referee_qualification_types.name LIKE ?', 'B%')
-                        .where('referee_qualifications.valid_until IS NULL OR referee_qualifications.valid_until >= ?', date)
-                        .distinct
-                        .order(:nachname, :vorname)
+      # Verbands-Scope wie in #available/#availability: ein LV-Ansetzer sieht
+      # nur Coaches des eigenen Verbands (inkl. via Freigabe zugeordneter
+      # Vereine), ein globaler/FD-Ansetzer alle.
+      referees = scope_to_permitted_referees(
+        Referee.where(guest: false).where(id: available_ids)
+      )
+                 .joins(referee_qualifications: :referee_qualification_type)
+                 .where('referee_qualification_types.name LIKE ?', 'B%')
+                 .where('referee_qualifications.valid_until IS NULL OR referee_qualifications.valid_until >= ?', date)
+                 .distinct
+                 .order(:nachname, :vorname)
 
       render json: referees.map { |r|
         {
@@ -509,7 +513,12 @@ module Admin
 
     def authorize_assigner!
       ph = current_user.permission_hash
-      return if ph[:admin].present? || ph[:ansetzer].present?
+      return if ph[:admin].present?
+      # Ansetzer nur, wenn die Ansetzung für (mind.) einen seiner Landesverbände
+      # freigeschaltet ist (referee_assignment_enabled) – analog zum Menü-Gating
+      # in User#permissions_items. FD/global (Spielbetrieb 0) ist immer aktiv.
+      return if ph[:ansetzer].present? && current_user.referee_assignment_active_for_ansetzer?(ph)
+
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
 
