@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Liga aus Vorsaison kopieren (Saisonwechsel-Erleichterung)**: Neuer Endpoint `POST admin/leagues/:id/copy` (Berechtigung wie Liga-Anlage: Admin oder SBK des Quell-Verbands) kopiert die Liga-Stammdaten in die aktuelle Saison – `deadline` wird um +1 Jahr verschoben, die Quell-Liga als Vorsaison-Liga (`league_id_preseason`) verknüpft. Spieltage, Spiele und Ergebnisse werden bewusst nicht kopiert. Optional (`include_teams: true`) werden die Teams der Quell-Liga mit übernommen – mit `approved = false`, die Meldung muss also neu bestätigt werden; Teammanager-Zuordnungen müssen neu gesetzt werden. Frontend-Teil: floorballdeutschland/saisonmanager#41.
+
 ### Verbessert
 
 - **Spielorte löschen und zusammenführen ist jetzt Admins vorbehalten**: Spielorte (Arenen) bleiben verbandsübergreifend geteilte Stammdaten, die jeder SBK wie bisher anlegen und bearbeiten kann. Die destruktiven Aktionen Löschen und Zusammenführen (das Zusammenführen hängt Spieltage anderer Verbände um) erfordern jetzt Admin-Rechte – SBK erhalten dort 403. Neuer Berechtigungsschlüssel `arena_manage_lifecycle` für die Oberfläche (#62).
@@ -17,12 +21,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Behoben
 
 - **Sicherheit: Vereinsmanager-Zugriff auf Schiedsrichter ist jetzt auch serverseitig vollständig read-only (#60)**: Mit dem Wegfall des Wallet-Endpoints ist der letzte in #60 genannte Schreibpfad entfernt; `update` und `merge` bleiben für VM gesperrt (`can_access_referee?` mit `include_vm: false`, nur Admin/RSK/Ansetzer im Scope) – abgesichert durch neue Controller-Tests (VM: Lesen erlaubt, 403 auf `update`/`merge`).
-### Neu
-
-- **Liga aus Vorsaison kopieren (Saisonwechsel-Erleichterung)**: Neuer Endpoint `POST admin/leagues/:id/copy` (Berechtigung wie Liga-Anlage: Admin oder SBK des Quell-Verbands) kopiert die Liga-Stammdaten in die aktuelle Saison – `deadline` wird um +1 Jahr verschoben, die Quell-Liga als Vorsaison-Liga (`league_id_preseason`) verknüpft. Spieltage, Spiele und Ergebnisse werden bewusst nicht kopiert. Optional (`include_teams: true`) werden die Teams der Quell-Liga mit übernommen – mit `approved = false`, die Meldung muss also neu bestätigt werden; Teammanager-Zuordnungen müssen neu gesetzt werden. Frontend-Teil: floorballdeutschland/saisonmanager#41.
-### Behoben
-
 - **Kleinere Berechtigungs- und Robustheitslücken aus dem Sicherheits-Review geschlossen (#64)**: Schiri-Löschung entfernt Benutzerkonten nur noch für Admins; Coach-Auswahl und Ansetzungs-Endpunkte respektieren LV-Scope bzw. das Feature-Flag `referee_assignment_enabled`; Vereins-, Team-, Liga- und Spiel-Verwaltungs-Reads sind auf die berechtigten Rollen/Verbände gescopt (Vereinsliste ohne `contact_email` für nicht-privilegierte Rollen); Banner-Verwaltung prüft den konkreten Spielbetrieb; ungenutzte/kaputte Endpunkte (`tests`-Scaffold, `GET /clubs`) entfernt; Batch-Trigger `update_start_end` ist Admin-only.
+- **Auf-/Abstiegsregeln: SBK-Zugriff dauerhaft abgesichert (#63)**: Der eigentliche Fix (SBK mit passendem Verbands-Scope darf die Qualifikationsregeln einer Liga pflegen, analog zur Liga-Bearbeitung) ist bereits mit 1.43.0 ausgeliefert (PR #66). Nachgezogen sind jetzt die Controller-Tests, die das Verhalten absichern: SBK des eigenen Spielbetriebs darf Regeln anlegen/ändern/löschen, SBK eines fremden Spielbetriebs sowie Vereins-/Teammanager erhalten 403.
 
 ## [1.43.1] - 2026-07-09
 
