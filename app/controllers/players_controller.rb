@@ -934,7 +934,7 @@ class PlayersController < ApplicationController
       entry[:games]           += 1
       entry[:goals]           += scorer_data[:goals]
       entry[:assists]         += scorer_data[:assists]
-      entry[:penalty_minutes] += (scorer_data[:penalty_2]      * 2) +
+      entry[:penalty_minutes] += (scorer_data[:penalty_2]       * 2) +
                                  (scorer_data[:penalty_2and2]   * 4) +
                                  (scorer_data[:penalty_5]       * 5) +
                                  (scorer_data[:penalty_10]      * 10) +

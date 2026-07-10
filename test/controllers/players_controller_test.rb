@@ -485,7 +485,7 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
 
     body = JSON.parse(response.body)
-    assert_equal [18, 17], body['seasons'].map { |s| s['season_id'] }
+    assert_equal([18, 17], body['seasons'].map { |s| s['season_id'] })
     assert_equal 1, body['seasons'][0]['leagues'][0]['goals']
     assert_equal 2, body['seasons'][1]['leagues'][0]['goals']
     assert_equal 2, body['totals']['games']
