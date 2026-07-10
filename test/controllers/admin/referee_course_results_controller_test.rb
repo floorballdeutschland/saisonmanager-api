@@ -56,6 +56,33 @@ module Admin
       assert_equal Date.new(2099, 1, 15), @result.reload.gueltigkeit
     end
 
+    # Der „Anwenden"-Pfad (approve → RefereeCourseResultApplier) leitet die
+    # Gültigkeit ebenfalls über gueltigkeit_for ab und überschreibt dabei einen
+    # veralteten, zuvor gespeicherten Wert — hier end-to-end über HTTP geprüft.
+    test 'approve leitet die gueltigkeit des Referees ueber gueltigkeit_for ab (Regeljahr → 31.07.)' do
+      RefereeLicenseLevel.create!(name: 'G', validity_years: 1)
+      referee = create(:referee, lizenzstufe: nil, gueltigkeit: nil)
+      result = RefereeCourseResult.create!(
+        referee_course_import: @import,
+        referee: referee,
+        status: 'pending_review',
+        match_type: 'exact_match',
+        match_field_count: 6,
+        csv_vorname: referee.vorname, csv_nachname: referee.nachname,
+        lizenzstufe: 'G',
+        gueltigkeit: Date.new(2026, 9, 30), # veralteter 30.09.-Wert, wird neu abgeleitet
+        kursstichtag: Date.new(2025, 8, 3)
+      )
+      login(@admin)
+
+      post "/api/v2/admin/referee_course_results/#{result.id}/approve"
+
+      assert_response :success
+      # 2025 + 1 = 2026 (Regeljahr) → 31.07.2026, nicht der gespeicherte 30.09.
+      assert_equal Date.new(2026, 7, 31), referee.reload.gueltigkeit
+      assert_equal 'applied', result.reload.status
+    end
+
     private
 
     def login(user)

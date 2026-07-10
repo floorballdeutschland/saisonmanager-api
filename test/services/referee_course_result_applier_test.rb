@@ -65,6 +65,18 @@ class RefereeCourseResultApplierTest < ActiveSupport::TestCase
     assert_equal Date.new(2026, 7, 31), ref.reload.gueltigkeit
   end
 
+  test 'faellt ohne Kursstichtag auf die manuell gesetzte gueltigkeit zurueck' do
+    RefereeLicenseLevel.create!(name: 'G', validity_years: 1)
+    ref = create(:referee, lizenzstufe: nil, gueltigkeit: nil)
+    # Ohne kursstichtag liefert gueltigkeit_for nil → Fallback auf @result.gueltigkeit.
+    result = make_result(referee: ref, kursstichtag: nil, gueltigkeit: Date.new(2028, 9, 30))
+
+    RefereeCourseResultApplier.new(result, performed_by_user: @admin)
+                              .call(review_required: false)
+
+    assert_equal Date.new(2028, 9, 30), ref.reload.gueltigkeit
+  end
+
   test 'belässt Stammdaten unverändert bei review_required' do
     ref = create(:referee, vorname: 'Alt', nachname: 'Name')
     result = make_result(
