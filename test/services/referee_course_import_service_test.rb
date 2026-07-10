@@ -84,12 +84,13 @@ class RefereeCourseImportServiceTest < ActiveSupport::TestCase
     assert_nil result.referee_id
   end
 
-  test 'kursstichtag = max Datum aus Kurs1/Kurs2; gueltigkeit = 30.9. Folgejahr' do
+  test 'kursstichtag = max Datum aus Kurs1/Kurs2; gueltigkeit = Stichtag Folgejahr (Regeljahr → 31.07.)' do
     import = call([';X;Y;01.01.2000;;;F;01.08.2025;F;10;G;15.09.2025;G;12;Ausb'])
     result = import.referee_course_results.first
 
     assert_equal Date.new(2025, 9, 15), result.kursstichtag
-    assert_equal Date.new(2026, 9, 30), result.gueltigkeit
+    # Kursjahr 2025 + Default-Dauer 1 → Ablaufjahr 2026 ist Regeljahr → 31.07.
+    assert_equal Date.new(2026, 7, 31), result.gueltigkeit
   end
 
   test 'verein wird nur bei exaktem Namens-Match übernommen' do
