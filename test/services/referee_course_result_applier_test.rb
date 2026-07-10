@@ -41,7 +41,7 @@ class RefereeCourseResultApplierTest < ActiveSupport::TestCase
   end
 
   test 'wendet Lizenz auf bestehenden Referee an (gueltigkeit aus validity_years)' do
-    RefereeLicenseLevel.create!(name: 'G', validity_years: 1)
+    RefereeLicenseLevel.create!(name: 'G', validity_years: 2)
     ref = create(:referee, lizenzstufe: nil, gueltigkeit: nil)
     result = make_result(referee: ref) # kursstichtag 2025-08-03
 
@@ -50,8 +50,8 @@ class RefereeCourseResultApplierTest < ActiveSupport::TestCase
 
     assert_equal 'applied', result.reload.status
     assert_equal 'G', ref.reload.lizenzstufe
-    # Gültigkeit aus der Stufe abgeleitet: validity_years 1 + Kursjahr 2025 → 30.09.2026
-    assert_equal Date.new(2026, 9, 30), ref.gueltigkeit
+    # Gültigkeit aus der Stufe abgeleitet: validity_years 2 + Kursjahr 2025 → 30.09.2027
+    assert_equal Date.new(2027, 9, 30), ref.gueltigkeit
   end
 
   test 'leitet gueltigkeit ohne passende Lizenzstufe mit der Default-Dauer ab' do
@@ -61,8 +61,20 @@ class RefereeCourseResultApplierTest < ActiveSupport::TestCase
     RefereeCourseResultApplier.new(result, performed_by_user: @admin)
                               .call(review_required: false)
 
-    # Default 2 Jahre + Kursjahr 2025 → 30.09.2027
-    assert_equal Date.new(2027, 9, 30), ref.reload.gueltigkeit
+    # Default 1 Jahr + Kursjahr 2025 → Ablaufjahr 2026 ist Regeljahr → 31.07.2026
+    assert_equal Date.new(2026, 7, 31), ref.reload.gueltigkeit
+  end
+
+  test 'faellt ohne Kursstichtag auf die manuell gesetzte gueltigkeit zurueck' do
+    RefereeLicenseLevel.create!(name: 'G', validity_years: 1)
+    ref = create(:referee, lizenzstufe: nil, gueltigkeit: nil)
+    # Ohne kursstichtag liefert gueltigkeit_for nil → Fallback auf @result.gueltigkeit.
+    result = make_result(referee: ref, kursstichtag: nil, gueltigkeit: Date.new(2028, 9, 30))
+
+    RefereeCourseResultApplier.new(result, performed_by_user: @admin)
+                              .call(review_required: false)
+
+    assert_equal Date.new(2028, 9, 30), ref.reload.gueltigkeit
   end
 
   test 'belässt Stammdaten unverändert bei review_required' do
