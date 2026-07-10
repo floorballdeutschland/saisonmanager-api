@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Spielerstatistik-Endpunkt deutlich schneller (Caching + Index)**: `GET players/:id/stats` (öffentliches Spielerprofil) berechnete bei jedem Aufruf die komplette Karriere neu (~3,7 s bei langer Spielhistorie). Die Statistik wird jetzt pro Spieler in zwei Teilen gecacht: abgeschlossene Saisons mit langer TTL (1 Woche), die laufende Saison mit kurzer TTL (15 Minuten) – neue Spielberichte erscheinen also weiterhin zeitnah. Wird ein bereits abgeschlossenes Spiel nachträglich korrigiert, invalidiert das den Spieler-Cache sofort (über den `after_commit`-Hook des Spiels), sodass Korrekturen – auch in abgeschlossenen Saisons – nicht bis zum TTL-Ablauf unsichtbar bleiben. Anzeige-Namen (Liga, Verband, Team) werden nicht mitgecacht, sondern frisch aufgelöst, damit Umbenennungen sofort greifen. Zusätzlich beschleunigt ein GIN-Index auf `games.players` die Spielersuche in den Aufstellungen; die Containment-Query nutzt dafür jetzt Top-Level-Containment (#86).
+
 ### Behoben
 
 - **Schiedsrichterlizenz-Gültigkeit: Regeljahr-Stichtag (31.07.) und einheitliche Ableitung**: Alle 4 Jahre ist Regeljahr (2022, 2026, 2030, …) – in Regeljahren laufen Lizenzen am 31.07. ab, sonst am 30.09. Diese Regel kannte bisher keine der Gültigkeits-Ableitungen; außerdem rechnete die Import-Vorschau beim CSV-Upload fix mit Kursjahr + 1, das Anwenden im LV-Review dagegen mit Kursjahr + `validity_years` – Vorschau und Ergebnis wichen still voneinander ab. Jetzt leiten LV-Review und Anwenden beide über `RefereeLicenseLevel.gueltigkeit_for` ab (Ablaufjahr = Kursjahr + Gültigkeitsdauer, Stichtag 31.07./30.09. je nach Regeljahr); die Import-Vorschau nutzt dieselbe Regel, ist aber provisorisch, da die Gültigkeitsdauer erst mit der Stufenzuordnung im LV-Review feststeht (bis dahin Default-Dauer). Zusätzlich setzt eine Migration die Gültigkeitsdauer aller Lizenzstufen vom unveränderten Default 2 auf die gelebte Praxis 1 Jahr (Kurs 2025 → gültig bis 31.07.2026); abweichende Stufen können danach bewusst konfiguriert werden (#87).

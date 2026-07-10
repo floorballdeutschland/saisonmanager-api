@@ -458,4 +458,116 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :unprocessable_entity
   end
+
+  # 8. Öffentliche Spielerstatistik: pro Saison aggregiert; laufende und
+  # abgeschlossene Saisons werden getrennt berechnet (Cache-Split in #stats)
+  # und müssen zusammen wieder die komplette Karriere ergeben.
+  test 'GET players/:id/stats aggregiert Tore pro Saison über den Saison-Split' do
+    arena = create(:arena)
+    old_league = create(:league, :previous_season, game_operation: @game_operation)
+    old_team = create(:team, league: old_league, club: @club)
+
+    [[@league, @team, 1], [old_league, old_team, 2]].each do |league, team, goals|
+      game_day = GameDay.create!(league: league, arena: arena, club: @club, number: 1, date: '2025-01-01')
+      guest = create(:team, league: league, club: @club)
+      events = (1..goals).map do |i|
+        { 'period' => 1, 'home_goals' => i, 'guest_goals' => 0, 'home_number' => 7, 'row' => i }
+      end
+      Game.create!(
+        game_day: game_day, home_team: team, guest_team: guest,
+        started: true, ended: true, forfait: 0, overtime: false, legacy: false,
+        events: events,
+        players: { 'home' => [{ 'trikot_number' => 7, 'player_id' => @player.id }], 'guest' => [] }
+      )
+    end
+
+    get "/api/v2/players/#{@player.id}/stats", headers: { 'X-Api-Key' => 'test-key-for-smoke-tests' }
+    assert_response :success
+
+    body = JSON.parse(response.body)
+    assert_equal([18, 17], body['seasons'].map { |s| s['season_id'] })
+    assert_equal 1, body['seasons'][0]['leagues'][0]['goals']
+    assert_equal 2, body['seasons'][1]['leagues'][0]['goals']
+    assert_equal 2, body['totals']['games']
+    assert_equal 3, body['totals']['goals']
+  end
+
+  # 9. Nicht nur Tore: Assists und Strafminuten (2/4/5/10/25-Multiplikatoren)
+  # sind die fehleranfälligsten Aggregate und werden hier explizit geprüft.
+  test 'GET players/:id/stats aggregiert Assists und Strafminuten' do
+    events = [
+      # Tor + Assist an denselben Spieler (Trikot 7)
+      { 'period' => 1, 'home_goals' => 1, 'guest_goals' => 0, 'home_number' => 7, 'row' => 1 },
+      # Assist ohne eigenes Tor: Torschütze (Trikot 99) nicht in der Aufstellung,
+      # Vorlage (Trikot 7) schon → nur der Assist wird @player gutgeschrieben.
+      { 'period' => 1, 'home_goals' => 2, 'guest_goals' => 0, 'home_number' => 99, 'home_assist' => 7, 'row' => 2 },
+      # 2-Minuten-Strafe (penalty_mapping inline → keine Setting-Penalty-Config nötig)
+      { 'period' => 1, 'penalty_id' => 1, 'penalty_mapping' => 'penalty_2', 'home_number' => 7, 'row' => 3 }
+    ]
+    create_stats_game(@league, @team, events)
+
+    get "/api/v2/players/#{@player.id}/stats", headers: { 'X-Api-Key' => 'test-key-for-smoke-tests' }
+    assert_response :success
+
+    league = JSON.parse(response.body)['seasons'][0]['leagues'][0]
+    assert_equal 1, league['goals']
+    assert_equal 1, league['assists']
+    assert_equal 2, league['penalty_minutes']
+  end
+
+  # 10. Korrekturen an einem Spiel einer ABGESCHLOSSENEN Saison müssen sofort
+  # sichtbar werden — der Langzeit-Cache (1 Woche) wird über den after_commit-
+  # Hook des Spiels invalidiert (sonst blieben Edits bis zum TTL-Ablauf stale).
+  test 'GET players/:id/stats invalidiert den Langzeit-Cache bei Edit an abgeschlossener Saison' do
+    old_league = create(:league, :previous_season, game_operation: @game_operation)
+    old_team = create(:team, league: old_league, club: @club)
+    game = create_stats_game(old_league, old_team,
+                             [{ 'period' => 1, 'home_goals' => 1, 'guest_goals' => 0, 'home_number' => 7, 'row' => 1 }])
+
+    Rails.stub(:cache, ActiveSupport::Cache::MemoryStore.new) do
+      get "/api/v2/players/#{@player.id}/stats", headers: { 'X-Api-Key' => 'test-key-for-smoke-tests' }
+      assert_equal 1, JSON.parse(response.body)['totals']['goals']
+
+      # Zweites Tor ergänzen → ohne Invalidierung bliebe der Cache bei 1.
+      game.update!(events: game.events + [{ 'period' => 1, 'home_goals' => 2, 'guest_goals' => 0, 'home_number' => 7, 'row' => 2 }])
+
+      get "/api/v2/players/#{@player.id}/stats", headers: { 'X-Api-Key' => 'test-key-for-smoke-tests' }
+      assert_equal 2, JSON.parse(response.body)['totals']['goals']
+    end
+  end
+
+  # 11. Anzeige-Namen werden frisch aufgelöst, nicht mitgecacht: eine
+  # Liga-Umbenennung erscheint sofort, obwohl der numerische Cache (der bei
+  # einer reinen Umbenennung NICHT invalidiert wird) unverändert bleibt.
+  test 'GET players/:id/stats zeigt Liga-Umbenennung sofort trotz gecachter Aggregate' do
+    old_league = create(:league, :previous_season, game_operation: @game_operation, name: 'Alt-Liga')
+    old_team = create(:team, league: old_league, club: @club)
+    create_stats_game(old_league, old_team,
+                      [{ 'period' => 1, 'home_goals' => 1, 'guest_goals' => 0, 'home_number' => 7, 'row' => 1 }])
+
+    Rails.stub(:cache, ActiveSupport::Cache::MemoryStore.new) do
+      get "/api/v2/players/#{@player.id}/stats", headers: { 'X-Api-Key' => 'test-key-for-smoke-tests' }
+      assert_equal 'Alt-Liga', JSON.parse(response.body)['seasons'][0]['leagues'][0]['league_name']
+
+      old_league.update!(name: 'Neu-Liga')
+
+      get "/api/v2/players/#{@player.id}/stats", headers: { 'X-Api-Key' => 'test-key-for-smoke-tests' }
+      assert_equal 'Neu-Liga', JSON.parse(response.body)['seasons'][0]['leagues'][0]['league_name']
+    end
+  end
+
+  private
+
+  # Beendetes Spiel mit @player (Trikot 7) in der Heim-Aufstellung.
+  def create_stats_game(league, team, events)
+    arena = create(:arena)
+    game_day = GameDay.create!(league: league, arena: arena, club: @club, number: 1, date: '2025-01-01')
+    guest = create(:team, league: league, club: @club)
+    Game.create!(
+      game_day: game_day, home_team: team, guest_team: guest,
+      started: true, ended: true, forfait: 0, overtime: false, legacy: false,
+      events: events,
+      players: { 'home' => [{ 'trikot_number' => 7, 'player_id' => @player.id }], 'guest' => [] }
+    )
+  end
 end
