@@ -743,10 +743,19 @@ class PlayersController < ApplicationController
 
     by_season = closed_seasons.merge(current_season)
 
+    # Anzeige-Namen (Liga/Verband/Team) werden NICHT gecacht, sondern frisch
+    # aufgelöst — analog zu season_name. So bleiben Umbenennungen sofort
+    # sichtbar, obwohl die (numerischen) Aggregate lange gecacht sind.
+    league_ids = by_season.values.flat_map(&:keys).uniq
+    leagues_by_id = League.where(id: league_ids).includes(:game_operation).index_by(&:id)
+    team_ids = by_season.values.flat_map { |leagues| leagues.values.map { |e| e[:team_id] } }.compact.uniq
+    team_names = Team.where(id: team_ids).pluck(:id, :name).to_h
+
     seasons = by_season
               .sort_by { |season_id, _| -season_id }
               .map do |season_id, leagues|
-      league_entries = leagues.values.sort_by { |e| -e[:games] }
+      sorted = leagues.values.sort_by { |e| -e[:games] }
+      league_entries = sorted.map { |entry| entry_with_names(entry, leagues_by_id, team_names) }
       {
         season_id:,
         season_name: seasons_map[season_id] || season_id.to_s,
@@ -913,13 +922,12 @@ class PlayersController < ApplicationController
       league_id   = league.id
 
       by_season[season_id] ||= {}
+      # Nur numerische Aggregate + IDs cachen — Anzeige-Namen löst #stats
+      # frisch auf (siehe entry_with_names), damit Umbenennungen nicht bis
+      # zum TTL-Ablauf stale bleiben.
       entry = by_season[season_id][league_id] ||= {
         league_id:,
-        league_name:    league.name,
-        league_slug:    "#{league.id}-#{league.short_name&.parameterize}",
-        game_operation: league.game_operation.short_name,
-        team_id:        scorer_data[:team_id],
-        team_name:      scorer_data[:team_name],
+        team_id: scorer_data[:team_id],
         games: 0, goals: 0, assists: 0, penalty_minutes: 0
       }
 
@@ -936,6 +944,18 @@ class PlayersController < ApplicationController
     end
 
     by_season
+  end
+
+  # Reichert einen gecachten (rein numerischen) Liga-Eintrag mit frisch
+  # aufgelösten Anzeige-Namen an.
+  def entry_with_names(entry, leagues_by_id, team_names)
+    league = leagues_by_id[entry[:league_id]]
+    entry.merge(
+      league_name:    league&.name,
+      league_slug:    league && "#{league.id}-#{league.short_name&.parameterize}",
+      game_operation: league&.game_operation&.short_name,
+      team_name:      team_names[entry[:team_id]]
+    )
   end
 
   def can_manage_player?(player)

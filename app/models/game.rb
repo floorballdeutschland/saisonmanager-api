@@ -1286,11 +1286,33 @@ class Game < ApplicationRecord
   private
 
   def flush_league_caches
+    flush_player_stats_caches
+
     league_id = game_day&.league_id
     return if league_id.blank?
 
     %w[schedule current_schedule table grouped_table scorer].each do |key|
       Rails.cache.delete("leagues/#{league_id}/#{key}")
     end
+  end
+
+  # Spielerstatistik-Cache (PlayersController#stats) für alle Spieler dieser
+  # Aufstellung invalidieren. Sonst blieben Korrekturen an Spielberichten —
+  # auch an bereits abgeschlossenen Saisons (Langzeit-TTL 1 Woche) — bis zum
+  # TTL-Ablauf im öffentlichen Profil unsichtbar. Der Key trägt stets die
+  # aktuelle Saison, unabhängig davon, zu welcher Saison das Spiel gehört.
+  def flush_player_stats_caches
+    season_id = Setting.current_season_id.to_i
+    lineup_player_ids.each do |pid|
+      Rails.cache.delete("players/#{pid}/stats/closed/#{season_id}")
+      Rails.cache.delete("players/#{pid}/stats/current/#{season_id}")
+    end
+  end
+
+  def lineup_player_ids
+    return [] unless players.is_a?(Hash)
+
+    ids = %w[home guest].flat_map { |side| Array(players[side]).map { |p| p['player_id'] } }
+    ids.compact.uniq
   end
 end

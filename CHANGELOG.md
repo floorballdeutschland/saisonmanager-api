@@ -11,7 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Verbessert
 
-- **Spielerstatistik-Endpunkt deutlich schneller (Caching + Index)**: `GET players/:id/stats` (öffentliches Spielerprofil) berechnete bei jedem Aufruf die komplette Karriere neu (~3,7 s bei langer Spielhistorie). Die Statistik wird jetzt pro Spieler in zwei Teilen gecacht: abgeschlossene Saisons (unveränderlich) mit langer TTL (1 Woche), die laufende Saison mit kurzer TTL (15 Minuten) – neue Spielberichte erscheinen also weiterhin zeitnah. Zusätzlich beschleunigt ein GIN-Index auf `games.players` die Spielersuche in den Aufstellungen; die Containment-Query nutzt dafür jetzt Top-Level-Containment (#86).
+- **Spielerstatistik-Endpunkt deutlich schneller (Caching + Index)**: `GET players/:id/stats` (öffentliches Spielerprofil) berechnete bei jedem Aufruf die komplette Karriere neu (~3,7 s bei langer Spielhistorie). Die Statistik wird jetzt pro Spieler in zwei Teilen gecacht: abgeschlossene Saisons mit langer TTL (1 Woche), die laufende Saison mit kurzer TTL (15 Minuten) – neue Spielberichte erscheinen also weiterhin zeitnah. Wird ein bereits abgeschlossenes Spiel nachträglich korrigiert, invalidiert das den Spieler-Cache sofort (über den `after_commit`-Hook des Spiels), sodass Korrekturen – auch in abgeschlossenen Saisons – nicht bis zum TTL-Ablauf unsichtbar bleiben. Anzeige-Namen (Liga, Verband, Team) werden nicht mitgecacht, sondern frisch aufgelöst, damit Umbenennungen sofort greifen. Zusätzlich beschleunigt ein GIN-Index auf `games.players` die Spielersuche in den Aufstellungen; die Containment-Query nutzt dafür jetzt Top-Level-Containment (#86).
 
 ## [1.45.0] - 2026-07-09
 
