@@ -113,6 +113,7 @@ class UserTest < ActiveSupport::TestCase
     assert items[:menu_item_state_association_admin]
     assert items[:menu_item_api_key_admin]
     assert items[:menu_item_season_admin]
+    assert items[:admin], 'Admin muss den expliziten admin-Boolean für das Frontend bekommen'
     assert_not items[:login_blocked]
   end
 
@@ -126,6 +127,7 @@ class UserTest < ActiveSupport::TestCase
     assert_not items[:menu_item_league_admin]
     assert_not items[:menu_item_state_association_admin]
     assert_not items[:menu_item_referee_admin]
+    assert_not items[:admin], 'VM darf den admin-Boolean nicht bekommen'
     assert_not items[:login_blocked]
   end
 
