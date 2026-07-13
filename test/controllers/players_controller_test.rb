@@ -16,6 +16,46 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
+  # admin_player: standardmäßig nur aktuelle Saison (team_id >= current_min_team),
+  # mit all_licenses=true die vollständige saisonübergreifende Historie.
+  test 'admin_player liefert nur aktuelle Saison; all_licenses=true liefert volle Historie' do
+    admin = create(:user, :admin)
+
+    old_league = create(:league, game_operation: @game_operation)
+    old_team = create(:team, league: old_league, club: @club)
+    new_team = create(:team, league: @league, club: @club)
+
+    # current_min_team zwischen die beiden Teams legen: old_team < aktuell, new_team >= aktuell
+    create(:setting, current_season_id: '18', current_min_team: new_team.id)
+
+    old_license = {
+      'id' => 'L-old',
+      'team_id' => old_team.id,
+      'season_id' => 17,
+      'history' => [{ 'license_status_id' => License::APPROVED, 'created_at' => 2.years.ago.iso8601 }]
+    }
+    new_license = {
+      'id' => 'L-new',
+      'team_id' => new_team.id,
+      'season_id' => 18,
+      'history' => [{ 'license_status_id' => License::APPROVED, 'created_at' => 1.day.ago.iso8601 }]
+    }
+    player = create(:player, licenses: [old_license, new_license])
+
+    login_as(admin)
+
+    get "/api/v2/admin/players/#{player.id}.json"
+    assert_response :success
+    ids = JSON.parse(response.body)['licenses'].map { |l| l['id'] }
+    assert_equal ['L-new'], ids
+
+    get "/api/v2/admin/players/#{player.id}.json", params: { all_licenses: 'true' }
+    assert_response :success
+    ids = JSON.parse(response.body)['licenses'].map { |l| l['id'] }
+    assert_includes ids, 'L-old'
+    assert_includes ids, 'L-new'
+  end
+
   # global_search (Spielersuche /verwaltung/spieler/suche): deaktivierte Spieler
   # (z.B. per Duplikat-Merge zusammengeführte Profile) dürfen nicht erscheinen.
   test 'global_search findet aktive Spieler, aber keine deaktivierten' do
