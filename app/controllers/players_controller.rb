@@ -51,7 +51,7 @@ class PlayersController < ApplicationController
       return render json: [] if q.length < 2
 
       term = "%#{q}%"
-      players = Player.where(
+      players = Player.active.where(
         'last_name ILIKE :q OR first_name ILIKE :q OR concat(first_name, \' \', last_name) ILIKE :q OR concat(last_name, \', \', first_name) ILIKE :q',
         q: term
       ).order(:last_name, :first_name).limit(20)

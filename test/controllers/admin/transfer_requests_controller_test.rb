@@ -77,6 +77,16 @@ module Admin
       assert_match(/JJJJ-MM-TT/, JSON.parse(response.body)['error'])
     end
 
+    test 'search_player findet deaktivierte Spieler nicht' do
+      @player.deactivate!(@admin.id, reason: 'Zusammenführung')
+      login(@admin)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15'
+      }
+      assert_response :success
+      assert_nil JSON.parse(response.body)['player']
+    end
+
     # ---------------------------------------------------------------------------
     # POST /api/v2/admin/transfer_requests
     # ---------------------------------------------------------------------------

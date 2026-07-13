@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Deaktivierte Spieler tauchten in Suche, Transfer- und Freigabe-Antrag auf**: Beim verlustfreien Duplikat-Merge bleiben zusammengeführte Profile absichtlich erhalten (deaktiviert, `merged_into_id` gesetzt). Sie waren aber weiterhin in der Spielersuche (`/verwaltung/spieler/suche`) sowie bei der Spieler-Auswahl für Transfer- und Freigabe-Anträge auffindbar. Bei gemergten Duplikaten konnte der Antragspfad (Suche per Name + Geburtsdatum) sogar das deaktivierte Zweitprofil statt des aktiven Master-Datensatzes zurückliefern. Beide Abfragen filtern jetzt über den bestehenden `Player.active`-Scope auf aktive Spieler (#91).
+
 ## [1.45.1] - 2026-07-13
 
 ### Verbessert

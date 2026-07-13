@@ -41,7 +41,7 @@ module Admin
         return render json: { error: 'Geburtsdatum muss im Format JJJJ-MM-TT übergeben werden' }, status: :unprocessable_entity
       end
 
-      player = Player.where(
+      player = Player.active.where(
         'LOWER(first_name) = ? AND LOWER(last_name) = ? AND birthdate = ?',
         first_name.downcase, last_name.downcase, birthdate
       ).first

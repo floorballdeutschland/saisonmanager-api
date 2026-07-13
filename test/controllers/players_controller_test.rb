@@ -16,6 +16,23 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
+  # global_search (Spielersuche /verwaltung/spieler/suche): deaktivierte Spieler
+  # (z.B. per Duplikat-Merge zusammengeführte Profile) dürfen nicht erscheinen.
+  test 'global_search findet aktive Spieler, aber keine deaktivierten' do
+    admin = create(:user, :admin)
+    active = create(:player, first_name: 'Aktiv', last_name: 'Suchbar')
+    deactivated = create(:player, first_name: 'Deaktiv', last_name: 'Suchbar')
+    deactivated.deactivate!(admin.id, reason: 'Zusammenführung')
+
+    login_as(admin)
+    get '/api/v2/admin/players/search', params: { q: 'Suchbar' }
+
+    assert_response :success
+    ids = JSON.parse(response.body).map { |p| p['id'] }
+    assert_includes ids, active.id
+    assert_not_includes ids, deactivated.id
+  end
+
   # 1. VM kann Lizenz für eigenes Team beantragen → 201
   test 'VM beantragt Lizenz für eigenes Team erfolgreich' do
     vm_user = create(:user, :vm, club_id: @club.id)
