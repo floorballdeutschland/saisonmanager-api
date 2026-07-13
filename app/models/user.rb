@@ -178,6 +178,7 @@ class User < ApplicationRecord
     result[:referee_merge] = ph[:admin].present? || ph[:rsk].present?
 
     result[:club_deactivate] = ph[:admin].present? || ph[:sbk].present?
+    result[:team_delete] = ph[:admin].present? || ph[:sbk].present?
 
     result
   end

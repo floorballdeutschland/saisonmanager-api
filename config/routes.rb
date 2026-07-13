@@ -98,6 +98,7 @@ Rails.application.routes.draw do
       get 'admin/game_operations', to: 'game_operations#admin_game_operations'
 
       post 'admin/teams', to: 'teams#admin_team_update'
+      delete 'admin/teams/:id', to: 'teams#destroy'
 
       get 'admin/clubs/all', to: 'clubs#admin_club_all'
       get 'admin/clubs', to: 'clubs#admin_club_index'

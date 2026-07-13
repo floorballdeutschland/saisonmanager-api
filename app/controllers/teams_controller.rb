@@ -245,6 +245,36 @@ class TeamsController < ApplicationController
     end
   end
 
+  # DELETE /admin/teams/:id
+  # Löscht ein Team endgültig – aber nur, wenn keine Spieler/Lizenzen und keine
+  # Spiele daran hängen, damit keine Historie verloren geht.
+  def destroy
+    return render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized unless current_user
+
+    team = Team.find(params[:id])
+
+    unless team.user_permissions(current_user).include?(:delete_team)
+      return render json: { message: 'Keine Berechtigung' }, status: :forbidden
+    end
+
+    if Player.find_by_team_id(team.id).present?
+      return render json: { message: 'Team kann nicht gelöscht werden: Es sind noch Spieler bzw. Lizenzen zugeordnet.' },
+                    status: :unprocessable_entity
+    end
+
+    if Game.by_team_id(team.id).exists?
+      return render json: { message: 'Team kann nicht gelöscht werden: Es existieren noch Spiele oder Ergebnisse.' },
+                    status: :unprocessable_entity
+    end
+
+    team.destroy!
+    head :no_content
+  rescue ActiveRecord::InvalidForeignKey
+    render json: { message: 'Team kann nicht gelöscht werden: Es existieren noch verknüpfte Einträge ' \
+                            '(z.B. Spieltag-Bestätigungen).' },
+           status: :unprocessable_entity
+  end
+
   def license_list
     team = Team.find(params[:id])
 
