@@ -9,6 +9,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Legacy-Datenkorrektur: Nationalitäten** – Nach dem finalen Go-Live-Dump standen die Spieler-Nationalitäten flächendeckend als rohe Legacy-IDs in der DB (praktisch alle Spieler wurden als „Dänemark" statt „Deutschland" angezeigt). Neuer Rake `players:reapply_nation_fix` remappt sie auf das neue Schema (identisch zur Migration `20260415140000`: 3→4, 4→1, 6→6, 99→99, übrige→99). Nicht idempotent, daher mit Wiederholungssperre (bricht ab, wenn keine Legacy-Reste mehr vorhanden sind) und Dry-Run-Standard.
+- **Legacy-Datenkorrektur: offene Vereinsmitgliedschaften** – Aus dem Import 2010–2014 stammende Mitgliedschaften standen ohne Enddatum („bis heute") in der Historie, obwohl der Spieler den Verein längst gewechselt hatte. Neuer Rake `players:close_legacy_memberships` setzt das Enddatum offener Legacy-Mitgliedschaften auf das exakte Startdatum des Folgevereins; ohne datierten Folgeverein bleibt die Mitgliedschaft offen. Kernlogik als `LegacyImport::MembershipCloser` (getestet), Dry-Run-Standard.
+
 ## [1.48.1] - 2026-07-13
 
 ### Verbessert
