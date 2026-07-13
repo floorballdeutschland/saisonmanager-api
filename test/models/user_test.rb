@@ -327,9 +327,10 @@ class UserTest < ActiveSupport::TestCase
 
   test 'login: exakter Benutzername hat Vorrang vor E-Mail-Treffer' do
     target = build_user(permissions: [])
-    # Ein anderes Konto traegt als E-Mail den Benutzernamen des Ziel-Kontos.
+    # Ein anderes Konto traegt als E-Mail exakt den Benutzernamen des Ziel-Kontos,
+    # sodass beide Zweige den Login-String treffen wuerden.
     other = build_user(permissions: [])
-    other.update!(email: "#{target.user_name}@example.com")
+    other.update!(email: target.user_name)
     assert_equal target.id, User.login(target.user_name, 'password123')&.id
   end
 

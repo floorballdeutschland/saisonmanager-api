@@ -307,8 +307,8 @@ class User < ApplicationRecord
     # ist bereits kleingeschrieben (SessionsController), daher LOWER-Vergleich.
     user = User.find_by(user_name: login)
     if user.blank?
-      email_matches = User.where('LOWER(email) = ?', login)
-      user = email_matches.first if email_matches.count == 1
+      email_matches = User.where('LOWER(email) = ?', login).limit(2).to_a
+      user = email_matches.first if email_matches.size == 1
     end
     hashed_password = Digest::MD5.hexdigest(password)
 
