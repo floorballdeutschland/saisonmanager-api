@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.49.0] - 2026-07-13
+
 ### Behoben
 
 - **Legacy-Datenkorrektur: Nationalitäten** – Nach dem finalen Go-Live-Dump standen die Spieler-Nationalitäten flächendeckend als rohe Legacy-IDs in der DB (praktisch alle Spieler wurden als „Dänemark" statt „Deutschland" angezeigt). Neuer Rake `players:reapply_nation_fix` remappt sie auf das neue Schema (identisch zur Migration `20260415140000`: 3→4, 4→1, 6→6, 99→99, übrige→99). Nicht idempotent, daher mit Wiederholungssperre (bricht ab, wenn keine Legacy-Reste mehr vorhanden sind) und Dry-Run-Standard.
