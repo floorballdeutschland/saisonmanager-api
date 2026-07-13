@@ -298,10 +298,18 @@ class User < ApplicationRecord
     result
   end
 
-  def self.login(user_name, password)
-    return nil if user_name.blank? || password.blank?
+  def self.login(login, password)
+    return nil if login.blank? || password.blank?
 
-    user = User.where(user_name:).first
+    # Login per Benutzername ODER E-Mail. Der exakte Benutzername hat Vorrang;
+    # eine E-Mail wird nur akzeptiert, wenn sie eindeutig einem Konto zugeordnet
+    # ist (die E-Mail-Spalte hat keine Unique-Constraint). Der eingehende Wert
+    # ist bereits kleingeschrieben (SessionsController), daher LOWER-Vergleich.
+    user = User.find_by(user_name: login)
+    if user.blank?
+      email_matches = User.where('LOWER(email) = ?', login)
+      user = email_matches.first if email_matches.count == 1
+    end
     hashed_password = Digest::MD5.hexdigest(password)
 
     return nil if user.blank?
