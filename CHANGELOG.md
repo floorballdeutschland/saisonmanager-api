@@ -12,6 +12,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Behoben
 
 - **Deaktivierte Spieler tauchten in Suche, Transfer- und Freigabe-Antrag auf**: Beim verlustfreien Duplikat-Merge bleiben zusammengeführte Profile absichtlich erhalten (deaktiviert, `merged_into_id` gesetzt). Sie waren aber weiterhin in der Spielersuche (`/verwaltung/spieler/suche`) sowie bei der Spieler-Auswahl für Transfer- und Freigabe-Anträge auffindbar. Bei gemergten Duplikaten konnte der Antragspfad (Suche per Name + Geburtsdatum) sogar das deaktivierte Zweitprofil statt des aktiven Master-Datensatzes zurückliefern. Beide Abfragen filtern jetzt über den bestehenden `Player.active`-Scope auf aktive Spieler; zusätzlich weisen Transfer-Erstellung und SBK-Direktzuweisung einen deaktivierten Spieler explizit ab, falls dessen ID direkt übergeben wird (#91).
+- **Vereins-Auswahlliste für Admins/SBK mit mehreren Spielbetrieben leer**: In `user_clubs_and_teams` (Vereins-Dropdown u. a. in der Benutzerverwaltung) wurden die Spielbetriebs-IDs von Admin- und SBK-Berechtigungen in ein verschachteltes Array (`[[…], […]]`) geschrieben und anschließend an `GameOperation.find` übergeben. Für nicht-globale Rollen mit mehreren zugeordneten Spielbetrieben lieferte das keine Vereine (bzw. brach ab). Die IDs werden jetzt via `flatten!` entschachtelt, und `where(id:)` statt `find` verhindert einen Absturz, falls eine Berechtigung auf einen gelöschten Spielbetrieb verweist.
 
 ## [1.45.1] - 2026-07-13
 

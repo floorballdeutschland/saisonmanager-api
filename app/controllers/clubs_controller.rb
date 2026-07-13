@@ -9,8 +9,11 @@ class ClubsController < ApplicationController
               go_ids = []
               go_ids << ph[:admin] if ph[:admin].present?
               go_ids << ph[:sbk] if ph[:sbk].present?
+              go_ids.flatten!
 
-              GameOperation.find(go_ids).map(&:clubs).flatten.uniq
+              # where(id:) statt find: kein Absturz, wenn eine Berechtigung auf
+              # einen zwischenzeitlich gelöschten Spielbetrieb verweist.
+              GameOperation.where(id: go_ids).flat_map(&:clubs).uniq
             elsif ph[:vm].present?
               Club.where(id: ph[:vm])
             elsif ph[:tm].present?

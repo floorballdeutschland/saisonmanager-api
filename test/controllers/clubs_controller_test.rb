@@ -93,6 +93,24 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
+  test 'user_clubs_and_teams liefert SBK mit mehreren Spielbetrieben alle Vereine' do
+    go1 = create(:game_operation)
+    go2 = create(:game_operation)
+    club1 = create(:club, game_operations_hash: [{ 'home_game_operation' => true, 'game_operation_id' => go1.id }])
+    club2 = create(:club, game_operations_hash: [{ 'home_game_operation' => true, 'game_operation_id' => go2.id }])
+    login(create(:user, permissions: [
+            { 'user_group_id' => 2, 'game_operation_id' => go1.id },
+            { 'user_group_id' => 2, 'game_operation_id' => go2.id }
+          ]))
+
+    get '/api/v2/admin/user/clubs_and_teams'
+
+    assert_response :success
+    ids = JSON.parse(response.body).map { |c| c['id'] }
+    assert_includes ids, club1.id
+    assert_includes ids, club2.id
+  end
+
   private
 
   def login(user)
