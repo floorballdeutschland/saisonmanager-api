@@ -99,9 +99,9 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     club1 = create(:club, game_operations_hash: [{ 'home_game_operation' => true, 'game_operation_id' => go1.id }])
     club2 = create(:club, game_operations_hash: [{ 'home_game_operation' => true, 'game_operation_id' => go2.id }])
     login(create(:user, permissions: [
-            { 'user_group_id' => 2, 'game_operation_id' => go1.id },
-            { 'user_group_id' => 2, 'game_operation_id' => go2.id }
-          ]))
+      { 'user_group_id' => 2, 'game_operation_id' => go1.id },
+      { 'user_group_id' => 2, 'game_operation_id' => go2.id }
+    ]))
 
     get '/api/v2/user/clubs_and_teams'
 
