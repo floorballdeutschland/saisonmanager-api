@@ -7,13 +7,16 @@ module Admin
     def index
       # Dokumente gelten pro Spieler (saisonübergreifend). Der license_id-Filter
       # bleibt für Alt-Aufrufer optional erhalten.
-      docs = @player.license_documents.includes(file_attachment: :blob).order(created_at: :desc)
-      docs = docs.where(license_id: params[:license_id]) if params[:license_id].present?
-      render json: docs.map { |d| document_json(d) }
+      docs = @player.license_documents.includes(file_attachment: :blob).order(created_at: :desc).to_a
+      catalog = document_type_catalog(docs)
+      docs = filter_documents_by_scope(docs, catalog)
+      render json: docs.map { |d| document_json(d, catalog) }
     end
 
     def show
       doc = @player.license_documents.find(params[:id])
+      return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless document_visible?(doc)
+
       redirect_to rails_blob_url(doc.file, disposition: 'inline'), allow_other_host: true
     end
 
@@ -49,7 +52,7 @@ module Admin
         return render json: { errors: doc.errors.full_messages }, status: :unprocessable_entity
       end
 
-      render json: document_json(doc), status: :created
+      render json: document_json(doc, document_type_catalog([doc])), status: :created
     end
 
     def destroy
@@ -147,10 +150,64 @@ module Admin
       end.uniq
     end
 
-    def document_json(doc)
+    def perm_hash
+      @perm_hash ||= current_user.permission_hash
+    end
+
+    # Katalog der referenzierten Dokumentarten, keyed per document_type-Key.
+    # game_operation wird eager geladen, damit document_json/Scoping ohne N+1
+    # auf Verband und Sichtbarkeit zugreifen können.
+    def document_type_catalog(docs)
+      keys = docs.map(&:document_type).uniq
+      return {} if keys.empty?
+
+      DocumentType.includes(:game_operation).where(key: keys).index_by(&:key)
+    end
+
+    # Sichtbarkeit richtet sich nach dem Katalog-Scope der Dokumentart:
+    # Admin und global gescopter SBK (FD, ph[:sbk] enthält 0) sehen alles;
+    # reine VM/TM-Zugriffe behalten Vollzugriff auf die Dokumente ihres
+    # Spielers. Ein verbandsspezifisch gescopter SBK sieht nur globale
+    # Dokumentarten und die seines/seiner Verbände.
+    def unrestricted_document_access?
+      return true if perm_hash[:admin].present?
+      return true if perm_hash[:sbk].present? && perm_hash[:sbk].include?(0)
+
+      perm_hash[:sbk].blank?
+    end
+
+    def filter_documents_by_scope(docs, catalog)
+      return docs if unrestricted_document_access?
+
+      sbk_go_ids = perm_hash[:sbk]
+      docs.select { |doc| document_in_scope?(doc, catalog, sbk_go_ids) }
+    end
+
+    def document_visible?(doc)
+      return true if unrestricted_document_access?
+
+      document_in_scope?(doc, document_type_catalog([doc]), perm_hash[:sbk])
+    end
+
+    # Globale Dokumentarten (game_operation_id nil) und Freitext-Altbestand ohne
+    # Katalogeintrag sind für alle sichtbar; verbandsspezifische nur für den
+    # zuständigen Verband.
+    def document_in_scope?(doc, catalog, sbk_go_ids)
+      go_id = catalog[doc.document_type]&.game_operation_id
+      return true if go_id.nil?
+
+      sbk_go_ids.include?(go_id)
+    end
+
+    def document_json(doc, catalog = {})
+      dt = catalog[doc.document_type]
       {
         id: doc.id,
         document_type: doc.document_type,
+        document_type_name: dt&.name,
+        validity: dt&.validity,
+        game_operation_id: dt&.game_operation_id,
+        game_operation_name: dt&.game_operation&.name,
         season_id: doc.season_id,
         filename: doc.file.filename.to_s,
         content_type: doc.file.content_type,

@@ -74,6 +74,67 @@ module Admin
       assert_equal %w[id_copy use], types.sort
     end
 
+    test 'Index reichert Dokumente mit Verbands- und Katalogdaten an' do
+      DocumentType.create!(name: 'LV-Attest', game_operation_id: create(:game_operation).id)
+      doc = LicenseDocument.new(player: @player, document_type: DocumentType.last.key)
+      doc.file.attach(io: StringIO.new('%PDF-1.4'), filename: 'a.pdf', content_type: 'application/pdf')
+      doc.save!
+
+      get "/api/v2/admin/players/#{@player.id}/license_documents"
+
+      assert_response :success
+      body = JSON.parse(response.body).first
+      assert_equal 'LV-Attest', body['document_type_name']
+      assert_equal DocumentType.last.game_operation_id, body['game_operation_id']
+      assert body['game_operation_name'].present?
+    end
+
+    test 'gescopte SBK sieht globale und eigene, nicht aber fremde Verbandsdokumente' do
+      sa = create(:state_association)
+      own_go = create(:game_operation, state_association_id: sa.id)
+      foreign_go = create(:game_operation, state_association_id: sa.id)
+      # Der Spieler muss dem Verband des SBK zugeordnet sein, damit die
+      # Lese-Berechtigung greift (admin_or_sbk_for_player?).
+      club = create(:club, game_operations_hash: [{ 'home_game_operation' => true, 'game_operation_id' => own_go.id }])
+      @player.update!(clubs: [{ 'club_id' => club.id }])
+
+      global = DocumentType.create!(name: 'Unterstellungserklärung')
+      own = DocumentType.create!(name: 'Eigenes LV-Attest', game_operation_id: own_go.id)
+      foreign = DocumentType.create!(name: 'Fremd-Attest', game_operation_id: foreign_go.id)
+      [global, own, foreign].each_with_index do |dt, i|
+        d = LicenseDocument.new(player: @player, document_type: dt.key)
+        d.file.attach(io: StringIO.new('%PDF-1.4'), filename: "d#{i}.pdf", content_type: 'application/pdf')
+        d.save!
+      end
+
+      login(create(:user, :sbk_scoped, game_operation_id: own_go.id))
+      get "/api/v2/admin/players/#{@player.id}/license_documents"
+
+      assert_response :success
+      types = JSON.parse(response.body).map { |d| d['document_type'] }
+      assert_includes types, global.key
+      assert_includes types, own.key
+      assert_not_includes types, foreign.key
+    end
+
+    test 'gescopte SBK darf ein fremdes Verbandsdokument nicht per show abrufen' do
+      sa = create(:state_association)
+      own_go = create(:game_operation, state_association_id: sa.id)
+      foreign_go = create(:game_operation, state_association_id: sa.id)
+      club = create(:club, game_operations_hash: [{ 'home_game_operation' => true, 'game_operation_id' => own_go.id }])
+      @player.update!(clubs: [{ 'club_id' => club.id }])
+
+      foreign = DocumentType.create!(name: 'Fremd-Attest', game_operation_id: foreign_go.id)
+      doc = LicenseDocument.new(player: @player, document_type: foreign.key)
+      doc.file.attach(io: StringIO.new('%PDF-1.4'), filename: 'f.pdf', content_type: 'application/pdf')
+      doc.save!
+
+      login(create(:user, :sbk_scoped, game_operation_id: own_go.id))
+      get "/api/v2/admin/players/#{@player.id}/license_documents/#{doc.id}"
+
+      assert_response :forbidden
+    end
+
     private
 
     def login(user)
