@@ -189,6 +189,34 @@ class TeamsControllerTest < ActionDispatch::IntegrationTest
     assert Team.exists?(@team.id)
   end
 
+  test 'stats liefert Torschützen/Spiele auch für ein Team aus einer abgelaufenen Saison' do
+    login(create(:user, :admin))
+    archived_league = create(:league, :archived_season, game_operation: @go)
+    archived_team = create(:team, league: archived_league, club: @club)
+    guest = create(:team, league: archived_league, club: @club)
+    arena = create(:arena)
+    game_day = GameDay.create!(league: archived_league, arena:, club: @club, number: 1, date: '2003-01-01')
+    Game.create!(
+      game_day:,
+      home_team: archived_team,
+      guest_team: guest,
+      started: true,
+      ended: true,
+      forfait: 0,
+      overtime: false,
+      legacy: false,
+      events: [],
+      players: { 'home' => [], 'guest' => [] }
+    )
+
+    get "/api/v2/teams/#{archived_team.id}/stats"
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal archived_league.id, body['team']['league_id']
+    assert_equal 1, body['recent_games'].length
+  end
+
   test 'destroy lehnt Löschung mit 422 ab, wenn eine Spieltag-Bestätigung existiert (DB-FK)' do
     login(create(:user, :admin))
     arena = create(:arena)

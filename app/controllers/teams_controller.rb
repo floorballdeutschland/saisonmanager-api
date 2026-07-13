@@ -35,16 +35,20 @@ class TeamsController < ApplicationController
 
   def stats
     team = Team.find(params[:id])
+    # A team's own league_id already pins it to one specific season (teams are
+    # re-imported per season) — use that instead of Setting.current_season_id,
+    # which is empty for teams from past seasons.
+    team_season_id = team.league.season_id
 
     # All leagues this team participates in (main league + cup leagues)
-    leagues = team.leagues.where(season_id: Setting.current_season_id).to_a
+    leagues = team.leagues.where(season_id: team_season_id).to_a
     primary_league = leagues.first
 
-    # Evaluate scorer directly from the team's current-season ended games
+    # Evaluate scorer directly from the team's season's ended games
     current_season_games = Game.by_team_id(team.id)
                                .where(ended: true)
                                .joins(game_day: :league)
-                               .where(leagues: { season_id: Setting.current_season_id })
+                               .where(leagues: { season_id: team_season_id })
 
     team_scorer_data = {}
     current_season_games.each do |game|
@@ -99,7 +103,7 @@ class TeamsController < ApplicationController
     recent_games = Game.by_team_id(team.id)
                        .where(ended: true)
                        .joins(game_day: :league)
-                       .where(leagues: { season_id: Setting.current_season_id })
+                       .where(leagues: { season_id: team_season_id })
                        .includes(game_day: :league)
                        .order('game_days.date DESC')
                        .limit(10)
@@ -124,7 +128,7 @@ class TeamsController < ApplicationController
     upcoming_games = Game.by_team_id(team.id)
                          .where(started: false)
                          .joins(game_day: :league)
-                         .where(leagues: { season_id: Setting.current_season_id })
+                         .where(leagues: { season_id: team_season_id })
                          .where('game_days.date >= ?', Date.today)
                          .includes(game_day: :league)
                          .order('game_days.date ASC')
