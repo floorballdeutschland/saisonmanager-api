@@ -335,6 +335,57 @@ class LeaguesControllerTest < ActionDispatch::IntegrationTest
     assert_equal 'max@example.org', copied_team.contact_email
   end
 
+  test 'admin_copy: team_ids kopiert nur die ausgewählten Teams' do
+    create(:setting)
+    go = create(:game_operation)
+    source = create(:league, :previous_season, game_operation: go)
+    club = create(:club)
+    keep = Team.create!(league: source, club: club, name: 'Bleibt', short_name: 'BLB', approved: true)
+    Team.create!(league: source, club: club, name: 'Fliegt raus', short_name: 'RAUS', approved: true)
+
+    login_as create(:user, :admin)
+
+    post "/api/v2/admin/leagues/#{source.id}/copy", params: { team_ids: [keep.id] }, as: :json
+    assert_response :created
+
+    copy = League.find(JSON.parse(response.body)['id'])
+    copied = Team.where(league_id: copy.id)
+    assert_equal 1, copied.count, 'nur das ausgewählte Team darf kopiert werden'
+    assert_equal 'Bleibt', copied.first.name
+    assert_not copied.first.approved
+  end
+
+  test 'admin_copy: leere team_ids kopiert nur die Liga ohne Teams' do
+    create(:setting)
+    go = create(:game_operation)
+    source = create(:league, :previous_season, game_operation: go)
+    create(:team, league: source, club: create(:club))
+
+    login_as create(:user, :admin)
+
+    post "/api/v2/admin/leagues/#{source.id}/copy", params: { team_ids: [] }, as: :json
+    assert_response :created
+
+    copy = League.find(JSON.parse(response.body)['id'])
+    assert_equal 0, Team.where(league_id: copy.id).count, 'leere Auswahl darf keine Teams kopieren'
+  end
+
+  test 'admin_copy: team_ids ignoriert Team-IDs fremder Ligen' do
+    create(:setting)
+    go = create(:game_operation)
+    source = create(:league, :previous_season, game_operation: go)
+    other = create(:league, :previous_season, game_operation: go)
+    foreign = create(:team, league: other, club: create(:club))
+
+    login_as create(:user, :admin)
+
+    post "/api/v2/admin/leagues/#{source.id}/copy", params: { team_ids: [foreign.id] }, as: :json
+    assert_response :created
+
+    copy = League.find(JSON.parse(response.body)['id'])
+    assert_equal 0, Team.where(league_id: copy.id).count, 'fremde Team-IDs dürfen nicht kopiert werden'
+  end
+
   test 'admin_copy: SBK des eigenen Verbands darf kopieren' do
     create(:setting)
     go = create(:game_operation, state_association: create(:state_association))
