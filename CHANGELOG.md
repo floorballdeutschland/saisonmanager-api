@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Vereins-/Team-Auswahl lädt deutlich schneller**: Der Endpunkt `GET user/clubs_and_teams` (befüllt u.a. die Verein-Zuweisung in der Benutzerverwaltung sowie Vereins-Dropdowns bei Spieler- und Benutzeranlage) litt unter einem N+1-Problem: Pro Verein wurden Teams, Logos, Ligen und Spielbetriebe einzeln nachgeladen – für Admins mit allen 315 Vereinen ~950 Datenbank-Abfragen und über 5 Sekunden Wartezeit, in der die Auswahlfelder leer wirkten. Teams der aktuellen Saison und alle Logos werden jetzt gesammelt vorgeladen (11 Abfragen, unter 0,6 Sekunden) – bei unverändertem Antwortformat.
+
 ## [1.48.0] - 2026-07-13
 
 ### Neu

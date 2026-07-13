@@ -21,14 +21,24 @@ class ClubsController < ApplicationController
               teams.map(&:all_clubs).flatten.uniq
             end
 
+    # Vereine mit vorgeladenen Logos neu laden und alle aktuellen Teams in
+    # einer Abfrage holen (statt current_teams je Verein) – beseitigt das
+    # N+1 aus Logo-Attachments, Teams-Queries, Ligen/Spielbetrieben und
+    # Logo-Fallback-Vereinen, das den Endpoint bei vielen Vereinen (Admin)
+    # mehrere Sekunden gekostet hat.
+    club_ids = clubs.to_a.map(&:id)
+    clubs = Club.includes(logo_attachment: :blob).where(id: club_ids)
+    teams_by_club = current_teams_by_club(club_ids)
+
     result = []
 
     clubs.each do |club|
+      club_teams = teams_by_club.fetch(club.id, [])
       item = club.full_hash
       teams = if ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
-                club.current_teams
+                club_teams
               elsif ph[:tm].present?
-                club.current_teams.select { |team| ph[:tm].include?(team.id) }
+                club_teams.select { |team| ph[:tm].include?(team.id) }
               else
                 []
               end
@@ -327,6 +337,25 @@ class ClubsController < ApplicationController
   end
 
   private
+
+  # Alle Teams der aktuellen Saison für die gegebenen Vereine in einer
+  # Abfrage, gruppiert nach Vereins-ID (Stamm-Verein UND SG-Partnervereine –
+  # gleiche Semantik wie Team.by_club_id je Verein). Ligen, Spielbetriebe
+  # und Logos werden für Team#full_hash gleich mitgeladen.
+  def current_teams_by_club(club_ids)
+    base = Team.current_season
+    teams = base.where(club_id: club_ids)
+                .or(base.where('syndicate_clubs && ARRAY[?]::integer[]', club_ids))
+                .includes(league: :game_operation,
+                          club: { logo_attachment: :blob },
+                          logo_attachment: :blob)
+
+    teams.each_with_object(Hash.new { |h, k| h[k] = [] }) do |team, by_club|
+      ([team.club_id] + team.syndicate_clubs.to_a).uniq.each do |club_id|
+        by_club[club_id] << team
+      end
+    end
+  end
 
   def can_read_admin_club?(club)
     return true if club.user_permissions(current_user).include?(:update_club)
