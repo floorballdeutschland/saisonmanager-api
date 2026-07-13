@@ -12,6 +12,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Behoben
 
 - **Team-Statistiken für vergangene Saisons waren leer**: `GET teams/:id/stats` filterte Torschützen, letzte und kommende Spiele stets auf `Setting.current_season_id`. Für Teams aus abgelaufenen Saisons (z. B. öffentliche Team-Seiten alter Ligen) lieferte das leere Ergebnisse, obwohl die Spieldaten vorhanden waren. Die Saison wird jetzt korrekt aus der eigenen Liga des Teams abgeleitet.
+- **Verfahrensvorschlag ignorierte den Berichtsworkflow-Schalter**: `manual_proceeding_creation` erzeugte bei rotem-Karten-/Sonderereignis-Berichten immer einen Verfahrensvorschlag für die SBK, selbst wenn `report_form_email_enabled` (der Master-Schalter für den digitalen Berichtsworkflow) für den Landesverband deaktiviert war. `report_form_email_enabled` wird jetzt zuerst geprüft; ist der Workflow aus, bleibt es beim analogen Vor-Ort-Papierbericht.
 
 ## [1.49.0] - 2026-07-13
 

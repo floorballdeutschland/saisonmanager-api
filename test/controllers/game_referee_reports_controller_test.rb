@@ -55,6 +55,17 @@ class GameRefereeReportsControllerTest < ActionDispatch::IntegrationTest
     assert_response :created
   end
 
+  test 'deaktivierter Berichtsworkflow erzeugt auch bei manual_proceeding_creation keinen Verfahrensvorschlag' do
+    @sa.update!(report_form_email_enabled: false, manual_proceeding_creation: true)
+    login(@user)
+    assert_no_enqueued_emails do
+      assert_no_difference -> { ProceedingProposal.count } do
+        upload_report
+      end
+    end
+    assert_response :created
+  end
+
   private
 
   def upload_report
