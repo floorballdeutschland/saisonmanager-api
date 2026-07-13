@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Berichtsformular-E-Mail-Workflow pro Landesverband aktivierbar**: Ob das vom Schiedsrichter hochgeladene Berichtsformular automatisch per E-Mail an die VSK des Landesverbands versendet wird, lässt sich jetzt pro Landesverband über das neue Flag `report_form_email_enabled` (Standard: aus) steuern. Bisher wurde der Versand nur implizit dadurch gesteuert, ob eine VSK-Adresse hinterlegt war; ist der Workflow nicht aktiviert, wird kein Bericht mehr per E-Mail verschickt. Der manuelle Verfahrensvorschlag (`manual_proceeding_creation`) bleibt unverändert vorrangig.
+
 ### Behoben
 
 - **Deaktivierte Spieler tauchten in Suche, Transfer- und Freigabe-Antrag auf**: Beim verlustfreien Duplikat-Merge bleiben zusammengeführte Profile absichtlich erhalten (deaktiviert, `merged_into_id` gesetzt). Sie waren aber weiterhin in der Spielersuche (`/verwaltung/spieler/suche`) sowie bei der Spieler-Auswahl für Transfer- und Freigabe-Anträge auffindbar. Bei gemergten Duplikaten konnte der Antragspfad (Suche per Name + Geburtsdatum) sogar das deaktivierte Zweitprofil statt des aktiven Master-Datensatzes zurückliefern. Beide Abfragen filtern jetzt über den bestehenden `Player.active`-Scope auf aktive Spieler; zusätzlich weisen Transfer-Erstellung und SBK-Direktzuweisung einen deaktivierten Spieler explizit ab, falls dessen ID direkt übergeben wird (#91).
