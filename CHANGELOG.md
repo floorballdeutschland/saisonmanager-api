@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Lizenz-Dokumente pro Spieler mit Verbands-Sichtbarkeit**: Der Dokumenten-Endpunkt eines Spielers (`GET admin/players/:id/license_documents`) liefert jetzt zu jedem Dokument die zugehörige Dokumentart (Name, Gültigkeit) sowie den Verband/Spielbetrieb (`game_operation_id`, Name), sodass das Spielerprofil die Dokumente nach Landesverband/Spielbetrieb gruppiert anzeigen kann. Die Sichtbarkeit richtet sich nach dem Katalog-Scope der Dokumentart: Admin und bundesweiter SBK (FD) sehen alle Dokumente; ein verbandsspezifisch gescopter SBK sieht nur globale (bundesweite) Dokumentarten und die seines eigenen Verbandes – fremde Verbandsdokumente werden weder in der Liste ausgegeben noch per Direktabruf (`show`) zugänglich. Vereins- und Teammanager behalten den bisherigen Zugriff auf die Dokumente ihres Spielers.
+
 ### Behoben
 
 - **Deaktivierte Spieler tauchten in Suche, Transfer- und Freigabe-Antrag auf**: Beim verlustfreien Duplikat-Merge bleiben zusammengeführte Profile absichtlich erhalten (deaktiviert, `merged_into_id` gesetzt). Sie waren aber weiterhin in der Spielersuche (`/verwaltung/spieler/suche`) sowie bei der Spieler-Auswahl für Transfer- und Freigabe-Anträge auffindbar. Bei gemergten Duplikaten konnte der Antragspfad (Suche per Name + Geburtsdatum) sogar das deaktivierte Zweitprofil statt des aktiven Master-Datensatzes zurückliefern. Beide Abfragen filtern jetzt über den bestehenden `Player.active`-Scope auf aktive Spieler; zusätzlich weisen Transfer-Erstellung und SBK-Direktzuweisung einen deaktivierten Spieler explizit ab, falls dessen ID direkt übergeben wird (#91).
