@@ -267,9 +267,20 @@ class TeamsController < ApplicationController
                     status: :unprocessable_entity
     end
 
+    if PlayerSuspension.where(team_id: team.id).exists?
+      return render json: { message: 'Team kann nicht gelöscht werden: Es existieren noch Sperren, die diesem Team zugeordnet sind.' },
+                    status: :unprocessable_entity
+    end
+
+    if RefereeFeedback.where(team_id: team.id).exists?
+      return render json: { message: 'Team kann nicht gelöscht werden: Es existiert noch Schiedsrichter-Feedback für dieses Team.' },
+                    status: :unprocessable_entity
+    end
+
     team.destroy!
     head :no_content
-  rescue ActiveRecord::InvalidForeignKey
+  rescue ActiveRecord::InvalidForeignKey => e
+    Rails.logger.info("Team##{params[:id]} destroy blocked by FK: #{e.message}")
     render json: { message: 'Team kann nicht gelöscht werden: Es existieren noch verknüpfte Einträge ' \
                             '(z.B. Spieltag-Bestätigungen).' },
            status: :unprocessable_entity

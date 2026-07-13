@@ -21,7 +21,7 @@ Rails.application.routes.draw do
     end
   end
   resources :players
-  resources :teams
+  resources :teams, except: [:destroy]
   resources :users
 
   resources :license_fees
