@@ -15,7 +15,7 @@ class GameRefereeReportsControllerTest < ActionDispatch::IntegrationTest
     @guest = Team.create!(league: @league, club: @club, name: 'G')
     @game = Game.create!(game_day: @game_day, home_team: @home, guest_team: @guest, forfait: 0,
                          overtime: false, legacy: false, events: [], players: { 'home' => [], 'guest' => [] })
-    @referee = Referee.create!(vorname: 'Ref', nachname: 'Eree')
+    @referee = Referee.create!(vorname: 'Ref', nachname: 'Eree', lizenznummer: 12_345)
     @user = User.create!(
       user_name: "refuser_#{SecureRandom.hex(4)}",
       password: 'password123',
