@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.49.1] - 2026-07-13
+
 ### Behoben
 
 - **Team-Statistiken für vergangene Saisons waren leer**: `GET teams/:id/stats` filterte Torschützen, letzte und kommende Spiele stets auf `Setting.current_season_id`. Für Teams aus abgelaufenen Saisons (z. B. öffentliche Team-Seiten alter Ligen) lieferte das leere Ergebnisse, obwohl die Spieldaten vorhanden waren. Die Saison wird jetzt korrekt aus der eigenen Liga des Teams abgeleitet.
