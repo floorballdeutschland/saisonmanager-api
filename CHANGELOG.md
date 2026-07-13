@@ -12,6 +12,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Neu
 
 - **Lizenz-Dokumente pro Spieler mit Verbands-Sichtbarkeit**: Der Dokumenten-Endpunkt eines Spielers (`GET admin/players/:id/license_documents`) liefert jetzt zu jedem Dokument die zugehörige Dokumentart (Name, Gültigkeit) sowie den Verband/Spielbetrieb (`game_operation_id`, Name), sodass das Spielerprofil die Dokumente nach Landesverband/Spielbetrieb gruppiert anzeigen kann. Die Sichtbarkeit richtet sich nach dem Katalog-Scope der Dokumentart: Admin und bundesweiter SBK (FD) sehen alle Dokumente; ein verbandsspezifisch gescopter SBK sieht nur globale (bundesweite) Dokumentarten und die seines eigenen Verbandes – fremde Verbandsdokumente werden weder in der Liste ausgegeben noch per Direktabruf (`show`) zugänglich. Vereins- und Teammanager behalten den bisherigen Zugriff auf die Dokumente ihres Spielers.
+- **Berichtsformular-E-Mail-Workflow pro Landesverband aktivierbar**: Ob das vom Schiedsrichter hochgeladene Berichtsformular automatisch per E-Mail an die VSK des Landesverbands versendet wird, lässt sich jetzt pro Landesverband über das neue Flag `report_form_email_enabled` (Standard: aus) steuern. Bisher wurde der Versand nur implizit dadurch gesteuert, ob eine VSK-Adresse hinterlegt war; ist der Workflow nicht aktiviert, wird kein Bericht mehr per E-Mail verschickt. Der manuelle Verfahrensvorschlag (`manual_proceeding_creation`) bleibt unverändert vorrangig.
 
 ### Behoben
 

@@ -79,6 +79,10 @@ class GameRefereeReportsController < ApplicationController
       return
     end
 
+    # Der E-Mail-Workflow für das Berichtsformular ist pro Landesverband
+    # aktivierbar; ist er nicht aktiv, wird nichts an die VSK versendet.
+    return unless state_association&.report_form_email_enabled?
+
     vsk_email = state_association&.vsk_email
     return if vsk_email.blank?
 
