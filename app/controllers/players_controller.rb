@@ -69,7 +69,10 @@ class PlayersController < ApplicationController
         return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
       end
 
-      render json: result.full_hash(true, true, true)
+      # Standardmäßig nur die aktuelle Saison; mit all_licenses=true die
+      # vollständige, saisonübergreifende Lizenzhistorie (Spielerprofil).
+      only_current = params[:all_licenses].to_s != 'true'
+      render json: result.full_hash(true, only_current, true)
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
     end
