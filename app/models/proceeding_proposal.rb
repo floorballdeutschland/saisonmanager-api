@@ -1,7 +1,8 @@
 # Verfahrensvorschlag: legt der SBK einen Spielberichtsfall (Berichtsformular-
 # Upload) zur Entscheidung vor, statt automatisch die VSK zu benachrichtigen.
-# Wird nur erzeugt, wenn der Landesverband `manual_proceeding_creation` aktiviert
-# hat (siehe GameRefereeReportsController#_send_to_vsk).
+# Wird nur erzeugt, wenn der Landesverband sowohl `report_form_email_enabled`
+# (Berichtsworkflow aktiv) als auch `manual_proceeding_creation` aktiviert hat
+# (siehe GameRefereeReportsController#_send_to_vsk).
 class ProceedingProposal < ApplicationRecord
   STATUSES = %w[pending rejected opened].freeze
 

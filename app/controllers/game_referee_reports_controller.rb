@@ -72,16 +72,18 @@ class GameRefereeReportsController < ApplicationController
   def _send_to_vsk(report)
     state_association = @game.game_day.club&.state_association
 
+    # report_form_email_enabled ist der Master-Schalter für den digitalen
+    # Berichtsworkflow bei roten Karten/besonderen Ereignissen. Ist er aus,
+    # bleibt es beim analogen Vor-Ort-Prozess (Papierbericht) – der Upload
+    # selbst löst dann nichts weiter aus.
+    return unless state_association&.report_form_email_enabled?
+
     # Manueller Workflow: kein automatischer VSK-Versand, stattdessen ein
     # Verfahrensvorschlag an die SBK (idempotent bei erneutem Upload).
-    if state_association&.manual_proceeding_creation?
+    if state_association.manual_proceeding_creation?
       _create_proceeding_proposal(state_association)
       return
     end
-
-    # Der E-Mail-Workflow für das Berichtsformular ist pro Landesverband
-    # aktivierbar; ist er nicht aktiv, wird nichts an die VSK versendet.
-    return unless state_association&.report_form_email_enabled?
 
     vsk_email = state_association&.vsk_email
     return if vsk_email.blank?
