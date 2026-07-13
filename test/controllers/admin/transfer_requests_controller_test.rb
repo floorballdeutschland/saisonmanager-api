@@ -77,6 +77,16 @@ module Admin
       assert_match(/JJJJ-MM-TT/, JSON.parse(response.body)['error'])
     end
 
+    test 'search_player findet deaktivierte Spieler nicht' do
+      @player.deactivate!(@admin.id, reason: 'Zusammenführung')
+      login(@admin)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15'
+      }
+      assert_response :success
+      assert_nil JSON.parse(response.body)['player']
+    end
+
     # ---------------------------------------------------------------------------
     # POST /api/v2/admin/transfer_requests
     # ---------------------------------------------------------------------------
@@ -93,6 +103,19 @@ module Admin
       body = JSON.parse(response.body)
       assert_equal 'pending_club', body['status']
       assert_equal @player.id, body['player']['id']
+    end
+
+    test 'Antrag für deaktivierten Spieler wird abgelehnt → 422' do
+      @player.deactivate!(@admin.id, reason: 'Zusammenführung')
+      login(@vm_requesting)
+      assert_no_emails do
+        post '/api/v2/admin/transfer_requests', params: {
+          player_id: @player.id,
+          requesting_club_id: @requesting_club.id
+        }
+      end
+      assert_response :unprocessable_entity
+      assert_match(/deaktiviert/, JSON.parse(response.body)['error'])
     end
 
     test 'VM kann keinen Antrag für fremden Verein erstellen → 403' do
