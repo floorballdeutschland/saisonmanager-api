@@ -103,7 +103,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
             { 'user_group_id' => 2, 'game_operation_id' => go2.id }
           ]))
 
-    get '/api/v2/admin/user/clubs_and_teams'
+    get '/api/v2/user/clubs_and_teams'
 
     assert_response :success
     ids = JSON.parse(response.body).map { |c| c['id'] }
