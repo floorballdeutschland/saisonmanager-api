@@ -411,7 +411,18 @@ class LeaguesController < ApplicationController
       return render json: { message: 'Keine Berechtigung für diese Ligaklasse' }, status: :forbidden
     end
 
-    include_teams = ActiveModel::Type::Boolean.new.cast(params[:include_teams]) || false
+    # Selektive Team-Übernahme: team_ids listet genau die zu kopierenden Teams
+    # (leere Liste => nur die Liga, ohne Teams). Fehlt der Parameter ganz,
+    # greift der ältere include_teams-Boolean (alle Teams / keine) als
+    # Rückfallebene für Altclients.
+    copy_team_ids =
+      if params.key?(:team_ids)
+        Array(params[:team_ids]).map(&:to_i).uniq
+      elsif ActiveModel::Type::Boolean.new.cast(params[:include_teams])
+        Team.where(league_id: source.id).pluck(:id)
+      else
+        []
+      end
 
     attrs = source.attributes.slice(*COPYABLE_LEAGUE_ATTRIBUTES)
     attrs['season_id'] = Setting.current_season_id
@@ -434,12 +445,14 @@ class LeaguesController < ApplicationController
       ActiveRecord::Base.transaction do
         new_league.save!
 
-        if include_teams
-          # Nur direkt zugeordnete Teams (league_id) – Pokal-Zuordnungen über
-          # Team#cup_leagues zeigen auf Team-Datensätze anderer Ligen und
-          # werden bewusst nicht mitkopiert. TM-Zuordnungen (User#teams)
-          # bleiben unangetastet und müssen neu gesetzt werden.
-          Team.where(league_id: source.id).find_each do |team|
+        if copy_team_ids.any?
+          # Nur direkt zugeordnete Teams (league_id) der Quell-Liga –
+          # Pokal-Zuordnungen über Team#cup_leagues zeigen auf Team-Datensätze
+          # anderer Ligen und werden bewusst nicht mitkopiert. TM-Zuordnungen
+          # (User#teams) bleiben unangetastet und müssen neu gesetzt werden.
+          # Die league_id-Bedingung verhindert zugleich, dass fremde Team-IDs
+          # über den Parameter eingeschleust werden.
+          Team.where(id: copy_team_ids, league_id: source.id).find_each do |team|
             Team.create!(
               league_id:       new_league.id,
               club_id:         team.club_id,

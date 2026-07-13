@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Selektive Team-Übernahme beim Kopieren einer Liga aus der Vorsaison**: Der Kopier-Endpunkt (`POST admin/leagues/:id/copy`) akzeptiert jetzt statt des Alles-oder-nichts-Schalters `include_teams` eine Liste `team_ids` mit genau den zu übernehmenden Teams der Quell-Liga. Eine leere Liste kopiert nur die Liga-Stammdaten ohne Teams; der alte `include_teams`-Boolean bleibt als Rückfallebene für Altclients erhalten. Die Auswahl wird serverseitig auf Teams der Quell-Liga eingeschränkt, sodass fremde Team-IDs nicht eingeschleust werden können. Kopierte Teams werden weiterhin unbestätigt (`approved: false`) angelegt (#69).
+
 ## [1.46.0] - 2026-07-13
 
 ### Neu
