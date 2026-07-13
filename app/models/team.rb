@@ -165,7 +165,7 @@ class Team < ApplicationRecord
 
     # # edit league
     perm << :update_team if admin || sbk
-    # perm << :delete_league if admin || sbk
+    perm << :delete_team if admin || sbk
 
     perm
   end

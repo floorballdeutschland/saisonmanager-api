@@ -17,6 +17,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Neu
 
 - **Vollständige Lizenzhistorie im Spielerprofil**: `GET admin/players/:id.json` akzeptiert jetzt den Parameter `all_licenses=true` und liefert dann die komplette, saisonübergreifende Lizenzliste eines Spielers statt nur der aktuellen Saison. Ohne den Parameter bleibt das Verhalten unverändert (nur aktuelle Saison). Das Spielerprofil im Frontend nutzt dies, um die Lizenzen nach Saison gruppiert anzuzeigen.
+- **Admin: Teams löschen**: Neue `DELETE admin/teams/:id`-Route für Admin/SBK (analog zur bisherigen `update_team`-Berechtigung). Löschen wird mit erklärender 422-Meldung abgelehnt, solange dem Team noch Spieler/Lizenzen, Spiele/Ergebnisse, Sperren, Schiri-Feedback oder sonstige verknüpfte Einträge (z.B. Spieltag-Bestätigungen) zugeordnet sind.
 
 ## [1.48.1] - 2026-07-13
 
