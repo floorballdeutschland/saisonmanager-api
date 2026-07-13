@@ -105,6 +105,19 @@ module Admin
       assert_equal @player.id, body['player']['id']
     end
 
+    test 'Antrag für deaktivierten Spieler wird abgelehnt → 422' do
+      @player.deactivate!(@admin.id, reason: 'Zusammenführung')
+      login(@vm_requesting)
+      assert_no_emails do
+        post '/api/v2/admin/transfer_requests', params: {
+          player_id: @player.id,
+          requesting_club_id: @requesting_club.id
+        }
+      end
+      assert_response :unprocessable_entity
+      assert_match(/deaktiviert/, JSON.parse(response.body)['error'])
+    end
+
     test 'VM kann keinen Antrag für fremden Verein erstellen → 403' do
       other_club = Club.create!(
         name: "Fremder Verein #{SecureRandom.hex(4)}",

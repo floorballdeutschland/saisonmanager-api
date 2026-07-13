@@ -87,6 +87,11 @@ module Admin
       player = Player.find_by(id: params[:player_id])
       return render json: { error: 'Spieler nicht gefunden' }, status: :not_found unless player
 
+      if player.deactivated_at.present?
+        return render json: { error: 'Spieler ist deaktiviert und kann nicht für einen Transfer ausgewählt werden' },
+                      status: :unprocessable_entity
+      end
+
       # Ohne E-Mail-Adresse kann der Spieler den Transfer später nicht bestätigen,
       # daher den Antrag gar nicht erst starten (gleiche Meldung wie in approve_club).
       unless player.email.present?
@@ -406,6 +411,11 @@ module Admin
 
       player = Player.find_by(id: params[:player_id])
       return render json: { error: 'Spieler nicht gefunden' }, status: :not_found unless player
+
+      if player.deactivated_at.present?
+        return render json: { error: 'Spieler ist deaktiviert und kann nicht für einen Transfer ausgewählt werden' },
+                      status: :unprocessable_entity
+      end
 
       requesting_club = Club.find_by(id: params[:requesting_club_id].to_i)
       return render json: { error: 'Verein nicht gefunden' }, status: :not_found unless requesting_club
