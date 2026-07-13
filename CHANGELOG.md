@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Login per Benutzername oder E-Mail-Adresse**: Im Login-Feld kann jetzt neben dem Benutzernamen auch die hinterlegte E-Mail-Adresse eingegeben werden (`POST /login`). Der exakte Benutzername hat weiterhin Vorrang; eine E-Mail wird nur akzeptiert, wenn sie eindeutig genau einem Konto zugeordnet ist (die E-Mail-Spalte hat keine Eindeutigkeits-Constraint), und der Vergleich erfolgt unabhängig von Groß-/Kleinschreibung. Das Passwort-vergessen-Verfahren bleibt unverändert benutzernamensbasiert.
+
 ## [1.47.0] - 2026-07-13
 
 ### Verbessert

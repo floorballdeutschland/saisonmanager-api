@@ -303,4 +303,47 @@ class UserTest < ActiveSupport::TestCase
     u = build_user(permissions: [{ 'user_group_id' => 4, 'club_id' => 99 }])
     assert_not u.permissions_items[:player_set_license_to_transfer]
   end
+
+  # ---------------------------------------------------------------------------
+  # self.login (Benutzername ODER E-Mail)
+  # ---------------------------------------------------------------------------
+
+  test 'login: per Benutzername' do
+    u = build_user(permissions: [])
+    assert_equal u.id, User.login(u.user_name, 'password123')&.id
+  end
+
+  test 'login: per E-Mail-Adresse' do
+    u = build_user(permissions: [])
+    u.update!(email: 'Login.Test@example.com')
+    assert_equal u.id, User.login('login.test@example.com', 'password123')&.id
+  end
+
+  test 'login: falsches Passwort schlaegt fehl (auch per E-Mail)' do
+    u = build_user(permissions: [])
+    u.update!(email: 'pw.wrong@example.com')
+    assert_nil User.login('pw.wrong@example.com', 'falsch')
+  end
+
+  test 'login: exakter Benutzername hat Vorrang vor E-Mail-Treffer' do
+    target = build_user(permissions: [])
+    # Ein anderes Konto traegt als E-Mail exakt den Benutzernamen des Ziel-Kontos,
+    # sodass beide Zweige den Login-String treffen wuerden.
+    other = build_user(permissions: [])
+    other.update!(email: target.user_name)
+    assert_equal target.id, User.login(target.user_name, 'password123')&.id
+  end
+
+  test 'login: mehrdeutige E-Mail wird abgelehnt' do
+    a = build_user(permissions: [])
+    b = build_user(permissions: [])
+    a.update!(email: 'shared@example.com')
+    b.update!(email: 'shared@example.com')
+    assert_nil User.login('shared@example.com', 'password123')
+  end
+
+  test 'login: leere Eingabe ergibt nil' do
+    assert_nil User.login('', 'password123')
+    assert_nil User.login('irgendwer', '')
+  end
 end
