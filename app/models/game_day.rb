@@ -2,9 +2,13 @@ class GameDay < ApplicationRecord
   has_many :games, inverse_of: :game_day
   has_many :game_day_referee_confirmations, dependent: :destroy
   has_many :game_day_team_confirmations, dependent: :destroy
+  has_many :game_day_secretary_links, dependent: :destroy
   belongs_to :league
-  belongs_to :arena
-  belongs_to :club
+  # arena/club sind bewusst optional: Der Spielplan-Import erlaubt lückenhafte
+  # Vorlagen (Halle/Ausrichter noch offen -> nil). DB-Spalten sind nullable und
+  # die Serialisierung (full_hash/hosting_club) ist durchgängig nil-sicher.
+  belongs_to :arena, optional: true
+  belongs_to :club, optional: true
 
   # 14
   scope :past_games, lambda {

@@ -151,7 +151,13 @@ class LeaguesController < ApplicationController
 
           if league.user_permissions(current_user)&.include?(:import_games)
 
-            errors << 'Liga hat bereits Spiele und/oder Spieltage' if league.games.present? || league.game_days.present?
+            # Ein Re-Import ist erlaubt, solange noch kein Spiel begonnen/gespielt
+            # wurde – der bestehende (nur geplante) Spielplan wird dann unten
+            # komplett ersetzt. Sobald ein Spiel begonnen/gespielt ist, wird der
+            # gesamte Import blockiert (kein Teil-Überschreiben).
+            if league_schedule_started?(league)
+              errors << 'Liga hat bereits begonnene oder gespielte Spiele – ein erneuter Import ist nicht mehr möglich.'
+            end
 
             arena_ids = Arena.active.pluck(:id)
             teams = league.teams
@@ -286,28 +292,23 @@ class LeaguesController < ApplicationController
         render json: { message: { errors:, warnings: }.to_json },
                status: :bad_request
       else
-        ActiveRecord::Base.transaction do
-          # erzeuge spieltage
-          game_days.each do |k, v|
-            gd = GameDay.create(v)
-
-            game_days[k][:gd] = gd
+        begin
+          # Löschen + Neuanlegen atomar: schlägt das Neuanlegen fehl, rollt die
+          # Transaktion inkl. Löschung zurück; der bisherige Spielplan bleibt
+          # erhalten. Da die Parse-Fehlerprüfung oben schon durchlaufen ist,
+          # wird nur bei fehlerfreiem Import gelöscht/ersetzt.
+          ActiveRecord::Base.transaction do
+            rebuild_schedule!(league, game_days, games)
           end
 
-          # erzeuge Spiele
-          games.map do |k, v|
-            gd_id = game_days[k][:gd].id
-            v.map do |game_hash|
-              game_hash[:game_day_id] = gd_id
-              game_hash[:started] = false
-              game_hash[:ended] = false
-              game_hash[:game_ended] = false
-              Game.create(game_hash)
-            end
-          end
+          render json: { errors:, warnings: }
+        rescue ActiveRecord::RecordInvalid => e
+          # Neuanlage fehlgeschlagen -> Transaktion wurde zurückgerollt, der
+          # bestehende Spielplan ist unverändert. Sauberer Fehler statt 500.
+          render json: { message: { errors: ["Import fehlgeschlagen, Spielplan unverändert: #{e.message}"],
+                                    warnings: }.to_json },
+                 status: :bad_request
         end
-
-        render json: { errors:, warnings: }
       end
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
@@ -789,4 +790,40 @@ class LeaguesController < ApplicationController
       game.merge(result: nil, result_string: nil)
     end
   end
+
+  # True, wenn in der Liga schon ein Spiel begonnen/gespielt wurde – dann ist
+  # ein (überschreibender) Spielplan-Import nicht mehr erlaubt.
+  def league_schedule_started?(league)
+    Game.where(game_day_id: league.game_days.select(:id)).played_or_started.exists?
+  end
+  private :league_schedule_started?
+
+  # Löscht den bestehenden (noch ungespielten) Spielplan einer Liga: erst Spiele
+  # einzeln (damit dependent: :destroy für Ansetzung/Bericht/Scan/Feedback/
+  # Verfahrensvorschlag greift und die Liga-Caches per after_commit invalidiert
+  # werden), dann die Spieltage inkl. deren Bestätigungen/Sekretär-Links.
+  def delete_existing_schedule!(league)
+    game_day_ids = league.game_days.ids
+    Game.where(game_day_id: game_day_ids).find_each(&:destroy!)
+    GameDay.where(id: game_day_ids).find_each(&:destroy!)
+  end
+  private :delete_existing_schedule!
+
+  # Ersetzt den Spielplan: löscht den bestehenden und legt die geparsten
+  # Spieltage/Spiele neu an. create! (bang), damit ein Fehlschlag über die
+  # umgebende Transaktion zurückrollt. Erwartet die vom Parser aufgebauten
+  # game_days-/games-Hashes; hinterlegt je Spieltag den erzeugten Record.
+  def rebuild_schedule!(league, game_days, games)
+    delete_existing_schedule!(league)
+
+    game_days.each { |k, v| game_days[k][:gd] = GameDay.create!(v) }
+
+    games.each do |k, v|
+      gd_id = game_days[k][:gd].id
+      v.each do |game_hash|
+        Game.create!(game_hash.merge(game_day_id: gd_id, started: false, ended: false, game_ended: false))
+      end
+    end
+  end
+  private :rebuild_schedule!
 end
