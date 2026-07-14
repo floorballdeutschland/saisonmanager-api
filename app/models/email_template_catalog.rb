@@ -55,7 +55,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       description: 'Erinnerung an den Verein, Spielbericht-Scans eines Spieltags einzureichen.',
       default_subject: 'Spielbericht-Scans einreichen – Spieltag {{game_day_date}}',
       default_from: nil,
-      default_reply_to: 'system@saisonmanager.org',
+      default_reply_to: 'system@saisonmanager.de',
       placeholders: [
         { key: 'game_day_date', description: 'Datum des Spieltags (lang formatiert)' }
       ]

@@ -84,7 +84,7 @@ Rails.application.configure do
       {
         address: 'smtp.office365.com',
         port: 587,
-        domain: 'saisonmanager.org',
+        domain: 'saisonmanager.de',
         user_name: ENV['SMTP_USERNAME'],
         password: ENV['SMTP_PASSWORD'],
         authentication: :login,
