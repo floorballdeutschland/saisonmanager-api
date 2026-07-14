@@ -17,7 +17,8 @@
 
 Rails.application.config.middleware.insert_before 0, Rack::Cors do
   allow do
-    origins 'https://saisonmanager.de', 'https://saisonmanager.org', 'http://localhost:4200'
+    origins 'https://saisonmanager.de', 'https://saisonmanager.org',
+            'https://sr.floorball.de', 'http://localhost:4200'
 
     resource '*',
              headers: :any,

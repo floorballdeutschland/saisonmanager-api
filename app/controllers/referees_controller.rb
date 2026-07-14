@@ -14,6 +14,7 @@ class RefereesController < ApplicationController
         lizenzstufe: referee.lizenzstufe,
         gueltigkeit: referee.gueltigkeit&.strftime('%d.%m.%Y'),
         landesverband: referee.landesverband,
+        verein: referee.club&.name,
         qualifications: referee.referee_qualifications.map do |q|
           {
             qualification_type_name: q.referee_qualification_type&.name,

@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Öffentlicher Lizenzcheck: Vereinsname**: `GET user/referees/:id` liefert zusätzlich `verein` (Vereinsname des Schiedsrichters), damit der externe SR-Lizenzchecker (`sr.floorball.de`) den Verein direkt aus der API statt aus einer CSV anzeigen kann. `sr.floorball.de` wurde zu den erlaubten CORS-Origins ergänzt.
+
 ### Verbessert
 
 - **Domain-Umzug auf saisonmanager.de**: Das produktive System ist künftig unter der bekannten Domain `saisonmanager.de` erreichbar (bisher `saisonmanager.org`). Alle generierten, nutzergerichteten Links (Passwort-Reset, Transfer- und Spielbericht-Links, Lizenzliste, Share-Links) zeigen über die zentrale `FrontendUrl`-Quelle nun auf `.de`. E-Mail-Absender/Reply-To und die SMTP-HELO-Domain wurden auf `@saisonmanager.de` bzw. `saisonmanager.de` umgestellt; der Lizenzcheck-Link in der Lizenz-Benachrichtigung zeigt jetzt auf `saisonmanager.de/lizenzcheck`. CORS erlaubt während der Übergangsphase weiterhin beide Domains.
