@@ -386,6 +386,38 @@ class LeaguesControllerTest < ActionDispatch::IntegrationTest
     assert_equal 0, Team.where(league_id: copy.id).count, 'fremde Team-IDs dürfen nicht kopiert werden'
   end
 
+  test 'admin_copy: un-normalisierte league_class_id der Quelle wird beim Kopieren normalisiert (#114)' do
+    create(:setting)
+    go = create(:game_operation)
+    source = create(:league, :previous_season, game_operation: go,
+                                                name: '1. FBL Damen', league_class_id: 'vl')
+    # Legacy-/Import-Wert an der Validierung vorbei setzen, wie im Prod-Bestand.
+    source.update_columns(league_class_id: '10')
+
+    login_as create(:user, :admin)
+
+    post "/api/v2/admin/leagues/#{source.id}/copy", as: :json
+    assert_response :created, 'Kopie darf nicht an der Ligaklassen-Validierung scheitern'
+
+    copy = League.find(JSON.parse(response.body)['id'])
+    assert_equal '1fbl', copy.league_class_id, '"1. FBL Damen" muss auf 1fbl normalisiert werden'
+  end
+
+  test 'admin_copy: Buli-Check greift auf den normalisierten Wert (Legacy "10" => 1fbl)' do
+    create(:setting)
+    go = create(:game_operation, state_association: create(:state_association))
+    source = create(:league, :previous_season, game_operation: go,
+                                                name: '1. FBL Damen', league_class_id: 'vl')
+    source.update_columns(league_class_id: '10')
+
+    # SBK ohne Buli-Berechtigung darf eine (normalisiert) 1fbl-Liga nicht kopieren.
+    login_as create(:user, :sbk_scoped, game_operation_id: go.id)
+
+    post "/api/v2/admin/leagues/#{source.id}/copy", as: :json
+    assert_response :forbidden
+    assert_equal 1, League.where(game_operation_id: go.id).count, 'es darf keine Kopie entstehen'
+  end
+
   test 'admin_copy: SBK des eigenen Verbands darf kopieren' do
     create(:setting)
     go = create(:game_operation, state_association: create(:state_association))

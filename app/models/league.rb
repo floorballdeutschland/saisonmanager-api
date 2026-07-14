@@ -8,9 +8,14 @@ class League < ApplicationRecord
                             foreign_key: :source_league_id, dependent: :destroy
   belongs_to :game_operation
 
+  # Kanonische Ligaklassen-Codes des Liga-Formulars (Reihenfolge = Rang, siehe
+  # CLASS_RANKS). Der Datenbestand kennt seit der Normalisierungs-Migration
+  # (#297) nur noch diese Codes bzw. leer (''/NULL).
+  CODES = %w[1fbl 2fbl rl vl ll].freeze
+
   validates :name, presence: true
   validates :season_id, presence: true
-  validates :league_class_id, inclusion: { in: %w[1fbl 2fbl rl vl ll] }, allow_blank: true
+  validates :league_class_id, inclusion: { in: CODES }, allow_blank: true
 
   default_scope { order(:season_id, :game_operation_id).order('order_key::int') }
   scope :current_season, -> { where(season_id: Setting.current_season_id) }
@@ -30,6 +35,42 @@ class League < ApplicationRecord
 
   def self.class_rank(league_class_id)
     CLASS_RANKS.fetch(league_class_id.to_s.strip, UNKNOWN_CLASS_RANK)
+  end
+
+  # Namensmuster + Wert-Mapping zur Normalisierung von league_class_id auf die
+  # kanonischen Codes (portiert aus Migration #297). Nötig, weil Altbestände /
+  # Legacy-Importe un-normalisierte Werte (z. B. "10") tragen können, die per
+  # update_columns/Raw-SQL an der Inclusion-Validierung vorbei geschrieben
+  # wurden. Ohne Normalisierung bricht z. B. das Liga-Kopieren mit
+  # "League class is not included in the list" ab (#114).
+  CLASS_NAME_PATTERNS = [
+    [/(?<![a-zäöü])deutsche meisterschaft/i, ''],
+    [/1\.\s*(floorball[\s-]*)?(bundesliga|fbl)/i, '1fbl'],
+    [/2\.\s*(floorball[\s-]*)?(bundesliga|fbl)/i, '2fbl'],
+    [/regionalliga/i, 'rl'],
+    [/verbandsliga/i, 'vl'],
+    [/landesliga/i, 'll']
+  ].freeze
+
+  CLASS_VALUE_MAP = {
+    '1' => '1fbl', '10' => '1fbl',
+    '20' => '2fbl',
+    '30' => 'rl', '240' => 'rl', '250' => 'rl', '270' => 'rl', '280' => 'rl',
+    '290' => 'rl', '300' => 'rl', '310' => 'rl', '320' => 'rl', '340' => 'rl',
+    '40' => 'vl', '330' => 'vl',
+    '50' => 'll'
+  }.freeze
+
+  # Bildet einen beliebigen league_class_id-Wert auf einen der CODES oder ''
+  # ab. Bereits kanonische Werte und Leerwerte bleiben unverändert; sonst
+  # gewinnt das Namensmuster (z. B. "1. FBL Damen" => 1fbl) vor dem
+  # Wert-Mapping, unbekannte Werte werden zu '' (keine Ligaklasse).
+  def self.normalize_class_id(value, name = nil)
+    v = value.to_s.strip
+    return v if v.blank? || CODES.include?(v)
+
+    CLASS_NAME_PATTERNS.each { |pattern, code| return code if name.to_s.match?(pattern) }
+    CLASS_VALUE_MAP.fetch(v, '')
   end
 
   # Großfeld-Erwachsenenbereich: nur hier gibt es die Erst-/Zweitlizenz-

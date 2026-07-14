@@ -407,7 +407,15 @@ class LeaguesController < ApplicationController
       return render json: { message: 'Keine Berechtigung' }, status: :forbidden
     end
 
-    if BUNDESLIGA_CLASSES.include?(source.league_class_id) && !buli_permitted?(current_user)
+    # league_class_id kann in Altbeständen/Importen un-normalisierte Werte
+    # tragen (z. B. "10"); auf die kanonischen Codes abbilden, bevor damit
+    # geprüft und kopiert wird. Sonst bricht save! die Kopie mit
+    # "League class is not included in the list" ab (#114) – und der
+    # Buli-Berechtigungscheck würde einen Legacy-Wert wie "10" (=> 1fbl)
+    # fälschlich durchlassen.
+    normalized_class_id = League.normalize_class_id(source.league_class_id, source.name)
+
+    if BUNDESLIGA_CLASSES.include?(normalized_class_id) && !buli_permitted?(current_user)
       return render json: { message: 'Keine Berechtigung für diese Ligaklasse' }, status: :forbidden
     end
 
@@ -429,10 +437,11 @@ class LeaguesController < ApplicationController
     attrs['deadline'] = source.deadline&.advance(years: 1)
     attrs['league_id_preseason'] = source.id
     attrs['legacy_league'] = false
+    attrs['league_class_id'] = normalized_class_id
     # Anzeige-Namen wie beim Anlegen aus dem aktuellen Setting einfrieren;
     # Fallback auf die in der Quell-Liga eingefrorenen Namen.
-    if source.league_class_id.present?
-      attrs['league_class_name'] = Setting.league_class(source.league_class_id).presence || source.league_class_name
+    if normalized_class_id.present?
+      attrs['league_class_name'] = Setting.league_class(normalized_class_id).presence || source.league_class_name
     end
     if source.league_category_id.present?
       attrs['league_category_name'] = Setting.league_category(source.league_category_id).presence ||
