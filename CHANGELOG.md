@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.50.0] - 2026-07-14
+
 ### Neu
 
 - **Öffentlicher Lizenzcheck: Vereinsname**: `GET user/referees/:id` liefert zusätzlich `verein` (Vereinsname des Schiedsrichters), damit der externe SR-Lizenzchecker (`sr.floorball.de`) den Verein direkt aus der API statt aus einer CSV anzeigen kann. `sr.floorball.de` wurde zu den erlaubten CORS-Origins ergänzt.

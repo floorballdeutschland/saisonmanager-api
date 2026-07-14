@@ -13,7 +13,7 @@
 #   bundle exec rails import:team_clubs RAILS_ENV=production [THREADS=10]
 
 namespace :import do
-  LEGACY_BASE = 'https://saisonmanager.org'
+  LEGACY_BASE = 'https://saisonmanager.de'
 
   # ── Shared HTTP + session helper ─────────────────────────────────────────────
   def legacy_session

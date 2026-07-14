@@ -35,7 +35,7 @@ namespace :season do
     end
 
     # Define the base URL for the API
-    base_url = 'https://saisonmanager.org/api/v2'
+    base_url = 'https://saisonmanager.de/api/v2'
 
     # Initial download of the game operations and leagues
     puts "Archiving season #{season_id} started."

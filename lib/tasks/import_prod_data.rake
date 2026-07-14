@@ -18,7 +18,7 @@ namespace :import do
     require 'json'
     require 'set'
 
-    BASE_URL    = 'https://saisonmanager.org/api/v2'
+    BASE_URL    = 'https://saisonmanager.de/api/v2'
     THREADS     = (ENV['THREADS'] || 8).to_i
     ONLY_SEASON = ENV['ONLY_SEASON']&.to_i
 
