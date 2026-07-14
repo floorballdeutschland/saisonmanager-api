@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.51.0] - 2026-07-14
+
 ### Neu
 
 - **Spielplan-Import erneut hochladbar (Überschreiben)**: Der Import einer Spielplan-Vorlage war bisher nur einmalig möglich – sobald eine Liga Spiele/Spieltage hatte, wurde jeder weitere Import mit „Liga hat bereits Spiele und/oder Spieltage" abgewiesen. Jetzt lässt sich eine Vorlage erneut hochladen und ersetzt den bestehenden Spielplan vollständig, **solange noch kein Spiel begonnen bzw. gespielt wurde**. Dadurch können schon vor dem ersten Spieltag erste – auch lückenhafte – Vorlagen eingespielt und später verfeinert werden. Fehlende Halle/Ausrichter sind dabei erlaubt (Spieltag ohne Halle/Ausrichter wird angelegt), sodass diese Angaben später per erneutem Import nachgetragen werden können. Sobald ein Spiel begonnen/gespielt ist (gestartet, beendet, Spielbericht angelegt oder abgeschlossen), wird der gesamte Import blockiert. Der Vorgang ist atomar: Löschen und Neuanlegen laufen in einer Transaktion – schlägt das Neuanlegen fehl, bleibt der bisherige Spielplan unverändert erhalten. Beim erfolgreichen Überschreiben werden bestehende Spieltage/Spiele inkl. daran hängender Schiedsrichter-Ansetzungen, Sekretär-Links und Bestätigungen entfernt.
