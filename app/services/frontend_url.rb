@@ -11,7 +11,7 @@
 # Hintergrund: Staging läuft mit RAILS_ENV=production, deshalb reicht eine
 # Rails.env.production?-Abfrage nicht aus, um Prod von Staging zu unterscheiden.
 module FrontendUrl
-  PRODUCTION_URL = 'https://saisonmanager.org'.freeze
+  PRODUCTION_URL = 'https://saisonmanager.de'.freeze
   LOCAL_URL = 'http://localhost:4200'.freeze
 
   def self.base

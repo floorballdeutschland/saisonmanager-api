@@ -1,5 +1,5 @@
 class ClubMailer < ApplicationMailer
-  REPLY_TO = 'system@saisonmanager.org'
+  REPLY_TO = 'system@saisonmanager.de'
 
   def game_day_scan_reminder(club, game_day)
     @club = club

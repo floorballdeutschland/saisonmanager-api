@@ -3,7 +3,7 @@ class ApplicationMailer < ActionMailer::Base
 
   helper MailerHelper
 
-  default from: 'system@saisonmanager.org'
+  default from: 'system@saisonmanager.de'
   layout 'mailer'
 
   before_action :tag_mailer_headers
