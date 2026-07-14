@@ -22,7 +22,7 @@ info:
     verlangen `cookieAuth`.
 
 servers:
-  - url: https://saisonmanager.org/api/v2
+  - url: https://saisonmanager.de/api/v2
     description: Produktion
   - url: http://localhost:3001/api/v2
     description: Lokale Entwicklung (Docker)
