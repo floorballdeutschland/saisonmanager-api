@@ -151,7 +151,13 @@ class LeaguesController < ApplicationController
 
           if league.user_permissions(current_user)&.include?(:import_games)
 
-            errors << 'Liga hat bereits Spiele und/oder Spieltage' if league.games.present? || league.game_days.present?
+            # Ein Re-Import ist erlaubt, solange noch kein Spiel begonnen/gespielt
+            # wurde – der bestehende (nur geplante) Spielplan wird dann unten
+            # komplett ersetzt. Sobald ein Spiel begonnen/gespielt ist, wird der
+            # gesamte Import blockiert (kein Teil-Überschreiben).
+            if Game.where(game_day_id: league.game_days.select(:id)).played_or_started.exists?
+              errors << 'Liga hat bereits begonnene oder gespielte Spiele – ein erneuter Import ist nicht mehr möglich.'
+            end
 
             arena_ids = Arena.active.pluck(:id)
             teams = league.teams
@@ -287,6 +293,16 @@ class LeaguesController < ApplicationController
                status: :bad_request
       else
         ActiveRecord::Base.transaction do
+          # Bestehenden (noch ungespielten) Spielplan ersetzen: erst Spiele
+          # einzeln löschen (damit dependent: :destroy für Ansetzung/Bericht/
+          # Scan/Feedback/Verfahrensvorschlag greift und die Liga-Caches per
+          # after_commit invalidiert werden), dann die Spieltage inkl. deren
+          # Bestätigungen/Sekretär-Links. Da die Parse-Fehlerprüfung oben schon
+          # durchlaufen ist, wird nur bei fehlerfreiem Import gelöscht.
+          game_day_ids = league.game_days.ids
+          Game.where(game_day_id: game_day_ids).find_each(&:destroy!)
+          GameDay.where(id: game_day_ids).find_each(&:destroy!)
+
           # erzeuge spieltage
           game_days.each do |k, v|
             gd = GameDay.create(v)

@@ -5,6 +5,7 @@ class Game < ApplicationRecord
   has_one :referee_assignment, dependent: :destroy
   has_one :game_referee_report, dependent: :destroy
   has_one :game_scan, dependent: :destroy
+  has_one :proceeding_proposal, dependent: :destroy
   has_many :referee_feedbacks, dependent: :destroy
 
   scope :by_referee_id, ->(referee_id) { where('? = any (referee_ids)', referee_id) }
@@ -16,6 +17,14 @@ class Game < ApplicationRecord
 
   scope :match_record_closed, -> { where(game_status: %w[match_record_closed finalized]) }
   scope :match_record_not_closed, -> { where.not(game_status: %w[match_record_closed finalized]) }
+
+  # „Begonnen oder gespielt" – deckt gestartete/beendete Spiele, angelegte
+  # Spielberichte und abgeschlossene Berichte ab. Wird genutzt, um zu
+  # entscheiden, ob der Spielplan einer Liga per Re-Import noch komplett
+  # ersetzt werden darf (siehe LeaguesController#admin_schedule_import_games).
+  scope :played_or_started, lambda {
+    where("started OR ended OR game_ended OR record_created_at IS NOT NULL OR game_status IN ('match_record_closed', 'finalized')")
+  }
 
   scope :has_autofill_condition, lambda {
                                    where('(home_team_filling_rule IS NOT NULL AND home_team_filling_parameter IS NOT NULL) OR (guest_team_filling_rule IS NOT NULL AND guest_team_filling_parameter IS NOT NULL)')

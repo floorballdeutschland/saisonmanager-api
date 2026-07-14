@@ -2,6 +2,7 @@ class GameDay < ApplicationRecord
   has_many :games, inverse_of: :game_day
   has_many :game_day_referee_confirmations, dependent: :destroy
   has_many :game_day_team_confirmations, dependent: :destroy
+  has_many :game_day_secretary_links, dependent: :destroy
   belongs_to :league
   belongs_to :arena
   belongs_to :club
