@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.50.1] - 2026-07-14
+
 ### Behoben
 
 - **Liga aus Vorsaison kopieren schlug bei bestimmten Ligen fehl**: Trug die Quell-Liga einen un-normalisierten `league_class_id`-Legacy-Wert (z. B. bei „1. FBL Damen"), brach das Kopieren mit „League class is not included in the list" ab. Der Wert wird beim Kopieren jetzt auf die kanonischen Ligaklassen-Codes normalisiert (Namensmuster wie „1. FBL Damen" → `1fbl`); der Berechtigungscheck für Bundesligen greift dabei auf den normalisierten Wert. Neuer Rake `leagues:renormalize_class_ids` bereinigt betroffene Altbestände.
