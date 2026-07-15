@@ -960,7 +960,7 @@ class Game < ApplicationRecord
 
       # penalty code without a penalty
       if !event['penalty_id'].present? && event['penalty_code_id'] && event['penalty_code_id'].to_i != 23
-        Sentry.capture_message("missing penalty code, game: #{id}, event: #{event.to_json}, #{error_meta_info}")
+        Sentry.capture_message("missing penalty code, game: #{id}, event: #{event.to_json}, #{error_meta_info}") unless legacy
       end
 
       e
