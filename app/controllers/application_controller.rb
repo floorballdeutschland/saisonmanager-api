@@ -86,6 +86,10 @@ class ApplicationController < ActionController::Base
   LOGO_MAX_SIZE = 3.megabytes
 
   def logo_upload_error(file)
+    # Kein hochgeladenes File (z. B. String-Parameter): sauber als 422 abweisen,
+    # statt bei file.content_type mit NoMethodError (500) abzubrechen.
+    return 'Ungültige Bilddatei.' unless file.respond_to?(:content_type) && file.respond_to?(:tempfile)
+
     unless LOGO_ALLOWED_CONTENT_TYPES.include?(file.content_type)
       return 'Ungültiges Dateiformat. Erlaubt sind PNG, JPG, SVG oder WebP.'
     end

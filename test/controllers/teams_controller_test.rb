@@ -270,6 +270,15 @@ class TeamsControllerTest < ActionDispatch::IntegrationTest
     assert_not @team.reload.logo.attached?
   end
 
+  test 'admin_upload_logo lehnt einen Nicht-Datei-Parameter mit 422 (statt 500) ab' do
+    login(create(:user, :admin))
+
+    post "/api/v2/admin/teams/#{@team.id}/upload_logo", params: { logo: 'kein-bild' }
+
+    assert_response :unprocessable_entity
+    assert_not @team.reload.logo.attached?
+  end
+
   private
 
   def login(user)
