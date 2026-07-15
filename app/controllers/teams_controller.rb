@@ -310,6 +310,10 @@ class TeamsController < ApplicationController
         return render json: { message: 'Kein Bild angefügt' }, status: :unprocessable_entity
       end
 
+      if (error = logo_upload_error(params[:logo]))
+        return render json: { message: error }, status: :unprocessable_entity
+      end
+
       team.logo.attach(params[:logo])
       render json: { logo_url: team.logo_url, logo_small_url: team.logo_small_url }
     else

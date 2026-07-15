@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Vereins- und Team-Logo-Upload jetzt serverseitig geprüft**: Die Logo-Upload-Endpunkte für Vereine und Teams akzeptierten bisher technisch jede Datei in beliebiger Größe (die Prüfung fand nur im Frontend statt und war per direktem API-Aufruf umgehbar). Jetzt prüft die API das Format (erlaubt sind PNG, JPG, SVG und WebP), begrenzt die Dateigröße auf 3 MB und verlangt ein quadratisches Bild (gleiche Breite und Höhe). Bei Verstoß antwortet die API mit einer erklärenden Fehlermeldung (Status 422), statt die Datei still anzunehmen. SVG ist als vektorbasiertes Format von der Quadrat-Prüfung ausgenommen.
+
 ## [1.51.1] - 2026-07-15
 
 ### Verbessert

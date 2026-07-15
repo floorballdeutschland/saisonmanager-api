@@ -325,6 +325,10 @@ class ClubsController < ApplicationController
         return render json: { message: 'Kein Bild angefügt' }, status: :unprocessable_entity
       end
 
+      if (error = logo_upload_error(params[:logo]))
+        return render json: { message: error }, status: :unprocessable_entity
+      end
+
       club.logo.attach(params[:logo])
       render json: { logo_url: club.logo_url, logo_small_url: club.logo_small_url }
     else

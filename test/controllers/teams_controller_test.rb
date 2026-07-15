@@ -230,10 +230,74 @@ class TeamsControllerTest < ActionDispatch::IntegrationTest
     assert Team.exists?(@team.id)
   end
 
+  test 'admin_upload_logo akzeptiert ein quadratisches PNG' do
+    login(create(:user, :admin))
+
+    post "/api/v2/admin/teams/#{@team.id}/upload_logo", params: { logo: square_png_upload(120) }
+
+    assert_response :success
+    assert @team.reload.logo.attached?
+  end
+
+  test 'admin_upload_logo lehnt ein nicht-quadratisches Bild mit 422 ab' do
+    login(create(:user, :admin))
+
+    post "/api/v2/admin/teams/#{@team.id}/upload_logo", params: { logo: png_upload(200, 100, 'wide') }
+
+    assert_response :unprocessable_entity
+    assert_match(/quadratisch/, JSON.parse(response.body)['message'])
+    assert_not @team.reload.logo.attached?
+  end
+
+  test 'admin_upload_logo lehnt ein unzulässiges Format mit 422 ab' do
+    login(create(:user, :admin))
+
+    post "/api/v2/admin/teams/#{@team.id}/upload_logo",
+         params: { logo: Rack::Test::UploadedFile.new(gif_path, 'image/gif') }
+
+    assert_response :unprocessable_entity
+    assert_match(/Dateiformat/, JSON.parse(response.body)['message'])
+    assert_not @team.reload.logo.attached?
+  end
+
+  test 'admin_upload_logo lehnt eine zu große Datei mit 422 ab' do
+    login(create(:user, :admin))
+
+    post "/api/v2/admin/teams/#{@team.id}/upload_logo", params: { logo: oversized_png_upload }
+
+    assert_response :unprocessable_entity
+    assert_match(/zu groß/, JSON.parse(response.body)['message'])
+    assert_not @team.reload.logo.attached?
+  end
+
   private
 
   def login(user)
     post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
     assert_response :success
+  end
+
+  def square_png_upload(size)
+    png_upload(size, size, "square#{size}")
+  end
+
+  def png_upload(width, height, name)
+    require 'vips'
+    path = Rails.root.join('tmp', "logo_test_#{name}.png").to_s
+    Vips::Image.black(width, height).pngsave(path)
+    Rack::Test::UploadedFile.new(path, 'image/png')
+  end
+
+  def gif_path
+    path = Rails.root.join('tmp', 'logo_test.gif').to_s
+    # Kleinstmögliches GIF (nur der Header zählt, geprüft wird ausschließlich der content_type).
+    File.binwrite(path, "GIF89a\x01\x00\x01\x00\x00\x00\x00;")
+    path
+  end
+
+  def oversized_png_upload
+    path = Rails.root.join('tmp', 'logo_test_big.png').to_s
+    File.binwrite(path, "\x00" * (3.megabytes + 1))
+    Rack::Test::UploadedFile.new(path, 'image/png')
   end
 end
