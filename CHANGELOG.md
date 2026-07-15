@@ -11,7 +11,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Behoben
 
-- **Vereins- und Team-Logo-Upload jetzt serverseitig geprüft**: Die Logo-Upload-Endpunkte für Vereine und Teams akzeptierten bisher technisch jede Datei in beliebiger Größe (die Prüfung fand nur im Frontend statt und war per direktem API-Aufruf umgehbar). Jetzt prüft die API das Format (erlaubt sind PNG, JPG, SVG und WebP), begrenzt die Dateigröße auf 3 MB und verlangt ein quadratisches Bild (gleiche Breite und Höhe). Bei Verstoß antwortet die API mit einer erklärenden Fehlermeldung (Status 422), statt die Datei still anzunehmen. SVG ist als vektorbasiertes Format von der Quadrat-Prüfung ausgenommen.
+- **Vereins- und Team-Logo-Upload jetzt serverseitig geprüft**: Die Logo-Upload-Endpunkte für Vereine und Teams akzeptierten bisher technisch jede Datei in beliebiger Größe (die Prüfung fand nur im Frontend statt und war per direktem API-Aufruf umgehbar). Jetzt prüft die API das Format (erlaubt sind ausschließlich die Raster-Formate PNG, JPG und WebP; SVG wird abgelehnt, weil es als Download statt als Bild ausgeliefert würde und ungeprüft ein Sicherheitsrisiko wäre), begrenzt die Dateigröße auf 3 MB und verlangt ein quadratisches Bild (gleiche Breite und Höhe). Bei Verstoß antwortet die API mit einer erklärenden Fehlermeldung (Status 422), statt die Datei still anzunehmen.
+
 ### Verbessert
 
 - **Meldeweg für Sicherheitslücken und Feedback dokumentiert**: Das Repository hat jetzt eine `SECURITY.md` (Sicherheitslücken bitte vertraulich an it@floorball.de oder über GitHubs private Schwachstellen-Meldung, nicht als öffentliches Issue), und das README verweist auf das Feedback-Repo sowie die Kontaktadresse. Vorbereitung für die Open-Source-Veröffentlichung.
