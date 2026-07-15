@@ -104,6 +104,13 @@ class PlayerChangeRequest < ApplicationRecord
       return
     end
 
+    # Beide Profile müssen zum Verein des Antrags gehören: der Antragsteller
+    # soll keine fremden oder vereinslosen Profile zur Deaktivierung vorschlagen
+    # können (dafür gibt es weiterhin den direkten Admin-Merge).
+    unless (secondary_player.clubs || []).any? { |c| c['club_id'].to_i == club_id }
+      errors.add(:secondary_player, 'gehört nicht zum angegebenen Verein')
+    end
+
     errors.add(:secondary_player, 'ist bereits zusammengeführt') if secondary_player.merged_into_id.present?
     errors.add(:player, 'ist bereits zusammengeführt') if player.merged_into_id.present?
     return unless errors.empty? && secondary_player.shares_game_with?(player)

@@ -26,9 +26,9 @@ module Admin
       player = Player.find_by(id: params[:player_id])
       return render json: { error: 'Spieler nicht gefunden' }, status: :not_found unless player
 
-      # Merge-Anträge nur für Spieler des eigenen Vereins: der Antragsteller
-      # soll nicht beliebige fremde Profilpaare zur Zusammenführung vorschlagen
-      # können (das Duplikat selbst darf dagegen vereinslos/fremd sein).
+      # Merge-Anträge nur für Spieler des eigenen Vereins; dass auch das
+      # Duplikat (secondary_player) zum Verein gehört, prüft die
+      # Modell-Validierung merge_must_be_executable.
       if params[:correction_type] == 'merge' && !player_belongs_to_club?(player, club_id)
         return render json: { error: 'Spieler gehört nicht zum angegebenen Verein' }, status: :forbidden
       end

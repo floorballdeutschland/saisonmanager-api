@@ -7,7 +7,8 @@ class PlayerChangeRequestMergeTest < ActiveSupport::TestCase
   setup do
     @club = create(:club)
     @master = create(:player, clubs: [{ 'club_id' => @club.id, 'home_club' => true }])
-    @duplicate = create(:player, first_name: @master.first_name, last_name: @master.last_name)
+    @duplicate = create(:player, first_name: @master.first_name, last_name: @master.last_name,
+                                 clubs: [{ 'club_id' => @club.id, 'home_club' => true }])
   end
 
   def build_merge(secondary: @duplicate)
@@ -25,6 +26,16 @@ class PlayerChangeRequestMergeTest < ActiveSupport::TestCase
 
   test 'secondary darf nicht der Spieler selbst sein' do
     assert_not build_merge(secondary: @master).valid?
+  end
+
+  test 'secondary muss zum Verein des Antrags gehören' do
+    clubless = create(:player)
+    request = build_merge(secondary: clubless)
+    assert_not request.valid?
+    assert request.errors[:secondary_player].any?
+
+    other_club_player = create(:player, clubs: [{ 'club_id' => create(:club).id, 'home_club' => true }])
+    assert_not build_merge(secondary: other_club_player).valid?
   end
 
   test 'bereits zusammengeführter secondary wird beim Anlegen abgelehnt' do

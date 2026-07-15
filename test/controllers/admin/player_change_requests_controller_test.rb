@@ -11,7 +11,8 @@ module Admin
       @other_club = Club.create!(name: "Anderer Verein #{SecureRandom.hex(4)}")
 
       @master = create(:player, clubs: [{ 'club_id' => @club.id, 'home_club' => true }])
-      @duplicate = create(:player, first_name: @master.first_name, last_name: @master.last_name)
+      @duplicate = create(:player, first_name: @master.first_name, last_name: @master.last_name,
+                                   clubs: [{ 'club_id' => @club.id, 'home_club' => true }])
 
       @vm = create_user(user_group_id: 4, club_id: @club.id)
       @vm_other = create_user(user_group_id: 4, club_id: @other_club.id)
@@ -42,13 +43,25 @@ module Admin
     end
 
     test 'Merge-Antrag für Spieler, der nicht zum Verein gehört, wird abgelehnt' do
+      clubless = create(:player)
       login(@vm)
       post '/api/v2/admin/player_change_requests.json', params: {
-        player_id: @duplicate.id, club_id: @club.id,
-        correction_type: 'merge', secondary_player_id: @master.id
+        player_id: clubless.id, club_id: @club.id,
+        correction_type: 'merge', secondary_player_id: @duplicate.id
       }
 
       assert_response :forbidden
+    end
+
+    test 'Merge-Antrag mit vereinsfremdem Duplikat wird abgelehnt' do
+      foreign = create(:player, clubs: [{ 'club_id' => @other_club.id, 'home_club' => true }])
+      login(@vm)
+      post '/api/v2/admin/player_change_requests.json', params: {
+        player_id: @master.id, club_id: @club.id,
+        correction_type: 'merge', secondary_player_id: foreign.id
+      }
+
+      assert_response :unprocessable_entity
     end
 
     test 'Merge-Antrag ohne secondary_player_id wird abgelehnt' do
