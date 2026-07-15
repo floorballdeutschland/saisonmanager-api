@@ -714,12 +714,12 @@ class LeagueTest < ActiveSupport::TestCase
 
     assert_equal plain, preloaded
     assert_equal [1, 2], preloaded[:game_day_numbers]
-    assert_equal [1, 3], preloaded[:qualifications].map { |q| q[:rank_from] }
-    assert_equal %w[Zielliga Zielliga], preloaded[:qualifications].map { |q| q[:target_league_name] }
+    assert_equal([1, 3], preloaded[:qualifications].map { |q| q[:rank_from] })
+    assert_equal(%w[Zielliga Zielliga], preloaded[:qualifications].map { |q| q[:target_league_name] })
 
     # similar_leagues (gleiche Saison/System/Klasse) laufen über den Scope –
     # Smoke-Test, dass die Preload-Kette in full_hash(true) funktioniert.
     similar = League.create!(game_operation: go, name: 'Parallelliga', season_id: '1', table_modus: 'classic')
-    assert_equal [similar.id], league.full_hash(true)[:similar_leagues].map { |l| l[:id] }
+    assert_equal([similar.id], league.full_hash(true)[:similar_leagues].map { |l| l[:id] })
   end
 end
