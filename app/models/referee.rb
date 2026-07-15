@@ -54,17 +54,24 @@ class Referee < ApplicationRecord
     relation
   }
 
+  # Spiele dieses Schiris. Kanonisch über die stabile Referee-PK in
+  # officiating_referee_ids (Fundament #45), sodass auch Gäste (ohne Lizenznummer)
+  # und nach einem Merge verschobene Lizenzen stabil zugeordnet bleiben.
+  # referee_ids (Lizenznummer) und die Bericht-Strings dienen als Übergangs-
+  # Fallback, bis der Backfill (rake referees:backfill_officiating_ids) alle
+  # Alt-Spiele rückbefüllt hat.
   def games(season_id: nil)
-    return Game.none if lizenznummer.nil?
+    conditions = ['? = ANY(officiating_referee_ids)']
+    values = [id]
 
-    license_prefix = "#{lizenznummer} %"
-    scope = Game.where(
-      '? = ANY(referee_ids) OR referee1_string LIKE ? OR referee2_string LIKE ?',
-      lizenznummer, license_prefix, license_prefix
-    )
-    if season_id
-      scope = scope.joins(game_day: :league).where(leagues: { season_id: season_id })
+    if lizenznummer.present?
+      license_prefix = "#{lizenznummer} %"
+      conditions.push('? = ANY(referee_ids)', 'referee1_string LIKE ?', 'referee2_string LIKE ?')
+      values.push(lizenznummer, license_prefix, license_prefix)
     end
+
+    scope = Game.where(conditions.join(' OR '), *values)
+    scope = scope.joins(game_day: :league).where(leagues: { season_id: season_id }) if season_id
     scope
   end
 

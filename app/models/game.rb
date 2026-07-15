@@ -8,7 +8,13 @@ class Game < ApplicationRecord
   has_one :proceeding_proposal, dependent: :destroy
   has_many :referee_feedbacks, dependent: :destroy
 
-  scope :by_referee_id, ->(referee_id) { where('? = any (referee_ids)', referee_id) }
+  # Spiele eines Schiris. Kanonisch über die stabile Referee-PK in
+  # officiating_referee_ids (Fundament #45); referee_ids (Lizenznummer) bleibt als
+  # Übergangs-Fallback, bis der Backfill (rake referees:backfill_officiating_ids)
+  # alle Alt-Spiele rückbefüllt hat.
+  scope :by_referee_id, lambda { |referee_id|
+    where('? = ANY(officiating_referee_ids) OR ? = ANY(referee_ids)', referee_id, referee_id)
+  }
   scope :by_referee_name, lambda { |referee_name|
                             where('referee1_string LIKE :refname OR referee2_string LIKE :refname', refname: "%#{referee_name}%")
                           }
