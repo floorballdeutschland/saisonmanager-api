@@ -12,6 +12,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Behoben
 
 - **Vereins- und Team-Logo-Upload jetzt serverseitig geprüft**: Die Logo-Upload-Endpunkte für Vereine und Teams akzeptierten bisher technisch jede Datei in beliebiger Größe (die Prüfung fand nur im Frontend statt und war per direktem API-Aufruf umgehbar). Jetzt prüft die API das Format (erlaubt sind PNG, JPG, SVG und WebP), begrenzt die Dateigröße auf 3 MB und verlangt ein quadratisches Bild (gleiche Breite und Höhe). Bei Verstoß antwortet die API mit einer erklärenden Fehlermeldung (Status 422), statt die Datei still anzunehmen. SVG ist als vektorbasiertes Format von der Quadrat-Prüfung ausgenommen.
+### Verbessert
+
+- **Schiri-Spielhistorie stabil über die Referee-ID zugeordnet**: Die Zuordnung von Spielen zu einem Schiedsrichter (Spielhistorie im Schiri-Profil, Saison-Spielzähler in der Schiri-Liste) lief bisher ausschließlich über die Lizenznummer bzw. den Freitext im Spielbericht. Beides ist unzuverlässig: Die Lizenznummer kann sich (z. B. beim Zusammenführen zweier Schiri-Profile) verschieben, und der Freitext veraltet bei Namensänderungen. Die Zuordnung greift jetzt vorrangig auf die stabile, kanonische Referee-ID (`officiating_referee_ids`) zurück; Lizenznummer und Bericht-Freitext bleiben nur noch als Übergangs-Fallback erhalten. Dadurch werden auch Gast-Schiedsrichter (ohne Lizenznummer) und Spiele nach einem Profil-Merge korrekt zugeordnet. (Aufbauend auf der kanonischen PK-Spalte aus #47, Teil des Umbaus #45.)
+- **Ungenutzten Azure-Storage entfernt**: Der ActiveStorage-Dienst `microsoft` (Azure) war in `config/storage.yml` definiert, wurde aber von keiner Umgebung genutzt (alle nutzen lokalen Disk-Speicher; 0 von 271 Dateien lagen auf Azure). Der Dienst und der damit verbundene, im Klartext hinterlegte Zugriffsschlüssel (`AZURE_KEY`/`AZURE_CONTAINER`) wurden entfernt. (Das Gem `azure-storage-blob` bleibt vorerst bestehen und wird in einem Folgeschritt mit einem `bundle`-Lauf entfernt.)
 
 ## [1.51.1] - 2026-07-15
 

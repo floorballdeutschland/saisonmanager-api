@@ -423,9 +423,11 @@ module Admin
 
     # Anzahl der Spiele in der aktuellen Saison je Lizenznummer – in EINER Query
     # (Aggregation in Ruby), um N+1-Count-Queries über die gesamte Schiri-Liste zu
-    # vermeiden. Zählung analog zu Referee#games: Treffer über referee_ids
-    # (Live-Erfassung) ODER den Lizenznummer-Präfix in referee1/2_string
-    # (Freitext/Altdaten); pro Spiel/Schiri genau einmal.
+    # vermeiden. Zählung analog zu Referee#games: kanonisch über die Referee-PK in
+    # officiating_referee_ids (Fundament #45), plus Übergangs-Fallback über
+    # referee_ids (Live-Erfassung) ODER den Lizenznummer-Präfix in referee1/2_string
+    # (Freitext/Altdaten). PK-Treffer werden per pk_to_license auf denselben
+    # Zähl-Schlüssel (Lizenznummer) abgebildet; pro Spiel/Schiri genau einmal.
     def season_game_counts(referees)
       season_id = Setting.current_season_id
       return {} if season_id.blank?
@@ -434,13 +436,18 @@ module Admin
       return {} if liz.empty?
 
       lookup = liz.to_set
+      pk_to_license = referees.each_with_object({}) { |r, h| h[r.id] = r.lizenznummer if r.lizenznummer }
       counts = Hash.new(0)
 
       Game.joins(game_day: :league)
           .where(leagues: { season_id: season_id })
-          .pluck(:referee_ids, :referee1_string, :referee2_string)
-          .each do |ids, str1, str2|
+          .pluck(:officiating_referee_ids, :referee_ids, :referee1_string, :referee2_string)
+          .each do |officiating_ids, ids, str1, str2|
             matched = []
+            Array(officiating_ids).each do |pk|
+              license = pk_to_license[pk]
+              matched << license if license
+            end
             Array(ids).each { |l| matched << l if lookup.include?(l) }
             [str1, str2].each do |str|
               prefix = str.to_s[/\A\d+/]
