@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.51.3] - 2026-07-16
+
 ### Verbessert
 
 - **Öffentliche Liga-Seiten deutlich schneller**: Die Liga-Detailansicht und die Ligen-Übersicht eines Verbands luden für jede „ähnliche Liga" (Saison-Umschalter) bzw. jede Liga der Liste alle Zusatzdaten einzeln aus der Datenbank – bei Ligen mit vielen Parallel-Ligen über 400 Einzelabfragen pro Aufruf (im Livebetrieb gemessen: bis zu 2,6 Sekunden Ladezeit). Spieltage, Qualifikationen und Banner werden jetzt gesammelt vorgeladen.
