@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Kein Sentry-Rauschen mehr durch Archiv-Spiele ohne Torschützen-Angabe**: Beim Aufruf importierter Altdaten-Spiele (Saisons 2010–2019, rund 1.986 Spiele) meldete die API jedes Tor- oder Straf-Event ohne Spielernummer als Fehler an Sentry – bei jedem einzelnen Seitenaufruf. Diese Datenlücke ist eine bekannte, nicht reparierbare Eigenschaft des Altdaten-Imports; die Meldung wird für Legacy-Spiele jetzt unterdrückt. Für Spiele aus dem laufenden Spielbetrieb bleibt die Überwachung unverändert aktiv.
+
 ## [1.51.2] - 2026-07-15
 
 ### Behoben
