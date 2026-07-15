@@ -1,7 +1,12 @@
 class UserMailer < ApplicationMailer
   def reset_password(user)
     @link = "#{FrontendUrl.base}/neues-passwort/#{user.password_reset_token}"
-    templated_mail(to: user.email, subject: 'Anleitung zum Passwort zurücksetzen im Saisonmanager')
+    @username = user.user_name
+    templated_mail(
+      to: user.email,
+      subject: 'Anleitung zum Passwort zurücksetzen im Saisonmanager',
+      placeholders: { username: @username, link: @link }
+    )
   end
 
   # Begrüßungs-Mail beim Anlegen eines Schiedsrichter-Benutzerkontos: enthält den

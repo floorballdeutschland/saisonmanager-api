@@ -27,6 +27,12 @@ class TemplatedMailerBodyTest < ActionMailer::TestCase
     assert mail.body.encoded.present?
   end
 
+  test 'Passwort-Reset-Mail nennt den Benutzernamen und den Login-Hinweis' do
+    mail = UserMailer.reset_password(@user)
+    assert_includes mail.body.encoded, @user.user_name
+    assert_includes mail.body.encoded, 'E-Mail-Adresse'
+  end
+
   test 'nicht erlaubte Tags im Body werden sanitisiert' do
     EmailTemplate.create!(
       mailer_class: 'UserMailer', action_name: 'reset_password', locale: 'de',
