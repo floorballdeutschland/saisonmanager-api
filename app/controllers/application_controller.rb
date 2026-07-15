@@ -79,4 +79,35 @@ class ApplicationController < ActionController::Base
   def save_current_user
     User.current_user = current_user
   end
+
+  # Serverseitige Prüfung für Vereins-/Team-Logo-Uploads (analog zu den Banner-Endpunkten).
+  # Gibt eine erklärende Fehlermeldung zurück oder nil, wenn die Datei zulässig ist.
+  LOGO_ALLOWED_CONTENT_TYPES = %w[image/png image/jpeg image/svg+xml image/webp].freeze
+  LOGO_MAX_SIZE = 3.megabytes
+
+  def logo_upload_error(file)
+    # Kein hochgeladenes File (z. B. String-Parameter): sauber als 422 abweisen,
+    # statt bei file.content_type mit NoMethodError (500) abzubrechen.
+    return 'Ungültige Bilddatei.' unless file.respond_to?(:content_type) && file.respond_to?(:tempfile)
+
+    unless LOGO_ALLOWED_CONTENT_TYPES.include?(file.content_type)
+      return 'Ungültiges Dateiformat. Erlaubt sind PNG, JPG, SVG oder WebP.'
+    end
+
+    return "Die Datei ist zu groß. Maximal #{LOGO_MAX_SIZE / 1.megabyte} MB erlaubt." if file.size > LOGO_MAX_SIZE
+
+    # SVG ist vektorbasiert und skaliert verlustfrei, daher entfällt die Quadrat-Prüfung.
+    return nil if file.content_type == 'image/svg+xml'
+
+    require 'vips'
+    begin
+      image = Vips::Image.new_from_file(file.tempfile.path)
+    rescue Vips::Error
+      return 'Die Datei konnte nicht als Bild gelesen werden.'
+    end
+
+    return 'Das Logo muss quadratisch sein (gleiche Breite und Höhe).' unless image.width == image.height
+
+    nil
+  end
 end
