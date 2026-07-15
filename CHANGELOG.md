@@ -17,6 +17,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Verbessert
 
+- **Sentry-DSN nicht mehr im Quellcode**: Der Sentry-Projekt-DSN war fest im Code hinterlegt und wird jetzt aus der Umgebungsvariable `SENTRY_DSN` gelesen. Das ist eine Vorbereitung auf die Open-Source-Veröffentlichung, damit kein Drittanbieter-Token im öffentlichen Repository liegt. Ist die Variable nicht gesetzt (etwa in der lokalen Entwicklung), bleibt Sentry inaktiv. Für Staging und Produktion muss `SENTRY_DSN` in der Deploy-Umgebung gesetzt sein, sonst werden keine Fehler mehr an Sentry gemeldet.
 - **Passwort-Reset-Mail nennt jetzt den Benutzernamen**: Wer eine Anleitung zum Zurücksetzen des Passworts erhält (z. B. nach dem Anlegen eines neuen Benutzerkontos), sah bisher keinen Hinweis auf den eigenen Benutzernamen und fragte sich beim Login „Was ist mein Benutzername?". Die Mail zeigt jetzt den Benutzernamen des Kontos und den Hinweis, dass der Login sowohl mit dem Benutzernamen als auch mit der E-Mail-Adresse möglich ist.
 - **FD-SBK darf Spielorte zusammenlegen und löschen**: Das Zusammenführen und Löschen von Spielorten war bisher ausschließlich globalen Admins vorbehalten. Jetzt darf auch die verbandsübergreifend (global) gescopte FD-SBK diese Aktionen ausführen. Regionale SBK können Spielorte weiterhin nur anlegen und bearbeiten, aber nicht zusammenlegen oder löschen.
 
