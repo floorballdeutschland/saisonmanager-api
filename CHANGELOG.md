@@ -11,6 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Verbessert
 
+- **Öffentliche Liga-Seiten deutlich schneller**: Die Liga-Detailansicht und die Ligen-Übersicht eines Verbands luden für jede „ähnliche Liga" (Saison-Umschalter) bzw. jede Liga der Liste alle Zusatzdaten einzeln aus der Datenbank – bei Ligen mit vielen Parallel-Ligen über 400 Einzelabfragen pro Aufruf (im Livebetrieb gemessen: bis zu 2,6 Sekunden Ladezeit). Spieltage, Qualifikationen und Banner werden jetzt gesammelt vorgeladen.
 - **Kein Sentry-Rauschen mehr durch Archiv-Spiele ohne Torschützen-Angabe**: Beim Aufruf importierter Altdaten-Spiele (Saisons 2010–2019, rund 1.986 Spiele) meldete die API jedes Tor- oder Straf-Event ohne Spielernummer als Fehler an Sentry – bei jedem einzelnen Seitenaufruf. Diese Datenlücke ist eine bekannte, nicht reparierbare Eigenschaft des Altdaten-Imports; die Meldung wird für Legacy-Spiele jetzt unterdrückt. Für Spiele aus dem laufenden Spielbetrieb bleibt die Überwachung unverändert aktiv.
 
 ## [1.51.2] - 2026-07-15
