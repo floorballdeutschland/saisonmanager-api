@@ -12,7 +12,7 @@ module Admin
                    return render json: [], status: :ok
                  end
 
-      render json: requests.order(created_at: :desc).includes(:player, :club)
+      render json: requests.order(created_at: :desc).includes(:player, :club, :secondary_player)
     end
 
     def create
@@ -26,11 +26,19 @@ module Admin
       player = Player.find_by(id: params[:player_id])
       return render json: { error: 'Spieler nicht gefunden' }, status: :not_found unless player
 
+      # Merge-Anträge nur für Spieler des eigenen Vereins: der Antragsteller
+      # soll nicht beliebige fremde Profilpaare zur Zusammenführung vorschlagen
+      # können (das Duplikat selbst darf dagegen vereinslos/fremd sein).
+      if params[:correction_type] == 'merge' && !player_belongs_to_club?(player, club_id)
+        return render json: { error: 'Spieler gehört nicht zum angegebenen Verein' }, status: :forbidden
+      end
+
       request = PlayerChangeRequest.new(
         player: player,
         club_id: club_id,
         correction_type: params[:correction_type],
         new_value: params[:new_value].presence,
+        secondary_player_id: params[:secondary_player_id].presence,
         status: 'pending',
         requested_by_user_id: current_user.id
       )
@@ -83,6 +91,10 @@ module Admin
     end
 
     private
+
+    def player_belongs_to_club?(player, club_id)
+      (player.clubs || []).any? { |c| c['club_id'].to_i == club_id }
+    end
 
     # Analog zu PlayerChangeRequest.for_go: Ein nicht-globaler SBK darf nur
     # Anträge entscheiden, deren Verein in seinem game_operation-Scope liegt.

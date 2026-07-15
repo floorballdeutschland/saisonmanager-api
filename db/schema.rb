@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_07_10_120000) do
+ActiveRecord::Schema[7.1].define(version: 2026_07_15_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -409,8 +409,10 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_10_120000) do
     t.text "rejection_reason"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "secondary_player_id"
     t.index ["club_id"], name: "index_player_change_requests_on_club_id"
     t.index ["player_id"], name: "index_player_change_requests_on_player_id"
+    t.index ["secondary_player_id"], name: "index_player_change_requests_on_secondary_player_id"
     t.index ["status"], name: "index_player_change_requests_on_status"
   end
 
@@ -835,6 +837,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_10_120000) do
   add_foreign_key "license_documents", "players", name: "license_documents_player_id_fkey"
   add_foreign_key "license_documents", "users", column: "uploaded_by_id", name: "license_documents_uploaded_by_id_fkey"
   add_foreign_key "player_change_requests", "players"
+  add_foreign_key "player_change_requests", "players", column: "secondary_player_id"
   add_foreign_key "players", "players", column: "merged_into_id"
   add_foreign_key "referee_assignments", "games"
   add_foreign_key "referee_assignments", "referees", column: "referee1_id"

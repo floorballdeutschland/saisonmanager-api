@@ -373,6 +373,12 @@ class Player < ApplicationRecord
     skipped_associations
   end
 
+  # Öffentliche Vorab-Prüfung für Merge-Anträge: kommen beide Spieler gemeinsam
+  # in einer Aufstellung vor, sind es sicher zwei verschiedene Personen.
+  def shares_game_with?(other)
+    _shares_game_with?(other)
+  end
+
   # Einheitlicher Helper für License-History-Mutationen.
   # Garantiert, dass season_id, created_by und created_at immer vorhanden sind,
   # um History-Inkonsistenzen (Bonner-Vorfall-Klasse) zu vermeiden.
