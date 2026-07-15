@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.52.0] - 2026-07-16
+
 ### Neu
 
 - **Vereinsmanager können Spieler-Zusammenführungen vorschlagen**: Der Korrekturantrag am Spielerprofil kennt jetzt den Typ „Duplikat zusammenführen". Ein Vereinsmanager wählt das Duplikat aus den aktiven Spielern des eigenen Vereins aus (beide Profile müssen zum Verein gehören); der Antrag landet in der bestehenden Prüfliste unter „Spieler-Korrekturen". Genehmigt ein Admin oder SBK den Antrag, wird die bewährte Zusammenführung ausgeführt (Spieldaten, Vereinszugehörigkeiten und Lizenzen wandern auf das verbleibende Profil, das Duplikat wird deaktiviert). Anträge für zwei Spieler, die gemeinsam in einer Aufstellung stehen, werden abgelehnt, denn das sind sicher zwei verschiedene Personen.
