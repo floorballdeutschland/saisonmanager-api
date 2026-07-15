@@ -11,6 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Behoben
 
+- **Logo-Upload akzeptiert kein SVG mehr (nur Raster-Formate)**: Vereins- und Team-Logos werden serverseitig nur noch als PNG, JPG oder WebP angenommen. SVG wird abgelehnt, weil ActiveStorage SVG als Download (Binary) ausliefert (ein SVG-Logo würde als `<img>` gar nicht rendern) und ein nicht bereinigtes SVG bei versehentlicher Inline-Auslieferung ein Sicherheitsrisiko (Stored XSS) wäre. Das Frontend bietet SVG entsprechend nicht mehr zur Auswahl an.
 - **Vereins- und Team-Logo-Upload jetzt serverseitig geprüft**: Die Logo-Upload-Endpunkte für Vereine und Teams akzeptierten bisher technisch jede Datei in beliebiger Größe (die Prüfung fand nur im Frontend statt und war per direktem API-Aufruf umgehbar). Jetzt prüft die API das Format (erlaubt sind PNG, JPG, SVG und WebP), begrenzt die Dateigröße auf 3 MB und verlangt ein quadratisches Bild (gleiche Breite und Höhe). Bei Verstoß antwortet die API mit einer erklärenden Fehlermeldung (Status 422), statt die Datei still anzunehmen. SVG ist als vektorbasiertes Format von der Quadrat-Prüfung ausgenommen.
 ### Verbessert
 

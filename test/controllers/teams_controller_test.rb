@@ -260,6 +260,17 @@ class TeamsControllerTest < ActionDispatch::IntegrationTest
     assert_not @team.reload.logo.attached?
   end
 
+  test 'admin_upload_logo lehnt SVG mit 422 ab (nur Raster-Formate erlaubt)' do
+    login(create(:user, :admin))
+
+    post "/api/v2/admin/teams/#{@team.id}/upload_logo",
+         params: { logo: Rack::Test::UploadedFile.new(svg_path, 'image/svg+xml') }
+
+    assert_response :unprocessable_entity
+    assert_match(/Dateiformat/, JSON.parse(response.body)['message'])
+    assert_not @team.reload.logo.attached?
+  end
+
   test 'admin_upload_logo lehnt eine zu große Datei mit 422 ab' do
     login(create(:user, :admin))
 
@@ -301,6 +312,12 @@ class TeamsControllerTest < ActionDispatch::IntegrationTest
     path = Rails.root.join('tmp', 'logo_test.gif').to_s
     # Kleinstmögliches GIF (nur der Header zählt, geprüft wird ausschließlich der content_type).
     File.binwrite(path, "GIF89a\x01\x00\x01\x00\x00\x00\x00;")
+    path
+  end
+
+  def svg_path
+    path = Rails.root.join('tmp', 'logo_test.svg').to_s
+    File.write(path, '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>')
     path
   end
 

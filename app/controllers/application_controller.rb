@@ -82,7 +82,10 @@ class ApplicationController < ActionController::Base
 
   # Serverseitige Prüfung für Vereins-/Team-Logo-Uploads (analog zu den Banner-Endpunkten).
   # Gibt eine erklärende Fehlermeldung zurück oder nil, wenn die Datei zulässig ist.
-  LOGO_ALLOWED_CONTENT_TYPES = %w[image/png image/jpeg image/svg+xml image/webp].freeze
+  # Nur Raster-Formate: SVG ist bewusst ausgeschlossen, weil ActiveStorage SVG als
+  # Binary/Attachment ausliefert (Logos würden nicht als <img> rendern) und ein
+  # nicht bereinigtes SVG bei Inline-Auslieferung ein Stored-XSS-Vektor wäre.
+  LOGO_ALLOWED_CONTENT_TYPES = %w[image/png image/jpeg image/webp].freeze
   LOGO_MAX_SIZE = 3.megabytes
 
   def logo_upload_error(file)
@@ -91,13 +94,10 @@ class ApplicationController < ActionController::Base
     return 'Ungültige Bilddatei.' unless file.respond_to?(:content_type) && file.respond_to?(:tempfile)
 
     unless LOGO_ALLOWED_CONTENT_TYPES.include?(file.content_type)
-      return 'Ungültiges Dateiformat. Erlaubt sind PNG, JPG, SVG oder WebP.'
+      return 'Ungültiges Dateiformat. Erlaubt sind PNG, JPG oder WebP.'
     end
 
     return "Die Datei ist zu groß. Maximal #{LOGO_MAX_SIZE / 1.megabyte} MB erlaubt." if file.size > LOGO_MAX_SIZE
-
-    # SVG ist vektorbasiert und skaliert verlustfrei, daher entfällt die Quadrat-Prüfung.
-    return nil if file.content_type == 'image/svg+xml'
 
     require 'vips'
     begin
