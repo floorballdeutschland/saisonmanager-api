@@ -17,11 +17,14 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
     'UserMailer#reset_password' => {
       mailer_class: 'UserMailer',
       action_name: 'reset_password',
-      description: 'Link zum Zurücksetzen des Passworts.',
+      description: 'Link zum Zurücksetzen des Passworts (enthält den Benutzernamen und den Hinweis, dass der Login mit Benutzername oder E-Mail möglich ist).',
       default_subject: 'Anleitung zum Passwort zurücksetzen im Saisonmanager',
       default_from: nil,
       default_reply_to: nil,
-      placeholders: []
+      placeholders: [
+        { key: 'username', description: 'Benutzername des Kontos' },
+        { key: 'link', description: 'Link zum Zurücksetzen des Passworts' }
+      ]
     },
     'RefereeFeedbackMailer#form_available' => {
       mailer_class: 'RefereeFeedbackMailer',
