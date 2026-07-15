@@ -12,6 +12,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Verbessert
 
 - **Passwort-Reset-Mail nennt jetzt den Benutzernamen**: Wer eine Anleitung zum Zurücksetzen des Passworts erhält (z. B. nach dem Anlegen eines neuen Benutzerkontos), sah bisher keinen Hinweis auf den eigenen Benutzernamen und fragte sich beim Login „Was ist mein Benutzername?". Die Mail zeigt jetzt den Benutzernamen des Kontos und den Hinweis, dass der Login sowohl mit dem Benutzernamen als auch mit der E-Mail-Adresse möglich ist.
+- **FD-SBK darf Spielorte zusammenlegen und löschen**: Das Zusammenführen und Löschen von Spielorten war bisher ausschließlich globalen Admins vorbehalten. Jetzt darf auch die verbandsübergreifend (global) gescopte FD-SBK diese Aktionen ausführen. Regionale SBK können Spielorte weiterhin nur anlegen und bearbeiten, aber nicht zusammenlegen oder löschen.
 
 ## [1.51.0] - 2026-07-14
 

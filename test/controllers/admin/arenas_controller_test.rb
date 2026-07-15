@@ -16,8 +16,8 @@ module Admin
       assert_equal 'Neue Halle', @arena.reload.name
     end
 
-    test 'SBK darf einen Spielort nicht löschen' do
-      login(create(:user, :sbk_global))
+    test 'Regionale SBK darf einen Spielort nicht löschen' do
+      login(create(:user, :sbk_scoped))
 
       assert_no_difference -> { Arena.count } do
         delete "/api/v2/admin/arenas/#{@arena.id}"
@@ -26,15 +26,35 @@ module Admin
       assert_response :forbidden
     end
 
-    test 'SBK darf Spielorte nicht zusammenführen' do
+    test 'Regionale SBK darf Spielorte nicht zusammenführen' do
       secondary = create(:arena)
-      login(create(:user, :sbk_global))
+      login(create(:user, :sbk_scoped))
 
       assert_no_difference -> { Arena.count } do
         post "/api/v2/admin/arenas/#{@arena.id}/merge", params: { secondary_id: secondary.id }
       end
 
       assert_response :forbidden
+    end
+
+    test 'Global gescopte FD-SBK darf einen Spielort löschen' do
+      login(create(:user, :sbk_global))
+
+      assert_difference -> { Arena.count }, -1 do
+        delete "/api/v2/admin/arenas/#{@arena.id}"
+      end
+
+      assert_response :no_content
+    end
+
+    test 'Global gescopte FD-SBK darf Spielorte zusammenführen' do
+      secondary = create(:arena)
+      login(create(:user, :sbk_global))
+
+      post "/api/v2/admin/arenas/#{@arena.id}/merge", params: { secondary_id: secondary.id }
+
+      assert_response :success
+      assert_nil Arena.find_by(id: secondary.id)
     end
 
     test 'Admin darf einen Spielort löschen' do

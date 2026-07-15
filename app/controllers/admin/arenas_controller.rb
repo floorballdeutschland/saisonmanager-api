@@ -4,8 +4,10 @@ module Admin
     before_action :authorize!
     # Spielorte sind verbandsübergreifend geteilte Stammdaten – Anlegen/Bearbeiten
     # bleibt jedem SBK möglich. Löschen und Zusammenführen sind dagegen destruktiv
-    # (merge hängt Spieltage anderer Verbände um) und bleiben Admins vorbehalten (#62).
-    before_action :authorize_admin!, only: %i[destroy merge]
+    # und verbandsübergreifend (merge hängt Spieltage anderer Verbände um), daher
+    # nur für globale Admins und die global gescopte FD-SBK (ph[:sbk] enthält 0);
+    # regionale SBK bleiben ausgeschlossen (#62).
+    before_action :authorize_arena_lifecycle!, only: %i[destroy merge]
 
     def index
       render json: Arena.order(:city, :name).map(&:full_hash)
@@ -75,8 +77,9 @@ module Admin
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
 
-    def authorize_admin!
-      return if current_user.permission_hash[:admin].present?
+    def authorize_arena_lifecycle!
+      ph = current_user.permission_hash
+      return if ph[:admin].present? || (ph[:sbk].present? && ph[:sbk].include?(0))
 
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
