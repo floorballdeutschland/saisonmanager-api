@@ -917,7 +917,9 @@ class Game < ApplicationRecord
         nagoal  = true if event['guest_number'] == 2000
         e[:assist] = event['guest_assist'] if event['guest_assist'].present?
       else
-        Sentry.capture_message("missing scorer, game: #{id}, event: #{event.to_json}, #{error_meta_info}")
+        # Altdaten (Import 2010–2019) enthalten ~1.986 Spiele mit Tor-/Straf-Events ohne
+        # Spielernummer – bekannt und nicht reparierbar, daher kein Sentry-Rauschen dafür.
+        Sentry.capture_message("missing scorer, game: #{id}, event: #{event.to_json}, #{error_meta_info}") unless legacy
         next
       end
 
@@ -957,7 +959,7 @@ class Game < ApplicationRecord
       end
 
       # penalty code without a penalty
-      if !event['penalty_id'].present? && event['penalty_code_id'] && event['penalty_code_id'].to_i != 23
+      if !legacy && !event['penalty_id'].present? && event['penalty_code_id'] && event['penalty_code_id'].to_i != 23
         Sentry.capture_message("missing penalty code, game: #{id}, event: #{event.to_json}, #{error_meta_info}")
       end
 
