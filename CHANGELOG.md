@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.51.1] - 2026-07-15
+
 ### Verbessert
 
 - **Sentry-DSN nicht mehr im Quellcode**: Der Sentry-Projekt-DSN war fest im Code hinterlegt und wird jetzt aus der Umgebungsvariable `SENTRY_DSN` gelesen. Das ist eine Vorbereitung auf die Open-Source-Veröffentlichung, damit kein Drittanbieter-Token im öffentlichen Repository liegt. Ist die Variable nicht gesetzt (etwa in der lokalen Entwicklung), bleibt Sentry inaktiv. Für Staging und Produktion muss `SENTRY_DSN` in der Deploy-Umgebung gesetzt sein, sonst werden keine Fehler mehr an Sentry gemeldet.
