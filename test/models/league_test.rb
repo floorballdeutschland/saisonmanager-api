@@ -692,4 +692,34 @@ class LeagueTest < ActiveSupport::TestCase
     assert_equal 'Bundesliga', h[:league_class_name]
     assert_equal 'Herren', h[:league_category_name]
   end
+
+  # Guard für die loaded?-Zweige (game_day_numbers, sorted_qualifications):
+  # vorgeladen (with_full_hash_includes) und unvorgeladen muss full_hash
+  # dasselbe Ergebnis liefern – inkl. Sortierung.
+  test 'full_hash: identisch mit und ohne with_full_hash_includes-Preloading' do
+    go = build_go
+    league = build_league(go)
+    target = League.create!(game_operation: go, name: 'Zielliga', season_id: '2', table_modus: 'classic')
+    arena = build_arena
+    club = build_club
+    GameDay.create!(league:, arena:, club:, number: 2, date: '2025-01-08')
+    GameDay.create!(league:, arena:, club:, number: 1, date: '2025-01-01')
+    LeagueQualification.create!(source_league: league, target_league: target,
+                                rank_from: 3, rank_to: 4, qualification_type: 'playoff')
+    LeagueQualification.create!(source_league: league, target_league: target,
+                                rank_from: 1, rank_to: 2, qualification_type: 'promotion')
+
+    plain = League.find(league.id).full_hash
+    preloaded = League.with_full_hash_includes.find(league.id).full_hash
+
+    assert_equal plain, preloaded
+    assert_equal [1, 2], preloaded[:game_day_numbers]
+    assert_equal [1, 3], preloaded[:qualifications].map { |q| q[:rank_from] }
+    assert_equal %w[Zielliga Zielliga], preloaded[:qualifications].map { |q| q[:target_league_name] }
+
+    # similar_leagues (gleiche Saison/System/Klasse) laufen über den Scope –
+    # Smoke-Test, dass die Preload-Kette in full_hash(true) funktioniert.
+    similar = League.create!(game_operation: go, name: 'Parallelliga', season_id: '1', table_modus: 'classic')
+    assert_equal [similar.id], league.full_hash(true)[:similar_leagues].map { |l| l[:id] }
+  end
 end
