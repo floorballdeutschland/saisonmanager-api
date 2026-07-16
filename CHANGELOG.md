@@ -9,6 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.52.1] - 2026-07-16
+
+### Behoben
+
+- **Korrekturantrag konnte durch Doppelklick mehrfach eingereicht werden**: Der Button „Antrag einreichen" auf der Spieler-Detailseite blieb während des laufenden Requests klickbar; jeder weitere Klick erzeugte einen zusätzlichen Antrag in der SBK-Review-Queue. Der Button ist jetzt bis zur Antwort deaktiviert.
+
 ## [1.52.0] - 2026-07-16
 
 ### Neu
