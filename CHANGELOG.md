@@ -16,6 +16,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Verbessert
 
 - **Automatische Bereinigung inaktiver VM/TM-Konten archiviert statt zu löschen**: Der nächtliche Aufräumlauf entfernte Vereins- und Teammanager-Konten ohne Login seit über 3 Jahren bisher endgültig – Konten mit verknüpften Einträgen (z. B. hochgeladenen Dokumenten) wurden dabei stillschweigend übersprungen und blieben dauerhaft aktiv. Jetzt werden alle betroffenen Konten einheitlich archiviert: Login gesperrt, Daten und Verknüpfungen bleiben nachvollziehbar erhalten.
+
 ## [1.52.1] - 2026-07-16
 
 ### Behoben
