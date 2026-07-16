@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.53.0] - 2026-07-16
+
 ### Neu
 
 - **Benutzerkonten archivieren statt löschen**: In der Benutzerverwaltung gibt es jetzt einen „Archivieren"-Knopf (Berechtigung wie Bearbeiten). Ein archiviertes Konto kann sich nicht mehr einloggen (auch eine noch laufende Sitzung endet sofort), bleibt aber mit allen Verknüpfungen (Spielberichte, Dokumente) erhalten und kann jederzeit reaktiviert werden. Der bisherige „Aktiv"-Schalter entfällt – er hatte den Login nie wirklich gesperrt, sondern nur Info-Mails unterdrückt.
