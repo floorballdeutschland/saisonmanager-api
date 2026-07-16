@@ -38,7 +38,7 @@ namespace :players do
 
       # Geschlossen wird pro Eintrag (Heimat nur durch Heimat-Folgeeintrag) —
       # daher aus dem Diff zählen statt pauschal alle offenen Legacy-Einträge.
-      closed_entries = new_clubs.each_with_index.select { |c, i| c != player.clubs[i] }.map(&:first)
+      closed_entries = new_clubs.each_with_index.reject { |c, i| c == player.clubs[i] }.map(&:first)
       total_players += 1
       total_entries += closed_entries.size
 
