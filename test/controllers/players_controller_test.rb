@@ -613,6 +613,47 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  # vm_players_index: current_licenses listet alle Lizenzen der laufenden
+  # Saison mit Liga-Kürzel (Fallback: Liganame), höchste Liga zuerst; der
+  # erste Eintrag speist die bestehenden current_license_status-Felder.
+  test 'vm_players_index liefert current_licenses pro Liga mit Kürzel' do
+    vm = create(:user, :vm, club_id: @club.id)
+
+    @league.update!(short_name: '1. FBL', league_class_id: '1fbl')
+    rl_league = create(:league, :current_season, game_operation: @game_operation,
+                                                 name: 'Regionalliga Ost', short_name: nil, league_class_id: 'rl')
+    rl_team = create(:team, league: rl_league, club: @club)
+
+    player = create(
+      :player,
+      clubs: [{ 'club_id' => @club.id, 'home_club' => true, 'created_at' => 1.day.ago.iso8601 }],
+      licenses: [
+        { 'id' => 'L-rl', 'team_id' => rl_team.id, 'league_class_id' => 'rl',
+          'history' => [{ 'license_status_id' => License::REQUESTED, 'created_at' => 1.day.ago.iso8601 }] },
+        { 'id' => 'L-fbl', 'team_id' => @team.id, 'league_class_id' => '1fbl',
+          'history' => [{ 'license_status_id' => License::APPROVED, 'created_at' => 2.days.ago.iso8601 }] }
+      ]
+    )
+
+    login_as(vm)
+    get '/api/v2/admin/vm/players.json', params: { club_id: @club.id }
+    assert_response :success
+
+    rows = JSON.parse(response.body)
+    row = rows.find { |p| p['id'] == player.id }
+    assert_equal License::APPROVED, row['current_license_status_id']
+    assert_equal [
+      { 'license_status_id' => License::APPROVED, 'license_status' => 'erteilt',
+        'league_id' => @league.id, 'league_short_name' => '1. FBL' },
+      { 'license_status_id' => License::REQUESTED, 'license_status' => 'beantragt',
+        'league_id' => rl_league.id, 'league_short_name' => 'Regionalliga Ost' }
+    ], row['current_licenses']
+
+    # Spieler ohne Lizenz in der laufenden Saison bekommt kein current_licenses.
+    no_license_row = rows.find { |p| p['id'] == @player.id }
+    assert_nil no_license_row['current_licenses']
+  end
+
   private
 
   # Beendetes Spiel mit @player (Trikot 7) in der Heim-Aufstellung.
