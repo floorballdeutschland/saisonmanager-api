@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Vereins-Spielerliste zeigt Lizenz-Status pro Liga**: Die Lizenz-Badges in der Spielerübersicht für Vereinsmanager (`/verwaltung/spieler-verein`) nennen jetzt die jeweilige Liga (Kürzel, z. B. „Lizenziert 1. FBL"). Hat ein Spieler Lizenzen in mehreren Ligen der laufenden Saison, wird jede einzeln angezeigt – etwa „erteilt" für die eine Liga und „beantragt" für die andere. Die API liefert dafür ein neues Feld `current_licenses` im VM-Spielerlisten-Endpoint.
+
 ## [1.53.0] - 2026-07-16
 
 ### Neu
