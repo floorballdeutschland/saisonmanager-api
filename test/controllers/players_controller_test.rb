@@ -623,6 +623,10 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     rl_league = create(:league, :current_season, game_operation: @game_operation,
                                                  name: 'Regionalliga Ost', short_name: nil, league_class_id: 'rl')
     rl_team = create(:team, league: rl_league, club: @club)
+    rl_team2 = create(:team, league: rl_league, club: @club)
+    rl_team3 = create(:team, league: rl_league, club: @club)
+    old_league = create(:league, :previous_season, game_operation: @game_operation, short_name: 'Alt')
+    old_team = create(:team, league: old_league, club: @club)
 
     player = create(
       :player,
@@ -631,7 +635,15 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
         { 'id' => 'L-rl', 'team_id' => rl_team.id, 'league_class_id' => 'rl',
           'history' => [{ 'license_status_id' => License::REQUESTED, 'created_at' => 1.day.ago.iso8601 }] },
         { 'id' => 'L-fbl', 'team_id' => @team.id, 'league_class_id' => '1fbl',
-          'history' => [{ 'license_status_id' => License::APPROVED, 'created_at' => 2.days.ago.iso8601 }] }
+          'history' => [{ 'license_status_id' => License::APPROVED, 'created_at' => 2.days.ago.iso8601 }] },
+        # Gleiche Liga + gleicher Status über ein zweites Team → dedupliziert.
+        { 'id' => 'L-rl2', 'team_id' => rl_team2.id, 'league_class_id' => 'rl',
+          'history' => [{ 'license_status_id' => License::REQUESTED, 'created_at' => 3.hours.ago.iso8601 }] },
+        # Lizenz ohne History (Altdaten-Fall) wird übersprungen, kein 500.
+        { 'id' => 'L-kaputt', 'team_id' => rl_team3.id, 'league_class_id' => 'rl', 'history' => [] },
+        # Lizenz aus einer früheren Saison taucht nicht auf.
+        { 'id' => 'L-alt', 'team_id' => old_team.id, 'league_class_id' => '1fbl',
+          'history' => [{ 'license_status_id' => License::APPROVED, 'created_at' => 1.year.ago.iso8601 }] }
       ]
     )
 
@@ -652,6 +664,7 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     # Spieler ohne Lizenz in der laufenden Saison bekommt kein current_licenses.
     no_license_row = rows.find { |p| p['id'] == @player.id }
     assert_nil no_license_row['current_licenses']
+    assert_nil no_license_row['current_license_status_id']
   end
 
   private
