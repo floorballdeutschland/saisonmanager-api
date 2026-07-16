@@ -7,8 +7,9 @@
 #
 # Kriterium für betroffene Einträge:
 #   - Eintrag ohne created_at und ohne valid_until (Legacy-Eintrag)
-#   - Spieler hat zusätzlich mindestens einen datierten Eintrag bei einem ANDEREN Verein
-#     (= klarer Hinweis, dass der Spieler den Verein gewechselt hat)
+#   - Spieler hat zusätzlich mindestens einen datierten HEIMAT-Eintrag (home_club:
+#     true) bei einem ANDEREN Verein (= echter Vereinswechsel; eine bloße Freigabe
+#     ist KEIN Wechsel-Beweis — Vorfall 2026-07-13, siehe MembershipCloser)
 #   - Spieler ist NICHT noch aktiv in der aktuellen Saison bei dem betreffenden Verein
 #     (= keine irrtümliche Schließung noch laufender Mitgliedschaften)
 #
@@ -34,7 +35,8 @@ namespace :players do
 
     # Betroffene Spieler:
     #   - mind. ein Legacy-Eintrag (kein created_at, kein valid_until, club_id vorhanden)
-    #   - mind. ein datierter Eintrag bei einem ANDEREN Verein als dem Legacy-Eintrag
+    #   - mind. ein datierter HEIMAT-Eintrag bei einem ANDEREN Verein als dem
+    #     Legacy-Eintrag (bloße Freigaben zählen nicht als Wechsel-Beweis)
     affected = Player.all.select do |p|
       clubs = Array(p.clubs)
 
@@ -43,7 +45,9 @@ namespace :players do
 
       legacy_club_ids = legacy.map { |c| c['club_id'].to_s }.to_set
 
-      clubs.any? { |c| c['created_at'].present? && !legacy_club_ids.include?(c['club_id'].to_s) }
+      clubs.any? do |c|
+        c['created_at'].present? && c['home_club'] == true && !legacy_club_ids.include?(c['club_id'].to_s)
+      end
     end
 
     puts "#{affected.size} Spieler mit zu korrigierenden Legacy-Vereinseinträgen gefunden.\n\n"
@@ -54,9 +58,12 @@ namespace :players do
     affected.each do |player|
       clubs = player.clubs.map(&:dup)
 
-      # Ältester datierter Eintrag (für Fallback)
       dated = clubs.select { |c| c['created_at'].present? }.sort_by { |c| c['created_at'] }
-      earliest_dated_date = dated.any? ? (Date.parse(dated.first['created_at'].to_s[0, 10]) rescue nil) : nil
+
+      # Ältester datierter HEIMAT-Eintrag (für Fallback) — nur ein echter
+      # Vereinswechsel taugt als Ende-Anhaltspunkt, eine Freigabe nicht.
+      dated_home = dated.select { |c| c['home_club'] == true }
+      earliest_dated_date = dated_home.any? ? (Date.parse(dated_home.first['created_at'].to_s[0, 10]) rescue nil) : nil
 
       # Legacy-Einträge, deren Verein nicht unter den datierten Einträgen vorkommt
       dated_club_ids = dated.map { |c| c['club_id'].to_s }.to_set
