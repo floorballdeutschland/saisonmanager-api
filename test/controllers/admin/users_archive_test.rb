@@ -46,6 +46,26 @@ module Admin
       assert_equal 'Dieses Benutzerkonto wurde archiviert.', JSON.parse(response.body)['message']
     end
 
+    test 'Login-Versuch eines archivierten Kontos lässt last_login_at unverändert' do
+      @target.update!(last_login_at: 2.years.ago)
+      @target.archive!(@admin.id)
+      stamp = @target.reload.last_login_at
+
+      post '/api/v2/login', params: { username: @target.user_name, password: 'password123' }
+      assert_response :unauthorized
+      assert_equal stamp.to_i, @target.reload.last_login_at.to_i
+    end
+
+    test 'lost_password verschickt keine Reset-Mail an archivierte Konten' do
+      @target.archive!(@admin.id)
+
+      assert_no_difference -> { ActionMailer::Base.deliveries.size } do
+        post '/api/v2/lost_password', params: { username: @target.user_name }
+      end
+      assert_response :success
+      assert_nil @target.reload.password_reset_token
+    end
+
     test 'laufende Session eines archivierten Kontos endet mit 401' do
       login(@target)
       get '/api/v2/admin/users'

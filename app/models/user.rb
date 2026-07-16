@@ -338,10 +338,12 @@ class User < ApplicationRecord
       user.password_confirmation = password
       user.password_reset_token = nil
       user.old_password = nil
-      user.last_login_at = Time.now
+      # Archivierte Konten weist der Controller ab – ihr last_login_at bleibt
+      # unangetastet, damit der Inaktiv-Status nicht verfälscht wird.
+      user.last_login_at = Time.now unless user.archived?
       user if user.save
-    elsif user.password_digest.present? && user.authenticate(password) && user.update(last_login_at: Time.now)
-      user
+    elsif user.password_digest.present? && user.authenticate(password)
+      user if user.archived? || user.update(last_login_at: Time.now)
     end
   end
 end
