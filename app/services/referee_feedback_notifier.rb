@@ -37,7 +37,8 @@ class RefereeFeedbackNotifier
   # ist die TM-Team-Liste (VMs verwalten über den Verein, nicht über dieses Array),
   # zusätzlich gegen permission_hash[:tm] abgesichert.
   def self.team_managers(team_id)
-    User.where('? = ANY(teams)', team_id)
+    User.not_archived
+        .where('? = ANY(teams)', team_id)
         .where(active: true, receive_info_mails: true)
         .where.not(email: [nil, ''])
         .select { |u| u.permission_hash[:tm].to_a.include?(team_id) }

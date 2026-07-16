@@ -9,6 +9,22 @@ class User < ApplicationRecord
 
   belongs_to :referee, optional: true
 
+  scope :not_archived, -> { where(archived_at: nil) }
+
+  def archived?
+    archived_at.present?
+  end
+
+  # Archivierte Konten können sich nicht mehr einloggen (Prüfung in
+  # ApplicationController#current_user bzw. SessionsController#login).
+  def archive!(user_id)
+    update!(archived_at: Time.current, archived_by: user_id)
+  end
+
+  def unarchive!
+    update!(archived_at: nil, archived_by: nil)
+  end
+
   def login_hash
     perms = permissions_items
     {

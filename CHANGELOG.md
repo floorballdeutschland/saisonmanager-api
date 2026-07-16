@@ -9,6 +9,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Benutzerkonten archivieren statt löschen**: In der Benutzerverwaltung gibt es jetzt einen „Archivieren"-Knopf (Berechtigung wie Bearbeiten). Ein archiviertes Konto kann sich nicht mehr einloggen (auch eine noch laufende Sitzung endet sofort), bleibt aber mit allen Verknüpfungen (Spielberichte, Dokumente) erhalten und kann jederzeit reaktiviert werden. Der bisherige „Aktiv"-Schalter entfällt – er hatte den Login nie wirklich gesperrt, sondern nur Info-Mails unterdrückt.
+
+### Verbessert
+
+- **Automatische Bereinigung inaktiver VM/TM-Konten archiviert statt zu löschen**: Der nächtliche Aufräumlauf entfernte Vereins- und Teammanager-Konten ohne Login seit über 3 Jahren bisher endgültig – Konten mit verknüpften Einträgen (z. B. hochgeladenen Dokumenten) wurden dabei stillschweigend übersprungen und blieben dauerhaft aktiv. Jetzt werden alle betroffenen Konten einheitlich archiviert: Login gesperrt, Daten und Verknüpfungen bleiben nachvollziehbar erhalten.
+
 ## [1.52.0] - 2026-07-16
 
 ### Neu

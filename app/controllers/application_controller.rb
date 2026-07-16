@@ -73,7 +73,12 @@ class ApplicationController < ActionController::Base
 
   def current_user
     user_id = cookies.signed[:user_id]
-    User.find_by_id user_id if user_id
+    return unless user_id
+
+    user = User.find_by_id(user_id)
+    # Archivierte Konten gelten als nicht angemeldet – auch eine noch gültige
+    # Cookie-Session (bis 7 Tage) endet damit sofort per 401 (Frontend loggt aus).
+    user unless user&.archived?
   end
 
   def save_current_user

@@ -9,7 +9,9 @@ class SessionsController < ApplicationController
 
     user = User.login(username, password)
 
-    if user
+    if user&.archived?
+      render json: { success: false, message: 'Dieses Benutzerkonto wurde archiviert.' }, status: :unauthorized
+    elsif user
       cookies.signed[:user_id] = { value: user.id, httponly: true, expires: 7.days }
 
       render json: { success: true, user: user.login_hash }
