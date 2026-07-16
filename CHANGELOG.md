@@ -12,6 +12,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Behoben
 
 - **Vereinsmanager sahen Spieler mit abgelaufener Freigabe weiter in der Spielerliste**: Die VM-Spielerliste listete bisher alle Spieler mit einem Vereinseintrag, ohne dessen Ablaufdatum (`valid_until`) zu prüfen. Dadurch blieben Spieler sichtbar, deren Freigabe (Zweitverein-Mitgliedschaft, gültig bis 15.07.) oder deren Vereinszugehörigkeit längst abgelaufen war. Die Liste nutzt jetzt dieselbe Gültigkeitsprüfung wie die restliche Anwendung (`Club#players`) und zeigt nur noch Spieler mit aktueller Mitgliedschaft.
+- **Legacy-Aufräum-Tasks schlossen Heimatmitgliedschaften fälschlich**: `players:close_legacy_memberships` und `players:fix_club_valid_until` werteten jeden datierten Vereinseintrag als Beleg für einen Vereinswechsel – auch bloße Freigaben (Zweitverein). Dadurch verloren 351 aktive Spieler ihre (undatierte, aber weiterhin gültige) Heimatmitgliedschaft und konnten u. a. keine Lizenzen mehr beantragen. Beide Tasks werten jetzt nur noch datierte Heimat-Einträge (`home_club: true`) als Wechsel-Beleg. Neuer Task `players:restore_alt_snapshot` stellt die betroffenen Heimatmitgliedschaften sowie beim Umzug verlorene Geburtsdaten anhand eines Abgleichs mit dem Alt-System wieder her (Dry-Run-fähig, idempotent; überspringt zwischenzeitlich echt geänderte Datensätze).
 
 ## [1.54.0] - 2026-07-16
 
