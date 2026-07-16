@@ -1,8 +1,8 @@
 module Admin
   class UsersController < ApplicationController
     before_action :authorize_user_management!
-    before_action :set_managed_user, only: %i[show update destroy trigger_password_reset add_role remove_role]
-    before_action :require_admin_for_elevated_target!, only: %i[update destroy trigger_password_reset]
+    before_action :set_managed_user, only: %i[show update destroy trigger_password_reset add_role remove_role archive unarchive]
+    before_action :require_admin_for_elevated_target!, only: %i[update destroy trigger_password_reset archive unarchive]
 
     # GET /api/v2/admin/users
     def index
@@ -34,14 +34,6 @@ module Admin
           # zuweisen – sonst ließen sich beliebige Teams an ein Konto hängen.
           return render json: { error: 'Nicht berechtigt, Teams zuzuweisen' }, status: :forbidden
         end
-      end
-
-      if params.key?(:active)
-        unless ph[:admin].present? || ph[:sbk].present?
-          return render json: { error: 'Nur SBK/Admin kann Benutzer deaktivieren' }, status: :forbidden
-        end
-
-        updates[:active] = params[:active]
       end
 
       if params.key?(:role)
@@ -147,6 +139,26 @@ module Admin
     rescue ActiveRecord::InvalidForeignKey
       render json: { error: 'Benutzer kann nicht gelöscht werden: Es existieren noch verknüpfte Einträge (z.B. Spielberichte oder Dokumente).' },
              status: :unprocessable_entity
+    end
+
+    # POST /api/v2/admin/users/:id/archive
+    # Ersetzt das frühere Hart-Löschen bzw. den active-Schalter: Das Konto bleibt
+    # mit allen Verknüpfungen erhalten, kann sich aber nicht mehr einloggen.
+    # Berechtigung wie Bearbeiten (authorize_user_management! + Scope + Elevated-Check).
+    def archive
+      return render json: { error: 'Eigenes Konto kann nicht archiviert werden' }, status: :forbidden if @managed_user.id == current_user.id
+      return render json: { error: 'Benutzer ist bereits archiviert' }, status: :unprocessable_entity if @managed_user.archived?
+
+      @managed_user.archive!(current_user.id)
+      render json: user_json(@managed_user.reload, full: true)
+    end
+
+    # POST /api/v2/admin/users/:id/unarchive
+    def unarchive
+      return render json: { error: 'Benutzer ist nicht archiviert' }, status: :unprocessable_entity unless @managed_user.archived?
+
+      @managed_user.unarchive!
+      render json: user_json(@managed_user.reload, full: true)
     end
 
     # POST /api/v2/admin/users/:id/trigger_password_reset
@@ -420,7 +432,7 @@ module Admin
         last_name: user.last_name,
         email: user.email,
         club_id: user.club_id,
-        active: user.active,
+        archived_at: user.archived_at,
         inactive: user.last_login_at.present? ? user.last_login_at < 3.years.ago : user.created_at < 3.years.ago,
         last_login_at: user.last_login_at,
         created_at: user.created_at,
