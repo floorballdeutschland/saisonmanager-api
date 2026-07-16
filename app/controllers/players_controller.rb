@@ -853,7 +853,13 @@ class PlayersController < ApplicationController
               tm_can_access_club?(ph, club_id)
     return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless allowed
 
-    players = Player.where("clubs @> ?", [{ club_id: club_id }].to_json).order(:last_name, :first_name)
+    club = Club.find_by(id: club_id)
+    return render json: { message: 'Verein nicht gefunden.' }, status: :not_found unless club
+
+    # Nur Spieler mit gueltiger (nicht abgelaufener) Mitgliedschaft in diesem Verein,
+    # analog zu Club#players. Der fruehere Roh-Query (clubs @> {club_id}) ignorierte
+    # valid_until und zeigte Spieler mit laengst abgelaufener Freigabe weiterhin an.
+    players = club.players
     leagues_by_team = Team.joins(:league)
                           .where(leagues: { season_id: Setting.current_season_id })
                           .pluck(:id, 'leagues.id', 'leagues.short_name', 'leagues.name')
