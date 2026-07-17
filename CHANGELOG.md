@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.54.2] - 2026-07-17
+
 ### Behoben
 
 - **Liga-Links aus vergangenen Saisons zeigten eine weiße Seite**: Auf der Spieler-Statistikseite (z. B. `/spieler/…`) führten Links zu Ligen früherer Saisons (etwa `/fvd/944-1-fbl`) auf eine leere Seite. Die öffentliche Liga-Seite suchte die Liga nur in der Ligenliste der aktuell gewählten Saison. Ligen anderer Saisons werden jetzt einzeln nachgeladen und die Saisonauswahl wird passend zur Liga umgestellt. (Frontend)
