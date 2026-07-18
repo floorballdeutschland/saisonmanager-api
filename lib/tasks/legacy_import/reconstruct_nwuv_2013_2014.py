@@ -308,7 +308,7 @@ def main():
     orphan_events = sorted({int(e["id_begegnung"]) for e in ereignisse} - beg_ids)
     orphan_lineups = sorted({int(m["id_begegnung"]) for m in mitspieler} - beg_ids)
 
-    def by_liga(rows, id_key, mapper):
+    def by_liga(rows, mapper):
         out = defaultdict(list)
         for r in rows:
             liga = mapper(r)
@@ -316,16 +316,16 @@ def main():
                 out[liga].append(r)
         return out
 
-    mann_by_liga = by_liga(mannschaften, None, lambda r: int(r["id_liga"]))
-    st_by_liga = by_liga(spieltage, None, lambda r: int(r["id_liga"]))
-    beg_by_liga = by_liga(begegnungen, None, lambda r: beg_to_liga[r["id_begegnung"]])
-    er_by_liga = by_liga(ereignisse, None, lambda r: beg_to_liga.get(int(r["id_begegnung"])))
-    ms_by_liga = by_liga(mitspieler, None, lambda r: beg_to_liga.get(int(r["id_begegnung"])))
-    bt_by_liga = by_liga(betreuer, None, lambda r: beg_to_liga.get(int(r["id_begegnung"])))
-    sb_by_liga = by_liga(spielberichte, None, lambda r: beg_to_liga.get(int(r["id_begegnung"])))
+    mann_by_liga = by_liga(mannschaften, lambda r: int(r["id_liga"]))
+    st_by_liga = by_liga(spieltage, lambda r: int(r["id_liga"]))
+    beg_by_liga = by_liga(begegnungen, lambda r: beg_to_liga[r["id_begegnung"]])
+    er_by_liga = by_liga(ereignisse, lambda r: beg_to_liga.get(int(r["id_begegnung"])))
+    ms_by_liga = by_liga(mitspieler, lambda r: beg_to_liga.get(int(r["id_begegnung"])))
+    bt_by_liga = by_liga(betreuer, lambda r: beg_to_liga.get(int(r["id_begegnung"])))
+    sb_by_liga = by_liga(spielberichte, lambda r: beg_to_liga.get(int(r["id_begegnung"])))
 
     mann_liga = {int(m["id_mannschaft"]): int(m["id_liga"]) for m in mannschaften}
-    lz_by_liga = by_liga(lizenzen, None, lambda r: mann_liga.get(int(r["id_mannschaft"])))
+    lz_by_liga = by_liga(lizenzen, lambda r: mann_liga.get(int(r["id_mannschaft"])))
     lz_ids_by_liga = {liga: {int(lz["id_lizenz"]) for lz in rows} for liga, rows in lz_by_liga.items()}
     lv_by_liga = defaultdict(list)
     for lv in lizenzverlauf:

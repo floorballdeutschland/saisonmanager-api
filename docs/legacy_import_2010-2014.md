@@ -195,8 +195,8 @@ Events) über die JSON-Brücke gegen die prod-nahe Dev-DB:
 - **Schiris** werden als Freitext übernommen (`referee1_string`/`referee2_string` aus
   `spielbericht`); bewusst **keine** Verknüpfung zu `referees` (kein `referee_ids`).
 - **`nwuv` 2013/14**: Im MariaDB-Dump fehlt die `begegnung`-Tabelle. Die Spiele
-  werden stattdessen aus den Ergebnis-Caches der Alt-PHP-App rekonstruiert – siehe
-  Abschnitt „Sonderfall NWUV 2013/14". 8 Begegnungen mit Events aber ohne
+  werden stattdessen aus den Ergebnis-Caches der Alt-PHP-App rekonstruiert (siehe
+  Abschnitt „Sonderfall NWUV 2013/14"). 8 Begegnungen mit Events aber ohne
   Cache-Zeile bleiben ausgelassen (kein Team-/Datum-Link).
 - **Spieler ohne Geburtsdatum** im Neusystem bzw. Namensdubletten bleiben
   ungematcht (denormalisierter Name im Lineup erhalten; 78–98 % je Verband).
@@ -218,8 +218,8 @@ Events) über die JSON-Brücke gegen die prod-nahe Dev-DB:
 ## Sonderfall NWUV 2013/14 (rekonstruierte Begegnungen)
 
 Der MariaDB-Dump `saison201314.sql` enthält für **NWUV (NRW)** keine Tabelle
-`nwuv_2013_2014_begegnung` (weder `CREATE` noch `INSERT`). Vorhanden – aber
-verwaist – sind `liga` (13), `mannschaft` (67), `spieltag` (94, datiert),
+`nwuv_2013_2014_begegnung` (weder `CREATE` noch `INSERT`). Vorhanden, aber
+verwaist, sind `liga` (13), `mannschaft` (67), `spieltag` (94, datiert),
 `ereignis` (~5.700), `mitspieler` (~6.800), `spielbericht`, `lizenz`. Ohne die
 `begegnung` fehlt der Verbindungssatz „welche zwei Teams, welcher Spieltag" → der
 normale Import legt Ligen/Teams an, schreibt aber **0 Spiele** (der Importer ist
@@ -273,3 +273,10 @@ mit dem Event-Log (1 Spiel mit abgeschnittenem Event-Log in der Quelle, beg 810)
   keine Cache-Zeile → kein Team-/Datum-Link, nicht rekonstruiert.
 - **Anstosszeit** je Spiel ist in den Caches nicht enthalten (`uhrzeit` bleibt leer;
   das Datum kommt aus dem Spieltag).
+- **Forfait-Spiele mit Spielbericht** (11 Stück): Wo der Cache ein `(forfait)`
+  markiert, wird `forfeit` gesetzt. `Game#score` nimmt dann den Forfait-Pfad
+  (`league.forfait_goals`, legacy KF = 8) und ignoriert die Events für die
+  Wertung. Sieger und Punkte stimmen mit dem Alt-System überein, aber die
+  Tordifferenz kann abweichen, wo das Alt-System die echten Gegnertore behielt
+  (z. B. Cache 0:13 statt 0:8). Die Events bleiben als Spielbericht erhalten
+  (nur nicht wertungswirksam).
