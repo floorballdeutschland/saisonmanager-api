@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Verwaiste Spalte `users.active` entfernt**: Das Boolean-Flag ist seit der Konto-Archivierung (Release 1.53.0) weder lesend noch schreibend in Verwendung und wird per Migration entfernt. Historisch hat es den Login nie gesperrt, sondern nur Info-Mails unterdrückt und ein Badge in der Benutzerliste gefärbt. Der Legacy-Endpoint `UsersController#index` (liefert per `as_json` alle Spalten) verliert das Feld dadurch automatisch mit.
+
 ### Behoben
 
 - **Alte Vereinsmitgliedschaften standen fälschlich „bis heute" offen**: Aus dem Alt-System übernommene Erst-/Heimatvereine haben oft kein Enddatum, sodass ein Spieler beim alten Verein als aktuelles Mitglied auftauchte, obwohl er längst gewechselt ist (der Vereinsmanager des Altvereins sah ihn weiter in seiner Spielerliste). Der Task `players:close_legacy_memberships` schließt solche offenen Mitgliedschaften zum Eintrittsdatum des nächsten Vereins. Er wurde gehärtet: Als Folgeverein zählen nur echte, andere Vereine. Platzhalter-/Ablage-Vereine und eine Rückkehr zum selben Verein werden nicht mehr als Wechsel gewertet, sodass kein falsches (zu frühes) Enddatum gesetzt wird. Gibt es keinen echten Folgeverein, bleibt die Mitgliedschaft bewusst offen.
