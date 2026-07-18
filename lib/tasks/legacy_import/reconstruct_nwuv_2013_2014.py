@@ -227,6 +227,13 @@ def main():
     ap.add_argument("--sql", required=True, help="Pfad zu saison201314.sql")
     ap.add_argument("--tabs", required=True, help="nwuv/tables Ordner mit *_matches.tab")
     ap.add_argument("--out", required=True, help="Ziel-Bundle-JSON")
+    ap.add_argument("--no-licenses", action="store_true",
+                    help="Lizenzen weglassen (leere lizenz/lizenzverlauf-Arrays). "
+                         "Noetig, solange der 'aktuell'-Lizenzfilter (player.rb: "
+                         "team_id >= Setting.current_min_team) rueckdatierte Importe "
+                         "oberhalb der Schwelle faelschlich als aktuelle Lizenz zaehlt. "
+                         "Spiele/Events/Aufstellungen und damit alle Statistiken bleiben "
+                         "vollstaendig; nur die Lizenz-Historie 2013/14 entfaellt.")
     args = ap.parse_args()
 
     def load(t):
@@ -350,8 +357,10 @@ def main():
             "mitspieler": [pick(m, BUNDLE_KEYS["mitspieler"]) for m in ms_by_liga.get(lid, [])],
             "betreuer": [pick(b, BUNDLE_KEYS["betreuer"]) for b in bt_by_liga.get(lid, [])],
             "spielbericht": [pick(s, BUNDLE_KEYS["spielbericht"]) for s in sb_by_liga.get(lid, [])],
-            "lizenz": [pick(lz, BUNDLE_KEYS["lizenz"]) for lz in lz_by_liga.get(lid, [])],
-            "lizenzverlauf": [pick(lv, BUNDLE_KEYS["lizenzverlauf"]) for lv in lv_by_liga.get(lid, [])],
+            "lizenz": [] if args.no_licenses
+                      else [pick(lz, BUNDLE_KEYS["lizenz"]) for lz in lz_by_liga.get(lid, [])],
+            "lizenzverlauf": [] if args.no_licenses
+                             else [pick(lv, BUNDLE_KEYS["lizenzverlauf"]) for lv in lv_by_liga.get(lid, [])],
         })
 
     # ── globale Stammdaten (gefiltert auf referenzierte IDs) ───────────────────
@@ -387,7 +396,8 @@ def main():
     print("Begegnungen:      %d rekonstruiert (davon %d Forfait)" % (len(begegnungen), n_ff))
     print("Ereignis-Zeilen:  %d" % sum(len(e["ereignis"]) for e in league_entries))
     print("Mitspieler-Zeilen:%d" % sum(len(e["mitspieler"]) for e in league_entries))
-    print("Lizenzen:         %d" % sum(len(e["lizenz"]) for e in league_entries))
+    print("Lizenzen:         %s" % ("weggelassen (--no-licenses)" if args.no_licenses
+                                     else sum(len(e["lizenz"]) for e in league_entries)))
     print("Vereine/Spielorte/Spieler: %d / %d / %d" % (len(vereine), len(spielorte), len(spieler)))
     if unresolved_team:
         print("!! Unaufloesbare Teams: %d -> %s" % (len(unresolved_team), unresolved_team[:10]))
