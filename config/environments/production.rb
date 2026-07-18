@@ -55,8 +55,11 @@ Rails.application.configure do
   # :memory_store prozessweit geteilt und thread-sicher. Der FileStore erzeugte unter
   # Last eine Race Condition beim Anlegen der Cache-Verzeichnisse
   # (Errno::ENOENT @ dir_s_mkdir), die den API-Key-Check in Rack::Attack und damit
-  # ganze Public-Requests mit 500 abbrechen ließ.
-  config.cache_store = :memory_store
+  # ganze Public-Requests mit 500 abbrechen ließ. Die Größe ist bewusst deutlich
+  # über dem Default (32 MB) gewählt, damit die langlebigen Statistik-Caches
+  # (Spieler-/Team-Stats, bis zu 1 Woche TTL) nicht durch LRU-Eviction verdrängt
+  # werden und die DB-Last wieder hochtreiben.
+  config.cache_store = :memory_store, { size: 128.megabytes }
 
   # Use a real queuing backend for Active Job (and separate queues per environment).
   # config.active_job.queue_adapter     = :resque
