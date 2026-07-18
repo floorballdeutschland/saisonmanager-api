@@ -9,12 +9,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
-## [1.54.3] - 2026-07-19
-
 ### Verbessert
 
 - **Serverseitiges Caching für die letzten ungecachten Public-Endpunkte**: Die öffentliche Spiel-Detailseite (`games#show`) berechnete bei jedem Abruf den kompletten Spielbericht live aus den JSONB-Spalten; anonyme Abrufe kommen jetzt aus dem Cache (invalidiert sich bei jedem Spiel-Event über `updated_at` im Key, eingeloggte Nutzer bleiben ungecacht). Auch der Spieltag-Spielplan (`leagues/:id/game_days/:nr/schedule`, einziger Schedule-Endpunkt ohne Cache) und die Ligenliste eines Verbands (`game_operations/:id/leagues/:season`) werden jetzt 5 Minuten gecacht. Nebenbei behoben: Der Spieltag-Spielplan lieferte laufende Ergebnisse auch an Nicht-Realtime-API-Keys ungefiltert aus – er wendet jetzt wie die übrigen Spielplan-Endpunkte die Ergebnis-Verzögerung an.
-- **Öffentliche Endpunkte erlauben Browser-Caching**: Die von den öffentlichen Seiten genutzten API-Antworten (Spielplan, Tabelle, Scorer, Verbands-/Ligenliste, Init) tragen jetzt kurze `Cache-Control: public`-Laufzeiten (15–60 s) statt `max-age=0, private`. Das Durchklicken zwischen Tabelle, Scorer und Spielplan bedient sich damit aus dem Browser-Cache statt jedes Mal die API zu treffen. Die Spielplan-Endpunkte bleiben mit 15 s unter dem 30-s-Poll-Intervall der Live-Ansichten und senden `Vary: X-Api-Key`, da Live-Ergebnisse je nach API-Key verzögert ausgeliefert werden.
+- **Öffentliche Endpunkte erlauben Browser-Caching**: Die von den öffentlichen Seiten genutzten API-Antworten (Spielplan, Tabelle, Scorer, Verbands-/Ligenliste, Init) tragen jetzt kurze `Cache-Control: public`-Laufzeiten (15–60 s) statt `max-age=0, private`. Das Durchklicken zwischen Tabelle, Scorer und Spielplan bedient sich damit aus dem Browser-Cache statt jedes Mal die API zu treffen. Die Spielplan-Endpunkte bleiben mit 15 s unter dem 30-s-Poll-Intervall der Live-Ansichten und senden `Vary: X-Api-Key`, da Live-Ergebnisse je nach API-Key verzögert ausgeliefert werden. (Per #162 nach dem 1.54.3-Release gemergt, daher hier unter Unreleased.)
+
+## [1.54.3] - 2026-07-19
+
+### Verbessert
 
 - **Verwaiste Spalte `users.active` entfernt**: Das Boolean-Flag ist seit der Konto-Archivierung (Release 1.53.0) weder lesend noch schreibend in Verwendung und wird per Migration entfernt. Historisch hat es den Login nie gesperrt, sondern nur Info-Mails unterdrückt und ein Badge in der Benutzerliste gefärbt. Der Legacy-Endpoint `UsersController#index` (liefert per `as_json` alle Spalten) verliert das Feld dadurch automatisch mit.
 - **Bereinigungs-Task für historische Ligaklassen vervollständigt**: Der Task `leagues:renormalize_class_ids` normalisiert jetzt — wie die einmalige Migration #297 — Ligen **und** die Lizenz-Kopien in `players.licenses[].league_class_id` in einem Lauf und prüft zusätzlich die `league_classes`-Settings-Map. Hintergrund: Der Go-Live-Datenbestand kam an Migration #297 vorbei, wodurch auf Prod ~1977 Ligen (Saisons 6–17) und ~127.000 Lizenz-Kopien Legacy-Werte tragen; ein Ligen-only-Lauf hätte eine Inkonsistenz zu den Lizenz-Kopien erzeugt. Idempotent, Dry-Run als Standard (`DRY_RUN=false` zum Ausführen); betrifft nur die Anzeige/Rang-Ableitung historischer Saisons (#119).
