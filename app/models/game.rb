@@ -1311,6 +1311,11 @@ class Game < ApplicationRecord
     %w[schedule current_schedule table grouped_table scorer].each do |key|
       Rails.cache.delete("leagues/#{league_id}/#{key}")
     end
+
+    # Spieltag-Schedules haben einen Key pro Spieltagsnummer – per Muster
+    # löschen. Regexp-Matcher setzt den MemoryStore voraus (Prod-Setting);
+    # bei einem Wechsel auf Redis müsste hier ein Glob-String hin.
+    Rails.cache.delete_matched(%r{\Aleagues/#{league_id}/game_day_schedule/})
   end
 
   # Spielerstatistik-Cache (PlayersController#stats) für alle Spieler dieser

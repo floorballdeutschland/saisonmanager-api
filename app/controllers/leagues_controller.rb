@@ -535,9 +535,21 @@ class LeaguesController < ApplicationController
 
   # GET /leagues/1/game_days/15/schedule
   def game_day_schedule
-    @league = League.find(params[:id])
+    id = params[:id]
+    game_day_number = params[:game_day_number]
 
-    render json: @league.game_day_schedule(params[:game_day_number])
+    # Wie die übrigen Liga-Endpunkte gecacht; Invalidierung über
+    # Game#flush_league_caches (delete_matched über alle Spieltag-Keys).
+    schedule = Rails.cache.fetch("leagues/#{id}/game_day_schedule/#{game_day_number}",
+                                 expires_in: 5.minutes) do
+      League.find(id).game_day_schedule(game_day_number)
+    end
+
+    # delay_live_scores wie bei schedule/current_schedule: ohne den Filter
+    # umging dieser Endpunkt die Ergebnis-Verzögerung für Nicht-Realtime-Keys.
+    expires_in 15.seconds, public: true
+    response.headers['Vary'] = 'X-Api-Key'
+    render json: delay_live_scores(schedule)
   end
 
   # GET /leagues/1/game_days/current/schedule

@@ -12,16 +12,20 @@ class GameOperationsController < ApplicationController
 
   # GET /game_operations/1/leagues
   def index_leagues
-    current_season_id = Setting.current_season_id
+    season_id = params[:season_id].presence || Setting.current_season_id
 
-    leagues = @game_operation.leagues
-    leagues = if params[:season_id]
-                leagues.where(season_id: params[:season_id])
-              else
-                leagues.where(season_id: current_season_id)
-              end
+    # Teil der Request-Kette jedes öffentlichen Seitenaufbaus (Ligenliste des
+    # Verbands). full_hash lädt Banner/GameOperation-Anhänge mit – ohne Cache
+    # bei jedem Aufruf. Kein expliziter Flush: Liga-Stammdaten ändern sich
+    # selten, 5 Minuten Verzug sind dort verkraftbar (Admin-Views nutzen die
+    # ungecachten admin/-Endpunkte).
+    result = Rails.cache.fetch("game_operations/#{@game_operation.id}/leagues/#{season_id}",
+                               expires_in: 5.minutes) do
+      @game_operation.leagues.where(season_id:).with_full_hash_includes.map(&:full_hash)
+    end
 
-    render json: leagues.with_full_hash_includes.map(&:full_hash)
+    expires_in 60.seconds, public: true
+    render json: result
   end
 
   # GET /game_operations/1/clubs/:season_id
