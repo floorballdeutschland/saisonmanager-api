@@ -95,8 +95,8 @@ class LegacyImport::MembershipCloserTest < ActiveSupport::TestCase # rubocop:dis
   test 'ignoriert Platzhalter-/Ablage-Verein als Folgeverein und nimmt den nächsten echten' do
     clubs = [
       { 'club_id' => 42, 'home_club' => true },
-      { 'club_id' => 83, 'created_at' => '2015-01-01T00:00:00+01:00' }, # Ablage/Junk – ignorieren
-      { 'club_id' => 37, 'created_at' => '2016-09-15T09:34:58+02:00' }  # echter Folgeverein
+      { 'club_id' => 83, 'home_club' => true, 'created_at' => '2015-01-01T00:00:00+01:00' }, # Ablage/Junk – ignorieren
+      { 'club_id' => 37, 'home_club' => true, 'created_at' => '2016-09-15T09:34:58+02:00' }  # echter Folgeverein
     ]
 
     new_clubs, changed = LegacyImport::MembershipCloser.close(clubs, ignore_club_ids: [83])
@@ -108,7 +108,7 @@ class LegacyImport::MembershipCloserTest < ActiveSupport::TestCase # rubocop:dis
   test 'lässt offen, wenn der einzige Folgeeintrag ein ignorierter Verein ist' do
     clubs = [
       { 'club_id' => 24, 'home_club' => true },
-      { 'club_id' => 83, 'created_at' => '2015-12-09T00:00:00+01:00' } # nur Junk
+      { 'club_id' => 83, 'home_club' => true, 'created_at' => '2015-12-09T00:00:00+01:00' } # nur Junk
     ]
 
     new_clubs, changed = LegacyImport::MembershipCloser.close(clubs, ignore_club_ids: [83])
@@ -120,7 +120,7 @@ class LegacyImport::MembershipCloserTest < ActiveSupport::TestCase # rubocop:dis
   test 'Rückkehr zum selben Verein zählt nicht als Folgeverein' do
     clubs = [
       { 'club_id' => 42, 'home_club' => true },
-      { 'club_id' => 42, 'created_at' => '2018-11-13T00:00:00+01:00' } # selber Verein
+      { 'club_id' => 42, 'home_club' => true, 'created_at' => '2018-11-13T00:00:00+01:00' } # selber Verein
     ]
 
     new_clubs, changed = LegacyImport::MembershipCloser.close(clubs)
@@ -132,8 +132,8 @@ class LegacyImport::MembershipCloserTest < ActiveSupport::TestCase # rubocop:dis
   test 'selber Verein wird übersprungen, anderer echter Verein schließt trotzdem' do
     clubs = [
       { 'club_id' => 42, 'home_club' => true },
-      { 'club_id' => 42, 'created_at' => '2014-01-01T00:00:00+01:00' }, # selber Verein – ignorieren
-      { 'club_id' => 37, 'created_at' => '2016-09-15T09:34:58+02:00' }  # anderer Verein
+      { 'club_id' => 42, 'home_club' => true, 'created_at' => '2014-01-01T00:00:00+01:00' }, # selber Verein – ignorieren
+      { 'club_id' => 37, 'home_club' => true, 'created_at' => '2016-09-15T09:34:58+02:00' }  # anderer Verein
     ]
 
     new_clubs, changed = LegacyImport::MembershipCloser.close(clubs)
