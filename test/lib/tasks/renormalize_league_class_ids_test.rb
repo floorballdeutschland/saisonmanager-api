@@ -38,8 +38,8 @@ class RenormalizeLeagueClassIdsTest < ActiveSupport::TestCase
 
   test 'Dry-Run (Standard) ändert weder Ligen noch Lizenzen' do
     player = create(:player, with_licenses: [
-                      { team: @legacy_team, league_class_id: '280' }
-                    ])
+      { team: @legacy_team, league_class_id: '280' }
+    ])
 
     run_task
 
@@ -57,8 +57,8 @@ class RenormalizeLeagueClassIdsTest < ActiveSupport::TestCase
 
   test 'Lizenz-Kopien folgen der (normalisierten) Liga ihres Teams' do
     player = create(:player, with_licenses: [
-                      { team: @legacy_team, league_class_id: '280' }
-                    ])
+      { team: @legacy_team, league_class_id: '280' }
+    ])
 
     run_task('DRY_RUN' => 'false')
 
@@ -67,8 +67,8 @@ class RenormalizeLeagueClassIdsTest < ActiveSupport::TestCase
 
   test 'Lizenz ohne auflösbares Team fällt auf das Wert-Mapping zurück' do
     player = create(:player, with_licenses: [
-                      { team: @legacy_team, league_class_id: '280' }
-                    ])
+      { team: @legacy_team, league_class_id: '280' }
+    ])
     licenses = player.licenses
     licenses.first['team_id'] = 999_999
     player.update_columns(licenses:)
@@ -80,9 +80,9 @@ class RenormalizeLeagueClassIdsTest < ActiveSupport::TestCase
 
   test 'kanonische und leere Lizenz-Werte bleiben unangetastet' do
     player = create(:player, with_licenses: [
-                      { team: @clean_team, league_class_id: '2fbl' },
-                      { team: @legacy_team, league_class_id: '' }
-                    ])
+      { team: @clean_team, league_class_id: '2fbl' },
+      { team: @legacy_team, league_class_id: '' }
+    ])
 
     run_task('DRY_RUN' => 'false')
 
@@ -93,8 +93,8 @@ class RenormalizeLeagueClassIdsTest < ActiveSupport::TestCase
 
   test 'Idempotenz: zweiter Lauf ändert nichts mehr' do
     player = create(:player, with_licenses: [
-                      { team: @legacy_team, league_class_id: '280' }
-                    ])
+      { team: @legacy_team, league_class_id: '280' }
+    ])
 
     run_task('DRY_RUN' => 'false')
     first_leagues = League.unscoped.pluck(:id, :league_class_id).sort
