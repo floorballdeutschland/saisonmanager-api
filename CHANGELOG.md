@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Falsche Zeitstrafen in historischen Spielberichten**: In importierten Spielen früherer Saisons wurden Zeitstrafen mit falscher Dauer und falschem Grund angezeigt, etwa eine 10-Minuten-Strafe wegen unsportlichen Verhaltens als „5 Minuten / Verlassen des Torraums". Ursache war, dass diese Ereignisse die Straf-Schlüssel des damaligen Katalogs speichern, der Katalog im aktuellen System aber zwischenzeitlich neu nummeriert und auf ein neueres Regelwerk umgestellt wurde. Die korrekten historischen Bezeichnungen (Dauer und Grund) werden nun einmalig direkt in die Ereignisse eingefroren, sodass Spielberichte katalog-unabhängig und historisch korrekt angezeigt werden. Auch die Straf-Statistik der Spieler zählt dadurch wieder richtig. Neuer Task `rake events:freeze_imported_penalty_labels` (mit `DRY_RUN=1` testbar). 2-Minuten-Strafen und im aktuellen System erfasste Spiele waren nicht betroffen.
+
 ## [1.54.2] - 2026-07-17
 
 ### Behoben
