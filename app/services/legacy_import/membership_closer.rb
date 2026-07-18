@@ -18,18 +18,25 @@ module LegacyImport
   #   351 aktive Spieler verloren so ihre Heimatmitgliedschaft).
   # - Ein offener NICHT-Heimat-Eintrag (Legacy-Freigabe) endet mit dem
   #   `created_at` des frühesten datierten Folgeeintrags beliebiger Art.
+  # - Als Folgeeintrag zählen nur ANDERE, echte Vereine: Einträge desselben
+  #   Vereins (Rückkehr/Freigabe zum gleichen Verein) und per `ignore_club_ids`
+  #   übergebene Platzhalter-/deaktivierte Vereine werden übersprungen (sonst ein
+  #   bedeutungsloses/zu frühes Enddatum). Der Service bleibt DB-frei/testbar;
+  #   die Ignore-Liste kuratiert der Aufrufer (Rake) aus der Club-Tabelle.
   # - Ohne passenden Folgeeintrag bleibt die Mitgliedschaft offen.
   module MembershipCloser
     module_function
 
-    # clubs: Array der Player#clubs-Hashes. Gibt [neues_clubs_array, changed?]
-    # zurück; das Eingabe-Array wird nicht mutiert.
-    def close(clubs)
+    # clubs: Array der Player#clubs-Hashes. ignore_club_ids: club_ids, die nicht als
+    # Folgeverein zählen. Gibt [neues_clubs_array, changed?] zurück; das
+    # Eingabe-Array wird nicht mutiert.
+    def close(clubs, ignore_club_ids: [])
       clubs = Array(clubs)
+      ignore = ignore_club_ids.to_set
 
       changed = false
       new_clubs = clubs.map do |entry|
-        successor = open_legacy?(entry) ? successor_start(entry, clubs) : nil
+        successor = open_legacy?(entry) ? successor_start(entry, clubs, ignore) : nil
         if successor
           changed = true
           entry.merge('valid_until' => successor)
@@ -47,11 +54,15 @@ module LegacyImport
     end
 
     # created_at-String des frühesten datierten Folgeeintrags, der den übergebenen
-    # Eintrag beenden darf (Heimat nur durch Heimat-Folgeeintrag). Vergleich nach
-    # echter Zeit — die Strings tragen unterschiedliche Zeitzonen-Offsets, ein
-    # lexikografischer Vergleich wäre falsch. nil, wenn kein passender existiert.
-    def successor_start(entry, clubs)
-      dated = Array(clubs).select { |c| c['created_at'].present? }
+    # Eintrag beenden darf: anderer, nicht ignorierter Verein (Heimat nur durch
+    # Heimat-Folgeeintrag). Vergleich nach echter Zeit — die Strings tragen
+    # unterschiedliche Zeitzonen-Offsets, ein lexikografischer Vergleich wäre
+    # falsch. nil, wenn kein passender existiert.
+    def successor_start(entry, clubs, ignore_club_ids = Set.new)
+      ignore = ignore_club_ids.to_set
+      dated = Array(clubs).select do |c|
+        c['created_at'].present? && c['club_id'] != entry['club_id'] && !ignore.include?(c['club_id'])
+      end
       dated = dated.select { |c| c['home_club'] == true } if entry['home_club'] == true
       return nil if dated.empty?
 

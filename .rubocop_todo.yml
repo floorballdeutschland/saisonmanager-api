@@ -213,7 +213,6 @@ Layout/TrailingEmptyLines:
     - 'app/views/leagues/admin_schedule_import_template.xlsx.axlsx'
     - 'app/views/leagues/index.json.jbuilder'
     - 'app/views/players/index.json.jbuilder'
-    - 'config/puma.live.rb'
 
 # Offense count: 5
 # This cop supports safe autocorrection (--autocorrect).
@@ -657,7 +656,6 @@ Style/OptionalBooleanParameter:
 # Configuration parameters: SafeForConstants.
 Style/RedundantFetchBlock:
   Exclude:
-    - 'config/puma.live.rb'
     - 'config/puma.rb'
 
 # Offense count: 1

@@ -6,7 +6,9 @@
 # ACHTUNG Semantik (seit Vorfall 2026-07-13): Heimatmitgliedschaften (home_club:
 # true) werden NUR durch einen datierten Heimat-Folgeeintrag (= echter Vereins-
 # wechsel) geschlossen — eine bloße Freigabe beendet die Heimatmitgliedschaft
-# nicht. Details in LegacyImport::MembershipCloser.
+# nicht. Als Folgeverein zählen zudem nur ANDERE, echte Vereine: Platzhalter-/
+# Ablage-Vereine (Namensmuster oder deaktiviert) und eine Rückkehr zum selben
+# Verein werden ignoriert. Details in LegacyImport::MembershipCloser.
 #
 # Unterschied zu players:fix_club_valid_until: dieser Task setzt das EXAKTE
 # Startdatum des Folgevereins als Ende (kein Saisonende-Heuristik, keine Lücke).
@@ -23,8 +25,12 @@ namespace :players do
     dry_run = ENV['DRY_RUN'] != 'false'
     puts "=== Legacy-Mitgliedschaften schließen #{dry_run ? '[DRY RUN]' : '[LIVE]'} ==="
 
+    ignore_ids = ignore_club_ids
+    puts "Ignorierte Platzhalter-/deaktivierte Vereine (kein Folgeverein): #{ignore_ids.size} " \
+         "(#{Club.where(id: ignore_ids).order(:id).pluck(:id, :name).map { |i, n| "#{i}:#{n}" }.join(', ')})"
+
     # Nur Spieler mit mindestens einem offenen Legacy-Eintrag laden.
-    scope = Player.where(
+    scope = Player.where(merged_into_id: nil).where(
       "EXISTS (SELECT 1 FROM jsonb_array_elements(coalesce(clubs,'[]'::jsonb)) e " \
       "WHERE e->>'created_at' IS NULL AND e->>'valid_until' IS NULL)"
     )
@@ -33,7 +39,7 @@ namespace :players do
     total_entries = 0
 
     scope.find_each do |player|
-      new_clubs, changed = LegacyImport::MembershipCloser.close(player.clubs)
+      new_clubs, changed = LegacyImport::MembershipCloser.close(player.clubs, ignore_club_ids: ignore_ids)
       next unless changed
 
       # Geschlossen wird pro Eintrag (Heimat nur durch Heimat-Folgeeintrag) —
@@ -54,5 +60,14 @@ namespace :players do
 
     puts "\nErgebnis: #{total_players} Spieler, #{total_entries} geschlossene Mitgliedschaften"
     puts '[DRY RUN] Zum Ausführen: rails players:close_legacy_memberships DRY_RUN=false' if dry_run
+  end
+
+  # club_ids, die nicht als Folgeverein zählen: Platzhalter/Ablage (Namensmuster)
+  # + deaktivierte Vereine. Kuratiert im operativen Task (der MembershipCloser-
+  # Service bleibt DB-frei).
+  def ignore_club_ids
+    junk = Club.where('name ~* ?', '(^z_|^zz|ablage|not in use|doppelung)').pluck(:id)
+    deactivated = Club.where.not(deactivated_at: nil).pluck(:id)
+    (junk + deactivated).uniq
   end
 end
