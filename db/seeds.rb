@@ -345,7 +345,6 @@ User.create!(
   first_name:      'Admin',
   last_name:       'User',
   password_digest: password_hash,
-  active:          true,
   permissions:     [{ 'user_group_id' => '1', 'game_operation_id' => '0' }]
 )
 
@@ -356,7 +355,6 @@ User.create!(
   first_name:      'SBK',
   last_name:       'Ost',
   password_digest: password_hash,
-  active:          true,
   permissions:     [{ 'user_group_id' => '2', 'game_operation_id' => ost.id.to_s }]
 )
 
@@ -367,7 +365,6 @@ User.create!(
   first_name:      'SBK',
   last_name:       'West',
   password_digest: password_hash,
-  active:          true,
   permissions:     [{ 'user_group_id' => '2', 'game_operation_id' => wst.id.to_s }]
 )
 
@@ -378,7 +375,6 @@ User.create!(
   first_name:      'Demo SBK',
   last_name:       'Bayern',
   password_digest: password_hash,
-  active:          true,
   permissions:     [{ 'user_group_id' => '2', 'game_operation_id' => bay.id.to_s }]
 )
 
@@ -389,7 +385,6 @@ User.create!(
   first_name:      'VM',
   last_name:       'Berlin',
   password_digest: password_hash,
-  active:          true,
   club_id:         club_berlin.id,
   permissions:     [{ 'user_group_id' => '4', 'game_operation_id' => '0', 'club_id' => club_berlin.id.to_s }]
 )
@@ -401,7 +396,6 @@ User.create!(
   first_name:      'TM',
   last_name:       'Berlin 1',
   password_digest: password_hash,
-  active:          true,
   club_id:         club_berlin.id,
   teams:           [team_berlin_1.id],
   permissions:     [{ 'user_group_id' => '5', 'game_operation_id' => '0', 'club_id' => club_berlin.id.to_s }]
