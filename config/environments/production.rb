@@ -50,8 +50,16 @@ Rails.application.configure do
   # Prepend all log lines with the following tags.
   config.log_tags = [:request_id]
 
-  # Use a different cache store in production.
-  # config.cache_store = :mem_cache_store
+  # In-Process-Cache statt des Rails-Defaults :file_store.
+  # Puma läuft hier im Single-Process-Modus (nur Threads, keine Worker), daher ist
+  # :memory_store prozessweit geteilt und thread-sicher. Der FileStore erzeugte unter
+  # Last eine Race Condition beim Anlegen der Cache-Verzeichnisse
+  # (Errno::ENOENT @ dir_s_mkdir), die den API-Key-Check in Rack::Attack und damit
+  # ganze Public-Requests mit 500 abbrechen ließ. Die Größe ist bewusst deutlich
+  # über dem Default (32 MB) gewählt, damit die langlebigen Statistik-Caches
+  # (Spieler-/Team-Stats, bis zu 1 Woche TTL) nicht durch LRU-Eviction verdrängt
+  # werden und die DB-Last wieder hochtreiben.
+  config.cache_store = :memory_store, { size: 128.megabytes }
 
   # Use a real queuing backend for Active Job (and separate queues per environment).
   # config.active_job.queue_adapter     = :resque
