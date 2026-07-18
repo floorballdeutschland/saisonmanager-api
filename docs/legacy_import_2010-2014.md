@@ -194,7 +194,10 @@ Events) über die JSON-Brücke gegen die prod-nahe Dev-DB:
 
 - **Schiris** werden als Freitext übernommen (`referee1_string`/`referee2_string` aus
   `spielbericht`); bewusst **keine** Verknüpfung zu `referees` (kein `referee_ids`).
-- **`nwuv` 2013/14** hat keine `begegnung`-Tabelle (keine Spieldaten) – ausgelassen.
+- **`nwuv` 2013/14**: Im MariaDB-Dump fehlt die `begegnung`-Tabelle. Die Spiele
+  werden stattdessen aus den Ergebnis-Caches der Alt-PHP-App rekonstruiert – siehe
+  Abschnitt „Sonderfall NWUV 2013/14". 8 Begegnungen mit Events aber ohne
+  Cache-Zeile bleiben ausgelassen (kein Team-/Datum-Link).
 - **Spieler ohne Geburtsdatum** im Neusystem bzw. Namensdubletten bleiben
   ungematcht (denormalisierter Name im Lineup erhalten; 78–98 % je Verband).
 - **Vereine/Spielorte** werden bei fehlendem Treffer angelegt. **Spieler** ebenfalls,
@@ -211,3 +214,62 @@ Events) über die JSON-Brücke gegen die prod-nahe Dev-DB:
   anderen Spieler (geänderter `player_index`), bleibt der alte Eintrag beim zuvor
   gematchten Spieler stehen. Betreuer/Spielbericht werden beim Re-Run überschrieben,
   aber bei entfernter Quell-Zeile nicht zurückgesetzt.
+
+## Sonderfall NWUV 2013/14 (rekonstruierte Begegnungen)
+
+Der MariaDB-Dump `saison201314.sql` enthält für **NWUV (NRW)** keine Tabelle
+`nwuv_2013_2014_begegnung` (weder `CREATE` noch `INSERT`). Vorhanden – aber
+verwaist – sind `liga` (13), `mannschaft` (67), `spieltag` (94, datiert),
+`ereignis` (~5.700), `mitspieler` (~6.800), `spielbericht`, `lizenz`. Ohne die
+`begegnung` fehlt der Verbindungssatz „welche zwei Teams, welcher Spieltag" → der
+normale Import legt Ligen/Teams an, schreibt aber **0 Spiele** (der Importer ist
+begegnung-getrieben). Alle anderen Verbände × Saisons sind vollständig; das Loch
+ist isoliert auf `nwuv_2013_2014`.
+
+**Rettungsquelle:** die vorgerenderten Ergebnis-Caches der Alt-PHP-App im
+Webspace-Backup `vhosts.tar.bz2`:
+
+```
+vhosts/floorball-verband.de/saison2013-14/nwuv/tables/<id_liga>_<spieltag_nr>_matches.tab
+```
+
+Semikolon-CSV je Zeile: `heim;gast;heim_tore;gast_tore[ (n.V.)|(forfait)];…;id_begegnung`.
+Der Dateiname liefert `id_liga` + `spieltag_nr`, die letzte Spalte die
+`id_begegnung` (identisch zu den verwaisten `ereignis`/`mitspieler`).
+
+**Rekonstruktion** (`lib/tasks/legacy_import/reconstruct_nwuv_2013_2014.py`):
+
+- `id_spieltag` ← Lookup `(id_liga, spieltag_nr)` in `spieltag` → **Datum + Halle
+  vollständig wiederhergestellt** (100 % Abdeckung der 90 gespielten Spieltage).
+- `id_mannschaft1/2` ← Lookup `(id_liga, normalisierter Name)` in `mannschaft`
+  (66/66 Teams eindeutig, keine Kollisionen).
+- `forfeit` ← 1 wenn Heim 0 & `(forfait)`, 2 wenn Gast 0.
+- `ereignis`/`mitspieler`/`betreuer`/`spielbericht` docken per `id_begegnung` an.
+
+Das Skript erzeugt ein Bundle in **exakt dem Schema von `export_all.sql.tmpl`** →
+Import über den **unveränderten** `legacy:bundle`-Task. Ablauf:
+
+```bash
+# 1. Ergebnis-Caches aus dem Webspace-Backup extrahieren
+tar -xjf vhosts.tar.bz2 --strip-components=4 \
+    vhosts/floorball-verband.de/saison2013-14/nwuv/tables -C /tmp/nwuv
+
+# 2. Bundle rekonstruieren (schreibt JSON + Report)
+python3 lib/tasks/legacy_import/reconstruct_nwuv_2013_2014.py \
+    --sql  /pfad/saison201314.sql \
+    --tabs /tmp/nwuv/tables \
+    --out  /tmp/nwuv_2013_2014_bundle.json
+
+# 3. Dry-Run, dann Import (idempotent; ergänzt die bereits vorhandenen Ligen/Teams)
+bundle exec rake legacy:bundle BUNDLE=/tmp/nwuv_2013_2014_bundle.json          # Dry-Run
+bundle exec rake legacy:bundle BUNDLE=/tmp/nwuv_2013_2014_bundle.json WRITE=1  # schreibt
+```
+
+**Ergebnis:** 366 Spiele, davon 23 Forfait; 342/343 Endstände decken sich exakt
+mit dem Event-Log (1 Spiel mit abgeschnittenem Event-Log in der Quelle, beg 810).
+
+**Bewusste Auslassungen:**
+- 8 Begegnungen (423, 426, 431, 433, 815–818) haben Events/Aufstellungen, aber
+  keine Cache-Zeile → kein Team-/Datum-Link, nicht rekonstruiert.
+- **Anstosszeit** je Spiel ist in den Caches nicht enthalten (`uhrzeit` bleibt leer;
+  das Datum kommt aus dem Spieltag).
