@@ -21,9 +21,7 @@ class GameOperationsController < ApplicationController
                 leagues.where(season_id: current_season_id)
               end
 
-    render json: leagues.includes(:banner_attachment,
-                                  game_operation: { state_association: { banner_attachment: :blob },
-                                                    banner_attachment: :blob }).map(&:full_hash)
+    render json: leagues.with_full_hash_includes.map(&:full_hash)
   end
 
   # GET /game_operations/1/clubs/:season_id

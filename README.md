@@ -178,6 +178,12 @@ The script runs `git pull` on saisonmanager-docker, `git reset --hard origin/mai
 - Add an entry under `## [Unreleased]` in `CHANGELOG.md` for every PR
 - Open a PR — no direct pushes to `main`; CI runs RuboCop and the Minitest suite
 
+## Feedback & Contact
+
+- Bug reports and feature requests from players, clubs, and officials: [saisonmanager-feedback](https://github.com/floorballdeutschland/saisonmanager-feedback) (German)
+- Everything else: [it@floorball.de](mailto:it@floorball.de)
+- Security vulnerabilities: please follow [SECURITY.md](SECURITY.md) instead of opening a public issue
+
 ## License
 
 This project is licensed under the **GNU Affero General Public License v3.0** (AGPLv3) — see the [LICENSE](LICENSE) file for the full text.

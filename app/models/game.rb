@@ -8,7 +8,13 @@ class Game < ApplicationRecord
   has_one :proceeding_proposal, dependent: :destroy
   has_many :referee_feedbacks, dependent: :destroy
 
-  scope :by_referee_id, ->(referee_id) { where('? = any (referee_ids)', referee_id) }
+  # Spiele eines Schiris. Kanonisch über die stabile Referee-PK in
+  # officiating_referee_ids (Fundament #45); referee_ids (Lizenznummer) bleibt als
+  # Übergangs-Fallback, bis der Backfill (rake referees:backfill_officiating_ids)
+  # alle Alt-Spiele rückbefüllt hat.
+  scope :by_referee_id, lambda { |referee_id|
+    where('? = ANY(officiating_referee_ids) OR ? = ANY(referee_ids)', referee_id, referee_id)
+  }
   scope :by_referee_name, lambda { |referee_name|
                             where('referee1_string LIKE :refname OR referee2_string LIKE :refname', refname: "%#{referee_name}%")
                           }
@@ -911,7 +917,9 @@ class Game < ApplicationRecord
         nagoal  = true if event['guest_number'] == 2000
         e[:assist] = event['guest_assist'] if event['guest_assist'].present?
       else
-        Sentry.capture_message("missing scorer, game: #{id}, event: #{event.to_json}, #{error_meta_info}")
+        # Altdaten (Import 2010–2019) enthalten ~1.986 Spiele mit Tor-/Straf-Events ohne
+        # Spielernummer – bekannt und nicht reparierbar, daher kein Sentry-Rauschen dafür.
+        Sentry.capture_message("missing scorer, game: #{id}, event: #{event.to_json}, #{error_meta_info}") unless legacy
         next
       end
 
@@ -951,7 +959,7 @@ class Game < ApplicationRecord
       end
 
       # penalty code without a penalty
-      if !event['penalty_id'].present? && event['penalty_code_id'] && event['penalty_code_id'].to_i != 23
+      if !legacy && !event['penalty_id'].present? && event['penalty_code_id'] && event['penalty_code_id'].to_i != 23
         Sentry.capture_message("missing penalty code, game: #{id}, event: #{event.to_json}, #{error_meta_info}")
       end
 

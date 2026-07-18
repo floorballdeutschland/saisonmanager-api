@@ -303,6 +303,8 @@ Rails.application.routes.draw do
             post :trigger_password_reset
             post :add_role
             delete :remove_role
+            post :archive
+            post :unarchive
           end
         end
         resource :analytics, only: [:show]

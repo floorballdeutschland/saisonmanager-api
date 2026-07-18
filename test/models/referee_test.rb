@@ -103,9 +103,40 @@ class RefereeTest < ActiveSupport::TestCase
     assert_not_includes result, game_b
   end
 
-  test 'games returns Game.none for referee without lizenznummer' do
+  test 'games ist leer, wenn kein Spiel den Schiri referenziert (Gast ohne Lizenznummer)' do
     ref = Referee.create!(lizenznummer: nil, vorname: 'Gast', nachname: 'Schiri', guest: true)
-    assert_equal Game.none.to_a, ref.games(season_id: '10').to_a
+    assert_empty ref.games(season_id: '10').to_a
+  end
+
+  test 'games findet Spiele kanonisch über officiating_referee_ids (PK), auch ohne Lizenz-Treffer' do
+    ref = make_referee(lizenznummer: 31_010)
+
+    go     = GameOperation.create!(name: 'GO Officiating', short_name: 'GOF')
+    club   = Club.create!
+    arena  = Arena.create!(name: 'Halle O', city: 'Stadt O')
+    league = League.create!(game_operation: go, season_id: '10', name: 'Liga O', table_modus: 'classic')
+    day    = GameDay.create!(league: league, arena: arena, club: club, number: 1, date: '2024-01-01')
+    # Bewusst ohne referee_ids/Strings – ausschließlich über die kanonische PK.
+    game = Game.create!(game_day: day, officiating_referee_ids: [ref.id, 0],
+                        events: [], players: { 'home' => [], 'guest' => [] },
+                        forfait: 0, overtime: false, legacy: false)
+
+    assert_includes ref.games(season_id: '10'), game
+  end
+
+  test 'games findet Spiele eines Gasts (ohne Lizenznummer) über officiating_referee_ids' do
+    guest = Referee.create!(lizenznummer: nil, vorname: 'Gast', nachname: 'Pfeife', guest: true)
+
+    go     = GameOperation.create!(name: 'GO Gast', short_name: 'GGA')
+    club   = Club.create!
+    arena  = Arena.create!(name: 'Halle G', city: 'Stadt G')
+    league = League.create!(game_operation: go, season_id: '10', name: 'Liga G', table_modus: 'classic')
+    day    = GameDay.create!(league: league, arena: arena, club: club, number: 1, date: '2024-01-01')
+    game = Game.create!(game_day: day, officiating_referee_ids: [guest.id],
+                        events: [], players: { 'home' => [], 'guest' => [] },
+                        forfait: 0, overtime: false, legacy: false)
+
+    assert_includes guest.games(season_id: '10'), game
   end
 
   test 'merge_into!: officiating_referee_ids werden auf die Master-PK umgeschrieben' do

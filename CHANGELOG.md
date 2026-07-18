@@ -11,13 +11,77 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Behoben
 
+- **Falsche Zeitstrafen in historischen Spielberichten**: In importierten Spielen früherer Saisons wurden Zeitstrafen mit falscher Dauer und falschem Grund angezeigt, etwa eine 10-Minuten-Strafe wegen unsportlichen Verhaltens als „5 Minuten / Verlassen des Torraums". Ursache war, dass diese Ereignisse die Straf-Schlüssel des damaligen Katalogs speichern, der Katalog im aktuellen System aber zwischenzeitlich neu nummeriert und auf ein neueres Regelwerk umgestellt wurde. Die korrekten historischen Bezeichnungen (Dauer und Grund) werden nun einmalig direkt in die Ereignisse eingefroren, sodass Spielberichte katalog-unabhängig und historisch korrekt angezeigt werden. Auch die Straf-Statistik der Spieler zählt dadurch wieder richtig. Neuer Task `rake events:freeze_imported_penalty_labels` (mit `DRY_RUN=1` testbar). 2-Minuten-Strafen und im aktuellen System erfasste Spiele waren nicht betroffen.
 - **Altdaten-Import legte Spieler-Dubletten an (Geburtsdatum-Abgleich)**: Der Spieler-Abgleich des Altdaten-Imports (`legacy:*`) baute seinen Namens-/Geburtsdatums-Index mit `Player.where.not(birthdate: [nil, ''])`. Da `players.birthdate` eine DATE-Spalte ist, liefert der Vergleich gegen den Leerstring datenbankweit 0 Treffer. Der Index blieb leer und jeder importierte Spieler wurde als **neue Dublette** angelegt, statt gegen den vorhandenen Bestand (Name + Geburtsdatum) gematcht zu werden. Korrigiert auf `where.not(birthdate: nil)`. Bereits entstandene Dubletten werden über `players:merge_duplicates` verlustfrei zusammengeführt.
 - **NRW-Spielbetrieb 2013/14 rekonstruiert**: Der Spielbetrieb des Nordrhein-Westfälischen Floorball Verbands für die Saison 2013/14 war leer, weil im Altdaten-Dump die zentrale Spiele-Tabelle (`begegnung`) komplett fehlte. Ligen und Teams waren zwar angelegt, aber ohne ein einziges Spiel. Betroffen war ausschließlich NRW 2013/14; alle anderen Verbände und Saisons sind vollständig. Die 366 Spiele (inkl. Ergebnisse, Tor-/Strafereignisse und Aufstellungen) werden nun aus den vorgerenderten Ergebnis-Tabellen der alten Verbands-Webseite rekonstruiert; Spieltermine und Hallen kommen vollständig aus den erhaltenen Spieltag-Daten. Neues Werkzeug `lib/tasks/legacy_import/reconstruct_nwuv_2013_2014.py` erzeugt daraus ein Import-Bundle für den bestehenden Altdaten-Import. Acht Spiele ohne Zuordnung in den Alt-Tabellen bleiben ausgelassen.
+
+## [1.54.2] - 2026-07-17
+
+### Behoben
+
+- **Liga-Links aus vergangenen Saisons zeigten eine weiße Seite**: Auf der Spieler-Statistikseite (z. B. `/spieler/…`) führten Links zu Ligen früherer Saisons (etwa `/fvd/944-1-fbl`) auf eine leere Seite. Die öffentliche Liga-Seite suchte die Liga nur in der Ligenliste der aktuell gewählten Saison. Ligen anderer Saisons werden jetzt einzeln nachgeladen und die Saisonauswahl wird passend zur Liga umgestellt. (Frontend)
+
+## [1.54.1] - 2026-07-17
+
+### Behoben
+
+- **Vereinsmanager sahen Spieler mit abgelaufener Freigabe weiter in der Spielerliste**: Die VM-Spielerliste listete bisher alle Spieler mit einem Vereinseintrag, ohne dessen Ablaufdatum (`valid_until`) zu prüfen. Dadurch blieben Spieler sichtbar, deren Freigabe (Zweitverein-Mitgliedschaft, gültig bis 15.07.) oder deren Vereinszugehörigkeit längst abgelaufen war. Die Liste nutzt jetzt dieselbe Gültigkeitsprüfung wie die restliche Anwendung (`Club#players`) und zeigt nur noch Spieler mit aktueller Mitgliedschaft.
+- **Legacy-Aufräum-Tasks schlossen Heimatmitgliedschaften fälschlich**: `players:close_legacy_memberships` und `players:fix_club_valid_until` werteten jeden datierten Vereinseintrag als Beleg für einen Vereinswechsel – auch bloße Freigaben (Zweitverein). Dadurch verloren 351 aktive Spieler ihre (undatierte, aber weiterhin gültige) Heimatmitgliedschaft und konnten u. a. keine Lizenzen mehr beantragen. Beide Tasks werten jetzt nur noch datierte Heimat-Einträge (`home_club: true`) als Wechsel-Beleg. Neuer Task `players:restore_alt_snapshot` stellt die betroffenen Heimatmitgliedschaften sowie beim Umzug verlorene Geburtsdaten anhand eines Abgleichs mit dem Alt-System wieder her (Dry-Run-fähig, idempotent; überspringt zwischenzeitlich echt geänderte Datensätze).
+
+## [1.54.0] - 2026-07-16
+
+### Neu
+
+- **Vereins-Spielerliste zeigt Lizenz-Status pro Liga**: Die Lizenz-Badges in der Spielerübersicht für Vereinsmanager (`/verwaltung/spieler-verein`) nennen jetzt die jeweilige Liga (Kürzel, z. B. „Lizenziert 1. FBL"). Hat ein Spieler Lizenzen in mehreren Ligen der laufenden Saison, wird jede einzeln angezeigt – etwa „erteilt" für die eine Liga und „beantragt" für die andere. Die API liefert dafür ein neues Feld `current_licenses` im VM-Spielerlisten-Endpoint.
+
+## [1.53.0] - 2026-07-16
+
+### Neu
+
+- **Benutzerkonten archivieren statt löschen**: In der Benutzerverwaltung gibt es jetzt einen „Archivieren"-Knopf (Berechtigung wie Bearbeiten). Ein archiviertes Konto kann sich nicht mehr einloggen (auch eine noch laufende Sitzung endet sofort), bleibt aber mit allen Verknüpfungen (Spielberichte, Dokumente) erhalten und kann jederzeit reaktiviert werden. Der bisherige „Aktiv"-Schalter entfällt – er hatte den Login nie wirklich gesperrt, sondern nur Info-Mails unterdrückt.
+
+### Verbessert
+
+- **Automatische Bereinigung inaktiver VM/TM-Konten archiviert statt zu löschen**: Der nächtliche Aufräumlauf entfernte Vereins- und Teammanager-Konten ohne Login seit über 3 Jahren bisher endgültig – Konten mit verknüpften Einträgen (z. B. hochgeladenen Dokumenten) wurden dabei stillschweigend übersprungen und blieben dauerhaft aktiv. Jetzt werden alle betroffenen Konten einheitlich archiviert: Login gesperrt, Daten und Verknüpfungen bleiben nachvollziehbar erhalten.
+
+## [1.52.1] - 2026-07-16
+
+### Behoben
+
+- **Korrekturantrag konnte durch Doppelklick mehrfach eingereicht werden**: Der Button „Antrag einreichen" auf der Spieler-Detailseite blieb während des laufenden Requests klickbar; jeder weitere Klick erzeugte einen zusätzlichen Antrag in der SBK-Review-Queue. Der Button ist jetzt bis zur Antwort deaktiviert.
+
+## [1.52.0] - 2026-07-16
+
+### Neu
+
+- **Vereinsmanager können Spieler-Zusammenführungen vorschlagen**: Der Korrekturantrag am Spielerprofil kennt jetzt den Typ „Duplikat zusammenführen". Ein Vereinsmanager wählt das Duplikat aus den aktiven Spielern des eigenen Vereins aus (beide Profile müssen zum Verein gehören); der Antrag landet in der bestehenden Prüfliste unter „Spieler-Korrekturen". Genehmigt ein Admin oder SBK den Antrag, wird die bewährte Zusammenführung ausgeführt (Spieldaten, Vereinszugehörigkeiten und Lizenzen wandern auf das verbleibende Profil, das Duplikat wird deaktiviert). Anträge für zwei Spieler, die gemeinsam in einer Aufstellung stehen, werden abgelehnt, denn das sind sicher zwei verschiedene Personen.
+
+## [1.51.3] - 2026-07-16
+
+### Verbessert
+
+- **Öffentliche Liga-Seiten deutlich schneller**: Die Liga-Detailansicht und die Ligen-Übersicht eines Verbands luden für jede „ähnliche Liga" (Saison-Umschalter) bzw. jede Liga der Liste alle Zusatzdaten einzeln aus der Datenbank – bei Ligen mit vielen Parallel-Ligen über 400 Einzelabfragen pro Aufruf (im Livebetrieb gemessen: bis zu 2,6 Sekunden Ladezeit). Spieltage, Qualifikationen und Banner werden jetzt gesammelt vorgeladen.
+- **Kein Sentry-Rauschen mehr durch Archiv-Spiele ohne Torschützen-Angabe**: Beim Aufruf importierter Altdaten-Spiele (Saisons 2010–2019, rund 1.986 Spiele) meldete die API jedes Tor- oder Straf-Event ohne Spielernummer als Fehler an Sentry – bei jedem einzelnen Seitenaufruf. Diese Datenlücke ist eine bekannte, nicht reparierbare Eigenschaft des Altdaten-Imports; die Meldung wird für Legacy-Spiele jetzt unterdrückt. Für Spiele aus dem laufenden Spielbetrieb bleibt die Überwachung unverändert aktiv.
+
+## [1.51.2] - 2026-07-15
+
+### Behoben
+
+- **Vereins- und Team-Logo-Upload jetzt serverseitig geprüft**: Die Logo-Upload-Endpunkte für Vereine und Teams akzeptierten bisher technisch jede Datei in beliebiger Größe (die Prüfung fand nur im Frontend statt und war per direktem API-Aufruf umgehbar). Jetzt prüft die API das Format (erlaubt sind ausschließlich die Raster-Formate PNG, JPG und WebP; SVG wird abgelehnt, weil es als Download statt als Bild ausgeliefert würde und ungeprüft ein Sicherheitsrisiko wäre), begrenzt die Dateigröße auf 3 MB und verlangt ein quadratisches Bild (gleiche Breite und Höhe). Bei Verstoß antwortet die API mit einer erklärenden Fehlermeldung (Status 422), statt die Datei still anzunehmen.
+
+### Verbessert
+
+- **Issue-Vorlagen für das öffentliche Repository**: Wer im API-Repo ein Issue anlegt, bekommt jetzt wie im Frontend-Repo Vorlagen für Fehlerberichte (mit Feldern für Endpunkt, Request und Statuscode) und Featurewünsche, inklusive Hinweis, keine personenbezogenen Daten zu posten. Zusätzlich verweisen Kontakt-Links Sicherheitslücken auf den vertraulichen Meldeweg (SECURITY.md) und Feedback aus dem Spielbetrieb auf das Feedback-Repo.
+- **Ungenutzte Test-Mail-Methode mit fest hinterlegten Empfängeradressen entfernt**: Der `TestMailer` enthielt neben der aktiv genutzten Funktion (Test-Mail an eine frei wählbare Adresse aus dem Admin-Bereich) eine alte, nirgends mehr aufgerufene Methode, in der zwei persönliche E-Mail-Adressen fest im Quellcode standen. Die tote Methode samt zugehöriger Templates wurde entfernt — auch damit im nun öffentlichen Repository keine privaten Adressen stehen.
+- **Meldeweg für Sicherheitslücken und Feedback dokumentiert**: Das Repository hat jetzt eine `SECURITY.md` (Sicherheitslücken bitte vertraulich an it@floorball.de oder über GitHubs private Schwachstellen-Meldung, nicht als öffentliches Issue), und das README verweist auf das Feedback-Repo sowie die Kontaktadresse. Vorbereitung für die Open-Source-Veröffentlichung.
+- **Schiri-Spielhistorie stabil über die Referee-ID zugeordnet**: Die Zuordnung von Spielen zu einem Schiedsrichter (Spielhistorie im Schiri-Profil, Saison-Spielzähler in der Schiri-Liste) lief bisher ausschließlich über die Lizenznummer bzw. den Freitext im Spielbericht. Beides ist unzuverlässig: Die Lizenznummer kann sich (z. B. beim Zusammenführen zweier Schiri-Profile) verschieben, und der Freitext veraltet bei Namensänderungen. Die Zuordnung greift jetzt vorrangig auf die stabile, kanonische Referee-ID (`officiating_referee_ids`) zurück; Lizenznummer und Bericht-Freitext bleiben nur noch als Übergangs-Fallback erhalten. Dadurch werden auch Gast-Schiedsrichter (ohne Lizenznummer) und Spiele nach einem Profil-Merge korrekt zugeordnet. (Aufbauend auf der kanonischen PK-Spalte aus #47, Teil des Umbaus #45.)
+- **Ungenutzten Azure-Storage entfernt**: Der ActiveStorage-Dienst `microsoft` (Azure) war in `config/storage.yml` definiert, wurde aber von keiner Umgebung genutzt (alle nutzen lokalen Disk-Speicher; 0 von 271 Dateien lagen auf Azure). Der Dienst, der damit verbundene, im Klartext hinterlegte Zugriffsschlüssel (`AZURE_KEY`/`AZURE_CONTAINER`) sowie das nun überflüssige Gem `azure-storage-blob` (inkl. seiner exklusiven Abhängigkeitskette) wurden entfernt.
 
 ## [1.51.1] - 2026-07-15
 
 ### Verbessert
 
+- **Sentry-DSN nicht mehr im Quellcode**: Der Sentry-Projekt-DSN war fest im Code hinterlegt und wird jetzt aus der Umgebungsvariable `SENTRY_DSN` gelesen. Das ist eine Vorbereitung auf die Open-Source-Veröffentlichung, damit kein Drittanbieter-Token im öffentlichen Repository liegt. Ist die Variable nicht gesetzt (etwa in der lokalen Entwicklung), bleibt Sentry inaktiv. Für Staging und Produktion muss `SENTRY_DSN` in der Deploy-Umgebung gesetzt sein, sonst werden keine Fehler mehr an Sentry gemeldet.
 - **Passwort-Reset-Mail nennt jetzt den Benutzernamen**: Wer eine Anleitung zum Zurücksetzen des Passworts erhält (z. B. nach dem Anlegen eines neuen Benutzerkontos), sah bisher keinen Hinweis auf den eigenen Benutzernamen und fragte sich beim Login „Was ist mein Benutzername?". Die Mail zeigt jetzt den Benutzernamen des Kontos und den Hinweis, dass der Login sowohl mit dem Benutzernamen als auch mit der E-Mail-Adresse möglich ist.
 - **FD-SBK darf Spielorte zusammenlegen und löschen**: Das Zusammenführen und Löschen von Spielorten war bisher ausschließlich globalen Admins vorbehalten. Jetzt darf auch die verbandsübergreifend (global) gescopte FD-SBK diese Aktionen ausführen. Regionale SBK können Spielorte weiterhin nur anlegen und bearbeiten, aber nicht zusammenlegen oder löschen.
 

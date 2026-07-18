@@ -1,14 +1,20 @@
 # lib/tasks/cleanup.rake
 
 namespace :cleanup do
-  desc 'Löscht inaktive VM/TM-Benutzerkonten, die sich seit mehr als 3 Jahren nicht eingeloggt haben (DRY_RUN=1 zum Testen)'
+  desc 'Archiviert inaktive VM/TM-Benutzerkonten, die sich seit mehr als 3 Jahren nicht eingeloggt haben (DRY_RUN=1 zum Testen)'
   task inactive_users: :environment do
     threshold = 3.years.ago
     dry_run = ENV['DRY_RUN'].present?
+    # Optionaler Verursacher für archived_by (analog licenses:expire); ohne
+    # Angabe bleibt archived_by leer (= Systemlauf).
+    admin_user_id = ENV['ADMIN_USER_ID'].presence&.to_i
 
     # Nur VM (user_group_id=4) und TM (user_group_id=5) betroffen;
-    # Konten mit Admin (1), SBK (2), RSK (3) oder Schiedsrichter (6) werden nicht gelöscht.
-    users_to_delete = User.where(
+    # Konten mit Admin (1), SBK (2), RSK (3) oder Schiedsrichter (6) werden nicht archiviert.
+    # Statt zu löschen wird archiviert (Login gesperrt, Daten und Verknüpfungen
+    # bleiben erhalten) – dadurch entfällt auch das frühere Überspringen von
+    # Konten mit Fremdschlüssel-Referenzen.
+    users_to_archive = User.not_archived.where(
       "NOT EXISTS (
         SELECT 1 FROM jsonb_array_elements(permissions) AS perm
         WHERE (perm->>'user_group_id')::int IN (1, 2, 3, 6)
@@ -23,24 +29,12 @@ namespace :cleanup do
       threshold:
     )
 
-    total = users_to_delete.count
+    total = users_to_archive.count
     if dry_run
-      message = "[DRY RUN] #{total} inaktive VM/TM-Benutzerkonten würden gelöscht."
+      message = "[DRY RUN] #{total} inaktive VM/TM-Benutzerkonten würden archiviert."
     else
-      deleted = 0
-      skipped = []
-      # Jeden Nutzer einzeln in eigener Transaktion löschen, damit FK-Fehler
-      # (z. B. von hochgeladenen Lizenz-Dokumenten, Spielberichten, Sekretariats-Links)
-      # einzelne Datensätze nicht den gesamten Cleanup-Lauf abbrechen.
-      users_to_delete.find_each do |user|
-        User.transaction { user.destroy! }
-        deleted += 1
-      rescue ActiveRecord::InvalidForeignKey => e
-        skipped << "##{user.id} (#{user.user_name})"
-        Rails.logger.warn("[cleanup:inactive_users] Skip user ##{user.id}: #{e.message}")
-      end
-      message = "#{deleted}/#{total} inaktive VM/TM-Benutzerkonten gelöscht."
-      message += " Übersprungen wegen Fremdschlüssel-Referenzen: #{skipped.join(', ')}." if skipped.any?
+      users_to_archive.find_each { |user| user.archive!(admin_user_id) }
+      message = "#{total} inaktive VM/TM-Benutzerkonten archiviert."
     end
     puts message
     Rails.logger.info("[cleanup:inactive_users] #{message}")

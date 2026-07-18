@@ -20,6 +20,20 @@ class League < ApplicationRecord
   default_scope { order(:season_id, :game_operation_id).order('order_key::int') }
   scope :current_season, -> { where(season_id: Setting.current_season_id) }
 
+  # Lädt alles vor, was League#full_hash pro Liga liest. Für Listen-Endpunkte
+  # (GameOperations#index_leagues, similar_leagues in Leagues#show) Pflicht,
+  # sonst ~8 Queries pro Liga (Sentry-N+1: game_operation, game_days ×2,
+  # qualifications + target_league, Banner-Attachments, state_association).
+  # Achtung: pluck und .order umgehen Preloading – game_day_numbers und
+  # full_hash prüfen deshalb auf loaded?.
+  scope :with_full_hash_includes, lambda {
+    includes(:game_days,
+             { qualifications: :target_league },
+             { banner_attachment: :blob },
+             game_operation: { banner_attachment: :blob,
+                               state_association: { banner_attachment: :blob } })
+  }
+
   # Kanonische Ligaklassen-Codes mit Rang für die Haupt-/Zusatzlizenz-
   # Bestimmung (license_type; kleinerer Rang = höhere Liga). Seit der Normalisierungs-Migration (#297)
   # enthält der Datenbestand (leagues.league_class_id und die Kopien in
@@ -266,7 +280,7 @@ class League < ApplicationRecord
       overtime_length:,
       game_duration_minutes:,
       required_documents: required_documents || [],
-      qualifications: qualifications.order(:rank_from).map do |q|
+      qualifications: sorted_qualifications.map do |q|
         {
           id: q.id,
           rank_from: q.rank_from,
@@ -279,9 +293,15 @@ class League < ApplicationRecord
       end
     }
     result.merge!(resolved_banner)
-    result[:similar_leagues] = similar_leagues.map(&:full_hash) if include_similar_leagues
+    result[:similar_leagues] = similar_leagues.with_full_hash_includes.map(&:full_hash) if include_similar_leagues
 
     result
+  end
+
+  # rank_from ist NOT NULL; vorgeladene Qualifikationen in Ruby sortieren,
+  # statt mit .order das Preloading zu umgehen (eine Extra-Query pro Liga).
+  def sorted_qualifications
+    qualifications.loaded? ? qualifications.sort_by(&:rank_from) : qualifications.order(:rank_from)
   end
 
   def hash_with_teams
@@ -314,8 +334,12 @@ class League < ApplicationRecord
     end
   end
 
+  # loaded?-Check: pluck würde vorgeladene game_days ignorieren und pro Liga
+  # neu queryen (full_hash ruft das via game_day_numbers UND game_day_titles
+  # doppelt auf).
   def game_day_numbers
-    game_days.pluck(:number).uniq.sort
+    numbers = game_days.loaded? ? game_days.map(&:number) : game_days.pluck(:number)
+    numbers.uniq.sort
   end
 
   def first_game_day_date

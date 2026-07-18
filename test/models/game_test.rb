@@ -382,6 +382,29 @@ class GameTest < ActiveSupport::TestCase
     assert_equal [nil, 7], g.officiating_referee_licenses
   end
 
+  test 'by_referee_id: findet Spiele über officiating_referee_ids (PK) und referee_ids (Lizenz)' do
+    go     = GameOperation.create!(name: 'GO byRef', short_name: 'GBR')
+    club   = Club.create!
+    arena  = Arena.create!(name: 'Halle B', city: 'Stadt B')
+    league = League.create!(game_operation: go, season_id: '10', name: 'Liga B', table_modus: 'classic')
+    day    = GameDay.create!(league: league, arena: arena, club: club, number: 1, date: '2024-01-01')
+
+    by_pk = Game.create!(game_day: day, officiating_referee_ids: [42, 0],
+                         events: [], players: { 'home' => [], 'guest' => [] },
+                         forfait: 0, overtime: false, legacy: false)
+    by_license = Game.create!(game_day: day, referee_ids: [42],
+                              events: [], players: { 'home' => [], 'guest' => [] },
+                              forfait: 0, overtime: false, legacy: false)
+    unrelated = Game.create!(game_day: day, officiating_referee_ids: [99],
+                             events: [], players: { 'home' => [], 'guest' => [] },
+                             forfait: 0, overtime: false, legacy: false)
+
+    result = Game.by_referee_id(42)
+    assert_includes result, by_pk
+    assert_includes result, by_license
+    assert_not_includes result, unrelated
+  end
+
   test 'officiating_referee_names: extrahiert Klartextnamen aus den Strings' do
     g = build_game(referee1_string: '1 Partanen, Aleksi', referee2_string: '2 Muster, Max')
     assert_equal ['Aleksi Partanen', 'Max Muster'], g.officiating_referee_names

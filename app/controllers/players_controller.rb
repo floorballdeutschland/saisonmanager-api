@@ -853,18 +853,38 @@ class PlayersController < ApplicationController
               tm_can_access_club?(ph, club_id)
     return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless allowed
 
-    players = Player.where("clubs @> ?", [{ club_id: club_id }].to_json).order(:last_name, :first_name)
-    current_team_ids = Team.joins(:league).where(leagues: { season_id: Setting.current_season_id }).pluck(:id).to_set
+    club = Club.find_by(id: club_id)
+    return render json: { message: 'Verein nicht gefunden.' }, status: :not_found unless club
+
+    # Nur Spieler mit gueltiger (nicht abgelaufener) Mitgliedschaft in diesem Verein,
+    # analog zu Club#players. Der fruehere Roh-Query (clubs @> {club_id}) ignorierte
+    # valid_until und zeigte Spieler mit laengst abgelaufener Freigabe weiterhin an.
+    players = club.players
+    leagues_by_team = Team.joins(:league)
+                          .where(leagues: { season_id: Setting.current_season_id })
+                          .pluck(:id, 'leagues.id', 'leagues.short_name', 'leagues.name')
+                          .to_h { |team_id, league_id, short_name, name| [team_id, { id: league_id, short_name: short_name.presence || name }] }
 
     render json: players.map { |p|
       base = p.meta_hash
-      current_lics = (p.licenses || []).select { |l| current_team_ids.include?(l['team_id'].to_i) }
+      current_lics = (p.licenses || []).select { |l| leagues_by_team.key?(l['team_id'].to_i) }
       if current_lics.present?
-        primary = current_lics.min_by { |l| [League.class_rank(l['league_class_id']), License.approval_time(l)] }
-        last_status_id = primary['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id')&.to_i
-        if last_status_id && License::NAMES.key?(last_status_id)
-          base[:current_license_status_id] = last_status_id
-          base[:current_license_status] = License::NAMES[last_status_id]
+        # Ein Eintrag pro Liga-Lizenz der laufenden Saison, höchste Liga zuerst;
+        # der erste Eintrag speist die bestehenden current_license_status-Felder.
+        sorted = current_lics.sort_by { |l| [League.class_rank(l['league_class_id']), License.approval_time(l)] }
+        entries = sorted.filter_map do |l|
+          status_id = l['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id')&.to_i
+          next unless status_id && License::NAMES.key?(status_id)
+
+          league = leagues_by_team[l['team_id'].to_i]
+          { license_status_id: status_id, license_status: License::NAMES[status_id],
+            league_id: league[:id], league_short_name: league[:short_name] }
+        end
+        entries.uniq! { |e| [e[:league_id], e[:license_status_id]] }
+        if entries.present?
+          base[:current_licenses] = entries
+          base[:current_license_status_id] = entries.first[:license_status_id]
+          base[:current_license_status] = entries.first[:license_status]
         end
       end
       base

@@ -143,6 +143,25 @@ module Admin
       assert_response :no_content
     end
 
+    test 'index: season_game_count zählt Spiele kanonisch über officiating_referee_ids (PK)' do
+      referee = create(:referee, lizenznummer: 700_123)
+      go      = create(:game_operation)
+      club    = create(:club)
+      arena   = create(:arena)
+      league  = create(:league, game_operation: go, season_id: '18')
+      day     = GameDay.create!(league: league, arena: arena, club: club, number: 1, date: '2025-01-01')
+      Game.create!(game_day: day, officiating_referee_ids: [referee.id, 0],
+                   events: [], players: { 'home' => [], 'guest' => [] },
+                   forfait: 0, overtime: false, legacy: false)
+      login(@admin)
+
+      get '/api/v2/admin/referees'
+
+      assert_response :success
+      entry = response.parsed_body.find { |r| r['id'] == referee.id }
+      assert_equal 1, entry['season_game_count']
+    end
+
     private
 
     def vm_user(club_id)

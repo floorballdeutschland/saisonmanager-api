@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Sicherheitslücke melden (vertraulich)
+    url: https://github.com/floorballdeutschland/saisonmanager-api/security/advisories/new
+    about: Sicherheitslücken bitte nicht als öffentliches Issue melden — hier vertraulich einreichen oder an it@floorball.de mailen (siehe SECURITY.md).
+  - name: Feedback aus dem Spielbetrieb
+    url: https://github.com/floorballdeutschland/saisonmanager-feedback/issues
+    about: Fehlermeldungen und Wünsche von Vereinen, Teams und Schiedsrichtern gehören ins Feedback-Repo.

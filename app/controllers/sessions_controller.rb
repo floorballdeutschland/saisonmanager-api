@@ -9,7 +9,9 @@ class SessionsController < ApplicationController
 
     user = User.login(username, password)
 
-    if user
+    if user&.archived?
+      render json: { success: false, message: 'Dieses Benutzerkonto wurde archiviert.' }, status: :unauthorized
+    elsif user
       cookies.signed[:user_id] = { value: user.id, httponly: true, expires: 7.days }
 
       render json: { success: true, user: user.login_hash }
@@ -26,7 +28,9 @@ class SessionsController < ApplicationController
   def lost_password
     cookies.delete :user_id
 
-    User.find_by(user_name: params[:username].downcase)&.send_reset_information
+    # Archivierte Konten erhalten keine Reset-Mail – ein Login ist ohnehin gesperrt.
+    user = User.find_by(user_name: params[:username].downcase)
+    user.send_reset_information if user && !user.archived?
 
     render json: { success: true }, status: :ok
   end

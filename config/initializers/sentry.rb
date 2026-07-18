@@ -1,5 +1,7 @@
 Sentry.init do |config|
-  config.dsn = 'https://85b4823c49024668be39942d31c3fc21@o1082542.ingest.sentry.io/6091175'
+  # DSN kommt aus der Umgebung (SENTRY_DSN), damit kein Projekt-Token im öffentlichen Repo liegt.
+  # Ist die Variable nicht gesetzt (z. B. lokale Entwicklung), bleibt Sentry inaktiv.
+  config.dsn = ENV.fetch('SENTRY_DSN', nil)
   config.breadcrumbs_logger = %i[active_support_logger http_logger]
   config.enabled_environments = %w[production staging]
 

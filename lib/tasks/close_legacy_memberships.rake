@@ -3,6 +3,11 @@
 # Schließt offene Legacy-Vereinsmitgliedschaften (created_at nil & valid_until nil)
 # zum Startdatum (created_at) des frühesten datierten Folgevereins.
 #
+# ACHTUNG Semantik (seit Vorfall 2026-07-13): Heimatmitgliedschaften (home_club:
+# true) werden NUR durch einen datierten Heimat-Folgeeintrag (= echter Vereins-
+# wechsel) geschlossen — eine bloße Freigabe beendet die Heimatmitgliedschaft
+# nicht. Details in LegacyImport::MembershipCloser.
+#
 # Unterschied zu players:fix_club_valid_until: dieser Task setzt das EXAKTE
 # Startdatum des Folgevereins als Ende (kein Saisonende-Heuristik, keine Lücke).
 # Ohne datierten Folgeeintrag bleibt die Mitgliedschaft offen.
@@ -31,14 +36,15 @@ namespace :players do
       new_clubs, changed = LegacyImport::MembershipCloser.close(player.clubs)
       next unless changed
 
-      closed = player.clubs.count { |c| LegacyImport::MembershipCloser.open_legacy?(c) }
-      successor = LegacyImport::MembershipCloser.earliest_dated_start(player.clubs)
+      # Geschlossen wird pro Eintrag (Heimat nur durch Heimat-Folgeeintrag) —
+      # daher aus dem Diff zählen statt pauschal alle offenen Legacy-Einträge.
+      closed_entries = new_clubs.each_with_index.reject { |c, i| c == player.clubs[i] }.map(&:first)
       total_players += 1
-      total_entries += closed
+      total_entries += closed_entries.size
 
       suffix = dry_run ? ' [DRY RUN]' : ''
-      puts "--- ##{player.id} #{player.last_name}, #{player.first_name}: " \
-           "#{closed} Eintrag/Einträge → #{successor}#{suffix}"
+      details = closed_entries.map { |c| "club #{c['club_id']} → #{c['valid_until']}" }.join(', ')
+      puts "--- ##{player.id} #{player.last_name}, #{player.first_name}: #{details}#{suffix}"
 
       unless dry_run
         player.clubs = new_clubs
