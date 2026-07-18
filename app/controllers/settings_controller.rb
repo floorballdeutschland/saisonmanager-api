@@ -19,6 +19,9 @@ class SettingsController < ApplicationController
       }
     end
 
+    # Erster Request jedes Seitenaufbaus (Verbände + Saisons) – nutzerunabhängig,
+    # ändert sich praktisch nur bei Saisonwechsel/Verbandspflege.
+    expires_in 60.seconds, public: true
     render json: result
   end
 end

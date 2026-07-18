@@ -530,6 +530,10 @@ class LeaguesController < ApplicationController
       @league.schedule
     end
 
+    # Kurz genug, dass die 30s-Live-Polls der öffentlichen Ansichten frisch
+    # bleiben; Vary, weil delay_live_scores die Antwort je API-Key variiert.
+    expires_in 15.seconds, public: true
+    response.headers['Vary'] = 'X-Api-Key'
     render json: delay_live_scores(schedule)
   end
 
@@ -549,6 +553,8 @@ class LeaguesController < ApplicationController
       @league.current_schedule
     end
 
+    expires_in 15.seconds, public: true
+    response.headers['Vary'] = 'X-Api-Key'
     render json: delay_live_scores(current_schedule)
   end
 
@@ -560,6 +566,9 @@ class LeaguesController < ApplicationController
       League.find(id).scorer
     end
 
+    # Scorer/Tabellen zählen nur beendete Spiele – 30s Browser-Cache macht
+    # das Durchklicken (Tabelle ↔ Scorer ↔ Spielplan) requestfrei.
+    expires_in 30.seconds, public: true
     render json: scorer
   end
 
@@ -571,6 +580,7 @@ class LeaguesController < ApplicationController
       League.find(id).table
     end
 
+    expires_in 30.seconds, public: true
     render json: table
   end
 
@@ -581,6 +591,7 @@ class LeaguesController < ApplicationController
       League.find(id).grouped_table
     end
 
+    expires_in 30.seconds, public: true
     render json: grouped_table
   end
 

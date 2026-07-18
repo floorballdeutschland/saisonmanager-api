@@ -7,6 +7,7 @@ class GameOperationsController < ApplicationController
   def index
     @game_operations = GameOperation.all.order(:id)
 
+    expires_in 60.seconds, public: true
     render json: @game_operations
   end
 
