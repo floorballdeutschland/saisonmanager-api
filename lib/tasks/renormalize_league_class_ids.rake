@@ -41,7 +41,10 @@ namespace :leagues do
 
     League.unscoped.find_each do |league|
       new_code = League.normalize_class_id(league.league_class_id, league.name)
-      target_by_league[league.id] = new_code
+      # NULL bleibt NULL — auch als Auflösungsziel für Schritt 2: #297 las die
+      # Liga-Werte nach Schritt 1 aus der DB, eine NULL-Liga blieb dort NULL
+      # und ihre Lizenzen fielen aufs Wert-Mapping zurück (Orphan) statt auf ''.
+      target_by_league[league.id] = league.league_class_id.nil? ? nil : new_code
       next if new_code == league.league_class_id.to_s
 
       leagues_changed += 1

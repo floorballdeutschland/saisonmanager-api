@@ -91,6 +91,22 @@ class RenormalizeLeagueClassIdsTest < ActiveSupport::TestCase
     assert_equal '', player.licenses.last['league_class_id']
   end
 
+  test 'Liga mit NULL-Klasse bleibt NULL, ihre Lizenzen fallen aufs Wert-Mapping zurück' do
+    null_league = create(:league, name: 'Sonderrunde Ost')
+    null_league.update_columns(league_class_id: nil)
+    null_team = create(:team, league: null_league)
+    player = create(:player, with_licenses: [
+      { team: null_team, league_class_id: '280' }
+    ])
+
+    run_task('DRY_RUN' => 'false')
+
+    assert_nil null_league.reload.league_class_id
+    # Wie #297: NULL-Liga ist kein Auflösungsziel → Orphan-Wert-Mapping ('280' → 'rl'),
+    # nicht die ''-Normalisierung des NULL-Werts.
+    assert_equal 'rl', player.reload.licenses.first['league_class_id']
+  end
+
   test 'Idempotenz: zweiter Lauf ändert nichts mehr' do
     player = create(:player, with_licenses: [
       { team: @legacy_team, league_class_id: '280' }
