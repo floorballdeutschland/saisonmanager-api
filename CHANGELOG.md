@@ -12,6 +12,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Verbessert
 
 - **Verwaiste Spalte `users.active` entfernt**: Das Boolean-Flag ist seit der Konto-Archivierung (Release 1.53.0) weder lesend noch schreibend in Verwendung und wird per Migration entfernt. Historisch hat es den Login nie gesperrt, sondern nur Info-Mails unterdrückt und ein Badge in der Benutzerliste gefärbt. Der Legacy-Endpoint `UsersController#index` (liefert per `as_json` alle Spalten) verliert das Feld dadurch automatisch mit.
+- **Bereinigungs-Task für historische Ligaklassen vervollständigt**: Der Task `leagues:renormalize_class_ids` normalisiert jetzt — wie die einmalige Migration #297 — Ligen **und** die Lizenz-Kopien in `players.licenses[].league_class_id` in einem Lauf und prüft zusätzlich die `league_classes`-Settings-Map. Hintergrund: Der Go-Live-Datenbestand kam an Migration #297 vorbei, wodurch auf Prod ~1977 Ligen (Saisons 6–17) und ~127.000 Lizenz-Kopien Legacy-Werte tragen; ein Ligen-only-Lauf hätte eine Inkonsistenz zu den Lizenz-Kopien erzeugt. Idempotent, Dry-Run als Standard (`DRY_RUN=false` zum Ausführen); betrifft nur die Anzeige/Rang-Ableitung historischer Saisons (#119).
 
 ### Behoben
 
