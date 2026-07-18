@@ -310,9 +310,13 @@ namespace :legacy do
   end
 
   # DB-weiter Player-Index (Nachname|Vorname|Geburtsdatum → id), einmal je Prozess.
+  # WICHTIG: nur `birthdate: nil` ausschließen, NICHT `[nil, '']`. players.birthdate
+  # ist eine DATE-Spalte; der Vergleich gegen den Leerstring '' castet zu NULL und
+  # `where.not(birthdate: [nil, ''])` liefert dann DB-weit 0 Zeilen → leerer Index →
+  # jeder Spieler wird als Dublette neu angelegt statt gegen den Bestand gematcht.
   def player_index
     @player_index ||= LegacyImport::PlayerResolver.build_index(
-      Player.where.not(birthdate: [nil, '']).pluck(:last_name, :first_name, :birthdate, :id)
+      Player.where.not(birthdate: nil).pluck(:last_name, :first_name, :birthdate, :id)
     )
   end
 
