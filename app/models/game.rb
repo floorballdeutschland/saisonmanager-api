@@ -1312,10 +1312,13 @@ class Game < ApplicationRecord
       Rails.cache.delete("leagues/#{league_id}/#{key}")
     end
 
-    # Spieltag-Schedules haben einen Key pro Spieltagsnummer – per Muster
-    # löschen. Regexp-Matcher setzt den MemoryStore voraus (Prod-Setting);
-    # bei einem Wechsel auf Redis müsste hier ein Glob-String hin.
-    Rails.cache.delete_matched(%r{\Aleagues/#{league_id}/game_day_schedule/})
+    # Spieltag-Schedule gezielt löschen (kein delete_matched: das würde bei
+    # jedem Game-Save alle Cache-Keys unter Lock scannen). Wechselt ein Spiel
+    # den Spieltag, bleibt der alte Key bis zum TTL-Ablauf (≤5 min) stale –
+    # bewusst in Kauf genommen. Wie alle Deletes hier nur wirksam, weil der
+    # MemoryStore prozesslokal ist und Prod single-process läuft.
+    gd_number = game_day&.number
+    Rails.cache.delete("leagues/#{league_id}/game_day_schedule/#{gd_number}") if gd_number
   end
 
   # Spielerstatistik-Cache (PlayersController#stats) für alle Spieler dieser

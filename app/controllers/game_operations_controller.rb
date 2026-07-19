@@ -13,7 +13,8 @@ class GameOperationsController < ApplicationController
 
   # GET /game_operations/1/leagues
   def index_leagues
-    season_id = params[:season_id].presence || Setting.current_season_id
+    # to_i, damit nur normalisierte Werte in den Cache-Key fließen.
+    season_id = params[:season_id].presence&.to_i || Setting.current_season_id
 
     # Teil der Request-Kette jedes öffentlichen Seitenaufbaus (Ligenliste des
     # Verbands). full_hash lädt Banner/GameOperation-Anhänge mit – ohne Cache
