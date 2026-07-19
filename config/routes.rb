@@ -49,6 +49,9 @@ Rails.application.routes.draw do
       patch 'user/language' => 'user_settings#update_language'
       patch 'user/mail-preferences' => 'user_settings#update_mail_preferences'
       put 'user/password' => 'user_settings#update_password'
+      # E-Mail-Änderung mit Bestätigung: anstoßen (eingeloggt) + bestätigen (Token aus Mail)
+      patch 'user/email' => 'user_settings#update_email'
+      post 'user/email/confirm' => 'user_settings#confirm_email'
 
       get 'teams/:id', to: 'teams#show'
       get 'teams/:id/stats', to: 'teams#stats'
