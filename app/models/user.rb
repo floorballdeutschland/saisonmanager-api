@@ -30,6 +30,7 @@ class User < ApplicationRecord
     {
       id:,
       email:,
+      pending_email: email_change_pending? ? pending_email : nil,
       username: user_name,
       name: fullname,
       permissions: perms,
@@ -54,6 +55,48 @@ class User < ApplicationRecord
   def send_reset_information
     self.password_reset_token = SecureRandom.uuid
     UserMailer.reset_password(self).deliver_now if save(validate: false)
+  end
+
+  # --- E-Mail-Änderung mit Bestätigung (Double-Opt-In) ---------------------
+  # Die neue Adresse wird als pending_email vorgemerkt und erst wirksam, wenn
+  # der Bestätigungslink innerhalb der Frist geklickt wurde. Gespeichert wird
+  # nur der SHA256-Digest des Tokens (analog GameDaySecretaryLink).
+
+  EMAIL_CONFIRMATION_VALIDITY = 24.hours
+
+  # Startet die Änderung und liefert das Roh-Token für den Mail-Link zurück.
+  # Eine noch offene Änderung wird dabei überschrieben.
+  def start_email_change!(new_email)
+    raw_token = SecureRandom.urlsafe_base64(32)
+    update!(
+      pending_email: new_email,
+      email_confirmation_token_digest: Digest::SHA256.hexdigest(raw_token),
+      email_confirmation_expires_at: EMAIL_CONFIRMATION_VALIDITY.from_now
+    )
+    raw_token
+  end
+
+  def confirm_email_change!
+    update!(
+      email: pending_email,
+      pending_email: nil,
+      email_confirmation_token_digest: nil,
+      email_confirmation_expires_at: nil
+    )
+  end
+
+  def email_change_pending?
+    pending_email.present? && email_confirmation_expires_at&.future?
+  end
+
+  # Leere Tokens dürfen nie zu einem NULL-Vergleich werden (Account-Übernahme-
+  # Falle, siehe UsersController#reset_password_token) – daher erst normalisieren.
+  def self.find_by_email_confirmation_token(raw_token)
+    token = raw_token.to_s.presence
+    return nil unless token
+
+    where('email_confirmation_expires_at > ?', Time.current)
+      .find_by(email_confirmation_token_digest: Digest::SHA256.hexdigest(token))
   end
 
   # Wie send_reset_information, aber mit Begrüßungs-Mail (Benutzername + Link zum

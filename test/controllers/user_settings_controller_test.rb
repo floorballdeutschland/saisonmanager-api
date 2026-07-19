@@ -95,4 +95,136 @@ class UserSettingsControllerTest < ActionDispatch::IntegrationTest
         as: :json
     assert_response :unauthorized
   end
+
+  # --- E-Mail-Änderung mit Bestätigung (Double-Opt-In) ---------------------
+
+  API_KEY = 'test-key-user-settings'.freeze
+
+  def create_api_key
+    ApiKey.create!(name: 'Test', key_digest: Digest::SHA256.hexdigest(API_KEY), active: true)
+  end
+
+  test 'E-Mail-Änderung anstoßen setzt pending_email und mailt an die neue Adresse' do
+    @user.update!(email: 'alt@example.com')
+    login_as(@user)
+
+    assert_emails 1 do
+      patch '/api/v2/user/email',
+            params: { current_password: 'password123', email: 'Neu@Example.com' },
+            as: :json
+    end
+
+    assert_response :ok
+    body = JSON.parse(response.body)
+    assert body['success']
+    assert_equal 'neu@example.com', body.dig('user', 'pending_email')
+
+    @user.reload
+    assert_equal 'alt@example.com', @user.email, 'aktive Adresse darf sich noch nicht ändern'
+    assert_equal 'neu@example.com', @user.pending_email
+    assert @user.email_confirmation_expires_at > 23.hours.from_now
+
+    mail = ActionMailer::Base.deliveries.last
+    assert_equal ['neu@example.com'], mail.to
+  end
+
+  test 'E-Mail-Änderung mit falschem Passwort ergibt 422 und verschickt nichts' do
+    login_as(@user)
+
+    assert_emails 0 do
+      patch '/api/v2/user/email', params: { current_password: 'wrong', email: 'neu@example.com' }, as: :json
+    end
+
+    assert_response :unprocessable_entity
+    assert_nil @user.reload.pending_email
+  end
+
+  test 'E-Mail-Änderung mit ungültiger Adresse ergibt 422' do
+    login_as(@user)
+
+    patch '/api/v2/user/email', params: { current_password: 'password123', email: 'kein-mail' }, as: :json
+
+    assert_response :unprocessable_entity
+    assert_nil @user.reload.pending_email
+  end
+
+  test 'E-Mail-Änderung auf die eigene aktuelle Adresse ergibt 422' do
+    @user.update!(email: 'gleich@example.com')
+    login_as(@user)
+
+    patch '/api/v2/user/email', params: { current_password: 'password123', email: 'GLEICH@example.com' }, as: :json
+
+    assert_response :unprocessable_entity
+  end
+
+  test 'E-Mail-Änderung auf eine bereits vergebene Adresse ergibt 422' do
+    create(:user, email: 'vergeben@example.com')
+    login_as(@user)
+
+    patch '/api/v2/user/email', params: { current_password: 'password123', email: 'Vergeben@example.com' }, as: :json
+
+    assert_response :unprocessable_entity
+    assert_nil @user.reload.pending_email
+  end
+
+  test 'E-Mail-Änderung ohne Login ergibt 401' do
+    patch '/api/v2/user/email', params: { current_password: 'password123', email: 'neu@example.com' }, as: :json
+    assert_response :unauthorized
+  end
+
+  test 'Bestätigung mit gültigem Token übernimmt die neue Adresse' do
+    create_api_key
+    @user.update!(email: 'alt@example.com')
+    raw_token = @user.start_email_change!('neu@example.com')
+
+    post '/api/v2/user/email/confirm',
+         params: { token: raw_token }, headers: { 'X-Api-Key' => API_KEY }, as: :json
+
+    assert_response :ok
+    assert JSON.parse(response.body)['success']
+
+    @user.reload
+    assert_equal 'neu@example.com', @user.email
+    assert_nil @user.pending_email
+    assert_nil @user.email_confirmation_token_digest
+    assert_nil @user.email_confirmation_expires_at
+  end
+
+  test 'Bestätigung mit abgelaufenem Token ergibt 404 und ändert nichts' do
+    create_api_key
+    @user.update!(email: 'alt@example.com')
+    raw_token = @user.start_email_change!('neu@example.com')
+    @user.update!(email_confirmation_expires_at: 1.minute.ago)
+
+    post '/api/v2/user/email/confirm',
+         params: { token: raw_token }, headers: { 'X-Api-Key' => API_KEY }, as: :json
+
+    assert_response :not_found
+    assert_equal 'alt@example.com', @user.reload.email
+  end
+
+  test 'Bestätigung mit leerem Token ergibt 404 (kein NULL-Match)' do
+    create_api_key
+    # @user hat kein Token gesetzt – ein leerer Token darf ihn nicht treffen.
+    post '/api/v2/user/email/confirm', params: { token: '' }, headers: { 'X-Api-Key' => API_KEY }, as: :json
+    assert_response :not_found
+  end
+
+  test 'Bestätigung scheitert, wenn die Adresse inzwischen vergeben ist' do
+    create_api_key
+    @user.update!(email: 'alt@example.com')
+    raw_token = @user.start_email_change!('neu@example.com')
+    create(:user, email: 'neu@example.com')
+
+    post '/api/v2/user/email/confirm',
+         params: { token: raw_token }, headers: { 'X-Api-Key' => API_KEY }, as: :json
+
+    assert_response :unprocessable_entity
+    assert_equal 'alt@example.com', @user.reload.email
+  end
+
+  test 'Bestätigung ohne Cookie und ohne API-Key ergibt 401' do
+    post '/api/v2/user/email/confirm', params: { token: 'egal' }, as: :json
+    assert_response :unauthorized
+  end
 end

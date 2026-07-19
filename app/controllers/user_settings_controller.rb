@@ -1,6 +1,11 @@
 # Self-Service-Einstellungen des eingeloggten Users (Sprache, Passwort).
 # Nicht zu verwechseln mit Admin::UsersController (Verwaltung fremder User).
 class UserSettingsController < ApplicationController
+  # Der Bestätigungslink aus der Mail wird ohne Login geöffnet – das Token ist
+  # dort das eigentliche Geheimnis (Muster wie users#reset_password_token).
+  skip_before_action :authenticate_user, only: %i[confirm_email]
+  before_action :authenticate_public_request, only: %i[confirm_email]
+
   MIN_PASSWORD_LENGTH = 8
 
   # PATCH /api/v2/user/language
@@ -59,7 +64,65 @@ class UserSettingsController < ApplicationController
     end
   end
 
+  # PATCH /api/v2/user/email
+  # Startet die Änderung der eigenen E-Mail-Adresse: Die neue Adresse wird als
+  # pending_email vorgemerkt, ein Bestätigungslink geht an die NEUE Adresse und
+  # ist 24h gültig. Erst die Bestätigung übernimmt die Adresse (Double-Opt-In).
+  def update_email
+    unless current_user.authenticate(params[:current_password].to_s)
+      return render json: { success: false, message: 'Aktuelles Passwort ist falsch.' },
+                    status: :unprocessable_entity
+    end
+
+    new_email = params[:email].to_s.strip.downcase
+    unless new_email.match?(URI::MailTo::EMAIL_REGEXP)
+      return render json: { success: false, message: 'Ungültige E-Mail-Adresse.' },
+                    status: :unprocessable_entity
+    end
+
+    if new_email == current_user.email.to_s.downcase
+      return render json: { success: false, message: 'Das ist bereits deine aktuelle E-Mail-Adresse.' },
+                    status: :unprocessable_entity
+    end
+
+    # email hat keinen Unique-Constraint; der Login per E-Mail funktioniert aber
+    # nur bei eindeutiger Adresse (User.login). Kollisionen daher hier abfangen.
+    if email_taken?(new_email)
+      return render json: { success: false, message: 'Diese E-Mail-Adresse wird bereits verwendet.' },
+                    status: :unprocessable_entity
+    end
+
+    raw_token = current_user.start_email_change!(new_email)
+    UserMailer.confirm_email_change(current_user, raw_token).deliver_later
+    render json: { success: true, user: current_user.login_hash }
+  end
+
+  # POST /api/v2/user/email/confirm – öffentlich, Token aus dem Mail-Link.
+  def confirm_email
+    user = User.find_by_email_confirmation_token(params[:token])
+    unless user
+      return render json: { success: false, message: 'Ungültiger oder abgelaufener Link.' },
+                    status: :not_found
+    end
+
+    # Zwischen Anstoßen und Bestätigen kann die Adresse anderweitig vergeben
+    # worden sein – deshalb beim Übernehmen erneut prüfen.
+    if User.where.not(id: user.id).where('LOWER(email) = ?', user.pending_email.to_s.downcase).exists?
+      return render json: { success: false, message: 'Diese E-Mail-Adresse wird inzwischen bereits verwendet.' },
+                    status: :unprocessable_entity
+    end
+
+    user.confirm_email_change!
+    render json: { success: true, email: user.email }
+  end
+
   private
+
+  def email_taken?(new_email)
+    User.where('LOWER(email) = ?', new_email).where.not(id: current_user.id).exists? ||
+      User.where('LOWER(pending_email) = ?', new_email).where.not(id: current_user.id)
+          .where('email_confirmation_expires_at > ?', Time.current).exists?
+  end
 
   def password_params
     params.permit(:password, :password_confirmation)
