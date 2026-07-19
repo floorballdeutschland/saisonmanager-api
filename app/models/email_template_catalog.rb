@@ -26,6 +26,19 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'link', description: 'Link zum Zurücksetzen des Passworts' }
       ]
     },
+    'UserMailer#confirm_email_change' => {
+      mailer_class: 'UserMailer',
+      action_name: 'confirm_email_change',
+      description: 'Bestätigungslink bei einer E-Mail-Änderung (geht an die neue Adresse; Link 24h gültig, erst die Bestätigung übernimmt die Adresse).',
+      default_subject: 'Bestätige deine neue E-Mail-Adresse im Saisonmanager',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'username', description: 'Benutzername des Kontos' },
+        { key: 'link', description: 'Link zur Bestätigung der neuen E-Mail-Adresse' },
+        { key: 'new_email', description: 'Die neue (noch unbestätigte) E-Mail-Adresse' }
+      ]
+    },
     'RefereeFeedbackMailer#form_available' => {
       mailer_class: 'RefereeFeedbackMailer',
       action_name: 'form_available',

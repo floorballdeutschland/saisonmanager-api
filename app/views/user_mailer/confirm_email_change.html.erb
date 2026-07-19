@@ -1,0 +1,21 @@
+<h2>Neue E-Mail-Adresse bestätigen</h2>
+<p>
+  Hey <strong><%= @username %></strong>, für dein Saisonmanager-Konto wurde eine neue E-Mail-Adresse hinterlegt:
+  <strong><%= @new_email %></strong>
+</p>
+
+<p>
+  Damit die Änderung wirksam wird, bestätige die Adresse bitte innerhalb von 24 Stunden über diesen Link:
+</p>
+
+<p>
+  <a href="<%= @link %>"><%= @link %></a>
+</p>
+
+<p>
+  Bis zur Bestätigung bleibt deine bisherige E-Mail-Adresse aktiv.
+</p>
+
+<p>
+  Solltest du diese Änderung nicht im Saisonmanager angestoßen haben, lösche diese E-Mail einfach – deine bisherige Adresse bleibt dann unverändert.
+</p>

@@ -54,7 +54,7 @@ module Admin
       sa = create(:state_association)
       go = create(:game_operation, state_association_id: sa.id)
       club = create(:club, state_association_id: sa.id)
-      referee = create(:referee, club_id: club.id, email: nil)
+      referee = create(:referee, club_id: club.id, email: 'schiri@example.com')
       login(rsk_user(go.id))
 
       assert_difference -> { User.count }, 1 do
@@ -62,6 +62,21 @@ module Admin
       end
 
       assert_response :success
+    end
+
+    test 'Benutzerkonto anlegen ohne E-Mail am Profil wird abgelehnt' do
+      sa = create(:state_association)
+      go = create(:game_operation, state_association_id: sa.id)
+      club = create(:club, state_association_id: sa.id)
+      referee = create(:referee, club_id: club.id, email: nil)
+      login(rsk_user(go.id))
+
+      assert_no_difference -> { User.count } do
+        post "/api/v2/admin/referees/#{referee.id}/create_user"
+      end
+
+      assert_response :unprocessable_entity
+      assert_match(/E-Mail-Adresse/, response.parsed_body['error'])
     end
 
     # Issue #60: VM ist serverseitig read-only – Lesen der Schiris des eigenen

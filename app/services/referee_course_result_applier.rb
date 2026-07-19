@@ -142,6 +142,10 @@ class RefereeCourseResultApplier
       email:        @result.master_email_final,
       club_id:      @result.master_club_id_final
     }
+    # Bei Schiris mit Benutzerkonto gehört die E-Mail dem Konto-Inhaber
+    # (Pflege nur über den Double-Opt-In-Flow unter „Mein Konto") — der Import
+    # lässt sie dann unangetastet, statt sie zu überschreiben oder zu leeren.
+    attrs.delete(:email) if referee.user
     # Lizenznummer nur bei Neuanlage setzen — danach gilt sie als unveränderlich.
     if @result.master_lizenznummer_final.present? && referee.lizenznummer.blank?
       attrs[:lizenznummer] = @result.master_lizenznummer_final
