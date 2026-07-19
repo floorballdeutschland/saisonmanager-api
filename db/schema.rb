@@ -803,6 +803,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_19_130000) do
     t.string "pending_email"
     t.string "email_confirmation_token_digest"
     t.datetime "email_confirmation_expires_at"
+    t.index ["email_confirmation_token_digest"], name: "index_users_on_email_confirmation_token_digest", where: "(email_confirmation_token_digest IS NOT NULL)"
     t.index ["referee_id"], name: "index_users_on_referee_id"
     t.index ["referee_id"], name: "index_users_on_referee_id_unique", unique: true, where: "(referee_id IS NOT NULL)"
     t.index ["user_name"], name: "index_users_on_user_name", unique: true

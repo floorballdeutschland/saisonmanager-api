@@ -167,6 +167,71 @@ class UserSettingsControllerTest < ActionDispatch::IntegrationTest
     assert_nil @user.reload.pending_email
   end
 
+  test 'E-Mail-Änderung auf eine Adresse mit offener fremder Pending-Änderung ergibt 422' do
+    other = create(:user, email: 'other@example.com')
+    other.start_email_change!('ziel@example.com')
+    login_as(@user)
+
+    patch '/api/v2/user/email', params: { current_password: 'password123', email: 'ziel@example.com' }, as: :json
+
+    assert_response :unprocessable_entity
+    assert_nil @user.reload.pending_email
+  end
+
+  test 'Abgelaufene fremde Pending-Änderung blockiert die Adresse nicht mehr' do
+    other = create(:user, email: 'other@example.com')
+    other.start_email_change!('ziel@example.com')
+    other.update!(email_confirmation_expires_at: 1.minute.ago)
+    login_as(@user)
+
+    patch '/api/v2/user/email', params: { current_password: 'password123', email: 'ziel@example.com' }, as: :json
+
+    assert_response :ok
+    assert_equal 'ziel@example.com', @user.reload.pending_email
+  end
+
+  test 'Erneutes Anstoßen innerhalb der Wartezeit ergibt 429' do
+    login_as(@user)
+    patch '/api/v2/user/email', params: { current_password: 'password123', email: 'eins@example.com' }, as: :json
+    assert_response :ok
+
+    assert_emails 0 do
+      patch '/api/v2/user/email', params: { current_password: 'password123', email: 'zwei@example.com' }, as: :json
+    end
+
+    assert_response :too_many_requests
+    assert_equal 'eins@example.com', @user.reload.pending_email
+  end
+
+  test 'Nach Ablauf der Wartezeit überschreibt erneutes Anstoßen die offene Änderung' do
+    login_as(@user)
+    patch '/api/v2/user/email', params: { current_password: 'password123', email: 'eins@example.com' }, as: :json
+    assert_response :ok
+    # Wartezeit künstlich hinter uns lassen (started_at leitet sich aus expires_at ab).
+    @user.reload.update!(email_confirmation_expires_at: @user.email_confirmation_expires_at - 2.minutes)
+    first_digest = @user.email_confirmation_token_digest
+
+    patch '/api/v2/user/email', params: { current_password: 'password123', email: 'zwei@example.com' }, as: :json
+
+    assert_response :ok
+    @user.reload
+    assert_equal 'zwei@example.com', @user.pending_email
+    refute_equal first_digest, @user.email_confirmation_token_digest, 'alter Token muss ungültig werden'
+  end
+
+  test 'Archivierte User können eine offene Änderung nicht mehr bestätigen' do
+    create_api_key
+    @user.update!(email: 'alt@example.com')
+    raw_token = @user.start_email_change!('neu@example.com')
+    @user.archive!(@user.id)
+
+    post '/api/v2/user/email/confirm',
+         params: { token: raw_token }, headers: { 'X-Api-Key' => API_KEY }, as: :json
+
+    assert_response :not_found
+    assert_equal 'alt@example.com', @user.reload.email
+  end
+
   test 'E-Mail-Änderung ohne Login ergibt 401' do
     patch '/api/v2/user/email', params: { current_password: 'password123', email: 'neu@example.com' }, as: :json
     assert_response :unauthorized

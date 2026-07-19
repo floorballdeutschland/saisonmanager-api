@@ -92,6 +92,15 @@ class UserSettingsController < ApplicationController
                     status: :unprocessable_entity
     end
 
+    # Mail-Bombing bremsen: pro Konto höchstens eine Bestätigungsmail pro
+    # Minute (die Adresse ist frei wählbar, der Versand geht an Fremde).
+    started_at = current_user.email_change_started_at
+    if started_at && started_at > User::EMAIL_CONFIRMATION_RESEND_INTERVAL.ago
+      return render json: { success: false,
+                            message: 'Bitte warte einen Moment, bevor du erneut eine Bestätigungsmail anforderst.' },
+                    status: :too_many_requests
+    end
+
     raw_token = current_user.start_email_change!(new_email)
     UserMailer.confirm_email_change(current_user, raw_token).deliver_later
     render json: { success: true, user: current_user.login_hash }

@@ -7,5 +7,8 @@ class AddEmailChangeConfirmationToUsers < ActiveRecord::Migration[7.1]
     add_column :users, :pending_email, :string
     add_column :users, :email_confirmation_token_digest, :string
     add_column :users, :email_confirmation_expires_at, :datetime
+    add_index :users, :email_confirmation_token_digest,
+              where: 'email_confirmation_token_digest IS NOT NULL',
+              name: 'index_users_on_email_confirmation_token_digest'
   end
 end
