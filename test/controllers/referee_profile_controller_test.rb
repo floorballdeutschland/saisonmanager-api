@@ -64,6 +64,28 @@ class RefereeProfileControllerTest < ActionDispatch::IntegrationTest
     assert_response :forbidden
   end
 
+  test 'show liefert die Konto-Adresse als account_email mit' do
+    @user.update!(email: 'konto@example.com')
+    login(@user)
+    get '/api/v2/referee/profile'
+    assert_response :success
+    assert_equal 'konto@example.com', JSON.parse(response.body)['account_email']
+  end
+
+  test 'update ignoriert ein mitgeschicktes email-Feld (Pflege nur über Mein Konto)' do
+    @referee.update!(email: 'schiri@example.com')
+    login(@user)
+
+    put '/api/v2/referee/profile',
+        params: { referee: { telefonnummer: '0301234567', email: 'gekapert@example.com' } },
+        as: :json
+
+    assert_response :success
+    @referee.reload
+    assert_equal '0301234567', @referee.telefonnummer, 'andere Felder müssen weiter änderbar sein'
+    assert_equal 'schiri@example.com', @referee.email, 'email darf über das Profil nicht mehr änderbar sein'
+  end
+
   private
 
   def login(user)

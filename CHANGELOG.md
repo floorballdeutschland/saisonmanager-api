@@ -13,6 +13,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 - **E-Mail-Adresse selbst ändern (mit Bestätigung)**: Alle Benutzer können ihre E-Mail-Adresse jetzt unter „Mein Konto" selbst ändern. Die neue Adresse wird erst aktiv, nachdem sie innerhalb von 24 Stunden über einen Bestätigungslink (Mail an die neue Adresse) bestätigt wurde – bis dahin bleibt die bisherige Adresse gültig. Bereits vergebene Adressen werden abgelehnt, damit der Login per E-Mail eindeutig bleibt. Die Bestätigungsmail ist über die E-Mail-Vorlagen-Verwaltung anpassbar (API #168, Frontend #106).
 - **Schiedsrichter landen nach dem Login auf „Mein Profil"**: Benutzer, deren einzige Rolle Schiedsrichter ist, werden nach dem Login direkt auf ihre Profilseite `/schiedsrichter/profil` geleitet statt auf die Startseite (Frontend #105).
+- **Eine E-Mail-Adresse pro Schiedsrichter mit Benutzerkonto**: Das E-Mail-Feld unter „Mein Profil" (Schiedsrichter-Portal) ist jetzt schreibgeschützt – die Adresse wird zentral unter „Mein Konto" gepflegt und die Bestätigung einer Änderung aktualisiert automatisch auch die Schiri-Adresse, an die Ansetzungs- und RSK-Mails gehen. Der Kurslehrgangs-Import überschreibt oder leert die E-Mail von Schiedsrichtern mit Benutzerkonto nicht mehr; Profile ohne Konto pflegt weiterhin die RSK über die Verwaltung.
 
 ## [1.54.4] - 2026-07-19
 

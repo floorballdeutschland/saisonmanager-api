@@ -237,6 +237,20 @@ class UserSettingsControllerTest < ActionDispatch::IntegrationTest
     assert_response :unauthorized
   end
 
+  test 'Bestätigung zieht die Adresse eines verknüpften Schiri-Profils mit' do
+    create_api_key
+    referee = create(:referee, email: 'alt@example.com')
+    @user.update!(email: 'alt@example.com', referee: referee)
+    raw_token = @user.start_email_change!('neu@example.com')
+
+    post '/api/v2/user/email/confirm',
+         params: { token: raw_token }, headers: { 'X-Api-Key' => API_KEY }, as: :json
+
+    assert_response :ok
+    assert_equal 'neu@example.com', @user.reload.email
+    assert_equal 'neu@example.com', referee.reload.email, 'operative Schiri-Adresse muss mitziehen'
+  end
+
   test 'Bestätigung mit gültigem Token übernimmt die neue Adresse' do
     create_api_key
     @user.update!(email: 'alt@example.com')

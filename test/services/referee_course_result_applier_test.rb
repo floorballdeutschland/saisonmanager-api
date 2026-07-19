@@ -199,4 +199,32 @@ class RefereeCourseResultApplierTest < ActiveSupport::TestCase
 
     assert_nil ref.reload.email
   end
+
+  test 'lässt die E-Mail unangetastet, wenn der Schiri ein Benutzerkonto hat' do
+    ref = create(:referee, email: 'selbst-gepflegt@example.de')
+    create(:user, referee: ref)
+    result = make_result(
+      referee: ref,
+      master_email_final: 'aus-dem-csv@example.de',
+      master_vorname_final: 'Neu'
+    )
+
+    RefereeCourseResultApplier.new(result, performed_by_user: @admin)
+                              .call(review_required: false)
+
+    ref.reload
+    assert_equal 'selbst-gepflegt@example.de', ref.email, 'Konto-Adresse darf der Import nicht überschreiben'
+    assert_equal 'Neu', ref.vorname, 'übrige Stammdaten müssen weiter übernommen werden'
+  end
+
+  test 'leert die E-Mail bei Konto-Schiris auch nicht via nil' do
+    ref = create(:referee, email: 'selbst-gepflegt@example.de')
+    create(:user, referee: ref)
+    result = make_result(referee: ref, master_email_final: nil)
+
+    RefereeCourseResultApplier.new(result, performed_by_user: @admin)
+                              .call(review_required: false)
+
+    assert_equal 'selbst-gepflegt@example.de', ref.reload.email
+  end
 end
