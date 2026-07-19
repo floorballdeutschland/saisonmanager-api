@@ -1311,6 +1311,14 @@ class Game < ApplicationRecord
     %w[schedule current_schedule table grouped_table scorer].each do |key|
       Rails.cache.delete("leagues/#{league_id}/#{key}")
     end
+
+    # Spieltag-Schedule gezielt löschen (kein delete_matched: das würde bei
+    # jedem Game-Save alle Cache-Keys unter Lock scannen). Wechselt ein Spiel
+    # den Spieltag, bleibt der alte Key bis zum TTL-Ablauf (≤5 min) stale –
+    # bewusst in Kauf genommen. Wie alle Deletes hier nur wirksam, weil der
+    # MemoryStore prozesslokal ist und Prod single-process läuft.
+    gd_number = game_day&.number
+    Rails.cache.delete("leagues/#{league_id}/game_day_schedule/#{gd_number}") if gd_number
   end
 
   # Spielerstatistik-Cache (PlayersController#stats) für alle Spieler dieser

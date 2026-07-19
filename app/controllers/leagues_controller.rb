@@ -530,18 +530,32 @@ class LeaguesController < ApplicationController
       @league.schedule
     end
 
-    # Kurz genug, dass die 30s-Live-Polls der öffentlichen Ansichten frisch
-    # bleiben; Vary, weil delay_live_scores die Antwort je API-Key variiert.
-    expires_in 15.seconds, public: true
-    response.headers['Vary'] = 'X-Api-Key'
+    # 15s sind kurz genug, dass die 30s-Live-Polls der öffentlichen Ansichten
+    # frisch bleiben. Bewusst private (kein public): delay_live_scores variiert
+    # die Antwort je API-Key UND je Cookie-Session (eingeloggt = realtime) –
+    # ein Shared Cache/CDN dürfte diese Varianten nicht mischen. Der Browser-
+    # Cache pro Nutzer reicht für das Durchklick-Ziel völlig aus.
+    expires_in 15.seconds
     render json: delay_live_scores(schedule)
   end
 
   # GET /leagues/1/game_days/15/schedule
   def game_day_schedule
-    @league = League.find(params[:id])
+    id = params[:id]
+    # to_i, damit nur normalisierte Werte in den Cache-Key fließen (und der
+    # Key exakt dem entspricht, den Game#flush_league_caches löscht).
+    game_day_number = params[:game_day_number].to_i
 
-    render json: @league.game_day_schedule(params[:game_day_number])
+    schedule = Rails.cache.fetch("leagues/#{id}/game_day_schedule/#{game_day_number}",
+                                 expires_in: 5.minutes) do
+      League.find(id).game_day_schedule(game_day_number)
+    end
+
+    # delay_live_scores wie bei schedule/current_schedule: ohne den Filter
+    # umging dieser Endpunkt die Ergebnis-Verzögerung für Nicht-Realtime-Keys.
+    # private wie dort (Variante hängt an Key UND Cookie-Session).
+    expires_in 15.seconds
+    render json: delay_live_scores(schedule)
   end
 
   # GET /leagues/1/game_days/current/schedule
@@ -553,8 +567,8 @@ class LeaguesController < ApplicationController
       @league.current_schedule
     end
 
-    expires_in 15.seconds, public: true
-    response.headers['Vary'] = 'X-Api-Key'
+    # private wie schedule (Variante hängt an API-Key UND Cookie-Session).
+    expires_in 15.seconds
     render json: delay_live_scores(current_schedule)
   end
 
