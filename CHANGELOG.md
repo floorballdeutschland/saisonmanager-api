@@ -9,6 +9,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.54.4] - 2026-07-19
+
+### Verbessert
+
+- **Schiedsrichter-Willkommensmail nennt RSK-Kontakt**: Die Mail beim Anlegen eines Schiedsrichteraccounts verweist bei Fragen jetzt konkret auf die zuständige RSK FD mit E-Mail-Adresse (rsk@floorball.de) statt nur allgemein auf „die zuständige RSK".
+- **Browser-Caching für Frontend-Assets**: Die vom Build fingerprinteten Dateien (JS/CSS mit Hash im Namen) liefert nginx jetzt mit langlebigen `immutable`-Cache-Headern aus, statt sie bei jedem Seitenaufruf neu zu übertragen; `index.html` bleibt bewusst ungecacht, damit neue Deploys sofort greifen (Docker #22).
+- **Serverseitiges Caching für die letzten ungecachten Public-Endpunkte**: Die öffentliche Spiel-Detailseite (`games#show`) berechnete bei jedem Abruf den kompletten Spielbericht live aus den JSONB-Spalten; anonyme Abrufe kommen jetzt aus dem Cache (invalidiert sich bei jedem Spiel-Event über `updated_at` im Key, eingeloggte Nutzer bleiben ungecacht). Auch der Spieltag-Spielplan (`leagues/:id/game_days/:nr/schedule`, einziger Schedule-Endpunkt ohne Cache) und die Ligenliste eines Verbands (`game_operations/:id/leagues/:season`) werden jetzt 5 Minuten gecacht. Nebenbei behoben: Der Spieltag-Spielplan lieferte laufende Ergebnisse auch an Nicht-Realtime-API-Keys ungefiltert aus – er wendet jetzt wie die übrigen Spielplan-Endpunkte die Ergebnis-Verzögerung an.
+- **Öffentliche Endpunkte erlauben Browser-Caching**: Die von den öffentlichen Seiten genutzten API-Antworten (Spielplan, Tabelle, Scorer, Verbands-/Ligenliste, Init) tragen jetzt kurze `Cache-Control`-Laufzeiten (15–60 s) statt `max-age=0, must-revalidate`. Das Durchklicken zwischen Tabelle, Scorer und Spielplan bedient sich damit aus dem Browser-Cache statt jedes Mal die API zu treffen. Die Spielplan-Endpunkte bleiben mit 15 s unter dem 30-s-Poll-Intervall der Live-Ansichten und sind bewusst `private`, weil die Ergebnis-Verzögerung für Nicht-Realtime-API-Keys die Antwort pro Aufrufer variiert; die nutzerunabhängigen Endpunkte (Tabelle, Scorer, Ligenliste, Init) sind `public`. (Per #162 nach dem 1.54.3-Release gemergt, daher hier unter Unreleased.)
+
+### Behoben
+
+- **Schiri-Historie zeigt Saisonnamen statt Saisonnummern**: Die Zwischenüberschriften unter „Meine Historie → Gepfiffene Spiele" zeigten die interne Saisonnummer (z. B. „17") statt „2025/2026". Ursache: `leagues.season_id` ist eine String-Spalte, der Namens-Lookup in `Setting.seasons` erwartete aber Integer-Keys. Zusätzlich war die absteigende Saison-Sortierung wirkungslos (`sort_by` statt `sort_by!`).
+- **Schiri-Historie: Spiele vergangener Saisons sofort sichtbar**: Die Saison-Blöcke waren zwar aufklappbar, aber ohne erkennbaren Hinweis darauf — nur die neueste Saison startete geöffnet, ältere Saisons wirkten wie reine Zähler. Jetzt starten alle Saisons aufgeklappt, die Kopfzeile trägt ein Chevron als Auf-/Zuklapp-Indikator und die Überschrift lautet „Saison 2026/2027" statt nur der Jahreszahlen (Frontend #102).
+
 ## [1.54.3] - 2026-07-19
 
 ### Verbessert

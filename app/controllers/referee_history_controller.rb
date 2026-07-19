@@ -12,7 +12,10 @@ class RefereeHistoryController < ApplicationController
 
     seasons_map = Setting.seasons.index_by { |s| s[:id] }
 
-    grouped = all_games.group_by { |g| g.game_day.league&.season_id }
+    # leagues.season_id ist eine String-Spalte — für den Lookup in der
+    # Integer-indizierten seasons_map muss der Wert konvertiert werden,
+    # sonst fällt jede Saison auf die rohe Nummer als Namen zurück.
+    grouped = all_games.group_by { |g| g.game_day.league&.season_id&.to_i }
 
     result = grouped.map do |season_id, season_games|
       season_info = seasons_map[season_id]
@@ -23,7 +26,7 @@ class RefereeHistoryController < ApplicationController
       }
     end
 
-    result.sort_by { |s| -(s[:season_id] || 0) }
+    result.sort_by! { |s| -(s[:season_id] || 0) }
 
     render json: result
   end
@@ -54,7 +57,7 @@ class RefereeHistoryController < ApplicationController
       home_team: game.home_team&.name,
       guest_team: game.guest_team&.name,
       league: game.league&.name,
-      season_id: game.game_day.league&.season_id,
+      season_id: game.game_day.league&.season_id&.to_i,
       result: game.result_string
     }
   end

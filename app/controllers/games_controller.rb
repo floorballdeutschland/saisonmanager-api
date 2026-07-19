@@ -24,12 +24,29 @@ class GamesController < ApplicationController
   def show
     game = Game.find(params[:id])
 
-    if api_key_request? && !@api_key.realtime
+    delayed = api_key_request? && !@api_key.realtime
+    if delayed
       cutoff = Time.current.to_i - 10.minutes.to_i
       game.events = (game.events || []).select { |e| e['added_at'].nil? || e['added_at'] < cutoff }
     end
 
-    hash = game.full_hash
+    # full_hash parst bei jedem Aufruf die JSONB-Spalten (events, players, …)
+    # und macht mehrere Folgequeries – für anonyme Abrufe (öffentliche
+    # Spiel-Detailseite) cachen. updated_at im Key invalidiert bei jedem
+    # Spiel-Event sofort; die delayed-Variante altert dadurch höchstens um die
+    # TTL über die 10-Minuten-Verzögerung hinaus (unkritisch, Verzögerung ist
+    # ein Mindestwert). Eingeloggte/Secretary-Abrufe variieren pro Nutzer und
+    # bleiben ungecacht.
+    hash =
+      if current_user || @secretary_link
+        game.full_hash
+      else
+        variant = delayed ? 'delayed' : 'realtime'
+        Rails.cache.fetch("games/#{game.id}/full_hash/#{variant}/#{game.updated_at.to_f}",
+                          expires_in: 1.minute) do
+          game.full_hash
+        end
+      end
     hash[:permission] = game.user_permissions(current_user) if current_user
     hash.merge!(_checklist_hash(game)) if current_user || @secretary_link
     if current_user
