@@ -196,7 +196,16 @@ module Admin
                       status: :unprocessable_entity
       end
 
-      duplicate_email = @referee.email.present? && User.exists?(email: @referee.email)
+      # Ohne E-Mail wäre das Konto unbenutzbar: Das Initialpasswort verlässt den
+      # Server nur über den Link in der Willkommensmail, und auch „Passwort
+      # vergessen" braucht die Adresse. Das Admin-UI blockt bereits clientseitig.
+      if @referee.email.blank?
+        return render json: { error: 'Ohne hinterlegte E-Mail-Adresse kann kein Benutzerkonto angelegt werden. ' \
+                                     'Bitte zuerst die E-Mail-Adresse im Schiedsrichter-Profil eintragen.' },
+                      status: :unprocessable_entity
+      end
+
+      duplicate_email = User.exists?(email: @referee.email)
 
       user_name = @referee.lizenznummer.present? ? "sr-#{@referee.lizenznummer}" : "sr-g#{@referee.id}"
 
