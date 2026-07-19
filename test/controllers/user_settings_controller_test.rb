@@ -251,6 +251,22 @@ class UserSettingsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 'neu@example.com', referee.reload.email, 'operative Schiri-Adresse muss mitziehen'
   end
 
+  test 'Bestätigung funktioniert auch, wenn der verknüpfte Schiri anderweitig invalide ist' do
+    create_api_key
+    referee = create(:referee, email: 'alt@example.com')
+    # Alt-Datensatz invalide machen (lizenznummer ist presence-pflichtig, außer guest).
+    referee.update_columns(lizenznummer: nil)
+    @user.update!(email: 'alt@example.com', referee: referee)
+    raw_token = @user.start_email_change!('neu@example.com')
+
+    post '/api/v2/user/email/confirm',
+         params: { token: raw_token }, headers: { 'X-Api-Key' => API_KEY }, as: :json
+
+    assert_response :ok
+    assert_equal 'neu@example.com', @user.reload.email
+    assert_equal 'neu@example.com', referee.reload.email
+  end
+
   test 'Bestätigung mit gültigem Token übernimmt die neue Adresse' do
     create_api_key
     @user.update!(email: 'alt@example.com')

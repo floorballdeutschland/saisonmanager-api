@@ -86,7 +86,13 @@ class User < ApplicationRecord
       # Die operative Schiri-Adresse (Ansetzungen, RSK-Mails) zieht mit: Bei
       # Schiris mit Benutzerkonto ist „Mein Konto" die einzige Stelle, an der
       # die Adresse gepflegt wird (das Profil-Feld ist dort read-only).
-      referee&.update!(email: new_email)
+      # save(validate: false): Es ändert sich nur die E-Mail (auf Referee
+      # unvalidiert) – ein in anderen Feldern invalider Alt-Datensatz darf die
+      # Bestätigung nicht mit schiri-fremden Fehlermeldungen abbrechen.
+      if referee
+        referee.email = new_email
+        referee.save!(validate: false)
+      end
       update!(
         email: new_email,
         pending_email: nil,
