@@ -35,7 +35,7 @@ class RefereeHistoryControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     body = JSON.parse(response.body)
 
-    assert_equal ['Saison 2025/26', 'Saison 2024/25'], body.map { |s| s['season_name'] }
+    assert_equal(['Saison 2025/26', 'Saison 2024/25'], body.map { |s| s['season_name'] })
   end
 
   test 'games sortiert Saisons absteigend und liefert die Spiele jeder Saison' do
@@ -44,8 +44,8 @@ class RefereeHistoryControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     body = JSON.parse(response.body)
 
-    assert_equal [18, 17], body.map { |s| s['season_id'] }
-    assert_equal [1, 1], body.map { |s| s['games'].size }
+    assert_equal([18, 17], body.map { |s| s['season_id'] })
+    assert_equal([1, 1], body.map { |s| s['games'].size })
   end
 
   test 'games ohne verknuepftes Schiedsrichterprofil liefert 403' do
