@@ -9,11 +9,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.55.0] - 2026-07-19
+
 ### Neu
 
 - **E-Mail-Adresse selbst ändern (mit Bestätigung)**: Alle Benutzer können ihre E-Mail-Adresse jetzt unter „Mein Konto" selbst ändern. Die neue Adresse wird erst aktiv, nachdem sie innerhalb von 24 Stunden über einen Bestätigungslink (Mail an die neue Adresse) bestätigt wurde – bis dahin bleibt die bisherige Adresse gültig. Bereits vergebene Adressen werden abgelehnt, damit der Login per E-Mail eindeutig bleibt. Die Bestätigungsmail ist über die E-Mail-Vorlagen-Verwaltung anpassbar (API #168, Frontend #106).
 - **Schiedsrichter landen nach dem Login auf „Mein Profil"**: Benutzer, deren einzige Rolle Schiedsrichter ist, werden nach dem Login direkt auf ihre Profilseite `/schiedsrichter/profil` geleitet statt auf die Startseite (Frontend #105).
 - **Eine E-Mail-Adresse pro Schiedsrichter mit Benutzerkonto**: Das E-Mail-Feld unter „Mein Profil" (Schiedsrichter-Portal) ist jetzt schreibgeschützt – die Adresse wird zentral unter „Mein Konto" gepflegt und die Bestätigung einer Änderung aktualisiert automatisch auch die Schiri-Adresse, an die Ansetzungs- und RSK-Mails gehen. Der Kurslehrgangs-Import überschreibt oder leert die E-Mail von Schiedsrichtern mit Benutzerkonto nicht mehr; Profile ohne Konto pflegt weiterhin die RSK über die Verwaltung. Ein Benutzerkonto kann jetzt auch serverseitig nur noch angelegt werden, wenn am Schiedsrichter-Profil eine E-Mail-Adresse hinterlegt ist (ohne sie käme die Willkommensmail mit dem Passwort-Link nie an, das Konto wäre unbenutzbar).
+- **Benutzerverwaltung mit Suche und Sortierung**: Die Benutzerliste in der Verwaltung ist jetzt durchsuchbar und sortierbar; die Rollen-Dropdowns zeigen übersetzte Bezeichnungen statt interner Werte (Frontend #107).
+- **Wallet-Import-Hinweis und Echtheits-Animation auf dem Schiri-Ausweis**: Der digitale Schiedsrichterausweis trägt einen animierten Rahmen um den QR-Code (unterscheidet die echte App bei der Sichtkontrolle von einem Screenshot; respektiert `prefers-reduced-motion`) und weist darauf hin, dass der QR-Code in die native Wallet-App importiert werden kann (Frontend #111).
+
+### Behoben
+
+- **Saison-Switcher wirkt wieder auf Liga-Seiten**: Auf Liga-Unterseiten (Spielplan, Tabelle, Scorer) wechselte der Saison-Umschalter die Ansicht nicht mehr; die Auswahl greift jetzt wieder und navigiert korrekt in die gewählte Saison (Frontend #104).
+
+### Verbessert
+
+- **Login-Hinweistext zum Sommerupdate aktualisiert**: Der Hinweis auf der Login-Seite verweist jetzt einheitlich auf das Feedback-Repository und eine verlinkte E-Mail-Adresse für dringende Themen (Frontend #112).
 
 ## [1.54.4] - 2026-07-19
 
