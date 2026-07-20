@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Öffentlicher Spielplan stürzt bei fehlerhaftem Spieltag-Datum nicht mehr ab**: Der aktuelle Spielplan einer Liga (`leagues/:id/game_days/current/schedule`) warf einen 500er, wenn ein Spieltag ein nicht interpretierbares Datum enthielt (unparsebarer Wert in der Textspalte `date`, meist aus Altdaten-Importen). Solche Datumswerte werden jetzt übersprungen statt die gesamte Anfrage abzubrechen (Sentry SAISONMANAGER-Z).
+
 ## [1.55.0] - 2026-07-19
 
 ### Neu
