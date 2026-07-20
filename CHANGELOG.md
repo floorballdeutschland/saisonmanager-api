@@ -13,6 +13,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 - **Öffentlicher Spielplan stürzt bei fehlerhaftem Spieltag-Datum nicht mehr ab**: Der aktuelle Spielplan einer Liga (`leagues/:id/game_days/current/schedule`) warf einen 500er, wenn ein Spieltag ein nicht interpretierbares Datum enthielt (unparsebarer Wert in der Textspalte `date`, meist aus Altdaten-Importen). Solche Datumswerte werden jetzt übersprungen statt die gesamte Anfrage abzubrechen (Sentry SAISONMANAGER-Z).
 
+### Verbessert
+
+- **Scorerliste bei U13 und jünger standardmäßig ausgeblendet**: Auf der Liga-bearbeiten-Seite weist ein Hinweis unter „Scorerliste sichtbar" jetzt darauf hin, dass FD empfiehlt, die Scorerliste in der Altersklasse U13 und jünger nicht aktiv anzuzeigen (Frontend #114). Zusätzlich setzt eine einmalige Rake-Task (`leagues:hide_scorer_for_youth`) bei allen bestehenden Ligen der Altersklasse U13 und jünger (über alle Saisons) `enable_scorer` auf „nicht sichtbar".
+
 ## [1.55.0] - 2026-07-19
 
 ### Neu
