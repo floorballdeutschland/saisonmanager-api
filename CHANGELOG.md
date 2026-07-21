@@ -16,6 +16,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Verbessert
 
 - **Scorerliste bei U13 und jünger standardmäßig ausgeblendet**: Auf der Liga-bearbeiten-Seite weist ein Hinweis unter „Scorerliste sichtbar" jetzt darauf hin, dass FD empfiehlt, die Scorerliste in der Altersklasse U13 und jünger nicht aktiv anzuzeigen (Frontend #114). Zusätzlich setzt eine einmalige Rake-Task (`leagues:hide_scorer_for_youth`) bei allen bestehenden Ligen der Altersklasse U13 und jünger (über alle Saisons) `enable_scorer` auf „nicht sichtbar".
+- **Benutzernamen werden vereinheitlicht**: Beim Anlegen eines Benutzers wird der Benutzername jetzt automatisch klein geschrieben und um Rand-Leerzeichen bereinigt; erlaubt sind nur noch Kleinbuchstaben, Ziffern, Punkt und Bindestrich (Empfehlung: `vorname.nachname`). Umlaute (ä, ö, ü) und ß werden mit einer klaren Fehlermeldung abgelehnt und sind vor dem Speichern aufzulösen (ae, oe, ue, ss). Hintergrund: Der Login schreibt die Eingabe klein und vergleicht exakt, wodurch ein Benutzername mit Großbuchstaben oder Umlaut bisher nicht per Benutzername anmeldbar war. Bestandskonten bleiben unangetastet, die Prüfung greift nur beim Setzen oder Ändern des Namens.
 
 ## [1.55.0] - 2026-07-19
 
