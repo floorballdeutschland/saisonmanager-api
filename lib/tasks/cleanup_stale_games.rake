@@ -24,11 +24,17 @@
 #     Ziel einer Qualifikation referenziert werden, werden übersprungen.
 
 namespace :cleanup do
-  CLOSED_STATUSES = %w[match_record_closed finalized].freeze
-  # Legacy-Saisons, deren nie-gestartete Spiele als „Abgesagt" gelten (COVID).
-  CANCEL_LEGACY_SEASON_IDS = [11, 12].freeze
-
   # -- Helpers ---------------------------------------------------------------
+
+  # game_status-Werte, die ein abgeschlossenes Spiel kennzeichnen.
+  def closed_statuses
+    %w[match_record_closed finalized]
+  end
+
+  # Legacy-Saisons, deren nie-gestartete Spiele als „Abgesagt" gelten (COVID).
+  def cancel_legacy_season_ids
+    [11, 12]
+  end
 
   def parse_gd_date(str)
     return nil if str.blank?
@@ -42,7 +48,7 @@ namespace :cleanup do
   # Spieltag-Datum in der Vergangenheit. Datum wird in Ruby geparst (Textspalte).
   def stale_started_games
     Game.where(started: true)
-        .where('game_status IS NULL OR game_status NOT IN (?)', CLOSED_STATUSES)
+        .where('game_status IS NULL OR game_status NOT IN (?)', closed_statuses)
         .includes(:game_day)
         .select { |g| (d = parse_gd_date(g.game_day&.date)) && d < Date.today }
   end
@@ -62,7 +68,7 @@ namespace :cleanup do
       next false unless d && d < Date.today
 
       if g.legacy
-        CANCEL_LEGACY_SEASON_IDS.include?(league.season_id.to_i)
+        cancel_legacy_season_ids.include?(league.season_id.to_i)
       else
         true
       end
@@ -108,7 +114,7 @@ namespace :cleanup do
     puts "Begonnen, nicht geschlossen (schließbar): #{started.size}"
     puts "  davon legacy: #{started.count(&:legacy)}"
     puts "Nie gestartet im Scope (abzusagen): #{unstarted.size}"
-    puts "  davon legacy (Saison #{CANCEL_LEGACY_SEASON_IDS.join('/')}): #{unstarted.count(&:legacy)}"
+    puts "  davon legacy (Saison #{cancel_legacy_season_ids.join('/')}): #{unstarted.count(&:legacy)}"
     puts "Leere Ligen (löschbar, ohne aktive Saison): #{empties.size}"
     blocked = empties.reject { |l| league_reference_blockers(l).empty? }
     puts "  davon referenziert (werden übersprungen): #{blocked.size}"
