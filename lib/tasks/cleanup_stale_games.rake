@@ -44,25 +44,37 @@ namespace :cleanup do
     nil
   end
 
+  # Aktive Saison – wird bei allen drei Aktionen ausgenommen (in Aufbau bzw.
+  # Ergebniserfassung noch im Gange). leagues.season_id ist eine Textspalte.
+  def active_season_id
+    Setting.current_season_id.to_s
+  end
+
   # Kandidaten für „begonnen, nicht geschlossen": started=true, Status offen,
-  # Spieltag-Datum in der Vergangenheit. Datum wird in Ruby geparst (Textspalte).
+  # Spieltag-Datum in der Vergangenheit, nicht in der aktiven Saison. Datum wird
+  # in Ruby geparst (Textspalte).
   def stale_started_games
     Game.where(started: true)
         .where('game_status IS NULL OR game_status NOT IN (?)', closed_statuses)
-        .includes(:game_day)
-        .select { |g| (d = parse_gd_date(g.game_day&.date)) && d < Date.today }
+        .includes(game_day: :league)
+        .select do |g|
+      league = g.game_day&.league
+      next false unless league && league.season_id.to_s != active_season_id
+
+      (d = parse_gd_date(g.game_day&.date)) && d < Date.today
+    end
   end
 
   # Kandidaten für „nie gestartet → Abgesagt": started=false, kein Ergebnis-,
   # Forfait- oder Berichtsansatz, kein bestehender Hinweis, Datum vergangen,
-  # und Saison im vereinbarten Scope.
+  # nicht in der aktiven Saison, und Saison im vereinbarten Scope.
   def cancelable_unstarted_games
     Game.where(started: false, forfait: 0, record_created_at: nil, notice_type: nil)
         .where('game_status IS NULL OR game_status = ?', 'pregame')
         .includes(game_day: :league)
         .select do |g|
       league = g.game_day&.league
-      next false unless league
+      next false unless league && league.season_id.to_s != active_season_id
 
       d = parse_gd_date(g.game_day&.date)
       next false unless d && d < Date.today
@@ -77,11 +89,10 @@ namespace :cleanup do
 
   # Ligen ohne Teams UND ohne Spiele, außerhalb der aktiven Saison.
   def empty_leagues
-    active = Setting.current_season_id.to_s # leagues.season_id ist eine Textspalte
     team_counts = Team.group(:league_id).count
     game_counts = Game.joins(:game_day).group('game_days.league_id').count
 
-    League.where.not(season_id: active).select do |lg|
+    League.where.not(season_id: active_season_id).select do |lg|
       team_counts[lg.id].to_i.zero? && game_counts[lg.id].to_i.zero?
     end
   end
