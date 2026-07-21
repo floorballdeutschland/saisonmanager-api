@@ -48,11 +48,13 @@ namespace :leagues do
     puts '[DRY RUN] Zum Ausfuehren: rails leagues:hide_scorer_for_youth DRY_RUN=false' if dry_run
   end
 
-  # Liga gilt als U<=max, wenn Name oder age_group eine U-Zahl (1-2 Stellen, nicht
-  # von weiterer Ziffer gefolgt) enthaelt, die <= max ist. "Ue30" faellt raus.
+  # Liga gilt als U<=max, wenn Name oder age_group eine U-Zahl <= max enthaelt.
+  # Zwischen U und Zahl sind Trenner erlaubt (Schreibweisen "U13", "U 13",
+  # "U-13" kommen alle vor); die Zahl hat 1-2 Stellen und darf nicht von einer
+  # weiteren Ziffer gefolgt sein. "Ue30" faellt raus.
   def youth_u_leq?(league, max)
     text = "#{league.name} #{league.age_group}"
-    ages = text.scan(/\bU(\d{1,2})(?!\d)/i).flatten.map(&:to_i)
+    ages = text.scan(/\bU[\s-]*(\d{1,2})(?!\d)/i).flatten.map(&:to_i)
     ages.any? { |age| age.positive? && age <= max }
   end
 end
