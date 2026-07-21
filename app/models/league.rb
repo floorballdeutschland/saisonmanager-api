@@ -369,7 +369,13 @@ class League < ApplicationRecord
     today = Time.zone.today
     game_day_distance = {}
     game_day_numbers.each do |gdn|
-      dates = game_days.where(number: gdn).pluck(:date).map { |d| d.try(:to_date) }.compact
+      dates = game_days.where(number: gdn).pluck(:date).filter_map do |d|
+        d.try(:to_date)
+      rescue Date::Error
+        nil
+      end
+      next if dates.empty?
+
       date_diffs = dates.map { |d| (d - today).to_i.abs }
       game_day_distance[date_diffs.sum(0.0) / date_diffs.size] = gdn
     end
