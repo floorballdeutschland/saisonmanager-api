@@ -9,9 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.55.1] - 2026-07-21
+
 ### Behoben
 
 - **Öffentlicher Spielplan stürzt bei fehlerhaftem Spieltag-Datum nicht mehr ab**: Der aktuelle Spielplan einer Liga (`leagues/:id/game_days/current/schedule`) warf einen 500er, wenn ein Spieltag ein nicht interpretierbares Datum enthielt (unparsebarer Wert in der Textspalte `date`, meist aus Altdaten-Importen). Solche Datumswerte werden jetzt übersprungen statt die gesamte Anfrage abzubrechen (Sentry SAISONMANAGER-Z).
+- **Scorerliste bleibt bei Direktaufruf verborgen**: Bei deaktivierter Scorerliste war die Seite `…/scorer` per direktem URL-Aufruf weiterhin erreichbar (ausgeblendet war nur der Tab). Die Seite respektiert jetzt die Einstellung und zeigt einen Hinweis statt der Liste (Frontend #114).
 
 ### Verbessert
 
