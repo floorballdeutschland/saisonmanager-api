@@ -3,8 +3,26 @@ class User < ApplicationRecord
 
   LANGUAGES = %w[de en].freeze
 
+  # Benutzernamen werden case-insensitiv geführt und ausschließlich mit
+  # Kleinbuchstaben, Ziffern, Punkt und Bindestrich (Empfehlung:
+  # vorname.nachname). Umlaute/ß und sonstige Sonderzeichen sind nicht erlaubt,
+  # da der Login die Eingabe kleinschreibt und exakt vergleicht. Ein Altname
+  # mit Großbuchstaben oder Umlaut wäre sonst per Benutzername nicht anmeldbar.
+  USER_NAME_FORMAT = /\A[a-z0-9.-]+\z/
+
   has_secure_password
-  validates :user_name, presence: true, uniqueness: true
+  before_validation :normalize_user_name
+  validates :user_name, presence: true, uniqueness: { case_sensitive: false }
+  # Format nur prüfen, wenn der Name gesetzt oder geändert wird. So kann kein
+  # Bestandskonto mit Altnamen beim routinemäßigen Speichern (z. B.
+  # last_login_at beim Login) an der Validierung scheitern und ausgesperrt
+  # werden.
+  validates :user_name,
+            format: {
+              with: USER_NAME_FORMAT,
+              message: 'darf nur Kleinbuchstaben, Ziffern, Punkt und Bindestrich enthalten (keine Umlaute, kein ß)'
+            },
+            if: -> { user_name.present? && user_name_changed? }
   validates :language, inclusion: { in: LANGUAGES }
 
   belongs_to :referee, optional: true
@@ -414,5 +432,15 @@ class User < ApplicationRecord
     elsif user.password_digest.present? && user.authenticate(password)
       user if user.archived? || user.update(last_login_at: Time.now)
     end
+  end
+
+  private
+
+  # Benutzernamen vor der Validierung vereinheitlichen: Rand-Whitespace weg,
+  # komplett kleinschreiben. downcase ist Unicode-fähig (Ö→ö), Umlaute bleiben
+  # danach als Kleinbuchstaben erhalten und werden von der Format-Validierung
+  # abgewiesen.
+  def normalize_user_name
+    self.user_name = user_name.strip.downcase if user_name.present?
   end
 end
