@@ -96,9 +96,9 @@ module Admin
           home_team_club_id: g.home_team&.club_id,
           guest_team_club_id: g.guest_team&.club_id,
           league: g.game_day.league&.name,
-          # Bundesspielbetrieb (Spielbetrieb ohne Landesverband) → für die
-          # clientseitige Lizenz-Vorauswahl (FD-Spiele defaulten auf N-Lizenz).
-          national: go.present? && go.state_association_id.nil?,
+          # Bundesspielbetrieb (national markiert) → für die clientseitige
+          # Lizenz-Vorauswahl (FD-Spiele defaulten auf N-Lizenz).
+          national: go.present? && go.national?,
           arena: g.game_day.arena&.name,
           arena_postcode: g.game_day.arena&.postcode,
           arena_city: g.game_day.arena&.city,
