@@ -39,42 +39,43 @@ module Admin
       assert_not_includes keys, @foreign.key
     end
 
-    test 'gescopte SBK legt ohne Verbandsangabe einen verbandseigenen Eintrag an' do
+    test 'gescopte SBK darf keine Dokumentart anlegen (nur lesen)' do
       login(create(:user, :sbk_scoped, game_operation_id: @go.id))
 
       post '/api/v2/admin/document_types', params: {
         document_type: { name: 'Vereins-Attest', required_below_age: 16 }
       }
-      assert_response :created
-      assert_equal @go.id, JSON.parse(response.body)['game_operation_id']
+      assert_response :forbidden
     end
 
-    test 'gescopte SBK darf globale und fremde Einträge nicht ändern' do
+    test 'gescopte SBK darf keine Dokumentart ändern (auch nicht die eigene)' do
       login(create(:user, :sbk_scoped, game_operation_id: @go.id))
-
-      patch "/api/v2/admin/document_types/#{@global.id}", params: { document_type: { name: 'Umbenannt' } }
-      assert_response :forbidden
-
-      patch "/api/v2/admin/document_types/#{@foreign.id}", params: { document_type: { name: 'Umbenannt' } }
-      assert_response :forbidden
 
       patch "/api/v2/admin/document_types/#{@scoped.id}", params: { document_type: { name: 'Umbenannt' } }
-      assert_response :success
-      assert_equal 'Umbenannt', @scoped.reload.name
+      assert_response :forbidden
+      assert_equal 'LV-Attest', @scoped.reload.name
     end
 
-    test 'gescopte SBK kann den eigenen Eintrag nicht global oder fremd umscopen' do
+    test 'gescopte SBK darf keine Dokumentart löschen' do
       login(create(:user, :sbk_scoped, game_operation_id: @go.id))
 
-      patch "/api/v2/admin/document_types/#{@scoped.id}",
-            params: { document_type: { name: 'LV-Attest', game_operation_id: nil } }
-      assert_response :success
-      assert_equal @go.id, @scoped.reload.game_operation_id, 'darf nicht zum globalen Eintrag werden'
+      delete "/api/v2/admin/document_types/#{@scoped.id}"
+      assert_response :forbidden
+      assert DocumentType.exists?(@scoped.id)
+    end
 
-      patch "/api/v2/admin/document_types/#{@scoped.id}",
-            params: { document_type: { name: 'LV-Attest', game_operation_id: @other_go.id } }
+    test 'globale SBK (FD) darf Dokumentarten anlegen und ändern' do
+      login(create(:user, :sbk_global))
+
+      post '/api/v2/admin/document_types', params: {
+        document_type: { name: 'Bundesweites Attest', game_operation_id: @go.id }
+      }
+      assert_response :created
+      assert_equal @go.id, JSON.parse(response.body)['game_operation_id']
+
+      patch "/api/v2/admin/document_types/#{@foreign.id}", params: { document_type: { name: 'Umbenannt' } }
       assert_response :success
-      assert_equal @go.id, @scoped.reload.game_operation_id, 'darf nicht in fremden Verband wandern'
+      assert_equal 'Umbenannt', @foreign.reload.name
     end
 
     test 'Löschen ist blockiert, solange die Dokumentart verwendet wird' do
