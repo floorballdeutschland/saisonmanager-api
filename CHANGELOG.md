@@ -9,6 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.56.0] - 2026-07-22
+
+### Neu
+
+- **Vereinsmanager können Spieler selbst anlegen**: In der eigenen Vereins-Spielerliste („Spielerverwaltung (Verein)") gibt es jetzt einen Button „Neu anlegen", mit dem Vereinsmanager neue Spieler*innen für ihren Verein erfassen können – bisher war das nur Admins und der SBK vorbehalten (im Altsystem war es Vereinsmanagern bereits möglich). Der Button erscheint nur für die eigenen Vereine; das Anlegen für fremde Vereine bleibt serverseitig ausgeschlossen (Frontend #121).
+
 ### Behoben
 
 - **Altlasten im Spielbetrieb bereinigt (einmalige Wartungs-Tasks)**: Neue Rake-Tasks im Namespace `cleanup` räumen historische Datenreste auf. `cleanup:close_started_games` schließt vergangene, begonnene, aber nie formal abgeschlossene Spiele (setzt `ended`/`game_ended` + `game_status`, damit sie öffentlich nicht länger als „Live" erscheinen). `cleanup:cancel_unstarted_games` markiert vergangene, nie gestartete Spiele als „Abgesagt" (`notice_type='Canceled'`; im Scope: aktuelle Saisons sowie die COVID-Saisons 2019/20 und 2020/21). `cleanup:delete_empty_leagues` löscht Ligen ohne Teams und Spiele (außer der aktiven Saison und außer anderweitig referenzierten Ligen). Alle drei Tasks laufen standardmäßig als Dry-Run (`DRY_RUN=false` zum Ausführen); `cleanup:stale_report` liefert eine reine Übersicht.
@@ -16,6 +22,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Verbessert
 
 - **Dokumentarten nur noch durch SBK FD und Admin pflegbar**: Neue Dokumentarten anlegen, ändern oder löschen dürfen jetzt ausschließlich Admins und die bundesweite SBK (SBK FD). Verbands-gescopte SBK (Landesverband) haben nur noch Lesezugriff auf den Dokumentarten-Katalog; ein Hinweis nennt `sbk@floorball.de` als Anlaufstelle, um neue Dokumentarten zu beantragen (Frontend #122).
+- **Spielplan-Import ist auffindbar**: In der Spielplanverwaltung einer Liga führt ein neuer Button „Spielplan importieren" direkt zur Excel-Import-Seite; diese war bisher nur über die direkte URL erreichbar (Frontend #120).
+- **Klarerer Hinweis bei der Transfer-Direktzuweisung**: Das Intro der Direktzuweisung weist jetzt darauf hin, dass hier Transfers direkt durchgeführt werden und Spielerfreigaben weiterhin auf den Spielerdetailseiten eingerichtet werden (Frontend #123).
 
 ## [1.55.1] - 2026-07-21
 
