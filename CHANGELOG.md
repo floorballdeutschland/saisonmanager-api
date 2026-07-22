@@ -11,6 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Behoben
 
+- **Bundesweite Schiedsrichter-Rollen (FD) sehen wieder alle Schiedsrichter**: SBK, RSK und Ansetzer auf Bundesebene (Floorball Deutschland) hatten ihren verbandsübergreifenden Zugriff verloren, weil die Bundesebene bisher aus einer fehlenden Landesverbands-Verknüpfung des Spielbetriebs abgeleitet wurde. Seit die FD-GameOperation für ihr Verbandslogo mit ihrer StateAssociation verknüpft ist, traf diese Annahme nicht mehr zu: Die betroffenen Rollen wurden auf die (leere) Vereinsmenge des Bundesverbands eingeschränkt, wodurch u. a. die Schiedsrichterliste, die Ansetzungs- und Verfügbarkeitsansichten sowie die Landesverbandsverwaltung leer blieben. Die Bundesebene wird jetzt über ein explizites Kennzeichen am Spielbetrieb bestimmt, unabhängig von der Logo-Verknüpfung.
 - **Öffentlicher Spielplan stürzt bei fehlerhaftem Spieltag-Datum nicht mehr ab**: Der aktuelle Spielplan einer Liga (`leagues/:id/game_days/current/schedule`) warf einen 500er, wenn ein Spieltag ein nicht interpretierbares Datum enthielt (unparsebarer Wert in der Textspalte `date`, meist aus Altdaten-Importen). Solche Datumswerte werden jetzt übersprungen statt die gesamte Anfrage abzubrechen (Sentry SAISONMANAGER-Z).
 
 ### Verbessert

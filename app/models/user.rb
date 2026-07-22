@@ -380,14 +380,17 @@ class User < ApplicationRecord
     sbk_go_ids.sort!.uniq!
     admin_go_ids.sort!.uniq!
 
-    # SBK/RSK/Ansetzer for a national-level GO (no state_association_id, e.g. FD) gets global scope
-    if sbk_go_ids.any? && !sbk_go_ids.include?(0) && GameOperation.where(id: sbk_go_ids, state_association_id: nil).exists?
+    # SBK/RSK/Ansetzer for a national-level GO (e.g. FD) gets global scope.
+    # "National" is marked explicitly via GameOperation#national — it can no
+    # longer be inferred from a missing state_association_id, since the FD
+    # GameOperation is linked to its StateAssociation (for the federation logo).
+    if sbk_go_ids.any? && !sbk_go_ids.include?(0) && GameOperation.where(id: sbk_go_ids, national: true).exists?
       sbk_go_ids = [0]
     end
-    if rsk_go_ids.any? && !rsk_go_ids.include?(0) && GameOperation.where(id: rsk_go_ids, state_association_id: nil).exists?
+    if rsk_go_ids.any? && !rsk_go_ids.include?(0) && GameOperation.where(id: rsk_go_ids, national: true).exists?
       rsk_go_ids = [0]
     end
-    if ans_go_ids.any? && !ans_go_ids.include?(0) && GameOperation.where(id: ans_go_ids, state_association_id: nil).exists?
+    if ans_go_ids.any? && !ans_go_ids.include?(0) && GameOperation.where(id: ans_go_ids, national: true).exists?
       ans_go_ids = [0]
     end
 
