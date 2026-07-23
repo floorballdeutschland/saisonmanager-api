@@ -4,11 +4,13 @@ class User < ApplicationRecord
   LANGUAGES = %w[de en].freeze
 
   # Benutzernamen werden case-insensitiv geführt und ausschließlich mit
-  # Kleinbuchstaben, Ziffern, Punkt und Bindestrich (Empfehlung:
+  # Kleinbuchstaben, Ziffern, Punkt, Bindestrich und Unterstrich (Empfehlung:
   # vorname.nachname). Umlaute/ß und sonstige Sonderzeichen sind nicht erlaubt,
   # da der Login die Eingabe kleinschreibt und exakt vergleicht. Ein Altname
   # mit Großbuchstaben oder Umlaut wäre sonst per Benutzername nicht anmeldbar.
-  USER_NAME_FORMAT = /\A[a-z0-9.-]+\z/
+  # Der Unterstrich ist ausdrücklich erlaubt: Er ist login-stabil (ASCII,
+  # kleinschreibungsneutral) und in Bestandsnamen verbreitet (z. B. sbk_ost).
+  USER_NAME_FORMAT = /\A[a-z0-9._-]+\z/
 
   has_secure_password
   before_validation :normalize_user_name
@@ -20,7 +22,7 @@ class User < ApplicationRecord
   validates :user_name,
             format: {
               with: USER_NAME_FORMAT,
-              message: 'darf nur Kleinbuchstaben, Ziffern, Punkt und Bindestrich enthalten (keine Umlaute, kein ß)'
+              message: 'darf nur Kleinbuchstaben, Ziffern, Punkt, Bindestrich und Unterstrich enthalten (keine Umlaute, kein ß)'
             },
             if: -> { user_name.present? && user_name_changed? }
   validates :language, inclusion: { in: LANGUAGES }
