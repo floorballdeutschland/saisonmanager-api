@@ -229,6 +229,8 @@ Rails.application.routes.draw do
           get :feedbacks, on: :member
         end
         resources :referee_feedbacks, only: %i[update]
+        get 'referee_feedback_analytics', to: 'referee_feedback_analytics#index'
+        get 'referee_feedback_analytics/export', to: 'referee_feedback_analytics#export'
         resources :feedback_themes, only: %i[index create update destroy]
         get 'feedback_comments', to: 'feedback_comments#index'
         get 'feedback_comments/stats', to: 'feedback_comments#stats'
