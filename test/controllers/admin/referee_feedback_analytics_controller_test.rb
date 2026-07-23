@@ -5,9 +5,9 @@ module Admin
     setup do
       create(:setting)
       @admin = create(:user, :admin)
-      # FD ist national (kein state_association_id) → rsk/ansetzer kollabieren auf
-      # den globalen Scope 0 und dürfen das Feedback sehen.
-      @fd = create(:game_operation, state_association_id: nil)
+      # FD ist national (national-Flag) → rsk/ansetzer kollabieren auf den
+      # globalen Scope 0 und dürfen das Feedback sehen.
+      @fd = create(:game_operation, national: true)
       @lv_sa = create(:state_association)
       @lv_go = create(:game_operation, state_association_id: @lv_sa.id)
       @league = create(:league, season_id: '18')
