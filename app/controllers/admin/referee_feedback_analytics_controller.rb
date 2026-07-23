@@ -147,7 +147,7 @@ module Admin
       group_feedbacks = feedbacks.select { |f| in_group?(f, group_ids) }
       group_referees = per_referee.values.select { |r| r[:in_group] }
       aggregate(group_feedbacks).merge(
-        tag_id: tag_id,
+        tag_id: tag_id&.to_i,
         tag_name: RefereeTag.where(id: tag_id).pick(:name),
         distribution: distribution(group_referees)
       )
