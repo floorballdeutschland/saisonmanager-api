@@ -151,6 +151,14 @@ class GamesController < ApplicationController
 
     if allowed
       if game.update(game_create_update_params)
+        # Änderungen an Anpfiff oder Absage (notice_type) benachrichtigen die
+        # Beteiligten einer bereits veröffentlichten Ansetzung. Nur bei echter
+        # Änderung dieser Felder (Dirty-Tracking): so lösen unbeteiligte Edits
+        # und die Live-Erfassung (set_string/set_field, kein start_time) keine
+        # Mail aus. Der Notifier prüft selbst, ob eine Ansetzung vorliegt.
+        if game.saved_change_to_start_time? || game.saved_change_to_notice_type?
+          GameChangeNotifier.notify(game)
+        end
 
         render json: { success: true }
       else

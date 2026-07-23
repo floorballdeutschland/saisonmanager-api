@@ -6,6 +6,9 @@
 
 <table>
   <tr><td><strong>Datum</strong></td><td><%= @game.game_day.date %></td></tr>
+  <% if @game.start_time.present? %>
+  <tr><td><strong>Anpfiff</strong></td><td><%= @game.start_time %></td></tr>
+  <% end %>
   <tr><td><strong>Spiel</strong></td><td><%= @game.home_team&.name %> vs. <%= @game.guest_team&.name %></td></tr>
   <% if @game.game_number.present? %>
   <tr><td><strong>Spielnummer</strong></td><td><%= @game.game_number %></td></tr>

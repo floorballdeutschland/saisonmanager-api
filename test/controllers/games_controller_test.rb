@@ -1,6 +1,8 @@
 require 'test_helper'
 
 class GamesControllerTest < ActionDispatch::IntegrationTest
+  include ActiveJob::TestHelper
+
   setup do
     create(:setting)
     @sa = create(:state_association)
@@ -68,6 +70,52 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
 
     get '/internal/update_games/update_start_end'
 
+    assert_response :success
+  end
+
+  test 'Anpfiff-Änderung benachrichtigt Schiri und Ausrichter bei veröffentlichter Ansetzung' do
+    @club.update!(contact_email: 'ausrichter@example.de')
+    referee = create(:referee, email: 'schiri@example.de')
+    RefereeAssignment.create!(game: @game, referee1_id: referee.id, status: 'published')
+    login(create(:user, :admin))
+
+    # Schiri + Ausrichter
+    assert_enqueued_emails 2 do
+      patch "/api/v2/games/#{@game.id}", params: { game: { start_time: '15:00' } }
+    end
+    assert_response :success
+  end
+
+  test 'Absage (notice_type) benachrichtigt bei veröffentlichter Ansetzung' do
+    referee = create(:referee, email: 'schiri@example.de')
+    RefereeAssignment.create!(game: @game, referee1_id: referee.id, status: 'published')
+    login(create(:user, :admin))
+
+    # nur der Schiri (Ausrichter hat keine contact_email)
+    assert_enqueued_emails 1 do
+      patch "/api/v2/games/#{@game.id}", params: { game: { notice_type: 'Canceled' } }
+    end
+    assert_response :success
+  end
+
+  test 'kein Versand ohne Ansetzung' do
+    login(create(:user, :admin))
+
+    assert_no_enqueued_emails do
+      patch "/api/v2/games/#{@game.id}", params: { game: { start_time: '15:00' } }
+    end
+    assert_response :success
+  end
+
+  test 'unveränderter Anpfiff/Absage löst keinen Versand aus' do
+    referee = create(:referee, email: 'schiri@example.de')
+    RefereeAssignment.create!(game: @game, referee1_id: referee.id, status: 'published')
+    login(create(:user, :admin))
+
+    # Nur ein anderes (erlaubtes) Feld ändern → keine Benachrichtigung
+    assert_no_enqueued_emails do
+      patch "/api/v2/games/#{@game.id}", params: { game: { game_number: '99' } }
+    end
     assert_response :success
   end
 

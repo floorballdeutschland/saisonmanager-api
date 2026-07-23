@@ -39,6 +39,7 @@ class RefereeMailer < ApplicationMailer
       default_reply_to: REPLY_TO,
       placeholders: {
         game_date: game.game_day.date,
+        game_time: game.start_time.to_s,
         home_team: game.home_team&.name,
         guest_team: game.guest_team&.name,
         coach_name: coach ? "#{coach.vorname} #{coach.nachname}" : ''
@@ -62,6 +63,7 @@ class RefereeMailer < ApplicationMailer
       default_reply_to: REPLY_TO,
       placeholders: {
         game_date: game.game_day.date,
+        game_time: game.start_time.to_s,
         home_team: game.home_team&.name,
         guest_team: game.guest_team&.name,
         officials: official_names.to_s
@@ -84,6 +86,7 @@ class RefereeMailer < ApplicationMailer
       default_reply_to: REPLY_TO,
       placeholders: {
         game_date: game.game_day.date,
+        game_time: game.start_time.to_s,
         home_team: game.home_team&.name,
         guest_team: game.guest_team&.name,
         officials: official_names.to_s,
