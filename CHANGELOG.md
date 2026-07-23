@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Schiri-Feedback: Kommentar-Feed und Themen-Tags**: Die Freitextkommentare aus dem Vereins-Feedback (Linie, Kommunikation, allgemein) sind jetzt übergreifend auswertbar statt nur einzeln am Schiri-Profil. Ein neuer Feed (`admin/feedback_comments`) listet alle kommentierten Rückmeldungen, filterbar nach Schiri, Top-Gruppe (Schiri-Tag), Liga, Saison, Zeitraum, Notenschwelle und Thema; ausgeblendete Rückmeldungen bleiben außen vor. Über eine admin-gepflegte Themen-Taxonomie (`admin/feedback_themes`, z. B. Positionierung, Regelauslegung, Auftreten) taggen RSK und Ansetzer die Kommentare händisch. Dadurch werden Themen zählbar: eine Auswertung (`admin/feedback_comments/stats`) liefert Häufigkeiten je Thema (gesamt, für die Top-Gruppe und per Schiri-Filter) als Ranking sowie eine Monats-Zeitreihe, um die Wirkung des Coachings zu beurteilen. Sichtbarkeit wie bisher: Admin, FD-RSK und FD-Ansetzer (global) (API #182).
+
 ## [1.56.1] - 2026-07-22
 
 ### Behoben

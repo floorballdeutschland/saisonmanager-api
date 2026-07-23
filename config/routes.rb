@@ -229,6 +229,10 @@ Rails.application.routes.draw do
           get :feedbacks, on: :member
         end
         resources :referee_feedbacks, only: %i[update]
+        resources :feedback_themes, only: %i[index create update destroy]
+        get 'feedback_comments', to: 'feedback_comments#index'
+        get 'feedback_comments/stats', to: 'feedback_comments#stats'
+        patch 'feedback_comments/:id/themes', to: 'feedback_comments#update'
         resources :proceeding_proposals, only: %i[index show] do
           member do
             post :reject
