@@ -61,6 +61,13 @@ class GameDaysController < ApplicationController
 
     if allowed
       if game_day.update(game_day_params)
+        # Verschieben (Datum) oder Hallenwechsel (arena_id) eines Spieltags
+        # benachrichtigt die Beteiligten jeder bereits veröffentlichten
+        # Ansetzung an diesem Spieltag. Nur bei echter Änderung (Dirty-Tracking);
+        # der Notifier prüft je Spiel selbst, ob eine Ansetzung vorliegt.
+        if game_day.saved_change_to_date? || game_day.saved_change_to_arena_id?
+          game_day.games.each { |game| GameChangeNotifier.notify(game) }
+        end
 
         render json: { success: true }
       else

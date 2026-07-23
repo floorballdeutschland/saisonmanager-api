@@ -11,6 +11,8 @@ class RefereeFeedback < ApplicationRecord
   belongs_to :referee1, class_name: 'Referee', optional: true
   belongs_to :referee2, class_name: 'Referee', optional: true
   belongs_to :submitted_by, class_name: 'User', foreign_key: :submitted_by_user_id, optional: true
+  has_many :feedback_theme_taggings, dependent: :destroy
+  has_many :feedback_themes, through: :feedback_theme_taggings
 
   validates :line_rating, :communication_rating,
             presence: true, inclusion: { in: RATING_RANGE }
@@ -19,6 +21,12 @@ class RefereeFeedback < ApplicationRecord
   scope :visible, -> { where(status: 'visible') }
   scope :for_referee, lambda { |referee_id|
     where('referee1_id = :id OR referee2_id = :id', id: referee_id)
+  }
+  # Rückmeldungen mit mindestens einem ausgefüllten Freitextkommentar
+  # (Grundlage für den Kommentar-Feed, #182).
+  scope :with_comment, lambda {
+    where("COALESCE(line_comment, '') <> '' OR COALESCE(communication_comment, '') <> '' " \
+          "OR COALESCE(general_comment, '') <> ''")
   }
 
   def visible?

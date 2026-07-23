@@ -107,6 +107,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_reply_to: 'sr-ansetzungen@floorball.de',
       placeholders: [
         { key: 'game_date', description: 'Datum des Spieltags' },
+        { key: 'game_time', description: 'Anpfiff (Startzeit des Spiels)' },
         { key: 'home_team', description: 'Name der Heimmannschaft' },
         { key: 'guest_team', description: 'Name der Gastmannschaft' },
         { key: 'coach_name', description: 'Name des/der Schiedsrichtercoach/in (leer, falls keine/r angesetzt)' }
@@ -121,6 +122,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_reply_to: 'sr-ansetzungen@floorball.de',
       placeholders: [
         { key: 'game_date', description: 'Datum des Spieltags' },
+        { key: 'game_time', description: 'Anpfiff (Startzeit des Spiels)' },
         { key: 'home_team', description: 'Name der Heimmannschaft' },
         { key: 'guest_team', description: 'Name der Gastmannschaft' },
         { key: 'officials', description: 'Namen der angesetzten Schiedsrichter/innen' }
@@ -135,6 +137,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_reply_to: 'sr-ansetzungen@floorball.de',
       placeholders: [
         { key: 'game_date', description: 'Datum des Spieltags' },
+        { key: 'game_time', description: 'Anpfiff (Startzeit des Spiels)' },
         { key: 'home_team', description: 'Name der Heimmannschaft' },
         { key: 'guest_team', description: 'Name der Gastmannschaft' },
         { key: 'officials', description: 'Namen der aktuell angesetzten Schiedsrichter/innen' },
@@ -353,7 +356,8 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_reply_to: 'sr-ansetzungen@floorball.de',
       placeholders: [
         { key: 'league_name', description: 'Name der Liga' },
-        { key: 'game_day_date', description: 'Datum des Spieltags' }
+        { key: 'game_day_date', description: 'Datum des Spieltags' },
+        { key: 'game_time', description: 'Anpfiff (Startzeit des Spiels)' }
       ]
     },
     'PlayerMailer#express_license_requested' => {
