@@ -58,6 +58,7 @@ Rails.application.routes.draw do
 
       get 'teams/:id', to: 'teams#show'
       get 'teams/:id/stats', to: 'teams#stats'
+      get 'teams/:id/matches', to: 'teams#matches'
       get 'players/:id/stats', to: 'players#stats'
 
       resources :leagues do
