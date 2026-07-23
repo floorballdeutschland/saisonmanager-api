@@ -5,7 +5,7 @@ module Admin
     setup do
       create(:setting)
       @admin = create(:user, :admin)
-      @fd = create(:game_operation, state_association_id: nil)
+      @fd = create(:game_operation, national: true)
       @lv_sa = create(:state_association)
       @lv_go = create(:game_operation, state_association_id: @lv_sa.id)
       @league = create(:league, season_id: '18')
