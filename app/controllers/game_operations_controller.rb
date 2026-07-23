@@ -138,6 +138,10 @@ class GameOperationsController < ApplicationController
   def set_game_operation
     @game_operation = GameOperation.find(params[:id])
   rescue ActiveRecord::RecordNotFound
-    render json: { message: 'Spielbetrieb nicht gefunden' }, status: :not_found
+    render json: {
+      message: "Kein Spielbetrieb mit ID #{params[:id]} gefunden. Erwartet wird die " \
+               'GameOperation-ID (klein, z. B. 1), nicht die Liga-ID – ' \
+               'Liga-Endpunkte liegen unter /leagues/:id.'
+    }, status: :not_found
   end
 end

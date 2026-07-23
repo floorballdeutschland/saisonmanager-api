@@ -214,6 +214,10 @@ class RefereeGameDayConfirmationsController < ApplicationController
       id: game_day.id,
       date: game_day.date,
       league: game_day.league&.name,
+      # league_id + game_operation_slug ermöglichen im Frontend den direkten Link
+      # zur (öffentlichen) Spielseite: /:association/:leagueId/spiel/:matchId.
+      league_id: game_day.league&.id,
+      game_operation_slug: game_day.league&.game_operation&.slug,
       arena: game_day.arena&.name,
       club: game_day.club&.name,
       my_confirmed_at: my_confirmation&.confirmed_at&.iso8601,
