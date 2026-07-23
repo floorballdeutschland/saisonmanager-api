@@ -45,7 +45,7 @@ module Admin
 
       get '/api/v2/admin/feedback_comments'
       entry = response.parsed_body.find { |c| c['id'] == feedback.id }
-      assert_equal ['Auftreten'], entry['themes'].map { |t| t['name'] }
+      assert_equal(['Auftreten'], entry['themes'].map { |t| t['name'] })
 
       # Leere Liste entfernt die Zuordnung wieder.
       patch "/api/v2/admin/feedback_comments/#{feedback.id}/themes", params: { theme_ids: [] }
