@@ -43,13 +43,13 @@ class UserTest < ActiveSupport::TestCase
   end
 
   test 'permission_hash: SBK für nationales GO (kein state_association_id) ergibt [0]' do
-    national_go = GameOperation.create!(name: 'FD Test', short_name: 'FDT', path: 'fd-test')
+    national_go = GameOperation.create!(name: 'FD Test', short_name: 'FDT', path: 'fd-test', national: true)
     u = build_user(permissions: [{ 'user_group_id' => 2, 'game_operation_id' => national_go.id }])
     assert_equal [0], u.permission_hash[:sbk]
   end
 
   test 'permission_hash: RSK für nationales GO (kein state_association_id) ergibt [0]' do
-    national_go = GameOperation.create!(name: 'FD RSK Test', short_name: 'FDRT', path: 'fd-rsk-test')
+    national_go = GameOperation.create!(name: 'FD RSK Test', short_name: 'FDRT', path: 'fd-rsk-test', national: true)
     u = build_user(permissions: [{ 'user_group_id' => 3, 'game_operation_id' => national_go.id }])
     assert_equal [0], u.permission_hash[:rsk]
   end

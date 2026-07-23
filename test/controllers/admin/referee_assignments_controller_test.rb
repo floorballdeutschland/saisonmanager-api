@@ -27,7 +27,7 @@ module Admin
     end
 
     test 'FD-Ansetzer (nationaler Spielbetrieb) ist immer aktiv' do
-      fd = create(:game_operation, state_association_id: nil)
+      fd = create(:game_operation, :national)
       login(create(:user, :assigner_scoped, game_operation_id: fd.id))
 
       get '/api/v2/admin/referee_assignments'
