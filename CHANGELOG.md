@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Strafen-Katalog auf aktuellen Regelstand gebracht**: Das „Strafe"-Dropdown im Spielbericht (`Setting#penalties`, ohne Admin-Oberfläche) enthielt noch veraltete Einträge. Eine einmalige, idempotente Rake-Task (`penalties:normalize_catalog`, Dry-Run als Standard) blendet „5 Minuten" sowie „Spielstrafe 1/2/3" aus (als `disabled`, nicht gelöscht, damit historische Ereignis-Referenzen erhalten bleiben) und benennt „Spielstrafe"/„Spieldauerstrafe (tech.)" in „Matchstrafe"/„Matchstrafe (technisch)" um. Aktiver Katalog danach: 2 Minuten, 2+2 Minuten, 10 Minuten, Matchstrafe, Matchstrafe (technisch). Adressiert über das stabile `mapping`, damit prod- und staging-unabhängig.
+
 ## [1.56.1] - 2026-07-22
 
 ### Behoben
