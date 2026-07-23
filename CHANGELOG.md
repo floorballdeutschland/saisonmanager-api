@@ -9,6 +9,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Benachrichtigung bei Spieländerungen nach veröffentlichter Ansetzung**: Ändert sich bei einem Spiel mit bereits veröffentlichter (persönlicher) Schiedsrichter-Ansetzung der Anpfiff, das Spieltagsdatum, die Halle oder der Absage-Status, erhalten die angesetzten Schiedsrichter, der Schiedsrichtercoach sowie der Ausrichter jetzt automatisch eine Änderungs-Benachrichtigung. Bisher blieb eine solche Änderung unkommuniziert, obwohl die Beteiligten bei der Veröffentlichung bereits informiert worden waren. Die Live-Erfassung (Spielbericht) und andere Feldänderungen lösen bewusst keine Mail aus (nur echte Änderungen an Anpfiff, Absage, Datum oder Halle).
+- **Anpfiff in den Ansetzungs-Mails**: Die Ansetzungs- und Änderungs-Benachrichtigungen an Schiedsrichter, Coach und Ausrichter enthielten bisher nur das Datum, nicht die Startzeit des Spiels. Der Anpfiff wird jetzt zusätzlich ausgewiesen.
+
 ## [1.56.1] - 2026-07-22
 
 ### Behoben
