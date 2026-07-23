@@ -1,6 +1,6 @@
 class TeamsController < ApplicationController
-  skip_before_action :authenticate_user, only: %i[show stats]
-  before_action :authenticate_public_request, only: %i[show stats]
+  skip_before_action :authenticate_user, only: %i[show stats matches]
+  before_action :authenticate_public_request, only: %i[show stats matches]
 
   # GET /teams
   def index
@@ -192,6 +192,66 @@ class TeamsController < ApplicationController
     }
   end
 
+  # GET /api/v2/teams/:id/matches
+  # Alle Spiele eines Teams über ALLE Wettbewerbe (Haupt-/Aufstiegsrunde, Playoffs,
+  # Pokal …) der Saison des Teams als strukturierte JSON-Liste – im Gegensatz zum
+  # iCal-Export (#show) und der gekappten Übersicht (#stats). Öffentlich (X-Api-Key).
+  def matches
+    team = Team.find(params[:id])
+    # Die league_id eines Teams pinnt es bereits auf genau eine Saison (Teams werden
+    # pro Saison neu importiert) – daher die Saison des Teams, nicht current_season_id
+    # (das für Teams vergangener Saisons leer ist).
+    team_season_id = team.league.season_id
+
+    leagues = team.leagues.where(season_id: team_season_id).to_a
+    leagues_info = leagues.map do |l|
+      {
+        id: l.id,
+        name: l.name,
+        short_name: l.short_name,
+        game_operation_id: l.game_operation.id,
+        game_operation_name: l.game_operation.name,
+        game_operation_slug: l.game_operation.slug
+      }
+    end
+
+    games = Game.by_team_id(team.id)
+                .joins(game_day: :league)
+                .where(leagues: { season_id: team_season_id })
+                .includes(:home_team, :guest_team, game_day: %i[arena league])
+                .order('game_days.date ASC')
+
+    matches = games.map do |g|
+      league = g.game_day.league
+      # schedule_item liefert bereits Halle, Ergebnis/Status (started/ended/state),
+      # notice_type und Teamnamen/-logos; hier ergänzt um IDs, Wettbewerbszuordnung
+      # und einen groben, konsumentenfreundlichen Status.
+      g.schedule_item.merge(
+        home_team_id: g.home_team_id,
+        home_team_club_id: g.home_team&.club_id,
+        guest_team_id: g.guest_team_id,
+        guest_team_club_id: g.guest_team&.club_id,
+        league_id: league.id,
+        league_name: league.name,
+        league_short_name: league.short_name,
+        status: match_status(g)
+      )
+    end
+
+    render json: {
+      team: {
+        id: team.id,
+        name: team.name,
+        short_name: team.short_name,
+        logo_url: team.logo_url_fallback,
+        logo_small: team.logo_small_url_fallback
+      },
+      season_id: team_season_id,
+      leagues: leagues_info,
+      matches:
+    }
+  end
+
   # Team-Details inkl. Kontaktdaten (full_hash(true)) – nur Admin/SBK des
   # Spielbetriebs sowie VM/TM der eigenen Mannschaft.
   def admin_get_team
@@ -329,6 +389,16 @@ class TeamsController < ApplicationController
   end
 
   private
+
+  # Grober Spielstatus für API-Konsumenten. Feinere Signale (started/ended/state,
+  # notice_type, result/result_string) liefert schedule_item zusätzlich.
+  def match_status(game)
+    return 'cancelled' if game.notice_type == 'Canceled'
+    return 'finished' if game.ended
+    return 'running' if game.started
+
+    'scheduled'
+  end
 
   def can_read_admin_team?(team)
     ph = current_user.permission_hash
