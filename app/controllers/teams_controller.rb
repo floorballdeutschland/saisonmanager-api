@@ -119,6 +119,7 @@ class TeamsController < ApplicationController
         home_goals:         result&.dig(:home_goals),
         guest_goals:        result&.dig(:guest_goals),
         date:               g.game_day.date,
+        league_id:          g.game_day.league.id,
         league_name:        g.game_day.league.name,
         league_short_name:  g.game_day.league.short_name
       }
@@ -143,6 +144,7 @@ class TeamsController < ApplicationController
         guest_team_logo:    g.guest_team&.logo_small_url_fallback,
         date:               g.game_day.date,
         start_time:         g.start_time,
+        league_id:          g.game_day.league.id,
         league_name:        g.game_day.league.name,
         league_short_name:  g.game_day.league.short_name
       }
