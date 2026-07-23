@@ -229,6 +229,8 @@ Rails.application.routes.draw do
           get :feedbacks, on: :member
         end
         resources :referee_feedbacks, only: %i[update]
+        get 'referee_feedback_analytics', to: 'referee_feedback_analytics#index'
+        get 'referee_feedback_analytics/export', to: 'referee_feedback_analytics#export'
         resources :proceeding_proposals, only: %i[index show] do
           member do
             post :reject

@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Schiri-Feedback-Auswertung über alle Schiedsrichter**: Neuer Auswertungs-Endpoint (`admin/referee_feedback_analytics`), der das Vereins-Feedback nicht mehr nur einzeln am Schiri-Profil, sondern übergreifend aggregiert: mit Gesamt- und Gruppen-Mittelwert für Spielleitung und Kommunikation, einer Schiri-Tabelle (Anzahl, Ø-Werte, Trend zur Vorperiode), Notenband-Verteilung und Monats-Zeitreihe. Filterbar nach Saison, Liga, Zeitraum und einer per Schiri-Tag definierten Top-Gruppe; zusätzlich nach Ausgang des bewertenden Teams (gewonnen/verloren), um den Bewerter-Bias sichtbar zu machen. Schiris unterhalb einer Mindest-Fallzahl werden als „nicht rankbar" markiert, die Anzahl steht immer dabei. In die Kennzahlen fließen nur sichtbare (nicht moderierte) Rückmeldungen. Die Kennzahlen sind zusätzlich als CSV/Excel exportierbar. Sichtbarkeit wie bisher: Admin, FD-RSK und FD-Ansetzer (global) (API #181).
+
 ## [1.56.1] - 2026-07-22
 
 ### Behoben
