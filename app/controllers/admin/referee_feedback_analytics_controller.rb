@@ -1,3 +1,5 @@
+require 'csv'
+
 module Admin
   # Übergreifende Auswertung des Vereins-Feedbacks zu Schiedsrichtern (#181).
   # Anders als die Einzelsicht am Schiri-Profil (RefereesController#feedbacks)

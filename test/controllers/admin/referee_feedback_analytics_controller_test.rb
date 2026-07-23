@@ -107,6 +107,43 @@ module Admin
       assert_includes response.body, 'Schiedsrichter'
     end
 
+    test 'Verteilung zählt Schiris je Notenband anhand ihrer Mittelwerte' do
+      band_a = create(:referee)
+      band_b = create(:referee)
+      create(:referee_feedback, game: game_in(@league), team: create(:team, league: @league),
+                                referee1_id: band_a.id, line_rating: 8, communication_rating: 8)
+      create(:referee_feedback, game: game_in(@league), team: create(:team, league: @league),
+                                referee1_id: band_b.id, line_rating: 4, communication_rating: 4)
+
+      login(@admin)
+      get '/api/v2/admin/referee_feedback_analytics'
+
+      assert_response :success
+      line = response.parsed_body['overall']['distribution']['line']
+      assert_equal 1, line['7-8']
+      assert_equal 1, line['3-4']
+      assert_equal 0, line['9-10']
+    end
+
+    test 'Trend vergleicht mit der Vorsaison (season_id - 1)' do
+      prev_league = create(:league, season_id: '17')
+      r1 = create(:referee)
+      # Vorsaison Ø 6, aktuelle Saison Ø 8 -> Trend +2.0.
+      create(:referee_feedback, game: game_in(prev_league), team: create(:team, league: prev_league),
+                                referee1_id: r1.id, line_rating: 6, communication_rating: 6)
+      create(:referee_feedback, game: game_in(@league), team: create(:team, league: @league),
+                                referee1_id: r1.id, line_rating: 8, communication_rating: 8)
+
+      login(@admin)
+      get '/api/v2/admin/referee_feedback_analytics', params: { season_id: '18' }
+
+      assert_response :success
+      entry = response.parsed_body['referees'].find { |r| r['referee_id'] == r1.id }
+      assert_equal 8.0, entry['avg_line_rating']
+      assert_equal 6.0, entry['avg_line_rating_prev']
+      assert_equal 2.0, entry['trend_line']
+    end
+
     private
 
     def game_in(league, home_team: nil, guest_team: nil, home_goals: nil, guest_goals: nil, date: '2026-01-15')
