@@ -2,6 +2,7 @@ require 'test_helper'
 
 class GameChangeNotifierTest < ActiveSupport::TestCase
   include ActiveJob::TestHelper
+  include ActionMailer::TestHelper
 
   setup do
     create(:setting)
