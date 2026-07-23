@@ -14,7 +14,14 @@ class User < ApplicationRecord
 
   has_secure_password
   before_validation :normalize_user_name
-  validates :user_name, presence: true, uniqueness: { case_sensitive: false }
+  validates :user_name, presence: true
+  # Eindeutigkeit kleinschreibungsneutral prüfen, aber nur wenn der Name gesetzt
+  # oder geändert wird. Sonst würde ein routinemäßiger Save (z. B. last_login_at
+  # beim Login) an einer kleinschreibungsneutralen Alt-Dublette scheitern und
+  # das betroffene Konto aussperren.
+  validates :user_name,
+            uniqueness: { case_sensitive: false },
+            if: -> { user_name_changed? }
   # Format nur prüfen, wenn der Name gesetzt oder geändert wird. So kann kein
   # Bestandskonto mit Altnamen beim routinemäßigen Speichern (z. B.
   # last_login_at beim Login) an der Validierung scheitern und ausgesperrt

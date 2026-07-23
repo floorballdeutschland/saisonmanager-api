@@ -362,6 +362,18 @@ class UserTest < ActiveSupport::TestCase
     assert_equal u.user_name, u.reload.user_name
   end
 
+  test 'login: last_login_at-Update scheitert nicht an bestehender CI-Dublette' do
+    a = build_user(permissions: [])
+    # Zweites Konto mit gleichem Namen in anderer Schreibweise, unter Umgehung
+    # der Eindeutigkeitsprüfung (simuliert Altbestand von vor deren Einführung).
+    b = a.dup
+    b.user_name = a.user_name.upcase
+    b.save!(validate: false)
+    # Der Login stempelt last_login_at; die Uniqueness darf dabei NICHT greifen,
+    # sonst würde das Konto ausgesperrt.
+    assert_not_nil User.login(a.user_name.downcase, 'password123')
+  end
+
   # ---------------------------------------------------------------------------
   # user_name-Format / Eindeutigkeit
   # ---------------------------------------------------------------------------
