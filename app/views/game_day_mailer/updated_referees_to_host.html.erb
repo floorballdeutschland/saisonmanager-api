@@ -11,6 +11,9 @@
   <tr><td><strong>Liga</strong></td><td><%= @league_name %></td></tr>
   <tr><td><strong>Datum</strong></td><td><%= @game_day.date %></td></tr>
   <tr><td><strong>Spiel</strong></td><td><%= @game.home_team&.name %> vs. <%= @game.guest_team&.name %><% if @game.game_number.present? %> (<%= @game.game_number %>)<% end %></td></tr>
+  <% if @game.start_time.present? %>
+  <tr><td><strong>Anpfiff</strong></td><td><%= @game.start_time %></td></tr>
+  <% end %>
   <% if @game_day.arena&.name.present? %>
   <tr><td><strong>Halle</strong></td><td><%= @game_day.arena.name %></td></tr>
   <% end %>

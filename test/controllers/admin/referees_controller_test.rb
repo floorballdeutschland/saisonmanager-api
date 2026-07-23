@@ -38,7 +38,7 @@ module Admin
     end
 
     test 'FD-RSK darf einen neuen Schiedsrichter anlegen' do
-      fd = create(:game_operation, state_association_id: nil)
+      fd = create(:game_operation, :national)
       login(rsk_user(fd.id))
 
       assert_difference -> { Referee.count }, 1 do
@@ -129,7 +129,7 @@ module Admin
     end
 
     test 'destroy als FD-RSK löscht den Schiri, aber NICHT das verknüpfte Benutzerkonto' do
-      fd = create(:game_operation, state_association_id: nil)
+      fd = create(:game_operation, :national)
       referee = create(:referee)
       linked_user = referee_login_user(referee)
       login(rsk_user(fd.id))

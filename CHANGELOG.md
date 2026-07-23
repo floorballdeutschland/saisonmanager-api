@@ -12,7 +12,43 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Behoben
 
 - **Bundesweite Schiedsrichter-Rollen (FD) sehen wieder alle Schiedsrichter**: SBK, RSK und Ansetzer auf Bundesebene (Floorball Deutschland) hatten ihren verbandsübergreifenden Zugriff verloren, weil die Bundesebene bisher aus einer fehlenden Landesverbands-Verknüpfung des Spielbetriebs abgeleitet wurde. Seit die FD-GameOperation für ihr Verbandslogo mit ihrer StateAssociation verknüpft ist, traf diese Annahme nicht mehr zu: Die betroffenen Rollen wurden auf die (leere) Vereinsmenge des Bundesverbands eingeschränkt, wodurch u. a. die Schiedsrichterliste, die Ansetzungs- und Verfügbarkeitsansichten sowie die Landesverbandsverwaltung leer blieben. Die Bundesebene wird jetzt über ein explizites Kennzeichen am Spielbetrieb bestimmt, unabhängig von der Logo-Verknüpfung.
+- **Strafen-Katalog auf aktuellen Regelstand gebracht**: Das „Strafe"-Dropdown im Spielbericht (`Setting#penalties`, ohne Admin-Oberfläche) enthielt noch veraltete Einträge. Eine einmalige, idempotente Rake-Task (`penalties:normalize_catalog`, Dry-Run als Standard) blendet „5 Minuten" sowie „Spielstrafe 1/2/3" aus (als `disabled`, nicht gelöscht, damit historische Ereignis-Referenzen erhalten bleiben) und benennt „Spielstrafe"/„Spieldauerstrafe (tech.)" in „Matchstrafe"/„Matchstrafe (technisch)" um. Aktiver Katalog danach: 2 Minuten, 2+2 Minuten, 10 Minuten, Matchstrafe, Matchstrafe (technisch). Adressiert über das stabile `mapping`, damit prod- und staging-unabhängig.
+- **Benachrichtigung bei Spieländerungen nach veröffentlichter Ansetzung**: Ändert sich bei einem Spiel mit bereits veröffentlichter (persönlicher) Schiedsrichter-Ansetzung der Anpfiff, das Spieltagsdatum, die Halle oder der Absage-Status, erhalten die angesetzten Schiedsrichter, der Schiedsrichtercoach sowie der Ausrichter jetzt automatisch eine Änderungs-Benachrichtigung. Bisher blieb eine solche Änderung unkommuniziert, obwohl die Beteiligten bei der Veröffentlichung bereits informiert worden waren. Die Live-Erfassung (Spielbericht) und andere Feldänderungen lösen bewusst keine Mail aus (nur echte Änderungen an Anpfiff, Absage, Datum oder Halle).
+- **Anpfiff in den Ansetzungs-Mails**: Die Ansetzungs- und Änderungs-Benachrichtigungen an Schiedsrichter, Coach und Ausrichter enthielten bisher nur das Datum, nicht die Startzeit des Spiels. Der Anpfiff wird jetzt zusätzlich ausgewiesen.
+
+### Neu
+
+- **Schiri-Feedback: Kommentar-Feed und Themen-Tags**: Die Freitextkommentare aus dem Vereins-Feedback (Linie, Kommunikation, allgemein) sind jetzt übergreifend auswertbar statt nur einzeln am Schiri-Profil. Ein neuer Feed (`admin/feedback_comments`) listet alle kommentierten Rückmeldungen, filterbar nach Schiri, Top-Gruppe (Schiri-Tag), Liga, Saison, Zeitraum, Notenschwelle und Thema; ausgeblendete Rückmeldungen bleiben außen vor. Über eine admin-gepflegte Themen-Taxonomie (`admin/feedback_themes`, z. B. Positionierung, Regelauslegung, Auftreten) taggen RSK und Ansetzer die Kommentare händisch. Dadurch werden Themen zählbar: eine Auswertung (`admin/feedback_comments/stats`) liefert Häufigkeiten je Thema (gesamt, für die Top-Gruppe und per Schiri-Filter) als Ranking sowie eine Monats-Zeitreihe, um die Wirkung des Coachings zu beurteilen. Sichtbarkeit wie bisher: Admin, FD-RSK und FD-Ansetzer (global) (API #182).
+- **Schiri-Feedback-Auswertung über alle Schiedsrichter**: Neuer Auswertungs-Endpoint (`admin/referee_feedback_analytics`), der das Vereins-Feedback nicht mehr nur einzeln am Schiri-Profil, sondern übergreifend aggregiert: mit Gesamt- und Gruppen-Mittelwert für Spielleitung und Kommunikation, einer Schiri-Tabelle (Anzahl, Ø-Werte, Trend zur Vorperiode), Notenband-Verteilung und Monats-Zeitreihe. Filterbar nach Saison, Liga, Zeitraum und einer per Schiri-Tag definierten Top-Gruppe; zusätzlich nach Ausgang des bewertenden Teams (gewonnen/verloren), um den Bewerter-Bias sichtbar zu machen. Schiris unterhalb einer Mindest-Fallzahl werden als „nicht rankbar" markiert, die Anzahl steht immer dabei. In die Kennzahlen fließen nur sichtbare (nicht moderierte) Rückmeldungen. Die Kennzahlen sind zusätzlich als CSV/Excel exportierbar. Sichtbarkeit wie bisher: Admin, FD-RSK und FD-Ansetzer (global) (API #181).
+
+## [1.56.1] - 2026-07-22
+
+### Behoben
+
+- **Bundesweite Schiedsrichter-Rollen (FD) sehen wieder alle Schiedsrichter**: SBK, RSK und Ansetzer auf Bundesebene (Floorball Deutschland) hatten ihren verbandsübergreifenden Zugriff verloren, weil die Bundesebene bisher aus einer fehlenden Landesverbands-Verknüpfung des Spielbetriebs abgeleitet wurde. Seit die FD-GameOperation für ihr Verbandslogo mit ihrer StateAssociation verknüpft ist, traf diese Annahme nicht mehr zu: Die betroffenen Rollen wurden auf die (leere) Vereinsmenge des Bundesverbands eingeschränkt, wodurch u. a. die Schiedsrichterliste, die Ansetzungs- und Verfügbarkeitsansichten sowie die Landesverbandsverwaltung leer blieben. Die Bundesebene wird jetzt über ein explizites Kennzeichen am Spielbetrieb bestimmt, unabhängig von der Logo-Verknüpfung.
+
+## [1.56.0] - 2026-07-22
+
+### Neu
+
+- **Vereinsmanager können Spieler selbst anlegen**: In der eigenen Vereins-Spielerliste („Spielerverwaltung (Verein)") gibt es jetzt einen Button „Neu anlegen", mit dem Vereinsmanager neue Spieler*innen für ihren Verein erfassen können – bisher war das nur Admins und der SBK vorbehalten (im Altsystem war es Vereinsmanagern bereits möglich). Der Button erscheint nur für die eigenen Vereine; das Anlegen für fremde Vereine bleibt serverseitig ausgeschlossen (Frontend #121).
+
+### Behoben
+
+- **Altlasten im Spielbetrieb bereinigt (einmalige Wartungs-Tasks)**: Neue Rake-Tasks im Namespace `cleanup` räumen historische Datenreste auf. `cleanup:close_started_games` schließt vergangene, begonnene, aber nie formal abgeschlossene Spiele (setzt `ended`/`game_ended` + `game_status`, damit sie öffentlich nicht länger als „Live" erscheinen). `cleanup:cancel_unstarted_games` markiert vergangene, nie gestartete Spiele als „Abgesagt" (`notice_type='Canceled'`; im Scope: aktuelle Saisons sowie die COVID-Saisons 2019/20 und 2020/21). `cleanup:delete_empty_leagues` löscht Ligen ohne Teams und Spiele (außer der aktiven Saison und außer anderweitig referenzierten Ligen). Alle drei Tasks laufen standardmäßig als Dry-Run (`DRY_RUN=false` zum Ausführen); `cleanup:stale_report` liefert eine reine Übersicht.
+
+### Verbessert
+
+- **Dokumentarten nur noch durch SBK FD und Admin pflegbar**: Neue Dokumentarten anlegen, ändern oder löschen dürfen jetzt ausschließlich Admins und die bundesweite SBK (SBK FD). Verbands-gescopte SBK (Landesverband) haben nur noch Lesezugriff auf den Dokumentarten-Katalog; ein Hinweis nennt `sbk@floorball.de` als Anlaufstelle, um neue Dokumentarten zu beantragen (Frontend #122).
+- **Spielplan-Import ist auffindbar**: In der Spielplanverwaltung einer Liga führt ein neuer Button „Spielplan importieren" direkt zur Excel-Import-Seite; diese war bisher nur über die direkte URL erreichbar (Frontend #120).
+- **Klarerer Hinweis bei der Transfer-Direktzuweisung**: Das Intro der Direktzuweisung weist jetzt darauf hin, dass hier Transfers direkt durchgeführt werden und Spielerfreigaben weiterhin auf den Spielerdetailseiten eingerichtet werden (Frontend #123).
+
+## [1.55.1] - 2026-07-21
+
+### Behoben
+
 - **Öffentlicher Spielplan stürzt bei fehlerhaftem Spieltag-Datum nicht mehr ab**: Der aktuelle Spielplan einer Liga (`leagues/:id/game_days/current/schedule`) warf einen 500er, wenn ein Spieltag ein nicht interpretierbares Datum enthielt (unparsebarer Wert in der Textspalte `date`, meist aus Altdaten-Importen). Solche Datumswerte werden jetzt übersprungen statt die gesamte Anfrage abzubrechen (Sentry SAISONMANAGER-Z).
+- **Scorerliste bleibt bei Direktaufruf verborgen**: Bei deaktivierter Scorerliste war die Seite `…/scorer` per direktem URL-Aufruf weiterhin erreichbar (ausgeblendet war nur der Tab). Die Seite respektiert jetzt die Einstellung und zeigt einen Hinweis statt der Liste (Frontend #114).
 
 ### Verbessert
 

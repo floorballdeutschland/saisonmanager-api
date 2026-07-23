@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_07_22_120000) do
+ActiveRecord::Schema[7.1].define(version: 2026_07_23_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -129,6 +129,26 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_22_120000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["mailer_class", "action_name", "locale"], name: "index_email_templates_on_key", unique: true
+  end
+
+  create_table "feedback_theme_taggings", force: :cascade do |t|
+    t.bigint "referee_feedback_id", null: false
+    t.bigint "feedback_theme_id", null: false
+    t.bigint "tagged_by_user_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["feedback_theme_id"], name: "index_feedback_theme_taggings_on_feedback_theme_id"
+    t.index ["referee_feedback_id", "feedback_theme_id"], name: "index_feedback_theme_taggings_on_feedback_and_theme", unique: true
+    t.index ["referee_feedback_id"], name: "index_feedback_theme_taggings_on_referee_feedback_id"
+  end
+
+  create_table "feedback_themes", force: :cascade do |t|
+    t.string "name", null: false
+    t.string "color"
+    t.integer "position"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["name"], name: "index_feedback_themes_on_name", unique: true
   end
 
   create_table "game_day_referee_confirmations", force: :cascade do |t|
@@ -823,6 +843,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_22_120000) do
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
   add_foreign_key "document_types", "game_operations"
+  add_foreign_key "feedback_theme_taggings", "feedback_themes"
+  add_foreign_key "feedback_theme_taggings", "referee_feedbacks"
   add_foreign_key "game_day_referee_confirmations", "game_days"
   add_foreign_key "game_day_referee_confirmations", "referees"
   add_foreign_key "game_day_secretary_links", "game_days"

@@ -1,9 +1,10 @@
 module Admin
   # Verwaltung des Dokumentarten-Katalogs (Lizenz-Pflichtdokumente).
-  # Lesen: Admin und SBK (für Liga-Formular und Lizenzansichten).
-  # Pflegen: Admin und global gescopte SBK überall (inkl. globaler/bundesweiter
-  # Einträge); verbands-gescopte SBK nur Einträge des eigenen Verbands
-  # (vgl. RefereeTags).
+  # Lesen: Admin und SBK (für Liga-Formular und Lizenzansichten); verbands-
+  # gescopte SBK sehen den eigenen Verband + globale Einträge.
+  # Pflegen (anlegen/ändern/löschen): nur Admin und global (bundesweit)
+  # gescopte SBK (SBK FD). Verbands-gescopte SBK haben ausschließlich
+  # Lesezugriff – neue Dokumentarten werden bei sbk@floorball.de beantragt.
   class DocumentTypesController < ApplicationController
     include LicenseDocumentPresentation
 
@@ -26,18 +27,6 @@ module Admin
 
     def create
       document_type = DocumentType.new(document_type_params)
-      if scoped_sbk? && document_type.game_operation_id.blank?
-        # SBK mit mehreren Verbänden muss den Verband explizit angeben,
-        # sonst würde still ein beliebiger gewählt.
-        if sbk_go_ids.size > 1
-          return render json: { error: 'Bitte den Verband angeben (game_operation_id).' },
-                        status: :unprocessable_entity
-        end
-
-        document_type.game_operation_id = sbk_go_ids.first
-      end
-      return render json: { error: 'Nicht berechtigt' }, status: :forbidden unless can_manage?(document_type)
-
       if document_type.save
         render json: document_type_json(document_type), status: :created
       else
@@ -47,8 +36,6 @@ module Admin
 
     def update
       attrs = document_type_params
-      # Gescopte SBK dürfen einen Eintrag nicht in einen anderen Verband verschieben.
-      attrs = attrs.except(:game_operation_id) if scoped_sbk?
       @document_type.assign_attributes(attrs)
 
       if @document_type.save
@@ -81,9 +68,6 @@ module Admin
 
     def set_document_type
       @document_type = DocumentType.find(params[:id])
-      return if can_manage?(@document_type)
-
-      render json: { error: 'Nicht berechtigt' }, status: :forbidden
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Dokumentart nicht gefunden' }, status: :not_found
     end
@@ -95,8 +79,13 @@ module Admin
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
 
+    # Pflegen dürfen nur Admin und global gescopte SBK (SBK FD, game_operation_id 0).
+    # Verbands-gescopte SBK haben nur Lesezugriff.
     def authorize_manage!
-      authorize_read!
+      ph = current_user.permission_hash
+      return if ph[:admin].present? || (ph[:sbk].present? && ph[:sbk].include?(0))
+
+      render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
 
     def scoped_sbk?
@@ -106,12 +95,6 @@ module Admin
 
     def sbk_go_ids
       current_user.permission_hash[:sbk] || []
-    end
-
-    def can_manage?(document_type)
-      return true unless scoped_sbk?
-
-      document_type.game_operation_id.present? && sbk_go_ids.include?(document_type.game_operation_id)
     end
 
     def in_use?(document_type)
