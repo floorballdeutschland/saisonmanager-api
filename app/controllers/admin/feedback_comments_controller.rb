@@ -112,7 +112,7 @@ module Admin
         end
       end
 
-      themes.values.map do |theme|
+      entries = themes.values.map do |theme|
         {
           theme_id: theme.id,
           name: theme.name,
@@ -120,7 +120,8 @@ module Admin
           count: counts[theme.id],
           group_count: group_ids.any? ? group_counts[theme.id] : nil
         }
-      end.sort_by { |entry| [-entry[:count], entry[:name].to_s] }
+      end
+      entries.sort_by { |entry| [-entry[:count], entry[:name].to_s] }
     end
 
     def theme_time_series(feedbacks)
