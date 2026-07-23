@@ -346,4 +346,78 @@ class UserTest < ActiveSupport::TestCase
     assert_nil User.login('', 'password123')
     assert_nil User.login('irgendwer', '')
   end
+
+  test 'login: Benutzername ist kleinschreibungsneutral' do
+    u = User.create!(
+      user_name: "MixedCase_#{SecureRandom.hex(4)}",
+      password: 'password123',
+      password_confirmation: 'password123',
+      permissions: [],
+      teams: []
+    )
+    # Der SessionsController schreibt die Eingabe klein; der gemischt
+    # geschriebene Bestandsname muss trotzdem gefunden werden.
+    assert_equal u.id, User.login(u.user_name.downcase, 'password123')&.id
+    # Der gespeicherte Name behält seine Schreibweise (kein Zwangs-Downcase).
+    assert_equal u.user_name, u.reload.user_name
+  end
+
+  test 'login: last_login_at-Update scheitert nicht an bestehender CI-Dublette' do
+    a = build_user(permissions: [])
+    # Zweites Konto mit gleichem Namen in anderer Schreibweise, unter Umgehung
+    # der Eindeutigkeitsprüfung (simuliert Altbestand von vor deren Einführung).
+    b = a.dup
+    b.user_name = a.user_name.upcase
+    b.save!(validate: false)
+    # Der Login stempelt last_login_at; die Uniqueness darf dabei NICHT greifen,
+    # sonst würde das Konto ausgesperrt.
+    assert_not_nil User.login(a.user_name.downcase, 'password123')
+  end
+
+  # ---------------------------------------------------------------------------
+  # user_name-Format / Eindeutigkeit
+  # ---------------------------------------------------------------------------
+
+  test 'user_name: Groß- und Kleinbuchstaben sind erlaubt' do
+    u = User.new(
+      user_name: "MaxMuster_#{SecureRandom.hex(4)}",
+      password: 'password123',
+      password_confirmation: 'password123',
+      permissions: [],
+      teams: []
+    )
+    assert u.valid?, u.errors.full_messages.join(', ')
+  end
+
+  test 'user_name: Umlaute werden abgelehnt' do
+    u = User.new(
+      user_name: "möller_#{SecureRandom.hex(4)}",
+      password: 'password123',
+      password_confirmation: 'password123',
+      permissions: [],
+      teams: []
+    )
+    assert_not u.valid?
+    assert u.errors[:user_name].present?
+  end
+
+  test 'user_name: doppelter Name wird kleinschreibungsneutral abgelehnt' do
+    base = "dupcheck#{SecureRandom.hex(4)}"
+    User.create!(
+      user_name: base.capitalize,
+      password: 'password123',
+      password_confirmation: 'password123',
+      permissions: [],
+      teams: []
+    )
+    dup = User.new(
+      user_name: base,
+      password: 'password123',
+      password_confirmation: 'password123',
+      permissions: [],
+      teams: []
+    )
+    assert_not dup.valid?
+    assert dup.errors[:user_name].present?
+  end
 end

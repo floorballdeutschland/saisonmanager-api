@@ -3,8 +3,35 @@ class User < ApplicationRecord
 
   LANGUAGES = %w[de en].freeze
 
+  # Benutzernamen werden kleinschreibungsneutral geführt: Der Login vergleicht
+  # gegen LOWER(user_name) (siehe self.login), daher darf ein Name sowohl in
+  # Groß- als auch Kleinschreibung eingegeben werden. Erlaubt sind Buchstaben
+  # (A–Z, a–z), Ziffern, Punkt, Bindestrich und Unterstrich; Empfehlung bleibt
+  # vorname.nachname. Umlaute/ß und sonstige Sonderzeichen sind nicht erlaubt.
+  # Bestandsnamen werden nicht umgeschrieben; die Format-Prüfung greift nur
+  # beim Setzen oder Ändern des Namens.
+  USER_NAME_FORMAT = /\A[a-zA-Z0-9._-]+\z/
+
   has_secure_password
-  validates :user_name, presence: true, uniqueness: true
+  before_validation :normalize_user_name
+  validates :user_name, presence: true
+  # Eindeutigkeit kleinschreibungsneutral prüfen, aber nur wenn der Name gesetzt
+  # oder geändert wird. Sonst würde ein routinemäßiger Save (z. B. last_login_at
+  # beim Login) an einer kleinschreibungsneutralen Alt-Dublette scheitern und
+  # das betroffene Konto aussperren.
+  validates :user_name,
+            uniqueness: { case_sensitive: false },
+            if: -> { user_name_changed? }
+  # Format nur prüfen, wenn der Name gesetzt oder geändert wird. So kann kein
+  # Bestandskonto mit Altnamen beim routinemäßigen Speichern (z. B.
+  # last_login_at beim Login) an der Validierung scheitern und ausgesperrt
+  # werden.
+  validates :user_name,
+            format: {
+              with: USER_NAME_FORMAT,
+              message: 'darf nur Buchstaben, Ziffern, Punkt, Bindestrich und Unterstrich enthalten (keine Umlaute, kein ß)'
+            },
+            if: -> { user_name.present? && user_name_changed? }
   validates :language, inclusion: { in: LANGUAGES }
 
   belongs_to :referee, optional: true
@@ -398,11 +425,13 @@ class User < ApplicationRecord
   def self.login(login, password)
     return nil if login.blank? || password.blank?
 
-    # Login per Benutzername ODER E-Mail. Der exakte Benutzername hat Vorrang;
-    # eine E-Mail wird nur akzeptiert, wenn sie eindeutig einem Konto zugeordnet
-    # ist (die E-Mail-Spalte hat keine Unique-Constraint). Der eingehende Wert
-    # ist bereits kleingeschrieben (SessionsController), daher LOWER-Vergleich.
-    user = User.find_by(user_name: login)
+    # Login per Benutzername ODER E-Mail, jeweils kleinschreibungsneutral. Der
+    # eingehende Wert ist bereits kleingeschrieben (SessionsController); wir
+    # vergleichen daher gegen LOWER(user_name), damit auch Bestandsnamen mit
+    # Großbuchstaben per Benutzername anmeldbar sind. Eine E-Mail wird nur
+    # akzeptiert, wenn sie eindeutig einem Konto zugeordnet ist (die E-Mail-
+    # Spalte hat keine Unique-Constraint).
+    user = User.where('LOWER(user_name) = ?', login.to_s.downcase).first
     if user.blank?
       email_matches = User.where('LOWER(email) = ?', login).limit(2).to_a
       user = email_matches.first if email_matches.size == 1
@@ -424,5 +453,15 @@ class User < ApplicationRecord
     elsif user.password_digest.present? && user.authenticate(password)
       user if user.archived? || user.update(last_login_at: Time.now)
     end
+  end
+
+  private
+
+  # Benutzernamen vor der Validierung nur um Rand-Whitespace bereinigen. Die
+  # Groß-/Kleinschreibung bleibt erhalten; der Login vergleicht ohnehin
+  # kleinschreibungsneutral (siehe self.login), sodass Bestandsnamen mit
+  # Großbuchstaben weiterhin anmeldbar sind und nicht umgeschrieben werden.
+  def normalize_user_name
+    self.user_name = user_name.strip if user_name.present?
   end
 end

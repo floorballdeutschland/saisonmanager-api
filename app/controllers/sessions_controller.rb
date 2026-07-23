@@ -28,8 +28,10 @@ class SessionsController < ApplicationController
   def lost_password
     cookies.delete :user_id
 
-    # Archivierte Konten erhalten keine Reset-Mail – ein Login ist ohnehin gesperrt.
-    user = User.find_by(user_name: params[:username].downcase)
+    # Archivierte Konten erhalten keine Reset-Mail, ein Login ist ohnehin gesperrt.
+    # Benutzername kleinschreibungsneutral suchen (wie beim Login), damit auch
+    # Bestandsnamen mit Großbuchstaben eine Reset-Mail erhalten.
+    user = User.where('LOWER(user_name) = ?', params[:username].to_s.downcase).first
     user.send_reset_information if user && !user.archived?
 
     render json: { success: true }, status: :ok
