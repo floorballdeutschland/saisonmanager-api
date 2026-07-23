@@ -54,18 +54,23 @@ module Admin
 
     test 'stats liefert Themen-Häufigkeiten und Gruppen-Zähler' do
       r1 = create(:referee)
+      r2 = create(:referee)
       tag = RefereeTag.create!(name: 'Kader', game_operation_id: nil)
       RefereeTagging.create!(referee: r1, referee_tag: tag)
       theme = create(:feedback_theme, name: 'Positionierung')
+      # r1 ist in der Top-Gruppe, r2 nicht; beide mit demselben Thema getaggt.
       f1 = make_feedback(referee1: r1, comment: 'Position')
+      f2 = make_feedback(referee1: r2, comment: 'Position')
       FeedbackThemeTagging.create!(referee_feedback: f1, feedback_theme: theme)
+      FeedbackThemeTagging.create!(referee_feedback: f2, feedback_theme: theme)
 
       login(@admin)
       get '/api/v2/admin/feedback_comments/stats', params: { tag_id: tag.id }
 
       assert_response :success
       entry = response.parsed_body['themes'].find { |t| t['theme_id'] == theme.id }
-      assert_equal 1, entry['count']
+      # count = gesamt (r1 + r2), group_count = nur Top-Gruppe (r1).
+      assert_equal 2, entry['count']
       assert_equal 1, entry['group_count']
     end
 

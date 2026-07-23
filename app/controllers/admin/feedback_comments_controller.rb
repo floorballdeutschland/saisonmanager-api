@@ -92,7 +92,11 @@ module Admin
       rel = rel.where(leagues: { season_id: season_id }) if season_id.present?
       rel = rel.where(leagues: { id: league_id }) if league_id.present?
       rel = rel.for_referee(referee_id) if referee_id.present?
-      filter_by_group(rel).to_a.select { |f| within_date_range?(f) }
+      # Bewusst KEIN filter_by_group hier: für die Themen-Auswertung ist `count`
+      # die Gesamtzahl und `group_count` die Teilmenge der Top-Gruppe (siehe
+      # theme_frequencies). Würde die Gruppe schon hier gefiltert, wären beide
+      # Werte immer gleich.
+      rel.to_a.select { |f| within_date_range?(f) }
     end
 
     def theme_frequencies(feedbacks, group_ids)
