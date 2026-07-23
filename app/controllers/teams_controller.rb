@@ -218,7 +218,10 @@ class TeamsController < ApplicationController
     games = Game.by_team_id(team.id)
                 .joins(game_day: :league)
                 .where(leagues: { season_id: team_season_id })
-                .includes(:home_team, :guest_team, game_day: %i[arena league])
+                # club je game_day, weil schedule_item game_day.hosting_club
+                # (= club.name) liest; home_team/guest_team + deren club, weil
+                # logo_url_fallback bei fehlendem Team-Logo auf club.logo_url fällt.
+                .includes(game_day: %i[arena league club], home_team: :club, guest_team: :club)
                 .order('game_days.date ASC')
 
     matches = games.map do |g|
