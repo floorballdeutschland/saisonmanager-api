@@ -157,7 +157,14 @@ class User < ApplicationRecord
 
     has_tm_role = permissions.any? { |p| p['user_group_id'].to_i == 5 }
     has_schiri_role = permissions.any? { |p| p['user_group_id'].to_i == 6 }
-    tm_blocked = has_tm_role && ph[:tm].blank? && ph[:admin].blank? && ph[:sbk].blank? && ph[:vm].blank?
+    # Ein TM ohne Team wird nur dann für den Login gesperrt, wenn er/sie auch
+    # sonst keine nutzbare Rolle hat. RSK, Ansetzer und die
+    # Schiri-Selfservice-Rolle sind eigenständige Rollen und dürfen nicht
+    # durch die TM-Sperre ausgesperrt werden (sonst greift der Early-Return
+    # unten und alle Schiedsrichter-Rechte fehlen).
+    tm_blocked = has_tm_role && ph[:tm].blank? &&
+                 ph[:admin].blank? && ph[:sbk].blank? && ph[:vm].blank? &&
+                 ph[:rsk].blank? && ph[:ansetzer].blank? && !has_schiri_role
     result[:login_blocked] = tm_blocked
 
     return result if tm_blocked
