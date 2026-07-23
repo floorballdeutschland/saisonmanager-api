@@ -3,7 +3,10 @@ Rails.application.routes.draw do
   resources :arenas
   resources :games
   resources :game_day
-  resources :game_operations do
+  # Nur :index ist implementiert; show/create/update/destroy/new/edit haben keine
+  # Controller-Action und wären tote Routen. Die genutzten Einzel-Endpunkte sind
+  # die Custom-Routen (leagues, by_shortname) sowie die api/v2-Routen weiter unten.
+  resources :game_operations, only: %i[index] do
     member do
       get :leagues, to: 'game_operations#index_leagues'
     end
