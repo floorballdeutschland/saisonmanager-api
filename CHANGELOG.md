@@ -29,6 +29,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Verbessert
 
+- **Ansetzungs-Verlauf zeigt die tatsächlich eingesetzten Schiedsrichter**: Die Liste der Ansetzungen (`admin/referee_assignments`) liefert pro Ansetzung jetzt zusätzlich das Feld `officials` mit den laut Spielbericht wirklich eingesetzten Schiedsrichtern (positionstreu je Slot, aufgelöst über `officiating_referee_ids` mit Rückfall auf den Klartext-Namen aus dem Bericht). Im Rückblick auf vergangene Spiele stand bisher nur die ursprüngliche Ansetzung, die von der tatsächlichen Besetzung abweichen kann. Die Auflösung erfolgt gebündelt für die ganze Liste, damit keine Abfrage pro Spiel entsteht. Rein additiv; die Einzel-Antworten beim Anlegen, Ändern, Benachrichtigen und Veröffentlichen liefern eine leere Liste.
+
 - **Benutzernamen kleinschreibungsneutral (Login mit Groß- und Kleinschreibung)**: Der Login akzeptiert den Benutzernamen jetzt unabhängig von der Groß-/Kleinschreibung (Vergleich gegen `LOWER(user_name)`), sodass auch Bestandskonten mit Großbuchstaben im Namen weiterhin per Benutzername anmeldbar sind. Der Benutzername wird nicht mehr zwangsweise klein geschrieben, sondern nur um Rand-Leerzeichen bereinigt; erlaubt sind Buchstaben (groß und klein), Ziffern, Punkt, Bindestrich und Unterstrich (Empfehlung: `vorname.nachname`). Umlaute (ä, ö, ü) und ß werden beim Anlegen oder Ändern mit einer klaren Fehlermeldung abgelehnt. Doppelte Benutzernamen werden kleinschreibungsneutral erkannt, sodass sich „Max" und „max" nicht gleichzeitig anlegen lassen. Der Passwort-Reset findet Konten ebenfalls kleinschreibungsneutral. Bestandskonten bleiben unangetastet, die Format-Prüfung greift nur beim Setzen oder Ändern des Namens.
 
 ## [1.56.1] - 2026-07-22
