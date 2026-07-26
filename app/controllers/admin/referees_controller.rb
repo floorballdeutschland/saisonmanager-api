@@ -32,7 +32,8 @@ module Admin
 
       referees = referees.to_a
       counts = season_game_counts(referees)
-      render json: referees.map { |r| referee_json(r, season_game_count: counts[r.lizenznummer].to_i) }
+      contact = can_view_contact_data?
+      render json: referees.map { |r| referee_json(r, season_game_count: counts[r.lizenznummer].to_i, contact:) }
     end
 
     # GET /api/v2/admin/referees/:id
@@ -420,6 +421,15 @@ module Admin
       ph[:admin].present? || (ph[:rsk].present? && ph[:rsk].include?(0))
     end
 
+    # Kontaktdaten (E-Mail) in der Schiri-Liste. Deckt sich mit
+    # menu_item_referee_admin: Admin, RSK und Ansetzer verwalten Schiris und
+    # sehen die E-Mail ohnehin in der Detailansicht. Ein reiner Vereinsmanager
+    # bekommt die Liste zwar (eigene Vereinsschiris), aber ohne Adressen.
+    def can_view_contact_data?
+      ph = current_user.permission_hash
+      ph[:admin].present? || ph[:rsk].present? || ph[:ansetzer].present?
+    end
+
     def restricted_user?
       !can_edit_full?
     end
@@ -471,7 +481,7 @@ module Admin
       counts
     end
 
-    def referee_json(referee, full: false, season_game_count: nil)
+    def referee_json(referee, full: false, season_game_count: nil, contact: false)
       data = {
         id: referee.id,
         lizenznummer: referee.lizenznummer,
@@ -490,11 +500,13 @@ module Admin
       }
 
       data[:season_game_count] = season_game_count unless season_game_count.nil?
+      # Die Detailansicht liefert die E-Mail wie bisher immer mit; in der Liste
+      # nur für Rollen mit Zugriff auf Kontaktdaten (siehe can_view_contact_data?).
+      data[:email] = referee.email if contact || full
 
       if full
         data.merge!(
           geburtsdatum: referee.geburtsdatum&.strftime('%d.%m.%Y'),
-          email: referee.email,
           game_operation_id: referee.game_operation_id,
           strasse: referee.strasse,
           hausnummer: referee.hausnummer,
