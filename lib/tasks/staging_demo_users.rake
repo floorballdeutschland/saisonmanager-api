@@ -19,6 +19,13 @@
 # Aufruf (im Staging-Container): bundle exec rails staging:seed_demo_users
 # Passwort optional via STAGING_USER_PASSWORD (Default: 'staging-password').
 #
+# Einzelne Konten können ein abweichendes Passwort bekommen: Trägt eine
+# Definition `"password_env": "STAGING_ADMIN_PASSWORD"`, wird der Wert dieser
+# Umgebungsvariablen verwendet (Fallback: das gemeinsame Passwort). So bleibt
+# z. B. das Admin-Konto vom gemeinsamen Tester-Passwort getrennt, ohne dass ein
+# Passwort im Repo steht – die Werte liegen in der gitignorierten `.env` des
+# Docker-Setups und werden von staging-db-refresh.sh durchgereicht.
+#
 # SCHUTZ: Läuft ausschließlich gegen die Staging-DB (verbundener Host muss
 # 'staging' enthalten). Gegen die Prod-DB bricht der Task ab, bevor etwas
 # geändert wird.
@@ -35,16 +42,27 @@ namespace :staging do
     end
 
     require 'json'
-    password = ENV['STAGING_USER_PASSWORD'].presence || 'staging-password'
+    shared_password = ENV['STAGING_USER_PASSWORD'].presence || 'staging-password'
     staging_domain = 'staging.saisonmanager.dev'
     definitions = JSON.parse(Rails.root.join('db', 'staging_demo_users.json').read)
 
     log = ->(msg) { puts "[staging:seed_demo_users] #{msg}" }
     warnings = []
+    # user_names je gesetztem Passwort, für die Ausgabe am Ende.
+    seeded_by_password = {}
 
     definitions.each do |defn|
       user_name = defn['user_name']
       permissions = defn['permissions'] || []
+
+      # Abweichendes Passwort je Konto (Wert kommt aus der ENV, nicht aus dem
+      # Repo). Fehlt die Variable, greift das gemeinsame Passwort.
+      password_env = defn['password_env'].presence
+      password = password_env ? ENV[password_env].presence : nil
+      if password_env && password.nil?
+        warnings << "#{user_name}: #{password_env} nicht gesetzt – gemeinsames Passwort verwendet"
+      end
+      password ||= shared_password
 
       # Referenzen gegen die frischen Prod-Daten prüfen (nur warnen):
       permissions.each do |p|
@@ -96,10 +114,13 @@ namespace :staging do
         archived_by: nil
       )
       user.save!
+      (seeded_by_password[password] ||= []) << user_name
     end
 
     log.call("Demo-Benutzer angelegt/aktualisiert: #{definitions.size}")
-    log.call("Passwort aller Demo-Konten lautet jetzt: #{password.inspect}")
+    seeded_by_password.each do |pw, names|
+      log.call("Passwort #{pw.inspect} gesetzt für #{names.size} Konto/Konten: #{names.join(', ')}")
+    end
     if warnings.any?
       log.call("WARNUNGEN (#{warnings.size}) – Referenzen nach dem Klon prüfen:")
       warnings.each { |w| log.call("  - #{w}") }
