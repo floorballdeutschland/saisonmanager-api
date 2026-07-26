@@ -36,6 +36,7 @@ namespace :staging do
 
     require 'json'
     password = ENV['STAGING_USER_PASSWORD'].presence || 'staging-password'
+    staging_domain = 'staging.saisonmanager.dev'
     definitions = JSON.parse(Rails.root.join('db', 'staging_demo_users.json').read)
 
     log = ->(msg) { puts "[staging:seed_demo_users] #{msg}" }
@@ -67,11 +68,26 @@ namespace :staging do
         teams.concat(club_teams)
       end
 
-      user = User.find_or_initialize_by(user_name: user_name)
+      staging_email = "#{user_name}@#{staging_domain}"
+
+      # Schutz gegen Kaperung: Existiert bereits ein Konto mit diesem Namen, dessen
+      # E-Mail NICHT auf die Staging-Domain zeigt, gehört es einem echten Prod-User
+      # (der Klon könnte einen realen `demo_*`-Namen mitbringen). Dann NICHT
+      # überschreiben – sonst bekäme dieser das bekannte Demo-Passwort und die
+      # Demo-Rolle. Eigene (auch früher anonymisierte) Konten enden auf der
+      # Staging-Domain und werden regulär aktualisiert.
+      existing = User.find_by(user_name: user_name)
+      if existing && !existing.email.to_s.end_with?("@#{staging_domain}")
+        warnings << "#{user_name}: echtes Konto mit externer E-Mail " \
+                    "(#{existing.email.inspect}) – übersprungen, nicht überschrieben"
+        next
+      end
+
+      user = existing || User.new(user_name: user_name)
       user.assign_attributes(
         first_name: 'Demo',
         last_name: user_name.sub(/\Ademo_/, '').tr('_', ' '),
-        email: "#{user_name}@staging.saisonmanager.dev",
+        email: staging_email,
         permissions: permissions,
         teams: teams,
         language: 'de',
