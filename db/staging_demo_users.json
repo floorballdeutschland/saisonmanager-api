@@ -1,5 +1,5 @@
 [
-  { "user_name": "demo_admin",            "permissions": [{ "user_group_id": "1", "game_operation_id": "0" }] },
+  { "user_name": "demo_admin",            "permissions": [{ "user_group_id": "1", "game_operation_id": "0" }], "password_env": "STAGING_ADMIN_PASSWORD" },
   { "user_name": "demo_sbk_fd",            "permissions": [{ "user_group_id": "2", "game_operation_id": "1" }] },
   { "user_name": "demo_sbk_bay",           "permissions": [{ "user_group_id": "2", "game_operation_id": "9" }] },
   { "user_name": "demo_sbk_bw",            "permissions": [{ "user_group_id": 2, "game_operation_id": 4 }] },
