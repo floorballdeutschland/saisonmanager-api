@@ -500,12 +500,13 @@ module Admin
       }
 
       data[:season_game_count] = season_game_count unless season_game_count.nil?
-      data[:email] = referee.email if contact
+      # Die Detailansicht liefert die E-Mail wie bisher immer mit; in der Liste
+      # nur für Rollen mit Zugriff auf Kontaktdaten (siehe can_view_contact_data?).
+      data[:email] = referee.email if contact || full
 
       if full
         data.merge!(
           geburtsdatum: referee.geburtsdatum&.strftime('%d.%m.%Y'),
-          email: referee.email,
           game_operation_id: referee.game_operation_id,
           strasse: referee.strasse,
           hausnummer: referee.hausnummer,
