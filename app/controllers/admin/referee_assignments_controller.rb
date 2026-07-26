@@ -617,10 +617,21 @@ module Admin
       end
     end
 
-    # referee1_string/-2 speichert der Spielbericht als
-    # "<lizenznummer> Nachname, Vorname"; ein leerer Slot als "0 , ".
+    # Name aus dem Spielbericht, ohne die vorangestellte Lizenznummer.
+    #
+    # Die Spalte ist historisch uneinheitlich befüllt: aktuelle Einträge stehen
+    # als "<lizenznummer> Nachname, Vorname", Altdaten-Importe als
+    # "<lizenznummer> Vorname Nachname", teils mit führenden Tabs/Leerzeichen.
+    # Ein leerer Slot ist "0 , ". Deshalb erst trimmen, dann die Nummer
+    # abschneiden – sonst bliebe sie bei eingerückten Werten im Namen stehen.
+    # Manche Einträge bestehen nur aus der Lizenznummer; dann bleibt nichts
+    # übrig und der Slot gilt als leer, statt die Nummer als Namen auszugeben.
+    #
+    # Die Reihenfolge des Restes lassen wir unangetastet: aus "Vorname Nachname"
+    # verlässlich einen Nachnamen zu raten geht bei mehrteiligen Namen schief.
+    # Angezeigt wird also, was im Bericht steht.
     def report_referee_name(str)
-      name = str.to_s.sub(/\A\d+\s/, '').strip
+      name = str.to_s.strip.sub(/\A\d+\s*/, '').strip
       name.gsub(/[\s,]/, '').present? ? name : nil
     end
 
