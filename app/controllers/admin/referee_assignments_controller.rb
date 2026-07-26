@@ -46,7 +46,9 @@ module Admin
                      .where("TO_DATE(game_days.date, 'YYYY-MM-DD') <= ?", params[:date_to])
       end
 
-      render json: scope.map { |a| assignment_json(a) }
+      assignments = scope.to_a
+      officials = officiating_by_game(assignments)
+      render json: assignments.map { |a| assignment_json(a, officials[a.game_id]) }
     end
 
     # GET /api/v2/admin/referee_assignments/games?season_id=X&date_from=Y&date_to=Z
@@ -569,7 +571,11 @@ module Admin
       params.require(:assignment).permit(:game_id, :referee1_id, :referee2_id, :coach_id, :club_id, :status)
     end
 
-    def assignment_json(a)
+    # officials = die laut Spielbericht tatsächlich eingesetzten Schiedsrichter,
+    # positionstreu je Slot (nil = kein Eintrag). Nur #index füllt sie; die
+    # Einzel-Antworten von create/update/notify/publish liefern eine leere Liste,
+    # weil dort noch niemand gepfiffen haben kann.
+    def assignment_json(a, officials = nil)
       {
         id: a.id,
         game_id: a.game_id,
@@ -580,8 +586,53 @@ module Admin
         referee2: a.referee2 ? referee_stub(a.referee2) : nil,
         coach: a.coach ? referee_stub(a.coach) : nil,
         club: a.club ? { id: a.club.id, name: a.club.name } : nil,
+        officials: officials || [],
         game: game_stub(a.game)
       }
+    end
+
+    # Tatsächlich eingesetzte Schiedsrichter je Spiel, gebündelt aufgelöst.
+    # Game#officiating_referees würde pro Ansetzung eine eigene Referee-Abfrage
+    # auslösen – bei einer ganzen Saison sind das hunderte.
+    def officiating_by_game(assignments)
+      games = assignments.filter_map(&:game)
+      pks = games.flat_map { |g| Array(g.officiating_referee_ids) }
+                 .map(&:to_i).reject(&:zero?).uniq
+      by_id = pks.any? ? Referee.where(id: pks).index_by(&:id) : {}
+
+      games.index_by(&:id).transform_values { |g| officiating_slots(g, by_id) }
+    end
+
+    # Pro Slot (Schiri 1/2) der eingesetzte Schiedsrichter: bevorzugt der
+    # verknüpfte Referee-Datensatz aus officiating_referee_ids, sonst der
+    # Klartext-Name aus dem Bericht (Gäste/Altdaten ohne Referee-Record).
+    # Leere Slots bleiben nil, damit die Anzeige positionstreu auf die
+    # Ansetzung zurückfallen kann.
+    def officiating_slots(game, by_id)
+      pks = Array(game.officiating_referee_ids).map(&:to_i)
+      [game.referee1_string, game.referee2_string].each_with_index.map do |str, slot|
+        referee = pks[slot].to_i.positive? ? by_id[pks[slot]] : nil
+        name = referee ? "#{referee.nachname}, #{referee.vorname}" : report_referee_name(str)
+        name.present? ? { id: referee&.id, name: name } : nil
+      end
+    end
+
+    # Name aus dem Spielbericht, ohne die vorangestellte Lizenznummer.
+    #
+    # Die Spalte ist historisch uneinheitlich befüllt: aktuelle Einträge stehen
+    # als "<lizenznummer> Nachname, Vorname", Altdaten-Importe als
+    # "<lizenznummer> Vorname Nachname", teils mit führenden Tabs/Leerzeichen.
+    # Ein leerer Slot ist "0 , ". Deshalb erst trimmen, dann die Nummer
+    # abschneiden – sonst bliebe sie bei eingerückten Werten im Namen stehen.
+    # Manche Einträge bestehen nur aus der Lizenznummer; dann bleibt nichts
+    # übrig und der Slot gilt als leer, statt die Nummer als Namen auszugeben.
+    #
+    # Die Reihenfolge des Restes lassen wir unangetastet: aus "Vorname Nachname"
+    # verlässlich einen Nachnamen zu raten geht bei mehrteiligen Namen schief.
+    # Angezeigt wird also, was im Bericht steht.
+    def report_referee_name(str)
+      name = str.to_s.strip.sub(/\A\d+\s*/, '').strip
+      name.gsub(/[\s,]/, '').present? ? name : nil
     end
 
     # Öffentliche Schiedsrichter-Angabe im Spielplan (nominated_referee_string):
