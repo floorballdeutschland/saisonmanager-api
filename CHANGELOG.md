@@ -9,6 +9,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Vereins-Dropdown der Benutzeranlage zeigte SBK alle Vereine**: Beim Anlegen eines Vereinsmanagers oder Teammanagers listete die Vereinsauswahl für SBK-Rollen sämtliche Vereine auf, nicht nur die des eigenen Zuständigkeitsbereichs. Anlegen war dadurch nie möglich – die Prüfung im Backend lehnte fremde Vereine korrekt mit „Verein nicht im eigenen Zuständigkeitsbereich" ab –, der Fehler kam aber erst beim Speichern. Auswahl und Prüfung nutzen jetzt dieselbe Quelle (`Club.role_assignable_for`, neuer Endpunkt `GET admin/clubs/role_assignable`), sodass nur noch Vereine angeboten werden, für die die Rollenvergabe auch durchgeht. Maßgeblich ist wie bei den übrigen Schreibrechten der Heim-Spielbetrieb des Vereins; Vereine aus per Freigabe (`StateAssociationRelease`) nur lesbaren Landesverbänden erscheinen nicht. Deaktivierte Vereine werden nicht mehr zur Auswahl angeboten (Frontend #137).
+- **Eigene Vereine gingen bei Doppelrolle SBK + Vereinsmanager verloren**: Wer neben einer regionalen SBK-Rolle auch Vereinsmanager eines Vereins außerhalb dieses Spielbetriebs war, konnte für den eigenen Verein keine Vereins- oder Teammanager-Konten anlegen – die SBK-Rolle verdeckte die VM-Rolle, obwohl eine reine VM das darf. Die Vereinsmenge wird jetzt additiv aus allen Rollen gebildet (eigene VM-Vereine plus Vereine der SBK-Spielbetriebe), analog zur Rollen-Union aus 1.57.0.
+
 ## [1.57.0] - 2026-07-27
 
 ### Behoben

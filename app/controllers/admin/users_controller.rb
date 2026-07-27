@@ -108,7 +108,9 @@ module Admin
       end
 
       if club_id && !ph[:admin].present?
-        allowed = ph[:sbk].include?(0) ? Club.pluck(:id) : derive_club_ids_for_go(ph[:sbk])
+        # Gleiche Quelle wie das Vereins-Dropdown (GET admin/clubs/role_assignable),
+        # damit dort nichts angeboten wird, was hier abgelehnt wird.
+        allowed = Club.role_assignable_for(current_user, include_deactivated: true).pluck(:id)
         return render json: { error: 'Verein nicht im eigenen Zuständigkeitsbereich' }, status: :forbidden unless allowed.include?(club_id)
       end
 
