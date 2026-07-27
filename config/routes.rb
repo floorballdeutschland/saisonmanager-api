@@ -108,6 +108,8 @@ Rails.application.routes.draw do
       delete 'admin/teams/:id', to: 'teams#destroy'
 
       get 'admin/clubs/all', to: 'clubs#admin_club_all'
+      # Muss vor 'admin/clubs/:id' stehen, sonst greift die :id-Route.
+      get 'admin/clubs/role_assignable', to: 'clubs#admin_club_role_assignable'
       get 'admin/clubs', to: 'clubs#admin_club_index'
       get 'admin/clubs/:id', to: 'clubs#admin_club'
       post 'admin/clubs', to: 'clubs#admin_club_update'
