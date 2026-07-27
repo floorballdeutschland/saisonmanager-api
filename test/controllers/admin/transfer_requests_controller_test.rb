@@ -151,6 +151,34 @@ module Admin
       assert_equal @requesting_club.id, home_club['club_id']
     end
 
+    # Direkt-Transfer darf nur davon abhängen, ob der Nutzer für den ABGEBENDEN
+    # Verein zuständig ist (analog #lv_authorized? im mehrstufigen Prozess) –
+    # der aufnehmende Verein kann in jedem anderen Landesverband liegen.
+    test 'SBK des abgebenden Vereins darf Direkt-Transfer in anderen Landesverband durchführen → 201' do
+      other_club = create_club_in_other_game_operation
+
+      login(@sbk) # @sbk ist nur für @game_operation (LV des abgebenden Vereins) zuständig
+      assert_emails 1 do
+        post '/api/v2/admin/transfer_requests/direct_assign', params: {
+          player_id: @player.id,
+          requesting_club_id: other_club.id
+        }
+      end
+      assert_response :created
+    end
+
+    test 'SBK ohne Zugriff auf den abgebenden Verein darf Direkt-Transfer nicht durchführen → 403' do
+      other_club = create_club_in_other_game_operation
+      other_sbk = create_user_sbk(game_operation_id: other_club.game_operations_hash.first['game_operation_id'])
+
+      login(other_sbk)
+      post '/api/v2/admin/transfer_requests/direct_assign', params: {
+        player_id: @player.id,
+        requesting_club_id: other_club.id
+      }
+      assert_response :forbidden
+    end
+
     # ---------------------------------------------------------------------------
     # POST /api/v2/admin/transfer_requests
     # ---------------------------------------------------------------------------
@@ -455,6 +483,25 @@ module Admin
         password_confirmation: 'password123',
         permissions: permissions,
         teams: []
+      )
+    end
+
+    def create_club_in_other_game_operation
+      state_association = StateAssociation.create!(
+        name: "Anderer LV #{SecureRandom.hex(4)}",
+        short_name: "ALV#{SecureRandom.hex(2)}"
+      )
+      game_operation = GameOperation.create!(
+        name: "Anderer Spielbetrieb #{SecureRandom.hex(4)}",
+        short_name: "ASB#{SecureRandom.hex(2)}",
+        state_association: state_association
+      )
+      Club.create!(
+        name: "Anderer Verein #{SecureRandom.hex(4)}",
+        short_name: "AND#{SecureRandom.hex(2)}",
+        contact_email: 'other@test.example.com',
+        state_association: state_association,
+        game_operations_hash: [{ 'game_operation_id' => game_operation.id, 'home_game_operation' => true }]
       )
     end
 

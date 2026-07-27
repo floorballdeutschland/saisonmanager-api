@@ -435,7 +435,7 @@ module Admin
       end
 
       unless sbk_may_assign?(ph, former_club, requesting_club)
-        return render json: { error: 'Nicht berechtigt für diese Vereine (nur innerhalb des eigenen Landesverbands).' },
+        return render json: { error: 'Nicht berechtigt (abgebender Verein liegt außerhalb des eigenen Landesverbands).' },
                       status: :forbidden
       end
 
@@ -505,14 +505,16 @@ module Admin
       club.present? && ph[:sbk].include?(club.main_game_operation_id)
     end
 
-    # SBK darf nur Vereinswechsel innerhalb des eigenen Landesverbands direkt
-    # durchführen; global gescopte SBK (FD) und Admin auch verbandsübergreifend.
-    def sbk_may_assign?(ph, former_club, requesting_club)
+    # Für die Freigabe zählt wie bei #lv_authorized? nur der Landesverband des
+    # abgebenden Vereins (der verliert das Mitglied und muss zustimmen); der
+    # aufnehmende Verein kann in jedem anderen Landesverband liegen. Global
+    # gescopte SBK (FD) und Admin dürfen ohnehin verbandsübergreifend.
+    def sbk_may_assign?(ph, former_club, _requesting_club)
       return true if ph[:admin].present?
       return false unless ph[:sbk].present?
       return true if ph[:sbk].include?(0)
 
-      [former_club, requesting_club].all? { |c| ph[:sbk].include?(c.main_game_operation_id) }
+      ph[:sbk].include?(former_club.main_game_operation_id)
     end
 
     def authorize_transfer_access!
