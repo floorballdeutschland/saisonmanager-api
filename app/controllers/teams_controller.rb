@@ -178,9 +178,17 @@ class TeamsController < ApplicationController
                   { id: team.id, name: team.name, short_name: team.short_name, league_name: nil, leagues: [] }
                 end
 
+    # Die Scorerliste der Teamseite folgt der Liga-Einstellung enable_scorer
+    # (in der Altersklasse U13 und jünger ist sie per Vorgabe aus). Blendet eine
+    # der Ligen des Teams sie aus, wird sie hier gar nicht ausgeliefert – sonst
+    # wäre die personenbezogene Rangliste über die Teamseite weiter abrufbar.
+    # Die Team-Summen bleiben, sie sind keine Rangliste einzelner Spieler.
+    scorer_visible = leagues.all?(&:enable_scorer)
+
     render json: {
       team:           team_info,
-      scorer:         scorer_list,
+      scorer:         scorer_visible ? scorer_list : [],
+      scorer_visible:,
       recent_games:,
       upcoming_games:,
       totals: {

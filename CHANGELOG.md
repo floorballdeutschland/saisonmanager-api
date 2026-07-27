@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Scorerliste der Teamseite folgt der Liga-Einstellung**: Auf der öffentlichen Teamseite war die Scorerliste („Scorer (Saison gesamt)") auch dann sichtbar, wenn die Scorerliste in der Liga ausgeblendet ist (`enable_scorer`, in der Altersklasse U13 und jünger per Vorgabe aus). Sie wird jetzt nicht mehr ausgeliefert, sobald eine der Ligen des Teams sie ausblendet, und zwar bereits im Endpoint `teams/:id/stats`, damit die Rangliste auch nicht über die Schnittstelle abrufbar bleibt. Die Team-Summen (Tore, Vorlagen, Scorerpunkte, Strafminuten) bleiben sichtbar, sie sind keine personenbezogene Rangliste (Frontend #154).
+
 ## [1.59.0] - 2026-07-27
 
 ### Neu

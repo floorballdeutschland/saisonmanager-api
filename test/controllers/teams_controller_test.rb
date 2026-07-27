@@ -217,6 +217,51 @@ class TeamsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 1, body['recent_games'].length
   end
 
+  # Liga mit einem beendeten Spiel, einem aufgestellten Spieler des Teams und
+  # dessen Tor – ergibt genau einen Scorer-Eintrag (Game#evaluate_scorer).
+  def team_with_scorer(enable_scorer:)
+    league = create(:league, game_operation: @go, enable_scorer:)
+    team = create(:team, league:, club: @club)
+    guest = create(:team, league:, club: @club)
+    player = create(:player)
+    game_day = GameDay.create!(league:, arena: create(:arena), club: @club, number: 1, date: '2026-01-01')
+    Game.create!(
+      game_day:, home_team: team, guest_team: guest,
+      started: true, ended: true, forfait: 0, overtime: false, legacy: false,
+      events: [{ 'id' => 1, 'period' => 1, 'time' => '5:00', 'home_number' => 7,
+                 'home_goals' => 1, 'guest_goals' => 0 }],
+      players: { 'home' => [{ 'trikot_number' => 7, 'player_id' => player.id }], 'guest' => [] }
+    )
+    team
+  end
+
+  test 'stats liefert die Scorerliste, wenn die Liga sie öffentlich zeigt' do
+    login(create(:user, :admin))
+    team = team_with_scorer(enable_scorer: true)
+
+    get "/api/v2/teams/#{team.id}/stats"
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert body['scorer_visible']
+    assert_equal 1, body['scorer'].length
+    assert_equal 1, body['totals']['goals']
+  end
+
+  test 'stats liefert keine Scorerliste, wenn die Liga sie ausblendet' do
+    login(create(:user, :admin))
+    team = team_with_scorer(enable_scorer: false)
+
+    get "/api/v2/teams/#{team.id}/stats"
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_not body['scorer_visible']
+    assert_empty body['scorer']
+    # Team-Summen bleiben erhalten, sie sind keine personenbezogene Rangliste.
+    assert_equal 1, body['totals']['goals']
+  end
+
   test 'destroy lehnt Löschung mit 422 ab, wenn eine Spieltag-Bestätigung existiert (DB-FK)' do
     login(create(:user, :admin))
     arena = create(:arena)
