@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Eigenen Namen selbst ändern**: Unter „Mein Konto" kann jede Person ihren Vor- und Nachnamen jetzt selbst pflegen (z. B. Schreibfehler oder Namensänderung nach Heirat), bisher ging das nur über die Benutzerverwaltung. Der Benutzername bleibt unverändert, er ist die Login-Kennung und wird weiterhin ausschließlich in der Benutzerverwaltung geändert. Ist das Konto mit einem Schiedsrichter verknüpft, übernimmt das Schiri-Profil den neuen Namen automatisch.
+
 ## [1.57.3] - 2026-07-27
 
 ### Behoben
