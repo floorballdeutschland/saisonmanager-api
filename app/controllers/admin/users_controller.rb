@@ -299,6 +299,11 @@ module Admin
     end
 
     def require_admin_for_elevated_target!
+      # Reine Team-Zuweisung (params[:teams]) ist bereits im update-Action-Branch
+      # feldspezifisch abgesichert und birgt kein Übernahme-Risiko, sonst
+      # würde z.B. ein TM mit zusätzlicher RSK-Rolle jede Team-Zuweisung blocken.
+      return if action_name == 'update' && (params.keys.map(&:to_sym) & %i[email role club_id game_operation_id]).empty?
+
       ph = current_user.permission_hash
       return if ph[:admin].present?
 
