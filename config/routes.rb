@@ -219,6 +219,7 @@ Rails.application.routes.draw do
 
       get 'referee/history/games', to: 'referee_history#games'
       get 'referee/history/tests', to: 'referee_history#tests'
+      get 'referee/history/partners', to: 'referee_history#partners'
 
       namespace :admin do
         resources :leagues, only: [] do
@@ -228,6 +229,7 @@ Rails.application.routes.draw do
         resources :referees, only: %i[index show create update destroy] do
           get :games, on: :member
           get :club_stats, on: :member
+          get :partners, on: :member
           post :merge, on: :member
           post :create_user, on: :member
           delete :destroy_user, on: :member

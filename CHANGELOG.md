@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Gespann-Historie für Schiedsrichter**: Neue Auswertung, mit wem eine Schiedsrichterin oder ein Schiedsrichter tatsächlich im Einsatz war, mit gemeinsamen Einsätzen in der laufenden Saison und über die gesamte Historie, der letzten gemeinsamen Saison und einer Aufschlüsselung nach Spielbetrieb. Für die Ansetzung ist damit erkennbar, ob eine Paarung eingespielt oder neu ist. RSK und Ansetzer rufen sie im eigenen Bestand ab, Schiedsrichter sehen ihre eigene Historie. Gezählt werden ausschließlich tatsächliche Einsätze laut Spielbericht, nicht die reine Ansetzung, damit kurzfristige Umbesetzungen die Zahlen nicht verzerren. Gäste ohne Lizenznummer werden nicht als Partner ausgewiesen. Die Auswertung umfasst alle Saisons und weist darauf hin, dass die Zuordnungen für zurückliegende Saisons nicht lückenlos sind.
+
 ## [1.58.0] - 2026-07-27
 
 ### Neu
