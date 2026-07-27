@@ -48,6 +48,39 @@ class RefereeHistoryControllerTest < ActionDispatch::IntegrationTest
     assert_equal([1, 1], body.map { |s| s['games'].size })
   end
 
+  test 'partners liefert die eigene Gespann-Historie' do
+    partner = create(:referee)
+    league = create(:league, season_id: '18')
+    create(:game,
+           game_day: create(:game_day, league: league),
+           officiating_referee_ids: [@referee.id, partner.id])
+    login(@user)
+
+    get '/api/v2/referee/history/partners'
+
+    assert_response :success
+    body = response.parsed_body
+    assert_equal @referee.id, body['referee']['id']
+    assert_equal([partner.id], body['partners'].map { |p| p['referee_id'] })
+    assert_equal 1, body['partners'].first['games_current_season']
+    assert body['notice'].present?, 'Hinweis zur Belastbarkeit der Altdaten fehlt'
+  end
+
+  test 'partners ohne verknuepftes Schiedsrichterprofil liefert 403' do
+    user = User.create!(
+      user_name: "ohne_sr_p_#{SecureRandom.hex(4)}",
+      password: 'password123',
+      password_confirmation: 'password123',
+      permissions: [{ 'user_group_id' => 6, 'game_operation_id' => 0 }],
+      teams: []
+    )
+    login(user)
+
+    get '/api/v2/referee/history/partners'
+
+    assert_response :forbidden
+  end
+
   test 'games ohne verknuepftes Schiedsrichterprofil liefert 403' do
     user = User.create!(
       user_name: "ohne_sr_#{SecureRandom.hex(4)}",

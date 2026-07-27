@@ -1,4 +1,11 @@
 class Referee < ApplicationRecord
+  # Wird mit der Gespann-Historie ausgeliefert und gehört in der UI sichtbar an
+  # die Auswertung: Es gibt bewusst keine Saison-Untergrenze, dafür muss die
+  # eingeschränkte Belastbarkeit der Altdaten benannt sein.
+  PARTNER_HISTORY_NOTICE = 'Gezählt werden ausschließlich tatsächliche Einsätze laut Spielbericht. ' \
+                           'Für zurückliegende Saisons sind die Zuordnungen nicht lückenlos, ' \
+                           'die Gesamtzahlen sind dort entsprechend nur eingeschränkt belastbar.'.freeze
+
   belongs_to :game_operation, optional: true
   belongs_to :club, optional: true
   has_one :user
@@ -75,6 +82,57 @@ class Referee < ApplicationRecord
     scope
   end
 
+  # Gespann-Historie: mit wem dieser Schiri tatsächlich im Einsatz war, über
+  # alle Saisons. Identische Aggregation für die RSK-/Ansetzer-Sicht
+  # (admin/referees/:id/partners) und die Eigensicht (referee/history/partners),
+  # die sich nur im Zugriffs-Scope unterscheiden.
+  def partner_history
+    {
+      referee: {
+        id: id,
+        vorname: vorname,
+        nachname: nachname,
+        lizenznummer_display: lizenznummer_display
+      },
+      season_id: Setting.current_season_id.to_i,
+      notice: PARTNER_HISTORY_NOTICE,
+      partners: partner_stats
+    }
+  end
+
+  # Basis sind ausschließlich die tatsächlichen Einsätze laut Spielbericht
+  # (officiating_referee_ids, Referee-PK, Fundament #45) – nicht die Ansetzung
+  # (RefereeAssignment), weil kurzfristige Umbesetzungen die Zahlen sonst
+  # verzerren. Die Lizenznummer-/Freitext-Fallbacks aus #games bleiben bewusst
+  # außen vor: sie liefern keine Partner-PK und damit kein auflösbares Gespann.
+  # Gäste (guest: true) werden nicht als Partner ausgewiesen.
+  def partner_stats
+    rows = Game.joins(game_day: :league)
+               # Containment (@>) statt "= ANY", weil nur dieses Prädikat den
+               # GIN-Index auf officiating_referee_ids nutzt – die Auswertung
+               # läuft über die gesamte Historie, nicht nur eine Saison.
+               .where('games.officiating_referee_ids @> ARRAY[?]::integer[]', id)
+               .pluck(:officiating_referee_ids, 'leagues.season_id', 'leagues.game_operation_id')
+
+    tallies = tally_partner_games(rows)
+    return [] if tallies.empty?
+
+    partners = Referee.where(id: tallies.keys, guest: false).includes(:club).index_by(&:id)
+    seasons_map = Setting.seasons.to_h { |s| [s[:id], s[:name]] }
+    go_names = GameOperation.where(id: tallies.values.flat_map { |t| t[:by_game_operation].keys }.uniq)
+                            .pluck(:id, :name).to_h
+
+    result = tallies.filter_map do |partner_id, tally|
+      partner = partners[partner_id]
+      partner_summary(partner, tally, seasons_map, go_names) if partner
+    end
+
+    result.sort_by! do |p|
+      [-p[:games_current_season], -p[:games_total], p[:nachname].to_s, p[:vorname].to_s]
+    end
+    result
+  end
+
   def merge_into!(master, user_id = nil)
     raise ArgumentError, 'Master und Secondary dürfen nicht identisch sein' if id == master.id
     raise ArgumentError, 'Secondary ist bereits zusammengeführt' if merged_into_id.present?
@@ -135,6 +193,60 @@ class Referee < ApplicationRecord
   end
 
   private
+
+  # Zählt je Partner-PK die gemeinsamen Einsätze. Ein Spiel zählt pro Partner
+  # genau einmal (uniq), der Schiri selbst wird übersprungen.
+  def tally_partner_games(rows)
+    current_season = Setting.current_season_id.to_i
+    tallies = Hash.new do |hash, key|
+      hash[key] = { games_total: 0, games_current_season: 0,
+                    last_season_id: nil, by_game_operation: Hash.new(0) }
+    end
+
+    rows.each do |officiating_ids, season_id, go_id|
+      # leagues.season_id ist eine String-Spalte und muss vor jedem Vergleich
+      # bzw. Lookup nach Integer konvertiert werden.
+      season = season_id.to_i
+      Array(officiating_ids).uniq.each do |partner_id|
+        next if partner_id == id
+
+        tally = tallies[partner_id]
+        tally[:games_total] += 1
+        tally[:games_current_season] += 1 if season == current_season
+        tally[:last_season_id] = season if tally[:last_season_id].nil? || season > tally[:last_season_id]
+        tally[:by_game_operation][go_id] += 1 if go_id
+      end
+    end
+
+    tallies
+  end
+
+  # Aufschlüsselung nach Spielbetrieb zusätzlich zur Gesamtzahl: Ein Schiri ist
+  # oft in mehreren Spielbetrieben im Einsatz, eine auf den eigenen Verband
+  # gekürzte Zahl würde die Belastung systematisch unterschätzen.
+  def partner_summary(partner, tally, seasons_map, go_names)
+    {
+      referee_id: partner.id,
+      vorname: partner.vorname,
+      nachname: partner.nachname,
+      lizenznummer_display: partner.lizenznummer_display,
+      lizenzstufe: partner.lizenzstufe,
+      club_name: partner.club&.name,
+      games_current_season: tally[:games_current_season],
+      games_total: tally[:games_total],
+      last_season_id: tally[:last_season_id],
+      last_season_name: seasons_map[tally[:last_season_id]] || tally[:last_season_id].to_s,
+      active: partner.gueltigkeit.present? && partner.gueltigkeit >= Date.today,
+      game_operations: game_operation_breakdown(tally[:by_game_operation], go_names)
+    }
+  end
+
+  def game_operation_breakdown(counts, go_names)
+    entries = counts.map do |go_id, count|
+      { game_operation_id: go_id, game_operation_name: go_names[go_id], game_count: count }
+    end
+    entries.sort_by { |entry| [-entry[:game_count], entry[:game_operation_name].to_s] }
+  end
 
   def sync_partner_lizenznummer
     return if partner_lizenznummer.blank? || lizenznummer.blank? || partner_lizenznummer == lizenznummer
