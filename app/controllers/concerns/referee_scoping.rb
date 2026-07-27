@@ -13,15 +13,18 @@ module RefereeScoping
     return referees if ph[:rsk].present? && ph[:rsk].include?(0)
     return referees if ph[:ansetzer].present? && ph[:ansetzer].include?(0)
 
+    # Rollen additiv: wer RSK/Ansetzer eines Verbands *und* VM eines Vereins
+    # außerhalb dieses Verbands ist, verlor sonst die Schiris des eigenen
+    # Vereins, weil die elsif-Kette am VM-Zweig vorbeilief.
+    scopes = []
     if ph[:rsk].present? || ph[:ansetzer].present?
       go_ids = referee_scope_go_ids(ph)
       club_ids = lv_club_ids(go_ids)
-      referees.where(club_id: club_ids).or(referees.where(game_operation_id: go_ids))
-    elsif ph[:vm].present?
-      referees.where(club_id: ph[:vm])
-    else
-      referees.none
+      scopes << referees.where(club_id: club_ids).or(referees.where(game_operation_id: go_ids))
     end
+    scopes << referees.where(club_id: ph[:vm]) if ph[:vm].present?
+
+    scopes.reduce { |combined, scope| combined.or(scope) } || referees.none
   end
 
   def referee_scope_go_ids(perm_hash)

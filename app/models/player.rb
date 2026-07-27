@@ -688,19 +688,23 @@ class Player < ApplicationRecord
 
     # wenn admin oder sbk global: füge alle hinzu
     ph = user.permission_hash
+    # Rollen additiv: die frühere elsif-Kette ließ die Admin-/SBK-Rolle gewinnen
+    # und sperrte den Nutzer damit aus seinem eigenen Verein aus, sobald dieser
+    # außerhalb der Verbands-Berechtigung liegt.
     club = if ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
              club_object
-           elsif ph[:admin].present? || ph[:sbk].present?
+           else
              go_ids = []
              go_ids << ph[:admin] if ph[:admin].present?
              go_ids << ph[:sbk] if ph[:sbk].present?
 
              # if club and permission share a go_id we are allowed to see this
-             club_object if go_ids.flatten.intersection(club_object.game_operations_hash.map do |go|
-                                                          go['game_operation_id']
-                                                        end).present?
-           elsif ph[:vm].present?
-             club_object if ph[:vm].include?(club_id)
+             in_go = go_ids.flatten.intersection(club_object.game_operations_hash.map do |go|
+                                                   go['game_operation_id']
+                                                 end).present?
+             is_vm = ph[:vm].present? && ph[:vm].include?(club_id)
+
+             club_object if in_go || is_vm
            end
 
     return unless club

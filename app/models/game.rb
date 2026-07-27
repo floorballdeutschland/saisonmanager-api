@@ -1138,11 +1138,14 @@ class Game < ApplicationRecord
     ph = user.permission_hash
     return true if ph[:admin].present? || ph[:sbk].present?
 
+    # Rollen additiv: die VM-Prüfung darf nicht per return abbrechen, sonst
+    # verliert ein VM, der zugleich TM einer beteiligten Mannschaft ist, den
+    # Zugriff auf genau dieses Spiel.
     if ph[:vm].present?
       team_club_ids = [home_team&.club_id, guest_team&.club_id].compact
       syndicate_ids = [home_team&.syndicate_clubs, guest_team&.syndicate_clubs].flatten.compact
       hosting_ids   = [game_day&.club_id].compact
-      return ph[:vm].intersection(team_club_ids + syndicate_ids + hosting_ids).present?
+      return true if ph[:vm].intersection(team_club_ids + syndicate_ids + hosting_ids).present?
     end
 
     ph[:tm].present? && (ph[:tm].include?(home_team_id) || ph[:tm].include?(guest_team_id))

@@ -48,11 +48,23 @@ module Admin
         licenses: []
       )
 
+      # Verein außerhalb des Test-Spielbetriebs, für den nur die VM-Rolle greift.
+      @vm_only_club = Club.create!(
+        name: "Nur-VM Verein #{SecureRandom.hex(4)}",
+        short_name: "NV#{SecureRandom.hex(2)}"
+      )
+
       @vm_requesting = create_user(user_group_id: 4, club_id: @requesting_club.id)
       @vm_former     = create_user(user_group_id: 4, club_id: @former_club.id)
       @sbk           = create_user_sbk(game_operation_id: @game_operation.id)
       @admin         = create_user(user_group_id: 1, game_operation_id: 0)
       @tm            = create_user(user_group_id: 5, game_operation_id: 0)
+      # Mehrfachrolle wie im gemeldeten Fall: SBK eines Verbands und zugleich
+      # VM eines Vereins, der nicht der aufnehmende Verein ist.
+      @sbk_and_vm = create_user_sbk_and_vm(
+        game_operation_id: @game_operation.id,
+        club_id: @vm_only_club.id
+      )
     end
 
     # ---------------------------------------------------------------------------
@@ -85,6 +97,58 @@ module Admin
       }
       assert_response :success
       assert_nil JSON.parse(response.body)['player']
+    end
+
+    test 'reiner VM darf nicht für fremden Verein suchen → 403' do
+      login(@vm_requesting)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15',
+        requesting_club_id: @vm_only_club.id
+      }
+      assert_response :forbidden
+    end
+
+    # Mehrfachrollen: die VM-Vereinsbindung darf die stärkere SBK-Rolle nicht
+    # verdecken. Vorher brach search_player mit 403 ab, bevor der Direkt-
+    # Transfer überhaupt erreicht wurde.
+    test 'SBK mit zusätzlicher VM-Rolle darf für Verein im eigenen Spielbetrieb suchen' do
+      login(@sbk_and_vm)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15',
+        requesting_club_id: @requesting_club.id
+      }
+      assert_response :success
+      assert_equal @player.id, JSON.parse(response.body).dig('player', 'id')
+    end
+
+    test 'SBK mit zusätzlicher VM-Rolle darf nicht für Verein außerhalb des Spielbetriebs suchen → 403' do
+      foreign_club = Club.create!(
+        name: "Fremdverband Verein #{SecureRandom.hex(4)}",
+        short_name: "FV#{SecureRandom.hex(2)}"
+      )
+      login(@sbk_and_vm)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15',
+        requesting_club_id: foreign_club.id
+      }
+      assert_response :forbidden
+    end
+
+    test 'SBK mit zusätzlicher VM-Rolle führt Direkt-Transfer durch → 201' do
+      login(@sbk_and_vm)
+      assert_emails 1 do
+        post '/api/v2/admin/transfer_requests/direct_assign', params: {
+          player_id: @player.id,
+          requesting_club_id: @requesting_club.id
+        }
+      end
+      assert_response :created
+      body = JSON.parse(response.body)
+      assert_equal 'approved', body['status']
+      assert_equal true, body['direct']
+
+      home_club = @player.reload.clubs.find { |c| c['home_club'] == true && c['valid_until'].nil? }
+      assert_equal @requesting_club.id, home_club['club_id']
     end
 
     # ---------------------------------------------------------------------------
@@ -400,6 +464,19 @@ module Admin
         password: 'password123',
         password_confirmation: 'password123',
         permissions: [{ 'user_group_id' => 2, 'game_operation_id' => game_operation_id }],
+        teams: []
+      )
+    end
+
+    def create_user_sbk_and_vm(game_operation_id:, club_id:)
+      User.create!(
+        user_name: "sbkvm_#{SecureRandom.hex(6)}",
+        password: 'password123',
+        password_confirmation: 'password123',
+        permissions: [
+          { 'user_group_id' => 2, 'game_operation_id' => game_operation_id },
+          { 'user_group_id' => 4, 'club_id' => club_id.to_s }
+        ],
         teams: []
       )
     end

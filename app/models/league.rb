@@ -1146,7 +1146,6 @@ class League < ApplicationRecord
 
   def self.user_leagues_license_list(user)
     result = []
-    leagues = nil
 
     # für jeden verband:
     # name, id, kuerzel, ligen
@@ -1155,42 +1154,42 @@ class League < ApplicationRecord
     # wenn admin oder sbk global: füge alle hinzu
     ph = user.permission_hash
 
-    if ph[:admin].present? || ph[:sbk].present?
-      leagues = League.current_season.order(season_id: :desc, game_operation_id: :asc).order('order_key::int')
-      if ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
-        go_ids = GameOperation.all.pluck(:id)
-      else
-        go_ids << ph[:admin] if ph[:admin].present?
-        go_ids << ph[:sbk] if ph[:sbk].present?
-        go_ids.flatten!
-      end
-
-      GameOperation.includes(state_association: { logo_attachment: :blob }).find(go_ids).each do |go|
-        item = go.meta_hash
-        item[:leagues] = leagues.where(game_operation_id: go.id).map(&:full_hash)
-        result << item
-      end
-    elsif ph[:vm].present? || ph[:tm].present? # VM / TM
-      # find teams
-      teams = if ph[:vm].present?
-                clubs = Club.where(id: ph[:vm])
-                clubs.map(&:current_teams).flatten.uniq
-              elsif ph[:tm].present?
-                Team.current_season.where(id: ph[:tm])
-              end
-
-      # get all leagues
-      leagues = teams.map(&:leagues).flatten.uniq
-
+    # Alle Rollen additiv auswerten: die frühere if/elsif-Kette ließ die
+    # Admin-/SBK-Rolle gewinnen, sodass ein Nutzer mit zusätzlicher VM-/TM-Rolle
+    # die Ligen seiner Vereine bzw. Teams außerhalb des eigenen Spielbetriebs
+    # nicht mehr sah.
+    if ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
       go_ids = GameOperation.all.pluck(:id)
+    elsif ph[:admin].present? || ph[:sbk].present?
+      go_ids << ph[:admin] if ph[:admin].present?
+      go_ids << ph[:sbk] if ph[:sbk].present?
+      go_ids.flatten!
+    end
 
-      GameOperation.includes(state_association: { logo_attachment: :blob }).find(go_ids).each do |go|
-        item = go.meta_hash
-        item[:leagues] = leagues.select do |l|
-                           l.game_operation_id == go.id
-                         end.sort_by { |l| l.order_key.to_i }.map(&:full_hash)
-        result << item if item[:leagues].present?
-      end
+    # Ligen aus der Verbands-Berechtigung (Admin/SBK) …
+    go_leagues = if go_ids.present?
+                   League.current_season.where(game_operation_id: go_ids)
+                         .order(season_id: :desc, game_operation_id: :asc).order('order_key::int').to_a
+                 else
+                   []
+                 end
+
+    # … plus Ligen der eigenen Vereine (VM) und Mannschaften (TM).
+    teams = []
+    teams += Club.where(id: ph[:vm]).flat_map(&:current_teams) if ph[:vm].present?
+    teams += Team.current_season.where(id: ph[:tm]).to_a if ph[:tm].present?
+    team_leagues = teams.compact.uniq.flat_map(&:leagues).uniq
+
+    leagues_by_go = (go_leagues + team_leagues).uniq.group_by(&:game_operation_id)
+
+    # Für Admin/SBK bleiben die eigenen Spielbetriebe auch ohne Ligen sichtbar
+    # (bisheriges Verhalten); über VM/TM hinzugekommene nur, wenn sie Ligen haben.
+    visible_go_ids = (go_ids + leagues_by_go.keys).uniq
+    GameOperation.includes(state_association: { logo_attachment: :blob })
+                 .where(id: visible_go_ids).order(:id).each do |go|
+      item = go.meta_hash
+      item[:leagues] = leagues_by_go.fetch(go.id, []).sort_by { |l| l.order_key.to_i }.map(&:full_hash)
+      result << item if go_ids.include?(go.id) || item[:leagues].present?
     end
 
     result
