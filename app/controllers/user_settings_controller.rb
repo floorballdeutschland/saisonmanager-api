@@ -29,10 +29,17 @@ class UserSettingsController < ApplicationController
                     status: :unprocessable_entity
     end
 
-    if current_user.update_own_name(first_name:, last_name:)
-      render json: { success: true, user: current_user.login_hash }
+    # current_user ist NICHT memoisiert und liefert bei jedem Aufruf eine frisch
+    # geladene Instanz (ApplicationController#current_user). Die Referenz daher
+    # einmal festhalten, sonst läge errors nach einem Fehlschlag auf einem
+    # anderen Objekt und die Antwort trüge eine leere message.
+    user = current_user
+
+    if user.update_own_name(first_name:, last_name:)
+      render json: { success: true, user: user.login_hash }
     else
-      render json: { success: false, message: current_user.errors.full_messages.join(', ') },
+      message = user.errors.full_messages.presence&.join(', ')
+      render json: { success: false, message: message || 'Name konnte nicht gespeichert werden.' },
              status: :unprocessable_entity
     end
   end

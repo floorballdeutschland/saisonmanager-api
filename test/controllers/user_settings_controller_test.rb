@@ -55,12 +55,27 @@ class UserSettingsControllerTest < ActionDispatch::IntegrationTest
 
   test 'zu langer Name wird mit 422 abgelehnt' do
     login_as(@user)
+    before = @user.slice(:first_name, :last_name).values
 
     patch '/api/v2/user/name',
           params: { first_name: 'a' * (UserSettingsController::MAX_NAME_LENGTH + 1), last_name: 'Bartel' },
           as: :json
 
     assert_response :unprocessable_entity
+    assert_equal before, @user.reload.slice(:first_name, :last_name).values
+  end
+
+  test 'abgelehnte Namensaenderung liefert eine nicht-leere Meldung' do
+    login_as(@user)
+
+    patch '/api/v2/user/name', params: { first_name: '', last_name: '' }, as: :json
+
+    assert_response :unprocessable_entity
+    body = JSON.parse(response.body)
+    assert_not body['success']
+    # current_user ist nicht memoisiert – eine leere message wäre das Symptom,
+    # dass die Fehler auf einer anderen Instanz gelandet sind.
+    assert body['message'].present?, 'Antwort enthaelt keine Fehlermeldung'
   end
 
   test 'Benutzername lässt sich über den Namens-Endpoint nicht ändern' do
@@ -83,6 +98,22 @@ class UserSettingsControllerTest < ActionDispatch::IntegrationTest
     patch '/api/v2/user/name', params: { first_name: 'Patrik', last_name: 'Bartel' }, as: :json
 
     assert_response :ok
+    assert_equal %w[Patrik Bartel], referee.reload.slice(:vorname, :nachname).values
+  end
+
+  test 'invalider Alt-Schiri blockiert die Namensaenderung nicht' do
+    # Zusammengeführte Alt-Datensätze verletzen die Referee-Validierungen
+    # (Referee#merge_into! schreibt selbst nur mit save!(validate: false)).
+    # Eine solche Altlast darf die Namensänderung des Kontos nicht kippen.
+    referee = create(:referee, vorname: 'Patrick', nachname: 'Bartel')
+    referee.update_column(:lizenznummer, nil)
+    @user.update!(referee: referee)
+    login_as(@user)
+
+    patch '/api/v2/user/name', params: { first_name: 'Patrik', last_name: 'Bartel' }, as: :json
+
+    assert_response :ok
+    assert_equal %w[Patrik Bartel], @user.reload.slice(:first_name, :last_name).values
     assert_equal %w[Patrik Bartel], referee.reload.slice(:vorname, :nachname).values
   end
 

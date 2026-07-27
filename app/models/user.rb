@@ -61,14 +61,20 @@ class User < ApplicationRecord
   def update_own_name(first_name:, last_name:)
     transaction do
       update!(first_name:, last_name:)
-      referee&.update!(vorname: first_name, nachname: last_name)
+      # save(validate: false) wie bei der E-Mail: Es ändern sich nur Vor- und
+      # Nachname (auf Referee unvalidiert, Presence ist durch den Controller
+      # bereits sichergestellt). Ein in anderen Feldern invalider Alt-Datensatz
+      # – etwa ein zusammengeführter Schiri ohne Lizenznummer, den
+      # Referee#merge_into! selbst nur mit save!(validate: false) schreibt –
+      # darf die Namensänderung nicht mit schiri-fremden Meldungen abbrechen.
+      if referee
+        referee.vorname = first_name
+        referee.nachname = last_name
+        referee.save!(validate: false)
+      end
     end
     true
-  rescue ActiveRecord::RecordInvalid => e
-    # Scheitert der Schiri-Datensatz (eigene Validierungen), stehen die
-    # Meldungen nicht in errors des Users – dort ergänzen, damit der
-    # Controller sie ausgeben kann.
-    errors.add(:base, e.record.errors.full_messages.join(', ')) unless e.record == self
+  rescue ActiveRecord::RecordInvalid, ActiveRecord::RecordNotSaved
     false
   end
 
