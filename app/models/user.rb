@@ -239,8 +239,10 @@ class User < ApplicationRecord
     result[:menu_item_referee_course_review] = has_full_referee_access || lv_rsk_review_enabled?(ph)
     result[:menu_item_referee_vm] = ph[:vm].present?
     result[:menu_item_player_vm] = ph[:vm].present? || ph[:tm].present?
-    # Portal „Meine Spieltage" für Gastmannschafts-Bestätigung (TM/VM).
-    result[:menu_item_team_game_days] = ph[:tm].present? || ph[:vm].present?
+    # Portal „Meine Auswärtsspieltage" für Gastmannschafts-Bestätigung (TM/VM).
+    # Nur sichtbar, wenn für eine der verantworteten Mannschaften überhaupt eine
+    # Spieltagscheckliste greift – ohne Checkliste gibt es nichts zu bestätigen.
+    result[:menu_item_team_game_days] = manages_game_day_checklist_team?(ph)
     # Portal „Schiri-Feedback" – verpflichtende Rückmeldung der Vereine nach dem
     # Spiel. Nur sichtbar, wenn der/die Nutzer:in tatsächlich eine Mannschaft in
     # einer feedback-pflichtigen Liga (referee_feedback_enabled, z. B. 1. BL)
@@ -357,6 +359,32 @@ class User < ApplicationRecord
     return false if team_ids.empty?
 
     Team.where(id: team_ids).any? { |team| (team.all_league_ids & enabled_league_ids).present? }
+  end
+
+  # True, wenn der/die Nutzer:in mindestens eine Mannschaft verantwortet, die in
+  # der aktuellen Saison in einem Spielbetrieb spielt, dessen Landesverband eine
+  # Spieltagscheckliste hinterlegt hat (mindestens eine Frage). Ohne Checkliste
+  # gibt es am Spieltag nichts zu bestätigen (siehe
+  # TeamGameDayConfirmationsController#checklist_items_for), der Menüpunkt bleibt
+  # dann verborgen. Aufbau analog zu manages_referee_feedback_team?, inklusive
+  # Pokal-/Zusatzligen eines Teams (Team#all_league_ids).
+  def manages_game_day_checklist_team?(perm_hash)
+    return false unless perm_hash[:tm].present? || perm_hash[:vm].present?
+
+    # Kein `distinct` auf der Relation: der default_scope sortiert nach
+    # position/id, was zusammen mit SELECT DISTINCT in Postgres scheitert.
+    sa_ids = StateAssociationChecklistItem.pluck(:state_association_id).uniq
+    return false if sa_ids.empty?
+
+    go_ids = GameOperation.where(state_association_id: sa_ids).pluck(:id)
+    checklist_league_ids = go_ids.present? ? League.current_season.where(game_operation_id: go_ids).pluck(:id) : []
+    return false if checklist_league_ids.empty?
+
+    team_ids = Array(perm_hash[:tm])
+    team_ids += Team.where(club_id: Array(perm_hash[:vm])).pluck(:id) if perm_hash[:vm].present?
+    return false if team_ids.empty?
+
+    Team.where(id: team_ids).any? { |team| (team.all_league_ids & checklist_league_ids).present? }
   end
 
   def permission_hash
