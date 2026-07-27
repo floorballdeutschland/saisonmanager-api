@@ -433,4 +433,83 @@ class GameTest < ActiveSupport::TestCase
     g = build_game(officiating_referee_ids: [], referee1_string: "#{ref.lizenznummer} Recht, Rudi")
     assert_equal [ref.id], g.officiating_referees.map(&:id)
   end
+
+  # ---------------------------------------------------------------------------
+  # can_edit_lineup? – Spielbetriebs-Scoping (#214)
+  # ---------------------------------------------------------------------------
+
+  test 'can_edit_lineup?: LV-SBK darf ein Spiel des eigenen Spielbetriebs bearbeiten' do
+    create(:setting, current_season_id: '18')
+    go = create(:game_operation)
+    game = scoped_game(go)
+
+    assert game.can_edit_lineup?(sbk_user(go.id))
+  end
+
+  test 'can_edit_lineup?: LV-SBK aus Verband A darf ein Spiel aus Verband B nicht bearbeiten' do
+    create(:setting, current_season_id: '18')
+    go_a = create(:game_operation)
+    go_b = create(:game_operation)
+    game = scoped_game(go_b)
+
+    assert_not game.can_edit_lineup?(sbk_user(go_a.id))
+  end
+
+  test 'can_edit_lineup?: FD-SBK (nationaler Spielbetrieb) darf verbandsübergreifend bearbeiten' do
+    create(:setting, current_season_id: '18')
+    fd = create(:game_operation, :national)
+    game = scoped_game(create(:game_operation))
+
+    assert game.can_edit_lineup?(sbk_user(fd.id))
+  end
+
+  test 'can_edit_lineup?: Admin bleibt global' do
+    create(:setting, current_season_id: '18')
+    game = scoped_game(create(:game_operation))
+    admin = build_user([{ 'user_group_id' => 1, 'game_operation_id' => 0 }])
+
+    assert game.can_edit_lineup?(admin)
+  end
+
+  # Regression zu #213: eine nicht passende SBK-Rolle darf den VM-Zweig nicht
+  # verdecken, sonst sperrt die schwächere Rolle die stärkere aus.
+  test 'can_edit_lineup?: fremde SBK-Rolle verdeckt den VM-Zugriff auf das eigene Spiel nicht' do
+    create(:setting, current_season_id: '18')
+    go_a = create(:game_operation)
+    go_b = create(:game_operation)
+    club = create(:club)
+    league = create(:league, game_operation: go_b, season_id: '18')
+    home = create(:team, league: league, club: club)
+    game = create(:game, game_day: create(:game_day, league: league), home_team_id: home.id)
+
+    user = build_user(
+      [
+        { 'user_group_id' => 2, 'game_operation_id' => go_a.id },
+        { 'user_group_id' => 4, 'club_id' => club.id }
+      ]
+    )
+
+    assert game.can_edit_lineup?(user)
+  end
+
+  private
+
+  def scoped_game(game_operation)
+    league = create(:league, game_operation: game_operation, season_id: '18')
+    create(:game, game_day: create(:game_day, league: league))
+  end
+
+  def sbk_user(go_id)
+    build_user([{ 'user_group_id' => 2, 'game_operation_id' => go_id }])
+  end
+
+  def build_user(permissions)
+    User.create!(
+      user_name: "gt_#{SecureRandom.hex(4)}",
+      password: 'password123',
+      password_confirmation: 'password123',
+      permissions: permissions,
+      teams: []
+    )
+  end
 end

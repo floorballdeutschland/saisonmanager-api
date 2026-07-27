@@ -787,9 +787,12 @@ class GamesController < ApplicationController
     # SBK-, VM- und TM-Zweig additiv: eine nicht passende Rolle darf den Zugriff
     # über eine andere Rolle nicht verdecken (eine SBK aus Verband A, die im
     # Verein eines Spiels aus Verband B VM ist, wurde sonst abgewiesen).
-    # Der can_edit_game?-Fallback bleibt bewusst außerhalb dieser Verkettung:
-    # er führt über Game#can_edit_lineup?, das jede SBK ohne Spielbetriebs-
-    # Prüfung durchlässt, und würde das Scoping unten aushebeln.
+    # Der can_edit_game?-Fallback bleibt außerhalb dieser Verkettung. Seit #214
+    # ist Game#can_edit_lineup? ebenfalls auf den Spielbetrieb gescopt, hebelt
+    # das Scoping hier also nicht mehr aus; es bliebe aber ein Unterschied im
+    # VM-Zweig: can_edit_lineup? lässt zusätzlich den VM des ausrichtenden
+    # Vereins zu. Das Zusammenlegen wäre daher eine Ausweitung und gehört in
+    # eine eigene, bewusste Entscheidung.
     allowed = if ph[:admin].present?
                 true
               elsif ph[:sbk].present? || ph[:vm].present? || ph[:tm].present?

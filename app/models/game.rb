@@ -1136,7 +1136,19 @@ class Game < ApplicationRecord
 
   def can_edit_lineup?(user)
     ph = user.permission_hash
-    return true if ph[:admin].present? || ph[:sbk].present?
+    return true if ph[:admin].present?
+
+    # SBK auf den Spielbetrieb des Spiels scopen (analog games#set_string seit
+    # #58): eine LV-SBK darf nicht jedes Spiel bundesweit bearbeiten. Admin
+    # bleibt global. Für einen nationalen Spielbetrieb (FD) kollabiert
+    # permission_hash den Scope ohnehin auf 0.
+    # Rollen additiv: kein früher return false – eine nicht passende SBK-Rolle
+    # darf den VM-/TM-Zweig nicht verdecken, sonst entsteht genau das
+    # Aussperr-Problem aus #213.
+    if ph[:sbk].present?
+      go_id = game_day&.league&.game_operation_id
+      return true if ph[:sbk].include?(0) || (go_id.present? && ph[:sbk].include?(go_id))
+    end
 
     # Rollen additiv: die VM-Prüfung darf nicht per return abbrechen, sonst
     # verliert ein VM, der zugleich TM einer beteiligten Mannschaft ist, den
