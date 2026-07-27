@@ -9,6 +9,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Spielberichteingabe akzeptiert die Abschnittszeit wieder**: Im 2. und 3. Drittel sowie in der Verlängerung wurde jede Zeit unter der Abschnittsgrenze mit dem Hinweis „Die Zeit liegt außerhalb des gewählten Spielabschnitts (erlaubt: 20:00 bis 40:00)" abgelehnt, weil die Prüfung von kumulierter Spielzeit über das ganze Spiel ausging. Die Spieluhr startet aber in jedem Abschnitt neu bei 0:00, genau so wie die Zeitnehmer sie ablesen und wie die Zeiten auch bisher eingetragen wurden. Erlaubt ist jetzt in jedem Abschnitt 0:00 bis zur Abschnittslänge, in der Verlängerung bis zur Verlängerungslänge; im Penalty-Schießen bleibt die Zeit unbegrenzt (Frontend #152).
+
+### Verbessert
+
+- **„Meine Auswärtsspieltage" statt „Meine Spieltage"**: Der Menüpunkt für Team- und Vereinsmanager listet ausschließlich Spieltage, die ein anderer Verein ausrichtet – nur dort bestätigen die Gastmannschaften die ordnungsgemäße Durchführung. Der Name benennt das jetzt. Zusätzlich erscheint der Menüpunkt nur noch, wenn für eine der verantworteten Mannschaften überhaupt eine Spieltagscheckliste greift, also der Landesverband des Spielbetriebs mindestens eine Frage hinterlegt hat; ohne Checkliste gibt es nichts zu bestätigen. Die Sichtbarkeit steckt im Berechtigungs-Hash, wirkt also erst nach dem nächsten Login (Frontend #153).
+
 ## [1.59.0] - 2026-07-27
 
 ### Neu

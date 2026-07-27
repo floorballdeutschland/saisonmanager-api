@@ -170,6 +170,92 @@ class UserTest < ActiveSupport::TestCase
     assert items[:menu_item_referee_admin]
   end
 
+  # ---------------------------------------------------------------------------
+  # menu_item_team_game_days (Meine Auswärtsspieltage)
+  # ---------------------------------------------------------------------------
+
+  def checklist_league(with_checklist:)
+    create(:setting, current_season_id: '18')
+    sa = create(:state_association)
+    sa.checklist_items.create!(question: 'War die Halle rechtzeitig geöffnet?') if with_checklist
+    create(:league, game_operation: create(:game_operation, state_association: sa))
+  end
+
+  test 'permissions_items: TM sieht Auswärtsspieltage nur mit Spieltagscheckliste im Landesverband' do
+    league = checklist_league(with_checklist: true)
+    team = create(:team, league: league)
+    u = build_user(permissions: [{ 'user_group_id' => 5, 'game_operation_id' => league.game_operation_id }],
+                   teams: [team.id])
+
+    assert u.permissions_items[:menu_item_team_game_days]
+  end
+
+  test 'permissions_items: TM ohne Spieltagscheckliste sieht die Auswärtsspieltage nicht' do
+    league = checklist_league(with_checklist: false)
+    team = create(:team, league: league)
+    u = build_user(permissions: [{ 'user_group_id' => 5, 'game_operation_id' => league.game_operation_id }],
+                   teams: [team.id])
+
+    assert_not u.permissions_items[:menu_item_team_game_days]
+  end
+
+  test 'permissions_items: Zugriff auf die Auswärtsspieltage bleibt ohne Checkliste erlaubt' do
+    # Der Berechtigungs-Hash liegt nach dem Login im localStorage. Wird die erste
+    # Checklistenfrage mitten in der Saison angelegt, muss die Seite für bereits
+    # angemeldete TM/VM erreichbar bleiben (Bestätigungsfenster nur 48 Stunden).
+    league = checklist_league(with_checklist: false)
+    team = create(:team, league: league)
+    tm = build_user(permissions: [{ 'user_group_id' => 5, 'game_operation_id' => league.game_operation_id }],
+                    teams: [team.id])
+    vm = build_user(permissions: [{ 'user_group_id' => 4, 'club_id' => create(:club).id }])
+
+    assert_not tm.permissions_items[:menu_item_team_game_days]
+    assert tm.permissions_items[:page_team_game_days]
+    assert vm.permissions_items[:page_team_game_days]
+  end
+
+  test 'permissions_items: ohne TM-/VM-Rolle kein Zugriff auf die Auswärtsspieltage' do
+    u = build_user(permissions: [{ 'user_group_id' => 2, 'game_operation_id' => 1 }])
+
+    assert_not u.permissions_items[:page_team_game_days]
+  end
+
+  test 'permissions_items: VM sieht Auswärtsspieltage über die Teams des eigenen Vereins' do
+    league = checklist_league(with_checklist: true)
+    club = create(:club)
+    create(:team, league: league, club: club)
+    u = build_user(permissions: [{ 'user_group_id' => 4, 'club_id' => club.id }])
+
+    assert u.permissions_items[:menu_item_team_game_days]
+  end
+
+  test 'permissions_items: VM mit Teams nur in Ligen ohne Checkliste sieht die Auswärtsspieltage nicht' do
+    league = checklist_league(with_checklist: false)
+    club = create(:club)
+    create(:team, league: league, club: club)
+    # Zweiter Landesverband MIT Checkliste, aber ohne Team dieses Vereins.
+    other_sa = create(:state_association)
+    other_sa.checklist_items.create!(question: 'War die Halle rechtzeitig geöffnet?')
+    create(:league, game_operation: create(:game_operation, state_association: other_sa))
+    u = build_user(permissions: [{ 'user_group_id' => 4, 'club_id' => club.id }])
+
+    assert_not u.permissions_items[:menu_item_team_game_days]
+  end
+
+  test 'permissions_items: VM mit Teams nur in vergangenen Saisons sieht die Auswärtsspieltage nicht' do
+    # Der Verein hat die Checkliste in der Vorsaison durchlaufen, spielt aber in
+    # der aktuellen Saison (noch) nicht – dann ist nichts zu bestätigen.
+    create(:setting, current_season_id: '18')
+    sa = create(:state_association)
+    sa.checklist_items.create!(question: 'War die Halle rechtzeitig geöffnet?')
+    go = create(:game_operation, state_association: sa)
+    club = create(:club)
+    create(:team, league: create(:league, :previous_season, game_operation: go), club: club)
+    u = build_user(permissions: [{ 'user_group_id' => 4, 'club_id' => club.id }])
+
+    assert_not u.permissions_items[:menu_item_team_game_days]
+  end
+
   test 'permission_hash: Ansetzer mit allen GOs ergibt [0]' do
     perms = ALL_GO.map { |go| { 'user_group_id' => 7, 'game_operation_id' => go } }
     u = build_user(permissions: perms)
