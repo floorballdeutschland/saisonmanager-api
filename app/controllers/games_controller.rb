@@ -784,22 +784,26 @@ class GamesController < ApplicationController
     ph = current_user&.permission_hash || {}
     home = game.home_team
     guest = game.guest_team
+    # SBK-, VM- und TM-Zweig additiv: eine nicht passende Rolle darf den Zugriff
+    # über eine andere Rolle nicht verdecken (eine SBK aus Verband A, die im
+    # Verein eines Spiels aus Verband B VM ist, wurde sonst abgewiesen).
+    # Der can_edit_game?-Fallback bleibt bewusst außerhalb dieser Verkettung:
+    # er führt über Game#can_edit_lineup?, das jede SBK ohne Spielbetriebs-
+    # Prüfung durchlässt, und würde das Scoping unten aushebeln.
     allowed = if ph[:admin].present?
                 true
-              elsif ph[:sbk].present?
+              elsif ph[:sbk].present? || ph[:vm].present? || ph[:tm].present?
                 # Auf den Spielbetrieb des Spiels scopen – ein LV-SBK darf nicht
                 # jedes Spiel bundesweit bearbeiten.
-                ph[:sbk].include?(0) || ph[:sbk].include?(game.league.game_operation_id)
-              elsif ph[:vm].present? || ph[:tm].present?
-                # VM- und TM-Zweig additiv: eine nicht passende VM-Rolle darf den
-                # TM-Zugriff auf das eigene Spiel nicht verdecken.
-                # .present? auch auf den ersten Treffer – ein leeres
-                # Array ist truthy und ließ sonst jeden VM jedes Spiel bearbeiten.
-                # home/guest können bei Platzhalter-Spielen nil sein.
-                (ph[:vm].present? &&
-                  (ph[:vm].intersection([home&.club_id, guest&.club_id].compact).present? ||
-                    ph[:vm].intersection([home&.syndicate_clubs,
-                                          guest&.syndicate_clubs].flatten.compact).present?)) ||
+                (ph[:sbk].present? &&
+                  (ph[:sbk].include?(0) || ph[:sbk].include?(game.league.game_operation_id))) ||
+                  # .present? auch auf den ersten Treffer – ein leeres
+                  # Array ist truthy und ließ sonst jeden VM jedes Spiel bearbeiten.
+                  # home/guest können bei Platzhalter-Spielen nil sein.
+                  (ph[:vm].present? &&
+                    (ph[:vm].intersection([home&.club_id, guest&.club_id].compact).present? ||
+                      ph[:vm].intersection([home&.syndicate_clubs,
+                                            guest&.syndicate_clubs].flatten.compact).present?)) ||
                   (ph[:tm].present? &&
                     (ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)))
               else
