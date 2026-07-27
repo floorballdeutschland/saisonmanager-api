@@ -90,31 +90,27 @@ class UserSettingsControllerTest < ActionDispatch::IntegrationTest
     assert_equal old_user_name, @user.reload.user_name
   end
 
-  test 'Namensänderung zieht den verknüpften Schiedsrichter mit' do
+  test 'Konto mit Schiedsrichter-Lizenz darf den Namen nicht selbst ändern' do
+    # Der Name steht auf dem digitalen Schiedsrichterausweis, über den es
+    # Vergünstigungen gibt – Selbstpflege wäre eine Fälschungsmöglichkeit.
     referee = create(:referee, vorname: 'Patrick', nachname: 'Bartel')
-    @user.update!(referee: referee)
+    @user.update!(first_name: 'Patrick', last_name: 'Bartel', referee: referee)
     login_as(@user)
 
-    patch '/api/v2/user/name', params: { first_name: 'Patrik', last_name: 'Bartel' }, as: :json
+    patch '/api/v2/user/name', params: { first_name: 'Gekapert', last_name: 'Gekapert' }, as: :json
 
-    assert_response :ok
-    assert_equal %w[Patrik Bartel], referee.reload.slice(:vorname, :nachname).values
+    assert_response :unprocessable_entity
+    assert JSON.parse(response.body)['message'].present?
+    assert_equal %w[Patrick Bartel], @user.reload.slice(:first_name, :last_name).values
+    assert_equal %w[Patrick Bartel], referee.reload.slice(:vorname, :nachname).values
   end
 
-  test 'invalider Alt-Schiri blockiert die Namensaenderung nicht' do
-    # Zusammengeführte Alt-Datensätze verletzen die Referee-Validierungen
-    # (Referee#merge_into! schreibt selbst nur mit save!(validate: false)).
-    # Eine solche Altlast darf die Namensänderung des Kontos nicht kippen.
-    referee = create(:referee, vorname: 'Patrick', nachname: 'Bartel')
-    referee.update_column(:lizenznummer, nil)
+  test 'login_hash weist Schiri-Konten über referee_id aus' do
+    referee = create(:referee)
     @user.update!(referee: referee)
     login_as(@user)
 
-    patch '/api/v2/user/name', params: { first_name: 'Patrik', last_name: 'Bartel' }, as: :json
-
-    assert_response :ok
-    assert_equal %w[Patrik Bartel], @user.reload.slice(:first_name, :last_name).values
-    assert_equal %w[Patrik Bartel], referee.reload.slice(:vorname, :nachname).values
+    assert_equal referee.id, JSON.parse(response.body).dig('user', 'referee_id')
   end
 
   test 'Namen ändern ohne Login ergibt 401' do

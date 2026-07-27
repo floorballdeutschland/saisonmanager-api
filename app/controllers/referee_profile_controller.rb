@@ -28,11 +28,12 @@ class RefereeProfileController < ApplicationController
   # geändert (UserSettingsController#update_email) – die Bestätigung zieht die
   # Schiri-Adresse mit (User#confirm_email_change!).
   #
-  # :vorname und :nachname aus demselben Grund nicht: Der Name wird seit der
-  # Selbstpflege unter „Mein Konto" dort geführt
-  # (UserSettingsController#update_name) und von User#update_own_name auf den
-  # Schiri-Datensatz gespiegelt. Zwei Schreibstellen würden je nach
-  # Reihenfolge die jeweils andere überschreiben.
+  # :vorname und :nachname sind ebenfalls gesperrt, allerdings aus einem
+  # anderen Grund: Der Name steht auf dem digitalen Schiedsrichterausweis
+  # (/schiedsrichter/ausweis), über den Partner Vergünstigungen gewähren. Ein
+  # selbst änderbarer Name wäre dort eine Fälschungsmöglichkeit. Pflege daher
+  # ausschließlich über die Schiedsrichterverwaltung; auch „Mein Konto" sperrt
+  # Schiri-Konten (UserSettingsController#update_name).
   def profile_params
     params.require(:referee).permit(
       :telefonnummer,
@@ -52,9 +53,6 @@ class RefereeProfileController < ApplicationController
       # Login-Adresse des Kontos – fürs Frontend, um bei (Alt-)Divergenz zur
       # Schiri-Adresse transparent zu machen, was unter „Mein Konto" steht.
       account_email: current_user.email,
-      # Analog für den Namen: Altbestände können abweichen, weil die Spiegelung
-      # erst beim nächsten Speichern unter „Mein Konto" greift.
-      account_name: current_user.fullname,
       telefonnummer: @referee.telefonnummer,
       strasse: @referee.strasse,
       hausnummer: @referee.hausnummer,

@@ -86,15 +86,7 @@ class RefereeProfileControllerTest < ActionDispatch::IntegrationTest
     assert_equal 'schiri@example.com', @referee.email, 'email darf über das Profil nicht mehr änderbar sein'
   end
 
-  test 'show liefert den Konto-Namen als account_name mit' do
-    @user.update!(first_name: 'Maximilian', last_name: 'Mustermann')
-    login(@user)
-    get '/api/v2/referee/profile'
-    assert_response :success
-    assert_equal 'Maximilian Mustermann', JSON.parse(response.body)['account_name']
-  end
-
-  test 'update ignoriert mitgeschickte Namensfelder (Pflege nur über Mein Konto)' do
+  test 'update ignoriert mitgeschickte Namensfelder (Name steht auf dem Ausweis)' do
     login(@user)
 
     put '/api/v2/referee/profile',
