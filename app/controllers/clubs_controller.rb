@@ -221,6 +221,20 @@ class ClubsController < ApplicationController
     render json: clubs.map(&:public_hash)
   end
 
+  # Wie #admin_club_all, aber eingegrenzt auf die Vereine, für die der User
+  # vereinsgebundene Rollen (VM/TM) vergeben darf – für das Vereins-Dropdown der
+  # Benutzeranlage. Deckungsgleich mit der Prüfung in
+  # Admin::UsersController#create (gemeinsame Quelle: Club.role_assignable_for).
+  def admin_club_role_assignable
+    ph = current_user.permission_hash
+    unless %i[admin sbk vm].any? { |role| ph[role].present? }
+      return render json: { message: 'Keine Berechtigung' }, status: :forbidden
+    end
+
+    clubs = Club.role_assignable_for(current_user).includes(logo_attachment: :blob)
+    render json: clubs.map(&:public_hash)
+  end
+
   def admin_club_index
     if current_user
       include_deactivated = ActiveModel::Type::Boolean.new.cast(params[:include_deactivated])

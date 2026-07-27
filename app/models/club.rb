@@ -174,6 +174,36 @@ class Club < ApplicationRecord
     perm
   end
 
+  # Vereine, für die der User vereinsgebundene Rollen (VM/TM) vergeben darf:
+  # die eigenen VM-Vereine plus die Vereine der eigenen SBK-Spielbetriebe.
+  #
+  # Für die SBK-Rolle ist der Heim-Spielbetrieb des Vereins maßgeblich
+  # (main_game_operation_id), analog zu :update_club in #user_permissions – ein
+  # Verein, der in einem fremden Spielbetrieb nur als Gast antritt, gehört nicht
+  # dazu. Freigaben nach StateAssociationRelease zählen ebenfalls nicht, die
+  # gewähren nur Lesezugriff (siehe .admin_user_clubs).
+  #
+  # Einzige Quelle für das Vereins-Dropdown der Benutzeranlage und die Prüfung in
+  # Admin::UsersController#create, damit die Auswahl nicht Vereine anbietet, die
+  # beim Speichern abgelehnt werden.
+  def self.role_assignable_for(user, include_deactivated: false)
+    scope = include_deactivated ? all : active
+    ph = user.permission_hash
+
+    return scope.order(:name) if ph[:admin].present? || ph[:sbk]&.include?(0)
+
+    # Alle Rollen additiv auswerten, nicht per elsif-Kette nur die erste: wer
+    # neben einer regionalen SBK-Rolle auch VM ist, verlor sonst genau die
+    # eigenen Vereine, die außerhalb der SBK-Spielbetriebe liegen – obwohl eine
+    # reine VM dort Konten anlegen darf.
+    ids = Array(ph[:vm])
+    if ph[:sbk].present?
+      ids += scope.select { |c| ph[:sbk].include?(c.main_game_operation_id) }.map(&:id)
+    end
+
+    scope.where(id: ids.uniq).order(:name)
+  end
+
   def self.admin_user_clubs(user, include_deactivated: false)
     result = []
     go_ids = []
