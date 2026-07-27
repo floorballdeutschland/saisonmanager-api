@@ -8,13 +8,31 @@ class UserSettingsController < ApplicationController
 
   MIN_PASSWORD_LENGTH = 8
   MAX_NAME_LENGTH = 50
+  NAME_LOCKED_MESSAGE = 'Dein Name steht auf deinem Schiedsrichterausweis und kann deshalb nicht selbst geändert ' \
+                        'werden. Wende dich dafür an deine Verbandsgeschäftsstelle.'.freeze
 
   # PATCH /api/v2/user/name
-  # Jede Person darf ihren eigenen Vor- und Nachnamen pflegen (z. B.
-  # Schreibfehler, Namensänderung nach Heirat). Der Benutzername bleibt bewusst
+  # Grundsätzlich darf jede Person ihren eigenen Vor- und Nachnamen pflegen
+  # (z. B. Schreibfehler, Namensänderung nach Heirat); die Ausnahme für
+  # Schiedsrichter steht unten. Der Benutzername bleibt bewusst
   # ausgeschlossen: er ist die Login-Kennung und wird nur über die
   # Benutzerverwaltung geändert.
   def update_name
+    # Konten mit verknüpfter Schiedsrichter-Lizenz sind ausgenommen: Der Name
+    # steht auf dem digitalen Schiedsrichterausweis (/schiedsrichter/ausweis),
+    # der bei Partnern Vergünstigungen gewährt. Selbstpflege wäre dort eine
+    # Fälschungsmöglichkeit, deshalb bleibt der Name der Geschäftsstelle
+    # vorbehalten (Schiedsrichterverwaltung). Gegenstück im Schiri-Profil:
+    # RefereeProfileController#profile_params.
+    #
+    # 422 statt 403: Der ErrorInterceptor im Frontend navigiert bei 403 auf die
+    # Startseite. Hier soll die Person auf „Mein Konto" bleiben und die
+    # Begründung lesen.
+    if current_user.referee_id.present?
+      return render json: { success: false, message: NAME_LOCKED_MESSAGE },
+                    status: :unprocessable_entity
+    end
+
     first_name = params[:first_name].to_s.strip
     last_name = params[:last_name].to_s.strip
 
@@ -35,7 +53,7 @@ class UserSettingsController < ApplicationController
     # anderen Objekt und die Antwort trüge eine leere message.
     user = current_user
 
-    if user.update_own_name(first_name:, last_name:)
+    if user.update(first_name:, last_name:)
       render json: { success: true, user: user.login_hash }
     else
       message = user.errors.full_messages.presence&.join(', ')

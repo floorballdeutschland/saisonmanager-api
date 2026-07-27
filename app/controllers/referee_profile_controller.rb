@@ -27,9 +27,16 @@ class RefereeProfileController < ApplicationController
   # und wird ausschließlich über den Double-Opt-In-Flow unter „Mein Konto"
   # geändert (UserSettingsController#update_email) – die Bestätigung zieht die
   # Schiri-Adresse mit (User#confirm_email_change!).
+  #
+  # :vorname und :nachname sind ebenfalls gesperrt, allerdings aus einem
+  # anderen Grund: Der Name steht auf dem digitalen Schiedsrichterausweis
+  # (/schiedsrichter/ausweis), über den Partner Vergünstigungen gewähren. Ein
+  # selbst änderbarer Name wäre dort eine Fälschungsmöglichkeit. Pflege daher
+  # ausschließlich über die Schiedsrichterverwaltung; auch „Mein Konto" sperrt
+  # Schiri-Konten (UserSettingsController#update_name).
   def profile_params
     params.require(:referee).permit(
-      :vorname, :nachname, :telefonnummer,
+      :telefonnummer,
       :strasse, :hausnummer, :plz, :ort,
       :partner_lizenznummer, :kurzfristig_mobil
     )

@@ -11,7 +11,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Neu
 
-- **Eigenen Namen selbst ändern**: Unter „Mein Konto" kann jede Person ihren Vor- und Nachnamen jetzt selbst pflegen (z. B. Schreibfehler oder Namensänderung nach Heirat), bisher ging das nur über die Benutzerverwaltung. Der Benutzername bleibt unverändert, er ist die Login-Kennung und wird weiterhin ausschließlich in der Benutzerverwaltung geändert. Ist das Konto mit einem Schiedsrichter verknüpft, übernimmt das Schiri-Profil den neuen Namen automatisch.
+- **Eigenen Namen selbst ändern**: Unter „Mein Konto" kann jede Person ihren Vor- und Nachnamen jetzt selbst pflegen (z. B. Schreibfehler oder Namensänderung nach Heirat), bisher ging das nur über die Benutzerverwaltung. Der Benutzername bleibt unverändert, er ist die Login-Kennung und wird weiterhin ausschließlich in der Benutzerverwaltung geändert. **Ausgenommen sind Konten mit verknüpfter Schiedsrichter-Lizenz**: Dort bleibt der Name der Geschäftsstelle vorbehalten, weil er auf dem digitalen Schiedsrichterausweis erscheint, über den es Vergünstigungen gibt.
+
+### Verbessert
+
+- **Schiedsrichter-Namen aus der Selbstpflege genommen**: Vor- und Nachname unter „Mein Profil" waren bisher frei änderbar. Da sie auf dem digitalen Schiedsrichterausweis erscheinen und über diesen Vergünstigungen gewährt werden, sind sie jetzt read-only. Änderungen laufen über die Schiedsrichterverwaltung. Dieselbe Sperre greift unter „Mein Konto", damit der Name für Schiedsrichter an keiner Stelle selbst änderbar ist.
 
 ## [1.57.3] - 2026-07-27
 

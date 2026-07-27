@@ -86,6 +86,20 @@ class RefereeProfileControllerTest < ActionDispatch::IntegrationTest
     assert_equal 'schiri@example.com', @referee.email, 'email darf über das Profil nicht mehr änderbar sein'
   end
 
+  test 'update ignoriert mitgeschickte Namensfelder (Name steht auf dem Ausweis)' do
+    login(@user)
+
+    put '/api/v2/referee/profile',
+        params: { referee: { telefonnummer: '0301234567', vorname: 'Gekapert', nachname: 'Gekapert' } },
+        as: :json
+
+    assert_response :success
+    @referee.reload
+    assert_equal '0301234567', @referee.telefonnummer, 'andere Felder müssen weiter änderbar sein'
+    assert_equal 'Max', @referee.vorname, 'vorname darf über das Profil nicht mehr änderbar sein'
+    assert_equal 'Mustermann', @referee.nachname, 'nachname darf über das Profil nicht mehr änderbar sein'
+  end
+
   private
 
   def login(user)
