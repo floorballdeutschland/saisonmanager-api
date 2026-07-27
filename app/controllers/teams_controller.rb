@@ -50,54 +50,38 @@ class TeamsController < ApplicationController
                                .joins(game_day: :league)
                                .where(leagues: { season_id: team_season_id })
 
+    # Die öffentliche Scorerliste folgt der Liga-Einstellung enable_scorer (in
+    # der Altersklasse U13 und jünger per Vorgabe aus). Gefiltert wird pro
+    # beitragender Liga, nicht pauschal über das Team: Spielt ein Team zusätzlich
+    # in einer Liga ohne öffentliche Scorerliste (häufig bei Relegation und
+    # Qualifikation, `enable_scorer` hat den Default false), bleiben die Punkte
+    # aus den übrigen Ligen sichtbar, so wie sie unter `leagues/:id/scorer`
+    # ohnehin öffentlich sind. Die Team-Summen unten zählen weiter alle Spiele,
+    # sie sind keine personenbezogene Rangliste.
+    visible_league_ids = leagues.select(&:enable_scorer).map(&:id)
+
     team_scorer_data = {}
-    current_season_games.each do |game|
+    visible_scorer_data = {}
+    current_season_games.includes(:game_day).each do |game|
       next if game.result.nil?
 
       begin
         game_score = game.evaluate_scorer
+        visible = visible_league_ids.include?(game.game_day.league_id)
         game_score.each do |player_id, score|
           next unless score[:team_id] == team.id
 
-          if team_scorer_data[player_id]
-            %i[games goals assists penalty_2 penalty_2and2 penalty_5 penalty_10
-               penalty_ms_tech penalty_ms_full penalty_ms1 penalty_ms2 penalty_ms3].each do |k|
-              team_scorer_data[player_id][k] = (team_scorer_data[player_id][k] || 0) + (score[k] || 0)
-            end
-          else
-            team_scorer_data[player_id] = score.dup
-          end
+          add_scorer_score(team_scorer_data, player_id, score)
+          add_scorer_score(visible_scorer_data, player_id, score) if visible
         end
       rescue StandardError => e
         Rails.logger.warn("evaluate_scorer failed for game #{game.id}: #{e.message}")
       end
     end
 
-    team_scorer = team_scorer_data.values
-
-    # Resolve player names
-    player_ids = team_scorer.map { |s| s[:player_id] }
-    players = Player.where(id: player_ids).index_by(&:id)
-
-    scorer_list = team_scorer
-                  .sort_by { |s| [-(s[:goals] + s[:assists]), -s[:goals], -s[:games]] }
-                  .map do |s|
-      player = players[s[:player_id]]
-      next if player.nil?
-      {
-        player_id:    s[:player_id],
-        first_name:   player.first_name,
-        last_name:    player.last_name,
-        games:        s[:games],
-        goals:        s[:goals],
-        assists:      s[:assists],
-        scorer_points: s[:goals] + s[:assists],
-        penalty_minutes: (s[:penalty_2] * 2) + (s[:penalty_2and2] * 4) +
-                         (s[:penalty_5] * 5) + (s[:penalty_10] * 10) +
-                         (s[:penalty_ms_tech] + s[:penalty_ms_full] +
-                          s[:penalty_ms1] + s[:penalty_ms2] + s[:penalty_ms3]) * 25
-      }
-    end.compact
+    scorer_visible = visible_league_ids.present?
+    scorer_list = scorer_visible ? scorer_entries(visible_scorer_data) : []
+    totals_list = scorer_entries(team_scorer_data)
 
     # Recent results (last 10 ended games across all leagues, ordered by game day date)
     recent_games = Game.by_team_id(team.id)
@@ -178,24 +162,17 @@ class TeamsController < ApplicationController
                   { id: team.id, name: team.name, short_name: team.short_name, league_name: nil, leagues: [] }
                 end
 
-    # Die Scorerliste der Teamseite folgt der Liga-Einstellung enable_scorer
-    # (in der Altersklasse U13 und jünger ist sie per Vorgabe aus). Blendet eine
-    # der Ligen des Teams sie aus, wird sie hier gar nicht ausgeliefert – sonst
-    # wäre die personenbezogene Rangliste über die Teamseite weiter abrufbar.
-    # Die Team-Summen bleiben, sie sind keine Rangliste einzelner Spieler.
-    scorer_visible = leagues.all?(&:enable_scorer)
-
     render json: {
       team:           team_info,
-      scorer:         scorer_visible ? scorer_list : [],
+      scorer:         scorer_list,
       scorer_visible:,
       recent_games:,
       upcoming_games:,
       totals: {
-        games:           scorer_list.sum { |s| s[:games] } / [scorer_list.size, 1].max, # avg
-        goals:           scorer_list.sum { |s| s[:goals] },
-        assists:         scorer_list.sum { |s| s[:assists] },
-        penalty_minutes: scorer_list.sum { |s| s[:penalty_minutes] }
+        games:           totals_list.sum { |s| s[:games] } / [totals_list.size, 1].max, # avg
+        goals:           totals_list.sum { |s| s[:goals] },
+        assists:         totals_list.sum { |s| s[:assists] },
+        penalty_minutes: totals_list.sum { |s| s[:penalty_minutes] }
       }
     }
   end
@@ -400,6 +377,47 @@ class TeamsController < ApplicationController
   end
 
   private
+
+  SCORER_COUNTERS = %i[games goals assists penalty_2 penalty_2and2 penalty_5 penalty_10
+                       penalty_ms_tech penalty_ms_full penalty_ms1 penalty_ms2 penalty_ms3].freeze
+
+  # Addiert die Werte eines Spiels auf den Zwischenstand eines Spielers.
+  def add_scorer_score(store, player_id, score)
+    if store[player_id]
+      SCORER_COUNTERS.each do |k|
+        store[player_id][k] = (store[player_id][k] || 0) + (score[k] || 0)
+      end
+    else
+      store[player_id] = score.dup
+    end
+  end
+
+  # Baut aus dem Zwischenstand die sortierte Scorerliste inkl. Spielernamen.
+  def scorer_entries(store)
+    entries = store.values
+    players = Player.where(id: entries.map { |s| s[:player_id] }).index_by(&:id)
+
+    entries
+      .sort_by { |s| [-(s[:goals] + s[:assists]), -s[:goals], -s[:games]] }
+      .filter_map do |s|
+        player = players[s[:player_id]]
+        next if player.nil?
+
+        {
+          player_id:    s[:player_id],
+          first_name:   player.first_name,
+          last_name:    player.last_name,
+          games:        s[:games],
+          goals:        s[:goals],
+          assists:      s[:assists],
+          scorer_points: s[:goals] + s[:assists],
+          penalty_minutes: (s[:penalty_2] * 2) + (s[:penalty_2and2] * 4) +
+                           (s[:penalty_5] * 5) + (s[:penalty_10] * 10) +
+                           (s[:penalty_ms_tech] + s[:penalty_ms_full] +
+                            s[:penalty_ms1] + s[:penalty_ms2] + s[:penalty_ms3]) * 25
+        }
+      end
+  end
 
   # Grober Spielstatus für API-Konsumenten. Feinere Signale (started/ended/state,
   # notice_type, result/result_string) liefert schedule_item zusätzlich.
