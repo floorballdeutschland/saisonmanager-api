@@ -283,7 +283,8 @@ class TeamsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     body = JSON.parse(response.body)
     assert body['scorer_visible']
-    assert_equal [visible_player.id], (body['scorer'].map { |s| s['player_id'] })
+    scorer_player_ids = body['scorer'].map { |s| s['player_id'] }
+    assert_equal [visible_player.id], scorer_player_ids
     # Die Summen zählen weiter alle Spiele des Teams, also beide Tore.
     assert_equal 2, body['totals']['goals']
   end
