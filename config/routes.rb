@@ -48,7 +48,8 @@ Rails.application.routes.draw do
       post 'lost_password' => 'sessions#lost_password'
       post 'reset_password' => 'users#reset_password_token'
 
-      # Self-Service-Einstellungen des eingeloggten Users (Sprache, Passwort)
+      # Self-Service-Einstellungen des eingeloggten Users (Name, Sprache, Passwort)
+      patch 'user/name' => 'user_settings#update_name'
       patch 'user/language' => 'user_settings#update_language'
       patch 'user/mail-preferences' => 'user_settings#update_mail_preferences'
       put 'user/password' => 'user_settings#update_password'

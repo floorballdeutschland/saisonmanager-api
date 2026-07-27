@@ -52,6 +52,26 @@ class User < ApplicationRecord
     update!(archived_at: nil, archived_by: nil)
   end
 
+  # Übernimmt den selbst gepflegten Namen (UserSettingsController#update_name).
+  # Ist das Konto mit einem Schiedsrichter verknüpft, zieht dessen Name mit –
+  # analog zur E-Mail (confirm_email_change!), damit Konto und Schiri-Profil
+  # nicht auseinanderlaufen. Neue Rechte entstehen dadurch nicht: denselben
+  # Namen darf ein Schiri bereits unter „Mein Profil" ändern
+  # (RefereeProfileController).
+  def update_own_name(first_name:, last_name:)
+    transaction do
+      update!(first_name:, last_name:)
+      referee&.update!(vorname: first_name, nachname: last_name)
+    end
+    true
+  rescue ActiveRecord::RecordInvalid => e
+    # Scheitert der Schiri-Datensatz (eigene Validierungen), stehen die
+    # Meldungen nicht in errors des Users – dort ergänzen, damit der
+    # Controller sie ausgeben kann.
+    errors.add(:base, e.record.errors.full_messages.join(', ')) unless e.record == self
+    false
+  end
+
   def login_hash
     perms = permissions_items
     {
@@ -60,6 +80,10 @@ class User < ApplicationRecord
       pending_email: email_change_pending? ? pending_email : nil,
       username: user_name,
       name: fullname,
+      # Einzelfelder zusätzlich zum zusammengesetzten name, damit der
+      # Self-Service unter „Mein Konto" das Formular vorbelegen kann.
+      first_name:,
+      last_name:,
       permissions: perms,
       club_ids:,
       referee_id: referee_id,

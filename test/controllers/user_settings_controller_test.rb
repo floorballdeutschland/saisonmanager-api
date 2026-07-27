@@ -17,6 +17,80 @@ class UserSettingsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 'de', body.dig('user', 'language')
   end
 
+  test 'eigenen Namen ändern liefert aktualisierten User zurück' do
+    login_as(@user)
+
+    patch '/api/v2/user/name', params: { first_name: 'Patrik', last_name: 'Bartel' }, as: :json
+
+    assert_response :ok
+    body = JSON.parse(response.body)
+    assert body['success']
+    assert_equal 'Patrik', body.dig('user', 'first_name')
+    assert_equal 'Bartel', body.dig('user', 'last_name')
+    assert_equal 'Patrik Bartel', body.dig('user', 'name')
+    assert_equal %w[Patrik Bartel], @user.reload.slice(:first_name, :last_name).values
+  end
+
+  test 'Name wird getrimmt' do
+    login_as(@user)
+
+    patch '/api/v2/user/name', params: { first_name: '  Patrik ', last_name: " Bartel\t" }, as: :json
+
+    assert_response :ok
+    assert_equal %w[Patrik Bartel], @user.reload.slice(:first_name, :last_name).values
+  end
+
+  test 'leerer Vor- oder Nachname wird mit 422 abgelehnt' do
+    login_as(@user)
+    before = @user.slice(:first_name, :last_name).values
+
+    patch '/api/v2/user/name', params: { first_name: '   ', last_name: 'Bartel' }, as: :json
+    assert_response :unprocessable_entity
+
+    patch '/api/v2/user/name', params: { first_name: 'Patrik' }, as: :json
+    assert_response :unprocessable_entity
+
+    assert_equal before, @user.reload.slice(:first_name, :last_name).values
+  end
+
+  test 'zu langer Name wird mit 422 abgelehnt' do
+    login_as(@user)
+
+    patch '/api/v2/user/name',
+          params: { first_name: 'a' * (UserSettingsController::MAX_NAME_LENGTH + 1), last_name: 'Bartel' },
+          as: :json
+
+    assert_response :unprocessable_entity
+  end
+
+  test 'Benutzername lässt sich über den Namens-Endpoint nicht ändern' do
+    login_as(@user)
+    old_user_name = @user.user_name
+
+    patch '/api/v2/user/name',
+          params: { first_name: 'Patrik', last_name: 'Bartel', user_name: 'gekapert' },
+          as: :json
+
+    assert_response :ok
+    assert_equal old_user_name, @user.reload.user_name
+  end
+
+  test 'Namensänderung zieht den verknüpften Schiedsrichter mit' do
+    referee = create(:referee, vorname: 'Patrick', nachname: 'Bartel')
+    @user.update!(referee: referee)
+    login_as(@user)
+
+    patch '/api/v2/user/name', params: { first_name: 'Patrik', last_name: 'Bartel' }, as: :json
+
+    assert_response :ok
+    assert_equal %w[Patrik Bartel], referee.reload.slice(:vorname, :nachname).values
+  end
+
+  test 'Namen ändern ohne Login ergibt 401' do
+    patch '/api/v2/user/name', params: { first_name: 'Patrik', last_name: 'Bartel' }, as: :json
+    assert_response :unauthorized
+  end
+
   test 'Sprache auf en umstellen liefert aktualisierten User zurück' do
     login_as(@user)
 
