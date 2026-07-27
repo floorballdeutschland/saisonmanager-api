@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.57.2] - 2026-07-27
+
 ### Behoben
 
 - **Team-Zuweisung schlug bei Teammanagern mit zusätzlicher RSK-Rolle fehl**: Der Schutz gegen Rechteausweitung (`require_admin_for_elevated_target!`, verhindert die Übernahme eines VM-/TM-Kontos durch einen reinen RSK-Manager über E-Mail-Änderung + Passwort-Reset) griff auch dann, wenn nur Teams zugewiesen wurden, sobald der Zielnutzer neben der TM-Rolle zusätzlich eine elevated Rolle (Admin, SBK, RSK oder Ansetzer) besaß, unabhängig davon, welches Feld überhaupt geändert wurde. Dadurch ließen sich Teams für Teammanager mit zusätzlicher RSK- oder Ansetzer-Rolle nicht mehr zuweisen, bei reinen TM-Konten funktionierte es weiterhin. Der Check greift jetzt bei `update` nur noch, wenn tatsächlich `email`, `role`, `club_id` oder `game_operation_id` geändert werden; die Team-Zuweisung ist bereits im Update-Branch feldspezifisch abgesichert.
