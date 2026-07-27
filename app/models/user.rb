@@ -240,9 +240,17 @@ class User < ApplicationRecord
     result[:menu_item_referee_vm] = ph[:vm].present?
     result[:menu_item_player_vm] = ph[:vm].present? || ph[:tm].present?
     # Portal „Meine Auswärtsspieltage" für Gastmannschafts-Bestätigung (TM/VM).
-    # Nur sichtbar, wenn für eine der verantworteten Mannschaften überhaupt eine
-    # Spieltagscheckliste greift – ohne Checkliste gibt es nichts zu bestätigen.
+    # Der Menüpunkt erscheint nur, wenn für eine der verantworteten Mannschaften
+    # überhaupt eine Spieltagscheckliste greift, denn ohne Checkliste gibt es
+    # nichts zu bestätigen.
     result[:menu_item_team_game_days] = manages_game_day_checklist_team?(ph)
+    # Der Zugriff auf die Seite bleibt bewusst rein rollenbasiert (Route-Guard im
+    # Frontend). Grund: Der Berechtigungs-Hash entsteht beim Login und liegt
+    # danach im localStorage. Legt ein Landesverband seine erste Checklistenfrage
+    # mitten in der Saison an, wäre die Seite für bereits angemeldete TM/VM sonst
+    # auch per Direktlink gesperrt – und die Bestätigung ist nur 48 Stunden lang
+    # möglich, danach gilt ein Spieltag automatisch als bestätigt.
+    result[:page_team_game_days] = ph[:tm].present? || ph[:vm].present?
     # Portal „Schiri-Feedback" – verpflichtende Rückmeldung der Vereine nach dem
     # Spiel. Nur sichtbar, wenn der/die Nutzer:in tatsächlich eine Mannschaft in
     # einer feedback-pflichtigen Liga (referee_feedback_enabled, z. B. 1. BL)

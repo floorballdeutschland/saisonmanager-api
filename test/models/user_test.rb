@@ -199,6 +199,27 @@ class UserTest < ActiveSupport::TestCase
     assert_not u.permissions_items[:menu_item_team_game_days]
   end
 
+  test 'permissions_items: Zugriff auf die Auswärtsspieltage bleibt ohne Checkliste erlaubt' do
+    # Der Berechtigungs-Hash liegt nach dem Login im localStorage. Wird die erste
+    # Checklistenfrage mitten in der Saison angelegt, muss die Seite für bereits
+    # angemeldete TM/VM erreichbar bleiben (Bestätigungsfenster nur 48 Stunden).
+    league = checklist_league(with_checklist: false)
+    team = create(:team, league: league)
+    tm = build_user(permissions: [{ 'user_group_id' => 5, 'game_operation_id' => league.game_operation_id }],
+                    teams: [team.id])
+    vm = build_user(permissions: [{ 'user_group_id' => 4, 'club_id' => create(:club).id }])
+
+    assert_not tm.permissions_items[:menu_item_team_game_days]
+    assert tm.permissions_items[:page_team_game_days]
+    assert vm.permissions_items[:page_team_game_days]
+  end
+
+  test 'permissions_items: ohne TM-/VM-Rolle kein Zugriff auf die Auswärtsspieltage' do
+    u = build_user(permissions: [{ 'user_group_id' => 2, 'game_operation_id' => 1 }])
+
+    assert_not u.permissions_items[:page_team_game_days]
+  end
+
   test 'permissions_items: VM sieht Auswärtsspieltage über die Teams des eigenen Vereins' do
     league = checklist_league(with_checklist: true)
     club = create(:club)
