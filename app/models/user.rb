@@ -60,6 +60,10 @@ class User < ApplicationRecord
       pending_email: email_change_pending? ? pending_email : nil,
       username: user_name,
       name: fullname,
+      # Einzelfelder zusätzlich zum zusammengesetzten name, damit der
+      # Self-Service unter „Mein Konto" das Formular vorbelegen kann.
+      first_name:,
+      last_name:,
       permissions: perms,
       club_ids:,
       referee_id: referee_id,
