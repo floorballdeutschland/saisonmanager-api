@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.58.0] - 2026-07-27
+
 ### Neu
 
 - **Eigenen Namen selbst ändern**: Unter „Mein Konto" kann jede Person ihren Vor- und Nachnamen jetzt selbst pflegen (z. B. Schreibfehler oder Namensänderung nach Heirat), bisher ging das nur über die Benutzerverwaltung. Der Benutzername bleibt unverändert, er ist die Login-Kennung und wird weiterhin ausschließlich in der Benutzerverwaltung geändert. **Ausgenommen sind Konten mit verknüpfter Schiedsrichter-Lizenz**: Dort bleibt der Name der Geschäftsstelle vorbehalten, weil er auf dem digitalen Schiedsrichterausweis erscheint, über den es Vergünstigungen gibt.
