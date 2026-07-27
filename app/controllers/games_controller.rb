@@ -582,9 +582,7 @@ class GamesController < ApplicationController
   def add_event
     game = Game.find(params[:id])
 
-    ph = current_user&.permission_hash || {}
-    admin_or_sbk = ph[:admin].present? || ph[:sbk].present?
-    allowed = if !admin_or_sbk && game.match_record_closed?
+    allowed = if !admin_or_scoped_sbk?(game) && game.match_record_closed?
                 false
               else
                 can_edit_game?(game)
@@ -647,9 +645,7 @@ class GamesController < ApplicationController
   def remove_event
     game = Game.find(params[:id])
 
-    ph = current_user&.permission_hash || {}
-    admin_or_sbk = ph[:admin].present? || ph[:sbk].present?
-    allowed = if !admin_or_sbk && game.match_record_closed?
+    allowed = if !admin_or_scoped_sbk?(game) && game.match_record_closed?
                 false
               else
                 can_edit_game?(game)
@@ -682,9 +678,7 @@ class GamesController < ApplicationController
 
   def update_event
     game = Game.find(params[:id])
-    ph = current_user&.permission_hash || {}
-    admin_or_sbk = ph[:admin].present? || ph[:sbk].present?
-    allowed = if !admin_or_sbk && game.match_record_closed?
+    allowed = if !admin_or_scoped_sbk?(game) && game.match_record_closed?
                 false
               else
                 can_edit_game?(game)
@@ -871,7 +865,7 @@ class GamesController < ApplicationController
     game = Game.find(params[:id])
 
     ph = current_user&.permission_hash || {}
-    sbk = ph[:admin].present? || ph[:sbk].present?
+    sbk = admin_or_scoped_sbk?(game)
     allowed = can_edit_game?(game)
 
     if allowed
@@ -947,11 +941,7 @@ class GamesController < ApplicationController
 
   def reopen_game
     game = Game.find(params[:id])
-    ph = current_user.permission_hash
-    game_operation_id = game.game_day.league.game_operation_id.to_i
-
-    gos = [ph[:admin], ph[:sbk]].flatten.compact.map(&:to_i)
-    unless gos.include?(0) || gos.include?(game_operation_id)
+    unless admin_or_scoped_sbk?(game)
       return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
     end
 
@@ -1123,6 +1113,21 @@ class GamesController < ApplicationController
     return secretary_token_permits_game?(game) if @secretary_link
     return false unless current_user
     game.can_edit_lineup?(current_user)
+  end
+
+  # Admin oder SBK *des Spielbetriebs dieses Spiels*. Entscheidet, wer die
+  # Sperre bei abgeschlossenem Spielbericht übergehen und ihn wieder öffnen
+  # darf. Bewusst auf den Spielbetrieb gescopt (#214): sonst hebelt eine
+  # fachfremde SBK-Rolle die Sperre aus, sobald der Nutzer über eine andere
+  # Rolle (VM/TM einer beteiligten Mannschaft) ohnehin Zugriff auf das Spiel
+  # hat. Muster übernommen aus reopen_game, das das bereits richtig machte.
+  def admin_or_scoped_sbk?(game)
+    ph = current_user&.permission_hash || {}
+    gos = [ph[:admin], ph[:sbk]].flatten.compact.map(&:to_i)
+    return true if gos.include?(0)
+
+    go_id = game.game_day&.league&.game_operation_id
+    go_id.present? && gos.include?(go_id.to_i)
   end
 
   # Admin/SBK des Spielbetriebs sowie VM/TM der beteiligten Mannschaften

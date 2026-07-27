@@ -435,7 +435,7 @@ class GameTest < ActiveSupport::TestCase
   end
 
   # ---------------------------------------------------------------------------
-  # can_edit_lineup? – Spielbetriebs-Scoping (#214)
+  # can_edit_lineup?: Spielbetriebs-Scoping (#214)
   # ---------------------------------------------------------------------------
 
   test 'can_edit_lineup?: LV-SBK darf ein Spiel des eigenen Spielbetriebs bearbeiten' do
@@ -492,6 +492,49 @@ class GameTest < ActiveSupport::TestCase
     assert game.can_edit_lineup?(user)
   end
 
+  # Zweite Hälfte der Additivität: der TM-Zweig ist erst seit #214 überhaupt
+  # erreichbar, wenn zugleich eine fachfremde SBK-Rolle vorliegt.
+  test 'can_edit_lineup?: fremde SBK-Rolle verdeckt den TM-Zugriff auf das eigene Spiel nicht' do
+    create(:setting, current_season_id: '18')
+    go_a = create(:game_operation)
+    league = create(:league, game_operation: create(:game_operation), season_id: '18')
+    home = create(:team, league: league)
+    game = create(:game, game_day: create(:game_day, league: league), home_team_id: home.id)
+
+    user = build_user([{ 'user_group_id' => 2, 'game_operation_id' => go_a.id },
+                       { 'user_group_id' => 5, 'game_operation_id' => 0 }], teams: [home.id])
+
+    assert game.can_edit_lineup?(user)
+  end
+
+  # Der VM des ausrichtenden Vereins ist der einzige Unterschied zwischen
+  # can_edit_lineup? und der Inline-Logik in games#set_string. Genau diese
+  # Personen füllen den Bericht vor Ort aus.
+  test 'can_edit_lineup?: VM des ausrichtenden Vereins darf bearbeiten' do
+    create(:setting, current_season_id: '18')
+    hosting_club = create(:club)
+    league = create(:league, game_operation: create(:game_operation), season_id: '18')
+    game_day = create(:game_day, league: league, club: hosting_club)
+    game = create(:game, game_day: game_day)
+
+    user = build_user([{ 'user_group_id' => 4, 'game_operation_id' => 0, 'club_id' => hosting_club.id }])
+
+    assert game.can_edit_lineup?(user)
+  end
+
+  # Fail closed: ohne auflösbaren Spielbetrieb (Altdaten, Rohimport) greift der
+  # SBK-Zweig nicht. Admin bleibt zuständig.
+  test 'can_edit_lineup?: ohne Spielbetrieb am Spiel greift der SBK-Zweig nicht' do
+    create(:setting, current_season_id: '18')
+    go = create(:game_operation)
+    league = create(:league, game_operation: go, season_id: '18')
+    game = create(:game, game_day: create(:game_day, league: league))
+    league.update_columns(game_operation_id: nil)
+
+    assert_not game.reload.can_edit_lineup?(sbk_user(go.id))
+    assert game.can_edit_lineup?(build_user([{ 'user_group_id' => 1, 'game_operation_id' => 0 }]))
+  end
+
   private
 
   def scoped_game(game_operation)
@@ -503,13 +546,13 @@ class GameTest < ActiveSupport::TestCase
     build_user([{ 'user_group_id' => 2, 'game_operation_id' => go_id }])
   end
 
-  def build_user(permissions)
+  def build_user(permissions, teams: [])
     User.create!(
       user_name: "gt_#{SecureRandom.hex(4)}",
       password: 'password123',
       password_confirmation: 'password123',
       permissions: permissions,
-      teams: []
+      teams: teams
     )
   end
 end

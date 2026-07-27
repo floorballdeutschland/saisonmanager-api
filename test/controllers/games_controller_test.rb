@@ -119,6 +119,69 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
+  # ---------------------------------------------------------------------------
+  # Spielbetriebs-Scoping der Schreibpfade (#214)
+  # ---------------------------------------------------------------------------
+
+  test 'add_event: SBK des Spielbetriebs darf ein Ereignis eintragen' do
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/games/#{@game.id}/events/add", params: { period: 1, time: '10:00' }
+
+    assert_response :success
+  end
+
+  test 'add_event: SBK eines fremden Spielbetriebs wird abgewiesen' do
+    other_go = create(:game_operation, state_association_id: create(:state_association).id)
+    login(create(:user, :sbk_scoped, game_operation_id: other_go.id))
+
+    post "/api/v2/user/games/#{@game.id}/events/add", params: { period: 1, time: '10:00' }
+
+    assert_response :forbidden
+    assert_empty @game.reload.events
+  end
+
+  test 'set_game_status: SBK eines fremden Spielbetriebs wird abgewiesen' do
+    other_go = create(:game_operation, state_association_id: create(:state_association).id)
+    login(create(:user, :sbk_scoped, game_operation_id: other_go.id))
+
+    post "/api/v2/user/games/#{@game.id}/game_status", params: { game_status: 'ingame' }
+
+    assert_response :forbidden
+  end
+
+  # editable steuert im Frontend, ob die Spielbericht-Oberfläche überhaupt
+  # erscheint, und erreicht can_edit_lineup? auf einem anderen Weg als die
+  # Schreib-Actions (direkt, nicht über can_edit_game?).
+  test 'editable: true für den SBK des Spielbetriebs, false für einen fremden' do
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+    get "/api/v2/user/games/#{@game.id}/editable"
+    assert_response :success
+    assert_equal true, response.parsed_body
+
+    other_go = create(:game_operation, state_association_id: create(:state_association).id)
+    login(create(:user, :sbk_scoped, game_operation_id: other_go.id))
+    get "/api/v2/user/games/#{@game.id}/editable"
+    assert_response :success
+    assert_equal false, response.parsed_body
+  end
+
+  # Die Sperre bei abgeschlossenem Spielbericht darf nicht über eine
+  # fachfremde SBK-Rolle aushebelbar sein (#214, Review-Fund).
+  test 'add_event: fremde SBK-Rolle hebelt die Sperre des geschlossenen Berichts nicht aus' do
+    other_go = create(:game_operation, state_association_id: create(:state_association).id)
+    @game.update!(game_status: 'match_record_closed')
+    user = create(:user, :sbk_scoped, game_operation_id: other_go.id)
+    user.update!(permissions: user.permissions + [{ 'user_group_id' => 4, 'game_operation_id' => 0,
+                                                    'club_id' => @club.id }])
+    login(user)
+
+    post "/api/v2/user/games/#{@game.id}/events/add", params: { period: 1, time: '10:00' }
+
+    assert_response :forbidden
+    assert_empty @game.reload.events
+  end
+
   private
 
   def login(user)
