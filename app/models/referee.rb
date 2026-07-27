@@ -101,7 +101,7 @@ class Referee < ApplicationRecord
   end
 
   # Basis sind ausschließlich die tatsächlichen Einsätze laut Spielbericht
-  # (officiating_referee_ids, Referee-PK, Fundament #45) – nicht die Ansetzung
+  # (officiating_referee_ids, Referee-PK, Fundament #45), nicht die Ansetzung
   # (RefereeAssignment), weil kurzfristige Umbesetzungen die Zahlen sonst
   # verzerren. Die Lizenznummer-/Freitext-Fallbacks aus #games bleiben bewusst
   # außen vor: sie liefern keine Partner-PK und damit kein auflösbares Gespann.
@@ -109,7 +109,7 @@ class Referee < ApplicationRecord
   def partner_stats
     rows = Game.joins(game_day: :league)
                # Containment (@>) statt "= ANY", weil nur dieses Prädikat den
-               # GIN-Index auf officiating_referee_ids nutzt – die Auswertung
+               # GIN-Index auf officiating_referee_ids nutzt. Die Auswertung
                # läuft über die gesamte Historie, nicht nur eine Saison.
                .where('games.officiating_referee_ids @> ARRAY[?]::integer[]', id)
                .pluck(:officiating_referee_ids, 'leagues.season_id', 'leagues.game_operation_id')
@@ -117,7 +117,12 @@ class Referee < ApplicationRecord
     tallies = tally_partner_games(rows)
     return [] if tallies.empty?
 
-    partners = Referee.where(id: tallies.keys, guest: false).includes(:club).index_by(&:id)
+    # merged_into_id: nil analog zum active-Scope. merge_into! schreibt
+    # officiating_referee_ids zwar auf die Master-PK um, Altdaten und Backfills
+    # können aber noch auf ein zusammengeführtes Profil zeigen. Ohne den Filter
+    # erschiene dieselbe Person als zweite, scheinbar aktive Zeile im Gespann.
+    partners = Referee.where(id: tallies.keys, guest: false, merged_into_id: nil)
+                      .includes(:club).index_by(&:id)
     seasons_map = Setting.seasons.to_h { |s| [s[:id], s[:name]] }
     go_names = GameOperation.where(id: tallies.values.flat_map { |t| t[:by_game_operation].keys }.uniq)
                             .pluck(:id, :name).to_h

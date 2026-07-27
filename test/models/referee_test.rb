@@ -156,4 +156,74 @@ class RefereeTest < ActiveSupport::TestCase
 
     assert_equal [master.id, 0], game.reload.officiating_referee_ids
   end
+
+  # ---------------------------------------------------------------------------
+  # partner_history / partner_stats (#222)
+  # ---------------------------------------------------------------------------
+
+  test 'partner_history: ein zusammengeführtes Profil erscheint nicht als eigener Partner' do
+    create(:setting, current_season_id: '18')
+    subject   = create(:referee)
+    master    = create(:referee, gueltigkeit: Date.today + 1.year)
+    secondary = create(:referee)
+    # Stale Referenz, wie sie aus Altdaten/Backfill stammen kann: die Spiele
+    # zeigen weiter auf die Secondary-PK, obwohl das Profil zusammengeführt ist.
+    secondary.update_columns(merged_into_id: master.id)
+    partner_game([subject.id, secondary.id])
+    partner_game([subject.id, master.id])
+
+    partners = subject.partner_history[:partners]
+
+    assert_equal([master.id], partners.map { |p| p[:referee_id] })
+  end
+
+  test 'partner_history: ein Spiel mit doppelter Partner-PK zählt nur einmal' do
+    create(:setting, current_season_id: '18')
+    subject = create(:referee)
+    partner = create(:referee)
+    # array_replace beim Merge kann beide Slots auf dieselbe PK setzen.
+    partner_game([subject.id, partner.id, partner.id])
+
+    tally = subject.partner_history[:partners].first
+
+    assert_equal 1, tally[:games_total]
+    assert_equal 1, tally[:games_current_season]
+  end
+
+  test 'partner_history: liefert Verein und Lizenzgültigkeit des Partners' do
+    create(:setting, current_season_id: '18')
+    subject = create(:referee)
+    club    = create(:club, name: 'SC Gespann')
+    active_partner  = create(:referee, club_id: club.id, gueltigkeit: Date.today + 1.year)
+    expired_partner = create(:referee, gueltigkeit: Date.today - 1.day)
+    partner_game([subject.id, active_partner.id])
+    partner_game([subject.id, expired_partner.id], season_id: '17')
+
+    partners = subject.partner_history[:partners].index_by { |p| p[:referee_id] }
+
+    assert partners[active_partner.id][:active]
+    assert_equal 'SC Gespann', partners[active_partner.id][:club_name]
+    assert_not partners[expired_partner.id][:active]
+    assert_nil partners[expired_partner.id][:club_name]
+  end
+
+  test 'partner_history: bei gleicher Einsatzzahl entscheidet die Gesamthistorie' do
+    create(:setting, current_season_id: '18')
+    subject = create(:referee)
+    more    = create(:referee)
+    fewer   = create(:referee)
+    partner_game([subject.id, more.id])
+    partner_game([subject.id, more.id], season_id: '17')
+    partner_game([subject.id, fewer.id])
+
+    partners = subject.partner_history[:partners]
+
+    assert_equal([1, 1], partners.map { |p| p[:games_current_season] })
+    assert_equal([more.id, fewer.id], partners.map { |p| p[:referee_id] })
+  end
+
+  def partner_game(referee_ids, season_id: '18')
+    league = create(:league, season_id: season_id)
+    create(:game, game_day: create(:game_day, league: league), officiating_referee_ids: referee_ids)
+  end
 end

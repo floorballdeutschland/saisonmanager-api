@@ -145,8 +145,8 @@ module Admin
 
     # GET /api/v2/admin/referees/:id/partners
     # Gespann-Historie: mit wem dieser Schiri tatsächlich im Einsatz war.
-    # include_vm: false – anders als games/club_stats ist das keine Sicht auf
-    # den eigenen Verein, sondern eine Bestandsauswertung, die bewusst auch
+    # include_vm: false, weil das anders als games/club_stats keine Sicht auf
+    # den eigenen Verein ist, sondern eine Bestandsauswertung, die bewusst auch
     # Partner aus anderen Verbänden zeigt. Sie bleibt RSK/Ansetzern vorbehalten.
     def partners
       return forbidden_response unless can_access_referee?(@referee, include_vm: false)

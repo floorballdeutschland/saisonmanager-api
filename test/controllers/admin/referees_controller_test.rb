@@ -253,6 +253,45 @@ module Admin
       assert_empty response.parsed_body['partners']
     end
 
+    test 'LV-RSK darf die Gespann-Historie eines Schiris im eigenen Bestand abrufen' do
+      sa = create(:state_association)
+      go = create(:game_operation, state_association_id: sa.id)
+      referee = create(:referee, club_id: create(:club, state_association_id: sa.id).id)
+      login(rsk_user(go.id))
+
+      get "/api/v2/admin/referees/#{referee.id}/partners"
+
+      assert_response :success
+    end
+
+    test 'Ansetzer darf die Gespann-Historie im eigenen Bestand abrufen' do
+      sa = create(:state_association)
+      go = create(:game_operation, state_association_id: sa.id)
+      referee = create(:referee, club_id: create(:club, state_association_id: sa.id).id)
+      login(create(:user, :assigner_scoped, game_operation_id: go.id))
+
+      get "/api/v2/admin/referees/#{referee.id}/partners"
+
+      assert_response :success
+    end
+
+    # Die Auswertung zeigt bewusst auch Partner aus anderen Verbänden, sonst
+    # unterschätzt sie die Belastung eines Schiris systematisch. Das ist zugleich
+    # der Grund für include_vm: false in der Action.
+    test 'partners zeigt auch Partner aus einem fremden Landesverband' do
+      sa = create(:state_association)
+      go = create(:game_operation, state_association_id: sa.id)
+      referee = create(:referee, club_id: create(:club, state_association_id: sa.id).id)
+      foreign = create(:referee, club_id: create(:club, state_association_id: create(:state_association).id).id)
+      partner_game([referee.id, foreign.id])
+      login(rsk_user(go.id))
+
+      get "/api/v2/admin/referees/#{referee.id}/partners"
+
+      assert_response :success
+      assert_equal([foreign.id], response.parsed_body['partners'].map { |p| p['referee_id'] })
+    end
+
     test 'VM darf die Gespann-Historie eines Vereins-Schiris nicht abrufen' do
       club = create(:club)
       referee = create(:referee, club_id: club.id)
