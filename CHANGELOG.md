@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.57.0] - 2026-07-27
+
 ### Behoben
 
 - **Schwächere Rolle sperrte stärkere Rolle aus (Mehrfachrollen)**: Wer neben einer Vereinsmanager-Rolle zusätzlich Admin, SBK, RSK oder Ansetzer war, wurde an mehreren Stellen von der eigenen schwächeren Rolle blockiert, weil die Berechtigungsprüfungen als `if/elsif`-Ketten formuliert waren und nach dem ersten passenden Zweig abbrachen. Aufgefallen war das beim Direkt-Transfer: Eine SBK, die zugleich Vereinsmanagerin eines anderen Vereins ist, bekam schon bei der Spielersuche „Nicht berechtigt für diesen Verein", obwohl der Direkt-Transfer selbst (`direct_assign`) den Wechsel erlaubt hätte. Alle Rollen werden jetzt additiv ausgewertet: Transfer- und Korrekturanträge (Suche, Anlage, Listen), Vereins- und Spielbetriebslisten, Lizenz-Ligenliste, Team- und Lizenz-Aktionen, Spielberichts-/Aufstellungsrechte sowie das Schiedsrichter-Scoping. Vereine, die nur über die VM-Rolle erreichbar sind, erscheinen in der Vereinsauswahl jetzt unter „Eigene Vereine". Betroffen war auch die Benutzerliste sowie das Speichern von Spielbericht-Feldern, wo eine SBK-Rolle aus einem anderen Verband den Zugriff über eine passende VM-/TM-Rolle verdeckte.
