@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.57.3] - 2026-07-27
+
 ### Behoben
 
 - **Direkt-Transfer über Landesverbandsgrenzen fälschlich abgelehnt**: `direct_assign` verlangte SBK-Zuständigkeit für Spielbetrieb *beider* Vereine (abgebend und aufnehmend). Da für einen Vereinswechsel wie beim mehrstufigen Genehmigungsprozess (`lv_authorized?`) nur der abgebende Verein zustimmen muss, wurde ein SBK, der ausschließlich für den abgebenden Verein zuständig ist, beim Direkt-Transfer in einen anderen Landesverband mit „Nicht berechtigt für diese Vereine" abgewiesen, obwohl er den gleichen Wechsel über den regulären Prozess hätte freigeben können. `sbk_may_assign?` prüft jetzt nur noch den Spielbetrieb des abgebenden Vereins.
