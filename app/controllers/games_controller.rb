@@ -790,15 +790,18 @@ class GamesController < ApplicationController
                 # Auf den Spielbetrieb des Spiels scopen – ein LV-SBK darf nicht
                 # jedes Spiel bundesweit bearbeiten.
                 ph[:sbk].include?(0) || ph[:sbk].include?(game.league.game_operation_id)
-              elsif ph[:vm].present?
+              elsif ph[:vm].present? || ph[:tm].present?
+                # VM- und TM-Zweig additiv: eine nicht passende VM-Rolle darf den
+                # TM-Zugriff auf das eigene Spiel nicht verdecken.
                 # .present? auch auf den ersten Treffer – ein leeres
                 # Array ist truthy und ließ sonst jeden VM jedes Spiel bearbeiten.
                 # home/guest können bei Platzhalter-Spielen nil sein.
-                ph[:vm].intersection([home&.club_id, guest&.club_id].compact).present? ||
-                  ph[:vm].intersection([home&.syndicate_clubs,
-                                        guest&.syndicate_clubs].flatten.compact).present?
-              elsif ph[:tm].present?
-                ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)
+                (ph[:vm].present? &&
+                  (ph[:vm].intersection([home&.club_id, guest&.club_id].compact).present? ||
+                    ph[:vm].intersection([home&.syndicate_clubs,
+                                          guest&.syndicate_clubs].flatten.compact).present?)) ||
+                  (ph[:tm].present? &&
+                    (ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)))
               else
                 can_edit_game?(game)
               end

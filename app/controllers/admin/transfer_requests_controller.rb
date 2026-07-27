@@ -9,15 +9,20 @@ module Admin
       ph = current_user.permission_hash
       requests = if ph[:admin].present?
         TransferRequest.all
-      elsif ph[:sbk].present?
-        club_ids = ph[:sbk].include?(0) ? Club.pluck(:id) : derive_club_ids_for_go(ph[:sbk])
-        TransferRequest.where(former_club_id: club_ids)
-      elsif ph[:vm].present?
-        TransferRequest
-          .for_requesting_club(ph[:vm])
-          .or(TransferRequest.for_former_club(ph[:vm]))
       else
-        TransferRequest.none
+        # Rollen additiv auswerten statt per elsif-Kette: wer SBK *und* VM ist,
+        # verlor sonst die Antraege des eigenen Vereins, sobald dieser
+        # ausserhalb des SBK-Spielbetriebs liegt.
+        scopes = []
+        if ph[:sbk].present?
+          club_ids = ph[:sbk].include?(0) ? Club.pluck(:id) : derive_club_ids_for_go(ph[:sbk])
+          scopes << TransferRequest.where(former_club_id: club_ids)
+        end
+        if ph[:vm].present?
+          scopes << TransferRequest.for_requesting_club(ph[:vm])
+          scopes << TransferRequest.for_former_club(ph[:vm])
+        end
+        scopes.reduce { |combined, scope| combined.or(scope) } || TransferRequest.none
       end
 
       render json: requests.order(created_at: :desc).map(&:as_json)
@@ -49,10 +54,8 @@ module Admin
       return render json: { player: nil } unless player
 
       requesting_club_id = params[:requesting_club_id].to_i
-      if ph[:vm].present?
-        unless ph[:vm].include?(requesting_club_id)
-          return render json: { error: 'Nicht berechtigt fuer diesen Verein' }, status: :forbidden
-        end
+      if ph[:vm].present? && !may_act_for_club?(ph, requesting_club_id)
+        return render json: { error: 'Nicht berechtigt fuer diesen Verein' }, status: :forbidden
       end
 
       if requesting_club_id > 0
@@ -101,7 +104,7 @@ module Admin
       end
 
       requesting_club_id = params[:requesting_club_id].to_i
-      if ph[:vm].present? && !ph[:vm].include?(requesting_club_id)
+      if ph[:vm].present? && !may_act_for_club?(ph, requesting_club_id)
         return render json: { error: 'Nicht berechtigt fuer diesen Verein' }, status: :forbidden
       end
 
@@ -487,6 +490,20 @@ module Admin
     end
 
     private
+
+    # Darf der Nutzer für diesen Verein handeln? Stärkere Rollen gehen der
+    # VM-Vereinsbindung vor: wer neben der VM-Rolle auch Admin oder SBK ist,
+    # wurde sonst von der eigenen schwächeren Rolle ausgesperrt (SBK + VM kam
+    # so nie bis zum Direkt-Transfer, obwohl #direct_assign es erlaubt hätte).
+    def may_act_for_club?(ph, club_id)
+      return true if ph[:admin].present?
+      return true if ph[:vm].present? && ph[:vm].include?(club_id)
+      return false if ph[:sbk].blank?
+      return true if ph[:sbk].include?(0)
+
+      club = Club.find_by(id: club_id)
+      club.present? && ph[:sbk].include?(club.main_game_operation_id)
+    end
 
     # SBK darf nur Vereinswechsel innerhalb des eigenen Landesverbands direkt
     # durchführen; global gescopte SBK (FD) und Admin auch verbandsübergreifend.

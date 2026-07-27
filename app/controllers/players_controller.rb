@@ -83,13 +83,7 @@ class PlayersController < ApplicationController
     league = team.league
 
     ph = current_user.permission_hash
-    allowed = if ph[:admin].present? || ph[:sbk].present?
-                true
-              elsif ph[:vm].present?
-                ph[:vm].include?(team.club_id) || ph[:vm].intersection(team.syndicate_clubs).present?
-              elsif ph[:tm].present?
-                ph[:tm].include?(team.id)
-              end
+    allowed = may_manage_team?(ph, team)
 
     return render json: { message: 'Keine Berechtigung für dieses Team!' }, status: :forbidden unless allowed
 
@@ -366,15 +360,13 @@ class PlayersController < ApplicationController
     # get hosting clubs
     all_club_ids = [club_ids, league.game_days.map(&:club_id)].flatten.compact.uniq
 
-    allowed = if ph[:admin].present? || ph[:sbk].present?
-                true
-              elsif ph[:vm].present?
-                # vm: permission for one of those clubs?
-                ph[:vm].intersection(all_club_ids).present?
-              elsif ph[:tm].present?
-                # tm: get clubs for league teams of given team, permission for one of those?
-                ph[:tm].intersection(teams.map(&:id)).present?
-              end
+    # Rollen additiv: sonst blockiert eine nicht passende VM-Rolle den
+    # TM-Zweig, obwohl der Nutzer über sein Team berechtigt wäre.
+    allowed = ph[:admin].present? || ph[:sbk].present? ||
+              # vm: permission for one of those clubs?
+              (ph[:vm].present? && ph[:vm].intersection(all_club_ids).present?) ||
+              # tm: get clubs for league teams of given team, permission for one of those?
+              (ph[:tm].present? && ph[:tm].intersection(teams.map(&:id)).present?)
 
     if allowed
       render json: league.licenses(true)
@@ -392,13 +384,7 @@ class PlayersController < ApplicationController
 
     team = Team.find(found_license['team_id'])
     ph = current_user.permission_hash
-    allowed = if ph[:admin].present? || ph[:sbk].present?
-                true
-              elsif ph[:vm].present?
-                ph[:vm].include?(team.club_id) || ph[:vm].intersection(team.syndicate_clubs).present?
-              elsif ph[:tm].present?
-                ph[:tm].include?(team.id)
-              end
+    allowed = may_manage_team?(ph, team)
     return render json: { message: 'Keine Berechtigung für dieses Team!' }, status: :forbidden unless allowed
 
     last_status_id = found_license['history'].max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
@@ -454,13 +440,7 @@ class PlayersController < ApplicationController
     team = Team.find(found_license['team_id'])
 
     ph = current_user.permission_hash
-    allowed = if ph[:admin].present? || ph[:sbk].present?
-                true
-              elsif ph[:vm].present?
-                ph[:vm].include?(team.club_id) || ph[:vm].intersection(team.syndicate_clubs).present?
-              elsif ph[:tm].present?
-                ph[:tm].include?(team.id)
-              end
+    allowed = may_manage_team?(ph, team)
 
     if allowed
       if player.save
@@ -979,6 +959,16 @@ class PlayersController < ApplicationController
       game_operation: league&.game_operation&.short_name,
       team_name:      team_names[entry[:team_id]]
     )
+  end
+
+  # Alle Rollen additiv prüfen: eine frühere elsif-Kette ließ die VM-Rolle
+  # gewinnen und sperrte damit Nutzer aus, die zwar nicht VM des Vereins, wohl
+  # aber TM des Teams (oder Admin/SBK) sind.
+  def may_manage_team?(ph, team)
+    ph[:admin].present? || ph[:sbk].present? ||
+      (ph[:vm].present? &&
+        (ph[:vm].include?(team.club_id) || ph[:vm].intersection(team.syndicate_clubs).present?)) ||
+      (ph[:tm].present? && ph[:tm].include?(team.id))
   end
 
   def can_manage_player?(player)

@@ -3,22 +3,29 @@ class ClubsController < ApplicationController
 
   def user_clubs_and_teams
     ph = current_user.permission_hash
+    # Alle Rollen additiv auswerten statt per elsif-Kette nur die erste: wer
+    # neben Admin/SBK auch VM oder TM ist, verlor sonst genau die Vereine, die
+    # außerhalb des eigenen Spielbetriebs liegen.
     clubs = if ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
               Club.all
-            elsif ph[:admin].present? || ph[:sbk].present?
-              go_ids = []
-              go_ids << ph[:admin] if ph[:admin].present?
-              go_ids << ph[:sbk] if ph[:sbk].present?
-              go_ids.flatten!
+            else
+              collected = []
 
-              # where(id:) statt find: kein Absturz, wenn eine Berechtigung auf
-              # einen zwischenzeitlich gelöschten Spielbetrieb verweist.
-              GameOperation.where(id: go_ids).flat_map(&:clubs).uniq
-            elsif ph[:vm].present?
-              Club.where(id: ph[:vm])
-            elsif ph[:tm].present?
-              teams = Team.current_season.where(id: ph[:tm])
-              teams.map(&:all_clubs).flatten.uniq
+              if ph[:admin].present? || ph[:sbk].present?
+                go_ids = []
+                go_ids << ph[:admin] if ph[:admin].present?
+                go_ids << ph[:sbk] if ph[:sbk].present?
+                go_ids.flatten!
+
+                # where(id:) statt find: kein Absturz, wenn eine Berechtigung auf
+                # einen zwischenzeitlich gelöschten Spielbetrieb verweist.
+                collected += GameOperation.where(id: go_ids).flat_map(&:clubs)
+              end
+
+              collected += Club.where(id: ph[:vm]).to_a if ph[:vm].present?
+              collected += Team.current_season.where(id: ph[:tm]).flat_map(&:all_clubs) if ph[:tm].present?
+
+              collected.compact.uniq
             end
 
     # Vereine mit vorgeladenen Logos neu laden und alle aktuellen Teams in
@@ -62,15 +69,13 @@ class ClubsController < ApplicationController
     # get hosting clubs
     all_club_ids = [club_ids, leagues.map { |l| l.game_days.map(&:club_id) }].flatten.compact.uniq
 
-    allowed = if ph[:admin].present? || ph[:sbk].present?
-                true
-              elsif ph[:vm].present?
-                # vm: permission for one of those clubs?
-                ph[:vm].intersection(all_club_ids).present?
-              elsif ph[:tm].present?
-                # tm: get clubs for league teams of given team, permission for one of those?
-                ph[:tm].intersection(teams.map(&:id)).present?
-              end
+    # Rollen additiv: ein VM, der zugleich TM eines Teams außerhalb seiner
+    # Vereine ist, wurde von der elsif-Kette sonst am TM-Zweig vorbeigeleitet.
+    allowed = ph[:admin].present? || ph[:sbk].present? ||
+              # vm: permission for one of those clubs?
+              (ph[:vm].present? && ph[:vm].intersection(all_club_ids).present?) ||
+              # tm: get clubs for league teams of given team, permission for one of those?
+              (ph[:tm].present? && ph[:tm].intersection(teams.map(&:id)).present?)
 
     if allowed
       result = {}
@@ -133,19 +138,23 @@ class ClubsController < ApplicationController
 
     # wenn admin oder sbk global: füge alle hinzu
     ph = user.permission_hash
+    # Rollen additiv: die frühere elsif-Kette ließ die Admin-/SBK-Rolle gewinnen
+    # und sperrte den Nutzer damit aus seinem eigenen Verein aus, sobald dieser
+    # außerhalb der Verbands-Berechtigung liegt.
     club = if ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
              club_object
-           elsif ph[:admin].present? || ph[:sbk].present?
+           else
              go_ids = []
              go_ids << ph[:admin] if ph[:admin].present?
              go_ids << ph[:sbk] if ph[:sbk].present?
 
              # if club and permission share a go_id we are allowed to see this
-             club_object if go_ids.flatten.intersection(club_object.game_operations_hash.map do |go|
-                                                          go['game_operation_id']
-                                                        end).present?
-           elsif ph[:vm].present?
-             club_object if ph[:vm].include?(club_id)
+             in_go = go_ids.flatten.intersection(club_object.game_operations_hash.map do |go|
+                                                   go['game_operation_id']
+                                                 end).present?
+             is_vm = ph[:vm].present? && ph[:vm].include?(club_id)
+
+             club_object if in_go || is_vm
            end
 
     return unless club

@@ -376,14 +376,14 @@ module Admin
       return true if ph[:rsk].present? && ph[:rsk].include?(0)
       return true if ph[:ansetzer].present? && ph[:ansetzer].include?(0)
 
+      # Rollen additiv: eine nicht passende RSK-/Ansetzer-Rolle darf den
+      # VM-Zugriff auf die Schiris des eigenen Vereins nicht verdecken.
       if ph[:rsk].present? || ph[:ansetzer].present?
         go_ids = referee_scope_go_ids(ph)
-        lv_club_ids(go_ids).include?(referee.club_id) || go_ids.include?(referee.game_operation_id)
-      elsif include_vm && ph[:vm].present?
-        ph[:vm].include?(referee.club_id)
-      else
-        false
+        return true if lv_club_ids(go_ids).include?(referee.club_id) || go_ids.include?(referee.game_operation_id)
       end
+
+      include_vm && ph[:vm].present? && ph[:vm].include?(referee.club_id)
     end
 
     # Neue Schiedsrichter anlegen darf nur, wer Vollzugriff hat (Admin oder

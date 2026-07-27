@@ -2,14 +2,18 @@ module Admin
   class PlayerChangeRequestsController < ApplicationController
     def index
       ph = current_user.permission_hash
+      # Rollen additiv auswerten: ein Nutzer mit SBK- *und* VM-Rolle sah sonst
+      # nur den SBK-Ausschnitt und verlor die Anträge des eigenen Vereins,
+      # sobald dieser außerhalb des SBK-Spielbetriebs liegt.
       requests = if ph[:admin].present?
                    PlayerChangeRequest.all
-                 elsif ph[:sbk].present?
-                   PlayerChangeRequest.for_go(ph[:sbk])
-                 elsif ph[:vm].present?
-                   PlayerChangeRequest.for_club(ph[:vm])
                  else
-                   return render json: [], status: :ok
+                   scopes = []
+                   scopes << PlayerChangeRequest.for_go(ph[:sbk]) if ph[:sbk].present?
+                   scopes << PlayerChangeRequest.for_club(ph[:vm]) if ph[:vm].present?
+                   return render json: [], status: :ok if scopes.empty?
+
+                   scopes.reduce { |combined, scope| combined.or(scope) }
                  end
 
       render json: requests.order(created_at: :desc).includes(:player, :club, :secondary_player)
