@@ -68,16 +68,21 @@ class GameOperationsController < ApplicationController
     go_ids = []
 
     ph = current_user.permission_hash
+    # Rollen additiv: ein Nutzer mit Admin-/SBK- *und* VM-Rolle verlor sonst
+    # den Spielbetrieb seines Vereins, wenn dieser außerhalb der eigenen
+    # Verbands-Berechtigung liegt.
     if ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
       go_ids = GameOperation.all.pluck(:id)
-    elsif ph[:admin].present? || ph[:sbk].present?
+    else
       go_ids << ph[:admin] if ph[:admin].present?
       go_ids << ph[:sbk] if ph[:sbk].present?
       go_ids.flatten!
-    elsif ph[:vm].present?
-      go_ids = Club.where(id: ph[:vm])
-                   .flat_map { |c| [c.main_game_operation_id, *c.additional_game_operation_ids] }
-                   .compact.uniq
+
+      if ph[:vm].present?
+        go_ids |= Club.where(id: ph[:vm])
+                      .flat_map { |c| [c.main_game_operation_id, *c.additional_game_operation_ids] }
+                      .compact
+      end
     end
 
     render json: GameOperation.where(id: go_ids).order(:id)

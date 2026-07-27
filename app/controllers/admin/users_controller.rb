@@ -244,20 +244,23 @@ module Admin
 
     def scoped_users
       ph = current_user.permission_hash
-      ids = if ph[:admin].present? || (ph[:sbk].present? && ph[:sbk].include?(0)) ||
-               (ph[:rsk].present? && ph[:rsk].include?(0))
-              return User.all
-            elsif ph[:sbk].present? || ph[:rsk].present?
-              go_ids = (ph[:sbk] || []) + (ph[:rsk] || [])
-              club_ids = derive_club_ids_for_go(go_ids)
-              club_user_ids = User.where(club_id: club_ids).pluck(:id)
-              lv_user_ids = lv_scoped_user_ids(go_ids)
-              (club_user_ids + lv_user_ids).uniq
-            elsif ph[:vm].present?
-              User.where(club_id: ph[:vm]).pluck(:id)
-            else
-              []
-            end
+      if ph[:admin].present? || (ph[:sbk].present? && ph[:sbk].include?(0)) ||
+         (ph[:rsk].present? && ph[:rsk].include?(0))
+        return User.all
+      end
+
+      # Rollen additiv: ein Nutzer mit SBK-/RSK- *und* VM-Rolle verlor sonst die
+      # Konten des eigenen Vereins, sobald dieser außerhalb des eigenen
+      # Spielbetriebs liegt. Die Schreibrechte bleiben davon unberührt, dafür
+      # sorgt weiterhin require_admin_for_elevated_target!.
+      ids = []
+      if ph[:sbk].present? || ph[:rsk].present?
+        go_ids = (ph[:sbk] || []) + (ph[:rsk] || [])
+        ids += User.where(club_id: derive_club_ids_for_go(go_ids)).pluck(:id)
+        ids += lv_scoped_user_ids(go_ids)
+      end
+      ids += User.where(club_id: ph[:vm]).pluck(:id) if ph[:vm].present?
+
       User.where(id: (ids + [current_user.id]).uniq)
     end
 

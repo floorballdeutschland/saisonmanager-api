@@ -190,9 +190,13 @@ class Club < ApplicationRecord
       go_ids.flatten!
     end
 
+    covered_club_ids = []
+
     GameOperation.includes(state_association: { logo_attachment: :blob }).find(go_ids).each do |go|
       item = go.meta_hash
-      item[:clubs] = club_scope.where(id: go.clubs.pluck(:id)).order(:name).map(&:full_hash)
+      clubs = club_scope.where(id: go.clubs.pluck(:id)).order(:name)
+      covered_club_ids += clubs.map(&:id)
+      item[:clubs] = clubs.map(&:full_hash)
       result << item
     end
 
@@ -203,6 +207,8 @@ class Club < ApplicationRecord
         .pluck(:grantor_state_association_id)
 
       StateAssociation.where(id: released_sa_ids).order(:name).each do |sa|
+        clubs = club_scope.where(state_association_id: sa.id).order(:name)
+        covered_club_ids += clubs.map(&:id)
         result << {
           id: nil,
           name: "#{sa.name} (freigegeben)",
@@ -212,7 +218,26 @@ class Club < ApplicationRecord
           logo_quad_url: nil,
           state_association_id: sa.id,
           released: true,
-          clubs: club_scope.where(state_association_id: sa.id).order(:name).map(&:full_hash)
+          clubs: clubs.map(&:full_hash)
+        }
+      end
+
+      # Eigene Vereine (VM-Rolle) ergänzen, soweit sie nicht schon über einen
+      # Spielbetrieb abgedeckt sind. Ohne das fehlten einem Nutzer mit Admin-/
+      # SBK- *und* VM-Rolle genau die Vereine außerhalb seines Spielbetriebs,
+      # weil diese Liste bislang rein verbandsbasiert aufgebaut wurde.
+      own_clubs = club_scope.where(id: ph[:vm].to_a - covered_club_ids).order(:name)
+      if own_clubs.any?
+        result << {
+          id: nil,
+          name: 'Eigene Vereine',
+          short_name: nil,
+          path: nil,
+          logo_url: nil,
+          logo_quad_url: nil,
+          state_association_id: nil,
+          released: false,
+          clubs: own_clubs.map(&:full_hash)
         }
       end
     end
