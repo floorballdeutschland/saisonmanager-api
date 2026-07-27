@@ -1,4 +1,4 @@
-# Self-Service-Einstellungen des eingeloggten Users (Sprache, Passwort).
+# Self-Service-Einstellungen des eingeloggten Users (Name, Sprache, Passwort).
 # Nicht zu verwechseln mit Admin::UsersController (Verwaltung fremder User).
 class UserSettingsController < ApplicationController
   # Der Bestätigungslink aus der Mail wird ohne Login geöffnet – das Token ist
@@ -7,6 +7,60 @@ class UserSettingsController < ApplicationController
   before_action :authenticate_public_request, only: %i[confirm_email]
 
   MIN_PASSWORD_LENGTH = 8
+  MAX_NAME_LENGTH = 50
+  NAME_LOCKED_MESSAGE = 'Dein Name steht auf deinem Schiedsrichterausweis und kann deshalb nicht selbst geändert ' \
+                        'werden. Wende dich dafür an deine Verbandsgeschäftsstelle.'.freeze
+
+  # PATCH /api/v2/user/name
+  # Grundsätzlich darf jede Person ihren eigenen Vor- und Nachnamen pflegen
+  # (z. B. Schreibfehler, Namensänderung nach Heirat); die Ausnahme für
+  # Schiedsrichter steht unten. Der Benutzername bleibt bewusst
+  # ausgeschlossen: er ist die Login-Kennung und wird nur über die
+  # Benutzerverwaltung geändert.
+  def update_name
+    # Konten mit verknüpfter Schiedsrichter-Lizenz sind ausgenommen: Der Name
+    # steht auf dem digitalen Schiedsrichterausweis (/schiedsrichter/ausweis),
+    # der bei Partnern Vergünstigungen gewährt. Selbstpflege wäre dort eine
+    # Fälschungsmöglichkeit, deshalb bleibt der Name der Geschäftsstelle
+    # vorbehalten (Schiedsrichterverwaltung). Gegenstück im Schiri-Profil:
+    # RefereeProfileController#profile_params.
+    #
+    # 422 statt 403: Der ErrorInterceptor im Frontend navigiert bei 403 auf die
+    # Startseite. Hier soll die Person auf „Mein Konto" bleiben und die
+    # Begründung lesen.
+    if current_user.referee_id.present?
+      return render json: { success: false, message: NAME_LOCKED_MESSAGE },
+                    status: :unprocessable_entity
+    end
+
+    first_name = params[:first_name].to_s.strip
+    last_name = params[:last_name].to_s.strip
+
+    if first_name.blank? || last_name.blank?
+      return render json: { success: false, message: 'Vor- und Nachname dürfen nicht leer sein.' },
+                    status: :unprocessable_entity
+    end
+
+    if first_name.length > MAX_NAME_LENGTH || last_name.length > MAX_NAME_LENGTH
+      return render json: { success: false,
+                            message: "Vor- und Nachname dürfen höchstens #{MAX_NAME_LENGTH} Zeichen lang sein." },
+                    status: :unprocessable_entity
+    end
+
+    # current_user ist NICHT memoisiert und liefert bei jedem Aufruf eine frisch
+    # geladene Instanz (ApplicationController#current_user). Die Referenz daher
+    # einmal festhalten, sonst läge errors nach einem Fehlschlag auf einem
+    # anderen Objekt und die Antwort trüge eine leere message.
+    user = current_user
+
+    if user.update(first_name:, last_name:)
+      render json: { success: true, user: user.login_hash }
+    else
+      message = user.errors.full_messages.presence&.join(', ')
+      render json: { success: false, message: message || 'Name konnte nicht gespeichert werden.' },
+             status: :unprocessable_entity
+    end
+  end
 
   # PATCH /api/v2/user/language
   def update_language
