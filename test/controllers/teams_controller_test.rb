@@ -217,6 +217,78 @@ class TeamsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 1, body['recent_games'].length
   end
 
+  # Beendetes Spiel des Teams in `league` mit genau einem Tor eines eigenen
+  # Spielers; liefert diesen Spieler (ergibt einen Scorer-Eintrag über
+  # Game#evaluate_scorer).
+  def game_with_goal(team, league, trikot_number)
+    guest = create(:team, league:, club: @club)
+    player = create(:player)
+    game_day = GameDay.create!(league:, arena: create(:arena), club: @club, number: 1, date: '2026-01-01')
+    Game.create!(
+      game_day:, home_team: team, guest_team: guest,
+      started: true, ended: true, forfait: 0, overtime: false, legacy: false,
+      events: [{ 'id' => 1, 'period' => 1, 'time' => '5:00', 'home_number' => trikot_number,
+                 'home_goals' => 1, 'guest_goals' => 0 }],
+      players: { 'home' => [{ 'trikot_number' => trikot_number, 'player_id' => player.id }], 'guest' => [] }
+    )
+    player
+  end
+
+  def team_with_scorer(enable_scorer:)
+    league = create(:league, game_operation: @go, enable_scorer:)
+    team = create(:team, league:, club: @club)
+    game_with_goal(team, league, 7)
+    team
+  end
+
+  test 'stats liefert die Scorerliste, wenn die Liga sie öffentlich zeigt' do
+    login(create(:user, :admin))
+    team = team_with_scorer(enable_scorer: true)
+
+    get "/api/v2/teams/#{team.id}/stats"
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert body['scorer_visible']
+    assert_equal 1, body['scorer'].length
+    assert_equal 1, body['totals']['goals']
+  end
+
+  test 'stats liefert keine Scorerliste, wenn die Liga sie ausblendet' do
+    login(create(:user, :admin))
+    team = team_with_scorer(enable_scorer: false)
+
+    get "/api/v2/teams/#{team.id}/stats"
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_not body['scorer_visible']
+    assert_empty body['scorer']
+    # Team-Summen bleiben erhalten, sie sind keine personenbezogene Rangliste.
+    assert_equal 1, body['totals']['goals']
+  end
+
+  test 'stats behält die Scorerpunkte der Ligen, die ihre Scorerliste zeigen' do
+    login(create(:user, :admin))
+    # Typischer Fall: Hauptliga zeigt die Scorerliste, eine zusätzliche
+    # Relegations-/Qualifikationsliga nicht (enable_scorer hat Default false).
+    main_league = create(:league, game_operation: @go, enable_scorer: true)
+    cup_league = create(:league, game_operation: @go, enable_scorer: false)
+    team = create(:team, league: main_league, club: @club, cup_leagues: [cup_league.id])
+    visible_player = game_with_goal(team, main_league, 7)
+    game_with_goal(team, cup_league, 8)
+
+    get "/api/v2/teams/#{team.id}/stats"
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert body['scorer_visible']
+    scorer_player_ids = body['scorer'].map { |s| s['player_id'] }
+    assert_equal [visible_player.id], scorer_player_ids
+    # Die Summen zählen weiter alle Spiele des Teams, also beide Tore.
+    assert_equal 2, body['totals']['goals']
+  end
+
   test 'destroy lehnt Löschung mit 422 ab, wenn eine Spieltag-Bestätigung existiert (DB-FK)' do
     login(create(:user, :admin))
     arena = create(:arena)

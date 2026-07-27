@@ -31,6 +31,14 @@ class RefereeHistoryController < ApplicationController
     render json: result
   end
 
+  # GET /api/v2/referee/history/partners
+  # Eigensicht auf die Gespann-Historie: mit wem der Schiri selbst im Einsatz
+  # war. Gleiche Aggregation wie die RSK-/Ansetzer-Variante
+  # (admin/referees/:id/partners), nur auf das eigene Profil beschränkt.
+  def partners
+    render json: @referee.partner_history
+  end
+
   # GET /api/v2/referee/history/tests
   # Liefert die eigenen Kurs-Ergebnisse aus dem CSV-Kurs-Import (unabhängig
   # vom Review-Status, damit der Schiri auch offene/abgelehnte Fälle sieht).

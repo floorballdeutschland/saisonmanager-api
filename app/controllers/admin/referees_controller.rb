@@ -4,7 +4,7 @@ module Admin
 
     before_action :authorize_referee_access!
     before_action :set_referee,
-                  only: %i[show update destroy games club_stats merge create_user destroy_user feedbacks]
+                  only: %i[show update destroy games club_stats partners merge create_user destroy_user feedbacks]
 
     # GET /api/v2/admin/referees
     def index
@@ -141,6 +141,17 @@ module Admin
                       .order('game_days.date DESC')
 
       render json: games.map { |g| game_summary(g) }
+    end
+
+    # GET /api/v2/admin/referees/:id/partners
+    # Gespann-Historie: mit wem dieser Schiri tatsächlich im Einsatz war.
+    # include_vm: false, weil das anders als games/club_stats keine Sicht auf
+    # den eigenen Verein ist, sondern eine Bestandsauswertung, die bewusst auch
+    # Partner aus anderen Verbänden zeigt. Sie bleibt RSK/Ansetzern vorbehalten.
+    def partners
+      return forbidden_response unless can_access_referee?(@referee, include_vm: false)
+
+      render json: @referee.partner_history
     end
 
     # GET /api/v2/admin/referees/:id/club_stats

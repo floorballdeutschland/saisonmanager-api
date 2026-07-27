@@ -9,6 +9,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Scorerliste der Teamseite folgt der Liga-Einstellung**: Auf der öffentlichen Teamseite war die Scorerliste („Scorer (Saison gesamt)") auch dann sichtbar, wenn die Scorerliste in der Liga ausgeblendet ist (`enable_scorer`, in der Altersklasse U13 und jünger per Vorgabe aus). Gezählt werden jetzt nur noch Spiele aus Ligen, die ihre Scorerliste öffentlich zeigen; blendet keine der Ligen eines Teams sie an, entfällt die Liste ganz. Gefiltert wird bewusst pro Liga und nicht pauschal über das Team: Spielt eine Mannschaft zusätzlich in einer Liga ohne öffentliche Scorerliste (häufig bei Relegation und Qualifikation), bleiben die Punkte aus den übrigen Ligen sichtbar, so wie sie im Ligen-Scorer ohnehin öffentlich sind. Das Filtern passiert im Endpoint `teams/:id/stats`, damit die Rangliste nicht über die Teamseiten-Schnittstelle abrufbar bleibt. Die Team-Summen (Tore, Vorlagen, Scorerpunkte, Strafminuten) zählen weiterhin alle Spiele der Saison, sie sind keine personenbezogene Rangliste (Frontend #154).
+- **Spielberichteingabe akzeptiert die Abschnittszeit wieder**: Im 2. und 3. Drittel sowie in der Verlängerung wurde jede Zeit unter der Abschnittsgrenze mit dem Hinweis „Die Zeit liegt außerhalb des gewählten Spielabschnitts (erlaubt: 20:00 bis 40:00)" abgelehnt, weil die Prüfung von kumulierter Spielzeit über das ganze Spiel ausging. Die Spieluhr startet aber in jedem Abschnitt neu bei 0:00, genau so wie die Zeitnehmer sie ablesen und wie die Zeiten auch bisher eingetragen wurden. Erlaubt ist jetzt in jedem Abschnitt 0:00 bis zur Abschnittslänge, in der Verlängerung bis zur Verlängerungslänge; im Penalty-Schießen bleibt die Zeit unbegrenzt (Frontend #152).
+
+### Verbessert
+
+- **„Meine Auswärtsspieltage" statt „Meine Spieltage"**: Der Menüpunkt für Team- und Vereinsmanager listet ausschließlich Spieltage, die ein anderer Verein ausrichtet – nur dort bestätigen die Gastmannschaften die ordnungsgemäße Durchführung. Der Name benennt das jetzt. Zusätzlich erscheint der Menüpunkt nur noch, wenn für eine der verantworteten Mannschaften überhaupt eine Spieltagscheckliste greift, also der Landesverband des Spielbetriebs mindestens eine Frage hinterlegt hat; ohne Checkliste gibt es nichts zu bestätigen. Die Sichtbarkeit steckt im Berechtigungs-Hash, wirkt also erst nach dem nächsten Login (Frontend #153).
+
+## [1.59.0] - 2026-07-27
+
+### Neu
+
+- **Gespann-Historie für Schiedsrichter**: Neue Auswertung, mit wem eine Schiedsrichterin oder ein Schiedsrichter tatsächlich im Einsatz war, mit gemeinsamen Einsätzen in der laufenden Saison und über die gesamte Historie, der letzten gemeinsamen Saison und einer Aufschlüsselung nach Spielbetrieb. Für die Ansetzung ist damit erkennbar, ob eine Paarung eingespielt oder neu ist. RSK und Ansetzer rufen sie im eigenen Bestand ab, Schiedsrichter sehen ihre eigene Historie. Gezählt werden ausschließlich tatsächliche Einsätze laut Spielbericht, nicht die reine Ansetzung, damit kurzfristige Umbesetzungen die Zahlen nicht verzerren. Gäste ohne Lizenznummer werden nicht als Partner ausgewiesen. Die Auswertung umfasst alle Saisons und weist darauf hin, dass die Zuordnungen für zurückliegende Saisons nicht lückenlos sind.
+
+### Behoben
+
+- **Spielberichte waren für jede Spielbetriebsleitung bundesweit bearbeitbar**: Die Berechtigungsprüfung für Aufstellung und Spielereignisse hat die SBK-Rolle nicht auf den Spielbetrieb des Spiels geprüft. Eine Spielbetriebsleitung eines Landesverbands konnte dadurch Aufstellungen, Torschützen, Strafen und den Spielstatus in Spielen jedes anderen Verbands ändern. Die Prüfung ist jetzt auf den Spielbetrieb des Spiels beschränkt, wie es für die Spielbericht-Freitextfelder bereits seit Längerem gilt. Admin-Rollen und die Bundesebene (FD) bleiben unverändert verbandsübergreifend berechtigt, und wer über eine andere Rolle Zugriff auf das Spiel hat, behält ihn: Vereins- oder Teammanager einer beteiligten Mannschaft sowie der Vereinsmanager des ausrichtenden Vereins.
+- **Abgeschlossene Spielberichte über eine fachfremde Rolle wieder änderbar**: Ob eine bereits abgeschlossene Spielberichts-Sperre übergangen werden darf, wurde ebenfalls ohne Prüfung des Spielbetriebs entschieden. Wer in einem Verband Spielbetriebsleitung und zugleich Vereins- oder Teammanager einer Mannschaft in einem anderen Verband war, konnte dort Ereignisse in einem abgeschlossenen Bericht nachträglich ändern und ihn wieder öffnen. Auch diese Prüfung ist jetzt auf den Spielbetrieb des Spiels beschränkt.
+- **Verlängerung und Penalty-Schießen nur noch bei unentschiedenem Spielstand**: Im Spielbericht führte der Weg nach der regulären Spielzeit weiter in die Pause vor der Verlängerung, die Verlängerung und das Penalty-Schießen, auch wenn eine Mannschaft führte. Bei einer Führung wird jetzt nur noch das Spielende angeboten, mit einem Hinweis anstelle des Buttons. Steht ein Spiel bereits in einer Pause und ist der Spielstand nicht mehr unentschieden, lässt es sich auch von dort beenden (Frontend #126, #136).
+- **Time-Outs im Spielverlauf wieder löschbar**: Der „Löschen"-Button im Spielverlauf hat bei Time-Outs nichts entfernt und auch keinen Fehler gemeldet, weil ein Time-Out kein Spielereignis ist, sondern ein eigenes Feld im Spielbericht. Der Eintrag wird jetzt tatsächlich entfernt und der Vorgang bestätigt (Frontend #136).
+- **Keine Time-Outs im Penalty-Schießen**: Während des Penalty-Schießens sind keine Auszeiten mehr eintragbar. Bisher war das über die Abschnitts-Auswahl des Ereignis-Formulars weiterhin möglich, wenn der Bericht nachträglich erfasst wurde (Frontend #126, #136).
+
 ## [1.58.0] - 2026-07-27
 
 ### Neu

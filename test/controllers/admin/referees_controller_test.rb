@@ -177,7 +177,151 @@ module Admin
       assert_equal 1, entry['season_game_count']
     end
 
+    test 'partners aggregiert gemeinsame Einsätze und trennt laufende Saison von der Gesamthistorie' do
+      referee = create(:referee)
+      often   = create(:referee, nachname: 'Oft')
+      once    = create(:referee, nachname: 'Selten')
+      partner_game([referee.id, often.id])
+      partner_game([referee.id, often.id], season_id: '17')
+      partner_game([referee.id, once.id], season_id: '17')
+      login(@admin)
+
+      get "/api/v2/admin/referees/#{referee.id}/partners"
+
+      assert_response :success
+      body = response.parsed_body
+      assert_equal referee.id, body['referee']['id']
+      assert_equal 18, body['season_id']
+      assert body['notice'].present?, 'Hinweis zur Belastbarkeit der Altdaten fehlt'
+
+      partners = body['partners']
+      # Sortierung: laufende Saison zuerst, dann Gesamtzahl
+      assert_equal([often.id, once.id], partners.map { |p| p['referee_id'] })
+      assert_equal 1, partners[0]['games_current_season']
+      assert_equal 2, partners[0]['games_total']
+      assert_equal 18, partners[0]['last_season_id']
+      assert_equal 'Saison 2025/26', partners[0]['last_season_name']
+      assert_equal 0, partners[1]['games_current_season']
+      assert_equal 1, partners[1]['games_total']
+      assert_equal 'Saison 2024/25', partners[1]['last_season_name']
+    end
+
+    test 'partners weist weder Gäste-Schiedsrichter noch den Schiri selbst als Partner aus' do
+      referee = create(:referee)
+      guest   = create(:referee, guest: true, lizenznummer: nil)
+      regular = create(:referee)
+      partner_game([referee.id, guest.id, regular.id])
+      login(@admin)
+
+      get "/api/v2/admin/referees/#{referee.id}/partners"
+
+      assert_response :success
+      ids = response.parsed_body['partners'].map { |p| p['referee_id'] }
+      assert_equal [regular.id], ids
+      assert_not_includes ids, guest.id
+      assert_not_includes ids, referee.id
+    end
+
+    test 'partners schlüsselt die Einsätze zusätzlich nach Spielbetrieb auf' do
+      referee = create(:referee)
+      partner = create(:referee)
+      go_a = create(:game_operation, name: 'Verband A')
+      go_b = create(:game_operation, name: 'Verband B')
+      2.times { partner_game([referee.id, partner.id], game_operation: go_a) }
+      partner_game([referee.id, partner.id], game_operation: go_b)
+      login(@admin)
+
+      get "/api/v2/admin/referees/#{referee.id}/partners"
+
+      assert_response :success
+      entry = response.parsed_body['partners'].first
+      assert_equal 3, entry['games_total']
+      assert_equal([['Verband A', 2], ['Verband B', 1]],
+                   entry['game_operations'].map { |g| [g['game_operation_name'], g['game_count']] })
+    end
+
+    test 'partners zählt nur tatsächliche Einsätze, nicht die reine Ansetzung' do
+      referee = create(:referee)
+      nominated_only = create(:referee)
+      game = partner_game([referee.id])
+      game.update!(nominated_referee_ids: [referee.id, nominated_only.id])
+      login(@admin)
+
+      get "/api/v2/admin/referees/#{referee.id}/partners"
+
+      assert_response :success
+      assert_empty response.parsed_body['partners']
+    end
+
+    test 'LV-RSK darf die Gespann-Historie eines Schiris im eigenen Bestand abrufen' do
+      sa = create(:state_association)
+      go = create(:game_operation, state_association_id: sa.id)
+      referee = create(:referee, club_id: create(:club, state_association_id: sa.id).id)
+      login(rsk_user(go.id))
+
+      get "/api/v2/admin/referees/#{referee.id}/partners"
+
+      assert_response :success
+    end
+
+    test 'Ansetzer darf die Gespann-Historie im eigenen Bestand abrufen' do
+      sa = create(:state_association)
+      go = create(:game_operation, state_association_id: sa.id)
+      referee = create(:referee, club_id: create(:club, state_association_id: sa.id).id)
+      login(create(:user, :assigner_scoped, game_operation_id: go.id))
+
+      get "/api/v2/admin/referees/#{referee.id}/partners"
+
+      assert_response :success
+    end
+
+    # Die Auswertung zeigt bewusst auch Partner aus anderen Verbänden, sonst
+    # unterschätzt sie die Belastung eines Schiris systematisch. Das ist zugleich
+    # der Grund für include_vm: false in der Action.
+    test 'partners zeigt auch Partner aus einem fremden Landesverband' do
+      sa = create(:state_association)
+      go = create(:game_operation, state_association_id: sa.id)
+      referee = create(:referee, club_id: create(:club, state_association_id: sa.id).id)
+      foreign = create(:referee, club_id: create(:club, state_association_id: create(:state_association).id).id)
+      partner_game([referee.id, foreign.id])
+      login(rsk_user(go.id))
+
+      get "/api/v2/admin/referees/#{referee.id}/partners"
+
+      assert_response :success
+      assert_equal([foreign.id], response.parsed_body['partners'].map { |p| p['referee_id'] })
+    end
+
+    test 'VM darf die Gespann-Historie eines Vereins-Schiris nicht abrufen' do
+      club = create(:club)
+      referee = create(:referee, club_id: club.id)
+      login(vm_user(club.id))
+
+      get "/api/v2/admin/referees/#{referee.id}/partners"
+
+      assert_response :forbidden
+    end
+
+    test 'LV-RSK darf die Gespann-Historie eines fremden Schiris nicht abrufen' do
+      referee = create(:referee, club_id: create(:club).id)
+      login(lv_rsk_user)
+
+      get "/api/v2/admin/referees/#{referee.id}/partners"
+
+      assert_response :forbidden
+    end
+
     private
+
+    # Spiel mit tatsächlich eingesetzten Schiris (officiating_referee_ids).
+    def partner_game(referee_ids, season_id: '18', game_operation: nil)
+      league = create(:league,
+                      game_operation: game_operation || create(:game_operation),
+                      season_id: season_id)
+      create(:game,
+             game_day: create(:game_day, league: league),
+             officiating_referee_ids: referee_ids)
+    end
 
     def vm_user(club_id)
       User.create!(
