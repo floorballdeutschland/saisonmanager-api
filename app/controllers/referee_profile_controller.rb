@@ -27,9 +27,15 @@ class RefereeProfileController < ApplicationController
   # und wird ausschließlich über den Double-Opt-In-Flow unter „Mein Konto"
   # geändert (UserSettingsController#update_email) – die Bestätigung zieht die
   # Schiri-Adresse mit (User#confirm_email_change!).
+  #
+  # :vorname und :nachname aus demselben Grund nicht: Der Name wird seit der
+  # Selbstpflege unter „Mein Konto" dort geführt
+  # (UserSettingsController#update_name) und von User#update_own_name auf den
+  # Schiri-Datensatz gespiegelt. Zwei Schreibstellen würden je nach
+  # Reihenfolge die jeweils andere überschreiben.
   def profile_params
     params.require(:referee).permit(
-      :vorname, :nachname, :telefonnummer,
+      :telefonnummer,
       :strasse, :hausnummer, :plz, :ort,
       :partner_lizenznummer, :kurzfristig_mobil
     )
@@ -46,6 +52,9 @@ class RefereeProfileController < ApplicationController
       # Login-Adresse des Kontos – fürs Frontend, um bei (Alt-)Divergenz zur
       # Schiri-Adresse transparent zu machen, was unter „Mein Konto" steht.
       account_email: current_user.email,
+      # Analog für den Namen: Altbestände können abweichen, weil die Spiegelung
+      # erst beim nächsten Speichern unter „Mein Konto" greift.
+      account_name: current_user.fullname,
       telefonnummer: @referee.telefonnummer,
       strasse: @referee.strasse,
       hausnummer: @referee.hausnummer,
