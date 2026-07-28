@@ -139,13 +139,6 @@ class UserSettingsController < ApplicationController
                     status: :unprocessable_entity
     end
 
-    # email hat keinen Unique-Constraint; der Login per E-Mail funktioniert aber
-    # nur bei eindeutiger Adresse (User.login). Kollisionen daher hier abfangen.
-    if email_taken?(new_email)
-      return render json: { success: false, message: 'Diese E-Mail-Adresse wird bereits verwendet.' },
-                    status: :unprocessable_entity
-    end
-
     # Mail-Bombing bremsen: pro Konto höchstens eine Bestätigungsmail pro
     # Minute (die Adresse ist frei wählbar, der Versand geht an Fremde).
     started_at = current_user.email_change_started_at
@@ -155,9 +148,14 @@ class UserSettingsController < ApplicationController
                     status: :too_many_requests
     end
 
+    # Mehrfachvergabe ist ausdrücklich erlaubt (Sammelpostfach eines Vereins,
+    # Schiri- und Vereinsmanager-Konto derselben Person). Der Login läuft nur
+    # über den Benutzernamen, die Adresse ist also keine Kennung und muss nicht
+    # eindeutig sein. Wir weisen aber darauf hin, damit ein Tippfehler auf einer
+    # fremden Adresse nicht unbemerkt bleibt.
     raw_token = current_user.start_email_change!(new_email)
     UserMailer.confirm_email_change(current_user, raw_token).deliver_later
-    render json: { success: true, user: current_user.login_hash }
+    render json: { success: true, user: current_user.login_hash, email_in_use: email_in_use?(new_email) }
   end
 
   # POST /api/v2/user/email/confirm – öffentlich, Token aus dem Mail-Link.
@@ -168,20 +166,18 @@ class UserSettingsController < ApplicationController
                     status: :not_found
     end
 
-    # Zwischen Anstoßen und Bestätigen kann die Adresse anderweitig vergeben
-    # worden sein – deshalb beim Übernehmen erneut prüfen.
-    if User.where.not(id: user.id).where('LOWER(email) = ?', user.pending_email.to_s.downcase).exists?
-      return render json: { success: false, message: 'Diese E-Mail-Adresse wird inzwischen bereits verwendet.' },
-                    status: :unprocessable_entity
-    end
-
+    # Kein Eindeutigkeitscheck beim Übernehmen: Eine mehrfach vergebene Adresse
+    # ist zulässig (siehe update_email). Wer den Link in der Mail geklickt hat,
+    # hat die Adresse nachweislich in der Hand.
     user.confirm_email_change!
     render json: { success: true, email: user.email }
   end
 
   private
 
-  def email_taken?(new_email)
+  # Nur für den Hinweistext: Nutzt bereits ein anderes Konto diese Adresse oder
+  # hat eine offene (noch nicht abgelaufene) Änderung darauf laufen?
+  def email_in_use?(new_email)
     User.where('LOWER(email) = ?', new_email).where.not(id: current_user.id).exists? ||
       User.where('LOWER(pending_email) = ?', new_email).where.not(id: current_user.id)
           .where('email_confirmation_expires_at > ?', Time.current).exists?
