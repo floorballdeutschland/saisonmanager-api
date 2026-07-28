@@ -136,7 +136,54 @@ class RefereeMailer < ApplicationMailer
     )
   end
 
+  # Neuer Antrag eines Schiris auf einen Vereins-Ausschluss – geht an das
+  # Ansetzungs-Postfach des zuständigen Landesverbands (rsk_email, geerbt vom
+  # übergeordneten Verband).
+  def club_exclusion_requested(exclusion_request)
+    @exclusion_request = exclusion_request
+    @referee = exclusion_request.referee
+    @club = exclusion_request.club
+    recipient = rsk_reply_to(@referee)
+
+    templated_mail(
+      to: recipient,
+      subject: "Antrag Vereins-Ausschluss – #{@referee.vorname} #{@referee.nachname}",
+      default_reply_to: @referee.email.presence || recipient,
+      placeholders: {
+        referee_name: "#{@referee.vorname} #{@referee.nachname}",
+        club_name: @club&.name.to_s,
+        kind: exclusion_request.kind == 'add' ? 'Aufnahme' : 'Streichung'
+      }
+    )
+  end
+
+  # Entscheidung der Ansetzung über einen Antrag – geht an den Schiri.
+  def club_exclusion_decision(exclusion_request)
+    @exclusion_request = exclusion_request
+    @referee = exclusion_request.referee
+    @club = exclusion_request.club
+    @approved = exclusion_request.status == 'approved'
+
+    templated_mail(
+      to: @referee.email,
+      subject: "Vereins-Ausschluss #{@approved ? 'genehmigt' : 'abgelehnt'} – #{@club&.name}",
+      default_reply_to: rsk_reply_to(@referee),
+      placeholders: {
+        referee_name: "#{@referee.vorname} #{@referee.nachname}",
+        club_name: @club&.name.to_s,
+        decision: @approved ? 'genehmigt' : 'abgelehnt'
+      }
+    )
+  end
+
   private
+
+  # Ansetzungs-Postfach des Landesverbands, in dem der Schiri über seinen Verein
+  # hängt; ohne eigenen Eintrag greift der übergeordnete Verband, zuletzt die
+  # zentrale Adresse.
+  def rsk_reply_to(referee)
+    referee.club&.state_association&.effective_rsk_email.presence || REPLY_TO
+  end
 
   # SBK-Adresse des Spielbetriebs (Landesverband des game_operation);
   # Fallback auf die Ansetzungs-Adresse, falls keine SBK-Adresse hinterlegt ist.

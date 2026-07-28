@@ -1,4 +1,6 @@
 class RefereeProfileController < ApplicationController
+  include RefereeClubExclusionPresenter
+
   before_action :authenticate_user
   before_action :require_referee_account
 
@@ -64,7 +66,12 @@ class RefereeProfileController < ApplicationController
       gueltigkeit: @referee.gueltigkeit&.strftime('%d.%m.%Y'),
       geburtsdatum: @referee.geburtsdatum&.strftime('%d.%m.%Y'),
       verein: @referee.club&.name,
-      landesverband: @referee.landesverband
+      landesverband: @referee.landesverband,
+      # Vereine, für die die Person nicht angesetzt werden möchte, plus die
+      # laufenden Anträge dazu. Gepflegt wird das im selben Profilbereich wie
+      # die übrigen Angaben für Ansetzungen.
+      club_exclusions: club_exclusions_json(@referee),
+      club_exclusion_requests: club_exclusion_requests_json(@referee)
     }
   end
 end

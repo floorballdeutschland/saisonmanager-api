@@ -87,6 +87,35 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'referee_name', description: 'Vor- und Nachname des Schiris' }
       ]
     },
+    'RefereeMailer#club_exclusion_requested' => {
+      mailer_class: 'RefereeMailer',
+      action_name: 'club_exclusion_requested',
+      description: 'Antrag eines Schiris auf Aufnahme oder Streichung eines Vereins in seiner ' \
+                   'Ausschlussliste. Geht an das Ansetzungs-Postfach (RSK-E-Mail) des Landesverbands.',
+      default_subject: 'Antrag Vereins-Ausschluss – {{referee_name}}',
+      default_from: nil,
+      # Reply-To wird zur Laufzeit gesetzt (Schiri bzw. RSK-E-Mail des Verbands).
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'referee_name', description: 'Vor- und Nachname des Schiris' },
+        { key: 'club_name', description: 'Name des beantragten Vereins' },
+        { key: 'kind', description: 'Art des Antrags (Aufnahme oder Streichung)' }
+      ]
+    },
+    'RefereeMailer#club_exclusion_decision' => {
+      mailer_class: 'RefereeMailer',
+      action_name: 'club_exclusion_decision',
+      description: 'Entscheidung der Ansetzung über einen Antrag zur Vereins-Ausschlussliste.',
+      default_subject: 'Vereins-Ausschluss {{decision}} – {{club_name}}',
+      default_from: nil,
+      # Reply-To wird zur Laufzeit gesetzt (RSK-E-Mail des Verbands).
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'referee_name', description: 'Vor- und Nachname des Schiris' },
+        { key: 'club_name', description: 'Name des betroffenen Vereins' },
+        { key: 'decision', description: 'genehmigt oder abgelehnt' }
+      ]
+    },
     'RefereeMailer#tentative_assignment_notification' => {
       mailer_class: 'RefereeMailer',
       action_name: 'tentative_assignment_notification',

@@ -157,6 +157,28 @@ class RefereeTest < ActiveSupport::TestCase
     assert_equal [master.id, 0], game.reload.officiating_referee_ids
   end
 
+  test 'merge_into!: Vereins-Ausschluesse wandern mit, Dubletten fallen weg' do
+    secondary = make_referee(lizenznummer: 41_001)
+    master    = make_referee(lizenznummer: 41_002)
+    master_club = Club.create!(name: 'Master-Verein')
+    shared_club = Club.create!(name: 'Beide sperren')
+    only_secondary_club = Club.create!(name: 'Nur Secondary')
+    master.update!(club: master_club)
+
+    RefereeClubExclusion.create!(referee: master, club: shared_club, reason: 'Master')
+    # Der eigene Verein des Masters steht abgeleitet auf der Liste – eine
+    # uebernommene Zeile wuerde ihn doppelt anzeigen.
+    RefereeClubExclusion.create!(referee: secondary, club: master_club, reason: 'Secondary')
+    RefereeClubExclusion.create!(referee: secondary, club: shared_club, reason: 'Secondary')
+    RefereeClubExclusion.create!(referee: secondary, club: only_secondary_club, reason: 'Secondary')
+
+    secondary.merge_into!(master)
+
+    club_ids = master.referee_club_exclusions.reload.pluck(:club_id)
+    assert_equal [shared_club.id, only_secondary_club.id].sort, club_ids.sort
+    assert_empty secondary.referee_club_exclusions.reload
+  end
+
   # ---------------------------------------------------------------------------
   # partner_history / partner_stats (#222)
   # ---------------------------------------------------------------------------

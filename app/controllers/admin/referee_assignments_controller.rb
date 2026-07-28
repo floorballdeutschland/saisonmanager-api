@@ -153,7 +153,12 @@ module Admin
       # bereits tagesgleich angesetzt.
       referees = scope_to_permitted_referees(
         Referee.where(guest: false).where(id: available_ids).where.not(id: assigned_ids)
-      ).includes(referee_taggings: :referee_tag).order(:nachname, :vorname)
+      ).includes(referee_taggings: :referee_tag).order(:nachname, :vorname).to_a
+
+      # Vereine, für die die Person nicht angesetzt werden möchte (eigener Verein
+      # plus genehmigte Ausschlüsse). Das Frontend warnt damit bei der Auswahl;
+      # gefiltert wird bewusst nicht, die Entscheidung bleibt bei der Ansetzung.
+      excluded_clubs = RefereeClubExclusion.club_ids_by_referee(referees)
 
       render json: referees.map { |r|
         tags = r.referee_taggings.map(&:referee_tag).compact.sort_by { |t| t.name.to_s.downcase }
@@ -167,6 +172,7 @@ module Admin
           kurzfristig_mobil: r.kurzfristig_mobil,
           partner_lizenznummer: r.partner_lizenznummer,
           club_id: r.club_id,
+          excluded_club_ids: excluded_clubs[r.id] || [],
           tags: tags.map { |t| { id: t.id, name: t.name, color: t.color } }
         }
       }
@@ -192,6 +198,9 @@ module Admin
                  .where('referee_qualifications.valid_until IS NULL OR referee_qualifications.valid_until >= ?', date)
                  .distinct
                  .order(:nachname, :vorname)
+                 .to_a
+
+      excluded_clubs = RefereeClubExclusion.club_ids_by_referee(referees)
 
       render json: referees.map { |r|
         {
@@ -201,7 +210,8 @@ module Admin
           vorname: r.vorname,
           nachname: r.nachname,
           lizenzstufe: r.lizenzstufe,
-          club_id: r.club_id
+          club_id: r.club_id,
+          excluded_club_ids: excluded_clubs[r.id] || []
         }
       }
     end
@@ -513,16 +523,8 @@ module Admin
       GameDayMailer.updated_referees_to_host(game).deliver_later if game.game_day.club&.contact_email.present?
     end
 
-    def authorize_assigner!
-      ph = current_user.permission_hash
-      return if ph[:admin].present?
-      # Ansetzer nur, wenn die Ansetzung für (mind.) einen seiner Landesverbände
-      # freigeschaltet ist (referee_assignment_enabled) – analog zum Menü-Gating
-      # in User#permissions_items. FD/global (Spielbetrieb 0) ist immer aktiv.
-      return if ph[:ansetzer].present? && current_user.referee_assignment_active_for_ansetzer?(ph)
-
-      render json: { error: 'Nicht berechtigt' }, status: :forbidden
-    end
+    # authorize_assigner! liegt in RefereeScoping, weil auch die Pflege der
+    # Vereins-Ausschlusslisten dasselbe Rollen-Gate braucht.
 
     # Fine-grained: Ein nicht-globaler Ansetzer darf nur Spiele in seinem
     # game_operation-Scope ansetzen/benachrichtigen/veröffentlichen.
