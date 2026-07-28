@@ -219,6 +219,7 @@ class UserSettingsControllerTest < ActionDispatch::IntegrationTest
     body = JSON.parse(response.body)
     assert body['success']
     assert_equal 'neu@example.com', body.dig('user', 'pending_email')
+    refute body['email_in_use'], 'freie Adresse darf keine Warnung auslösen'
 
     @user.reload
     assert_equal 'alt@example.com', @user.email, 'aktive Adresse darf sich noch nicht ändern'
@@ -258,28 +259,32 @@ class UserSettingsControllerTest < ActionDispatch::IntegrationTest
     assert_response :unprocessable_entity
   end
 
-  test 'E-Mail-Änderung auf eine bereits vergebene Adresse ergibt 422' do
+  test 'E-Mail-Änderung auf eine bereits vergebene Adresse läuft durch und warnt' do
+    # Mehrfachvergabe ist zulässig (Vereins-Sammelpostfach, Schiri- und
+    # VM-Konto derselben Person); die Antwort weist nur darauf hin.
     create(:user, email: 'vergeben@example.com')
     login_as(@user)
 
     patch '/api/v2/user/email', params: { current_password: 'password123', email: 'Vergeben@example.com' }, as: :json
 
-    assert_response :unprocessable_entity
-    assert_nil @user.reload.pending_email
+    assert_response :ok
+    assert JSON.parse(response.body)['email_in_use']
+    assert_equal 'vergeben@example.com', @user.reload.pending_email
   end
 
-  test 'E-Mail-Änderung auf eine Adresse mit offener fremder Pending-Änderung ergibt 422' do
+  test 'E-Mail-Änderung auf eine Adresse mit offener fremder Pending-Änderung warnt ebenfalls' do
     other = create(:user, email: 'other@example.com')
     other.start_email_change!('ziel@example.com')
     login_as(@user)
 
     patch '/api/v2/user/email', params: { current_password: 'password123', email: 'ziel@example.com' }, as: :json
 
-    assert_response :unprocessable_entity
-    assert_nil @user.reload.pending_email
+    assert_response :ok
+    assert JSON.parse(response.body)['email_in_use']
+    assert_equal 'ziel@example.com', @user.reload.pending_email
   end
 
-  test 'Abgelaufene fremde Pending-Änderung blockiert die Adresse nicht mehr' do
+  test 'Abgelaufene fremde Pending-Änderung löst keine Warnung aus' do
     other = create(:user, email: 'other@example.com')
     other.start_email_change!('ziel@example.com')
     other.update!(email_confirmation_expires_at: 1.minute.ago)
@@ -288,6 +293,7 @@ class UserSettingsControllerTest < ActionDispatch::IntegrationTest
     patch '/api/v2/user/email', params: { current_password: 'password123', email: 'ziel@example.com' }, as: :json
 
     assert_response :ok
+    refute JSON.parse(response.body)['email_in_use']
     assert_equal 'ziel@example.com', @user.reload.pending_email
   end
 
@@ -406,17 +412,18 @@ class UserSettingsControllerTest < ActionDispatch::IntegrationTest
     assert_response :not_found
   end
 
-  test 'Bestätigung scheitert, wenn die Adresse inzwischen vergeben ist' do
+  test 'Bestätigung gelingt auch, wenn ein anderes Konto dieselbe Adresse führt' do
     create_api_key
     @user.update!(email: 'alt@example.com')
     raw_token = @user.start_email_change!('neu@example.com')
-    create(:user, email: 'neu@example.com')
+    other = create(:user, email: 'neu@example.com')
 
     post '/api/v2/user/email/confirm',
          params: { token: raw_token }, headers: { 'X-Api-Key' => API_KEY }, as: :json
 
-    assert_response :unprocessable_entity
-    assert_equal 'alt@example.com', @user.reload.email
+    assert_response :ok
+    assert_equal 'neu@example.com', @user.reload.email
+    assert_equal 'neu@example.com', other.reload.email, 'das andere Konto bleibt unangetastet'
   end
 
   test 'Bestätigung ohne Cookie und ohne API-Key ergibt 401' do
