@@ -90,6 +90,24 @@ class RefereeClubExclusionRequestTest < ActiveSupport::TestCase
     assert_nil RefereeClubExclusion.find_by(referee: @referee, club: @club)
   end
 
+  test 'Ausschluss fuer den eigenen Verein laesst sich nicht direkt anlegen' do
+    exclusion = RefereeClubExclusion.new(referee: @referee, club: @own_club, reason: 'Direkt')
+
+    assert_not exclusion.valid?
+    assert_includes exclusion.errors.full_messages.join, 'eigene Verein'
+  end
+
+  test 'approve eines add-Antrags legt nichts an, wenn der Verein inzwischen der eigene ist' do
+    request = build_request(club: @club, kind: 'add')
+    request.save!
+    @referee.update!(club: @club)
+
+    assert request.approve!(42)
+
+    assert_equal 'approved', request.reload.status
+    assert_nil RefereeClubExclusion.find_by(referee: @referee, club: @club)
+  end
+
   test 'withdraw zieht nur offene Antraege zurueck' do
     request = build_request(club: @club, kind: 'add')
     request.save!

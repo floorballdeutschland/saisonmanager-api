@@ -4,17 +4,17 @@
 module RefereeClubExclusionPresenter
   extend ActiveSupport::Concern
 
-  CLUB_LIST_CACHE_KEY = 'referee/exclusion_clubs'.freeze
-
   private
 
   # Schlanke Vereinsliste für die Auswahl im Antrag bzw. bei der direkten Pflege.
   # Bewusst alle aktiven Vereine: Ein Ausschluss kann jeden Verein betreffen,
   # nicht nur die des eigenen Landesverbands.
+  #
+  # Bewusst ungecacht: Ein frisch angelegter oder deaktivierter Verein müsste
+  # sonst in ClubsController an drei Stellen invalidiert werden, und der
+  # pluck über ein paar hundert Zeilen ist billiger als diese Kopplung.
   def active_clubs_json
-    Rails.cache.fetch(CLUB_LIST_CACHE_KEY, expires_in: 1.hour) do
-      Club.active.order(:name).pluck(:id, :name).map { |id, name| { id:, name: } }
-    end
+    Club.active.order(:name).pluck(:id, :name).map { |id, name| { id:, name: } }
   end
 
   def club_exclusions_json(referee)

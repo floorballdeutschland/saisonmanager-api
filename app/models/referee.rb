@@ -178,7 +178,11 @@ class Referee < ApplicationRecord
       # Ausschlussliste und Antragshistorie wandern mit; Dubletten (gleicher
       # Verein bzw. zwei offene Anträge zum selben Verein) fallen weg, sonst
       # bricht der jeweilige Unique-Index.
-      existing_exclusion_club_ids = master.referee_club_exclusions.pluck(:club_id)
+      # master.club_id gehört dazu: Der eigene Verein steht abgeleitet auf der
+      # Liste, eine übernommene Zeile würde ihn doppelt anzeigen (update_all
+      # umgeht die Validierung im Modell).
+      existing_exclusion_club_ids =
+        master.referee_club_exclusions.pluck(:club_id) + [master.club_id].compact
       referee_club_exclusions.where.not(club_id: existing_exclusion_club_ids).update_all(referee_id: master.id)
       referee_club_exclusions.reload.destroy_all
 

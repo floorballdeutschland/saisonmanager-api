@@ -11,6 +11,7 @@ class RefereeClubExclusion < ApplicationRecord
 
   validates :reason, length: { maximum: 120 }
   validates :club_id, uniqueness: { scope: :referee_id }
+  validate :not_own_club, on: :create
 
   # Vereins-IDs je Schiri (eigener Verein + gepflegte Ausschlüsse), ohne N+1.
   # Erwartet geladene Referee-Objekte, weil club_id daraus stammt.
@@ -22,5 +23,17 @@ class RefereeClubExclusion < ApplicationRecord
       (result[referee_id] ||= []) << club_id
     end
     result.transform_values(&:uniq)
+  end
+
+  private
+
+  # Der eigene Verein ist bereits abgeleitet auf der Liste; eine zusätzliche
+  # Zeile würde ihn doppelt anzeigen. Der Antragsweg verbietet das schon
+  # (RefereeClubExclusionRequest#kind_matches_current_list), die direkte Pflege
+  # durch die Ansetzung braucht dieselbe Sperre.
+  def not_own_club
+    return if club_id.blank? || referee&.club_id != club_id
+
+    errors.add(:club_id, 'ist der eigene Verein und steht bereits auf der Liste')
   end
 end

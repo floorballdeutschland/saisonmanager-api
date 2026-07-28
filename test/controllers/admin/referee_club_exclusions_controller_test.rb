@@ -101,6 +101,16 @@ module Admin
       assert_nil RefereeClubExclusion.find_by(id: exclusion.id)
     end
 
+    test 'eigener Verein laesst sich auch direkt nicht eintragen' do
+      login(@assigner)
+
+      post "/api/v2/admin/referees/#{@referee.id}/club_exclusions",
+           params: { exclusion: { club_id: @club_own.id, reason: 'Doppelt' } }
+
+      assert_response :unprocessable_entity
+      assert_not RefereeClubExclusion.exists?(referee_id: @referee.id, club_id: @club_own.id)
+    end
+
     test 'Liste eines Schiris ausserhalb des Scopes ist nicht abrufbar' do
       login(@assigner)
       get "/api/v2/admin/referees/#{@referee_other.id}/club_exclusions"

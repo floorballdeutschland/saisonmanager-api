@@ -74,6 +74,12 @@ class RefereeClubExclusionRequest < ApplicationRecord
   private
 
   def create_exclusion!(user_id)
+    # Der Verein kann zwischen Antrag und Entscheidung zum eigenen Verein
+    # geworden sein (Vereinswechsel). Dann steht er ohnehin abgeleitet auf der
+    # Liste und der Antrag gilt als erfüllt, statt an der Validierung zu
+    # scheitern.
+    return if referee&.club_id == club_id
+
     exclusion = RefereeClubExclusion.find_or_initialize_by(referee_id:, club_id:)
     exclusion.reason = reason
     exclusion.created_by = user_id
