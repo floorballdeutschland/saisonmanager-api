@@ -7,17 +7,12 @@ class RefereeClubExclusionsController < ApplicationController
   before_action :authenticate_user
   before_action :require_referee_account
 
-  CLUB_LIST_CACHE_KEY = 'referee/exclusion_clubs'.freeze
-
   # GET /api/v2/referee/clubs
-  # Schlanke Vereinsliste für die Auswahl im Antrag. Bewusst ein eigener,
-  # nur für Schiri-Konten erreichbarer Endpoint – admin/clubs ist rollengeschützt
-  # und game_operations/:id/clubs liefert nur einen Spielbetrieb.
+  # Vereinsliste für die Auswahl im Antrag. Bewusst ein eigener, nur für
+  # Schiri-Konten erreichbarer Endpoint – admin/clubs ist rollengeschützt und
+  # game_operations/:id/clubs liefert nur einen Spielbetrieb.
   def clubs
-    list = Rails.cache.fetch(CLUB_LIST_CACHE_KEY, expires_in: 1.hour) do
-      Club.active.order(:name).pluck(:id, :name).map { |id, name| { id:, name: } }
-    end
-    render json: list
+    render json: active_clubs_json
   end
 
   # POST /api/v2/referee/club_exclusions/requests

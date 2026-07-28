@@ -7,7 +7,14 @@ module Admin
 
     before_action :authenticate_user
     before_action :authorize_assigner!
-    before_action :set_referee
+    before_action :set_referee, only: %i[index create destroy]
+
+    # GET /api/v2/admin/referee_club_exclusions/clubs
+    # Vereinsauswahl für die direkte Pflege. Alle aktiven Vereine, nicht nur die
+    # des eigenen Landesverbands: Ein Ausschluss kann jeden Verein betreffen.
+    def clubs
+      render json: active_clubs_json
+    end
 
     # GET /api/v2/admin/referees/:referee_id/club_exclusions
     def index

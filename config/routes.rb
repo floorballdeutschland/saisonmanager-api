@@ -243,6 +243,7 @@ Rails.application.routes.draw do
           resources :club_exclusions, only: %i[index create destroy],
                                       controller: 'referee_club_exclusions'
         end
+        get 'referee_club_exclusions/clubs', to: 'referee_club_exclusions#clubs'
         resources :referee_club_exclusion_requests, only: %i[index] do
           member do
             post :approve

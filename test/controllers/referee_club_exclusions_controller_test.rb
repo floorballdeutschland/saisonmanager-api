@@ -84,7 +84,7 @@ class RefereeClubExclusionsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test 'Vereinsliste ist fuer Schiri-Konten erreichbar und blendet deaktivierte Vereine aus' do
-    Rails.cache.delete(RefereeClubExclusionsController::CLUB_LIST_CACHE_KEY)
+    Rails.cache.delete(RefereeClubExclusionPresenter::CLUB_LIST_CACHE_KEY)
     deactivated = create(:club, name: 'Aufgeloest', deactivated_at: Time.current)
 
     login(@user)
@@ -95,7 +95,7 @@ class RefereeClubExclusionsControllerTest < ActionDispatch::IntegrationTest
     assert_includes ids, @other_club.id
     assert_not_includes ids, deactivated.id
   ensure
-    Rails.cache.delete(RefereeClubExclusionsController::CLUB_LIST_CACHE_KEY)
+    Rails.cache.delete(RefereeClubExclusionPresenter::CLUB_LIST_CACHE_KEY)
   end
 
   test 'Konto ohne verknuepften Schiri erhaelt 403' do
