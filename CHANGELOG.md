@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Benutzername vergessen**: Auf der Anmeldeseite gibt es neben „Passwort vergessen" jetzt „Benutzername vergessen". Wer dort seine E-Mail-Adresse einträgt, bekommt alle Benutzernamen zugeschickt, die an dieser Adresse hängen. Das schließt die Lücke, die entstand, als die E-Mail-Adresse als Login-Kennung entfiel: Wer nur seine Adresse kannte, kam bis dahin nicht einmal bis „Passwort vergessen", weil auch das den Benutzernamen braucht. Die Mail listet bewusst alle Konten der Adresse auf, weil eine Adresse mehrfach vergeben sein darf (Sammelpostfach eines Vereins, Schiedsrichter- und Vereinsmanager-Konto derselben Person), und enthält weder ein Passwort noch einen Link zum Zurücksetzen; geändert wird damit nichts. Archivierte Konten bleiben außen vor. Die Antwort des Servers ist immer dieselbe, egal ob die Adresse im System bekannt ist, sodass der Endpunkt kein Verzeichnis der hinterlegten Adressen ist. Aus demselben Grund ist die Wartezeit von fünf Minuten zwischen zwei Erinnerungen an dieselbe Adresse nach außen unsichtbar, sie bremst nur den Versand. Die Mail ist über die E-Mail-Vorlagen-Verwaltung anpassbar.
+
 ## [1.60.0] - 2026-07-28
 
 ### Neu

@@ -47,6 +47,8 @@ Rails.application.routes.draw do
 
       post 'lost_password' => 'sessions#lost_password'
       post 'reset_password' => 'users#reset_password_token'
+      # Benutzername vergessen: mailt alle Kontonamen einer Adresse an diese Adresse.
+      post 'forgot_username' => 'sessions#forgot_username'
 
       # Self-Service-Einstellungen des eingeloggten Users (Name, Sprache, Passwort)
       patch 'user/name' => 'user_settings#update_name'

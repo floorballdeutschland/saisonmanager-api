@@ -74,4 +74,130 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
     assert_response :ok
     assert JSON.parse(response.body)['success']
   end
+
+  # --- Benutzername vergessen ------------------------------------------------
+
+  # Die Mail ist multipart (HTML + Text); mail.body ist dann leer, der Inhalt
+  # steckt in den Parts. Beide Teile prüfen, damit keiner davon vergessen wird.
+  def last_mail_parts
+    ActionMailer::Base.deliveries.last.parts.map { |part| part.body.to_s }
+  end
+
+  test 'Benutzername vergessen mailt den Kontonamen an die Adresse' do
+    assert_emails 1 do
+      post '/api/v2/forgot_username', params: { email: 'Sammelpostfach@example.com' }, as: :json
+    end
+
+    assert_response :ok
+    assert JSON.parse(response.body)['success']
+
+    assert_equal ['sammelpostfach@example.com'], ActionMailer::Base.deliveries.last.to
+    parts = last_mail_parts
+    assert_equal 2, parts.size, 'HTML- und Text-Teil erwartet'
+    parts.each { |part| assert_includes part, @user.user_name }
+  end
+
+  test 'Benutzername vergessen listet alle Konten einer Adresse auf' do
+    zweites = create(:user, email: 'sammelpostfach@example.com')
+
+    assert_emails 1 do
+      post '/api/v2/forgot_username', params: { email: 'sammelpostfach@example.com' }, as: :json
+    end
+
+    assert_response :ok
+    last_mail_parts.each do |part|
+      assert_includes part, @user.user_name
+      assert_includes part, zweites.user_name
+    end
+  end
+
+  test 'Benutzername vergessen nennt kein Passwort und keinen Reset-Link' do
+    assert_emails 1 do
+      post '/api/v2/forgot_username', params: { email: 'sammelpostfach@example.com' }, as: :json
+    end
+
+    last_mail_parts.each { |part| refute_includes part, 'neues-passwort/' }
+  end
+
+  test 'Benutzername vergessen überspringt archivierte Konten' do
+    archiviert = create(:user, email: 'nur-archiv@example.com')
+    archiviert.archive!(@user.id)
+
+    assert_emails 0 do
+      post '/api/v2/forgot_username', params: { email: 'nur-archiv@example.com' }, as: :json
+    end
+
+    assert_response :ok, 'die Antwort bleibt trotzdem unauffällig'
+  end
+
+  test 'Benutzername vergessen verrät nicht, ob die Adresse existiert' do
+    assert_emails 1 do
+      post '/api/v2/forgot_username', params: { email: 'sammelpostfach@example.com' }, as: :json
+    end
+    assert_response :ok
+    bekannt = JSON.parse(response.body)
+
+    assert_emails 0 do
+      post '/api/v2/forgot_username', params: { email: 'gibt.es.nicht@example.com' }, as: :json
+    end
+
+    assert_response :ok
+    assert_equal bekannt, JSON.parse(response.body)
+  end
+
+  # Die Wartezeit hängt am Rails.cache; im Test-Env ist der ein :null_store, in
+  # dem nichts liegen bleibt. Für diese beiden Tests daher ein echter Store.
+  def with_memory_cache
+    original = Rails.cache
+    Rails.cache = ActiveSupport::Cache::MemoryStore.new
+    yield
+  ensure
+    Rails.cache = original
+  end
+
+  test 'Benutzername vergessen bremst wiederholte Anfragen zur selben Adresse' do
+    with_memory_cache do
+      assert_emails 1 do
+        post '/api/v2/forgot_username', params: { email: 'sammelpostfach@example.com' }, as: :json
+      end
+
+      # Zweite Anfrage innerhalb der Wartezeit: keine Mail, aber weiterhin success
+      # (ein sichtbares 429 würde die Adresse verraten).
+      assert_emails 0 do
+        post '/api/v2/forgot_username', params: { email: 'sammelpostfach@example.com' }, as: :json
+      end
+
+      assert_response :ok
+      assert JSON.parse(response.body)['success']
+    end
+  end
+
+  test 'Benutzername vergessen bremst andere Adressen nicht mit' do
+    create(:user, email: 'zweite@example.com')
+
+    with_memory_cache do
+      assert_emails 1 do
+        post '/api/v2/forgot_username', params: { email: 'sammelpostfach@example.com' }, as: :json
+      end
+
+      assert_emails 1 do
+        post '/api/v2/forgot_username', params: { email: 'zweite@example.com' }, as: :json
+      end
+    end
+  end
+
+  test 'Benutzername vergessen lehnt eine ungültige Adresse mit 422 ab' do
+    assert_emails 0 do
+      post '/api/v2/forgot_username', params: { email: 'keine-adresse' }, as: :json
+    end
+
+    assert_response :unprocessable_entity
+    assert JSON.parse(response.body)['message'].present?
+  end
+
+  test 'Benutzername vergessen ohne Adresse ergibt 422 statt 500' do
+    post '/api/v2/forgot_username', params: {}, as: :json
+
+    assert_response :unprocessable_entity
+  end
 end
