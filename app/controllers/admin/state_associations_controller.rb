@@ -130,7 +130,7 @@ module Admin
     end
 
     def state_association_params
-      permitted = %i[name short_name vsk_email sbk_email scan_required
+      permitted = %i[name short_name vsk_email sbk_email rsk_email scan_required
                      express_license_enabled referee_license_review_enabled
                      manual_proceeding_creation referee_assignment_enabled
                      report_form_email_enabled

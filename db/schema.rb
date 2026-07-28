@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_07_23_120000) do
+ActiveRecord::Schema[7.1].define(version: 2026_07_28_120200) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -529,6 +529,36 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_23_120000) do
     t.datetime "updated_at", precision: nil, null: false
   end
 
+  create_table "referee_club_exclusion_requests", force: :cascade do |t|
+    t.bigint "referee_id", null: false
+    t.bigint "club_id", null: false
+    t.string "kind", null: false, comment: "add = Verein aufnehmen, remove = Verein streichen"
+    t.string "reason", limit: 120, null: false
+    t.string "status", default: "pending", null: false
+    t.string "decision_note", limit: 200
+    t.integer "decided_by"
+    t.datetime "decided_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["club_id"], name: "index_referee_club_exclusion_requests_on_club_id"
+    t.index ["referee_id", "club_id"], name: "index_referee_club_exclusion_requests_pending_unique", unique: true, where: "((status)::text = 'pending'::text)"
+    t.index ["referee_id"], name: "index_referee_club_exclusion_requests_on_referee_id"
+    t.index ["status"], name: "index_referee_club_exclusion_requests_on_status"
+  end
+
+  create_table "referee_club_exclusions", force: :cascade do |t|
+    t.bigint "referee_id", null: false
+    t.bigint "club_id", null: false
+    t.string "reason", limit: 120
+    t.integer "created_by"
+    t.bigint "request_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["club_id"], name: "index_referee_club_exclusions_on_club_id"
+    t.index ["referee_id", "club_id"], name: "index_referee_club_exclusions_on_referee_id_and_club_id", unique: true
+    t.index ["referee_id"], name: "index_referee_club_exclusions_on_referee_id"
+  end
+
   create_table "referee_course_imports", force: :cascade do |t|
     t.bigint "uploaded_by_user_id", null: false
     t.string "filename"
@@ -733,6 +763,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_23_120000) do
     t.boolean "manual_proceeding_creation", default: false, null: false, comment: "Wenn true: keine automatische VSK-Mail, stattdessen Verfahrensvorschlag an die SBK"
     t.boolean "referee_assignment_enabled", default: false, null: false
     t.boolean "report_form_email_enabled", default: false, null: false, comment: "Wenn true: Berichtsformular des Schiris wird per E-Mail an die VSK versendet"
+    t.string "rsk_email", comment: "Postfach für Schiedsrichteransetzungen über den Saisonmanager"
     t.index ["parent_id"], name: "index_state_associations_on_parent_id"
   end
 
@@ -871,6 +902,10 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_23_120000) do
   add_foreign_key "referee_assignments", "referees", column: "referee1_id"
   add_foreign_key "referee_assignments", "referees", column: "referee2_id"
   add_foreign_key "referee_availabilities", "referees"
+  add_foreign_key "referee_club_exclusion_requests", "clubs"
+  add_foreign_key "referee_club_exclusion_requests", "referees"
+  add_foreign_key "referee_club_exclusions", "clubs"
+  add_foreign_key "referee_club_exclusions", "referees"
   add_foreign_key "referee_course_imports", "users", column: "uploaded_by_user_id"
   add_foreign_key "referee_course_results", "referee_course_imports"
   add_foreign_key "referee_course_results", "referees"

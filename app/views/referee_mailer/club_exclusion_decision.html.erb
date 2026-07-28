@@ -1,0 +1,24 @@
+<h2>Vereins-Ausschluss <%= @approved ? 'genehmigt' : 'abgelehnt' %></h2>
+
+<p>Hallo <%= @referee.vorname %> <%= @referee.nachname %>,</p>
+
+<p>
+  dein Antrag zur Vereins-Ausschlussliste wurde
+  <strong><%= @approved ? 'genehmigt' : 'abgelehnt' %></strong>.
+</p>
+
+<p>
+  <strong>Verein:</strong> <%= @club&.name %><br>
+  <strong>Antrag:</strong>
+  <%= @exclusion_request.kind == 'add' ? 'Verein aufnehmen' : 'Verein streichen' %><br>
+  <strong>Deine Begründung:</strong> <%= @exclusion_request.reason %>
+</p>
+
+<% if @exclusion_request.decision_note.present? %>
+<p><strong>Rückmeldung der Ansetzung:</strong> <%= @exclusion_request.decision_note %></p>
+<% end %>
+
+<p>
+  Deine aktuelle Liste findest du in deinem Schiedsrichterprofil unter „Angaben für Ansetzungen“.<br>
+  <a href="<%= frontend_base_url %>/schiedsrichter/profil">Profil öffnen</a>
+</p>
