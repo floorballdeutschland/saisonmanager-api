@@ -15,6 +15,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Behoben
 
+- **Login-Fenster auf der Startseite**: Auf der Startseite fragten manche Browser (vor allem Safari auf iPhone und Mac sowie App-interne Browser) unaufgefordert nach Benutzername und Passwort. Das Fenster ließ sich wegklicken, kam aber bei jedem neuen Aufruf der Startseite wieder, also auch nach „Spielbetrieb wechseln". Ursache war ein Verbandslogo, dessen Adresse noch auf den alten Server verwies. Der ist seit dem Domain-Umzug im Juli passwortgeschützt und fordert für jedes angeforderte Bild eine Anmeldung. Betroffene Logo-Adressen zeigen jetzt auf den aktuellen Server; die Bilder liegen dort unverändert unter demselben Pfad. Die einmalige Korrektur der Altdaten erledigt der neue Wartungs-Task `cleanup:legacy_logo_hosts` (standardmäßig Trockenlauf, `DRY_RUN=false` zum Ausführen).
 - **Überschrittene Rate-Limits meldeten einen Serverfehler**: Wurde ein Anfragelimit erreicht, antwortete die Schnittstelle mit einem Serverfehler (500) statt mit dem vorgesehenen „Rate limit überschritten" (429). Die Fehlerantwort griff auf die Anfrage-Daten in einer Form zu, die neuere Versionen der verwendeten Bibliothek nicht mehr liefern. Aufgefallen ist das erst jetzt, weil das bisher einzige Limit (Anfragen pro API-Schlüssel) in der Praxis offenbar nie erreicht wurde.
 
 ## [1.60.0] - 2026-07-28
