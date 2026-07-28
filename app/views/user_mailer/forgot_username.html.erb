@@ -1,4 +1,4 @@
-<h2>Dein Benutzername</h2>
+<h2><%= @user_names.size == 1 ? 'Dein Benutzername' : 'Deine Benutzernamen' %></h2>
 
 <% if @user_names.size == 1 %>
   <p>
@@ -31,7 +31,7 @@
 
 <p>
   Das Passwort steht hier bewusst nicht drin. Wenn du es auch nicht mehr weißt, nutze auf
-  der Anmeldeseite „Passwort vergessen“ mit dem Benutzernamen von oben.
+  der Anmeldeseite „Passwort vergessen“ mit dem passenden Benutzernamen von oben.
 </p>
 
 <p>
