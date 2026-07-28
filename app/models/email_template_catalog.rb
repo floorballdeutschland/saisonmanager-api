@@ -26,6 +26,19 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'link', description: 'Link zum Zurücksetzen des Passworts' }
       ]
     },
+    'UserMailer#forgot_username' => {
+      mailer_class: 'UserMailer',
+      action_name: 'forgot_username',
+      description: 'Erinnerung an den eigenen Benutzernamen, angefordert über „Benutzername vergessen" auf der Anmeldeseite. Listet alle Konten auf, die an der Adresse hängen; enthält bewusst kein Passwort und keinen Reset-Link. Ohne eigenen Betreff wechselt dieser bei mehreren gefundenen Konten in den Plural; ein hier gepflegter Betreff gilt dagegen immer, kann die Anzahl aber über {{count}} nennen.',
+      default_subject: 'Dein Benutzername im Saisonmanager',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'user_names', description: 'Alle Benutzernamen der Adresse, mit Komma getrennt' },
+        { key: 'count', description: 'Anzahl der gefundenen Benutzerkonten' },
+        { key: 'link', description: 'Link zur Anmeldeseite' }
+      ]
+    },
     'UserMailer#confirm_email_change' => {
       mailer_class: 'UserMailer',
       action_name: 'confirm_email_change',
