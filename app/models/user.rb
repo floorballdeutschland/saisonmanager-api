@@ -468,17 +468,16 @@ class User < ApplicationRecord
   def self.login(login, password)
     return nil if login.blank? || password.blank?
 
-    # Login per Benutzername ODER E-Mail, jeweils kleinschreibungsneutral. Der
+    # Login ausschließlich per Benutzername, kleinschreibungsneutral. Der
     # eingehende Wert ist bereits kleingeschrieben (SessionsController); wir
     # vergleichen daher gegen LOWER(user_name), damit auch Bestandsnamen mit
-    # Großbuchstaben per Benutzername anmeldbar sind. Eine E-Mail wird nur
-    # akzeptiert, wenn sie eindeutig einem Konto zugeordnet ist (die E-Mail-
-    # Spalte hat keine Unique-Constraint).
+    # Großbuchstaben anmeldbar sind.
+    #
+    # Die E-Mail-Adresse ist bewusst KEINE Login-Kennung: Sie darf mehrfach
+    # vergeben sein (Schiri- und Vereinsmanager-Konto derselben Person, mehrere
+    # Vereinsmanager an einem Vereins-Sammelpostfach). Ein E-Mail-Login würde
+    # bei jeder solchen Doppelvergabe still aufhören zu funktionieren.
     user = User.where('LOWER(user_name) = ?', login.to_s.downcase).first
-    if user.blank?
-      email_matches = User.where('LOWER(email) = ?', login).limit(2).to_a
-      user = email_matches.first if email_matches.size == 1
-    end
     hashed_password = Digest::MD5.hexdigest(password)
 
     return nil if user.blank?

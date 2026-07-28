@@ -391,7 +391,7 @@ class UserTest < ActiveSupport::TestCase
   end
 
   # ---------------------------------------------------------------------------
-  # self.login (Benutzername ODER E-Mail)
+  # self.login (ausschliesslich Benutzername)
   # ---------------------------------------------------------------------------
 
   test 'login: per Benutzername' do
@@ -399,33 +399,33 @@ class UserTest < ActiveSupport::TestCase
     assert_equal u.id, User.login(u.user_name, 'password123')&.id
   end
 
-  test 'login: per E-Mail-Adresse' do
+  test 'login: falsches Passwort schlaegt fehl' do
     u = build_user(permissions: [])
-    u.update!(email: 'Login.Test@example.com')
-    assert_equal u.id, User.login('login.test@example.com', 'password123')&.id
+    assert_nil User.login(u.user_name, 'falsch')
   end
 
-  test 'login: falsches Passwort schlaegt fehl (auch per E-Mail)' do
+  test 'login: E-Mail-Adresse ist keine Login-Kennung' do
     u = build_user(permissions: [])
-    u.update!(email: 'pw.wrong@example.com')
-    assert_nil User.login('pw.wrong@example.com', 'falsch')
+    u.update!(email: 'login.test@example.com')
+    assert_nil User.login('login.test@example.com', 'password123')
   end
 
-  test 'login: exakter Benutzername hat Vorrang vor E-Mail-Treffer' do
-    target = build_user(permissions: [])
-    # Ein anderes Konto traegt als E-Mail exakt den Benutzernamen des Ziel-Kontos,
-    # sodass beide Zweige den Login-String treffen wuerden.
-    other = build_user(permissions: [])
-    other.update!(email: target.user_name)
-    assert_equal target.id, User.login(target.user_name, 'password123')&.id
+  test 'login: auch eine eindeutige E-Mail-Adresse wird nicht akzeptiert' do
+    # Frueher genuegte Eindeutigkeit fuer den E-Mail-Login. Das Verhalten kippte
+    # still, sobald ein zweites Konto dieselbe Adresse bekam.
+    u = build_user(permissions: [])
+    u.update!(email: 'einmalig@example.com')
+    assert_equal 1, User.where('LOWER(email) = ?', 'einmalig@example.com').count
+    assert_nil User.login('einmalig@example.com', 'password123')
   end
 
-  test 'login: mehrdeutige E-Mail wird abgelehnt' do
+  test 'login: mehrfach vergebene E-Mail stoert den Benutzernamen-Login nicht' do
     a = build_user(permissions: [])
     b = build_user(permissions: [])
     a.update!(email: 'shared@example.com')
     b.update!(email: 'shared@example.com')
-    assert_nil User.login('shared@example.com', 'password123')
+    assert_equal a.id, User.login(a.user_name, 'password123')&.id
+    assert_equal b.id, User.login(b.user_name, 'password123')&.id
   end
 
   test 'login: leere Eingabe ergibt nil' do
