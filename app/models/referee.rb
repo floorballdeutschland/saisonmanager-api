@@ -12,6 +12,8 @@ class Referee < ApplicationRecord
   has_many :referee_availabilities, dependent: :destroy
   has_many :referee_qualifications, dependent: :destroy
   has_many :referee_taggings, dependent: :destroy
+  has_many :referee_club_exclusions, dependent: :destroy
+  has_many :referee_club_exclusion_requests, dependent: :destroy
   has_many :game_day_referee_confirmations, dependent: :destroy
   has_many :referee_qualification_types, through: :referee_qualifications
   has_many :referee_tags, through: :referee_taggings
@@ -172,6 +174,17 @@ class Referee < ApplicationRecord
       referee_taggings.where.not(referee_tag_id: existing_tag_ids).update_all(referee_id: master.id)
 
       referee_availabilities.update_all(referee_id: master.id)
+
+      # Ausschlussliste und Antragshistorie wandern mit; Dubletten (gleicher
+      # Verein bzw. zwei offene Anträge zum selben Verein) fallen weg, sonst
+      # bricht der jeweilige Unique-Index.
+      existing_exclusion_club_ids = master.referee_club_exclusions.pluck(:club_id)
+      referee_club_exclusions.where.not(club_id: existing_exclusion_club_ids).update_all(referee_id: master.id)
+      referee_club_exclusions.reload.destroy_all
+
+      master_pending_club_ids = master.referee_club_exclusion_requests.pending.pluck(:club_id)
+      referee_club_exclusion_requests.pending.where(club_id: master_pending_club_ids).destroy_all
+      referee_club_exclusion_requests.reload.update_all(referee_id: master.id)
 
       if user.present?
         if master.user.nil?

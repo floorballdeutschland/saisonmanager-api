@@ -1,0 +1,25 @@
+<h2>Antrag zur Vereins-Ausschlussliste</h2>
+
+<p>
+  <%= @referee.vorname %> <%= @referee.nachname %>
+  <% if @referee.lizenznummer.present? %>(Lizenznummer <%= @referee.lizenznummer %>)<% end %>
+  beantragt eine Änderung an der eigenen Vereins-Ausschlussliste.
+</p>
+
+<p>
+  <strong>Verein:</strong> <%= @club&.name %><br>
+  <strong>Antrag:</strong>
+  <%= @exclusion_request.kind == 'add' ? 'Verein aufnehmen' : 'Verein streichen' %><br>
+  <strong>Begründung:</strong> <%= @exclusion_request.reason %>
+</p>
+
+<p>
+  Der Antrag liegt im Saisonmanager unter „Schiedsrichterwesen &rarr; Vereins-Ausschlüsse“ zur
+  Entscheidung bereit.<br>
+  <a href="<%= frontend_base_url %>/verwaltung/schiedsrichter-ausschluesse">Anträge öffnen</a>
+</p>
+
+<p>
+  Die Liste ist ein Hinweis für die Ansetzung und kein Ausschluss durch das System: Angesetzt werden
+  kann weiterhin jede Person, die Ansetzung sieht bei der Auswahl lediglich eine Warnung.
+</p>

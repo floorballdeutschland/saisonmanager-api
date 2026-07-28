@@ -27,6 +27,19 @@ module RefereeScoping
     scopes.reduce { |combined, scope| combined.or(scope) } || referees.none
   end
 
+  # Rollen-Gate der Ansetzung: Admin, oder Ansetzer in (mind.) einem
+  # Landesverband mit freigeschalteter Ansetzung (referee_assignment_enabled) –
+  # analog zum Menü-Gating in User#permissions_items. FD/global (Spielbetrieb 0)
+  # ist immer aktiv. Genutzt von der Ansetzung selbst und von der Pflege der
+  # Vereins-Ausschlusslisten.
+  def authorize_assigner!
+    ph = current_user.permission_hash
+    return if ph[:admin].present?
+    return if ph[:ansetzer].present? && current_user.referee_assignment_active_for_ansetzer?(ph)
+
+    render json: { error: 'Nicht berechtigt' }, status: :forbidden
+  end
+
   def referee_scope_go_ids(perm_hash)
     ((perm_hash[:rsk] || []) + (perm_hash[:ansetzer] || []))
       .reject(&:zero?).uniq

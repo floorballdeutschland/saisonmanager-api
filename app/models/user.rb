@@ -227,6 +227,9 @@ class User < ApplicationRecord
     # Wochenend-Verfügbarkeitsübersicht der Schiris („war room") – Teil derselben
     # Ansetzungslogik, daher identisch gegated.
     result[:menu_item_referee_availability] = ph[:admin].present? || ansetzer_active
+    # Anträge der Schiris auf Vereins-Ausschlüsse und deren Pflege am Schiri-Profil
+    # – dieselbe Rolle wie die Ansetzung, weil die Liste nur dort wirkt.
+    result[:menu_item_referee_exclusions] = ph[:admin].present? || ansetzer_active
     # Strafcode-Verwaltung („Einstellungen" im Schiedsrichterwesen) – nur Admin.
     result[:menu_item_referee_settings] = ph[:admin].present?
     # Schiri-Feedback der Vereine ist nur am Schiri-Profil sichtbar – für Admin

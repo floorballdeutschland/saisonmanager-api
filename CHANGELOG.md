@@ -9,6 +9,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Vereins-Ausschlussliste für Schiedsrichter**: Schiedsrichterinnen und Schiedsrichter pflegen im eigenen Profil unter „Angaben für Ansetzungen", für welche Vereine sie nicht angesetzt werden möchten. Der eigene Verein steht dort immer, abgeleitet aus der Vereinszugehörigkeit, und wandert bei einem Vereinswechsel automatisch mit. Weitere Vereine lassen sich mit einer kurzen Begründung beantragen, ebenso die Streichung eines beantragten Vereins. Entschieden werden die Anträge von der Ansetzung des zuständigen Spielbetriebs, die die Liste am Schiri-Profil auch direkt pflegen kann; über die Entscheidung informiert eine Mail. Die Liste ist bewusst eine Warnung und kein Filter: Bei der Auswahl in der Ansetzung erscheint ein Hinweis, angesetzt werden kann die Person weiterhin, damit kurzfristige Besetzungen möglich bleiben.
+- **RSK-E-Mail am Landesverband**: Neues Feld in den Verbandseinstellungen für das Postfach der Schiedsrichteransetzung. Anträge zur Vereins-Ausschlussliste gehen dorthin. Ohne eigenen Eintrag greift die Adresse des übergeordneten Verbands, sodass die zentrale Adresse von Floorball Deutschland als Rückfallebene dient.
+
 ### Behoben
 
 - **Scorerliste der Teamseite folgt der Liga-Einstellung**: Auf der öffentlichen Teamseite war die Scorerliste („Scorer (Saison gesamt)") auch dann sichtbar, wenn die Scorerliste in der Liga ausgeblendet ist (`enable_scorer`, in der Altersklasse U13 und jünger per Vorgabe aus). Gezählt werden jetzt nur noch Spiele aus Ligen, die ihre Scorerliste öffentlich zeigen; blendet keine der Ligen eines Teams sie an, entfällt die Liste ganz. Gefiltert wird bewusst pro Liga und nicht pauschal über das Team: Spielt eine Mannschaft zusätzlich in einer Liga ohne öffentliche Scorerliste (häufig bei Relegation und Qualifikation), bleiben die Punkte aus den übrigen Ligen sichtbar, so wie sie im Ligen-Scorer ohnehin öffentlich sind. Das Filtern passiert im Endpoint `teams/:id/stats`, damit die Rangliste nicht über die Teamseiten-Schnittstelle abrufbar bleibt. Die Team-Summen (Tore, Vorlagen, Scorerpunkte, Strafminuten) zählen weiterhin alle Spiele der Saison, sie sind keine personenbezogene Rangliste (Frontend #154).

@@ -217,6 +217,10 @@ Rails.application.routes.draw do
       post 'referee/availabilities/bulk',    to: 'referee_availabilities#bulk_create'
       delete 'referee/availabilities/:id',   to: 'referee_availabilities#destroy'
 
+      get 'referee/clubs', to: 'referee_club_exclusions#clubs'
+      post 'referee/club_exclusions/requests', to: 'referee_club_exclusions#create'
+      delete 'referee/club_exclusions/requests/:id', to: 'referee_club_exclusions#destroy'
+
       get 'referee/history/games', to: 'referee_history#games'
       get 'referee/history/tests', to: 'referee_history#tests'
       get 'referee/history/partners', to: 'referee_history#partners'
@@ -236,6 +240,14 @@ Rails.application.routes.draw do
           get :incorrect_assignments, on: :collection
           get :next_lizenznummer, on: :collection
           get :feedbacks, on: :member
+          resources :club_exclusions, only: %i[index create destroy],
+                                      controller: 'referee_club_exclusions'
+        end
+        resources :referee_club_exclusion_requests, only: %i[index] do
+          member do
+            post :approve
+            post :reject
+          end
         end
         resources :referee_feedbacks, only: %i[update]
         get 'referee_feedback_analytics', to: 'referee_feedback_analytics#index'

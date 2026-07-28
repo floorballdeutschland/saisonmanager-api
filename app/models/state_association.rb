@@ -26,6 +26,13 @@ class StateAssociation < ApplicationRecord
     referee_license_review_enabled
   end
 
+  # Postfach für Schiedsrichteransetzungen. Ohne eigenen Eintrag greift der
+  # übergeordnete Verband (Floorball Deutschland pflegt dort die zentrale
+  # Adresse), damit Anträge nirgends ins Leere laufen.
+  def effective_rsk_email
+    rsk_email.presence || parent&.effective_rsk_email
+  end
+
   def logo_url
     Rails.application.routes.url_helpers.rails_blob_path(logo, only_path: true) if logo.attached?
   end
@@ -51,6 +58,7 @@ class StateAssociation < ApplicationRecord
       scan_required:,
       vsk_email:,
       sbk_email:,
+      rsk_email:,
       parent_id:,
       parent_name: parent&.name,
       express_license_enabled:,

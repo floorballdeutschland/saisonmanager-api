@@ -57,6 +57,44 @@ module Admin
       assert_not_includes ids, coach_other.id
     end
 
+    test 'available liefert die Vereins-Ausschlussliste mit, filtert aber niemanden heraus' do
+      sa = create(:state_association, referee_assignment_enabled: true)
+      go = create(:game_operation, state_association_id: sa.id)
+      own_club = create(:club, state_association_id: sa.id)
+      excluded_club = create(:club, state_association_id: sa.id)
+
+      date = Date.today + 7
+      referee = create(:referee, club_id: own_club.id)
+      RefereeAvailability.create!(referee: referee, date: date)
+      RefereeClubExclusion.create!(referee: referee, club: excluded_club, reason: 'Sohn spielt dort')
+
+      login(create(:user, :assigner_scoped, game_operation_id: go.id))
+      get "/api/v2/admin/referee_assignments/available?date=#{date}"
+
+      assert_response :success
+      entry = JSON.parse(response.body).find { |r| r['id'] == referee.id }
+      assert_not_nil entry, 'gesperrte Person bleibt waehlbar'
+      assert_equal [own_club.id, excluded_club.id].sort, entry['excluded_club_ids'].sort
+    end
+
+    test 'available_coaches liefert die Vereins-Ausschlussliste mit' do
+      sa = create(:state_association, referee_assignment_enabled: true)
+      go = create(:game_operation, state_association_id: sa.id)
+      club = create(:club, state_association_id: sa.id)
+      excluded_club = create(:club, state_association_id: sa.id)
+
+      date = Date.today + 7
+      coach = coach_referee(club, date)
+      RefereeClubExclusion.create!(referee: coach, club: excluded_club, reason: 'Eigene Mannschaft')
+
+      login(create(:user, :assigner_scoped, game_operation_id: go.id))
+      get "/api/v2/admin/referee_assignments/available_coaches?date=#{date}"
+
+      assert_response :success
+      entry = JSON.parse(response.body).find { |r| r['id'] == coach.id }
+      assert_equal [club.id, excluded_club.id].sort, entry['excluded_club_ids'].sort
+    end
+
     private
 
     # Schiri mit gültiger B-Zusatzlizenz und hinterlegter Verfügbarkeit am Datum.
