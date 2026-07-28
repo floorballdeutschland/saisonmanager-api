@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.60.0] - 2026-07-28
+
 ### Neu
 
 - **Vereins-Ausschlussliste für Schiedsrichter**: Schiedsrichterinnen und Schiedsrichter pflegen im eigenen Profil unter „Angaben für Ansetzungen", für welche Vereine sie nicht angesetzt werden möchten. Der eigene Verein steht dort immer, abgeleitet aus der Vereinszugehörigkeit, und wandert bei einem Vereinswechsel automatisch mit. Weitere Vereine lassen sich mit einer kurzen Begründung beantragen, ebenso die Streichung eines beantragten Vereins. Entschieden werden die Anträge von der Ansetzung des zuständigen Spielbetriebs, die die Liste am Schiri-Profil auch direkt pflegen kann; über die Entscheidung informiert eine Mail. Die Liste ist bewusst eine Warnung und kein Filter: Bei der Auswahl in der Ansetzung erscheint ein Hinweis, angesetzt werden kann die Person weiterhin, damit kurzfristige Besetzungen möglich bleiben.
