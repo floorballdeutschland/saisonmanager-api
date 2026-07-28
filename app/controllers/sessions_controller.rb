@@ -10,6 +10,17 @@ class SessionsController < ApplicationController
   # Wartezeit zwischen zwei Benutzernamen-Erinnerungen an dieselbe Adresse. Der
   # Endpunkt ist offen und verschickt Mail an eine frei wählbare Adresse; ohne
   # Bremse ließe sich damit ein fremdes Postfach zumüllen.
+  #
+  # Sie begrenzt bewusst nur pro Zieladresse. Das Gesamtvolumen begrenzt der
+  # IP-Throttle 'mail-trigger/ip' in config/initializers/rack_attack.rb, beides
+  # gehört zusammen.
+  #
+  # Getragen wird die Wartezeit vom Rails.cache, auf Prod ein :memory_store
+  # (siehe config/environments/production.rb). Der ist prozesslokal, was nur
+  # trägt, solange Puma im Single-Process-Modus läuft (`workers` ist in
+  # config/puma.rb auskommentiert). Wird WEB_CONCURRENCY gesetzt, vervielfacht
+  # sich die erlaubte Menge lautlos um die Anzahl der Worker. Zudem leert ein
+  # Deploy den Cache, die Wartezeit beginnt danach neu.
   FORGOT_USERNAME_INTERVAL = 5.minutes
 
   # POST /login
@@ -94,7 +105,13 @@ class SessionsController < ApplicationController
   def send_username_reminder(email)
     # Archivierte Konten bleiben außen vor, ihr Login ist ohnehin gesperrt.
     # Sind alle Konten der Adresse archiviert, geht gar keine Mail raus.
-    user_names = User.not_archived.where('LOWER(email) = ?', email).order(:user_name).pluck(:user_name)
+    #
+    # Sortierung über LOWER, weil ein blankes ORDER BY der Collation folgt und
+    # Bestandsnamen mit Großbuchstaben dann vor allen kleingeschriebenen landen.
+    user_names = User.not_archived
+                     .where('LOWER(email) = ?', email)
+                     .order(Arel.sql('LOWER(user_name)'))
+                     .pluck(:user_name)
     return if user_names.empty?
 
     UserMailer.forgot_username(email, user_names).deliver_later

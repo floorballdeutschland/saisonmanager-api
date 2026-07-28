@@ -16,9 +16,13 @@ class UserMailer < ApplicationMailer
   def forgot_username(email, user_names)
     @user_names = user_names
     @link = "#{FrontendUrl.base}/login"
+    # Betreff folgt der Anzahl, wie der Mail-Text. Eine gepflegte Vorlage hat
+    # weiter Vorrang (siehe TemplatedMailer) und kann über {{count}} selbst
+    # unterscheiden.
+    subject = user_names.size == 1 ? 'Dein Benutzername im Saisonmanager' : 'Deine Benutzernamen im Saisonmanager'
     templated_mail(
       to: email,
-      subject: 'Dein Benutzername im Saisonmanager',
+      subject: subject,
       placeholders: { user_names: user_names.join(', '), count: user_names.size, link: @link }
     )
   end
