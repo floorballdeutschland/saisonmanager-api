@@ -37,9 +37,10 @@ class RefereeFeedback < ApplicationRecord
   # Vereinsmanager) oder über einen Einmal-Link ohne Konto (Kapitän*in bzw. der
   # von der Mannschaft hinterlegte Feedback-Kontakt).
   #
-  # nil für Rückmeldungen, die vor dem Einmal-Link entstanden sind und kein Konto
-  # hinterlegt haben – dann ist der Weg schlicht nicht bekannt und wird auch nicht
-  # behauptet.
+  # Bestandsdaten liefern 'account', denn der Abgabeweg per Konto setzt seit der
+  # ersten Fassung immer submitted_by_user_id. nil ist nur ein defensiver Rest für
+  # Datensätze ohne beides (in der Praxis bisher nicht vorgekommen): Dann wird
+  # kein Weg behauptet.
   def submitted_via
     return 'invitation' if submitted_by_email.present? || submitted_by_player_id.present?
     return 'account' if submitted_by_user_id.present?
