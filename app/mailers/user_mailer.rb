@@ -9,6 +9,24 @@ class UserMailer < ApplicationMailer
     )
   end
 
+  # Erinnerung an den eigenen Benutzernamen, angefordert über „Benutzername
+  # vergessen“. Eine Adresse kann an mehreren Konten hängen, daher eine Liste.
+  # Bewusst OHNE Login-Link auf ein bestimmtes Konto und ohne Passwort-Reset:
+  # Die Mail nennt nur Namen, geändert wird damit nichts.
+  def forgot_username(email, user_names)
+    @user_names = user_names
+    @link = "#{FrontendUrl.base}/login"
+    # Betreff folgt der Anzahl, wie der Mail-Text. Eine gepflegte Vorlage hat
+    # weiter Vorrang (siehe TemplatedMailer) und kann über {{count}} selbst
+    # unterscheiden.
+    subject = user_names.size == 1 ? 'Dein Benutzername im Saisonmanager' : 'Deine Benutzernamen im Saisonmanager'
+    templated_mail(
+      to: email,
+      subject: subject,
+      placeholders: { user_names: user_names.join(', '), count: user_names.size, link: @link }
+    )
+  end
+
   # Bestätigungslink für eine E-Mail-Änderung: geht an die NEUE Adresse
   # (pending_email); die Änderung wird erst nach Klick auf den Link wirksam
   # (24h gültig, siehe User::EMAIL_CONFIRMATION_VALIDITY).

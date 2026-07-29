@@ -1,0 +1,33 @@
+<% if @user_names.size == 1 -%>
+Dein Benutzername
+=================
+
+<% else -%>
+Deine Benutzernamen
+===================
+
+<% end -%>
+<% if @user_names.size == 1 -%>
+Du hast dich nach deinem Benutzernamen für den Saisonmanager erkundigt. Hier ist er:
+
+Dein Benutzername: <%= @user_names.first %>
+<% else -%>
+Du hast dich nach deinem Benutzernamen für den Saisonmanager erkundigt. An dieser
+E-Mail-Adresse hängen mehrere Benutzerkonten:
+
+<% @user_names.each do |user_name| -%>
+- <%= user_name %>
+<% end -%>
+
+Das ist kein Fehler: Dieselbe Adresse darf mehrfach hinterlegt sein, etwa beim
+Sammelpostfach eines Vereins oder wenn du neben deinem Vereinskonto ein
+Schiedsrichterkonto hast. Jedes Konto hat sein eigenes Passwort.
+<% end -%>
+
+Zur Anmeldung: <%= @link %>
+
+Das Passwort steht hier bewusst nicht drin. Wenn du es auch nicht mehr weißt, nutze auf
+der Anmeldeseite „Passwort vergessen“ mit dem passenden Benutzernamen von oben.
+
+Solltest du diese E-Mail nicht im Saisonmanager angefordert haben, lösche sie einfach.
+Es wurde nichts an deinem Konto verändert.

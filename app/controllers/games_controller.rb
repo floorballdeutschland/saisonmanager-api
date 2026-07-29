@@ -922,8 +922,18 @@ class GamesController < ApplicationController
           Game.autofill_teams!(league_id: game.game_day.league_id)
 
           # Schiri-Feedback-Fenster öffnet mit dem Bericht-Abschluss: TMs beider
-          # Mannschaften informieren (idempotent; No-Op ohne referee_feedback_enabled).
-          RefereeFeedbackNotifier.new(game).notify
+          # Mannschaften informieren und, falls hinterlegt, den Feedback-Kontakt
+          # einladen (idempotent; No-Op ohne referee_feedback_enabled).
+          #
+          # Der Versand ist eine Nebenwirkung des Abschlusses, nicht Teil davon:
+          # Der Bericht ist oben schon gespeichert, ein Fehler hier darf der
+          # Spielleitung nicht als „Server-Fehler." gemeldet werden.
+          begin
+            RefereeFeedbackNotifier.new(game).notify
+          rescue StandardError => e
+            Rails.logger.error("RefereeFeedbackNotifier fehlgeschlagen (Spiel #{game.id}): #{e.class}: #{e.message}")
+            Sentry.capture_exception(e) if defined?(Sentry)
+          end
         end
       elsif params[:ingame_status].present?
         old_ingame_status = game.ingame_status

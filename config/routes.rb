@@ -47,6 +47,8 @@ Rails.application.routes.draw do
 
       post 'lost_password' => 'sessions#lost_password'
       post 'reset_password' => 'users#reset_password_token'
+      # Benutzername vergessen: mailt alle Kontonamen einer Adresse an diese Adresse.
+      post 'forgot_username' => 'sessions#forgot_username'
 
       # Self-Service-Einstellungen des eingeloggten Users (Name, Sprache, Passwort)
       patch 'user/name' => 'user_settings#update_name'
@@ -366,6 +368,13 @@ Rails.application.routes.draw do
 
       get  'user/referee_feedbacks', to: 'user_referee_feedbacks#index'
       post 'user/referee_feedbacks', to: 'user_referee_feedbacks#create'
+
+      get   'user/referee_feedback_settings',     to: 'user_referee_feedback_settings#index'
+      patch 'user/referee_feedback_settings/:id', to: 'user_referee_feedback_settings#update'
+
+      # Abgabe ohne Anmeldung über Einmal-Link (Kapitän*in / Feedback-Kontakt).
+      get  'referee_feedback_invitations/:token', to: 'referee_feedback_invitations#show'
+      post 'referee_feedback_invitations/:token', to: 'referee_feedback_invitations#create'
 
       resources :games do
         collection do

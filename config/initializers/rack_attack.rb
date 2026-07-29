@@ -1,5 +1,33 @@
 module Rack
   class Attack
+    # Offene Endpunkte, die Mail an eine von außen bestimmte Adresse auslösen.
+    # Sie brauchen weder Login noch API-Key, fallen also nicht unter den
+    # Key-Throttle weiter unten.
+    MAIL_TRIGGER_PATHS = %w[/api/v2/forgot_username /api/v2/lost_password].freeze
+
+    # Pro IP drosseln, weil die fachlichen Wartezeiten in den Controllern nur je
+    # Zieladresse greifen und das Gesamtvolumen nicht begrenzen: Mit einer Liste
+    # von Mitgliedsadressen ließen sich sonst beliebig viele Postfächer parallel
+    # zumüllen, auf Kosten der Reputation der Absenderdomain.
+    #
+    # Das 429 verrät hier nichts: Es hängt an der IP des Absenders, nicht an der
+    # Zieladresse, und lässt daher weiterhin offen, welche Adressen im System
+    # hinterlegt sind.
+    #
+    # nginx setzt X-Forwarded-For (nginx/config/proxy.conf), req.ip ist also die
+    # echte Client-IP und nicht die des Reverse Proxy.
+    throttle('mail-trigger/ip', limit: 10, period: 1.hour) do |req|
+      req.ip if req.post? && MAIL_TRIGGER_PATHS.include?(req.path)
+    end
+
+    # Einmal-Links für das Schiri-Feedback (Abgabe ohne Anmeldung). Der Token ist
+    # die einzige Berechtigung, deshalb wird das Durchprobieren gedrosselt. Der
+    # Endpunkt braucht weder Login noch API-Key, fällt also ebenfalls nicht unter
+    # den Key-Throttle weiter unten.
+    throttle('referee-feedback-invitation/ip', limit: 30, period: 1.hour) do |req|
+      req.ip if req.path.start_with?('/api/v2/referee_feedback_invitations')
+    end
+
     # Throttle requests by API key using each key's individual rate_limit (requests/minute).
     # Keys with rate_limit: nil are exempt (unlimited).
     throttle('api/key',
@@ -12,8 +40,13 @@ module Rack
       raw_key
     end
 
-    self.throttled_responder = lambda do |env|
-      match_data = env['rack.attack.match_data']
+    # rack-attack übergibt dem Responder seit Version 6 ein Rack::Attack::Request
+    # und nicht mehr das rohe env-Hash. Der Zugriff per env['...'] warf daher
+    # NoMethodError und aus dem gedrosselten 429 wurde ein 500. Aufgefallen ist
+    # das erst mit dem Test zum IP-Throttle oben: Der Key-Throttle hat in der
+    # Praxis offenbar noch nie ausgelöst, sonst wäre es früher aufgeschlagen.
+    self.throttled_responder = lambda do |request|
+      match_data = request.env['rack.attack.match_data']
       now = match_data[:epoch_time]
       retry_after = match_data[:period] - (now % match_data[:period])
 
