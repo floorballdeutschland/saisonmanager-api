@@ -20,6 +20,14 @@ module Rack
       req.ip if req.post? && MAIL_TRIGGER_PATHS.include?(req.path)
     end
 
+    # Einmal-Links für das Schiri-Feedback (Abgabe ohne Anmeldung). Der Token ist
+    # die einzige Berechtigung, deshalb wird das Durchprobieren gedrosselt. Der
+    # Endpunkt braucht weder Login noch API-Key, fällt also ebenfalls nicht unter
+    # den Key-Throttle weiter unten.
+    throttle('referee-feedback-invitation/ip', limit: 30, period: 1.hour) do |req|
+      req.ip if req.path.start_with?('/api/v2/referee_feedback_invitations')
+    end
+
     # Throttle requests by API key using each key's individual rate_limit (requests/minute).
     # Keys with rate_limit: nil are exempt (unlimited).
     throttle('api/key',

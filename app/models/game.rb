@@ -229,6 +229,43 @@ class Game < ApplicationRecord
     referees.map { |r| "#{r[:first_name]} #{r[:last_name]}".strip }.reject(&:empty?)
   end
 
+  # Gespann für das Schiri-Feedback als [referees, names]. Verknüpft wird mit den
+  # tatsächlich eingesetzten Schiedsrichtern aus dem Spielbericht; nur wenn der
+  # Bericht keine auflösbaren Schiris liefert, dient ersatzweise die Ansetzung.
+  # Die Namen stammen konsistent aus DENSELBEN Records (damit referee_names nie
+  # andere Personen benennt als referee1_id/referee2_id); erst wenn gar kein
+  # Schiri auflösbar ist, dienen die Bericht-Klartextnamen als Fallback.
+  def feedback_referees
+    referees = officiating_referees.presence || nominated_referees
+    names = referees.map { |r| "#{r.vorname} #{r.nachname}".strip }
+    names = officiating_referee_names if names.empty?
+    [referees, names]
+  end
+
+  # Seite der Aufstellung ('home'/'guest'), auf der die Mannschaft in diesem
+  # Spiel steht. nil, wenn die Mannschaft nicht beteiligt ist.
+  def side_for_team(team_id)
+    return 'home' if home_team_id == team_id
+    return 'guest' if guest_team_id == team_id
+
+    nil
+  end
+
+  # Im Spielbericht als Kapitän*in markierte Person der Mannschaft (je Seite
+  # genau ein Eintrag, gesetzt über GamesController#set_captain). nil, wenn
+  # niemand markiert ist (der Bericht-Abschluss erzwingt das nicht) oder der
+  # Eintrag ohne Spielerprofil erfasst wurde (Freitext ohne player_id).
+  def captain_player(team_id)
+    side = side_for_team(team_id)
+    return nil if side.nil?
+
+    entry = Array(players&.dig(side))
+            .map { |p| p.respond_to?(:with_indifferent_access) ? p.with_indifferent_access : p }
+            .find { |p| p[:captain].present? }
+    player_id = entry && entry[:player_id]
+    player_id.present? ? Player.find_by(id: player_id) : nil
+  end
+
   def players_with_position
     result = {}
 

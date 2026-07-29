@@ -4,6 +4,12 @@
 # Schiri-Feedback-Formular ausfüllbar ist. Das Fenster öffnet, sobald der
 # Spielbericht abgeschlossen ist (game_status match_record_closed/finalized).
 #
+# Hat eine Mannschaft einen Feedback-Kontakt hinterlegt (Kapitän*in des Spiels
+# oder eine frei eingetragene Adresse, siehe RefereeFeedbackContact), geht
+# zusätzlich eine Einladung mit Einmal-Link an diese Adresse. Die Teammanager
+# bekommen ihre Info in jedem Fall: Die Abgabe bleibt Pflicht des Vereins, der
+# Teammanager muss also einspringen können.
+#
 # Idempotent über games.referee_feedback_notified_at. Ausgelöst direkt beim
 # Bericht-Abschluss (GamesController#set_game_status); der Rake-Task
 # referee_feedback:notify_available nutzt denselben Service als Fallback (z. B.
@@ -20,13 +26,9 @@ class RefereeFeedbackNotifier
   def notify(deliver_now: false)
     return 0 unless due?
 
-    mails = 0
-    [@game.home_team, @game.guest_team].compact.each do |team|
-      self.class.team_managers(team.id).each do |tm|
-        mail = RefereeFeedbackMailer.form_available(tm, @game, team)
-        deliver_now ? mail.deliver_now : mail.deliver_later
-        mails += 1
-      end
+    mails = [@game.home_team, @game.guest_team].compact.sum do |team|
+      notify_contact(team, deliver_now: deliver_now) +
+        notify_team_managers(team, deliver_now: deliver_now)
     end
 
     @game.update_columns(referee_feedback_notified_at: Time.current)
@@ -47,6 +49,30 @@ class RefereeFeedbackNotifier
   end
 
   private
+
+  # Einladung mit Einmal-Link an den Feedback-Kontakt der Mannschaft, sofern
+  # einer auflösbar ist. Ein bereits abgegebenes Feedback (Nachlauf des
+  # Rake-Fallbacks) braucht keine Einladung mehr.
+  def notify_contact(team, deliver_now:)
+    recipient = RefereeFeedbackContact.new(@game, team).resolve
+    return 0 if recipient.nil?
+    return 0 if RefereeFeedback.exists?(game: @game, team: team)
+
+    invitation, raw_token = RefereeFeedbackInvitation.generate!(
+      game: @game, team: team, email: recipient.email, player: recipient.player
+    )
+    mail = RefereeFeedbackMailer.invitation(invitation, raw_token, source: recipient.source)
+    deliver_now ? mail.deliver_now : mail.deliver_later
+    1
+  end
+
+  def notify_team_managers(team, deliver_now:)
+    self.class.team_managers(team.id).sum do |tm|
+      mail = RefereeFeedbackMailer.form_available(tm, @game, team)
+      deliver_now ? mail.deliver_now : mail.deliver_later
+      1
+    end
+  end
 
   # Fällig, sobald der Spielbericht abgeschlossen ist, die Liga Feedback aktiviert
   # hat und noch nicht benachrichtigt wurde.
