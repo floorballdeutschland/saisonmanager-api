@@ -36,8 +36,10 @@
 </p>
 
 <p>
-  Der Link gilt nur für dieses eine Spiel und diese Mannschaft, ist einmal
-  verwendbar und läuft am <%= @invitation.expires_at.strftime('%d.%m.%Y') %> ab.
+  Der Link gilt nur für dieses eine Spiel und diese Mannschaft und ist einmal
+  verwendbar. Technisch bleibt er bis zum
+  <%= @invitation.expires_at.strftime('%d.%m.%Y') %> gültig, damit eine
+  verspätete Rückmeldung nicht verloren geht.
   Ein Benutzerkonto brauchst du dafür nicht. Die Rückmeldung ist nur für die
   Schiedsrichterverwaltung sichtbar, nicht für die Schiedsrichter selbst und
   nicht für den Gegner.

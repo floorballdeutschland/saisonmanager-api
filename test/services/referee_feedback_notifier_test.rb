@@ -33,7 +33,30 @@ class RefereeFeedbackNotifierTest < ActiveSupport::TestCase
     invitation = RefereeFeedbackInvitation.find_by(game: @game, team: @home)
     assert_equal 'kapitaen@example.com', invitation.email
     assert_nil invitation.player_id
-    assert invitation.usable?
+    assert_in_delta 14.days.from_now, invitation.expires_at, 5.seconds
+    assert_nil invitation.used_at
+  end
+
+  test 'ein fehlgeschlagener Versand reisst die uebrigen Mails nicht mit' do
+    @home.update!(feedback_contact_email: 'kapitaen@example.com')
+
+    failing = Object.new
+    def failing.deliver_now
+      raise Net::SMTPFatalError, 'Empfänger abgelehnt'
+    end
+
+    def failing.deliver_later
+      raise Net::SMTPFatalError, 'Empfänger abgelehnt'
+    end
+
+    mails = RefereeFeedbackMailer.stub(:invitation, ->(*, **) { failing }) do
+      RefereeFeedbackNotifier.new(@game).notify
+    end
+
+    # Nur die Teammanager-Info zählt, der Abschluss bleibt aber vermerkt, damit
+    # die erfolgreiche Mail beim nächsten Lauf nicht erneut rausgeht.
+    assert_equal 1, mails
+    assert_not_nil @game.reload.referee_feedback_notified_at
   end
 
   test 'Kapitaenin des Spiels wird mit Spielerprofil verknuepft' do

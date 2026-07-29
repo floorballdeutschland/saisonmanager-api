@@ -27,7 +27,29 @@ class RefereeFeedbackInvitationsControllerTest < ActionDispatch::IntegrationTest
     get '/api/v2/referee_feedback_invitations/gibtesnicht'
 
     assert_response :gone
-    assert_nil JSON.parse(response.body)['team_name']
+    # Exakte Schlüsselmenge statt "team_name ist nil": Nur so fällt auf, wenn
+    # später doch Spieldaten in die Fehlerantwort geraten.
+    assert_equal ['message'], JSON.parse(response.body).keys
+  end
+
+  test 'der gespeicherte Digest oeffnet den Link nicht' do
+    get "/api/v2/referee_feedback_invitations/#{@invitation.token_digest}"
+
+    assert_response :gone
+  end
+
+  test 'Einladung der Gastmannschaft zeigt deren Perspektive' do
+    _invitation, token = RefereeFeedbackInvitation.generate!(
+      game: @game, team: @guest, email: 'kapitaen-gast@example.com'
+    )
+
+    get "/api/v2/referee_feedback_invitations/#{token}"
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal 'Gast', body['team_name']
+    assert_equal 'Heim', body['opponent_name']
+    assert_equal false, body['home']
   end
 
   test 'gueltiger Token liefert die Kopfdaten des einen Spiels' do
@@ -102,6 +124,38 @@ class RefereeFeedbackInvitationsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 0, RefereeFeedback.count
   end
 
+  test 'Bewertungen ausserhalb der Skala werden auf Deutsch abgewiesen' do
+    [{ line_rating: 0, communication_rating: 5 },
+     { line_rating: 11, communication_rating: 5 },
+     { line_rating: 'abc', communication_rating: 5 }].each do |params|
+      post "/api/v2/referee_feedback_invitations/#{@token}", params: params
+
+      assert_response :unprocessable_entity
+      assert_includes JSON.parse(response.body)['error'], 'Bewertungen'
+      assert_equal 0, RefereeFeedback.count
+    end
+  end
+
+  test 'der Link bleibt nach einer abgewiesenen Abgabe verwendbar' do
+    post "/api/v2/referee_feedback_invitations/#{@token}", params: { line_rating: 6 }
+    assert_response :unprocessable_entity
+
+    post "/api/v2/referee_feedback_invitations/#{@token}",
+         params: { line_rating: 6, communication_rating: 9 }
+
+    assert_response :created
+  end
+
+  test 'Abgabe wird pro IP gedrosselt' do
+    with_rack_attack_cache do
+      30.times { get "/api/v2/referee_feedback_invitations/#{@token}" }
+
+      get "/api/v2/referee_feedback_invitations/#{@token}"
+
+      assert_response :too_many_requests
+    end
+  end
+
   test 'offener Spielbericht laesst noch keine Abgabe zu' do
     @game.update_columns(game_status: 'pregame', match_record_closed_at: nil)
 
@@ -122,5 +176,17 @@ class RefereeFeedbackInvitationsControllerTest < ActionDispatch::IntegrationTest
          params: { line_rating: 6, communication_rating: 9 }
 
     assert_response :unprocessable_entity
+  end
+
+  private
+
+  # Rack::Attack zählt im Rails.cache, im Test-Env ein :null_store – daher wie in
+  # sessions_controller_test ein echter Store für die Dauer des Tests.
+  def with_rack_attack_cache
+    original = Rack::Attack.cache.store
+    Rack::Attack.cache.store = ActiveSupport::Cache::MemoryStore.new
+    yield
+  ensure
+    Rack::Attack.cache.store = original
   end
 end

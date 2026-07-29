@@ -35,9 +35,31 @@ class RefereeFeedbackContact
 
     player = @game.captain_player(@team.id)
     email = player&.email.to_s.strip
-    return nil if email.blank?
+    # Adressen am Spielerprofil sind auch per Import oder update_columns
+    # entstanden, umgehen also die Formatprüfung des Modells. Eine kaputte
+    # Adresse würde erst beim Versand auffallen, deshalb hier prüfen und sonst
+    # auf die eingetragene Adresse zurückfallen.
+    return log_unresolved(player, email) unless email.match?(URI::MailTo::EMAIL_REGEXP)
 
     Recipient.new(email: email, player: player, source: :captain)
+  end
+
+  # Der häufige Fall (keine Kapitäns-Markierung, Freitext-Aufstellung, keine
+  # Adresse) ist kein Fehler, bleibt aber sonst unsichtbar. Für Rückfragen
+  # („warum hat der Kapitän keine Mail bekommen?") gehört er ins Log, denn die
+  # Mannschaft hat die Kapitäns-Zustellung ausdrücklich eingestellt.
+  def log_unresolved(player, email)
+    reason = if player.nil?
+               'keine Kapitäns-Markierung mit Spielerprofil'
+             elsif email.blank?
+               "keine Adresse am Spielerprofil #{player.id}"
+             else
+               "ungültige Adresse am Spielerprofil #{player.id}"
+             end
+    Rails.logger.info(
+      "Schiri-Feedback: Kapitän*in nicht auflösbar (Spiel #{@game.id}, Team #{@team.id}): #{reason}"
+    )
+    nil
   end
 
   def fallback_recipient

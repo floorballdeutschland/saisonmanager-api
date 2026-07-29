@@ -54,6 +54,57 @@ class UserRefereeFeedbackSettingsControllerTest < ActionDispatch::IntegrationTes
     assert_equal second_tm.id, @team.feedback_contact_updated_by
   end
 
+  test 'ein Aufruf mit nur einem Feld laesst das andere unberuehrt' do
+    @team.update!(feedback_contact_email: 'kapitaen@example.com', feedback_contact_prefer_captain: true)
+    login(@tm)
+
+    patch "/api/v2/user/referee_feedback_settings/#{@team.id}",
+          params: { feedback_contact_prefer_captain: false }
+
+    assert_response :success
+    assert_equal 'kapitaen@example.com', @team.reload.feedback_contact_email
+    assert_equal false, @team.feedback_contact_prefer_captain
+
+    patch "/api/v2/user/referee_feedback_settings/#{@team.id}",
+          params: { feedback_contact_email: 'neu@example.com' }
+
+    assert_response :success
+    assert_equal 'neu@example.com', @team.reload.feedback_contact_email
+    assert_equal false, @team.feedback_contact_prefer_captain
+  end
+
+  test 'Mannschaften vergangener Saisons erscheinen nicht' do
+    past_league = create(:league, :previous_season, referee_feedback_enabled: true)
+    past_team = create(:team, league: past_league, club: @club, name: 'Alte Saison')
+    @tm.update!(teams: [@team.id, past_team.id])
+    login(@tm)
+
+    get '/api/v2/user/referee_feedback_settings'
+
+    assert_response :success
+    assert_equal ['Mit Feedback'], JSON.parse(response.body).map { |e| e['team_name'] }
+  end
+
+  test 'Vereinsmanager verwaltet die Mannschaften des eigenen Vereins' do
+    vm = create(:user, :vm, club_id: @club.id, email: 'vm@example.com')
+    login(vm)
+
+    patch "/api/v2/user/referee_feedback_settings/#{@team.id}",
+          params: { feedback_contact_email: 'vm-kontakt@example.com' }
+
+    assert_response :success
+    assert_equal 'vm-kontakt@example.com', @team.reload.feedback_contact_email
+  end
+
+  test 'unbekannte Mannschaft liefert 404' do
+    login(@tm)
+
+    patch '/api/v2/user/referee_feedback_settings/999999',
+          params: { feedback_contact_email: 'egal@example.com' }
+
+    assert_response :not_found
+  end
+
   test 'fremde Mannschaft wird abgewiesen' do
     foreign_team = create(:team, league: @league, club: create(:club))
     login(@tm)

@@ -7,6 +7,10 @@ class Game < ApplicationRecord
   has_one :game_scan, dependent: :destroy
   has_one :proceeding_proposal, dependent: :destroy
   has_many :referee_feedbacks, dependent: :destroy
+  # Ohne dependent: :destroy blieben beim Löschen eines Spiels (Spielplan-
+  # Re-Import löscht Spieltage samt Spielen) Einladungen mit gültigem Token und
+  # personenbezogener Adresse zurück, deren Aufruf am fehlenden Spiel scheitert.
+  has_many :referee_feedback_invitations, dependent: :destroy
 
   # Spiele eines Schiris. Kanonisch über die stabile Referee-PK in
   # officiating_referee_ids (Fundament #45); referee_ids (Lizenznummer) bleibt als

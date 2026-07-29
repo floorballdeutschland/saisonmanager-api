@@ -53,6 +53,36 @@ class RefereeFeedbackContactTest < ActiveSupport::TestCase
     recipient = RefereeFeedbackContact.new(game, @team).resolve
 
     assert_equal 'tm@example.com', recipient.email
+    assert_equal :team_contact, recipient.source
+  end
+
+  test 'formal ungueltige Adresse am Spielerprofil wird nicht verwendet' do
+    @captain.update_columns(email: 'kaputt@')
+    @team.update!(feedback_contact_prefer_captain: true, feedback_contact_email: 'tm@example.com')
+    game = game_with_lineup([{ 'trikot_number' => 7, 'player_id' => @captain.id, 'captain' => true }])
+
+    recipient = RefereeFeedbackContact.new(game, @team).resolve
+
+    assert_equal 'tm@example.com', recipient.email
+    assert_equal :team_contact, recipient.source
+  end
+
+  test 'auf der Gastseite wird die Aufstellung der Gastmannschaft gelesen' do
+    home_captain = create(:player, email: 'heim-kapitaen@example.com')
+    @opponent.update!(feedback_contact_prefer_captain: true)
+    game = create(:game,
+                  game_day: @game_day,
+                  home_team: @team,
+                  guest_team: @opponent,
+                  players: {
+                    'home' => [{ 'trikot_number' => 1, 'player_id' => home_captain.id, 'captain' => true }],
+                    'guest' => [{ 'trikot_number' => 7, 'player_id' => @captain.id, 'captain' => true }]
+                  })
+
+    recipient = RefereeFeedbackContact.new(game, @opponent).resolve
+
+    assert_equal 'kapitaenin@example.com', recipient.email
+    assert_equal @captain.id, recipient.player.id
   end
 
   test 'ohne Einstellung und ohne Adresse gibt es keinen Empfaenger' do

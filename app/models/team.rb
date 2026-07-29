@@ -4,6 +4,10 @@ class Team < ApplicationRecord
 
   validates :name, presence: true
 
+  # Siehe Game: Einladungen zum Schiri-Feedback dürfen ihr Spiel bzw. ihre
+  # Mannschaft nicht überleben (gültiger Token plus Mailadresse).
+  has_many :referee_feedback_invitations, dependent: :destroy
+
   has_one_attached :logo
 
   scope :by_club_id, ->(cid) { where(club_id: cid).or(Team.where('? = ANY (syndicate_clubs)', cid)) }

@@ -11,6 +11,11 @@
 # Die Berechtigung prüfen die Controller, nicht dieser Service.
 class RefereeFeedbackSubmission
   REPORT_OPEN_ERROR = 'Feedback ist erst möglich, sobald der Spielbericht abgeschlossen ist.'
+  # Bewusst eine eigene deutsche Meldung: errors.full_messages wären hier
+  # englische ActiveRecord-Texte („Line rating can't be blank"), und die stünden
+  # auf der öffentlichen Abgabeseite mitten in einer deutschen Seite. Beide
+  # Validierungen des Modells (Vorhandensein und 1..10) beschreibt dieser Satz.
+  INVALID_RATINGS_ERROR = 'Bitte beide Bewertungen mit einem Wert von 1 bis 10 angeben.'
 
   def initialize(game:, team:, attributes:, submitted_by_user_id: nil,
                  submitted_by_player_id: nil, submitted_by_email: nil)
@@ -33,12 +38,27 @@ class RefereeFeedbackSubmission
     feedback = build
     return [feedback, nil] if feedback.save
 
-    [nil, feedback.errors.full_messages.join(', ')]
-  rescue ActiveRecord::RecordNotUnique
-    # Parallele Abgabe (z. B. Teammanager und Kapitän gleichzeitig): Die erste
+    # Parallele Abgabe (Teammanager und Kapitän gleichzeitig): Die Modell-
+    # Validierung auf Einmaligkeit greift schon vor dem Unique-Index, deshalb
+    # landet der Zweite meist hier und nicht im rescue unten. Die erste Abgabe
     # gewinnt, die zweite bekommt sie unverändert zurück.
     existing = RefereeFeedback.find_by(game: @game, team: @team)
-    existing ? [existing, nil] : [nil, 'Feedback konnte nicht gespeichert werden.']
+    return [existing, nil] if existing
+
+    Rails.logger.warn(
+      "RefereeFeedbackSubmission ungültig: game=#{@game.id} team=#{@team.id} " \
+      "errors=#{feedback.errors.full_messages.join(', ')}"
+    )
+    [nil, INVALID_RATINGS_ERROR]
+  rescue ActiveRecord::RecordNotUnique => e
+    existing = RefereeFeedback.find_by(game: @game, team: @team)
+    return [existing, nil] if existing
+
+    Rails.logger.error(
+      "RefereeFeedbackSubmission RecordNotUnique ohne bestehende Abgabe: " \
+      "game=#{@game.id} team=#{@team.id} #{e.message}"
+    )
+    [nil, 'Feedback konnte nicht gespeichert werden.']
   end
 
   private

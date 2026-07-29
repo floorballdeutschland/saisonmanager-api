@@ -28,18 +28,24 @@ class RefereeFeedbackInvitation < ApplicationRecord
   # Erzeugt die Einladung für ein Spiel und eine Mannschaft und liefert
   # [invitation, raw_token]. Eine vorhandene Einladung wird ersetzt, damit nie
   # zwei Links für dieselbe Abgabe gültig sind (Unique-Index game_id+team_id).
+  #
+  # Löschen und Anlegen laufen in einer Transaktion: Bricht das Anlegen ab, wäre
+  # sonst ein bereits verschickter, gültiger Link ersatzlos weg.
   def self.generate!(game:, team:, email:, player: nil)
     raw_token = SecureRandom.urlsafe_base64(32)
-    where(game: game, team: team).destroy_all
 
-    invitation = create!(
-      game: game,
-      team: team,
-      player: player,
-      email: email,
-      token_digest: Digest::SHA256.hexdigest(raw_token),
-      expires_at: VALIDITY.from_now
-    )
+    invitation = transaction do
+      where(game: game, team: team).destroy_all
+
+      create!(
+        game: game,
+        team: team,
+        player: player,
+        email: email,
+        token_digest: Digest::SHA256.hexdigest(raw_token),
+        expires_at: VALIDITY.from_now
+      )
+    end
 
     [invitation, raw_token]
   end
