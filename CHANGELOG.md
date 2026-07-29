@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Schiri-Feedback: Hinweis auf die 24 Stunden**: Die Benachrichtigung „Schiri-Feedback möglich" nennt jetzt den erwarteten Zeitrahmen und bittet darum, das Feedback innerhalb von 24 Stunden nach Abschluss des Spielberichtsbogens abzugeben. Bisher stand dort nur „bitte zeitnah abgeben", während die Feedback-Seite umgekehrt sogar behauptete, das Feedback sei erst 24 Stunden nach dem Spiel möglich (Altlast der ursprünglichen Regelung, die inzwischen durch die Kopplung an den Bericht-Abschluss ersetzt ist). Eine technische Frist gibt es bewusst weiterhin nicht: Das Formular öffnet mit dem Abschluss des Spielberichts und bleibt danach offen, damit eine verspätete Rückmeldung nicht ganz verloren geht.
+
 ## [1.61.0] - 2026-07-28
 
 ### Neu
