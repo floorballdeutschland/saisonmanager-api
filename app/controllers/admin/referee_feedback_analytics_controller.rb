@@ -115,6 +115,9 @@ module Admin
     def aggregate(feedbacks)
       {
         count: feedbacks.size,
+        # Wie viele Rückmeldungen über einen Einmal-Link ohne Konto kamen (also
+        # typischerweise von der Spielführung). Zeigt, ob der Weg genutzt wird.
+        count_via_invitation: feedbacks.count { |f| f.submitted_via == 'invitation' },
         avg_line_rating: average(feedbacks, :line_rating),
         avg_communication_rating: average(feedbacks, :communication_rating)
       }

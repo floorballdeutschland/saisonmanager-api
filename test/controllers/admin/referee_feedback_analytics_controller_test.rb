@@ -47,6 +47,23 @@ module Admin
       assert(body['referees'].all? { |r| r['count'] == 1 })
     end
 
+    test 'Kennzahlen weisen aus, wie viele Rueckmeldungen ueber den Einmal-Link kamen' do
+      r1 = create(:referee)
+      create(:referee_feedback, game: game_in(@league), team: create(:team, league: @league),
+                                referee1_id: r1.id, line_rating: 8, communication_rating: 6,
+                                submitted_by_email: 'kapitaen@example.com')
+      create(:referee_feedback, game: game_in(@league), team: create(:team, league: @league),
+                                referee1_id: r1.id, line_rating: 6, communication_rating: 6,
+                                submitted_by_user_id: @admin.id)
+
+      login(@admin)
+      get '/api/v2/admin/referee_feedback_analytics'
+
+      assert_response :success
+      assert_equal 2, response.parsed_body['overall']['count']
+      assert_equal 1, response.parsed_body['overall']['count_via_invitation']
+    end
+
     test 'min_count markiert Schiris unterhalb der Schwelle als nicht rankbar' do
       r1 = create(:referee)
       create(:referee_feedback, game: game_in(@league), team: create(:team, league: @league),

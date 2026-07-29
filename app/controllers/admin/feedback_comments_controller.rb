@@ -202,6 +202,9 @@ module Admin
         communication_comment: feedback.communication_comment,
         general_comment: feedback.general_comment,
         status: feedback.status,
+        # Abgabeweg (Konto oder Einmal-Link), ohne Namen oder Adresse der
+        # abgebenden Person; siehe RefereeFeedback#submitted_via.
+        submitted_via: feedback.submitted_via,
         created_at: feedback.created_at.iso8601,
         themes: feedback.feedback_themes.map { |theme| { id: theme.id, name: theme.name, color: theme.color } }
       }
