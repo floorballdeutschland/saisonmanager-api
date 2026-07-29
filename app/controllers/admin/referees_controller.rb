@@ -549,6 +549,10 @@ module Admin
         communication_comment: feedback.communication_comment,
         general_comment: feedback.general_comment,
         status: feedback.status,
+        # Abgabeweg (Konto oder Einmal-Link), bewusst ohne Namen oder Adresse der
+        # abgebenden Person: Für die Einordnung einer Rückmeldung genügt der Weg,
+        # verantwortlich ist ohnehin die genannte Mannschaft.
+        submitted_via: feedback.submitted_via,
         created_at: feedback.created_at.iso8601
       }
     end

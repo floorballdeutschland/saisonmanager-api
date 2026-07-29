@@ -47,6 +47,38 @@ module Admin
       assert(body['referees'].all? { |r| r['count'] == 1 })
     end
 
+    test 'Kennzahlen weisen aus, wie viele Rueckmeldungen ueber den Einmal-Link kamen' do
+      r1 = create(:referee)
+      create(:referee_feedback, game: game_in(@league), team: create(:team, league: @league),
+                                referee1_id: r1.id, line_rating: 8, communication_rating: 6,
+                                submitted_by_email: 'kapitaen@example.com')
+      create(:referee_feedback, game: game_in(@league), team: create(:team, league: @league),
+                                referee1_id: r1.id, line_rating: 6, communication_rating: 6,
+                                submitted_by_user_id: @admin.id)
+
+      login(@admin)
+      get '/api/v2/admin/referee_feedback_analytics'
+
+      assert_response :success
+      assert_equal 2, response.parsed_body['overall']['count']
+      assert_equal 1, response.parsed_body['overall']['count_via_invitation']
+    end
+
+    test 'Gruppen-Kennzahlen weisen die Abgaben ueber den Einmal-Link ebenfalls aus' do
+      r1 = create(:referee)
+      tag = RefereeTag.create!(name: 'Kader', game_operation_id: nil)
+      RefereeTagging.create!(referee: r1, referee_tag: tag)
+      create(:referee_feedback, game: game_in(@league), team: create(:team, league: @league),
+                                referee1_id: r1.id, line_rating: 9, communication_rating: 9,
+                                submitted_by_email: 'kapitaen@example.com')
+
+      login(@admin)
+      get '/api/v2/admin/referee_feedback_analytics', params: { tag_id: tag.id }
+
+      assert_response :success
+      assert_equal 1, response.parsed_body['group']['count_via_invitation']
+    end
+
     test 'min_count markiert Schiris unterhalb der Schwelle als nicht rankbar' do
       r1 = create(:referee)
       create(:referee_feedback, game: game_in(@league), team: create(:team, league: @league),

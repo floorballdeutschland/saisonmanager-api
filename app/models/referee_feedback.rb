@@ -32,4 +32,19 @@ class RefereeFeedback < ApplicationRecord
   def visible?
     status == 'visible'
   end
+
+  # Über welchen Weg die Rückmeldung kam: aus einem angemeldeten Konto (Team- oder
+  # Vereinsmanager) oder über einen Einmal-Link ohne Konto (Kapitän*in bzw. der
+  # von der Mannschaft hinterlegte Feedback-Kontakt).
+  #
+  # Bestandsdaten liefern 'account', denn der Abgabeweg per Konto setzt seit der
+  # ersten Fassung immer submitted_by_user_id. nil ist nur ein defensiver Rest für
+  # Datensätze ohne beides (in der Praxis bisher nicht vorgekommen): Dann wird
+  # kein Weg behauptet.
+  def submitted_via
+    return 'invitation' if submitted_by_email.present? || submitted_by_player_id.present?
+    return 'account' if submitted_by_user_id.present?
+
+    nil
+  end
 end
