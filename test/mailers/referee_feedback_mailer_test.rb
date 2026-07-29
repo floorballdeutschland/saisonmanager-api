@@ -30,13 +30,16 @@ class RefereeFeedbackMailerTest < ActionMailer::TestCase
     assert_equal ['kapitaen@example.com'], mail.to
     assert_equal 'Schiri-Feedback abgeben – Heim', mail.subject
 
-    body = mail.body.encoded
-    assert_includes body, raw_token
-    assert_includes body, "/schiri-feedback/abgeben/#{raw_token}"
-    assert_includes body, 'Heim'
-    assert_includes body, 'Gast'
-    assert_includes body, 'innerhalb von 24 Stunden'
-    assert_not_includes body, invitation.token_digest
+    # Dekodiert prüfen: mail.body.encoded ist quoted-printable, dort zerlegen
+    # Soft-Umbrüche sowohl den Token als auch Umlaute.
+    [mail.text_part.decoded, mail.html_part.decoded].each do |body|
+      assert_includes body, raw_token
+      assert_includes body, "/schiri-feedback/abgeben/#{raw_token}"
+      assert_includes body, 'Heim'
+      assert_includes body, 'Gast'
+      assert_includes body, 'innerhalb von 24 Stunden'
+      assert_not_includes body, invitation.token_digest
+    end
   end
 
   test 'Einladung an die Kapitaenin begruendet die Zustellung anders als an den Team-Kontakt' do
@@ -44,10 +47,10 @@ class RefereeFeedbackMailerTest < ActionMailer::TestCase
       game: @game, team: @home, email: 'kapitaenin@example.com'
     )
 
-    captain_body = RefereeFeedbackMailer.invitation(invitation, raw_token, source: :captain).body.encoded
+    captain_body = RefereeFeedbackMailer.invitation(invitation, raw_token, source: :captain).text_part.decoded
     assert_includes captain_body, 'Kapitän*in'
 
-    contact_body = RefereeFeedbackMailer.invitation(invitation, raw_token, source: :team_contact).body.encoded
+    contact_body = RefereeFeedbackMailer.invitation(invitation, raw_token, source: :team_contact).text_part.decoded
     assert_includes contact_body, 'als Kontakt für das Schiedsrichter-Feedback hinterlegt'
   end
 
@@ -57,7 +60,7 @@ class RefereeFeedbackMailerTest < ActionMailer::TestCase
     mail = RefereeFeedbackMailer.form_available(tm, @game, @home)
 
     assert_equal ['tm@example.com'], mail.to
-    assert_includes mail.body.encoded, '/verein/schiri-feedback'
-    assert_includes mail.body.encoded, 'Heim'
+    assert_includes mail.text_part.decoded, '/verein/schiri-feedback'
+    assert_includes mail.text_part.decoded, 'Heim'
   end
 end

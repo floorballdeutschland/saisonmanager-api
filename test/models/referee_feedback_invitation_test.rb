@@ -43,11 +43,19 @@ class RefereeFeedbackInvitationTest < ActiveSupport::TestCase
     assert_equal 1, RefereeFeedbackInvitation.where(game: @game, team: @home).count
   end
 
-  test 'ohne expires_at gilt der Link als abgelaufen' do
+  test 'ein abgelaufener Link ist nicht mehr verwendbar' do
     invitation, = generate
-    invitation.update_columns(expires_at: nil)
+    invitation.update_columns(expires_at: 1.minute.ago)
 
     assert invitation.expired?
+    assert_not invitation.usable?
+  end
+
+  test 'ein verbrauchter Link ist nicht mehr verwendbar' do
+    invitation, = generate
+    invitation.update_columns(used_at: Time.current)
+
+    assert invitation.used?
     assert_not invitation.usable?
   end
 
