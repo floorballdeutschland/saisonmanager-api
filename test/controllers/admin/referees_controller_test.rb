@@ -311,6 +311,27 @@ module Admin
       assert_response :forbidden
     end
 
+    # Der Abgabeweg steht auch am Schiri-Profil, nicht nur im Kommentar-Feed.
+    test 'feedbacks nennt den Abgabeweg je Rueckmeldung' do
+      referee = create(:referee)
+      league = create(:league)
+      game = create(:game, game_day: create(:game_day, league: league, club: create(:club)))
+      via_link = create(:referee_feedback, game: game, team: create(:team, league: league),
+                                           referee1_id: referee.id, submitted_by_email: 'kapitaen@example.com')
+      via_account = create(:referee_feedback, game: create(:game, game_day: game.game_day),
+                                              team: create(:team, league: league),
+                                              referee1_id: referee.id, submitted_by_user_id: @admin.id)
+
+      login(@admin)
+      get "/api/v2/admin/referees/#{referee.id}/feedbacks"
+
+      assert_response :success
+      by_id = response.parsed_body['feedbacks'].index_by { |f| f['id'] }
+      assert_equal 'invitation', by_id[via_link.id]['submitted_via']
+      assert_equal 'account', by_id[via_account.id]['submitted_via']
+      assert_not_includes response.body, 'kapitaen@example.com'
+    end
+
     private
 
     # Spiel mit tatsächlich eingesetzten Schiris (officiating_referee_ids).

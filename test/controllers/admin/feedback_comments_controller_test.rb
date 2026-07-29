@@ -34,6 +34,24 @@ module Admin
       assert_equal 1, response.parsed_body.size
     end
 
+    test 'Feed nennt den Abgabeweg, aber nicht die abgebende Person' do
+      r1 = create(:referee)
+      via_link = make_feedback(referee1: r1, comment: 'Kam über den Einmal-Link')
+      via_link.update!(submitted_by_email: 'kapitaen@example.com')
+      via_account = make_feedback(referee1: r1, comment: 'Kam vom Teammanager')
+      via_account.update!(submitted_by_user_id: @admin.id)
+
+      login(@admin)
+      get '/api/v2/admin/feedback_comments'
+
+      assert_response :success
+      by_id = response.parsed_body.index_by { |c| c['id'] }
+      assert_equal 'invitation', by_id[via_link.id]['submitted_via']
+      assert_equal 'account', by_id[via_account.id]['submitted_via']
+      # Adresse und Konto der abgebenden Person bleiben außen vor.
+      assert_not_includes response.body, 'kapitaen@example.com'
+    end
+
     test 'Themen setzen wird im Feed gespiegelt' do
       r1 = create(:referee)
       feedback = make_feedback(referee1: r1, comment: 'Auftreten souverän')
