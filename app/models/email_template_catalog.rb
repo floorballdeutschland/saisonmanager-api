@@ -55,7 +55,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
     'RefereeFeedbackMailer#form_available' => {
       mailer_class: 'RefereeFeedbackMailer',
       action_name: 'form_available',
-      description: 'Info an Teammanager, dass das Schiri-Feedback-Formular für ein Spiel ausfüllbar ist (Fenster öffnet mit dem Abschluss des Spielberichts).',
+      description: 'Info an Teammanager, dass das Schiri-Feedback-Formular für ein Spiel ausfüllbar ist (Fenster öffnet mit dem Abschluss des Spielberichts; die Mail bittet um Abgabe innerhalb von 24 Stunden).',
       default_subject: 'Schiri-Feedback möglich – {{team_name}}',
       default_from: nil,
       default_reply_to: nil,
