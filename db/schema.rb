@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_07_28_120200) do
+ActiveRecord::Schema[7.1].define(version: 2026_07_29_120200) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -614,6 +614,20 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_28_120200) do
     t.index ["status"], name: "index_referee_course_results_on_status"
   end
 
+  create_table "referee_feedback_invitations", force: :cascade do |t|
+    t.bigint "game_id", null: false
+    t.bigint "team_id", null: false
+    t.bigint "player_id"
+    t.string "email", null: false
+    t.string "token_digest", null: false
+    t.datetime "expires_at", null: false
+    t.datetime "used_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["game_id", "team_id"], name: "index_referee_feedback_invitations_on_game_id_and_team_id", unique: true
+    t.index ["token_digest"], name: "index_referee_feedback_invitations_on_token_digest", unique: true
+  end
+
   create_table "referee_feedbacks", force: :cascade do |t|
     t.bigint "game_id", null: false
     t.bigint "team_id", null: false
@@ -630,6 +644,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_28_120200) do
     t.string "status", default: "visible", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.bigint "submitted_by_player_id"
+    t.string "submitted_by_email"
     t.index ["game_id", "team_id"], name: "index_referee_feedbacks_on_game_id_and_team_id", unique: true
     t.index ["game_id"], name: "index_referee_feedbacks_on_game_id"
     t.index ["referee1_id"], name: "index_referee_feedbacks_on_referee1_id"
@@ -781,6 +797,10 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_28_120200) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.string "legacy_ref"
+    t.string "feedback_contact_email"
+    t.boolean "feedback_contact_prefer_captain", default: false, null: false
+    t.datetime "feedback_contact_updated_at"
+    t.bigint "feedback_contact_updated_by"
     t.index ["club_id"], name: "index_teams_on_club_id"
     t.index ["legacy_ref"], name: "index_teams_on_legacy_ref", unique: true, where: "(legacy_ref IS NOT NULL)"
   end

@@ -1,0 +1,22 @@
+Schiedsrichter-Feedback abgeben
+==============================
+
+Hallo,
+
+<% if @source == :captain %>du bist im Spielbericht als Kapitän*in der Mannschaft <%= @team.name %> eingetragen. Deine Mannschaft hat hinterlegt, dass das Schiedsrichter-Feedback von der Spielführung abgegeben wird.<% else %>deine Adresse ist bei der Mannschaft <%= @team.name %> als Kontakt für das Schiedsrichter-Feedback hinterlegt.<% end %>
+
+Für dieses Spiel ist der Spielbericht jetzt abgeschlossen, das Feedback kann abgegeben werden:
+
+<%= @team.name %><% if @opponent_name.present? %> – <%= @opponent_name %><% end %>
+<% if @league_name.present? %><%= @league_name %>
+<% end %><% if @game_date.present? %>Spieltag: <%= @game_date %><% if @game.start_time.present? %>, <%= @game.start_time %> Uhr<% end %>
+<% end %>
+Bitte gib das Feedback innerhalb von 24 Stunden nach Abschluss des Spielberichtsbogens ab:
+
+<%= @feedback_url %>
+
+Der Link gilt nur für dieses eine Spiel und diese Mannschaft und ist einmal verwendbar. Technisch bleibt er bis zum <%= @invitation.expires_at.strftime('%d.%m.%Y') %> gültig, damit eine verspätete Rückmeldung nicht verloren geht. Ein Benutzerkonto brauchst du dafür nicht. Die Rückmeldung ist nur für die Schiedsrichterverwaltung sichtbar, nicht für die Schiedsrichter selbst und nicht für den Gegner.
+
+Du möchtest diese Mails nicht bekommen? Dann wende dich an die Teamleitung deiner Mannschaft: Dort ist eingestellt, wer das Feedback abgibt.
+
+<%= frontend_host %>

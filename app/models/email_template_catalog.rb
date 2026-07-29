@@ -66,6 +66,20 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'link', description: 'Link zur Feedback-Seite' }
       ]
     },
+    'RefereeFeedbackMailer#invitation' => {
+      mailer_class: 'RefereeFeedbackMailer',
+      action_name: 'invitation',
+      description: 'Einladung an eine Person ohne Benutzerkonto (Kapitän*in des Spiels oder der von der Mannschaft hinterlegte Feedback-Kontakt), das Schiri-Feedback über einen Einmal-Link abzugeben. Der Link gilt nur für dieses Spiel und diese Mannschaft.',
+      default_subject: 'Schiri-Feedback abgeben – {{team_name}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'team_name', description: 'Name der eigenen Mannschaft' },
+        { key: 'opponent_name', description: 'Name der gegnerischen Mannschaft' },
+        { key: 'league_name', description: 'Name der Liga' },
+        { key: 'link', description: 'Einmal-Link zur Feedback-Abgabe' }
+      ]
+    },
     'UserMailer#referee_account_created' => {
       mailer_class: 'UserMailer',
       action_name: 'referee_account_created',

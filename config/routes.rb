@@ -369,6 +369,13 @@ Rails.application.routes.draw do
       get  'user/referee_feedbacks', to: 'user_referee_feedbacks#index'
       post 'user/referee_feedbacks', to: 'user_referee_feedbacks#create'
 
+      get   'user/referee_feedback_settings',     to: 'user_referee_feedback_settings#index'
+      patch 'user/referee_feedback_settings/:id', to: 'user_referee_feedback_settings#update'
+
+      # Abgabe ohne Anmeldung über Einmal-Link (Kapitän*in / Feedback-Kontakt).
+      get  'referee_feedback_invitations/:token', to: 'referee_feedback_invitations#show'
+      post 'referee_feedback_invitations/:token', to: 'referee_feedback_invitations#create'
+
       resources :games do
         collection do
           # Hallen-Belegungskonflikte für ein (geplantes) Spiel prüfen, ohne zu speichern.

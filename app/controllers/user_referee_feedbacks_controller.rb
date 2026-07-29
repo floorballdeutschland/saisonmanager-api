@@ -5,7 +5,14 @@
 # Die abgebende Seite sieht bewusst nur den Status (offen / erledigt) – die
 # Inhalte (Bewertungen, Kommentare) sind ausschließlich in der Schiriverwaltung
 # am Schiri-Profil sichtbar.
+#
+# Denselben Weg ohne Anmeldung gibt es für Kapitän*innen und andere benannte
+# Personen über einen Einmal-Link (RefereeFeedbackInvitationsController). Beide
+# Wege teilen die Annahme-Logik (RefereeFeedbackSubmission), es bleibt bei einem
+# Feedback je Spiel und Mannschaft: Wer zuerst absendet, gewinnt.
 class UserRefereeFeedbacksController < ApplicationController
+  include ManagedTeams
+
   before_action :authenticate_user
 
   # Wie weit zurück gespielte Spiele in der Übersicht erscheinen.
@@ -19,10 +26,14 @@ class UserRefereeFeedbacksController < ApplicationController
     feedbacks = RefereeFeedback
                 .where(game_id: games.map(&:id))
                 .index_by { |f| [f.game_id, f.team_id] }
+    invitations = RefereeFeedbackInvitation
+                  .where(game_id: games.map(&:id))
+                  .index_by { |i| [i.game_id, i.team_id] }
 
     payload = games.flat_map do |game|
       participating_managed_teams(game).map do |team|
-        game_feedback_json(game, team, feedbacks[[game.id, team.id]])
+        game_feedback_json(game, team, feedbacks[[game.id, team.id]],
+                           invitations[[game.id, team.id]])
       end
     end
 
@@ -38,76 +49,22 @@ class UserRefereeFeedbacksController < ApplicationController
       return render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
 
-    # Idempotent: bereits abgegeben → unverändert als "erledigt" zurückgeben.
-    existing = RefereeFeedback.find_by(game: game, team: team)
-    return render json: status_payload(existing) if existing
-
-    unless game.match_record_closed?
-      return render json: { error: 'Feedback ist erst möglich, sobald der Spielbericht abgeschlossen ist.' },
-                    status: :unprocessable_entity
-    end
-
-    referees, referee_names = resolve_feedback_referees(game)
-    feedback = RefereeFeedback.new(
+    feedback, error = RefereeFeedbackSubmission.new(
       game: game,
       team: team,
-      club_id: team.club_id,
-      submitted_by_user_id: current_user.id,
-      referee1_id: referees[0]&.id,
-      referee2_id: referees[1]&.id,
-      referee_names: referee_names.join(' / ').presence,
-      line_rating: params[:line_rating],
-      line_comment: params[:line_comment].to_s.strip.presence,
-      communication_rating: params[:communication_rating],
-      communication_comment: params[:communication_comment].to_s.strip.presence,
-      general_comment: params[:general_comment].to_s.strip.presence
-    )
+      attributes: params,
+      submitted_by_user_id: current_user.id
+    ).call
 
-    if feedback.save
-      render json: status_payload(feedback), status: :created
-    else
-      render json: { error: feedback.errors.full_messages.join(', ') }, status: :unprocessable_entity
-    end
+    return render json: { error: error }, status: :unprocessable_entity if error
+
+    render json: status_payload(feedback),
+           status: feedback.previously_new_record? ? :created : :ok
   rescue ActiveRecord::RecordNotFound
     head :not_found
-  rescue ActiveRecord::RecordNotUnique
-    existing = RefereeFeedback.find_by(game: game, team: team)
-    render json: status_payload(existing) if existing
   end
 
   private
-
-  # Verknüpft das Feedback mit den tatsächlich eingesetzten Schiedsrichtern aus
-  # dem Spielbericht (Game#officiating_referees). Nur wenn der Bericht keine
-  # auflösbaren Schiris liefert, wird ersatzweise die Ansetzung herangezogen.
-  # Liefert [referees, names]. names werden konsistent aus DENSELBEN verknüpften
-  # Records abgeleitet (damit referee_names nie andere Personen benennt als
-  # referee1_id/referee2_id); nur wenn gar kein Schiri auflösbar ist, dienen die
-  # Bericht-Klartextnamen als informativer Fallback.
-  def resolve_feedback_referees(game)
-    referees = game.officiating_referees.presence || game.nominated_referees
-    names = referees.map { |r| "#{r.vorname} #{r.nachname}".strip }
-    names = game.officiating_referee_names if names.empty?
-    [referees, names]
-  end
-
-  # Team-IDs, die der/die Benutzer:in als Teammanager (direkt) oder als
-  # Vereinsmanager (alle Teams der eigenen Vereine) verantwortet.
-  def managed_team_ids
-    @managed_team_ids ||= begin
-      ids = tm_team_ids.dup
-      ids += Team.where(club_id: managed_club_ids).pluck(:id) if managed_club_ids.present?
-      ids.uniq
-    end
-  end
-
-  def tm_team_ids
-    @tm_team_ids ||= Array(current_user.permission_hash[:tm]).map(&:to_i)
-  end
-
-  def managed_club_ids
-    @managed_club_ids ||= Array(current_user.permission_hash[:vm]).map(&:to_i)
-  end
 
   # Spiele mit abgeschlossenem Spielbericht in feedback-pflichtigen Ligen, an
   # denen eine eigene Mannschaft beteiligt ist (Lookback-Fenster). Erst mit dem
@@ -151,7 +108,11 @@ class UserRefereeFeedbacksController < ApplicationController
     game.match_record_closed? ? game.match_record_closed_at : nil
   end
 
-  def game_feedback_json(game, team, feedback)
+  # invited_email macht sichtbar, an wen die Einladung zur Abgabe gegangen ist
+  # (Kapitän*in oder hinterlegter Feedback-Kontakt). Wichtig, weil die Abgabe
+  # Pflicht der Mannschaft bleibt: Der Teammanager soll erkennen, ob er selbst
+  # nachfassen muss.
+  def game_feedback_json(game, team, feedback, invitation = nil)
     opponent = team.id == game.home_team_id ? game.guest_team : game.home_team
     {
       game_id: game.id,
@@ -163,10 +124,12 @@ class UserRefereeFeedbacksController < ApplicationController
       league: game.league&.name,
       date: game.game_day.date,
       start_time: game.start_time,
-      referees: resolve_feedback_referees(game).last,
+      referees: game.feedback_referees.last,
       fillable_from: fillable_from(game)&.iso8601,
       done: feedback.present?,
-      submitted_at: feedback&.created_at&.iso8601
+      submitted_at: feedback&.created_at&.iso8601,
+      invited_email: invitation&.email,
+      invited_at: invitation&.created_at&.iso8601
     }
   end
 
