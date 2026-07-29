@@ -82,7 +82,8 @@ class UserRefereeFeedbackSettingsControllerTest < ActionDispatch::IntegrationTes
     get '/api/v2/user/referee_feedback_settings'
 
     assert_response :success
-    assert_equal ['Mit Feedback'], JSON.parse(response.body).map { |e| e['team_name'] }
+    names = JSON.parse(response.body).map { |e| e['team_name'] }
+    assert_equal ['Mit Feedback'], names
   end
 
   test 'Vereinsmanager verwaltet die Mannschaften des eigenen Vereins' do
