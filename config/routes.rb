@@ -1,7 +1,9 @@
 Rails.application.routes.draw do
   # For details on the DSL available within this file, see https://guides.rubyonrails.org/routing.html
   resources :arenas
-  resources :games
+  # Kein :index – GET /games lieferte per Game.all die komplette Spieltabelle
+  # ohne Filter und ohne Grenze, öffentlich per API-Key erreichbar.
+  resources :games, except: [:index]
   resources :game_day
   # Nur :index ist implementiert; show/create/update/destroy/new/edit haben keine
   # Controller-Action und wären tote Routen. Die genutzten Einzel-Endpunkte sind
@@ -381,7 +383,9 @@ Rails.application.routes.draw do
       get  'referee_feedback_invitations/:token', to: 'referee_feedback_invitations#show'
       post 'referee_feedback_invitations/:token', to: 'referee_feedback_invitations#create'
 
-      resources :games do
+      # Kein :index – GET /api/v2/games lieferte per Game.all die komplette
+      # Spieltabelle ohne Filter und ohne Grenze (siehe GamesController).
+      resources :games, except: [:index] do
         collection do
           # Hallen-Belegungskonflikte für ein (geplantes) Spiel prüfen, ohne zu speichern.
           get :scheduling_conflicts
