@@ -32,6 +32,7 @@ class RefereeMailer < ApplicationMailer
     @club_contact_email = club_contact_email
     @license_list_url = license_list_url
     @license_expires_at = license_expires_at
+    @referee_notes = game.referee_notes.presence
 
     templated_mail(
       to: referee.email,
@@ -42,7 +43,8 @@ class RefereeMailer < ApplicationMailer
         game_time: game.start_time.to_s,
         home_team: game.home_team&.name,
         guest_team: game.guest_team&.name,
-        coach_name: coach ? "#{coach.vorname} #{coach.nachname}" : ''
+        coach_name: coach ? "#{coach.vorname} #{coach.nachname}" : '',
+        referee_notes: @referee_notes.to_s
       }
     )
   end
@@ -56,6 +58,7 @@ class RefereeMailer < ApplicationMailer
     @club_contact_email = club_contact_email
     @license_list_url = license_list_url
     @license_expires_at = license_expires_at
+    @referee_notes = game.referee_notes.presence
 
     templated_mail(
       to: coach.email,
@@ -66,7 +69,8 @@ class RefereeMailer < ApplicationMailer
         game_time: game.start_time.to_s,
         home_team: game.home_team&.name,
         guest_team: game.guest_team&.name,
-        officials: official_names.to_s
+        officials: official_names.to_s,
+        referee_notes: @referee_notes.to_s
       }
     )
   end
@@ -79,6 +83,7 @@ class RefereeMailer < ApplicationMailer
     @game = game
     @official_names = official_names
     @coach = coach
+    @referee_notes = game.referee_notes.presence
 
     templated_mail(
       to: referee.email,
@@ -90,7 +95,8 @@ class RefereeMailer < ApplicationMailer
         home_team: game.home_team&.name,
         guest_team: game.guest_team&.name,
         officials: official_names.to_s,
-        coach_name: coach ? "#{coach.vorname} #{coach.nachname}" : ''
+        coach_name: coach ? "#{coach.vorname} #{coach.nachname}" : '',
+        referee_notes: @referee_notes.to_s
       }
     )
   end

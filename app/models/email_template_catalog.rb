@@ -166,7 +166,8 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'game_time', description: 'Anpfiff (Startzeit des Spiels)' },
         { key: 'home_team', description: 'Name der Heimmannschaft' },
         { key: 'guest_team', description: 'Name der Gastmannschaft' },
-        { key: 'coach_name', description: 'Name des/der Schiedsrichtercoach/in (leer, falls keine/r angesetzt)' }
+        { key: 'coach_name', description: 'Name des/der Schiedsrichtercoach/in (leer, falls keine/r angesetzt)' },
+        { key: 'referee_notes', description: 'Zusätzliche Spielinformationen des Ansetzers (leer, falls keine hinterlegt)' }
       ]
     },
     'RefereeMailer#published_coach_notification' => {
@@ -181,7 +182,8 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'game_time', description: 'Anpfiff (Startzeit des Spiels)' },
         { key: 'home_team', description: 'Name der Heimmannschaft' },
         { key: 'guest_team', description: 'Name der Gastmannschaft' },
-        { key: 'officials', description: 'Namen der angesetzten Schiedsrichter/innen' }
+        { key: 'officials', description: 'Namen der angesetzten Schiedsrichter/innen' },
+        { key: 'referee_notes', description: 'Zusätzliche Spielinformationen des Ansetzers (leer, falls keine hinterlegt)' }
       ]
     },
     'RefereeMailer#updated_assignment_notification' => {
@@ -197,7 +199,8 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'home_team', description: 'Name der Heimmannschaft' },
         { key: 'guest_team', description: 'Name der Gastmannschaft' },
         { key: 'officials', description: 'Namen der aktuell angesetzten Schiedsrichter/innen' },
-        { key: 'coach_name', description: 'Name des/der Schiedsrichtercoach/in (leer, falls keine/r angesetzt)' }
+        { key: 'coach_name', description: 'Name des/der Schiedsrichtercoach/in (leer, falls keine/r angesetzt)' },
+        { key: 'referee_notes', description: 'Zusätzliche Spielinformationen des Ansetzers (leer, falls keine hinterlegt)' }
       ]
     },
     'RefereeMailer#incident_report_reminder' => {
