@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Verbandslogo und Werbebanner lassen sich jetzt auch als PNG oder JPG hochladen**: Bisher nahmen die Verbandseinstellungen ausschließlich WebP an. Logos liegen den Verbänden aber praktisch immer als PNG oder JPG vor, sodass die Landesverbände ihr eigenes Logo gar nicht selbst hinterlegen konnten und auf einer alten, fest im System hinterlegten Adresse sitzen blieben. Erlaubt sind jetzt dieselben Formate wie bei Vereins- und Teamlogos, also PNG, JPG und WebP. Anders als dort muss ein Verbandslogo nicht quadratisch sein, weil es sich in aller Regel um eine Wortmarke im Querformat handelt. SVG bleibt bewusst ausgeschlossen. Die Größengrenzen sind unverändert (Logo 5 MB, Banner 500 KB); bei einer zu großen Datei nennt die Meldung die Grenze jetzt korrekt („Maximal 500 KB erlaubt" statt „Maximal 0 MB erlaubt"). Zusätzlich wird eine hochgeladene Datei wie bei den Vereinslogos daraufhin geprüft, ob sie sich überhaupt als Bild lesen lässt.
+
 ## [1.63.0] - 2026-07-30
 
 ### Neu

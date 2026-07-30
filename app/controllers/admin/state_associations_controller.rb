@@ -2,6 +2,13 @@ module Admin
   class StateAssociationsController < ApplicationController
     include StateAssociationWritable
 
+    # Eigene Grenzen statt des geteilten LOGO_MAX_SIZE: Verbandslogos werden in
+    # höherer Auflösung gepflegt als Vereinslogos, das Banner bleibt bewusst klein,
+    # weil es auf jeder Verbandsseite mitgeladen wird. Beides entspricht den Werten,
+    # die hier vorher direkt in den Aktionen standen.
+    SA_LOGO_MAX_SIZE = 5.megabytes
+    SA_BANNER_MAX_SIZE = 500.kilobytes
+
     before_action :authorize_sa_access!
     before_action :set_state_association, only: %i[show update destroy upload_banner delete_banner upload_logo delete_logo]
     # Anlegen/Löschen ganzer Landesverbände bleibt globalen Admins vorbehalten.
@@ -61,12 +68,8 @@ module Admin
     def upload_banner
       return render json: { message: 'Kein Bild angefügt' }, status: :unprocessable_entity unless params[:banner].present?
 
-      unless params[:banner].content_type == 'image/webp'
-        return render json: { message: 'Nur WebP-Dateien erlaubt' }, status: :unprocessable_entity
-      end
-
-      if params[:banner].size > 500.kilobytes
-        return render json: { message: 'Maximale Dateigröße: 500 KB' }, status: :unprocessable_entity
+      if (error = logo_upload_error(params[:banner], square: false, max_size: SA_BANNER_MAX_SIZE))
+        return render json: { message: error }, status: :unprocessable_entity
       end
 
       begin
@@ -93,12 +96,8 @@ module Admin
     def upload_logo
       return render json: { message: 'Kein Bild angefügt' }, status: :unprocessable_entity unless params[:logo].present?
 
-      unless %w[image/webp].include?(params[:logo].content_type)
-        return render json: { message: 'Nur WebP erlaubt' }, status: :unprocessable_entity
-      end
-
-      if params[:logo].size > 5.megabytes
-        return render json: { message: 'Maximale Dateigröße: 5 MB' }, status: :unprocessable_entity
+      if (error = logo_upload_error(params[:logo], square: false, max_size: SA_LOGO_MAX_SIZE))
+        return render json: { message: error }, status: :unprocessable_entity
       end
 
       begin

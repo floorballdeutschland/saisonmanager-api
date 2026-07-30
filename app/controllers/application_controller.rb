@@ -85,7 +85,7 @@ class ApplicationController < ActionController::Base
     User.current_user = current_user
   end
 
-  # Serverseitige Prüfung für Vereins-/Team-Logo-Uploads (analog zu den Banner-Endpunkten).
+  # Serverseitige Prüfung für Bild-Uploads (Vereins-, Team- und Verbandslogos sowie Banner).
   # Gibt eine erklärende Fehlermeldung zurück oder nil, wenn die Datei zulässig ist.
   # Nur Raster-Formate: SVG ist bewusst ausgeschlossen, weil ActiveStorage SVG als
   # Binary/Attachment ausliefert (Logos würden nicht als <img> rendern) und ein
@@ -93,7 +93,11 @@ class ApplicationController < ActionController::Base
   LOGO_ALLOWED_CONTENT_TYPES = %w[image/png image/jpeg image/webp].freeze
   LOGO_MAX_SIZE = 3.megabytes
 
-  def logo_upload_error(file)
+  # square: Vereins- und Teamlogos werden in quadratischen Kacheln und Tabellenzeilen
+  # ausgespielt und müssen deshalb quadratisch geliefert werden. Verbandslogos und
+  # Banner laufen dagegen über die Breite und sind fast immer Wortmarken im
+  # Querformat; ein Quadrat-Zwang würde dort jede reale Vorlage abweisen.
+  def logo_upload_error(file, square: true, max_size: LOGO_MAX_SIZE)
     # Kein hochgeladenes File (z. B. String-Parameter): sauber als 422 abweisen,
     # statt bei file.content_type mit NoMethodError (500) abzubrechen.
     return 'Ungültige Bilddatei.' unless file.respond_to?(:content_type) && file.respond_to?(:tempfile)
@@ -102,7 +106,11 @@ class ApplicationController < ActionController::Base
       return 'Ungültiges Dateiformat. Erlaubt sind PNG, JPG oder WebP.'
     end
 
-    return "Die Datei ist zu groß. Maximal #{LOGO_MAX_SIZE / 1.megabyte} MB erlaubt." if file.size > LOGO_MAX_SIZE
+    if file.size > max_size
+      # number_to_human_size statt Division durch 1.megabyte: Das Bannerlimit liegt
+      # unter einem Megabyte und wäre sonst als "Maximal 0 MB erlaubt" gemeldet worden.
+      return "Die Datei ist zu groß. Maximal #{ActiveSupport::NumberHelper.number_to_human_size(max_size)} erlaubt."
+    end
 
     require 'vips'
     begin
@@ -111,7 +119,7 @@ class ApplicationController < ActionController::Base
       return 'Die Datei konnte nicht als Bild gelesen werden.'
     end
 
-    return 'Das Logo muss quadratisch sein (gleiche Breite und Höhe).' unless image.width == image.height
+    return 'Das Logo muss quadratisch sein (gleiche Breite und Höhe).' if square && image.width != image.height
 
     nil
   end
