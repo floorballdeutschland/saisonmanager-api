@@ -1,8 +1,9 @@
 # frozen_string_literal: true
 
 # Benachrichtigt die Teammanager beider Mannschaften eines Spiels, dass das
-# Schiri-Feedback-Formular ausfüllbar ist. Das Fenster öffnet, sobald der
-# Spielbericht abgeschlossen ist (game_status match_record_closed/finalized).
+# Schiri-Feedback-Formular ausfüllbar ist. Wann das Fenster öffnet, entscheidet
+# RefereeFeedbackWindow: abgeschlossener Spielbericht UND mindestens 24 h nach
+# Anpfiff.
 #
 # Hat eine Mannschaft einen Feedback-Kontakt hinterlegt (Kapitän*in des Spiels
 # oder eine frei eingetragene Adresse, siehe RefereeFeedbackContact), geht
@@ -12,10 +13,12 @@
 # einspringen können. Deshalb gehen sie ZUERST raus – Kontaktadressen sind
 # selbst eingetragener Freitext, an dem der Versand scheitern kann.
 #
-# Idempotent über games.referee_feedback_notified_at. Ausgelöst direkt beim
-# Bericht-Abschluss (GamesController#set_game_status); der Rake-Task
-# referee_feedback:notify_available nutzt denselben Service als Fallback (z. B.
-# für nachträglich per referee_feedback_enabled freigeschaltete Ligen).
+# Idempotent über games.referee_feedback_notified_at. Primär ausgelöst vom
+# Cron-Lauf des Rake-Tasks referee_feedback:notify_available, weil das Fenster in
+# der Regel erst Stunden nach dem Bericht-Abschluss öffnet. Der direkte Aufruf
+# beim Abschluss (GamesController#set_game_status) greift nur, wenn der Bericht
+# ohnehin später als 24 h nach dem Spiel geschlossen wird – dann geht die Mail
+# sofort raus.
 class RefereeFeedbackNotifier
   def initialize(game)
     @game = game
@@ -106,11 +109,16 @@ class RefereeFeedbackNotifier
     Sentry.capture_exception(error) if defined?(Sentry)
   end
 
-  # Fällig, sobald der Spielbericht abgeschlossen ist, die Liga Feedback aktiviert
-  # hat und noch nicht benachrichtigt wurde.
+  # Fällig, sobald das Abgabefenster offen ist (RefereeFeedbackWindow: Bericht
+  # abgeschlossen UND 24 h nach Anpfiff), die Liga Feedback aktiviert hat und
+  # noch nicht benachrichtigt wurde.
+  #
+  # Direkt beim Bericht-Abschluss ist das im Regelfall noch nicht erfüllt – dann
+  # verschickt der Cron-Lauf des Rake-Tasks die Mails, sobald die 24 Stunden um
+  # sind. Die Mail soll nicht auf ein Formular zeigen, das noch gesperrt ist.
   def due?
     @game.referee_feedback_notified_at.nil? &&
-      @game.match_record_closed? &&
-      @game.league&.referee_feedback_enabled?
+      @game.league&.referee_feedback_enabled? &&
+      RefereeFeedbackWindow.new(@game).open?
   end
 end

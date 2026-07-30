@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Schiri-Feedback wieder erst 24 Stunden nach dem Spiel möglich**: Die Regel für das Schiri-Feedback lautet „24 bis 48 Stunden nach dem Spiel und keinesfalls vorher": Die Rückmeldung soll mit Abstand zum Spiel entstehen und nicht in der Emotion direkt danach. Diese Sperre war im Zuge der Umstellung des Mailversands auf den Abschluss des Spielberichtsbogens entfallen, seitdem konnte das Feedback unmittelbar nach dem Bericht-Abschluss und damit unter Umständen wenige Minuten nach dem Schlusspfiff abgegeben werden. Sie gilt jetzt wieder, und zwar für beide Abgabewege, also für angemeldete Teammanager wie für die Abgabe über den Einladungslink der Spielführung. Das Formular öffnet, sobald beide Bedingungen erfüllt sind: Der Spielberichtsbogen ist abgeschlossen, weil erst dann das tatsächlich eingesetzte Gespann feststeht, und der Anpfiff liegt mindestens 24 Stunden zurück. In der Übersicht erscheint ein Spiel bereits, solange die Frist noch läuft, dann aber mit dem Vermerk „Möglich ab" statt mit dem Abgabe-Knopf, damit die Mannschaft die anstehende Rückmeldung nicht übersieht. Ein Ende hat das Fenster weiterhin bewusst nicht: Die erwarteten 24 Stunden für die Abgabe stehen als Bitte auf der Seite und in der Mail, werden aber nicht erzwungen, weil eine spät abgegebene Rückmeldung wertvoller ist als keine. Entsprechend geht auch die Benachrichtigung „Schiri-Feedback möglich" erst raus, wenn das Formular wirklich offen ist, und nicht mehr im Moment des Bericht-Abschlusses; sonst hätte die Mail auf ein noch gesperrtes Formular gezeigt. Der Versand läuft dafür wieder über den stündlichen Aufruf von `rails referee_feedback:notify_available`; wird ein Bericht ohnehin erst später als 24 Stunden nach dem Spiel abgeschlossen, geht die Mail wie bisher sofort mit dem Abschluss raus. Die im Changelog zu 1.62.0 als Altlast beschriebene Aussage der Feedback-Seite war demnach die richtige, nur die Umsetzung fehlte; der Seitentext ist entsprechend wieder angepasst.
+
 ## [1.62.0] - 2026-07-30
 
 ### Neu

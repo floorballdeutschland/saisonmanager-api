@@ -166,6 +166,20 @@ class RefereeFeedbackInvitationsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 0, RefereeFeedback.count
   end
 
+  # Die 24-Stunden-Sperre steckt in der geteilten Annahme-Logik, gilt also auch
+  # für den Weg ohne Anmeldung. Praktisch selten, weil der Link erst mit dem
+  # Öffnen des Fensters verschickt wird.
+  test 'vor Ablauf der 24 Stunden nach dem Spiel nimmt auch der Einmal-Link nichts an' do
+    @game_day.update!(date: Date.current.to_s)
+
+    post "/api/v2/referee_feedback_invitations/#{@token}",
+         params: { line_rating: 6, communication_rating: 9 }
+
+    assert_response :unprocessable_entity
+    assert_equal RefereeFeedbackSubmission::TOO_EARLY_ERROR, JSON.parse(response.body)['error']
+    assert_equal 0, RefereeFeedback.count
+  end
+
   test 'deaktivierte Liga nimmt kein Feedback mehr an' do
     @league.update!(referee_feedback_enabled: false)
 

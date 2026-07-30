@@ -11,6 +11,7 @@
 # Die Berechtigung prüfen die Controller, nicht dieser Service.
 class RefereeFeedbackSubmission
   REPORT_OPEN_ERROR = 'Feedback ist erst möglich, sobald der Spielbericht abgeschlossen ist.'
+  TOO_EARLY_ERROR = 'Feedback ist erst 24 Stunden nach dem Spiel möglich.'
   # Bewusst eine eigene deutsche Meldung: errors.full_messages wären hier
   # englische ActiveRecord-Texte („Line rating can't be blank"), und die stünden
   # auf der öffentlichen Abgabeseite mitten in einer deutschen Seite. Beide
@@ -34,6 +35,9 @@ class RefereeFeedbackSubmission
     existing = RefereeFeedback.find_by(game: @game, team: @team)
     return [existing, nil] if existing
     return [nil, REPORT_OPEN_ERROR] unless @game.match_record_closed?
+    # Getrennte Meldung, weil der Grund ein anderer ist: Der Bericht ist zu, es
+    # ist nur noch zu früh. Gilt für beide Abgabewege, auch für den Einmal-Link.
+    return [nil, TOO_EARLY_ERROR] unless RefereeFeedbackWindow.new(@game).open?
 
     feedback = build
     return [feedback, nil] if feedback.save

@@ -67,9 +67,11 @@ class UserRefereeFeedbacksController < ApplicationController
   private
 
   # Spiele mit abgeschlossenem Spielbericht in feedback-pflichtigen Ligen, an
-  # denen eine eigene Mannschaft beteiligt ist (Lookback-Fenster). Erst mit dem
-  # Bericht-Abschluss öffnet das Feedback-Fenster, daher werden offene Berichte
-  # noch nicht gelistet.
+  # denen eine eigene Mannschaft beteiligt ist (Lookback-Fenster). Offene
+  # Berichte werden nicht gelistet, weil ohne Abschluss kein Feedback möglich
+  # ist. Spiele, deren 24-Stunden-Frist noch läuft, erscheinen dagegen bereits –
+  # mit fillable_from in der Zukunft, damit die Mannschaft die anstehende
+  # Rückmeldung sieht (siehe RefereeFeedbackWindow).
   def eligible_games
     Game
       .joins(game_day: :league)
@@ -101,11 +103,12 @@ class UserRefereeFeedbacksController < ApplicationController
     game.home_team_id == team.id || game.guest_team_id == team.id
   end
 
-  # Ab wann das Formular ausfüllbar ist: mit dem Abschluss des Spielberichts
-  # (match_record_closed_at). nil, solange der Bericht offen ist – dann ist noch
-  # kein Feedback möglich.
+  # Ab wann das Formular ausfüllbar ist (RefereeFeedbackWindow): Bericht
+  # abgeschlossen UND mindestens 24 h nach Anpfiff. Liegt der Zeitpunkt noch in
+  # der Zukunft, zeigt die Übersicht das Spiel als „Möglich ab" statt mit
+  # Abgabe-Button.
   def fillable_from(game)
-    game.match_record_closed? ? game.match_record_closed_at : nil
+    RefereeFeedbackWindow.new(game).opens_at
   end
 
   # invited_email macht sichtbar, an wen die Einladung zur Abgabe gegangen ist
