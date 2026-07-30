@@ -9,7 +9,7 @@ für ein gespieltes Spiel deiner Mannschaft <%= @team.name %> kann jetzt ein Sch
 <% if @league_name.present? %><%= @league_name %>
 <% end %><% if @game_date.present? %>Spieltag: <%= @game_date %><% if @game.start_time.present? %>, <%= @game.start_time %> Uhr<% end %>
 <% end %>
-Der Spielbericht ist abgeschlossen – das Feedback-Fenster ist nun geöffnet. Bitte gib das Feedback innerhalb von 24 Stunden nach Abschluss des Spielberichtsbogens ab:
+Der Spielbericht ist abgeschlossen und das Spiel liegt mehr als 24 Stunden zurück. Das Feedback-Fenster ist damit geöffnet. Bitte gib das Feedback innerhalb der nächsten 24 Stunden ab:
 
 <%= @feedback_url %>
 

@@ -921,9 +921,12 @@ class GamesController < ApplicationController
         if %w[match_record_closed finalized].include?(params[:game_status])
           Game.autofill_teams!(league_id: game.game_day.league_id)
 
-          # Schiri-Feedback-Fenster öffnet mit dem Bericht-Abschluss: TMs beider
-          # Mannschaften informieren und, falls hinterlegt, den Feedback-Kontakt
-          # einladen (idempotent; No-Op ohne referee_feedback_enabled).
+          # TMs beider Mannschaften informieren und, falls hinterlegt, den
+          # Feedback-Kontakt einladen (idempotent; No-Op ohne
+          # referee_feedback_enabled). Greift hier nur, wenn der Bericht später
+          # als 24 h nach dem Spiel geschlossen wird – im Regelfall ist das
+          # Abgabefenster noch zu und der Cron-Lauf von
+          # referee_feedback:notify_available verschickt die Mails später.
           #
           # Der Versand ist eine Nebenwirkung des Abschlusses, nicht Teil davon:
           # Der Bericht ist oben schon gespeichert, ein Fehler hier darf der

@@ -9,10 +9,14 @@ class RefereeGameDayConfirmationsController < ApplicationController
     # Schritt 1: gefilterte Spieltag-IDs über den Assignment-Join ermitteln.
     # Getrennt von der Präsentations-Query, da SELECT DISTINCT + ORDER BY auf
     # einer nicht-selektierten Spalte (game_days.date) in Postgres scheitert.
+    # Coach/Beobachter zählt mit: Auch er ist am Spieltag angesetzt und braucht
+    # die Spielinformationen des Ansetzers – abgeben muss die
+    # Spieltagsbestätigung aber allein das Gespann (siehe game_day_json).
     game_day_ids = GameDay
                    .joins(games: :referee_assignment)
                    .where(
-                     'referee_assignments.status = :status AND (referee_assignments.referee1_id = :id OR referee_assignments.referee2_id = :id)',
+                     'referee_assignments.status = :status AND (referee_assignments.referee1_id = :id ' \
+                     'OR referee_assignments.referee2_id = :id OR referee_assignments.coach_id = :id)',
                      status: 'published', id: @referee.id
                    )
                    .where("TO_DATE(game_days.date, 'YYYY-MM-DD') >= ?", 60.days.ago.to_date)
@@ -190,12 +194,27 @@ class RefereeGameDayConfirmationsController < ApplicationController
     Rails.logger.warn("notify_sbk_of_veto failed for game_day_id=#{game_day.id}: #{e.class}: #{e.message}")
   end
 
+  # Angesetzt am Spiel – als Gespann-Mitglied oder als Coach/Beobachter.
+  def assigned_official?(assignment)
+    officiating?(assignment) || assignment.coach_id == @referee.id
+  end
+
+  # Leitet das Spiel selbst (Schiri 1 oder 2), im Unterschied zum Coach.
+  def officiating?(assignment)
+    assignment.referee1_id == @referee.id || assignment.referee2_id == @referee.id
+  end
+
   def game_day_json(game_day, day_confirmations)
     published_assignments = game_day.games
                                     .filter_map(&:referee_assignment)
-                                    .select { |a| a.status == 'published' && (a.referee1_id == @referee.id || a.referee2_id == @referee.id) }
+                                    .select { |a| a.status == 'published' && assigned_official?(a) }
 
-    partner_id = published_assignments
+    # Als Coach/Beobachter ist man am Spieltag angesetzt, leitet aber kein Spiel:
+    # Es gibt keinen Partner und keine Spieltagsbestätigung abzugeben – die
+    # bleibt beim Gespann (POST /confirm lässt ohnehin nur Schiri 1/2 zu).
+    officiating_assignments = published_assignments.select { |a| officiating?(a) }
+
+    partner_id = officiating_assignments
                  .filter_map { |a| a.referee1_id == @referee.id ? a.referee2_id : a.referee1_id }
                  .compact
                  .first
@@ -224,8 +243,11 @@ class RefereeGameDayConfirmationsController < ApplicationController
       partner_confirmed_at: partner_confirmation&.confirmed_at&.iso8601,
       auto_confirmed: auto_conf,
       confirmable_from: last_game_start(game_day)&.iso8601,
-      # Bestätigung nur nötig, wenn der LV der Liga eine Checkliste hinterlegt hat.
-      checklist_required: items.any?,
+      # Nur als Coach/Beobachter angesetzt: Anzeige ohne Bestätigungsteil.
+      coach_only: officiating_assignments.empty?,
+      # Bestätigung nur nötig, wenn der LV der Liga eine Checkliste hinterlegt hat
+      # und man den Spieltag selbst gepfiffen hat.
+      checklist_required: items.any? && officiating_assignments.any?,
       checklist_items: items.map { |i| { id: i.id, question: i.question } },
       properly_conducted: my_confirmation&.properly_conducted,
       my_checklist_answers: my_confirmation&.checklist_answers || [],
@@ -240,7 +262,10 @@ class RefereeGameDayConfirmationsController < ApplicationController
                  start_time: g.start_time,
                  home_team: g.home_team&.name,
                  guest_team: g.guest_team&.name,
-                 result: g.result_string
+                 result: g.result_string,
+                 # Zusätzliche Spielinformationen des Ansetzers – nur für das
+                 # angesetzte Gespann bzw. den Coach, nie für die Mannschaften.
+                 referee_notes: g.referee_notes_visible_to?(@referee) ? g.referee_notes : nil
                }
              end
     }

@@ -95,7 +95,89 @@ module Admin
       assert_equal [club.id, excluded_club.id].sort, entry['excluded_club_ids'].sort
     end
 
+    test 'Ansetzer im Scope pflegt und leert die Spielinformationen' do
+      sa = create(:state_association, referee_assignment_enabled: true)
+      go = create(:game_operation, state_association_id: sa.id)
+      game = assignable_game(go)
+      user = create(:user, :assigner_scoped, game_operation_id: go.id,
+                                             first_name: 'Anna', last_name: 'Ansetzer')
+      login(user)
+
+      patch "/api/v2/admin/referee_assignments/games/#{game.id}/notes",
+            params: { game: { referee_notes: '  Halle nur über den Hintereingang  ' } }
+
+      assert_response :success
+      body = JSON.parse(response.body)
+      assert_equal 'Halle nur über den Hintereingang', body['referee_notes']
+      assert_equal 'Anna Ansetzer', body['referee_notes_updated_by_name']
+      assert_not_nil body['referee_notes_updated_at']
+      assert_equal 'Halle nur über den Hintereingang', game.reload.referee_notes
+      assert_equal user.id, game.referee_notes_updated_by
+
+      patch "/api/v2/admin/referee_assignments/games/#{game.id}/notes",
+            params: { game: { referee_notes: '   ' } }
+
+      assert_response :success
+      assert_nil game.reload.referee_notes
+    end
+
+    test 'Ansetzer eines fremden Verbands darf die Spielinformationen nicht ändern' do
+      sa_own = create(:state_association, referee_assignment_enabled: true)
+      go_own = create(:game_operation, state_association_id: sa_own.id)
+      sa_other = create(:state_association, referee_assignment_enabled: true)
+      go_other = create(:game_operation, state_association_id: sa_other.id)
+      game = assignable_game(go_other)
+      game.update!(referee_notes: 'Fremder Hinweis')
+
+      login(create(:user, :assigner_scoped, game_operation_id: go_own.id))
+      patch "/api/v2/admin/referee_assignments/games/#{game.id}/notes",
+            params: { game: { referee_notes: 'Übergriff' } }
+
+      assert_response :forbidden
+      assert_equal 'Fremder Hinweis', game.reload.referee_notes
+    end
+
+    test 'Rolle ohne Ansetzungsrecht darf die Spielinformationen nicht ändern' do
+      go = create(:game_operation, :national)
+      game = assignable_game(go)
+
+      login(create(:user, :sbk_global))
+      patch "/api/v2/admin/referee_assignments/games/#{game.id}/notes",
+            params: { game: { referee_notes: 'Von der SBK' } }
+
+      assert_response :forbidden
+      assert_nil game.reload.referee_notes
+    end
+
+    test 'Liste der ansetzbaren Spiele liefert die Spielinformationen mit Autor' do
+      go = create(:game_operation, :national)
+      game = assignable_game(go)
+      author = create(:user, :assigner_scoped, game_operation_id: go.id,
+                                               first_name: 'Bea', last_name: 'Bezirk')
+      game.update!(referee_notes: 'Turniermodus, 2×15 Minuten',
+                   referee_notes_updated_at: Time.current,
+                   referee_notes_updated_by: author.id)
+
+      login(create(:user, :assigner_scoped, game_operation_id: go.id))
+      get '/api/v2/admin/referee_assignments/games'
+
+      assert_response :success
+      entry = JSON.parse(response.body).find { |g| g['id'] == game.id }
+      assert_equal 'Turniermodus, 2×15 Minuten', entry['referee_notes']
+      assert_equal 'Bea Bezirk', entry['referee_notes_updated_by_name']
+      assert_not_nil entry['referee_notes_updated_at']
+    end
+
     private
+
+    # Spiel, das in der Ansetzungs-Liste auftaucht: noch nicht begonnen und über
+    # den Sentinel im nominated_referee_string zur RSK-Ansetzung markiert.
+    def assignable_game(game_operation)
+      league = create(:league, game_operation: game_operation)
+      game_day = create(:game_day, league: league, date: (Date.today + 7).to_s)
+      create(:game, game_day: game_day, game_status: 'pregame',
+                    nominated_referee_string: RefereeAssignmentsController::RSK_ASSIGNMENT_MARKER)
+    end
 
     # Schiri mit gültiger B-Zusatzlizenz und hinterlegter Verfügbarkeit am Datum.
     def coach_referee(club, date)

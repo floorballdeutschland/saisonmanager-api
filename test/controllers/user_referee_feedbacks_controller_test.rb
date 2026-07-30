@@ -11,13 +11,15 @@ class UserRefereeFeedbacksControllerTest < ActionDispatch::IntegrationTest
     @club = create(:club)
     @home = create(:team, league: @league, club: @club, name: 'Heim')
     @guest = create(:team, league: @league, club: @club, name: 'Gast')
-    @game_day = create(:game_day, league: @league, club: @club, date: Date.current.to_s)
+    # Zwei Tage zurück, damit die 24-Stunden-Sperre (RefereeFeedbackWindow) offen
+    # ist und die Tests unten die Abgabe selbst prüfen.
+    @game_day = create(:game_day, league: @league, club: @club, date: 2.days.ago.to_date.to_s)
     @game = create(:game,
                    game_day: @game_day,
                    home_team: @home,
                    guest_team: @guest,
                    game_status: 'match_record_closed',
-                   match_record_closed_at: Time.current,
+                   match_record_closed_at: 1.hour.ago,
                    players: { 'home' => [], 'guest' => [] })
     @tm = create(:user, :tm, team_id: @home.id, email: 'tm@example.com')
   end
@@ -70,6 +72,30 @@ class UserRefereeFeedbacksControllerTest < ActionDispatch::IntegrationTest
     assert_response :unprocessable_entity
     assert_includes JSON.parse(response.body)['error'], 'Bewertungen'
     assert_equal 0, RefereeFeedback.count
+  end
+
+  test 'Abgabe vor Ablauf der 24 Stunden nach dem Spiel wird abgewiesen' do
+    @game_day.update!(date: Date.current.to_s)
+    login(@tm)
+
+    post '/api/v2/user/referee_feedbacks',
+         params: { game_id: @game.id, team_id: @home.id, line_rating: 7, communication_rating: 8 }
+
+    assert_response :unprocessable_entity
+    assert_equal RefereeFeedbackSubmission::TOO_EARLY_ERROR, JSON.parse(response.body)['error']
+    assert_equal 0, RefereeFeedback.count
+  end
+
+  test 'Uebersicht listet das Spiel schon vor Ablauf der 24 Stunden mit kuenftigem fillable_from' do
+    @game_day.update!(date: Date.current.to_s)
+    login(@tm)
+
+    get '/api/v2/user/referee_feedbacks'
+
+    assert_response :success
+    entry = JSON.parse(response.body).first
+    assert_not_nil entry
+    assert_operator Time.zone.parse(entry['fillable_from']), :>, Time.current
   end
 
   test 'Uebersicht nennt nur die Einladung der eigenen Mannschaft' do

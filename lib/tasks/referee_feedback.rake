@@ -1,13 +1,17 @@
 # frozen_string_literal: true
 
-# Fallback-Benachrichtigung für Schiri-Feedback: Die TMs werden primär direkt
-# beim Abschluss des Spielberichts informiert (GamesController#set_game_status
-# → RefereeFeedbackNotifier). Dieser Task fängt Spiele ab, die abgeschlossen
-# sind, aber noch keine Benachrichtigung erhalten haben – etwa in Ligen, die
-# erst nachträglich per referee_feedback_enabled freigeschaltet wurden.
-# Idempotent über games.referee_feedback_notified_at.
+# Benachrichtigung für Schiri-Feedback. Dies ist der reguläre Versandweg: Das
+# Abgabefenster öffnet erst 24 h nach Anpfiff (RefereeFeedbackWindow), also in der
+# Regel deutlich nach dem Bericht-Abschluss. Der direkte Aufruf in
+# GamesController#set_game_status greift nur bei spät geschlossenen Berichten.
+# Der Task fängt außerdem Spiele ab, die noch keine Benachrichtigung erhalten
+# haben – etwa in Ligen, die erst nachträglich per referee_feedback_enabled
+# freigeschaltet wurden. Idempotent über games.referee_feedback_notified_at;
+# Spiele, deren Fenster noch zu ist, bleiben unmarkiert und kommen beim nächsten
+# Lauf wieder dran.
 #
-# Per Cron/Scheduler aufrufen (z. B. stündlich/täglich):
+# MUSS per Cron laufen, sonst bleiben die Mails aus. Stündlich, damit die Mail
+# zeitnah zum Öffnen des Fensters ankommt:
 #   bundle exec rails referee_feedback:notify_available
 namespace :referee_feedback do
   desc 'TMs über verfügbare Schiri-Feedback-Formulare benachrichtigen (idempotent)'
