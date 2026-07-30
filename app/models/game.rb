@@ -138,6 +138,23 @@ class Game < ApplicationRecord
     event
   end
 
+  # Time-Outs stehen nicht in events, sondern in home_timeout_string bzw.
+  # guest_timeout_string. extract_timeout_information baut daraus Pseudo-Events
+  # mit den IDs 9001/9002; dieser Bereich ist damit belegt und taucht in
+  # formatted_events auf, ohne je gespeichert zu sein.
+  TIMEOUT_EVENT_ID_BASE = 9000
+
+  # Erhebt das Event überhaupt Anspruch auf einen Schützen? Ein Tor- oder
+  # Straf-Ereignis trägt mindestens eine dieser Markierungen. Fehlt jede davon,
+  # ist der Eintrag eine Leerzeile: Es gibt keinen Wert, der in Ergebnis,
+  # Scorerliste oder Strafenwertung einfließen könnte, und damit auch keinen
+  # fehlenden Schützen.
+  SCORING_EVENT_KEYS = %w[penalty_id penalty_code_id goal_type home_goals guest_goals].freeze
+
+  def self.scoring_event?(event)
+    SCORING_EVENT_KEYS.any? { |key| event[key].present? }
+  end
+
   # Bevorzugt das eingefrorene Label am Event; nur Alt-Ereignisse ohne
   # gespeichertes Label lösen weiterhin live aus Setting auf (dig: nil statt
   # NoMethodError, falls die Strafe dort fehlt – der Aufrufer überspringt dann
@@ -951,7 +968,7 @@ class Game < ApplicationRecord
              end
 
     {
-      event_id: 9000 + (team == 'home' ? 1 : 2),
+      event_id: TIMEOUT_EVENT_ID_BASE + (team == 'home' ? 1 : 2),
       event_type: 'timeout',
       event_team: team,
       period:,
@@ -994,7 +1011,15 @@ class Game < ApplicationRecord
       else
         # Altdaten (Import 2010–2019) enthalten ~1.986 Spiele mit Tor-/Straf-Events ohne
         # Spielernummer – bekannt und nicht reparierbar, daher kein Sentry-Rauschen dafür.
-        Sentry.capture_message("missing scorer, game: #{id}, event: #{event.to_json}, #{error_meta_info}") unless legacy
+        #
+        # Ebenso wenig gemeldet werden Events, die überhaupt keinen Anspruch auf
+        # einen Schützen erheben (siehe scoring_event?): Ohne Tor-, Straf- und
+        # Standmarkierung gibt es nichts zu zählen, es fehlt also auch nichts.
+        # Solche Leerzeilen liegen in einzelnen Spielen in der Datenbank und
+        # erzeugten eine Meldung pro Seitenaufruf (Sentry SAISONMANAGER-B).
+        if !legacy && Game.scoring_event?(event)
+          Sentry.capture_message("missing scorer, game: #{id}, event: #{event.to_json}, #{error_meta_info}")
+        end
         next
       end
 
