@@ -1086,7 +1086,7 @@ class League < ApplicationRecord
     perm << :update_league if admin || sbk
     perm << :download_template if admin || sbk
     perm << :import_games if admin || sbk
-    # perm << :delete_league if admin || sbk
+    perm << :delete_league if admin || sbk
 
     perm
   end

@@ -86,6 +86,10 @@ Rails.application.routes.draw do
 
       post 'admin/leagues', to: 'leagues#admin_league_update'
 
+      # Bewusst nicht 'leagues#destroy': das globale `resources :leagues` weiter
+      # oben würde sonst zusätzlich ein DELETE /leagues/:id freischalten.
+      delete 'admin/leagues/:id', to: 'leagues#admin_league_delete'
+
       post 'admin/leagues/import_schedule', to: 'leagues#admin_schedule_import_games'
 
       get 'admin/leagues/:id/teams', to: 'leagues#admin_league_team_index'
