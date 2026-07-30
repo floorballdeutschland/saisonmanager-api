@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Verbandslogos kommen ausschließlich aus den Verbandseinstellungen**: Ein Spielbetrieb konnte sein Logo bisher aus zwei Quellen beziehen. Vorrang hatte das im Uploadbereich des Landesverbands hinterlegte Bild; war dort keines vorhanden, griff eine alte Textspalte in der Datenbank, für die es überhaupt keine Pflegemöglichkeit gab. Deren Adressen zeigten teils auf die Internetauftritte anderer Verbände, sodass ein dort umgezogenes oder gelöschtes Bild die Seitenleiste und die Startseite ohne jede Rückmeldung leer gelassen hätte. Ebenso blieb unbemerkt, dass ein Verband nie ein Logo hinterlegt hatte. Maßgeblich ist jetzt allein der Upload: Wer dort ein Logo hinterlegt, sieht es überall, wer keines hinterlegt, sieht seinen Verbandsnamen. Die beiden Alt-Spalten entfallen samt dem zugehörigen einmaligen Wartungs-Task; die nie im Frontend verwendete quadratische Variante entfällt mit.
+
 ## [1.63.0] - 2026-07-30
 
 ### Neu

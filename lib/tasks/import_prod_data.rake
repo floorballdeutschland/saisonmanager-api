@@ -117,14 +117,12 @@ namespace :import do
 
     game_ops_data.each do |op|
       conn.execute(<<~SQL)
-        INSERT INTO game_operations (id, name, short_name, path, logo_url, logo_quad_url, created_at, updated_at)
+        INSERT INTO game_operations (id, name, short_name, path, created_at, updated_at)
         VALUES (
           #{conn.quote(op['id'])},
           #{conn.quote(op['name'])},
           #{conn.quote(op['short_name'])},
           #{conn.quote(op['path'])},
-          #{conn.quote(op['logo_url'])},
-          #{conn.quote(op['logo_quad_url'])},
           NOW(), NOW()
         )
         ON CONFLICT (id) DO NOTHING
