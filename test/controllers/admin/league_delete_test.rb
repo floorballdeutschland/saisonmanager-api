@@ -14,11 +14,12 @@ class LeagueDeleteTest < ActionDispatch::IntegrationTest
     @club = create(:club)
   end
 
+  # Bewusst mit .json-Suffix, weil das Frontend genau diese URL aufruft.
   test 'Admin löscht eine leere Liga' do
     login(create(:user, :admin))
 
     assert_difference('League.count', -1) do
-      delete "/api/v2/admin/leagues/#{@league.id}"
+      delete "/api/v2/admin/leagues/#{@league.id}.json"
     end
 
     assert_response :no_content
