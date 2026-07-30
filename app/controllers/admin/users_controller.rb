@@ -21,6 +21,16 @@ module Admin
       ph = current_user.permission_hash
       updates = {}
 
+      # apply_club_change / apply_go_change berechnen :permissions aus dem
+      # unveränderten Objekt und würden ein im selben Request geändertes :role
+      # wieder überschreiben (stiller Fehlschreib mit 200). Die Benutzermaske
+      # kombiniert das nicht, deshalb hier ablehnen statt still falsch zu
+      # speichern.
+      if params.key?(:role) && (params.key?(:club_id) || params.key?(:game_operation_id))
+        return render json: { error: 'Rolle und Zuweisung bitte getrennt speichern' },
+                      status: :unprocessable_entity
+      end
+
       updates[:email] = params[:email] if params.key?(:email)
 
       if params.key?(:teams)
@@ -30,12 +40,14 @@ module Admin
           return render json: { error: 'Nicht berechtigt, Teams zuzuweisen' }, status: :forbidden
         end
 
-        team_ids, rejected = resolve_team_ids(params[:teams], ph)
-        if rejected.any?
-          return render json: { error: rejected_teams_message(rejected) }, status: :unprocessable_entity
-        end
+        # Zielverein des Kontos: Die Rollen-Berechtigung ist maßgeblich (die
+        # Spalte kann davon abweichen), ein Vereinswechsel im selben Request
+        # gewinnt. Ohne Verein am Konto bleibt es beim Scope des Handelnden.
+        target_club_id = params[:club_id].presence&.to_i || tm_club_id(@managed_user)
+        result = resolve_team_ids(params[:teams], ph, target_club_id: target_club_id)
+        return render json: { error: result[:error] }, status: result[:status] if result[:error]
 
-        updates[:teams] = team_ids
+        updates[:teams] = result[:team_ids]
       end
 
       if params.key?(:role)
@@ -51,8 +63,8 @@ module Admin
 
         club_updates = result[:updates]
         # Ein explizit mitgesendetes teams gewinnt gegen das implizite Leeren
-        # beim Vereinswechsel – sonst verlöre ein Request, der beides trägt,
-        # die Zuweisung wieder (merge! liefe nach dem teams-Zweig).
+        # beim Vereinswechsel. Sonst verlöre ein Request, der beides trägt, die
+        # Zuweisung wieder, weil merge! nach dem teams-Zweig läuft.
         club_updates = club_updates.except(:teams) if params.key?(:teams)
         updates.merge!(club_updates)
       end
@@ -89,8 +101,8 @@ module Admin
         user.club_id     = club_id
         user.permissions = [perm]
 
-        if (message = assign_teams_from_params(user, role_id, ph))
-          return render json: { error: message }, status: :unprocessable_entity
+        if (result = team_assignment_error(user, role_id, ph, club_id))
+          return render json: { error: result[:error] }, status: result[:status]
         end
 
         if user.save
@@ -129,12 +141,10 @@ module Admin
       user.club_id     = club_id if club_id
       user.permissions = [perm]
 
-      # Team-Zuweisung auch hier übernehmen: Der VM-Zweig oben tat das schon,
-      # dieser (Admin/SBK) verwarf params[:teams] still. Ergebnis war ein
-      # TM-Konto mit teams == [], das sich nicht einloggen kann, obwohl in der
-      # Maske ein Team angehakt war.
-      if (message = assign_teams_from_params(user, role_id, ph))
-        return render json: { error: message }, status: :unprocessable_entity
+      # Beide Anlage-Zweige (VM oben, Admin/SBK hier) müssen teams übernehmen:
+      # Eine verworfene Zuweisung sperrt das Konto aus.
+      if (result = team_assignment_error(user, role_id, ph, club_id))
+        return render json: { error: result[:error] }, status: result[:status]
       end
 
       if user.save
@@ -414,13 +424,37 @@ module Admin
       end
 
       # Team-Zuweisungen hängen am Verein und werden beim echten Vereinswechsel
-      # hinfällig. Bei UNVERÄNDERTEM Verein dürfen sie nicht verworfen werden:
-      # Das Haupt-Speichern der Benutzermaske sendet club_id immer mit, und
-      # löschte so die zuvor gesetzte Zuweisung wieder – das Konto war danach
-      # ausgesperrt, ohne dass eine Meldung darauf hinwies.
-      updates[:teams] = [] if role_ids.include?(5) && new_club_id != user.club_id
+      # hinfällig. Bei unverändertem Verein dürfen sie nicht verworfen werden:
+      # Requests der Benutzermaske tragen club_id auch dann, wenn der Verein
+      # gleich bleibt, und löschten so die vorhandene Zuweisung. Das Konto war
+      # danach ausgesperrt, ohne dass eine Meldung darauf hinwies.
+      #
+      # Verglichen wird gegen die Rollen-Berechtigung UND die Spalte: Beide
+      # können auseinanderlaufen (create schreibt perm['club_id'] für jede
+      # Rolle, der Zweig oben zieht sie nur für VM mit), und die Maske belegt
+      # ihr Auswahlfeld aus der Berechtigung. Nur wenn der neue Verein zu keinem
+      # der beiden passt, ist es ein echter Wechsel.
+      if role_ids.include?(5) && ![tm_club_id(user), user.club_id].compact.include?(new_club_id)
+        updates[:teams] = []
+      end
+
+      # Die TM-Berechtigung trägt den Verein mit (create schreibt ihn dort),
+      # sonst bliebe sie nach einem Wechsel auf dem alten Verein stehen und
+      # jeder weitere Speichervorgang der Maske sähe erneut einen Wechsel.
+      if role_ids.include?(5)
+        updates[:permissions] = (updates[:permissions] || user.permissions).map do |p|
+          p['user_group_id'].to_i == 5 && p['club_id'].present? ? p.merge('club_id' => new_club_id.to_s) : p
+        end
+      end
 
       { updates: updates }
+    end
+
+    # Verein aus der TM-Rollen-Berechtigung. Für TM-Konten ist das die Quelle,
+    # aus der die Benutzermaske ihr Vereins-Auswahlfeld belegt; sie kann von der
+    # Spalte users.club_id abweichen.
+    def tm_club_id(user)
+      user.permissions.find { |p| p['user_group_id'].to_i == 5 && p['club_id'].present? }&.dig('club_id')&.to_i
     end
 
     def apply_go_change(user, new_go_id, ph)
@@ -448,41 +482,81 @@ module Admin
       Club.all.select { |c| go_ids.include?(c.main_game_operation_id) }.map(&:id)
     end
 
-    # Zulässige Team-Zuweisung für ein TM-Konto auflösen. Liefert
-    # [zuweisbare_ids, abgelehnte_ids]. Abgelehntes wird bewusst nicht still
-    # verworfen: eine verworfene Zuweisung erzeugt ein Konto, das sich nicht
-    # einloggen kann, und der Aufrufer soll das als Fehler melden können.
+    # Zulässige Team-Zuweisung für ein TM-Konto auflösen. Rückgabeform wie bei
+    # den apply_*_change-Geschwistern: { team_ids: } oder { error:, status: }.
     #
-    # Zuweisbar sind nur Teams der aktuellen Saison – eine Zuweisung auf
-    # Vorsaison-Teams zählt in User#permission_hash nicht und sperrt das Konto
-    # ebenso aus. VM sind zusätzlich auf ihre eigenen Vereine begrenzt.
-    def resolve_team_ids(raw_ids, ph)
-      ids = Array(raw_ids).map(&:to_i).reject(&:zero?).uniq
-      return [[], []] if ids.empty?
+    # Nicht zuweisbare IDs werden bewusst nicht still gefiltert: Eine verworfene
+    # Zuweisung erzeugt ein Konto, das sich nicht einloggen kann, und niemand
+    # erfährt davon. Das gilt auch für unbrauchbare Eingaben (nicht-numerisch,
+    # 0, nil): Sie dürfen nicht zu einer leeren Auswahl kollabieren, weil das
+    # eine vorhandene Zuweisung löschen würde.
+    #
+    # Zuweisbar sind nur Teams der aktuellen Saison. Vorsaison-Teams zählen in
+    # User#permission_hash nicht und sperren das Konto ebenso aus.
+    def resolve_team_ids(raw_ids, ph, target_club_id: nil)
+      # Hash-Form (teams[0]=5) landet als ActionController::Parameters hier und
+      # kennt weder to_ary noch to_i. Ohne diese Prüfung ein 500 statt 422.
+      return { error: 'teams muss eine Liste von Team-IDs sein', status: :unprocessable_entity } unless
+        raw_ids.nil? || raw_ids.is_a?(Array)
 
+      raw = Array(raw_ids)
+      malformed = raw.reject { |v| v.to_s.match?(/\A[1-9]\d*\z/) }
+      ids = raw.map(&:to_i).select(&:positive?).uniq
+
+      assignable = assignable_team_scope(ph, target_club_id).where(id: ids).pluck(:id)
+      rejected = (ids - assignable) + malformed
+
+      return { error: rejected_teams_message(rejected), status: :unprocessable_entity } if rejected.any?
+
+      { team_ids: assignable }
+    end
+
+    # Vereins-Scope der Team-Zuweisung. Dieselbe Quelle wie beim Zuweisen eines
+    # Vereins (Club.role_assignable_for, siehe #create). Sonst dürfte ein
+    # verbandsgebundener SBK über teams ein Team anhängen, dessen Verein ihm
+    # über club_id verwehrt wird.
+    def assignable_team_scope(ph, target_club_id)
       scope = Team.current_season
-      scope = scope.where(club_id: ph[:vm]) if ph[:vm].present? && ph[:admin].blank? && ph[:sbk].blank?
-      assignable = scope.where(id: ids).pluck(:id)
+      # Team und Konto müssen zum selben Verein gehören, sonst driften club_id
+      # und teams auseinander (und apply_club_change entscheidet später anhand
+      # einer club_id, die zur Zuweisung nie gepasst hat).
+      scope = owned_by_clubs(scope, [target_club_id]) if target_club_id.present?
+      return scope if ph[:admin].present? || ph[:sbk]&.include?(0)
 
-      [assignable, ids - assignable]
+      allowed_club_ids = Club.role_assignable_for(current_user, include_deactivated: true).pluck(:id)
+      owned_by_clubs(scope, allowed_club_ids)
+    end
+
+    # Stamm-Verein ODER SG-Partnerverein. Gleiche Semantik wie Team.by_club_id,
+    # aber für eine Liste von Vereins-IDs (Überlappungs-Operator statt ANY),
+    # analog ClubsController#current_teams_by_club. Diese Deckung ist nötig, weil
+    # genau jener Endpunkt die Checkboxen der Maske füllt und dort die SG-Teams
+    # der Partnervereine mit angeboten werden: Ohne sie lehnte die API einen
+    # Haken ab, den sie selbst angeboten hat.
+    def owned_by_clubs(scope, club_ids)
+      ids = Array(club_ids).compact
+      return scope.none if ids.empty?
+
+      scope.where('teams.club_id IN (:ids) OR teams.syndicate_clubs && ARRAY[:ids]::integer[]', ids: ids)
     end
 
     # Setzt user.teams aus params[:teams], sofern ein TM-Konto angelegt wird und
-    # der Parameter überhaupt mitkam. Liefert eine Fehlermeldung, wenn IDs nicht
-    # zuweisbar sind, sonst nil.
-    def assign_teams_from_params(user, role_id, ph)
+    # der Parameter überhaupt mitkam. Liefert nil bei Erfolg, sonst
+    # { error:, status: }. Für andere Rollen wird teams bewusst ignoriert, Teams
+    # hängen nur an TM-Konten.
+    def team_assignment_error(user, role_id, ph, target_club_id)
       return nil unless role_id == 5 && params.key?(:teams)
 
-      team_ids, rejected = resolve_team_ids(params[:teams], ph)
-      return rejected_teams_message(rejected) if rejected.any?
+      result = resolve_team_ids(params[:teams], ph, target_club_id: target_club_id)
+      return result if result[:error]
 
-      user.teams = team_ids
+      user.teams = result[:team_ids]
       nil
     end
 
     def rejected_teams_message(rejected_ids)
-      'Teams nicht zuweisbar (nicht in der aktuellen Saison oder außerhalb des ' \
-        "Zuständigkeitsbereichs): #{rejected_ids.join(', ')}"
+      'Teams nicht zuweisbar (unbekannt, nicht in der aktuellen Saison, anderer ' \
+        "Verein oder außerhalb des Zuständigkeitsbereichs): #{rejected_ids.join(', ')}"
     end
 
     def role_name(user_group_id)
@@ -516,10 +590,34 @@ module Admin
           }
         end,
         # Aufgelöste Team-Namen für die Zuordnungs-Anzeige (relevant für TM).
-        team_names: lookup_team_names(user.teams, lookups)
+        team_names: lookup_team_names(user.teams, lookups),
+        # Konto ist von der TM-Sperre betroffen und kann sich nicht einloggen.
+        # Ohne dieses Feld müsste die Liste die Sperre selbst herleiten, und
+        # team_names taugt dafür nicht (nicht auf die Saison gefiltert).
+        login_blocked: login_blocked?(user, lookups)
       }
       result[:teams] = user.teams if full
       result
+    end
+
+    # Spiegelt User#permissions_items (tm_blocked), rechnet aber gegen eine
+    # vorab geladene Menge Saison-Teams statt über permission_hash: Das käme in
+    # #index pro Konto auf eigene Queries. Der Test
+    # 'login_blocked deckt sich mit permissions_items' hält beide Stellen
+    # zusammen, damit die Doppelung nicht auseinanderläuft.
+    def login_blocked?(user, lookups)
+      role_ids = user.permissions.map { |p| p['user_group_id'].to_i }
+      return false unless role_ids.include?(5)
+      # Jede weitere Rolle hebt die Sperre auf (Schiri-Selfservice eingeschlossen).
+      return false if role_ids.intersect?([1, 2, 3, 4, 6, 7])
+
+      (Array(user.teams) & current_season_team_ids(lookups)).empty?
+    end
+
+    def current_season_team_ids(lookups)
+      return lookups[:current_season_team_ids] if lookups
+
+      Team.current_season.pluck(:id)
     end
 
     # Namens-Lookups für die Zuordnungs-Spalte vorab batchen (kein N+1 in #index).
@@ -530,7 +628,8 @@ module Admin
       {
         clubs: Club.where(id: club_ids).pluck(:id, :name).to_h,
         game_operations: GameOperation.where(id: go_ids).pluck(:id, :name).to_h,
-        teams: Team.where(id: team_ids).pluck(:id, :name).to_h
+        teams: Team.where(id: team_ids).pluck(:id, :name).to_h,
+        current_season_team_ids: Team.current_season.where(id: team_ids).pluck(:id)
       }
     end
 
