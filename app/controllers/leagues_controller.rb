@@ -1,6 +1,8 @@
 class LeaguesController < ApplicationController
-  skip_before_action :authenticate_user, except: %i[admin_league_index admin_upload_banner admin_delete_banner]
-  before_action :authenticate_public_request, except: %i[admin_league_index admin_upload_banner admin_delete_banner]
+  skip_before_action :authenticate_user,
+                     except: %i[admin_league_index admin_league_delete admin_upload_banner admin_delete_banner]
+  before_action :authenticate_public_request,
+                except: %i[admin_league_index admin_league_delete admin_upload_banner admin_delete_banner]
   after_action :track_public_view,
                only: %i[schedule current_schedule game_day_schedule table grouped_table scorer],
                if: -> { response.successful? }
@@ -86,6 +88,38 @@ class LeaguesController < ApplicationController
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
     end
+  end
+
+  # DELETE /admin/leagues/:id
+  # Löscht eine Liga endgültig. Alles, was echte Historie darstellt (angepfiffene
+  # Spiele, Lizenzen, Sperren, Feedback, Verweise anderer Ligen), blockiert die
+  # Löschung mit einer erklärenden Meldung – siehe league_delete_blocker. Ein
+  # noch ungespielter Spielplan und leere Teams werden dagegen mit abgeräumt,
+  # sonst wäre eine falsch angelegte oder falsch importierte Liga praktisch
+  # nicht mehr entfernbar.
+  def admin_league_delete
+    league = League.find(params[:id])
+
+    unless league.user_permissions(current_user).include?(:delete_league)
+      return render json: { message: 'Keine Berechtigung' }, status: :forbidden
+    end
+
+    if (blocker = league_delete_blocker(league))
+      return render json: { message: blocker }, status: :unprocessable_entity
+    end
+
+    ActiveRecord::Base.transaction do
+      delete_existing_schedule!(league)
+      Team.where(league_id: league.id).find_each(&:destroy!)
+      league.destroy!
+    end
+
+    Rails.logger.info("League##{league.id} (#{league.name}) gelöscht von User##{current_user.id}")
+    head :no_content
+  rescue ActiveRecord::InvalidForeignKey => e
+    Rails.logger.info("League##{params[:id]} destroy blocked by FK: #{e.message}")
+    render json: { message: 'Liga kann nicht gelöscht werden: Es existieren noch verknüpfte Einträge.' },
+           status: :unprocessable_entity
   end
 
   def admin_game_schedule
@@ -851,4 +885,56 @@ class LeaguesController < ApplicationController
     end
   end
   private :rebuild_schedule!
+
+  # Grund, warum die Liga NICHT gelöscht werden darf – oder nil, wenn sie frei
+  # ist. Geprüft wird alles, was echte Historie darstellt; ein reiner
+  # (ungespielter) Spielplan und leere Teams sind dagegen kein Hindernis, die
+  # räumt admin_league_delete mit ab.
+  def league_delete_blocker(league)
+    team_ids = Team.where(league_id: league.id).ids
+
+    reason = if league_schedule_started?(league)
+               'Es wurden bereits Spiele begonnen oder ausgetragen.'
+             elsif Team.where("#{league.id} = ANY (cup_leagues)").where.not(league_id: league.id).exists?
+               'Sie ist noch als zusätzliche Liga bei Teams anderer Ligen hinterlegt.'
+             elsif games_outside_league?(league, team_ids)
+               'Teams dieser Liga haben noch Spiele in anderen Ligen (z.B. als Pokalteam).'
+             elsif Player.find_by_team_ids(team_ids).values.any?(&:present?)
+               'Den Teams sind noch Spieler bzw. Lizenzen zugeordnet.'
+             elsif PlayerSuspension.where(team_id: team_ids).exists?
+               'Es existieren noch Sperren für Teams dieser Liga.'
+             elsif RefereeFeedback.where(team_id: team_ids).exists?
+               'Es existiert noch Schiedsrichter-Feedback für Teams dieser Liga.'
+             elsif LeagueQualification.where(target_league_id: league.id).exists?
+               'Andere Ligen qualifizieren noch in diese Liga.'
+             elsif other_leagues_referencing?(league)
+               'Andere Ligen verweisen noch auf diese Liga (Vorsaison, Vorrunde oder Direktvergleich).'
+             end
+
+    "Liga kann nicht gelöscht werden: #{reason}" if reason
+  end
+  private :league_delete_blocker
+
+  # Spiele der Liga-Teams, die NICHT an einem Spieltag dieser Liga hängen (etwa
+  # weil das Team über cup_leagues auch in einer Pokalliga spielt). Die würden
+  # beim Mit-Löschen der Teams zu Spielen ohne Mannschaft verwaisen.
+  def games_outside_league?(league, team_ids)
+    return false if team_ids.empty?
+
+    Game.where(home_team_id: team_ids)
+        .or(Game.where(guest_team_id: team_ids))
+        .where.not(game_day_id: league.game_days.select(:id))
+        .exists?
+  end
+  private :games_outside_league?
+
+  # Verweise anderer Ligen auf diese – die Spalten haben keinen FK, ein Löschen
+  # würde also stillschweigend ins Leere zeigende Tabellen/Auswertungen erzeugen.
+  def other_leagues_referencing?(league)
+    League.where(
+      'league_id_preseason = :id OR league_id_preround = :id OR league_id_direct_encounters = :id',
+      id: league.id
+    ).exists?
+  end
+  private :other_leagues_referencing?
 end
