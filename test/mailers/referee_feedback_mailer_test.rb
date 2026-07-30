@@ -37,7 +37,7 @@ class RefereeFeedbackMailerTest < ActionMailer::TestCase
       assert_includes body, "/schiri-feedback/abgeben/#{raw_token}"
       assert_includes body, 'Heim'
       assert_includes body, 'Gast'
-      assert_includes body, 'innerhalb von 24 Stunden'
+      assert_includes body, 'innerhalb der nächsten 24 Stunden'
       assert_not_includes body, invitation.token_digest
     end
   end

@@ -20,6 +20,17 @@ class RefereeFeedbackNotifierTest < ActiveSupport::TestCase
     @tm = create(:user, :tm, team_id: @home.id, email: 'tm@example.com')
   end
 
+  # Sonst zeigte die Mail auf ein Formular, das die 24-Stunden-Sperre noch
+  # blockiert. Der Vermerk bleibt leer, damit der Cron-Lauf es später nachholt.
+  test 'solange die 24 Stunden nach dem Spiel nicht um sind, geht keine Mail raus' do
+    @game_day.update!(date: Date.current.to_s)
+    @home.update!(feedback_contact_email: 'kapitaen@example.com')
+
+    assert_equal 0, RefereeFeedbackNotifier.new(@game).notify
+    assert_equal 0, RefereeFeedbackInvitation.count
+    assert_nil @game.reload.referee_feedback_notified_at
+  end
+
   test 'ohne Feedback-Kontakt gibt es nur die Teammanager-Info und keine Einladung' do
     assert_equal 1, RefereeFeedbackNotifier.new(@game).notify
     assert_equal 0, RefereeFeedbackInvitation.count
