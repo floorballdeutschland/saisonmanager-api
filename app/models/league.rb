@@ -94,11 +94,25 @@ class League < ApplicationRecord
     field_size == 'GF' && !age_group.to_s.match?(/\AU\d/)
   end
 
+  # Mannschaft samt Verein und beiden Logo-Anhängen. schedule_item liest pro
+  # Spiel logo_url_fallback und logo_small_url_fallback beider Mannschaften;
+  # beide fragen `logo.attached?` und fallen bei fehlendem Team-Logo auf das
+  # Vereinslogo zurück. Ohne die Attachment-Preloads holt ActiveStorage jeden
+  # Anhang einzeln nach – der mit Abstand häufigste N+1 im Spielplan
+  # (Sentry SAISONMANAGER-3/4/7/8, zusammen rund 70.000 Ereignisse).
+  TEAM_WITH_LOGO_PRELOAD = [
+    { logo_attachment: :blob },
+    { club: { logo_attachment: :blob } }
+  ].freeze
+
   def games(game_day_number = nil)
     gd = game_day_number.present? ? game_days.where(number: game_day_number) : game_days
     # :club zusätzlich, weil schedule_item game_day.hosting_club (= club.name)
     # liest – sonst eine Club-Query pro Spieltag.
-    gd.includes(:arena, :club, games: [home_team: :club, guest_team: :club]).map(&:games).flatten.sort_by { |i| i.game_number.to_i }
+    gd.includes(:arena, :club,
+                games: [{ home_team: TEAM_WITH_LOGO_PRELOAD },
+                        { guest_team: TEAM_WITH_LOGO_PRELOAD }])
+      .map(&:games).flatten.sort_by { |i| i.game_number.to_i }
   end
 
   def teams
