@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.63.0] - 2026-07-30
+
 ### Neu
 
 - **Zusätzliche Spielinformationen des Ansetzers, nur für das Gespann**: Zu jedem Spiel lässt sich in der Ansetzung jetzt ein Freitext hinterlegen, den ausschließlich das angesetzte Gespann und der Schiedsrichtercoach zu sehen bekommen: Sonderhinweise, turnier- oder spieltagsspezifische Informationen, praktische Dinge zur Halle und Anfahrt, Ansprechpartner vor Ort, Erinnerungen. Bisher blieb dafür nur die Mail außerhalb des Systems. Pflegen darf den Text, wer auch ansetzen darf, also Admins sowie die Ansetzung des jeweiligen Spielbetriebs; die Zuständigkeitsprüfung ist dieselbe wie beim Ansetzen selbst, ein Ansetzer eines anderen Verbands wird abgewiesen. Beim Spiel wird mitgespeichert, wer den Hinweis zuletzt geändert hat und wann, weil sich die Ansetzung eines Verbands in der Regel mehrere Personen teilen. Der Text erreicht das Gespann erst mit dem Veröffentlichen der Ansetzung, solange sie Entwurf ist, sieht ihn niemand außer der Ansetzung selbst; ein Hinweis an ein noch nicht veröffentlichtes Gespann wäre sonst an Personen gegangen, die von ihrer Ansetzung noch gar nichts wissen. Auf keinem Weg sichtbar ist er für die Mannschaften und die Öffentlichkeit: weder im Spielplan, im Ticker und auf der Spielseite noch im Spielberichtsbogen, den die Spielleitung des Heimvereins bedient. Damit das auch für künftige Schnittstellen gilt, wird das Feld grundsätzlich aus der pauschalen Ausgabe eines Spiel-Datensatzes entfernt und nur dort ausgeliefert, wo die Berechtigung ausdrücklich geprüft wurde.
