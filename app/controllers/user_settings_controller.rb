@@ -6,7 +6,6 @@ class UserSettingsController < ApplicationController
   skip_before_action :authenticate_user, only: %i[confirm_email]
   before_action :authenticate_public_request, only: %i[confirm_email]
 
-  MIN_PASSWORD_LENGTH = 8
   MAX_NAME_LENGTH = 50
   NAME_LOCKED_MESSAGE = 'Dein Name steht auf deinem Schiedsrichterausweis und kann deshalb nicht selbst geändert ' \
                         'werden. Wende dich dafür an deine Verbandsgeschäftsstelle.'.freeze
@@ -103,11 +102,11 @@ class UserSettingsController < ApplicationController
 
     # has_secure_password erzwingt die Passwort-Presence nur beim Create, nicht beim Update:
     # ein leeres :password ließe current_user.update wortlos durchlaufen (digest unverändert)
-    # und würde fälschlich success: true melden. Daher hier explizit prüfen.
-    if params[:password].to_s.length < MIN_PASSWORD_LENGTH
-      return render json: { success: false,
-                            message: "Das neue Passwort muss mindestens #{MIN_PASSWORD_LENGTH} Zeichen lang sein." },
-                    status: :unprocessable_entity
+    # und würde fälschlich success: true melden. Daher hier explizit prüfen (die
+    # Regeln decken den leeren Fall mit ab).
+    policy_error = PasswordPolicy.error_for(params[:password])
+    if policy_error
+      return render json: { success: false, message: policy_error }, status: :unprocessable_entity
     end
 
     if current_user.update(password_params)
@@ -140,11 +139,15 @@ class UserSettingsController < ApplicationController
     end
 
     # Mail-Bombing bremsen: pro Konto höchstens eine Bestätigungsmail pro
-    # Minute (die Adresse ist frei wählbar, der Versand geht an Fremde).
-    started_at = current_user.email_change_started_at
-    if started_at && started_at > User::EMAIL_CONFIRMATION_RESEND_INTERVAL.ago
-      return render json: { success: false,
-                            message: 'Bitte warte einen Moment, bevor du erneut eine Bestätigungsmail anforderst.' },
+    # Minute (die Adresse ist frei wählbar, der Versand geht an Fremde). Die
+    # verbleibende Wartezeit gehört in die Meldung: „Bitte warte einen Moment"
+    # ließ offen, ob es um Sekunden oder um die 24 Stunden Linkgültigkeit geht.
+    retry_after = email_change_retry_after_seconds
+    if retry_after.positive?
+      response.headers['Retry-After'] = retry_after.to_s
+      return render json: { success: false, retry_after: retry_after,
+                            message: "Bitte warte noch #{retry_after} Sekunden, bevor du erneut eine " \
+                                     'Bestätigungsmail anforderst.' },
                     status: :too_many_requests
     end
 
@@ -174,6 +177,16 @@ class UserSettingsController < ApplicationController
   end
 
   private
+
+  # Verbleibende Wartezeit bis zur nächsten Bestätigungsmail in ganzen Sekunden
+  # (aufgerundet), 0 wenn sofort angefordert werden darf.
+  def email_change_retry_after_seconds
+    started_at = current_user.email_change_started_at
+    return 0 if started_at.blank?
+
+    remaining = (started_at + User::EMAIL_CONFIRMATION_RESEND_INTERVAL) - Time.current
+    remaining.positive? ? remaining.ceil : 0
+  end
 
   # Nur für den Hinweistext: Nutzt bereits ein anderes Konto diese Adresse oder
   # hat eine offene (noch nicht abgelaufene) Änderung darauf laufen?

@@ -9,6 +9,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Passwortregeln gelten überall gleich und stehen vorher fest**: Ein selbst gesetztes Passwort braucht jetzt mindestens 12 Zeichen, davon mindestens einen Großbuchstaben und eine Ziffer. Das gilt an beiden Stellen, an denen ein Mensch ein Passwort vergibt: unter „Mein Konto" und auf der Seite hinter dem Zurücksetzen-Link. Bisher verlangte „Mein Konto" nur 8 Zeichen, und beim Zurücksetzen prüfte der Server überhaupt keine Mindestlänge, obwohl die Seite auf 12 Zeichen hinwies. Die Regeln liegen jetzt an einer Stelle im Code, die Antwort nennt sie im Klartext und das Frontend zeigt sie bereits während der Eingabe. Bestehende Passwörter bleiben gültig, die Regeln greifen erst beim nächsten Ändern. Die zufälligen Initialpasswörter beim Anlegen eines Kontos sind nicht betroffen; sie werden ohnehin über den Link in der Willkommensmail ersetzt und laufen dabei durch die Prüfung.
+
+### Behoben
+
+- **Wartezeit für eine erneute E-Mail-Bestätigung wird beziffert**: Wer die eigene E-Mail-Adresse ändert und den Vorgang kurz darauf erneut anstößt, bekam nur „Bitte warte einen Moment". Unklar blieb, ob damit Sekunden gemeint sind oder die 24 Stunden Gültigkeit des Bestätigungslinks. Die Meldung nennt jetzt die verbleibenden Sekunden; die Antwort führt sie zusätzlich als eigenes Feld und im Standard-Header `Retry-After`.
+
 ## [1.63.0] - 2026-07-30
 
 ### Neu
