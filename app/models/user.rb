@@ -71,8 +71,19 @@ class User < ApplicationRecord
       receive_info_mails:,
       # Info-Mail-Opt-out ist NUR für Teammanager wählbar (nicht für VM o. a.).
       can_manage_mail_preferences: permission_hash[:tm].present?,
-      login_blocked_message: perms[:login_blocked] ? 'Keine Teams in der aktuellen Saison.' : nil
+      login_blocked_message: perms[:login_blocked] ? login_blocked_message : nil
     }
+  end
+
+  # Zwei verschiedene Ursachen, zwei Meldungen. Ohne jede Zuordnung ist am Konto
+  # nie ein Team gesetzt worden – der bisherige Einheitstext behauptete dann
+  # fälschlich ein Saison-Problem und schickte die Leute auf die falsche Fährte.
+  def login_blocked_message
+    if teams.blank?
+      'Ihrem Konto ist kein Team zugewiesen. Bitte wenden Sie sich an den Vereinsmanager Ihres Vereins.'
+    else
+      'Keine Teams in der aktuellen Saison.'
+    end
   end
 
   def fullname
