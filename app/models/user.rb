@@ -71,8 +71,28 @@ class User < ApplicationRecord
       receive_info_mails:,
       # Info-Mail-Opt-out ist NUR für Teammanager wählbar (nicht für VM o. a.).
       can_manage_mail_preferences: permission_hash[:tm].present?,
-      login_blocked_message: perms[:login_blocked] ? 'Keine Teams in der aktuellen Saison.' : nil
+      login_blocked_message: login_blocked_message(perms)
     }
+  end
+
+  # Grund der TM-Sperre im Klartext, sonst nil. Die Sperre selbst wird nicht hier
+  # entschieden, sondern in permissions_items (dort hängt sie an mehreren Rollen);
+  # eine zweite Ableitung würde davon abdriften.
+  #
+  # Drei Ursachen, drei Texte. Ohne jede Zuordnung verwies der frühere
+  # Einheitstext auf die Saison und schickte die Fehlersuche in die falsche
+  # Richtung; zeigen die IDs auf gelöschte Teams, stimmt er ebenso nicht.
+  # perms spart die zweite (teure) Auswertung, wenn der Aufrufer sie schon hat.
+  def login_blocked_message(perms = permissions_items)
+    return nil unless perms[:login_blocked]
+
+    if teams.blank?
+      'Deinem Konto ist kein Team zugewiesen. Bitte wende dich an den Vereinsmanager deines Vereins.'
+    elsif !Team.where(id: teams).exists?
+      'Die zugewiesenen Teams existieren nicht mehr. Bitte wende dich an den Vereinsmanager deines Vereins.'
+    else
+      'Keine Teams in der aktuellen Saison.'
+    end
   end
 
   def fullname

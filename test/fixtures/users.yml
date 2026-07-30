@@ -1,9 +1,13 @@
+# permissions ist jsonb: Der Wert muss eine YAML-Liste sein, kein String.
+# '[]' landete als JSON-String "[]" in der Spalte, und jede Stelle, die über
+# permissions iteriert (permission_hash, permissions_items, die Zuordnungs-
+# Lookups in Admin::UsersController) brach damit mit NoMethodError ab.
 one:
   user_name: fixture_user_one
-  permissions: '[]'
+  permissions: []
   teams: '{}'
 
 two:
   user_name: fixture_user_two
-  permissions: '[]'
+  permissions: []
   teams: '{}'
