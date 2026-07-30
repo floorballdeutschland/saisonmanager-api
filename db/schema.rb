@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_07_29_120200) do
+ActiveRecord::Schema[7.1].define(version: 2026_07_30_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -311,6 +311,9 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_29_120200) do
     t.string "legacy_ref"
     t.datetime "referee_feedback_notified_at"
     t.integer "officiating_referee_ids", default: [], array: true
+    t.text "referee_notes"
+    t.datetime "referee_notes_updated_at"
+    t.bigint "referee_notes_updated_by"
     t.index ["checklist_veto_token_digest"], name: "index_games_on_checklist_veto_token_digest", unique: true, where: "(checklist_veto_token_digest IS NOT NULL)"
     t.index ["game_day_id"], name: "index_games_on_game_day_id"
     t.index ["guest_team_id"], name: "index_games_on_guest_team_id"
