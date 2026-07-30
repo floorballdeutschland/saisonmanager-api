@@ -32,7 +32,7 @@ class RefereeMailer < ApplicationMailer
     @club_contact_email = club_contact_email
     @license_list_url = license_list_url
     @license_expires_at = license_expires_at
-    @referee_notes = game.referee_notes.presence
+    @referee_notes = visible_referee_notes(game, referee)
 
     templated_mail(
       to: referee.email,
@@ -58,7 +58,7 @@ class RefereeMailer < ApplicationMailer
     @club_contact_email = club_contact_email
     @license_list_url = license_list_url
     @license_expires_at = license_expires_at
-    @referee_notes = game.referee_notes.presence
+    @referee_notes = visible_referee_notes(game, coach)
 
     templated_mail(
       to: coach.email,
@@ -83,7 +83,7 @@ class RefereeMailer < ApplicationMailer
     @game = game
     @official_names = official_names
     @coach = coach
-    @referee_notes = game.referee_notes.presence
+    @referee_notes = visible_referee_notes(game, referee)
 
     templated_mail(
       to: referee.email,
@@ -183,6 +183,15 @@ class RefereeMailer < ApplicationMailer
   end
 
   private
+
+  # Zusätzliche Spielinformationen des Ansetzers, aber nur für Empfänger:innen,
+  # die zum Versandzeitpunkt tatsächlich angesetzt sind (Game#referee_notes_
+  # visible_to?). Die Änderungs-Mail geht bewusst auch an Personen, die gerade
+  # aus der Ansetzung genommen wurden – für die ist der Freitext nicht mehr
+  # bestimmt.
+  def visible_referee_notes(game, referee)
+    game.referee_notes.presence if game.referee_notes_visible_to?(referee)
+  end
 
   # Ansetzungs-Postfach des Landesverbands, in dem der Schiri über seinen Verein
   # hängt; ohne eigenen Eintrag greift der übergeordnete Verband, zuletzt die

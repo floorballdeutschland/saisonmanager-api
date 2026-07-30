@@ -20,6 +20,9 @@ class RefereeAssignmentNotesMailTest < ActionMailer::TestCase
     @referee = create(:referee, email: 'schiri@example.de')
     @partner = create(:referee, email: 'partner@example.de')
     @coach = create(:referee, email: 'coach@example.de')
+    RefereeAssignment.create!(game: @game, referee1: @referee, referee2: @partner, coach: @coach,
+                              status: 'published', published_at: Time.current)
+    @game.reload
   end
 
   test 'Ansetzungs-Mail an den Schiri enthaelt die Spielinformationen' do
@@ -94,5 +97,26 @@ class RefereeAssignmentNotesMailTest < ActionMailer::TestCase
 
     assert_not_includes body, '<script>'
     assert_includes body, 'Hinweis'
+  end
+
+  test 'aus der Ansetzung genommener Schiri bekommt die Spielinformationen nicht' do
+    @game.update!(referee_notes: NOTE)
+    removed = create(:referee, email: 'raus@example.de')
+
+    body = RefereeMailer.updated_assignment_notification(removed, @game.reload, 'Vor Nach', @coach).body.encoded
+
+    assert_not_includes body, NOTE
+    assert_not_includes body, 'Spielinformationen'
+  end
+
+  test 'vor dem Veroeffentlichen enthaelt keine Mail die Spielinformationen' do
+    @game.update!(referee_notes: NOTE)
+    @game.referee_assignment.update!(status: 'tentative')
+
+    body = RefereeMailer.published_assignment_notification(
+      @referee, @game.reload, @partner, @club.contact_email
+    ).body.encoded
+
+    assert_not_includes body, NOTE
   end
 end
