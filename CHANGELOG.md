@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Menüpunkt „Verfahrensvorschläge" nur dort, wo Verfahren entstehen**: Der Punkt erscheint in der Spielbetriebskommission jetzt nur noch, wenn der zugehörige Landesverband die manuelle Erstellung von Protesten durch die SBK aktiviert hat. Ohne diese Einstellung entsteht überhaupt kein Verfahrensvorschlag, weil ein hochgeladener Bericht automatisch per E-Mail an die VSK geht; der Menüpunkt führte also auf eine dauerhaft leere Seite. Bei mehreren zugeordneten Spielbetrieben genügt es, wenn einer davon die Einstellung nutzt. Für Admins sowie für die verbandsübergreifend gescopte SBK bleibt der Punkt sichtbar, sobald irgendein Landesverband so arbeitet. Ändert ein Verband die Einstellung, müssen sich die betroffenen Konten einmal neu anmelden, weil die Menüfreigaben beim Login gesetzt werden.
+
 ## [1.63.0] - 2026-07-30
 
 ### Neu

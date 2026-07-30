@@ -291,8 +291,11 @@ class User < ApplicationRecord
     result[:menu_item_api_key_admin] = ph[:admin].present?
     result[:menu_item_transfer_requests] = ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
     result[:menu_item_transfer_requests_sbk] = ph[:admin].present? || ph[:sbk].present?
-    # SBK-Menüpunkt „Verfahrensvorschläge" (manueller VSK-Workflow).
-    result[:menu_item_proceeding_proposal_admin] = ph[:admin].present? || ph[:sbk].present?
+    # SBK-Menüpunkt „Verfahrensvorschläge" (manueller VSK-Workflow). Nur
+    # sichtbar, wenn mindestens einer der zugeordneten Landesverbände die
+    # manuelle Verfahrenseröffnung aktiviert hat – sonst gehen die Berichte
+    # automatisch an die VSK und der Menüpunkt bliebe dauerhaft leer.
+    result[:menu_item_proceeding_proposal_admin] = ph[:admin].present? || manual_proceeding_active_for_sbk?(ph)
     result[:menu_item_player_change_requests] = ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
     result[:create_player_change_request] = ph[:vm].present? || ph[:admin].present?
     result[:approve_player_change_request] = ph[:admin].present? || ph[:sbk].present?
@@ -373,6 +376,19 @@ class User < ApplicationRecord
 
     sa_ids = GameOperation.where(id: perm_hash[:ansetzer]).pluck(:state_association_id).compact.uniq
     StateAssociation.where(id: sa_ids, referee_assignment_enabled: true).exists?
+  end
+
+  # True, wenn für die SBK überhaupt Verfahrensvorschläge entstehen können: Der
+  # zugehörige Landesverband muss die manuelle Verfahrenseröffnung aktiviert
+  # haben (ProceedingProposal wird sonst gar nicht erst erzeugt, siehe
+  # GameRefereeReportsController#_send_to_vsk). Die global gescopte FD-SBK
+  # (Spielbetrieb 0) sieht den Punkt, sobald irgendein Verband ihn nutzt.
+  def manual_proceeding_active_for_sbk?(perm_hash)
+    return false if perm_hash[:sbk].blank?
+    return StateAssociation.where(manual_proceeding_creation: true).exists? if perm_hash[:sbk].include?(0)
+
+    sa_ids = GameOperation.where(id: perm_hash[:sbk]).pluck(:state_association_id).compact.uniq
+    StateAssociation.where(id: sa_ids, manual_proceeding_creation: true).exists?
   end
 
   # True, wenn der/die Nutzer:in mindestens eine Mannschaft verantwortet, die in
