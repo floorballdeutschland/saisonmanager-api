@@ -92,6 +92,10 @@ class ApplicationController < ActionController::Base
   # nicht bereinigtes SVG bei Inline-Auslieferung ein Stored-XSS-Vektor wäre.
   LOGO_ALLOWED_CONTENT_TYPES = %w[image/png image/jpeg image/webp].freeze
   LOGO_MAX_SIZE = 3.megabytes
+  # Werbebanner (Liga, Spielbetrieb, Landesverband) teilen sich eine Grenze: Sie
+  # werden auf jeder Seite des jeweiligen Bereichs mitgeladen und bleiben deshalb
+  # deutlich kleiner als ein Logo.
+  BANNER_MAX_SIZE = 500.kilobytes
 
   # square: Vereins- und Teamlogos werden in quadratischen Kacheln und Tabellenzeilen
   # ausgespielt und müssen deshalb quadratisch geliefert werden. Verbandslogos und

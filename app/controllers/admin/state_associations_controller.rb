@@ -2,12 +2,11 @@ module Admin
   class StateAssociationsController < ApplicationController
     include StateAssociationWritable
 
-    # Eigene Grenzen statt des geteilten LOGO_MAX_SIZE: Verbandslogos werden in
-    # höherer Auflösung gepflegt als Vereinslogos, das Banner bleibt bewusst klein,
-    # weil es auf jeder Verbandsseite mitgeladen wird. Beides entspricht den Werten,
-    # die hier vorher direkt in den Aktionen standen.
+    # Eigene Grenze statt des geteilten LOGO_MAX_SIZE: Verbandslogos werden in
+    # höherer Auflösung gepflegt als Vereinslogos. Entspricht dem Wert, der hier
+    # vorher direkt in der Aktion stand. Das Banner nutzt die geteilte
+    # BANNER_MAX_SIZE aus dem ApplicationController.
     SA_LOGO_MAX_SIZE = 5.megabytes
-    SA_BANNER_MAX_SIZE = 500.kilobytes
 
     before_action :authorize_sa_access!
     before_action :set_state_association, only: %i[show update destroy upload_banner delete_banner upload_logo delete_logo]
@@ -68,7 +67,7 @@ module Admin
     def upload_banner
       return render json: { message: 'Kein Bild angefügt' }, status: :unprocessable_entity unless params[:banner].present?
 
-      if (error = logo_upload_error(params[:banner], square: false, max_size: SA_BANNER_MAX_SIZE))
+      if (error = logo_upload_error(params[:banner], square: false, max_size: BANNER_MAX_SIZE))
         return render json: { message: error }, status: :unprocessable_entity
       end
 
