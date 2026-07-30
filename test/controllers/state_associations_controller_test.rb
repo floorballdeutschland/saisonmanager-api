@@ -89,7 +89,91 @@ class StateAssociationsControllerTest < ActionDispatch::IntegrationTest
     assert_equal [17], past_season_ids
   end
 
+  # Issue #275: Verbandslogos sollen die Landesverbände selbst pflegen. Vorher nahm
+  # der Endpunkt ausschließlich WebP an, was praktisch jede Vorlage abwies.
+  test 'upload_logo nimmt PNG, JPEG und WebP an' do
+    login(@sbk)
+
+    %w[png jpg webp].each do |format|
+      post "/api/v2/admin/state_associations/#{@own_sa.id}/upload_logo",
+           params: { logo: image_upload(240, 90, "lv_logo_#{format}", format) }
+      assert_response :success, "#{format} wurde abgewiesen: #{response.body}"
+    end
+
+    assert @own_sa.reload.logo.attached?
+  end
+
+  # Gegenprobe zur Quadrat-Regel bei Vereins- und Teamlogos: Verbandslogos sind
+  # Wortmarken im Querformat und dürfen genau deshalb nicht quadratisch sein müssen.
+  test 'upload_logo akzeptiert ein Logo im Querformat' do
+    login(@sbk)
+    post "/api/v2/admin/state_associations/#{@own_sa.id}/upload_logo",
+         params: { logo: image_upload(1024, 296, 'lv_wortmarke', 'png') }
+
+    assert_response :success
+    assert @own_sa.reload.logo.attached?
+  end
+
+  test 'upload_logo lehnt ein SVG weiterhin ab' do
+    login(@sbk)
+    path = Rails.root.join('tmp', 'lv_logo.svg').to_s
+    File.write(path, '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>')
+
+    post "/api/v2/admin/state_associations/#{@own_sa.id}/upload_logo",
+         params: { logo: Rack::Test::UploadedFile.new(path, 'image/svg+xml') }
+
+    assert_response :unprocessable_entity
+    assert_match(/Dateiformat/, JSON.parse(response.body)['message'])
+    assert_not @own_sa.reload.logo.attached?
+  end
+
+  test 'upload_banner meldet sein Groessenlimit lesbar statt als 0 MB' do
+    login(@sbk)
+    post "/api/v2/admin/state_associations/#{@own_sa.id}/upload_banner",
+         params: { banner: oversized_png_upload }
+
+    assert_response :unprocessable_entity
+    message = JSON.parse(response.body)['message']
+    assert_match(/500 KB/, message)
+    assert_no_match(/0 MB/, message)
+    assert_not @own_sa.reload.banner.attached?
+  end
+
+  test 'RSK darf kein Verbandslogo hochladen' do
+    login(@rsk)
+    post "/api/v2/admin/state_associations/#{@own_sa.id}/upload_logo",
+         params: { logo: image_upload(240, 90, 'lv_logo_rsk', 'png') }
+
+    assert_response :forbidden
+    assert_not @own_sa.reload.logo.attached?
+  end
+
+  test 'SBK darf kein Logo bei einem fremden Landesverband hochladen' do
+    login(@sbk)
+    post "/api/v2/admin/state_associations/#{@foreign_sa.id}/upload_logo",
+         params: { logo: image_upload(240, 90, 'lv_logo_fremd', 'png') }
+
+    assert_response :forbidden
+    assert_not @foreign_sa.reload.logo.attached?
+  end
+
   private
+
+  def image_upload(width, height, name, format)
+    require 'vips'
+    path = Rails.root.join('tmp', "#{name}.#{format}").to_s
+    Vips::Image.black(width, height).write_to_file(path)
+    Rack::Test::UploadedFile.new(path, Rack::Mime.mime_type(".#{format}"))
+  end
+
+  # Rauschen statt einer Flaeche: Ein einfarbiges PNG komprimiert auf wenige Kilobyte
+  # und kaeme nie ueber das Bannerlimit.
+  def oversized_png_upload
+    require 'vips'
+    path = Rails.root.join('tmp', 'lv_banner_gross.png').to_s
+    Vips::Image.gaussnoise(1400, 1400).cast(:uchar).pngsave(path, compression: 0)
+    Rack::Test::UploadedFile.new(path, 'image/png')
+  end
 
   def create_user(user_group_id:, game_operation_id:)
     User.create!(
