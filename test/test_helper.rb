@@ -21,12 +21,32 @@ class ActiveSupport::TestCase
   include FactoryBot::Syntax::Methods
 end
 
+# Rack::Attack zählt seine Throttles in einem Cache-Store, den es sich beim
+# allerersten Zugriff auf `Rack::Attack.cache` einmalig aus `Rails.cache` holt
+# und danach dauerhaft festhält (siehe Rack::Attack::Cache#initialize).
+#
+# Im Test-Env ist `Rails.cache` ein :null_store, in dem nichts liegen bleibt, es
+# würde also nie gezählt. Einzelne Tests tauschten `Rails.cache` deshalb für ihre
+# Dauer gegen einen echten Store. Fiel der erste gedrosselte Request des
+# Prozesses zufällig in so einen Block, hielt Rack::Attack diesen Store für den
+# Rest des Laufs fest und zählte darin weiter: Ab dem elften Request auf die
+# Mail-Endpunkte antwortete dann jeder Test mit 429, abhängig von der
+# Testreihenfolge und damit vom Seed (#282).
+#
+# Deshalb hier ein eigener Store, gesetzt bevor der erste Test läuft. Er hängt
+# nicht an `Rails.cache` und wird nicht mehr ausgetauscht; jeder Test startet
+# dank des `setup` unten bei null.
+Rack::Attack.cache.store = ActiveSupport::Cache::MemoryStore.new
+
 # Schema-Validierung der API-Responses gegen docs/openapi/openapi.yml.
 # In Integration-Tests via `assert_schema_conform(status)` nach dem Request
 # aufrufen — die komplette JSON-Response wird gegen das Schema des
 # dokumentierten Endpoints geprüft.
 class ActionDispatch::IntegrationTest
   include Committee::Rails::Test::Methods
+
+  # Throttle-Zähler nicht über Testgrenzen hinweg schleppen.
+  setup { Rack::Attack.cache.store.clear }
 
   def committee_options
     @committee_options ||= {
