@@ -231,6 +231,17 @@ class TeamsControllerTest < ActionDispatch::IntegrationTest
     assert_match(/Liga/, JSON.parse(response.body)['message'])
   end
 
+  test 'matches antwortet mit 404, wenn die Liga des Teams gelöscht wurde' do
+    login(create(:user, :admin))
+    orphan_league = create(:league, game_operation: @go)
+    orphan_team = create(:team, league: orphan_league, club: @club)
+    League.where(id: orphan_league.id).delete_all
+
+    get "/api/v2/teams/#{orphan_team.id}/matches"
+
+    assert_response :not_found
+  end
+
   test 'stats nutzt die Pokal-Liga als Saisonquelle, wenn die Hauptliga fehlt' do
     login(create(:user, :admin))
     cup_league = create(:league, game_operation: @go)

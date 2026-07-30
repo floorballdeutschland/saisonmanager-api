@@ -35,17 +35,8 @@ class TeamsController < ApplicationController
 
   def stats
     team = Team.find(params[:id])
-    # A team's own league_id already pins it to one specific season (teams are
-    # re-imported per season) — use that instead of Setting.current_season_id,
-    # which is empty for teams from past seasons.
-    # team.league ist nil, wenn league_id leer ist oder auf eine geloeschte Liga
-    # zeigt. Dann liefern die Pokal-Ligen die Saison, und wenn auch die fehlen,
-    # gibt es fuer das Team keine Statistik (vorher 500, Sentry SAISONMANAGER-1C).
-    team_season_id = team.league&.season_id || team.leagues.first&.season_id
-    if team_season_id.blank?
-      return render json: { success: false, message: 'Mannschaft ist keiner Liga zugeordnet.' },
-                    status: :not_found
-    end
+    team_season_id = season_id_for(team)
+    return render_team_without_league if team_season_id.blank?
 
     # All leagues this team participates in (main league + cup leagues)
     leagues = team.leagues.where(season_id: team_season_id).to_a
@@ -190,10 +181,8 @@ class TeamsController < ApplicationController
   # iCal-Export (#show) und der gekappten Übersicht (#stats). Öffentlich (X-Api-Key).
   def matches
     team = Team.find(params[:id])
-    # Die league_id eines Teams pinnt es bereits auf genau eine Saison (Teams werden
-    # pro Saison neu importiert) – daher die Saison des Teams, nicht current_season_id
-    # (das für Teams vergangener Saisons leer ist).
-    team_season_id = team.league.season_id
+    team_season_id = season_id_for(team)
+    return render_team_without_league if team_season_id.blank?
 
     leagues = team.leagues.where(season_id: team_season_id).to_a
     leagues_info = leagues.map do |l|
@@ -384,6 +373,22 @@ class TeamsController < ApplicationController
   end
 
   private
+
+  # Die league_id eines Teams pinnt es bereits auf genau eine Saison (Teams
+  # werden pro Saison neu importiert) – daher die Saison des Teams und nicht
+  # current_season_id, das für Teams vergangener Saisons leer ist.
+  #
+  # team.league ist nil, wenn league_id leer ist oder auf eine gelöschte Liga
+  # zeigt; dann liefern die Pokal-Ligen die Saison. Fehlt jede Liga, gibt es
+  # keine Saison und damit keine Daten (vorher 500, Sentry SAISONMANAGER-1C).
+  def season_id_for(team)
+    team.league&.season_id || team.leagues.first&.season_id
+  end
+
+  def render_team_without_league
+    render json: { success: false, message: 'Mannschaft ist keiner Liga zugeordnet.' },
+           status: :not_found
+  end
 
   SCORER_COUNTERS = %i[games goals assists penalty_2 penalty_2and2 penalty_5 penalty_10
                        penalty_ms_tech penalty_ms_full penalty_ms1 penalty_ms2 penalty_ms3].freeze
