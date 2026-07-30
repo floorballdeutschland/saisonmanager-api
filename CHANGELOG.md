@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.62.0] - 2026-07-30
+
 ### Neu
 
 - **Liga löschen**: In der Ligaverwaltung gab es zwar seit langem einen roten Knopf „Liga löschen", der aber nichts löschte, sondern lediglich auf die Bearbeiten-Maske derselben Liga führte. Wer dort anschließend speicherte, bekam sogar eine grüne Erfolgsmeldung zu sehen und fand die Liga danach unverändert in der Übersicht wieder. Eine Löschfunktion gab es im Hintergrund überhaupt nicht. Jetzt gibt es sie, mit Rückfrage vor dem Löschen; zuständig sind Admins und die Spielbetriebskommission des jeweiligen Spielbetriebs. Gelöscht wird nur, was keine Historie zerstört: Ein noch ungespielter Spielplan und Mannschaften ohne Lizenzen werden gemeinsam mit der Liga entfernt, weil eine versehentlich angelegte oder falsch importierte Liga sonst praktisch nicht mehr wegzubekommen wäre. Sobald aber etwas daran hängt, das Bestand hat, wird die Löschung mit einer Meldung abgelehnt, die den Grund benennt: ein bereits angepfiffenes oder ausgetragenes Spiel, zugeordnete Spieler oder Lizenzen, offene Sperren, vorhandenes Schiedsrichter-Feedback, Mannschaften, die über eine Pokal- oder Zusatzliga auch in einer anderen Liga spielen, sowie Verweise anderer Ligen auf diese, also Vorsaison, Vorrunde, Direktvergleich oder eine Qualifikation, die in diese Liga führt. In diesen Fällen ist zuerst der jeweilige Eintrag aufzulösen. Die eigenen Qualifikationsregeln der Liga verschwinden mit ihr. Der Endpunkt verlangt eine angemeldete Sitzung, ein Frontend-API-Key genügt dafür ausdrücklich nicht.
