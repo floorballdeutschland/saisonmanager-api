@@ -17,6 +17,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Behoben
 
+- **Ein hängender Mailserver kippt den Passwort-Reset nicht mehr**: Die Reset-Mail geht direkt im Aufruf raus. Nahm der Mailserver sie nicht an oder antwortete er nicht, endete der Aufruf in einem Serverfehler, und das an drei Stellen mit unangenehmen Folgen: Bei „Passwort vergessen“ sah die Person einen Fehler, obwohl diese Seite aus Datenschutzgründen ohnehin immer dieselbe Antwort gibt; beim Anlegen eines Kontos in der Verwaltung war das Konto bereits gespeichert, die Meldung sagte aber Fehler, sodass ein zweiter Anlauf am schon vergebenen Benutzernamen scheiterte. Jetzt gilt: „Passwort vergessen“ antwortet unverändert freundlich, das Anlegen bleibt erfolgreich und nennt im Ergebnis, ob die Willkommensmail rausging, und wer den Versand in der Verwaltung ausdrücklich anstößt, bekommt einen gescheiterten Versand auch als Fehler gemeldet statt eines stillen Erfolgs. Jeder Fehlschlag landet im Log und in der Fehlerüberwachung.
 - **Wartezeit für eine erneute E-Mail-Bestätigung wird beziffert**: Wer die eigene E-Mail-Adresse ändert und den Vorgang kurz darauf erneut anstößt, bekam nur „Bitte warte einen Moment". Unklar blieb, ob damit Sekunden gemeint sind oder die 24 Stunden Gültigkeit des Bestätigungslinks. Die Meldung nennt jetzt die verbleibenden Sekunden; die Antwort führt sie zusätzlich als eigenes Feld und im Standard-Header `Retry-After`.
 
 ## [1.63.0] - 2026-07-30

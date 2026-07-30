@@ -103,9 +103,26 @@ class User < ApplicationRecord
     "#{fullname} (#{user_name})"
   end
 
+  # Setzt ein frisches Reset-Token und verschickt den Link. Liefert zurück, ob
+  # die Mail tatsächlich rausgegangen ist.
+  #
+  # Der Versand läuft synchron im Request (es gibt kein Job-Backend). Ein
+  # hängender oder abweisender SMTP-Server darf den Aufrufer deshalb nicht mit
+  # einem Serverfehler abbrechen: Das Token ist an dieser Stelle bereits
+  # rotiert, beim Anlegen eines Kontos ist der Datensatz schon gespeichert. Der
+  # Aufrufer entscheidet, ob der Fehlschlag sichtbar wird – die offene
+  # „Passwort vergessen"-Route antwortet bewusst immer gleich, die Verwaltung
+  # meldet ihn (Sentry SAISONMANAGER-1X).
   def send_reset_information
     self.password_reset_token = SecureRandom.uuid
-    UserMailer.reset_password(self).deliver_now if save(validate: false)
+    return false unless save(validate: false)
+
+    UserMailer.reset_password(self).deliver_now
+    true
+  rescue StandardError => e
+    Rails.logger.warn("Passwort-Reset-Mail fehlgeschlagen – User #{id}: #{e.class}: #{e.message}")
+    Sentry.capture_exception(e) if defined?(Sentry)
+    false
   end
 
   # --- E-Mail-Änderung mit Bestätigung (Double-Opt-In) ---------------------
