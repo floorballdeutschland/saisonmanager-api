@@ -20,6 +20,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Behoben
 
 - **Wartezeit für eine erneute E-Mail-Bestätigung wird beziffert**: Wer die eigene E-Mail-Adresse ändert und den Vorgang kurz darauf erneut anstößt, bekam nur „Bitte warte einen Moment". Unklar blieb, ob damit Sekunden gemeint sind oder die 24 Stunden Gültigkeit des Bestätigungslinks. Die Meldung nennt jetzt die verbleibenden Sekunden; die Antwort führt sie zusätzlich als eigenes Feld und im Standard-Header `Retry-After`.
+- **Testlauf schlug sporadisch mit Rate-Limit-Fehlern fehl (nur intern)**: Je nach zufälliger Reihenfolge der automatisierten Tests brachen sieben davon mit „Rate limit überschritten" ab, obwohl am System nichts geändert war. Ursache war, dass die Drosselung ihren Zähler beim ersten Zugriff dauerhaft an einen Zwischenspeicher bindet, den einzelne Tests nur vorübergehend bereitstellten. Der Zähler nutzt in der Testumgebung jetzt einen eigenen Speicher und startet vor jedem Test bei null. Am laufenden Betrieb ändert sich nichts, die Drosselung selbst ist unverändert.
 
 ## [1.63.0] - 2026-07-30
 

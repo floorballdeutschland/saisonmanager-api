@@ -146,14 +146,13 @@ class RefereeFeedbackInvitationsControllerTest < ActionDispatch::IntegrationTest
     assert_response :created
   end
 
+  # Den Throttle-Zaehler stellt test_helper.rb pro Test auf null.
   test 'Abgabe wird pro IP gedrosselt' do
-    with_rack_attack_cache do
-      30.times { get "/api/v2/referee_feedback_invitations/#{@token}" }
+    30.times { get "/api/v2/referee_feedback_invitations/#{@token}" }
 
-      get "/api/v2/referee_feedback_invitations/#{@token}"
+    get "/api/v2/referee_feedback_invitations/#{@token}"
 
-      assert_response :too_many_requests
-    end
+    assert_response :too_many_requests
   end
 
   test 'offener Spielbericht laesst noch keine Abgabe zu' do
@@ -190,17 +189,5 @@ class RefereeFeedbackInvitationsControllerTest < ActionDispatch::IntegrationTest
          params: { line_rating: 6, communication_rating: 9 }
 
     assert_response :unprocessable_entity
-  end
-
-  private
-
-  # Rack::Attack zählt im Rails.cache, im Test-Env ein :null_store – daher wie in
-  # sessions_controller_test ein echter Store für die Dauer des Tests.
-  def with_rack_attack_cache
-    original = Rack::Attack.cache.store
-    Rack::Attack.cache.store = ActiveSupport::Cache::MemoryStore.new
-    yield
-  ensure
-    Rack::Attack.cache.store = original
   end
 end
