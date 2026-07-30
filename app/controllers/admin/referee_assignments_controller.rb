@@ -83,7 +83,10 @@ module Admin
 
       scope = scope.order("game_days.date ASC, games.start_time ASC NULLS LAST")
 
-      render json: scope.map { |g|
+      games = scope.to_a
+      note_authors = note_author_names(games)
+
+      render json: games.map { |g|
         a = g.referee_assignment
         go = g.game_day.league&.game_operation
         {
@@ -106,7 +109,11 @@ module Admin
           arena_city: g.game_day.arena&.city,
           club: g.game_day.club&.name,
           assignment_id: a&.id,
-          assignment_status: a&.status
+          assignment_status: a&.status,
+          # Freitext-Spielinformationen für das Gespann (nur Ansetzung + Gespann).
+          referee_notes: g.referee_notes,
+          referee_notes_updated_at: g.referee_notes_updated_at&.iso8601,
+          referee_notes_updated_by_name: note_authors[g.referee_notes_updated_by]
         }
       }
     end
@@ -352,6 +359,25 @@ module Admin
       head :not_found
     end
 
+    # PATCH /api/v2/admin/referee_assignments/games/:game_id/notes
+    # Freitext-Spielinformationen des Ansetzers („Zusätzliche Spielinformationen").
+    # Sichtbar nur für die ansetzenden Rollen und – nach dem Veröffentlichen –
+    # für das angesetzte Gespann; nie für die Mannschaften oder öffentlich
+    # (siehe Game#serializable_hash).
+    def update_notes
+      game = Game.find_by(id: params[:game_id])
+      return unless authorize_game_scope!(game)
+
+      notes = notes_params[:referee_notes].to_s.strip
+      game.update!(
+        referee_notes: notes.presence,
+        referee_notes_updated_at: Time.current,
+        referee_notes_updated_by: current_user.id
+      )
+
+      render json: notes_json(game)
+    end
+
     # GET /api/v2/admin/referee_assignments/availability?season_id=X&date_from=&date_to=
     # Wochenend-Verfügbarkeitsmatrix („war room") für alle aktiven Schiedsrichter
     # des eigenen Verbands: je Schiri × Spielwochenende ein Status
@@ -571,6 +597,31 @@ module Admin
 
     def assignment_params
       params.require(:assignment).permit(:game_id, :referee1_id, :referee2_id, :coach_id, :club_id, :status)
+    end
+
+    def notes_params
+      params.require(:game).permit(:referee_notes)
+    end
+
+    def notes_json(game)
+      {
+        game_id: game.id,
+        referee_notes: game.referee_notes,
+        referee_notes_updated_at: game.referee_notes_updated_at&.iso8601,
+        referee_notes_updated_by_name: note_author_names([game])[game.referee_notes_updated_by]
+      }
+    end
+
+    # Anzeigenamen der letzten Bearbeiter:innen der Notizen, gebündelt aufgelöst
+    # (die Ansetzung eines Verbands teilen sich mehrere Personen – ohne Namen
+    # wäre nicht erkennbar, wessen Hinweis am Spiel steht).
+    def note_author_names(games)
+      ids = games.filter_map(&:referee_notes_updated_by).uniq
+      return {} if ids.empty?
+
+      User.where(id: ids).pluck(:id, :first_name, :last_name).to_h do |id, first, last|
+        [id, [first, last].compact_blank.join(' ').presence]
+      end
     end
 
     # officials = die laut Spielbericht tatsächlich eingesetzten Schiedsrichter,
