@@ -291,7 +291,8 @@ module Admin
 
       patch "/api/v2/admin/users/#{tm.id}", params: { role: 4, club_id: @club.id }
       assert_response :unprocessable_entity
-      assert_equal [5], tm.reload.permissions.map { |p| p['user_group_id'].to_i }
+      role_ids = tm.reload.permissions.map { |p| p['user_group_id'].to_i }
+      assert_equal [5], role_ids
     end
 
     test 'VM kann kein fremdes Team nachträglich zuweisen' do
