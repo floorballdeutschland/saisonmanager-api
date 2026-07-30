@@ -52,8 +52,38 @@ class Game < ApplicationRecord
   # jeder Controller-Action.
   after_commit :flush_league_caches
 
+  # Freitext-Spielinformationen des Ansetzers: ausschließlich für die
+  # ansetzenden Rollen und – nach dem Veröffentlichen – für das angesetzte
+  # Gespann bestimmt, nie für Mannschaften oder die Öffentlichkeit.
+  REFEREE_NOTES_ATTRIBUTES = %w[referee_notes referee_notes_updated_at referee_notes_updated_by].freeze
+
   def match_record_closed?
     %w[match_record_closed finalized].include? game_status
+  end
+
+  # Die Notiz darf nicht über eine pauschale Serialisierung des Datensatzes
+  # nach außen gelangen – etwa über `render json: game` im Spielbericht, den die
+  # Spielleitung des Heimvereins bedient. Deshalb fliegt sie hier grundsätzlich
+  # aus as_json/to_json; wer sie ausliefern darf, liest sie explizit über
+  # #referee_notes (siehe Admin::RefereeAssignmentsController,
+  # RefereeGameDayConfirmationsController).
+  def serializable_hash(options = nil)
+    options = (options || {}).dup
+    options[:except] = Array(options[:except]) + REFEREE_NOTES_ATTRIBUTES unless options[:only]
+    super(options)
+  end
+
+  # Nur wer für dieses Spiel veröffentlicht angesetzt ist, darf die Notiz sehen:
+  # die beiden Schiedsrichter und der Schiedsrichtercoach. Vor dem
+  # Veröffentlichen ist die Ansetzung noch Entwurf, also auch die Notiz nicht
+  # zugestellt.
+  def referee_notes_visible_to?(referee)
+    return false if referee.nil?
+
+    assignment = referee_assignment
+    return false unless assignment&.status == 'published'
+
+    [assignment.referee1_id, assignment.referee2_id, assignment.coach_id].compact.include?(referee.id)
   end
 
   def league
