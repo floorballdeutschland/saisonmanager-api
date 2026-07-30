@@ -16,6 +16,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Behoben
 
 - **Wartezeit für eine erneute E-Mail-Bestätigung wird beziffert**: Wer die eigene E-Mail-Adresse ändert und den Vorgang kurz darauf erneut anstößt, bekam nur „Bitte warte einen Moment". Unklar blieb, ob damit Sekunden gemeint sind oder die 24 Stunden Gültigkeit des Bestätigungslinks. Die Meldung nennt jetzt die verbleibenden Sekunden; die Antwort führt sie zusätzlich als eigenes Feld und im Standard-Header `Retry-After`.
+- **Menüpunkt „Verfahrensvorschläge" nur dort, wo Verfahren entstehen**: Der Punkt erscheint in der Spielbetriebskommission jetzt nur noch, wenn der zugehörige Landesverband die manuelle Erstellung von Protesten durch die SBK aktiviert hat. Ohne diese Einstellung entsteht überhaupt kein Verfahrensvorschlag, weil ein hochgeladener Bericht automatisch per E-Mail an die VSK geht; der Menüpunkt führte also auf eine dauerhaft leere Seite. Bei mehreren zugeordneten Spielbetrieben genügt es, wenn einer davon die Einstellung nutzt. Für Admins sowie für die verbandsübergreifend gescopte SBK bleibt der Punkt sichtbar, sobald irgendein Landesverband so arbeitet. Ändert ein Verband die Einstellung, müssen sich die betroffenen Konten einmal neu anmelden, weil die Menüfreigaben beim Login gesetzt werden.
 
 ## [1.63.0] - 2026-07-30
 
