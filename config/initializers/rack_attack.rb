@@ -28,6 +28,45 @@ module Rack
       req.ip if req.path.start_with?('/api/v2/referee_feedback_invitations')
     end
 
+    # Suchmaschinen und Skript-Clients stellen den größten Teil des Verkehrs auf
+    # den öffentlichen Endpunkten. Messung Produktion, 7 Tage (Juli 2026):
+    # Applebot 226.662 Aufrufe und zusammen 10,3 Stunden Serverzeit, Bytespider
+    # 54.965, Googlebot 18.568, Python aiohttp 16.839, Baiduspider-render
+    # 11.134 – mehr als Chrome und Firefox zusammen.
+    #
+    # robots.txt (Frontend-Repo) bremst die Crawler, die sich daran halten.
+    # Bytespider und Skript-Clients tun das notorisch nicht, deshalb hier
+    # zusätzlich eine harte Obergrenze pro IP.
+    #
+    # Das Limit ist bewusst großzügig: Es soll Ausbrüche kappen, nicht die
+    # Indexierung verhindern – die öffentlichen Ligaseiten sollen gefunden
+    # werden. 60 Aufrufe pro Minute liegen weit über dem gemessenen Mittel von
+    # Applebot (rund 22 pro Minute), und ein 429 ist für Suchmaschinen das
+    # dokumentierte Signal, langsamer zu crawlen.
+    #
+    # Die Liste nennt die Crawler absichtlich namentlich statt pauschal /bot/i:
+    # Ein pauschales Muster träfe auch Gerätekennungen wie „Cubot" und damit
+    # echte Besucher.
+    CRAWLER_USER_AGENTS = Regexp.union(
+      /Applebot/i, /Googlebot/i, /GoogleOther/i, /Google-InspectionTool/i,
+      /bingbot/i, /Bytespider/i, /Baiduspider/i, /YandexBot/i, /DuckDuckBot/i,
+      /SeznamBot/i, /PetalBot/i,
+      /AhrefsBot/i, /SemrushBot/i, /MJ12bot/i, /DotBot/i, /BLEXBot/i,
+      /GPTBot/i, /ClaudeBot/i, /CCBot/i, /Amazonbot/i, /PerplexityBot/i,
+      /facebookexternalhit/i, /Twitterbot/i,
+      /python-urllib/i, /python-requests/i, /aiohttp/i, /Scrapy/i, %r{curl/}i, /Wget/i
+    ).freeze
+
+    throttle('crawler/ip', limit: 60, period: 1.minute) do |req|
+      next unless req.get?
+      next unless req.path.start_with?('/api/')
+      # Angemeldete Sitzungen bleiben außen vor, damit eine falsch erkannte
+      # Browser-Kennung niemandem die Arbeit im System ausbremst.
+      next if req.get_header('HTTP_COOKIE').to_s.include?('user_id')
+
+      req.ip if CRAWLER_USER_AGENTS.match?(req.user_agent.to_s)
+    end
+
     # Throttle requests by API key using each key's individual rate_limit (requests/minute).
     # Keys with rate_limit: nil are exempt (unlimited).
     throttle('api/key',
