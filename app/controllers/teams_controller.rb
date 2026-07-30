@@ -38,7 +38,14 @@ class TeamsController < ApplicationController
     # A team's own league_id already pins it to one specific season (teams are
     # re-imported per season) — use that instead of Setting.current_season_id,
     # which is empty for teams from past seasons.
-    team_season_id = team.league.season_id
+    # team.league ist nil, wenn league_id leer ist oder auf eine geloeschte Liga
+    # zeigt. Dann liefern die Pokal-Ligen die Saison, und wenn auch die fehlen,
+    # gibt es fuer das Team keine Statistik (vorher 500, Sentry SAISONMANAGER-1C).
+    team_season_id = team.league&.season_id || team.leagues.first&.season_id
+    if team_season_id.blank?
+      return render json: { success: false, message: 'Mannschaft ist keiner Liga zugeordnet.' },
+                    status: :not_found
+    end
 
     # All leagues this team participates in (main league + cup leagues)
     leagues = team.leagues.where(season_id: team_season_id).to_a

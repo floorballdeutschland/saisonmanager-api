@@ -17,6 +17,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Behoben
 
+- **Spieler ohne jede Lizenz lassen sich in der Verwaltung wieder öffnen**: Die Detailansicht eines Spielers antwortete mit einem Serverfehler, wenn zu diesem Spieler noch nie eine Lizenz angelegt wurde. Betroffen sind vor allem Profile aus dem Altdaten-Import, bei denen die Lizenzspalte leer statt als leere Liste hinterlegt ist; das Aufbereiten der Lizenzhistorie brach dort ab. Die Ansicht zeigt für solche Spieler jetzt einfach keine Lizenzen. Die Spielerliste war nicht betroffen, nur das Öffnen eines einzelnen Profils.
+- **Mannschaftsseite ohne Liga führt nicht mehr zum Serverfehler**: Die Statistik einer Mannschaft leitet die Saison aus der Liga der Mannschaft ab. Zeigt diese Zuordnung ins Leere, etwa weil die Liga zwischenzeitlich gelöscht wurde, endete der Aufruf in einem Serverfehler. Spielt die Mannschaft zusätzlich in einer Pokal- oder Qualifikationsliga, wird die Saison jetzt von dort genommen; fehlt jede Liga, antwortet die Seite mit „nicht gefunden" statt mit einem Fehler.
 - **Wartezeit für eine erneute E-Mail-Bestätigung wird beziffert**: Wer die eigene E-Mail-Adresse ändert und den Vorgang kurz darauf erneut anstößt, bekam nur „Bitte warte einen Moment". Unklar blieb, ob damit Sekunden gemeint sind oder die 24 Stunden Gültigkeit des Bestätigungslinks. Die Meldung nennt jetzt die verbleibenden Sekunden; die Antwort führt sie zusätzlich als eigenes Feld und im Standard-Header `Retry-After`.
 
 ## [1.63.0] - 2026-07-30

@@ -217,6 +217,31 @@ class TeamsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 1, body['recent_games'].length
   end
 
+  test 'stats antwortet mit 404, wenn die Liga des Teams gelöscht wurde' do
+    login(create(:user, :admin))
+    orphan_league = create(:league, game_operation: @go)
+    orphan_team = create(:team, league: orphan_league, club: @club)
+    # Liga hart entfernen, damit league_id ins Leere zeigt – so entstehen die
+    # Teams, die vorher einen 500er auslösten.
+    League.where(id: orphan_league.id).delete_all
+
+    get "/api/v2/teams/#{orphan_team.id}/stats"
+
+    assert_response :not_found
+    assert_match(/Liga/, JSON.parse(response.body)['message'])
+  end
+
+  test 'stats nutzt die Pokal-Liga als Saisonquelle, wenn die Hauptliga fehlt' do
+    login(create(:user, :admin))
+    cup_league = create(:league, game_operation: @go)
+    cup_team = create(:team, league: @league, club: @club, cup_leagues: [cup_league.id])
+    cup_team.update_column(:league_id, nil)
+
+    get "/api/v2/teams/#{cup_team.id}/stats"
+
+    assert_response :success
+  end
+
   # Beendetes Spiel des Teams in `league` mit genau einem Tor eines eigenen
   # Spielers; liefert diesen Spieler (ergibt einen Scorer-Eintrag über
   # Game#evaluate_scorer).
