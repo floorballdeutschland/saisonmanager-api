@@ -172,4 +172,11 @@ class LeagueDeleteTest < ActionDispatch::IntegrationTest
 
     assert_response :no_content
   end
+
+  private
+
+  def login(user)
+    post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
+    assert_response :success
+  end
 end
