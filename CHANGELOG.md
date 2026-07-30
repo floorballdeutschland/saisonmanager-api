@@ -17,6 +17,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Behoben
 
+- **Spielerprofile aus dem Altdaten-Import erhalten ihren Verein zurück**: Profile, die beim Import der Saisons 2010 bis 2014 entstanden sind, hatten überhaupt keine Vereinsmitgliedschaft, weil die Altdaten keine Mitgliedschaften enthalten und der Import nur Name, Geburtsdatum und Geschlecht übernahm. Solche Profile tauchen in keiner Vereins-Spielerliste auf, obwohl es zu vielen von ihnen ein aktuelles Profil derselben Person gibt. Die Vereine konnten die Dubletten deshalb nicht zusammenführen. Ein neuer Wartungsbefehl ordnet jedem betroffenen Profil den Verein zu, in dem auch das aktuelle Profil liegt, und greift nur auf den Verein der damaligen Lizenz zurück, wenn kein aktuelles Profil auffindbar ist. Uneindeutige Fälle bleiben unangetastet, ebenso Platzhalter- und Ablagevereine. Die Zuordnung ist als Vorbereitung für das Zusammenführen gedacht: die Profile erscheinen bis dahin in der Spielerliste des Vereins und verschwinden nach dem Zusammenführen von selbst wieder. Der Befehl läuft standardmäßig als Probelauf und lässt sich vollständig zurücknehmen.
+
 - **Wartezeit für eine erneute E-Mail-Bestätigung wird beziffert**: Wer die eigene E-Mail-Adresse ändert und den Vorgang kurz darauf erneut anstößt, bekam nur „Bitte warte einen Moment". Unklar blieb, ob damit Sekunden gemeint sind oder die 24 Stunden Gültigkeit des Bestätigungslinks. Die Meldung nennt jetzt die verbleibenden Sekunden; die Antwort führt sie zusätzlich als eigenes Feld und im Standard-Header `Retry-After`.
 
 ## [1.63.0] - 2026-07-30
