@@ -26,6 +26,13 @@ class UsersController < ApplicationController
       return render json: { success: false, message: 'Ungültiger oder abgelaufener Link.' }, status: :not_found
     end
 
+    # Dieselben Regeln wie beim Ändern unter „Mein Konto" (PasswordPolicy);
+    # has_secure_password prüft nur Anwesenheit und Bestätigung, nicht die Güte.
+    policy_error = PasswordPolicy.error_for(params.dig(:user, :password))
+    if policy_error
+      return render json: { success: false, message: policy_error }, status: :unprocessable_entity
+    end
+
     if user.update(reset_password_params) && user.update(password_reset_token: nil)
       render json: { success: true }
     else
