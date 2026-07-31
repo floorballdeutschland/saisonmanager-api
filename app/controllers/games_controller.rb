@@ -1101,6 +1101,10 @@ class GamesController < ApplicationController
   end
 
   def _maybe_send_incident_report_reminder(game)
+    # Ohne den digitalen Berichtsworkflow bleibt es beim analogen Vor-Ort-Prozess
+    # (Papierbericht) – dann ist auch keine 24h-Frist zu melden.
+    return unless game.report_form_workflow_enabled?
+
     has_spielausschluss = (game.events || []).any? { |e| e['penalty_id'].to_s == '5' }
     return unless game.special_event? || has_spielausschluss
 

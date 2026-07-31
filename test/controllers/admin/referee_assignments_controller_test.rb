@@ -2,6 +2,8 @@ require 'test_helper'
 
 module Admin
   class RefereeAssignmentsControllerTest < ActionDispatch::IntegrationTest
+    include ActiveJob::TestHelper
+
     setup do
       create(:setting)
     end
@@ -166,6 +168,51 @@ module Admin
       assert_equal 'Turniermodus, 2×15 Minuten', entry['referee_notes']
       assert_equal 'Bea Bezirk', entry['referee_notes_updated_by_name']
       assert_not_nil entry['referee_notes_updated_at']
+    end
+
+    # -------------------------------------------------------------------------
+    # notify – game_days.date ist eine Textspalte
+    # -------------------------------------------------------------------------
+
+    test 'vorlaeufige Ansetzung verschickt die Mail mit deutschem Datum' do
+      sa = create(:state_association, referee_assignment_enabled: true)
+      go = create(:game_operation, state_association_id: sa.id)
+      game = assignable_game(go)
+      game.game_day.update_columns(date: '2026-01-10')
+      assignment = RefereeAssignment.create!(game: game, referee1_id: create(:referee, email: 'ref@example.de').id,
+                                             status: 'tentative')
+      login(create(:user, :admin))
+
+      perform_enqueued_jobs do
+        post "/api/v2/admin/referee_assignments/#{assignment.id}/notify"
+      end
+
+      assert_response :success
+      mail = ActionMailer::Base.deliveries.last
+      assert_not_nil mail
+      assert_includes mail.subject, '10.01.2026'
+      # I18n.l haette hier "January 10, 2026" geliefert: es gibt nur en.yml.
+      assert_not_includes mail.subject, 'January'
+      assert_includes mail.body.encoded, '10.01.2026'
+    end
+
+    test 'nicht lesbares Spieltagsdatum meldet statt still zu scheitern' do
+      sa = create(:state_association, referee_assignment_enabled: true)
+      go = create(:game_operation, state_association_id: sa.id)
+      game = assignable_game(go)
+      game.game_day.update_columns(date: 'unbekannt')
+      assignment = RefereeAssignment.create!(game: game, referee1_id: create(:referee, email: 'ref@example.de').id,
+                                             status: 'tentative')
+      login(create(:user, :admin))
+
+      # Vorher: I18n.l(nil) warf ArgumentError im Hintergrund-Job, waehrend die
+      # Oberflaeche Erfolg meldete und notified_tentative_at gesetzt wurde.
+      assert_no_enqueued_emails do
+        post "/api/v2/admin/referee_assignments/#{assignment.id}/notify"
+      end
+
+      assert_response :unprocessable_entity
+      assert_nil assignment.reload.notified_tentative_at
     end
 
     private
