@@ -18,6 +18,10 @@ class PublicSecretaryController < ApplicationController
         id: game_day.id,
         date: game_day.date,
         league: game_day.league&.name,
+        # league_id + game_operation_slug ermöglichen im Frontend den direkten Link
+        # zur Spielseite: /:association/:leagueId/spiel/:matchId. Gleiches Muster
+        # wie bei den Schiri-Spieltagen.
+        league_id: game_day.league&.id,
         arena: game_day.arena&.name,
         game_operation_slug: game_day.league&.game_operation&.slug
       },
