@@ -148,10 +148,20 @@ class Team < ApplicationRecord
   #   }
   def ticker_hash
     {
-      shortName: short_name.slice(0, 5).split(' ').first.to_s,
+      shortName: ticker_short_name,
       name:,
       logoUrl: logo_url
     }
+  end
+
+  # Kürzel für den Ticker. teams.short_name ist nullable und hat keine
+  # Validierung; ohne Wert starb `slice` mit NoMethodError und riss die ganze
+  # Ticker-Antwort mit (die v1-Route liefert alle Spiele einer Liga auf einmal,
+  # ein Team ohne Kürzel machte also die komplette Anzeigetafel unbrauchbar).
+  # Ersatzweise die ersten Zeichen des Namens, wie sie das Frontend ohne Logo
+  # ohnehin anzeigen würde.
+  def ticker_short_name
+    (short_name.presence || name).to_s.slice(0, 5).split(' ').first.to_s
   end
 
   def user_permissions(user)
