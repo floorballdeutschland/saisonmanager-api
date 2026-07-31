@@ -26,14 +26,17 @@ class GameOperation < ApplicationRecord
   end
 
   def meta_hash
-    hash = attributes.with_indifferent_access.slice(:id, :name, :short_name, :path, :logo_url, :logo_quad_url,
+    hash = attributes.with_indifferent_access.slice(:id, :name, :short_name, :path,
                                                     :state_association_id, :banner_link_url)
     hash[:path] = slug
     hash[:banner_url] = banner_url
-    # Angehängtes LV-Logo hat Vorrang; fällt sonst auf das in der logo_url-
-    # Textspalte hinterlegte Logo zurück, damit Verbände ohne Datei-Upload
-    # (z. B. in der Ligaverwaltung) weiterhin ihr Logo anzeigen.
-    hash[:logo_url] = state_association&.logo_url || hash[:logo_url]
+    # Einzige Logo-Quelle ist der Upload am Landesverband (Verbandseinstellungen).
+    # Der frühere Rückfall auf die Textspalte game_operations.logo_url ist entfallen:
+    # Für die Spalte gab es keine Pflege-Oberfläche, die Werte zeigten teils auf
+    # fremde Server, und solange sie irgendetwas lieferte, blieb ein fehlender
+    # Upload unbemerkt. Ohne Upload ist logo_url jetzt nil, das Frontend zeigt
+    # dann den Verbandsnamen statt eines Bildes.
+    hash[:logo_url] = state_association&.logo_url
     hash
   end
 

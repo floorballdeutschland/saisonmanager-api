@@ -260,6 +260,43 @@ class LeaguesControllerTest < ActionDispatch::IntegrationTest
   end
   private :login_as
 
+  # Issue #275: Banner nehmen dieselben Formate wie die Logos, damit in derselben
+  # Verwaltungsoberfläche nicht zweierlei Recht gilt.
+  test 'admin_upload_banner nimmt ein PNG im Querformat an' do
+    create(:setting)
+    league = create(:league)
+    login_as(create(:user, :admin))
+
+    post "/api/v2/admin/leagues/#{league.id}/upload_banner",
+         params: { banner: league_banner_upload(1200, 200, 'liga_banner') }
+
+    assert_response :success
+    assert league.reload.banner.attached?
+  end
+
+  test 'admin_upload_banner lehnt ein SVG ab' do
+    create(:setting)
+    league = create(:league)
+    login_as(create(:user, :admin))
+    path = Rails.root.join('tmp', 'liga_banner.svg').to_s
+    File.write(path, '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>')
+
+    post "/api/v2/admin/leagues/#{league.id}/upload_banner",
+         params: { banner: Rack::Test::UploadedFile.new(path, 'image/svg+xml') }
+
+    assert_response :unprocessable_entity
+    assert_match(/Dateiformat/, JSON.parse(response.body)['message'])
+    assert_not league.reload.banner.attached?
+  end
+
+  def league_banner_upload(width, height, name)
+    require 'vips'
+    path = Rails.root.join('tmp', "#{name}.png").to_s
+    Vips::Image.black(width, height).write_to_file(path)
+    Rack::Test::UploadedFile.new(path, 'image/png')
+  end
+  private :league_banner_upload
+
   # --- admin_copy: Liga aus Vorsaison kopieren (#69) ---
 
   def create_copy_source_league(operation)
