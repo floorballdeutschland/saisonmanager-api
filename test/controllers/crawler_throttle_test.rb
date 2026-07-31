@@ -2,6 +2,14 @@ require 'test_helper'
 
 # Obergrenze für Crawler auf den öffentlichen Endpunkten
 # (config/initializers/rack_attack.rb, Throttle 'crawler/ip').
+#
+# Den Cache-Store stellt test_helper.rb bereit und leert ihn vor jedem Test;
+# ein eigener Store je Test wäre genau die Doppelung, die api#290 aufgelöst hat.
+#
+# Gezählt wird in einem festen Minutenfenster (epoch / period), nicht gleitend.
+# Ohne travel_to fällt ein Lauf, der zufällig über eine Minutengrenze reicht,
+# in ein neues Fenster, und der 61. Aufruf käme durch – ein Flake, dessen
+# Häufigkeit mit der Laufzeit steigt.
 class CrawlerThrottleTest < ActionDispatch::IntegrationTest
   APPLEBOT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 ' \
              '(KHTML, like Gecko) Version/17.0 Safari/605.1.15 (Applebot/0.1; ' \
@@ -17,7 +25,7 @@ class CrawlerThrottleTest < ActionDispatch::IntegrationTest
   end
 
   test 'ein Crawler wird nach 60 Aufrufen pro Minute gebremst' do
-    with_rack_attack_cache do
+    travel_to Time.zone.now.beginning_of_minute do
       60.times { get '/api/v2/version', headers: { 'HTTP_USER_AGENT' => APPLEBOT } }
       assert_response :success
 
@@ -30,7 +38,7 @@ class CrawlerThrottleTest < ActionDispatch::IntegrationTest
   end
 
   test 'ein normaler Browser laeuft nicht in den Crawler-Throttle' do
-    with_rack_attack_cache do
+    travel_to Time.zone.now.beginning_of_minute do
       70.times { get '/api/v2/version', headers: { 'HTTP_USER_AGENT' => BROWSER } }
 
       assert_response :success
@@ -38,15 +46,42 @@ class CrawlerThrottleTest < ActionDispatch::IntegrationTest
   end
 
   test 'eine Gerätekennung mit bot im Namen zaehlt nicht als Crawler' do
-    with_rack_attack_cache do
+    travel_to Time.zone.now.beginning_of_minute do
       70.times { get '/api/v2/version', headers: { 'HTTP_USER_AGENT' => CUBOT_PHONE } }
 
       assert_response :success
     end
   end
 
+  # HEAD kostet den Server dasselbe wie GET. Link-Prüfer und einige Crawler
+  # holen ausschließlich Header, das darf keine Lücke sein.
+  test 'HEAD-Aufrufe zaehlen mit' do
+    travel_to Time.zone.now.beginning_of_minute do
+      60.times { head '/api/v2/version', headers: { 'HTTP_USER_AGENT' => APPLEBOT } }
+      assert_response :success
+
+      head '/api/v2/version', headers: { 'HTTP_USER_AGENT' => APPLEBOT }
+
+      assert_response :too_many_requests
+    end
+  end
+
+  # Wer angemeldet ist, soll sich nicht an einer falsch erkannten Kennung
+  # ausbremsen. Geprüft wird nur, ob ein user_id-Cookie anliegt.
+  test 'eine angemeldete Sitzung faellt nicht unter den Throttle' do
+    user = create(:user, :admin)
+    post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
+    assert_response :success
+
+    travel_to Time.zone.now.beginning_of_minute do
+      70.times { get '/api/v2/version', headers: { 'HTTP_USER_AGENT' => APPLEBOT } }
+
+      assert_response :success
+    end
+  end
+
   test 'Schreibzugriffe fallen nicht unter den Crawler-Throttle' do
-    with_rack_attack_cache do
+    travel_to Time.zone.now.beginning_of_minute do
       # Crawler stellen keine POSTs; ein irrtümlich passendes User-Agent darf
       # deshalb keinen Schreibpfad drosseln.
       70.times do
@@ -58,15 +93,19 @@ class CrawlerThrottleTest < ActionDispatch::IntegrationTest
     end
   end
 
-  private
+  # Der `Forwarded`-Header darf req.ip nicht mehr bestimmen. Sonst liesse sich
+  # jede Drosselung pro IP mit einem Header abschalten, auch die gegen
+  # Mail-Fluten und gegen das Durchprobieren von Einmal-Links.
+  test 'ein mitgeschickter Forwarded-Header verschiebt den Zaehler nicht' do
+    travel_to Time.zone.now.beginning_of_minute do
+      61.times do |i|
+        get '/api/v2/version', headers: {
+          'HTTP_USER_AGENT' => APPLEBOT,
+          'HTTP_FORWARDED' => "for=203.0.113.#{i}"
+        }
+      end
 
-  # Rack::Attack zählt im Rails.cache, im Test-Env ein :null_store – daher wie in
-  # den anderen Throttle-Tests ein echter Store für die Dauer des Tests.
-  def with_rack_attack_cache
-    original = Rack::Attack.cache.store
-    Rack::Attack.cache.store = ActiveSupport::Cache::MemoryStore.new
-    yield
-  ensure
-    Rack::Attack.cache.store = original
+      assert_response :too_many_requests
+    end
   end
 end

@@ -1,3 +1,14 @@
+# Rack wertet seit 3.1 zuerst den RFC-7239-Header `Forwarded` aus und erst
+# danach `X-Forwarded-For` (Rack::Request.forwarded_priority). nginx setzt in
+# proxy.conf nur X-Forwarded-For und reicht ein mitgeschicktes `Forwarded`
+# unverändert durch. Damit bestimmt der Client selbst, was req.ip liefert, und
+# jede Drosselung pro IP wäre mit einem Header abschaltbar – auch die beiden
+# unten, die Mail-Fluten und das Durchprobieren von Einmal-Links begrenzen.
+#
+# Maßgeblich ist deshalb allein die Kette, die der eigene Reverse Proxy
+# schreibt.
+Rack::Request.forwarded_priority = [:x_forwarded]
+
 module Rack
   class Attack
     # Offene Endpunkte, die Mail an eine von außen bestimmte Adresse auslösen.
@@ -15,7 +26,9 @@ module Rack
     # hinterlegt sind.
     #
     # nginx setzt X-Forwarded-For (nginx/config/proxy.conf), req.ip ist also die
-    # echte Client-IP und nicht die des Reverse Proxy.
+    # echte Client-IP und nicht die des Reverse Proxy – siehe die
+    # forwarded_priority-Zuweisung oben, ohne die ein mitgeschickter
+    # `Forwarded`-Header Vorrang hätte.
     throttle('mail-trigger/ip', limit: 10, period: 1.hour) do |req|
       req.ip if req.post? && MAIL_TRIGGER_PATHS.include?(req.path)
     end
@@ -36,13 +49,27 @@ module Rack
     #
     # robots.txt (Frontend-Repo) bremst die Crawler, die sich daran halten.
     # Bytespider und Skript-Clients tun das notorisch nicht, deshalb hier
-    # zusätzlich eine harte Obergrenze pro IP.
+    # zusätzlich eine Obergrenze pro IP.
+    #
+    # NICHT erfasst ist der grösste Einzelposten derselben Messung: 53.912
+    # Aufrufe mit 12,7 Stunden Serverzeit kamen ganz ohne User-Agent, mehr als
+    # von Applebot. Ein leerer String passt auf kein Muster, und eine Regel
+    # „kein User-Agent, also drosseln" ist hier zu riskant: Der Prerender-Build
+    # ruft die öffentliche API serverseitig auf und schickt je nach
+    # Node-Version keine Kennung mit; er würde sich damit selbst ausbremsen und
+    # der Produktions-Build abbrechen. Der Posten bleibt bewusst offen und
+    # gehört gesondert angesehen.
     #
     # Das Limit ist bewusst großzügig: Es soll Ausbrüche kappen, nicht die
     # Indexierung verhindern – die öffentlichen Ligaseiten sollen gefunden
-    # werden. 60 Aufrufe pro Minute liegen weit über dem gemessenen Mittel von
-    # Applebot (rund 22 pro Minute), und ein 429 ist für Suchmaschinen das
-    # dokumentierte Signal, langsamer zu crawlen.
+    # werden. Ein 429 ist für Suchmaschinen das dokumentierte Signal, langsamer
+    # zu crawlen.
+    #
+    # Zur Einordnung der 60: Applebot kam über die Messwoche auf rund 22 Aufrufe
+    # pro Minute. Das ist die Summe über alle seine Quell-IPs und über alle
+    # Pfade, während hier je IP und nur auf GETs unter /api/ und /verband
+    # gezählt wird. Die Zahl taugt also als Größenordnung, nicht als direkter
+    # Vergleichswert – der tatsächliche Abstand zum Limit ist deutlich größer.
     #
     # Die Liste nennt die Crawler absichtlich namentlich statt pauschal /bot/i:
     # Ein pauschales Muster träfe auch Gerätekennungen wie „Cubot" und damit
@@ -53,16 +80,31 @@ module Rack
       /SeznamBot/i, /PetalBot/i,
       /AhrefsBot/i, /SemrushBot/i, /MJ12bot/i, /DotBot/i, /BLEXBot/i,
       /GPTBot/i, /ClaudeBot/i, /CCBot/i, /Amazonbot/i, /PerplexityBot/i,
+      /meta-externalagent/i, /OAI-SearchBot/i, /ChatGPT-User/i,
       /facebookexternalhit/i, /Twitterbot/i,
       /python-urllib/i, /python-requests/i, /aiohttp/i, /Scrapy/i, %r{curl/}i, /Wget/i
     ).freeze
 
+    # /verband liefert die Verbandslogos und wird ebenfalls an Rails
+    # durchgereicht (nginx/config/saisonmanager.prod.conf). Ohne den Präfix
+    # bliebe der Bildabruf ungezählt, ausgerechnet auf dem Pfad mit den
+    # ActiveStorage-Anhängen.
+    CRAWLER_THROTTLED_PATHS = %w[/api/ /verband].freeze
+
     throttle('crawler/ip', limit: 60, period: 1.minute) do |req|
-      next unless req.get?
-      next unless req.path.start_with?('/api/')
-      # Angemeldete Sitzungen bleiben außen vor, damit eine falsch erkannte
-      # Browser-Kennung niemandem die Arbeit im System ausbremst.
-      next if req.get_header('HTTP_COOKIE').to_s.include?('user_id')
+      # HEAD gehört dazu: Link-Prüfer und einige Crawler holen ausschließlich
+      # Header, und teuer ist der Aufruf für den Server trotzdem. Schreibpfade
+      # bleiben außen vor, Crawler stellen keine POSTs.
+      next unless req.get? || req.head?
+      next unless CRAWLER_THROTTLED_PATHS.any? { |p| req.path.start_with?(p) }
+      # Wer angemeldet ist, soll sich nicht an einer falsch erkannten
+      # Browser-Kennung ausbremsen. Geprüft wird nur, ob ein user_id-Cookie
+      # anliegt, nicht dessen Signatur: Die ließe sich hier in der Middleware
+      # nicht sinnvoll auflösen. Das heißt zugleich, dass ein beliebiges
+      # user_id-Cookie genügt, um die Drosselung zu umgehen. Das ist
+      # hingenommen – dies ist eine Kostenbremse gegen halbwegs kooperative
+      # Crawler, keine Sicherheitsschranke gegen einen Angreifer.
+      next if req.cookies.key?('user_id')
 
       req.ip if CRAWLER_USER_AGENTS.match?(req.user_agent.to_s)
     end
