@@ -87,6 +87,15 @@ class PlayersController < ApplicationController
 
     return render json: { message: 'Keine Berechtigung für dieses Team!' }, status: :forbidden unless allowed
 
+    # Ohne auflösbare Liga gibt es weder Altersgrenze noch Saison und
+    # Ligaklasse für die Lizenz. league wird unten mehrfach ohne Schutz
+    # dereferenziert; das ergab denselben 500er wie auf der Mannschaftsseite
+    # (Sentry SAISONMANAGER-1C). Es gibt keinen Fremdschlüssel auf
+    # teams.league_id, die Spalte ist zudem nullable.
+    if league.nil?
+      return render json: { message: 'Mannschaft ist keiner Liga zugeordnet.' }, status: :unprocessable_entity
+    end
+
     guardian_email   = params[:guardian_email].is_a?(String) ? params[:guardian_email].presence : nil
     minor_consent_at = params[:minor_consent_at].is_a?(String) ? params[:minor_consent_at].presence : nil
 
@@ -95,13 +104,20 @@ class PlayersController < ApplicationController
                     status: :unprocessable_entity
     end
 
-    express_requested = params[:express] == true || params[:express] == 'true'
-    if express_requested
-      sa = team.club&.state_association
-      lv_allows_express = sa ? sa.effective_express_license_enabled : false
-      within_window = team.leagues.any?(&:express_license_window_open?)
-      express_requested = lv_allows_express && within_window
+    # Maßgeblich ist der LV des Spielbetriebs der Liga, nicht der des Vereins:
+    # Zuständig für den Spielbetrieb einer Liga ist allein deren Verband. Erlaubnis
+    # und Zeitfenster müssen aus derselben Liga stammen (League#express_license_possible?).
+    #
+    # Die konkrete Liga festhalten, nicht nur ein Ja/Nein: `team.leagues` umfasst
+    # neben der Hauptliga auch Pokal-Ligen (Team#all_league_ids), deren Spielbetrieb
+    # einem anderen Verband gehören kann. Der Antrag muss an die SBK genau des
+    # Verbands gehen, der die Expresslizenz erlaubt – sonst erlaubt sie Verband A
+    # und die Mail landet bei Verband B.
+    express_league = nil
+    if params[:express] == true || params[:express] == 'true'
+      express_league = team.leagues.find(&:express_license_possible?)
     end
+    express_requested = express_league.present?
 
     result = :ok
     player = nil
@@ -174,7 +190,9 @@ class PlayersController < ApplicationController
     when :save_failed
       render json: { message: player.errors }, status: :unprocessable_entity
     else
-      PlayerMailer.express_license_requested(player, team, league).deliver_later if express_requested
+      # express_league, nicht league: die Erlaubnis kann aus einer Pokal-Liga
+      # stammen, deren Verband dann auch den Antrag erhält.
+      PlayerMailer.express_license_requested(player, team, express_league).deliver_later if express_league
       render json: { success: true }
     end
   end

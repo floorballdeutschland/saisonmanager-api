@@ -103,9 +103,65 @@ class User < ApplicationRecord
     "#{fullname} (#{user_name})"
   end
 
+  # Fehler, bei denen die Gegenstelle nicht erreichbar war oder die Zustellung
+  # abgebrochen ist. Nur diese werden abgefangen: Sie gehen niemanden ausser
+  # dem Aufrufer etwas an, treffen alle Nutzer gleichermassen zufaellig und
+  # koennen beim naechsten Versuch klappen.
+  #
+  # Alles andere bleibt bewusst ein Serverfehler. Der Mailtext wird nicht aus
+  # einer Datei gerendert, sondern von TemplatedMailer aus der Tabelle
+  # email_templates geholt, die Admins unter /verwaltung/email-vorlagen
+  # bearbeiten – und zwar erst innerhalb von deliver_now. Eine dort eingetragene
+  # kaputte Absenderadresse oder ein defekter Platzhalter wuerde als
+  # StandardError hier landen und den Passwort-Reset systemweit und dauerhaft
+  # stumm ausser Betrieb setzen. Solche Fehler muessen laut auffallen.
+  #
+  # Die drei Net-Timeouts stehen einzeln in der Liste: Sie erben nicht von
+  # IOError, sondern von Timeout::Error und darueber von RuntimeError. Ueber
+  # IOError waeren sie nicht abgedeckt, und Timeout::Error als Ganzes zu fangen
+  # waere zu weit gegriffen.
+  #
+  # Net::SMTPError ist ein Modul, kein Klasse; rescue prueft mit ===, das
+  # funktioniert fuer Module genauso.
+  MAIL_TRANSPORT_ERRORS = [
+    Net::SMTPError, Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout,
+    IOError, SocketError,
+    Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::EHOSTUNREACH, OpenSSL::SSL::SSLError
+  ].freeze
+
+  # Setzt ein frisches Reset-Token und verschickt den Link. Liefert zurück, ob
+  # die Mail vom Mailserver angenommen wurde.
+  #
+  # Das setzt voraus, dass action_mailer.raise_delivery_errors aktiv ist
+  # (config/environments/production.rb) – direkt darüber steht die
+  # auskommentierte Gegenvariante. Wird die scharf geschaltet, schluckt
+  # deliver_now den Fehler selbst, diese Methode liefert immer true, und der
+  # ganze Rückgabewert wird still bedeutungslos. Kein Test schlägt dann an.
+  #
+  # Der Versand läuft synchron im Request (es gibt kein Job-Backend). Ein
+  # hängender oder abweisender SMTP-Server darf den Aufrufer deshalb nicht mit
+  # einem Serverfehler abbrechen: Das Token ist an dieser Stelle bereits
+  # rotiert, beim Anlegen eines Kontos ist der Datensatz schon gespeichert. Der
+  # Aufrufer entscheidet, ob der Fehlschlag sichtbar wird – die offene
+  # „Passwort vergessen"-Route antwortet bewusst immer gleich, die Verwaltung
+  # meldet ihn (Sentry SAISONMANAGER-1X).
+  #
+  # Das save steht ausserhalb des rescue: Ein Schreibfehler ist ein
+  # Datenbankproblem und darf nicht als Mailproblem gemeldet werden.
   def send_reset_information
     self.password_reset_token = SecureRandom.uuid
-    UserMailer.reset_password(self).deliver_now if save(validate: false)
+    return false unless save(validate: false)
+
+    begin
+      UserMailer.reset_password(self).deliver_now
+      true
+    rescue *MAIL_TRANSPORT_ERRORS => e
+      Rails.logger.error(
+        "Passwort-Reset-Mail fehlgeschlagen (Transport) – User #{id}: #{e.class}: #{e.message}"
+      )
+      Sentry.capture_exception(e) if defined?(Sentry)
+      false
+    end
   end
 
   # --- E-Mail-Änderung mit Bestätigung (Double-Opt-In) ---------------------

@@ -66,6 +66,31 @@ class GameRefereeReportsControllerTest < ActionDispatch::IntegrationTest
     assert_response :created
   end
 
+  test 'maßgeblich ist der LV des Spielbetriebs, nicht der des Ausrichtervereins' do
+    club_sa = StateAssociation.create!(name: 'Ausrichter-LV', vsk_email: 'fremd@example.de',
+                                       report_form_email_enabled: false)
+    @club.update!(state_association_id: club_sa.id)
+    login(@user)
+
+    assert_enqueued_emails 1 do
+      upload_report
+    end
+    assert_response :created
+  end
+
+  test 'abgeschalteter Spielbetriebs-LV versendet nichts, auch wenn der Ausrichter-LV aktiv ist' do
+    club_sa = StateAssociation.create!(name: 'Ausrichter-LV', vsk_email: 'fremd@example.de',
+                                       report_form_email_enabled: true)
+    @club.update!(state_association_id: club_sa.id)
+    @sa.update!(report_form_email_enabled: false)
+    login(@user)
+
+    assert_no_enqueued_emails do
+      upload_report
+    end
+    assert_response :created
+  end
+
   private
 
   def upload_report
