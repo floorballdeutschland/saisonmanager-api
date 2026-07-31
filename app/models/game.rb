@@ -883,7 +883,10 @@ class Game < ApplicationRecord
       hasEnded:,
       startingTime: start_time,
       date: game_day.date,
-      url: "#{FrontendUrl.base}/spiel/#{id}"
+      # Dieselbe Route wie überall (siehe #url). Der frühere Pfad /spiel/:id
+      # existiert im Frontend nicht: die zwei Segmente treffen die öffentliche
+      # Verbandsroute (:association/:leagueId), die Seite bleibt leer.
+      url: url
     }
   end
 
@@ -1174,8 +1177,11 @@ class Game < ApplicationRecord
     "#{home_team_name} - #{guest_team_name} (#{league.name}, #{league.game_operation.short_name})"
   end
 
-  # Öffentliche Spielseite; dort sitzt auch der Schiedsrichter-Tab mit dem Upload
-  # des Berichtsformulars. Das Verbandssegment muss GameOperation#slug sein, nicht
+  # Öffentliche Spielseite; im öffentlichen Bereich sitzt unterhalb des
+  # Spielberichts auch der Upload des Berichtsformulars (einen eigenen
+  # Schiedsrichter-Tab gibt es dort nicht).
+  #
+  # Das Verbandssegment muss GameOperation#slug sein, nicht
   # short_name.downcase: der Router vergleicht gegen slug, und der weicht ab,
   # sobald ein Verband ein eigenes `path` gesetzt hat oder der short_name
   # Leerzeichen bzw. Punkte enthält („1. FBL" → „1-fbl"). Das leagueId-Segment

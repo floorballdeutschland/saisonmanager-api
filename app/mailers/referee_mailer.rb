@@ -112,7 +112,11 @@ class RefereeMailer < ApplicationMailer
       to: [referee1.email, referee2.email].compact,
       subject: "Spielnummer #{game.game_number} | 24h Zeit für Berichtsformular",
       default_reply_to: sbk_reply_to(game),
-      placeholders: { game_number: game.game_number }
+      placeholders: {
+        game_number: game.game_number,
+        upload_url: @upload_url,
+        deadline: deadline.strftime('%d.%m.%Y %H:%M')
+      }
     )
   end
 
