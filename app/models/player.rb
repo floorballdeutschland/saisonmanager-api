@@ -49,10 +49,13 @@ class Player < ApplicationRecord
     }
 
     if with_licenses
+      # licenses ist bei Spielern ohne jede Lizenz NULL – ohne Fallback lief das
+      # anschliessende map! auf nil und die Spieler-Detailansicht im Admin
+      # antwortete mit 500 (Sentry SAISONMANAGER-19).
       p[:licenses] = if only_current_licenses
                        (licenses || []).select { |l| l['team_id'].to_i >= Setting.current_min_team }
                      else
-                       licenses
+                       licenses || []
                      end
 
       if license_with_titles

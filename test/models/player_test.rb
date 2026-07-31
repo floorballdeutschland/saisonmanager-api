@@ -79,6 +79,17 @@ class PlayerTest < ActiveSupport::TestCase
     refute result.key?(:licenses)
   end
 
+  test 'full_hash mit license_with_titles verkraftet eine leere licenses-Spalte' do
+    create(:setting, current_season_id: '18')
+    # Altdaten-Spieler haben licenses = NULL statt []; das traf die
+    # Spieler-Detailansicht im Admin (full_hash(true, false, true)).
+    player = create(:player, licenses: nil)
+
+    result = player.full_hash(true, false, true)
+
+    assert_equal [], result[:licenses]
+  end
+
   # ---------------------------------------------------------------------------
   # Player#current_licenses(season_id)
   # ---------------------------------------------------------------------------

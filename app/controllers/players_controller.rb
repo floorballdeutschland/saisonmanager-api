@@ -87,6 +87,15 @@ class PlayersController < ApplicationController
 
     return render json: { message: 'Keine Berechtigung für dieses Team!' }, status: :forbidden unless allowed
 
+    # Ohne auflösbare Liga gibt es weder Altersgrenze noch Saison und
+    # Ligaklasse für die Lizenz. league wird unten mehrfach ohne Schutz
+    # dereferenziert; das ergab denselben 500er wie auf der Mannschaftsseite
+    # (Sentry SAISONMANAGER-1C). Es gibt keinen Fremdschlüssel auf
+    # teams.league_id, die Spalte ist zudem nullable.
+    if league.nil?
+      return render json: { message: 'Mannschaft ist keiner Liga zugeordnet.' }, status: :unprocessable_entity
+    end
+
     guardian_email   = params[:guardian_email].is_a?(String) ? params[:guardian_email].presence : nil
     minor_consent_at = params[:minor_consent_at].is_a?(String) ? params[:minor_consent_at].presence : nil
 
