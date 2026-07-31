@@ -33,30 +33,38 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Der Abschnitt der Version endet an der naechsten `## [`-Ueberschrift.
+      #
+      # Vorher stand hier `(?=\n---|\Z)`. Alle `---`-Zeilen im CHANGELOG liegen
+      # aber oberhalb der Versions-Ueberschriften, die Suche fand also nie einen
+      # Trenner und nahm jedes Mal die komplette Historie unterhalb der Version
+      # mit. Das fiel nicht auf, solange das Ergebnis noch als Argument passte:
+      # Bei 1.63.0 kippte es mit „Argument list too long" (128 kB Notes), und
+      # weil der Job danach abbrach, entstand fuer 1.63.0 gar kein Release.
+      #
+      # Die Notes gehen jetzt ueber eine Datei statt ueber die Kommandozeile, damit
+      # ein langer Abschnitt nicht wieder am Argument-Limit scheitert. Ein leerer
+      # Treffer bricht bewusst ab: Ein Release ohne Notes ist stiller als keins.
       - name: Extract changelog entry
         if: steps.check.outputs.exists == 'false'
-        id: changelog
         run: |
-          NOTES=$(python3 -c "
-          import re
-          version = '${{ steps.version.outputs.version }}'
+          python3 - "${{ steps.version.outputs.version }}" <<'PY' > release-notes.md
+          import re, sys
+          version = sys.argv[1]
           text = open('CHANGELOG.md').read()
-          pattern = r'## \[' + re.escape(version) + r'\][^\n]*\n(.*?)(?=\n---|\Z)'
+          pattern = r'## \[' + re.escape(version) + r'\][^\n]*\n(.*?)(?=\n## \[|\Z)'
           match = re.search(pattern, text, re.DOTALL)
-          print(match.group(1).strip() if match else '')
-          ")
-          {
-            echo 'notes<<NOTES_EOF'
-            echo "$NOTES"
-            echo 'NOTES_EOF'
-          } >> "$GITHUB_OUTPUT"
+          if not match or not match.group(1).strip():
+              sys.exit(f'Kein CHANGELOG-Abschnitt fuer {version} gefunden.')
+          print(match.group(1).strip())
+          PY
+          echo "Notes: $(wc -c < release-notes.md) Bytes"
 
       - name: Create GitHub Release
         if: steps.check.outputs.exists == 'false'
         run: |
           gh release create "${{ steps.version.outputs.tag }}" \
             --title "v${{ steps.version.outputs.version }}" \
-            --notes "$NOTES"
+            --notes-file release-notes.md
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NOTES: ${{ steps.changelog.outputs.notes }}

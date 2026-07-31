@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Veröffentlichte Versionshinweise entstanden zuletzt nicht mehr (nur intern)**: Zu jeder Version legt das System auf GitHub automatisch einen Eintrag mit den Änderungen dieser Version an. Der zugehörige Schritt schnitt den Abschnitt aber nicht am Ende ab und hängte die gesamte Versionshistorie darunter an. Solange das Ergebnis noch klein genug war, fiel das nicht auf; bei Version 1.63.0 überschritt es die Längengrenze, der Schritt brach ab und der Eintrag entstand gar nicht mehr. Nachgetragen werden die fehlenden Einträge für 1.63.0 und 1.64.0. Am Saisonmanager selbst ändert sich nichts, betroffen war ausschließlich die Anzeige auf GitHub; die Versionshinweise in der Verwaltung kommen aus einer anderen Quelle und waren immer vollständig.
+
 ## [1.64.0] - 2026-07-31
 
 ### Entfernt
