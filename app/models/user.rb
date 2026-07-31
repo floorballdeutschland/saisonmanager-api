@@ -115,9 +115,17 @@ class User < ApplicationRecord
   # kaputte Absenderadresse oder ein defekter Platzhalter wuerde als
   # StandardError hier landen und den Passwort-Reset systemweit und dauerhaft
   # stumm ausser Betrieb setzen. Solche Fehler muessen laut auffallen.
-  # Net::ReadTimeout ist ein IOError und damit weiterhin abgedeckt.
+  #
+  # Die drei Net-Timeouts stehen einzeln in der Liste: Sie erben nicht von
+  # IOError, sondern von Timeout::Error und darueber von RuntimeError. Ueber
+  # IOError waeren sie nicht abgedeckt, und Timeout::Error als Ganzes zu fangen
+  # waere zu weit gegriffen.
+  #
+  # Net::SMTPError ist ein Modul, kein Klasse; rescue prueft mit ===, das
+  # funktioniert fuer Module genauso.
   MAIL_TRANSPORT_ERRORS = [
-    Net::SMTPError, Net::OpenTimeout, IOError, SocketError,
+    Net::SMTPError, Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout,
+    IOError, SocketError,
     Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::EHOSTUNREACH, OpenSSL::SSL::SSLError
   ].freeze
 
