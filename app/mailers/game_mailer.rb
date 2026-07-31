@@ -12,9 +12,10 @@ class GameMailer < ApplicationMailer
     if veto_token
       # Route der Einspruchsseite im Frontend. Der frühere Pfad
       # /spielbericht/:id/einspruch existierte dort nie: die Seite fehlte
-      # vollständig, und weil die öffentliche Verbandsroute (:association/:leagueId)
-      # beliebige Segmente schluckt, landete der Link stumm auf einer leeren Seite
-      # statt auf einem Fehler.
+      # vollständig. Die öffentliche Verbandsroute (:association/:leagueId) nimmt
+      # die ersten zwei Segmente, für das dritte („einspruch") hat sie keine
+      # Kind-Route, und da es keine Wildcard-Route gibt, endete die Navigation
+      # ohne Treffer auf einer leeren Seite statt auf einem Fehler.
       @veto_url = "#{FrontendUrl.base}/spieltagscheckliste/einspruch/#{game.id}?token=#{CGI.escape(veto_token)}"
     end
 

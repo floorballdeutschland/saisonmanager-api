@@ -87,6 +87,96 @@ class GamesChecklistVetoTest < ActionDispatch::IntegrationTest
     assert_equal 'Ein Einspruch wurde bereits eingereicht.', JSON.parse(response.body)['error']
   end
 
+  test 'POST ohne gültigen Token liefert 401 und speichert nichts' do
+    assert_no_enqueued_emails do
+      post "/api/v2/games/#{@game.id}/checklist_veto",
+           params: { token: 'falsch', answers: veto_answers },
+           headers: { 'X-Api-Key' => API_KEY }, as: :json
+    end
+
+    assert_response :unauthorized
+    assert_nil @game.reload.checklist_veto_submitted_at
+  end
+
+  test 'die Benachrichtigung zeigt den Einspruch als Nein, nicht als Ja' do
+    perform_enqueued_jobs do
+      post "/api/v2/games/#{@game.id}/checklist_veto",
+           params: { token: @raw_token, answers: veto_answers },
+           headers: { 'X-Api-Key' => API_KEY }, as: :json
+    end
+    assert_response :success
+
+    mail = ActionMailer::Base.deliveries.find { |m| m.subject.include?('Einspruch') }
+    assert_not_nil mail
+    body = mail.body.encoded
+    # Beide Fragen als "nicht erfüllt" gelistet – genau das, was ein als String
+    # übermitteltes "false" ins Gegenteil verkehrt hätte.
+    assert_includes body, 'nicht erfüllt'
+    assert_includes body, @item1.question
+    assert_includes body, @item2.question
+  end
+
+  test 'ein unvollständiger Einspruch wird abgewiesen' do
+    # update_columns ersetzt den Antwortsatz vollständig, und die Mail verschickt
+    # ihn als „Vollständige neue Bewertung": eine Teilmenge würde die übrigen
+    # Fragen stillschweigend unterschlagen.
+    assert_no_enqueued_emails do
+      post "/api/v2/games/#{@game.id}/checklist_veto",
+           params: { token: @raw_token,
+                     answers: [{ item_id: @item1.id, question: @item1.question, answer: false }] },
+           headers: { 'X-Api-Key' => API_KEY }, as: :json
+    end
+
+    assert_response :unprocessable_entity
+    assert_nil @game.reload.checklist_veto_submitted_at
+  end
+
+  test 'eine fremde Frage-Id wird abgewiesen' do
+    other_item = create(:state_association).checklist_items.create!(question: 'Fremd?', position: 1)
+
+    post "/api/v2/games/#{@game.id}/checklist_veto",
+         params: { token: @raw_token,
+                   answers: [{ item_id: @item1.id, question: @item1.question, answer: false },
+                             { item_id: other_item.id, question: other_item.question, answer: false }] },
+         headers: { 'X-Api-Key' => API_KEY }, as: :json
+
+    assert_response :unprocessable_entity
+    assert_nil @game.reload.checklist_veto_submitted_at
+  end
+
+  test 'eine doppelte Frage-Id wird abgewiesen' do
+    post "/api/v2/games/#{@game.id}/checklist_veto",
+         params: { token: @raw_token,
+                   answers: [{ item_id: @item1.id, question: @item1.question, answer: false },
+                             { item_id: @item1.id, question: @item1.question, answer: true }] },
+         headers: { 'X-Api-Key' => API_KEY }, as: :json
+
+    assert_response :unprocessable_entity
+    assert_nil @game.reload.checklist_veto_submitted_at
+  end
+
+  test 'der Fragetext kommt aus der Datenbank, nicht aus der Anfrage' do
+    # Der Text steht in einer Mail an das betroffene Gespann und darf nicht vom
+    # Absender des Einspruchs bestimmt werden.
+    post "/api/v2/games/#{@game.id}/checklist_veto",
+         params: { token: @raw_token,
+                   answers: [{ item_id: @item1.id, question: 'Behauptung des Absenders', answer: false },
+                             { item_id: @item2.id, question: @item2.question, answer: false }] },
+         headers: { 'X-Api-Key' => API_KEY }, as: :json
+
+    assert_response :success
+    questions = @game.reload.checklist_veto_answers.map { |a| a['question'] }
+    assert_equal [@item1.question, @item2.question], questions
+  end
+
+  test 'ein nicht listenförmiges answers-Feld liefert 422 statt 500' do
+    post "/api/v2/games/#{@game.id}/checklist_veto",
+         params: { token: @raw_token, answers: ['kaputt'] },
+         headers: { 'X-Api-Key' => API_KEY }, as: :json
+
+    assert_response :unprocessable_entity
+  end
+
   test 'nicht-boolesche Antworten werden abgewiesen' do
     # Ein String "false" ist in Ruby wahr: gespeichert würde die
     # Benachrichtigung daraus „Ja" machen und die beanstandeten Punkte als leere
