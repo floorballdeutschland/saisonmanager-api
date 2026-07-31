@@ -9,9 +9,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.65.0] - 2026-07-31
+
+### Neu
+
+- **Benutzername beim Anlegen: Regeln sichtbar, vergebener Name benannt**: Beim Anlegen eines Benutzers gab es zum Benutzernamen bisher keine Rückmeldung. Welche Zeichen erlaubt sind, stand nirgends, und war der Name schon vergeben, erschien nur eine allgemeine Fehlermeldung, ohne zu sagen, was zu tun ist. Jetzt nennt der Hinweis unter dem Feld die erlaubten Zeichen (Buchstaben, Ziffern, Punkt, Bindestrich und Unterstrich; Umlaute und ß bitte auflösen), ein unzulässiger Name wird direkt am Feld gemeldet statt erst beim Absenden, und bei einem vergebenen Namen steht der Weg gleich dabei: eine kurze Mail an it@floorball.de, um einem bestehenden Konto weitere Rollen zu geben. Letzteres ist der eigentliche Anlass, denn eine zweite Rolle bekommt jemand nicht über ein zweites Konto (Frontend #189).
+
 ### Behoben
 
-- **Veröffentlichte Versionshinweise entstanden zuletzt nicht mehr (nur intern)**: Zu jeder Version legt das System auf GitHub automatisch einen Eintrag mit den Änderungen dieser Version an. Der zugehörige Schritt schnitt den Abschnitt aber nicht am Ende ab und hängte die gesamte Versionshistorie darunter an. Solange das Ergebnis noch klein genug war, fiel das nicht auf; bei Version 1.63.0 überschritt es die Längengrenze, der Schritt brach ab und der Eintrag entstand gar nicht mehr. Nachgetragen werden die fehlenden Einträge für 1.63.0 und 1.64.0. Am Saisonmanager selbst ändert sich nichts, betroffen war ausschließlich die Anzeige auf GitHub; die Versionshinweise in der Verwaltung kommen aus einer anderen Quelle und waren immer vollständig.
+- **Veröffentlichte Versionshinweise entstanden zuletzt nicht mehr (nur intern)**: Zu jeder Version legt das System auf GitHub automatisch einen Eintrag mit den Änderungen dieser Version an. Der zugehörige Schritt schnitt den Abschnitt aber nicht am Ende ab und hängte die gesamte Versionshistorie darunter an. Solange das Ergebnis noch klein genug war, fiel das nicht auf, die Einträge waren nur unnötig lang; bei Version 1.63.0 überschritt es die Längengrenze, der Schritt brach ab und der Eintrag entstand gar nicht mehr. Nachgetragen sind die fehlenden Einträge für 1.63.0 und 1.64.0, und die Hinweise aller 38 älteren Einträge sind auf ihren tatsächlichen Abschnitt gekürzt. Am Saisonmanager selbst ändert sich nichts, betroffen war ausschließlich die Anzeige auf GitHub; die Versionshinweise in der Verwaltung kommen aus einer anderen Quelle und waren immer vollständig.
 
 ## [1.64.0] - 2026-07-31
 
