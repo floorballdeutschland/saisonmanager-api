@@ -1,10 +1,11 @@
 # Stellt den Mailer-Views die Frontend-Basis-URL bereit, damit E-Mail-Templates
 # keine Hosts hartcodieren (sonst zeigen Staging-Mails auf das Produktivsystem).
 module MailerHelper
-  # `extend self`, damit format_game_day_date auch dort nutzbar ist, wo kein
+  # `module_function`, damit format_game_day_date auch dort nutzbar ist, wo kein
   # View-Kontext existiert: Betreff und Platzhalter werden im Mailer selbst
-  # zusammengebaut, und genau dort scheiterte die Formatierung bisher.
-  extend self
+  # zusammengebaut, und genau dort scheiterte die Formatierung bisher. In den
+  # Vorlagen bleiben die Methoden über den impliziten Empfänger erreichbar.
+  module_function
 
   def frontend_base_url
     FrontendUrl.base
