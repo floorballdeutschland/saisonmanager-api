@@ -70,7 +70,10 @@ class GameRefereeReportsController < ApplicationController
   end
 
   def _send_to_vsk(report)
-    state_association = @game.game_day.club&.state_association
+    # Maßgeblich ist der LV des Spielbetriebs, nicht der des Ausrichtervereins
+    # (siehe Game#report_form_state_association). Schalter, VSK-Adresse und
+    # Verfahrensweg kommen damit aus derselben Quelle.
+    state_association = @game.report_form_state_association
 
     # report_form_email_enabled ist der Master-Schalter für den digitalen
     # Berichtsworkflow bei roten Karten/besonderen Ereignissen. Ist er aus,

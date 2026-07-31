@@ -90,6 +90,19 @@ class Game < ApplicationRecord
     game_day.league
   end
 
+  # Landesverband, der den digitalen Berichtsworkflow (rote Karten, besondere
+  # Ereignisse) für dieses Spiel steuert: der LV des Spielbetriebs, nicht der des
+  # Ausrichtervereins. Bei ligaübergreifenden Ansetzungen (Bundesliga-Spiel in
+  # einer Halle eines anderen LV) entscheidet der ausrichtende Spielbetrieb.
+  # Gleiche Quelle wie beim Schiri-Portal-Hinweis der Spieltagscheckliste.
+  def report_form_state_association
+    league&.game_operation&.state_association
+  end
+
+  def report_form_workflow_enabled?
+    report_form_state_association&.report_form_email_enabled? || false
+  end
+
   def home_team_name
     home_team&.name
   end
