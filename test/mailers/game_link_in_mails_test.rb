@@ -17,8 +17,10 @@ class GameLinkInMailsTest < ActionMailer::TestCase
     @game_day = GameDay.create!(league: @league, arena: @arena, club: @club, number: 1, date: '2026-01-10')
     @game = Game.create!(
       game_day: @game_day,
-      home_team: create(:team, league: @league, club: @club),
-      guest_team: create(:team, league: @league, club: @club),
+      # short_name gesetzt, weil Team#ticker_hash es ungeprüft mit `slice`
+      # anfasst und ohne Wert stirbt (eigener Befund, nicht Teil dieses PR).
+      home_team: create(:team, league: @league, club: @club, short_name: 'HEI'),
+      guest_team: create(:team, league: @league, club: @club, short_name: 'GAS'),
       game_number: '101',
       forfait: 0,
       overtime: false,
@@ -44,6 +46,19 @@ class GameLinkInMailsTest < ActionMailer::TestCase
 
     mail = ClubMailer.game_day_scan_reminder(@club, @game_day)
 
+    assert_includes mail.body.encoded, @expected_url
+    # game_days.date und games.start_time sind Textspalten; I18n.l darauf warf
+    # ArgumentError, die Mail konnte also überhaupt nicht gerendert werden.
+    assert_includes mail.body.encoded, '10.01.2026'
+  end
+
+  test 'Scan-Erinnerung rendert auch bei unplausiblem Spieltagsdatum' do
+    @club.update!(contact_email: 'ausrichter@example.de')
+    @game_day.update_columns(date: 'unbekannt')
+
+    mail = ClubMailer.game_day_scan_reminder(@club, @game_day.reload)
+
+    assert_includes mail.body.encoded, 'unbekannt'
     assert_includes mail.body.encoded, @expected_url
   end
 
