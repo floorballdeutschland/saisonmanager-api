@@ -28,6 +28,26 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
     )
   end
 
+  # Die Sammelliste aller Spiele (Game.all, ohne Filter und ohne Grenze) ist
+  # bewusst weg – weder öffentlich noch für Angemeldete.
+  test 'die Sammelliste aller Spiele ist nicht mehr erreichbar' do
+    assert_raises(ActionController::RoutingError) { get '/api/v2/games.json' }
+  end
+
+  test 'die Sammelliste aller Spiele ist auch fuer Angemeldete weg' do
+    login(create(:user, :admin))
+
+    assert_raises(ActionController::RoutingError) { get '/api/v2/games.json' }
+  end
+
+  test 'ein einzelnes Spiel bleibt abrufbar' do
+    login(create(:user, :admin))
+
+    get "/api/v2/games/#{@game.id}.json"
+
+    assert_response :success
+  end
+
   test 'additional_fields liefert dem SBK des Spielbetriebs die internen Felder' do
     login(create(:user, :sbk_scoped, game_operation_id: @go.id))
 

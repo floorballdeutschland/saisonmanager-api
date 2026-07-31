@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Entfernt
+
+- **Sammelabruf aller Spiele abgeschaltet**: Der Endpunkt `GET /api/v2/games` gab die komplette Spieltabelle des Systems zurück, ohne Filter, ohne Saisonbezug und ohne Obergrenze. Ein Aufruf brauchte in Produktion im Schnitt 28 Sekunden und im schlechtesten Fall 50 und belegte die ganze Zeit einen Arbeitsprozess des Servers. Genutzt hat ihn niemand: Die Anwendung ruft ihn an keiner Stelle auf, gezählt wurden in einer Woche 309 Zugriffe von außen. Er ist deshalb entfernt. Wer Spiele braucht, nimmt die auf Liga, Spieltag oder Mannschaft eingegrenzten Abrufe, die es unverändert gibt (Spielplan einer Liga, Spielplan eines Spieltags, Spiele einer Mannschaft). Das Anlegen und Ändern einzelner Spiele sowie der Abruf eines einzelnen Spiels bleiben unberührt.
+
 ### Verbessert
 
 - **Spielpläne laden die Logos gebündelt statt einzeln**: Für jedes Spiel im Spielplan werden das Logo der Heim- und der Gastmannschaft angezeigt, mit dem Vereinslogo als Rückfall, wenn die Mannschaft keines hinterlegt hat. Bisher fragte der Server jeden dieser Anhänge einzeln bei der Datenbank nach, also bis zu vier Abfragen pro Spielzeile. Sie werden jetzt für den ganzen Spielplan gebündelt geholt. Betroffen sind der Spielplan einer Liga, der Spielplan des aktuellen Spieltags, der Spielplan eines einzelnen Spieltags und die Spielübersicht einer Mannschaft, also die am häufigsten aufgerufenen öffentlichen Seiten überhaupt. Dasselbe galt an zwei weiteren Stellen, die auf denselben Logos sitzen und ebenfalls umgestellt sind: die Tabelle einer Liga, die je Zeile ein Mannschaftslogo zeigt, und die letzten sowie die kommenden Spiele auf der Mannschaftsseite. Angezeigt wird unverändert dasselbe.
