@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Entfernt
+
+- **Sammelabruf aller Spiele abgeschaltet**: Der Endpunkt `GET /api/v2/games` gab die komplette Spieltabelle des Systems zurück, ohne Filter, ohne Saisonbezug und ohne Obergrenze. Ein Aufruf brauchte in Produktion im Schnitt 28 Sekunden und im schlechtesten Fall 50 und belegte die ganze Zeit einen Arbeitsprozess des Servers. Genutzt hat ihn niemand: Die Anwendung ruft ihn an keiner Stelle auf, gezählt wurden in einer Woche 309 Zugriffe von außen. Er ist deshalb entfernt. Wer Spiele braucht, nimmt die auf Liga, Spieltag oder Mannschaft eingegrenzten Abrufe, die es unverändert gibt (Spielplan einer Liga, Spielplan eines Spieltags, Spiele einer Mannschaft). Das Anlegen und Ändern einzelner Spiele sowie der Abruf eines einzelnen Spiels bleiben unberührt.
+
 ### Verbessert
 
 - **Fehlerüberwachung meldet keine leeren Spielereignisse mehr**: Enthält der Spielbericht eine Ereigniszeile ohne Spielernummer, prüft das System, ob dort ein Schütze fehlt, und meldet das an die Fehlerüberwachung. Diese Meldung ging bisher auch für Zeilen raus, die überhaupt kein Tor und keine Strafe behaupten, also weder als Tor oder Strafe gekennzeichnet sind noch einen Straf- oder Toreintrag tragen. In solchen Zeilen fehlt nichts, es gibt nichts zu zählen; gemeldet wurde sie trotzdem bei jedem Aufruf der Spielseite und verdeckte damit die echten Fälle. Der laufende Spielstand an der Zeile zählt bewusst nicht als solches Kennzeichen: Er wird beim Speichern in jede Zeile geschrieben, auch in eine leere. Tore und Strafen ohne Schützen werden unverändert gemeldet. Für die Anzeige ändert sich nichts.
