@@ -1,27 +1,46 @@
 require 'csv'
 
 class RefereeCourseImportService
-  # CSV-Parsing ist positional, weil der Header doppelte Spaltennamen
-  # ("Kurs 1"/"Kurs 2") enthält und CSV.parse damit keine eindeutige
-  # Header-Map liefert. Die Constants unten sind die single source of truth
-  # für die Spaltenreihenfolge.
-  COLUMN_LIZENZNUMMER  = 0
-  COLUMN_NACHNAME      = 1
-  COLUMN_VORNAME       = 2
-  COLUMN_GEBURTSDATUM  = 3
-  COLUMN_VEREIN        = 4
-  COLUMN_EMAIL         = 5
-  COLUMN_KURS1_STUFE   = 6
-  COLUMN_KURS1_DATUM   = 7
-  COLUMN_KURS1_VERSION = 8
-  COLUMN_KURS1_PUNKTE  = 9
-  COLUMN_KURS2_STUFE   = 10
-  COLUMN_KURS2_DATUM   = 11
-  COLUMN_KURS2_VERSION = 12
-  COLUMN_KURS2_PUNKTE  = 13
-  COLUMN_AUSBILDER     = 14
+  # Spalten werden primär über die Header-Namen aufgelöst. Die LV-Vorlagen
+  # enthalten zusätzliche Arbeitsspalten (z. B. "Kommentar LV" vor "Ausbilder"),
+  # die bei rein positionalem Lesen alles dahinter verschieben — und zwar still,
+  # weil überzählige Spalten schlicht ignoriert werden.
+  FIELD_ALIASES = {
+    lizenznummer:  ['lizenznummer'].freeze,
+    nachname:      %w[name nachname].freeze,
+    vorname:       ['vorname'].freeze,
+    geburtsdatum:  ['geburtsdatum'].freeze,
+    verein:        ['verein'].freeze,
+    email:         ['e-mail adresse', 'e-mail', 'email', 'e-mail-adresse'].freeze,
+    kurs1_stufe:   ['kurs 1'].freeze,
+    kurs1_datum:   ['kurs 1 datum'].freeze,
+    kurs1_version: ['kurs 1 testversion'].freeze,
+    kurs1_punkte:  ['kurs 1 punkte'].freeze,
+    kurs2_stufe:   ['kurs 2'].freeze,
+    kurs2_datum:   ['kurs 2 datum'].freeze,
+    kurs2_version: ['kurs 2 testversion'].freeze,
+    kurs2_punkte:  ['kurs 2 punkte'].freeze,
+    ausbilder:     ['ausbilder'].freeze
+  }.freeze
 
-  EXPECTED_COLUMN_COUNT = 15
+  # Positionaler Fallback für Alt-Vorlagen, die denselben Namen für Stufe,
+  # Datum und Punkte wiederholen ("Kurs 1;Kurs 1;Kurs 1 Testversion;Kurs 1")
+  # und damit nicht eindeutig über den Header auflösbar sind.
+  DEFAULT_COLUMNS = {
+    lizenznummer: 0, nachname: 1, vorname: 2, geburtsdatum: 3, verein: 4, email: 5,
+    kurs1_stufe: 6, kurs1_datum: 7, kurs1_version: 8, kurs1_punkte: 9,
+    kurs2_stufe: 10, kurs2_datum: 11, kurs2_version: 12, kurs2_punkte: 13,
+    ausbilder: 14
+  }.freeze
+
+  REQUIRED_FIELDS = %i[lizenznummer nachname vorname geburtsdatum].freeze
+
+  EXPECTED_COLUMN_COUNT = DEFAULT_COLUMNS.size
+
+  FIELD_LABELS = {
+    lizenznummer: 'Lizenznummer', nachname: 'Name', vorname: 'Vorname',
+    geburtsdatum: 'Geburtsdatum'
+  }.freeze
 
   attr_reader :errors
 
@@ -33,7 +52,7 @@ class RefereeCourseImportService
   end
 
   def call
-    rows = parse_csv
+    rows, columns = parse_csv
     return nil if rows.nil?
 
     ActiveRecord::Base.transaction do
@@ -45,7 +64,7 @@ class RefereeCourseImportService
       )
 
       rows.each do |row|
-        create_result(import, row)
+        create_result(import, row, columns)
       end
 
       import
@@ -61,8 +80,14 @@ class RefereeCourseImportService
     # einen UTF-8-String mit Nicht-ASCII (Umlauten oder BOM) löst sonst
     # Encoding::CompatibilityError aus.
     content.sub!(/\A\u{FEFF}/, '')
+    # Excel-Exporte mischen die Zeilenenden: mehrzeilige Header-Zellen ("Kurs 1
+    # \nDatum") stehen mit LF in Quotes, die Datenzeilen enden mit CRLF. Rubys
+    # row_sep-Autoerkennung entscheidet sich dann für "\n" und scheitert am
+    # verbleibenden CR ("Unquoted fields do not allow new line") — die komplette
+    # Datei wird abgewiesen. Deshalb vorher normalisieren und row_sep fixieren.
+    content.gsub!(/\r\n?/, "\n")
 
-    raw = CSV.parse(content, col_sep: ';', skip_blanks: true)
+    raw = CSV.parse(content, col_sep: ';', row_sep: "\n", skip_blanks: true)
     header = raw.shift
 
     unless header_looks_valid?(header)
@@ -70,6 +95,9 @@ class RefereeCourseImportService
                  'Spaltenüberschriften enthalten und mit „Lizenznummer" beginnen.'
       return nil
     end
+
+    columns = resolve_columns(header)
+    return nil if columns.nil?
 
     rows = raw.map { |r| r.map { |v| v.to_s.strip } }
               .reject { |r| r.all? { |v| v.nil? || v.empty? } }
@@ -79,7 +107,7 @@ class RefereeCourseImportService
       return nil
     end
 
-    rows
+    [rows, columns]
   rescue CSV::MalformedCSVError => e
     @errors << "CSV konnte nicht gelesen werden: #{e.message}"
     nil
@@ -95,19 +123,92 @@ class RefereeCourseImportService
     first.include?('lizenznummer')
   end
 
-  def create_result(import, row)
-    row += [nil] * (EXPECTED_COLUMN_COUNT - row.size) if row.size < EXPECTED_COLUMN_COUNT
+  # Liefert die Feld-zu-Spaltenindex-Zuordnung oder nil (dann steht der Grund in
+  # @errors). Mehrdeutige Header (derselbe Name mehrfach) sind nicht auflösbar
+  # und landen im positionalen Fallback, solange die Spaltenzahl zur alten
+  # Vorlage passt — sonst ist ein stiller Versatz wahrscheinlicher als ein
+  # korrekter Import, und wir brechen lieber mit Meldung ab.
+  def resolve_columns(header)
+    mapped, ambiguous = map_header_columns(header)
 
+    if ambiguous.any?
+      return DEFAULT_COLUMNS if header.size == EXPECTED_COLUMN_COUNT
+
+      @errors << 'CSV-Spalten nicht eindeutig zuordenbar (mehrfach vergebene ' \
+                 "Überschriften: #{ambiguous.map { |f| FIELD_ALIASES[f].first }.uniq.join(', ')}). " \
+                 'Bitte die Spaltenüberschriften der Vorlage verwenden.'
+      return nil
+    end
+
+    missing = REQUIRED_FIELDS - mapped.keys
+    if missing.any?
+      return DEFAULT_COLUMNS if header.size == EXPECTED_COLUMN_COUNT
+
+      @errors << 'CSV fehlen Pflichtspalten: ' \
+                 "#{missing.map { |f| FIELD_LABELS[f] }.join(', ')}."
+      return nil
+    end
+
+    log_unmapped_columns(header, mapped)
+    mapped
+  end
+
+  # Gibt [{ feld => index }, [mehrdeutige felder]] zurück. Ein Feld, dessen
+  # Überschrift gar nicht vorkommt, fehlt in der Map und wird beim Lesen zu nil —
+  # geraten wird nicht, weil ein falsch geratener Index falsche Daten schreibt.
+  def map_header_columns(header)
+    positions = {}
+    header.each_with_index do |raw_name, index|
+      name = normalize_header_cell(raw_name)
+      next if name.empty?
+
+      (positions[name] ||= []) << index
+    end
+
+    mapped    = {}
+    ambiguous = []
+
+    FIELD_ALIASES.each do |field, aliases|
+      indexes = aliases.flat_map { |name| positions.fetch(name, []) }
+      case indexes.size
+      when 0 then next
+      when 1 then mapped[field] = indexes.first
+      else ambiguous << field
+      end
+    end
+
+    [mapped, ambiguous]
+  end
+
+  def normalize_header_cell(cell)
+    cell.to_s.gsub(/\s+/, ' ').strip.downcase
+  end
+
+  def log_unmapped_columns(header, mapped)
+    used = mapped.values
+    extra = header.each_with_index
+                  .reject { |raw_name, index| used.include?(index) || normalize_header_cell(raw_name).empty? }
+                  .map { |raw_name, _| normalize_header_cell(raw_name) }
+    return if extra.empty?
+
+    Rails.logger.info(
+      "Kursergebnis-Import #{@filename}: nicht ausgewertete Spalten: #{extra.join(', ')}"
+    )
+  end
+
+  def create_result(import, row, columns)
     warnings = []
 
-    csv_lizenznummer = parse_integer(row[COLUMN_LIZENZNUMMER], field: 'lizenznummer', warnings: warnings)
-    csv_vorname      = presence(row[COLUMN_VORNAME])
-    csv_nachname     = presence(row[COLUMN_NACHNAME])
-    csv_geburtsdatum = parse_date(row[COLUMN_GEBURTSDATUM], field: 'geburtsdatum', warnings: warnings)
-    csv_verein       = presence(row[COLUMN_VEREIN])
-    csv_email        = presence(row[COLUMN_EMAIL])
+    csv_lizenznummer = parse_integer(cell(row, columns, :lizenznummer), field: 'lizenznummer',
+                                                                       warnings: warnings)
+    csv_vorname      = presence(cell(row, columns, :vorname))
+    csv_nachname     = presence(cell(row, columns, :nachname))
+    csv_geburtsdatum = parse_date(cell(row, columns, :geburtsdatum), field: 'geburtsdatum',
+                                                                    warnings: warnings)
+    csv_verein       = presence(cell(row, columns, :verein))
+    csv_email        = presence(cell(row, columns, :email))
 
-    course_data = build_course_data(row, warnings: warnings)
+    course_data = build_course_data(row, columns, warnings: warnings)
     kursstichtag = compute_kursstichtag(course_data)
     gueltigkeit  = compute_gueltigkeit(kursstichtag)
     if kursstichtag.nil?
@@ -244,9 +345,9 @@ class RefereeCourseImportService
     Club.where('LOWER(name) = LOWER(?)', name.strip).first
   end
 
-  def build_course_data(row, warnings:)
-    kurs1_datum = row[COLUMN_KURS1_DATUM].presence
-    kurs2_datum = row[COLUMN_KURS2_DATUM].presence
+  def build_course_data(row, columns, warnings:)
+    kurs1_datum = cell(row, columns, :kurs1_datum).presence
+    kurs2_datum = cell(row, columns, :kurs2_datum).presence
     # Wir validieren das Datum (damit es im Warning auftaucht) und behalten
     # die Rohform in der JSONB-Spalte für UI-Anzeige.
     parse_date(kurs1_datum, field: 'kurs_1_datum', warnings: warnings) if kurs1_datum
@@ -254,19 +355,27 @@ class RefereeCourseImportService
 
     {
       'kurs_1' => {
-        'stufe'       => presence(row[COLUMN_KURS1_STUFE]),
+        'stufe'       => presence(cell(row, columns, :kurs1_stufe)),
         'datum'       => kurs1_datum,
-        'testversion' => presence(row[COLUMN_KURS1_VERSION]),
-        'punkte'      => presence(row[COLUMN_KURS1_PUNKTE])
+        'testversion' => presence(cell(row, columns, :kurs1_version)),
+        'punkte'      => presence(cell(row, columns, :kurs1_punkte))
       },
       'kurs_2' => {
-        'stufe'       => presence(row[COLUMN_KURS2_STUFE]),
+        'stufe'       => presence(cell(row, columns, :kurs2_stufe)),
         'datum'       => kurs2_datum,
-        'testversion' => presence(row[COLUMN_KURS2_VERSION]),
-        'punkte'      => presence(row[COLUMN_KURS2_PUNKTE])
+        'testversion' => presence(cell(row, columns, :kurs2_version)),
+        'punkte'      => presence(cell(row, columns, :kurs2_punkte))
       },
-      'ausbilder' => presence(row[COLUMN_AUSBILDER])
+      'ausbilder' => presence(cell(row, columns, :ausbilder))
     }
+  end
+
+  # Fehlende Spalte oder zu kurze Zeile → nil, statt die Zeile aufzufüllen.
+  def cell(row, columns, field)
+    index = columns[field]
+    return nil if index.nil?
+
+    row[index]
   end
 
   def compute_kursstichtag(course_data)
