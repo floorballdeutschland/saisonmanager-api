@@ -96,12 +96,10 @@ class PlayersController < ApplicationController
     end
 
     express_requested = params[:express] == true || params[:express] == 'true'
-    if express_requested
-      sa = team.club&.state_association
-      lv_allows_express = sa ? sa.effective_express_license_enabled : false
-      within_window = team.leagues.any?(&:express_license_window_open?)
-      express_requested = lv_allows_express && within_window
-    end
+    # Maßgeblich ist der LV des Spielbetriebs der Liga, nicht der des Vereins:
+    # Zuständig für den Spielbetrieb einer Liga ist allein deren Verband. Erlaubnis
+    # und Zeitfenster müssen aus derselben Liga stammen (League#express_license_possible?).
+    express_requested &&= team.leagues.any?(&:express_license_possible?)
 
     result = :ok
     player = nil
