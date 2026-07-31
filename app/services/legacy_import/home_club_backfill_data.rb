@@ -155,7 +155,8 @@ module LegacyImport
       return false if valid_until.blank?
 
       valid_until.to_date < Date.current
-    rescue ArgumentError, TypeError, Date::Error
+    rescue ArgumentError, TypeError
+      # Date::Error erbt von ArgumentError und ist damit mit abgedeckt.
       true
     end
 

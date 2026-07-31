@@ -146,10 +146,11 @@ class LegacyImport::HomeClubBackfillDataTest < ActiveSupport::TestCase # rubocop
 
   test 'ein Lizenz-Team ohne auflösbaren Verein blockiert statt Eindeutigkeit vorzutäuschen' do
     other_team = create(:team, club: @other_club)
-    player = legacy_player(licenses: [
-                             { id: 'LIC:fvn:2012_2013:1', team: @team, status: License::APPROVED },
-                             { id: 'LIC:fvn:2013_2014:2', team: other_team, status: License::APPROVED }
-                           ])
+    licenses = [
+      { id: 'LIC:fvn:2012_2013:1', team: @team, status: License::APPROVED },
+      { id: 'LIC:fvn:2013_2014:2', team: other_team, status: License::APPROVED }
+    ]
+    player = legacy_player(licenses:)
     other_team.delete
 
     result = data.decide_for(player)
@@ -308,14 +309,15 @@ class LegacyImport::HomeClubBackfillDataTest < ActiveSupport::TestCase # rubocop
 
   test 'earliest_license_start liefert den frühesten Verlaufszeitpunkt beim Zielverein' do
     other_team = create(:team, club: @other_club)
-    player = legacy_player(licenses: [
-                             { id: 'LIC:fvn:2013_2014:1', team: @team, status: License::APPROVED,
-                               created_at: '2013-09-10T16:36:37' },
-                             { id: 'LIC:fvn:2012_2013:2', team: @team, status: License::APPROVED,
-                               created_at: '2012-08-31T15:14:19' },
-                             { id: 'LIC:fvn:2011_2012:3', team: other_team, status: License::APPROVED,
-                               created_at: '2011-01-01T00:00:00' }
-                           ])
+    licenses = [
+      { id: 'LIC:fvn:2013_2014:1', team: @team, status: License::APPROVED,
+        created_at: '2013-09-10T16:36:37' },
+      { id: 'LIC:fvn:2012_2013:2', team: @team, status: License::APPROVED,
+        created_at: '2012-08-31T15:14:19' },
+      { id: 'LIC:fvn:2011_2012:3', team: other_team, status: License::APPROVED,
+        created_at: '2011-01-01T00:00:00' }
+    ]
+    player = legacy_player(licenses:)
     subject = data
 
     assert_equal '2012-08-31T15:14:19', subject.earliest_license_start(player, @club.id),
