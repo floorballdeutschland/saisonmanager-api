@@ -7,11 +7,15 @@ class ClubMailer < ApplicationMailer
     @games = game_day.games.order(:start_time)
     @frontend_base_url = FrontendUrl.base
 
+    # I18n.l auf game_day.date (Textspalte) warf hier ArgumentError, bevor die
+    # Vorlage überhaupt gerendert wurde – die Mail war nie versendbar.
+    date_label = MailerHelper.format_game_day_date(game_day.date)
+
     templated_mail(
       to: club.contact_email,
-      subject: "Spielbericht-Scans einreichen – Spieltag #{I18n.l(game_day.date, format: :long)}",
+      subject: "Spielbericht-Scans einreichen – Spieltag #{date_label}",
       default_reply_to: REPLY_TO,
-      placeholders: { game_day_date: I18n.l(game_day.date, format: :long) }
+      placeholders: { game_day_date: date_label }
     )
   end
 end
