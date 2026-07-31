@@ -1174,8 +1174,14 @@ class Game < ApplicationRecord
     "#{home_team_name} - #{guest_team_name} (#{league.name}, #{league.game_operation.short_name})"
   end
 
+  # Öffentliche Spielseite; dort sitzt auch der Schiedsrichter-Tab mit dem Upload
+  # des Berichtsformulars. Das Verbandssegment muss GameOperation#slug sein, nicht
+  # short_name.downcase: der Router vergleicht gegen slug, und der weicht ab,
+  # sobald ein Verband ein eigenes `path` gesetzt hat oder der short_name
+  # Leerzeichen bzw. Punkte enthält („1. FBL" → „1-fbl"). Das leagueId-Segment
+  # darf die nackte ID bleiben, das Frontend wertet nur die führende Zahl aus.
   def url
-    "#{FrontendUrl.base}/#{league.game_operation.short_name.downcase}/#{league.id}/spiel/#{id}"
+    "#{FrontendUrl.base}/#{league.game_operation.slug}/#{league.id}/spiel/#{id}"
   end
 
   def ical
