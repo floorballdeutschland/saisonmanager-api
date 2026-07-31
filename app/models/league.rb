@@ -98,8 +98,11 @@ class League < ApplicationRecord
   # Spiel logo_url_fallback und logo_small_url_fallback beider Mannschaften;
   # beide fragen `logo.attached?` und fallen bei fehlendem Team-Logo auf das
   # Vereinslogo zurück. Ohne die Attachment-Preloads holt ActiveStorage jeden
-  # Anhang einzeln nach – der mit Abstand häufigste N+1 im Spielplan
-  # (Sentry SAISONMANAGER-3/4/7/8, zusammen rund 70.000 Ereignisse).
+  # Anhang einzeln nach – gemessen im Juli 2026 der häufigste N+1 überhaupt,
+  # rund 71.000 Ereignisse auf #schedule und #current_schedule.
+  #
+  # Auch für die Tabelle, die dieselben beiden Methoden je Team liest
+  # (evaluate_table_results/empty_table_item).
   TEAM_WITH_LOGO_PRELOAD = [
     { logo_attachment: :blob },
     { club: { logo_attachment: :blob } }
@@ -673,7 +676,13 @@ class League < ApplicationRecord
     # Pre-populate all league teams so teams with no games still appear.
     # Nicht für Gruppentabellen: dort ergibt sich die Zugehörigkeit allein aus
     # den Spielen der Gruppe, sonst landen alle Liga-Teams in jeder Gruppe.
-    teams.each { |team| results[team.id] = empty_table_item(team) } if include_teams_without_games
+    #
+    # Mit Logo-Preload, weil empty_table_item je Zeile logo_url_fallback und
+    # logo_small_url_fallback liest – dieselbe Stelle wie im Spielplan, nur auf
+    # der Tabellenseite (siehe TEAM_WITH_LOGO_PRELOAD).
+    if include_teams_without_games
+      teams.includes(TEAM_WITH_LOGO_PRELOAD).each { |team| results[team.id] = empty_table_item(team) }
+    end
 
     g.each do |game|
       [game.home_team, game.guest_team].each do |team|

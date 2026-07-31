@@ -84,11 +84,17 @@ class TeamsController < ApplicationController
     totals_list = scorer_entries(team_scorer_data)
 
     # Recent results (last 10 ended games across all leagues, ordered by game day date)
+    #
+    # home_team/guest_team samt Logo-Anhängen, weil unten je Spiel
+    # logo_small_url_fallback beider Mannschaften gelesen wird. Ohne den
+    # Preload sind das bis zu 40 Anhang-Abfragen für diese zehn Zeilen.
     recent_games = Game.by_team_id(team.id)
                        .where(ended: true)
                        .joins(game_day: :league)
                        .where(leagues: { season_id: team_season_id })
-                       .includes(game_day: :league)
+                       .includes(game_day: :league,
+                                 home_team: League::TEAM_WITH_LOGO_PRELOAD,
+                                 guest_team: League::TEAM_WITH_LOGO_PRELOAD)
                        .order('game_days.date DESC')
                        .limit(10)
                        .map do |g|
@@ -115,7 +121,9 @@ class TeamsController < ApplicationController
                          .joins(game_day: :league)
                          .where(leagues: { season_id: team_season_id })
                          .where('game_days.date >= ?', Date.today)
-                         .includes(game_day: :league)
+                         .includes(game_day: :league,
+                                   home_team: League::TEAM_WITH_LOGO_PRELOAD,
+                                   guest_team: League::TEAM_WITH_LOGO_PRELOAD)
                          .order('game_days.date ASC')
                          .limit(10)
                          .map do |g|

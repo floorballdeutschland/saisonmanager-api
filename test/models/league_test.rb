@@ -756,6 +756,21 @@ class LeagueTest < ActiveSupport::TestCase
                     "Anhang-Queries skalieren mit der Spielanzahl (N+1): #{attachment_queries}"
   end
 
+  # Die Tabellenseite liest dieselben beiden Logo-Methoden, nur je Team statt je
+  # Spiel (empty_table_item). Sie gehört zu den meistaufgerufenen öffentlichen
+  # Seiten und wird zusätzlich vorgerendert.
+  test 'die Tabelle laedt die Logo-Anhaenge gebuendelt statt pro Team' do
+    league = build_league(build_go)
+    club = build_club
+    8.times { |i| build_team(league, club, "Team #{i}") }
+
+    attachment_queries = capture_sql { league.table }
+                         .count { |sql| sql =~ /\bfrom\s+"active_storage_attachments"/i }
+
+    assert_operator attachment_queries, :<=, 2,
+                    "Anhang-Queries skalieren mit der Teamanzahl (N+1): #{attachment_queries}"
+  end
+
   private
 
   def capture_sql
