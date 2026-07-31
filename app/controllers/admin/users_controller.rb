@@ -106,8 +106,12 @@ module Admin
         end
 
         if user.save
-          user.send_reset_information
-          return render json: user_json(user), status: :created
+          # Konto steht, unabhängig davon, ob die Willkommensmail rausging – ein
+          # Fehlschlag darf das Anlegen nicht nachträglich als Fehler ausgeben,
+          # sonst legt der Aufrufer dasselbe Konto erneut an. Wie bei der
+          # Schiri-Kontoanlage sagt email_sent, was passiert ist.
+          email_sent = user.send_reset_information
+          return render json: user_json(user).merge(email_sent:), status: :created
         else
           return render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
         end
@@ -148,8 +152,8 @@ module Admin
       end
 
       if user.save
-        user.send_reset_information
-        render json: user_json(user), status: :created
+        email_sent = user.send_reset_information
+        render json: user_json(user).merge(email_sent:), status: :created
       else
         render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
       end
@@ -189,8 +193,15 @@ module Admin
 
     # POST /api/v2/admin/users/:id/trigger_password_reset
     def trigger_password_reset
-      @managed_user.send_reset_information
-      render json: { success: true }
+      # Hier hat jemand den Versand ausdrücklich angestoßen und wartet auf die
+      # Rückmeldung – ein stiller Fehlschlag würde eine Mail versprechen, die
+      # nie ankommt.
+      if @managed_user.send_reset_information
+        render json: { success: true }
+      else
+        render json: { success: false, message: 'Die Reset-Mail konnte nicht versendet werden. Bitte später erneut versuchen.' },
+               status: :bad_gateway
+      end
     end
 
     # POST /api/v2/admin/users/:id/add_role

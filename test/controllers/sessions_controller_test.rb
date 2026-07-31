@@ -66,6 +66,23 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
     assert_includes JSON.parse(response.body)['message'], 'Benutzernamen'
   end
 
+  test 'Passwort vergessen bleibt bei hängendem SMTP-Server bei 200' do
+    # Der Versand läuft synchron im Request; ein Timeout des Mailservers ergab
+    # vorher einen 500er (Sentry SAISONMANAGER-1X), obwohl die Antwort dieser
+    # Route ohnehin immer gleich lautet.
+    failing = Object.new
+    def failing.deliver_now
+      raise Net::ReadTimeout
+    end
+
+    UserMailer.stub(:reset_password, ->(*, **) { failing }) do
+      post '/api/v2/lost_password', params: { username: @user.user_name }, as: :json
+    end
+
+    assert_response :ok
+    assert JSON.parse(response.body)['success']
+  end
+
   test 'Passwort vergessen für einen unbekannten Benutzernamen bleibt unauffällig' do
     assert_emails 0 do
       post '/api/v2/lost_password', params: { username: 'gibtesnicht' }, as: :json
