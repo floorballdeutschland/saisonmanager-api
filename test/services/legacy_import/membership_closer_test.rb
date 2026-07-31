@@ -92,6 +92,35 @@ class LegacyImport::MembershipCloserTest < ActiveSupport::TestCase # rubocop:dis
     assert_nil clubs[0]['valid_until']
   end
 
+  test 'ein Backfill-Eintrag ist KEIN Folgeverein (Vorfall-Schutz 2026-07-13)' do
+    # Konstellation nach einem Merge: der Master hat eine echte, offene
+    # Heimatmitgliedschaft aus der Zeit vor 2015, und HomeClubBackfill hat einen
+    # Eintrag mit einem Lizenzdatum von 2013 beigesteuert. Ohne die Ausnahme
+    # würde die echte Mitgliedschaft auf 2013 geschlossen.
+    clubs = [
+      { 'club_id' => 42, 'home_club' => true },
+      LegacyImport::HomeClubBackfill.build_entry(club_id: 37, created_at: '2013-09-10T16:36:37')
+    ]
+
+    new_clubs, changed = LegacyImport::MembershipCloser.close(clubs)
+
+    assert_not changed
+    assert_nil new_clubs[0]['valid_until']
+  end
+
+  test 'ein echter Folgeverein schließt weiterhin, auch neben einem Backfill-Eintrag' do
+    clubs = [
+      { 'club_id' => 42, 'home_club' => true },
+      LegacyImport::HomeClubBackfill.build_entry(club_id: 37, created_at: '2013-09-10T16:36:37'),
+      { 'club_id' => 55, 'home_club' => true, 'created_at' => '2016-09-15T09:34:58+02:00' }
+    ]
+
+    new_clubs, changed = LegacyImport::MembershipCloser.close(clubs)
+
+    assert changed
+    assert_equal '2016-09-15T09:34:58+02:00', new_clubs[0]['valid_until']
+  end
+
   test 'ignoriert Platzhalter-/Ablage-Verein als Folgeverein und nimmt den nächsten echten' do
     clubs = [
       { 'club_id' => 42, 'home_club' => true },
