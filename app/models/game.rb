@@ -98,8 +98,11 @@ class Game < ApplicationRecord
   # Spielbetrieb ihrer eigenen Ligen. Dass ein Bundesligaspiel physisch in der
   # Halle eines Vereins aus einem anderen LV stattfindet, gibt diesem LV keine
   # Entscheidungsbefugnis über Spielbericht, Checkliste oder Berichtsworkflow.
+  #
+  # Delegiert an League#state_association, damit die Auflösung nur an einer
+  # Stelle steht.
   def state_association
-    league&.game_operation&.state_association
+    league&.state_association
   end
 
   def report_form_workflow_enabled?

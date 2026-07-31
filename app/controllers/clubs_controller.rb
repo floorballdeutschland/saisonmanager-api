@@ -82,11 +82,10 @@ class ClubsController < ApplicationController
 
       result[:team] = team.full_hash
 
-      primary_club = Club.find(team.club_id)
-      sa = primary_club.state_association
-      lv_allows_express = sa ? sa.effective_express_license_enabled : false
-      within_window = leagues.any?(&:express_license_window_open?)
-      result[:express_license_enabled] = lv_allows_express && within_window
+      # Maßgeblich ist der LV des Spielbetriebs der Liga, nicht der des Vereins:
+      # Zuständig für den Spielbetrieb einer Liga ist allein deren Verband. Erlaubnis
+      # und Zeitfenster müssen aus derselben Liga stammen (League#express_license_possible?).
+      result[:express_license_enabled] = leagues.any?(&:express_license_possible?)
       # Elternzustimmung: wird pro Liga über das Flag parental_consent_required
       # gesteuert (löst nur noch zusammen mit Minderjährigkeit im Frontend die
       # Pflicht aus). Ersetzt die frühere is_buli-Ableitung über league_classes.
