@@ -20,24 +20,41 @@ class BackfillLegacyHomeClubsTest < ActiveSupport::TestCase
     @team = create(:team, club: @club)
   end
 
+  # Der Task beendet sich mit `abort`, wenn ein Profil fehlgeschlagen ist. Das
+  # Abfangen muss INNERHALB von capture_io passieren, sonst geht die Ausgabe
+  # verloren, und genau die ist bei einem Fehllauf das Interessante. Kein
+  # Keyword-Argument: ein nachgestellter Hash würde sonst als Keywords statt als
+  # `env` gelesen. Wer den Abbruch selbst prüfen will, nimmt `run_task!`.
+  def run_task(task, env = {})
+    with_task_env(env) do
+      capture_io do
+        task.invoke
+      rescue SystemExit
+        nil
+      end.first
+    end
+  end
+
+  def run_task!(task, env = {})
+    with_task_env(env) { capture_io { task.invoke }.first }
+  end
+
   # Alle vom Task gelesenen Variablen zurücksetzen, nicht nur die gesetzten:
   # sonst wirkt ein im Shell-Umfeld exportiertes CSV_DIR in jeden Test hinein.
-  # allow_exit: der Task beendet sich mit `abort`, wenn ein Profil fehlgeschlagen
-  # ist. Ohne das Abfangen INNERHALB von capture_io ginge die Ausgabe verloren,
-  # und genau die ist bei einem Fehllauf das Interessante.
-  def run_task(task, env = {}, allow_exit: false)
+  def with_task_env(env)
     saved = ENV.to_hash.slice(*TASK_ENV_KEYS)
     TASK_ENV_KEYS.each { |k| ENV.delete(k) }
     env.each { |k, v| ENV[k] = v }
-    task.reenable
-    capture_io do
-      task.invoke
-    rescue SystemExit
-      raise unless allow_exit
-    end.first
+    task_reenable_all
+    yield
   ensure
     TASK_ENV_KEYS.each { |k| ENV.delete(k) }
     saved.each { |k, v| ENV[k] = v }
+  end
+
+  def task_reenable_all
+    @backfill.reenable
+    @rollback.reenable
   end
 
   # ACHTUNG zwei Aufrufe mit Standardwerten erzeugen Profile mit gleichem
@@ -115,7 +132,7 @@ class BackfillLegacyHomeClubsTest < ActiveSupport::TestCase
   test 'unlesbare PLAYER_IDS lösen KEINEN Volllauf aus' do
     player = legacy_player
 
-    assert_raises(ArgumentError) { run_task(@backfill, 'DRY_RUN' => 'false', 'PLAYER_IDS' => '#123') }
+    assert_raises(ArgumentError) { run_task!(@backfill, 'DRY_RUN' => 'false', 'PLAYER_IDS' => '#123') }
     assert_empty player.reload.clubs, 'ein Tippfehler darf nicht den ganzen Scope schreiben'
   end
 
@@ -160,7 +177,7 @@ class BackfillLegacyHomeClubsTest < ActiveSupport::TestCase
     # dem clubs-JSONB eines anderen Profils und kann auf einen gelöschten Verein zeigen.
     @other_club.delete
 
-    assert_raises(SystemExit) { run_task(@backfill, 'DRY_RUN' => 'false') }
+    assert_raises(SystemExit) { run_task!(@backfill, 'DRY_RUN' => 'false') }
 
     assert_equal 1, own_entries(intakt).size, 'das intakte Profil wurde geschrieben'
     assert_empty own_entries(kaputt)
@@ -172,7 +189,7 @@ class BackfillLegacyHomeClubsTest < ActiveSupport::TestCase
                     clubs: [home_entry(@other_club)])
     @other_club.delete
 
-    output = run_task(@backfill, { 'DRY_RUN' => 'false' }, allow_exit: true)
+    output = run_task(@backfill, 'DRY_RUN' => 'false')
 
     assert_match(/=== Einordnung ===/, output)
     assert_match(/=== Fehler/, output)
