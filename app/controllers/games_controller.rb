@@ -1102,10 +1102,10 @@ class GamesController < ApplicationController
   # steht in einer Mail an das betroffene Gespann und darf nicht vom Absender
   # des Einspruchs bestimmt werden.
   def _normalized_veto_answers(game, raw)
-    # Gleiche Quelle wie show_checklist_veto, damit Anzeige und Prüfung nicht
-    # auseinanderlaufen. api#297 stellt beide gemeinsam auf den LV des
-    # Spielbetriebs um.
-    items = game.game_day.club&.state_association&.checklist_items&.order(:position).to_a || []
+    # Gleiche Quelle wie show_checklist_veto, sonst prüft der Server gegen einen
+    # anderen Fragensatz als die Seite anzeigt und weist jeden Einspruch als
+    # unvollständig ab.
+    items = game.state_association&.checklist_items&.order(:position).to_a || []
     return nil if items.empty?
 
     submitted = raw.map { |a| a.permit(:item_id, :question, :answer).to_h }
