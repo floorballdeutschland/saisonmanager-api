@@ -170,6 +170,23 @@ class LeagueTest < ActiveSupport::TestCase
     Arena.create!(name: 'Testhalle', city: 'Teststadt')
   end
 
+  # Liga mit erstem Spieltag in `days_ahead` Tagen. `express` steuert den
+  # Schalter am LV des Spielbetriebs; nil heißt: gar kein LV verknüpft.
+  def express_league(days_ahead:, express:)
+    go =
+      if express.nil?
+        GameOperation.create!(name: 'GO ohne LV', short_name: 'GOX')
+      else
+        sa = StateAssociation.create!(name: "LV #{express}", express_license_enabled: express)
+        GameOperation.create!(name: 'GO mit LV', short_name: 'GOY', state_association_id: sa.id)
+      end
+
+    league = build_league(go)
+    GameDay.create!(league: league, arena: build_arena, club: build_club, number: 1,
+                    date: (Date.current + days_ahead).to_s)
+    league
+  end
+
   def build_game_day(league, arena, club)
     GameDay.create!(league: league, arena: arena, club: club, number: 1, date: '2025-01-01')
   end
@@ -437,6 +454,62 @@ class LeagueTest < ActiveSupport::TestCase
     GameDay.create!(league: league, arena: arena, club: club, number: 1,
                     date: (Date.current + 1).to_s)
     assert league.express_license_window_open?
+  end
+
+  test 'express_license_window_open?: unplausibles Datum bricht die Pruefung nicht ab' do
+    go = build_go
+    league = build_league(go)
+    club = build_club
+    arena = build_arena
+    # game_days.date ist eine Textspalte; ein krummer Eintrag darf die
+    # Expresslizenz-Pruefung nicht zum Serverfehler machen.
+    GameDay.create!(league: league, arena: arena, club: club, number: 1, date: '31.02.2026')
+    GameDay.create!(league: league, arena: arena, club: club, number: 2,
+                    date: (Date.current + 1).to_s)
+
+    assert_equal(Date.current + 1, league.first_game_day_date)
+    assert league.express_license_window_open?
+  end
+
+  test 'express_license_window_open?: nur unplausible Daten ergeben kein Fenster' do
+    go = build_go
+    league = build_league(go)
+    GameDay.create!(league: league, arena: build_arena, club: build_club, number: 1, date: 'unbekannt')
+
+    assert_nil league.first_game_day_date
+    refute league.express_license_window_open?
+  end
+
+  # ---------------------------------------------------------------------------
+  # express_license_possible? — Erlaubnis (LV des Spielbetriebs) und Zeitfenster
+  # (erster Spieltag DIESER Liga) gehoeren zusammen.
+  # ---------------------------------------------------------------------------
+
+  test 'express_license_possible?: LV des Spielbetriebs erlaubt und Fenster offen' do
+    assert express_league(days_ahead: 1, express: true).express_license_possible?
+  end
+
+  test 'express_license_possible?: false wenn der LV des Spielbetriebs es nicht erlaubt' do
+    refute express_league(days_ahead: 1, express: false).express_license_possible?
+  end
+
+  test 'express_license_possible?: false wenn das Fenster noch nicht offen ist' do
+    refute express_league(days_ahead: 10, express: true).express_license_possible?
+  end
+
+  test 'express_license_possible?: false ohne Landesverband am Spielbetrieb' do
+    refute express_league(days_ahead: 1, express: nil).express_license_possible?
+  end
+
+  test 'express_license_possible?: der uebergeordnete Verband kann es freigeben' do
+    parent = StateAssociation.create!(name: 'Dach-LV', express_license_enabled: true)
+    sa = StateAssociation.create!(name: 'Kind-LV', express_license_enabled: false, parent: parent)
+    go = GameOperation.create!(name: 'GO mit Dach', short_name: 'GOD', state_association_id: sa.id)
+    league = build_league(go)
+    GameDay.create!(league: league, arena: build_arena, club: build_club, number: 1,
+                    date: (Date.current + 1).to_s)
+
+    assert league.express_license_possible?
   end
 
   # ---------------------------------------------------------------------------
@@ -721,5 +794,69 @@ class LeagueTest < ActiveSupport::TestCase
     # Smoke-Test, dass die Preload-Kette in full_hash(true) funktioniert.
     similar = League.create!(game_operation: go, name: 'Parallelliga', season_id: '1', table_modus: 'classic')
     assert_equal([similar.id], league.full_hash(true)[:similar_leagues].map { |l| l[:id] })
+  end
+
+  # ---------------------------------------------------------------------------
+  # League#games – kein N+1 auf die Logo-Anhänge
+  #
+  # schedule_item liest je Spiel logo_url_fallback/logo_small_url_fallback
+  # beider Mannschaften. Beide prüfen `logo.attached?` und fallen bei fehlendem
+  # Team-Logo auf das Vereinslogo zurück; ohne Preload holt ActiveStorage jeden
+  # Anhang einzeln nach. Das war der häufigste N+1 im Spielplan.
+  # ---------------------------------------------------------------------------
+
+  test 'schedule laedt die Logo-Anhaenge gebuendelt statt pro Spiel' do
+    league = build_league(build_go)
+    club = build_club
+    game_day = build_game_day(league, build_arena, club)
+
+    # 4 Spiele mit je eigenen Mannschaften: ohne Preload sind das 8
+    # Mannschaften plus deren Vereine, jeder Anhang einzeln abgefragt.
+    4.times do |i|
+      build_game(game_day,
+                 build_team(league, club, "Heim #{i}"),
+                 build_team(league, club, "Gast #{i}"),
+                 game_number: (i + 1).to_s)
+    end
+
+    attachment_queries = capture_sql { league.schedule }
+                         .count { |sql| sql =~ /\bfrom\s+"active_storage_attachments"/i }
+
+    # Mit Preload bündelt Rails je Zweig (home_team, guest_team) einen Anhang-
+    # Query für die Mannschaften und einen für deren Vereine. Die Zahl darf
+    # nicht mit der Spielanzahl wachsen.
+    assert_operator attachment_queries, :<=, 4,
+                    "Anhang-Queries skalieren mit der Spielanzahl (N+1): #{attachment_queries}"
+  end
+
+  # Die Tabellenseite liest dieselben beiden Logo-Methoden, nur je Team statt je
+  # Spiel (empty_table_item). Sie gehört zu den meistaufgerufenen öffentlichen
+  # Seiten und wird zusätzlich vorgerendert.
+  test 'die Tabelle laedt die Logo-Anhaenge gebuendelt statt pro Team' do
+    league = build_league(build_go)
+    club = build_club
+    8.times { |i| build_team(league, club, "Team #{i}") }
+
+    attachment_queries = capture_sql { league.table }
+                         .count { |sql| sql =~ /\bfrom\s+"active_storage_attachments"/i }
+
+    assert_operator attachment_queries, :<=, 2,
+                    "Anhang-Queries skalieren mit der Teamanzahl (N+1): #{attachment_queries}"
+  end
+
+  private
+
+  def capture_sql
+    sqls = []
+    subscriber = ActiveSupport::Notifications.subscribe('sql.active_record') do |*, payload|
+      next if payload[:name] == 'SCHEMA'
+      next if payload[:sql] =~ /^\s*(BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)/i
+
+      sqls << payload[:sql]
+    end
+    yield
+    sqls
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber)
   end
 end

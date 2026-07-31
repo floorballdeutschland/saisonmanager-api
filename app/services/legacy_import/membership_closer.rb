@@ -23,6 +23,13 @@ module LegacyImport
   #   übergebene Platzhalter-/deaktivierte Vereine werden übersprungen (sonst ein
   #   bedeutungsloses/zu frühes Enddatum). Der Service bleibt DB-frei/testbar;
   #   die Ignore-Liste kuratiert der Aufrufer (Rake) aus der Club-Tabelle.
+  # - Ebenfalls KEIN Folgeeintrag: was `HomeClubBackfill` geschrieben hat. Dessen
+  #   Einträge sind eine nachträgliche Zuordnung, die ein Lizenzdatum als
+  #   `created_at` trägt, und kein belegter Vereinswechsel. Ohne diese Ausnahme
+  #   könnte ein per `Player#_merge_clubs` auf einen Master gewanderter
+  #   Backfill-Eintrag dort eine echte, offene Heimatmitgliedschaft auf ein Datum
+  #   von vor über zehn Jahren schließen, also genau die Fehlerklasse des
+  #   Vorfalls 2026-07-13 erneut auslösen.
   # - Ohne passenden Folgeeintrag bleibt die Mitgliedschaft offen.
   module MembershipCloser
     module_function
@@ -61,7 +68,8 @@ module LegacyImport
     def successor_start(entry, clubs, ignore_club_ids = Set.new)
       ignore = ignore_club_ids.to_set
       dated = Array(clubs).select do |c|
-        c['created_at'].present? && c['club_id'] != entry['club_id'] && !ignore.include?(c['club_id'])
+        c['created_at'].present? && c['club_id'] != entry['club_id'] && !ignore.include?(c['club_id']) &&
+          c['source'] != HomeClubBackfill::SOURCE
       end
       dated = dated.select { |c| c['home_club'] == true } if entry['home_club'] == true
       return nil if dated.empty?

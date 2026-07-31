@@ -217,6 +217,127 @@ class TeamsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 1, body['recent_games'].length
   end
 
+  test 'stats antwortet mit 404, wenn die Liga des Teams gelöscht wurde' do
+    login(create(:user, :admin))
+    orphan_league = create(:league, game_operation: @go)
+    orphan_team = create(:team, league: orphan_league, club: @club)
+    # Liga hart entfernen, damit league_id ins Leere zeigt – so entstehen die
+    # Teams, die vorher einen 500er auslösten.
+    League.where(id: orphan_league.id).delete_all
+
+    get "/api/v2/teams/#{orphan_team.id}/stats"
+
+    assert_response :not_found
+    assert_match(/Liga/, JSON.parse(response.body)['message'])
+  end
+
+  test 'matches antwortet mit 404, wenn die Liga des Teams gelöscht wurde' do
+    login(create(:user, :admin))
+    orphan_league = create(:league, game_operation: @go)
+    orphan_team = create(:team, league: orphan_league, club: @club)
+    League.where(id: orphan_league.id).delete_all
+
+    get "/api/v2/teams/#{orphan_team.id}/matches"
+
+    assert_response :not_found
+    refute JSON.parse(response.body)['success']
+  end
+
+  # Der 404 allein ist von „diese Mannschaft gibt es nicht" nicht zu
+  # unterscheiden. Ein Team ohne auflösbare Liga ist aber ein kaputter
+  # Datensatz und muss auffallen – vorher war der 500er das einzige Signal.
+  test 'ein Team ohne auflösbare Liga wird gemeldet' do
+    login(create(:user, :admin))
+    orphan_league = create(:league, game_operation: @go)
+    orphan_team = create(:team, league: orphan_league, club: @club)
+    League.where(id: orphan_league.id).delete_all
+    Rails.cache.delete("orphan_team_reported/#{orphan_team.id}")
+
+    messages = []
+    Sentry.stub(:capture_message, ->(message, *) { messages << message }) do
+      get "/api/v2/teams/#{orphan_team.id}/stats"
+    end
+
+    assert_response :not_found
+    assert_equal 1, messages.size
+    assert_includes messages.first, "team: #{orphan_team.id}"
+  end
+
+  # Die Sperre haengt an Rails.cache. Im Test-Env ist das ein :null_store, in
+  # dem jedes write durchgeht – ohne echten Store wuerde der Test die Sperre
+  # gar nicht pruefen, sondern nur bestaetigen, dass drei Aufrufe drei
+  # Meldungen erzeugen.
+  test 'die Meldung ueber ein Team ohne Liga wiederholt sich nicht je Aufruf' do
+    login(create(:user, :admin))
+    orphan_league = create(:league, game_operation: @go)
+    orphan_team = create(:team, league: orphan_league, club: @club)
+    League.where(id: orphan_league.id).delete_all
+
+    messages = []
+    with_real_cache do
+      Sentry.stub(:capture_message, ->(message, *) { messages << message }) do
+        3.times { get "/api/v2/teams/#{orphan_team.id}/stats" }
+      end
+    end
+
+    assert_equal 1, messages.size
+  end
+
+  def with_real_cache
+    original = Rails.cache
+    Rails.cache = ActiveSupport::Cache::MemoryStore.new
+    yield
+  ensure
+    Rails.cache = original
+  end
+
+  test 'stats nutzt die Pokal-Liga als Saisonquelle, wenn die Hauptliga fehlt' do
+    login(create(:user, :admin))
+    cup_league = create(:league, game_operation: @go)
+    cup_team = create(:team, league: @league, club: @club, cup_leagues: [cup_league.id])
+    cup_team.update_column(:league_id, nil)
+
+    get "/api/v2/teams/#{cup_team.id}/stats"
+
+    assert_response :success
+    assert_equal cup_league.id, JSON.parse(response.body)['team']['league_id']
+  end
+
+  # cup_leagues wird beim Speichern nur gegen den Spielbetrieb geprüft, nie
+  # gegen die Saison – ein Team kann dort Ligen aus mehreren Saisons stehen
+  # haben. Genommen werden muss die jüngste.
+  #
+  # 17 und 18, weil `League` einen default_scope nach season_id hat: `.first`
+  # nähme damit die lexikografisch kleinste, hier also die ältere Saison, und
+  # die Mannschaftsseite zeigte den Stand von vorletztem Jahr.
+  test 'stats nimmt bei mehreren Pokal-Ligen die juengste Saison' do
+    login(create(:user, :admin))
+    alt = create(:league, game_operation: @go, season_id: '17')
+    neu = create(:league, game_operation: @go, season_id: '18')
+    cup_team = create(:team, league: @league, club: @club, cup_leagues: [alt.id, neu.id])
+    cup_team.update_column(:league_id, nil)
+
+    get "/api/v2/teams/#{cup_team.id}/stats"
+
+    assert_response :success
+    assert_equal neu.id, JSON.parse(response.body)['team']['league_id']
+  end
+
+  # season_id ist eine Textspalte. Ein reiner Größtwert über Zeichenketten
+  # stellte "9" hinter "10" und nähme damit die ältere Saison.
+  test 'stats vergleicht die Saison numerisch, nicht als Zeichenkette' do
+    login(create(:user, :admin))
+    alt = create(:league, game_operation: @go, season_id: '9')
+    neu = create(:league, game_operation: @go, season_id: '10')
+    cup_team = create(:team, league: @league, club: @club, cup_leagues: [alt.id, neu.id])
+    cup_team.update_column(:league_id, nil)
+
+    get "/api/v2/teams/#{cup_team.id}/stats"
+
+    assert_response :success
+    assert_equal neu.id, JSON.parse(response.body)['team']['league_id']
+  end
+
   # Beendetes Spiel des Teams in `league` mit genau einem Tor eines eigenen
   # Spielers; liefert diesen Spieler (ergibt einen Scorer-Eintrag über
   # Game#evaluate_scorer).
