@@ -63,11 +63,10 @@ namespace :players do
   end
 
   # club_ids, die nicht als Folgeverein zählen: Platzhalter/Ablage (Namensmuster)
-  # + deaktivierte Vereine. Kuratiert im operativen Task (der MembershipCloser-
-  # Service bleibt DB-frei).
+  # + deaktivierte Vereine. Gemeinsame Quelle mit dem Backfill-Task, damit die
+  # beiden Listen nicht auseinanderlaufen (der MembershipCloser-Service selbst
+  # bleibt DB-frei).
   def ignore_club_ids
-    junk = Club.where('name ~* ?', '(^z_|^zz|ablage|not in use|doppelung)').pluck(:id)
-    deactivated = Club.where.not(deactivated_at: nil).pluck(:id)
-    (junk + deactivated).uniq
+    LegacyImport::HomeClubBackfillData.ignore_club_ids
   end
 end
