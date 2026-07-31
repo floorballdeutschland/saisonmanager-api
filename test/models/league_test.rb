@@ -795,4 +795,68 @@ class LeagueTest < ActiveSupport::TestCase
     similar = League.create!(game_operation: go, name: 'Parallelliga', season_id: '1', table_modus: 'classic')
     assert_equal([similar.id], league.full_hash(true)[:similar_leagues].map { |l| l[:id] })
   end
+
+  # ---------------------------------------------------------------------------
+  # League#games – kein N+1 auf die Logo-Anhänge
+  #
+  # schedule_item liest je Spiel logo_url_fallback/logo_small_url_fallback
+  # beider Mannschaften. Beide prüfen `logo.attached?` und fallen bei fehlendem
+  # Team-Logo auf das Vereinslogo zurück; ohne Preload holt ActiveStorage jeden
+  # Anhang einzeln nach. Das war der häufigste N+1 im Spielplan.
+  # ---------------------------------------------------------------------------
+
+  test 'schedule laedt die Logo-Anhaenge gebuendelt statt pro Spiel' do
+    league = build_league(build_go)
+    club = build_club
+    game_day = build_game_day(league, build_arena, club)
+
+    # 4 Spiele mit je eigenen Mannschaften: ohne Preload sind das 8
+    # Mannschaften plus deren Vereine, jeder Anhang einzeln abgefragt.
+    4.times do |i|
+      build_game(game_day,
+                 build_team(league, club, "Heim #{i}"),
+                 build_team(league, club, "Gast #{i}"),
+                 game_number: (i + 1).to_s)
+    end
+
+    attachment_queries = capture_sql { league.schedule }
+                         .count { |sql| sql =~ /\bfrom\s+"active_storage_attachments"/i }
+
+    # Mit Preload bündelt Rails je Zweig (home_team, guest_team) einen Anhang-
+    # Query für die Mannschaften und einen für deren Vereine. Die Zahl darf
+    # nicht mit der Spielanzahl wachsen.
+    assert_operator attachment_queries, :<=, 4,
+                    "Anhang-Queries skalieren mit der Spielanzahl (N+1): #{attachment_queries}"
+  end
+
+  # Die Tabellenseite liest dieselben beiden Logo-Methoden, nur je Team statt je
+  # Spiel (empty_table_item). Sie gehört zu den meistaufgerufenen öffentlichen
+  # Seiten und wird zusätzlich vorgerendert.
+  test 'die Tabelle laedt die Logo-Anhaenge gebuendelt statt pro Team' do
+    league = build_league(build_go)
+    club = build_club
+    8.times { |i| build_team(league, club, "Team #{i}") }
+
+    attachment_queries = capture_sql { league.table }
+                         .count { |sql| sql =~ /\bfrom\s+"active_storage_attachments"/i }
+
+    assert_operator attachment_queries, :<=, 2,
+                    "Anhang-Queries skalieren mit der Teamanzahl (N+1): #{attachment_queries}"
+  end
+
+  private
+
+  def capture_sql
+    sqls = []
+    subscriber = ActiveSupport::Notifications.subscribe('sql.active_record') do |*, payload|
+      next if payload[:name] == 'SCHEMA'
+      next if payload[:sql] =~ /^\s*(BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)/i
+
+      sqls << payload[:sql]
+    end
+    yield
+    sqls
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber)
+  end
 end
