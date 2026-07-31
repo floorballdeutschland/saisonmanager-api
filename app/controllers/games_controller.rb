@@ -16,11 +16,10 @@ class GamesController < ApplicationController
   before_action :authenticate_with_secretary_token_or_user, only: SECRETARY_ACTIONS
 
   # Es gibt bewusst kein #index: Die frühere Action lieferte per Game.all die
-  # komplette Spieltabelle ohne Filter und ohne Grenze und lief in Produktion
-  # rund 30 Sekunden pro Aufruf. Wer Spiele einer Liga, eines Spieltags oder
-  # einer Mannschaft braucht, nimmt die gescopten Endpunkte
-  # (leagues/:id/schedule, leagues/:id/game_days/:id/schedule,
-  # teams/:id/matches).
+  # komplette Spieltabelle, ohne Filter und ohne Grenze, öffentlich per
+  # API-Key. Ersatz sind die gescopten Endpunkte leagues/:id/schedule,
+  # leagues/:id/game_days/:game_day_number/schedule (die Spieltagsnummer
+  # innerhalb der Liga, nicht die GameDay-ID) und teams/:id/matches.
 
   # GET /games/1
   def show

@@ -1,8 +1,9 @@
 Rails.application.routes.draw do
   # For details on the DSL available within this file, see https://guides.rubyonrails.org/routing.html
   resources :arenas
-  # Kein :index – GET /games lieferte per Game.all die komplette Spieltabelle
-  # ohne Filter und ohne Grenze, öffentlich per API-Key erreichbar.
+  # kein :index, siehe GamesController. Dieser Block ist von aussen ohnehin
+  # nicht erreichbar (nginx reicht nur /api und /verband an Rails durch), die
+  # gemessenen Zugriffe kamen alle ueber /api/v2/games weiter unten.
   resources :games, except: [:index]
   resources :game_day
   # Nur :index ist implementiert; show/create/update/destroy/new/edit haben keine
