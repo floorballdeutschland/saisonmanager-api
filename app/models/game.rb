@@ -106,7 +106,6 @@ class Game < ApplicationRecord
     state_association&.report_form_email_enabled? || false
   end
 
-
   def home_team_name
     home_team&.name
   end
