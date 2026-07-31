@@ -3,7 +3,7 @@
 <p>Hallo <%= @club.name %>,</p>
 
 <p>
-  alle Spielberichte für den Spieltag vom <strong><%= I18n.l(@game_day.date, format: :long) %></strong>
+  alle Spielberichte für den Spieltag vom <strong><%= format_game_day_date(@game_day.date) %></strong>
   wurden abgeschlossen. Bitte reicht innerhalb der nächsten Tage für jedes Spiel einen Scan (Foto oder PDF)
   des physischen Spielberichtsbogens ein.
 </p>
@@ -17,7 +17,8 @@
     <li>
       <strong>Spiel <%= game.game_number %>:</strong>
       <%= game.home_team&.name || '–' %> vs. <%= game.guest_team&.name || '–' %>
-      (<%= game.start_time ? I18n.l(game.start_time, format: :short) : '–' %>)
+      <%# games.start_time ist ebenfalls Text und liegt schon als "14:00" vor. %>
+      (<%= game.start_time.presence || '–' %>)
       &mdash;
       <a href="<%= game.url %>">Zum Spielbericht</a>
     </li>
