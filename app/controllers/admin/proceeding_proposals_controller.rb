@@ -75,7 +75,7 @@ module Admin
       RefereeMailer.referee_report_to_vsk(
         vsk_email, User.find_by(id: proposal.created_by_id), game, report,
         assignment&.referee1, assignment&.referee2,
-        game_url: "#{FrontendUrl.base}/spielbericht/#{game.id}",
+        game_url: game.url,
         checklist_answers: game.checklist_answers || []
       ).deliver_later
     end
