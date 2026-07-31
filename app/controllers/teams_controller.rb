@@ -36,7 +36,7 @@ class TeamsController < ApplicationController
   def stats
     team = Team.find(params[:id])
     team_season_id = season_id_for(team)
-    return render_team_without_league if team_season_id.blank?
+    return render_team_without_league(team) if team_season_id.blank?
 
     # All leagues this team participates in (main league + cup leagues)
     leagues = team.leagues.where(season_id: team_season_id).to_a
@@ -182,7 +182,7 @@ class TeamsController < ApplicationController
   def matches
     team = Team.find(params[:id])
     team_season_id = season_id_for(team)
-    return render_team_without_league if team_season_id.blank?
+    return render_team_without_league(team) if team_season_id.blank?
 
     leagues = team.leagues.where(season_id: team_season_id).to_a
     leagues_info = leagues.map do |l|
@@ -277,7 +277,18 @@ class TeamsController < ApplicationController
       elsif !create_modus && Team.find(params[:id])&.user_permissions(current_user)&.include?(:update_team) # update
         team = Team.find(params[:id])
         if params[:team][:cup_leagues].present?
-          valid_ids = League.where(game_operation_id: team.league.game_operation_id).pluck(:id)
+          # Der Spielbetrieb kommt aus der eingereichten league_id, sonst aus der
+          # bisherigen. Wer ein Team mit ins Leere zeigender league_id repariert,
+          # schickt beides zusammen; die alte Liga taugt dann ohnehin nicht als
+          # Bezug, und ohne diesen Zweig lief genau dieser Reparaturversuch in
+          # einen 500er.
+          go_id = League.find_by(id: params[:team][:league_id] || team.league_id)&.game_operation_id
+          if go_id.nil?
+            return render json: { errors: ['Mannschaft ist keiner gültigen Liga zugeordnet.'] },
+                          status: :unprocessable_entity
+          end
+
+          valid_ids = League.where(game_operation_id: go_id).pluck(:id)
           invalid = Array(params[:team][:cup_leagues]).map(&:to_i) - valid_ids
           return render json: { errors: ["Ungültige Liga-IDs: #{invalid.join(', ')}"] }, status: :unprocessable_entity if invalid.any?
         end
@@ -374,18 +385,43 @@ class TeamsController < ApplicationController
 
   private
 
-  # Die league_id eines Teams pinnt es bereits auf genau eine Saison (Teams
-  # werden pro Saison neu importiert) – daher die Saison des Teams und nicht
-  # current_season_id, das für Teams vergangener Saisons leer ist.
+  # Die league_id eines Teams pinnt es normalerweise auf genau eine Saison
+  # (Teams werden pro Saison neu importiert) – daher die Saison des Teams und
+  # nicht current_season_id, das die Mannschaftsseite vergangener Saisons auf
+  # die laufende Saison ziehen und dort nichts finden würde.
   #
   # team.league ist nil, wenn league_id leer ist oder auf eine gelöschte Liga
-  # zeigt; dann liefern die Pokal-Ligen die Saison. Fehlt jede Liga, gibt es
-  # keine Saison und damit keine Daten (vorher 500, Sentry SAISONMANAGER-1C).
+  # zeigt; dann liefern die Pokal-Ligen die Saison. Damit gilt die Aussage oben
+  # für diesen Zweig gerade nicht: cup_leagues wird beim Speichern nur gegen den
+  # Spielbetrieb geprüft, nie gegen die Saison, ein Team kann dort also Ligen
+  # aus mehreren Saisons stehen haben. Genommen wird deshalb die jüngste.
+  #
+  # to_i ist noetig, weil leagues.season_id eine Textspalte ist: `.max` allein
+  # sortiert lexikografisch und stellte "10" vor "9".
+  #
+  # Fehlt jede Liga, gibt es keine Saison und damit keine Daten (vorher 500,
+  # Sentry SAISONMANAGER-1C).
   def season_id_for(team)
-    team.league&.season_id || team.leagues.first&.season_id
+    team.league&.season_id || team.leagues.map(&:season_id).compact_blank.max_by(&:to_i)
   end
 
-  def render_team_without_league
+  # Ein Team, dessen league_id ins Leere zeigt, ist kein normaler 404, sondern
+  # ein kaputter Datensatz: Es gibt keinen Fremdschlüssel auf teams.league_id,
+  # und die Spalte ist nullable. Ohne diese Meldung waere die Antwort von
+  # „diese Mannschaft gibt es nicht" nicht zu unterscheiden, und der Fall fiele
+  # niemandem mehr auf – der 500er war bisher das einzige Signal.
+  #
+  # Einmal je Team und Tag, sonst meldet jeder Seitenaufruf erneut. Genau dieses
+  # Rauschen war der Anlass für den Nachbar-PR api#285.
+  def render_team_without_league(team)
+    if Rails.cache.write("orphan_team_reported/#{team.id}", true, unless_exist: true, expires_in: 1.day)
+      Rails.logger.error(
+        "orphan team: Team##{team.id} (#{team.name}), league_id=#{team.league_id.inspect}, " \
+        "cup_leagues=#{team.cup_leagues.inspect}"
+      )
+      Sentry.capture_message("orphan team without resolvable league, team: #{team.id}") if defined?(Sentry)
+    end
+
     render json: { success: false, message: 'Mannschaft ist keiner Liga zugeordnet.' },
            status: :not_found
   end
@@ -443,8 +479,14 @@ class TeamsController < ApplicationController
 
   def can_read_admin_team?(team)
     ph = current_user.permission_hash
-    go_id = team.league&.game_operation_id.to_i
-    return true if ph[:admin].to_a.intersect?([0, go_id]) || ph[:sbk].to_a.intersect?([0, go_id])
+    # Kein `&.…to_i`: Fehlt die Liga, waere das Ergebnis 0, und 0 ist in den
+    # Berechtigungen die Kennung fuer „alle Spielbetriebe". Der Vergleich
+    # unten liefe dann gegen [0, 0] und damit versehentlich ueber die globale
+    # Kennung. Heute faellt das nicht auf, weil nur global Berechtigte eine 0
+    # in ph haben, aber die Zeile darf nicht von diesem Zufall abhaengen.
+    go_id = team.league&.game_operation_id
+    scopes = go_id.nil? ? [0] : [0, go_id]
+    return true if ph[:admin].to_a.intersect?(scopes) || ph[:sbk].to_a.intersect?(scopes)
     return true if ph[:vm].present? && ph[:vm].intersect?(team.all_club_ids)
 
     ph[:tm].present? && ph[:tm].include?(team.id)
