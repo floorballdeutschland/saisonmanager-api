@@ -10,8 +10,13 @@ class GameMailer < ApplicationMailer
     @failed_items = answers.select { |a| a['answer'] == false }
 
     if veto_token
-      frontend_base = FrontendUrl.base
-      @veto_url = "#{frontend_base}/spielbericht/#{game.id}/einspruch?token=#{veto_token}"
+      # Route der Einspruchsseite im Frontend. Der frühere Pfad
+      # /spielbericht/:id/einspruch existierte dort nie: die Seite fehlte
+      # vollständig. Die öffentliche Verbandsroute (:association/:leagueId) nimmt
+      # die ersten zwei Segmente, für das dritte („einspruch") hat sie keine
+      # Kind-Route, und da es keine Wildcard-Route gibt, endete die Navigation
+      # ohne Treffer auf einer leeren Seite statt auf einem Fehler.
+      @veto_url = "#{FrontendUrl.base}/spieltagscheckliste/einspruch/#{game.id}?token=#{CGI.escape(veto_token)}"
     end
 
     bcc = !@all_ok ? state_association.sbk_email : nil

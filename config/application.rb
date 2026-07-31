@@ -29,6 +29,18 @@ module SaisonmanagerApi
     # nicht installiert ist – die kleine Logo-Variante schlug dadurch fehl.
     config.active_storage.variant_processor = :vips
 
+    # Datum und Uhrzeit deutsch ausgeben (config/locales/de.yml). Ohne das lief
+    # I18n.l gegen die Default-Locale :en und schrieb „January 10, 2026" in
+    # durchgehend deutsche E-Mails.
+    config.i18n.default_locale = :de
+    # Fallback auf :en für alles, was de.yml nicht abdeckt, vor allem die
+    # Fehlermeldungen aus ActiveRecord/ActiveModel: dafür gibt es keine deutschen
+    # Übersetzungen (kein rails-i18n-Gem), sie bleiben also wie bisher englisch.
+    # Bisher stand der Fallback nur in config/environments/production.rb; ohne
+    # ihn in Entwicklung und Test würden dieselben Meldungen dort zu
+    # „translation missing".
+    config.i18n.fallbacks = [:en]
+
     config.middleware.use Rack::Attack
   end
 end

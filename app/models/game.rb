@@ -90,6 +90,25 @@ class Game < ApplicationRecord
     game_day.league
   end
 
+  # Landesverband, dessen Einstellungen für dieses Spiel gelten: der LV des
+  # Spielbetriebs, dem die Liga gehört.
+  #
+  # Nicht der LV des Ausrichtervereins. Die Zuständigkeit folgt der Liga, nicht
+  # dem Hallenstandort: Eine Landes-SBK verantwortet ausschließlich den
+  # Spielbetrieb ihrer eigenen Ligen. Dass ein Bundesligaspiel physisch in der
+  # Halle eines Vereins aus einem anderen LV stattfindet, gibt diesem LV keine
+  # Entscheidungsbefugnis über Spielbericht, Checkliste oder Berichtsworkflow.
+  #
+  # Delegiert an League#state_association, damit die Auflösung nur an einer
+  # Stelle steht.
+  def state_association
+    league&.state_association
+  end
+
+  def report_form_workflow_enabled?
+    state_association&.report_form_email_enabled? || false
+  end
+
   def home_team_name
     home_team&.name
   end
@@ -764,7 +783,7 @@ class Game < ApplicationRecord
       game_operation_name: league.game_operation.name,
       game_operation_short_name: league.game_operation.short_name,
       game_operation_slug: league.game_operation.slug,
-      scan_required: league.game_operation.state_association&.scan_required || false,
+      scan_required: state_association&.scan_required || false,
       period_titles: league.period_titles,
       current_period_title:,
       arena: game_day.arena_id,
@@ -912,7 +931,10 @@ class Game < ApplicationRecord
       hasEnded:,
       startingTime: start_time,
       date: game_day.date,
-      url: "#{FrontendUrl.base}/spiel/#{id}"
+      # Dieselbe Route wie überall (siehe #url). Der frühere Pfad /spiel/:id
+      # existiert im Frontend nicht: die zwei Segmente treffen die öffentliche
+      # Verbandsroute (:association/:leagueId), die Seite bleibt leer.
+      url: url
     }
   end
 
@@ -1212,8 +1234,17 @@ class Game < ApplicationRecord
     "#{home_team_name} - #{guest_team_name} (#{league.name}, #{league.game_operation.short_name})"
   end
 
+  # Öffentliche Spielseite; im öffentlichen Bereich sitzt unterhalb des
+  # Spielberichts auch der Upload des Berichtsformulars (einen eigenen
+  # Schiedsrichter-Tab gibt es dort nicht).
+  #
+  # Das Verbandssegment muss GameOperation#slug sein, nicht
+  # short_name.downcase: der Router vergleicht gegen slug, und der weicht ab,
+  # sobald ein Verband ein eigenes `path` gesetzt hat oder der short_name
+  # Leerzeichen bzw. Punkte enthält („1. FBL" → „1-fbl"). Das leagueId-Segment
+  # darf die nackte ID bleiben, das Frontend wertet nur die führende Zahl aus.
   def url
-    "#{FrontendUrl.base}/#{league.game_operation.short_name.downcase}/#{league.id}/spiel/#{id}"
+    "#{FrontendUrl.base}/#{league.game_operation.slug}/#{league.id}/spiel/#{id}"
   end
 
   def ical

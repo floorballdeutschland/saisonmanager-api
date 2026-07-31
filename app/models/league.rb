@@ -359,8 +359,36 @@ class League < ApplicationRecord
     numbers.uniq.sort
   end
 
+  # Landesverband, dessen Einstellungen für diese Liga gelten: der LV des
+  # Spielbetriebs, dem die Liga gehört. Nicht der LV eines beteiligten Vereins.
+  # Die Zuständigkeit folgt der Liga, nicht der Vereinszugehörigkeit.
+  def state_association
+    game_operation&.state_association
+  end
+
+  # Darf in dieser Liga eine Expresslizenz beantragt werden? Erlaubnis und
+  # Zeitfenster gehören zusammen und stammen beide aus der Liga: der Schalter vom
+  # LV ihres Spielbetriebs, das Fenster von ihrem ersten Spieltag. Vorher kam der
+  # Schalter vom LV des Vereins, sodass bei einer Mannschaft in mehreren Ligen die
+  # Erlaubnis des einen Verbands mit dem Fenster einer fremden Liga kombinierbar war.
+  def express_license_possible?(today: Date.current)
+    state_association&.effective_express_license_enabled.present? &&
+      express_license_window_open?(today:)
+  end
+
+  # Erster Spieltag dieser Liga; Referenzpunkt für das Expresslizenz-Fenster.
+  #
+  # game_days.date ist eine Textspalte: `to_date` wirft bei einem unplausiblen
+  # Eintrag Date::Error, und `try` fängt das nicht ab (es schützt nur vor nil).
+  # Ein einzelnes krummes Datum hätte damit die Expresslizenz-Prüfung zum
+  # Serverfehler gemacht. Gleiche Behandlung wie in current_schedule: solche
+  # Einträge zählen einfach nicht mit.
   def first_game_day_date
-    game_days.pluck(:date).map { |d| d.try(:to_date) }.compact.min
+    game_days.pluck(:date).filter_map do |d|
+      d.try(:to_date)
+    rescue Date::Error
+      nil
+    end.min
   end
 
   def express_license_window_open?(today: Date.current, days: 3)

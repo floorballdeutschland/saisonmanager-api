@@ -7,13 +7,28 @@ class GamesController < ApplicationController
     add_event remove_event update_event
     set_referee set_game_status set_flag set_string
     set_checklist_answers
+    show_hidden
   ].freeze
+
+  # Rechte, die ein Spielsekretariats-Link für die Spiele seines Spieltags im
+  # Frontend sichtbar macht (dort werden Bedienelemente über `permission`
+  # eingeblendet). Bewusst eine feste, enge Liste statt der Rechte des
+  # Link-Erstellers: der ist oft Admin oder SBK, und dann bekäme der Link
+  # ungewollt Kontrollrechte über den Spielbericht hinaus. Genau diese Aktionen
+  # erlaubt SECRETARY_ACTIONS dem Token ohnehin schon. Nicht enthalten:
+  # edit_game, check_game, edit_referee_nomination.
+  SECRETARY_PERMISSIONS = %i[pregame_edit_home pregame_edit_guest edit_game_report].freeze
 
   VETO_ACTIONS = %i[show_checklist_veto submit_checklist_veto].freeze
 
   skip_before_action :authenticate_user, only: %i[show] + SECRETARY_ACTIONS + VETO_ACTIONS
   before_action :authenticate_public_request, only: %i[show] + VETO_ACTIONS
   before_action :authenticate_with_secretary_token_or_user, only: SECRETARY_ACTIONS
+  # `show` bleibt öffentlich (API-Key oder Cookie) und darf deshalb NICHT in
+  # SECRETARY_ACTIONS: dort würde ein Token erzwungen und der anonyme Zugriff auf
+  # die Spielseite brechen. Der Link wird hier nur gesetzt, wenn er mitkommt –
+  # `show` wertet @secretary_link seit je aus, es wurde nur nie gefüllt.
+  before_action :set_secretary_link_if_present, only: %i[show]
 
   # Es gibt bewusst kein #index: Die frühere Action lieferte per Game.all die
   # komplette Spieltabelle, ohne Filter und ohne Grenze, öffentlich per
@@ -48,7 +63,11 @@ class GamesController < ApplicationController
           game.full_hash
         end
       end
-    hash[:permission] = game.user_permissions(current_user) if current_user
+    hash[:permission] = if current_user
+                          game.user_permissions(current_user)
+                        elsif @secretary_link
+                          _secretary_permissions(game)
+                        end
     hash.merge!(_checklist_hash(game)) if current_user || @secretary_link
     if current_user
       ph = current_user.permission_hash
@@ -990,7 +1009,7 @@ class GamesController < ApplicationController
   end
 
   def _checklist_incomplete_error(game)
-    sa = game.game_day.club&.state_association
+    sa = game.state_association
     return nil unless sa&.checklist_items&.any?
 
     required_ids = sa.checklist_items.pluck(:id).sort
@@ -1001,16 +1020,18 @@ class GamesController < ApplicationController
   end
 
   def _maybe_send_checklist_confirmation(game)
-    # Beide Mails unabhängig voneinander auslösen: Die Ausrichter-Mail hängt an
-    # der Checkliste des Vereins-LV, die Schiri-Portal-Mail am LV der Liga – diese
-    # können bei ligaübergreifenden Konstellationen abweichen.
+    # Beide Mails hängen an derselben Checkliste, nämlich der des LV des
+    # Spielbetriebs (siehe Game#state_association). Sie bleiben dennoch getrennt,
+    # weil sie unterschiedliche Empfänger und Bedingungen haben: die eine den
+    # Ausrichterverein und hinterlegte Antworten, die andere das Gespann.
     _send_hosting_club_checklist_mail(game)
     _send_referee_portal_notice(game)
   end
 
-  # Ausrichter-Mail mit Token-Veto-Link (Checkliste des LV des Ausrichtervereins).
+  # Mail an den Ausrichterverein mit Token-Veto-Link. Empfänger ist der Verein,
+  # maßgeblich für die Checkliste ist aber der LV des Spielbetriebs.
   def _send_hosting_club_checklist_mail(game)
-    sa = game.game_day.club&.state_association
+    sa = game.state_association
     return unless sa&.checklist_items&.any?
 
     answers = game.checklist_answers || []
@@ -1029,12 +1050,11 @@ class GamesController < ApplicationController
     GameMailer.checklist_confirmation(game, sa, answers, hosting_club, raw_token).deliver_later
   end
 
-  # Schiri-Mail mit Portal-Link – nur wenn der LV der Liga (maßgeblich fürs Portal)
-  # eine Checkliste hat. Pro Spielbericht-Abschluss; bei mehreren Spielen eines
-  # Spieltags kann das mehrfach pro Schiri auslösen (Link zeigt stets denselben Spieltag).
+  # Schiri-Mail mit Portal-Link – nur wenn der LV des Spielbetriebs eine Checkliste
+  # hat. Pro Spielbericht-Abschluss; bei mehreren Spielen eines Spieltags kann das
+  # mehrfach pro Schiri auslösen (Link zeigt stets denselben Spieltag).
   def _send_referee_portal_notice(game)
-    league_sa = game.game_day.league&.game_operation&.state_association
-    return unless league_sa&.checklist_items&.any?
+    return unless game.state_association&.checklist_items&.any?
 
     assignment = game.referee_assignment
     emails = [assignment&.referee1&.email, assignment&.referee2&.email].reject(&:blank?).uniq
@@ -1047,7 +1067,7 @@ class GamesController < ApplicationController
     game = Game.find(params[:id])
     return render json: { error: 'Ungültiger Link.' }, status: :unauthorized unless valid_veto_token?(game, params[:token])
 
-    sa = game.game_day.club&.state_association
+    sa = game.state_association
     items = sa&.checklist_items&.order(:position).to_a || []
 
     render json: {
@@ -1070,7 +1090,17 @@ class GamesController < ApplicationController
       return render json: { error: 'Ein Einspruch wurde bereits eingereicht.' }, status: :unprocessable_entity
     end
 
-    answers = params.require(:answers).map { |a| a.permit(:item_id, :question, :answer).to_h }
+    raw = params.require(:answers)
+    # Shape zuerst: `.map` auf etwas anderem als einer Liste (oder auf einer
+    # Liste von Strings) stirbt sonst in `permit` und wird zum 500er samt
+    # Sentry-Eintrag auf einem öffentlichen Endpunkt.
+    unless raw.is_a?(Array) && raw.all? { |a| a.respond_to?(:permit) }
+      return render json: { error: 'Ungültiges Format.' }, status: :unprocessable_entity
+    end
+
+    answers = _normalized_veto_answers(game, raw)
+    return render json: { error: 'Ungültiges Format.' }, status: :unprocessable_entity if answers.nil?
+
     game.update_columns(checklist_veto_answers: answers, checklist_veto_submitted_at: Time.current)
 
     _send_checklist_veto_notification(game)
@@ -1078,8 +1108,46 @@ class GamesController < ApplicationController
     render json: { success: true }
   end
 
+  # Normalisiert die eingereichten Einspruchs-Antworten gegen die Checklisten-Items
+  # des Landesverbands. nil, wenn der Einspruch nicht genau einmal jede Frage mit
+  # true/false beantwortet.
+  #
+  # Streng, weil update_columns den Antwortsatz vollständig ersetzt und die
+  # Benachrichtigung ihn als „Vollständige neue Bewertung" verschickt: Eine
+  # Teilmenge würde die übrigen Fragen stillschweigend unterschlagen, eine doppelte
+  # id dieselbe Frage zweimal mit widersprüchlichen Antworten zeigen. Ein String
+  # "false" ist in Ruby wahr und hätte die Mail das Gegenteil behaupten lassen.
+  #
+  # `question` kommt bewusst aus der Datenbank, nicht aus der Anfrage: der Text
+  # steht in einer Mail an das betroffene Gespann und darf nicht vom Absender
+  # des Einspruchs bestimmt werden.
+  def _normalized_veto_answers(game, raw)
+    # Gleiche Quelle wie show_checklist_veto, sonst prüft der Server gegen einen
+    # anderen Fragensatz als die Seite anzeigt und weist jeden Einspruch als
+    # unvollständig ab.
+    items = game.state_association&.checklist_items&.order(:position).to_a || []
+    return nil if items.empty?
+
+    submitted = raw.map { |a| a.permit(:item_id, :question, :answer).to_h }
+    by_id = {}
+    submitted.each do |answer|
+      return nil unless [true, false].include?(answer['answer'])
+
+      id = answer['item_id'].to_i
+      return nil if by_id.key?(id)
+
+      by_id[id] = answer['answer']
+    end
+
+    return nil unless by_id.keys.sort == items.map(&:id).sort
+
+    items.map { |item| { 'item_id' => item.id, 'question' => item.question, 'answer' => by_id[item.id] } }
+  end
+
   def _send_checklist_veto_notification(game)
-    sa = game.game_day.club&.state_association
+    # Benachrichtigt wird die SBK des Spielbetriebs, nicht die des
+    # Ausrichter-LV: nur sie verantwortet die Liga, in der gespielt wurde.
+    sa = game.state_association
     return unless sa
 
     assignment = game.referee_assignment
@@ -1099,6 +1167,10 @@ class GamesController < ApplicationController
   end
 
   def _maybe_send_incident_report_reminder(game)
+    # Ohne den digitalen Berichtsworkflow bleibt es beim analogen Vor-Ort-Prozess
+    # (Papierbericht) – dann ist auch keine 24h-Frist zu melden.
+    return unless game.report_form_workflow_enabled?
+
     has_spielausschluss = (game.events || []).any? { |e| e['penalty_id'].to_s == '5' }
     return unless game.special_event? || has_spielausschluss
 
@@ -1113,8 +1185,14 @@ class GamesController < ApplicationController
     RefereeMailer.incident_report_reminder(r1, r2, game, deadline).deliver_later
   end
 
+  def _secretary_permissions(game)
+    return [] unless secretary_token_permits_game?(game)
+
+    SECRETARY_PERMISSIONS
+  end
+
   def _checklist_hash(game)
-    sa = game.game_day.club&.state_association
+    sa = game.state_association
     items = sa&.checklist_items&.to_a || []
     {
       checklist_active: items.any?,
@@ -1147,6 +1225,15 @@ class GamesController < ApplicationController
   # Admin/SBK des Spielbetriebs sowie VM/TM der beteiligten Mannschaften
   # (inkl. Spielgemeinschafts-Vereine) dürfen die internen Felder lesen.
   def can_view_hidden_elements?(game)
+    # Spielsekretariat per Einmal-Link: darf genau die Spiele seines Spieltags
+    # sehen. Es bearbeitet ohnehin schon den Spielbericht dieser Spiele (siehe
+    # SECRETARY_ACTIONS), braucht die internen Felder also, um sie zu füllen.
+    return secretary_token_permits_game?(game) if @secretary_link
+
+    # Ohne Login und ohne Token gibt es nichts zu zeigen. Vorher lief das in ein
+    # NoMethodError auf nil, sobald die Action ohne current_user erreichbar war.
+    return false unless current_user
+
     ph = current_user.permission_hash
     go_id = game.league&.game_operation_id.to_i
     return true if ph[:admin].to_a.intersect?([0, go_id]) || ph[:sbk].to_a.intersect?([0, go_id])
@@ -1240,7 +1327,7 @@ class GamesController < ApplicationController
 
   def _maybe_send_game_day_scan_reminder(game)
     game_day = game.game_day
-    return unless game_day.league.game_operation.state_association&.scan_required?
+    return unless game.state_association&.scan_required?
 
     all_closed = game_day.games.reload.all? do |g|
       %w[match_record_closed finalized].include?(g.game_status)

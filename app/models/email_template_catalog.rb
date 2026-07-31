@@ -211,7 +211,13 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_from: nil,
       default_reply_to: nil,
       placeholders: [
-        { key: 'game_number', description: 'Spielnummer' }
+        { key: 'game_number', description: 'Spielnummer' },
+        # Ohne diese beiden Platzhalter könnte eine gepflegte Vorlage weder den
+        # Link noch die Frist enthalten: ein nicht leerer Body ersetzt das
+        # ERB-View vollständig (siehe TemplatedMailer), und nur dort stehen
+        # @upload_url und @deadline.
+        { key: 'upload_url', description: 'Adresse der Spielseite mit dem Upload des Berichtsformulars' },
+        { key: 'deadline', description: 'Frist für die Abgabe (Datum und Uhrzeit)' }
       ]
     },
     'RefereeMailer#referee_report_to_vsk' => {

@@ -1,27 +1,58 @@
 require 'csv'
 
 class RefereeCourseImportService
-  # CSV-Parsing ist positional, weil der Header doppelte Spaltennamen
-  # ("Kurs 1"/"Kurs 2") enthält und CSV.parse damit keine eindeutige
-  # Header-Map liefert. Die Constants unten sind die single source of truth
-  # für die Spaltenreihenfolge.
-  COLUMN_LIZENZNUMMER  = 0
-  COLUMN_NACHNAME      = 1
-  COLUMN_VORNAME       = 2
-  COLUMN_GEBURTSDATUM  = 3
-  COLUMN_VEREIN        = 4
-  COLUMN_EMAIL         = 5
-  COLUMN_KURS1_STUFE   = 6
-  COLUMN_KURS1_DATUM   = 7
-  COLUMN_KURS1_VERSION = 8
-  COLUMN_KURS1_PUNKTE  = 9
-  COLUMN_KURS2_STUFE   = 10
-  COLUMN_KURS2_DATUM   = 11
-  COLUMN_KURS2_VERSION = 12
-  COLUMN_KURS2_PUNKTE  = 13
-  COLUMN_AUSBILDER     = 14
+  # Spalten werden primär über die Header-Namen aufgelöst. Die LV-Vorlagen
+  # enthalten zusätzliche Arbeitsspalten (z. B. "Kommentar LV" vor "Ausbilder"),
+  # die bei rein positionalem Lesen alles dahinter verschieben — und zwar still,
+  # weil überzählige Spalten schlicht ignoriert werden.
+  FIELD_ALIASES = {
+    lizenznummer:  ['lizenznummer'].freeze,
+    nachname:      %w[name nachname].freeze,
+    vorname:       ['vorname'].freeze,
+    geburtsdatum:  ['geburtsdatum'].freeze,
+    verein:        ['verein'].freeze,
+    email:         ['e-mail adresse', 'e-mail', 'email', 'e-mail-adresse'].freeze,
+    kurs1_stufe:   ['kurs 1'].freeze,
+    kurs1_datum:   ['kurs 1 datum'].freeze,
+    kurs1_version: ['kurs 1 testversion'].freeze,
+    kurs1_punkte:  ['kurs 1 punkte'].freeze,
+    kurs2_stufe:   ['kurs 2'].freeze,
+    kurs2_datum:   ['kurs 2 datum'].freeze,
+    kurs2_version: ['kurs 2 testversion'].freeze,
+    kurs2_punkte:  ['kurs 2 punkte'].freeze,
+    ausbilder:     ['ausbilder', 'ausbilder/in', 'ausbilder(in)', 'ausbilderin',
+                    'ausbilder*in', 'name ausbilder'].freeze
+  }.freeze
 
-  EXPECTED_COLUMN_COUNT = 15
+  # Spaltenreihenfolge der Alt-Vorlage. Sie wiederholt denselben Namen für Stufe,
+  # Datum und Punkte ("Kurs 1;Kurs 1;Kurs 1 Testversion;Kurs 1") und ist deshalb
+  # nicht über den Header auflösbar — nur für sie gilt diese Zuordnung, siehe
+  # legacy_layout?.
+  DEFAULT_COLUMNS = {
+    lizenznummer: 0, nachname: 1, vorname: 2, geburtsdatum: 3, verein: 4, email: 5,
+    kurs1_stufe: 6, kurs1_datum: 7, kurs1_version: 8, kurs1_punkte: 9,
+    kurs2_stufe: 10, kurs2_datum: 11, kurs2_version: 12, kurs2_punkte: 13,
+    ausbilder: 14
+  }.freeze
+
+  # Breite der Alt-Vorlage. Bewusst als Literal und nicht als DEFAULT_COLUMNS.size:
+  # käme später ein Feld hinzu (etwa ein Kurs 3), würde sich sonst die Schwelle
+  # mitverschieben und der Fallback für echte Alt-Dateien anders greifen.
+  LEGACY_COLUMN_COUNT = 15
+
+  REQUIRED_FIELDS = %i[lizenznummer nachname vorname geburtsdatum].freeze
+
+  # Plausibilitätsgrenzen für Datumsangaben. Date.strptime nimmt mit %Y auch
+  # zweistellige Jahre an ("03.08.25" → Jahr 25), was aus einem als TT.MM.JJ
+  # formatierten Excel-Blatt kommt und sonst unbemerkt eine Lizenz mit
+  # Ablaufdatum in der Antike schreibt.
+  MIN_PLAUSIBLE_YEAR = 1900
+
+  FIELD_LABELS = {
+    lizenznummer: 'Lizenznummer', nachname: 'Name', vorname: 'Vorname',
+    geburtsdatum: 'Geburtsdatum', verein: 'Verein', email: 'E-Mail Adresse',
+    ausbilder: 'Ausbilder'
+  }.freeze
 
   attr_reader :errors
 
@@ -33,7 +64,7 @@ class RefereeCourseImportService
   end
 
   def call
-    rows = parse_csv
+    rows, columns = parse_csv
     return nil if rows.nil?
 
     ActiveRecord::Base.transaction do
@@ -45,7 +76,7 @@ class RefereeCourseImportService
       )
 
       rows.each do |row|
-        create_result(import, row)
+        create_result(import, row, columns)
       end
 
       import
@@ -57,29 +88,48 @@ class RefereeCourseImportService
   def parse_csv
     content = @csv_content.dup
     content.force_encoding('UTF-8') if content.encoding != Encoding::UTF_8
+    # Encoding vor dem ersten mutierenden Regex prüfen: deutsches Excel schreibt
+    # standardmäßig Windows-1252, und schon `sub!` wirft dagegen ArgumentError
+    # ("invalid byte sequence in UTF-8"). ArgumentError ist kein EncodingError,
+    # der rescue unten greift also nicht und der Upload endete im 500er statt in
+    # dieser Meldung.
+    unless content.valid_encoding?
+      @errors << 'Datei-Encoding wird nicht unterstützt. Bitte die CSV als UTF-8 ' \
+                 'speichern (in Excel: „CSV UTF-8 (durch Trennzeichen getrennt)").'
+      return nil
+    end
+
     # BOM erst nach force_encoding strippen — eine /n-Regex (ASCII-8BIT) gegen
     # einen UTF-8-String mit Nicht-ASCII (Umlauten oder BOM) löst sonst
     # Encoding::CompatibilityError aus.
     content.sub!(/\A\u{FEFF}/, '')
+    # Excel-Exporte mischen die Zeilenenden: mehrzeilige Header-Zellen (in Quotes,
+    # Inhalt "Kurs 1" + LF + "Datum") stehen mit LF, die Datenzeilen enden mit
+    # CRLF. Rubys row_sep-Autoerkennung entscheidet sich dann für "\n" und
+    # scheitert am verbleibenden CR ("Unquoted fields do not allow new line") —
+    # die komplette Datei wird abgewiesen. Das Normalisieren behebt es; das
+    # explizite row_sep unten ist nur Absicherung, danach gibt es kein CR mehr.
+    content.gsub!(/\r\n?/, "\n")
 
-    raw = CSV.parse(content, col_sep: ';', skip_blanks: true)
+    raw = CSV.parse(content, col_sep: ';', row_sep: "\n", skip_blanks: true)
     header = raw.shift
 
-    unless header_looks_valid?(header)
-      @errors << 'CSV-Header nicht erkannt. Die erste Zeile muss die ' \
-                 'Spaltenüberschriften enthalten und mit „Lizenznummer" beginnen.'
-      return nil
-    end
+    columns = resolve_columns(header)
+    return nil if columns.nil?
 
+    # Leer ist eine Zeile, wenn in keiner *ausgewerteten* Spalte etwas steht. Ein
+    # Eintrag allein in einer LV-Arbeitsspalte (etwa „Kommentar LV") erzeugte
+    # sonst eine Ergebniszeile ohne jedes Feld, die den Submit später mit
+    # „fehlt die Lizenzstufe" blockiert, ohne die Zeile zu benennen.
     rows = raw.map { |r| r.map { |v| v.to_s.strip } }
-              .reject { |r| r.all? { |v| v.nil? || v.empty? } }
+              .reject { |r| columns.each_value.all? { |i| r[i].nil? || r[i].empty? } }
 
     if rows.empty?
       @errors << 'CSV enthält keine Datenzeilen.'
       return nil
     end
 
-    rows
+    [rows, columns]
   rescue CSV::MalformedCSVError => e
     @errors << "CSV konnte nicht gelesen werden: #{e.message}"
     nil
@@ -88,26 +138,161 @@ class RefereeCourseImportService
     nil
   end
 
-  def header_looks_valid?(header)
-    return false if header.blank?
+  # Liefert die Feld-zu-Spaltenindex-Zuordnung oder nil (dann steht der Grund in
+  # @errors).
+  #
+  # Der positionale Fallback ist die gefährliche Variante: er schreibt geratene
+  # Indizes und hat vor diesem Umbau genau den Fehler erzeugt, den der Umbau
+  # behebt. Er greift deshalb nur, wenn die Datei nachweislich die Alt-Vorlage
+  # ist — siehe legacy_layout?. Reine Spaltenzahl-Gleichheit genügt nicht.
+  def resolve_columns(header)
+    if header.blank?
+      @errors << 'CSV-Header nicht erkannt. Die erste Zeile muss die ' \
+                 'Spaltenüberschriften enthalten.'
+      return nil
+    end
 
-    first = header.first.to_s.strip.downcase
-    first.include?('lizenznummer')
+    mapped, ambiguous = map_header_columns(header)
+
+    return DEFAULT_COLUMNS if legacy_layout?(header, mapped)
+
+    fatal_ambiguous = ambiguous & REQUIRED_FIELDS
+    if fatal_ambiguous.any?
+      @errors << 'CSV-Spalten nicht eindeutig zuordenbar — auf ' \
+                 "#{label_list(fatal_ambiguous)} passt jeweils mehr als eine Spalte. " \
+                 'Bitte die Spaltenüberschriften der Vorlage verwenden.'
+      return nil
+    end
+
+    missing = REQUIRED_FIELDS - mapped.keys
+    if missing.any?
+      @errors << "CSV fehlen Pflichtspalten: #{label_list(missing)}. " \
+                 'Bitte die Spaltenüberschriften der Vorlage verwenden.'
+      return nil
+    end
+
+    incomplete = incomplete_course_blocks(mapped)
+    if incomplete.any?
+      @errors << "Zu #{incomplete.join(' und ')} fehlt die Datumsspalte " \
+                 "(erwartet „#{incomplete.first} Datum\"). Ohne Kursdatum lässt sich " \
+                 'die Gültigkeit der Lizenz nicht berechnen.'
+      return nil
+    end
+
+    log_unmapped(header, mapped, ambiguous)
+    mapped
   end
 
-  def create_result(import, row)
-    row += [nil] * (EXPECTED_COLUMN_COUNT - row.size) if row.size < EXPECTED_COLUMN_COUNT
+  # Die Alt-Vorlage wiederholt denselben Namen für Stufe, Datum und Punkte
+  # ("Kurs 1;Kurs 1;Kurs 1 Testversion;Kurs 1") und ist deshalb nicht über den
+  # Header auflösbar. Erkennbar ist sie daran, dass sie genau so breit ist wie
+  # DEFAULT_COLUMNS und *kein* per Namen erkanntes Feld der positionalen
+  # Annahme widerspricht. Ohne diese zweite Bedingung würde jede fremde Datei
+  # mit passender Spaltenzahl positional gelesen — bei umsortierten Spalten
+  # landen dann etwa Vor- und Nachname vertauscht in der Datenbank, ohne
+  # Fehlermeldung.
+  def legacy_layout?(header, mapped)
+    return false unless non_empty_header_count(header) == LEGACY_COLUMN_COUNT
+    # Die Pflichtfelder müssen per Namen gefunden worden sein, sonst ist gar
+    # nicht belegt, dass Zeile 1 überhaupt ein Header ist.
+    return false unless REQUIRED_FIELDS.all? { |field| mapped.key?(field) }
 
+    mapped.all? { |field, index| DEFAULT_COLUMNS[field] == index }
+  end
+
+  # Leere Zellen zählen nicht mit: Excel exportiert die benutzte Range und hängt
+  # dabei gern eine angefasste Leerspalte an. header.size würde dadurch von der
+  # Alt-Vorlage abweichen und sie fälschlich als fremde Datei behandeln.
+  def non_empty_header_count(header)
+    header.count { |raw_name| normalize_header_cell(raw_name).present? }
+  end
+
+  # Ein Kursblock, dessen Stufe/Testversion/Punkte erkannt wurden, dessen
+  # Datumsspalte aber nicht: dann ist das Datum vorhanden und wird trotzdem nicht
+  # gelesen. kursstichtag ist das Maximum beider Kursdaten, ein fehlender Block
+  # verkürzt die Lizenzgültigkeit also stillschweigend — deshalb Abbruch.
+  def incomplete_course_blocks(mapped)
+    { 'Kurs 1' => %i[kurs1_stufe kurs1_version kurs1_punkte],
+      'Kurs 2' => %i[kurs2_stufe kurs2_version kurs2_punkte] }.filter_map do |label, siblings|
+      datum = label == 'Kurs 1' ? :kurs1_datum : :kurs2_datum
+      label if siblings.any? { |f| mapped.key?(f) } && !mapped.key?(datum)
+    end
+  end
+
+  def label_list(fields)
+    fields.map { |field| FIELD_LABELS[field] || field.to_s }.join(', ')
+  end
+
+  # Gibt [{ feld => index }, [mehrdeutige felder]] zurück. Ein Feld, dessen
+  # Überschrift gar nicht vorkommt, fehlt in der Map und wird beim Lesen zu nil.
+  # In dieser Methode wird also nicht geraten; der positionale Fallback in
+  # resolve_columns tut es bewusst und ist dort entsprechend abgesichert.
+  # Mehrdeutig ist ein Feld, sobald mehrere Spalten auf seine Alias-Liste
+  # passen — also auch bei zwei verschiedenen Schreibweisen („Name" und
+  # „Nachname"), nicht nur bei wörtlich doppelten Überschriften.
+  def map_header_columns(header)
+    positions = {}
+    header.each_with_index do |raw_name, index|
+      name = normalize_header_cell(raw_name)
+      next if name.empty?
+
+      (positions[name] ||= []) << index
+    end
+
+    mapped    = {}
+    ambiguous = []
+
+    FIELD_ALIASES.each do |field, aliases|
+      indexes = aliases.flat_map { |name| positions.fetch(name, []) }
+      case indexes.size
+      when 0 then next
+      when 1 then mapped[field] = indexes.first
+      else ambiguous << field
+      end
+    end
+
+    [mapped, ambiguous]
+  end
+
+  # /\s+/ deckt U+00A0 nicht ab. Ein geschütztes Leerzeichen in der Überschrift
+  # ist ein verbreitetes Excel- und Copy-Paste-Artefakt und würde die Spalte
+  # unauffindbar machen.
+  def normalize_header_cell(cell)
+    cell.to_s.gsub(/[[:space:] ]+/, ' ').strip.downcase
+  end
+
+  # Beide Richtungen protokollieren: die übrigen Spalten (in der LV-Vorlage sind
+  # das planmäßig die fünf Arbeitsspalten) und die Felder, die wir nicht gefunden
+  # haben — letzteres ist die Angabe, mit der man etwas anfangen kann.
+  def log_unmapped(header, mapped, ambiguous)
+    used = mapped.values
+    extra = header.each_with_index
+                  .reject { |raw_name, index| used.include?(index) || normalize_header_cell(raw_name).empty? }
+                  .map { |raw_name, _| normalize_header_cell(raw_name) }
+    unresolved = (FIELD_ALIASES.keys - mapped.keys).map(&:to_s)
+    return if extra.empty? && unresolved.empty?
+
+    Rails.logger.info(
+      "Kursergebnis-Import #{@filename}: nicht ausgewertete Spalten: " \
+      "#{extra.presence&.join(', ') || '—'}; nicht gefundene Felder: " \
+      "#{unresolved.presence&.join(', ') || '—'}" \
+      "#{ambiguous.any? ? "; mehrdeutig (verworfen): #{ambiguous.join(', ')}" : ''}"
+    )
+  end
+
+  def create_result(import, row, columns)
     warnings = []
 
-    csv_lizenznummer = parse_integer(row[COLUMN_LIZENZNUMMER], field: 'lizenznummer', warnings: warnings)
-    csv_vorname      = presence(row[COLUMN_VORNAME])
-    csv_nachname     = presence(row[COLUMN_NACHNAME])
-    csv_geburtsdatum = parse_date(row[COLUMN_GEBURTSDATUM], field: 'geburtsdatum', warnings: warnings)
-    csv_verein       = presence(row[COLUMN_VEREIN])
-    csv_email        = presence(row[COLUMN_EMAIL])
+    csv_lizenznummer = parse_integer(cell(row, columns, :lizenznummer), field: 'lizenznummer',
+                                                                       warnings: warnings)
+    csv_vorname      = presence(cell(row, columns, :vorname))
+    csv_nachname     = presence(cell(row, columns, :nachname))
+    csv_geburtsdatum = parse_date(cell(row, columns, :geburtsdatum), field: 'geburtsdatum',
+                                                                    warnings: warnings)
+    csv_verein       = presence(cell(row, columns, :verein))
+    csv_email        = presence(cell(row, columns, :email))
 
-    course_data = build_course_data(row, warnings: warnings)
+    course_data = build_course_data(row, columns, warnings: warnings)
     kursstichtag = compute_kursstichtag(course_data)
     gueltigkeit  = compute_gueltigkeit(kursstichtag)
     if kursstichtag.nil?
@@ -244,9 +429,9 @@ class RefereeCourseImportService
     Club.where('LOWER(name) = LOWER(?)', name.strip).first
   end
 
-  def build_course_data(row, warnings:)
-    kurs1_datum = row[COLUMN_KURS1_DATUM].presence
-    kurs2_datum = row[COLUMN_KURS2_DATUM].presence
+  def build_course_data(row, columns, warnings:)
+    kurs1_datum = cell(row, columns, :kurs1_datum).presence
+    kurs2_datum = cell(row, columns, :kurs2_datum).presence
     # Wir validieren das Datum (damit es im Warning auftaucht) und behalten
     # die Rohform in der JSONB-Spalte für UI-Anzeige.
     parse_date(kurs1_datum, field: 'kurs_1_datum', warnings: warnings) if kurs1_datum
@@ -254,19 +439,28 @@ class RefereeCourseImportService
 
     {
       'kurs_1' => {
-        'stufe'       => presence(row[COLUMN_KURS1_STUFE]),
+        'stufe'       => presence(cell(row, columns, :kurs1_stufe)),
         'datum'       => kurs1_datum,
-        'testversion' => presence(row[COLUMN_KURS1_VERSION]),
-        'punkte'      => presence(row[COLUMN_KURS1_PUNKTE])
+        'testversion' => presence(cell(row, columns, :kurs1_version)),
+        'punkte'      => presence(cell(row, columns, :kurs1_punkte))
       },
       'kurs_2' => {
-        'stufe'       => presence(row[COLUMN_KURS2_STUFE]),
+        'stufe'       => presence(cell(row, columns, :kurs2_stufe)),
         'datum'       => kurs2_datum,
-        'testversion' => presence(row[COLUMN_KURS2_VERSION]),
-        'punkte'      => presence(row[COLUMN_KURS2_PUNKTE])
+        'testversion' => presence(cell(row, columns, :kurs2_version)),
+        'punkte'      => presence(cell(row, columns, :kurs2_punkte))
       },
-      'ausbilder' => presence(row[COLUMN_AUSBILDER])
+      'ausbilder' => presence(cell(row, columns, :ausbilder))
     }
+  end
+
+  # Fehlende Spalte oder zu kurze Zeile → nil (kein Fehler). Excel schneidet
+  # leere Zellen am Zeilenende ab, kurze Zeilen sind also normal.
+  def cell(row, columns, field)
+    index = columns[field]
+    return nil if index.nil?
+
+    row[index]
   end
 
   def compute_kursstichtag(course_data)
@@ -317,12 +511,23 @@ class RefereeCourseImportService
         end
       end
 
+    # %Y nimmt auch zwei Stellen an: "03.08.25" ergibt das Jahr 25. Das kommt aus
+    # einem als TT.MM.JJ formatierten Excel-Blatt und ist gefährlicher als ein
+    # unlesbares Datum, weil das Parsen ja gelingt — die Lizenz bekäme ein
+    # Ablaufdatum in der Antike. Solche Werte gelten deshalb als ungültig.
+    parsed = nil if parsed && !plausible_year?(parsed.year)
+
     if parsed.nil? && warnings
       warnings << { 'field' => field, 'raw' => str,
-                    'reason' => 'kein gültiges Datum (erwartet TT.MM.JJJJ oder JJJJ-MM-TT) — Feld wurde verworfen' }
+                    'reason' => 'kein gültiges Datum (erwartet TT.MM.JJJJ oder JJJJ-MM-TT, ' \
+                                'Jahr vierstellig) — Feld wurde verworfen' }
     end
 
     parsed
+  end
+
+  def plausible_year?(year)
+    year.between?(MIN_PLAUSIBLE_YEAR, Date.current.year + 10)
   end
 
   def presence(value)
