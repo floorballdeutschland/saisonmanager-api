@@ -37,6 +37,17 @@ class PublicSecretaryControllerTest < ActionDispatch::IntegrationTest
     assert_kind_of Hash, body['license_lists']
   end
 
+  test 'GET /public/secretary liefert league_id und Verbands-Slug für den Link zur Spielseite' do
+    _link, raw_token = GameDaySecretaryLink.generate!(game_day: @game_day, created_by: @user)
+
+    get '/api/v2/public/secretary', params: { token: raw_token }
+
+    assert_response :success
+    game_day = JSON.parse(response.body)['game_day']
+    assert_equal @league.id, game_day['league_id']
+    assert_equal @go.slug, game_day['game_operation_slug']
+  end
+
   test 'GET /public/secretary liefert valid_until je Lizenz mit aus' do
     player = create(:player, with_licenses: [{ team: @home, status: License::APPROVED }])
     player.licenses.first['valid_until'] = '2026-07-31'
