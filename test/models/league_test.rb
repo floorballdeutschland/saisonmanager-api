@@ -170,6 +170,23 @@ class LeagueTest < ActiveSupport::TestCase
     Arena.create!(name: 'Testhalle', city: 'Teststadt')
   end
 
+  # Liga mit erstem Spieltag in `days_ahead` Tagen. `express` steuert den
+  # Schalter am LV des Spielbetriebs; nil heißt: gar kein LV verknüpft.
+  def express_league(days_ahead:, express:)
+    go =
+      if express.nil?
+        GameOperation.create!(name: 'GO ohne LV', short_name: 'GOX')
+      else
+        sa = StateAssociation.create!(name: "LV #{express}", express_license_enabled: express)
+        GameOperation.create!(name: 'GO mit LV', short_name: 'GOY', state_association_id: sa.id)
+      end
+
+    league = build_league(go)
+    GameDay.create!(league: league, arena: build_arena, club: build_club, number: 1,
+                    date: (Date.current + days_ahead).to_s)
+    league
+  end
+
   def build_game_day(league, arena, club)
     GameDay.create!(league: league, arena: arena, club: club, number: 1, date: '2025-01-01')
   end
@@ -437,6 +454,62 @@ class LeagueTest < ActiveSupport::TestCase
     GameDay.create!(league: league, arena: arena, club: club, number: 1,
                     date: (Date.current + 1).to_s)
     assert league.express_license_window_open?
+  end
+
+  test 'express_license_window_open?: unplausibles Datum bricht die Pruefung nicht ab' do
+    go = build_go
+    league = build_league(go)
+    club = build_club
+    arena = build_arena
+    # game_days.date ist eine Textspalte; ein krummer Eintrag darf die
+    # Expresslizenz-Pruefung nicht zum Serverfehler machen.
+    GameDay.create!(league: league, arena: arena, club: club, number: 1, date: '31.02.2026')
+    GameDay.create!(league: league, arena: arena, club: club, number: 2,
+                    date: (Date.current + 1).to_s)
+
+    assert_equal(Date.current + 1, league.first_game_day_date)
+    assert league.express_license_window_open?
+  end
+
+  test 'express_license_window_open?: nur unplausible Daten ergeben kein Fenster' do
+    go = build_go
+    league = build_league(go)
+    GameDay.create!(league: league, arena: build_arena, club: build_club, number: 1, date: 'unbekannt')
+
+    assert_nil league.first_game_day_date
+    refute league.express_license_window_open?
+  end
+
+  # ---------------------------------------------------------------------------
+  # express_license_possible? — Erlaubnis (LV des Spielbetriebs) und Zeitfenster
+  # (erster Spieltag DIESER Liga) gehoeren zusammen.
+  # ---------------------------------------------------------------------------
+
+  test 'express_license_possible?: LV des Spielbetriebs erlaubt und Fenster offen' do
+    assert express_league(days_ahead: 1, express: true).express_license_possible?
+  end
+
+  test 'express_license_possible?: false wenn der LV des Spielbetriebs es nicht erlaubt' do
+    refute express_league(days_ahead: 1, express: false).express_license_possible?
+  end
+
+  test 'express_license_possible?: false wenn das Fenster noch nicht offen ist' do
+    refute express_league(days_ahead: 10, express: true).express_license_possible?
+  end
+
+  test 'express_license_possible?: false ohne Landesverband am Spielbetrieb' do
+    refute express_league(days_ahead: 1, express: nil).express_license_possible?
+  end
+
+  test 'express_license_possible?: der uebergeordnete Verband kann es freigeben' do
+    parent = StateAssociation.create!(name: 'Dach-LV', express_license_enabled: true)
+    sa = StateAssociation.create!(name: 'Kind-LV', express_license_enabled: false, parent: parent)
+    go = GameOperation.create!(name: 'GO mit Dach', short_name: 'GOD', state_association_id: sa.id)
+    league = build_league(go)
+    GameDay.create!(league: league, arena: build_arena, club: build_club, number: 1,
+                    date: (Date.current + 1).to_s)
+
+    assert league.express_license_possible?
   end
 
   # ---------------------------------------------------------------------------

@@ -1008,7 +1008,7 @@ class GamesController < ApplicationController
   end
 
   def _checklist_incomplete_error(game)
-    sa = game.game_day.club&.state_association
+    sa = game.state_association
     return nil unless sa&.checklist_items&.any?
 
     required_ids = sa.checklist_items.pluck(:id).sort
@@ -1019,16 +1019,18 @@ class GamesController < ApplicationController
   end
 
   def _maybe_send_checklist_confirmation(game)
-    # Beide Mails unabhängig voneinander auslösen: Die Ausrichter-Mail hängt an
-    # der Checkliste des Vereins-LV, die Schiri-Portal-Mail am LV der Liga – diese
-    # können bei ligaübergreifenden Konstellationen abweichen.
+    # Beide Mails hängen an derselben Checkliste, nämlich der des LV des
+    # Spielbetriebs (siehe Game#state_association). Sie bleiben dennoch getrennt,
+    # weil sie unterschiedliche Empfänger und Bedingungen haben: die eine den
+    # Ausrichterverein und hinterlegte Antworten, die andere das Gespann.
     _send_hosting_club_checklist_mail(game)
     _send_referee_portal_notice(game)
   end
 
-  # Ausrichter-Mail mit Token-Veto-Link (Checkliste des LV des Ausrichtervereins).
+  # Mail an den Ausrichterverein mit Token-Veto-Link. Empfänger ist der Verein,
+  # maßgeblich für die Checkliste ist aber der LV des Spielbetriebs.
   def _send_hosting_club_checklist_mail(game)
-    sa = game.game_day.club&.state_association
+    sa = game.state_association
     return unless sa&.checklist_items&.any?
 
     answers = game.checklist_answers || []
@@ -1047,12 +1049,11 @@ class GamesController < ApplicationController
     GameMailer.checklist_confirmation(game, sa, answers, hosting_club, raw_token).deliver_later
   end
 
-  # Schiri-Mail mit Portal-Link – nur wenn der LV der Liga (maßgeblich fürs Portal)
-  # eine Checkliste hat. Pro Spielbericht-Abschluss; bei mehreren Spielen eines
-  # Spieltags kann das mehrfach pro Schiri auslösen (Link zeigt stets denselben Spieltag).
+  # Schiri-Mail mit Portal-Link – nur wenn der LV des Spielbetriebs eine Checkliste
+  # hat. Pro Spielbericht-Abschluss; bei mehreren Spielen eines Spieltags kann das
+  # mehrfach pro Schiri auslösen (Link zeigt stets denselben Spieltag).
   def _send_referee_portal_notice(game)
-    league_sa = game.game_day.league&.game_operation&.state_association
-    return unless league_sa&.checklist_items&.any?
+    return unless game.state_association&.checklist_items&.any?
 
     assignment = game.referee_assignment
     emails = [assignment&.referee1&.email, assignment&.referee2&.email].reject(&:blank?).uniq
@@ -1065,7 +1066,7 @@ class GamesController < ApplicationController
     game = Game.find(params[:id])
     return render json: { error: 'Ungültiger Link.' }, status: :unauthorized unless valid_veto_token?(game, params[:token])
 
-    sa = game.game_day.club&.state_association
+    sa = game.state_association
     items = sa&.checklist_items&.order(:position).to_a || []
 
     render json: {
@@ -1088,7 +1089,17 @@ class GamesController < ApplicationController
       return render json: { error: 'Ein Einspruch wurde bereits eingereicht.' }, status: :unprocessable_entity
     end
 
-    answers = params.require(:answers).map { |a| a.permit(:item_id, :question, :answer).to_h }
+    raw = params.require(:answers)
+    # Shape zuerst: `.map` auf etwas anderem als einer Liste (oder auf einer
+    # Liste von Strings) stirbt sonst in `permit` und wird zum 500er samt
+    # Sentry-Eintrag auf einem öffentlichen Endpunkt.
+    unless raw.is_a?(Array) && raw.all? { |a| a.respond_to?(:permit) }
+      return render json: { error: 'Ungültiges Format.' }, status: :unprocessable_entity
+    end
+
+    answers = _normalized_veto_answers(game, raw)
+    return render json: { error: 'Ungültiges Format.' }, status: :unprocessable_entity if answers.nil?
+
     game.update_columns(checklist_veto_answers: answers, checklist_veto_submitted_at: Time.current)
 
     _send_checklist_veto_notification(game)
@@ -1096,8 +1107,46 @@ class GamesController < ApplicationController
     render json: { success: true }
   end
 
+  # Normalisiert die eingereichten Einspruchs-Antworten gegen die Checklisten-Items
+  # des Landesverbands. nil, wenn der Einspruch nicht genau einmal jede Frage mit
+  # true/false beantwortet.
+  #
+  # Streng, weil update_columns den Antwortsatz vollständig ersetzt und die
+  # Benachrichtigung ihn als „Vollständige neue Bewertung" verschickt: Eine
+  # Teilmenge würde die übrigen Fragen stillschweigend unterschlagen, eine doppelte
+  # id dieselbe Frage zweimal mit widersprüchlichen Antworten zeigen. Ein String
+  # "false" ist in Ruby wahr und hätte die Mail das Gegenteil behaupten lassen.
+  #
+  # `question` kommt bewusst aus der Datenbank, nicht aus der Anfrage: der Text
+  # steht in einer Mail an das betroffene Gespann und darf nicht vom Absender
+  # des Einspruchs bestimmt werden.
+  def _normalized_veto_answers(game, raw)
+    # Gleiche Quelle wie show_checklist_veto, sonst prüft der Server gegen einen
+    # anderen Fragensatz als die Seite anzeigt und weist jeden Einspruch als
+    # unvollständig ab.
+    items = game.state_association&.checklist_items&.order(:position).to_a || []
+    return nil if items.empty?
+
+    submitted = raw.map { |a| a.permit(:item_id, :question, :answer).to_h }
+    by_id = {}
+    submitted.each do |answer|
+      return nil unless [true, false].include?(answer['answer'])
+
+      id = answer['item_id'].to_i
+      return nil if by_id.key?(id)
+
+      by_id[id] = answer['answer']
+    end
+
+    return nil unless by_id.keys.sort == items.map(&:id).sort
+
+    items.map { |item| { 'item_id' => item.id, 'question' => item.question, 'answer' => by_id[item.id] } }
+  end
+
   def _send_checklist_veto_notification(game)
-    sa = game.game_day.club&.state_association
+    # Benachrichtigt wird die SBK des Spielbetriebs, nicht die des
+    # Ausrichter-LV: nur sie verantwortet die Liga, in der gespielt wurde.
+    sa = game.state_association
     return unless sa
 
     assignment = game.referee_assignment
@@ -1117,6 +1166,10 @@ class GamesController < ApplicationController
   end
 
   def _maybe_send_incident_report_reminder(game)
+    # Ohne den digitalen Berichtsworkflow bleibt es beim analogen Vor-Ort-Prozess
+    # (Papierbericht) – dann ist auch keine 24h-Frist zu melden.
+    return unless game.report_form_workflow_enabled?
+
     has_spielausschluss = (game.events || []).any? { |e| e['penalty_id'].to_s == '5' }
     return unless game.special_event? || has_spielausschluss
 
@@ -1138,7 +1191,7 @@ class GamesController < ApplicationController
   end
 
   def _checklist_hash(game)
-    sa = game.game_day.club&.state_association
+    sa = game.state_association
     items = sa&.checklist_items&.to_a || []
     {
       checklist_active: items.any?,
@@ -1273,7 +1326,7 @@ class GamesController < ApplicationController
 
   def _maybe_send_game_day_scan_reminder(game)
     game_day = game.game_day
-    return unless game_day.league.game_operation.state_association&.scan_required?
+    return unless game.state_association&.scan_required?
 
     all_closed = game_day.games.reload.all? do |g|
       %w[match_record_closed finalized].include?(g.game_status)
