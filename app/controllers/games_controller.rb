@@ -21,8 +21,8 @@ class GamesController < ApplicationController
 
   VETO_ACTIONS = %i[show_checklist_veto submit_checklist_veto].freeze
 
-  skip_before_action :authenticate_user, only: %i[index show] + SECRETARY_ACTIONS + VETO_ACTIONS
-  before_action :authenticate_public_request, only: %i[index show] + VETO_ACTIONS
+  skip_before_action :authenticate_user, only: %i[show] + SECRETARY_ACTIONS + VETO_ACTIONS
+  before_action :authenticate_public_request, only: %i[show] + VETO_ACTIONS
   before_action :authenticate_with_secretary_token_or_user, only: SECRETARY_ACTIONS
   # `show` bleibt öffentlich (API-Key oder Cookie) und darf deshalb NICHT in
   # SECRETARY_ACTIONS: dort würde ein Token erzwungen und der anonyme Zugriff auf
@@ -30,10 +30,11 @@ class GamesController < ApplicationController
   # `show` wertet @secretary_link seit je aus, es wurde nur nie gefüllt.
   before_action :set_secretary_link_if_present, only: %i[show]
 
-  # GET /games
-  def index
-    @games = Game.all
-  end
+  # Es gibt bewusst kein #index: Die frühere Action lieferte per Game.all die
+  # komplette Spieltabelle, ohne Filter und ohne Grenze, öffentlich per
+  # API-Key. Ersatz sind die gescopten Endpunkte leagues/:id/schedule,
+  # leagues/:id/game_days/:game_day_number/schedule (die Spieltagsnummer
+  # innerhalb der Liga, nicht die GameDay-ID) und teams/:id/matches.
 
   # GET /games/1
   def show
