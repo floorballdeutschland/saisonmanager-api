@@ -1070,6 +1070,15 @@ class GamesController < ApplicationController
     end
 
     answers = params.require(:answers).map { |a| a.permit(:item_id, :question, :answer).to_h }
+    # Dieselbe Prüfung wie in set_checklist_answers, und hier besonders wichtig:
+    # Die Benachrichtigung an SBK, Verein und Gespann vergleicht strikt gegen
+    # true/false. Ein String "false" ist in Ruby wahr, die Mail würde daraus „Ja"
+    # machen und die beanstandeten Punkte als leere Liste ausgeben – also das
+    # Gegenteil des Einspruchs behaupten.
+    unless answers.is_a?(Array) && answers.all? { |a| a.key?('item_id') && [true, false].include?(a['answer']) }
+      return render json: { error: 'Ungültiges Format.' }, status: :unprocessable_entity
+    end
+
     game.update_columns(checklist_veto_answers: answers, checklist_veto_submitted_at: Time.current)
 
     _send_checklist_veto_notification(game)
