@@ -535,7 +535,105 @@ class GameTest < ActiveSupport::TestCase
     assert game.can_edit_lineup?(build_user([{ 'user_group_id' => 1, 'game_operation_id' => 0 }]))
   end
 
+  # ---------------------------------------------------------------------------
+  # formatted_events: Meldung „missing scorer"
+  # ---------------------------------------------------------------------------
+
+  # Ein Event ohne Spielernummer und ohne Tor-/Straf-/Standmarkierung liegt in
+  # einzelnen Spielen in der Datenbank (u. a. mit einer ID aus dem für Time-Outs
+  # belegten Bereich) und erzeugte eine Sentry-Meldung pro Seitenaufruf.
+  test 'formatted_events meldet Leerzeilen ohne Tor- und Strafbezug nicht' do
+    game = game_with_events([
+      { 'id' => Game::TIMEOUT_EVENT_ID_BASE + 2, 'time' => '16:46', 'period' => 1,
+        'event_team' => 'guest', 'home_goals' => nil, 'guest_goals' => nil, 'guest_number' => nil }
+    ])
+
+    messages = capture_sentry_messages { game.formatted_events }
+
+    assert_empty messages
+  end
+
+  # Der eigentliche Regressionstest: sort_events! laeuft bei jedem add/update/
+  # remove_event ueber alle Zeilen und schreibt den laufenden Spielstand auch in
+  # eine leere Zeile. Wuerde scoring_event? auf home_goals/guest_goals sehen,
+  # waere die Zeile ab der ersten Bearbeitung des Spiels wieder ein Treffer
+  # (0.present? ist true) und die Meldung kaeme zurueck.
+  test 'formatted_events meldet Leerzeilen auch nach sort_events! nicht' do
+    game = game_with_events([
+      { 'id' => Game::TIMEOUT_EVENT_ID_BASE + 2, 'time' => '16:46', 'period' => 1,
+        'event_team' => 'guest', 'home_goals' => nil, 'guest_goals' => nil, 'guest_number' => nil }
+    ])
+    game.sort_events!
+
+    assert_equal 0, game.events.first['home_goals'], 'Vorbedingung: sort_events! stempelt den Stand'
+
+    messages = capture_sentry_messages { game.formatted_events }
+
+    assert_empty messages
+  end
+
+  test 'formatted_events meldet ein Tor ohne Schuetzen weiterhin' do
+    game = game_with_events([
+      { 'id' => 1, 'time' => '05:00', 'period' => 1, 'event_team' => 'home',
+        'event_type' => 'goal', 'home_goals' => 1, 'guest_goals' => 0 }
+    ])
+
+    messages = capture_sentry_messages { game.formatted_events }
+
+    assert_equal 1, messages.size
+    assert_includes messages.first, 'missing scorer'
+  end
+
+  # Ein Tor beim Stand 0:0 ohne gesetzten goal_type: nur event_type weist die
+  # Zeile als Tor aus. Ohne event_type in SCORING_EVENT_KEYS fiele genau dieses
+  # Tor stillschweigend aus der Ueberwachung.
+  test 'formatted_events meldet ein Tor ohne Schuetzen auch beim Stand 0:0' do
+    game = game_with_events([
+      { 'id' => 1, 'time' => '00:42', 'period' => 1, 'event_team' => 'home',
+        'event_type' => 'goal', 'home_goals' => 0, 'guest_goals' => 0 }
+    ])
+
+    messages = capture_sentry_messages { game.formatted_events }
+
+    assert_equal 1, messages.size
+    assert_includes messages.first, 'missing scorer'
+  end
+
+  # Eine Strafe ohne Spielernummer bleibt meldepflichtig, auch wenn der
+  # Strafenkatalog-Eintrag fehlt: event_type traegt die Zeile.
+  test 'formatted_events meldet eine Strafe ohne Schuetzen weiterhin' do
+    game = game_with_events([
+      { 'id' => 2, 'time' => '12:00', 'period' => 2, 'event_team' => 'guest',
+        'event_type' => 'penalty', 'penalty_id' => 7 }
+    ])
+
+    messages = capture_sentry_messages { game.formatted_events }
+
+    assert_equal 1, messages.size
+    assert_includes messages.first, 'missing scorer'
+  end
+
+  test 'formatted_events haengt die Time-Out-Pseudo-Events an' do
+    game = game_with_events([], home_timeout_string: '16:22 / 1')
+
+    timeout = game.formatted_events.find { |e| e[:event_type] == 'timeout' }
+
+    assert_equal Game::TIMEOUT_EVENT_ID_BASE + 1, timeout[:event_id]
+  end
+
   private
+
+  def game_with_events(events, attrs = {})
+    create(:setting, current_season_id: '18')
+    league = create(:league, game_operation: create(:game_operation), season_id: '18')
+    create(:game, { game_day: create(:game_day, league: league), events: events }.merge(attrs))
+  end
+
+  def capture_sentry_messages(&block)
+    messages = []
+    Sentry.stub(:capture_message, ->(message, *) { messages << message }, &block)
+    messages
+  end
 
   def scoped_game(game_operation)
     league = create(:league, game_operation: game_operation, season_id: '18')
