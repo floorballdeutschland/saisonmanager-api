@@ -140,16 +140,28 @@ class Game < ApplicationRecord
 
   # Time-Outs stehen nicht in events, sondern in home_timeout_string bzw.
   # guest_timeout_string. extract_timeout_information baut daraus Pseudo-Events
-  # mit den IDs 9001/9002; dieser Bereich ist damit belegt und taucht in
-  # formatted_events auf, ohne je gespeichert zu sein.
+  # mit den IDs 9001/9002, die in formatted_events auftauchen, ohne je
+  # gespeichert zu sein.
+  #
+  # ACHTUNG: reserviert ist der Bereich damit NICHT. add_event vergibt
+  # max_id + 1 ohne Ausnahme und kann dieselbe ID an ein echtes, gespeichertes
+  # Event vergeben (so geschehen in Spiel 24597). Die Pseudo-Events tragen
+  # event_id, gespeicherte Events tragen id – im ausgelieferten Hash steht
+  # beides als event_id nebeneinander.
   TIMEOUT_EVENT_ID_BASE = 9000
 
-  # Erhebt das Event überhaupt Anspruch auf einen Schützen? Ein Tor- oder
-  # Straf-Ereignis trägt mindestens eine dieser Markierungen. Fehlt jede davon,
-  # ist der Eintrag eine Leerzeile: Es gibt keinen Wert, der in Ergebnis,
-  # Scorerliste oder Strafenwertung einfließen könnte, und damit auch keinen
-  # fehlenden Schützen.
-  SCORING_EVENT_KEYS = %w[penalty_id penalty_code_id goal_type home_goals guest_goals].freeze
+  # Erhebt das Event überhaupt Anspruch auf einen Schützen?
+  #
+  # event_type ist der einzige Schlüssel, den beide Schreibwege (add_event und
+  # update_event) unbedingt setzen; goal_type dagegen nur `if present?`, ein
+  # regulär eingetragenes Tor hat den Schlüssel also oft gar nicht.
+  #
+  # home_goals/guest_goals stehen bewusst NICHT in der Liste: sort_events!
+  # schreibt den laufenden Spielstand bei jedem Nicht-Legacy-Spiel in jede
+  # Zeile, auch in eine leere, und 0.present? ist in Ruby true. Über die
+  # Score-Spalten wäre jede Zeile ein Treffer, sobald das Spiel einmal
+  # bearbeitet wurde – der Filter hielte genau bis zur nächsten Änderung.
+  SCORING_EVENT_KEYS = %w[event_type penalty_id penalty_code_id goal_type].freeze
 
   def self.scoring_event?(event)
     SCORING_EVENT_KEYS.any? { |key| event[key].present? }
@@ -1013,10 +1025,11 @@ class Game < ApplicationRecord
         # Spielernummer – bekannt und nicht reparierbar, daher kein Sentry-Rauschen dafür.
         #
         # Ebenso wenig gemeldet werden Events, die überhaupt keinen Anspruch auf
-        # einen Schützen erheben (siehe scoring_event?): Ohne Tor-, Straf- und
-        # Standmarkierung gibt es nichts zu zählen, es fehlt also auch nichts.
-        # Solche Leerzeilen liegen in einzelnen Spielen in der Datenbank und
-        # erzeugten eine Meldung pro Seitenaufruf (Sentry SAISONMANAGER-B).
+        # einen Schützen erheben (siehe scoring_event?): Ohne event_type und
+        # ohne Tor- oder Strafkennzeichen gibt es nichts zu zählen, es fehlt
+        # also auch nichts. Solche Leerzeilen liegen in einzelnen Spielen in der
+        # Datenbank und erzeugten eine Meldung pro Seitenaufruf
+        # (Sentry SAISONMANAGER-B).
         if !legacy && Game.scoring_event?(event)
           Sentry.capture_message("missing scorer, game: #{id}, event: #{event.to_json}, #{error_meta_info}")
         end
