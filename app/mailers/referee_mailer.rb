@@ -15,10 +15,11 @@ class RefereeMailer < ApplicationMailer
   def tentative_assignment_notification(referee, date)
     @referee = referee
     @date = date
-    # Nicht I18n.l: Es gibt nur config/locales/en.yml, die Default-Locale ist
-    # :en, das ergab „January 10, 2026" in einer deutschen Mail. Format wie in
-    # den übrigen Vorlagen. `date` ist hier immer ein Date, der Aufrufer weist
-    # ein nicht lesbares Spieltagsdatum vorher ab.
+    # Explizites Format statt I18n.l, wie in den übrigen Mail-Vorlagen. Seit der
+    # deutschen Locale (config/locales/de.yml) käme I18n.l zwar auf dasselbe
+    # Ergebnis, aber das Format soll hier nicht an einer Locale-Einstellung
+    # hängen. `date` ist immer ein Date, der Aufrufer weist ein nicht lesbares
+    # Spieltagsdatum vorher ab.
     @date_label = date.strftime('%d.%m.%Y')
 
     templated_mail(

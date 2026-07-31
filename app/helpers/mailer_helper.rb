@@ -16,13 +16,11 @@ module MailerHelper
     FrontendUrl.host
   end
 
-  # Spieltagsdatum für die Anzeige. Zwei Gründe, warum hier nicht I18n.l steht:
-  #
-  # 1. game_days.date ist eine Textspalte. I18n.l auf einem String wirft
-  #    ArgumentError („Object must be a Date, DateTime or Time object"), die
-  #    Vorlage konnte damit überhaupt nicht rendern.
-  # 2. Es gibt nur config/locales/en.yml, die Default-Locale ist :en. I18n.l
-  #    hätte in einer deutschen Mail ein englisches Datum ausgegeben.
+  # Spieltagsdatum für die Anzeige. Nicht I18n.l, weil game_days.date eine
+  # Textspalte ist: I18n.l auf einem String wirft ArgumentError („Object must be
+  # a Date, DateTime or Time object"), die Vorlage konnte damit überhaupt nicht
+  # rendern. Die deutsche Locale (config/locales/de.yml) löst das nicht, sie
+  # hätte es nur verdeckt, solange jeder Eintrag lesbar ist.
   #
   # Format wie in den übrigen Mail-Vorlagen (strftime('%d.%m.%Y')). Nicht lesbare
   # Werte werden unverändert ausgegeben, statt die ganze Mail zu verlieren –
