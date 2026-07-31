@@ -130,7 +130,13 @@ class User < ApplicationRecord
   ].freeze
 
   # Setzt ein frisches Reset-Token und verschickt den Link. Liefert zurück, ob
-  # die Mail tatsächlich rausgegangen ist.
+  # die Mail vom Mailserver angenommen wurde.
+  #
+  # Das setzt voraus, dass action_mailer.raise_delivery_errors aktiv ist
+  # (config/environments/production.rb) – direkt darüber steht die
+  # auskommentierte Gegenvariante. Wird die scharf geschaltet, schluckt
+  # deliver_now den Fehler selbst, diese Methode liefert immer true, und der
+  # ganze Rückgabewert wird still bedeutungslos. Kein Test schlägt dann an.
   #
   # Der Versand läuft synchron im Request (es gibt kein Job-Backend). Ein
   # hängender oder abweisender SMTP-Server darf den Aufrufer deshalb nicht mit
