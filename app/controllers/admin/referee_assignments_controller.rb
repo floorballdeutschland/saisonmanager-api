@@ -284,7 +284,22 @@ module Admin
     def notify
       assignment = RefereeAssignment.find(params[:id])
       return unless authorize_game_scope!(assignment.game)
-      date = Date.parse(assignment.game.game_day.date) rescue nil
+
+      # game_days.date ist eine Textspalte; ein unplausibler Eintrag ergab hier
+      # nil und ließ die Mail beim Formatieren des Datums scheitern – still, im
+      # Hintergrund-Job, während die Oberfläche „benachrichtigt" meldete. Ohne
+      # Datum hat die Nachricht ohnehin keinen Inhalt („du bist vorläufig für den
+      # … eingeplant"), deshalb gar nicht senden und den Grund zurückmelden.
+      date = begin
+        Date.parse(assignment.game.game_day.date)
+      rescue Date::Error, TypeError
+        nil
+      end
+
+      if date.nil?
+        return render json: { message: 'Das Datum des Spieltags ist nicht lesbar. Bitte zuerst korrigieren.' },
+                      status: :unprocessable_entity
+      end
 
       assignment.referees.each do |referee|
         next unless referee.email.present?
