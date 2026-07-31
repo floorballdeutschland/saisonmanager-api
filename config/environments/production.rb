@@ -102,9 +102,12 @@ Rails.application.configure do
       }
     end
 
-  # Enable locale fallbacks for I18n (makes lookups for any locale fall back to
-  # the I18n.default_locale when a translation cannot be found).
-  config.i18n.fallbacks = true
+  # Der I18n-Fallback steht jetzt in config/application.rb und gilt damit für
+  # alle Umgebungen. Hier wäre er inzwischen sogar schädlich: `fallbacks = true`
+  # fällt auf die Default-Locale zurück, und die ist seit der deutschen
+  # Datumsausgabe :de – die Kette endete also bei sich selbst statt bei :en.
+  # Außerdem hätte diese Zeile die Einstellung aus application.rb überschrieben,
+  # weil config/environments/* Vorrang hat.
 
   # Don't log any deprecations.
   config.active_support.report_deprecations = false
