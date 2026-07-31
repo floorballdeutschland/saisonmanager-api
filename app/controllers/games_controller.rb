@@ -7,13 +7,28 @@ class GamesController < ApplicationController
     add_event remove_event update_event
     set_referee set_game_status set_flag set_string
     set_checklist_answers
+    show_hidden
   ].freeze
+
+  # Rechte, die ein Spielsekretariats-Link für die Spiele seines Spieltags im
+  # Frontend sichtbar macht (dort werden Bedienelemente über `permission`
+  # eingeblendet). Bewusst eine feste, enge Liste statt der Rechte des
+  # Link-Erstellers: der ist oft Admin oder SBK, und dann bekäme der Link
+  # ungewollt Kontrollrechte über den Spielbericht hinaus. Genau diese Aktionen
+  # erlaubt SECRETARY_ACTIONS dem Token ohnehin schon. Nicht enthalten:
+  # edit_game, check_game, edit_referee_nomination.
+  SECRETARY_PERMISSIONS = %i[pregame_edit_home pregame_edit_guest edit_game_report].freeze
 
   VETO_ACTIONS = %i[show_checklist_veto submit_checklist_veto].freeze
 
   skip_before_action :authenticate_user, only: %i[index show] + SECRETARY_ACTIONS + VETO_ACTIONS
   before_action :authenticate_public_request, only: %i[index show] + VETO_ACTIONS
   before_action :authenticate_with_secretary_token_or_user, only: SECRETARY_ACTIONS
+  # `show` bleibt öffentlich (API-Key oder Cookie) und darf deshalb NICHT in
+  # SECRETARY_ACTIONS: dort würde ein Token erzwungen und der anonyme Zugriff auf
+  # die Spielseite brechen. Der Link wird hier nur gesetzt, wenn er mitkommt –
+  # `show` wertet @secretary_link seit je aus, es wurde nur nie gefüllt.
+  before_action :set_secretary_link_if_present, only: %i[show]
 
   # GET /games
   def index
@@ -47,7 +62,11 @@ class GamesController < ApplicationController
           game.full_hash
         end
       end
-    hash[:permission] = game.user_permissions(current_user) if current_user
+    hash[:permission] = if current_user
+                          game.user_permissions(current_user)
+                        elsif @secretary_link
+                          _secretary_permissions(game)
+                        end
     hash.merge!(_checklist_hash(game)) if current_user || @secretary_link
     if current_user
       ph = current_user.permission_hash
@@ -1165,6 +1184,12 @@ class GamesController < ApplicationController
     RefereeMailer.incident_report_reminder(r1, r2, game, deadline).deliver_later
   end
 
+  def _secretary_permissions(game)
+    return [] unless secretary_token_permits_game?(game)
+
+    SECRETARY_PERMISSIONS
+  end
+
   def _checklist_hash(game)
     sa = game.state_association
     items = sa&.checklist_items&.to_a || []
@@ -1199,6 +1224,15 @@ class GamesController < ApplicationController
   # Admin/SBK des Spielbetriebs sowie VM/TM der beteiligten Mannschaften
   # (inkl. Spielgemeinschafts-Vereine) dürfen die internen Felder lesen.
   def can_view_hidden_elements?(game)
+    # Spielsekretariat per Einmal-Link: darf genau die Spiele seines Spieltags
+    # sehen. Es bearbeitet ohnehin schon den Spielbericht dieser Spiele (siehe
+    # SECRETARY_ACTIONS), braucht die internen Felder also, um sie zu füllen.
+    return secretary_token_permits_game?(game) if @secretary_link
+
+    # Ohne Login und ohne Token gibt es nichts zu zeigen. Vorher lief das in ein
+    # NoMethodError auf nil, sobald die Action ohne current_user erreichbar war.
+    return false unless current_user
+
     ph = current_user.permission_hash
     go_id = game.league&.game_operation_id.to_i
     return true if ph[:admin].to_a.intersect?([0, go_id]) || ph[:sbk].to_a.intersect?([0, go_id])

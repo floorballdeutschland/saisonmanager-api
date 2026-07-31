@@ -16,6 +16,20 @@ module SecretaryTokenAuthenticatable
     end
   end
 
+  # Wie authenticate_with_secretary_token_or_user, aber ohne Zwang: setzt
+  # @secretary_link, wenn ein gültiger Token mitkommt, und lässt die Anfrage
+  # sonst unangetastet. Für Actions, die auch ohne Token erreichbar bleiben
+  # müssen (die öffentliche Spielseite per API-Key), mit Token aber mehr zeigen.
+  #
+  # Ein ungültiger Token wird bewusst ignoriert statt abgewiesen: die Action ist
+  # ohnehin öffentlich, ein 401 würde die Seite nur unbenutzbar machen.
+  def set_secretary_link_if_present
+    raw_token = request.headers['X-Secretary-Token'] || params[:secretary_token]
+    return if raw_token.blank?
+
+    @secretary_link = GameDaySecretaryLink.find_by_token(raw_token)
+  end
+
   # Returns the user ID to record as the author of changes when using secretary token.
   def secretary_or_current_user_id
     current_user&.id || @secretary_link&.created_by_id
