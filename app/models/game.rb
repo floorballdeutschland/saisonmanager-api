@@ -90,17 +90,20 @@ class Game < ApplicationRecord
     game_day.league
   end
 
-  # Landesverband, der den digitalen Berichtsworkflow (rote Karten, besondere
-  # Ereignisse) für dieses Spiel steuert: der LV des Spielbetriebs, nicht der des
-  # Ausrichtervereins. Bei ligaübergreifenden Ansetzungen (Bundesliga-Spiel in
-  # einer Halle eines anderen LV) entscheidet der ausrichtende Spielbetrieb.
-  # Gleiche Quelle wie beim Schiri-Portal-Hinweis der Spieltagscheckliste.
-  def report_form_state_association
+  # Landesverband, dessen Einstellungen für dieses Spiel gelten: der LV des
+  # Spielbetriebs, dem die Liga gehört.
+  #
+  # Nicht der LV des Ausrichtervereins. Die Zuständigkeit folgt der Liga, nicht
+  # dem Hallenstandort: Eine Landes-SBK verantwortet ausschließlich den
+  # Spielbetrieb ihrer eigenen Ligen. Dass ein Bundesligaspiel physisch in der
+  # Halle eines Vereins aus einem anderen LV stattfindet, gibt diesem LV keine
+  # Entscheidungsbefugnis über Spielbericht, Checkliste oder Berichtsworkflow.
+  def state_association
     league&.game_operation&.state_association
   end
 
   def report_form_workflow_enabled?
-    report_form_state_association&.report_form_email_enabled? || false
+    state_association&.report_form_email_enabled? || false
   end
 
   def home_team_name
@@ -748,7 +751,7 @@ class Game < ApplicationRecord
       game_operation_name: league.game_operation.name,
       game_operation_short_name: league.game_operation.short_name,
       game_operation_slug: league.game_operation.slug,
-      scan_required: league.game_operation.state_association&.scan_required || false,
+      scan_required: state_association&.scan_required || false,
       period_titles: league.period_titles,
       current_period_title:,
       arena: game_day.arena_id,

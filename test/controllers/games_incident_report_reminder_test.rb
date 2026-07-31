@@ -3,7 +3,7 @@ require 'test_helper'
 # Die 24h-Erinnerung an das Berichtsformular hängt am digitalen Berichtsworkflow.
 # Maßgeblich ist der LV des Spielbetriebs, nicht der des Ausrichtervereins: ein
 # Bundesliga-Spiel in der Halle eines anderen LV folgt dem ausrichtenden
-# Spielbetrieb (siehe Game#report_form_state_association).
+# Spielbetrieb (siehe Game#state_association).
 class GamesIncidentReportReminderTest < ActionDispatch::IntegrationTest
   include ActiveJob::TestHelper
 
