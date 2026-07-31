@@ -1070,12 +1070,58 @@ class GamesController < ApplicationController
       return render json: { error: 'Ein Einspruch wurde bereits eingereicht.' }, status: :unprocessable_entity
     end
 
-    answers = params.require(:answers).map { |a| a.permit(:item_id, :question, :answer).to_h }
+    raw = params.require(:answers)
+    # Shape zuerst: `.map` auf etwas anderem als einer Liste (oder auf einer
+    # Liste von Strings) stirbt sonst in `permit` und wird zum 500er samt
+    # Sentry-Eintrag auf einem öffentlichen Endpunkt.
+    unless raw.is_a?(Array) && raw.all? { |a| a.respond_to?(:permit) }
+      return render json: { error: 'Ungültiges Format.' }, status: :unprocessable_entity
+    end
+
+    answers = _normalized_veto_answers(game, raw)
+    return render json: { error: 'Ungültiges Format.' }, status: :unprocessable_entity if answers.nil?
+
     game.update_columns(checklist_veto_answers: answers, checklist_veto_submitted_at: Time.current)
 
     _send_checklist_veto_notification(game)
 
     render json: { success: true }
+  end
+
+  # Normalisiert die eingereichten Einspruchs-Antworten gegen die Checklisten-Items
+  # des Landesverbands. nil, wenn der Einspruch nicht genau einmal jede Frage mit
+  # true/false beantwortet.
+  #
+  # Streng, weil update_columns den Antwortsatz vollständig ersetzt und die
+  # Benachrichtigung ihn als „Vollständige neue Bewertung" verschickt: Eine
+  # Teilmenge würde die übrigen Fragen stillschweigend unterschlagen, eine doppelte
+  # id dieselbe Frage zweimal mit widersprüchlichen Antworten zeigen. Ein String
+  # "false" ist in Ruby wahr und hätte die Mail das Gegenteil behaupten lassen.
+  #
+  # `question` kommt bewusst aus der Datenbank, nicht aus der Anfrage: der Text
+  # steht in einer Mail an das betroffene Gespann und darf nicht vom Absender
+  # des Einspruchs bestimmt werden.
+  def _normalized_veto_answers(game, raw)
+    # Gleiche Quelle wie show_checklist_veto, sonst prüft der Server gegen einen
+    # anderen Fragensatz als die Seite anzeigt und weist jeden Einspruch als
+    # unvollständig ab.
+    items = game.state_association&.checklist_items&.order(:position).to_a || []
+    return nil if items.empty?
+
+    submitted = raw.map { |a| a.permit(:item_id, :question, :answer).to_h }
+    by_id = {}
+    submitted.each do |answer|
+      return nil unless [true, false].include?(answer['answer'])
+
+      id = answer['item_id'].to_i
+      return nil if by_id.key?(id)
+
+      by_id[id] = answer['answer']
+    end
+
+    return nil unless by_id.keys.sort == items.map(&:id).sort
+
+    items.map { |item| { 'item_id' => item.id, 'question' => item.question, 'answer' => by_id[item.id] } }
   end
 
   def _send_checklist_veto_notification(game)
