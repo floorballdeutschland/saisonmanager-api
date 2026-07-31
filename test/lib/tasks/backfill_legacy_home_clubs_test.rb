@@ -22,12 +22,19 @@ class BackfillLegacyHomeClubsTest < ActiveSupport::TestCase
 
   # Alle vom Task gelesenen Variablen zurücksetzen, nicht nur die gesetzten:
   # sonst wirkt ein im Shell-Umfeld exportiertes CSV_DIR in jeden Test hinein.
-  def run_task(task, env = {})
+  # allow_exit: der Task beendet sich mit `abort`, wenn ein Profil fehlgeschlagen
+  # ist. Ohne das Abfangen INNERHALB von capture_io ginge die Ausgabe verloren,
+  # und genau die ist bei einem Fehllauf das Interessante.
+  def run_task(task, env = {}, allow_exit: false)
     saved = ENV.to_hash.slice(*TASK_ENV_KEYS)
     TASK_ENV_KEYS.each { |k| ENV.delete(k) }
     env.each { |k, v| ENV[k] = v }
     task.reenable
-    capture_io { task.invoke }.first
+    capture_io do
+      task.invoke
+    rescue SystemExit
+      raise unless allow_exit
+    end.first
   ensure
     TASK_ENV_KEYS.each { |k| ENV.delete(k) }
     saved.each { |k, v| ENV[k] = v }
@@ -165,8 +172,7 @@ class BackfillLegacyHomeClubsTest < ActiveSupport::TestCase
                     clubs: [home_entry(@other_club)])
     @other_club.delete
 
-    output = nil
-    assert_raises(SystemExit) { output = run_task(@backfill, 'DRY_RUN' => 'false') }
+    output = run_task(@backfill, { 'DRY_RUN' => 'false' }, allow_exit: true)
 
     assert_match(/=== Einordnung ===/, output)
     assert_match(/=== Fehler/, output)
