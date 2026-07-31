@@ -5,6 +5,7 @@ module MailerHelper
   # View-Kontext existiert: Betreff und Platzhalter werden im Mailer selbst
   # zusammengebaut, und genau dort scheiterte die Formatierung bisher. In den
   # Vorlagen bleiben die Methoden über den impliziten Empfänger erreichbar.
+
   module_function
 
   def frontend_base_url
