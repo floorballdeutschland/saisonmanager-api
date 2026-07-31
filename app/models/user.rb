@@ -103,6 +103,24 @@ class User < ApplicationRecord
     "#{fullname} (#{user_name})"
   end
 
+  # Fehler, bei denen die Gegenstelle nicht erreichbar war oder die Zustellung
+  # abgebrochen ist. Nur diese werden abgefangen: Sie gehen niemanden ausser
+  # dem Aufrufer etwas an, treffen alle Nutzer gleichermassen zufaellig und
+  # koennen beim naechsten Versuch klappen.
+  #
+  # Alles andere bleibt bewusst ein Serverfehler. Der Mailtext wird nicht aus
+  # einer Datei gerendert, sondern von TemplatedMailer aus der Tabelle
+  # email_templates geholt, die Admins unter /verwaltung/email-vorlagen
+  # bearbeiten – und zwar erst innerhalb von deliver_now. Eine dort eingetragene
+  # kaputte Absenderadresse oder ein defekter Platzhalter wuerde als
+  # StandardError hier landen und den Passwort-Reset systemweit und dauerhaft
+  # stumm ausser Betrieb setzen. Solche Fehler muessen laut auffallen.
+  # Net::ReadTimeout ist ein IOError und damit weiterhin abgedeckt.
+  MAIL_TRANSPORT_ERRORS = [
+    Net::SMTPError, Net::OpenTimeout, IOError, SocketError,
+    Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::EHOSTUNREACH, OpenSSL::SSL::SSLError
+  ].freeze
+
   # Setzt ein frisches Reset-Token und verschickt den Link. Liefert zurück, ob
   # die Mail tatsächlich rausgegangen ist.
   #
@@ -113,16 +131,23 @@ class User < ApplicationRecord
   # Aufrufer entscheidet, ob der Fehlschlag sichtbar wird – die offene
   # „Passwort vergessen"-Route antwortet bewusst immer gleich, die Verwaltung
   # meldet ihn (Sentry SAISONMANAGER-1X).
+  #
+  # Das save steht ausserhalb des rescue: Ein Schreibfehler ist ein
+  # Datenbankproblem und darf nicht als Mailproblem gemeldet werden.
   def send_reset_information
     self.password_reset_token = SecureRandom.uuid
     return false unless save(validate: false)
 
-    UserMailer.reset_password(self).deliver_now
-    true
-  rescue StandardError => e
-    Rails.logger.warn("Passwort-Reset-Mail fehlgeschlagen – User #{id}: #{e.class}: #{e.message}")
-    Sentry.capture_exception(e) if defined?(Sentry)
-    false
+    begin
+      UserMailer.reset_password(self).deliver_now
+      true
+    rescue *MAIL_TRANSPORT_ERRORS => e
+      Rails.logger.error(
+        "Passwort-Reset-Mail fehlgeschlagen (Transport) – User #{id}: #{e.class}: #{e.message}"
+      )
+      Sentry.capture_exception(e) if defined?(Sentry)
+      false
+    end
   end
 
   # --- E-Mail-Änderung mit Bestätigung (Double-Opt-In) ---------------------
