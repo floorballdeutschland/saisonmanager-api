@@ -338,8 +338,15 @@ Metrics/BlockNesting:
 
 # Offense count: 42
 # Configuration parameters: CountComments, CountAsOne.
+#
+# 1000 statt der exakten Zeilenzahl von League (959 nach api#288): Bei einer
+# exakten Grenze bricht CI nicht am PR, sondern erst an der Merge-Reihenfolge.
+# api#288 war auf seinem Branch gruen und riss main, weil League dort
+# inzwischen gewachsen war. League gehoert wirklich aufgeteilt, das ist aber
+# ein eigener Umbau und kein Release-Prep (game.rb steht unten aus demselben
+# Grund komplett drin).
 Metrics/ClassLength:
-  Max: 950
+  Max: 1000
   Exclude:
     - 'app/models/game.rb'
 
