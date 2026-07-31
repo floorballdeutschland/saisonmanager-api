@@ -27,6 +27,13 @@
   <% end %>
 </table>
 
+<% if @referee_notes.present? %>
+<p><strong>Zusätzliche Spielinformationen</strong></p>
+<div style="border-left: 3px solid #ddd; padding-left: 10px; color: #333;">
+  <%= simple_format(@referee_notes) %>
+</div>
+<% end %>
+
 <% if @license_list_url.present? %>
 <p><strong>Lizenzlisten der beteiligten Teams</strong></p>
 <p>

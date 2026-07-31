@@ -294,6 +294,44 @@ class UserTest < ActiveSupport::TestCase
     assert_not items[:menu_item_state_association_admin]
   end
 
+  test 'permissions_items: SBK sieht Verfahrensvorschläge nur bei manueller Verfahrenseröffnung' do
+    sa = StateAssociation.create!(name: 'Verfahren LV', short_name: 'VLV', manual_proceeding_creation: true)
+    go = GameOperation.create!(name: 'Verfahren Region', short_name: 'VFR', path: 'verfahren-region',
+                               state_association: sa)
+    u = build_user(permissions: [{ 'user_group_id' => 2, 'game_operation_id' => go.id }])
+
+    assert u.permissions_items[:menu_item_proceeding_proposal_admin]
+  end
+
+  test 'permissions_items: SBK ohne manuelle Verfahrenseröffnung sieht keine Verfahrensvorschläge' do
+    sa = StateAssociation.create!(name: 'Auto LV', short_name: 'ALV', manual_proceeding_creation: false)
+    go = GameOperation.create!(name: 'Auto Region', short_name: 'AUR', path: 'auto-region',
+                               state_association: sa)
+    u = build_user(permissions: [{ 'user_group_id' => 2, 'game_operation_id' => go.id }])
+
+    assert_not u.permissions_items[:menu_item_proceeding_proposal_admin]
+    # Die übrigen SBK-Menüpunkte bleiben unberührt.
+    assert u.permissions_items[:menu_item_transfer_requests_sbk]
+  end
+
+  test 'permissions_items: Admin sieht Verfahrensvorschläge unabhängig vom Landesverband' do
+    perms = ALL_GO.map { |go| { 'user_group_id' => 1, 'game_operation_id' => go } }
+    u = build_user(permissions: perms)
+
+    assert u.permissions_items[:menu_item_proceeding_proposal_admin]
+  end
+
+  test 'permissions_items: globale SBK sieht Verfahrensvorschläge, sobald ein LV sie nutzt' do
+    perms = ALL_GO.map { |go| { 'user_group_id' => 2, 'game_operation_id' => go } }
+    u = build_user(permissions: perms)
+
+    assert_not u.permissions_items[:menu_item_proceeding_proposal_admin]
+
+    StateAssociation.create!(name: 'Globaler LV', short_name: 'GLV', manual_proceeding_creation: true)
+
+    assert u.permissions_items[:menu_item_proceeding_proposal_admin]
+  end
+
   test 'permissions_items: regionaler RSK bekommt KEINEN LV-Verwaltungseintrag' do
     sa = StateAssociation.create!(name: 'RSK-LV Test', short_name: 'RLT')
     regional_go = GameOperation.create!(name: 'RSK Region', short_name: 'RSR', path: 'rsk-region',

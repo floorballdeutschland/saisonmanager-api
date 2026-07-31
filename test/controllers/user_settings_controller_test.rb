@@ -148,19 +148,19 @@ class UserSettingsControllerTest < ActionDispatch::IntegrationTest
     login_as(@user)
 
     put '/api/v2/user/password',
-        params: { current_password: 'password123', password: 'newsecret1', password_confirmation: 'newsecret1' },
+        params: { current_password: 'password123', password: 'NeuesGeheim1234', password_confirmation: 'NeuesGeheim1234' },
         as: :json
 
     assert_response :ok
     assert JSON.parse(response.body)['success']
-    assert @user.reload.authenticate('newsecret1')
+    assert @user.reload.authenticate('NeuesGeheim1234')
   end
 
   test 'Passwort ändern mit falschem aktuellen Passwort ergibt 422' do
     login_as(@user)
 
     put '/api/v2/user/password',
-        params: { current_password: 'wrong', password: 'newsecret1', password_confirmation: 'newsecret1' },
+        params: { current_password: 'wrong', password: 'NeuesGeheim1234', password_confirmation: 'NeuesGeheim1234' },
         as: :json
 
     assert_response :unprocessable_entity
@@ -190,9 +190,45 @@ class UserSettingsControllerTest < ActionDispatch::IntegrationTest
     assert @user.reload.authenticate('password123')
   end
 
+  test 'Passwort ändern ohne Großbuchstaben ergibt 422 und nennt die Regeln' do
+    login_as(@user)
+
+    put '/api/v2/user/password',
+        params: { current_password: 'password123', password: 'neuesgeheim1234',
+                  password_confirmation: 'neuesgeheim1234' },
+        as: :json
+
+    assert_response :unprocessable_entity
+    assert_equal PasswordPolicy::REQUIREMENTS, JSON.parse(response.body)['message']
+    assert @user.reload.authenticate('password123')
+  end
+
+  test 'Passwort ändern ohne Ziffer ergibt 422' do
+    login_as(@user)
+
+    put '/api/v2/user/password',
+        params: { current_password: 'password123', password: 'NeuesGeheimwort',
+                  password_confirmation: 'NeuesGeheimwort' },
+        as: :json
+
+    assert_response :unprocessable_entity
+    assert @user.reload.authenticate('password123')
+  end
+
+  test 'Passwort ändern mit elf Zeichen ergibt 422 (Mindestlänge 12)' do
+    login_as(@user)
+
+    put '/api/v2/user/password',
+        params: { current_password: 'password123', password: 'Geheim12345', password_confirmation: 'Geheim12345' },
+        as: :json
+
+    assert_response :unprocessable_entity
+    assert @user.reload.authenticate('password123')
+  end
+
   test 'Passwort ändern ohne Login ergibt 401' do
     put '/api/v2/user/password',
-        params: { current_password: 'password123', password: 'newsecret1', password_confirmation: 'newsecret1' },
+        params: { current_password: 'password123', password: 'NeuesGeheim1234', password_confirmation: 'NeuesGeheim1234' },
         as: :json
     assert_response :unauthorized
   end
@@ -308,6 +344,20 @@ class UserSettingsControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :too_many_requests
     assert_equal 'eins@example.com', @user.reload.pending_email
+  end
+
+  test '429 nennt die verbleibende Wartezeit in Sekunden' do
+    login_as(@user)
+    patch '/api/v2/user/email', params: { current_password: 'password123', email: 'eins@example.com' }, as: :json
+    assert_response :ok
+
+    patch '/api/v2/user/email', params: { current_password: 'password123', email: 'zwei@example.com' }, as: :json
+    assert_response :too_many_requests
+
+    body = JSON.parse(response.body)
+    assert_includes 1..User::EMAIL_CONFIRMATION_RESEND_INTERVAL.to_i, body['retry_after']
+    assert_match(/#{body['retry_after']} Sekunden/, body['message'])
+    assert_equal body['retry_after'].to_s, response.headers['Retry-After']
   end
 
   test 'Nach Ablauf der Wartezeit überschreibt erneutes Anstoßen die offene Änderung' do

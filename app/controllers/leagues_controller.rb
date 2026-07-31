@@ -760,12 +760,8 @@ class LeaguesController < ApplicationController
 
     return render json: { message: 'Kein Bild angefügt' }, status: :unprocessable_entity unless params[:banner].present?
 
-    unless params[:banner].content_type == 'image/webp'
-      return render json: { message: 'Nur WebP-Dateien erlaubt' }, status: :unprocessable_entity
-    end
-
-    if params[:banner].size > 500.kilobytes
-      return render json: { message: 'Maximale Dateigröße: 500 KB' }, status: :unprocessable_entity
+    if (error = logo_upload_error(params[:banner], square: false, max_size: BANNER_MAX_SIZE))
+      return render json: { message: error }, status: :unprocessable_entity
     end
 
     begin

@@ -175,8 +175,10 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
     assert_equal bekannt, JSON.parse(response.body)
   end
 
-  # Die Wartezeit hängt am Rails.cache; im Test-Env ist der ein :null_store, in
-  # dem nichts liegen bleibt. Für diese beiden Tests daher ein echter Store.
+  # Die Wartezeit je Zieladresse hängt am Rails.cache; im Test-Env ist der ein
+  # :null_store, in dem nichts liegen bleibt. Für diese beiden Tests daher ein
+  # echter Store. Rack::Attack bleibt davon unberührt, es zählt seit #282 in
+  # einem eigenen Store aus test_helper.rb.
   def with_memory_cache
     original = Rails.cache
     Rails.cache = ActiveSupport::Cache::MemoryStore.new
@@ -234,44 +236,29 @@ class SessionsControllerTest < ActionDispatch::IntegrationTest
   # --- IP-Throttle der mail-versendenden Endpunkte ---------------------------
   # Die Wartezeit im Controller greift nur pro Zieladresse. Erst dieser Throttle
   # begrenzt das Gesamtvolumen, also den Fall „Liste fremder Adressen abklappern".
-  # Rack::Attack zählt im Rails.cache, im Test-Env ein :null_store – daher auch
-  # hier ein echter Store.
-  def with_rack_attack_cache
-    original = Rack::Attack.cache.store
-    Rack::Attack.cache.store = ActiveSupport::Cache::MemoryStore.new
-    yield
-  ensure
-    Rack::Attack.cache.store = original
-  end
-
+  # Den Zähler stellt test_helper.rb pro Test auf null.
   test 'Benutzername vergessen wird pro IP gedrosselt' do
-    with_rack_attack_cache do
-      10.times do |i|
-        post '/api/v2/forgot_username', params: { email: "adresse#{i}@example.com" }, as: :json
-        assert_response :ok
-      end
-
-      post '/api/v2/forgot_username', params: { email: 'adresse10@example.com' }, as: :json
-      assert_response :too_many_requests
-      assert JSON.parse(response.body)['error'].present?
+    10.times do |i|
+      post '/api/v2/forgot_username', params: { email: "adresse#{i}@example.com" }, as: :json
+      assert_response :ok
     end
+
+    post '/api/v2/forgot_username', params: { email: 'adresse10@example.com' }, as: :json
+    assert_response :too_many_requests
+    assert JSON.parse(response.body)['error'].present?
   end
 
   test 'Passwort vergessen fällt unter denselben IP-Throttle' do
-    with_rack_attack_cache do
-      10.times { post '/api/v2/lost_password', params: { username: 'gibtesnicht' }, as: :json }
+    10.times { post '/api/v2/lost_password', params: { username: 'gibtesnicht' }, as: :json }
 
-      post '/api/v2/lost_password', params: { username: 'gibtesnicht' }, as: :json
-      assert_response :too_many_requests
-    end
+    post '/api/v2/lost_password', params: { username: 'gibtesnicht' }, as: :json
+    assert_response :too_many_requests
   end
 
   test 'Der Login selbst wird von diesem Throttle nicht gebremst' do
-    with_rack_attack_cache do
-      12.times do
-        post '/api/v2/login', params: { username: @user.user_name, password: 'password123' }, as: :json
-        assert_response :ok
-      end
+    12.times do
+      post '/api/v2/login', params: { username: @user.user_name, password: 'password123' }, as: :json
+      assert_response :ok
     end
   end
 end
