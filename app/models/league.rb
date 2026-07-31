@@ -94,11 +94,28 @@ class League < ApplicationRecord
     field_size == 'GF' && !age_group.to_s.match?(/\AU\d/)
   end
 
+  # Mannschaft samt Verein und beiden Logo-Anhängen. schedule_item liest pro
+  # Spiel logo_url_fallback und logo_small_url_fallback beider Mannschaften;
+  # beide fragen `logo.attached?` und fallen bei fehlendem Team-Logo auf das
+  # Vereinslogo zurück. Ohne die Attachment-Preloads holt ActiveStorage jeden
+  # Anhang einzeln nach – gemessen im Juli 2026 der häufigste N+1 überhaupt,
+  # rund 71.000 Ereignisse auf #schedule und #current_schedule.
+  #
+  # Auch für die Tabelle, die dieselben beiden Methoden je Team liest
+  # (evaluate_table_results/empty_table_item).
+  TEAM_WITH_LOGO_PRELOAD = [
+    { logo_attachment: :blob },
+    { club: { logo_attachment: :blob } }
+  ].freeze
+
   def games(game_day_number = nil)
     gd = game_day_number.present? ? game_days.where(number: game_day_number) : game_days
     # :club zusätzlich, weil schedule_item game_day.hosting_club (= club.name)
     # liest – sonst eine Club-Query pro Spieltag.
-    gd.includes(:arena, :club, games: [home_team: :club, guest_team: :club]).map(&:games).flatten.sort_by { |i| i.game_number.to_i }
+    gd.includes(:arena, :club,
+                games: [{ home_team: TEAM_WITH_LOGO_PRELOAD },
+                        { guest_team: TEAM_WITH_LOGO_PRELOAD }])
+      .map(&:games).flatten.sort_by { |i| i.game_number.to_i }
   end
 
   def teams
@@ -659,7 +676,13 @@ class League < ApplicationRecord
     # Pre-populate all league teams so teams with no games still appear.
     # Nicht für Gruppentabellen: dort ergibt sich die Zugehörigkeit allein aus
     # den Spielen der Gruppe, sonst landen alle Liga-Teams in jeder Gruppe.
-    teams.each { |team| results[team.id] = empty_table_item(team) } if include_teams_without_games
+    #
+    # Mit Logo-Preload, weil empty_table_item je Zeile logo_url_fallback und
+    # logo_small_url_fallback liest – dieselbe Stelle wie im Spielplan, nur auf
+    # der Tabellenseite (siehe TEAM_WITH_LOGO_PRELOAD).
+    if include_teams_without_games
+      teams.includes(TEAM_WITH_LOGO_PRELOAD).each { |team| results[team.id] = empty_table_item(team) }
+    end
 
     g.each do |game|
       [game.home_team, game.guest_team].each do |team|

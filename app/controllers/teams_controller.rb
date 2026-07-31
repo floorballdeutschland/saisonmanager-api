@@ -82,11 +82,17 @@ class TeamsController < ApplicationController
     totals_list = scorer_entries(team_scorer_data)
 
     # Recent results (last 10 ended games across all leagues, ordered by game day date)
+    #
+    # home_team/guest_team samt Logo-Anhängen, weil unten je Spiel
+    # logo_small_url_fallback beider Mannschaften gelesen wird. Ohne den
+    # Preload sind das bis zu 40 Anhang-Abfragen für diese zehn Zeilen.
     recent_games = Game.by_team_id(team.id)
                        .where(ended: true)
                        .joins(game_day: :league)
                        .where(leagues: { season_id: team_season_id })
-                       .includes(game_day: :league)
+                       .includes(game_day: :league,
+                                 home_team: League::TEAM_WITH_LOGO_PRELOAD,
+                                 guest_team: League::TEAM_WITH_LOGO_PRELOAD)
                        .order('game_days.date DESC')
                        .limit(10)
                        .map do |g|
@@ -113,7 +119,9 @@ class TeamsController < ApplicationController
                          .joins(game_day: :league)
                          .where(leagues: { season_id: team_season_id })
                          .where('game_days.date >= ?', Date.today)
-                         .includes(game_day: :league)
+                         .includes(game_day: :league,
+                                   home_team: League::TEAM_WITH_LOGO_PRELOAD,
+                                   guest_team: League::TEAM_WITH_LOGO_PRELOAD)
                          .order('game_days.date ASC')
                          .limit(10)
                          .map do |g|
@@ -200,9 +208,13 @@ class TeamsController < ApplicationController
                 .joins(game_day: :league)
                 .where(leagues: { season_id: team_season_id })
                 # club je game_day, weil schedule_item game_day.hosting_club
-                # (= club.name) liest; home_team/guest_team + deren club, weil
-                # logo_url_fallback bei fehlendem Team-Logo auf club.logo_url fällt.
-                .includes(game_day: %i[arena league club], home_team: :club, guest_team: :club)
+                # (= club.name) liest; home_team/guest_team + deren club und die
+                # Logo-Anhänge beider, weil logo_url_fallback `logo.attached?`
+                # prüft und bei fehlendem Team-Logo auf club.logo_url fällt
+                # (siehe League::TEAM_WITH_LOGO_PRELOAD).
+                .includes(game_day: %i[arena league club],
+                          home_team: League::TEAM_WITH_LOGO_PRELOAD,
+                          guest_team: League::TEAM_WITH_LOGO_PRELOAD)
                 .order('game_days.date ASC')
 
     matches = games.map do |g|
