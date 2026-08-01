@@ -22,16 +22,27 @@ class Club < ApplicationRecord
     teams.current_season
   end
 
-  def players
-    p = Player.active.where("players.clubs @> '[{\"club_id\": ?}]'", id).order(:last_name, :first_name)
+  # include_deactivated: true liefert zusaetzlich deaktivierte Spieler*innen, deren
+  # Zugehoerigkeit erst durch die Deaktivierung geschlossen wurde. Player#deactivate!
+  # setzt dabei valid_until = jetzt und merkt sich den Auslöser in valid_set_by;
+  # ohne diesen Zweig fallen sie sowohl durch Player.active als auch durch die
+  # valid_until-Pruefung und waeren in der Vereinsliste nicht mehr reaktivierbar.
+  # Die Bedingung entspricht der, die Player#reactivate! zum Wiederoeffnen nutzt,
+  # damit nicht auch laengst ausgetretene Spieler*innen wieder auftauchen.
+  def players(include_deactivated: false)
+    scope = include_deactivated ? Player.all : Player.active
+    p = scope.where("players.clubs @> '[{\"club_id\": ?}]'", id).order(:last_name, :first_name)
     p.select do |pl|
       pl.clubs.map do |c|
         if c['club_id'] != id
           false
-        elsif c['valid_until'].present?
-          (c['valid_until'].to_date >= Time.now)
-        else
+        elsif c['valid_until'].blank?
           true
+        elsif c['valid_until'].to_date >= Time.now
+          true
+        else
+          include_deactivated && pl.deactivated_at.present? &&
+            c['valid_set_by'].present? && c['valid_set_by'] == pl.deactivated_by
         end
       end.reduce(&:|)
     end

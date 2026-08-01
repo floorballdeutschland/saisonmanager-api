@@ -857,7 +857,9 @@ class PlayersController < ApplicationController
     # Nur Spieler mit gueltiger (nicht abgelaufener) Mitgliedschaft in diesem Verein,
     # analog zu Club#players. Der fruehere Roh-Query (clubs @> {club_id}) ignorierte
     # valid_until und zeigte Spieler mit laengst abgelaufener Freigabe weiterhin an.
-    players = club.players
+    # Deaktivierte kommen bewusst mit: das Frontend blendet sie hinter
+    # "N deaktiviert einblenden" ein und reaktiviert sie von dort aus.
+    players = club.players(include_deactivated: true)
     leagues_by_team = Team.joins(:league)
                           .where(leagues: { season_id: Setting.current_season_id })
                           .pluck(:id, 'leagues.id', 'leagues.short_name', 'leagues.name')

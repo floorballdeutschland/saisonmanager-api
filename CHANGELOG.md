@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Deaktivierte Spieler*innen verschwanden nach dem Neuladen aus der Vereinsspielerliste**: Wer als Vereinsmanager*in eine Spielerin deaktivierte, sah darunter den Schalter „1 deaktiviert einblenden“ – nach dem Neuladen der Seite war er verschwunden, und beim nächsten Deaktivieren stand dort wieder „1 deaktiviert“ statt „2“. Ursache: Die Liste lieferte ausschließlich aktive Spieler*innen, die frisch deaktivierten waren also nach dem Neuladen gar nicht mehr enthalten und ließen sich von dort auch nicht mehr reaktivieren. Jetzt bleiben sie in der Liste, ausgeblendet hinter dem Schalter, und die Reaktivierung ist wieder erreichbar. Wer den Verein regulär verlassen hat, taucht dadurch nicht wieder auf.
+
 ## [1.65.0] - 2026-07-31
 
 ### Neu
