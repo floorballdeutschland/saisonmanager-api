@@ -69,20 +69,21 @@ class ClubTest < ActiveSupport::TestCase
     ])
     ausgelaufen.deactivate!(user_id, reason: 'Karriereende')
 
-    # Deaktiviert von einer anderen Person als der, die die Zugehoerigkeit geschlossen
-    # hat – dann hat diese Deaktivierung sie nicht geschlossen.
-    fremder_ausloeser = create(:player, clubs: [
-      { 'club_id' => create(:club).id, 'home_club' => true },
-      { 'club_id' => club.id, 'home_club' => false,
-        'valid_until' => 1.year.ago.iso8601, 'valid_set_by' => user_id }
-    ])
-    fremder_ausloeser.deactivate!(user_id + 1, reason: 'Karriereende')
+    # Die beiden folgenden Faelle haben ihr valid_until bewusst am Zeitpunkt der
+    # Deaktivierung: sie fallen allein am Auslöser-Vergleich heraus, nicht schon an der
+    # Zeitschranke. Sonst wuerde der Vergleich von keinem Test festgehalten.
+    #
+    # Geschlossen von einer anderen Person als der, die deaktiviert hat.
+    fremder_ausloeser = create(:player, clubs: [{ 'club_id' => club.id, 'home_club' => true }])
+    fremder_ausloeser.deactivate!(user_id, reason: 'Karriereende')
+    fremder_ausloeser.update_column(:deactivated_by, user_id + 1)
 
     # Altdaten: geschlossen ohne valid_set_by. Bleiben bewusst ausgeblendet, wie vor
-    # der Aenderung auch – reactivate! oeffnet diese Zugehoerigkeit ebenfalls nicht.
-    legacy = create(:player, clubs: [{ 'club_id' => club.id, 'home_club' => true,
-                                       'valid_until' => 2.years.ago.iso8601 }])
+    # der Aenderung auch.
+    legacy = create(:player, clubs: [{ 'club_id' => club.id, 'home_club' => true }])
     legacy.deactivate!(user_id, reason: 'Karriereende')
+    legacy.clubs.each { |c| c.delete('valid_set_by') }
+    legacy.save!(validate: false)
 
     ids = club.players(include_deactivated: true).map(&:id)
     assert_includes ids, aktiv.id
@@ -95,17 +96,17 @@ class ClubTest < ActiveSupport::TestCase
     assert_equal [aktiv.id], club.players.map(&:id)
   end
 
-  # Die Zeitschranke muss den realistischen Fall treffen, nicht nur Jahresabstaende:
-  # Wechsel am Morgen, Deaktivierung am Abend, beides von derselben Person. Der alte
-  # Verein darf das Profil dadurch nicht zurueckbekommen, der neue schon.
-  test 'players(include_deactivated: true) trennt Wechsel und Deaktivierung am selben Tag' do
+  # Die Zeitschranke wird knapp geprueft, nicht nur auf Jahresabstand: ein Wechsel
+  # wenige Sekunden vor der Deaktivierung gehoert schon nicht mehr zu ihr. Der alte
+  # Verein darf das Profil also nicht zurueckbekommen, der neue schon.
+  test 'players(include_deactivated: true) trennt Wechsel und Deaktivierung' do
     create(:setting)
     alt = create(:club)
     neu = create(:club)
     user_id = create(:user, :admin).id
     player = create(:player, clubs: [{ 'club_id' => alt.id, 'home_club' => true }])
 
-    travel_to 8.hours.ago do
+    travel_to 10.seconds.ago do
       player.transfer(neu.id, user_id)
     end
     player.reload.deactivate!(user_id, reason: 'Karriereende')
@@ -117,15 +118,18 @@ class ClubTest < ActiveSupport::TestCase
   # Tagesgrenze der bestehenden valid_until-Pruefung (to_date-Vergleich, unveraendert
   # aus der Zeit vor include_deactivated): heute ablaufend zaehlt als abgelaufen,
   # morgen ablaufend als gueltig. Festgehalten, weil der Ausdruck beim Einbau des
-  # neuen Zweigs umgebaut wurde.
+  # neuen Zweigs umgebaut wurde. Feste Uhrzeit, damit der Test nicht kurz vor
+  # Mitternacht seine Bedeutung verliert.
   test 'players zaehlt eine heute ablaufende Zugehoerigkeit als abgelaufen' do
-    club = create(:club)
-    heute  = create(:player, clubs: [{ 'club_id' => club.id, 'valid_until' => Time.current.end_of_day.iso8601 }])
-    morgen = create(:player, clubs: [{ 'club_id' => club.id, 'valid_until' => 1.day.from_now.iso8601 }])
+    travel_to Time.zone.parse('2026-08-01 12:00') do
+      club = create(:club)
+      heute  = create(:player, clubs: [{ 'club_id' => club.id, 'valid_until' => Time.current.end_of_day.iso8601 }])
+      morgen = create(:player, clubs: [{ 'club_id' => club.id, 'valid_until' => 1.day.from_now.iso8601 }])
 
-    ids = club.players.map(&:id)
-    refute_includes ids, heute.id
-    assert_includes ids, morgen.id
+      ids = club.players.map(&:id)
+      refute_includes ids, heute.id
+      assert_includes ids, morgen.id
+    end
   end
 
   # merge_into! deaktiviert die Dublette, sie erfuellt damit die Bedingung oben.

@@ -337,7 +337,9 @@ class PlayerTest < ActiveSupport::TestCase
     player.reactivate!
     player.reload
 
-    # valid_set_by gehört other — reactivate! darf diesen Club nicht anfassen
+    # valid_set_by gehört other, und geschlossen wurde lange vor der Deaktivierung —
+    # nach beiden Kriterien von membership_closed_by_deactivation? darf reactivate!
+    # diesen Club nicht anfassen
     assert_equal other.id, player.clubs.first['valid_set_by']
     assert_not_nil player.clubs.first['valid_until']
   end
@@ -738,6 +740,29 @@ class PlayerTest < ActiveSupport::TestCase
     assert_equal abgelaufen_am, zweit_eintrag['valid_until'],
                  'abgelaufenes Zweitspielrecht darf nicht wieder geoeffnet werden'
     refute_includes zweit.players.map(&:id), player.id
+  end
+
+  # Gegenstueck in die andere Richtung: ein Zweitspielrecht, das erst nach der
+  # Deaktivierung angelegt wurde, laeuft in der Zukunft ab und gehoert damit ebenso
+  # wenig zur Deaktivierung. Ohne beidseitiges Zeitfenster nahm reactivate! ihm die
+  # Befristung und der Verein hatte eine unbefristete Mitgliedschaft.
+  test 'reactivate! laesst ein nach der Deaktivierung angelegtes Zweitspielrecht befristet' do
+    heim = create(:club)
+    zweit = create(:club)
+    user_id = 4711
+    laeuft_bis = 1.year.from_now.iso8601
+
+    player = create(:player, clubs: [{ 'club_id' => heim.id, 'home_club' => true }])
+    player.deactivate!(user_id, reason: 'Temporäre Pause')
+    player.clubs << { 'club_id' => zweit.id, 'home_club' => false,
+                      'valid_until' => laeuft_bis, 'valid_set_by' => user_id }
+    player.save!(validate: false)
+
+    player.reactivate!
+
+    zweit_eintrag = player.clubs.find { |c| c['club_id'] == zweit.id }
+    assert_equal laeuft_bis, zweit_eintrag['valid_until'],
+                 'Befristung des spaeter angelegten Zweitspielrechts muss bleiben'
   end
 
   private

@@ -468,31 +468,36 @@ class Player < ApplicationRecord
     }
   end
 
-  # Hat die Deaktivierung dieses Profils diese Vereinszugehoerigkeit geschlossen?
-  # Maßgeblich fuer zwei Dinge: welche deaktivierten Profile noch in die Liste eines
-  # Vereins gehoeren (Club#players) und welche Zugehoerigkeiten reactivate! wieder
-  # oeffnen darf.
-  #
-  # valid_set_by allein genuegt als Merkmal nicht: den schreiben auch #transfer und
-  # TransferRequest (Zweitspielrecht anlegen/ablaufen). Deaktiviert spaeter dieselbe
-  # Person, laese der Auslöser-Vergleich eine laengst abgelaufene Zugehoerigkeit als
-  # "durch die Deaktivierung geschlossen" – der Verein bekaeme das Profil in seine
-  # Liste und beim Reaktivieren eine unbefristete Mitgliedschaft zurueck, die er nie
-  # hatte. Deshalb zusaetzlich die Zeitschranke: deactivate! setzt valid_until
-  # unmittelbar vor deactivated_at, beide Zeitstempel liegen also praktisch gleich,
-  # waehrend Transfer oder Ablauf Tage bis Jahre davor liegen. Die Toleranz deckt nur
-  # die Millisekunden-Rundung der JSONB-Serialisierung ab.
-  #
-  # Deaktivierungen aus der Zeit vor valid_set_by (bzw. mit einem String darin)
-  # erfuellt die Bedingung bewusst nicht: sie bleiben ausgeblendet, wie vor dieser
-  # Aenderung auch.
-  DEACTIVATION_CLOSE_SKEW = 5.seconds
+  # Fenster um deactivated_at, in dem ein valid_until noch zu dieser Deaktivierung
+  # gehört. deactivate! schreibt beides im selben Aufruf, wenige Anweisungen
+  # auseinander; die Spanne deckt allein die Rundung der JSONB-Serialisierung ab.
+  # Sie kann naturgemäß nicht unterscheiden, ob im selben Moment auch ein Transfer
+  # lief – eine engere Schranke gibt es ohne eigenen Marker am Eintrag nicht.
+  DEACTIVATION_CLOSE_WINDOW = 1.second
 
+  # Wahr, wenn das Ende dieser Vereinszugehörigkeit auf die Deaktivierung dieses
+  # Profils zurückgeht.
+  #
+  # Der Stempel valid_set_by allein genügt als Merkmal nicht: den setzt jede Stelle,
+  # die eine Zugehörigkeit schließt oder befristet anlegt (Vereinswechsel,
+  # Zweitspielrecht anlegen und ablaufen lassen), nicht nur deactivate!. Deaktiviert
+  # später dieselbe Person, zählte ein reiner valid_set_by-Vergleich eine längst
+  # abgelaufene Zugehörigkeit als "durch die Deaktivierung geschlossen" – der Verein
+  # bekäme das Profil in seine Liste und beim Reaktivieren eine unbefristete
+  # Mitgliedschaft zurück, die er nie hatte. Daher zusätzlich das Zeitfenster.
+  #
+  # Beidseitig, nicht nur nach unten: ein Zweitspielrecht, das NACH der Deaktivierung
+  # angelegt wird (TransferRequest, PlayersController#add_additional_club), trägt ein
+  # valid_until in der Zukunft und gehört ebenso wenig zur Deaktivierung.
+  #
+  # Zugehörigkeiten, die ohne valid_set_by geschlossen wurden (Altdaten, Backfills),
+  # erfüllen die Bedingung bewusst nicht: sie bleiben ausgeblendet, wie vorher auch.
   def membership_closed_by_deactivation?(membership)
     return false if deactivated_at.blank? || membership['valid_until'].blank?
     return false unless membership['valid_set_by'].present? && membership['valid_set_by'] == deactivated_by
 
-    membership['valid_until'].to_time >= deactivated_at - DEACTIVATION_CLOSE_SKEW
+    membership['valid_until'].to_time.between?(deactivated_at - DEACTIVATION_CLOSE_WINDOW,
+                                               deactivated_at + DEACTIVATION_CLOSE_WINDOW)
   end
 
   def deactivate!(user_id, reason: nil)
@@ -530,10 +535,8 @@ class Player < ApplicationRecord
     self.clubs ||= []
     self.licenses ||= []
 
-    # Nur die Zugehoerigkeiten wieder oeffnen, die diese Deaktivierung geschlossen
-    # hat. Der frühere Auslöser-Vergleich holte auch ein Zweitspielrecht zurueck, das
-    # lange vorher abgelaufen war und nur zufaellig dieselbe Person eingetragen hatte
-    # – der Verein hatte danach eine unbefristete Mitgliedschaft, die er nie hatte.
+    # Der frühere reine valid_set_by-Vergleich öffnete auch ein Zweitspielrecht wieder,
+    # das lange vor der Deaktivierung abgelaufen war.
     clubs.map! do |c|
       if membership_closed_by_deactivation?(c)
         c.delete('valid_until')

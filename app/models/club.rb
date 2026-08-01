@@ -22,18 +22,16 @@ class Club < ApplicationRecord
     teams.current_season
   end
 
-  # include_deactivated: true liefert zusaetzlich deaktivierte Spieler*innen, deren
-  # Zugehoerigkeit erst durch die Deaktivierung geschlossen wurde. Player#deactivate!
-  # setzt dabei valid_until = jetzt, ohne diesen Zweig fallen sie sowohl durch
-  # Player.active als auch durch die valid_until-Pruefung und waeren in der
-  # Vereinsliste nicht mehr reaktivierbar. Was als "durch die Deaktivierung
-  # geschlossen" gilt, entscheidet Player#membership_closed_by_deactivation? – dieselbe
-  # Bedingung, unter der reactivate! die Zugehoerigkeit wieder oeffnet.
+  # include_deactivated: true nimmt die Deaktivierten dieses Vereins mit. Bei einer
+  # noch offenen oder noch gültigen Zugehörigkeit genügt dafür der Status; eine bereits
+  # geschlossene zählt nur, wenn Player#membership_closed_by_deactivation? sie der
+  # Deaktivierung zurechnet – dieselbe Bedingung, unter der reactivate! sie wieder
+  # öffnet. Ohne diesen Zweig fallen frisch Deaktivierte sowohl durch Player.active als
+  # auch durch die valid_until-Prüfung (deactivate! setzt valid_until = jetzt) und wären
+  # in der Vereinsliste nicht mehr reaktivierbar.
   #
-  # Zusammengefuehrte Dubletten bleiben auch dann aussen vor: merge_into! setzt
-  # merged_into_id und deaktiviert die Secondary anschliessend, sie erfuellt also
-  # jede Deaktivierungs-Bedingung. Wieder eingeblendet und reaktiviert waere sie
-  # genau die Dublette, die der Merge beseitigen sollte.
+  # merged_into_id: zusammengeführte Dubletten bleiben draußen, siehe
+  # PlayersController#reactivate.
   def players(include_deactivated: false)
     scope = include_deactivated ? Player.where(merged_into_id: nil) : Player.active
     p = scope.where("players.clubs @> '[{\"club_id\": ?}]'", id).order(:last_name, :first_name)

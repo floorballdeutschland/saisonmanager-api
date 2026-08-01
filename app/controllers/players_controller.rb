@@ -862,11 +862,10 @@ class PlayersController < ApplicationController
     club = Club.find_by(id: club_id)
     return render json: { message: 'Verein nicht gefunden.' }, status: :not_found unless club
 
-    # Nur Spieler mit gueltiger (nicht abgelaufener) Mitgliedschaft in diesem Verein,
-    # analog zu Club#players. Der fruehere Roh-Query (clubs @> {club_id}) ignorierte
-    # valid_until und zeigte Spieler mit laengst abgelaufener Freigabe weiterhin an.
-    # Deaktivierte kommen bewusst mit: das Frontend blendet sie hinter
-    # "N deaktiviert einblenden" ein und reaktiviert sie von dort aus.
+    # Ueber Club#players: abgelaufene Freigaben bleiben draussen (der fruehere Roh-Query
+    # clubs @> {club_id} ignorierte valid_until und zeigte sie weiterhin an).
+    # Deaktivierte kommen mit, damit sie in der VM-Spielerliste hinter dem Schalter
+    # sichtbar und von dort reaktivierbar bleiben.
     players = club.players(include_deactivated: true)
     leagues_by_team = Team.joins(:league)
                           .where(leagues: { season_id: Setting.current_season_id })
