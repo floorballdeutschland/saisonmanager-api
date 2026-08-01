@@ -836,6 +836,14 @@ class PlayersController < ApplicationController
     return render json: { message: 'Spieler ist nicht deaktiviert.' }, status: :unprocessable_entity if player.deactivated_at.nil?
     return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless can_manage_player?(player)
 
+    # Eine zusammengefuehrte Dublette ist nur deshalb deaktiviert, weil merge_into!
+    # sie ersetzt hat; Spiele und Lizenzen liegen beim Master. Reaktiviert waere sie
+    # wieder ein zweites Profil derselben Person.
+    if player.merged_into_id.present?
+      return render json: { message: 'Dieses Profil wurde mit einem anderen zusammengeführt und kann nicht reaktiviert werden.' },
+                    status: :unprocessable_entity
+    end
+
     player.reactivate!
     render json: player.full_hash(false, false, false)
   end
@@ -854,10 +862,11 @@ class PlayersController < ApplicationController
     club = Club.find_by(id: club_id)
     return render json: { message: 'Verein nicht gefunden.' }, status: :not_found unless club
 
-    # Nur Spieler mit gueltiger (nicht abgelaufener) Mitgliedschaft in diesem Verein,
-    # analog zu Club#players. Der fruehere Roh-Query (clubs @> {club_id}) ignorierte
-    # valid_until und zeigte Spieler mit laengst abgelaufener Freigabe weiterhin an.
-    players = club.players
+    # Ueber Club#players: abgelaufene Freigaben bleiben draussen (der fruehere Roh-Query
+    # clubs @> {club_id} ignorierte valid_until und zeigte sie weiterhin an).
+    # Deaktivierte kommen mit, damit sie in der VM-Spielerliste hinter dem Schalter
+    # sichtbar und von dort reaktivierbar bleiben.
+    players = club.players(include_deactivated: true)
     leagues_by_team = Team.joins(:league)
                           .where(leagues: { season_id: Setting.current_season_id })
                           .pluck(:id, 'leagues.id', 'leagues.short_name', 'leagues.name')

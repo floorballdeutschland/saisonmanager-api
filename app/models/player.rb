@@ -468,6 +468,38 @@ class Player < ApplicationRecord
     }
   end
 
+  # Fenster um deactivated_at, in dem ein valid_until noch zu dieser Deaktivierung
+  # gehört. deactivate! schreibt beides im selben Aufruf, wenige Anweisungen
+  # auseinander; die Spanne deckt allein die Rundung der JSONB-Serialisierung ab.
+  # Sie kann naturgemäß nicht unterscheiden, ob im selben Moment auch ein Transfer
+  # lief – eine engere Schranke gibt es ohne eigenen Marker am Eintrag nicht.
+  DEACTIVATION_CLOSE_WINDOW = 1.second
+
+  # Wahr, wenn das Ende dieser Vereinszugehörigkeit auf die Deaktivierung dieses
+  # Profils zurückgeht.
+  #
+  # Der Stempel valid_set_by allein genügt als Merkmal nicht: den setzt jede Stelle,
+  # die eine Zugehörigkeit schließt oder befristet anlegt (Vereinswechsel,
+  # Zweitspielrecht anlegen und ablaufen lassen), nicht nur deactivate!. Deaktiviert
+  # später dieselbe Person, zählte ein reiner valid_set_by-Vergleich eine längst
+  # abgelaufene Zugehörigkeit als "durch die Deaktivierung geschlossen" – der Verein
+  # bekäme das Profil in seine Liste und beim Reaktivieren eine unbefristete
+  # Mitgliedschaft zurück, die er nie hatte. Daher zusätzlich das Zeitfenster.
+  #
+  # Beidseitig, nicht nur nach unten: ein Zweitspielrecht, das NACH der Deaktivierung
+  # angelegt wird (TransferRequest, PlayersController#add_additional_club), trägt ein
+  # valid_until in der Zukunft und gehört ebenso wenig zur Deaktivierung.
+  #
+  # Zugehörigkeiten, die ohne valid_set_by geschlossen wurden (Altdaten, Backfills),
+  # erfüllen die Bedingung bewusst nicht: sie bleiben ausgeblendet, wie vorher auch.
+  def membership_closed_by_deactivation?(membership)
+    return false if deactivated_at.blank? || membership['valid_until'].blank?
+    return false unless membership['valid_set_by'].present? && membership['valid_set_by'] == deactivated_by
+
+    membership['valid_until'].to_time.between?(deactivated_at - DEACTIVATION_CLOSE_WINDOW,
+                                               deactivated_at + DEACTIVATION_CLOSE_WINDOW)
+  end
+
   def deactivate!(user_id, reason: nil)
     self.clubs ||= []
     self.licenses ||= []
@@ -503,8 +535,10 @@ class Player < ApplicationRecord
     self.clubs ||= []
     self.licenses ||= []
 
+    # Der frühere reine valid_set_by-Vergleich öffnete auch ein Zweitspielrecht wieder,
+    # das lange vor der Deaktivierung abgelaufen war.
     clubs.map! do |c|
-      if c['valid_until'].present? && c['valid_set_by'] == deactivated_user
+      if membership_closed_by_deactivation?(c)
         c.delete('valid_until')
         c.delete('valid_set_by')
       end

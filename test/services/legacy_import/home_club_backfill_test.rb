@@ -310,9 +310,10 @@ class LegacyImport::HomeClubBackfillTest < ActiveSupport::TestCase # rubocop:dis
   end
 
   test 'build_entry setzt kein created_by und kein valid_set_by' do
-    # Player#reactivate! erkennt Deaktivierungs-Stempel über
-    # valid_set_by == deactivated_by; gesetzte Felder würden den Eintrag in diese
-    # Logik hineinziehen.
+    # Player#membership_closed_by_deactivation? – die Logik hinter reactivate! und der
+    # VM-Spielerliste – erkennt geschlossene Zugehörigkeiten an valid_until zum
+    # Deaktivierungszeitpunkt plus valid_set_by == deactivated_by; gesetzte Felder
+    # würden den Eintrag dort hineinziehen. Ohne valid_until greift sie ohnehin nicht.
     entry = BACKFILL.build_entry(club_id: 128)
 
     assert_not entry.key?('created_by')

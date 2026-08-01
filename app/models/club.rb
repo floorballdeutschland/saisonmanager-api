@@ -22,16 +22,29 @@ class Club < ApplicationRecord
     teams.current_season
   end
 
-  def players
-    p = Player.active.where("players.clubs @> '[{\"club_id\": ?}]'", id).order(:last_name, :first_name)
+  # include_deactivated: true nimmt die Deaktivierten dieses Vereins mit. Bei einer
+  # noch offenen oder noch gültigen Zugehörigkeit genügt dafür der Status; eine bereits
+  # geschlossene zählt nur, wenn Player#membership_closed_by_deactivation? sie der
+  # Deaktivierung zurechnet – dieselbe Bedingung, unter der reactivate! sie wieder
+  # öffnet. Ohne diesen Zweig fallen frisch Deaktivierte sowohl durch Player.active als
+  # auch durch die valid_until-Prüfung (deactivate! setzt valid_until = jetzt) und wären
+  # in der Vereinsliste nicht mehr reaktivierbar.
+  #
+  # merged_into_id: zusammengeführte Dubletten bleiben draußen, siehe
+  # PlayersController#reactivate.
+  def players(include_deactivated: false)
+    scope = include_deactivated ? Player.where(merged_into_id: nil) : Player.active
+    p = scope.where("players.clubs @> '[{\"club_id\": ?}]'", id).order(:last_name, :first_name)
     p.select do |pl|
       pl.clubs.map do |c|
         if c['club_id'] != id
           false
-        elsif c['valid_until'].present?
-          (c['valid_until'].to_date >= Time.now)
-        else
+        elsif c['valid_until'].blank?
           true
+        elsif c['valid_until'].to_date >= Time.now
+          true
+        else
+          include_deactivated && pl.membership_closed_by_deactivation?(c)
         end
       end.reduce(&:|)
     end
