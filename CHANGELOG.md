@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.65.1] - 2026-08-01
+
 ### Behoben
 
 - **Reaktivieren machte aus einem laufenden Zweitspielrecht eine unbefristete Mitgliedschaft**: Ein Zweitspielrecht hat ein Enddatum. Wurde ein Profil deaktiviert, zog das System dieses Datum auf den Zeitpunkt der Deaktivierung vor; beim Reaktivieren entfiel die Befristung dann komplett, statt auf das ursprüngliche Datum zurückzugehen. Der Zweitverein hatte danach eine unbefristete Mitgliedschaft, die er nie erhalten hatte, und das Zweitspielrecht lief nicht mehr von selbst aus. Das Enddatum wird bei der Deaktivierung jetzt gesichert und beim Reaktivieren wieder eingesetzt, gemeinsam mit dem ursprünglich eintragenden Konto. Bei Profilen, die vor dieser Änderung deaktiviert wurden, ist das Datum nicht überliefert; dort bleibt es beim bisherigen Verhalten, die Zugehörigkeit geht also unbefristet wieder auf. Lief das Zweitspielrecht während der Deaktivierung ab, kommt es folgerichtig als abgelaufen zurück: das Profil ist dann wieder aktiv, steht aber nicht mehr in der Liste des Zweitvereins.
