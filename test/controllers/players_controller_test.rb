@@ -667,6 +667,64 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_nil no_license_row['current_license_status_id']
   end
 
+  # Reload-Fall: eine gerade deaktivierte Spielerin muss in der Vereinsliste
+  # bleiben. Player#deactivate! schliesst ihre Zugehoerigkeit (valid_until = jetzt),
+  # ohne den include_deactivated-Zweig fiel sie doppelt aus dem Ergebnis – der
+  # Schalter "N deaktiviert einblenden" verschwand nach jedem Neuladen und die
+  # Reaktivierung war aus der Liste nicht mehr erreichbar.
+  test 'vm_players_index behaelt deaktivierte Spieler nach dem Neuladen' do
+    vm = create(:user, :vm, club_id: @club.id)
+    deaktiviert = create(:player, clubs: [{ 'club_id' => @club.id, 'home_club' => true }])
+    # Regulaerer Vereinsaustritt (nicht deaktiviert) bleibt ausgeblendet.
+    ausgetreten = create(:player, clubs: [{ 'club_id' => @club.id, 'valid_until' => 2.years.ago.iso8601,
+                                            'valid_set_by' => vm.id }])
+
+    login_as(vm)
+    post "/api/v2/admin/players/#{deaktiviert.id}/deactivate", params: { reason: 'Karriereende' }
+    assert_response :success
+
+    get '/api/v2/admin/vm/players.json', params: { club_id: @club.id }
+    assert_response :success
+
+    rows = JSON.parse(response.body)
+    row = rows.find { |p| p['id'] == deaktiviert.id }
+    assert row.present?, 'deaktivierte Spielerin fehlt in der Vereinsliste'
+    assert row['deactivated_at'].present?, 'deactivated_at fehlt im Listeneintrag'
+    assert_nil(rows.find { |p| p['id'] == ausgetreten.id })
+
+    # Nach der Reaktivierung ist sie wieder regulaer in der Liste.
+    post "/api/v2/admin/players/#{deaktiviert.id}/reactivate"
+    assert_response :success
+
+    get '/api/v2/admin/vm/players.json', params: { club_id: @club.id }
+    reaktiviert = JSON.parse(response.body).find { |p| p['id'] == deaktiviert.id }
+    assert reaktiviert.present?
+    assert_nil reaktiviert['deactivated_at']
+  end
+
+  # Eine zusammengefuehrte Dublette ist nur deshalb deaktiviert, weil merge_into! sie
+  # ersetzt hat. Sie darf weder in der Vereinsliste stehen noch reaktiviert werden,
+  # sonst gibt es das zweite Profil derselben Person wieder.
+  test 'zusammengefuehrte Dublette bleibt aus Liste und Reaktivierung heraus' do
+    vm = create(:user, :vm, club_id: @club.id)
+    master = create(:player, clubs: [{ 'club_id' => @club.id, 'home_club' => true }])
+    dublette = create(:player, clubs: [{ 'club_id' => @club.id, 'home_club' => true }])
+    dublette.merge_into!(master, vm.id)
+
+    login_as(vm)
+    get '/api/v2/admin/vm/players.json', params: { club_id: @club.id }
+    assert_response :success
+
+    ids = JSON.parse(response.body).map { |p| p['id'] }
+    assert_includes ids, master.id
+    refute_includes ids, dublette.id
+
+    post "/api/v2/admin/players/#{dublette.id}/reactivate"
+    assert_response :unprocessable_entity
+    assert_match(/zusammengeführt/, JSON.parse(response.body)['message'])
+    assert dublette.reload.deactivated_at.present?
+  end
+
   private
 
   # Beendetes Spiel mit @player (Trikot 7) in der Heim-Aufstellung.

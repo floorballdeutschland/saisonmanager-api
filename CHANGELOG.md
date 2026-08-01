@@ -9,9 +9,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.65.1] - 2026-08-01
+
 ### Behoben
 
-- **Veröffentlichte Versionshinweise entstanden zuletzt nicht mehr (nur intern)**: Zu jeder Version legt das System auf GitHub automatisch einen Eintrag mit den Änderungen dieser Version an. Der zugehörige Schritt schnitt den Abschnitt aber nicht am Ende ab und hängte die gesamte Versionshistorie darunter an. Solange das Ergebnis noch klein genug war, fiel das nicht auf; bei Version 1.63.0 überschritt es die Längengrenze, der Schritt brach ab und der Eintrag entstand gar nicht mehr. Nachgetragen werden die fehlenden Einträge für 1.63.0 und 1.64.0. Am Saisonmanager selbst ändert sich nichts, betroffen war ausschließlich die Anzeige auf GitHub; die Versionshinweise in der Verwaltung kommen aus einer anderen Quelle und waren immer vollständig.
+- **Reaktivieren machte aus einem laufenden Zweitspielrecht eine unbefristete Mitgliedschaft**: Ein Zweitspielrecht hat ein Enddatum. Wurde ein Profil deaktiviert, zog das System dieses Datum auf den Zeitpunkt der Deaktivierung vor; beim Reaktivieren entfiel die Befristung dann komplett, statt auf das ursprüngliche Datum zurückzugehen. Der Zweitverein hatte danach eine unbefristete Mitgliedschaft, die er nie erhalten hatte, und das Zweitspielrecht lief nicht mehr von selbst aus. Das Enddatum wird bei der Deaktivierung jetzt gesichert und beim Reaktivieren wieder eingesetzt, gemeinsam mit dem ursprünglich eintragenden Konto. Bei Profilen, die vor dieser Änderung deaktiviert wurden, ist das Datum nicht überliefert; dort bleibt es beim bisherigen Verhalten, die Zugehörigkeit geht also unbefristet wieder auf. Lief das Zweitspielrecht während der Deaktivierung ab, kommt es folgerichtig als abgelaufen zurück: das Profil ist dann wieder aktiv, steht aber nicht mehr in der Liste des Zweitvereins.
+
+- **Deaktivierte Spieler*innen verschwanden nach dem Neuladen aus der Vereinsspielerliste**: Wer als Vereinsmanager*in ein Profil deaktivierte, sah darunter den Schalter „1 deaktiviert einblenden“ – nach dem Neuladen der Seite war er verschwunden, und beim nächsten Deaktivieren stand dort wieder „1 deaktiviert“ statt „2“. Ursache: Die Liste lieferte ausschließlich aktive Spieler*innen, die frisch deaktivierten waren also nach dem Neuladen gar nicht mehr enthalten und ließen sich von dort auch nicht mehr reaktivieren. Jetzt bleiben sie dauerhaft in der Liste, ausgeblendet hinter dem Schalter, und die Reaktivierung ist von dort wieder erreichbar. Eine Zugehörigkeit, die schon vor der Deaktivierung endete, bringt dabei niemanden zurück in die Liste des alten Vereins – etwa ein abgelaufenes Zweitspielrecht oder ein früherer Vereinswechsel. Mit einem anderen Profil zusammengeführte Dubletten bleiben ebenfalls draußen.
+
+- **Reaktivieren holte abgelaufene Zweitspielrechte mit zurück**: Beim Reaktivieren wurde jede Vereinszugehörigkeit wieder geöffnet, die dieselbe Person zuletzt beendet hatte – auch eine, die schon lange vor der Deaktivierung abgelaufen war. Der betroffene Verein hatte danach eine unbefristete Mitgliedschaft, die er nie hatte, und die Person stand wieder in seiner Spielerliste. Wieder geöffnet wird jetzt nur noch, was die Deaktivierung selbst beendet hat.
+
+- **Zusammengeführte Profile konnten wieder aktiv geschaltet werden**: Führt die Verwaltung zwei Profile derselben Person zusammen, wird das übernommene Profil deaktiviert; Spiele und Lizenzen liegen danach beim verbleibenden Profil. Das deaktivierte Profil ließ sich trotzdem reaktivieren, womit es die Dublette wieder gab, die das Zusammenführen gerade beseitigt hatte. Solche Profile werden jetzt mit einem entsprechenden Hinweis abgewiesen.
+
+## [1.65.0] - 2026-07-31
+
+### Neu
+
+- **Benutzername beim Anlegen: Regeln sichtbar, vergebener Name benannt**: Beim Anlegen eines Benutzers gab es zum Benutzernamen bisher keine Rückmeldung. Welche Zeichen erlaubt sind, stand nirgends, und war der Name schon vergeben, erschien nur eine allgemeine Fehlermeldung, ohne zu sagen, was zu tun ist. Jetzt nennt der Hinweis unter dem Feld die erlaubten Zeichen (Buchstaben, Ziffern, Punkt, Bindestrich und Unterstrich; Umlaute und ß bitte auflösen), ein unzulässiger Name wird direkt am Feld gemeldet statt erst beim Absenden, und bei einem vergebenen Namen steht der Weg gleich dabei: eine kurze Mail an it@floorball.de, um einem bestehenden Konto weitere Rollen zu geben. Letzteres ist der eigentliche Anlass, denn eine zweite Rolle bekommt jemand nicht über ein zweites Konto (Frontend #189).
+
+### Behoben
+
+- **Veröffentlichte Versionshinweise entstanden zuletzt nicht mehr (nur intern)**: Zu jeder Version legt das System auf GitHub automatisch einen Eintrag mit den Änderungen dieser Version an. Der zugehörige Schritt schnitt den Abschnitt aber nicht am Ende ab und hängte die gesamte Versionshistorie darunter an. Solange das Ergebnis noch klein genug war, fiel das nicht auf, die Einträge waren nur unnötig lang; bei Version 1.63.0 überschritt es die Längengrenze, der Schritt brach ab und der Eintrag entstand gar nicht mehr. Nachgetragen sind die fehlenden Einträge für 1.63.0 und 1.64.0, und die Hinweise aller 38 älteren Einträge sind auf ihren tatsächlichen Abschnitt gekürzt. Am Saisonmanager selbst ändert sich nichts, betroffen war ausschließlich die Anzeige auf GitHub; die Versionshinweise in der Verwaltung kommen aus einer anderen Quelle und waren immer vollständig.
 
 ## [1.64.0] - 2026-07-31
 

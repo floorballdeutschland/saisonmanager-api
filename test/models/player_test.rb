@@ -337,7 +337,9 @@ class PlayerTest < ActiveSupport::TestCase
     player.reactivate!
     player.reload
 
-    # valid_set_by gehört other — reactivate! darf diesen Club nicht anfassen
+    # valid_set_by gehört other, und geschlossen wurde lange vor der Deaktivierung —
+    # nach beiden Kriterien von membership_closed_by_deactivation? darf reactivate!
+    # diesen Club nicht anfassen
     assert_equal other.id, player.clubs.first['valid_set_by']
     assert_not_nil player.clubs.first['valid_until']
   end
@@ -710,6 +712,152 @@ class PlayerTest < ActiveSupport::TestCase
     queries = capture_player_sql { Player.find_by_team_ids(teams.map(&:id)) }
     assert_equal 1, queries.size,
                  "Erwartet genau eine Query, war: #{queries.size}\n#{queries.join("\n")}"
+  end
+
+  # reactivate! nahm bisher jede Zugehoerigkeit mit demselben valid_set_by wieder auf.
+  # Ein Zweitspielrecht, das vor einem Jahr ablief und nur zufaellig von derselben
+  # Person eingetragen wurde, kam damit unbefristet zurueck – der Verein hatte danach
+  # eine Mitgliedschaft, die er nie hatte. Nur die Zugehoerigkeit, die diese
+  # Deaktivierung geschlossen hat, darf wieder aufgehen.
+  test 'reactivate! oeffnet nur die von der Deaktivierung geschlossene Zugehoerigkeit' do
+    heim = create(:club)
+    zweit = create(:club)
+    user_id = 4711
+    abgelaufen_am = 1.year.ago.iso8601
+
+    player = create(:player, clubs: [
+      { 'club_id' => heim.id, 'home_club' => true },
+      { 'club_id' => zweit.id, 'home_club' => false,
+        'valid_until' => abgelaufen_am, 'valid_set_by' => user_id }
+    ])
+    player.deactivate!(user_id, reason: 'Karriereende')
+    player.reactivate!
+
+    heim_eintrag  = player.clubs.find { |c| c['club_id'] == heim.id }
+    zweit_eintrag = player.clubs.find { |c| c['club_id'] == zweit.id }
+
+    assert_nil heim_eintrag['valid_until'], 'Heimatverein muss wieder offen sein'
+    assert_equal abgelaufen_am, zweit_eintrag['valid_until'],
+                 'abgelaufenes Zweitspielrecht darf nicht wieder geoeffnet werden'
+    refute_includes zweit.players.map(&:id), player.id
+  end
+
+  # Gegenstueck in die andere Richtung: ein Zweitspielrecht, das erst nach der
+  # Deaktivierung angelegt wurde, laeuft in der Zukunft ab und gehoert damit ebenso
+  # wenig zur Deaktivierung. Ohne beidseitiges Zeitfenster nahm reactivate! ihm die
+  # Befristung und der Verein hatte eine unbefristete Mitgliedschaft.
+  test 'reactivate! laesst ein nach der Deaktivierung angelegtes Zweitspielrecht befristet' do
+    heim = create(:club)
+    zweit = create(:club)
+    user_id = 4711
+    laeuft_bis = 1.year.from_now.iso8601
+
+    player = create(:player, clubs: [{ 'club_id' => heim.id, 'home_club' => true }])
+    player.deactivate!(user_id, reason: 'Temporäre Pause')
+    player.clubs << { 'club_id' => zweit.id, 'home_club' => false,
+                      'valid_until' => laeuft_bis, 'valid_set_by' => user_id }
+    player.save!(validate: false)
+
+    player.reactivate!
+
+    zweit_eintrag = player.clubs.find { |c| c['club_id'] == zweit.id }
+    assert_equal laeuft_bis, zweit_eintrag['valid_until'],
+                 'Befristung des spaeter angelegten Zweitspielrechts muss bleiben'
+  end
+
+  # Ein laufendes Zweitspielrecht hat ein Enddatum in der Zukunft. deactivate! zieht es
+  # auf "jetzt" vor, reactivate! nahm es danach ganz weg – aus der Befristung wurde
+  # damit eine unbefristete Mitgliedschaft. Das Datum (und der Eintragende) muessen den
+  # Zyklus ueberleben.
+  test 'deactivate!/reactivate! erhaelt die Befristung eines laufenden Zweitspielrechts' do
+    heim = create(:club)
+    zweit = create(:club)
+    eingetragen_von = 99
+    laeuft_bis = 3.months.from_now.iso8601
+
+    player = create(:player, clubs: [
+      { 'club_id' => heim.id, 'home_club' => true },
+      { 'club_id' => zweit.id, 'home_club' => false,
+        'valid_until' => laeuft_bis, 'valid_set_by' => eingetragen_von }
+    ])
+    player.deactivate!(4711, reason: 'Temporäre Pause')
+    player.reactivate!
+
+    zweit_eintrag = player.clubs.find { |c| c['club_id'] == zweit.id }
+    assert_equal laeuft_bis, zweit_eintrag['valid_until'], 'Enddatum muss zurueckkommen'
+    assert_equal eingetragen_von, zweit_eintrag['valid_set_by'], 'urspruenglicher Eintragender muss zurueckkommen'
+    refute zweit_eintrag.key?(Player::VALID_BEFORE_DEACTIVATION), 'Sicherung muss aufgeraeumt sein'
+
+    # Der Heimatverein war unbefristet und bleibt es.
+    heim_eintrag = player.clubs.find { |c| c['club_id'] == heim.id }
+    assert_nil heim_eintrag['valid_until']
+    refute heim_eintrag.key?(Player::VALID_BEFORE_DEACTIVATION)
+
+    # Zweiter Zyklus: die Sicherung wird neu geschrieben, nicht mit dem vorgezogenen
+    # Datum ueberschrieben.
+    player.deactivate!(4711, reason: 'Temporäre Pause')
+    player.reactivate!
+    assert_equal laeuft_bis, player.clubs.find { |c| c['club_id'] == zweit.id }['valid_until']
+  end
+
+  # Der echte Ablauf sind zwei HTTP-Requests mit einem Neuladen aus der DB dazwischen.
+  # Genau darauf beruht die Sicherung: der Wert muss die JSONB-Serialisierung
+  # unveraendert ueberleben, sonst passt das zurueckgeschriebene Datum nicht mehr zu
+  # dem, was andere Stellen als Zeichenkette vergleichen.
+  test 'gesicherte Befristung uebersteht das Speichern zwischen Deaktivieren und Reaktivieren' do
+    club = create(:club)
+    laeuft_bis = 3.months.from_now.iso8601
+    player = create(:player, clubs: [{ 'club_id' => club.id, 'home_club' => false,
+                                       'valid_until' => laeuft_bis, 'valid_set_by' => 99 }])
+
+    Player.find(player.id).deactivate!(4711, reason: 'Temporäre Pause')
+    Player.find(player.id).reactivate!
+
+    eintrag = Player.find(player.id).clubs.first
+    assert_equal laeuft_bis, eintrag['valid_until']
+    assert_equal 99, eintrag['valid_set_by']
+    refute eintrag.key?(Player::VALID_BEFORE_DEACTIVATION)
+  end
+
+  # Eine Sicherung darf nur den Stand der aktuellen Deaktivierung abbilden. Bleibt eine
+  # aeltere liegen – zweimal deaktiviert ohne Reaktivierung, oder per merge_into! von
+  # einer deaktivierten Dublette mitgekommen –, legte reactivate! das alte Enddatum auf
+  # eine Zugehoerigkeit, die unbefristet war.
+  test 'deactivate! raeumt eine veraltete Sicherung an unbefristeter Zugehoerigkeit ab' do
+    club = create(:club)
+    player = create(:player, clubs: [
+      { 'club_id' => club.id, 'home_club' => true,
+        Player::VALID_BEFORE_DEACTIVATION => { 'valid_until' => 2.months.ago.iso8601,
+                                               'valid_set_by' => 99 } }
+    ])
+
+    player.deactivate!(4711, reason: 'Karriereende')
+    refute player.clubs.first.key?(Player::VALID_BEFORE_DEACTIVATION),
+           'veraltete Sicherung muss beim Deaktivieren verschwinden'
+
+    player.reactivate!
+    assert_nil player.clubs.first['valid_until'],
+               'unbefristete Zugehoerigkeit darf kein fremdes Enddatum bekommen'
+    assert_includes club.players.map(&:id), player.id
+  end
+
+  # Profile, die vor dieser Aenderung deaktiviert wurden, haben keine Sicherung am
+  # Eintrag. Fuer sie bleibt es beim bisherigen Verhalten: die Zugehoerigkeit geht
+  # unbefristet wieder auf, statt dass die Reaktivierung scheitert.
+  test 'reactivate! ohne gesicherte Befristung oeffnet die Zugehoerigkeit unbefristet' do
+    club = create(:club)
+    player = create(:player, clubs: [{ 'club_id' => club.id, 'home_club' => false,
+                                       'valid_until' => 3.months.from_now.iso8601, 'valid_set_by' => 99 }])
+    player.deactivate!(4711, reason: 'Temporäre Pause')
+
+    # Altdaten-Zustand herstellen: Sicherung entfernen, vorgezogenes Ende behalten.
+    player.clubs.each { |c| c.delete(Player::VALID_BEFORE_DEACTIVATION) }
+    player.save!(validate: false)
+
+    player.reactivate!
+
+    assert_nil player.clubs.first['valid_until']
+    assert_includes club.players.map(&:id), player.id
   end
 
   private
