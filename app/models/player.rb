@@ -468,6 +468,33 @@ class Player < ApplicationRecord
     }
   end
 
+  # Hat die Deaktivierung dieses Profils diese Vereinszugehoerigkeit geschlossen?
+  # Maßgeblich fuer zwei Dinge: welche deaktivierten Profile noch in die Liste eines
+  # Vereins gehoeren (Club#players) und welche Zugehoerigkeiten reactivate! wieder
+  # oeffnen darf.
+  #
+  # valid_set_by allein genuegt als Merkmal nicht: den schreiben auch #transfer und
+  # TransferRequest (Zweitspielrecht anlegen/ablaufen). Deaktiviert spaeter dieselbe
+  # Person, laese der Auslöser-Vergleich eine laengst abgelaufene Zugehoerigkeit als
+  # "durch die Deaktivierung geschlossen" – der Verein bekaeme das Profil in seine
+  # Liste und beim Reaktivieren eine unbefristete Mitgliedschaft zurueck, die er nie
+  # hatte. Deshalb zusaetzlich die Zeitschranke: deactivate! setzt valid_until
+  # unmittelbar vor deactivated_at, beide Zeitstempel liegen also praktisch gleich,
+  # waehrend Transfer oder Ablauf Tage bis Jahre davor liegen. Die Toleranz deckt nur
+  # die Millisekunden-Rundung der JSONB-Serialisierung ab.
+  #
+  # Deaktivierungen aus der Zeit vor valid_set_by (bzw. mit einem String darin)
+  # erfuellt die Bedingung bewusst nicht: sie bleiben ausgeblendet, wie vor dieser
+  # Aenderung auch.
+  DEACTIVATION_CLOSE_SKEW = 5.seconds
+
+  def membership_closed_by_deactivation?(membership)
+    return false if deactivated_at.blank? || membership['valid_until'].blank?
+    return false unless membership['valid_set_by'].present? && membership['valid_set_by'] == deactivated_by
+
+    membership['valid_until'].to_time >= deactivated_at - DEACTIVATION_CLOSE_SKEW
+  end
+
   def deactivate!(user_id, reason: nil)
     self.clubs ||= []
     self.licenses ||= []
@@ -503,8 +530,12 @@ class Player < ApplicationRecord
     self.clubs ||= []
     self.licenses ||= []
 
+    # Nur die Zugehoerigkeiten wieder oeffnen, die diese Deaktivierung geschlossen
+    # hat. Der frühere Auslöser-Vergleich holte auch ein Zweitspielrecht zurueck, das
+    # lange vorher abgelaufen war und nur zufaellig dieselbe Person eingetragen hatte
+    # – der Verein hatte danach eine unbefristete Mitgliedschaft, die er nie hatte.
     clubs.map! do |c|
-      if c['valid_until'].present? && c['valid_set_by'] == deactivated_user
+      if membership_closed_by_deactivation?(c)
         c.delete('valid_until')
         c.delete('valid_set_by')
       end

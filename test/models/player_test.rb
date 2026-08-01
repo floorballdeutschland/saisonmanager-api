@@ -712,6 +712,34 @@ class PlayerTest < ActiveSupport::TestCase
                  "Erwartet genau eine Query, war: #{queries.size}\n#{queries.join("\n")}"
   end
 
+  # reactivate! nahm bisher jede Zugehoerigkeit mit demselben valid_set_by wieder auf.
+  # Ein Zweitspielrecht, das vor einem Jahr ablief und nur zufaellig von derselben
+  # Person eingetragen wurde, kam damit unbefristet zurueck – der Verein hatte danach
+  # eine Mitgliedschaft, die er nie hatte. Nur die Zugehoerigkeit, die diese
+  # Deaktivierung geschlossen hat, darf wieder aufgehen.
+  test 'reactivate! oeffnet nur die von der Deaktivierung geschlossene Zugehoerigkeit' do
+    heim = create(:club)
+    zweit = create(:club)
+    user_id = 4711
+    abgelaufen_am = 1.year.ago.iso8601
+
+    player = create(:player, clubs: [
+      { 'club_id' => heim.id, 'home_club' => true },
+      { 'club_id' => zweit.id, 'home_club' => false,
+        'valid_until' => abgelaufen_am, 'valid_set_by' => user_id }
+    ])
+    player.deactivate!(user_id, reason: 'Karriereende')
+    player.reactivate!
+
+    heim_eintrag  = player.clubs.find { |c| c['club_id'] == heim.id }
+    zweit_eintrag = player.clubs.find { |c| c['club_id'] == zweit.id }
+
+    assert_nil heim_eintrag['valid_until'], 'Heimatverein muss wieder offen sein'
+    assert_equal abgelaufen_am, zweit_eintrag['valid_until'],
+                 'abgelaufenes Zweitspielrecht darf nicht wieder geoeffnet werden'
+    refute_includes zweit.players.map(&:id), player.id
+  end
+
   private
 
   def build_license_document(attrs = {})

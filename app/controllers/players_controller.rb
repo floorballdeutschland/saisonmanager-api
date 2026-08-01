@@ -836,6 +836,14 @@ class PlayersController < ApplicationController
     return render json: { message: 'Spieler ist nicht deaktiviert.' }, status: :unprocessable_entity if player.deactivated_at.nil?
     return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless can_manage_player?(player)
 
+    # Eine zusammengefuehrte Dublette ist nur deshalb deaktiviert, weil merge_into!
+    # sie ersetzt hat; Spiele und Lizenzen liegen beim Master. Reaktiviert waere sie
+    # wieder ein zweites Profil derselben Person.
+    if player.merged_into_id.present?
+      return render json: { message: 'Dieses Profil wurde mit einem anderen zusammengeführt und kann nicht reaktiviert werden.' },
+                    status: :unprocessable_entity
+    end
+
     player.reactivate!
     render json: player.full_hash(false, false, false)
   end

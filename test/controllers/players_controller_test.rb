@@ -702,6 +702,29 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_nil reaktiviert['deactivated_at']
   end
 
+  # Eine zusammengefuehrte Dublette ist nur deshalb deaktiviert, weil merge_into! sie
+  # ersetzt hat. Sie darf weder in der Vereinsliste stehen noch reaktiviert werden,
+  # sonst gibt es das zweite Profil derselben Person wieder.
+  test 'zusammengefuehrte Dublette bleibt aus Liste und Reaktivierung heraus' do
+    vm = create(:user, :vm, club_id: @club.id)
+    master = create(:player, clubs: [{ 'club_id' => @club.id, 'home_club' => true }])
+    dublette = create(:player, clubs: [{ 'club_id' => @club.id, 'home_club' => true }])
+    dublette.merge_into!(master, vm.id)
+
+    login_as(vm)
+    get '/api/v2/admin/vm/players.json', params: { club_id: @club.id }
+    assert_response :success
+
+    ids = JSON.parse(response.body).map { |p| p['id'] }
+    assert_includes ids, master.id
+    refute_includes ids, dublette.id
+
+    post "/api/v2/admin/players/#{dublette.id}/reactivate"
+    assert_response :unprocessable_entity
+    assert_match(/zusammengeführt/, JSON.parse(response.body)['message'])
+    assert dublette.reload.deactivated_at.present?
+  end
+
   private
 
   # Beendetes Spiel mit @player (Trikot 7) in der Heim-Aufstellung.

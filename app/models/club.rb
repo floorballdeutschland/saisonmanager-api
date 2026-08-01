@@ -24,13 +24,18 @@ class Club < ApplicationRecord
 
   # include_deactivated: true liefert zusaetzlich deaktivierte Spieler*innen, deren
   # Zugehoerigkeit erst durch die Deaktivierung geschlossen wurde. Player#deactivate!
-  # setzt dabei valid_until = jetzt und merkt sich den Auslöser in valid_set_by;
-  # ohne diesen Zweig fallen sie sowohl durch Player.active als auch durch die
-  # valid_until-Pruefung und waeren in der Vereinsliste nicht mehr reaktivierbar.
-  # Die Bedingung entspricht der, die Player#reactivate! zum Wiederoeffnen nutzt,
-  # damit nicht auch laengst ausgetretene Spieler*innen wieder auftauchen.
+  # setzt dabei valid_until = jetzt, ohne diesen Zweig fallen sie sowohl durch
+  # Player.active als auch durch die valid_until-Pruefung und waeren in der
+  # Vereinsliste nicht mehr reaktivierbar. Was als "durch die Deaktivierung
+  # geschlossen" gilt, entscheidet Player#membership_closed_by_deactivation? – dieselbe
+  # Bedingung, unter der reactivate! die Zugehoerigkeit wieder oeffnet.
+  #
+  # Zusammengefuehrte Dubletten bleiben auch dann aussen vor: merge_into! setzt
+  # merged_into_id und deaktiviert die Secondary anschliessend, sie erfuellt also
+  # jede Deaktivierungs-Bedingung. Wieder eingeblendet und reaktiviert waere sie
+  # genau die Dublette, die der Merge beseitigen sollte.
   def players(include_deactivated: false)
-    scope = include_deactivated ? Player.all : Player.active
+    scope = include_deactivated ? Player.where(merged_into_id: nil) : Player.active
     p = scope.where("players.clubs @> '[{\"club_id\": ?}]'", id).order(:last_name, :first_name)
     p.select do |pl|
       pl.clubs.map do |c|
@@ -41,8 +46,7 @@ class Club < ApplicationRecord
         elsif c['valid_until'].to_date >= Time.now
           true
         else
-          include_deactivated && pl.deactivated_at.present? &&
-            c['valid_set_by'].present? && c['valid_set_by'] == pl.deactivated_by
+          include_deactivated && pl.membership_closed_by_deactivation?(c)
         end
       end.reduce(&:|)
     end
