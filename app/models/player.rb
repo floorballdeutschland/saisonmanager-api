@@ -515,9 +515,18 @@ class Player < ApplicationRecord
         # Befristete Zugehörigkeiten (Zweitspielrecht) verlieren durch das Vorziehen
         # ihr Enddatum. Vorher festhalten, damit reactivate! sie mit der ursprünglichen
         # Befristung zurückgeben kann statt unbefristet.
+        #
+        # Der else-Zweig ist kein Beiwerk: die Sicherung muss immer den Stand DIESER
+        # Deaktivierung abbilden. Eine ältere, nicht abgeräumte Sicherung (zweimal
+        # deaktiviert ohne Reaktivierung dazwischen, oder per merge_into! von einer
+        # deaktivierten Dublette mitgekommen) würde reactivate! sonst auf eine
+        # Zugehörigkeit legen, die unbefristet war – genau die Verfälschung, die dieser
+        # Fix verhindern soll.
         if c['valid_until'].present?
           c[VALID_BEFORE_DEACTIVATION] = { 'valid_until' => c['valid_until'],
                                            'valid_set_by' => c['valid_set_by'] }
+        else
+          c.delete(VALID_BEFORE_DEACTIVATION)
         end
         c['valid_until'] = Time.now
         c['valid_set_by'] = user_id
@@ -570,27 +579,6 @@ class Player < ApplicationRecord
     self.deactivated_at = nil
     self.deactivated_by = nil
     save!(validate: false)
-  end
-
-  # Nimmt einer Zugehörigkeit das von deactivate! gesetzte Ende wieder ab: entweder
-  # zurück auf die ursprüngliche Befristung oder, wenn es keine gab, wieder unbefristet.
-  #
-  # Ohne den gesicherten Wert entfällt die Befristung – so verhielt es sich für alle
-  # Profile, die vor der Einführung von VALID_BEFORE_DEACTIVATION deaktiviert wurden.
-  def restore_membership_validity(membership)
-    previous = membership.delete(VALID_BEFORE_DEACTIVATION)
-
-    if previous.is_a?(Hash) && previous['valid_until'].present?
-      membership['valid_until'] = previous['valid_until']
-      if previous['valid_set_by'].present?
-        membership['valid_set_by'] = previous['valid_set_by']
-      else
-        membership.delete('valid_set_by')
-      end
-    else
-      membership.delete('valid_until')
-      membership.delete('valid_set_by')
-    end
   end
 
   # Einheitlicher Einstieg für beide Sperr-Ebenen aus Issue #508.
@@ -822,6 +810,27 @@ class Player < ApplicationRecord
   end
 
   private
+
+  # Nimmt einer Zugehörigkeit das von deactivate! gesetzte Ende wieder ab: entweder
+  # zurück auf die ursprüngliche Befristung oder, wenn es keine gab, wieder unbefristet.
+  #
+  # Ohne den gesicherten Wert entfällt die Befristung – so verhielt es sich für alle
+  # Profile, die vor der Einführung von VALID_BEFORE_DEACTIVATION deaktiviert wurden.
+  def restore_membership_validity(membership)
+    previous = membership.delete(VALID_BEFORE_DEACTIVATION)
+
+    if previous.is_a?(Hash) && previous['valid_until'].present?
+      membership['valid_until'] = previous['valid_until']
+      if previous['valid_set_by'].present?
+        membership['valid_set_by'] = previous['valid_set_by']
+      else
+        membership.delete('valid_set_by')
+      end
+    else
+      membership.delete('valid_until')
+      membership.delete('valid_set_by')
+    end
+  end
 
   def valid_time?(time, deadline)
     !time.nil? && Date.parse(time) < deadline

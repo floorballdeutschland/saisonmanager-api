@@ -800,6 +800,47 @@ class PlayerTest < ActiveSupport::TestCase
     assert_equal laeuft_bis, player.clubs.find { |c| c['club_id'] == zweit.id }['valid_until']
   end
 
+  # Der echte Ablauf sind zwei HTTP-Requests mit einem Neuladen aus der DB dazwischen.
+  # Genau darauf beruht die Sicherung: der Wert muss die JSONB-Serialisierung
+  # unveraendert ueberleben, sonst passt das zurueckgeschriebene Datum nicht mehr zu
+  # dem, was andere Stellen als Zeichenkette vergleichen.
+  test 'gesicherte Befristung uebersteht das Speichern zwischen Deaktivieren und Reaktivieren' do
+    club = create(:club)
+    laeuft_bis = 3.months.from_now.iso8601
+    player = create(:player, clubs: [{ 'club_id' => club.id, 'home_club' => false,
+                                       'valid_until' => laeuft_bis, 'valid_set_by' => 99 }])
+
+    Player.find(player.id).deactivate!(4711, reason: 'Temporäre Pause')
+    Player.find(player.id).reactivate!
+
+    eintrag = Player.find(player.id).clubs.first
+    assert_equal laeuft_bis, eintrag['valid_until']
+    assert_equal 99, eintrag['valid_set_by']
+    refute eintrag.key?(Player::VALID_BEFORE_DEACTIVATION)
+  end
+
+  # Eine Sicherung darf nur den Stand der aktuellen Deaktivierung abbilden. Bleibt eine
+  # aeltere liegen – zweimal deaktiviert ohne Reaktivierung, oder per merge_into! von
+  # einer deaktivierten Dublette mitgekommen –, legte reactivate! das alte Enddatum auf
+  # eine Zugehoerigkeit, die unbefristet war.
+  test 'deactivate! raeumt eine veraltete Sicherung an unbefristeter Zugehoerigkeit ab' do
+    club = create(:club)
+    player = create(:player, clubs: [
+      { 'club_id' => club.id, 'home_club' => true,
+        Player::VALID_BEFORE_DEACTIVATION => { 'valid_until' => 2.months.ago.iso8601,
+                                               'valid_set_by' => 99 } }
+    ])
+
+    player.deactivate!(4711, reason: 'Karriereende')
+    refute player.clubs.first.key?(Player::VALID_BEFORE_DEACTIVATION),
+           'veraltete Sicherung muss beim Deaktivieren verschwinden'
+
+    player.reactivate!
+    assert_nil player.clubs.first['valid_until'],
+               'unbefristete Zugehoerigkeit darf kein fremdes Enddatum bekommen'
+    assert_includes club.players.map(&:id), player.id
+  end
+
   # Profile, die vor dieser Aenderung deaktiviert wurden, haben keine Sicherung am
   # Eintrag. Fuer sie bleibt es beim bisherigen Verhalten: die Zugehoerigkeit geht
   # unbefristet wieder auf, statt dass die Reaktivierung scheitert.
