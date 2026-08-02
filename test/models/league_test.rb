@@ -99,6 +99,95 @@ class LeagueTest < ActiveSupport::TestCase
   end
 
   # ---------------------------------------------------------------------------
+  # Spielabschnitte (#316): period_count_normal_game und die davon abgeleiteten
+  # Nummern müssen zu period_titles passen, aus der das Formular die Abschnitte
+  # anbietet und aus der die gespeicherten Ereignisse ihre Nummer haben.
+  # ---------------------------------------------------------------------------
+
+  def assert_periods_match_titles(league)
+    titles = league.period_titles
+    overtime = titles.find { |t| t[:status_id] == 'extratime' }
+    shootout = titles.find { |t| t[:status_id] == 'penalty_shots' }
+    assert_equal overtime[:period], league.period_overtime,
+                 'Verlängerung muss dieselbe Nummer haben wie in period_titles'
+    assert_equal shootout[:period], league.period_penalty_shots,
+                 'Penalty-Schießen muss dieselbe Nummer haben wie in period_titles'
+  end
+
+  test 'period_count_normal_game: neue Drittel-Liga zählt 3 Abschnitte' do
+    l = League.new(legacy_league: false, league_category_id: '', periods: 3)
+    assert_equal 3, l.period_count_normal_game
+    assert_equal 4, l.period_overtime
+    assert_equal 5, l.period_penalty_shots
+    assert_periods_match_titles(l)
+  end
+
+  test 'period_count_normal_game: neue Hälften-Liga zählt 2 Abschnitte' do
+    l = League.new(legacy_league: false, league_category_id: '', periods: 2)
+    assert_equal 2, l.period_count_normal_game
+    assert_equal 3, l.period_overtime
+    assert_equal 4, l.period_penalty_shots
+    assert_periods_match_titles(l)
+  end
+
+  test 'period_count_normal_game: neue Liga ignoriert league_category_id' do
+    # Kopierte Altligen bringen die alte Kategorie mit, sind aber
+    # legacy_league=false. Dort muss `periods` entscheiden, sonst widerspricht
+    # die Zählung wieder period_titles.
+    l = League.new(legacy_league: false, league_category_id: '1', periods: 2)
+    assert_equal 2, l.period_count_normal_game
+    assert_periods_match_titles(l)
+
+    l = League.new(legacy_league: false, league_category_id: '2', periods: 3)
+    assert_equal 3, l.period_count_normal_game
+    assert_periods_match_titles(l)
+  end
+
+  test 'period_count_normal_game: ohne Angabe bleibt es bei 2 Abschnitten' do
+    l = League.new(legacy_league: false, league_category_id: '', periods: nil)
+    assert_equal 2, l.period_count_normal_game
+    assert_periods_match_titles(l)
+  end
+
+  test 'period_count_normal_game: Altliga entscheidet weiter über league_category_id' do
+    %w[1 4 102].each do |category|
+      l = League.new(legacy_league: true, league_category_id: category, periods: 2)
+      assert_equal 3, l.period_count_normal_game, "Kategorie #{category} ist Großfeld"
+      assert_equal 5, l.period_penalty_shots
+      assert_periods_match_titles(l)
+    end
+
+    l = League.new(legacy_league: true, league_category_id: '2', periods: 3)
+    assert_equal 2, l.period_count_normal_game
+    assert_equal 4, l.period_penalty_shots
+    assert_periods_match_titles(l)
+  end
+
+  # ---------------------------------------------------------------------------
+  # period_titles: Nummerierung folgt der Reihenfolge
+  # ---------------------------------------------------------------------------
+
+  test 'period_titles: Nummern steigen in Listenreihenfolge (Drittel und Hälften)' do
+    { 3 => 'Drittel-Liga', 2 => 'Hälften-Liga' }.each do |count, label|
+      periods = League.new(legacy_league: false, periods: count).period_titles.map { |t| t[:period] }
+      assert_equal periods.sort, periods, "#{label}: Abschnitte müssen aufsteigend nummeriert sein"
+      assert_equal periods.uniq, periods, "#{label}: keine Nummer doppelt"
+    end
+  end
+
+  test 'period_titles: Pause trägt die halbe Nummer nach dem Abschnitt davor' do
+    [2, 3].each do |count|
+      titles = League.new(legacy_league: false, periods: count).period_titles
+      titles.each_cons(2) do |previous, current|
+        next if current[:running]
+
+        assert_equal previous[:period] + 0.5, current[:period],
+                     "#{current[:title]} muss auf #{previous[:title]} folgen"
+      end
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # class_rank — Ligastufen-Rang für Erst-/Zweitlizenz-Bestimmung (#291, #297)
   # ---------------------------------------------------------------------------
 
