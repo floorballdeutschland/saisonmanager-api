@@ -1250,12 +1250,14 @@ class GamesController < ApplicationController
     secretary_or_current_user_id
   end
 
-  # Ein technisches Tor wird zugesprochen, nicht herausgespielt – es kann daher
-  # weder eine Vorlage haben noch zugleich ein Strafschuss sein. Das Formular
-  # blendet die Assist-Felder aus und koppelt die beiden Markierungen; hier
-  # fällt beides weg, wenn ein bestehendes Tor nachträglich umgestellt wird
-  # (sonst bliebe es im JSONB stehen und würde weiter mitgewertet bzw.
-  # angezeigt). Deckt zugleich Aufrufe ab, die nicht über das Formular kommen.
+  # Ein Tor ist entweder erzielt oder zugesprochen: technisches Tor und
+  # Strafschuss (Pseudo-Strafcode 23) schließen sich aus. Das Formular koppelt
+  # die beiden Markierungen; hier fällt der Strafschuss weg, wenn ein
+  # bestehendes Tor nachträglich umgestellt wird (sonst bliebe er im JSONB
+  # stehen), und Aufrufe außerhalb des Formulars sind mit abgedeckt.
+  #
+  # Eine Vorlage bleibt erhalten: auch ein zugesprochenes Tor kann vorbereitet
+  # worden sein.
   #
   # Die Löschung greift in beiden Schreibwegen: add_event baut das Event als
   # HashWithIndifferentAccess, update_event ändert den string-keyed Hash aus
@@ -1263,8 +1265,6 @@ class GamesController < ApplicationController
   def normalize_technical_goal!(event)
     return unless Game.technical_goal?(event)
 
-    event.delete('home_assist')
-    event.delete('guest_assist')
     event.delete('penalty_code_id')
   end
 

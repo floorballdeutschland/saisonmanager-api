@@ -188,7 +188,7 @@ class Game < ApplicationRecord
 
   # Technisches Tor (ab Saison 2026/27): ein von den Schiedsrichtern
   # zugesprochenes Tor. Es wird wie der Strafschuss als reguläres Tor-Ereignis
-  # mit Torschütze und ohne Assist erfasst und zählt damit auch genauso in der
+  # mit Torschütze und Vorlage erfasst und zählt damit auch genauso in der
   # Scorerliste; markiert wird es über `goal_type` am Ereignis.
   #
   # Bewusst NICHT über eine Pseudo-Strafcode-ID wie beim Strafschuss

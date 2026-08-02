@@ -203,7 +203,7 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
   end
 
   # ---------------------------------------------------------------------------
-  # Technisches Tor: zugesprochen, also ohne Vorlage und ohne Strafschuss
+  # Technisches Tor: zugesprochen, also kein Strafschuss – aber mit Vorlage
   # ---------------------------------------------------------------------------
   #
   # Beide Schreibwege bauen das Ereignis unterschiedlich auf: add_event legt
@@ -211,7 +211,7 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
   # string-keyed Hash aus dem JSONB. normalize_technical_goal! löscht mit
   # String-Keys und muss in beiden greifen.
 
-  test 'add_event: technisches Tor kommt ohne Vorlage in die Datenbank' do
+  test 'add_event: technisches Tor behält seine Vorlage' do
     login(create(:user, :sbk_scoped, game_operation_id: @go.id))
 
     post "/api/v2/user/games/#{@game.id}/events/add", params: {
@@ -223,14 +223,13 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     event = @game.reload.events.first
     assert_equal 'technical', event['goal_type']
-    assert_not event.key?('home_assist')
+    assert_equal '9', event['home_assist'].to_s
   end
 
-  # Der Fall, für den die serverseitige Bereinigung überhaupt nötig ist: das Tor
-  # hatte eine Vorlage, bevor es umgestellt wurde. Das Formular blendet die
-  # Assist-Felder dann zwar aus, der gespeicherte Wert bliebe sonst aber stehen
-  # und würde weiter mitgewertet.
-  test 'update_event: Umstellen auf technisches Tor entfernt Vorlage und Strafschuss' do
+  # Der Fall, für den die serverseitige Bereinigung nötig ist: das Tor war ein
+  # Strafschuss, bevor es umgestellt wurde. Das Formular koppelt die beiden
+  # Markierungen zwar, der gespeicherte Strafcode bliebe sonst aber stehen.
+  test 'update_event: Umstellen auf technisches Tor entfernt den Strafschuss' do
     @game.update!(events: [{ 'id' => 1, 'period' => 1, 'time' => '10:00', 'event_type' => 'goal',
                              'event_team' => 'home', 'home_goals' => 1, 'guest_goals' => 0,
                              'home_number' => 7, 'home_assist' => 9, 'penalty_code_id' => 23 }])
@@ -238,20 +237,20 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
 
     post "/api/v2/user/games/#{@game.id}/events/update", params: {
       event_id: 1, period: 1, time: '10:00', event_type: 'goal', event_team: 'home',
-      home_goals: 1, guest_goals: 0, home_number: 7, goal_type: 'technical'
+      home_goals: 1, guest_goals: 0, home_number: 7, home_assist: 9, goal_type: 'technical'
     }
 
     assert_response :success
     event = @game.reload.events.first
     assert_equal 'technical', event['goal_type']
-    assert_not event.key?('home_assist')
     assert_not event.key?('penalty_code_id')
+    assert_equal '9', event['home_assist'].to_s
   end
 
-  test 'update_event: reguläres Tor behält seine Vorlage' do
+  test 'update_event: Umstellen zurück auf reguläres Tor löscht die Markierung' do
     @game.update!(events: [{ 'id' => 1, 'period' => 1, 'time' => '10:00', 'event_type' => 'goal',
                              'event_team' => 'home', 'home_goals' => 1, 'guest_goals' => 0,
-                             'home_number' => 7, 'home_assist' => 9 }])
+                             'home_number' => 7, 'home_assist' => 9, 'goal_type' => 'technical' }])
     login(create(:user, :sbk_scoped, game_operation_id: @go.id))
 
     post "/api/v2/user/games/#{@game.id}/events/update", params: {
@@ -261,8 +260,8 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     event = @game.reload.events.first
-    assert_equal '9', event['home_assist'].to_s
     assert_nil event['goal_type']
+    assert_equal '9', event['home_assist'].to_s
   end
 
   private

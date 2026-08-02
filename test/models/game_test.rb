@@ -324,12 +324,14 @@ class GameTest < ActiveSupport::TestCase
   end
 
   test 'formatted_events: technisches Tor wird als Tor mit eigenem Label geliefert' do
-    g = build_game(events: [technical_goal_event])
+    g = build_game(events: [technical_goal_event('home_assist' => 9)])
     e = g.formatted_events.first
     assert_equal :goal, e[:event_type]
     assert_equal :technical, e[:goal_type]
     assert_equal 'Technisches Tor', e[:goal_type_string]
     assert_equal 7, e[:number]
+    # Auch ein zugesprochenes Tor kann vorbereitet worden sein.
+    assert_equal 9, e[:assist]
   end
 
   # Die neue Vorab-Prüfung darf die bestehenden Torarten nicht verschlucken:
@@ -362,21 +364,21 @@ class GameTest < ActiveSupport::TestCase
     assert_equal :not_assigned, g.formatted_events.first[:goal_type]
   end
 
-  # Ein technisches Tor zählt dem Schützen wie jedes andere Tor. Die Torzählung
-  # hängt an der Trikotnummer, nicht an der Torart; dieser Test hält fest, dass
-  # die neue Markierung daran nichts ändert. Dass keine Vorlage danebensteht,
-  # stellen die Schreibwege sicher (normalize_technical_goal!, siehe
-  # GamesControllerTest), nicht die Auswertung.
-  test 'evaluate_scorer: technisches Tor zählt als Tor' do
+  # Ein technisches Tor zählt wie jedes andere Tor, Vorlage eingeschlossen. Die
+  # Wertung hängt an den Trikotnummern, nicht an der Torart; dieser Test hält
+  # fest, dass die neue Markierung daran nichts ändert.
+  test 'evaluate_scorer: technisches Tor zählt als Tor, Vorlage eingeschlossen' do
     g = build_game(
-      events: [technical_goal_event],
-      players: { 'home' => [{ 'trikot_number' => 7, 'player_id' => 42 }], 'guest' => [] }
+      events: [technical_goal_event('home_assist' => 9)],
+      players: { 'home' => [{ 'trikot_number' => 7, 'player_id' => 42 },
+                            { 'trikot_number' => 9, 'player_id' => 43 }], 'guest' => [] }
     )
     score = nil
     g.stub(:home_team, OpenStruct.new(id: 1, name: 'Heim')) do
-      score = g.evaluate_scorer[42]
+      score = g.evaluate_scorer
     end
-    assert_equal 1, score[:goals]
+    assert_equal 1, score[42][:goals]
+    assert_equal 1, score[43][:assists]
   end
 
   # Der Grund, keine Pseudo-Strafcode-ID wie beim Strafschuss zu verwenden: der
