@@ -118,9 +118,9 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     go_own = create(:game_operation)
     go_other = create(:game_operation)
     club = create(:club, game_operations_hash: [
-                    { 'home_game_operation' => true, 'game_operation_id' => go_own.id },
-                    { 'game_operation_id' => go_other.id }
-                  ])
+      { 'home_game_operation' => true, 'game_operation_id' => go_own.id },
+      { 'game_operation_id' => go_other.id }
+    ])
     own_team = create(:team, club: club, league: create(:league, :current_season, game_operation: go_own))
     other_team = create(:team, club: club, league: create(:league, :current_season, game_operation: go_other))
     login(create(:user, :sbk_scoped, game_operation_id: go_own.id))

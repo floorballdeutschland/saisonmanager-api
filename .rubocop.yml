@@ -5,3 +5,27 @@ AllCops:
   Exclude:
     - 'db/schema.rb'
     - 'vendor/**/*'
+
+# `ph` ist im ganzen Projekt die feste Abkürzung für User#permission_hash und
+# steht in fast jeder Rechteprüfung. Bisher war der Name nur über Datei-Excludes
+# in .rubocop_todo.yml geduldet; als bewusste Konvention gehört er hierher, damit
+# ausgelagerte Rechte-Concerns nicht jedes Mal neu ausgenommen werden müssen.
+# Die übrigen Einträge sind die Vorgabeliste des Cops (AllowedNames ersetzt sie).
+Naming/MethodParameterName:
+  AllowedNames:
+    - as
+    - at
+    - by
+    - cc
+    - db
+    - id
+    - if
+    - in
+    - io
+    - ip
+    - of
+    - on
+    - os
+    - ph
+    - pp
+    - to

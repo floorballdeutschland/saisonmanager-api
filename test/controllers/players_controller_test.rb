@@ -768,9 +768,9 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
   test 'SBK mit VM-Rolle darf für eigenen Verein außerhalb seines Spielbetriebs beantragen' do
     other_go = create(:game_operation)
     user = create(:user, permissions: [
-                    { 'user_group_id' => 2, 'game_operation_id' => other_go.id },
-                    { 'user_group_id' => 4, 'game_operation_id' => 0, 'club_id' => @club.id }
-                  ])
+      { 'user_group_id' => 2, 'game_operation_id' => other_go.id },
+      { 'user_group_id' => 4, 'game_operation_id' => 0, 'club_id' => @club.id }
+    ])
     login_as(user)
 
     post "/api/v2/user/players/#{@player.id}/request_license",
