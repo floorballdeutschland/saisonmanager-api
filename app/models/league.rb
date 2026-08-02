@@ -136,13 +136,27 @@ class League < ApplicationRecord
     8
   end
 
+  # Spielt diese Liga über drei Drittel (Großfeld) statt über zwei Hälften?
+  # Gemeinsame Quelle von period_titles und period_count_normal_game, damit die
+  # beiden nicht auseinanderlaufen. Nicht betroffen: period_time und
+  # period_is_extratime rechnen weiter direkt mit `periods`.
+  #
+  # Altligen entscheiden über `league_category_id`, weil der Legacy-Import
+  # `periods` nie schreibt. Neue Ligen pflegen `periods`, dort bleibt
+  # `league_category_id` leer; fehlt `periods`, gilt Hälften.
+  #
+  # Ausnahme sind kopierte Altligen (Leagues#admin_copy): die tragen
+  # legacy_league=false, bringen die alte Kategorie aber mit und haben oft kein
+  # `periods`. Sie zählen deshalb Hälften, so wie es das Formular über
+  # period_titles ohnehin schon anbietet.
+  def thirds?
+    return [1, 4, 102].include?(league_category_id.to_i) if legacy_league # GF, Pokal GF, GF DM
+
+    periods == 3
+  end
+
   def period_count_normal_game
-    case league_category_id.to_i
-    when 1, 4, 102 # GF, Pokal GF, GF DM
-      3
-    else
-      2
-    end
+    thirds? ? 3 : 2
   end
 
   def period_overtime
@@ -158,13 +172,7 @@ class League < ApplicationRecord
   # Abschnitt 2 also 2.5). Nur so passt die Nummerierung zur Reihenfolge in der
   # Liste, aus der das Formular den nächsten Abschnitt bestimmt.
   def period_titles
-    thirds = if legacy_league
-               period_count_normal_game == 3
-             else
-               periods == 3
-             end
-
-    if thirds
+    if thirds?
       [
         { period: 1, short_title: '1', title: '1. Drittel', status_id: 'period1', can_end_game: false, optional: false,
           running: true },
