@@ -1,5 +1,6 @@
 class PlayersController < ApplicationController
   include LicenseDocumentPresentation
+  include LicenseAccessScope
 
   before_action :set_player, only: %i[show update destroy]
   skip_before_action :authenticate_user, only: %i[transfers_public stats]
@@ -82,19 +83,24 @@ class PlayersController < ApplicationController
     team = Team.find(params[:team_id])
     league = team.league
 
-    ph = current_user.permission_hash
-    allowed = may_manage_team?(ph, team)
-
-    return render json: { message: 'Keine Berechtigung für dieses Team!' }, status: :forbidden unless allowed
-
     # Ohne auflösbare Liga gibt es weder Altersgrenze noch Saison und
     # Ligaklasse für die Lizenz. league wird unten mehrfach ohne Schutz
     # dereferenziert; das ergab denselben 500er wie auf der Mannschaftsseite
     # (Sentry SAISONMANAGER-1C). Es gibt keinen Fremdschlüssel auf
     # teams.league_id, die Spalte ist zudem nullable.
+    #
+    # Vor der Rechteprüfung: Der Spielbetriebs-Scope der SBK-Rolle wird aus
+    # genau dieser Liga abgeleitet. Stünde die Prüfung danach, bekäme die
+    # zuständige SBK für ein Team ohne Liga eine Rechte-Absage statt dieser
+    # zutreffenden Meldung.
     if league.nil?
       return render json: { message: 'Mannschaft ist keiner Liga zugeordnet.' }, status: :unprocessable_entity
     end
+
+    ph = current_user.permission_hash
+    allowed = may_manage_team?(ph, team)
+
+    return render json: { message: 'Keine Berechtigung für dieses Team!' }, status: :forbidden unless allowed
 
     guardian_email   = params[:guardian_email].is_a?(String) ? params[:guardian_email].presence : nil
     minor_consent_at = params[:minor_consent_at].is_a?(String) ? params[:minor_consent_at].presence : nil
@@ -125,6 +131,14 @@ class PlayersController < ApplicationController
     ActiveRecord::Base.transaction do
       player = Player.lock.find(params[:id])
       player.licenses ||= []
+
+      # Die player_id kommt aus der URL: ohne diese Prüfung kann ein TM jeden
+      # beliebigen Spieler des Gesamtbestands in sein eigenes Team lizenzieren.
+      # Admins bleiben ausgenommen, damit Korrekturen an Altdaten möglich sind.
+      if ph[:admin].blank? && !player_in_team_clubs?(player, team)
+        result = :not_in_club
+        raise ActiveRecord::Rollback
+      end
 
       if player.application_blocked?
         result = :blocked
@@ -174,6 +188,10 @@ class PlayersController < ApplicationController
     end
 
     case result
+    when :not_in_club
+      render json: { message: 'Der Spieler hat keine laufende Mitgliedschaft im Verein dieses Teams. ' \
+                              'Eine Lizenz kann nur für Vereinsmitglieder beantragt werden.' },
+             status: :unprocessable_entity
     when :blocked
       render json: { message: 'Für diesen Spieler besteht eine aktive Sperre. Es können keine Lizenzen beantragt werden.' },
              status: :unprocessable_entity
@@ -189,11 +207,19 @@ class PlayersController < ApplicationController
              status: :unprocessable_entity
     when :save_failed
       render json: { message: player.errors }, status: :unprocessable_entity
-    else
+    when :ok
       # express_league, nicht league: die Erlaubnis kann aus einer Pokal-Liga
       # stammen, deren Verband dann auch den Antrag erhält.
       PlayerMailer.express_license_requested(player, team, express_league).deliver_later if express_league
       render json: { success: true }
+    else
+      # Erfolg ist bewusst `when :ok`, nicht der else-Zweig: Ein künftig
+      # ergänztes Abbruch-Symbol ohne eigenen Zweig würde sonst als Erfolg
+      # gemeldet und löste sogar die Expresslizenz-Mail für eine Lizenz aus,
+      # die die Transaktion gerade zurückgerollt hat.
+      Sentry.capture_message("request_license: unbehandeltes Ergebnis #{result.inspect}") if defined?(Sentry)
+      render json: { message: 'Der Lizenzantrag konnte nicht verarbeitet werden.' },
+             status: :internal_server_error
     end
   end
 
@@ -337,7 +363,9 @@ class PlayersController < ApplicationController
   def admin_licenses
     league = League.find(params[:id])
     ph = current_user.permission_hash
-    return render json: { message: 'Keine Berechtigung!' }, status: :forbidden unless ph[:admin].present? || ph[:sbk].present?
+    unless ph[:admin].present? || sbk_can_access_leagues?(ph, [league])
+      return render json: { message: 'Keine Berechtigung!' }, status: :forbidden
+    end
 
     result = league.licenses(true)
 
@@ -380,7 +408,7 @@ class PlayersController < ApplicationController
 
     # Rollen additiv: sonst blockiert eine nicht passende VM-Rolle den
     # TM-Zweig, obwohl der Nutzer über sein Team berechtigt wäre.
-    allowed = ph[:admin].present? || ph[:sbk].present? ||
+    allowed = ph[:admin].present? || sbk_can_access_leagues?(ph, [league]) ||
               # vm: permission for one of those clubs?
               (ph[:vm].present? && ph[:vm].intersection(all_club_ids).present?) ||
               # tm: get clubs for league teams of given team, permission for one of those?
@@ -988,16 +1016,6 @@ class PlayersController < ApplicationController
     )
   end
 
-  # Alle Rollen additiv prüfen: eine frühere elsif-Kette ließ die VM-Rolle
-  # gewinnen und sperrte damit Nutzer aus, die zwar nicht VM des Vereins, wohl
-  # aber TM des Teams (oder Admin/SBK) sind.
-  def may_manage_team?(ph, team)
-    ph[:admin].present? || ph[:sbk].present? ||
-      (ph[:vm].present? &&
-        (ph[:vm].include?(team.club_id) || ph[:vm].intersection(team.syndicate_clubs).present?)) ||
-      (ph[:tm].present? && ph[:tm].include?(team.id))
-  end
-
   def can_manage_player?(player)
     ph = current_user.permission_hash
     ph[:admin].present? || sbk_can_access_player?(ph, player) ||
@@ -1051,22 +1069,6 @@ class PlayersController < ApplicationController
 
     go_id = home_club.main_game_operation_id
     ph[:sbk].include?(go_id)
-  end
-
-  # Scope für mutierende Lizenz-Aktionen: Die Lizenz ist über ihr Team an dessen
-  # (primäre) Liga und damit an einer game_operation_id gebunden – exakt die GO,
-  # nach der auch die Anzeige (Admin::LicensesController#index) filtert. Ein
-  # nicht-globaler SBK darf nur Lizenzen bearbeiten, deren Liga-game_operation_id
-  # in seinem Scope liegt. Bewusst NICHT team.leagues (inkl. Cup-Ligen), da eine
-  # Cup-Liga zu einer anderen GO/LV gehören kann und sonst den Scope aufweichen
-  # würde.
-  def sbk_can_access_license?(ph, license)
-    return false unless ph[:sbk].present?
-    return true if ph[:sbk].include?(0)
-    return false if license.blank?
-
-    go_id = Team.find_by(id: license['team_id'])&.league&.game_operation_id
-    go_id.present? && ph[:sbk].include?(go_id)
   end
 
   def derive_club_ids_for_go(go_ids)

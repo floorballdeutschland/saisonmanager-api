@@ -307,6 +307,182 @@ class GameTest < ActiveSupport::TestCase
   end
 
   # ---------------------------------------------------------------------------
+  # Technisches Tor
+  # ---------------------------------------------------------------------------
+
+  def technical_goal_event(extra = {})
+    {
+      'id' => 1, 'period' => 1, 'time' => '12:34', 'event_type' => 'goal', 'event_team' => 'home',
+      'home_goals' => 1, 'guest_goals' => 0, 'home_number' => 7, 'goal_type' => 'technical'
+    }.merge(extra)
+  end
+
+  test 'technical_goal?: erkennt nur die Markierung technical' do
+    assert Game.technical_goal?('goal_type' => 'technical')
+    assert_not Game.technical_goal?('goal_type' => 'regular')
+    assert_not Game.technical_goal?({})
+  end
+
+  test 'formatted_events: technisches Tor wird als Tor mit eigenem Label geliefert' do
+    g = build_game(events: [technical_goal_event('home_assist' => 9)])
+    e = g.formatted_events.first
+    assert_equal :goal, e[:event_type]
+    assert_equal :technical, e[:goal_type]
+    assert_equal 'Technisches Tor', e[:goal_type_string]
+    assert_equal 7, e[:number]
+    # Auch ein zugesprochenes Tor kann vorbereitet worden sein.
+    assert_equal 9, e[:assist]
+  end
+
+  # Die neue Vorab-Prüfung darf die bestehenden Torarten nicht verschlucken:
+  # ohne Markierung muss dieselbe Kette wie vorher greifen.
+  test 'formatted_events: reguläres Tor bleibt unverändert' do
+    g = build_game(events: [technical_goal_event.except('goal_type')])
+    e = g.formatted_events.first
+    assert_equal :regular, e[:goal_type]
+    assert_equal 'Tor', e[:goal_type_string]
+  end
+
+  test 'formatted_events: Strafschuss bleibt Strafschuss' do
+    g = build_game(events: [technical_goal_event.except('goal_type').merge('penalty_code_id' => 23)])
+    e = g.formatted_events.first
+    assert_equal :penalty_shot, e[:goal_type]
+    assert_equal 'Strafschuss', e[:goal_type_string]
+  end
+
+  # ---------------------------------------------------------------------------
+  # Entscheidung im Penalty-Schießen (dasselbe Ereignis wie der Strafschuss,
+  # unterschieden nur am Spielabschnitt)
+  # ---------------------------------------------------------------------------
+
+  def shootout_goal(extra = {})
+    technical_goal_event.except('goal_type').merge('penalty_code_id' => 23).merge(extra)
+  end
+
+  # Echte Ligen statt einer gestubbten Abschnittsnummer: die Ableitung ist
+  # gerade der Teil, der schiefgehen kann. `league_category_id` ist im neuen
+  # System leer, `periods` bestimmt die Form (siehe League#period_titles).
+  def modern_league(periods)
+    League.new(legacy_league: false, periods: periods, league_category_id: '')
+  end
+
+  def game_in_league(league, events)
+    g = build_game(events: events)
+    g.stub(:game_day, OpenStruct.new(league: league)) { yield g }
+  end
+
+  test 'penalty_shootout_period: Drittel-Liga entscheidet in Abschnitt 5, Hälften-Liga in 4' do
+    thirds = build_game
+    thirds.stub(:game_day, OpenStruct.new(league: modern_league(3))) do
+      assert_equal 5, thirds.penalty_shootout_period
+    end
+
+    halves = build_game
+    halves.stub(:game_day, OpenStruct.new(league: modern_league(2))) do
+      assert_equal 4, halves.penalty_shootout_period
+    end
+  end
+
+  test 'formatted_events: Tor im Penalty-Schießen ist die Entscheidung, nicht ein Strafschuss' do
+    game_in_league(modern_league(3), [shootout_goal('period' => 5, 'time' => '0:30')]) do |g|
+      e = g.formatted_events.first
+      assert_equal :penalty_shots, e[:goal_type]
+      assert_equal 'Entscheidung im Penalty-Schießen', e[:goal_type_string]
+    end
+  end
+
+  # Der gemeldete Fehler: im Kleinfeld endet die reguläre Spielzeit bei 50:00,
+  # die feste Prüfung auf „70:00" traf dort nie.
+  test 'formatted_events: Entscheidung auch in einer Liga mit Hälften' do
+    game_in_league(modern_league(2), [shootout_goal('period' => 4, 'time' => '0:30')]) do |g|
+      e = g.formatted_events.first
+      assert_equal :penalty_shots, e[:goal_type]
+      assert_equal 'Entscheidung im Penalty-Schießen', e[:goal_type_string]
+    end
+  end
+
+  # Der Grund, den Abschnitt aus period_titles zu lesen und nicht aus
+  # League#period_penalty_shots: letzteres liefert für eine heutige
+  # Großfeld-Liga 4, also die Verlängerung. Ein Strafschuss dort wäre damit
+  # als Entscheidung im Penalty-Schießen ausgewiesen worden.
+  test 'formatted_events: Strafschuss in der Verlängerung bleibt Strafschuss' do
+    game_in_league(modern_league(3), [shootout_goal('period' => 4, 'time' => '2:15')]) do |g|
+      assert_equal :penalty_shot, g.formatted_events.first[:goal_type]
+    end
+  end
+
+  test 'formatted_events: Strafschuss in der regulären Spielzeit bleibt Strafschuss' do
+    game_in_league(modern_league(3), [shootout_goal('period' => 2, 'time' => '12:34')]) do |g|
+      assert_equal :penalty_shot, g.formatted_events.first[:goal_type]
+    end
+  end
+
+  # Altdaten tragen den Abschnitt nicht verlässlich; die feste Uhrzeit bleibt
+  # deshalb als zweites Kriterium stehen, sonst verlören sie ihr Label.
+  test 'formatted_events: 70:00 bleibt die Entscheidung, auch bei abweichendem Abschnitt' do
+    game_in_league(modern_league(3), [shootout_goal('period' => 3, 'time' => '70:00')]) do |g|
+      assert_equal :penalty_shots, g.formatted_events.first[:goal_type]
+    end
+  end
+
+  # Ohne erreichbare Liga (Spiel ohne Spieltag) darf nichts abbrechen; dann
+  # entscheidet weiterhin allein die Uhrzeit.
+  test 'formatted_events: ohne Liga bleibt es beim bisherigen Verhalten' do
+    g = build_game(events: [shootout_goal('period' => 5, 'time' => '0:30')])
+    assert_nil g.penalty_shootout_period
+    assert_equal :penalty_shot, g.formatted_events.first[:goal_type]
+  end
+
+  # Eigentor und „nicht angegeben" stehen anstelle eines Schützen (Pseudo-Nummern
+  # 1000/2000) und gehen der Markierung vor. Sonst verdrängte das technische Tor
+  # das Label, und die Ereignisliste zeigte eine leere Zeile: zu 1000/2000 ist
+  # kein Spieler auflösbar, und der Hinweis hängt am aufgelösten Namen.
+  test 'formatted_events: Eigentor behält sein Label trotz Markierung' do
+    g = build_game(events: [technical_goal_event('home_number' => 1000)])
+    assert_equal :owngoal, g.formatted_events.first[:goal_type]
+  end
+
+  test 'formatted_events: „nicht angegeben" behält sein Label trotz Markierung' do
+    g = build_game(events: [technical_goal_event('home_number' => 2000)])
+    assert_equal :not_assigned, g.formatted_events.first[:goal_type]
+  end
+
+  # Ein technisches Tor zählt wie jedes andere Tor, Vorlage eingeschlossen. Die
+  # Wertung hängt an den Trikotnummern, nicht an der Torart; dieser Test hält
+  # fest, dass die neue Markierung daran nichts ändert.
+  test 'evaluate_scorer: technisches Tor zählt als Tor, Vorlage eingeschlossen' do
+    g = build_game(
+      events: [technical_goal_event('home_assist' => 9)],
+      players: { 'home' => [{ 'trikot_number' => 7, 'player_id' => 42 },
+                            { 'trikot_number' => 9, 'player_id' => 43 }], 'guest' => [] }
+    )
+    score = nil
+    g.stub(:home_team, OpenStruct.new(id: 1, name: 'Heim')) do
+      score = g.evaluate_scorer
+    end
+    assert_equal 1, score[42][:goals]
+    assert_equal 1, score[43][:assists]
+  end
+
+  # Der Ticker trennt Tore von Strafen über penalty_code_id und sieht die
+  # Torart nie an. Das technische Tor kommt hier also nur richtig heraus,
+  # solange es ohne Strafcode gespeichert wird – Regressionsschutz für den
+  # Fall, dass jemand doch auf einen Pseudo-Code umstellt.
+  test 'ticker_events: technisches Tor ist ein Tor, keine Strafe' do
+    g = build_game(events: [technical_goal_event])
+    assert_equal 'HOME_GOAL', g.ticker_events.first[:eventType]
+  end
+
+  # Beide Markierungen an einem Ereignis verhindern die Schreibwege
+  # (drop_penalty_shot_marker!, siehe GamesControllerTest). Kommt die
+  # Kombination trotzdem aus Altdaten, entscheidet die Reihenfolge der Zweige:
+  # die Markierung gewinnt, statt dass die Anzeige zwischen beiden kippt.
+  test 'formatted_events: Markierung geht dem Strafschuss vor' do
+    g = build_game(events: [technical_goal_event('penalty_code_id' => 23)])
+    assert_equal :technical, g.formatted_events.first[:goal_type]
+  end
+
+  # ---------------------------------------------------------------------------
   # Scorer-Namen aus dem Snapshot (R2)
   # ---------------------------------------------------------------------------
 

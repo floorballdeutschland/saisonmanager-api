@@ -9,6 +9,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.66.0] - 2026-08-02
+
+### Neu
+
+- **Technisches Tor im Spielbericht**: Ein von den Schiedsrichtern zugesprochenes Tor lässt sich jetzt als solches erfassen, genauso wie bisher schon der Strafschuss. Im Tor-Formular gibt es dafür die Markierung „Technisches Tor“, Torschütze und Vorlage werden wie gewohnt eingetragen. In der Ereignisliste und im Spielbericht steht am Tor der Hinweis „Technisches Tor“. Für die Wertung zählt es wie jedes andere Tor: es geht in den Spielstand ein und zählt in der Scorerliste für Torschütze und Vorlage. Ein Tor ist entweder erzielt oder zugesprochen, deshalb schließen sich Strafschuss und technisches Tor gegenseitig aus; wird ein bestehender Strafschuss umgestellt, entfällt die Strafschuss-Markierung. Am technischen Tor entfallen außerdem die Einträge „Eigentor“ und „Nicht angegeben“, es hat immer einen benannten Torschützen.
+
+### Behoben
+
+- **Bearbeiten machte aus der Entscheidung im Penalty-Schießen ein gewöhnliches Tor**: Wurde ein im Penalty-Schießen entschiedenes Tor noch einmal angefasst, etwa um eine Trikotnummer zu berichtigen, verlor es beim Speichern seine Kennzeichnung. Im Spielbericht stand danach „Tor“ statt „Entscheidung im Penalty-Schießen“, ohne Hinweis und ohne Rückfrage. Grund war, dass das Formular den Haken „durch Strafstoß?“ nur beim Strafschuss während des Spiels wieder setzte, nicht bei der Entscheidung im Penalty-Schießen; beide sind dasselbe Ereignis und unterscheiden sich nur im Spielabschnitt. Der Spielstand war nie betroffen. Bereits so gespeicherte Tore lassen sich korrigieren, indem der Haken im Formular wieder gesetzt wird.
+
+- **Entscheidung im Penalty-Schießen war meist als „Strafschuss“ beschriftet**: Erkannt wurde sie allein an der Uhrzeit 70:00, dem Ende der regulären Spielzeit im Großfeld bei durchlaufender Uhr. Im Kleinfeld (50:00) und in der Jugend (35:00) traf das nie zu, und im Großfeld auch nicht mehr, seit die Spielzeit je Abschnitt wieder bei 0:00 beginnt. An der Entscheidung stand deshalb „Strafschuss“. Maßgeblich ist jetzt der Spielabschnitt, den die Liga für das Penalty-Schießen vorsieht. Die alte Erkennung bleibt zusätzlich bestehen, damit ältere Spielberichte mit durchlaufender Uhr ihre Beschriftung behalten. Bestehende Spielberichte sind damit ohne weiteres Zutun richtig beschriftet, es ändert sich nur die Anzeige.
+
+- **Lizenzen ließen sich über Verbandsgrenzen hinweg beantragen**: Wer irgendeine SBK-Rolle hatte, konnte Lizenzen in Ligen **aller** Verbände beantragen, zurückziehen und wieder aktivieren, auch in denen anderer Landesverbände und der Bundesligen. Geprüft wurde nur, dass eine SBK-Rolle vorhanden ist, nicht für welchen Spielbetrieb sie gilt. Die Genehmigung war davon nie betroffen, sie hat den Spielbetrieb immer geprüft; ein Antrag allein erteilt also keine Spielberechtigung. Beantragen, zurückziehen, wieder aktivieren und die Lizenzlisten einer Liga oder Mannschaft berücksichtigen jetzt denselben Spielbetriebs-Zuschnitt wie die Genehmigung. Mehrfachrollen bleiben dabei erhalten: Wer neben seiner SBK-Rolle Vereins- oder Teammanager ist, kann für die eigenen Mannschaften weiterhin beantragen, auch wenn diese in einem anderen Spielbetrieb spielen. In der Mannschaftsauswahl des Lizenzwesens erscheinen zu einem Verein außerdem nur noch die Mannschaften, für die die eigene Rolle auch zuständig ist, statt aller Mannschaften des Vereins.
+
+- **Lizenzantrag war für beliebige Spieler*innen möglich**: Der Antrag prüfte nur die Mannschaft, nicht die Person. Über einen direkt gesetzten Aufruf ließ sich damit jede beliebige Person des Gesamtbestands in die eigene Mannschaft lizenzieren, auch ohne jede Vereinszugehörigkeit. In der Oberfläche fiel das nicht auf, weil dort nur Vereinsmitglieder zur Auswahl stehen. Beantragt werden kann jetzt nur noch für Personen mit laufender Mitgliedschaft im Verein der Mannschaft, bei Spielgemeinschaften in einem der beteiligten Vereine. Die Verwaltung bleibt ausgenommen, damit Korrekturen an Altdaten möglich bleiben.
+
 ## [1.65.1] - 2026-08-01
 
 ### Behoben
