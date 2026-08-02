@@ -99,7 +99,7 @@ class LeagueTest < ActiveSupport::TestCase
   end
 
   # ---------------------------------------------------------------------------
-  # period_titles — Nummerierung folgt der Reihenfolge
+  # period_titles: Nummerierung folgt der Reihenfolge
   # ---------------------------------------------------------------------------
 
   test 'period_titles: Nummern steigen in Listenreihenfolge (Drittel und Hälften)' do
