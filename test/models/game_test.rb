@@ -350,6 +350,89 @@ class GameTest < ActiveSupport::TestCase
     assert_equal 'Strafschuss', e[:goal_type_string]
   end
 
+  # ---------------------------------------------------------------------------
+  # Entscheidung im Penalty-Schießen (dasselbe Ereignis wie der Strafschuss,
+  # unterschieden nur am Spielabschnitt)
+  # ---------------------------------------------------------------------------
+
+  def shootout_goal(extra = {})
+    technical_goal_event.except('goal_type').merge('penalty_code_id' => 23).merge(extra)
+  end
+
+  # Echte Ligen statt einer gestubbten Abschnittsnummer: die Ableitung ist
+  # gerade der Teil, der schiefgehen kann. `league_category_id` ist im neuen
+  # System leer, `periods` bestimmt die Form (siehe League#period_titles).
+  def modern_league(periods)
+    League.new(legacy_league: false, periods: periods, league_category_id: '')
+  end
+
+  def game_in_league(league, events)
+    g = build_game(events: events)
+    g.stub(:game_day, OpenStruct.new(league: league)) { yield g }
+  end
+
+  test 'penalty_shootout_period: Drittel-Liga entscheidet in Abschnitt 5, Hälften-Liga in 4' do
+    thirds = build_game
+    thirds.stub(:game_day, OpenStruct.new(league: modern_league(3))) do
+      assert_equal 5, thirds.penalty_shootout_period
+    end
+
+    halves = build_game
+    halves.stub(:game_day, OpenStruct.new(league: modern_league(2))) do
+      assert_equal 4, halves.penalty_shootout_period
+    end
+  end
+
+  test 'formatted_events: Tor im Penalty-Schießen ist die Entscheidung, nicht ein Strafschuss' do
+    game_in_league(modern_league(3), [shootout_goal('period' => 5, 'time' => '0:30')]) do |g|
+      e = g.formatted_events.first
+      assert_equal :penalty_shots, e[:goal_type]
+      assert_equal 'Entscheidung im Penalty-Schießen', e[:goal_type_string]
+    end
+  end
+
+  # Der gemeldete Fehler: im Kleinfeld endet die reguläre Spielzeit bei 50:00,
+  # die feste Prüfung auf „70:00" traf dort nie.
+  test 'formatted_events: Entscheidung auch in einer Liga mit Hälften' do
+    game_in_league(modern_league(2), [shootout_goal('period' => 4, 'time' => '0:30')]) do |g|
+      e = g.formatted_events.first
+      assert_equal :penalty_shots, e[:goal_type]
+      assert_equal 'Entscheidung im Penalty-Schießen', e[:goal_type_string]
+    end
+  end
+
+  # Der Grund, den Abschnitt aus period_titles zu lesen und nicht aus
+  # League#period_penalty_shots: letzteres liefert für eine heutige
+  # Großfeld-Liga 4, also die Verlängerung. Ein Strafschuss dort wäre damit
+  # als Entscheidung im Penalty-Schießen ausgewiesen worden.
+  test 'formatted_events: Strafschuss in der Verlängerung bleibt Strafschuss' do
+    game_in_league(modern_league(3), [shootout_goal('period' => 4, 'time' => '2:15')]) do |g|
+      assert_equal :penalty_shot, g.formatted_events.first[:goal_type]
+    end
+  end
+
+  test 'formatted_events: Strafschuss in der regulären Spielzeit bleibt Strafschuss' do
+    game_in_league(modern_league(3), [shootout_goal('period' => 2, 'time' => '12:34')]) do |g|
+      assert_equal :penalty_shot, g.formatted_events.first[:goal_type]
+    end
+  end
+
+  # Altdaten tragen den Abschnitt nicht verlässlich; die feste Uhrzeit bleibt
+  # deshalb als zweites Kriterium stehen, sonst verlören sie ihr Label.
+  test 'formatted_events: 70:00 bleibt die Entscheidung, auch bei abweichendem Abschnitt' do
+    game_in_league(modern_league(3), [shootout_goal('period' => 3, 'time' => '70:00')]) do |g|
+      assert_equal :penalty_shots, g.formatted_events.first[:goal_type]
+    end
+  end
+
+  # Ohne erreichbare Liga (Spiel ohne Spieltag) darf nichts abbrechen; dann
+  # entscheidet weiterhin allein die Uhrzeit.
+  test 'formatted_events: ohne Liga bleibt es beim bisherigen Verhalten' do
+    g = build_game(events: [shootout_goal('period' => 5, 'time' => '0:30')])
+    assert_nil g.penalty_shootout_period
+    assert_equal :penalty_shot, g.formatted_events.first[:goal_type]
+  end
+
   # Eigentor und „nicht angegeben" stehen anstelle eines Schützen (Pseudo-Nummern
   # 1000/2000) und gehen der Markierung vor. Sonst verdrängte das technische Tor
   # das Label, und die Ereignisliste zeigte eine leere Zeile: zu 1000/2000 ist
