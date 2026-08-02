@@ -99,7 +99,7 @@ class LeagueTest < ActiveSupport::TestCase
   end
 
   # ---------------------------------------------------------------------------
-  # Spielabschnitte (#316) — period_count_normal_game und die davon abgeleiteten
+  # Spielabschnitte (#316): period_count_normal_game und die davon abgeleiteten
   # Nummern müssen zu period_titles passen, aus der das Formular die Abschnitte
   # anbietet und aus der die gespeicherten Ereignisse ihre Nummer haben.
   # ---------------------------------------------------------------------------
@@ -127,6 +127,19 @@ class LeagueTest < ActiveSupport::TestCase
     assert_equal 2, l.period_count_normal_game
     assert_equal 3, l.period_overtime
     assert_equal 4, l.period_penalty_shots
+    assert_periods_match_titles(l)
+  end
+
+  test 'period_count_normal_game: neue Liga ignoriert league_category_id' do
+    # Kopierte Altligen bringen die alte Kategorie mit, sind aber
+    # legacy_league=false. Dort muss `periods` entscheiden, sonst widerspricht
+    # die Zählung wieder period_titles.
+    l = League.new(legacy_league: false, league_category_id: '1', periods: 2)
+    assert_equal 2, l.period_count_normal_game
+    assert_periods_match_titles(l)
+
+    l = League.new(legacy_league: false, league_category_id: '2', periods: 3)
+    assert_equal 3, l.period_count_normal_game
     assert_periods_match_titles(l)
   end
 

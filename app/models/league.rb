@@ -137,12 +137,18 @@ class League < ApplicationRecord
   end
 
   # Spielt diese Liga über drei Drittel (Großfeld) statt über zwei Hälften?
-  # Einzige Quelle für period_titles und die daraus abgeleiteten
-  # Abschnittsnummern, damit beide nicht auseinanderlaufen können.
+  # Gemeinsame Quelle von period_titles und period_count_normal_game, damit die
+  # beiden nicht auseinanderlaufen. Nicht betroffen: period_time und
+  # period_is_extratime rechnen weiter direkt mit `periods`.
   #
-  # Für Altligen weiter über `league_category_id`: dort ist das Feld gesetzt und
-  # `periods` nicht verlässlich gepflegt. Im neuen System ist es umgekehrt,
-  # `league_category_id` ist leer und `periods` die gepflegte Angabe.
+  # Altligen entscheiden über `league_category_id`, weil der Legacy-Import
+  # `periods` nie schreibt. Neue Ligen pflegen `periods`, dort bleibt
+  # `league_category_id` leer; fehlt `periods`, gilt Hälften.
+  #
+  # Ausnahme sind kopierte Altligen (Leagues#admin_copy): die tragen
+  # legacy_league=false, bringen die alte Kategorie aber mit und haben oft kein
+  # `periods`. Sie zählen deshalb Hälften, so wie es das Formular über
+  # period_titles ohnehin schon anbietet.
   def thirds?
     return [1, 4, 102].include?(league_category_id.to_i) if legacy_league # GF, Pokal GF, GF DM
 
