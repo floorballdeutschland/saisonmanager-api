@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Nummerierung der Pause vor dem Penalty-Schießen (Kleinfeld)**: In Ligen mit zwei Hälften trug die „Pause vor Penalty-Schießen“ intern die Nummer 4.5 und lag damit hinter dem Penalty-Schießen (4) statt davor; in Ligen mit drei Dritteln stimmte die Kette. Korrigiert auf 3.5. In der Anwendung war davon nichts zu sehen, weil Spielbericht und Ereignisliste die Abschnitte in Listenreihenfolge durchlaufen und Pausen keine Ereignisse tragen.
+
 ## [1.66.0] - 2026-08-02
 
 ### Neu

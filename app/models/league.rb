@@ -153,6 +153,10 @@ class League < ApplicationRecord
     period_overtime + 1
   end
 
+  # Die Abschnitte eines Spiels in Reihenfolge. Spielabschnitte tragen ganze
+  # Nummern, Pausen die halbe Nummer nach dem Abschnitt davor (Pause nach
+  # Abschnitt 2 also 2.5). Nur so passt die Nummerierung zur Reihenfolge in der
+  # Liste, aus der das Formular den nächsten Abschnitt bestimmt.
   def period_titles
     thirds = if legacy_league
                period_count_normal_game == 3
@@ -193,7 +197,7 @@ class League < ApplicationRecord
           optional: true, running: false },
         { period: 3, short_title: 'V', title: 'Verlängerung', status_id: 'extratime', can_end_game: true,
           optional: true, running: true },
-        { period: 4.5, short_title: 'PP', title: 'Pause vor Penalty-Schießen', status_id: 'pause_ps',
+        { period: 3.5, short_title: 'PP', title: 'Pause vor Penalty-Schießen', status_id: 'pause_ps',
           can_end_game: false, optional: true, running: false },
         { period: 4, short_title: 'P', title: 'Penalty-Schießen', status_id: 'penalty_shots', can_end_game: true,
           optional: true, running: true }
