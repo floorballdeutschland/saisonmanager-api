@@ -202,6 +202,69 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
     assert_empty @game.reload.events
   end
 
+  # ---------------------------------------------------------------------------
+  # Technisches Tor: zugesprochen, also ohne Vorlage und ohne Strafschuss
+  # ---------------------------------------------------------------------------
+  #
+  # Beide Schreibwege bauen das Ereignis unterschiedlich auf: add_event legt
+  # einen HashWithIndifferentAccess mit Symbol-Keys an, update_event ändert den
+  # string-keyed Hash aus dem JSONB. normalize_technical_goal! löscht mit
+  # String-Keys und muss in beiden greifen.
+
+  test 'add_event: technisches Tor kommt ohne Vorlage in die Datenbank' do
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/games/#{@game.id}/events/add", params: {
+      period: 1, time: '10:00', event_type: 'goal', event_team: 'home',
+      home_goals: 1, guest_goals: 0, home_number: 7, home_assist: 9,
+      goal_type: 'technical'
+    }
+
+    assert_response :success
+    event = @game.reload.events.first
+    assert_equal 'technical', event['goal_type']
+    assert_not event.key?('home_assist')
+  end
+
+  # Der Fall, für den die serverseitige Bereinigung überhaupt nötig ist: das Tor
+  # hatte eine Vorlage, bevor es umgestellt wurde. Das Formular blendet die
+  # Assist-Felder dann zwar aus, der gespeicherte Wert bliebe sonst aber stehen
+  # und würde weiter mitgewertet.
+  test 'update_event: Umstellen auf technisches Tor entfernt Vorlage und Strafschuss' do
+    @game.update!(events: [{ 'id' => 1, 'period' => 1, 'time' => '10:00', 'event_type' => 'goal',
+                             'event_team' => 'home', 'home_goals' => 1, 'guest_goals' => 0,
+                             'home_number' => 7, 'home_assist' => 9, 'penalty_code_id' => 23 }])
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/games/#{@game.id}/events/update", params: {
+      event_id: 1, period: 1, time: '10:00', event_type: 'goal', event_team: 'home',
+      home_goals: 1, guest_goals: 0, home_number: 7, goal_type: 'technical'
+    }
+
+    assert_response :success
+    event = @game.reload.events.first
+    assert_equal 'technical', event['goal_type']
+    assert_not event.key?('home_assist')
+    assert_not event.key?('penalty_code_id')
+  end
+
+  test 'update_event: reguläres Tor behält seine Vorlage' do
+    @game.update!(events: [{ 'id' => 1, 'period' => 1, 'time' => '10:00', 'event_type' => 'goal',
+                             'event_team' => 'home', 'home_goals' => 1, 'guest_goals' => 0,
+                             'home_number' => 7, 'home_assist' => 9 }])
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/games/#{@game.id}/events/update", params: {
+      event_id: 1, period: 1, time: '10:00', event_type: 'goal', event_team: 'home',
+      home_goals: 1, guest_goals: 0, home_number: 7, home_assist: 9
+    }
+
+    assert_response :success
+    event = @game.reload.events.first
+    assert_equal '9', event['home_assist'].to_s
+    assert_nil event['goal_type']
+  end
+
   private
 
   def login(user)

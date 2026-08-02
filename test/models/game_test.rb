@@ -332,24 +332,41 @@ class GameTest < ActiveSupport::TestCase
     assert_equal 7, e[:number]
   end
 
-  # Ein technisches Tor trägt keine penalty_code_id. Ohne die Vorab-Prüfung
-  # fiele es in den regulären Zweig und käme als schlichtes „Tor" zurück.
+  # Die neue Vorab-Prüfung darf die bestehenden Torarten nicht verschlucken:
+  # ohne Markierung muss dieselbe Kette wie vorher greifen.
   test 'formatted_events: reguläres Tor bleibt unverändert' do
-    g = build_game(events: [technical_goal_event('goal_type' => nil)])
+    g = build_game(events: [technical_goal_event.except('goal_type')])
     e = g.formatted_events.first
     assert_equal :regular, e[:goal_type]
     assert_equal 'Tor', e[:goal_type_string]
   end
 
   test 'formatted_events: Strafschuss bleibt Strafschuss' do
-    g = build_game(events: [technical_goal_event('goal_type' => nil, 'penalty_code_id' => 23)])
+    g = build_game(events: [technical_goal_event.except('goal_type').merge('penalty_code_id' => 23)])
     e = g.formatted_events.first
     assert_equal :penalty_shot, e[:goal_type]
     assert_equal 'Strafschuss', e[:goal_type_string]
   end
 
-  # Ein technisches Tor zählt dem Schützen wie jedes andere Tor, eine Vorlage
-  # gibt es dabei nicht (die Schreibwege entfernen sie, siehe strip_assist!).
+  # Eigentor und „nicht angegeben" stehen anstelle eines Schützen (Pseudo-Nummern
+  # 1000/2000) und gehen der Markierung vor. Sonst verdrängte das technische Tor
+  # das Label, und die Ereignisliste zeigte eine leere Zeile: zu 1000/2000 ist
+  # kein Spieler auflösbar, und der Hinweis hängt am aufgelösten Namen.
+  test 'formatted_events: Eigentor behält sein Label trotz Markierung' do
+    g = build_game(events: [technical_goal_event('home_number' => 1000)])
+    assert_equal :owngoal, g.formatted_events.first[:goal_type]
+  end
+
+  test 'formatted_events: „nicht angegeben" behält sein Label trotz Markierung' do
+    g = build_game(events: [technical_goal_event('home_number' => 2000)])
+    assert_equal :not_assigned, g.formatted_events.first[:goal_type]
+  end
+
+  # Ein technisches Tor zählt dem Schützen wie jedes andere Tor. Die Torzählung
+  # hängt an der Trikotnummer, nicht an der Torart; dieser Test hält fest, dass
+  # die neue Markierung daran nichts ändert. Dass keine Vorlage danebensteht,
+  # stellen die Schreibwege sicher (normalize_technical_goal!, siehe
+  # GamesControllerTest), nicht die Auswertung.
   test 'evaluate_scorer: technisches Tor zählt als Tor' do
     g = build_game(
       events: [technical_goal_event],
@@ -357,12 +374,16 @@ class GameTest < ActiveSupport::TestCase
     )
     score = nil
     g.stub(:home_team, OpenStruct.new(id: 1, name: 'Heim')) do
-      g.stub(:guest_team, OpenStruct.new(id: 2, name: 'Gast')) do
-        score = g.evaluate_scorer[42]
-      end
+      score = g.evaluate_scorer[42]
     end
     assert_equal 1, score[:goals]
-    assert_equal 0, score[:assists]
+  end
+
+  # Der Grund, keine Pseudo-Strafcode-ID wie beim Strafschuss zu verwenden: der
+  # Ticker trennt Tore von Strafen über penalty_code_id.
+  test 'ticker_events: technisches Tor ist ein Tor, keine Strafe' do
+    g = build_game(events: [technical_goal_event])
+    assert_equal 'HOME_GOAL', g.ticker_events.first[:eventType]
   end
 
   # ---------------------------------------------------------------------------

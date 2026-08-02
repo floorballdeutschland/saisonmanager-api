@@ -11,7 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Neu
 
-- **Technisches Tor im Spielbericht**: Ein von den Schiedsrichtern zugesprochenes Tor lässt sich jetzt als solches erfassen, genauso wie bisher schon der Strafschuss. Im Tor-Formular gibt es dafür die Markierung „Technisches Tor“; eingetragen wird nur der Torschütze, eine Vorlage ist dabei nicht möglich und wird beim Umstellen eines bestehenden Tores entfernt. In der Ereignisliste und im Spielbericht steht am Tor der Hinweis „Technisches Tor“. Für die Wertung zählt es wie jedes andere Tor: es geht in den Spielstand ein und wird dem Torschützen in der Scorerliste gutgeschrieben. Strafschuss und technisches Tor schließen sich gegenseitig aus.
+- **Technisches Tor im Spielbericht**: Ein von den Schiedsrichtern zugesprochenes Tor lässt sich jetzt als solches erfassen, genauso wie bisher schon der Strafschuss. Im Tor-Formular gibt es dafür die Markierung „Technisches Tor“; eingetragen wird nur der Torschütze, eine Vorlage ist dabei nicht möglich und wird beim Umstellen eines bestehenden Tores entfernt. In der Ereignisliste und im Spielbericht steht am Tor der Hinweis „Technisches Tor“. Für die Wertung zählt es wie jedes andere Tor: es geht in den Spielstand ein und wird dem Torschützen in der Scorerliste gutgeschrieben. Strafschuss und technisches Tor schließen sich gegenseitig aus, ebenso „Eigentor“ und „Nicht angegeben“: ein technisches Tor hat immer einen benannten Torschützen.
 
 ### Behoben
 

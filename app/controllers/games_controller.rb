@@ -638,7 +638,7 @@ class GamesController < ApplicationController
       when 'goal'
         item[:goal_type] = params[:goal_type] if params[:goal_type].present?
         item[:penalty_code_id] = params[:penalty_code_id] if params[:penalty_code_id].present?
-        strip_assist!(item)
+        normalize_technical_goal!(item)
       end
 
       # Straf-Labels einfrieren, damit der Spielbericht ohne Live-Lookup lesbar bleibt.
@@ -738,7 +738,7 @@ class GamesController < ApplicationController
         event['goal_type'] = params[:goal_type].presence
         event['penalty_code_id'] = params[:penalty_code_id].presence
         event.delete('penalty_id')
-        strip_assist!(event)
+        normalize_technical_goal!(event)
       end
 
       # Straf-Labels neu einfrieren (bzw. bei Wechsel auf 'goal' entfernen).
@@ -1251,15 +1251,21 @@ class GamesController < ApplicationController
   end
 
   # Ein technisches Tor wird zugesprochen, nicht herausgespielt – es kann daher
-  # keine Vorlage haben. Das Formular blendet die Assist-Felder aus, sobald die
-  # Markierung gesetzt ist; hier fällt eine zuvor eingetragene Vorlage weg, wenn
-  # ein bestehendes Tor nachträglich umgestellt wird (sonst bliebe sie im JSONB
-  # stehen und würde im Spielbericht weiter angezeigt).
-  def strip_assist!(event)
+  # weder eine Vorlage haben noch zugleich ein Strafschuss sein. Das Formular
+  # blendet die Assist-Felder aus und koppelt die beiden Markierungen; hier
+  # fällt beides weg, wenn ein bestehendes Tor nachträglich umgestellt wird
+  # (sonst bliebe es im JSONB stehen und würde weiter mitgewertet bzw.
+  # angezeigt). Deckt zugleich Aufrufe ab, die nicht über das Formular kommen.
+  #
+  # Die Löschung greift in beiden Schreibwegen: add_event baut das Event als
+  # HashWithIndifferentAccess, update_event ändert den string-keyed Hash aus
+  # dem JSONB.
+  def normalize_technical_goal!(event)
     return unless Game.technical_goal?(event)
 
     event.delete('home_assist')
     event.delete('guest_assist')
+    event.delete('penalty_code_id')
   end
 
   # Weicher Lizenz-Check: erzeugt eine Warnmeldung, wenn der Spieler keine erteilte

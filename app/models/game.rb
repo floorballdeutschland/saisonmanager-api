@@ -1087,7 +1087,13 @@ class Game < ApplicationRecord
       else
         e[:event_type] = :goal
         e[:penalty_code_id] = event['penalty_code_id'].to_i if event['penalty_code_id'].present?
-        if Game.technical_goal?(event)
+        # Eigentor und „nicht angegeben" gehen vor: beide sind keine Torart,
+        # sondern stehen anstelle eines Schützen (Pseudo-Nummern 1000/2000). Die
+        # Ereignisliste zeigt in diesen Fällen das Label statt eines Namens; ein
+        # technisches Tor würde das Label verdrängen und die Zeile bliebe leer,
+        # weil zu 1000/2000 kein Spieler auflösbar ist. Das Formular bietet die
+        # beiden Einträge am technischen Tor gar nicht erst an.
+        if Game.technical_goal?(event) && !owngoal && !nagoal
           e[:goal_type] = :technical
           e[:goal_type_string] = TECHNICAL_GOAL_STRING
         elsif event['penalty_code_id'].to_i != 23
