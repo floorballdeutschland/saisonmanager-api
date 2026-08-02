@@ -22,12 +22,25 @@ module LicenseAccessScope
   # Mutierende Aktionen: bewusst nur `team.league` (die primäre Liga) und NICHT
   # `team.leagues`, da eine zusätzliche Cup-Liga zu einem anderen Spielbetrieb
   # gehören kann und den Scope sonst aufweichen würde.
+  #
+  # Ein Team ohne auflösbare Liga bzw. eine Liga ohne game_operation_id ist ein
+  # Datenfehler, kein Rechte-Ergebnis: Die Prüfung fällt zwar zu (niemand soll
+  # auf Verdacht Zugriff bekommen), meldet den Fall aber, sonst ist er von einer
+  # regulären Absage nicht mehr zu unterscheiden.
   def sbk_can_access_team?(ph, team)
     return false if ph[:sbk].blank?
     return true if sbk_global?(ph)
+    return false if team.blank?
 
-    go_id = team&.league&.game_operation_id
-    go_id.present? && ph[:sbk].include?(go_id)
+    go_id = team.league&.game_operation_id
+    if go_id.blank?
+      report_license_data_defect("team_without_game_operation/#{team.id}",
+                                 "Team##{team.id} (#{team.name}) ohne aufloesbaren Spielbetrieb, " \
+                                 "league_id=#{team.league_id.inspect}")
+      return false
+    end
+
+    ph[:sbk].include?(go_id)
   end
 
   # Die Lizenz hängt über ihr Team an dessen Liga und damit an einer
@@ -38,7 +51,18 @@ module LicenseAccessScope
     return true if sbk_global?(ph)
     return false if license.blank?
 
-    sbk_can_access_team?(ph, Team.find_by(id: license['team_id']))
+    team = Team.find_by(id: license['team_id'])
+    if team.nil?
+      # Verwaiste Referenz, kein Rechte-Ergebnis: Die Lizenz haengt an einem
+      # geloeschten Team und laesst sich dann von niemandem ausser Admin mehr
+      # bearbeiten. Ohne Meldung bliebe sie unbemerkt in ihrem Status haengen.
+      report_license_data_defect("license_team_missing/#{license['team_id']}",
+                                 "Lizenz #{license['id'].inspect} verweist auf geloeschtes " \
+                                 "Team #{license['team_id'].inspect}")
+      return false
+    end
+
+    sbk_can_access_team?(ph, team)
   end
 
   # Lesende Endpunkte hängen an einer Liga (Lizenzliste einer Liga) bzw. an allen
@@ -67,19 +91,62 @@ module LicenseAccessScope
 
   # Eine Lizenz gilt für ein Team und damit für dessen Verein: beantragt werden
   # darf nur für Spieler mit laufender Mitgliedschaft in diesem Verein (bei
-  # SG-/Syndikats-Teams in einem der beteiligten Vereine). Deckungsgleich mit der
-  # Spielerliste, die `Club#players` fürs Frontend liefert – die player_id kommt
+  # SG-/Syndikats-Teams in einem der beteiligten Vereine). Die player_id kommt
   # aus der URL und war bisher ungeprüft.
+  #
+  # Die Vereinsmenge ist bewusst dieselbe wie im VM-Zweig von
+  # `may_manage_team?` und in der Gruppierung der Mannschaftsauswahl
+  # (`ClubsController#current_teams_by_club`), also `syndicate_clubs` OHNE das
+  # `syndicate`-Flag. `Team#all_club_ids` wertet das Flag zusätzlich aus; bei
+  # gesetzten `syndicate_clubs` und nicht gesetztem Flag kämen die beiden
+  # Prüfungen sonst innerhalb desselben Requests zu verschiedenen Ergebnissen,
+  # und der Antrag scheiterte mit einer Meldung über die Person statt über die
+  # Mannschaft.
+  #
+  # Nicht deckungsgleich mit `Club#players` (Spielerliste im Frontend): dort
+  # wird `club_id` ohne Typumwandlung verglichen, der Stichtag ist `Time.now`
+  # statt `Date.current`, und deaktivierte Profile fallen über `Player.active`
+  # heraus. Alle drei Abweichungen sind hier die großzügigere Variante, führen
+  # also nicht zu einer falschen Absage.
   def player_in_team_clubs?(player, team)
-    club_ids = team.all_club_ids
+    club_ids = ([team.club_id] + team.syndicate_clubs.to_a).compact.uniq
     Array(player.clubs).any? do |entry|
+      # Strukturell kaputter Eintrag (kein Objekt): zählt nicht als
+      # Mitgliedschaft, wird aber gemeldet statt still verworfen.
+      unless entry.is_a?(Hash)
+        report_license_data_defect("player_clubs_entry_broken/#{player.id}",
+                                   "Spieler##{player.id}: clubs-Eintrag ist kein Objekt (#{entry.class})")
+        next false
+      end
       next false unless club_ids.include?(entry['club_id'].to_i)
 
-      valid_until = entry['valid_until']
-      valid_until.blank? || valid_until.to_date >= Date.current
-    rescue ArgumentError, TypeError
-      # Unparsbares valid_until nicht als Freibrief werten.
-      false
+      membership_current?(player, entry['valid_until'])
     end
+  end
+
+  # Ein unparsbares valid_until ist kein Freibrief, aber auch keine saubere
+  # Absage: ohne Meldung wäre die 422 nicht von einer echten Nicht-Mitgliedschaft
+  # zu unterscheiden. Der rescue umschließt bewusst nur die Datumsumwandlung,
+  # nicht den ganzen Schleifenrumpf.
+  def membership_current?(player, valid_until)
+    return true if valid_until.blank?
+
+    valid_until.to_date >= Date.current
+  rescue ArgumentError, TypeError, NoMethodError => e
+    report_license_data_defect("player_valid_until_unparsable/#{player.id}",
+                               "Spieler##{player.id}: valid_until #{valid_until.inspect} " \
+                               "nicht lesbar (#{e.class})")
+    false
+  end
+
+  # Datenfehler melden, aber nur einmal je Fall und Tag: Ohne Drosselung meldet
+  # jeder Seitenaufruf erneut. Gleiche Vorgehensweise wie bei den Teams ohne
+  # Liga (`TeamsController#render_team_without_league`).
+  def report_license_data_defect(cache_key, message)
+    return unless Rails.cache.write("license_scope_defect/#{cache_key}", true,
+                                    unless_exist: true, expires_in: 1.day)
+
+    Rails.logger.error("license scope: #{message}")
+    Sentry.capture_message("license scope data defect: #{message}") if defined?(Sentry)
   end
 end

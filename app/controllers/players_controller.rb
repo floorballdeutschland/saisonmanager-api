@@ -83,19 +83,24 @@ class PlayersController < ApplicationController
     team = Team.find(params[:team_id])
     league = team.league
 
-    ph = current_user.permission_hash
-    allowed = may_manage_team?(ph, team)
-
-    return render json: { message: 'Keine Berechtigung für dieses Team!' }, status: :forbidden unless allowed
-
     # Ohne auflösbare Liga gibt es weder Altersgrenze noch Saison und
     # Ligaklasse für die Lizenz. league wird unten mehrfach ohne Schutz
     # dereferenziert; das ergab denselben 500er wie auf der Mannschaftsseite
     # (Sentry SAISONMANAGER-1C). Es gibt keinen Fremdschlüssel auf
     # teams.league_id, die Spalte ist zudem nullable.
+    #
+    # Vor der Rechteprüfung: Der Spielbetriebs-Scope der SBK-Rolle wird aus
+    # genau dieser Liga abgeleitet. Stünde die Prüfung danach, bekäme die
+    # zuständige SBK für ein Team ohne Liga eine Rechte-Absage statt dieser
+    # zutreffenden Meldung.
     if league.nil?
       return render json: { message: 'Mannschaft ist keiner Liga zugeordnet.' }, status: :unprocessable_entity
     end
+
+    ph = current_user.permission_hash
+    allowed = may_manage_team?(ph, team)
+
+    return render json: { message: 'Keine Berechtigung für dieses Team!' }, status: :forbidden unless allowed
 
     guardian_email   = params[:guardian_email].is_a?(String) ? params[:guardian_email].presence : nil
     minor_consent_at = params[:minor_consent_at].is_a?(String) ? params[:minor_consent_at].presence : nil
@@ -202,11 +207,19 @@ class PlayersController < ApplicationController
              status: :unprocessable_entity
     when :save_failed
       render json: { message: player.errors }, status: :unprocessable_entity
-    else
+    when :ok
       # express_league, nicht league: die Erlaubnis kann aus einer Pokal-Liga
       # stammen, deren Verband dann auch den Antrag erhält.
       PlayerMailer.express_license_requested(player, team, express_league).deliver_later if express_league
       render json: { success: true }
+    else
+      # Erfolg ist bewusst `when :ok`, nicht der else-Zweig: Ein künftig
+      # ergänztes Abbruch-Symbol ohne eigenen Zweig würde sonst als Erfolg
+      # gemeldet und löste sogar die Expresslizenz-Mail für eine Lizenz aus,
+      # die die Transaktion gerade zurückgerollt hat.
+      Sentry.capture_message("request_license: unbehandeltes Ergebnis #{result.inspect}") if defined?(Sentry)
+      render json: { message: 'Der Lizenzantrag konnte nicht verarbeitet werden.' },
+             status: :internal_server_error
     end
   end
 
