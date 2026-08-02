@@ -1,5 +1,6 @@
 class ClubsController < ApplicationController
   include LicenseDocumentPresentation
+  include LicenseAccessScope
 
   def user_clubs_and_teams
     ph = current_user.permission_hash
@@ -42,13 +43,7 @@ class ClubsController < ApplicationController
     clubs.each do |club|
       club_teams = teams_by_club.fetch(club.id, [])
       item = club.full_hash
-      teams = if ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
-                club_teams
-              elsif ph[:tm].present?
-                club_teams.select { |team| ph[:tm].include?(team.id) }
-              else
-                []
-              end
+      teams = club_teams.select { |team| may_list_team?(ph, club, team) }
       item[:teams] = teams.map(&:full_hash)
       result << item
     end
@@ -71,7 +66,7 @@ class ClubsController < ApplicationController
 
     # Rollen additiv: ein VM, der zugleich TM eines Teams außerhalb seiner
     # Vereine ist, wurde von der elsif-Kette sonst am TM-Zweig vorbeigeleitet.
-    allowed = ph[:admin].present? || ph[:sbk].present? ||
+    allowed = ph[:admin].present? || sbk_can_access_leagues?(ph, leagues) ||
               # vm: permission for one of those clubs?
               (ph[:vm].present? && ph[:vm].intersection(all_club_ids).present?) ||
               # tm: get clubs for league teams of given team, permission for one of those?
@@ -363,6 +358,20 @@ class ClubsController < ApplicationController
   end
 
   private
+
+  # Ein Verein kann Teams in Ligen mehrerer Spielbetriebe haben (Gastvereine
+  # anderer Landesverbände). Nur die Teams anzeigen, für die die eigene Rolle im
+  # Lizenzwesen auch etwas tun darf, sonst führt die Auswahl ins 403. Rollen
+  # additiv, damit ein SBK mit VM-Rolle die Teams seines eigenen Vereins
+  # außerhalb seines Spielbetriebs behält. Für SBK zählt die primäre Liga
+  # (`sbk_can_access_team?`), also derselbe Scope, den das Beantragen
+  # anschließend prüft; `team.leagues` wäre hier ein N+1.
+  def may_list_team?(ph, club, team)
+    ph[:admin].present? ||
+      sbk_can_access_team?(ph, team) ||
+      (ph[:vm].present? && ph[:vm].include?(club.id)) ||
+      (ph[:tm].present? && ph[:tm].include?(team.id))
+  end
 
   # Alle Teams der aktuellen Saison für die gegebenen Vereine in einer
   # Abfrage, gruppiert nach Vereins-ID (Stamm-Verein UND SG-Partnervereine –
