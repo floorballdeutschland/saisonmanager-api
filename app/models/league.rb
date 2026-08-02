@@ -136,13 +136,21 @@ class League < ApplicationRecord
     8
   end
 
+  # Spielt diese Liga über drei Drittel (Großfeld) statt über zwei Hälften?
+  # Einzige Quelle für period_titles und die daraus abgeleiteten
+  # Abschnittsnummern, damit beide nicht auseinanderlaufen können.
+  #
+  # Für Altligen weiter über `league_category_id`: dort ist das Feld gesetzt und
+  # `periods` nicht verlässlich gepflegt. Im neuen System ist es umgekehrt,
+  # `league_category_id` ist leer und `periods` die gepflegte Angabe.
+  def thirds?
+    return [1, 4, 102].include?(league_category_id.to_i) if legacy_league # GF, Pokal GF, GF DM
+
+    periods == 3
+  end
+
   def period_count_normal_game
-    case league_category_id.to_i
-    when 1, 4, 102 # GF, Pokal GF, GF DM
-      3
-    else
-      2
-    end
+    thirds? ? 3 : 2
   end
 
   def period_overtime
@@ -154,13 +162,7 @@ class League < ApplicationRecord
   end
 
   def period_titles
-    thirds = if legacy_league
-               period_count_normal_game == 3
-             else
-               periods == 3
-             end
-
-    if thirds
+    if thirds?
       [
         { period: 1, short_title: '1', title: '1. Drittel', status_id: 'period1', can_end_game: false, optional: false,
           running: true },

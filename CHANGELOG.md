@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Spielabschnitte einer Drittel-Liga werden intern richtig gezählt**: Die Anzahl der regulären Spielabschnitte wurde aus der alten Liga-Kategorie abgeleitet, die im heutigen System leer ist. Damit galt jede Liga intern als Zwei-Hälften-Liga, auch im Großfeld, und die Abschnitte für Verlängerung und Penalty-Schießen lagen um eins daneben (4 statt 5). Gezählt wird jetzt aus derselben Quelle, aus der auch der Spielbericht die Abschnitte anbietet. Für Altligen ändert sich nichts. Sichtbare Auswirkung gab es keine: Die beiden betroffenen Fehlerprüfungen des Spielberichts („Verlängerung ohne Häkchen“, „Eintrag im falschen Abschnitt“) werden derzeit nirgends angezeigt.
+
 ## [1.66.0] - 2026-08-02
 
 ### Neu

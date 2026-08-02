@@ -194,6 +194,33 @@ class GameTest < ActiveSupport::TestCase
     end
   end
 
+  # Echte League statt Mock: die Abschnittsnummern der Prüfungen müssen zu
+  # period_titles passen, aus der das Formular die Abschnitte anbietet (#316).
+  def thirds_league
+    League.new(legacy_league: false, league_category_id: '', periods: 3)
+  end
+
+  test 'error_checker: Tor im dritten Drittel ist keine Verlängerung (#316)' do
+    events = [{ 'period' => 3, 'home_goals' => 1, 'guest_goals' => 0, 'time' => '55:12' }]
+    g = build_game(overtime: false, events: events)
+    g.stub(:league, thirds_league) do
+      errors = g.error_checker
+      assert_not errors.any? { |e| e[:key] == 'missing_overtime_checkbox' }
+    end
+  end
+
+  test 'error_checker: Penalty-Schießen einer Drittel-Liga liegt in Abschnitt 5 (#316)' do
+    events = [
+      { 'period' => 4, 'home_goals' => 1, 'guest_goals' => 1, 'time' => '03:21' },
+      { 'period' => 5, 'home_goals' => 2, 'guest_goals' => 1, 'time' => '70:00' }
+    ]
+    g = build_game(overtime: true, events: events)
+    g.stub(:league, thirds_league) do
+      errors = g.error_checker
+      assert_not errors.any? { |e| e[:key] == 'overtime_wrong_period' }
+    end
+  end
+
   test 'error_checker: error_result_not_increasing wenn Tore sinken' do
     # Scores [2, 1]: strictly decreasing but never zero → only result_not_increasing fires
     events = [
