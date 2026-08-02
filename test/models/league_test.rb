@@ -164,6 +164,30 @@ class LeagueTest < ActiveSupport::TestCase
   end
 
   # ---------------------------------------------------------------------------
+  # period_titles: Nummerierung folgt der Reihenfolge
+  # ---------------------------------------------------------------------------
+
+  test 'period_titles: Nummern steigen in Listenreihenfolge (Drittel und Hälften)' do
+    { 3 => 'Drittel-Liga', 2 => 'Hälften-Liga' }.each do |count, label|
+      periods = League.new(legacy_league: false, periods: count).period_titles.map { |t| t[:period] }
+      assert_equal periods.sort, periods, "#{label}: Abschnitte müssen aufsteigend nummeriert sein"
+      assert_equal periods.uniq, periods, "#{label}: keine Nummer doppelt"
+    end
+  end
+
+  test 'period_titles: Pause trägt die halbe Nummer nach dem Abschnitt davor' do
+    [2, 3].each do |count|
+      titles = League.new(legacy_league: false, periods: count).period_titles
+      titles.each_cons(2) do |previous, current|
+        next if current[:running]
+
+        assert_equal previous[:period] + 0.5, current[:period],
+                     "#{current[:title]} muss auf #{previous[:title]} folgen"
+      end
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # class_rank — Ligastufen-Rang für Erst-/Zweitlizenz-Bestimmung (#291, #297)
   # ---------------------------------------------------------------------------
 
