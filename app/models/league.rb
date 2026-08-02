@@ -138,8 +138,7 @@ class League < ApplicationRecord
 
   # Spielt diese Liga über drei Drittel (Großfeld) statt über zwei Hälften?
   # Gemeinsame Quelle von period_titles und period_count_normal_game, damit die
-  # beiden nicht auseinanderlaufen. Nicht betroffen: period_time und
-  # period_is_extratime rechnen weiter direkt mit `periods`.
+  # beiden nicht auseinanderlaufen.
   #
   # Altligen entscheiden über `league_category_id`, weil der Legacy-Import
   # `periods` nie schreibt. Neue Ligen pflegen `periods`, dort bleibt
@@ -213,20 +212,8 @@ class League < ApplicationRecord
     end
   end
 
-  def period_title(period)
-    period_titles.select { |pt| pt[:period] == period }.first
-  end
-
   def period_title_by_id(status_id)
     period_titles.select { |pt| pt[:status_id] == status_id }.first
-  end
-
-  def period_time(period)
-    return period_length if period <= periods
-
-    return overtime_length if period == periods + 1
-
-    0
   end
 
   # Perioden-basierter Fallback für die angenommene Spieldauer, wenn weder an der
@@ -244,10 +231,6 @@ class League < ApplicationRecord
     return global_default if global_default.present?
 
     periods.to_i > 2 ? LARGE_FIELD_GAME_DURATION_MINUTES : FALLBACK_GAME_DURATION_MINUTES
-  end
-
-  def period_is_extratime(period)
-    period == periods + 1
   end
 
   # Erfüllt das Geburtsdatum die Altersvoraussetzung (Stichtag) der Liga?

@@ -14,6 +14,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - **Nummerierung der Pause vor dem Penalty-Schießen (Kleinfeld)**: In Ligen mit zwei Hälften trug die „Pause vor Penalty-Schießen“ intern die Nummer 4.5 und lag damit hinter dem Penalty-Schießen (4) statt davor; in Ligen mit drei Dritteln stimmte die Kette. Korrigiert auf 3.5. In der Anwendung war davon nichts zu sehen, weil Spielbericht und Ereignisliste die Abschnitte in Listenreihenfolge durchlaufen und Pausen keine Ereignisse tragen.
 - **Spielabschnitte einer Drittel-Liga werden intern richtig gezählt**: Die Anzahl der regulären Spielabschnitte wurde aus der alten Liga-Kategorie abgeleitet, die im heutigen System leer ist. Damit galt jede Liga intern als Zwei-Hälften-Liga, auch im Großfeld, und die Abschnitte für Verlängerung und Penalty-Schießen lagen um eins daneben (Verlängerung 3 statt 4, Penalty-Schießen 4 statt 5). Gezählt wird jetzt aus derselben Quelle, aus der auch der Spielbericht die Abschnitte anbietet. Für Altligen ändert sich nichts. Sichtbare Auswirkung gab es keine: Die beiden betroffenen Fehlerprüfungen des Spielberichts („Verlängerung ohne Häkchen“, „Eintrag im falschen Abschnitt“) werden derzeit nirgends angezeigt.
 
+### Verbessert
+
+- **Unerreichbaren Spielabschnitts-Endpunkt entfernt**: `games#next_period_info` war über keine Route erreichbar, wurde von keiner Oberfläche aufgerufen und wäre beim Aufruf sofort abgebrochen (fehlerhafter Aufruf von `Array#max`). Mit ihm entfallen die drei nur dort genutzten Liga-Methoden `period_title`, `period_time` und `period_is_extratime`. Für Anwenderinnen und Anwender ändert sich nichts.
+
 ## [1.66.0] - 2026-08-02
 
 ### Neu
