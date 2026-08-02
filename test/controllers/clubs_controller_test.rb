@@ -111,6 +111,67 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_includes ids, club2.id
   end
 
+  # Ein Verein kann Teams in Ligen mehrerer Spielbetriebe haben (Gastvereine
+  # anderer Landesverbände). Die Auswahl im Lizenzwesen darf dem SBK nur die
+  # Teams zeigen, für die er anschließend auch etwas tun darf.
+  test 'user_clubs_and_teams zeigt SBK nur Teams seines Spielbetriebs' do
+    go_own = create(:game_operation)
+    go_other = create(:game_operation)
+    club = create(:club, game_operations_hash: [
+      { 'home_game_operation' => true, 'game_operation_id' => go_own.id },
+      { 'game_operation_id' => go_other.id }
+    ])
+    own_team = create(:team, club: club, league: create(:league, :current_season, game_operation: go_own))
+    other_team = create(:team, club: club, league: create(:league, :current_season, game_operation: go_other))
+    login(create(:user, :sbk_scoped, game_operation_id: go_own.id))
+
+    get '/api/v2/user/clubs_and_teams'
+
+    assert_response :success
+    entry = JSON.parse(response.body).find { |c| c['id'] == club.id }
+    assert entry, 'Verein des eigenen Spielbetriebs muss enthalten sein'
+    team_ids = entry['teams'].map { |t| t['id'] }
+    assert_includes team_ids, own_team.id
+    assert_not_includes team_ids, other_team.id
+  end
+
+  test 'user_clubs_and_teams zeigt VM alle Teams des eigenen Vereins' do
+    go_own = create(:game_operation)
+    go_other = create(:game_operation)
+    club = create(:club)
+    team_a = create(:team, club: club, league: create(:league, :current_season, game_operation: go_own))
+    team_b = create(:team, club: club, league: create(:league, :current_season, game_operation: go_other))
+    login(create(:user, :vm, club_id: club.id))
+
+    get '/api/v2/user/clubs_and_teams'
+
+    assert_response :success
+    entry = JSON.parse(response.body).find { |c| c['id'] == club.id }
+    team_ids = entry['teams'].map { |t| t['id'] }
+    assert_includes team_ids, team_a.id
+    assert_includes team_ids, team_b.id
+  end
+
+  test 'user_team_licenses ist für SBK eines fremden Spielbetriebs gesperrt' do
+    go_other = create(:game_operation)
+    team = create(:team, league: create(:league, :current_season))
+    login(create(:user, :sbk_scoped, game_operation_id: go_other.id))
+
+    get "/api/v2/user/team/#{team.id}/licenses"
+
+    assert_response :forbidden
+  end
+
+  test 'user_team_licenses bleibt für den SBK des Spielbetriebs offen' do
+    go = create(:game_operation)
+    team = create(:team, league: create(:league, :current_season, game_operation: go))
+    login(create(:user, :sbk_scoped, game_operation_id: go.id))
+
+    get "/api/v2/user/team/#{team.id}/licenses"
+
+    assert_response :success
+  end
+
   test 'admin_upload_logo akzeptiert ein quadratisches PNG' do
     club = create(:club)
     login(create(:user, :admin))

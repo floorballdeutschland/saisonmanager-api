@@ -9,6 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Lizenzen ließen sich über Verbandsgrenzen hinweg beantragen**: Wer irgendeine SBK-Rolle hatte, konnte Lizenzen in Ligen **aller** Verbände beantragen, zurückziehen und wieder aktivieren, auch in denen anderer Landesverbände und der Bundesligen. Geprüft wurde nur, dass eine SBK-Rolle vorhanden ist, nicht für welchen Spielbetrieb sie gilt. Die Genehmigung war davon nie betroffen, sie hat den Spielbetrieb immer geprüft; ein Antrag allein erteilt also keine Spielberechtigung. Beantragen, zurückziehen, wieder aktivieren und die Lizenzlisten einer Liga oder Mannschaft berücksichtigen jetzt denselben Spielbetriebs-Zuschnitt wie die Genehmigung. Mehrfachrollen bleiben dabei erhalten: Wer neben seiner SBK-Rolle Vereins- oder Teammanager ist, kann für die eigenen Mannschaften weiterhin beantragen, auch wenn diese in einem anderen Spielbetrieb spielen. In der Mannschaftsauswahl des Lizenzwesens erscheinen zu einem Verein außerdem nur noch die Mannschaften, für die die eigene Rolle auch zuständig ist, statt aller Mannschaften des Vereins.
+
+- **Lizenzantrag war für beliebige Spieler*innen möglich**: Der Antrag prüfte nur die Mannschaft, nicht die Person. Über einen direkt gesetzten Aufruf ließ sich damit jede beliebige Person des Gesamtbestands in die eigene Mannschaft lizenzieren, auch ohne jede Vereinszugehörigkeit. In der Oberfläche fiel das nicht auf, weil dort nur Vereinsmitglieder zur Auswahl stehen. Beantragt werden kann jetzt nur noch für Personen mit laufender Mitgliedschaft im Verein der Mannschaft, bei Spielgemeinschaften in einem der beteiligten Vereine. Die Verwaltung bleibt ausgenommen, damit Korrekturen an Altdaten möglich bleiben.
+
 ## [1.65.1] - 2026-08-01
 
 ### Behoben

@@ -725,6 +725,176 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert dublette.reload.deactivated_at.present?
   end
 
+  # --- Spielbetriebs-Scope der SBK-Rolle im Lizenzwesen -----------------------
+  # Der Antragspfad prüfte nur, DASS eine SBK-Rolle existiert, nicht für welchen
+  # Spielbetrieb: ein SBK eines Landesverbands konnte in jeder Liga jedes anderen
+  # Verbands Lizenzen beantragen und zurückziehen.
+
+  test 'SBK eines fremden Spielbetriebs darf keine Lizenz beantragen' do
+    other_go = create(:game_operation)
+    login_as(create(:user, :sbk_scoped, game_operation_id: other_go.id))
+
+    post "/api/v2/user/players/#{@player.id}/request_license",
+         params: { team_id: @team.id }, as: :json
+
+    assert_response :forbidden
+    assert_match(/Keine Berechtigung/, JSON.parse(response.body)['message'])
+    assert_empty @player.reload.licenses
+  end
+
+  test 'SBK des eigenen Spielbetriebs darf weiterhin Lizenz beantragen' do
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+
+    post "/api/v2/user/players/#{@player.id}/request_license",
+         params: { team_id: @team.id }, as: :json
+
+    assert_response :ok
+    assert_equal 1, @player.reload.licenses.length
+  end
+
+  test 'Globaler SBK darf in jedem Spielbetrieb Lizenz beantragen' do
+    login_as(create(:user, :sbk_global))
+
+    post "/api/v2/user/players/#{@player.id}/request_license",
+         params: { team_id: @team.id }, as: :json
+
+    assert_response :ok
+    assert_equal 1, @player.reload.licenses.length
+  end
+
+  # Der Fall aus der Praxis: SBK eines LV, gleichzeitig VM eines Vereins mit
+  # Bundesliga-Team. Ein reiner GO-Check ohne additive Rollen hätte ihn genau
+  # bei seiner eigenen Mannschaft ausgesperrt.
+  test 'SBK mit VM-Rolle darf für eigenen Verein außerhalb seines Spielbetriebs beantragen' do
+    other_go = create(:game_operation)
+    user = create(:user, permissions: [
+      { 'user_group_id' => 2, 'game_operation_id' => other_go.id },
+      { 'user_group_id' => 4, 'game_operation_id' => 0, 'club_id' => @club.id }
+    ])
+    login_as(user)
+
+    post "/api/v2/user/players/#{@player.id}/request_license",
+         params: { team_id: @team.id }, as: :json
+
+    assert_response :ok
+    assert_equal 1, @player.reload.licenses.length
+  end
+
+  test 'SBK eines fremden Spielbetriebs darf Lizenzantrag nicht zurückziehen' do
+    license_id = Digest::UUID.uuid_v4
+    @player.update!(licenses: [{ 'id' => license_id, 'team_id' => @team.id, 'season_id' => @league.season_id,
+                                 'history' => [{ 'license_status_id' => License::REQUESTED,
+                                                 'created_at' => 1.day.ago.iso8601 }] }])
+    other_go = create(:game_operation)
+    login_as(create(:user, :sbk_scoped, game_operation_id: other_go.id))
+
+    post "/api/v2/user/players/#{@player.id}/withdraw_license",
+         params: { license_id: license_id }, as: :json
+
+    assert_response :forbidden
+    last = @player.reload.licenses.first['history'].last
+    assert_equal License::REQUESTED, last['license_status_id']
+  end
+
+  test 'Lizenzliste einer Liga bleibt dem SBK eines fremden Spielbetriebs verwehrt' do
+    other_go = create(:game_operation)
+    login_as(create(:user, :sbk_scoped, game_operation_id: other_go.id))
+
+    get "/api/v2/user/leagues/#{@league.id}/licenses"
+
+    assert_response :forbidden
+  end
+
+  # --- Spieler muss zum Verein des Teams gehören ------------------------------
+  # Die player_id kommt aus der URL und war ungeprüft: ein TM konnte jeden
+  # beliebigen Spieler des Gesamtbestands in sein eigenes Team lizenzieren.
+
+  test 'Lizenzantrag für Spieler ohne Mitgliedschaft im Verein des Teams ergibt 422' do
+    foreign_player = create(:player, clubs: [{ 'club_id' => create(:club).id, 'home_club' => true }])
+    login_as(create(:user, :vm, club_id: @club.id))
+
+    post "/api/v2/user/players/#{foreign_player.id}/request_license",
+         params: { team_id: @team.id }, as: :json
+
+    assert_response :unprocessable_entity
+    assert_match(/Mitgliedschaft/, JSON.parse(response.body)['message'])
+    assert_empty foreign_player.reload.licenses
+  end
+
+  test 'Lizenzantrag mit abgelaufener Vereinsmitgliedschaft ergibt 422' do
+    expired = create(:player, clubs: [{ 'club_id' => @club.id, 'home_club' => true,
+                                        'valid_until' => 1.month.ago.to_date.iso8601 }])
+    login_as(create(:user, :vm, club_id: @club.id))
+
+    post "/api/v2/user/players/#{expired.id}/request_license",
+         params: { team_id: @team.id }, as: :json
+
+    assert_response :unprocessable_entity
+    assert_match(/Mitgliedschaft/, JSON.parse(response.body)['message'])
+  end
+
+  # Datenfehler dürfen nicht als Rechte-Absage erscheinen: Der Spielbetriebs-
+  # Scope wird aus der Liga abgeleitet, ohne Liga gibt es keinen. Die zuständige
+  # SBK muss die zutreffende Meldung bekommen, nicht "Keine Berechtigung".
+  test 'Team ohne Liga meldet den Datenfehler statt einer Rechte-Absage' do
+    orphan = create(:team, league: @league, club: @club)
+    orphan.update_columns(league_id: nil)
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+
+    post "/api/v2/user/players/#{@player.id}/request_license",
+         params: { team_id: orphan.id }, as: :json
+
+    assert_response :unprocessable_entity
+    assert_match(/keiner Liga zugeordnet/, JSON.parse(response.body)['message'])
+  end
+
+  # Ein unlesbares valid_until darf keine Mitgliedschaft begründen, der Fall
+  # muss aber gemeldet werden, sonst ist die 422 nicht von einer echten
+  # Nicht-Mitgliedschaft zu unterscheiden.
+  test 'Unlesbares valid_until zaehlt nicht als Mitgliedschaft und wird gemeldet' do
+    broken = create(:player, clubs: [{ 'club_id' => @club.id, 'home_club' => true,
+                                       'valid_until' => '0000-00-00' }])
+    login_as(create(:user, :vm, club_id: @club.id))
+
+    logged = []
+    Rails.logger.stub(:error, ->(msg) { logged << msg }) do
+      post "/api/v2/user/players/#{broken.id}/request_license",
+           params: { team_id: @team.id }, as: :json
+    end
+
+    assert_response :unprocessable_entity
+    assert_match(/Mitgliedschaft/, JSON.parse(response.body)['message'])
+    assert(logged.any? { |m| m.to_s.include?('valid_until') }, "Datenfehler wurde nicht gemeldet: #{logged.inspect}")
+  end
+
+  # syndicate_clubs gesetzt, syndicate-Flag nicht: Team#all_club_ids blendet die
+  # Partnervereine dann aus, der VM-Zweig der Rechteprüfung nicht. Beide Seiten
+  # müssen dieselbe Vereinsmenge benutzen, sonst kommt der VM des Partnervereins
+  # durch die Rechteprüfung und scheitert danach an der Mitgliedschaft.
+  test 'Partnerverein ohne gesetztes syndicate-Flag kann trotzdem beantragen' do
+    partner = create(:club)
+    sg_team = create(:team, league: @league, club: @club, syndicate: false, syndicate_clubs: [partner.id])
+    partner_player = create(:player, clubs: [{ 'club_id' => partner.id, 'home_club' => true }])
+    login_as(create(:user, :vm, club_id: partner.id))
+
+    post "/api/v2/user/players/#{partner_player.id}/request_license",
+         params: { team_id: sg_team.id }, as: :json
+
+    assert_response :ok
+    assert_equal 1, partner_player.reload.licenses.length
+  end
+
+  test 'Admin darf auch ohne Vereinsmitgliedschaft beantragen' do
+    foreign_player = create(:player, clubs: [{ 'club_id' => create(:club).id, 'home_club' => true }])
+    login_as(create(:user, :admin))
+
+    post "/api/v2/user/players/#{foreign_player.id}/request_license",
+         params: { team_id: @team.id }, as: :json
+
+    assert_response :ok
+    assert_equal 1, foreign_player.reload.licenses.length
+  end
+
   private
 
   # Beendetes Spiel mit @player (Trikot 7) in der Heim-Aufstellung.
