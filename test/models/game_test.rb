@@ -350,6 +350,60 @@ class GameTest < ActiveSupport::TestCase
     assert_equal 'Strafschuss', e[:goal_type_string]
   end
 
+  # ---------------------------------------------------------------------------
+  # Entscheidung im Penalty-Schießen (dasselbe Ereignis wie der Strafschuss,
+  # unterschieden nur am Spielabschnitt)
+  # ---------------------------------------------------------------------------
+
+  def shootout_goal(extra = {})
+    technical_goal_event.except('goal_type').merge('penalty_code_id' => 23).merge(extra)
+  end
+
+  # Der Abschnitt kommt aus der Liga: Drittel-Ligen entscheiden in Abschnitt 5,
+  # Hälften-Ligen in 4 (League#period_penalty_shots).
+  def game_with_shootout_period(period, events)
+    g = build_game(events: events)
+    g.stub(:penalty_shootout_period, period) { yield g }
+  end
+
+  test 'formatted_events: Tor im Penalty-Schießen ist die Entscheidung, nicht ein Strafschuss' do
+    game_with_shootout_period(5, [shootout_goal('period' => 5, 'time' => '0:00')]) do |g|
+      e = g.formatted_events.first
+      assert_equal :penalty_shots, e[:goal_type]
+      assert_equal 'Entscheidung im Penalty-Schießen', e[:goal_type_string]
+    end
+  end
+
+  # Der eigentliche Fehler: im Kleinfeld endet die reguläre Spielzeit bei 50:00,
+  # die feste Prüfung auf „70:00" traf dort nie. Der Abschnitt trägt jetzt.
+  test 'formatted_events: Entscheidung auch in einer Liga mit Hälften' do
+    game_with_shootout_period(4, [shootout_goal('period' => 4, 'time' => '50:00')]) do |g|
+      assert_equal :penalty_shots, g.formatted_events.first[:goal_type]
+    end
+  end
+
+  test 'formatted_events: Strafschuss in der reguläreren Spielzeit bleibt Strafschuss' do
+    game_with_shootout_period(5, [shootout_goal('period' => 2, 'time' => '12:34')]) do |g|
+      assert_equal :penalty_shot, g.formatted_events.first[:goal_type]
+    end
+  end
+
+  # Altdaten tragen den Abschnitt nicht verlässlich; die feste Uhrzeit bleibt
+  # deshalb als zweites Kriterium stehen, sonst verlören sie ihr Label.
+  test 'formatted_events: 70:00 bleibt die Entscheidung, auch bei abweichendem Abschnitt' do
+    game_with_shootout_period(5, [shootout_goal('period' => 3, 'time' => '70:00')]) do |g|
+      assert_equal :penalty_shots, g.formatted_events.first[:goal_type]
+    end
+  end
+
+  # Ohne erreichbare Liga (Altbestand, Spiel ohne Spieltag) darf nichts
+  # abbrechen; dann entscheidet weiterhin allein die Uhrzeit.
+  test 'formatted_events: ohne Liga bleibt es beim bisherigen Verhalten' do
+    g = build_game(events: [shootout_goal('period' => 5, 'time' => '0:00')])
+    assert_nil g.penalty_shootout_period
+    assert_equal :penalty_shot, g.formatted_events.first[:goal_type]
+  end
+
   # Eigentor und „nicht angegeben" stehen anstelle eines Schützen (Pseudo-Nummern
   # 1000/2000) und gehen der Markierung vor. Sonst verdrängte das technische Tor
   # das Label, und die Ereignisliste zeigte eine leere Zeile: zu 1000/2000 ist

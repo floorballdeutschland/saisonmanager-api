@@ -208,6 +208,28 @@ class Game < ApplicationRecord
     event['goal_type'].to_s == GOAL_TYPE_TECHNICAL
   end
 
+  # Der Spielabschnitt des Penalty-Schießens dieser Liga (siehe
+  # League#period_penalty_shots). nil, wenn die Liga nicht erreichbar ist:
+  # dann entscheidet allein die Uhrzeit, siehe shootout_decision?.
+  def penalty_shootout_period
+    game_day&.league&.period_penalty_shots
+  end
+
+  # Ist dieses Tor die Entscheidung im Penalty-Schießen (und nicht ein
+  # Strafschuss während des Spiels)? Beide werden gleich gespeichert, nämlich
+  # als Tor mit penalty_code_id 23, und unterscheiden sich nur am Abschnitt.
+  #
+  # Die feste Uhrzeit „70:00" bleibt als zweites Kriterium stehen. Sie war
+  # lange das einzige und trifft nur Großfeld: im Kleinfeld endet die reguläre
+  # Spielzeit bei 50:00, in der Jugend bei 35:00, dort stand deshalb bisher
+  # „Strafschuss" an der Entscheidung. Ersetzen lässt sie sich trotzdem nicht,
+  # sonst verlören Altdaten mit abweichend erfasstem Abschnitt ihr Label.
+  def shootout_decision?(event, shootout_period)
+    return true if event['time'] == '70:00'
+
+    shootout_period.present? && event['period'].to_i == shootout_period
+  end
+
   # Bevorzugt das eingefrorene Label am Event; nur Alt-Ereignisse ohne
   # gespeichertes Label lösen weiterhin live aus Setting auf (dig: nil statt
   # NoMethodError, falls die Strafe dort fehlt – der Aufrufer überspringt dann
@@ -1034,6 +1056,8 @@ class Game < ApplicationRecord
   end
 
   def formatted_events
+    # Einmal je Spiel statt je Ereignis: der Abschnitt hängt an der Liga.
+    shootout_period = penalty_shootout_period
     result = (events || []).map do |event|
       e = {
         event_id: event['id'],
@@ -1121,7 +1145,7 @@ class Game < ApplicationRecord
             e[:goal_type_string] = 'Tor'
           end
 
-        elsif event['time'] == '70:00'
+        elsif shootout_decision?(event, shootout_period)
           e[:goal_type] = :penalty_shots
           e[:goal_type_string] = 'Entscheidung im Penalty-Schießen'
         else
