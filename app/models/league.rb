@@ -138,8 +138,7 @@ class League < ApplicationRecord
 
   # Spielt diese Liga über drei Drittel (Großfeld) statt über zwei Hälften?
   # Gemeinsame Quelle von period_titles und period_count_normal_game, damit die
-  # beiden nicht auseinanderlaufen. Nicht betroffen: period_time und
-  # period_is_extratime rechnen weiter direkt mit `periods`.
+  # beiden nicht auseinanderlaufen.
   #
   # Altligen entscheiden über `league_category_id`, weil der Legacy-Import
   # `periods` nie schreibt. Neue Ligen pflegen `periods`, dort bleibt
