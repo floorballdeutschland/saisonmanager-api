@@ -186,6 +186,21 @@ class Game < ApplicationRecord
     SCORING_EVENT_KEYS.any? { |key| event[key].present? }
   end
 
+  # Technisches Tor (ab Saison 2026/27): ein von den Schiedsrichtern
+  # zugesprochenes Tor. Es wird wie der Strafschuss als reguläres Tor-Ereignis
+  # mit Torschütze und ohne Assist erfasst und zählt damit auch genauso in der
+  # Scorerliste; markiert wird es über `goal_type` am Ereignis.
+  #
+  # Bewusst NICHT über eine Pseudo-Strafcode-ID wie beim Strafschuss
+  # (penalty_code_id 23): dieser Sonderweg zwingt jede Stelle, die Tore von
+  # Strafen trennt, zu einer Ausnahme (siehe ticker_events und formatted_events).
+  GOAL_TYPE_TECHNICAL = 'technical'.freeze
+  TECHNICAL_GOAL_STRING = 'Technisches Tor'.freeze
+
+  def self.technical_goal?(event)
+    event['goal_type'].to_s == GOAL_TYPE_TECHNICAL
+  end
+
   # Bevorzugt das eingefrorene Label am Event; nur Alt-Ereignisse ohne
   # gespeichertes Label lösen weiterhin live aus Setting auf (dig: nil statt
   # NoMethodError, falls die Strafe dort fehlt – der Aufrufer überspringt dann
@@ -1072,7 +1087,10 @@ class Game < ApplicationRecord
       else
         e[:event_type] = :goal
         e[:penalty_code_id] = event['penalty_code_id'].to_i if event['penalty_code_id'].present?
-        if event['penalty_code_id'].to_i != 23
+        if Game.technical_goal?(event)
+          e[:goal_type] = :technical
+          e[:goal_type_string] = TECHNICAL_GOAL_STRING
+        elsif event['penalty_code_id'].to_i != 23
           if owngoal
             e[:goal_type] = :owngoal
             e[:goal_type_string] = 'Eigentor'

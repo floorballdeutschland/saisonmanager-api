@@ -307,6 +307,65 @@ class GameTest < ActiveSupport::TestCase
   end
 
   # ---------------------------------------------------------------------------
+  # Technisches Tor
+  # ---------------------------------------------------------------------------
+
+  def technical_goal_event(extra = {})
+    {
+      'id' => 1, 'period' => 1, 'time' => '12:34', 'event_type' => 'goal', 'event_team' => 'home',
+      'home_goals' => 1, 'guest_goals' => 0, 'home_number' => 7, 'goal_type' => 'technical'
+    }.merge(extra)
+  end
+
+  test 'technical_goal?: erkennt nur die Markierung technical' do
+    assert Game.technical_goal?('goal_type' => 'technical')
+    assert_not Game.technical_goal?('goal_type' => 'regular')
+    assert_not Game.technical_goal?({})
+  end
+
+  test 'formatted_events: technisches Tor wird als Tor mit eigenem Label geliefert' do
+    g = build_game(events: [technical_goal_event])
+    e = g.formatted_events.first
+    assert_equal :goal, e[:event_type]
+    assert_equal :technical, e[:goal_type]
+    assert_equal 'Technisches Tor', e[:goal_type_string]
+    assert_equal 7, e[:number]
+  end
+
+  # Ein technisches Tor trägt keine penalty_code_id. Ohne die Vorab-Prüfung
+  # fiele es in den regulären Zweig und käme als schlichtes „Tor" zurück.
+  test 'formatted_events: reguläres Tor bleibt unverändert' do
+    g = build_game(events: [technical_goal_event('goal_type' => nil)])
+    e = g.formatted_events.first
+    assert_equal :regular, e[:goal_type]
+    assert_equal 'Tor', e[:goal_type_string]
+  end
+
+  test 'formatted_events: Strafschuss bleibt Strafschuss' do
+    g = build_game(events: [technical_goal_event('goal_type' => nil, 'penalty_code_id' => 23)])
+    e = g.formatted_events.first
+    assert_equal :penalty_shot, e[:goal_type]
+    assert_equal 'Strafschuss', e[:goal_type_string]
+  end
+
+  # Ein technisches Tor zählt dem Schützen wie jedes andere Tor, eine Vorlage
+  # gibt es dabei nicht (die Schreibwege entfernen sie, siehe strip_assist!).
+  test 'evaluate_scorer: technisches Tor zählt als Tor' do
+    g = build_game(
+      events: [technical_goal_event],
+      players: { 'home' => [{ 'trikot_number' => 7, 'player_id' => 42 }], 'guest' => [] }
+    )
+    score = nil
+    g.stub(:home_team, OpenStruct.new(id: 1, name: 'Heim')) do
+      g.stub(:guest_team, OpenStruct.new(id: 2, name: 'Gast')) do
+        score = g.evaluate_scorer[42]
+      end
+    end
+    assert_equal 1, score[:goals]
+    assert_equal 0, score[:assists]
+  end
+
+  # ---------------------------------------------------------------------------
   # Scorer-Namen aus dem Snapshot (R2)
   # ---------------------------------------------------------------------------
 

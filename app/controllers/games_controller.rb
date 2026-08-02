@@ -638,6 +638,7 @@ class GamesController < ApplicationController
       when 'goal'
         item[:goal_type] = params[:goal_type] if params[:goal_type].present?
         item[:penalty_code_id] = params[:penalty_code_id] if params[:penalty_code_id].present?
+        strip_assist!(item)
       end
 
       # Straf-Labels einfrieren, damit der Spielbericht ohne Live-Lookup lesbar bleibt.
@@ -737,6 +738,7 @@ class GamesController < ApplicationController
         event['goal_type'] = params[:goal_type].presence
         event['penalty_code_id'] = params[:penalty_code_id].presence
         event.delete('penalty_id')
+        strip_assist!(event)
       end
 
       # Straf-Labels neu einfrieren (bzw. bei Wechsel auf 'goal' entfernen).
@@ -1246,6 +1248,18 @@ class GamesController < ApplicationController
 
   def author_user_id
     secretary_or_current_user_id
+  end
+
+  # Ein technisches Tor wird zugesprochen, nicht herausgespielt – es kann daher
+  # keine Vorlage haben. Das Formular blendet die Assist-Felder aus, sobald die
+  # Markierung gesetzt ist; hier fällt eine zuvor eingetragene Vorlage weg, wenn
+  # ein bestehendes Tor nachträglich umgestellt wird (sonst bliebe sie im JSONB
+  # stehen und würde im Spielbericht weiter angezeigt).
+  def strip_assist!(event)
+    return unless Game.technical_goal?(event)
+
+    event.delete('home_assist')
+    event.delete('guest_assist')
   end
 
   # Weicher Lizenz-Check: erzeugt eine Warnmeldung, wenn der Spieler keine erteilte
