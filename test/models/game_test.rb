@@ -194,6 +194,40 @@ class GameTest < ActiveSupport::TestCase
     end
   end
 
+  # Echte League statt mock_league: mock_league schreibt genau die Zahlen fest,
+  # die dieser Fix korrigiert (2 und 4). Geprüft werden muss die Ableitung aus
+  # period_titles, also die Liste, aus der das Formular die Abschnitte
+  # anbietet (#316).
+  test 'error_checker: Tor im dritten Drittel ist keine Verlängerung (#316)' do
+    events = [{ 'period' => 3, 'home_goals' => 1, 'guest_goals' => 0, 'time' => '55:12' }]
+    game_in_league(modern_league(3), events, overtime: false) do |g|
+      errors = g.error_checker
+      assert_not errors.any? { |e| e[:key] == 'missing_overtime_checkbox' }
+    end
+  end
+
+  test 'error_checker: Penalty-Schießen einer Drittel-Liga liegt in Abschnitt 5 (#316)' do
+    events = [
+      { 'period' => 4, 'home_goals' => 1, 'guest_goals' => 1, 'time' => '03:21' },
+      { 'period' => 5, 'home_goals' => 2, 'guest_goals' => 1, 'time' => '70:00' }
+    ]
+    game_in_league(modern_league(3), events, overtime: true) do |g|
+      errors = g.error_checker
+      assert_not errors.any? { |e| e[:key] == 'overtime_wrong_period' }
+    end
+  end
+
+  # Gegenprobe zur vorigen Prüfung: sie darf nicht deshalb schweigen, weil sie
+  # gar nichts mehr meldet. Im Penalty-Schießen läuft keine Uhr, ein Eintrag mit
+  # laufender Zeit ist dort ein Fehler.
+  test 'error_checker: Penalty-Schießen mit laufender Uhr bleibt ein Fehler (#316)' do
+    events = [{ 'period' => 5, 'home_goals' => 1, 'guest_goals' => 0, 'time' => '68:12' }]
+    game_in_league(modern_league(3), events, overtime: true) do |g|
+      errors = g.error_checker
+      assert errors.any? { |e| e[:key] == 'overtime_wrong_period' }
+    end
+  end
+
   test 'error_checker: error_result_not_increasing wenn Tore sinken' do
     # Scores [2, 1]: strictly decreasing but never zero → only result_not_increasing fires
     events = [
@@ -366,8 +400,8 @@ class GameTest < ActiveSupport::TestCase
     League.new(legacy_league: false, periods: periods, league_category_id: '')
   end
 
-  def game_in_league(league, events)
-    g = build_game(events: events)
+  def game_in_league(league, events, attrs = {})
+    g = build_game(attrs.merge(events: events))
     g.stub(:game_day, OpenStruct.new(league: league)) { yield g }
   end
 
@@ -401,10 +435,11 @@ class GameTest < ActiveSupport::TestCase
     end
   end
 
-  # Der Grund, den Abschnitt aus period_titles zu lesen und nicht aus
-  # League#period_penalty_shots: letzteres liefert für eine heutige
-  # Großfeld-Liga 4, also die Verlängerung. Ein Strafschuss dort wäre damit
-  # als Entscheidung im Penalty-Schießen ausgewiesen worden.
+  # Abschnitt 4 ist in einer Drittel-Liga die Verlängerung, nicht das
+  # Penalty-Schießen (das liegt in 5). Ein Strafschuss dort bleibt ein
+  # Strafschuss. Bis #316 lieferte League#period_penalty_shots hier 4 und hätte
+  # ihn als Entscheidung im Penalty-Schießen ausgewiesen; seitdem stimmen beide
+  # Quellen überein, die Unterscheidung muss aber weiter halten.
   test 'formatted_events: Strafschuss in der Verlängerung bleibt Strafschuss' do
     game_in_league(modern_league(3), [shootout_goal('period' => 4, 'time' => '2:15')]) do |g|
       assert_equal :penalty_shot, g.formatted_events.first[:goal_type]
