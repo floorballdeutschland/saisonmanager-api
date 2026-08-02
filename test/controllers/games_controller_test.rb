@@ -203,15 +203,10 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
   end
 
   # ---------------------------------------------------------------------------
-  # Technisches Tor: zugesprochen, also kein Strafschuss – aber mit Vorlage
+  # Technisches Tor: zugesprochen, also kein Strafschuss, aber mit Vorlage
   # ---------------------------------------------------------------------------
-  #
-  # Beide Schreibwege bauen das Ereignis unterschiedlich auf: add_event legt
-  # einen HashWithIndifferentAccess mit Symbol-Keys an, update_event ändert den
-  # string-keyed Hash aus dem JSONB. normalize_technical_goal! löscht mit
-  # String-Keys und muss in beiden greifen.
 
-  test 'add_event: technisches Tor behält seine Vorlage' do
+  test 'add_event: technisches Tor behält seine Vorlage und kommt beschriftet zurück' do
     login(create(:user, :sbk_scoped, game_operation_id: @go.id))
 
     post "/api/v2/user/games/#{@game.id}/events/add", params: {
@@ -224,12 +219,54 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
     event = @game.reload.events.first
     assert_equal 'technical', event['goal_type']
     assert_equal '9', event['home_assist'].to_s
+    # Schreib- und Leseweg zusammen: nur so fällt auf, wenn die Markierung zwar
+    # gespeichert, aber nicht mehr zu einem Label aufgelöst wird.
+    assert_equal 'Technisches Tor', response.parsed_body.first['goal_type_string']
   end
 
-  # Der Fall, für den die serverseitige Bereinigung nötig ist: das Tor war ein
-  # Strafschuss, bevor es umgestellt wurde. Das Formular koppelt die beiden
-  # Markierungen zwar, der gespeicherte Strafcode bliebe sonst aber stehen.
-  test 'update_event: Umstellen auf technisches Tor entfernt den Strafschuss' do
+  # Der Fall, den sonst nichts abfängt: ein Aufruf mit beiden Markierungen im
+  # selben Request (direkter API-Zugriff oder veralteter Client). Das Formular
+  # koppelt die Haken, und beim Umstellen eines bestehenden Strafschusses ist
+  # der Code ohnehin schon weg, bevor die Bereinigung läuft.
+  #
+  # Je Schreibweg einmal, weil beide das Ereignis unterschiedlich aufbauen:
+  # update_event ändert den string-keyed Hash aus dem JSONB, add_event einen
+  # HashWithIndifferentAccess. Gelöscht wird mit String-Key.
+  test 'add_event: technisches Tor und Strafschuss zugleich lässt nur die Markierung übrig' do
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/games/#{@game.id}/events/add", params: {
+      period: 1, time: '10:00', event_type: 'goal', event_team: 'home',
+      home_goals: 1, guest_goals: 0, home_number: 7,
+      goal_type: 'technical', penalty_code_id: 23
+    }
+
+    assert_response :success
+    event = @game.reload.events.first
+    assert_equal 'technical', event['goal_type']
+    assert_not event.key?('penalty_code_id')
+  end
+
+  test 'update_event: technisches Tor und Strafschuss zugleich lässt nur die Markierung übrig' do
+    @game.update!(events: [{ 'id' => 1, 'period' => 1, 'time' => '10:00', 'event_type' => 'goal',
+                             'event_team' => 'home', 'home_goals' => 1, 'guest_goals' => 0,
+                             'home_number' => 7, 'home_assist' => 9 }])
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/games/#{@game.id}/events/update", params: {
+      event_id: 1, period: 1, time: '10:00', event_type: 'goal', event_team: 'home',
+      home_goals: 1, guest_goals: 0, home_number: 7, home_assist: 9,
+      goal_type: 'technical', penalty_code_id: 23
+    }
+
+    assert_response :success
+    event = @game.reload.events.first
+    assert_equal 'technical', event['goal_type']
+    assert_not event.key?('penalty_code_id')
+    assert_equal '9', event['home_assist'].to_s
+  end
+
+  test 'update_event: Umstellen eines Strafschusses auf technisches Tor' do
     @game.update!(events: [{ 'id' => 1, 'period' => 1, 'time' => '10:00', 'event_type' => 'goal',
                              'event_team' => 'home', 'home_goals' => 1, 'guest_goals' => 0,
                              'home_number' => 7, 'home_assist' => 9, 'penalty_code_id' => 23 }])
@@ -243,7 +280,7 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     event = @game.reload.events.first
     assert_equal 'technical', event['goal_type']
-    assert_not event.key?('penalty_code_id')
+    assert_nil event['penalty_code_id']
     assert_equal '9', event['home_assist'].to_s
   end
 

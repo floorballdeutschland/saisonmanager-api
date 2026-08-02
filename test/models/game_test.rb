@@ -381,11 +381,22 @@ class GameTest < ActiveSupport::TestCase
     assert_equal 1, score[43][:assists]
   end
 
-  # Der Grund, keine Pseudo-Strafcode-ID wie beim Strafschuss zu verwenden: der
-  # Ticker trennt Tore von Strafen über penalty_code_id.
+  # Der Ticker trennt Tore von Strafen über penalty_code_id und sieht die
+  # Torart nie an. Das technische Tor kommt hier also nur richtig heraus,
+  # solange es ohne Strafcode gespeichert wird – Regressionsschutz für den
+  # Fall, dass jemand doch auf einen Pseudo-Code umstellt.
   test 'ticker_events: technisches Tor ist ein Tor, keine Strafe' do
     g = build_game(events: [technical_goal_event])
     assert_equal 'HOME_GOAL', g.ticker_events.first[:eventType]
+  end
+
+  # Beide Markierungen an einem Ereignis verhindern die Schreibwege
+  # (drop_penalty_shot_marker!, siehe GamesControllerTest). Kommt die
+  # Kombination trotzdem aus Altdaten, entscheidet die Reihenfolge der Zweige:
+  # die Markierung gewinnt, statt dass die Anzeige zwischen beiden kippt.
+  test 'formatted_events: Markierung geht dem Strafschuss vor' do
+    g = build_game(events: [technical_goal_event('penalty_code_id' => 23)])
+    assert_equal :technical, g.formatted_events.first[:goal_type]
   end
 
   # ---------------------------------------------------------------------------

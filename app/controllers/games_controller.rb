@@ -638,7 +638,7 @@ class GamesController < ApplicationController
       when 'goal'
         item[:goal_type] = params[:goal_type] if params[:goal_type].present?
         item[:penalty_code_id] = params[:penalty_code_id] if params[:penalty_code_id].present?
-        normalize_technical_goal!(item)
+        drop_penalty_shot_marker!(item)
       end
 
       # Straf-Labels einfrieren, damit der Spielbericht ohne Live-Lookup lesbar bleibt.
@@ -738,7 +738,7 @@ class GamesController < ApplicationController
         event['goal_type'] = params[:goal_type].presence
         event['penalty_code_id'] = params[:penalty_code_id].presence
         event.delete('penalty_id')
-        normalize_technical_goal!(event)
+        drop_penalty_shot_marker!(event)
       end
 
       # Straf-Labels neu einfrieren (bzw. bei Wechsel auf 'goal' entfernen).
@@ -1251,18 +1251,23 @@ class GamesController < ApplicationController
   end
 
   # Ein Tor ist entweder erzielt oder zugesprochen: technisches Tor und
-  # Strafschuss (Pseudo-Strafcode 23) schließen sich aus. Das Formular koppelt
-  # die beiden Markierungen; hier fällt der Strafschuss weg, wenn ein
-  # bestehendes Tor nachträglich umgestellt wird (sonst bliebe er im JSONB
-  # stehen), und Aufrufe außerhalb des Formulars sind mit abgedeckt.
+  # Strafschuss (Pseudo-Strafcode 23) schließen sich aus.
   #
-  # Eine Vorlage bleibt erhalten: auch ein zugesprochenes Tor kann vorbereitet
-  # worden sein.
+  # Greift ausschließlich bei Aufrufen, die beide Markierungen zugleich
+  # schicken. Das Formular tut das nicht, es koppelt die Haken; und beim
+  # Umstellen eines bestehenden Strafschusses ist der Code schon weg, bevor
+  # diese Methode läuft (update_event überschreibt penalty_code_id
+  # unconditional mit `.presence`, also mit nil). Übrig bleibt der Fall, den
+  # sonst nichts abfängt: ein direkter API-Aufruf oder ein veralteter Client
+  # mit beiden Feldern im selben Request. Ohne die Bereinigung stünden im
+  # Ereignis zwei einander ausschließende Markierungen, und welche gewinnt,
+  # entschiede allein die Reihenfolge der Zweige in formatted_events.
   #
-  # Die Löschung greift in beiden Schreibwegen: add_event baut das Event als
-  # HashWithIndifferentAccess, update_event ändert den string-keyed Hash aus
-  # dem JSONB.
-  def normalize_technical_goal!(event)
+  # Gelöscht wird mit String-Key, das greift in beiden Schreibwegen:
+  # update_event ändert den string-keyed Hash aus dem JSONB, add_event einen
+  # HashWithIndifferentAccess (der normalisiert Symbol-Keys auf Strings, sonst
+  # liefe die Löschung dort ins Leere).
+  def drop_penalty_shot_marker!(event)
     return unless Game.technical_goal?(event)
 
     event.delete('penalty_code_id')

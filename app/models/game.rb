@@ -186,10 +186,17 @@ class Game < ApplicationRecord
     SCORING_EVENT_KEYS.any? { |key| event[key].present? }
   end
 
-  # Technisches Tor (ab Saison 2026/27): ein von den Schiedsrichtern
-  # zugesprochenes Tor. Es wird wie der Strafschuss als reguläres Tor-Ereignis
-  # mit Torschütze und Vorlage erfasst und zählt damit auch genauso in der
-  # Scorerliste; markiert wird es über `goal_type` am Ereignis.
+  # Technisches Tor: ein von den Schiedsrichtern zugesprochenes Tor,
+  # eingeführt zur Saison 2026/27. Erfasst wird es wie der Strafschuss als
+  # reguläres Tor-Ereignis mit Torschütze und Vorlage; auch ein zugesprochenes
+  # Tor kann vorbereitet worden sein. Markiert wird es über `goal_type` am
+  # Ereignis. Bewusst ohne Saison-Sperre: die Markierung ist opt-in pro
+  # Ereignis, wer sie in einer Altsaison setzt, meint sie auch.
+  #
+  # In Spielstand und Scorerliste zählt es wie jedes andere Tor. Das ergibt
+  # sich nicht aus der Ähnlichkeit zum Strafschuss, sondern daraus, dass beide
+  # Wertungen die Torart gar nicht ansehen: sie hängen an den Trikotnummern
+  # (siehe evaluate_scorer und result).
   #
   # Bewusst NICHT über eine Pseudo-Strafcode-ID wie beim Strafschuss
   # (penalty_code_id 23): dieser Sonderweg zwingt jede Stelle, die Tore von
@@ -1091,8 +1098,14 @@ class Game < ApplicationRecord
         # sondern stehen anstelle eines Schützen (Pseudo-Nummern 1000/2000). Die
         # Ereignisliste zeigt in diesen Fällen das Label statt eines Namens; ein
         # technisches Tor würde das Label verdrängen und die Zeile bliebe leer,
-        # weil zu 1000/2000 kein Spieler auflösbar ist. Das Formular bietet die
-        # beiden Einträge am technischen Tor gar nicht erst an.
+        # weil zu 1000/2000 kein Spieler auflösbar ist und der Hinweis am
+        # aufgelösten Namen hängt.
+        #
+        # Das Formular bietet die beiden Einträge am technischen Tor zwar nicht
+        # an, das ist hier aber nicht die Absicherung, sondern nur die erste
+        # Hürde: es liegt in einem eigenen Repository mit eigenem Deploy, und
+        # gespeicherte Ereignisse können aus jeder früheren Fassung stammen.
+        # Serverseitig hindert nichts daran, beides zugleich zu schreiben.
         if Game.technical_goal?(event) && !owngoal && !nagoal
           e[:goal_type] = :technical
           e[:goal_type_string] = TECHNICAL_GOAL_STRING
