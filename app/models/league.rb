@@ -201,20 +201,8 @@ class League < ApplicationRecord
     end
   end
 
-  def period_title(period)
-    period_titles.select { |pt| pt[:period] == period }.first
-  end
-
   def period_title_by_id(status_id)
     period_titles.select { |pt| pt[:status_id] == status_id }.first
-  end
-
-  def period_time(period)
-    return period_length if period <= periods
-
-    return overtime_length if period == periods + 1
-
-    0
   end
 
   # Perioden-basierter Fallback für die angenommene Spieldauer, wenn weder an der
@@ -232,10 +220,6 @@ class League < ApplicationRecord
     return global_default if global_default.present?
 
     periods.to_i > 2 ? LARGE_FIELD_GAME_DURATION_MINUTES : FALLBACK_GAME_DURATION_MINUTES
-  end
-
-  def period_is_extratime(period)
-    period == periods + 1
   end
 
   # Erfüllt das Geburtsdatum die Altersvoraussetzung (Stichtag) der Liga?

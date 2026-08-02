@@ -255,28 +255,6 @@ class GamesController < ApplicationController
     render json: { success: true }
   end
 
-  def next_period_info
-    game = Game.find(params[:id])
-    league = game.league
-
-    current_period = 0
-    # prüfe ob events vorliegen, bestimme aktuelle periode
-    current_period = game.events.map { |e| e['period'] }.max game.events.present?
-
-    next_period = current_period + 1
-    next_period_title = league.period_title next_period
-    next_period_length = league.period_time next_period
-    is_extratime = league.period_is_extratime next_period
-
-    render json: {
-      current_period:,
-      next_period:,
-      next_period_title:,
-      next_period_length:,
-      is_extratime:
-    }
-  end
-
   def add_player_to_lineup
     game = Game.find(params[:id])
     player = Player.find(params[:player_id]) if params[:player_id].present?

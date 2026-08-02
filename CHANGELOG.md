@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Unerreichbaren Spielabschnitts-Endpunkt entfernt**: `games#next_period_info` war über keine Route erreichbar, wurde von keiner Oberfläche aufgerufen und wäre beim Aufruf sofort abgebrochen (fehlerhafter Aufruf von `Array#max`). Mit ihm entfallen die drei nur dort genutzten Liga-Methoden `period_title`, `period_time` und `period_is_extratime`. Für Anwenderinnen und Anwender ändert sich nichts.
+
 ## [1.66.0] - 2026-08-02
 
 ### Neu
