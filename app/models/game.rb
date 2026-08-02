@@ -208,11 +208,26 @@ class Game < ApplicationRecord
     event['goal_type'].to_s == GOAL_TYPE_TECHNICAL
   end
 
-  # Der Spielabschnitt des Penalty-Schießens dieser Liga (siehe
-  # League#period_penalty_shots). nil, wenn die Liga nicht erreichbar ist:
-  # dann entscheidet allein die Uhrzeit, siehe shootout_decision?.
+  # Der Spielabschnitt des Penalty-Schießens dieser Liga, gelesen aus
+  # League#period_titles: genau der Liste, aus der das Formular die Abschnitte
+  # zur Auswahl stellt und aus der die gespeicherten Ereignisse ihre Nummer
+  # haben. nil, wenn die Liga nicht erreichbar ist; dann entscheidet allein die
+  # Uhrzeit, siehe shootout_decision?.
+  #
+  # Bewusst NICHT League#period_penalty_shots, obwohl der Name das nahelegt:
+  # jene Methode zählt über period_count_normal_game hoch, das aus
+  # `league_category_id` abgeleitet wird – und dieses Feld ist im neuen System
+  # leer. Für eine heutige Großfeld-Liga liefert es deshalb 4, während
+  # period_titles dort das Penalty-Schießen in Abschnitt 5 führt und die
+  # Verlängerung in 4. Die Prüfung träfe also ausgerechnet Strafschüsse in der
+  # Verlängerung und das Penalty-Schießen selbst gar nicht.
+  #
+  # Für Altligen (`legacy_league`) stimmen beide Quellen überein, dort ändert
+  # sich nichts. Dass League#period_penalty_shots dieselbe Schieflage auch in
+  # error_overtime_wrong_period? hat, bleibt hier offen: das ist eine
+  # Fehlerprüfung mit eigenem Verhalten und gehört nicht in diesen Fix.
   def penalty_shootout_period
-    game_day&.league&.period_penalty_shots
+    game_day&.league&.period_title_by_id('penalty_shots')&.dig(:period)
   end
 
   # Ist dieses Tor die Entscheidung im Penalty-Schießen (und nicht ein
