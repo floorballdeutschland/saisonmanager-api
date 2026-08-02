@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Technisches Tor im Spielbericht**: Ein von den Schiedsrichtern zugesprochenes Tor lässt sich jetzt als solches erfassen, genauso wie bisher schon der Strafschuss. Im Tor-Formular gibt es dafür die Markierung „Technisches Tor“, Torschütze und Vorlage werden wie gewohnt eingetragen. In der Ereignisliste und im Spielbericht steht am Tor der Hinweis „Technisches Tor“. Für die Wertung zählt es wie jedes andere Tor: es geht in den Spielstand ein und zählt in der Scorerliste für Torschütze und Vorlage. Ein Tor ist entweder erzielt oder zugesprochen, deshalb schließen sich Strafschuss und technisches Tor gegenseitig aus; wird ein bestehender Strafschuss umgestellt, entfällt die Strafschuss-Markierung. Am technischen Tor entfallen außerdem die Einträge „Eigentor“ und „Nicht angegeben“, es hat immer einen benannten Torschützen.
+
 ### Behoben
 
 - **Lizenzen ließen sich über Verbandsgrenzen hinweg beantragen**: Wer irgendeine SBK-Rolle hatte, konnte Lizenzen in Ligen **aller** Verbände beantragen, zurückziehen und wieder aktivieren, auch in denen anderer Landesverbände und der Bundesligen. Geprüft wurde nur, dass eine SBK-Rolle vorhanden ist, nicht für welchen Spielbetrieb sie gilt. Die Genehmigung war davon nie betroffen, sie hat den Spielbetrieb immer geprüft; ein Antrag allein erteilt also keine Spielberechtigung. Beantragen, zurückziehen, wieder aktivieren und die Lizenzlisten einer Liga oder Mannschaft berücksichtigen jetzt denselben Spielbetriebs-Zuschnitt wie die Genehmigung. Mehrfachrollen bleiben dabei erhalten: Wer neben seiner SBK-Rolle Vereins- oder Teammanager ist, kann für die eigenen Mannschaften weiterhin beantragen, auch wenn diese in einem anderen Spielbetrieb spielen. In der Mannschaftsauswahl des Lizenzwesens erscheinen zu einem Verein außerdem nur noch die Mannschaften, für die die eigene Rolle auch zuständig ist, statt aller Mannschaften des Vereins.
