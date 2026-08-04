@@ -37,6 +37,14 @@ class Setting < ApplicationRecord
     systems.dig('1', 'game_duration_minutes').presence&.to_i
   end
 
+  # EINZIGE Quelle für die aktive Saison. Im seasons-Hash gab es früher zusätzlich
+  # ein gespeichertes `current: true`; das wurde von nichts mehr gepflegt, stand
+  # zuletzt auf einer abgeschlossenen Saison und ist entfernt (Migration
+  # RemoveStaleCurrentFlagFromSeasons). Also nie wieder ein Flag in seasons
+  # schreiben oder lesen — immer diese Methode nutzen.
+  #
+  # Achtung beim Vergleichen: Der Wert ist ein Integer, `leagues.season_id`
+  # kommt als String zurück. Also `.to_s`/`.to_i` bewusst setzen.
   def self.current_season_id
     current.systems['1']['current_season_id']
   end

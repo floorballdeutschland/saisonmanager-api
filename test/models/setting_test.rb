@@ -10,6 +10,29 @@ class SettingTest < ActiveSupport::TestCase
     assert_equal 18, Setting.current_season_id
   end
 
+  # Auf Produktion trug Saison 17 noch ein gespeichertes `current: true`, während
+  # die aktive Saison 18 war. Ein solches Flag darf die aktive Saison nie
+  # beeinflussen — maßgeblich ist ausschließlich systems["1"]["current_season_id"].
+  test 'ein gespeichertes current-Flag im seasons-Hash aendert die aktive Saison nicht' do
+    setting = create(:setting, current_season_id: 18)
+    setting.update_columns(
+      seasons: setting.seasons.merge('17' => setting.seasons['17'].merge('current' => true))
+    )
+
+    assert_equal 18, Setting.current_season_id
+    assert_equal 18, Setting.seasons.find { |s| s[:current] }[:id],
+                 'Setting.seasons muss current aus current_season_id berechnen, nicht aus dem Hash lesen'
+  end
+
+  # Gegenprobe zur Migration RemoveStaleCurrentFlagFromSeasons: Neu angelegte
+  # Saisons dürfen das Flag nicht wieder einführen.
+  test 'seasons-Eintraege tragen kein gespeichertes current-Flag' do
+    create(:setting, current_season_id: 18)
+
+    assert(Setting.current.seasons.values.none? { |s| s.key?('current') },
+           'seasons darf kein gespeichertes current-Flag enthalten')
+  end
+
   test 'current_season_id reagiert auf andere Saison-Werte' do
     create(:setting, current_season_id: 17)
 
