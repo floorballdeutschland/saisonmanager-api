@@ -9,6 +9,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **SBK und RSK vergeben Benutzerrollen selbst**: Die Benutzerverwaltung stand bisher nur Admins und der SBK offen, und Rollen ließen sich ausschließlich als Admin vergeben. Jetzt legt die SBK Konten mit den Rollen SBK, RSK, Ansetzer, Vereinsmanager und Teammanager an, die RSK solche mit den Rollen RSK und Ansetzer. Beide bleiben dabei auf ihre eigene Ebene und darunter beschränkt: Ein verbandsgebundenes Konto vergibt nur Rollen für die eigenen Spielbetriebe, ein Konto des Bundesspielbetriebs (FD) auch für die Landesverbände. Bestehende Konten lassen sich im selben Rahmen um Rollen erweitern und ihnen wieder entziehen. Die Admin-Rolle vergibt weiterhin nur ein Admin, und niemand kann über diesen Weg eine Rolle in einem fremden Spielbetrieb setzen.
+
+### Verbessert
+
+- **Schiedsrichter-Rolle ist nicht mehr mit anderen Rollen kombinierbar**: Ein Schiedsrichter-Konto (Selbstverwaltung des eigenen Profils) bekommt keine weitere Rolle, und ein Konto mit anderen Rollen keine Schiedsrichter-Rolle. Die Regel gilt an jeder Stelle, an der Rollen gespeichert werden, also auch für Admins und die Kontoanlage aus der Schiedsrichterverwaltung. Bestandskonten, die diese Kombination noch tragen, können sich weiter einloggen und lassen sich durch Entfernen der überzähligen Rolle in Ordnung bringen.
+
 ### Behoben
 
 - **Postfächer eines untergeordneten Landesverbands greifen wirklich auf den Verbund zurück**: Gehört ein Landesverband zu einem übergeordneten Verbund (z. B. die drei Landesverbände der SBK Ost), sperrt die Verbandsmaske die Felder für die VSK- und SBK-Adresse und weist sie als „geerbt“ aus. Tatsächlich geerbt wurde bisher nur die RSK-Adresse. Alle betroffenen Mails lasen die Adresse direkt am Landesverband, bei Transfers über den abgebenden Verein, bei Spieltags-, Expresslizenz- und Berichtsmails über den Spielbetrieb der Liga. Ohne Eintrag entfielen die Genehmigungs- und Abschlussmails zu Transfers und Spielerfreigaben, die Meldung eines nicht ordnungsgemäß gemeldeten Spieltags, die Benachrichtigung über beantragte Expresslizenzen und der Versand des Schiedsrichter-Berichtsformulars an die VSK vollständig; beim Spielbericht fehlte die Kopie an die SBK, und bei Mails an Schiedsrichter ging die Antwortadresse auf das zentrale Ansetzungs-Postfach. Alle diese Wege nutzen jetzt das Postfach des Verbunds, sofern der Landesverband selbst keines gepflegt hat.

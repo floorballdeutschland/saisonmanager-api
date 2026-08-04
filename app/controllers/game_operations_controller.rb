@@ -68,14 +68,17 @@ class GameOperationsController < ApplicationController
     go_ids = []
 
     ph = current_user.permission_hash
-    # Rollen additiv: ein Nutzer mit Admin-/SBK- *und* VM-Rolle verlor sonst
+    # Rollen additiv: ein Nutzer mit Admin-/SBK-/RSK- *und* VM-Rolle verlor sonst
     # den Spielbetrieb seines Vereins, wenn dieser außerhalb der eigenen
     # Verbands-Berechtigung liegt.
-    if ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
+    if ph[:admin]&.include?(0) || ph[:sbk]&.include?(0) || ph[:rsk]&.include?(0)
       go_ids = GameOperation.all.pluck(:id)
     else
       go_ids << ph[:admin] if ph[:admin].present?
       go_ids << ph[:sbk] if ph[:sbk].present?
+      # RSK braucht die eigenen Verbünde für die Rollenvergabe in der
+      # Benutzerverwaltung (RSK/Ansetzer im eigenen Zuständigkeitsbereich).
+      go_ids << ph[:rsk] if ph[:rsk].present?
       go_ids.flatten!
 
       if ph[:vm].present?
