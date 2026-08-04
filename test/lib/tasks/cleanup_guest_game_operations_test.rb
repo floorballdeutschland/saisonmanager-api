@@ -35,6 +35,28 @@ class CleanupGuestGameOperationsTest < ActiveSupport::TestCase
     ])
   end
 
+  # Der Report-Task darf auch dann durchlaufen, wenn nichts zu bereinigen ist –
+  # ein `return` im Rake-Block wirft dort LocalJumpError. Das fiel erst nach dem
+  # ersten erfolgreichen Bereinigungslauf auf Produktion auf.
+  test 'Report laeuft auch ohne bereinigbare Eintraege durch' do
+    report = Rake::Task['cleanup:guest_game_operations_report']
+    report.reenable
+    create(:club, game_operations_hash: [
+      { 'home_game_operation' => true, 'game_operation_id' => @heim_go.id }
+    ])
+
+    assert_nothing_raised { report.invoke }
+  end
+
+  # Gegenprobe: mit bereinigbaren Eintraegen laeuft er ebenfalls durch.
+  test 'Report laeuft mit bereinigbaren Eintraegen durch' do
+    report = Rake::Task['cleanup:guest_game_operations_report']
+    report.reenable
+    club_with_guest_entry
+
+    assert_nothing_raised { report.invoke }
+  end
+
   test 'ungedeckter Gast-Eintrag wird entfernt, Heim-Eintrag bleibt' do
     club = club_with_guest_entry
 
