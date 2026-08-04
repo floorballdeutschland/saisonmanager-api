@@ -51,6 +51,42 @@ class ClubsController < ApplicationController
     render json: result
   end
 
+  # Vereine, für die der/die Nutzer*in Vereinsmanager*in oder Teammanager*in
+  # ist – und nur die. Andere Rollen bleiben hier ausdrücklich unberücksichtigt:
+  # Das Portal „Meine Spieler*innen" ist die Vereinssicht auf den eigenen
+  # Spielerbestand (Menüpunkt `menu_item_player_vm`, ebenfalls nur VM/TM), nicht
+  # die Verbandssicht. Für die gibt es die Spielerverwaltung (`menu_item_player_admin`).
+  #
+  # Der Unterschied zu `user_clubs_and_teams` ist der Grund für diese zweite
+  # Aktion: Dort sind alle Rollen additiv, wer also zusätzlich SBK ist, bekommt
+  # alle Vereine des Spielbetriebs. Genau daran ist das Portal gescheitert – es
+  # fragte für jeden dieser Vereine die Spielerliste ab, und die Vereine aus
+  # fremden Landesverbänden antworteten (zu Recht) mit 403.
+  def vm_clubs_and_teams
+    ph = current_user.permission_hash
+    unless ph[:vm].present? || ph[:tm].present?
+      return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+
+    vm_club_ids = ph[:vm].to_a
+    tm_teams = ph[:tm].present? ? Team.current_season.where(id: ph[:tm]).to_a : []
+    club_ids = (vm_club_ids + tm_teams.flat_map(&:all_club_ids)).uniq
+
+    clubs = Club.includes(logo_attachment: :blob).where(id: club_ids).order(:name)
+    teams_by_club = current_teams_by_club(club_ids)
+    tm_team_ids = tm_teams.map(&:id)
+
+    render json: clubs.map { |club|
+      item = club.full_hash
+      # Als VM alle Mannschaften des Vereins, als TM nur die eigenen.
+      teams = teams_by_club.fetch(club.id, []).select do |team|
+        vm_club_ids.include?(club.id) || tm_team_ids.include?(team.id)
+      end
+      item[:teams] = teams.map(&:full_hash)
+      item
+    }
+  end
+
   def user_team_licenses
     ph = current_user.permission_hash
 

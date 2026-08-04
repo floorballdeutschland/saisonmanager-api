@@ -31,7 +31,11 @@ namespace :players do
     puts
 
     seasons      = Setting.current.seasons
-    current_sid  = seasons.find { |_id, s| s['current'] }&.first&.to_i
+    # Nicht über ein gespeichertes `current`-Flag in seasons suchen: Das war eine
+    # Altlast, stand zuletzt auf einer abgeschlossenen Saison und ist entfernt
+    # (Migration RemoveStaleCurrentFlagFromSeasons). Einzige Quelle ist
+    # systems['1']['current_season_id'].
+    current_sid  = Setting.current_season_id.to_i
 
     # Betroffene Spieler:
     #   - mind. ein Legacy-Eintrag (kein created_at, kein valid_until, club_id vorhanden)
