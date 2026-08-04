@@ -1,8 +1,14 @@
 module Admin
   class UsersController < ApplicationController
+    # Rollen mit Verbund-Scope (SBK, RSK, Ansetzer) bzw. Vereins-Scope (VM, TM).
+    GO_SCOPED_ROLES = [2, 3, 7].freeze
+    CLUB_SCOPED_ROLES = [4, 5].freeze
+    ADMIN_ROLE = 1
+
     before_action :authorize_user_management!
     before_action :set_managed_user, only: %i[show update destroy trigger_password_reset add_role remove_role archive unarchive]
-    before_action :require_admin_for_elevated_target!, only: %i[update destroy trigger_password_reset archive unarchive]
+    before_action :require_admin_for_elevated_target!,
+                  only: %i[update destroy trigger_password_reset archive unarchive add_role remove_role]
 
     # GET /api/v2/admin/users
     def index
@@ -70,7 +76,7 @@ module Admin
       end
 
       if params.key?(:game_operation_id)
-        result = apply_go_change(@managed_user, params[:game_operation_id].to_i, ph)
+        result = apply_go_change(@managed_user, params[:game_operation_id].to_i)
         return render json: { error: result[:error] }, status: result[:status] if result[:error]
 
         updates.merge!(result[:updates])
@@ -117,16 +123,23 @@ module Admin
         end
       end
 
-      unless ph[:admin].present? || ph[:sbk].present?
+      unless ph[:admin].present? || ph[:sbk].present? || ph[:rsk].present?
         return render json: { error: 'Nicht berechtigt' }, status: :forbidden
       end
 
-      unless ph[:admin].present? || [4, 5].include?(role_id)
-        return render json: { error: 'SBK darf nur VM- und TM-Nutzer anlegen' }, status: :forbidden
+      unless current_user.assignable_role_ids(ph).include?(role_id)
+        return render json: { error: 'Diese Rolle darf nicht vergeben werden' }, status: :forbidden
       end
 
-      if [2, 3, 7].include?(role_id) && !go_id
+      if GO_SCOPED_ROLES.include?(role_id) && !go_id
         return render json: { error: 'Verbund muss für SBK/RSK/Ansetzer angegeben werden' }, status: :unprocessable_entity
+      end
+
+      # SBK und RSK vergeben Rollen nur auf eigener Ebene oder darunter: Ein
+      # verbandsgebundenes Konto bleibt auf die eigenen Spielbetriebe begrenzt,
+      # ein national gescoptes (FD) deckt über permission_hash alle ab.
+      unless permission_assignable?({ 'user_group_id' => role_id, 'game_operation_id' => go_id })
+        return render json: { error: 'Verbund nicht im eigenen Zuständigkeitsbereich' }, status: :forbidden
       end
 
       if club_id && !ph[:admin].present?
@@ -206,9 +219,11 @@ module Admin
 
     # POST /api/v2/admin/users/:id/add_role
     # Fügt einem Konto eine weitere Rolle hinzu (Mehrfachrollen, z. B. RSK + Ansetzer).
-    # Nur Admin; Admin-Rolle (1) wird hierüber bewusst nicht vergeben.
+    # Admin, SBK und RSK im Rahmen ihres Scopes (User::ASSIGNABLE_ROLE_IDS);
+    # die Admin-Rolle (1) wird hierüber bewusst nie vergeben.
     def add_role
-      return render json: { error: 'Nur Admins können Rollen verwalten' }, status: :forbidden unless current_user.permission_hash[:admin].present?
+      ph = current_user.permission_hash
+      return render json: { error: 'Nicht berechtigt, Rollen zu verwalten' }, status: :forbidden unless manage_roles_allowed?(ph)
       return render json: { error: 'Eigene Rollen können nicht geändert werden' }, status: :forbidden if @managed_user.id == current_user.id
 
       role_id = params[:user_group_id].to_i
@@ -217,19 +232,32 @@ module Admin
 
       return render json: { error: 'Ungültige Rolle' }, status: :unprocessable_entity unless [2, 3, 4, 5, 7].include?(role_id)
 
-      if [2, 3, 7].include?(role_id)
+      unless current_user.assignable_role_ids(ph).include?(role_id)
+        return render json: { error: 'Diese Rolle darf nicht vergeben werden' }, status: :forbidden
+      end
+
+      if @managed_user.permissions.any? { |p| p['user_group_id'].to_i == User::REFEREE_ROLE_ID }
+        return render json: { error: 'Ein Schiedsrichter-Konto kann keine weitere Rolle erhalten' },
+                      status: :unprocessable_entity
+      end
+
+      if GO_SCOPED_ROLES.include?(role_id)
         return render json: { error: 'Verbund erforderlich' }, status: :unprocessable_entity unless go_id
         return render json: { error: 'Ungültiger Verbund' }, status: :unprocessable_entity unless GameOperation.exists?(go_id)
       end
 
-      if [4, 5].include?(role_id)
+      if CLUB_SCOPED_ROLES.include?(role_id)
         return render json: { error: 'Verein erforderlich' }, status: :unprocessable_entity unless club_id
         return render json: { error: 'Ungültiger Verein' }, status: :unprocessable_entity unless Club.exists?(club_id)
       end
 
       perm = { 'user_group_id' => role_id }
-      perm['game_operation_id'] = go_id.to_s if go_id && [2, 3, 7].include?(role_id)
-      perm['club_id'] = club_id.to_s if club_id && [4, 5].include?(role_id)
+      perm['game_operation_id'] = go_id.to_s if go_id && GO_SCOPED_ROLES.include?(role_id)
+      perm['club_id'] = club_id.to_s if club_id && CLUB_SCOPED_ROLES.include?(role_id)
+
+      unless permission_assignable?(perm)
+        return render json: { error: 'Rolle nicht im eigenen Zuständigkeitsbereich' }, status: :forbidden
+      end
 
       if @managed_user.permissions.any? { |p| same_permission?(p, perm) }
         return render json: { error: 'Diese Rolle ist bereits vorhanden' }, status: :unprocessable_entity
@@ -248,7 +276,8 @@ module Admin
 
     # DELETE /api/v2/admin/users/:id/remove_role
     def remove_role
-      return render json: { error: 'Nur Admins können Rollen verwalten' }, status: :forbidden unless current_user.permission_hash[:admin].present?
+      ph = current_user.permission_hash
+      return render json: { error: 'Nicht berechtigt, Rollen zu verwalten' }, status: :forbidden unless manage_roles_allowed?(ph)
       return render json: { error: 'Eigene Rollen können nicht geändert werden' }, status: :forbidden if @managed_user.id == current_user.id
 
       target = {
@@ -257,10 +286,18 @@ module Admin
         'club_id' => params[:club_id].to_i.nonzero?&.to_s
       }
 
+      removed = @managed_user.permissions.select { |p| same_permission?(p, target) }
       remaining = @managed_user.permissions.reject { |p| same_permission?(p, target) }
 
-      return render json: { error: 'Rolle nicht gefunden' }, status: :unprocessable_entity if remaining.length == @managed_user.permissions.length
+      return render json: { error: 'Rolle nicht gefunden' }, status: :unprocessable_entity if removed.empty?
       return render json: { error: 'Mindestens eine Rolle muss bestehen bleiben' }, status: :unprocessable_entity if remaining.empty?
+
+      # Entziehen ist an denselben Scope gebunden wie Vergeben – sonst könnte
+      # eine RSK einem Konto die SBK-Rolle nehmen, die sie selbst nie vergeben
+      # dürfte.
+      unless removed.all? { |p| permission_assignable?(p) }
+        return render json: { error: 'Rolle nicht im eigenen Zuständigkeitsbereich' }, status: :forbidden
+      end
 
       if @managed_user.update(permissions: remaining)
         render json: user_json(@managed_user.reload, full: true)
@@ -342,17 +379,75 @@ module Admin
       ph = current_user.permission_hash
       return if ph[:admin].present?
 
-      target_roles = @managed_user.permissions.map { |p| p['user_group_id'].to_i }
-      elevated = [1, 2, 3, 7]
-      # Reine RSK-Manager (ohne Admin/SBK/VM-Scope) dürfen keine VM-/TM-Konten
-      # verwalten: sonst ließe sich per E-Mail-Änderung + Passwort-Reset ein
-      # VM-/TM-Konto übernehmen (Rechteausweitung quer zur Rolle). Admin/SBK/VM
-      # verwalten VM/TM weiterhin regulär im Rahmen ihres Scopes.
-      elevated += [4, 5] if ph[:sbk].blank? && ph[:vm].blank?
+      target_perms = @managed_user.permissions
 
-      if (target_roles & elevated).any?
-        render json: { error: 'Nicht berechtigt' }, status: :forbidden
+      # Admin-Konten bleiben Admins vorbehalten: Über E-Mail-Änderung +
+      # Passwort-Reset ließe sich ein solches Konto sonst übernehmen.
+      if target_perms.any? { |p| p['user_group_id'].to_i == ADMIN_ROLE }
+        return render json: { error: 'Nicht berechtigt' }, status: :forbidden
       end
+
+      # Sonst darf verwalten, wer jede Rolle des Zielkontos im eigenen Scope
+      # auch selbst vergeben dürfte. Damit verwaltet eine reine RSK genau die
+      # RSK-/Ansetzer-Konten des eigenen Verbands, aber weiterhin keine VM-/TM-
+      # oder SBK-Konten (Rechteausweitung quer zur Rolle). Schiedsrichter-
+      # Selfservice-Konten (6) tragen keinen Verwaltungs-Scope und bleiben für
+      # alle Verwaltungsrollen erreichbar.
+      return if target_perms.all? { |p| p['user_group_id'].to_i == User::REFEREE_ROLE_ID || permission_assignable?(p) }
+
+      render json: { error: 'Nicht berechtigt' }, status: :forbidden
+    end
+
+    def manage_roles_allowed?(perm_hash)
+      perm_hash[:admin].present? || perm_hash[:sbk].present? || perm_hash[:rsk].present?
+    end
+
+    # Darf der/die Handelnde diesen Rollen-Eintrag vergeben bzw. entziehen?
+    # Prüft die Rolle selbst und ihren Scope (Verbund bei SBK/RSK/Ansetzer,
+    # Verein bei VM/TM).
+    def permission_assignable?(perm)
+      ph = current_user.permission_hash
+      role_id = perm['user_group_id'].to_i
+      return false unless current_user.assignable_role_ids(ph).include?(role_id)
+
+      if GO_SCOPED_ROLES.include?(role_id)
+        allowed_gos = assignable_go_ids_for_role(ph, role_id)
+        return false unless allowed_gos.nil? || allowed_gos.include?(perm['game_operation_id'].to_i)
+      end
+
+      if CLUB_SCOPED_ROLES.include?(role_id) && perm['club_id'].present?
+        allowed_clubs = assignable_club_ids
+        return false unless allowed_clubs.nil? || allowed_clubs.include?(perm['club_id'].to_i)
+      end
+
+      true
+    end
+
+    # Verbünde, in denen die Rolle vergeben werden darf; nil = unbeschränkt
+    # (Admin sowie national/global gescopte SBK bzw. RSK). Nur die eigenen
+    # Rollen zählen, die diese Ziel-Rolle überhaupt vergeben dürfen: Eine RSK
+    # bringt keinen Scope für die SBK-Rolle mit.
+    def assignable_go_ids_for_role(perm_hash, role_id)
+      return nil if perm_hash[:admin].present?
+
+      go_ids = []
+      %i[sbk rsk].each do |own_role|
+        next unless User::ASSIGNABLE_ROLE_IDS[own_role].include?(role_id)
+
+        go_ids += Array(perm_hash[own_role])
+      end
+      return nil if go_ids.include?(0)
+
+      go_ids.uniq
+    end
+
+    # Vereine, für die vereinsgebundene Rollen (VM/TM) vergeben werden dürfen;
+    # nil = unbeschränkt. Gleiche Quelle wie das Vereins-Dropdown der Maske.
+    def assignable_club_ids
+      ph = current_user.permission_hash
+      return nil if ph[:admin].present? || ph[:sbk]&.include?(0)
+
+      @assignable_club_ids ||= Club.role_assignable_for(current_user, include_deactivated: true).pluck(:id)
     end
 
     def require_sbk_or_admin!
@@ -468,22 +563,26 @@ module Admin
       user.permissions.find { |p| p['user_group_id'].to_i == 5 && p['club_id'].present? }&.dig('club_id')&.to_i
     end
 
-    def apply_go_change(user, new_go_id, ph)
+    def apply_go_change(user, new_go_id)
       return { error: 'Kann eigene Zuweisung nicht ändern', status: :forbidden } if user.id == current_user.id
 
       return { error: 'Ungültiger Verbund', status: :unprocessable_entity } unless new_go_id.positive? && GameOperation.exists?(new_go_id)
 
-      unless ph[:admin].present? || (ph[:sbk].present? && ph[:sbk].include?(0))
-        return { error: 'Nur Admin oder globaler SBK kann Verbund-Zuweisung ändern', status: :forbidden }
-      end
-
-      role_ids = user.permissions.map { |p| p['user_group_id'].to_i }
-      unless role_ids.any? { |id| [2, 3, 7].include?(id) }
+      affected = user.permissions.select { |p| GO_SCOPED_ROLES.include?(p['user_group_id'].to_i) }
+      if affected.empty?
         return { error: 'Benutzer hat keine SBK/RSK/Ansetzer-Rolle', status: :unprocessable_entity }
       end
 
+      # Der Wechsel muss in beide Richtungen im eigenen Zuständigkeitsbereich
+      # liegen: Sonst schöbe ein verbandsgebundener SBK eine Rolle aus dem
+      # eigenen Verband heraus oder eine fremde in ihn hinein. Admin und
+      # national gescopte Konten sind über permission_assignable? unbeschränkt.
+      unless affected.all? { |p| permission_assignable?(p) && permission_assignable?(p.merge('game_operation_id' => new_go_id.to_s)) }
+        return { error: 'Verbund nicht im eigenen Zuständigkeitsbereich', status: :forbidden }
+      end
+
       new_perms = user.permissions.map do |p|
-        [2, 3, 7].include?(p['user_group_id'].to_i) ? p.merge('game_operation_id' => new_go_id.to_s) : p
+        GO_SCOPED_ROLES.include?(p['user_group_id'].to_i) ? p.merge('game_operation_id' => new_go_id.to_s) : p
       end
 
       { updates: { permissions: new_perms } }

@@ -367,6 +367,9 @@ module Admin
         'nur TM, ohne Team' => [{ 'user_group_id' => 5 }, []],
         'TM + RSK, ohne Team' => [{ 'user_group_id' => 3, 'game_operation_id' => @go.id }, []],
         'TM + Ansetzer, ohne Team' => [{ 'user_group_id' => 7, 'game_operation_id' => @go.id }, []],
+        # Diese Kombination ist seit der Nicht-Kombinierbarkeit der
+        # Schiedsrichter-Rolle nicht mehr anlegbar, kann im Bestand aber noch
+        # vorkommen – auch dort müssen beide Herleitungen übereinstimmen.
         'TM + Schiri, ohne Team' => [{ 'user_group_id' => 6 }, []],
         'TM + VM, ohne Team' => [{ 'user_group_id' => 4, 'club_id' => @club.id.to_s }, []]
       }
@@ -378,7 +381,9 @@ module Admin
       cases.each do |label, (extra_perm, teams)|
         perms = [{ 'user_group_id' => 5 }]
         perms << extra_perm unless extra_perm['user_group_id'] == 5
-        user = create(:user).tap { |u| u.update!(permissions: perms, teams: teams) }
+        # update_columns statt update!: Der Schiri-Fall verletzt bewusst die
+        # Rollen-Validierung (siehe oben) und soll trotzdem im Datenstand landen.
+        user = create(:user).tap { |u| u.update_columns(permissions: perms, teams: teams) }
 
         get '/api/v2/admin/users'
         assert_response :success

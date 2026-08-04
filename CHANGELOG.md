@@ -9,6 +9,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **SBK und RSK vergeben Benutzerrollen selbst**: Die Benutzerverwaltung stand bisher nur Admins und der SBK offen, und Rollen ließen sich ausschließlich als Admin vergeben. Jetzt legt die SBK Konten mit den Rollen SBK, RSK, Ansetzer, Vereinsmanager und Teammanager an, die RSK solche mit den Rollen RSK und Ansetzer. Beide bleiben dabei auf ihre eigene Ebene und darunter beschränkt: Ein verbandsgebundenes Konto vergibt nur Rollen für die eigenen Spielbetriebe, ein Konto des Bundesspielbetriebs (FD) auch für die Landesverbände. Bestehende Konten lassen sich im selben Rahmen um Rollen erweitern und ihnen wieder entziehen. Die Admin-Rolle vergibt weiterhin nur ein Admin, und niemand kann über diesen Weg eine Rolle in einem fremden Spielbetrieb setzen.
+
+### Verbessert
+
+- **Schiedsrichter-Rolle ist nicht mehr mit anderen Rollen kombinierbar**: Ein Schiedsrichter-Konto (Selbstverwaltung des eigenen Profils) bekommt keine weitere Rolle, und ein Konto mit anderen Rollen keine Schiedsrichter-Rolle. Die Regel gilt an jeder Stelle, an der Rollen gespeichert werden, also auch für Admins und die Kontoanlage aus der Schiedsrichterverwaltung. Bestandskonten, die diese Kombination noch tragen, können sich weiter einloggen und lassen sich durch Entfernen der überzähligen Rolle in Ordnung bringen.
+
 ## [1.66.1] - 2026-08-02
 
 ### Behoben
