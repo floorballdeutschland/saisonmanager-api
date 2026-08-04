@@ -8,6 +8,7 @@ class StateAssociation < ApplicationRecord
   has_one_attached :banner
 
   validates :name, presence: true
+  validate :parent_must_not_create_cycle
 
   def effective_express_license_enabled
     express_license_enabled || parent&.express_license_enabled
@@ -34,14 +35,20 @@ class StateAssociation < ApplicationRecord
   end
 
   # Wie effective_rsk_email: Postfächer eines untergeordneten Landesverbands
-  # fallen auf den übergeordneten Verbund zurück. Nötig, weil das Formular die
-  # Felder bei Kind-LVs sperrt und als "geerbt" ausweist – ohne Rückfall liefen
-  # vereinsbezogene Mails (z. B. Transferbenachrichtigungen an
-  # former_club.state_association) ins Leere.
+  # fallen auf den übergeordneten Verbund zurück, und zwar über die ganze Kette
+  # bis zur Wurzel (anders als effective_express_license_enabled oben, das nur
+  # eine Ebene hochschaut). Nötig, weil das Formular die Felder bei Kind-LVs
+  # sperrt und als „geerbt" ausweist, beim Speichern sogar nil mitschickt.
+  #
+  # Ohne Rückfall lasen alle Mailer die Adresse direkt am Kind-Datensatz: bei
+  # Transfers über den Verein (former_club.state_association), bei Spieltags-,
+  # Expresslizenz- und Berichtsmails über den Spielbetrieb der Liga. Wo ein
+  # früher return am leeren Feld hing, verschwand die Mail lautlos.
   def effective_vsk_email
     vsk_email.presence || parent&.effective_vsk_email
   end
 
+  # Siehe effective_vsk_email.
   def effective_sbk_email
     sbk_email.presence || parent&.effective_sbk_email
   end
@@ -77,10 +84,16 @@ class StateAssociation < ApplicationRecord
       express_license_enabled:,
       referee_license_review_enabled:,
       effective_referee_license_review_enabled:,
-      # Geerbte Werte mitliefern, damit die Verbandsmaske bei einem
-      # untergeordneten LV den tatsächlich greifenden Wert anzeigen kann. Der
-      # Index-Endpunkt liefert nur short_hash (ohne Postfächer/Flags), das
-      # Formular könnte sie sonst nicht aus dem Parent-Datensatz lesen.
+      # Die tatsächlich greifenden Werte mitliefern, damit die Verbandsmaske bei
+      # einem untergeordneten LV nicht dessen eigenen (leeren) Wert anzeigt. Der
+      # Listen-Endpunkt liefert nur short_hash, ohne Postfächer und Flags, das
+      # Formular kann sie also nicht aus dem Parent-Datensatz lesen.
+      #
+      # Die drei Vererbungsarten unterscheiden sich, siehe die Methoden oben:
+      # express_license schaut eine Ebene hoch und liest dort das eigene Feld des
+      # Parents, referee_license_review wird vom Parent komplett bestimmt, die
+      # Postfächer laufen bis zur Wurzel. .present? normalisiert das mögliche nil
+      # aus dem ||-Ausdruck auf false.
       effective_express_license_enabled: effective_express_license_enabled.present?,
       effective_vsk_email:,
       effective_sbk_email:,
@@ -102,5 +115,31 @@ class StateAssociation < ApplicationRecord
         }
       end
     }
+  end
+
+  private
+
+  # Die Verbandsmaske bietet als übergeordneten Verbund nur parentlose LVs an
+  # und schließt den eigenen aus, per API ist parent_id aber ungeprüft. Ein
+  # Selbst- oder Ringverweis würde die Postfach-Vererbung (effective_vsk_email
+  # und Geschwister laufen bis zur Wurzel) in eine Endlosrekursion schicken und
+  # damit auch full_hash reißen, also genau die Maske, mit der man den Verweis
+  # zurücknehmen würde.
+  def parent_must_not_create_cycle
+    return if parent_id.blank?
+
+    if parent_id == id
+      errors.add(:parent_id, 'kann nicht der eigene Landesverband sein')
+      return
+    end
+
+    seen = [id].compact
+    node = parent
+    while node
+      return errors.add(:parent_id, 'erzeugt einen Ringverweis in der Verbandshierarchie') if seen.include?(node.id)
+
+      seen << node.id
+      node = node.parent
+    end
   end
 end
