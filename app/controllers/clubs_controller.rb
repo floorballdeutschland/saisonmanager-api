@@ -435,13 +435,16 @@ class ClubsController < ApplicationController
     go_ids = (ph[:admin].to_a + ph[:sbk].to_a).reject(&:zero?)
     return false if go_ids.empty?
 
-    # Admin/SBK, an deren Spielbetrieb der Verein hängt – als Heim- ODER
-    # Gast-Spielbetrieb – dürfen lesen. Deckungsgleich mit Club.admin_user_clubs
-    # (matcht über den gesamten game_operations_hash); ohne diesen Zweig
-    # erschiene ein Gast-Verein zwar in der Liste, ließe sich aber nicht öffnen.
-    club_go_ids = club.game_operations_hash.map { |go| go['game_operation_id'] }
-    return true if go_ids.intersection(club_go_ids).present?
-
+    # Der frühere Zweig „hängt als Gast-Spielbetrieb am Verein" ist hier bewusst
+    # entfallen. Gast-Einträge im game_operations_hash werden von der Anwendung
+    # nie geschrieben – einzige Quelle ist der Altdaten-Import 2010–2014
+    # (import_legacy_data.rake) – und sie werden auch nicht nachgeführt, wenn
+    # eine Mannschaft die Liga wechselt. Auf Produktion waren 188 von 220
+    # Gast-Einträgen durch keine aktuelle Liga mehr gedeckt; sie öffneten
+    # Landesverbänden gegenseitig die Vereinsstammdaten, ohne dass das jemand
+    # erteilt hätte oder zurücknehmen könnte. Der ausdrückliche Weg dafür ist
+    # die Vereins-Freigabe unten.
+    #
     # Vereins-Freigabe: LV-Admin/-SBK dürfen die an ihren Spielbetrieb
     # freigegebenen Vereine lesen (analog Club.admin_user_clubs), auch wenn
     # der Verein einem fremden Spielbetrieb gehört.

@@ -235,9 +235,19 @@ class Club < ApplicationRecord
 
     covered_club_ids = []
 
+    # home_clubs statt clubs: Ein Verein gehört genau einem Verband, und nur der
+    # verwaltet seine Stammdaten. Ein bloßer Gast-Eintrag im
+    # game_operations_hash reicht dafür nicht – die Einträge stammen aus dem
+    # Altdaten-Import 2010–2014, werden von der Anwendung nie geschrieben und
+    # nicht nachgeführt. Sie ließen die Verbände gegenseitig in ihre
+    # Vereinslisten sehen, ohne dass es jemand erteilt hätte: Baden-Württemberg
+    # sah 8 bayerische Vereine, Bayern 5 baden-württembergische, und keiner
+    # dieser 13 spielte in der aktuellen Saison im jeweils fremden Spielbetrieb.
+    # Fremde Vereine erscheinen nur noch über eine Vereins-Freigabe, also im
+    # „(freigegeben)"-Block unten.
     GameOperation.includes(state_association: { logo_attachment: :blob }).find(go_ids).each do |go|
       item = go.meta_hash
-      clubs = club_scope.where(id: go.clubs.pluck(:id)).order(:name)
+      clubs = club_scope.where(id: go.home_clubs.pluck(:id)).order(:name)
       covered_club_ids += clubs.map(&:id)
       item[:clubs] = clubs.map(&:full_hash)
       result << item
