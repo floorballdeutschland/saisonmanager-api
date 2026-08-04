@@ -79,6 +79,8 @@ class GameScansController < ApplicationController
       filename: scan.scan_file.filename.to_s,
       content_type: scan.scan_file.content_type,
       byte_size: scan.scan_file.byte_size,
+      uploaded_at: scan.created_at,
+      uploaded_by_name: scan.uploaded_by&.fullname,
       expires_at: scan.expires_at.to_date,
       url: rails_blob_url(scan.scan_file, disposition: 'inline')
     }

@@ -300,6 +300,8 @@ class User < ApplicationRecord
     # show league admin menu item
     result[:menu_item_league_admin] = ph[:admin].present? || ph[:sbk].present?
     result[:menu_item_club_admin] = ph[:admin].present? || ph[:sbk].present?
+    # SBK-Übersicht „Spieltage": Kontrolle der abgegebenen Spielberichte.
+    result[:menu_item_game_day_admin] = ph[:admin].present? || ph[:sbk].present?
     result[:menu_item_player_admin] = ph[:admin].present? || ph[:sbk].present?
     result[:menu_item_player_admin_vm] = ph[:vm].present?
 
