@@ -161,6 +161,63 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_not_includes team_ids, other_team.id
   end
 
+  # Kern von Teil 2: Die Vereins-Zeilen kommen nicht mehr aus dem
+  # game_operations_hash, sondern aus den Mannschaften der eigenen Ligen. Ein
+  # Gastverein bleibt damit erreichbar, obwohl sein Landesverband nichts
+  # freigegeben hat – so behält z.B. Schleswig-Holstein die Nord-Mannschaften.
+  test 'user_clubs_and_teams zeigt Gastverein mit Mannschaft in eigener Liga' do
+    go_own = create(:game_operation)
+    go_home = create(:game_operation)
+    gast = create(:club, game_operations_hash: [
+      { 'home_game_operation' => true, 'game_operation_id' => go_home.id }
+    ])
+    gast_team = create(:team, club: gast, league: create(:league, :current_season, game_operation: go_own))
+    login(create(:user, :sbk_scoped, game_operation_id: go_own.id))
+
+    get '/api/v2/user/clubs_and_teams'
+
+    assert_response :success
+    entry = JSON.parse(response.body).find { |c| c['id'] == gast.id }
+    assert entry, 'Gastverein mit Mannschaft in der eigenen Liga muss erscheinen'
+    assert_equal([gast_team.id], entry['teams'].map { |t| t['id'] })
+  end
+
+  # Gegenprobe: Der bloße Gast-Eintrag im Hash reicht nicht mehr. Genau diese
+  # Altlast (183 von 220 Einträgen auf Produktion) soll wegfallen.
+  test 'user_clubs_and_teams ignoriert reine Gast-Eintraege ohne Mannschaft' do
+    go_own = create(:game_operation)
+    go_home = create(:game_operation)
+    altlast = create(:club, game_operations_hash: [
+      { 'home_game_operation' => true, 'game_operation_id' => go_home.id },
+      { 'home_game_operation' => false, 'game_operation_id' => go_own.id }
+    ])
+    login(create(:user, :sbk_scoped, game_operation_id: go_own.id))
+
+    get '/api/v2/user/clubs_and_teams'
+
+    assert_response :success
+    assert_not_includes JSON.parse(response.body).map { |c| c['id'] }, altlast.id
+  end
+
+  # Bugfix im selben Zug: Die Aktion kannte die Vereins-Freigabe bisher gar nicht.
+  test 'user_clubs_and_teams zeigt freigegebene Vereine' do
+    grantor_sa = create(:state_association)
+    grantor_go = create(:game_operation, state_association_id: grantor_sa.id)
+    go_own = create(:game_operation)
+    freigegeben = create(:club, state_association_id: grantor_sa.id, game_operations_hash: [
+      { 'home_game_operation' => true, 'game_operation_id' => grantor_go.id }
+    ])
+    StateAssociationRelease.create!(grantor_state_association_id: grantor_sa.id,
+                                    recipient_game_operation_id: go_own.id,
+                                    season_id: Setting.current_season_id)
+    login(create(:user, :sbk_scoped, game_operation_id: go_own.id))
+
+    get '/api/v2/user/clubs_and_teams'
+
+    assert_response :success
+    assert_includes JSON.parse(response.body).map { |c| c['id'] }, freigegeben.id
+  end
+
   test 'user_clubs_and_teams zeigt VM alle Teams des eigenen Vereins' do
     go_own = create(:game_operation)
     go_other = create(:game_operation)

@@ -112,6 +112,30 @@ class Club < ApplicationRecord
     game_operations_hash.filter { |h| h['home_game_operation'] }.map { |h| h['game_operation_id'].to_i }.first
   end
 
+  # Darf ein Admin-/SBK-Scope diesen Verein LESEN? Genau zwei Gründe:
+  # der Heimat-Spielbetrieb des Vereins, oder eine aktuelle Vereins-Freigabe
+  # (StateAssociationRelease) des Landesverbands, dem der Verein gehört.
+  #
+  # Einzige Quelle für diese Regel. Vorher stand sie dreimal getrennt im Code
+  # (Vereinsliste, Vereins-Detail, Spielerliste eines Vereins) – und lief
+  # auseinander: Das Detail kannte die Freigabe, die Spielerliste nicht, und
+  # beide zogen zusätzlich bloße Gast-Einträge aus dem game_operations_hash
+  # heran, die niemand erteilt hatte.
+  #
+  # `go_ids` ohne die globale 0 übergeben; globalen Zugriff prüfen die Aufrufer
+  # vorher selbst.
+  def readable_by_game_operations?(go_ids)
+    scope = Array(go_ids).compact.map(&:to_i).reject(&:zero?)
+    return false if scope.empty?
+    return true if scope.include?(main_game_operation_id)
+    return false if state_association_id.blank?
+
+    StateAssociationRelease.current_season
+                           .where(recipient_game_operation_id: scope,
+                                  grantor_state_association_id: state_association_id)
+                           .exists?
+  end
+
   def additional_game_operation_ids
     game_operations_hash.filter { |h| !h['home_game_operation'] }.map { |h| h['game_operation_id'].to_i }
   end
@@ -139,32 +163,6 @@ class Club < ApplicationRecord
       logo.variant(resize_to_fit: [100, 100]),
       only_path: true
     )
-  end
-
-  def self.admin_club_permissions(user)
-    result = []
-
-    # für jeden verband:
-    # name, id, kuerzel, ligen
-    go_ids = []
-
-    # wenn admin oder sbk global: füge alle hinzu
-    ph = user.permission_hash
-    if ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
-      go_ids = GameOperation.all.pluck(:id)
-    elsif ph[:admin].present? || ph[:sbk].present?
-      go_ids << ph[:admin] if ph[:admin].present?
-      go_ids << ph[:sbk] if ph[:sbk].present?
-      go_ids.flatten!
-    end
-
-    GameOperation.includes(state_association: { logo_attachment: :blob }).find(go_ids).each do |go|
-      item = go.meta_hash
-      item[:leagues] = leagues.where(game_operation_id: go.id).map(&:full_hash)
-      result << item
-    end
-
-    result
   end
 
   def user_permissions(user)

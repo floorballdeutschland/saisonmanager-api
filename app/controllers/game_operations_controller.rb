@@ -82,9 +82,21 @@ class GameOperationsController < ApplicationController
       go_ids.flatten!
 
       if ph[:vm].present?
-        go_ids |= Club.where(id: ph[:vm])
-                      .flat_map { |c| [c.main_game_operation_id, *c.additional_game_operation_ids] }
+        # Heimat-Spielbetrieb der eigenen Vereine plus die Spielbetriebe, in
+        # denen sie diese Saison tatsächlich eine Mannschaft haben.
+        #
+        # Vorher kamen die zusätzlichen Spielbetriebe aus
+        # `additional_game_operation_ids`, also aus Gast-Einträgen des
+        # Altdaten-Imports 2010–2014, die nie nachgeführt werden. Damit standen
+        # hier Verbände, in denen der Verein seit Jahren nicht mehr spielt.
+        go_ids |= Club.where(id: ph[:vm]).map(&:main_game_operation_id).compact
+        go_ids |= Team.current_season
+                      .where(club_id: ph[:vm])
+                      .or(Team.current_season.where('syndicate_clubs && ARRAY[?]::integer[]', ph[:vm]))
+                      .joins(:league)
+                      .pluck('leagues.game_operation_id')
                       .compact
+                      .uniq
       end
     end
 

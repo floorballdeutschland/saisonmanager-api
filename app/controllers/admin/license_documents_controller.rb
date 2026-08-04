@@ -1,5 +1,8 @@
 module Admin
   class LicenseDocumentsController < ApplicationController
+    # sbk_can_access_license? / sbk_global? – Scope über die Liga der Lizenz.
+    include LicenseAccessScope
+
     before_action :set_player
     before_action :check_read_permission, only: %i[index show]
     before_action :check_write_permission, only: %i[create destroy]
@@ -84,17 +87,46 @@ module Admin
       render json: { message: 'Keine Berechtigung.' }, status: :forbidden
     end
 
+    # Zwei Gründe, beide zulässig:
+    #
+    # (a) Der Spieler gehört einem Verein, den dieser Spielbetrieb lesen darf
+    #     (Heimat-Spielbetrieb oder Vereins-Freigabe) – der bisherige Weg, nur
+    #     ohne die Gast-Einträge aus dem Altdaten-Import 2010–2014.
+    # (b) Eine seiner Lizenzen hängt an einer Liga dieses Spielbetriebs.
+    #
+    # (b) ist neu und behebt einen Widerspruch: Eine SBK durfte die Lizenz einer
+    # Gastmannschaft in ihrer eigenen Liga genehmigen (liga-basiert über
+    # LicenseAccessScope), die dafür geforderten Pflichtdokumente aber nicht
+    # einsehen – es sei denn, im Vereins-Hash stand zufällig ein Gast-Eintrag.
+    # Wer genehmigt, muss die Dokumente sehen.
     def admin_or_sbk_for_player?
       ph = current_user.permission_hash
       return true if ph[:admin].present?
+      return false if ph[:sbk].blank?
+      return true if sbk_global?(ph)
 
-      if ph[:sbk].present?
-        player_go_ids = player_game_operation_ids
-        return true if ph[:sbk].include?(0)
-        return true if (ph[:sbk] & player_go_ids).present?
-      end
+      return true if player_clubs_readable?(ph)
 
-      false
+      # Bei gesetztem license_id nur diese Lizenz, sonst genügt eine Lizenz im
+      # eigenen Spielbetrieb.
+      scoped_licenses.any? { |license| sbk_can_access_license?(ph, license) }
+    end
+
+    def player_clubs_readable?(ph)
+      go_ids = ph[:sbk].to_a.reject(&:zero?)
+      return false if go_ids.empty?
+
+      club_ids = (@player.clubs || []).filter_map { |c| c['club_id']&.to_i }
+      return false if club_ids.empty?
+
+      Club.where(id: club_ids).any? { |club| club.readable_by_game_operations?(go_ids) }
+    end
+
+    def scoped_licenses
+      licenses = @player.licenses || []
+      return licenses if params[:license_id].blank?
+
+      licenses.select { |l| l['id'].to_s == params[:license_id].to_s }
     end
 
     def tm_for_player?
@@ -141,13 +173,6 @@ module Admin
       return [] if team_ids.empty?
 
       Team.where(id: team_ids).flat_map(&:all_club_ids).uniq
-    end
-
-    def player_game_operation_ids
-      club_ids = (@player.clubs || []).filter_map { |c| c['club_id'].to_i }
-      Club.where(id: club_ids).flat_map do |club|
-        club.game_operations_hash.map { |go| go['game_operation_id'].to_i }
-      end.uniq
     end
 
     def perm_hash

@@ -155,8 +155,6 @@ Rails.application.routes.draw do
       get 'admin/players/:id', to: 'players#admin_player'
       post 'admin/players', to: 'players#admin_player_update'
 
-      get 'admin/game_operations/:id/clubs', to: 'game_operations#admin_club_index'
-
       get 'game_operations/:id/leagues/:season_id', to: 'game_operations#index_leagues'
       get 'game_operations/:id/leagues', to: 'game_operations#index_leagues'
 
