@@ -702,6 +702,48 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_nil reaktiviert['deactivated_at']
   end
 
+  # Die Ansicht "Meine Spieler*innen" laedt ihre Vereine aus
+  # GET user/clubs_and_teams; fuer eine SBK sind das ALLE Vereine ihres
+  # Spielbetriebs – auch Gast-Vereine, deren Heim-Spielbetrieb ein anderer LV
+  # ist. Diese Liste und die Pruefung hier muessen deckungsgleich sein: sonst
+  # antwortet ein Verein aus der eigenen Liste mit 403, und weil das Frontend
+  # alle Vereine parallel laedt und jeden 403 global als "Berechtigungsfehler"
+  # samt Weiterleitung quittiert, bleibt die ganze Seite leer.
+  test 'vm_players_index erlaubt SBK auch Gast-Vereine ihres Spielbetriebs' do
+    fremder_go = create(:game_operation)
+    gast_club = create(:club, game_operations_hash: [
+      { 'game_operation_id' => fremder_go.id, 'home_game_operation' => true },
+      { 'game_operation_id' => @game_operation.id, 'home_game_operation' => false }
+    ])
+    gast_player = create(:player, clubs: [{ 'club_id' => gast_club.id, 'home_club' => true }])
+
+    sbk = create(:user, :sbk_scoped, game_operation_id: @game_operation.id)
+    login_as(sbk)
+
+    # Gegenprobe zur Liste: Der Gast-Verein steht wirklich darin.
+    assert_includes @game_operation.clubs.pluck(:id), gast_club.id
+
+    get '/api/v2/admin/vm/players.json', params: { club_id: gast_club.id }
+    assert_response :success
+    assert_equal([gast_player.id], JSON.parse(response.body).map { |p| p['id'] })
+  end
+
+  # Gegenprobe zur Erweiterung oben: Ein Verein ohne jeden Bezug zum eigenen
+  # Spielbetrieb bleibt gesperrt – die Regel ist "haengt an meinem Spielbetrieb",
+  # nicht "alle Vereine".
+  test 'vm_players_index sperrt SBK bei Vereinen ausserhalb ihres Spielbetriebs' do
+    fremder_go = create(:game_operation)
+    fremder_club = create(:club, game_operations_hash: [
+      { 'game_operation_id' => fremder_go.id, 'home_game_operation' => true }
+    ])
+
+    sbk = create(:user, :sbk_scoped, game_operation_id: @game_operation.id)
+    login_as(sbk)
+
+    get '/api/v2/admin/vm/players.json', params: { club_id: fremder_club.id }
+    assert_response :forbidden
+  end
+
   # Eine zusammengefuehrte Dublette ist nur deshalb deaktiviert, weil merge_into! sie
   # ersetzt hat. Sie darf weder in der Vereinsliste stehen noch reaktiviert werden,
   # sonst gibt es das zweite Profil derselben Person wieder.

@@ -881,8 +881,7 @@ class PlayersController < ApplicationController
     club_id = params[:club_id]&.to_i
     return render json: { message: 'club_id fehlt.' }, status: :bad_request unless club_id.present? && club_id > 0
 
-    sbk_ok = ph[:sbk].present? && (ph[:sbk].include?(0) || derive_club_ids_for_go(ph[:sbk]).include?(club_id))
-    allowed = ph[:admin].present? || sbk_ok ||
+    allowed = ph[:admin].present? || sbk_can_read_club?(ph, club_id) ||
               (ph[:vm].present? && ph[:vm].include?(club_id)) ||
               tm_can_access_club?(ph, club_id)
     return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless allowed
@@ -1071,8 +1070,29 @@ class PlayersController < ApplicationController
     ph[:sbk].include?(go_id)
   end
 
-  def derive_club_ids_for_go(go_ids)
-    Club.all.select { |c| go_ids.include?(c.main_game_operation_id) }.map(&:id)
+  # Lesender Zugriff einer SBK auf die Spielerliste eines Vereins: Der Verein
+  # muss an einem ihrer Spielbetriebe hängen – als Heim- ODER Gast-Spielbetrieb.
+  #
+  # Genau diese Menge liefert auch `GET user/clubs_and_teams` (über
+  # GameOperation#clubs, das den gesamten game_operations_hash matcht), und aus
+  # dieser Liste zieht die Ansicht „Meine Spieler*innen" ihre club_ids. Der
+  # frühere Vergleich nur gegen main_game_operation_id war enger als die Liste:
+  # Gast-Vereine standen darin, lieferten hier aber 403 – und weil die Ansicht
+  # alle Vereine per forkJoin parallel lädt und der ErrorInterceptor jeden 403
+  # global als „Berechtigungsfehler" quittiert und auf die Startseite
+  # umleitet, riss ein einziger Gast-Verein die ganze Seite mit. Deckungsgleich
+  # mit ClubsController#can_read_admin_club?.
+  def sbk_can_read_club?(ph, club_id)
+    return false if ph[:sbk].blank?
+    return true if ph[:sbk].include?(0)
+
+    club = Club.find_by(id: club_id)
+    return false unless club
+
+    # to_i, weil game_operation_id im JSONB je nach Herkunft String sein kann
+    # (vgl. Club#fix_game_operations_hash!), ph[:sbk] aber Integer enthält.
+    club_go_ids = club.game_operations_hash.map { |go| go['game_operation_id'].to_i }
+    ph[:sbk].intersection(club_go_ids).present?
   end
 
   def set_player
