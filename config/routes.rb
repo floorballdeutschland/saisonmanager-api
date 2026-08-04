@@ -297,6 +297,9 @@ Rails.application.routes.draw do
           get :clubs, on: :collection
           patch 'games/:game_id/notes', action: :update_notes, on: :collection
         end
+        resources :game_days, only: [] do
+          get :report_overview, on: :collection
+        end
         resources :state_associations, only: %i[index show create update destroy] do
           resources :checklist_items, only: %i[create update destroy],
                                       controller: 'state_association_checklist_items'
