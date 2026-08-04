@@ -165,6 +165,112 @@ module Admin
       assert data['match_record_closed_at'].present?
     end
 
+    test 'nicht-numerische Spielnummern brechen die Sortierung nicht ab' do
+      # K.-o.-Runden vergeben Spielnummern wie „HF1" oder „FIN". Ein blanker
+      # ::integer-Cast in der ORDER BY liess Postgres die ganze Abfrage abbrechen.
+      create_game(@game_day, game_number: 'HF1')
+      create_game(@game_day, game_number: 'Pl. 3')
+
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      assert_response :success
+      assert_equal 3, body['games'].size
+    end
+
+    test 'leeres Spieltagsdatum bricht den Datumsfilter nicht ab' do
+      empty_day = GameDay.create!(league: @league, arena: @arena, club: @club, number: 2, date: '')
+      create_game(empty_day, game_number: '99')
+
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH, params: { date_from: '2026-01-01' }
+      assert_response :success
+      assert_equal [@game.id], game_ids
+    end
+
+    test 'ungueltige Filterwerte liefern 422 statt 500' do
+      login(sbk_user(@go.id))
+
+      get OVERVIEW_PATH, params: { date_from: 'gestern' }
+      assert_response :unprocessable_entity
+      assert_match(/JJJJ-MM-TT/, body['message'])
+
+      get OVERVIEW_PATH, params: { league_id: 'abc' }
+      assert_response :unprocessable_entity
+    end
+
+    test 'neueste Spieltage stehen oben und ueberleben das Deckeln' do
+      later_day = GameDay.create!(league: @league, arena: @arena, club: @club, number: 2, date: '2026-03-01')
+      later_game = create_game(later_day, game_number: '50')
+
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      assert_equal [later_game.id, @game.id], game_ids
+    end
+
+    test 'eine kaputte Zeile setzt nicht die ganze Uebersicht auf 500' do
+      # Ereignis-JSONB aus Alt-Importen ist nicht formstabil.
+      @game.update_columns(events: [42, nil, { 'penalty_id' => 2, 'penalty_mapping' => 'penalty_5' }])
+
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      assert_response :success
+      assert_equal 1, row(@game.id)['flags']['severe_penalty_count']
+    end
+
+    test 'formfremde Checklisten-Antworten werden nicht gezaehlt' do
+      @game.update_columns(checklist_answers: { 'foo' => false })
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      assert_response :success
+      assert_equal 0, row(@game.id)['checklist_negative_count']
+    end
+
+    test 'null Zuschauer gilt als Angabe, fehlende Angabe wird gemeldet' do
+      @game.update!(audience: 0)
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      assert_not row(@game.id)['flags']['missing_audience']
+
+      @game.update!(audience: nil)
+      get OVERVIEW_PATH
+      assert row(@game.id)['flags']['missing_audience']
+    end
+
+    test 'vollstaendig gezeichnetes Spiel meldet keine fehlenden Angaben' do
+      @game.update!(referee1_signed: true, time_keeper_signed: true, record_keeper_signed: true,
+                    home_captain_signed: true, guest_captain_signed: true,
+                    referee2_string: '123 MUSTER, Max', audience: 120)
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      flags = row(@game.id)['flags']
+      assert_not flags['missing_signatures']
+      assert_not flags['missing_referee2']
+      assert_not flags['missing_audience']
+    end
+
+    test 'fremder game_operation_id-Filter weitet den eigenen Scope nicht' do
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH, params: { game_operation_id: @other_go.id.to_s }
+      assert_response :success
+      assert_empty body['games']
+    end
+
+    test 'Berichtsformular und Ausrichter-Einspruch werden ausgeliefert' do
+      uploader = create_user(user_group_id: 6, game_operation_id: 0)
+      report = @game.build_game_referee_report(uploaded_by: uploader)
+      report.file.attach(io: StringIO.new('PDF'), filename: 'r.pdf', content_type: 'application/pdf')
+      report.save!
+      @game.update_columns(checklist_veto_submitted_at: Time.current,
+                           checklist_veto_answers: [{ 'item_id' => 1, 'answer' => false }])
+
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      data = row(@game.id)
+      assert data['referee_report']['uploaded_at'].present?
+      assert data['checklist_veto_submitted_at'].present?
+      assert_equal 1, data['checklist_veto_negative_count']
+    end
+
     private
 
     def body

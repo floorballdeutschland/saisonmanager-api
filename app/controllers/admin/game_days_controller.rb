@@ -18,6 +18,14 @@ module Admin
     # Filter die gesamte Saison ziehen.
     MAX_ROWS = 2000
 
+    # Ungültige Filterangabe – wird als 422 mit Klartext beantwortet, statt den
+    # Cast-Fehler als 500 aus Postgres durchschlagen zu lassen.
+    class FilterError < StandardError; end
+
+    rescue_from FilterError do |e|
+      render json: { message: e.message }, status: :unprocessable_entity
+    end
+
     # GET /api/v2/admin/game_days/report_overview
     #
     # Filter: season_id (Default: laufende Saison), game_operation_id, league_id,
@@ -26,17 +34,34 @@ module Admin
       scope = filtered_scope
       games = scope.limit(MAX_ROWS + 1).to_a
       truncated = games.size > MAX_ROWS
+      # Sortiert wird absteigend, damit beim Deckeln die ältesten Spieltage
+      # wegfallen und nicht die zuletzt gespielten – genau die will die SBK sehen.
       games = games.first(MAX_ROWS) if truncated
 
       editor_names = editor_names_for(games)
 
       render json: {
         truncated:,
-        games: games.map { |game| game_row(game, editor_names) }
+        games: games.filter_map { |game| safe_game_row(game, editor_names) }
       }
     end
 
     private
+
+    # Eine einzelne kaputte Altlast (heterogene JSONB-Spalten, Alt-Importe) darf
+    # nicht die komplette Übersicht auf 500 setzen. Die Zeile wird stattdessen
+    # als fehlerhaft markiert ausgeliefert und der Fall an Sentry gemeldet.
+    def safe_game_row(game, editor_names)
+      game_row(game, editor_names)
+    rescue StandardError => e
+      Sentry.capture_exception(e, extra: { game_id: game.id, endpoint: 'admin/game_days#report_overview' })
+      {
+        id: game.id,
+        game_number: game.game_number,
+        game_day_id: game.game_day_id,
+        row_error: 'Diese Zeile konnte nicht vollständig geladen werden.'
+      }
+    end
 
     def authorize_sbk_access!
       ph = current_user.permission_hash
@@ -55,35 +80,64 @@ module Admin
 
     def filtered_scope
       scope = Game.joins(game_day: :league).includes(
-        :home_team, :guest_team, :game_scan, :game_referee_report, :proceeding_proposal,
-        game_day: [{ league: :game_operation }, :arena, :club]
+        :home_team, :guest_team, :game_referee_report, :proceeding_proposal,
+        { game_scan: :uploaded_by },
+        game_day: [{ league: { game_operation: :state_association } }, :arena, :club]
       )
 
       go_ids = scope_go_ids
       scope = scope.where(leagues: { game_operation_id: go_ids }) if go_ids
       scope = scope.where(leagues: { season_id: season_id })
       if params[:game_operation_id].present?
-        scope = scope.where(leagues: { game_operation_id: params[:game_operation_id] })
+        scope = scope.where(leagues: { game_operation_id: filter_integer(:game_operation_id) })
       end
-      scope = scope.where(game_days: { league_id: params[:league_id] }) if params[:league_id].present?
+      scope = scope.where(game_days: { league_id: filter_integer(:league_id) }) if params[:league_id].present?
 
       # game_days.date ist eine Textspalte – Vergleiche müssen über TO_DATE laufen.
-      if params[:date_from].present?
-        scope = scope.where("TO_DATE(game_days.date, 'YYYY-MM-DD') >= ?", params[:date_from])
+      # NULLIF fängt die leeren Datumsstrings des Altbestands ab (TO_DATE('') liefert
+      # sonst ein BC-Datum, das jeden Von-Filter unterläuft).
+      if (from = filter_date(:date_from))
+        scope = scope.where("TO_DATE(NULLIF(game_days.date, ''), 'YYYY-MM-DD') >= ?", from)
       end
-      if params[:date_to].present?
-        scope = scope.where("TO_DATE(game_days.date, 'YYYY-MM-DD') <= ?", params[:date_to])
+      if (to = filter_date(:date_to))
+        scope = scope.where("TO_DATE(NULLIF(game_days.date, ''), 'YYYY-MM-DD') <= ?", to)
       end
 
-      # game_number ist ebenfalls Text – numerisch sortieren, Leerwerte ans Ende.
-      scope.order(Arel.sql(
-                    "game_days.date ASC, games.start_time ASC NULLS LAST, " \
-                    "NULLIF(games.game_number, '')::integer ASC NULLS LAST"
-                  ))
+      scope.order(Arel.sql(GAME_ORDER))
     end
+
+    # Absteigend nach Spieltag, damit die zuletzt gespielten Spiele oben stehen und
+    # beim Deckeln (MAX_ROWS) der alte Bestand wegfällt, nicht der aktuelle.
+    #
+    # game_number ist Text und enthält auch nicht-numerische Werte („HF1", „FIN",
+    # „Pl. 3" in K.-o.-Runden). Ein blanker ::integer-Cast lässt Postgres die ganze
+    # Abfrage abbrechen, deshalb wird nur der rein numerische Fall gecastet.
+    # start_time ist ebenfalls Text; '' muss wie NULL ans Ende, nicht an den Anfang.
+    GAME_ORDER = <<~SQL.squish.freeze
+      game_days.date DESC,
+      NULLIF(games.start_time, '') ASC NULLS LAST,
+      CASE WHEN games.game_number ~ '^[0-9]+$' THEN games.game_number::integer END ASC NULLS LAST
+    SQL
 
     def season_id
       params[:season_id].presence || Setting.current_season_id
+    end
+
+    def filter_integer(key)
+      value = params[key].to_s
+      raise FilterError, "#{key} muss eine Zahl sein." unless value.match?(/\A\d+\z/)
+
+      value.to_i
+    end
+
+    # Datumsfilter streng prüfen: ein unvalidierter Wert schlägt sonst als
+    # Postgres-Cast-Fehler (500) durch statt als verständliche Meldung.
+    def filter_date(key)
+      return nil if params[key].blank?
+
+      Date.strptime(params[key], '%Y-%m-%d')
+    rescue Date::Error
+      raise FilterError, "#{key} muss im Format JJJJ-MM-TT angegeben werden."
     end
 
     # Namen der zuletzt bearbeitenden Nutzer in einem Query auflösen statt je Zeile.
@@ -159,16 +213,29 @@ module Admin
     end
 
     # Abstand zwischen Spieltag und Upload in Tagen. nil, wenn das Spieltagsdatum
-    # nicht parsebar ist (Altbestand mit leeren/kaputten Datumsstrings).
+    # fehlt oder unlesbar ist (Altbestand mit leeren/kaputten Datumsstrings).
+    #
+    # Bewusst strptime statt Date.parse: Date.parse ist nachsichtig und liefert für
+    # Bruchstücke wie "31" klaglos ein Datum des laufenden Monats – also eine
+    # falsche Tagesdifferenz statt nil. strptime interpretiert das Datum zudem
+    # genau wie der TO_DATE-Filter oben.
     def days_after(game_day_date, uploaded_at)
-      date = Date.parse(game_day_date.to_s)
-      (uploaded_at.to_date - date).to_i
-    rescue ArgumentError, TypeError
+      raw = game_day_date.to_s
+      return nil if raw.blank?
+
+      (uploaded_at.to_date - Date.strptime(raw, '%Y-%m-%d')).to_i
+    rescue Date::Error
       nil
     end
 
+    # Zählt verneinte Checklisten-Punkte. Die Schreibpfade erzwingen zwar echte
+    # Booleans, der JSONB-Altbestand ist aber nicht garantiert ein Array aus
+    # Hashes – ohne die Formprüfung würde eine abweichende Form die ganze
+    # Übersicht auf 500 setzen.
     def negative_answer_count(answers)
-      (answers || []).count { |a| a['answer'] == false }
+      return 0 unless answers.is_a?(Array)
+
+      answers.count { |a| a.is_a?(Hash) && [false, 'false'].include?(a['answer']) }
     end
 
     def flags(game)
@@ -177,20 +244,38 @@ module Admin
         forfait: game.forfait.to_i.positive?,
         special_event_string: game.special_event_string.presence,
         severe_penalty_count: severe_penalty_count(game),
-        missing_audience: game.audience.blank?,
+        # nil? statt blank?: 0 Zuschauer ist eine gültige Angabe, aber `0.blank?`
+        # ist in Rails false – blank? würde die fehlende Angabe also nie melden.
+        missing_audience: game.audience.nil?,
         missing_signatures: !signatures_complete?(game),
         missing_referee2: game.referee2_string.blank?
       }
     end
 
-    # Zählt Strafen ab 5 Minuten inkl. Matchstrafen. penalty_mapping bevorzugt das
-    # ins Event eingefrorene Label und ist damit unabhängig vom aktuellen Katalog.
+    # Zählt Strafen ab 5 Minuten inkl. Matchstrafen.
+    #
+    # Bevorzugt das ins Event eingefrorene Label (katalogunabhängig) und greift nur
+    # für Alt-Ereignisse ohne Label auf den Katalog zurück. Game#penalty_mapping
+    # würde dafür je Ereignis `Setting.current` lesen; das geht in Produktion über
+    # den :memory_store, der bei jedem Treffer den kompletten Settings-Datensatz
+    # kopiert. Bei bis zu 2000 Spielen mit je etlichen Strafen wäre das der
+    # teuerste Teil der Abfrage – daher der Katalog einmal je Request.
     def severe_penalty_count(game)
-      (game.events || []).count do |event|
+      events = game.events
+      return 0 unless events.is_a?(Array)
+
+      events.count do |event|
+        next false unless event.is_a?(Hash)
         next false if event['penalty_id'].blank?
 
-        SEVERE_PENALTY_MAPPINGS.include?(game.penalty_mapping(event).to_s)
+        mapping = event['penalty_mapping'].presence ||
+                  penalties_catalog.dig(event['penalty_id'].to_s, 'mapping')
+        SEVERE_PENALTY_MAPPINGS.include?(mapping.to_s)
       end
+    end
+
+    def penalties_catalog
+      @penalties_catalog ||= Setting.current.penalties || {}
     end
 
     def signatures_complete?(game)
