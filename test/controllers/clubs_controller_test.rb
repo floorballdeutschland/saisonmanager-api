@@ -39,13 +39,19 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 'kontakt@example.org', JSON.parse(response.body)['contact_email']
   end
 
-  test 'admin_club erlaubt SBK den Lesezugriff auf Vereine seines Gast-Spielbetriebs' do
+  # Umgekehrtes Verhalten als bis 08/2026: Ein bloßer Gast-Eintrag im
+  # game_operations_hash gibt keinen Zugriff auf die Vereinsstammdaten mehr. Die
+  # Einträge stammen aus dem Altdaten-Import 2010–2014, werden von der Anwendung
+  # nie geschrieben und nicht nachgeführt (auf Produktion waren 188 von 220 durch
+  # keine aktuelle Liga gedeckt). Der ausdrückliche Weg ist die Vereins-Freigabe,
+  # siehe den folgenden Test.
+  test 'admin_club sperrt SBK bei Vereinen, die nur als Gast in ihrem Spielbetrieb stehen' do
     home_sa = create(:state_association)
     home_go = create(:game_operation, state_association_id: home_sa.id)
     guest_sa = create(:state_association)
     guest_go = create(:game_operation, state_association_id: guest_sa.id)
-    # Verein gehört home_go, spielt aber als Gast in guest_go mit
-    club = create(:club, contact_email: 'kontakt@example.org',
+    # Verein gehört home_go, trägt guest_go nur als Gast-Eintrag
+    club = create(:club, state_association_id: home_sa.id, contact_email: 'kontakt@example.org',
                          game_operations_hash: [
                            { 'home_game_operation' => true, 'game_operation_id' => home_go.id },
                            { 'home_game_operation' => false, 'game_operation_id' => guest_go.id }
@@ -54,8 +60,28 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
 
     get "/api/v2/admin/clubs/#{club.id}"
 
-    # deckungsgleich mit der Vereinsliste (Club.admin_user_clubs), die den
-    # Verein über den Gast-Spielbetrieb ebenfalls anzeigt
+    assert_response :forbidden
+  end
+
+  # Gegenprobe: Mit Freigabe ist derselbe Zugriff erlaubt – die Freigabe ist
+  # ausdrücklich erteilt, saisongebunden und über die Verbandsmaske pflegbar.
+  test 'admin_club erlaubt Lesezugriff auf Gast-Verein MIT Vereins-Freigabe' do
+    home_sa = create(:state_association)
+    home_go = create(:game_operation, state_association_id: home_sa.id)
+    guest_sa = create(:state_association)
+    guest_go = create(:game_operation, state_association_id: guest_sa.id)
+    club = create(:club, state_association_id: home_sa.id, contact_email: 'kontakt@example.org',
+                         game_operations_hash: [
+                           { 'home_game_operation' => true, 'game_operation_id' => home_go.id },
+                           { 'home_game_operation' => false, 'game_operation_id' => guest_go.id }
+                         ])
+    StateAssociationRelease.create!(grantor_state_association_id: home_sa.id,
+                                    recipient_game_operation_id: guest_go.id,
+                                    season_id: Setting.current_season_id)
+    login(create(:user, :sbk_scoped, game_operation_id: guest_go.id))
+
+    get "/api/v2/admin/clubs/#{club.id}"
+
     assert_response :success
     assert_equal 'kontakt@example.org', JSON.parse(response.body)['contact_email']
   end

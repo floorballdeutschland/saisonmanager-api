@@ -1,6 +1,63 @@
 require 'test_helper'
 
 class ClubTest < ActiveSupport::TestCase
+  # Ein Verein gehört genau einem Verband; nur dessen SBK verwaltet die
+  # Stammdaten. Ein Gast-Eintrag im game_operations_hash ist kein Zugriffsgrund –
+  # die Einträge stammen aus dem Altdaten-Import 2010–2014 und werden nicht
+  # nachgeführt. Der ausdrückliche Weg für fremde Vereine ist die Freigabe, und
+  # die landet in einem eigenen Block, damit erkennbar bleibt, wem der Verein
+  # gehört.
+  test 'admin_user_clubs zeigt Gast-Vereine nicht in der eigenen Verbandsliste' do
+    create(:setting, current_season_id: '18')
+    fremd_sa = create(:state_association)
+    fremd_go = create(:game_operation, state_association_id: fremd_sa.id)
+    eigen_sa = create(:state_association)
+    eigen_go = create(:game_operation, state_association_id: eigen_sa.id)
+
+    eigener = create(:club, state_association_id: eigen_sa.id, game_operations_hash: [
+      { 'home_game_operation' => true, 'game_operation_id' => eigen_go.id }
+    ])
+    gast = create(:club, state_association_id: fremd_sa.id, game_operations_hash: [
+      { 'home_game_operation' => true, 'game_operation_id' => fremd_go.id },
+      { 'home_game_operation' => false, 'game_operation_id' => eigen_go.id }
+    ])
+
+    sbk = create(:user, :sbk_scoped, game_operation_id: eigen_go.id)
+    groups = Club.admin_user_clubs(sbk)
+
+    eigene_box = groups.reject { |g| g[:released] }.flat_map { |g| g[:clubs] }.map { |c| c['id'] || c[:id] }
+    assert_includes eigene_box, eigener.id
+    assert_not_includes eigene_box, gast.id, 'Gast-Verein darf nicht in der eigenen Verbandsliste stehen'
+    assert_empty groups.select { |g| g[:released] }, 'ohne Freigabe gibt es keinen Freigabe-Block'
+  end
+
+  test 'admin_user_clubs zeigt freigegebene Vereine im eigenen Block' do
+    create(:setting, current_season_id: '18')
+    grantor_sa = create(:state_association)
+    grantor_go = create(:game_operation, state_association_id: grantor_sa.id)
+    eigen_sa = create(:state_association)
+    eigen_go = create(:game_operation, state_association_id: eigen_sa.id)
+
+    freigegeben = create(:club, state_association_id: grantor_sa.id, game_operations_hash: [
+      { 'home_game_operation' => true, 'game_operation_id' => grantor_go.id },
+      { 'home_game_operation' => false, 'game_operation_id' => eigen_go.id }
+    ])
+    StateAssociationRelease.create!(grantor_state_association_id: grantor_sa.id,
+                                    recipient_game_operation_id: eigen_go.id,
+                                    season_id: Setting.current_season_id)
+
+    sbk = create(:user, :sbk_scoped, game_operation_id: eigen_go.id)
+    groups = Club.admin_user_clubs(sbk)
+
+    eigene_box = groups.reject { |g| g[:released] }.flat_map { |g| g[:clubs] }.map { |c| c['id'] || c[:id] }
+    frei_box = groups.select { |g| g[:released] }.flat_map { |g| g[:clubs] }.map { |c| c['id'] || c[:id] }
+
+    # Genau einmal auf der Seite, und zwar im Freigabe-Block. Vorher stand der
+    # Verein in beiden Boxen – auf Produktion traf das 5 Vereine.
+    assert_not_includes eigene_box, freigegeben.id
+    assert_includes frei_box, freigegeben.id
+  end
+
   # Issue #193: meta_hash greift für den LV-Logo-Fallback auf
   # state_association#logo_url zu. Ohne Eager-Loading lud admin_user_clubs den
   # Landesverband samt Logo-Attachment einzeln pro GameOperation nach. Mit dem
