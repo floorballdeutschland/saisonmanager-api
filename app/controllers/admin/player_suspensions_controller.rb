@@ -97,7 +97,20 @@ module Admin
       return true if (perm_hash[:sbk] & player_home_game_operation_ids).present?
 
       team = Team.find_by(id: suspension_scope_team_id)
-      team.present? && sbk_can_access_team?(perm_hash, team)
+      return false if team.blank?
+      return false unless sbk_can_access_team?(perm_hash, team)
+
+      # Das Team muss auch zum Spieler gehören. Ohne diese Schranke würde die
+      # team_id aus den Parametern genügen: Eine SBK könnte ein beliebiges Team
+      # ihrer eigenen Liga angeben und damit eine Sperre auf einen *fremden*
+      # Spieler schreiben, mit dem dieses Team nichts zu tun hat. Über
+      # Player#suspended_for_team? liesse sich dieser Spieler dann dauerhaft von
+      # einer Lizenz für dieses Team aussperren.
+      #
+      # Dieselbe Schranke wie in PlayersController#request_license (Z. 138),
+      # dort mit derselben Begründung.
+      player_in_team_clubs?(@player, team) ||
+        (@player.licenses || []).any? { |l| l['team_id'].to_i == team.id }
     end
 
     # Heim-Spielbetriebe der Vereine des Spielers.

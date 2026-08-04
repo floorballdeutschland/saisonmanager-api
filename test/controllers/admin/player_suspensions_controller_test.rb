@@ -112,6 +112,34 @@ module Admin
       assert_not_nil JSON.parse(response.body)['lifted_at']
     end
 
+    # Die team_id kommt aus den Parametern. Ohne Bindung an den Spieler koennte
+    # eine SBK ein beliebiges Team ihrer eigenen Liga angeben und damit eine
+    # Sperre auf einen voellig fremden Spieler schreiben - und ihn ueber
+    # Player#suspended_for_team? dauerhaft von einer Lizenz aussperren.
+    test 'Team-Sperre nur, wenn das Team auch zum Spieler gehoert' do
+      liga = create(:league, :current_season, game_operation: @fremd_go)
+      fremdes_team = create(:team, league: liga, club: create(:club))
+      login(create(:user, :sbk_scoped, game_operation_id: @fremd_go.id))
+
+      suspend(team_id: fremdes_team.id)
+
+      assert_response :forbidden
+      assert_equal 0, @player.reload.suspensions.count
+    end
+
+    # Gegenprobe: Mit Lizenz fuer dieses Team greift es, auch ohne aktuelle
+    # Vereinsmitgliedschaft im Verein des Teams.
+    test 'Team-Sperre greift bei bestehender Lizenz fuer dieses Team' do
+      liga = create(:league, :current_season, game_operation: @fremd_go)
+      team = create(:team, league: liga, club: create(:club))
+      @player.update!(licenses: [{ 'id' => 'L1', 'team_id' => team.id, 'history' => [] }])
+      login(create(:user, :sbk_scoped, game_operation_id: @fremd_go.id))
+
+      suspend(team_id: team.id)
+
+      assert_response :created
+    end
+
     test 'globaler SBK und Admin duerfen weiterhin alles' do
       login(create(:user, :sbk_global))
       suspend
