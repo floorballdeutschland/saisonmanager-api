@@ -9,6 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.67.3] - 2026-08-04
+
+### Behoben
+
+- **Übersicht der veralteten Spielbetriebs-Vermerke bricht nicht mehr ab, wenn nichts zu bereinigen ist**: Der lesende Wartungsbefehl endete mit einem Fehler, sobald keine bereinigbaren Vermerke mehr vorhanden waren — also genau nach einem erfolgreichen Bereinigungslauf. Die Bereinigung selbst war nie betroffen.
+
 ## [1.67.2] - 2026-08-04
 
 ### Verbessert

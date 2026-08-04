@@ -87,7 +87,10 @@ namespace :cleanup do
     puts "  durch eine Vereins-Freigabe gedeckt:   #{pairs.count { |p| !p[:by_league] && p[:by_release] }}"
     puts "  ohne Grundlage (würden entfallen):     #{stale.size} bei #{stale.map { |p| p[:club].id }.uniq.size} Vereinen"
 
-    return if stale.empty?
+    # `next`, nicht `return`: Ein `return` im Rake-Block wirft LocalJumpError.
+    # Faellt erst auf, wenn nichts mehr zu bereinigen ist – also genau nach
+    # einem erfolgreichen Lauf.
+    next if stale.empty?
 
     go_names = GameOperation.pluck(:id, :name).to_h
     puts "\nNach Empfänger-Spielbetrieb:"
