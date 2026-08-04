@@ -15,6 +15,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Verbessert
 
+- **Veraltete Saison-Markierung entfernt**: In den Einstellungen trug eine abgeschlossene Saison intern noch die Markierung „aktuell", während die tatsächlich aktive Saison an anderer Stelle gepflegt wird. In der Anwendung war davon nichts zu sehen, weil alle Ansichten die aktive Saison aus der maßgeblichen Quelle lesen; eine Auswertung im Hintergrund hätte aber auf der abgeschlossenen Saison gearbeitet. Die Altmarkierung ist entfernt, es gibt jetzt nur noch eine Quelle für die aktive Saison.
 - **Schiedsrichter-Rolle ist nicht mehr mit anderen Rollen kombinierbar**: Ein Schiedsrichter-Konto (Selbstverwaltung des eigenen Profils) bekommt keine weitere Rolle, und ein Konto mit anderen Rollen keine Schiedsrichter-Rolle. Die Regel gilt an jeder Stelle, an der Rollen gespeichert werden, also auch für Admins und die Kontoanlage aus der Schiedsrichterverwaltung. Bestandskonten, die diese Kombination noch tragen, können sich weiter einloggen und lassen sich durch Entfernen der überzähligen Rolle in Ordnung bringen.
 
 ### Behoben
