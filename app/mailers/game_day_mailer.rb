@@ -9,7 +9,7 @@ class GameDayMailer < ApplicationMailer
     @league_name = game_day.league&.name
 
     templated_mail(
-      to: state_association.sbk_email,
+      to: state_association.effective_sbk_email,
       subject: "Spieltag nicht ordnungsgemäß gemeldet – #{@league_name} am #{game_day.date}",
       placeholders: { league_name: @league_name, game_day_date: game_day.date }
     )
@@ -59,7 +59,7 @@ class GameDayMailer < ApplicationMailer
     @league_name = game_day.league&.name
 
     templated_mail(
-      to: state_association.sbk_email,
+      to: state_association.effective_sbk_email,
       subject: "Spieltag nicht ordnungsgemäß gemeldet – #{@league_name} am #{game_day.date}",
       placeholders: { league_name: @league_name, game_day_date: game_day.date }
     )

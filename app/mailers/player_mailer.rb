@@ -20,7 +20,7 @@ class PlayerMailer < ApplicationMailer
     @league = league
     # An die SBK des Spielbetriebs der Liga, nicht an die des Vereinsverbands:
     # Über den Antrag entscheidet der Verband, der die Liga betreibt.
-    sbk_email = league&.state_association&.sbk_email
+    sbk_email = league&.state_association&.effective_sbk_email
     return if sbk_email.blank?
 
     templated_mail(

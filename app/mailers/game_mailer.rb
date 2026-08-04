@@ -19,7 +19,7 @@ class GameMailer < ApplicationMailer
       @veto_url = "#{FrontendUrl.base}/spieltagscheckliste/einspruch/#{game.id}?token=#{CGI.escape(veto_token)}"
     end
 
-    bcc = !@all_ok ? state_association.sbk_email : nil
+    bcc = !@all_ok ? state_association.effective_sbk_email : nil
 
     templated_mail(
       to: hosting_club.contact_email,
@@ -61,7 +61,7 @@ class GameMailer < ApplicationMailer
     @original_answers = game.checklist_answers || []
 
     recipients = [
-      state_association.sbk_email,
+      state_association.effective_sbk_email,
       hosting_club&.contact_email,
       referee1&.email,
       referee2&.email

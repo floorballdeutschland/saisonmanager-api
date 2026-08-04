@@ -895,6 +895,46 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_equal 1, foreign_player.reload.licenses.length
   end
 
+  # admin_players_index (Spielerliste eines Vereins in der Spielerverwaltung):
+  # Ein blosser Gast-Eintrag im game_operations_hash gibt keinen Zugriff mehr.
+  # Auf Produktion konnte eine SBK darueber 2.513 Spielerprofile fremder Vereine
+  # auflisten, ohne dass eine Freigabe erteilt war.
+  test 'admin_players_index sperrt Verein mit reinem Gast-Eintrag' do
+    fremder_go = create(:game_operation)
+    gast_club = create(:club, game_operations_hash: [
+      { 'home_game_operation' => true, 'game_operation_id' => fremder_go.id },
+      { 'home_game_operation' => false, 'game_operation_id' => @game_operation.id }
+    ])
+    create(:player, clubs: [{ 'club_id' => gast_club.id, 'home_club' => true }])
+
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+    get "/api/v2/admin/clubs/#{gast_club.id}/players"
+
+    assert_response :success
+    assert_equal [], JSON.parse(response.body)
+  end
+
+  # Gegenprobe und zugleich Bugfix: Die Methode kannte die Vereins-Freigabe
+  # bisher gar nicht. Ein freigegebener Verein war ueber admin/clubs/:id lesbar,
+  # seine Spielerliste antwortete aber leer.
+  test 'admin_players_index erlaubt freigegebenen Verein' do
+    grantor_sa = create(:state_association)
+    grantor_go = create(:game_operation, state_association_id: grantor_sa.id)
+    club = create(:club, state_association_id: grantor_sa.id, game_operations_hash: [
+      { 'home_game_operation' => true, 'game_operation_id' => grantor_go.id }
+    ])
+    spieler = create(:player, clubs: [{ 'club_id' => club.id, 'home_club' => true }])
+    StateAssociationRelease.create!(grantor_state_association_id: grantor_sa.id,
+                                    recipient_game_operation_id: @game_operation.id,
+                                    season_id: Setting.current_season_id)
+
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+    get "/api/v2/admin/clubs/#{club.id}/players"
+
+    assert_response :success
+    assert_equal([spieler.id], JSON.parse(response.body)['players'].map { |p| p['id'] })
+  end
+
   private
 
   # Beendetes Spiel mit @player (Trikot 7) in der Heim-Aufstellung.

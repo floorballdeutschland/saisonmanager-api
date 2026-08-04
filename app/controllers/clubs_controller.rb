@@ -18,9 +18,7 @@ class ClubsController < ApplicationController
                 go_ids << ph[:sbk] if ph[:sbk].present?
                 go_ids.flatten!
 
-                # where(id:) statt find: kein Absturz, wenn eine Berechtigung auf
-                # einen zwischenzeitlich gelöschten Spielbetrieb verweist.
-                collected += GameOperation.where(id: go_ids).flat_map(&:clubs)
+                collected += clubs_for_game_operations(go_ids)
               end
 
               collected += Club.where(id: ph[:vm]).to_a if ph[:vm].present?
@@ -49,6 +47,42 @@ class ClubsController < ApplicationController
     end
 
     render json: result
+  end
+
+  # Vereine, für die der/die Nutzer*in Vereinsmanager*in oder Teammanager*in
+  # ist – und nur die. Andere Rollen bleiben hier ausdrücklich unberücksichtigt:
+  # Das Portal „Meine Spieler*innen" ist die Vereinssicht auf den eigenen
+  # Spielerbestand (Menüpunkt `menu_item_player_vm`, ebenfalls nur VM/TM), nicht
+  # die Verbandssicht. Für die gibt es die Spielerverwaltung (`menu_item_player_admin`).
+  #
+  # Der Unterschied zu `user_clubs_and_teams` ist der Grund für diese zweite
+  # Aktion: Dort sind alle Rollen additiv, wer also zusätzlich SBK ist, bekommt
+  # alle Vereine des Spielbetriebs. Genau daran ist das Portal gescheitert – es
+  # fragte für jeden dieser Vereine die Spielerliste ab, und die Vereine aus
+  # fremden Landesverbänden antworteten (zu Recht) mit 403.
+  def vm_clubs_and_teams
+    ph = current_user.permission_hash
+    unless ph[:vm].present? || ph[:tm].present?
+      return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+
+    vm_club_ids = ph[:vm].to_a
+    tm_teams = ph[:tm].present? ? Team.current_season.where(id: ph[:tm]).to_a : []
+    club_ids = (vm_club_ids + tm_teams.flat_map(&:all_club_ids)).uniq
+
+    clubs = Club.includes(logo_attachment: :blob).where(id: club_ids).order(:name)
+    teams_by_club = current_teams_by_club(club_ids)
+    tm_team_ids = tm_teams.map(&:id)
+
+    render json: clubs.map { |club|
+      item = club.full_hash
+      # Als VM alle Mannschaften des Vereins, als TM nur die eigenen.
+      teams = teams_by_club.fetch(club.id, []).select do |team|
+        vm_club_ids.include?(club.id) || tm_team_ids.include?(team.id)
+      end
+      item[:teams] = teams.map(&:full_hash)
+      item
+    }
   end
 
   def user_team_licenses
@@ -127,55 +161,6 @@ class ClubsController < ApplicationController
     end
   end
 
-  def self.admin_user_players(user, club_id)
-    club_object = Club.find(club_id)
-
-    # wenn admin oder sbk global: füge alle hinzu
-    ph = user.permission_hash
-    # Rollen additiv: die frühere elsif-Kette ließ die Admin-/SBK-Rolle gewinnen
-    # und sperrte den Nutzer damit aus seinem eigenen Verein aus, sobald dieser
-    # außerhalb der Verbands-Berechtigung liegt.
-    club = if ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
-             club_object
-           else
-             go_ids = []
-             go_ids << ph[:admin] if ph[:admin].present?
-             go_ids << ph[:sbk] if ph[:sbk].present?
-
-             # if club and permission share a go_id we are allowed to see this
-             in_go = go_ids.flatten.intersection(club_object.game_operations_hash.map do |go|
-                                                   go['game_operation_id']
-                                                 end).present?
-             is_vm = ph[:vm].present? && ph[:vm].include?(club_id)
-
-             club_object if in_go || is_vm
-           end
-
-    return unless club
-
-    result = club.full_hash
-    result[:players] = club.players.map(&:meta_hash)
-
-    # this was the all club index code:
-    # clubs = []
-
-    # GameOperation.find(go_ids).each do |go|
-    #   clubs << go.clubs
-    # end
-
-    # clubs << Club.find(ph[:vm]) if ph[:vm]&.present?
-
-    # clubs = clubs.flatten.uniq
-
-    # clubs.each do |c|
-    #   item = c.full_hash
-    #   item[:players] = c.players
-    #   result << item
-    # end
-
-    result
-  end
-
   def admin_get_go_clubs
     if current_user
       league = if params[:callType] == 'l'
@@ -187,12 +172,22 @@ class ClubsController < ApplicationController
 
       game_operation = league&.game_operation
       if game_operation && game_operation&.user_permissions(current_user)&.include?(:index_clubs)
-        own_ids = game_operation.clubs.pluck(:id)
+        # Heim-Vereine des Spielbetriebs statt aller Hash-Treffer: Gast-Einträge
+        # sind Altlast aus dem Import 2010–2014 (siehe can_read_admin_club?).
+        own_ids = game_operation.home_clubs.pluck(:id)
+        # Freigaben hier bewusst nach `league.season_id` und nicht nach
+        # current_season – die Liga gibt die Saison vor, die Auswahl gilt für
+        # deren Spieltage.
         released_sa_ids = StateAssociationRelease
                           .where(recipient_game_operation_id: game_operation.id, season_id: league.season_id)
                           .pluck(:grantor_state_association_id)
         released_ids = released_sa_ids.any? ? Club.where(state_association_id: released_sa_ids).pluck(:id) : []
-        render json: Club.where(id: (own_ids + released_ids).uniq).order(:name).map(&:full_hash)
+        # Vereine, die in DIESER Liga eine Mannschaft haben – der Ersatz für den
+        # Gast-Eintrag, und genauer als er: Ein Gastverein muss als Ausrichter
+        # wählbar bleiben, auch ohne Freigabe seines Landesverbands.
+        league_club_ids = Team.where(league_id: league.id).flat_map(&:all_club_ids).uniq
+        render json: Club.where(id: (own_ids + released_ids + league_club_ids).uniq)
+                         .order(:name).map(&:full_hash)
       else
         render json: { message: 'Keine Berechtigung' }, status: :forbidden
       end
@@ -366,6 +361,50 @@ class ClubsController < ApplicationController
   # außerhalb seines Spielbetriebs behält. Für SBK zählt die primäre Liga
   # (`sbk_can_access_team?`), also derselbe Scope, den das Beantragen
   # anschließend prüft; `team.leagues` wäre hier ein N+1.
+  # Vereine, die ein Admin-/SBK-Scope in seinen Listen sehen soll. Drei Quellen,
+  # und der frühere `GameOperation#clubs` (= ganzer game_operations_hash) ist
+  # keine davon:
+  #
+  # 1. Heimat-Spielbetrieb – die eigenen Vereine.
+  # 2. Vereins-Freigabe – ausdrücklich erteilt, saisongebunden, pflegbar.
+  # 3. Vereine mit einer Mannschaft in einer eigenen Liga dieser Saison.
+  #
+  # Punkt 3 ersetzt den Gast-Eintrag im Hash, und zwar genauer: Der Hash stammt
+  # aus dem Altdaten-Import 2010–2014, wird nie nachgeführt und war auf
+  # Produktion zu 85 % nicht mehr durch eine Liga gedeckt. Die Liga-Ableitung
+  # ist immer aktuell und deckt Gastmannschaften auch dann ab, wenn deren
+  # Landesverband nichts freigegeben hat – ohne dass daraus Zugriff auf die
+  # Vereinsstammdaten entsteht: Die Mannschaftsliste wird anschließend über
+  # `may_list_team?` gefiltert (liga-basiert), und Stammdaten hängen an
+  # `Club#readable_by_game_operations?` bzw. `Club#user_permissions`.
+  def clubs_for_game_operations(go_ids)
+    go_ids = Array(go_ids).compact.map(&:to_i).uniq
+    return [] if go_ids.empty?
+
+    # where(id:) statt find: kein Absturz, wenn eine Berechtigung auf einen
+    # zwischenzeitlich gelöschten Spielbetrieb verweist.
+    own = GameOperation.where(id: go_ids).flat_map(&:home_clubs)
+
+    released_sa_ids = StateAssociationRelease.current_season
+                                             .where(recipient_game_operation_id: go_ids)
+                                             .pluck(:grantor_state_association_id)
+    released = released_sa_ids.any? ? Club.where(state_association_id: released_sa_ids).to_a : []
+
+    guests = Club.where(id: club_ids_with_team_in_game_operations(go_ids)).to_a
+
+    (own + released + guests).uniq
+  end
+
+  # Vereins-IDs, die in der aktuellen Saison eine Mannschaft in einer Liga der
+  # gegebenen Spielbetriebe haben. `all_club_ids` nimmt SG-Partnervereine mit.
+  def club_ids_with_team_in_game_operations(go_ids)
+    Team.current_season
+        .joins(:league)
+        .where(leagues: { game_operation_id: go_ids })
+        .flat_map(&:all_club_ids)
+        .uniq
+  end
+
   def may_list_team?(ph, club, team)
     ph[:admin].present? ||
       sbk_can_access_team?(ph, team) ||
@@ -399,21 +438,21 @@ class ClubsController < ApplicationController
     go_ids = (ph[:admin].to_a + ph[:sbk].to_a).reject(&:zero?)
     return false if go_ids.empty?
 
-    # Admin/SBK, an deren Spielbetrieb der Verein hängt – als Heim- ODER
-    # Gast-Spielbetrieb – dürfen lesen. Deckungsgleich mit Club.admin_user_clubs
-    # (matcht über den gesamten game_operations_hash); ohne diesen Zweig
-    # erschiene ein Gast-Verein zwar in der Liste, ließe sich aber nicht öffnen.
-    club_go_ids = club.game_operations_hash.map { |go| go['game_operation_id'] }
-    return true if go_ids.intersection(club_go_ids).present?
-
-    # Vereins-Freigabe: LV-Admin/-SBK dürfen die an ihren Spielbetrieb
-    # freigegebenen Vereine lesen (analog Club.admin_user_clubs), auch wenn
-    # der Verein einem fremden Spielbetrieb gehört.
-    return false if club.state_association_id.blank?
-
-    StateAssociationRelease.current_season
-                           .where(recipient_game_operation_id: go_ids,
-                                  grantor_state_association_id: club.state_association_id)
-                           .exists?
+    # Heimat-Spielbetrieb oder Vereins-Freigabe – gemeinsame Regel mit
+    # Club.admin_user_clubs und Player.admin_user_players.
+    #
+    # Der frühere Zweig „hängt als Gast-Spielbetrieb am Verein" ist bewusst
+    # entfallen. Gast-Einträge im game_operations_hash werden von der Anwendung
+    # nie geschrieben – einzige Quelle ist der Altdaten-Import 2010–2014
+    # (import_legacy_data.rake) – und sie werden auch nicht nachgeführt, wenn
+    # eine Mannschaft die Liga wechselt. Auf Produktion waren 183 von 220
+    # Gast-Einträgen durch keine aktuelle Liga mehr gedeckt; sie öffneten
+    # Landesverbänden gegenseitig die Vereinsstammdaten, ohne dass das jemand
+    # erteilt hätte oder zurücknehmen könnte.
+    #
+    # Wer eine Gastmannschaft in seiner Liga betreut, braucht dafür keinen
+    # Zugriff auf die Vereinsstammdaten: Mannschaft und Lizenzen hängen an
+    # `league.game_operation_id` (LicenseAccessScope), nicht am Verein.
+    club.readable_by_game_operations?(go_ids)
   end
 end

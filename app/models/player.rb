@@ -754,10 +754,17 @@ class Player < ApplicationRecord
              go_ids << ph[:admin] if ph[:admin].present?
              go_ids << ph[:sbk] if ph[:sbk].present?
 
-             # if club and permission share a go_id we are allowed to see this
-             in_go = go_ids.flatten.intersection(club_object.game_operations_hash.map do |go|
-                                                   go['game_operation_id']
-                                                 end).present?
+             # Heimat-Spielbetrieb oder Vereins-Freigabe – gemeinsame Regel mit
+             # ClubsController#can_read_admin_club? und Club.admin_user_clubs.
+             #
+             # Vorher: Intersection mit dem GESAMTEN game_operations_hash, also
+             # auch mit bloßen Gast-Einträgen aus dem Altdaten-Import 2010–2014.
+             # Damit konnte ein Landesverband die Spielerprofile fremder Vereine
+             # auflisten, ohne dass es jemand erteilt hätte (auf Produktion
+             # 2.513 Profile in einem einzigen Fall). Gleichzeitig fehlte die
+             # Freigabe: Ein freigegebener Verein war über admin/clubs/:id
+             # lesbar, seine Spielerliste antwortete aber leer.
+             in_go = club_object.readable_by_game_operations?(go_ids.flatten)
              is_vm = ph[:vm].present? && ph[:vm].include?(club_id)
 
              club_object if in_go || is_vm

@@ -12,6 +12,29 @@ class User < ApplicationRecord
   # beim Setzen oder Ändern des Namens.
   USER_NAME_FORMAT = /\A[a-zA-Z0-9._-]+\z/
 
+  # Schiedsrichter-Selfservice-Rolle. Sie hängt am verknüpften Referee und ist
+  # bewusst mit keiner anderen Rolle kombinierbar (siehe
+  # referee_role_not_combined).
+  REFEREE_ROLE_ID = 6
+
+  # Welche Rollen ein Konto anderen Konten zuweisen darf, je eigener Rolle.
+  # Quelle für die Rollenprüfung im Admin::UsersController und für die Auswahl
+  # in der Benutzermaske (permissions_items). Die Admin-Rolle (1) darf nur Admin
+  # selbst vergeben; SBK und RSK bleiben auf ihre eigene Ebene und darunter
+  # beschränkt (der Verbund-Scope wird zusätzlich im Controller geprüft, ein
+  # national gescoptes FD-Konto ist dort global).
+  #
+  # Ausnahme: Der VM-Zweig in Admin::UsersController#create prüft absichtlich
+  # weiter selbst auf 4/5, weil er die Berechtigung vereinsgebunden und ohne
+  # Verbund baut. Eine Rolle mit Verbund-Scope darf dort nicht durchlaufen, sie
+  # landete sonst ohne game_operation_id und damit global im Konto.
+  ASSIGNABLE_ROLE_IDS = {
+    admin: [1, 2, 3, 4, 5, 6, 7],
+    sbk: [2, 3, 4, 5, 7],
+    rsk: [3, 7],
+    vm: [4, 5]
+  }.freeze
+
   has_secure_password
   before_validation :normalize_user_name
   validates :user_name, presence: true
@@ -33,6 +56,10 @@ class User < ApplicationRecord
             },
             if: -> { user_name.present? && user_name_changed? }
   validates :language, inclusion: { in: LANGUAGES }
+  # Nur bei geänderten Rollen prüfen: Bestandskonten, die die Regel verletzen,
+  # sollen sich weiter einloggen können (der Login speichert last_login_at) und
+  # per Rollen-Entzug reparierbar bleiben.
+  validate :referee_role_not_combined, if: -> { permissions_changed? }
 
   belongs_to :referee, optional: true
 
@@ -273,6 +300,8 @@ class User < ApplicationRecord
     # show league admin menu item
     result[:menu_item_league_admin] = ph[:admin].present? || ph[:sbk].present?
     result[:menu_item_club_admin] = ph[:admin].present? || ph[:sbk].present?
+    # SBK-Übersicht „Spielberichte": Kontrolle der abgegebenen Berichte.
+    result[:menu_item_match_report_admin] = ph[:admin].present? || ph[:sbk].present?
     result[:menu_item_player_admin] = ph[:admin].present? || ph[:sbk].present?
     result[:menu_item_player_admin_vm] = ph[:vm].present?
 
@@ -355,13 +384,28 @@ class User < ApplicationRecord
     result[:menu_item_player_change_requests] = ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
     result[:create_player_change_request] = ph[:vm].present? || ph[:admin].present?
     result[:approve_player_change_request] = ph[:admin].present? || ph[:sbk].present?
-    result[:menu_item_user_admin] = ph[:admin].present? || ph[:sbk].present?
+    # RSK verwaltet die eigenen Schiedsrichterwesen-Konten (RSK/Ansetzer) selbst;
+    # der Scope steckt in scoped_users bzw. require_admin_for_elevated_target!.
+    result[:menu_item_user_admin] = ph[:admin].present? || ph[:sbk].present? || ph[:rsk].present?
     result[:user_delete] = ph[:admin].present?
-    # Mehrfachrollen (Rollen je Konto hinzufügen/entfernen, z. B. RSK + Ansetzer) – nur Admin.
-    result[:manage_user_roles] = ph[:admin].present?
+    # Mehrfachrollen (Rollen je Konto hinzufügen/entfernen, z. B. RSK + Ansetzer).
+    # Welche Rolle dabei vergeben werden darf, sagen die assign_role_*-Flags.
+    result[:manage_user_roles] = ph[:admin].present? || ph[:sbk].present? || ph[:rsk].present?
     # VM dürfen TM-/VM-Konten im Scope ihres Vereins anlegen (Backend:
     # UsersController#create + authorize_user_management!).
-    result[:menu_item_user_create] = ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
+    result[:menu_item_user_create] =
+      ph[:admin].present? || ph[:sbk].present? || ph[:rsk].present? || ph[:vm].present?
+    # Welche Rollen die Maske zur Auswahl stellen darf. Einzeln als Boolean,
+    # weil der ans Frontend gehende permissions-Hash flach ist; Quelle der
+    # Wahrheit ist ASSIGNABLE_ROLE_IDS, geprüft wird serverseitig im
+    # Admin::UsersController.
+    assignable = assignable_role_ids(ph)
+    result[:assign_role_admin]    = assignable.include?(1)
+    result[:assign_role_sbk]      = assignable.include?(2)
+    result[:assign_role_rsk]      = assignable.include?(3)
+    result[:assign_role_vm]       = assignable.include?(4)
+    result[:assign_role_tm]       = assignable.include?(5)
+    result[:assign_role_ansetzer] = assignable.include?(7)
     result[:menu_item_user_vm] = ph[:vm].present?
     result[:menu_item_arena_admin] = ph[:admin].present? || ph[:sbk].present?
     # Spielorte löschen/zusammenführen ist destruktiv und verbandsübergreifend
@@ -589,7 +633,27 @@ class User < ApplicationRecord
     end
   end
 
+  # Rollen-IDs, die dieses Konto anderen Konten zuweisen (und wieder entziehen)
+  # darf. Rollen werden additiv ausgewertet: Wer SBK und RSK ist, darf beides.
+  # perm_hash ist durchreichbar, damit Aufrufer mit bereits geladenem
+  # permission_hash (permissions_items) keine zweite Auflösung auslösen.
+  def assignable_role_ids(perm_hash = permission_hash)
+    ASSIGNABLE_ROLE_IDS.select { |own_role, _| perm_hash[own_role].present? }.values.flatten.uniq.sort
+  end
+
   private
+
+  # Die Schiedsrichter-Rolle steht für das Selfservice-Konto eines Schiris und
+  # ist mit keiner anderen Rolle kombinierbar – in beide Richtungen. Sonst
+  # bekäme ein Konto, das über sich selbst Auskunft gibt, zusätzlich
+  # Verwaltungsrechte (bzw. umgekehrt), und permissions_items müsste zwei
+  # widersprüchliche Menüs bedienen.
+  def referee_role_not_combined
+    role_ids = Array(permissions).map { |p| p['user_group_id'].to_i }.uniq
+    return unless role_ids.include?(REFEREE_ROLE_ID) && role_ids.length > 1
+
+    errors.add(:permissions, 'Die Schiedsrichter-Rolle kann nicht mit anderen Rollen kombiniert werden')
+  end
 
   # Benutzernamen vor der Validierung nur um Rand-Whitespace bereinigen. Die
   # Groß-/Kleinschreibung bleibt erhalten; der Login vergleicht ohnehin

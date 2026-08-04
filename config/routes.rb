@@ -155,8 +155,6 @@ Rails.application.routes.draw do
       get 'admin/players/:id', to: 'players#admin_player'
       post 'admin/players', to: 'players#admin_player_update'
 
-      get 'admin/game_operations/:id/clubs', to: 'game_operations#admin_club_index'
-
       get 'game_operations/:id/leagues/:season_id', to: 'game_operations#index_leagues'
       get 'game_operations/:id/leagues', to: 'game_operations#index_leagues'
 
@@ -164,6 +162,7 @@ Rails.application.routes.draw do
       get 'game_operations/:id/clubs', to: 'game_operations#index_clubs'
 
       get 'user/clubs_and_teams', to: 'clubs#user_clubs_and_teams'
+      get 'vm/clubs_and_teams', to: 'clubs#vm_clubs_and_teams'
       get 'user/team/:id/licenses', to: 'clubs#user_team_licenses'
 
       post 'user/games/:id/starting/:side/:position/set_player', to: 'games#set_starting_player'
@@ -295,6 +294,9 @@ Rails.application.routes.draw do
           get :games, on: :collection
           get :clubs, on: :collection
           patch 'games/:game_id/notes', action: :update_notes, on: :collection
+        end
+        resources :game_days, only: [] do
+          get :report_overview, on: :collection
         end
         resources :state_associations, only: %i[index show create update destroy] do
           resources :checklist_items, only: %i[create update destroy],

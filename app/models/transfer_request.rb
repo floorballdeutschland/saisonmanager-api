@@ -118,7 +118,7 @@ class TransferRequest < ApplicationRecord
 
     Rails.cache.delete('transfers')
     TransferRequestMailer.transfer_completed(self).deliver_later
-    return if requesting_club.state_association_id == former_club.state_association_id
+    return unless notify_receiving_lv?
 
     TransferRequestMailer.transfer_completed_receiving_lv(self).deliver_later
   end
@@ -224,12 +224,23 @@ class TransferRequest < ApplicationRecord
     player.save!(validate: false)
   end
 
+  # Zusatzmail an den aufnehmenden Landesverband nur, wenn dahinter ein anderes
+  # Postfach steht. Der Vergleich läuft über die effektive Adresse, nicht über
+  # state_association_id: Zwei Vereine in verschiedenen Kind-LVs desselben
+  # Verbunds haben unterschiedliche IDs, erben aber dasselbe SBK-Postfach, das
+  # sonst zwei Mails zum selben Vorgang bekäme (die zweite mit dem Zusatz
+  # „aufnehmender LV", der dann eine zweite Instanz suggeriert).
+  def notify_receiving_lv?
+    receiving = requesting_club.state_association&.effective_sbk_email
+    return false if receiving.blank?
+
+    receiving != former_club.state_association&.effective_sbk_email
+  end
+
   def send_completion_emails(secondary_club_ids)
     TransferRequestMailer.transfer_completed(self).deliver_later
 
-    if requesting_club.state_association_id != former_club.state_association_id
-      TransferRequestMailer.transfer_completed_receiving_lv(self).deliver_later
-    end
+    TransferRequestMailer.transfer_completed_receiving_lv(self).deliver_later if notify_receiving_lv?
 
     secondary_club_ids.each do |club_id|
       club = Club.find_by(id: club_id)
