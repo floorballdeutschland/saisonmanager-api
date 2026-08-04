@@ -1,7 +1,12 @@
 module Admin
   class PlayerSuspensionsController < ApplicationController
+    # sbk_can_access_team? / sbk_can_access_license? / sbk_global? – Scope über
+    # die Liga, nicht über den Verein.
+    include LicenseAccessScope
+
     before_action :set_player
-    before_action :check_permission
+    before_action :check_read_permission, only: %i[index]
+    before_action :check_suspend_permission, only: %i[create destroy]
 
     def index
       @player.expire_due_suspensions!
@@ -40,28 +45,83 @@ module Admin
       @player = Player.find(params[:player_id])
     end
 
-    def check_permission
+    def check_read_permission
       ph = current_user.permission_hash
       return if ph[:admin].present?
-      return if sbk_for_player?(ph)
+      return if sbk_may_read?(ph)
 
       render json: { message: 'Keine Berechtigung.' }, status: :forbidden
     end
 
-    # Ein nicht-global gescopter SBK darf nur Spieler sperren, deren Verein(e) in
-    # seinem Spielbetrieb liegen (analog Admin::LicenseDocumentsController).
-    def sbk_for_player?(perm_hash)
-      return false if perm_hash[:sbk].blank?
-      return true if perm_hash[:sbk].include?(0)
+    def check_suspend_permission
+      ph = current_user.permission_hash
+      return if ph[:admin].present?
+      return if sbk_may_suspend?(ph)
 
-      (perm_hash[:sbk] & player_game_operation_ids).present?
+      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
     end
 
-    def player_game_operation_ids
-      club_ids = (@player.clubs || []).filter_map { |c| c['club_id'].to_i }
-      Club.where(id: club_ids).flat_map do |club|
-        club.game_operations_hash.map { |go| go['game_operation_id'].to_i }
-      end.uniq
+    # LESEN: dieselbe Regel wie bei den Lizenzdokumenten – ein Verein des
+    # Spielers ist über den Heimat-Spielbetrieb oder eine Vereins-Freigabe
+    # lesbar, oder eine seiner Lizenzen hängt an einer Liga des eigenen
+    # Spielbetriebs.
+    def sbk_may_read?(perm_hash)
+      return false if perm_hash[:sbk].blank?
+      return true if sbk_global?(perm_hash)
+      return true if player_clubs_readable?(perm_hash)
+
+      (@player.licenses || []).any? { |l| sbk_can_access_license?(perm_hash, l) }
+    end
+
+    # SPERREN: Eine spielerweite Sperre blockiert *alle* Lizenzanträge, wirkt
+    # also weit über den eigenen Spielbetrieb hinaus. Sie darf deshalb nur der
+    # Heimatverband des Spielers setzen und aufheben – der Spielbetrieb, an dem
+    # sein Verein als Heim-Spielbetrieb hängt.
+    #
+    # Eine Vereins-Freigabe reicht dafür ausdrücklich NICHT: Sie gewährt nur
+    # Lesezugriff (siehe StateAssociationRelease und Club#user_permissions, wo
+    # :update_club ebenfalls am Heim-Spielbetrieb hängt).
+    #
+    # Bezieht sich die Sperre dagegen auf eine einzelne Team-Lizenz, zählt
+    # zusätzlich die Liga dieses Teams: Wer die Lizenz erteilt, darf sie auch
+    # aussetzen – dieselbe Quelle wie in LicenseAccessScope.
+    #
+    # Vorher wurde gegen den GESAMTEN game_operations_hash aller Vereine des
+    # Spielers geprüft, also auch gegen bloße Gast-Einträge aus dem
+    # Altdaten-Import 2010–2014. Damit hätte ein Landesverband Spieler fremder
+    # Vereine sperren können, ohne dass es jemand erteilt hätte. Das war die
+    # letzte Stelle, die den Hash für eine Rechteentscheidung gelesen hat.
+    def sbk_may_suspend?(perm_hash)
+      return false if perm_hash[:sbk].blank?
+      return true if sbk_global?(perm_hash)
+      return true if (perm_hash[:sbk] & player_home_game_operation_ids).present?
+
+      team = Team.find_by(id: suspension_scope_team_id)
+      team.present? && sbk_can_access_team?(perm_hash, team)
+    end
+
+    # Heim-Spielbetriebe der Vereine des Spielers.
+    def player_home_game_operation_ids
+      Club.where(id: player_club_ids).map(&:main_game_operation_id).compact.uniq
+    end
+
+    def player_clubs_readable?(perm_hash)
+      go_ids = perm_hash[:sbk].to_a.reject(&:zero?)
+      return false if go_ids.empty?
+
+      Club.where(id: player_club_ids).any? { |club| club.readable_by_game_operations?(go_ids) }
+    end
+
+    def player_club_ids
+      (@player.clubs || []).filter_map { |c| c['club_id']&.to_i }
+    end
+
+    # Beim Anlegen kommt das Team aus den Parametern, beim Aufheben aus der
+    # bestehenden Sperre. Ohne Team ist es eine spielerweite Sperre.
+    def suspension_scope_team_id
+      return params[:team_id].presence if action_name == 'create'
+
+      @player.suspensions.find_by(id: params[:id])&.team_id
     end
 
     def parse_date(value)
