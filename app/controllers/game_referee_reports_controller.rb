@@ -88,7 +88,7 @@ class GameRefereeReportsController < ApplicationController
       return
     end
 
-    vsk_email = state_association&.vsk_email
+    vsk_email = state_association&.effective_vsk_email
     return if vsk_email.blank?
 
     assignment = @game.referee_assignment
