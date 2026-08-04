@@ -67,7 +67,7 @@ module Admin
 
     def send_report_to_vsk(proposal)
       game = proposal.game
-      vsk_email = proposal.state_association.vsk_email
+      vsk_email = proposal.state_association.effective_vsk_email
       report = proposal.report
       return if vsk_email.blank? || report.nil?
 
