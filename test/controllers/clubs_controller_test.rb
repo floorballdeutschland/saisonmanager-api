@@ -152,6 +152,59 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_includes team_ids, team_b.id
   end
 
+  # Kern der Meldung: Wer neben der Vereinsrolle auch die Spielbetriebsrolle
+  # hat, bekam über user_clubs_and_teams alle Vereine des Spielbetriebs und
+  # damit im Portal "Meine Spieler*innen" fremde Vereine samt 403 beim Laden.
+  # Das Portal fragt deshalb diese Aktion, die andere Rollen ignoriert.
+  test 'vm_clubs_and_teams liefert VM mit SBK-Rolle nur den eigenen Verein' do
+    go = create(:game_operation)
+    eigener_club = create(:club, game_operations_hash: [
+      { 'home_game_operation' => true, 'game_operation_id' => go.id }
+    ])
+    fremder_club = create(:club, game_operations_hash: [
+      { 'home_game_operation' => true, 'game_operation_id' => go.id }
+    ])
+    login(create(:user, permissions: [
+      { 'user_group_id' => 2, 'game_operation_id' => go.id },
+      { 'user_group_id' => 4, 'club_id' => eigener_club.id }
+    ]))
+
+    # Gegenprobe: Die allgemeine Aktion liefert wegen der SBK-Rolle beide.
+    get '/api/v2/user/clubs_and_teams'
+    assert_response :success
+    assert_includes JSON.parse(response.body).map { |c| c['id'] }, fremder_club.id
+
+    get '/api/v2/vm/clubs_and_teams'
+    assert_response :success
+    assert_equal([eigener_club.id], JSON.parse(response.body).map { |c| c['id'] })
+  end
+
+  # Teammanager*innen sehen das Portal ebenfalls (menu_item_player_vm), haben
+  # aber keine club_ids – ihre Vereine kommen ueber die eigenen Mannschaften.
+  test 'vm_clubs_and_teams liefert TM den Verein der eigenen Mannschaft' do
+    club = create(:club)
+    team = create(:team, club: club, league: create(:league, :current_season))
+    fremdes_team = create(:team, club: club, league: create(:league, :current_season))
+    login(create(:user, :tm, team_id: team.id))
+
+    get '/api/v2/vm/clubs_and_teams'
+
+    assert_response :success
+    entry = JSON.parse(response.body).find { |c| c['id'] == club.id }
+    assert entry, 'Verein der eigenen Mannschaft muss enthalten sein'
+    team_ids = entry['teams'].map { |t| t['id'] }
+    assert_includes team_ids, team.id
+    assert_not_includes team_ids, fremdes_team.id
+  end
+
+  test 'vm_clubs_and_teams ist ohne VM- und TM-Rolle gesperrt' do
+    login(create(:user, :sbk_scoped, game_operation_id: create(:game_operation).id))
+
+    get '/api/v2/vm/clubs_and_teams'
+
+    assert_response :forbidden
+  end
+
   test 'user_team_licenses ist für SBK eines fremden Spielbetriebs gesperrt' do
     go_other = create(:game_operation)
     team = create(:team, league: create(:league, :current_season))
