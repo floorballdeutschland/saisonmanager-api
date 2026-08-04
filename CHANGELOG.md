@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Veraltete Spielbetriebs-Vermerke an Vereinen lassen sich bereinigen**: Vereine tragen aus dem Datenimport 2010–2014 teils Vermerke auf fremde Spielbetriebe, in denen sie damals mitgespielt haben. Diese Vermerke schreibt die Anwendung nirgends und führt sie auch nicht nach; seit den letzten beiden Releases entscheiden sie über keine Berechtigung mehr. Ein neuer Wartungsbefehl entfernt die Vermerke, denen weder eine aktuelle Liga noch eine Vereinsfreigabe entspricht — Heimat-Vermerke bleiben unangetastet. Vor dem Ausführen zeigt er eine Vorschau, und er protokolliert jeden Verein samt Ausgangszustand.
+
 ## [1.67.1] - 2026-08-04
 
 ### Verbessert
