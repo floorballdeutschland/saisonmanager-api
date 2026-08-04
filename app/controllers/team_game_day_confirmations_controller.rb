@@ -209,7 +209,7 @@ class TeamGameDayConfirmationsController < ApplicationController
   # nicht ordnungsgemäß gemeldet hat. Fehler hier dürfen die Antwort nicht scheitern lassen.
   def notify_sbk_of_veto(game_day, team, confirmation)
     sa = game_day.league&.game_operation&.state_association
-    return if sa&.sbk_email.blank?
+    return if sa&.effective_sbk_email.blank?
 
     GameDayMailer.team_checklist_veto(game_day, team, confirmation.checklist_answers, sa).deliver_later
   rescue StandardError => e

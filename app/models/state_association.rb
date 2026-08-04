@@ -33,6 +33,19 @@ class StateAssociation < ApplicationRecord
     rsk_email.presence || parent&.effective_rsk_email
   end
 
+  # Wie effective_rsk_email: Postfächer eines untergeordneten Landesverbands
+  # fallen auf den übergeordneten Verbund zurück. Nötig, weil das Formular die
+  # Felder bei Kind-LVs sperrt und als "geerbt" ausweist – ohne Rückfall liefen
+  # vereinsbezogene Mails (z. B. Transferbenachrichtigungen an
+  # former_club.state_association) ins Leere.
+  def effective_vsk_email
+    vsk_email.presence || parent&.effective_vsk_email
+  end
+
+  def effective_sbk_email
+    sbk_email.presence || parent&.effective_sbk_email
+  end
+
   def logo_url
     Rails.application.routes.url_helpers.rails_blob_path(logo, only_path: true) if logo.attached?
   end
@@ -64,6 +77,14 @@ class StateAssociation < ApplicationRecord
       express_license_enabled:,
       referee_license_review_enabled:,
       effective_referee_license_review_enabled:,
+      # Geerbte Werte mitliefern, damit die Verbandsmaske bei einem
+      # untergeordneten LV den tatsächlich greifenden Wert anzeigen kann. Der
+      # Index-Endpunkt liefert nur short_hash (ohne Postfächer/Flags), das
+      # Formular könnte sie sonst nicht aus dem Parent-Datensatz lesen.
+      effective_express_license_enabled: effective_express_license_enabled.present?,
+      effective_vsk_email:,
+      effective_sbk_email:,
+      effective_rsk_email:,
       manual_proceeding_creation:,
       referee_assignment_enabled:,
       report_form_email_enabled:,

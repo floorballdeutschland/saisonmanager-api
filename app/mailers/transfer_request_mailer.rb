@@ -17,7 +17,7 @@ class TransferRequestMailer < ApplicationMailer
 
   def pending_lv_notification(transfer_request)
     @transfer_request = transfer_request
-    sbk_email = transfer_request.former_club.state_association&.sbk_email
+    sbk_email = transfer_request.former_club.state_association&.effective_sbk_email
     return unless sbk_email.present?
 
     templated_mail(
@@ -105,7 +105,7 @@ class TransferRequestMailer < ApplicationMailer
       transfer_request.requesting_club.contact_email,
       transfer_request.former_club.contact_email,
       transfer_request.player.email,
-      former_sa&.sbk_email
+      former_sa&.effective_sbk_email
     ].compact.uniq.select(&:present?)
     return if recipients.empty?
 
@@ -122,7 +122,7 @@ class TransferRequestMailer < ApplicationMailer
 
   def transfer_completed_receiving_lv(transfer_request)
     @transfer_request = transfer_request
-    sbk_email = transfer_request.requesting_club.state_association&.sbk_email
+    sbk_email = transfer_request.requesting_club.state_association&.effective_sbk_email
     return unless sbk_email.present?
 
     subject = release?(transfer_request) ? 'Spielerfreigabe erteilt (aufnehmender LV)' : 'Transfer vollzogen (aufnehmender LV)'

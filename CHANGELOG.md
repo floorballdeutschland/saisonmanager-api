@@ -9,6 +9,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Postfächer eines untergeordneten Landesverbands greifen wirklich auf den Verbund zurück**: Gehört ein Landesverband zu einem übergeordneten Verbund (z. B. die drei Landesverbände der SBK Ost), sperrt die Verbandsmaske die Felder für die VSK- und SBK-Adresse und weist sie als „geerbt“ aus. Tatsächlich geerbt wurde bisher nur die RSK-Adresse. Alle vereinsbezogenen Mails lasen die Adresse direkt am Landesverband des Vereins und wurden bei leerem Feld still verworfen, darunter die Genehmigungs- und Abschlussmails zu Transfers und Spielerfreigaben, die Meldung eines nicht ordnungsgemäßen Spieltags, die Benachrichtigung über beantragte Expresslizenzen und der Versand des Schiedsrichter-Berichtsformulars an die VSK. Diese Mails gehen jetzt an das Postfach des Verbunds, sofern der Landesverband selbst keines gepflegt hat.
+- **Verbandsmaske zeigt bei untergeordneten Landesverbänden den tatsächlich geltenden Wert**: Der Endpunkt liefert die geerbten Werte für Expresslizenzen und die drei Postfächer jetzt mit aus, sodass die Maske nicht länger „Wert: Nein (geerbt)“ beziehungsweise einen leeren Eintrag anzeigt, obwohl der Verbund etwas anderes hinterlegt hat.
+
 ## [1.66.1] - 2026-08-02
 
 ### Behoben

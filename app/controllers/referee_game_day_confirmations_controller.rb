@@ -187,7 +187,7 @@ class RefereeGameDayConfirmationsController < ApplicationController
   # gemeldet wurde. Fehler hier dürfen die Antwort nicht scheitern lassen.
   def notify_sbk_of_veto(game_day, confirmation)
     sa = game_day.league&.game_operation&.state_association
-    return if sa&.sbk_email.blank?
+    return if sa&.effective_sbk_email.blank?
 
     GameDayMailer.referee_checklist_veto(game_day, @referee, confirmation.checklist_answers, sa).deliver_later
   rescue StandardError => e

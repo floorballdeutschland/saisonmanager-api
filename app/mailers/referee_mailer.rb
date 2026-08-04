@@ -210,9 +210,9 @@ class RefereeMailer < ApplicationMailer
     referee.club&.state_association&.effective_rsk_email.presence || REPLY_TO
   end
 
-  # SBK-Adresse des Spielbetriebs (Landesverband des game_operation);
-  # Fallback auf die Ansetzungs-Adresse, falls keine SBK-Adresse hinterlegt ist.
+  # SBK-Adresse des Spielbetriebs (Landesverband des game_operation); ohne
+  # eigenen Eintrag greift der übergeordnete Verbund, zuletzt die zentrale Adresse.
   def sbk_reply_to(game)
-    game.league.game_operation.state_association&.sbk_email.presence || REPLY_TO
+    game.league.game_operation.state_association&.effective_sbk_email.presence || REPLY_TO
   end
 end
