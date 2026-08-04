@@ -9,6 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.67.1] - 2026-08-04
+
+### Verbessert
+
+- **Spielersperren setzt nur der Heimatverband**: Eine Sperre, die alle Lizenzanträge eines Spielers blockiert, wirkt über den eigenen Spielbetrieb hinaus. Sie ließ sich bisher von jedem Verband setzen, an dessen Spielbetrieb der Verein des Spielers irgendwie vermerkt war — auch über einen Vermerk aus dem Datenimport 2010–2014, den niemand erteilt hat und der nicht nachgeführt wird. Zuständig ist jetzt allein der Heimatverband des Spielers; eine Vereinsfreigabe genügt dafür ausdrücklich nicht, sie erlaubt weiterhin nur das Einsehen. Bezieht sich die Sperre dagegen auf eine einzelne Mannschaftslizenz, darf sie auch der Verband der betreffenden Liga aussetzen — wer die Lizenz erteilt, darf sie auch ruhen lassen. Bestehende Sperren gibt es keine, die Umstellung ändert also nichts an vorhandenen Vorgängen.
+
 ## [1.67.0] - 2026-08-04
 
 ### Neu
