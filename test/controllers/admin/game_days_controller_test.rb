@@ -44,7 +44,7 @@ module Admin
       assert_response :forbidden
     end
 
-    test 'ohne season_id greift die laufende Saison' do
+    test 'nur die laufende Saison, auch auf Anfrage keine Altsaison' do
       past_league = create_league(@go, season_id: '17')
       past_game_day = GameDay.create!(league: past_league, arena: @arena, club: @club,
                                       number: 1, date: '2025-02-01')
@@ -57,8 +57,12 @@ module Admin
       assert_equal [@game.id], game_ids
       assert_not_includes game_ids, past_game.id
 
+      # season_id ist bewusst kein Parameter – ein mitgeschickter Wert darf die
+      # Saisonbindung nicht aufweichen.
       get OVERVIEW_PATH, params: { season_id: '17' }
-      assert_equal [past_game.id], game_ids
+      assert_response :success
+      assert_equal [@game.id], game_ids
+      assert_not_includes game_ids, past_game.id
     end
 
     test 'date_from und date_to filtern über die Textspalte game_days.date' do

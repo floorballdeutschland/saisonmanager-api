@@ -28,8 +28,9 @@ module Admin
 
     # GET /api/v2/admin/game_days/report_overview
     #
-    # Filter: season_id (Default: laufende Saison), game_operation_id, league_id,
-    # date_from, date_to (jeweils YYYY-MM-DD).
+    # Immer nur die laufende Saison: Die Übersicht ist ein Arbeitsmittel für den
+    # aktuellen Spielbetrieb, abgeschlossene Saisons werden hier nicht geprüft.
+    # Filter: game_operation_id, league_id, date_from, date_to (JJJJ-MM-TT).
     def report_overview
       scope = filtered_scope
       games = scope.limit(MAX_ROWS + 1).to_a
@@ -87,7 +88,9 @@ module Admin
 
       go_ids = scope_go_ids
       scope = scope.where(leagues: { game_operation_id: go_ids }) if go_ids
-      scope = scope.where(leagues: { season_id: season_id })
+      # Fest auf die laufende Saison – bewusst nicht über einen Parameter
+      # steuerbar, damit Altsaisons hier gar nicht erst auftauchen können.
+      scope = scope.where(leagues: { season_id: Setting.current_season_id })
       if params[:game_operation_id].present?
         scope = scope.where(leagues: { game_operation_id: filter_integer(:game_operation_id) })
       end
@@ -118,10 +121,6 @@ module Admin
       NULLIF(games.start_time, '') ASC NULLS LAST,
       CASE WHEN games.game_number ~ '^[0-9]+$' THEN games.game_number::integer END ASC NULLS LAST
     SQL
-
-    def season_id
-      params[:season_id].presence || Setting.current_season_id
-    end
 
     def filter_integer(key)
       value = params[key].to_s
