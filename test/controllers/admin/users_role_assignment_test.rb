@@ -124,6 +124,37 @@ module Admin
       assert_nil User.find_by(user_name: 'rsk.macht.vm')
     end
 
+    test 'VM mit zusätzlicher RSK-Rolle legt ein Ansetzer-Konto an' do
+      club = create(:club)
+      vm_rsk = create(:user, permissions: [
+        { 'user_group_id' => 4, 'club_id' => club.id.to_s },
+        { 'user_group_id' => 3, 'game_operation_id' => @lv.id.to_s }
+      ])
+      login(vm_rsk)
+
+      post '/api/v2/admin/users', params: {
+        user: { user_name: 'vmrsk.ansetzer', first_name: 'Doppel', last_name: 'Rolle', email: 'dr@example.org' },
+        role: { user_group_id: 7, game_operation_id: @lv.id }
+      }
+      assert_response :created
+
+      created = User.find_by(user_name: 'vmrsk.ansetzer')
+      assert_equal @lv.id.to_s, created.permissions.first['game_operation_id']
+    end
+
+    test 'reine VM legt weiterhin nur VM- und TM-Konten an' do
+      club = create(:club)
+      vm = create(:user, :vm, club_id: club.id)
+      login(vm)
+
+      post '/api/v2/admin/users', params: {
+        user: { user_name: 'vm.macht.rsk', first_name: 'Kein', last_name: 'RSK', email: 'keinrsk@example.org' },
+        role: { user_group_id: 3, game_operation_id: @lv.id }
+      }
+      assert_response :forbidden
+      assert_nil User.find_by(user_name: 'vm.macht.rsk')
+    end
+
     # --- Rollen erweitern ---------------------------------------------------
 
     test 'RSK ergänzt eine Ansetzer-Rolle im eigenen Verbund' do

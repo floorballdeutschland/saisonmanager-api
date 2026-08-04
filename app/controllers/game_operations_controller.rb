@@ -68,7 +68,7 @@ class GameOperationsController < ApplicationController
     go_ids = []
 
     ph = current_user.permission_hash
-    # Rollen additiv: ein Nutzer mit Admin-/SBK- *und* VM-Rolle verlor sonst
+    # Rollen additiv: ein Nutzer mit Admin-/SBK-/RSK- *und* VM-Rolle verlor sonst
     # den Spielbetrieb seines Vereins, wenn dieser außerhalb der eigenen
     # Verbands-Berechtigung liegt.
     if ph[:admin]&.include?(0) || ph[:sbk]&.include?(0) || ph[:rsk]&.include?(0)

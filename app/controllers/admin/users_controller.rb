@@ -96,8 +96,14 @@ module Admin
       club_id = params.dig(:role, :club_id).to_i.nonzero?
       go_id   = params.dig(:role, :game_operation_id).to_i.nonzero?
 
-      if ph[:vm].present? && !ph[:admin].present? && !ph[:sbk].present?
-        return render json: { error: 'VM darf nur TM- oder VM-Nutzer anlegen' }, status: :forbidden unless [4, 5].include?(role_id)
+      # Der VM-Zweig legt ausschließlich vereinsgebundene Konten an (er baut die
+      # Berechtigung selbst und hängt keinen Verbund daran). Wer neben VM auch
+      # RSK ist, fällt für die übrigen Rollen deshalb in den allgemeinen Zweig
+      # unten, statt hier mit „VM darf nur TM- oder VM-Nutzer anlegen"
+      # abgewiesen zu werden.
+      if ph[:vm].present? && !ph[:admin].present? && !ph[:sbk].present? &&
+         (ph[:rsk].blank? || CLUB_SCOPED_ROLES.include?(role_id))
+        return render json: { error: 'VM darf nur TM- oder VM-Nutzer anlegen' }, status: :forbidden unless CLUB_SCOPED_ROLES.include?(role_id)
         return render json: { error: 'Verein nicht im eigenen Zuständigkeitsbereich' }, status: :forbidden unless club_id && ph[:vm].include?(club_id)
 
         perm = { 'user_group_id' => role_id }
@@ -405,8 +411,15 @@ module Admin
     # Darf der/die Handelnde diesen Rollen-Eintrag vergeben bzw. entziehen?
     # Prüft die Rolle selbst und ihren Scope (Verbund bei SBK/RSK/Ansetzer,
     # Verein bei VM/TM).
+    # permission_hash löst die Rollen gegen die DB auf (Saison-Teams,
+    # national-Flag der Verbünde). Die Scope-Prüfung unten läuft pro
+    # Rollen-Eintrag des Zielkontos, deshalb einmal pro Request auflösen.
+    def current_permission_hash
+      @current_permission_hash ||= current_user.permission_hash
+    end
+
     def permission_assignable?(perm)
-      ph = current_user.permission_hash
+      ph = current_permission_hash
       role_id = perm['user_group_id'].to_i
       return false unless current_user.assignable_role_ids(ph).include?(role_id)
 
@@ -444,7 +457,7 @@ module Admin
     # Vereine, für die vereinsgebundene Rollen (VM/TM) vergeben werden dürfen;
     # nil = unbeschränkt. Gleiche Quelle wie das Vereins-Dropdown der Maske.
     def assignable_club_ids
-      ph = current_user.permission_hash
+      ph = current_permission_hash
       return nil if ph[:admin].present? || ph[:sbk]&.include?(0)
 
       @assignable_club_ids ||= Club.role_assignable_for(current_user, include_deactivated: true).pluck(:id)

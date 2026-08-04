@@ -18,11 +18,16 @@ class User < ApplicationRecord
   REFEREE_ROLE_ID = 6
 
   # Welche Rollen ein Konto anderen Konten zuweisen darf, je eigener Rolle.
-  # Einzige Quelle für die Prüfung im Admin::UsersController und für die
-  # Auswahl in der Benutzermaske (permissions_items). Die Admin-Rolle (1) darf
-  # nur Admin selbst vergeben; SBK und RSK bleiben auf ihre eigene Ebene und
-  # darunter beschränkt (der Verbund-Scope wird zusätzlich im Controller
-  # geprüft, ein national gescoptes FD-Konto ist dort global).
+  # Quelle für die Rollenprüfung im Admin::UsersController und für die Auswahl
+  # in der Benutzermaske (permissions_items). Die Admin-Rolle (1) darf nur Admin
+  # selbst vergeben; SBK und RSK bleiben auf ihre eigene Ebene und darunter
+  # beschränkt (der Verbund-Scope wird zusätzlich im Controller geprüft, ein
+  # national gescoptes FD-Konto ist dort global).
+  #
+  # Ausnahme: Der VM-Zweig in Admin::UsersController#create prüft absichtlich
+  # weiter selbst auf 4/5, weil er die Berechtigung vereinsgebunden und ohne
+  # Verbund baut. Eine Rolle mit Verbund-Scope darf dort nicht durchlaufen, sie
+  # landete sonst ohne game_operation_id und damit global im Konto.
   ASSIGNABLE_ROLE_IDS = {
     admin: [1, 2, 3, 4, 5, 6, 7],
     sbk: [2, 3, 4, 5, 7],
