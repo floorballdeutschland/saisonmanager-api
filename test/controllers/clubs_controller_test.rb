@@ -329,6 +329,87 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_not club.reload.logo.attached?
   end
 
+  # --- Vereinsanlage ----------------------------------------------------------
+  #
+  # Das Bearbeiten-Formular hat seit 05/2026 kein Feld für den Spielbetrieb mehr
+  # und schickte beim Anlegen `game_operation_id: 0`. Die Aktion lief damit in
+  # GameOperation.find(0) und antwortete mit 404 „Nicht gefunden." – seitdem
+  # konnte niemand mehr über die Oberfläche einen Verein anlegen.
+
+  def create_club_params(game_operation_id:, **club_attrs)
+    {
+      id: 0,
+      game_operation_id: game_operation_id,
+      club: { name: 'Neuer Verein', short_name: 'NV', long_name: 'Neuer Verein e.V.',
+              state: 'de-ni' }.merge(club_attrs)
+    }
+  end
+
+  test 'admin_club_update legt einen Verein im eigenen Spielbetrieb an' do
+    sa = create(:state_association)
+    go = create(:game_operation, state_association_id: sa.id)
+    login(create(:user, :sbk_scoped, game_operation_id: go.id))
+
+    post '/api/v2/admin/clubs', params: create_club_params(game_operation_id: go.id,
+                                                           state_association_id: sa.id)
+
+    assert_response :created
+    club = Club.find(JSON.parse(response.body)['id'])
+    assert_equal 'Neuer Verein', club.name
+    assert_equal go.id, club.main_game_operation_id
+  end
+
+  # game_operation_id muss als Zahl im JSONB landen. Als String findet den Verein
+  # keine der jsonb-@>-Abfragen, und er fehlt anschließend in der
+  # Vereinsverwaltung – so entstanden in Produktion Vereine ohne Spielbetrieb.
+  test 'admin_club_update speichert game_operation_id als Zahl' do
+    sa = create(:state_association)
+    go = create(:game_operation, state_association_id: sa.id)
+    login(create(:user, :sbk_scoped, game_operation_id: go.id))
+
+    post '/api/v2/admin/clubs', params: create_club_params(game_operation_id: go.id.to_s)
+
+    assert_response :created
+    club = Club.find(JSON.parse(response.body)['id'])
+    assert_equal go.id, club.game_operations_hash.first['game_operation_id'],
+                 'game_operation_id muss als Integer gespeichert werden'
+    assert_includes GameOperation.find(go.id).home_clubs.pluck(:id), club.id,
+                    'Verein muss über home_clubs auffindbar sein'
+  end
+
+  test 'admin_club_update meldet einen fehlenden Spielbetrieb verstaendlich' do
+    go = create(:game_operation, state_association_id: create(:state_association).id)
+    login(create(:user, :sbk_scoped, game_operation_id: go.id))
+
+    post '/api/v2/admin/clubs', params: create_club_params(game_operation_id: 0)
+
+    assert_response :unprocessable_entity
+    assert_match 'Spielbetrieb', JSON.parse(response.body)['message']
+    assert_equal 0, Club.count
+  end
+
+  test 'admin_club_update meldet einen unbekannten Spielbetrieb statt 404' do
+    go = create(:game_operation, state_association_id: create(:state_association).id)
+    login(create(:user, :sbk_scoped, game_operation_id: go.id))
+
+    post '/api/v2/admin/clubs', params: create_club_params(game_operation_id: 999_999)
+
+    assert_response :unprocessable_entity
+    assert_equal 0, Club.count
+  end
+
+  test 'admin_club_update verweigert die Anlage im fremden Spielbetrieb' do
+    eigen_go = create(:game_operation, state_association_id: create(:state_association).id)
+    fremd_go = create(:game_operation, state_association_id: create(:state_association).id)
+    login(create(:user, :sbk_scoped, game_operation_id: eigen_go.id))
+
+    post '/api/v2/admin/clubs', params: create_club_params(game_operation_id: fremd_go.id)
+
+    assert_response :forbidden
+    assert_equal 0, Club.count
+  end
+
+
   private
 
   def login(user)
