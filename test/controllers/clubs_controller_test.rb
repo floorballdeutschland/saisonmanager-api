@@ -423,6 +423,46 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_equal go.id, club.main_game_operation_id
   end
 
+  # Das Formular schickt den ganzen Verein zurueck, also auch ein
+  # game_operation_id, das es dort gar nicht zu bearbeiten gibt. Bei einem Verein
+  # ohne Heimat-Eintrag ist das nil - und `params.key?` verstand dieses nil als
+  # Aenderungswunsch. Betroffen waren ausgerechnet die Vereine ohne Spielbetrieb.
+  test 'admin_club_update speichert einen Verein ohne Spielbetrieb, wenn keiner mitkommt' do
+    club = create(:club, name: 'Alt', game_operations_hash: [])
+    login(create(:user, :admin))
+
+    post '/api/v2/admin/clubs', params: { id: club.id, game_operation_id: nil,
+                                          club: { name: 'Neu' } }, as: :json
+
+    assert_response :success
+    assert_equal 'Neu', club.reload.name
+    assert_nil club.main_game_operation_id, 'ohne Angabe bleibt der Verein ohne Spielbetrieb'
+  end
+
+  test 'admin_club_update wertet einen leeren Spielbetrieb als nicht mitgeschickt' do
+    club = create(:club, name: 'Alt', game_operations_hash: [])
+    login(create(:user, :admin))
+
+    post '/api/v2/admin/clubs', params: { id: club.id, game_operation_id: '',
+                                          club: { name: 'Neu' } }
+
+    assert_response :success
+    assert_equal 'Neu', club.reload.name
+  end
+
+  # Die Lockerung darf den Schutz nicht aufheben: eine ausdrueckliche 0 ist keine
+  # fehlende Angabe, sondern eine Kennung, die es nicht gibt.
+  test 'admin_club_update weist eine 0 auch bei einem Verein ohne Spielbetrieb ab' do
+    club = create(:club, name: 'Alt', game_operations_hash: [])
+    login(create(:user, :admin))
+
+    post '/api/v2/admin/clubs', params: { id: club.id, game_operation_id: 0,
+                                          club: { name: 'Neu' } }, as: :json
+
+    assert_response :unprocessable_entity
+    assert_equal 'Alt', club.reload.name
+  end
+
   # Ohne Pruefung am Ziel konnte ein Verband einen Verein in einen fremden
   # Spielbetrieb verschieben, der ihn nie aufgenommen hat - und verlor dabei
   # selbst den Zugriff.
