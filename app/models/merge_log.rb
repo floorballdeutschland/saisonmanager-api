@@ -1,5 +1,5 @@
 class MergeLog < ApplicationRecord
-  OBJECT_TYPES = %w[player arena referee].freeze
+  OBJECT_TYPES = %w[player arena referee club].freeze
 
   validates :object_type, inclusion: { in: OBJECT_TYPES }
 
