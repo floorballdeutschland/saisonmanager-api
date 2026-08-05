@@ -253,7 +253,8 @@ class Club < ApplicationRecord
     scoped = scoped.active unless include_deactivated
     clubs = scoped.order(:name).to_a
 
-    result = group_by_state_association(clubs)
+    go_sa_ids = GameOperation.where(id: go_ids).pluck(:state_association_id).compact.uniq
+    result = group_by_state_association(clubs, go_sa_ids)
     covered_club_ids = clubs.map(&:id)
 
     unless global_access
@@ -293,29 +294,54 @@ class Club < ApplicationRecord
     where("(#{conditions})", *binds)
   end
 
-  # Baut je Landesverband eine Gruppe. Die Landesverbände werden in einer
-  # einzigen Query samt Logo-Attachment geladen (vgl. Issue #193), damit die
-  # Gruppenköpfe kein N+1 auslösen.
-  def self.group_by_state_association(clubs)
+  # Baut je Landesverband eine Gruppe.
+  #
+  # Landesverbände der eigenen Spielbetriebe erscheinen auch ohne Vereine. Sonst
+  # verschwände ein Verband, dem noch kein Verein zugeordnet ist, komplett aus
+  # der Vereinsverwaltung – und mit ihm der Knopf zum Anlegen des ersten
+  # Vereins, der in der Oberfläche je Gruppe steht.
+  #
+  # Alle Gruppenköpfe kommen aus einer einzigen Query samt Logo-Attachment
+  # (vgl. Issue #193): die Landesverbände der Vereine, die der Spielbetriebe und
+  # deren Unterverbände.
+  def self.group_by_state_association(clubs, go_state_association_ids)
     grouped = clubs.group_by { |c| c.state_association_id || FALLBACK_STATE_ASSOCIATION_ID }
 
     associations = StateAssociation.includes(logo_attachment: :blob)
-      .where(id: grouped.keys)
-      .index_by(&:id)
+      .where('state_associations.id IN (:ids) OR state_associations.parent_id IN (:parents)',
+             ids: grouped.keys + go_state_association_ids, parents: go_state_association_ids)
+      .to_a
 
-    # Vereine, deren LV-Verweis ins Leere zeigt (gelöschter LV, fehlender FVD),
-    # gehen nicht verloren, sondern kommen in eine namentlich klare Restgruppe.
-    orphans = grouped.reject { |sa_id, _| associations.key?(sa_id) }.values.flatten
-
-    groups = grouped.filter_map do |sa_id, sa_clubs|
-      sa = associations[sa_id]
-      next unless sa
+    groups = associations.filter_map do |sa|
+      sa_clubs = grouped[sa.id] || []
+      next if sa_clubs.empty? && !always_shown_state_association?(sa, associations, go_state_association_ids)
 
       state_association_group(sa, sa_clubs)
     end.sort_by { |g| g[:name] }
 
+    # Vereine, deren LV-Verweis ins Leere zeigt (gelöschter LV, fehlender FVD),
+    # gehen nicht verloren, sondern kommen in eine namentlich klare Restgruppe.
+    known_ids = associations.map(&:id)
+    orphans = grouped.reject { |sa_id, _| known_ids.include?(sa_id) }.values.flatten
     groups << orphan_group(orphans) if orphans.any?
+
     groups
+  end
+
+  # Ein leerer Landesverband wird gezeigt, wenn er zu einem Spielbetrieb des
+  # Nutzers gehört – als eigener Verband oder als dessen Unterverband.
+  #
+  # Ausgenommen sind Verbände, die selbst Unterverbände haben: sie verwalten
+  # keine Vereine, im Bearbeiten-Formular sind nur Blatt-Verbände auswählbar.
+  # Für „SBK Ost" erscheint deshalb keine leere Gruppe, sondern je eine für
+  # Sachsen, Sachsen-Anhalt und Thüringen. Sind dem Dachverband aus Altdaten
+  # doch noch Vereine zugeordnet, entsteht seine Gruppe weiter über diese
+  # Vereine.
+  def self.always_shown_state_association?(state_association, associations, go_state_association_ids)
+    return true if go_state_association_ids.include?(state_association.parent_id)
+    return false unless go_state_association_ids.include?(state_association.id)
+
+    associations.none? { |other| other.parent_id == state_association.id }
   end
 
   # Freigegebene Landesverbände (StateAssociationRelease) bleiben ein eigener,

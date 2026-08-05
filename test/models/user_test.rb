@@ -386,13 +386,22 @@ class UserTest < ActiveSupport::TestCase
     assert_nil u.club_ids
   end
 
-  test 'Club.admin_user_clubs: globaler Admin erhält Einträge für alle GameOperations' do
+  # Die Vereinsverwaltung gruppiert nach Landesverband, nicht mehr nach
+  # Spielbetrieb – die Zahl der Gruppen richtet sich deshalb nach den
+  # Landesverbänden. Leere Landesverbände bleiben dabei sichtbar, damit ein
+  # Verband ohne Vereine nicht samt Anlege-Knopf aus der Verwaltung fällt.
+  test 'Club.admin_user_clubs: globaler Admin erhält Einträge für alle Landesverbände' do
+    GameOperation.find_each { |go| go.update!(state_association: create(:state_association)) }
+
     perms = ALL_GO.map { |go| { 'user_group_id' => 1, 'game_operation_id' => go } }
     admin = build_user(permissions: perms)
+
     # global_access path: fetches all GameOperations
     result = Club.admin_user_clubs(admin)
-    expected_go_count = GameOperation.count
-    assert_equal expected_go_count, result.size
+    # reorder(nil): GameOperation hat einen default_scope mit ORDER BY, der in
+    # Postgres mit einer Aggregatfunktion ohne GROUP BY kollidieren würde.
+    expected_sa_count = GameOperation.reorder(nil).distinct.count(:state_association_id)
+    assert_equal expected_sa_count, result.size
   end
 
   test 'permission_hash: deterministisch – gleicher Nutzer ergibt immer denselben Hash' do
