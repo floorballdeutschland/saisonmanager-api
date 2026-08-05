@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.70.0] - 2026-08-05
+
 ### Neu
 
 - **API-Zugang für Drittanbieter wird beantragt statt vergeben**: Außenstehende können unter „API-Zugang" einen formlosen Antrag stellen: Organisation, Ansprechpartner, Kontakt, Projektbeschreibung, Verwendungszweck und optional die URL des Projekts. Vor dem Formular steht die Frage, ob das Vorhaben kommerziell ist; wer das bejaht, wird auf eine individuelle Absprache per E-Mail verwiesen und stellt keinen Antrag. Zugestimmt wird der Nutzungsvereinbarung, deren wichtigste Punkte über dem Häkchen zusammengefasst sind (keine kommerzielle Verwertung, keine Konkurrenzprodukte, zehn Minuten Verzögerung der Daten, Rate-Limits und Caching, Quellenangabe und Kennzeichnung als inoffiziell, Datenschutz). Der Antrag hält fest, welcher Fassung wann und von welcher IP zugestimmt wurde; wurde der Text zwischenzeitlich geändert, wird der Antrag mit dem Hinweis abgewiesen, die neue Fassung zu prüfen. Ein Antrag löst eine Mail an das sichtende Postfach aus (Standard it@floorball.de).
@@ -18,6 +20,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Verbessert
 
 - **Zeitstempel „zuletzt genutzt" schreibt seltener**: Jeder Zugriff mit API-Key aktualisierte die Spalte neu. Für die Anzeige genügt Minutengenauigkeit, dadurch bleibt die Schreiblast trotz der neuen Zählung unverändert.
+
 ## [1.69.0] - 2026-08-05
 
 ### Neu
