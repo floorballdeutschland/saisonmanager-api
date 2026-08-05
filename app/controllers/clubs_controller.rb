@@ -288,12 +288,9 @@ class ClubsController < ApplicationController
       # die Aktion lief dann in einen NoMethodError. Ein fehlendes :id gilt
       # ebenfalls als Anlage (nil.to_i == 0).
       create_modus = params[:id].to_i.zero?
-      # check: game operation permission if create_modus
-      #   has: create club for that go?
-      #   else : unpermitted!
-      # check: club permission unless create_modus
-      #   has: update club for that club?
-      #   else : unpermitted!
+
+      # Die Anlage prüft die Berechtigung am Spielbetrieb (siehe create_club),
+      # die Änderung am Verein selbst.
       if create_modus
         create_club
       elsif Club.find(params[:id])&.user_permissions(current_user)&.include?(:update_club) # update
