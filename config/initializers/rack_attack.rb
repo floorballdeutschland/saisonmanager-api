@@ -41,6 +41,16 @@ module Rack
       req.ip if req.path.start_with?('/api/v2/referee_feedback_invitations')
     end
 
+    # Antrag auf einen API-Zugang samt Abholen des genehmigten Keys. Der Antrag
+    # löst Mail an ein festes Postfach aus (keine Flut an fremde Adressen, wohl
+    # aber ins eigene), und der Abhol-Link ist ein Einmal-Token, das sich sonst
+    # durchprobieren ließe. Der Key-Throttle weiter unten hilft hier nicht: Er
+    # greift nur bei Keys mit gesetztem Rate-Limit, und der Frontend-Key hat
+    # keines.
+    throttle('api-key-application/ip', limit: 10, period: 1.hour) do |req|
+      req.ip if req.path.start_with?('/api/v2/api_key_applications')
+    end
+
     # Suchmaschinen und Skript-Clients stellen den größten Teil des Verkehrs auf
     # den öffentlichen Endpunkten. Messung Produktion, 7 Tage (Juli 2026):
     # Applebot 226.662 Aufrufe und zusammen 10,3 Stunden Serverzeit, Bytespider

@@ -1,0 +1,19 @@
+<h2>Zu deinem Antrag auf einen API-Zugang</h2>
+
+<p>
+  Hallo <%= @application.contact_name %>,
+</p>
+
+<p>
+  der Antrag für <strong><%= @application.organisation %></strong> wurde abgelehnt.
+</p>
+
+<p>
+  <strong>Begründung:</strong><br>
+  <%= @application.decision_note %>
+</p>
+
+<p>
+  Wenn sich das Vorhaben ändert oder Rückfragen offen sind, kannst du dich jederzeit melden oder
+  einen neuen Antrag stellen.
+</p>

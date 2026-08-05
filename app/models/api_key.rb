@@ -1,6 +1,18 @@
 class ApiKey < ApplicationRecord
   has_paper_trail
 
+  # Zugriffe werden pro Tag und Endpunkt aggregiert; mit dem Key verschwindet
+  # auch seine Statistik. Der zugehörige Antrag bleibt als Vorgang erhalten und
+  # verliert nur die Verknüpfung, sonst blockiert der Fremdschlüssel das Löschen.
+  has_many :api_key_usages, dependent: :delete_all
+  has_one :api_key_application, dependent: :nullify
+
+  # Genauigkeit, mit der last_used_at nachgeführt wird. Ohne diese Grenze
+  # schrieb jeder einzelne Request die Spalte neu; für die Anzeige „zuletzt
+  # genutzt" genügt Minutengenauigkeit, und die Schreiblast bleibt beim Zählen
+  # der Zugriffe (ApiKeyUsage) statt beim Zeitstempel.
+  LAST_USED_PRECISION = 1.minute
+
   validates :name, presence: true
   validates :key_digest, presence: true, uniqueness: true
 
@@ -23,8 +35,14 @@ class ApiKey < ApplicationRecord
 
     key_digest = Digest::SHA256.hexdigest(raw_key)
     api_key = find_by(key_digest: key_digest, active: true)
-    api_key&.update_column(:last_used_at, Time.current)
+    api_key&.touch_last_used
     api_key
+  end
+
+  def touch_last_used
+    return if last_used_at.present? && last_used_at > LAST_USED_PRECISION.ago
+
+    update_column(:last_used_at, Time.current)
   end
 
   # Returns cached {rate_limit:, realtime:} for a raw key, or nil if unknown/inactive.

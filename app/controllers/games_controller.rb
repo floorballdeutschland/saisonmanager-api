@@ -40,7 +40,7 @@ class GamesController < ApplicationController
   def show
     game = Game.find(params[:id])
 
-    delayed = api_key_request? && !@api_key.realtime
+    delayed = api_key_request? && !@authenticated_api_key.realtime
     if delayed
       cutoff = Time.current.to_i - 10.minutes.to_i
       game.events = (game.events || []).select { |e| e['added_at'].nil? || e['added_at'] < cutoff }

@@ -837,7 +837,7 @@ class LeaguesController < ApplicationController
   # Entfernt Ergebnis-Daten für laufende Spiele bei nicht-Echtzeit-API-Keys.
   # Der Cache bleibt global – die Filterung erfolgt nach dem Cache-Fetch.
   def delay_live_scores(schedule)
-    return schedule unless api_key_request? && !@api_key&.realtime
+    return schedule unless api_key_request? && !@authenticated_api_key&.realtime
 
     schedule.map do |game|
       next game unless game[:state].to_s == 'running'

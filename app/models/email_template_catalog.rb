@@ -449,6 +449,47 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'league_name', description: 'Name der Liga (sofern vorhanden)' },
         { key: 'season', description: 'Name der Saison' }
       ]
+    },
+    'ApiKeyApplicationMailer#submitted_notification' => {
+      mailer_class: 'ApiKeyApplicationMailer',
+      action_name: 'submitted_notification',
+      description: 'Eingang eines Antrags auf einen API-Zugang. Geht an das Postfach, das die Anträge ' \
+                   'sichtet (Standard it@floorball.de, über die Umgebungsvariable ' \
+                   'API_ACCESS_NOTIFY_EMAIL überschreibbar). Reply-To ist der Antragsteller.',
+      default_subject: 'Neuer Antrag auf API-Zugang – {{organisation}}',
+      default_from: nil,
+      # Reply-To wird zur Laufzeit auf die Adresse des Antragstellers gesetzt.
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'organisation', description: 'Name der antragstellenden Organisation' },
+        { key: 'contact_name', description: 'Name der vertretenden Person' }
+      ]
+    },
+    'ApiKeyApplicationMailer#approved' => {
+      mailer_class: 'ApiKeyApplicationMailer',
+      action_name: 'approved',
+      description: 'Genehmigung eines API-Zugangs. Enthält den Einmal-Link, über den der API-Key genau ' \
+                   'einmal angezeigt wird (14 Tage gültig); der Key selbst steht bewusst nicht in der ' \
+                   'Mail. Wird auch beim erneuten Ausstellen eines Abhol-Links verschickt.',
+      default_subject: 'API-Zugang freigegeben – {{organisation}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'organisation', description: 'Name der antragstellenden Organisation' },
+        { key: 'link', description: 'Einmal-Link zum Abholen des API-Keys' }
+      ]
+    },
+    'ApiKeyApplicationMailer#rejected' => {
+      mailer_class: 'ApiKeyApplicationMailer',
+      action_name: 'rejected',
+      description: 'Ablehnung eines Antrags auf einen API-Zugang, mit der hinterlegten Begründung.',
+      default_subject: 'Antrag auf API-Zugang abgelehnt – {{organisation}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'organisation', description: 'Name der antragstellenden Organisation' },
+        { key: 'decision_note', description: 'Begründung der Ablehnung' }
+      ]
     }
   }.freeze
 
