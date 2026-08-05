@@ -19,10 +19,16 @@
 # Reihenfolge:
 #
 #   1. **Aus den eigenen Mannschaften.** Der Spielbetrieb, in dessen Ligen der
-#      Verein die meisten Mannschaften hatte. Nationale Spielbetriebe (FD)
-#      zählen dabei nicht: ein Zweitligist bestimmt keinen Heimatverband, sonst
-#      landeten alle Bundesligisten beim Bundesverband. Bei Gleichstand
-#      entscheidet der Task nicht, sondern listet den Verein auf.
+#      Verein die meisten Mannschaften hatte — und zwar die **Mehrheit**, nicht
+#      bloß die meisten. Nationale Spielbetriebe (FD) zählen dabei nicht: ein
+#      Zweitligist bestimmt keinen Heimatverband, sonst landeten alle
+#      Bundesligisten beim Bundesverband.
+#
+#      Die Mehrheit statt der schlichten Mehrzahl, weil eine knappe Mehrzahl
+#      nichts belegt: Die Frankfurt Falcons stehen mit 3 Mannschaften in
+#      Baden-Württemberg und je 2 in Hessen und Nordrhein-Westfalen — nach
+#      Mehrzahl käme für einen Frankfurter Verein Baden-Württemberg heraus.
+#      Solche Vereine listet der Task auf, statt zu entscheiden.
 #   2. **Aus dem Landesverband.** Der Spielbetrieb, der zu diesem Landesverband
 #      gehört; bei einem untergeordneten Verband (Sachsen, Sachsen-Anhalt und
 #      Thüringen unter „SBK Ost") der des übergeordneten. Landesverbände ohne
@@ -66,10 +72,17 @@ class ClubHomeGameOperationResolver
   # würde der Task den falschen Landesverband bestätigen, indem er dessen
   # Spielbetrieb setzt.
   #
-  # Stand 08/2026 ein Fall: #284 „UNIcorns Landau" steht am Landesverband
-  # Baden-Württemberg. Landau liegt in der Pfalz, zuständig ist Rheinland-Pfalz /
-  # Saarland (fachlich bestätigt 08/2026).
+  # Stand 08/2026 zwei Fälle, beide aus dem Kursergebnis-Import und beide am
+  # Landesverband des Nachbarn statt am eigenen (fachlich bestätigt 08/2026):
+  #
+  #   #284 „UNIcorns Landau"        – steht an Baden-Württemberg, Landau liegt
+  #                                   in der Pfalz.
+  #   #275 „Fit & Gesund Hechtsheim" – steht an Hessen, Hechtsheim ist ein
+  #                                   Mainzer Stadtteil.
+  #
+  # Zuständig ist in beiden Fällen Rheinland-Pfalz / Saarland.
   CLUB_OVERRIDES = {
+    275 => { sa_short: 'RLPSAAR', reason: 'Hechtsheim ist ein Mainzer Stadtteil, nicht Hessen' },
     284 => { sa_short: 'RLPSAAR', reason: 'Landau in der Pfalz, nicht Baden-Württemberg' }
   }.freeze
 
@@ -116,7 +129,8 @@ class ClubHomeGameOperationResolver
   #   :from_teams     – aus den Ligen der eigenen Mannschaften abgeleitet.
   #   :from_sa        – aus dem hinterlegten Landesverband abgeleitet.
   #   :override       – ausdrücklich zugeordnet (CLUB_OVERRIDES).
-  #   :ambiguous      – zwei Spielbetriebe mit gleich vielen Mannschaften.
+  #   :no_majority    – kein Spielbetrieb trägt die Mehrheit der Mannschaften
+  #                     (Gleichstand oder knappe Mehrzahl über drei Verbände).
   #   :no_source      – weder Mannschaften noch Landesverband.
   #   :no_go_for_sa   – Landesverband bekannt, aber kein Spielbetrieb dazu.
   #   :unknown_sa_short – ein Kürzel aus CLUB_OVERRIDES gibt es nicht.
@@ -133,10 +147,19 @@ class ClubHomeGameOperationResolver
 
   # Mannschaften des Vereins je nicht-nationalem Spielbetrieb ihrer Liga.
   # `by_club_id` deckt auch Spielgemeinschaften ab (teams.syndicate_clubs).
+  #
+  # Gezählt werden Mannschaften, nicht Ligen: Zwei Mannschaften in derselben Liga
+  # sind zweimal Aktivität in diesem Verband. Über `leagues.group(...).count`
+  # wären sie eine — und `reorder(nil)` bräuchte es dann auch, weil der
+  # default_scope von League ein `order('order_key::int')` mitbringt, das
+  # `group().count` zerlegt.
   def game_operation_counts(club)
-    leagues = League.where(id: Team.by_club_id(club.id).select(:league_id))
-    leagues.group(:game_operation_id).reorder(nil).count
-           .reject { |go_id, _n| go_id.nil? || @go_by_id[go_id].nil? || @go_by_id[go_id].national }
+    league_go_ids = League.where(id: Team.by_club_id(club.id).select(:league_id))
+                          .reorder(nil).pluck(:id, :game_operation_id).to_h
+    Team.by_club_id(club.id).pluck(:league_id)
+        .filter_map { |league_id| league_go_ids[league_id] }
+        .tally
+        .reject { |go_id, _n| @go_by_id[go_id].nil? || @go_by_id[go_id].national }
   end
 
   private
@@ -155,11 +178,12 @@ class ClubHomeGameOperationResolver
 
   def resolve_from_teams(club, counts)
     ranked = counts.sort_by { |_go_id, n| -n }
+    total = counts.values.sum
     detail = ranked.map { |go_id, n| "#{@go_by_id[go_id].name}=#{n}" }.join(', ')
 
-    if ranked.size > 1 && ranked[0][1] == ranked[1][1]
-      return Result.new(club: club, status: :ambiguous, detail: detail)
-    end
+    # Strenge Mehrheit: Gleichstand fällt damit ebenfalls durch (bei zwei
+    # gleichen Werten erreicht keiner mehr als die Hälfte).
+    return Result.new(club: club, status: :no_majority, detail: detail) if ranked.first.last * 2 <= total
 
     go = @go_by_id[ranked.first.first]
     Result.new(club: club, game_operation: go, state_association: target_state_association(club, go),

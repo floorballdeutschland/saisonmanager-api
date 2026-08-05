@@ -72,7 +72,40 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
     out, = run_task('DRY_RUN' => 'false')
 
     assert_nil home_go_id(club)
-    assert_match(/ambiguous/, out)
+    assert_match(/no_majority/, out)
+  end
+
+  # Muster Frankfurt Falcons: 3 Mannschaften in Baden-Württemberg, je 2 in Hessen
+  # und NRW. Nach schlichter Mehrzahl käme Baden-Württemberg heraus, obwohl der
+  # Verein dort nicht einmal die Hälfte seiner Mannschaften hatte.
+  test 'entscheidet bei knapper Mehrzahl ohne Mehrheit nicht' do
+    _sa_a, go_a = association_with_operation('FVBW')
+    _sa_b, go_b = association_with_operation('FVH')
+    _sa_c, go_c = association_with_operation('NWFV')
+    club = create(:club, game_operations_hash: [])
+    3.times { team_in(club, go_a) }
+    2.times { team_in(club, go_b) }
+    2.times { team_in(club, go_c) }
+
+    out, = run_task('DRY_RUN' => 'false')
+
+    assert_nil home_go_id(club)
+    assert_match(/no_majority/, out)
+  end
+
+  test 'zaehlt Mannschaften, nicht Ligen' do
+    _sa_a, go_a = association_with_operation('NWFV')
+    _sa_b, go_b = association_with_operation('FVH')
+    club = create(:club, game_operations_hash: [])
+    # Zwei Mannschaften in EINER Liga bei A, eine Mannschaft bei B: nach Ligen
+    # wäre das 1:1 und damit unentschieden, nach Mannschaften 2:1 für A.
+    league_a = create(:league, game_operation: go_a)
+    2.times { create(:team, club: club, league: league_a) }
+    team_in(club, go_b)
+
+    run_task('DRY_RUN' => 'false')
+
+    assert_equal go_a.id, home_go_id(club)
   end
 
   test 'beruecksichtigt Mannschaften aus Spielgemeinschaften' do
@@ -163,6 +196,43 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
     run_task('DRY_RUN' => 'false')
 
     assert_equal go_fd.id, home_go_id(club)
+  end
+
+  # --- Ausdrückliche Zuordnung (CLUB_OVERRIDES) -----------------------------
+
+  test 'ordnet einen Verein aus CLUB_OVERRIDES dem benannten Verband zu' do
+    club_id, override = ClubHomeGameOperationResolver::CLUB_OVERRIDES.first
+    sa, go = association_with_operation(override[:sa_short])
+    wrong = create(:state_association, short_name: 'FVBW-falsch')
+    club = create(:club, id: club_id, game_operations_hash: [], state_association_id: wrong.id)
+
+    run_task('DRY_RUN' => 'false')
+
+    assert_equal go.id, home_go_id(club)
+    assert_equal sa.id, club.reload.state_association_id,
+                 'die Zuordnung korrigiert den falschen Landesverband, sie bestätigt ihn nicht'
+  end
+
+  test 'CLUB_OVERRIDES schlaegt die Ableitung aus den Mannschaften' do
+    club_id, override = ClubHomeGameOperationResolver::CLUB_OVERRIDES.first
+    _sa, go = association_with_operation(override[:sa_short])
+    _other_sa, other_go = association_with_operation('NWFV')
+    club = create(:club, id: club_id, game_operations_hash: [])
+    5.times { team_in(club, other_go) }
+
+    run_task('DRY_RUN' => 'false')
+
+    assert_equal go.id, home_go_id(club)
+  end
+
+  test 'listet einen Verein auf, dessen Override-Kuerzel es nicht gibt' do
+    club_id, = ClubHomeGameOperationResolver::CLUB_OVERRIDES.first
+    club = create(:club, id: club_id, game_operations_hash: [])
+
+    out, = run_task('DRY_RUN' => 'false')
+
+    assert_nil home_go_id(club)
+    assert_match(/unknown_sa_short/, out)
   end
 
   # --- Nichts zu entscheiden ------------------------------------------------
