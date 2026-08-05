@@ -215,14 +215,45 @@ class Club < ApplicationRecord
     scope.where(id: ids.uniq).order(:name)
   end
 
+  # Vereine ohne eigenen Landesverband landen in der Gruppe des Bundesverbands –
+  # er ist für sie zuständig. Fehlt der Datensatz, stehen sie in der Restgruppe
+  # „Ohne Landesverband" (siehe orphan_group); verloren gehen sie also nie.
+  #
+  # Auflösung bewusst über das Kürzel und nicht über eine feste ID: in
+  # Produktion hat der FVD zwar id 1, db/seeds.rb legt dort aber „SBK Ost" an.
+  # Eine hartkodierte 1 hätte die Vereine ohne Landesverband in jeder
+  # aufgesetzten Datenbank unter genau den Dachverband gruppiert, den diese
+  # Gruppierung loswerden soll – und zwar völlig lautlos.
+  FALLBACK_STATE_ASSOCIATION_SHORT_NAME = 'FVD'.freeze
+
+  # Vereine ohne Heim-Spielbetrieb: kein Verband ist für sie zuständig.
+  # `@>` mit Teilobjekt matcht jeden Eintrag mit home_game_operation: true,
+  # unabhängig vom Spielbetrieb; die Negation trifft damit leere Hashes und
+  # solche mit ausschließlich Gast-Einträgen.
+  WITHOUT_HOME_GAME_OPERATION_SQL =
+    %(NOT (clubs.game_operations_hash @> '[{"home_game_operation": true}]')).freeze
+
+  # Gruppiert die Vereine nach ihrem *eingestellten* Landesverband
+  # (clubs.state_association_id) statt nach Spielbetrieb. Vorher richtete sich
+  # die Überschrift nach dem Spielbetrieb und widersprach damit dem, was im
+  # Verein selbst eingestellt ist – z. B. erschienen Vereine mit Landesverband
+  # Schleswig-Holstein unter „Floorball Niedersachsen". Untergeordnete
+  # Landesverbände (Sachsen, Sachsen-Anhalt, Thüringen) werden dadurch einzeln
+  # sichtbar statt gesammelt unter „SBK Ost".
+  #
+  # Der Zugriffsumfang bleibt unverändert am Spielbetrieb: welche Vereine jemand
+  # sieht, richtet sich weiter nach seinen GameOperation-Rechten – nur die
+  # Gruppierung folgt dem Landesverband. Ein Verein im eigenen Spielbetrieb, der
+  # einem anderen Landesverband angehört (z. B. ETV Hamburg im Spielbetrieb
+  # Niedersachsen), bleibt deshalb sichtbar, nur unter der Überschrift seines
+  # eigenen Landesverbands.
   def self.admin_user_clubs(user, include_deactivated: false)
-    result = []
-    go_ids = []
     ph = user.permission_hash
     global_access = ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
 
     club_scope = include_deactivated ? Club.all : Club.active
 
+    go_ids = []
     if global_access
       go_ids = GameOperation.all.pluck(:id)
     elsif ph[:admin].present? || ph[:sbk].present?
@@ -231,69 +262,232 @@ class Club < ApplicationRecord
       go_ids.flatten!
     end
 
-    covered_club_ids = []
+    # Vereine ohne Heim-Spielbetrieb nur für globalen Zugriff: sie sind sonst
+    # unsichtbar und nicht bearbeitbar (in Produktion 13 neu angelegte Vereine).
+    # Ein einzelner Landesverband soll dafür aber nicht die unzugeordneten
+    # Vereine aller anderen in seiner Liste haben.
+    scoped = home_clubs_of(go_ids, include_unassigned: global_access)
+      .includes(logo_attachment: :blob)
+    scoped = scoped.active unless include_deactivated
+    clubs = scoped.order(:name).to_a
 
-    # home_clubs statt clubs: Ein Verein gehört genau einem Verband, und nur der
-    # verwaltet seine Stammdaten. Ein bloßer Gast-Eintrag im
-    # game_operations_hash reicht dafür nicht – die Einträge stammen aus dem
-    # Altdaten-Import 2010–2014, werden von der Anwendung nie geschrieben und
-    # nicht nachgeführt. Sie ließen die Verbände gegenseitig in ihre
-    # Vereinslisten sehen, ohne dass es jemand erteilt hätte: Baden-Württemberg
-    # sah 8 bayerische Vereine, Bayern 5 baden-württembergische, und keiner
-    # dieser 13 spielte in der aktuellen Saison im jeweils fremden Spielbetrieb.
-    # Fremde Vereine erscheinen nur noch über eine Vereins-Freigabe, also im
-    # „(freigegeben)"-Block unten.
-    GameOperation.includes(state_association: { logo_attachment: :blob }).find(go_ids).each do |go|
-      item = go.meta_hash
-      clubs = club_scope.where(id: go.home_clubs.pluck(:id)).order(:name)
-      covered_club_ids += clubs.map(&:id)
-      item[:clubs] = clubs.map(&:full_hash)
-      result << item
-    end
+    go_sa_ids = GameOperation.where(id: go_ids).pluck(:state_association_id).compact.uniq
+    result = group_by_state_association(clubs, go_sa_ids)
+    covered_club_ids = clubs.map(&:id)
 
     unless global_access
-      released_sa_ids = StateAssociationRelease
-        .current_season
-        .where(recipient_game_operation_id: go_ids)
-        .pluck(:grantor_state_association_id)
+      released = released_state_association_groups(go_ids, club_scope, covered_club_ids)
+      result.concat(released)
+      covered_club_ids += released.flat_map { |g| g[:clubs].pluck(:id) }
 
-      StateAssociation.where(id: released_sa_ids).order(:name).each do |sa|
-        clubs = club_scope.where(state_association_id: sa.id).order(:name)
-        covered_club_ids += clubs.map(&:id)
-        result << {
-          id: nil,
-          name: "#{sa.name} (freigegeben)",
-          short_name: sa.short_name,
-          path: nil,
-          logo_url: nil,
-          logo_quad_url: nil,
-          state_association_id: sa.id,
-          released: true,
-          clubs: clubs.map(&:full_hash)
-        }
-      end
-
-      # Eigene Vereine (VM-Rolle) ergänzen, soweit sie nicht schon über einen
-      # Spielbetrieb abgedeckt sind. Ohne das fehlten einem Nutzer mit Admin-/
-      # SBK- *und* VM-Rolle genau die Vereine außerhalb seines Spielbetriebs,
-      # weil diese Liste bislang rein verbandsbasiert aufgebaut wurde.
-      own_clubs = club_scope.where(id: ph[:vm].to_a - covered_club_ids).order(:name)
-      if own_clubs.any?
-        result << {
-          id: nil,
-          name: 'Eigene Vereine',
-          short_name: nil,
-          path: nil,
-          logo_url: nil,
-          logo_quad_url: nil,
-          state_association_id: nil,
-          released: false,
-          clubs: own_clubs.map(&:full_hash)
-        }
-      end
+      own = own_clubs_group(ph, club_scope, covered_club_ids)
+      result << own if own
     end
 
     result
+  end
+
+  # Heim-Vereine aller übergebenen Spielbetriebe – in einer Query statt einer pro
+  # Spielbetrieb. Auf clubs liegt derzeit kein Index, die @>-Bedingungen wären
+  # aber mit einem GIN-Index auf game_operations_hash index-fähig. Bei knapp 300
+  # Vereinen ist der Sequential Scan unkritisch.
+  #
+  # Nur Heim-Einträge: Ein Verein gehört genau einem Verband, und nur der
+  # verwaltet seine Stammdaten. Ein bloßer Gast-Eintrag im game_operations_hash
+  # reicht dafür nicht – die Einträge stammen aus dem Altdaten-Import 2010–2014,
+  # werden von der Anwendung nie geschrieben und nicht nachgeführt. Sie ließen
+  # die Verbände gegenseitig in ihre Vereinslisten sehen, ohne dass es jemand
+  # erteilt hätte. Fremde Vereine erscheinen nur über eine Vereins-Freigabe, also
+  # im „(freigegeben)"-Block.
+  def self.home_clubs_of(go_ids, include_unassigned: false)
+    predicates = Array.new(go_ids.size, 'clubs.game_operations_hash @> ?')
+    binds = go_ids.map do |id|
+      [{ game_operation_id: id.to_i, home_game_operation: true }].to_json
+    end
+
+    # Ohne Bind-Platzhalter und deshalb hinter den Spielbetriebs-Bedingungen:
+    # die Binds werden positionsabhängig eingesetzt.
+    predicates << WITHOUT_HOME_GAME_OPERATION_SQL if include_unassigned
+    return none if predicates.empty?
+
+    # Klammern explizit, obwohl Rails String-Prädikate ohnehin in
+    # Arel::Nodes::Grouping wickelt: so ist die Bindung beim Lesen von to_sql
+    # eindeutig, und eine Weiterverwendung des Fragments außerhalb von `where`
+    # (to_sql, find_by_sql) verknüpft das OR nicht versehentlich mit einem AND.
+    where("(#{predicates.join(' OR ')})", *binds)
+  end
+
+  # Baut je Landesverband eine Gruppe.
+  #
+  # Landesverbände der eigenen Spielbetriebe erscheinen auch ohne Vereine. Sonst
+  # verschwände ein Verband, dem noch kein Verein zugeordnet ist, komplett aus
+  # der Vereinsverwaltung – und mit ihm der Knopf zum Anlegen des ersten
+  # Vereins, der in der Oberfläche je Gruppe steht.
+  #
+  # Alle Gruppenköpfe kommen aus einer einzigen Query samt Logo-Attachment
+  # (vgl. Issue #193): die Landesverbände der Vereine, die der Spielbetriebe,
+  # deren Unterverbände und der Bundesverband. Letzterer steckt bewusst in
+  # derselben Query – ein eigenes find_by hätte den N+1-Test aus #193 gerissen.
+  def self.group_by_state_association(clubs, go_state_association_ids)
+    grouped = clubs.group_by(&:state_association_id)
+
+    associations = StateAssociation.includes(logo_attachment: :blob)
+      .where('state_associations.id IN (:ids) OR state_associations.parent_id IN (:parents) ' \
+             'OR state_associations.short_name = :national',
+             ids: grouped.keys.compact + go_state_association_ids,
+             parents: go_state_association_ids,
+             national: FALLBACK_STATE_ASSOCIATION_SHORT_NAME)
+      .to_a
+
+    # Vereine ohne Landesverband gehören zum Bundesverband. Fehlt der, bleibt
+    # ihr nil-Schlüssel stehen und sie landen unten in der Restgruppe.
+    fallback = associations.find { |sa| sa.short_name == FALLBACK_STATE_ASSOCIATION_SHORT_NAME }
+    if fallback && grouped.key?(nil)
+      grouped[fallback.id] = (grouped[fallback.id] || []) + grouped.delete(nil)
+    end
+
+    groups = build_state_association_groups(grouped, associations, go_state_association_ids)
+
+    # Vereine, deren Verweis ins Leere zeigt (gelöschter Landesverband, fehlender
+    # Bundesverband), gehen nicht verloren, sondern kommen in eine namentlich
+    # klare Restgruppe.
+    known_ids = associations.map(&:id)
+    orphans = grouped.reject { |sa_id, _| known_ids.include?(sa_id) }.values.flatten
+    if orphans.any?
+      log_unresolvable_state_associations(orphans, fallback)
+      groups << orphan_group(orphans)
+    end
+
+    groups
+  end
+
+  def self.build_state_association_groups(grouped, associations, go_state_association_ids)
+    groups = associations.filter_map do |sa|
+      sa_clubs = grouped[sa.id] || []
+      next if sa_clubs.empty? && !show_empty_state_association?(sa, associations, go_state_association_ids)
+
+      state_association_group(sa, sa_clubs)
+    end
+
+    groups.sort_by { |g| g[:name] }
+  end
+
+  # Ein leerer Landesverband wird gezeigt, wenn er zu einem Spielbetrieb des
+  # Nutzers gehört – als eigener Verband oder als dessen Unterverband.
+  #
+  # Verbände mit Unterverbänden bleiben außen vor: sie verwalten keine Vereine,
+  # das Bearbeiten-Formular bietet nur Blatt-Verbände an (die API erzwingt das
+  # nicht). Für „SBK Ost" erscheint deshalb keine leere Gruppe, sondern je eine
+  # für Sachsen, Sachsen-Anhalt und Thüringen. Sind dem Dachverband aus Altdaten
+  # doch noch Vereine zugeordnet, entsteht seine Gruppe weiter über diese
+  # Vereine – die Prüfung greift nur für leere Gruppen.
+  #
+  # Die Prüfung auf Unterverbände steht bewusst vor beiden Treffern, damit sie
+  # auch für einen Verband mittlerer Ebene gilt. StateAssociation erlaubt
+  # beliebige Tiefe, auch wenn heute nur zwei Ebenen vorkommen.
+  def self.show_empty_state_association?(state_association, associations, go_state_association_ids)
+    return false if associations.any? { |other| other.parent_id == state_association.id }
+
+    go_state_association_ids.include?(state_association.id) ||
+      go_state_association_ids.include?(state_association.parent_id)
+  end
+
+  # Ein ins Leere zeigender Landesverband ist ein Datenfehler: auf
+  # clubs.state_association_id liegt kein Fremdschlüssel, die Zuordnung kann
+  # also auf einen gelöschten Verband verweisen. Ohne Log bliebe das
+  # unbemerkt, weil die Restgruppe in der Oberfläche unauffällig aussieht.
+  def self.log_unresolvable_state_associations(orphans, fallback)
+    if fallback.nil?
+      Rails.logger.error(
+        'Club.admin_user_clubs: kein Landesverband mit short_name ' \
+        "#{FALLBACK_STATE_ASSOCIATION_SHORT_NAME} gefunden – " \
+        "#{orphans.count { |c| c.state_association_id.nil? }} Verein(e) ohne Landesverband " \
+        'stehen unter „Ohne Landesverband" statt beim Bundesverband.'
+      )
+    end
+
+    dangling = orphans.reject { |c| c.state_association_id.nil? }
+    return if dangling.empty?
+
+    liste = dangling.map { |c| "#{c.id}->#{c.state_association_id}" }.join(', ')
+    Rails.logger.error(
+      "Club.admin_user_clubs: Vereine verweisen auf nicht vorhandene Landesverbände: #{liste}"
+    )
+  end
+
+  # Freigegebene Landesverbände (StateAssociationRelease) bleiben ein eigener,
+  # lesend markierter Block – damit erkennbar bleibt, wem der Verein gehört.
+  # Bereits oben gezeigte Vereine werden ausgelassen, damit derselbe Verein nicht
+  # zweimal auf der Seite steht.
+  def self.released_state_association_groups(go_ids, club_scope, shown_club_ids)
+    released_sa_ids = StateAssociationRelease
+      .current_season
+      .where(recipient_game_operation_id: go_ids)
+      .pluck(:grantor_state_association_id)
+
+    StateAssociation.includes(logo_attachment: :blob).where(id: released_sa_ids).order(:name)
+      .filter_map do |sa|
+        released_clubs = club_scope.includes(logo_attachment: :blob)
+          .where(state_association_id: sa.id)
+          .where.not(id: shown_club_ids)
+          .order(:name)
+          .to_a
+        next if released_clubs.empty?
+
+        state_association_group(sa, released_clubs, released: true)
+      end
+  end
+
+  # Eigene Vereine (VM-Rolle) ergänzen, soweit sie nicht schon über einen
+  # Spielbetrieb oder eine Freigabe abgedeckt sind. Ohne das fehlten einem
+  # Nutzer mit Admin-/SBK- *und* VM-Rolle genau die Vereine außerhalb seines
+  # Spielbetriebs.
+  def self.own_clubs_group(permission_hash, club_scope, covered_club_ids)
+    own_clubs = club_scope.includes(logo_attachment: :blob)
+      .where(id: permission_hash[:vm].to_a - covered_club_ids)
+      .order(:name)
+      .to_a
+    return nil if own_clubs.empty?
+
+    club_group(name: 'Eigene Vereine', clubs: own_clubs)
+  end
+
+  def self.state_association_group(state_association, clubs, released: false)
+    # strip: einige Verbandsnamen tragen in Produktion ein führendes Leerzeichen,
+    # das sonst in der Überschrift landet und die Sortierung verdreht.
+    name = state_association.name.strip
+
+    club_group(
+      name: released ? "#{name} (freigegeben)" : name,
+      clubs:,
+      short_name: state_association.short_name,
+      logo_url: state_association.logo_url,
+      state_association_id: state_association.id,
+      released:
+    )
+  end
+
+  def self.orphan_group(clubs)
+    club_group(name: 'Ohne Landesverband', clubs:)
+  end
+
+  # Gemeinsame Form aller Gruppen der Vereinsverwaltung.
+  #
+  # Anders als früher steckt hier kein GameOperation#meta_hash mehr: `id`, `path`,
+  # `banner_url` und `logo_quad_url` sind entfallen. Sie beschrieben einen
+  # Spielbetrieb, den eine Landesverbands-Gruppe nicht hat; `logo_quad_url` ist
+  # mit den Spalten aus game_operations schon entfernt worden (siehe
+  # game_operation_test.rb). Das Frontend liest keines der Felder.
+  def self.club_group(name:, clubs:, short_name: nil, logo_url: nil,
+                      state_association_id: nil, released: false)
+    {
+      name:,
+      short_name:,
+      logo_url:,
+      state_association_id:,
+      released:,
+      clubs: clubs.map(&:full_hash)
+    }
   end
 
   def add_logo(force = false)

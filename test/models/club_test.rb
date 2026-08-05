@@ -203,8 +203,355 @@ class ClubTest < ActiveSupport::TestCase
     assert_includes ids, master.id
     refute_includes ids, dublette.id
   end
+  # --- Gruppierung nach Landesverband (statt nach Spielbetrieb) ---------------
+  #
+  # Die Überschriften der Vereinsverwaltung sind Landesverbände. Der
+  # Zugriffsumfang bleibt am Spielbetrieb – die Tests
+  # 'admin_user_clubs zeigt Gast-Vereine nicht in der eigenen Verbandsliste' und
+  # 'admin_user_clubs zeigt freigegebene Vereine im eigenen Block' am Anfang
+  # dieser Datei gelten unverändert weiter.
+
+  test 'admin_user_clubs gruppiert nach eingestelltem Landesverband, nicht nach Spielbetrieb' do
+    create(:setting, current_season_id: '18')
+    lv_nb = create(:state_association, name: 'Floorball Verband Niedersachsen')
+    lv_sh = create(:state_association, name: 'Floorballverband Schleswig-Holstein')
+    go_nb = create(:game_operation, state_association_id: lv_nb.id)
+
+    # Beide Vereine haben denselben Heimat-Spielbetrieb, gehören aber
+    # verschiedenen Landesverbänden – der Fall, der die Fehlanzeige auslöste.
+    heimisch = create(:club, name: 'A Verein NB', state_association_id: lv_nb.id,
+                             game_operations_hash: home_hash(go_nb))
+    fremd = create(:club, name: 'B Verein SH', state_association_id: lv_sh.id,
+                          game_operations_hash: home_hash(go_nb))
+
+    groups = Club.admin_user_clubs(create(:user, :admin))
+
+    assert_equal [heimisch.id], club_ids(find_group(groups, 'Floorball Verband Niedersachsen'))
+    assert_equal [fremd.id], club_ids(find_group(groups, 'Floorballverband Schleswig-Holstein'))
+  end
+
+  test 'admin_user_clubs zeigt Vereine des eigenen Spielbetriebs auch bei fremdem Landesverband' do
+    create(:setting, current_season_id: '18')
+    lv_nb = create(:state_association, name: 'Niedersachsen')
+    lv_hh = create(:state_association, name: 'Hamburg')
+    go_nb = create(:game_operation, state_association_id: lv_nb.id)
+
+    # Wie ETV Hamburg: Heimat-Spielbetrieb Niedersachsen, Landesverband Hamburg.
+    # Das ist kein Gast-Eintrag – der Verein gehört in diesen Spielbetrieb und
+    # muss dem SBK deshalb erhalten bleiben, nur unter eigener Überschrift.
+    etv = create(:club, state_association_id: lv_hh.id, game_operations_hash: home_hash(go_nb))
+
+    groups = Club.admin_user_clubs(create(:user, :sbk_scoped, game_operation_id: go_nb.id))
+    hamburg = find_group(groups, 'Hamburg')
+
+    assert hamburg, "Erwartet Gruppe 'Hamburg', vorhanden: #{group_names(groups).inspect}"
+    assert_equal [etv.id], club_ids(hamburg)
+    # Nicht als „freigegeben" markiert: der Verein ist bearbeitbar, es braucht
+    # keine Freigabe.
+    refute hamburg[:released]
+  end
+
+  test 'admin_user_clubs führt Vereine ohne Landesverband unter dem Bundesverband' do
+    create(:setting, current_season_id: '18')
+    fvd = create(:state_association, name: 'Floorball-Verband Deutschland e.V.', short_name: 'FVD')
+    go = create(:game_operation, state_association_id: create(:state_association).id)
+
+    ohne_lv = create(:club, state_association_id: nil, game_operations_hash: home_hash(go))
+
+    groups = Club.admin_user_clubs(create(:user, :admin))
+    fvd_group = groups.find { |g| g[:state_association_id] == fvd.id }
+
+    assert fvd_group, 'Verein ohne Landesverband darf nicht aus der Liste fallen'
+    assert_includes club_ids(fvd_group), ohne_lv.id
+  end
+
+  # Der Bundesverband wird über das Kürzel aufgelöst, nicht über eine feste ID.
+  # db/seeds.rb legt unter id 1 „SBK Ost" an – eine hartkodierte 1 hätte die
+  # Vereine ohne Landesverband dort unter genau den Dachverband gruppiert, den
+  # diese Gruppierung loswerden soll.
+  test 'admin_user_clubs nutzt ohne FVD-Datensatz die Restgruppe statt einer fremden ID' do
+    create(:setting, current_season_id: '18')
+    fremd = create(:state_association, name: 'SBK Ost', short_name: 'SBKOST')
+    go = create(:game_operation, state_association_id: fremd.id)
+    ohne_lv = create(:club, state_association_id: nil, game_operations_hash: home_hash(go))
+
+    groups = Club.admin_user_clubs(create(:user, :admin))
+
+    assert_equal [ohne_lv.id], club_ids(find_group(groups, 'Ohne Landesverband'))
+    assert_empty club_ids(find_group(groups, 'SBK Ost'))
+  end
+
+  test 'admin_user_clubs verliert Vereine mit ins Leere zeigendem Landesverband nicht' do
+    create(:setting, current_season_id: '18')
+    go = create(:game_operation, state_association_id: create(:state_association).id)
+    # Verweis auf einen gelöschten Landesverband – auf clubs.state_association_id
+    # liegt kein Fremdschlüssel. Der Verein muss trotzdem auftauchen, sonst wird
+    # er unauffindbar.
+    waise = create(:club, state_association_id: 999_999, game_operations_hash: home_hash(go))
+
+    groups = Club.admin_user_clubs(create(:user, :admin))
+    rest = find_group(groups, 'Ohne Landesverband')
+
+    assert rest, "Erwartet Restgruppe, vorhanden: #{group_names(groups).inspect}"
+    assert_equal [waise.id], club_ids(rest)
+  end
+
+  # Vereine ohne Heim-Spielbetrieb waren in der Vereinsverwaltung unsichtbar und
+  # damit nicht bearbeitbar (in Produktion 13 neu angelegte Vereine). Sie hängen
+  # an keinem Spielbetrieb, deshalb sieht sie nur der globale Zugriff.
+  test 'admin_user_clubs zeigt Vereine ohne Heim-Spielbetrieb dem globalen Zugriff' do
+    create(:setting, current_season_id: '18')
+    create(:state_association, name: 'Floorball-Verband Deutschland e.V.', short_name: 'FVD')
+    go = create(:game_operation, state_association_id: create(:state_association).id)
+
+    ohne_go = create(:club, state_association_id: nil, game_operations_hash: [])
+    gast_hash = [{ 'game_operation_id' => go.id, 'home_game_operation' => false }]
+    nur_gast = create(:club, state_association_id: nil, game_operations_hash: gast_hash)
+
+    ids = all_club_ids(Club.admin_user_clubs(create(:user, :admin)))
+
+    assert_includes ids, ohne_go.id
+    assert_includes ids, nur_gast.id
+  end
+
+  test 'admin_user_clubs zeigt Vereine ohne Heim-Spielbetrieb nicht einem einzelnen Verband' do
+    create(:setting, current_season_id: '18')
+    go = create(:game_operation, state_association_id: create(:state_association).id)
+    create(:club, state_association_id: nil, game_operations_hash: [])
+
+    # Ein einzelner Landesverband soll nicht die unzugeordneten Vereine aller
+    # anderen in seiner Liste haben.
+    ids = all_club_ids(Club.admin_user_clubs(create(:user, :sbk_scoped, game_operation_id: go.id)))
+
+    assert_empty ids
+  end
+
+  test 'admin_user_clubs listet einen Verein genau einmal, auch mit Gast-Eintrag' do
+    create(:setting, current_season_id: '18')
+    lv = create(:state_association, name: 'Niedersachsen')
+    go_home = create(:game_operation, state_association_id: lv.id)
+    go_guest = create(:game_operation, state_association_id: create(:state_association).id)
+
+    goh = [
+      { 'game_operation_id' => go_home.id, 'home_game_operation' => true },
+      { 'game_operation_id' => go_guest.id, 'home_game_operation' => false }
+    ]
+    club = create(:club, state_association_id: lv.id, game_operations_hash: goh)
+
+    assert_equal [club.id], all_club_ids(Club.admin_user_clubs(create(:user, :admin)))
+  end
+
+  # Zwei ausdrücklich angelegte Spielbetriebe mit bekannter Reihenfolge: der
+  # deaktivierte Verein hängt am zuerst geprüften. Ohne die Klammern um die
+  # OR-Kette in home_clubs_of griffe die Deaktiviert-Bedingung nur für den
+  # letzten Zweig, und dieser Test fiele auf.
+  test 'admin_user_clubs zeigt deaktivierte Vereine nur mit include_deactivated' do
+    create(:setting, current_season_id: '18')
+    lv = create(:state_association)
+    go_first = create(:game_operation, state_association_id: lv.id)
+    go_second = create(:game_operation, state_association_id: lv.id)
+
+    inaktiv = create(:club, state_association_id: lv.id, game_operations_hash: home_hash(go_first),
+                            deactivated_at: Time.current)
+    aktiv = create(:club, state_association_id: lv.id, game_operations_hash: home_hash(go_second))
+    admin = create(:user, :admin)
+
+    assert_equal [aktiv.id], all_club_ids(Club.admin_user_clubs(admin))
+    assert_equal [aktiv.id, inaktiv.id].sort,
+                 all_club_ids(Club.admin_user_clubs(admin, include_deactivated: true)).sort
+  end
+
+  test 'admin_user_clubs zeigt freigegebene Vereine nicht zusätzlich in der Landesverbands-Gruppe' do
+    create(:setting, current_season_id: '18')
+    grantor_sa = create(:state_association, name: 'Hamburg')
+    eigen_go = create(:game_operation, state_association_id: create(:state_association).id)
+
+    # Gehört dem freigebenden Landesverband und hat seinen Heimat-Spielbetrieb
+    # beim Empfänger – steht deshalb schon in der Landesverbands-Gruppe.
+    im_spielbetrieb = create(:club, state_association_id: grantor_sa.id,
+                                    game_operations_hash: home_hash(eigen_go))
+    # Nur über die Freigabe sichtbar.
+    nur_freigabe = create(:club, state_association_id: grantor_sa.id, game_operations_hash: [])
+
+    StateAssociationRelease.create!(grantor_state_association_id: grantor_sa.id,
+                                    recipient_game_operation_id: eigen_go.id,
+                                    season_id: Setting.current_season_id)
+
+    groups = Club.admin_user_clubs(create(:user, :sbk_scoped, game_operation_id: eigen_go.id))
+    released = groups.select { |g| g[:released] }
+    own = groups.reject { |g| g[:released] }
+
+    assert_equal [nur_freigabe.id], released.flat_map { |g| club_ids(g) }.sort
+    assert_equal [im_spielbetrieb.id], own.flat_map { |g| club_ids(g) }.sort
+    # Die Überschrift macht kenntlich, dass der Verein einem fremden Verband
+    # gehört und hier nur lesend steht.
+    assert_equal ['Hamburg (freigegeben)'], group_names(released)
+  end
+
+  test 'admin_user_clubs behält den Block „Eigene Vereine" für die VM-Rolle' do
+    create(:setting, current_season_id: '18')
+    eigen_go = create(:game_operation, state_association_id: create(:state_association).id)
+    fremd_go = create(:game_operation, state_association_id: create(:state_association).id)
+
+    # Verein außerhalb des eigenen Spielbetriebs, auf den der Nutzer nur als
+    # Vereinsmanager Zugriff hat.
+    vm_club = create(:club, state_association_id: create(:state_association).id,
+                            game_operations_hash: home_hash(fremd_go))
+
+    # Bewusst ohne Traits: :sbk_scoped und :vm überschreiben beide `permissions`
+    # und lassen sich nicht kombinieren. 2 = SBK, 4 = Vereinsmanager.
+    perms = [
+      { 'user_group_id' => 2, 'game_operation_id' => eigen_go.id },
+      { 'user_group_id' => 4, 'game_operation_id' => 0, 'club_id' => vm_club.id }
+    ]
+    user = create(:user, permissions: perms)
+
+    eigene = find_group(Club.admin_user_clubs(user), 'Eigene Vereine')
+
+    assert eigene, 'Block „Eigene Vereine" fehlt'
+    assert_equal [vm_club.id], club_ids(eigene)
+  end
+
+  test 'admin_user_clubs liefert einer reinen VM-Rolle nur die eigenen Vereine' do
+    create(:setting, current_season_id: '18')
+    go = create(:game_operation, state_association_id: create(:state_association).id)
+    vm_club = create(:club, state_association_id: create(:state_association).id,
+                            game_operations_hash: home_hash(go))
+    create(:club, state_association_id: create(:state_association).id,
+                  game_operations_hash: home_hash(go))
+
+    groups = Club.admin_user_clubs(create(:user, :vm, club_id: vm_club.id))
+
+    assert_equal ['Eigene Vereine'], group_names(groups)
+    assert_equal [vm_club.id], all_club_ids(groups)
+  end
+
+  test 'admin_user_clubs liefert ohne Rollen keine Gruppen' do
+    create(:setting, current_season_id: '18')
+    go = create(:game_operation, state_association_id: create(:state_association).id)
+    create(:club, state_association_id: create(:state_association).id,
+                  game_operations_hash: home_hash(go))
+
+    assert_empty Club.admin_user_clubs(create(:user))
+  end
+
+  # --- Leere Landesverbände und Verbandshierarchie ----------------------------
+
+  # Ein Landesverband ohne Vereine muss sichtbar bleiben: der Knopf zum Anlegen
+  # des ersten Vereins steht in der Oberfläche je Gruppe.
+  test 'admin_user_clubs zeigt den eigenen Landesverband auch ohne Vereine' do
+    create(:setting, current_season_id: '18')
+    lv = create(:state_association, name: 'Leerer Landesverband')
+    go = create(:game_operation, state_association_id: lv.id)
+
+    groups = Club.admin_user_clubs(create(:user, :sbk_scoped, game_operation_id: go.id))
+
+    assert_equal ['Leerer Landesverband'], group_names(groups)
+    assert_empty club_ids(find_group(groups, 'Leerer Landesverband'))
+  end
+
+  test 'admin_user_clubs zeigt Unterverbände einzeln statt des leeren Dachverbands' do
+    create(:setting, current_season_id: '18')
+    dach = create(:state_association, name: 'SBK Ost', short_name: 'SBKOST')
+    sachsen = create(:state_association, name: 'Sachsen', parent_id: dach.id)
+    anhalt = create(:state_association, name: 'Sachsen-Anhalt', parent_id: dach.id)
+    go = create(:game_operation, state_association_id: dach.id)
+
+    groups = Club.admin_user_clubs(create(:user, :sbk_scoped, game_operation_id: go.id))
+
+    assert_equal [anhalt.name, sachsen.name].sort, group_names(groups).sort
+    refute_includes group_names(groups), 'SBK Ost'
+  end
+
+  # Der Dachverband verschwindet nur als *leere* Gruppe. Solange ihm aus
+  # Altdaten Vereine zugeordnet sind, muss er sichtbar bleiben – sonst wären
+  # genau die Vereine unauffindbar, die der Wartungs-Task umhängen soll.
+  test 'admin_user_clubs zeigt den Dachverband weiter, wenn ihm Vereine zugeordnet sind' do
+    create(:setting, current_season_id: '18')
+    dach = create(:state_association, name: 'SBK Ost', short_name: 'SBKOST')
+    create(:state_association, name: 'Sachsen', parent_id: dach.id)
+    go = create(:game_operation, state_association_id: dach.id)
+
+    altlast = create(:club, state_association_id: dach.id, game_operations_hash: home_hash(go))
+
+    groups = Club.admin_user_clubs(create(:user, :sbk_scoped, game_operation_id: go.id))
+
+    assert_equal [altlast.id], club_ids(find_group(groups, 'SBK Ost'))
+  end
+
+  # Ein Verband mittlerer Ebene darf nicht über den Elternteil-Zweig doch noch
+  # als leere Gruppe erscheinen. StateAssociation erlaubt beliebige Tiefe.
+  test 'admin_user_clubs zeigt einen leeren Verband mittlerer Ebene nicht' do
+    create(:setting, current_season_id: '18')
+    bund = create(:state_association, name: 'Bundesebene', short_name: 'FVD')
+    mitte = create(:state_association, name: 'Mittlere Ebene', parent_id: bund.id)
+    blatt = create(:state_association, name: 'Blattverband', parent_id: mitte.id)
+
+    go_bund = create(:game_operation, state_association_id: bund.id)
+    go_mitte = create(:game_operation, state_association_id: mitte.id)
+
+    perms = [
+      { 'user_group_id' => 2, 'game_operation_id' => go_bund.id },
+      { 'user_group_id' => 2, 'game_operation_id' => go_mitte.id }
+    ]
+    groups = Club.admin_user_clubs(create(:user, permissions: perms))
+
+    assert_equal [blatt.name], group_names(groups)
+  end
+
+  test 'admin_user_clubs sortiert die Gruppen nach Namen und hängt die Restgruppe an' do
+    create(:setting, current_season_id: '18')
+    lv_b = create(:state_association, name: 'B-Verband')
+    lv_a = create(:state_association, name: 'A-Verband')
+    go_b = create(:game_operation, state_association_id: lv_b.id)
+    go_a = create(:game_operation, state_association_id: lv_a.id)
+
+    create(:club, state_association_id: lv_b.id, game_operations_hash: home_hash(go_b))
+    create(:club, state_association_id: lv_a.id, game_operations_hash: home_hash(go_a))
+    create(:club, state_association_id: 999_999, game_operations_hash: home_hash(go_a))
+
+    assert_equal ['A-Verband', 'B-Verband', 'Ohne Landesverband'],
+                 group_names(Club.admin_user_clubs(create(:user, :admin)))
+  end
+
+  # Führende Leerzeichen in Verbandsnamen kommen in Produktion vor und würden
+  # sonst in der Überschrift landen und die Sortierung verdrehen.
+  test 'admin_user_clubs entfernt Leerzeichen am Rand des Verbandsnamens' do
+    create(:setting, current_season_id: '18')
+    lv = create(:state_association, name: ' Floorball Verband Niedersachsen e.V. ')
+    go = create(:game_operation, state_association_id: lv.id)
+
+    groups = Club.admin_user_clubs(create(:user, :sbk_scoped, game_operation_id: go.id))
+
+    assert_equal ['Floorball Verband Niedersachsen e.V.'], group_names(groups)
+  end
 
   private
+
+  # Gruppen-Helfer. Auch gegen Lint/AmbiguousBlockAssociation: ein Block direkt
+  # als letztes assert-Argument (`assert_equal [x], g[:clubs].map { ... }`) ist
+  # mehrdeutig.
+  def club_ids(group)
+    return [] if group.nil?
+
+    group[:clubs].map { |c| c[:id] }
+  end
+
+  def all_club_ids(groups)
+    groups.flat_map { |g| club_ids(g) }
+  end
+
+  def group_names(groups)
+    groups.map { |g| g[:name] }
+  end
+
+  def find_group(groups, name)
+    groups.find { |g| g[:name] == name }
+  end
+
+  def home_hash(game_operation)
+    [{ 'game_operation_id' => game_operation.id, 'home_game_operation' => true }]
+  end
 
   def capture_sql
     sqls = []

@@ -386,13 +386,27 @@ class UserTest < ActiveSupport::TestCase
     assert_nil u.club_ids
   end
 
-  test 'Club.admin_user_clubs: globaler Admin erhält Einträge für alle GameOperations' do
-    perms = ALL_GO.map { |go| { 'user_group_id' => 1, 'game_operation_id' => go } }
-    admin = build_user(permissions: perms)
-    # global_access path: fetches all GameOperations
-    result = Club.admin_user_clubs(admin)
-    expected_go_count = GameOperation.count
-    assert_equal expected_go_count, result.size
+  # Die Vereinsverwaltung gruppiert nach Landesverband, nicht mehr nach
+  # Spielbetrieb – die Zahl der Gruppen richtet sich deshalb nach den
+  # Landesverbänden. Leere Landesverbände bleiben dabei sichtbar, damit ein
+  # Verband ohne Vereine nicht samt Anlege-Knopf aus der Verwaltung fällt.
+  #
+  # game_operation_id 0 = global. Die vorherige Fassung listete stattdessen
+  # ALL_GO auf; diese IDs gibt es als Fixture nicht, der Zugriff war also in
+  # Wahrheit leer und die Zusicherung hing an den Platzhalter-Fixtures.
+  test 'Club.admin_user_clubs: globaler Admin erhält Einträge für alle Landesverbände' do
+    create(:setting, current_season_id: '18')
+    lv_a = create(:state_association, name: 'LV A')
+    lv_b = create(:state_association, name: 'LV B')
+    GameOperation.find_each { |go| go.update!(state_association: lv_a) }
+    create(:game_operation, state_association_id: lv_b.id)
+
+    admin = build_user(permissions: [{ 'user_group_id' => 1, 'game_operation_id' => 0 }])
+
+    # Ein Landesverband je Gruppe – auch ohne Vereine, und unabhängig davon, wie
+    # viele Spielbetriebe an ihm hängen.
+    group_names = Club.admin_user_clubs(admin).map { |g| g[:name] }
+    assert_equal ['LV A', 'LV B'], group_names
   end
 
   test 'permission_hash: deterministisch – gleicher Nutzer ergibt immer denselben Hash' do
