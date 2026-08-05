@@ -341,7 +341,18 @@ class ClubsController < ApplicationController
   def update_club(club)
     club.updated_by = current_user.id
 
-    if params.key?(:game_operation_id)
+    # `present?` statt `key?`: Das Formular schickt den ganzen Verein zurück,
+    # also auch ein `game_operation_id`, das es dort gar nicht zu bearbeiten
+    # gibt. Bei einem Verein ohne Heimat-Eintrag liefert Club#full_hash dafür
+    # nil, und `key?` verstand dieses nil als „soll geändert werden" – das
+    # Speichern scheiterte an der Prüfung unten, obwohl niemand etwas ändern
+    # wollte. Betroffen waren ausgerechnet die Vereine ohne Spielbetrieb, also
+    # die, deren Stammdaten am dringendsten Pflege brauchen.
+    #
+    # Eine ausdrückliche 0 oder eine unbekannte Kennung laufen weiterhin in die
+    # Meldung: in Ruby ist `0.present?` true, nur nil und "" gelten hier als
+    # „nicht mitgeschickt".
+    if params[:game_operation_id].present?
       target = resolve_game_operation(params[:game_operation_id])
 
       # Eine 0 oder eine unbekannte ID hätte den Heimat-Eintrag auf einen
