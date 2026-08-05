@@ -41,14 +41,21 @@ module Rack
       req.ip if req.path.start_with?('/api/v2/referee_feedback_invitations')
     end
 
-    # Antrag auf einen API-Zugang samt Abholen des genehmigten Keys. Der Antrag
-    # löst Mail an ein festes Postfach aus (keine Flut an fremde Adressen, wohl
-    # aber ins eigene), und der Abhol-Link ist ein Einmal-Token, das sich sonst
-    # durchprobieren ließe. Der Key-Throttle weiter unten hilft hier nicht: Er
-    # greift nur bei Keys mit gesetztem Rate-Limit, und der Frontend-Key hat
-    # keines.
+    # Antrag auf einen API-Zugang. Löst Mail an ein festes Postfach aus, gehört
+    # damit in dieselbe Kategorie wie MAIL_TRIGGER_PATHS. Der Key-Throttle weiter
+    # unten hilft hier nicht: Er greift nur bei Keys mit gesetztem Rate-Limit, und
+    # der Frontend-Key hat keines.
     throttle('api-key-application/ip', limit: 10, period: 1.hour) do |req|
-      req.ip if req.path.start_with?('/api/v2/api_key_applications')
+      req.ip if req.post? && req.path == '/api/v2/api_key_applications'
+    end
+
+    # Abholen des genehmigten Keys über den Einmal-Link. Bewusst ein eigener,
+    # größerer Topf: Das Durchprobieren von Tokens soll gedrosselt sein, aber ein
+    # Antragsteller, der die Seite mehrfach lädt oder neu aufruft, darf sich nicht
+    # selbst vom eigenen Schlüssel aussperren – der lässt sich nur ein einziges
+    # Mal abholen. Grenze wie beim Feedback-Einmal-Link.
+    throttle('api-key-reveal/ip', limit: 30, period: 1.hour) do |req|
+      req.ip if req.path.start_with?('/api/v2/api_key_applications/reveal')
     end
 
     # Suchmaschinen und Skript-Clients stellen den größten Teil des Verkehrs auf

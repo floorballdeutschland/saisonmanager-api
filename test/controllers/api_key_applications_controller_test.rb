@@ -125,6 +125,28 @@ class ApiKeyApplicationsControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  # Der Abhol-Link hat einen eigenen Topf. Sonst sperrte sich ein Antragsteller,
+  # der zehnmal etwas abgeschickt hat, vom eigenen Schlüssel aus – und der lässt
+  # sich nur ein einziges Mal abholen.
+  test 'ausgeschoepftes Antrags-Limit sperrt das Abholen nicht' do
+    application = create(:api_key_application)
+    token = application.approve!(1)
+
+    travel_to Time.zone.now.beginning_of_hour do
+      11.times do
+        post '/api/v2/api_key_applications',
+             params: { api_key_application: valid_params(accept_terms: false) }, headers: HEADERS
+      end
+      assert_response :too_many_requests
+
+      get "/api/v2/api_key_applications/reveal/#{token}", headers: HEADERS
+      assert_response :success
+
+      post '/api/v2/api_key_applications/reveal', params: { token: token }, headers: HEADERS
+      assert_response :success
+    end
+  end
+
   test 'Zugriffe mit API-Key werden pro Endpunkt gezaehlt' do
     key = ApiKey.find_by(key_digest: Digest::SHA256.hexdigest(API_KEY))
 
