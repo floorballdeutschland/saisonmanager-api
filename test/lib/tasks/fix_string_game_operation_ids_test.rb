@@ -66,10 +66,11 @@ class FixStringGameOperationIdsTest < ActiveSupport::TestCase
 
   test 'Gast-Eintraege mit Text-ID werden mitrepariert' do
     guest_go = create(:game_operation, state_association_id: create(:state_association).id)
-    club = create(:club, game_operations_hash: [
-                    { 'game_operation_id' => @go.id.to_s, 'home_game_operation' => true },
-                    { 'game_operation_id' => guest_go.id.to_s, 'home_game_operation' => false }
-                  ])
+    goh = [
+      { 'game_operation_id' => @go.id.to_s, 'home_game_operation' => true },
+      { 'game_operation_id' => guest_go.id.to_s, 'home_game_operation' => false }
+    ]
+    club = create(:club, game_operations_hash: goh)
 
     run_task('DRY_RUN' => 'false')
 

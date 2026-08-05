@@ -462,15 +462,17 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     home_go = create(:game_operation, state_association_id: sa.id)
     other_go = create(:game_operation, state_association_id: sa.id)
     guest_go = create(:game_operation, state_association_id: create(:state_association).id)
-    club = create(:club, game_operations_hash: [
-                    { 'game_operation_id' => home_go.id, 'home_game_operation' => true },
-                    { 'game_operation_id' => guest_go.id, 'home_game_operation' => false }
-                  ])
+    goh = [
+      { 'game_operation_id' => home_go.id, 'home_game_operation' => true },
+      { 'game_operation_id' => guest_go.id, 'home_game_operation' => false }
+    ]
+    club = create(:club, game_operations_hash: goh)
     # SBK beider Spielbetriebe, damit die Zielpruefung nicht greift.
-    login(create(:user, permissions: [
-                   { 'user_group_id' => 2, 'game_operation_id' => home_go.id },
-                   { 'user_group_id' => 2, 'game_operation_id' => other_go.id }
-                 ]))
+    perms = [
+      { 'user_group_id' => 2, 'game_operation_id' => home_go.id },
+      { 'user_group_id' => 2, 'game_operation_id' => other_go.id }
+    ]
+    login(create(:user, permissions: perms))
 
     post '/api/v2/admin/clubs', params: { id: club.id, game_operation_id: other_go.id,
                                           club: { name: 'Umgezogen' } }
