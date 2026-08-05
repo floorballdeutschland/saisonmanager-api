@@ -399,7 +399,6 @@ class ClubsController < ApplicationController
     GameOperation.find_by(id: go_id)
   end
 
-
   # Ein Verein kann Teams in Ligen mehrerer Spielbetriebe haben (Gastvereine
   # anderer Landesverbände). Nur die Teams anzeigen, für die die eigene Rolle im
   # Lizenzwesen auch etwas tun darf, sonst führt die Auswahl ins 403. Rollen

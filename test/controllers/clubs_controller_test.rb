@@ -412,7 +412,6 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_response :forbidden
   end
 
-
   private
 
   def login(user)
