@@ -405,7 +405,8 @@ class UserTest < ActiveSupport::TestCase
 
     # Ein Landesverband je Gruppe – auch ohne Vereine, und unabhängig davon, wie
     # viele Spielbetriebe an ihm hängen.
-    assert_equal ['LV A', 'LV B'], Club.admin_user_clubs(admin).map { |g| g[:name] }
+    group_names = Club.admin_user_clubs(admin).map { |g| g[:name] }
+    assert_equal ['LV A', 'LV B'], group_names
   end
 
   test 'permission_hash: deterministisch – gleicher Nutzer ergibt immer denselben Hash' do

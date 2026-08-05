@@ -409,9 +409,9 @@ class Club < ApplicationRecord
     dangling = orphans.reject { |c| c.state_association_id.nil? }
     return if dangling.empty?
 
+    liste = dangling.map { |c| "#{c.id}->#{c.state_association_id}" }.join(', ')
     Rails.logger.error(
-      'Club.admin_user_clubs: Vereine verweisen auf nicht vorhandene Landesverbände: ' +
-      dangling.map { |c| "#{c.id}->#{c.state_association_id}" }.join(', ')
+      "Club.admin_user_clubs: Vereine verweisen auf nicht vorhandene Landesverbände: #{liste}"
     )
   end
 

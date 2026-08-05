@@ -105,7 +105,7 @@ class ClubStateAssociationResolver
   def duplicate_short_names
     relevant = (STATE_TO_SA_SHORT.values + [self.class.national_sa_short]).uniq
     StateAssociation.where(short_name: relevant)
-      .group(:short_name).having('count(*) > 1').count.keys
+                    .group(:short_name).having('count(*) > 1').count.keys
   end
 
   def national_state_association
@@ -223,7 +223,8 @@ namespace :clubs do
 
       case status
       when :ok, :foreign then changes << [club, target, status]
-      else buckets[status] << [club, target]
+      when :unconfirmed then buckets[:unconfirmed] << [club, target]
+      else buckets[status] << club
       end
     end
 
@@ -287,7 +288,7 @@ namespace :clubs do
     if buckets[:state_without_lv].any?
       puts "\n#{buckets[:state_without_lv].size} Verein(e) in einem Bundesland ohne eigenen Landesverband " \
            '(Mecklenburg-Vorpommern) – brauchen eine fachliche Entscheidung:'
-      buckets[:state_without_lv].each do |club, _|
+      buckets[:state_without_lv].each do |club|
         puts format('  %<id>-6s %<name>-34s Land %<state>-8s LV %<from>s',
                     id: club.id, name: club.name.to_s[0, 34], state: club.state,
                     from: label(club.state_association))
@@ -298,7 +299,7 @@ namespace :clubs do
 
     puts "\n#{buckets[:no_state].size} Verein(e) ohne hinterlegtes Bundesland – nicht zuordenbar " \
          '(ohne Landesverband in der Vereinsverwaltung unter dem Bundesverband gefuehrt):'
-    buckets[:no_state].each do |club, _|
+    buckets[:no_state].each do |club|
       puts format('  %<id>-6s %<name>-34s PLZ %<plz>-10s LV %<from>s',
                   id: club.id, name: club.name.to_s[0, 34],
                   plz: club.postcode.presence || '—', from: label(club.state_association))
@@ -316,7 +317,8 @@ namespace :clubs do
       next if target && club.state_association_id == target.id
 
       [club, target, status]
-    end.sort_by { |club, _, _| club.name.to_s }
+    end
+    rows.sort_by! { |club, _, _| club.name.to_s }
 
     puts format('%<id>-6s %<name>-34s %<state>-6s %<plz>-8s %<from>-16s %<to>-16s %<status>-16s %<go>s',
                 id: 'ID', name: 'Verein', state: 'Land', plz: 'PLZ', from: 'LV eingestellt',

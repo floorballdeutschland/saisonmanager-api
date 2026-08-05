@@ -305,9 +305,8 @@ class ClubTest < ActiveSupport::TestCase
     go = create(:game_operation, state_association_id: create(:state_association).id)
 
     ohne_go = create(:club, state_association_id: nil, game_operations_hash: [])
-    nur_gast = create(:club, state_association_id: nil, game_operations_hash: [
-                        { 'game_operation_id' => go.id, 'home_game_operation' => false }
-                      ])
+    gast_hash = [{ 'game_operation_id' => go.id, 'home_game_operation' => false }]
+    nur_gast = create(:club, state_association_id: nil, game_operations_hash: gast_hash)
 
     ids = all_club_ids(Club.admin_user_clubs(create(:user, :admin)))
 
@@ -333,10 +332,11 @@ class ClubTest < ActiveSupport::TestCase
     go_home = create(:game_operation, state_association_id: lv.id)
     go_guest = create(:game_operation, state_association_id: create(:state_association).id)
 
-    club = create(:club, state_association_id: lv.id, game_operations_hash: [
-                    { 'game_operation_id' => go_home.id, 'home_game_operation' => true },
-                    { 'game_operation_id' => go_guest.id, 'home_game_operation' => false }
-                  ])
+    goh = [
+      { 'game_operation_id' => go_home.id, 'home_game_operation' => true },
+      { 'game_operation_id' => go_guest.id, 'home_game_operation' => false }
+    ]
+    club = create(:club, state_association_id: lv.id, game_operations_hash: goh)
 
     assert_equal [club.id], all_club_ids(Club.admin_user_clubs(create(:user, :admin)))
   end
@@ -381,11 +381,11 @@ class ClubTest < ActiveSupport::TestCase
     released = groups.select { |g| g[:released] }
     own = groups.reject { |g| g[:released] }
 
-    assert_equal [nur_freigabe.id], released.flat_map { |g| club_ids(g) }
-    assert_equal [im_spielbetrieb.id], own.flat_map { |g| club_ids(g) }
+    assert_equal [nur_freigabe.id], released.flat_map { |g| club_ids(g) }.sort
+    assert_equal [im_spielbetrieb.id], own.flat_map { |g| club_ids(g) }.sort
     # Die Überschrift macht kenntlich, dass der Verein einem fremden Verband
     # gehört und hier nur lesend steht.
-    assert_equal ['Hamburg (freigegeben)'], released.map { |g| g[:name] }
+    assert_equal ['Hamburg (freigegeben)'], group_names(released)
   end
 
   test 'admin_user_clubs behält den Block „Eigene Vereine" für die VM-Rolle' do
@@ -400,10 +400,11 @@ class ClubTest < ActiveSupport::TestCase
 
     # Bewusst ohne Traits: :sbk_scoped und :vm überschreiben beide `permissions`
     # und lassen sich nicht kombinieren. 2 = SBK, 4 = Vereinsmanager.
-    user = create(:user, permissions: [
-                    { 'user_group_id' => 2, 'game_operation_id' => eigen_go.id },
-                    { 'user_group_id' => 4, 'game_operation_id' => 0, 'club_id' => vm_club.id }
-                  ])
+    perms = [
+      { 'user_group_id' => 2, 'game_operation_id' => eigen_go.id },
+      { 'user_group_id' => 4, 'game_operation_id' => 0, 'club_id' => vm_club.id }
+    ]
+    user = create(:user, permissions: perms)
 
     eigene = find_group(Club.admin_user_clubs(user), 'Eigene Vereine')
 
@@ -489,10 +490,11 @@ class ClubTest < ActiveSupport::TestCase
     go_bund = create(:game_operation, state_association_id: bund.id)
     go_mitte = create(:game_operation, state_association_id: mitte.id)
 
-    groups = Club.admin_user_clubs(create(:user, permissions: [
-                                            { 'user_group_id' => 2, 'game_operation_id' => go_bund.id },
-                                            { 'user_group_id' => 2, 'game_operation_id' => go_mitte.id }
-                                          ]))
+    perms = [
+      { 'user_group_id' => 2, 'game_operation_id' => go_bund.id },
+      { 'user_group_id' => 2, 'game_operation_id' => go_mitte.id }
+    ]
+    groups = Club.admin_user_clubs(create(:user, permissions: perms))
 
     assert_equal [blatt.name], group_names(groups)
   end
@@ -523,6 +525,7 @@ class ClubTest < ActiveSupport::TestCase
 
     assert_equal ['Floorball Verband Niedersachsen e.V.'], group_names(groups)
   end
+
   private
 
   # Gruppen-Helfer. Auch gegen Lint/AmbiguousBlockAssociation: ein Block direkt
