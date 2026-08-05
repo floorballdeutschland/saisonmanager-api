@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_08_04_120000) do
+ActiveRecord::Schema[7.1].define(version: 2026_08_06_120100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -40,6 +40,47 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_04_120000) do
     t.bigint "blob_id", null: false
     t.string "variation_digest", null: false
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
+  end
+
+  create_table "api_key_applications", force: :cascade do |t|
+    t.boolean "commercial", default: false, null: false
+    t.string "organisation", null: false
+    t.string "contact_name", null: false, comment: "Vertreten durch"
+    t.string "email", null: false
+    t.text "address"
+    t.text "project_description", null: false
+    t.text "purpose", null: false
+    t.string "project_url"
+    t.string "status", default: "pending", null: false
+    t.string "terms_version", null: false
+    t.datetime "accepted_terms_at", null: false
+    t.string "accepted_terms_ip"
+    t.text "decision_note"
+    t.integer "decided_by", comment: "User-ID der entscheidenden Person"
+    t.datetime "decided_at"
+    t.bigint "api_key_id"
+    t.string "reveal_token_digest"
+    t.datetime "reveal_token_expires_at"
+    t.datetime "key_revealed_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["api_key_id"], name: "index_api_key_applications_on_api_key_id"
+    t.index ["email", "organisation"], name: "index_api_key_applications_pending_unique", unique: true, where: "((status)::text = 'pending'::text)"
+    t.index ["email"], name: "index_api_key_applications_on_email"
+    t.index ["reveal_token_digest"], name: "index_api_key_applications_on_reveal_token_digest", unique: true
+    t.index ["status"], name: "index_api_key_applications_on_status"
+  end
+
+  create_table "api_key_usages", force: :cascade do |t|
+    t.bigint "api_key_id", null: false
+    t.date "date", null: false
+    t.string "endpoint", null: false, comment: "controller#action, z. B. leagues#schedule"
+    t.integer "count", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["api_key_id", "date", "endpoint"], name: "index_api_key_usages_unique", unique: true
+    t.index ["api_key_id"], name: "index_api_key_usages_on_api_key_id"
+    t.index ["date"], name: "index_api_key_usages_on_date"
   end
 
   create_table "api_keys", force: :cascade do |t|
@@ -894,6 +935,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_04_120000) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "api_key_applications", "api_keys"
+  add_foreign_key "api_key_usages", "api_keys"
   add_foreign_key "document_types", "game_operations"
   add_foreign_key "feedback_theme_taggings", "feedback_themes"
   add_foreign_key "feedback_theme_taggings", "referee_feedbacks"

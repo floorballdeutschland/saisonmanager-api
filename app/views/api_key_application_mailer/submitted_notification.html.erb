@@ -1,0 +1,42 @@
+<h2>Neuer Antrag auf einen API-Zugang</h2>
+
+<p>
+  <strong><%= @application.organisation %></strong> beantragt einen Zugang zur Saisonmanager-API.
+</p>
+
+<p>
+  <strong>Vertreten durch:</strong> <%= @application.contact_name %><br>
+  <strong>E-Mail:</strong> <%= @application.email %><br>
+  <% if @application.address.present? %>
+    <strong>Anschrift:</strong> <%= @application.address %><br>
+  <% end %>
+  <% if @application.project_url.present? %>
+    <strong>URL / Repository:</strong> <%= @application.project_url %><br>
+  <% end %>
+</p>
+
+<p>
+  <strong>Projekt:</strong><br>
+  <%= @application.project_description %>
+</p>
+
+<p>
+  <strong>Verwendungszweck:</strong><br>
+  <%= @application.purpose %>
+</p>
+
+<p>
+  Der Vereinbarung wurde in der Fassung <%= @application.terms_version %> zugestimmt
+  (<%= @application.accepted_terms_at&.strftime('%d.%m.%Y %H:%M') %> Uhr).
+  Das Vorhaben ist als nicht-kommerziell angegeben.
+</p>
+
+<p>
+  <a href="<%= frontend_base_url %>/verwaltung/api-keys/antraege">Antrag öffnen</a>
+</p>
+
+<p>
+  Eine Genehmigung erzeugt noch keinen Key: Der Antragsteller bekommt einen Abhol-Link, über den der
+  Key genau einmal angezeigt wird. Der Zugang entsteht ohne Rate-Limit und ohne Echtzeit-Zugriff,
+  die Daten kommen also mit zehn Minuten Verzögerung.
+</p>

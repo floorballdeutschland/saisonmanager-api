@@ -1,0 +1,43 @@
+<h2>Dein API-Zugang ist freigegeben</h2>
+
+<p>
+  Hallo <%= @application.contact_name %>,
+</p>
+
+<p>
+  der Antrag für <strong><%= @application.organisation %></strong> ist genehmigt. Über den folgenden
+  Link holst du deinen API-Key ab:
+</p>
+
+<p>
+  <a href="<%= @reveal_url %>">API-Key abholen</a>
+</p>
+
+<p>
+  <strong>Wichtig:</strong> Der Key wird genau einmal angezeigt. Bewahre ihn sicher auf, er lässt
+  sich nicht erneut aufrufen. Der Link ist bis zum
+  <%= @expires_at&.strftime('%d.%m.%Y') %> gültig; danach melde dich für einen neuen Link.
+</p>
+
+<p>
+  Für die Nutzung gilt die Vereinbarung, der du im Antrag zugestimmt hast. Die wichtigsten Punkte:
+</p>
+
+<ul>
+  <li>Der Key gehört zu diesem einen Projekt. Gib ihn nicht weiter, du haftest für jede Nutzung darüber.</li>
+  <li>Die Daten kommen mit zehn Minuten Verzögerung zum Echtbestand.</li>
+  <li>Nutze sinnvolles Caching und verzichte auf redundante Abfragen und auf das Spiegeln des Gesamtbestands.</li>
+  <li>Nenne die Quelle („Daten: Saisonmanager / Floorball Verband Deutschland e.&nbsp;V.“) und
+      kennzeichne dein Angebot als inoffizielles Community-Projekt.</li>
+  <li>Kontaktdaten von Spieler:innen, Schiedsrichter:innen und Funktionär:innen dürfen nicht
+      veröffentlicht werden.</li>
+</ul>
+
+<p>
+  Die Dokumentation der Endpunkte findest du unter
+  <a href="https://doku.saisonmanager.org">doku.saisonmanager.org</a>.
+</p>
+
+<p>
+  Bei Verdacht auf einen kompromittierten Key melde dich bitte umgehend.
+</p>

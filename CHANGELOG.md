@@ -9,6 +9,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.70.0] - 2026-08-05
+
+### Neu
+
+- **API-Zugang für Drittanbieter wird beantragt statt vergeben**: Außenstehende können unter „API-Zugang" einen formlosen Antrag stellen: Organisation, Ansprechpartner, Kontakt, Projektbeschreibung, Verwendungszweck und optional die URL des Projekts. Vor dem Formular steht die Frage, ob das Vorhaben kommerziell ist; wer das bejaht, wird auf eine individuelle Absprache per E-Mail verwiesen und stellt keinen Antrag. Zugestimmt wird der Nutzungsvereinbarung, deren wichtigste Punkte über dem Häkchen zusammengefasst sind (keine kommerzielle Verwertung, keine Konkurrenzprodukte, zehn Minuten Verzögerung der Daten, Rate-Limits und Caching, Quellenangabe und Kennzeichnung als inoffiziell, Datenschutz). Der Antrag hält fest, welcher Fassung wann und von welcher IP zugestimmt wurde; wurde der Text zwischenzeitlich geändert, wird der Antrag mit dem Hinweis abgewiesen, die neue Fassung zu prüfen. Ein Antrag löst eine Mail an das sichtende Postfach aus (Standard it@floorball.de).
+- **Anträge annehmen oder ablehnen**: Die Anträge liegen neben den API-Keys in der Verwaltung. Eine Annahme erzeugt den Zugang ohne Rate-Limit und ohne Echtzeit-Zugriff, die Daten kommen also mit zehn Minuten Verzögerung, wie in der Vereinbarung beschrieben. Der Antragsteller bekommt keinen Key per Mail, sondern einen Einmal-Link: Der Key entsteht erst beim Abholen und wird genau einmal angezeigt. Im System liegt nur sein Prüfwert, deshalb lässt er sich auch von der Administration nicht nachträglich einsehen. Der Link gilt 14 Tage und kann neu ausgestellt werden, solange nichts abgeholt wurde. Eine Ablehnung braucht eine Begründung, die der Antragsteller per Mail erhält. Alle drei Mails sind in der E-Mail-Verwaltung anpassbar.
+- **Nutzung pro API-Key sichtbar**: Für jeden Key zeigt die Verwaltung, wie oft welcher Endpunkt abgefragt wurde, als Verlauf über 30 Tage und zwölf Monate sowie als Rangliste der Endpunkte. Die Key-Liste nennt die Zugriffe der letzten 30 Tage und bei beantragten Zugängen, wer dahintersteht. Damit lässt sich entscheiden, wo Rate-Limits nötig sind, statt sie vorsorglich zu setzen. Gezählt werden nur Zugriffe mit API-Key, nicht die der angemeldeten Oberfläche; erfasst wird der Endpunkt, nicht die einzelne Anfrage.
+
+### Verbessert
+
+- **Zeitstempel „zuletzt genutzt" schreibt seltener**: Jeder Zugriff mit API-Key aktualisierte die Spalte neu. Für die Anzeige genügt Minutengenauigkeit, dadurch bleibt die Schreiblast trotz der neuen Zählung unverändert.
+
 ## [1.69.0] - 2026-08-05
 
 ### Neu
