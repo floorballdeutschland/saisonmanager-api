@@ -110,16 +110,16 @@ class MergeClubsTest < ActiveSupport::TestCase
 
     run_task('MERGES' => "#{source.id}:#{target.id}", 'DRY_RUN' => 'false')
 
-    assert_equal [target.id], player.reload.clubs.map { |c| c['club_id'] }
+    assert_equal([target.id], player.reload.clubs.map { |c| c['club_id'] })
   end
 
   test 'legt Mitgliedschaften in beiden Vereinen zu einer zusammen' do
     source = create(:club)
     target = create(:club)
     player = create(:player, clubs: [
-                      { 'club_id' => source.id, 'team_id' => 7, 'valid_until' => nil },
-                      { 'club_id' => target.id, 'team_id' => 7, 'valid_until' => '2015-05-31' }
-                    ])
+      { 'club_id' => source.id, 'team_id' => 7, 'valid_until' => nil },
+      { 'club_id' => target.id, 'team_id' => 7, 'valid_until' => '2015-05-31' }
+    ])
 
     run_task('MERGES' => "#{source.id}:#{target.id}", 'DRY_RUN' => 'false')
 
@@ -132,9 +132,9 @@ class MergeClubsTest < ActiveSupport::TestCase
     source = create(:club)
     target = create(:club)
     player = create(:player, clubs: [
-                      { 'club_id' => source.id, 'team_id' => 7 },
-                      { 'club_id' => target.id, 'team_id' => 8 }
-                    ])
+      { 'club_id' => source.id, 'team_id' => 7 },
+      { 'club_id' => target.id, 'team_id' => 8 }
+    ])
 
     run_task('MERGES' => "#{source.id}:#{target.id}", 'DRY_RUN' => 'false')
 
@@ -146,9 +146,9 @@ class MergeClubsTest < ActiveSupport::TestCase
     target = create(:club)
     other = create(:club)
     player = create(:player, clubs: [
-                      { 'club_id' => source.id, 'team_id' => 7 },
-                      { 'club_id' => other.id, 'team_id' => 9 }
-                    ])
+      { 'club_id' => source.id, 'team_id' => 7 },
+      { 'club_id' => other.id, 'team_id' => 9 }
+    ])
 
     run_task('MERGES' => "#{source.id}:#{target.id}", 'DRY_RUN' => 'false')
 
@@ -162,7 +162,7 @@ class MergeClubsTest < ActiveSupport::TestCase
 
     run_task('MERGES' => "#{source.id}:#{target.id}", 'DRY_RUN' => 'false')
 
-    assert_equal [target.id], user.reload.permissions.map { |p| p['club_id'] }
+    assert_equal([target.id], user.reload.permissions.map { |p| p['club_id'] })
   end
 
   test 'entdoppelt users.permissions nach dem Umschreiben' do
@@ -180,9 +180,9 @@ class MergeClubsTest < ActiveSupport::TestCase
 
   test 'übernimmt Gast-Spielbetriebe, nicht den Heimat-Eintrag' do
     source = create(:club, game_operations_hash: [
-                      { 'home_game_operation' => true, 'game_operation_id' => 1 },
-                      { 'game_operation_id' => 5 }
-                    ])
+      { 'home_game_operation' => true, 'game_operation_id' => 1 },
+      { 'game_operation_id' => 5 }
+    ])
     target = create(:club, game_operations_hash: [{ 'home_game_operation' => true, 'game_operation_id' => 2 }])
 
     run_task('MERGES' => "#{source.id}:#{target.id}", 'DRY_RUN' => 'false')
