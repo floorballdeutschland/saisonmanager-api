@@ -19,10 +19,13 @@ class FixClubStateAssociationsTest < ActiveSupport::TestCase
     # doppeltes Kürzel lässt den Task abbrechen.
     @fvd = create(:state_association, name: 'Floorball-Verband Deutschland e.V.',
                                       short_name: ClubStateAssociationResolver.national_sa_short)
-    @associations = ClubStateAssociationResolver::STATE_TO_SA_SHORT.values.uniq
-      .reject { |short| short == ClubStateAssociationResolver.national_sa_short }
-      .to_h { |short| [short, create(:state_association, name: "LV #{short}", short_name: short)] }
-    @associations[ClubStateAssociationResolver.national_sa_short] = @fvd
+    national = ClubStateAssociationResolver.national_sa_short
+    @associations = { national => @fvd }
+    ClubStateAssociationResolver::STATE_TO_SA_SHORT.each_value do |short|
+      next if short == national || @associations.key?(short)
+
+      @associations[short] = create(:state_association, name: "LV #{short}", short_name: short)
+    end
 
     @go = create(:game_operation, state_association_id: @associations['FVNB'].id)
   end
