@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Vereine ohne zuständigen Spielbetrieb zugeordnet (einmaliger Wartungsbefehl)**: 22 Vereine hatten keinen Heimat-Spielbetrieb und gehörten damit keinem Verband — bis 1.68.0 fielen sie deshalb aus jeder Vereinsliste, seither sind sie zwar sichtbar, aber für niemanden zuständig. Es sind zwei verschiedene Fälle: zehn Heimatvereine von Schiedsrichtern aus dem Kursergebnis-Import (Hochschulen, Judo- und Kegelvereine, keine Floorballvereine) und zwölf Vereine aus dem Altdaten-Import 2010–2014 mit echten Mannschaften in Alt-Ligen. Ein neuer Wartungsbefehl leitet den Spielbetrieb je Verein ab: bei Vereinen mit Mannschaften aus den Ligen, in denen sie gespielt haben, sonst aus dem hinterlegten Landesverband. Bundesligen zählen bei der Ableitung nicht mit, weil ein Zweitligist keinen Heimatverband bestimmt — sonst landeten alle Bundesligisten beim Bundesverband. Bei Vereinen, denen auch der Landesverband fehlt, wird er mitgesetzt, und zwar nach dem Bundesland der Postleitzahl und nicht nach dem Spielbetrieb: beides fällt auseinander, etwa beim SV Eidelstedt, der in Hamburg sitzt und im Spielbetrieb Schleswig-Holstein spielt. Vereine, bei denen zwei Spielbetriebe gleich viele Mannschaften stellen oder gar keine Quelle da ist, ordnet der Befehl nicht zu, sondern listet sie zur Prüfung auf. Vor dem Ausführen zeigt er eine Vorschau; eine reine Übersicht gibt es zusätzlich als eigenen, nie schreibenden Befehl.
+
 ## [1.68.0] - 2026-08-05
 
 ### Verbessert
