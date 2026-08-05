@@ -283,7 +283,11 @@ class ClubsController < ApplicationController
 
   def admin_club_update
     if current_user
-      create_modus = params[:id].zero?
+      # to_i: params[:id] ist nur bei einem JSON-Body eine Zahl. Als
+      # Form-Parameter kommt der String "0" an, und String#zero? gibt es nicht –
+      # die Aktion lief dann in einen NoMethodError. Ein fehlendes :id gilt
+      # ebenfalls als Anlage (nil.to_i == 0).
+      create_modus = params[:id].to_i.zero?
       # check: game operation permission if create_modus
       #   has: create club for that go?
       #   else : unpermitted!
