@@ -1,11 +1,10 @@
-# Read about fixtures at http://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
-
-# This model initially had no columns defined. If you add columns to the
-# model remove the '{}' from the fixture names and add the columns immediately
-# below each fixture, per the syntax in the comments below
+# Absichtlich leer. Die beiden Platzhalter (`one: {}`, `two: {}`) waren
+# Generator-Gerüst, wurden von keinem Test referenziert und trugen weder
+# Bundesland noch Spielbetrieb.
 #
-one: {}
-# column: value
+# Seit die Vereinsverwaltung Vereine ohne Heim-Spielbetrieb ausdrücklich anzeigt
+# (Club.admin_user_clubs), erfüllten genau diese Platzhalter die Bedingung und
+# tauchten in jeder verbandsübergreifenden Vereinsliste auf. Tests, die exakte
+# Vereinslisten prüfen, hätten sie ständig mitzählen müssen.
 #
-two: {}
-# column: value
+# Vereine in Tests über die Factory anlegen: create(:club, ...).
