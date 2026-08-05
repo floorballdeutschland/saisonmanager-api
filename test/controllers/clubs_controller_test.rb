@@ -381,21 +381,23 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     go = create(:game_operation, state_association_id: create(:state_association).id)
     login(create(:user, :sbk_scoped, game_operation_id: go.id))
 
-    post '/api/v2/admin/clubs', params: create_club_params(game_operation_id: 0)
+    assert_no_difference('Club.count') do
+      post '/api/v2/admin/clubs', params: create_club_params(game_operation_id: 0)
+    end
 
     assert_response :unprocessable_entity
     assert_match 'Spielbetrieb', JSON.parse(response.body)['message']
-    assert_equal 0, Club.count
   end
 
   test 'admin_club_update meldet einen unbekannten Spielbetrieb statt 404' do
     go = create(:game_operation, state_association_id: create(:state_association).id)
     login(create(:user, :sbk_scoped, game_operation_id: go.id))
 
-    post '/api/v2/admin/clubs', params: create_club_params(game_operation_id: 999_999)
+    assert_no_difference('Club.count') do
+      post '/api/v2/admin/clubs', params: create_club_params(game_operation_id: 999_999)
+    end
 
     assert_response :unprocessable_entity
-    assert_equal 0, Club.count
   end
 
   test 'admin_club_update verweigert die Anlage im fremden Spielbetrieb' do
@@ -403,10 +405,11 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     fremd_go = create(:game_operation, state_association_id: create(:state_association).id)
     login(create(:user, :sbk_scoped, game_operation_id: eigen_go.id))
 
-    post '/api/v2/admin/clubs', params: create_club_params(game_operation_id: fremd_go.id)
+    assert_no_difference('Club.count') do
+      post '/api/v2/admin/clubs', params: create_club_params(game_operation_id: fremd_go.id)
+    end
 
     assert_response :forbidden
-    assert_equal 0, Club.count
   end
 
 
