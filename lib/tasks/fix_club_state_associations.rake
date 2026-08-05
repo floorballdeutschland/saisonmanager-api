@@ -29,12 +29,20 @@
 #   - Vereine am Landesverband ihres Spielbetriebs statt am eigenen
 #     (Hamburger Vereine im SH-Spielbetrieb: FLV-SH -> FBH).
 #
-# Vereine mit ausländischer Anschrift haben keinen zuständigen Landesverband und
-# gehören auf die Bundesebene (Hot Shots Innsbruck -> FVD). Ausland wird nicht
-# geraten: eine nicht fünfstellige PLZ allein genügt nicht, weil eine deutsche
-# PLZ aus dem 0er-Block ohne führende Null ebenfalls vierstellig ist
-# (`"1067"` = Leipzig). Solche Vereine landen in der Prüfliste, verschoben wird
-# nur, wen FOREIGN_CLUB_IDS ausdrücklich benennt.
+# Dem Bundesverband gehören außerdem Vereine, für die kein Landesverband
+# zuständig ist: Mecklenburg-Vorpommern (siehe Tabelle unten), Vereine mit
+# ausländischer Anschrift und Altlasten ohne Bundesland. Die beiden letzten Fälle
+# lassen sich nicht aus den Daten ableiten und müssen per NATIONAL_CLUB_IDS
+# benannt werden. Insbesondere ist eine nicht fünfstellige PLZ kein Nachweis für
+# Ausland: eine deutsche PLZ aus dem 0er-Block ohne führende Null ist ebenfalls
+# vierstellig (`"1067"` = Leipzig). Solche Vereine landen in der Prüfliste.
+#
+# Stand 08/2026 sind das:
+#
+#     NATIONAL_CLUB_IDS=178,220
+#
+#   178 Hot Shots Innsbruck (österreichische Anschrift, PLZ 6020)
+#   220 " SBK-OST" (Altlast ohne Bundesland und ohne Anschrift)
 #
 # Bewusst NICHT betroffen, weil das Bundesland schon zum Landesverband passt:
 # ETV Hamburg (FBH, spielt im Spielbetrieb Niedersachsen) und FC Rennsteig
@@ -54,10 +62,13 @@
 # Task-Lauf. Report- und Fix-Task im selben rake-Prozess – und mehrere
 # Testläufe – sähen sonst veraltete Landesverbände.
 class ClubStateAssociationResolver
-  # Bundesland (ISO) -> zuständiger Landesverband (Kürzel). Mecklenburg-Vorpommern
-  # fehlt bewusst: dort gibt es keinen Landesverband, solche Vereine werden
-  # übersprungen statt geraten.
+  # Bundesland (ISO) -> zuständiger Verband (Kürzel).
+  #
+  # Mecklenburg-Vorpommern hat keinen eigenen Landesverband; die dortigen Vereine
+  # betreut der Bundesverband (fachlich entschieden 08/2026). Sie standen vorher
+  # bei Berlin-Brandenburg, das für sie nicht zuständig ist.
   STATE_TO_SA_SHORT = {
+    'de-mv' => 'FVD',
     'de-bw' => 'FVBW',
     'de-by' => 'FVB',
     'de-be' => 'FVBB',
@@ -86,8 +97,8 @@ class ClubStateAssociationResolver
     ::Club::FALLBACK_STATE_ASSOCIATION_SHORT_NAME
   end
 
-  def initialize(foreign_club_ids: [])
-    @foreign_club_ids = foreign_club_ids.map(&:to_i)
+  def initialize(national_club_ids: [])
+    @national_club_ids = national_club_ids.map(&:to_i)
     @sa_by_short_name = StateAssociation.all.index_by(&:short_name)
     @game_operations = GameOperation.includes(:state_association).index_by(&:id)
   end
@@ -123,14 +134,15 @@ class ClubStateAssociationResolver
 
   # Zielverband und Begründung:
   #   :ok               – Bundesland durch PLZ bestätigt, Zuordnung falsch.
-  #   :foreign          – ausdrücklich als Auslandsverein benannt -> Bundesebene.
+  #   :national         – ausdrücklich dem Bundesverband zugeordnet: Vereine mit
+  #                       ausländischer Anschrift und Altlasten ohne Bundesland.
   #   :state_without_lv – Bundesland ohne eigenen Landesverband (MV).
   #   :no_state         – kein Bundesland hinterlegt.
   #   :unconfirmed      – PLZ bestätigt das hinterlegte Bundesland nicht. Dazu
   #                       gehören auch nicht fünfstellige PLZ: Ausland oder
   #                       fehlende führende Null lassen sich nicht unterscheiden.
   def resolve(club)
-    return [national_state_association, :foreign] if @foreign_club_ids.include?(club.id)
+    return [national_state_association, :national] if @national_club_ids.include?(club.id)
 
     target = expected_for_state(club)
     return [nil, club.state.present? ? :state_without_lv : :no_state] if target.nil?
@@ -190,7 +202,7 @@ namespace :clubs do
 
   def build_resolver
     resolver = ClubStateAssociationResolver.new(
-      foreign_club_ids: ENV.fetch('FOREIGN_CLUB_IDS', '').split(',').map(&:strip).reject(&:empty?)
+      national_club_ids: ENV.fetch('NATIONAL_CLUB_IDS', '').split(',').map(&:strip).reject(&:empty?)
     )
 
     # Ohne die Landesverbände hinter den Kürzeln schreibt der Task nichts
@@ -205,7 +217,7 @@ namespace :clubs do
   end
 
   desc 'Setzt den Landesverband der Vereine auf den fuer ihr Bundesland zustaendigen Verband ' \
-       '(Default Dry-Run, DRY_RUN=false zum Ausfuehren, FOREIGN_CLUB_IDS=1,2 fuer Auslandsvereine)'
+       '(Default Dry-Run, DRY_RUN=false zum Ausfuehren, NATIONAL_CLUB_IDS=1,2 fuer den Bundesverband)'
   task fix_state_associations: :environment do
     check_dry_run_flag!
     resolver = build_resolver
@@ -222,7 +234,7 @@ namespace :clubs do
       next if target && club.state_association_id == target.id
 
       case status
-      when :ok, :foreign then changes << [club, target, status]
+      when :ok, :national then changes << [club, target, status]
       when :unconfirmed then buckets[:unconfirmed] << [club, target]
       else buckets[status] << club
       end
@@ -237,7 +249,7 @@ namespace :clubs do
     # Datenbank zurück.
     ActiveRecord::Base.transaction do
       changes.each do |club, target, status|
-        note = status == :foreign ? ' [Ausland -> Bundesebene]' : ''
+        note = status == :national ? ' [-> Bundesebene]' : ''
         # Vor dem Schreiben festhalten: danach ist der alte Wert weg.
         from = label(club.state_association)
         from_id = club.state_association_id
@@ -275,7 +287,7 @@ namespace :clubs do
     if buckets[:unconfirmed].any?
       puts "\n#{buckets[:unconfirmed].size} Verein(e) uebersprungen, weil die PLZ das Bundesland nicht " \
            'bestaetigt. Ausland oder fehlende fuehrende Null? Bitte einzeln pruefen, ' \
-           'Auslandsvereine per FOREIGN_CLUB_IDS nachziehen:'
+           'Auslandsvereine per NATIONAL_CLUB_IDS nachziehen:'
       buckets[:unconfirmed].each do |club, target|
         puts format('  %<id>-6s %<name>-34s Land %<state>-8s PLZ %<plz>-8s laut PLZ %<derived>-8s ' \
                     'LV %<from>s, waere %<to>s',

@@ -14,11 +14,15 @@ class FixClubStateAssociationsTest < ActiveSupport::TestCase
     create(:setting, current_season_id: '18')
 
     # Alle Kürzel der Zuordnungstabelle müssen auflösbar sein, sonst bricht der
-    # Task ab (siehe Test unten).
-    @associations = ClubStateAssociationResolver::STATE_TO_SA_SHORT.values.uniq.to_h do |short|
-      [short, create(:state_association, name: "LV #{short}", short_name: short)]
-    end
-    @fvd = create(:state_association, name: 'Floorball-Verband Deutschland e.V.', short_name: 'FVD')
+    # Task ab (siehe Test unten). Der Bundesverband steht selbst in der Tabelle
+    # (Mecklenburg-Vorpommern) und darf deshalb nur einmal angelegt werden – ein
+    # doppeltes Kürzel lässt den Task abbrechen.
+    @fvd = create(:state_association, name: 'Floorball-Verband Deutschland e.V.',
+                                      short_name: ClubStateAssociationResolver.national_sa_short)
+    @associations = ClubStateAssociationResolver::STATE_TO_SA_SHORT.values.uniq
+      .reject { |short| short == ClubStateAssociationResolver.national_sa_short }
+      .to_h { |short| [short, create(:state_association, name: "LV #{short}", short_name: short)] }
+    @associations[ClubStateAssociationResolver.national_sa_short] = @fvd
 
     @go = create(:game_operation, state_association_id: @associations['FVNB'].id)
   end
@@ -107,18 +111,17 @@ class FixClubStateAssociationsTest < ActiveSupport::TestCase
     assert_equal @associations['FVS'].id, club.reload.state_association_id
   end
 
-  # Mecklenburg-Vorpommern hat keinen eigenen Landesverband. Nicht raten.
-  test 'ueberspringt Bundeslaender ohne eigenen Landesverband und listet sie auf' do
+  # Mecklenburg-Vorpommern hat keinen eigenen Landesverband; zustaendig ist der
+  # Bundesverband. Vorher standen diese Vereine bei Berlin-Brandenburg.
+  test 'haengt Vereine aus Mecklenburg-Vorpommern an den Bundesverband' do
     club = create(:club, name: 'Pommerhoc Greifswald', state: 'de-mv', postcode: '17489',
                          state_association_id: @associations['FVBB'].id,
                          game_operations_hash: [{ 'game_operation_id' => @go.id,
                                                   'home_game_operation' => true }])
 
-    out, = run_task('clubs:fix_state_associations', 'DRY_RUN' => 'false')
+    run_task('clubs:fix_state_associations', 'DRY_RUN' => 'false')
 
-    assert_equal @associations['FVBB'].id, club.reload.state_association_id
-    assert_match 'ohne eigenen Landesverband', out
-    assert_match club.id.to_s, out
+    assert_equal @fvd.id, club.reload.state_association_id
   end
 
   test 'ueberspringt Vereine, deren PLZ das Bundesland nicht bestaetigt' do
@@ -162,17 +165,31 @@ class FixClubStateAssociationsTest < ActiveSupport::TestCase
     assert_equal @associations['FVSA'].id, club.reload.state_association_id
   end
 
-  test 'FOREIGN_CLUB_IDS verschiebt benannte Auslandsvereine auf die Bundesebene' do
+  test 'NATIONAL_CLUB_IDS verschiebt benannte Vereine auf die Bundesebene' do
     club = create(:club, name: 'Hot Shots Innsbruck', state: 'de-st', postcode: '6020',
                          state_association_id: @associations['FVB'].id,
                          game_operations_hash: [{ 'game_operation_id' => @go.id,
                                                   'home_game_operation' => true }])
 
     out, = run_task('clubs:fix_state_associations',
-                    'DRY_RUN' => 'false', 'FOREIGN_CLUB_IDS' => club.id.to_s)
+                    'DRY_RUN' => 'false', 'NATIONAL_CLUB_IDS' => club.id.to_s)
 
     assert_equal @fvd.id, club.reload.state_association_id
-    assert_match 'Ausland -> Bundesebene', out
+    assert_match '-> Bundesebene', out
+  end
+
+  # Altlast ohne Bundesland und ohne Anschrift (Verein 220 " SBK-OST"). Aus den
+  # Daten nicht ableitbar, deshalb ausdrücklich benannt.
+  test 'NATIONAL_CLUB_IDS greift auch ohne Bundesland und ohne PLZ' do
+    club = create(:club, name: ' SBK-OST', state: nil, postcode: nil,
+                         state_association_id: @associations['FVS'].id,
+                         game_operations_hash: [{ 'game_operation_id' => @go.id,
+                                                  'home_game_operation' => true }])
+
+    run_task('clubs:fix_state_associations',
+             'DRY_RUN' => 'false', 'NATIONAL_CLUB_IDS' => club.id.to_s)
+
+    assert_equal @fvd.id, club.reload.state_association_id
   end
 
   # PLZ mit anhängendem Leerzeichen kommt in Produktion vor ('06118 ').
