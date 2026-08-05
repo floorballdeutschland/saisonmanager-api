@@ -293,23 +293,8 @@ class ClubsController < ApplicationController
       # die Änderung am Verein selbst.
       if create_modus
         create_club
-      elsif Club.find(params[:id])&.user_permissions(current_user)&.include?(:update_club) # update
-        # update
-        club = Club.find(params[:id])
-        club.updated_by = current_user.id
-
-        if params[:game_operation_id].present?
-          new_go_id = params[:game_operation_id].to_i
-          current = club.game_operations_hash.is_a?(Array) ? club.game_operations_hash : []
-          others = current.reject { |h| h['home_game_operation'] }
-          club.game_operations_hash = others + [{ 'home_game_operation' => true, 'game_operation_id' => new_go_id }]
-        end
-
-        if club.update(club_params)
-          render json: club.full_hash
-        else
-          render json: club.errors, status: :unprocessable_entity
-        end
+      elsif (club = Club.find(params[:id])).user_permissions(current_user).include?(:update_club)
+        update_club(club)
       else
         render json: { message: 'Keine Berechtigung' }, status: :forbidden
       end
@@ -342,14 +327,54 @@ class ClubsController < ApplicationController
     end
   end
 
-  # Vereinsanlage. Der Spielbetrieb kommt als eigener Parameter, nicht aus
-  # club_params – er landet nicht als Spalte am Verein, sondern als
-  # Heimat-Eintrag im game_operations_hash.
+  private
+
+  # Gemeinsam für Anlage und Änderung. Der Spielbetrieb fehlt hier bewusst: er
+  # ist keine Spalte am Verein, sondern ein Eintrag im game_operations_hash, und
+  # kommt deshalb als eigener Parameter (siehe create_club / update_club).
   def club_params
     params.require(:club).permit(:name, :short_name, :long_name, :state, :state_association_id, :contact_email)
   end
 
-  private
+  # Vereinsänderung. Der Spielbetrieb ist optional – kommt er mit, wird der
+  # Heimat-Eintrag ersetzt.
+  def update_club(club)
+    club.updated_by = current_user.id
+
+    if params.key?(:game_operation_id)
+      target = resolve_game_operation(params[:game_operation_id])
+
+      # Eine 0 oder eine unbekannte ID hätte den Heimat-Eintrag auf einen
+      # Spielbetrieb gesetzt, den es nicht gibt. Der Verein wäre danach in
+      # keiner Vereinsliste mehr aufgetaucht (die Abfragen matchen per jsonb
+      # gegen eine echte ID) und über die Oberfläche nicht mehr auffindbar.
+      if target.nil?
+        return render json: { success: false, message: game_operation_error_message },
+                      status: :unprocessable_entity
+      end
+
+      # Wechselt der Heimat-Spielbetrieb, muss die Berechtigung auch am Ziel
+      # bestehen. `:update_club` gilt nur für den bisherigen Spielbetrieb – ohne
+      # diese Prüfung konnte ein Verband einen Verein in einen fremden
+      # Spielbetrieb verschieben, der ihn nie aufgenommen hat, und der bisherige
+      # Verband verlor dabei den Zugriff.
+      if target.id != club.main_game_operation_id &&
+         !target.user_permissions(current_user).include?(:create_club)
+        return render json: { message: 'Keine Berechtigung für den Ziel-Spielbetrieb' },
+                      status: :forbidden
+      end
+
+      guests = club.game_operations_hash.reject { |h| h['home_game_operation'] }
+      club.game_operations_hash =
+        guests + [{ 'home_game_operation' => true, 'game_operation_id' => target.id }]
+    end
+
+    if club.update(club_params)
+      render json: club.full_hash
+    else
+      render json: club.errors, status: :unprocessable_entity
+    end
+  end
 
   def create_club
     game_operation = resolve_create_game_operation
@@ -359,7 +384,7 @@ class ClubsController < ApplicationController
     # RecordNotFound, und der Nutzer bekam „Nicht gefunden." – eine Meldung, die
     # nach einem fehlenden Verein klingt.
     if game_operation.nil?
-      return render json: { success: false, message: 'Bitte einen Spielbetrieb auswählen.' },
+      return render json: { success: false, message: game_operation_error_message },
                     status: :unprocessable_entity
     end
 
@@ -387,13 +412,28 @@ class ClubsController < ApplicationController
     end
   end
 
-  # Spielbetrieb der Vereinsanlage. `find_by` statt `find`, damit eine unbekannte
-  # oder fehlende ID zu einer verständlichen Meldung führt statt zu einem 404.
   def resolve_create_game_operation
-    go_id = params[:game_operation_id].to_i
+    resolve_game_operation(params[:game_operation_id])
+  end
+
+  # `find_by` statt `find`, damit eine unbekannte ID zu einer verständlichen
+  # Meldung führt statt zu einem 404 („Nicht gefunden." aus dem globalen
+  # rescue_from, was nach einem fehlenden Verein klingt).
+  def resolve_game_operation(raw_id)
+    go_id = raw_id.to_i
     return nil unless go_id.positive?
 
     GameOperation.find_by(id: go_id)
+  end
+
+  # Unterscheidet die beiden Gründe: nicht ausgewählt oder unbekannt. Vorher
+  # nannte beide Fälle dieselbe Meldung, obwohl nur der erste vom Nutzer kommt.
+  def game_operation_error_message
+    if params[:game_operation_id].to_i.positive?
+      'Der gewählte Spielbetrieb existiert nicht.'
+    else
+      'Bitte einen Spielbetrieb auswählen.'
+    end
   end
 
   # Ein Verein kann Teams in Ligen mehrerer Spielbetriebe haben (Gastvereine
