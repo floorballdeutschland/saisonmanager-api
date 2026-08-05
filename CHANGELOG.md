@@ -9,6 +9,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Vereinsverwaltung ist nach Landesverband gegliedert**: Die Übersicht gruppierte die Vereine nach Spielbetrieb und widersprach damit dem, was am Verein selbst eingestellt ist — Vereine mit Landesverband Schleswig-Holstein standen zum Beispiel unter „Floorball Niedersachsen". Die Überschriften sind jetzt die Landesverbände. Sachsen, Sachsen-Anhalt und Thüringen erscheinen dadurch einzeln statt gesammelt unter „SBK Ost". Wer welche Vereine sieht, ändert sich nicht: das richtet sich weiterhin nach dem Spielbetrieb. Ein Verein im eigenen Spielbetrieb, der einem anderen Landesverband angehört, bleibt also sichtbar — nur unter der Überschrift seines eigenen Landesverbands. Die Überschrift nennt jetzt immer den Namen des Landesverbands, weil nur ein Teil der Verbände ein Logo hinterlegt hat.
+
+### Behoben
+
+- **Landesverbände der Vereine korrigiert (einmaliger Wartungsbefehl)**: Der Landesverband wurde bei seiner Einführung aus dem Spielbetrieb abgeleitet, dabei aber aus einem Gast- statt aus dem Heimat-Spielbetrieb. So bekam etwa der STV Sedelsberg Schleswig-Holstein, weil er früher dort mitgespielt hatte. Ein neuer Wartungsbefehl setzt den Landesverband auf den für das Bundesland des Vereins zuständigen Verband und räumt damit drei Fehlerbilder auf: aus Gast-Spielbetrieben abgeleitete Landesverbände, Vereine am nicht auswählbaren Dachverband „SBK Ost" und Vereine am Landesverband ihres Spielbetriebs statt am eigenen (Hamburger Vereine im Spielbetrieb Schleswig-Holstein). Vereine mit ausländischer Anschrift gehen an den Bundesverband. Geändert wird nur, wenn die Postleitzahl das hinterlegte Bundesland bestätigt; alle übrigen Fälle listet der Befehl zur Prüfung auf, statt sie zu raten. Vor dem Ausführen zeigt er eine Vorschau und protokolliert jeden geänderten Verein.
+- **Vereine ohne Landesverband sind wieder auffindbar**: Vereine ohne Spielbetrieb tauchten in der Vereinsverwaltung überhaupt nicht auf und ließen sich damit auch nicht bearbeiten. Sie erscheinen jetzt unter dem Bundesverband; Vereine, deren Landesverband nicht mehr existiert, unter „Ohne Landesverband".
+
 ## [1.67.3] - 2026-08-04
 
 ### Behoben
