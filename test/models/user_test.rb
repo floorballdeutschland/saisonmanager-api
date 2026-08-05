@@ -390,18 +390,22 @@ class UserTest < ActiveSupport::TestCase
   # Spielbetrieb – die Zahl der Gruppen richtet sich deshalb nach den
   # Landesverbänden. Leere Landesverbände bleiben dabei sichtbar, damit ein
   # Verband ohne Vereine nicht samt Anlege-Knopf aus der Verwaltung fällt.
+  #
+  # game_operation_id 0 = global. Die vorherige Fassung listete stattdessen
+  # ALL_GO auf; diese IDs gibt es als Fixture nicht, der Zugriff war also in
+  # Wahrheit leer und die Zusicherung hing an den Platzhalter-Fixtures.
   test 'Club.admin_user_clubs: globaler Admin erhält Einträge für alle Landesverbände' do
-    GameOperation.find_each { |go| go.update!(state_association: create(:state_association)) }
+    create(:setting, current_season_id: '18')
+    lv_a = create(:state_association, name: 'LV A')
+    lv_b = create(:state_association, name: 'LV B')
+    GameOperation.find_each { |go| go.update!(state_association: lv_a) }
+    create(:game_operation, state_association_id: lv_b.id)
 
-    perms = ALL_GO.map { |go| { 'user_group_id' => 1, 'game_operation_id' => go } }
-    admin = build_user(permissions: perms)
+    admin = build_user(permissions: [{ 'user_group_id' => 1, 'game_operation_id' => 0 }])
 
-    # global_access path: fetches all GameOperations
-    result = Club.admin_user_clubs(admin)
-    # reorder(nil): GameOperation hat einen default_scope mit ORDER BY, der in
-    # Postgres mit einer Aggregatfunktion ohne GROUP BY kollidieren würde.
-    expected_sa_count = GameOperation.reorder(nil).distinct.count(:state_association_id)
-    assert_equal expected_sa_count, result.size
+    # Ein Landesverband je Gruppe – auch ohne Vereine, und unabhängig davon, wie
+    # viele Spielbetriebe an ihm hängen.
+    assert_equal ['LV A', 'LV B'], Club.admin_user_clubs(admin).map { |g| g[:name] }
   end
 
   test 'permission_hash: deterministisch – gleicher Nutzer ergibt immer denselben Hash' do

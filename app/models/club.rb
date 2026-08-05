@@ -215,10 +215,23 @@ class Club < ApplicationRecord
     scope.where(id: ids.uniq).order(:name)
   end
 
-  # Vereine ohne eigenen Landesverband landen in der Gruppe des FVD, damit sie
-  # in der Vereinsverwaltung überhaupt auftauchen. Ohne diesen Fallback wären
-  # sie unsichtbar und damit auch nicht bearbeitbar.
-  FALLBACK_STATE_ASSOCIATION_ID = 1
+  # Vereine ohne eigenen Landesverband landen in der Gruppe des Bundesverbands,
+  # damit sie in der Vereinsverwaltung überhaupt auftauchen. Ohne diesen Fallback
+  # wären sie unsichtbar und damit auch nicht bearbeitbar.
+  #
+  # Auflösung bewusst über das Kürzel und nicht über eine feste ID: in
+  # Produktion hat der FVD zwar id 1, db/seeds.rb legt dort aber „SBK Ost" an.
+  # Eine hartkodierte 1 hätte die Vereine ohne Landesverband in jeder
+  # aufgesetzten Datenbank unter genau den Dachverband gruppiert, den diese
+  # Gruppierung loswerden soll – und zwar völlig lautlos.
+  FALLBACK_STATE_ASSOCIATION_SHORT_NAME = 'FVD'.freeze
+
+  # Vereine ohne Heim-Spielbetrieb: kein Verband ist für sie zuständig.
+  # `@>` mit Teilobjekt matcht jeden Eintrag mit home_game_operation: true,
+  # unabhängig vom Spielbetrieb; die Negation trifft damit leere Hashes und
+  # solche mit ausschließlich Gast-Einträgen.
+  WITHOUT_HOME_GAME_OPERATION_SQL =
+    %(NOT (clubs.game_operations_hash @> '[{"home_game_operation": true}]')).freeze
 
   # Gruppiert die Vereine nach ihrem *eingestellten* Landesverband
   # (clubs.state_association_id) statt nach Spielbetrieb. Vorher richtete sich
@@ -249,7 +262,12 @@ class Club < ApplicationRecord
       go_ids.flatten!
     end
 
-    scoped = home_clubs_of(go_ids).includes(logo_attachment: :blob)
+    # Vereine ohne Heim-Spielbetrieb nur für globalen Zugriff: sie sind sonst
+    # unsichtbar und nicht bearbeitbar (in Produktion 13 neu angelegte Vereine).
+    # Ein einzelner Landesverband soll dafür aber nicht die unzugeordneten
+    # Vereine aller anderen in seiner Liste haben.
+    scoped = home_clubs_of(go_ids, include_unassigned: global_access)
+      .includes(logo_attachment: :blob)
     scoped = scoped.active unless include_deactivated
     clubs = scoped.order(:name).to_a
 
@@ -270,8 +288,9 @@ class Club < ApplicationRecord
   end
 
   # Heim-Vereine aller übergebenen Spielbetriebe – in einer Query statt einer pro
-  # Spielbetrieb. Die @>-Bedingungen bleiben index-fähig (GIN auf
-  # game_operations_hash).
+  # Spielbetrieb. Auf clubs liegt derzeit kein Index, die @>-Bedingungen wären
+  # aber mit einem GIN-Index auf game_operations_hash index-fähig. Bei knapp 300
+  # Vereinen ist der Sequential Scan unkritisch.
   #
   # Nur Heim-Einträge: Ein Verein gehört genau einem Verband, und nur der
   # verwaltet seine Stammdaten. Ein bloßer Gast-Eintrag im game_operations_hash
@@ -280,18 +299,22 @@ class Club < ApplicationRecord
   # die Verbände gegenseitig in ihre Vereinslisten sehen, ohne dass es jemand
   # erteilt hätte. Fremde Vereine erscheinen nur über eine Vereins-Freigabe, also
   # im „(freigegeben)"-Block.
-  def self.home_clubs_of(go_ids)
-    return none if go_ids.blank?
-
-    # Klammern bewusst explizit: die Bedingung wird mit weiteren where-Aufrufen
-    # (z. B. dem active-Scope) per AND verknüpft, und ein ungeklammertes OR
-    # würde dabei die Deaktiviert-Bedingung aushebeln.
-    conditions = Array.new(go_ids.size, 'clubs.game_operations_hash @> ?').join(' OR ')
+  def self.home_clubs_of(go_ids, include_unassigned: false)
+    predicates = Array.new(go_ids.size, 'clubs.game_operations_hash @> ?')
     binds = go_ids.map do |id|
       [{ game_operation_id: id.to_i, home_game_operation: true }].to_json
     end
 
-    where("(#{conditions})", *binds)
+    # Ohne Bind-Platzhalter und deshalb hinter den Spielbetriebs-Bedingungen:
+    # die Binds werden positionsabhängig eingesetzt.
+    predicates << WITHOUT_HOME_GAME_OPERATION_SQL if include_unassigned
+    return none if predicates.empty?
+
+    # Klammern explizit, obwohl Rails String-Prädikate ohnehin in
+    # Arel::Nodes::Grouping wickelt: so ist die Bindung beim Lesen von to_sql
+    # eindeutig, und eine Weiterverwendung des Fragments außerhalb von `where`
+    # (to_sql, find_by_sql) verknüpft das OR nicht versehentlich mit einem AND.
+    where("(#{predicates.join(' OR ')})", *binds)
   end
 
   # Baut je Landesverband eine Gruppe.
@@ -305,43 +328,88 @@ class Club < ApplicationRecord
   # (vgl. Issue #193): die Landesverbände der Vereine, die der Spielbetriebe und
   # deren Unterverbände.
   def self.group_by_state_association(clubs, go_state_association_ids)
-    grouped = clubs.group_by { |c| c.state_association_id || FALLBACK_STATE_ASSOCIATION_ID }
+    fallback_id = fallback_state_association_id
+    grouped = clubs.group_by { |c| c.state_association_id || fallback_id }
 
     associations = StateAssociation.includes(logo_attachment: :blob)
       .where('state_associations.id IN (:ids) OR state_associations.parent_id IN (:parents)',
              ids: grouped.keys + go_state_association_ids, parents: go_state_association_ids)
       .to_a
 
-    groups = associations.filter_map do |sa|
-      sa_clubs = grouped[sa.id] || []
-      next if sa_clubs.empty? && !always_shown_state_association?(sa, associations, go_state_association_ids)
+    groups = build_state_association_groups(grouped, associations, go_state_association_ids)
 
-      state_association_group(sa, sa_clubs)
-    end.sort_by { |g| g[:name] }
-
-    # Vereine, deren LV-Verweis ins Leere zeigt (gelöschter LV, fehlender FVD),
-    # gehen nicht verloren, sondern kommen in eine namentlich klare Restgruppe.
+    # Vereine, deren LV-Verweis ins Leere zeigt (gelöschter Landesverband,
+    # fehlender Bundesverband), gehen nicht verloren, sondern kommen in eine
+    # namentlich klare Restgruppe.
     known_ids = associations.map(&:id)
     orphans = grouped.reject { |sa_id, _| known_ids.include?(sa_id) }.values.flatten
-    groups << orphan_group(orphans) if orphans.any?
+    if orphans.any?
+      log_unresolvable_state_associations(orphans, fallback_id)
+      groups << orphan_group(orphans)
+    end
 
     groups
+  end
+
+  def self.build_state_association_groups(grouped, associations, go_state_association_ids)
+    groups = associations.filter_map do |sa|
+      sa_clubs = grouped[sa.id] || []
+      next if sa_clubs.empty? && !show_empty_state_association?(sa, associations, go_state_association_ids)
+
+      state_association_group(sa, sa_clubs)
+    end
+
+    groups.sort_by { |g| g[:name] }
   end
 
   # Ein leerer Landesverband wird gezeigt, wenn er zu einem Spielbetrieb des
   # Nutzers gehört – als eigener Verband oder als dessen Unterverband.
   #
-  # Ausgenommen sind Verbände, die selbst Unterverbände haben: sie verwalten
-  # keine Vereine, im Bearbeiten-Formular sind nur Blatt-Verbände auswählbar.
-  # Für „SBK Ost" erscheint deshalb keine leere Gruppe, sondern je eine für
-  # Sachsen, Sachsen-Anhalt und Thüringen. Sind dem Dachverband aus Altdaten
+  # Verbände mit Unterverbänden bleiben außen vor: sie verwalten keine Vereine,
+  # das Bearbeiten-Formular bietet nur Blatt-Verbände an (die API erzwingt das
+  # nicht). Für „SBK Ost" erscheint deshalb keine leere Gruppe, sondern je eine
+  # für Sachsen, Sachsen-Anhalt und Thüringen. Sind dem Dachverband aus Altdaten
   # doch noch Vereine zugeordnet, entsteht seine Gruppe weiter über diese
-  # Vereine.
-  def self.always_shown_state_association?(state_association, associations, go_state_association_ids)
-    return true if go_state_association_ids.include?(state_association.parent_id)
-    return false unless go_state_association_ids.include?(state_association.id)
+  # Vereine – die Prüfung greift nur für leere Gruppen.
+  #
+  # Die Prüfung auf Unterverbände steht bewusst vor beiden Treffern, damit sie
+  # auch für einen Verband mittlerer Ebene gilt. StateAssociation erlaubt
+  # beliebige Tiefe, auch wenn heute nur zwei Ebenen vorkommen.
+  def self.show_empty_state_association?(state_association, associations, go_state_association_ids)
+    return false if associations.any? { |other| other.parent_id == state_association.id }
 
-    associations.none? { |other| other.parent_id == state_association.id }
+    go_state_association_ids.include?(state_association.id) ||
+      go_state_association_ids.include?(state_association.parent_id)
+  end
+
+  # Der Bundesverband wird über das Kürzel aufgelöst, nicht über eine feste ID.
+  # Fehlt er, greift die Restgruppe „Ohne Landesverband" – Vereine verschwinden
+  # also nicht, die Gruppe heißt nur anders.
+  def self.fallback_state_association_id
+    StateAssociation.find_by(short_name: FALLBACK_STATE_ASSOCIATION_SHORT_NAME)&.id
+  end
+
+  # Ein ins Leere zeigender Landesverband ist ein Datenfehler: auf
+  # clubs.state_association_id liegt kein Fremdschlüssel, die Zuordnung kann
+  # also auf einen gelöschten Verband verweisen. Ohne Log bliebe das
+  # unbemerkt, weil die Restgruppe in der Oberfläche unauffällig aussieht.
+  def self.log_unresolvable_state_associations(orphans, fallback_id)
+    if fallback_id.nil?
+      Rails.logger.error(
+        'Club.admin_user_clubs: kein Landesverband mit short_name ' \
+        "#{FALLBACK_STATE_ASSOCIATION_SHORT_NAME} gefunden – " \
+        "#{orphans.count { |c| c.state_association_id.nil? }} Verein(e) ohne Landesverband " \
+        'stehen unter „Ohne Landesverband" statt beim Bundesverband.'
+      )
+    end
+
+    dangling = orphans.reject { |c| c.state_association_id.nil? }
+    return if dangling.empty?
+
+    Rails.logger.error(
+      'Club.admin_user_clubs: Vereine verweisen auf nicht vorhandene Landesverbände: ' +
+      dangling.map { |c| "#{c.id}->#{c.state_association_id}" }.join(', ')
+    )
   end
 
   # Freigegebene Landesverbände (StateAssociationRelease) bleiben ein eigener,
@@ -378,44 +446,43 @@ class Club < ApplicationRecord
       .to_a
     return nil if own_clubs.empty?
 
-    {
-      id: nil,
-      name: 'Eigene Vereine',
-      short_name: nil,
-      path: nil,
-      logo_url: nil,
-      logo_quad_url: nil,
-      state_association_id: nil,
-      released: false,
-      clubs: own_clubs.map(&:full_hash)
-    }
+    club_group(name: 'Eigene Vereine', clubs: own_clubs)
   end
 
   def self.state_association_group(state_association, clubs, released: false)
+    # strip: einige Verbandsnamen tragen in Produktion ein führendes Leerzeichen,
+    # das sonst in der Überschrift landet und die Sortierung verdreht.
     name = state_association.name.strip
-    {
-      id: nil,
+
+    club_group(
       name: released ? "#{name} (freigegeben)" : name,
+      clubs:,
       short_name: state_association.short_name,
-      path: nil,
       logo_url: state_association.logo_url,
-      logo_quad_url: nil,
       state_association_id: state_association.id,
-      released:,
-      clubs: clubs.map(&:full_hash)
-    }
+      released:
+    )
   end
 
   def self.orphan_group(clubs)
+    club_group(name: 'Ohne Landesverband', clubs:)
+  end
+
+  # Gemeinsame Form aller Gruppen der Vereinsverwaltung.
+  #
+  # Anders als früher steckt hier kein GameOperation#meta_hash mehr: `id`, `path`,
+  # `banner_url` und `logo_quad_url` sind entfallen. Sie beschrieben einen
+  # Spielbetrieb, den eine Landesverbands-Gruppe nicht hat; `logo_quad_url` ist
+  # mit den Spalten aus game_operations schon entfernt worden (siehe
+  # game_operation_test.rb). Das Frontend liest keines der Felder.
+  def self.club_group(name:, clubs:, short_name: nil, logo_url: nil,
+                      state_association_id: nil, released: false)
     {
-      id: nil,
-      name: 'Ohne Landesverband',
-      short_name: nil,
-      path: nil,
-      logo_url: nil,
-      logo_quad_url: nil,
-      state_association_id: nil,
-      released: false,
+      name:,
+      short_name:,
+      logo_url:,
+      state_association_id:,
+      released:,
       clubs: clubs.map(&:full_hash)
     }
   end
