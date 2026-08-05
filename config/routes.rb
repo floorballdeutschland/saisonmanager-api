@@ -312,7 +312,16 @@ Rails.application.routes.draw do
             delete :logo, action: :delete_logo
           end
         end
-        resources :api_keys, only: %i[index create update destroy]
+        resources :api_keys, only: %i[index create update destroy] do
+          get :usage, on: :member
+        end
+        resources :api_key_applications, only: %i[index] do
+          member do
+            post :approve
+            post :reject
+            post :resend_reveal
+          end
+        end
         resources :email_logs, only: [:index] do
           collection { post :send_test }
         end
@@ -385,6 +394,14 @@ Rails.application.routes.draw do
       # Abgabe ohne Anmeldung über Einmal-Link (Kapitän*in / Feedback-Kontakt).
       get  'referee_feedback_invitations/:token', to: 'referee_feedback_invitations#show'
       post 'referee_feedback_invitations/:token', to: 'referee_feedback_invitations#create'
+
+      # Öffentlicher Antrag auf einen API-Zugang, ohne Anmeldung. Der Abhol-Link
+      # zeigt den genehmigten Key genau einmal an; GET prüft nur den Zustand,
+      # erst POST erzeugt und zeigt ihn (Mail-Scanner rufen Links vorab ab).
+      get  'api_terms_version', to: 'api_key_applications#terms_version'
+      post 'api_key_applications', to: 'api_key_applications#create'
+      get  'api_key_applications/reveal/:token', to: 'api_key_applications#show_reveal'
+      post 'api_key_applications/reveal', to: 'api_key_applications#reveal'
 
       # Kein :index – GET /api/v2/games lieferte per Game.all die komplette
       # Spieltabelle ohne Filter und ohne Grenze (siehe GamesController).

@@ -5,6 +5,7 @@ class ApplicationController < ActionController::Base
   before_action :save_current_user # https://gist.github.com/kule/9425fb7d4c2a13e556ef
   before_action :set_paper_trail_whodunnit
   after_action :set_csrf_cookie
+  after_action :track_api_key_usage
 
   # rescue_from-Handler werden von Rails in umgekehrter Definitionsreihenfolge
   # geprüft: Der zuletzt passende (= zuerst definierte) fängt zuletzt. Deshalb
@@ -61,14 +62,33 @@ class ApplicationController < ActionController::Base
     return if current_user
 
     raw_key = request.headers['X-Api-Key']
-    @api_key = ApiKey.authenticate(raw_key)
-    return if @api_key
+    # Der sperrige Name ist Absicht: Ein schlichtes @api_key kollidiert mit
+    # Controllern, die einen ApiKey-Datensatz verwalten (Admin::ApiKeysController).
+    # Deren Fund würde den Request sonst als API-Key-Zugriff ausgeben, mit
+    # verzögerten Daten und falschen Zahlen in der Nutzungsstatistik.
+    @authenticated_api_key = ApiKey.authenticate(raw_key)
+    return if @authenticated_api_key
 
     render json: { success: false, message: 'API key required' }, status: :unauthorized
   end
 
   def api_key_request?
-    @api_key.present?
+    @authenticated_api_key.present?
+  end
+
+  # Zählt jeden mit API-Key beantworteten Zugriff pro Tag und Endpunkt. Eine
+  # Stelle deckt damit alle öffentlichen Endpunkte ab, weil
+  # @authenticated_api_key ausschließlich in authenticate_public_request gesetzt
+  # wird.
+  #
+  # Nicht gezählt werden Zugriffe per Cookie-Session (dort bleibt die Variable
+  # leer) und abgewiesene Requests: Hält eine before_action die Kette an (401
+  # wegen fehlendem Key, 429 durch Rack::Attack), läuft diese after_action nicht.
+  def track_api_key_usage
+    return unless api_key_request?
+
+    ApiKeyUsage.increment!(api_key_id: @authenticated_api_key.id,
+                           endpoint: "#{controller_name}##{action_name}")
   end
 
   def current_user
