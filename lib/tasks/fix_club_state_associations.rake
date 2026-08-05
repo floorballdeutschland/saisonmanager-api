@@ -75,10 +75,16 @@ class ClubStateAssociationResolver
     'de-th' => 'FVTH'
   }.freeze
 
-  # Dieselbe Konstante wie die Gruppierung in der Vereinsverwaltung: sonst könnte
+  # Dieselbe Quelle wie die Gruppierung in der Vereinsverwaltung: sonst könnte
   # der Task Vereine an einen Verband hängen, den die Anzeige nicht als
   # Bundesebene kennt.
-  NATIONAL_SA_SHORT = Club::FALLBACK_STATE_ASSOCIATION_SHORT_NAME
+  #
+  # Als Methode und nicht als Konstante: der Klassenrumpf läuft beim Laden der
+  # rake-Dateien, also vor `environment` – dort ist Club noch nicht autoloadbar
+  # (`rake db:create` bricht sonst mit NameError ab).
+  def self.national_sa_short
+    ::Club::FALLBACK_STATE_ASSOCIATION_SHORT_NAME
+  end
 
   def initialize(foreign_club_ids: [])
     @foreign_club_ids = foreign_club_ids.map(&:to_i)
@@ -90,20 +96,20 @@ class ClubStateAssociationResolver
   # umbenanntes Kürzel würde sonst als „Bundesland ohne Landesverband"
   # durchgehen – die Meldung für Mecklenburg-Vorpommern.
   def missing_short_names
-    (STATE_TO_SA_SHORT.values + [NATIONAL_SA_SHORT]).uniq - @sa_by_short_name.keys
+    (STATE_TO_SA_SHORT.values + [self.class.national_sa_short]).uniq - @sa_by_short_name.keys
   end
 
   # Kürzel, die mehrfach vorkommen. `index_by` behielte stillschweigend den
   # letzten Treffer, und auf state_associations.short_name liegt kein
   # Unique-Index – die Wahl entschiede dann über die Schreibvorgänge.
   def duplicate_short_names
-    relevant = (STATE_TO_SA_SHORT.values + [NATIONAL_SA_SHORT]).uniq
+    relevant = (STATE_TO_SA_SHORT.values + [self.class.national_sa_short]).uniq
     StateAssociation.where(short_name: relevant)
       .group(:short_name).having('count(*) > 1').count.keys
   end
 
   def national_state_association
-    @sa_by_short_name[NATIONAL_SA_SHORT]
+    @sa_by_short_name[self.class.national_sa_short]
   end
 
   def home_state_association(club)
