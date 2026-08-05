@@ -215,9 +215,9 @@ class Club < ApplicationRecord
     scope.where(id: ids.uniq).order(:name)
   end
 
-  # Vereine ohne eigenen Landesverband landen in der Gruppe des Bundesverbands,
-  # damit sie in der Vereinsverwaltung überhaupt auftauchen. Ohne diesen Fallback
-  # wären sie unsichtbar und damit auch nicht bearbeitbar.
+  # Vereine ohne eigenen Landesverband landen in der Gruppe des Bundesverbands –
+  # er ist für sie zuständig. Fehlt der Datensatz, stehen sie in der Restgruppe
+  # „Ohne Landesverband" (siehe orphan_group); verloren gehen sie also nie.
   #
   # Auflösung bewusst über das Kürzel und nicht über eine feste ID: in
   # Produktion hat der FVD zwar id 1, db/seeds.rb legt dort aber „SBK Ost" an.
@@ -325,26 +325,36 @@ class Club < ApplicationRecord
   # Vereins, der in der Oberfläche je Gruppe steht.
   #
   # Alle Gruppenköpfe kommen aus einer einzigen Query samt Logo-Attachment
-  # (vgl. Issue #193): die Landesverbände der Vereine, die der Spielbetriebe und
-  # deren Unterverbände.
+  # (vgl. Issue #193): die Landesverbände der Vereine, die der Spielbetriebe,
+  # deren Unterverbände und der Bundesverband. Letzterer steckt bewusst in
+  # derselben Query – ein eigenes find_by hätte den N+1-Test aus #193 gerissen.
   def self.group_by_state_association(clubs, go_state_association_ids)
-    fallback_id = fallback_state_association_id
-    grouped = clubs.group_by { |c| c.state_association_id || fallback_id }
+    grouped = clubs.group_by(&:state_association_id)
 
     associations = StateAssociation.includes(logo_attachment: :blob)
-      .where('state_associations.id IN (:ids) OR state_associations.parent_id IN (:parents)',
-             ids: grouped.keys + go_state_association_ids, parents: go_state_association_ids)
+      .where('state_associations.id IN (:ids) OR state_associations.parent_id IN (:parents) ' \
+             'OR state_associations.short_name = :national',
+             ids: grouped.keys.compact + go_state_association_ids,
+             parents: go_state_association_ids,
+             national: FALLBACK_STATE_ASSOCIATION_SHORT_NAME)
       .to_a
+
+    # Vereine ohne Landesverband gehören zum Bundesverband. Fehlt der, bleibt
+    # ihr nil-Schlüssel stehen und sie landen unten in der Restgruppe.
+    fallback = associations.find { |sa| sa.short_name == FALLBACK_STATE_ASSOCIATION_SHORT_NAME }
+    if fallback && grouped.key?(nil)
+      grouped[fallback.id] = (grouped[fallback.id] || []) + grouped.delete(nil)
+    end
 
     groups = build_state_association_groups(grouped, associations, go_state_association_ids)
 
-    # Vereine, deren LV-Verweis ins Leere zeigt (gelöschter Landesverband,
-    # fehlender Bundesverband), gehen nicht verloren, sondern kommen in eine
-    # namentlich klare Restgruppe.
+    # Vereine, deren Verweis ins Leere zeigt (gelöschter Landesverband, fehlender
+    # Bundesverband), gehen nicht verloren, sondern kommen in eine namentlich
+    # klare Restgruppe.
     known_ids = associations.map(&:id)
     orphans = grouped.reject { |sa_id, _| known_ids.include?(sa_id) }.values.flatten
     if orphans.any?
-      log_unresolvable_state_associations(orphans, fallback_id)
+      log_unresolvable_state_associations(orphans, fallback)
       groups << orphan_group(orphans)
     end
 
@@ -382,19 +392,12 @@ class Club < ApplicationRecord
       go_state_association_ids.include?(state_association.parent_id)
   end
 
-  # Der Bundesverband wird über das Kürzel aufgelöst, nicht über eine feste ID.
-  # Fehlt er, greift die Restgruppe „Ohne Landesverband" – Vereine verschwinden
-  # also nicht, die Gruppe heißt nur anders.
-  def self.fallback_state_association_id
-    StateAssociation.find_by(short_name: FALLBACK_STATE_ASSOCIATION_SHORT_NAME)&.id
-  end
-
   # Ein ins Leere zeigender Landesverband ist ein Datenfehler: auf
   # clubs.state_association_id liegt kein Fremdschlüssel, die Zuordnung kann
   # also auf einen gelöschten Verband verweisen. Ohne Log bliebe das
   # unbemerkt, weil die Restgruppe in der Oberfläche unauffällig aussieht.
-  def self.log_unresolvable_state_associations(orphans, fallback_id)
-    if fallback_id.nil?
+  def self.log_unresolvable_state_associations(orphans, fallback)
+    if fallback.nil?
       Rails.logger.error(
         'Club.admin_user_clubs: kein Landesverband mit short_name ' \
         "#{FALLBACK_STATE_ASSOCIATION_SHORT_NAME} gefunden – " \
