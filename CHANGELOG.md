@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.68.0] - 2026-08-05
+
 ### Verbessert
 
 - **Vereinsverwaltung ist nach Landesverband gegliedert**: Die Übersicht gruppierte die Vereine nach Spielbetrieb und widersprach damit dem, was am Verein selbst eingestellt ist — Vereine mit Landesverband Schleswig-Holstein standen zum Beispiel unter „Floorball Niedersachsen". Die Überschriften sind jetzt die Landesverbände. Sachsen, Sachsen-Anhalt und Thüringen erscheinen dadurch einzeln; „SBK Ost" bleibt nur so lange sichtbar, wie ihm noch Vereine zugeordnet sind — der Wartungsbefehl unten hängt diese um. Landesverbände ohne Vereine bleiben in der Liste, damit dort weiterhin der erste Verein angelegt werden kann. Wer welche Vereine sieht, ändert sich nicht: das richtet sich weiterhin nach dem Spielbetrieb. Ein Verein im eigenen Spielbetrieb, der einem anderen Landesverband angehört, bleibt also sichtbar — nur unter der Überschrift seines eigenen Landesverbands. Die Überschrift nennt jetzt immer den Namen des Landesverbands, weil nur ein Teil der Verbände ein Logo hinterlegt hat.
