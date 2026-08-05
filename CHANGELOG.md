@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.69.0] - 2026-08-05
+
 ### Neu
 
 - **Vereine zusammenlegen (Wartungsbefehl)**: Zwei Vereinseinträge lassen sich zu einem zusammenführen — gedacht für Dubletten (derselbe Verein liegt zweimal in der Datenbank) und für echte Vereinsfusionen, bei denen zwei Vereine in der Wirklichkeit einer geworden sind. Die Historie des aufgelösten Vereins bleibt erhalten: Mannschaften, Spieltage, Spieler-Mitgliedschaften, Transfers, Schiedsrichter samt Kursergebnissen und Ausschlüssen, Rückmeldungen sowie Benutzerrollen hängen anschließend am verbleibenden Verein. Dessen Stammdaten (Name, Kurzname, Registername, Landesverband, Logo) bleiben unangetastet, der Heimat-Spielbetrieb ebenso — die Zuständigkeit verschiebt sich also nicht. Spielbetriebe, in denen der aufgelöste Verein als Gast gespielt hat, werden übernommen, damit die betroffenen Verbände den Zugriff auf diese Spiele behalten. Hatte ein Spieler eine Mitgliedschaft in beiden Vereinen, bleibt die weiter gültige übrig statt zweier Einträge für denselben Verein. Vor dem Ausführen zeigt der Befehl eine Vorschau der betroffenen Datensätze; jede Zusammenlegung wird protokolliert.
