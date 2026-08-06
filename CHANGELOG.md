@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Livestream-Overlays: Datenquelle und Zugang**: Grundlage für die Grafikpakete, die Vereine künftig in OBS Studio einbinden können (Spielstandsanzeige, Bauchbinden, Vollbilder im Bundesliga-Design). Wer einen Spielbericht führen darf, kann für einen Spieltag einen Overlay-Link erzeugen; die Browser-Quellen in OBS holen sich darüber die Spieldaten, ohne Anmeldung und ohne API-Schlüssel. Der Link gilt nur für die Spiele dieses einen Spieltags, läuft nach 36 Stunden ab und lässt sich jederzeit zurückziehen oder durch einen neuen ersetzen. Weil eine Anzeigetafel Live-Daten braucht, hebt er die Zehn-Minuten-Verzögerung auf, aber eben nur für diesen Spieltag und nicht für den Gesamtbestand. Die Daten kommen anzeigefertig: Trikotnummern sind zu Spielernamen aufgelöst, das zuletzt gefallene Tor liegt gesondert bei. Ein Steuerzustand am Link hält fest, was gerade eingeblendet ist, damit das Bedienfeld und die Einblendung zusammenpassen und ein Neuladen der Browser-Quelle mitten im Spiel nichts verliert. Die Oberflächen dazu folgen.
+
 ## [1.71.1] - 2026-08-06
 
 ### Behoben

@@ -108,12 +108,20 @@ module Rack
     # ActiveStorage-Anhängen.
     CRAWLER_THROTTLED_PATHS = %w[/api/ /verband].freeze
 
+    # Datenquelle der Livestream-Overlays. Hat einen eigenen Topf weiter unten
+    # und gehört nicht in die Crawler-Bremse: Eine Übertragung fragt im
+    # Sekundentakt ab, und die eingebettete Chromium-Kennung von OBS steht heute
+    # zwar nicht in CRAWLER_USER_AGENTS, ein künftig allgemeineres Muster in
+    # dieser Liste würde aber mitten im Spiel die Anzeigetafel abwürgen.
+    OVERLAY_PATH_PREFIX = '/api/v2/public/overlay'.freeze
+
     throttle('crawler/ip', limit: 60, period: 1.minute) do |req|
       # HEAD gehört dazu: Link-Prüfer und einige Crawler holen ausschließlich
       # Header, und teuer ist der Aufruf für den Server trotzdem. Schreibpfade
       # bleiben außen vor, Crawler stellen keine POSTs.
       next unless req.get? || req.head?
       next unless CRAWLER_THROTTLED_PATHS.any? { |p| req.path.start_with?(p) }
+      next if req.path.start_with?(OVERLAY_PATH_PREFIX)
       # Wer angemeldet ist, soll sich nicht an einer falsch erkannten
       # Browser-Kennung ausbremsen. Geprüft wird nur, ob ein user_id-Cookie
       # anliegt, nicht dessen Signatur: Die ließe sich hier in der Middleware
@@ -157,6 +165,23 @@ module Rack
       next unless ApiKey.cached_meta(raw_key)&.[](:rate_limit)
 
       raw_key
+    end
+
+    # Grenze je Overlay-Token. Die Abrufe tragen keinen API-Key, fielen also
+    # durch beide Töpfe oben hindurch.
+    #
+    # Rechnung: Overlay und Dock fragen im Sekundentakt, macht 120 pro Minute;
+    # ein zweiter Regie-Rechner verdoppelt das. 300 lässt Luft für eine
+    # zusätzliche Quelle und begrenzt zugleich, was ein weitergegebener Link
+    # anrichten kann.
+    #
+    # Gezählt wird das Token, nicht die Adresse: In der Halle hängen alle
+    # Rechner hinter derselben IP, und mehrere Übertragungen aus einem Verein
+    # sollen sich nicht gegenseitig ausbremsen.
+    throttle('overlay/token', limit: 300, period: 1.minute) do |req|
+      next unless req.path.start_with?(OVERLAY_PATH_PREFIX)
+
+      req.params['token'].presence
     end
 
     # rack-attack übergibt dem Responder seit Version 6 ein Rack::Attack::Request

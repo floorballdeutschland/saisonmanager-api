@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_08_06_120100) do
+ActiveRecord::Schema[7.1].define(version: 2026_08_06_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -190,6 +190,20 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_06_120100) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["name"], name: "index_feedback_themes_on_name", unique: true
+  end
+
+  create_table "game_day_overlay_links", force: :cascade do |t|
+    t.bigint "game_day_id", null: false
+    t.bigint "created_by_id", null: false
+    t.string "token_digest", null: false
+    t.datetime "expires_at", null: false
+    t.jsonb "state", default: {}, null: false
+    t.datetime "state_updated_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_by_id"], name: "index_game_day_overlay_links_on_created_by_id"
+    t.index ["game_day_id"], name: "index_game_day_overlay_links_on_game_day_id"
+    t.index ["token_digest"], name: "index_game_day_overlay_links_on_token_digest", unique: true
   end
 
   create_table "game_day_referee_confirmations", force: :cascade do |t|
@@ -875,7 +889,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_06_120100) do
     t.index ["former_club_id"], name: "index_transfer_requests_on_former_club_id"
     t.index ["player_confirmation_token"], name: "index_transfer_requests_on_player_confirmation_token", unique: true
     t.index ["player_id"], name: "index_transfer_requests_on_player_id"
-    t.index ["player_id"], name: "index_transfer_requests_on_player_id_active", unique: true, where: "((status)::text = ANY ((ARRAY['pending_club'::character varying, 'pending_player'::character varying, 'pending_lv'::character varying, 'scheduled'::character varying])::text[]))"
+    t.index ["player_id"], name: "index_transfer_requests_on_player_id_active", unique: true, where: "((status)::text = ANY (ARRAY[('pending_club'::character varying)::text, ('pending_player'::character varying)::text, ('pending_lv'::character varying)::text, ('scheduled'::character varying)::text]))"
     t.index ["request_type"], name: "index_transfer_requests_on_request_type"
     t.index ["requesting_club_id"], name: "index_transfer_requests_on_requesting_club_id"
     t.index ["status"], name: "index_transfer_requests_on_status"
@@ -940,6 +954,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_06_120100) do
   add_foreign_key "document_types", "game_operations"
   add_foreign_key "feedback_theme_taggings", "feedback_themes"
   add_foreign_key "feedback_theme_taggings", "referee_feedbacks"
+  add_foreign_key "game_day_overlay_links", "game_days"
+  add_foreign_key "game_day_overlay_links", "users", column: "created_by_id"
   add_foreign_key "game_day_referee_confirmations", "game_days"
   add_foreign_key "game_day_referee_confirmations", "referees"
   add_foreign_key "game_day_secretary_links", "game_days"
