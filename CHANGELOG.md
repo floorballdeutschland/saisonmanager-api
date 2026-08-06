@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Benutzerkonten auf das Testsystem nachziehen (Wartungsbefehl)**: Bisher kamen neue oder geänderte Konten nur mit einem vollständigen Neuaufbau der Testsystem-Datenbank auf `saisonmanager.dev` an, und der verwirft alle dort aufgebauten Testfälle. Der neue Befehl `staging:sync_users` gleicht allein die Benutzerkonten mit dem Produktivstand ab; alles andere auf dem Testsystem bleibt stehen. Abgeglichen wird über den Benutzernamen, damit bestehende Konten ihre Verweise behalten. Die Demo-Konten des Testsystems bleiben unangetastet, Konten mit ausschließlich Vereinsmanager-, Teammanager- oder Schiedsrichter-Rolle werden wie beim Neuaufbau nicht übernommen, und wer auf dem Produktivsystem eine Rolle verloren hat, verliert sie auch dort. Konten, die es nur auf dem Testsystem gibt, werden gemeldet statt gelöscht. Wie die übrigen Testsystem-Befehle läuft er ausschließlich gegen die Testsystem-Datenbank und bricht andernfalls ab, bevor etwas geschrieben wird; ein Probelauf ist möglich.
+
 ### Verbessert
 
 - **API-Zugänge mit eigenem Limit zählen nicht mehr doppelt**: Neben dem Limit je Schlüssel gibt es eine Obergrenze pro IP-Adresse, die Suchmaschinen und Skript-Clients bremst. Sie griff auch für Anwendungen mit gültigem Zugang, weil deren Kennung (etwa `python-requests` oder `curl`) in derselben Liste steht. Damit hing ein beantragter Zugang an zwei Grenzen gleichzeitig, und ein Anheben seines Limits durch die Verwaltung blieb wirkungslos. Wer ein eigenes Limit hat, wird jetzt nur noch danach gezählt. Schlüssel ohne eigenes Limit, etwa der des Saisonmanager-Frontends, bleiben in der IP-Grenze.

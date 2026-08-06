@@ -1,0 +1,208 @@
+require 'test_helper'
+require 'rake'
+
+# Tests für staging:sync_users (lib/tasks/staging_sync_users.rake): Nachziehen
+# des Prod-Benutzerkontenstands auf die Staging-DB, ohne den Rest der Datenbank
+# anzufassen.
+#
+# Der Task verweigert die Arbeit gegen jede Datenbank, deren Host nicht
+# 'staging' enthält. Die Testdatenbank ist keine, deshalb wird
+# connection_db_config für die Dauer des Aufrufs auf einen Staging-Host
+# gestellt – die Prüfung selbst ist Gegenstand eines eigenen Tests.
+class StagingSyncUsersTest < ActiveSupport::TestCase
+  setup do
+    Rails.application.load_tasks if Rake::Task.tasks.empty?
+    @task = Rake::Task['staging:sync_users']
+    @task.reenable
+  end
+
+  # Stand-in für ActiveRecord::Base.connection_db_config; der Task liest daraus
+  # nur den Host.
+  class FakeDbConfig
+    def initialize(host)
+      @host = host
+    end
+
+    def configuration_hash
+      { host: @host }
+    end
+  end
+
+  STAGING_CONFIG = FakeDbConfig.new('postgres-staging').freeze
+
+  def run_task(records, env = {}, host_config: STAGING_CONFIG)
+    saved_env = ENV.to_hash.slice(*env.keys)
+    saved_stdin = $stdin
+    env.each { |k, v| ENV[k] = v }
+    $stdin = StringIO.new(records.is_a?(String) ? records : records.to_json)
+    @task.reenable
+    capture_io do
+      ActiveRecord::Base.stub(:connection_db_config, host_config) { @task.invoke }
+    end
+  ensure
+    $stdin = saved_stdin
+    env.each_key { |k| ENV[k] = saved_env[k] }
+  end
+
+  def prod_record(user_name, permissions, extra = {})
+    {
+      'user_name' => user_name,
+      'email' => "#{user_name}@example.com",
+      'first_name' => 'Vor',
+      'last_name' => 'Nach',
+      'password_digest' => BCrypt::Password.create('prod-passwort'),
+      'permissions' => permissions,
+      'language' => 'de',
+      'receive_info_mails' => true,
+      'privacy_approved' => true,
+      'description' => nil,
+      'archived_at' => nil
+    }.merge(extra)
+  end
+
+  SBK = [{ 'user_group_id' => 2, 'game_operation_id' => 8 }].freeze
+  VM  = [{ 'user_group_id' => 4, 'game_operation_id' => 0, 'club_id' => 1 }].freeze
+
+  test 'neues SBK-Konto wird angelegt und behält sein Prod-Passwort' do
+    digest = BCrypt::Password.create('prod-passwort')
+
+    run_task([prod_record('neue.sbk', SBK, 'password_digest' => digest)])
+
+    user = User.find_by(user_name: 'neue.sbk')
+    assert_not_nil user
+    assert_equal SBK, user.permissions
+    assert user.authenticate('prod-passwort'), 'Das echte Prod-Passwort muss auf Staging funktionieren'
+  end
+
+  test 'bestehendes Konto behält seine Staging-ID' do
+    existing = create(:user, :sbk_scoped, user_name: 'alte.sbk', last_name: 'Alt')
+
+    run_task([prod_record('alte.sbk', SBK, 'last_name' => 'Neu')])
+
+    assert_equal existing.id, User.find_by(user_name: 'alte.sbk').id
+    assert_equal 'Neu', existing.reload.last_name
+  end
+
+  test 'reines VM-Konto wird nicht neu angelegt' do
+    run_task([prod_record('nur.vm', VM)])
+
+    assert_nil User.find_by(user_name: 'nur.vm')
+  end
+
+  test 'bestehendes Konto verliert entzogene Rollen' do
+    create(:user, :sbk_scoped, user_name: 'war.sbk')
+
+    run_task([prod_record('war.sbk', VM)])
+
+    assert_equal VM, User.find_by(user_name: 'war.sbk').permissions,
+                 'Rechte, die es auf Prod nicht mehr gibt, dürfen auf Staging nicht bleiben'
+  end
+
+  test 'demo-Konten werden nicht überschrieben' do
+    create(:user, :admin, user_name: 'demo_admin', last_name: 'Demo')
+
+    run_task([prod_record('demo_admin', SBK, 'last_name' => 'Fremd')])
+
+    assert_equal 'Demo', User.find_by(user_name: 'demo_admin').last_name
+  end
+
+  test 'unbekannte referee_id blockiert das Konto nicht' do
+    run_task([prod_record('mit.schiri', SBK, 'referee_id' => 999_999)])
+
+    user = User.find_by(user_name: 'mit.schiri')
+    assert_not_nil user, 'Ein Fremdschlüssel ins Leere darf das Konto nicht scheitern lassen'
+    assert_nil user.referee_id
+  end
+
+  # Team-IDs wandern zwischen Prod und einem älteren Klon. Würde die Spalte
+  # doch übernommen, zeigte sie womöglich auf eine fremde Mannschaft. Ohne
+  # diesen Test fällt ein zusätzliches 'teams' in synced_columns nicht auf.
+  test 'teams wird nicht uebernommen' do
+    create(:user, :sbk_scoped, user_name: 'mit.team', teams: [123])
+
+    run_task([prod_record('mit.team', SBK, 'teams' => [999])])
+
+    assert_equal [123], User.find_by(user_name: 'mit.team').teams
+  end
+
+  test 'Abgleich findet ein Konto auch bei abweichender Gross-/Kleinschreibung' do
+    existing = create(:user, :sbk_scoped, user_name: 'max.mustermann', last_name: 'Alt')
+
+    run_task([prod_record('Max.Mustermann', SBK, 'last_name' => 'Neu')])
+
+    assert_equal 1, User.where('LOWER(user_name) = ?', 'max.mustermann').count,
+                 'Ein zweites Konto mit anderer Schreibweise wäre ein Dublett'
+    assert_equal 'Neu', existing.reload.last_name
+  end
+
+  test 'eine anderweitig vergebene referee_id blockiert das Konto nicht' do
+    referee = create(:referee)
+    create(:user, :sbk_scoped, user_name: 'hat.schiri', referee_id: referee.id)
+
+    run_task([prod_record('neu.mit.schiri', SBK, 'referee_id' => referee.id)])
+
+    user = User.find_by(user_name: 'neu.mit.schiri')
+    assert_not_nil user, 'Der Unique-Index auf referee_id darf den Lauf nicht abreißen'
+    assert_nil user.referee_id
+    assert_equal referee.id, User.find_by(user_name: 'hat.schiri').referee_id
+  end
+
+  test 'nur auf Staging vorhandene Konten werden nicht geloescht' do
+    create(:user, :admin, user_name: 'nur.staging')
+
+    run_task([prod_record('andere.sbk', SBK)])
+
+    assert_not_nil User.find_by(user_name: 'nur.staging')
+  end
+
+  # Ein Lauf, der die Hälfte nicht schreiben konnte, darf nicht wie ein
+  # erfolgreicher aussehen: Das Wrapper-Skript läuft unter `set -e`.
+  test 'ein nicht speicherbares Konto beendet den Task mit Fehler' do
+    invalid = prod_record('kaputte.sprache', SBK, 'language' => 'kl')
+
+    assert_raises(SystemExit) { run_task([invalid]) }
+    assert_nil User.find_by(user_name: 'kaputte.sprache')
+  end
+
+  test 'DRY_RUN meldet ein Konto, das scheitern wuerde' do
+    assert_raises(SystemExit) do
+      run_task([prod_record('kaputte.sprache', SBK, 'language' => 'kl')], { 'DRY_RUN' => 'true' })
+    end
+  end
+
+  test 'DRY_RUN aendert auch ein vorhandenes Konto nicht' do
+    existing = create(:user, :sbk_scoped, user_name: 'bleibt.gleich', last_name: 'Alt')
+    digest_before = existing.password_digest
+
+    run_task([prod_record('bleibt.gleich', SBK, 'last_name' => 'Neu')], { 'DRY_RUN' => 'true' })
+
+    existing.reload
+    assert_equal 'Alt', existing.last_name
+    assert_equal digest_before, existing.password_digest
+  end
+
+  test 'DRY_RUN schreibt nicht' do
+    # Klammern nötig: ohne sie liest Ruby 3 den Hash als Keyword-Argumente,
+    # weil run_task ein Keyword (host_config:) hat.
+    run_task([prod_record('nur.probe', SBK)], { 'DRY_RUN' => 'true' })
+
+    assert_nil User.find_by(user_name: 'nur.probe')
+  end
+
+  test 'gegen eine Nicht-Staging-Datenbank bricht der Task ab' do
+    prod_config = FakeDbConfig.new('postgres')
+
+    assert_raises(SystemExit) do
+      run_task([prod_record('neue.sbk', SBK)], {}, host_config: prod_config)
+    end
+    assert_nil User.find_by(user_name: 'neue.sbk')
+  end
+
+  test 'leerer Export bricht ab, statt Konten zu verwerfen' do
+    assert_raises(SystemExit) { run_task([]) }
+  end
+
+  test 'kaputtes JSON bricht ab' do
+    assert_raises(SystemExit) { run_task('{kein json') }
+  end
+end
