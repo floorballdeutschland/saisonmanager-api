@@ -15,7 +15,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Verbessert
 
-- **Weniger personenbezogene Daten über die öffentliche Schnittstelle**: Die Spielerstatistik nannte neben dem Namen auch Geburtsdatum und Geschlecht. Beides zeigt die Spielerseite nicht an, und da die Spielernummer fortlaufend ist, hätte ein Inhaber eines API-Schlüssels damit den Geburtstag zum Namen für den gesamten Spielerbestand einsammeln können. Beide Angaben entfallen. Die Scorerlisten liefern außerdem keine Spielerfotos mehr; die Anzeige nutzt durchgängig das Platzhalter-Symbol.
+- **Weniger personenbezogene Daten über die öffentliche Schnittstelle**: Die Spielerstatistik nannte neben dem Namen auch Geburtsdatum und Geschlecht. Beides zeigt die Spielerseite nicht an, und weil die Spielerprofile fortlaufend nummeriert sind, hätte ein Inhaber eines API-Schlüssels damit den Geburtstag zum Namen für den gesamten Spielerbestand einsammeln können. Beide Angaben entfallen. Aus den Scorerlisten fällt außerdem das Feld für ein Spielerfoto weg. Es war seit Jahren immer leer, ausgeliefert wurde nie ein Foto; die Anzeige nutzt wie bisher das Platzhalter-Symbol.
 
 ## [1.71.0] - 2026-08-06
 
