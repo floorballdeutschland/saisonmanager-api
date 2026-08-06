@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Beantragte API-Zugänge starten mit einem Standard-Limit**: Ein über das Antragsformular bewilligter Zugang war bisher unbegrenzt. Er beginnt jetzt bei 60 Anfragen pro Minute — im Mittel eine pro Sekunde, im Minutenfenster auch 60 am Stück. Das deckt Tabellen, Spielpläne und Vereins-Widgets bequem ab und bremst nur Dauerschleifen und das Spiegeln des Gesamtbestands; häufiger zu fragen bringt ohnehin nichts, weil diese Zugänge die Daten mit zehn Minuten Verzögerung bekommen. Wird die Grenze überschritten, antwortet die API mit dem Status 429 und nennt in `Retry-After`, nach wie vielen Sekunden es weitergeht. Die Verwaltung kann das Limit je Key jederzeit anheben oder aufheben; die Keys des eigenen Frontends bleiben wie bisher ungedrosselt. Die Nutzungsvereinbarung (§ 6) nennt die Zahl nun ausdrücklich und dazu einen Richtwert von 10.000 Abrufen pro Tag, der nicht technisch erzwungen wird, sondern als Anlass für eine Absprache dient. Die Freigabe-Mail erklärt beides.
+
 ## [1.70.0] - 2026-08-05
 
 ### Neu

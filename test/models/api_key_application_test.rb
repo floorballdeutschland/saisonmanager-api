@@ -68,15 +68,29 @@ class ApiKeyApplicationTest < ActiveSupport::TestCase
     assert_nil application.reveal_key!, 'Der Link darf nur einmal einen Key liefern'
   end
 
-  test 'genehmigter Key entsteht ohne Rate-Limit und ohne Echtzeit-Zugriff' do
+  test 'genehmigter Key entsteht mit Standard-Rate-Limit und ohne Echtzeit-Zugriff' do
     application = create(:api_key_application)
     application.approve!(1)
     application.reveal_key!
 
     key = application.reload.api_key
-    assert_nil key.rate_limit
+    assert_equal ApiTerms::RATE_LIMIT_PER_MINUTE, key.rate_limit
     assert_not key.realtime
     assert_includes key.name, application.organisation
+  end
+
+  # nil würde den Throttle in rack_attack.rb überspringen: Der Zugang wäre
+  # unbegrenzt, obwohl § 6.1 der Vereinbarung eine Grenze zusagt.
+  test 'Standard-Rate-Limit ist gesetzt und nicht unbegrenzt' do
+    assert ApiTerms::RATE_LIMIT_PER_MINUTE.is_a?(Integer)
+    assert ApiTerms::RATE_LIMIT_PER_MINUTE.positive?
+  end
+
+  test 'von Hand angelegte Keys bleiben ohne Rate-Limit' do
+    raw_key, key = ApiKey.generate(name: 'Frontend')
+
+    assert raw_key.present?
+    assert_nil key.rate_limit, 'Der Key des eigenen Frontends darf nicht gedrosselt werden'
   end
 
   test 'abgelaufener Abhol-Link liefert keinen Key' do
