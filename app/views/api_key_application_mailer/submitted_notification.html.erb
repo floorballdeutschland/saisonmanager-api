@@ -37,6 +37,7 @@
 
 <p>
   Eine Genehmigung erzeugt noch keinen Key: Der Antragsteller bekommt einen Abhol-Link, über den der
-  Key genau einmal angezeigt wird. Der Zugang entsteht ohne Rate-Limit und ohne Echtzeit-Zugriff,
-  die Daten kommen also mit zehn Minuten Verzögerung.
+  Key genau einmal angezeigt wird. Der Zugang entsteht mit <%= ApiTerms::RATE_LIMIT_PER_MINUTE %>
+  Anfragen pro Minute und ohne Echtzeit-Zugriff, die Daten kommen also mit zehn Minuten Verzögerung.
+  Das Limit lässt sich in der Key-Verwaltung jederzeit ändern.
 </p>
