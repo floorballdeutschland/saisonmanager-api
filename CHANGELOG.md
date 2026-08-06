@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.71.0] - 2026-08-06
+
 ### Neu
 
 - **Benutzerkonten auf das Testsystem nachziehen (Wartungsbefehl)**: Bisher kamen neue oder geänderte Konten nur mit einem vollständigen Neuaufbau der Testsystem-Datenbank auf `saisonmanager.dev` an, und der verwirft alle dort aufgebauten Testfälle. Der neue Befehl `staging:sync_users` gleicht allein die Benutzerkonten mit dem Produktivstand ab; alles andere auf dem Testsystem bleibt stehen. Abgeglichen wird über den Benutzernamen, damit bestehende Konten ihre Verweise behalten. Die Demo-Konten des Testsystems bleiben unangetastet, Konten mit ausschließlich Vereinsmanager-, Teammanager- oder Schiedsrichter-Rolle werden wie beim Neuaufbau nicht übernommen, und wer auf dem Produktivsystem eine Rolle verloren hat, verliert sie auch dort. Konten, die es nur auf dem Testsystem gibt, werden gemeldet statt gelöscht. Wie die übrigen Testsystem-Befehle läuft er ausschließlich gegen die Testsystem-Datenbank und bricht andernfalls ab, bevor etwas geschrieben wird; ein Probelauf ist möglich.
