@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.71.1] - 2026-08-06
+
 ### Behoben
 
 - **Vereins-Kontaktadressen waren mit einem API-Schlüssel abrufbar**: Die Datenquelle der Spielplanverwaltung (Vereine und Spielorte einer Liga) verlangte trotz ihres Verwaltungspfads keine Anmeldung, sondern nur einen API-Schlüssel, und gab dabei die hinterlegte Kontakt-E-Mail-Adresse der Vereine heraus. Der Abruf setzt jetzt eine Anmeldung voraus und ist auf Admin und SBK des jeweiligen Spielbetriebs beschränkt, wie die übrigen Verwaltungsabrufe derselben Ansicht. Die Kontaktadresse geht auch für Angemeldete nicht mehr mit, weil die Spielplanverwaltung sie nicht anzeigt.
