@@ -678,20 +678,6 @@ class Player < ApplicationRecord
     suspensions.active.where(team_id:).covering(date).exists?
   end
 
-  def image
-    return nil
-    return if id % 10 > 4
-
-    "https://robohash.org/#{id}-#{CGI.escape last_name.downcase}.png?size=400x400"
-  end
-
-  def image_small
-    return nil
-    return if id % 10 > 4
-
-    "https://robohash.org/#{id}-#{CGI.escape last_name.downcase}.png?size=90x90"
-  end
-
   def self.find_by_team_id(team_id)
     # alternative for array: extr_licenses->>'team_id' IN ('#{team_ids.join '\', \''
 

@@ -829,6 +829,31 @@ class LeagueTest < ActiveSupport::TestCase
     assert_equal 1, entry[:goals]
   end
 
+  # Die Scorerliste ist per X-Api-Key abrufbar; ein Spielerporträt gehört nicht
+  # auf diese offene Fläche.
+  test 'scorer: liefert keine Spielerfotos' do
+    go = build_go
+    league = build_league(go)
+    club = build_club
+    arena = build_arena
+    game_day = build_game_day(league, arena, club)
+    home = build_team(league, club, 'Heim')
+    guest = build_team(league, club, 'Gast')
+
+    players = {
+      'home' => [{ 'trikot_number' => 7, 'player_id' => 999_999, 'player_firstname' => 'Max', 'player_name' => 'Muster' }],
+      'guest' => []
+    }
+    events = [
+      { 'period' => 1, 'time' => '05:00', 'home_number' => 7, 'home_goals' => 1, 'guest_goals' => 0, 'row' => 1 }
+    ]
+    build_game(game_day, home, guest, players: players, events: events)
+
+    entry = league.scorer.find { |s| s[:player_id] == 999_999 }
+    refute_includes entry.keys, :image
+    refute_includes entry.keys, :image_small
+  end
+
   # ---------------------------------------------------------------------------
   # Punktekorrekturen & eingefrorene Labels an der Liga (R3)
   # ---------------------------------------------------------------------------
