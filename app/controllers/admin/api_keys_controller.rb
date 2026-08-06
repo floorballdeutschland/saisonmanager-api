@@ -50,8 +50,11 @@ module Admin
     end
 
     # POST /api/v2/admin/api_keys
+    # rate_limit wird durchgereicht, weil api_key_params es erlaubt; ohne Angabe
+    # bleibt es nil und der Key ungedrosselt, wie bisher.
     def create
-      raw_key, api_key = ApiKey.generate(name: api_key_params[:name])
+      raw_key, api_key = ApiKey.generate(name: api_key_params[:name],
+                                         rate_limit: api_key_params[:rate_limit].presence)
       if raw_key && api_key.persisted?
         render json: api_key.short_hash.merge(raw_key: raw_key), status: :created
       else

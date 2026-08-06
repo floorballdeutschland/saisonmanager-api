@@ -112,13 +112,18 @@ class ApiKeyApplication < ApplicationRecord
 
   # Erzeugt den Key und gibt ihn im Klartext zurück, genau einmal. Danach ist
   # nur noch der Digest im ApiKey gespeichert.
+  #
+  # Der Key startet mit der Standardgrenze aus § 6.1 der Nutzungsvereinbarung.
+  # Ohne sie wäre ein bewilligter Zugang unbegrenzt (rate_limit nil überspringt
+  # den Throttle) – die Administration kann ihn in der Key-Verwaltung jederzeit
+  # anheben oder aufheben.
   def reveal_key!
     raw_key = nil
     self.class.transaction do
       lock!
       return nil unless reveal_state == 'valid'
 
-      raw_key, key = ApiKey.generate(name: key_name)
+      raw_key, key = ApiKey.generate(name: key_name, rate_limit: ApiTerms::RATE_LIMIT_PER_MINUTE)
       return nil if raw_key.blank? || !key.persisted?
 
       update!(api_key: key, key_revealed_at: Time.current)

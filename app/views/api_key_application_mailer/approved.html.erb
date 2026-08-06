@@ -26,6 +26,11 @@
 <ul>
   <li>Der Key gehört zu diesem einen Projekt. Gib ihn nicht weiter, du haftest für jede Nutzung darüber.</li>
   <li>Die Daten kommen mit zehn Minuten Verzögerung zum Echtbestand.</li>
+  <li>Der Key ist auf <%= ApiTerms::RATE_LIMIT_PER_MINUTE %> Anfragen pro Minute begrenzt. Darüber
+      antwortet die API mit dem Status 429 und einem <code>Retry-After</code>-Kopfzeilenwert in
+      Sekunden; warte diese Zeit ab, statt es sofort erneut zu versuchen. Als Tagesvolumen gilt ein
+      Richtwert von <%= number_with_delimiter(ApiTerms::DAILY_REQUEST_GUIDELINE, delimiter: '.') %>
+      Abrufen. Brauchst du dauerhaft mehr, melde dich, dann sehen wir uns das an.</li>
   <li>Nutze sinnvolles Caching und verzichte auf redundante Abfragen und auf das Spiegeln des Gesamtbestands.</li>
   <li>Nenne die Quelle („Daten: Saisonmanager / Floorball Verband Deutschland e.&nbsp;V.“) und
       kennzeichne dein Angebot als inoffizielles Community-Projekt.</li>

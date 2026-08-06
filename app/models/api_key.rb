@@ -19,9 +19,13 @@ class ApiKey < ApplicationRecord
   after_update :clear_meta_cache
   after_destroy :clear_meta_cache
 
-  def self.generate(name:)
+  # rate_limit ist die Grenze in Anfragen pro Minute; nil heißt unbegrenzt und
+  # bleibt der Vorgabewert für die von Hand angelegten Keys (eigenes Frontend,
+  # Prerender-Build). Zugänge aus dem Antragsprozess bekommen die Grenze aus
+  # § 6.1 der Nutzungsvereinbarung mitgegeben, siehe ApiKeyApplication#reveal_key!.
+  def self.generate(name:, rate_limit: nil)
     raw_key = SecureRandom.hex(32)
-    api_key = new(name: name, key_digest: Digest::SHA256.hexdigest(raw_key))
+    api_key = new(name: name, key_digest: Digest::SHA256.hexdigest(raw_key), rate_limit: rate_limit)
     if api_key.save
       [raw_key, api_key]
     else
