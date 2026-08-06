@@ -122,14 +122,35 @@ module Rack
       # hingenommen – dies ist eine Kostenbremse gegen halbwegs kooperative
       # Crawler, keine Sicherheitsschranke gegen einen Angreifer.
       next if req.cookies.key?('user_id')
+      # Wer einen Key mit eigener Grenze hat, wird von 'api/key' weiter unten
+      # gezählt und gehört nicht zusätzlich in den IP-Topf. Sonst hinge ein
+      # beantragter Zugang an zwei Grenzen: Die Kennungen, mit denen solche
+      # Integrationen gebaut werden (python-requests, aiohttp, curl), stehen in
+      # der Liste oben, und ein Anheben des Key-Limits durch die Verwaltung
+      # bliebe wirkungslos, weil die 60 pro IP daneben stehen blieben. Die
+      # Vereinbarung sagt eine Grenze je Key zu, nicht je Adresse.
+      #
+      # Keys OHNE eigene Grenze (eigenes Frontend, Prerender) bleiben bewusst im
+      # IP-Topf: Der Frontend-Key steht im ausgelieferten Bundle und wäre sonst
+      # der bequemste Weg, die Kostenbremse zu umgehen.
+      next if ApiKey.cached_meta(req.get_header('HTTP_X_API_KEY'))&.[](:rate_limit)
 
       req.ip if CRAWLER_USER_AGENTS.match?(req.user_agent.to_s)
     end
 
     # Throttle requests by API key using each key's individual rate_limit (requests/minute).
     # Keys with rate_limit: nil are exempt (unlimited).
+    #
+    # Das Fallback im limit-Lambda ist kein Schmuck: rack-attack ruft erst den
+    # Block unten (der auf ein gesetztes Limit prüft) und dann dieses Lambda auf.
+    # Wird der Cache-Eintrag genau dazwischen verworfen – `clear_meta_cache`
+    # feuert bei jedem Ändern und Löschen eines Keys –, käme hier nil an und der
+    # Vergleich `count > nil` würde einen öffentlichen Request mit 500
+    # beantworten statt mit 429.
     throttle('api/key',
-             limit: ->(req) { ApiKey.cached_meta(req.get_header('HTTP_X_API_KEY'))&.[](:rate_limit) },
+             limit: lambda { |req|
+               ApiKey.cached_meta(req.get_header('HTTP_X_API_KEY'))&.[](:rate_limit) || Float::INFINITY
+             },
              period: 1.minute) do |req|
       raw_key = req.get_header('HTTP_X_API_KEY')
       next unless raw_key.present?
