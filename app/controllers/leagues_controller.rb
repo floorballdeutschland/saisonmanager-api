@@ -835,17 +835,9 @@ class LeaguesController < ApplicationController
                                    required_documents: [])
   end
 
-  # Entfernt Ergebnis-Daten für laufende Spiele bei nicht-Echtzeit-API-Keys.
+  # `delay_live_scores` liegt in ApplicationController: Der Liga-Spielplan ist
+  # nicht die einzige Stelle, die `schedule_item` öffentlich ausliefert.
   # Der Cache bleibt global – die Filterung erfolgt nach dem Cache-Fetch.
-  def delay_live_scores(schedule)
-    return schedule unless api_key_request? && !@authenticated_api_key&.realtime
-
-    schedule.map do |game|
-      next game unless game[:state].to_s == 'running'
-
-      game.merge(result: nil, result_string: nil)
-    end
-  end
 
   # True, wenn in der Liga schon ein Spiel begonnen/gespielt wurde – dann ist
   # ein (überschreibender) Spielplan-Import nicht mehr erlaubt.
