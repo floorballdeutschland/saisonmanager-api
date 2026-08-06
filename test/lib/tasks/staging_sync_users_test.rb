@@ -114,6 +114,73 @@ class StagingSyncUsersTest < ActiveSupport::TestCase
     assert_nil user.referee_id
   end
 
+  # Team-IDs wandern zwischen Prod und einem älteren Klon. Würde die Spalte
+  # doch übernommen, zeigte sie womöglich auf eine fremde Mannschaft. Ohne
+  # diesen Test fällt ein zusätzliches 'teams' in synced_columns nicht auf.
+  test 'teams wird nicht uebernommen' do
+    create(:user, :sbk_scoped, user_name: 'mit.team', teams: [123])
+
+    run_task([prod_record('mit.team', SBK, 'teams' => [999])])
+
+    assert_equal [123], User.find_by(user_name: 'mit.team').teams
+  end
+
+  test 'Abgleich findet ein Konto auch bei abweichender Gross-/Kleinschreibung' do
+    existing = create(:user, :sbk_scoped, user_name: 'max.mustermann', last_name: 'Alt')
+
+    run_task([prod_record('Max.Mustermann', SBK, 'last_name' => 'Neu')])
+
+    assert_equal 1, User.where('LOWER(user_name) = ?', 'max.mustermann').count,
+                 'Ein zweites Konto mit anderer Schreibweise wäre ein Dublett'
+    assert_equal 'Neu', existing.reload.last_name
+  end
+
+  test 'eine anderweitig vergebene referee_id blockiert das Konto nicht' do
+    referee = create(:referee)
+    create(:user, :sbk_scoped, user_name: 'hat.schiri', referee_id: referee.id)
+
+    run_task([prod_record('neu.mit.schiri', SBK, 'referee_id' => referee.id)])
+
+    user = User.find_by(user_name: 'neu.mit.schiri')
+    assert_not_nil user, 'Der Unique-Index auf referee_id darf den Lauf nicht abreißen'
+    assert_nil user.referee_id
+    assert_equal referee.id, User.find_by(user_name: 'hat.schiri').referee_id
+  end
+
+  test 'nur auf Staging vorhandene Konten werden nicht geloescht' do
+    create(:user, :admin, user_name: 'nur.staging')
+
+    run_task([prod_record('andere.sbk', SBK)])
+
+    assert_not_nil User.find_by(user_name: 'nur.staging')
+  end
+
+  # Ein Lauf, der die Hälfte nicht schreiben konnte, darf nicht wie ein
+  # erfolgreicher aussehen: Das Wrapper-Skript läuft unter `set -e`.
+  test 'ein nicht speicherbares Konto beendet den Task mit Fehler' do
+    invalid = prod_record('kaputte.sprache', SBK, 'language' => 'kl')
+
+    assert_raises(SystemExit) { run_task([invalid]) }
+    assert_nil User.find_by(user_name: 'kaputte.sprache')
+  end
+
+  test 'DRY_RUN meldet ein Konto, das scheitern wuerde' do
+    assert_raises(SystemExit) do
+      run_task([prod_record('kaputte.sprache', SBK, 'language' => 'kl')], { 'DRY_RUN' => 'true' })
+    end
+  end
+
+  test 'DRY_RUN aendert auch ein vorhandenes Konto nicht' do
+    existing = create(:user, :sbk_scoped, user_name: 'bleibt.gleich', last_name: 'Alt')
+    digest_before = existing.password_digest
+
+    run_task([prod_record('bleibt.gleich', SBK, 'last_name' => 'Neu')], { 'DRY_RUN' => 'true' })
+
+    existing.reload
+    assert_equal 'Alt', existing.last_name
+    assert_equal digest_before, existing.password_digest
+  end
+
   test 'DRY_RUN schreibt nicht' do
     # Klammern nötig: ohne sie liest Ruby 3 den Hash als Keyword-Argumente,
     # weil run_task ein Keyword (host_config:) hat.
