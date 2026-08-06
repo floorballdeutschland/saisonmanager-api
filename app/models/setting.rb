@@ -27,6 +27,26 @@ class Setting < ApplicationRecord
     current.seasons[current_season_id.to_s]
   end
 
+  # Startjahr der aktiven Saison (2026/2027 → 2026). Maßgeblich überall dort, wo
+  # in Lizenzjahren gerechnet wird: Die Lizenzjahre drehen mit dem manuell
+  # ausgeführten Saisonwechsel weiter (nominell zum 01.08.), nicht mit dem
+  # Kalenderjahr. Ein vorgezogener Saisonwechsel wirkt dadurch sofort und
+  # braucht keine Sonderbehandlung.
+  #
+  # Saisonnamen kommen in zwei Schreibweisen vor („2026/2027" auf Produktion,
+  # „Saison 2025/26" in den Testdaten), deshalb wird die erste vierstellige
+  # Jahreszahl gelesen. Fehlt sie, bleibt das Kalenderjahr als Näherung — besser
+  # als eine Exception mitten in einer Listen-Abfrage.
+  #
+  # Der seasons-Hash ist nicht typsicher: Je nach Altbestand steht dort ein Hash
+  # mit 'name', ein blanker String oder gar nichts. Deshalb beide Formen lesen,
+  # statt sich auf eine zu verlassen.
+  def self.current_season_start_year
+    season = current_season
+    name = season.is_a?(Hash) ? season['name'] : season
+    name.to_s[/\d{4}/]&.to_i || Date.current.year
+  end
+
   # Global konfigurierbare Standard-Spieldauer (inkl. Puffer) in Minuten für die
   # Hallenbelegungs-/Konfliktprüfung. nil, solange nichts gepflegt ist — die
   # League fällt dann auf ihr perioden-basiertes Verhalten zurück.

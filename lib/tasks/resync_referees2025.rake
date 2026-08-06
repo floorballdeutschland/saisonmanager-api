@@ -260,10 +260,18 @@ namespace :referees2025 do
     uploader = User.find_by(user_name: ENV.fetch('UPLOADED_BY', 'admin'))
     abort "Upload-User nicht gefunden (UPLOADED_BY=#{ENV.fetch('UPLOADED_BY', 'admin')})" if uploader.nil?
 
-    club_lookup = ->(name) { Referees2025Resync.club_lookup[name] }
+    # Vereinssuche über RefereeClubLookup: Alias-Liste, exakt name/long_name/
+    # short_name, dann normalisiert. Der frühere Weg über den exakten Namen
+    # allein fand nur gut die Hälfte der Vereine.
+    club_service = RefereeClubLookup.new
+
+    # Die Wiederholungssperre hängt am Dateinamen. Der Nachimport der
+    # Karriere-Beendeten läuft deshalb mit BATCH_SUFFIX="(Karriere beendet)",
+    # sonst hielte er die bereits importierten Jahresbatches für erledigt.
+    suffix = ENV.fetch('BATCH_SUFFIX', nil).presence
 
     rows.group_by { |row| row['jahr'].to_i }.sort.each do |jahr, jahr_rows|
-      filename = "#{Referees2025Resync::HISTORY_IMPORT_FILENAME_PREFIX} #{jahr}"
+      filename = [Referees2025Resync::HISTORY_IMPORT_FILENAME_PREFIX, jahr, suffix].compact.join(' ')
       if RefereeCourseImport.exists?(filename: filename)
         puts "#{jahr}: übersprungen (Import '#{filename}' existiert bereits)"
         next
@@ -289,7 +297,7 @@ namespace :referees2025 do
           end
 
           geburtsdatum = Referees2025Resync.parse_date(row['geburtsdatum'])
-          club = row['verein'].present? ? Referees2025Resync.club_lookup[row['verein']] : nil
+          club = Club.find_by(id: club_service.call(row['verein']).club_id)
 
           course_data = {
             'kurs_1' => {

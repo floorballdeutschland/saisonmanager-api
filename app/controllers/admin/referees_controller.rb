@@ -17,7 +17,7 @@ module Admin
       referees = referees.search(params[:q]) if params[:q].present?
       referees = referees.by_landesverband(params[:landesverband]) if params[:landesverband].present?
       referees = referees.by_lizenzstufe(params[:lizenzstufe]) if params[:lizenzstufe].present?
-      referees = referees.active if params[:active] == 'true'
+      referees = apply_license_status_filter(referees)
       if params[:tag_id].present?
         referees = referees.where(id: RefereeTagging.where(referee_tag_id: params[:tag_id]).select(:referee_id))
       end
@@ -282,6 +282,41 @@ module Admin
 
     private
 
+    # Standard ist „alles außer Karriere beendet". Seit dem Nachimport der
+    # Beendeten (rund 4.250 Datensätze) wäre die Liste sonst zur Hälfte Historie.
+    #
+    # Datensätze ohne Ablaufdatum bleiben hier sichtbar (not_career_ended statt
+    # in_career_window): Ein frisch angelegter Schiedsrichter hat noch keine
+    # Gültigkeit und wäre sonst unmittelbar nach dem Anlegen unauffindbar. Die
+    # Vereins- und die öffentliche Sicht verlangen dagegen einen Lizenznachweis.
+    #
+    # Zwei bewusste Ausnahmen:
+    #   - Wer eine Lizenznummer eingibt, sucht gezielt und muss den Beendeten
+    #     finden. Ohne diesen Durchstich wäre die Prüfung einer alten Nummer
+    #     genau dann blind, wenn sie gebraucht wird — der Zweck des Nachimports.
+    #   - `active=true` bleibt als Alt-Parameter erhalten, solange das Frontend
+    #     ihn noch schickt.
+    def apply_license_status_filter(referees)
+      return referees.active if params[:active] == 'true'
+
+      case params[:status]
+      when 'alle' then referees
+      when 'aktiv' then referees.active
+      when 'abgelaufen' then referees.lapsed
+      when 'beendet' then referees.career_ended
+      when 'ohne_nachweis' then referees.without_license_proof
+      else license_number_query? ? referees : referees.not_career_ended
+      end
+    end
+
+    def license_number_query?
+      params[:q].to_s.strip.match?(/\A\d+\z/)
+    end
+
+    def career_end_cutoff
+      @career_end_cutoff ||= Referee.career_end_cutoff
+    end
+
     def set_referee
       @referee = Referee.includes(club: :state_association,
                                   referee_qualifications: :referee_qualification_type,
@@ -506,6 +541,9 @@ module Admin
         lizenzstufe: referee.lizenzstufe,
         gueltigkeit: referee.gueltigkeit&.strftime('%d.%m.%Y'),
         active: !referee.guest? && referee.gueltigkeit.present? && referee.gueltigkeit >= Date.today,
+        # active | lapsed | career_ended | unknown – trägt Badge und Status-Filter
+        # der Liste. Der Stichtag wird je Request einmal berechnet, nicht je Zeile.
+        license_status: referee.license_status(career_end_cutoff),
         tags: referee_tags_for(referee).map { |t| tag_summary(t) },
         tag_ids: referee_tags_for(referee).map(&:id)
       }
