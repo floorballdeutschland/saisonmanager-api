@@ -115,7 +115,9 @@ class StagingSyncUsersTest < ActiveSupport::TestCase
   end
 
   test 'DRY_RUN schreibt nicht' do
-    run_task([prod_record('nur.probe', SBK)], 'DRY_RUN' => 'true')
+    # Klammern nötig: ohne sie liest Ruby 3 den Hash als Keyword-Argumente,
+    # weil run_task ein Keyword (host_config:) hat.
+    run_task([prod_record('nur.probe', SBK)], { 'DRY_RUN' => 'true' })
 
     assert_nil User.find_by(user_name: 'nur.probe')
   end
