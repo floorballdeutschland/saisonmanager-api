@@ -16,7 +16,19 @@ class StagingSyncUsersTest < ActiveSupport::TestCase
     @task.reenable
   end
 
-  STAGING_CONFIG = Struct.new(:configuration_hash).new(host: 'postgres-staging').freeze
+  # Stand-in für ActiveRecord::Base.connection_db_config; der Task liest daraus
+  # nur den Host.
+  class FakeDbConfig
+    def initialize(host)
+      @host = host
+    end
+
+    def configuration_hash
+      { host: @host }
+    end
+  end
+
+  STAGING_CONFIG = FakeDbConfig.new('postgres-staging').freeze
 
   def run_task(records, env = {}, host_config: STAGING_CONFIG)
     saved_env = ENV.to_hash.slice(*env.keys)
@@ -109,7 +121,7 @@ class StagingSyncUsersTest < ActiveSupport::TestCase
   end
 
   test 'gegen eine Nicht-Staging-Datenbank bricht der Task ab' do
-    prod_config = Struct.new(:configuration_hash).new(host: 'postgres')
+    prod_config = FakeDbConfig.new('postgres')
 
     assert_raises(SystemExit) do
       run_task([prod_record('neue.sbk', SBK)], {}, host_config: prod_config)
