@@ -11,7 +11,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Behoben
 
-- **Ergebnisse laufender Spiele waren über zwei Abrufe doch ohne Verzögerung zu haben**: Die Nutzungsvereinbarung sagt Inhabern eines API-Schlüssels zu, dass sie öffentliche Daten mit zehn Minuten Verzögerung bekommen und Ergebnisse laufender Spiele währenddessen verborgen bleiben. Zwei Abrufe hielten sich nicht daran: Der ältere Ticker-Abruf zu einem einzelnen Spiel gab Ereignisse und Zwischenstand ungefiltert heraus, und die Spielliste einer Mannschaft nannte den Zwischenstand laufender Partien. Beide verhalten sich jetzt wie der Spielabruf und der Liga-Spielplan. Für angemeldete Nutzerinnen und Nutzer, für die Saisonmanager-Website und für Zugänge mit Echtzeit-Freigabe ändert sich nichts.
+- **Zwischenstände laufender Spiele waren über zwei Abrufe doch ohne Verzögerung zu haben**: Die Nutzungsvereinbarung sagt Inhabern eines API-Schlüssels zehn Minuten Verzögerung zu. Zwei Abrufe hielten sich nicht daran: Der ältere Ticker-Abruf zu einem einzelnen Spiel gab Ereignisse und Zwischenstand ungefiltert heraus, und die Spielliste einer Mannschaft nannte den Zwischenstand laufender Partien. Beide verzögern jetzt wie die übrigen öffentlichen Abrufe. Für angemeldete Nutzerinnen und Nutzer, für die Saisonmanager-Website und für Zugänge mit Echtzeit-Freigabe ändert sich nichts.
+
+- **Endstände waren kurz nach dem Schlusspfiff falsch statt nur verzögert**: Der Spielstand wird aus den einzelnen Ereignissen berechnet. Wurden die jüngsten davon wegen der Verzögerung ausgelassen, kam damit nicht ein älterer Stand heraus, sondern ein falscher, und bei einem beendeten Spiel stand er als Endstand in der Antwort. Weil der Zeitstempel am Ereignis den Moment der Eingabe festhält und nicht die Spielminute, traf das besonders Berichte, die nach dem Spiel in einem Zug erfasst wurden: Dort waren alle Ereignisse frisch, und ein 3:0 wurde als beendetes 0:0 gemeldet. Beendete Spiele nennen ihren Endstand jetzt sofort; zurückgehalten werden nur noch Zwischenstände laufender Partien. Betroffen waren der Ticker-Abruf und der Spielabruf, jeweils nur mit einem API-Schlüssel ohne Echtzeit-Freigabe.
+
+- **Ein begonnenes Spiel ohne angelegten Spielbericht umging die Verzögerung**: In Spielplan-Listen hing das Zurückhalten am Berichtsstatus, das ausgewiesene Ergebnis dagegen allein daran, ob das Spiel angepfiffen war. Lag noch kein Bericht vor, ging der Live-Stand mit. Maßgeblich ist jetzt für beides dieselbe Bedingung.
 
 ## [1.71.1] - 2026-08-06
 

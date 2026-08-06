@@ -96,6 +96,20 @@ class ApplicationController < ActionController::Base
   # geladenen Objekten aufgerufen, die danach nicht gespeichert werden.
   def strip_delayed_events!(game)
     return game unless delay_live_data?
+    # Beendete Spiele bleiben unangetastet. Game#result rechnet den Stand
+    # vollständig aus `events`; ein gefiltertes Ereignis verzögert das Ergebnis
+    # also nicht, sondern ergibt ein ANDERES. Bei einem beendeten Spiel stünde
+    # damit ein falscher Endstand als endgültig in der Antwort
+    # (`hasEnded: true` samt Zwischenstand von vorhin).
+    #
+    # Und das ist nicht der Randfall, sondern der Normalfall: `added_at` ist der
+    # Zeitpunkt der EINGABE, nicht der Spielzeit. Wird ein Bericht nach dem
+    # Schlusspfiff in einem Zug getippt, sind sämtliche Ereignisse frisch, die
+    # Liste fällt komplett weg und aus einem 3:0 wird ein gemeldetes 0:0.
+    #
+    # Damit verhält sich diese Methode zugleich wie `delay_live_scores` unten,
+    # das ebenfalls nur laufende Spiele zurückhält.
+    return game if game.ended?
 
     cutoff = Time.current.to_i - LIVE_DATA_DELAY.to_i
     game.events = (game.events || []).select { |e| e['added_at'].nil? || e['added_at'] < cutoff }
@@ -115,10 +129,30 @@ class ApplicationController < ActionController::Base
     return schedule unless delay_live_data?
 
     schedule.map do |game|
-      next game unless game[:state].to_s == 'running'
+      next game unless running_entry?(game)
 
       game.merge(result: nil, result_string: nil)
     end
+  end
+
+  # Läuft gerade, aus Sicht einer Spielplan-Zeile.
+  #
+  # Bewusst `started && !ended` und nicht `state == 'running'`: Game#state
+  # liefert :running nur mit gesetztem `record_created_at` und sonst :no_record,
+  # während Game#schedule_item das Ergebnis schon an `started?` allein hängt.
+  # Ein begonnenes Spiel ohne angelegten Bericht rutschte damit samt Live-Stand
+  # durch die Verzögerung. Dieselbe Bedingung nutzt Game#ticker_hash für
+  # `isLive`.
+  #
+  # Die Schlüssel werden zusätzlich als String geprüft: Die Listen kommen aus
+  # Rails.cache, und ein serialisierender Store (heute :memory_store, also
+  # Marshal) gäbe Strings statt Symbolen zurück. Ohne die Absicherung fiele die
+  # Verzögerung dann still aus, ohne Fehler.
+  def running_entry?(entry)
+    started = entry.fetch(:started) { entry['started'] }
+    ended = entry.fetch(:ended) { entry['ended'] }
+
+    started && !ended
   end
 
   # Zählt jeden mit API-Key beantworteten Zugriff pro Tag und Endpunkt. Eine

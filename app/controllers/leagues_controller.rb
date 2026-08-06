@@ -564,6 +564,10 @@ class LeaguesController < ApplicationController
   def schedule
     id = params[:id]
 
+    # Der Cache bleibt global, die Verzögerung greift erst danach: Sie hängt am
+    # Abrufenden, nicht am Spielplan (siehe delay_live_scores in
+    # ApplicationController). Ein je Schlüssel getrennter Cache-Eintrag wäre
+    # sonst nötig.
     schedule = Rails.cache.fetch("leagues/#{id}/schedule", expires_in: 5.minutes) do
       @league = League.find(id)
       @league.schedule
@@ -834,10 +838,6 @@ class LeaguesController < ApplicationController
                                    :referee_feedback_enabled,
                                    required_documents: [])
   end
-
-  # `delay_live_scores` liegt in ApplicationController: Der Liga-Spielplan ist
-  # nicht die einzige Stelle, die `schedule_item` öffentlich ausliefert.
-  # Der Cache bleibt global – die Filterung erfolgt nach dem Cache-Fetch.
 
   # True, wenn in der Liga schon ein Spiel begonnen/gespielt wurde – dann ist
   # ein (überschreibender) Spielplan-Import nicht mehr erlaubt.
