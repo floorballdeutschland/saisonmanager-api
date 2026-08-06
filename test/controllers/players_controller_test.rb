@@ -549,6 +549,18 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_equal 3, body['totals']['goals']
   end
 
+  # Der Endpunkt ist per X-Api-Key erreichbar und die Spieler-ID frei
+  # durchzählbar. Geburtsdatum und Geschlecht dürfen deshalb nicht mitgehen.
+  test 'GET players/:id/stats liefert weder Geburtsdatum noch Geschlecht' do
+    get "/api/v2/players/#{@player.id}/stats", headers: { 'X-Api-Key' => 'test-key-for-smoke-tests' }
+    assert_response :success
+
+    player = JSON.parse(response.body)['player']
+    assert_equal @player.id, player['id']
+    refute_includes player.keys, 'birthdate'
+    refute_includes player.keys, 'gender'
+  end
+
   # 9. Nicht nur Tore: Assists und Strafminuten (2/4/5/10/25-Multiplikatoren)
   # sind die fehleranfälligsten Aggregate und werden hier explizit geprüft.
   test 'GET players/:id/stats aggregiert Assists und Strafminuten' do

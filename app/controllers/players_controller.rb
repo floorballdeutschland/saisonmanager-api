@@ -797,13 +797,15 @@ class PlayersController < ApplicationController
     total_assists = seasons.sum { |s| s[:leagues].sum { |l| l[:assists] } }
     last_season   = seasons.first
 
+    # Bewusst ohne birthdate und gender: Der Endpunkt ist per X-Api-Key
+    # erreichbar und die Spieler-ID frei durchzählbar, ein Geburtsdatum je Name
+    # wäre damit für den gesamten Spielerbestand abrufbar. Die öffentliche
+    # Spielerseite zeigt beides ohnehin nicht an.
     render json: {
       player: {
         id:             player.id,
         first_name:     player.first_name,
         last_name:      player.last_name,
-        birthdate:      player.birthdate,
-        gender:         player.gender,
         deactivated_at: player.deactivated_at
       },
       seasons:,

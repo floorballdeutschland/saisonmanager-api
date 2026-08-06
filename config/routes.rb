@@ -76,7 +76,6 @@ Rails.application.routes.draw do
           get :grouped_table
           get :scorer
           get :meta
-          get :license_list
         end
       end
 

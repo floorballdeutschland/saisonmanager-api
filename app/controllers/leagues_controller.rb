@@ -1,8 +1,13 @@
 class LeaguesController < ApplicationController
-  skip_before_action :authenticate_user,
-                     except: %i[admin_league_index admin_league_delete admin_upload_banner admin_delete_banner]
-  before_action :authenticate_public_request,
-                except: %i[admin_league_index admin_league_delete admin_upload_banner admin_delete_banner]
+  # additional_references gehört trotz des öffentlich klingenden Musters in die
+  # Ausnahmeliste: Der Endpunkt liefert Vereins- und Spielort-Stammdaten für die
+  # Spielplanverwaltung und wird ausschließlich von Admin-Views aufgerufen. Ohne
+  # den Eintrag hier hätte ein reiner X-Api-Key gereicht.
+  COOKIE_ONLY_ACTIONS = %i[admin_league_index admin_league_delete admin_upload_banner admin_delete_banner
+                           additional_references].freeze
+
+  skip_before_action :authenticate_user, except: COOKIE_ONLY_ACTIONS
+  before_action :authenticate_public_request, except: COOKIE_ONLY_ACTIONS
   after_action :track_public_view,
                only: %i[schedule current_schedule game_day_schedule table grouped_table scorer],
                if: -> { response.successful? }
@@ -643,14 +648,6 @@ class LeaguesController < ApplicationController
     render json: grouped_table
   end
 
-  def license_list
-    league = League.find(params[:id])
-
-    hash = league.short_hash true
-
-    render json: hash
-  end
-
   def meta
     @league = League.find(params[:id])
 
@@ -659,6 +656,8 @@ class LeaguesController < ApplicationController
 
   def additional_references
     league = League.find(params[:id])
+    return render json: { message: 'Keine Berechtigung' }, status: :forbidden unless admin_or_sbk_for_league?(league)
+
     teams = league.teams
 
     # Ansetzung durch die RSK: national (kein Landesverband, z. B. FD) immer aktiv,
@@ -669,7 +668,9 @@ class LeaguesController < ApplicationController
     render json: {
       arenas: Arena.active.order(:city, :name).sort_by { |a| a.city.present? ? 0 : 1 }.map(&:full_hash),
       teams: league.teams.map(&:full_hash),
-      clubs: teams.map(&:all_clubs).flatten.uniq.map(&:full_hash),
+      # public_hash statt full_hash: Die Spielplanverwaltung braucht Name, Logo und
+      # Spielbetrieb der Vereine, nicht deren contact_email.
+      clubs: teams.map(&:all_clubs).flatten.uniq.map(&:public_hash),
       referee_assignment_enabled: referee_assignment_enabled
     }
   end
