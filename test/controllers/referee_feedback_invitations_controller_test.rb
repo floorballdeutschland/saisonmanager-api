@@ -169,7 +169,7 @@ class RefereeFeedbackInvitationsControllerTest < ActionDispatch::IntegrationTest
   # für den Weg ohne Anmeldung. Praktisch selten, weil der Link erst mit dem
   # Öffnen des Fensters verschickt wird.
   test 'vor Ablauf der 24 Stunden nach dem Spiel nimmt auch der Einmal-Link nichts an' do
-    @game_day.update!(date: Date.current.to_s)
+    @game_day.update!(date: RefereeFeedbackWindow.today.to_s)
 
     post "/api/v2/referee_feedback_invitations/#{@token}",
          params: { line_rating: 6, communication_rating: 9 }

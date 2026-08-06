@@ -73,6 +73,8 @@ class UserRefereeFeedbacksController < ApplicationController
   # mit fillable_from in der Zukunft, damit die Mannschaft die anstehende
   # Rückmeldung sieht (siehe RefereeFeedbackWindow).
   def eligible_games
+    today = RefereeFeedbackWindow.today
+
     Game
       .joins(game_day: :league)
       .includes(:home_team, :guest_team, game_day: :league)
@@ -80,13 +82,19 @@ class UserRefereeFeedbacksController < ApplicationController
       .where(game_status: %w[match_record_closed finalized])
       .where('games.home_team_id IN (:t) OR games.guest_team_id IN (:t)', t: managed_team_ids)
       .where("TO_DATE(game_days.date, 'YYYY-MM-DD') BETWEEN ? AND ?",
-             LOOKBACK_DAYS.days.ago.to_date, Date.current)
+             today - LOOKBACK_DAYS.days, today)
       .to_a
   end
 
+  # `game_days.date` ist ein lokales Datum ohne Zeitzone. Verglichen wird
+  # deshalb gegen den Kalender des Spielbetriebs und nicht gegen Date.current:
+  # Die Anwendung läuft in UTC (kein `config.time_zone`), abends nach 22 Uhr
+  # wäre „heute" dort noch der Vortag und ein an diesem Abend abgeschlossener
+  # Spielbericht fiele aus der Übersicht. Dieselbe Zone benutzt
+  # RefereeFeedbackWindow für den Anpfiff.
   def eligible?(game)
     game.league&.referee_feedback_enabled? &&
-      Date.parse(game.game_day.date) <= Date.current
+      Date.parse(game.game_day.date) <= RefereeFeedbackWindow.today
   rescue ArgumentError, TypeError
     false
   end

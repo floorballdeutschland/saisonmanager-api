@@ -23,6 +23,22 @@
 class RefereeFeedbackWindow
   FILLABLE_AFTER_HOURS = 24
 
+  # Spieltagsdaten sind lokale Daten: In `game_days.date` steht der Tag, an dem
+  # in der Halle gespielt wird, ohne Zeitzone. Der Anpfiff wird deshalb in
+  # dieser Zone aufgelöst und nicht in der Anwendungszone. Die ist UTC, weil
+  # `config.time_zone` nicht gesetzt ist, und weicht abends um zwei Stunden ab.
+  #
+  # Öffentlich, damit Tests mit demselben Kalender rechnen wie diese Klasse:
+  # Wer sein Spiel auf `Date.current` legt, baut zwischen 22:00 und 24:00 UTC
+  # ein Spiel von GESTERN und wartet dann vergeblich darauf, dass das
+  # 24-Stunden-Fenster noch geschlossen ist.
+  ZONE = ActiveSupport::TimeZone['Europe/Berlin'].freeze
+
+  # Heute, aus Sicht des Spielbetriebs.
+  def self.today
+    ZONE.today
+  end
+
   def initialize(game)
     @game = game
   end
@@ -65,7 +81,7 @@ class RefereeFeedbackWindow
     return nil if date.blank?
 
     day = Date.strptime(date.to_s, '%Y-%m-%d')
-    ActiveSupport::TimeZone['Europe/Berlin'].parse("#{day} #{@game.start_time}".strip)
+    ZONE.parse("#{day} #{@game.start_time}".strip)
   rescue ArgumentError, TypeError
     nil
   end
