@@ -244,6 +244,48 @@ class LeaguesControllerTest < ActionDispatch::IntegrationTest
     assert_response :forbidden
   end
 
+  # additional_references liefert Vereins- und Spielort-Stammdaten für die
+  # Spielplanverwaltung. Der Endpunkt hing trotz des admin/-Pfads nur am
+  # X-Api-Key und gab dabei die contact_email der Vereine heraus.
+  test 'additional_references weist einen reinen API-Key ab' do
+    create(:setting)
+    league = create(:league)
+
+    get "/api/v2/admin/leagues/#{league.id}/additional_references", headers: { 'X-Api-Key' => API_KEY }
+
+    assert_response :unauthorized
+  end
+
+  test 'additional_references sperrt SBK eines fremden Spielbetriebs' do
+    create(:setting)
+    sa = create(:state_association)
+    scoped_go = create(:game_operation, state_association_id: sa.id)
+    league = create(:league, game_operation: scoped_go)
+    other_sa = create(:state_association)
+    other_go = create(:game_operation, state_association_id: other_sa.id)
+    login_as(create(:user, :sbk_scoped, game_operation_id: other_go.id))
+
+    get "/api/v2/admin/leagues/#{league.id}/additional_references"
+
+    assert_response :forbidden
+  end
+
+  test 'additional_references liefert dem Admin Vereine ohne contact_email' do
+    create(:setting)
+    club = create(:club, contact_email: 'vorstand@example.org')
+    league = create(:league)
+    create(:team, league: league, club: club)
+    login_as(create(:user, :admin))
+
+    get "/api/v2/admin/leagues/#{league.id}/additional_references"
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal([club.id], body['clubs'].map { |c| c['id'] })
+    refute_includes body['clubs'].first.keys, 'contact_email'
+    refute response.body.include?('vorstand@example.org')
+  end
+
   test 'admin_game_schedule erlaubt dem globalen Admin den Zugriff' do
     create(:setting)
     league = create(:league)

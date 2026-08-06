@@ -9,6 +9,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Vereins-Kontaktadressen waren mit einem API-Schlüssel abrufbar**: Die Datenquelle der Spielplanverwaltung (Vereine und Spielorte einer Liga) verlangte trotz ihres Verwaltungspfads keine Anmeldung, sondern nur einen API-Schlüssel, und gab dabei die hinterlegte Kontakt-E-Mail-Adresse der Vereine heraus. Der Abruf setzt jetzt eine Anmeldung voraus und ist auf Admin und SBK des jeweiligen Spielbetriebs beschränkt, wie die übrigen Verwaltungsabrufe derselben Ansicht. Die Kontaktadresse geht auch für Angemeldete nicht mehr mit, weil die Spielplanverwaltung sie nicht anzeigt.
+
+### Verbessert
+
+- **Weniger personenbezogene Daten über die öffentliche Schnittstelle**: Die Spielerstatistik nannte neben dem Namen auch Geburtsdatum und Geschlecht. Beides zeigt die Spielerseite nicht an, und weil die Spielerprofile fortlaufend nummeriert sind, hätte ein Inhaber eines API-Schlüssels damit den Geburtstag zum Namen für den gesamten Spielerbestand einsammeln können. Beide Angaben entfallen. Aus den Scorerlisten fällt außerdem das Feld für ein Spielerfoto weg. Es war seit Jahren immer leer, ausgeliefert wurde nie ein Foto; die Anzeige nutzt wie bisher das Platzhalter-Symbol.
+
 ## [1.71.0] - 2026-08-06
 
 ### Neu

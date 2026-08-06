@@ -359,14 +359,6 @@ class TeamsController < ApplicationController
            status: :unprocessable_entity
   end
 
-  def license_list
-    team = Team.find(params[:id])
-
-    hash = league.short_hash true
-
-    render json: team.licenses(false, true, :short)
-  end
-
   def admin_upload_logo
     if current_user
       team = Team.find(params[:id])

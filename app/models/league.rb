@@ -487,10 +487,13 @@ class League < ApplicationRecord
 
     player_ids = sorted_results.map { |sr| sr[:player_id] }
     # Namen stammen aus dem Spielbericht-Snapshot (players-JSONB) und sind damit
-    # self-contained für Altsaisons; Bilder werden best-effort live ergänzt.
-    # Fehlt der Spieler-Datensatz, bleibt der Scorer trotzdem erhalten (kein
-    # stiller Wegfall). Nur wenn der Snapshot keinen Namen trägt (sehr alte
-    # Importe), greift der Name aus dem Player-Datensatz als Fallback.
+    # self-contained für Altsaisons. Fehlt der Spieler-Datensatz, bleibt der
+    # Scorer trotzdem erhalten (kein stiller Wegfall). Nur wenn der Snapshot
+    # keinen Namen trägt (sehr alte Importe), greift der Name aus dem
+    # Player-Datensatz als Fallback.
+    #
+    # Spielerfotos liefert die Scorerliste bewusst nicht: Der Endpunkt ist per
+    # X-Api-Key erreichbar, ein Porträt gehört nicht auf die offene Fläche.
     player_lookup = Player.where(id: player_ids).index_by(&:id)
 
     next_position_diff = 1
@@ -498,8 +501,6 @@ class League < ApplicationRecord
       player = player_lookup[player_result[:player_id]]
       player_result[:first_name] = player_result[:first_name].presence || player&.first_name
       player_result[:last_name] = player_result[:last_name].presence || player&.last_name
-      player_result[:image] = player&.image
-      player_result[:image_small] = player&.image_small
       player_result[:sort] = index
       if last_entry.nil?
         player_result[:position] = 1
