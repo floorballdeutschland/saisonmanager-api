@@ -239,9 +239,22 @@ components:
         series_title:
           type: string
           nullable: true
+          description: >-
+            Runde einer K.-o.-Serie als Freitext, z. B. "Halbfinale", "Finale",
+            "Spiel um Platz 3". Optionales Pflegefeld: nur gesetzt, wenn der
+            ausrichtende Verband es beim Spielplan-Import oder in der
+            Spielverwaltung hinterlegt hat, sonst null. Es gibt keinen festen
+            Wertevorrat, in Altdaten kommen auch abweichende Schreibweisen vor.
+          example: Halbfinale
         series_number:
-          type: integer
+          type: string
           nullable: true
+          description: >-
+            Unterscheidet parallele Paarungen derselben Runde ("Halbfinale 1"
+            gegen "Halbfinale 2"). Beide Spiele einer Paarung tragen dieselbe
+            Nummer. Bei einmaligen Runden wie dem Finale null. Trotz des
+            numerischen Inhalts ein String.
+          example: "1"
 
     TableRow:
       type: object
