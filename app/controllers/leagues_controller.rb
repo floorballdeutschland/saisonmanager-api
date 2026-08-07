@@ -255,6 +255,8 @@ class LeaguesController < ApplicationController
                 guest_team_id:,
                 start_time: parsed_start_time,
                 nominated_referee_string: row['J'].present? ? row['J'] : '',
+                series_title: import_cell_string(row['K']),
+                series_number: import_cell_string(row['L']),
                 created_by: user_id
               }
 
@@ -845,6 +847,24 @@ class LeaguesController < ApplicationController
     Game.where(game_day_id: league.game_days.select(:id)).played_or_started.exists?
   end
   private :league_schedule_started?
+
+  # Freitext-Zelle des Spielplan-Imports (Serien-Titel, Nummer in Serie).
+  # Creek liefert Zahlen als Float, aus einer "1" in der Nummern-Spalte würde
+  # per to_s sonst "1.0". Leere Zellen bleiben nil statt Leerstring, damit
+  # nicht befüllte optionale Spalten in schedule.json weiterhin als null
+  # erscheinen und nicht mit gepflegten Werten verwechselt werden.
+  def import_cell_string(value)
+    return nil if value.blank?
+
+    text = if value.is_a?(Numeric) && value.to_i == value
+             value.to_i.to_s
+           else
+             value.to_s
+           end
+
+    text.strip.presence
+  end
+  private :import_cell_string
 
   # Löscht den bestehenden (noch ungespielten) Spielplan einer Liga: erst Spiele
   # einzeln (damit dependent: :destroy für Ansetzung/Bericht/Scan/Feedback/
