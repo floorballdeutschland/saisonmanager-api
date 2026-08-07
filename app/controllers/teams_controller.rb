@@ -14,7 +14,7 @@ class TeamsController < ApplicationController
   # GET /teams/1.json
   def show
     respond_to do |format|
-      format.ics { render_ical(Game.by_team_id(params[:id])) }
+      format.ics { render_ical(Game.by_team_id(params[:id]).with_ical_associations) }
     end
   end
 
@@ -30,7 +30,7 @@ class TeamsController < ApplicationController
   # dieselben Angaben, die der Spielplan ohnehin öffentlich zeigt. Keine
   # personenbezogenen Daten, insbesondere keine Aufstellungen.
   def calendar
-    render_ical(Game.by_team_id(params[:id]))
+    render_ical(Game.by_team_id(params[:id]).with_ical_associations)
   end
 
   def stats

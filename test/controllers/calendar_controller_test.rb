@@ -111,7 +111,36 @@ class CalendarControllerTest < ActionDispatch::IntegrationTest
     assert_response :unauthorized
   end
 
+  # Ein Kalender-Abo läuft unbeaufsichtigt und ohne API-Schlüssel: Kalender-
+  # Programme fragen von selbst regelmäßig nach. Ohne Preloading kostet jedes
+  # Spiel rund sechs Abfragen (Spieltag, Halle, Liga, Spielbetrieb, zwei
+  # Mannschaften). Der Test hält fest, dass mehr Spiele die Abfragezahl nicht
+  # mitwachsen lassen — sonst schleicht sich genau das N+1 zurück, das im
+  # Spielplan rund 70.000 Meldungen erzeugt hat.
+  test 'die Abfragezahl wächst nicht mit der Anzahl der Spiele' do
+    game_with(start_time: '14:00')
+    queries_for_one = count_queries { get "/api/v2/calendar/teams/#{@home.id}.ics" }
+    assert_response :success
+
+    4.times { |i| game_with(start_time: '16:00', number: i + 2) }
+    queries_for_five = count_queries { get "/api/v2/calendar/teams/#{@home.id}.ics" }
+
+    assert_response :success
+    assert_equal 5, response.body.scan('BEGIN:VEVENT').size
+    assert_equal queries_for_one, queries_for_five,
+                 "Abfragen: #{queries_for_one} bei einem Spiel, #{queries_for_five} bei fünf — Preloading fehlt"
+  end
+
   private
+
+  def count_queries(&block)
+    count = 0
+    counter = lambda do |_name, _start, _finish, _id, payload|
+      count += 1 unless payload[:name] == 'SCHEMA' || payload[:sql].start_with?('BEGIN', 'COMMIT', 'ROLLBACK')
+    end
+    ActiveSupport::Notifications.subscribed(counter, 'sql.active_record', &block)
+    count
+  end
 
   def game_with(start_time:, number: 1)
     game_day = GameDay.create!(

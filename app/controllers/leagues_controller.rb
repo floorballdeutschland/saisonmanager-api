@@ -548,15 +548,32 @@ class LeaguesController < ApplicationController
 
     respond_to do |format|
       format.json { render json: league.full_hash(true) }
-      format.ics { render_ical(league.games) }
+      format.ics { render_ical(games_for_calendar(league)) }
     end
   end
 
   # GET /api/v2/calendar/leagues/1.ics — ohne API-Key, siehe
   # TeamsController#calendar.
+  #
+  # Bewusst nicht über League#games: Das ist der Spielplan-Pfad, der Logos und
+  # Ausrichter mitlädt, die ein Kalender nicht braucht, und der die Liga selbst
+  # nicht vorlädt. Die Sortierung nach Spielnummer entfällt hier ebenfalls –
+  # Kalender-Programme ordnen nach Datum.
   def calendar
-    render_ical(League.find(params[:id]).games)
+    render_ical(games_for_calendar(League.find(params[:id])))
   end
+
+  # Spiele einer Liga für den Kalender.
+  #
+  # Bewusst nicht League#games: Das ist der Spielplan-Pfad, der Logos und
+  # Ausrichter mitlädt, die ein Kalender nicht braucht, und der die Liga selbst
+  # nicht vorlädt. Die dortige Sortierung nach Spielnummer entfällt ebenfalls –
+  # Kalender-Programme ordnen nach Datum.
+  def games_for_calendar(league)
+    Game.joins(:game_day).where(game_days: { league_id: league.id }).with_ical_associations
+  end
+  # Nicht öffentlich: eine public-Methode im Controller wäre eine Action.
+  private :games_for_calendar
 
   # GET /leagues/1/schedule
   def schedule
