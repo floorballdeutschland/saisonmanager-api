@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Konvertiert die FD-Excel "Schiedsrichterliste 2025.xlsx" in zwei CSVs
-für die Rake-Tasks referees_2025:report / :sync / :import_history.
+"""Konvertiert die FD-Excel "Schiedsrichterliste 2025.xlsx" in drei CSVs
+für die Rake-Tasks referees2025:report / :sync / :import_history /
+:backfill_beendete / :fill_club_ids.
 
 Aufruf:
     python3 scripts/export_schiedsrichterliste_csvs.py <pfad/zur/Schiedsrichterliste.xlsx> [ausgabe-verzeichnis]

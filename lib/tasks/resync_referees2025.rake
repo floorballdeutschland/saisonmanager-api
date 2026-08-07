@@ -178,6 +178,11 @@ namespace :referees2025 do
     unmatched_clubs.sort_by { |_, count| -count }.each { |name, count| puts "#{name} (#{count} Schiris)" }
   end
 
+  # ACHTUNG: Nach dem Erstlauf von Juli 2025 NICHT erneut ausführen. Der Task
+  # setzt die Aktiven auf den damaligen Excel-Stand zurück und überschreibt
+  # alles, was seither über Kursimporte und Pflege dazugekommen ist. Für den
+  # Nachtrag fehlender Felder gibt es referees2025:backfill_beendete und
+  # :fill_club_ids, die nichts überschreiben.
   desc 'Upsert aktiver Schiedsrichter aus der Excel-CSV + Löschen von Tester-Anlagen (CSV=referees_stammdaten.csv)'
   task sync: :environment do
     rows = Referees2025Resync.load_csv('CSV')
@@ -264,11 +269,17 @@ namespace :referees2025 do
     # short_name, dann normalisiert. Der frühere Weg über den exakten Namen
     # allein fand nur gut die Hälfte der Vereine.
     club_service = RefereeClubLookup.new
+    club_lookup = ->(name) { Club.find_by(id: club_service.call(name).club_id) }
 
-    # Die Wiederholungssperre hängt am Dateinamen. Der Nachimport der
-    # Karriere-Beendeten läuft deshalb mit BATCH_SUFFIX="(Karriere beendet)",
-    # sonst hielte er die bereits importierten Jahresbatches für erledigt.
+    # Die Wiederholungssperre hängt am Dateinamen. Ohne eigenen Zusatz hielte
+    # der Lauf für die Karriere-Beendeten die bereits importierten Jahresbatches
+    # der Aktiven für erledigt und täte stumm nichts. Deshalb wird der Zusatz
+    # aus der Datei selbst abgeleitet: Nur die Historie der Beendeten führt die
+    # Spalte `unvollstaendig` (Blöcke 2007–2010). BATCH_SUFFIX übersteuert das.
     suffix = ENV.fetch('BATCH_SUFFIX', nil).presence
+    suffix ||= '(Karriere beendet)' if rows.headers.include?('unvollstaendig')
+
+    imported_years = 0
 
     rows.group_by { |row| row['jahr'].to_i }.sort.each do |jahr, jahr_rows|
       filename = [Referees2025Resync::HISTORY_IMPORT_FILENAME_PREFIX, jahr, suffix].compact.join(' ')
@@ -276,6 +287,8 @@ namespace :referees2025 do
         puts "#{jahr}: übersprungen (Import '#{filename}' existiert bereits)"
         next
       end
+
+      imported_years += 1
 
       created = 0
       skipped = []
@@ -297,7 +310,7 @@ namespace :referees2025 do
           end
 
           geburtsdatum = Referees2025Resync.parse_date(row['geburtsdatum'])
-          club = Club.find_by(id: club_service.call(row['verein']).club_id)
+          club = club_lookup.call(row['verein'])
 
           course_data = {
             'kurs_1' => {
@@ -355,6 +368,16 @@ namespace :referees2025 do
       line = "#{jahr}: #{created} Ergebnisse importiert"
       line += ", #{skipped.size} übersprungen (Lizenznr. nicht in DB: #{skipped.uniq.first(10).join(', ')}…)" if skipped.any?
       puts line
+    end
+
+    # Ein Lauf, der jeden Jahres-Batch überspringt, sieht wie erfolgreiche
+    # Idempotenz aus, ist aber der Normalfall eines vergessenen Batch-Zusatzes:
+    # Dann kollidiert die Historie der Beendeten mit der bereits importierten
+    # der Aktiven und kein einziger Datensatz entsteht. Deshalb hart abbrechen.
+    if imported_years.zero?
+      abort 'ABBRUCH: Kein einziger Jahres-Batch importiert, alle Dateinamen existierten bereits. ' \
+            'Bei der Historie der Karriere-Beendeten BATCH_SUFFIX setzen (oder die Datei mit der ' \
+            'Spalte unvollstaendig verwenden, dann leitet der Task ihn selbst ab).'
     end
 
     puts 'Hinweis: Die Ergebnisse sind reine Historie (status=applied, ohne Applier) — ' \

@@ -91,6 +91,18 @@ module Admin
       assert_equal [710_001], nummern(active: 'true')
     end
 
+    # Ein Tippfehler darf nicht still die Standardliste liefern: Wer nach
+    # „beendet" filtert und sich vertippt, saehe sonst eine Liste ganz ohne
+    # Beendete und schloesse daraus, der Nachimport sei nicht gelaufen.
+    test 'unbekannter Status-Filter wird abgewiesen' do
+      login(@admin)
+
+      get '/api/v2/admin/referees', params: { status: 'beendete' }
+
+      assert_response :unprocessable_entity
+      assert_match(/Unbekannter Status-Filter/, response.parsed_body['errors'].first)
+    end
+
     test 'license_status steht im JSON' do
       login(@admin)
 

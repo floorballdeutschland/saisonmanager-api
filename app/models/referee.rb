@@ -67,24 +67,31 @@ class Referee < ApplicationRecord
     Date.new(season_start_year - CAREER_END_LICENSE_YEARS, 8, 1)
   end
 
-  scope :active, -> { where('gueltigkeit >= ?', Date.today).where(merged_into_id: nil) }
+  # Gemerkte Dubletten gehören in keine dieser Auswertungen: Nach einem Merge
+  # bleibt der aufgelöste Datensatz mitsamt Lizenznummer bestehen.
+  scope :canonical, -> { where(merged_into_id: nil) }
+  scope :active, -> { canonical.where('gueltigkeit >= ?', Date.current) }
   # Karriere beendet. Datensätze ohne Ablaufdatum fallen NICHT hierunter, die
   # sind ein eigener Zustand (#without_license_proof) — für die Sichtbarkeit
   # werden beide gleich behandelt, fachlich sind sie es nicht.
-  scope :career_ended, -> { where(gueltigkeit: ...career_end_cutoff) }
-  # Lizenz in einem der letzten fünf Kursjahre — das 5-Jahres-Fenster des
-  # Imports von 2025, nur wandert es jetzt mit dem Saisonwechsel mit. Ohne
-  # Ablaufdatum fällt heraus, weil hier ein Lizenznachweis verlangt ist. Das ist
-  # der Filter für Vereins- und öffentliche Sichten.
-  scope :in_career_window, -> { where(gueltigkeit: career_end_cutoff..) }
-  # Für die Verwaltungsliste: alles außer den Beendeten, aber MIT den
-  # Datensätzen ohne Ablaufdatum. Ein frisch angelegter Schiedsrichter hat noch
-  # keine Gültigkeit — verstünde man „ohne Nachweis" als beendet, verschwände er
-  # sofort nach dem Anlegen aus der Liste.
-  scope :not_career_ended, -> { where(gueltigkeit: career_end_cutoff..).or(where(gueltigkeit: nil)) }
+  scope :career_ended, -> { canonical.where(gueltigkeit: ...career_end_cutoff) }
+  # Nachweisbar im Fenster: Ablaufdatum vorhanden UND jünger als der Stichtag.
+  # Für Auswertungen, die einen Lizenznachweis verlangen.
+  scope :in_career_window, -> { canonical.where(gueltigkeit: career_end_cutoff..) }
+  # Der Filter für alle Sichten: alles außer den Beendeten, also MIT den
+  # Datensätzen ohne Ablaufdatum.
+  #
+  # Ohne Ablaufdatum ist ein eigener Zustand, nicht „beendet": Ein frisch
+  # angelegter Schiedsrichter hat noch keine Gültigkeit, bis das erste
+  # Kursergebnis kommt. Zählte man ihn zu den Beendeten, verschwände er sofort
+  # nach dem Anlegen aus der Verwaltungsliste, aus der Vereinsliste und aus der
+  # Namenssuche des Spielberichts — also genau dann, wenn er gebraucht wird.
+  scope :not_career_ended, lambda {
+    canonical.where(gueltigkeit: career_end_cutoff..).or(canonical.where(gueltigkeit: nil))
+  }
   # Abgelaufen, aber noch keine vier Lizenzjahre her: Fortbildung genügt.
-  scope :lapsed, -> { where(gueltigkeit: career_end_cutoff...Date.current) }
-  scope :without_license_proof, -> { where(gueltigkeit: nil) }
+  scope :lapsed, -> { canonical.where(gueltigkeit: career_end_cutoff...Date.current) }
+  scope :without_license_proof, -> { canonical.where(gueltigkeit: nil) }
   scope :by_landesverband, lambda { |lv|
     joins(club: :state_association).where(state_associations: { name: lv })
   }

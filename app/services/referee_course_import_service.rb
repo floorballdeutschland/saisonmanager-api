@@ -373,12 +373,23 @@ class RefereeCourseImportService
   # LV-Prüfansicht sähe man sonst einen unauffälligen Treffer und würde die alte
   # Lizenznummer stillschweigend wiederbeleben — genau der Fall, für den die
   # Beendeten überhaupt importiert wurden.
+  # Ohne Ablaufdatum wird ebenfalls gewarnt: Aus dem Nachimport stammen
+  # Datensätze, für die die Excel weder Stufe noch Ablauf kennt (nur Nummer,
+  # Name, Geburtsdatum, Verein). Die sind mit hoher Wahrscheinlichkeit ebenfalls
+  # Reaktivierungen, und ein unauffälliger Treffer wäre hier am gefährlichsten.
   def reactivation_warning(referee)
-    return [] if referee.nil? || !referee.career_ended?
+    return [] if referee.nil?
+    return [] unless referee.career_ended? || referee.gueltigkeit.blank?
 
-    [{ 'field' => 'lizenznummer', 'raw' => referee.lizenznummer.to_s,
-       'reason' => 'Karriere beendet — Lizenz abgelaufen am ' \
-                   "#{referee.gueltigkeit.strftime('%d.%m.%Y')}, Grundkurs erforderlich" }]
+    reason =
+      if referee.gueltigkeit
+        "Karriere beendet — Lizenz abgelaufen am #{referee.gueltigkeit.strftime('%d.%m.%Y')}, " \
+          'Grundkurs erforderlich'
+      else
+        'Kein Ablaufdatum hinterlegt — Lizenzstatus unklar, vor dem Anwenden prüfen'
+      end
+
+    [{ 'field' => 'lizenznummer', 'raw' => referee.lizenznummer.to_s, 'reason' => reason }]
   end
 
   # Findet den DB-Referee mit den meisten Übereinstimmungen.

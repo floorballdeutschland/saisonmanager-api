@@ -58,10 +58,46 @@ class RefereeCareerVisibilityTest < ActionDispatch::IntegrationTest
     assert_equal 700_002, response.parsed_body['lizenznummer']
   end
 
+  # Ohne Ablaufdatum ist kein beendeter Fall: Ein frisch angelegter
+  # Schiedsrichter hat noch keine Gueltigkeit, bis das erste Kursergebnis kommt.
+  # Verschwaende er aus der Namenssuche, waere er im Spielbericht nicht
+  # eintragbar — genau dann, wenn er gebraucht wird.
+  test 'Schiedsrichter ohne Ablaufdatum bleiben oeffentlich auffindbar' do
+    create(:referee, lizenznummer: 700_004, nachname: 'Neusen', vorname: 'Nora',
+                     gueltigkeit: nil, club: @club)
+
+    get '/api/v2/referees/search', params: { q: 'Neusen' }, headers: { 'X-Api-Key' => API_KEY }
+
+    assert_response :success
+    assert_includes response.parsed_body.map { |r| r['lizenznummer'] }, 700_004
+  end
+
+  test 'Lizenzcheck antwortet ohne Ablaufdatum mit leerer Gueltigkeit' do
+    create(:referee, lizenznummer: 700_005, nachname: 'Ohnesen', vorname: 'Olaf', gueltigkeit: nil)
+
+    get '/api/v2/user/referees/700005', headers: { 'X-Api-Key' => API_KEY }
+
+    assert_response :success
+    assert_nil response.parsed_body['gueltigkeit']
+  end
+
+  test 'gemergte Dubletten tauchen oeffentlich nicht auf' do
+    dublette = create(:referee, lizenznummer: 700_006, nachname: 'Dublettsen', vorname: 'Dirk',
+                                gueltigkeit: Date.new(2027, 9, 30))
+    dublette.update_column(:merged_into_id, @aktiv.id)
+
+    get '/api/v2/referees/search', params: { q: 'Dublettsen' }, headers: { 'X-Api-Key' => API_KEY }
+
+    assert_response :success
+    assert_empty response.parsed_body
+  end
+
   test 'VM-Vereinsliste zeigt Beendete nicht' do
     vm = User.create!(user_name: "vm_#{SecureRandom.hex(4)}", password: 'password123',
                       password_confirmation: 'password123',
                       permissions: [{ 'user_group_id' => 4, 'club_id' => @club.id }], teams: [])
+    create(:referee, lizenznummer: 700_007, nachname: 'Frischsen', vorname: 'Frida',
+                     gueltigkeit: nil, club: @club)
     login(vm)
 
     get '/api/v2/vm/referees'
@@ -69,6 +105,6 @@ class RefereeCareerVisibilityTest < ActionDispatch::IntegrationTest
     assert_response :success
     nummern = response.parsed_body.map { |r| r['lizenznummer'] }
 
-    assert_equal [700_001, 700_002].sort, nummern.sort
+    assert_equal [700_001, 700_002, 700_007].sort, nummern.sort
   end
 end

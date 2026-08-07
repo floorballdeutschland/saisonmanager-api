@@ -31,19 +31,29 @@ class RefereeClubLookup
   # beendet" (51 Beendete und 4 Aktive, Stand Juli 2025).
   PLACEHOLDERS = ['karriere beendet', 'ohne verein', 'kein verein', '-'].freeze
 
-  attr_reader :missing_alias_targets
+  attr_reader :missing_alias_targets, :alias_count
 
   def initialize(clubs: Club.all, aliases: self.class.load_aliases)
     @clubs = clubs.to_a
     build_indexes
     @aliases = normalize_alias_keys(aliases)
+    @alias_count = @aliases.size
     @missing_alias_targets = @aliases.values.uniq.reject { |id| @clubs_by_id.key?(id) }
   end
 
+  # Laut statt still: Eine fehlende oder leere Alias-Datei sähe im Bericht wie
+  # ein sauberer Lauf aus (lauter „name"-Treffer), würde aber genau die
+  # Dubletten-Zuordnung wiederherstellen, gegen die die Liste geschrieben wurde.
   def self.load_aliases
-    return {} unless File.exist?(ALIAS_PATH)
+    raise "Alias-Datei fehlt: #{ALIAS_PATH}" unless File.exist?(ALIAS_PATH)
 
-    YAML.safe_load_file(ALIAS_PATH) || {}
+    data = YAML.safe_load_file(ALIAS_PATH)
+    raise "Alias-Datei leer oder kein Hash: #{ALIAS_PATH}" unless data.is_a?(Hash) && data.any?
+
+    invalid = data.reject { |_, id| id.is_a?(Integer) && id.positive? }
+    raise "Alias-Ziele ohne gültige Club-ID: #{invalid.keys.join(', ')}" if invalid.any?
+
+    data
   end
 
   # Nur zum Normalisieren des Vergleichs, nie zum Anzeigen: „e.V." raus,
@@ -71,7 +81,15 @@ class RefereeClubLookup
     return Result.new(club_id: nil, match_type: :placeholder) if PLACEHOLDERS.include?(key)
 
     alias_id = @aliases[key]
-    return Result.new(club_id: alias_id, match_type: :alias) if alias_id && @clubs_by_id.key?(alias_id)
+    if alias_id
+      return Result.new(club_id: alias_id, match_type: :alias) if @clubs_by_id.key?(alias_id)
+
+      # Zeigt ein Alias auf einen Verein, den es nicht mehr gibt (gelöscht oder
+      # per clubs:merge aufgelöst), darf NICHT auf den Namensvergleich
+      # zurückgefallen werden: Der träfe dann gerade die Dublette, gegen die der
+      # Alias geschrieben wurde. Lieber kein Verein als der falsche.
+      return Result.new(club_id: nil, match_type: :alias_target_missing)
+    end
 
     exact_match(key) || normalized_match(name) || Result.new(club_id: nil, match_type: :none)
   end

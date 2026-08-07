@@ -8,6 +8,11 @@ module Admin
 
     # GET /api/v2/admin/referees
     def index
+      unless valid_status_filter?
+        return render json: { errors: ["Unbekannter Status-Filter: #{params[:status]}"] },
+                      status: :unprocessable_entity
+      end
+
       referees = Referee.includes(club: :state_association,
                                   referee_qualifications: :referee_qualification_type,
                                   referee_taggings: :referee_tag)
@@ -309,6 +314,15 @@ module Admin
       end
     end
 
+    # Ein unbekannter Wert fiele sonst in den Standardzweig: Wer nach „beendet"
+    # filtert und sich vertippt, bekäme eine Liste ganz ohne Beendete und
+    # schlösse daraus, der Nachimport sei nicht gelaufen.
+    KNOWN_STATUS_FILTERS = %w[alle aktiv abgelaufen beendet ohne_nachweis].freeze
+
+    def valid_status_filter?
+      params[:status].blank? || KNOWN_STATUS_FILTERS.include?(params[:status])
+    end
+
     def license_number_query?
       params[:q].to_s.strip.match?(/\A\d+\z/)
     end
@@ -540,7 +554,7 @@ module Admin
         landesverband: referee.landesverband,
         lizenzstufe: referee.lizenzstufe,
         gueltigkeit: referee.gueltigkeit&.strftime('%d.%m.%Y'),
-        active: !referee.guest? && referee.gueltigkeit.present? && referee.gueltigkeit >= Date.today,
+        active: !referee.guest? && referee.gueltigkeit.present? && referee.gueltigkeit >= Date.current,
         # active | lapsed | career_ended | unknown – trägt Badge und Status-Filter
         # der Liste. Der Stichtag wird je Request einmal berechnet, nicht je Zeile.
         license_status: referee.license_status(career_end_cutoff),

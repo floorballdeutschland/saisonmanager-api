@@ -59,7 +59,35 @@ class RefereeClubLookupTest < ActiveSupport::TestCase
     service = lookup({ 'Irgendwas' => 999_999 })
 
     assert_equal [999_999], service.missing_alias_targets
-    assert_equal :none, service.call('Irgendwas').match_type
+    assert_equal :alias_target_missing, service.call('Irgendwas').match_type
+  end
+
+  # Der gefaehrlichste Fall: Das Alias-Ziel wurde per clubs:merge aufgeloest.
+  # Faellt die Suche dann auf den Namensvergleich zurueck, trifft sie genau die
+  # Dublette, gegen die der Alias geschrieben wurde.
+  test 'totes Alias-Ziel faellt NICHT auf den Namenstreffer zurueck' do
+    service = lookup({ 'SVGO Bremen' => 999_999 })
+
+    result = service.call('SVGO Bremen')
+
+    assert_nil result.club_id
+    assert_not_equal @duplikat.id, result.club_id
+    assert_equal :alias_target_missing, result.match_type
+  end
+
+  test 'fehlende Alias-Datei bricht ab, statt still ohne Aliase zu laufen' do
+    original = RefereeClubLookup::ALIAS_PATH
+    RefereeClubLookup.send(:remove_const, :ALIAS_PATH)
+    RefereeClubLookup.const_set(:ALIAS_PATH, Rails.root.join('config/gibt-es-nicht.yml'))
+
+    assert_raises(RuntimeError) { RefereeClubLookup.load_aliases }
+  ensure
+    RefereeClubLookup.send(:remove_const, :ALIAS_PATH)
+    RefereeClubLookup.const_set(:ALIAS_PATH, original)
+  end
+
+  test 'alias_count meldet die Zahl der geladenen Eintraege' do
+    assert_equal 2, lookup({ 'A' => 1, 'B' => 2 }).alias_count
   end
 
   test 'deaktivierte Vereine bleiben zuordenbar' do

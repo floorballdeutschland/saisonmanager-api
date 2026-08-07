@@ -12,10 +12,17 @@ class RefereesBackfillBeendeteTest < ActiveSupport::TestCase
     Setting.current.update!(seasons: { '19' => { 'name' => '2026/2027' } })
     Rails.cache.clear
     @csv = Tempfile.new(['stammdaten', '.csv'])
+    # Die ausgelieferte Alias-Datei traegt Produktions-Vereins-IDs, die es in
+    # der Test-Datenbank nicht gibt — der Alias-Check wuerde zu Recht abbrechen.
+    # Die Tests fahren deshalb mit einer leeren Alias-Liste.
+    @aliases = Tempfile.new(['aliases', '.yml'])
+    @aliases.write("--- {}\n")
+    @aliases.flush
   end
 
   teardown do
     @csv.close!
+    @aliases.close!
   end
 
   HEADER = 'lizenznummer;nachname;vorname;geburtsdatum;verein;verband;aktiv;lizenz;lizenz_jahr'.freeze
@@ -37,7 +44,11 @@ class RefereesBackfillBeendeteTest < ActiveSupport::TestCase
   end
 
   def backfill(env = {})
-    run_task('referees2025:backfill_beendete', { 'CSV' => @csv.path }.merge(env))
+    run_task('referees2025:backfill_beendete', { 'CSV' => @csv.path, 'ALIASES' => @aliases.path }.merge(env))
+  end
+
+  def fill_club_ids(env = {})
+    run_task('referees2025:fill_club_ids', { 'CSV' => @csv.path, 'ALIASES' => @aliases.path }.merge(env))
   end
 
   test 'legt Beendete an und leitet Gültigkeit aus dem Kursjahr ab' do
@@ -126,11 +137,67 @@ class RefereesBackfillBeendeteTest < ActiveSupport::TestCase
       '900011;Mit;Verein;;SV Neu;NRW;1;L2;2024'
     )
 
-    out, = run_task('referees2025:fill_club_ids', { 'CSV' => @csv.path, 'DRY_RUN' => 'false' })
+    out, = fill_club_ids('DRY_RUN' => 'false')
 
     assert_equal neu.id, ohne.reload.club_id, 'long_name-Treffer füllt die leere Zuordnung'
     assert_equal alt.id, gesetzt.reload.club_id, 'gesetzte Zuordnung bleibt unangetastet'
     assert_match(/davon Widerspruch zur Excel:\s+1/, out)
+  end
+
+  # Eine fehlerhafte Zeile muss den ganzen Lauf zuruecknehmen. Sonst entstuende
+  # ein halb importierter Bestand, den niemand von einem vollstaendigen
+  # unterscheiden kann.
+  test 'eine ungueltige Zeile rollt den gesamten Lauf zurueck und endet mit exit 1' do
+    write_csv(
+      '900020;Gut;Gunda;;;NRW;0;L2;2015',
+      ';Ohne;Nummer;;;NRW;0;L2;2015'
+    )
+
+    assert_no_difference -> { Referee.count } do
+      assert_raises(SystemExit) { backfill('DRY_RUN' => 'false') }
+    end
+
+    assert_not Referee.exists?(lizenznummer: 900_020), 'gueltige Zeile muss mit zurueckgerollt werden'
+  end
+
+  test 'fehlende Pflichtspalte bricht ab, statt den Filter ins Leere laufen zu lassen' do
+    @csv.write("lizenznummer;nachname;vorname\n900021;Kopf;Karl")
+    @csv.flush
+
+    assert_raises(SystemExit) { backfill }
+  end
+
+  test 'gemergte Dublette wird nicht als vorhandener Datensatz behandelt' do
+    master = create(:referee, lizenznummer: 900_030, nachname: 'Master', vorname: 'Max')
+    dublette = create(:referee, lizenznummer: 900_031, nachname: 'Master', vorname: 'Max')
+    dublette.update_column(:merged_into_id, master.id)
+    write_csv('900031;Master;Max;05.05.1980;;NRW;0;L2;2015')
+
+    out, = backfill('DRY_RUN' => 'false')
+
+    assert_nil dublette.reload.gueltigkeit, 'gemergte Dublette darf nicht befuellt werden'
+    assert_nil dublette.lizenzstufe
+    assert_match(/gemergt/, out)
+    assert_match(/Namenskonflikt, nichts geändert:\s+1/, out)
+  end
+
+  test 'fill_club_ids ordnet keinen Verein zu, wenn der Name abweicht' do
+    club = create(:club, name: 'SV Fremd')
+    fremd = create(:referee, lizenznummer: 900_040, nachname: 'Fremd', vorname: 'Frida', club_id: nil)
+    write_csv('900040;Andere;Person;;SV Fremd;NRW;1;L2;2024')
+
+    out, = fill_club_ids('DRY_RUN' => 'false')
+
+    assert_nil fremd.reload.club_id, "Verein #{club.id} darf nicht an eine andere Person gehen"
+    assert_match(/Namenskonflikt, nichts geändert:\s+1/, out)
+  end
+
+  test 'fill_club_ids zaehlt Zeilen ohne Entsprechung in der DB' do
+    write_csv('900050;Unbekannt;Ute;;SV Irgendwo;NRW;1;L2;2024')
+
+    out, = fill_club_ids
+
+    assert_match(/Keine Entsprechung in der DB:\s+1/, out)
   end
 
   test 'fill_club_ids schreibt im DRY_RUN nichts' do
@@ -138,7 +205,7 @@ class RefereesBackfillBeendeteTest < ActiveSupport::TestCase
     referee = create(:referee, lizenznummer: 900_012, nachname: 'Tro', vorname: 'Cken', club_id: nil)
     write_csv('900012;Tro;Cken;;SV Trocken;NRW;1;L2;2024')
 
-    run_task('referees2025:fill_club_ids', { 'CSV' => @csv.path })
+    fill_club_ids
 
     assert_nil referee.reload.club_id
   end

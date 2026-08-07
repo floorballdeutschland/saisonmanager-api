@@ -10,9 +10,12 @@ class RefereesController < ApplicationController
   # Register alter Lizenznummern; geprüft werden Reaktivierungen intern durch
   # FD, nicht über den öffentlichen Lizenzcheck. Ein „gab es mal"-Signal
   # gehört nicht auf eine per API-Key erreichbare Fläche.
+  #
+  # Datensätze ohne Ablaufdatum antworten dagegen weiter (mit leerer
+  # Gültigkeit): Sie sind kein beendeter Fall, sondern einer ohne Nachweis.
   def show
     referee = Referee.includes(club: :state_association, referee_qualifications: :referee_qualification_type)
-                     .in_career_window
+                     .not_career_ended
                      .find_by(lizenznummer: params[:id].to_i)
 
     if referee
@@ -49,7 +52,7 @@ class RefereesController < ApplicationController
     # Ohne den Fenster-Filter würden hier Name, Stufe und Landesverband von
     # Personen ausgeliefert, die seit Jahren nicht mehr pfeifen (Nachimport der
     # Karriere-Beendeten). Die Autocomplete ist per X-Api-Key erreichbar.
-    referees = Referee.in_career_window.search(q).order(:nachname, :vorname).limit(10)
+    referees = Referee.not_career_ended.search(q).order(:nachname, :vorname).limit(10)
 
     render json: referees.includes(club: :state_association).map { |r|
       {
