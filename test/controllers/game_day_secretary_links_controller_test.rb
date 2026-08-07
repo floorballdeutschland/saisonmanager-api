@@ -50,6 +50,23 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
     assert_response :created
   end
 
+  test 'SBK des Spielbetriebs darf einen Link erzeugen' do
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
+
+    assert_response :created
+  end
+
+  test 'SBK eines fremden Spielbetriebs bekommt 403' do
+    login(create(:user, :sbk_scoped, game_operation_id: @other_go.id))
+
+    post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
+
+    assert_response :forbidden
+    assert_equal 0, GameDaySecretaryLink.count
+  end
+
   test 'Vereinsmanager eines unbeteiligten Vereins bekommt 403' do
     login(create(:user, :vm, club_id: create(:club).id))
 
@@ -96,12 +113,7 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
   end
 
   test 'fremde Liga in derselben Halle kommt nicht in den Link' do
-    foreign_club = create(:club)
-    foreign_league = create(:league, game_operation: @other_go)
-    foreign_day = create_game_day(foreign_league, foreign_club)
-    Game.create!(game_day: foreign_day,
-                 home_team: create(:team, league: foreign_league, club: foreign_club),
-                 guest_team: create(:team, league: foreign_league, club: create(:club)))
+    build_foreign_game_day
 
     login(create(:user, :vm, club_id: @host_club.id))
     post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
@@ -109,6 +121,27 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
     ids = JSON.parse(response.body)['game_day_ids']
     assert_equal [@game_day.id], ids,
                  'eine gemeinsam genutzte Halle darf keinen Zugriff auf fremde Ligen öffnen'
+  end
+
+  test 'SBK-Umfang endet am fremden Spielbetrieb derselben Halle' do
+    foreign_day = build_parallel_game_day(@other_go)
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
+
+    ids = JSON.parse(response.body)['game_day_ids']
+    assert_not_includes ids, foreign_day.id
+  end
+
+  test 'Teammanager bekommt nur den Spieltag der eigenen Mannschaft' do
+    second = build_parallel_game_day(@go)
+    login(create(:user, :tm, team_id: @home.id))
+
+    post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
+
+    assert_equal [@game_day.id], JSON.parse(response.body)['game_day_ids'],
+                 'die zweite Liga derselben Halle gehört nicht zu den Mannschaften dieses TM'
+    assert_not_nil second
   end
 
   test 'Admin bekommt auch die fremde Liga derselben Halle in den Link' do
@@ -157,23 +190,59 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
     assert_equal 1, lists[second_home.id.to_s]['players'].size
   end
 
+  # --- Schreibzugriff --------------------------------------------------------
+
+  # Der Umfang des Tokens entscheidet sich an der Zuordnungstabelle, nicht an
+  # der JSON-Antwort des Erzeugens. Eine schreibende Action beweist das.
+  test 'Token schreibt auf allen abgedeckten Spieltagen, nicht auf der fremden Liga' do
+    second = build_parallel_game_day(@go)
+    foreign = build_parallel_game_day(@other_go)
+    _link, token = GameDaySecretaryLink.generate!(game_days: [@game_day, second],
+                                                  created_by: create(:user, :admin))
+
+    post "/api/v2/user/games/#{second.games.first.id}/set_field",
+         params: { secretary_token: token, game: { audience: '120' } }
+    assert_response :success
+    assert_equal 120, second.games.first.reload.audience
+
+    post "/api/v2/user/games/#{foreign.games.first.id}/set_field",
+         params: { secretary_token: token, game: { audience: '120' } }
+    assert_response :forbidden
+    assert_nil foreign.games.first.reload.audience
+  end
+
   # --- Neuausgabe ------------------------------------------------------------
 
-  test 'Neuausgabe ersetzt jeden laufenden Link, der einen der Spieltage abdeckt' do
-    second = build_parallel_game_day(@other_go)
-    sbk = create(:user, :sbk_scoped, game_operation_id: @other_go.id)
-    _old_link, old_token = GameDaySecretaryLink.generate!(game_days: [second], created_by: sbk)
+  test 'Neuausgabe entzieht dem alten Link genau die neu vergebenen Spieltage' do
+    second = build_foreign_game_day
+    _old_link, old_token = GameDaySecretaryLink.generate!(game_days: [@game_day, second],
+                                                          created_by: create(:user, :admin))
 
-    login(create(:user, :admin))
+    login(create(:user, :vm, club_id: @host_club.id))
     post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
     assert_response :created
     reset!
 
-    # Der SBK-Link deckte nur seinen eigenen Spieltag ab; der Admin-Link deckt
-    # beide ab und löst ihn deshalb ab. Bewusst so: für einen Spieltag darf nur
-    # ein gültiger Token im Umlauf sein, sonst weiß niemand, welcher gilt.
+    # Der VM darf nur seinen eigenen Spieltag neu vergeben. Der alte Link
+    # verliert deshalb genau diesen und behält die fremde Liga – sonst stünde
+    # deren Sekretariat mitten am Spieltag ohne Token da, ohne Ersatz.
+    get '/api/v2/public/secretary', params: { token: old_token }
+    assert_response :success
+    remaining_ids = JSON.parse(response.body)['game_days'].map { |gd| gd['id'] }
+    assert_equal [second.id], remaining_ids
+  end
+
+  test 'Neuausgabe entfernt einen Link, dem kein Spieltag mehr bleibt' do
+    _old_link, old_token = GameDaySecretaryLink.generate!(game_days: [@game_day],
+                                                          created_by: create(:user, :admin))
+
+    login(create(:user, :vm, club_id: @host_club.id))
+    post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
+    reset!
+
     get '/api/v2/public/secretary', params: { token: old_token }
     assert_response :gone
+    assert_equal 1, GameDaySecretaryLink.count, 'der leergeräumte Link darf nicht zurückbleiben'
   end
 
   # --- Übersicht -------------------------------------------------------------
@@ -197,12 +266,7 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
   end
 
   test 'Übersicht weist fremde Spieltage derselben Halle getrennt aus' do
-    foreign_club = create(:club)
-    foreign_league = create(:league, game_operation: @other_go)
-    foreign_day = create_game_day(foreign_league, foreign_club)
-    Game.create!(game_day: foreign_day,
-                 home_team: create(:team, league: foreign_league, club: foreign_club),
-                 guest_team: create(:team, league: foreign_league, club: create(:club)))
+    foreign_day = build_foreign_game_day
 
     login(create(:user, :vm, club_id: @host_club.id))
     get '/api/v2/user/secretary_game_days'
@@ -223,6 +287,39 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_equal [], JSON.parse(response.body),
                  'Admin und SBK erzeugen ihre Links in der Spielplan-Verwaltung'
+  end
+
+  test 'zwei Spieltage ohne Halle am selben Tag bleiben getrennte Gruppen' do
+    @game_day.update!(arena: nil)
+    second = create_game_day(create(:league, game_operation: @go), @host_club, arena: nil)
+    login(create(:user, :vm, club_id: @host_club.id))
+
+    get '/api/v2/user/secretary_game_days'
+
+    ids = JSON.parse(response.body).flat_map { |g| g['game_days'].map { |gd| gd['id'] } }
+    assert_equal [@game_day.id, second.id].sort, ids.sort,
+                 'ohne Halle lässt sich nicht gruppieren – kein Spieltag darf dabei verloren gehen'
+  end
+
+  test 'Übersicht nennt die abgedeckten Spieltage des aktiven Links' do
+    second = build_parallel_game_day(@go)
+    login(create(:user, :vm, club_id: @host_club.id))
+    post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
+
+    get '/api/v2/user/secretary_game_days'
+
+    link_ids = JSON.parse(response.body).first.dig('link', 'game_day_ids')
+    assert_equal [@game_day.id, second.id].sort, link_ids.sort
+  end
+
+  test 'Übersicht zeigt einen Spieltag von gestern noch an' do
+    @game_day.update!(date: 1.day.ago.to_date.to_s)
+    login(create(:user, :vm, club_id: @host_club.id))
+
+    get '/api/v2/user/secretary_game_days'
+
+    assert_equal 1, JSON.parse(response.body).size,
+                 'während der 72-Stunden-Gültigkeit muss ein Link neu ausgegeben werden können'
   end
 
   test 'Übersicht zeigt keine weit zurückliegenden Spieltage' do
@@ -247,6 +344,17 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
     assert_equal [@game_day.id, second.id].sort, body['game_day_ids'].sort
   end
 
+  test 'GET secretary_link meldet einen abgelaufenen Link als inaktiv' do
+    login(create(:user, :vm, club_id: @host_club.id))
+    post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
+    GameDaySecretaryLink.covering([@game_day.id]).first.update_column(:expires_at, 1.hour.ago)
+
+    get "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
+
+    assert_response :success
+    assert_equal false, JSON.parse(response.body)['active']
+  end
+
   # --- Spieltag löschen ------------------------------------------------------
 
   test 'gelöschter Spieltag entfernt nur seine Zuordnung, nicht den Link' do
@@ -259,6 +367,27 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
     assert GameDaySecretaryLink.exists?(link.id)
     assert_equal [@game_day.id], link.reload.game_days.pluck(:id)
     assert_not_nil GameDaySecretaryLink.find_by_token(token)
+  end
+
+  test 'Link ohne verbleibende Spieltage gilt als ungültig' do
+    _link, token = GameDaySecretaryLink.generate!(game_days: [@game_day], created_by: create(:user, :admin))
+    @game_day.games.destroy_all
+    @game_day.destroy!
+
+    get '/api/v2/public/secretary', params: { token: token }
+
+    assert_response :gone,
+                    'sonst käme eine 200 ohne Spieltag zurück und die Seite liefe in einen Fehler'
+  end
+
+  test 'ein Link ohne Spieltag lässt sich gar nicht erst anlegen' do
+    assert_raises(ActiveRecord::RecordInvalid) do
+      GameDaySecretaryLink.create!(
+        created_by: create(:user, :admin),
+        token_digest: 'x' * 64,
+        expires_at: 1.hour.from_now
+      )
+    end
   end
 
   private
@@ -281,6 +410,19 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
                  home_team: create(:team, league: league, club: @host_club),
                  guest_team: create(:team, league: league, club: @guest_club),
                  start_time: '16:00')
+    day
+  end
+
+  # Ebenfalls dieselbe Halle am selben Tag, aber mit fremdem Ausrichter und
+  # fremden Mannschaften: nichts daran gehört dem Verein aus dem Setup.
+  def build_foreign_game_day
+    club = create(:club)
+    league = create(:league, game_operation: @other_go)
+    day = create_game_day(league, club)
+    Game.create!(game_day: day,
+                 home_team: create(:team, league: league, club: club),
+                 guest_team: create(:team, league: league, club: create(:club)),
+                 start_time: '18:00')
     day
   end
 end

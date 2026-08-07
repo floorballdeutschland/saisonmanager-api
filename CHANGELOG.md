@@ -15,7 +15,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Verbessert
 
-- **Ein Link für die ganze Halle statt einer je Liga**: Spielen an einem Tag in derselben Halle mehrere Ligen nacheinander, war das bisher für jede Liga ein eigener Spieltag und damit ein eigener Link. Das Sekretariat am Tisch musste zwischen mehreren Adressen wechseln und nach drei Tagen jede einzeln erneuern lassen. Ein Link deckt jetzt alle Spieltage ab, die am selben Tag in derselben Halle stattfinden. Er umfasst dabei nur die Spieltage, für die die ausstellende Person auch berechtigt ist: Teilt sich ein Verein die Halle mit einer fremden Liga, bleibt deren Spielbericht verschlossen. Die Übersicht weist eine solche Fremdbelegung aus, damit erkennbar bleibt, warum ein Spiel im Link fehlt.
+- **Ein Link für die ganze Halle statt einer je Liga**: Spielen an einem Tag in derselben Halle mehrere Ligen nacheinander, war das bisher für jede Liga ein eigener Spieltag und damit ein eigener Link. Das Sekretariat am Tisch musste zwischen mehreren Adressen wechseln und nach drei Tagen jede einzeln erneuern lassen. Ein Link deckt jetzt alle Spieltage ab, die am selben Tag in derselben Halle stattfinden. Er umfasst dabei nur die Spieltage, für die die ausstellende Person auch berechtigt ist: Teilt sich ein Verein die Halle mit einer fremden Liga, bleibt deren Spielbericht verschlossen. Die Übersicht weist eine solche Fremdbelegung aus, damit erkennbar bleibt, warum ein Spiel im Link fehlt. Wird ein Link neu ausgegeben, verliert der bisherige genau die neu vergebenen Spieltage und behält die übrigen. Ein Verein, der für seine eigene Liga neu ausgibt, nimmt der fremden Liga in derselben Halle damit nicht mitten am Spieltag ihren Zugang.
 
 ### Behoben
 

@@ -22,7 +22,7 @@ class GameDaySecretaryLinksController < ApplicationController
 
     links_by_game_day = active_links_by_game_day(groups.values.flatten.map(&:id))
 
-    payload = groups.map do |(arena_id, date), game_days|
+    payload = groups.map do |(arena_id, date, _standalone_id), game_days|
       covered = game_days.select { |gd| may_manage_secretary_link?(gd) }
       next if covered.empty?
 
@@ -102,25 +102,30 @@ class GameDaySecretaryLinksController < ApplicationController
   # Halle am selben Tag, aber nur die, für die der/die Erzeugende berechtigt ist.
   # Ohne diese Prüfung je Spieltag würde eine gemeinsam genutzte Halle einem VM
   # den Spielbericht einer fremden Liga öffnen.
+  #
+  # `@game_day` ist immer dabei: authorize_vm_or_tm! hat dafür schon bestätigt,
+  # und hall_day_siblings enthält self in jedem Zweig.
   def coverable_game_days(game_day)
-    siblings = game_day.hall_day_siblings
-                       .includes(:league, games: %i[home_team guest_team])
-                       .to_a
-    covered = siblings.select { |gd| may_manage_secretary_link?(gd) }
-    covered.presence || [game_day]
+    game_day.hall_day_siblings
+            .includes(:league, games: %i[home_team guest_team])
+            .select { |gd| may_manage_secretary_link?(gd) }
   end
 
   # Spieltage im Zeitfenster, an denen der/die Angemeldete als VM oder TM
   # beteiligt ist, samt aller Spieltage derselben Halle am selben Tag –
-  # gruppiert nach [arena_id, date]. Ohne Halle bildet der Spieltag eine
-  # eigene Gruppe, damit er nicht aus der Liste fällt.
+  # gruppiert nach [arena_id, date, ohne-Halle-Kennung].
+  #
+  # Spieltage ohne Halle oder ohne Datum lassen sich nicht zusammenfassen und
+  # bilden je eine eigene Gruppe. Die Spieltag-ID gehört deshalb in den
+  # Schlüssel: sonst überschrieben sich zwei hallenlose Spieltage desselben
+  # Tages gegenseitig und einer verschwände stumm aus der Übersicht.
   def hall_day_groups
     seeds = seed_game_days
     return {} if seeds.empty?
 
     keyed, unkeyed = seeds.partition { |gd| gd.arena_id.present? && gd.date.present? }
-    groups = sibling_game_days(keyed).group_by { |gd| [gd.arena_id, gd.date] }
-    unkeyed.each { |gd| groups[[nil, gd.date]] = [gd] }
+    groups = sibling_game_days(keyed).group_by { |gd| [gd.arena_id, gd.date, nil] }
+    unkeyed.each { |gd| groups[[nil, gd.date, gd.id]] = [gd] }
     groups
   end
 
@@ -152,6 +157,10 @@ class GameDaySecretaryLinksController < ApplicationController
 
   def sibling_game_days(game_days)
     pairs = game_days.map { |gd| [gd.arena_id, gd.date] }.uniq
+    # Ohne diesen Ausstieg entstünde `where('')`, und das trifft jede Zeile der
+    # Tabelle – die Übersicht bekäme dann den kompletten Spielplan vorgelegt.
+    return [] if pairs.empty?
+
     condition = Array.new(pairs.size, '(arena_id = ? AND date = ?)').join(' OR ')
     GameDay.where(condition, *pairs.flatten)
            .includes(:arena, :league, games: %i[home_team guest_team])

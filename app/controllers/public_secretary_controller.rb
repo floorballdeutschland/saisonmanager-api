@@ -14,6 +14,12 @@ class PublicSecretaryController < ApplicationController
                     .includes(:arena, league: :game_operation)
                     .to_a
                     .sort_by { |gd| [gd.date.to_s, gd.league&.name.to_s] }
+
+    # Wurden alle Spieltage des Links gelöscht, gibt es nichts mehr zu führen.
+    # Ohne diesen Zweig käme eine 200 mit game_day: null zurück und die Seite
+    # liefe in einen Fehler, statt den Link als ungültig zu melden.
+    return render json: { message: 'Dieser Link ist ungültig oder abgelaufen.' }, status: :gone if game_days.empty?
+
     games = games_for(game_days)
 
     render json: {
