@@ -3,9 +3,17 @@ module Vm
     before_action :authorize_vm!
 
     # GET /api/v2/vm/referees
+    #
+    # Vereine sehen alles außer den Karriere-Beendeten. Der Import von 2025 hatte
+    # praktisch dieselbe Grenze (Lizenz in einem der letzten Kursjahre), nur
+    # wandert sie jetzt mit dem Saisonwechsel mit; deckungsgleich sind die beiden
+    # Mengen nicht, weil hier das abgeleitete Ablaufdatum zählt und dort das
+    # Kursjahr. Datensätze ohne Ablaufdatum bleiben sichtbar — ein vom Verein
+    # neu angelegter Schiedsrichter hat noch keins.
     def index
       club_ids = current_user.permission_hash[:vm]
       referees = Referee.where(club_id: club_ids)
+                        .not_career_ended
                         .includes(club: :state_association,
                                   referee_qualifications: :referee_qualification_type)
                         .order(:nachname, :vorname)

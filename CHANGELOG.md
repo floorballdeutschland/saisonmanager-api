@@ -12,6 +12,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Behoben
 
 - **Spätabends abgeschlossene Spielberichte fielen aus dem Schiri-Feedback**: Das Spieltagsdatum ist ein deutsches Datum, die Anwendung rechnet intern aber in UTC. Zwischen 22 Uhr und Mitternacht deutscher Zeit liegen beide einen Tag auseinander, und in diesem Zeitraum galt der laufende Spieltag als „morgen". Die Übersicht der Rückmeldungen ließ die Spiele dieses Abends deshalb aus, und der stündliche Versand übersprang sie. Weil er stündlich läuft, holte er es später von selbst nach; wer abends nachsah, fand seine Partie trotzdem nicht. Maßgeblich ist jetzt überall der Kalender des Spielbetriebs, so wie schon bei der Berechnung des Abgabefensters.
+## [1.72.0] - 2026-08-07
+
+### Behoben
+
+- **Falsch zugeordnete Schiedsrichter lassen sich korrigieren**: 36 Schiedsrichter aus Salzwedel waren einem Verein in Hessen zugeordnet, weil ein früherer Abgleich zwei ähnlich beginnende Vereinsnamen verwechselt hatte. Der Wartungsbefehl für Vereinszuordnungen kann solche Fälle jetzt richtigstellen, allerdings nur dort, wo der Verband den Verein ausdrücklich benannt hat. Zuordnungen, die aus einem Namensvergleich stammen, bleiben wie bisher unangetastet.
+
+### Neu
+
+- **Alte Lizenznummern von Schiedsrichtern sind wieder prüfbar**: Beim Datenabgleich 2025 wurden nur Schiedsrichter mit einer Lizenz aus den letzten fünf Jahren übernommen. Wer nach längerer Pause zurückkommt und seine alte Lizenznummer nennt, war deshalb nicht überprüfbar, und die Nummer war im System nicht belegt. Die rund 4.250 fehlenden Datensätze lassen sich jetzt nachtragen, samt Kurs- und Lizenzhistorie zurück bis 2007. Für den Verwaltungsalltag ändert sich nichts: Wer keine Lizenz mehr hat, taucht in den Listen standardmäßig nicht auf, ist über die Suche nach der Lizenznummer aber gezielt auffindbar.
+- **Karriereende wird ausgewiesen**: Wer vier Lizenzjahre keine Lizenz hatte, gilt als Karriere beendet und braucht wieder den Grundkurs. Die Verwaltung zeigt diesen Zustand jetzt an und lässt danach filtern. Der Stichtag wandert mit dem Saisonwechsel, ein vorgezogener Wechsel wirkt also sofort.
+- **Hinweis auf Reaktivierungen im Kursergebnis-Import**: Trifft ein Kursergebnis eine Lizenznummer, deren Karriere als beendet gilt, weist die Prüfansicht des Landesverbands darauf hin, samt Ablaufdatum der alten Lizenz. Bisher sah das aus wie ein gewöhnlicher Treffer.
+- **Playoff-Runden lassen sich beim Spielplan-Import angeben**: Die Import-Vorlage hat zwei neue Spalten, Serien-Titel und Nummer in Serie. Damit ist schon beim Import hinterlegt, ob ein Spiel ein Halbfinale, ein Finale oder ein Spiel um Platz 3 ist. Bisher gab es die Felder nur in der Spielverwaltung, wo sie für jedes Spiel einzeln nachgetragen werden mussten. Genau deshalb waren die Playoffs der Bundesligen von außen nicht als solche erkennbar, und das Finale einer Saison ließ sich im Spielplan nur erraten. Ein neues Beispielblatt in der Vorlage zeigt, wie eine K.-o.-Runde aussieht. Beide Spalten sind freiwillig, bestehende Vorlagen funktionieren unverändert weiter.
+
+### Verbessert
+
+- **Schiedsrichter werden ihrem Verein zuverlässiger zugeordnet**: Die Vereinssuche verglich bisher nur den Kurznamen des Vereins und fand damit gut die Hälfte. Sie berücksichtigt jetzt auch den vollständigen Namen und das Kürzel, ignoriert Schreibweisen wie „e.V." und kennt die von FD benannten Sonderfälle, in denen die Liste einen Mannschaftsnamen statt des Stammvereins führt. Fehlende Zuordnungen lassen sich damit nachtragen; das betrifft rund 530 Personen, die bisher weder ihrem Landesverband noch ihrem Verein in den Listen erschienen. Bestehende Zuordnungen bleiben unangetastet.
+- **Schiedsrichter mit beendeter Karriere bleiben aus der öffentlichen Fläche heraus**: Die Namenssuche des Lizenzchecks und die Lizenzauskunft liefern nur Personen, die in den letzten fünf Kursjahren eine Lizenz hatten. Die Prüfung einer alten Nummer ist Sache des Verbands, nicht der öffentlichen Auskunft.
+- **API-Dokumentation der Serienfelder korrigiert**: Die Spielplan-Schnittstelle beschrieb `series_number` als Zahl, ausgeliefert wird aber Text. Beide Serienfelder sind jetzt mit ihrer Bedeutung und einem Beispiel dokumentiert, samt Hinweis, dass sie nur bei gepflegten K.-o.-Runden gefüllt sind.
 
 ## [1.71.1] - 2026-08-06
 

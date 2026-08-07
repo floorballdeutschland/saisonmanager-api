@@ -1,0 +1,48 @@
+# Vereinsnamen aus der FD-Schiedsrichterliste, die keinem Club-Datensatz
+# entsprechen, weil die Liste Mannschafts- oder Abteilungsnamen führt, während
+# der Club unter dem Stammverein läuft. Aufgelöst von FD, nicht geraten: Ein
+# Ähnlichkeitsvergleich hätte „Floorball Grizzlys Salzwedel" nie auf
+# „SV Jeetze Salzwedel" gebracht, dafür aber überzeugende Fehltreffer geliefert
+# („SG Berlin" auf „Z88 Berlin"). Deshalb greift automatisch nur der exakte und
+# der normalisierte Namensvergleich, alles andere steht hier.
+#
+# Der Abgleich ist case-insensitiv, Schreibweisen wie „FOX Erfurt" brauchen
+# keinen eigenen Eintrag.
+#
+# Die IDs sind Produktions-IDs. RefereeClubLookup prüft beim Laden, ob es den
+# Club gibt, und meldet fehlende Ziele, statt stumm nichts zuzuordnen.
+---
+# Von FD benannt (Mannschafts- oder früherer Vereinsname → Stammverein)
+'Floorball Grizzlys Salzwedel': 142 # SV Jeetze Salzwedel
+'Floorball Tigers Magdeburg': 25 # WSG Reform Magdeburg
+'PTSV United Lakers Konstanz': 17 # PTSV Konstanz
+'Fox Erfurt': 162 # USV Erfurt
+'T.V. Frisch-Auf Bochum-Altenbochum 08 e.V.': 111 # TV Altenbochum
+'Lausitzer Wölfe Hoyerswerda': 78 # Karate-Do Hoyerswerda
+'Arche Fighter 1924 Nebra': 26 # SV 1924 Nebra
+'BA Stuttgart': 99 # Bosch Anchors Stuttgart
+'SVGO Bremen': 1 # SV Grambke-Oslebshausen
+
+# Abweichende Schreibweise oder Abkürzung, an Ort und Landesverband geprüft
+'Dümptener Füchse 1996 e.V.': 46 # Dümptener Füchse 96 e.V.
+'Bielefelder Turngemeinde von 1848 e.V.': 89 # Bielefelder TG v. 1848 e.V.
+'Sportvg Feuerbach': 56 # Sportvg Feuerbach 1883 e.V.
+'PSV 90 Dessau - Black Wolves': 121 # PSV 90 Dessau
+'TSV Hochdahl 64 e.V.': 31 # TSV Hochdahl
+'TSV Lesum-Burgdamm': 47 # TSV Lesum
+'TSG GutsMuths 1860 Quedlinburg e.V.': 133 # TSG Quedlinburg
+'TuS Bloherfelde': 48 # TuS Bloherfelde/Oldenburg
+'TSV Calw 1846': 104 # TSV Calw Lions
+'TSV Ebersgöns': 103 # TSV Tollwut Ebersgöns
+'TV Augsburg 1847 e.V.': 37 # TV Augsburg
+'DJK Grün-Weiß Ennepetal 1924 e.V.': 12 # DJK GW Ennepetal
+'TSV Sankt Jürgen': 174 # TSV St. Jürgen
+'VBC Ludwigshafen': 137 # VBC Olympia 72 Ludwigshafen
+'Detmolder TV': 164 # Detmolder TV v. 1860
+'TSV Husum': 122 # TSV Husum 1875 e.V.
+'TV 1863 Kalkar e.V.': 156 # TV Kalkar
+'DJK Hansa Dortmund 1920 e.V.': 131 # DJK Hansa Dortmund (deaktiviert)
+'TuS Gaarden': 153 # TuS Gaarden Kiel
+'RSV Eintracht 1949 Stahnsdorf': 240 # RSV Eintracht 1949
+'VfB Waldstadt-Mosbach': 116 # VfB Mosbach
+'USC Clausthal-Zellerfeld': 101 # USC Clausthal

@@ -320,6 +320,8 @@ class RefereeCourseImportService
         'partial_match'
       end
 
+    warnings += reactivation_warning(referee)
+
     matched_club = exact_club_match(csv_verein)
 
     importer_attrs = {
@@ -363,6 +365,31 @@ class RefereeCourseImportService
       **importer_attrs,
       **final_attrs
     )
+  end
+
+  # Trifft ein Kursergebnis einen Schiedsrichter, dessen Lizenz vier Lizenzjahre
+  # oder länger abgelaufen ist, ist das eine Reaktivierung: Die Karriere gilt als
+  # beendet, fachlich ist der Grundkurs fällig und keine Fortbildung. In der
+  # LV-Prüfansicht sähe man sonst einen unauffälligen Treffer und würde die alte
+  # Lizenznummer stillschweigend wiederbeleben — genau der Fall, für den die
+  # Beendeten überhaupt importiert wurden.
+  # Ohne Ablaufdatum wird ebenfalls gewarnt: Aus dem Nachimport stammen
+  # Datensätze, für die die Excel weder Stufe noch Ablauf kennt (nur Nummer,
+  # Name, Geburtsdatum, Verein). Die sind mit hoher Wahrscheinlichkeit ebenfalls
+  # Reaktivierungen, und ein unauffälliger Treffer wäre hier am gefährlichsten.
+  def reactivation_warning(referee)
+    return [] if referee.nil?
+    return [] unless referee.career_ended? || referee.gueltigkeit.blank?
+
+    reason =
+      if referee.gueltigkeit
+        "Karriere beendet — Lizenz abgelaufen am #{referee.gueltigkeit.strftime('%d.%m.%Y')}, " \
+          'Grundkurs erforderlich'
+      else
+        'Kein Ablaufdatum hinterlegt — Lizenzstatus unklar, vor dem Anwenden prüfen'
+      end
+
+    [{ 'field' => 'lizenznummer', 'raw' => referee.lizenznummer.to_s, 'reason' => reason }]
   end
 
   # Findet den DB-Referee mit den meisten Übereinstimmungen.
