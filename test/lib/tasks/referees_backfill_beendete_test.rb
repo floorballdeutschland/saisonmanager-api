@@ -47,6 +47,11 @@ class RefereesBackfillBeendeteTest < ActiveSupport::TestCase
     run_task('referees2025:backfill_beendete', { 'CSV' => @csv.path, 'ALIASES' => @aliases.path }.merge(env))
   end
 
+  def write_aliases(mapping)
+    eintraege = mapping.map { |name, id| "'#{name}': #{id}\n" }.join
+    File.write(@aliases.path, "---\n#{eintraege}")
+  end
+
   def fill_club_ids(env = {})
     run_task('referees2025:fill_club_ids', { 'CSV' => @csv.path, 'ALIASES' => @aliases.path }.merge(env))
   end
@@ -198,6 +203,52 @@ class RefereesBackfillBeendeteTest < ActiveSupport::TestCase
     out, = fill_club_ids
 
     assert_match(/Keine Entsprechung in der DB:\s+1/, out)
+  end
+
+  # Die Ausnahme von „nie ueberschreiben": Ein Alias ist von FD benannt, kein
+  # geratener Namenstreffer. So sind 36 Schiedsrichter aufgefallen, die an einem
+  # Verein 400 km entfernt im falschen Landesverband hingen.
+  test 'FIX_ALIAS_CONFLICTS korrigiert eine falsche Zuordnung aus der Alias-Liste' do
+    falsch = create(:club, name: 'Floorball Griedel')
+    richtig = create(:club, name: 'SV Jeetze Salzwedel')
+    write_aliases('Floorball Grizzlys Salzwedel' => richtig.id)
+    referee = create(:referee, lizenznummer: 900_060, nachname: 'Griz', vorname: 'Gerd',
+                               club_id: falsch.id)
+    write_csv('900060;Griz;Gerd;;Floorball Grizzlys Salzwedel;NRW;1;L2;2024')
+
+    out, = fill_club_ids('DRY_RUN' => 'false', 'FIX_ALIAS_CONFLICTS' => 'true')
+
+    assert_equal richtig.id, referee.reload.club_id
+    assert_match(/Bestehende Zuordnung korrigiert:\s+1/, out)
+  end
+
+  test 'ohne FIX_ALIAS_CONFLICTS bleibt die falsche Zuordnung stehen' do
+    falsch = create(:club, name: 'Floorball Griedel')
+    richtig = create(:club, name: 'SV Jeetze Salzwedel')
+    write_aliases('Floorball Grizzlys Salzwedel' => richtig.id)
+    referee = create(:referee, lizenznummer: 900_061, nachname: 'Griz', vorname: 'Gerd',
+                               club_id: falsch.id)
+    write_csv('900061;Griz;Gerd;;Floorball Grizzlys Salzwedel;NRW;1;L2;2024')
+
+    out, = fill_club_ids('DRY_RUN' => 'false')
+
+    assert_equal falsch.id, referee.reload.club_id
+    assert_match(/davon Widerspruch zur Excel:\s+1/, out)
+  end
+
+  # Namens- und normalisierte Treffer sind Heuristik. Sie duerfen auch mit
+  # gesetztem Schalter niemals eine bestehende Zuordnung ueberschreiben.
+  test 'FIX_ALIAS_CONFLICTS korrigiert KEINE Namenstreffer' do
+    falsch = create(:club, name: 'SV Alt')
+    create(:club, name: 'Hannover Mustangs')
+    referee = create(:referee, lizenznummer: 900_062, nachname: 'Mus', vorname: 'Tang',
+                               club_id: falsch.id)
+    write_csv('900062;Mus;Tang;;Hannover Mustangs;NRW;1;L2;2024')
+
+    out, = fill_club_ids('DRY_RUN' => 'false', 'FIX_ALIAS_CONFLICTS' => 'true')
+
+    assert_equal falsch.id, referee.reload.club_id, 'Namenstreffer darf nicht korrigieren'
+    assert_match(/davon Widerspruch zur Excel:\s+1/, out)
   end
 
   test 'fill_club_ids schreibt im DRY_RUN nichts' do

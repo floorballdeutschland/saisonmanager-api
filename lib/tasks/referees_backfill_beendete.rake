@@ -18,6 +18,10 @@ require 'csv'
 #      rails referees2025:fill_club_ids CSV=tmp/referees_stammdaten.csv
 #      rails referees2025:fill_club_ids CSV=… DRY_RUN=false
 #
+#      Mit FIX_ALIAS_CONFLICTS=true korrigiert der Task zusätzlich bestehende
+#      Zuordnungen, die einem Eintrag der Alias-Liste widersprechen. Nur die:
+#      Namens- und normalisierte Treffer sind Heuristik und überschreiben nie.
+#
 #   3. Kurs- und Lizenzhistorie der Beendeten (eigener Batch, sonst kollidiert
 #      sie mit den bereits importierten Jahrgängen der Aktiven)
 #      rails referees2025:import_history HISTORY_CSV=tmp/referees_historie_beendet.csv
@@ -265,8 +269,10 @@ namespace :referees2025 do
     rows = RefereesBackfill.load_rows
     lookup = RefereesBackfill.lookup
     dry_run = RefereesBackfill.dry_run?
+    fix_conflicts = ENV['FIX_ALIAS_CONFLICTS'] == 'true'
 
     puts "=== Fehlende Vereinszuordnungen [#{dry_run ? 'DRY RUN' : 'LIVE'}] ==="
+    puts 'Alias-Konflikte werden korrigiert (FIX_ALIAS_CONFLICTS=true)' if fix_conflicts
     RefereesBackfill.check_aliases!(lookup)
 
     by_nr = Referee.where(guest: false, merged_into_id: nil).where.not(lizenznummer: nil).index_by(&:lizenznummer)
@@ -279,6 +285,7 @@ namespace :referees2025 do
     not_in_db = 0
     name_conflicts = []
     disagreements = []
+    corrected = []
 
     ActiveRecord::Base.transaction do
       rows.each do |row|
@@ -300,13 +307,27 @@ namespace :referees2025 do
         club = lookup.call(row['verein'])
 
         if referee.club_id.present?
-          already_set += 1
-          # Bestehende Zuordnungen werden nie überschrieben: Welcher Wert
-          # stimmt, steht nicht in den Daten. Widersprüche nur melden.
+          # Bestehende Zuordnungen werden grundsätzlich nicht überschrieben:
+          # Welcher Wert stimmt, steht nicht in den Daten.
+          #
+          # Eine Ausnahme, und nur mit FIX_ALIAS_CONFLICTS=true: Stammt der
+          # Excel-Verein aus der Alias-Liste, ist er keine Heuristik, sondern
+          # von FD benannt und damit belastbarer als der Bestand. So sind 36
+          # Schiedsrichter aus Salzwedel aufgefallen, die an „Floorball Griedel"
+          # in Hessen hingen — ein Namensvergleich früherer Importe hatte
+          # „Floorball Gri…" verwechselt. Treffer aus Namens- oder
+          # normalisiertem Vergleich korrigieren nie, die sind selbst geraten.
           if club.matched? && club.club_id != referee.club_id
-            disagreements << "Lizenznr. #{referee.lizenznummer}: DB ##{referee.club_id} " \
-                             "≠ Excel ##{club.club_id} („#{row['verein']}\")"
+            line = "Lizenznr. #{referee.lizenznummer}: DB ##{referee.club_id} " \
+                   "≠ Excel ##{club.club_id} („#{row['verein']}\", #{club.match_type})"
+            if fix_conflicts && club.match_type == :alias
+              referee.update!(club_id: club.club_id)
+              corrected << line
+              next
+            end
+            disagreements << line
           end
+          already_set += 1
           next
         end
 
@@ -322,9 +343,16 @@ namespace :referees2025 do
       puts
       RefereesBackfill.summarize(stays_empty, 'Bleibt ohne Verein:') if stays_empty.any?
       puts
+      if corrected.any?
+        puts "Bestehende Zuordnung korrigiert:    #{corrected.size}"
+        corrected.each { |line| puts "    #{line}" }
+      end
       puts "Bereits gesetzt (unangetastet):     #{already_set}"
       puts "davon Widerspruch zur Excel:        #{disagreements.size}"
       disagreements.each { |line| puts "    #{line}" }
+      if disagreements.any? && !fix_conflicts
+        puts '    (mit FIX_ALIAS_CONFLICTS=true korrigiert der Task die Faelle aus der Alias-Liste)'
+      end
       puts "Keine Entsprechung in der DB:       #{not_in_db}"
       puts "Namenskonflikt, nichts geändert:    #{name_conflicts.size}"
       name_conflicts.each { |line| puts "    #{line}" }
@@ -332,7 +360,7 @@ namespace :referees2025 do
       # Jede CSV-Zeile muss in genau einem Topf landen. Ohne diese Probe sähe
       # ein Lauf, in dem 90 Prozent der Datei nichts traf, wie ein sauberer aus.
       verarbeitet = filled.values.sum + stays_empty.values.sum + already_set +
-                    not_in_db + name_conflicts.size
+                    not_in_db + name_conflicts.size + corrected.size
       if verarbeitet != rows.size
         raise "Zeilen nicht abgeglichen: #{rows.size - verarbeitet} von #{rows.size} unberücksichtigt"
       end
