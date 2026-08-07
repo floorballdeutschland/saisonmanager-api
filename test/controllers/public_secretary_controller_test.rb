@@ -24,7 +24,7 @@ class PublicSecretaryControllerTest < ActionDispatch::IntegrationTest
   end
 
   test 'GET /public/secretary mit gültigem Token liefert 200 und created_by als fullname-String' do
-    _link, raw_token = GameDaySecretaryLink.generate!(game_day: @game_day, created_by: @user)
+    _link, raw_token = GameDaySecretaryLink.generate!(game_days: [@game_day], created_by: @user)
 
     get '/api/v2/public/secretary', params: { token: raw_token }
 
@@ -41,7 +41,7 @@ class PublicSecretaryControllerTest < ActionDispatch::IntegrationTest
     # Kurzname mit Punkt und Leerzeichen: nur so ist der Test trennscharf,
     # denn slug ("1-fbl") weicht hier von short_name.downcase ("1. fbl") ab.
     @go.update!(short_name: '1. FBL', path: nil)
-    _link, raw_token = GameDaySecretaryLink.generate!(game_day: @game_day, created_by: @user)
+    _link, raw_token = GameDaySecretaryLink.generate!(game_days: [@game_day], created_by: @user)
 
     get '/api/v2/public/secretary', params: { token: raw_token }
 
@@ -56,7 +56,7 @@ class PublicSecretaryControllerTest < ActionDispatch::IntegrationTest
     player.licenses.first['valid_until'] = '2026-07-31'
     player.save!
 
-    _link, raw_token = GameDaySecretaryLink.generate!(game_day: @game_day, created_by: @user)
+    _link, raw_token = GameDaySecretaryLink.generate!(game_days: [@game_day], created_by: @user)
 
     get '/api/v2/public/secretary', params: { token: raw_token }
 
@@ -78,8 +78,8 @@ class PublicSecretaryControllerTest < ActionDispatch::IntegrationTest
   end
 
   test 'GET /public/secretary mit abgelaufenem Token liefert 410' do
-    _link, raw_token = GameDaySecretaryLink.generate!(game_day: @game_day, created_by: @user)
-    GameDaySecretaryLink.find_by(game_day: @game_day).update_column(:expires_at, 1.hour.ago)
+    _link, raw_token = GameDaySecretaryLink.generate!(game_days: [@game_day], created_by: @user)
+    GameDaySecretaryLink.covering([@game_day.id]).first.update_column(:expires_at, 1.hour.ago)
 
     get '/api/v2/public/secretary', params: { token: raw_token }
 

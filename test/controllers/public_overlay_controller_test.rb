@@ -234,6 +234,48 @@ class PublicOverlayControllerTest < ActionDispatch::IntegrationTest
     assert_equal 'goal', state.dig('lower_third', 'kind')
   end
 
+  # Ein einziger krummer Schreibvorgang legte sonst alle Browser-Quellen und
+  # Docks dieses Spieltags lahm: resolve_game ruft `dig` auf dem Zustand auf.
+  test 'ein Zustand, der kein Objekt ist, wird abgewiesen' do
+    post '/api/v2/public/overlay/state', params: { token: @token, state: 'kaputt' }, as: :json
+
+    assert_response :bad_request
+
+    get '/api/v2/public/overlay/live', params: { token: @token }
+    assert_response :success
+  end
+
+  test 'eine Liste als Zustand wird abgewiesen' do
+    post '/api/v2/public/overlay/state', params: { token: @token, state: [1, 2, 3] }, as: :json
+
+    assert_response :bad_request
+  end
+
+  test 'ein uebergrosser Zustand wird abgewiesen' do
+    post '/api/v2/public/overlay/state',
+         params: { token: @token, state: { blob: 'x' * 20_000 } }, as: :json
+
+    assert_response :payload_too_large
+  end
+
+  test 'ein state_updated_at, das keine Zahl ist, endet nicht im Serverfehler' do
+    post '/api/v2/public/overlay/state',
+         params: { token: @token, state: { a: 1 }, state_updated_at: { x: 1 } }, as: :json
+
+    assert_response :success
+  end
+
+  # server_time dient dem Uhrenabgleich. Läge es im zwischengespeicherten
+  # Spielblock, wäre es bis zu eine Minute alt und damit wertlos.
+  test 'server_time steht nur in der Antwort, nicht im gecachten Spielblock' do
+    get '/api/v2/public/overlay/live', params: { token: @token }
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert body['server_time'].to_i.positive?
+    assert_nil body['game']['server_time']
+  end
+
   test 'ein Schreibvorgang auf altem Stand wird abgewiesen' do
     post '/api/v2/public/overlay/state', params: { token: @token, state: { scoreboard_visible: true } },
                                          as: :json

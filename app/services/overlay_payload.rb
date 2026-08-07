@@ -8,8 +8,10 @@
 #      serverseitig gemacht und nicht in jede Bauchbinde einzeln.
 #   2. `last_goal`, das zuletzt gefallene Tor bereits aufgelöst, damit die
 #      Torschützen-Bauchbinde nichts mehr suchen muss.
-#   3. `server_time`, damit die Uhr im Overlay den Zeitversatz der lokalen
-#      Rechneruhr ausgleichen kann.
+# `server_time` steht bewusst NICHT hier, sondern nur in der Antwort des
+# Controllers: Dieser Hash wird eine Minute lang zwischengespeichert, ein darin
+# eingebackener Zeitstempel wäre also bis zu eine Minute alt und der
+# Uhrenabgleich damit wertlos.
 #
 # Bewusst kein Teil von Game: Das Modell hat rund 1.500 Zeilen, und diese
 # Aufbereitung hat genau einen Abnehmer.
@@ -64,12 +66,7 @@ class OverlayPayload
         short: base[:arena_short]
       },
       hosting_club: base[:hosting_club],
-      referees: base[:referees],
-
-      # Grundlage für den Uhrenabgleich zwischen Dock und Overlay: Beide rechnen
-      # ihre lokale Uhr gegen diesen Wert um, sonst zeigt ein Rechner mit
-      # verstellter Uhr eine falsche Spielzeit.
-      server_time: (Time.current.to_f * 1000).round
+      referees: base[:referees]
     }
   end
 
@@ -96,7 +93,13 @@ class OverlayPayload
     @roster ||= begin
       players = @game.players || {}
       %w[home guest].index_with do |side|
-        (players[side] || []).index_by { |p| p['trikot_number'].to_i }
+        # Ohne Trikotnummer aussortieren: `nil.to_i` ergibt 0, und damit
+        # bekäme ein Tor mit der Nummer 0 einen beliebigen nummernlosen
+        # Spieler zugeschrieben. Mehrere solche Einträge lägen zudem auf
+        # demselben Schlüssel.
+        (players[side] || [])
+          .select { |p| p['trikot_number'].present? }
+          .index_by { |p| p['trikot_number'].to_i }
       end
     end
   end

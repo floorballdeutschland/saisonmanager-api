@@ -14,6 +14,11 @@
 # läuft. Der Unterschied zu einem Schlüssel mit Echtzeit-Freigabe: Dieses Token
 # gilt nur für die Spiele eines Spieltags und läuft von selbst ab.
 class PublicOverlayController < ApplicationController
+  # Obergrenze für den Steuerzustand. Er wird bei jedem Abruf mit ausgeliefert,
+  # also begrenzt diese Zahl zugleich den Datenverkehr, den ein weitergegebenes
+  # Token erzeugen kann. Ein echter Zustand liegt bei wenigen hundert Byte.
+  MAX_STATE_BYTES = 16_384
+
   skip_before_action :authenticate_user
   before_action :load_link
 
@@ -86,6 +91,24 @@ class PublicOverlayController < ApplicationController
     incoming = params[:state]
     return render json: { message: 'Kein Zustand übergeben.' }, status: :bad_request if incoming.blank?
 
+    # Muss ein Objekt sein. Ein Text oder eine Liste käme sonst so in die
+    # JSONB-Spalte, und der nächste Lesezugriff (`state.dig`) stürbe daran: Ein
+    # einziger krummer Schreibvorgang legte damit alle Browser-Quellen und Docks
+    # dieses Spieltags lahm, bis jemand den Zustand überschreibt.
+    unless incoming.respond_to?(:to_unsafe_h)
+      return render json: { message: 'Der Steuerzustand muss ein Objekt sein.' }, status: :bad_request
+    end
+
+    state = incoming.to_unsafe_h
+
+    # Der Zustand geht bei JEDEM Abruf wieder mit hinaus, auch wenn die
+    # Spieldaten wegbleiben. Ohne Obergrenze könnte ein weitergegebenes Token
+    # damit beliebig Datenverkehr erzeugen. Ein echter Steuerzustand liegt bei
+    # wenigen hundert Byte.
+    if state.to_json.bytesize > MAX_STATE_BYTES
+      return render json: { message: 'Der Steuerzustand ist zu groß.' }, status: :payload_too_large
+    end
+
     # Zwei gleichzeitig geöffnete Docks würden sich sonst gegenseitig
     # überschreiben. Wer auf einem älteren Stand schreibt, wird abgewiesen und
     # holt sich erst den aktuellen.
@@ -95,7 +118,6 @@ class PublicOverlayController < ApplicationController
                     status: :conflict
     end
 
-    state = incoming.respond_to?(:to_unsafe_h) ? incoming.to_unsafe_h : incoming
     @link.update!(state: state, state_updated_at: Time.current)
 
     render json: { state: @link.state, state_updated_at: @link.state_updated_at.to_f }
@@ -118,7 +140,10 @@ class PublicOverlayController < ApplicationController
   # sofort etwas an, auch bevor das Dock einmal geöffnet wurde.
   def resolve_game
     scope = @link.game_day.games
-    requested = params[:game_id].presence || @link.state&.dig('active_game_id')
+    # `state` ist zwar seit der Prüfung in set_state immer ein Objekt, ein
+    # Altbestand aus der Zeit davor könnte aber noch etwas anderes enthalten.
+    stored = @link.state.is_a?(Hash) ? @link.state['active_game_id'] : nil
+    requested = params[:game_id].presence || stored
 
     (requested.present? && scope.find_by(id: requested)) || scope.order(:start_time).first
   end
@@ -133,10 +158,13 @@ class PublicOverlayController < ApplicationController
     end
   end
 
+  # `to_s` vor `to_f`: Kommt hier ein Objekt oder eine Liste an, hätte `to_f`
+  # keine Entsprechung und die Anfrage endete in einem 500 statt in einer
+  # verständlichen Antwort.
   def stale_write?
     seen = params[:state_updated_at]
     return false if seen.blank? || @link.state_updated_at.blank?
 
-    seen.to_f < @link.state_updated_at.to_f
+    seen.to_s.to_f < @link.state_updated_at.to_f
   end
 end

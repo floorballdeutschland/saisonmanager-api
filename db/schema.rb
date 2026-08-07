@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_08_06_140000) do
+ActiveRecord::Schema[7.1].define(version: 2026_08_07_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -219,15 +219,23 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_06_140000) do
     t.index ["referee_id"], name: "index_game_day_referee_confirmations_on_referee_id"
   end
 
-  create_table "game_day_secretary_links", force: :cascade do |t|
+  create_table "game_day_secretary_link_game_days", force: :cascade do |t|
+    t.bigint "game_day_secretary_link_id", null: false
     t.bigint "game_day_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["game_day_id"], name: "index_secretary_link_game_days_on_game_day_id"
+    t.index ["game_day_secretary_link_id", "game_day_id"], name: "index_secretary_link_game_days_unique", unique: true
+    t.index ["game_day_secretary_link_id"], name: "index_secretary_link_game_days_on_link_id"
+  end
+
+  create_table "game_day_secretary_links", force: :cascade do |t|
     t.bigint "created_by_id", null: false
     t.string "token_digest", null: false
     t.datetime "expires_at", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["created_by_id"], name: "index_game_day_secretary_links_on_created_by_id"
-    t.index ["game_day_id"], name: "index_game_day_secretary_links_on_game_day_id"
     t.index ["token_digest"], name: "index_game_day_secretary_links_on_token_digest", unique: true
   end
 
@@ -441,11 +449,13 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_06_140000) do
     t.string "license_id"
     t.string "document_type", null: false
     t.bigint "uploaded_by_id"
-    t.datetime "created_at", precision: nil, null: false
-    t.datetime "updated_at", precision: nil, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
     t.bigint "season_id"
     t.index ["player_id", "document_type"], name: "index_license_documents_on_player_id_and_document_type"
     t.index ["player_id", "license_id", "document_type"], name: "idx_license_documents_unique", unique: true
+    t.index ["player_id"], name: "index_license_documents_on_player_id"
+    t.index ["uploaded_by_id"], name: "index_license_documents_on_uploaded_by_id"
   end
 
   create_table "license_fee_calculations", force: :cascade do |t|
@@ -889,7 +899,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_06_140000) do
     t.index ["former_club_id"], name: "index_transfer_requests_on_former_club_id"
     t.index ["player_confirmation_token"], name: "index_transfer_requests_on_player_confirmation_token", unique: true
     t.index ["player_id"], name: "index_transfer_requests_on_player_id"
-    t.index ["player_id"], name: "index_transfer_requests_on_player_id_active", unique: true, where: "((status)::text = ANY (ARRAY[('pending_club'::character varying)::text, ('pending_player'::character varying)::text, ('pending_lv'::character varying)::text, ('scheduled'::character varying)::text]))"
+    t.index ["player_id"], name: "index_transfer_requests_on_player_id_active", unique: true, where: "((status)::text = ANY ((ARRAY['pending_club'::character varying, 'pending_player'::character varying, 'pending_lv'::character varying, 'scheduled'::character varying])::text[]))"
     t.index ["request_type"], name: "index_transfer_requests_on_request_type"
     t.index ["requesting_club_id"], name: "index_transfer_requests_on_requesting_club_id"
     t.index ["status"], name: "index_transfer_requests_on_status"
@@ -958,7 +968,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_06_140000) do
   add_foreign_key "game_day_overlay_links", "users", column: "created_by_id"
   add_foreign_key "game_day_referee_confirmations", "game_days"
   add_foreign_key "game_day_referee_confirmations", "referees"
-  add_foreign_key "game_day_secretary_links", "game_days"
+  add_foreign_key "game_day_secretary_link_game_days", "game_day_secretary_links"
+  add_foreign_key "game_day_secretary_link_game_days", "game_days"
   add_foreign_key "game_day_secretary_links", "users", column: "created_by_id"
   add_foreign_key "game_day_team_confirmations", "game_days"
   add_foreign_key "game_day_team_confirmations", "teams"
@@ -973,8 +984,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_06_140000) do
   add_foreign_key "league_qualifications", "leagues", column: "source_league_id"
   add_foreign_key "league_qualifications", "leagues", column: "target_league_id"
   add_foreign_key "leagues", "game_operations"
-  add_foreign_key "license_documents", "players", name: "license_documents_player_id_fkey"
-  add_foreign_key "license_documents", "users", column: "uploaded_by_id", name: "license_documents_uploaded_by_id_fkey"
+  add_foreign_key "license_documents", "players"
+  add_foreign_key "license_documents", "users", column: "uploaded_by_id"
   add_foreign_key "player_change_requests", "players"
   add_foreign_key "player_change_requests", "players", column: "secondary_player_id"
   add_foreign_key "players", "players", column: "merged_into_id"

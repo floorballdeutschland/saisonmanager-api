@@ -23,7 +23,7 @@ class GamesSecretaryViewTest < ActionDispatch::IntegrationTest
     @foreign_game = build_game(other_day)
 
     @user = create(:user, :admin)
-    _link, @token = GameDaySecretaryLink.generate!(game_day: @game_day, created_by: @user)
+    _link, @token = GameDaySecretaryLink.generate!(game_days: [@game_day], created_by: @user)
   end
 
   test 'Spielseite liefert dem Sekretariat die Rechte fuer den Spielbericht' do

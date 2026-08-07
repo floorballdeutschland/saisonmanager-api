@@ -181,7 +181,18 @@ module Rack
     throttle('overlay/token', limit: 300, period: 1.minute) do |req|
       next unless req.path.start_with?(OVERLAY_PATH_PREFIX)
 
-      req.params['token'].presence
+      # Ausschließlich aus dem Query-String, nie aus `req.params`. Zwei Gründe:
+      #
+      # 1. `req.params` liest bei einem POST den Body. Rack::Attack sitzt
+      #    unterhalb von ShowExceptions und außerhalb des Rettungsnetzes von
+      #    ActionDispatch; ein zu großer Formular-Body endete dadurch in einem
+      #    500 statt in einem sauberen 400.
+      # 2. Bei `Content-Type: application/json` parst Rack den Body gar nicht.
+      #    Das Token stünde dann nicht in `params`, der Block lieferte nil, und
+      #    ausgerechnet der Schreibpfad bliebe ungedrosselt.
+      #
+      # Beide Clients hängen das Token an die URL, auch beim Schreiben.
+      req.GET['token'].presence
     end
 
     # rack-attack übergibt dem Responder seit Version 6 ein Rack::Attack::Request

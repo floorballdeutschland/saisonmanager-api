@@ -5,7 +5,7 @@ class GameDayOverlayLinksController < ApplicationController
 
   before_action :authenticate_user
   before_action :load_game_day
-  before_action :authorize_vm_or_tm!
+  before_action :authorize_game_day_link!
 
   # POST /api/v2/user/game_days/:game_day_id/overlay_link
   def create
