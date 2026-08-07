@@ -16,7 +16,13 @@
 namespace :referee_feedback do
   desc 'TMs über verfügbare Schiri-Feedback-Formulare benachrichtigen (idempotent)'
   task notify_available: :environment do
-    lookback = 3.days # begrenzt den Altbestand beim ersten Lauf (keine Mail-Flut)
+    lookback_days = 3 # begrenzt den Altbestand beim ersten Lauf (keine Mail-Flut)
+
+    # Kalender des Spielbetriebs, nicht der der Anwendung: `game_days.date` ist
+    # ein lokales Datum, die Anwendung läuft mangels `config.time_zone` in UTC.
+    # Ein Lauf nach 22 Uhr deutscher Zeit hielte den laufenden Spieltag sonst
+    # noch für morgen und ließe ihn aus dem Fenster fallen.
+    today = RefereeFeedbackWindow.today
 
     games = Game.joins(game_day: :league)
                 .includes(:home_team, :guest_team, game_day: :league)
@@ -24,7 +30,7 @@ namespace :referee_feedback do
                 .where(referee_feedback_notified_at: nil)
                 .where(game_status: %w[match_record_closed finalized])
                 .where("TO_DATE(game_days.date, 'YYYY-MM-DD') BETWEEN ? AND ?",
-                       lookback.ago.to_date, Date.current)
+                       today - lookback_days.days, today)
 
     mails = 0
     # deliver_now: in einem Cron-Rake gingen async-Jobs beim Prozessende verloren.

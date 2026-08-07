@@ -2,7 +2,11 @@ class GameDay < ApplicationRecord
   has_many :games, inverse_of: :game_day
   has_many :game_day_referee_confirmations, dependent: :destroy
   has_many :game_day_team_confirmations, dependent: :destroy
-  has_many :game_day_secretary_links, dependent: :destroy
+  # Seit der Link mehrere Spieltage abdecken kann, hängt er nicht mehr an einem
+  # einzelnen: gelöscht wird nur die Zuordnung. Ein Link, der dadurch keinen
+  # Spieltag mehr abdeckt, erlaubt nichts und läuft ohnehin nach 72 h ab.
+  has_many :game_day_secretary_link_game_days, dependent: :destroy
+  has_many :game_day_secretary_links, through: :game_day_secretary_link_game_days
   belongs_to :league
   # arena/club sind bewusst optional: Der Spielplan-Import erlaubt lückenhafte
   # Vorlagen (Halle/Ausrichter noch offen -> nil). DB-Spalten sind nullable und
@@ -14,6 +18,20 @@ class GameDay < ApplicationRecord
   scope :past_games, lambda {
                        where("TO_DATE(date, 'YYYY-MM-DD') > (now()::date - interval '14 days') AND TO_DATE(date, 'YYYY-MM-DD') <= (now()::date + interval '100 days') ")
                      }
+
+  # Alle Spieltage, die am selben Tag in derselben Halle stattfinden, inklusive
+  # self. Das Spielsekretariat sitzt pro Halle und Tag am Tisch, nicht pro Liga:
+  # spielen dort nacheinander mehrere Ligen, gehören sie in denselben Link.
+  #
+  # `date` ist eine Text-Spalte, der Vergleich also ein reiner Stringvergleich.
+  # Der Spielplan-Import schreibt durchgängig YYYY-MM-DD; ein abweichend
+  # formatierter Altdatensatz fände seine Geschwister nicht und bekäme einfach
+  # einen Link nur für sich – kein Rechteproblem, nur weniger Komfort.
+  def hall_day_siblings
+    return GameDay.where(id: id) if arena_id.blank? || date.blank?
+
+    GameDay.where(arena_id: arena_id, date: date)
+  end
 
   def hosting_club
     club.name if club.present?
