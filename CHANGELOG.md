@@ -9,7 +9,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
-## [1.72.0] - 2026-08-07
+### Neu
+
+- **Vereine geben den Link fürs Spielsekretariat selbst aus**: Den Einmal-Link, mit dem jemand ohne Benutzerkonto am Spieltag den Spielbericht führt, konnten bisher nur die Spielbetriebskommission und die Verwaltung erzeugen. Wer den Tisch besetzt, organisiert aber der ausrichtende Verein. Vereins- und Teammanager:innen finden ihre Spieltage jetzt unter „Spielsekretariat" und erzeugen den Link dort selbst. Was der Link erlaubt, ändert sich nicht: Aufstellung und Spielbericht der Spiele dieses Tages, dazu die Lizenzlisten der beteiligten Mannschaften. Lizenzbeantragung, Ligaverwaltung, Kontrolle und Abschluss durch die Spielbetriebskommission bleiben ausgenommen, auch wenn den Link jemand mit weitergehenden Rechten erzeugt hat.
+
+### Verbessert
+
+- **Ein Link für die ganze Halle statt einer je Liga**: Spielen an einem Tag in derselben Halle mehrere Ligen nacheinander, war das bisher für jede Liga ein eigener Spieltag und damit ein eigener Link. Das Sekretariat am Tisch musste zwischen mehreren Adressen wechseln und nach drei Tagen jede einzeln erneuern lassen. Ein Link deckt jetzt alle Spieltage ab, die am selben Tag in derselben Halle stattfinden. Er umfasst dabei nur die Spieltage, für die die ausstellende Person auch berechtigt ist: Teilt sich ein Verein die Halle mit einer fremden Liga, bleibt deren Spielbericht verschlossen. Die Übersicht weist eine solche Fremdbelegung aus, damit erkennbar bleibt, warum ein Spiel im Link fehlt.
 
 ### Behoben
 

@@ -10,31 +10,17 @@ class PublicSecretaryController < ApplicationController
     link = GameDaySecretaryLink.find_by_token(raw_token)
     return render json: { message: 'Dieser Link ist ungültig oder abgelaufen.' }, status: :gone if link.nil?
 
-    game_day = link.game_day
-    games = game_day.games.includes(:home_team, :guest_team).order(:start_time)
+    game_days = link.game_days
+                    .includes(:arena, league: :game_operation)
+                    .to_a
+                    .sort_by { |gd| [gd.date.to_s, gd.league&.name.to_s] }
+    games = games_for(game_days)
 
     render json: {
-      game_day: {
-        id: game_day.id,
-        date: game_day.date,
-        league: game_day.league&.name,
-        # league_id + game_operation_slug ermöglichen im Frontend den direkten Link
-        # zur Spielseite: /:association/:leagueId/spiel/:matchId. Gleiches Muster
-        # wie bei den Schiri-Spieltagen.
-        league_id: game_day.league&.id,
-        arena: game_day.arena&.name,
-        game_operation_slug: game_day.league&.game_operation&.slug
-      },
-      games: games.map { |g|
-        {
-          id: g.id,
-          game_number: g.game_number,
-          start_time: g.start_time,
-          home_team: g.home_team&.name,
-          guest_team: g.guest_team&.name,
-          game_status: g.game_status
-        }
-      },
+      # Einzelner Spieltag für ältere Frontends, die game_days noch nicht kennen.
+      game_day: game_days.first && game_day_json(game_days.first),
+      game_days: game_days.map { |gd| game_day_json(gd) },
+      games: games.map { |g| game_json(g) },
       license_lists: build_license_lists(games),
       expires_at: link.expires_at.iso8601,
       created_by: link.created_by&.fullname
@@ -42,6 +28,44 @@ class PublicSecretaryController < ApplicationController
   end
 
   private
+
+  # Spiele aller Spieltage des Links in der Reihenfolge, in der sie in der Halle
+  # laufen. start_time ist Text (HH:MM); Spiele ohne Zeit hängen sich hinten an.
+  def games_for(game_days)
+    Game.where(game_day_id: game_days.map(&:id))
+        .includes(:home_team, :guest_team)
+        .to_a
+        .sort_by { |g| [g.game_day&.date.to_s, g.start_time.presence || '99:99'] }
+  end
+
+  def game_day_json(game_day)
+    {
+      id: game_day.id,
+      date: game_day.date,
+      league: game_day.league&.name,
+      # league_id + game_operation_slug ermöglichen im Frontend den direkten Link
+      # zur Spielseite: /:association/:leagueId/spiel/:matchId. Gleiches Muster
+      # wie bei den Schiri-Spieltagen.
+      league_id: game_day.league&.id,
+      arena: game_day.arena&.name,
+      game_operation_slug: game_day.league&.game_operation&.slug
+    }
+  end
+
+  def game_json(game)
+    {
+      id: game.id,
+      game_number: game.game_number,
+      start_time: game.start_time,
+      home_team: game.home_team&.name,
+      guest_team: game.guest_team&.name,
+      game_status: game.game_status,
+      # Bei mehreren Ligen in derselben Halle muss am Spiel erkennbar sein,
+      # zu welchem Spieltag es gehört.
+      game_day_id: game.game_day_id,
+      league: game.game_day&.league&.name
+    }
+  end
 
   def build_license_lists(games)
     team_ids = games.flat_map { |g| [g.home_team_id, g.guest_team_id] }.compact.uniq

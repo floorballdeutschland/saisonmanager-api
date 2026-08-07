@@ -359,6 +359,14 @@ class User < ApplicationRecord
     # auch per Direktlink gesperrt – und die Bestätigung ist nur 48 Stunden lang
     # möglich, danach gilt ein Spieltag automatisch als bestätigt.
     result[:page_team_game_days] = ph[:tm].present? || ph[:vm].present?
+    # Portal „Spielsekretariat" – Vereine geben sich selbst den Einmal-Link für
+    # den Tisch. Rein rollenbasiert wie page_team_game_days: ob für einen
+    # konkreten Spieltag ein Link erzeugt werden darf, entscheidet ohnehin erst
+    # der Endpunkt (GameDaySecretaryLinksController). Admin und SBK erzeugen ihre
+    # Links weiterhin in der Spielplan-Verwaltung, für sie wäre die Liste der
+    # halbe Spielplan – sie bekommen den Menüpunkt deshalb nicht über die Rolle.
+    result[:menu_item_secretary_links] = ph[:tm].present? || ph[:vm].present?
+    result[:page_secretary_links] = ph[:tm].present? || ph[:vm].present?
     # Portal „Schiri-Feedback" – verpflichtende Rückmeldung der Vereine nach dem
     # Spiel. Nur sichtbar, wenn der/die Nutzer:in tatsächlich eine Mannschaft in
     # einer feedback-pflichtigen Liga (referee_feedback_enabled, z. B. 1. BL)

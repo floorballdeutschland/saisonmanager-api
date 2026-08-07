@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_08_06_120100) do
+ActiveRecord::Schema[7.1].define(version: 2026_08_07_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -205,15 +205,23 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_06_120100) do
     t.index ["referee_id"], name: "index_game_day_referee_confirmations_on_referee_id"
   end
 
-  create_table "game_day_secretary_links", force: :cascade do |t|
+  create_table "game_day_secretary_link_game_days", force: :cascade do |t|
+    t.bigint "game_day_secretary_link_id", null: false
     t.bigint "game_day_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["game_day_id"], name: "index_secretary_link_game_days_on_game_day_id"
+    t.index ["game_day_secretary_link_id", "game_day_id"], name: "index_secretary_link_game_days_unique", unique: true
+    t.index ["game_day_secretary_link_id"], name: "index_secretary_link_game_days_on_link_id"
+  end
+
+  create_table "game_day_secretary_links", force: :cascade do |t|
     t.bigint "created_by_id", null: false
     t.string "token_digest", null: false
     t.datetime "expires_at", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["created_by_id"], name: "index_game_day_secretary_links_on_created_by_id"
-    t.index ["game_day_id"], name: "index_game_day_secretary_links_on_game_day_id"
     t.index ["token_digest"], name: "index_game_day_secretary_links_on_token_digest", unique: true
   end
 
@@ -942,7 +950,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_06_120100) do
   add_foreign_key "feedback_theme_taggings", "referee_feedbacks"
   add_foreign_key "game_day_referee_confirmations", "game_days"
   add_foreign_key "game_day_referee_confirmations", "referees"
-  add_foreign_key "game_day_secretary_links", "game_days"
+  add_foreign_key "game_day_secretary_link_game_days", "game_day_secretary_links"
+  add_foreign_key "game_day_secretary_link_game_days", "game_days"
   add_foreign_key "game_day_secretary_links", "users", column: "created_by_id"
   add_foreign_key "game_day_team_confirmations", "game_days"
   add_foreign_key "game_day_team_confirmations", "teams"
