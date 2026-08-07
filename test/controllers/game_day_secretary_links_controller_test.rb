@@ -170,7 +170,12 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
     body = JSON.parse(response.body)
     assert_equal 2, body['game_days'].size
     assert_includes body['games'].map { |g| g['id'] }, second_game.id
-    assert_equal @game_day.id, body.dig('game_day', 'id'),
+    # Welcher der beiden Spieltage vorn steht, hängt an der Sortierung nach
+    # Datum und Liganame und ist für die Zusage ohne Belang: game_day muss der
+    # erste der Liste sein, damit ein älteres Frontend denselben sieht wie ein
+    # neues. Auf @game_day zu prüfen hieße, die Liganamen der Factory-Sequenz
+    # festzuschreiben.
+    assert_equal body['game_days'].first['id'], body.dig('game_day', 'id'),
                  'game_day bleibt für ältere Frontends der erste abgedeckte Spieltag'
   end
 
