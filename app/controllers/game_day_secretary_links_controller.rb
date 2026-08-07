@@ -3,9 +3,10 @@ class GameDaySecretaryLinksController < ApplicationController
   before_action :load_game_day, only: %i[create show]
   before_action :authorize_vm_or_tm!, only: %i[create show]
 
-  # Zeitfenster der Übersicht: ein paar Tage zurück, damit ein Link während der
-  # laufenden 72-Stunden-Gültigkeit noch einmal ausgegeben werden kann, und weit
-  # genug nach vorn für die Vorbereitung.
+  # Zeitfenster der Übersicht: ein paar Tage zurück, damit ein Link während
+  # seiner Gültigkeit (GameDaySecretaryLink::VALIDITY, 72 Stunden) noch einmal
+  # ausgegeben werden kann, und weit genug nach vorn für die Vorbereitung.
+  # Wird VALIDITY verlängert, gehört dieser Wert mit angehoben.
   LIST_PAST_DAYS = 3
   LIST_FUTURE_DAYS = 60
 
@@ -42,11 +43,18 @@ class GameDaySecretaryLinksController < ApplicationController
       token: raw_token,
       expires_at: link.expires_at.iso8601,
       created_by: current_user.fullname,
-      # game_day_id bleibt der angefragte Spieltag – ältere Frontends lesen ihn.
+      # Der angefragte Spieltag, für Abwärtskompatibilität erhalten. Welche
+      # Spieltage der Link wirklich abdeckt, steht in game_day_ids.
       game_day_id: @game_day.id,
       game_day_ids: game_days.map(&:id),
       game_days: game_days.map { |gd| game_day_stub(gd) }
     }, status: :created
+  rescue ArgumentError
+    # coverable_game_days kann nur leer werden, wenn der Spieltag zwischen
+    # Rechteprüfung und Auswahl seine Spiele verliert (die TM-Berechtigung hängt
+    # daran). Selten, aber ein 500 wäre die falsche Antwort darauf.
+    render json: { error: 'Für diesen Spieltag gibt es nichts mehr zu vergeben.' },
+           status: :unprocessable_entity
   end
 
   # GET /api/v2/user/game_days/:game_day_id/secretary_link
@@ -77,11 +85,18 @@ class GameDaySecretaryLinksController < ApplicationController
     render json: { error: 'Nicht berechtigt.' }, status: :forbidden
   end
 
+  # permission_hash ist nicht memoisiert und zieht bei jedem Aufruf u. a. alle
+  # Liga-IDs der Saison. In der Übersicht wird je Spieltag geprüft, das wären
+  # sonst schnell 50 Neuberechnungen in einer Anfrage.
+  def permissions
+    @permissions ||= current_user.permission_hash
+  end
+
   # Darf der/die Angemeldete für diesen Spieltag einen Sekretariats-Link
   # erzeugen? Admin und SBK des Spielbetriebs, VM des Ausrichters oder eines
   # beteiligten Vereins, TM einer beteiligten Mannschaft.
   def may_manage_secretary_link?(game_day)
-    ph = current_user.permission_hash
+    ph = permissions
     return true if ph[:admin].present?
 
     go_id = game_day.league&.game_operation_id
@@ -115,10 +130,10 @@ class GameDaySecretaryLinksController < ApplicationController
   # beteiligt ist, samt aller Spieltage derselben Halle am selben Tag –
   # gruppiert nach [arena_id, date, ohne-Halle-Kennung].
   #
-  # Spieltage ohne Halle oder ohne Datum lassen sich nicht zusammenfassen und
-  # bilden je eine eigene Gruppe. Die Spieltag-ID gehört deshalb in den
-  # Schlüssel: sonst überschrieben sich zwei hallenlose Spieltage desselben
-  # Tages gegenseitig und einer verschwände stumm aus der Übersicht.
+  # Spieltage ohne Halle oder ohne verwertbares Datum lassen sich nicht
+  # zusammenfassen und bilden je eine eigene Gruppe. Die Spieltag-ID gehört
+  # deshalb in den Schlüssel: sonst überschrieben sich zwei solche Spieltage
+  # desselben Tages gegenseitig und einer verschwände stumm aus der Übersicht.
   def hall_day_groups
     seeds = seed_game_days
     return {} if seeds.empty?
@@ -129,13 +144,30 @@ class GameDaySecretaryLinksController < ApplicationController
     groups
   end
 
+  # `game_days.date` ist Text. Ein leerer Wert ergibt in TO_DATE eine Datumsangabe
+  # vor Christus und fällt damit lautlos aus dem Zeitfenster; alles andere
+  # Unpassende (etwa „TBD" oder ein 30. Februar) lässt TO_DATE werfen und reißt
+  # die ganze Übersicht mit in einen 500er. Beides ist hier schlecht: Diese Seite
+  # ist der einzige Weg des Vereins zum Link.
+  #
+  # Deshalb erst das Format prüfen und nur wohlgeformte Datumsangaben durch das
+  # Fenster schicken. Der Rest kommt durch und landet in der eigenen Gruppe, die
+  # hall_day_groups für nicht gruppierbare Spieltage vorsieht.
+  DATE_PATTERN = '^\d{4}-\d{2}-\d{2}$'.freeze
+
   def seed_game_days
     return [] if vm_club_ids.empty? && tm_team_ids.empty?
 
-    scope = GameDay.where(id: hosted_game_day_ids + participating_game_day_ids)
-    scope.where("TO_DATE(game_days.date, 'YYYY-MM-DD') BETWEEN ? AND ?",
-                LIST_PAST_DAYS.days.ago.to_date, LIST_FUTURE_DAYS.days.from_now.to_date)
-         .to_a
+    GameDay.where(id: hosted_game_day_ids + participating_game_day_ids)
+           .where(
+             'game_days.date IS NULL ' \
+             "OR game_days.date !~ :pattern " \
+             "OR TO_DATE(game_days.date, 'YYYY-MM-DD') BETWEEN :from AND :to",
+             pattern: DATE_PATTERN,
+             from: LIST_PAST_DAYS.days.ago.to_date,
+             to: LIST_FUTURE_DAYS.days.from_now.to_date
+           )
+           .to_a
   end
 
   def hosted_game_day_ids
@@ -168,15 +200,22 @@ class GameDaySecretaryLinksController < ApplicationController
   end
 
   def vm_club_ids
-    @vm_club_ids ||= Array(current_user.permission_hash[:vm]).map(&:to_i)
+    @vm_club_ids ||= Array(permissions[:vm]).map(&:to_i)
   end
 
   def tm_team_ids
-    @tm_team_ids ||= Array(current_user.permission_hash[:tm]).map(&:to_i)
+    @tm_team_ids ||= Array(permissions[:tm]).map(&:to_i)
   end
 
   # Aktive Links je Spieltag. Deckt ein Link mehrere Spieltage ab, taucht er
-  # unter jedem auf; je Spieltag gewinnt der zuletzt erzeugte.
+  # unter jedem auf; je Spieltag gewinnt der zuletzt erzeugte. Nach
+  # revoke_coverage_of sollte es je Spieltag ohnehin nur einen geben, die
+  # Tie-Break-Regel ist reine Absicherung.
+  #
+  # `covering` filtert per joins auf die Zuordnungstabelle, `includes` lädt sie
+  # getrennt nach – deshalb sieht covered_game_day_ids alle Spieltage. Käme hier
+  # ein `references` dazu, würde daraus ein eager_load mit der Filterbedingung,
+  # und die Methode lieferte nur noch den gefilterten Ausschnitt.
   def active_links_by_game_day(game_day_ids)
     GameDaySecretaryLink.active
                         .covering(game_day_ids)
@@ -188,7 +227,11 @@ class GameDaySecretaryLinksController < ApplicationController
   end
 
   def hall_day_json(arena_id, date, game_days, covered, links_by_game_day)
-    arena = game_days.first&.arena
+    # Nur lesen, wenn über die Halle gruppiert wurde. Ein Spieltag ohne
+    # verwertbares Datum landet mit arena_id nil in einer eigenen Gruppe, hätte
+    # aber sehr wohl eine Halle – Name ohne ID widerspräche der Zusage, die das
+    # Frontend als Union typisiert (beides gesetzt oder keines).
+    arena = arena_id && game_days.first&.arena
     link = covered.filter_map { |gd| links_by_game_day[gd.id] }.max_by(&:created_at)
 
     {

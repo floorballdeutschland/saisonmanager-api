@@ -35,6 +35,14 @@ class GameDaySecretaryLink < ApplicationRecord
 
     link = nil
     transaction do
+      # Die betroffenen Spieltage sperren, bevor gelesen und geschrieben wird.
+      # Ohne die Sperre sähen zwei gleichzeitige Ausgaben (zwei Vereine, eine
+      # Halle) jeweils keinen bestehenden Link, entzögen nichts und legten beide
+      # an – zwei gültige Tokens für denselben Spieltag, während die Oberfläche
+      # zusagt, dass der vorherige ungültig wird. Nach ID sortiert, damit sich
+      # zwei Anfragen mit überlappenden Spieltagen nicht verklemmen.
+      GameDay.where(id: days.map(&:id)).order(:id).lock.pluck(:id)
+
       revoke_coverage_of(days.map(&:id))
 
       link = create!(
@@ -68,9 +76,12 @@ class GameDaySecretaryLink < ApplicationRecord
       .destroy_all
   end
 
-  # Spieltag-IDs des Links. `game_day_secretary_link_game_days` ist in den
-  # Listen-Endpunkten bereits vorgeladen, `pluck` bedient sich dann aus der
-  # geladenen Association statt neu zu fragen.
+  # Spieltag-IDs des Links. In den Listen-Endpunkten ist
+  # `game_day_secretary_link_game_days` vorgeladen, `pluck` bedient sich dann
+  # aus der geladenen Association. Auf dem Token-Pfad (`find_by_token`) ist
+  # nichts vorgeladen, dort fragt jeder Aufruf neu. Bewusst nicht memoisiert:
+  # revoke_coverage_of ändert die Zuordnung innerhalb einer Anfrage, ein Memo
+  # würde dann veraltete Rechte behaupten.
   def covered_game_day_ids
     game_day_secretary_link_game_days.pluck(:game_day_id)
   end

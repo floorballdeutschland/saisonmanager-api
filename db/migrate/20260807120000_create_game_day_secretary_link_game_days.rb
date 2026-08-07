@@ -35,8 +35,8 @@ class CreateGameDaySecretaryLinkGameDays < ActiveRecord::Migration[7.1]
     add_column :game_day_secretary_links, :game_day_id, :bigint
     add_index :game_day_secretary_links, :game_day_id
 
-    # Rückwärts bleibt nur der erste Spieltag je Link erhalten – mehr trägt die
-    # alte Spalte nicht. Links ohne Spieltag würden die NOT-NULL-Bedingung
+    # Rückwärts bleibt je Link der Spieltag mit der kleinsten ID erhalten, mehr
+    # trägt die alte Spalte nicht. Links ohne Spieltag würden die NOT-NULL-Bedingung
     # verletzen und werden deshalb entfernt; sie leben ohnehin nur 72 Stunden.
     execute <<~SQL.squish
       UPDATE game_day_secretary_links l

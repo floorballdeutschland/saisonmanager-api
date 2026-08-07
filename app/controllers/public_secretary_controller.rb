@@ -37,11 +37,17 @@ class PublicSecretaryController < ApplicationController
 
   # Spiele aller Spieltage des Links in der Reihenfolge, in der sie in der Halle
   # laufen. start_time ist Text (HH:MM); Spiele ohne Zeit hängen sich hinten an.
+  #
+  # game_day und dessen league werden mitgeladen: Sortierung und Ausgabe lesen
+  # beide, und das Sekretariat lädt diese Seite am Tisch immer wieder neu.
+  # Die id im Sortierschlüssel hält die Reihenfolge stabil – sort_by ist es
+  # nicht, und zwei Spiele derselben Anwurfzeit sprängen sonst zwischen zwei
+  # Abrufen hin und her.
   def games_for(game_days)
     Game.where(game_day_id: game_days.map(&:id))
-        .includes(:home_team, :guest_team)
+        .includes(:home_team, :guest_team, game_day: :league)
         .to_a
-        .sort_by { |g| [g.game_day&.date.to_s, g.start_time.presence || '99:99'] }
+        .sort_by { |g| [g.game_day&.date.to_s, g.start_time.presence || '99:99', g.id] }
   end
 
   def game_day_json(game_day)
@@ -84,13 +90,20 @@ class PublicSecretaryController < ApplicationController
         license = player.extr_license
         next unless license
 
-        last_status = license['history']&.max_by { |h| h['created_at'] }
+        # to_s im Sortierschlüssel: ein Historieneintrag ohne created_at ließ
+        # max_by mit „comparison of NilClass with String failed" auffliegen. Seit
+        # ein Link mehrere Ligen umfasst, risse ein einziger solcher Datensatz
+        # die Lizenzlisten aller Mannschaften der Halle mit.
+        last_status = license['history']&.max_by { |h| h['created_at'].to_s }
         next unless last_status
 
         last_status_id = last_status['license_status_id'].to_i
         next unless [License::APPROVED, License::REQUESTED].include?(last_status_id)
 
-        approved_entry = license['history']&.select { |h| h['license_status_id'] == 1 }&.last
+        # to_i wie zwei Zeilen darüber: als String gespeicherte Status ließen das
+        # Erteilungsdatum sonst leer – genau die Spalte, an der das Sekretariat
+        # die Spielberechtigung abliest.
+        approved_entry = license['history']&.select { |h| h['license_status_id'].to_i == License::APPROVED }&.last
 
         {
           name: "#{player.first_name} #{player.last_name}",

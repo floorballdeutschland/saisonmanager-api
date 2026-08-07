@@ -322,6 +322,45 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
                  'während der 72-Stunden-Gültigkeit muss ein Link neu ausgegeben werden können'
   end
 
+  # `game_days.date` ist Text, und die Altdaten sind nicht durchgängig sauber.
+  # Der Verein kommt nur über diese Seite an seinen Link, also darf ein
+  # unbrauchbares Datum den Spieltag weder verschwinden lassen noch die Liste
+  # mitreißen.
+  test 'Spieltag mit leerem Datum verschwindet nicht aus der Übersicht' do
+    @game_day.update_column(:date, '')
+    login(create(:user, :vm, club_id: @host_club.id))
+
+    get '/api/v2/user/secretary_game_days'
+
+    assert_response :success
+    ids = JSON.parse(response.body).flat_map { |g| g['game_days'].map { |gd| gd['id'] } }
+    assert_includes ids, @game_day.id,
+                    "TO_DATE('') ergibt ein Datum vor Christus und fiele lautlos aus dem Fenster"
+  end
+
+  test 'unbrauchbares Datum reißt die Übersicht nicht in einen Serverfehler' do
+    @game_day.update_column(:date, 'TBD')
+    login(create(:user, :vm, club_id: @host_club.id))
+
+    get '/api/v2/user/secretary_game_days'
+
+    assert_response :success
+    ids = JSON.parse(response.body).flat_map { |g| g['game_days'].map { |gd| gd['id'] } }
+    assert_includes ids, @game_day.id
+  end
+
+  test 'Spieltag ohne verwertbares Datum wird ohne Hallennamen ausgewiesen' do
+    @game_day.update_column(:date, '')
+    login(create(:user, :vm, club_id: @host_club.id))
+
+    get '/api/v2/user/secretary_game_days'
+
+    group = JSON.parse(response.body).first
+    assert_nil group['arena_id']
+    assert_nil group['arena'],
+               'Name ohne ID widerspräche der Zusage, die das Frontend als Union typisiert'
+  end
+
   test 'Übersicht zeigt keine weit zurückliegenden Spieltage' do
     @game_day.update!(date: 30.days.ago.to_date.to_s)
     login(create(:user, :vm, club_id: @host_club.id))
