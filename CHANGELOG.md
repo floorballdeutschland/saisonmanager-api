@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.73.0] - 2026-08-07
+
 ### Neu
 
 - **Vereine geben den Link fürs Spielsekretariat selbst aus**: Den Einmal-Link, mit dem jemand ohne Benutzerkonto am Spieltag den Spielbericht führt, konnten bisher nur die Spielbetriebskommission und die Verwaltung erzeugen. Wer den Tisch besetzt, organisiert aber der ausrichtende Verein. Vereins- und Teammanager:innen finden ihre Spieltage jetzt unter „Spielsekretariat" und erzeugen den Link dort selbst. Was der Link erlaubt, ändert sich nicht: Aufstellung und Spielbericht der Spiele dieses Tages, dazu die Lizenzlisten der beteiligten Mannschaften. Lizenzbeantragung, Ligaverwaltung, Kontrolle und Abschluss durch die Spielbetriebskommission bleiben ausgenommen, auch wenn den Link jemand mit weitergehenden Rechten erzeugt hat.
