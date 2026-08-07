@@ -27,6 +27,36 @@ class Setting < ApplicationRecord
     current.seasons[current_season_id.to_s]
   end
 
+  # Startjahr der aktiven Saison (2026/2027 → 2026). Maßgeblich überall dort, wo
+  # in Lizenzjahren gerechnet wird: Die Lizenzjahre drehen mit dem manuell
+  # ausgeführten Saisonwechsel weiter (nominell zum 01.08.), nicht mit dem
+  # Kalenderjahr. Ein vorgezogener Saisonwechsel wirkt dadurch sofort und
+  # braucht keine Sonderbehandlung.
+  #
+  # Saisonnamen sind Freitext aus der Verwaltung und kommen in mehreren
+  # Schreibweisen vor („2026/2027", „Saison 2026/27"), deshalb wird die erste
+  # vierstellige Jahreszahl gelesen. Der seasons-Hash ist zudem nicht typsicher:
+  # Je nach Altbestand steht dort ein Hash mit 'name' oder ein blanker String.
+  #
+  # Fehlt die Jahreszahl ganz (etwa „Saison 26/27"), wird das protokolliert und
+  # auf das Saisonjahr geschätzt — mit August-Grenze, nicht mit dem Kalenderjahr:
+  # Von Januar bis Juli läge das Kalenderjahr eins zu hoch und verschöbe den
+  # Karriere-Stichtag stumm um ein Jahr, wodurch ganze Jahrgänge auf einmal als
+  # beendet gälten und aus Vereins- und öffentlichen Listen verschwänden.
+  def self.current_season_start_year
+    season = current_season
+    name = season.is_a?(Hash) ? season['name'] : season
+    year = name.to_s[/\d{4}/]&.to_i
+    return year if year
+
+    fallback = Date.current.month >= 8 ? Date.current.year : Date.current.year - 1
+    Rails.logger.error(
+      "Saisonname ohne Jahreszahl (season_id=#{current_season_id}, name=#{name.inspect}) — " \
+      "Lizenzjahr-Stichtag fällt auf #{fallback} zurück"
+    )
+    fallback
+  end
+
   # Global konfigurierbare Standard-Spieldauer (inkl. Puffer) in Minuten für die
   # Hallenbelegungs-/Konfliktprüfung. nil, solange nichts gepflegt ist — die
   # League fällt dann auf ihr perioden-basiertes Verhalten zurück.
