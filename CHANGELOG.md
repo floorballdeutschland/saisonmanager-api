@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.72.0] - 2026-08-07
+
 ### Behoben
 
 - **Falsch zugeordnete Schiedsrichter lassen sich korrigieren**: 36 Schiedsrichter aus Salzwedel waren einem Verein in Hessen zugeordnet, weil ein früherer Abgleich zwei ähnlich beginnende Vereinsnamen verwechselt hatte. Der Wartungsbefehl für Vereinszuordnungen kann solche Fälle jetzt richtigstellen, allerdings nur dort, wo der Verband den Verein ausdrücklich benannt hat. Zuordnungen, die aus einem Namensvergleich stammen, bleiben wie bisher unangetastet.
