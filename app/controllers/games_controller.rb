@@ -10,13 +10,17 @@ class GamesController < ApplicationController
     show_hidden
   ].freeze
 
-  # Rechte, die ein Spielsekretariats-Link für die Spiele seines Spieltags im
-  # Frontend sichtbar macht (dort werden Bedienelemente über `permission`
-  # eingeblendet). Bewusst eine feste, enge Liste statt der Rechte des
-  # Link-Erstellers: der ist oft Admin oder SBK, und dann bekäme der Link
-  # ungewollt Kontrollrechte über den Spielbericht hinaus. Genau diese Aktionen
-  # erlaubt SECRETARY_ACTIONS dem Token ohnehin schon. Nicht enthalten:
-  # edit_game, check_game, edit_referee_nomination.
+  # Rechte, die ein Spielsekretariats-Link für die Spiele der von ihm
+  # abgedeckten Spieltage im Frontend sichtbar macht (dort werden Bedienelemente
+  # über `permission` eingeblendet). Welche Spieltage das sind, entscheidet
+  # GameDaySecretaryLink#covers_game_day? – seit der hallenweiten Ausgabe können
+  # es mehrere sein, nämlich alle Ligen einer Halle an einem Tag.
+  #
+  # Bewusst eine feste, enge Liste statt der Rechte des Link-Erstellers: der
+  # kann Admin oder SBK sein, und dann bekäme der Link ungewollt Kontrollrechte
+  # über den Spielbericht hinaus. Genau diese Aktionen erlaubt SECRETARY_ACTIONS
+  # dem Token ohnehin schon. Nicht enthalten: edit_game, check_game,
+  # edit_referee_nomination.
   SECRETARY_PERMISSIONS = %i[pregame_edit_home pregame_edit_guest edit_game_report].freeze
 
   VETO_ACTIONS = %i[show_checklist_veto submit_checklist_veto].freeze
@@ -1205,9 +1209,11 @@ class GamesController < ApplicationController
   # Admin/SBK des Spielbetriebs sowie VM/TM der beteiligten Mannschaften
   # (inkl. Spielgemeinschafts-Vereine) dürfen die internen Felder lesen.
   def can_view_hidden_elements?(game)
-    # Spielsekretariat per Einmal-Link: darf genau die Spiele seines Spieltags
-    # sehen. Es bearbeitet ohnehin schon den Spielbericht dieser Spiele (siehe
-    # SECRETARY_ACTIONS), braucht die internen Felder also, um sie zu füllen.
+    # Spielsekretariat per Einmal-Link: darf genau die Spiele der Spieltage
+    # sehen, die der Link abdeckt (eine Halle an einem Tag, gegebenenfalls
+    # mehrere Ligen). Es bearbeitet ohnehin schon den Spielbericht dieser Spiele
+    # (siehe SECRETARY_ACTIONS), braucht die internen Felder also, um sie zu
+    # füllen.
     return secretary_token_permits_game?(game) if @secretary_link
 
     # Ohne Login und ohne Token gibt es nichts zu zeigen. Vorher lief das in ein
