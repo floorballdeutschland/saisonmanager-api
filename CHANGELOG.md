@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Falsch zugeordnete Schiedsrichter lassen sich korrigieren**: 36 Schiedsrichter aus Salzwedel waren einem Verein in Hessen zugeordnet, weil ein früherer Abgleich zwei ähnlich beginnende Vereinsnamen verwechselt hatte. Der Wartungsbefehl für Vereinszuordnungen kann solche Fälle jetzt richtigstellen, allerdings nur dort, wo der Verband den Verein ausdrücklich benannt hat. Zuordnungen, die aus einem Namensvergleich stammen, bleiben wie bisher unangetastet.
+
 ### Neu
 
 - **Alte Lizenznummern von Schiedsrichtern sind wieder prüfbar**: Beim Datenabgleich 2025 wurden nur Schiedsrichter mit einer Lizenz aus den letzten fünf Jahren übernommen. Wer nach längerer Pause zurückkommt und seine alte Lizenznummer nennt, war deshalb nicht überprüfbar, und die Nummer war im System nicht belegt. Die rund 4.250 fehlenden Datensätze lassen sich jetzt nachtragen, samt Kurs- und Lizenzhistorie zurück bis 2007. Für den Verwaltungsalltag ändert sich nichts: Wer keine Lizenz mehr hat, taucht in den Listen standardmäßig nicht auf, ist über die Suche nach der Lizenznummer aber gezielt auffindbar.
