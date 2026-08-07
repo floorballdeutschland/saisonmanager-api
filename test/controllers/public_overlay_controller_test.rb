@@ -144,6 +144,17 @@ class PublicOverlayControllerTest < ActionDispatch::IntegrationTest
     assert game.dig('home', 'short_name').present?
   end
 
+  test 'der Spielabruf nennt die Spieltags-Kennung fuer die Token-Anforderung' do
+    # Der Spielbericht kennt nur das Spiel, der Overlay-Zugang haengt aber am
+    # Spieltag. Ohne diese Kennung koennte die Oberfläche dort kein Token holen.
+    raw_key, = ApiKey.generate(name: 'Frontend')
+
+    get "/api/v2/games/#{@game.id}.json", headers: { 'HTTP_X_API_KEY' => raw_key }
+
+    assert_response :success
+    assert_equal @game_day.id, JSON.parse(response.body)['game_day_id']
+  end
+
   test 'server_time liegt bei, damit die Uhr den Zeitversatz ausgleichen kann' do
     get '/api/v2/public/overlay/live', params: { token: @token }
 
