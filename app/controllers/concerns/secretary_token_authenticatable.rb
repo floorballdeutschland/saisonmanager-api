@@ -35,8 +35,12 @@ module SecretaryTokenAuthenticatable
     current_user&.id || @secretary_link&.created_by_id
   end
 
-  # Game is within scope of the secretary token?
+  # Game is within scope of the secretary token? Ein Link deckt seit der
+  # hallenweiten Ausgabe mehrere Spieltage ab (mehrere Ligen am selben Tag in
+  # derselben Halle), daher Mengenprüfung statt Gleichheit.
   def secretary_token_permits_game?(game)
-    @secretary_link&.game_day_id == game.game_day_id
+    return false unless @secretary_link
+
+    @secretary_link.covers_game_day?(game.game_day_id)
   end
 end
