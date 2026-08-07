@@ -234,6 +234,11 @@ class TeamsController < ApplicationController
       )
     end
 
+    # Dieselbe Verzögerung wie beim Liga-Spielplan: `schedule_item` enthält für
+    # begonnene Spiele `result` und `result_string`, und diese Liste läuft über
+    # dieselben öffentlichen Keys.
+    matches = delay_live_scores(matches)
+
     render json: {
       team: {
         id: team.id,
