@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Eigenes Logo je Liga**: Ligen können ein eigenes Erkennungszeichen bekommen, etwa das der 1. Floorball-Bundesliga Herren. Es ist getrennt vom Werbebanner, das weiterhin eine anklickbare Anzeigefläche im Format 6:1 bleibt. Hochladen darf, wer die Liga bearbeiten darf; erlaubt sind PNG, JPG und WebP bis 3 MB, Querformat ausdrücklich eingeschlossen. Fehlt einer Liga das eigene Zeichen, wird das Logo des Landesverbands ausgewiesen, und zwar als solches gekennzeichnet: Anzeigen, die ausdrücklich das Ligazeichen meinen, etwa die Livestream-Einblendungen, zeigen dann lieber gar keines statt eines fremden. Der bisherige Behelf, in den Overlays das Bundesliga-Zeichen fest einzubauen, entfällt damit.
+
 ### Behoben
 
 - **Zwischenstände laufender Spiele waren über zwei Abrufe doch ohne Verzögerung zu haben**: Die Nutzungsvereinbarung sagt Inhabern eines API-Schlüssels zehn Minuten Verzögerung zu. Zwei Abrufe hielten sich nicht daran: Der ältere Ticker-Abruf zu einem einzelnen Spiel gab Ereignisse und Zwischenstand ungefiltert heraus, und die Spielliste einer Mannschaft nannte den Zwischenstand laufender Partien. Beide verzögern jetzt wie die übrigen öffentlichen Abrufe. Für angemeldete Nutzerinnen und Nutzer, für die Saisonmanager-Website und für Zugänge mit Echtzeit-Freigabe ändert sich nichts.
