@@ -382,6 +382,17 @@ Rails.application.routes.draw do
       get  'user/game_days/:game_day_id/secretary_link', to: 'game_day_secretary_links#show'
       get  'user/secretary_game_days',                   to: 'game_day_secretary_links#index'
 
+      # Livestream-Overlays: Datenquelle der OBS-Browser-Quellen und des
+      # Steuer-Docks (nur Token, keine Anmeldung, siehe
+      # PublicOverlayController), dazu die Ausgabe des Tokens im Spielbericht.
+      get  'public/overlay/live',     to: 'public_overlay#live'
+      get  'public/overlay/game_day', to: 'public_overlay#game_day'
+      post 'public/overlay/state',    to: 'public_overlay#set_state'
+
+      post   'user/game_days/:game_day_id/overlay_link', to: 'game_day_overlay_links#create'
+      get    'user/game_days/:game_day_id/overlay_link', to: 'game_day_overlay_links#show'
+      delete 'user/game_days/:game_day_id/overlay_link', to: 'game_day_overlay_links#destroy'
+
       get  'user/team_game_days',                                     to: 'team_game_day_confirmations#index'
       post 'user/team_game_days/:game_day_id/teams/:team_id/confirm', to: 'team_game_day_confirmations#confirm'
 

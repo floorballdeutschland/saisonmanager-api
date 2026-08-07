@@ -805,6 +805,10 @@ class Game < ApplicationRecord
       actual_start_time:,
       date: game_day.date,
       game_day: league.game_day_title_hash(game_day.number),
+      # Die Kennung zusätzlich zum Titel: Der Spielbericht braucht sie, um den
+      # Overlay-Zugang für den Spieltag anzufordern. Neu offengelegt wird damit
+      # nichts, `schedule_item` nennt sie längst.
+      game_day_id:,
       game_status:,
       ingame_status:,
       audience:,

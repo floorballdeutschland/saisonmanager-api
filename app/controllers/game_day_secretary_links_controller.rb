@@ -1,4 +1,6 @@
 class GameDaySecretaryLinksController < ApplicationController
+  include GameDayLinkAuthorization
+
   before_action :authenticate_user
   before_action :load_game_day, only: %i[create show]
   before_action :authorize_vm_or_tm!, only: %i[create show]
@@ -24,7 +26,7 @@ class GameDaySecretaryLinksController < ApplicationController
     links_by_game_day = active_links_by_game_day(groups.values.flatten.map(&:id))
 
     payload = groups.map do |(arena_id, date, _standalone_id), game_days|
-      covered = game_days.select { |gd| may_manage_secretary_link?(gd) }
+      covered = game_days.select { |gd| may_manage_game_day_link?(gd) }
       next if covered.empty?
 
       hall_day_json(arena_id, date, game_days, covered, links_by_game_day)
@@ -73,44 +75,10 @@ class GameDaySecretaryLinksController < ApplicationController
 
   private
 
-  def load_game_day
-    @game_day = GameDay.find(params[:game_day_id])
-  rescue ActiveRecord::RecordNotFound
-    render json: { error: 'Spieltag nicht gefunden.' }, status: :not_found
-  end
-
   def authorize_vm_or_tm!
-    return if may_manage_secretary_link?(@game_day)
+    return if may_manage_game_day_link?(@game_day)
 
     render json: { error: 'Nicht berechtigt.' }, status: :forbidden
-  end
-
-  # permission_hash ist nicht memoisiert und zieht bei jedem Aufruf u. a. alle
-  # Liga-IDs der Saison. In der Übersicht wird je Spieltag geprüft, das wären
-  # sonst schnell 50 Neuberechnungen in einer Anfrage.
-  def permissions
-    @permissions ||= current_user.permission_hash
-  end
-
-  # Darf der/die Angemeldete für diesen Spieltag einen Sekretariats-Link
-  # erzeugen? Admin und SBK des Spielbetriebs, VM des Ausrichters oder eines
-  # beteiligten Vereins, TM einer beteiligten Mannschaft.
-  def may_manage_secretary_link?(game_day)
-    ph = permissions
-    return true if ph[:admin].present?
-
-    go_id = game_day.league&.game_operation_id
-    return true if ph[:sbk].present? && (ph[:sbk].include?(0) || ph[:sbk].include?(go_id))
-
-    team_ids = game_day.games.flat_map { |g| [g.home_team_id, g.guest_team_id] }.compact
-    return true if ph[:tm].present? && ph[:tm].intersection(team_ids).present?
-
-    return false if ph[:vm].blank?
-    return true if ph[:vm].include?(game_day.club_id)
-
-    game_day.games.any? do |g|
-      ph[:vm].intersection([g.home_team&.club_id, g.guest_team&.club_id].compact).present?
-    end
   end
 
   # Die Spieltage, die ein Link für `game_day` abdeckt: alle Spieltage derselben
@@ -123,7 +91,7 @@ class GameDaySecretaryLinksController < ApplicationController
   def coverable_game_days(game_day)
     game_day.hall_day_siblings
             .includes(:league, games: %i[home_team guest_team])
-            .select { |gd| may_manage_secretary_link?(gd) }
+            .select { |gd| may_manage_game_day_link?(gd) }
   end
 
   # Spieltage im Zeitfenster, an denen der/die Angemeldete als VM oder TM

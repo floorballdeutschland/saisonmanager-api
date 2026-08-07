@@ -18,6 +18,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - **Ein begonnenes Spiel ohne angelegten Spielbericht umging die Verzögerung**: In Spielplan-Listen hing das Zurückhalten am Berichtsstatus, das ausgewiesene Ergebnis dagegen allein daran, ob das Spiel angepfiffen war. Lag noch kein Bericht vor, ging der Live-Stand mit. Maßgeblich ist jetzt für beides dieselbe Bedingung.
 - **Spätabends abgeschlossene Spielberichte fielen aus dem Schiri-Feedback**: Das Spieltagsdatum ist ein deutsches Datum, die Anwendung rechnet intern aber in UTC. Zwischen 22 Uhr und Mitternacht deutscher Zeit liegen beide einen Tag auseinander, und in diesem Zeitraum galt der laufende Spieltag als „morgen". Die Übersicht der Rückmeldungen ließ die Spiele dieses Abends deshalb aus, und der stündliche Versand übersprang sie. Weil er stündlich läuft, holte er es später von selbst nach; wer abends nachsah, fand seine Partie trotzdem nicht. Maßgeblich ist jetzt überall der Kalender des Spielbetriebs, so wie schon bei der Berechnung des Abgabefensters.
 
+### Neu
+
+- **Livestream-Overlays: Datenquelle und Zugang**: Grundlage für die Grafikpakete, die Vereine künftig in OBS Studio einbinden können (Spielstandsanzeige, Bauchbinden, Vollbilder im Bundesliga-Design). Wer einen Spielbericht führen darf, kann für einen Spieltag einen Overlay-Link erzeugen; die Browser-Quellen in OBS holen sich darüber die Spieldaten, ohne Anmeldung und ohne API-Schlüssel. Der Link gilt nur für die Spiele dieses einen Spieltags, läuft nach 36 Stunden ab und lässt sich jederzeit zurückziehen oder durch einen neuen ersetzen. Weil eine Anzeigetafel Live-Daten braucht, hebt er die Zehn-Minuten-Verzögerung auf, aber eben nur für diesen Spieltag und nicht für den Gesamtbestand. Die Daten kommen anzeigefertig: Trikotnummern sind zu Spielernamen aufgelöst, das zuletzt gefallene Tor liegt gesondert bei. Ein Steuerzustand am Link hält fest, was gerade eingeblendet ist, damit das Bedienfeld und die Einblendung zusammenpassen und ein Neuladen der Browser-Quelle mitten im Spiel nichts verliert. Die Oberflächen dazu folgen.
+
 ## [1.73.0] - 2026-08-07
 
 ### Neu
