@@ -75,7 +75,7 @@ class UserRefereeFeedbacksControllerTest < ActionDispatch::IntegrationTest
   end
 
   test 'Abgabe vor Ablauf der 24 Stunden nach dem Spiel wird abgewiesen' do
-    @game_day.update!(date: Date.current.to_s)
+    @game_day.update!(date: RefereeFeedbackWindow.today.to_s)
     login(@tm)
 
     post '/api/v2/user/referee_feedbacks',
@@ -87,7 +87,7 @@ class UserRefereeFeedbacksControllerTest < ActionDispatch::IntegrationTest
   end
 
   test 'Uebersicht listet das Spiel schon vor Ablauf der 24 Stunden mit kuenftigem fillable_from' do
-    @game_day.update!(date: Date.current.to_s)
+    @game_day.update!(date: RefereeFeedbackWindow.today.to_s)
     login(@tm)
 
     get '/api/v2/user/referee_feedbacks'
