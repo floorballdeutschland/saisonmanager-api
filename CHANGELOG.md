@@ -16,6 +16,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - **Endstände waren kurz nach dem Schlusspfiff falsch statt nur verzögert**: Der Spielstand wird aus den einzelnen Ereignissen berechnet. Wurden die jüngsten davon wegen der Verzögerung ausgelassen, kam damit nicht ein älterer Stand heraus, sondern ein falscher, und bei einem beendeten Spiel stand er als Endstand in der Antwort. Weil der Zeitstempel am Ereignis den Moment der Eingabe festhält und nicht die Spielminute, traf das besonders Berichte, die nach dem Spiel in einem Zug erfasst wurden: Dort waren alle Ereignisse frisch, und ein 3:0 wurde als beendetes 0:0 gemeldet. Beendete Spiele nennen ihren Endstand jetzt sofort; zurückgehalten werden nur noch Zwischenstände laufender Partien. Betroffen waren der Ticker-Abruf und der Spielabruf, jeweils nur mit einem API-Schlüssel ohne Echtzeit-Freigabe.
 
 - **Ein begonnenes Spiel ohne angelegten Spielbericht umging die Verzögerung**: In Spielplan-Listen hing das Zurückhalten am Berichtsstatus, das ausgewiesene Ergebnis dagegen allein daran, ob das Spiel angepfiffen war. Lag noch kein Bericht vor, ging der Live-Stand mit. Maßgeblich ist jetzt für beides dieselbe Bedingung.
+
 ## [1.72.0] - 2026-08-07
 
 ### Behoben
