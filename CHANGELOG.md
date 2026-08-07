@@ -12,6 +12,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Behoben
 
 - **Spätabends abgeschlossene Spielberichte fielen aus dem Schiri-Feedback**: Das Spieltagsdatum ist ein deutsches Datum, die Anwendung rechnet intern aber in UTC. Zwischen 22 Uhr und Mitternacht deutscher Zeit liegen beide einen Tag auseinander, und in diesem Zeitraum galt der laufende Spieltag als „morgen". Die Übersicht der Rückmeldungen ließ die Spiele dieses Abends deshalb aus, und der stündliche Versand übersprang sie. Weil er stündlich läuft, holte er es später von selbst nach; wer abends nachsah, fand seine Partie trotzdem nicht. Maßgeblich ist jetzt überall der Kalender des Spielbetriebs, so wie schon bei der Berechnung des Abgabefensters.
+
 ## [1.73.0] - 2026-08-07
 
 ### Neu
