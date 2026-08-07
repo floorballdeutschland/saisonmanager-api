@@ -1,5 +1,6 @@
 class GamesController < ApplicationController
   include SecretaryTokenAuthenticatable
+  include IcalRenderable
 
   SECRETARY_ACTIONS = %i[
     add_player_to_lineup remove_player add_coach remove_coach set_captain
@@ -25,7 +26,9 @@ class GamesController < ApplicationController
 
   VETO_ACTIONS = %i[show_checklist_veto submit_checklist_veto].freeze
 
-  skip_before_action :authenticate_user, only: %i[show] + SECRETARY_ACTIONS + VETO_ACTIONS
+  skip_before_action :authenticate_user, only: %i[show calendar] + SECRETARY_ACTIONS + VETO_ACTIONS
+  # `calendar` fehlt hier absichtlich: Kalender-Abos können keinen API-Key
+  # mitschicken, Begründung an TeamsController#calendar.
   before_action :authenticate_public_request, only: %i[show] + VETO_ACTIONS
   before_action :authenticate_with_secretary_token_or_user, only: SECRETARY_ACTIONS
   # `show` bleibt öffentlich (API-Key oder Cookie) und darf deshalb NICHT in
@@ -86,23 +89,14 @@ class GamesController < ApplicationController
 
     respond_to do |format|
       format.json { render json: hash }
-      format.ics do
-        ical = ::Icalendar::Calendar.new
-        event = game.ical
-        ical.add_event(event)
-
-        require 'icalendar/tzinfo'
-        tzid = 'Europe/Berlin'
-        tz = TZInfo::Timezone.get tzid
-        timezone = tz.ical_timezone event.dtstart
-        ical.add_timezone timezone
-
-        ical.append_custom_property('METHOD', 'REQUEST')
-        ical.publish
-
-        render plain: ical.to_ical
-      end
+      format.ics { render_ical([game]) }
     end
+  end
+
+  # GET /api/v2/calendar/games/1.ics — ohne API-Key, siehe
+  # TeamsController#calendar.
+  def calendar
+    render_ical([Game.find(params[:id])])
   end
 
   # GET /games/scheduling_conflicts

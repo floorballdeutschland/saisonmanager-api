@@ -1,4 +1,6 @@
 class LeaguesController < ApplicationController
+  include IcalRenderable
+
   # additional_references gehört trotz des öffentlich klingenden Musters in die
   # Ausnahmeliste: Der Endpunkt liefert Vereins- und Spielort-Stammdaten für die
   # Spielplanverwaltung und wird ausschließlich von Admin-Views aufgerufen. Ohne
@@ -6,8 +8,12 @@ class LeaguesController < ApplicationController
   COOKIE_ONLY_ACTIONS = %i[admin_league_index admin_league_delete admin_upload_banner admin_delete_banner
                            additional_references].freeze
 
+  # Kalender-Abos kommen ohne API-Key, weil Kalender-Programme keine eigene
+  # Kopfzeile mitschicken können. Begründung an TeamsController#calendar.
+  KEYLESS_ACTIONS = %i[calendar].freeze
+
   skip_before_action :authenticate_user, except: COOKIE_ONLY_ACTIONS
-  before_action :authenticate_public_request, except: COOKIE_ONLY_ACTIONS
+  before_action :authenticate_public_request, except: COOKIE_ONLY_ACTIONS + KEYLESS_ACTIONS
   after_action :track_public_view,
                only: %i[schedule current_schedule game_day_schedule table grouped_table scorer],
                if: -> { response.successful? }
@@ -542,24 +548,14 @@ class LeaguesController < ApplicationController
 
     respond_to do |format|
       format.json { render json: league.full_hash(true) }
-      format.ics do
-        ical = ::Icalendar::Calendar.new
-
-        events = league.games.map(&:ical)
-        events.each { |event| ical.add_event(event) }
-
-        require 'icalendar/tzinfo'
-        tzid = 'Europe/Berlin'
-        tz = TZInfo::Timezone.get tzid
-        timezone = tz.ical_timezone events.first.dtstart
-        ical.add_timezone timezone
-
-        ical.append_custom_property('METHOD', 'REQUEST')
-        ical.publish
-
-        render plain: ical.to_ical
-      end
+      format.ics { render_ical(league.games) }
     end
+  end
+
+  # GET /api/v2/calendar/leagues/1.ics — ohne API-Key, siehe
+  # TeamsController#calendar.
+  def calendar
+    render_ical(League.find(params[:id]).games)
   end
 
   # GET /leagues/1/schedule
