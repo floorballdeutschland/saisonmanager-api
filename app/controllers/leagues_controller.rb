@@ -566,6 +566,10 @@ class LeaguesController < ApplicationController
   def schedule
     id = params[:id]
 
+    # Der Cache bleibt global, die Verzögerung greift erst danach: Sie hängt am
+    # Abrufenden, nicht am Spielplan (siehe delay_live_scores in
+    # ApplicationController). Ein je Schlüssel getrennter Cache-Eintrag wäre
+    # sonst nötig.
     schedule = Rails.cache.fetch("leagues/#{id}/schedule", expires_in: 5.minutes) do
       @league = League.find(id)
       @league.schedule
@@ -835,18 +839,6 @@ class LeaguesController < ApplicationController
                                    :banner_link_url, :parental_consent_required,
                                    :referee_feedback_enabled,
                                    required_documents: [])
-  end
-
-  # Entfernt Ergebnis-Daten für laufende Spiele bei nicht-Echtzeit-API-Keys.
-  # Der Cache bleibt global – die Filterung erfolgt nach dem Cache-Fetch.
-  def delay_live_scores(schedule)
-    return schedule unless api_key_request? && !@authenticated_api_key&.realtime
-
-    schedule.map do |game|
-      next game unless game[:state].to_s == 'running'
-
-      game.merge(result: nil, result_string: nil)
-    end
   end
 
   # True, wenn in der Liga schon ein Spiel begonnen/gespielt wurde – dann ist

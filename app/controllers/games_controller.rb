@@ -44,11 +44,8 @@ class GamesController < ApplicationController
   def show
     game = Game.find(params[:id])
 
-    delayed = api_key_request? && !@authenticated_api_key.realtime
-    if delayed
-      cutoff = Time.current.to_i - 10.minutes.to_i
-      game.events = (game.events || []).select { |e| e['added_at'].nil? || e['added_at'] < cutoff }
-    end
+    delayed = delay_live_data?
+    strip_delayed_events!(game)
 
     # full_hash parst bei jedem Aufruf die JSONB-Spalten (events, players, …)
     # und macht mehrere Folgequeries – für anonyme Abrufe (öffentliche
