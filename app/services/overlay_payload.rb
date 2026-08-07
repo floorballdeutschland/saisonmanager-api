@@ -60,7 +60,7 @@ class OverlayPayload
         name: base[:league_name],
         short_name: base[:league_short_name],
         game_day: base[:game_day]
-      },
+      }.merge(league_logo),
       arena: {
         name: base[:arena_name],
         short: base[:arena_short]
@@ -71,6 +71,17 @@ class OverlayPayload
   end
 
   private
+
+  # Nur ein echtes Ligazeichen, kein Rückfall auf das Verbandslogo: In der
+  # Anzeigetafel steht das Zeichen für den Wettbewerb. Ein Landesverbandslogo
+  # an derselben Stelle behauptete etwas anderes. Fehlt es, greift im Overlay
+  # das mitgelieferte Bundesliga-Zeichen.
+  def league_logo
+    resolved = @game.league.resolved_logo
+    return { logo_url: nil } unless resolved[:logo_source] == 'league'
+
+    { logo_url: resolved[:logo_url] }
+  end
 
   def team_hash(side, base)
     team = side == 'home' ? @game.home_team : @game.guest_team

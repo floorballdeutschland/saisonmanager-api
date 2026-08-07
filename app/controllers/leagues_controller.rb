@@ -4,6 +4,7 @@ class LeaguesController < ApplicationController
   # Spielplanverwaltung und wird ausschließlich von Admin-Views aufgerufen. Ohne
   # den Eintrag hier hätte ein reiner X-Api-Key gereicht.
   COOKIE_ONLY_ACTIONS = %i[admin_league_index admin_league_delete admin_upload_banner admin_delete_banner
+                           admin_upload_logo admin_delete_logo
                            additional_references].freeze
 
   skip_before_action :authenticate_user, except: COOKIE_ONLY_ACTIONS
@@ -757,6 +758,49 @@ class LeaguesController < ApplicationController
     end
 
     render json: { imported: imported, skipped: skipped, failed: failed }
+  end
+
+  # Liga-Logo, das Erkennungszeichen des Wettbewerbs. Getrennt vom Banner
+  # nebenan, weil das eine Werbefläche mit Ziellink ist.
+  #
+  # `square: false` wie bei allen Logos oberhalb der Vereinsebene: Ligazeichen
+  # sind in der Regel querformatige Wortmarken.
+  def admin_upload_logo
+    league = find_league_or_not_found or return
+    unless league.user_permissions(current_user).include?(:update_league)
+      return render json: { message: 'Keine Berechtigung' }, status: :forbidden
+    end
+
+    return render json: { message: 'Kein Bild angefügt' }, status: :unprocessable_entity if params[:logo].blank?
+
+    if (error = logo_upload_error(params[:logo], square: false, max_size: LOGO_MAX_SIZE))
+      return render json: { message: error }, status: :unprocessable_entity
+    end
+
+    begin
+      league.logo.attach(params[:logo])
+      render json: { logo_url: league.logo_url }
+    rescue StandardError => e
+      Rails.logger.error("Logo-Upload fehlgeschlagen (League #{league.id}): #{e.class}: #{e.message}")
+      render json: { message: 'Logo konnte nicht gespeichert werden.' }, status: :internal_server_error
+    end
+  end
+
+  # Nach dem Löschen greift wieder der Rückfall auf das Verbandslogo, die Liga
+  # steht also nicht ohne Zeichen da.
+  def admin_delete_logo
+    league = find_league_or_not_found or return
+    unless league.user_permissions(current_user).include?(:update_league)
+      return render json: { message: 'Keine Berechtigung' }, status: :forbidden
+    end
+
+    begin
+      league.logo.purge
+      render json: league.resolved_logo
+    rescue StandardError => e
+      Rails.logger.error("Logo-Löschen fehlgeschlagen (League #{league.id}): #{e.class}: #{e.message}")
+      render json: { message: 'Logo konnte nicht gelöscht werden.' }, status: :internal_server_error
+    end
   end
 
   def admin_upload_banner
