@@ -58,6 +58,32 @@ module Rack
       req.ip if req.path.start_with?('/api/v2/api_key_applications/reveal')
     end
 
+    # Kalender-Abos (ICS). Der einzige öffentliche Bereich, der WEDER ein Cookie
+    # NOCH einen API-Key verlangt: Kalender-Programme können keine eigene
+    # Kopfzeile mitschicken, ein Abo wäre mit Key-Zwang technisch unmöglich.
+    #
+    # Damit fällt der Abruf durch beide Netze weiter unten. Der Key-Throttle
+    # zählt nur Keys mit gesetzter Grenze, und der Crawler-Throttle nur bekannte
+    # Kennungen – ein Aufruf mit gewöhnlicher Browser-Kennung und ohne Key liefe
+    # sonst völlig ungebremst. Bis hierher deckelte immer eine Grenze je
+    # Schlüssel den Aufwand, und billig ist der Aufruf nicht: Der Liga-Kalender
+    # liest alle Spiele einer Liga und serialisiert sie.
+    #
+    # 30 pro Minute ist reichlich bemessen und trifft keinen echten Nutzer:
+    # Kalender-Programme gleichen höchstens stündlich ab, meist seltener, und
+    # wer den Link im Browser anklickt, kommt auf einzelne Aufrufe. Die Antwort
+    # ist zusätzlich eine Stunde öffentlich cachebar (IcalRenderable), womit
+    # wiederholte Abrufe desselben Abos hier gar nicht erst ankommen.
+    #
+    # Der Pfad ohne api/v2-Präfix ist mitgenommen, obwohl nginx ihn nicht
+    # durchreicht: Er steht in config/routes.rb und wäre erreichbar, sobald
+    # jemand eine location dafür einträgt.
+    throttle('calendar/ip', limit: 30, period: 1.minute) do |req|
+      next unless req.get? || req.head?
+
+      req.ip if req.path.start_with?('/api/v2/calendar/', '/calendar/')
+    end
+
     # Suchmaschinen und Skript-Clients stellen den größten Teil des Verkehrs auf
     # den öffentlichen Endpunkten. Messung Produktion, 7 Tage (Juli 2026):
     # Applebot 226.662 Aufrufe und zusammen 10,3 Stunden Serverzeit, Bytespider

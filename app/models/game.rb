@@ -25,6 +25,18 @@ class Game < ApplicationRecord
 
   scope :by_team_id, ->(team_id) { where('home_team_id = ? OR guest_team_id = ?', team_id, team_id) }
 
+  # Alles, was #ical anfasst: Spieltag (Datum), Halle (Ort), Liga und
+  # Spielbetrieb (Titel und Link) sowie beide Mannschaften (Namen).
+  #
+  # Ohne dieses Preloading kostet ein Kalender je Spiel rund sechs Abfragen –
+  # bei einer Mannschaft mit 25 Spielen also über 150. Kalender-Abos rufen
+  # regelmäßig von selbst ab und brauchen keinen API-Schlüssel, der Abruf läuft
+  # damit unbeaufsichtigt und dauerhaft. Genau dieses Muster stand hinter den
+  # rund 70.000 N+1-Meldungen im Spielplan (api#288).
+  scope :with_ical_associations, lambda {
+    includes(:home_team, :guest_team, game_day: [:arena, { league: :game_operation }])
+  }
+
   scope :match_record_closed, -> { where(game_status: %w[match_record_closed finalized]) }
   scope :match_record_not_closed, -> { where.not(game_status: %w[match_record_closed finalized]) }
 
