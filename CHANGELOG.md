@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Die Spielansicht blieb unvollständig, solange keine Aufstellung erfasst war**: Öffentlich sichtbare Spiele ohne eingetragene Aufstellung zeigten nur den oberen Teil der Seite, der Rest fehlte still. Betroffen war zu Saisonbeginn nahezu jedes Spiel, weil Aufstellungen erst am Spieltag entstehen. Ursache war die Antwort zu den Auszeichnungen: Ohne Aufstellung ließ sie die Felder für Heim- und Gastmannschaft ganz weg, statt sie leer zu liefern, woran die Anzeige abbrach.
+
 ## [1.74.0] - 2026-08-08
 
 ### Behoben
