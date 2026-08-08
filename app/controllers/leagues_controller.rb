@@ -553,12 +553,7 @@ class LeaguesController < ApplicationController
   end
 
   # GET /api/v2/calendar/leagues/1.ics — ohne API-Key, siehe
-  # TeamsController#calendar.
-  #
-  # Bewusst nicht über League#games: Das ist der Spielplan-Pfad, der Logos und
-  # Ausrichter mitlädt, die ein Kalender nicht braucht, und der die Liga selbst
-  # nicht vorlädt. Die Sortierung nach Spielnummer entfällt hier ebenfalls –
-  # Kalender-Programme ordnen nach Datum.
+  # TeamsController#calendar. Zur Spieleauswahl siehe games_for_calendar.
   def calendar
     render_ical(games_for_calendar(League.find(params[:id])))
   end

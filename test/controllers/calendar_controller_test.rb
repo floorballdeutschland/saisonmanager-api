@@ -111,6 +111,19 @@ class CalendarControllerTest < ActionDispatch::IntegrationTest
     assert_response :unauthorized
   end
 
+  # Der Endpunkt verlangt keinen API-Schlüssel, es gibt also keine Grenze je
+  # Schlüssel, die den Aufwand deckelt. Der Cache-Header ist damit die einzige
+  # Bremse gegen wiederholte Abrufe desselben Abos.
+  test 'der Kalender ist eine Stunde öffentlich cachebar' do
+    game_with(start_time: '14:00')
+
+    get "/api/v2/calendar/teams/#{@home.id}.ics"
+
+    assert_response :success
+    assert_match(/max-age=3600/, response.headers['Cache-Control'])
+    assert_match(/public/, response.headers['Cache-Control'])
+  end
+
   # Ein Kalender-Abo läuft unbeaufsichtigt und ohne API-Schlüssel: Kalender-
   # Programme fragen von selbst regelmäßig nach. Ohne Preloading kostet jedes
   # Spiel rund sechs Abfragen (Spieltag, Halle, Liga, Spielbetrieb, zwei
@@ -129,6 +142,28 @@ class CalendarControllerTest < ActionDispatch::IntegrationTest
     assert_equal 5, response.body.scan('BEGIN:VEVENT').size
     assert_equal queries_for_one, queries_for_five,
                  "Abfragen: #{queries_for_one} bei einem Spiel, #{queries_for_five} bei fünf — Preloading fehlt"
+  end
+
+  # Der Preload muss an allen drei Kalender-Pfaden hängen, nicht nur an zweien.
+  # Beim ersten Anlauf fehlte er ausgerechnet am Einzelspiel, weil die Änderung
+  # nicht mit committet wurde – ein Test, der nur den Mannschaftskalender misst,
+  # hätte das durchgelassen.
+  test 'auch Liga- und Spielkalender laden ihre Assoziationen vor' do
+    game = game_with(start_time: '14:00')
+    4.times { |i| game_with(start_time: '16:00', number: i + 2) }
+
+    liga_queries = count_queries { get "/api/v2/calendar/leagues/#{@league.id}.ics" }
+    assert_response :success
+    assert_equal 5, response.body.scan('BEGIN:VEVENT').size
+
+    einzel_queries = count_queries { get "/api/v2/calendar/games/#{game.id}.ics" }
+    assert_response :success
+
+    # Fünf Spiele über wenige vorgeladene Abfragen; ohne Preload wären es rund
+    # sechs je Spiel. Die Grenze ist bewusst grob, geprüft wird die
+    # Größenordnung, nicht eine exakte Zahl.
+    assert_operator liga_queries, :<, 15, "Liga-Kalender: #{liga_queries} Abfragen, Preloading fehlt"
+    assert_operator einzel_queries, :<, 10, "Spiel-Kalender: #{einzel_queries} Abfragen, Preloading fehlt"
   end
 
   private

@@ -37,6 +37,15 @@ module IcalRenderable
     ical.append_custom_property('METHOD', 'REQUEST')
     ical.publish
 
+    # Ein Abo ruft unbeaufsichtigt und dauerhaft ab, und der Endpunkt verlangt
+    # keinen API-Schlüssel – es gibt also keine Grenze je Schlüssel, die den
+    # Aufwand deckelt. Eine Stunde ist reichlich: Kalender-Programme gleichen
+    # ohnehin höchstens stündlich ab, und ein Spielplan ändert sich nicht im
+    # Minutentakt. `public`, weil die Antwort für alle gleich ausfällt – anders
+    # als bei den Spielplan-Abrufen, wo delay_live_scores sie je Schlüssel und
+    # Sitzung variiert und ein geteilter Cache die Varianten mischen würde.
+    expires_in 1.hour, public: true
+
     # Kalender-Programme entscheiden am Content-Type, ob sie ein Abo annehmen;
     # `render plain:` schickte text/plain und lieferte bei manchen Clients nur
     # eine angezeigte Textdatei.

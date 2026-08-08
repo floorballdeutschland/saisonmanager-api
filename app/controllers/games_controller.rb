@@ -96,7 +96,7 @@ class GamesController < ApplicationController
   # GET /api/v2/calendar/games/1.ics — ohne API-Key, siehe
   # TeamsController#calendar.
   def calendar
-    render_ical([Game.find(params[:id])])
+    render_ical([Game.with_ical_associations.find(params[:id])])
   end
 
   # GET /games/scheduling_conflicts
