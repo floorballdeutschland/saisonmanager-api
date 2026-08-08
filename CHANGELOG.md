@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.74.0] - 2026-08-08
+
 ### Behoben
 
 - **Zwischenstände laufender Spiele waren über zwei Abrufe doch ohne Verzögerung zu haben**: Die Nutzungsvereinbarung sagt Inhabern eines API-Schlüssels zehn Minuten Verzögerung zu. Zwei Abrufe hielten sich nicht daran: Der ältere Ticker-Abruf zu einem einzelnen Spiel gab Ereignisse und Zwischenstand ungefiltert heraus, und die Spielliste einer Mannschaft nannte den Zwischenstand laufender Partien. Beide verzögern jetzt wie die übrigen öffentlichen Abrufe. Für angemeldete Nutzerinnen und Nutzer, für die Saisonmanager-Website und für Zugänge mit Echtzeit-Freigabe ändert sich nichts.
