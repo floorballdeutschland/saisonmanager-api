@@ -455,32 +455,44 @@ class Game < ApplicationRecord
     result
   end
 
+  # Auszeichnungen mit aufgelösten Spielernamen, immer als
+  # `{ "home" => [...], "guest" => [...] }`.
+  #
+  # Die Form ist bewusst unabhängig davon, ob eine Aufstellung existiert. Vorher
+  # hing der ganze Aufbau an `if players.present?` und lieferte sonst ein leeres
+  # `{}`. Für die öffentliche Spielseite heißt das `game.awards.home ===
+  # undefined`, und die dortige Pipe ruft `.filter` darauf – die Ansicht brach
+  # ab und rendert nur zu einem Drittel (Sentry SAISONMANAGER-2M/2N/2P). Betroffen
+  # war jedes Spiel ohne Aufstellung, zu Saisonbeginn also fast der gesamte
+  # Spielplan.
+  #
+  # Ohne Aufstellung bleiben die Einträge leer (`player_id: ''`) statt zu
+  # fehlen – genau wie bei einem Spiel mit Aufstellung, in dem niemand
+  # ausgezeichnet wurde. Der Aufrufer muss damit nur einen Fall behandeln.
   def awards_with_player_names
-    result = {}
+    # `players` kann bei Altdaten auch ein Array sein (siehe referencing_player);
+    # ein String-Zugriff darauf würde werfen.
+    lineups = players.is_a?(Hash) ? players : {}
 
-    if players.present?
-      %w[home guest].each do |team|
-        result[team] = %w[mvp].each_with_object([]) do |award_key, lineup|
-          awards_player = nil
+    %w[home guest].each_with_object({}) do |team, result|
+      result[team] = %w[mvp].map do |award_key|
+        awards_player = nil
 
-          if awards.present? && awards[team].present?
-            player_id = awards[team][award_key]
-            awards_player = players[team]&.find { |player| player["player_id"] == player_id } if player_id
-          end
-
-          lineup << {
-            award: award_key,
-            team: team === "home" ? home_team_name : guest_team_name,
-            player_id: awards_player ? awards_player["player_id"] : '',
-            player_firstname: awards_player ? awards_player["player_firstname"] : '',
-            player_name: awards_player ? awards_player["player_name"] : '',
-            trikot_number: awards_player ? awards_player["trikot_number"] : ''
-          }
+        if awards.present? && awards[team].present?
+          player_id = awards[team][award_key]
+          awards_player = lineups[team]&.find { |player| player["player_id"] == player_id } if player_id
         end
+
+        {
+          award: award_key,
+          team: team == "home" ? home_team_name : guest_team_name,
+          player_id: awards_player ? awards_player["player_id"] : '',
+          player_firstname: awards_player ? awards_player["player_firstname"] : '',
+          player_name: awards_player ? awards_player["player_name"] : '',
+          trikot_number: awards_player ? awards_player["trikot_number"] : ''
+        }
       end
     end
-
-    result
   end
 
   def result
