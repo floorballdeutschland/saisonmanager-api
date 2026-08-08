@@ -470,17 +470,26 @@ class Game < ApplicationRecord
   # fehlen – genau wie bei einem Spiel mit Aufstellung, in dem niemand
   # ausgezeichnet wurde. Der Aufrufer muss damit nur einen Fall behandeln.
   def awards_with_player_names
-    # `players` kann bei Altdaten auch ein Array sein (siehe referencing_player);
-    # ein String-Zugriff darauf würde werfen.
+    # `players` UND `awards` können bei Altdaten je ein Array sein (siehe
+    # referencing_player). Ein String-Zugriff darauf wirft
+    # `TypeError: no implicit conversion of String into Integer`. Bei `awards`
+    # verdeckte das bisher der `present?`-Vortest: Ein leeres Array kam nicht
+    # durch, ein gefülltes schon.
     lineups = players.is_a?(Hash) ? players : {}
+    awarded = awards.is_a?(Hash) ? awards : {}
 
     %w[home guest].each_with_object({}) do |team, result|
       result[team] = %w[mvp].map do |award_key|
         awards_player = nil
 
-        if awards.present? && awards[team].present?
-          player_id = awards[team][award_key]
-          awards_player = lineups[team]&.find { |player| player["player_id"] == player_id } if player_id
+        # Auch die Team-Ebene ist im Legacy-Format nicht zwingend ein Hash, und
+        # die Aufstellung nicht zwingend eine Liste von Hashes. Die Methode
+        # bleibt deshalb auf jeder Ebene total: unbekannte Formen ergeben keinen
+        # Treffer, statt zu werfen.
+        team_awards = awarded[team]
+        if team_awards.is_a?(Hash) && (player_id = team_awards[award_key])
+          lineup = lineups[team].is_a?(Array) ? lineups[team] : []
+          awards_player = lineup.find { |player| player.is_a?(Hash) && player["player_id"] == player_id }
         end
 
         {

@@ -80,6 +80,31 @@ class GameTest < ActiveSupport::TestCase
     assert_equal '', g.awards_with_player_names['home'].first[:player_id]
   end
 
+  # Das Modell dokumentiert selbst, dass players UND awards bei Altdaten je ein
+  # Array sein koennen (siehe referencing_player). Der String-Zugriff darauf
+  # wirft TypeError: no implicit conversion of String into Integer. Bei awards
+  # verdeckte das bisher der present?-Vortest – ein leeres Array kam nicht
+  # durch, ein gefuelltes schon.
+  test 'awards_with_player_names: vertraegt awards im Legacy-Array-Format' do
+    g = build_game(awards: [{ 'mvp' => 7 }])
+
+    assert_equal %w[home guest], g.awards_with_player_names.keys
+    assert_equal '', g.awards_with_player_names['home'].first[:player_id]
+  end
+
+  test 'awards_with_player_names: vertraegt eine Team-Ebene ohne Hash' do
+    g = build_game(awards: { 'home' => [7] })
+
+    assert_equal '', g.awards_with_player_names['home'].first[:player_id]
+  end
+
+  test 'awards_with_player_names: vertraegt eine Aufstellung ohne Hash-Eintraege' do
+    g = build_game(players: { 'home' => [7], 'guest' => [] },
+                   awards: { 'home' => { 'mvp' => 7 } })
+
+    assert_equal '', g.awards_with_player_names['home'].first[:player_id]
+  end
+
   # ---------------------------------------------------------------------------
   # result
   # ---------------------------------------------------------------------------
