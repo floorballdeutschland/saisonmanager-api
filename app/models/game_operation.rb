@@ -29,7 +29,10 @@ class GameOperation < ApplicationRecord
   end
 
   def top_leagues
-    leagues.current_season.first(5)
+    # Mit Vorladen: short_hash ruft je Liga full_hash, das über resolved_logo
+    # und resolved_banner bis zum Landesverband greift. Diese Antwort steckt in
+    # /api/v2/init, dem ersten Abruf jedes Seitenaufbaus.
+    leagues.current_season.with_resolved_media_includes.first(5)
   end
 
   def slug
