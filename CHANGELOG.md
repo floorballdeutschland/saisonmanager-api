@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.74.1] - 2026-08-08
+
 ### Behoben
 
 - **Fehler in der Spielansicht bei beendeten Spielen ohne Aufstellung**: Bei einem abgeschlossenen Spiel, zu dem keine Aufstellung erfasst ist, brach der Aufbau der Spielansicht an der Stelle ab, an der die Auszeichnungen stehen. Ursache war die Antwort zu den Auszeichnungen: Ohne Aufstellung ließ sie die Felder für Heim- und Gastmannschaft ganz weg, statt sie leer zu liefern. Der Bereich wird nur bei beendeten Spielen angezeigt, laufende und künftige Spiele waren daher nicht betroffen.
