@@ -76,11 +76,14 @@ class OverlayPayload
   # Anzeigetafel steht das Zeichen für den Wettbewerb. Ein Landesverbandslogo
   # an derselben Stelle behauptete etwas anderes. Fehlt es, greift im Overlay
   # das mitgelieferte Bundesliga-Zeichen.
+  #
+  # Deshalb hier ausdrücklich nicht `resolved_logo`: Das ginge für ein
+  # Ergebnis, das hier ohnehin verworfen wird, jedes Mal über Spielbetrieb und
+  # Landesverband. Diese Aufbereitung läuft bei jeder Spieländerung neu, also
+  # bei jedem Tor.
   def league_logo
-    resolved = @game.league.resolved_logo
-    return { logo_url: nil } unless resolved[:logo_source] == 'league'
-
-    { logo_url: resolved[:logo_url] }
+    league = @game.league
+    { logo_url: league.logo.attached? ? league.logo_url : nil }
   end
 
   def team_hash(side, base)
