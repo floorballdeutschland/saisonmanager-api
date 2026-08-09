@@ -32,9 +32,13 @@ Rails.application.routes.draw do
 
   resources :license_fees
 
-  get 'calendar/teams/:id', to: 'teams#show', constraints: ->(req) { req.format == :ics }
-  get 'calendar/leagues/:id', to: 'leagues#show', constraints: ->(req) { req.format == :ics }
-  get 'calendar/games/:id', to: 'games#show', constraints: ->(req) { req.format == :ics }
+  # Kalender-Abos auf Wurzelebene: in Produktion NICHT erreichbar, weil nginx nur
+  # /api und /verband an Rails weiterreicht. Sie bleiben für die lokale
+  # Entwicklung (dort läuft Rails ohne nginx davor) und zeigen auf dieselben
+  # Actions wie die nutzbaren Adressen unter api/v2/calendar weiter unten.
+  get 'calendar/teams/:id', to: 'teams#calendar', constraints: ->(req) { req.format == :ics }
+  get 'calendar/leagues/:id', to: 'leagues#calendar', constraints: ->(req) { req.format == :ics }
+  get 'calendar/games/:id', to: 'games#calendar', constraints: ->(req) { req.format == :ics }
 
   get 'api/v1/ticker/:game_operation_id/:season_id/leagues', to: 'api#leagues'
   get 'api/v1/ticker/games/:id', to: 'api#games'
@@ -66,6 +70,22 @@ Rails.application.routes.draw do
       get 'teams/:id/stats', to: 'teams#stats'
       get 'teams/:id/matches', to: 'teams#matches'
       get 'players/:id/stats', to: 'players#stats'
+
+      # Kalender-Abos (ICS). Sie liegen hier unter api/v2 und nicht auf
+      # Wurzelebene wie die Routen weiter oben, weil nginx ausschließlich /api
+      # und /verband an Rails weiterreicht. Ein /calendar/... landete deshalb im
+      # Frontend-Fallback, wo der Angular-Router NG04002 wirft – die verlinkten
+      # Kalender-Adressen waren nie erreichbar (Sentry SAISONMANAGER-2C).
+      #
+      # `defaults: { format: :ics }`, damit ein Abo auch ohne .ics-Endung einen
+      # Kalender bekommt: Manche Kalender-Programme kürzen die Endung weg,
+      # andere fragen mit `Accept: */*`, was sonst je nach Reihenfolge der
+      # Formate zufällig entscheidet.
+      scope 'calendar', defaults: { format: :ics } do
+        get 'teams/:id', to: 'teams#calendar', as: :team_calendar
+        get 'leagues/:id', to: 'leagues#calendar', as: :league_calendar
+        get 'games/:id', to: 'games#calendar', as: :game_calendar
+      end
 
       resources :leagues do
         member do

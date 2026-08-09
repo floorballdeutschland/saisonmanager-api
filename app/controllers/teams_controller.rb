@@ -1,5 +1,7 @@
 class TeamsController < ApplicationController
-  skip_before_action :authenticate_user, only: %i[show stats matches]
+  include IcalRenderable
+
+  skip_before_action :authenticate_user, only: %i[show stats matches calendar]
   before_action :authenticate_public_request, only: %i[show stats matches]
 
   # GET /teams
@@ -11,26 +13,24 @@ class TeamsController < ApplicationController
 
   # GET /teams/1.json
   def show
-    games = Game.by_team_id(params[:id])
-
     respond_to do |format|
-      format.ics do
-        ical = ::Icalendar::Calendar.new
-        events = games.map(&:ical)
-        events.each { |event| ical.add_event(event) }
-
-        require 'icalendar/tzinfo'
-        tzid = 'Europe/Berlin'
-        tz = TZInfo::Timezone.get tzid
-        timezone = tz.ical_timezone events.first.dtstart
-        ical.add_timezone timezone
-
-        ical.append_custom_property('METHOD', 'REQUEST')
-        ical.publish
-
-        render plain: ical.to_ical
-      end
+      format.ics { render_ical(Game.by_team_id(params[:id]).with_ical_associations) }
     end
+  end
+
+  # GET /api/v2/calendar/teams/1.ics
+  #
+  # Bewusst ohne API-Key (siehe `authenticate_public_request` oben): Die Adresse
+  # wird in ein Kalender-Programm eingetragen, und weder Google Calendar noch
+  # Apple Kalender oder Outlook können einen eigenen Kopfzeilen-Wert
+  # mitschicken. Mit Key-Zwang ist ein Abo technisch unmöglich.
+  #
+  # Vertretbar, weil ein Termin nur Begegnung, Zeit, Halle und den öffentlichen
+  # Link enthält (siehe Game#ical, dort ausdrücklich `ip_class = 'PUBLIC'`) –
+  # dieselben Angaben, die der Spielplan ohnehin öffentlich zeigt. Keine
+  # personenbezogenen Daten, insbesondere keine Aufstellungen.
+  def calendar
+    render_ical(Game.by_team_id(params[:id]).with_ical_associations)
   end
 
   def stats

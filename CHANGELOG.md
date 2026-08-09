@@ -13,6 +13,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 - **Eigenes Logo je Liga**: Ligen können ein eigenes Erkennungszeichen bekommen, etwa das der 1. Floorball-Bundesliga Herren. Es ist getrennt vom Werbebanner, das weiterhin eine anklickbare Anzeigefläche im Format 6:1 bleibt. Hochladen darf, wer die Liga bearbeiten darf; erlaubt sind PNG, JPG und WebP bis 3 MB, Querformat ausdrücklich eingeschlossen. Fehlt einer Liga das eigene Zeichen, wird das Logo des Landesverbands ausgewiesen, und zwar als solches gekennzeichnet: Anzeigen, die ausdrücklich das Ligazeichen meinen, etwa die Livestream-Einblendungen, zeigen dann lieber gar keines statt eines fremden. Der bisherige Behelf, in den Overlays das Bundesliga-Zeichen fest einzubauen, entfällt damit.
 
+## [1.74.1] - 2026-08-08
+
+### Behoben
+
+- **Fehler in der Spielansicht bei beendeten Spielen ohne Aufstellung**: Bei einem abgeschlossenen Spiel, zu dem keine Aufstellung erfasst ist, brach der Aufbau der Spielansicht an der Stelle ab, an der die Auszeichnungen stehen. Ursache war die Antwort zu den Auszeichnungen: Ohne Aufstellung ließ sie die Felder für Heim- und Gastmannschaft ganz weg, statt sie leer zu liefern. Der Bereich wird nur bei beendeten Spielen angezeigt, laufende und künftige Spiele waren daher nicht betroffen.
+
+## [1.74.0] - 2026-08-08
+
 ### Behoben
 
 - **Zwischenstände laufender Spiele waren über zwei Abrufe doch ohne Verzögerung zu haben**: Die Nutzungsvereinbarung sagt Inhabern eines API-Schlüssels zehn Minuten Verzögerung zu. Zwei Abrufe hielten sich nicht daran: Der ältere Ticker-Abruf zu einem einzelnen Spiel gab Ereignisse und Zwischenstand ungefiltert heraus, und die Spielliste einer Mannschaft nannte den Zwischenstand laufender Partien. Beide verzögern jetzt wie die übrigen öffentlichen Abrufe. Für angemeldete Nutzerinnen und Nutzer, für die Saisonmanager-Website und für Zugänge mit Echtzeit-Freigabe ändert sich nichts.
@@ -20,6 +28,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - **Endstände waren kurz nach dem Schlusspfiff falsch statt nur verzögert**: Der Spielstand wird aus den einzelnen Ereignissen berechnet. Wurden die jüngsten davon wegen der Verzögerung ausgelassen, kam damit nicht ein älterer Stand heraus, sondern ein falscher, und bei einem beendeten Spiel stand er als Endstand in der Antwort. Weil der Zeitstempel am Ereignis den Moment der Eingabe festhält und nicht die Spielminute, traf das besonders Berichte, die nach dem Spiel in einem Zug erfasst wurden: Dort waren alle Ereignisse frisch, und ein 3:0 wurde als beendetes 0:0 gemeldet. Beendete Spiele nennen ihren Endstand jetzt sofort; zurückgehalten werden nur noch Zwischenstände laufender Partien. Betroffen waren der Ticker-Abruf und der Spielabruf, jeweils nur mit einem API-Schlüssel ohne Echtzeit-Freigabe.
 
 - **Ein begonnenes Spiel ohne angelegten Spielbericht umging die Verzögerung**: In Spielplan-Listen hing das Zurückhalten am Berichtsstatus, das ausgewiesene Ergebnis dagegen allein daran, ob das Spiel angepfiffen war. Lag noch kein Bericht vor, ging der Live-Stand mit. Maßgeblich ist jetzt für beides dieselbe Bedingung.
+- **Kalender-Abos waren nicht abrufbar**: Auf der Mannschaftsseite und in der Spielübersicht steht ein Link, mit dem sich der Spielplan in den eigenen Kalender holen lässt. Er hat noch nie funktioniert: Die Adresse wurde vom Webserver gar nicht an die Anwendung weitergegeben, sondern beantwortete jeden Aufruf mit der leeren Website. Zusätzlich verlangte der Abruf einen API-Schlüssel, den ein Kalenderprogramm nicht mitschicken kann. Beides ist behoben, Abos für eine Mannschaft, eine Liga und ein einzelnes Spiel funktionieren jetzt in Google Kalender, Apple Kalender und Outlook. Ein Kalender enthält weiterhin nur, was der Spielplan ohnehin öffentlich zeigt: Begegnung, Zeit, Halle und den Link zum Spiel.
+
+- **Der Kalender einer Mannschaft ohne Termine endete im Serverfehler**: Stand für eine Mannschaft noch kein Anpfiff fest, brach der Abruf ab, statt einen leeren Kalender zu liefern. Am Saisonanfang betraf das jede Mannschaft. Spiele, für die noch keine Zeit gepflegt ist, bleiben jetzt einfach außen vor und kommen mit dem nächsten Abgleich des Abos hinzu.
+
 - **Spätabends abgeschlossene Spielberichte fielen aus dem Schiri-Feedback**: Das Spieltagsdatum ist ein deutsches Datum, die Anwendung rechnet intern aber in UTC. Zwischen 22 Uhr und Mitternacht deutscher Zeit liegen beide einen Tag auseinander, und in diesem Zeitraum galt der laufende Spieltag als „morgen". Die Übersicht der Rückmeldungen ließ die Spiele dieses Abends deshalb aus, und der stündliche Versand übersprang sie. Weil er stündlich läuft, holte er es später von selbst nach; wer abends nachsah, fand seine Partie trotzdem nicht. Maßgeblich ist jetzt überall der Kalender des Spielbetriebs, so wie schon bei der Berechnung des Abgabefensters.
 
 ### Neu
