@@ -1027,14 +1027,40 @@ class PlayersController < ApplicationController
   def vm_can_access_player?(ph, player)
     return false unless ph[:vm].present?
 
-    player.clubs.any? { |c| ph[:vm].include?(c['club_id'].to_i) }
+    player.clubs.any? { |c| ph[:vm].include?(c['club_id'].to_i) && membership_grants_access?(player, c) }
   end
 
   def tm_can_access_player?(ph, player)
     club_ids = tm_club_ids(ph)
     return false if club_ids.empty?
 
-    player.clubs.any? { |c| club_ids.include?(c['club_id'].to_i) }
+    player.clubs.any? { |c| club_ids.include?(c['club_id'].to_i) && membership_grants_access?(player, c) }
+  end
+
+  # Entscheidet, ob EIN Eintrag im clubs-Hash dem Verein heute noch Zugriff auf das
+  # Profil gibt. Ohne diese Prüfung reichte jede jemals bestandene Mitgliedschaft:
+  # Am 16.07.2026 haben drei VM-Konten so 68 Spieler deaktiviert, die längst bei
+  # einem anderen Verein spielten. `deactivate!` schließt dann sämtliche offenen
+  # Zugehörigkeiten und stempelt die Lizenzen auf DELETED, womit das Profil für
+  # seinen echten Verein aus `Player.active` und damit aus Suche und Spielerliste
+  # verschwindet.
+  #
+  # Die Bedingung ist absichtlich Zeichen für Zeichen die aus `Club#players`: Was
+  # ein Verein in seiner Spielerliste sieht, soll er auch bearbeiten können, und
+  # nichts darüber hinaus. Läuft die eine Seite der anderen davon, entstehen
+  # Profile, die sichtbar, aber nicht bearbeitbar sind – oder umgekehrt.
+  #
+  # Der zweite Zweig ist kein Schlupfloch, sondern die Rücknahme: `deactivate!`
+  # schließt alle offenen Zugehörigkeiten auf den Zeitpunkt der Deaktivierung.
+  # Ohne ihn könnte ein Verein seine EIGENE Deaktivierung nicht mehr zurücknehmen,
+  # weil er sich mit ihr selbst den Zugriff genommen hätte.
+  # `membership_closed_by_deactivation?` prüft dafür Stempel UND Zeitfenster, eine
+  # ältere abgelaufene Zugehörigkeit erfüllt das nicht.
+  def membership_grants_access?(player, membership)
+    return true if membership['valid_until'].blank?
+    return true if membership['valid_until'].to_date >= Time.now
+
+    player.membership_closed_by_deactivation?(membership)
   end
 
   def tm_can_access_club?(ph, club_id)

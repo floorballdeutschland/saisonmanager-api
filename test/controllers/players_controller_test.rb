@@ -737,6 +737,102 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert dublette.reload.deactivated_at.present?
   end
 
+  # --- Zugriff nur bei gueltiger Vereinszugehoerigkeit ------------------------
+  # can_manage_player? nahm jeden Eintrag im clubs-Hash, ohne valid_until zu lesen.
+  # Wer je Mitglied war, blieb fuer den alten Verein dauerhaft deaktivierbar. Am
+  # 16.07.2026 haben drei VM-Konten so 68 Spieler deaktiviert, die laengst bei einem
+  # anderen Verein spielten.
+
+  test 'VM des Altvereins darf einen abgewanderten Spieler nicht deaktivieren' do
+    altverein = create(:club)
+    alt_vm = create(:user, :vm, club_id: altverein.id)
+    abgewandert = create(:player, clubs: [
+                           { 'club_id' => altverein.id, 'valid_until' => 2.years.ago.iso8601,
+                             'valid_set_by' => alt_vm.id },
+                           { 'club_id' => @club.id, 'home_club' => true }
+                         ])
+
+    login_as(alt_vm)
+    post "/api/v2/admin/players/#{abgewandert.id}/deactivate", params: { reason: 'Vereinsaustritt' }
+    assert_response :forbidden
+    assert_nil abgewandert.reload.deactivated_at
+
+    # Auch das Profil selbst bleibt zu: sonst haette der Altverein weiter Einblick
+    # in Geburtsdatum und Lizenzhistorie einer Person, die nicht mehr zu ihm gehoert.
+    get "/api/v2/admin/players/#{abgewandert.id}.json"
+    assert_response :forbidden
+  end
+
+  test 'VM des aktuellen Vereins darf denselben Spieler deaktivieren' do
+    altverein = create(:club)
+    vm = create(:user, :vm, club_id: @club.id)
+    abgewandert = create(:player, clubs: [
+                           { 'club_id' => altverein.id, 'valid_until' => 2.years.ago.iso8601 },
+                           { 'club_id' => @club.id, 'home_club' => true }
+                         ])
+
+    login_as(vm)
+    post "/api/v2/admin/players/#{abgewandert.id}/deactivate", params: { reason: 'Karriereende' }
+    assert_response :success
+    assert abgewandert.reload.deactivated_at.present?
+  end
+
+  # Der Rueckweg muss offen bleiben: deactivate! schliesst alle offenen
+  # Zugehoerigkeiten, der Verein haette sich sonst mit der Deaktivierung selbst den
+  # Zugriff genommen und koennte sie nicht mehr zuruecknehmen.
+  test 'VM kann die eigene Deaktivierung wieder zuruecknehmen' do
+    vm = create(:user, :vm, club_id: @club.id)
+    player = create(:player, clubs: [{ 'club_id' => @club.id, 'home_club' => true }])
+
+    login_as(vm)
+    post "/api/v2/admin/players/#{player.id}/deactivate", params: { reason: 'Temporäre Pause' }
+    assert_response :success
+
+    post "/api/v2/admin/players/#{player.id}/reactivate"
+    assert_response :success
+    assert_nil player.reload.deactivated_at
+    assert_nil player.clubs.first['valid_until']
+  end
+
+  # Ein befristetes Zweitspielrecht endet regulaer, ohne dass jemand deaktiviert
+  # wurde. Danach ist der Zweitverein wieder aussen vor.
+  test 'VM eines abgelaufenen Zweitspielrechts hat keinen Zugriff mehr' do
+    zweitverein = create(:club)
+    zweit_vm = create(:user, :vm, club_id: zweitverein.id)
+    player = create(:player, clubs: [
+                      { 'club_id' => @club.id, 'home_club' => true },
+                      { 'club_id' => zweitverein.id, 'valid_until' => 1.day.ago.iso8601 }
+                    ])
+
+    login_as(zweit_vm)
+    post "/api/v2/admin/players/#{player.id}/deactivate", params: { reason: 'Vereinsaustritt' }
+    assert_response :forbidden
+
+    # Solange es laeuft, darf er sehr wohl.
+    player.update!(clubs: [
+                     { 'club_id' => @club.id, 'home_club' => true },
+                     { 'club_id' => zweitverein.id, 'valid_until' => 1.month.from_now.iso8601 }
+                   ])
+    get "/api/v2/admin/players/#{player.id}.json"
+    assert_response :success
+  end
+
+  test 'TM des Altvereins darf einen abgewanderten Spieler nicht deaktivieren' do
+    altverein = create(:club)
+    alt_league = create(:league, :current_season, game_operation: @game_operation)
+    alt_team = create(:team, league: alt_league, club: altverein)
+    alt_tm = create(:user, :tm, team_id: alt_team.id)
+    abgewandert = create(:player, clubs: [
+                           { 'club_id' => altverein.id, 'valid_until' => 2.years.ago.iso8601 },
+                           { 'club_id' => @club.id, 'home_club' => true }
+                         ])
+
+    login_as(alt_tm)
+    post "/api/v2/admin/players/#{abgewandert.id}/deactivate", params: { reason: 'Vereinsaustritt' }
+    assert_response :forbidden
+    assert_nil abgewandert.reload.deactivated_at
+  end
+
   # --- Spielbetriebs-Scope der SBK-Rolle im Lizenzwesen -----------------------
   # Der Antragspfad prüfte nur, DASS eine SBK-Rolle existiert, nicht für welchen
   # Spielbetrieb: ein SBK eines Landesverbands konnte in jeder Liga jedes anderen

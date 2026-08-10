@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Vereine konnten Spieler deaktivieren, die längst woanders spielen**: Für den Zugriff eines Vereinsmanagers oder Teammanagers auf ein Spielerprofil genügte bisher, dass der Verein irgendwann einmal in der Vereinshistorie des Profils stand. Ob diese Zugehörigkeit heute noch gilt, wurde nicht geprüft. Ein früherer Verein konnte damit dauerhaft das Profil einsehen und die Person deaktivieren, obwohl sie seit Jahren bei einem anderen Verein gemeldet ist. Weil eine Deaktivierung alle offenen Vereinszugehörigkeiten schließt und die Lizenzen der laufenden Saison löscht, verschwand sie anschließend aus der Suche und aus der Spielerliste ihres tatsächlichen Vereins. Maßgeblich ist jetzt dieselbe Bedingung, nach der sich auch die Vereinsspielerliste richtet: Zugriff nur bei gültiger Zugehörigkeit. Die eigene Deaktivierung bleibt für den Verein zurücknehmbar, der sie ausgesprochen hat.
+
 ## [1.74.1] - 2026-08-08
 
 ### Behoben
