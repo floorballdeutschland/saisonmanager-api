@@ -229,7 +229,11 @@ class PublicOverlayController < ApplicationController
       league: {
         id: league.id,
         name: league.name,
-        short_name: league.short_name
+        short_name: league.short_name,
+        # Wie im Overlay-Abruf: Merkmale des Wettbewerbs statt der league_id,
+        # die je Saison eine andere ist.
+        league_class_id: league.league_class_id,
+        female: league.female
       },
       game_day: {
         id: @link.game_day.id,

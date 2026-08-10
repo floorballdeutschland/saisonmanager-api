@@ -65,6 +65,13 @@ class OverlayPayload
         id: base[:league_id],
         name: base[:league_name],
         short_name: base[:league_short_name],
+        # Merkmale des Wettbewerbs, damit die Bühne ihr Erscheinungsbild danach
+        # richten kann. Bewusst NICHT die league_id: Ligen sind Zeilen je
+        # Saison, eine Liga-Kopie zur neuen Saison bekommt eine neue id. Eine
+        # Zuordnung über die id fiele damit zu jedem Saisonwechsel still auf
+        # das Standardaussehen zurück.
+        league_class_id: @game.league&.league_class_id,
+        female: @game.league&.female,
         game_day: base[:game_day]
       },
       arena: {
