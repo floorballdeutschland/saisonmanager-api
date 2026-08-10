@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Abruf der Livestreams des Tages**: Die Adressen von Livestream und Aufzeichnung werden im Spielbericht erfasst, standen bisher aber nur am einzelnen Spiel. Wer wissen wollte, was gerade läuft, musste die Ligen einzeln durchgehen. Ein neuer öffentlicher Abruf nennt die Spiele des Tages mit hinterlegtem Stream-Link, nach Anwurf sortiert: laufende zuerst mit Abschnitt und Zwischenstand, dann die anstehenden, darunter die beendeten mit Endstand und Aufzeichnung. Für die Zwischenstände gilt dabei dieselbe Regel wie bei allen öffentlichen Abrufen: Angemeldete und die Saisonmanager-Website sehen sie sofort, ein Zugang ohne Echtzeit-Freigabe erst nach zehn Minuten.
+
 ## [1.74.1] - 2026-08-08
 
 ### Behoben
