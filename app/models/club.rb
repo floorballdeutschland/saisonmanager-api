@@ -1,4 +1,6 @@
 class Club < ApplicationRecord
+  include SponsorLogos
+
   has_many :game_days
   belongs_to :state_association, optional: true
 

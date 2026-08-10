@@ -2,6 +2,7 @@ class League < ApplicationRecord
   include UserTrackable
   include LeagueDirectEncounterTable
   include LeagueBanner
+  include SponsorLogos
 
   has_many :game_days
   has_many :qualifications, class_name: 'LeagueQualification',

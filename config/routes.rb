@@ -125,6 +125,12 @@ Rails.application.routes.draw do
       post 'admin/leagues/:id/upload_banner', to: 'leagues#admin_upload_banner'
       delete 'admin/leagues/:id/banner', to: 'leagues#admin_delete_banner'
 
+      # Partnerlogos für die Livestream-Overlays. Zwei Ebenen: der Verband
+      # pflegt die der Liga, der Verein die seines Vereins (weiter unten).
+      get    'admin/leagues/:id/sponsor_logos',                to: 'leagues#sponsor_logos_index'
+      post   'admin/leagues/:id/sponsor_logos',                to: 'leagues#sponsor_logos_create'
+      delete 'admin/leagues/:id/sponsor_logos/:attachment_id', to: 'leagues#sponsor_logos_destroy'
+
       post 'admin/game_operations/:id/upload_banner', to: 'game_operations#admin_upload_banner'
       delete 'admin/game_operations/:id/banner', to: 'game_operations#admin_delete_banner'
       patch 'admin/game_operations/:id/banner_link', to: 'game_operations#admin_update_banner_link'
@@ -143,6 +149,9 @@ Rails.application.routes.draw do
       get 'admin/clubs/:id', to: 'clubs#admin_club'
       post 'admin/clubs', to: 'clubs#admin_club_update'
       post 'admin/clubs/:id/upload_logo', to: 'clubs#admin_upload_logo'
+      get    'admin/clubs/:id/sponsor_logos',                to: 'clubs#sponsor_logos_index'
+      post   'admin/clubs/:id/sponsor_logos',                to: 'clubs#sponsor_logos_create'
+      delete 'admin/clubs/:id/sponsor_logos/:attachment_id', to: 'clubs#sponsor_logos_destroy'
       post 'admin/clubs/:id/deactivate', to: 'clubs#admin_club_deactivate'
       post 'admin/clubs/:id/reactivate', to: 'clubs#admin_club_reactivate'
 

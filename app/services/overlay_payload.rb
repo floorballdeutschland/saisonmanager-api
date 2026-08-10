@@ -79,11 +79,29 @@ class OverlayPayload
         short: base[:arena_short]
       },
       hosting_club: base[:hosting_club],
-      referees: base[:referees]
+      referees: base[:referees],
+      sponsors: sponsors
     }
   end
 
   private
+
+  # Partnerlogos für die Sponsorenfläche der Bühne, nach Ebene getrennt.
+  #
+  # Getrennt und nicht in einer Liste, weil die beiden Sätze verschiedenen
+  # Rechteinhabern gehören: Der Verband pflegt die Partner der Liga, der Verein
+  # die seines Vereins. Die Bühne blendet sie reihum ein und beschriftet sie
+  # unterschiedlich; zusammengeworfen ließe sich das nicht mehr trennen.
+  #
+  # Maßgeblich ist der Ausrichter des Spieltags (`game_day.club`) und nicht die
+  # Heimmannschaft: Bei einem Turnierspieltag in fremder Halle wirbt der
+  # Ausrichter, nicht wer gerade als Heimteam geführt wird.
+  def sponsors
+    {
+      league: @game.league&.sponsor_logo_urls || [],
+      club: @game.game_day&.club&.sponsor_logo_urls || []
+    }
+  end
 
   def team_hash(side, base)
     team = side == 'home' ? @game.home_team : @game.guest_team

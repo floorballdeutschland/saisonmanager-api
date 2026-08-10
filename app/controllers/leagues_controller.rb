@@ -1,12 +1,16 @@
 class LeaguesController < ApplicationController
   include IcalRenderable
+  # Partnerlogos für die Overlays: der Verband pflegt die der Liga. Die
+  # Vereinsebene liegt spiegelbildlich im ClubsController.
+  include SponsorLogoManagement
 
   # additional_references gehört trotz des öffentlich klingenden Musters in die
   # Ausnahmeliste: Der Endpunkt liefert Vereins- und Spielort-Stammdaten für die
   # Spielplanverwaltung und wird ausschließlich von Admin-Views aufgerufen. Ohne
   # den Eintrag hier hätte ein reiner X-Api-Key gereicht.
   COOKIE_ONLY_ACTIONS = %i[admin_league_index admin_league_delete admin_upload_banner admin_delete_banner
-                           additional_references].freeze
+                           additional_references
+                           sponsor_logos_index sponsor_logos_create sponsor_logos_destroy].freeze
 
   # Kalender-Abos kommen ohne API-Key, weil Kalender-Programme keine eigene
   # Kopfzeile mitschicken können. Begründung an TeamsController#calendar.
@@ -834,6 +838,15 @@ class LeaguesController < ApplicationController
     return unless Rails.cache.write(cache_key, true, expires_in: 30.minutes, unless_exist: true)
 
     DailyMetric.increment!('public_views')
+  end
+
+  def sponsor_logo_owner
+    @sponsor_logo_owner ||= League.find_by(id: params[:id])
+  end
+
+  # Dieselbe Berechtigung wie für das Banner der Liga.
+  def sponsor_logo_permitted?
+    sponsor_logo_owner.user_permissions(current_user).include?(:update_league)
   end
 
   def league_params

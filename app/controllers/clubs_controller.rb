@@ -1,6 +1,9 @@
 class ClubsController < ApplicationController
   include LicenseDocumentPresentation
   include LicenseAccessScope
+  # Partnerlogos für die Overlays: der Verein pflegt seine eigenen. Die
+  # Ligaebene liegt spiegelbildlich im LeaguesController.
+  include SponsorLogoManagement
 
   def user_clubs_and_teams
     ph = current_user.permission_hash
@@ -328,6 +331,25 @@ class ClubsController < ApplicationController
   end
 
   private
+
+  def sponsor_logo_owner
+    @sponsor_logo_owner ||= Club.find_by(id: params[:id])
+  end
+
+  # Admin und SBK über :update_club — und ausdrücklich zusätzlich der
+  # Vereinsmanager des eigenen Vereins.
+  #
+  # `:update_club` allein reicht hier NICHT: Club#user_permissions vergibt es
+  # nur an Admin und SBK, ein Vereinsmanager bekommt daraus lediglich
+  # :create_player. Über diese Prüfung käme der Verein also an seine eigenen
+  # Partnerlogos nicht heran — und genau dafür gibt es die zweite Ebene. Die
+  # Erlaubnis endet am eigenen Verein: geprüft wird gegen die id aus der URL.
+  def sponsor_logo_permitted?
+    return true if sponsor_logo_owner.user_permissions(current_user).include?(:update_club)
+
+    ph = current_user.permission_hash
+    ph[:vm].present? && ph[:vm].include?(sponsor_logo_owner.id)
+  end
 
   # Gemeinsam für Anlage und Änderung. Der Spielbetrieb fehlt hier bewusst: er
   # ist keine Spalte am Verein, sondern ein Eintrag im game_operations_hash, und
