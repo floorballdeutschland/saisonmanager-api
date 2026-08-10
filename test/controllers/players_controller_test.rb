@@ -747,10 +747,9 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     altverein = create(:club)
     alt_vm = create(:user, :vm, club_id: altverein.id)
     abgewandert = create(:player, clubs: [
-                           { 'club_id' => altverein.id, 'valid_until' => 2.years.ago.iso8601,
-                             'valid_set_by' => alt_vm.id },
-                           { 'club_id' => @club.id, 'home_club' => true }
-                         ])
+      { 'club_id' => altverein.id, 'valid_until' => 2.years.ago.iso8601, 'valid_set_by' => alt_vm.id },
+      { 'club_id' => @club.id, 'home_club' => true }
+    ])
 
     login_as(alt_vm)
     post "/api/v2/admin/players/#{abgewandert.id}/deactivate", params: { reason: 'Vereinsaustritt' }
@@ -767,9 +766,9 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     altverein = create(:club)
     vm = create(:user, :vm, club_id: @club.id)
     abgewandert = create(:player, clubs: [
-                           { 'club_id' => altverein.id, 'valid_until' => 2.years.ago.iso8601 },
-                           { 'club_id' => @club.id, 'home_club' => true }
-                         ])
+      { 'club_id' => altverein.id, 'valid_until' => 2.years.ago.iso8601 },
+      { 'club_id' => @club.id, 'home_club' => true }
+    ])
 
     login_as(vm)
     post "/api/v2/admin/players/#{abgewandert.id}/deactivate", params: { reason: 'Karriereende' }
@@ -800,9 +799,9 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     zweitverein = create(:club)
     zweit_vm = create(:user, :vm, club_id: zweitverein.id)
     player = create(:player, clubs: [
-                      { 'club_id' => @club.id, 'home_club' => true },
-                      { 'club_id' => zweitverein.id, 'valid_until' => 1.day.ago.iso8601 }
-                    ])
+      { 'club_id' => @club.id, 'home_club' => true },
+      { 'club_id' => zweitverein.id, 'valid_until' => 1.day.ago.iso8601 }
+    ])
 
     login_as(zweit_vm)
     post "/api/v2/admin/players/#{player.id}/deactivate", params: { reason: 'Vereinsaustritt' }
@@ -810,9 +809,9 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
 
     # Solange es laeuft, darf er sehr wohl.
     player.update!(clubs: [
-                     { 'club_id' => @club.id, 'home_club' => true },
-                     { 'club_id' => zweitverein.id, 'valid_until' => 1.month.from_now.iso8601 }
-                   ])
+      { 'club_id' => @club.id, 'home_club' => true },
+      { 'club_id' => zweitverein.id, 'valid_until' => 1.month.from_now.iso8601 }
+    ])
     get "/api/v2/admin/players/#{player.id}.json"
     assert_response :success
   end
@@ -823,9 +822,9 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     alt_team = create(:team, league: alt_league, club: altverein)
     alt_tm = create(:user, :tm, team_id: alt_team.id)
     abgewandert = create(:player, clubs: [
-                           { 'club_id' => altverein.id, 'valid_until' => 2.years.ago.iso8601 },
-                           { 'club_id' => @club.id, 'home_club' => true }
-                         ])
+      { 'club_id' => altverein.id, 'valid_until' => 2.years.ago.iso8601 },
+      { 'club_id' => @club.id, 'home_club' => true }
+    ])
 
     login_as(alt_tm)
     post "/api/v2/admin/players/#{abgewandert.id}/deactivate", params: { reason: 'Vereinsaustritt' }
