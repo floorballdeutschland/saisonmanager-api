@@ -55,6 +55,12 @@ class OverlayPayload
       players: base[:players],
       starting_players: base[:starting_players],
 
+      # Für das Endstandbild, das nach dem Schlusspfiff stehen bleibt.
+      # `Game#awards_with_player_names` ist total: Ohne Aufstellung oder ohne
+      # vergebene Auszeichnung stehen leere Einträge (`player_id: ''`) drin
+      # statt zu fehlen. Das Vollbild muss damit nur einen Fall behandeln.
+      awards: base[:awards],
+
       league: {
         id: base[:league_id],
         name: base[:league_name],

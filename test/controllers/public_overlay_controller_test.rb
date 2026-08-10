@@ -308,6 +308,131 @@ class PublicOverlayControllerTest < ActionDispatch::IntegrationTest
     assert_equal second.id, JSON.parse(response.body)['game_id']
   end
 
+  # ── Auszeichnungen ────────────────────────────────────────────────────────
+
+  test 'die Auszeichnungen des Spiels kommen mit' do
+    @game.update!(awards: { 'home' => { 'mvp' => 1 }, 'guest' => {} })
+
+    get '/api/v2/public/overlay/live', params: { token: @token }
+
+    assert_response :success
+    awards = JSON.parse(response.body)['game']['awards']
+    assert_equal 'Mustermann', awards['home'].first['player_name']
+    # Ohne Auszeichnung bleibt der Eintrag leer, statt zu fehlen: Das
+    # Endstandbild muss damit nur einen Fall behandeln.
+    assert_equal '', awards['guest'].first['player_id']
+  end
+
+  # ── Ligaweite Vollbilder ──────────────────────────────────────────────────
+
+  test 'Tabelle und Scorerliste sind mit dem Spieltags-Token erreichbar' do
+    get '/api/v2/public/overlay/table', params: { token: @token }
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal @league.id, body['league']['id']
+    assert body['table'].is_a?(Array)
+
+    get '/api/v2/public/overlay/scorer', params: { token: @token }
+    assert_response :success
+    assert JSON.parse(response.body)['scorer'].is_a?(Array)
+  end
+
+  test 'ohne gueltiges Token gibt es auch die Ligadaten nicht' do
+    get '/api/v2/public/overlay/table'
+    assert_response :bad_request
+
+    get '/api/v2/public/overlay/scorer', params: { token: 'gibtesnicht' }
+    assert_response :gone
+
+    get '/api/v2/public/overlay/schedule', params: { token: 'gibtesnicht' }
+    assert_response :gone
+  end
+
+  # Der Zugang ist an den Spieltag gebunden und nicht frei wählbar. Gäbe es
+  # einen league_id-Parameter, wäre aus dem Token ein Generalschlüssel für den
+  # Live-Bestand jeder Liga geworden.
+  test 'eine fremde Liga laesst sich nicht anfordern' do
+    fremde = create(:league, game_operation: @go, name: 'Fremde Liga')
+
+    get '/api/v2/public/overlay/table', params: { token: @token, league_id: fremde.id }
+
+    assert_response :success
+    assert_equal @league.id, JSON.parse(response.body)['league']['id']
+  end
+
+  test 'ein Spieltag ohne Liga endet nicht im Serverfehler' do
+    @game_day.update_column(:league_id, nil)
+
+    get '/api/v2/public/overlay/table', params: { token: @token }
+
+    assert_response :not_found
+  end
+
+  # ── Die Verzögerung endet am eigenen Spieltag ─────────────────────────────
+  # Das Token hebt sie nur für die Spiele SEINES Spieltags auf. Eine parallel
+  # laufende Partie in einer anderen Halle steht ohne Zwischenstand im
+  # Spielplan. `delay_live_scores` aus dem ApplicationController greift hier
+  # nicht (delay_live_data? ist ohne API-Key immer false), deshalb muss der
+  # eigene Filter das leisten.
+  test 'parallel laufende Partien kommen ohne Zwischenstand' do
+    parallel_day = create(:game_day, league: @league, number: @game_day.number)
+    parallel_game = create(:game, game_day: parallel_day,
+                                  home_team: create(:team, league: @league, name: 'Dritter'),
+                                  guest_team: create(:team, league: @league, name: 'Vierter'),
+                                  started: true, ended: false,
+                                  events: [{ 'row' => 1, 'period' => 1, 'event_type' => 'goal',
+                                             'event_team' => 'home', 'home_number' => 5,
+                                             'home_goals' => 4, 'guest_goals' => 1,
+                                             'added_at' => 30.seconds.ago.to_i }])
+
+    get '/api/v2/public/overlay/schedule', params: { token: @token }
+
+    assert_response :success
+    schedule = JSON.parse(response.body)['schedule']
+
+    fremd = schedule.find { |g| g['game_id'] == parallel_game.id }
+    assert fremd.present?, 'die parallele Partie fehlt im Spielplan'
+    assert_nil fremd['result'], 'der Zwischenstand der fremden Halle darf nicht mitkommen'
+    assert_nil fremd['result_string']
+
+    eigen = schedule.find { |g| g['game_id'] == @game.id }
+    assert_equal '2:0', eigen['result_string'], 'das eigene Spiel bleibt live'
+  end
+
+  test 'beendete Partien anderer Hallen behalten ihren Endstand' do
+    parallel_day = create(:game_day, league: @league, number: @game_day.number)
+    beendet = create(:game, :with_result, game_day: parallel_day,
+                                          home_team: create(:team, league: @league),
+                                          guest_team: create(:team, league: @league),
+                                          ended: true)
+
+    get '/api/v2/public/overlay/schedule', params: { token: @token }
+
+    assert_response :success
+    eintrag = JSON.parse(response.body)['schedule'].find { |g| g['game_id'] == beendet.id }
+    assert_equal '3:1', eintrag['result_string']
+  end
+
+  # Ohne diesen Hinweis sieht eine unvollständige Tabelle auf Sendung wie ein
+  # Fehler aus. Das eigene Spiel läuft ebenfalls, ist aber vollständig zu sehen
+  # und deshalb gesondert markiert.
+  test 'running_games weist laufende Partien aus und trennt die eigene ab' do
+    parallel_day = create(:game_day, league: @league, number: @game_day.number)
+    parallel_game = create(:game, game_day: parallel_day,
+                                  home_team: create(:team, league: @league),
+                                  guest_team: create(:team, league: @league),
+                                  started: true, ended: false)
+
+    get '/api/v2/public/overlay/table', params: { token: @token }
+
+    assert_response :success
+    running = JSON.parse(response.body)['running_games']
+    assert_equal [@game.id, parallel_game.id].sort, running.map { |r| r['game_id'] }.sort
+
+    assert running.find { |r| r['game_id'] == @game.id }['own_game_day']
+    assert_not running.find { |r| r['game_id'] == parallel_game.id }['own_game_day']
+  end
+
   private
 
   def login(user)

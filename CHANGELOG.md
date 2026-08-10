@@ -9,6 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Livestream-Overlays: Datengrundlage für die Vollbilder**: Die Overlay-Bühne kann bisher Anzeigetafel und Bauchbinden. Für die Vollbilder, die zwischen den Abschnitten und nach dem Schlusspfiff eingeblendet werden, fehlten drei Angaben. Die Auszeichnungen des Spiels kommen jetzt im Overlay-Abruf mit, damit das Endstandbild die wertvollste Spielerin oder den wertvollsten Spieler nennen kann. Dazu sind Tabelle, Torschützenliste und der Spielplan der Liga jetzt auch mit dem Spieltags-Token erreichbar, ohne Anmeldung und ohne API-Schlüssel. Welche Liga das ist, ergibt sich allein aus dem Spieltag des Tokens und lässt sich nicht frei wählen.
+
+  Die Ausnahme, die das Token für Live-Daten macht, bleibt dabei auf seinen eigenen Spieltag beschränkt: Parallel laufende Partien in anderen Hallen stehen im Spielplan weiterhin ohne Zwischenstand, und Tabelle wie Torschützenliste zählen wie überall nur beendete Spiele. Damit eine deshalb unvollständige Tabelle auf Sendung nicht wie ein Fehler aussieht, nennt jede Antwort die Partien, die gerade noch laufen.
+
 ## [1.74.1] - 2026-08-08
 
 ### Behoben
