@@ -163,6 +163,7 @@ class LiveStreamsControllerTest < ActionDispatch::IntegrationTest
     get '/api/v2/live_streams', headers: api_key_headers
 
     assert_response :success
-    assert_equal %w[running upcoming ended], JSON.parse(response.body)['games'].map { |g| g['status'] }
+    stati = JSON.parse(response.body)['games'].map { |g| g['status'] }
+    assert_equal %w[running upcoming ended], stati
   end
 end
