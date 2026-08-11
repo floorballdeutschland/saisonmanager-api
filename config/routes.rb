@@ -160,6 +160,9 @@ Rails.application.routes.draw do
       post 'admin/players/:id/handle_license_request', to: 'players#handle_license_request'
       post 'admin/players/:id/set_gf_license_role', to: 'players#set_gf_license_role'
 
+      # Auswahlliste für den Upload am Spielerprofil (Admin::DocumentTypesController
+      # ist der Katalog fuer Admin/SBK und kennt den Spieler nicht).
+      get    'admin/players/:player_id/document_types',        to: 'admin/license_documents#available_types'
       get    'admin/players/:player_id/license_documents',     to: 'admin/license_documents#index'
       post   'admin/players/:player_id/license_documents',     to: 'admin/license_documents#create'
       get    'admin/players/:player_id/license_documents/:id', to: 'admin/license_documents#show'

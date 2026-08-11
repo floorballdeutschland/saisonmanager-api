@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Dokumente auch am Spielerprofil hochladen**: Bisher ließen sich Nachweise nur beim Beantragen einer Lizenz hinterlegen. Künftig geht das auch direkt am Spielerprofil aus der Spielerliste heraus. Dafür nennt die Schnittstelle jetzt die Dokumentarten, die für eine bestimmte Person in Frage kommen: die bundesweiten und die des Landesverbands ihrer aktuellen Vereine. Arten, die nur unter einem bestimmten Alter verlangt werden, bleiben bei älteren Personen außen vor. Zugriff haben Verbands- und Vereinsverantwortliche, also alle, die die Dokumente der Person ohnehin einsehen dürfen.
+
 ## [1.74.1] - 2026-08-08
 
 ### Behoben
