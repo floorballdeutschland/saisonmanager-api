@@ -56,28 +56,67 @@ class LiveStreamsController < ApplicationController
   end
 
   def build_entries(date)
-    games_of_day(date).map { |game| entry(game) }.sort_by do |e|
-      [STATUS_ORDER.fetch(e[:status], 9), e[:time].to_s, e[:game_number].to_i]
+    entries = games_of_day(date).map { |game| entry(game) }
+
+    # Einträge, an denen nach `.presence` weder Stream noch Aufzeichnung übrig ist,
+    # gehören nicht in die Liste. Der SQL-Filter lässt jeden nicht-leeren Text durch,
+    # also auch ein Feld, in dem nur Leerzeichen stehen. Ohne diesen Riegel stünde auf
+    # der Seite eine Übertragung, die nirgendwohin führt.
+    entries.reject! { |e| e[:live_stream_link].nil? && e[:vod_link].nil? }
+
+    log_empty_but_games_exist(date) if entries.empty?
+
+    entries.sort_by do |e|
+      # `start_time` ist eine Textspalte, ein leerer Wert sortierte sonst VOR 09:00 --
+      # das ungepflegte Spiel stünde über dem, das gleich angeworfen wird. Dasselbe
+      # Muster wie in PublicSecretaryController.
+      [STATUS_ORDER.fetch(e[:status], 9), e[:time].presence || '99:99', e[:game_number].to_i]
     end
   end
 
+  # Eine leere Liste heißt auf der Seite "heute wird nichts übertragen". Genau so
+  # sieht aber auch ein nicht mehr zutreffender Datumsvergleich aus, und zwar ohne
+  # Fehler und ohne Logzeile. Diese eine Abfrage je Cache-Miss trennt die beiden
+  # Fälle: Gibt es überhaupt Spieltage mit diesem Datum, war der Tag nicht ruhig,
+  # sondern es ist nur an keinem ein Link hinterlegt -- und gibt es keinen einzigen,
+  # obwohl Spiele stattfinden, ist das der Hinweis auf ein Formatproblem in der
+  # Spalte (siehe games_of_day).
+  def log_empty_but_games_exist(date)
+    return unless GameDay.where(date: date.to_s).exists?
+
+    Rails.logger.info("live_streams: #{date} hat Spieltage, aber keinen hinterlegten Stream-Link")
+  end
+
   # Verglichen wird als Text und nicht über TO_DATE. `game_days.date` ist eine
-  # String-Spalte, in der auch Unbrauchbares stehen kann ("TBD", ein leerer
-  # Wert, ein 30. Februar). TO_DATE wirft daran und riss schon andere
-  # Übersichten in einen 500er; ein Textvergleich lässt solche Zeilen einfach
-  # nicht zutreffen und nutzt zudem den Index auf der Spalte.
+  # String-Spalte, in der auch Unbrauchbares stehen kann ("TBD", ein leerer Wert,
+  # ein 30. Februar). TO_DATE wirft daran und riss schon andere Übersichten in
+  # einen 500er; ein Textvergleich lässt solche Zeilen einfach nicht zutreffen.
+  #
+  # Die Kehrseite, damit sie niemand übersieht: Der Vergleich ist zeichengenau.
+  # `GameDay` hat keine Validierung auf das Format, und der Altdaten-Import
+  # schreibt `datum` ungeprüft durch. Ein abweichend formatierter Wert
+  # ("11.08.2026") trifft hier nicht zu, und weil dieser Abruf eine leere Liste
+  # als "heute wird nichts übertragen" darstellt, ist so ein Datensatz nicht
+  # bloß unsichtbar, sondern nicht von einem ruhigen Tag zu unterscheiden.
+  # Deshalb die Zählung unten. Auf der Schreibseite gehört das an GameDay, siehe #380.
+  #
+  # Einen Index auf `game_days.date` gibt es NICHT (indiziert sind arena_id,
+  # club_id, (league_id, number) und legacy_ref). Jeder Cache-Miss ist also ein
+  # Seq Scan. Bei der Tabellengröße vertretbar, aber nicht so, wie es hier vorher
+  # behauptet stand.
   def games_of_day(date)
-    # Nur `:game_day` joinen, nicht zusätzlich `:league`: League trägt ein
-    # `default_scope` mit `order('order_key::int')`, und order_key ist eine
-    # Textspalte, die auch Nicht-Numerisches enthalten kann. Die Liga wird
-    # ohnehin nur gelesen, nicht gefiltert – dafür genügt der Preload.
+    # Die Liga wird nur gelesen, nicht gefiltert – dafür genügt der Preload, ein
+    # zweiter Join brächte nichts.
     Game.joins(:game_day)
         .includes({ home_team: League::TEAM_WITH_LOGO_PRELOAD },
                   { guest_team: League::TEAM_WITH_LOGO_PRELOAD },
                   { game_day: %i[league arena club] })
         .where(game_days: { date: date.to_s })
-        .where("COALESCE(games.live_stream_link, '') <> '' OR COALESCE(games.vod_link, '') <> ''")
-        .to_a
+        # BTRIM, weil `<> ''` auch ein Feld mit reinen Leerzeichen durchlässt. Das
+        # `.presence` im Eintrag macht daraus danach nil, übrig blieb ein Eintrag
+        # ohne jeden Link.
+        .where("COALESCE(BTRIM(games.live_stream_link), '') <> '' " \
+               "OR COALESCE(BTRIM(games.vod_link), '') <> ''")
   end
 
   def entry(game)

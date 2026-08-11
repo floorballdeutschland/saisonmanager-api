@@ -166,4 +166,122 @@ class LiveStreamsControllerTest < ActionDispatch::IntegrationTest
     stati = JSON.parse(response.body)['games'].map { |g| g['status'] }
     assert_equal %w[running upcoming ended], stati
   end
+
+  # Der Test oben hat je Block genau ein Spiel und nagelt damit nur STATUS_ORDER
+  # fest. Der zweite Sortierschluessel war ungedeckt, und `start_time` ist eine
+  # Textspalte: ein leerer Wert sortierte vor 09:00, das ungepflegte Spiel stand
+  # also ueber dem, das gleich angeworfen wird.
+  test 'innerhalb eines Blocks wird nach Anwurf sortiert, ohne Zeit zuletzt' do
+    # Absichtlich verkehrt angelegt, damit die Anlagereihenfolge nicht zufaellig
+    # die erwartete ist.
+    create(:game, game_day: @game_day, home_team: @home, guest_team: @guest,
+                  start_time: nil, live_stream_link: 'https://stream.example/ohne-zeit')
+    create(:game, game_day: @game_day, home_team: @home, guest_team: @guest,
+                  start_time: '20:00', live_stream_link: 'https://stream.example/abends')
+    create(:game, game_day: @game_day, home_team: @home, guest_team: @guest,
+                  start_time: '09:00', live_stream_link: 'https://stream.example/morgens')
+
+    get '/api/v2/live_streams', headers: api_key_headers
+
+    assert_response :success
+    anstehend = JSON.parse(response.body)['games'].select { |g| g['status'] == 'upcoming' }
+    assert_equal ['09:00', '20:00', nil], anstehend.pluck('time')
+  end
+
+  # ── Was NICHT in der Liste stehen darf ────────────────────────────────────
+
+  # Ein anstehendes Spiel hat keinen Stand, ein ausgewiesenes 0:0 waere eine
+  # Falschaussage. `delay_live_scores` faengt das NICHT auf, es strippt nur
+  # laufende Eintraege -- der Falschstand erreichte also jeden Abrufer.
+  test 'ein anstehendes Spiel nennt keinen Stand' do
+    create(:game, game_day: @game_day, home_team: @home, guest_team: @guest,
+                  start_time: '20:00', started: false, ended: false,
+                  live_stream_link: 'https://stream.example/spaeter')
+
+    get '/api/v2/live_streams', headers: api_key_headers(realtime: true)
+
+    assert_response :success
+    anstehend = JSON.parse(response.body)['games'].find { |g| g['status'] == 'upcoming' }
+    assert anstehend.present?
+    assert_not anstehend.key?('result'), 'ohne Anpfiff darf kein Stand im Eintrag stehen'
+    assert_not anstehend.key?('result_string')
+  end
+
+  # Der SQL-Filter liess jeden nicht-leeren Text durch, `.presence` im Eintrag
+  # machte daraus danach nil. Uebrig blieb ein Eintrag ohne jeden Link: eine
+  # Uebertragung auf der Seite, die nirgendwohin fuehrt.
+  test 'ein Link aus reinen Leerzeichen zaehlt wie keiner' do
+    leer = create(:game, game_day: @game_day, home_team: @home, guest_team: @guest,
+                         start_time: '19:00', live_stream_link: '   ', vod_link: nil)
+
+    get '/api/v2/live_streams', headers: api_key_headers
+
+    assert_response :success
+    ids = JSON.parse(response.body)['games'].map { |g| g['game_id'] }
+    assert_not_includes ids, leer.id
+  end
+
+  # ── Cache ─────────────────────────────────────────────────────────────────
+
+  # DIESE ZWEI TESTS BRAUCHEN EINEN ECHTEN CACHE-STORE.
+  #
+  # config/environments/test.rb setzt :null_store, jeder `Rails.cache.fetch` fuehrt
+  # seinen Block also bei jedem Aufruf aus. Damit war die entscheidende Anordnung
+  # dieses Controllers ungedeckt: Der Schluessel `live_streams/<datum>` haengt am
+  # Datum und NICHT am Zugang, alle Abrufer teilen ihn sich. `delay_live_scores`
+  # MUSS deshalb nach dem Cache-Lesen laufen. Zieht jemand es in den fetch-Block
+  # (naheliegende Optimierung, spart ein map je Anfrage), waermt der erste Abrufer
+  # den Cache mit SEINER Fassung: ein Schluessel ohne Freigabe bekaeme die
+  # Live-Staende des Echtzeit-Abrufers, und umgekehrt saehe die Website 30 Sekunden
+  # lang keine. Deshalb beide Richtungen.
+  test 'der Cache gibt die Fassung eines Zugangs nicht an einen anderen weiter' do
+    vorher = Rails.cache
+    Rails.cache = ActiveSupport::Cache::MemoryStore.new
+    begin
+      get '/api/v2/live_streams', headers: api_key_headers(realtime: true)
+      assert_response :success
+      assert_equal '3:1', eintrag_von(@laufend)['result_string'], 'mit Freigabe live'
+
+      get '/api/v2/live_streams', headers: api_key_headers
+      assert_response :success
+      assert_nil eintrag_von(@laufend)['result_string'], 'ohne Freigabe kein Stand'
+      assert_nil eintrag_von(@laufend)['result']
+    ensure
+      Rails.cache = vorher
+    end
+  end
+
+  test 'auch in der umgekehrten Reihenfolge bleibt der Stand beim richtigen Zugang' do
+    vorher = Rails.cache
+    Rails.cache = ActiveSupport::Cache::MemoryStore.new
+    begin
+      get '/api/v2/live_streams', headers: api_key_headers
+      assert_response :success
+      assert_nil eintrag_von(@laufend)['result_string']
+
+      get '/api/v2/live_streams', headers: api_key_headers(realtime: true)
+      assert_response :success
+      assert_equal '3:1', eintrag_von(@laufend)['result_string'],
+                   'der verzoegerte Abruf darf den Stand nicht fuer alle wegcachen'
+    ensure
+      Rails.cache = vorher
+    end
+  end
+
+  # `expires_in` ohne `public: true` liefert `private`. Faellt das weg, cacht ein
+  # vorgeschalteter Proxy die eine Fassung fuer alle: dieselbe Vermischung wie
+  # oben, nur eine Ebene hoeher.
+  test 'die Antwort ist als privat gekennzeichnet' do
+    get '/api/v2/live_streams', headers: api_key_headers
+
+    assert_response :success
+    assert_match(/private/, response.headers['Cache-Control'])
+    assert_no_match(/public/, response.headers['Cache-Control'])
+  end
+
+  private
+
+  def eintrag_von(game)
+    JSON.parse(response.body)['games'].find { |g| g['game_id'] == game.id } || {}
+  end
 end
