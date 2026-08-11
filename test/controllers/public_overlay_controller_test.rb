@@ -433,6 +433,107 @@ class PublicOverlayControllerTest < ActionDispatch::IntegrationTest
     assert_not running.find { |r| r['game_id'] == parallel_game.id }['own_game_day']
   end
 
+  # Ohne Nummer heisst `League#games(nil)` nicht "kein Spieltag", sondern JEDER.
+  # Ein Spieltag ohne Nummer haette so die ganze Saison ins Vollbild geholt.
+  test 'ein Spieltag ohne Nummer holt nicht die ganze Saison ins Vollbild' do
+    anderer_tag = create(:game_day, league: @league, number: 99)
+    create(:game, game_day: anderer_tag,
+                  home_team: create(:team, league: @league),
+                  guest_team: create(:team, league: @league),
+                  started: true, ended: false)
+    @game_day.update_column(:number, nil)
+
+    get '/api/v2/public/overlay/schedule', params: { token: @token }
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_empty body['schedule'], 'ohne Spieltagsnummer gibt es keinen ligaweiten Spielplan'
+    assert_empty body['running_games'], 'und damit auch keinen Hinweis auf fremde Termine'
+  end
+
+  # DIESER TEST BRAUCHT EINEN ECHTEN CACHE-STORE.
+  #
+  # config/environments/test.rb setzt :null_store, jeder `Rails.cache.fetch` fuehrt
+  # seinen Block also bei jedem Aufruf aus. Die CI hat den warmen Cache deshalb
+  # noch nie gesehen, und genau dort sitzt die Falle: Der Schluessel
+  # `leagues/<id>/overlay_schedule/<nummer>` haengt an Liga und Spieltag, NICHT am
+  # Token. Alle Hallen desselben Spieltags teilen ihn sich. Zieht jemand das
+  # Filtern in den fetch-Block (naheliegende Optimierung, spart ein map je
+  # Anfrage), bekommt das zweite Token die fuer das erste gefilterte Liste: sein
+  # eigenes Spiel ohne Stand, das fremde live. Mit :null_store bleibt die Suite
+  # dabei gruen.
+  test 'zwei Tokens derselben Liga sehen jeweils nur ihr eigenes Spiel live' do
+    parallel_day = create(:game_day, league: @league, number: @game_day.number)
+    parallel_game = create(:game, game_day: parallel_day,
+                                  home_team: create(:team, league: @league),
+                                  guest_team: create(:team, league: @league),
+                                  started: true, ended: false,
+                                  events: [{ 'row' => 1, 'period' => 1, 'event_type' => 'goal',
+                                             'event_team' => 'guest', 'guest_number' => 5,
+                                             'home_goals' => 0, 'guest_goals' => 1,
+                                             'added_at' => 20.minutes.ago.to_i }])
+    _link, fremd_token = GameDayOverlayLink.generate!(game_day: parallel_day, created_by: @user)
+
+    vorher = Rails.cache
+    Rails.cache = ActiveSupport::Cache::MemoryStore.new
+    begin
+      # Erstes Token waermt den gemeinsamen Schluessel.
+      get '/api/v2/public/overlay/schedule', params: { token: @token }
+      assert_response :success
+      erste = JSON.parse(response.body)['schedule']
+      assert_equal '2:0', erste.find { |g| g['game_id'] == @game.id }['result_string'],
+                   'eigenes Spiel bleibt live'
+      assert_nil erste.find { |g| g['game_id'] == parallel_game.id }['result_string'],
+                 'fremdes Spiel ohne Stand'
+
+      # Zweites Token trifft den warmen Schluessel und muss trotzdem seine eigene
+      # Sicht bekommen, nicht die des ersten.
+      get '/api/v2/public/overlay/schedule', params: { token: fremd_token }
+      assert_response :success
+      zweite = JSON.parse(response.body)['schedule']
+      assert_equal '0:1', zweite.find { |g| g['game_id'] == parallel_game.id }['result_string'],
+                   'aus Sicht des zweiten Tokens ist DIESES Spiel das eigene'
+      assert_nil zweite.find { |g| g['game_id'] == @game.id }['result_string'],
+                 'und das erste Spiel ist jetzt das fremde'
+    ensure
+      Rails.cache = vorher
+    end
+  end
+
+  # Ligaklasse und Wettbewerbsgeschlecht steuern das Erscheinungsbild der Buehne.
+  # Kommen sie leer, faellt jedes Overlay still auf das Standardaussehen zurueck
+  # und niemand merkt es, bis jemand den Stream sieht.
+  test 'der Livedatenabruf nennt Wettbewerbsklasse und Geschlecht der Liga' do
+    @league.update!(league_class_id: '1fbl', female: true)
+
+    get '/api/v2/public/overlay/live', params: { token: @token, game_id: @game.id }
+
+    assert_response :success
+    liga = JSON.parse(response.body)['game']['league']
+    assert_equal '1fbl', liga['league_class_id']
+    assert_equal true, liga['female']
+  end
+
+  # Bisher hielt nur `is_a?(Array)` fest, dass hier etwas ankommt. Das haette auch
+  # eine dauerhaft leere Liste erfuellt: Tabelle und Scorerliste zaehlen nur
+  # beendete Spiele, und die uebrigen Tests dieser Datei legen ausschliesslich
+  # laufende an.
+  test 'die Tabelle des Tokens zaehlt die beendeten Spiele dieser Liga' do
+    beendet_day = create(:game_day, league: @league, number: @game_day.number)
+    create(:game, :with_result, game_day: beendet_day, home_team: @home, guest_team: @guest,
+                                ended: true)
+
+    get '/api/v2/public/overlay/table', params: { token: @token }
+
+    assert_response :success
+    tabelle = JSON.parse(response.body)['table']
+    heim = tabelle.find { |z| z['team_name'] == 'Heimverein' }
+    assert heim.present?, 'der Heimverein fehlt in der Tabelle'
+    assert_equal 1, heim['games'], 'das beendete Spiel muss gezaehlt werden'
+    assert_equal 3, heim['goals_scored']
+    assert_equal 1, heim['goals_received']
+  end
+
   private
 
   def login(user)

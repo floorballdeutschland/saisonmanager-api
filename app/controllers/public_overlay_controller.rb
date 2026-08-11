@@ -248,14 +248,32 @@ class PublicOverlayController < ApplicationController
   # eigenen Halle: `League#games(number)` nimmt jeden GameDay dieser Nummer mit.
   # Das sind die parallel laufenden Spiele, um die es hier geht.
   def overlay_schedule
-    @overlay_schedule ||= begin
-      number = @link.game_day.number
-      raw = Rails.cache.fetch("leagues/#{league.id}/overlay_schedule/#{number}", expires_in: 30.seconds) do
-        league.games(number).map(&:schedule_item)
-      end
+    @overlay_schedule ||= build_overlay_schedule
+  end
 
-      strip_foreign_live_scores(raw)
+  def build_overlay_schedule
+    number = @link.game_day.number
+
+    # `game_days.number` ist nullable, und GameDay hat keine einzige Validierung.
+    # `League#games(nil)` bedeutet aber nicht "kein Spieltag", sondern JEDER: der
+    # Zweig `game_day_number.present?` fällt durch auf `gd = game_days`. Ein
+    # Spieltag ohne Nummer hätte damit die ganze Saison der Liga ins Vollbild
+    # geholt und den Hinweis "Spiele laufen noch" für Partien ganz anderer Termine
+    # ausgelöst. Ohne Nummer gibt es keinen ligaweiten Spieltag.
+    return [] if number.blank?
+
+    raw = Rails.cache.fetch("leagues/#{league.id}/overlay_schedule/#{number}", expires_in: 30.seconds) do
+      league.games(number).map(&:schedule_item)
     end
+
+    # Das Filtern gehört NACH das `fetch`, nicht hinein. Der Schlüssel hängt an
+    # Liga und Spieltagsnummer, NICHT am Token: alle Hallen desselben Spieltags
+    # teilen ihn sich. Läge der Filter im Block, bekäme das zweite Token die für
+    # das erste gefilterte Liste – sein eigenes Spiel ohne Stand, das fremde dafür
+    # live. Genau verkehrt herum. Weil der Test-Store :null_store ist, sieht die CI
+    # so etwas nur mit einem eigens gesetzten Store, siehe den Test
+    # 'zwei Tokens derselben Liga sehen jeweils nur ihr eigenes Spiel live'.
+    strip_foreign_live_scores(raw)
   end
 
   # HIER LIEGT DIE AUSNAHME, UND HIER ENDET SIE.
@@ -276,11 +294,14 @@ class PublicOverlayController < ApplicationController
       next entry if own.include?(entry_value(entry, :game_id))
       next entry unless running_entry?(entry)
 
-      # Beide Schlüsselformen leeren statt `merge(result: nil)`: Die Liste kommt
-      # aus Rails.cache, und ein serialisierender Store könnte Strings statt
-      # Symbolen zurückgeben. Ein Symbol-Merge legte dann einen zweiten,
-      # leeren Schlüssel daneben und ließe den gefüllten stehen – die
-      # Verzögerung fiele still aus.
+      # Beide Schlüsselformen leeren statt `merge(result: nil)`. Mit den heute
+      # eingesetzten Stores ist die String-Form toter Code: :null_store im Test
+      # gibt den Block-Rückgabewert unverändert durch, und :memory_store in
+      # Produktion serialisiert über DupCoder, nicht über Marshal, und liefert
+      # Symbole zurück (nachgemessen). Sie steht als Vorsorge für einen Store
+      # mit JSON-Kodierung (Redis, Memcached), wo die Schlüssel als Strings
+      # zurückkämen: Ein Symbol-Merge legte dann einen zweiten, leeren Schlüssel
+      # daneben und ließe den gefüllten stehen, die Verzögerung fiele still aus.
       stripped = entry.dup
       [:result, 'result', :result_string, 'result_string'].each do |key|
         stripped[key] = nil if stripped.key?(key)
