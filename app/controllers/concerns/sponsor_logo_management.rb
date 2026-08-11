@@ -10,10 +10,16 @@
 module SponsorLogoManagement
   extend ActiveSupport::Concern
 
-  # Ein Partnerlogo ist ein Schriftzug und selten quadratisch, deshalb ohne
-  # die Quadrat-Prüfung der Vereinslogos. Die übrigen Prüfungen bleiben:
-  # erlaubte Formate (PNG, JPG, WebP — kein SVG), Größe, und ob die Datei
-  # überhaupt als Bild lesbar ist.
+  # Ein Partnerlogo ist ein Schriftzug und selten quadratisch, deshalb ohne die
+  # Quadrat-Prüfung der Vereinslogos. Die übrigen Prüfungen bleiben: Formatangabe
+  # (PNG, JPG, WebP), Größe, und ob die Datei überhaupt als Bild lesbar ist.
+  #
+  # ACHTUNG, die Formatprüfung ist schwächer als sie klingt: `logo_upload_error`
+  # vergleicht `file.content_type`, also die Angabe des hochladenden Browsers, und
+  # nicht den Inhalt. Eine als image/png deklarierte SVG kommt durch, libvips liest
+  # sie anstandslos. Das sitzt im gemeinsamen Helfer und betrifft alle
+  # Upload-Pfade, siehe #373. Hier ist die Zielgruppe allerdings die größte: über
+  # die Vereinsebene erreicht diese Strecke als erste auch Vereinsmanager.
   SPONSOR_LOGO_MAX_SIZE = 1.megabyte
 
   def sponsor_logos_index
@@ -51,14 +57,33 @@ module SponsorLogoManagement
     attachment = sponsor_logo_owner.sponsor_logos.find_by(id: params[:attachment_id])
     return render json: { message: 'Partnerlogo nicht gefunden.' }, status: :not_found unless attachment
 
-    attachment.purge_later
+    # `purge` und nicht `purge_later`: In Produktion ist
+    # `config.active_job.queue_adapter` nicht gesetzt, es greift also der
+    # Rails-Standard :async, ein Thread-Pool im Prozess ohne Persistenz.
+    # `purge_later` entfernt die Verknüpfung sofort, verschiebt aber das
+    # Wegräumen des Blobs. Fällt der Prozess in diesem Moment (Deploy, Neustart),
+    # bleiben Blob-Zeile und Datei für immer liegen, von nichts referenziert und
+    # von nichts mehr aufgeräumt. Bei höchstens einem Megabyte gibt es kein
+    # Laufzeitargument fürs Verschieben, und alle anderen Löschstellen im Code
+    # sind synchron.
+    attachment.purge
     render json: { sponsor_logos: sponsor_logo_owner.reload.sponsor_logo_hashes }
   end
 
   private
 
-  # Gibt true zurück, wenn weitergearbeitet werden darf, und rendert sonst
-  # bereits die Absage.
+  # Gibt true zurück, wenn weitergearbeitet werden darf, und rendert sonst bereits
+  # die Absage.
+  #
+  # Der `current_user`-Riegel sieht doppelt aus, weil `authenticate_user` ihn heute
+  # schon abfängt. Er ist es aber nicht: Nimmt man die drei Liga-Aktionen aus
+  # `COOKIE_ONLY_ACTIONS` heraus, wird `authenticate_user` übersprungen und
+  # stattdessen `authenticate_public_request` ausgeführt — ein gültiger X-Api-Key
+  # käme dann durch, ohne dass ein Benutzer angemeldet ist. Genau hier endet das.
+  # Nachgestellt: ohne diesen Riegel wäre es ein 500er in `user_permissions`,
+  # mit ihm ein sauberer 401. Die Prüfreihenfolge (Besitzer VOR Berechtigung) ist
+  # aus demselben Grund kein Zufall, `sponsor_logo_permitted?` würde auf einem
+  # nil-Besitzer laufen.
   def sponsor_logo_guard
     unless current_user
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
