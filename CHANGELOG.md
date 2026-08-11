@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Deaktivierungsgrund „Wechsel ins Ausland"**: Verlässt eine Spielerin oder ein Spieler den deutschen Spielbetrieb in Richtung Ausland, gab es dafür bisher keinen passenden Grund und der Fall landete unter „Sonstiges". Der Grund steht jetzt in der Auswahl, im Spielerprofil und in der Vereins-Spielerliste. Am Ablauf ändert sich nichts: Die Deaktivierung beendet die Vereinszugehörigkeiten, zieht laufende Lizenzen zurück und nimmt das Profil aus der Vereinsliste; bei einer Rückkehr lässt sich das Profil reaktivieren. Der internationale Transfer selbst läuft weiterhin über die Freigabe von Floorball Deutschland und die IFF außerhalb des Saisonmanagers.
+
 ## [1.74.1] - 2026-08-08
 
 ### Behoben
