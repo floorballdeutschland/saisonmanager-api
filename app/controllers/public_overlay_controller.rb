@@ -233,7 +233,10 @@ class PublicOverlayController < ApplicationController
         # Wie im Overlay-Abruf: Merkmale des Wettbewerbs statt der league_id,
         # die je Saison eine andere ist.
         league_class_id: league.league_class_id,
-        female: league.female
+        female: league.female,
+        # Muss in BEIDE Nutzlasten, sonst haengt das Erscheinungsbild eines
+        # Vollbildes davon ab, welcher Abruf zuerst zurueckkommt.
+        league_type: league.league_type
       },
       game_day: {
         id: @link.game_day.id,

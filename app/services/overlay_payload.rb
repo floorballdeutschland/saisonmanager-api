@@ -72,6 +72,15 @@ class OverlayPayload
         # das Standardaussehen zurück.
         league_class_id: @game.league&.league_class_id,
         female: @game.league&.female,
+        # Pokal, Meisterschaft oder Liga. Das ist die STRUKTURIERTE Auskunft
+        # darüber, und sie ist nötig: Das Ligaformular verlangt eine Ligaklasse
+        # nur bei `league_modus == 'league'`, Pokale und Meisterschaften haben
+        # also planmäßig KEINE. Ohne dieses Feld bliebe der Bühne nur der
+        # Liganame, und ein Wettbewerb, der nicht "Pokal" heißt (auf Prod etwa
+        # "Floorball Deutschland Cup" oder "Trophy"), liefe im Bild der
+        # 1. Bundesliga. `league_type` und nicht `league_modus`, weil es
+        # Altligen über league_category_id mitabdeckt.
+        league_type: @game.league&.league_type,
         game_day: base[:game_day]
       },
       arena: {

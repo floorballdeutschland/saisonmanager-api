@@ -514,6 +514,32 @@ class PublicOverlayControllerTest < ActionDispatch::IntegrationTest
     assert_equal true, liga['female']
   end
 
+  # Pokal und Meisterschaft haben PLANMAESSIG keine Ligaklasse: Das Ligaformular
+  # verlangt sie nur bei league_modus == 'league'. Ohne league_type bliebe der
+  # Buehne nur der Liganame, und ein Wettbewerb, der nicht "Pokal" heisst (auf
+  # Prod etwa "Floorball Deutschland Cup"), liefe im Bild der 1. Bundesliga.
+  test 'der Livedatenabruf nennt die Wettbewerbsart, auch ohne Ligaklasse' do
+    @league.update!(league_class_id: nil, league_modus: 'cup')
+
+    get '/api/v2/public/overlay/live', params: { token: @token, game_id: @game.id }
+
+    assert_response :success
+    liga = JSON.parse(response.body)['game']['league']
+    assert_equal 'cup', liga['league_type']
+    assert_nil liga['league_class_id'], 'ein Pokal hat planmaessig keine Ligaklasse'
+  end
+
+  # In BEIDE Nutzlasten, sonst haengt das Erscheinungsbild eines Vollbildes davon
+  # ab, welcher der zwei Abrufe zuerst zurueckkommt.
+  test 'auch die ligaweiten Abrufe nennen die Wettbewerbsart' do
+    @league.update!(league_class_id: nil, league_modus: 'cup')
+
+    get '/api/v2/public/overlay/table', params: { token: @token }
+
+    assert_response :success
+    assert_equal 'cup', JSON.parse(response.body)['league']['league_type']
+  end
+
   # Bisher hielt nur `is_a?(Array)` fest, dass hier etwas ankommt. Das haette auch
   # eine dauerhaft leere Liste erfuellt: Tabelle und Scorerliste zaehlen nur
   # beendete Spiele, und die uebrigen Tests dieser Datei legen ausschliesslich
