@@ -1038,24 +1038,29 @@ class PlayersController < ApplicationController
   end
 
   # Entscheidet, ob EIN Eintrag im clubs-Hash dem Verein heute noch Zugriff auf das
-  # Profil gibt. Ohne diese Prüfung reichte jede jemals bestandene Mitgliedschaft:
-  # Am 16.07.2026 haben drei VM-Konten so 68 Spieler deaktiviert, die längst bei
-  # einem anderen Verein spielten. `deactivate!` schließt dann sämtliche offenen
-  # Zugehörigkeiten und stempelt die Lizenzen auf DELETED, womit das Profil für
-  # seinen echten Verein aus `Player.active` und damit aus Suche und Spielerliste
-  # verschwindet.
+  # Profil gibt. Ohne diese Prüfung reichte jede jemals bestandene Mitgliedschaft
+  # (siehe #309). Was eine Deaktivierung dann anrichtet, in der Reihenfolge der
+  # Ursachen: `deactivate!` setzt `deactivated_at`, und ALLEIN das wirft das Profil
+  # aus `Player.active`. Zusätzlich schließt es jede noch offene oder erst künftig
+  # endende Zugehörigkeit und stempelt jede gültige oder beantragte Lizenz auf
+  # DELETED, saisonübergreifend. Die Lizenzen sind also Folgeschaden, nicht die
+  # Ursache der Unsichtbarkeit: wer sie zurückrollt, holt das Profil nicht zurück.
   #
-  # Die Bedingung ist absichtlich Zeichen für Zeichen die aus `Club#players`: Was
-  # ein Verein in seiner Spielerliste sieht, soll er auch bearbeiten können, und
+  # Die Gültigkeitsbedingung ist dieselbe wie im Eintrags-Zweig von
+  # `Club#players(include_deactivated: true)` – der Liste, die `vm_players_index`
+  # tatsächlich ausgibt. Was ein Verein dort sieht, soll er bearbeiten können, und
   # nichts darüber hinaus. Läuft die eine Seite der anderen davon, entstehen
   # Profile, die sichtbar, aber nicht bearbeitbar sind – oder umgekehrt.
+  # Nicht mitgezogen ist `Club#players`' `merged_into_id`-Filter.
   #
-  # Der zweite Zweig ist kein Schlupfloch, sondern die Rücknahme: `deactivate!`
-  # schließt alle offenen Zugehörigkeiten auf den Zeitpunkt der Deaktivierung.
-  # Ohne ihn könnte ein Verein seine EIGENE Deaktivierung nicht mehr zurücknehmen,
-  # weil er sich mit ihr selbst den Zugriff genommen hätte.
-  # `membership_closed_by_deactivation?` prüft dafür Stempel UND Zeitfenster, eine
-  # ältere abgelaufene Zugehörigkeit erfüllt das nicht.
+  # Der Rückfall auf `membership_closed_by_deactivation?` ist kein Schlupfloch,
+  # sondern die Rücknahme: `deactivate!` schließt alle offenen Zugehörigkeiten auf
+  # den Zeitpunkt der Deaktivierung, ohne ihn käme niemand mehr an die
+  # Reaktivierung. Er vergleicht `valid_set_by` mit `deactivated_by` am Profil, NICHT
+  # mit dem angemeldeten Konto – Zugriff behält damit jeder Verein, dessen
+  # Zugehörigkeit diese eine Deaktivierung geschlossen hat, nicht nur der auslösende.
+  # Geprüft werden Stempel UND Zeitfenster, eine ältere abgelaufene Zugehörigkeit
+  # erfüllt das nicht.
   def membership_grants_access?(player, membership)
     return true if membership['valid_until'].blank?
     return true if membership['valid_until'].to_date >= Time.now
@@ -1085,11 +1090,21 @@ class PlayersController < ApplicationController
     :invalid
   end
 
+  # Der Heimateintrag muss der GÜLTIGE sein, nicht der erste im Hash. `transfer`
+  # schließt den alten Eintrag an seiner Stelle (`clubs.map!`, die Position bleibt)
+  # und hängt den neuen hinten an, `home_club: true` steht danach zweimal drin. Ein
+  # `find` ohne Gültigkeitsprüfung greift deshalb nach JEDEM Vereinswechsel den
+  # abgebenden Verein: der alte Verband durfte das Profil unbegrenzt weiter
+  # deaktivieren, der heute zuständige wurde mit 403 ausgesperrt.
+  #
+  # Bewusst `membership_grants_access?` und kein reiner valid_until-Vergleich:
+  # `deactivate!` schließt auch die Heimatzugehörigkeit, ein SBK nähme sich mit der
+  # eigenen Deaktivierung sonst den Zugriff und käme nicht mehr an die Rücknahme.
   def sbk_can_access_player?(ph, player)
     return false unless ph[:sbk].present?
     return true if ph[:sbk].include?(0)
 
-    home_club_entry = player.clubs.find { |c| c['home_club'] == true }
+    home_club_entry = player.clubs.find { |c| c['home_club'] == true && membership_grants_access?(player, c) }
     return false unless home_club_entry
 
     home_club = Club.find_by(id: home_club_entry['club_id'])

@@ -739,9 +739,8 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
 
   # --- Zugriff nur bei gueltiger Vereinszugehoerigkeit ------------------------
   # can_manage_player? nahm jeden Eintrag im clubs-Hash, ohne valid_until zu lesen.
-  # Wer je Mitglied war, blieb fuer den alten Verein dauerhaft deaktivierbar. Am
-  # 16.07.2026 haben drei VM-Konten so 68 Spieler deaktiviert, die laengst bei einem
-  # anderen Verein spielten.
+  # Wer je Mitglied war, blieb fuer den alten Verein dauerhaft deaktivierbar.
+  # Vorgeschichte und Zahlen zum Vorfall: siehe #309.
 
   test 'VM des Altvereins darf einen abgewanderten Spieler nicht deaktivieren' do
     altverein = create(:club)
@@ -830,6 +829,69 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     post "/api/v2/admin/players/#{abgewandert.id}/deactivate", params: { reason: 'Vereinsaustritt' }
     assert_response :forbidden
     assert_nil abgewandert.reload.deactivated_at
+  end
+
+  # --- Der SBK-Zweig zog den FALSCHEN Heimateintrag ---------------------------
+  # sbk_can_access_player? nahm `clubs.find { home_club == true }`. transfer schliesst
+  # den alten Heimateintrag an seiner Stelle und haengt den neuen hinten an, also
+  # steht home_club: true zweimal drin und find griff immer den alten. Folge: der
+  # abgebende Verband behielt Zugriff, der zustaendige wurde ausgesperrt.
+
+  # Genau die Hash-Reihenfolge, die transfer hinterlaesst.
+  def verbandswechsel_spieler(alt_go, neu_go)
+    alt_club = create(:club, game_operations_hash: [
+      { 'game_operation_id' => alt_go.id, 'home_game_operation' => true }
+    ])
+    neu_club = create(:club, game_operations_hash: [
+      { 'game_operation_id' => neu_go.id, 'home_game_operation' => true }
+    ])
+    create(:player, clubs: [
+      { 'club_id' => alt_club.id, 'home_club' => true, 'valid_until' => 2.years.ago.iso8601 },
+      { 'club_id' => neu_club.id, 'home_club' => true }
+    ])
+  end
+
+  test 'SBK des abgebenden Verbands verliert den Zugriff nach dem Wechsel' do
+    neu_go = create(:game_operation)
+    spieler = verbandswechsel_spieler(@game_operation, neu_go)
+    alt_sbk = create(:user, :sbk_scoped, game_operation_id: @game_operation.id)
+
+    login_as(alt_sbk)
+    get "/api/v2/admin/players/#{spieler.id}.json"
+    assert_response :forbidden
+
+    post "/api/v2/admin/players/#{spieler.id}/deactivate", params: { reason: 'Vereinsaustritt' }
+    assert_response :forbidden
+    assert_nil spieler.reload.deactivated_at
+  end
+
+  test 'SBK des aufnehmenden Verbands hat Zugriff nach dem Wechsel' do
+    neu_go = create(:game_operation)
+    spieler = verbandswechsel_spieler(@game_operation, neu_go)
+    neu_sbk = create(:user, :sbk_scoped, game_operation_id: neu_go.id)
+
+    login_as(neu_sbk)
+    get "/api/v2/admin/players/#{spieler.id}.json"
+    assert_response :success
+  end
+
+  # Ohne den Rueckfall auf membership_closed_by_deactivation? haette sich der SBK mit
+  # der eigenen Deaktivierung selbst ausgesperrt: deactivate! schliesst auch die
+  # Heimatzugehoerigkeit, von der sein Zugriff haengt.
+  test 'SBK kann die eigene Deaktivierung wieder zuruecknehmen' do
+    club = create(:club, game_operations_hash: [
+      { 'game_operation_id' => @game_operation.id, 'home_game_operation' => true }
+    ])
+    spieler = create(:player, clubs: [{ 'club_id' => club.id, 'home_club' => true }])
+    sbk = create(:user, :sbk_scoped, game_operation_id: @game_operation.id)
+
+    login_as(sbk)
+    post "/api/v2/admin/players/#{spieler.id}/deactivate", params: { reason: 'Karriereende' }
+    assert_response :success
+
+    post "/api/v2/admin/players/#{spieler.id}/reactivate"
+    assert_response :success
+    assert_nil spieler.reload.deactivated_at
   end
 
   # --- Spielbetriebs-Scope der SBK-Rolle im Lizenzwesen -----------------------
