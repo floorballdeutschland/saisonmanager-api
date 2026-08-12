@@ -622,23 +622,67 @@ class User < ApplicationRecord
     # Vereinsmanager an einem Vereins-Sammelpostfach). Ein E-Mail-Login würde
     # bei jeder solchen Doppelvergabe still aufhören zu funktionieren.
     user = User.where('LOWER(user_name) = ?', login.to_s.downcase).first
-    hashed_password = Digest::MD5.hexdigest(password)
 
     return nil if user.blank?
 
-    # old md5 password
-    if user.password_digest.blank? && user.old_password == hashed_password
-      user.password = password
-      user.password_confirmation = password
-      user.password_reset_token = nil
-      user.old_password = nil
-      # Archivierte Konten weist der Controller ab – ihr last_login_at bleibt
-      # unangetastet, damit der Inaktiv-Status nicht verfälscht wird.
-      user.last_login_at = Time.now unless user.archived?
-      user if user.save
-    elsif user.password_digest.present? && user.authenticate(password)
-      user if user.archived? || user.update(last_login_at: Time.now)
+    # Ein Konto ohne Hash kann sich nicht anmelden. Fachlich braucht das keine
+    # eigene Prüfung, weil authenticate aus has_secure_password selbst auf
+    # present? testet und dann false liefert, statt BCrypt mit einem leeren Hash
+    # aufzurufen (activemodel, secure_password.rb).
+    #
+    # Gemeldet wird es dennoch: Ein leerer Hash ist ein Datendefekt und kein
+    # normales Anmelde-Ergebnis. Solche Konten kann sonst niemand mehr benutzen,
+    # und ohne diesen Eintrag sähe der Betrieb nur ein leeres 401 wie bei einem
+    # Tippfehler. Bis zum Entfernen des MD5-Zweigs war das der Einstieg in die
+    # Passwort-Migration, seither gibt es dafür keinen gültigen Fall mehr.
+    if user.password_digest.blank?
+      Rails.logger.error("Anmeldung abgelehnt, password_digest fehlt (User #{user.id})")
+      Sentry.capture_message("login with blank password_digest, user: #{user.id}") if defined?(Sentry)
+      return nil
     end
+
+    return nil unless user.authenticate(password)
+
+    # Archivierte Konten weist der Controller ab. Ihr last_login_at bleibt
+    # unangetastet, damit der Inaktiv-Status nicht verfälscht wird.
+    return user if user.archived?
+
+    stamp_last_login(user)
+    user
+  end
+
+  # last_login_at ist Buchhaltung, keine Anmeldebedingung. Das Passwort ist an
+  # dieser Stelle bereits geprüft, die Identität also belegt.
+  #
+  # Bewusst update_column statt update: update lässt den ganzen Datensatz
+  # validieren und gibt bei einem Fehler nur false zurück. Der Rückgabewert
+  # entschied früher über die Anmeldung, womit ein Konto mit gültigem Passwort
+  # an einem ganz anderen Feld scheitern konnte, ohne jede Spur in Log oder
+  # Sentry. Nachgewiesen ausgesperrt haben:
+  #
+  # - Altname mit Leerzeichen am Rand plus kleinschreibungsneutrale Dublette.
+  #   Die Gates auf `user_name_changed?` (siehe oben bei den Validierungen)
+  #   sollen genau das verhindern, greifen hier aber nicht: normalize_user_name
+  #   strippt den Namen und setzt damit selbst `user_name_changed?`.
+  # - Altname mit Leerzeichen am Rand und Umlaut, über dieselbe Mechanik am
+  #   Format-Validator.
+  # - language außerhalb von LANGUAGES. Der Validator dort hat bewusst kein
+  #   if-Gate, greift also bei jedem Speichern.
+  #
+  # update_column umgeht Validierungen UND Callbacks, schreibt also weder einen
+  # gestrippten Namen zurück noch stolpert es über fremde Felder. Ein
+  # Fehlschlag bleibt trotzdem melderelevant: Er heißt, dass die Zeile nicht
+  # geschrieben wurde, und der Inaktiv-Status baut darauf auf.
+  def self.stamp_last_login(user)
+    return if user.update_column(:last_login_at, Time.now)
+
+    Rails.logger.error("last_login_at konnte nicht geschrieben werden (User #{user.id})")
+    Sentry.capture_message("last_login_at write failed, user: #{user.id}") if defined?(Sentry)
+  rescue StandardError => e
+    # Der Login darf hieran nicht scheitern: Die Anmeldung ist berechtigt, nur
+    # der Zeitstempel fehlt dann.
+    Rails.logger.error("last_login_at konnte nicht geschrieben werden (User #{user.id}): #{e.class}")
+    Sentry.capture_exception(e) if defined?(Sentry)
   end
 
   # Rollen-IDs, die dieses Konto anderen Konten zuweisen (und wieder entziehen)

@@ -11,6 +11,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Behoben
 
+- **Anmeldung schlug bei einzelnen Konten trotz richtigem Passwort fehl**: Beim Anmelden vermerkt der Saisonmanager den Zeitpunkt im Konto. Ließ sich dieser Vermerk nicht speichern, wurde die gesamte Anmeldung abgewiesen, obwohl das Passwort stimmte. Betroffen waren Konten, deren Daten aus Altbeständen an einer heutigen Regel scheitern: ein Benutzername mit Leerzeichen am Anfang oder Ende, der zusätzlich in anderer Groß- und Kleinschreibung ein zweites Mal vergeben ist, ein solcher Name mit Umlaut, oder eine hinterlegte Sprache außerhalb von Deutsch und Englisch. Die Betroffenen sahen dieselbe Meldung wie bei einem Tippfehler, und ein neues Passwort half nicht, weil das alte nie falsch war. Der Zeitvermerk entscheidet jetzt nicht mehr über die Anmeldung. Scheitert er, wird das protokolliert, statt die Person auszusperren.
+
 - **Eine Zweitrolle beim Verband verdeckte Vereinsverantwortlichen die eigenen Unterlagen**: Wer einen Verein betreut und daneben eine auf einen Verband beschränkte Spielbetriebsrolle hält, sah bei den Spielern des eigenen Vereins die Dokumente des eigenen Landesverbands nicht mehr. Maßgeblich war allein die Verbandsrolle, die Zuständigkeit für den eigenen Verein fiel unter den Tisch. Beide Rollen zählen jetzt zusammen, wie überall sonst im Rechtesystem. Betroffen war die Dokumentliste und damit auch die neue Auswahl beim Hochladen: Genau der Nachweis, den der eigene Verband fordert, fehlte dort.
 
 ### Neu
@@ -18,6 +20,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - **Dokumente auch am Spielerprofil hochladen**: Bisher ließen sich Nachweise nur beim Beantragen einer Lizenz hinterlegen. Künftig geht das auch direkt am Spielerprofil aus der Spielerliste heraus. Dafür nennt die Schnittstelle jetzt die Dokumentarten, die für eine bestimmte Person in Frage kommen: die bundesweiten und die des Landesverbands ihrer aktuellen Vereine. Arten, die nur unter einem bestimmten Alter verlangt werden, bleiben bei älteren Personen außen vor. Zugriff haben Verbands- und Vereinsverantwortliche, also alle, die die Dokumente der Person ohnehin einsehen dürfen.
 
 ### Verbessert
+
+- **Reste der alten Passwort-Umstellung entfernt**: Der Login trug noch einen Zweig aus der Zeit vor der Umstellung auf das heutige Passwortverfahren. Er sollte Alt-Passwörter beim ersten Anmelden stillschweigend übernehmen, konnte aber längst nicht mehr greifen: Die Spalte mit den Alt-Passwörtern führt die Datenbank nicht mehr, und kein Konto hängt noch daran. Wäre der Zweig doch einmal erreicht worden, hätte er das Anmelden mit einem Serverfehler abgebrochen statt mit einer verständlichen Meldung. Für jede Anmeldung wird jetzt zudem eine unnötige Prüfsumme weniger berechnet. Am Anmelden selbst ändert sich nichts.
 
 - **Deaktivierungsgrund „Wechsel ins Ausland"**: Verlässt eine Spielerin oder ein Spieler den deutschen Spielbetrieb in Richtung Ausland, gab es dafür bisher keinen passenden Grund und der Fall landete unter „Sonstiges". Der Grund steht jetzt in der Auswahl, im Spielerprofil und in der Vereins-Spielerliste. Am Ablauf ändert sich nichts: Die Deaktivierung beendet die Vereinszugehörigkeiten, zieht laufende Lizenzen zurück und nimmt das Profil aus der Vereinsliste; bei einer Rückkehr lässt sich das Profil reaktivieren. Der internationale Transfer selbst läuft weiterhin über die Freigabe von Floorball Deutschland und die IFF außerhalb des Saisonmanagers.
 
