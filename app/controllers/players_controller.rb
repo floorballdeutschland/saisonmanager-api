@@ -1059,18 +1059,21 @@ class PlayersController < ApplicationController
     :invalid
   end
 
+  # Der clubs-Hash enthält nach jedem Heimatvereinswechsel MEHRERE Einträge mit
+  # home_club: true – der alte bekommt ein valid_until gestempelt, der neue kommt
+  # hinten dran. Ein ungefiltertes find traf deshalb den abgelaufenen Alt-Eintrag
+  # und prüfte dessen Spielbetrieb gegen den Scope: Wer aus einem anderen Verband
+  # (oder einem Ablage-Verein) zugezogen war, blieb für die eigene SBK gesperrt.
+  # Player#home_club verwirft abgelaufene Einträge und nimmt den letzten
+  # gültigen, ist also die kanonische Quelle für den Heimatverein.
   def sbk_can_access_player?(ph, player)
     return false unless ph[:sbk].present?
     return true if ph[:sbk].include?(0)
 
-    home_club_entry = player.clubs.find { |c| c['home_club'] == true }
-    return false unless home_club_entry
-
-    home_club = Club.find_by(id: home_club_entry['club_id'])
+    home_club = player.home_club(Date.today)
     return false unless home_club
 
-    go_id = home_club.main_game_operation_id
-    ph[:sbk].include?(go_id)
+    ph[:sbk].include?(home_club.main_game_operation_id)
   end
 
   def derive_club_ids_for_go(go_ids)
