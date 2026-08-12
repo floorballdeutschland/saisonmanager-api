@@ -281,10 +281,13 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
   # in der Pfalz auch an der Isar und bei Bad Arolsen. Ein Verein von dort trägt
   # einen RICHTIGEN Landesverband, den die Zuordnung überschreiben würde.
   test 'ein Override greift nicht bei gleichem Namen und anderer id' do
-    _club_id, override = first_override
+    club_id, override = first_override
     _sa_override, go_override = association_with_operation(override[:sa_short])
     sa_by, go_by = association_with_operation('FVBY')
-    club = create(:club, name: "TSV #{override[:name_includes]} an der Isar",
+    # id ausdrücklich setzen und zwar eine, die in der Tabelle NICHT steht: Käme sie
+    # aus der Sequenz, könnte sie zufällig club_id treffen – dann greift der Eintrag
+    # doch und der Test prüfte das Gegenteil von dem, was er behauptet.
+    club = create(:club, id: club_id + 100_000, name: "TSV #{override[:name_includes]} an der Isar",
                          game_operations_hash: [], state_association_id: sa_by.id)
     3.times { team_in(club, go_by) }
 
