@@ -22,6 +22,27 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
     env.each_key { |k| ENV[k] = saved[k] }
   end
 
+  # Ein Verein, den der Task ableiten muss, statt ihn ausdrücklich zuzuordnen.
+  #
+  # CLUB_OVERRIDES ist mit Produktions-IDs verdrahtet (275, 284), und `resolve`
+  # fragt den Override VOR jeder Ableitung. Die id kommt hier aus der
+  # Postgres-Sequenz, hängt also allein daran, wie viele Vereine vorherige Tests
+  # im selben Lauf angelegt haben – und damit am Seed. Trifft ein Testverein eine
+  # der beiden IDs, prüft der Test still etwas anderes als gemeint: Am 12.08.
+  # 2026 fiel unter Seed 26598 der Gleichstand-Test um, weil sein Verein die id
+  # 284 bekam und der Task „Landau in der Pfalz" daraus machte.
+  #
+  # Der kollidierende Verein wird verworfen, damit die Sequenz weiterläuft und
+  # kein zusätzlicher Verein ohne Heimat-Spielbetrieb in den Bericht gerät.
+  def club_to_derive(**attrs)
+    club = create(:club, **attrs)
+    while ClubHomeGameOperationResolver::CLUB_OVERRIDES.key?(club.id)
+      club.destroy!
+      club = create(:club, **attrs)
+    end
+    club
+  end
+
   # Ein Landesverband mit zugehörigem Spielbetrieb.
   def association_with_operation(short_name)
     sa = create(:state_association, short_name: short_name)
@@ -41,7 +62,7 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
   test 'setzt den Spielbetrieb, in dem der Verein die meisten Mannschaften hatte' do
     _sa_a, go_a = association_with_operation('NWFV')
     _sa_b, go_b = association_with_operation('FVH')
-    club = create(:club, game_operations_hash: [])
+    club = club_to_derive(game_operations_hash: [])
     2.times { team_in(club, go_a) }
     team_in(club, go_b)
 
@@ -53,7 +74,7 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
   test 'nationale Spielbetriebe zaehlen bei der Ableitung nicht mit' do
     _sa, go = association_with_operation('NWFV')
     national = create(:game_operation, :national, state_association_id: create(:state_association).id)
-    club = create(:club, game_operations_hash: [])
+    club = club_to_derive(game_operations_hash: [])
     team_in(club, go)
     3.times { team_in(club, national) }
 
@@ -65,7 +86,7 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
   test 'entscheidet bei Gleichstand nicht, sondern listet auf' do
     _sa_a, go_a = association_with_operation('NWFV')
     _sa_b, go_b = association_with_operation('FVH')
-    club = create(:club, game_operations_hash: [])
+    club = club_to_derive(game_operations_hash: [])
     team_in(club, go_a)
     team_in(club, go_b)
 
@@ -82,7 +103,7 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
     _sa_a, go_a = association_with_operation('FVBW')
     _sa_b, go_b = association_with_operation('FVH')
     _sa_c, go_c = association_with_operation('NWFV')
-    club = create(:club, game_operations_hash: [])
+    club = club_to_derive(game_operations_hash: [])
     3.times { team_in(club, go_a) }
     2.times { team_in(club, go_b) }
     2.times { team_in(club, go_c) }
@@ -96,7 +117,7 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
   test 'zaehlt Mannschaften, nicht Ligen' do
     _sa_a, go_a = association_with_operation('NWFV')
     _sa_b, go_b = association_with_operation('FVH')
-    club = create(:club, game_operations_hash: [])
+    club = club_to_derive(game_operations_hash: [])
     # Zwei Mannschaften in EINER Liga bei A, eine Mannschaft bei B: nach Ligen
     # wäre das 1:1 und damit unentschieden, nach Mannschaften 2:1 für A.
     league_a = create(:league, game_operation: go_a)
@@ -110,7 +131,7 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
 
   test 'beruecksichtigt Mannschaften aus Spielgemeinschaften' do
     _sa, go = association_with_operation('NWFV')
-    club = create(:club, game_operations_hash: [])
+    club = club_to_derive(game_operations_hash: [])
     create(:team, league: create(:league, game_operation: go), syndicate_clubs: [club.id])
 
     run_task('DRY_RUN' => 'false')
@@ -124,7 +145,7 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
     sa_sh, go_sh = association_with_operation('FLV-SH')
     sa_hh = create(:state_association, short_name: 'FBH')
     # Hamburger Verein, der im SH-Spielbetrieb spielt (Muster SV Eidelstedt).
-    club = create(:club, game_operations_hash: [], postcode: '22523', state_association_id: nil)
+    club = club_to_derive(game_operations_hash: [], postcode: '22523', state_association_id: nil)
     team_in(club, go_sh)
 
     run_task('DRY_RUN' => 'false')
@@ -136,7 +157,7 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
 
   test 'faellt ohne Postleitzahl auf den Landesverband des Spielbetriebs zurueck' do
     sa, go = association_with_operation('NWFV')
-    club = create(:club, game_operations_hash: [], postcode: nil, state_association_id: nil)
+    club = club_to_derive(game_operations_hash: [], postcode: nil, state_association_id: nil)
     team_in(club, go)
 
     run_task('DRY_RUN' => 'false')
@@ -147,7 +168,7 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
   test 'ueberschreibt einen vorhandenen Landesverband nicht' do
     _sa, go = association_with_operation('NWFV')
     other = create(:state_association, short_name: 'FVH')
-    club = create(:club, game_operations_hash: [], postcode: '48143', state_association_id: other.id)
+    club = club_to_derive(game_operations_hash: [], postcode: '48143', state_association_id: other.id)
     team_in(club, go)
 
     run_task('DRY_RUN' => 'false')
@@ -160,7 +181,7 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
 
   test 'leitet ohne Mannschaften aus dem Landesverband ab' do
     sa, go = association_with_operation('NWFV')
-    club = create(:club, game_operations_hash: [], state_association_id: sa.id)
+    club = club_to_derive(game_operations_hash: [], state_association_id: sa.id)
 
     run_task('DRY_RUN' => 'false')
 
@@ -170,7 +191,7 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
   test 'nutzt bei untergeordnetem Landesverband den Spielbetrieb des Dachverbands' do
     parent, parent_go = association_with_operation('SBKOST')
     child = create(:state_association, short_name: 'FVSA', parent_id: parent.id)
-    club = create(:club, game_operations_hash: [], state_association_id: child.id)
+    club = club_to_derive(game_operations_hash: [], state_association_id: child.id)
 
     run_task('DRY_RUN' => 'false')
 
@@ -180,7 +201,7 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
   test 'ordnet Hamburg dem SH-Spielbetrieb zu (kein eigener Spielbetrieb)' do
     _sa_sh, go_sh = association_with_operation('FLV-SH')
     sa_hh = create(:state_association, short_name: 'FBH')
-    club = create(:club, game_operations_hash: [], state_association_id: sa_hh.id)
+    club = club_to_derive(game_operations_hash: [], state_association_id: sa_hh.id)
 
     run_task('DRY_RUN' => 'false')
 
@@ -191,7 +212,7 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
   test 'ordnet einen Verein am Bundesverband dem nationalen Spielbetrieb zu' do
     sa_fd = create(:state_association, short_name: 'FVD')
     go_fd = create(:game_operation, :national, state_association_id: sa_fd.id)
-    club = create(:club, game_operations_hash: [], state_association_id: sa_fd.id)
+    club = club_to_derive(game_operations_hash: [], state_association_id: sa_fd.id)
 
     run_task('DRY_RUN' => 'false')
 
@@ -238,7 +259,7 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
   # --- Nichts zu entscheiden ------------------------------------------------
 
   test 'ueberspringt Vereine ohne Mannschaften und ohne Landesverband' do
-    club = create(:club, game_operations_hash: [], state_association_id: nil)
+    club = club_to_derive(game_operations_hash: [], state_association_id: nil)
 
     out, = run_task('DRY_RUN' => 'false')
 
@@ -249,7 +270,7 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
   test 'laesst Vereine mit Heimat-Spielbetrieb unberuehrt' do
     _sa, go = association_with_operation('NWFV')
     _sa_b, other_go = association_with_operation('FVH')
-    club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
+    club = club_to_derive(game_operations_hash: [{ 'home_game_operation' => true,
                                                  'game_operation_id' => go.id }])
     3.times { team_in(club, other_go) }
 
@@ -262,7 +283,7 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
 
   test 'behaelt Gast-Eintraege und schreibt die Kennung als Zahl' do
     _sa, go = association_with_operation('NWFV')
-    club = create(:club, game_operations_hash: [{ 'game_operation_id' => 4711,
+    club = club_to_derive(game_operations_hash: [{ 'game_operation_id' => 4711,
                                                  'home_game_operation' => false }])
     team_in(club, go)
 
@@ -278,7 +299,7 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
 
   test 'Dry-Run schreibt nichts' do
     _sa, go = association_with_operation('NWFV')
-    club = create(:club, game_operations_hash: [])
+    club = club_to_derive(game_operations_hash: [])
     team_in(club, go)
 
     out, = run_task
@@ -295,7 +316,7 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
 
   test 'der Report schreibt nichts' do
     _sa, go = association_with_operation('NWFV')
-    club = create(:club, game_operations_hash: [])
+    club = club_to_derive(game_operations_hash: [])
     team_in(club, go)
 
     report = Rake::Task['clubs:home_game_operation_report']
