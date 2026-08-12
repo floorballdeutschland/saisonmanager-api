@@ -314,14 +314,36 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
   end
 
   # Ein leeres Merkmal darf auf nichts passen. Ohne die Prüfung trifft include?('')
-  # jeden Namen, und ein versehentlich leerer Eintrag zieht JEDEN Verein ohne
-  # Heimat-Spielbetrieb in seinen Verband.
+  # jeden Namen, und der Eintrag fällt still auf reine id-Zuordnung zurück – also
+  # auf genau den Fehler, den dieser Task loswerden soll.
   test 'ein Eintrag ohne Namensmerkmal greift nirgends' do
     resolver = ClubHomeGameOperationResolver.new
     club = create(:club, name: 'Irgendein Verein')
 
     refute resolver.override_fits?(club, { name_includes: '' })
+    refute resolver.override_fits?(club, { name_includes: '   ' })
     refute resolver.override_fits?(club, { sa_short: 'RLPSAAR' })
+  end
+
+  # Ein leeres Element MITTEN in der Liste darf die Bedingung nicht abschwächen:
+  # Sonst greift eine halb nachgezogene Liste mit einem Merkmal – und „Unicorns"
+  # allein trifft auch Schwäbisch Hall.
+  test 'ein leeres Element in der Merkmalsliste laesst den Eintrag nicht greifen' do
+    resolver = ClubHomeGameOperationResolver.new
+    club = create(:club, name: 'Unicorns Schwaebisch Hall')
+
+    refute resolver.override_fits?(club, { name_includes: ['UNIcorns', ''] })
+    refute resolver.override_fits?(club, { name_includes: ['UNIcorns', nil] })
+    refute resolver.override_fits?(club, { name_includes: ['UNIcorns', ' '] })
+  end
+
+  # Zugesichert ist „jedes Merkmal in name ODER long_name", nicht „alle im selben
+  # Feld". Ohne diesen Fall überlebt eine Verengung auf name allein die Suite.
+  test 'die Merkmale duerfen sich auf name und long_name verteilen' do
+    resolver = ClubHomeGameOperationResolver.new
+    club = create(:club, name: 'SV UNIcorns', long_name: 'SV UNIcorns Landau e.V.')
+
+    assert resolver.override_fits?(club, { name_includes: %w[UNIcorns Landau] })
   end
 
   # Ein Eintrag, der nicht greift, muss auffallen: Nach einer Umbenennung bestätigt
@@ -365,7 +387,8 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
     run_task('DRY_RUN' => 'false')
     out, = run_task('DRY_RUN' => 'false')
 
-    assert_match(/0 Verein\(e\) geändert/, out, 'der zweite Lauf hat nichts mehr zu tun')
+    # Verankert, sonst passt die Zusicherung auch auf „10 Verein(e) geändert".
+    assert_match(/^0 Verein\(e\) geändert/, out, 'der zweite Lauf hat nichts mehr zu tun')
     refute_match(/Ausdrückliche Zuordnungen, die nicht greifen/, out)
   end
 
@@ -386,7 +409,9 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
 
     assert_nil home_go_id(club), 'ein Merkmal allein genügt nicht'
     refute_equal go.id, home_go_id(club)
-    assert_match(/Ausdrückliche Zuordnungen, die nicht greifen/, out)
+    # Auf DIESEN Eintrag prüfen, nicht auf die Überschrift: Die steht hier ohnehin,
+    # weil zum zweiten Tabelleneintrag kein Verein angelegt ist.
+    assert_match(/##{club_id} → /, out)
   end
 
   # --- Nichts zu entscheiden ------------------------------------------------

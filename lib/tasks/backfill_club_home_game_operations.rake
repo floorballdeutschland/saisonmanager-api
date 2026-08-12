@@ -152,14 +152,19 @@ class ClubHomeGameOperationResolver
   # Alle Merkmale müssen vorkommen, jedes davon in `name` ODER `long_name` — ein
   # Zusatz an einer der beiden Stellen hebelt den Eintrag damit nicht aus.
   #
-  # Ein leeres oder fehlendes Merkmal passt auf NICHTS. Ohne diese Prüfung träfe
-  # `include?('')` jeden Namen, und der Eintrag fiele damit still auf reine
-  # id-Zuordnung zurück — genau die Sorte Fehler, die dieser Task loswerden soll.
-  # Gemeldet würde es auch nicht, denn `overrides_mismatched` fragt dieselbe
-  # Methode und bekäme „passt" zu hören.
+  # Ein leeres oder fehlendes Merkmal passt auf NICHTS, und zwar auch als leeres
+  # Element MITTEN in einer Liste. Ohne diese Prüfung träfe `include?('')` jeden
+  # Namen: Ein Eintrag ohne Merkmal fiele still auf reine id-Zuordnung zurück,
+  # eine halb nachgezogene Liste (`['UNIcorns', '']`) still auf ein Merkmal — und
+  # das trifft dann „Unicorns Schwäbisch Hall". Genau die Sorte Fehler, die dieser
+  # Task loswerden soll. Gemeldet würde es auch nicht, denn
+  # `overrides_mismatched` fragt dieselbe Methode und bekäme „passt" zu hören.
+  #
+  # Reiner Leerraum zählt als leer, sonst passte ' ' auf jeden Namen mit
+  # Leerzeichen.
   def override_fits?(club, override)
-    needles = Array(override[:name_includes]).map { |needle| needle.to_s.downcase }.reject(&:empty?)
-    return false if needles.empty?
+    needles = Array(override[:name_includes]).map { |needle| needle.to_s.strip.downcase }
+    return false if needles.empty? || needles.any?(&:empty?)
 
     candidates = [club.name, club.long_name].compact.map(&:downcase)
     needles.all? { |needle| candidates.any? { |candidate| candidate.include?(needle) } }
@@ -365,9 +370,9 @@ namespace :clubs do
     mismatched = resolver.overrides_mismatched
     if mismatched.any?
       puts "HINWEIS: Ausdrückliche Zuordnungen, die nicht greifen: #{mismatched.join(', ')}"
-      puts '         Dieser Lauf hat den Verein normal abgeleitet und dabei womöglich den'
-      puts '         falschen Verband bestätigt — der Hinweis kommt also zum Prüfen,'
-      puts '         nicht zum Verhindern. Falls der Verein hier sein müsste: auf'
+      puts '         Gibt es den Verein, leitet ihn dieser Lauf normal ab und bestätigt'
+      puts '         womöglich den falschen Verband — ein Schreiblauf hält dafür nicht an,'
+      puts '         der Hinweis dient dem Prüfen. Falls der Verein hier sein müsste: auf'
       puts '         Umbenennung prüfen, Merkmal nachziehen, Lauf wiederholen.'
     end
 
