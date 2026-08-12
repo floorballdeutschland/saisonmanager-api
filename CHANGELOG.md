@@ -17,6 +17,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 - **Eigenes Logo je Liga**: Ligen können ein eigenes Erkennungszeichen bekommen, etwa das der 1. Floorball-Bundesliga Herren. Es ist getrennt vom Werbebanner, das weiterhin eine anklickbare Anzeigefläche im Format 6:1 bleibt. Hochladen darf, wer die Liga bearbeiten darf; erlaubt sind PNG, JPG und WebP bis 3 MB, Querformat ausdrücklich eingeschlossen. Fehlt einer Liga das eigene Zeichen, wird das Logo des Landesverbands ausgewiesen, und zwar als solches gekennzeichnet: Anzeigen, die ausdrücklich das Ligazeichen meinen, etwa die Livestream-Einblendungen, zeigen dann lieber gar keines statt eines fremden. Der bisherige Behelf, in den Overlays das Bundesliga-Zeichen fest einzubauen, entfällt damit.
 
+- **Livestream-Overlays: Datengrundlage für die Vollbilder**: Die Overlay-Bühne kann bisher Anzeigetafel und Bauchbinden. Für die Vollbilder, die zwischen den Abschnitten und nach dem Schlusspfiff eingeblendet werden, fehlten drei Angaben. Die Auszeichnungen des Spiels kommen jetzt im Overlay-Abruf mit, damit das Endstandbild die wertvollste Spielerin oder den wertvollsten Spieler nennen kann. Dazu sind Tabelle, Torschützenliste und der Spielplan der Liga jetzt auch mit dem Spieltags-Token erreichbar, ohne Anmeldung und ohne API-Schlüssel. Welche Liga das ist, ergibt sich allein aus dem Spieltag des Tokens und lässt sich nicht frei wählen.
+
+  Die Ausnahme, die das Token für Live-Daten macht, bleibt dabei auf seinen eigenen Spieltag beschränkt: Parallel laufende Partien in anderen Hallen stehen im Spielplan weiterhin ohne Zwischenstand, und Tabelle wie Torschützenliste zählen wie überall nur beendete Spiele. Damit eine deshalb unvollständige Tabelle auf Sendung nicht wie ein Fehler aussieht, nennt jede Antwort die Partien, die gerade noch laufen.
+
 ### Verbessert
 
 - **Lizenzwesen des Verbandes lädt in Sekunden statt Minuten**: Die Liste unter Lizenzwesen/Verband brauchte für wenige hundert Einträge mehrere Minuten. Die Ursache lag nicht in der Menge der Lizenzen, sondern darin, dass der Aufbau an der Zahl der Ligen hing: Für jede Liga der Saison wurde die Spielertabelle einzeln durchsucht, für jede Mannschaft zusätzlich das Vereins- und Mannschaftslogo aufgelöst, das die Liste gar nicht anzeigt. Ligen ohne eine einzige Lizenz kosteten dabei genauso viel wie volle. Und das Ganze lief zweimal, weil die Liste erst die beteiligten Personen für die Dokumente sammelte und danach dieselbe Arbeit für die Ausgabe wiederholte. Jetzt fällt beides einmal für alle Ligen gemeinsam an. In einem Testaufbau mit 30 Ligen und 240 Mannschaften sinkt die Zahl der Datenbankabfragen von 2574 auf 37. Die Liste enthält unverändert dieselben Angaben.
@@ -1490,7 +1494,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Neu
 - Spielbericht: SBK und Admin sehen Bearbeitungszeitpunkt und -person des Spielberichts (#272)
 - Spielbericht: Nachbearbeitungen nach Abschluss werden mit einem Hinweis angezeigt (#284)
-
 
 ---
 

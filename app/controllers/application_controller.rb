@@ -144,10 +144,12 @@ class ApplicationController < ActionController::Base
   # durch die Verzögerung. Dieselbe Bedingung nutzt Game#ticker_hash für
   # `isLive`.
   #
-  # Die Schlüssel werden zusätzlich als String geprüft: Die Listen kommen aus
-  # Rails.cache, und ein serialisierender Store (heute :memory_store, also
-  # Marshal) gäbe Strings statt Symbolen zurück. Ohne die Absicherung fiele die
-  # Verzögerung dann still aus, ohne Fehler.
+  # Die Schlüssel werden zusätzlich als String geprüft. Mit den heute
+  # eingesetzten Stores greift das nie: :memory_store serialisiert über DupCoder
+  # und gibt Symbole zurück, und selbst Marshal führte Symbole als Symbole
+  # zurück. Die Absicherung gilt einem Store mit JSON-Kodierung (Redis,
+  # Memcached), der Strings lieferte – ohne sie fiele die Verzögerung dann still
+  # aus, ohne Fehler.
   def running_entry?(entry)
     started = entry.fetch(:started) { entry['started'] }
     ended = entry.fetch(:ended) { entry['ended'] }

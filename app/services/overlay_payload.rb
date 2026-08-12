@@ -55,10 +55,32 @@ class OverlayPayload
       players: base[:players],
       starting_players: base[:starting_players],
 
+      # Für das Endstandbild, das nach dem Schlusspfiff stehen bleibt.
+      # `Game#awards_with_player_names` ist total: Ohne Aufstellung oder ohne
+      # vergebene Auszeichnung stehen leere Einträge (`player_id: ''`) drin
+      # statt zu fehlen. Das Vollbild muss damit nur einen Fall behandeln.
+      awards: base[:awards],
+
       league: {
         id: base[:league_id],
         name: base[:league_name],
         short_name: base[:league_short_name],
+        # Merkmale des Wettbewerbs, damit die Bühne ihr Erscheinungsbild danach
+        # richten kann. Bewusst NICHT die league_id: Ligen sind Zeilen je
+        # Saison, eine Liga-Kopie zur neuen Saison bekommt eine neue id. Eine
+        # Zuordnung über die id fiele damit zu jedem Saisonwechsel still auf
+        # das Standardaussehen zurück.
+        league_class_id: @game.league&.league_class_id,
+        female: @game.league&.female,
+        # Pokal, Meisterschaft oder Liga. Das ist die STRUKTURIERTE Auskunft
+        # darüber, und sie ist nötig: Das Ligaformular verlangt eine Ligaklasse
+        # nur bei `league_modus == 'league'`, Pokale und Meisterschaften haben
+        # also planmäßig KEINE. Ohne dieses Feld bliebe der Bühne nur der
+        # Liganame, und ein Wettbewerb, der nicht "Pokal" heißt (auf Prod etwa
+        # "Floorball Deutschland Cup" oder "Trophy"), liefe im Bild der
+        # 1. Bundesliga. `league_type` und nicht `league_modus`, weil es
+        # Altligen über league_category_id mitabdeckt.
+        league_type: @game.league&.league_type,
         game_day: base[:game_day]
       }.merge(league_logo),
       arena: {
