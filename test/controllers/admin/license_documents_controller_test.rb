@@ -253,6 +253,38 @@ module Admin
       assert_response :forbidden
     end
 
+    # Rollen additiv: Wer für DIESEN Spieler VM ist, behält seine Verbandsarten
+    # auch dann, wenn er zusätzlich irgendwo eine verbandsgescopte SBK-Rolle
+    # hält. Vorher genügte ein solcher Eintrag, um die Dokumentart des eigenen
+    # Landesverbands aus Auswahl UND Dokumentliste zu nehmen – den von seinem
+    # Verband geforderten Nachweis konnte der VM dann nicht mehr hochladen.
+    test 'VM mit zusaetzlicher gescopter SBK-Rolle behaelt die eigenen Verbandsarten' do
+      sa = create(:state_association)
+      home_go = create(:game_operation, state_association_id: sa.id)
+      other_go = create(:game_operation, state_association_id: sa.id)
+      club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
+                                                    'game_operation_id' => home_go.id }])
+      @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }])
+
+      own = DocumentType.create!(name: 'LV-Attest', game_operation_id: home_go.id)
+      doc = LicenseDocument.new(player: @player, document_type: own.key)
+      doc.file.attach(io: StringIO.new('%PDF-1.4'), filename: 'a.pdf', content_type: 'application/pdf')
+      doc.save!
+
+      login(create(:user, permissions: [
+        { 'user_group_id' => 4, 'game_operation_id' => 0, 'club_id' => club.id },
+        { 'user_group_id' => 2, 'game_operation_id' => other_go.id }
+      ]))
+
+      get "/api/v2/admin/players/#{@player.id}/document_types"
+      assert_response :success
+      assert_includes JSON.parse(response.body).map { |t| t['key'] }, own.key
+
+      get "/api/v2/admin/players/#{@player.id}/license_documents"
+      assert_response :success
+      assert_includes JSON.parse(response.body).map { |d| d['document_type'] }, own.key
+    end
+
     private
 
     def login(user)

@@ -12,8 +12,11 @@ module Admin
     # (Admin::DocumentTypesController#index) taugt dafür nicht: Er ist auf Admin
     # und SBK beschränkt und kennt den Spieler nicht.
     def available_types
+      # template_attachment/blob mitladen: template_url_for fragt je Art
+      # template.attached? und die Blob-Adresse ab, das waren sonst ein bis zwei
+      # Abfragen pro Dokumentart bei jedem Öffnen eines Spielerprofils.
       types = DocumentType.for_game_operations(player_home_game_operation_ids)
-                          .includes(:game_operation)
+                          .includes(:game_operation, template_attachment: :blob)
                           .order(:name)
                           .to_a
       types = types.select { |dt| type_available?(dt) }
@@ -204,14 +207,22 @@ module Admin
 
     # Sichtbarkeit richtet sich nach dem Katalog-Scope der Dokumentart:
     # Admin und global gescopter SBK (FD, ph[:sbk] enthält 0) sehen alles;
-    # reine VM/TM-Zugriffe behalten Vollzugriff auf die Dokumente ihres
-    # Spielers. Ein verbandsspezifisch gescopter SBK sieht nur globale
-    # Dokumentarten und die seines/seiner Verbände.
+    # VM/TM-Zugriffe behalten Vollzugriff auf die Dokumente ihres Spielers. Ein
+    # verbandsspezifisch gescopter SBK sieht nur globale Dokumentarten und die
+    # seines/seiner Verbände.
+    #
+    # Rollen werden dabei additiv ausgewertet (gleiche Regel wie in
+    # LicenseAccessScope#may_manage_team?): Wer für DIESEN Spieler VM oder TM
+    # ist, verliert nichts dadurch, dass er zusätzlich irgendwo eine
+    # verbandsgescopte SBK-Rolle hält. Vorher genügte ein einziger solcher
+    # Eintrag, um einem VM die Dokumentarten seines EIGENEN Landesverbands aus
+    # der Auswahl zu nehmen – hochladen konnte er sie dann nicht mehr.
     def unrestricted_document_access?
       return true if perm_hash[:admin].present?
       return true if perm_hash[:sbk].present? && perm_hash[:sbk].include?(0)
+      return true if perm_hash[:sbk].blank?
 
-      perm_hash[:sbk].blank?
+      vm_for_player? || tm_for_player?
     end
 
     def filter_documents_by_scope(docs, catalog)
