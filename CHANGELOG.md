@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Lizenzwesen des Verbandes lädt in Sekunden statt Minuten**: Die Liste unter Lizenzwesen/Verband brauchte für wenige hundert Einträge mehrere Minuten. Die Ursache lag nicht in der Menge der Lizenzen, sondern darin, dass der Aufbau an der Zahl der Ligen hing: Für jede Liga der Saison wurde die Spielertabelle einzeln durchsucht, für jede Mannschaft zusätzlich das Vereins- und Mannschaftslogo aufgelöst, das die Liste gar nicht anzeigt. Ligen ohne eine einzige Lizenz kosteten dabei genauso viel wie volle. Und das Ganze lief zweimal, weil die Liste erst die beteiligten Personen für die Dokumente sammelte und danach dieselbe Arbeit für die Ausgabe wiederholte. Jetzt fällt beides einmal für alle Ligen gemeinsam an. In einem Testaufbau mit 30 Ligen und 240 Mannschaften sinkt die Zahl der Datenbankabfragen von 2574 auf 37. Die Liste enthält unverändert dieselben Angaben.
+
 ## [1.75.0] - 2026-08-12
 
 ### Behoben
