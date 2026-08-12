@@ -966,6 +966,80 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_equal([spieler.id], JSON.parse(response.body)['players'].map { |p| p['id'] })
   end
 
+  # --- Heimatverein der SBK-Pruefung: nur gueltige clubs-Eintraege ------------
+  # Nach einem Heimatvereinswechsel stehen mehrere Eintraege mit home_club: true
+  # im Hash; der alte ist per valid_until beendet. Die Pruefung nahm den ERSTEN
+  # und sperrte damit die zustaendige SBK aus (Prod: 3.012 Spieler, api#389).
+
+  test 'SBK des gueltigen Heimatvereins darf Spieler trotz abgelaufenem Alt-Eintrag oeffnen' do
+    heim_club = create(:club, game_operations_hash: [
+      { 'home_game_operation' => true, 'game_operation_id' => @game_operation.id }
+    ])
+    alt_go = create(:game_operation)
+    alt_club = create(:club, game_operations_hash: [
+      { 'home_game_operation' => true, 'game_operation_id' => alt_go.id }
+    ])
+    player = create(:player, clubs: [
+      { 'club_id' => alt_club.id, 'home_club' => true, 'valid_until' => 1.year.ago.iso8601 },
+      { 'club_id' => heim_club.id, 'home_club' => true, 'created_at' => 1.year.ago.iso8601 }
+    ])
+
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+    get "/api/v2/admin/players/#{player.id}.json"
+
+    assert_response :success
+    assert_equal player.id, JSON.parse(response.body)['id']
+  end
+
+  # Gegenprobe: Der abgelaufene Eintrag gibt auch keinen Zugriff mehr. Vorher
+  # war es genau umgekehrt, nur die Alt-SBK kam an das Profil.
+  test 'SBK des abgelaufenen Alt-Eintrags darf den Spieler nicht mehr oeffnen' do
+    heim_club = create(:club, game_operations_hash: [
+      { 'home_game_operation' => true, 'game_operation_id' => @game_operation.id }
+    ])
+    alt_go = create(:game_operation)
+    alt_club = create(:club, game_operations_hash: [
+      { 'home_game_operation' => true, 'game_operation_id' => alt_go.id }
+    ])
+    player = create(:player, clubs: [
+      { 'club_id' => alt_club.id, 'home_club' => true, 'valid_until' => 1.year.ago.iso8601 },
+      { 'club_id' => heim_club.id, 'home_club' => true, 'created_at' => 1.year.ago.iso8601 }
+    ])
+
+    login_as(create(:user, :sbk_scoped, game_operation_id: alt_go.id))
+    get "/api/v2/admin/players/#{player.id}.json"
+
+    assert_response :forbidden
+  end
+
+  # Bewusst unveraendert: Ohne gueltigen Heimateintrag bleibt das Profil fuer
+  # jede Landes-SBK gesperrt (Prod: 76 aktive Spieler). Das ist ein Datenproblem
+  # und in api#389 ausdruecklich nicht Teil des Fixes.
+  test 'Spieler ohne gueltigen Heimateintrag bleibt fuer die Landes-SBK gesperrt' do
+    heim_club = create(:club, game_operations_hash: [
+      { 'home_game_operation' => true, 'game_operation_id' => @game_operation.id }
+    ])
+    player = create(:player, clubs: [
+      { 'club_id' => heim_club.id, 'home_club' => true, 'valid_until' => 1.year.ago.iso8601 }
+    ])
+
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+    get "/api/v2/admin/players/#{player.id}.json"
+
+    assert_response :forbidden
+  end
+
+  test 'Globaler SBK oeffnet auch Spieler ohne gueltigen Heimateintrag' do
+    player = create(:player, clubs: [
+      { 'club_id' => create(:club).id, 'home_club' => true, 'valid_until' => 1.year.ago.iso8601 }
+    ])
+
+    login_as(create(:user, :sbk_global))
+    get "/api/v2/admin/players/#{player.id}.json"
+
+    assert_response :success
+  end
+
   private
 
   # Beendetes Spiel mit @player (Trikot 7) in der Heim-Aufstellung.
