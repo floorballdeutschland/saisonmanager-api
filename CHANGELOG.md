@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Lizenzen aus alten Saisons galten als aktuell**: Beim Genehmigen einer Lizenz zeigte der Saisonmanager unter „weitere Lizenzen" Einträge aus längst vergangenen Saisons und verlangte im Großfeld-Erwachsenenbereich deshalb eine Erst-/Zweitlizenz-Zuordnung, obwohl es in der laufenden Saison gar keine zweite Lizenz gab. Ursache war, dass eine Lizenz ohne hinterlegte Saison als Lizenz der laufenden Saison behandelt wurde, und genau diese Angabe fehlt bei Altbeständen. Maßgeblich ist jetzt die Saison der Liga, zu der die Mannschaft gehört; eine fehlende Angabe am Lizenzeintrag spielt keine Rolle mehr. Damit endet auch die widersprüchliche Lage, dass die Genehmigungskarte nach einer Zuordnung fragte, die im Hintergrund nirgends verbucht worden wäre.
+
 ## [1.75.0] - 2026-08-12
 
 ### Behoben
