@@ -81,9 +81,19 @@ class ClubHomeGameOperationResolver
   #                                   Mainzer Stadtteil.
   #
   # Zuständig ist in beiden Fällen Rheinland-Pfalz / Saarland.
+  #
+  # `name_includes` ist die Gegenprobe zur id und keine Doppelung: Eine id ist nur
+  # in DER Datenbank aussagekräftig, für die sie notiert wurde. Anderswo
+  # (Entwicklung, Test, ein neu aufgesetzter Bestand) zeigt dieselbe Zahl auf einen
+  # beliebigen anderen Verein, und der bekäme stillschweigend Rheinland-Pfalz
+  # zugeordnet. Passt der Name nicht, greift der Eintrag nicht: Der Task leitet
+  # normal ab und benennt den übersprungenen Eintrag in der Ausgabe. Ein Ortsname
+  # genügt als Merkmal und übersteht Zusätze wie Rechtsform oder Sponsor.
   CLUB_OVERRIDES = {
-    275 => { sa_short: 'RLPSAAR', reason: 'Hechtsheim ist ein Mainzer Stadtteil, nicht Hessen' },
-    284 => { sa_short: 'RLPSAAR', reason: 'Landau in der Pfalz, nicht Baden-Württemberg' }
+    275 => { sa_short: 'RLPSAAR', name_includes: 'Hechtsheim',
+             reason: 'Hechtsheim ist ein Mainzer Stadtteil, nicht Hessen' },
+    284 => { sa_short: 'RLPSAAR', name_includes: 'Landau',
+             reason: 'Landau in der Pfalz, nicht Baden-Württemberg' }
   }.freeze
 
   Result = Struct.new(:club, :game_operation, :state_association, :status, :detail, keyword_init: true)
@@ -107,6 +117,34 @@ class ClubHomeGameOperationResolver
   # bewertet der Task andere Vereine als betroffen als die Oberfläche.
   def affected_clubs
     Club.order(:id).reject(&:main_game_operation_id)
+  end
+
+  # Trifft dieser Eintrag aus CLUB_OVERRIDES diesen Verein? Die id allein genügt
+  # nicht, siehe Kommentar an der Tabelle: Sie gilt nur im Bestand, für den sie
+  # notiert wurde. Verglichen wird gegen name und long_name, damit ein Zusatz an
+  # einer der beiden Stellen den Eintrag nicht aushebelt.
+  def override_fits?(club, override)
+    needle = override[:name_includes].to_s.downcase
+    return false if needle.empty?
+
+    [club.name, club.long_name].compact.any? { |candidate| candidate.downcase.include?(needle) }
+  end
+
+  # Einträge aus CLUB_OVERRIDES, die auf diesen Bestand nicht passen — der Verein
+  # fehlt, oder sein Name trägt das Merkmal nicht. Sie greifen dann nicht, und der
+  # betroffene Verein läuft durch die normale Ableitung. Das muss in der Ausgabe
+  # stehen: Ein Eintrag, der nach einer Umbenennung stumm ins Leere greift, wäre
+  # genau die Falle, die die Gegenprobe verhindern soll.
+  def unmatched_overrides
+    clubs = Club.where(id: CLUB_OVERRIDES.keys).index_by(&:id)
+
+    CLUB_OVERRIDES.filter_map do |club_id, override|
+      club = clubs[club_id]
+      next if club && override_fits?(club, override)
+
+      found = club ? "\"#{club.name}\"" : 'kein Verein mit dieser id'
+      "##{club_id} (#{override[:sa_short]}, erwartet \"#{override[:name_includes]}\", vorhanden: #{found})"
+    end
   end
 
   # Kürzel aus den Tabellen oben, zu denen es keinen Landesverband gibt.
@@ -135,9 +173,8 @@ class ClubHomeGameOperationResolver
   #   :no_go_for_sa   – Landesverband bekannt, aber kein Spielbetrieb dazu.
   #   :unknown_sa_short – ein Kürzel aus CLUB_OVERRIDES gibt es nicht.
   def resolve(club)
-    if (override = CLUB_OVERRIDES[club.id])
-      return resolve_override(club, override)
-    end
+    override = CLUB_OVERRIDES[club.id]
+    return resolve_override(club, override) if override && override_fits?(club, override)
 
     counts = game_operation_counts(club)
     return resolve_from_teams(club, counts) if counts.any?
@@ -263,6 +300,12 @@ namespace :clubs do
     # wo die Ausgabe umgeleitet ist) beendet SystemExit den Prozess stumm.
     missing = resolver.missing_short_names
     puts "HINWEIS: Landesverband-Kürzel ohne Treffer: #{missing.join(', ')}" if missing.any?
+
+    unmatched = resolver.unmatched_overrides
+    if unmatched.any?
+      puts "HINWEIS: Ausdrückliche Zuordnungen ohne passenden Verein: #{unmatched.join(', ')}"
+      puts '         Diese Vereine werden normal abgeleitet.'
+    end
 
     unmapped = resolver.unmapped_state_associations_without_go
     if unmapped.any?
