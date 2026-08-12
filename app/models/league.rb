@@ -907,9 +907,12 @@ class League < ApplicationRecord
   # nur über cup_leagues zur Liga gehören.
   def self.license_teams_by_league(leagues, team_hash)
     league_ids = leagues.map(&:id)
+    # Sortierung wie League#teams (:name) – die Liga-Lizenzansicht zeigt die
+    # Mannschaften alphabetisch und sortiert nicht selbst nach. :id nur als
+    # Tiebreaker, damit die Reihenfolge bei gleichem Namen bestimmt bleibt.
     scope = Team.where(league_id: league_ids)
                 .or(Team.where('cup_leagues && ARRAY[?]::int[]', league_ids))
-                .order(:id)
+                .order(:name, :id)
     # :league für other_licenses (league_name, gf_adult?, female), bei :full
     # zusätzlich alles, was Team#full_hash liest.
     scope = if team_hash == :full

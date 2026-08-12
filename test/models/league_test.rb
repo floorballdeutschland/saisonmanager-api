@@ -694,6 +694,18 @@ class LeagueTest < ActiveSupport::TestCase
     assert_includes player_ids, player.id
   end
 
+  test 'licenses: Mannschaften kommen alphabetisch, wie bei League#teams' do
+    # Die Liga-Lizenzansicht sortiert nicht selbst nach, sie übernimmt die
+    # Reihenfolge der Schnittstelle. Ohne diesen Test kippt sie beim nächsten
+    # Umbau still auf die Anlage-Reihenfolge.
+    create(:setting, current_season_id: '18')
+    league = create(:league, :current_season)
+    %w[Zebras Adler Möwen].each { |name| create(:team, league: league, name: name) }
+
+    names = league.licenses.map { |t| t[:name] }
+    assert_equal %w[Adler Möwen Zebras], names
+  end
+
   test 'licenses: other_licenses listet Lizenzen anderer Teams derselben Saison' do
     create(:setting, current_season_id: '18')
     target_league = create(:league, :current_season)
