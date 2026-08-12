@@ -1047,13 +1047,13 @@ class PlayersController < ApplicationController
     Team.current_season.where(id: ph[:tm]).flat_map(&:all_club_ids).uniq
   end
 
-  VALID_DEACTIVATION_REASONS = %w[Vereinsaustritt Karriereende].freeze
-  VALID_DEACTIVATION_REASONS_WITH_UMLAUT = ['Temporäre Pause'].freeze
-
   def sanitize_deactivation_reason(raw)
     value = raw.is_a?(String) ? raw.strip.slice(0, 255) : nil
     return nil if value.blank?
-    return value if (VALID_DEACTIVATION_REASONS + VALID_DEACTIVATION_REASONS_WITH_UMLAUT).include?(value)
+    # Player::DEACTIVATION_REASONS ist die gemeinsame Quelle: reactivate! muss
+    # genau die Gründe erkennen, die hier durchkommen, sonst bleibt beim
+    # Reaktivieren der Lizenz-Verlauf auf "gelöscht" stehen.
+    return value if Player::DEACTIVATION_REASONS.include?(value)
     return value if value.start_with?('Sonstiges: ') && value[11..].strip.present?
 
     :invalid

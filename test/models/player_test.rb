@@ -364,6 +364,32 @@ class PlayerTest < ActiveSupport::TestCase
                  'DELETED-Eintrag mit System-Grund soll nach reactivate! entfernt sein'
   end
 
+  # Jeder auswählbare Grund muss auch wieder aufgeräumt werden. Stand ein Grund
+  # nur in der Controller-Whitelist und nicht in der Liste, gegen die reactivate!
+  # prüft, blieb die Lizenz nach dem Reaktivieren auf "gelöscht" stehen.
+  test 'reactivate! entfernt den DELETED-Eintrag bei jedem auswählbaren Grund' do
+    create(:setting, current_season_id: '18')
+    user   = create(:user)
+    league = create(:league, :current_season)
+
+    Player::DEACTIVATION_REASONS.each do |reason|
+      team   = create(:team, league: league)
+      player = create(:player, with_licenses: [
+        { team: team, status: License::APPROVED }
+      ])
+
+      player.deactivate!(user.id, reason: reason)
+      player.reload
+      original_size = player.licenses.first['history'].size
+
+      player.reactivate!
+      player.reload
+
+      assert_equal original_size - 1, player.licenses.first['history'].size,
+                   "DELETED-Eintrag mit Grund #{reason} soll nach reactivate! entfernt sein"
+    end
+  end
+
   test 'reactivate! bewahrt manuellen DELETED-Eintrag von anderem Nutzer' do
     create(:setting, current_season_id: '18')
     user  = create(:user)

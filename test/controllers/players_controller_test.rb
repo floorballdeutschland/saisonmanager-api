@@ -714,6 +714,25 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_nil reaktiviert['deactivated_at']
   end
 
+  # Der internationale Transfer laeuft ueber FD und IFF ausserhalb dieses Systems.
+  # Im System bleibt die Deaktivierung mit dem passenden Grund, damit der Fall in
+  # der Historie nicht als "Sonstiges" verschwindet.
+  test 'deactivate akzeptiert Wechsel ins Ausland und weist unbekannte Gruende ab' do
+    vm = create(:user, :vm, club_id: @club.id)
+    ausland = create(:player, clubs: [{ 'club_id' => @club.id, 'home_club' => true }])
+    unbekannt = create(:player, clubs: [{ 'club_id' => @club.id, 'home_club' => true }])
+
+    login_as(vm)
+    post "/api/v2/admin/players/#{ausland.id}/deactivate", params: { reason: 'Wechsel ins Ausland' }
+    assert_response :success
+    assert_equal 'Wechsel ins Ausland', ausland.reload.deactivation_reason
+    assert ausland.deactivated_at.present?
+
+    post "/api/v2/admin/players/#{unbekannt.id}/deactivate", params: { reason: 'Wechsel nach Schweden' }
+    assert_response :unprocessable_entity
+    assert_nil unbekannt.reload.deactivated_at
+  end
+
   # Eine zusammengefuehrte Dublette ist nur deshalb deaktiviert, weil merge_into! sie
   # ersetzt hat. Sie darf weder in der Vereinsliste stehen noch reaktiviert werden,
   # sonst gibt es das zweite Profil derselben Person wieder.
