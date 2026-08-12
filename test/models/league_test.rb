@@ -694,6 +694,18 @@ class LeagueTest < ActiveSupport::TestCase
     assert_includes player_ids, player.id
   end
 
+  test 'licenses: Mannschaften kommen alphabetisch, wie bei League#teams' do
+    # Die Liga-Lizenzansicht sortiert nicht selbst nach, sie übernimmt die
+    # Reihenfolge der Schnittstelle. Ohne diesen Test kippt sie beim nächsten
+    # Umbau still auf die Anlage-Reihenfolge.
+    create(:setting, current_season_id: '18')
+    league = create(:league, :current_season)
+    %w[Zebras Adler Möwen].each { |name| create(:team, league: league, name: name) }
+
+    names = league.licenses.map { |t| t[:name] }
+    assert_equal %w[Adler Möwen Zebras], names
+  end
+
   test 'licenses: other_licenses listet Lizenzen anderer Teams derselben Saison' do
     create(:setting, current_season_id: '18')
     target_league = create(:league, :current_season)
@@ -735,6 +747,54 @@ class LeagueTest < ActiveSupport::TestCase
     refute_nil player_entry
     assert_empty player_entry[:other_licenses],
                  'Vorsaison-Lizenz nicht in other_licenses'
+  end
+
+  test 'licenses: other_licenses blendet Altlizenzen ohne season_id aus' do
+    # Der Prod-Fall vom 12.08.2026: Altbestände tragen kein season_id im
+    # Lizenz-Eintrag. Die frühere Bedingung (`lic_season.nil? ||`) hielt sie
+    # deshalb für aktuell — Lizenzen von 2012 tauchten in der Genehmigungskarte
+    # als „bestehende GF-Lizenz" auf und verlangten eine Erst-/Zweitlizenz-
+    # Zuordnung, die das Backend nirgends verbucht hätte.
+    create(:setting, current_season_id: '18')
+    target_league = create(:league, :current_season, field_size: 'GF', age_group: 'Herren')
+    legacy_league = create(:league, :previous_season, field_size: 'GF', age_group: 'Herren')
+    target_team   = create(:team, league: target_league)
+    legacy_team   = create(:team, league: legacy_league)
+
+    player = create(:player, with_licenses: [
+      { team: target_team, status: License::REQUESTED, season_id: '18' },
+      { team: legacy_team, status: License::APPROVED,  season_id: nil }
+    ])
+
+    result = target_league.licenses
+    target_team_block = result.find { |t| t[:id] == target_team.id }
+    player_entry = target_team_block[:players].find { |p| p[:id] == player.id }
+
+    refute_nil player_entry
+    assert_empty player_entry[:other_licenses],
+                 'Lizenz ohne season_id gehört zur Liga ihrer Mannschaft, nicht zur laufenden Saison'
+  end
+
+  test 'licenses: other_licenses nimmt Lizenzen ohne season_id derselben Saison mit' do
+    # Gegenprobe: fehlt das Feld, aber die Liga der anderen Mannschaft läuft in
+    # dieser Saison, bleibt der Eintrag sichtbar. Die Liga entscheidet, nicht das Feld.
+    create(:setting, current_season_id: '18')
+    target_league = create(:league, :current_season)
+    other_league  = create(:league, :current_season)
+    target_team   = create(:team, league: target_league)
+    other_team    = create(:team, league: other_league)
+
+    player = create(:player, with_licenses: [
+      { team: target_team, status: License::APPROVED, season_id: '18' },
+      { team: other_team,  status: License::APPROVED, season_id: nil }
+    ])
+
+    result = target_league.licenses
+    target_team_block = result.find { |t| t[:id] == target_team.id }
+    player_entry = target_team_block[:players].find { |p| p[:id] == player.id }
+
+    assert_equal 1, player_entry[:other_licenses].size,
+                 'Liga der anderen Mannschaft liegt in dieser Saison → sichtbar'
   end
 
   test 'licenses: other_licenses liefert GF-Kontext für die Erst-/Zweitlizenz-Zuordnung' do
