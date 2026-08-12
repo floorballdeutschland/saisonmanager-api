@@ -622,23 +622,18 @@ class User < ApplicationRecord
     # Vereinsmanager an einem Vereins-Sammelpostfach). Ein E-Mail-Login würde
     # bei jeder solchen Doppelvergabe still aufhören zu funktionieren.
     user = User.where('LOWER(user_name) = ?', login.to_s.downcase).first
-    hashed_password = Digest::MD5.hexdigest(password)
 
     return nil if user.blank?
 
-    # old md5 password
-    if user.password_digest.blank? && user.old_password == hashed_password
-      user.password = password
-      user.password_confirmation = password
-      user.password_reset_token = nil
-      user.old_password = nil
-      # Archivierte Konten weist der Controller ab – ihr last_login_at bleibt
-      # unangetastet, damit der Inaktiv-Status nicht verfälscht wird.
-      user.last_login_at = Time.now unless user.archived?
-      user if user.save
-    elsif user.password_digest.present? && user.authenticate(password)
-      user if user.archived? || user.update(last_login_at: Time.now)
-    end
+    # Ein leerer password_digest braucht keine eigene Prüfung: authenticate aus
+    # has_secure_password testet selbst auf present? und liefert dann false,
+    # statt BCrypt mit einem leeren Hash aufzurufen (activemodel,
+    # secure_password.rb). Ein Konto ohne Hash kommt damit nicht herein.
+    return nil unless user.authenticate(password)
+
+    # Archivierte Konten weist der Controller ab – ihr last_login_at bleibt
+    # unangetastet, damit der Inaktiv-Status nicht verfälscht wird.
+    user if user.archived? || user.update(last_login_at: Time.now)
   end
 
   # Rollen-IDs, die dieses Konto anderen Konten zuweisen (und wieder entziehen)

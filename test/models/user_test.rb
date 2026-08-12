@@ -558,4 +558,70 @@ class UserTest < ActiveSupport::TestCase
     assert_not dup.valid?
     assert dup.errors[:user_name].present?
   end
+
+  # ---------------------------------------------------------------------------
+  # self.login
+  # ---------------------------------------------------------------------------
+
+  test 'login: richtiges Passwort meldet an und schreibt last_login_at' do
+    u = build_user(permissions: [])
+    u.update_columns(last_login_at: nil)
+
+    assert_equal u.id, User.login(u.user_name, 'password123')&.id
+    assert_not_nil u.reload.last_login_at
+  end
+
+  test 'login: falsches Passwort meldet nicht an und lässt last_login_at unberührt' do
+    u = build_user(permissions: [])
+    u.update_columns(last_login_at: nil)
+
+    assert_nil User.login(u.user_name, 'falsch')
+    assert_nil u.reload.last_login_at
+  end
+
+  test 'login: unbekannter Benutzername ergibt nil' do
+    assert_nil User.login("gibtsnicht_#{SecureRandom.hex(4)}", 'password123')
+  end
+
+  test 'login: leerer Benutzername oder leeres Passwort ergibt nil' do
+    u = build_user(permissions: [])
+
+    assert_nil User.login('', 'password123')
+    assert_nil User.login(u.user_name, '')
+    assert_nil User.login(nil, nil)
+  end
+
+  test 'login: Benutzername wird kleinschreibungsneutral verglichen' do
+    u = build_user(permissions: [])
+    u.update_columns(user_name: "MixedCase#{SecureRandom.hex(4)}")
+
+    assert_equal u.id, User.login(u.user_name.downcase, 'password123')&.id
+  end
+
+  # Konten ohne Hash gibt es auf Produktion nicht (der MD5-Altbestand ist
+  # migriert), die Spalte lässt aber weiter NULL zu. Vor dem Entfernen des
+  # MD5-Zweigs war das der Einstieg in die Passwort-Migration; der Test hält
+  # fest, dass ein solches Konto jetzt einfach abgewiesen wird, statt sich
+  # ohne bcrypt-Prüfung anmelden zu können.
+  test 'login: Konto ohne password_digest ergibt nil' do
+    u = build_user(permissions: [])
+    u.update_columns(password_digest: nil)
+
+    assert_nil User.login(u.user_name, 'password123')
+  end
+
+  # Archivierte Konten weist der SessionsController ab; User.login findet sie
+  # weiterhin, darf aber ihr last_login_at nicht anfassen, weil der
+  # Inaktiv-Status darauf aufbaut.
+  test 'login: archiviertes Konto behält sein last_login_at' do
+    u = build_user(permissions: [])
+    stamp = 3.years.ago.change(usec: 0)
+    u.update_columns(last_login_at: stamp, archived_at: Time.current)
+
+    found = User.login(u.user_name, 'password123')
+
+    assert_equal u.id, found&.id
+    assert found.archived?
+    assert_equal stamp.to_i, u.reload.last_login_at.to_i
+  end
 end
