@@ -1102,43 +1102,6 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert deaktiviert.reload.deactivated_at.present?
   end
 
-  # `merge` verlangt Zugriff auf Master UND Dublette. Eine Alt-Dublette hat ihre
-  # Heimat-Zugehörigkeit vor Jahren verloren, der Abgleich war damit gesperrt.
-  test 'gescopte SBK fuehrt eine Alt-Dublette ohne gueltige Zugehoerigkeit zusammen' do
-    heim_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
-                                                       'game_operation_id' => @game_operation.id }])
-    master = create(:player, clubs: [{ 'club_id' => heim_club.id, 'home_club' => true }])
-    dublette = create(:player, clubs: [{ 'club_id' => heim_club.id, 'home_club' => true,
-                                         'valid_until' => 3.years.ago.iso8601 }])
-    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
-
-    post "/api/v2/admin/players/#{master.id}/merge", params: { secondary_id: dublette.id }, as: :json
-
-    assert_response :success
-    assert_equal master.id, dublette.reload.merged_into_id
-  end
-
-  # Gegenprobe: Die Dublette darf nicht aus einem fremden Verband stammen, sonst
-  # zöge der Rückfall am Master vorbei fremde Profile herein.
-  test 'Dublette aus fremdem Verband bleibt vom Zusammenfuehren ausgeschlossen' do
-    heim_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
-                                                       'game_operation_id' => @game_operation.id }])
-    fremd_sa = create(:state_association)
-    fremd_go = create(:game_operation, state_association_id: fremd_sa.id)
-    fremd_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
-                                                        'game_operation_id' => fremd_go.id }])
-    master = create(:player, clubs: [{ 'club_id' => heim_club.id, 'home_club' => true }])
-    fremde_dublette = create(:player, clubs: [{ 'club_id' => fremd_club.id, 'home_club' => true,
-                                                'valid_until' => 3.years.ago.iso8601 }])
-    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
-
-    post "/api/v2/admin/players/#{master.id}/merge",
-         params: { secondary_id: fremde_dublette.id }, as: :json
-
-    assert_response :forbidden
-    assert_nil fremde_dublette.reload.merged_into_id
-  end
-
   # Die Reihenfolge im clubs-Hash ist NICHT chronologisch: Player#_merge_clubs
   # sortiert nach created_at, Altdaten ohne created_at rutschen nach vorn. Ein
   # geschlossener Eintrag kann deshalb HINTER einem offenen stehen. Ohne den
@@ -1191,11 +1154,12 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert player.reload.deactivated_at.present?
   end
 
-  # Genau die Altdaten, für die dieser Weg gedacht ist: Unter den Zugehörigkeiten,
-  # welche die Deaktivierung geschlossen hat, zeigt eine auf keinen auflösbaren
-  # Verein. Die andere liegt im eigenen Spielbetrieb und muss zählen, sonst bleibt
-  # die Reaktivierung blockiert.
-  test 'unaufloesbarer Heimat-Eintrag blockiert die Ruecknahme nicht' do
+  # Grenze der Regel, bewusst so: Ist der jüngste Heimat-Eintrag nicht auflösbar
+  # (fehlende `club_id`, gelöschter Verein), gibt es auch NACH der Rücknahme keinen
+  # zuständigen Verband, `Player#home_club` liefert dort nil. Die Absage ist damit
+  # dieselbe wie am Profil selbst; ein Ja wäre nur ein Blick in Daten, für die
+  # niemand zuständig ist. Solche Profile brauchen Datenpflege — Haltung aus api#389.
+  test 'unaufloesbarer juengster Heimat-Eintrag bleibt eine Absage' do
     admin = create(:user, :admin)
     heim_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
                                                        'game_operation_id' => @game_operation.id }])
@@ -1209,7 +1173,7 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
 
     post "/api/v2/admin/players/#{player.id}/reactivate"
 
-    assert_response :success
+    assert_response :forbidden
   end
 
   # `'false'` als String ist truthy. Ein Zweitspielrecht mit diesem Altdaten-Wert
@@ -1255,53 +1219,6 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
     post "/api/v2/admin/players/#{player.id}/reactivate"
     assert_response :success, 'der Verband der geschlossenen Zugehörigkeit darf'
-  end
-
-  # Beim Zusammenführen entscheidet die ZULETZT beendete Zugehörigkeit, nicht die
-  # Position im clubs-Hash. Hier steht die ältere hinten.
-  test 'beim Zusammenfuehren entscheidet die zuletzt beendete Zugehoerigkeit' do
-    fremd_go = fremder_spielbetrieb
-    aktueller_club = club_in(@game_operation)
-    alter_club = club_in(fremd_go)
-    dublette = create(:player, clubs: [
-      { 'club_id' => aktueller_club.id, 'home_club' => true,
-        'valid_until' => 1.month.ago.iso8601 },
-      { 'club_id' => alter_club.id, 'home_club' => true,
-        'valid_until' => 5.years.ago.iso8601 }
-    ])
-
-    fremder_master = create(:player, clubs: [{ 'club_id' => alter_club.id, 'home_club' => true }])
-    login_as(create(:user, :sbk_scoped, game_operation_id: fremd_go.id))
-    post "/api/v2/admin/players/#{fremder_master.id}/merge",
-         params: { secondary_id: dublette.id }, as: :json
-    assert_response :forbidden, 'der vor Jahren verlassene Verband entscheidet nicht'
-    assert_nil dublette.reload.merged_into_id
-
-    master = create(:player, clubs: [{ 'club_id' => aktueller_club.id, 'home_club' => true }])
-    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
-    post "/api/v2/admin/players/#{master.id}/merge",
-         params: { secondary_id: dublette.id }, as: :json
-    assert_response :success
-  end
-
-  # Ein AKTIVES Profil darf nicht hereingezogen werden, auch wenn sein gültiger
-  # Heimat-Eintrag auf keinen auflösbaren Verein zeigt. Player#home_club gibt dort
-  # nil, die Gültigkeit steht aber im Eintrag selbst.
-  test 'aktives Profil mit unaufloesbarem Heimatverein bleibt vom Merge ausgeschlossen' do
-    aktueller_club = club_in(@game_operation)
-    aktiv_fremd = create(:player, clubs: [
-      { 'club_id' => aktueller_club.id, 'home_club' => true,
-        'valid_until' => 5.years.ago.iso8601 },
-      { 'club_id' => 999_999, 'home_club' => true }
-    ])
-    master = create(:player, clubs: [{ 'club_id' => aktueller_club.id, 'home_club' => true }])
-    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
-
-    post "/api/v2/admin/players/#{master.id}/merge",
-         params: { secondary_id: aktiv_fremd.id }, as: :json
-
-    assert_response :forbidden
-    assert_nil aktiv_fremd.reload.merged_into_id
   end
 
   # Gegenstück zum String-`'false'`-Test: Ein OFFENER Gast-Eintrag mit diesem
