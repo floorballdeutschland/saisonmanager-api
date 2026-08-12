@@ -1040,6 +1040,100 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
+  # --- Rücknahme und Zusammenführen ohne gültige Heimat-Zugehörigkeit -------
+  #
+  # Die Profilansicht bleibt in diesem Fall gesperrt, das ist entschieden
+  # (api#389, Datenproblem). Zwei Aktionen brauchen trotzdem eine Zuständigkeit,
+  # sonst hindert die Sperre die zuständige Stelle an ihrer eigenen Arbeit.
+
+  # `deactivate!` stempelt ALLE Zugehörigkeiten, auch die Heimat. Ohne den
+  # Rückfall durfte eine Landes-SBK deaktivieren, aber ab dem Tag danach nicht
+  # mehr zurücknehmen.
+  test 'gescopte SBK reaktiviert ein vor Tagen deaktiviertes Profil' do
+    admin = create(:user, :admin)
+    heim_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
+                                                       'game_operation_id' => @game_operation.id }])
+    deaktiviert = create(:player, clubs: [{ 'club_id' => heim_club.id, 'home_club' => true,
+                                            'valid_until' => 7.days.ago.iso8601,
+                                            'valid_set_by' => admin.id }],
+                                  deactivated_at: 7.days.ago, deactivated_by: admin.id)
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+
+    post "/api/v2/admin/players/#{deaktiviert.id}/reactivate"
+
+    assert_response :success
+    assert_nil deaktiviert.reload.deactivated_at
+  end
+
+  # Gegenprobe: Der Rückfall reicht nur so weit wie der eigene Spielbetrieb.
+  test 'fremde SBK reaktiviert ein deaktiviertes Profil nicht' do
+    admin = create(:user, :admin)
+    fremd_sa = create(:state_association)
+    fremd_go = create(:game_operation, state_association_id: fremd_sa.id)
+    heim_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
+                                                       'game_operation_id' => @game_operation.id }])
+    deaktiviert = create(:player, clubs: [{ 'club_id' => heim_club.id, 'home_club' => true,
+                                            'valid_until' => 7.days.ago.iso8601,
+                                            'valid_set_by' => admin.id }],
+                                  deactivated_at: 7.days.ago, deactivated_by: admin.id)
+    login_as(create(:user, :sbk_scoped, game_operation_id: fremd_go.id))
+
+    post "/api/v2/admin/players/#{deaktiviert.id}/reactivate"
+
+    assert_response :forbidden
+    assert deaktiviert.reload.deactivated_at.present?
+  end
+
+  # `merge` verlangt Zugriff auf Master UND Dublette. Eine Alt-Dublette hat ihre
+  # Heimat-Zugehörigkeit vor Jahren verloren, der Abgleich war damit gesperrt.
+  test 'gescopte SBK fuehrt eine Alt-Dublette ohne gueltige Zugehoerigkeit zusammen' do
+    heim_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
+                                                       'game_operation_id' => @game_operation.id }])
+    master = create(:player, clubs: [{ 'club_id' => heim_club.id, 'home_club' => true }])
+    dublette = create(:player, clubs: [{ 'club_id' => heim_club.id, 'home_club' => true,
+                                         'valid_until' => 3.years.ago.iso8601 }])
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+
+    post "/api/v2/admin/players/#{master.id}/merge", params: { secondary_id: dublette.id }, as: :json
+
+    assert_response :success
+    assert_equal master.id, dublette.reload.merged_into_id
+  end
+
+  # Gegenprobe: Die Dublette darf nicht aus einem fremden Verband stammen, sonst
+  # zöge der Rückfall am Master vorbei fremde Profile herein.
+  test 'Dublette aus fremdem Verband bleibt vom Zusammenfuehren ausgeschlossen' do
+    heim_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
+                                                       'game_operation_id' => @game_operation.id }])
+    fremd_sa = create(:state_association)
+    fremd_go = create(:game_operation, state_association_id: fremd_sa.id)
+    fremd_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
+                                                        'game_operation_id' => fremd_go.id }])
+    master = create(:player, clubs: [{ 'club_id' => heim_club.id, 'home_club' => true }])
+    fremde_dublette = create(:player, clubs: [{ 'club_id' => fremd_club.id, 'home_club' => true,
+                                                'valid_until' => 3.years.ago.iso8601 }])
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+
+    post "/api/v2/admin/players/#{master.id}/merge",
+         params: { secondary_id: fremde_dublette.id }, as: :json
+
+    assert_response :forbidden
+    assert_nil fremde_dublette.reload.merged_into_id
+  end
+
+  # Ohne jeden Heimat-Eintrag gibt es keine Zuständigkeit, die der Rückfall finden
+  # könnte. Die Absage bleibt auch beim Reaktivieren.
+  test 'ohne Heimat-Eintrag bleibt es auch beim Reaktivieren bei der Absage' do
+    admin = create(:user, :admin)
+    ohne_heimat = create(:player, clubs: [{ 'club_id' => @club.id }],
+                                  deactivated_at: 7.days.ago, deactivated_by: admin.id)
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+
+    post "/api/v2/admin/players/#{ohne_heimat.id}/reactivate"
+
+    assert_response :forbidden
+  end
+
   private
 
   # Beendetes Spiel mit @player (Trikot 7) in der Heim-Aufstellung.

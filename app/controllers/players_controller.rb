@@ -837,7 +837,10 @@ class PlayersController < ApplicationController
     return render json: { message: 'Secondary-Spieler nicht gefunden.' }, status: :not_found unless secondary
 
     ph = current_user.permission_hash
-    unless ph[:admin].present? || (sbk_can_access_player?(ph, master) && sbk_can_access_player?(ph, secondary))
+    # Für die Dublette genügt der letzte bekannte Heimatverein: Sie ist dieselbe
+    # Person wie der Master, und ihre Zugehörigkeit endete oft vor Jahren.
+    secondary_ok = sbk_can_access_player?(ph, secondary) || sbk_last_home_club_in_scope?(ph, secondary)
+    unless ph[:admin].present? || (sbk_can_access_player?(ph, master) && secondary_ok)
       return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
     end
 
@@ -864,7 +867,13 @@ class PlayersController < ApplicationController
     player = Player.find_by(id: params[:id])
     return render json: { message: 'Spieler nicht gefunden.' }, status: :not_found unless player
     return render json: { message: 'Spieler ist nicht deaktiviert.' }, status: :unprocessable_entity if player.deactivated_at.nil?
-    return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless can_manage_player?(player)
+    # Wer deaktivieren darf, muss zurücknehmen können: deactivate! stempelt auch
+    # die Heimat-Zugehörigkeit, weshalb die reguläre Prüfung ab dem Tag danach
+    # nein sagt (siehe sbk_last_home_club_in_scope?).
+    unless can_manage_player?(player) ||
+           sbk_last_home_club_in_scope?(current_user.permission_hash, player)
+      return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
 
     # Eine zusammengefuehrte Dublette ist nur deshalb deaktiviert, weil merge_into!
     # sie ersetzt hat; Spiele und Lizenzen liegen beim Master. Reaktiviert waere sie
@@ -1066,6 +1075,12 @@ class PlayersController < ApplicationController
   # (oder einem Ablage-Verein) zugezogen war, blieb für die eigene SBK gesperrt.
   # Player#home_club verwirft abgelaufene Einträge und nimmt den letzten
   # gültigen, ist also die kanonische Quelle für den Heimatverein.
+  #
+  # Ohne gültige Heimat-Zugehörigkeit bleibt das Profil für die Landes-SBK
+  # gesperrt. Das ist entschieden (api#389): ein Datenproblem, das über die
+  # Datenpflege gelöst wird, nicht über die Rechteregel. Für zwei Aktionen, bei
+  # denen diese Sperre die zuständige Stelle von ihrer eigenen Arbeit abschneidet,
+  # gibt es sbk_last_home_club_in_scope?.
   def sbk_can_access_player?(ph, player)
     return false unless ph[:sbk].present?
     return true if ph[:sbk].include?(0)
@@ -1074,6 +1089,43 @@ class PlayersController < ApplicationController
     return false unless home_club
 
     ph[:sbk].include?(home_club.main_game_operation_id)
+  end
+
+  # Zuständigkeit über den LETZTEN BEKANNTEN Heimatverein, auch wenn dessen
+  # Zugehörigkeit nicht mehr gilt. Bewusst getrennt von sbk_can_access_player? und
+  # nur an zwei Stellen benutzt, weil die Sperre dort nichts schützt, sondern die
+  # zuständige Stelle an ihrer eigenen Arbeit hindert:
+  #
+  #   - reactivate: `Player#deactivate!` stempelt ALLE Zugehörigkeiten, auch die
+  #     Heimat. Die abgelaufene Zugehörigkeit ist dort ein Artefakt unserer eigenen
+  #     Mechanik. Ohne diesen Zweig darf eine SBK deaktivieren, aber ab dem Tag
+  #     danach nicht mehr zurücknehmen — gemessen, nicht vermutet.
+  #   - merge: Die Dublette ist dieselbe Person wie der Master. Der Zugriff auf den
+  #     Master wird regulär geprüft, für die Dublette genügt der letzte bekannte
+  #     Heimatverein. Sonst bleibt jede Alt-Dublette liegen, deren Zugehörigkeit
+  #     vor Jahren endete.
+  #
+  # Profile ohne jeden Heimat-Eintrag bleiben auch hier gesperrt, es gibt dann
+  # keine Zuständigkeit, die sich ableiten ließe.
+  def sbk_last_home_club_in_scope?(ph, player)
+    return false unless ph[:sbk].present?
+    return true if ph[:sbk].include?(0)
+
+    club = last_known_home_club(player)
+    return false unless club
+
+    ph[:sbk].include?(club.main_game_operation_id)
+  end
+
+  # Letzter Heimat-Eintrag, ohne Rücksicht auf die Gültigkeit. „Letzter" heißt der
+  # hinterste: Ein Vereinswechsel hängt den neuen Eintrag an, dieselbe Annahme wie
+  # in Player#home_club_hash. Truthy-Prüfung statt `== true`, weil Altdaten den
+  # Wert auch als String tragen.
+  def last_known_home_club(player)
+    entry = (player.clubs || []).select { |c| c['home_club'] }.last
+    return nil unless entry
+
+    Club.find_by(id: entry['club_id'])
   end
 
   def derive_club_ids_for_go(go_ids)
