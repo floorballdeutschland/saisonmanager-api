@@ -631,7 +631,7 @@ class User < ApplicationRecord
     # secure_password.rb). Ein Konto ohne Hash kommt damit nicht herein.
     return nil unless user.authenticate(password)
 
-    # Archivierte Konten weist der Controller ab – ihr last_login_at bleibt
+    # Archivierte Konten weist der Controller ab. Ihr last_login_at bleibt
     # unangetastet, damit der Inaktiv-Status nicht verfälscht wird.
     user if user.archived? || user.update(last_login_at: Time.now)
   end
