@@ -234,8 +234,19 @@ class Player < ApplicationRecord
     Club.find_by_id last_home_club['club_id'] if last_home_club
   end
 
+  # Heimat-Zugehörigkeiten, die am Stichtag noch gelten.
+  #
+  # Boolean-Cast statt Truthy-Prüfung: In Altdaten liegt das Flag auch als String,
+  # und `'false'` wie `'f'` sind truthy. Ein Zweitspielrecht mit einem solchen Wert
+  # zählte damit als Heimat und bestimmte über `home_club` den zuständigen
+  # Spielbetrieb — in beide Richtungen falsch: Es verschaffte dem Gastverband
+  # Zuständigkeit und nahm sie dem echten Heimatverband.
   def home_club_hash(deadline)
-    valid_clubs(deadline).reject { |l| !l['home_club'] || valid_time?(l['valid_until'], deadline) } if clubs
+    return unless clubs
+
+    valid_clubs(deadline).reject do |l|
+      !ActiveModel::Type::Boolean.new.cast(l['home_club']) || valid_time?(l['valid_until'], deadline)
+    end
   end
 
   def current_licenses(sid = Setting.current_season_id)

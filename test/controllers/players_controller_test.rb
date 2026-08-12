@@ -1040,6 +1040,259 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
+  # --- Rücknahme und Zusammenführen ohne gültige Heimat-Zugehörigkeit -------
+  #
+  # Die Profilansicht bleibt in diesem Fall gesperrt, das ist entschieden
+  # (api#389, Datenproblem). Zwei Aktionen brauchen trotzdem eine Zuständigkeit,
+  # sonst hindert die Sperre die zuständige Stelle an ihrer eigenen Arbeit.
+
+  # Ein gemeinsamer Zeitpunkt für `valid_until` und `deactivated_at`, auf die
+  # Sekunde gerundet: `iso8601` schneidet die Mikrosekunden ab, und
+  # Player::DEACTIVATION_CLOSE_WINDOW ist nur eine Sekunde breit. Zwei getrennte
+  # `7.days.ago`-Aufrufe fielen sonst gelegentlich auseinander.
+  def deaktiviert_am
+    @deaktiviert_am ||= 7.days.ago.change(usec: 0)
+  end
+
+  # Ein Verein mit Heimat-Spielbetrieb in diesem Spielbetrieb.
+  def club_in(game_operation)
+    create(:club, game_operations_hash: [{ 'home_game_operation' => true,
+                                           'game_operation_id' => game_operation.id }])
+  end
+
+  def fremder_spielbetrieb
+    create(:game_operation, state_association_id: create(:state_association).id)
+  end
+
+  # `deactivate!` stempelt ALLE Zugehörigkeiten, auch die Heimat. Ohne den
+  # Rückfall durfte eine Landes-SBK deaktivieren, aber ab dem Tag danach nicht
+  # mehr zurücknehmen.
+  test 'gescopte SBK reaktiviert ein vor Tagen deaktiviertes Profil' do
+    admin = create(:user, :admin)
+    heim_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
+                                                       'game_operation_id' => @game_operation.id }])
+    deaktiviert = create(:player, clubs: [{ 'club_id' => heim_club.id, 'home_club' => true,
+                                            'valid_until' => deaktiviert_am.iso8601,
+                                            'valid_set_by' => admin.id }],
+                                  deactivated_at: deaktiviert_am, deactivated_by: admin.id)
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+
+    post "/api/v2/admin/players/#{deaktiviert.id}/reactivate"
+
+    assert_response :success
+    assert_nil deaktiviert.reload.deactivated_at
+  end
+
+  # Gegenprobe: Der Rückfall reicht nur so weit wie der eigene Spielbetrieb.
+  test 'fremde SBK reaktiviert ein deaktiviertes Profil nicht' do
+    admin = create(:user, :admin)
+    fremd_sa = create(:state_association)
+    fremd_go = create(:game_operation, state_association_id: fremd_sa.id)
+    heim_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
+                                                       'game_operation_id' => @game_operation.id }])
+    deaktiviert = create(:player, clubs: [{ 'club_id' => heim_club.id, 'home_club' => true,
+                                            'valid_until' => deaktiviert_am.iso8601,
+                                            'valid_set_by' => admin.id }],
+                                  deactivated_at: deaktiviert_am, deactivated_by: admin.id)
+    login_as(create(:user, :sbk_scoped, game_operation_id: fremd_go.id))
+
+    post "/api/v2/admin/players/#{deaktiviert.id}/reactivate"
+
+    assert_response :forbidden
+    assert deaktiviert.reload.deactivated_at.present?
+  end
+
+  # Die Reihenfolge im clubs-Hash ist NICHT chronologisch: Player#_merge_clubs
+  # sortiert nach created_at, Altdaten ohne created_at rutschen nach vorn. Ein
+  # geschlossener Eintrag kann deshalb HINTER einem offenen stehen. Ohne den
+  # Riegel „gültige Heimat entscheidet allein" käme die SBK des geschlossenen
+  # Eintrags an ein Profil, das im anderen Verband beheimatet ist.
+  test 'gueltige Heimat schlaegt den hinteren, geschlossenen Eintrag' do
+    admin = create(:user, :admin)
+    heimat_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
+                                                         'game_operation_id' => @game_operation.id }])
+    fremd_sa = create(:state_association)
+    fremd_go = create(:game_operation, state_association_id: fremd_sa.id)
+    fremd_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
+                                                        'game_operation_id' => fremd_go.id }])
+    # Offener Legacy-Eintrag ohne created_at zuerst, dahinter der geschlossene.
+    player = create(:player, clubs: [
+      { 'club_id' => heimat_club.id, 'home_club' => true },
+      { 'club_id' => fremd_club.id, 'home_club' => true,
+        'created_at' => 2.years.ago.iso8601, 'valid_until' => 2.years.ago.iso8601 }
+    ], deactivated_at: deaktiviert_am, deactivated_by: admin.id)
+
+    login_as(create(:user, :sbk_scoped, game_operation_id: fremd_go.id))
+
+    post "/api/v2/admin/players/#{player.id}/reactivate"
+    assert_response :forbidden, 'der fremde Verband darf nicht über den hinteren Eintrag herankommen'
+
+    master = create(:player, clubs: [{ 'club_id' => fremd_club.id, 'home_club' => true }])
+    post "/api/v2/admin/players/#{master.id}/merge", params: { secondary_id: player.id }, as: :json
+    assert_response :forbidden, 'und ein fremdes Profil auch nicht als Dublette hereinziehen'
+    assert_nil player.reload.merged_into_id
+  end
+
+  # Der Rückfall trägt nur, wenn die Deaktivierung die Zugehörigkeit selbst
+  # geschlossen hat. Endete sie lange vorher, gibt reactivate! sie nicht zurück,
+  # das Profil bliebe ohne Zuständigkeit — und reactivate antwortet mit full_hash,
+  # wäre also nur ein Lesepfad auf die zurückgehaltenen Profildaten.
+  test 'Rueckfall greift nicht, wenn die Heimat schon vor der Deaktivierung endete' do
+    admin = create(:user, :admin)
+    vm = create(:user, :vm)
+    heim_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
+                                                       'game_operation_id' => @game_operation.id }])
+    player = create(:player, clubs: [{ 'club_id' => heim_club.id, 'home_club' => true,
+                                       'valid_until' => 3.years.ago.iso8601,
+                                       'valid_set_by' => vm.id }],
+                             deactivated_at: deaktiviert_am, deactivated_by: admin.id)
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+
+    post "/api/v2/admin/players/#{player.id}/reactivate"
+
+    assert_response :forbidden
+    assert player.reload.deactivated_at.present?
+  end
+
+  # Grenze der Regel, bewusst so: Ist der jüngste Heimat-Eintrag nicht auflösbar
+  # (fehlende `club_id`, gelöschter Verein), gibt es auch NACH der Rücknahme keinen
+  # zuständigen Verband, `Player#home_club` liefert dort nil. Die Absage ist damit
+  # dieselbe wie am Profil selbst; ein Ja wäre nur ein Blick in Daten, für die
+  # niemand zuständig ist. Solche Profile brauchen Datenpflege — Haltung aus api#389.
+  test 'unaufloesbarer juengster Heimat-Eintrag bleibt eine Absage' do
+    admin = create(:user, :admin)
+    heim_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
+                                                       'game_operation_id' => @game_operation.id }])
+    player = create(:player, clubs: [
+      { 'club_id' => heim_club.id, 'home_club' => true,
+        'valid_until' => deaktiviert_am.iso8601, 'valid_set_by' => admin.id },
+      { 'home_club' => true, 'valid_until' => deaktiviert_am.iso8601,
+        'valid_set_by' => admin.id }
+    ], deactivated_at: deaktiviert_am, deactivated_by: admin.id)
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+
+    post "/api/v2/admin/players/#{player.id}/reactivate"
+
+    assert_response :forbidden
+  end
+
+  # `'false'` als String ist truthy. Ein Zweitspielrecht mit diesem Altdaten-Wert
+  # darf keine Zuständigkeit über einen Verein verschaffen, bei dem der Spieler
+  # nie beheimatet war.
+  test 'home_club als String false zaehlt nicht als Heimat-Eintrag' do
+    admin = create(:user, :admin)
+    gast_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
+                                                       'game_operation_id' => @game_operation.id }])
+    player = create(:player, clubs: [{ 'club_id' => gast_club.id, 'home_club' => 'false',
+                                       'valid_until' => deaktiviert_am.iso8601,
+                                       'valid_set_by' => admin.id }],
+                             deactivated_at: deaktiviert_am, deactivated_by: admin.id)
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+
+    post "/api/v2/admin/players/#{player.id}/reactivate"
+
+    assert_response :forbidden
+  end
+
+  # Zuständig für die Rücknahme ist, wer beim Deaktivieren zuständig war. Eine
+  # Zugehörigkeit, die schon Jahre vorher endete, begründet das nicht — auch dann
+  # nicht, wenn ein ANDERER Eintrag von der Deaktivierung geschlossen wurde.
+  test 'fremder Verband kommt nicht ueber einen alten Eintrag an die Ruecknahme' do
+    admin = create(:user, :admin)
+    vm = create(:user, :vm)
+    fremd_go = fremder_spielbetrieb
+    # Der fremde Verband: Zugehörigkeit vor vier Jahren durch einen VM beendet.
+    fremd_club = club_in(fremd_go)
+    # Der eigene: die Zugehörigkeit, welche die Deaktivierung geschlossen hat.
+    heim_club = club_in(@game_operation)
+    player = create(:player, clubs: [
+      { 'club_id' => fremd_club.id, 'home_club' => true,
+        'valid_until' => 4.years.ago.iso8601, 'valid_set_by' => vm.id },
+      { 'club_id' => heim_club.id, 'home_club' => true,
+        'valid_until' => deaktiviert_am.iso8601, 'valid_set_by' => admin.id }
+    ], deactivated_at: deaktiviert_am, deactivated_by: admin.id)
+
+    login_as(create(:user, :sbk_scoped, game_operation_id: fremd_go.id))
+    post "/api/v2/admin/players/#{player.id}/reactivate"
+    assert_response :forbidden
+
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+    post "/api/v2/admin/players/#{player.id}/reactivate"
+    assert_response :success, 'der Verband der geschlossenen Zugehörigkeit darf'
+  end
+
+  # Gegenstück zum String-`'false'`-Test: Ein OFFENER Gast-Eintrag mit diesem
+  # Altdaten-Wert darf nicht als gültige Heimat gelten, sonst verwehrt er dem
+  # zuständigen Verband seine eigene Rücknahme.
+  test 'offener Gast-Eintrag mit home_club false blockiert die Ruecknahme nicht' do
+    admin = create(:user, :admin)
+    heim_club = club_in(@game_operation)
+    gast_club = club_in(fremder_spielbetrieb)
+    player = create(:player, clubs: [
+      { 'club_id' => heim_club.id, 'home_club' => true,
+        'valid_until' => deaktiviert_am.iso8601, 'valid_set_by' => admin.id },
+      { 'club_id' => gast_club.id, 'home_club' => 'f' }
+    ], deactivated_at: deaktiviert_am, deactivated_by: admin.id)
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+
+    post "/api/v2/admin/players/#{player.id}/reactivate"
+
+    assert_response :success
+  end
+
+  # War die Heimat-Zugehörigkeit schon VOR der Deaktivierung befristet, sichert
+  # `deactivate!` diese Befristung unter VALID_BEFORE_DEACTIVATION und
+  # `reactivate!` setzt sie zurück, statt die Zugehörigkeit unbefristet zu öffnen.
+  # Die Kopie muss das nachbilden: Liegt das gesicherte Datum in der
+  # Vergangenheit, ist die Zugehörigkeit auch nach der Rücknahme abgelaufen, und
+  # es gibt keine Zuständigkeit. Ohne diese Zeile hielte die Kopie sie für offen.
+  test 'gesicherte Befristung zaehlt: abgelaufen bleibt abgelaufen' do
+    admin = create(:user, :admin)
+    heim_club = club_in(@game_operation)
+    player = create(:player, clubs: [
+      { 'club_id' => heim_club.id, 'home_club' => true,
+        'valid_until' => deaktiviert_am.iso8601, 'valid_set_by' => admin.id,
+        Player::VALID_BEFORE_DEACTIVATION => { 'valid_until' => 2.years.ago.iso8601,
+                                               'valid_set_by' => admin.id } }
+    ], deactivated_at: deaktiviert_am, deactivated_by: admin.id)
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+
+    post "/api/v2/admin/players/#{player.id}/reactivate"
+
+    assert_response :forbidden
+  end
+
+  # Gegenprobe: Liegt die gesicherte Befristung in der Zukunft, ist die
+  # Zugehörigkeit nach der Rücknahme gültig, und die Zuständigkeit besteht.
+  test 'gesicherte Befristung in der Zukunft laesst die Ruecknahme zu' do
+    admin = create(:user, :admin)
+    heim_club = club_in(@game_operation)
+    player = create(:player, clubs: [
+      { 'club_id' => heim_club.id, 'home_club' => true,
+        'valid_until' => deaktiviert_am.iso8601, 'valid_set_by' => admin.id,
+        Player::VALID_BEFORE_DEACTIVATION => { 'valid_until' => 1.year.from_now.iso8601,
+                                               'valid_set_by' => admin.id } }
+    ], deactivated_at: deaktiviert_am, deactivated_by: admin.id)
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+
+    post "/api/v2/admin/players/#{player.id}/reactivate"
+
+    assert_response :success
+  end
+
+  # Ohne jeden Heimat-Eintrag gibt es keine Zuständigkeit, die der Rückfall finden
+  # könnte. Die Absage bleibt auch beim Reaktivieren.
+  test 'ohne Heimat-Eintrag bleibt es auch beim Reaktivieren bei der Absage' do
+    admin = create(:user, :admin)
+    ohne_heimat = create(:player, clubs: [{ 'club_id' => @club.id }],
+                                  deactivated_at: deaktiviert_am, deactivated_by: admin.id)
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+
+    post "/api/v2/admin/players/#{ohne_heimat.id}/reactivate"
+
+    assert_response :forbidden
+  end
+
   private
 
   # Beendetes Spiel mit @player (Trikot 7) in der Heim-Aufstellung.

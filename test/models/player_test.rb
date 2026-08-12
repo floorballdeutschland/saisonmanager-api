@@ -917,4 +917,39 @@ class PlayerTest < ActiveSupport::TestCase
   ensure
     ActiveSupport::Notifications.unsubscribe(subscriber)
   end
+
+  # --- home_club: Boolean-Cast auf home_club --------------------------------
+  #
+  # In Altdaten liegt das Flag als String. `'false'` und `'f'` sind truthy, zählten
+  # also als Heimat und bestimmten damit den zuständigen Spielbetrieb
+  # (`sbk_can_access_player?`) — in beide Richtungen falsch.
+
+  test 'home_club ignoriert Zugehoerigkeiten mit home_club als String false' do
+    gast = create(:club)
+    player = create(:player, clubs: [{ 'club_id' => gast.id, 'home_club' => 'false' }])
+
+    assert_nil player.home_club(Date.current), "'false' ist keine Heimat"
+    assert_empty player.home_club_hash(Date.current)
+  end
+
+  test 'home_club nimmt den echten Heimatverein neben einem Gast-Eintrag mit f' do
+    heimat = create(:club)
+    gast = create(:club)
+    player = create(:player, clubs: [
+      { 'club_id' => heimat.id, 'home_club' => true },
+      { 'club_id' => gast.id, 'home_club' => 'f' }
+    ])
+
+    assert_equal heimat.id, player.home_club(Date.current)&.id,
+                 'der Gast-Eintrag darf den Heimatverein nicht verdrängen'
+  end
+
+  test 'home_club akzeptiert wahre Flag-Schreibweisen aus Altdaten' do
+    ['true', 't', 1].each do |flag|
+      club = create(:club)
+      player = create(:player, clubs: [{ 'club_id' => club.id, 'home_club' => flag }])
+
+      assert_equal club.id, player.home_club(Date.current)&.id, "#{flag.inspect} sollte Heimat sein"
+    end
+  end
 end
