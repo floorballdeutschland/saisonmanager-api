@@ -108,8 +108,19 @@ class Club < ApplicationRecord
     }
   end
 
+  # Boolean-Cast statt Truthy-Prüfung, aus demselben Grund wie in
+  # Player#home_club_hash: In Altdaten liegt das Flag als String, und `'false'`
+  # ist truthy. Ein Gast-Eintrag mit diesem Wert galt damit als Heimat-Eintrag —
+  # und weil diese Methode den zuständigen Verband bestimmt, bekam die SBK des
+  # Gastverbands Zugriff auf jeden Spieler mit Heimat in diesem Verein.
+  #
+  # `Club#home_game_operation` und die SQL-Bedingung in
+  # `without_home_game_operation` prüfen bereits strikt auf `true`; hier lief es
+  # auseinander: Derselbe Verein galt dort als „ohne Heimat-Spielbetrieb" und
+  # hier als zugeordnet.
   def main_game_operation_id
-    game_operations_hash.filter { |h| h['home_game_operation'] }.map { |h| h['game_operation_id'].to_i }.first
+    game_operations_hash.filter { |h| ActiveModel::Type::Boolean.new.cast(h['home_game_operation']) }
+                        .map { |h| h['game_operation_id'].to_i }.first
   end
 
   # Darf ein Admin-/SBK-Scope diesen Verein LESEN? Genau zwei Gründe:

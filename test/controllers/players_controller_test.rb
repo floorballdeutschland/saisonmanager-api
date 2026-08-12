@@ -1240,6 +1240,46 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
+  # War die Heimat-Zugehörigkeit schon VOR der Deaktivierung befristet, sichert
+  # `deactivate!` diese Befristung unter VALID_BEFORE_DEACTIVATION und
+  # `reactivate!` setzt sie zurück, statt die Zugehörigkeit unbefristet zu öffnen.
+  # Die Kopie muss das nachbilden: Liegt das gesicherte Datum in der
+  # Vergangenheit, ist die Zugehörigkeit auch nach der Rücknahme abgelaufen, und
+  # es gibt keine Zuständigkeit. Ohne diese Zeile hielte die Kopie sie für offen.
+  test 'gesicherte Befristung zaehlt: abgelaufen bleibt abgelaufen' do
+    admin = create(:user, :admin)
+    heim_club = club_in(@game_operation)
+    player = create(:player, clubs: [
+      { 'club_id' => heim_club.id, 'home_club' => true,
+        'valid_until' => deaktiviert_am.iso8601, 'valid_set_by' => admin.id,
+        Player::VALID_BEFORE_DEACTIVATION => { 'valid_until' => 2.years.ago.iso8601,
+                                               'valid_set_by' => admin.id } }
+    ], deactivated_at: deaktiviert_am, deactivated_by: admin.id)
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+
+    post "/api/v2/admin/players/#{player.id}/reactivate"
+
+    assert_response :forbidden
+  end
+
+  # Gegenprobe: Liegt die gesicherte Befristung in der Zukunft, ist die
+  # Zugehörigkeit nach der Rücknahme gültig, und die Zuständigkeit besteht.
+  test 'gesicherte Befristung in der Zukunft laesst die Ruecknahme zu' do
+    admin = create(:user, :admin)
+    heim_club = club_in(@game_operation)
+    player = create(:player, clubs: [
+      { 'club_id' => heim_club.id, 'home_club' => true,
+        'valid_until' => deaktiviert_am.iso8601, 'valid_set_by' => admin.id,
+        Player::VALID_BEFORE_DEACTIVATION => { 'valid_until' => 1.year.from_now.iso8601,
+                                               'valid_set_by' => admin.id } }
+    ], deactivated_at: deaktiviert_am, deactivated_by: admin.id)
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+
+    post "/api/v2/admin/players/#{player.id}/reactivate"
+
+    assert_response :success
+  end
+
   # Ohne jeden Heimat-Eintrag gibt es keine Zuständigkeit, die der Rückfall finden
   # könnte. Die Absage bleibt auch beim Reaktivieren.
   test 'ohne Heimat-Eintrag bleibt es auch beim Reaktivieren bei der Absage' do

@@ -1131,8 +1131,9 @@ class PlayersController < ApplicationController
   # gestempelte `valid_until` entfernen bzw. auf die vor der Deaktivierung
   # gesicherte Befristung zurücksetzen (Player::VALID_BEFORE_DEACTIVATION).
   def player_after_reactivation(player)
+    # Keine id setzen: Der Prüfpfad liest sie nicht, und ohne sie kann die Kopie
+    # nirgends mit einem gespeicherten Datensatz verwechselt werden.
     restored = player.dup
-    restored.id = player.id
     restored.clubs = (player.clubs || []).map do |entry|
       next entry unless player.membership_closed_by_deactivation?(entry)
 
