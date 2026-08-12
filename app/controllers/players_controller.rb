@@ -867,11 +867,14 @@ class PlayersController < ApplicationController
     player = Player.find_by(id: params[:id])
     return render json: { message: 'Spieler nicht gefunden.' }, status: :not_found unless player
     return render json: { message: 'Spieler ist nicht deaktiviert.' }, status: :unprocessable_entity if player.deactivated_at.nil?
+
     # Wer deaktivieren darf, muss zurücknehmen können: deactivate! stempelt auch
     # die Heimat-Zugehörigkeit, weshalb die reguläre Prüfung ab dem Tag danach
     # nein sagt (siehe sbk_can_undo_deactivation?).
-    unless can_manage_player?(player) ||
-           sbk_can_undo_deactivation?(current_user.permission_hash, player)
+    ph = current_user.permission_hash
+    unless ph[:admin].present? || sbk_can_access_player?(ph, player) ||
+           vm_can_access_player?(ph, player) || tm_can_access_player?(ph, player) ||
+           sbk_can_undo_deactivation?(ph, player)
       return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
     end
 
@@ -1107,55 +1110,81 @@ class PlayersController < ApplicationController
   #
   # Profile ohne jeden Heimat-Eintrag bleiben auch hier gesperrt, es gibt dann
   # keine Zuständigkeit, die sich ableiten ließe.
+  # Zuständigkeit für die DUBLETTE beim Zusammenführen: der Verband der zuletzt
+  # beendeten Heimat-Zugehörigkeit.
+  #
+  # Sortiert wird nach `valid_until`, nicht nach der Position im clubs-Hash. Dessen
+  # Reihenfolge ist NICHT chronologisch: `Player#_merge_clubs` sortiert nach
+  # `created_at`, und Altdaten ohne `created_at` rutschen nach vorn, ein längst
+  # geschlossener Eintrag kann also hinter einem offenen stehen. Wer die Position
+  # für Zuständigkeit hält, gibt sie einem Verband, den der Spieler vor Jahren
+  # verlassen hat.
+  #
+  # Lässt sich der Verein dieses Eintrags nicht auflösen, ist es eine Absage: Für
+  # das Zusammenführen fremder Profile darf im Zweifel nicht der Zweifel
+  # entscheiden. Bundesweite Rollen kommen weiterhin durch.
   def sbk_last_home_club_in_scope?(ph, player)
     return false unless ph[:sbk].present?
     return true if ph[:sbk].include?(0)
-    # Gibt es eine GÜLTIGE Heimat-Zugehörigkeit, entscheidet allein sie. Der
-    # Rückfall darf sie nicht überstimmen: Die Reihenfolge im clubs-Hash ist NICHT
-    # chronologisch. Player#_merge_clubs sortiert nach created_at, und Altdaten
-    # ohne created_at rutschen dabei nach vorn — ein längst geschlossener Eintrag
-    # kann also hinter einem offenen stehen. Ohne diese Zeile griffe der Rückfall
-    # über Verbandsgrenzen: Eine fremde SBK käme an ein Profil, dessen gültige
-    # Heimat in einem anderen Spielbetrieb liegt.
-    return false if player.home_club(Date.today)
+    return false if valid_home_membership?(player)
 
-    club = last_known_home_club(player)
-    return false unless club
-
-    ph[:sbk].include?(club.main_game_operation_id)
+    latest = home_club_entries(player).max_by { |entry| entry['valid_until'].to_s }
+    clubs_in_scope?(ph, [latest].compact)
   end
 
-  # Zuständigkeit für die RÜCKNAHME einer Deaktivierung. Verlangt zusätzlich, dass
-  # die Deaktivierung die Heimat-Zugehörigkeit selbst geschlossen hat.
+  # Zuständigkeit für die RÜCKNAHME einer Deaktivierung: der Verband der
+  # Heimat-Zugehörigkeit, die DIESE Deaktivierung geschlossen hat.
   #
-  # Nur dann trägt die Begründung des Rückfalls: Endete die Zugehörigkeit lange
-  # vorher, gibt `reactivate!` sie nicht zurück (membership_closed_by_deactivation?
-  # entscheidet das dort genauso), das Profil bliebe also auch nach der Rücknahme
-  # ohne Zuständigkeit. Der Rückfall wäre dann kein Weg zur eigenen Arbeit, sondern
-  # ein Lesepfad auf die Profildaten, die api#389 bewusst zurückhält — `reactivate`
-  # antwortet mit `full_hash`.
+  # Bewusst kein Rückgriff auf „letzter Eintrag": Zuständig ist, wer beim
+  # Deaktivieren zuständig war, und das steht in `membership_closed_by_deactivation?`
+  # (dieselbe Prüfung, die `reactivate!` für das Wiederherstellen anlegt). Eine
+  # Zuständigkeit aus einem anderen als dem geschlossenen Eintrag wäre keine:
+  # `reactivate` antwortet mit `full_hash`, ein solcher Zweig wäre also nur ein
+  # Lesepfad auf die Profildaten, die api#389 bewusst zurückhält.
   def sbk_can_undo_deactivation?(ph, player)
-    return false unless sbk_last_home_club_in_scope?(ph, player)
+    return false unless ph[:sbk].present?
+    return true if ph[:sbk].include?(0)
+    return false if valid_home_membership?(player)
 
-    home_club_entries(player).any? { |entry| player.membership_closed_by_deactivation?(entry) }
+    closed = home_club_entries(player).select { |entry| player.membership_closed_by_deactivation?(entry) }
+    clubs_in_scope?(ph, closed)
   end
 
-  # Heimat-Einträge, jüngster zuerst.
+  # Gibt es überhaupt eine gültige Heimat-Zugehörigkeit? Dann entscheidet allein
+  # sie, und keiner der beiden Rückfälle greift.
   #
-  # Der Boolean-Cast statt einer Truthy-Prüfung: Altdaten tragen das Flag auch als
-  # String, und das gilt in beide Richtungen — `'false'` ist truthy, wäre also
-  # sonst ein Heimat-Eintrag. Ein Zweitspielrecht verschaffte damit Zuständigkeit
-  # über einen Verein, bei dem der Spieler nie beheimatet war.
-  def home_club_entries(player)
-    (player.clubs || []).select { |c| ActiveModel::Type::Boolean.new.cast(c['home_club']) }.reverse
+  # Bewusst nicht über `Player#home_club`: Das liefert auch dann nil, wenn eine
+  # gültige Zugehörigkeit besteht, ihr Verein aber nicht auflösbar ist (fehlende
+  # `club_id`, gelöschter Verein — beides gibt es in dreistelliger Zahl). Über
+  # diese Lücke ließe sich ein AKTIVES fremdes Profil als Dublette hereinziehen.
+  #
+  # Und bewusst nicht über `Player#home_club_hash`: Dort entscheidet eine
+  # Truthy-Prüfung, womit ein offener Gast-Eintrag mit `home_club: 'f'` als gültige
+  # Heimat zählt und dem zuständigen Verband seine eigene Rücknahme verwehrt.
+  # Beide Hälften der Regel müssen dieselbe Cast-Regel benutzen.
+  #
+  # `membership_current?` ist die kanonische Gültigkeitsprüfung: Sie rechnet auf
+  # Tagesgrenze (kein Tagesfehler) und meldet ein unlesbares `valid_until` als
+  # Datenfehler, statt mit Date::Error einen 500 zu erzeugen.
+  def valid_home_membership?(player)
+    home_club_entries(player).any? { |entry| membership_current?(player, entry['valid_until']) }
   end
 
-  # Letzter Heimat-Eintrag, dessen Verein sich auflösen lässt, ohne Rücksicht auf
-  # die Gültigkeit. Einträge ohne `club_id` oder auf einen gelöschten Verein werden
-  # übersprungen statt als Absage gewertet — genau solche Altdaten sind der Grund,
-  # warum es diesen Weg überhaupt gibt.
-  def last_known_home_club(player)
-    home_club_entries(player).lazy.filter_map { |entry| Club.find_by(id: entry['club_id']) }.first
+  # Heimat-Einträge. Boolean-Cast statt Truthy-Prüfung, weil das Flag in Altdaten
+  # auch als String liegt: `'false'` ist truthy und wäre sonst ein Heimat-Eintrag,
+  # ein Zweitspielrecht verschaffte damit Zuständigkeit über einen Verein, bei dem
+  # der Spieler nie beheimatet war.
+  def home_club_entries(player)
+    (player.clubs || []).select { |c| ActiveModel::Type::Boolean.new.cast(c['home_club']) }
+  end
+
+  # Liegt der Verein eines dieser Einträge im Spielbetrieb des Aufrufers? Eine
+  # Abfrage für alle; nicht auflösbare `club_id` fallen dabei heraus.
+  def clubs_in_scope?(ph, entries)
+    club_ids = entries.filter_map { |entry| entry['club_id'] }
+    return false if club_ids.empty?
+
+    Club.where(id: club_ids).any? { |club| ph[:sbk].include?(club.main_game_operation_id) }
   end
 
   def derive_club_ids_for_go(go_ids)

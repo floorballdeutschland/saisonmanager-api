@@ -1046,6 +1046,24 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
   # (api#389, Datenproblem). Zwei Aktionen brauchen trotzdem eine Zuständigkeit,
   # sonst hindert die Sperre die zuständige Stelle an ihrer eigenen Arbeit.
 
+  # Ein gemeinsamer Zeitpunkt für `valid_until` und `deactivated_at`, auf die
+  # Sekunde gerundet: `iso8601` schneidet die Mikrosekunden ab, und
+  # Player::DEACTIVATION_CLOSE_WINDOW ist nur eine Sekunde breit. Zwei getrennte
+  # `7.days.ago`-Aufrufe fielen sonst gelegentlich auseinander.
+  def deaktiviert_am
+    @deaktiviert_am ||= 7.days.ago.change(usec: 0)
+  end
+
+  # Ein Verein mit Heimat-Spielbetrieb in diesem Spielbetrieb.
+  def club_in(game_operation)
+    create(:club, game_operations_hash: [{ 'home_game_operation' => true,
+                                           'game_operation_id' => game_operation.id }])
+  end
+
+  def fremder_spielbetrieb
+    create(:game_operation, state_association_id: create(:state_association).id)
+  end
+
   # `deactivate!` stempelt ALLE Zugehörigkeiten, auch die Heimat. Ohne den
   # Rückfall durfte eine Landes-SBK deaktivieren, aber ab dem Tag danach nicht
   # mehr zurücknehmen.
@@ -1054,9 +1072,9 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     heim_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
                                                        'game_operation_id' => @game_operation.id }])
     deaktiviert = create(:player, clubs: [{ 'club_id' => heim_club.id, 'home_club' => true,
-                                            'valid_until' => 7.days.ago.iso8601,
+                                            'valid_until' => deaktiviert_am.iso8601,
                                             'valid_set_by' => admin.id }],
-                                  deactivated_at: 7.days.ago, deactivated_by: admin.id)
+                                  deactivated_at: deaktiviert_am, deactivated_by: admin.id)
     login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
 
     post "/api/v2/admin/players/#{deaktiviert.id}/reactivate"
@@ -1073,9 +1091,9 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     heim_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
                                                        'game_operation_id' => @game_operation.id }])
     deaktiviert = create(:player, clubs: [{ 'club_id' => heim_club.id, 'home_club' => true,
-                                            'valid_until' => 7.days.ago.iso8601,
+                                            'valid_until' => deaktiviert_am.iso8601,
                                             'valid_set_by' => admin.id }],
-                                  deactivated_at: 7.days.ago, deactivated_by: admin.id)
+                                  deactivated_at: deaktiviert_am, deactivated_by: admin.id)
     login_as(create(:user, :sbk_scoped, game_operation_id: fremd_go.id))
 
     post "/api/v2/admin/players/#{deaktiviert.id}/reactivate"
@@ -1139,7 +1157,7 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
       { 'club_id' => heimat_club.id, 'home_club' => true },
       { 'club_id' => fremd_club.id, 'home_club' => true,
         'created_at' => 2.years.ago.iso8601, 'valid_until' => 2.years.ago.iso8601 }
-    ], deactivated_at: 7.days.ago, deactivated_by: admin.id)
+    ], deactivated_at: deaktiviert_am, deactivated_by: admin.id)
 
     login_as(create(:user, :sbk_scoped, game_operation_id: fremd_go.id))
 
@@ -1164,7 +1182,7 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     player = create(:player, clubs: [{ 'club_id' => heim_club.id, 'home_club' => true,
                                        'valid_until' => 3.years.ago.iso8601,
                                        'valid_set_by' => vm.id }],
-                             deactivated_at: 7.days.ago, deactivated_by: admin.id)
+                             deactivated_at: deaktiviert_am, deactivated_by: admin.id)
     login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
 
     post "/api/v2/admin/players/#{player.id}/reactivate"
@@ -1173,19 +1191,20 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert player.reload.deactivated_at.present?
   end
 
-  # Genau die Altdaten, für die dieser Weg gedacht ist: Der hinterste Heimat-
-  # Eintrag zeigt auf keinen auflösbaren Verein. Ein früherer im eigenen Scope
-  # muss dann zählen, sonst bleibt die Reaktivierung blockiert.
-  test 'unaufloesbarer letzter Heimat-Eintrag ueberspringt zum vorherigen' do
+  # Genau die Altdaten, für die dieser Weg gedacht ist: Unter den Zugehörigkeiten,
+  # welche die Deaktivierung geschlossen hat, zeigt eine auf keinen auflösbaren
+  # Verein. Die andere liegt im eigenen Spielbetrieb und muss zählen, sonst bleibt
+  # die Reaktivierung blockiert.
+  test 'unaufloesbarer Heimat-Eintrag blockiert die Ruecknahme nicht' do
     admin = create(:user, :admin)
     heim_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
                                                        'game_operation_id' => @game_operation.id }])
     player = create(:player, clubs: [
       { 'club_id' => heim_club.id, 'home_club' => true,
-        'valid_until' => 7.days.ago.iso8601, 'valid_set_by' => admin.id },
-      { 'home_club' => true, 'valid_until' => 7.days.ago.iso8601,
+        'valid_until' => deaktiviert_am.iso8601, 'valid_set_by' => admin.id },
+      { 'home_club' => true, 'valid_until' => deaktiviert_am.iso8601,
         'valid_set_by' => admin.id }
-    ], deactivated_at: 7.days.ago, deactivated_by: admin.id)
+    ], deactivated_at: deaktiviert_am, deactivated_by: admin.id)
     login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
 
     post "/api/v2/admin/players/#{player.id}/reactivate"
@@ -1201,9 +1220,9 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     gast_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
                                                        'game_operation_id' => @game_operation.id }])
     player = create(:player, clubs: [{ 'club_id' => gast_club.id, 'home_club' => 'false',
-                                       'valid_until' => 7.days.ago.iso8601,
+                                       'valid_until' => deaktiviert_am.iso8601,
                                        'valid_set_by' => admin.id }],
-                             deactivated_at: 7.days.ago, deactivated_by: admin.id)
+                             deactivated_at: deaktiviert_am, deactivated_by: admin.id)
     login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
 
     post "/api/v2/admin/players/#{player.id}/reactivate"
@@ -1211,12 +1230,105 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_response :forbidden
   end
 
+  # Zuständig für die Rücknahme ist, wer beim Deaktivieren zuständig war. Eine
+  # Zugehörigkeit, die schon Jahre vorher endete, begründet das nicht — auch dann
+  # nicht, wenn ein ANDERER Eintrag von der Deaktivierung geschlossen wurde.
+  test 'fremder Verband kommt nicht ueber einen alten Eintrag an die Ruecknahme' do
+    admin = create(:user, :admin)
+    vm = create(:user, :vm)
+    fremd_go = fremder_spielbetrieb
+    # Der fremde Verband: Zugehörigkeit vor vier Jahren durch einen VM beendet.
+    fremd_club = club_in(fremd_go)
+    # Der eigene: die Zugehörigkeit, welche die Deaktivierung geschlossen hat.
+    heim_club = club_in(@game_operation)
+    player = create(:player, clubs: [
+      { 'club_id' => fremd_club.id, 'home_club' => true,
+        'valid_until' => 4.years.ago.iso8601, 'valid_set_by' => vm.id },
+      { 'club_id' => heim_club.id, 'home_club' => true,
+        'valid_until' => deaktiviert_am.iso8601, 'valid_set_by' => admin.id }
+    ], deactivated_at: deaktiviert_am, deactivated_by: admin.id)
+
+    login_as(create(:user, :sbk_scoped, game_operation_id: fremd_go.id))
+    post "/api/v2/admin/players/#{player.id}/reactivate"
+    assert_response :forbidden
+
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+    post "/api/v2/admin/players/#{player.id}/reactivate"
+    assert_response :success, 'der Verband der geschlossenen Zugehörigkeit darf'
+  end
+
+  # Beim Zusammenführen entscheidet die ZULETZT beendete Zugehörigkeit, nicht die
+  # Position im clubs-Hash. Hier steht die ältere hinten.
+  test 'beim Zusammenfuehren entscheidet die zuletzt beendete Zugehoerigkeit' do
+    fremd_go = fremder_spielbetrieb
+    aktueller_club = club_in(@game_operation)
+    alter_club = club_in(fremd_go)
+    dublette = create(:player, clubs: [
+      { 'club_id' => aktueller_club.id, 'home_club' => true,
+        'valid_until' => 1.month.ago.iso8601 },
+      { 'club_id' => alter_club.id, 'home_club' => true,
+        'valid_until' => 5.years.ago.iso8601 }
+    ])
+
+    fremder_master = create(:player, clubs: [{ 'club_id' => alter_club.id, 'home_club' => true }])
+    login_as(create(:user, :sbk_scoped, game_operation_id: fremd_go.id))
+    post "/api/v2/admin/players/#{fremder_master.id}/merge",
+         params: { secondary_id: dublette.id }, as: :json
+    assert_response :forbidden, 'der vor Jahren verlassene Verband entscheidet nicht'
+    assert_nil dublette.reload.merged_into_id
+
+    master = create(:player, clubs: [{ 'club_id' => aktueller_club.id, 'home_club' => true }])
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+    post "/api/v2/admin/players/#{master.id}/merge",
+         params: { secondary_id: dublette.id }, as: :json
+    assert_response :success
+  end
+
+  # Ein AKTIVES Profil darf nicht hereingezogen werden, auch wenn sein gültiger
+  # Heimat-Eintrag auf keinen auflösbaren Verein zeigt. Player#home_club gibt dort
+  # nil, die Gültigkeit steht aber im Eintrag selbst.
+  test 'aktives Profil mit unaufloesbarem Heimatverein bleibt vom Merge ausgeschlossen' do
+    aktueller_club = club_in(@game_operation)
+    aktiv_fremd = create(:player, clubs: [
+      { 'club_id' => aktueller_club.id, 'home_club' => true,
+        'valid_until' => 5.years.ago.iso8601 },
+      { 'club_id' => 999_999, 'home_club' => true }
+    ])
+    master = create(:player, clubs: [{ 'club_id' => aktueller_club.id, 'home_club' => true }])
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+
+    post "/api/v2/admin/players/#{master.id}/merge",
+         params: { secondary_id: aktiv_fremd.id }, as: :json
+
+    assert_response :forbidden
+    assert_nil aktiv_fremd.reload.merged_into_id
+  end
+
+  # Gegenstück zum String-`'false'`-Test: Ein OFFENER Gast-Eintrag mit diesem
+  # Altdaten-Wert darf nicht als gültige Heimat gelten, sonst verwehrt er dem
+  # zuständigen Verband seine eigene Rücknahme.
+  test 'offener Gast-Eintrag mit home_club false blockiert die Ruecknahme nicht' do
+    admin = create(:user, :admin)
+    heim_club = club_in(@game_operation)
+    gast_club = club_in(fremder_spielbetrieb)
+    player = create(:player, clubs: [
+      { 'club_id' => heim_club.id, 'home_club' => true,
+        'valid_until' => deaktiviert_am.iso8601, 'valid_set_by' => admin.id },
+      { 'club_id' => gast_club.id, 'home_club' => 'f' }
+    ], deactivated_at: deaktiviert_am, deactivated_by: admin.id)
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+
+    post "/api/v2/admin/players/#{player.id}/reactivate"
+
+    assert_response :success
+  end
+
   # Ohne jeden Heimat-Eintrag gibt es keine Zuständigkeit, die der Rückfall finden
   # könnte. Die Absage bleibt auch beim Reaktivieren.
   test 'ohne Heimat-Eintrag bleibt es auch beim Reaktivieren bei der Absage' do
     admin = create(:user, :admin)
     ohne_heimat = create(:player, clubs: [{ 'club_id' => @club.id }],
-                                  deactivated_at: 7.days.ago, deactivated_by: admin.id)
+                                  deactivated_at: deaktiviert_am, deactivated_by: admin.id)
     login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
 
     post "/api/v2/admin/players/#{ohne_heimat.id}/reactivate"
