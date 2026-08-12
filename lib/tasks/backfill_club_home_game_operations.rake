@@ -82,19 +82,30 @@ class ClubHomeGameOperationResolver
   #
   # Zuständig ist in beiden Fällen Rheinland-Pfalz / Saarland.
   #
-  # `name_includes` ist die Gegenprobe zur id und keine Doppelung: Eine id ist nur
-  # in DER Datenbank aussagekräftig, für die sie notiert wurde. Anderswo
-  # (Entwicklung, Test, ein neu aufgesetzter Bestand) zeigt dieselbe Zahl auf einen
-  # beliebigen anderen Verein, und der bekäme stillschweigend Rheinland-Pfalz
-  # zugeordnet. Passt der Name nicht, greift der Eintrag nicht: Der Task leitet
-  # normal ab und benennt den übersprungenen Eintrag in der Ausgabe. Ein Ortsname
-  # genügt als Merkmal und übersteht Zusätze wie Rechtsform oder Sponsor.
-  CLUB_OVERRIDES = {
-    275 => { sa_short: 'RLPSAAR', name_includes: 'Hechtsheim',
-             reason: 'Hechtsheim ist ein Mainzer Stadtteil, nicht Hessen' },
-    284 => { sa_short: 'RLPSAAR', name_includes: 'Landau',
-             reason: 'Landau in der Pfalz, nicht Baden-Württemberg' }
-  }.freeze
+  # Erkannt werden die beiden am ORTSNAMEN, nicht an der id. Zwei Gründe:
+  #
+  # Eine id gilt nur in dem Bestand, für den sie notiert wurde. In einer anderen
+  # Datenbank – Entwicklung, Test, ein neu aufgesetzter Bestand – trägt dieselbe
+  # Zahl einen beliebigen anderen Verein, und der bekäme stillschweigend
+  # Rheinland-Pfalz zugeordnet. In der CI ist genau das passiert: Testvereine
+  # ziehen ihre id aus der Sequenz, unter einem unglücklichen Seed wurde einer von
+  # ihnen zu „Landau in der Pfalz".
+  #
+  # Und die Aussage ist ohnehin eine über den Ort, nicht über eine Tabellenzeile:
+  # Ein Verein in Landau oder Mainz-Hechtsheim gehört nach Rheinland-Pfalz, ganz
+  # gleich, welche id er trägt. Der Ortsname übersteht dabei Zusätze wie
+  # Rechtsform oder Sponsor, die eine Namensgleichheit brechen würden.
+  #
+  # Greift ein Eintrag in einem Bestand auf keinen Verein, sagt der Bericht das
+  # (`overrides_without_club`). Das ist der Fall, auf den es aufzupassen gilt:
+  # Nach einer Umbenennung, die den Ortsnamen tilgt, würde der Task sonst wieder
+  # den falschen Landesverband bestätigen, und zwar unbemerkt.
+  CLUB_OVERRIDES = [
+    { name_includes: 'Hechtsheim', sa_short: 'RLPSAAR',
+      reason: 'Hechtsheim ist ein Mainzer Stadtteil, nicht Hessen' },
+    { name_includes: 'Landau', sa_short: 'RLPSAAR',
+      reason: 'Landau in der Pfalz, nicht Baden-Württemberg' }
+  ].freeze
 
   Result = Struct.new(:club, :game_operation, :state_association, :status, :detail, keyword_init: true)
 
@@ -119,38 +130,41 @@ class ClubHomeGameOperationResolver
     Club.order(:id).reject(&:main_game_operation_id)
   end
 
-  # Trifft dieser Eintrag aus CLUB_OVERRIDES diesen Verein? Die id allein genügt
-  # nicht, siehe Kommentar an der Tabelle: Sie gilt nur im Bestand, für den sie
-  # notiert wurde. Verglichen wird gegen name und long_name, damit ein Zusatz an
-  # einer der beiden Stellen den Eintrag nicht aushebelt.
+  # Der Eintrag aus CLUB_OVERRIDES für diesen Verein, falls einer greift.
+  def override_for(club)
+    CLUB_OVERRIDES.find { |override| override_fits?(club, override) }
+  end
+
+  # Verglichen wird gegen name UND long_name, damit ein Zusatz an einer der beiden
+  # Stellen den Eintrag nicht aushebelt.
   def override_fits?(club, override)
-    needle = override[:name_includes].to_s.downcase
-    return false if needle.empty?
+    needle = override[:name_includes].downcase
 
     [club.name, club.long_name].compact.any? { |candidate| candidate.downcase.include?(needle) }
   end
 
-  # Einträge aus CLUB_OVERRIDES, die auf diesen Bestand nicht passen — der Verein
-  # fehlt, oder sein Name trägt das Merkmal nicht. Sie greifen dann nicht, und der
-  # betroffene Verein läuft durch die normale Ableitung. Das muss in der Ausgabe
-  # stehen: Ein Eintrag, der nach einer Umbenennung stumm ins Leere greift, wäre
-  # genau die Falle, die die Gegenprobe verhindern soll.
-  def unmatched_overrides
-    clubs = Club.where(id: CLUB_OVERRIDES.keys).index_by(&:id)
+  # Einträge aus CLUB_OVERRIDES, auf die in diesem Bestand kein Verein passt. Sie
+  # greifen dann nicht — das muss in der Ausgabe stehen. Nach einer Umbenennung, die
+  # den Ortsnamen tilgt, würde der Task sonst wieder den falschen Landesverband
+  # bestätigen, und zwar unbemerkt.
+  #
+  # Gefragt wird über alle Vereine, nicht nur die betroffenen: Nach einem
+  # erfolgreichen Lauf hat der zugeordnete Verein einen Heimat-Spielbetrieb und
+  # steht nicht mehr auf der Liste — der Eintrag wäre dann fälschlich als
+  # wirkungslos gemeldet.
+  def overrides_without_club
+    CLUB_OVERRIDES.filter_map do |override|
+      needle = override[:name_includes]
+      next if Club.where('clubs.name ILIKE :q OR clubs.long_name ILIKE :q', q: "%#{needle}%").exists?
 
-    CLUB_OVERRIDES.filter_map do |club_id, override|
-      club = clubs[club_id]
-      next if club && override_fits?(club, override)
-
-      found = club ? "\"#{club.name}\"" : 'kein Verein mit dieser id'
-      "##{club_id} (#{override[:sa_short]}, erwartet \"#{override[:name_includes]}\", vorhanden: #{found})"
+      "\"#{needle}\" → #{override[:sa_short]} (#{override[:reason]})"
     end
   end
 
   # Kürzel aus den Tabellen oben, zu denen es keinen Landesverband gibt.
   def missing_short_names
     referenced = SA_WITHOUT_GO_SHORT.keys + SA_WITHOUT_GO_SHORT.values +
-                 CLUB_OVERRIDES.values.map { |o| o[:sa_short] }
+                 CLUB_OVERRIDES.map { |o| o[:sa_short] }
     referenced.uniq - @sa_by_short_name.keys
   end
 
@@ -173,8 +187,9 @@ class ClubHomeGameOperationResolver
   #   :no_go_for_sa   – Landesverband bekannt, aber kein Spielbetrieb dazu.
   #   :unknown_sa_short – ein Kürzel aus CLUB_OVERRIDES gibt es nicht.
   def resolve(club)
-    override = CLUB_OVERRIDES[club.id]
-    return resolve_override(club, override) if override && override_fits?(club, override)
+    if (override = override_for(club))
+      return resolve_override(club, override)
+    end
 
     counts = game_operation_counts(club)
     return resolve_from_teams(club, counts) if counts.any?
@@ -301,10 +316,15 @@ namespace :clubs do
     missing = resolver.missing_short_names
     puts "HINWEIS: Landesverband-Kürzel ohne Treffer: #{missing.join(', ')}" if missing.any?
 
-    unmatched = resolver.unmatched_overrides
-    if unmatched.any?
-      puts "HINWEIS: Ausdrückliche Zuordnungen ohne passenden Verein: #{unmatched.join(', ')}"
-      puts '         Diese Vereine werden normal abgeleitet.'
+    # Wirkungslose Zuordnung: In diesem Bestand trägt kein Verein den Ortsnamen.
+    # Entweder ist es nicht der Produktionsbestand, oder der Verein wurde
+    # umbenannt — dann greift die Zuordnung nicht mehr und der Task bestätigt
+    # wieder den falschen Landesverband. Deshalb laut und mit Ansage.
+    without_club = resolver.overrides_without_club
+    if without_club.any?
+      puts "HINWEIS: Ausdrückliche Zuordnungen ohne passenden Verein: #{without_club.join(', ')}"
+      puts '         Sie greifen in diesem Bestand nicht. Falls der Verein hier sein müsste:'
+      puts '         Name prüfen (Umbenennung) statt den Eintrag zu löschen.'
     end
 
     unmapped = resolver.unmapped_state_associations_without_go

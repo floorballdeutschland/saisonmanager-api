@@ -22,10 +22,10 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
     env.each_key { |k| ENV[k] = saved[k] }
   end
 
-  # Ein Verein, auf den ein Eintrag aus CLUB_OVERRIDES passt: id UND Namensmerkmal.
-  # Die id allein genügt nicht mehr, siehe Kommentar an der Tabelle im Task.
-  def club_matching_override(club_id, override, **attrs)
-    create(:club, id: club_id, name: "SV #{override[:name_includes]}", **attrs)
+  # Ein Verein, auf den ein Eintrag aus CLUB_OVERRIDES passt. Erkannt wird am
+  # Ortsnamen, nicht an der id – siehe Kommentar an der Tabelle im Task.
+  def club_matching_override(override, **attrs)
+    create(:club, name: "SV #{override[:name_includes]}", **attrs)
   end
 
   # Ein Landesverband mit zugehörigem Spielbetrieb.
@@ -207,11 +207,10 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
   # --- Ausdrückliche Zuordnung (CLUB_OVERRIDES) -----------------------------
 
   test 'ordnet einen Verein aus CLUB_OVERRIDES dem benannten Verband zu' do
-    club_id, override = ClubHomeGameOperationResolver::CLUB_OVERRIDES.first
+    override = ClubHomeGameOperationResolver::CLUB_OVERRIDES.first
     sa, go = association_with_operation(override[:sa_short])
     wrong = create(:state_association, short_name: 'FVBW-falsch')
-    club = club_matching_override(club_id, override, game_operations_hash: [],
-                                                    state_association_id: wrong.id)
+    club = club_matching_override(override, game_operations_hash: [], state_association_id: wrong.id)
 
     run_task('DRY_RUN' => 'false')
 
@@ -221,10 +220,10 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
   end
 
   test 'CLUB_OVERRIDES schlaegt die Ableitung aus den Mannschaften' do
-    club_id, override = ClubHomeGameOperationResolver::CLUB_OVERRIDES.first
+    override = ClubHomeGameOperationResolver::CLUB_OVERRIDES.first
     _sa, go = association_with_operation(override[:sa_short])
     _other_sa, other_go = association_with_operation('NWFV')
-    club = club_matching_override(club_id, override, game_operations_hash: [])
+    club = club_matching_override(override, game_operations_hash: [])
     5.times { team_in(club, other_go) }
 
     run_task('DRY_RUN' => 'false')
@@ -232,9 +231,21 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
     assert_equal go.id, home_go_id(club)
   end
 
+  # Der Ortsname zählt, auch wenn er im long_name statt im name steht.
+  test 'erkennt den Ortsnamen auch im langen Vereinsnamen' do
+    override = ClubHomeGameOperationResolver::CLUB_OVERRIDES.first
+    _sa, go = association_with_operation(override[:sa_short])
+    club = create(:club, name: 'FGH', long_name: "Fit und Gesund #{override[:name_includes]} e.V.",
+                         game_operations_hash: [])
+
+    run_task('DRY_RUN' => 'false')
+
+    assert_equal go.id, home_go_id(club)
+  end
+
   test 'listet einen Verein auf, dessen Override-Kuerzel es nicht gibt' do
-    club_id, override = ClubHomeGameOperationResolver::CLUB_OVERRIDES.first
-    club = club_matching_override(club_id, override, game_operations_hash: [])
+    override = ClubHomeGameOperationResolver::CLUB_OVERRIDES.first
+    club = club_matching_override(override, game_operations_hash: [])
 
     out, = run_task('DRY_RUN' => 'false')
 
@@ -242,32 +253,46 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
     assert_match(/unknown_sa_short/, out)
   end
 
-  # Die id allein darf nicht genügen. Sie gilt nur im Bestand, für den sie notiert
-  # wurde: In einer anderen Datenbank – Entwicklung, Test, ein neu aufgesetzter
-  # Bestand – trägt dieselbe Zahl einen beliebigen anderen Verein, und der bekäme
-  # sonst stillschweigend Rheinland-Pfalz zugeordnet. Genau das ist am 12.08.2026
-  # in der CI passiert: Unter Seed 26598 bekam der Verein des Gleichstand-Tests die
-  # id 284 und wurde zu „Landau in der Pfalz".
-  test 'ein Override greift nicht bei fremdem Verein mit derselben id' do
-    club_id, override = ClubHomeGameOperationResolver::CLUB_OVERRIDES.first
+  # Die Zuordnung darf nicht an der id hängen: Die gilt nur in dem Bestand, für den
+  # sie notiert wurde. Am 12.08.2026 hat das die CI vorgeführt – unter Seed 26598
+  # bekam der Verein des Gleichstand-Tests die id 284 und wurde zu „Landau in der
+  # Pfalz". Deshalb hier ein Verein mit genau dieser id, aber ohne den Ortsnamen.
+  test 'ein Override greift nicht bei fremdem Verein mit einer Produktions-id' do
+    override = ClubHomeGameOperationResolver::CLUB_OVERRIDES.first
     _sa_override, go_override = association_with_operation(override[:sa_short])
     _sa_teams, go_teams = association_with_operation('NWFV')
-    club = create(:club, id: club_id, name: 'Irgendein anderer Verein', game_operations_hash: [])
+    club = create(:club, id: 284, name: 'Irgendein anderer Verein', game_operations_hash: [])
     team_in(club, go_teams)
 
-    out, = run_task('DRY_RUN' => 'false')
+    run_task('DRY_RUN' => 'false')
 
     assert_equal go_teams.id, home_go_id(club), 'normale Ableitung statt Zuordnung nach id'
     refute_equal go_override.id, home_go_id(club)
-    assert_match(/Ausdrückliche Zuordnungen ohne passenden Verein/, out)
-    assert_match(/#{club_id}/, out)
   end
 
-  test 'meldet eine Zuordnung, deren Verein es gar nicht gibt' do
+  # Ein Eintrag, auf den kein Verein passt, muss auffallen: Nach einer Umbenennung,
+  # die den Ortsnamen tilgt, bestätigt der Task sonst wieder unbemerkt den falschen
+  # Landesverband.
+  test 'meldet eine Zuordnung, auf die kein Verein passt' do
+    override = ClubHomeGameOperationResolver::CLUB_OVERRIDES.first
+    create(:club, name: 'Verein ohne Ortsbezug', game_operations_hash: [])
+
     out, = run_task('DRY_RUN' => 'false')
 
     assert_match(/Ausdrückliche Zuordnungen ohne passenden Verein/, out)
-    assert_match(/kein Verein mit dieser id/, out)
+    assert_match(/"#{override[:name_includes]}" → #{override[:sa_short]}/, out)
+  end
+
+  test 'meldet eine wirkungslose Zuordnung nicht, wenn der Verein da ist' do
+    ClubHomeGameOperationResolver::CLUB_OVERRIDES.each do |override|
+      association_with_operation(override[:sa_short]) unless
+        StateAssociation.exists?(short_name: override[:sa_short])
+      club_matching_override(override, game_operations_hash: [])
+    end
+
+    out, = run_task('DRY_RUN' => 'false')
+
+    refute_match(/Ausdrückliche Zuordnungen ohne passenden Verein/, out)
   end
 
   # --- Nichts zu entscheiden ------------------------------------------------
