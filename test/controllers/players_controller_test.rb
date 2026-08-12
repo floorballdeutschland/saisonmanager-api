@@ -374,6 +374,62 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_response :ok, 'Tausch im männlichen Wettbewerb hat ein eigenes Saisonlimit'
   end
 
+  test 'Spielbetriebe sind getrennt: keine Gegenbuchung, eigenes Tausch-Budget' do
+    team_a, team_b = create_gf_teams
+    other_go = create(:game_operation)
+    other_league = create(:league, :current_season, game_operation: other_go,
+                                                    field_size: 'GF', league_class_id: 'rl')
+    other_team = create(:team, league: other_league, club: @club)
+
+    player = create(:player, with_licenses: [
+      { team: team_a,     status: License::APPROVED, gf_role: 'erstlizenz' },
+      { team: team_b,     status: License::APPROVED, gf_role: 'zweitlizenz' },
+      { team: other_team, status: License::APPROVED }
+    ])
+
+    login_as(create(:user, :sbk_global))
+
+    # Zuordnung im fremden Spielbetrieb …
+    post "/api/v2/admin/players/#{player.id}/set_gf_license_role",
+         params: { license_id: license_for(player, other_team)['id'], gf_role: 'erstlizenz' }, as: :json
+    assert_response :ok
+
+    # … lässt die Lizenzen des ersten Spielbetriebs unangetastet.
+    assert_equal 'erstlizenz',  license_for(player, team_a)['gf_role']
+    assert_equal 'zweitlizenz', license_for(player, team_b)['gf_role']
+
+    # Umgekehrt zählt sie nicht gegen dessen Tausch-Budget.
+    post "/api/v2/admin/players/#{player.id}/set_gf_license_role",
+         params: { license_id: license_for(player, team_b)['id'], gf_role: 'erstlizenz' }, as: :json
+    assert_response :ok, 'jeder Spielbetrieb hat ein eigenes Saisonlimit'
+    assert_equal 'zweitlizenz', license_for(player, team_a)['gf_role']
+    assert_equal 'erstlizenz',  license_for(player, other_team)['gf_role'],
+                 'der fremde Spielbetrieb bleibt vom Tausch unberührt'
+  end
+
+  test 'einzige weitere GF-Lizenz in fremdem Spielbetrieb wird nicht zur Erstlizenz gegengebucht' do
+    team_a, = create_gf_teams
+    other_go = create(:game_operation)
+    other_league = create(:league, :current_season, game_operation: other_go,
+                                                    field_size: 'GF', league_class_id: 'rl')
+    other_team = create(:team, league: other_league, club: @club)
+
+    player = create(:player, with_licenses: [
+      { team: team_a,     status: License::APPROVED },
+      { team: other_team, status: License::APPROVED }
+    ])
+
+    login_as(create(:user, :admin))
+
+    post "/api/v2/admin/players/#{player.id}/set_gf_license_role",
+         params: { license_id: license_for(player, team_a)['id'], gf_role: 'zweitlizenz' }, as: :json
+    assert_response :ok
+
+    assert_equal 'zweitlizenz', license_for(player, team_a)['gf_role']
+    assert_nil license_for(player, other_team)['gf_role'],
+               'eine Lizenz im fremden Spielbetrieb ist kein Partner und wird nicht Erstlizenz'
+  end
+
   test 'GF-Jugendliga: keine Zuordnung möglich und keine Gegenbuchung als Partner' do
     team_a, = create_gf_teams
     youth_league = create(:league, :current_season, game_operation: @game_operation,

@@ -399,7 +399,8 @@ class Player < ApplicationRecord
   #
   # Die Zuordnung ist eine manuelle Entscheidung (Wahl des Spielers, dokumentiert
   # durch SBK/Admin) und wird pro Wettbewerb (GF Erwachsene, getrennt nach
-  # männlich/weiblich = League#female) im Lizenz-Eintrag gespeichert:
+  # männlich/weiblich = League#female, innerhalb eines Spielbetriebs) im
+  # Lizenz-Eintrag gespeichert:
   #   gf_role:         'erstlizenz' | 'zweitlizenz' | nicht gesetzt
   #   gf_role_history: [{ gf_role, source, created_by, created_at }]
   # source: 'assign' = Erstzuordnung, 'swap' = Tausch (max. 1x/Saison),
@@ -409,7 +410,14 @@ class Player < ApplicationRecord
   GF_ROLE_SWAP_LIMIT = 1
 
   # Aktive Lizenz-Einträge desselben GF-Erwachsenen-Wettbewerbs (gleiche Saison,
-  # gleiches female-Flag) – ohne den übergebenen Eintrag selbst.
+  # gleiches female-Flag, gleicher Spielbetrieb) – ohne den übergebenen Eintrag
+  # selbst.
+  #
+  # Der Spielbetrieb gehört zwingend zur Wettbewerbsdefinition: Erst-/Zweitlizenz
+  # ist eine Entscheidung innerhalb eines Verbandes. Eine Lizenz bei Floorball
+  # Deutschland und eine im Landesverband stehen nicht in diesem Verhältnis –
+  # dort greift allein die Anzeige-Unterscheidung Haupt-/Zusatzlizenz nach
+  # Ligahöhe (siehe Admin::LicensesController#license_type).
   def gf_competition_licenses(license, league)
     (licenses || []).select do |l|
       next false if l['id'] == license['id']
@@ -419,7 +427,9 @@ class Player < ApplicationRecord
       next false unless License::ACTIVE_STATUSES.include?(last_status)
 
       other_league = Team.find_by(id: l['team_id'])&.league
-      other_league.present? && other_league.gf_adult? && other_league.female == league.female
+      other_league.present? && other_league.gf_adult? &&
+        other_league.female == league.female &&
+        other_league.game_operation_id == league.game_operation_id
     end
   end
 

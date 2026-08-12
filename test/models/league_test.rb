@@ -760,6 +760,9 @@ class LeagueTest < ActiveSupport::TestCase
     assert_equal true, entry[:gf_adult]
     assert_equal false, entry[:female]
     assert_equal 'erstlizenz', entry[:gf_role]
+    # Der Spielbetrieb entscheidet mit: über Verbandsgrenzen hinweg gibt es keine
+    # Erst-/Zweitlizenz, das Frontend braucht den Wert zum Vergleich mit der Liga.
+    assert_equal other_league.game_operation_id, entry[:game_operation_id]
     assert_equal player.licenses.find { |l| l['team_id'] == other_team.id }['id'], entry[:license_id]
     assert_equal License::APPROVED, entry[:last_status_id]
   end

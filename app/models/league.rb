@@ -950,8 +950,11 @@ class League < ApplicationRecord
             last_status_id: current_status,
             # Kontext für die Erst-/Zweitlizenz-Zuordnung bei der Genehmigung:
             # liegt die andere Lizenz im selben GF-Erwachsenen-Wettbewerb?
+            # Der Spielbetrieb gehört dazu – über Verbandsgrenzen hinweg gibt es
+            # keine Erst-/Zweitlizenz (siehe Player#gf_competition_licenses).
             gf_adult: other_league&.gf_adult? || false,
             female: other_league&.female,
+            game_operation_id: other_league&.game_operation_id,
             gf_role: l['gf_role']
           }
         end
