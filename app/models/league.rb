@@ -869,34 +869,97 @@ class League < ApplicationRecord
   end
 
   def licenses(full_license_hash = true, only_current_licenses = true)
-    league_teams = teams.to_a
-    team_licenses = Player.find_by_team_ids(league_teams.map(&:id))
+    League.licenses_for(self, full_license_hash:, only_current_licenses:).fetch(id, [])
+  end
 
-    our_team_ids = league_teams.map(&:id).to_set
+  # Lizenzlisten mehrerer Ligen in einem Rutsch: { league_id => [team_item, …] }.
+  #
+  # Admin::LicensesController#index braucht die Listen über alle Ligen einer
+  # Saison. Liga für Liga kostete das je Liga eine eigene Spieler-Abfrage – und
+  # das ist ein Sequential Scan über die ganze players-Tabelle, weil die Lizenzen
+  # in einer JSONB-Spalte ohne passenden Index liegen – plus je Team die drei
+  # ActiveStorage-Zugriffe von Team#full_hash. Gebündelt fällt beides einmal für
+  # alle Ligen an, statt einmal pro Liga.
+  #
+  # team_hash: :light liefert nur die Felder, die Lizenzlisten lesen, und lässt
+  # damit die Logo- und Spielbetriebs-Auflösung weg.
+  # with_other_licenses: false spart das Nachladen der fremden Teams.
+  def self.licenses_for(leagues, full_license_hash: true, only_current_licenses: true,
+                        team_hash: :full, with_other_licenses: true)
+    leagues = Array(leagues)
+    return {} if leagues.empty?
 
-    # Collect all foreign team IDs referenced in player licenses for batch loading
+    teams_by_league = license_teams_by_league(leagues, team_hash)
+    all_teams = teams_by_league.values.flatten.uniq(&:id)
+    team_licenses = Player.find_by_team_ids(all_teams.map(&:id))
+
+    teams_by_id = all_teams.index_by(&:id)
+    teams_by_id.merge!(license_foreign_teams(team_licenses, teams_by_id.keys)) if with_other_licenses
+
+    leagues.to_h do |league|
+      [league.id, league.build_license_items(teams_by_league[league.id] || [], team_licenses, teams_by_id,
+                                             full_license_hash, only_current_licenses,
+                                             team_hash, with_other_licenses)]
+    end
+  end
+
+  # Teams je Liga in einer Abfrage. Deckt wie League#teams auch die Teams ab, die
+  # nur über cup_leagues zur Liga gehören.
+  def self.license_teams_by_league(leagues, team_hash)
+    league_ids = leagues.map(&:id)
+    # Sortierung wie League#teams (:name) – die Liga-Lizenzansicht zeigt die
+    # Mannschaften alphabetisch und sortiert nicht selbst nach. :id nur als
+    # Tiebreaker, damit die Reihenfolge bei gleichem Namen bestimmt bleibt.
+    scope = Team.where(league_id: league_ids)
+                .or(Team.where('cup_leagues && ARRAY[?]::int[]', league_ids))
+                .order(:name, :id)
+    # :league für other_licenses (league_name, gf_adult?, female), bei :full
+    # zusätzlich alles, was Team#full_hash liest.
+    scope = if team_hash == :full
+              scope.includes(TEAM_WITH_LOGO_PRELOAD + [{ league: :game_operation }])
+            else
+              scope.includes(:league)
+            end
+    teams = scope.to_a
+    leagues.to_h do |league|
+      [league.id, teams.select { |t| t.league_id == league.id || Array(t.cup_leagues).include?(league.id) }]
+    end
+  end
+
+  # Teams, auf die Lizenzen zeigen, die keiner der geladenen Ligen gehören.
+  def self.license_foreign_teams(team_licenses, known_team_ids)
+    known = known_team_ids.to_set
     foreign_team_ids = Set.new
     team_licenses.each_value do |players|
       players.each do |player|
-        player.licenses.each do |l|
+        (player.licenses || []).each do |l|
           t_id = l['team_id'].to_i
-          foreign_team_ids << t_id unless our_team_ids.include?(t_id)
+          foreign_team_ids << t_id unless known.include?(t_id)
         end
       end
     end
-    foreign_teams = Team.includes(:league).where(id: foreign_team_ids.to_a).index_by(&:id)
-    # Auch Teams dieser Liga auflösen – ein Spieler kann eine weitere Lizenz bei
-    # einem anderen Team derselben Liga haben.
-    teams_by_id = league_teams.index_by(&:id).merge(foreign_teams)
+    return {} if foreign_team_ids.empty?
 
+    Team.includes(:league).where(id: foreign_team_ids.to_a).index_by(&:id)
+  end
+
+  # Nur die Felder, die die Lizenzlisten lesen – ohne die Logo-Auflösung von
+  # Team#full_hash, die pro Team drei ActiveStorage-Zugriffe kostet.
+  def self.license_light_team_hash(team)
+    { id: team.id, name: team.name, short_name: team.short_name,
+      league_id: team.league_id, club_id: team.club_id }
+  end
+
+  def build_license_items(league_teams, team_licenses, teams_by_id, full_license_hash,
+                          only_current_licenses, team_hash = :full, with_other_licenses = true)
     active_statuses = [License::APPROVED, License::REQUESTED].to_set
 
     result = []
     league_teams.each do |team|
-      team_item = team.full_hash
+      team_item = team_hash == :full ? team.full_hash : League.license_light_team_hash(team)
 
       team_item[:players] = []
-      team_licenses[team.id].each do |player|
+      (team_licenses[team.id] || []).each do |player|
         license = player.licenses.find do |l|
           next false unless l['team_id'].to_i == team.id
 
@@ -929,31 +992,8 @@ class League < ApplicationRecord
           requested_at:
         }
 
-        player_item[:other_licenses] = player.licenses.filter_map do |l|
-          t_id = l['team_id'].to_i
-          next if t_id == team.id
-
-          lic_season = l['season_id'] || l.dig('league', 'season_id')
-          next unless lic_season.nil? || lic_season.to_s == season_id.to_s
-
-          current_status = l['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
-          next unless active_statuses.include?(current_status)
-
-          other_team = teams_by_id[t_id]
-          next unless other_team
-
-          other_league = other_team.league
-          {
-            license_id: l['id'],
-            team_name: other_team.name,
-            league_name: other_league&.short_name,
-            last_status_id: current_status,
-            # Kontext für die Erst-/Zweitlizenz-Zuordnung bei der Genehmigung:
-            # liegt die andere Lizenz im selben GF-Erwachsenen-Wettbewerb?
-            gf_adult: other_league&.gf_adult? || false,
-            female: other_league&.female,
-            gf_role: l['gf_role']
-          }
+        if with_other_licenses
+          player_item[:other_licenses] = other_license_items(player, team.id, teams_by_id, active_statuses)
         end
 
         team_item[:players] << player_item
@@ -963,6 +1003,43 @@ class League < ApplicationRecord
     end
 
     result
+  end
+
+  # Weitere aktive Lizenzen desselben Spielers in dieser Saison, ohne die des
+  # übergebenen Teams. Kontext für die Genehmigungskarte.
+  def other_license_items(player, team_id, teams_by_id, active_statuses)
+    player.licenses.filter_map do |l|
+      t_id = l['team_id'].to_i
+      next if t_id == team_id
+
+      current_status = l['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
+      next unless active_statuses.include?(current_status)
+
+      other_team = teams_by_id[t_id]
+      next unless other_team
+
+      other_league = other_team.league
+      # Die Saison entscheidet die LIGA der anderen Mannschaft, nicht das Feld
+      # season_id im Lizenz-Eintrag. Altbestände tragen dort nichts, und die
+      # frühere Bedingung (`lic_season.nil? ||`) liess genau die deshalb als
+      # aktuell durch: Lizenzen von 2012 landeten in other_licenses und brachten
+      # die Genehmigungskarte dazu, eine Erst-/Zweitlizenz-Zuordnung zu
+      # verlangen, die Player#gf_competition_licenses (strikter Saisonvergleich)
+      # anschliessend nirgends verbucht hätte.
+      next unless other_league && other_league.season_id.to_s == season_id.to_s
+
+      {
+        license_id: l['id'],
+        team_name: other_team.name,
+        league_name: other_league&.short_name,
+        last_status_id: current_status,
+        # Kontext für die Erst-/Zweitlizenz-Zuordnung bei der Genehmigung:
+        # liegt die andere Lizenz im selben GF-Erwachsenen-Wettbewerb?
+        gf_adult: other_league&.gf_adult? || false,
+        female: other_league&.female,
+        gf_role: l['gf_role']
+      }
+    end
   end
 
   def licenses_csv
