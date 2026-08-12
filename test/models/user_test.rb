@@ -496,6 +496,49 @@ class UserTest < ActiveSupport::TestCase
     assert_equal stamp.to_i, u.reload.last_login_at.to_i
   end
 
+  # Die folgenden drei Faelle sperrten Konten mit GUELTIGEM Passwort aus, weil
+  # der Rueckgabewert von update (Validierung ueber den ganzen Datensatz) ueber
+  # die Anmeldung entschied. Ohne Log und ohne Sentry, also nicht von einem
+  # Tippfehler zu unterscheiden. Sie legen fest, dass fremde Felder die
+  # Anmeldung nicht mehr verhindern.
+  #
+  # Alle drei brauchen update_columns: Genau diese Zustaende laesst die
+  # Anwendung selbst nicht entstehen, es sind Altbestaende bzw. Importe.
+
+  test 'login: Altname mit Rand-Whitespace und CI-Dublette sperrt nicht aus' do
+    base = "padded#{SecureRandom.hex(4)}"
+    a = build_user(permissions: [])
+    # normalize_user_name strippt beim Speichern und setzt damit selbst
+    # user_name_changed?, wodurch die Uniqueness-Pruefung trotz ihres Gates
+    # greift. Die Dublette in anderer Schreibweise laesst sie dann anschlagen.
+    a.update_columns(user_name: " #{base} ")
+    b = build_user(permissions: [])
+    b.update_columns(user_name: base.upcase)
+
+    assert_equal a.id, User.login(" #{base} ".downcase, 'password123')&.id
+  end
+
+  test 'login: Altname mit Umlaut und Rand-Whitespace sperrt nicht aus' do
+    u = build_user(permissions: [])
+    # Gleiche Mechanik, hier schlaegt der Format-Validator an (Umlaut).
+    padded = " möller#{SecureRandom.hex(4)} "
+    u.update_columns(user_name: padded)
+
+    # Gesucht wird mit dem gespeicherten Namen einschliesslich Rand-Whitespace:
+    # Die Abfrage vergleicht LOWER(user_name) unveraendert, ein getrimmter
+    # Suchbegriff findet die Zeile also gar nicht erst.
+    assert_equal u.id, User.login(padded.downcase, 'password123')&.id
+  end
+
+  test 'login: unbekannte Sprache sperrt nicht aus' do
+    u = build_user(permissions: [])
+    # Der language-Validator hat bewusst kein if-Gate, greift also bei jedem
+    # Speichern. Ein Importwert ausserhalb de/en genuegte zum Aussperren.
+    u.update_columns(language: 'fr')
+
+    assert_equal u.id, User.login(u.user_name, 'password123')&.id
+  end
+
   test 'login: E-Mail-Adresse ist keine Login-Kennung' do
     u = build_user(permissions: [])
     u.update!(email: 'login.test@example.com')

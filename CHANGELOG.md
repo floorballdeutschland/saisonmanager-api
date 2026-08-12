@@ -11,6 +11,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Behoben
 
+- **Anmeldung schlug bei einzelnen Konten trotz richtigem Passwort fehl**: Beim Anmelden vermerkt der Saisonmanager den Zeitpunkt im Konto. Ließ sich dieser Vermerk nicht speichern, wurde die gesamte Anmeldung abgewiesen, obwohl das Passwort stimmte. Betroffen waren Konten, deren Daten aus Altbeständen an einer heutigen Regel scheitern: ein Benutzername mit Leerzeichen am Anfang oder Ende, der zusätzlich in anderer Groß- und Kleinschreibung ein zweites Mal vergeben ist, ein solcher Name mit Umlaut, oder eine hinterlegte Sprache außerhalb von Deutsch und Englisch. Die Betroffenen sahen dieselbe Meldung wie bei einem Tippfehler, und ein neues Passwort half nicht, weil das alte nie falsch war. Der Zeitvermerk entscheidet jetzt nicht mehr über die Anmeldung. Scheitert er, wird das protokolliert, statt die Person auszusperren.
+
 - **Eine Zweitrolle beim Verband verdeckte Vereinsverantwortlichen die eigenen Unterlagen**: Wer einen Verein betreut und daneben eine auf einen Verband beschränkte Spielbetriebsrolle hält, sah bei den Spielern des eigenen Vereins die Dokumente des eigenen Landesverbands nicht mehr. Maßgeblich war allein die Verbandsrolle, die Zuständigkeit für den eigenen Verein fiel unter den Tisch. Beide Rollen zählen jetzt zusammen, wie überall sonst im Rechtesystem. Betroffen war die Dokumentliste und damit auch die neue Auswahl beim Hochladen: Genau der Nachweis, den der eigene Verband fordert, fehlte dort.
 
 ### Neu
