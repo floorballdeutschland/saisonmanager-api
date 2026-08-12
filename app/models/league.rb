@@ -1012,9 +1012,6 @@ class League < ApplicationRecord
       t_id = l['team_id'].to_i
       next if t_id == team_id
 
-      lic_season = l['season_id'] || l.dig('league', 'season_id')
-      next unless lic_season.nil? || lic_season.to_s == season_id.to_s
-
       current_status = l['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
       next unless active_statuses.include?(current_status)
 
@@ -1022,6 +1019,15 @@ class League < ApplicationRecord
       next unless other_team
 
       other_league = other_team.league
+      # Die Saison entscheidet die LIGA der anderen Mannschaft, nicht das Feld
+      # season_id im Lizenz-Eintrag. Altbestände tragen dort nichts, und die
+      # frühere Bedingung (`lic_season.nil? ||`) liess genau die deshalb als
+      # aktuell durch: Lizenzen von 2012 landeten in other_licenses und brachten
+      # die Genehmigungskarte dazu, eine Erst-/Zweitlizenz-Zuordnung zu
+      # verlangen, die Player#gf_competition_licenses (strikter Saisonvergleich)
+      # anschliessend nirgends verbucht hätte.
+      next unless other_league && other_league.season_id.to_s == season_id.to_s
+
       {
         license_id: l['id'],
         team_name: other_team.name,
