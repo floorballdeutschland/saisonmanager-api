@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Lizenzwesen des Verbandes lädt in Sekunden statt Minuten**: Die Liste unter Lizenzwesen/Verband brauchte für wenige hundert Einträge mehrere Minuten. Die Ursache lag nicht in der Menge der Lizenzen, sondern darin, dass der Aufbau an der Zahl der Ligen hing: Für jede Liga der Saison wurde die Spielertabelle einzeln durchsucht, für jede Mannschaft zusätzlich das Vereins- und Mannschaftslogo aufgelöst, das die Liste gar nicht anzeigt. Ligen ohne eine einzige Lizenz kosteten dabei genauso viel wie volle. Und das Ganze lief zweimal, weil die Liste erst die beteiligten Personen für die Dokumente sammelte und danach dieselbe Arbeit für die Ausgabe wiederholte. Jetzt fällt beides einmal für alle Ligen gemeinsam an. In einem Testaufbau mit 30 Ligen und 240 Mannschaften sinkt die Zahl der Datenbankabfragen von 2574 auf 37. Die Liste enthält unverändert dieselben Angaben.
+
 ## [1.75.0] - 2026-08-12
 
 ### Behoben
@@ -24,8 +28,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - **Dokumente auch am Spielerprofil hochladen**: Bisher ließen sich Nachweise nur beim Beantragen einer Lizenz hinterlegen. Künftig geht das auch direkt am Spielerprofil aus der Spielerliste heraus. Dafür nennt die Schnittstelle jetzt die Dokumentarten, die für eine bestimmte Person in Frage kommen: die bundesweiten und die des Landesverbands ihrer aktuellen Vereine. Arten, die nur unter einem bestimmten Alter verlangt werden, bleiben bei älteren Personen außen vor. Zugriff haben Verbands- und Vereinsverantwortliche, also alle, die die Dokumente der Person ohnehin einsehen dürfen.
 
 ### Verbessert
-
-- **Lizenzwesen des Verbandes lädt in Sekunden statt Minuten**: Die Liste unter Lizenzwesen/Verband brauchte für wenige hundert Einträge mehrere Minuten. Die Ursache lag nicht in der Menge der Lizenzen, sondern darin, dass der Aufbau an der Zahl der Ligen hing: Für jede Liga der Saison wurde die Spielertabelle einzeln durchsucht, für jede Mannschaft zusätzlich das Vereins- und Mannschaftslogo aufgelöst, das die Liste gar nicht anzeigt. Ligen ohne eine einzige Lizenz kosteten dabei genauso viel wie volle. Und das Ganze lief zweimal, weil die Liste erst die beteiligten Personen für die Dokumente sammelte und danach dieselbe Arbeit für die Ausgabe wiederholte. Jetzt fällt beides einmal für alle Ligen gemeinsam an. In einem Testaufbau mit 30 Ligen und 240 Mannschaften sinkt die Zahl der Datenbankabfragen von 2574 auf 37. Die Liste enthält unverändert dieselben Angaben.
 
 - **Reste der alten Passwort-Umstellung entfernt**: Der Login trug noch einen Zweig aus der Zeit vor der Umstellung auf das heutige Passwortverfahren. Er sollte Alt-Passwörter beim ersten Anmelden stillschweigend übernehmen, konnte aber längst nicht mehr greifen: Die Spalte mit den Alt-Passwörtern führt die Datenbank nicht mehr, und kein Konto hängt noch daran. Wäre der Zweig doch einmal erreicht worden, hätte er das Anmelden mit einem Serverfehler abgebrochen statt mit einer verständlichen Meldung. Für jede Anmeldung wird jetzt zudem eine unnötige Prüfsumme weniger berechnet. Am Anmelden selbst ändert sich nichts.
 
