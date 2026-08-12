@@ -144,6 +144,29 @@ class PublicOverlayControllerTest < ActionDispatch::IntegrationTest
     assert game.dig('home', 'short_name').present?
   end
 
+  # Absichtlich anders als überall sonst: `League#resolved_logo` fällt auf den
+  # Landesverband zurück, das Overlay nicht. In der Anzeigetafel steht das
+  # Zeichen stellvertretend für den Wettbewerb, ein Verbandslogo an dieser
+  # Stelle behauptete etwas Falsches. Ohne eigenes Ligazeichen bleibt deshalb
+  # das mitgelieferte Bundesliga-Zeichen stehen.
+  test 'das Overlay bekommt das Logo der Liga, wenn sie eines hat' do
+    @league.logo.attach(io: File.open(logo_png), filename: 'liga.png', content_type: 'image/png')
+
+    get '/api/v2/public/overlay/live', params: { token: @token }
+
+    assert_response :success
+    assert JSON.parse(response.body).dig('game', 'league', 'logo_url').present?
+  end
+
+  test 'das Logo des Landesverbands kommt im Overlay nicht durch' do
+    @sa.logo.attach(io: File.open(logo_png), filename: 'sa.png', content_type: 'image/png')
+
+    get '/api/v2/public/overlay/live', params: { token: @token }
+
+    assert_response :success
+    assert_nil JSON.parse(response.body).dig('game', 'league', 'logo_url')
+  end
+
   test 'der Spielabruf nennt die Spieltags-Kennung fuer die Token-Anforderung' do
     # Der Spielbericht kennt nur das Spiel, der Overlay-Zugang haengt aber am
     # Spieltag. Ohne diese Kennung koennte die Oberfläche dort kein Token holen.
@@ -309,6 +332,16 @@ class PublicOverlayControllerTest < ActionDispatch::IntegrationTest
   end
 
   private
+
+  # Ein winziges, gültiges PNG. Die Tempfile-Referenz muss leben bleiben:
+  # Wird sie eingesammelt, ist die Datei weg, bevor jemand sie liest.
+  def logo_png
+    @logo_file ||= Tempfile.new(['logo', '.png'])
+    @logo_png ||= begin
+      Vips::Image.black(120, 60).add(200).cast('uchar').write_to_file(@logo_file.path)
+      @logo_file.path
+    end
+  end
 
   def login(user)
     post '/api/v2/login', params: { username: user.user_name, password: 'password123' }

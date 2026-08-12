@@ -124,6 +124,8 @@ Rails.application.routes.draw do
       post 'admin/leagues/:id/import_teams', to: 'leagues#admin_import_teams'
       post 'admin/leagues/:id/upload_banner', to: 'leagues#admin_upload_banner'
       delete 'admin/leagues/:id/banner', to: 'leagues#admin_delete_banner'
+      post 'admin/leagues/:id/upload_logo', to: 'leagues#admin_upload_logo'
+      delete 'admin/leagues/:id/logo', to: 'leagues#admin_delete_logo'
 
       post 'admin/game_operations/:id/upload_banner', to: 'game_operations#admin_upload_banner'
       delete 'admin/game_operations/:id/banner', to: 'game_operations#admin_delete_banner'

@@ -2,6 +2,7 @@ class League < ApplicationRecord
   include UserTrackable
   include LeagueDirectEncounterTable
   include LeagueBanner
+  include LeagueLogo
 
   has_many :game_days
   has_many :qualifications, class_name: 'LeagueQualification',
@@ -30,8 +31,23 @@ class League < ApplicationRecord
     includes(:game_days,
              { qualifications: :target_league },
              { banner_attachment: :blob },
+             { logo_attachment: :blob },
              game_operation: { banner_attachment: :blob,
-                               state_association: { banner_attachment: :blob } })
+                               state_association: { banner_attachment: :blob,
+                                                    logo_attachment: :blob } })
+  }
+
+  # Die kleine Schwester für Listen, die full_hash je Liga aufrufen, ohne
+  # Spieltage und Qualifikationen zu brauchen. Entscheidend sind die beiden
+  # Ketten hinter resolved_banner und resolved_logo: Ohne sie fragt jede Liga
+  # einzeln nach Spielbetrieb, Landesverband und deren Anhängen, und aus einer
+  # Ligenliste werden schnell ein paar hundert Abfragen.
+  scope :with_resolved_media_includes, lambda {
+    includes({ banner_attachment: :blob },
+             { logo_attachment: :blob },
+             game_operation: { banner_attachment: :blob,
+                               state_association: { banner_attachment: :blob,
+                                                    logo_attachment: :blob } })
   }
 
   # Kanonische Ligaklassen-Codes mit Rang für die Haupt-/Zusatzlizenz-
@@ -305,6 +321,7 @@ class League < ApplicationRecord
       end
     }
     result.merge!(resolved_banner)
+    result.merge!(resolved_logo)
     result[:similar_leagues] = similar_leagues.with_full_hash_includes.map(&:full_hash) if include_similar_leagues
 
     result
@@ -1217,7 +1234,8 @@ class League < ApplicationRecord
 
   def self.admin_user_leagues(user)
     result = []
-    leagues = League.current_season.order(season_id: :desc, game_operation_id: :asc).order('order_key::int')
+    leagues = League.current_season.with_resolved_media_includes
+                    .order(season_id: :desc, game_operation_id: :asc).order('order_key::int')
 
     # für jeden verband:
     # name, id, kuerzel, ligen
@@ -1292,7 +1310,7 @@ class League < ApplicationRecord
 
     # Ligen aus der Verbands-Berechtigung (Admin/SBK) …
     go_leagues = if go_ids.present?
-                   League.current_season.where(game_operation_id: go_ids)
+                   League.current_season.with_resolved_media_includes.where(game_operation_id: go_ids)
                          .order(season_id: :desc, game_operation_id: :asc).order('order_key::int').to_a
                  else
                    []
