@@ -400,6 +400,12 @@ Rails.application.routes.draw do
 
       get 'transfers/public', to: 'players#transfers_public'
 
+      # Was heute übertragen wird. Gewöhnlicher öffentlicher Abruf mit
+      # X-Api-Key oder Cookie, samt der üblichen Verzögerung für
+      # Zwischenstände – nicht zu verwechseln mit dem spieltagsgebundenen
+      # Overlay-Token weiter unten.
+      get 'live_streams', to: 'live_streams#index'
+
       get 'public/license_list', to: 'public_license_list#show'
       get 'public/secretary', to: 'public_secretary#show'
 
