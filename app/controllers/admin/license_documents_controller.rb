@@ -116,7 +116,7 @@ module Admin
     # einsehen – es sei denn, im Vereins-Hash stand zufällig ein Gast-Eintrag.
     # Wer genehmigt, muss die Dokumente sehen.
     def admin_or_sbk_for_player?
-      ph = current_user.permission_hash
+      ph = perm_hash
       return true if ph[:admin].present?
       return false if ph[:sbk].blank?
       return true if sbk_global?(ph)
@@ -146,7 +146,7 @@ module Admin
     end
 
     def tm_for_player?
-      ph = current_user.permission_hash
+      ph = perm_hash
       return false if ph[:tm].blank?
 
       player_team_ids = (@player.licenses || []).filter_map { |l| l['team_id']&.to_i }
@@ -154,7 +154,7 @@ module Admin
     end
 
     def vm_for_player?
-      ph = current_user.permission_hash
+      ph = perm_hash
       return false if ph[:vm].blank?
 
       # Der VM darf, wenn er (a) einen aktuell gültigen Verein des Spielers verwaltet
@@ -217,7 +217,17 @@ module Admin
     # verbandsgescopte SBK-Rolle hält. Vorher genügte ein einziger solcher
     # Eintrag, um einem VM die Dokumentarten seines EIGENEN Landesverbands aus
     # der Auswahl zu nehmen – hochladen konnte er sie dann nicht mehr.
+    # Memoisiert, weil type_available? die Frage je Dokumentart stellt und der
+    # VM/TM-Zweig sonst pro Art die Vereins- und Team-Prüfung erneut fährt
+    # (license_team_club_ids kostet eine Team-Abfrage). defined? statt ||=, sonst
+    # würde false jedes Mal neu berechnet.
     def unrestricted_document_access?
+      return @unrestricted_document_access if defined?(@unrestricted_document_access)
+
+      @unrestricted_document_access = compute_unrestricted_document_access
+    end
+
+    def compute_unrestricted_document_access
       return true if perm_hash[:admin].present?
       return true if perm_hash[:sbk].present? && perm_hash[:sbk].include?(0)
       return true if perm_hash[:sbk].blank?
