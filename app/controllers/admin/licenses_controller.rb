@@ -28,9 +28,19 @@ module Admin
       team_club_map   = Team.where(league_id: leagues.map(&:id)).pluck(:id, :club_id).to_h
       clubs           = Club.where(id: team_club_map.values.uniq).index_by(&:id)
 
+      # Die Lizenzlisten aller Ligen in einem Rutsch und genau einmal. Bisher lief
+      # league.licenses zweimal – erst zum Sammeln der Spieler-IDs für die
+      # Dokumente, dann erneut zum Bauen der Antwort – und beide Male Liga für
+      # Liga, also je Liga eine eigene Spieler-Abfrage über die players-Tabelle.
+      # Diese Liste liest weder Logos noch other_licenses, daher :light und
+      # with_other_licenses: false.
+      licenses_by_league = League.licenses_for(leagues, team_hash: :light, with_other_licenses: false)
+
       # Pre-load all license documents for players in these leagues (grouped by
       # [player_id, doc_type] – Dokumente gelten pro Spieler, saisonübergreifend)
-      all_player_ids = leagues.flat_map { |l| l.licenses(true, true).flat_map { |t| t[:players].map { |p| p[:id] } } }.uniq
+      all_player_ids = licenses_by_league.each_value.flat_map do |team_items|
+        team_items.flat_map { |t| t[:players].map { |p| p[:id] } }
+      end.uniq
       license_docs_by_key = license_documents_by_player_and_type(all_player_ids)
       catalog = document_type_catalog(leagues.flat_map { |l| l.required_documents || [] } + ['parental_consent'])
 
@@ -40,7 +50,7 @@ module Admin
         category_name = license_category_name(league.league_category_id)
         class_name    = license_class_name(league.league_class_id)
 
-        league.licenses(true, true).each do |team_data|
+        licenses_by_league.fetch(league.id, []).each do |team_data|
           club = clubs[team_club_map[team_data[:id]]]
 
           team_data[:players].each do |player_data|
