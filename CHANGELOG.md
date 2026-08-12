@@ -9,9 +9,43 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Lizenzen aus alten Saisons galten als aktuell**: Beim Genehmigen einer Lizenz zeigte der Saisonmanager unter „weitere Lizenzen" Einträge aus längst vergangenen Saisons und verlangte im Großfeld-Erwachsenenbereich deshalb eine Erst-/Zweitlizenz-Zuordnung, obwohl es in der laufenden Saison gar keine zweite Lizenz gab. Ursache war, dass eine Lizenz ohne hinterlegte Saison als Lizenz der laufenden Saison behandelt wurde, und genau diese Angabe fehlt bei Altbeständen. Maßgeblich ist jetzt die Saison der Liga, zu der die Mannschaft gehört; eine fehlende Angabe am Lizenzeintrag spielt keine Rolle mehr. Damit endet auch die widersprüchliche Lage, dass die Genehmigungskarte nach einer Zuordnung fragte, die im Hintergrund nirgends verbucht worden wäre.
+
 ### Neu
 
+- **Eigenes Logo je Liga**: Ligen können ein eigenes Erkennungszeichen bekommen, etwa das der 1. Floorball-Bundesliga Herren. Es ist getrennt vom Werbebanner, das weiterhin eine anklickbare Anzeigefläche im Format 6:1 bleibt. Hochladen darf, wer die Liga bearbeiten darf; erlaubt sind PNG, JPG und WebP bis 3 MB, Querformat ausdrücklich eingeschlossen. Fehlt einer Liga das eigene Zeichen, wird das Logo des Landesverbands ausgewiesen, und zwar als solches gekennzeichnet: Anzeigen, die ausdrücklich das Ligazeichen meinen, etwa die Livestream-Einblendungen, zeigen dann lieber gar keines statt eines fremden. Der bisherige Behelf, in den Overlays das Bundesliga-Zeichen fest einzubauen, entfällt damit.
+
+- **Livestream-Overlays: Datengrundlage für die Vollbilder**: Die Overlay-Bühne kann bisher Anzeigetafel und Bauchbinden. Für die Vollbilder, die zwischen den Abschnitten und nach dem Schlusspfiff eingeblendet werden, fehlten drei Angaben. Die Auszeichnungen des Spiels kommen jetzt im Overlay-Abruf mit, damit das Endstandbild die wertvollste Spielerin oder den wertvollsten Spieler nennen kann. Dazu sind Tabelle, Torschützenliste und der Spielplan der Liga jetzt auch mit dem Spieltags-Token erreichbar, ohne Anmeldung und ohne API-Schlüssel. Welche Liga das ist, ergibt sich allein aus dem Spieltag des Tokens und lässt sich nicht frei wählen.
+
+  Die Ausnahme, die das Token für Live-Daten macht, bleibt dabei auf seinen eigenen Spieltag beschränkt: Parallel laufende Partien in anderen Hallen stehen im Spielplan weiterhin ohne Zwischenstand, und Tabelle wie Torschützenliste zählen wie überall nur beendete Spiele. Damit eine deshalb unvollständige Tabelle auf Sendung nicht wie ein Fehler aussieht, nennt jede Antwort die Partien, die gerade noch laufen.
+
 - **Abruf der Livestreams des Tages**: Die Adressen von Livestream und Aufzeichnung werden im Spielbericht erfasst, standen bisher aber nur am einzelnen Spiel. Wer wissen wollte, was gerade läuft, musste die Ligen einzeln durchgehen. Ein neuer öffentlicher Abruf nennt die Spiele des Tages mit hinterlegtem Stream-Link, nach Anwurf sortiert: laufende zuerst mit Abschnitt und Zwischenstand, dann die anstehenden, darunter die beendeten mit Endstand und Aufzeichnung. Für die Zwischenstände gilt dabei dieselbe Regel wie bei allen öffentlichen Abrufen: Angemeldete und die Saisonmanager-Website sehen sie sofort, ein Zugang ohne Echtzeit-Freigabe erst nach zehn Minuten.
+
+### Verbessert
+
+- **Lizenzwesen des Verbandes lädt in Sekunden statt Minuten**: Die Liste unter Lizenzwesen/Verband brauchte für wenige hundert Einträge mehrere Minuten. Die Ursache lag nicht in der Menge der Lizenzen, sondern darin, dass der Aufbau an der Zahl der Ligen hing: Für jede Liga der Saison wurde die Spielertabelle einzeln durchsucht, für jede Mannschaft zusätzlich das Vereins- und Mannschaftslogo aufgelöst, das die Liste gar nicht anzeigt. Ligen ohne eine einzige Lizenz kosteten dabei genauso viel wie volle. Und das Ganze lief zweimal, weil die Liste erst die beteiligten Personen für die Dokumente sammelte und danach dieselbe Arbeit für die Ausgabe wiederholte. Jetzt fällt beides einmal für alle Ligen gemeinsam an. In einem Testaufbau mit 30 Ligen und 240 Mannschaften sinkt die Zahl der Datenbankabfragen von 2574 auf 37. Die Liste enthält unverändert dieselben Angaben.
+
+## [1.75.0] - 2026-08-12
+
+### Behoben
+
+- **Anmeldung schlug bei einzelnen Konten trotz richtigem Passwort fehl**: Beim Anmelden vermerkt der Saisonmanager den Zeitpunkt im Konto. Ließ sich dieser Vermerk nicht speichern, wurde die gesamte Anmeldung abgewiesen, obwohl das Passwort stimmte. Betroffen waren Konten, deren Daten aus Altbeständen an einer heutigen Regel scheitern: ein Benutzername mit Leerzeichen am Anfang oder Ende, der zusätzlich in anderer Groß- und Kleinschreibung ein zweites Mal vergeben ist, ein solcher Name mit Umlaut, oder eine hinterlegte Sprache außerhalb von Deutsch und Englisch. Die Betroffenen sahen dieselbe Meldung wie bei einem Tippfehler, und ein neues Passwort half nicht, weil das alte nie falsch war. Der Zeitvermerk entscheidet jetzt nicht mehr über die Anmeldung. Scheitert er, wird das protokolliert, statt die Person auszusperren.
+
+- **Spielbetriebsverantwortliche kamen an Spielerprofile des eigenen Verbands nicht heran**: Beim Öffnen eines Spielerprofils wurde der Heimatverein aus der Vereinshistorie bestimmt, dabei zählte der erste Eintrag, auch wenn er längst beendet war. Wer aus einem anderen Landesverband zugezogen ist oder früher einmal einem Ablage-Verein zugeordnet war, wurde deshalb dem falschen Spielbetrieb zugerechnet, und die zuständige Stelle bekam eine Rechte-Absage, obwohl der aktuelle Heimatverein im eigenen Verband liegt. Betroffen waren rund 3.000 Spielerinnen und Spieler. Maßgeblich ist jetzt der aktuell gültige Heimatverein, so wie es die Transferanträge bereits gehandhabt haben. Umgekehrt endet damit auch der Zugriff des früheren Verbands.
+
+- **Eine Zweitrolle beim Verband verdeckte Vereinsverantwortlichen die eigenen Unterlagen**: Wer einen Verein betreut und daneben eine auf einen Verband beschränkte Spielbetriebsrolle hält, sah bei den Spielern des eigenen Vereins die Dokumente des eigenen Landesverbands nicht mehr. Maßgeblich war allein die Verbandsrolle, die Zuständigkeit für den eigenen Verein fiel unter den Tisch. Beide Rollen zählen jetzt zusammen, wie überall sonst im Rechtesystem. Betroffen war die Dokumentliste und damit auch die neue Auswahl beim Hochladen: Genau der Nachweis, den der eigene Verband fordert, fehlte dort.
+
+### Neu
+
+- **Dokumente auch am Spielerprofil hochladen**: Bisher ließen sich Nachweise nur beim Beantragen einer Lizenz hinterlegen. Künftig geht das auch direkt am Spielerprofil aus der Spielerliste heraus. Dafür nennt die Schnittstelle jetzt die Dokumentarten, die für eine bestimmte Person in Frage kommen: die bundesweiten und die des Landesverbands ihrer aktuellen Vereine. Arten, die nur unter einem bestimmten Alter verlangt werden, bleiben bei älteren Personen außen vor. Zugriff haben Verbands- und Vereinsverantwortliche, also alle, die die Dokumente der Person ohnehin einsehen dürfen.
+
+### Verbessert
+
+- **Reste der alten Passwort-Umstellung entfernt**: Der Login trug noch einen Zweig aus der Zeit vor der Umstellung auf das heutige Passwortverfahren. Er sollte Alt-Passwörter beim ersten Anmelden stillschweigend übernehmen, konnte aber längst nicht mehr greifen: Die Spalte mit den Alt-Passwörtern führt die Datenbank nicht mehr, und kein Konto hängt noch daran. Wäre der Zweig doch einmal erreicht worden, hätte er das Anmelden mit einem Serverfehler abgebrochen statt mit einer verständlichen Meldung. Für jede Anmeldung wird jetzt zudem eine unnötige Prüfsumme weniger berechnet. Am Anmelden selbst ändert sich nichts.
+
+- **Deaktivierungsgrund „Wechsel ins Ausland"**: Verlässt eine Spielerin oder ein Spieler den deutschen Spielbetrieb in Richtung Ausland, gab es dafür bisher keinen passenden Grund und der Fall landete unter „Sonstiges". Der Grund steht jetzt in der Auswahl, im Spielerprofil und in der Vereins-Spielerliste. Am Ablauf ändert sich nichts: Die Deaktivierung beendet die Vereinszugehörigkeiten, zieht laufende Lizenzen zurück und nimmt das Profil aus der Vereinsliste; bei einer Rückkehr lässt sich das Profil reaktivieren. Der internationale Transfer selbst läuft weiterhin über die Freigabe von Floorball Deutschland und die IFF außerhalb des Saisonmanagers.
 
 ## [1.74.1] - 2026-08-08
 
@@ -1462,7 +1496,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Neu
 - Spielbericht: SBK und Admin sehen Bearbeitungszeitpunkt und -person des Spielberichts (#272)
 - Spielbericht: Nachbearbeitungen nach Abschluss werden mit einem Hinweis angezeigt (#284)
-
 
 ---
 

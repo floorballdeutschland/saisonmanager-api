@@ -124,6 +124,8 @@ Rails.application.routes.draw do
       post 'admin/leagues/:id/import_teams', to: 'leagues#admin_import_teams'
       post 'admin/leagues/:id/upload_banner', to: 'leagues#admin_upload_banner'
       delete 'admin/leagues/:id/banner', to: 'leagues#admin_delete_banner'
+      post 'admin/leagues/:id/upload_logo', to: 'leagues#admin_upload_logo'
+      delete 'admin/leagues/:id/logo', to: 'leagues#admin_delete_logo'
 
       post 'admin/game_operations/:id/upload_banner', to: 'game_operations#admin_upload_banner'
       delete 'admin/game_operations/:id/banner', to: 'game_operations#admin_delete_banner'
@@ -160,6 +162,9 @@ Rails.application.routes.draw do
       post 'admin/players/:id/handle_license_request', to: 'players#handle_license_request'
       post 'admin/players/:id/set_gf_license_role', to: 'players#set_gf_license_role'
 
+      # Auswahlliste für den Upload am Spielerprofil (Admin::DocumentTypesController
+      # ist der Katalog fuer Admin/SBK und kennt den Spieler nicht).
+      get    'admin/players/:player_id/document_types',        to: 'admin/license_documents#available_types'
       get    'admin/players/:player_id/license_documents',     to: 'admin/license_documents#index'
       post   'admin/players/:player_id/license_documents',     to: 'admin/license_documents#create'
       get    'admin/players/:player_id/license_documents/:id', to: 'admin/license_documents#show'
@@ -414,6 +419,11 @@ Rails.application.routes.draw do
       get  'public/overlay/live',     to: 'public_overlay#live'
       get  'public/overlay/game_day', to: 'public_overlay#game_day'
       post 'public/overlay/state',    to: 'public_overlay#set_state'
+      # Ligaweite Vollbilder. Ohne league_id-Parameter, die Liga kommt allein
+      # aus dem Spieltag des Tokens.
+      get  'public/overlay/table',    to: 'public_overlay#table'
+      get  'public/overlay/scorer',   to: 'public_overlay#scorer'
+      get  'public/overlay/schedule', to: 'public_overlay#schedule'
 
       post   'user/game_days/:game_day_id/overlay_link', to: 'game_day_overlay_links#create'
       get    'user/game_days/:game_day_id/overlay_link', to: 'game_day_overlay_links#show'

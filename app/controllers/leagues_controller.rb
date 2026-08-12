@@ -6,6 +6,7 @@ class LeaguesController < ApplicationController
   # Spielplanverwaltung und wird ausschließlich von Admin-Views aufgerufen. Ohne
   # den Eintrag hier hätte ein reiner X-Api-Key gereicht.
   COOKIE_ONLY_ACTIONS = %i[admin_league_index admin_league_delete admin_upload_banner admin_delete_banner
+                           admin_upload_logo admin_delete_logo
                            additional_references].freeze
 
   # Kalender-Abos kommen ohne API-Key, weil Kalender-Programme keine eigene
@@ -766,6 +767,75 @@ class LeaguesController < ApplicationController
 
     render json: { imported: imported, skipped: skipped, failed: failed }
   end
+
+  # Liga-Logo, das Erkennungszeichen des Wettbewerbs. Getrennt vom Banner
+  # nebenan, weil das eine Werbefläche mit Ziellink ist.
+  #
+  # `square: false` wie bei allen Logos oberhalb der Vereinsebene: Ligazeichen
+  # sind in der Regel querformatige Wortmarken.
+  def admin_upload_logo
+    league = find_league_or_not_found or return
+    unless league.user_permissions(current_user).include?(:update_league)
+      return render json: { message: 'Keine Berechtigung' }, status: :forbidden
+    end
+
+    return render json: { message: 'Keine Berechtigung für diese Ligaklasse' }, status: :forbidden unless buli_ok?(league)
+
+    return render json: { message: 'Kein Bild angefügt' }, status: :unprocessable_entity if params[:logo].blank?
+
+    if (error = logo_upload_error(params[:logo], square: false, max_size: LOGO_MAX_SIZE))
+      return render json: { message: error }, status: :unprocessable_entity
+    end
+
+    begin
+      league.logo.attach(params[:logo])
+      invalidate_league_media_caches
+      render json: league.resolved_logo
+    rescue StandardError => e
+      Rails.logger.error("Logo-Upload fehlgeschlagen (League #{league.id}): #{e.class}: #{e.message}")
+      render json: { message: 'Logo konnte nicht gespeichert werden.' }, status: :internal_server_error
+    end
+  end
+
+  # Nach dem Löschen greift wieder der Rückfall auf das Verbandslogo, die Liga
+  # steht also nicht ohne Zeichen da.
+  def admin_delete_logo
+    league = find_league_or_not_found or return
+    unless league.user_permissions(current_user).include?(:update_league)
+      return render json: { message: 'Keine Berechtigung' }, status: :forbidden
+    end
+
+    return render json: { message: 'Keine Berechtigung für diese Ligaklasse' }, status: :forbidden unless buli_ok?(league)
+
+    begin
+      league.logo.purge
+      invalidate_league_media_caches
+      render json: league.resolved_logo
+    rescue StandardError => e
+      Rails.logger.error("Logo-Löschen fehlgeschlagen (League #{league.id}): #{e.class}: #{e.message}")
+      render json: { message: 'Logo konnte nicht gelöscht werden.' }, status: :internal_server_error
+    end
+  end
+
+  # Bundesligen sind gesondert geschützt: Ihr Zeichen geht bundesweit auf
+  # Sendung, also gilt hier dieselbe Hürde wie beim Ändern der Liga selbst
+  # (admin_league_update). Ein auf seinen Spielbetrieb beschränkter SBK darf
+  # eine Bundesliga nicht umbenennen; dann darf er auch ihr Logo nicht
+  # austauschen.
+  def buli_ok?(league)
+    !BUNDESLIGA_CLASSES.include?(league.league_class_id) || buli_permitted?(current_user)
+  end
+  private :buli_ok?
+
+  # Das Liga-Logo hängt in /api/v2/init: GameOperation#short_hash gibt bis zu
+  # fünf Ligen als top_leagues aus, und dieser Eintrag steht eine halbe Stunde.
+  # Ohne das Verwerfen bliebe ein frisch hochgeladenes Zeichen so lange
+  # unsichtbar. Gleiches Muster wie beim Verbandslogo
+  # (Admin::StateAssociationsController).
+  def invalidate_league_media_caches
+    Rails.cache.delete('settings/init')
+  end
+  private :invalidate_league_media_caches
 
   def admin_upload_banner
     league = find_league_or_not_found or return
