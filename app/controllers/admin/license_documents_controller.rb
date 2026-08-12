@@ -4,8 +4,21 @@ module Admin
     include LicenseAccessScope
 
     before_action :set_player
-    before_action :check_read_permission, only: %i[index show]
+    before_action :check_read_permission, only: %i[index show available_types]
     before_action :check_write_permission, only: %i[create destroy]
+
+    # Dokumentarten, die für DIESEN Spieler hochgeladen werden können – die
+    # Auswahlliste für den Upload am Spielerprofil. Der Katalog-Abruf
+    # (Admin::DocumentTypesController#index) taugt dafür nicht: Er ist auf Admin
+    # und SBK beschränkt und kennt den Spieler nicht.
+    def available_types
+      types = DocumentType.for_game_operations(player_home_game_operation_ids)
+                          .includes(:game_operation)
+                          .order(:name)
+                          .to_a
+      types = types.select { |dt| type_available?(dt) }
+      render json: types.map { |dt| available_type_json(dt) }
+    end
 
     def index
       # Dokumente gelten pro Spieler (saisonübergreifend). Der license_id-Filter
@@ -222,6 +235,56 @@ module Admin
       return true if go_id.nil?
 
       sbk_go_ids.include?(go_id)
+    end
+
+    # Spielbetriebe, deren verbandsspezifische Dokumentarten für diesen Spieler in
+    # Frage kommen: die HEIMAT-Spielbetriebe seiner aktuell gültigen Vereine.
+    # Ligen bleiben bewusst außen vor (Entscheidung zu #383): Eine auf den
+    # FD-Spielbetrieb gescopte Art erscheint hier also nicht bei einem
+    # Bundesliga-Spieler aus einem Landesverbands-Verein. Im Lizenzantrag ist sie
+    # weiterhin da, dort kommen die Pflichtdokumente aus league.required_documents.
+    def player_home_game_operation_ids
+      Club.where(id: player_active_club_ids)
+          .map(&:main_game_operation_id)
+          .compact
+          .reject(&:zero?)
+          .uniq
+    end
+
+    # Zwei Gründe, eine Art aus der Auswahl zu lassen:
+    #
+    # (a) Der Spieler ist ihr altersmäßig entwachsen: required_below_age
+    #     überschritten, sie kann für ihn nie wieder gefordert sein. Ohne lesbares
+    #     Geburtsdatum bleibt sie drin – required_for? entscheidet im Zweifel für
+    #     "erforderlich", und dieselbe Regel gilt im Lizenzantrag.
+    # (b) Ein verbandsspezifisch gescopter SBK bekommt die Dokumente dieser Art
+    #     ohnehin nicht zu sehen (filter_documents_by_scope). Dann darf die Art
+    #     auch nicht in der Auswahl stehen, sonst lädt er in ein Loch hoch.
+    def type_available?(document_type)
+      return false unless document_type.required_for?(@player.birthdate, Time.current)
+      return true if unrestricted_document_access?
+
+      document_type.game_operation_id.nil? || perm_hash[:sbk].include?(document_type.game_operation_id)
+    end
+
+    def available_type_json(document_type)
+      {
+        id: document_type.id,
+        key: document_type.key,
+        name: document_type.name,
+        description: document_type.description,
+        validity: document_type.validity,
+        required_below_age: document_type.required_below_age,
+        game_operation_id: document_type.game_operation_id,
+        game_operation_name: document_type.game_operation&.name,
+        template_url: template_url_for(document_type)
+      }
+    end
+
+    def template_url_for(document_type)
+      return nil unless document_type.template.attached?
+
+      rails_blob_url(document_type.template, disposition: 'attachment')
     end
 
     def document_json(doc, catalog = {})

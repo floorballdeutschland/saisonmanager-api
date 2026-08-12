@@ -135,6 +135,124 @@ module Admin
       assert_response :forbidden
     end
 
+    # --- available_types: Auswahlliste für den Upload am Spielerprofil ---
+
+    test 'available_types liefert globale Arten und die des Heimat-Spielbetriebs' do
+      sa = create(:state_association)
+      own_go = create(:game_operation, state_association_id: sa.id)
+      foreign_go = create(:game_operation, state_association_id: sa.id)
+      club = create(:club, game_operations_hash: [{ 'home_game_operation' => true, 'game_operation_id' => own_go.id }])
+      @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }])
+
+      global = DocumentType.create!(name: 'Unterstellungserklärung')
+      own = DocumentType.create!(name: 'Eigenes LV-Attest', game_operation_id: own_go.id)
+      foreign = DocumentType.create!(name: 'Fremd-Attest', game_operation_id: foreign_go.id)
+
+      get "/api/v2/admin/players/#{@player.id}/document_types"
+
+      assert_response :success
+      body = JSON.parse(response.body)
+      keys = body.map { |t| t['key'] }
+      assert_includes keys, global.key
+      assert_includes keys, own.key
+      assert_not_includes keys, foreign.key
+
+      own_entry = body.find { |t| t['key'] == own.key }
+      assert_equal own_go.name, own_entry['game_operation_name']
+      assert_equal 'once', own_entry['validity']
+    end
+
+    # Eine abgelaufene Freigabe (Zweitspielrecht) ist keine Vereinszugehörigkeit
+    # mehr und darf den Verband ihres Vereins nicht mehr in die Auswahl holen.
+    test 'available_types beachtet nur aktuell gueltige Vereinszugehoerigkeiten' do
+      sa = create(:state_association)
+      home_go = create(:game_operation, state_association_id: sa.id)
+      past_go = create(:game_operation, state_association_id: sa.id)
+      home_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
+                                                         'game_operation_id' => home_go.id }])
+      past_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
+                                                         'game_operation_id' => past_go.id }])
+      @player.update!(clubs: [
+        { 'club_id' => home_club.id, 'home_club' => true },
+        { 'club_id' => past_club.id, 'valid_until' => 1.year.ago.iso8601 }
+      ])
+
+      current = DocumentType.create!(name: 'Aktuelles LV-Attest', game_operation_id: home_go.id)
+      expired = DocumentType.create!(name: 'Altes LV-Attest', game_operation_id: past_go.id)
+
+      get "/api/v2/admin/players/#{@player.id}/document_types"
+
+      assert_response :success
+      keys = JSON.parse(response.body).map { |t| t['key'] }
+      assert_includes keys, current.key
+      assert_not_includes keys, expired.key
+    end
+
+    # Altersabhaengige Arten koennen fuer einen erwachsenen Spieler nie wieder
+    # gefordert sein (DocumentType#required_for?) und gehoeren nicht in die Auswahl.
+    test 'available_types blendet altersabhaengige Arten fuer Erwachsene aus' do
+      consent = DocumentType.create!(name: 'Zustimmung Erziehungsberechtigte', required_below_age: 18)
+
+      @player.update!(birthdate: 30.years.ago.to_date)
+      get "/api/v2/admin/players/#{@player.id}/document_types"
+      assert_response :success
+      assert_not_includes JSON.parse(response.body).map { |t| t['key'] }, consent.key
+
+      minor = create(:player, birthdate: 14.years.ago.to_date)
+      get "/api/v2/admin/players/#{minor.id}/document_types"
+      assert_response :success
+      assert_includes JSON.parse(response.body).map { |t| t['key'] }, consent.key
+    end
+
+    # Der Spieler gehoert zwei Vereinen in verschiedenen Verbaenden. Der gescopte
+    # SBK darf ihn lesen (eigener Verband), bekommt die Dokumente des fremden
+    # Verbands aber nicht zu sehen – dann darf die Art auch nicht in der Auswahl
+    # stehen, sonst laedt er in ein Loch hoch.
+    test 'available_types haelt fremde Verbandsarten vom gescopten SBK fern' do
+      sa = create(:state_association)
+      own_go = create(:game_operation, state_association_id: sa.id)
+      foreign_go = create(:game_operation, state_association_id: sa.id)
+      own_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
+                                                       'game_operation_id' => own_go.id }])
+      foreign_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
+                                                            'game_operation_id' => foreign_go.id }])
+      @player.update!(clubs: [
+        { 'club_id' => own_club.id, 'home_club' => true },
+        { 'club_id' => foreign_club.id }
+      ])
+
+      global = DocumentType.create!(name: 'Unterstellungserklärung')
+      own = DocumentType.create!(name: 'Eigenes LV-Attest', game_operation_id: own_go.id)
+      foreign = DocumentType.create!(name: 'Fremd-Attest', game_operation_id: foreign_go.id)
+
+      login(create(:user, :sbk_scoped, game_operation_id: own_go.id))
+      get "/api/v2/admin/players/#{@player.id}/document_types"
+
+      assert_response :success
+      keys = JSON.parse(response.body).map { |t| t['key'] }
+      assert_includes keys, global.key
+      assert_includes keys, own.key
+      assert_not_includes keys, foreign.key
+    end
+
+    # Der Katalog-Abruf (Admin::DocumentTypesController#index) gibt einem VM 403 –
+    # genau deshalb gibt es diesen Endpunkt.
+    test 'available_types ist fuer den VM des Vereins offen und fuer fremde VM gesperrt' do
+      club = create(:club)
+      other_club = create(:club)
+      @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }])
+      DocumentType.create!(name: 'Unterstellungserklärung')
+
+      login(create(:user, :vm, club_id: club.id))
+      get "/api/v2/admin/players/#{@player.id}/document_types"
+      assert_response :success
+      assert_equal 1, JSON.parse(response.body).size
+
+      login(create(:user, :vm, club_id: other_club.id))
+      get "/api/v2/admin/players/#{@player.id}/document_types"
+      assert_response :forbidden
+    end
+
     private
 
     def login(user)

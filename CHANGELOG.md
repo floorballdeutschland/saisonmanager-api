@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Dokumente auch am Spielerprofil hochladen**: Bisher ließen sich Nachweise nur beim Beantragen einer Lizenz hinterlegen. Künftig geht das auch direkt am Spielerprofil aus der Spielerliste heraus. Dafür nennt die Schnittstelle jetzt die Dokumentarten, die für eine bestimmte Person in Frage kommen: die bundesweiten und die des Landesverbands ihrer aktuellen Vereine. Arten, die nur unter einem bestimmten Alter verlangt werden, bleiben bei älteren Personen außen vor. Zugriff haben Verbands- und Vereinsverantwortliche, also alle, die die Dokumente der Person ohnehin einsehen dürfen.
+
 ### Verbessert
 
 - **Deaktivierungsgrund „Wechsel ins Ausland"**: Verlässt eine Spielerin oder ein Spieler den deutschen Spielbetrieb in Richtung Ausland, gab es dafür bisher keinen passenden Grund und der Fall landete unter „Sonstiges". Der Grund steht jetzt in der Auswahl, im Spielerprofil und in der Vereins-Spielerliste. Am Ablauf ändert sich nichts: Die Deaktivierung beendet die Vereinszugehörigkeiten, zieht laufende Lizenzen zurück und nimmt das Profil aus der Vereinsliste; bei einer Rückkehr lässt sich das Profil reaktivieren. Der internationale Transfer selbst läuft weiterhin über die Freigabe von Floorball Deutschland und die IFF außerhalb des Saisonmanagers.
