@@ -91,12 +91,16 @@ class ClubHomeGameOperationResolver
   # genau das passiert: Testvereine ziehen ihre id aus der Sequenz, unter einem
   # unglücklichen Seed wurde einer von ihnen zu „Landau in der Pfalz".
   #
-  # Der Name allein auch nicht, denn Ortsnamen sind nicht eindeutig. „Landau"
-  # gibt es außer in der Pfalz auch an der Isar (Niederbayern) und als Ortsteil
-  # von Bad Arolsen (Hessen). Ein Verein von dort würde nach Rheinland-Pfalz
-  # gezogen – und schlimmer: `resolve_override` überschreibt den hinterlegten
-  # Landesverband, hier also einen richtigen. Deshalb ist das Merkmal für #284
-  # der vereinseigene Namensteil und nicht der Ort.
+  # Der Name allein auch nicht, denn keiner der Namensteile ist für sich
+  # eindeutig: „Landau" gibt es außer in der Pfalz auch an der Isar
+  # (Niederbayern) und als Ortsteil von Bad Arolsen (Hessen), „Unicorns" ist ein
+  # verbreiteter Vereinsbeiname (Schwäbisch Hall und andere). Ein solcher Verein
+  # würde nach Rheinland-Pfalz gezogen – und schlimmer: `resolve_override`
+  # überschreibt den hinterlegten Landesverband, hier also einen richtigen.
+  #
+  # Deshalb verlangt #284 BEIDE Teile. `name_includes` nimmt auch eine Liste, dann
+  # müssen alle Einträge vorkommen, je in `name` oder `long_name`. #275 kommt mit
+  # dem Ortsnamen aus, „Hechtsheim" gibt es nur als Mainzer Stadtteil.
   #
   # Stimmt die id, aber das Merkmal nicht, greift der Eintrag nicht: Der Verein
   # läuft durch die normale Ableitung, und der Bericht nennt den Eintrag samt dem
@@ -112,7 +116,7 @@ class ClubHomeGameOperationResolver
   CLUB_OVERRIDES = {
     275 => { sa_short: 'RLPSAAR', name_includes: 'Hechtsheim',
              reason: 'Hechtsheim ist ein Mainzer Stadtteil, nicht Hessen' },
-    284 => { sa_short: 'RLPSAAR', name_includes: 'UNIcorns',
+    284 => { sa_short: 'RLPSAAR', name_includes: %w[UNIcorns Landau],
              reason: 'Landau in der Pfalz, nicht Baden-Württemberg' }
   }.freeze
 
@@ -145,15 +149,20 @@ class ClubHomeGameOperationResolver
     override if override && override_fits?(club, override)
   end
 
-  # Verglichen wird gegen name UND long_name, damit ein Zusatz an einer der beiden
-  # Stellen den Eintrag nicht aushebelt. Ein leeres Merkmal passt auf NICHTS: Ohne
-  # diese Zeile würde `include?('')` auf jeden Namen zutreffen und ein versehentlich
-  # leer gelassener Eintrag jeden Verein seinem Verband zuschlagen.
+  # Alle Merkmale müssen vorkommen, jedes davon in `name` ODER `long_name` — ein
+  # Zusatz an einer der beiden Stellen hebelt den Eintrag damit nicht aus.
+  #
+  # Ein leeres oder fehlendes Merkmal passt auf NICHTS. Ohne diese Prüfung träfe
+  # `include?('')` jeden Namen, und der Eintrag fiele damit still auf reine
+  # id-Zuordnung zurück — genau die Sorte Fehler, die dieser Task loswerden soll.
+  # Gemeldet würde es auch nicht, denn `overrides_mismatched` fragt dieselbe
+  # Methode und bekäme „passt" zu hören.
   def override_fits?(club, override)
-    needle = override[:name_includes].to_s.downcase
-    return false if needle.empty?
+    needles = Array(override[:name_includes]).map { |needle| needle.to_s.downcase }.reject(&:empty?)
+    return false if needles.empty?
 
-    [club.name, club.long_name].compact.any? { |candidate| candidate.downcase.include?(needle) }
+    candidates = [club.name, club.long_name].compact.map(&:downcase)
+    needles.all? { |needle| candidates.any? { |candidate| candidate.include?(needle) } }
   end
 
   # Einträge, deren Verein die id trägt, aber das Namensmerkmal nicht (oder deren
@@ -176,8 +185,15 @@ class ClubHomeGameOperationResolver
       club = clubs[club_id]
       next if club && override_fits?(club, override)
 
-      found = club ? "heißt \"#{club.name}\"" : 'kein Verein mit dieser id'
-      "##{club_id} → #{override[:sa_short]} (erwartet \"#{override[:name_includes]}\" im Namen, #{found})"
+      # Beide Namensfelder nennen, weil beide verglichen werden: Sonst zieht wer
+      # dem Hinweis folgt das Merkmal am falschen Feld nach.
+      found = if club
+                "heißt \"#{club.name}\", long_name \"#{club.long_name}\""
+              else
+                'kein Verein mit dieser id'
+              end
+      expected = Array(override[:name_includes]).map { |needle| "\"#{needle}\"" }.join(' und ')
+      "##{club_id} → #{override[:sa_short]} (erwartet #{expected} im Namen, #{found})"
     end
   end
 
@@ -243,7 +259,12 @@ class ClubHomeGameOperationResolver
                         detail: "Kürzel #{override[:sa_short]} gibt es nicht — #{override[:reason]}")
     end
 
-    go = @go_by_sa_id[sa.id]
+    # game_operation_for statt @go_by_sa_id: Sonst fehlten dem Override die
+    # Vererbung an den Dachverband (Sachsen/Sachsen-Anhalt/Thüringen unter „SBK
+    # Ost") und der betreuende Spielbetrieb aus SA_WITHOUT_GO_SHORT (Hamburg).
+    # Ein künftiger Eintrag mit einem solchen Kürzel liefe sonst in
+    # :no_go_for_sa, obwohl die Ableitung die Antwort kennt.
+    go = game_operation_for(sa)
     status = go ? :override : :no_go_for_sa
     Result.new(club: club, game_operation: go, state_association: sa, status: status, detail: override[:reason])
   end
@@ -344,9 +365,10 @@ namespace :clubs do
     mismatched = resolver.overrides_mismatched
     if mismatched.any?
       puts "HINWEIS: Ausdrückliche Zuordnungen, die nicht greifen: #{mismatched.join(', ')}"
-      puts '         Falls der Verein hier sein müsste: auf Umbenennung prüfen und das'
-      puts '         Merkmal nachziehen, statt den Eintrag zu löschen. Sonst leitet der'
-      puts '         Task ihn normal ab und bestätigt womöglich den falschen Verband.'
+      puts '         Dieser Lauf hat den Verein normal abgeleitet und dabei womöglich den'
+      puts '         falschen Verband bestätigt — der Hinweis kommt also zum Prüfen,'
+      puts '         nicht zum Verhindern. Falls der Verein hier sein müsste: auf'
+      puts '         Umbenennung prüfen, Merkmal nachziehen, Lauf wiederholen.'
     end
 
     unmapped = resolver.unmapped_state_associations_without_go
