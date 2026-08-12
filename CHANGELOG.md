@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Eine Zweitrolle beim Verband verdeckte Vereinsverantwortlichen die eigenen Unterlagen**: Wer einen Verein betreut und daneben eine auf einen Verband beschränkte Spielbetriebsrolle hält, sah bei den Spielern des eigenen Vereins die Dokumente des eigenen Landesverbands nicht mehr. Maßgeblich war allein die Verbandsrolle, die Zuständigkeit für den eigenen Verein fiel unter den Tisch. Beide Rollen zählen jetzt zusammen, wie überall sonst im Rechtesystem. Betroffen war die Dokumentliste und damit auch die neue Auswahl beim Hochladen: Genau der Nachweis, den der eigene Verband fordert, fehlte dort.
+
 ### Neu
 
 - **Dokumente auch am Spielerprofil hochladen**: Bisher ließen sich Nachweise nur beim Beantragen einer Lizenz hinterlegen. Künftig geht das auch direkt am Spielerprofil aus der Spielerliste heraus. Dafür nennt die Schnittstelle jetzt die Dokumentarten, die für eine bestimmte Person in Frage kommen: die bundesweiten und die des Landesverbands ihrer aktuellen Vereine. Arten, die nur unter einem bestimmten Alter verlangt werden, bleiben bei älteren Personen außen vor. Zugriff haben Verbands- und Vereinsverantwortliche, also alle, die die Dokumente der Person ohnehin einsehen dürfen.
