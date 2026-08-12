@@ -1047,30 +1047,33 @@ class PlayersController < ApplicationController
     Team.current_season.where(id: ph[:tm]).flat_map(&:all_club_ids).uniq
   end
 
-  VALID_DEACTIVATION_REASONS = %w[Vereinsaustritt Karriereende].freeze
-  VALID_DEACTIVATION_REASONS_WITH_UMLAUT = ['Temporäre Pause'].freeze
-
   def sanitize_deactivation_reason(raw)
     value = raw.is_a?(String) ? raw.strip.slice(0, 255) : nil
     return nil if value.blank?
-    return value if (VALID_DEACTIVATION_REASONS + VALID_DEACTIVATION_REASONS_WITH_UMLAUT).include?(value)
+    # Player::DEACTIVATION_REASONS ist die gemeinsame Quelle: reactivate! muss
+    # genau die Gründe erkennen, die hier durchkommen, sonst bleibt beim
+    # Reaktivieren der Lizenz-Verlauf auf "gelöscht" stehen.
+    return value if Player::DEACTIVATION_REASONS.include?(value)
     return value if value.start_with?('Sonstiges: ') && value[11..].strip.present?
 
     :invalid
   end
 
+  # Der clubs-Hash enthält nach jedem Heimatvereinswechsel MEHRERE Einträge mit
+  # home_club: true – der alte bekommt ein valid_until gestempelt, der neue kommt
+  # hinten dran. Ein ungefiltertes find traf deshalb den abgelaufenen Alt-Eintrag
+  # und prüfte dessen Spielbetrieb gegen den Scope: Wer aus einem anderen Verband
+  # (oder einem Ablage-Verein) zugezogen war, blieb für die eigene SBK gesperrt.
+  # Player#home_club verwirft abgelaufene Einträge und nimmt den letzten
+  # gültigen, ist also die kanonische Quelle für den Heimatverein.
   def sbk_can_access_player?(ph, player)
     return false unless ph[:sbk].present?
     return true if ph[:sbk].include?(0)
 
-    home_club_entry = player.clubs.find { |c| c['home_club'] == true }
-    return false unless home_club_entry
-
-    home_club = Club.find_by(id: home_club_entry['club_id'])
+    home_club = player.home_club(Date.today)
     return false unless home_club
 
-    go_id = home_club.main_game_operation_id
-    ph[:sbk].include?(go_id)
+    ph[:sbk].include?(home_club.main_game_operation_id)
   end
 
   def derive_club_ids_for_go(go_ids)

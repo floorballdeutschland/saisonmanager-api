@@ -448,12 +448,95 @@ class UserTest < ActiveSupport::TestCase
 
   test 'login: per Benutzername' do
     u = build_user(permissions: [])
+    u.update_columns(last_login_at: nil)
     assert_equal u.id, User.login(u.user_name, 'password123')&.id
+    # Der Zeitstempel ist die Grundlage des Inaktiv-Status und wird ausser hier
+    # nirgends im Login-Pfad gesetzt.
+    assert_not_nil u.reload.last_login_at
   end
 
   test 'login: falsches Passwort schlaegt fehl' do
     u = build_user(permissions: [])
+    u.update_columns(last_login_at: nil)
     assert_nil User.login(u.user_name, 'falsch')
+    assert_nil u.reload.last_login_at
+  end
+
+  test 'login: unbekannter Benutzername ergibt nil' do
+    assert_nil User.login("gibtsnicht_#{SecureRandom.hex(4)}", 'password123')
+  end
+
+  # Regressionstest zum Entfernen des MD5-Migrationszweigs: Ein leerer
+  # password_digest war dessen Einstiegsbedingung. Weil er die laengst
+  # entfernte Spalte users.old_password las, endete dieser Fall in einem
+  # NoMethodError und damit in einem 500. Jetzt wird das Konto abgewiesen.
+  #
+  # Die Spalte laesst NULL zu, die Anwendung erzeugt solche Konten aber nicht
+  # selbst: has_secure_password validiert bei jedem Speichern, deshalb braucht
+  # der Test update_columns.
+  test 'login: Konto ohne password_digest ergibt nil' do
+    u = build_user(permissions: [])
+    u.update_columns(password_digest: nil)
+
+    assert_nil User.login(u.user_name, 'password123')
+  end
+
+  # Archivierte Konten weist der SessionsController ab; User.login findet sie
+  # weiterhin, darf aber ihr last_login_at nicht anfassen, weil der
+  # Inaktiv-Status darauf aufbaut.
+  test 'login: archiviertes Konto behaelt sein last_login_at' do
+    u = build_user(permissions: [])
+    stamp = 3.years.ago.change(usec: 0)
+    u.update_columns(last_login_at: stamp, archived_at: Time.current)
+
+    found = User.login(u.user_name, 'password123')
+
+    assert_equal u.id, found&.id
+    assert found.archived?
+    assert_equal stamp.to_i, u.reload.last_login_at.to_i
+  end
+
+  # Die folgenden drei Faelle sperrten Konten mit GUELTIGEM Passwort aus, weil
+  # der Rueckgabewert von update (Validierung ueber den ganzen Datensatz) ueber
+  # die Anmeldung entschied. Ohne Log und ohne Sentry, also nicht von einem
+  # Tippfehler zu unterscheiden. Sie legen fest, dass fremde Felder die
+  # Anmeldung nicht mehr verhindern.
+  #
+  # Alle drei brauchen update_columns: Genau diese Zustaende laesst die
+  # Anwendung selbst nicht entstehen, es sind Altbestaende bzw. Importe.
+
+  test 'login: Altname mit Rand-Whitespace und CI-Dublette sperrt nicht aus' do
+    base = "padded#{SecureRandom.hex(4)}"
+    a = build_user(permissions: [])
+    # normalize_user_name strippt beim Speichern und setzt damit selbst
+    # user_name_changed?, wodurch die Uniqueness-Pruefung trotz ihres Gates
+    # greift. Die Dublette in anderer Schreibweise laesst sie dann anschlagen.
+    a.update_columns(user_name: " #{base} ")
+    b = build_user(permissions: [])
+    b.update_columns(user_name: base.upcase)
+
+    assert_equal a.id, User.login(" #{base} ".downcase, 'password123')&.id
+  end
+
+  test 'login: Altname mit Umlaut und Rand-Whitespace sperrt nicht aus' do
+    u = build_user(permissions: [])
+    # Gleiche Mechanik, hier schlaegt der Format-Validator an (Umlaut).
+    padded = " möller#{SecureRandom.hex(4)} "
+    u.update_columns(user_name: padded)
+
+    # Gesucht wird mit dem gespeicherten Namen einschliesslich Rand-Whitespace:
+    # Die Abfrage vergleicht LOWER(user_name) unveraendert, ein getrimmter
+    # Suchbegriff findet die Zeile also gar nicht erst.
+    assert_equal u.id, User.login(padded.downcase, 'password123')&.id
+  end
+
+  test 'login: unbekannte Sprache sperrt nicht aus' do
+    u = build_user(permissions: [])
+    # Der language-Validator hat bewusst kein if-Gate, greift also bei jedem
+    # Speichern. Ein Importwert ausserhalb de/en genuegte zum Aussperren.
+    u.update_columns(language: 'fr')
+
+    assert_equal u.id, User.login(u.user_name, 'password123')&.id
   end
 
   test 'login: E-Mail-Adresse ist keine Login-Kennung' do

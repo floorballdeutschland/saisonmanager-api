@@ -481,6 +481,18 @@ class Player < ApplicationRecord
   # wurden, fehlt er, dort bleibt es beim bisherigen Verhalten (Befristung entfällt).
   VALID_BEFORE_DEACTIVATION = 'valid_before_deactivation'.freeze
 
+  # Auswählbare Deaktivierungsgründe. Einzige Quelle für die Oberfläche und für
+  # die Whitelist in PlayersController#deactivate; freie Gründe kommen zusätzlich
+  # als "Sonstiges: …" durch. "Wechsel ins Ausland" deckt den internationalen
+  # Transfer ab: Der Transfer selbst läuft über FD und IFF außerhalb dieses
+  # Systems, die Deaktivierung nimmt den Spieler danach aus der Vereinsliste.
+  DEACTIVATION_REASONS = ['Vereinsaustritt', 'Karriereende', 'Temporäre Pause', 'Wechsel ins Ausland'].freeze
+
+  # Gründe, die nur im Altbestand stehen: "Deaktiviert" schrieben frühere
+  # Fassungen ohne Auswahl. reactivate! muss sie weiterhin erkennen, die
+  # Oberfläche bietet sie nicht an.
+  LEGACY_DEACTIVATION_REASONS = ['Deaktiviert'].freeze
+
   # Wahr, wenn das Ende dieser Vereinszugehörigkeit auf die Deaktivierung dieses
   # Profils zurückgeht.
   #
@@ -564,7 +576,7 @@ class Player < ApplicationRecord
       c
     end
 
-    deactivation_system_reasons = ['Vereinsaustritt', 'Deaktiviert', 'Karriereende', 'Temporäre Pause']
+    deactivation_system_reasons = DEACTIVATION_REASONS + LEGACY_DEACTIVATION_REASONS
 
     licenses.each do |license|
       last = license['history']&.last
