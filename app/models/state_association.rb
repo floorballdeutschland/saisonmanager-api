@@ -83,21 +83,6 @@ class StateAssociation < ApplicationRecord
     referee_assignment_mode == :club
   end
 
-  # Neue Spiele gleich für die Personenebene markieren. Nur wirksam, wenn die
-  # Personenebene überhaupt greift – sonst entstünden Spiele, die in keiner
-  # Ansicht bearbeitbar sind (der reduzierte Modus sperrt markierte Spiele).
-  def person_level_assignment_default_active?
-    person_level_assignment_active? && person_level_assignment_default?
-  end
-
-  # Nationaler Spielbetrieb (FD, ohne Landesverband) bleibt wie bisher immer auf
-  # der Personenebene. `state_association` ist dort nil, deshalb kann kein
-  # Datensatz gefragt werden – die Aufrufer nutzen diese Konstanten-Methoden, um
-  # den Sonderfall an einer Stelle zu halten.
-  def self.national_referee_assignment_mode
-    :person
-  end
-
   def logo_url
     Rails.application.routes.url_helpers.rails_blob_path(logo, only_path: true) if logo.attached?
   end

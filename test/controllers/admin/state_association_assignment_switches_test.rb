@@ -49,7 +49,7 @@ module Admin
       assert_response :success
       sa.reload
       assert_equal :person, sa.referee_assignment_mode
-      assert sa.person_level_assignment_default_active?
+      assert sa.person_level_assignment_default
     end
 
     # Wird der Hauptschalter später abgeschaltet, dürfen die untergeordneten

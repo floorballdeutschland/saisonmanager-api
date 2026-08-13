@@ -39,6 +39,23 @@ class GamePersonLevelDefaultControllerTest < ActionDispatch::IntegrationTest
     assert_not Game.last.person_level_assignment
   end
 
+  # Ohne diese Sperre entsteht über einen direkten API-Aufruf ein Spiel, das im
+  # reduzierten Modus gesperrt ist und mangels Ansetzer-Rolle auch dort niemand
+  # bearbeiten kann – nur ein globaler Admin käme wieder heran.
+  test 'Markierung wird im reduzierten Modus nicht angenommen' do
+    sa = create(:state_association, referee_assignment_external_enabled: true)
+    go = create(:game_operation, state_association_id: sa.id)
+    league = create(:league, game_operation: go)
+    game_day = create(:game_day, league: league, date: (Date.today + 7).to_s)
+    login(create(:user, :sbk_scoped, game_operation_id: go.id))
+
+    post '/api/v2/games',
+         params: { game: { game_day_id: game_day.id, game_number: '4', person_level_assignment: true } }
+
+    assert_response :created
+    assert_not Game.last.person_level_assignment
+  end
+
   def login(user)
     post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
     assert_response :success

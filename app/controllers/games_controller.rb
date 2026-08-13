@@ -127,7 +127,9 @@ class GamesController < ApplicationController
     # Voreinstellung „Standardmäßig durch Ansetzer*in": neue Spiele gleich
     # markieren, damit die SBK das nicht je Spieltag anklicken muss. Nur, wenn
     # die Maske das Flag nicht ausdrücklich mitgeschickt hat.
-    unless game_create_update_params.key?(:person_level_assignment)
+    if game_create_update_params.key?(:person_level_assignment)
+      game.person_level_assignment = false unless Game.person_level_assignment_allowed_for?(game.league)
+    else
       game.person_level_assignment = Game.person_level_assignment_default_for?(game.league)
     end
 
@@ -170,8 +172,18 @@ class GamesController < ApplicationController
 
     game.updated_by ||= current_user.id
 
+    # Wie beim Anlegen: die Markierung darf nur stehen, wo die Personenebene
+    # greift – sonst entsteht ein Spiel, das keine der beiden Ansichten
+    # bearbeiten kann. Eine bereits gesetzte Markierung lässt sich weiterhin
+    # entfernen, nur das Setzen ist gesperrt.
+    update_attrs = game_create_update_params
+    if update_attrs.key?(:person_level_assignment) &&
+       !Game.person_level_assignment_allowed_for?(game.league)
+      update_attrs = update_attrs.merge(person_level_assignment: false)
+    end
+
     if allowed
-      if game.update(game_create_update_params)
+      if game.update(update_attrs)
         # Änderungen an Anpfiff oder Absage (notice_type) benachrichtigen die
         # Beteiligten einer bereits veröffentlichten Ansetzung. Nur bei echter
         # Änderung dieser Felder (Dirty-Tracking): so lösen unbeteiligte Edits

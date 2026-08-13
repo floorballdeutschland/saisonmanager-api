@@ -28,6 +28,18 @@ class GamePublicNominatedRefereeTest < ActiveSupport::TestCase
     assert_equal 'SV Musterstadt', game.schedule_item[:nominated_referee_string]
   end
 
+  # Der Hinweis ist eine Ankündigung. Mit der Voreinstellung „Standardmäßig durch
+  # Ansetzer*in" trägt jedes Spiel des Verbands die Markierung – ohne diese
+  # Grenze stünde „Ansetzung durch Ansetzer*in" dauerhaft an jedem gespielten
+  # Spiel, für das nie ein Gespann eingetragen wurde.
+  test 'angepfiffenes Spiel zeigt den Hinweis nicht mehr' do
+    game = create(:game, game_day: @game_day, person_level_assignment: true,
+                         nominated_referee_string: '', started: true)
+
+    assert_equal '', game.public_nominated_referee_string
+    assert_equal '', game.schedule_item[:nominated_referee_string]
+  end
+
   test 'ohne Markierung bleibt die oeffentliche Ausgabe leer' do
     game = create(:game, game_day: @game_day, person_level_assignment: false,
                          nominated_referee_string: '')

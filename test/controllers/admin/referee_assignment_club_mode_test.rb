@@ -15,6 +15,9 @@ module Admin
       @league = create(:league, game_operation: @go)
       @game_day = create(:game_day, league: @league, date: (Date.today + 7).to_s)
       @rsk = create(:user, :rsk_scoped, game_operation_id: @go.id)
+      # Ansetzbar sind nur Vereine der Mannschaften dieser Liga.
+      @club = create(:club, state_association_id: @sa.id)
+      create(:team, league: @league, club: @club)
     end
 
     test 'RSK im reduzierten Modus darf zugreifen, ohne Ansetzer-Rolle zu sein' do
@@ -55,7 +58,7 @@ module Admin
 
     test 'Verein ansetzen steht sofort im Spielplan und verschickt keine Mail' do
       game = create(:game, game_day: @game_day, game_status: 'pregame')
-      club = create(:club, state_association_id: @sa.id)
+      club = @club
       login(@rsk)
 
       assert_no_enqueued_emails do
@@ -76,7 +79,7 @@ module Admin
 
     test 'Freitext ersetzt eine zuvor gewaehlte Vereins-Ansetzung samt Datensatz' do
       game = create(:game, game_day: @game_day, game_status: 'pregame')
-      club = create(:club, state_association_id: @sa.id)
+      club = @club
       login(@rsk)
 
       patch "/api/v2/admin/referee_assignments/games/#{game.id}/club_assignment",
@@ -95,7 +98,7 @@ module Admin
 
     test 'markiertes Spiel ist im reduzierten Modus nicht bearbeitbar' do
       game = create(:game, game_day: @game_day, game_status: 'pregame', person_level_assignment: true)
-      club = create(:club, state_association_id: @sa.id)
+      club = @club
       login(@rsk)
 
       patch "/api/v2/admin/referee_assignments/games/#{game.id}/club_assignment",
@@ -138,6 +141,58 @@ module Admin
             params: { club_id: club.id }
 
       assert_response :forbidden
+      assert_nil game.reload.referee_assignment
+    end
+
+    # Der Personen-Weg überschreibt beim Veröffentlichen den Freitext mit den
+    # Schiedsrichter-Namen – der alte Sentinel war danach weg. Die Migration
+    # konnte solche Spiele nicht erkennen, sie stehen mit
+    # person_level_assignment = false im Bestand. Schaltet ein Verband später auf
+    # den reduzierten Modus, dürfen sie hier trotzdem nicht bearbeitbar sein:
+    # sonst würfe ein Freitext-Eintrag die bereits benachrichtigten
+    # Schiedsrichter kommentarlos aus dem Spiel.
+    test 'Spiel mit angesetztem Gespann ist gesperrt, auch ohne Markierung' do
+      game = create(:game, game_day: @game_day, game_status: 'pregame', person_level_assignment: false)
+      referee = create(:referee, club_id: create(:club, state_association_id: @sa.id).id)
+      assignment = RefereeAssignment.create!(game: game, referee1: referee, status: 'published')
+      login(@rsk)
+
+      get '/api/v2/admin/referee_assignments/games'
+      assert_response :success
+      row = JSON.parse(response.body).find { |g| g['id'] == game.id }
+      assert_equal true, row['locked']
+
+      patch "/api/v2/admin/referee_assignments/games/#{game.id}/club_assignment",
+            params: { nominated_referee_string: 'Müller / Schmidt' }
+
+      assert_response :unprocessable_entity
+      assert RefereeAssignment.exists?(assignment.id)
+      assert_equal referee.id, assignment.reload.referee1_id
+    end
+
+    test 'begonnenes Spiel laesst sich nicht mehr umschreiben' do
+      game = create(:game, game_day: @game_day, game_status: 'pregame', started: true,
+                           nominated_referee_string: 'Meier / Krause')
+      login(@rsk)
+
+      patch "/api/v2/admin/referee_assignments/games/#{game.id}/club_assignment",
+            params: { nominated_referee_string: 'Jemand anderes' }
+
+      assert_response :unprocessable_entity
+      assert_equal 'Meier / Krause', game.reload.nominated_referee_string
+    end
+
+    # club_id kam ungeprüft aus den Parametern: der Name landet öffentlich im
+    # Spielplan, und die club_id ist der Anker für die spätere Selbstbenennung.
+    test 'Verein ausserhalb der Liga wird nicht angesetzt' do
+      game = create(:game, game_day: @game_day, game_status: 'pregame')
+      fremd = create(:club, state_association_id: @sa.id)
+      login(@rsk)
+
+      patch "/api/v2/admin/referee_assignments/games/#{game.id}/club_assignment",
+            params: { club_id: fremd.id }
+
+      assert_response :not_found
       assert_nil game.reload.referee_assignment
     end
 

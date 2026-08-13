@@ -39,18 +39,24 @@ class Game < ApplicationRecord
 
   scope :match_record_closed, -> { where(game_status: %w[match_record_closed finalized]) }
 
+  scope :match_record_not_closed, -> { where.not(game_status: %w[match_record_closed finalized]) }
+
   # Ob ein neu angelegtes Spiel dieser Liga gleich für die Personenebene markiert
   # wird (Verbandsoption „Standardmäßig durch Ansetzer*in"). Beide Anlege-Wege –
   # GamesController#create und der Spielplan-Import (LeaguesController#
   # rebuild_schedule!) – fragen hier, damit sie nicht auseinanderlaufen.
-  #
-  # Nationaler Spielbetrieb (FD, ohne Landesverband) hat keinen Datensatz, an dem
-  # die Option hängen könnte, und bleibt deshalb ohne Voreinstellung: dort setzt
-  # die SBK die Markierung wie bisher je Spiel.
   def self.person_level_assignment_default_for?(league)
-    league&.game_operation&.state_association&.person_level_assignment_default_active? || false
+    league&.person_level_assignment_default? || false
   end
-  scope :match_record_not_closed, -> { where.not(game_status: %w[match_record_closed finalized]) }
+
+  # Darf ein Spiel dieser Liga überhaupt für die Personenebene markiert werden?
+  # Ohne diese Prüfung entsteht über einen direkten API-Aufruf (oder ein noch
+  # nicht ausgeliefertes Frontend) ein Spiel, das im reduzierten Modus gesperrt
+  # ist, mangels Ansetzer-Rolle aber auch dort niemand bearbeiten kann – nur ein
+  # globaler Admin käme wieder heran.
+  def self.person_level_assignment_allowed_for?(league)
+    league&.referee_assignment_mode == :person
+  end
 
   # „Begonnen oder gespielt" – deckt gestartete/beendete Spiele, angelegte
   # Spielberichte und abgeschlossene Berichte ab. Wird genutzt, um zu
@@ -712,9 +718,15 @@ class Game < ApplicationRecord
   # der SBK liest den Freitext über meta_hash und muss den Rohwert sehen: würde
   # er den abgeleiteten Hinweis ins Eingabefeld laden, schriebe das nächste
   # Speichern ihn als echten Freitext zurück.
+  # Der Hinweis ist eine Ankündigung und gilt nur, solange das Spiel bevorsteht.
+  # Angepfiffene und gespielte Spiele zeigen sonst dauerhaft „Ansetzung durch
+  # Ansetzer*in", wo nie ein Gespann eingetragen wurde – mit der Voreinstellung
+  # „Standardmäßig durch Ansetzer*in" träfe das jedes Spiel des Verbands. Beim
+  # Sentinel im Freitextfeld fiel das nicht auf, weil ihn die SBK je Spiel von
+  # Hand setzte.
   def public_nominated_referee_string
     return nominated_referee_string if nominated_referee_string.present?
-    return 'Ansetzung durch Ansetzer*in' if person_level_assignment?
+    return 'Ansetzung durch Ansetzer*in' if person_level_assignment? && !started?
 
     nominated_referee_string
   end

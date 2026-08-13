@@ -41,17 +41,4 @@ class StateAssociationRefereeAssignmentModeTest < ActiveSupport::TestCase
 
     assert_equal :none, sa.reload.referee_assignment_mode
   end
-
-  test 'Voreinstellung greift nur auf der Personenebene' do
-    person = create(:state_association, referee_assignment_enabled: true,
-                                        person_level_assignment_default: true)
-    assert person.person_level_assignment_default_active?
-
-    # Im reduzierten Modus gibt es keine Personenebene, für die vorbelegt werden
-    # könnte – ein markiertes Spiel wäre dort gesperrt und in keiner Ansicht
-    # bearbeitbar.
-    club = create(:state_association, referee_assignment_external_enabled: true,
-                                      person_level_assignment_default: true)
-    assert_not club.person_level_assignment_default_active?
-  end
 end

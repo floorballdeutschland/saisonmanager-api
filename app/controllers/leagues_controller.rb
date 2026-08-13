@@ -675,11 +675,17 @@ class LeaguesController < ApplicationController
 
     teams = league.teams
 
-    # Ansetzungsmodus der Liga: national (kein Landesverband, z. B. FD) bleibt
-    # immer auf der Personenebene, sonst entscheiden die gestaffelten LV-Schalter
+    # Ansetzungsmodus der Liga: der Bundesspielbetrieb bleibt immer auf der
+    # Personenebene, sonst entscheiden die gestaffelten LV-Schalter
     # (StateAssociation#referee_assignment_mode).
-    sa = league.game_operation&.state_association
-    mode = sa.nil? ? StateAssociation.national_referee_assignment_mode : sa.referee_assignment_mode
+    #
+    # „National" wird ausdrücklich über GameOperation#national bestimmt, nicht
+    # über einen fehlenden Landesverband: die FD-GameOperation *hat* einen
+    # StateAssociation-Datensatz (für das Verbandslogo), siehe die Begründung in
+    # User#permission_hash. Ein `sa.nil?` griffe für FD also nie und die Zusage
+    # „für den Bundesspielbetrieb ändert sich nichts" hinge in Wahrheit an den
+    # Schaltern dieses Datensatzes.
+    mode = league.referee_assignment_mode
     # Schlüssel bleibt, damit ein noch nicht ausgerolltes Frontend weiterarbeitet:
     # er sagt wie bisher, ob der Spiel-Editor die Markierung anbieten soll – und
     # das tut er nur auf der Personenebene.
@@ -696,7 +702,7 @@ class LeaguesController < ApplicationController
       # Vorbelegung der Markierung für neue Spiele im Editor. Der Server setzt
       # dieselbe Voreinstellung noch einmal für Wege, die das Feld gar nicht
       # mitschicken (Spielplan-Import).
-      person_level_assignment_default: sa&.person_level_assignment_default_active? || false
+      person_level_assignment_default: league.person_level_assignment_default?
     }
   end
 
