@@ -210,6 +210,29 @@ module Admin
       assert_equal 0, PlayerChangeRequest.where(secondary_player_id: gone.id).count
     end
 
+    # params[:club_id].to_i brach bei einem Array mit NoMethodError ab, also
+    # einem 500er allein durch die Nutzlast. Kein Sicherheitsproblem (gespeichert
+    # wurde nichts), aber die Zuständigkeitsprüfung hängt an diesem Wert.
+    test 'ein Verein als Array bricht den Antrag nicht mit einem Serverfehler ab' do
+      login(@vm)
+      post '/api/v2/admin/player_change_requests.json', params: {
+        player_id: @master.id, club_id: [@club.id], correction_type: 'names_swapped'
+      }
+
+      assert_response :unprocessable_entity
+      assert_equal 0, PlayerChangeRequest.count
+    end
+
+    # Gegenrichtung: Die Oberfläche schickt JSON, der Verein kommt dort als Zahl.
+    test 'ein Verein als JSON-Zahl geht durch' do
+      login(@vm)
+      post '/api/v2/admin/player_change_requests.json',
+           params: { player_id: @master.id, club_id: @club.id, correction_type: 'names_swapped' }.to_json,
+           headers: { 'CONTENT_TYPE' => 'application/json' }
+
+      assert_response :created
+    end
+
     private
 
     def create_merge_request

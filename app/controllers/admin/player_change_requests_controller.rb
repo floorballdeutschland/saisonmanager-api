@@ -25,7 +25,18 @@ module Admin
 
     def create
       ph = current_user.permission_hash
-      club_id = params[:club_id].to_i
+
+      # Der Verein kommt als JSON-Zahl (so schickt es die Oberfläche) oder als
+      # Zeichenkette (Formular-Post). Ein Array brach hier mit
+      # "undefined method `to_i' for [\"1\"]:Array" ab, also einem 500er allein
+      # durch die Nutzlast. Kein Sicherheitsproblem, aber eine unnötige Meldung
+      # in der Fehlerüberwachung, und die Zuständigkeitsprüfung darunter hängt
+      # an diesem Wert.
+      club_id = params[:club_id]
+      club_id = club_id.to_i if club_id.is_a?(String) || club_id.is_a?(Integer)
+      unless club_id.is_a?(Integer) && club_id.positive?
+        return render json: { error: 'Verein fehlt oder ist ungültig' }, status: :unprocessable_entity
+      end
 
       unless ph[:admin].present? || ph[:vm]&.include?(club_id)
         return render json: { error: 'Keine Berechtigung' }, status: :forbidden
