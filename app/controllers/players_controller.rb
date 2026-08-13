@@ -1121,16 +1121,21 @@ class PlayersController < ApplicationController
   # Altfälle ist die Zuständigkeit ohnehin nicht eindeutig bestimmbar, siehe #399.
   #
   # (b) über `readable_by_game_operations?` und nicht über einen reinen Vergleich
-  # mit `main_game_operation_id`: Eine Vereins-Freigabe des besitzenden
-  # Landesverbands (`StateAssociationRelease`, saisonweise und ausdrücklich
-  # erteilt) zählt mit, so wie überall sonst, wo über die Erreichbarkeit eines
-  # Vereins entschieden wird. Sie erweitert nur, wohin die eigenen Spieler dürfen;
-  # fremde Profile schützt weiterhin (a).
+  # (b) bewusst als reiner Vergleich mit `main_game_operation_id` und NICHT über
+  # `readable_by_game_operations?`: Eine Vereins-Freigabe (`StateAssociationRelease`)
+  # macht einen fremden Verein lesbar, sie holt ihn aber nicht in den eigenen
+  # Spielbetrieb. Ein Wechsel dorthin bleibt ein Wechsel über Spielbetriebe
+  # hinweg und gehört damit in den Transferantrag oder zur bundesweiten SBK.
+  # Freigaben regeln Einsicht, nicht Zugehörigkeit.
+  #
+  # Ein Verein ohne Heimat-Spielbetrieb hat `main_game_operation_id == nil` und
+  # liegt damit in keinem Scope. Das ist gewollt: Diese Vereine (Altbestand)
+  # bleiben wie die Profile ohne Heimatverein der bundesweiten Rolle vorbehalten.
   def sbk_may_move_player?(ph, player, club)
     return false unless sbk_can_access_player?(ph, player)
     return true if ph[:sbk].include?(0)
 
-    club.readable_by_game_operations?(ph[:sbk])
+    ph[:sbk].include?(club.main_game_operation_id)
   end
 
   # Darf diese Stelle eine Deaktivierung zurücknehmen?
