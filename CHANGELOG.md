@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.77.0] - 2026-08-13
+
 ### Behoben
 
 - **Deaktivierung mit dem Grund „Sonstiges" schlug auf Englisch fehl**: In der Vereins-Spielerliste entstand der Freitext-Grund aus der Übersetzung. Wer die Oberfläche auf Englisch gestellt hatte, schickte damit `Other: …` an den Saisonmanager, der nur `Sonstiges: ` annimmt. Die Deaktivierung wurde mit „Ungültiger Deaktivierungsgrund" abgewiesen und die Person blieb aktiv. Die vier festen Gründe waren nie betroffen. Der Grund wird jetzt unabhängig von der eingestellten Sprache gebildet.
