@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.78.0] - 2026-08-13
+
 ### Neu
 
 - **Links auf Informationsblätter selbst pflegen**: Im Lizenzantrag für minderjährige Bundesligaspieler*innen verweist der Saisonmanager auf das Datenschutz-Informationsblatt von floorball.de. Diese Adresse stand fest im Programm und führte ins Leere, seit die Datei dort neu abgelegt wurde. Der Verein sah einen Link, hinter dem nichts mehr lag, und konnte die gesetzliche Vertretung nicht informieren, obwohl die Spielordnung das vor der Antragstellung verlangt. Solche Adressen liegen jetzt unter „Dokumentarten" in einem eigenen Abschnitt und lassen sich dort ändern, sobald floorball.de eine Datei verschiebt. Zuständig ist wie beim Katalog der Dokumentarten die Verwaltung und die bundesweite Spielbetriebskommission; die Verbände sehen den Abschnitt, ohne ihn zu ändern. Ist keine Adresse hinterlegt, bleibt der Hinweis stehen und der Link entfällt, statt tot angeboten zu werden. Beim Update wird die aktuelle Adresse des Informationsblattes eingetragen.
