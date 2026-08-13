@@ -4,9 +4,9 @@ require 'rake'
 # Tests für cleanup:guest_game_operations (lib/tasks/cleanup_legacy_guest_game_operations.rake).
 #
 # Gast-Einträge im clubs.game_operations_hash stammen ausschließlich aus dem
-# Altdaten-Import 2010–2014 und werden nie nachgeführt. Der Task entfernt die,
-# die weder durch eine aktuelle Liga noch durch eine Vereins-Freigabe gedeckt
-# sind. Heim-Einträge bleiben unangetastet.
+# Altdaten-Import 2010–2014 und wurden nie nachgeführt. Das Konzept ist
+# entfallen, der Task entfernt sie deshalb ausnahmslos. Heim-Einträge bleiben
+# unangetastet.
 class CleanupGuestGameOperationsTest < ActiveSupport::TestCase
   setup do
     Rails.application.load_tasks if Rake::Task.tasks.empty?
@@ -35,6 +35,11 @@ class CleanupGuestGameOperationsTest < ActiveSupport::TestCase
     ])
   end
 
+  # `Club#additional_game_operation_ids` ist mit dem Konzept entfallen.
+  def guest_ids(club)
+    club.game_operations_hash.reject { |h| h['home_game_operation'] }.map { |h| h['game_operation_id'].to_i }
+  end
+
   # Der Report-Task darf auch dann durchlaufen, wenn nichts zu bereinigen ist –
   # ein `return` im Rake-Block wirft dort LocalJumpError. Das fiel erst nach dem
   # ersten erfolgreichen Bereinigungslauf auf Produktion auf.
@@ -57,7 +62,7 @@ class CleanupGuestGameOperationsTest < ActiveSupport::TestCase
     assert_nothing_raised { report.invoke }
   end
 
-  test 'ungedeckter Gast-Eintrag wird entfernt, Heim-Eintrag bleibt' do
+  test 'Gast-Eintrag wird entfernt, Heim-Eintrag bleibt' do
     club = club_with_guest_entry
 
     run_task('DRY_RUN' => 'false')
@@ -67,7 +72,6 @@ class CleanupGuestGameOperationsTest < ActiveSupport::TestCase
     assert_equal @heim_go.id, hash.first['game_operation_id']
     assert hash.first['home_game_operation']
     assert_equal @heim_go.id, club.main_game_operation_id
-    assert_empty club.additional_game_operation_ids
   end
 
   test 'DRY RUN ist der Default und aendert nichts' do
@@ -78,29 +82,21 @@ class CleanupGuestGameOperationsTest < ActiveSupport::TestCase
     assert_equal 2, club.reload.game_operations_hash.size
   end
 
-  # Gedeckt durch eine aktuelle Liga: Der Verein spielt in diesem Spielbetrieb.
-  test 'Gast-Eintrag mit Mannschaft in einer Liga des Spielbetriebs bleibt' do
+  # Bis zum Wegfall des Konzepts blieb ein durch eine Liga gedeckter Eintrag
+  # stehen. Das ist gewollt vorbei: Die Zustaendigkeit fuer Gastmannschaften
+  # kommt aus der Liga selbst, nicht aus dem Hash.
+  test 'Gast-Eintrag mit Mannschaft in einer Liga des Spielbetriebs wird ebenfalls entfernt' do
     club = club_with_guest_entry
     create(:team, club: club, league: create(:league, :current_season, game_operation: @gast_go))
 
     run_task('DRY_RUN' => 'false')
 
-    assert_includes club.reload.additional_game_operation_ids, @gast_go.id
+    assert_empty guest_ids(club.reload)
   end
 
-  # Auch als SG-Partnerverein zaehlt die Mannschaft.
-  test 'Gast-Eintrag bleibt, wenn der Verein nur SG-Partner der Mannschaft ist' do
-    club = club_with_guest_entry
-    team = create(:team, club: create(:club), league: create(:league, :current_season, game_operation: @gast_go))
-    team.update!(syndicate_clubs: [club.id])
-
-    run_task('DRY_RUN' => 'false')
-
-    assert_includes club.reload.additional_game_operation_ids, @gast_go.id
-  end
-
-  # Gedeckt durch eine Vereins-Freigabe des eigenen Landesverbands.
-  test 'Gast-Eintrag mit Vereins-Freigabe bleibt' do
+  # Ebenso die frueher durch eine Vereins-Freigabe gedeckten Eintraege: Die
+  # Freigabe wirkt weiter, sie braucht den Hash-Eintrag aber nicht.
+  test 'Gast-Eintrag mit Vereins-Freigabe wird ebenfalls entfernt' do
     club = club_with_guest_entry
     StateAssociationRelease.create!(grantor_state_association_id: @heim_sa.id,
                                     recipient_game_operation_id: @gast_go.id,
@@ -108,17 +104,27 @@ class CleanupGuestGameOperationsTest < ActiveSupport::TestCase
 
     run_task('DRY_RUN' => 'false')
 
-    assert_includes club.reload.additional_game_operation_ids, @gast_go.id
+    assert_empty guest_ids(club.reload)
+    assert club.readable_by_game_operations?([@gast_go.id]),
+           'Die Freigabe muss den Lesezugriff auch ohne Gast-Eintrag tragen'
   end
 
-  # Eine Mannschaft der VORSAISON deckt nichts – der Task bewertet die laufende.
-  test 'Mannschaft aus der Vorsaison deckt den Gast-Eintrag nicht' do
-    club = club_with_guest_entry
-    create(:team, club: club, league: create(:league, :previous_season, game_operation: @gast_go))
+  # In Altdaten liegt das Flag als String. `'false'` ist in Ruby truthy, eine
+  # Truthy-Pruefung hielte den Eintrag also fuer den Heimat-Eintrag; ein
+  # jsonb-`@>`-Filter auf echtes `false` faende den Verein gar nicht erst.
+  # Derselbe Boolean-Cast wie in Club#main_game_operation_id loest beides.
+  test 'Gast-Eintrag mit Text-Flag wird ebenfalls entfernt' do
+    club = create(:club, state_association_id: @heim_sa.id, game_operations_hash: [
+      { 'home_game_operation' => 'true', 'game_operation_id' => @heim_go.id },
+      { 'home_game_operation' => 'false', 'game_operation_id' => @gast_go.id }
+    ])
 
     run_task('DRY_RUN' => 'false')
 
-    assert_empty club.reload.additional_game_operation_ids
+    # Nicht ueber guest_ids: Dessen Truthy-Pruefung wuerde den Text-Eintrag
+    # selbst uebersehen und der Test ginge auch ungefixt durch.
+    assert_equal 1, club.reload.game_operations_hash.size
+    assert_equal @heim_go.id, club.main_game_operation_id
   end
 
   test 'Verein ohne Gast-Eintrag bleibt unberuehrt' do
@@ -144,18 +150,17 @@ class CleanupGuestGameOperationsTest < ActiveSupport::TestCase
                  'Hash darf nicht geleert werden, wenn kein Heim-Eintrag existiert'
   end
 
-  test 'mehrere Gast-Eintraege werden einzeln bewertet' do
+  test 'mehrere Gast-Eintraege werden gemeinsam entfernt' do
     dritter_go = create(:game_operation)
     club = create(:club, state_association_id: @heim_sa.id, game_operations_hash: [
       { 'home_game_operation' => true, 'game_operation_id' => @heim_go.id },
       { 'home_game_operation' => false, 'game_operation_id' => @gast_go.id },
       { 'home_game_operation' => false, 'game_operation_id' => dritter_go.id }
     ])
-    # Nur der dritte Spielbetrieb ist durch eine Liga gedeckt.
     create(:team, club: club, league: create(:league, :current_season, game_operation: dritter_go))
 
     run_task('DRY_RUN' => 'false')
 
-    assert_equal [dritter_go.id], club.reload.additional_game_operation_ids
+    assert_empty guest_ids(club.reload)
   end
 end

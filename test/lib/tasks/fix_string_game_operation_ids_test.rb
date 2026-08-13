@@ -64,20 +64,6 @@ class FixStringGameOperationIdsTest < ActiveSupport::TestCase
     assert_equal @go.id, club.reload.game_operations_hash.first['game_operation_id']
   end
 
-  test 'Gast-Eintraege mit Text-ID werden mitrepariert' do
-    guest_go = create(:game_operation, state_association_id: create(:state_association).id)
-    goh = [
-      { 'game_operation_id' => @go.id.to_s, 'home_game_operation' => true },
-      { 'game_operation_id' => guest_go.id.to_s, 'home_game_operation' => false }
-    ]
-    club = create(:club, game_operations_hash: goh)
-
-    run_task('DRY_RUN' => 'false')
-
-    assert_equal @go.id, club.reload.main_game_operation_id
-    assert_equal [guest_go.id], club.additional_game_operation_ids
-  end
-
   test 'laeuft ohne betroffene Vereine durch' do
     out, = run_task('DRY_RUN' => 'false')
 

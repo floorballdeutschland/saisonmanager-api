@@ -82,11 +82,12 @@ namespace :import do
       go_id = go['id']
 
       go['clubs'].each do |c|
-        # Build game_operations_hash: home GO + additional GOs
+        # Nur der Heimat-Spielbetrieb. Die `additional_game_operation_ids` des
+        # Altsystems wurden hier früher als Gast-Einträge übernommen – genau die
+        # Quelle, aus der die Altlast im game_operations_hash stammte. Sie werden
+        # bewusst verworfen: Lesezugriff über Verbandsgrenzen hinweg regeln die
+        # Vereins-Freigabe und die Liga.
         goh = [{ 'game_operation_id' => go_id, 'home_game_operation' => true }]
-        (c['additional_game_operation_ids'] || []).each do |aid|
-          goh << { 'game_operation_id' => aid, 'home_game_operation' => false }
-        end
 
         existing = Club.find_by(id: c['id'])
 

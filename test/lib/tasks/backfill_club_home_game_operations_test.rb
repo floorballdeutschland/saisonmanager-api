@@ -439,7 +439,10 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
 
   # --- Bestand und Schreibform ---------------------------------------------
 
-  test 'behaelt Gast-Eintraege und schreibt die Kennung als Zahl' do
+  # Gast-Eintraege wurden hier frueher behalten. Seit das Konzept entfallen ist,
+  # bleibt nur der Heimat-Eintrag stehen – sonst legte ausgerechnet der Backfill
+  # die Altlast wieder an.
+  test 'ersetzt Gast-Eintraege und schreibt die Kennung als Zahl' do
     _sa, go = association_with_operation('NWFV')
     club = create(:club, game_operations_hash: [{ 'game_operation_id' => 4711,
                                                  'home_game_operation' => false }])
@@ -448,7 +451,7 @@ class BackfillClubHomeGameOperationsTest < ActiveSupport::TestCase
     run_task('DRY_RUN' => 'false')
 
     hash = club.reload.game_operations_hash
-    assert_includes hash, { 'game_operation_id' => 4711, 'home_game_operation' => false }
+    assert_equal 1, hash.size
     home = hash.find { |e| e['home_game_operation'] }
     assert_equal go.id, home['game_operation_id']
     assert_kind_of Integer, home['game_operation_id'],
