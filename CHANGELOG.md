@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Korrekturanträge nur noch für Spieler*innen des eigenen Vereins**: Ein Verein kann eine Korrektur am Profil beantragen, etwa am Geburtsdatum, am Namen oder als Zusammenführung zweier Profile. Geprüft wurde dabei zweierlei nicht. Erstens genügte jede jemals bestandene Vereinszugehörigkeit: Ein Verein, den die Person vor Jahren verlassen hat, konnte weiter Anträge zu ihr stellen. Zweitens galt die Prüfung überhaupt nur für die Zusammenführung; bei Geburtsdatum, Vor- und Nachname, vertauschten Namen, Nationalität und Geschlecht ließ sich ein Antrag zu jedem Profil im System stellen, auch zu Profilen, mit denen der Verein nie etwas zu tun hatte. Entschieden hat solche Anträge immer die Spielbetriebskommission, ihr lag aber ein Antrag vor, der auf den ersten Blick in Ordnung aussah. Maßgeblich ist jetzt eine aktuell gültige Zugehörigkeit zum antragstellenden Verein, und zwar bei jeder Antragsart. Deaktivierte Profile des eigenen Vereins bleiben ausdrücklich enthalten: Sie stehen in der Vereinsspielerliste und müssen korrigierbar bleiben, obwohl die Deaktivierung ihre Zugehörigkeiten schließt. Eine Zugehörigkeit, die am heutigen Tag endet, gilt heute noch.
+
 ## [1.78.0] - 2026-08-13
 
 ### Neu
