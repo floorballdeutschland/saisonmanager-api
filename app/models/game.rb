@@ -1255,8 +1255,21 @@ class Game < ApplicationRecord
     errors
   end
 
+  # Der Sortierschlüssel wird durchgängig auf Zahlen normalisiert, und das ist
+  # nicht Kosmetik: `period` steht im JSONB mal als Zahl, mal als Zeichenkette.
+  # Das Spielbericht-Formular schickt JSON, `parseInt` macht daraus eine Zahl;
+  # ein Formular-Post und der Altdaten-Import (`'period' => e['periode']`, roh
+  # durchgereicht) hinterlassen Zeichenketten. Treffen beide Formen in einem
+  # Spiel aufeinander, bricht der Vergleich mit
+  # "ArgumentError: comparison of Array with Array failed" ab, und zwar bei
+  # JEDEM weiteren Speichern des Spielberichts. Nachgestellt an einem Spiel mit
+  # zwei Zeilen ('1' als Zeichenkette, 2 als Zahl).
+  #
+  # `to_i` räumt zugleich einen Ordnungsfehler weg: Als Zeichenkette sortierte
+  # '10' vor '9'. Bei `row` ist es zusätzlich nil-sicher (eine frisch angehängte
+  # Zeile hat noch keine).
   def sort_events!
-    events.sort_by! { |e| [e['period'], e['time'].to_s.rjust(5, '0'), e['id'], e['row']] }
+    events.sort_by! { |e| [e['period'].to_i, e['time'].to_s.rjust(5, '0'), e['id'].to_i, e['row'].to_i] }
     home_score = 0
     guest_score = 0
 

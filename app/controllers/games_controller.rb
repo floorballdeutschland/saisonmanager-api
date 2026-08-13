@@ -1279,6 +1279,11 @@ class GamesController < ApplicationController
 
   # Gibt eine erklärende Meldung zurück oder nil, wenn die Angaben tragen
   # (gleiche Form wie logo_upload_error).
+  #
+  # Der Abgleich gegen eine Werteliste erledigt bei event_type und event_team
+  # zugleich die Typfrage: Ein Array oder ein verschachtelter Parameter steht
+  # nicht in der Liste und fällt heraus. Bei Zeit und Abschnitt genügt eine
+  # reine Anwesenheitsprüfung dafür NICHT, deshalb dort zusätzlich der Typ.
   def event_input_error
     unless EVENT_TYPES.include?(params[:event_type])
       return 'Ereignisart fehlt oder ist unbekannt (erlaubt: Tor oder Strafe).'
@@ -1286,10 +1291,26 @@ class GamesController < ApplicationController
     unless EVENT_TEAMS.include?(params[:event_team])
       return 'Mannschaft fehlt oder ist unbekannt (erlaubt: Heim oder Gast).'
     end
-    return 'Ereigniszeit fehlt.' if params[:time].blank?
-    return 'Spielabschnitt fehlt.' if params[:period].blank?
+    # Die Zeit ist immer eine Zeichenkette ("mm:ss"), das Formular baut sie so
+    # zusammen. Als Array kam sie ungeprüft durch und stand danach als
+    # ["20:00"] im JSONB.
+    return 'Ereigniszeit fehlt.' unless params[:time].is_a?(String) && params[:time].present?
+    return 'Spielabschnitt fehlt.' unless valid_period?(params[:period])
 
     nil
+  end
+
+  # Der Abschnitt kommt vom Formular als JSON-Zahl (`parseInt` im Frontend), bei
+  # einem Formular-Post als Zeichenkette. Beides ist in Ordnung, ein Array nicht:
+  # sort_events! sortiert über [period, time, id, row], und ein Array neben einer
+  # Zeichenkette lässt den Vergleich mit "comparison of Array with Array failed"
+  # abbrechen – ein 500er, ausgelöst allein durch die Nutzlast.
+  def valid_period?(value)
+    case value
+    when Integer then true
+    when String then value.present?
+    else false
+    end
   end
 
   # Weicher Lizenz-Check: erzeugt eine Warnmeldung, wenn der Spieler keine erteilte

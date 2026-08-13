@@ -427,6 +427,59 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
     assert_equal '1:0', score
   end
 
+  # Zeit und Abschnitt hatten nur eine Anwesenheitsprüfung, und die reicht bei
+  # einem Array nicht: `["20:00"].blank?` ist false. Die Werteliste bei
+  # event_type/event_team fängt denselben Fall von sich aus ab.
+  test 'update_event: eine Zeit als Array landet nicht im Spielbericht' do
+    two_goals!
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/games/#{@game.id}/events/update", params: {
+      event_id: 2, period: '1', time: ['20:00'], event_type: 'goal', event_team: 'home',
+      home_goals: 2, guest_goals: 0
+    }
+
+    assert_response :unprocessable_entity
+    assert_equal '20:00', @game.reload.events.find { |e| e['id'].to_i == 2 }['time'],
+                 'im JSONB darf keine Liste stehen'
+  end
+
+  # sort_events! sortiert über [period, time, id, row]. Ein Array neben einer
+  # Zeichenkette liess den Vergleich mit ArgumentError abbrechen, also ein 500er
+  # allein durch die Nutzlast.
+  test 'add_event: ein Abschnitt als Array bricht das Speichern nicht ab' do
+    two_goals!
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/games/#{@game.id}/events/add", params: {
+      period: ['1'], time: '30:00', event_type: 'goal', event_team: 'home',
+      home_goals: 3, guest_goals: 0
+    }
+
+    assert_response :unprocessable_entity
+    assert_equal 2, @game.reload.events.size
+  end
+
+  # Gegenrichtung, und der Grund, warum für den Abschnitt KEINE Zeichenkette
+  # erzwungen wird: Das Spielbericht-Formular schickt JSON, `parseInt` macht
+  # daraus eine Zahl. Ein String-Zwang hätte die Erfassung am Spieltag zerlegt.
+  #
+  # Der Fall deckt zugleich das gemischte Speichern ab: Die vorhandenen Zeilen
+  # tragen '1' als Zeichenkette, die Änderung schreibt eine Zahl. Vor der
+  # Normalisierung des Sortierschlüssels endete genau das in einem 500er.
+  test 'update_event: ein Abschnitt als JSON-Zahl geht durch' do
+    two_goals!
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/games/#{@game.id}/events/update",
+         params: { event_id: 2, period: 2, time: '25:00', event_type: 'goal', event_team: 'home',
+                   home_goals: 2, guest_goals: 0 }.to_json,
+         headers: { 'CONTENT_TYPE' => 'application/json' }
+
+    assert_response :success
+    assert_equal 2, @game.reload.events.find { |e| e['id'].to_i == 2 }['period'].to_i
+  end
+
   private
 
   # Zwei Heimtore, damit der Spielstand etwas hergibt, das sinken könnte.
