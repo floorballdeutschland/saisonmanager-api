@@ -124,6 +124,14 @@ class GamesController < ApplicationController
     game = Game.new(game_create_update_params)
     game.correct_teams!
     game_operation_id = game.league.game_operation_id.to_i
+    # Voreinstellung „Standardmäßig durch Ansetzer*in": neue Spiele gleich
+    # markieren, damit die SBK das nicht je Spieltag anklicken muss. Nur, wenn
+    # die Maske das Flag nicht ausdrücklich mitgeschickt hat.
+    if game_create_update_params.key?(:person_level_assignment)
+      game.person_level_assignment = false unless Game.person_level_assignment_allowed_for?(game.league)
+    else
+      game.person_level_assignment = Game.person_level_assignment_default_for?(game.league)
+    end
 
     allowed = if ph[:admin].present? || ph[:sbk].present?
                 gos = [ph[:admin], ph[:sbk]].flatten.compact.map(&:to_i)
@@ -164,8 +172,18 @@ class GamesController < ApplicationController
 
     game.updated_by ||= current_user.id
 
+    # Wie beim Anlegen: die Markierung darf nur stehen, wo die Personenebene
+    # greift – sonst entsteht ein Spiel, das keine der beiden Ansichten
+    # bearbeiten kann. Eine bereits gesetzte Markierung lässt sich weiterhin
+    # entfernen, nur das Setzen ist gesperrt.
+    update_attrs = game_create_update_params
+    if update_attrs.key?(:person_level_assignment) &&
+       !Game.person_level_assignment_allowed_for?(game.league)
+      update_attrs = update_attrs.merge(person_level_assignment: false)
+    end
+
     if allowed
-      if game.update(game_create_update_params)
+      if game.update(update_attrs)
         # Änderungen an Anpfiff oder Absage (notice_type) benachrichtigen die
         # Beteiligten einer bereits veröffentlichten Ansetzung. Nur bei echter
         # Änderung dieser Felder (Dirty-Tracking): so lösen unbeteiligte Edits
@@ -1292,7 +1310,8 @@ class GamesController < ApplicationController
 
   def game_create_update_params
     params.require(:game).permit(:forfait, :game_day_id, :game_number, :start_time,
-                                 :nominated_referee_string, :notice_type, :notice_string,
+                                 :nominated_referee_string, :person_level_assignment,
+                                 :notice_type, :notice_string,
                                  :home_team_id, :guest_team_id,
                                  :group_identifier,
                                  :series_title,

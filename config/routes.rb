@@ -318,6 +318,10 @@ Rails.application.routes.draw do
           get :availability, on: :collection
           get :games, on: :collection
           get :clubs, on: :collection
+          # Reduzierter Modus (Weg 3, RSK): Vereine der Liga und Speichern von
+          # Verein bzw. Freitext am Spiel.
+          get :league_clubs, on: :collection
+          patch 'games/:game_id/club_assignment', action: :update_club_assignment, on: :collection
           patch 'games/:game_id/notes', action: :update_notes, on: :collection
         end
         resources :game_days, only: [] do
