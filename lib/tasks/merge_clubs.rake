@@ -11,10 +11,10 @@
 #      die Historie des aufgelösten Vereins bleibt am verbleibenden erhalten.
 #
 # Die Stammdaten des verbleibenden Vereins (Name, Kurzname, Registername,
-# Landesverband, Logo, Kontakt-E-Mail) bleiben unangetastet. Gast-Einträge im
-# game_operations_hash des aufgelösten Vereins werden übernommen, sein
-# Heimat-Eintrag NICHT: der Heimat-Spielbetrieb des verbleibenden Vereins
-# entscheidet weiter, wer ihn verwaltet.
+# Landesverband, Logo, Kontakt-E-Mail) bleiben unangetastet, ebenso sein
+# game_operations_hash: Dessen Heimat-Eintrag entscheidet weiter, wer den Verein
+# verwaltet, und der Heimat-Eintrag des aufgelösten Vereins verschwindet mit
+# ihm. Gast-Einträge wurden früher übernommen; das Konzept gibt es nicht mehr.
 #
 # Dry-Run (Standard, rollt die Transaktion am Ende zurück):
 #   bundle exec rails clubs:merge MERGES="286:12"
@@ -154,8 +154,7 @@ module ClubMergeHelper
       {
         'teams.syndicate_clubs' => repoint_syndicates(source.id, target.id),
         'users.permissions' => repoint_user_permissions(source.id, target.id),
-        'players.clubs' => repoint_player_clubs(source.id, target.id),
-        'game_operations_hash (Gast-Einträge)' => merge_game_operations(source, target)
+        'players.clubs' => repoint_player_clubs(source.id, target.id)
       }.each { |key, moved| counts[key] = moved if moved.positive? }
 
       MergeLog.record!(
@@ -259,25 +258,6 @@ module ClubMergeHelper
       return [1, ''] if entry['valid_until'].blank?
 
       [0, entry['valid_until'].to_s]
-    end
-
-    # Nur die Gast-Einträge: der Heimat-Spielbetrieb des aufgelösten Vereins
-    # verschwindet mit ihm, der des verbleibenden bleibt unverändert. Ohne diese
-    # Übernahme verlöre ein Verband den Zugriff auf Ligen, in denen der
-    # aufgelöste Verein als Gast gespielt hat.
-    def merge_game_operations(source, target)
-      guests = source.game_operations_hash.reject { |entry| entry['home_game_operation'] }
-      return 0 if guests.empty?
-
-      known_ids = target.game_operations_hash.map { |entry| entry['game_operation_id'].to_i }
-      added = guests.reject { |entry| known_ids.include?(entry['game_operation_id'].to_i) }
-      return 0 if added.empty?
-
-      target.update_columns(game_operations_hash: target.game_operations_hash + added)
-      # update_columns rührt updated_at nicht an, der cache_key bleibt also gleich.
-      # Club#home_game_operation läge danach als veralteter Wert im Cache.
-      Rails.cache.delete("#{target.cache_key}/home_game_operation")
-      added.size
     end
   end
 end

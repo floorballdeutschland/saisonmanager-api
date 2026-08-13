@@ -50,6 +50,16 @@ class Club < ApplicationRecord
     end
   end
 
+  # Enthält genau einen Eintrag: den Heimat-Spielbetrieb des Vereins
+  # (`home_game_operation: true`). Bis Release 1.78 standen hier zusätzlich
+  # Gast-Einträge (`home_game_operation: false`) aus dem Altdaten-Import
+  # 2010–2014. Die Anwendung hat sie nie geschrieben und nie nachgeführt, und
+  # seit 1.67.1 entschied auch keine Rechteprüfung mehr über sie. Sie sind
+  # ersatzlos entfallen: Wer fremde Vereine sehen muss, bekommt eine
+  # Vereins-Freigabe des zuständigen Landesverbands
+  # (StateAssociationRelease) oder ist über die Liga zuständig.
+  #
+  # Die Array-Form bleibt, weil die jsonb-Abfragen (`@>`) darauf aufbauen.
   def game_operations_hash
     val = super
     val.is_a?(Array) ? val : []
@@ -85,7 +95,6 @@ class Club < ApplicationRecord
       logo_url:,
       logo_small_url:,
       game_operation_id: main_game_operation_id,
-      additional_game_operation_ids:,
       deactivated_at:,
       deactivated_by:
     }
@@ -103,8 +112,7 @@ class Club < ApplicationRecord
       state_association_id:,
       logo_url:,
       logo_small_url:,
-      game_operation_id: main_game_operation_id,
-      additional_game_operation_ids:
+      game_operation_id: main_game_operation_id
     }
   end
 
@@ -145,10 +153,6 @@ class Club < ApplicationRecord
                            .where(recipient_game_operation_id: scope,
                                   grantor_state_association_id: state_association_id)
                            .exists?
-  end
-
-  def additional_game_operation_ids
-    game_operations_hash.filter { |h| !h['home_game_operation'] }.map { |h| h['game_operation_id'].to_i }
   end
 
   def fix_game_operations_hash!

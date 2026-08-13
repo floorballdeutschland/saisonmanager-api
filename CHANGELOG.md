@@ -13,6 +13,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 - **Links auf Informationsblätter selbst pflegen**: Im Lizenzantrag für minderjährige Bundesligaspieler*innen verweist der Saisonmanager auf das Datenschutz-Informationsblatt von floorball.de. Diese Adresse stand fest im Programm und führte ins Leere, seit die Datei dort neu abgelegt wurde. Der Verein sah einen Link, hinter dem nichts mehr lag, und konnte die gesetzliche Vertretung nicht informieren, obwohl die Spielordnung das vor der Antragstellung verlangt. Solche Adressen liegen jetzt unter „Dokumentarten" in einem eigenen Abschnitt und lassen sich dort ändern, sobald floorball.de eine Datei verschiebt. Zuständig ist wie beim Katalog der Dokumentarten die Verwaltung und die bundesweite Spielbetriebskommission; die Verbände sehen den Abschnitt, ohne ihn zu ändern. Ist keine Adresse hinterlegt, bleibt der Hinweis stehen und der Link entfällt, statt tot angeboten zu werden. Beim Update wird die aktuelle Adresse des Informationsblattes eingetragen.
 
+### Verbessert
+
+- **Gast-Einträge bei Vereinen entfallen**: Ein Verein konnte neben seinem Heimat-Spielbetrieb weitere Spielbetriebe als Gast eingetragen haben. Diese Einträge stammten ausschließlich aus der Übernahme der Altdaten von 2010 bis 2014, wurden vom Saisonmanager nie selbst geschrieben und nie nachgeführt, wenn eine Mannschaft die Liga wechselte. Bis August 2026 entschieden sie trotzdem mit darüber, wer einen Verein und dessen Spieler*innen sehen durfte, und öffneten damit Verbandsgrenzen, die niemand geöffnet hatte. Maßgeblich sind seither der Heimat-Spielbetrieb, die Vereins-Freigabe des zuständigen Landesverbands und die Liga, in der eine Mannschaft tatsächlich spielt. Ohne Wirkung fällt der Gast-Eintrag jetzt ganz weg, damit er keine Auswertung mehr in die Irre führt. Für die Verbände ändert sich nichts: Wer fremde Vereine betreut, tut das weiter über die Freigabe oder über die Liga.
+
+  Für Nutzer*innen der öffentlichen Schnittstelle: Die Vereins-Antwort enthält das Feld `additional_game_operation_ids` nicht mehr. Nach der Bereinigung wäre es für jeden Verein eine leere Liste gewesen.
+
 ## [1.77.0] - 2026-08-13
 
 ### Behoben
