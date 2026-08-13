@@ -692,7 +692,11 @@ class LeaguesController < ApplicationController
       # Spielbetrieb der Vereine, nicht deren contact_email.
       clubs: teams.map(&:all_clubs).flatten.uniq.map(&:public_hash),
       referee_assignment_enabled: referee_assignment_enabled,
-      referee_assignment_mode: mode
+      referee_assignment_mode: mode,
+      # Vorbelegung der Markierung für neue Spiele im Editor. Der Server setzt
+      # dieselbe Voreinstellung noch einmal für Wege, die das Feld gar nicht
+      # mitschicken (Spielplan-Import).
+      person_level_assignment_default: sa&.person_level_assignment_default_active? || false
     }
   end
 
