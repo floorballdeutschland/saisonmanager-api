@@ -15,6 +15,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 - **Torschützen auf der Ergebniskachel ohne Abschnitt und ohne Seite**: Die Spielzeit an einem Ereignis zählt je Abschnitt neu ab 0:00. Untereinander gesetzt lief die Zeit auf der Kachel deshalb sichtbar rückwärts, und es stand nicht dabei, für welche Mannschaft das Tor fiel. Jede Zeile nennt jetzt den Spielstand nach dem Tor und den Abschnitt, also etwa „1:0   2. 05:00   M. Mustermann". Der mitwachsende Spielstand sagt die Seite unmittelbar, dafür braucht es keinen Mannschaftsnamen in der Zeile. Bei Altbeständen ohne diese Angaben bleibt die Zeile wie bisher.
 
+### Verbessert
+
+- **Übertragungen verschwinden nicht mehr um Mitternacht**: Der Abruf der Livestreams nannte ausschließlich die Spiele des laufenden Tages. Eine Übertragung ist mit dem Schlusspfiff aber nicht vorbei, der Link führt weiter zur Aufzeichnung. Zum Tag kommen deshalb jetzt die sieben Tage davor dazu, das zuletzt beendete Spiel oben. Was gerade läuft und was heute noch ansteht, steht unverändert darüber. Ein Spielbericht eines früheren Tages, an dem nie „beendet" gesetzt wurde, zählt dabei als beendet und trägt keinen Live-Punkt mehr.
+
 ## [1.76.0] - 2026-08-13
 
 ### Behoben
