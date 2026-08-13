@@ -266,6 +266,44 @@ class LegacyImport::TransformerTest < ActiveSupport::TestCase # rubocop:disable 
     refute attrs.key?(:gender)
   end
 
+  # ── game_day_attrs (Spieltagsdatum) ─────────────────────────────────────────────
+  #
+  # Das Datum ging bisher roh durch (`spieltag['datum'].to_s`), obwohl
+  # player_attrs das Geburtsdatum längst normalisiert. Der ganze Bestand
+  # vergleicht diese Spalte als Zeichenkette.
+
+  test 'game_day_attrs schneidet den Zeitanteil ab, wie player_attrs beim geb_datum' do
+    assert_equal '2026-08-11', game_day_attrs_for('2026-08-11 00:00:00')[:date]
+  end
+
+  test 'game_day_attrs normalisiert abweichende Schreibweisen auf JJJJ-MM-TT' do
+    assert_equal '2026-08-11', game_day_attrs_for('11.08.2026')[:date]
+    assert_equal '2026-08-11', game_day_attrs_for('2026-8-11')[:date]
+    assert_equal '2026-08-11', game_day_attrs_for('  2026-08-11  ')[:date]
+  end
+
+  # Bewusst kein stilles nil: Der Spieltag käme sonst ohne Datum in die
+  # Datenbank und niemand erfährt davon. So läuft der Wert in die Validierung
+  # von GameDay und der Import scheitert laut.
+  test 'game_day_attrs laesst ein unlesbares Datum stehen, statt es zu verwerfen' do
+    assert_equal 'Sommerpause', game_day_attrs_for('Sommerpause')[:date]
+  end
+
+  # Date.parse ist großzügig bis zur Selbstschädigung: "12" wird zum 12. des
+  # LAUFENDEN Monats, "1.1.26" zu 2026-01-01. Ein erfundenes, plausibel
+  # aussehendes Datum wäre schlimmer als der Rohwert, weil es danach nirgends
+  # mehr auffällt.
+  test 'game_day_attrs erfindet aus einer Bruchstueckangabe kein Datum' do
+    assert_equal '12', game_day_attrs_for('12')[:date]
+    assert_equal '1.1.26', game_day_attrs_for('1.1.26')[:date]
+    assert_equal '31.02.', game_day_attrs_for('31.02.')[:date]
+  end
+
+  test 'game_day_attrs laesst ein fehlendes Datum weg' do
+    refute game_day_attrs_for(nil).key?(:date)
+    refute game_day_attrs_for('').key?(:date)
+  end
+
   # ── league_attrs (Vokabular) ────────────────────────────────────────────────────
   test 'league_attrs mappt Klasse, Feldgröße, Saison und setzt legacy_league' do
     liga = {
@@ -292,5 +330,13 @@ class LegacyImport::TransformerTest < ActiveSupport::TestCase # rubocop:disable 
     attrs = LegacyImport::Transformer.league_attrs(liga, game_operation_id: 1)
     assert_nil attrs[:league_class_id]
     assert_equal '2', attrs[:league_category_id] # KF, Passthrough
+  end
+
+  private
+
+  def game_day_attrs_for(datum)
+    LegacyImport::Transformer.game_day_attrs(
+      { 'spieltag_nr' => 1, 'datum' => datum }, league_id: 1, arena_id: nil, club_id: nil
+    )
   end
 end
