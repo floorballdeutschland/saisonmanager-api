@@ -16,28 +16,63 @@ module SystemHealth
       def run!(notify: true, record: true, date: Date.current)
         disk = SystemHealth.uploads_disk
         current = disk[:status]
-        previous = previous_status(before: date)
+        previous = previous_status(upto: date)
+        warning_due = notify && worsened?(previous, current)
 
-        DailyMetric.set!(DISK_METRIC_KEY, disk[:used_percent], date) if record && disk[:used_percent].present?
+        # Erst versenden, dann den Tageswert schreiben. Der Tageswert IST der
+        # Merker dafür, dass gewarnt wurde: Stünde er schon in der Datenbank,
+        # während die Mail verloren geht, sähe der nächste Lauf denselben Zustand,
+        # keine Verschlechterung, und würde nie nachwarnen. Bei „critical" wäre
+        # das der schlimmste Fall, darüber gibt es keine Stufe mehr, die noch
+        # eskalieren könnte.
+        notified = warning_due ? deliver_warning(disk) : false
 
-        notified = notify && worsened?(previous, current)
-        SystemHealthMailer.threshold_warning(disk).deliver_now if notified
+        # Bei verlorener Mail den Tageswert bewusst NICHT schreiben, damit der
+        # nächste Lauf dieselbe Verschlechterung wieder sieht und es nachholt.
+        # Eine Dublette bei fehlgeschlagenem Schreiben ist die harmlose Seite.
+        if record && disk[:used_percent].present? && (!warning_due || notified)
+          DailyMetric.set!(DISK_METRIC_KEY, disk[:used_percent], date)
+        end
 
-        { previous_status: previous, status: current, used_percent: disk[:used_percent], notified: notified }
+        {
+          previous_status: previous,
+          status: current,
+          used_percent: disk[:used_percent],
+          notified: notified,
+          delivery_failed: warning_due && !notified
+        }
       end
 
-      # Zustand der jüngsten Messung vor dem angegebenen Tag. Bewusst nicht „gestern":
-      # Läuft der Job einen Tag nicht, soll der davorliegende Wert gelten und die
-      # Lücke nicht als Verbesserung durchgehen und erneut warnen.
-      def previous_status(before: Date.current)
+      # Zustand der jüngsten Messung bis einschließlich des angegebenen Tages.
+      #
+      # Bewusst nicht „gestern": Läuft der Job einen Tag nicht, soll der
+      # davorliegende Wert gelten und die Lücke nicht als Verbesserung durchgehen
+      # und erneut warnen. Und bewusst einschließend: Ein zweiter Lauf am selben
+      # Tag findet so den bereits geschriebenen Wert und schickt dieselbe Mail
+      # nicht noch einmal. Der Rake-Kopf nennt den Aufruf von Hand, dieser Fall
+      # ist also erreichbar.
+      def previous_status(upto: Date.current)
         percent = DailyMetric
                   .where(metric_key: DISK_METRIC_KEY)
-                  .where(date: ...before)
+                  .where(date: ..upto)
                   .order(date: :desc)
                   .limit(1)
                   .pick(:count)
 
         SystemHealth.status_for_percent(percent)
+      end
+
+      # true bei erfolgreichem Versand. Der Fehler wird geloggt statt geworfen,
+      # nach dem Muster aus RefereeFeedbackNotifier#deliver: `deliver_now` schlägt
+      # in Produktion sofort auf (raise_delivery_errors ist dort aktiv) und würde
+      # den täglichen Lauf sonst mitten im Durchgang abbrechen.
+      def deliver_warning(disk)
+        SystemHealthMailer.threshold_warning(disk).deliver_now
+        true
+      rescue StandardError => e
+        Rails.logger.error("SystemHealth-Warnmail fehlgeschlagen: #{e.class}: #{e.message}")
+        Sentry.capture_exception(e) if defined?(Sentry)
+        false
       end
 
       # „ok" → „warning" ist eine Verschlechterung, „warning" → „ok" nicht. „unknown"

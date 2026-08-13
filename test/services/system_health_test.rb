@@ -93,6 +93,39 @@ class SystemHealthTest < ActiveSupport::TestCase
     end
   end
 
+  # Der Tageswert ist der Merker dafür, dass gewarnt wurde. Stünde er schon in der
+  # Datenbank, während die Mail verloren geht, sähe der nächste Lauf keine
+  # Verschlechterung mehr und würde nie nachwarnen.
+  test 'Verlorene Warnmail unterdrueckt die Warnung nicht dauerhaft' do
+    DailyMetric.set!(SystemHealth::DISK_METRIC_KEY, SystemHealth::WARNING_PERCENT, Date.current - 1)
+
+    stub_disk_percent(SystemHealth::CRITICAL_PERCENT) do
+      result = with_failing_delivery { SystemHealth::DailyCheck.run! }
+
+      assert_not result[:notified]
+      assert result[:delivery_failed]
+      assert_empty ActionMailer::Base.deliveries
+      # Kein Tageswert: sonst wäre die Verschlechterung am nächsten Tag verbraucht.
+      assert_nil DailyMetric.find_by(metric_key: SystemHealth::DISK_METRIC_KEY, date: Date.current)
+
+      # Nächster Lauf, diesmal mit funktionierendem Versand: Die Warnung wird nachgeholt.
+      retry_result = SystemHealth::DailyCheck.run!
+
+      assert retry_result[:notified]
+      assert_equal 1, ActionMailer::Base.deliveries.size
+    end
+  end
+
+  test 'Ein zweiter Lauf am selben Tag schickt dieselbe Mail nicht erneut' do
+    DailyMetric.set!(SystemHealth::DISK_METRIC_KEY, SystemHealth::WARNING_PERCENT, Date.current - 1)
+
+    stub_disk_percent(SystemHealth::CRITICAL_PERCENT) do
+      assert SystemHealth::DailyCheck.run![:notified]
+      assert_not SystemHealth::DailyCheck.run![:notified]
+      assert_equal 1, ActionMailer::Base.deliveries.size
+    end
+  end
+
   test 'Probelauf schreibt nichts und verschickt nichts' do
     stub_disk_percent(SystemHealth::CRITICAL_PERCENT) do
       result = SystemHealth::DailyCheck.run!(notify: false, record: false)
@@ -132,5 +165,14 @@ class SystemHealthTest < ActiveSupport::TestCase
     usage = { total_bytes: total, used_bytes: used, free_bytes: total - used, used_percent: percent }
 
     SystemHealth.stub(:disk_usage, usage, &block)
+  end
+
+  # In Produktion ist raise_delivery_errors aktiv, ein SMTP-Aussetzer schlägt bei
+  # deliver_now also sofort auf. Genau das wird hier nachgestellt.
+  def with_failing_delivery(&block)
+    mail = Object.new
+    mail.define_singleton_method(:deliver_now) { raise Net::SMTPServerBusy, 'Postfach nicht erreichbar' }
+
+    SystemHealthMailer.stub(:threshold_warning, mail, &block)
   end
 end

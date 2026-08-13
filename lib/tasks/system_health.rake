@@ -29,6 +29,10 @@ namespace :system do
 
     if result[:notified]
       puts "Warnmail an #{SystemHealthMailer::NOTIFY_EMAIL} verschickt."
+    elsif result[:delivery_failed]
+      # Der Tageswert wurde dann bewusst nicht geschrieben, der nächste Lauf holt
+      # den Versand nach.
+      puts 'Warnmail FEHLGESCHLAGEN (Details im Log und in Sentry). Der nächste Lauf versucht es erneut.'
     elsif dry_run && SystemHealth::DailyCheck.worsened?(result[:previous_status], result[:status])
       puts "[DRY RUN] Es wäre eine Warnmail an #{SystemHealthMailer::NOTIFY_EMAIL} gegangen."
     else
