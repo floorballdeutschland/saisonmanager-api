@@ -9,6 +9,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **„Gespann" heißt jetzt beim Namen, was es ist**: In der Ansetzung und in der Auswertung des Schiedsrichter-Feedbacks stand an mehreren Stellen „Gespann". Der Begriff ist Fachjargon und sagt einer Person, die zum ersten Mal ansetzt, nichts. Je nach Zusammenhang steht dort jetzt das, was gemeint ist: Der Knopf am Spiel heißt „Infos für die Schiedsrichter", die Spalte im reduzierten Modus „Verein stellt die Schiedsrichter", und wo es tatsächlich um die Paarung geht, steht „Schiedsrichterpaar". An der Funktion ändert sich nichts, es sind ausschließlich Beschriftungen. Die englischen Texte waren davon nie betroffen, sie sprachen schon vorher von „officials" und „pair".
+
+- **Rollenhandbuch neu gestaltet, neu gegliedert und durchsuchbar**: Das Handbuch unter doku.saisonmanager.de bekommt eine eigene Gestaltung: Jedes Kapitel trägt genau eine Farbe, nämlich die seiner Rolle, und öffnet mit einer Karte, die Zuständigkeit und Kürzel wie eine Akkreditierung ausweist. Neu ist außerdem eine Suche über den gesamten Text, die kapitelübergreifend zum Treffer springt und die zugehörige Prozesskarte aufklappt; Umlaute werden dabei gefaltet, „schiri" findet also auch „Schiedsrichter". Das Sammelkapitel „Prozesse & Funktionen" war mit acht Themen in einer Seite zu groß geworden und ist jetzt in acht eigene, einzeln verlinkbare Kapitel geteilt, denen eine Übersicht vorangestellt ist. Rechtematrix und Testsystem stehen als eigene Kapitel, weil man gezielt dorthin springt. Bestehende Links auf das Handbuch bleiben gültig.
+
+### Behoben
+
+- **Handbuch: Rollen-Kürzel und Hervorhebungen zerrissen den Satz**: In den Aufzählungen der Rollenkapitel wurden die farbigen Rollen-Kürzel und kursiv hervorgehobene Begriffe nicht im laufenden Text dargestellt, sondern als einzelne Blöcke mit Abstand nebeneinander gesetzt. Ein Satz wie „Ebenso SBK, RSK und Ansetzer im eigenen Zuständigkeitsbereich anlegen" fiel damit in Einzelteile, und bei den drei gestaffelten Ansetzungs-Optionen unter der Spielbetriebskommission des Landesverbands lief die Aufzählung sichtbar aus ihrer Karte heraus. Ursache war die Auszeichnung der Aufzählungspunkte: Sie machte jeden Bestandteil einer Zeile zu einem eigenständigen Element, also auch jedes einzelne Textstück. Nebenbei war das Kapitel „Für Streamer:innen" das einzige, das in der Navigation nicht als aktiv markiert wurde.
+
 ## [1.79.0] - 2026-08-13
 
 ### Behoben
