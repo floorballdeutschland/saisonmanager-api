@@ -47,8 +47,11 @@ class LogoUploadFormatTest < ActionDispatch::IntegrationTest
       post path, params: { param => disguised_svg }
 
       assert_response :unprocessable_entity, "#{name}: getarnte SVG muss abgewiesen werden"
-      assert_match(/Dateiformat/, JSON.parse(response.body)['message'].to_s,
-                   "#{name}: die Meldung soll das Format benennen")
+      # Eigene Meldung, nicht die der Kopfzeilen-Prüfung: Die Datei heißt .png,
+      # der Hinweis muss also am Inhalt ansetzen und nicht die erlaubten
+      # Endungen aufzählen, die der Aufrufer scheinbar eingehalten hat.
+      assert_match(/Inhalt der Datei passt nicht/, JSON.parse(response.body)['message'].to_s,
+                   "#{name}: die Meldung muss den Inhalt benennen, nicht die Endung")
     end
 
     assert_not @club.reload.logo.attached?
@@ -82,6 +85,27 @@ class LogoUploadFormatTest < ActionDispatch::IntegrationTest
 
     assert @club.reload.logo.attached?
     assert @sa.reload.banner.attached?
+  end
+
+  # Die Prüfung muss am INHALT hängen, nicht an der Dateiendung: In Produktion
+  # liegt der Upload in einer Tempdatei von Rack, die die Endung des Originals
+  # nicht zwingend trägt. Liefe die Erkennung über den Namen, wäre der Riegel
+  # dort wirkungslos und alle Fälle oben trotzdem grün, weil ihre Tempdateien
+  # eine Endung haben.
+  test 'erkannt wird am Inhalt, auch ohne Dateiendung' do
+    real_without_extension = upload_from(
+      Vips::Image.black(40, 40).add(128).cast('uchar').write_to_buffer('.png'), '', 'image/png'
+    )
+    post "/api/v2/admin/clubs/#{@club.id}/upload_logo", params: { logo: real_without_extension }
+    assert_response :success, 'ein echtes PNG ohne Endung muss durchgehen'
+
+    svg_without_extension = upload_from(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40"/></svg>',
+      '', 'image/png'
+    )
+    post "/api/v2/admin/teams/#{@team.id}/upload_logo", params: { logo: svg_without_extension }
+    assert_response :unprocessable_entity, 'eine SVG ohne Endung muss abgewiesen werden'
+    assert_not @team.reload.logo.attached?
   end
 
   private

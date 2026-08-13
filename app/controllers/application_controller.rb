@@ -241,11 +241,18 @@ class ApplicationController < ActionController::Base
       return 'Die Datei konnte nicht als Bild gelesen werden.'
     end
 
-    # Ein Format, das sich nicht benennen lässt, gehört nicht in die Ablage:
-    # Sollte vips das Feld nicht gesetzt haben, wirft get und der Aufruf endet
-    # oben mit der Lesemeldung, statt die Prüfung zu überspringen.
+    # Eigene Meldung, nicht dieselbe wie bei der Kopfzeilen-Prüfung: Browser
+    # leiten den Multipart-Typ aus der DATEIENDUNG ab. Wer ein GIF in "logo.png"
+    # umbenennt, kommt an der ersten Prüfung vorbei und bekäme hier "Erlaubt sind
+    # PNG, JPG oder WebP" zu lesen, also genau das Format, das seine Datei zu
+    # sein vorgibt. Der Hinweis muss sagen, dass der INHALT nicht dazu passt,
+    # sonst sucht man den Fehler am falschen Ende.
+    #
+    # Ein Format, das sich nicht benennen lässt, gehört ebenfalls nicht in die
+    # Ablage: Sollte vips das Feld nicht gesetzt haben, wirft get und der Aufruf
+    # endet oben mit der Lesemeldung, statt die Prüfung zu überspringen.
     unless LOGO_ALLOWED_VIPS_LOADERS.include?(loader)
-      return 'Ungültiges Dateiformat. Erlaubt sind PNG, JPG oder WebP.'
+      return 'Der Inhalt der Datei passt nicht zur Dateiendung. Erlaubt sind echte PNG-, JPG- oder WebP-Bilder.'
     end
 
     return 'Das Logo muss quadratisch sein (gleiche Breite und Höhe).' if square && image.width != image.height
