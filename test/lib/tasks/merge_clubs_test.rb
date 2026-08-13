@@ -178,30 +178,20 @@ class MergeClubsTest < ActiveSupport::TestCase
 
   # --- game_operations_hash --------------------------------------------------
 
-  test 'übernimmt Gast-Spielbetriebe, nicht den Heimat-Eintrag' do
+  # Der Merge fasst den game_operations_hash des verbleibenden Vereins nicht an.
+  # Früher übernahm er die Gast-Einträge des aufgelösten Vereins – seit deren
+  # Wegfall wäre das die einzige Stelle, die sie wieder anlegt.
+  test 'laesst den game_operations_hash des verbleibenden Vereins unveraendert' do
     source = create(:club, game_operations_hash: [
       { 'home_game_operation' => true, 'game_operation_id' => 1 },
-      { 'game_operation_id' => 5 }
+      { 'home_game_operation' => false, 'game_operation_id' => 5 }
     ])
     target = create(:club, game_operations_hash: [{ 'home_game_operation' => true, 'game_operation_id' => 2 }])
 
     run_task('MERGES' => "#{source.id}:#{target.id}", 'DRY_RUN' => 'false')
 
-    hash = target.reload.game_operations_hash
-    assert_equal 2, hash.find { |e| e['home_game_operation'] }['game_operation_id'],
-                 'der Heimat-Spielbetrieb des verbleibenden Vereins bleibt'
-    assert_includes hash.map { |e| e['game_operation_id'] }, 5, 'Gast-Eintrag übernommen'
-    refute_includes hash.reject { |e| e['home_game_operation'] }.map { |e| e['game_operation_id'] }, 1,
-                    'Heimat-Eintrag des aufgelösten Vereins nicht als Gast übernommen'
-  end
-
-  test 'übernimmt keinen bereits bekannten Gast-Spielbetrieb doppelt' do
-    source = create(:club, game_operations_hash: [{ 'game_operation_id' => 5 }])
-    target = create(:club, game_operations_hash: [{ 'game_operation_id' => 5 }])
-
-    run_task('MERGES' => "#{source.id}:#{target.id}", 'DRY_RUN' => 'false')
-
-    assert_equal 1, target.reload.game_operations_hash.size
+    assert_equal [{ 'home_game_operation' => true, 'game_operation_id' => 2 }],
+                 target.reload.game_operations_hash
   end
 
   # --- Unique-Index ----------------------------------------------------------

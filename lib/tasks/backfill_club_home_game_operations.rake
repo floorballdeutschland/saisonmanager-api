@@ -437,12 +437,12 @@ namespace :clubs do
       next if dry_run
 
       club = result.club
-      # Gast-Einträge behalten, den Heimat-Eintrag ergänzen. game_operation_id
-      # bewusst als Integer: alle Abfragen vergleichen per jsonb `@>` gegen eine
-      # Zahl, ein String macht den Verein in jeder Vereinsliste unsichtbar.
-      guests = club.game_operations_hash.reject { |entry| entry['home_game_operation'] }
-      attrs = { game_operations_hash: guests + [{ 'home_game_operation' => true,
-                                                  'game_operation_id' => result.game_operation.id }] }
+      # Nur der Heimat-Eintrag. Gast-Einträge wurden hier früher mitgeschleift,
+      # das Konzept gibt es nicht mehr. game_operation_id bewusst als Integer:
+      # alle Abfragen vergleichen per jsonb `@>` gegen eine Zahl, ein String
+      # macht den Verein in jeder Vereinsliste unsichtbar.
+      attrs = { game_operations_hash: [{ 'home_game_operation' => true,
+                                         'game_operation_id' => result.game_operation.id }] }
       attrs[:state_association_id] = result.state_association.id if result.state_association
       club.update_columns(attrs)
       # update_columns rührt updated_at nicht an, der cache_key bleibt gleich –

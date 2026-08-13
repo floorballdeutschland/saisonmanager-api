@@ -109,6 +109,24 @@ class CleanupGuestGameOperationsTest < ActiveSupport::TestCase
            'Die Freigabe muss den Lesezugriff auch ohne Gast-Eintrag tragen'
   end
 
+  # In Altdaten liegt das Flag als String. `'false'` ist in Ruby truthy, eine
+  # Truthy-Pruefung hielte den Eintrag also fuer den Heimat-Eintrag; ein
+  # jsonb-`@>`-Filter auf echtes `false` faende den Verein gar nicht erst.
+  # Derselbe Boolean-Cast wie in Club#main_game_operation_id loest beides.
+  test 'Gast-Eintrag mit Text-Flag wird ebenfalls entfernt' do
+    club = create(:club, state_association_id: @heim_sa.id, game_operations_hash: [
+      { 'home_game_operation' => 'true', 'game_operation_id' => @heim_go.id },
+      { 'home_game_operation' => 'false', 'game_operation_id' => @gast_go.id }
+    ])
+
+    run_task('DRY_RUN' => 'false')
+
+    # Nicht ueber guest_ids: Dessen Truthy-Pruefung wuerde den Text-Eintrag
+    # selbst uebersehen und der Test ginge auch ungefixt durch.
+    assert_equal 1, club.reload.game_operations_hash.size
+    assert_equal @heim_go.id, club.main_game_operation_id
+  end
+
   test 'Verein ohne Gast-Eintrag bleibt unberuehrt' do
     club = create(:club, game_operations_hash: [
       { 'home_game_operation' => true, 'game_operation_id' => @heim_go.id }

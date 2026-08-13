@@ -28,14 +28,23 @@
 # Der Heim-Eintrag wird nie angefasst.
 
 namespace :cleanup do
+  # Heimat-Eintrag? Mit demselben Boolean-Cast wie `Club#main_game_operation_id`.
+  # In Altdaten liegt das Flag als String, und `'false'` ist in Ruby truthy: Eine
+  # Truthy-Prüfung hielte einen solchen Gast-Eintrag für den Heimat-Eintrag und
+  # ließe ihn stehen. Ein jsonb-`@>`-Filter wiederum matcht nur echtes `false`
+  # und fände den Verein gar nicht erst. Deshalb keine SQL-Vorauswahl: Bei knapp
+  # 300 Vereinen kostet der volle Durchlauf nichts, und Auswahl und Filterung
+  # können nicht auseinanderlaufen.
+  def home_entry?(entry)
+    ActiveModel::Type::Boolean.new.cast(entry['home_game_operation'])
+  end
+
   # Alle (Verein, Gast-Spielbetrieb)-Paare. `Club#additional_game_operation_ids`
   # gibt es nicht mehr, deshalb hier direkt über den Hash.
   def guest_go_pairs
-    Club.where("clubs.game_operations_hash @> '[{\"home_game_operation\": false}]'")
-        .order(:name)
-        .flat_map do |club|
+    Club.order(:name).flat_map do |club|
       club.game_operations_hash
-          .reject { |entry| entry['home_game_operation'] }
+          .reject { |entry| home_entry?(entry) }
           .map { |entry| { club: club, go_id: entry['game_operation_id'].to_i } }
     end
   end
@@ -53,8 +62,10 @@ namespace :cleanup do
 
     go_names = GameOperation.pluck(:id, :name).to_h
     puts "\nNach Empfänger-Spielbetrieb:"
+    # `group` enthält Paare, nicht Vereine: Ein Verein kann denselben
+    # Spielbetrieb mehrfach als Gast führen.
     pairs.group_by { |p| p[:go_id] }.sort_by { |_, v| -v.size }.each do |go_id, group|
-      puts format('  GO %<go>-4s %<name>-42s %<count>3d Vereine',
+      puts format('  GO %<go>-4s %<name>-42s %<count>3d Einträge',
                   go: go_id, name: go_names[go_id].to_s.strip[0, 41], count: group.size)
     end
   end
@@ -77,7 +88,7 @@ namespace :cleanup do
     by_club.each do |club_id, pairs|
       club = pairs.first[:club]
       before = club.game_operations_hash
-      after = before.select { |entry| entry['home_game_operation'] }
+      after = before.select { |entry| home_entry?(entry) }
 
       # Sicherheitsnetz: Der Heim-Eintrag muss übrig bleiben. Ein Verein ohne ihn
       # wäre über die Oberfläche nicht mehr auffindbar – die Vereinslisten matchen
