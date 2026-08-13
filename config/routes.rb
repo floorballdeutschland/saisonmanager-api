@@ -384,6 +384,8 @@ Rails.application.routes.draw do
           end
         end
         resource :analytics, only: [:show]
+        get 'system_health',         to: 'system_health#show'
+        get 'system_health/summary', to: 'system_health#summary'
         resources :arenas, only: %i[index create update destroy] do
           member { post :merge }
         end

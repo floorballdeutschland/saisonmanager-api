@@ -450,6 +450,24 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'season', description: 'Name der Saison' }
       ]
     },
+    'SystemHealthMailer#threshold_warning' => {
+      mailer_class: 'SystemHealthMailer',
+      action_name: 'threshold_warning',
+      description: 'Frühwarnung zum Speicherplatz auf dem Server. Verschickt der tägliche Job ' \
+                   'system:disk_check und nur dann, wenn die Belegung eine Schwelle neu ' \
+                   'überschritten hat (80 Prozent Warnung, 90 Prozent kritisch). Bleibt die ' \
+                   'Belegung auf demselben Stand, folgt keine weitere Mail. Empfänger ist das ' \
+                   'Postfach der Administration (Standard it@floorball.de, über die ' \
+                   'Umgebungsvariable SYSTEM_HEALTH_NOTIFY_EMAIL überschreibbar).',
+      default_subject: 'Saisonmanager: Speicherplatz zu {{used_percent}} Prozent belegt',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'used_percent', description: 'Belegung des Datenträgers in ganzen Prozent' },
+        { key: 'free_space', description: 'Noch freier Platz, lesbar formatiert (z. B. „12,4 GB")' },
+        { key: 'status', description: 'Erreichte Stufe: warning oder critical' }
+      ]
+    },
     'ApiKeyApplicationMailer#submitted_notification' => {
       mailer_class: 'ApiKeyApplicationMailer',
       action_name: 'submitted_notification',

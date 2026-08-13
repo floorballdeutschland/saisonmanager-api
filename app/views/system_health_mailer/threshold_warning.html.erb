@@ -1,0 +1,39 @@
+<h2>Speicherplatz auf dem Saisonmanager-Server</h2>
+
+<p>
+  Der Datenträger, auf dem die Uploads liegen, ist zu
+  <strong><%= @disk[:used_percent] %> Prozent</strong> belegt.
+  Frei sind noch <strong><%= format_bytes(@disk[:free_bytes]) %></strong>
+  von <%= format_bytes(@disk[:total_bytes]) %>.
+</p>
+
+<p>
+  <% if @disk[:status] == 'critical' %>
+    Damit ist die kritische Schwelle von <%= @thresholds[:critical] %> Prozent überschritten.
+    Läuft der Datenträger voll, schlagen Uploads fehl und die Datenbank kann nicht mehr schreiben.
+  <% else %>
+    Damit ist die Warnschwelle von <%= @thresholds[:warning] %> Prozent überschritten.
+    Es besteht kein akuter Handlungsdruck, der Verlauf sollte aber beobachtet werden.
+  <% end %>
+</p>
+
+<p>
+  <strong>Wachstum:</strong>
+  In den letzten Monaten sind durchschnittlich
+  <%= format_bytes(@growth[:avg_bytes_per_month]) %> pro Monat an Uploads hinzugekommen.
+  <% if @growth[:months_until_full] %>
+    Bei diesem Tempo ist der Datenträger in etwa
+    <%= @growth[:months_until_full] %> Monaten voll.
+  <% else %>
+    Eine Restlaufzeit lässt sich daraus nicht ableiten.
+  <% end %>
+</p>
+
+<p>
+  <a href="<%= frontend_base_url %>/verwaltung/system">Systemzustand öffnen</a>
+</p>
+
+<p>
+  Diese Mail kommt nur, wenn sich der Zustand gegenüber der letzten Messung verschlechtert hat.
+  Bleibt die Belegung auf demselben Stand, folgt keine weitere Erinnerung.
+</p>
