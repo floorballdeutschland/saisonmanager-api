@@ -9,6 +9,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Spieltagsdatum: abweichende Schreibweisen kommen nicht mehr in die Datenbank**: Das Datum eines Spieltags wird technisch als Text gespeichert und ungeprüft übernommen. Ein Spieltag mit „11.08.2026" statt „2026-08-11" ließ sich damit anlegen, war anschließend aber für alles unsichtbar, was über dieses Datum sucht: Er fand seine Geschwister in derselben Halle nicht, tauchte im öffentlichen Abruf der Livestreams des Tages nicht auf und ließ sich von einem Tag ohne Übertragungen nicht unterscheiden. Eine Meldung gab es nicht. Der Saisonmanager prüft das Format jetzt beim Speichern und weist abweichende Angaben mit einer Begründung ab; ein noch offenes Datum bleibt weiter erlaubt. Bestehende Spieltage mit abweichendem Datum bleiben ausdrücklich bearbeitbar, etwa um Halle oder Ausrichter nachzutragen. Nur wer das Datum selbst ändert, muss es in der erwarteten Schreibweise angeben. Für die Eingabe über die Oberfläche ändert sich nichts, dort liefert das Datumsfeld ohnehin die richtige Form.
+
+### Verbessert
+
+- **Spieltagssuche über das Datum wird schneller**: Die Datumsspalte der Spieltage war nicht indiziert, obwohl drei Stellen darüber suchen: der öffentliche Abruf der Livestreams des Tages, die Mannschaftsseite und die Schiedsrichter-Ansetzung. Der Index ist nachgezogen.
+- **Altdaten-Import normalisiert das Spieltagsdatum**: Der Import der Altsaisons 2010 bis 2014 schrieb das Datum unverändert aus der Altdatenbank durch, während er das Geburtsdatum der Spieler*innen längst auf eine einheitliche Form brachte. Abweichende Schreibweisen werden jetzt umgerechnet. Ein Datum, das sich gar nicht lesen lässt, bleibt stehen und lässt den Import laut scheitern, statt den Spieltag stillschweigend ohne Datum anzulegen.
+
 ## [1.78.0] - 2026-08-13
 
 ### Neu

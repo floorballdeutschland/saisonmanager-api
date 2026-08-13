@@ -259,6 +259,14 @@ class LeagueTest < ActiveSupport::TestCase
     Arena.create!(name: 'Testhalle', city: 'Teststadt')
   end
 
+  # Spieltag mit abweichend formatiertem Datum, wie er als Altbestand in der
+  # Datenbank steht. Die Formatpruefung an GameDay (#380) greift beim Schreiben
+  # und liesse sich hier nicht umgehen, ohne den zu pruefenden Zustand zu
+  # verlieren: Die Faelle oben belegen, dass die LESER solche Zeilen aushalten.
+  def legacy_game_day(**attrs)
+    GameDay.new(**attrs).tap { |game_day| game_day.save!(validate: false) }
+  end
+
   # Liga mit erstem Spieltag in `days_ahead` Tagen. `express` steuert den
   # Schalter am LV des Spielbetriebs; nil heißt: gar kein LV verknüpft.
   def express_league(days_ahead:, express:)
@@ -552,7 +560,11 @@ class LeagueTest < ActiveSupport::TestCase
     arena = build_arena
     # game_days.date ist eine Textspalte; ein krummer Eintrag darf die
     # Expresslizenz-Pruefung nicht zum Serverfehler machen.
-    GameDay.create!(league: league, arena: arena, club: club, number: 1, date: '31.02.2026')
+    #
+    # Ohne Validierung angelegt: Seit #380 weist GameDay ein solches Datum beim
+    # SCHREIBEN ab. Hier geht es aber um ALTBESTAND, der so in der Datenbank
+    # steht, und genau dafuer muessen die Leser robust bleiben.
+    legacy_game_day(league: league, arena: arena, club: club, number: 1, date: '31.02.2026')
     GameDay.create!(league: league, arena: arena, club: club, number: 2,
                     date: (Date.current + 1).to_s)
 
@@ -563,7 +575,7 @@ class LeagueTest < ActiveSupport::TestCase
   test 'express_license_window_open?: nur unplausible Daten ergeben kein Fenster' do
     go = build_go
     league = build_league(go)
-    GameDay.create!(league: league, arena: build_arena, club: build_club, number: 1, date: 'unbekannt')
+    legacy_game_day(league: league, arena: build_arena, club: build_club, number: 1, date: 'unbekannt')
 
     assert_nil league.first_game_day_date
     refute league.express_license_window_open?

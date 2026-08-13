@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_08_13_120000) do
+ActiveRecord::Schema[7.1].define(version: 2026_08_13_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -267,6 +267,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_13_120000) do
     t.string "legacy_ref"
     t.index ["arena_id"], name: "index_game_days_on_arena_id"
     t.index ["club_id"], name: "index_game_days_on_club_id"
+    t.index ["date"], name: "index_game_days_on_date"
     t.index ["league_id", "number"], name: "index_game_days_on_league_id_and_number"
     t.index ["legacy_ref"], name: "index_game_days_on_legacy_ref", unique: true, where: "(legacy_ref IS NOT NULL)"
   end

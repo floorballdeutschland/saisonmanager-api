@@ -38,6 +38,63 @@ class GameDayTest < ActiveSupport::TestCase
                     "teams-Queries skalieren mit der Spielanzahl (N+1): #{team_queries}"
   end
 
+  # ---------------------------------------------------------------------------
+  # Formatprüfung am Datum (#380). Die Spalte ist Text und wurde ungeprüft
+  # geschrieben; der ganze Bestand vergleicht sie als Zeichenkette.
+  # ---------------------------------------------------------------------------
+
+  test 'ein abweichend formatiertes Datum wird beim Anlegen abgewiesen' do
+    game_day = GameDay.new(league: create(:league, :current_season), number: 1, date: '11.08.2026')
+
+    refute game_day.valid?
+    assert_includes game_day.errors[:date].join, 'JJJJ-MM-TT'
+  end
+
+  test 'die üblichen Abweichungen kommen alle nicht durch' do
+    league = create(:league, :current_season)
+
+    ['2026-8-11', '2026-08-11 ', '2026-08-11T00:00:00', '11.08.2026', 'Sommerpause'].each do |value|
+      refute GameDay.new(league:, number: 1, date: value).valid?, "#{value.inspect} muss abgewiesen werden"
+    end
+  end
+
+  test 'ein leeres Datum bleibt erlaubt' do
+    league = create(:league, :current_season)
+
+    assert GameDay.new(league:, number: 1, date: nil).valid?
+    assert GameDay.new(league:, number: 1, date: '').valid?
+  end
+
+  test 'das erwartete Format geht durch' do
+    assert GameDay.new(league: create(:league, :current_season), number: 1, date: '2026-08-11').valid?
+  end
+
+  # Der wichtigste Fall: Ein Altdatensatz mit abweichendem Format muss weiter
+  # speicherbar bleiben, solange niemand sein Datum anfasst. Ohne
+  # `if: date_changed?` würde die Validierung dort jedes Speichern blockieren,
+  # auch das Nachtragen von Halle und Ausrichter, und zwar bevor irgendwer den
+  # Bestand gesichtet hat.
+  test 'ein Altdatensatz laesst sich weiter speichern, ohne sein Datum anzufassen' do
+    game_day = GameDay.new(league: create(:league, :current_season), number: 1, date: '11.08.2026')
+    game_day.save!(validate: false)
+
+    game_day.arena = create(:arena)
+
+    assert game_day.valid?, 'das Nachtragen der Halle darf nicht am Altdatum scheitern'
+    assert game_day.save
+  end
+
+  test 'wer das Datum eines Altdatensatzes anfasst, muss es richtig schreiben' do
+    game_day = GameDay.new(league: create(:league, :current_season), number: 1, date: '11.08.2026')
+    game_day.save!(validate: false)
+
+    game_day.date = '12.08.2026'
+    refute game_day.valid?
+
+    game_day.date = '2026-08-12'
+    assert game_day.valid?
+  end
+
   private
 
   def capture_sql

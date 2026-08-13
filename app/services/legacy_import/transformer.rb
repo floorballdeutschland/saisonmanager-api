@@ -53,8 +53,36 @@ module LegacyImport
         arena_id:,
         club_id:,
         number: spieltag['spieltag_nr'].to_i,
-        date: spieltag['datum'].to_s
+        date: normalized_game_day_date(spieltag['datum'])
       }.compact
+    end
+
+    # Das Spieltagsdatum ging bisher roh durch (`spieltag['datum'].to_s`),
+    # obwohl `player_attrs` das Geburtsdatum längst mit `.strip[0, 10]`
+    # normalisiert. Der ganze Bestand vergleicht diese Spalte als Zeichenkette:
+    # Ein abweichendes Format findet weder seine Geschwister in derselben Halle
+    # (`GameDay#hall_day_siblings`) noch den öffentlichen Livestream-Abruf.
+    #
+    # Zwei Formen, in dieser Reihenfolge:
+    #   "2026-08-11T00:00:00", "2026-08-11 "  -> Präfix, wie bei geb_datum
+    #   "11.08.2026", "2026-8-11"             -> über Date.parse
+    #
+    # Was beides nicht hergibt, bleibt unverändert stehen und läuft in die
+    # Validierung von GameDay. Ein unlesbares Datum still auf nil zu setzen wäre
+    # der schlechtere Tausch: Der Spieltag käme ohne Datum in die Datenbank, und
+    # niemand erfährt davon.
+    def normalized_game_day_date(raw)
+      value = raw.to_s.strip
+      return nil if value.blank?
+
+      candidate = value[0, 10]
+      return candidate if candidate.match?(GameDay::DATE_FORMAT)
+
+      begin
+        Date.parse(value).to_s
+      rescue Date::Error
+        value
+      end
     end
 
     # global_*_begegnung-Zeile → games-Attribute (ohne JSONB; die werden über
