@@ -582,6 +582,10 @@ class GamesController < ApplicationController
               end
 
     if allowed
+      if (error = event_input_error)
+        return render json: { message: error }, status: :unprocessable_entity
+      end
+
       # ensure we have the hash set
       game.events ||= []
 
@@ -682,6 +686,10 @@ class GamesController < ApplicationController
       game.events ||= []
       event = game.events.find { |e| e['id'].to_i == params[:event_id].to_i }
       return render json: { message: 'Ereignis nicht gefunden.' }, status: :not_found unless event
+
+      if (error = event_input_error)
+        return render json: { message: error }, status: :unprocessable_entity
+      end
 
       event['time'] = params[:time]
       event['period'] = params[:period]
@@ -1246,6 +1254,42 @@ class GamesController < ApplicationController
     return unless Game.technical_goal?(event)
 
     event.delete('penalty_code_id')
+  end
+
+  # Die vier Angaben, die ein Ereignis überhaupt erst zu einem Ereignis machen.
+  # Beide Schreibwege übernahmen sie ungeprüft aus den Parametern, ohne permit,
+  # ohne .presence und ohne Wertebereich. Fehlte event_type oder kam es leer an,
+  # verlor die Zeile ihre Kennzeichnung, und weil sort_events! den Spielstand nur
+  # bei event_type == 'goal' hochzählt, sank der Spielstand still um ein Tor.
+  # Kein Fehler, keine Meldung: Game#result überspringt Zeilen ohne Spielstand,
+  # die Anzeige wirkte also stimmig, nur mit einem Tor weniger. Dieselben Zeilen
+  # bleiben als typlose Rümpfe in events stehen.
+  #
+  # Anders als in #295 vermutet ist update_event nicht der einzige Weg dorthin:
+  # add_event schreibt event_type genauso unbedingt aus den Parametern und legt
+  # bei fehlendem Wert eine typlose Zeile gleich neu an. Beide Aktionen fragen
+  # deshalb denselben Guard.
+  #
+  # Kein Risiko für bestehende Aufrufer: Das Spielbericht-Formular
+  # (match-event-form) ist der einzige Schreibweg und setzt alle vier Werte fest
+  # ('goal' oder 'penalty', 'home' oder 'guest', Zeit, Abschnitt). Die v1-Ticker-
+  # Schnittstelle liest nur.
+  EVENT_TYPES = %w[goal penalty].freeze
+  EVENT_TEAMS = %w[home guest].freeze
+
+  # Gibt eine erklärende Meldung zurück oder nil, wenn die Angaben tragen
+  # (gleiche Form wie logo_upload_error).
+  def event_input_error
+    unless EVENT_TYPES.include?(params[:event_type])
+      return 'Ereignisart fehlt oder ist unbekannt (erlaubt: Tor oder Strafe).'
+    end
+    unless EVENT_TEAMS.include?(params[:event_team])
+      return 'Mannschaft fehlt oder ist unbekannt (erlaubt: Heim oder Gast).'
+    end
+    return 'Ereigniszeit fehlt.' if params[:time].blank?
+    return 'Spielabschnitt fehlt.' if params[:period].blank?
+
+    nil
   end
 
   # Weicher Lizenz-Check: erzeugt eine Warnmeldung, wenn der Spieler keine erteilte

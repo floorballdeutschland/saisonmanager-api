@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Spielbericht: ein Ereignis verliert seine Art nicht mehr stillschweigend**: Beim Anlegen und Ändern eines Ereignisses übernahm der Saisonmanager Art (Tor oder Strafe) und Mannschaft (Heim oder Gast) ungeprüft aus dem Aufruf. Kam die Art nicht mit oder kam sie leer an, verlor die Zeile ihre Kennzeichnung. Weil der Spielstand aus den als Tor gekennzeichneten Zeilen gezählt wird, sank er dadurch um ein Tor, ohne dass jemand eine Meldung sah: Der Bericht wirkte stimmig, nur mit einem Treffer weniger. Fehlte die Mannschaft, wanderte das Ereignis stumm auf die Gastseite, und die Trikotnummer der Heimseite wurde dabei entfernt. Übrig blieb jeweils eine Zeile ohne Art, die auch in der Fehlerüberwachung als Rauschen auffiel. Beide Angaben werden jetzt gegen die erlaubten Werte geprüft, ebenso Ereigniszeit und Spielabschnitt auf Anwesenheit. Ein unvollständiger Aufruf wird mit einer erklärenden Meldung abgewiesen, statt den Eintrag zu beschädigen. Die Spielbericht-Oberfläche setzt alle vier Angaben von sich aus, für die Erfassung am Spieltag ändert sich also nichts.
+
 ## [1.78.0] - 2026-08-13
 
 ### Neu
