@@ -328,9 +328,19 @@ class User < ApplicationRecord
     # Sichtbar nur, wenn die Ansetzungslogik für den Landesverband freigeschaltet
     # ist (referee_assignment_enabled). National (FD, ohne LV) ist immer aktiv.
     ansetzer_active = referee_assignment_active_for_ansetzer?(ph)
-    result[:menu_item_referee_assignments] = ph[:admin].present? || ansetzer_active
-    # Wochenend-Verfügbarkeitsübersicht der Schiris („war room") – Teil derselben
-    # Ansetzungslogik, daher identisch gegated.
+    # Weg 3: Wo ein Verband die Ansetzung außerhalb der SBK erlaubt, aber nicht
+    # auf Personenebene, pflegt die RSK dieselbe Liste in einem reduzierten Modus
+    # (Verein oder Freitext) – derselbe Menüpunkt, andere Ansicht.
+    rsk_club_mode = referee_assignment_club_mode_for_rsk?(ph)
+    result[:menu_item_referee_assignments] = ph[:admin].present? || ansetzer_active || rsk_club_mode
+    # Sagt dem Frontend, welche der beiden Ansichten der Menüpunkt zeigt. Die
+    # Personenebene gewinnt, damit sich nie beide Wege auf dasselbe Spiel legen:
+    # wer in Verband A ansetzt und in Verband B RSK ist, bekommt die
+    # personenscharfe Ansicht (zwei Reiter sind bewusst nicht gebaut, siehe #403).
+    result[:referee_assignment_club_mode] = rsk_club_mode && !ansetzer_active && ph[:admin].blank?
+    # Wochenend-Verfügbarkeitsübersicht der Schiris („war room") – gehört zur
+    # personenscharfen Ansetzung (Weg 2) und bleibt deshalb an ansetzer_active
+    # gebunden; im reduzierten Modus gibt es keine Verfügbarkeiten zu sichten.
     result[:menu_item_referee_availability] = ph[:admin].present? || ansetzer_active
     # Anträge der Schiris auf Vereins-Ausschlüsse und deren Pflege am Schiri-Profil
     # – dieselbe Rolle wie die Ansetzung, weil die Liste nur dort wirkt.
@@ -485,8 +495,32 @@ class User < ApplicationRecord
     return false unless perm_hash[:ansetzer].present?
     return true if perm_hash[:ansetzer].include?(0)
 
-    sa_ids = GameOperation.where(id: perm_hash[:ansetzer]).pluck(:state_association_id).compact.uniq
-    StateAssociation.where(id: sa_ids, referee_assignment_enabled: true).exists?
+    referee_assignment_mode_reached?(perm_hash[:ansetzer], :person)
+  end
+
+  # True, wenn die RSK den reduzierten Modus (Weg 3: Verein oder Freitext) sieht:
+  # mindestens einer der zugeordneten Landesverbände hat den Hauptschalter aktiv
+  # und die Personenebene aus. Ist die Personenebene an, setzt dort die
+  # Ansetzer-Rolle an und die RSK bekommt den Punkt über diesen Weg nicht.
+  #
+  # Global (Spielbetrieb 0) gescopte RSK und der nationale Spielbetrieb liegen
+  # immer auf der Personenebene, also nie im reduzierten Modus.
+  def referee_assignment_club_mode_for_rsk?(perm_hash)
+    return false if perm_hash[:rsk].blank?
+    return false if perm_hash[:rsk].include?(0)
+
+    referee_assignment_mode_reached?(perm_hash[:rsk], :club)
+  end
+
+  # Hat mindestens einer der Landesverbände hinter diesen Spielbetrieben den
+  # gesuchten Ansetzungsmodus? Die Auswertung der drei gestaffelten Schalter liegt
+  # ausschließlich in StateAssociation#referee_assignment_mode – hier wird nur
+  # gefragt, nie selbst kombiniert.
+  def referee_assignment_mode_reached?(go_ids, mode)
+    sa_ids = GameOperation.where(id: go_ids).pluck(:state_association_id).compact.uniq
+    return false if sa_ids.empty?
+
+    StateAssociation.where(id: sa_ids).any? { |sa| sa.referee_assignment_mode == mode }
   end
 
   # True, wenn für die SBK überhaupt Verfahrensvorschläge entstehen können: Der

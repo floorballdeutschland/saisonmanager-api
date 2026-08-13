@@ -131,6 +131,7 @@ module Admin
       permitted = %i[name short_name vsk_email sbk_email rsk_email scan_required
                      express_license_enabled referee_license_review_enabled
                      manual_proceeding_creation referee_assignment_enabled
+                     referee_assignment_external_enabled person_level_assignment_default
                      report_form_email_enabled
                      logo banner_link_url]
       # Den übergeordneten Verband darf nur ein globaler Admin (um-)hängen.
@@ -140,7 +141,30 @@ module Admin
       # konfiguriert; ein Kind erbt den Wert über
       # `effective_referee_license_review_enabled`.
       attrs[:referee_license_review_enabled] = false if attrs[:parent_id].present?
+      normalize_referee_assignment_switches!(attrs)
       attrs
+    end
+
+    # Die drei Ansetzungs-Optionen sind gestaffelt: die Personenebene setzt den
+    # Hauptschalter voraus, die Voreinstellung die Personenebene. Die Maske graut
+    # das aus, ein API-Aufruf umgeht sie. Statt die widersprüchliche Kombination
+    # zu speichern und überall beim Lesen zu entschärfen, wird sie hier
+    # aufgeräumt – sonst taucht ein „aus" gesetzter Schalter beim
+    # Wiedereinschalten des Hauptschalters unerwartet aktiv wieder auf.
+    def normalize_referee_assignment_switches!(attrs)
+      main = switch_value(attrs, :referee_assignment_external_enabled)
+      attrs[:referee_assignment_enabled] = false unless main
+
+      person = switch_value(attrs, :referee_assignment_enabled)
+      attrs[:person_level_assignment_default] = false unless main && person
+    end
+
+    # Wert eines Schalters nach diesem Update: aus den Parametern, wenn er
+    # mitgeschickt wurde, sonst der gespeicherte Stand (nil beim Anlegen).
+    def switch_value(attrs, key)
+      return ActiveModel::Type::Boolean.new.cast(attrs[key]) if attrs.key?(key)
+
+      @state_association&.public_send(key)
     end
 
     def authorize_sa_access!

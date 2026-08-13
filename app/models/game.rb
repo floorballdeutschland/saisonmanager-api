@@ -38,7 +38,25 @@ class Game < ApplicationRecord
   }
 
   scope :match_record_closed, -> { where(game_status: %w[match_record_closed finalized]) }
+
   scope :match_record_not_closed, -> { where.not(game_status: %w[match_record_closed finalized]) }
+
+  # Ob ein neu angelegtes Spiel dieser Liga gleich für die Personenebene markiert
+  # wird (Verbandsoption „Standardmäßig durch Ansetzer*in"). Beide Anlege-Wege –
+  # GamesController#create und der Spielplan-Import (LeaguesController#
+  # rebuild_schedule!) – fragen hier, damit sie nicht auseinanderlaufen.
+  def self.person_level_assignment_default_for?(league)
+    league&.person_level_assignment_default? || false
+  end
+
+  # Darf ein Spiel dieser Liga überhaupt für die Personenebene markiert werden?
+  # Ohne diese Prüfung entsteht über einen direkten API-Aufruf (oder ein noch
+  # nicht ausgeliefertes Frontend) ein Spiel, das im reduzierten Modus gesperrt
+  # ist, mangels Ansetzer-Rolle aber auch dort niemand bearbeiten kann – nur ein
+  # globaler Admin käme wieder heran.
+  def self.person_level_assignment_allowed_for?(league)
+    league&.referee_assignment_mode == :person
+  end
 
   # „Begonnen oder gespielt" – deckt gestartete/beendete Spiele, angelegte
   # Spielberichte und abgeschlossene Berichte ab. Wird genutzt, um zu
@@ -690,6 +708,29 @@ class Game < ApplicationRecord
     end
   end
 
+  # Öffentlicher Hinweis auf die Ansetzung. Bis August 2026 stand die Markierung
+  # „wird personenscharf angesetzt" als Sentinel-Text 'Ansetzung durch RSK' im
+  # Freitextfeld und war damit im Spielplan sichtbar. Seit die Markierung eine
+  # eigene Spalte ist (person_level_assignment), muss der Hinweis daraus
+  # abgeleitet werden, sonst stünde für Zuschauer plötzlich nichts mehr da.
+  #
+  # Nur für die öffentliche Ausgabe (schedule_item, full_hash). Der Spiel-Editor
+  # der SBK liest den Freitext über meta_hash und muss den Rohwert sehen: würde
+  # er den abgeleiteten Hinweis ins Eingabefeld laden, schriebe das nächste
+  # Speichern ihn als echten Freitext zurück.
+  # Der Hinweis ist eine Ankündigung und gilt nur, solange das Spiel bevorsteht.
+  # Angepfiffene und gespielte Spiele zeigen sonst dauerhaft „Ansetzung durch
+  # Ansetzer*in", wo nie ein Gespann eingetragen wurde – mit der Voreinstellung
+  # „Standardmäßig durch Ansetzer*in" träfe das jedes Spiel des Verbands. Beim
+  # Sentinel im Freitextfeld fiel das nicht auf, weil ihn die SBK je Spiel von
+  # Hand setzte.
+  def public_nominated_referee_string
+    return nominated_referee_string if nominated_referee_string.present?
+    return 'Ansetzung durch Ansetzer*in' if person_level_assignment? && !started?
+
+    nominated_referee_string
+  end
+
   def schedule_item
     item = {
       game_id: id,
@@ -715,7 +756,7 @@ class Game < ApplicationRecord
       guest_team_club_id: guest_team&.club_id,
       guest_team_logo: guest_team&.logo_url_fallback,
       guest_team_small_logo: guest_team&.logo_small_url_fallback,
-      nominated_referee_string:,
+      nominated_referee_string: public_nominated_referee_string,
       referees:,
       notice_type:,
       notice_string:,
@@ -878,7 +919,7 @@ class Game < ApplicationRecord
       arena_address: game_day.arena&.address,
       arena_short: game_day.arena&.schedule_item,
       hosting_club: game_day.hosting_club,
-      nominated_referees: nominated_referee_string,
+      nominated_referees: public_nominated_referee_string,
       deletable: deletable?,
       notice_type:,
       notice_string:,
@@ -937,7 +978,12 @@ class Game < ApplicationRecord
       notice_type:,
       notice_string:,
       current_period_title:,
+      # Rohwert, nicht public_nominated_referee_string: meta_hash speist den
+      # Spiel-Editor der SBK (GameDay#full_hash(true) → admin_game_schedule).
+      # Das Flag daneben, damit der Editor die Markierung anzeigen und umschalten
+      # kann, ohne sie im Freitext zu suchen.
       nominated_referees: nominated_referee_string,
+      person_level_assignment:,
       referees:,
       group_identifier:,
       series_title:,

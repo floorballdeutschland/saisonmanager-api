@@ -675,10 +675,21 @@ class LeaguesController < ApplicationController
 
     teams = league.teams
 
-    # Ansetzung durch die RSK: national (kein Landesverband, z. B. FD) immer aktiv,
-    # sonst entscheidet das LV-Flag referee_assignment_enabled.
-    sa = league.game_operation&.state_association
-    referee_assignment_enabled = sa.nil? || sa.referee_assignment_enabled?
+    # Ansetzungsmodus der Liga: der Bundesspielbetrieb bleibt immer auf der
+    # Personenebene, sonst entscheiden die gestaffelten LV-Schalter
+    # (StateAssociation#referee_assignment_mode).
+    #
+    # „National" wird ausdrücklich über GameOperation#national bestimmt, nicht
+    # über einen fehlenden Landesverband: die FD-GameOperation *hat* einen
+    # StateAssociation-Datensatz (für das Verbandslogo), siehe die Begründung in
+    # User#permission_hash. Ein `sa.nil?` griffe für FD also nie und die Zusage
+    # „für den Bundesspielbetrieb ändert sich nichts" hinge in Wahrheit an den
+    # Schaltern dieses Datensatzes.
+    mode = league.referee_assignment_mode
+    # Schlüssel bleibt, damit ein noch nicht ausgerolltes Frontend weiterarbeitet:
+    # er sagt wie bisher, ob der Spiel-Editor die Markierung anbieten soll – und
+    # das tut er nur auf der Personenebene.
+    referee_assignment_enabled = mode == :person
 
     render json: {
       arenas: Arena.active.order(:city, :name).sort_by { |a| a.city.present? ? 0 : 1 }.map(&:full_hash),
@@ -686,7 +697,12 @@ class LeaguesController < ApplicationController
       # public_hash statt full_hash: Die Spielplanverwaltung braucht Name, Logo und
       # Spielbetrieb der Vereine, nicht deren contact_email.
       clubs: teams.map(&:all_clubs).flatten.uniq.map(&:public_hash),
-      referee_assignment_enabled: referee_assignment_enabled
+      referee_assignment_enabled: referee_assignment_enabled,
+      referee_assignment_mode: mode,
+      # Vorbelegung der Markierung für neue Spiele im Editor. Der Server setzt
+      # dieselbe Voreinstellung noch einmal für Wege, die das Feld gar nicht
+      # mitschicken (Spielplan-Import).
+      person_level_assignment_default: league.person_level_assignment_default?
     }
   end
 
@@ -964,10 +980,15 @@ class LeaguesController < ApplicationController
 
     game_days.each { |k, v| game_days[k][:gd] = GameDay.create!(v) }
 
+    # Verbandsoption „Standardmäßig durch Ansetzer*in" gilt auch für importierte
+    # Spielpläne – einmal pro Import ermittelt, nicht je Spiel.
+    person_level = Game.person_level_assignment_default_for?(league)
+
     games.each do |k, v|
       gd_id = game_days[k][:gd].id
       v.each do |game_hash|
-        Game.create!(game_hash.merge(game_day_id: gd_id, started: false, ended: false, game_ended: false))
+        Game.create!(game_hash.merge(game_day_id: gd_id, started: false, ended: false, game_ended: false,
+                                     person_level_assignment: person_level))
       end
     end
   end
