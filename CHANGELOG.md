@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.79.0] - 2026-08-13
+
 ### Behoben
 
 - **Direkter Transfer nur noch im eigenen Spielbetrieb**: Einen Spieler direkt in einen anderen Verein zu setzen oder ihm ein Zweitspielrecht zu geben, war für jede Spielbetriebskommission möglich, unabhängig davon, für welchen Spielbetrieb sie eingesetzt ist. Damit ließ sich ein beliebiges fremdes Profil in einen Verein des eigenen Verbands holen, und weil der Transfer den neuen Verein als Heimatverein einträgt, war man anschließend regulär für dieses Profil zuständig. Alle übrigen Zuständigkeitsregeln liefen damit ins Leere, denn sie hängen am Heimatverein. Beide Vorgänge verlangen jetzt zweierlei: Zuständigkeit für den Spieler über seinen aktuell gültigen Heimatverein, und dass auch der Zielverein im eigenen Spielbetrieb liegt. Für die Landesverbände ändert sich am Alltag nichts, weil sie direkt ohnehin nur innerhalb ihres eigenen Spielbetriebs wechseln. Der Wechsel über Spielbetriebe hinweg läuft weiter über den Transferantrag mit Freigabe des Landesverbands oder über die bundesweite Spielbetriebskommission. Eine Vereins-Freigabe zählt dabei ausdrücklich nicht mit: Sie macht einen fremden Verein einsehbar, holt ihn aber nicht in den eigenen Spielbetrieb. Vereine ohne hinterlegten Heimat-Spielbetrieb sind wie Profile ohne gültigen Heimatverein der bundesweiten Spielbetriebskommission vorbehalten.
