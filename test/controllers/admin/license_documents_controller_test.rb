@@ -285,7 +285,76 @@ module Admin
       assert_includes JSON.parse(response.body).map { |d| d['document_type'] }, own.key
     end
 
+    # --- Schreibseite: derselbe Verbands-Scope wie beim Lesen ---
+
+    test 'gescopte SBK darf ein fremdes Verbandsdokument nicht loeschen' do
+      foreign, doc = foreign_document_for_scoped_sbk
+
+      delete "/api/v2/admin/players/#{@player.id}/license_documents/#{doc.id}"
+
+      assert_response :forbidden
+      assert LicenseDocument.exists?(doc.id), 'Das fremde Dokument muss erhalten bleiben'
+      assert doc.reload.file.attached?, 'Die Datei darf nicht gepurged sein'
+      assert_equal foreign.key, doc.document_type
+    end
+
+    test 'gescopte SBK darf ein eigenes Verbandsdokument weiterhin loeschen' do
+      _foreign, _doc = foreign_document_for_scoped_sbk
+      own = DocumentType.create!(name: 'Eigenes LV-Attest', game_operation_id: @own_go.id)
+      own_doc = LicenseDocument.new(player: @player, document_type: own.key)
+      own_doc.file.attach(io: StringIO.new('%PDF-1.4'), filename: 'o.pdf', content_type: 'application/pdf')
+      own_doc.save!
+
+      delete "/api/v2/admin/players/#{@player.id}/license_documents/#{own_doc.id}"
+
+      assert_response :success
+      assert_not LicenseDocument.exists?(own_doc.id)
+    end
+
+    test 'gescopte SBK kann nicht in eine fremde Verbandsart hochladen' do
+      foreign, _doc = foreign_document_for_scoped_sbk
+
+      post "/api/v2/admin/players/#{@player.id}/license_documents",
+           params: { document_type: foreign.key, file: fixture_file_upload('dokument.pdf', 'application/pdf') }
+
+      assert_response :forbidden
+      assert_equal 1, @player.license_documents.where(document_type: foreign.key).count,
+                   'Der abgewiesene Upload darf den Bestand nicht verändern'
+    end
+
+    test 'gescopte SBK kann in globale und eigene Verbandsarten hochladen' do
+      foreign_document_for_scoped_sbk
+      global = DocumentType.create!(name: 'Unterstellungserklärung')
+      own = DocumentType.create!(name: 'Eigenes LV-Attest', game_operation_id: @own_go.id)
+
+      [global, own].each do |dt|
+        post "/api/v2/admin/players/#{@player.id}/license_documents",
+             params: { document_type: dt.key, file: fixture_file_upload('dokument.pdf', 'application/pdf') }
+        assert_response :created, "Upload in #{dt.name} muss erlaubt bleiben"
+      end
+    end
+
     private
+
+    # Spieler im Verband des gescopten SBK, dazu ein Dokument einer FREMDEN
+    # Verbandsart – lesbar ist der Spieler damit (admin_or_sbk_for_player?),
+    # dieses eine Dokument aber nicht (document_visible?). Loggt den SBK ein.
+    def foreign_document_for_scoped_sbk
+      sa = create(:state_association)
+      @own_go = create(:game_operation, state_association_id: sa.id)
+      foreign_go = create(:game_operation, state_association_id: sa.id)
+      club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
+                                                    'game_operation_id' => @own_go.id }])
+      @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }])
+
+      foreign = DocumentType.create!(name: 'Fremd-Attest', game_operation_id: foreign_go.id)
+      doc = LicenseDocument.new(player: @player, document_type: foreign.key)
+      doc.file.attach(io: StringIO.new('%PDF-1.4'), filename: 'f.pdf', content_type: 'application/pdf')
+      doc.save!
+
+      login(create(:user, :sbk_scoped, game_operation_id: @own_go.id))
+      [foreign, doc]
+    end
 
     def login(user)
       post '/api/v2/login', params: { username: user.user_name, password: 'password123' }

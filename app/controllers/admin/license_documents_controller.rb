@@ -24,8 +24,8 @@ module Admin
     end
 
     def index
-      # Dokumente gelten pro Spieler (saisonübergreifend). Der license_id-Filter
-      # bleibt für Alt-Aufrufer optional erhalten.
+      # Dokumente gelten pro Spieler (saisonübergreifend), die Abfrage holt
+      # deshalb alle Dokumente des Spielers – license_id filtert hier nicht.
       docs = @player.license_documents.includes(file_attachment: :blob).order(created_at: :desc).to_a
       catalog = document_type_catalog(docs)
       docs = filter_documents_by_scope(docs, catalog)
@@ -43,6 +43,10 @@ module Admin
       return render json: { errors: ['Datei fehlt'] }, status: :unprocessable_entity if params[:file].blank?
       return render json: { errors: ['Dokumenttyp fehlt'] }, status: :unprocessable_entity if
         params[:document_type].blank?
+
+      unless document_type_in_scope?(params[:document_type])
+        return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+      end
 
       doc = LicenseDocument.new(
         player: @player,
@@ -76,6 +80,8 @@ module Admin
 
     def destroy
       doc = @player.license_documents.find(params[:id])
+      return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless document_visible?(doc)
+
       doc.file.purge
       doc.destroy!
       render json: { success: true }
@@ -246,6 +252,22 @@ module Admin
       return true if unrestricted_document_access?
 
       document_in_scope?(doc, document_type_catalog([doc]), perm_hash[:sbk])
+    end
+
+    # Schreibseite, gleiche Regel wie die Leseseite (document_in_scope?) und wie
+    # type_available? (b), nur ohne die Altersprüfung: Eine Art, deren Dokumente
+    # der Aufrufer nicht zu sehen bekommt, darf er auch nicht befüllen – sonst
+    # liegt der Upload danach unsichtbar für ihn in der Ablage. Die Oberfläche
+    # bietet solche Arten ohnehin nicht an (available_types), durchgesetzt war
+    # das aber nur dort.
+    #
+    # Freitext-Altbestand ohne Katalogeintrag bleibt erlaubt, ebenso wie er
+    # sichtbar bleibt – document_in_scope? behandelt ihn genauso.
+    def document_type_in_scope?(key)
+      return true if unrestricted_document_access?
+
+      go_id = DocumentType.find_by(key: key)&.game_operation_id
+      go_id.nil? || perm_hash[:sbk].include?(go_id)
     end
 
     # Globale Dokumentarten (game_operation_id nil) und Freitext-Altbestand ohne
