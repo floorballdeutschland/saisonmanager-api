@@ -192,6 +192,12 @@ class ApplicationController < ActionController::Base
   # Binary/Attachment ausliefert (Logos würden nicht als <img> rendern) und ein
   # nicht bereinigtes SVG bei Inline-Auslieferung ein Stored-XSS-Vektor wäre.
   LOGO_ALLOWED_CONTENT_TYPES = %w[image/png image/jpeg image/webp].freeze
+  # Dieselbe Zusage, geprüft am Dateiinhalt statt an der Angabe des Browsers:
+  # die vips-Loader, die zu den drei erlaubten Formaten gehören. spngload ist die
+  # libspng-Variante von pngload und steht im aktuellen Abbild nicht zur
+  # Verfügung; sie ist mit aufgeführt, damit ein neu gebautes Abbild nicht
+  # plötzlich jedes PNG abweist.
+  LOGO_ALLOWED_VIPS_LOADERS = %w[pngload spngload jpegload webpload].freeze
   LOGO_MAX_SIZE = 3.megabytes
   # Werbebanner (Liga, Spielbetrieb, Landesverband) teilen sich eine Grenze: Sie
   # werden auf jeder Seite des jeweiligen Bereichs mitgeladen und bleiben deshalb
@@ -207,6 +213,9 @@ class ApplicationController < ActionController::Base
     # statt bei file.content_type mit NoMethodError (500) abzubrechen.
     return 'Ungültige Bilddatei.' unless file.respond_to?(:content_type) && file.respond_to?(:tempfile)
 
+    # content_type ist die Angabe aus dem Multipart-Kopf, also das, was der
+    # hochladende Browser behauptet. Sie wird zuerst geprüft, weil sie ohne
+    # Dateizugriff auskommt; verlassen kann man sich darauf nicht (s. unten).
     unless LOGO_ALLOWED_CONTENT_TYPES.include?(file.content_type)
       return 'Ungültiges Dateiformat. Erlaubt sind PNG, JPG oder WebP.'
     end
@@ -220,8 +229,23 @@ class ApplicationController < ActionController::Base
     require 'vips'
     begin
       image = Vips::Image.new_from_file(file.tempfile.path)
+      # Der eigentliche Formatriegel: Welcher Loader gegriffen hat, weiß vips aus
+      # dem Dateiinhalt. Eine als image/png deklarierte SVG kam über die
+      # Kopfzeilen-Prüfung hinweg, wurde von vips anstandslos gelesen (also auch
+      # nicht vom Bild-Check abgewiesen) und landete in der Ablage, wo
+      # ActiveStorage ihren Typ selbst neu bestimmte. Gefragt wird dieselbe
+      # Instanz, die die Datei tatsächlich dekodiert; Kopfzeile und Inhalt können
+      # damit nicht auseinanderlaufen.
+      loader = image.get('vips-loader')
     rescue Vips::Error
       return 'Die Datei konnte nicht als Bild gelesen werden.'
+    end
+
+    # Ein Format, das sich nicht benennen lässt, gehört nicht in die Ablage:
+    # Sollte vips das Feld nicht gesetzt haben, wirft get und der Aufruf endet
+    # oben mit der Lesemeldung, statt die Prüfung zu überspringen.
+    unless LOGO_ALLOWED_VIPS_LOADERS.include?(loader)
+      return 'Ungültiges Dateiformat. Erlaubt sind PNG, JPG oder WebP.'
     end
 
     return 'Das Logo muss quadratisch sein (gleiche Breite und Höhe).' if square && image.width != image.height

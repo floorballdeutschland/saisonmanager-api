@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Logo-Uploads prüfen die Datei, nicht die Angabe des Browsers**: Erlaubt sind für Logos und Werbebanner PNG, JPG und WebP. Geprüft wurde bisher nur, als was der hochladende Browser die Datei ankündigt, und diese Ankündigung lässt sich frei setzen. Eine SVG-Datei, die als PNG deklariert wurde, kam damit durch und landete in der Ablage, obwohl die Oberfläche das Format abweist. Beim Vereinslogo endete derselbe Upload zusätzlich in einem Serverfehler, weil aus einer SVG keine verkleinerte Fassung erzeugt werden kann, die Datei aber trotzdem schon angehängt war. Auch GIF ließ sich auf diesem Weg unterbringen. Maßgeblich ist jetzt, was in der Datei steht: Der Saisonmanager fragt das Bildprogramm, welches Format es beim Lesen tatsächlich erkannt hat, und weist alles andere mit derselben Meldung ab wie zuvor. Das gilt für alle sieben Stellen mit Bild-Upload, also Vereins-, Mannschafts- und Liga-Logo, Verbandslogo sowie die Werbebanner von Liga, Spielbetrieb und Landesverband.
+
 ## [1.78.0] - 2026-08-13
 
 ### Neu
