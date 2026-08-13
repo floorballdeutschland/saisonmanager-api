@@ -41,17 +41,28 @@ module Admin
 
     def create
       return render json: { errors: ['Datei fehlt'] }, status: :unprocessable_entity if params[:file].blank?
-      return render json: { errors: ['Dokumenttyp fehlt'] }, status: :unprocessable_entity if
-        params[:document_type].blank?
 
-      unless document_type_in_scope?(params[:document_type])
+      # Genau eine Dokumentart, als Zeichenkette. Die Typprüfung ist nicht
+      # kosmetisch: `document_type[]=global&document_type[]=fremd` kam als Array
+      # an, und damit ließ sich beides aushebeln, was diese Aktion schützt.
+      # `find_by(key: [...])` liefert irgendeinen Treffer der Liste (in der Praxis
+      # den globalen), die Scope-Prüfung unten winkt also durch; und die
+      # Ersetzungs-Abfrage `where(document_type: [...])` löscht die Dokumente
+      # ALLER genannten Arten, auch die eines fremden Verbands. Gespeichert wurde
+      # anschließend eine Zeile mit dem Array als Text.
+      document_type = params[:document_type]
+      unless document_type.is_a?(String) && document_type.present?
+        return render json: { errors: ['Dokumenttyp fehlt'] }, status: :unprocessable_entity
+      end
+
+      unless document_type_in_scope?(document_type)
         return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
       end
 
       doc = LicenseDocument.new(
         player: @player,
         license_id: params[:license_id].presence,
-        document_type: params[:document_type],
+        document_type: document_type,
         season_id: Setting.current_season_id,
         uploaded_by: current_user
       )
@@ -63,7 +74,7 @@ module Admin
       # sonst schlägt die Eindeutigkeits-Validierung gegen das zu ersetzende
       # Dokument an. Bei ungültigem Upload rollt die Transaktion das Löschen
       # zurück, der Bestand bleibt unverändert.
-      existing = @player.license_documents.where(document_type: params[:document_type])
+      existing = @player.license_documents.where(document_type: document_type)
       saved = false
       ActiveRecord::Base.transaction do
         existing.find_each(&:destroy)

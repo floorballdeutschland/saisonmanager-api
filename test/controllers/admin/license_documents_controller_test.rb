@@ -334,6 +334,46 @@ module Admin
       end
     end
 
+    # Der Umweg, der die Scope-Prüfung UND die Ersetzungs-Abfrage zugleich
+    # aushebelte: document_type als Array statt als Zeichenkette.
+    # `find_by(key: [...])` ist ein `WHERE key IN (...) LIMIT 1` ohne ORDER BY
+    # und liefert irgendeinen Treffer der Liste; trifft es die globale Art
+    # (game_operation_id nil), winkt die Scope-Prüfung durch. Anschließend
+    # löscht `where(document_type: [...])` die Dokumente ALLER genannten Arten,
+    # auch die des fremden Verbands, den der Aufrufer nicht einmal sehen darf.
+    #
+    # Die globale Art wird hier ZUERST angelegt, damit der Fall deterministisch
+    # den durchwinkenden Zweig trifft. Bei umgekehrter Reihenfolge endete der
+    # Aufruf zufällig in einem 403, und der Test hätte den Weg nicht belegt.
+    test 'ein Array als Dokumentart hebelt weder Scope noch Ersetzung aus' do
+      global = DocumentType.create!(name: 'Unterstellungserklärung')
+      foreign, foreign_doc = foreign_document_for_scoped_sbk
+      global_doc = LicenseDocument.new(player: @player, document_type: global.key)
+      global_doc.file.attach(io: StringIO.new('%PDF-1.4'), filename: 'g.pdf', content_type: 'application/pdf')
+      global_doc.save!
+
+      post "/api/v2/admin/players/#{@player.id}/license_documents",
+           params: { document_type: [global.key, foreign.key],
+                     file: fixture_file_upload('dokument.pdf', 'application/pdf') }
+
+      assert_response :unprocessable_entity
+      assert LicenseDocument.exists?(foreign_doc.id), 'das fremde Verbandsdokument muss erhalten bleiben'
+      assert LicenseDocument.exists?(global_doc.id), 'das globale Dokument muss erhalten bleiben'
+      assert_equal [foreign.key, global.key].sort,
+                   @player.license_documents.pluck(:document_type).sort,
+                   'es darf keine Zeile mit dem Array als Text entstehen'
+    end
+
+    test 'ein verschachtelter Parameter als Dokumentart wird abgewiesen' do
+      foreign_document_for_scoped_sbk
+
+      post "/api/v2/admin/players/#{@player.id}/license_documents",
+           params: { document_type: { key: 'use' },
+                     file: fixture_file_upload('dokument.pdf', 'application/pdf') }
+
+      assert_response :unprocessable_entity
+    end
+
     private
 
     # Spieler im Verband des gescopten SBK, dazu ein Dokument einer FREMDEN
