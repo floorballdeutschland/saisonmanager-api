@@ -24,8 +24,8 @@ module Admin
     end
 
     def index
-      # Dokumente gelten pro Spieler (saisonübergreifend). Der license_id-Filter
-      # bleibt für Alt-Aufrufer optional erhalten.
+      # Dokumente gelten pro Spieler (saisonübergreifend), die Abfrage holt
+      # deshalb alle Dokumente des Spielers – license_id filtert hier nicht.
       docs = @player.license_documents.includes(file_attachment: :blob).order(created_at: :desc).to_a
       catalog = document_type_catalog(docs)
       docs = filter_documents_by_scope(docs, catalog)
@@ -41,13 +41,28 @@ module Admin
 
     def create
       return render json: { errors: ['Datei fehlt'] }, status: :unprocessable_entity if params[:file].blank?
-      return render json: { errors: ['Dokumenttyp fehlt'] }, status: :unprocessable_entity if
-        params[:document_type].blank?
+
+      # Genau eine Dokumentart, als Zeichenkette. Die Typprüfung ist nicht
+      # kosmetisch: `document_type[]=global&document_type[]=fremd` kam als Array
+      # an, und damit ließ sich beides aushebeln, was diese Aktion schützt.
+      # `find_by(key: [...])` liefert irgendeinen Treffer der Liste (in der Praxis
+      # den globalen), die Scope-Prüfung unten winkt also durch; und die
+      # Ersetzungs-Abfrage `where(document_type: [...])` löscht die Dokumente
+      # ALLER genannten Arten, auch die eines fremden Verbands. Gespeichert wurde
+      # anschließend eine Zeile mit dem Array als Text.
+      document_type = params[:document_type]
+      unless document_type.is_a?(String) && document_type.present?
+        return render json: { errors: ['Dokumenttyp fehlt'] }, status: :unprocessable_entity
+      end
+
+      unless document_type_in_scope?(document_type)
+        return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+      end
 
       doc = LicenseDocument.new(
         player: @player,
         license_id: params[:license_id].presence,
-        document_type: params[:document_type],
+        document_type: document_type,
         season_id: Setting.current_season_id,
         uploaded_by: current_user
       )
@@ -59,7 +74,7 @@ module Admin
       # sonst schlägt die Eindeutigkeits-Validierung gegen das zu ersetzende
       # Dokument an. Bei ungültigem Upload rollt die Transaktion das Löschen
       # zurück, der Bestand bleibt unverändert.
-      existing = @player.license_documents.where(document_type: params[:document_type])
+      existing = @player.license_documents.where(document_type: document_type)
       saved = false
       ActiveRecord::Base.transaction do
         existing.find_each(&:destroy)
@@ -76,6 +91,8 @@ module Admin
 
     def destroy
       doc = @player.license_documents.find(params[:id])
+      return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless document_visible?(doc)
+
       doc.file.purge
       doc.destroy!
       render json: { success: true }
@@ -246,6 +263,22 @@ module Admin
       return true if unrestricted_document_access?
 
       document_in_scope?(doc, document_type_catalog([doc]), perm_hash[:sbk])
+    end
+
+    # Schreibseite, gleiche Regel wie die Leseseite (document_in_scope?) und wie
+    # type_available? (b), nur ohne die Altersprüfung: Eine Art, deren Dokumente
+    # der Aufrufer nicht zu sehen bekommt, darf er auch nicht befüllen – sonst
+    # liegt der Upload danach unsichtbar für ihn in der Ablage. Die Oberfläche
+    # bietet solche Arten ohnehin nicht an (available_types), durchgesetzt war
+    # das aber nur dort.
+    #
+    # Freitext-Altbestand ohne Katalogeintrag bleibt erlaubt, ebenso wie er
+    # sichtbar bleibt – document_in_scope? behandelt ihn genauso.
+    def document_type_in_scope?(key)
+      return true if unrestricted_document_access?
+
+      go_id = DocumentType.find_by(key: key)&.game_operation_id
+      go_id.nil? || perm_hash[:sbk].include?(go_id)
     end
 
     # Globale Dokumentarten (game_operation_id nil) und Freitext-Altbestand ohne

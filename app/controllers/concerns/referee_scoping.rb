@@ -7,8 +7,18 @@ module RefereeScoping
 
   private
 
+  # Der Berechtigungs-Hash entsteht nicht billig (u. a. League.current_season
+  # .pluck) und wurde in der Ansetzung bis zu fünfmal je Anfrage neu gebaut –
+  # zweistufige Autorisierung, Modus-Erkennung und Scope fragen ihn nacheinander.
+  # Der Controller lebt genau eine Anfrage, deshalb hier gemerkt statt am Modell:
+  # am User-Objekt gemerkt würde eine Rollenänderung im selben Prozess nicht mehr
+  # gesehen (Tests setzen Berechtigungen um und lesen erneut).
+  def permission_hash
+    @permission_hash ||= current_user.permission_hash
+  end
+
   def scope_to_permitted_referees(referees)
-    ph = current_user.permission_hash
+    ph = permission_hash
     return referees if ph[:admin].present?
     return referees if ph[:rsk].present? && ph[:rsk].include?(0)
     return referees if ph[:ansetzer].present? && ph[:ansetzer].include?(0)
@@ -33,7 +43,7 @@ module RefereeScoping
   # ist immer aktiv. Genutzt von der Ansetzung selbst und von der Pflege der
   # Vereins-Ausschlusslisten.
   def authorize_assigner!
-    ph = current_user.permission_hash
+    ph = permission_hash
     return if ph[:admin].present?
     return if ph[:ansetzer].present? && current_user.referee_assignment_active_for_ansetzer?(ph)
 
