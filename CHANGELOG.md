@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.80.0] - 2026-08-14
+
 ### Verbessert
 
 - **„Gespann" heißt jetzt beim Namen, was es ist**: In der Ansetzung und in der Auswertung des Schiedsrichter-Feedbacks stand an mehreren Stellen „Gespann". Der Begriff ist Fachjargon und sagt einer Person, die zum ersten Mal ansetzt, nichts. Je nach Zusammenhang steht dort jetzt das, was gemeint ist: Der Knopf am Spiel heißt „Infos für die Schiedsrichter", die Spalte im reduzierten Modus „Verein stellt die Schiedsrichter", und wo es tatsächlich um die Paarung geht, steht „Schiedsrichterpaar". An der Funktion ändert sich nichts, es sind ausschließlich Beschriftungen. Die englischen Texte waren davon nie betroffen, sie sprachen schon vorher von „officials" und „pair".
