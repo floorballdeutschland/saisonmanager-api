@@ -375,9 +375,9 @@ class ClubsController < ApplicationController
                       status: :forbidden
       end
 
-      guests = club.game_operations_hash.reject { |h| h['home_game_operation'] }
-      club.game_operations_hash =
-        guests + [{ 'home_game_operation' => true, 'game_operation_id' => target.id }]
+      # Der Hash trägt nur noch den Heimat-Eintrag. Vorher wurden hier zusätzlich
+      # die Gast-Einträge des Altdaten-Imports mitgeschleift.
+      club.game_operations_hash = [{ 'home_game_operation' => true, 'game_operation_id' => target.id }]
     end
 
     if club.update(club_params)

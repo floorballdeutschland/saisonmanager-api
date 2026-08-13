@@ -497,7 +497,10 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_includes GameOperation.find(go.id).home_clubs.pluck(:id), club.id
   end
 
-  test 'admin_club_update behaelt Gast-Eintraege beim Wechsel des Heimat-Spielbetriebs' do
+  # Gegenprobe zum Wegfall des Gast-Eintrags: Altdaten mit einem solchen Eintrag
+  # gibt es bis zum Bereinigungslauf noch, und das Speichern der Vereinsmaske
+  # darf sie nicht wieder mitschleifen.
+  test 'admin_club_update entfernt Gast-Eintraege beim Wechsel des Heimat-Spielbetriebs' do
     sa = create(:state_association)
     home_go = create(:game_operation, state_association_id: sa.id)
     other_go = create(:game_operation, state_association_id: sa.id)
@@ -520,7 +523,9 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     club.reload
     assert_equal other_go.id, club.main_game_operation_id
-    assert_equal [guest_go.id], club.additional_game_operation_ids
+    assert_equal [{ 'game_operation_id' => other_go.id, 'home_game_operation' => true }],
+                 club.game_operations_hash
+    refute_includes club.game_operations_hash.map { |h| h['game_operation_id'] }, guest_go.id
   end
 
   # Die Meldung soll den Grund nennen, nicht nur dass etwas fehlt.

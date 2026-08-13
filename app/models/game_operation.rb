@@ -5,19 +5,14 @@ class GameOperation < ApplicationRecord
 
   default_scope { order(id: :asc) }
 
-  # ACHTUNG: matcht den GESAMTEN game_operations_hash, also auch bloße
-  # Gast-Einträge (`home_game_operation: false`). Für Rechte-Entscheidungen ist
-  # das die falsche Quelle – Gast-Einträge schreibt die Anwendung nie, sie
-  # stammen ausschließlich aus dem Altdaten-Import 2010–2014 und werden nicht
-  # nachgeführt. Dafür `home_clubs` verwenden.
-  def clubs
-    Club.where("clubs.game_operations_hash @> '[{\"game_operation_id\": ?}]'", id).order(:name)
-  end
-
   # Vereine, deren HEIMAT-Spielbetrieb dieser ist – die Vereine also, die diesem
   # Verband gehören. Maßgeblich für Zugriff auf die Vereinsstammdaten; darüber
   # hinaus gibt es Lesezugriff nur per Vereins-Freigabe
   # (StateAssociationRelease).
+  #
+  # Der frühere `#clubs` matchte den gesamten game_operations_hash und zog damit
+  # auch bloße Gast-Einträge heran. Er hatte zuletzt keinen Aufrufer mehr und ist
+  # mit dem Gast-Eintrag selbst entfallen.
   def home_clubs
     Club.where(
       "clubs.game_operations_hash @> '[{\"game_operation_id\": ?, \"home_game_operation\": true}]'", id
