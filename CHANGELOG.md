@@ -9,6 +9,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Ansetzung durch die RSK, und die Verbandseinstellung dazu aufgeteilt**: Schiedsrichter-Ansetzungen entstehen in der Praxis auf drei Wegen. Zwei kannte der Saisonmanager: die SBK trägt bei der Spielplanerstellung einen Freitext am Spiel ein, oder die Rolle Ansetzer\*in setzt personenscharf aus dem Kreis der Schiedsrichter\*innen an, die für den Tag eine Verfügbarkeit gemeldet haben. Der dritte Weg fehlte: dass die RSK dasselbe Feld pflegt und entweder einen Verein benennt, der das Gespann stellt, oder Personen und Paare direkt einträgt.
+
+  Dafür steuerte bisher ein einziger Schalter je Landesverband beides zugleich. Er ist jetzt in drei gestaffelte Optionen aufgeteilt, von denen jede die darüberliegende voraussetzt: „Ansetzungen außerhalb der SBK ermöglichen" schaltet die Ansetzung überhaupt frei, „Ansetzungen auf Personenebene" gibt sie an die Rolle Ansetzer\*in weiter, und „Standardmäßig durch Ansetzer\*in" markiert neue Spiele gleich beim Anlegen, sodass die SBK das nicht je Spieltag anklicken muss. Wer nur die erste Option setzt, bekommt den neuen reduzierten Modus: dieselbe Spieleliste, aber statt Personen ein Verein aus der Liga oder ein Freitext. Der Eintrag steht sofort im Spielplan, eine Mail geht dabei nicht raus. Ein angesetzter Verein wird als Verknüpfung gespeichert und nicht als Name im Freitext, damit Vereine ihre Schiedsrichter\*innen später selbst benennen können.
+
+  Es bleibt bei einem Menüpunkt „Ansetzungen"; welche der beiden Ansichten er zeigt, entscheidet die Einstellung des jeweiligen Verbands. Sind beide Rollen auf einem Konto vereint, gewinnt die Personenebene, damit nie zwei Wege dasselbe Spiel bearbeiten. Für den Bundesspielbetrieb ändert sich nichts, er bleibt wie bisher immer auf der Personenebene. Landesverbände, die die Ansetzung schon nutzen, behalten sie: der neue Hauptschalter wird beim Update überall dort gesetzt, wo die Ansetzung bisher aktiv war.
+
+  **Nach dem Update müssen sich RSK-Konten einmal neu anmelden**, damit der Menüpunkt erscheint; die Berechtigungen liegen nach der Anmeldung im Browser.
+
+### Verbessert
+
+- **Markierung „durch Ansetzer\*in" belegt nicht mehr das Freitextfeld**: Ob ein Spiel personenscharf angesetzt wird, stand bislang als fester Text „Ansetzung durch RSK" mitten im Freitextfeld für die Schiedsrichter. Markierung und Freitext schlossen sich damit gegenseitig aus, und der Text war für Zuschauer im Spielplan zu lesen. Beides steht jetzt getrennt: die Markierung in einem eigenen Feld, der Freitext frei daneben. Im Spielplan erscheint der Hinweis „Ansetzung durch Ansetzer\*in" weiterhin, solange kein Freitext eingetragen ist. Bereits markierte Spiele werden beim Update übernommen und der alte Text aus dem Freitextfeld entfernt.
+
 ## [1.78.0] - 2026-08-13
 
 ### Neu

@@ -53,6 +53,51 @@ class StateAssociation < ApplicationRecord
     sbk_email.presence || parent&.effective_sbk_email
   end
 
+  # Ansetzungsmodus des Landesverbands – die *einzige* Stelle, die die drei
+  # gestaffelten Schalter auswertet. Die Maske graut Option 2 und 3 aus, solange
+  # der Hauptschalter aus ist; darauf darf sich der Server aber nicht verlassen
+  # (API-Aufrufe umgehen die Maske, und ein nachträglich abgeschalteter
+  # Hauptschalter lässt ein `referee_assignment_enabled = true` im Datensatz
+  # zurück). Deshalb hier ausgewertet und nicht an den Feldern selbst.
+  #
+  #   :none   – nur die SBK setzt an (Weg 1, Freitext am Spiel)
+  #   :club   – RSK pflegt Verein oder Freitext (Weg 3, reduzierte Ansicht)
+  #   :person – Ansetzer-Rolle setzt personenscharf an (Weg 2)
+  #
+  # Die Personenebene gewinnt: sie schließt den reduzierten Modus aus, damit
+  # nicht zwei Wege dasselbe Spiel bearbeiten.
+  def referee_assignment_mode
+    return :none unless referee_assignment_external_enabled?
+    return :person if referee_assignment_enabled?
+
+    :club
+  end
+
+  # Weg 2 (personenscharfe Ansetzung durch die Ansetzer-Rolle) ist aktiv.
+  def person_level_assignment_active?
+    referee_assignment_mode == :person
+  end
+
+  # Weg 3 (reduzierte RSK-Ansicht: Verein oder Freitext) ist aktiv.
+  def club_level_assignment_active?
+    referee_assignment_mode == :club
+  end
+
+  # Neue Spiele gleich für die Personenebene markieren. Nur wirksam, wenn die
+  # Personenebene überhaupt greift – sonst entstünden Spiele, die in keiner
+  # Ansicht bearbeitbar sind (der reduzierte Modus sperrt markierte Spiele).
+  def person_level_assignment_default_active?
+    person_level_assignment_active? && person_level_assignment_default?
+  end
+
+  # Nationaler Spielbetrieb (FD, ohne Landesverband) bleibt wie bisher immer auf
+  # der Personenebene. `state_association` ist dort nil, deshalb kann kein
+  # Datensatz gefragt werden – die Aufrufer nutzen diese Konstanten-Methoden, um
+  # den Sonderfall an einer Stelle zu halten.
+  def self.national_referee_assignment_mode
+    :person
+  end
+
   def logo_url
     Rails.application.routes.url_helpers.rails_blob_path(logo, only_path: true) if logo.attached?
   end
@@ -99,7 +144,12 @@ class StateAssociation < ApplicationRecord
       effective_sbk_email:,
       effective_rsk_email:,
       manual_proceeding_creation:,
+      # Die drei gestaffelten Ansetzungs-Schalter. `referee_assignment_enabled`
+      # heißt in der Maske jetzt „Ansetzungen auf Personenebene"; der
+      # Spaltenname bleibt, um den Bestand nicht anzufassen.
+      referee_assignment_external_enabled:,
       referee_assignment_enabled:,
+      person_level_assignment_default:,
       report_form_email_enabled:,
       logo_url:,
       banner_url:,
