@@ -15,6 +15,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 - **Torschützen auf der Ergebniskachel ohne Abschnitt und ohne Seite**: Die Spielzeit an einem Ereignis zählt je Abschnitt neu ab 0:00. Untereinander gesetzt lief die Zeit auf der Kachel deshalb sichtbar rückwärts, und es stand nicht dabei, für welche Mannschaft das Tor fiel. Jede Zeile nennt jetzt den Spielstand nach dem Tor und den Abschnitt, also etwa „1:0   2. 05:00   M. Mustermann". Der mitwachsende Spielstand sagt die Seite unmittelbar, dafür braucht es keinen Mannschaftsnamen in der Zeile. Bei Altbeständen ohne diese Angaben bleibt die Zeile wie bisher.
 
+### Neu
+
+- **Systemzustand mit Frühwarnung für den Speicherplatz**: Seit dem Wegfall der Azure-Anbindung liegen alle Uploads, also Lizenzdokumente und Logos, auf der Serverplatte. Dieser Bestand wächst monoton und fiel bisher niemandem auf, solange nichts kaputt war. Die Verwaltung hat dafür jetzt die Seite „System": Belegung des Datenträgers mit Ampel, die Uploads nach Art aufgeschlüsselt, die größten Einzeldateien, die Datenbankgröße mit den größten Tabellen sowie das Wachstum der letzten zwölf Monate und die daraus abgeleitete Restlaufzeit. Verwaiste Dateien ohne Zuordnung werden getrennt ausgewiesen, weil sie weiter Platz belegen und in keiner Aufschlüsselung auftauchen.
+
+  Der eigentliche Zweck ist die Warnung, nicht die Seite: Eine Seite, die niemand öffnet, warnt nicht. Ein täglicher Lauf schreibt die Belegung als Tageswert mit und meldet sich per Mail, sobald eine Schwelle neu überschritten wird, bei 80 Prozent als Warnung und bei 90 Prozent als kritisch. Bleibt die Belegung auf demselben Stand, folgt keine zweite Mail; verschlechtert sich der Zustand weiter, kommt eine weitere. Zusätzlich erscheint im kritischen Fall ein Hinweisstreifen, den nur die Verwaltung sieht. Bewusst nicht enthalten sind Werte zu Prozessor und Arbeitsspeicher: Eine Momentaufnahme im Seitenaufruf hätte keinen Aussagewert. Das Postgres-Datenverzeichnis liegt in einem eigenen Ablagebereich und ist von der Anwendung aus nicht messbar, deshalb steht dort die Größe der Datenbank statt einer Platten-Belegung.
+
 ## [1.76.0] - 2026-08-13
 
 ### Behoben
