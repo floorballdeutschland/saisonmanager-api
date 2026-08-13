@@ -1,10 +1,13 @@
 require 'test_helper'
 
-# Was heute übertragen wird. Anders als beim Overlay-Token gilt hier die normale
-# Regel: Ein API-Schlüssel ohne Echtzeit-Freigabe bekommt die Zwischenstände
-# laufender Partien erst nach zehn Minuten. Genau das gehört festgenagelt,
-# sonst entsteht über diesen Abruf die Lücke, die an zwei anderen schon
-# geschlossen wurde.
+# Was heute übertragen wird, und was in den letzten sieben Tagen lief. Anders als
+# beim Overlay-Token gilt hier die normale Regel: Ein API-Schlüssel ohne
+# Echtzeit-Freigabe bekommt die Zwischenstände laufender Partien erst nach zehn
+# Minuten. Genau das gehört festgenagelt, sonst entsteht über diesen Abruf die
+# Lücke, die an zwei anderen schon geschlossen wurde.
+#
+# Der Rückblick bringt eine zweite Grenze mit, die nur hier gezogen wird: Was von
+# einem früheren Tag stammt, ist beendet, egal was am Spielbericht steht.
 class LiveStreamsControllerTest < ActionDispatch::IntegrationTest
   setup do
     create(:setting)
@@ -63,7 +66,7 @@ class LiveStreamsControllerTest < ActionDispatch::IntegrationTest
     assert_not_includes ids, ohne.id
   end
 
-  test 'Spiele anderer Tage bleiben draussen' do
+  test 'kuenftige Spiele bleiben draussen' do
     anderer_tag = create(:game_day, league: @league, date: 3.days.from_now.to_date.to_s)
     morgen = create(:game, game_day: anderer_tag, home_team: @home, guest_team: @guest,
                            live_stream_link: 'https://stream.example/spaeter')
@@ -73,6 +76,108 @@ class LiveStreamsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     ids = JSON.parse(response.body)['games'].map { |g| g['game_id'] }
     assert_not_includes ids, morgen.id
+  end
+
+  # ── Rückblick auf die letzten sieben Tage ─────────────────────────────────
+
+  # Eine Übertragung ist nach dem Schlusspfiff nicht vorbei: Der Link führt
+  # weiter zur Aufzeichnung. Vorher fiel sie um Mitternacht aus der Liste.
+  test 'ein beendetes Spiel der letzten sieben Tage kommt mit' do
+    vorgestern = spiel_vor(2, ended: true, vod_link: 'https://stream.example/vod-vorgestern')
+
+    get '/api/v2/live_streams', headers: api_key_headers
+
+    assert_response :success
+    eintrag = eintrag_von(vorgestern)
+    assert eintrag.present?, 'das Spiel von vorgestern gehoert in den Rueckblick'
+    assert_equal 'ended', eintrag['status']
+    assert_equal 'https://stream.example/vod-vorgestern', eintrag['vod_link']
+  end
+
+  test 'was laenger her ist als sieben Tage, bleibt draussen' do
+    zu_alt = spiel_vor(8, ended: true, vod_link: 'https://stream.example/vod-alt')
+
+    get '/api/v2/live_streams', headers: api_key_headers
+
+    assert_response :success
+    ids = JSON.parse(response.body)['games'].map { |g| g['game_id'] }
+    assert_not_includes ids, zu_alt.id
+  end
+
+  # Der Rand des Zeitraums, damit ein `-` statt `+` oder eine Sechs statt der
+  # Sieben nicht unbemerkt bleibt.
+  test 'genau sieben Tage zurueck zaehlt noch dazu' do
+    rand = spiel_vor(7, ended: true, vod_link: 'https://stream.example/vod-rand')
+
+    get '/api/v2/live_streams', headers: api_key_headers
+
+    assert_response :success
+    ids = JSON.parse(response.body)['games'].map { |g| g['game_id'] }
+    assert_includes ids, rand.id
+  end
+
+  # Ein gestern angepfiffener und nie abgeschlossener Spielbericht ist kein
+  # laufendes Spiel. Zaehlte er als solches, truege er auf der Seite den
+  # Live-Punkt und stuende ueber dem, was wirklich gerade laeuft.
+  test 'ein nie abgeschlossener Bericht von gestern gilt nicht als laufend' do
+    gestern = spiel_vor(1, started: true, ended: false,
+                           live_stream_link: 'https://stream.example/gestern')
+
+    get '/api/v2/live_streams', headers: api_key_headers
+
+    assert_response :success
+    assert_equal 'ended', eintrag_von(gestern)['status']
+  end
+
+  test 'der Rueckblick steht hinter dem heutigen Tag, das juengste Spiel oben' do
+    vorgestern = spiel_vor(2, ended: true, vod_link: 'https://stream.example/vod-2')
+    gestern = spiel_vor(1, ended: true, vod_link: 'https://stream.example/vod-1')
+
+    get '/api/v2/live_streams', headers: api_key_headers
+
+    assert_response :success
+    ids = JSON.parse(response.body)['games'].map { |g| g['game_id'] }
+    assert_equal [@laufend.id, gestern.id, vorgestern.id], ids
+  end
+
+  # Die Naht zwischen heute und gestern. Getrennt wird am STATUS und nicht am
+  # Datum: Ein heute schon beendetes Spiel gehoert in den Rueckblick, den die
+  # Seite aus dem Status baut. Eine Trennung am Datum liesse genau diese
+  # Eintraege AUFSTEIGEND im absteigenden Block landen -- 14:00 ueber 16:00,
+  # darunter erst gestern.
+  test 'heute beendete Spiele stehen absteigend im Rueckblick' do
+    frueh = create(:game, :with_result, game_day: @game_day, home_team: @home, guest_team: @guest,
+                                        start_time: '14:00', ended: true,
+                                        vod_link: 'https://stream.example/heute-frueh')
+    spaet = create(:game, :with_result, game_day: @game_day, home_team: @home, guest_team: @guest,
+                                        start_time: '16:00', ended: true,
+                                        vod_link: 'https://stream.example/heute-spaet')
+    gestern = spiel_vor(1, ended: true, vod_link: 'https://stream.example/gestern')
+
+    get '/api/v2/live_streams', headers: api_key_headers
+
+    assert_response :success
+    beendet = JSON.parse(response.body)['games'].select { |g| g['status'] == 'ended' }
+    assert_equal [spaet.id, frueh.id, gestern.id], beendet.pluck('game_id')
+  end
+
+  # Innerhalb eines zurueckliegenden Tages laeuft die Reihenfolge ebenfalls
+  # rueckwaerts: Wer nachsieht, was er verpasst hat, sucht das zuletzt beendete
+  # Spiel, nicht das erste des Vormittags.
+  test 'innerhalb eines vergangenen Tages steht das spaetere Spiel oben' do
+    tag = create(:game_day, league: @league, date: (RefereeFeedbackWindow.today - 2).to_s)
+    frueh = create(:game, :with_result, game_day: tag, home_team: @home, guest_team: @guest,
+                                        start_time: '12:00', ended: true,
+                                        vod_link: 'https://stream.example/vod-frueh')
+    spaet = create(:game, :with_result, game_day: tag, home_team: @home, guest_team: @guest,
+                                        start_time: '18:00', ended: true,
+                                        vod_link: 'https://stream.example/vod-spaet')
+
+    get '/api/v2/live_streams', headers: api_key_headers
+
+    assert_response :success
+    ids = JSON.parse(response.body)['games'].map { |g| g['game_id'] }
+    assert_equal [spaet.id, frueh.id], ids & [spaet.id, frueh.id]
   end
 
   # `game_days.date` ist eine Textspalte. Ein leerer Wert oder "TBD" darf den
@@ -280,6 +385,15 @@ class LiveStreamsControllerTest < ActionDispatch::IntegrationTest
   end
 
   private
+
+  # Ein Spiel vor `tage_zurueck` Tagen, mit eigenem Spieltag. Gerechnet wird vom
+  # selben Kalender aus wie im Controller, sonst faellt der Rand des Zeitraums
+  # abends nach 22 Uhr UTC um einen Tag daneben.
+  def spiel_vor(tage_zurueck, **attrs)
+    tag = create(:game_day, league: @league, date: (RefereeFeedbackWindow.today - tage_zurueck).to_s)
+    create(:game, :with_result, game_day: tag, home_team: @home, guest_team: @guest,
+                                start_time: '18:00', **attrs)
+  end
 
   def eintrag_von(game)
     JSON.parse(response.body)['games'].find { |g| g['game_id'] == game.id } || {}
