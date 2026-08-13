@@ -14,6 +14,30 @@ class GameDay < ApplicationRecord
   belongs_to :arena, optional: true
   belongs_to :club, optional: true
 
+  # `date` ist eine Textspalte, und der ganze Bestand liest sie defensiv, weil
+  # sie als unzuverlässig bekannt ist: TO_DATE(NULLIF(...)) in
+  # admin/game_days_controller, Date.strptime mit rescue in
+  # referee_feedback_window, Date.parse mit rescue in
+  # admin/referee_assignments_controller. Geschrieben wurde sie dagegen ungeprüft,
+  # `GameDay.create!(date: '11.08.2026')` ging durch. Solange jeder Leser sich
+  # selbst schützt, bleibt das beherrschbar; beim öffentlichen Livestream-Abruf
+  # ist es das nicht, weil dort eine leere Liste als Aussage gerendert wird
+  # ("heute wird nichts übertragen") und ein abweichend formatierter Datensatz
+  # nicht von einem ruhigen Tag zu unterscheiden ist.
+  #
+  # allow_blank wegen der Altbestände: Halle und Ausrichter dürfen offen bleiben
+  # (s. oben), das Datum ebenso.
+  #
+  # `if: date_changed?` ist der Kern und nicht Beiwerk: Eine bestehende Zeile mit
+  # abweichendem Format bleibt speicherbar, solange niemand ihr Datum anfasst.
+  # Ohne diese Bedingung würde die Validierung an einem solchen Datensatz jedes
+  # Speichern blockieren, auch das Setzen von Halle oder Ausrichter, und zwar
+  # bevor irgendwer den Bestand gesichtet hat. Wer das Datum ändert, muss es
+  # dagegen richtig hinschreiben.
+  DATE_FORMAT = /\A\d{4}-\d{2}-\d{2}\z/
+  validates :date, format: { with: DATE_FORMAT, message: 'muss im Format JJJJ-MM-TT vorliegen' },
+                   allow_blank: true, if: :date_changed?
+
   # 14
   scope :past_games, lambda {
                        where("TO_DATE(date, 'YYYY-MM-DD') > (now()::date - interval '14 days') AND TO_DATE(date, 'YYYY-MM-DD') <= (now()::date + interval '100 days') ")

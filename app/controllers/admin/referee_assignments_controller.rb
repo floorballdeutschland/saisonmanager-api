@@ -3,11 +3,15 @@ module Admin
     include RefereeScoping
 
     before_action :authenticate_user
-    before_action :authorize_assigner!
-
-    # Sentinel, den der Spiel-Editor in Game#nominated_referee_string schreibt,
-    # wenn die Ansetzung durch die RSK erfolgen soll.
-    RSK_ASSIGNMENT_MARKER = 'Ansetzung durch RSK'.freeze
+    # Zwei Ansichten hinter einem Menüpunkt (#403): die personenscharfe Ansetzung
+    # (Weg 2, Ansetzer-Rolle) und der reduzierte Modus (Weg 3, RSK pflegt Verein
+    # oder Freitext). Der Zugang wird deshalb zweistufig geprüft – erst überhaupt,
+    # dann je Aktion, damit die RSK nicht in den Personen-Weg greifen kann.
+    before_action :authorize_assignment_access!
+    before_action :authorize_person_level!, only: %i[create update notify publish
+                                                     available available_coaches availability
+                                                     update_notes]
+    before_action :authorize_club_level!, only: %i[league_clubs update_club_assignment]
 
     # GET /api/v2/admin/referee_assignments
     def index
@@ -17,8 +21,9 @@ module Admin
       )
 
       # Serverseitiger LV-Scope: ein nicht-globaler Ansetzer sieht nur Ansetzungen
-      # für Spiele in seinem game_operation-Scope (analog zu #games).
-      go_ids = assigner_scope_go_ids
+      # für Spiele in seinem game_operation-Scope (analog zu #games); im
+      # reduzierten Modus gilt der RSK-Scope.
+      go_ids = view_scope_go_ids
       if go_ids
         scoped_game_ids = Game.joins(game_day: :league)
                               .where(leagues: { game_operation_id: go_ids })
@@ -53,7 +58,7 @@ module Admin
 
     # GET /api/v2/admin/referee_assignments/games?season_id=X&date_from=Y&date_to=Z
     def games
-      go_ids = assigner_scope_go_ids
+      go_ids = view_scope_go_ids
 
       scope = Game.not_started.includes(
         :home_team, :guest_team, :referee_assignment,
@@ -71,15 +76,24 @@ module Admin
         scope = scope.where("TO_DATE(game_days.date, 'YYYY-MM-DD') <= ?", params[:date_to])
       end
 
-      # Nur Spiele, die für die RSK-Ansetzung markiert sind (Sentinel im
-      # nominated_referee_string) oder für die bereits eine Ansetzung existiert.
-      # Letzteres ist nötig, weil der Sentinel beim Veröffentlichen durch die
-      # Schiedsrichter-Namen überschrieben wird – das Spiel soll dennoch sichtbar bleiben.
-      scope = scope.where(
-        'games.nominated_referee_string = ? OR games.id IN (?)',
-        RSK_ASSIGNMENT_MARKER,
-        RefereeAssignment.where.not(game_id: nil).select(:game_id)
-      )
+      # Personen-Weg: nur Spiele, die für die Personenebene markiert sind
+      # (person_level_assignment) oder für die bereits eine Ansetzung existiert.
+      # Letzteres ist nötig, weil eine veröffentlichte Ansetzung das Spiel
+      # sichtbar halten muss, auch wenn die Markierung nachträglich fällt.
+      #
+      # Bis August 2026 stand die Markierung als Sentinel-Text im
+      # nominated_referee_string; die Migration hat sie in die Spalte überführt.
+      #
+      # Reduzierter Modus: kein Markierungsfilter. Die RSK pflegt jedes künftige
+      # Spiel ihres Verbandsscopes; die für die Personenebene markierten sind dort
+      # nicht ausgeblendet, sondern gesperrt (`locked` im Payload) – ausgeblendet
+      # wüsste die RSK nicht, warum ein Spiel fehlt.
+      unless club_level_view?
+        scope = scope.where(
+          'games.person_level_assignment = TRUE OR games.id IN (?)',
+          RefereeAssignment.where.not(game_id: nil).select(:game_id)
+        )
+      end
 
       scope = scope.order("game_days.date ASC, games.start_time ASC NULLS LAST")
 
@@ -101,6 +115,18 @@ module Admin
           home_team_club_id: g.home_team&.club_id,
           guest_team_club_id: g.guest_team&.club_id,
           league: g.game_day.league&.name,
+          league_id: g.game_day.league_id,
+          # Markierung „personenscharf ansetzen". Im reduzierten Modus sperrt sie
+          # die Zeile, im Personen-Weg ist sie die Eintrittskarte in die Liste.
+          person_level_assignment: g.person_level_assignment,
+          # Gesperrt ist auch ein Spiel mit bereits angesetztem Gespann – siehe
+          # club_assignment_block_reason: veröffentlichte Ansetzungen aus der
+          # Zeit des Sentinels tragen die Markierung nicht mehr.
+          locked: club_level_view? && club_assignment_block_reason(g).present?,
+          # Aktueller Freitext im Spielplan – im reduzierten Modus das
+          # Eingabefeld, das die RSK pflegt.
+          nominated_referee_string: g.nominated_referee_string,
+          assignment_club_id: a&.club_id,
           # Bundesspielbetrieb (national markiert) → für die clientseitige
           # Lizenz-Vorauswahl (FD-Spiele defaulten auf N-Lizenz).
           national: go.present? && go.national?,
@@ -126,6 +152,61 @@ module Admin
       go_ids = assigner_scope_go_ids
       scope = go_ids ? Club.where(id: lv_club_ids(go_ids)) : Club.all
       render json: scope.order(:name).map { |c| { id: c.id, name: c.name } }
+    end
+
+    # GET /api/v2/admin/referee_assignments/league_clubs?league_id=X
+    # Reduzierter Modus (Weg 3): die Vereine der Mannschaften *dieser Liga*. Ein
+    # Gespann stellt in der Regel einer der beteiligten Vereine – die LV-weite
+    # Liste aus #clubs wäre hier ein Heuhaufen.
+    def league_clubs
+      league = League.find_by(id: params[:league_id])
+      return render json: { error: 'Liga nicht gefunden' }, status: :not_found unless league
+      return unless authorize_club_game_operation!(league.game_operation_id)
+
+      clubs = league_assignment_clubs(league)
+      render json: clubs.sort_by { |c| c.name.to_s }.map { |c| { id: c.id, name: c.name } }
+    end
+
+    # PATCH /api/v2/admin/referee_assignments/games/:game_id/club_assignment
+    # Reduzierter Modus (Weg 3): entweder einen Verein benennen, der das Gespann
+    # stellt, oder Personen/Paare als Freitext eintragen. Beides landet sofort
+    # öffentlich im Spielplan (nominated_referee_string) – ein Schritt
+    # „Veröffentlichen" wie im Personen-Weg gibt es hier bewusst nicht.
+    def update_club_assignment
+      game = Game.includes(:referee_assignment, game_day: :league).find_by(id: params[:game_id])
+      return render json: { error: 'Spiel nicht gefunden' }, status: :not_found unless game
+
+      league = game.game_day&.league
+      return unless authorize_club_game_operation!(league&.game_operation_id)
+
+      reason = club_assignment_block_reason(game)
+      return render json: { error: reason }, status: :unprocessable_entity if reason
+
+      club_id = params[:club_id].presence
+      free_text = params[:nominated_referee_string]
+
+      if club_id.present?
+        # Nur Vereine der Mannschaften dieser Liga. Ohne diese Prüfung ließe sich
+        # per API ein beliebiger Verein eintragen – der Name stünde öffentlich im
+        # Spielplan und die club_id ist der Anker für die spätere Selbstbenennung
+        # durch den Verein.
+        club = league_assignment_clubs(league).find { |c| c.id == club_id.to_i }
+        return render json: { error: 'Verein nicht gefunden' }, status: :not_found unless club
+
+        assign_club_to_game!(game, club)
+      else
+        # Freitext (oder Leeren) ersetzt eine zuvor gewählte Vereins-Ansetzung.
+        # Der Datensatz muss weg, sonst hält ihn der Verlauf und die
+        # Spieleliste (Filter „… ODER hat Ansetzung") als Geist weiter fest.
+        # Zusammen in einer Transaktion: sonst bliebe die Ansetzung gelöscht,
+        # wenn das Schreiben des Freitextes scheitert.
+        ActiveRecord::Base.transaction do
+          game.referee_assignment&.destroy!
+          game.update!(nominated_referee_string: free_text.to_s)
+        end
+      end
+
+      render json: club_assignment_json(game.reload)
     end
 
     # GET /api/v2/admin/referee_assignments/available?date=YYYY-MM-DD&game_id=X
@@ -596,7 +677,7 @@ module Admin
     # Spiele fremder Landesverbände (#351, 4.3). Jeder Ansetzer setzt nur für seine
     # eigene(n) game_operation_id(s) an.
     def assigner_scope_go_ids
-      return nil if current_user.permission_hash[:admin].present?
+      return nil if permission_hash[:admin].present?
 
       go_ids = current_user.permissions
                            .select { |p| p['user_group_id'].to_i == 7 }
@@ -608,6 +689,156 @@ module Admin
       return nil if go_ids.include?(0) || (GameOperation.pluck(:id) - go_ids).empty?
 
       go_ids
+    end
+
+    # Welche der beiden Ansichten der Nutzer bedient. Spiegelt
+    # User#permissions_items (referee_assignment_club_mode): die Personenebene
+    # gewinnt, Admin bleibt im Personen-Weg.
+    def club_level_view?
+      return @club_level_view if defined?(@club_level_view)
+
+      ph = permission_hash
+      @club_level_view = ph[:admin].blank? &&
+                         !current_user.referee_assignment_active_for_ansetzer?(ph) &&
+                         current_user.referee_assignment_club_mode_for_rsk?(ph)
+    end
+
+    # Spielbetriebe, für die im reduzierten Modus gepflegt werden darf: die der
+    # RSK-Rolle (user_group_id == 3), begrenzt auf Verbände, die tatsächlich im
+    # Vereins-Modus stehen.
+    #
+    # Wie assigner_scope_go_ids bewusst aus den Roh-Permissions und nicht aus
+    # permission_hash[:rsk]: dort wird eine Bundes-GO (FD, ohne
+    # state_association_id) auf [0] = „alle Verbände" hochgestuft, was den Scope
+    # über fremde Landesverbände öffnen würde (#351, 4.3).
+    def club_mode_scope_go_ids
+      return @club_mode_scope_go_ids if defined?(@club_mode_scope_go_ids)
+
+      go_ids = current_user.permissions
+                           .select { |p| p['user_group_id'].to_i == 3 }
+                           .map { |p| p['game_operation_id'].to_i }
+                           .reject(&:zero?)
+                           .uniq
+      @club_mode_scope_go_ids =
+        GameOperation.where(id: go_ids)
+                     .includes(:state_association)
+                     .select { |go| go.state_association&.club_level_assignment_active? }
+                     .map(&:id)
+    end
+
+    # Scope der Spieleliste je Ansicht. nil = unbeschränkt (Admin).
+    def view_scope_go_ids
+      club_level_view? ? club_mode_scope_go_ids : assigner_scope_go_ids
+    end
+
+    # Überhaupt Zugang zum Modul: Admin, aktive Ansetzer-Rolle oder RSK im
+    # reduzierten Modus.
+    def authorize_assignment_access!
+      ph = permission_hash
+      return if ph[:admin].present?
+      return if ph[:ansetzer].present? && current_user.referee_assignment_active_for_ansetzer?(ph)
+      return if current_user.referee_assignment_club_mode_for_rsk?(ph)
+
+      render json: { error: 'Nicht berechtigt' }, status: :forbidden
+    end
+
+    # Personen-Weg (Weg 2): nur Admin und die Ansetzer-Rolle. Hält die RSK aus
+    # Verfügbarkeiten, Benachrichtigungen und der Personen-Besetzung heraus, auch
+    # wenn sie über den reduzierten Modus im Modul ist.
+    def authorize_person_level!
+      ph = permission_hash
+      return if ph[:admin].present?
+      return if ph[:ansetzer].present? && current_user.referee_assignment_active_for_ansetzer?(ph)
+
+      render json: { error: 'Nicht berechtigt' }, status: :forbidden
+    end
+
+    # Reduzierter Modus (Weg 3): nur wer ihn tatsächlich sieht. Ein Admin oder
+    # Ansetzer hat dafür den Personen-Weg und würde hier an der Sperre für
+    # markierte Spiele vorbeiarbeiten.
+    def authorize_club_level!
+      return if club_level_view?
+
+      render json: { error: 'Nicht berechtigt' }, status: :forbidden
+    end
+
+    # Warum dieses Spiel im reduzierten Modus nicht bearbeitet werden darf –
+    # oder nil, wenn es frei ist.
+    #
+    # Die Personen-Markierung allein reicht als Sperre nicht: Beim Veröffentlichen
+    # überschreibt der Personen-Weg den Freitext mit den Schiedsrichter-Namen, der
+    # alte Sentinel war danach weg. Die Migration konnte solche Spiele deshalb
+    # nicht erkennen, sie stehen mit person_level_assignment = false im Bestand.
+    # Schaltet ein Verband später von der Personenebene auf den reduzierten Modus,
+    # tauchten sie hier unmarkiert auf – und ein Freitext-Eintrag würfe die
+    # bereits benachrichtigten Schiedsrichter kommentarlos aus dem Spiel. Eine
+    # Ansetzung mit Personen ist deshalb ebenfalls tabu; abberufen wird
+    # ausschließlich im Personen-Weg, der die Betroffenen per Mail informiert.
+    def club_assignment_block_reason(game)
+      return 'Dieses Spiel wird personenscharf angesetzt.' if game.person_level_assignment?
+
+      # Über die Fremdschlüssel statt über #referees: das lädt die
+      # Schiedsrichter-Datensätze nicht und hält die Spieleliste, die diese
+      # Prüfung je Zeile aufruft, frei von N+1-Abfragen.
+      assignment = game.referee_assignment
+      if assignment && (assignment.referee1_id.present? || assignment.referee2_id.present?)
+        return 'Für dieses Spiel ist bereits ein Gespann angesetzt. Änderungen laufen über die Ansetzung.'
+      end
+
+      # Die Liste zeigt nur künftige Spiele; über die API ließe sich sonst der
+      # öffentliche Eintrag eines längst gespielten Spiels umschreiben.
+      return 'Dieses Spiel hat bereits begonnen.' if game.started?
+
+      nil
+    end
+
+    # Vereine der Mannschaften einer Liga – Auswahl und Prüfung im reduzierten
+    # Modus lesen dieselbe Liste.
+    def league_assignment_clubs(league)
+      return [] unless league
+
+      league.teams.map(&:all_clubs).flatten.compact.uniq
+    end
+
+    # Liegt dieser Spielbetrieb im Vereins-Modus-Scope des Nutzers? Verhindert,
+    # dass eine RSK mit mehreren Verbänden in einen Verband schreibt, der auf der
+    # Personenebene arbeitet.
+    def authorize_club_game_operation!(go_id)
+      return true if go_id.present? && club_mode_scope_go_ids.include?(go_id)
+
+      render json: { error: 'Nicht berechtigt' }, status: :forbidden
+      false
+    end
+
+    # Vereins-Ansetzung: RefereeAssignment mit club_id und ohne Personen, damit
+    # der Verein seine Schiris später selbst benennen kann (dafür ist club_id da,
+    # siehe #403). Direkt „published" samt Vereinsname im Spielplan – der
+    # Mailversand hängt an den Aktionen #notify/#publish, nicht am Status, hier
+    # geht also bewusst keine Nachricht raus.
+    def assign_club_to_game!(game, club)
+      ActiveRecord::Base.transaction do
+        assignment = game.referee_assignment || game.build_referee_assignment
+        assignment.assign_attributes(
+          club_id: club.id,
+          referee1_id: nil,
+          referee2_id: nil,
+          status: 'published',
+          published_at: Time.current,
+          updated_by: current_user.id
+        )
+        assignment.save!
+        game.update!(nominated_referee_string: club.name.to_s)
+      end
+    end
+
+    def club_assignment_json(game)
+      assignment = game.referee_assignment
+      {
+        game_id: game.id,
+        nominated_referee_string: game.nominated_referee_string,
+        assignment_club_id: assignment&.club_id,
+        assignment_id: assignment&.id
+      }
     end
 
     def assignment_params

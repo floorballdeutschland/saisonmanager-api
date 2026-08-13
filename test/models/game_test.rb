@@ -223,6 +223,38 @@ class GameTest < ActiveSupport::TestCase
     assert_equal '15:00', g.events[1]['time']
   end
 
+  # `period` steht im JSONB mal als Zahl, mal als Zeichenkette: Das
+  # Spielbericht-Formular schickt JSON (`parseInt` -> Zahl), ein Formular-Post
+  # und der Altdaten-Import hinterlassen Zeichenketten. Trafen beide Formen in
+  # einem Spiel aufeinander, brach die Sortierung mit
+  # "ArgumentError: comparison of Array with Array failed" ab, und zwar bei
+  # jedem weiteren Speichern des Spielberichts.
+  test 'sort_events!: gemischte Typen im Abschnitt brechen die Sortierung nicht ab' do
+    events = [
+      { 'id' => 2, 'period' => 2, 'time' => '05:00', 'event_type' => 'goal', 'event_team' => 'home', 'home_goals' => 0, 'guest_goals' => 0 },
+      { 'id' => 1, 'period' => '1', 'time' => '10:00', 'event_type' => 'goal', 'event_team' => 'home', 'home_goals' => 0, 'guest_goals' => 0 }
+    ]
+    g = build_game(events: events)
+
+    g.sort_events!
+
+    assert_equal [1, 2], g.events.map { |e| e['id'] }
+  end
+
+  # Als Zeichenkette sortierte '10' vor '9'. Betrifft in der Praxis nur Spiele
+  # mit vielen Abschnitten, kostet aber nichts mitzunehmen.
+  test 'sort_events!: Abschnitte werden numerisch sortiert, nicht als Zeichenkette' do
+    events = [
+      { 'id' => 1, 'period' => '10', 'time' => '01:00', 'event_type' => 'goal', 'event_team' => 'home', 'home_goals' => 0, 'guest_goals' => 0 },
+      { 'id' => 2, 'period' => '9', 'time' => '01:00', 'event_type' => 'goal', 'event_team' => 'home', 'home_goals' => 0, 'guest_goals' => 0 }
+    ]
+    g = build_game(events: events)
+
+    g.sort_events!
+
+    assert_equal [2, 1], g.events.map { |e| e['id'] }
+  end
+
   test 'sort_events!: Tor-Zähler wird neu berechnet' do
     events = [
       { 'id' => 1, 'period' => 1, 'time' => '5:00', 'row' => 1, 'event_type' => 'goal', 'event_team' => 'home', 'home_goals' => 0, 'guest_goals' => 0 },

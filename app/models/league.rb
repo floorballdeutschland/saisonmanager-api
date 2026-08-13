@@ -3,6 +3,7 @@ class League < ApplicationRecord
   include LeagueDirectEncounterTable
   include LeagueBanner
   include LeagueLogo
+  include LeagueRefereeAssignment
 
   has_many :game_days
   has_many :qualifications, class_name: 'LeagueQualification',
