@@ -9,6 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Deaktivierung mit dem Grund „Sonstiges" schlug auf Englisch fehl**: In der Vereins-Spielerliste entstand der Freitext-Grund aus der Übersetzung. Wer die Oberfläche auf Englisch gestellt hatte, schickte damit `Other: …` an den Saisonmanager, der nur `Sonstiges: ` annimmt. Die Deaktivierung wurde mit „Ungültiger Deaktivierungsgrund" abgewiesen und die Person blieb aktiv. Die vier festen Gründe waren nie betroffen. Der Grund wird jetzt unabhängig von der eingestellten Sprache gebildet.
+
+- **Torschützen auf der Ergebniskachel ohne Abschnitt und ohne Seite**: Die Spielzeit an einem Ereignis zählt je Abschnitt neu ab 0:00. Untereinander gesetzt lief die Zeit auf der Kachel deshalb sichtbar rückwärts, und es stand nicht dabei, für welche Mannschaft das Tor fiel. Jede Zeile nennt jetzt den Spielstand nach dem Tor und den Abschnitt, also etwa „1:0   2. 05:00   M. Mustermann". Der mitwachsende Spielstand sagt die Seite unmittelbar, dafür braucht es keinen Mannschaftsnamen in der Zeile. Bei Altbeständen ohne diese Angaben bleibt die Zeile wie bisher.
+
 ### Neu
 
 - **Systemzustand mit Frühwarnung für den Speicherplatz**: Seit dem Wegfall der Azure-Anbindung liegen alle Uploads, also Lizenzdokumente und Logos, auf der Serverplatte. Dieser Bestand wächst monoton und fiel bisher niemandem auf, solange nichts kaputt war. Die Verwaltung hat dafür jetzt die Seite „System": Belegung des Datenträgers mit Ampel, die Uploads nach Art aufgeschlüsselt, die größten Einzeldateien, die Datenbankgröße mit den größten Tabellen sowie das Wachstum der letzten zwölf Monate und die daraus abgeleitete Restlaufzeit. Verwaiste Dateien ohne Zuordnung werden getrennt ausgewiesen, weil sie weiter Platz belegen und in keiner Aufschlüsselung auftauchen.
