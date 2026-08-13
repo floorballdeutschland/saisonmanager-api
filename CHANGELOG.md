@@ -16,7 +16,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Verbessert
 
 - **Spieltagssuche über das Datum wird schneller**: Die Datumsspalte der Spieltage war nicht indiziert, obwohl drei Stellen darüber suchen: der öffentliche Abruf der Livestreams des Tages, die Mannschaftsseite und die Schiedsrichter-Ansetzung. Der Index ist nachgezogen.
-- **Altdaten-Import normalisiert das Spieltagsdatum**: Der Import der Altsaisons 2010 bis 2014 schrieb das Datum unverändert aus der Altdatenbank durch, während er das Geburtsdatum der Spieler*innen längst auf eine einheitliche Form brachte. Abweichende Schreibweisen werden jetzt umgerechnet. Ein Datum, das sich gar nicht lesen lässt, bleibt stehen und lässt den Import laut scheitern, statt den Spieltag stillschweigend ohne Datum anzulegen.
+- **Altdaten-Import normalisiert das Spieltagsdatum**: Der Import der Altsaisons 2010 bis 2014 schrieb das Datum unverändert aus der Altdatenbank durch, während er das Geburtsdatum der Spieler*innen längst auf eine einheitliche Form brachte. Abweichende Schreibweisen werden jetzt umgerechnet, allerdings nur, wenn eine vollständige Jahreszahl dabeisteht. Aus einer Bruchstückangabe wie „12" wird also kein Datum im laufenden Monat erfunden. Ein Datum, das sich gar nicht sicher lesen lässt, bleibt stehen und lässt den Import laut scheitern, statt den Spieltag stillschweigend ohne oder mit falschem Datum anzulegen.
 
 ## [1.78.0] - 2026-08-13
 

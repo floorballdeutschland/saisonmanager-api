@@ -289,6 +289,16 @@ class LegacyImport::TransformerTest < ActiveSupport::TestCase # rubocop:disable 
     assert_equal 'Sommerpause', game_day_attrs_for('Sommerpause')[:date]
   end
 
+  # Date.parse ist großzügig bis zur Selbstschädigung: "12" wird zum 12. des
+  # LAUFENDEN Monats, "1.1.26" zu 2026-01-01. Ein erfundenes, plausibel
+  # aussehendes Datum wäre schlimmer als der Rohwert, weil es danach nirgends
+  # mehr auffällt.
+  test 'game_day_attrs erfindet aus einer Bruchstueckangabe kein Datum' do
+    assert_equal '12', game_day_attrs_for('12')[:date]
+    assert_equal '1.1.26', game_day_attrs_for('1.1.26')[:date]
+    assert_equal '31.02.', game_day_attrs_for('31.02.')[:date]
+  end
+
   test 'game_day_attrs laesst ein fehlendes Datum weg' do
     refute game_day_attrs_for(nil).key?(:date)
     refute game_day_attrs_for('').key?(:date)

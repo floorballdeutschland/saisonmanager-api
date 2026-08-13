@@ -78,6 +78,14 @@ module LegacyImport
       candidate = value[0, 10]
       return candidate if candidate.match?(GameDay::DATE_FORMAT)
 
+      # Date.parse ist großzügig bis zur Selbstschädigung: "12" wird zum 12. des
+      # LAUFENDEN Monats, "1.1.26" zu 2026-01-01. Ein erfundenes, plausibel
+      # aussehendes Datum ist schlechter als ein stehen gelassener Rohwert, denn
+      # es fällt danach nirgends mehr auf, während der Rohwert in die Validierung
+      # von GameDay läuft und den Import laut scheitern lässt. Umgerechnet wird
+      # deshalb nur, was eine vierstellige Jahreszahl mitbringt.
+      return value unless value.match?(/\d{4}/)
+
       begin
         Date.parse(value).to_s
       rescue Date::Error
