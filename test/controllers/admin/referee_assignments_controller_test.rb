@@ -217,13 +217,13 @@ module Admin
 
     private
 
-    # Spiel, das in der Ansetzungs-Liste auftaucht: noch nicht begonnen und über
-    # den Sentinel im nominated_referee_string zur RSK-Ansetzung markiert.
+    # Spiel, das in der Ansetzungs-Liste auftaucht: noch nicht begonnen und für die
+    # Personenebene markiert. Die Markierung stand bis August 2026 als Sentinel-Text
+    # im nominated_referee_string und ist seit #403 eine eigene Spalte.
     def assignable_game(game_operation)
       league = create(:league, game_operation: game_operation)
       game_day = create(:game_day, league: league, date: (Date.today + 7).to_s)
-      create(:game, game_day: game_day, game_status: 'pregame',
-                    nominated_referee_string: RefereeAssignmentsController::RSK_ASSIGNMENT_MARKER)
+      create(:game, game_day: game_day, game_status: 'pregame', person_level_assignment: true)
     end
 
     # Schiri mit gültiger B-Zusatzlizenz und hinterlegter Verfügbarkeit am Datum.

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_08_13_130000) do
+ActiveRecord::Schema[7.1].define(version: 2026_08_13_130200) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -376,6 +376,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_13_130000) do
     t.text "referee_notes"
     t.datetime "referee_notes_updated_at"
     t.bigint "referee_notes_updated_by"
+    t.boolean "person_level_assignment", default: false, null: false
     t.index ["checklist_veto_token_digest"], name: "index_games_on_checklist_veto_token_digest", unique: true, where: "(checklist_veto_token_digest IS NOT NULL)"
     t.index ["game_day_id"], name: "index_games_on_game_day_id"
     t.index ["guest_team_id"], name: "index_games_on_guest_team_id"
@@ -848,6 +849,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_13_130000) do
     t.boolean "referee_assignment_enabled", default: false, null: false
     t.boolean "report_form_email_enabled", default: false, null: false, comment: "Wenn true: Berichtsformular des Schiris wird per E-Mail an die VSK versendet"
     t.string "rsk_email", comment: "Postfach für Schiedsrichteransetzungen über den Saisonmanager"
+    t.boolean "referee_assignment_external_enabled", default: false, null: false
+    t.boolean "person_level_assignment_default", default: false, null: false
     t.index ["parent_id"], name: "index_state_associations_on_parent_id"
   end
 

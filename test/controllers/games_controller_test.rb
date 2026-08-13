@@ -143,10 +143,15 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
   # Spielbetriebs-Scoping der Schreibpfade (#214)
   # ---------------------------------------------------------------------------
 
+  # Vollständige Nutzlast, seit add_event Ereignisart und Mannschaft prüft. Die
+  # beiden Abweisungs-Fälle darunter kommen bewusst ohne aus: Die Rechteprüfung
+  # läuft vor dem Guard, ein 403 darf nicht zu einem 422 werden.
   test 'add_event: SBK des Spielbetriebs darf ein Ereignis eintragen' do
     login(create(:user, :sbk_scoped, game_operation_id: @go.id))
 
-    post "/api/v2/user/games/#{@game.id}/events/add", params: { period: 1, time: '10:00' }
+    post "/api/v2/user/games/#{@game.id}/events/add",
+         params: { period: 1, time: '10:00', event_type: 'goal', event_team: 'home',
+                   home_goals: 1, guest_goals: 0, home_number: 7 }
 
     assert_response :success
   end
@@ -301,7 +306,203 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
     assert_equal '9', event['home_assist'].to_s
   end
 
+  # ---------------------------------------------------------------------------
+  # Ereignisart und Mannschaft: Wertebereich statt ungeprüfter Übernahme (#295)
+  #
+  # Der Schaden ist nicht der typlose Rumpf in events, sondern der Spielstand:
+  # sort_events! zählt nur bei event_type == 'goal' hoch, und Game#result
+  # überspringt Zeilen ohne Spielstand. Ein Tor, dem die Kennzeichnung genommen
+  # wurde, verschwindet damit lautlos aus dem Ergebnis. Deshalb prüft jeder Fall
+  # unten nicht nur den Statuscode, sondern auch das Ergebnis.
+  # ---------------------------------------------------------------------------
+
+  test 'update_event: ohne Ereignisart bleibt das Tor unangetastet und der Spielstand steht' do
+    two_goals!
+    assert_equal '2:0', score
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/games/#{@game.id}/events/update", params: {
+      event_id: 2, period: 1, time: '20:00', event_team: 'home', home_goals: 2, guest_goals: 0
+    }
+
+    assert_response :unprocessable_entity
+    assert_match(/Ereignisart/, response.parsed_body['message'])
+    event = @game.reload.events.find { |e| e['id'].to_i == 2 }
+    assert_equal 'goal', event['event_type'], 'die Kennzeichnung darf nicht verloren gehen'
+    assert_equal '2:0', score, 'der Spielstand darf nicht um ein Tor sinken'
+  end
+
+  test 'update_event: leere Ereignisart wird genauso abgewiesen wie eine fehlende' do
+    two_goals!
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/games/#{@game.id}/events/update", params: {
+      event_id: 2, period: 1, time: '20:00', event_type: '', event_team: 'home',
+      home_goals: 2, guest_goals: 0
+    }
+
+    assert_response :unprocessable_entity
+    assert_equal '2:0', score
+  end
+
+  test 'update_event: unbekannte Ereignisart wird abgewiesen' do
+    two_goals!
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/games/#{@game.id}/events/update", params: {
+      event_id: 2, period: 1, time: '20:00', event_type: 'timeout', event_team: 'home',
+      home_goals: 2, guest_goals: 0
+    }
+
+    assert_response :unprocessable_entity
+    assert_equal 'goal', @game.reload.events.find { |e| e['id'].to_i == 2 }['event_type']
+  end
+
+  # event_team steuert ein if/else, in dem alles ausser 'home' als Gast gilt.
+  # Ohne Wertebereich landete eine fehlende Angabe damit stumm bei der
+  # Gastmannschaft, samt Löschen der Heim-Trikotnummern.
+  test 'update_event: ohne Mannschaft bleiben die Trikotnummern der Heimseite stehen' do
+    two_goals!
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/games/#{@game.id}/events/update", params: {
+      event_id: 2, period: 1, time: '20:00', event_type: 'goal', home_goals: 2, guest_goals: 0
+    }
+
+    assert_response :unprocessable_entity
+    assert_match(/Mannschaft/, response.parsed_body['message'])
+    event = @game.reload.events.find { |e| e['id'].to_i == 2 }
+    assert_equal 'home', event['event_team']
+    assert_equal '9', event['home_number'].to_s
+  end
+
+  test 'update_event: ohne Zeit oder Abschnitt wird abgewiesen' do
+    two_goals!
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+    base = { event_id: 2, event_type: 'goal', event_team: 'home', home_goals: 2, guest_goals: 0 }
+
+    post "/api/v2/user/games/#{@game.id}/events/update", params: base.merge(period: 1)
+    assert_response :unprocessable_entity
+    assert_match(/Ereigniszeit/, response.parsed_body['message'])
+
+    post "/api/v2/user/games/#{@game.id}/events/update", params: base.merge(time: '20:00')
+    assert_response :unprocessable_entity
+    assert_match(/Spielabschnitt/, response.parsed_body['message'])
+
+    event = @game.reload.events.find { |e| e['id'].to_i == 2 }
+    assert_equal '20:00', event['time']
+    assert_equal 1, event['period'].to_i
+  end
+
+  # Zweiter Schreibweg. Anders als in #295 vermutet setzt add_event event_type
+  # nicht immer: Es schreibt params[:event_type] genauso unbedingt und legt bei
+  # fehlendem Wert eine typlose Zeile gleich neu an.
+  test 'add_event: ohne Ereignisart entsteht keine typlose Zeile' do
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/games/#{@game.id}/events/add",
+         params: { period: 1, time: '10:00', event_team: 'home', home_goals: 1, guest_goals: 0 }
+
+    assert_response :unprocessable_entity
+    assert_empty @game.reload.events
+  end
+
+  # Gegenrichtung: Der Guard darf keinen regulären Vorgang blockieren. Umstellen
+  # eines Tores auf eine Strafe ist der Fall, den das Formular am häufigsten
+  # schickt.
+  test 'update_event: Umstellen von Tor auf Strafe geht weiterhin durch' do
+    two_goals!
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/games/#{@game.id}/events/update", params: {
+      event_id: 2, period: 1, time: '20:00', event_type: 'penalty', event_team: 'guest',
+      home_goals: 1, guest_goals: 0, guest_number: 4, penalty_id: 1, penalty_code_id: 1
+    }
+
+    assert_response :success
+    event = @game.reload.events.find { |e| e['id'].to_i == 2 }
+    assert_equal 'penalty', event['event_type']
+    assert_equal 'guest', event['event_team']
+    # Hier SOLL der Spielstand sinken: Das zweite Tor ist jetzt eine Strafe.
+    assert_equal '1:0', score
+  end
+
+  # Zeit und Abschnitt hatten nur eine Anwesenheitsprüfung, und die reicht bei
+  # einem Array nicht: `["20:00"].blank?` ist false. Die Werteliste bei
+  # event_type/event_team fängt denselben Fall von sich aus ab.
+  test 'update_event: eine Zeit als Array landet nicht im Spielbericht' do
+    two_goals!
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/games/#{@game.id}/events/update", params: {
+      event_id: 2, period: '1', time: ['20:00'], event_type: 'goal', event_team: 'home',
+      home_goals: 2, guest_goals: 0
+    }
+
+    assert_response :unprocessable_entity
+    assert_equal '20:00', @game.reload.events.find { |e| e['id'].to_i == 2 }['time'],
+                 'im JSONB darf keine Liste stehen'
+  end
+
+  # sort_events! sortiert über [period, time, id, row]. Ein Array neben einer
+  # Zeichenkette liess den Vergleich mit ArgumentError abbrechen, also ein 500er
+  # allein durch die Nutzlast.
+  test 'add_event: ein Abschnitt als Array bricht das Speichern nicht ab' do
+    two_goals!
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/games/#{@game.id}/events/add", params: {
+      period: ['1'], time: '30:00', event_type: 'goal', event_team: 'home',
+      home_goals: 3, guest_goals: 0
+    }
+
+    assert_response :unprocessable_entity
+    assert_equal 2, @game.reload.events.size
+  end
+
+  # Gegenrichtung, und der Grund, warum für den Abschnitt KEINE Zeichenkette
+  # erzwungen wird: Das Spielbericht-Formular schickt JSON, `parseInt` macht
+  # daraus eine Zahl. Ein String-Zwang hätte die Erfassung am Spieltag zerlegt.
+  #
+  # Der Fall deckt zugleich das gemischte Speichern ab: Die vorhandenen Zeilen
+  # tragen '1' als Zeichenkette, die Änderung schreibt eine Zahl. Vor der
+  # Normalisierung des Sortierschlüssels endete genau das in einem 500er.
+  test 'update_event: ein Abschnitt als JSON-Zahl geht durch' do
+    two_goals!
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/games/#{@game.id}/events/update",
+         params: { event_id: 2, period: 2, time: '25:00', event_type: 'goal', event_team: 'home',
+                   home_goals: 2, guest_goals: 0 }.to_json,
+         headers: { 'CONTENT_TYPE' => 'application/json' }
+
+    assert_response :success
+    assert_equal 2, @game.reload.events.find { |e| e['id'].to_i == 2 }['period'].to_i
+  end
+
   private
+
+  # Zwei Heimtore, damit der Spielstand etwas hergibt, das sinken könnte.
+  #
+  # started, weil Game#result bei einem nicht angepfiffenen Spiel nil liefert.
+  # period als String, weil der Controller Parameter schreibt und sort_events!
+  # über [period, time, id, row] sortiert: Steht in einer Zeile die 1 als Zahl
+  # und in der anderen als Zeichenkette, bricht der Vergleich mit ArgumentError.
+  def two_goals!
+    @game.update!(started: true, events: [
+      { 'id' => 1, 'period' => '1', 'time' => '10:00', 'event_type' => 'goal',
+        'event_team' => 'home', 'home_goals' => 1, 'guest_goals' => 0, 'home_number' => 7 },
+      { 'id' => 2, 'period' => '1', 'time' => '20:00', 'event_type' => 'goal',
+        'event_team' => 'home', 'home_goals' => 2, 'guest_goals' => 0, 'home_number' => 9 }
+    ])
+  end
+
+  # Game#result liefert einen Hash; für die Lesbarkeit der Fälle oben auf
+  # "heim:gast" heruntergebrochen.
+  def score
+    result = @game.reload.result
+    "#{result[:home_goals]}:#{result[:guest_goals]}"
+  end
 
   def login(user)
     post '/api/v2/login', params: { username: user.user_name, password: 'password123' }

@@ -124,6 +124,14 @@ class GamesController < ApplicationController
     game = Game.new(game_create_update_params)
     game.correct_teams!
     game_operation_id = game.league.game_operation_id.to_i
+    # Voreinstellung „Standardmäßig durch Ansetzer*in": neue Spiele gleich
+    # markieren, damit die SBK das nicht je Spieltag anklicken muss. Nur, wenn
+    # die Maske das Flag nicht ausdrücklich mitgeschickt hat.
+    if game_create_update_params.key?(:person_level_assignment)
+      game.person_level_assignment = false unless Game.person_level_assignment_allowed_for?(game.league)
+    else
+      game.person_level_assignment = Game.person_level_assignment_default_for?(game.league)
+    end
 
     allowed = if ph[:admin].present? || ph[:sbk].present?
                 gos = [ph[:admin], ph[:sbk]].flatten.compact.map(&:to_i)
@@ -164,8 +172,18 @@ class GamesController < ApplicationController
 
     game.updated_by ||= current_user.id
 
+    # Wie beim Anlegen: die Markierung darf nur stehen, wo die Personenebene
+    # greift – sonst entsteht ein Spiel, das keine der beiden Ansichten
+    # bearbeiten kann. Eine bereits gesetzte Markierung lässt sich weiterhin
+    # entfernen, nur das Setzen ist gesperrt.
+    update_attrs = game_create_update_params
+    if update_attrs.key?(:person_level_assignment) &&
+       !Game.person_level_assignment_allowed_for?(game.league)
+      update_attrs = update_attrs.merge(person_level_assignment: false)
+    end
+
     if allowed
-      if game.update(game_create_update_params)
+      if game.update(update_attrs)
         # Änderungen an Anpfiff oder Absage (notice_type) benachrichtigen die
         # Beteiligten einer bereits veröffentlichten Ansetzung. Nur bei echter
         # Änderung dieser Felder (Dirty-Tracking): so lösen unbeteiligte Edits
@@ -582,6 +600,10 @@ class GamesController < ApplicationController
               end
 
     if allowed
+      if (error = event_input_error)
+        return render json: { message: error }, status: :unprocessable_entity
+      end
+
       # ensure we have the hash set
       game.events ||= []
 
@@ -682,6 +704,10 @@ class GamesController < ApplicationController
       game.events ||= []
       event = game.events.find { |e| e['id'].to_i == params[:event_id].to_i }
       return render json: { message: 'Ereignis nicht gefunden.' }, status: :not_found unless event
+
+      if (error = event_input_error)
+        return render json: { message: error }, status: :unprocessable_entity
+      end
 
       event['time'] = params[:time]
       event['period'] = params[:period]
@@ -1248,6 +1274,63 @@ class GamesController < ApplicationController
     event.delete('penalty_code_id')
   end
 
+  # Die vier Angaben, die ein Ereignis überhaupt erst zu einem Ereignis machen.
+  # Beide Schreibwege übernahmen sie ungeprüft aus den Parametern, ohne permit,
+  # ohne .presence und ohne Wertebereich. Fehlte event_type oder kam es leer an,
+  # verlor die Zeile ihre Kennzeichnung, und weil sort_events! den Spielstand nur
+  # bei event_type == 'goal' hochzählt, sank der Spielstand still um ein Tor.
+  # Kein Fehler, keine Meldung: Game#result überspringt Zeilen ohne Spielstand,
+  # die Anzeige wirkte also stimmig, nur mit einem Tor weniger. Dieselben Zeilen
+  # bleiben als typlose Rümpfe in events stehen.
+  #
+  # Anders als in #295 vermutet ist update_event nicht der einzige Weg dorthin:
+  # add_event schreibt event_type genauso unbedingt aus den Parametern und legt
+  # bei fehlendem Wert eine typlose Zeile gleich neu an. Beide Aktionen fragen
+  # deshalb denselben Guard.
+  #
+  # Kein Risiko für bestehende Aufrufer: Das Spielbericht-Formular
+  # (match-event-form) ist der einzige Schreibweg und setzt alle vier Werte fest
+  # ('goal' oder 'penalty', 'home' oder 'guest', Zeit, Abschnitt). Die v1-Ticker-
+  # Schnittstelle liest nur.
+  EVENT_TYPES = %w[goal penalty].freeze
+  EVENT_TEAMS = %w[home guest].freeze
+
+  # Gibt eine erklärende Meldung zurück oder nil, wenn die Angaben tragen
+  # (gleiche Form wie logo_upload_error).
+  #
+  # Der Abgleich gegen eine Werteliste erledigt bei event_type und event_team
+  # zugleich die Typfrage: Ein Array oder ein verschachtelter Parameter steht
+  # nicht in der Liste und fällt heraus. Bei Zeit und Abschnitt genügt eine
+  # reine Anwesenheitsprüfung dafür NICHT, deshalb dort zusätzlich der Typ.
+  def event_input_error
+    unless EVENT_TYPES.include?(params[:event_type])
+      return 'Ereignisart fehlt oder ist unbekannt (erlaubt: Tor oder Strafe).'
+    end
+    unless EVENT_TEAMS.include?(params[:event_team])
+      return 'Mannschaft fehlt oder ist unbekannt (erlaubt: Heim oder Gast).'
+    end
+    # Die Zeit ist immer eine Zeichenkette ("mm:ss"), das Formular baut sie so
+    # zusammen. Als Array kam sie ungeprüft durch und stand danach als
+    # ["20:00"] im JSONB.
+    return 'Ereigniszeit fehlt.' unless params[:time].is_a?(String) && params[:time].present?
+    return 'Spielabschnitt fehlt.' unless valid_period?(params[:period])
+
+    nil
+  end
+
+  # Der Abschnitt kommt vom Formular als JSON-Zahl (`parseInt` im Frontend), bei
+  # einem Formular-Post als Zeichenkette. Beides ist in Ordnung, ein Array nicht:
+  # sort_events! sortiert über [period, time, id, row], und ein Array neben einer
+  # Zeichenkette lässt den Vergleich mit "comparison of Array with Array failed"
+  # abbrechen – ein 500er, ausgelöst allein durch die Nutzlast.
+  def valid_period?(value)
+    case value
+    when Integer then true
+    when String then value.present?
+    else false
+    end
+  end
+
   # Weicher Lizenz-Check: erzeugt eine Warnmeldung, wenn der Spieler keine erteilte
   # Lizenz fuer das Team in der Liga des Spiels hat. Blockiert das Hinzufuegen nicht.
   def lineup_license_warning(game, player, side)
@@ -1292,7 +1375,8 @@ class GamesController < ApplicationController
 
   def game_create_update_params
     params.require(:game).permit(:forfait, :game_day_id, :game_number, :start_time,
-                                 :nominated_referee_string, :notice_type, :notice_string,
+                                 :nominated_referee_string, :person_level_assignment,
+                                 :notice_type, :notice_string,
                                  :home_team_id, :guest_team_id,
                                  :group_identifier,
                                  :series_title,
