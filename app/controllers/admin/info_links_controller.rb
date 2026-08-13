@@ -24,7 +24,17 @@ module Admin
       return render json: { error: 'Unbekannter Link-Schlüssel' }, status: :not_found unless
         Setting::INFO_LINK_KEYS.include?(key)
 
-      url = params.dig(:info_link, :url).to_s.strip
+      # Eine leere Adresse entfernt den Link – deshalb darf ein Request, der gar
+      # keine Adresse mitbringt, nicht als „entfernen" durchgehen. Sonst löscht
+      # ein falsch geformter Aufruf (fehlende oder verschriebene Wurzel, Skalar
+      # statt Hash) die gepflegte Adresse still und antwortet dabei mit 200.
+      info_link = params[:info_link]
+      unless info_link.is_a?(ActionController::Parameters) && info_link.key?(:url)
+        return render json: { error: 'Es wurde keine Adresse übermittelt (info_link[url] fehlt).' },
+                      status: :unprocessable_entity
+      end
+
+      url = info_link[:url].to_s.strip
       error = validation_error(url)
       return render json: { error: error }, status: :unprocessable_entity if error
 
@@ -45,7 +55,13 @@ module Admin
       return nil if url.blank?
       return 'Der Link ist zu lang (maximal 500 Zeichen).' if url.length > 500
 
-      uri = URI.parse(url)
+      # URI.parse verträgt keine Nicht-ASCII-Zeichen und wirft dort
+      # InvalidURIError. floorball.de legt Dateien mit Umlauten im Namen ab
+      # („Info-Übersicht.pdf") – ohne die escapte Kopie liesse sich genau die
+      # Adresse nicht hinterlegen, um die es hier geht. Geprüft wird die Kopie,
+      # gespeichert die Eingabe: Browser kodieren beim Aufruf selbst, und eine
+      # doppelt escapte Adresse führte ins Leere.
+      uri = URI.parse(URI::DEFAULT_PARSER.escape(url))
       return 'Der Link muss mit http:// oder https:// beginnen.' unless uri.is_a?(URI::HTTP) && uri.host.present?
 
       nil
@@ -61,7 +77,11 @@ module Admin
       if url.blank?
         links.delete(key)
       else
-        links[key] = (links[key] || {}).merge('url' => url)
+        # Fremdformat (blanker String statt Hash, etwa aus der Konsole) nicht
+        # mergen wollen – sonst NoMethodError statt einer gespeicherten Adresse.
+        existing = links[key]
+        existing = {} unless existing.is_a?(Hash)
+        links[key] = existing.merge('url' => url)
       end
       setting.info_links = links
       setting.save!

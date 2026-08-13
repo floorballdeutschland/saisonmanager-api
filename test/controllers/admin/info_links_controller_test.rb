@@ -49,6 +49,51 @@ module Admin
       assert_equal URL, @setting.reload.info_links.dig('minor_privacy_bundesliga', 'url')
     end
 
+    # Leer heisst „entfernen", fehlend heisst „Fehler" – sonst löscht ein falsch
+    # geformter Aufruf die gepflegte Adresse still und meldet dabei Erfolg.
+    test 'Request ohne info_link[url] → 422, Adresse bleibt' do
+      login(create(:user, :admin))
+      @setting.update!(info_links: { 'minor_privacy_bundesliga' => { 'url' => URL } })
+
+      patch '/api/v2/admin/info_links/minor_privacy_bundesliga'
+      assert_response :unprocessable_entity
+      assert_equal URL, @setting.reload.info_links.dig('minor_privacy_bundesliga', 'url')
+
+      patch '/api/v2/admin/info_links/minor_privacy_bundesliga', params: { url: '' }
+      assert_response :unprocessable_entity
+      assert_equal URL, @setting.reload.info_links.dig('minor_privacy_bundesliga', 'url')
+    end
+
+    test 'info_link als Skalar → 422 statt 500' do
+      login(create(:user, :admin))
+
+      patch '/api/v2/admin/info_links/minor_privacy_bundesliga', params: { info_link: 'kaputt' }
+      assert_response :unprocessable_entity
+    end
+
+    # floorball.de legt Dateien mit Umlauten im Namen ab. URI.parse wirft darauf
+    # InvalidURIError – die Adresse muss sich trotzdem hinterlegen lassen.
+    test 'Adresse mit Umlaut wird unverändert gespeichert' do
+      login(create(:user, :admin))
+      umlaut_url = 'https://floorball.de/wp-content/uploads/2026/06/Info-Übersicht.pdf'
+
+      patch '/api/v2/admin/info_links/minor_privacy_bundesliga', params: { info_link: { url: umlaut_url } }
+      assert_response :ok
+      assert_equal umlaut_url, JSON.parse(response.body)['url']
+      assert_equal umlaut_url, @setting.reload.info_links.dig('minor_privacy_bundesliga', 'url')
+    end
+
+    # info_link_url hängt an init, dem ersten Request jedes Seitenaufbaus. Ein
+    # Fremdformat darf dort nicht das komplette Frontend lahmlegen.
+    test 'blanker String unter dem Key legt init nicht lahm' do
+      @setting.update!(info_links: { 'minor_privacy_bundesliga' => URL })
+      login(create(:user, :vm, club_id: 1))
+
+      get '/api/v2/init.json'
+      assert_response :success
+      assert_empty JSON.parse(response.body)['info_links']
+    end
+
     test 'Unbekannter Key → 404' do
       login(create(:user, :admin))
 

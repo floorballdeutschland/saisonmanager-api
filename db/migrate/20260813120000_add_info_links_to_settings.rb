@@ -19,13 +19,25 @@ class AddInfoLinksToSettings < ActiveRecord::Migration[7.1]
       info_links: { 'minor_privacy_bundesliga' => { 'url' => MINOR_PRIVACY_URL } },
       updated_at: Time.current
     )
-    Rails.cache.delete('settings/current')
-    Rails.cache.delete('settings/init')
+    flush_setting_caches
   end
 
   def down
     remove_column :settings, :info_links
     Setting.reset_column_information
+    flush_setting_caches
+  end
+
+  private
+
+  # Wirkt nur dort, wo der Cache prozessübergreifend liegt. Produktion nutzt
+  # `:memory_store` und migriert in einem Wegwerf-Container
+  # (`docker compose run --rm`); das Löschen trifft dort den eigenen, leeren
+  # Store und nicht den des laufenden Servers. Sauber ist der Deploy trotzdem,
+  # weil deploy.sh den rails-api-Container danach neu erzeugt und der Cache
+  # damit ohnehin leer startet. Wer diese Migration ohne Container-Neustart
+  # einspielt, muss den Cache selbst verwerfen.
+  def flush_setting_caches
     Rails.cache.delete('settings/current')
     Rails.cache.delete('settings/init')
   end
