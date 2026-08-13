@@ -1,8 +1,13 @@
-# Was heute übertragen wird.
+# Was heute übertragen wird, und was in den letzten sieben Tagen lief.
 #
 # `games.live_stream_link` und `games.vod_link` werden im Spielbericht in
 # Schritt 1 erfasst, standen bisher aber nur am einzelnen Spiel. Wer wissen
 # wollte, was gerade läuft, musste die Ligen einzeln durchgehen.
+#
+# Der Rückblick ist kein Beiwerk: Eine Übertragung ist nach dem Schlusspfiff
+# nicht vorbei, sondern steht als Aufzeichnung weiter zur Verfügung. Um
+# Mitternacht fiel sie bisher aus der Liste, obwohl der Link unverändert
+# funktioniert.
 #
 # HIER GILT DIE NORMALE REGEL, NICHT DIE OVERLAY-AUSNAHME. Der Abruf verhält
 # sich wie jeder andere öffentliche: `authenticate_public_request`, und die
@@ -21,9 +26,10 @@ class LiveStreamsController < ApplicationController
 
   # GET /api/v2/live_streams
   #
-  # Die Spiele des Tages mit hinterlegtem Stream-Link, nach Anwurf sortiert:
-  # laufende zuerst mit Abschnitt und Zwischenstand, dann die anstehenden,
-  # darunter die beendeten mit Endstand und Aufzeichnung.
+  # Die Spiele mit hinterlegtem Stream-Link, nach Anwurf sortiert: die laufenden
+  # zuerst mit Abschnitt und Zwischenstand, dann die heute noch anstehenden,
+  # darunter der Rückblick auf die letzten sieben Tage mit Endstand und
+  # Aufzeichnung, das zuletzt beendete Spiel oben.
   def index
     date = today
 
@@ -44,6 +50,11 @@ class LiveStreamsController < ApplicationController
   # Reihenfolge der Blöcke, wie sie im Bild stehen sollen.
   STATUS_ORDER = { 'running' => 0, 'upcoming' => 1, 'ended' => 2 }.freeze
 
+  # Wie weit der Rückblick zurückreicht, in Tagen vor dem heutigen. Sieben, weil
+  # der Spielbetrieb im Wochenrhythmus läuft: So steht das Wochenende bis zum
+  # nächsten noch da.
+  PAST_DAYS = 7
+
   # `game_days.date` ist ein lokales Datum ohne Zeitzone: der Tag, an dem in der
   # Halle gespielt wird. Die Anwendung läuft in UTC (`config.time_zone` ist
   # nicht gesetzt), abends nach 22 Uhr wäre „heute" dort noch der Vortag und die
@@ -55,8 +66,14 @@ class LiveStreamsController < ApplicationController
     RefereeFeedbackWindow.today
   end
 
+  # Die Tage, die der Abruf abdeckt: heute und die sieben davor. Als Zeichenketten,
+  # weil `game_days.date` eine Textspalte ist (siehe games_in_window).
+  def window_dates(date)
+    ((date - PAST_DAYS)..date).map(&:to_s)
+  end
+
   def build_entries(date)
-    entries = games_of_day(date).map { |game| entry(game) }
+    entries = games_in_window(date).map { |game| entry(game, date) }
 
     # Einträge, an denen nach `.presence` weder Stream noch Aufzeichnung übrig ist,
     # gehören nicht in die Liste. Der SQL-Filter lässt jeden nicht-leeren Text durch,
@@ -66,25 +83,44 @@ class LiveStreamsController < ApplicationController
 
     log_empty_but_games_exist(date) if entries.empty?
 
-    entries.sort_by do |e|
-      # `start_time` ist eine Textspalte, ein leerer Wert sortierte sonst VOR 09:00 --
-      # das ungepflegte Spiel stünde über dem, das gleich angeworfen wird. Dasselbe
-      # Muster wie in PublicSecretaryController.
-      [STATUS_ORDER.fetch(e[:status], 9), e[:time].presence || '99:99', e[:game_number].to_i]
-    end
+    sort_entries(entries)
   end
 
-  # Eine leere Liste heißt auf der Seite "heute wird nichts übertragen". Genau so
+  # Was heute noch aussteht, zuerst; der Rückblick dahinter, das zuletzt
+  # gespielte Spiel oben. Zwei Sortierungen, weil sie in verschiedene Richtungen
+  # laufen: Vorn interessiert, was als Nächstes kommt, hinten, was zuletzt war.
+  #
+  # Getrennt wird dabei am STATUS und nicht am Datum. Ein heute schon beendetes
+  # Spiel gehört zum Rückblick, nicht zum heutigen Block -- die Seite baut ihre
+  # Blöcke aus dem Status, und eine Trennung am Datum ließe genau diese Einträge
+  # aufsteigend im absteigenden Block landen (das Spiel von 14:00 über dem von
+  # 16:00, darunter erst gestern).
+  def sort_entries(entries)
+    ahead, past = entries.partition { |e| e[:status] != 'ended' }
+
+    ahead.sort_by { |e| [STATUS_ORDER.fetch(e[:status], 9), *time_key(e)] } +
+      past.sort_by { |e| [e[:date].to_s, *time_key(e)] }.reverse
+  end
+
+  # `start_time` ist eine Textspalte, ein leerer Wert sortierte sonst VOR 09:00 --
+  # das ungepflegte Spiel stünde über dem, das gleich angeworfen wird. Dasselbe
+  # Muster wie in PublicSecretaryController.
+  def time_key(entry)
+    [entry[:time].presence || '99:99', entry[:game_number].to_i]
+  end
+
+  # Eine leere Liste heißt auf der Seite "es wird nichts übertragen". Genau so
   # sieht aber auch ein nicht mehr zutreffender Datumsvergleich aus, und zwar ohne
   # Fehler und ohne Logzeile. Diese eine Abfrage je Cache-Miss trennt die beiden
-  # Fälle: Gibt es überhaupt Spieltage mit diesem Datum, war der Tag nicht ruhig,
+  # Fälle: Gibt es überhaupt Spieltage in diesem Zeitraum, war er nicht ruhig,
   # sondern es ist nur an keinem ein Link hinterlegt -- und gibt es keinen einzigen,
   # obwohl Spiele stattfinden, ist das der Hinweis auf ein Formatproblem in der
-  # Spalte (siehe games_of_day).
+  # Spalte (siehe games_in_window).
   def log_empty_but_games_exist(date)
-    return unless GameDay.where(date: date.to_s).exists?
+    return unless GameDay.where(date: window_dates(date)).exists?
 
-    Rails.logger.info("live_streams: #{date} hat Spieltage, aber keinen hinterlegten Stream-Link")
+    Rails.logger.info("live_streams: #{date} und die #{PAST_DAYS} Tage davor haben " \
+                      'Spieltage, aber keinen hinterlegten Stream-Link')
   end
 
   # Verglichen wird als Text und nicht über TO_DATE. `game_days.date` ist eine
@@ -103,15 +139,16 @@ class LiveStreamsController < ApplicationController
   # Einen Index auf `game_days.date` gibt es NICHT (indiziert sind arena_id,
   # club_id, (league_id, number) und legacy_ref). Jeder Cache-Miss ist also ein
   # Seq Scan. Bei der Tabellengröße vertretbar, aber nicht so, wie es hier vorher
-  # behauptet stand.
-  def games_of_day(date)
+  # behauptet stand. Die acht Tage kosten dabei nicht mehr als einer: Es bleibt
+  # derselbe eine Durchlauf, nur mit einer IN-Liste statt einem Gleichheitstest.
+  def games_in_window(date)
     # Die Liga wird nur gelesen, nicht gefiltert – dafür genügt der Preload, ein
     # zweiter Join brächte nichts.
     Game.joins(:game_day)
         .includes({ home_team: League::TEAM_WITH_LOGO_PRELOAD },
                   { guest_team: League::TEAM_WITH_LOGO_PRELOAD },
                   { game_day: %i[league arena club] })
-        .where(game_days: { date: date.to_s })
+        .where(game_days: { date: window_dates(date) })
         # BTRIM, weil `<> ''` auch ein Feld mit reinen Leerzeichen durchlässt. Das
         # `.presence` im Eintrag macht daraus danach nil, übrig blieb ein Eintrag
         # ohne jeden Link.
@@ -119,7 +156,7 @@ class LiveStreamsController < ApplicationController
                "OR COALESCE(BTRIM(games.vod_link), '') <> ''")
   end
 
-  def entry(game)
+  def entry(game, date)
     gd = game.game_day
     league = gd.league
 
@@ -128,7 +165,7 @@ class LiveStreamsController < ApplicationController
       game_number: game.game_number,
       date: gd.date,
       time: game.start_time,
-      status: status_of(game),
+      status: status_of(game, date),
       # `started`/`ended` müssen mit im Eintrag stehen: delay_live_scores
       # entscheidet daran, ob ein Zwischenstand zurückgehalten wird.
       started: game.started,
@@ -163,7 +200,15 @@ class LiveStreamsController < ApplicationController
   # Game#ticker_hash: `started && !ended`, nicht `state == :running`. Letzteres
   # verlangt einen angelegten Spielbericht, und ein angepfiffenes Spiel ohne
   # Bericht galte damit als anstehend, obwohl es längst läuft.
-  def status_of(game)
+  #
+  # Was von einem früheren Tag stammt, zählt dabei immer als beendet -- auch
+  # wenn am Spielbericht nie „beendet" gesetzt wurde. Sonst trüge ein gestern
+  # angepfiffener und nie abgeschlossener Spielbericht heute noch den
+  # Live-Punkt, und das ausgerechnet auf der Seite, deren erste Zeile sagt, was
+  # gerade läuft. Der Zeitraum reicht neuerdings über den Tag hinaus, diese
+  # Unterscheidung gab es vorher nicht zu treffen.
+  def status_of(game, date)
+    return 'ended' unless game.game_day.date == date.to_s
     return 'ended' if game.ended?
     return 'running' if game.started?
 

@@ -21,6 +21,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
   Der eigentliche Zweck ist die Warnung, nicht die Seite: Eine Seite, die niemand öffnet, warnt nicht. Ein täglicher Lauf schreibt die Belegung als Tageswert mit und meldet sich per Mail, sobald eine Schwelle neu überschritten wird, bei 80 Prozent als Warnung und bei 90 Prozent als kritisch. Bleibt die Belegung auf demselben Stand, folgt keine zweite Mail; verschlechtert sich der Zustand weiter, kommt eine weitere. Zusätzlich erscheint im kritischen Fall ein Hinweisstreifen, den nur die Verwaltung sieht. Bewusst nicht enthalten sind Werte zu Prozessor und Arbeitsspeicher: Eine Momentaufnahme im Seitenaufruf hätte keinen Aussagewert. Das Postgres-Datenverzeichnis liegt in einem eigenen Ablagebereich und ist von der Anwendung aus nicht messbar, deshalb steht dort die Größe der Datenbank statt einer Platten-Belegung.
 
+### Verbessert
+
+- **Übertragungen verschwinden nicht mehr um Mitternacht**: Der Abruf der Livestreams nannte ausschließlich die Spiele des laufenden Tages. Eine Übertragung ist mit dem Schlusspfiff aber nicht vorbei, der Link führt weiter zur Aufzeichnung. Zum Tag kommen deshalb jetzt die sieben Tage davor dazu, das zuletzt beendete Spiel oben. Was gerade läuft und was heute noch ansteht, steht unverändert darüber. Ein Spielbericht eines früheren Tages, an dem nie „beendet" gesetzt wurde, zählt dabei als beendet und trägt keinen Live-Punkt mehr.
+
 ## [1.76.0] - 2026-08-13
 
 ### Behoben
