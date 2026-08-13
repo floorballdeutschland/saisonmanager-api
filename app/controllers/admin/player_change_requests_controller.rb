@@ -1,5 +1,9 @@
 module Admin
   class PlayerChangeRequestsController < ApplicationController
+    # membership_current? – Gültigkeit einer Zugehörigkeit, mit Meldung statt
+    # 500er bei unlesbarem valid_until.
+    include LicenseAccessScope
+
     def index
       ph = current_user.permission_hash
       # Rollen additiv auswerten: ein Nutzer mit SBK- *und* VM-Rolle sah sonst
@@ -21,7 +25,18 @@ module Admin
 
     def create
       ph = current_user.permission_hash
-      club_id = params[:club_id].to_i
+
+      # Der Verein kommt als JSON-Zahl (so schickt es die Oberfläche) oder als
+      # Zeichenkette (Formular-Post). Ein Array brach hier mit
+      # "undefined method `to_i' for [\"1\"]:Array" ab, also einem 500er allein
+      # durch die Nutzlast. Kein Sicherheitsproblem, aber eine unnötige Meldung
+      # in der Fehlerüberwachung, und die Zuständigkeitsprüfung darunter hängt
+      # an diesem Wert.
+      club_id = params[:club_id]
+      club_id = club_id.to_i if club_id.is_a?(String) || club_id.is_a?(Integer)
+      unless club_id.is_a?(Integer) && club_id.positive?
+        return render json: { error: 'Verein fehlt oder ist ungültig' }, status: :unprocessable_entity
+      end
 
       unless ph[:admin].present? || ph[:vm]&.include?(club_id)
         return render json: { error: 'Keine Berechtigung' }, status: :forbidden
@@ -30,11 +45,31 @@ module Admin
       player = Player.find_by(id: params[:player_id])
       return render json: { error: 'Spieler nicht gefunden' }, status: :not_found unless player
 
-      # Merge-Anträge nur für Spieler des eigenen Vereins; dass auch das
-      # Duplikat (secondary_player) zum Verein gehört, prüft die
-      # Modell-Validierung merge_must_be_executable.
-      if params[:correction_type] == 'merge' && !player_belongs_to_club?(player, club_id)
+      # Anträge nur für Spieler des eigenen Vereins, und zwar für JEDE Antragsart.
+      # Vorher griff der Guard nur bei 'merge': gegen birthdate, first_name,
+      # last_name, names_swapped, nationality und gender ließ sich ein Antrag zu
+      # jeder beliebigen Spieler-ID im System stellen, auch zu Spielern, mit denen
+      # der Verein nie etwas zu tun hatte. Entschieden wird zwar durch die SBK,
+      # die bekam aber einen plausibel aussehenden Antrag vorgelegt.
+      unless membership_grants_access?(player, club_id)
         return render json: { error: 'Spieler gehört nicht zum angegebenen Verein' }, status: :forbidden
+      end
+
+      # Beim Merge dieselbe Frage für das Duplikat. Die Modell-Validierung
+      # merge_must_be_executable prüft das ebenfalls, aber ohne Gültigkeit; sie
+      # bleibt als Auffangnetz für Konsole und Skripte stehen, weil die
+      # Datumsauswertung samt rescue und Meldung sonst ins Modell zu kopieren
+      # wäre (genau die Doppelung, die #397 als Fehler benennt).
+      #
+      # 422 mit errors[] wie die Modell-Validierung, bewusst kein 403: Der
+      # ErrorInterceptor im Frontend führt bei 403 auf die Startseite, und
+      # player_change_requests steht nicht in seiner Ausnahmeliste. Eine
+      # unpassende Auswahl im Duplikat-Feld darf nicht aus der Bearbeitung
+      # werfen.
+      if params[:correction_type] == 'merge' && (secondary = find_secondary_player) &&
+         !membership_grants_access?(secondary, club_id)
+        return render json: { errors: ['Das Duplikat gehört nicht zum angegebenen Verein'] },
+                      status: :unprocessable_entity
       end
 
       request = PlayerChangeRequest.new(
@@ -96,8 +131,39 @@ module Admin
 
     private
 
-    def player_belongs_to_club?(player, club_id)
-      (player.clubs || []).any? { |c| c['club_id'].to_i == club_id }
+    # nil, wenn keine ID mitkam oder sie ins Leere zeigt: Beides ist Sache der
+    # Modell-Validierung (secondary_player ist beim Merge Pflicht) und soll hier
+    # nicht zu einer anderen Meldung führen als bisher.
+    def find_secondary_player
+      return nil if params[:secondary_player_id].blank?
+
+      Player.find_by(id: params[:secondary_player_id])
+    end
+
+    # Deckt eine Zugehörigkeit den Antrag? Vorher genügte jeder je bestandene
+    # Eintrag im clubs-Hash: Der VM eines Vereins, den der Spieler 2023 verlassen
+    # hat, konnte damit einen Antrag gegen ihn stellen, und beim Merge lief auf
+    # Genehmigung merge_into!, was das Zweitprofil deaktiviert.
+    #
+    # Zwei Fälle zählen, genau wie in Club#players(include_deactivated: true),
+    # aus dem die VM-Spielerliste kommt:
+    #
+    # (a) Die Zugehörigkeit gilt noch (valid_until leer oder nicht vor heute).
+    # (b) Sie wurde erst von der Deaktivierung des Profils geschlossen. Ohne (b)
+    #     stünde ein deaktivierter Spieler des eigenen Vereins in der Liste,
+    #     wäre aber nicht mehr korrigierbar – deactivate! schließt alle
+    #     Zugehörigkeiten.
+    #
+    # Stichtag ist Date.current über membership_current?, nicht Time.now: Eine
+    # heute um 23:59 endende Zugehörigkeit gilt heute noch.
+    def membership_grants_access?(player, club_id)
+      Array(player.clubs).any? do |entry|
+        next false unless entry.is_a?(Hash)
+        next false unless entry['club_id'].to_i == club_id
+
+        membership_current?(player, entry['valid_until']) ||
+          player.membership_closed_by_deactivation?(entry)
+      end
     end
 
     # Analog zu PlayerChangeRequest.for_go: Ein nicht-globaler SBK darf nur
