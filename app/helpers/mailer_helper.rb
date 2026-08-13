@@ -16,6 +16,22 @@ module MailerHelper
     FrontendUrl.host
   end
 
+  # Byte-Angaben für Mail-Text und Betreff-Platzhalter. Basis 1024 wie `df`, damit
+  # die Zahl zu der passt, die auf dem Server ausgegeben wird.
+  def format_bytes(bytes)
+    return 'unbekannt' if bytes.nil?
+
+    units = %w[B KB MB GB TB]
+    value = bytes.to_f
+    unit = 0
+    while value >= 1024 && unit < units.size - 1
+      value /= 1024
+      unit += 1
+    end
+
+    "#{value.round(unit.zero? ? 0 : 1).to_s.sub('.', ',')} #{units[unit]}"
+  end
+
   # Spieltagsdatum für die Anzeige. Nicht I18n.l, weil game_days.date eine
   # Textspalte ist: I18n.l auf einem String wirft ArgumentError („Object must be
   # a Date, DateTime or Time object"), die Vorlage konnte damit überhaupt nicht
