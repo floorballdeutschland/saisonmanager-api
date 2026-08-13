@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_08_07_130000) do
+ActiveRecord::Schema[7.1].define(version: 2026_08_13_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -806,6 +806,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_07_130000) do
     t.jsonb "liveticker", default: {}
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.jsonb "info_links", default: {}, null: false
   end
 
   create_table "state_association_checklist_items", force: :cascade do |t|

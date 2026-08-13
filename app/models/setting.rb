@@ -93,6 +93,33 @@ class Setting < ApplicationRecord
     end.reverse
   end
 
+  # Redaktionell gepflegte Links auf externe Informationsblätter (floorball.de).
+  # Der Key ist der stabile technische Bezeichner, den das Frontend referenziert;
+  # die URL wechselt, sobald floorball.de das PDF neu ablegt, und gehört deshalb
+  # nicht in den Code. Gepflegt wird sie unter /verwaltung/dokumentarten.
+  # Neue Keys hier ergänzen – nur diese sind über die API schreibbar.
+  INFO_LINK_KEYS = %w[minor_privacy_bundesliga].freeze
+
+  def self.info_links
+    links = current.info_links
+    links.is_a?(Hash) ? links : {}
+  end
+
+  # nil, solange kein Link gepflegt ist – Aufrufer blenden ihn dann aus, statt
+  # eine tote Adresse anzubieten.
+  #
+  # Robust gegen Fremdformate: Steht unter einem Key ein blanker String statt
+  # eines Hash (Konsolen-Korrektur, hand-editiertes JSONB), bräche `dig` mit
+  # TypeError ab. Diese Methode hängt an `init`, also am ersten Request jedes
+  # Seitenaufbaus – ein einziger schiefer Wert legte damit das komplette
+  # öffentliche Frontend lahm.
+  def self.info_link_url(key)
+    entry = info_links[key.to_s]
+    return nil unless entry.is_a?(Hash)
+
+    entry['url'].presence
+  end
+
   def self.point_corrections(league_id)
     current.point_corrections[league_id.to_s]
   end
