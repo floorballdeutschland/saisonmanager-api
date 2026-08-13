@@ -576,7 +576,7 @@ class PlayersController < ApplicationController
 
     ph = current_user.permission_hash
 
-    if ph[:admin].present? || ph[:sbk].present?
+    if ph[:admin].present? || sbk_may_move_player?(ph, player, club)
 
       # if player and club present, we check if the club.id is already in the players clubs hash
       if player.present? &&
@@ -665,7 +665,7 @@ class PlayersController < ApplicationController
 
     ph = current_user.permission_hash
 
-    if ph[:admin].present? || ph[:sbk].present?
+    if ph[:admin].present? || sbk_may_move_player?(ph, player, club)
 
       # if player and club present, we check if the club.id is already in the players clubs hash
       if player.present? &&
@@ -1088,6 +1088,49 @@ class PlayersController < ApplicationController
     return false unless home_club
 
     ph[:sbk].include?(home_club.main_game_operation_id)
+  end
+
+  # Darf diese Stelle den Spieler in DIESEN Verein setzen (transfer,
+  # add_additional_club)?
+  #
+  # Beide Aktionen prüften vorher nur, OB jemand eine Spielbetriebsrolle hat,
+  # nicht WELCHEN Spielbetrieb. Eine auf einen Verband beschränkte Rolle konnte
+  # damit ein beliebiges fremdes Profil in einen Verein des eigenen Verbands
+  # transferieren — und war danach über den frisch geschriebenen
+  # `home_club: true` regulär für dieses Profil zuständig. Die Verschärfungen aus
+  # #391 und #394 begrenzten damit nur den bequemen Weg, nicht den Zugriff.
+  #
+  # Zwei Bedingungen, beide nötig:
+  #
+  #   (a) Zuständigkeit für den Spieler VORHER, also über seinen aktuell
+  #       gültigen Heimatverein. Ohne (a) bleibt der Transfer der Weg, sich
+  #       Zuständigkeit überhaupt erst zu verschaffen.
+  #   (b) Der ZIELVEREIN liegt im eigenen Spielbetrieb.
+  #
+  # Damit gilt für eine Landes-SBK genau die fachliche Regel: direkt bewegen darf
+  # sie nur, wenn Heimat- UND Zielverein in ihrem Spielbetrieb liegen. Der Wechsel
+  # über Spielbetriebe hinweg läuft über den Transferantrag (`TransferRequest`)
+  # mit LV-Freigabe oder über die bundesweite SBK.
+  #
+  # Ein Profil ohne gültigen Heimatverein (Altbestand, deaktiviert) fällt durch
+  # (a) und bleibt damit Admin und bundesweiter SBK vorbehalten. Das ist kein
+  # Sonderfall des Alltags: Jeder Weg, der eine Heimat-Mitgliedschaft schließt
+  # (`transfer` hier, `Player#transfer`, die TransferRequest-Verarbeitung), öffnet
+  # im selben Vorgang die neue. Vereinslos wird ein Profil nur durch
+  # `deactivate!`, und dort ist die Antwort `reactivate`. Für die verbleibenden
+  # Altfälle ist die Zuständigkeit ohnehin nicht eindeutig bestimmbar, siehe #399.
+  #
+  # (b) über `readable_by_game_operations?` und nicht über einen reinen Vergleich
+  # mit `main_game_operation_id`: Eine Vereins-Freigabe des besitzenden
+  # Landesverbands (`StateAssociationRelease`, saisonweise und ausdrücklich
+  # erteilt) zählt mit, so wie überall sonst, wo über die Erreichbarkeit eines
+  # Vereins entschieden wird. Sie erweitert nur, wohin die eigenen Spieler dürfen;
+  # fremde Profile schützt weiterhin (a).
+  def sbk_may_move_player?(ph, player, club)
+    return false unless sbk_can_access_player?(ph, player)
+    return true if ph[:sbk].include?(0)
+
+    club.readable_by_game_operations?(ph[:sbk])
   end
 
   # Darf diese Stelle eine Deaktivierung zurücknehmen?
