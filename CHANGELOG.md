@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Lizenz-Dokumente: Löschen und Hochladen halten sich an die Verbandsgrenze**: Der Katalog der Dokumentarten kennt globale Arten und solche, die einem einzelnen Verband gehören. Beim Ansehen wurde das schon beachtet: Eine auf ihren Verband beschränkte Spielbetriebskommission bekam fremde Verbandsdokumente in der Liste eines Spielers nicht zu sehen und konnte sie auch nicht einzeln abrufen. Beim Schreiben fehlte diese Prüfung. Ein Dokument, das in der Liste verborgen blieb, ließ sich über einen direkten Aufruf trotzdem löschen, und ein Upload in eine fremde Verbandsart wurde gespeichert, war für den Hochladenden danach aber unsichtbar. Beide Wege setzten ein Konto mit Verbandsrolle voraus und liefen an der Oberfläche vorbei, die solche Arten von sich aus gar nicht anbietet. Lesen und Schreiben folgen jetzt derselben Regel: Wer eine Dokumentart nicht sehen darf, kann sie weder befüllen noch leeren. Für die Verwaltung und die bundesweite Spielbetriebskommission ändert sich nichts, ebenso nicht für Vereins- und Teamverantwortliche bei den Unterlagen ihrer eigenen Spieler*innen.
+
 ### Neu
 
 - **Ansetzung durch die RSK, und die Verbandseinstellung dazu aufgeteilt**: Schiedsrichter-Ansetzungen entstehen in der Praxis auf drei Wegen. Zwei kannte der Saisonmanager: die SBK trägt bei der Spielplanerstellung einen Freitext am Spiel ein, oder die Rolle Ansetzer\*in setzt personenscharf aus dem Kreis der Schiedsrichter\*innen an, die für den Tag eine Verfügbarkeit gemeldet haben. Der dritte Weg fehlte: dass die RSK dasselbe Feld pflegt und entweder einen Verein benennt, der das Gespann stellt, oder Personen und Paare direkt einträgt.
