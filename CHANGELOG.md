@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.76.0] - 2026-08-13
+
 ### Behoben
 
 - **Spielbetriebsverantwortliche konnten eine eigene Deaktivierung nicht zurücknehmen**: Beim Deaktivieren werden alle Vereinszugehörigkeiten beendet, auch die zum Heimatverein. Weil die Zuständigkeit am aktuell gültigen Heimatverein hängt, war das Profil ab dem Tag nach der Deaktivierung für die zuständige Stelle nicht mehr erreichbar: Deaktivieren ging, Reaktivieren nicht mehr, obwohl beides derselben Stelle obliegt. Maßgeblich ist jetzt, wer für das Profil zuständig wäre, sobald es wieder aktiv ist — also dieselbe Regel wie sonst, angewandt auf den Stand nach der Rücknahme. Am Öffnen eines Profils ohne gültige Zugehörigkeit ändert sich nichts: Das bleibt bundesweiten Rollen vorbehalten und ist eine Frage der Datenpflege.
