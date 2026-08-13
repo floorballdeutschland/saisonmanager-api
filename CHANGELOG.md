@@ -33,7 +33,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 - **Ergebniskachel für die sozialen Netze**: Nach dem Spiel bauen Vereine das Ergebnisbild für Instagram und Co. bisher von Hand nach, oft in Canva, jedes Mal neu und jedes Mal etwas anders. Der Spielbericht erzeugt es jetzt selbst, in Schritt 3, wahlweise im Hochformat 1080 x 1920 für Stories oder quadratisch 1080 x 1080 für den Feed. Darauf stehen Liga, Datum, Vereinslogos, Endstand samt Zusatz wie „n.V." oder „n.P.", Mannschaftsnamen, Drittelergebnisse und auf Wunsch die Torschützinnen und Torschützen. Das Bild entsteht im Browser und im Erscheinungsbild der Livestream-Einblendungen.
 
-  **Namen Minderjähriger**: Deutet der Liganame auf eine Jugendliga hin (U…, Junior, Jugend, Schüler, Minis), sind die Namen von vornherein abgeschaltet, und ein Hinweis nennt den Grund. Wer sie braucht, schaltet sie je Kachel selbst ein. Die Erkennung hängt am Liganamen, weil der Spielabruf die Altersklasse nicht mitliefert, eine umbenannte Liga rutscht also durch: Die Voreinstellung ersetzt die Klärung der Freigabe nicht.
+  **Namen Minderjähriger**: Deutet der Liganame auf eine Jugendliga hin (U…, Junior, Jugend, Schüler, Minis), erscheint ein Hinweis, dass Namen Minderjähriger dort nur mit geklärter Freigabe hingehören und dass das Ergebnis auch ohne Namen auf der Kachel steht. Abgeschaltet wird nichts: Wer keine Namen möchte, nimmt den Haken heraus. Das ist dieselbe Linie wie bei der Scorerliste, für die der Verband ab U13 eine Empfehlung ausspricht statt einer technischen Sperre. Die Erkennung hängt am Liganamen, weil der Spielabruf die Altersklasse nicht mitliefert, eine umbenannte Liga rutscht also durch: Der Hinweis ersetzt die Klärung der Freigabe nicht.
 
 ### Verbessert
 
