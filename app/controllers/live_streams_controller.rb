@@ -83,18 +83,23 @@ class LiveStreamsController < ApplicationController
 
     log_empty_but_games_exist(date) if entries.empty?
 
-    sort_entries(entries, date)
+    sort_entries(entries)
   end
 
-  # Heute zuerst, in der Reihenfolge der Blöcke; der Rückblick dahinter, das
-  # zuletzt gespielte Spiel oben. Zwei getrennte Sortierungen, weil sie in
-  # verschiedene Richtungen laufen: Beim heutigen Tag interessiert, was als
-  # Nächstes kommt, beim Rückblick, was zuletzt war.
-  def sort_entries(entries, date)
-    of_today, earlier = entries.partition { |e| e[:date] == date.to_s }
+  # Was heute noch aussteht, zuerst; der Rückblick dahinter, das zuletzt
+  # gespielte Spiel oben. Zwei Sortierungen, weil sie in verschiedene Richtungen
+  # laufen: Vorn interessiert, was als Nächstes kommt, hinten, was zuletzt war.
+  #
+  # Getrennt wird dabei am STATUS und nicht am Datum. Ein heute schon beendetes
+  # Spiel gehört zum Rückblick, nicht zum heutigen Block -- die Seite baut ihre
+  # Blöcke aus dem Status, und eine Trennung am Datum ließe genau diese Einträge
+  # aufsteigend im absteigenden Block landen (das Spiel von 14:00 über dem von
+  # 16:00, darunter erst gestern).
+  def sort_entries(entries)
+    ahead, past = entries.partition { |e| e[:status] != 'ended' }
 
-    of_today.sort_by { |e| [STATUS_ORDER.fetch(e[:status], 9), *time_key(e)] } +
-      earlier.sort_by { |e| [e[:date].to_s, *time_key(e)] }.reverse
+    ahead.sort_by { |e| [STATUS_ORDER.fetch(e[:status], 9), *time_key(e)] } +
+      past.sort_by { |e| [e[:date].to_s, *time_key(e)] }.reverse
   end
 
   # `start_time` ist eine Textspalte, ein leerer Wert sortierte sonst VOR 09:00 --

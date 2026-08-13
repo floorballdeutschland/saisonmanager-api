@@ -140,6 +140,27 @@ class LiveStreamsControllerTest < ActionDispatch::IntegrationTest
     assert_equal [@laufend.id, gestern.id, vorgestern.id], ids
   end
 
+  # Die Naht zwischen heute und gestern. Getrennt wird am STATUS und nicht am
+  # Datum: Ein heute schon beendetes Spiel gehoert in den Rueckblick, den die
+  # Seite aus dem Status baut. Eine Trennung am Datum liesse genau diese
+  # Eintraege AUFSTEIGEND im absteigenden Block landen -- 14:00 ueber 16:00,
+  # darunter erst gestern.
+  test 'heute beendete Spiele stehen absteigend im Rueckblick' do
+    frueh = create(:game, :with_result, game_day: @game_day, home_team: @home, guest_team: @guest,
+                                        start_time: '14:00', ended: true,
+                                        vod_link: 'https://stream.example/heute-frueh')
+    spaet = create(:game, :with_result, game_day: @game_day, home_team: @home, guest_team: @guest,
+                                        start_time: '16:00', ended: true,
+                                        vod_link: 'https://stream.example/heute-spaet')
+    gestern = spiel_vor(1, ended: true, vod_link: 'https://stream.example/gestern')
+
+    get '/api/v2/live_streams', headers: api_key_headers
+
+    assert_response :success
+    beendet = JSON.parse(response.body)['games'].select { |g| g['status'] == 'ended' }
+    assert_equal [spaet.id, frueh.id, gestern.id], beendet.pluck('game_id')
+  end
+
   # Innerhalb eines zurueckliegenden Tages laeuft die Reihenfolge ebenfalls
   # rueckwaerts: Wer nachsieht, was er verpasst hat, sucht das zuletzt beendete
   # Spiel, nicht das erste des Vormittags.
