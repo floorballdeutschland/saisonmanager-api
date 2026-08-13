@@ -11,10 +11,15 @@ class ApiController < ApplicationController
     render json: result
   end
 
-    # GET api/v1/ticker/games/0815
-    def games
-      game = Game.find(params[:id])
+  # GET api/v1/ticker/games/0815
+  #
+  # Dieselbe Verzögerung wie in games#show: `ticker_hash` baut sowohl die
+  # Ereignisliste als auch `resultString` aus `events`. Ohne Filter bekämen
+  # fremde Keys hier genau den Live-Stand, den die v2-Endpunkte ihnen
+  # vorenthalten.
+  def games
+    game = Game.find(params[:id])
 
-      render json: game.ticker_hash
-    end
+    render json: strip_delayed_events!(game).ticker_hash
+  end
 end

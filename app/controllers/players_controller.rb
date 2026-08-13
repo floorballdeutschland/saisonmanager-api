@@ -864,7 +864,16 @@ class PlayersController < ApplicationController
     player = Player.find_by(id: params[:id])
     return render json: { message: 'Spieler nicht gefunden.' }, status: :not_found unless player
     return render json: { message: 'Spieler ist nicht deaktiviert.' }, status: :unprocessable_entity if player.deactivated_at.nil?
-    return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless can_manage_player?(player)
+
+    # Wer deaktivieren darf, muss zurücknehmen können: deactivate! stempelt auch
+    # die Heimat-Zugehörigkeit, weshalb die reguläre Prüfung ab dem Tag danach
+    # nein sagt (siehe sbk_can_undo_deactivation?).
+    ph = current_user.permission_hash
+    unless ph[:admin].present? || sbk_can_access_player?(ph, player) ||
+           vm_can_access_player?(ph, player) || tm_can_access_player?(ph, player) ||
+           sbk_can_undo_deactivation?(ph, player)
+      return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
 
     # Eine zusammengefuehrte Dublette ist nur deshalb deaktiviert, weil merge_into!
     # sie ersetzt hat; Spiele und Lizenzen liegen beim Master. Reaktiviert waere sie
@@ -1047,30 +1056,93 @@ class PlayersController < ApplicationController
     Team.current_season.where(id: ph[:tm]).flat_map(&:all_club_ids).uniq
   end
 
-  VALID_DEACTIVATION_REASONS = %w[Vereinsaustritt Karriereende].freeze
-  VALID_DEACTIVATION_REASONS_WITH_UMLAUT = ['Temporäre Pause'].freeze
-
   def sanitize_deactivation_reason(raw)
     value = raw.is_a?(String) ? raw.strip.slice(0, 255) : nil
     return nil if value.blank?
-    return value if (VALID_DEACTIVATION_REASONS + VALID_DEACTIVATION_REASONS_WITH_UMLAUT).include?(value)
+    # Player::DEACTIVATION_REASONS ist die gemeinsame Quelle: reactivate! muss
+    # genau die Gründe erkennen, die hier durchkommen, sonst bleibt beim
+    # Reaktivieren der Lizenz-Verlauf auf "gelöscht" stehen.
+    return value if Player::DEACTIVATION_REASONS.include?(value)
     return value if value.start_with?('Sonstiges: ') && value[11..].strip.present?
 
     :invalid
   end
 
+  # Der clubs-Hash enthält nach jedem Heimatvereinswechsel MEHRERE Einträge mit
+  # home_club: true – der alte bekommt ein valid_until gestempelt, der neue kommt
+  # hinten dran. Ein ungefiltertes find traf deshalb den abgelaufenen Alt-Eintrag
+  # und prüfte dessen Spielbetrieb gegen den Scope: Wer aus einem anderen Verband
+  # (oder einem Ablage-Verein) zugezogen war, blieb für die eigene SBK gesperrt.
+  # Player#home_club verwirft abgelaufene Einträge und nimmt den letzten
+  # gültigen, ist also die kanonische Quelle für den Heimatverein.
+  #
+  # Ohne gültige Heimat-Zugehörigkeit bleibt das Profil für die Landes-SBK
+  # gesperrt. Das ist entschieden (api#389): ein Datenproblem, das über die
+  # Datenpflege gelöst wird, nicht über die Rechteregel. Einzige Ausnahme ist die
+  # Rücknahme einer Deaktivierung, siehe sbk_can_undo_deactivation?.
   def sbk_can_access_player?(ph, player)
     return false unless ph[:sbk].present?
     return true if ph[:sbk].include?(0)
 
-    home_club_entry = player.clubs.find { |c| c['home_club'] == true }
-    return false unless home_club_entry
-
-    home_club = Club.find_by(id: home_club_entry['club_id'])
+    home_club = player.home_club(Date.today)
     return false unless home_club
 
-    go_id = home_club.main_game_operation_id
-    ph[:sbk].include?(go_id)
+    ph[:sbk].include?(home_club.main_game_operation_id)
+  end
+
+  # Darf diese Stelle eine Deaktivierung zurücknehmen?
+  #
+  # Das Problem: `Player#deactivate!` stempelt ALLE Zugehörigkeiten, auch die
+  # Heimat. Ab dem Tag danach findet `sbk_can_access_player?` keinen gültigen
+  # Heimatverein mehr und sagt nein — eine Landes-SBK durfte deaktivieren, aber
+  # ihre eigene Entscheidung nicht zurücknehmen (gemessen, nicht vermutet).
+  #
+  # Die Regel ist deshalb nicht „irgendein früherer Heimatverein", sondern:
+  # **Zuständig ist, wer für das Profil zuständig WÄRE, sobald es wieder aktiv
+  # ist.** Also genau die reguläre Prüfung, angewandt auf den Stand, den
+  # `reactivate!` herstellt. Das macht drei Fehlerquellen gegenstandslos, an denen
+  # frühere Fassungen dieses Zweigs gescheitert sind:
+  #
+  #   - Kein ODER über mehrere geschlossene Einträge. `deactivate!` schließt auch
+  #     eine offene Altlast-Heimat eines fremden Verbands; die zählte sonst mit und
+  #     verschaffte diesem Verband Zugriff samt `full_hash`.
+  #   - Kein Sortieren nach `valid_until`. Diese Werte sind nach einer
+  #     Deaktivierung identisch (alle in derselben Millisekunde gestempelt), der
+  #     Vergleich fiel also auf die Array-Position zurück — und die ist nicht
+  #     chronologisch (`Player#_merge_clubs` sortiert nach `created_at`).
+  #   - Keine zweite Definition von „Heimatverein". Maßgeblich ist dieselbe
+  #     Methode, die auch nach der Rücknahme gilt.
+  #
+  # Wer nach der Rücknahme nicht zuständig wäre, hat hier nichts zu entscheiden:
+  # `reactivate` antwortet mit `full_hash`, ein weiter gefasster Zweig wäre also
+  # ein Lesepfad auf die Profildaten, die api#389 zurückhält.
+  def sbk_can_undo_deactivation?(ph, player)
+    return false unless ph[:sbk].present?
+    return true if ph[:sbk].include?(0)
+
+    sbk_can_access_player?(ph, player_after_reactivation(player))
+  end
+
+  # Der Spieler, wie er nach `reactivate!` aussähe: Zugehörigkeiten, die DIESE
+  # Deaktivierung geschlossen hat, sind wieder offen. Nur eine Kopie im Speicher,
+  # nichts wird gespeichert.
+  #
+  # `restore_membership_validity` ist private, deshalb hier dieselbe Wirkung: das
+  # gestempelte `valid_until` entfernen bzw. auf die vor der Deaktivierung
+  # gesicherte Befristung zurücksetzen (Player::VALID_BEFORE_DEACTIVATION).
+  def player_after_reactivation(player)
+    # Keine id setzen: Der Prüfpfad liest sie nicht, und ohne sie kann die Kopie
+    # nirgends mit einem gespeicherten Datensatz verwechselt werden.
+    restored = player.dup
+    restored.clubs = (player.clubs || []).map do |entry|
+      next entry unless player.membership_closed_by_deactivation?(entry)
+
+      copy = entry.deep_dup
+      saved = copy.delete(Player::VALID_BEFORE_DEACTIVATION)
+      copy['valid_until'] = saved && saved['valid_until']
+      copy
+    end
+    restored
   end
 
   def derive_club_ids_for_go(go_ids)

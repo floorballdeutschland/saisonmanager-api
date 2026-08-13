@@ -7,6 +7,11 @@ class ApplicationController < ActionController::Base
   after_action :set_csrf_cookie
   after_action :track_api_key_usage
 
+  # Wie lange öffentliche Live-Daten fremden API-Keys vorenthalten werden.
+  # Zugesagt in der Nutzungsvereinbarung (api_terms.rb) und in der
+  # Entwicklerdokumentation.
+  LIVE_DATA_DELAY = 10.minutes
+
   # rescue_from-Handler werden von Rails in umgekehrter Definitionsreihenfolge
   # geprüft: Der zuletzt passende (= zuerst definierte) fängt zuletzt. Deshalb
   # steht der generische StandardError-Fallback OBEN und die spezifischen
@@ -74,6 +79,82 @@ class ApplicationController < ActionController::Base
 
   def api_key_request?
     @authenticated_api_key.present?
+  end
+
+  # True, wenn die Antwort verzögert werden muss: Der Zugriff kommt über einen
+  # API-Key ohne Echtzeit-Freigabe. Cookie-Sessions (eigenes Frontend,
+  # angemeldete Nutzer) sind nie betroffen.
+  def delay_live_data?
+    api_key_request? && !@authenticated_api_key&.realtime
+  end
+
+  # Entfernt frische Ereignisse aus einem Spiel, bevor daraus eine Antwort
+  # gebaut wird. Wirkt auf alles, was sich aus `events` ableitet, also auch auf
+  # Spielstand und Ergebnis-String.
+  #
+  # Verändert die Instanz absichtlich in place und wird deshalb nur auf frisch
+  # geladenen Objekten aufgerufen, die danach nicht gespeichert werden.
+  def strip_delayed_events!(game)
+    return game unless delay_live_data?
+    # Beendete Spiele bleiben unangetastet. Game#result rechnet den Stand
+    # vollständig aus `events`; ein gefiltertes Ereignis verzögert das Ergebnis
+    # also nicht, sondern ergibt ein ANDERES. Bei einem beendeten Spiel stünde
+    # damit ein falscher Endstand als endgültig in der Antwort
+    # (`hasEnded: true` samt Zwischenstand von vorhin).
+    #
+    # Und das ist nicht der Randfall, sondern der Normalfall: `added_at` ist der
+    # Zeitpunkt der EINGABE, nicht der Spielzeit. Wird ein Bericht nach dem
+    # Schlusspfiff in einem Zug getippt, sind sämtliche Ereignisse frisch, die
+    # Liste fällt komplett weg und aus einem 3:0 wird ein gemeldetes 0:0.
+    #
+    # Damit verhält sich diese Methode zugleich wie `delay_live_scores` unten,
+    # das ebenfalls nur laufende Spiele zurückhält.
+    return game if game.ended?
+
+    cutoff = Time.current.to_i - LIVE_DATA_DELAY.to_i
+    game.events = (game.events || []).select { |e| e['added_at'].nil? || e['added_at'] < cutoff }
+    game
+  end
+
+  # Entfernt Ergebnis-Daten für laufende Spiele aus einer Spielplan-Liste.
+  # Anders als bei einem einzelnen Spiel steht hier kein Ereignisstrom zur
+  # Verfügung, aus dem sich ein Zwischenstand herausrechnen ließe, deshalb
+  # entfällt das Ergebnis ganz.
+  #
+  # Liegt in ApplicationController, weil dieselbe Liste über mehrere Controller
+  # ausgeliefert wird (Liga-Spielplan, Team-Spiele). Ein Controller, der
+  # `schedule_item` öffentlich ausgibt und diese Methode NICHT aufruft, ist eine
+  # Lücke in der Verzögerung.
+  def delay_live_scores(schedule)
+    return schedule unless delay_live_data?
+
+    schedule.map do |game|
+      next game unless running_entry?(game)
+
+      game.merge(result: nil, result_string: nil)
+    end
+  end
+
+  # Läuft gerade, aus Sicht einer Spielplan-Zeile.
+  #
+  # Bewusst `started && !ended` und nicht `state == 'running'`: Game#state
+  # liefert :running nur mit gesetztem `record_created_at` und sonst :no_record,
+  # während Game#schedule_item das Ergebnis schon an `started?` allein hängt.
+  # Ein begonnenes Spiel ohne angelegten Bericht rutschte damit samt Live-Stand
+  # durch die Verzögerung. Dieselbe Bedingung nutzt Game#ticker_hash für
+  # `isLive`.
+  #
+  # Die Schlüssel werden zusätzlich als String geprüft. Mit den heute
+  # eingesetzten Stores greift das nie: :memory_store serialisiert über DupCoder
+  # und gibt Symbole zurück, und selbst Marshal führte Symbole als Symbole
+  # zurück. Die Absicherung gilt einem Store mit JSON-Kodierung (Redis,
+  # Memcached), der Strings lieferte – ohne sie fiele die Verzögerung dann still
+  # aus, ohne Fehler.
+  def running_entry?(entry)
+    started = entry.fetch(:started) { entry['started'] }
+    ended = entry.fetch(:ended) { entry['ended'] }
+
+    started && !ended
   end
 
   # Zählt jeden mit API-Key beantworteten Zugriff pro Tag und Endpunkt. Eine

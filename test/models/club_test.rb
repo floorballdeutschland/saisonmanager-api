@@ -566,4 +566,33 @@ class ClubTest < ActiveSupport::TestCase
   ensure
     ActiveSupport::Notifications.unsubscribe(subscriber)
   end
+  # --- main_game_operation_id: Boolean-Cast auf home_game_operation ----------
+  #
+  # In Altdaten liegt das Flag als String. `'false'` ist truthy und galt damit als
+  # Heimat-Eintrag; weil diese Methode den zustaendigen Verband bestimmt, bekam
+  # die SBK des Gastverbands Zugriff auf jeden Spieler mit Heimat in dem Verein.
+  # `home_game_operation` und `without_home_game_operation` pruefen strikt auf
+  # true, hier lief es auseinander.
+
+  test 'main_game_operation_id ignoriert home_game_operation als String false' do
+    heimat = create(:game_operation)
+    gast = create(:game_operation)
+    club = create(:club, game_operations_hash: [
+      { 'game_operation_id' => gast.id, 'home_game_operation' => 'false' },
+      { 'game_operation_id' => heimat.id, 'home_game_operation' => true }
+    ])
+
+    assert_equal heimat.id, club.main_game_operation_id,
+                 'der Gast-Eintrag darf den Heimat-Spielbetrieb nicht verdraengen'
+  end
+
+  test 'main_game_operation_id bleibt ohne echten Heimat-Eintrag leer' do
+    gast = create(:game_operation)
+    club = create(:club, game_operations_hash: [
+      { 'game_operation_id' => gast.id, 'home_game_operation' => 'f' }
+    ])
+
+    assert_nil club.main_game_operation_id
+    assert_nil club.home_game_operation, 'beide Wege muessen dasselbe sagen'
+  end
 end

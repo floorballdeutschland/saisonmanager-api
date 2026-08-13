@@ -9,6 +9,95 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.76.0] - 2026-08-13
+
+### Behoben
+
+- **Spielbetriebsverantwortliche konnten eine eigene Deaktivierung nicht zurücknehmen**: Beim Deaktivieren werden alle Vereinszugehörigkeiten beendet, auch die zum Heimatverein. Weil die Zuständigkeit am aktuell gültigen Heimatverein hängt, war das Profil ab dem Tag nach der Deaktivierung für die zuständige Stelle nicht mehr erreichbar: Deaktivieren ging, Reaktivieren nicht mehr, obwohl beides derselben Stelle obliegt. Maßgeblich ist jetzt, wer für das Profil zuständig wäre, sobald es wieder aktiv ist — also dieselbe Regel wie sonst, angewandt auf den Stand nach der Rücknahme. Am Öffnen eines Profils ohne gültige Zugehörigkeit ändert sich nichts: Das bleibt bundesweiten Rollen vorbehalten und ist eine Frage der Datenpflege.
+
+- **Ein Gast-Spielbetrieb konnte den Heimat-Spielbetrieb eines Vereins verdrängen**: Dieselbe Ursache eine Ebene höher. Auch am Verein ist als Text hinterlegt, welcher Spielbetrieb der Heimat-Spielbetrieb ist, und ein ausdrückliches „nein" wurde als „ja" gelesen. Der so bestimmte Verband entscheidet, wer die Spieler dieses Vereins bearbeiten darf; betroffene Vereine galten zugleich an anderer Stelle als Vereine ohne Heimat-Spielbetrieb. Beide Stellen urteilen jetzt gleich.
+
+- **Ein Zweitspielrecht konnte den Heimatverein verdrängen**: Ob eine Vereinszugehörigkeit die Zugehörigkeit zum Heimatverein ist, steht als Merkmal am Eintrag. In Altbeständen ist dieses Merkmal als Text hinterlegt, und ein ausdrückliches „nein" wurde dabei als „ja" gelesen. Bei den betroffenen Personen bestimmte deshalb ein Zweitspielrecht, welcher Verband als zuständig gilt: Der Gastverband bekam Zugriff auf das Spielerprofil, dem eigentlich zuständigen Landesverband wurde er verwehrt.
+
+- **Lizenzen aus alten Saisons galten als aktuell**: Beim Genehmigen einer Lizenz zeigte der Saisonmanager unter „weitere Lizenzen" Einträge aus längst vergangenen Saisons und verlangte im Großfeld-Erwachsenenbereich deshalb eine Erst-/Zweitlizenz-Zuordnung, obwohl es in der laufenden Saison gar keine zweite Lizenz gab. Ursache war, dass eine Lizenz ohne hinterlegte Saison als Lizenz der laufenden Saison behandelt wurde, und genau diese Angabe fehlt bei Altbeständen. Maßgeblich ist jetzt die Saison der Liga, zu der die Mannschaft gehört; eine fehlende Angabe am Lizenzeintrag spielt keine Rolle mehr. Damit endet auch die widersprüchliche Lage, dass die Genehmigungskarte nach einer Zuordnung fragte, die im Hintergrund nirgends verbucht worden wäre.
+
+### Neu
+
+- **Eigenes Logo je Liga**: Ligen können ein eigenes Erkennungszeichen bekommen, etwa das der 1. Floorball-Bundesliga Herren. Es ist getrennt vom Werbebanner, das weiterhin eine anklickbare Anzeigefläche im Format 6:1 bleibt. Hochladen darf, wer die Liga bearbeiten darf; erlaubt sind PNG, JPG und WebP bis 3 MB, Querformat ausdrücklich eingeschlossen. Fehlt einer Liga das eigene Zeichen, wird das Logo des Landesverbands ausgewiesen, und zwar als solches gekennzeichnet: Anzeigen, die ausdrücklich das Ligazeichen meinen, etwa die Livestream-Einblendungen, zeigen dann lieber gar keines statt eines fremden. Der bisherige Behelf, in den Overlays das Bundesliga-Zeichen fest einzubauen, entfällt damit.
+
+- **Livestream-Overlays: Datengrundlage für die Vollbilder**: Die Overlay-Bühne kann bisher Anzeigetafel und Bauchbinden. Für die Vollbilder, die zwischen den Abschnitten und nach dem Schlusspfiff eingeblendet werden, fehlten drei Angaben. Die Auszeichnungen des Spiels kommen jetzt im Overlay-Abruf mit, damit das Endstandbild die wertvollste Spielerin oder den wertvollsten Spieler nennen kann. Dazu sind Tabelle, Torschützenliste und der Spielplan der Liga jetzt auch mit dem Spieltags-Token erreichbar, ohne Anmeldung und ohne API-Schlüssel. Welche Liga das ist, ergibt sich allein aus dem Spieltag des Tokens und lässt sich nicht frei wählen.
+
+  Die Ausnahme, die das Token für Live-Daten macht, bleibt dabei auf seinen eigenen Spieltag beschränkt: Parallel laufende Partien in anderen Hallen stehen im Spielplan weiterhin ohne Zwischenstand, und Tabelle wie Torschützenliste zählen wie überall nur beendete Spiele. Damit eine deshalb unvollständige Tabelle auf Sendung nicht wie ein Fehler aussieht, nennt jede Antwort die Partien, die gerade noch laufen.
+
+- **Livestream-Overlays: Vollbilder für Pause und Schlusspfiff**: Die Overlay-Bühne konnte bisher Anzeigetafel und Bauchbinden. Dazu kommen acht Vollbilder, die sich in OBS Studio je als eigene Szene einrichten lassen: Startbild mit Paarung, Anwurf, Halle und Gespann, die Aufstellungen beider Mannschaften mit hervorgehobener Startformation, ein Pausenbild mit Drittelergebnissen, Toren und Strafenbilanz, das Endstandbild mit den Auszeichnungen, dazu Tabelle, Torschützenliste und die weiteren Partien des Spieltags.
+
+  Die Bilder setzen ihren Inhalt selbst so lange enger, bis er auf die Fläche passt, statt ihn abzuschneiden. Das ist der Unterschied, der in der Regie zählt: Eine Tabelle, der die letzten beiden Zeilen fehlen, sieht vollständig aus. Reicht auch die engste Stufe nicht, sagt es die Statusfläche beim Einrichten. Eine Tabelle, in der noch Partien laufen, weist das in einer Fußzeile aus, und im Spielplan steht bei parallel laufenden Spielen „läuft" statt eines Zwischenstands, den der Spieltags-Zugang für fremde Hallen nicht freigibt.
+
+- **Livestream-Overlays: eigenes Erscheinungsbild je Wettbewerb**: Alle Einblendungen trugen bisher die Farben der 1. Bundesliga Herren, auch im Pokal und in der Regionalliga. Jetzt bekommen die 1. und 2. Bundesliga der Damen, die 2. Bundesliga der Herren, die Pokalwettbewerbe und der Regionalbereich je eine eigene Farbwelt. Geändert werden nur die beiden Akzentfarben und der Verlauf daraus, Aufbau, Flächen und Schrift bleiben überall gleich. Die Farben sind im Overlay hinterlegt und nicht an der Liga pflegbar, damit niemand Töne wählt, die nach der Videokompression eines Streams verschwinden. Alle liegen im Kontrast über dem bisherigen Bestandswert.
+
+  Zugeordnet wird über Ligaklasse und Geschlecht, ausdrücklich nicht über die Kennung der Liga: Ligen sind Zeilen je Saison, eine Liga-Kopie zur neuen Saison bekommt eine neue Kennung, und das Erscheinungsbild fiele damit bei jedem Saisonwechsel still auf den Standard zurück. Pokalwettbewerbe haben keine eigene Ligaklasse und werden am Namen erkannt.
+
+- **Abruf der Livestreams des Tages**: Die Adressen von Livestream und Aufzeichnung werden im Spielbericht erfasst, standen bisher aber nur am einzelnen Spiel. Wer wissen wollte, was gerade läuft, musste die Ligen einzeln durchgehen. Ein neuer öffentlicher Abruf nennt die Spiele des Tages mit hinterlegtem Stream-Link, nach Anwurf sortiert: laufende zuerst mit Abschnitt und Zwischenstand, dann die anstehenden, darunter die beendeten mit Endstand und Aufzeichnung. Für die Zwischenstände gilt dabei dieselbe Regel wie bei allen öffentlichen Abrufen: Angemeldete und die Saisonmanager-Website sehen sie sofort, ein Zugang ohne Echtzeit-Freigabe erst nach zehn Minuten.
+
+- **Neue Seite „Heute live"**: Die Bundesliga-Vereine haben Streaming-Pflicht, und die Adressen stehen im Spielbericht. Es gab aber keine Stelle, an der jemand nachsieht, was gerade läuft. Unter `/live` stehen jetzt die Spiele des Tages mit Stream-Link in drei Blöcken: laufende zuerst mit Live-Punkt, Zwischenstand und Abschnitt, dann die anstehenden, darunter die beendeten mit Endstand und Aufzeichnung. Verlinkt ist die Seite von der Startseite und aus dem Liga-Seitenmenü.
+
+  Die Seite lädt jede Minute nach, weil sie auf einem Hallenmonitor stundenlang offen bleibt. Ein einzelner Aussetzer tauscht die Liste dabei nicht gegen eine Fehlermeldung aus, sonst stünde nach einem Netzhänger den ganzen Abend „konnte nicht geladen werden" auf dem Bildschirm. Ist für eine laufende Partie kein Zwischenstand freigegeben, bleibt das Feld leer statt ein 0:0 zu behaupten.
+
+- **Fertige OBS-Szenensammlung zum Herunterladen**: Wer die Livestream-Overlays einbindet, musste in OBS Studio bisher jede Browser-Quelle von Hand anlegen, neun Stück, jede mit Adresse, Größe und Position. Der Spielbericht bietet die Einrichtung jetzt als fertige Szenensammlung zum Herunterladen an: eine Datei mit der Bühne und allen acht Vollbildern als eigene Szenen, Adressen und Zugang bereits eingesetzt. Der Import legt eine neue Sammlung an und ersetzt die vorhandene nicht. Zwei Dinge bleiben Handarbeit: Das Bedienfeld lässt sich nicht mitliefern, weil OBS benutzerdefinierte Docks im Profil speichert und nicht in der Szenensammlung, und die Leinwand muss auf 1920 x 1080 stehen, weil eine Szenensammlung keine Auflösung mitbringt. Die Datei enthält den Zugang im Klartext: Wer sie weitergibt, gibt den Zugang weiter, und nach Ablauf des Spieltags-Links ist sie wertlos. Der Download steht nur direkt nach dem Erzeugen des Zugangs bereit, weil dessen Klartext genau einmal vorliegt.
+
+- **Ergebniskachel für die sozialen Netze**: Nach dem Spiel bauen Vereine das Ergebnisbild für Instagram und Co. bisher von Hand nach, oft in Canva, jedes Mal neu und jedes Mal etwas anders. Der Spielbericht erzeugt es jetzt selbst, in Schritt 3, wahlweise im Hochformat 1080 x 1920 für Stories oder quadratisch 1080 x 1080 für den Feed. Darauf stehen Liga, Datum, Vereinslogos, Endstand samt Zusatz wie „n.V." oder „n.P.", Mannschaftsnamen, Drittelergebnisse und auf Wunsch die Torschützinnen und Torschützen. Das Bild entsteht im Browser und im Erscheinungsbild der Livestream-Einblendungen.
+
+  **Namen Minderjähriger**: Deutet der Liganame auf eine Jugendliga hin (U…, Junior, Jugend, Schüler, Minis), erscheint ein Hinweis, dass Namen Minderjähriger dort nur mit geklärter Freigabe hingehören und dass das Ergebnis auch ohne Namen auf der Kachel steht. Abgeschaltet wird nichts: Wer keine Namen möchte, nimmt den Haken heraus. Das ist dieselbe Linie wie bei der Scorerliste, für die der Verband ab U13 eine Empfehlung ausspricht statt einer technischen Sperre. Die Erkennung hängt am Liganamen, weil der Spielabruf die Altersklasse nicht mitliefert, eine umbenannte Liga rutscht also durch: Der Hinweis ersetzt die Klärung der Freigabe nicht.
+
+### Verbessert
+
+- **Lizenzwesen des Verbandes lädt in Sekunden statt Minuten**: Die Liste unter Lizenzwesen/Verband brauchte für wenige hundert Einträge mehrere Minuten. Die Ursache lag nicht in der Menge der Lizenzen, sondern darin, dass der Aufbau an der Zahl der Ligen hing: Für jede Liga der Saison wurde die Spielertabelle einzeln durchsucht, für jede Mannschaft zusätzlich das Vereins- und Mannschaftslogo aufgelöst, das die Liste gar nicht anzeigt. Ligen ohne eine einzige Lizenz kosteten dabei genauso viel wie volle. Und das Ganze lief zweimal, weil die Liste erst die beteiligten Personen für die Dokumente sammelte und danach dieselbe Arbeit für die Ausgabe wiederholte. Jetzt fällt beides einmal für alle Ligen gemeinsam an. In einem Testaufbau mit 30 Ligen und 240 Mannschaften sinkt die Zahl der Datenbankabfragen von 2574 auf 37. Die Liste enthält unverändert dieselben Angaben.
+
+## [1.75.0] - 2026-08-12
+
+### Behoben
+
+- **Anmeldung schlug bei einzelnen Konten trotz richtigem Passwort fehl**: Beim Anmelden vermerkt der Saisonmanager den Zeitpunkt im Konto. Ließ sich dieser Vermerk nicht speichern, wurde die gesamte Anmeldung abgewiesen, obwohl das Passwort stimmte. Betroffen waren Konten, deren Daten aus Altbeständen an einer heutigen Regel scheitern: ein Benutzername mit Leerzeichen am Anfang oder Ende, der zusätzlich in anderer Groß- und Kleinschreibung ein zweites Mal vergeben ist, ein solcher Name mit Umlaut, oder eine hinterlegte Sprache außerhalb von Deutsch und Englisch. Die Betroffenen sahen dieselbe Meldung wie bei einem Tippfehler, und ein neues Passwort half nicht, weil das alte nie falsch war. Der Zeitvermerk entscheidet jetzt nicht mehr über die Anmeldung. Scheitert er, wird das protokolliert, statt die Person auszusperren.
+
+- **Spielbetriebsverantwortliche kamen an Spielerprofile des eigenen Verbands nicht heran**: Beim Öffnen eines Spielerprofils wurde der Heimatverein aus der Vereinshistorie bestimmt, dabei zählte der erste Eintrag, auch wenn er längst beendet war. Wer aus einem anderen Landesverband zugezogen ist oder früher einmal einem Ablage-Verein zugeordnet war, wurde deshalb dem falschen Spielbetrieb zugerechnet, und die zuständige Stelle bekam eine Rechte-Absage, obwohl der aktuelle Heimatverein im eigenen Verband liegt. Betroffen waren rund 3.000 Spielerinnen und Spieler. Maßgeblich ist jetzt der aktuell gültige Heimatverein, so wie es die Transferanträge bereits gehandhabt haben. Umgekehrt endet damit auch der Zugriff des früheren Verbands.
+
+- **Eine Zweitrolle beim Verband verdeckte Vereinsverantwortlichen die eigenen Unterlagen**: Wer einen Verein betreut und daneben eine auf einen Verband beschränkte Spielbetriebsrolle hält, sah bei den Spielern des eigenen Vereins die Dokumente des eigenen Landesverbands nicht mehr. Maßgeblich war allein die Verbandsrolle, die Zuständigkeit für den eigenen Verein fiel unter den Tisch. Beide Rollen zählen jetzt zusammen, wie überall sonst im Rechtesystem. Betroffen war die Dokumentliste und damit auch die neue Auswahl beim Hochladen: Genau der Nachweis, den der eigene Verband fordert, fehlte dort.
+
+### Neu
+
+- **Dokumente auch am Spielerprofil hochladen**: Bisher ließen sich Nachweise nur beim Beantragen einer Lizenz hinterlegen. Künftig geht das auch direkt am Spielerprofil aus der Spielerliste heraus. Dafür nennt die Schnittstelle jetzt die Dokumentarten, die für eine bestimmte Person in Frage kommen: die bundesweiten und die des Landesverbands ihrer aktuellen Vereine. Arten, die nur unter einem bestimmten Alter verlangt werden, bleiben bei älteren Personen außen vor. Zugriff haben Verbands- und Vereinsverantwortliche, also alle, die die Dokumente der Person ohnehin einsehen dürfen.
+
+### Verbessert
+
+- **Reste der alten Passwort-Umstellung entfernt**: Der Login trug noch einen Zweig aus der Zeit vor der Umstellung auf das heutige Passwortverfahren. Er sollte Alt-Passwörter beim ersten Anmelden stillschweigend übernehmen, konnte aber längst nicht mehr greifen: Die Spalte mit den Alt-Passwörtern führt die Datenbank nicht mehr, und kein Konto hängt noch daran. Wäre der Zweig doch einmal erreicht worden, hätte er das Anmelden mit einem Serverfehler abgebrochen statt mit einer verständlichen Meldung. Für jede Anmeldung wird jetzt zudem eine unnötige Prüfsumme weniger berechnet. Am Anmelden selbst ändert sich nichts.
+
+- **Deaktivierungsgrund „Wechsel ins Ausland"**: Verlässt eine Spielerin oder ein Spieler den deutschen Spielbetrieb in Richtung Ausland, gab es dafür bisher keinen passenden Grund und der Fall landete unter „Sonstiges". Der Grund steht jetzt in der Auswahl, im Spielerprofil und in der Vereins-Spielerliste. Am Ablauf ändert sich nichts: Die Deaktivierung beendet die Vereinszugehörigkeiten, zieht laufende Lizenzen zurück und nimmt das Profil aus der Vereinsliste; bei einer Rückkehr lässt sich das Profil reaktivieren. Der internationale Transfer selbst läuft weiterhin über die Freigabe von Floorball Deutschland und die IFF außerhalb des Saisonmanagers.
+
+## [1.74.1] - 2026-08-08
+
+### Behoben
+
+- **Fehler in der Spielansicht bei beendeten Spielen ohne Aufstellung**: Bei einem abgeschlossenen Spiel, zu dem keine Aufstellung erfasst ist, brach der Aufbau der Spielansicht an der Stelle ab, an der die Auszeichnungen stehen. Ursache war die Antwort zu den Auszeichnungen: Ohne Aufstellung ließ sie die Felder für Heim- und Gastmannschaft ganz weg, statt sie leer zu liefern. Der Bereich wird nur bei beendeten Spielen angezeigt, laufende und künftige Spiele waren daher nicht betroffen.
+
+## [1.74.0] - 2026-08-08
+
+### Behoben
+
+- **Zwischenstände laufender Spiele waren über zwei Abrufe doch ohne Verzögerung zu haben**: Die Nutzungsvereinbarung sagt Inhabern eines API-Schlüssels zehn Minuten Verzögerung zu. Zwei Abrufe hielten sich nicht daran: Der ältere Ticker-Abruf zu einem einzelnen Spiel gab Ereignisse und Zwischenstand ungefiltert heraus, und die Spielliste einer Mannschaft nannte den Zwischenstand laufender Partien. Beide verzögern jetzt wie die übrigen öffentlichen Abrufe. Für angemeldete Nutzerinnen und Nutzer, für die Saisonmanager-Website und für Zugänge mit Echtzeit-Freigabe ändert sich nichts.
+
+- **Endstände waren kurz nach dem Schlusspfiff falsch statt nur verzögert**: Der Spielstand wird aus den einzelnen Ereignissen berechnet. Wurden die jüngsten davon wegen der Verzögerung ausgelassen, kam damit nicht ein älterer Stand heraus, sondern ein falscher, und bei einem beendeten Spiel stand er als Endstand in der Antwort. Weil der Zeitstempel am Ereignis den Moment der Eingabe festhält und nicht die Spielminute, traf das besonders Berichte, die nach dem Spiel in einem Zug erfasst wurden: Dort waren alle Ereignisse frisch, und ein 3:0 wurde als beendetes 0:0 gemeldet. Beendete Spiele nennen ihren Endstand jetzt sofort; zurückgehalten werden nur noch Zwischenstände laufender Partien. Betroffen waren der Ticker-Abruf und der Spielabruf, jeweils nur mit einem API-Schlüssel ohne Echtzeit-Freigabe.
+
+- **Ein begonnenes Spiel ohne angelegten Spielbericht umging die Verzögerung**: In Spielplan-Listen hing das Zurückhalten am Berichtsstatus, das ausgewiesene Ergebnis dagegen allein daran, ob das Spiel angepfiffen war. Lag noch kein Bericht vor, ging der Live-Stand mit. Maßgeblich ist jetzt für beides dieselbe Bedingung.
+- **Kalender-Abos waren nicht abrufbar**: Auf der Mannschaftsseite und in der Spielübersicht steht ein Link, mit dem sich der Spielplan in den eigenen Kalender holen lässt. Er hat noch nie funktioniert: Die Adresse wurde vom Webserver gar nicht an die Anwendung weitergegeben, sondern beantwortete jeden Aufruf mit der leeren Website. Zusätzlich verlangte der Abruf einen API-Schlüssel, den ein Kalenderprogramm nicht mitschicken kann. Beides ist behoben, Abos für eine Mannschaft, eine Liga und ein einzelnes Spiel funktionieren jetzt in Google Kalender, Apple Kalender und Outlook. Ein Kalender enthält weiterhin nur, was der Spielplan ohnehin öffentlich zeigt: Begegnung, Zeit, Halle und den Link zum Spiel.
+
+- **Der Kalender einer Mannschaft ohne Termine endete im Serverfehler**: Stand für eine Mannschaft noch kein Anpfiff fest, brach der Abruf ab, statt einen leeren Kalender zu liefern. Am Saisonanfang betraf das jede Mannschaft. Spiele, für die noch keine Zeit gepflegt ist, bleiben jetzt einfach außen vor und kommen mit dem nächsten Abgleich des Abos hinzu.
+
+- **Spätabends abgeschlossene Spielberichte fielen aus dem Schiri-Feedback**: Das Spieltagsdatum ist ein deutsches Datum, die Anwendung rechnet intern aber in UTC. Zwischen 22 Uhr und Mitternacht deutscher Zeit liegen beide einen Tag auseinander, und in diesem Zeitraum galt der laufende Spieltag als „morgen". Die Übersicht der Rückmeldungen ließ die Spiele dieses Abends deshalb aus, und der stündliche Versand übersprang sie. Weil er stündlich läuft, holte er es später von selbst nach; wer abends nachsah, fand seine Partie trotzdem nicht. Maßgeblich ist jetzt überall der Kalender des Spielbetriebs, so wie schon bei der Berechnung des Abgabefensters.
+
+### Neu
+
+- **Livestream-Overlays: Datenquelle und Zugang**: Grundlage für die Grafikpakete, die Vereine künftig in OBS Studio einbinden können (Spielstandsanzeige, Bauchbinden, Vollbilder im Bundesliga-Design). Wer einen Spielbericht führen darf, kann für einen Spieltag einen Overlay-Link erzeugen; die Browser-Quellen in OBS holen sich darüber die Spieldaten, ohne Anmeldung und ohne API-Schlüssel. Der Link gilt nur für die Spiele dieses einen Spieltags, läuft nach 36 Stunden ab und lässt sich jederzeit zurückziehen oder durch einen neuen ersetzen. Weil eine Anzeigetafel Live-Daten braucht, hebt er die Zehn-Minuten-Verzögerung auf, aber eben nur für diesen Spieltag und nicht für den Gesamtbestand. Die Daten kommen anzeigefertig: Trikotnummern sind zu Spielernamen aufgelöst, das zuletzt gefallene Tor liegt gesondert bei. Ein Steuerzustand am Link hält fest, was gerade eingeblendet ist, damit das Bedienfeld und die Einblendung zusammenpassen und ein Neuladen der Browser-Quelle mitten im Spiel nichts verliert. Die Oberflächen dazu folgen.
+
 ## [1.73.0] - 2026-08-07
 
 ### Neu
@@ -1433,7 +1522,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Neu
 - Spielbericht: SBK und Admin sehen Bearbeitungszeitpunkt und -person des Spielberichts (#272)
 - Spielbericht: Nachbearbeitungen nach Abschluss werden mit einem Hinweis angezeigt (#284)
-
 
 ---
 

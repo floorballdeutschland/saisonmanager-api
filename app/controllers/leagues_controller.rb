@@ -1,13 +1,20 @@
 class LeaguesController < ApplicationController
+  include IcalRenderable
+
   # additional_references gehört trotz des öffentlich klingenden Musters in die
   # Ausnahmeliste: Der Endpunkt liefert Vereins- und Spielort-Stammdaten für die
   # Spielplanverwaltung und wird ausschließlich von Admin-Views aufgerufen. Ohne
   # den Eintrag hier hätte ein reiner X-Api-Key gereicht.
   COOKIE_ONLY_ACTIONS = %i[admin_league_index admin_league_delete admin_upload_banner admin_delete_banner
+                           admin_upload_logo admin_delete_logo
                            additional_references].freeze
 
+  # Kalender-Abos kommen ohne API-Key, weil Kalender-Programme keine eigene
+  # Kopfzeile mitschicken können. Begründung an TeamsController#calendar.
+  KEYLESS_ACTIONS = %i[calendar].freeze
+
   skip_before_action :authenticate_user, except: COOKIE_ONLY_ACTIONS
-  before_action :authenticate_public_request, except: COOKIE_ONLY_ACTIONS
+  before_action :authenticate_public_request, except: COOKIE_ONLY_ACTIONS + KEYLESS_ACTIONS
   after_action :track_public_view,
                only: %i[schedule current_schedule game_day_schedule table grouped_table scorer],
                if: -> { response.successful? }
@@ -542,30 +549,36 @@ class LeaguesController < ApplicationController
 
     respond_to do |format|
       format.json { render json: league.full_hash(true) }
-      format.ics do
-        ical = ::Icalendar::Calendar.new
-
-        events = league.games.map(&:ical)
-        events.each { |event| ical.add_event(event) }
-
-        require 'icalendar/tzinfo'
-        tzid = 'Europe/Berlin'
-        tz = TZInfo::Timezone.get tzid
-        timezone = tz.ical_timezone events.first.dtstart
-        ical.add_timezone timezone
-
-        ical.append_custom_property('METHOD', 'REQUEST')
-        ical.publish
-
-        render plain: ical.to_ical
-      end
+      format.ics { render_ical(games_for_calendar(league)) }
     end
   end
+
+  # GET /api/v2/calendar/leagues/1.ics — ohne API-Key, siehe
+  # TeamsController#calendar. Zur Spieleauswahl siehe games_for_calendar.
+  def calendar
+    render_ical(games_for_calendar(League.find(params[:id])))
+  end
+
+  # Spiele einer Liga für den Kalender.
+  #
+  # Bewusst nicht League#games: Das ist der Spielplan-Pfad, der Logos und
+  # Ausrichter mitlädt, die ein Kalender nicht braucht, und der die Liga selbst
+  # nicht vorlädt. Die dortige Sortierung nach Spielnummer entfällt ebenfalls –
+  # Kalender-Programme ordnen nach Datum.
+  def games_for_calendar(league)
+    Game.joins(:game_day).where(game_days: { league_id: league.id }).with_ical_associations
+  end
+  # Nicht öffentlich: eine public-Methode im Controller wäre eine Action.
+  private :games_for_calendar
 
   # GET /leagues/1/schedule
   def schedule
     id = params[:id]
 
+    # Der Cache bleibt global, die Verzögerung greift erst danach: Sie hängt am
+    # Abrufenden, nicht am Spielplan (siehe delay_live_scores in
+    # ApplicationController). Ein je Schlüssel getrennter Cache-Eintrag wäre
+    # sonst nötig.
     schedule = Rails.cache.fetch("leagues/#{id}/schedule", expires_in: 5.minutes) do
       @league = League.find(id)
       @league.schedule
@@ -755,6 +768,75 @@ class LeaguesController < ApplicationController
     render json: { imported: imported, skipped: skipped, failed: failed }
   end
 
+  # Liga-Logo, das Erkennungszeichen des Wettbewerbs. Getrennt vom Banner
+  # nebenan, weil das eine Werbefläche mit Ziellink ist.
+  #
+  # `square: false` wie bei allen Logos oberhalb der Vereinsebene: Ligazeichen
+  # sind in der Regel querformatige Wortmarken.
+  def admin_upload_logo
+    league = find_league_or_not_found or return
+    unless league.user_permissions(current_user).include?(:update_league)
+      return render json: { message: 'Keine Berechtigung' }, status: :forbidden
+    end
+
+    return render json: { message: 'Keine Berechtigung für diese Ligaklasse' }, status: :forbidden unless buli_ok?(league)
+
+    return render json: { message: 'Kein Bild angefügt' }, status: :unprocessable_entity if params[:logo].blank?
+
+    if (error = logo_upload_error(params[:logo], square: false, max_size: LOGO_MAX_SIZE))
+      return render json: { message: error }, status: :unprocessable_entity
+    end
+
+    begin
+      league.logo.attach(params[:logo])
+      invalidate_league_media_caches
+      render json: league.resolved_logo
+    rescue StandardError => e
+      Rails.logger.error("Logo-Upload fehlgeschlagen (League #{league.id}): #{e.class}: #{e.message}")
+      render json: { message: 'Logo konnte nicht gespeichert werden.' }, status: :internal_server_error
+    end
+  end
+
+  # Nach dem Löschen greift wieder der Rückfall auf das Verbandslogo, die Liga
+  # steht also nicht ohne Zeichen da.
+  def admin_delete_logo
+    league = find_league_or_not_found or return
+    unless league.user_permissions(current_user).include?(:update_league)
+      return render json: { message: 'Keine Berechtigung' }, status: :forbidden
+    end
+
+    return render json: { message: 'Keine Berechtigung für diese Ligaklasse' }, status: :forbidden unless buli_ok?(league)
+
+    begin
+      league.logo.purge
+      invalidate_league_media_caches
+      render json: league.resolved_logo
+    rescue StandardError => e
+      Rails.logger.error("Logo-Löschen fehlgeschlagen (League #{league.id}): #{e.class}: #{e.message}")
+      render json: { message: 'Logo konnte nicht gelöscht werden.' }, status: :internal_server_error
+    end
+  end
+
+  # Bundesligen sind gesondert geschützt: Ihr Zeichen geht bundesweit auf
+  # Sendung, also gilt hier dieselbe Hürde wie beim Ändern der Liga selbst
+  # (admin_league_update). Ein auf seinen Spielbetrieb beschränkter SBK darf
+  # eine Bundesliga nicht umbenennen; dann darf er auch ihr Logo nicht
+  # austauschen.
+  def buli_ok?(league)
+    !BUNDESLIGA_CLASSES.include?(league.league_class_id) || buli_permitted?(current_user)
+  end
+  private :buli_ok?
+
+  # Das Liga-Logo hängt in /api/v2/init: GameOperation#short_hash gibt bis zu
+  # fünf Ligen als top_leagues aus, und dieser Eintrag steht eine halbe Stunde.
+  # Ohne das Verwerfen bliebe ein frisch hochgeladenes Zeichen so lange
+  # unsichtbar. Gleiches Muster wie beim Verbandslogo
+  # (Admin::StateAssociationsController).
+  def invalidate_league_media_caches
+    Rails.cache.delete('settings/init')
+  end
+  private :invalidate_league_media_caches
+
   def admin_upload_banner
     league = find_league_or_not_found or return
     unless league.user_permissions(current_user).include?(:update_league)
@@ -835,18 +917,6 @@ class LeaguesController < ApplicationController
                                    :banner_link_url, :parental_consent_required,
                                    :referee_feedback_enabled,
                                    required_documents: [])
-  end
-
-  # Entfernt Ergebnis-Daten für laufende Spiele bei nicht-Echtzeit-API-Keys.
-  # Der Cache bleibt global – die Filterung erfolgt nach dem Cache-Fetch.
-  def delay_live_scores(schedule)
-    return schedule unless api_key_request? && !@authenticated_api_key&.realtime
-
-    schedule.map do |game|
-      next game unless game[:state].to_s == 'running'
-
-      game.merge(result: nil, result_string: nil)
-    end
   end
 
   # True, wenn in der Liga schon ein Spiel begonnen/gespielt wurde – dann ist

@@ -58,6 +58,32 @@ module Rack
       req.ip if req.path.start_with?('/api/v2/api_key_applications/reveal')
     end
 
+    # Kalender-Abos (ICS). Der einzige öffentliche Bereich, der WEDER ein Cookie
+    # NOCH einen API-Key verlangt: Kalender-Programme können keine eigene
+    # Kopfzeile mitschicken, ein Abo wäre mit Key-Zwang technisch unmöglich.
+    #
+    # Damit fällt der Abruf durch beide Netze weiter unten. Der Key-Throttle
+    # zählt nur Keys mit gesetzter Grenze, und der Crawler-Throttle nur bekannte
+    # Kennungen – ein Aufruf mit gewöhnlicher Browser-Kennung und ohne Key liefe
+    # sonst völlig ungebremst. Bis hierher deckelte immer eine Grenze je
+    # Schlüssel den Aufwand, und billig ist der Aufruf nicht: Der Liga-Kalender
+    # liest alle Spiele einer Liga und serialisiert sie.
+    #
+    # 30 pro Minute ist reichlich bemessen und trifft keinen echten Nutzer:
+    # Kalender-Programme gleichen höchstens stündlich ab, meist seltener, und
+    # wer den Link im Browser anklickt, kommt auf einzelne Aufrufe. Die Antwort
+    # ist zusätzlich eine Stunde öffentlich cachebar (IcalRenderable), womit
+    # wiederholte Abrufe desselben Abos hier gar nicht erst ankommen.
+    #
+    # Der Pfad ohne api/v2-Präfix ist mitgenommen, obwohl nginx ihn nicht
+    # durchreicht: Er steht in config/routes.rb und wäre erreichbar, sobald
+    # jemand eine location dafür einträgt.
+    throttle('calendar/ip', limit: 30, period: 1.minute) do |req|
+      next unless req.get? || req.head?
+
+      req.ip if req.path.start_with?('/api/v2/calendar/', '/calendar/')
+    end
+
     # Suchmaschinen und Skript-Clients stellen den größten Teil des Verkehrs auf
     # den öffentlichen Endpunkten. Messung Produktion, 7 Tage (Juli 2026):
     # Applebot 226.662 Aufrufe und zusammen 10,3 Stunden Serverzeit, Bytespider
@@ -108,12 +134,20 @@ module Rack
     # ActiveStorage-Anhängen.
     CRAWLER_THROTTLED_PATHS = %w[/api/ /verband].freeze
 
+    # Datenquelle der Livestream-Overlays. Hat einen eigenen Topf weiter unten
+    # und gehört nicht in die Crawler-Bremse: Eine Übertragung fragt im
+    # Sekundentakt ab, und die eingebettete Chromium-Kennung von OBS steht heute
+    # zwar nicht in CRAWLER_USER_AGENTS, ein künftig allgemeineres Muster in
+    # dieser Liste würde aber mitten im Spiel die Anzeigetafel abwürgen.
+    OVERLAY_PATH_PREFIX = '/api/v2/public/overlay'.freeze
+
     throttle('crawler/ip', limit: 60, period: 1.minute) do |req|
       # HEAD gehört dazu: Link-Prüfer und einige Crawler holen ausschließlich
       # Header, und teuer ist der Aufruf für den Server trotzdem. Schreibpfade
       # bleiben außen vor, Crawler stellen keine POSTs.
       next unless req.get? || req.head?
       next unless CRAWLER_THROTTLED_PATHS.any? { |p| req.path.start_with?(p) }
+      next if req.path.start_with?(OVERLAY_PATH_PREFIX)
       # Wer angemeldet ist, soll sich nicht an einer falsch erkannten
       # Browser-Kennung ausbremsen. Geprüft wird nur, ob ein user_id-Cookie
       # anliegt, nicht dessen Signatur: Die ließe sich hier in der Middleware
@@ -157,6 +191,34 @@ module Rack
       next unless ApiKey.cached_meta(raw_key)&.[](:rate_limit)
 
       raw_key
+    end
+
+    # Grenze je Overlay-Token. Die Abrufe tragen keinen API-Key, fielen also
+    # durch beide Töpfe oben hindurch.
+    #
+    # Rechnung: Overlay und Dock fragen im Sekundentakt, macht 120 pro Minute;
+    # ein zweiter Regie-Rechner verdoppelt das. 300 lässt Luft für eine
+    # zusätzliche Quelle und begrenzt zugleich, was ein weitergegebener Link
+    # anrichten kann.
+    #
+    # Gezählt wird das Token, nicht die Adresse: In der Halle hängen alle
+    # Rechner hinter derselben IP, und mehrere Übertragungen aus einem Verein
+    # sollen sich nicht gegenseitig ausbremsen.
+    throttle('overlay/token', limit: 300, period: 1.minute) do |req|
+      next unless req.path.start_with?(OVERLAY_PATH_PREFIX)
+
+      # Ausschließlich aus dem Query-String, nie aus `req.params`. Zwei Gründe:
+      #
+      # 1. `req.params` liest bei einem POST den Body. Rack::Attack sitzt
+      #    unterhalb von ShowExceptions und außerhalb des Rettungsnetzes von
+      #    ActionDispatch; ein zu großer Formular-Body endete dadurch in einem
+      #    500 statt in einem sauberen 400.
+      # 2. Bei `Content-Type: application/json` parst Rack den Body gar nicht.
+      #    Das Token stünde dann nicht in `params`, der Block lieferte nil, und
+      #    ausgerechnet der Schreibpfad bliebe ungedrosselt.
+      #
+      # Beide Clients hängen das Token an die URL, auch beim Schreiben.
+      req.GET['token'].presence
     end
 
     # rack-attack übergibt dem Responder seit Version 6 ein Rack::Attack::Request

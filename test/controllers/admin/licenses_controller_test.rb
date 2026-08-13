@@ -212,5 +212,51 @@ module Admin
                           'Spieler Jahrgang 1990 ist volljährig – Zustimmung nicht erforderlich'
       assert row['documents'].key?('parental_consent'), 'Frontend-Kontrakt: Key immer vorhanden'
     end
+
+    # Die Kosten dieser Liste hingen an der Zahl der Ligen, nicht an der Zahl der
+    # Lizenzen: je Liga eine eigene Spieler-Abfrage – und das ist ein Sequential
+    # Scan über die ganze players-Tabelle, weil die Lizenzen in einer JSONB-Spalte
+    # ohne passenden Index liegen – und das Ganze zweimal, weil league.licenses
+    # erst für die Spieler-IDs und dann für die Antwort lief. Ligen ohne eine
+    # einzige Lizenz kosteten dabei genauso viel wie volle.
+    def sql_counts_for_index
+      counts = Hash.new(0)
+      subscriber = ActiveSupport::Notifications.subscribe('sql.active_record') do |_n, _s, _f, _i, payload|
+        sql = payload[:sql]
+        next if payload[:name] == 'SCHEMA' || sql.start_with?('BEGIN', 'COMMIT', 'ROLLBACK')
+
+        counts[:total]   += 1
+        counts[:players] += 1 if sql.include?('FROM "players"')
+        counts[:teams]   += 1 if sql.include?('FROM "teams"')
+      end
+      get '/api/v2/admin/licenses'
+      assert_response :success
+      counts
+    ensure
+      ActiveSupport::Notifications.unsubscribe(subscriber)
+    end
+
+    test 'Abfragezahl der Liste wächst nicht mit der Zahl der Ligen' do
+      login_as(@admin)
+      baseline = sql_counts_for_index
+
+      # Zehn weitere Ligen derselben Saison, alle ohne jede Lizenz.
+      10.times do
+        league = create(:league, game_operation: @go1, season_id: '18')
+        create(:team, league: league, club: @club1)
+      end
+
+      grown = sql_counts_for_index
+
+      assert_equal 1, baseline[:players],
+                   'die Spieler aller Ligen werden in einer Abfrage geladen'
+      assert_equal baseline[:players], grown[:players],
+                   'zehn zusätzliche Ligen dürfen keine weitere Spieler-Abfrage kosten'
+      assert_equal baseline[:teams], grown[:teams],
+                   'auch die Teams werden gebündelt geladen'
+      assert_operator grown[:total], :<=, baseline[:total] + 2,
+                      'die Gesamtzahl der Abfragen darf mit den Ligen nicht mitwachsen ' \
+                      "(#{baseline[:total]} → #{grown[:total]})"
+    end
   end
 end

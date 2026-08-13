@@ -21,6 +21,91 @@ class GameTest < ActiveSupport::TestCase
   end
 
   # ---------------------------------------------------------------------------
+  # awards_with_player_names
+  # ---------------------------------------------------------------------------
+
+  # Der Kern des Fehlers: Ohne Aufstellung fehlten home/guest komplett. Die
+  # öffentliche Spielseite liest `game.awards.home` und schickt das durch eine
+  # Pipe mit `.filter` – auf undefined bricht die Ansicht ab
+  # (Sentry SAISONMANAGER-2M/2N/2P). Zu Saisonbeginn hat fast kein Spiel eine
+  # Aufstellung, der Fall ist also der Normalfall und nicht der Rand.
+  test 'awards_with_player_names: liefert home und guest auch ohne Aufstellung' do
+    g = build_game(players: {}, awards: nil)
+
+    result = g.awards_with_player_names
+
+    assert_equal %w[home guest], result.keys
+    assert_equal 1, result['home'].size
+    assert_equal '', result['home'].first[:player_id]
+  end
+
+  test 'awards_with_player_names: liefert home und guest auch bei players nil' do
+    g = build_game(players: nil, awards: nil)
+
+    assert_equal %w[home guest], g.awards_with_player_names.keys
+  end
+
+  # Altdaten halten players teils als Array. Ein String-Zugriff darauf würde
+  # werfen, und zwar erst im Betrieb an einem einzelnen Alt-Spiel.
+  test 'awards_with_player_names: verträgt players im Legacy-Array-Format' do
+    g = build_game(players: [], awards: nil)
+
+    assert_equal %w[home guest], g.awards_with_player_names.keys
+  end
+
+  test 'awards_with_player_names: löst den ausgezeichneten Spieler auf' do
+    g = build_game(
+      players: { 'home' => [{ 'player_id' => 7, 'player_name' => 'Meier',
+                              'player_firstname' => 'Ada', 'trikot_number' => 9 }],
+                 'guest' => [] },
+      awards: { 'home' => { 'mvp' => 7 } }
+    )
+
+    home = g.awards_with_player_names['home'].first
+
+    assert_equal 7, home[:player_id]
+    assert_equal 'Meier', home[:player_name]
+    assert_equal 9, home[:trikot_number]
+  end
+
+  # Gegenprobe zum leeren Fall: Eine Aufstellung ohne gesetzte Auszeichnung
+  # ergibt dieselbe Form wie ein Spiel ganz ohne Aufstellung. Genau darauf
+  # verlässt sich der Aufrufer, sonst bliebe der Doppelfall bestehen.
+  test 'awards_with_player_names: Aufstellung ohne Auszeichnung ergibt leere Eintraege' do
+    g = build_game(
+      players: { 'home' => [{ 'player_id' => 7 }], 'guest' => [] },
+      awards: {}
+    )
+
+    assert_equal '', g.awards_with_player_names['home'].first[:player_id]
+  end
+
+  # Das Modell dokumentiert selbst, dass players UND awards bei Altdaten je ein
+  # Array sein koennen (siehe referencing_player). Der String-Zugriff darauf
+  # wirft TypeError: no implicit conversion of String into Integer. Bei awards
+  # verdeckte das bisher der present?-Vortest – ein leeres Array kam nicht
+  # durch, ein gefuelltes schon.
+  test 'awards_with_player_names: vertraegt awards im Legacy-Array-Format' do
+    g = build_game(awards: [{ 'mvp' => 7 }])
+
+    assert_equal %w[home guest], g.awards_with_player_names.keys
+    assert_equal '', g.awards_with_player_names['home'].first[:player_id]
+  end
+
+  test 'awards_with_player_names: vertraegt eine Team-Ebene ohne Hash' do
+    g = build_game(awards: { 'home' => [7] })
+
+    assert_equal '', g.awards_with_player_names['home'].first[:player_id]
+  end
+
+  test 'awards_with_player_names: vertraegt eine Aufstellung ohne Hash-Eintraege' do
+    g = build_game(players: { 'home' => [7], 'guest' => [] },
+                   awards: { 'home' => { 'mvp' => 7 } })
+
+    assert_equal '', g.awards_with_player_names['home'].first[:player_id]
+  end
+
+  # ---------------------------------------------------------------------------
   # result
   # ---------------------------------------------------------------------------
 
