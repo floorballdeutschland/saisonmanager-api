@@ -299,7 +299,9 @@ class User < ApplicationRecord
 
     # show league admin menu item
     result[:menu_item_league_admin] = ph[:admin].present? || ph[:sbk].present?
-    result[:menu_item_club_admin] = ph[:admin].present? || ph[:sbk].present?
+    # Vereinsverwaltung: Verband sieht seine Vereine, der Vereinsmanager den
+    # eigenen. Was er darin ändern darf, regelt club_edit_restricted.
+    result[:menu_item_club_admin] = ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
     # SBK-Übersicht „Spielberichte": Kontrolle der abgegebenen Berichte.
     result[:menu_item_match_report_admin] = ph[:admin].present? || ph[:sbk].present?
     result[:menu_item_player_admin] = ph[:admin].present? || ph[:sbk].present?
@@ -459,6 +461,13 @@ class User < ApplicationRecord
     result[:referee_merge] = ph[:admin].present? || ph[:rsk].present?
 
     result[:club_deactivate] = ph[:admin].present? || ph[:sbk].present?
+    # Vereinsanlage bleibt beim Verband: Der Heimat-Spielbetrieb entscheidet,
+    # wer den Verein verwaltet, und den kann der Vereinsmanager nicht setzen.
+    result[:club_create] = ph[:admin].present? || ph[:sbk].present?
+    # Eingeschränktes Vereinsformular: Bundesland, Landesverband und
+    # Spielbetrieb ordnen den Verein ein und bleiben dem Verband vorbehalten
+    # (Gegenstück zu ClubsController#restricted_club_params).
+    result[:club_edit_restricted] = !(ph[:admin].present? || ph[:sbk].present?)
     result[:team_delete] = ph[:admin].present? || ph[:sbk].present?
 
     result

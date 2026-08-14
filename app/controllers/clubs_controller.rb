@@ -223,8 +223,9 @@ class ClubsController < ApplicationController
   end
 
   # Voller Vereinsdatensatz (inkl. contact_email) für die Vereinsverwaltung –
-  # nur Admin/SBK des Spielbetriebs (analog :update_club) sowie LV-Rollen mit
-  # aktueller Vereins-Freigabe (StateAssociationRelease, Lesezugriff wie in
+  # Admin/SBK des Spielbetriebs und der Vereinsmanager des Vereins selbst
+  # (beide über :update_own_club) sowie LV-Rollen mit aktueller
+  # Vereins-Freigabe (StateAssociationRelease, Lesezugriff wie in
   # Club.admin_user_clubs).
   def admin_club
     if current_user
@@ -234,7 +235,14 @@ class ClubsController < ApplicationController
         return render json: { message: 'Keine Berechtigung' }, status: :forbidden
       end
 
-      render json: club.full_hash
+      # `edit_restricted` pro Verein und nicht als Benutzer-Berechtigung: Wer
+      # eine Spielbetriebsrolle für einen Verband UND eine Vereinsrolle für
+      # einen Verein aus einem anderen Verband hat, darf beim einen alles und
+      # beim anderen nur die Stammdaten. Ein Flag am Benutzer kann das nicht
+      # ausdrücken. Bewusst hier statt in Club#full_hash: Der Hash reist über
+      # GameDay#full_hash durch jede Spieltags-Antwort, wo eine
+      # benutzerbezogene Angabe nichts zu suchen hat.
+      render json: club.full_hash.merge(edit_restricted: !full_club_access?(club))
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
     end
@@ -252,7 +260,7 @@ class ClubsController < ApplicationController
       # die Änderung am Verein selbst.
       if create_modus
         create_club
-      elsif (club = Club.find(params[:id])).user_permissions(current_user).include?(:update_club)
+      elsif (club = Club.find(params[:id])).user_permissions(current_user).include?(:update_own_club)
         update_club(club)
       else
         render json: { message: 'Keine Berechtigung' }, status: :forbidden
@@ -267,7 +275,7 @@ class ClubsController < ApplicationController
     if current_user
       club = Club.find(params[:id])
 
-      unless club.user_permissions(current_user).include?(:update_club)
+      unless club.user_permissions(current_user).include?(:update_own_club)
         return render json: { message: 'Keine Berechtigung' }, status: :forbidden
       end
 
@@ -443,10 +451,64 @@ class ClubsController < ApplicationController
     params.require(:club).permit(:name, :short_name, :long_name, :state, :state_association_id, :contact_email)
   end
 
+  # Vereinsmanager-Fassung: ohne die Felder, die den Verein einordnen.
+  # `state` und `state_association_id` entscheiden mit darüber, wer den Verein
+  # verwalten und wer seine Spieler sperren darf – ein Verein könnte sich sonst
+  # selbst in einen anderen Landesverband umhängen.
+  def restricted_club_params
+    params.require(:club).permit(:name, :short_name, :long_name, :contact_email)
+  end
+
+  def full_club_access?(club)
+    club.user_permissions(current_user).include?(:update_club)
+  end
+
+  # Felder, die der eingeschränkte Zugriff nicht schreibt. Kommt eines davon
+  # mit einem ANDEREN Wert an, ist das keine harmlose Rücksendung des Formulars,
+  # sondern ein Änderungswunsch, der sonst stillschweigend verfiele.
+  RESTRICTED_FIELDS = %w[state state_association_id].freeze
+
+  # Liefert die Meldung, wenn ein eingeschränkter Zugriff eines der
+  # vorbehaltenen Felder ändern will – sonst nil.
+  #
+  # Ohne diese Prüfung antwortete das Speichern mit 200 und einer
+  # Erfolgsmeldung, während `restricted_club_params` die Felder verwarf. Das
+  # trifft nicht nur den Vereinsmanager: Wer eine Spielbetriebsrolle für einen
+  # Verband UND eine Vereinsrolle für einen Verein aus einem anderen Verband
+  # hat, bekommt das Formular unbeschränkt zu sehen (das Frontend-Flag gilt pro
+  # Benutzer), die Berechtigung entscheidet aber pro Verein.
+  def restricted_field_conflict(club)
+    eingereicht = params[:club] || {}
+
+    geaendert = RESTRICTED_FIELDS.select do |feld|
+      next false unless eingereicht.key?(feld)
+
+      # Vergleich über to_s: state_association_id kommt als String an, steht in
+      # der Spalte aber als Integer.
+      eingereicht[feld].to_s.presence != club.public_send(feld).to_s.presence
+    end
+
+    return nil if geaendert.empty?
+
+    'Bundesland und Landesverband ordnen den Verein ein und können nur vom ' \
+      'zuständigen Verband geändert werden.'
+  end
+
   # Vereinsänderung. Der Spielbetrieb ist optional – kommt er mit, wird der
   # Heimat-Eintrag ersetzt.
   def update_club(club)
     club.updated_by = current_user.id
+
+    # Einmal auswerten und wiederverwenden: Der Zweig unten schreibt
+    # `game_operations_hash` neu, und `full_club_access?` liest darüber den
+    # Heimat-Spielbetrieb. Nach der Zuweisung beantwortete ein zweiter Aufruf
+    # die Frage für den ZIEL-Spielbetrieb statt für den, der die Anfrage
+    # autorisiert hat.
+    voller_zugriff = full_club_access?(club)
+
+    if !voller_zugriff && (meldung = restricted_field_conflict(club))
+      return render json: { success: false, message: meldung }, status: :forbidden
+    end
 
     # `present?` statt `key?`: Das Formular schickt den ganzen Verein zurück,
     # also auch ein `game_operation_id`, das es dort gar nicht zu bearbeiten
@@ -459,7 +521,12 @@ class ClubsController < ApplicationController
     # Eine ausdrückliche 0 oder eine unbekannte Kennung laufen weiterhin in die
     # Meldung: in Ruby ist `0.present?` true, nur nil und "" gelten hier als
     # „nicht mitgeschickt".
-    if params[:game_operation_id].present?
+    # `full_club_access?` zuerst: Das Formular schickt den Verein unverändert
+    # zurück, also auch bei einem Vereinsmanager immer ein game_operation_id.
+    # Ohne diese Klammer liefe der Zweig für ihn mit und schriebe den
+    # Heimat-Eintrag neu – bei gleicher Kennung folgenlos, aber es wäre der
+    # einzige Pfad, über den er den Spielbetrieb überhaupt anfassen kann.
+    if voller_zugriff && params[:game_operation_id].present?
       target = resolve_game_operation(params[:game_operation_id])
 
       # Eine 0 oder eine unbekannte ID hätte den Heimat-Eintrag auf einen
@@ -487,7 +554,7 @@ class ClubsController < ApplicationController
       club.game_operations_hash = [{ 'home_game_operation' => true, 'game_operation_id' => target.id }]
     end
 
-    if club.update(club_params)
+    if club.update(voller_zugriff ? club_params : restricted_club_params)
       render json: club.full_hash
     else
       render json: club.errors, status: :unprocessable_entity
@@ -632,7 +699,7 @@ class ClubsController < ApplicationController
   end
 
   def can_read_admin_club?(club)
-    return true if club.user_permissions(current_user).include?(:update_club)
+    return true if club.user_permissions(current_user).include?(:update_own_club)
 
     ph = current_user.permission_hash
     go_ids = (ph[:admin].to_a + ph[:sbk].to_a).reject(&:zero?)
