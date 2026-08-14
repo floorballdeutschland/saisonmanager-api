@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Vereinsmanager pflegen die Stammdaten ihres Vereins selbst**: Die Vereinsverwaltung war bisher dem Verband vorbehalten. Jede Änderung an Name, Kürzel, Registername, Kontaktadresse oder Vereinslogo musste beim Landesverband gemeldet und dort nachgetragen werden. Vereinsmanager sehen jetzt ihren eigenen Verein und ändern diese Angaben selbst. Was den Verein einordnet, bleibt beim Verband: Bundesland, Landesverband und Spielbetrieb sind für den Verein sichtbar, aber nicht änderbar, denn sie entscheiden mit darüber, wer den Verein verwaltet und wer seine Spieler sperren darf. Ebenso wenig kann ein Verein sich selbst deaktivieren oder einen weiteren Verein anlegen. Der Verband sieht und ändert unverändert alles.
+
 ### Behoben
 
 - **Persönliche Unterlagen nur noch für den zuständigen Verein**: Die Dokumente einer Person (Lichtbild, Zustimmungen, Nachweise) standen einem Verein dauerhaft offen, sobald irgendwann einmal eine Lizenz für eine seiner Mannschaften bestand. Ob die Zugehörigkeit noch gilt und aus welcher Saison die Lizenz stammt, spielte keine Rolle: Ein Vereins- oder Teamverantwortlicher konnte die Unterlagen einer Person, die vor Jahren gewechselt ist, weiter ansehen, ersetzen und löschen. Jetzt zählt dafür dasselbe wie beim Lizenzantrag: eine laufende Zugehörigkeit zu einem der beteiligten Vereine der Mannschaft und eine Lizenz aus der laufenden Saison. Spielgemeinschaften und Syndikate bleiben davon unberührt, dort entscheidet die Zugehörigkeit zum Partnerverein. Für Verbandsrollen ändert sich nichts. Nebenbei behoben: Eine unlesbare Datumsangabe im Altbestand („unbekannt", „0000-00-00") führte an dieser Stelle zu einem Serverfehler statt zu einer Rechteentscheidung, sie wird jetzt als Datenfehler gemeldet. Am Spielerprofil selbst gilt die neue Regel noch nicht, dort wird weiterhin jede jemals bestandene Zugehörigkeit anerkannt; das ist ein eigener Vorgang.
