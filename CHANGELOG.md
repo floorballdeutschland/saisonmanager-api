@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Toter Node-Baum aus dem Server entfernt**: Der Server trug seit dem Rails-6-Update eine Webpacker-Installation mit sich, die nie etwas gebaut hat: eine Beispieldatei aus dem Generator, dazu Konfiguration und eine 7.893 Zeilen lange Abhängigkeitsliste. Weder das Deployment noch die Testläufe haben sie je angefasst. Für die Anwendung ändert sich damit nichts, wohl aber für die Sicherheitsmeldungen: 52 der 62 offenen Meldungen betrafen ausschließlich diese nie ausgeführten Bauwerkzeuge und haben die zehn Meldungen erstickt, die den Server wirklich betreffen. Die Liste ist jetzt lesbar.
+
 ## [1.81.0] - 2026-08-14
 
 ### Neu
