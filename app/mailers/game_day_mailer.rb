@@ -26,7 +26,7 @@ class GameDayMailer < ApplicationMailer
                      .sort_by { |g| g.start_time.to_s }
 
     templated_mail(
-      to: game_day.club&.contact_email,
+      to: game_day.club&.notification_emails,
       subject: "Schiedsrichteransetzungen – #{@league_name} am #{game_day.date}",
       default_reply_to: 'sr-ansetzungen@floorball.de',
       placeholders: { league_name: @league_name.to_s, game_day_date: game_day.date.to_s }
@@ -42,7 +42,7 @@ class GameDayMailer < ApplicationMailer
     @assignment = game.referee_assignment
 
     templated_mail(
-      to: game.game_day.club&.contact_email,
+      to: game.game_day.club&.notification_emails,
       subject: "Schiedsrichteransetzung geändert – #{@league_name} am #{game.game_day.date}",
       default_reply_to: 'sr-ansetzungen@floorball.de',
       placeholders: { league_name: @league_name.to_s, game_day_date: game.game_day.date.to_s, game_time: game.start_time.to_s }

@@ -374,7 +374,176 @@ module Admin
       assert_response :unprocessable_entity
     end
 
+    # --- Gültigkeit und Saison: alte Lizenzen halten die Tür nicht auf ---
+
+    # Der Kern von #397: Eine Lizenz aus der laufenden Saison genügte dem VM
+    # dauerhaft, auch nachdem die Vereinszugehörigkeit des Spielers geendet hatte.
+    # Am Spielerprofil war derselbe VM längst 403, die persönlichen Unterlagen
+    # standen ihm weiter offen – lesend und löschend.
+    test 'VM ohne laufende Mitgliedschaft kommt nicht mehr an die Unterlagen' do
+      club = create(:club)
+      team = create(:team, club: club)
+      @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true,
+                                'valid_until' => 2.years.ago.iso8601 }],
+                      licenses: licenses_for(team))
+      doc = attach_document('use')
+
+      login(create(:user, :vm, club_id: club.id))
+
+      get "/api/v2/admin/players/#{@player.id}/license_documents"
+      assert_response :forbidden
+
+      get "/api/v2/admin/players/#{@player.id}/document_types"
+      assert_response :forbidden
+
+      delete "/api/v2/admin/players/#{@player.id}/license_documents/#{doc.id}"
+      assert_response :forbidden
+      assert LicenseDocument.exists?(doc.id), 'Das Dokument muss erhalten bleiben'
+
+      post "/api/v2/admin/players/#{@player.id}/license_documents",
+           params: { document_type: 'use', file: fixture_file_upload('dokument.pdf', 'application/pdf') }
+      assert_response :forbidden
+    end
+
+    test 'VM mit laufender Mitgliedschaft kommt weiter an die Unterlagen' do
+      club = create(:club)
+      team = create(:team, club: club)
+      @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }],
+                      licenses: licenses_for(team))
+      attach_document('use')
+
+      login(create(:user, :vm, club_id: club.id))
+      get "/api/v2/admin/players/#{@player.id}/license_documents"
+
+      assert_response :success
+      assert_equal 1, JSON.parse(response.body).size
+    end
+
+    # Der Grund, warum es den Lizenz-Weg überhaupt gibt: Bei SG-/Syndikats-Teams
+    # gehört der Spieler dem Partnerverein, die Mannschaft dem anderen. Dessen VM
+    # löst die Lizenz (players#request_license) und muss die Dokumente sehen.
+    # Maßgeblich ist die Mitgliedschaft im Partnerverein.
+    test 'VM eines Syndikats-Teams sieht die Unterlagen des Partnerclub-Spielers' do
+      host_club = create(:club)
+      partner_club = create(:club)
+      team = create(:team, club: host_club, syndicate: true, syndicate_clubs: [partner_club.id])
+      @player.update!(clubs: [{ 'club_id' => partner_club.id, 'home_club' => true }],
+                      licenses: licenses_for(team))
+      attach_document('use')
+
+      login(create(:user, :vm, club_id: host_club.id))
+      get "/api/v2/admin/players/#{@player.id}/license_documents"
+      assert_response :success
+
+      @player.update!(clubs: [{ 'club_id' => partner_club.id, 'home_club' => true,
+                                'valid_until' => 1.year.ago.iso8601 }])
+      get "/api/v2/admin/players/#{@player.id}/license_documents"
+      assert_response :forbidden
+    end
+
+    # Für den TM zählte allein, dass eine Lizenz auf seine Mannschaft lautet.
+    # Der Saisonfilter greift bei ihm schon eine Stufe früher (permission_hash
+    # nimmt nur Mannschaften der laufenden Saison), die Zugehörigkeit dagegen
+    # wurde nirgends geprüft: Ein weggewechselter Spieler blieb dem TM offen.
+    test 'TM verliert den Zugriff mit dem Ende der Vereinszugehoerigkeit' do
+      club = create(:club)
+      team = create(:team, club: club)
+      @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }],
+                      licenses: licenses_for(team))
+      attach_document('use')
+
+      login(create(:user, :tm, team_id: team.id))
+      get "/api/v2/admin/players/#{@player.id}/license_documents"
+      assert_response :success
+
+      @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true,
+                                'valid_until' => 1.year.ago.iso8601 }])
+      get "/api/v2/admin/players/#{@player.id}/license_documents"
+      assert_response :forbidden
+    end
+
+    # Der Saisonfilter für sich: Der Spieler gehört dem Partnerverein weiterhin,
+    # das Syndikats-Team ist aber aus einer vergangenen Saison. Die Zugehörigkeit
+    # allein hielte die Tür sonst dauerhaft offen.
+    test 'Lizenz einer vergangenen Saison gibt dem VM keinen Zugriff' do
+      host_club = create(:club)
+      partner_club = create(:club)
+      past_team = create(:team, club: host_club, syndicate: true, syndicate_clubs: [partner_club.id],
+                                league: create(:league, :previous_season))
+      @player.update!(clubs: [{ 'club_id' => partner_club.id, 'home_club' => true }],
+                      licenses: licenses_for(past_team))
+      attach_document('use')
+
+      login(create(:user, :vm, club_id: host_club.id))
+      get "/api/v2/admin/players/#{@player.id}/license_documents"
+
+      assert_response :forbidden
+    end
+
+    # `teams.league_id` ist nullable: Ein Team ohne Liga faellt aus
+    # Team.current_season heraus (NULL IN (...) ist nie wahr). Der Zugriff endet
+    # damit zu, das ist gewollt – aber als Datenfehler gemeldet, sonst ist die
+    # Absage von einer regulaeren nicht zu unterscheiden.
+    test 'Lizenz-Team ohne Liga wird gemeldet, nicht still verworfen' do
+      club = create(:club)
+      team = create(:team, club: club)
+      team.update_columns(league_id: nil)
+      # Abgelaufene Zugehoerigkeit, damit die Pruefung ueber den Lizenz-Weg laeuft
+      # und nicht schon an den gueltigen Vereinen des Spielers vorbei entschieden wird.
+      @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true,
+                                'valid_until' => 1.year.ago.iso8601 }],
+                      licenses: licenses_for(team))
+      login(create(:user, :vm, club_id: club.id))
+
+      log = capture_rails_log do
+        get "/api/v2/admin/players/#{@player.id}/license_documents"
+      end
+
+      assert_response :forbidden
+      assert_match(/ohne Liga/, log, 'der Datenfehler muss im Log stehen')
+    end
+
+    # Ein unlesbares valid_until steht auf Prod im Altbestand. Es ist eine
+    # Rechteentscheidung (Absage plus Meldung), kein Serverfehler – dafür rescued
+    # LicenseAccessScope#membership_current?.
+    test 'unlesbares valid_until endet in einer Absage, nicht in einem Serverfehler' do
+      club = create(:club)
+      team = create(:team, club: club)
+      @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true, 'valid_until' => 'unbekannt' }],
+                      licenses: licenses_for(team))
+
+      login(create(:user, :vm, club_id: club.id))
+      get "/api/v2/admin/players/#{@player.id}/license_documents"
+
+      assert_response :forbidden
+    end
+
     private
+
+    # Der Test-Cache ist ein :null_store, die Drosselung in
+    # report_license_data_defect ist also nicht beobachtbar – gepruefet wird
+    # deshalb, was der Helfer schreibt.
+    def capture_rails_log
+      buffer = StringIO.new
+      original = Rails.logger
+      Rails.logger = ActiveSupport::Logger.new(buffer)
+      yield
+      buffer.string
+    ensure
+      Rails.logger = original
+    end
+
+    # Lizenz-Hashes in der Form, in der sie in Player#licenses liegen.
+    def licenses_for(*teams)
+      build(:player, with_licenses: teams.map { |team| { team: team } }).licenses
+    end
+
+    def attach_document(document_type)
+      doc = LicenseDocument.new(player: @player, document_type: document_type)
+      doc.file.attach(io: StringIO.new('%PDF-1.4'), filename: 'd.pdf', content_type: 'application/pdf')
+      doc.save!
+      doc
+    end
 
     # Spieler im Verband des gescopten SBK, dazu ein Dokument einer FREMDEN
     # Verbandsart – lesbar ist der Spieler damit (admin_or_sbk_for_player?),

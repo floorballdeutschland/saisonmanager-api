@@ -412,15 +412,11 @@ class League < ApplicationRecord
   end
 
   def schedule
-    games.map(&:schedule_item).sort_by do |game|
-      [game[:game_day].to_i, game[:date].to_s, game[:time].to_s, game[:game_number]]
-    end
+    games.map(&:schedule_item).sort_by { |game| schedule_sort_key(game) }
   end
 
   def game_day_schedule(game_day_number)
-    games(game_day_number).map(&:schedule_item).sort_by do |game|
-      [game[:game_day].to_i, game[:date].to_s, game[:time].to_s, game[:game_number]]
-    end
+    games(game_day_number).map(&:schedule_item).sort_by { |game| schedule_sort_key(game) }
   end
 
   def current_schedule
@@ -443,7 +439,10 @@ class League < ApplicationRecord
     rescue StandardError
       game_days.pluck(:number).max
     end
-    games(game_day_number).map(&:schedule_item)
+    # Explizit dieselbe Ordnung wie schedule/game_day_schedule, statt die von
+    # League#games (nach Spielnummer) zu übernehmen: Diese Antwort und die des
+    # Weiter-Zurück-Endpunkts stehen nebeneinander in derselben Ansicht.
+    games(game_day_number).map(&:schedule_item).sort_by { |game| schedule_sort_key(game) }
   end
 
   def meta_item
@@ -1339,6 +1338,32 @@ class League < ApplicationRecord
   end
 
   private
+
+  # Reihenfolge des Spielplans: Spieltag, Datum, Spielnummer, Uhrzeit.
+  #
+  # Die Spielnummer musste vor die Uhrzeit, weil ein Spieltag, der parallel in
+  # mehreren Hallen läuft, sonst nach Uhrzeit quer über die Hallen verzahnt
+  # wurde, statt sie als zusammenhängende Blöcke zu zeigen. Vor das Datum darf
+  # sie nicht: Ein Spieltag erstreckt sich häufig über mehrere Tage (Playoffs,
+  # Pokalrunden, Nachholspiele), und die Nummern folgen dort der Paarung, nicht
+  # dem Kalender. Der Spielplan liefe sonst zeitlich rückwärts.
+  #
+  # game_number ist eine Textspalte und trägt auch nicht-numerische Werte
+  # („HF1", „FIN", „Pl. 3" in K.-o.-Runden), die schedule_item alle zu 0 macht.
+  # Solche Spiele stehen am Ende ihres Tages und dort nach Uhrzeit, statt vor
+  # die durchnummerierten Spiele zu rutschen. Gleiche Regel wie GAME_ORDER in
+  # Admin::GameDaysController, das nicht-numerische Nummern ans Ende stellt.
+  #
+  # game_id zuletzt, damit die Reihenfolge eindeutig ist: sort_by ist nicht
+  # stabil, und schedule sortiert ein ganzes Saison-Array, game_day_schedule
+  # nur einen Spieltag. Ohne diesen Anker könnten gleiche Schlüssel in den
+  # beiden Ansichten unterschiedlich landen.
+  def schedule_sort_key(game)
+    number = game[:game_number].to_i
+
+    [game[:game_day].to_i, game[:date].to_s, number.positive? ? 0 : 1, number,
+     game[:time].to_s, game[:game_id].to_i]
+  end
 
   def group_template(group_identifier)
     return {} if group_identifier.nil?

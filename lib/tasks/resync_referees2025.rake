@@ -265,9 +265,11 @@ namespace :referees2025 do
     uploader = User.find_by(user_name: ENV.fetch('UPLOADED_BY', 'admin'))
     abort "Upload-User nicht gefunden (UPLOADED_BY=#{ENV.fetch('UPLOADED_BY', 'admin')})" if uploader.nil?
 
-    # Vereinssuche über RefereeClubLookup: Alias-Liste, exakt name/long_name/
-    # short_name, dann normalisiert. Der frühere Weg über den exakten Namen
-    # allein fand nur gut die Hälfte der Vereine.
+    # Vereinssuche über RefereeClubLookup: Alias-Liste, exakt name/long_name,
+    # dann normalisiert. Der frühere Weg über den exakten Namen allein fand nur
+    # gut die Hälfte der Vereine. Das Vereinskürzel ist seit der
+    # Vier-Zeichen-Grenze keine Stufe mehr (siehe RefereeClubLookup): Wer über
+    # ein Kürzel zuordnen will, trägt es in die Alias-Liste ein.
     club_service = RefereeClubLookup.new
     club_lookup = ->(name) { Club.find_by(id: club_service.call(name).club_id) }
 

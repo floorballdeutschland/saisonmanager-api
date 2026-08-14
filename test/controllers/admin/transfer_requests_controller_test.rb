@@ -21,7 +21,7 @@ module Admin
       # player_rejected_clubs_notification 0 Mails ab (early return im Mailer).
       @former_club = Club.create!(
         name: "Abgebender Verein #{SecureRandom.hex(4)}",
-        short_name: "AV#{SecureRandom.hex(2)}",
+        short_name: "AV#{SecureRandom.hex(1)}",
         contact_email: 'former@test.example.com',
         state_association: @state_association,
         game_operations_hash: [{ 'game_operation_id' => @game_operation.id, 'home_game_operation' => true }]
@@ -29,7 +29,7 @@ module Admin
 
       @requesting_club = Club.create!(
         name: "Aufnehmender Verein #{SecureRandom.hex(4)}",
-        short_name: "AU#{SecureRandom.hex(2)}",
+        short_name: "AU#{SecureRandom.hex(1)}",
         contact_email: 'requesting@test.example.com',
         state_association: @state_association,
         game_operations_hash: [{ 'game_operation_id' => @game_operation.id, 'home_game_operation' => true }]
@@ -51,7 +51,7 @@ module Admin
       # Verein außerhalb des Test-Spielbetriebs, für den nur die VM-Rolle greift.
       @vm_only_club = Club.create!(
         name: "Nur-VM Verein #{SecureRandom.hex(4)}",
-        short_name: "NV#{SecureRandom.hex(2)}"
+        short_name: "NV#{SecureRandom.hex(1)}"
       )
 
       @vm_requesting = create_user(user_group_id: 4, club_id: @requesting_club.id)
@@ -124,7 +124,7 @@ module Admin
     test 'SBK mit zusätzlicher VM-Rolle darf nicht für Verein außerhalb des Spielbetriebs suchen → 403' do
       foreign_club = Club.create!(
         name: "Fremdverband Verein #{SecureRandom.hex(4)}",
-        short_name: "FV#{SecureRandom.hex(2)}"
+        short_name: "FV#{SecureRandom.hex(1)}"
       )
       login(@sbk_and_vm)
       get '/api/v2/admin/transfer_requests/search_player', params: {
@@ -213,7 +213,7 @@ module Admin
     test 'VM kann keinen Antrag für fremden Verein erstellen → 403' do
       other_club = Club.create!(
         name: "Fremder Verein #{SecureRandom.hex(4)}",
-        short_name: "FR#{SecureRandom.hex(2)}"
+        short_name: "FR#{SecureRandom.hex(1)}"
       )
       login(@vm_requesting)
       post '/api/v2/admin/transfer_requests', params: {
@@ -498,7 +498,7 @@ module Admin
       )
       Club.create!(
         name: "Anderer Verein #{SecureRandom.hex(4)}",
-        short_name: "AND#{SecureRandom.hex(2)}",
+        short_name: "AN#{SecureRandom.hex(1)}",
         contact_email: 'other@test.example.com',
         state_association: state_association,
         game_operations_hash: [{ 'game_operation_id' => game_operation.id, 'home_game_operation' => true }]

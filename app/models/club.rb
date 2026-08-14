@@ -4,7 +4,73 @@ class Club < ApplicationRecord
 
   has_one_attached :logo
 
+  # Das Kürzel ist ein Anzeigezeichen, kein Name: Es steht auf der
+  # Anzeigetafel des Livestreams, wo mehr als vier Zeichen die Bauchbinde
+  # sprengen. Bestandswerte sind länger, deshalb nur beim Speichern geprüft
+  # und Leerwerte erlaubt (das Feld ist nullable).
+  SHORT_NAME_MAX = 4
+
+  # `if:` statt unbedingt: Bestandswerte sind länger, und eine unbedingte
+  # Prüfung hätte jedes Speichern dieser Vereine blockiert – auch das
+  # Deaktivieren und Reaktivieren (`deactivate!`/`reactivate!`), das in einer
+  # Maske ohne Kürzel-Feld an einer Meldung über das Kürzel gescheitert wäre.
+  # Für die Vereine, deren Kürzel beim Kürzen kollidiert und deshalb stehen
+  # bleibt, wäre das dauerhaft so geblieben.
+  validates :short_name, length: { maximum: SHORT_NAME_MAX },
+                         allow_blank: true, if: :short_name_changed?
+
+  # Eine Adresse, nicht mehrere. Auf Produktion trug ein Verein zwei Adressen
+  # mit Semikolon getrennt im Feld – beide bekamen nie etwas, weil das Feld als
+  # eine Adresse verschickt wird. Wer mehrere Empfänger braucht, wählt sie
+  # unter notify_user_ids aus.
+  EMAIL_FORMAT = /\A[^@\s;,]+@[^@\s;,]+\.[^@\s;,]+\z/
+
+  # `if:` statt unbedingt: Auf Produktion trägt ein Verein bereits zwei
+  # Adressen im Feld. Eine unbedingte Prüfung hätte jedes Speichern dieses
+  # Vereins blockiert – auch das Deaktivieren (`deactivate!` nutzt `update!`)
+  # und die Liga-Kopie, die Vereine mitschreibt. Wer die Adresse anfasst, muss
+  # die Regel einhalten; wer sie nicht anfasst, wird nicht aufgehalten.
+  validates :contact_email, format: { with: EMAIL_FORMAT },
+                            allow_blank: true, if: :contact_email_changed?
+
   scope :active, -> { where(deactivated_at: nil) }
+
+  # Vereinsmanager dieses Vereins. Kandidaten per jsonb-Containment vorfiltern
+  # und dann über permission_hash bestätigen, das allein die Sonderfälle kennt
+  # (Mehrfachrollen, Alt-Einträge).
+  #
+  # Beide Typvarianten abfragen, wie es admin/users_controller schon tut:
+  # jsonb-Containment ist typstreng, `@> '[{"user_group_id":4}]'` findet einen
+  # Alt-Eintrag mit `"4"` nicht. Das wäre ein stiller Fehler – der
+  # Vereinsmanager fehlte einfach in der Auswahlliste, ohne Meldung.
+  # `permission_hash` selbst nutzt `.to_i` und verträgt beides.
+  def club_managers
+    User.not_archived
+        .where('permissions @> ? OR permissions @> ?',
+               [{ user_group_id: 4 }].to_json,
+               [{ user_group_id: '4' }].to_json)
+        .select { |user| Array(user.permission_hash[:vm]).include?(id) }
+  end
+
+  # Alle Empfänger der Vereinspost: die Kontaktadresse plus die ausgewählten
+  # Vereinsmanager.
+  def notification_emails
+    ([contact_email] + notify_manager_emails)
+      .map { |mail| mail.to_s.strip }
+      .reject(&:blank?)
+      .uniq
+  end
+
+  # Die Auswahl wird bei jedem Versand gegen die aktuellen Rechte aufgelöst.
+  # Ohne das bekäme jemand weiter Vereinspost, der die Rolle längst verloren
+  # hat – die gespeicherten IDs allein sagen darüber nichts.
+  def notify_manager_emails
+    ids = Array(notify_user_ids).map(&:to_i).reject(&:zero?)
+    return [] if ids.empty?
+
+    club_managers.select { |user| ids.include?(user.id) && user.email.present? }
+                 .map(&:email)
+  end
 
   def deactivate!(user_id)
     update!(deactivated_at: Time.current, deactivated_by: user_id)
@@ -190,12 +256,19 @@ class Club < ApplicationRecord
     admin = ph[:admin].present? && (global_or_go & ph[:admin]).any?
     sbk = ph[:sbk].present? && (global_or_go & ph[:sbk]).any?
 
+    vm = ph[:vm].present? && ph[:vm].include?(id)
+
     perm << :update_club if admin || sbk
     perm << :update_player if admin || sbk
 
-    if admin || sbk || ph[:vm].present? && ph[:vm].include?(id)
-      perm << :create_player
-    end
+    # Bewusst getrennt von :update_club. Der Vereinsmanager pflegt die
+    # Stammdaten seines eigenen Vereins, darf aber weder die Einordnung
+    # (Bundesland, Landesverband, Spielbetrieb) ändern noch den Verein
+    # deaktivieren. Beides hängt an :update_club – deaktivieren würde sich
+    # der Verein sonst selbst.
+    perm << :update_own_club if admin || sbk || vm
+
+    perm << :create_player if admin || sbk || vm
 
     perm
   end

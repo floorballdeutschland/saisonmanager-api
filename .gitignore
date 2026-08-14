@@ -21,12 +21,6 @@
 *_backup_saisonmanager.sql
 *_calculation*
 
-/public/packs
-/public/packs-test
-/node_modules
-/yarn-error.log
-yarn-debug.log*
-.yarn-integrity
 .env
 
 # ActiveStorage local disk uploads

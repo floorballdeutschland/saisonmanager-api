@@ -1,6 +1,14 @@
 class ClubsController < ApplicationController
   include LicenseDocumentPresentation
   include LicenseAccessScope
+  include SecretaryTokenAuthenticatable
+
+  # `user_team_licenses` ist die einzige Aktion hier, die auch ohne Benutzerkonto
+  # erreichbar sein muss: Der Kader-Dialog im Spielbericht läuft beim
+  # Spielsekretariat auf einem Spielsekretariats-Link, und dort ist der Token die
+  # Berechtigung. Ohne Login und ohne brauchbaren Token bleibt es bei 401.
+  skip_before_action :authenticate_user, only: %i[user_team_licenses]
+  before_action :authenticate_user_or_secretary_link, only: %i[user_team_licenses]
 
   def user_clubs_and_teams
     ph = current_user.permission_hash
@@ -85,79 +93,28 @@ class ClubsController < ApplicationController
     }
   end
 
+  # Kader und Lizenzstand einer Mannschaft. Zwei Wege hierher:
+  #
+  # (a) eingeloggt: Admin, SBK der Liga, VM/TM der beteiligten Vereine bekommen
+  #     das vollständige Team-Lizenzwesen.
+  # (b) per Spielsekretariats-Link, also ohne Benutzerkonto: nur die Kaderliste,
+  #     und nur für Mannschaften, die an einem vom Link abgedeckten Spieltag
+  #     spielen.
+  #
+  # (b) fehlte, und das Sekretariat bezahlte es teuer: Der Kader-Dialog im
+  # Spielbericht ruft diesen Endpunkt, bekam 401, und der ErrorInterceptor im
+  # Frontend meldete daraufhin ab. Der Link erlaubt das Aufstellen
+  # (GamesController::SECRETARY_ACTIONS enthält add_player_to_lineup), nur an die
+  # Liste der aufstellbaren Personen kam niemand, und wer es am Spieltag
+  # versuchte, verlor seinen Zugang.
   def user_team_licenses
-    ph = current_user.permission_hash
-
     team = Team.find(params[:id])
-
-    # get leagues for team
     leagues = team.leagues
-    # get playing clubs, including sg
-    teams = leagues.map(&:teams).flatten.compact.uniq
-    club_ids = teams.map(&:all_club_ids).flatten.compact.uniq
-    # get hosting clubs
-    all_club_ids = [club_ids, leagues.map { |l| l.game_days.map(&:club_id) }].flatten.compact.uniq
 
-    # Rollen additiv: ein VM, der zugleich TM eines Teams außerhalb seiner
-    # Vereine ist, wurde von der elsif-Kette sonst am TM-Zweig vorbeigeleitet.
-    allowed = ph[:admin].present? || sbk_can_access_leagues?(ph, leagues) ||
-              # vm: permission for one of those clubs?
-              (ph[:vm].present? && ph[:vm].intersection(all_club_ids).present?) ||
-              # tm: get clubs for league teams of given team, permission for one of those?
-              (ph[:tm].present? && ph[:tm].intersection(teams.map(&:id)).present?)
-
-    if allowed
-      result = {}
-
-      result[:team] = team.full_hash
-
-      # Maßgeblich ist der LV des Spielbetriebs der Liga, nicht der des Vereins:
-      # Zuständig für den Spielbetrieb einer Liga ist allein deren Verband. Erlaubnis
-      # und Zeitfenster müssen aus derselben Liga stammen (League#express_license_possible?).
-      result[:express_license_enabled] = leagues.any?(&:express_license_possible?)
-      # Elternzustimmung: wird pro Liga über das Flag parental_consent_required
-      # gesteuert. Das Flag steuert den Datenschutz-Block im Antragsformular;
-      # als Pflichtdokument steckt die Zustimmung in required_documents und wird
-      # dort wie jede andere Dokumentart nach Alter aufgelöst.
-      # Ersetzt die frühere is_buli-Ableitung über league_classes.
-      result[:parental_consent_required] = leagues.any?(&:parental_consent_required)
-      result[:required_documents] = leagues.flat_map { |l| league_required_document_keys(l) }.uniq
-      # Katalog-Metadaten (Name, Vorlage, Gültigkeit, Altersgrenze) zu den
-      # geforderten Dokumentarten – fürs Upload-UI im Team-Lizenzwesen.
-      catalog = document_type_catalog(result[:required_documents] + ['parental_consent'])
-      result[:document_types] = catalog.values.sort_by(&:name).map { |dt| document_type_json(dt) }
-
-      clubs = Club.find(team.all_club_ids)
-      all_players = clubs.map(&:players).flatten.compact
-
-      result[:current_requests] = []
-      result[:other_players] = []
-
-      all_players.each do |p|
-        l = p.licenses_by_team(team.id)
-        if l.present?
-          item = p.full_hash
-          item[:team_license] = l
-          cs = p.current_license_status(l)
-          item[:current_status] = cs
-          item[:can_withdraw] = (cs['license_status_id'] == License::REQUESTED)
-          last_requested = l['history'].select { |h| h['license_status_id'].to_i == License::REQUESTED }
-                                       .max_by { |h| h['created_at'] }
-          item[:grace_period_ends_at] = last_requested ? (last_requested['created_at'].to_time + License::GRACE_PERIOD).iso8601 : nil
-          # Altersabhängige Dokumentarten: Stichtag = Datum der Lizenzbeantragung.
-          item[:required_documents] = DocumentType.required_keys(
-            result[:required_documents],
-            birthdate: p.birthdate,
-            requested_at: license_requested_at(l),
-            catalog: catalog
-          )
-          result[:current_requests] << item
-        else
-          result[:other_players] << p.meta_hash
-        end
-      end
-
-      render json: result
+    if current_user && user_may_read_team_licenses?(leagues)
+      render json: team_licenses_hash(team, leagues)
+    elsif secretary_token_permits_team?(team)
+      render json: secretary_team_licenses_hash(team)
     else
       render json: { success: false }, status: :forbidden
     end
@@ -266,8 +223,9 @@ class ClubsController < ApplicationController
   end
 
   # Voller Vereinsdatensatz (inkl. contact_email) für die Vereinsverwaltung –
-  # nur Admin/SBK des Spielbetriebs (analog :update_club) sowie LV-Rollen mit
-  # aktueller Vereins-Freigabe (StateAssociationRelease, Lesezugriff wie in
+  # Admin/SBK des Spielbetriebs und der Vereinsmanager des Vereins selbst
+  # (beide über :update_own_club) sowie LV-Rollen mit aktueller
+  # Vereins-Freigabe (StateAssociationRelease, Lesezugriff wie in
   # Club.admin_user_clubs).
   def admin_club
     if current_user
@@ -277,10 +235,48 @@ class ClubsController < ApplicationController
         return render json: { message: 'Keine Berechtigung' }, status: :forbidden
       end
 
-      render json: club.full_hash
+      # `edit_restricted` pro Verein und nicht als Benutzer-Berechtigung: Wer
+      # eine Spielbetriebsrolle für einen Verband UND eine Vereinsrolle für
+      # einen Verein aus einem anderen Verband hat, darf beim einen alles und
+      # beim anderen nur die Stammdaten. Ein Flag am Benutzer kann das nicht
+      # ausdrücken. Bewusst hier statt in Club#full_hash: Der Hash reist über
+      # GameDay#full_hash durch jede Spieltags-Antwort, wo eine
+      # benutzerbezogene Angabe nichts zu suchen hat.
+      render json: club.full_hash.merge(edit_restricted: !full_club_access?(club))
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
     end
+  end
+
+  # Vereinsmanager des Vereins samt aktueller Auswahl – Grundlage für die
+  # Empfängerliste im Vereinsformular.
+  #
+  # Eigene Aktion statt weiterer Felder in Club#full_hash: Der volle
+  # Vereins-Hash reist über GameDay#full_hash durch jede Spieltags-Antwort.
+  # Namen und Adressen von Benutzern gehören dort nicht hinein.
+  #
+  # Engeres Gate als `can_read_admin_club?`: Die Liste enthält Namen und
+  # E-Mail-Adressen von Personen und dient allein dazu, den Verteiler
+  # einzustellen. Ein fremder Landesverband mit Vereins-Freigabe darf die
+  # Stammdaten lesen, aber deshalb nicht die Kontaktdaten der Vereinsmanager
+  # bekommen – das wäre eine Ausweitung der Freigabe, die niemand erteilt hat.
+  def admin_club_managers
+    return render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized unless current_user
+
+    club = Club.find_by(id: params[:id])
+    return render json: { error: 'Nicht gefunden' }, status: :not_found unless club
+
+    unless club.user_permissions(current_user).include?(:update_own_club)
+      return render json: { message: 'Keine Berechtigung' }, status: :forbidden
+    end
+
+    render json: {
+      notify_user_ids: Array(club.notify_user_ids),
+      managers: club.club_managers.sort_by { |user| user.fullname.strip.downcase }.map do |user|
+        { id: user.id, name: user.fullname.strip.presence || user.user_name,
+          user_name: user.user_name, email: user.email }
+      end
+    }
   end
 
   def admin_club_update
@@ -295,7 +291,7 @@ class ClubsController < ApplicationController
       # die Änderung am Verein selbst.
       if create_modus
         create_club
-      elsif (club = Club.find(params[:id])).user_permissions(current_user).include?(:update_club)
+      elsif (club = Club.find(params[:id])).user_permissions(current_user).include?(:update_own_club)
         update_club(club)
       else
         render json: { message: 'Keine Berechtigung' }, status: :forbidden
@@ -310,7 +306,7 @@ class ClubsController < ApplicationController
     if current_user
       club = Club.find(params[:id])
 
-      unless club.user_permissions(current_user).include?(:update_club)
+      unless club.user_permissions(current_user).include?(:update_own_club)
         return render json: { message: 'Keine Berechtigung' }, status: :forbidden
       end
 
@@ -331,17 +327,220 @@ class ClubsController < ApplicationController
 
   private
 
+  # Der Token wird gelesen, aber nicht erzwungen (`set_secretary_link_if_present`
+  # statt `authenticate_with_secretary_token_or_user`): Der
+  # SecretaryTokenInterceptor im Frontend hängt einen im sessionStorage liegenden
+  # Token an JEDE Anfrage. Ein veralteter Token brächte einer angemeldeten Person
+  # sonst einen 401 ein, obwohl ihre Sitzung gilt, und der ErrorInterceptor
+  # meldet auf 401 ab. Der Login hat hier also Vorrang, der Token ist der
+  # Ersatzweg.
+  def authenticate_user_or_secretary_link
+    set_secretary_link_if_present
+    return if current_user || @secretary_link
+
+    render json: { success: false,
+                   message: 'Nicht angemeldet, und kein gültiger Spielsekretariats-Link.' },
+           status: :unauthorized
+  end
+
+  def user_may_read_team_licenses?(leagues)
+    ph = current_user.permission_hash
+
+    # get playing clubs, including sg
+    teams = leagues.map(&:teams).flatten.compact.uniq
+    club_ids = teams.map(&:all_club_ids).flatten.compact.uniq
+    # get hosting clubs
+    all_club_ids = [club_ids, leagues.map { |l| l.game_days.map(&:club_id) }].flatten.compact.uniq
+
+    # Rollen additiv: ein VM, der zugleich TM eines Teams außerhalb seiner
+    # Vereine ist, wurde von der elsif-Kette sonst am TM-Zweig vorbeigeleitet.
+    ph[:admin].present? || sbk_can_access_leagues?(ph, leagues) ||
+      # vm: permission for one of those clubs?
+      (ph[:vm].present? && ph[:vm].intersection(all_club_ids).present?) ||
+      # tm: get clubs for league teams of given team, permission for one of those?
+      (ph[:tm].present? && ph[:tm].intersection(teams.map(&:id)).present?)
+  end
+
+  # Der Link ist über Spieltage ausgestellt (eine Halle an einem Tag, ggf.
+  # mehrere Ligen). Ein Kader gehört dazu, wenn die Mannschaft an einem dieser
+  # Spieltage ein Spiel hat – dieselbe Grenze wie beim Spielbericht selbst
+  # (secretary_token_permits_game?), nur von der Mannschaft aus gefragt.
+  def secretary_token_permits_team?(team)
+    game_day_ids = @secretary_link&.covered_game_day_ids
+    return false if game_day_ids.blank?
+
+    Game.where(game_day_id: game_day_ids)
+        .where('home_team_id = :team_id OR guest_team_id = :team_id', team_id: team.id)
+        .exists?
+  end
+
+  # Für das Sekretariat bewusst nur, was der Aufstellungsdialog liest: Name,
+  # Geburtsdatum (Kennzeichnung Minderjähriger) und der Lizenzstatus, nach dem
+  # der Dialog die Aufstellbaren filtert. Kein `Player#full_hash`, das trüge
+  # E-Mail-Adresse, Vereinshistorie und Deaktivierungsgrund in eine Ansicht, die
+  # ohne Benutzerkonto offensteht; und kein Lizenzwesen (Pflichtdokumente,
+  # Rücknahme, Express-Lizenz), das dem Sekretariat nicht zusteht.
+  #
+  # Die Liste ist nicht auf erteilte Lizenzen verkürzt: Der Dialog blendet
+  # Nicht-Erteilte selbst aus, zeigt aber weiterhin, wer trotzdem in der
+  # Aufstellung steht – sonst ließe sich ein solcher Eintrag nicht mehr entfernen.
+  def secretary_team_licenses_hash(team)
+    players = Club.where(id: team.all_club_ids).flat_map(&:players).compact.uniq
+
+    current_requests = players.filter_map do |player|
+      license = player.licenses_by_team(team.id)
+      next if license.blank?
+
+      {
+        id: player.id,
+        last_name: player.last_name,
+        first_name: player.first_name,
+        birthdate: player.birthdate,
+        current_status: secretary_license_status(player, license)
+      }
+    end
+
+    { team: team.full_hash, current_requests: current_requests }
+  end
+
+  # Nur Kennung und Anzeigename des Status, nicht der Verlaufseintrag selbst.
+  # Der trägt `reason` (Freitext einer Sperre oder Deaktivierung, z.B. aus
+  # `Player#suspend!`), `created_by` und über `current_license_status` auch
+  # `created_by_name`, also Name und Benutzername der verfügenden Stelle. Nichts
+  # davon gehört an einen Link, der ohne Benutzerkonto offensteht. Gesperrte
+  # Personen bleiben in `Player.active`, der Fall ist also erreichbar.
+  #
+  # `current_license_status` bleibt trotz des überflüssigen Namensaufrufs die
+  # Quelle: Welcher Verlaufseintrag der neueste ist, soll an einer Stelle
+  # entschieden werden, nicht hier ein zweites Mal.
+  def secretary_license_status(player, license)
+    status = player.current_license_status(license)
+    return nil if status.blank?
+
+    { license_status_id: status['license_status_id'].to_i,
+      license_status: status[:license_status] }
+  end
+
+  def team_licenses_hash(team, leagues)
+    result = {}
+
+    result[:team] = team.full_hash
+
+    # Maßgeblich ist der LV des Spielbetriebs der Liga, nicht der des Vereins:
+    # Zuständig für den Spielbetrieb einer Liga ist allein deren Verband. Erlaubnis
+    # und Zeitfenster müssen aus derselben Liga stammen (League#express_license_possible?).
+    result[:express_license_enabled] = leagues.any?(&:express_license_possible?)
+    # Elternzustimmung: wird pro Liga über das Flag parental_consent_required
+    # gesteuert. Das Flag steuert den Datenschutz-Block im Antragsformular;
+    # als Pflichtdokument steckt die Zustimmung in required_documents und wird
+    # dort wie jede andere Dokumentart nach Alter aufgelöst.
+    # Ersetzt die frühere is_buli-Ableitung über league_classes.
+    result[:parental_consent_required] = leagues.any?(&:parental_consent_required)
+    result[:required_documents] = leagues.flat_map { |l| league_required_document_keys(l) }.uniq
+    # Katalog-Metadaten (Name, Vorlage, Gültigkeit, Altersgrenze) zu den
+    # geforderten Dokumentarten – fürs Upload-UI im Team-Lizenzwesen.
+    catalog = document_type_catalog(result[:required_documents] + ['parental_consent'])
+    result[:document_types] = catalog.values.sort_by(&:name).map { |dt| document_type_json(dt) }
+
+    clubs = Club.find(team.all_club_ids)
+    all_players = clubs.map(&:players).flatten.compact
+
+    result[:current_requests] = []
+    result[:other_players] = []
+
+    all_players.each do |p|
+      l = p.licenses_by_team(team.id)
+      if l.present?
+        item = p.full_hash
+        item[:team_license] = l
+        cs = p.current_license_status(l)
+        item[:current_status] = cs
+        item[:can_withdraw] = (cs['license_status_id'] == License::REQUESTED)
+        last_requested = l['history'].select { |h| h['license_status_id'].to_i == License::REQUESTED }
+                                     .max_by { |h| h['created_at'] }
+        item[:grace_period_ends_at] = last_requested ? (last_requested['created_at'].to_time + License::GRACE_PERIOD).iso8601 : nil
+        # Altersabhängige Dokumentarten: Stichtag = Datum der Lizenzbeantragung.
+        item[:required_documents] = DocumentType.required_keys(
+          result[:required_documents],
+          birthdate: p.birthdate,
+          requested_at: license_requested_at(l),
+          catalog: catalog
+        )
+        result[:current_requests] << item
+      else
+        result[:other_players] << p.meta_hash
+      end
+    end
+
+    result
+  end
+
   # Gemeinsam für Anlage und Änderung. Der Spielbetrieb fehlt hier bewusst: er
   # ist keine Spalte am Verein, sondern ein Eintrag im game_operations_hash, und
   # kommt deshalb als eigener Parameter (siehe create_club / update_club).
   def club_params
-    params.require(:club).permit(:name, :short_name, :long_name, :state, :state_association_id, :contact_email)
+    params.require(:club).permit(:name, :short_name, :long_name, :state, :state_association_id, :contact_email,
+                                 notify_user_ids: [])
+  end
+
+  # Vereinsmanager-Fassung: ohne die Felder, die den Verein einordnen.
+  # `state` und `state_association_id` entscheiden mit darüber, wer den Verein
+  # verwalten und wer seine Spieler sperren darf – ein Verein könnte sich sonst
+  # selbst in einen anderen Landesverband umhängen.
+  def restricted_club_params
+    params.require(:club).permit(:name, :short_name, :long_name, :contact_email, notify_user_ids: [])
+  end
+
+  def full_club_access?(club)
+    club.user_permissions(current_user).include?(:update_club)
+  end
+
+  # Felder, die der eingeschränkte Zugriff nicht schreibt. Kommt eines davon
+  # mit einem ANDEREN Wert an, ist das keine harmlose Rücksendung des Formulars,
+  # sondern ein Änderungswunsch, der sonst stillschweigend verfiele.
+  RESTRICTED_FIELDS = %w[state state_association_id].freeze
+
+  # Liefert die Meldung, wenn ein eingeschränkter Zugriff eines der
+  # vorbehaltenen Felder ändern will – sonst nil.
+  #
+  # Ohne diese Prüfung antwortete das Speichern mit 200 und einer
+  # Erfolgsmeldung, während `restricted_club_params` die Felder verwarf. Das
+  # trifft nicht nur den Vereinsmanager: Wer eine Spielbetriebsrolle für einen
+  # Verband UND eine Vereinsrolle für einen Verein aus einem anderen Verband
+  # hat, bekommt das Formular unbeschränkt zu sehen (das Frontend-Flag gilt pro
+  # Benutzer), die Berechtigung entscheidet aber pro Verein.
+  def restricted_field_conflict(club)
+    eingereicht = params[:club] || {}
+
+    geaendert = RESTRICTED_FIELDS.select do |feld|
+      next false unless eingereicht.key?(feld)
+
+      # Vergleich über to_s: state_association_id kommt als String an, steht in
+      # der Spalte aber als Integer.
+      eingereicht[feld].to_s.presence != club.public_send(feld).to_s.presence
+    end
+
+    return nil if geaendert.empty?
+
+    'Bundesland und Landesverband ordnen den Verein ein und können nur vom ' \
+      'zuständigen Verband geändert werden.'
   end
 
   # Vereinsänderung. Der Spielbetrieb ist optional – kommt er mit, wird der
   # Heimat-Eintrag ersetzt.
   def update_club(club)
     club.updated_by = current_user.id
+
+    # Einmal auswerten und wiederverwenden: Der Zweig unten schreibt
+    # `game_operations_hash` neu, und `full_club_access?` liest darüber den
+    # Heimat-Spielbetrieb. Nach der Zuweisung beantwortete ein zweiter Aufruf
+    # die Frage für den ZIEL-Spielbetrieb statt für den, der die Anfrage
+    # autorisiert hat.
+    voller_zugriff = full_club_access?(club)
+
+    if !voller_zugriff && (meldung = restricted_field_conflict(club))
+      return render json: { success: false, message: meldung }, status: :forbidden
+    end
 
     # `present?` statt `key?`: Das Formular schickt den ganzen Verein zurück,
     # also auch ein `game_operation_id`, das es dort gar nicht zu bearbeiten
@@ -354,7 +553,12 @@ class ClubsController < ApplicationController
     # Eine ausdrückliche 0 oder eine unbekannte Kennung laufen weiterhin in die
     # Meldung: in Ruby ist `0.present?` true, nur nil und "" gelten hier als
     # „nicht mitgeschickt".
-    if params[:game_operation_id].present?
+    # `full_club_access?` zuerst: Das Formular schickt den Verein unverändert
+    # zurück, also auch bei einem Vereinsmanager immer ein game_operation_id.
+    # Ohne diese Klammer liefe der Zweig für ihn mit und schriebe den
+    # Heimat-Eintrag neu – bei gleicher Kennung folgenlos, aber es wäre der
+    # einzige Pfad, über den er den Spielbetrieb überhaupt anfassen kann.
+    if voller_zugriff && params[:game_operation_id].present?
       target = resolve_game_operation(params[:game_operation_id])
 
       # Eine 0 oder eine unbekannte ID hätte den Heimat-Eintrag auf einen
@@ -382,7 +586,7 @@ class ClubsController < ApplicationController
       club.game_operations_hash = [{ 'home_game_operation' => true, 'game_operation_id' => target.id }]
     end
 
-    if club.update(club_params)
+    if club.update(voller_zugriff ? club_params : restricted_club_params)
       render json: club.full_hash
     else
       render json: club.errors, status: :unprocessable_entity
@@ -527,7 +731,7 @@ class ClubsController < ApplicationController
   end
 
   def can_read_admin_club?(club)
-    return true if club.user_permissions(current_user).include?(:update_club)
+    return true if club.user_permissions(current_user).include?(:update_own_club)
 
     ph = current_user.permission_hash
     go_ids = (ph[:admin].to_a + ph[:sbk].to_a).reject(&:zero?)
