@@ -419,6 +419,10 @@ module Admin
       assignment.referees.each do |referee|
         next unless referee.email.present?
         partner = assignment.referees.find { |r| r.id != referee.id }
+        # Bewusst die Kontaktadresse und nicht notification_emails: Der Wert
+        # wird dem Schiedsrichter als mailto-Link angezeigt, nicht als
+        # Empfänger genutzt. Die ausgewählten Vereinsmanager sind eine interne
+        # Verteilerliste und gehören nicht in fremde Post.
         RefereeMailer.published_assignment_notification(
           referee,
           game,
@@ -582,7 +586,7 @@ module Admin
     # verhindert Doppelversand bei erneutem/nachträglichem Veröffentlichen.
     def notify_host_if_complete(game_day)
       return if game_day.nil? || game_day.host_notified_at.present?
-      return if game_day.club&.contact_email.blank?
+      return if game_day.club&.notification_emails.blank?
 
       game_ids = game_day.games.pluck(:id)
       return if game_ids.empty?
@@ -642,7 +646,7 @@ module Admin
         RefereeMailer.updated_assignment_notification(referee, game, official_names, coach).deliver_later
       end
 
-      GameDayMailer.updated_referees_to_host(game).deliver_later if game.game_day.club&.contact_email.present?
+      GameDayMailer.updated_referees_to_host(game).deliver_later if game.game_day.club&.notification_emails.present?
     end
 
     # authorize_assigner! liegt in RefereeScoping, weil auch die Pflege der

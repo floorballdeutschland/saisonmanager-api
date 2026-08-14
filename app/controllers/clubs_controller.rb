@@ -248,6 +248,37 @@ class ClubsController < ApplicationController
     end
   end
 
+  # Vereinsmanager des Vereins samt aktueller Auswahl – Grundlage für die
+  # Empfängerliste im Vereinsformular.
+  #
+  # Eigene Aktion statt weiterer Felder in Club#full_hash: Der volle
+  # Vereins-Hash reist über GameDay#full_hash durch jede Spieltags-Antwort.
+  # Namen und Adressen von Benutzern gehören dort nicht hinein.
+  #
+  # Engeres Gate als `can_read_admin_club?`: Die Liste enthält Namen und
+  # E-Mail-Adressen von Personen und dient allein dazu, den Verteiler
+  # einzustellen. Ein fremder Landesverband mit Vereins-Freigabe darf die
+  # Stammdaten lesen, aber deshalb nicht die Kontaktdaten der Vereinsmanager
+  # bekommen – das wäre eine Ausweitung der Freigabe, die niemand erteilt hat.
+  def admin_club_managers
+    return render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized unless current_user
+
+    club = Club.find_by(id: params[:id])
+    return render json: { error: 'Nicht gefunden' }, status: :not_found unless club
+
+    unless club.user_permissions(current_user).include?(:update_own_club)
+      return render json: { message: 'Keine Berechtigung' }, status: :forbidden
+    end
+
+    render json: {
+      notify_user_ids: Array(club.notify_user_ids),
+      managers: club.club_managers.sort_by { |user| user.fullname.strip.downcase }.map do |user|
+        { id: user.id, name: user.fullname.strip.presence || user.user_name,
+          user_name: user.user_name, email: user.email }
+      end
+    }
+  end
+
   def admin_club_update
     if current_user
       # to_i: params[:id] ist nur bei einem JSON-Body eine Zahl. Als
@@ -448,7 +479,8 @@ class ClubsController < ApplicationController
   # ist keine Spalte am Verein, sondern ein Eintrag im game_operations_hash, und
   # kommt deshalb als eigener Parameter (siehe create_club / update_club).
   def club_params
-    params.require(:club).permit(:name, :short_name, :long_name, :state, :state_association_id, :contact_email)
+    params.require(:club).permit(:name, :short_name, :long_name, :state, :state_association_id, :contact_email,
+                                 notify_user_ids: [])
   end
 
   # Vereinsmanager-Fassung: ohne die Felder, die den Verein einordnen.
@@ -456,7 +488,7 @@ class ClubsController < ApplicationController
   # verwalten und wer seine Spieler sperren darf – ein Verein könnte sich sonst
   # selbst in einen anderen Landesverband umhängen.
   def restricted_club_params
-    params.require(:club).permit(:name, :short_name, :long_name, :contact_email)
+    params.require(:club).permit(:name, :short_name, :long_name, :contact_email, notify_user_ids: [])
   end
 
   def full_club_access?(club)

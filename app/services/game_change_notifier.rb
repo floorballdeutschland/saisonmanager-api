@@ -41,7 +41,7 @@ class GameChangeNotifier
       RefereeMailer.updated_assignment_notification(referee, @game, official_names, coach).deliver_later
     end
 
-    return if @game.game_day.club&.contact_email.blank?
+    return if @game.game_day.club&.notification_emails.blank?
 
     GameDayMailer.updated_referees_to_host(@game).deliver_later
   end

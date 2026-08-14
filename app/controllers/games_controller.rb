@@ -1039,7 +1039,7 @@ class GamesController < ApplicationController
     return if answers.empty?
 
     hosting_club = game.game_day.club
-    return if hosting_club&.contact_email.blank?
+    return if hosting_club&.notification_emails.blank?
 
     raw_token = SecureRandom.urlsafe_base64(32)
     game.update_columns(
@@ -1419,7 +1419,7 @@ class GamesController < ApplicationController
     return unless all_closed
 
     hosting_club = game_day.club
-    return unless hosting_club&.contact_email.present?
+    return if hosting_club&.notification_emails.blank?
 
     ClubMailer.game_day_scan_reminder(hosting_club, game_day).deliver_later
   end

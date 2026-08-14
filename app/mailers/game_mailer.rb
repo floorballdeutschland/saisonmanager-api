@@ -22,7 +22,7 @@ class GameMailer < ApplicationMailer
     bcc = !@all_ok ? state_association.effective_sbk_email : nil
 
     templated_mail(
-      to: hosting_club.contact_email,
+      to: hosting_club.notification_emails,
       bcc: bcc.presence,
       subject: "Spielbericht Nr. #{game.game_number} eingereicht – #{game.home_team_name} vs. #{game.guest_team_name}",
       placeholders: {
@@ -62,7 +62,7 @@ class GameMailer < ApplicationMailer
 
     recipients = [
       state_association.effective_sbk_email,
-      hosting_club&.contact_email,
+      *hosting_club&.notification_emails,
       referee1&.email,
       referee2&.email
     ].compact.uniq
