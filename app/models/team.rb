@@ -5,11 +5,24 @@ class Team < ApplicationRecord
   validates :name, presence: true
 
   # Vier Zeichen wie beim Verein, plus Leerzeichen und römische Nummer für die
-  # zweite und dritte Mannschaft ("BW96 II"). Auf Produktion tragen 104 der 502
+  # weiteren Mannschaften ("BW96 III"). Auf Produktion tragen 104 der 502
   # Mannschaften der laufenden Saison bereits ein Leerzeichen im Kürzel.
-  SHORT_NAME_MAX = 7
+  #
+  # Acht und nicht sieben, weil die dritte Mannschaft drei Zeichen für die
+  # Nummer braucht. Bei sieben wäre "BW96 III" auf "BW96 II" gekappt worden und
+  # hätte auf der Anzeigetafel wie die zweite Mannschaft geheißen – genau die
+  # Verwechslung, die diese Änderung beseitigt.
+  SHORT_NAME_MAX = 8
 
-  validates :short_name, length: { maximum: SHORT_NAME_MAX }, allow_blank: true
+  # `if:` statt unbedingt: Bestandswerte sind länger als die neue Grenze, und
+  # eine unbedingte Prüfung hätte jedes Speichern dieser Mannschaft blockiert –
+  # auch dort, wo das Kürzel gar nicht vorkommt. Ein Teammanager, der nur die
+  # Feedback-Kontaktadresse setzt (UserRefereeFeedbackSettingsController), wäre
+  # an einer Meldung über das Kürzel hängengeblieben, das er selbst nicht
+  # bearbeiten kann. Ebenso hätte eine einzige überlange Quell-Mannschaft die
+  # ganze Liga-Kopie zurückgerollt.
+  validates :short_name, length: { maximum: SHORT_NAME_MAX },
+                         allow_blank: true, if: :short_name_changed?
 
   # Siehe Game: Einladungen zum Schiri-Feedback dürfen ihr Spiel bzw. ihre
   # Mannschaft nicht überleben (gültiger Token plus Mailadresse).
@@ -176,7 +189,7 @@ class Team < ApplicationRecord
   # Anzeigetafel nicht von der ersten zu unterscheiden.
   def ticker_short_name
     roh = short_name.presence || club&.short_name.presence || name
-    roh.to_s.strip.slice(0, SHORT_NAME_MAX).to_s.strip
+    roh.to_s.strip.slice(0, SHORT_NAME_MAX).strip
   end
 
   def user_permissions(user)

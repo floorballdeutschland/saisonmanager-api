@@ -290,6 +290,11 @@ class TeamsController < ApplicationController
         tp = team_params
         team = Team.create(tp)
 
+        # Ergebnis pruefen: Team.create gibt auch eine ungespeicherte Mannschaft
+        # zurueck, und die Antwort wies sie als 201 Created mit `id: null` aus –
+        # das Frontend meldete Erfolg fuer eine Mannschaft, die es nicht gibt.
+        return render json: team.errors, status: :unprocessable_entity unless team.persisted?
+
         render json: team, status: :created
       elsif !create_modus && Team.find(params[:id])&.user_permissions(current_user)&.include?(:update_team) # update
         team = Team.find(params[:id])

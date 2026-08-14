@@ -54,12 +54,43 @@ class TruncateShortNamesTest < ActiveSupport::TestCase
     assert_equal 'ABCD', club.reload.short_name
   end
 
-  test 'kuerzt ein zu langes Mannschaftskuerzel auf sieben Zeichen' do
+  test 'kuerzt ein zu langes Mannschaftskuerzel auf acht Zeichen' do
     team = team_mit('SG Kaufering / Geiselbullach')
 
     run_task('DRY_RUN' => 'false')
 
-    assert_equal 'SG Kauf', team.reload.short_name
+    assert_equal 'SG Kaufe', team.reload.short_name
+  end
+
+  # Gegenstueck zur Vereins-Schutzklausel: Aus "BW96 III" wuerde bei einer zu
+  # knappen Grenze das Kuerzel der zweiten Mannschaft. Verglichen wird pro
+  # Verein und Saison, denn nur dort stehen zwei Mannschaften gemeinsam auf
+  # einer Anzeigetafel.
+  test 'ueberspringt Mannschaften desselben Vereins, deren Kuerzel zusammenfaellt' do
+    club = create(:club)
+    liga = create(:league, :current_season)
+    zweite = create(:team, club: club, league: liga)
+    dritte = create(:team, club: club, league: liga)
+    zweite.update_column(:short_name, 'BW96 IIa')
+    dritte.update_column(:short_name, 'BW96 IIb')
+
+    run_task('DRY_RUN' => 'false')
+
+    assert_equal 'BW96 IIa', zweite.reload.short_name
+    assert_equal 'BW96 IIb', dritte.reload.short_name
+  end
+
+  test 'kuerzt Mannschaften verschiedener Vereine trotz gleichen Ziels' do
+    liga = create(:league, :current_season)
+    a = create(:team, club: create(:club), league: liga)
+    b = create(:team, club: create(:club), league: liga)
+    a.update_column(:short_name, 'SG Kaufering A')
+    b.update_column(:short_name, 'SG Kaufering B')
+
+    run_task('DRY_RUN' => 'false')
+
+    assert_equal 'SG Kaufe', a.reload.short_name
+    assert_equal 'SG Kaufe', b.reload.short_name, 'verschiedene Vereine duerfen dasselbe Kuerzel tragen'
   end
 
   # Der Kern der Schutzklausel: Aus „U15 Trophy Team Nord" und
