@@ -15,6 +15,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 - **Kader-Dialog am Spielsekretariats-Link öffnet sich wieder**: Wer den Spielbericht über einen Spielsekretariats-Link führt, also ohne Benutzerkonto, landete beim Öffnen des Kader-Dialogs auf der Anmeldeseite. Der Link erlaubt das Aufstellen, an die Liste der aufstellbaren Personen kam das Sekretariat aber nicht, und der Versuch kostete den Zugang: Die Kaderabfrage verlangte eine Anmeldung, und die abgewiesene Anfrage warf die Sitzung weg. In der Praxis hieß das, dass Aufstellungen vorher angemeldet gesetzt werden mussten. Der Kader kommt jetzt auch am Link, und zwar für die Mannschaften der Spieltage, die der Link abdeckt. Ausgeliefert wird dabei nur, was der Dialog braucht (Name, Geburtsdatum, Lizenzstatus); Vereinshistorie, E-Mail-Adresse und das Lizenzwesen des Vereins bleiben der angemeldeten Vereinsverwaltung vorbehalten. Eine Mannschaft, die an keinem der abgedeckten Spieltage spielt, bleibt gesperrt.
 
+### Verbessert
+
+- **Toter Node-Baum aus dem Server entfernt**: Der Server trug seit dem Rails-6-Update eine Webpacker-Installation mit sich, die nie etwas gebaut hat: eine Beispieldatei aus dem Generator, dazu Konfiguration und eine 7.893 Zeilen lange Abhängigkeitsliste. Weder das Deployment noch die Testläufe haben sie je angefasst. Für die Anwendung ändert sich damit nichts, wohl aber für die Sicherheitsmeldungen: 52 der 62 offenen Meldungen betrafen ausschließlich diese nie ausgeführten Bauwerkzeuge und haben die zehn Meldungen erstickt, die den Server wirklich betreffen. Die Liste ist jetzt lesbar.
+
 ## [1.81.0] - 2026-08-14
 
 ### Neu

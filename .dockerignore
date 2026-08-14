@@ -9,7 +9,6 @@
 *.swo
 
 # Dependencies
-node_modules
 vendor/bundle
 
 # Logs (CRITICAL - these are huge!)
@@ -19,7 +18,6 @@ tmp/*
 
 # Runtime files
 storage/*
-public/packs*
 
 # Ruby specific
 .bundle
