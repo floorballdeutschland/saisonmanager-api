@@ -166,8 +166,7 @@ module Admin
       ph = perm_hash
       return false if ph[:tm].blank?
 
-      player_team_ids = (@player.licenses || []).filter_map { |l| l['team_id']&.to_i }
-      (ph[:tm] & player_team_ids).present?
+      (ph[:tm] & current_license_teams.map(&:id)).present?
     end
 
     def vm_for_player?
@@ -175,37 +174,66 @@ module Admin
       return false if ph[:vm].blank?
 
       # Der VM darf, wenn er (a) einen aktuell gültigen Verein des Spielers verwaltet
-      # ODER (b) den Verein/Syndikat-Verein des Teams verwaltet, zu dem die Lizenz gehört.
-      # (b) hält die Prüfung konsistent zu players#request_license (SG-/Syndikats-Teams:
-      # der VM darf für einen Partnerclub-Spieler eine Lizenz lösen und muss deren
-      # Dokumente sehen/verwalten können).
+      # ODER (b) den Verein/Syndikat-Verein des Teams verwaltet, zu dem eine LAUFENDE
+      # Lizenz gehört (`current_license_teams`: aktuelle Saison, Mitgliedschaft gilt
+      # noch). (b) hält die Prüfung konsistent zu players#request_license
+      # (SG-/Syndikats-Teams: der VM darf für einen Partnerclub-Spieler eine Lizenz
+      # lösen und muss deren Dokumente sehen/verwalten können).
       return true if (ph[:vm] & player_active_club_ids).present?
       return true if (ph[:vm] & license_team_club_ids).present?
 
       false
     end
 
-    # club_ids der aktuell gültigen Vereinsmitgliedschaften des Spielers. Die
-    # valid_until-Logik ist bewusst identisch zum Rest des Systems (vgl. Player):
-    # nil ODER in der Zukunft = aktiv (nicht nur nil).
+    # club_ids der aktuell gültigen Vereinsmitgliedschaften des Spielers.
+    # Stichtag und Fehlerbehandlung kommen aus `LicenseAccessScope#membership_current?`,
+    # dem Helfer, der auch über den Lizenzantrag entscheidet: Eine heute endende
+    # Zugehörigkeit gilt noch, und ein unlesbares `valid_until` (Altbestand wie
+    # "unbekannt" oder "0000-00-00") wird als Datenfehler gemeldet statt als 500
+    # aus der Rechteprüfung geworfen. Vorher stand hier eine eigene Rechnung
+    # (`to_time > Time.current`), die beides anders machte.
     def player_active_club_ids
       (@player.clubs || []).filter_map do |c|
-        next unless c['valid_until'].nil? || c['valid_until'].to_time > Time.current
+        next unless c.is_a?(Hash) && membership_current?(@player, c['valid_until'])
 
         c['club_id'].to_i
       end
     end
 
-    # club_ids (inkl. Syndikat) der Teams, zu denen die betreffende Lizenz gehört.
-    # Ist license_id gesetzt (index/show/create), wird auf diese Lizenz gescoped,
-    # sonst werden alle Team-Lizenzen des Spielers berücksichtigt.
-    def license_team_club_ids
-      licenses = @player.licenses || []
-      licenses = licenses.select { |l| l['id'].to_s == params[:license_id].to_s } if params[:license_id].present?
-      team_ids = licenses.filter_map { |l| l['team_id']&.to_i }
-      return [] if team_ids.empty?
+    # Teams, deren Lizenz dem Verein HEUTE noch Zugriff auf diesen Spieler gibt:
+    # aus der laufenden Saison, und nur solange der Spieler in einem der
+    # beteiligten Vereine dieses Teams noch Mitglied ist.
+    #
+    # Beide Einschränkungen fehlten. Damit genügte eine beliebig alte Lizenz eines
+    # Teams seines Vereins, um dem VM (und über `tm_for_player?` dem TM) dauerhaft
+    # Zugriff auf die persönlichen Unterlagen zu geben – Lesen, Hochladen und
+    # Löschen –, auch Jahre nach dem Vereinswechsel. Am Spielerprofil war derselbe
+    # VM längst 403 (dort entscheidet der aktuell gültige Heimatverein).
+    #
+    # Die Mitgliedschaftsprüfung ist `player_in_team_clubs?`, also dieselbe wie im
+    # Lizenzantrag: Wer für eine Mannschaft eine Lizenz lösen darf, soll deren
+    # Dokumente sehen. Sie erhält den SG-/Syndikats-Fall, um den es (b) in
+    # `vm_for_player?` überhaupt geht: Der Spieler gehört dem Partnerverein, das
+    # Team dem anderen – dessen VM behält Zugriff, solange die Mitgliedschaft im
+    # Partnerverein läuft.
+    #
+    # Ist `license_id` gesetzt (index/show/create), zählt nur diese Lizenz.
+    # Memoisiert, weil `unrestricted_document_access?` die Frage je Dokumentart
+    # stellt und jeder Durchgang sonst eine Team-Abfrage kostet.
+    def current_license_teams
+      @current_license_teams ||= begin
+        team_ids = scoped_licenses.filter_map { |l| l['team_id']&.to_i }.uniq
+        if team_ids.empty?
+          []
+        else
+          Team.current_season.where(id: team_ids).select { |team| player_in_team_clubs?(@player, team) }
+        end
+      end
+    end
 
-      Team.where(id: team_ids).flat_map(&:all_club_ids).uniq
+    # club_ids (inkl. Syndikat) der Teams aus `current_license_teams`.
+    def license_team_club_ids
+      current_license_teams.flat_map(&:all_club_ids).uniq
     end
 
     def perm_hash
