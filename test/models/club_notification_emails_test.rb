@@ -104,6 +104,19 @@ class ClubNotificationEmailsTest < ActiveSupport::TestCase
     assert_equal %w[info@verein.example a@verein.example].sort, mail.to.sort
   end
 
+  # jsonb-Containment ist typstreng. Ein Alt-Eintrag mit "4" statt 4 fiel aus
+  # der Vorauswahl und der Vereinsmanager fehlte stumm in der Auswahlliste.
+  test 'club_managers findet auch Alt-Einträge mit String-Werten' do
+    user = create(:user, email: 'alt@verein.example',
+                         permissions: [{ 'user_group_id' => '4', 'game_operation_id' => '0',
+                                         'club_id' => @club.id.to_s }])
+
+    assert_equal [user.id], @club.club_managers.map(&:id)
+
+    @club.update!(notify_user_ids: [user.id])
+    assert_includes @club.notification_emails, 'alt@verein.example'
+  end
+
   test 'club_managers listet die Vereinsmanager des Vereins' do
     a = vm(@club, email: 'a@verein.example')
     vm(create(:club), email: 'fremd@verein.example')

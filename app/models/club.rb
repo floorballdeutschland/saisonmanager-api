@@ -15,12 +15,19 @@ class Club < ApplicationRecord
   scope :active, -> { where(deactivated_at: nil) }
 
   # Vereinsmanager dieses Vereins. Kandidaten per jsonb-Containment vorfiltern
-  # und dann über permission_hash bestätigen: Die Rolle steckt im
-  # permissions-Array, und nur permission_hash kennt die Sonderfälle
-  # (Mehrfachrollen, Altdaten mit String-Werten).
+  # und dann über permission_hash bestätigen, das allein die Sonderfälle kennt
+  # (Mehrfachrollen, Alt-Einträge).
+  #
+  # Beide Typvarianten abfragen, wie es admin/users_controller schon tut:
+  # jsonb-Containment ist typstreng, `@> '[{"user_group_id":4}]'` findet einen
+  # Alt-Eintrag mit `"4"` nicht. Das wäre ein stiller Fehler – der
+  # Vereinsmanager fehlte einfach in der Auswahlliste, ohne Meldung.
+  # `permission_hash` selbst nutzt `.to_i` und verträgt beides.
   def club_managers
     User.not_archived
-        .where('permissions @> ?', [{ user_group_id: 4 }].to_json)
+        .where('permissions @> ? OR permissions @> ?',
+               [{ user_group_id: 4 }].to_json,
+               [{ user_group_id: '4' }].to_json)
         .select { |user| Array(user.permission_hash[:vm]).include?(id) }
   end
 
