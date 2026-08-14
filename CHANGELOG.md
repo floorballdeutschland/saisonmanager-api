@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.81.0] - 2026-08-14
+
 ### Neu
 
 - **Die gesetzliche Vertretung wird jetzt tatsächlich informiert**: Beantragt ein Verein in einer Liga mit Elternzustimmung eine Lizenz für eine minderjährige Person, fragt das Antragsformular die E-Mail-Adresse der gesetzlichen Vertretung ab und lässt bestätigen, dass über die Datenverarbeitung informiert wurde. Die Adresse wurde bisher nur an der Lizenz vermerkt, verschickt wurde nichts. Wer sie eintrug, wartete auf eine Nachricht, die es nicht gab. Jetzt geht mit dem Antrag eine Information nach Art. 13 DSGVO an genau diese Adresse: Sie nennt Verein, Mannschaft, Liga und Saison, verlinkt das unter „Dokumentarten" gepflegte Informationsblatt und sagt ausdrücklich, dass nichts weiter zu tun ist. Ist kein Informationsblatt hinterlegt, verweist die Nachricht auf den Verein, statt einen toten Link anzubieten. Antworten gehen an die Spielbetriebskommission des Verbands, der die Liga betreibt. Wortlaut und Betreff sind wie bei allen anderen Systemnachrichten unter „E-Mail-Vorlagen" änderbar. Scheitert der Antrag, etwa weil bereits eine Lizenz besteht, wird auch nichts verschickt.
