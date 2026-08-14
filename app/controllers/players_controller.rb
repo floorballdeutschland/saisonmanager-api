@@ -211,6 +211,11 @@ class PlayersController < ApplicationController
       # express_league, nicht league: die Erlaubnis kann aus einer Pokal-Liga
       # stammen, deren Verband dann auch den Antrag erhält.
       PlayerMailer.express_license_requested(player, team, express_league).deliver_later if express_league
+      # Art. 13 DSGVO: Die gesetzliche Vertretung erfährt von der Verarbeitung,
+      # sobald der Verein ihre Adresse angibt. Kein zusätzlicher Flag-Test — das
+      # Feld erscheint im Antragsformular ohnehin nur, wo die Liga die
+      # Elternzustimmung verlangt.
+      PlayerMailer.guardian_privacy_info(player, team, league, guardian_email).deliver_later if guardian_email
       render json: { success: true }
     else
       # Erfolg ist bewusst `when :ok`, nicht der else-Zweig: Ein künftig
@@ -374,12 +379,13 @@ class PlayersController < ApplicationController
       # Dokumente gelten pro Spieler (saisonübergreifend); altersabhängige
       # Dokumentarten werden zum Datum der Lizenzbeantragung aufgelöst.
       docs_by_key = license_documents_by_player_and_type(all_player_ids)
-      catalog = document_type_catalog((league.required_documents || []) + ['parental_consent'])
+      league_keys = league_required_document_keys(league)
+      catalog = document_type_catalog(league_keys + ['parental_consent'])
       result.each do |team_data|
         team_data[:players].each do |player_data|
           player_id = player_data[:id]
           required_keys = DocumentType.required_keys(
-            league.required_documents,
+            league_keys,
             birthdate: player_data[:birthdate],
             requested_at: license_requested_at(player_data.dig(:team_license, :license)),
             catalog: catalog

@@ -116,10 +116,12 @@ class ClubsController < ApplicationController
       # und Zeitfenster müssen aus derselben Liga stammen (League#express_license_possible?).
       result[:express_license_enabled] = leagues.any?(&:express_license_possible?)
       # Elternzustimmung: wird pro Liga über das Flag parental_consent_required
-      # gesteuert (löst nur noch zusammen mit Minderjährigkeit im Frontend die
-      # Pflicht aus). Ersetzt die frühere is_buli-Ableitung über league_classes.
+      # gesteuert. Das Flag steuert den Datenschutz-Block im Antragsformular;
+      # als Pflichtdokument steckt die Zustimmung in required_documents und wird
+      # dort wie jede andere Dokumentart nach Alter aufgelöst.
+      # Ersetzt die frühere is_buli-Ableitung über league_classes.
       result[:parental_consent_required] = leagues.any?(&:parental_consent_required)
-      result[:required_documents] = leagues.flat_map { |l| l.required_documents || [] }.uniq
+      result[:required_documents] = leagues.flat_map { |l| league_required_document_keys(l) }.uniq
       # Katalog-Metadaten (Name, Vorlage, Gültigkeit, Altersgrenze) zu den
       # geforderten Dokumentarten – fürs Upload-UI im Team-Lizenzwesen.
       catalog = document_type_catalog(result[:required_documents] + ['parental_consent'])
