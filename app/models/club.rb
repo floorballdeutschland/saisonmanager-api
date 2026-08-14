@@ -4,6 +4,21 @@ class Club < ApplicationRecord
 
   has_one_attached :logo
 
+  # Das Kürzel ist ein Anzeigezeichen, kein Name: Es steht auf der
+  # Anzeigetafel des Livestreams, wo mehr als vier Zeichen die Bauchbinde
+  # sprengen. Bestandswerte sind länger, deshalb nur beim Speichern geprüft
+  # und Leerwerte erlaubt (das Feld ist nullable).
+  SHORT_NAME_MAX = 4
+
+  # `if:` statt unbedingt: Bestandswerte sind länger, und eine unbedingte
+  # Prüfung hätte jedes Speichern dieser Vereine blockiert – auch das
+  # Deaktivieren und Reaktivieren (`deactivate!`/`reactivate!`), das in einer
+  # Maske ohne Kürzel-Feld an einer Meldung über das Kürzel gescheitert wäre.
+  # Für die Vereine, deren Kürzel beim Kürzen kollidiert und deshalb stehen
+  # bleibt, wäre das dauerhaft so geblieben.
+  validates :short_name, length: { maximum: SHORT_NAME_MAX },
+                         allow_blank: true, if: :short_name_changed?
+
   scope :active, -> { where(deactivated_at: nil) }
 
   def deactivate!(user_id)
