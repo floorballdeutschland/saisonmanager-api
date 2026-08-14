@@ -1015,6 +1015,127 @@ class LeagueTest < ActiveSupport::TestCase
                     "Anhang-Queries skalieren mit der Spielanzahl (N+1): #{attachment_queries}"
   end
 
+  # ---------------------------------------------------------------------------
+  # Reihenfolge des Spielplans
+  #
+  # Die Liga-Ansicht bedient sich aus drei Methoden: current_schedule beim
+  # Erstaufruf, game_day_schedule beim Blättern, schedule bei „Alle Anzeigen".
+  # Sortierten die beiden letzten nach Datum und Uhrzeit vor der Spielnummer,
+  # verzahnten sie die parallel angesetzten Hallen eines Spieltags ineinander,
+  # und dieselbe Liga sah je nach Weg anders aus.
+  # ---------------------------------------------------------------------------
+
+  # Ein Spieltag, zwei Hallen, zeitlich verschränkt: Nach Uhrzeit ergäbe das die
+  # Reihenfolge 1, 3, 2, 4 und damit einen Hallenwechsel in jeder Zeile.
+  def parallel_game_day_league
+    league = build_league(build_go)
+    club = build_club
+
+    [%w[10:00 12:00], %w[11:00 13:00]].each_with_index do |times, hall|
+      game_day = GameDay.create!(league: league, arena: build_arena, club: club,
+                                 number: 1, date: '2025-01-01')
+      times.each_with_index do |time, slot|
+        number = (hall * 2) + slot + 1
+        build_game(game_day,
+                   build_team(league, club, "Heim #{number}"),
+                   build_team(league, club, "Gast #{number}"),
+                   game_number: number.to_s, start_time: time)
+      end
+    end
+
+    league
+  end
+
+  test 'schedule sortiert nach Spielnummer, nicht nach Uhrzeit' do
+    league = parallel_game_day_league
+
+    numbers = league.schedule.map { |game| game[:game_number] }
+
+    assert_equal [1, 2, 3, 4], numbers
+  end
+
+  test 'game_day_schedule sortiert nach Spielnummer, nicht nach Uhrzeit' do
+    league = parallel_game_day_league
+
+    numbers = league.game_day_schedule(1).map { |game| game[:game_number] }
+
+    assert_equal [1, 2, 3, 4], numbers
+  end
+
+  test 'current_schedule liefert dieselbe Reihenfolge wie game_day_schedule' do
+    league = parallel_game_day_league
+
+    numbers = league.current_schedule.map { |game| game[:game_number] }
+
+    assert_equal league.game_day_schedule(1).map { |game| game[:game_number] }, numbers
+  end
+
+  # Altbestand ohne Spielnummer: schedule_item liefert dort 0, alle Spiele sind
+  # im ersten Kriterium gleich. Datum und Uhrzeit müssen deshalb als
+  # Rückfallebene erhalten bleiben.
+  test 'schedule sortiert Spiele ohne Spielnummer weiter nach Uhrzeit' do
+    league = build_league(build_go)
+    club = build_club
+    game_day = GameDay.create!(league: league, arena: build_arena, club: club,
+                               number: 1, date: '2025-01-01')
+
+    %w[13:00 10:00 11:30].each_with_index do |time, i|
+      build_game(game_day,
+                 build_team(league, club, "Heim #{i}"),
+                 build_team(league, club, "Gast #{i}"),
+                 game_number: nil, start_time: time)
+    end
+
+    times = league.schedule.map { |game| game[:time] }
+
+    assert_equal %w[10:00 11:30 13:00], times
+  end
+
+  # Playoffs und Pokalrunden legen einen Spieltag über mehrere Tage, und die
+  # Spielnummern folgen dort der Paarung, nicht dem Kalender. Stünde die Nummer
+  # vor dem Datum, liefe der Spielplan zeitlich rückwärts.
+  test 'schedule haelt einen mehrtaegigen Spieltag in Kalenderreihenfolge' do
+    league = build_league(build_go)
+    club = build_club
+
+    # Nummer 1 am zweiten Tag, Nummer 2 am ersten: genau der Fall, den die
+    # Bundesliga-Playoffs erzeugen.
+    { '2025-01-05' => 1, '2025-01-04' => 2 }.each do |date, number|
+      game_day = GameDay.create!(league: league, arena: build_arena, club: club,
+                                 number: 1, date: date)
+      build_game(game_day,
+                 build_team(league, club, "Heim #{number}"),
+                 build_team(league, club, "Gast #{number}"),
+                 game_number: number.to_s, start_time: '10:00')
+    end
+
+    dates = league.schedule.map { |game| game[:date] }
+
+    assert_equal %w[2025-01-04 2025-01-05], dates
+  end
+
+  # K.-o.-Runden tragen „HF1", „FIN" oder „Pl. 3" als Spielnummer; schedule_item
+  # macht daraus 0. Sie gehören ans Ende ihres Spieltags, nicht davor.
+  test 'schedule stellt nicht-numerische Spielnummern ans Ende des Spieltags' do
+    league = build_league(build_go)
+    club = build_club
+    game_day = GameDay.create!(league: league, arena: build_arena, club: club,
+                               number: 1, date: '2025-01-01')
+
+    # Das Finale liegt zeitlich zwischen den Gruppenspielen und käme nach
+    # Uhrzeit in die Mitte, nach roher Nummer (0) an den Anfang.
+    { '1' => '10:00', 'FIN' => '11:00', '2' => '12:00' }.each do |number, time|
+      build_game(game_day,
+                 build_team(league, club, "Heim #{number}"),
+                 build_team(league, club, "Gast #{number}"),
+                 game_number: number, start_time: time)
+    end
+
+    times = league.schedule.map { |game| game[:time] }
+
+    assert_equal %w[10:00 12:00 11:00], times
+  end
+
   # Die Tabellenseite liest dieselben beiden Logo-Methoden, nur je Team statt je
   # Spiel (empty_table_item). Sie gehört zu den meistaufgerufenen öffentlichen
   # Seiten und wird zusätzlich vorgerendert.
