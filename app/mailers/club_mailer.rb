@@ -12,7 +12,7 @@ class ClubMailer < ApplicationMailer
     date_label = MailerHelper.format_game_day_date(game_day.date)
 
     templated_mail(
-      to: club.contact_email,
+      to: club.notification_emails,
       subject: "Spielbericht-Scans einreichen – Spieltag #{date_label}",
       default_reply_to: REPLY_TO,
       placeholders: { game_day_date: date_label }

@@ -13,6 +13,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 - **Vereinsmanager pflegen die Stammdaten ihres Vereins selbst**: Die Vereinsverwaltung war bisher dem Verband vorbehalten. Jede Änderung an Name, Kürzel, Registername, Kontaktadresse oder Vereinslogo musste beim Landesverband gemeldet und dort nachgetragen werden. Vereinsmanager sehen jetzt ihren eigenen Verein und ändern diese Angaben selbst. Was den Verein einordnet, bleibt beim Verband: Bundesland, Landesverband und Spielbetrieb sind für den Verein sichtbar, aber nicht änderbar, denn sie entscheiden mit darüber, wer den Verein verwaltet und wer seine Spieler sperren darf. Ebenso wenig kann ein Verein sich selbst deaktivieren oder einen weiteren Verein anlegen. Der Verband sieht und ändert unverändert alles.
 
+- **Vereinsmanager können die Vereinspost mitbekommen**: An der Kontakt-E-Mail des Vereins hängen elf verschiedene Nachrichten: die Erinnerung an den Spielberichts-Scan, die Checklisten-Bestätigung und der Checklisten-Einspruch, veröffentlichte und geänderte Schiedsrichter-Ansetzungen sowie sechs Nachrichten rund um Transfers und Spielerfreigaben. Bisher ging all das an genau eine Adresse. Wer sie nicht las, erfuhr nichts, und Transferanfragen haben Fristen. Unter der Kontakt-E-Mail steht jetzt, wofür sie verwendet wird, und darunter lassen sich einzelne Vereinsmanager des Vereins auswählen, die dieselbe Post zusätzlich bekommen. Bewusst einzeln und nicht pauschal: Ein Verein mit sechs Vereinsmanagern soll nicht sechs Kopien jeder Nachricht auslösen. Die Auswahl wird bei jedem Versand gegen die aktuellen Rechte geprüft, wer die Vereinsrolle verliert, fällt automatisch aus dem Verteiler. Was den Schiedsrichtern in ihrer Ansetzungsmail als Kontakt angezeigt wird, bleibt allein die Kontaktadresse des Vereins.
+
+### Behoben
+
+- **Zwei Adressen im Kontaktfeld werden nicht mehr angenommen**: Das Feld hatte keine Formatprüfung. Ein Verein hatte zwei Adressen mit Semikolon getrennt eingetragen, und beide bekamen nie etwas, weil das Feld als eine einzige Adresse verschickt wird. Die Eingabe wird jetzt geprüft, und wer mehrere Empfänger braucht, wählt sie darunter als Vereinsmanager aus.
+
 ## [1.81.0] - 2026-08-14
 
 ### Neu

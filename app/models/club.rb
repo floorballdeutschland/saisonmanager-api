@@ -4,7 +4,45 @@ class Club < ApplicationRecord
 
   has_one_attached :logo
 
+  # Eine Adresse, nicht mehrere. Auf Produktion trug ein Verein zwei Adressen
+  # mit Semikolon getrennt im Feld – beide bekamen nie etwas, weil das Feld als
+  # eine Adresse verschickt wird. Wer mehrere Empfänger braucht, wählt sie
+  # unter notify_user_ids aus.
+  EMAIL_FORMAT = /\A[^@\s;,]+@[^@\s;,]+\.[^@\s;,]+\z/
+
+  validates :contact_email, format: { with: EMAIL_FORMAT }, allow_blank: true
+
   scope :active, -> { where(deactivated_at: nil) }
+
+  # Vereinsmanager dieses Vereins. Kandidaten per jsonb-Containment vorfiltern
+  # und dann über permission_hash bestätigen: Die Rolle steckt im
+  # permissions-Array, und nur permission_hash kennt die Sonderfälle
+  # (Mehrfachrollen, Altdaten mit String-Werten).
+  def club_managers
+    User.not_archived
+        .where('permissions @> ?', [{ user_group_id: 4 }].to_json)
+        .select { |user| Array(user.permission_hash[:vm]).include?(id) }
+  end
+
+  # Alle Empfänger der Vereinspost: die Kontaktadresse plus die ausgewählten
+  # Vereinsmanager.
+  def notification_emails
+    ([contact_email] + notify_manager_emails)
+      .map { |mail| mail.to_s.strip }
+      .reject(&:blank?)
+      .uniq
+  end
+
+  # Die Auswahl wird bei jedem Versand gegen die aktuellen Rechte aufgelöst.
+  # Ohne das bekäme jemand weiter Vereinspost, der die Rolle längst verloren
+  # hat – die gespeicherten IDs allein sagen darüber nichts.
+  def notify_manager_emails
+    ids = Array(notify_user_ids).map(&:to_i).reject(&:zero?)
+    return [] if ids.empty?
+
+    club_managers.select { |user| ids.include?(user.id) && user.email.present? }
+                 .map(&:email)
+  end
 
   def deactivate!(user_id)
     update!(deactivated_at: Time.current, deactivated_by: user_id)

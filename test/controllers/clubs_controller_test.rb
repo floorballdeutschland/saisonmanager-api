@@ -723,6 +723,57 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_equal ziel_sa.id, club.state_association_id
   end
 
+  # --- Empfaengerauswahl fuer die Vereinspost -----------------------------
+
+  test 'admin_club_managers liefert die Vereinsmanager samt Auswahl' do
+    club = create(:club)
+    manager = create(:user, :vm, club_id: club.id, email: 'vm@verein.example')
+    create(:user, :vm, club_id: create(:club).id, email: 'fremd@verein.example')
+    club.update!(notify_user_ids: [manager.id])
+    login(create(:user, :admin))
+
+    get "/api/v2/admin/clubs/#{club.id}/managers"
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal [manager.id], body['notify_user_ids']
+    manager_ids = body['managers'].map { |m| m['id'] }
+    assert_equal [manager.id], manager_ids
+    assert_equal 'vm@verein.example', body['managers'].first['email']
+  end
+
+  test 'admin_club_managers ist fuer den VM eines anderen Vereins gesperrt' do
+    fremd = create(:club)
+    login(create(:user, :vm, club_id: create(:club).id))
+
+    get "/api/v2/admin/clubs/#{fremd.id}/managers"
+
+    assert_response :forbidden
+  end
+
+  test 'admin_club_update speichert die Empfaengerauswahl des VM' do
+    club = create(:club)
+    manager = create(:user, :vm, club_id: club.id, email: 'vm@verein.example')
+    login(create(:user, :vm, club_id: club.id))
+
+    post '/api/v2/admin/clubs', params: { id: club.id,
+                                          club: { name: 'Neu', notify_user_ids: [manager.id] } }
+
+    assert_response :success
+    assert_equal [manager.id], club.reload.notify_user_ids
+  end
+
+  test 'admin_club_update weist zwei Adressen im Kontaktfeld ab' do
+    club = create(:club, contact_email: 'gut@example.org')
+    login(create(:user, :vm, club_id: club.id))
+
+    post '/api/v2/admin/clubs', params: { id: club.id,
+                                          club: { contact_email: 'a@example.org; b@example.org' } }
+
+    assert_response :unprocessable_entity
+    assert_equal 'gut@example.org', club.reload.contact_email
+  end
+
   private
 
   def login(user)

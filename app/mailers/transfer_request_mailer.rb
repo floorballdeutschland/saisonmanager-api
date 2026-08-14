@@ -1,8 +1,8 @@
 class TransferRequestMailer < ApplicationMailer
   def new_request_to_former_club(transfer_request)
     @transfer_request = transfer_request
-    recipients = [transfer_request.former_club.contact_email,
-                  transfer_request.player.email].compact.uniq.select(&:present?)
+    recipients = (transfer_request.former_club.notification_emails +
+                  [transfer_request.player.email]).compact.uniq.select(&:present?)
     return if recipients.empty?
 
     templated_mail(
@@ -32,11 +32,11 @@ class TransferRequestMailer < ApplicationMailer
 
   def clubs_informed_lv_pending(transfer_request)
     @transfer_request = transfer_request
-    recipients = [
-      transfer_request.requesting_club.contact_email,
-      transfer_request.former_club.contact_email,
-      transfer_request.player.email
-    ].compact.uniq.select(&:present?)
+    recipients = (
+      transfer_request.requesting_club.notification_emails +
+      transfer_request.former_club.notification_emails +
+      [transfer_request.player.email]
+    ).compact.uniq.select(&:present?)
     return if recipients.empty?
 
     templated_mail(
@@ -51,11 +51,11 @@ class TransferRequestMailer < ApplicationMailer
 
   def rejected_notification(transfer_request)
     @transfer_request = transfer_request
-    recipient = transfer_request.requesting_club.contact_email
-    return unless recipient.present?
+    recipients = transfer_request.requesting_club.notification_emails
+    return if recipients.empty?
 
     templated_mail(
-      to: recipient,
+      to: recipients,
       subject: "#{request_noun(transfer_request)} abgelehnt: #{player_name(transfer_request)}",
       placeholders: {
         request_noun: request_noun(transfer_request),
@@ -82,10 +82,10 @@ class TransferRequestMailer < ApplicationMailer
 
   def player_rejected_clubs_notification(transfer_request)
     @transfer_request = transfer_request
-    recipients = [
-      transfer_request.requesting_club.contact_email,
-      transfer_request.former_club.contact_email
-    ].compact.uniq.select(&:present?)
+    recipients = (
+      transfer_request.requesting_club.notification_emails +
+      transfer_request.former_club.notification_emails
+    ).compact.uniq.select(&:present?)
     return if recipients.empty?
 
     templated_mail(
@@ -101,12 +101,11 @@ class TransferRequestMailer < ApplicationMailer
   def transfer_completed(transfer_request)
     @transfer_request = transfer_request
     former_sa = transfer_request.former_club.state_association
-    recipients = [
-      transfer_request.requesting_club.contact_email,
-      transfer_request.former_club.contact_email,
-      transfer_request.player.email,
-      former_sa&.effective_sbk_email
-    ].compact.uniq.select(&:present?)
+    recipients = (
+      transfer_request.requesting_club.notification_emails +
+      transfer_request.former_club.notification_emails +
+      [transfer_request.player.email, former_sa&.effective_sbk_email]
+    ).compact.uniq.select(&:present?)
     return if recipients.empty?
 
     subject = release?(transfer_request) ? 'Spielerfreigabe erteilt' : 'Transfer vollzogen'
@@ -139,10 +138,11 @@ class TransferRequestMailer < ApplicationMailer
   def secondary_club_notification(transfer_request, club)
     @transfer_request = transfer_request
     @club = club
-    return unless club.contact_email.present?
+    recipients = club.notification_emails
+    return if recipients.empty?
 
     templated_mail(
-      to: club.contact_email,
+      to: recipients,
       subject: "Zusatzlizenz/Freigabe entzogen durch Transfer: #{player_name(transfer_request)}",
       placeholders: { player_name: player_name(transfer_request) }
     )
