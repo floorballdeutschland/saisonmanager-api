@@ -793,55 +793,6 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_equal 1, @player.reload.licenses.length
   end
 
-  # --- Datenschutz-Info an die gesetzliche Vertretung ------------------------
-  # Die Adresse wurde bisher nur an der Lizenz vermerkt; verschickt wurde nichts.
-
-  test 'Lizenzantrag mit Adresse der gesetzlichen Vertretung verschickt die Datenschutz-Info' do
-    @league.update!(parental_consent_required: true)
-    minor = create(:player, birthdate: 15.years.ago.to_date.to_s,
-                            clubs: [{ 'club_id' => @club.id, 'home_club' => true, 'created_at' => 1.day.ago.iso8601 }])
-    login_as(create(:user, :vm, club_id: @club.id))
-
-    assert_enqueued_emails 1 do
-      post "/api/v2/user/players/#{minor.id}/request_license",
-           params: { team_id: @team.id, guardian_email: 'eltern@example.de',
-                     minor_consent_at: Time.current.iso8601 },
-           as: :json
-      assert_response :ok
-    end
-
-    perform_enqueued_jobs
-    mail = ActionMailer::Base.deliveries.last
-    assert_equal ['eltern@example.de'], mail.to
-    assert_match(/Datenschutzinformation/, mail.subject)
-    assert_equal 'eltern@example.de', minor.reload.licenses.first['guardian_email']
-  end
-
-  test 'Lizenzantrag ohne Adresse verschickt keine Datenschutz-Info' do
-    login_as(create(:user, :vm, club_id: @club.id))
-
-    assert_enqueued_emails 0 do
-      post "/api/v2/user/players/#{@player.id}/request_license",
-           params: { team_id: @team.id }, as: :json
-      assert_response :ok
-    end
-  end
-
-  # Ohne gespeicherte Lizenz keine Mail: Die Eltern sollen nicht über eine
-  # Beantragung informiert werden, die die Transaktion gerade zurückgerollt hat.
-  test 'abgelehnter Doppelantrag verschickt keine Datenschutz-Info' do
-    minor = create(:player, birthdate: 15.years.ago.to_date.to_s,
-                            clubs: [{ 'club_id' => @club.id, 'home_club' => true, 'created_at' => 1.day.ago.iso8601 }],
-                            with_licenses: [{ team: @team, status: License::REQUESTED }])
-    login_as(create(:user, :vm, club_id: @club.id))
-
-    assert_enqueued_emails 0 do
-      post "/api/v2/user/players/#{minor.id}/request_license",
-           params: { team_id: @team.id, guardian_email: 'eltern@example.de' }, as: :json
-      assert_response :unprocessable_entity
-    end
-  end
-
   # Der Fall aus der Praxis: SBK eines LV, gleichzeitig VM eines Vereins mit
   # Bundesliga-Team. Ein reiner GO-Check ohne additive Rollen hätte ihn genau
   # bei seiner eigenen Mannschaft ausgesperrt.

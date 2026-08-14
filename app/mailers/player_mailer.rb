@@ -72,9 +72,16 @@ class PlayerMailer < ApplicationMailer
 
   # Saison der Liga, nicht die laufende: Ein Antrag kann eine Liga der kommenden
   # Saison betreffen, während noch die alte aktiv ist.
+  #
+  # Je nach Altbestand steht unter einer Saison ein Hash mit 'name' oder ein
+  # blanker String (vgl. Setting.current_season_start_year); `dig` bräche beim
+  # String mit TypeError ab, und hinter deliver_later fiele der Ausfall
+  # niemandem auf. Ohne lesbaren Namen bleibt die Zeile in der Mail weg: Die
+  # laufende Nummer der Saison sagt Eltern nichts.
   def season_name(league)
     return nil if league&.season_id.blank?
 
-    Setting.current.seasons.dig(league.season_id.to_s, 'name') || league.season_id.to_s
+    entry = Setting.current.seasons[league.season_id.to_s]
+    entry.is_a?(Hash) ? entry['name'].presence : entry.presence
   end
 end

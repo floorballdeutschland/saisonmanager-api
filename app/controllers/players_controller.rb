@@ -212,10 +212,17 @@ class PlayersController < ApplicationController
       # stammen, deren Verband dann auch den Antrag erhält.
       PlayerMailer.express_license_requested(player, team, express_league).deliver_later if express_league
       # Art. 13 DSGVO: Die gesetzliche Vertretung erfährt von der Verarbeitung,
-      # sobald der Verein ihre Adresse angibt. Kein zusätzlicher Flag-Test — das
-      # Feld erscheint im Antragsformular ohnehin nur, wo die Liga die
-      # Elternzustimmung verlangt.
-      PlayerMailer.guardian_privacy_info(player, team, league, guardian_email).deliver_later if guardian_email
+      # sobald der Verein ihre Adresse angibt. Maßgeblich ist die Liga, die die
+      # Zustimmung verlangt, und das muss nicht team.league sein: `team.leagues`
+      # umfasst auch Pokal-Ligen eines anderen Verbands, und genau die kann das
+      # Flag tragen (gleiche Begründung wie bei der Expresslizenz). Sonst nennte
+      # die Mail eine Liga ohne Zustimmungspflicht und ließe an deren SBK
+      # antworten. Verlangt keine Liga des Teams die Zustimmung, geht nichts
+      # heraus: Das Antragsformular fragt die Adresse dann gar nicht erst ab.
+      consent_league = team.leagues.find(&:parental_consent_required)
+      if guardian_email && consent_league
+        PlayerMailer.guardian_privacy_info(player, team, consent_league, guardian_email).deliver_later
+      end
       render json: { success: true }
     else
       # Erfolg ist bewusst `when :ok`, nicht der else-Zweig: Ein künftig

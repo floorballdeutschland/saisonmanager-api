@@ -52,6 +52,26 @@ class GuardianPrivacyInfoTest < ActionMailer::TestCase
     assert_not_includes mail.body.decoded, 'Informationsblatt öffnen'
   end
 
+  # Je nach Altbestand steht unter einer Saison ein Hash oder ein blanker
+  # String. Ein `dig` darauf bräche mit TypeError ab, und hinter deliver_later
+  # käme die Mail einfach nicht an, ohne dass jemand etwas merkt.
+  test 'Saison als blanker String bricht die Mail nicht ab' do
+    @setting.update!(seasons: { @league.season_id.to_s => 'Saison 2026/27' })
+
+    mail = PlayerMailer.guardian_privacy_info(@player, @team, @league, 'eltern@example.de')
+
+    assert_includes mail.body.decoded, 'Saison 2026/27'
+  end
+
+  test 'ohne lesbaren Saisonnamen bleibt die Zeile weg' do
+    @setting.update!(seasons: {})
+
+    mail = PlayerMailer.guardian_privacy_info(@player, @team, @league, 'eltern@example.de')
+
+    assert_not_includes mail.body.decoded, 'Saison:'
+    assert_includes mail.body.decoded, 'Leon Beispiel'
+  end
+
   test 'ohne Adresse wird nichts verschickt' do
     assert_emails 0 do
       PlayerMailer.guardian_privacy_info(@player, @team, @league, nil).deliver_now
