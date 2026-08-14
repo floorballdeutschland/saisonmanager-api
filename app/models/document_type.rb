@@ -30,6 +30,14 @@ class DocumentType < ApplicationRecord
   ALLOWED_TEMPLATE_CONTENT_TYPES = %w[application/pdf image/png image/jpeg].freeze
   MAX_TEMPLATE_SIZE = 10.megabytes
 
+  # Altersregeln für Keys, die auch ohne Katalog-Eintrag angefordert werden
+  # können. `parental_consent` kommt über das Liga-Flag
+  # (parental_consent_required) in die Pflichtliste, unabhängig davon, ob die
+  # Dokumentart im Katalog steht. Ohne diese Rückfallregel gälte sie dort auch
+  # für Volljährige, weil Keys ohne Katalog-Eintrag bewusst immer erforderlich
+  # bleiben (Freitext-Altbestand).
+  FALLBACK_REQUIRED_BELOW_AGE = { 'parental_consent' => 18 }.freeze
+
   # Welche der Liga-Keys sind für diesen Spieler tatsächlich erforderlich?
   # Stichtag für altersabhängige Dokumente ist das Datum der Lizenzbeantragung.
   # Keys ohne Katalogeintrag (Freitext-Altbestand) bleiben erforderlich.
@@ -39,8 +47,19 @@ class DocumentType < ApplicationRecord
 
     catalog ||= where(key: keys).index_by(&:key)
     reference = requested_at || Time.current
-    keys.select { |k| catalog[k].nil? || catalog[k].required_for?(birthdate, reference) }
+    keys.select do |k|
+      type = catalog[k] || fallback_type(k)
+      type.nil? || type.required_for?(birthdate, reference)
+    end
   end
+
+  # Nicht gespeicherter Platzhalter, nur zur Altersauswertung. nil für Keys ohne
+  # bekannte Regel – die bleiben erforderlich.
+  def self.fallback_type(key)
+    age = FALLBACK_REQUIRED_BELOW_AGE[key]
+    age && new(required_below_age: age)
+  end
+  private_class_method :fallback_type
 
   def required_for?(birthdate, requested_at)
     return true if required_below_age.blank?

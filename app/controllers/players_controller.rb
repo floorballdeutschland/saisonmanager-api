@@ -211,6 +211,18 @@ class PlayersController < ApplicationController
       # express_league, nicht league: die Erlaubnis kann aus einer Pokal-Liga
       # stammen, deren Verband dann auch den Antrag erhält.
       PlayerMailer.express_license_requested(player, team, express_league).deliver_later if express_league
+      # Art. 13 DSGVO: Die gesetzliche Vertretung erfährt von der Verarbeitung,
+      # sobald der Verein ihre Adresse angibt. Maßgeblich ist die Liga, die die
+      # Zustimmung verlangt, und das muss nicht team.league sein: `team.leagues`
+      # umfasst auch Pokal-Ligen eines anderen Verbands, und genau die kann das
+      # Flag tragen (gleiche Begründung wie bei der Expresslizenz). Sonst nennte
+      # die Mail eine Liga ohne Zustimmungspflicht und ließe an deren SBK
+      # antworten. Verlangt keine Liga des Teams die Zustimmung, geht nichts
+      # heraus: Das Antragsformular fragt die Adresse dann gar nicht erst ab.
+      consent_league = team.leagues.find(&:parental_consent_required)
+      if guardian_email && consent_league
+        PlayerMailer.guardian_privacy_info(player, team, consent_league, guardian_email).deliver_later
+      end
       render json: { success: true }
     else
       # Erfolg ist bewusst `when :ok`, nicht der else-Zweig: Ein künftig
@@ -374,12 +386,13 @@ class PlayersController < ApplicationController
       # Dokumente gelten pro Spieler (saisonübergreifend); altersabhängige
       # Dokumentarten werden zum Datum der Lizenzbeantragung aufgelöst.
       docs_by_key = license_documents_by_player_and_type(all_player_ids)
-      catalog = document_type_catalog((league.required_documents || []) + ['parental_consent'])
+      league_keys = league_required_document_keys(league)
+      catalog = document_type_catalog(league_keys + ['parental_consent'])
       result.each do |team_data|
         team_data[:players].each do |player_data|
           player_id = player_data[:id]
           required_keys = DocumentType.required_keys(
-            league.required_documents,
+            league_keys,
             birthdate: player_data[:birthdate],
             requested_at: license_requested_at(player_data.dig(:team_license, :license)),
             catalog: catalog

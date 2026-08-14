@@ -437,6 +437,29 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'team_name', description: 'Name der Mannschaft' }
       ]
     },
+    'PlayerMailer#guardian_privacy_info' => {
+      mailer_class: 'PlayerMailer',
+      action_name: 'guardian_privacy_info',
+      description: 'Information nach Art. 13 DSGVO an die gesetzliche Vertretung einer minderjährigen ' \
+                   'Person. Geht heraus, sobald der Verein bei der Lizenzbeantragung eine Adresse der ' \
+                   'gesetzlichen Vertretung angibt; das Feld erscheint im Antragsformular nur in Ligen ' \
+                   'mit gesetzter Elternzustimmung. Enthält den Link auf das gepflegte Informationsblatt ' \
+                   '(/verwaltung/dokumentarten); fehlt der Link, verweist die Mail auf den Verein. ' \
+                   'Antworten gehen an die SBK des Spielbetriebs der Liga.',
+      default_subject: 'Datenschutzinformation zur Lizenzbeantragung – {{player_name}}',
+      default_from: nil,
+      # Kein fester Wert: Die Antwortadresse setzt der Mailer zur Laufzeit auf die
+      # SBK des Spielbetriebs der Liga.
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'player_name', description: 'Vor- und Nachname der minderjährigen Person' },
+        { key: 'club_name', description: 'Name des beantragenden Vereins' },
+        { key: 'team_name', description: 'Name der Mannschaft' },
+        { key: 'league_name', description: 'Name der Liga' },
+        { key: 'season', description: 'Saison der Liga (z. B. 2026/2027)' },
+        { key: 'info_url', description: 'Adresse des Informationsblattes zur Datenverarbeitung, leer solange keines gepflegt ist' }
+      ]
+    },
     'PlayerMailer#license_approved' => {
       mailer_class: 'PlayerMailer',
       action_name: 'license_approved',

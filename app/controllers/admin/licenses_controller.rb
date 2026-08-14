@@ -42,13 +42,14 @@ module Admin
         team_items.flat_map { |t| t[:players].map { |p| p[:id] } }
       end.uniq
       license_docs_by_key = license_documents_by_player_and_type(all_player_ids)
-      catalog = document_type_catalog(leagues.flat_map { |l| l.required_documents || [] } + ['parental_consent'])
+      catalog = document_type_catalog(leagues.flat_map { |l| league_required_document_keys(l) } + ['parental_consent'])
 
       result = []
       leagues.each do |league|
         game_op       = game_operations[league.game_operation_id]
         category_name = license_category_name(league.league_category_id)
         class_name    = license_class_name(league.league_class_id)
+        league_keys   = league_required_document_keys(league)
 
         licenses_by_league.fetch(league.id, []).each do |team_data|
           club = clubs[team_club_map[team_data[:id]]]
@@ -62,7 +63,7 @@ module Admin
             last_status_id = player_data[:team_license][:last_status_id].to_i
             # Altersabhängige Dokumentarten: Stichtag ist das Datum der Lizenzbeantragung.
             required_keys = DocumentType.required_keys(
-              league.required_documents,
+              league_keys,
               birthdate: player_data[:birthdate],
               requested_at: player_data[:team_license][:requested_at]&.to_time,
               catalog: catalog

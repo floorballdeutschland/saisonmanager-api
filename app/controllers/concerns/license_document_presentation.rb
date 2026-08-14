@@ -15,6 +15,18 @@ module LicenseDocumentPresentation
     DocumentType.where(key: Array(keys).uniq).index_by(&:key)
   end
 
+  # Pflichtdokumente einer Liga, bevor sie über DocumentType.required_keys nach
+  # Alter aufgelöst werden. Die Elternzustimmung kommt aus zwei Quellen: dem
+  # Liga-Flag parental_consent_required und (falls die SBK sie ausdrücklich
+  # eingetragen hat) required_documents. Ohne beides ist sie nicht gefordert –
+  # vorher zeigten die Lizenzansichten sie bundesweit bei jeder minderjährigen
+  # Person an, unabhängig davon, ob die Liga sie überhaupt verlangt.
+  def league_required_document_keys(league)
+    keys = Array(league.required_documents)
+    keys |= %w[parental_consent] if league.parental_consent_required
+    keys
+  end
+
   # Map { <typ>: bool, <typ>_url: url } für eine Lizenz. parental_consent ist
   # (wie bisher) immer enthalten.
   def document_map_for(player_id, license_season_id, docs_by_key, required_keys, catalog)

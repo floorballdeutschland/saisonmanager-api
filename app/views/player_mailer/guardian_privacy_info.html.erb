@@ -1,0 +1,44 @@
+<h2>Information zur Datenverarbeitung</h2>
+
+<p>Guten Tag,</p>
+
+<p>
+  <% if @club %>der Verein <strong><%= @club.name %></strong><% else %>der Verein<% end %>
+  hat im Saisonmanager eine Spiellizenz für
+  <strong><%= @player.first_name %> <%= @player.last_name %></strong>
+  beantragt und dabei Ihre E-Mail-Adresse als gesetzliche Vertretung angegeben.
+  Diese Nachricht informiert Sie gemäß Art. 13 DSGVO über die damit verbundene
+  Datenverarbeitung. Eine Handlung Ihrerseits ist nicht erforderlich.
+</p>
+
+<p>
+  <strong>Mannschaft:</strong> <%= @team&.name %><br>
+  <% if @league %>
+    <strong>Liga:</strong> <%= @league.name %><br>
+  <% end %>
+  <% if @season.present? %>
+    <strong>Saison:</strong> <%= @season %><br>
+  <% end %>
+</p>
+
+<% if @info_url.present? %>
+  <p>
+    Die Einzelheiten stehen im Informationsblatt zur Datenverarbeitung:<br>
+    <a href="<%= @info_url %>">Informationsblatt öffnen</a>
+  </p>
+<% else %>
+  <p>
+    Das Informationsblatt zur Datenverarbeitung erhalten Sie über den Verein.
+  </p>
+<% end %>
+
+<p>
+  Ihre Adresse wurde ausschließlich für diese Information verwendet. Fragen zur
+  Lizenz beantwortet der Verein, Fragen zur Datenverarbeitung die
+  Spielbetriebskommission des zuständigen Verbands.
+</p>
+
+<p>
+  Das Saisonmanager-Team<br>
+  <a href="<%= frontend_base_url %>"><%= frontend_host %></a>
+</p>

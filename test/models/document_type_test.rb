@@ -48,6 +48,22 @@ class DocumentTypeTest < ActiveSupport::TestCase
                  'Volljährig: parental_consent entfällt; unbekannte Keys bleiben erforderlich'
   end
 
+  # Über das Liga-Flag kann parental_consent angefordert werden, ohne dass die
+  # Dokumentart im Katalog steht (Bestand ohne den Backfill der Migration).
+  # Ohne Rückfallregel gälte die Zustimmung dort auch für Volljährige, weil
+  # Keys ohne Katalog-Eintrag bewusst immer erforderlich bleiben.
+  test 'required_keys kennt die Altersgrenze der Elternzustimmung auch ohne Katalog-Eintrag' do
+    assert_empty DocumentType.where(key: 'parental_consent')
+
+    volljaehrig = DocumentType.required_keys(%w[parental_consent],
+                                             birthdate: '1990-01-01', requested_at: Time.current)
+    assert_empty volljaehrig, 'Volljährige brauchen keine Zustimmung, auch ohne Katalog-Eintrag'
+
+    minderjaehrig = DocumentType.required_keys(%w[parental_consent],
+                                               birthdate: 15.years.ago.to_date.to_s, requested_at: Time.current)
+    assert_equal %w[parental_consent], minderjaehrig
+  end
+
   test 'validity erlaubt nur once und per_season' do
     assert DocumentType.new(name: 'A', validity: 'once').valid?
     assert DocumentType.new(name: 'B', validity: 'per_season').per_season?
