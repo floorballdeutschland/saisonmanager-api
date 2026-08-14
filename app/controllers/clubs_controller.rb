@@ -526,49 +526,6 @@ class ClubsController < ApplicationController
       'zuständigen Verband geändert werden.'
   end
 
-  # Vereinsmanager-Fassung: ohne die Felder, die den Verein einordnen.
-  # `state` und `state_association_id` entscheiden mit darüber, wer den Verein
-  # verwalten und wer seine Spieler sperren darf – ein Verein könnte sich sonst
-  # selbst in einen anderen Landesverband umhängen.
-  def restricted_club_params
-    params.require(:club).permit(:name, :short_name, :long_name, :contact_email)
-  end
-
-  def full_club_access?(club)
-    club.user_permissions(current_user).include?(:update_club)
-  end
-
-  # Felder, die der eingeschränkte Zugriff nicht schreibt. Kommt eines davon
-  # mit einem ANDEREN Wert an, ist das keine harmlose Rücksendung des Formulars,
-  # sondern ein Änderungswunsch, der sonst stillschweigend verfiele.
-  RESTRICTED_FIELDS = %w[state state_association_id].freeze
-
-  # Liefert die Meldung, wenn ein eingeschränkter Zugriff eines der
-  # vorbehaltenen Felder ändern will – sonst nil.
-  #
-  # Ohne diese Prüfung antwortete das Speichern mit 200 und einer
-  # Erfolgsmeldung, während `restricted_club_params` die Felder verwarf. Das
-  # trifft nicht nur den Vereinsmanager: Wer eine Spielbetriebsrolle für einen
-  # Verband UND eine Vereinsrolle für einen Verein aus einem anderen Verband
-  # hat, bekommt das Formular unbeschränkt zu sehen (das Frontend-Flag gilt pro
-  # Benutzer), die Berechtigung entscheidet aber pro Verein.
-  def restricted_field_conflict(club)
-    eingereicht = params[:club] || {}
-
-    geaendert = RESTRICTED_FIELDS.select do |feld|
-      next false unless eingereicht.key?(feld)
-
-      # Vergleich über to_s: state_association_id kommt als String an, steht in
-      # der Spalte aber als Integer.
-      eingereicht[feld].to_s.presence != club.public_send(feld).to_s.presence
-    end
-
-    return nil if geaendert.empty?
-
-    'Bundesland und Landesverband ordnen den Verein ein und können nur vom ' \
-      'zuständigen Verband geändert werden.'
-  end
-
   # Vereinsänderung. Der Spielbetrieb ist optional – kommt er mit, wird der
   # Heimat-Eintrag ersetzt.
   def update_club(club)
