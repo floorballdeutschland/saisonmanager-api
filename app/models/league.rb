@@ -412,15 +412,11 @@ class League < ApplicationRecord
   end
 
   def schedule
-    games.map(&:schedule_item).sort_by do |game|
-      [game[:game_day].to_i, game[:date].to_s, game[:time].to_s, game[:game_number]]
-    end
+    games.map(&:schedule_item).sort_by { |game| schedule_sort_key(game) }
   end
 
   def game_day_schedule(game_day_number)
-    games(game_day_number).map(&:schedule_item).sort_by do |game|
-      [game[:game_day].to_i, game[:date].to_s, game[:time].to_s, game[:game_number]]
-    end
+    games(game_day_number).map(&:schedule_item).sort_by { |game| schedule_sort_key(game) }
   end
 
   def current_schedule
@@ -443,7 +439,10 @@ class League < ApplicationRecord
     rescue StandardError
       game_days.pluck(:number).max
     end
-    games(game_day_number).map(&:schedule_item)
+    # Explizit dieselbe Ordnung wie schedule/game_day_schedule, statt sich auf
+    # die von League#games zu verlassen: Diese Antwort und die des
+    # Weiter-Zurück-Endpunkts stehen nebeneinander in derselben Ansicht.
+    games(game_day_number).map(&:schedule_item).sort_by { |game| schedule_sort_key(game) }
   end
 
   def meta_item
@@ -1339,6 +1338,18 @@ class League < ApplicationRecord
   end
 
   private
+
+  # Reihenfolge des Spielplans: erst Spieltag, dann Spielnummer. Datum und
+  # Uhrzeit greifen nur noch als Rückfallebene für Altdaten ohne Spielnummer
+  # (schedule_item liefert dort 0). Standen sie vorne, verzahnte die Sortierung
+  # die parallel angesetzten Hallen eines Spieltags miteinander: Statt zweier
+  # zusammenhängender Hallen-Blöcke sah der Spielplan aus wie eine Zeitleiste
+  # quer über beide. Muss zur Ordnung von League#games passen, denn
+  # current_schedule sortiert nicht selbst und übernimmt die von dort - sonst
+  # wechselt die Reihenfolge zwischen Erstaufruf und Weiterblättern.
+  def schedule_sort_key(game)
+    [game[:game_day].to_i, game[:game_number].to_i, game[:date].to_s, game[:time].to_s]
+  end
 
   def group_template(group_identifier)
     return {} if group_identifier.nil?
