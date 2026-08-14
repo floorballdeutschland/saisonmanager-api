@@ -1091,6 +1091,51 @@ class LeagueTest < ActiveSupport::TestCase
     assert_equal %w[10:00 11:30 13:00], times
   end
 
+  # Playoffs und Pokalrunden legen einen Spieltag über mehrere Tage, und die
+  # Spielnummern folgen dort der Paarung, nicht dem Kalender. Stünde die Nummer
+  # vor dem Datum, liefe der Spielplan zeitlich rückwärts.
+  test 'schedule haelt einen mehrtaegigen Spieltag in Kalenderreihenfolge' do
+    league = build_league(build_go)
+    club = build_club
+
+    # Nummer 1 am zweiten Tag, Nummer 2 am ersten: genau der Fall, den die
+    # Bundesliga-Playoffs erzeugen.
+    { '2025-01-05' => 1, '2025-01-04' => 2 }.each do |date, number|
+      game_day = GameDay.create!(league: league, arena: build_arena, club: club,
+                                 number: 1, date: date)
+      build_game(game_day,
+                 build_team(league, club, "Heim #{number}"),
+                 build_team(league, club, "Gast #{number}"),
+                 game_number: number.to_s, start_time: '10:00')
+    end
+
+    dates = league.schedule.map { |game| game[:date] }
+
+    assert_equal %w[2025-01-04 2025-01-05], dates
+  end
+
+  # K.-o.-Runden tragen „HF1", „FIN" oder „Pl. 3" als Spielnummer; schedule_item
+  # macht daraus 0. Sie gehören ans Ende ihres Spieltags, nicht davor.
+  test 'schedule stellt nicht-numerische Spielnummern ans Ende des Spieltags' do
+    league = build_league(build_go)
+    club = build_club
+    game_day = GameDay.create!(league: league, arena: build_arena, club: club,
+                               number: 1, date: '2025-01-01')
+
+    # Das Finale liegt zeitlich zwischen den Gruppenspielen und käme nach
+    # Uhrzeit in die Mitte, nach roher Nummer (0) an den Anfang.
+    { '1' => '10:00', 'FIN' => '11:00', '2' => '12:00' }.each do |number, time|
+      build_game(game_day,
+                 build_team(league, club, "Heim #{number}"),
+                 build_team(league, club, "Gast #{number}"),
+                 game_number: number, start_time: time)
+    end
+
+    times = league.schedule.map { |game| game[:time] }
+
+    assert_equal %w[10:00 12:00 11:00], times
+  end
+
   # Die Tabellenseite liest dieselben beiden Logo-Methoden, nur je Team statt je
   # Spiel (empty_table_item). Sie gehört zu den meistaufgerufenen öffentlichen
   # Seiten und wird zusätzlich vorgerendert.
