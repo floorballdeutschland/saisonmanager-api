@@ -27,6 +27,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 - **Schiedsrichter werden nicht mehr über das Vereinskürzel zugeordnet**: Der Abgleich der FD-Schiedsrichterliste probierte nach Name und Registername auch das Vereinskürzel. Mit der Vier-Zeichen-Grenze ist das Kürzel ein Anzeigezeichen und kein Bezeichner mehr, 21 Vereine fielen dabei paarweise zusammen. Ein Treffer darauf wäre reihenweise mehrdeutig geworden, und mehrdeutig heißt im Abgleich: gar keine Zuordnung. Die Stufe entfällt deshalb; Name, Registername und die normalisierte Schreibweise bleiben, und wer über ein Kürzel zuordnen will, trägt es in die Alias-Liste ein, die direkt auf einen Verein zeigt.
 
+- **Zwei Adressen im Kontaktfeld werden nicht mehr angenommen**: Das Feld hatte keine Formatprüfung. Ein Verein hatte zwei Adressen mit Semikolon getrennt eingetragen, und beide bekamen nie etwas, weil das Feld als eine einzige Adresse verschickt wird. Die Eingabe wird jetzt geprüft, und wer mehrere Empfänger braucht, wählt sie darunter als Vereinsmanager aus.
+
 ## [1.81.0] - 2026-08-14
 
 ### Neu

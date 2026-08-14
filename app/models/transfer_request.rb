@@ -244,7 +244,7 @@ class TransferRequest < ApplicationRecord
 
     secondary_club_ids.each do |club_id|
       club = Club.find_by(id: club_id)
-      next unless club&.contact_email.present?
+      next if club&.notification_emails.blank?
 
       TransferRequestMailer.secondary_club_notification(self, club).deliver_later
     end
