@@ -5,8 +5,16 @@
 #   1. Alias-Liste (config/referee_club_aliases.yml)
 #   2. exakt clubs.name
 #   3. exakt clubs.long_name
-#   4. exakt clubs.short_name
-#   5. normalisiert (ohne „e.V.", ohne Satzzeichen) gegen name, dann long_name
+#   4. normalisiert (ohne „e.V.", ohne Satzzeichen) gegen name, dann long_name
+#
+# clubs.short_name ist bewusst keine Stufe mehr. Das Kürzel ist seit der
+# Längenbegrenzung auf vier Zeichen ein Anzeigezeichen für die Anzeigetafel des
+# Livestreams und kein Bezeichner: Auf Produktion fallen dabei 21 Vereine in
+# fünf Gruppen zusammen, allein sechsmal „U15 " für die U15-Trophy-Teams. Ein
+# Vereinsname aus der Schiedsrichter-Excel wäre damit reihenweise mehrdeutig
+# geworden, und mehrdeutig heißt hier: gar keine Zuordnung. Wo ein Kürzel
+# wirklich gebraucht wird, gehört es in die Alias-Liste, die direkt auf eine
+# Club-ID zeigt.
 #
 # Der Alias muss vorn stehen, weil ein exakter Namenstreffer sonst auf eine
 # Dublette zeigen kann: „SVGO Bremen" existierte kurzzeitig als eigener Verein
@@ -100,7 +108,6 @@ class RefereeClubLookup
     @clubs_by_id = @clubs.index_by(&:id)
     @by_name  = index_exact(:name)
     @by_long  = index_exact(:long_name)
-    @by_short = index_exact(:short_name)
     @by_normalized_name = index_normalized(:name)
     @by_normalized_long = index_normalized(:long_name)
   end
@@ -120,7 +127,7 @@ class RefereeClubLookup
   end
 
   def exact_match(key)
-    { name: @by_name, long_name: @by_long, short_name: @by_short }.each do |match_type, index|
+    { name: @by_name, long_name: @by_long }.each do |match_type, index|
       candidates = index[key]
       next if candidates.blank?
 

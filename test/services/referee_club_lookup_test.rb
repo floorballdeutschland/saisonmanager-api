@@ -32,8 +32,21 @@ class RefereeClubLookupTest < ActiveSupport::TestCase
     assert_equal :long_name, result.match_type
   end
 
-  test 'short_name greift' do
-    assert_equal :short_name, lookup.call('TVM').match_type
+  # Das Kuerzel ist seit der Vier-Zeichen-Grenze ein Anzeigezeichen fuer die
+  # Anzeigetafel und kein Bezeichner mehr: Auf Produktion faellt es bei 21
+  # Vereinen zusammen (sechsmal "U15 "). Ein Treffer darauf waere reihenweise
+  # mehrdeutig geworden, also gar keine Zuordnung. Wer ueber ein Kuerzel
+  # zuordnen will, nimmt die Alias-Liste, die direkt auf eine Club-ID zeigt.
+  test 'short_name ist keine Stufe mehr' do
+    assert_equal :none, lookup.call('TVM').match_type
+    assert_nil lookup.call('TVM').club_id
+  end
+
+  test 'ein Kuerzel laesst sich weiter per Alias zuordnen' do
+    result = lookup('TVM' => @short.id).call('TVM')
+
+    assert_equal @short.id, result.club_id
+    assert_equal :alias, result.match_type
   end
 
   test 'normalisiert: „e.V." und Satzzeichen fallen weg' do

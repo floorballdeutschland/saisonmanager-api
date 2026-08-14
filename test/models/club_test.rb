@@ -595,4 +595,48 @@ class ClubTest < ActiveSupport::TestCase
     assert_nil club.main_game_operation_id
     assert_nil club.home_game_operation, 'beide Wege muessen dasselbe sagen'
   end
+
+  # Das Kuerzel steht auf der Anzeigetafel des Livestreams; mehr als vier
+  # Zeichen sprengen dort die Bauchbinde.
+  test 'short_name darf hoechstens vier Zeichen haben' do
+    club = build(:club, short_name: 'ABCD')
+    assert_predicate club, :valid?
+
+    club.short_name = 'ABCDE'
+    assert_not club.valid?
+    assert_includes club.errors.attribute_names, :short_name
+  end
+
+  # Das Feld ist nullable, und 188 Mannschaften der laufenden Saison haengen an
+  # einem Verein ohne Kuerzel. Eine Pflichtangabe wuerde jedes Speichern dieser
+  # Vereine blockieren.
+  test 'short_name darf leer bleiben' do
+    assert_predicate build(:club, short_name: nil), :valid?
+    assert_predicate build(:club, short_name: ''), :valid?
+  end
+
+  # Bestandswerte sind laenger als die neue Grenze. Eine unbedingte Pruefung
+  # haette jedes Speichern dieser Vereine blockiert, auch das Deaktivieren, das
+  # in einer Maske ohne Kuerzel-Feld an einer Meldung ueber das Kuerzel
+  # gescheitert waere.
+  test 'ein zu langer Bestandswert blockiert Deaktivieren und andere Felder nicht' do
+    club = create(:club)
+    club.update_column(:short_name, 'Floorball Butzbach')
+    club.reload
+
+    assert club.update(contact_email: 'neu@example.org'), club.errors.full_messages.join(', ')
+    assert_nothing_raised { club.deactivate!(create(:user, :admin).id) }
+    assert_not_nil club.reload.deactivated_at
+    assert_nothing_raised { club.reactivate! }
+    assert_equal 'Floorball Butzbach', club.reload.short_name, 'der Wert bleibt, bis er geaendert wird'
+  end
+
+  test 'wer den Bestandswert anfasst, muss die Grenze einhalten' do
+    club = create(:club)
+    club.update_column(:short_name, 'Floorball Butzbach')
+    club.reload
+
+    assert_not club.update(short_name: 'ABCDE')
+    assert_includes club.errors.attribute_names, :short_name
+  end
 end

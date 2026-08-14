@@ -80,7 +80,6 @@ gem 'wkhtmltopdf-binary'
 
 # 6.0 update
 gem 'bootsnap'
-gem 'webpacker'
 
 gem 'sentry-rails'
 gem 'sentry-ruby'
