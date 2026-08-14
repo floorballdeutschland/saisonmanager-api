@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Vereinsmanager pflegen die Stammdaten ihres Vereins selbst**: Die Vereinsverwaltung war bisher dem Verband vorbehalten. Jede Änderung an Name, Kürzel, Registername, Kontaktadresse oder Vereinslogo musste beim Landesverband gemeldet und dort nachgetragen werden. Vereinsmanager sehen jetzt ihren eigenen Verein und ändern diese Angaben selbst. Was den Verein einordnet, bleibt beim Verband: Bundesland, Landesverband und Spielbetrieb sind für den Verein sichtbar, aber nicht änderbar, denn sie entscheiden mit darüber, wer den Verein verwaltet und wer seine Spieler sperren darf. Ebenso wenig kann ein Verein sich selbst deaktivieren oder einen weiteren Verein anlegen. Der Verband sieht und ändert unverändert alles.
+
 ## [1.81.0] - 2026-08-14
 
 ### Neu

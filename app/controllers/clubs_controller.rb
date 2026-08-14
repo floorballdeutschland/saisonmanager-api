@@ -266,8 +266,9 @@ class ClubsController < ApplicationController
   end
 
   # Voller Vereinsdatensatz (inkl. contact_email) für die Vereinsverwaltung –
-  # nur Admin/SBK des Spielbetriebs (analog :update_club) sowie LV-Rollen mit
-  # aktueller Vereins-Freigabe (StateAssociationRelease, Lesezugriff wie in
+  # Admin/SBK des Spielbetriebs und der Vereinsmanager des Vereins selbst
+  # (beide über :update_own_club) sowie LV-Rollen mit aktueller
+  # Vereins-Freigabe (StateAssociationRelease, Lesezugriff wie in
   # Club.admin_user_clubs).
   def admin_club
     if current_user
@@ -295,7 +296,7 @@ class ClubsController < ApplicationController
       # die Änderung am Verein selbst.
       if create_modus
         create_club
-      elsif (club = Club.find(params[:id])).user_permissions(current_user).include?(:update_club)
+      elsif (club = Club.find(params[:id])).user_permissions(current_user).include?(:update_own_club)
         update_club(club)
       else
         render json: { message: 'Keine Berechtigung' }, status: :forbidden
@@ -310,7 +311,7 @@ class ClubsController < ApplicationController
     if current_user
       club = Club.find(params[:id])
 
-      unless club.user_permissions(current_user).include?(:update_club)
+      unless club.user_permissions(current_user).include?(:update_own_club)
         return render json: { message: 'Keine Berechtigung' }, status: :forbidden
       end
 
@@ -338,6 +339,22 @@ class ClubsController < ApplicationController
     params.require(:club).permit(:name, :short_name, :long_name, :state, :state_association_id, :contact_email)
   end
 
+  # Vereinsmanager-Fassung: ohne die Felder, die den Verein einordnen.
+  # `state` und `state_association_id` entscheiden mit darüber, wer den Verein
+  # verwalten und wer seine Spieler sperren darf – ein Verein könnte sich sonst
+  # selbst in einen anderen Landesverband umhängen.
+  def restricted_club_params
+    params.require(:club).permit(:name, :short_name, :long_name, :contact_email)
+  end
+
+  def safe_club_params(club)
+    full_club_access?(club) ? club_params : restricted_club_params
+  end
+
+  def full_club_access?(club)
+    club.user_permissions(current_user).include?(:update_club)
+  end
+
   # Vereinsänderung. Der Spielbetrieb ist optional – kommt er mit, wird der
   # Heimat-Eintrag ersetzt.
   def update_club(club)
@@ -354,7 +371,12 @@ class ClubsController < ApplicationController
     # Eine ausdrückliche 0 oder eine unbekannte Kennung laufen weiterhin in die
     # Meldung: in Ruby ist `0.present?` true, nur nil und "" gelten hier als
     # „nicht mitgeschickt".
-    if params[:game_operation_id].present?
+    # `full_club_access?` zuerst: Das Formular schickt den Verein unverändert
+    # zurück, also auch bei einem Vereinsmanager immer ein game_operation_id.
+    # Ohne diese Klammer liefe der Zweig für ihn mit und schriebe den
+    # Heimat-Eintrag neu – bei gleicher Kennung folgenlos, aber es wäre der
+    # einzige Pfad, über den er den Spielbetrieb überhaupt anfassen kann.
+    if full_club_access?(club) && params[:game_operation_id].present?
       target = resolve_game_operation(params[:game_operation_id])
 
       # Eine 0 oder eine unbekannte ID hätte den Heimat-Eintrag auf einen
@@ -382,7 +404,7 @@ class ClubsController < ApplicationController
       club.game_operations_hash = [{ 'home_game_operation' => true, 'game_operation_id' => target.id }]
     end
 
-    if club.update(club_params)
+    if club.update(safe_club_params(club))
       render json: club.full_hash
     else
       render json: club.errors, status: :unprocessable_entity
@@ -527,7 +549,7 @@ class ClubsController < ApplicationController
   end
 
   def can_read_admin_club?(club)
-    return true if club.user_permissions(current_user).include?(:update_club)
+    return true if club.user_permissions(current_user).include?(:update_own_club)
 
     ph = current_user.permission_hash
     go_ids = (ph[:admin].to_a + ph[:sbk].to_a).reject(&:zero?)

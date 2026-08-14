@@ -190,12 +190,19 @@ class Club < ApplicationRecord
     admin = ph[:admin].present? && (global_or_go & ph[:admin]).any?
     sbk = ph[:sbk].present? && (global_or_go & ph[:sbk]).any?
 
+    vm = ph[:vm].present? && ph[:vm].include?(id)
+
     perm << :update_club if admin || sbk
     perm << :update_player if admin || sbk
 
-    if admin || sbk || ph[:vm].present? && ph[:vm].include?(id)
-      perm << :create_player
-    end
+    # Bewusst getrennt von :update_club. Der Vereinsmanager pflegt die
+    # Stammdaten seines eigenen Vereins, darf aber weder die Einordnung
+    # (Bundesland, Landesverband, Spielbetrieb) ändern noch den Verein
+    # deaktivieren. Beides hängt an :update_club – deaktivieren würde sich
+    # der Verein sonst selbst.
+    perm << :update_own_club if admin || sbk || vm
+
+    perm << :create_player if admin || sbk || vm
 
     perm
   end

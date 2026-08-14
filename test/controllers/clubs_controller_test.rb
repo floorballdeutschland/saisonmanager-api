@@ -583,6 +583,146 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_response :forbidden
   end
 
+  # --- Vereinsmanager in der Vereinsverwaltung ---------------------------
+  #
+  # Der VM pflegt die Stammdaten seines eigenen Vereins. Nicht ändern darf er,
+  # was den Verein einordnet: Bundesland, Landesverband und Spielbetrieb. Der
+  # Spielverbund hat keine eigene Spalte, er hängt am Landesverband.
+
+  test 'admin_club liefert dem VM den eigenen Verein samt contact_email' do
+    club = create(:club, contact_email: 'info@verein.example')
+    login(create(:user, :vm, club_id: club.id))
+
+    get "/api/v2/admin/clubs/#{club.id}"
+
+    assert_response :success
+    assert_equal 'info@verein.example', JSON.parse(response.body)['contact_email']
+  end
+
+  test 'admin_club ist für den VM eines anderen Vereins gesperrt' do
+    fremd = create(:club)
+    login(create(:user, :vm, club_id: create(:club).id))
+
+    get "/api/v2/admin/clubs/#{fremd.id}"
+
+    assert_response :forbidden
+  end
+
+  test 'admin_club_update laesst den VM Name, Kuerzel und Kontakt aendern' do
+    club = create(:club, name: 'Alt', short_name: 'ALT', contact_email: 'alt@example.org')
+    login(create(:user, :vm, club_id: club.id))
+
+    post '/api/v2/admin/clubs', params: { id: club.id,
+                                          club: { name: 'Neu', short_name: 'NEU',
+                                                  long_name: 'Neu e.V.',
+                                                  contact_email: 'neu@example.org' } }
+
+    assert_response :success
+    club.reload
+    assert_equal 'Neu', club.name
+    assert_equal 'NEU', club.short_name
+    assert_equal 'Neu e.V.', club.long_name
+    assert_equal 'neu@example.org', club.contact_email
+  end
+
+  # Kern der Einschränkung: Der Landesverband entscheidet mit darüber, wer den
+  # Verein verwaltet und wer seine Spieler sperren darf. Könnte der VM ihn
+  # setzen, hängte er seinen Verein an einen fremden Verband um.
+  test 'admin_club_update ignoriert Bundesland und Landesverband vom VM' do
+    sa = create(:state_association)
+    fremd_sa = create(:state_association)
+    club = create(:club, state: 'de-he', state_association_id: sa.id)
+    login(create(:user, :vm, club_id: club.id))
+
+    post '/api/v2/admin/clubs', params: { id: club.id,
+                                          club: { name: 'Neu', state: 'de-by',
+                                                  state_association_id: fremd_sa.id } }
+
+    assert_response :success
+    club.reload
+    assert_equal 'Neu', club.name
+    assert_equal 'de-he', club.state
+    assert_equal sa.id, club.state_association_id
+  end
+
+  # Das Formular schickt den Verein unverändert zurück, also immer auch ein
+  # game_operation_id. Für den VM muss dieser Zweig komplett aussetzen.
+  test 'admin_club_update laesst den VM den Spielbetrieb nicht wechseln' do
+    go = create(:game_operation)
+    fremd_go = create(:game_operation)
+    club = create(:club, game_operations_hash: [{ 'game_operation_id' => go.id,
+                                                  'home_game_operation' => true }])
+    login(create(:user, :vm, club_id: club.id))
+
+    post '/api/v2/admin/clubs', params: { id: club.id, game_operation_id: fremd_go.id,
+                                          club: { name: 'Neu' } }
+
+    assert_response :success
+    assert_equal go.id, club.reload.main_game_operation_id
+  end
+
+  test 'admin_club_update ist für den VM eines anderen Vereins gesperrt' do
+    fremd = create(:club, name: 'Alt')
+    login(create(:user, :vm, club_id: create(:club).id))
+
+    post '/api/v2/admin/clubs', params: { id: fremd.id, club: { name: 'Neu' } }
+
+    assert_response :forbidden
+    assert_equal 'Alt', fremd.reload.name
+  end
+
+  # Deaktivieren hängt weiterhin an :update_club. Ohne die getrennte
+  # Berechtigung könnte sich ein Verein mit dem Schreibrecht selbst abschalten.
+  test 'admin_club_deactivate bleibt für den VM gesperrt' do
+    club = create(:club)
+    login(create(:user, :vm, club_id: club.id))
+
+    post "/api/v2/admin/clubs/#{club.id}/deactivate"
+
+    assert_response :forbidden
+    assert_nil club.reload.deactivated_at
+  end
+
+  test 'admin_club_reactivate bleibt für den VM gesperrt' do
+    club = create(:club)
+    club.deactivate!(create(:user, :admin).id)
+    login(create(:user, :vm, club_id: club.id))
+
+    post "/api/v2/admin/clubs/#{club.id}/reactivate"
+
+    assert_response :forbidden
+    assert_not_nil club.reload.deactivated_at
+  end
+
+  test 'admin_club_update verweigert dem VM die Anlage eines Vereins' do
+    go = create(:game_operation)
+    login(create(:user, :vm, club_id: create(:club).id))
+
+    assert_no_difference('Club.count') do
+      post '/api/v2/admin/clubs', params: create_club_params(game_operation_id: go.id)
+    end
+
+    assert_response :forbidden
+  end
+
+  test 'admin_club_update laesst SBK Bundesland und Landesverband weiter aendern' do
+    sa = create(:state_association)
+    ziel_sa = create(:state_association)
+    go = create(:game_operation, state_association_id: sa.id)
+    club = create(:club, state: 'de-he', state_association_id: sa.id,
+                         game_operations_hash: [{ 'game_operation_id' => go.id,
+                                                  'home_game_operation' => true }])
+    login(create(:user, :sbk_scoped, game_operation_id: go.id))
+
+    post '/api/v2/admin/clubs', params: { id: club.id, game_operation_id: go.id,
+                                          club: { state: 'de-by', state_association_id: ziel_sa.id } }
+
+    assert_response :success
+    club.reload
+    assert_equal 'de-by', club.state
+    assert_equal ziel_sa.id, club.state_association_id
+  end
+
   private
 
   def login(user)
