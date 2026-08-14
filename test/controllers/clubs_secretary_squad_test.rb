@@ -61,6 +61,33 @@ class ClubsSecretarySquadTest < ActionDispatch::IntegrationTest
     assert_not body.key?('required_documents')
   end
 
+  # Der Verlaufseintrag einer Lizenz traegt den Freitext-Grund einer Sperre und
+  # die verfuegende Stelle. Beides darf am Link ohne Benutzerkonto nicht
+  # mitkommen, weder als Feld noch irgendwo im Antwortkoerper.
+  test 'der Lizenzstatus am Token verraet weder Sperrgrund noch verfuegende Stelle' do
+    official = create(:user, :sbk_global, first_name: 'Uta', last_name: 'Unbekannt')
+    license = @player.licenses.first
+    license['history'] << {
+      'license_status_id' => License::SUSPENDED,
+      'reason' => 'Rote Karte im Spiel gegen XY',
+      'created_by' => official.id,
+      'created_at' => Time.current.iso8601
+    }
+    @player.update!(licenses: @player.licenses)
+
+    get "/api/v2/user/team/#{@home_team.id}/licenses",
+        params: { secretary_token: @token }, headers: { 'X-Api-Key' => API_KEY }
+
+    assert_response :success
+    status = JSON.parse(response.body)['current_requests'].sole['current_status']
+
+    assert_equal License::SUSPENDED, status['license_status_id']
+    assert_equal %w[license_status license_status_id], status.keys.sort
+    assert_not_includes response.body, 'Rote Karte'
+    assert_not_includes response.body, official.user_name
+    assert_not_includes response.body, 'Unbekannt'
+  end
+
   test 'eine Mannschaft ausserhalb der abgedeckten Spieltage bleibt gesperrt' do
     get "/api/v2/user/team/#{@foreign_team.id}/licenses",
         params: { secretary_token: @token }, headers: { 'X-Api-Key' => API_KEY }

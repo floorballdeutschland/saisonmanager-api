@@ -357,11 +357,29 @@ class ClubsController < ApplicationController
         last_name: player.last_name,
         first_name: player.first_name,
         birthdate: player.birthdate,
-        current_status: player.current_license_status(license)
+        current_status: secretary_license_status(player, license)
       }
     end
 
     { team: team.full_hash, current_requests: current_requests }
+  end
+
+  # Nur Kennung und Anzeigename des Status, nicht der Verlaufseintrag selbst.
+  # Der trägt `reason` (Freitext einer Sperre oder Deaktivierung, z.B. aus
+  # `Player#suspend!`), `created_by` und über `current_license_status` auch
+  # `created_by_name`, also Name und Benutzername der verfügenden Stelle. Nichts
+  # davon gehört an einen Link, der ohne Benutzerkonto offensteht. Gesperrte
+  # Personen bleiben in `Player.active`, der Fall ist also erreichbar.
+  #
+  # `current_license_status` bleibt trotz des überflüssigen Namensaufrufs die
+  # Quelle: Welcher Verlaufseintrag der neueste ist, soll an einer Stelle
+  # entschieden werden, nicht hier ein zweites Mal.
+  def secretary_license_status(player, license)
+    status = player.current_license_status(license)
+    return nil if status.blank?
+
+    { license_status_id: status['license_status_id'].to_i,
+      license_status: status[:license_status] }
   end
 
   def team_licenses_hash(team, leagues)
