@@ -4,6 +4,13 @@ class Team < ApplicationRecord
 
   validates :name, presence: true
 
+  # Vier Zeichen wie beim Verein, plus Leerzeichen und römische Nummer für die
+  # zweite und dritte Mannschaft ("BW96 II"). Auf Produktion tragen 104 der 502
+  # Mannschaften der laufenden Saison bereits ein Leerzeichen im Kürzel.
+  SHORT_NAME_MAX = 7
+
+  validates :short_name, length: { maximum: SHORT_NAME_MAX }, allow_blank: true
+
   # Siehe Game: Einladungen zum Schiri-Feedback dürfen ihr Spiel bzw. ihre
   # Mannschaft nicht überleben (gültiger Token plus Mailadresse).
   has_many :referee_feedback_invitations, dependent: :destroy
@@ -154,14 +161,22 @@ class Team < ApplicationRecord
     }
   end
 
-  # Kürzel für den Ticker. teams.short_name ist nullable und hat keine
-  # Validierung; ohne Wert starb `slice` mit NoMethodError und riss die ganze
-  # Ticker-Antwort mit (die v1-Route liefert alle Spiele einer Liga auf einmal,
-  # ein Team ohne Kürzel machte also die komplette Anzeigetafel unbrauchbar).
-  # Ersatzweise die ersten Zeichen des Namens, wie sie das Frontend ohne Logo
-  # ohnehin anzeigen würde.
+  # Kürzel für Ticker und Livestream-Overlay, in dieser Reihenfolge:
+  # Mannschaft, sonst Verein, sonst Name.
+  #
+  # Der Verein als Zwischenstufe, weil 449 Mannschaften gar kein eigenes Kürzel
+  # tragen; für die stand bisher der abgeschnittene Name auf der Anzeigetafel.
+  # Der Name bleibt letzte Rettung: teams.short_name ist nullable, und ohne
+  # Wert starb `slice` mit NoMethodError und riss die ganze Ticker-Antwort mit
+  # (die v1-Route liefert alle Spiele einer Liga auf einmal, eine Mannschaft
+  # ohne Kürzel machte also die komplette Anzeigetafel unbrauchbar).
+  #
+  # `.split(' ').first` ist bewusst entfallen: Es warf die römische Nummer weg,
+  # "ETV II" wurde zu "ETV". Die zweite Mannschaft war damit auf der
+  # Anzeigetafel nicht von der ersten zu unterscheiden.
   def ticker_short_name
-    (short_name.presence || name).to_s.slice(0, 5).split(' ').first.to_s
+    roh = short_name.presence || club&.short_name.presence || name
+    roh.to_s.strip.slice(0, SHORT_NAME_MAX).to_s.strip
   end
 
   def user_permissions(user)

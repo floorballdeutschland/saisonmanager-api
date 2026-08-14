@@ -9,6 +9,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Die Anzeigetafel des Livestreams zeigt endlich das richtige Kürzel**: Aus „Name (kurz)" wird „Kürzel", beim Verein auf 4 Zeichen begrenzt, bei der Mannschaft auf 7. Die sieben Zeichen sind bewusst gewählt: vier für das Kürzel, dazu Leerzeichen und römische Nummer für die zweite und dritte Mannschaft. Genau daran scheiterte die Anzeigetafel bisher. Sie schnitt bei fünf Zeichen ab und warf alles nach dem ersten Wort weg, aus „BW96 II" wurde „BW96" und die zweite Mannschaft war von der ersten nicht zu unterscheiden. 151 Mannschaften der laufenden Saison erscheinen dadurch künftig anders, fast durchweg vollständiger als bisher. Trägt eine Mannschaft gar kein Kürzel, nimmt die Anzeigetafel jetzt das des Vereins, statt den Namen abzuschneiden; das Feld ist deshalb keine Pflichtangabe mehr. Bestandswerte über der neuen Länge werden gekürzt, ausgenommen die Vereine, deren Kürzel dabei mit einem anderen zusammenfiele. Die bleiben unverändert und brauchen ein eigenes Kürzel vom jeweiligen Verband.
+
+### Behoben
+
+- **Schiedsrichter werden nicht mehr über das Vereinskürzel zugeordnet**: Der Abgleich der FD-Schiedsrichterliste probierte nach Name und Registername auch das Vereinskürzel. Mit der Vier-Zeichen-Grenze ist das Kürzel ein Anzeigezeichen und kein Bezeichner mehr, 21 Vereine fielen dabei paarweise zusammen. Ein Treffer darauf wäre reihenweise mehrdeutig geworden, und mehrdeutig heißt im Abgleich: gar keine Zuordnung. Die Stufe entfällt deshalb; Name, Registername und die normalisierte Schreibweise bleiben, und wer über ein Kürzel zuordnen will, trägt es in die Alias-Liste ein, die direkt auf einen Verein zeigt.
+
 ## [1.81.0] - 2026-08-14
 
 ### Neu

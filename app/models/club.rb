@@ -4,6 +4,14 @@ class Club < ApplicationRecord
 
   has_one_attached :logo
 
+  # Das Kürzel ist ein Anzeigezeichen, kein Name: Es steht auf der
+  # Anzeigetafel des Livestreams, wo mehr als vier Zeichen die Bauchbinde
+  # sprengen. Bestandswerte sind länger, deshalb nur beim Speichern geprüft
+  # und Leerwerte erlaubt (das Feld ist nullable).
+  SHORT_NAME_MAX = 4
+
+  validates :short_name, length: { maximum: SHORT_NAME_MAX }, allow_blank: true
+
   scope :active, -> { where(deactivated_at: nil) }
 
   def deactivate!(user_id)

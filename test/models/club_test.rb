@@ -595,4 +595,23 @@ class ClubTest < ActiveSupport::TestCase
     assert_nil club.main_game_operation_id
     assert_nil club.home_game_operation, 'beide Wege muessen dasselbe sagen'
   end
+
+  # Das Kuerzel steht auf der Anzeigetafel des Livestreams; mehr als vier
+  # Zeichen sprengen dort die Bauchbinde.
+  test 'short_name darf hoechstens vier Zeichen haben' do
+    club = build(:club, short_name: 'ABCD')
+    assert_predicate club, :valid?
+
+    club.short_name = 'ABCDE'
+    assert_not club.valid?
+    assert_includes club.errors.attribute_names, :short_name
+  end
+
+  # Das Feld ist nullable, und 188 Mannschaften der laufenden Saison haengen an
+  # einem Verein ohne Kuerzel. Eine Pflichtangabe wuerde jedes Speichern dieser
+  # Vereine blockieren.
+  test 'short_name darf leer bleiben' do
+    assert_predicate build(:club, short_name: nil), :valid?
+    assert_predicate build(:club, short_name: ''), :valid?
+  end
 end

@@ -14,8 +14,17 @@ class TeamTest < ActiveSupport::TestCase
   end
 
   # ---------------------------------------------------------------------------
-  # ticker_hash – teams.short_name ist nullable und ohne Validierung
+  # Kuerzel: teams.short_name ist nullable, Reihenfolge Mannschaft > Verein > Name
   # ---------------------------------------------------------------------------
+
+  test 'short_name darf hoechstens sieben Zeichen haben' do
+    team = build(:team, short_name: 'BW96 II')
+    assert_predicate team, :valid?
+
+    team.short_name = 'BW96 III'
+    assert_not team.valid?
+    assert_includes team.errors.attribute_names, :short_name
+  end
 
   test 'ticker_hash nutzt das hinterlegte Kuerzel' do
     team = create(:team, name: 'Floorball Musterstadt', short_name: 'FBMS')
@@ -23,23 +32,43 @@ class TeamTest < ActiveSupport::TestCase
     assert_equal 'FBMS', team.ticker_hash[:shortName]
   end
 
-  test 'ticker_hash kuerzt ein mehrteiliges Kuerzel am ersten Wort' do
-    team = create(:team, short_name: 'FBM Zweite')
+  # Frueher schnitt `.split(' ').first` alles nach dem ersten Wort ab: Die
+  # zweite Mannschaft hiess auf der Anzeigetafel wie die erste.
+  test 'ticker_hash behaelt die roemische Nummer der zweiten Mannschaft' do
+    team = create(:team, short_name: 'BW96 II')
 
-    assert_equal 'FBM', team.ticker_hash[:shortName]
+    assert_equal 'BW96 II', team.ticker_hash[:shortName]
   end
 
-  test 'ticker_hash faellt ohne Kuerzel auf den Namen zurueck' do
+  test 'ticker_hash kappt ein zu langes Kuerzel bei sieben Zeichen' do
+    # Bestandswerte sind laenger als die neue Grenze; die Validierung greift
+    # erst beim naechsten Speichern, die Anzeige muss sofort passen.
+    team = create(:team, short_name: 'SGK')
+    team.update_column(:short_name, 'SG Kaufering')
+
+    assert_equal 'SG Kauf', team.ticker_hash[:shortName]
+  end
+
+  test 'ticker_hash faellt ohne Kuerzel auf das Vereinskuerzel zurueck' do
+    club = create(:club, name: 'TV Lilienthal', short_name: 'TVL')
+    team = create(:team, name: 'Lilienthaler Woelfe', short_name: nil, club: club)
+
+    assert_equal 'TVL', team.ticker_hash[:shortName]
+  end
+
+  test 'ticker_hash faellt ohne Kuerzel und ohne Vereinskuerzel auf den Namen zurueck' do
     # Ohne Rueckfall starb slice mit NoMethodError und riss die ganze
     # Ticker-Antwort der Liga mit.
-    team = create(:team, name: 'Musterstadt', short_name: nil)
+    club = create(:club, short_name: nil)
+    team = create(:team, name: 'Musterstadt', short_name: nil, club: club)
 
-    assert_equal 'Muste', team.ticker_hash[:shortName]
+    assert_equal 'Musters', team.ticker_hash[:shortName]
   end
 
-  test 'ticker_hash faellt auch bei leerem Kuerzel auf den Namen zurueck' do
-    team = create(:team, name: 'Musterstadt', short_name: '')
+  test 'ticker_hash behandelt ein leeres Kuerzel wie ein fehlendes' do
+    club = create(:club, short_name: 'MUS')
+    team = create(:team, name: 'Musterstadt', short_name: '', club: club)
 
-    assert_equal 'Muste', team.ticker_hash[:shortName]
+    assert_equal 'MUS', team.ticker_hash[:shortName]
   end
 end
