@@ -1,6 +1,14 @@
 class ClubsController < ApplicationController
   include LicenseDocumentPresentation
   include LicenseAccessScope
+  include SecretaryTokenAuthenticatable
+
+  # `user_team_licenses` ist die einzige Aktion hier, die auch ohne Benutzerkonto
+  # erreichbar sein muss: Der Kader-Dialog im Spielbericht läuft beim
+  # Spielsekretariat auf einem Spielsekretariats-Link, und dort ist der Token die
+  # Berechtigung. Ohne Login und ohne brauchbaren Token bleibt es bei 401.
+  skip_before_action :authenticate_user, only: %i[user_team_licenses]
+  before_action :authenticate_user_or_secretary_link, only: %i[user_team_licenses]
 
   def user_clubs_and_teams
     ph = current_user.permission_hash
@@ -85,79 +93,28 @@ class ClubsController < ApplicationController
     }
   end
 
+  # Kader und Lizenzstand einer Mannschaft. Zwei Wege hierher:
+  #
+  # (a) eingeloggt: Admin, SBK der Liga, VM/TM der beteiligten Vereine bekommen
+  #     das vollständige Team-Lizenzwesen.
+  # (b) per Spielsekretariats-Link, also ohne Benutzerkonto: nur die Kaderliste,
+  #     und nur für Mannschaften, die an einem vom Link abgedeckten Spieltag
+  #     spielen.
+  #
+  # (b) fehlte, und das Sekretariat bezahlte es teuer: Der Kader-Dialog im
+  # Spielbericht ruft diesen Endpunkt, bekam 401, und der ErrorInterceptor im
+  # Frontend meldete daraufhin ab. Der Link erlaubt das Aufstellen
+  # (GamesController::SECRETARY_ACTIONS enthält add_player_to_lineup), nur an die
+  # Liste der aufstellbaren Personen kam niemand, und wer es am Spieltag
+  # versuchte, verlor seinen Zugang.
   def user_team_licenses
-    ph = current_user.permission_hash
-
     team = Team.find(params[:id])
-
-    # get leagues for team
     leagues = team.leagues
-    # get playing clubs, including sg
-    teams = leagues.map(&:teams).flatten.compact.uniq
-    club_ids = teams.map(&:all_club_ids).flatten.compact.uniq
-    # get hosting clubs
-    all_club_ids = [club_ids, leagues.map { |l| l.game_days.map(&:club_id) }].flatten.compact.uniq
 
-    # Rollen additiv: ein VM, der zugleich TM eines Teams außerhalb seiner
-    # Vereine ist, wurde von der elsif-Kette sonst am TM-Zweig vorbeigeleitet.
-    allowed = ph[:admin].present? || sbk_can_access_leagues?(ph, leagues) ||
-              # vm: permission for one of those clubs?
-              (ph[:vm].present? && ph[:vm].intersection(all_club_ids).present?) ||
-              # tm: get clubs for league teams of given team, permission for one of those?
-              (ph[:tm].present? && ph[:tm].intersection(teams.map(&:id)).present?)
-
-    if allowed
-      result = {}
-
-      result[:team] = team.full_hash
-
-      # Maßgeblich ist der LV des Spielbetriebs der Liga, nicht der des Vereins:
-      # Zuständig für den Spielbetrieb einer Liga ist allein deren Verband. Erlaubnis
-      # und Zeitfenster müssen aus derselben Liga stammen (League#express_license_possible?).
-      result[:express_license_enabled] = leagues.any?(&:express_license_possible?)
-      # Elternzustimmung: wird pro Liga über das Flag parental_consent_required
-      # gesteuert. Das Flag steuert den Datenschutz-Block im Antragsformular;
-      # als Pflichtdokument steckt die Zustimmung in required_documents und wird
-      # dort wie jede andere Dokumentart nach Alter aufgelöst.
-      # Ersetzt die frühere is_buli-Ableitung über league_classes.
-      result[:parental_consent_required] = leagues.any?(&:parental_consent_required)
-      result[:required_documents] = leagues.flat_map { |l| league_required_document_keys(l) }.uniq
-      # Katalog-Metadaten (Name, Vorlage, Gültigkeit, Altersgrenze) zu den
-      # geforderten Dokumentarten – fürs Upload-UI im Team-Lizenzwesen.
-      catalog = document_type_catalog(result[:required_documents] + ['parental_consent'])
-      result[:document_types] = catalog.values.sort_by(&:name).map { |dt| document_type_json(dt) }
-
-      clubs = Club.find(team.all_club_ids)
-      all_players = clubs.map(&:players).flatten.compact
-
-      result[:current_requests] = []
-      result[:other_players] = []
-
-      all_players.each do |p|
-        l = p.licenses_by_team(team.id)
-        if l.present?
-          item = p.full_hash
-          item[:team_license] = l
-          cs = p.current_license_status(l)
-          item[:current_status] = cs
-          item[:can_withdraw] = (cs['license_status_id'] == License::REQUESTED)
-          last_requested = l['history'].select { |h| h['license_status_id'].to_i == License::REQUESTED }
-                                       .max_by { |h| h['created_at'] }
-          item[:grace_period_ends_at] = last_requested ? (last_requested['created_at'].to_time + License::GRACE_PERIOD).iso8601 : nil
-          # Altersabhängige Dokumentarten: Stichtag = Datum der Lizenzbeantragung.
-          item[:required_documents] = DocumentType.required_keys(
-            result[:required_documents],
-            birthdate: p.birthdate,
-            requested_at: license_requested_at(l),
-            catalog: catalog
-          )
-          result[:current_requests] << item
-        else
-          result[:other_players] << p.meta_hash
-        end
-      end
-
-      render json: result
+    if current_user && user_may_read_team_licenses?(leagues)
+      render json: team_licenses_hash(team, leagues)
+    elsif secretary_token_permits_team?(team)
+      render json: secretary_team_licenses_hash(team)
     else
       render json: { success: false }, status: :forbidden
     end
@@ -338,6 +295,154 @@ class ClubsController < ApplicationController
   end
 
   private
+
+  # Der Token wird gelesen, aber nicht erzwungen (`set_secretary_link_if_present`
+  # statt `authenticate_with_secretary_token_or_user`): Der
+  # SecretaryTokenInterceptor im Frontend hängt einen im sessionStorage liegenden
+  # Token an JEDE Anfrage. Ein veralteter Token brächte einer angemeldeten Person
+  # sonst einen 401 ein, obwohl ihre Sitzung gilt, und der ErrorInterceptor
+  # meldet auf 401 ab. Der Login hat hier also Vorrang, der Token ist der
+  # Ersatzweg.
+  def authenticate_user_or_secretary_link
+    set_secretary_link_if_present
+    return if current_user || @secretary_link
+
+    render json: { success: false,
+                   message: 'Nicht angemeldet, und kein gültiger Spielsekretariats-Link.' },
+           status: :unauthorized
+  end
+
+  def user_may_read_team_licenses?(leagues)
+    ph = current_user.permission_hash
+
+    # get playing clubs, including sg
+    teams = leagues.map(&:teams).flatten.compact.uniq
+    club_ids = teams.map(&:all_club_ids).flatten.compact.uniq
+    # get hosting clubs
+    all_club_ids = [club_ids, leagues.map { |l| l.game_days.map(&:club_id) }].flatten.compact.uniq
+
+    # Rollen additiv: ein VM, der zugleich TM eines Teams außerhalb seiner
+    # Vereine ist, wurde von der elsif-Kette sonst am TM-Zweig vorbeigeleitet.
+    ph[:admin].present? || sbk_can_access_leagues?(ph, leagues) ||
+      # vm: permission for one of those clubs?
+      (ph[:vm].present? && ph[:vm].intersection(all_club_ids).present?) ||
+      # tm: get clubs for league teams of given team, permission for one of those?
+      (ph[:tm].present? && ph[:tm].intersection(teams.map(&:id)).present?)
+  end
+
+  # Der Link ist über Spieltage ausgestellt (eine Halle an einem Tag, ggf.
+  # mehrere Ligen). Ein Kader gehört dazu, wenn die Mannschaft an einem dieser
+  # Spieltage ein Spiel hat – dieselbe Grenze wie beim Spielbericht selbst
+  # (secretary_token_permits_game?), nur von der Mannschaft aus gefragt.
+  def secretary_token_permits_team?(team)
+    game_day_ids = @secretary_link&.covered_game_day_ids
+    return false if game_day_ids.blank?
+
+    Game.where(game_day_id: game_day_ids)
+        .where('home_team_id = :team_id OR guest_team_id = :team_id', team_id: team.id)
+        .exists?
+  end
+
+  # Für das Sekretariat bewusst nur, was der Aufstellungsdialog liest: Name,
+  # Geburtsdatum (Kennzeichnung Minderjähriger) und der Lizenzstatus, nach dem
+  # der Dialog die Aufstellbaren filtert. Kein `Player#full_hash`, das trüge
+  # E-Mail-Adresse, Vereinshistorie und Deaktivierungsgrund in eine Ansicht, die
+  # ohne Benutzerkonto offensteht; und kein Lizenzwesen (Pflichtdokumente,
+  # Rücknahme, Express-Lizenz), das dem Sekretariat nicht zusteht.
+  #
+  # Die Liste ist nicht auf erteilte Lizenzen verkürzt: Der Dialog blendet
+  # Nicht-Erteilte selbst aus, zeigt aber weiterhin, wer trotzdem in der
+  # Aufstellung steht – sonst ließe sich ein solcher Eintrag nicht mehr entfernen.
+  def secretary_team_licenses_hash(team)
+    players = Club.where(id: team.all_club_ids).flat_map(&:players).compact.uniq
+
+    current_requests = players.filter_map do |player|
+      license = player.licenses_by_team(team.id)
+      next if license.blank?
+
+      {
+        id: player.id,
+        last_name: player.last_name,
+        first_name: player.first_name,
+        birthdate: player.birthdate,
+        current_status: secretary_license_status(player, license)
+      }
+    end
+
+    { team: team.full_hash, current_requests: current_requests }
+  end
+
+  # Nur Kennung und Anzeigename des Status, nicht der Verlaufseintrag selbst.
+  # Der trägt `reason` (Freitext einer Sperre oder Deaktivierung, z.B. aus
+  # `Player#suspend!`), `created_by` und über `current_license_status` auch
+  # `created_by_name`, also Name und Benutzername der verfügenden Stelle. Nichts
+  # davon gehört an einen Link, der ohne Benutzerkonto offensteht. Gesperrte
+  # Personen bleiben in `Player.active`, der Fall ist also erreichbar.
+  #
+  # `current_license_status` bleibt trotz des überflüssigen Namensaufrufs die
+  # Quelle: Welcher Verlaufseintrag der neueste ist, soll an einer Stelle
+  # entschieden werden, nicht hier ein zweites Mal.
+  def secretary_license_status(player, license)
+    status = player.current_license_status(license)
+    return nil if status.blank?
+
+    { license_status_id: status['license_status_id'].to_i,
+      license_status: status[:license_status] }
+  end
+
+  def team_licenses_hash(team, leagues)
+    result = {}
+
+    result[:team] = team.full_hash
+
+    # Maßgeblich ist der LV des Spielbetriebs der Liga, nicht der des Vereins:
+    # Zuständig für den Spielbetrieb einer Liga ist allein deren Verband. Erlaubnis
+    # und Zeitfenster müssen aus derselben Liga stammen (League#express_license_possible?).
+    result[:express_license_enabled] = leagues.any?(&:express_license_possible?)
+    # Elternzustimmung: wird pro Liga über das Flag parental_consent_required
+    # gesteuert. Das Flag steuert den Datenschutz-Block im Antragsformular;
+    # als Pflichtdokument steckt die Zustimmung in required_documents und wird
+    # dort wie jede andere Dokumentart nach Alter aufgelöst.
+    # Ersetzt die frühere is_buli-Ableitung über league_classes.
+    result[:parental_consent_required] = leagues.any?(&:parental_consent_required)
+    result[:required_documents] = leagues.flat_map { |l| league_required_document_keys(l) }.uniq
+    # Katalog-Metadaten (Name, Vorlage, Gültigkeit, Altersgrenze) zu den
+    # geforderten Dokumentarten – fürs Upload-UI im Team-Lizenzwesen.
+    catalog = document_type_catalog(result[:required_documents] + ['parental_consent'])
+    result[:document_types] = catalog.values.sort_by(&:name).map { |dt| document_type_json(dt) }
+
+    clubs = Club.find(team.all_club_ids)
+    all_players = clubs.map(&:players).flatten.compact
+
+    result[:current_requests] = []
+    result[:other_players] = []
+
+    all_players.each do |p|
+      l = p.licenses_by_team(team.id)
+      if l.present?
+        item = p.full_hash
+        item[:team_license] = l
+        cs = p.current_license_status(l)
+        item[:current_status] = cs
+        item[:can_withdraw] = (cs['license_status_id'] == License::REQUESTED)
+        last_requested = l['history'].select { |h| h['license_status_id'].to_i == License::REQUESTED }
+                                     .max_by { |h| h['created_at'] }
+        item[:grace_period_ends_at] = last_requested ? (last_requested['created_at'].to_time + License::GRACE_PERIOD).iso8601 : nil
+        # Altersabhängige Dokumentarten: Stichtag = Datum der Lizenzbeantragung.
+        item[:required_documents] = DocumentType.required_keys(
+          result[:required_documents],
+          birthdate: p.birthdate,
+          requested_at: license_requested_at(l),
+          catalog: catalog
+        )
+        result[:current_requests] << item
+      else
+        result[:other_players] << p.meta_hash
+      end
+    end
+
+    result
+  end
 
   # Gemeinsam für Anlage und Änderung. Der Spielbetrieb fehlt hier bewusst: er
   # ist keine Spalte am Verein, sondern ein Eintrag im game_operations_hash, und
