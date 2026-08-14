@@ -9,6 +9,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.81.0] - 2026-08-14
+
+### Neu
+
+- **Die gesetzliche Vertretung wird jetzt tatsächlich informiert**: Beantragt ein Verein in einer Liga mit Elternzustimmung eine Lizenz für eine minderjährige Person, fragt das Antragsformular die E-Mail-Adresse der gesetzlichen Vertretung ab und lässt bestätigen, dass über die Datenverarbeitung informiert wurde. Die Adresse wurde bisher nur an der Lizenz vermerkt, verschickt wurde nichts. Wer sie eintrug, wartete auf eine Nachricht, die es nicht gab. Jetzt geht mit dem Antrag eine Information nach Art. 13 DSGVO an genau diese Adresse: Sie nennt Verein, Mannschaft, Liga und Saison, verlinkt das unter „Dokumentarten" gepflegte Informationsblatt und sagt ausdrücklich, dass nichts weiter zu tun ist. Ist kein Informationsblatt hinterlegt, verweist die Nachricht auf den Verein, statt einen toten Link anzubieten. Antworten gehen an die Spielbetriebskommission des Verbands, der die Liga betreibt. Wortlaut und Betreff sind wie bei allen anderen Systemnachrichten unter „E-Mail-Vorlagen" änderbar. Scheitert der Antrag, etwa weil bereits eine Lizenz besteht, wird auch nichts verschickt.
+
+### Behoben
+
+- **„Einverständnis fehlt" nur noch dort, wo die Liga es verlangt**: Ob eine Elternzustimmung nötig ist, entscheidet die Liga über den Schalter „Zustimmung der Erziehungsberechtigten erforderlich". Die Lizenzansichten hielten sich nicht daran: Sie markierten die Zustimmung bei jeder minderjährigen Person als fehlend, bundesweit und in jeder Liga, auch dort, wo sie gar nicht verlangt wird. Wer den Schalter setzte, sah deshalb keine Änderung, denn der Hinweis stand ohnehin schon da, und wer ihn nicht setzte, bekam ihn trotzdem. Maßgeblich ist jetzt allein die Liga, und zwar an allen Stellen gleich: in der Lizenzübersicht, in der Liga-Ansicht der Spielbetriebskommission, im Genehmigungsdialog und im Lizenzwesen des Vereins. Wie bei allen anderen Pflichtdokumenten zählt dabei das Alter am Tag der Beantragung, nicht das heutige. Die Zustimmung selbst bleibt ein Dokument, das der Verein beim Spieler hochlädt; die Bestätigung im Antragsformular ersetzt sie nicht.
+
+## [1.80.0] - 2026-08-14
+
 ### Verbessert
 
 - **„Gespann" heißt jetzt beim Namen, was es ist**: In der Ansetzung und in der Auswertung des Schiedsrichter-Feedbacks stand an mehreren Stellen „Gespann". Der Begriff ist Fachjargon und sagt einer Person, die zum ersten Mal ansetzt, nichts. Je nach Zusammenhang steht dort jetzt das, was gemeint ist: Der Knopf am Spiel heißt „Infos für die Schiedsrichter", die Spalte im reduzierten Modus „Verein stellt die Schiedsrichter", und wo es tatsächlich um die Paarung geht, steht „Schiedsrichterpaar". An der Funktion ändert sich nichts, es sind ausschließlich Beschriftungen. Die englischen Texte waren davon nie betroffen, sie sprachen schon vorher von „officials" und „pair".

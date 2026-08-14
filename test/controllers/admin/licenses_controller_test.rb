@@ -213,6 +213,40 @@ module Admin
       assert row['documents'].key?('parental_consent'), 'Frontend-Kontrakt: Key immer vorhanden'
     end
 
+    # Bis 1.81.0 markierten die Lizenzansichten die Zustimmung bundesweit bei
+    # jeder minderjährigen Person als fehlend, auch in Ligen, die sie gar nicht
+    # verlangen. Maßgeblich ist jetzt allein die Liga.
+    test 'Elternzustimmung erst mit dem Liga-Flag gefordert' do
+      DocumentType.create!(name: 'Zustimmung der Erziehungsberechtigten', key: 'parental_consent',
+                           required_below_age: 18)
+      minor = create(:player, birthdate: 15.years.ago.to_date.to_s,
+                              with_licenses: [{ team: @team_go1, status: License::REQUESTED, season_id: '18' }])
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses'
+      row = JSON.parse(response.body).find { |r| r['player_id'] == minor.id }
+      assert_not_includes row['required_documents'], 'parental_consent',
+                          'Ohne Liga-Flag verlangt die Liga keine Zustimmung'
+
+      @league_go1.update!(parental_consent_required: true)
+      get '/api/v2/admin/licenses'
+      row = JSON.parse(response.body).find { |r| r['player_id'] == minor.id }
+      assert_includes row['required_documents'], 'parental_consent',
+                      'Mit Liga-Flag ist die Zustimmung für Minderjährige Pflicht'
+      assert_not row['documents']['parental_consent'], 'ohne Upload weiterhin offen'
+    end
+
+    test 'Liga-Flag macht die Zustimmung nicht für Volljährige erforderlich' do
+      DocumentType.create!(name: 'Zustimmung der Erziehungsberechtigten', key: 'parental_consent',
+                           required_below_age: 18)
+      @league_go1.update!(parental_consent_required: true)
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses'
+      row = JSON.parse(response.body).find { |r| r['player_id'] == @player_go1.id }
+      assert_not_includes row['required_documents'], 'parental_consent'
+    end
+
     # Die Kosten dieser Liste hingen an der Zahl der Ligen, nicht an der Zahl der
     # Lizenzen: je Liga eine eigene Spieler-Abfrage – und das ist ein Sequential
     # Scan über die ganze players-Tabelle, weil die Lizenzen in einer JSONB-Spalte

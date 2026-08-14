@@ -308,6 +308,37 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
+  # Die Elternzustimmung hängt an der Liga: ohne Flag taucht sie im Team-
+  # Lizenzwesen nicht als Pflichtdokument auf, mit Flag nur bei Minderjährigen.
+  test 'user_team_licenses fordert die Elternzustimmung nur mit Liga-Flag' do
+    DocumentType.create!(name: 'Zustimmung der Erziehungsberechtigten', key: 'parental_consent',
+                         required_below_age: 18)
+    go = create(:game_operation)
+    league = create(:league, :current_season, game_operation: go)
+    club = create(:club)
+    team = create(:team, league: league, club: club)
+    minor = create(:player,
+                   birthdate: 15.years.ago.to_date.to_s,
+                   clubs: [{ 'club_id' => club.id, 'home_club' => true, 'created_at' => 1.day.ago.iso8601 }],
+                   with_licenses: [{ team: team, status: License::REQUESTED }])
+    login(create(:user, :vm, club_id: club.id))
+
+    get "/api/v2/user/team/#{team.id}/licenses"
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_not body['parental_consent_required']
+    item = body['current_requests'].find { |p| p['id'] == minor.id }
+    assert item, 'Antrag der minderjährigen Person muss enthalten sein'
+    assert_not_includes item['required_documents'], 'parental_consent'
+
+    league.update!(parental_consent_required: true)
+    get "/api/v2/user/team/#{team.id}/licenses"
+    body = JSON.parse(response.body)
+    assert body['parental_consent_required']
+    item = body['current_requests'].find { |p| p['id'] == minor.id }
+    assert_includes item['required_documents'], 'parental_consent'
+  end
+
   test 'admin_upload_logo akzeptiert ein quadratisches PNG' do
     club = create(:club)
     login(create(:user, :admin))
