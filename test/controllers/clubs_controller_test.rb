@@ -751,6 +751,29 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_response :forbidden
   end
 
+  # Die Liste enthaelt Namen und Adressen von Personen. Eine Vereins-Freigabe
+  # erlaubt einem fremden Landesverband das Lesen der Stammdaten, nicht aber den
+  # Zugriff auf die Kontaktdaten der Vereinsmanager.
+  test 'admin_club_managers bleibt fuer einen fremden LV mit Freigabe gesperrt' do
+    grantor_sa = create(:state_association)
+    grantor_go = create(:game_operation, state_association_id: grantor_sa.id)
+    recipient_go = create(:game_operation, state_association_id: create(:state_association).id)
+    club = create(:club, state_association_id: grantor_sa.id,
+                         game_operations_hash: [{ 'home_game_operation' => true,
+                                                  'game_operation_id' => grantor_go.id }])
+    StateAssociationRelease.create!(grantor_state_association_id: grantor_sa.id,
+                                    recipient_game_operation_id: recipient_go.id,
+                                    season_id: Setting.current_season_id)
+    login(create(:user, :sbk_scoped, game_operation_id: recipient_go.id))
+
+    # Gegenprobe: Die Stammdaten darf derselbe Login lesen.
+    get "/api/v2/admin/clubs/#{club.id}"
+    assert_response :success
+
+    get "/api/v2/admin/clubs/#{club.id}/managers"
+    assert_response :forbidden
+  end
+
   test 'admin_club_update speichert die Empfaengerauswahl des VM' do
     club = create(:club)
     manager = create(:user, :vm, club_id: club.id, email: 'vm@verein.example')

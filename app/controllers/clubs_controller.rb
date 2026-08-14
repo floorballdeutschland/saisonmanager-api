@@ -290,13 +290,19 @@ class ClubsController < ApplicationController
   # Eigene Aktion statt weiterer Felder in Club#full_hash: Der volle
   # Vereins-Hash reist über GameDay#full_hash durch jede Spieltags-Antwort.
   # Namen und Adressen von Benutzern gehören dort nicht hinein.
+  #
+  # Engeres Gate als `can_read_admin_club?`: Die Liste enthält Namen und
+  # E-Mail-Adressen von Personen und dient allein dazu, den Verteiler
+  # einzustellen. Ein fremder Landesverband mit Vereins-Freigabe darf die
+  # Stammdaten lesen, aber deshalb nicht die Kontaktdaten der Vereinsmanager
+  # bekommen – das wäre eine Ausweitung der Freigabe, die niemand erteilt hat.
   def admin_club_managers
     return render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized unless current_user
 
     club = Club.find_by(id: params[:id])
     return render json: { error: 'Nicht gefunden' }, status: :not_found unless club
 
-    unless can_read_admin_club?(club)
+    unless club.user_permissions(current_user).include?(:update_own_club)
       return render json: { message: 'Keine Berechtigung' }, status: :forbidden
     end
 

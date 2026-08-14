@@ -10,7 +10,13 @@ class Club < ApplicationRecord
   # unter notify_user_ids aus.
   EMAIL_FORMAT = /\A[^@\s;,]+@[^@\s;,]+\.[^@\s;,]+\z/
 
-  validates :contact_email, format: { with: EMAIL_FORMAT }, allow_blank: true
+  # `if:` statt unbedingt: Auf Produktion trägt ein Verein bereits zwei
+  # Adressen im Feld. Eine unbedingte Prüfung hätte jedes Speichern dieses
+  # Vereins blockiert – auch das Deaktivieren (`deactivate!` nutzt `update!`)
+  # und die Liga-Kopie, die Vereine mitschreibt. Wer die Adresse anfasst, muss
+  # die Regel einhalten; wer sie nicht anfasst, wird nicht aufgehalten.
+  validates :contact_email, format: { with: EMAIL_FORMAT },
+                            allow_blank: true, if: :contact_email_changed?
 
   scope :active, -> { where(deactivated_at: nil) }
 

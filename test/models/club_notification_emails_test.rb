@@ -92,6 +92,31 @@ class ClubNotificationEmailsTest < ActiveSupport::TestCase
     assert_predicate build(:club, contact_email: ''), :valid?
   end
 
+  # Auf Produktion traegt ein Verein bereits zwei Adressen im Feld. Eine
+  # unbedingte Pruefung haette jedes Speichern dieses Vereins blockiert, auch
+  # das Deaktivieren, das in einer Maske ohne Adressfeld an einer Meldung ueber
+  # die Adresse gescheitert waere.
+  test 'eine ungueltige Bestandsadresse blockiert andere Aenderungen nicht' do
+    club = create(:club)
+    club.update_column(:contact_email, 'a@example.org; b@example.org')
+    club.reload
+
+    assert club.update(name: 'Neuer Name'), club.errors.full_messages.join(', ')
+    assert_nothing_raised { club.deactivate!(create(:user, :admin).id) }
+    assert_nothing_raised { club.reactivate! }
+    assert_equal 'a@example.org; b@example.org', club.reload.contact_email
+  end
+
+  test 'wer die Bestandsadresse anfasst, muss die Regel einhalten' do
+    club = create(:club)
+    club.update_column(:contact_email, 'a@example.org; b@example.org')
+    club.reload
+
+    assert_not club.update(contact_email: 'c@example.org; d@example.org')
+    assert_includes club.errors.attribute_names, :contact_email
+    assert club.update(contact_email: 'c@example.org')
+  end
+
   # Gegenprobe an einer echten Mail: Die Empfaengerliste muss auch dort
   # ankommen, nicht nur in notification_emails.
   test 'eine Vereinsmail geht an Kontaktadresse und ausgewaehlten Vereinsmanager' do
