@@ -628,21 +628,88 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
   # Kern der Einschränkung: Der Landesverband entscheidet mit darüber, wer den
   # Verein verwaltet und wer seine Spieler sperren darf. Könnte der VM ihn
   # setzen, hängte er seinen Verein an einen fremden Verband um.
-  test 'admin_club_update ignoriert Bundesland und Landesverband vom VM' do
+  #
+  # Und zwar mit einer Meldung, nicht stillschweigend: Vorher verwarf
+  # `restricted_club_params` die Felder und die Antwort war trotzdem 200 mit
+  # Erfolgsmeldung.
+  test 'admin_club_update lehnt geaendertes Bundesland oder Landesverband ab' do
     sa = create(:state_association)
     fremd_sa = create(:state_association)
-    club = create(:club, state: 'de-he', state_association_id: sa.id)
+    club = create(:club, name: 'Alt', state: 'de-he', state_association_id: sa.id)
     login(create(:user, :vm, club_id: club.id))
 
     post '/api/v2/admin/clubs', params: { id: club.id,
                                           club: { name: 'Neu', state: 'de-by',
                                                   state_association_id: fremd_sa.id } }
 
-    assert_response :success
+    assert_response :forbidden
     club.reload
-    assert_equal 'Neu', club.name
+    assert_equal 'Alt', club.name, 'nichts darf gespeichert werden, auch nicht der Name'
     assert_equal 'de-he', club.state
     assert_equal sa.id, club.state_association_id
+  end
+
+  # Das Formular schickt den Verein unverändert zurück, also auch die beiden
+  # vorbehaltenen Felder. Unveränderte Werte sind kein Änderungswunsch und
+  # dürfen das Speichern nicht blockieren.
+  test 'admin_club_update speichert, wenn der VM die vorbehaltenen Felder unveraendert zuruecksendet' do
+    sa = create(:state_association)
+    club = create(:club, name: 'Alt', state: 'de-he', state_association_id: sa.id)
+    login(create(:user, :vm, club_id: club.id))
+
+    post '/api/v2/admin/clubs', params: { id: club.id,
+                                          club: { name: 'Neu', state: 'de-he',
+                                                  state_association_id: sa.id } }
+
+    assert_response :success
+    assert_equal 'Neu', club.reload.name
+  end
+
+  # Der Fall, den ein Flag am Benutzer nicht abbilden kann: Spielbetriebsrolle
+  # für einen Verband, Vereinsrolle für einen Verein aus einem anderen. Beim
+  # eigenen Verband darf die Person alles, beim fremden Verein nur die
+  # Stammdaten.
+  test 'admin_club sagt pro Verein, ob das Formular eingeschraenkt ist' do
+    sa = create(:state_association)
+    go = create(:game_operation, state_association_id: sa.id)
+    eigener = create(:club, state_association_id: sa.id,
+                            game_operations_hash: [{ 'game_operation_id' => go.id,
+                                                     'home_game_operation' => true }])
+    fremder_go = create(:game_operation, state_association_id: create(:state_association).id)
+    fremder = create(:club, game_operations_hash: [{ 'game_operation_id' => fremder_go.id,
+                                                     'home_game_operation' => true }])
+
+    mischrolle = create(:user, permissions: [
+      { 'user_group_id' => 2, 'game_operation_id' => go.id },
+      { 'user_group_id' => 4, 'game_operation_id' => 0, 'club_id' => fremder.id }
+    ])
+    login(mischrolle)
+
+    get "/api/v2/admin/clubs/#{eigener.id}"
+    assert_response :success
+    assert_not JSON.parse(response.body)['edit_restricted'], 'eigener Verband: alles aenderbar'
+
+    get "/api/v2/admin/clubs/#{fremder.id}"
+    assert_response :success
+    assert JSON.parse(response.body)['edit_restricted'], 'fremder Verein: nur Stammdaten'
+  end
+
+  test 'admin_club_update lehnt den Verbandswechsel auch bei Mischrolle ab' do
+    sa = create(:state_association)
+    go = create(:game_operation, state_association_id: sa.id)
+    fremder_go = create(:game_operation, state_association_id: create(:state_association).id)
+    fremder = create(:club, state: 'de-he',
+                            game_operations_hash: [{ 'game_operation_id' => fremder_go.id,
+                                                     'home_game_operation' => true }])
+    login(create(:user, permissions: [
+      { 'user_group_id' => 2, 'game_operation_id' => go.id },
+      { 'user_group_id' => 4, 'game_operation_id' => 0, 'club_id' => fremder.id }
+    ]))
+
+    post '/api/v2/admin/clubs', params: { id: fremder.id, club: { state: 'de-by' } }
+
+    assert_response :forbidden
+    assert_equal 'de-he', fremder.reload.state
   end
 
   # Das Formular schickt den Verein unverändert zurück, also immer auch ein
