@@ -480,6 +480,29 @@ module Admin
       assert_response :forbidden
     end
 
+    # `teams.league_id` ist nullable: Ein Team ohne Liga faellt aus
+    # Team.current_season heraus (NULL IN (...) ist nie wahr). Der Zugriff endet
+    # damit zu, das ist gewollt – aber als Datenfehler gemeldet, sonst ist die
+    # Absage von einer regulaeren nicht zu unterscheiden.
+    test 'Lizenz-Team ohne Liga wird gemeldet, nicht still verworfen' do
+      club = create(:club)
+      team = create(:team, club: club)
+      team.update_columns(league_id: nil)
+      # Abgelaufene Zugehoerigkeit, damit die Pruefung ueber den Lizenz-Weg laeuft
+      # und nicht schon an den gueltigen Vereinen des Spielers vorbei entschieden wird.
+      @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true,
+                                'valid_until' => 1.year.ago.iso8601 }],
+                      licenses: licenses_for(team))
+      login(create(:user, :vm, club_id: club.id))
+
+      log = capture_rails_log do
+        get "/api/v2/admin/players/#{@player.id}/license_documents"
+      end
+
+      assert_response :forbidden
+      assert_match(/ohne Liga/, log, 'der Datenfehler muss im Log stehen')
+    end
+
     # Ein unlesbares valid_until steht auf Prod im Altbestand. Es ist eine
     # Rechteentscheidung (Absage plus Meldung), kein Serverfehler – dafür rescued
     # LicenseAccessScope#membership_current?.
@@ -496,6 +519,19 @@ module Admin
     end
 
     private
+
+    # Der Test-Cache ist ein :null_store, die Drosselung in
+    # report_license_data_defect ist also nicht beobachtbar – gepruefet wird
+    # deshalb, was der Helfer schreibt.
+    def capture_rails_log
+      buffer = StringIO.new
+      original = Rails.logger
+      Rails.logger = ActiveSupport::Logger.new(buffer)
+      yield
+      buffer.string
+    ensure
+      Rails.logger = original
+    end
 
     # Lizenz-Hashes in der Form, in der sie in Player#licenses liegen.
     def licenses_for(*teams)

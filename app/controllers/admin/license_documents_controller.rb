@@ -194,7 +194,16 @@ module Admin
     # (`to_time > Time.current`), die beides anders machte.
     def player_active_club_ids
       (@player.clubs || []).filter_map do |c|
-        next unless c.is_a?(Hash) && membership_current?(@player, c['valid_until'])
+        # Strukturell kaputter Eintrag: zählt nicht als Mitgliedschaft, wird aber
+        # gemeldet statt still verworfen – wortgleich zu `player_in_team_clubs?`,
+        # das im selben Request über dieselben Einträge läuft (der gemeinsame
+        # Cache-Schlüssel drosselt die Meldung auf eine je Tag).
+        unless c.is_a?(Hash)
+          report_license_data_defect("player_clubs_entry_broken/#{@player.id}",
+                                     "Spieler##{@player.id}: clubs-Eintrag ist kein Objekt (#{c.class})")
+          next
+        end
+        next unless membership_current?(@player, c['valid_until'])
 
         c['club_id'].to_i
       end
@@ -207,8 +216,13 @@ module Admin
     # Beide Einschränkungen fehlten. Damit genügte eine beliebig alte Lizenz eines
     # Teams seines Vereins, um dem VM (und über `tm_for_player?` dem TM) dauerhaft
     # Zugriff auf die persönlichen Unterlagen zu geben – Lesen, Hochladen und
-    # Löschen –, auch Jahre nach dem Vereinswechsel. Am Spielerprofil war derselbe
-    # VM längst 403 (dort entscheidet der aktuell gültige Heimatverein).
+    # Löschen –, auch Jahre nach dem Vereinswechsel.
+    #
+    # ACHTUNG, kein erledigter Nachbar: Am Spielerprofil selbst
+    # (`PlayersController#vm_can_access_player?` / `#tm_can_access_player?`) fehlt
+    # derselbe Filter weiterhin, dort genügt jeder Eintrag im clubs-Hash. #391 hat
+    # nur den SBK-Zweig auf den gültigen Heimatverein gestellt. Die Unterlagen sind
+    # damit ab hier strenger als das Profil, an dem sie hängen – offen als #309.
     #
     # Die Mitgliedschaftsprüfung ist `player_in_team_clubs?`, also dieselbe wie im
     # Lizenzantrag: Wer für eine Mannschaft eine Lizenz lösen darf, soll deren
@@ -217,18 +231,39 @@ module Admin
     # Team dem anderen – dessen VM behält Zugriff, solange die Mitgliedschaft im
     # Partnerverein läuft.
     #
-    # Ist `license_id` gesetzt (index/show/create), zählt nur diese Lizenz.
-    # Memoisiert, weil `unrestricted_document_access?` die Frage je Dokumentart
-    # stellt und jeder Durchgang sonst eine Team-Abfrage kostet.
+    # Ist `license_id` gesetzt, zählt nur diese Lizenz (index und create; `show`
+    # adressiert das Dokument, nicht die Lizenz, und trägt den Wert nie).
+    # Memoisiert wegen des doppelten Durchlaufs aus `check_read_permission` und der
+    # Action selbst; jeder kostet sonst eine Team-Abfrage.
     def current_license_teams
       @current_license_teams ||= begin
         team_ids = scoped_licenses.filter_map { |l| l['team_id']&.to_i }.uniq
         if team_ids.empty?
           []
         else
-          Team.current_season.where(id: team_ids).select { |team| player_in_team_clubs?(@player, team) }
+          # `teams.league_id` ist nullable und ohne Fremdschlüssel (vgl.
+          # TeamsController#render_team_without_league). Ein Team ohne Liga fällt
+          # aus `Team.current_season` heraus, weil `NULL IN (…)` niemals wahr ist –
+          # das ist ein Datenfehler und keine Rechteentscheidung. Deshalb erst
+          # laden, dann melden, dann filtern: Sonst verliert der VM eines
+          # Syndikats-Vereins den Zugriff, ohne dass die Ursache irgendwo auftaucht
+          # (gleiche Regel wie `sbk_can_access_team?`).
+          teams = Team.where(id: team_ids).includes(:league).to_a
+          teams.each do |team|
+            next if team.league.present?
+
+            report_license_data_defect("license_team_without_league/#{team.id}",
+                                       "Team##{team.id} (#{team.name}) ohne Liga, " \
+                                       "league_id=#{team.league_id.inspect}")
+          end
+
+          teams.select { |team| current_season_team?(team) && player_in_team_clubs?(@player, team) }
         end
       end
+    end
+
+    def current_season_team?(team)
+      team.league.present? && team.league.season_id.to_s == Setting.current_season_id.to_s
     end
 
     # club_ids (inkl. Syndikat) der Teams aus `current_license_teams`.
