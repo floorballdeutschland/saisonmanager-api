@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Kein „undefined" mehr beim Spielsekretariat und beim Zeitnehmer**: Der Spielbericht setzt diese beiden Namen aus zwei Eingabefeldern zu „Nachname, Vorname" zusammen. Wurde nur der Vorname eingetragen, stand danach wörtlich „undefined, Carolina" im Bericht, und ein versehentliches Leerzeichen am Ende der Eingabe wurde unverändert mitgespeichert. Beides ist über die Jahre gewachsen: 79 Schriftführer- und 85 Zeitnehmer-Einträge mit „undefined", dazu rund 1400 Einträge je Feld mit einem Leerzeichen am Ende. Neue Eingaben werden jetzt getrimmt, und ein fehlender Teil bleibt schlicht leer, statt einen Namen zu erfinden. Die Bestandsdaten räumt ein eigener Lauf auf; bleibt dabei überhaupt kein Name übrig, wird das Feld geleert, statt etwas zu erfinden. Namen, die nur aus einem Teil bestehen, bleiben unangetastet.
+
 ## [1.83.0] - 2026-08-15
 
 ### Behoben
