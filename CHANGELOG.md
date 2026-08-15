@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Frontend auf Angular 22.1 gehoben**: Zwei Sicherheitsmeldungen betrafen Pakete, die im ausgelieferten Frontend stecken: eine fehlende Maskierung beim serverseitigen Rendern, über die sich Fremdcode in eine Seite schreiben ließe, und eine mehrdeutige Schlüsselbildung im Zwischenspeicher für Serverantworten, durch die eine Antwort an der falschen Stelle wiederverwendet werden könnte. Beides betrifft nur den serverseitigen Renderpfad, den die Seite ausschließlich beim Bauen durchläuft, die Angriffsfläche war entsprechend klein. Die automatisch angebotenen Einzel-Aktualisierungen ließen sich nicht einspielen, weil die Angular-Pakete nur im Verbund zueinander passen. Der Sprung wurde deshalb für alle zusammen gemacht, dazu zwei Bauwerkzeuge nachgezogen. An der Anwendung ändert sich nichts.
+
 ## [1.84.0] - 2026-08-15
 
 ### Neu
