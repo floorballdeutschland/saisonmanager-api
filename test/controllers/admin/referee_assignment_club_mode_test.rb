@@ -56,6 +56,98 @@ module Admin
       assert_equal true, rows[markiert.id]['locked']
     end
 
+    # Die Anzeige gruppiert nach Spieltag. Ohne Kennung und Nummer im Payload
+    # bliebe ihr nur das Datum – zwei Spieltage derselben Liga können aber auf
+    # denselben Tag fallen.
+    test 'Spieleliste liefert Spieltag-Kennung und -Nummer mit' do
+      game = create(:game, game_day: @game_day, game_status: 'pregame')
+      login(@rsk)
+
+      get '/api/v2/admin/referee_assignments/games'
+
+      assert_response :success
+      entry = JSON.parse(response.body).find { |g| g['id'] == game.id }
+      assert_equal @game_day.id, entry['game_day_id']
+      assert_equal @game_day.number, entry['game_day_number']
+    end
+
+    # Die RSK arbeitet Liga für Liga und darin Spieltag für Spieltag. Eine rein
+    # chronologische Liste mischt die Ligen und zwingt sie, zeilenweise zwischen
+    # ihnen zu springen.
+    test 'reduzierter Modus sortiert nach Liga und Spieltag statt nach Datum' do
+      a_liga = create(:league, game_operation: @go, name: 'A-Liga')
+      b_liga = create(:league, game_operation: @go, name: 'B-Liga')
+
+      # Die B-Liga spielt zuerst: chronologisch stünde ihr Spiel ganz oben.
+      b_spiel = create(:game, game_status: 'pregame',
+                              game_day: create(:game_day, league: b_liga, number: 1,
+                                               date: (Date.today + 3).to_s))
+      # Spieltagsnummer und Datum zeigen bewusst in verschiedene Richtungen:
+      # Spieltag 2 liegt früher als Spieltag 1. Sortierte die Liste innerhalb der
+      # Liga nach Datum, kippte die erwartete Reihenfolge.
+      a_spiel2 = create(:game, game_status: 'pregame',
+                               game_day: create(:game_day, league: a_liga, number: 2,
+                                                date: (Date.today + 7).to_s))
+      a_spiel1 = create(:game, game_status: 'pregame',
+                               game_day: create(:game_day, league: a_liga, number: 1,
+                                                date: (Date.today + 21).to_s))
+      login(@rsk)
+
+      get '/api/v2/admin/referee_assignments/games'
+
+      assert_response :success
+      ids = JSON.parse(response.body).map { |g| g['id'] }
+      assert_equal [a_spiel1.id, a_spiel2.id, b_spiel.id], ids
+    end
+
+    # Innerhalb des Spieltags schaut die RSK am längsten auf diese Tabelle; das
+    # Frontend sortiert dort selbst nichts, sondern übernimmt die Reihenfolge.
+    # `start_time` ist eine Textspalte, eine leere Zeit muss ans Ende und nicht
+    # an den Anfang.
+    test 'innerhalb des Spieltags nach Anwurf, Spiele ohne Anwurf zuletzt' do
+      ohne_zeit = create(:game, game_day: @game_day, game_status: 'pregame',
+                                start_time: '', game_number: '3')
+      spaet = create(:game, game_day: @game_day, game_status: 'pregame',
+                            start_time: '16:00', game_number: '2')
+      frueh = create(:game, game_day: @game_day, game_status: 'pregame',
+                            start_time: '10:00', game_number: '1')
+      login(@rsk)
+
+      get '/api/v2/admin/referee_assignments/games'
+
+      assert_response :success
+      ids = JSON.parse(response.body).map { |g| g['id'] }
+      assert_equal [frueh.id, spaet.id, ohne_zeit.id], ids
+    end
+
+    # K.-o.-Runden vergeben nicht-numerische Spielnummern („HF1", „FIN"). Der
+    # Gleichstands-Schlüssel darf daran nicht die ganze Abfrage abbrechen.
+    test 'nicht-numerische Spielnummern brechen die Sortierung nicht ab' do
+      create(:game, game_day: @game_day, game_status: 'pregame',
+                    start_time: '10:00', game_number: 'HF1')
+      create(:game, game_day: @game_day, game_status: 'pregame',
+                    start_time: '10:00', game_number: '7')
+      login(@rsk)
+
+      get '/api/v2/admin/referee_assignments/games'
+
+      assert_response :success
+      assert_equal 2, JSON.parse(response.body).size
+    end
+
+    # Ligen verschiedener Verbände heißen oft gleich. Ohne den Verband im Payload
+    # wären sie in der Ligaauswahl nicht zu unterscheiden.
+    test 'Spieleliste nennt den Spielbetrieb der Liga' do
+      game = create(:game, game_day: @game_day, game_status: 'pregame')
+      login(@rsk)
+
+      get '/api/v2/admin/referee_assignments/games'
+
+      assert_response :success
+      entry = JSON.parse(response.body).find { |g| g['id'] == game.id }
+      assert_equal(@go.short_name.presence || @go.name, entry['game_operation'])
+    end
+
     test 'Verein ansetzen steht sofort im Spielplan und verschickt keine Mail' do
       game = create(:game, game_day: @game_day, game_status: 'pregame')
       club = @club
