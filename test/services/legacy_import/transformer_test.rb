@@ -324,6 +324,34 @@ class LegacyImport::TransformerTest < ActiveSupport::TestCase # rubocop:disable 
     refute attrs[:female]
   end
 
+  # id_spielsystem muss zusätzlich nach league_system_id: League#won_points und
+  # Geschwister rechnen bei legacy_league ausschließlich aus diesem Feld. Blieb
+  # es leer, verlor eine 3-Punkte-Liga die Punkte für Unentschieden und
+  # Verlängerung (2/0/0/0 statt 3/1/2/1).
+  test 'league_attrs legt id_spielsystem auch als league_system_id ab' do
+    attrs = LegacyImport::Transformer.league_attrs(liga_row(spielsystem: 1), game_operation_id: 1)
+
+    assert_equal '1', attrs[:league_system_id]
+    league = League.new(attrs.slice(:legacy_league, :league_system_id, :table_modus))
+    assert_equal [3, 1, 2, 1],
+                 [league.won_points, league.draw_points, league.won_overtime_points, league.lost_overtime_points]
+  end
+
+  test 'league_attrs laesst league_system_id weg, wenn das Altsystem keins kennt' do
+    attrs = LegacyImport::Transformer.league_attrs(liga_row(spielsystem: 0), game_operation_id: 1)
+
+    assert_nil attrs[:league_system_id]
+    assert_nil attrs[:table_modus]
+  end
+
+  # enable_scorer ist keine Altdatenangabe, sondern eine Anzeigeentscheidung.
+  # Der Import setzt es als create_only-Vorgabe, nicht über league_attrs: Die
+  # Attribute von hier weist upsert bei jedem Re-Run auch bestehenden Ligen zu,
+  # ein zweiter Lauf machte sonst das Ausblenden bei U13 wieder rückgängig.
+  test 'league_attrs fasst enable_scorer nicht an' do
+    refute LegacyImport::Transformer.league_attrs(liga_row, game_operation_id: 1).key?(:enable_scorer)
+  end
+
   test 'league_attrs flaggt eine unbekannte Klasse als nicht gemappt' do
     liga = { 'id_klasse' => 9999, 'id_kategorie' => 2, 'id_saison' => 4, 'id_spielsystem' => 2,
              'name' => 'Sonderliga', 'kurzname' => 'SL', 'weiblich' => 0, 'ordnungsnr' => 1 }
@@ -333,6 +361,12 @@ class LegacyImport::TransformerTest < ActiveSupport::TestCase # rubocop:disable 
   end
 
   private
+
+  def liga_row(spielsystem: 1)
+    { 'id_liga' => 5, 'id_spielsystem' => spielsystem, 'id_klasse' => 30, 'id_kategorie' => 1,
+      'id_saison' => 5, 'name' => 'Regionalliga Nord', 'kurzname' => 'RL Nord',
+      'weiblich' => 0, 'ordnungsnr' => 3, 'klasse_name' => 'Regionalliga' }
+  end
 
   def game_day_attrs_for(datum)
     LegacyImport::Transformer.game_day_attrs(
