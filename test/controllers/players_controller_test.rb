@@ -1310,7 +1310,8 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :created
     player = Player.find(JSON.parse(response.body)['id'])
-    assert_equal [@club.id], (player.clubs.map { |c| c['club_id'] })
+    club_ids = player.clubs.map { |c| c['club_id'] }
+    assert_equal [@club.id], club_ids
     assert player.clubs.first['home_club'], 'der neue Eintrag ist die Heimatmitgliedschaft'
   end
 
