@@ -446,6 +446,11 @@ class User < ApplicationRecord
 
     # update permissions
     result[:update_player] = ph[:admin].present? || ph[:sbk].present?
+    # Bedingungslos wahr und deshalb keine Antwort auf die Frage, wer anlegen
+    # darf: Das Flag schaltet im Spielerformular nur die Beschriftung des
+    # Anlegen-Modus. Die echte Entscheidung ist vereinsgebunden und fällt in
+    # `Club#user_permissions` (:create_player), geprüft in
+    # PlayersController#admin_player_update.
     result[:create_player] = true
     result[:player_transfer] = ph[:admin].present? || ph[:sbk].present?
     result[:player_add_additional_clubs] = ph[:admin].present? || ph[:sbk].present?

@@ -864,6 +864,26 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 'gut@example.org', club.reload.contact_email
   end
 
+  # Das Portal „Meine Spieler*innen" zeigt den Anlege-Knopf ohne eigene
+  # Rollenprüfung an jedem Verein dieser Liste. Das trägt nur, solange jeder
+  # gelieferte Verein auch :create_player erlaubt. Wird der Endpunkt einmal
+  # erweitert, erschiene der Knopf sonst für Vereine, die mit 403 antworten.
+  test 'vm_clubs_and_teams liefert dem TM nur Vereine mit create_player' do
+    club = create(:club)
+    team = create(:team, club: club, league: create(:league, :current_season))
+    tm = create(:user, :tm, team_id: team.id)
+    login(tm)
+
+    get '/api/v2/vm/clubs_and_teams'
+
+    assert_response :success
+    ids = JSON.parse(response.body).map { |c| c['id'] }
+    assert_includes ids, club.id
+    ids.each do |id|
+      assert_includes Club.find(id).user_permissions(tm), :create_player
+    end
+  end
+
   private
 
   def login(user)
