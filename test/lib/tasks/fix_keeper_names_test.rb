@@ -82,10 +82,107 @@ class FixKeeperNamesTest < ActiveSupport::TestCase
     assert_equal 'Pennekamp, Julian', game.time_keeper_string
   end
 
+  # Die zweite, haeufig uebersehene Haelfte: Fehlte der VORNAME, entstand
+  # "Ziegler, undefined". Auf Prod 49 bzw. 64 Eintraege. Die erste Fassung des
+  # Tasks suchte per LIKE 'undefined,%' und hat davon keinen einzigen gesehen.
+  test 'ein fehlender Vorname hinterlaesst ebenfalls kein "undefined"' do
+    game = game_with(record_keeper_string: 'Ziegler, undefined',
+                     time_keeper_string: 'Pennekamp, undefined')
+
+    run_task
+
+    game.reload
+    assert_equal 'Ziegler', game.record_keeper_string
+    assert_equal 'Pennekamp', game.time_keeper_string
+  end
+
+  # Ohne Leerzeichen nach dem Komma zerfiel der Wert frueher nicht, landete
+  # komplett im Nachnamen und verlor dort sein Komma: "undefinedCarolina".
+  # Der Task machte aus einem erkennbar kaputten Wert einen unerkennbaren.
+  test 'ein fehlendes Leerzeichen nach dem Komma verschmilzt die Teile nicht' do
+    game = game_with(record_keeper_string: 'undefined,Carolina')
+
+    run_task
+
+    assert_equal ', Carolina', game.reload.record_keeper_string
+  end
+
+  test 'Leerzeichen am Anfang und vor dem Komma fallen ebenfalls weg' do
+    leading = game_with(record_keeper_string: ' Ziegler, Carolina')
+    before_comma = game_with(record_keeper_string: 'Ziegler , Carolina')
+
+    run_task
+
+    assert_equal 'Ziegler, Carolina', leading.reload.record_keeper_string
+    assert_equal 'Ziegler, Carolina', before_comma.reload.record_keeper_string
+  end
+
+  test 'ein Wert aus lauter Leerzeichen wird geleert' do
+    game = game_with(record_keeper_string: '   ')
+
+    run_task
+
+    assert_nil game.reload.record_keeper_string
+  end
+
+  test 'ein Name ohne Vornamen behaelt seinen Nachnamen' do
+    game = game_with(record_keeper_string: 'Ziegler, ')
+
+    run_task
+
+    assert_equal 'Ziegler', game.reload.record_keeper_string
+  end
+
+  # Das geschuetzte Leerzeichen kommt aus Word und PDF. JavaScripts trim()
+  # entfernt es, Rubys strip nicht. Ohne [[:space:]] liefe die Bereinigung hier
+  # auseinander mit dem, was das Frontend kuenftig speichert.
+  test 'auch ein geschuetztes Leerzeichen wird entfernt' do
+    game = game_with(record_keeper_string: "Ziegler, Carolina ")
+
+    run_task
+
+    assert_equal 'Ziegler, Carolina', game.reload.record_keeper_string
+  end
+
+  # Bei mehreren Kommata ist nicht mehr rekonstruierbar, wo die Grenze zwischen
+  # Nach- und Vorname lag. Eine zu raten hiesse, Namensteile zwischen den
+  # Feldern zu verschieben. Also nur trimmen, Struktur behalten.
+  test 'mehrere Kommata werden nur getrimmt, nicht umgeschrieben' do
+    game = game_with(record_keeper_string: 'van der, Berg, Jan ')
+
+    run_task
+
+    assert_equal 'van der, Berg, Jan', game.reload.record_keeper_string
+  end
+
+  # Eigenschaftsprüfung statt weiterer Einzelfaelle: Der Task darf keinen Wert
+  # uebersehen, den keeper_normalize aendern wuerde. Die erste Fassung hatte
+  # eine SQL-Vorauswahl, die genau daran scheiterte.
+  test 'kein Wert bleibt liegen, den die Regel aendern wuerde' do
+    dirty = [
+      'undefined, Carolina', 'Ziegler, undefined', 'undefined,Carolina',
+      'Ziegler, Carolina ', ' Ziegler, Carolina', 'Ziegler , Carolina',
+      'undefined', 'undefined, ', '   ', "Ziegler, Carolina ",
+      'van der, Berg, Jan '
+    ]
+    games = dirty.map { |v| game_with(record_keeper_string: v) }
+
+    run_task
+    run_task # zweiter Lauf: danach darf sich nichts mehr aendern
+
+    games.each do |game|
+      value = game.reload.record_keeper_string
+      assert_no_match(/undefined/, value.to_s, "#{value.inspect} traegt noch 'undefined'")
+      next if value.nil?
+
+      assert_equal value.strip, value, "#{value.inspect} hat noch aussenliegende Leerzeichen"
+    end
+  end
+
   test 'ein Dry Run schreibt nichts' do
     game = game_with(record_keeper_string: 'undefined, Carolina')
 
-    run_task({})
+    run_task({ 'DRY_RUN' => 'true' })
 
     assert_equal 'undefined, Carolina', game.reload.record_keeper_string
   end
