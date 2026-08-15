@@ -149,7 +149,8 @@ namespace :legacy do
 
           liga = entry['liga']
           league = upsert(League, "L:#{verband}:#{season}:#{liga['id_liga']}",
-                          LegacyImport::Transformer.league_attrs(liga, game_operation_id: go_id))
+                          LegacyImport::Transformer.league_attrs(liga, game_operation_id: go_id),
+                          create_only: { enable_scorer: true })
           league_recs[[verband, liga['id_liga'].to_i]] = league
           (entry['mannschaft'] || []).each do |m|
             club = match_or_create_club(vereine[m['id_verein'].to_i])
@@ -412,8 +413,14 @@ namespace :legacy do
   # "L:fvd:2013_2014:33"). Re-Runs aktualisieren denselben Datensatz, auch bei
   # Umbenennungen oder doppelten Paarungen. validate: false, weil Altdaten
   # Pflichtfelder/Workflows des Livebetriebs nicht erfüllen (legacy = true).
-  def upsert(klass, legacy_ref, attrs)
+  # `create_only` sind Vorgaben, die NUR beim Anlegen greifen: Werte, die nicht
+  # aus den Altdaten stammen, sondern eine Anzeigeentscheidung sind. Sie stehen
+  # bewusst nicht in den Transformer-Attributen, sonst würde ein Re-Run sie über
+  # eine spätere Korrektur drüberschreiben (z. B. das Ausblenden der
+  # Scorerliste bei U13 durch `leagues:hide_scorer_for_youth`).
+  def upsert(klass, legacy_ref, attrs, create_only: nil)
     record = klass.find_or_initialize_by(legacy_ref:)
+    record.assign_attributes(create_only) if create_only && record.new_record?
     record.assign_attributes(attrs)
     record.save!(validate: false)
     record

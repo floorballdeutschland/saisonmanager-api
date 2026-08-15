@@ -46,8 +46,18 @@ Jugend/Damen → `age_group`/`female`). `id_kategorie` wird **1:1** als
 `league_category_id` übernommen (altes Klein-Int-Schema: 1=GF, 2=KF, 3/4=Pokal,
 5=Mixed, 100–102=DM) – `League#forfait_goals`/`#period_count_normal_game`/
 `#league_type` branchen für `legacy_league` genau darauf; der Bestand der
-Alt-Saisons 6–16 nutzt dieselben Werte. `id_spielsystem` → Punkte-/Tabellenmodus
-(nicht `league_system_id`). Alle Altspiele: `legacy = true`.
+Alt-Saisons 6–16 nutzt dieselben Werte. `id_spielsystem` → **beide** Felder:
+`table_modus` (sprechender Name) **und** `league_system_id` (daraus rechnet die
+Tabelle). `League#won_points` und Geschwister lesen bei `legacy_league`
+ausschließlich aus `league_system_id`: `1` ⇒ 3/1/2/1, alles andere ⇒ 2/0/0/0.
+Bis 2026-08 schrieb der Import nur `table_modus`; alle Ligen der Saisons 2–5
+rechneten dadurch mit 2 Punkten pro Sieg und **null** für Unentschieden, Sieg
+n.V. und Niederlage n.V. Nachtrag im Bestand:
+`rails legacy:backfill_league_system_id`. `enable_scorer` setzt der Import beim
+**Anlegen** auf `true` (Spalten-Default ist `false`, die Scorerdaten kommen
+vollständig mit); es steht als `create_only`-Vorgabe am `upsert` und nicht in
+`league_attrs`, damit ein Re-Run das spätere Ausblenden bei U13 nicht wieder
+aufhebt. Alle Altspiele: `legacy = true`.
 
 Vollständige Feld-für-Feld-Tabellen, globale Stammdaten (Vereine/Spieler/Schiris/
 Spielorte), Reihenfolge und Risiken: siehe `produktivdaten/MAPPING_KONZEPT_altdaten_2010-2014.md`
@@ -189,6 +199,20 @@ Events) über die JSON-Brücke gegen die prod-nahe Dev-DB:
 3. **`mysql2` ins Gemfile** (`:development`) für den Direktzugriff – oder den
    JSON-Bundle-Weg (`export_bundle.sh` + `legacy:dir`) beibehalten.
 4. **Cache invalidieren**: nach dem Import `Rails.cache.delete('settings/init')`.
+5. **Nachbereinigung im Bestand** (nur nötig für Ligen, die vor 2026-08 importiert
+   wurden; neue Läufe schreiben beides selbst):
+
+   ```bash
+   rails legacy:report_old_seasons                              # nur lesend
+   rails legacy:backfill_league_system_id DRY_RUN=false         # Punkte je Liga
+   rails legacy:enable_scorer_old_seasons DRY_RUN=false         # Scorerliste an, U13 und jünger bleiben aus
+   ```
+
+   `enable_scorer_old_seasons` wendet die Jugend-Regel selbst an; ein zweiter
+   Lauf von `leagues:hide_scorer_for_youth` ist nicht nötig.
+
+   Die öffentlichen Caches (`leagues/:id/table`, `leagues/:id/scorer`) laufen
+   nach 5 Minuten ab, es ist kein manuelles Leeren nötig.
 
 ### Verbleibende Grenzen / bewusste Auslassungen
 
