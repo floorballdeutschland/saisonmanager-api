@@ -59,13 +59,27 @@ class FixKeeperNamesTest < ActiveSupport::TestCase
   end
 
   # Bleibt nach dem Aufraeumen nichts uebrig, ist ein leeres Feld ehrlicher als
-  # ein erfundener Name.
+  # ein erfundener Name. Geleert heisst dabei leere Zeichenkette, nicht NULL:
+  # So schreibt es auch personName im Frontend, und knapp 1300 Zeilen je Spalte
+  # tragen bereits ''.
   test 'ein Eintrag ganz ohne Namen wird geleert' do
     game = game_with(record_keeper_string: 'undefined, ')
 
     run_task
 
-    assert_nil game.reload.record_keeper_string
+    assert_equal '', game.reload.record_keeper_string
+  end
+
+  # Gegenprobe: Bereits leere Zeilen sind kein Defekt und werden nicht
+  # angefasst. Sie auf NULL zu ziehen haette 2600 Zeilen ohne Not veraendert.
+  test 'eine bereits leere Zeichenkette bleibt, wie sie ist' do
+    game = game_with(record_keeper_string: '', time_keeper_string: '')
+
+    run_task
+
+    game.reload
+    assert_equal '', game.record_keeper_string
+    assert_equal '', game.time_keeper_string
   end
 
   # Der Task fasst nur an, was eines der beiden Muster trifft. Ein sauberer
@@ -122,7 +136,7 @@ class FixKeeperNamesTest < ActiveSupport::TestCase
 
     run_task
 
-    assert_nil game.reload.record_keeper_string
+    assert_equal '', game.reload.record_keeper_string
   end
 
   test 'ein Name ohne Vornamen behaelt seinen Nachnamen' do

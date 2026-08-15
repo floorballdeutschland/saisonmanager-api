@@ -30,8 +30,10 @@
 #
 # Bewusst konservativ: Der Task setzt ausschliesslich zusammen, was schon da
 # ist. Er erfindet keinen Nachnamen und loescht keinen Namen, der nur aus
-# einem Teil besteht. Bleibt nichts uebrig, wird das Feld auf NULL gesetzt --
-# ein leeres Feld ist ehrlicher als ein erfundener Name.
+# einem Teil besteht. Bleibt nichts uebrig, wird das Feld geleert -- ein leeres
+# Feld ist ehrlicher als ein erfundener Name. Geleert heisst leere Zeichenkette,
+# nicht NULL: So schreibt es auch das Frontend, und bereits leere Zeilen bleiben
+# damit unangetastet.
 #
 # Dry-Run (Standard):
 #   bundle exec rails keeper_names:report
@@ -74,8 +76,7 @@ namespace :keeper_names do
     # den Feldern zu verschieben. Deshalb nur aussen trimmen, die Struktur
     # bleibt unangetastet und der Fall wird eigens ausgewiesen.
     if value.count(',') > 1
-      cleaned = keeper_strip(value)
-      return cleaned.empty? ? nil : cleaned
+      return keeper_strip(value)
     end
 
     last, first = value.split(',', 2)
@@ -84,7 +85,11 @@ namespace :keeper_names do
     last = '' if last == 'undefined'
     first = '' if first == 'undefined'
 
-    return nil if last.empty? && first.empty?
+    # Leer bleibt leer, und zwar als leere Zeichenkette statt als NULL: Das
+    # Frontend schreibt es genauso (personName gibt '' zurueck), und knapp 1300
+    # Zeilen je Spalte tragen bereits '' . Sie auf NULL zu ziehen waere eine
+    # Bedeutungsaenderung ohne Nutzen, die 2600 defektfreie Zeilen anfasst.
+    return '' if last.empty? && first.empty?
     # Ohne Vorname entfaellt das Trennzeichen. Mit Vorname bleibt es stehen,
     # auch wenn der Nachname fehlt: Aus ", Carolina" liest split(', ') den
     # Vornamen wieder als Vornamen, aus "Carolina" waere er ein Nachname.
@@ -141,7 +146,7 @@ namespace :keeper_names do
         next if before == after
 
         changed += 1
-        cleared += 1 if after.nil?
+        cleared += 1 if after.to_s.empty?
         ambiguous += 1 if before.to_s.count(',') > 1
         puts "  Spiel #{id}: #{before.inspect} -> #{after.inspect}"
         # update_all auf der einzelnen Zeile: keine Validierungen und Callbacks
