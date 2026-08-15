@@ -13,6 +13,16 @@ module Admin
                                                      update_notes]
     before_action :authorize_club_level!, only: %i[league_clubs update_club_assignment]
 
+    # Der Personen-Weg arbeitet chronologisch, dort grenzen die Zeitraum-Reiter ein.
+    PERSON_LEVEL_GAMES_ORDER = 'game_days.date ASC, games.start_time ASC NULLS LAST'.freeze
+    # Der reduzierte Modus wird Liga für Liga und darin Spieltag für Spieltag
+    # abgearbeitet; eine rein chronologische Liste mischt die Ligen und zwingt
+    # die RSK, zeilenweise zwischen ihnen zu springen. `game_days.number` ist
+    # nullable (lückenhafte Importvorlagen), deshalb NULLS LAST plus Datum als
+    # Rückfallebene.
+    CLUB_LEVEL_GAMES_ORDER = 'leagues.name ASC, game_days.number ASC NULLS LAST, ' \
+                             'game_days.date ASC, games.start_time ASC NULLS LAST'.freeze
+
     # GET /api/v2/admin/referee_assignments
     def index
       scope = RefereeAssignment.includes(
@@ -95,7 +105,7 @@ module Admin
         )
       end
 
-      scope = scope.order("game_days.date ASC, games.start_time ASC NULLS LAST")
+      scope = scope.order(club_level_view? ? CLUB_LEVEL_GAMES_ORDER : PERSON_LEVEL_GAMES_ORDER)
 
       games = scope.to_a
       note_authors = note_author_names(games)
@@ -116,6 +126,12 @@ module Admin
           guest_team_club_id: g.guest_team&.club_id,
           league: g.game_day.league&.name,
           league_id: g.game_day.league_id,
+          # Spieltag als eigene Einheit: die Anzeige gruppiert danach. Über das
+          # Datum allein ginge das nicht – zwei Spieltage derselben Liga können
+          # auf denselben Tag fallen, und ein Spieltag kann sich über mehrere
+          # Tage ziehen.
+          game_day_id: g.game_day_id,
+          game_day_number: g.game_day.number,
           # Markierung „personenscharf ansetzen". Im reduzierten Modus sperrt sie
           # die Zeile, im Personen-Weg ist sie die Eintrittskarte in die Liste.
           person_level_assignment: g.person_level_assignment,

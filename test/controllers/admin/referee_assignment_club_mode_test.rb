@@ -56,6 +56,49 @@ module Admin
       assert_equal true, rows[markiert.id]['locked']
     end
 
+    # Die Anzeige gruppiert nach Spieltag. Ohne Kennung und Nummer im Payload
+    # bliebe ihr nur das Datum – zwei Spieltage derselben Liga können aber auf
+    # denselben Tag fallen.
+    test 'Spieleliste liefert Spieltag-Kennung und -Nummer mit' do
+      game = create(:game, game_day: @game_day, game_status: 'pregame')
+      login(@rsk)
+
+      get '/api/v2/admin/referee_assignments/games'
+
+      assert_response :success
+      entry = JSON.parse(response.body).find { |g| g['id'] == game.id }
+      assert_equal @game_day.id, entry['game_day_id']
+      assert_equal @game_day.number, entry['game_day_number']
+    end
+
+    # Die RSK arbeitet Liga für Liga und darin Spieltag für Spieltag. Eine rein
+    # chronologische Liste mischt die Ligen und zwingt sie, zeilenweise zwischen
+    # ihnen zu springen.
+    test 'reduzierter Modus sortiert nach Liga und Spieltag statt nach Datum' do
+      a_liga = create(:league, game_operation: @go, name: 'A-Liga')
+      b_liga = create(:league, game_operation: @go, name: 'B-Liga')
+
+      # Die B-Liga spielt zuerst: chronologisch stünde ihr Spiel ganz oben.
+      b_spiel = create(:game, game_status: 'pregame',
+                              game_day: create(:game_day, league: b_liga, number: 1,
+                                               date: (Date.today + 3).to_s))
+      # Der spätere Spieltag wird zuerst angelegt, damit die Reihenfolge nicht
+      # zufällig aus der Anlage-Reihenfolge fällt.
+      a_spiel2 = create(:game, game_status: 'pregame',
+                               game_day: create(:game_day, league: a_liga, number: 2,
+                                                date: (Date.today + 28).to_s))
+      a_spiel1 = create(:game, game_status: 'pregame',
+                               game_day: create(:game_day, league: a_liga, number: 1,
+                                                date: (Date.today + 14).to_s))
+      login(@rsk)
+
+      get '/api/v2/admin/referee_assignments/games'
+
+      assert_response :success
+      ids = JSON.parse(response.body).map { |g| g['id'] }
+      assert_equal [a_spiel1.id, a_spiel2.id, b_spiel.id], ids
+    end
+
     test 'Verein ansetzen steht sofort im Spielplan und verschickt keine Mail' do
       game = create(:game, game_day: @game_day, game_status: 'pregame')
       club = @club

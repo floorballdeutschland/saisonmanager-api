@@ -170,6 +170,28 @@ module Admin
       assert_not_nil entry['referee_notes_updated_at']
     end
 
+    # Der reduzierte Modus sortiert nach Liga und Spieltag. Der Personen-Weg darf
+    # das nicht mitnehmen: dort grenzen die Zeitraum-Reiter ein, die Liste muss
+    # also chronologisch bleiben.
+    test 'Personen-Weg bleibt chronologisch sortiert, unabhaengig von der Liga' do
+      go = create(:game_operation, :national)
+      frueh_liga = create(:league, game_operation: go, name: 'Z-Liga')
+      spaet_liga = create(:league, game_operation: go, name: 'A-Liga')
+      frueh = create(:game, game_status: 'pregame', person_level_assignment: true,
+                            game_day: create(:game_day, league: frueh_liga, number: 1,
+                                             date: (Date.today + 3).to_s))
+      spaet = create(:game, game_status: 'pregame', person_level_assignment: true,
+                            game_day: create(:game_day, league: spaet_liga, number: 1,
+                                             date: (Date.today + 21).to_s))
+
+      login(create(:user, :assigner_scoped, game_operation_id: go.id))
+      get '/api/v2/admin/referee_assignments/games'
+
+      assert_response :success
+      ids = JSON.parse(response.body).map { |g| g['id'] }
+      assert_equal [frueh.id, spaet.id], ids
+    end
+
     # -------------------------------------------------------------------------
     # notify – game_days.date ist eine Textspalte
     # -------------------------------------------------------------------------
