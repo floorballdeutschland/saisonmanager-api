@@ -480,7 +480,158 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
     assert_equal 2, @game.reload.events.find { |e| e['id'].to_i == 2 }['period'].to_i
   end
 
+  # ---------------------------------------------------------------------------
+  # set_field: dieselbe Rechteregel wie für den übrigen Spielbericht
+  #
+  # Ein Turnier an einem Ort (DM) ist der Fall, der die frühere Sonderlogik
+  # auffliegen ließ: Der ausrichtende Verein führt das Sekretariat für alle
+  # Partien, spielt aber in den meisten nicht selbst mit.
+
+  test 'set_field: der VM des ausrichtenden Vereins darf die Kopfdaten speichern' do
+    hosting_club = create(:club)
+    game = game_hosted_by(hosting_club)
+    login(create(:user, :vm, club_id: hosting_club.id))
+
+    post "/api/v2/user/games/#{game.id}/set_field", params: { game: { audience: '40' } }
+
+    assert_response :success
+    assert_equal 40, game.reload.audience.to_i
+  end
+
+  # Schreiben allein genügt nicht: Ohne Lesezugriff bekäme der Ausrichter ein
+  # leeres Formular, in das er zwar eintragen darf, dessen bereits gefüllte
+  # Felder er aber nicht sieht (Spielsekretariat, Zeitnehmer, Betreuer, Vermerk
+  # der Schiedsrichter). Das war die zweite Hälfte des Fehlers.
+  test 'additional_fields: der VM des ausrichtenden Vereins sieht die internen Felder' do
+    hosting_club = create(:club)
+    game = game_hosted_by(hosting_club)
+    game.update!(record_keeper_string: 'Ziegler, Carolina')
+    login(create(:user, :vm, club_id: hosting_club.id))
+
+    get "/api/v2/user/games/#{game.id}/additional_fields.json"
+
+    assert_response :success
+    assert_equal 'Ziegler, Carolina', JSON.parse(response.body)['record_keeper_string']
+  end
+
+  test 'additional_fields: ein unbeteiligter VM sieht die internen Felder nicht' do
+    game = game_hosted_by(create(:club))
+    game.update!(record_keeper_string: 'Ziegler, Carolina')
+    login(create(:user, :vm, club_id: create(:club).id))
+
+    get "/api/v2/user/games/#{game.id}/additional_fields.json"
+
+    assert_response :success
+    assert_equal({}, JSON.parse(response.body))
+  end
+
+  # Gegenprobe zum Test darüber: Ohne Bezug zum Spiel bleibt es bei 403. Die
+  # Zusammenlegung erweitert die Rechte nur um den Ausrichter, nicht um jeden VM.
+  # Die Zustandsprüfung gehört dazu: Ein 403, der trotzdem schreibt, käme sonst
+  # durch.
+  test 'set_field: ein unbeteiligter VM bleibt draußen' do
+    game = game_hosted_by(create(:club))
+    login(create(:user, :vm, club_id: create(:club).id))
+
+    post "/api/v2/user/games/#{game.id}/set_field", params: { game: { audience: '40' } }
+
+    assert_response :forbidden
+    assert_nil game.reload.audience
+  end
+
+  # set_string kennt wie set_flag keine Sperre für abgeschlossene Berichte. Für
+  # den VM eines beteiligten Vereins war das immer schon so, für den Ausrichter
+  # ist es neu. Der Test hält das Verhalten fest, damit eine spätere
+  # Vereinheitlichung der Abschluss-Sperre eine bewusste Entscheidung wird und
+  # keine stille Nebenwirkung.
+  test 'set_field: der VM des Ausrichters darf auch den abgeschlossenen Bericht berichtigen' do
+    hosting_club = create(:club)
+    game = game_hosted_by(hosting_club)
+    game.update!(game_status: 'match_record_closed')
+    login(create(:user, :vm, club_id: hosting_club.id))
+
+    post "/api/v2/user/games/#{game.id}/set_field", params: { game: { audience: '40' } }
+
+    assert_response :success
+    assert_equal 40, game.reload.audience.to_i
+  end
+
+  # --- Sekretariats-Token und Login treffen aufeinander -----------------------
+  #
+  # Der SecretaryTokenInterceptor hängt einen einmal abgelegten Token an jede
+  # Anfrage und löscht ihn nirgends. An einem Turnierwochenende mit mehreren
+  # Hallen arbeitet dieselbe Registerkarte deshalb mit Token UND Login. Beide
+  # Richtungen sind vorher ungetestet gewesen.
+
+  # Ausweitung: Vorher lief diese Person in den Rollenzweig, ihre Rolle passte
+  # nicht, und der Token wurde nie befragt.
+  test 'set_field: ein passender Token trägt auch eine angemeldete Person ohne passende Rolle' do
+    game = game_hosted_by(create(:club))
+    _link, token = GameDaySecretaryLink.generate!(game_days: [game.game_day],
+                                                  created_by: create(:user, :admin))
+    login(create(:user, :vm, club_id: create(:club).id))
+
+    post "/api/v2/user/games/#{game.id}/set_field",
+         params: { secretary_token: token, game: { audience: '40' } }
+
+    assert_response :success
+    assert_equal 40, game.reload.audience.to_i
+  end
+
+  # Verengung, und damit der einzige Fall, in dem jemand weniger darf als vorher:
+  # can_edit_game? entscheidet bei gesetztem @secretary_link allein über den Link.
+  # add_event und set_flag verhalten sich seit je so, set_string zieht mit.
+  test 'set_field: ein Token für einen fremden Spieltag sticht die eigene Rolle aus' do
+    game = game_hosted_by(create(:club))
+    fremder_spieltag = GameDay.create!(league: @league, arena: @arena, club: create(:club),
+                                       number: 3, date: '2026-01-03')
+    _link, token = GameDaySecretaryLink.generate!(game_days: [fremder_spieltag],
+                                                  created_by: create(:user, :admin))
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/games/#{game.id}/set_field",
+         params: { secretary_token: token, game: { audience: '40' } }
+
+    assert_response :forbidden
+    assert_nil game.reload.audience
+  end
+
+  test 'set_field: die SBK des Spielbetriebs darf weiterhin' do
+    game = game_hosted_by(create(:club))
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/games/#{game.id}/set_field",
+         params: { game: { live_stream_link: 'https://example.org/live' } }
+
+    assert_response :success
+    assert_equal 'https://example.org/live', game.reload.live_stream_link
+  end
+
+  # Eine SBK aus einem fremden Spielbetrieb darf nicht bundesweit eintragen.
+  test 'set_field: eine SBK eines fremden Spielbetriebs bleibt draußen' do
+    game = game_hosted_by(create(:club))
+    login(create(:user, :sbk_scoped, game_operation_id: create(:game_operation).id))
+
+    post "/api/v2/user/games/#{game.id}/set_field", params: { game: { audience: '40' } }
+
+    assert_response :forbidden
+    assert_nil game.reload.audience
+  end
+
   private
+
+  # Ein Spiel, dessen Ausrichter weder Heim- noch Gastverein ist. Genau diese
+  # Konstellation entsteht bei einem Turnier an einem Ort.
+  def game_hosted_by(hosting_club)
+    game_day = GameDay.create!(league: @league, arena: @arena, club: hosting_club, number: 2, date: '2026-01-02')
+    home = create(:team, league: @league, club: create(:club))
+    guest = create(:team, league: @league, club: create(:club))
+    Game.create!(
+      game_day: game_day, home_team: home, guest_team: guest,
+      started: false, ended: false, forfait: 0, overtime: false, legacy: false,
+      events: [], players: { 'home' => [], 'guest' => [] }
+    )
+  end
 
   # Zwei Heimtore, damit der Spielstand etwas hergibt, das sinken könnte.
   #
