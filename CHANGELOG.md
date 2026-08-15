@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.84.0] - 2026-08-15
+
 ### Neu
 
 - **Teammanager legen neue Spieler selbst an**: Wer eine Mannschaft betreut, sieht unter „Meine Spieler\*innen" den Bestand seines Vereins, konnte dort aber niemanden hinzufügen. Der Knopf zum Anlegen erschien nur Vereinsmanagern, und wer die Maske über die Adresszeile ansteuerte, bekam beim Speichern einen Berechtigungsfehler und wurde dabei auf die Startseite zurückgeworfen. Bei einem Neuzugang kurz vor dem Spieltag blieb also nur, den Vereinsmanager zu bitten und zu warten. Teammanager legen neue Spieler jetzt selbst an, im Verein ihrer Mannschaft und bei einer Spielgemeinschaft in jedem der beteiligten Vereine. Das Anlegen selbst läuft wie beim Vereinsmanager: Der neue Eintrag wird als Heimatmitgliedschaft des gewählten Vereins geführt, eine Zuordnung zum Kader entsteht dabei nicht. Weitere Rechte des Vereinsmanagers kommen nicht hinzu, insbesondere ändert die Stammdaten einer bereits angelegten Person weiterhin nur der Verband. Wer nur eine Mannschaft einer vergangenen Saison betreut hat, legt nichts an.
