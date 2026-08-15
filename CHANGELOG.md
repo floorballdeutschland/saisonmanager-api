@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Schiedsrichter eintragen: erst die Liga, dann Spieltag für Spieltag**: Die Ansicht, in der die Regionale Schiedsrichterkommission einträgt, welcher Verein die Schiedsrichter eines Spiels stellt, war eine einzige nach Datum sortierte Liste über alle Ligen hinweg. Wer sie abgearbeitet hat, sprang von Zeile zu Zeile zwischen den Ligen, und die Auswahl der möglichen Vereine wechselte dabei jedes Mal mit, denn sie richtet sich nach den Mannschaften der jeweiligen Liga. Jetzt wird oben eine Liga gewählt, darunter stehen deren Spieltage einzeln und aufklappbar, mit Datum, Halle und Anzahl der Spiele. Im Kopf jedes Spieltags steht, wie viele seiner Spiele bereits einen Eintrag haben, sodass sich offene Spieltage auch zugeklappt erkennen lassen; Spiele, die personenscharf angesetzt werden oder schon ein Gespann haben, zählen dabei nicht mit. Die Eingabe selbst bleibt unverändert je Spiel, ein Gespann gilt schließlich nicht automatisch für den ganzen Spieltag. Wer den Überblick über alle Ligen braucht, findet ihn als eigene Option in der Ligaauswahl.
+
 ## [1.82.0] - 2026-08-14
 
 ### Neu
