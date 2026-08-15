@@ -53,9 +53,11 @@ ausschließlich aus `league_system_id`: `1` ⇒ 3/1/2/1, alles andere ⇒ 2/0/0/
 Bis 2026-08 schrieb der Import nur `table_modus`; alle Ligen der Saisons 2–5
 rechneten dadurch mit 2 Punkten pro Sieg und **null** für Unentschieden, Sieg
 n.V. und Niederlage n.V. Nachtrag im Bestand:
-`rails legacy:backfill_league_system_id`. `enable_scorer` setzt der Import auf
-`true` (Spalten-Default ist `false`, die Scorerdaten kommen vollständig mit).
-Alle Altspiele: `legacy = true`.
+`rails legacy:backfill_league_system_id`. `enable_scorer` setzt der Import beim
+**Anlegen** auf `true` (Spalten-Default ist `false`, die Scorerdaten kommen
+vollständig mit); es steht als `create_only`-Vorgabe am `upsert` und nicht in
+`league_attrs`, damit ein Re-Run das spätere Ausblenden bei U13 nicht wieder
+aufhebt. Alle Altspiele: `legacy = true`.
 
 Vollständige Feld-für-Feld-Tabellen, globale Stammdaten (Vereine/Spieler/Schiris/
 Spielorte), Reihenfolge und Risiken: siehe `produktivdaten/MAPPING_KONZEPT_altdaten_2010-2014.md`

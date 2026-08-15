@@ -344,10 +344,12 @@ class LegacyImport::TransformerTest < ActiveSupport::TestCase # rubocop:disable 
     assert_nil attrs[:table_modus]
   end
 
-  # Die Scorerdaten kommen vollständig mit; ohne enable_scorer zeigt das
-  # Frontend die Liste nur nirgends an (Spalten-Default ist false).
-  test 'league_attrs schaltet die Scorerliste ein' do
-    assert LegacyImport::Transformer.league_attrs(liga_row, game_operation_id: 1)[:enable_scorer]
+  # enable_scorer ist keine Altdatenangabe, sondern eine Anzeigeentscheidung.
+  # Der Import setzt es als create_only-Vorgabe, nicht über league_attrs: Die
+  # Attribute von hier weist upsert bei jedem Re-Run auch bestehenden Ligen zu,
+  # ein zweiter Lauf machte sonst das Ausblenden bei U13 wieder rückgängig.
+  test 'league_attrs fasst enable_scorer nicht an' do
+    refute LegacyImport::Transformer.league_attrs(liga_row, game_operation_id: 1).key?(:enable_scorer)
   end
 
   test 'league_attrs flaggt eine unbekannte Klasse als nicht gemappt' do

@@ -22,10 +22,14 @@ module LegacyImport
     # die 2-Punkte-Rechnung und verlor die Punkte für Unentschieden und
     # Verlängerung.
     #
-    # `enable_scorer` ebenso: Der Spalten-Default ist false, die Scorerdaten
-    # kommen aber vollständig mit. Ohne das Flag rechnet das API die Liste zwar
-    # aus, das Frontend zeigt sie nur nirgends an. Für U13 und jünger schaltet
-    # `rails leagues:hide_scorer_for_youth` sie im Anschluss wieder ab.
+    # `enable_scorer` steht bewusst NICHT hier, obwohl auch dieses Feld fehlte
+    # (Spalten-Default false, die Scorerdaten kommen vollständig mit; ohne das
+    # Flag rechnet das API die Liste zwar aus, das Frontend zeigt sie nur
+    # nirgends an). Es ist keine Altdatenangabe, sondern eine
+    # Anzeigeentscheidung, und `upsert` weist die Attribute von hier bei jedem
+    # Re-Run auch bestehenden Ligen zu. Stünde es hier, machte ein zweiter Lauf
+    # das Ausblenden bei U13 (`leagues:hide_scorer_for_youth`) wieder
+    # rückgängig. Deshalb setzt der Import es als `create_only`-Vorgabe.
     def league_attrs(liga, game_operation_id:)
       kl = Vocab.klasse_attrs(liga['id_klasse'], liga['klasse_name'])
       kat = Vocab.kategorie_attrs(liga['id_kategorie'])
@@ -42,7 +46,6 @@ module LegacyImport
         female: to_bool(liga['weiblich']) || kl[:female] || false,
         table_modus: Vocab::SPIELSYSTEM_TABLE_MODUS[spielsystem],
         league_system_id: (spielsystem.to_s if spielsystem.positive?),
-        enable_scorer: true,
         order_key: liga['ordnungsnr'].to_s,
         deadline: liga['stichtag'],
         legacy_league: true
