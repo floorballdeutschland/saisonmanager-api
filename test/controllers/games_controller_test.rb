@@ -480,7 +480,70 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
     assert_equal 2, @game.reload.events.find { |e| e['id'].to_i == 2 }['period'].to_i
   end
 
+  # ---------------------------------------------------------------------------
+  # set_field: dieselbe Rechteregel wie für den übrigen Spielbericht
+  #
+  # Ein Turnier an einem Ort (DM) ist der Fall, der die frühere Sonderlogik
+  # auffliegen ließ: Der ausrichtende Verein führt das Sekretariat für alle
+  # Partien, spielt aber in den meisten nicht selbst mit.
+
+  test 'set_field: der VM des ausrichtenden Vereins darf die Kopfdaten speichern' do
+    hosting_club = create(:club)
+    game = game_hosted_by(hosting_club)
+    login(create(:user, :vm, club_id: hosting_club.id))
+
+    post "/api/v2/user/games/#{game.id}/set_field", params: { game: { audience: '40' } }
+
+    assert_response :success
+    assert_equal 40, game.reload.audience.to_i
+  end
+
+  # Gegenprobe zum Test darüber: Ohne Bezug zum Spiel bleibt es bei 403. Die
+  # Zusammenlegung erweitert die Rechte nur um den Ausrichter, nicht um jeden VM.
+  test 'set_field: ein unbeteiligter VM bleibt draußen' do
+    game = game_hosted_by(create(:club))
+    login(create(:user, :vm, club_id: create(:club).id))
+
+    post "/api/v2/user/games/#{game.id}/set_field", params: { game: { audience: '40' } }
+
+    assert_response :forbidden
+  end
+
+  test 'set_field: die SBK des Spielbetriebs darf weiterhin' do
+    game = game_hosted_by(create(:club))
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/games/#{game.id}/set_field",
+         params: { game: { live_stream_link: 'https://example.org/live' } }
+
+    assert_response :success
+    assert_equal 'https://example.org/live', game.reload.live_stream_link
+  end
+
+  # Eine SBK aus einem fremden Spielbetrieb darf nicht bundesweit eintragen.
+  test 'set_field: eine SBK eines fremden Spielbetriebs bleibt draußen' do
+    game = game_hosted_by(create(:club))
+    login(create(:user, :sbk_scoped, game_operation_id: create(:game_operation).id))
+
+    post "/api/v2/user/games/#{game.id}/set_field", params: { game: { audience: '40' } }
+
+    assert_response :forbidden
+  end
+
   private
+
+  # Ein Spiel, dessen Ausrichter weder Heim- noch Gastverein ist. Genau diese
+  # Konstellation entsteht bei einem Turnier an einem Ort.
+  def game_hosted_by(hosting_club)
+    game_day = GameDay.create!(league: @league, arena: @arena, club: hosting_club, number: 2, date: '2026-01-02')
+    home = create(:team, league: @league, club: create(:club))
+    guest = create(:team, league: @league, club: create(:club))
+    Game.create!(
+      game_day: game_day, home_team: home, guest_team: guest,
+      started: false, ended: false, forfait: 0, overtime: false, legacy: false,
+      events: [], players: { 'home' => [], 'guest' => [] }
+    )
+  end
 
   # Zwei Heimtore, damit der Spielstand etwas hergibt, das sinken könnte.
   #

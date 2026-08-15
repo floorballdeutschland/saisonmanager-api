@@ -9,6 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Der ausrichtende Verein kann den Spielbericht jetzt vollständig ausfüllen**: Wer ein Turnier an einem Ort ausrichtet, etwa eine Deutsche Meisterschaft, führt dort das Sekretariat für alle Partien, spielt aber in den meisten nicht selbst mit. Genau diese Personen konnten zwar Tore, Strafen und Kader erfassen, aber die Kopfdaten des Spielberichts nicht speichern: Betreuer, Spielsekretariat, Livestream-Link, Zuschauerzahl, Anwurfzeit und Auszeiten wurden mit „Keine Berechtigung" abgewiesen. Die Kopfdaten prüften als einzige Stelle des Spielberichts nach einer eigenen, nachgebauten Regel, die den ausrichtenden Verein nicht kannte. Es gilt jetzt dieselbe Regel wie für den übrigen Bericht. Bei gewöhnlichen Spieltagen fiel das nie auf, weil der Ausrichter dort ohnehin selbst mitspielt. Mit derselben Änderung wirkt ein Spielsekretariats-Link auch dann, wenn die Person am selben Rechner zusätzlich angemeldet ist; bisher wurde der Link in diesem Fall übergangen.
+
+- **Ein abgelehntes Feld wirft niemanden mehr aus dem laufenden Spielbericht**: Scheiterte das Speichern eines einzelnen Feldes an fehlenden Rechten, sprang die Oberfläche zurück auf die Startseite. Mitten in einem laufenden Spiel bedeutete das, sich neu zum Spielbericht durchzuklicken, und zwar bei jedem Versuch erneut. Die Meldung erscheint jetzt an Ort und Stelle, die Ansicht bleibt stehen.
+
 ### Verbessert
 
 - **Schiedsrichter eintragen: erst die Liga, dann Spieltag für Spieltag**: Die Ansicht, in der die Regionale Schiedsrichterkommission einträgt, welcher Verein die Schiedsrichter eines Spiels stellt, war eine einzige nach Datum sortierte Liste über alle Ligen hinweg. Wer sie abgearbeitet hat, sprang von Zeile zu Zeile zwischen den Ligen, und die Auswahl der möglichen Vereine wechselte dabei jedes Mal mit, denn sie richtet sich nach den Mannschaften der jeweiligen Liga. Jetzt wird oben eine Liga gewählt, darunter stehen deren Spieltage einzeln und aufklappbar, mit Datum, Halle und Anzahl der Spiele. Im Kopf jedes Spieltags steht, wie viele seiner Spiele bereits einen Eintrag haben, sodass sich offene Spieltage auch zugeklappt erkennen lassen; Spiele, die personenscharf angesetzt werden oder schon ein Gespann haben, zählen dabei nicht mit. Die Eingabe selbst bleibt unverändert je Spiel, ein Gespann gilt schließlich nicht automatisch für den ganzen Spieltag. Wer den Überblick über alle Ligen braucht, findet ihn als eigene Option in der Ligaauswahl.

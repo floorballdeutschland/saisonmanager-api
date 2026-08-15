@@ -794,39 +794,31 @@ class GamesController < ApplicationController
 
   def set_string
     game = Game.find(params[:id])
-    # check if allowed
 
-    ph = current_user&.permission_hash || {}
-    home = game.home_team
-    guest = game.guest_team
-    # SBK-, VM- und TM-Zweig additiv: eine nicht passende Rolle darf den Zugriff
-    # über eine andere Rolle nicht verdecken (eine SBK aus Verband A, die im
-    # Verein eines Spiels aus Verband B VM ist, wurde sonst abgewiesen).
-    # Der can_edit_game?-Fallback bleibt außerhalb dieser Verkettung. Seit #214
-    # ist Game#can_edit_lineup? ebenfalls auf den Spielbetrieb gescopt, hebelt
-    # das Scoping hier also nicht mehr aus; es bliebe aber ein Unterschied im
-    # VM-Zweig: can_edit_lineup? lässt zusätzlich den VM des ausrichtenden
-    # Vereins zu. Das Zusammenlegen wäre daher eine Ausweitung und gehört in
-    # eine eigene, bewusste Entscheidung.
-    allowed = if ph[:admin].present?
-                true
-              elsif ph[:sbk].present? || ph[:vm].present? || ph[:tm].present?
-                # Auf den Spielbetrieb des Spiels scopen – ein LV-SBK darf nicht
-                # jedes Spiel bundesweit bearbeiten.
-                (ph[:sbk].present? &&
-                  (ph[:sbk].include?(0) || ph[:sbk].include?(game.league.game_operation_id))) ||
-                  # .present? auch auf den ersten Treffer – ein leeres
-                  # Array ist truthy und ließ sonst jeden VM jedes Spiel bearbeiten.
-                  # home/guest können bei Platzhalter-Spielen nil sein.
-                  (ph[:vm].present? &&
-                    (ph[:vm].intersection([home&.club_id, guest&.club_id].compact).present? ||
-                      ph[:vm].intersection([home&.syndicate_clubs,
-                                            guest&.syndicate_clubs].flatten.compact).present?)) ||
-                  (ph[:tm].present? &&
-                    (ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)))
-              else
-                can_edit_game?(game)
-              end
+    # Dieselbe Regel wie für den übrigen Spielbericht (add_event,
+    # add_player_to_lineup, set_flag, set_game_status): can_edit_game? prüft
+    # zuerst den Spielsekretariats-Link und fällt sonst auf
+    # Game#can_edit_lineup? zurück.
+    #
+    # Vorher stand hier eine eigene, nachgebaute Rechtekette. Sie deckte Admin,
+    # gescopte SBK, VM der beteiligten Vereine und TM ab, ließ aber zwei Fälle
+    # aus, die can_edit_lineup? kennt, und den Sekretariats-Link kam nur zum
+    # Zug, wenn die Person überhaupt keine Rolle hatte:
+    #
+    # 1. Den VM des **ausrichtenden** Vereins (game_day.club_id). Der fällt bei
+    #    normalen Spieltagen nicht auf, weil der Ausrichter dort selbst
+    #    mitspielt. Bei einem Turnier an einem Ort, etwa der DM, richtet ein
+    #    Verein aber alle Partien aus und führt das Sekretariat. Dort konnte er
+    #    Tore und Strafen erfassen, aber Betreuer, Spielsekretariat,
+    #    Livestream-Link, Zuschauerzahl und Anwurfzeit nicht speichern: 403 auf
+    #    jedem dieser Felder, und das Frontend warf ihn dabei aus dem
+    #    laufenden Spielbericht.
+    # 2. Den Sekretariats-Link in der Hand einer angemeldeten Person mit
+    #    irgendeiner Rolle. Die lief in den Rollenzweig und nie in den Fallback.
+    #
+    # Die alte Kette war damit eine echte Teilmenge dieser Prüfung; die
+    # Zusammenlegung erweitert die Rechte nur um genau diese beiden Fälle.
+    allowed = can_edit_game?(game)
 
     if allowed
       game.record_created_at ||= Time.now
