@@ -639,4 +639,54 @@ class ClubTest < ActiveSupport::TestCase
     assert_not club.update(short_name: 'ABCDE')
     assert_includes club.errors.attribute_names, :short_name
   end
+
+  # Teammanager*innen legen Spieler*innen im eigenen Verein an, genau wie
+  # Vereinsmanager*innen. Stammdaten aendern bleibt Admin/SBK vorbehalten.
+  test 'Teammanager darf im Verein der eigenen Mannschaft Spieler anlegen' do
+    create(:setting, current_season_id: '18')
+    club = create(:club)
+    team = create(:team, club:, league: create(:league, :current_season))
+    tm = create(:user, :tm, team_id: team.id)
+
+    perm = club.user_permissions(tm)
+
+    assert_includes perm, :create_player
+    assert_not_includes perm, :update_player
+    assert_not_includes perm, :update_club
+    assert_not_includes perm, :update_own_club
+  end
+
+  test 'Teammanager darf in einem fremden Verein keine Spieler anlegen' do
+    create(:setting, current_season_id: '18')
+    team = create(:team, club: create(:club), league: create(:league, :current_season))
+    fremder_club = create(:club)
+    tm = create(:user, :tm, team_id: team.id)
+
+    assert_not_includes fremder_club.user_permissions(tm), :create_player
+  end
+
+  # Spielgemeinschaften stellen den Kader gemeinsam, also gilt die Anlage fuer
+  # jeden beteiligten Verein (gleiche Regel wie Team#all_club_ids sonst).
+  test 'Teammanager einer Spielgemeinschaft darf in allen beteiligten Vereinen anlegen' do
+    create(:setting, current_season_id: '18')
+    haupt = create(:club)
+    partner = create(:club)
+    team = create(:team, club: haupt, league: create(:league, :current_season),
+                         syndicate: true, syndicate_clubs: [partner.id])
+    tm = create(:user, :tm, team_id: team.id)
+
+    assert_includes haupt.user_permissions(tm), :create_player
+    assert_includes partner.user_permissions(tm), :create_player
+  end
+
+  # ph[:tm] enthaelt nur Mannschaften der laufenden Saison; wer nur eine alte
+  # Mannschaft betreut hat, legt nichts mehr an.
+  test 'Teammanager einer Mannschaft aus einer alten Saison darf nichts anlegen' do
+    create(:setting, current_season_id: '18')
+    club = create(:club)
+    team = create(:team, club:, league: create(:league, :previous_season))
+    tm = create(:user, :tm, team_id: team.id)
+
+    assert_not_includes club.user_permissions(tm), :create_player
+  end
 end

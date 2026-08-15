@@ -257,6 +257,7 @@ class Club < ApplicationRecord
     sbk = ph[:sbk].present? && (global_or_go & ph[:sbk]).any?
 
     vm = ph[:vm].present? && ph[:vm].include?(id)
+    tm = team_manager?(ph)
 
     perm << :update_club if admin || sbk
     perm << :update_player if admin || sbk
@@ -268,9 +269,26 @@ class Club < ApplicationRecord
     # der Verein sonst selbst.
     perm << :update_own_club if admin || sbk || vm
 
-    perm << :create_player if admin || sbk || vm
+    # Teammanager*innen legen ebenfalls Spieler*innen an – sie stellen die
+    # Mannschaft auf und brauchen dafür Neuzugänge, ohne auf den
+    # Vereinsmanager zu warten. Der Umfang bleibt derselbe wie beim VM: Die
+    # Anlage hängt am Verein, nicht an der Mannschaft, und der neue Eintrag
+    # wird als Heimatmitgliedschaft dieses Vereins geführt. Stammdaten
+    # nachträglich ändern (`:update_player`) darf weiterhin nur der Verband.
+    perm << :create_player if admin || sbk || vm || tm
 
     perm
+  end
+
+  # True, wenn der/die Nutzer*in eine Mannschaft dieses Vereins in der
+  # laufenden Saison betreut. Spielgemeinschaften zählen über
+  # `Team#all_club_ids` mit – die beteiligten Vereine stellen gemeinsam den
+  # Kader, also gilt der Zugriff für alle davon (gleiche Regel wie in
+  # `ClubsController#vm_clubs_and_teams` und `PlayersController#tm_club_ids`).
+  def team_manager?(perm_hash)
+    return false if perm_hash[:tm].blank?
+
+    Team.current_season.where(id: perm_hash[:tm]).any? { |team| team.all_club_ids.include?(id) }
   end
 
   # Vereine, für die der User vereinsgebundene Rollen (VM/TM) vergeben darf:
