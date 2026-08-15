@@ -13,15 +13,32 @@ module Admin
                                                      update_notes]
     before_action :authorize_club_level!, only: %i[league_clubs update_club_assignment]
 
+    # Welche Reihenfolge gilt, entscheidet die Rolle (club_level_view?), nicht ein
+    # Parameter: die beiden Ansichten liegen hinter einem Menüpunkt.
+    #
     # Der Personen-Weg arbeitet chronologisch, dort grenzen die Zeitraum-Reiter ein.
+    # `game_days.date` ist eine Textspalte, sortiert also lexikografisch; bei
+    # durchgängigem YYYY-MM-DD ist das dasselbe wie chronologisch.
     PERSON_LEVEL_GAMES_ORDER = 'game_days.date ASC, games.start_time ASC NULLS LAST'.freeze
     # Der reduzierte Modus wird Liga für Liga und darin Spieltag für Spieltag
     # abgearbeitet; eine rein chronologische Liste mischt die Ligen und zwingt
     # die RSK, zeilenweise zwischen ihnen zu springen. `game_days.number` ist
-    # nullable (lückenhafte Importvorlagen), deshalb NULLS LAST plus Datum als
-    # Rückfallebene.
-    CLUB_LEVEL_GAMES_ORDER = 'leagues.name ASC, game_days.number ASC NULLS LAST, ' \
-                             'game_days.date ASC, games.start_time ASC NULLS LAST'.freeze
+    # nullable und wird von keiner Validierung erzwungen (der Spielplan-Import
+    # setzt sie immer, die Spieltags-Endpunkte nicht), deshalb NULLS LAST plus
+    # Datum als Rückfallebene.
+    #
+    # Innerhalb des Spieltags dieselbe Reihenfolge wie im Spielplan: erst der
+    # Anwurf, dann die Spielnummer als stabiler Gleichstand. `start_time` ist
+    # Text, '' muss deshalb wie NULL ans Ende und nicht an den Anfang;
+    # `game_number` ist ebenfalls Text und enthält in K.-o.-Runden „HF1“ oder
+    # „FIN“, ein blanker ::integer-Cast bräche die ganze Abfrage ab.
+    CLUB_LEVEL_GAMES_ORDER = <<~SQL.squish.freeze
+      leagues.name ASC,
+      game_days.number ASC NULLS LAST,
+      game_days.date ASC,
+      NULLIF(games.start_time, '') ASC NULLS LAST,
+      CASE WHEN games.game_number ~ '^[0-9]+$' THEN games.game_number::integer END ASC NULLS LAST
+    SQL
 
     # GET /api/v2/admin/referee_assignments
     def index
@@ -105,7 +122,9 @@ module Admin
         )
       end
 
-      scope = scope.order(club_level_view? ? CLUB_LEVEL_GAMES_ORDER : PERSON_LEVEL_GAMES_ORDER)
+      scope = scope.order(
+        Arel.sql(club_level_view? ? CLUB_LEVEL_GAMES_ORDER : PERSON_LEVEL_GAMES_ORDER)
+      )
 
       games = scope.to_a
       note_authors = note_author_names(games)
@@ -126,10 +145,14 @@ module Admin
           guest_team_club_id: g.guest_team&.club_id,
           league: g.game_day.league&.name,
           league_id: g.game_day.league_id,
+          # Ligen verschiedener Verbände heißen oft gleich, und ein RSK-Scope
+          # kann mehrere Spielbetriebe umfassen. Ohne den Verband wären zwei
+          # gleichnamige Ligen in der Ligaauswahl nicht zu unterscheiden, und
+          # die Spiele der zweiten blieben unbemerkt liegen.
+          game_operation: go && (go.short_name.presence || go.name),
           # Spieltag als eigene Einheit: die Anzeige gruppiert danach. Über das
-          # Datum allein ginge das nicht – zwei Spieltage derselben Liga können
-          # auf denselben Tag fallen, und ein Spieltag kann sich über mehrere
-          # Tage ziehen.
+          # Datum allein ginge das nicht, denn zwei Spieltage derselben Liga
+          # können auf denselben Tag fallen.
           game_day_id: g.game_day_id,
           game_day_number: g.game_day.number,
           # Markierung „personenscharf ansetzen". Im reduzierten Modus sperrt sie
