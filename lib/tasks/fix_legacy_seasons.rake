@@ -43,12 +43,16 @@
 #   bundle exec rails legacy:backfill_league_system_id DRY_RUN=false
 #   bundle exec rails legacy:enable_scorer_old_seasons DRY_RUN=false
 #
-# Saisons ueberschreibbar (Standard 2,3,4,5):
+# Saisons ueberschreibbar (Standard 2,3,4,5), Altersgrenze ebenso (Standard 13):
 #   bundle exec rails legacy:backfill_league_system_id SEASONS=2,3
+#   bundle exec rails legacy:enable_scorer_old_seasons MAX_AGE=11
 #
-# Danach unbedingt die Jugend-Regel erneut anwenden, damit U13 und juenger
-# keine Scorerliste zeigen:
-#   bundle exec rails leagues:hide_scorer_for_youth DRY_RUN=false
+# Die Jugend-Regel (U13 und juenger zeigen keine Scorerliste) wendet
+# enable_scorer_old_seasons selbst an, ein zweiter Lauf von
+# leagues:hide_scorer_for_youth ist NICHT noetig. Bewusst so: Erst alles
+# einschalten und danach aufraeumen stellte die Namen minderjaehriger Spieler
+# in der Zwischenzeit oeffentlich, und ein vergessener zweiter Befehl liesse
+# sie dauerhaft stehen.
 
 namespace :legacy do
   # table_modus (aus dem Alt-Feld id_spielsystem) -> league_system_id, so wie
@@ -113,8 +117,14 @@ namespace :legacy do
     puts "  davon Verlaengerung: #{games.where(overtime: true).count}"
 
     puts "\n--- Stichprobe: 5 Ligen mit Verlaengerungsspielen ---"
-    ot_league_ids = Game.joins(:game_day).where(overtime: true).distinct.pluck('game_days.league_id')
-    scope.where(id: ot_league_ids).limit(5).each do |league|
+    # Auf die betrachteten Ligen eingegrenzt: ohne die Einschraenkung waere das
+    # ein Vollscan ueber alle Spiele des Bestands, nur fuer fuenf Beispielzeilen.
+    # order(:id), weil legacy_scope reorder(nil) traegt und limit(5) sonst eine
+    # zufaellige, nicht wiederholbare Auswahl liefert.
+    ot_league_ids = Game.joins(:game_day)
+                        .where(overtime: true, game_days: { league_id: scope.select(:id) })
+                        .distinct.pluck('game_days.league_id')
+    scope.where(id: ot_league_ids).order(:id).limit(5).each do |league|
       puts "  #{legacy_league_label(league)}"
       puts "     table_modus=#{league.table_modus.inspect} league_system_id=#{league.league_system_id.inspect}"
       puts "     ist:   #{legacy_point_scheme(league)}"
@@ -133,6 +143,7 @@ namespace :legacy do
     changed = 0
     already_set = 0
     unmapped = []
+    still_two_point = []
 
     legacy_scope(seasons).order(:season_id, :id).each do |league|
       if league.league_system_id.present?
@@ -154,35 +165,60 @@ namespace :legacy do
       puts "     #{before}  =>  #{legacy_point_scheme(league)}"
       League.where(id: league.id).update_all(league_system_id: target) unless dry_run
       changed += 1
+      still_two_point << league unless target == '1'
     end
 
     puts "\nErgebnis: #{changed} Ligen #{dry_run ? 'wuerden geaendert' : 'geaendert'}."
     puts "Uebersprungen, weil league_system_id schon gesetzt: #{already_set}"
+
+    # Der Wert wird auch bei two_point/other geschrieben, weil er die Angabe des
+    # Altsystems eins zu eins abbildet. Am gerechneten Ergebnis aendert das
+    # nichts (jeder Wert ausser 1 ergibt 2/0/0/0), die Ligen bleiben also so
+    # stehen wie sie heute stehen. Sie werden hier trotzdem namentlich
+    # ausgewiesen: In einem echten 2-Punkte-System gibt ein Unentschieden einen
+    # Punkt, nicht null. Ob das damals so galt, ist offen und braucht eine
+    # sportfachliche Entscheidung samt Aenderung an League#draw_points. Ohne
+    # diese Liste faende der naechste Lauf sie nicht mehr, weil
+    # league_system_id dann gesetzt ist.
+    if still_two_point.any?
+      puts "\nOFFEN (#{still_two_point.size}): rechnen weiterhin 2/0/0/0, also null Punkte fuer " \
+           'Unentschieden und Verlaengerung. Braucht eine sportfachliche Entscheidung:'
+      still_two_point.each { |l| puts "  #{legacy_league_label(l)} table_modus=#{l.table_modus}" }
+    end
+
     if unmapped.any?
-      puts "Uebersprungen, weil table_modus leer/unbekannt (#{unmapped.size}) -- " \
-           'diese Ligen rechnen weiter mit 2/0/0/0 und brauchen eine Einzelentscheidung:'
+      puts "\nUebersprungen, weil table_modus leer/unbekannt (#{unmapped.size}) -- " \
+           'diese Ligen rechnen ebenfalls weiter mit 2/0/0/0:'
       unmapped.first(30).each { |l| puts "  #{legacy_league_label(l)} table_modus=#{l.table_modus.inspect}" }
       puts '  ...' if unmapped.size > 30
     end
     puts "\n[DRY RUN] Zum Ausfuehren: rails legacy:backfill_league_system_id DRY_RUN=false" if dry_run
   end
 
-  desc 'Setzt enable_scorer=true bei den Alt-Ligen der angegebenen Saisons. DRY_RUN=false zum Ausfuehren.'
+  desc 'Setzt enable_scorer=true bei den Alt-Ligen der angegebenen Saisons, ausser U13 und juenger. DRY_RUN=false zum Ausfuehren.'
   task enable_scorer_old_seasons: :environment do
     dry_run = ENV['DRY_RUN'] != 'false'
     seasons = legacy_seasons
+    max_age = (ENV['MAX_AGE'] || '13').to_i
     puts "=== Scorerliste in Alt-Saisons einschalten #{dry_run ? '[DRY RUN]' : '[LIVE]'} ==="
-    puts "Saisons: #{seasons.map { |s| legacy_season_name(s) }.join(', ')}"
+    puts "Saisons: #{seasons.map { |s| legacy_season_name(s) }.join(', ')} | U#{max_age} und juenger bleiben aus"
 
-    affected = legacy_scope(seasons).where(enable_scorer: false).order(:season_id, :id).to_a
+    # Die Jugend-Regel greift HIER, nicht erst in einem zweiten Lauf. Wuerde
+    # erst alles eingeschaltet und danach `leagues:hide_scorer_for_youth`
+    # aufgerufen, stuenden die Namen minderjaehriger Spieler in der Zwischenzeit
+    # oeffentlich, und ein vergessener zweiter Befehl liesse sie dauerhaft
+    # stehen. `youth_u_leq?` stammt aus lib/tasks/hide_scorer_youth.rake und ist
+    # die massgebliche Regel; rake laedt alle Task-Dateien, bevor eine laeuft.
+    candidates = legacy_scope(seasons).where(enable_scorer: false).order(:season_id, :id).to_a
+    youth, affected = candidates.partition { |league| youth_u_leq?(league, max_age) }
+
     affected.each do |league|
       puts "--- #{legacy_league_label(league)}#{dry_run ? ' [DRY RUN]' : ''}"
       league.update_column(:enable_scorer, true) unless dry_run
     end
 
     puts "\nErgebnis: #{affected.size} Ligen #{dry_run ? 'wuerden eingeschaltet' : 'eingeschaltet'}."
-    puts 'Danach die Jugend-Regel erneut anwenden:'
-    puts '  bundle exec rails leagues:hide_scorer_for_youth DRY_RUN=false'
+    puts "Uebersprungen, weil U#{max_age} oder juenger: #{youth.size}"
     puts "\n[DRY RUN] Zum Ausfuehren: rails legacy:enable_scorer_old_seasons DRY_RUN=false" if dry_run
   end
 end

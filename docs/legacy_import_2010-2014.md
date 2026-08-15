@@ -205,9 +205,11 @@ Events) über die JSON-Brücke gegen die prod-nahe Dev-DB:
    ```bash
    rails legacy:report_old_seasons                              # nur lesend
    rails legacy:backfill_league_system_id DRY_RUN=false         # Punkte je Liga
-   rails legacy:enable_scorer_old_seasons DRY_RUN=false         # Scorerliste an
-   rails leagues:hide_scorer_for_youth DRY_RUN=false            # U13 und jünger wieder aus
+   rails legacy:enable_scorer_old_seasons DRY_RUN=false         # Scorerliste an, U13 und jünger bleiben aus
    ```
+
+   `enable_scorer_old_seasons` wendet die Jugend-Regel selbst an; ein zweiter
+   Lauf von `leagues:hide_scorer_for_youth` ist nicht nötig.
 
    Die öffentlichen Caches (`leagues/:id/table`, `leagues/:id/scorer`) laufen
    nach 5 Minuten ab, es ist kein manuelles Leeren nötig.
