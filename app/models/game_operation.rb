@@ -15,7 +15,8 @@ class GameOperation < ApplicationRecord
   # mit dem Gast-Eintrag selbst entfallen.
   def home_clubs
     Club.where(
-      "clubs.game_operations_hash @> '[{\"game_operation_id\": ?, \"home_game_operation\": true}]'", id
+      'clubs.game_operations_hash @> ?',
+      [{ game_operation_id: id, home_game_operation: true }].to_json
     ).order(:name)
   end
 

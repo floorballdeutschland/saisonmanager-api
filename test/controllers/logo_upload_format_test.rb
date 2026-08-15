@@ -50,7 +50,14 @@ class LogoUploadFormatTest < ActionDispatch::IntegrationTest
       # Eigene Meldung, nicht die der Kopfzeilen-Prüfung: Die Datei heißt .png,
       # der Hinweis muss also am Inhalt ansetzen und nicht die erlaubten
       # Endungen aufzählen, die der Aufrufer scheinbar eingehalten hat.
-      assert_match(/Inhalt der Datei passt nicht/, JSON.parse(response.body)['message'].to_s,
+      #
+      # Zwei Formulierungen sind zulässig, weil die SVG seit Rails 7.2.3.2 gar
+      # nicht mehr bis zur Loader-Prüfung kommt: ActiveStorage sperrt beim Laden
+      # die unsicheren vips-Loader (svgload gehört dazu), das Lesen scheitert
+      # also schon vorher. Abgewiesen wird sie in beiden Fällen, und beide
+      # Meldungen benennen den Inhalt.
+      assert_match(/Inhalt der Datei passt nicht|nicht als Bild gelesen werden/,
+                   JSON.parse(response.body)['message'].to_s,
                    "#{name}: die Meldung muss den Inhalt benennen, nicht die Endung")
     end
 

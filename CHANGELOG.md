@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Server auf Rails 7.2 gehoben, zehn Sicherheitsmeldungen geschlossen**: Der Server lief auf einer Fassung des Anwendungsgerüsts, die keine Sicherheitskorrekturen mehr bekommt. Zehn offene Meldungen betrafen ihn, darunter eine als kritisch eingestufte: Beim Verkleinern hochgeladener Bilder öffnete die Bildbibliothek auch Formate, die für fremde Dateien nicht gedacht sind, worüber sich im ungünstigsten Fall Dateien vom Server auslesen ließen. Der Weg dorthin war bei uns bereits verengt, weil die Logo-Prüfung seit Juli den tatsächlichen Inhalt einer Datei bestimmt und nur echte PNG-, JPG- und WebP-Bilder in die Ablage lässt. Mit der neuen Fassung sperrt der Server diese Formate zusätzlich von sich aus. Für die Anwendung ändert sich nichts Sichtbares. Eine Kleinigkeit doch: Wer ein Bild hochlädt, dessen Inhalt nicht zur Endung passt, bekommt bei einer getarnten SVG jetzt die Meldung, dass die Datei nicht als Bild gelesen werden konnte. Abgewiesen wurde sie vorher wie nachher.
+
 ## [1.84.0] - 2026-08-15
 
 ### Neu
