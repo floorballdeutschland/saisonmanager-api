@@ -1296,6 +1296,96 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
   private
 
   # Beendetes Spiel mit @player (Trikot 7) in der Heim-Aufstellung.
+  # admin_player_update, Anlege-Zweig. Der Endpunkt war bis hierher ohne
+  # Testabdeckung, obwohl an ihm die vereinsgebundene Berechtigung hängt.
+  test 'TM legt im Verein der eigenen Mannschaft eine Spielerin an' do
+    login_as(create(:user, :tm, team_id: @team.id))
+
+    assert_difference 'Player.count', 1 do
+      post '/api/v2/admin/players.json',
+           params: { id: 0, club_id: @club.id, first_name: 'Neu', last_name: 'Zugang',
+                     birthdate: '2005-03-01', gender: 'w', nation_id: '1' },
+           as: :json
+    end
+
+    assert_response :created
+    player = Player.find(JSON.parse(response.body)['id'])
+    assert_equal [@club.id], (player.clubs.map { |c| c['club_id'] })
+    assert player.clubs.first['home_club'], 'der neue Eintrag ist die Heimatmitgliedschaft'
+  end
+
+  test 'TM darf in einem fremden Verein nichts anlegen' do
+    fremder = create(:club)
+    login_as(create(:user, :tm, team_id: @team.id))
+
+    assert_no_difference 'Player.count' do
+      post '/api/v2/admin/players.json',
+           params: { id: 0, club_id: fremder.id, first_name: 'Neu', last_name: 'Zugang',
+                     birthdate: '2005-03-01', gender: 'w', nation_id: '1' },
+           as: :json
+    end
+
+    assert_response :forbidden
+  end
+
+  # Grenze, die der Anlage gegenübersteht: Wer angelegt ist, wird vom Verband
+  # gepflegt (:update_player).
+  test 'TM aendert die Stammdaten einer bestehenden Person nicht' do
+    login_as(create(:user, :tm, team_id: @team.id))
+
+    post '/api/v2/admin/players.json',
+         params: { id: @player.id, club_id: @club.id, first_name: 'Geaendert',
+                   last_name: @player.last_name, birthdate: @player.birthdate.to_s },
+         as: :json
+
+    assert_response :forbidden
+    assert_not_equal 'Geaendert', @player.reload.first_name
+  end
+
+  test 'Dublette wird auch dem TM verweigert' do
+    login_as(create(:user, :tm, team_id: @team.id))
+
+    assert_no_difference 'Player.count' do
+      post '/api/v2/admin/players.json',
+           params: { id: 0, club_id: @club.id, first_name: @player.first_name.downcase,
+                     last_name: @player.last_name, birthdate: @player.birthdate.to_s,
+                     gender: 'm', nation_id: '1' },
+           as: :json
+    end
+
+    assert_response :unprocessable_entity
+  end
+
+  # Regression: Der Rückgabewert von player.save wurde verworfen, die Antwort
+  # war auch bei gescheiterter Validierung 201. Die Oberfläche meldete Erfolg
+  # und leitete weiter, angelegt war nichts.
+  test 'gescheiterte Validierung antwortet 422 statt 201' do
+    login_as(create(:user, :tm, team_id: @team.id))
+
+    assert_no_difference 'Player.count' do
+      post '/api/v2/admin/players.json',
+           params: { id: 0, club_id: @club.id, first_name: 'Neu', last_name: 'Zugang',
+                     birthdate: '2005-03-01', gender: 'w', nation_id: '1', email: 'keine-adresse' },
+           as: :json
+    end
+
+    assert_response :unprocessable_entity
+  end
+
+  # params[:id] kam als nil oder als String und brach mit einem 500er ab.
+  test 'fehlende id gilt als Anlage statt als Serverfehler' do
+    login_as(create(:user, :tm, team_id: @team.id))
+
+    assert_difference 'Player.count', 1 do
+      post '/api/v2/admin/players.json',
+           params: { club_id: @club.id, first_name: 'Ohne', last_name: 'Id',
+                     birthdate: '2005-03-01', gender: 'w', nation_id: '1' },
+           as: :json
+    end
+
+    assert_response :created
+  end
+
   def create_stats_game(league, team, events)
     arena = create(:arena)
     game_day = GameDay.create!(league: league, arena: arena, club: @club, number: 1, date: '2025-01-01')

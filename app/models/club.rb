@@ -257,7 +257,6 @@ class Club < ApplicationRecord
     sbk = ph[:sbk].present? && (global_or_go & ph[:sbk]).any?
 
     vm = ph[:vm].present? && ph[:vm].include?(id)
-    tm = team_manager?(ph)
 
     perm << :update_club if admin || sbk
     perm << :update_player if admin || sbk
@@ -271,24 +270,38 @@ class Club < ApplicationRecord
 
     # Teammanager*innen legen ebenfalls Spieler*innen an – sie stellen die
     # Mannschaft auf und brauchen dafür Neuzugänge, ohne auf den
-    # Vereinsmanager zu warten. Der Umfang bleibt derselbe wie beim VM: Die
-    # Anlage hängt am Verein, nicht an der Mannschaft, und der neue Eintrag
-    # wird als Heimatmitgliedschaft dieses Vereins geführt. Stammdaten
-    # nachträglich ändern (`:update_player`) darf weiterhin nur der Verband.
-    perm << :create_player if admin || sbk || vm || tm
+    # Vereinsmanager zu warten. Die Anlage hängt dabei am Verein und nicht an
+    # der Mannschaft: Der neue Eintrag wird als Heimatmitgliedschaft dieses
+    # Vereins geführt, eine Kaderzuordnung entsteht nicht. Stammdaten
+    # nachträglich ändern (`:update_player`) darf weiterhin nur der Verband,
+    # und `:update_own_club` bleibt beim Vereinsmanager.
+    #
+    # Reichweite deshalb nicht deckungsgleich mit der des VM: Der legt nur im
+    # eigenen Verein an, ein TM einer Spielgemeinschaft auch in den übrigen
+    # beteiligten Vereinen (siehe #managed_by_team_manager?).
+    #
+    # Bewusst als letztes Glied der Oder-Kette, damit die Teamabfrage
+    # entfällt, sobald eine der anderen Rollen schon greift.
+    perm << :create_player if admin || sbk || vm || managed_by_team_manager?(ph)
 
     perm
   end
 
-  # True, wenn der/die Nutzer*in eine Mannschaft dieses Vereins in der
-  # laufenden Saison betreut. Spielgemeinschaften zählen über
+  # True, wenn der zum permission_hash gehörende Account eine Mannschaft
+  # dieses Vereins betreut. Spielgemeinschaften zählen über
   # `Team#all_club_ids` mit – die beteiligten Vereine stellen gemeinsam den
   # Kader, also gilt der Zugriff für alle davon (gleiche Regel wie in
-  # `ClubsController#vm_clubs_and_teams` und `PlayersController#tm_club_ids`).
-  def team_manager?(perm_hash)
-    return false if perm_hash[:tm].blank?
+  # `ClubsController#vm_clubs_and_teams` und `PlayersController#tm_club_ids`;
+  # bewusst nicht die abweichende Ableitung aus `LicenseAccessScope`).
+  #
+  # `ph[:tm]` ist in `User#permission_hash` bereits auf Mannschaften der
+  # laufenden Saison gefiltert; `Team.current_season` hier ist Redundanz, die
+  # den Gleichklang mit `tm_club_ids` hält. Kein Test trifft den Scope daher
+  # isoliert.
+  def managed_by_team_manager?(ph)
+    return false if ph[:tm].blank?
 
-    Team.current_season.where(id: perm_hash[:tm]).any? { |team| team.all_club_ids.include?(id) }
+    Team.current_season.where(id: ph[:tm]).any? { |team| team.all_club_ids.include?(id) }
   end
 
   # Vereine, für die der User vereinsgebundene Rollen (VM/TM) vergeben darf:

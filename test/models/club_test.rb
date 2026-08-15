@@ -640,8 +640,9 @@ class ClubTest < ActiveSupport::TestCase
     assert_includes club.errors.attribute_names, :short_name
   end
 
-  # Teammanager*innen legen Spieler*innen im eigenen Verein an, genau wie
-  # Vereinsmanager*innen. Stammdaten aendern bleibt Admin/SBK vorbehalten.
+  # Aus dem Bündel des Vereinsmanagers bekommen Teammanager*innen
+  # ausschließlich :create_player. :update_own_club bleibt beim
+  # Vereinsmanager, Stammdaten ändern beim Verband.
   test 'Teammanager darf im Verein der eigenen Mannschaft Spieler anlegen' do
     create(:setting, current_season_id: '18')
     club = create(:club)
@@ -665,8 +666,10 @@ class ClubTest < ActiveSupport::TestCase
     assert_not_includes fremder_club.user_permissions(tm), :create_player
   end
 
-  # Spielgemeinschaften stellen den Kader gemeinsam, also gilt die Anlage fuer
-  # jeden beteiligten Verein (gleiche Regel wie Team#all_club_ids sonst).
+  # Spielgemeinschaften stellen den Kader gemeinsam, also gilt die Anlage für
+  # jeden beteiligten Verein. Es zählt Team#all_club_ids, wie überall bei
+  # Spielgemeinschaften. Das ist die eine Stelle, an der ein TM weiter reicht
+  # als ein VM, der nur im eigenen Verein anlegt.
   test 'Teammanager einer Spielgemeinschaft darf in allen beteiligten Vereinen anlegen' do
     create(:setting, current_season_id: '18')
     haupt = create(:club)
@@ -679,8 +682,9 @@ class ClubTest < ActiveSupport::TestCase
     assert_includes partner.user_permissions(tm), :create_player
   end
 
-  # ph[:tm] enthaelt nur Mannschaften der laufenden Saison; wer nur eine alte
-  # Mannschaft betreut hat, legt nichts mehr an.
+  # Wer nur eine Mannschaft einer vergangenen Saison betreut hat, legt nichts
+  # an. Gepinnt wird das Außenverhalten; die Saisongrenze selbst zieht schon
+  # User#permission_hash, ph[:tm] ist hier leer.
   test 'Teammanager einer Mannschaft aus einer alten Saison darf nichts anlegen' do
     create(:setting, current_season_id: '18')
     club = create(:club)
@@ -688,5 +692,24 @@ class ClubTest < ActiveSupport::TestCase
     tm = create(:user, :tm, team_id: team.id)
 
     assert_not_includes club.user_permissions(tm), :create_player
+  end
+
+  # Mehrfachrollen sind schon einmal daran gescheitert, dass eine Rollenkette
+  # nach dem ersten Treffer abbrach. Beide Rollen müssen nebeneinander gelten,
+  # jede mit ihrem eigenen Umfang.
+  test 'wer VM des einen und TM im anderen Verein ist, behaelt beide Rollen' do
+    create(:setting, current_season_id: '18')
+    vm_club = create(:club)
+    tm_club = create(:club)
+    team = create(:team, club: tm_club, league: create(:league, :current_season))
+    user = create(:user, teams: [team.id], permissions: [
+      { 'user_group_id' => 4, 'game_operation_id' => 0, 'club_id' => vm_club.id },
+      { 'user_group_id' => 5, 'game_operation_id' => 0 }
+    ])
+
+    assert_includes vm_club.user_permissions(user), :create_player
+    assert_includes vm_club.user_permissions(user), :update_own_club
+    assert_includes tm_club.user_permissions(user), :create_player
+    assert_not_includes tm_club.user_permissions(user), :update_own_club
   end
 end
