@@ -514,7 +514,9 @@ class PlayersController < ApplicationController
 
   def admin_player_update
     if current_user
-      create_modus = params[:id].zero?
+      # to_i, weil `zero?` sonst bei fehlendem id (nil) und bei "0" als String
+      # mit einem 500er abbricht. Ohne id ist die Anlage gemeint.
+      create_modus = params[:id].to_i.zero?
       # check: game operation permission if create_modus
       #   has: create team for that go?
       #   else : unpermitted!
@@ -552,9 +554,16 @@ class PlayersController < ApplicationController
           }]
           player.created_by = current_user.id
 
-          player.save
-
-          render json: player, status: :created
+          # Der Rückgabewert wurde bisher verworfen und die Antwort war auch
+          # dann 201, wenn eine Validierung griff: Die Oberfläche meldete
+          # „Spieler erfolgreich hinzugefügt" und leitete weiter, angelegt war
+          # nichts. Sichtbar wurde das über die E-Mail-Adresse, die das
+          # Formular vor dem Absenden nicht prüft.
+          if player.save
+            render json: player, status: :created
+          else
+            render json: { message: player.errors.full_messages.to_sentence }, status: :unprocessable_entity
+          end
         end
       elsif !create_modus && Club.find(params[:club_id])&.user_permissions(current_user)&.include?(:update_player) # update
         # update
