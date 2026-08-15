@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.83.0] - 2026-08-15
+
 ### Behoben
 
 - **Tabellen und Scorerlisten der Saisons 2010/11 bis 2013/14**: In den vier nachimportierten Altsaisons zählte jeder Sieg 2 Punkte, ein Unentschieden, ein Sieg nach Verlängerung und eine Niederlage nach Verlängerung dagegen null. In der 1. FBL Herren 2013/14 etwa standen Kaufering mit 11 Siegen und 3 Siegen nach Verlängerung genauso bei 22 Punkten wie Tempelhof mit 11 Siegen und ohne einen einzigen Zusatzpunkt. Die Ursache lag nicht in den Spieldaten, sondern in einem Feld: Das alte System hat je Liga hinterlegt, ob nach dem 2- oder dem 3-Punkte-System gewertet wird, und der Import hat diese Angabe zwar mitgebracht, aber in einer Spalte abgelegt, aus der die Tabellenrechnung bei Altligen gar nicht liest. Sie fiel deshalb durchgängig in die 2-Punkte-Rechnung. Der Wert wird jetzt dort nachgetragen, wo der frühere Import der Saisons ab 2014/15 ihn ebenfalls abgelegt hat, und der Importer schreibt ihn künftig in beide Felder. Ebenfalls nachgetragen wird die Scorerliste: Die Daten waren von Anfang an vollständig da, Torschützen und Vorlagen inklusive, nur stand der Schalter, der die Liste im öffentlichen Bereich einblendet, bei allen Ligen dieser vier Saisons auf aus. Für die Altersklasse U13 und jünger bleibt sie wie überall ausgeblendet.
