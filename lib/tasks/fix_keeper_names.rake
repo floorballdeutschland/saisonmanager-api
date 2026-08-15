@@ -93,6 +93,16 @@ namespace :keeper_names do
     "#{last}, #{first}"
   end
 
+  # Nur id und die eine Spalte laden. Ein find_each ueber ganze Game-Objekte
+  # zieht die grossen JSONB-Spalten events und players mit und braucht fuer die
+  # knapp 38.000 Zeilen je Spalte ein Vielfaches der Zeit; in einer ersten
+  # Fassung lief der Lauf damit in einen Timeout.
+  def keeper_each_value(col, &block)
+    Game.where.not(col => nil).in_batches(of: 5_000) do |batch|
+      batch.pluck(:id, col).each(&block)
+    end
+  end
+
   desc 'Bestandsaufnahme der Schriftfuehrer- und Zeitnehmer-Namen (nur lesend).'
   task report: :environment do
     keeper_columns.each do |col|
@@ -101,8 +111,7 @@ namespace :keeper_names do
       ambiguous = 0
       samples = []
 
-      Game.where.not(col => nil).find_each do |game|
-        before = game[col]
+      keeper_each_value(col) do |_id, before|
         after = keeper_normalize(before)
         next if before == after
 
@@ -127,18 +136,17 @@ namespace :keeper_names do
       cleared = 0
       ambiguous = 0
 
-      Game.where.not(col => nil).find_each do |game|
-        before = game[col]
+      keeper_each_value(col) do |id, before|
         after = keeper_normalize(before)
         next if before == after
 
         changed += 1
         cleared += 1 if after.nil?
         ambiguous += 1 if before.to_s.count(',') > 1
-        puts "  Spiel #{game.id}: #{before.inspect} -> #{after.inspect}"
-        # update_columns bewusst: keine Validierungen und Callbacks auf
-        # Altdatensaetzen, und updated_at der Spiele bleibt unberuehrt.
-        game.update_columns(col => after) unless dry
+        puts "  Spiel #{id}: #{before.inspect} -> #{after.inspect}"
+        # update_all auf der einzelnen Zeile: keine Validierungen und Callbacks
+        # auf Altdatensaetzen, und updated_at der Spiele bleibt unberuehrt.
+        Game.where(id: id).update_all(col => after) unless dry
       end
 
       puts "#{col}: #{changed} geaendert (davon #{cleared} geleert, " \
