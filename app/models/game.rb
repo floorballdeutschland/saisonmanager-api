@@ -1407,10 +1407,10 @@ class Game < ApplicationRecord
     ph = user.permission_hash
     return true if ph[:admin].present?
 
-    # SBK auf den Spielbetrieb des Spiels scopen (analog games#set_string seit
-    # #58): eine LV-SBK darf nicht jedes Spiel bundesweit bearbeiten. Admin
-    # bleibt global. Für einen nationalen Spielbetrieb (FD) kollabiert
-    # permission_hash den Scope ohnehin auf 0.
+    # SBK auf den Spielbetrieb des Spiels scopen (seit #58): eine LV-SBK darf
+    # nicht jedes Spiel bundesweit bearbeiten. Admin bleibt global. Für einen
+    # nationalen Spielbetrieb (FD) kollabiert permission_hash den Scope ohnehin
+    # auf 0.
     # Rollen additiv: kein früher return false, denn eine nicht passende
     # SBK-Rolle darf den VM-/TM-Zweig nicht verdecken. Sonst entsteht genau das
     # Aussperr-Problem aus #213.

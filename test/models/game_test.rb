@@ -835,9 +835,12 @@ class GameTest < ActiveSupport::TestCase
     assert game.can_edit_lineup?(user)
   end
 
-  # Der VM des ausrichtenden Vereins ist der einzige Unterschied zwischen
-  # can_edit_lineup? und der Inline-Logik in games#set_string. Genau diese
-  # Personen füllen den Bericht vor Ort aus.
+  # Der VM des ausrichtenden Vereins füllt bei einem Turnier an einem Ort den
+  # Bericht aller Partien aus, auch der Spiele ohne eigene Mannschaft. Bis
+  # August 2026 war dieser Zweig der einzige Unterschied zwischen
+  # can_edit_lineup? und einer nachgebauten Rechtekette in games#set_string,
+  # was den Ausrichter genau von den Kopfdaten aussperrte. Die Kette ist weg,
+  # set_string prüft jetzt ebenfalls hierüber.
   test 'can_edit_lineup?: VM des ausrichtenden Vereins darf bearbeiten' do
     create(:setting, current_season_id: '18')
     hosting_club = create(:club)
