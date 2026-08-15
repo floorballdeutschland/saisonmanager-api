@@ -13,9 +13,23 @@ module LegacyImport
     module_function
 
     # global_*_liga-Zeile → leagues-Attribute.
+    #
+    # `id_spielsystem` muss in BEIDE Felder: `table_modus` trägt den sprechenden
+    # Namen, aber gerechnet wird aus `league_system_id` — League#won_points und
+    # Geschwister lesen bei `legacy_league` ausschließlich daraus (1 ⇒ 3/1/2/1,
+    # sonst ⇒ 2/0/0/0). Der ältere Importweg der Saisons ab 6 hat den Alt-Wert
+    # genau dort abgelegt; blieb das Feld leer, fiel eine 3-Punkte-Liga still in
+    # die 2-Punkte-Rechnung und verlor die Punkte für Unentschieden und
+    # Verlängerung.
+    #
+    # `enable_scorer` ebenso: Der Spalten-Default ist false, die Scorerdaten
+    # kommen aber vollständig mit. Ohne das Flag rechnet das API die Liste zwar
+    # aus, das Frontend zeigt sie nur nirgends an. Für U13 und jünger schaltet
+    # `rails leagues:hide_scorer_for_youth` sie im Anschluss wieder ab.
     def league_attrs(liga, game_operation_id:)
       kl = Vocab.klasse_attrs(liga['id_klasse'], liga['klasse_name'])
       kat = Vocab.kategorie_attrs(liga['id_kategorie'])
+      spielsystem = liga['id_spielsystem'].to_i
 
       {
         game_operation_id:,
@@ -26,7 +40,9 @@ module LegacyImport
         league_category_id: kat[:league_category_id],
         age_group: kl[:age_group],
         female: to_bool(liga['weiblich']) || kl[:female] || false,
-        table_modus: Vocab::SPIELSYSTEM_TABLE_MODUS[liga['id_spielsystem'].to_i],
+        table_modus: Vocab::SPIELSYSTEM_TABLE_MODUS[spielsystem],
+        league_system_id: (spielsystem.to_s if spielsystem.positive?),
+        enable_scorer: true,
         order_key: liga['ordnungsnr'].to_s,
         deadline: liga['stichtag'],
         legacy_league: true
