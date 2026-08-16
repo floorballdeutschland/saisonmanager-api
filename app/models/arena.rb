@@ -35,6 +35,13 @@ class Arena < ApplicationRecord
     moved = 0
     Arena.transaction do
       moved = GameDay.where(arena_id: id).update_all(arena_id: master.id)
+      # Der verbleibende Spielort ist der kanonische Eintrag und muss auswählbar
+      # sein. Sonst endet der naheliegende Aufräumweg (neu angelegten Spielort in
+      # den alten Eintrag mit der Spieltagshistorie zusammenführen) wieder bei
+      # einem Spielort, der im Spielplan fehlt (#449).
+      # update_columns, weil Altdatensätze ohne Ort die eigene city-Validierung
+      # reißen würden und der Merge daran scheitern würde.
+      master.update_columns(active: true, updated_at: Time.current) unless master.active?
       destroy!
     end
     moved
