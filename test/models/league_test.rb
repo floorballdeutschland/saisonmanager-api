@@ -67,35 +67,32 @@ class LeagueTest < ActiveSupport::TestCase
     assert_equal l.draw_points, l.lost_overtime_points
   end
 
-  # Legacy-League-Zweig (league_system_id == 1 → 3-Punkte-System)
-  test 'won_points: legacy System 1 ergibt 3' do
-    l = League.new(legacy_league: true, league_system_id: '1')
-    assert_equal 3, l.won_points
+  # Legacy-League-Zweig: league_system_id trägt das Wertungssystem des
+  # Altsystems (1 = 3-Punkte, 2 = 2-Punkte, 4 = "Anderes").
+  def legacy_scheme(system_id)
+    l = League.new(legacy_league: true, league_system_id: system_id)
+    [l.won_points, l.draw_points, l.won_overtime_points, l.lost_overtime_points]
   end
 
-  test 'won_points: legacy anderes System ergibt 2' do
-    l = League.new(legacy_league: true, league_system_id: '2')
-    assert_equal 2, l.won_points
+  test 'legacy System 1 ist das 3-Punkte-System' do
+    assert_equal [3, 1, 2, 1], legacy_scheme('1')
   end
 
-  test 'draw_points: legacy System 1 ergibt 1' do
-    l = League.new(legacy_league: true, league_system_id: '1')
-    assert_equal 1, l.draw_points
+  # Bis 08/2026 fiel System 2 in denselben Sammelzweig wie 4 und gab null Punkte
+  # für ein Unentschieden. Das ist kein 2-Punkte-System.
+  test 'legacy System 2 gibt einen Punkt fuer ein Unentschieden' do
+    assert_equal [2, 1, 2, 1], legacy_scheme('2')
   end
 
-  test 'draw_points: legacy anderes System ergibt 0' do
-    l = League.new(legacy_league: true, league_system_id: '2')
-    assert_equal 0, l.draw_points
+  test 'legacy System 4 bleibt im Sammelzweig' do
+    assert_equal [2, 0, 0, 0], legacy_scheme('4')
   end
 
-  test 'won_overtime_points: legacy System 1 ergibt 2' do
-    l = League.new(legacy_league: true, league_system_id: '1')
-    assert_equal 2, l.won_overtime_points
-  end
-
-  test 'won_overtime_points: legacy anderes System ergibt 0' do
-    l = League.new(legacy_league: true, league_system_id: '2')
-    assert_equal 0, l.won_overtime_points
+  # Die Alt-Importe der Saisons 2 bis 5 liefen ohne dieses Feld; ein leeres Feld
+  # darf nicht versehentlich als System 1 gelten (''.to_i und nil.to_i sind 0).
+  test 'legacy ohne Wertungssystem bleibt im Sammelzweig' do
+    assert_equal [2, 0, 0, 0], legacy_scheme(nil)
+    assert_equal [2, 0, 0, 0], legacy_scheme('')
   end
 
   # ---------------------------------------------------------------------------
