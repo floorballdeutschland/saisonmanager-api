@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Speichern in der Benutzerverwaltung nimmt niemandem mehr still einen Verband weg**: Konten mit einer verbandsgebundenen Rolle in zwei Verbänden, etwa eine Spielbetriebskommission für zwei Landesverbände oder die Kombination SBK im einen und RSK im anderen, verloren beim Speichern der Verbund-Zuweisung stillschweigend einen der beiden. Die Maske zeigt für den Verband nur ein einzelnes Auswahlfeld und belegt es mit dem erstgefundenen Eintrag; der zweite Verband tauchte dort gar nicht auf und wurde beim Speichern auf den ersten überschrieben. Gemeldet wurde nichts, das Speichern galt als erfolgreich. Aufgefallen ist es erst, wenn die betroffene Person Ligen, Vereine oder Spieler des zweiten Verbands nicht mehr sah. Solche Konten werden jetzt mit einer Meldung abgewiesen, statt einen Verband zu verlieren. Geändert wird die Zuordnung in diesem Fall über das Entfernen und Hinzufügen der einzelnen Rolle, was mit mehreren Verbänden korrekt umgeht. Mehrere Rollen im selben Verband, der Normalfall, ziehen weiterhin gemeinsam um.
+
 ## [1.84.0] - 2026-08-15
 
 ### Neu

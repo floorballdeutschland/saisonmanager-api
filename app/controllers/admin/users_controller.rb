@@ -586,6 +586,28 @@ module Admin
         return { error: 'Benutzer hat keine SBK/RSK/Ansetzer-Rolle', status: :unprocessable_entity }
       end
 
+      # Gegenstück zur Sperre für die vereinsgebundenen Rollen weiter oben in
+      # apply_club_change: Der Zweig unten schreibt JEDE verbandsgebundene
+      # Berechtigung auf die neue ID um. Hängen mehrere Verbände am Konto, wird
+      # aus [{SBK, A}, {SBK, B}] dabei [{SBK, A}, {SBK, A}]; User#permission_hash
+      # entdoppelt das per uniq, und der Zugriff auf Verband B ist weg. Der
+      # Request antwortete mit 200, auffällig wurde es erst, wenn die Person
+      # Ligen, Vereine oder Spieler des zweiten Verbands nicht mehr sah (#434).
+      #
+      # Die Benutzermaske kann den Fall gar nicht darstellen: Sie sucht mit
+      # `find` die ERSTE verbandsgebundene Rolle und belegt damit ein einzelnes
+      # Dropdown, der zweite Verband taucht nicht auf. Solange das so ist, ist
+      # Abbrechen die einzige Antwort, die nichts verliert. remove_role plus
+      # add_role behandeln mehrere Einträge bereits korrekt und bleiben der Weg.
+      #
+      # Gezählt werden die Verbände, nicht die Rollen: SBK und Ansetzer
+      # desselben Verbands sind der Normalfall und ziehen gemeinsam um, ohne
+      # dass etwas verloren geht.
+      if affected.map { |p| p['game_operation_id'].to_s }.uniq.size > 1
+        return { error: 'Benutzer ist mehreren Verbünden zugeordnet – Einzelzuweisung nicht möglich',
+                 status: :unprocessable_entity }
+      end
+
       # Der Wechsel muss in beide Richtungen im eigenen Zuständigkeitsbereich
       # liegen: Sonst schöbe ein verbandsgebundener SBK eine Rolle aus dem
       # eigenen Verband heraus oder eine fremde in ihn hinein. Admin und
