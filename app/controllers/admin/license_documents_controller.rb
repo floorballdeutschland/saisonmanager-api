@@ -218,11 +218,16 @@ module Admin
     # Zugriff auf die persönlichen Unterlagen zu geben – Lesen, Hochladen und
     # Löschen –, auch Jahre nach dem Vereinswechsel.
     #
-    # Am Spielerprofil selbst gilt dieselbe Regel seit #309:
-    # `PlayersController#manageable_club_ids` lässt nur gültige Zugehörigkeiten
-    # zählen (plus die, die eine laufende Deaktivierung geschlossen hat). Bis
-    # dahin genügte dort jeder Eintrag im clubs-Hash, die Unterlagen waren also
-    # strenger als das Profil, an dem sie hängen.
+    # Am Spielerprofil greift seit #309 ebenfalls eine Gültigkeitsprüfung
+    # (`PlayersController#membership_grants_access?`, auf demselben
+    # `membership_current?`). Bis dahin genügte dort jeder Eintrag im clubs-Hash,
+    # die Unterlagen waren also strenger als das Profil, an dem sie hängen.
+    #
+    # Deckungsgleich sind die beiden trotzdem nicht: Am Profil zählt zusätzlich
+    # die Zugehörigkeit, die eine laufende Deaktivierung geschlossen hat, hier
+    # nicht. Deaktiviert ein Verein seinen eigenen Spieler, behält er also das
+    # Profil (sonst käme er nicht an `reactivate`) und verliert die Unterlagen.
+    # Ohne laufende Lizenz gäbe es hier ohnehin nichts zu sehen.
     #
     # Die Mitgliedschaftsprüfung ist `player_in_team_clubs?`, also dieselbe wie im
     # Lizenzantrag: Wer für eine Mannschaft eine Lizenz lösen darf, soll deren
