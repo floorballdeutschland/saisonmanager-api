@@ -1058,14 +1058,68 @@ class PlayersController < ApplicationController
   def vm_can_access_player?(ph, player)
     return false unless ph[:vm].present?
 
-    player.clubs.any? { |c| ph[:vm].include?(c['club_id'].to_i) }
+    membership_grants_access?(player, ph[:vm])
   end
 
   def tm_can_access_player?(ph, player)
     club_ids = tm_club_ids(ph)
     return false if club_ids.empty?
 
-    player.clubs.any? { |c| club_ids.include?(c['club_id'].to_i) }
+    membership_grants_access?(player, club_ids)
+  end
+
+  # Gibt eine Zugehörigkeit zu einem dieser Vereine HEUTE Zugriff auf das Profil?
+  #
+  # Beide Zweige lasen vorher den rohen clubs-Hash: Wer je Mitglied war, blieb
+  # dauerhaft zuständig, also auch `deactivate!`-bar. Am 16.07.2026 haben drei
+  # VM-Konten so 68 Spieler deaktiviert, deren offene Heimatzugehörigkeit einem
+  # anderen Verein gehörte. `deactivate!` schließt dann alle Zugehörigkeiten und
+  # setzt die laufenden Lizenzen (APPROVED/REQUESTED) auf DELETED; weil
+  # `Club#players` über `Player.active` filtert, fiel das Profil danach aus der
+  # Vereinsspielerliste des echten Vereins und stand in dessen VM-Liste nur noch
+  # hinter dem Deaktiviert-Schalter (#309). Stand 16.08.2026 waren rund 4.500
+  # aktive Spieler auf diesem Weg für einen Altverein erreichbar.
+  #
+  # Zwei Fälle zählen, wortgleich zu
+  # `Admin::PlayerChangeRequestsController#membership_grants_access?` und zu
+  # `Club#players(include_deactivated: true)`, aus dem die VM-Spielerliste kommt:
+  #
+  # (a) Die Zugehörigkeit gilt noch. Stichtag ist `Date.current` über
+  #     `membership_current?` (aus `LicenseAccessScope`), nicht `Time.now`: Eine
+  #     heute um 23:59 endende Zugehörigkeit gilt heute noch. Diese Methode ist
+  #     zugleich die einzige Stelle, die ein unlesbares `valid_until` aus dem
+  #     Altbestand („unbekannt", „0000-00-00") als Datenfehler meldet, statt die
+  #     Rechteprüfung mit einem 500er abzubrechen. Genau das wäre hier sonst neu
+  #     entstanden: Der VM/TM-Zweig hat vorher überhaupt kein Datum gelesen.
+  # (b) Sie wurde erst von DIESER Deaktivierung geschlossen. `deactivate!`
+  #     stempelt auch die eigene, gültige Mitgliedschaft; ohne (b) verlöre der
+  #     Verein mit dem Klick auf „Deaktivieren" den Zugriff auf sein eigenes
+  #     Profil und käme weder an die Daten noch an `reactivate`.
+  #     `membership_closed_by_deactivation?` verlangt Stempel UND Zeitfenster der
+  #     laufenden Deaktivierung, eine 2019 beendete Mitgliedschaft erfüllt das
+  #     nicht.
+  #
+  # Ohne beides bleibt ein kleiner Altbestand: Deaktivierungen aus der Zeit vor
+  # dem `valid_set_by`-Stempel und Profile ohne jede gültige Zugehörigkeit (Stand
+  # 16.08.2026 zwölf Fälle). Sie liegen ab hier bei Admin und bundesweiter SBK,
+  # denn ohne gültige Heimat findet auch `sbk_can_access_player?` nichts. Das ist
+  # dieselbe Grenze wie in #391 und #399.
+  def membership_grants_access?(player, club_ids)
+    Array(player.clubs).any? do |entry|
+      # Strukturell kaputter Eintrag (kein Objekt): zählt nicht als
+      # Mitgliedschaft, wird aber gemeldet statt still verworfen, wie in
+      # `LicenseAccessScope#player_in_team_clubs?`.
+      unless entry.is_a?(Hash)
+        report_license_data_defect("player_clubs_entry_broken/#{player.id}",
+                                   "Spieler##{player.id}: clubs-Eintrag ist kein Objekt (#{entry.class})")
+        next false
+      end
+      next false if entry['club_id'].blank?
+      next false unless club_ids.include?(entry['club_id'].to_i)
+
+      membership_current?(player, entry['valid_until']) ||
+        player.membership_closed_by_deactivation?(entry)
+    end
   end
 
   def tm_can_access_club?(ph, club_id)
