@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.84.2] - 2026-08-16
+
 ### Behoben
 
 - **Der Datenschutzhinweis im Lizenzantrag spricht nicht mehr von der Bundesliga**: Ob beim Lizenzantrag für eine minderjährige Person eine Information der gesetzlichen Vertretung verlangt wird, entscheidet seit dem vergangenen Sommer ein Schalter an der jeweiligen Liga. Der Hinweistext war aus der Zeit davor stehen geblieben und sprach weiter von der 1. und 2. Floorball Bundesliga, mitsamt einem festen Verweis auf § 4.12 der Spielordnung. Auf mehreren Landesverbands-Ligen ist der Schalter aber ebenfalls gesetzt, unter anderem in einer Regionalliga, und deren Vereine lasen beim Lizenzantrag eine Aussage über eine Spielklasse, in der ihre Mannschaft gar nicht spielt, samt einer Paragraphenangabe, die für sie nicht gilt. Überschrift, Text und Bestätigung sind jetzt liganeutral und drehen sich um die Sache selbst: die Information der gesetzlichen Vertretung über die Verarbeitung von Bild- und Tonaufnahmen im Spielbetrieb. Statt eine Spielklasse zu behaupten, nennt der Hinweis die Liga, die die Information tatsächlich verlangt, beim Namen. Auch der Erklärtext am Liga-Schalter selbst beschreibt jetzt, was dort wirklich eingeschaltet wird.
