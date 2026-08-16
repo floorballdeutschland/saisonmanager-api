@@ -79,44 +79,64 @@ namespace :data_health do
     exit 1 if findings.any?
   end
 
-  # `teams.league_id` hat keinen Fremdschlüssel (`db/schema.rb` schützt
-  # `game_days` und `league_qualifications`, `teams` nur nach `clubs`). Eine
-  # Mannschaft kann deshalb auf eine Liga zeigen, die es nicht mehr gibt, und
-  # niemand merkt es. Die Mannschaftsseite antwortete darauf vor #283 mit einem
-  # Serverfehler, seitdem mit einem 404; für Besucher ist sie in beiden Fällen
-  # leer. Entstehen können solche Datensätze auf jedem Weg, der an
-  # `LeaguesController#admin_league_delete` vorbeigeht: `delete_all` aus Konsole
-  # oder Rake-Task, die Import- und Restore-Tasks in `lib/tasks/`. Siehe #293.
+  # `teams.league_id` hatte bis #293 keinen Fremdschlüssel, obwohl `game_days`
+  # und `league_qualifications` ihn längst hatten (`db/schema.rb`). Eine
+  # Mannschaft konnte deshalb auf eine Liga zeigen, die es nicht mehr gibt, und
+  # niemand merkte es. Die Mannschaftsseite antwortete darauf vor #283 mit einem
+  # Serverfehler, seitdem mit einer eigenen Meldung; für Besucher ist sie in
+  # beiden Fällen leer.
+  #
+  # Den Riegel setzt jetzt die Migration `20260816090000`. Diese Prüfung bleibt
+  # als Netz für alles, was am Fremdschlüssel vorbeikommt: ein `pg_restore` ohne
+  # Constraints, ein `COPY` mit abgeschalteten Triggern, oder eine spätere
+  # Migration, die den Fremdschlüssel versehentlich mitnimmt.
+  #
+  # Woher der Altbestand stammt, ist nicht mehr rekonstruierbar. Belegbar ist nur
+  # der Weg über `League...delete_all` aus der Konsole; der einzige löschende
+  # Rake-Task (`cleanup:delete_empty_leagues`) überspringt Ligen mit
+  # Mannschaften. Siehe #293.
   #
   # Rohes SQL statt `where.missing(:league)`: Diese Prüfung soll unabhängig von
   # jedem Scope und jeder Association-Konfiguration am Modell messen, was in der
-  # Datenbank steht. Genau das ist die Frage, die auch die Migration mit
-  # `add_foreign_key` stellen wird.
+  # Datenbank steht. Genau das ist die Frage, die auch `add_foreign_key` stellt.
   #
-  # `league_id IS NULL` zählt bewusst nicht mit: Der Fremdschlüssel ließe das
+  # `league_id IS NULL` zählt bewusst nicht mit: Der Fremdschlüssel lässt das
   # ebenfalls zu, und eine Mannschaft ohne Liga meldet sich seit #283 mit einer
-  # eigenen, verständlichen Fehlermeldung statt als Rechte-Absage.
+  # eigenen, verständlichen Meldung.
   def orphan_teams_findings
-    sql = <<~SQL.squish
+    ActiveRecord::Base.connection.select_all(<<~SQL.squish).map do |row|
       SELECT t.id, t.name, t.league_id, t.club_id
       FROM teams t
       LEFT JOIN leagues l ON l.id = t.league_id
       WHERE t.league_id IS NOT NULL AND l.id IS NULL
       ORDER BY t.league_id, t.id
     SQL
-    ActiveRecord::Base.connection.select_all(sql).map do |row|
       { team_id: row['id'], team_name: row['name'],
         missing_league_id: row['league_id'], club_id: row['club_id'] }
     end
   end
 
-  # Dasselbe für die Pokalligen: `cup_leagues` ist ein Integer-Array ohne
-  # Fremdschlüssel, und beim Löschen einer Liga wird ihre ID dort nicht entfernt.
-  # Folgenlos für `League.where(id:)`, aber `Team#all_league_ids` gibt die IDs
-  # weiter, unter anderem an die Lizenzprüfung.
+  # Dasselbe für die Pokalligen. `cup_leagues` ist ein Integer-Array, dort kann
+  # es keinen Fremdschlüssel geben (Postgres kennt keine Fremdschlüssel auf
+  # Array-Elemente), und beim Löschen einer Liga wird ihre ID dort nicht
+  # entfernt. Das ist also die Hälfte von #293, die dauerhaft ein Netz braucht.
+  #
+  # Kein bekanntes Fehlverhalten in der Anwendung: `Team#all_league_ids` gibt die
+  # IDs zwar weiter, aber jeder Verbraucher löst sie über `League.where(id:)`
+  # oder eine Mengenschnittmenge auf, in der eine gelöschte ID nie trifft. Die
+  # Angabe ist schlicht falsch und wandert in Exporte und Verwaltungsansichten;
+  # sie gehört bereinigt, bevor jemand sie als Wahrheit behandelt.
+  #
+  # Die fehlenden IDs kommen aus demselben SQL, das die Zeile auswählt. Eine
+  # zweite Runde in Ruby (`League.exists?` je ID) wäre nicht nur ein N+1, sie
+  # wäre eine zweite Definition derselben Frage: Ein NULL-Element im Array ist
+  # für SQL ein Befund, für einen Ruby-Parser unsichtbar. Der Cronjob meldete
+  # dann dauerhaft einen Fund, den der Bereinigungslauf nicht auflösen kann.
   def orphan_cup_leagues_findings
-    sql = <<~SQL.squish
-      SELECT t.id, t.name, t.cup_leagues
+    ActiveRecord::Base.connection.select_all(<<~SQL.squish).map do |row|
+      SELECT t.id, t.name,
+             (SELECT array_agg(cup_id) FROM unnest(t.cup_leagues) AS cup_id
+              WHERE NOT EXISTS (SELECT 1 FROM leagues l WHERE l.id = cup_id)) AS missing
       FROM teams t
       WHERE t.cup_leagues IS NOT NULL
         AND array_length(t.cup_leagues, 1) > 0
@@ -126,11 +146,20 @@ namespace :data_health do
         )
       ORDER BY t.id
     SQL
-    ActiveRecord::Base.connection.select_all(sql).map do |row|
-      cup_ids = Array(row['cup_leagues'].is_a?(String) ? row['cup_leagues'].scan(/\d+/).map(&:to_i) : row['cup_leagues'])
       { team_id: row['id'], team_name: row['name'],
-        missing_league_ids: cup_ids.reject { |id| League.unscoped.exists?(id) } }
+        missing_league_ids: parse_pg_int_array(row['missing']) }
     end
+  end
+
+  # Postgres-Integer-Array in Ruby-Integer. `select_all` dekodiert Skalare, aber
+  # keine Arrays; je nach Treiberfassung kommt hier ein Ruby-Array oder das
+  # Literal "{12,13}". Beides wird behandelt, damit die Prüfung nicht an der
+  # Adapterversion hängt.
+  def parse_pg_int_array(value)
+    return [] if value.nil?
+    return Array(value).compact.map(&:to_i) unless value.is_a?(String)
+
+    value.scan(/-?\d+/).map(&:to_i)
   end
 
   def stale_active_licenses_findings

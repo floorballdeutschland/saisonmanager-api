@@ -241,7 +241,8 @@ module Admin
         if team_ids.empty?
           []
         else
-          # `teams.league_id` ist nullable und ohne Fremdschlüssel (vgl.
+          # `teams.league_id` ist nullable; seit #293 gibt es dort einen
+          # Fremdschlüssel, der aber nur den Verweis ins Leere ausschließt (vgl.
           # TeamsController#render_team_without_league). Ein Team ohne Liga fällt
           # aus `Team.current_season` heraus, weil `NULL IN (…)` niemals wahr ist –
           # das ist ein Datenfehler und keine Rechteentscheidung. Deshalb erst

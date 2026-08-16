@@ -4,10 +4,13 @@ require 'rake'
 # Tests für lib/tasks/cleanup_orphan_team_leagues.rake und die beiden neuen
 # Prüfungen in lib/tasks/data_health.rake (#293).
 #
-# `teams.league_id` hat keinen Fremdschlüssel. Eine Mannschaft kann deshalb auf
-# eine Liga zeigen, die es nicht mehr gibt; die Mannschaftsseite ist dann leer
-# (vor #283 ein Serverfehler, seitdem ein 404). Solange niemand danach sucht,
-# fällt das nicht auf.
+# `teams.league_id` hatte bis #293 keinen Fremdschlüssel. Eine Mannschaft konnte
+# deshalb auf eine Liga zeigen, die es nicht mehr gibt; die Mannschaftsseite ist
+# dann leer, und solange niemand danach sucht, fällt es nicht auf.
+#
+# Für `league_id` setzt jetzt die Datenbank den Riegel, die Prüfung bleibt als
+# Netz für Wege, die daran vorbeikommen. Für `cup_leagues` ist sie dagegen die
+# einzige Absicherung: Postgres kennt keine Fremdschlüssel auf Array-Elemente.
 class CleanupOrphanTeamLeaguesTest < ActiveSupport::TestCase
   setup do
     Rails.application.load_tasks if Rake::Task.tasks.empty?
@@ -19,18 +22,20 @@ class CleanupOrphanTeamLeaguesTest < ActiveSupport::TestCase
   # Die data_health-Tasks beenden bei Funden mit Exit-Code 1, so wertet der
   # Cronjob sie aus. Im Test darf das den Prozess nicht mitnehmen, deshalb wird
   # SystemExit abgefangen und als zweiter Rückgabewert gereicht.
+  # Beide Ströme zusammen: `abort` schreibt nach stderr, `puts` nach stdout, und
+  # die Tests sollen beides prüfen können, ohne sich um die Quelle zu kümmern.
   def run_task(name, env = {})
     saved = ENV.to_hash.slice(*env.keys)
     env.each { |k, v| ENV[k] = v }
     task = Rake::Task[name]
     task.reenable
     status = 0
-    out, = capture_io do
+    out, err = capture_io do
       task.invoke
     rescue SystemExit => e
       status = e.status
     end
-    [out, status]
+    [out + err, status]
   ensure
     env.each_key { |k| ENV[k] = saved[k] }
   end
@@ -46,9 +51,16 @@ class CleanupOrphanTeamLeaguesTest < ActiveSupport::TestCase
   def team_with_deleted_league
     weg = create(:league)
     team = create(:team, league: weg, club: @club)
-    ActiveRecord::Base.connection.remove_foreign_key(:teams, :leagues)
+    drop_team_league_fk
     League.unscoped.where(id: weg.id).delete_all
     [team, weg.id]
+  end
+
+  # Idempotent, damit ein Test zwei Waisen aufbauen kann: `remove_foreign_key`
+  # wirft beim zweiten Aufruf `ArgumentError`.
+  def drop_team_league_fk
+    conn = ActiveRecord::Base.connection
+    conn.remove_foreign_key(:teams, :leagues) if conn.foreign_key_exists?(:teams, :leagues)
   end
 
   test 'orphan_teams findet die verwaiste Mannschaft und nur sie' do
@@ -57,7 +69,7 @@ class CleanupOrphanTeamLeaguesTest < ActiveSupport::TestCase
 
     out, status = run_task('data_health:orphan_teams')
 
-    assert_match(/1 Mannschaft\(en\)/, out)
+    assert_match(/(?<!\d)1 Mannschaft\(en\)/, out)
     assert_match(/#{team.id}/, out)
     assert_match(/#{weg_id}/, out, 'die verwaiste ID gehört in die Ausgabe, sie ist der einzige Hinweis')
     assert_equal 1, status, 'ein Befund muss den Exit-Code setzen, sonst meldet sich der Cronjob nie'
@@ -70,7 +82,7 @@ class CleanupOrphanTeamLeaguesTest < ActiveSupport::TestCase
 
     out, = run_task('data_health:orphan_teams')
 
-    assert_match(/0 Mannschaft\(en\)/, out)
+    assert_match(/(?<!\d)0 Mannschaft\(en\)/, out)
   end
 
   # Die Datenbank lässt den Zustand ab jetzt gar nicht mehr entstehen. Das ist
@@ -97,7 +109,7 @@ class CleanupOrphanTeamLeaguesTest < ActiveSupport::TestCase
 
     out, = run_task('data_health:orphan_cup_leagues')
 
-    assert_match(/1 Mannschaft\(en\)/, out)
+    assert_match(/(?<!\d)1 Mannschaft\(en\)/, out)
     assert_match(/#{team.id}/, out)
   end
 
@@ -107,7 +119,10 @@ class CleanupOrphanTeamLeaguesTest < ActiveSupport::TestCase
     out, = run_task('cleanup:orphan_team_leagues')
 
     assert_match(/DRY RUN/, out)
-    assert_match(/ROLLBACK: Team.where\(id: #{team.id}\).update_all\(league_id: #{weg_id}\)/, out)
+    # Kein kopierbares ROLLBACK-Kommando: Die verwaiste ID existiert in `leagues`
+    # nicht, der Fremdschluessel wuerde das UPDATE abweisen. Als Aufzeichnung ist
+    # die Zeile trotzdem das Wertvollste am Lauf.
+    assert_match(/WAR: Team #{team.id} -> league_id #{weg_id}/, out)
     assert_equal weg_id, team.reload.league_id
   end
 
@@ -132,14 +147,87 @@ class CleanupOrphanTeamLeaguesTest < ActiveSupport::TestCase
     assert_equal [@league.id], team.reload.cup_leagues
   end
 
-  # Nach dem Lauf muss die Prüfung schweigen, sonst schlägt die geplante
-  # Migration mit add_foreign_key weiterhin fehl.
+  # Nach dem Lauf muss die Prüfung schweigen. Prüfung und Bereinigung sind zwei
+  # Stellen, die dieselbe Frage stellen; laufen sie auseinander, räumt der eine
+  # etwas anderes weg, als der andere meldet, und beide Testhälften blieben grün.
   test 'nach dem Lauf ist der Bestand sauber' do
     team_with_deleted_league
 
     run_task('cleanup:orphan_team_leagues', 'DRY_RUN' => 'false')
     out, = run_task('data_health:orphan_teams')
 
-    assert_match(/0 Mannschaft\(en\)/, out)
+    assert_match(/(?<!\d)0 Mannschaft\(en\)/, out)
+  end
+
+  # Derselbe Round-trip für die Hälfte, die auch nach dem Fremdschlüssel noch
+  # Produktionsfälle hat.
+  test 'nach dem Lauf schweigt auch die cup_leagues-Pruefung' do
+    weg = create(:league)
+    create(:team, league: @league, club: @club, cup_leagues: [@league.id, weg.id])
+    League.unscoped.where(id: weg.id).delete_all
+
+    run_task('cleanup:orphan_team_leagues', 'DRY_RUN' => 'false')
+    out, = run_task('data_health:orphan_cup_leagues')
+
+    assert_match(/(?<!\d)0 Mannschaft\(en\)/, out)
+  end
+
+  # Ein NULL-Element im Array ist der eine Wert, bei dem eine SQL-Auswahl und ein
+  # Ruby-Parser auseinanderlaufen: SQL meldet einen Befund, der Parser sieht
+  # nichts. Der Cronjob meldete sich dann dauerhaft, ohne dass der Lauf etwas
+  # ausrichten kann. Beide Seiten gehen deshalb über dasselbe SQL.
+  test 'ein NULL-Element im Pokalliga-Array wird gemeldet und bereinigt' do
+    team = create(:team, league: @league, club: @club, cup_leagues: [@league.id])
+    ActiveRecord::Base.connection.execute(
+      "UPDATE teams SET cup_leagues = ARRAY[#{@league.id}, NULL]::integer[] WHERE id = #{team.id}"
+    )
+
+    out, status = run_task('data_health:orphan_cup_leagues')
+    assert_match(/(?<!\d)1 Mannschaft\(en\)/, out)
+    assert_equal 1, status
+
+    run_task('cleanup:orphan_team_leagues', 'DRY_RUN' => 'false')
+    assert_equal [@league.id], team.reload.cup_leagues
+
+    out, = run_task('data_health:orphan_cup_leagues')
+    assert_match(/(?<!\d)0 Mannschaft\(en\)/, out, 'der Befund muss sich abstellen lassen')
+  end
+
+  # ONLY grenzt den Lauf auf die Hälfte ein, die die Migration blockiert. Ohne
+  # das schriebe ein Operator, der unter Deploy-Druck die Sperre löst, ungefragt
+  # auch die Pokalliga-Angaben um.
+  test 'ONLY=league_id laesst cup_leagues unangetastet' do
+    team, = team_with_deleted_league
+    weg = create(:league)
+    cup_team = create(:team, league: @league, club: @club, cup_leagues: [@league.id, weg.id])
+    League.unscoped.where(id: weg.id).delete_all
+
+    run_task('cleanup:orphan_team_leagues', 'DRY_RUN' => 'false', 'ONLY' => 'league_id')
+
+    assert_nil team.reload.league_id
+    assert_equal [@league.id, weg.id], cup_team.reload.cup_leagues
+  end
+
+  # Ein vertippter ONLY-Wert darf nicht stillschweigend auf "alles" zurückfallen.
+  test 'ONLY mit unbekanntem Wert bricht ab, statt irgendetwas zu schreiben' do
+    team, weg_id = team_with_deleted_league
+
+    out, status = run_task('cleanup:orphan_team_leagues', 'DRY_RUN' => 'false', 'ONLY' => 'quatsch')
+
+    assert_equal 1, status
+    assert_match(/ONLY muss eines von/, out)
+    assert_equal weg_id, team.reload.league_id
+  end
+
+  # Die Abschlusszeile zählt, was geschrieben wurde, nicht was gefunden wurde.
+  # Ohne die Auswertung des `update_all`-Rückgabewerts verschwand eine
+  # zwischenzeitlich gelöschte Mannschaft hinter einer Erfolgsmeldung.
+  test 'die Abschlusszeile nennt die Zahl der Schreibvorgaenge' do
+    team_with_deleted_league
+
+    out, = run_task('cleanup:orphan_team_leagues', 'DRY_RUN' => 'false')
+
+    assert_match(/Geschrieben: 1 Aktualisierung\(en\)/, out)
+    assert_match(/NACHARBEIT/, out, 'die Mannschaft ohne Liga braucht einen Hinweis, sie ist nicht mehr speicherbar')
   end
 end

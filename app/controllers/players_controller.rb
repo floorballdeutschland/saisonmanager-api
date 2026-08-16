@@ -86,8 +86,8 @@ class PlayersController < ApplicationController
     # Ohne auflösbare Liga gibt es weder Altersgrenze noch Saison und
     # Ligaklasse für die Lizenz. league wird unten mehrfach ohne Schutz
     # dereferenziert; das ergab denselben 500er wie auf der Mannschaftsseite
-    # (Sentry SAISONMANAGER-1C). Es gibt keinen Fremdschlüssel auf
-    # teams.league_id, die Spalte ist zudem nullable.
+    # (Sentry SAISONMANAGER-1C). teams.league_id ist nullable; der Fremdschlüssel
+    # aus #293 schließt nur den Verweis ins Leere, nicht die fehlende Liga.
     #
     # Vor der Rechteprüfung: Der Spielbetriebs-Scope der SBK-Rolle wird aus
     # genau dieser Liga abgeleitet. Stünde die Prüfung danach, bekäme die
