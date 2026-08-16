@@ -219,7 +219,11 @@ class PlayersController < ApplicationController
       # die Mail eine Liga ohne Zustimmungspflicht und ließe an deren SBK
       # antworten. Verlangt keine Liga des Teams die Zustimmung, geht nichts
       # heraus: Das Antragsformular fragt die Adresse dann gar nicht erst ab.
-      consent_league = team.leagues.find(&:parental_consent_required)
+      #
+      # Team#parental_consent_league statt eines eigenen `find`: Das Formular
+      # (ClubsController#team_licenses_hash) nennt dieselbe Liga, und über den
+      # default_scope von League würde ein zweites `find` hier eine andere wählen.
+      consent_league = team.parental_consent_league
       if guardian_email && consent_league
         PlayerMailer.guardian_privacy_info(player, team, consent_league, guardian_email).deliver_later
       end

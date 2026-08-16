@@ -327,16 +327,44 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     body = JSON.parse(response.body)
     assert_not body['parental_consent_required']
+    assert_nil body['parental_consent_league']
     item = body['current_requests'].find { |p| p['id'] == minor.id }
     assert item, 'Antrag der minderjährigen Person muss enthalten sein'
     assert_not_includes item['required_documents'], 'parental_consent'
 
-    league.update!(parental_consent_required: true)
+    league.update!(name: 'Regionalliga Bayern', parental_consent_required: true)
     get "/api/v2/user/team/#{team.id}/licenses"
     body = JSON.parse(response.body)
     assert body['parental_consent_required']
     item = body['current_requests'].find { |p| p['id'] == minor.id }
     assert_includes item['required_documents'], 'parental_consent'
+
+    # Das Formular soll die Liga benennen können, wegen der es die Zustimmung
+    # verlangt. Ohne den Namen las sich der Datenschutz-Block wie eine Aussage
+    # über die Bundesliga, obwohl ihn hier eine Regionalliga auslöst.
+    assert_equal league.id, body['parental_consent_league']['id']
+    assert_equal 'Regionalliga Bayern', body['parental_consent_league']['name']
+  end
+
+  # Die Pflicht kann allein aus einer Pokal-Liga eines anderen Verbands kommen.
+  # Dann muss das Formular diese nennen und nicht die Hauptliga – sonst zeigt der
+  # Datenschutz-Block eine Liga an, waehrend die Mail an die gesetzliche
+  # Vertretung von einer anderen spricht.
+  test 'user_team_licenses nennt die Pokal-Liga, wenn nur sie die Zustimmung verlangt' do
+    club = create(:club)
+    haupt = create(:league, :current_season, name: 'Regionalliga Bayern')
+    team = create(:team, league: haupt, club: club)
+    pokal = create(:league, :current_season, name: 'FD-Pokal', parental_consent_required: true)
+    team.update!(cup_leagues: [pokal.id])
+    login(create(:user, :vm, club_id: club.id))
+
+    get "/api/v2/user/team/#{team.id}/licenses"
+    assert_response :success
+    body = JSON.parse(response.body)
+
+    assert body['parental_consent_required']
+    assert_equal pokal.id, body['parental_consent_league']['id']
+    assert_equal 'FD-Pokal', body['parental_consent_league']['name']
   end
 
   test 'admin_upload_logo akzeptiert ein quadratisches PNG' do
