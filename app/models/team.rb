@@ -50,6 +50,28 @@ class Team < ApplicationRecord
     League.where(id: all_league_ids)
   end
 
+  # Die Liga, die die Elternzustimmung verlangt – oder nil, wenn keine sie
+  # verlangt. Eine Mannschaft spielt über `leagues` neben ihrer Hauptliga auch in
+  # Pokal-Ligen, die einem anderen Verband gehören können, und jede davon kann
+  # das Flag tragen. Deshalb reicht ein Ja/Nein nicht: Antragsformular und
+  # Art.-13-Mail müssen dieselbe Liga benennen, sonst liest die gesetzliche
+  # Vertretung im Formular von der einen und in der Mail von der anderen.
+  #
+  # Die Hauptliga hat Vorrang, weil sie der Regelfall ist. Ohne diesen Vorrang
+  # entscheidet der default_scope von League (season_id, game_operation_id,
+  # order_key) darüber, welche Liga gewinnt, und der stellt Pokal-Ligen fremder
+  # Verbände je nach game_operation_id vor die eigene Hauptliga.
+  #
+  # Zwei `detect` statt eines sortierten Durchlaufs: `Array#sort_by` ist in MRI
+  # nicht stabil und wirft ab acht gleichrangigen Elementen die Reihenfolge
+  # durcheinander. Ausgerechnet in einer Methode, die Bestimmtheit herstellen
+  # soll, waere das die falsche Grundlage.
+  def parental_consent_league
+    candidates = leagues.to_a
+    candidates.detect { |l| l.id == league_id && l.parental_consent_required } ||
+      candidates.detect(&:parental_consent_required)
+  end
+
   def licenses
     Player.find_by_team_id(id)
   end

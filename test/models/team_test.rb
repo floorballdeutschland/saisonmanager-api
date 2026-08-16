@@ -101,4 +101,41 @@ class TeamTest < ActiveSupport::TestCase
 
     assert_equal 'MUS', team.ticker_hash[:shortName]
   end
+
+  # ---------------------------------------------------------------------------
+  # Elternzustimmung: welche Liga sie ausloest
+  # ---------------------------------------------------------------------------
+
+  test 'parental_consent_league ist nil, wenn keine Liga der Mannschaft sie verlangt' do
+    team = create(:team, league: create(:league, :current_season))
+
+    assert_nil team.parental_consent_league
+  end
+
+  test 'parental_consent_league findet die Pokal-Liga, wenn nur sie das Flag traegt' do
+    team = create(:team, league: create(:league, :current_season))
+    pokal = create(:league, :current_season, name: 'FD-Pokal', parental_consent_required: true)
+    team.update!(cup_leagues: [pokal.id])
+
+    assert_equal pokal.id, team.parental_consent_league.id
+  end
+
+  # Der default_scope von League sortiert nach season_id, game_operation_id und
+  # order_key, nicht danach, welche Liga die Hauptliga ist. Ein blosses
+  # `leagues.find(&:parental_consent_required)` nahm deshalb die Pokal-Liga, obwohl
+  # die Hauptliga die Zustimmung genauso verlangt, und nannte der gesetzlichen
+  # Vertretung eine Liga, um die es gar nicht ging.
+  test 'parental_consent_league bevorzugt die Hauptliga vor der Pokal-Liga' do
+    go = create(:game_operation)
+    haupt = create(:league, :current_season, game_operation: go, name: 'Regionalliga Bayern',
+                                             order_key: '2', parental_consent_required: true)
+    pokal = create(:league, :current_season, game_operation: go, name: 'FD-Pokal',
+                                             order_key: '1', parental_consent_required: true)
+    team = create(:team, league: haupt)
+    team.update!(cup_leagues: [pokal.id])
+
+    assert_equal pokal.id, team.leagues.first.id,
+                 'Vorbedingung: der default_scope stellt die Pokal-Liga nach vorn'
+    assert_equal haupt.id, team.parental_consent_league.id
+  end
 end
