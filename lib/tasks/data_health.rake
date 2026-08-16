@@ -1,3 +1,20 @@
+# Prüfungen auf Datenzustände, die die Anwendung selbst nicht mehr herstellen
+# kann, aber auch nicht von allein bemerkt.
+#
+# ACHTUNG, Stand 16.08.2026: Dieser Task läuft NICHT im Cron. Die Crontab auf
+# dem Produktionsserver kennt `cleanup:all`, `licenses:expire`,
+# `licenses:expire_suspensions`, `transfers:expire`,
+# `referee_feedback:notify_available` und `system:disk_check`, aber keine
+# Datenprüfung. Jede Prüfung hier läuft also nur, wenn jemand sie von Hand
+# aufruft, und das tut nur, wer das Problem schon vermutet.
+#
+# Für Cron (täglich): 0 6 * * * docker exec saisonmanager_rails_api bundle exec rake data_health:check_all RAILS_ENV=production
+#
+# Der Exit-Code 1 bei Funden ist dabei nur die halbe Miete: Die übrigen Zeilen
+# der Crontab schreiben nach /var/log/*.log, den Rückgabewert wertet niemand
+# aus. Für einen Zustand, der monatelang unbemerkt bleiben kann, wäre eine
+# Sentry-Meldung der passendere Kanal, so wie es
+# `TeamsController#render_team_without_league` bereits macht.
 namespace :data_health do
   desc 'Alle Data-Health-Checks ausführen (exit 1 bei Funden)'
   task check_all: :environment do
