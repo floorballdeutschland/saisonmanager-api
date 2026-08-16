@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Ein alter Spielsekretariats-Link blockiert nicht mehr den angemeldeten Spielbericht**: Wer einen Sekretariats-Link geöffnet hatte, trug ihn in dieser Registerkarte weiter mit, auch nach einer normalen Anmeldung; gelöscht wurde er nirgends. War der Link älter als drei Tage, endete danach jeder Speicherversuch im Spielbericht mit „Spielsekretariats-Link ungültig oder abgelaufen", obwohl die eigene Anmeldung galt: Kader, Tore, Strafen, Kopfdaten, Spielstatus. Betroffen war typischerweise der Rechner in der Halle, an dem am Wochenende zuvor über einen Link gearbeitet wurde. Jetzt gilt die Anmeldung zuerst, der Link ist der Ersatzweg. Abgewiesen wird nur noch, wenn beides fehlt. Zweite Hälfte desselben Problems: Ein noch gültiger Link verdrängte die eigenen Rechte an allen anderen Spielen. Ein Vereinsmanager, der einen Link für Halle A in der Registerkarte hatte, konnte die Spiele seiner eigenen Mannschaft in Halle B nicht mehr bearbeiten, sah dort aber weiterhin alle Knöpfe, weil die Spielseite die Rechte anders berechnete als der Speicherweg dahinter. Rolle und Link zählen jetzt an beiden Stellen zusammen, statt sich gegenseitig zu ersetzen.
+
 ## [1.84.0] - 2026-08-15
 
 ### Neu

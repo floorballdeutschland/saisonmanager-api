@@ -578,10 +578,11 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
     assert_equal 40, game.reload.audience.to_i
   end
 
-  # Verengung, und damit der einzige Fall, in dem jemand weniger darf als vorher:
-  # can_edit_game? entscheidet bei gesetztem @secretary_link allein über den Link.
-  # add_event und set_flag verhalten sich seit je so, set_string zieht mit.
-  test 'set_field: ein Token für einen fremden Spieltag sticht die eigene Rolle aus' do
+  # War die eine Verengung dieser Umstellung: can_edit_game? entschied bei
+  # gesetztem @secretary_link allein über den Link, ein Token für eine andere
+  # Halle nahm der eigenen Rolle also das Spiel weg. Seit #428 zählen Rolle und
+  # Token additiv, hier trägt die Rolle.
+  test 'set_field: ein Token für einen fremden Spieltag laesst die eigene Rolle unberuehrt' do
     game = game_hosted_by(create(:club))
     fremder_spieltag = GameDay.create!(league: @league, arena: @arena, club: create(:club),
                                        number: 3, date: '2026-01-03')
@@ -592,8 +593,8 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
     post "/api/v2/user/games/#{game.id}/set_field",
          params: { secretary_token: token, game: { audience: '40' } }
 
-    assert_response :forbidden
-    assert_nil game.reload.audience
+    assert_response :success
+    assert_equal 40, game.reload.audience.to_i
   end
 
   test 'set_field: die SBK des Spielbetriebs darf weiterhin' do
