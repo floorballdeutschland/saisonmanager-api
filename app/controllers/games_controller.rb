@@ -57,8 +57,15 @@ class GamesController < ApplicationController
     # TTL über die 10-Minuten-Verzögerung hinaus (unkritisch, Verzögerung ist
     # ein Mindestwert). Eingeloggte/Secretary-Abrufe variieren pro Nutzer und
     # bleiben ungecacht.
+    #
+    # Maßgeblich ist, ob der Link DIESES Spiel abdeckt, nicht ob überhaupt einer
+    # mitkommt. Der Interceptor hängt den Token an jede Anfrage: Ohne die
+    # Abdeckungsprüfung hielte ein einziger Hallenlink die öffentliche Spielseite
+    # in dieser Registerkarte dauerhaft aus dem Cache, für jedes Spiel des
+    # Wettbewerbs. Dieselbe Unterscheidung wie in `can_edit_game?` (#428).
+    secretary = secretary_token_permits_game?(game)
     hash =
-      if current_user || @secretary_link
+      if current_user || secretary
         game.full_hash
       else
         variant = delayed ? 'delayed' : 'realtime'
@@ -67,12 +74,22 @@ class GamesController < ApplicationController
           game.full_hash
         end
       end
-    hash[:permission] = if current_user
-                          game.user_permissions(current_user)
-                        elsif @secretary_link
-                          _secretary_permissions(game)
+    # Vereinigung statt elsif-Kette: Wer angemeldet ist UND einen Link in der
+    # Registerkarte hat, bekam bisher nur die Rechte seiner Rolle angezeigt, die
+    # Schreibwege dahinter richteten sich aber allein nach dem Link (#428). Beide
+    # Seiten rechnen jetzt additiv.
+    #
+    # `nil` nur, wenn weder Login noch Link etwas beitragen: Anonyme Abrufe
+    # behalten damit die Form von früher. Mit einem Token, der dieses Spiel nicht
+    # abdeckt, kommt wie bisher `[]` heraus.
+    hash[:permission] = if current_user || @secretary_link
+                          Array(current_user && game.user_permissions(current_user)) |
+                            _secretary_permissions(game)
                         end
-    hash.merge!(_checklist_hash(game)) if current_user || @secretary_link
+    # Die Checkliste ist ein internes Feld des Spielberichts und gehört an
+    # dieselbe Grenze wie die Bedienelemente: ein fremder Hallenlink zeigt sie
+    # nicht.
+    hash.merge!(_checklist_hash(game)) if current_user || secretary
     if current_user
       ph = current_user.permission_hash
       go_id = game.game_day.league.game_operation_id.to_i
@@ -794,39 +811,42 @@ class GamesController < ApplicationController
 
   def set_string
     game = Game.find(params[:id])
-    # check if allowed
 
-    ph = current_user&.permission_hash || {}
-    home = game.home_team
-    guest = game.guest_team
-    # SBK-, VM- und TM-Zweig additiv: eine nicht passende Rolle darf den Zugriff
-    # über eine andere Rolle nicht verdecken (eine SBK aus Verband A, die im
-    # Verein eines Spiels aus Verband B VM ist, wurde sonst abgewiesen).
-    # Der can_edit_game?-Fallback bleibt außerhalb dieser Verkettung. Seit #214
-    # ist Game#can_edit_lineup? ebenfalls auf den Spielbetrieb gescopt, hebelt
-    # das Scoping hier also nicht mehr aus; es bliebe aber ein Unterschied im
-    # VM-Zweig: can_edit_lineup? lässt zusätzlich den VM des ausrichtenden
-    # Vereins zu. Das Zusammenlegen wäre daher eine Ausweitung und gehört in
-    # eine eigene, bewusste Entscheidung.
-    allowed = if ph[:admin].present?
-                true
-              elsif ph[:sbk].present? || ph[:vm].present? || ph[:tm].present?
-                # Auf den Spielbetrieb des Spiels scopen – ein LV-SBK darf nicht
-                # jedes Spiel bundesweit bearbeiten.
-                (ph[:sbk].present? &&
-                  (ph[:sbk].include?(0) || ph[:sbk].include?(game.league.game_operation_id))) ||
-                  # .present? auch auf den ersten Treffer – ein leeres
-                  # Array ist truthy und ließ sonst jeden VM jedes Spiel bearbeiten.
-                  # home/guest können bei Platzhalter-Spielen nil sein.
-                  (ph[:vm].present? &&
-                    (ph[:vm].intersection([home&.club_id, guest&.club_id].compact).present? ||
-                      ph[:vm].intersection([home&.syndicate_clubs,
-                                            guest&.syndicate_clubs].flatten.compact).present?)) ||
-                  (ph[:tm].present? &&
-                    (ph[:tm].include?(game.home_team_id) || ph[:tm].include?(game.guest_team_id)))
-              else
-                can_edit_game?(game)
-              end
+    # Dieselbe Prüfung wie im übrigen Spielbericht: can_edit_game? entscheidet
+    # zuerst über den Spielsekretariats-Link und fällt sonst auf
+    # Game#can_edit_lineup? zurück. Blank so geprüft wird auch in
+    # add_player_to_lineup, set_flag, set_referee, add_coach und set_captain.
+    # add_event, remove_event und update_event legen zusätzlich eine Sperre für
+    # abgeschlossene Berichte davor, set_game_status eine gegen das
+    # Wiederöffnen. set_string hat wie set_flag keine solche Sperre: Wer den
+    # Bericht bearbeiten darf, darf Zuschauerzahl oder Anwurfzeit auch nach dem
+    # Abschluss noch berichtigen. Das war vorher schon so und ändert sich hier
+    # nicht.
+    #
+    # Vorher stand hier eine eigene, nachgebaute Rechtekette über Admin,
+    # gescopte SBK, VM der beteiligten Vereine und TM. Sie ließ zwei Fälle aus:
+    #
+    # 1. Den VM des **ausrichtenden** Vereins (game_day.club_id), den
+    #    can_edit_lineup? kennt. Der fällt bei normalen Spieltagen nicht auf,
+    #    weil der Ausrichter dort selbst mitspielt. Bei einem Turnier an einem
+    #    Ort, etwa der DM, richtet ein Verein aber alle Partien aus und führt
+    #    das Sekretariat. Dort konnte er Tore, Strafen, Kader und Betreuer
+    #    erfassen, aber Spielsekretariat, Zeitnehmer, Livestream-Link,
+    #    Zuschauerzahl, Anwurfzeit und Auszeiten nicht speichern: 403 auf jedem
+    #    dieser Felder, und das Frontend warf ihn dabei aus dem laufenden
+    #    Spielbericht.
+    # 2. Den Sekretariats-Link in der Hand einer Person, die zugleich als Admin,
+    #    SBK, VM oder TM angemeldet ist. Die lief in den Rollenzweig und nie in
+    #    den Fallback. Der Link liegt eine Ebene höher in can_edit_game?, nicht
+    #    in can_edit_lineup?.
+    #
+    # Die alte Kette ist damit eine Teilmenge dieser Prüfung. Der zuletzt noch
+    # offene Ausnahmefall ist mit #428 erledigt: can_edit_game? entschied bei
+    # gesetztem @secretary_link allein über den Link, wer angemeldet war und
+    # zusätzlich einen gültigen, dieses Spiel aber nicht abdeckenden Token
+    # mitschickte, wurde abgewiesen, obwohl seine Rolle gereicht hätte. Rolle und
+    # Token zählen jetzt additiv.
+    allowed = can_edit_game?(game)
 
     if allowed
       game.record_created_at ||= Time.now
@@ -1202,9 +1222,16 @@ class GamesController < ApplicationController
     }
   end
 
+  # Rolle und Token sind additiv, nicht alternativ (#428). Vorher entschied ein
+  # gesetzter `@secretary_link` allein: Ein Vereinsmanager mit einem gültigen
+  # Hallen-Token in der Registerkarte verlor damit seine normalen Rechte an jedem
+  # Spiel AUSSERHALB der vom Link abgedeckten Spieltage. Weil `show` es umgekehrt
+  # hielt (dort gewann der Login), zeigte die Oberfläche die Bedienelemente der
+  # eigenen Rolle, und der Schreibweg dahinter sagte nein.
   def can_edit_game?(game)
-    return secretary_token_permits_game?(game) if @secretary_link
+    return true if secretary_token_permits_game?(game)
     return false unless current_user
+
     game.can_edit_lineup?(current_user)
   end
 
@@ -1223,18 +1250,20 @@ class GamesController < ApplicationController
     go_id.present? && gos.include?(go_id.to_i)
   end
 
-  # Admin/SBK des Spielbetriebs sowie VM/TM der beteiligten Mannschaften
-  # (inkl. Spielgemeinschafts-Vereine) dürfen die internen Felder lesen.
+  # Admin/SBK des Spielbetriebs, VM/TM der beteiligten Mannschaften (inkl.
+  # Spielgemeinschafts-Vereine) sowie der VM des ausrichtenden Vereins dürfen
+  # die internen Felder lesen.
   def can_view_hidden_elements?(game)
     # Spielsekretariat per Einmal-Link: darf genau die Spiele der Spieltage
     # sehen, die der Link abdeckt (eine Halle an einem Tag, gegebenenfalls
     # mehrere Ligen). Es bearbeitet ohnehin schon den Spielbericht dieser Spiele
     # (siehe SECRETARY_ACTIONS), braucht die internen Felder also, um sie zu
-    # füllen.
-    return secretary_token_permits_game?(game) if @secretary_link
+    # füllen. Additiv wie in can_edit_game?, siehe dort (#428).
+    return true if secretary_token_permits_game?(game)
 
-    # Ohne Login und ohne Token gibt es nichts zu zeigen. Vorher lief das in ein
-    # NoMethodError auf nil, sobald die Action ohne current_user erreichbar war.
+    # Ohne Login gibt es nichts mehr zu zeigen: Ein Token, der dieses Spiel nicht
+    # abdeckt, ist hier so gut wie keiner. Vorher lief das in ein NoMethodError
+    # auf nil, sobald die Action ohne current_user erreichbar war.
     return false unless current_user
 
     ph = current_user.permission_hash
@@ -1244,7 +1273,14 @@ class GamesController < ApplicationController
     teams = [game.home_team, game.guest_team].compact
     return true if ph[:tm].present? && ph[:tm].intersect?(teams.map(&:id))
 
-    ph[:vm].present? && ph[:vm].intersect?(teams.flat_map(&:all_club_ids).compact)
+    # Der ausrichtende Verein gehört dazu, genau wie in Game#can_edit_lineup?
+    # und Game#user_permissions. Ohne ihn bekäme der Ausrichter eines Turniers
+    # an einem Ort ein leeres Formular, in das er zwar schreiben darf (siehe
+    # set_string), dessen bereits eingetragene Werte er aber nicht sieht: das
+    # Spielsekretariat, den Zeitnehmer, die Betreuer und den Vermerk der
+    # Schiedsrichter. Das war die zweite Hälfte des Fehlers vom 15.08.
+    club_ids = teams.flat_map(&:all_club_ids).compact + [game.game_day&.club_id].compact
+    ph[:vm].present? && ph[:vm].intersect?(club_ids)
   end
 
   def author_user_id

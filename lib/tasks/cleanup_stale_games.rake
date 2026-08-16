@@ -110,6 +110,18 @@ namespace :cleanup do
     quali = LeagueQualification.where(target_league_id: league.id).pluck(:id)
     blockers << "Ziel von Qualifikationen: #{quali.join(', ')}" if quali.any?
 
+    # Pokalliga-Verweise fremder Mannschaften. Diese Prüfung fehlte, und sie ist
+    # die mutmaßliche Quelle der verwaisten cup_leagues-Einträge aus #293: Eine
+    # Liga, auf die NUR über fremde cup_leagues verwiesen wird, hat keine eigenen
+    # Mannschaften, galt damit für empty_leagues als leer und wurde gelöscht. Die
+    # ID blieb in den Arrays der anderen Mannschaften stehen.
+    #
+    # Ein Fremdschlüssel kann das nicht abfangen, Postgres kennt keine
+    # Fremdschlüssel auf Array-Elemente. Dieselbe Prüfung macht
+    # `LeaguesController#league_delete_blocker` schon länger richtig.
+    cup = Team.where('? = ANY (cup_leagues)', league.id).where.not(league_id: league.id).pluck(:id)
+    blockers << "als zusätzliche Liga hinterlegt bei Mannschaften: #{cup.join(', ')}" if cup.any?
+
     blockers
   end
 

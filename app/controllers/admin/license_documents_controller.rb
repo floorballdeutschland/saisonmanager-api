@@ -218,11 +218,16 @@ module Admin
     # Zugriff auf die persönlichen Unterlagen zu geben – Lesen, Hochladen und
     # Löschen –, auch Jahre nach dem Vereinswechsel.
     #
-    # ACHTUNG, kein erledigter Nachbar: Am Spielerprofil selbst
-    # (`PlayersController#vm_can_access_player?` / `#tm_can_access_player?`) fehlt
-    # derselbe Filter weiterhin, dort genügt jeder Eintrag im clubs-Hash. #391 hat
-    # nur den SBK-Zweig auf den gültigen Heimatverein gestellt. Die Unterlagen sind
-    # damit ab hier strenger als das Profil, an dem sie hängen – offen als #309.
+    # Am Spielerprofil greift seit #309 ebenfalls eine Gültigkeitsprüfung
+    # (`PlayersController#membership_grants_access?`, auf demselben
+    # `membership_current?`). Bis dahin genügte dort jeder Eintrag im clubs-Hash,
+    # die Unterlagen waren also strenger als das Profil, an dem sie hängen.
+    #
+    # Deckungsgleich sind die beiden trotzdem nicht: Am Profil zählt zusätzlich
+    # die Zugehörigkeit, die eine laufende Deaktivierung geschlossen hat, hier
+    # nicht. Deaktiviert ein Verein seinen eigenen Spieler, behält er also das
+    # Profil (sonst käme er nicht an `reactivate`) und verliert die Unterlagen.
+    # Ohne laufende Lizenz gäbe es hier ohnehin nichts zu sehen.
     #
     # Die Mitgliedschaftsprüfung ist `player_in_team_clubs?`, also dieselbe wie im
     # Lizenzantrag: Wer für eine Mannschaft eine Lizenz lösen darf, soll deren
@@ -241,7 +246,8 @@ module Admin
         if team_ids.empty?
           []
         else
-          # `teams.league_id` ist nullable und ohne Fremdschlüssel (vgl.
+          # `teams.league_id` ist nullable; seit #293 gibt es dort einen
+          # Fremdschlüssel, der aber nur den Verweis ins Leere ausschließt (vgl.
           # TeamsController#render_team_without_league). Ein Team ohne Liga fällt
           # aus `Team.current_season` heraus, weil `NULL IN (…)` niemals wahr ist –
           # das ist ein Datenfehler und keine Rechteentscheidung. Deshalb erst
