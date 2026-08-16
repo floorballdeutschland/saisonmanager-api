@@ -1058,14 +1058,52 @@ class PlayersController < ApplicationController
   def vm_can_access_player?(ph, player)
     return false unless ph[:vm].present?
 
-    player.clubs.any? { |c| ph[:vm].include?(c['club_id'].to_i) }
+    manageable_club_ids(player).intersect?(ph[:vm])
   end
 
   def tm_can_access_player?(ph, player)
     club_ids = tm_club_ids(ph)
     return false if club_ids.empty?
 
-    player.clubs.any? { |c| club_ids.include?(c['club_id'].to_i) }
+    manageable_club_ids(player).intersect?(club_ids)
+  end
+
+  # Vereine, die HEUTE Zugriff auf dieses Profil geben.
+  #
+  # Beide Zweige lasen vorher den rohen clubs-Hash: Wer je Mitglied war, blieb
+  # dauerhaft zuständig, also auch `deactivate!`-bar. Am 16.07.2026 haben drei
+  # VM-Konten so 68 Spieler deaktiviert, deren offene Heimatzugehörigkeit einem
+  # anderen Verein gehörte; `deactivate!` schließt dann alle Zugehörigkeiten und
+  # stempelt die Lizenzen auf DELETED, und weil `Player.active` die Suche,
+  # `Club#players` und die VM-Spielerliste filtert, war das Profil für den echten
+  # Verein anschließend unsichtbar (#309). Auf dem Bestand vom 16.08.2026 sind
+  # 4.564 aktive Spieler auf diesem Weg für einen Altverein erreichbar.
+  #
+  # Maßgeblich ist deshalb `Player#valid_clubs`, dieselbe Quelle, auf der über
+  # `home_club` schon der SBK-Zweig steht (#391). Keine zweite Definition von
+  # „gültige Zugehörigkeit".
+  #
+  # Dazu die Zugehörigkeiten, die DIESE Deaktivierung geschlossen hat: `deactivate!`
+  # stempelt auch die eigene, gültige Mitgliedschaft, der Verein verlöre sonst mit
+  # dem Klick auf „Deaktivieren" den Zugriff auf sein eigenes Profil und käme weder
+  # an die Daten noch an `reactivate`. `membership_closed_by_deactivation?` ist
+  # dieselbe Prüfung, mit der `Club#players(include_deactivated: true)` diese
+  # Profile in der VM-Liste hält, und sie verlangt Stempel UND Zeitfenster der
+  # laufenden Deaktivierung — eine 2019 beendete Mitgliedschaft erfüllt sie nicht.
+  #
+  # Bleibt der Altbestand ohne beides: 10 deaktivierte Profile (Deaktivierungen aus
+  # der Zeit vor dem `valid_set_by`-Stempel) und 2 aktive ohne jede gültige
+  # Zugehörigkeit. Die liegen ab hier bei SBK und Admin, wie die vergleichbaren
+  # Fälle in #391 und #399 auch.
+  # Bewusst nicht memoisiert: `player_after_reactivation` reicht eine Kopie ohne id
+  # herein, die sich vom gespeicherten Datensatz unterscheiden MUSS. Ein Cache über
+  # die id gäbe beiden denselben Eintrag, ein Cache über object_id hinge an einem
+  # nach dem GC wiederverwendbaren Wert. Der Aufwand ist ein Scan über eine kurze
+  # Liste, und pro Anfrage steht genau ein Spieler zur Prüfung.
+  def manageable_club_ids(player)
+    entries = player.valid_clubs(Date.today) +
+              (player.clubs || []).select { |c| player.membership_closed_by_deactivation?(c) }
+    entries.filter_map { |c| c['club_id']&.to_i }.uniq
   end
 
   def tm_can_access_club?(ph, club_id)

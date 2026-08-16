@@ -218,11 +218,11 @@ module Admin
     # Zugriff auf die persönlichen Unterlagen zu geben – Lesen, Hochladen und
     # Löschen –, auch Jahre nach dem Vereinswechsel.
     #
-    # ACHTUNG, kein erledigter Nachbar: Am Spielerprofil selbst
-    # (`PlayersController#vm_can_access_player?` / `#tm_can_access_player?`) fehlt
-    # derselbe Filter weiterhin, dort genügt jeder Eintrag im clubs-Hash. #391 hat
-    # nur den SBK-Zweig auf den gültigen Heimatverein gestellt. Die Unterlagen sind
-    # damit ab hier strenger als das Profil, an dem sie hängen – offen als #309.
+    # Am Spielerprofil selbst gilt dieselbe Regel seit #309:
+    # `PlayersController#manageable_club_ids` lässt nur gültige Zugehörigkeiten
+    # zählen (plus die, die eine laufende Deaktivierung geschlossen hat). Bis
+    # dahin genügte dort jeder Eintrag im clubs-Hash, die Unterlagen waren also
+    # strenger als das Profil, an dem sie hängen.
     #
     # Die Mitgliedschaftsprüfung ist `player_in_team_clubs?`, also dieselbe wie im
     # Lizenzantrag: Wer für eine Mannschaft eine Lizenz lösen darf, soll deren
