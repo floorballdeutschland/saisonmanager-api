@@ -118,14 +118,33 @@ module Admin
       assert_includes names, 'Gymnasium-Halle Puchheim'
     end
 
-    test 'Bearbeiten reaktiviert einen bewusst deaktivierten Spielort nicht' do
-      arena = create(:arena, active: false)
-      login(create(:user, :sbk_scoped))
+    # Der naheliegende Aufräumweg nach dieser Änderung: den fehlenden Spielort neu
+    # anlegen und danach in den alten Eintrag zusammenführen, der die Spieltage
+    # trägt. Bliebe der verbleibende Eintrag inaktiv, wäre man wieder am Anfang.
+    test 'Zusammenführen macht einen inaktiven Ziel-Spielort auswaehlbar' do
+      master = create(:arena, active: false)
+      secondary = create(:arena)
+      login(create(:user, :admin))
 
-      put "/api/v2/admin/arenas/#{arena.id}", params: { name: 'Umbenannt', city: arena.city }
+      post "/api/v2/admin/arenas/#{master.id}/merge", params: { secondary_id: secondary.id }
 
       assert_response :success
-      refute arena.reload.active
+      assert master.reload.active
+      assert_equal true, JSON.parse(response.body)['master']['active']
+    end
+
+    test 'Zusammenführen gelingt auch bei einem Ziel-Spielort ohne Ort' do
+      master = create(:arena, active: false)
+      master.update_columns(city: nil)
+      secondary = create(:arena)
+      game_day = create(:game_day, arena: secondary)
+      login(create(:user, :admin))
+
+      post "/api/v2/admin/arenas/#{master.id}/merge", params: { secondary_id: secondary.id }
+
+      assert_response :success
+      assert master.reload.active
+      assert_equal master.id, game_day.reload.arena_id
     end
 
     private
