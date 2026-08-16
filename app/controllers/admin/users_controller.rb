@@ -586,34 +586,20 @@ module Admin
         return { error: 'Benutzer hat keine SBK/RSK/Ansetzer-Rolle', status: :unprocessable_entity }
       end
 
-      # Gegenstück zur Sperre für die vereinsgebundenen Rollen weiter oben in
-      # apply_club_change: Der Zweig unten schreibt JEDE verbandsgebundene
-      # Berechtigung auf die neue ID um. Hängen mehrere Verbände am Konto, wird
-      # aus [{SBK, A}, {SBK, B}] dabei [{SBK, A}, {SBK, A}]; User#permission_hash
-      # entdoppelt das per uniq, und der Zugriff auf Verband B ist weg. Der
-      # Request antwortete mit 200, auffällig wurde es erst, wenn die Person
-      # Ligen, Vereine oder Spieler des zweiten Verbands nicht mehr sah (#434).
-      #
-      # Die Benutzermaske kann den Fall gar nicht darstellen: Sie sucht mit
-      # `find` die ERSTE verbandsgebundene Rolle und belegt damit ein einzelnes
-      # Dropdown, der zweite Verband taucht nicht auf. Solange das so ist, ist
-      # Abbrechen die einzige Antwort, die nichts verliert. remove_role plus
-      # add_role behandeln mehrere Einträge bereits korrekt und bleiben der Weg.
-      #
-      # Gezählt werden die Verbände, nicht die Rollen: SBK und Ansetzer
-      # desselben Verbands sind der Normalfall und ziehen gemeinsam um, ohne
-      # dass etwas verloren geht.
-      if affected.map { |p| p['game_operation_id'].to_s }.uniq.size > 1
-        return { error: 'Benutzer ist mehreren Verbünden zugeordnet – Einzelzuweisung nicht möglich',
-                 status: :unprocessable_entity }
-      end
-
       # Der Wechsel muss in beide Richtungen im eigenen Zuständigkeitsbereich
       # liegen: Sonst schöbe ein verbandsgebundener SBK eine Rolle aus dem
       # eigenen Verband heraus oder eine fremde in ihn hinein. Admin und
       # national gescopte Konten sind über permission_assignable? unbeschränkt.
+      #
+      # Steht bewusst VOR der Scope-Prüfung darunter: Wer das Konto überhaupt
+      # nicht anfassen darf, soll das erfahren und nicht stattdessen etwas über
+      # dessen Verbandszuordnung.
       unless affected.all? { |p| permission_assignable?(p) && permission_assignable?(p.merge('game_operation_id' => new_go_id.to_s)) }
         return { error: 'Verbund nicht im eigenen Zuständigkeitsbereich', status: :forbidden }
+      end
+
+      if (scope_error = go_scope_conflict(affected))
+        return { error: scope_error, status: :unprocessable_entity }
       end
 
       new_perms = user.permissions.map do |p|
@@ -621,6 +607,63 @@ module Admin
       end
 
       { updates: { permissions: new_perms } }
+    end
+
+    # Nil, wenn die Verbund-Zuweisung gefahrlos alle verbandsgebundenen Rollen
+    # umschreiben kann. Sonst die Meldung, die erklärt, warum nicht.
+    #
+    # Der Schreibzweig oben setzt JEDE verbandsgebundene Berechtigung auf die
+    # neue ID. Das ist nur dann verlustfrei, wenn alle auf denselben, echten
+    # Verband zeigen. Drei Fälle tun das nicht, und alle drei endeten vorher in
+    # einem stillen Rechteverlust mit HTTP 200 (#434):
+    #
+    # (a) Mehrere Verbände. Aus [{SBK, A}, {SBK, B}] wird [{SBK, A}, {SBK, A}]:
+    #     Der Eintrag für B ist überschrieben und damit weg. `permission_hash`
+    #     zieht den Doppeleintrag anschließend nur noch per `uniq` glatt, sichtbar
+    #     ist der Verlust also nirgends. Auffällig wurde es erst, wenn die Person
+    #     Ligen, Vereine oder Spieler des zweiten Verbands nicht mehr sah.
+    # (b) Globaler Zugriff (game_operation_id 0). Ein bundesweiter SBK hat nur
+    #     EINEN Scope, fällt also nicht unter (a), verlöre durch den Wechsel aber
+    #     alle Verbände außer dem gewählten. Derselbe Schaden, eine Datenform
+    #     weiter.
+    # (c) Ein Eintrag ohne Verbund. `permission_hash` liest ihn über `to_i` als 0
+    #     und damit als global, der Wechsel beschnitte also ebenfalls. Das ist ein
+    #     Datenfehler, der als solcher gemeldet gehört, statt beiläufig
+    #     überschrieben zu werden.
+    #
+    # Gezählt werden die Scopes, nicht die Rollen: SBK und Ansetzer desselben
+    # Verbands sind der Normalfall und ziehen gemeinsam um. Die Sperre für die
+    # vereinsgebundenen Rollen in `apply_club_change` zählt dagegen Einträge
+    # EINER Rolle; sie ist das Vorbild für die Absicht, nicht für die Zählweise.
+    #
+    # `presence&.to_i` fasst Integer und String derselben ID zusammen (beide
+    # Formen liegen im Bestand) und hält `nil` von der echten 0 getrennt.
+    #
+    # Der Ausweg für alle drei Fälle ist `remove_role` plus `add_role`: Beide
+    # arbeiten eintragsgenau über `same_permission?` und lassen die übrigen
+    # Rollen stehen. Die Maske bietet das unter „Rollen" an, dort steht jede
+    # Rolle mit ihrem Verband; blind ist nur das Zuweisungs-Dropdown, das über
+    # `find` mit der ersten verbandsgebundenen Rolle vorbelegt wird.
+    def go_scope_conflict(affected)
+      scopes = affected.map { |p| p['game_operation_id'].presence&.to_i }.uniq
+
+      if scopes.size > 1
+        return 'Dieses Konto hat Rollen in mehreren Verbünden. Die Verbund-Zuweisung kann nur einen ' \
+               'davon abbilden und würde die übrigen entfernen. Bitte die betroffene Rolle oben unter ' \
+               '„Rollen" entfernen und mit dem gewünschten Verbund neu hinzufügen.'
+      end
+
+      if scopes.first.nil?
+        return 'Eine verbandsgebundene Rolle dieses Kontos hat keinen Verbund hinterlegt. Das ist ein ' \
+               'Datenfehler: Die Rolle wirkt derzeit bundesweit. Bitte die Rolle oben unter „Rollen" ' \
+               'entfernen und mit dem richtigen Verbund neu hinzufügen.'
+      end
+
+      return unless scopes.first.zero?
+
+      'Dieses Konto hat bundesweiten Zugriff. Die Verbund-Zuweisung würde ihn auf einen einzelnen ' \
+        'Verbund beschneiden. Bitte die Rolle oben unter „Rollen" entfernen und mit dem gewünschten ' \
+        'Verbund neu hinzufügen.'
     end
 
     def derive_club_ids_for_go(go_ids)
