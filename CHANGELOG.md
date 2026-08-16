@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Neu angelegte Spielorte stehen im Spielplan zur Auswahl**: Wer in der Verwaltung einen Spielort anlegte, fand ihn anschließend zwar in der Spielorte-Liste, im Spielplan bei den Austragungsorten aber nicht. Der Grund lag weder bei den Rechten noch beim Verband, sondern an einem Schalter, den die Maske nie gesetzt hat: Jeder Spielort wurde inaktiv angelegt, und der Spielplan bietet nur aktive Spielorte an. Betroffen waren damit auch die Excel-Vorlage für den Spielplan-Import, in deren Auswahlblatt der neue Spielort fehlte, sowie der Import selbst, der eine solche Spielort-Nummer stillschweigend verwarf. Neu angelegte Spielorte sind ab sofort aktiv und damit direkt verwendbar. Ein bewusst deaktivierter Spielort bleibt beim Bearbeiten deaktiviert, ein Umbenennen holt also keine Halle zurück, die aus dem Verkehr gezogen wurde.
+
 ## [1.84.0] - 2026-08-15
 
 ### Neu
