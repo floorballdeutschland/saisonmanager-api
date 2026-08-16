@@ -7,7 +7,9 @@ namespace :data_health do
       missing_season_id: missing_season_id_findings,
       multiple_home_clubs: multiple_home_clubs_findings,
       season_min_ids_unset: season_min_ids_unset_findings,
-      duplicate_active_licenses: duplicate_active_licenses_findings
+      duplicate_active_licenses: duplicate_active_licenses_findings,
+      orphan_teams: orphan_teams_findings,
+      orphan_cup_leagues: orphan_cup_leagues_findings
     }
 
     results.each { |check, findings| report(check.to_s, findings, summary_for(check, findings)) }
@@ -61,6 +63,74 @@ namespace :data_health do
     findings = duplicate_active_licenses_findings
     report('duplicate_active_licenses', findings, summary_for(:duplicate_active_licenses, findings))
     exit 1 if findings.any?
+  end
+
+  desc 'Mannschaften deren league_id auf eine gelöschte Liga zeigt (Waisen)'
+  task orphan_teams: :environment do
+    findings = orphan_teams_findings
+    report('orphan_teams', findings, summary_for(:orphan_teams, findings))
+    exit 1 if findings.any?
+  end
+
+  desc 'Mannschaften mit gelöschten Liga-IDs in cup_leagues'
+  task orphan_cup_leagues: :environment do
+    findings = orphan_cup_leagues_findings
+    report('orphan_cup_leagues', findings, summary_for(:orphan_cup_leagues, findings))
+    exit 1 if findings.any?
+  end
+
+  # `teams.league_id` hat keinen Fremdschlüssel (`db/schema.rb` schützt
+  # `game_days` und `league_qualifications`, `teams` nur nach `clubs`). Eine
+  # Mannschaft kann deshalb auf eine Liga zeigen, die es nicht mehr gibt, und
+  # niemand merkt es. Die Mannschaftsseite antwortete darauf vor #283 mit einem
+  # Serverfehler, seitdem mit einem 404; für Besucher ist sie in beiden Fällen
+  # leer. Entstehen können solche Datensätze auf jedem Weg, der an
+  # `LeaguesController#admin_league_delete` vorbeigeht: `delete_all` aus Konsole
+  # oder Rake-Task, die Import- und Restore-Tasks in `lib/tasks/`. Siehe #293.
+  #
+  # Rohes SQL statt `where.missing(:league)`: Diese Prüfung soll unabhängig von
+  # jedem Scope und jeder Association-Konfiguration am Modell messen, was in der
+  # Datenbank steht. Genau das ist die Frage, die auch die Migration mit
+  # `add_foreign_key` stellen wird.
+  #
+  # `league_id IS NULL` zählt bewusst nicht mit: Der Fremdschlüssel ließe das
+  # ebenfalls zu, und eine Mannschaft ohne Liga meldet sich seit #283 mit einer
+  # eigenen, verständlichen Fehlermeldung statt als Rechte-Absage.
+  def orphan_teams_findings
+    sql = <<~SQL.squish
+      SELECT t.id, t.name, t.league_id, t.club_id
+      FROM teams t
+      LEFT JOIN leagues l ON l.id = t.league_id
+      WHERE t.league_id IS NOT NULL AND l.id IS NULL
+      ORDER BY t.league_id, t.id
+    SQL
+    ActiveRecord::Base.connection.select_all(sql).map do |row|
+      { team_id: row['id'], team_name: row['name'],
+        missing_league_id: row['league_id'], club_id: row['club_id'] }
+    end
+  end
+
+  # Dasselbe für die Pokalligen: `cup_leagues` ist ein Integer-Array ohne
+  # Fremdschlüssel, und beim Löschen einer Liga wird ihre ID dort nicht entfernt.
+  # Folgenlos für `League.where(id:)`, aber `Team#all_league_ids` gibt die IDs
+  # weiter, unter anderem an die Lizenzprüfung.
+  def orphan_cup_leagues_findings
+    sql = <<~SQL.squish
+      SELECT t.id, t.name, t.cup_leagues
+      FROM teams t
+      WHERE t.cup_leagues IS NOT NULL
+        AND array_length(t.cup_leagues, 1) > 0
+        AND EXISTS (
+          SELECT 1 FROM unnest(t.cup_leagues) AS cup_id
+          WHERE NOT EXISTS (SELECT 1 FROM leagues l WHERE l.id = cup_id)
+        )
+      ORDER BY t.id
+    SQL
+    ActiveRecord::Base.connection.select_all(sql).map do |row|
+      cup_ids = Array(row['cup_leagues'].is_a?(String) ? row['cup_leagues'].scan(/\d+/).map(&:to_i) : row['cup_leagues'])
+      { team_id: row['id'], team_name: row['name'],
+        missing_league_ids: cup_ids.reject { |id| League.unscoped.exists?(id) } }
+    end
   end
 
   def stale_active_licenses_findings
@@ -168,7 +238,11 @@ namespace :data_health do
       missing_season_id: "#{findings.size} Lizenz(en) ohne season_id (→ licenses:backfill_season_ids)",
       multiple_home_clubs: "#{findings.size} Player mit mehr als einem aktiven home_club=true-Eintrag",
       season_min_ids_unset: "#{findings.size} Saison(en) mit aktiven Ligen aber fehlendem min_league_id/min_team_id",
-      duplicate_active_licenses: "#{findings.size} Doppelt-APPROVED-Lizenz(en) pro (player, season_id, team_id)"
+      duplicate_active_licenses: "#{findings.size} Doppelt-APPROVED-Lizenz(en) pro (player, season_id, team_id)",
+      orphan_teams: "#{findings.size} Mannschaft(en) deren league_id auf eine gelöschte Liga zeigt " \
+                    '(→ cleanup:orphan_team_leagues)',
+      orphan_cup_leagues: "#{findings.size} Mannschaft(en) mit gelöschten Liga-IDs in cup_leagues " \
+                          '(→ cleanup:orphan_team_leagues)'
     }.fetch(check.to_sym, "#{findings.size} Befunde")
   end
 

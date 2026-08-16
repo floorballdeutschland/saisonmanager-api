@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Leere Mannschaftsseiten fallen jetzt auf, statt unbemerkt zu bleiben**: Zeigt eine Mannschaft auf eine Liga, die es nicht mehr gibt, ist ihre Seite für Besucher leer. Beim Löschen einer Liga über die Verwaltung kann das nicht passieren, dort werden die Mannschaften mitgenommen; auf allen anderen Wegen, etwa bei einem Import oder einer Bereinigung direkt auf der Datenbank, aber schon. Bisher hat das niemand gemerkt, außer der Person, die zufällig auf der leeren Seite landete. Die tägliche Datenprüfung sucht solche Verweise jetzt mit, in der Mannschaft selbst und in ihren Pokalligen, und ein neuer Wartungslauf räumt sie auf. Die Mannschaft bleibt dabei mit Kader und Historie erhalten, sie verliert nur den Verweis ins Leere.
+
 ## [1.84.0] - 2026-08-15
 
 ### Neu
