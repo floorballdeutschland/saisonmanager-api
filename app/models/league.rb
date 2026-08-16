@@ -1,6 +1,7 @@
 class League < ApplicationRecord
   include UserTrackable
   include LeagueDirectEncounterTable
+  include LeagueTablePoints
   include LeagueBanner
   include LeagueLogo
   include LeagueRefereeAssignment
@@ -447,49 +448,6 @@ class League < ApplicationRecord
 
   def meta_item
     attributes.select { |key, _value| %w[name short_name order_key].include?(key) }
-  end
-
-  def won_points
-    if legacy_league
-      league_system_id.to_i == 1 ? 3 : 2
-    else
-      case table_modus
-      when 'classic'
-        3
-      else
-        10
-      end
-    end
-  end
-
-  def draw_points
-    if legacy_league
-      league_system_id.to_i == 1 ? 1 : 0
-    else
-      case table_modus
-      when 'classic'
-        1
-      else
-        1
-      end
-    end
-  end
-
-  def won_overtime_points
-    if legacy_league
-      league_system_id.to_i == 1 ? 2 : 0
-    else
-      case table_modus
-      when 'classic'
-        2
-      else
-        0
-      end
-    end
-  end
-
-  def lost_overtime_points
-    draw_points
   end
 
   def scorer
