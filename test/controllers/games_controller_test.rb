@@ -558,10 +558,10 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
 
   # --- Sekretariats-Token und Login treffen aufeinander -----------------------
   #
-  # Der SecretaryTokenInterceptor hängt einen einmal abgelegten Token an jede
-  # Anfrage und löscht ihn nirgends. An einem Turnierwochenende mit mehreren
-  # Hallen arbeitet dieselbe Registerkarte deshalb mit Token UND Login. Beide
-  # Richtungen sind vorher ungetestet gewesen.
+  # An einem Turnierwochenende mit mehreren Hallen arbeitet dieselbe
+  # Registerkarte mit Token UND Login (Begründung am Concern). Hier stehen die
+  # beiden Fälle für `set_field`; die Auth-Reihenfolge und die additive
+  # Rechteprüfung aus #428 prüft `games_secretary_token_login_test.rb`.
 
   # Ausweitung: Vorher lief diese Person in den Rollenzweig, ihre Rolle passte
   # nicht, und der Token wurde nie befragt.
@@ -578,10 +578,10 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
     assert_equal 40, game.reload.audience.to_i
   end
 
-  # War die eine Verengung dieser Umstellung: can_edit_game? entschied bei
-  # gesetztem @secretary_link allein über den Link, ein Token für eine andere
-  # Halle nahm der eigenen Rolle also das Spiel weg. Seit #428 zählen Rolle und
-  # Token additiv, hier trägt die Rolle.
+  # War die eine Verengung aus #437: can_edit_game? entschied bei gesetztem
+  # @secretary_link allein über den Link, ein Token für eine andere Halle nahm
+  # der eigenen Rolle also das Spiel weg. Seit #428 zählen Rolle und Token
+  # additiv, hier trägt die Rolle.
   test 'set_field: ein Token für einen fremden Spieltag laesst die eigene Rolle unberuehrt' do
     game = game_hosted_by(create(:club))
     fremder_spieltag = GameDay.create!(league: @league, arena: @arena, club: create(:club),

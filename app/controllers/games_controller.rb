@@ -57,8 +57,15 @@ class GamesController < ApplicationController
     # TTL über die 10-Minuten-Verzögerung hinaus (unkritisch, Verzögerung ist
     # ein Mindestwert). Eingeloggte/Secretary-Abrufe variieren pro Nutzer und
     # bleiben ungecacht.
+    #
+    # Maßgeblich ist, ob der Link DIESES Spiel abdeckt, nicht ob überhaupt einer
+    # mitkommt. Der Interceptor hängt den Token an jede Anfrage: Ohne die
+    # Abdeckungsprüfung hielte ein einziger Hallenlink die öffentliche Spielseite
+    # in dieser Registerkarte dauerhaft aus dem Cache, für jedes Spiel des
+    # Wettbewerbs. Dieselbe Unterscheidung wie in `can_edit_game?` (#428).
+    secretary = secretary_token_permits_game?(game)
     hash =
-      if current_user || @secretary_link
+      if current_user || secretary
         game.full_hash
       else
         variant = delayed ? 'delayed' : 'realtime'
@@ -70,13 +77,19 @@ class GamesController < ApplicationController
     # Vereinigung statt elsif-Kette: Wer angemeldet ist UND einen Link in der
     # Registerkarte hat, bekam bisher nur die Rechte seiner Rolle angezeigt, die
     # Schreibwege dahinter richteten sich aber allein nach dem Link (#428). Beide
-    # Seiten rechnen jetzt additiv. Für anonyme Abrufe bleibt es bei nil, ein
-    # leeres Array wäre im Frontend truthy.
+    # Seiten rechnen jetzt additiv.
+    #
+    # `nil` nur, wenn weder Login noch Link etwas beitragen: Anonyme Abrufe
+    # behalten damit die Form von früher. Mit einem Token, der dieses Spiel nicht
+    # abdeckt, kommt wie bisher `[]` heraus.
     hash[:permission] = if current_user || @secretary_link
                           Array(current_user && game.user_permissions(current_user)) |
                             _secretary_permissions(game)
                         end
-    hash.merge!(_checklist_hash(game)) if current_user || @secretary_link
+    # Die Checkliste ist ein internes Feld des Spielberichts und gehört an
+    # dieselbe Grenze wie die Bedienelemente: ein fremder Hallenlink zeigt sie
+    # nicht.
+    hash.merge!(_checklist_hash(game)) if current_user || secretary
     if current_user
       ph = current_user.permission_hash
       go_id = game.game_day.league.game_operation_id.to_i
@@ -1216,7 +1229,7 @@ class GamesController < ApplicationController
   # hielt (dort gewann der Login), zeigte die Oberfläche die Bedienelemente der
   # eigenen Rolle, und der Schreibweg dahinter sagte nein.
   def can_edit_game?(game)
-    return true if @secretary_link && secretary_token_permits_game?(game)
+    return true if secretary_token_permits_game?(game)
     return false unless current_user
 
     game.can_edit_lineup?(current_user)
@@ -1246,10 +1259,11 @@ class GamesController < ApplicationController
     # mehrere Ligen). Es bearbeitet ohnehin schon den Spielbericht dieser Spiele
     # (siehe SECRETARY_ACTIONS), braucht die internen Felder also, um sie zu
     # füllen. Additiv wie in can_edit_game?, siehe dort (#428).
-    return true if @secretary_link && secretary_token_permits_game?(game)
+    return true if secretary_token_permits_game?(game)
 
-    # Ohne Login und ohne Token gibt es nichts zu zeigen. Vorher lief das in ein
-    # NoMethodError auf nil, sobald die Action ohne current_user erreichbar war.
+    # Ohne Login gibt es nichts mehr zu zeigen: Ein Token, der dieses Spiel nicht
+    # abdeckt, ist hier so gut wie keiner. Vorher lief das in ein NoMethodError
+    # auf nil, sobald die Action ohne current_user erreichbar war.
     return false unless current_user
 
     ph = current_user.permission_hash

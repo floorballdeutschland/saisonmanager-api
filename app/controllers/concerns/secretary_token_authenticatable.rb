@@ -4,22 +4,36 @@ module SecretaryTokenAuthenticatable
   # Call in before_action chains: sets @secretary_link if a valid token is present.
   # When present, the user is not required to be logged in (authenticate_user is skipped).
   #
-  # **Der Login hat Vorrang, der Token ist der Ersatzweg.** Vorher entschied ein
-  # mitgeschickter Token allein: ließ er sich nicht auflösen, gab es 401,
-  # unabhängig von `current_user`. Das ist kein Sonderfall, sondern der Normalfall
-  # nach 72 Stunden (`GameDaySecretaryLink::VALIDITY`): Der
+  # **Login ODER Link genügt, abgewiesen wird nur, wenn beides fehlt.** Vorher
+  # entschied ein mitgeschickter Token allein: ließ er sich nicht auflösen, gab es
+  # 401, unabhängig von `current_user`. Das ist kein Sonderfall, sondern der
+  # Normalfall nach 72 Stunden (`GameDaySecretaryLink::VALIDITY`): Der
   # SecretaryTokenInterceptor im Frontend hängt einen einmal im sessionStorage
-  # abgelegten Token an JEDE Anfrage und löscht ihn nirgends. Wer in dieser
+  # abgelegten Token an jede API-Anfrage und löscht ihn nirgends. Wer in dieser
   # Registerkarte einmal einen Sekretariats-Link geöffnet hatte, bekam danach
-  # angemeldet 401 auf jedem Schreibweg des Spielberichts
-  # (`GamesController::SECRETARY_ACTIONS`), also mitten im laufenden Spiel.
+  # angemeldet 401 auf jedem Weg des Spielberichts
+  # (`GamesController::SECRETARY_ACTIONS`, dort auch der Lesepfad `show_hidden`),
+  # also mitten im laufenden Spiel.
   #
-  # Abgewiesen wird deshalb nur, wenn beide Wege versagen. Die Meldung richtet
-  # sich nach dem Grund: Wer es mit einem Link versucht hat, soll lesen, dass der
-  # Link nicht mehr gilt, und nicht „nicht angemeldet".
+  # Dieselbe Konstruktion wie in
+  # `ClubsController#authenticate_user_or_secretary_link` (#424). Unterschied nur
+  # in der Ausgabe: Dort gibt es eine gemeinsame Meldung, hier zwei. Wer es mit
+  # einem Link versucht hat, soll lesen, dass der Link nicht mehr gilt, und nicht
+  # „nicht angemeldet".
   #
-  # Gleiche Reihenfolge wie in `ClubsController#authenticate_user_or_secretary_link`
-  # (#424) und in `secretary_or_current_user_id` unten. Siehe #428.
+  # Eine echte Rangfolge zwischen beiden gibt es an genau einer Stelle, und die
+  # ist unverändert: `secretary_or_current_user_id` trägt den angemeldeten
+  # Menschen als Urheber ein, nicht den Aussteller des Links. Die Rechteprüfung
+  # in `GamesController#can_edit_game?` wertet dagegen additiv aus, keiner der
+  # beiden Wege sticht den anderen. Siehe #428.
+  #
+  # Ein unbrauchbarer Token verschwindet bei bestehender Sitzung bewusst
+  # spurlos. `find_by_token` kann abgelaufen, zurückgezogen und gefälscht nicht
+  # unterscheiden (alle drei enden in `nil`), und zurückgezogen ist der
+  # Regelfall: `revoke_coverage_of` löscht den Link bei jeder Neuausgabe für
+  # dieselbe Halle. Eine Meldung wäre also überwiegend eine Meldung über
+  # legitime, ersetzte Links, und weil der Interceptor den Token nie löscht,
+  # wäre sie eine Dauermeldung.
   def authenticate_with_secretary_token_or_user
     raw_token = request.headers['X-Secretary-Token'] || params[:secretary_token]
     @secretary_link = GameDaySecretaryLink.find_by_token(raw_token) if raw_token.present?
