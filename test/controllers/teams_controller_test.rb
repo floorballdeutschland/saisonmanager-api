@@ -221,9 +221,9 @@ class TeamsControllerTest < ActionDispatch::IntegrationTest
     login(create(:user, :admin))
     orphan_league = create(:league, game_operation: @go)
     orphan_team = create(:team, league: orphan_league, club: @club)
-    # Liga hart entfernen, damit league_id ins Leere zeigt – so entstehen die
-    # Teams, die vorher einen 500er auslösten.
-    League.where(id: orphan_league.id).delete_all
+    # league_id zeigt ins Leere – so entstanden die Teams, die vorher einen
+    # 500er auslösten (siehe Helfer unten).
+    delete_league_leaving_orphans(orphan_league)
 
     get "/api/v2/teams/#{orphan_team.id}/stats"
 
@@ -235,7 +235,7 @@ class TeamsControllerTest < ActionDispatch::IntegrationTest
     login(create(:user, :admin))
     orphan_league = create(:league, game_operation: @go)
     orphan_team = create(:team, league: orphan_league, club: @club)
-    League.where(id: orphan_league.id).delete_all
+    delete_league_leaving_orphans(orphan_league)
 
     get "/api/v2/teams/#{orphan_team.id}/matches"
 
@@ -250,7 +250,7 @@ class TeamsControllerTest < ActionDispatch::IntegrationTest
     login(create(:user, :admin))
     orphan_league = create(:league, game_operation: @go)
     orphan_team = create(:team, league: orphan_league, club: @club)
-    League.where(id: orphan_league.id).delete_all
+    delete_league_leaving_orphans(orphan_league)
     Rails.cache.delete("orphan_team_reported/#{orphan_team.id}")
 
     messages = []
@@ -271,7 +271,7 @@ class TeamsControllerTest < ActionDispatch::IntegrationTest
     login(create(:user, :admin))
     orphan_league = create(:league, game_operation: @go)
     orphan_team = create(:team, league: orphan_league, club: @club)
-    League.where(id: orphan_league.id).delete_all
+    delete_league_leaving_orphans(orphan_league)
 
     messages = []
     with_real_cache do
@@ -289,6 +289,18 @@ class TeamsControllerTest < ActionDispatch::IntegrationTest
     yield
   ensure
     Rails.cache = original
+  end
+
+  # Eine Liga hart entfernen, obwohl noch eine Mannschaft auf sie zeigt. Genau
+  # so sind die Datensätze entstanden, um die es in diesen Tests geht.
+  #
+  # Seit dem Fremdschlüssel aus #293 verweigert die Datenbank das, der muss für
+  # den Altbestand hier also kurz weichen. Das DDL läuft in der Testtransaktion
+  # und ist mit ihr wieder verschwunden. Dass der Weg heute versperrt ist, prüft
+  # `CleanupOrphanTeamLeaguesTest`.
+  def delete_league_leaving_orphans(league)
+    ActiveRecord::Base.connection.remove_foreign_key(:teams, :leagues)
+    League.where(id: league.id).delete_all
   end
 
   test 'stats nutzt die Pokal-Liga als Saisonquelle, wenn die Hauptliga fehlt' do

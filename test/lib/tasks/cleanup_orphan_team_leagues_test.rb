@@ -38,9 +38,15 @@ class CleanupOrphanTeamLeaguesTest < ActiveSupport::TestCase
   # Eine Mannschaft, deren Liga danach aus der Datenbank verschwindet. Der Weg
   # über die Anwendung nimmt die Mannschaft mit; hier wird genau der Weg
   # nachgestellt, der das nicht tut (delete_all aus Konsole oder Rake-Task).
+  #
+  # Der Fremdschlüssel aus derselben Änderung verhindert genau das inzwischen,
+  # muss für die Prüfung des Altbestands also kurz weichen. Das DDL läuft in der
+  # Testtransaktion und ist mit ihr wieder verschwunden; die Sperre selbst prüft
+  # der Test weiter unten.
   def team_with_deleted_league
     weg = create(:league)
     team = create(:team, league: weg, club: @club)
+    ActiveRecord::Base.connection.remove_foreign_key(:teams, :leagues)
     League.unscoped.where(id: weg.id).delete_all
     [team, weg.id]
   end
@@ -65,6 +71,23 @@ class CleanupOrphanTeamLeaguesTest < ActiveSupport::TestCase
     out, = run_task('data_health:orphan_teams')
 
     assert_match(/0 Mannschaft\(en\)/, out)
+  end
+
+  # Die Datenbank lässt den Zustand ab jetzt gar nicht mehr entstehen. Das ist
+  # der eigentliche Riegel; die Prüfung und der Bereinigungslauf darüber gelten
+  # dem Altbestand und allen Wegen, die den Fremdschlüssel umgehen könnten.
+  test 'die Datenbank verweigert das Loeschen einer Liga mit Mannschaften' do
+    weg = create(:league)
+    create(:team, league: weg, club: @club)
+
+    # Savepoint: Ein Fremdschlüsselfehler reißt sonst die Testtransaktion mit,
+    # und jede weitere Abfrage liefe in PG::InFailedSqlTransaction.
+    assert_raises(ActiveRecord::InvalidForeignKey) do
+      ActiveRecord::Base.transaction(requires_new: true) do
+        League.unscoped.where(id: weg.id).delete_all
+      end
+    end
+    assert League.unscoped.exists?(weg.id)
   end
 
   test 'orphan_cup_leagues findet geloeschte IDs im Pokalliga-Array' do

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_08_14_120000) do
+ActiveRecord::Schema[7.1].define(version: 2026_08_16_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1019,6 +1019,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_14_120000) do
   add_foreign_key "state_association_releases", "game_operations", column: "recipient_game_operation_id"
   add_foreign_key "state_association_releases", "state_associations", column: "grantor_state_association_id"
   add_foreign_key "teams", "clubs"
+  add_foreign_key "teams", "leagues"
   add_foreign_key "transfer_requests", "clubs", column: "former_club_id"
   add_foreign_key "transfer_requests", "clubs", column: "requesting_club_id"
   add_foreign_key "transfer_requests", "players"
