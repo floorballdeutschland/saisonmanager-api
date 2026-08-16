@@ -22,7 +22,11 @@ module Admin
         end
       end
 
-      arena = Arena.new(arena_params)
+      # active muss explizit gesetzt werden: der Spaltendefault ist false, und der
+      # Spielplan bietet über Arena.active nur aktive Spielorte an. Ohne diese Zeile
+      # legt die Verwaltung einen Spielort an, der in der Stammdatenliste auftaucht,
+      # im Spieltag-Dropdown aber fehlt (#449).
+      arena = Arena.new(arena_params.merge(active: true))
       if arena.save
         render json: arena.full_hash, status: :created
       else
