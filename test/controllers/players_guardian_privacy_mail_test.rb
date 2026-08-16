@@ -82,6 +82,38 @@ class PlayersGuardianPrivacyMailTest < ActionDispatch::IntegrationTest
     assert_equal ['pokal-sbk@example.de'], mail.reply_to
   end
 
+  # Verlangen Hauptliga und Pokal-Liga die Zustimmung, gehört die Mail zur
+  # Hauptliga. Vorher entschied das die Sortierung des default_scope von League,
+  # und eine Regionalliga-Lizenz konnte eine Mail über den FD-Pokal auslösen,
+  # beantwortbar nur bei einem Verband, mit dem der Verein nichts zu tun hat.
+  test 'bei zwei zustimmungspflichtigen Ligen nennt die Mail die Hauptliga' do
+    # Die Pokal-Liga bekommt den kleineren Spielbetrieb, damit der default_scope
+    # von League (season_id, game_operation_id, order_key) sie vor die Hauptliga
+    # stellt. Genau diese Reihenfolge entschied vorher, welche Liga die Mail nennt.
+    pokal_sa = create(:state_association, sbk_email: 'pokal-sbk@example.de')
+    pokal_go = create(:game_operation, state_association_id: pokal_sa.id)
+    pokal = create(:league, :current_season, game_operation: pokal_go, name: 'FD-Pokal',
+                                             parental_consent_required: true)
+    haupt_go = create(:game_operation, state_association_id: @sa.id)
+    @league.update!(name: 'Regionalliga Bayern', game_operation: haupt_go,
+                    parental_consent_required: true)
+    @team.update!(cup_leagues: [pokal.id])
+    assert_equal pokal.id, @team.reload.leagues.first.id,
+                 'Vorbedingung: der default_scope stellt die Pokal-Liga nach vorn'
+    minor = minor_player
+    login_as(@vm)
+
+    post "/api/v2/user/players/#{minor.id}/request_license",
+         params: { team_id: @team.id, guardian_email: 'eltern@example.de' }, as: :json
+    assert_response :ok
+
+    perform_enqueued_jobs
+    mail = ActionMailer::Base.deliveries.last
+    assert_includes mail.body.decoded, 'Regionalliga Bayern'
+    assert_not_includes mail.body.decoded, 'FD-Pokal'
+    assert_equal ['sbk@example.de'], mail.reply_to
+  end
+
   # Ohne Liga mit Zustimmungspflicht fragt das Antragsformular die Adresse gar
   # nicht ab; ein trotzdem mitgeschickter Wert darf keine Mail auslösen.
   test 'ohne Zustimmungspflicht wird keine Datenschutz-Info verschickt' do

@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Die Elternzustimmung nennt jetzt die Liga, um die es geht**: Ob beim Lizenzantrag eine Zustimmung der gesetzlichen Vertretung verlangt wird, entscheidet ein Schalter an der Liga. Eine Mannschaft spielt aber selten in nur einer Liga, neben ihrer Hauptliga kommen Pokal-Ligen dazu, die einem anderen Verband gehören können. Bislang meldete die Antwort an das Antragsformular lediglich Ja oder Nein, und die anschließende Datenschutz-Mail an die gesetzliche Vertretung suchte sich die zuständige Liga ein zweites Mal selbst heraus. Welche sie dabei erwischte, hing an der Sortierung der Ligaliste und nicht daran, für welche Liga die Lizenz beantragt wurde: Ein Antrag für eine Regionalliga konnte eine Mail über den Pokal auslösen, mit einer Antwortadresse bei einem Verband, mit dem der Verein nichts zu tun hat. Maßgeblich ist ab sofort die Hauptliga der Mannschaft, und nur wenn allein eine Pokal-Liga die Zustimmung verlangt, tritt diese an ihre Stelle. Formular und Mail nennen damit dieselbe Liga, und das Antragsformular bekommt ihren Namen mitgeliefert, statt nur ein Ja zu erhalten.
+
 ## [1.84.1] - 2026-08-16
 
 ### Behoben

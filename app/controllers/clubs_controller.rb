@@ -435,7 +435,15 @@ class ClubsController < ApplicationController
     # als Pflichtdokument steckt die Zustimmung in required_documents und wird
     # dort wie jede andere Dokumentart nach Alter aufgelöst.
     # Ersetzt die frühere is_buli-Ableitung über league_classes.
-    result[:parental_consent_required] = leagues.any?(&:parental_consent_required)
+    #
+    # Neben dem Ja/Nein die auslösende Liga mitgeben (Team#parental_consent_league,
+    # gleiche Wahl wie in PlayersController#request_license): Das Formular soll
+    # nennen können, wegen welcher Liga es die Zustimmung verlangt. Ohne den Namen
+    # liest sich der Block wie eine Aussage über die Mannschaft insgesamt, obwohl
+    # ihn eine einzelne Liga auslöst – oft eine Pokal-Liga eines anderen Verbands.
+    consent_league = team.parental_consent_league
+    result[:parental_consent_required] = consent_league.present?
+    result[:parental_consent_league] = consent_league && { id: consent_league.id, name: consent_league.name }
     result[:required_documents] = leagues.flat_map { |l| league_required_document_keys(l) }.uniq
     # Katalog-Metadaten (Name, Vorlage, Gültigkeit, Altersgrenze) zu den
     # geforderten Dokumentarten – fürs Upload-UI im Team-Lizenzwesen.
