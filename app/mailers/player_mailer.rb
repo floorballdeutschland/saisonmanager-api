@@ -3,10 +3,15 @@ class PlayerMailer < ApplicationMailer
     @player = player
     @team = team
     @league = team.league
-    season = Setting.current_season['name']
+    # Setting.season_name statt current_season['name']: Steht unter der Saison ein
+    # blanker String, liefert String#[]('name') still nil und die Mail trägt eine
+    # leere Saison im Betreff; fehlt der Key ganz, gab es einen NoMethodError
+    # hinter deliver_later, die Mail kam also gar nicht an und niemand erfuhr davon.
+    season = Setting.season_name(Setting.current_season_id)
     subject = "Lizenz erteilt – #{team.name}"
     subject += " (#{@league.name})" if @league
-    subject += " - #{season}"
+    # Nur mit lesbarem Namen anhängen, sonst endete der Betreff auf " - ".
+    subject += " - #{season}" if season.present?
     templated_mail(
       to: player.email,
       subject:,
@@ -86,15 +91,10 @@ class PlayerMailer < ApplicationMailer
   # Saison der Liga, nicht die laufende: Ein Antrag kann eine Liga der kommenden
   # Saison betreffen, während noch die alte aktiv ist.
   #
-  # Je nach Altbestand steht unter einer Saison ein Hash mit 'name' oder ein
-  # blanker String (vgl. Setting.current_season_start_year); `dig` bräche beim
-  # String mit TypeError ab, und hinter deliver_later fiele der Ausfall
-  # niemandem auf. Ohne lesbaren Namen bleibt die Zeile in der Mail weg: Die
-  # laufende Nummer der Saison sagt Eltern nichts.
+  # Die Formfrage (Hash mit 'name' oder blanker String) entscheidet
+  # Setting.season_name an einer Stelle. Ohne lesbaren Namen bleibt die Zeile in
+  # der Mail weg: Die laufende Nummer der Saison sagt Eltern nichts.
   def season_name(league)
-    return nil if league&.season_id.blank?
-
-    entry = Setting.current.seasons[league.season_id.to_s]
-    entry.is_a?(Hash) ? entry['name'].presence : entry.presence
+    Setting.season_name(league&.season_id)
   end
 end
