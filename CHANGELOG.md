@@ -15,6 +15,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 - **Das Antragsformular nennt die Liga, wegen der die Expresslizenz möglich ist**: Der Hinweis am Express-Häkchen sagte nur, dass Zusatzkosten anfallen und eine Spielbetriebskommission benachrichtigt wird, nicht welche. Wer die Leistung bestellte, konnte damit nicht sehen, dass die Möglichkeit aus einer Pokal-Liga stammt und die Rechnung von einem Verband kommt, der im Formular sonst nirgends auftaucht. Der Hinweis nennt diese Liga jetzt beim Namen.
 
+- **Keine kostenpflichtige Expresslizenz mehr, von der niemand erfährt**: Die Expresslizenz besteht im Kern darin, dass die zuständige Spielbetriebskommission sofort per E-Mail von dem Antrag erfährt, und sie ist nach Gebührenordnung mit Zusatzkosten verbunden. Hatte der Landesverband den Schalter eingeschaltet, aber kein SBK-Postfach hinterlegt und auch keines über einen Verbund geerbt, dann unterblieb diese Mail stillschweigend, während der Antrag trotzdem als Expresslizenz gespeichert wurde: Der Verein bezahlte eine Eilbearbeitung, von der niemand Kenntnis hatte, und der Antrag lag wie ein gewöhnlicher in der Warteschlange. Die Expresslizenz wird jetzt nur noch angeboten, wenn eine Adresse erreichbar ist, das Häkchen erscheint sonst gar nicht. Das Postfach eines übergeordneten Verbunds genügt weiterhin, untergeordnete Landesverbände ohne eigenes Postfach sind also nicht betroffen. Sollte der Fall auf einem anderen Weg doch eintreten, wird er jetzt gemeldet, statt wie bisher unbemerkt zu bleiben. Im aktuellen Datenbestand tritt er nicht auf; die Regel verhindert ihn für die Zukunft und macht ein fehlendes Postfach dort sichtbar, wo es auffällt.
+
 ## [1.84.2] - 2026-08-16
 
 ### Behoben

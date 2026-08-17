@@ -377,12 +377,12 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     # NICHT erlaubt. Ohne ihn haette sie ueberhaupt keinen Landesverband, und der
     # Test vergliche "Liga mit erlaubendem LV" gegen "Liga ohne LV" statt gegen
     # den Fall, um den es geht: zwei Verbaende, von denen nur einer erlaubt.
-    haupt_sa = create(:state_association, express_license_enabled: false)
+    haupt_sa = create(:state_association, express_license_enabled: false, sbk_email: 'haupt-sbk@example.de')
     haupt = create(:league, :current_season, name: 'Regionalliga Bayern',
                                              game_operation: create(:game_operation, state_association: haupt_sa))
     create(:game_day, league: haupt, date: (Date.current + 1).to_s)
     team = create(:team, league: haupt, club: club)
-    pokal_sa = create(:state_association, express_license_enabled: true)
+    pokal_sa = create(:state_association, express_license_enabled: true, sbk_email: 'pokal-sbk@example.de')
     pokal = create(:league, :current_season, name: 'FD-Pokal',
                                              game_operation: create(:game_operation, state_association: pokal_sa))
     create(:game_day, league: pokal, date: (Date.current + 1).to_s)
@@ -406,11 +406,11 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
   # Controller unbemerkt.
   test 'user_team_licenses nennt bei zwei erlaubenden Ligen die Hauptliga' do
     club = create(:club)
-    pokal_sa = create(:state_association, express_license_enabled: true)
+    pokal_sa = create(:state_association, express_license_enabled: true, sbk_email: 'pokal-sbk@example.de')
     pokal = create(:league, :current_season, name: 'FD-Pokal',
                                              game_operation: create(:game_operation, state_association: pokal_sa))
     create(:game_day, league: pokal, date: (Date.current + 1).to_s)
-    haupt_sa = create(:state_association, express_license_enabled: true)
+    haupt_sa = create(:state_association, express_license_enabled: true, sbk_email: 'haupt-sbk@example.de')
     haupt = create(:league, :current_season, name: 'Regionalliga Bayern',
                                              game_operation: create(:game_operation, state_association: haupt_sa))
     create(:game_day, league: haupt, date: (Date.current + 1).to_s)

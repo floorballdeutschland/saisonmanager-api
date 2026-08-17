@@ -225,8 +225,11 @@ class TeamTest < ActiveSupport::TestCase
   # Spieltag im Fenster liegt. Beides muss zusammenkommen, sonst ist
   # League#express_license_possible? unabhaengig von der Auswahl schon false.
   # `days_ahead` negativ = erster Spieltag liegt zurueck.
+  # sbk_email gehoert dazu: express_license_possible? verlangt seit api#461 eine
+  # erreichbare SBK, sonst waere jede hier gebaute Liga aus dem falschen Grund
+  # nicht express-faehig und die Tests darueber pruefen nichts mehr.
   def express_ready_league(express:, name: nil, season_id: '18', days_ahead: 1)
-    sa = create(:state_association, express_license_enabled: express)
+    sa = create(:state_association, express_license_enabled: express, sbk_email: 'sbk@example.de')
     attrs = { game_operation: create(:game_operation, state_association: sa), season_id: season_id }
     attrs[:name] = name if name
     league = create(:league, **attrs)
