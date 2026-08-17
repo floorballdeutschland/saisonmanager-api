@@ -158,18 +158,19 @@ class TeamTest < ActiveSupport::TestCase
     assert_equal pokal.id, team.express_license_league.id
   end
 
-  # Ohne Vorrang der Hauptliga entscheidet der default_scope von League, und weil
-  # der zuerst nach season_id sortiert, gewinnt sogar ein Alt-Eintrag in
-  # cup_leagues aus einer vergangenen Saison. Der Antrag ginge dann an die SBK
-  # eines Verbands, mit dem die Mannschaft in dieser Saison nichts zu tun hat.
+  # Innerhalb derselben Saison entscheidet ohne Vorrang der Hauptliga der
+  # default_scope von League (season_id, game_operation_id, order_key): der
+  # kleinere Spielbetrieb stellt die Pokal-Liga nach vorn. Der Antrag ginge dann
+  # an eine fremde SBK, obwohl die eigene Hauptliga die Expresslizenz genauso
+  # erlaubt.
   test 'express_license_league bevorzugt die Hauptliga vor der Pokal-Liga' do
+    pokal = express_ready_league(express: true, name: 'FD-Pokal')
     haupt = express_ready_league(express: true, name: 'Regionalliga Bayern')
-    pokal = express_ready_league(express: true, name: 'Alt-Pokal', season_id: '17')
     team = create(:team, league: haupt)
     team.update!(cup_leagues: [pokal.id])
 
     assert_equal pokal.id, team.leagues.first.id,
-                 'Vorbedingung: der default_scope stellt die Alt-Saison nach vorn'
+                 'Vorbedingung: der default_scope stellt die Pokal-Liga nach vorn'
     assert_equal haupt.id, team.express_license_league.id
   end
 
@@ -186,11 +187,44 @@ class TeamTest < ActiveSupport::TestCase
     assert_equal pokal.id, team.express_license_league.id
   end
 
+  # Der Kern des Fehlers, und der Fall, den ein blosser Vorrang der Hauptliga NICHT
+  # abfaengt: express_license_window_open? prueft `(erster Spieltag - heute) <= 3`
+  # ohne Untergrenze, eine abgelaufene Liga ist also dauerhaft offen. Die Hauptliga
+  # der laufenden Saison ist dagegen bis drei Tage vor ihrem ersten Spieltag zu –
+  # genau in den Wochen, in denen die Vereine lizenzieren. Der Vorrang greift dann
+  # nicht (die Hauptliga erlaubt ja nichts), und ohne Saisonfilter zieht der
+  # Alt-Eintrag den Antrag an einen Verband der Vorsaison.
+  test 'express_license_league ignoriert eine abgelaufene Liga aus einer fremden Saison' do
+    haupt = express_ready_league(express: true, name: 'Regionalliga Bayern', days_ahead: 30)
+    alt = express_ready_league(express: true, name: 'Alt-Pokal', season_id: '17', days_ahead: -300)
+    team = create(:team, league: haupt)
+    team.update!(cup_leagues: [alt.id])
+
+    assert alt.express_license_possible?,
+           'Vorbedingung: die abgelaufene Liga gilt als dauerhaft offen'
+    refute haupt.express_license_possible?,
+           'Vorbedingung: das Fenster der Hauptliga ist noch zu'
+    assert_nil team.express_license_league
+  end
+
+  # Eine Pokal-Liga derselben Saison bleibt waehlbar, auch wenn die Hauptliga die
+  # Expresslizenz nicht erlaubt. Der Saisonfilter darf nur fremde Saisons treffen,
+  # nicht den legitimen Pokal-Fall aus der Regel darueber.
+  test 'express_license_league nimmt die Pokal-Liga derselben Saison' do
+    haupt = express_ready_league(express: false, name: 'Regionalliga Bayern')
+    pokal = express_ready_league(express: true, name: 'FD-Pokal')
+    team = create(:team, league: haupt)
+    team.update!(cup_leagues: [pokal.id])
+
+    assert_equal pokal.id, team.express_license_league.id
+  end
+
   private
 
   # Liga, deren Verband die Expresslizenz erlaubt (oder eben nicht) und deren erster
   # Spieltag im Fenster liegt. Beides muss zusammenkommen, sonst ist
   # League#express_license_possible? unabhaengig von der Auswahl schon false.
+  # `days_ahead` negativ = erster Spieltag liegt zurueck.
   def express_ready_league(express:, name: nil, season_id: '18', days_ahead: 1)
     sa = create(:state_association, express_license_enabled: express)
     attrs = { game_operation: create(:game_operation, state_association: sa), season_id: season_id }

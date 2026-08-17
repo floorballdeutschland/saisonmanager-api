@@ -75,16 +75,46 @@ class Team < ApplicationRecord
   # Die Liga, wegen der eine Expresslizenz beantragt werden kann – oder nil, wenn
   # keine sie erlaubt. Gleiche Ausgangslage wie bei parental_consent_league
   # (siehe oben), nur mit schwererer Folge: Diese Liga bestimmt, welche SBK die
-  # Benachrichtigung erhält, wer als Antwortadresse eingetragen wird und welcher
-  # Verband damit die Zusatzkosten der Expresslizenz stellt.
+  # Benachrichtigung erhält und welcher Verband damit die Zusatzkosten der
+  # Expresslizenz nach Gebührenordnung stellt.
   #
-  # Die Hauptliga hat wieder Vorrang. Ohne ihn entscheidet der default_scope von
-  # League, und weil der zuerst nach `season_id` sortiert, gewinnt sogar ein
-  # Alt-Eintrag in `cup_leagues` aus einer vergangenen Saison.
-  def express_license_league(today: Date.current)
-    candidates = leagues.to_a
-    candidates.detect { |l| l.id == league_id && l.express_license_possible?(today:) } ||
-      candidates.detect { |l| l.express_license_possible?(today:) }
+  # Zwei Filter, und der erste ist der wichtigere:
+  #
+  # 1. Nur Ligen der Saison der Hauptliga. `League#express_license_window_open?`
+  #    prüft `(erster Spieltag - heute) <= 3` ohne Untergrenze, eine Liga ist nach
+  #    ihrem ersten Spieltag also dauerhaft "offen". Ein liegengebliebener Eintrag
+  #    in `cup_leagues` aus einer vergangenen Saison erfüllt die Bedingung damit
+  #    immer, während die Hauptliga der laufenden Saison bis drei Tage vor ihrem
+  #    ersten Spieltag zu ist – genau in der Zeit, in der die Vereine lizenzieren.
+  #    Ohne diesen Filter zöge der Alt-Eintrag den Antrag an einen Verband, mit
+  #    dem die Mannschaft in dieser Saison nichts zu tun hat. Die Lizenz selbst
+  #    wird ohnehin mit der Saison der Hauptliga gestempelt
+  #    (PlayersController#request_license), eine andere Saison hat hier also
+  #    nichts zu entscheiden. Ohne Hauptliga fehlt der Anker und es wird nichts
+  #    gewählt.
+  #
+  # 2. Innerhalb der Saison hat die Hauptliga Vorrang. Ohne ihn entschiede der
+  #    default_scope von League (`season_id, game_operation_id, order_key`), und
+  #    der stellt bei gleicher Saison Pokal-Ligen fremder Verbände je nach
+  #    `game_operation_id` vor die eigene Hauptliga.
+  #
+  # Zwei `detect` statt einer Sortierung, gleiche Begründung wie oben bei
+  # parental_consent_league.
+  #
+  # `season_id` ist eine Textspalte, deshalb per String vergleichen und nicht per
+  # Range: numerisch gedacht wäre `'2'` kleiner als `'18'`, als Text ist es größer.
+  #
+  # Kein `today:`-Parameter, obwohl League#express_license_possible? einen hat: Er
+  # hätte hier keinen Aufrufer und keinen Test, und eine ungenutzte Signatur weckt
+  # den Eindruck, das Datum wäre an dieser Stelle eine Entscheidung. Wer die
+  # Fenstergrenzen prüfen will, tut das an League, wo sie berechnet werden.
+  def express_license_league
+    season = league&.season_id
+    return nil if season.blank?
+
+    candidates = leagues.to_a.select { |l| l.season_id.to_s == season.to_s }
+    candidates.detect { |l| l.id == league_id && l.express_license_possible? } ||
+      candidates.detect(&:express_license_possible?)
   end
 
   def licenses

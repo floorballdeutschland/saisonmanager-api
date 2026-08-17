@@ -373,7 +373,14 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
   # der Verein bei einem Verband, den er nie gesehen hat.
   test 'user_team_licenses nennt die Liga, wegen der die Expresslizenz moeglich ist' do
     club = create(:club)
-    haupt = create(:league, :current_season, name: 'Regionalliga Bayern')
+    # Die Hauptliga bekommt einen eigenen Verband, der die Expresslizenz gerade
+    # NICHT erlaubt. Ohne ihn haette sie ueberhaupt keinen Landesverband, und der
+    # Test vergliche "Liga mit erlaubendem LV" gegen "Liga ohne LV" statt gegen
+    # den Fall, um den es geht: zwei Verbaende, von denen nur einer erlaubt.
+    haupt_sa = create(:state_association, express_license_enabled: false)
+    haupt = create(:league, :current_season, name: 'Regionalliga Bayern',
+                                             game_operation: create(:game_operation, state_association: haupt_sa))
+    create(:game_day, league: haupt, date: (Date.current + 1).to_s)
     team = create(:team, league: haupt, club: club)
     pokal_sa = create(:state_association, express_license_enabled: true)
     pokal = create(:league, :current_season, name: 'FD-Pokal',
@@ -389,6 +396,40 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert body['express_license_enabled']
     assert_equal pokal.id, body['express_license_league']['id']
     assert_equal 'FD-Pokal', body['express_license_league']['name']
+  end
+
+  # Formular und Antrag muessen dieselbe Liga nennen, sonst bestellt der Verein
+  # sichtbar bei Verband A und bezahlt bei Verband B. Genau dieser Fall unterscheidet
+  # Team#express_license_league von einem eigenen `detect` an dieser Stelle: erlauben
+  # beide Ligen die Expresslizenz, gewinnt die Hauptliga, obwohl der default_scope
+  # die Pokal-Liga nach vorn stellt. Ohne diesen Test bliebe ein zweites `detect` im
+  # Controller unbemerkt.
+  test 'user_team_licenses nennt bei zwei erlaubenden Ligen die Hauptliga' do
+    club = create(:club)
+    pokal_sa = create(:state_association, express_license_enabled: true)
+    pokal = create(:league, :current_season, name: 'FD-Pokal',
+                                             game_operation: create(:game_operation, state_association: pokal_sa))
+    create(:game_day, league: pokal, date: (Date.current + 1).to_s)
+    haupt_sa = create(:state_association, express_license_enabled: true)
+    haupt = create(:league, :current_season, name: 'Regionalliga Bayern',
+                                             game_operation: create(:game_operation, state_association: haupt_sa))
+    create(:game_day, league: haupt, date: (Date.current + 1).to_s)
+    team = create(:team, league: haupt, club: club)
+    team.update!(cup_leagues: [pokal.id])
+    # Die Reihenfolge der beiden Liga-Bloecke oben ist Teil des Tests: der
+    # default_scope sortiert bei gleicher Saison nach game_operation_id, die
+    # zuerst erzeugte Pokal-Liga steht damit vorn. Wer die Bloecke vertauscht,
+    # macht den Test zur Tautologie – deshalb steht die Vorbedingung als Assertion.
+    assert_equal pokal.id, team.reload.leagues.first.id,
+                 'Vorbedingung: der default_scope stellt die Pokal-Liga nach vorn'
+    login(create(:user, :vm, club_id: club.id))
+
+    get "/api/v2/user/team/#{team.id}/licenses"
+    assert_response :success
+    body = JSON.parse(response.body)
+
+    assert_equal haupt.id, body['express_license_league']['id']
+    assert_equal 'Regionalliga Bayern', body['express_license_league']['name']
   end
 
   test 'user_team_licenses laesst express_license_league leer, wenn keine Liga sie erlaubt' do

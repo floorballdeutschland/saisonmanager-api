@@ -17,9 +17,10 @@ class PlayersExpressLicenseMailTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
-  # Liga, deren Verband die Expresslizenz erlaubt und deren erster Spieltag im
-  # Fenster liegt. Beides muss zusammenkommen, sonst ist
-  # League#express_license_possible? unabhängig von der Auswahl schon false.
+  # Liga, deren Verband die Expresslizenz erlaubt (oder eben nicht, per
+  # `express: false`) und deren erster Spieltag im Fenster liegt. Beides muss
+  # zusammenkommen, sonst ist League#express_license_possible? unabhängig von der
+  # Auswahl schon false. `days_ahead` negativ = erster Spieltag liegt zurück.
   def express_league(sbk_email:, name:, season_id: '18', days_ahead: 1, express: true)
     sa = create(:state_association, sbk_email: sbk_email, express_license_enabled: express)
     league = create(:league, name: name, season_id: season_id,
@@ -77,26 +78,52 @@ class PlayersExpressLicenseMailTest < ActionDispatch::IntegrationTest
     assert_equal ['haupt-sbk@example.de'], ActionMailer::Base.deliveries.last.to
   end
 
-  # Der default_scope sortiert zuerst nach season_id. Ein liegengebliebener
-  # Eintrag in cup_leagues aus einer vergangenen Saison gewann damit selbst gegen
-  # die Hauptliga der laufenden – der Antrag ging an einen Verband, mit dem die
-  # Mannschaft in dieser Saison nichts mehr zu tun hat.
-  test 'ein Alt-Eintrag in cup_leagues zieht den Antrag nicht mehr zu sich' do
-    alt = express_league(sbk_email: 'alt-sbk@example.de', name: 'Alt-Pokal', season_id: '17')
-    haupt = express_league(sbk_email: 'haupt-sbk@example.de', name: 'Regionalliga Bayern')
+  # Der schwerste Fall, und der einzige, den ein blosser Vorrang der Hauptliga
+  # nicht abfaengt: Das Zeitfenster (League#express_license_window_open?) hat keine
+  # Untergrenze, eine abgelaufene Liga erlaubt die Expresslizenz also dauerhaft.
+  # Die Hauptliga der laufenden Saison ist dagegen bis drei Tage vor ihrem ersten
+  # Spieltag zu, und genau in diesen Wochen beantragen die Vereine ihre Lizenzen.
+  # Der Alt-Eintrag zog den Antrag damit an die SBK der Vorsaison, die ihn dann auch
+  # abgerechnet haette. Jetzt zaehlen nur Ligen der Saison, fuer die lizenziert wird.
+  test 'eine abgelaufene Liga fremder Saison zieht den Antrag nicht mehr zu sich' do
+    alt = express_league(sbk_email: 'alt-sbk@example.de', name: 'Alt-Pokal',
+                         season_id: '17', days_ahead: -300)
+    haupt = express_league(sbk_email: 'haupt-sbk@example.de', name: 'Regionalliga Bayern',
+                           days_ahead: 30)
     team = create(:team, league: haupt, club: @club)
     team.update!(cup_leagues: [alt.id])
-    assert_equal alt.id, team.reload.leagues.first.id,
-                 'Vorbedingung: der default_scope stellt die Alt-Saison nach vorn'
+    assert alt.express_license_possible?,
+           'Vorbedingung: die abgelaufene Liga gilt als dauerhaft offen'
     player = player_of_club
     login_as(@vm)
 
-    post "/api/v2/user/players/#{player.id}/request_license",
-         params: { team_id: team.id, express: true }, as: :json
-    assert_response :ok
+    assert_enqueued_emails 0 do
+      post "/api/v2/user/players/#{player.id}/request_license",
+           params: { team_id: team.id, express: true }, as: :json
+      assert_response :ok
+    end
+    assert_not player.reload.licenses.first['express'],
+               'ohne zustaendige Liga entsteht auch keine Express-Lizenz'
+  end
+
+  # Das Formular schickt `express` als Boolean, aeltere Aufrufer und Formulare mit
+  # klassischem Encoding als String. players_controller akzeptiert beides; faellt
+  # der String-Zweig weg, bliebe die Expresslizenz fuer sie stumm liegen.
+  test 'express als String loest den Antrag genauso aus' do
+    haupt = express_league(sbk_email: 'haupt-sbk@example.de', name: 'Regionalliga Bayern')
+    team = create(:team, league: haupt, club: @club)
+    player = player_of_club
+    login_as(@vm)
+
+    assert_enqueued_emails 1 do
+      post "/api/v2/user/players/#{player.id}/request_license",
+           params: { team_id: team.id, express: 'true' }, as: :json
+      assert_response :ok
+    end
 
     perform_enqueued_jobs
     assert_equal ['haupt-sbk@example.de'], ActionMailer::Base.deliveries.last.to
+    assert player.reload.licenses.first['express']
   end
 
   # Erlaubt keine Liga der Mannschaft die Expresslizenz, geht nichts heraus und
