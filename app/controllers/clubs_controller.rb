@@ -444,7 +444,15 @@ class ClubsController < ApplicationController
     consent_league = team.parental_consent_league
     result[:parental_consent_required] = consent_league.present?
     result[:parental_consent_league] = consent_league && { id: consent_league.id, name: consent_league.name }
-    result[:required_documents] = leagues.flat_map { |l| league_required_document_keys(l) }.uniq
+    # season_leagues, nicht das ungefilterte `leagues`: Sonst greift der
+    # Saisonfilter nur an einer Hälfte derselben Antwort. Eine liegengebliebene
+    # Pokal-Liga aus einer abgeschlossenen Saison zöge ihre Pflichtdokumente
+    # weiter in die laufende — und im Fall der Elternzustimmung entstünde genau
+    # der Widerspruch, den parental_consent_league beseitigen soll: Der
+    # Datenschutz-Block verschwindet, während die Upload-Zeile "Zustimmung der
+    # Erziehungsberechtigten" als offene Pflicht stehen bleibt, ohne dass das
+    # Formular noch sagt, welche Liga sie verlangt.
+    result[:required_documents] = team.season_leagues.flat_map { |l| league_required_document_keys(l) }.uniq
     # Katalog-Metadaten (Name, Vorlage, Gültigkeit, Altersgrenze) zu den
     # geforderten Dokumentarten – fürs Upload-UI im Team-Lizenzwesen.
     catalog = document_type_catalog(result[:required_documents] + ['parental_consent'])

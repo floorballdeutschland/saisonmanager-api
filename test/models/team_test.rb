@@ -177,4 +177,42 @@ class TeamTest < ActiveSupport::TestCase
 
     assert_nil team.reload.parental_consent_league
   end
+
+  # Die Zustimmungspflicht der Hauptliga darf nicht an ihrer season_id haengen:
+  # Das Feld hat mit der Zustimmung nichts zu tun. Ein frueherer Entwurf pruefte
+  # den Saisonanker VOR der Hauptliga und lieferte hier nil, obwohl die Hauptliga
+  # das Flag selbst traegt — eine Lizenz waere dann ohne die verlangte Zustimmung
+  # erteilt worden. season_id traegt `validates presence`, die Spalte ist aber
+  # nullable und Altdaten-Importe sind hier historisch der Grund fuer solche Werte.
+  test 'parental_consent_league nennt die Hauptliga auch ohne lesbare Saison' do
+    haupt = create(:league, :current_season, name: 'Regionalliga Bayern', parental_consent_required: true)
+    team = create(:team, league: haupt)
+    haupt.update_columns(season_id: nil)
+
+    assert_equal haupt.id, team.reload.parental_consent_league&.id
+  end
+
+  # season_leagues ist die gemeinsame Grundlage fuer die Zustimmungspflicht UND
+  # fuer die Pflichtdokumente. Ohne Saison an der Hauptliga bleibt nur sie selbst,
+  # damit der fehlende Anker nicht ihre eigene Zustaendigkeit kippt.
+  test 'season_leagues enthaelt nur Ligen der Saison der Hauptliga' do
+    haupt = create(:league, :current_season)
+    gleiche = create(:league, :current_season)
+    fremde = create(:league, :previous_season)
+    team = create(:team, league: haupt)
+    team.update!(cup_leagues: [gleiche.id, fremde.id])
+
+    assert_equal [haupt.id, gleiche.id].sort, team.season_leagues.map(&:id).sort
+  end
+
+  test 'season_leagues ist leer ohne Hauptliga und nur sie selbst ohne Saison' do
+    haupt = create(:league, :current_season)
+    team = create(:team, league: haupt)
+
+    haupt.update_columns(season_id: nil)
+    assert_equal [haupt.id], team.reload.season_leagues.map(&:id)
+
+    team.update_columns(league_id: nil)
+    assert_empty team.reload.season_leagues
+  end
 end

@@ -367,6 +367,53 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 'FD-Pokal', body['parental_consent_league']['name']
   end
 
+  # Der Saisonfilter muss BEIDE Haelften derselben Antwort treffen. Griff er nur
+  # an parental_consent_league, verschwand der Datenschutz-Block, waehrend die
+  # Upload-Zeile "Zustimmung der Erziehungsberechtigten" aus required_documents
+  # weiter als offene Pflicht stehen blieb — ohne dass das Formular noch sagt,
+  # welche Liga sie verlangt. Genau diesen Widerspruch soll die Ligaangabe
+  # beseitigen.
+  test 'user_team_licenses fordert kein Dokument aus einer Liga fremder Saison' do
+    DocumentType.create!(name: 'Zustimmung der Erziehungsberechtigten', key: 'parental_consent',
+                         required_below_age: 18)
+    club = create(:club)
+    haupt = create(:league, :current_season, name: 'Regionalliga Bayern')
+    team = create(:team, league: haupt, club: club)
+    alt = create(:league, :previous_season, name: 'Alt-Pokal', parental_consent_required: true)
+    team.update!(cup_leagues: [alt.id])
+    login(create(:user, :vm, club_id: club.id))
+
+    get "/api/v2/user/team/#{team.id}/licenses"
+    assert_response :success
+    body = JSON.parse(response.body)
+
+    assert_not body['parental_consent_required']
+    assert_nil body['parental_consent_league']
+    assert_not_includes body['required_documents'], 'parental_consent',
+                        'sonst fordert das Formular ein Dokument ein, das es nicht mehr erklaert'
+  end
+
+  # Gegenprobe: Aus einer Pokal-Liga DERSELBEN Saison gilt die Pflicht weiter, und
+  # zwar in beiden Haelften.
+  test 'user_team_licenses fordert das Dokument aus einer Pokal-Liga derselben Saison' do
+    DocumentType.create!(name: 'Zustimmung der Erziehungsberechtigten', key: 'parental_consent',
+                         required_below_age: 18)
+    club = create(:club)
+    haupt = create(:league, :current_season, name: 'Regionalliga Bayern')
+    team = create(:team, league: haupt, club: club)
+    pokal = create(:league, :current_season, name: 'FD-Pokal', parental_consent_required: true)
+    team.update!(cup_leagues: [pokal.id])
+    login(create(:user, :vm, club_id: club.id))
+
+    get "/api/v2/user/team/#{team.id}/licenses"
+    assert_response :success
+    body = JSON.parse(response.body)
+
+    assert body['parental_consent_required']
+    assert_equal pokal.id, body['parental_consent_league']['id']
+    assert_includes body['required_documents'], 'parental_consent'
+  end
+
   test 'admin_upload_logo akzeptiert ein quadratisches PNG' do
     club = create(:club)
     login(create(:user, :admin))
