@@ -33,7 +33,7 @@ class GamePublicCoachesTest < ActiveSupport::TestCase
 
     coaches = game.full_hash[:home_coaches]
 
-    assert_equal [1, 2, 5], coaches.pluck(:number)
+    assert_equal [1, 2, 5], coaches.pluck(:slot)
     assert_equal ['Meier, Anna', 'Sanchez, Bruno', 'Wolf, Carla'], coaches.pluck(:name)
     assert_equal 'Anna', coaches.first[:first_name]
     assert_equal 'Meier', coaches.first[:last_name]
@@ -45,7 +45,7 @@ class GamePublicCoachesTest < ActiveSupport::TestCase
                       'coach1_last_name' => 'Meier', 'coach1_signed' => true
                     })
 
-    assert_equal [%i[number first_name last_name name]], game.full_hash[:home_coaches].map(&:keys).uniq
+    assert_equal [%i[slot first_name last_name name]], game.full_hash[:home_coaches].map(&:keys).uniq
     assert_includes game.hidden_elements[:home_team_coaches], 'coach1_signed'
   end
 

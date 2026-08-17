@@ -948,6 +948,11 @@ class Game < ApplicationRecord
   # ist ein Zustand des Berichts und geht die Öffentlichkeit nichts an.
   #
   # Leere Plätze fallen raus, die Reihenfolge bleibt die des Berichts.
+  #
+  # Das Feld heißt `slot` und nicht `number`: Es ist der Betreuerplatz 1 bis 5
+  # aus dem Bericht, keine Trikotnummer. Strafen gegen Betreuer tragen im
+  # Ereignis dagegen 2000 + Platz, weil dort das Feld `number` mit den
+  # Trikotnummern der Spieler geteilt wird.
   def public_coaches(coaches)
     return [] unless coaches_public?
 
@@ -975,7 +980,7 @@ class Game < ApplicationRecord
       name = coaches["coach#{slot}_string"].to_s.split(',').map(&:strip).reject(&:empty?).join(', ') if name.empty?
       next if name.empty?
 
-      { number: slot, first_name: first_name, last_name: last_name, name: name }
+      { slot: slot, first_name: first_name, last_name: last_name, name: name }
     end
   end
 
