@@ -21,7 +21,20 @@ class PlayerMailer < ApplicationMailer
     # An die SBK des Spielbetriebs der Liga, nicht an die des Vereinsverbands:
     # Über den Antrag entscheidet der Verband, der die Liga betreibt.
     sbk_email = league&.state_association&.effective_sbk_email
-    return if sbk_email.blank?
+
+    # Zweite Absicherung: League#express_license_possible? verlangt seit api#461
+    # eine erreichbare Adresse, dieser Zweig ist über das Antragsformular also
+    # nicht mehr erreichbar. Bleibt er trotzdem stehen, weil der Mailer auch direkt
+    # aufgerufen werden kann — und er meldet jetzt, statt nur stumm zurückzukehren:
+    # Vorher war dieser `return` die einzige Stelle, die den Zustand kannte, und
+    # der Verein hatte die kostenpflichtige Eilbearbeitung bereits bestellt.
+    if sbk_email.blank?
+      if defined?(Sentry)
+        Sentry.capture_message("Expresslizenz-Antrag ohne erreichbare SBK-Adresse " \
+                               "(league=#{league&.id.inspect}, team=#{team&.id.inspect})")
+      end
+      return
+    end
 
     templated_mail(
       to: sbk_email,

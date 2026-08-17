@@ -112,7 +112,7 @@ class ClubsController < ApplicationController
     leagues = team.leagues
 
     if current_user && user_may_read_team_licenses?(leagues)
-      render json: team_licenses_hash(team, leagues)
+      render json: team_licenses_hash(team)
     elsif secretary_token_permits_team?(team)
       render json: secretary_team_licenses_hash(team)
     else
@@ -421,7 +421,12 @@ class ClubsController < ApplicationController
       license_status: status[:license_status] }
   end
 
-  def team_licenses_hash(team, leagues)
+  # Kein `leagues`-Parameter mehr: Seit api#457 und api#460 leiten beide Verbraucher
+  # ihre Ligaliste selbst aus dem Team ab (Team#express_license_league bzw.
+  # Team#season_leagues), weil sie unterschiedlich gefiltert sein muss. Die
+  # ungefilterte Liste des Aufrufers dient nur noch der Rechtepruefung, und die
+  # bleibt bewusst ungefiltert: Die SBK einer Pokal-Liga darf den Kader lesen.
+  def team_licenses_hash(team)
     result = {}
 
     result[:team] = team.full_hash
@@ -429,7 +434,15 @@ class ClubsController < ApplicationController
     # Maßgeblich ist der LV des Spielbetriebs der Liga, nicht der des Vereins:
     # Zuständig für den Spielbetrieb einer Liga ist allein deren Verband. Erlaubnis
     # und Zeitfenster müssen aus derselben Liga stammen (League#express_license_possible?).
-    result[:express_license_enabled] = leagues.any?(&:express_license_possible?)
+    #
+    # Auch hier die auslösende Liga mitgeben, nicht nur ein Ja/Nein: Der Verein
+    # bestellt mit der Expresslizenz eine kostenpflichtige Leistung, und wer sie
+    # abrechnet, hängt an dieser Liga. Ohne den Namen bestellt er bei einem Verband,
+    # den er im Formular nie gesehen hat – häufig eine Pokal-Liga fremden Verbands.
+    # Gleiche Wahl wie in PlayersController#request_license.
+    express_league = team.express_license_league
+    result[:express_license_enabled] = express_league.present?
+    result[:express_license_league] = express_league && { id: express_league.id, name: express_league.name }
     # Elternzustimmung: wird pro Liga über das Flag parental_consent_required
     # gesteuert. Das Flag steuert den Datenschutz-Block im Antragsformular;
     # als Pflichtdokument steckt die Zustimmung in required_documents und wird

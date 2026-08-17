@@ -385,8 +385,22 @@ class League < ApplicationRecord
   # LV ihres Spielbetriebs, das Fenster von ihrem ersten Spieltag. Vorher kam der
   # Schalter vom LV des Vereins, sodass bei einer Mannschaft in mehreren Ligen die
   # Erlaubnis des einen Verbands mit dem Fenster einer fremden Liga kombinierbar war.
+  #
+  # Dritte Bedingung: Es muss eine SBK-Adresse erreichbar sein. Die Expresslizenz
+  # ist im Kern eine sofortige Benachrichtigung der zuständigen SBK und kostet den
+  # Verein nach Gebührenordnung extra. Ohne Adresse bricht
+  # PlayerMailer#express_license_requested still ab (`return if sbk_email.blank?`),
+  # die Lizenz wurde aber trotzdem als Express-Antrag gespeichert: Der Verein
+  # bezahlte die Eilbearbeitung, und niemand erfuhr von dem Antrag. Lieber gar
+  # nicht anbieten als eine Leistung verkaufen, die nachweislich nicht erbracht
+  # werden kann.
+  #
+  # effective_sbk_email, nicht sbk_email: Ein untergeordneter Landesverband erbt
+  # das Postfach seines Verbunds, hat also selbst keines gepflegt und ist trotzdem
+  # erreichbar.
   def express_license_possible?(today: Date.current)
     state_association&.effective_express_license_enabled.present? &&
+      state_association&.effective_sbk_email.present? &&
       express_license_window_open?(today:)
   end
 
