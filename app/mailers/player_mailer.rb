@@ -67,9 +67,6 @@ class PlayerMailer < ApplicationMailer
     @league = league
     @club = team&.club
     @season = season_name(league)
-    # Fehlt der Link, nennt die Vorlage stattdessen den Verein als Bezugsquelle –
-    # eine tote Adresse wäre für Eltern schlechter als keine.
-    @info_url = Setting.info_link_url('minor_privacy_bundesliga')
 
     templated_mail(
       to: guardian_email,
@@ -80,8 +77,7 @@ class PlayerMailer < ApplicationMailer
         club_name: @club&.name,
         team_name: team&.name,
         league_name: league&.name,
-        season: @season,
-        info_url: @info_url
+        season: @season
       }
     )
   end

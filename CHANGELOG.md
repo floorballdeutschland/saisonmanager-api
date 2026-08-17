@@ -25,6 +25,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 - **Eine krumme Punktkorrektur legt keine Ligaseite mehr lahm und rechnet nicht still falsch**: Punktkorrekturen fließen in jede Tabellenberechnung ein, also auf jede öffentliche Ligaseite. Hatte ein Eintrag dort eine unerwartete Form, ergab das je nach Fall einen Serverfehler oder eine unauffällig falsche Tabelle, in der der Abzug einfach fehlte. Beides wird jetzt als „keine Korrektur" behandelt und gemeldet, denn eine falsche öffentliche Tabelle fällt von allein niemandem auf. Im aktuellen Datenbestand tritt keiner dieser Fälle auf; die Absicherung schützt vor Korrekturen von Hand, für die es keine Maske gibt.
 
+### Verbessert
+
+- **Das Informationsblatt zur Datenverarbeitung kommt vom Verein, nicht aus dem Saisonmanager**: Seit dem 13. August konnte unter „Dokumentarten" die Adresse eines Informationsblattes gepflegt werden, das der Lizenzantrag und die Datenschutz-Mail an die gesetzliche Vertretung verlinkten. Hinterlegt war dort genau eine einzige, für alle Ligen gleiche Adresse, und die zeigte auf ein Informationsblatt für minderjährige Bundesligaspieler. Für eine Regionalliga, die die Elternzustimmung ebenfalls verlangt, passt dieses Blatt inhaltlich nicht, und ein Blatt pro Liga zu pflegen wäre für den einen Fall zu viel Maschinerie gewesen. Der Mechanismus ist deshalb wieder ausgebaut: Der Pflege-Abschnitt unter „Dokumentarten" entfällt, der Antrag verlinkt nichts mehr, und die Mail an die gesetzliche Vertretung verweist durchgehend auf den Verein. Die Information selbst ist damit nicht weggefallen, sie kommt nur wieder von dort, wo sie zur Liga passt. Art. 13 DSGVO verlangt, dass informiert wird, nicht dass der Saisonmanager das Blatt ausliefert. Die zuletzt gepflegte Adresse wird mit dem Ausbau gelöscht; sie steht vor dem Entfernen noch im Deploy-Protokoll.
+
 ## [1.84.2] - 2026-08-16
 
 ### Behoben

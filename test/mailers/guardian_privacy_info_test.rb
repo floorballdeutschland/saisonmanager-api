@@ -35,17 +35,12 @@ class GuardianPrivacyInfoTest < ActionMailer::TestCase
     assert_equal ['sbk@example.de'], mail.reply_to
   end
 
-  test 'gepflegtes Informationsblatt wird verlinkt' do
-    @setting.update!(info_links: { 'minor_privacy_bundesliga' => { 'url' => 'https://floorball.de/info.pdf' } })
-
-    mail = PlayerMailer.guardian_privacy_info(@player, @team, @league, 'eltern@example.de')
-
-    assert_includes mail.body.decoded, 'https://floorball.de/info.pdf'
-  end
-
-  # Ohne gepflegte Adresse lieber auf den Verein verweisen als einen toten Link
-  # anbieten.
-  test 'ohne gepflegtes Informationsblatt verweist die Mail auf den Verein' do
+  # Das Informationsblatt kommt vom Verein, nicht aus dem Saisonmanager (#456).
+  # Vorher gab es einen zweiten Zweig mit einer redaktionell gepflegten Adresse;
+  # hinterlegt war dort nur ein einziger, globaler Link auf ein Bundesliga-PDF,
+  # und der passte für eine Regionalliga mit Elternzustimmung nicht. Art. 13
+  # verlangt die Information, nicht deren Auslieferung über den Saisonmanager.
+  test 'die Mail verweist für das Informationsblatt auf den Verein' do
     mail = PlayerMailer.guardian_privacy_info(@player, @team, @league, 'eltern@example.de')
 
     assert_includes mail.body.decoded, 'erhalten Sie über den Verein'
