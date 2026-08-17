@@ -6,7 +6,7 @@ class RefereeHistoryController < ApplicationController
   # Returns all games the referee was nominated for, grouped by season.
   def games
     all_games = @referee.games
-                        .includes(:home_team, :guest_team, game_day: :league)
+                        .includes(:home_team, :guest_team, game_day: { league: :game_operation })
                         .joins(:game_day)
                         .order('game_days.date DESC')
 
@@ -65,6 +65,10 @@ class RefereeHistoryController < ApplicationController
       home_team: game.home_team&.name,
       guest_team: game.guest_team&.name,
       league: game.league&.name,
+      # league_id + game_operation_slug ermöglichen im Frontend den direkten Link
+      # zur (öffentlichen) Spielseite: /:association/:leagueId/spiel/:matchId.
+      league_id: game.league&.id,
+      game_operation_slug: game.league&.game_operation&.slug,
       season_id: game.game_day.league&.season_id&.to_i,
       result: game.result_string
     }
