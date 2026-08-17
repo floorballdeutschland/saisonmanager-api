@@ -18,17 +18,39 @@ class RemoveInfoLinksFromSettings < ActiveRecord::Migration[7.1]
     '2026-07-01-Info-zur-Datenverarbeitung-minderjaehriger-Bundesligaspieler.pdf'.freeze
 
   def up
+    # Den ausgehenden Wert ins Deploy-Log schreiben, bevor er weg ist. Genau
+    # dafür gab es den Mechanismus: floorball.de verschiebt die PDFs, die Adresse
+    # kann also seit dem 13.08. von Hand korrigiert worden sein. Ohne diese Zeile
+    # wäre eine solche Korrektur nach dem Deploy nirgends mehr nachweisbar, denn
+    # `down` unten kennt nur den Ausgangswert.
+    say "info_links vor dem Entfernen: #{Setting.first&.attributes&.dig('info_links').inspect}"
+
     remove_column :settings, :info_links
     Setting.reset_column_information
     flush_setting_caches
   end
 
+  # Rekonstruktion, keine Wiederherstellung: Der gelöschte Inhalt ist nicht mehr
+  # lesbar, deshalb wird der Ausgangswert vom 13.08. gesetzt. War die Adresse
+  # zwischenzeitlich korrigiert, steht hier die veraltete; war sie bewusst geleert
+  # (der alte Controller löschte den Key bei leerer Eingabe), legt der Rollback
+  # einen Link an, wo keiner sein sollte.
+  #
+  # Deshalb nur setzen, wenn nichts drinsteht, statt bedingungslos zu schreiben:
+  # Wer nach dem Rollback selbst eine Adresse pflegt, soll sie beim nächsten
+  # `down` nicht wieder überschrieben bekommen.
+  #
+  # Ein Rollback allein genügt ohnehin nicht: Die Leser (`Setting.info_link_url`
+  # und Verbraucher) sind mit diesem PR entfernt, die Spalte wäre also wieder da
+  # und unbenutzt. Ein Rollback braucht den Code-Stand dazu.
   def down
     add_column :settings, :info_links, :jsonb, default: {}, null: false
     Setting.reset_column_information
 
     setting = Setting.first
-    setting&.update_columns(
+    return if setting.nil? || setting.attributes['info_links'].presence
+
+    setting.update_columns(
       info_links: { 'minor_privacy_bundesliga' => { 'url' => MINOR_PRIVACY_URL } },
       updated_at: Time.current
     )
