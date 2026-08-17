@@ -219,6 +219,83 @@ class TeamTest < ActiveSupport::TestCase
     assert_equal pokal.id, team.express_license_league.id
   end
 
+  # cup_leagues ist ein Integer-Array ohne Fremdschluessel und ohne
+  # Saisonbindung: Ein Eintrag aus einer abgeschlossenen Saison bleibt stehen, bis
+  # ihn jemand entfernt. Er darf die Zustimmungspflicht fuer einen Antrag der
+  # laufenden Saison nicht ausloesen, sonst verweist die Art.-13-Mail auf einen
+  # Verband, mit dem die Mannschaft in dieser Saison nichts zu tun hat.
+  test 'parental_consent_league ignoriert eine Pokal-Liga aus fremder Saison' do
+    haupt = create(:league, :current_season, name: 'Regionalliga Bayern')
+    alt = create(:league, :previous_season, name: 'Alt-Pokal', parental_consent_required: true)
+    team = create(:team, league: haupt)
+    team.update!(cup_leagues: [alt.id])
+
+    assert_equal alt.id, team.leagues.first.id,
+                 'Vorbedingung: der default_scope stellt die Alt-Saison nach vorn'
+    assert_nil team.parental_consent_league
+  end
+
+  # Gegenprobe zum Filter: Eine Pokal-Liga DERSELBEN Saison bleibt zustaendig,
+  # auch wenn die Hauptliga die Zustimmung nicht verlangt. Der Filter darf nur
+  # fremde Saisons treffen.
+  test 'parental_consent_league nimmt die Pokal-Liga derselben Saison' do
+    haupt = create(:league, :current_season, name: 'Regionalliga Bayern')
+    pokal = create(:league, :current_season, name: 'FD-Pokal', parental_consent_required: true)
+    team = create(:team, league: haupt)
+    team.update!(cup_leagues: [pokal.id])
+
+    assert_equal pokal.id, team.parental_consent_league.id
+  end
+
+  # Ohne Hauptliga fehlt der Anker fuer den Saisonvergleich. teams.league_id ist
+  # nullable, der Fremdschluessel aus #293 schliesst nur den Verweis ins Leere.
+  test 'parental_consent_league ist nil, wenn die Mannschaft keine Hauptliga hat' do
+    pokal = create(:league, :current_season, parental_consent_required: true)
+    team = create(:team, league: create(:league, :current_season))
+    team.update!(cup_leagues: [pokal.id])
+    team.update_columns(league_id: nil)
+
+    assert_nil team.reload.parental_consent_league
+  end
+
+  # Die Zustimmungspflicht der Hauptliga darf nicht an ihrer season_id haengen:
+  # Das Feld hat mit der Zustimmung nichts zu tun. Ein frueherer Entwurf pruefte
+  # den Saisonanker VOR der Hauptliga und lieferte hier nil, obwohl die Hauptliga
+  # das Flag selbst traegt — eine Lizenz waere dann ohne die verlangte Zustimmung
+  # erteilt worden. season_id traegt `validates presence`, die Spalte ist aber
+  # nullable und Altdaten-Importe sind hier historisch der Grund fuer solche Werte.
+  test 'parental_consent_league nennt die Hauptliga auch ohne lesbare Saison' do
+    haupt = create(:league, :current_season, name: 'Regionalliga Bayern', parental_consent_required: true)
+    team = create(:team, league: haupt)
+    haupt.update_columns(season_id: nil)
+
+    assert_equal haupt.id, team.reload.parental_consent_league&.id
+  end
+
+  # season_leagues ist die gemeinsame Grundlage fuer die Zustimmungspflicht UND
+  # fuer die Pflichtdokumente. Ohne Saison an der Hauptliga bleibt nur sie selbst,
+  # damit der fehlende Anker nicht ihre eigene Zustaendigkeit kippt.
+  test 'season_leagues enthaelt nur Ligen der Saison der Hauptliga' do
+    haupt = create(:league, :current_season)
+    gleiche = create(:league, :current_season)
+    fremde = create(:league, :previous_season)
+    team = create(:team, league: haupt)
+    team.update!(cup_leagues: [gleiche.id, fremde.id])
+
+    assert_equal [haupt.id, gleiche.id].sort, team.season_leagues.map(&:id).sort
+  end
+
+  test 'season_leagues ist leer ohne Hauptliga und nur sie selbst ohne Saison' do
+    haupt = create(:league, :current_season)
+    team = create(:team, league: haupt)
+
+    haupt.update_columns(season_id: nil)
+    assert_equal [haupt.id], team.reload.season_leagues.map(&:id)
+
+    team.update_columns(league_id: nil)
+    assert_empty team.reload.season_leagues
+  end
+
   private
 
   # Liga, deren Verband die Expresslizenz erlaubt (oder eben nicht) und deren erster
