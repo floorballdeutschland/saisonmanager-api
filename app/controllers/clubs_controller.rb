@@ -112,7 +112,7 @@ class ClubsController < ApplicationController
     leagues = team.leagues
 
     if current_user && user_may_read_team_licenses?(leagues)
-      render json: team_licenses_hash(team, leagues)
+      render json: team_licenses_hash(team)
     elsif secretary_token_permits_team?(team)
       render json: secretary_team_licenses_hash(team)
     else
@@ -421,7 +421,12 @@ class ClubsController < ApplicationController
       license_status: status[:license_status] }
   end
 
-  def team_licenses_hash(team, leagues)
+  # Kein `leagues`-Parameter mehr: Seit api#457 und api#460 leiten beide Verbraucher
+  # ihre Ligaliste selbst aus dem Team ab (Team#express_license_league bzw.
+  # Team#season_leagues), weil sie unterschiedlich gefiltert sein muss. Die
+  # ungefilterte Liste des Aufrufers dient nur noch der Rechtepruefung, und die
+  # bleibt bewusst ungefiltert: Die SBK einer Pokal-Liga darf den Kader lesen.
+  def team_licenses_hash(team)
     result = {}
 
     result[:team] = team.full_hash
@@ -452,7 +457,15 @@ class ClubsController < ApplicationController
     consent_league = team.parental_consent_league
     result[:parental_consent_required] = consent_league.present?
     result[:parental_consent_league] = consent_league && { id: consent_league.id, name: consent_league.name }
-    result[:required_documents] = leagues.flat_map { |l| league_required_document_keys(l) }.uniq
+    # season_leagues, nicht das ungefilterte `leagues`: Sonst greift der
+    # Saisonfilter nur an einer Hälfte derselben Antwort. Eine liegengebliebene
+    # Pokal-Liga aus einer abgeschlossenen Saison zöge ihre Pflichtdokumente
+    # weiter in die laufende — und im Fall der Elternzustimmung entstünde genau
+    # der Widerspruch, den parental_consent_league beseitigen soll: Der
+    # Datenschutz-Block verschwindet, während die Upload-Zeile "Zustimmung der
+    # Erziehungsberechtigten" als offene Pflicht stehen bleibt, ohne dass das
+    # Formular noch sagt, welche Liga sie verlangt.
+    result[:required_documents] = team.season_leagues.flat_map { |l| league_required_document_keys(l) }.uniq
     # Katalog-Metadaten (Name, Vorlage, Gültigkeit, Altersgrenze) zu den
     # geforderten Dokumentarten – fürs Upload-UI im Team-Lizenzwesen.
     catalog = document_type_catalog(result[:required_documents] + ['parental_consent'])
