@@ -299,7 +299,6 @@ Rails.application.routes.draw do
         resources :email_templates, only: %i[index]
         patch 'email_templates', to: 'email_templates#update'
         resources :document_types, only: %i[index create update destroy]
-        resources :info_links, only: %i[index update]
         resources :referee_qualification_types, only: %i[index create update destroy]
         resources :referee_tags, only: %i[index create update destroy]
         resources :referee_license_levels, only: %i[index create update destroy]
@@ -389,6 +388,8 @@ Rails.application.routes.draw do
             post :unarchive
           end
         end
+        # Ansprechpersonen der Vereine und Mannschaften der laufenden Saison.
+        get 'contacts', to: 'contacts#index'
         resource :analytics, only: [:show]
         get 'system_health',         to: 'system_health#show'
         get 'system_health/summary', to: 'system_health#summary'

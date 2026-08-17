@@ -119,10 +119,13 @@ class PlayersController < ApplicationController
     # einem anderen Verband gehören kann. Der Antrag muss an die SBK genau des
     # Verbands gehen, der die Expresslizenz erlaubt – sonst erlaubt sie Verband A
     # und die Mail landet bei Verband B.
+    #
+    # Team#express_license_league statt eines eigenen `find`: Das Antragsformular
+    # (ClubsController#team_licenses_hash) nennt dieselbe Liga, und ein `find` über
+    # `team.leagues` würde hier dem default_scope von League folgen und damit
+    # womöglich eine andere wählen als die, die der Verein im Formular gesehen hat.
     express_league = nil
-    if params[:express] == true || params[:express] == 'true'
-      express_league = team.leagues.find(&:express_license_possible?)
-    end
+    express_league = team.express_license_league if params[:express] == true || params[:express] == 'true'
     express_requested = express_league.present?
 
     result = :ok
@@ -1285,14 +1288,28 @@ class PlayersController < ApplicationController
     params.require(:player).permit(:birthdate, :first_name, :last_name, :gender, :nation_id, :email)
   end
 
+  # Setting.season_start_year statt eines eigenen Parsers: Vorher stand hier
+  # `seasons[...]['name'].split('/').first.to_i`, und das war doppelt anfällig.
+  # Bei einem blanken String unter der Saison liefert String#[]('name') still nil.
+  # Und `split('/').first` verlangt, dass der Name mit den Ziffern BEGINNT — bei
+  # „Saison 2026/27" ergibt `'Saison 2026'.to_i` eine 0. Genau diese Schreibweise
+  # kommt im Bestand vor (Setting.season_start_year nennt beide). In beiden Fällen
+  # fiel die Gültigkeit still auf das Kalenderjahr, die Lizenz war also ein Jahr zu
+  # kurz gültig und konnte im Genehmigungsmoment schon abgelaufen sein.
+  #
+  # Ohne lesbares Jahr bleibt es beim Kalenderjahr, aber nicht mehr stumm: Hier
+  # entstehen geschriebene Daten (`licenses[..]['valid_until']`), und ohne Signal
+  # erfährt niemand davon. Bewusst kein 422: Eine Fehlkonfiguration im Saisonnamen
+  # darf die Lizenzerteilung nicht blockieren, das wäre ein Betriebsausfall als
+  # Antwort auf einen Tippfehler.
   def default_license_valid_until(season_id)
-    season = Setting.current.seasons[season_id.to_s]
-    end_year = if season
-                 first_year = season['name'].to_s.split('/').first.to_i
-                 first_year.positive? ? first_year + 1 : Date.today.year
-               else
-                 Date.today.year
-               end
-    Date.new(end_year, 7, 31)
+    start_year = Setting.season_start_year(season_id)
+    return Date.new(start_year + 1, 7, 31) if start_year
+
+    if defined?(Sentry)
+      Sentry.capture_message("Lizenz-Gueltigkeit ohne Saisonjahr (season_id=#{season_id}), " \
+                             'faellt auf das Kalenderjahr zurueck')
+    end
+    Date.new(Date.current.year, 7, 31)
   end
 end

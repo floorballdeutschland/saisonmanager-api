@@ -138,4 +138,179 @@ class TeamTest < ActiveSupport::TestCase
                  'Vorbedingung: der default_scope stellt die Pokal-Liga nach vorn'
     assert_equal haupt.id, team.parental_consent_league.id
   end
+
+  # ---------------------------------------------------------------------------
+  # Expresslizenz: welche Liga sie erlaubt. Diese Liga bestimmt, welche SBK den
+  # Antrag bekommt und welcher Verband die Zusatzkosten stellt.
+  # ---------------------------------------------------------------------------
+
+  test 'express_license_league ist nil, wenn keine Liga der Mannschaft sie erlaubt' do
+    team = create(:team, league: express_ready_league(express: false))
+
+    assert_nil team.express_license_league
+  end
+
+  test 'express_license_league findet die Pokal-Liga, wenn nur sie sie erlaubt' do
+    team = create(:team, league: express_ready_league(express: false))
+    pokal = express_ready_league(express: true, name: 'FD-Pokal')
+    team.update!(cup_leagues: [pokal.id])
+
+    assert_equal pokal.id, team.express_license_league.id
+  end
+
+  # Innerhalb derselben Saison entscheidet ohne Vorrang der Hauptliga der
+  # default_scope von League (season_id, game_operation_id, order_key): der
+  # kleinere Spielbetrieb stellt die Pokal-Liga nach vorn. Der Antrag ginge dann
+  # an eine fremde SBK, obwohl die eigene Hauptliga die Expresslizenz genauso
+  # erlaubt.
+  test 'express_license_league bevorzugt die Hauptliga vor der Pokal-Liga' do
+    pokal = express_ready_league(express: true, name: 'FD-Pokal')
+    haupt = express_ready_league(express: true, name: 'Regionalliga Bayern')
+    team = create(:team, league: haupt)
+    team.update!(cup_leagues: [pokal.id])
+
+    assert_equal pokal.id, team.leagues.first.id,
+                 'Vorbedingung: der default_scope stellt die Pokal-Liga nach vorn'
+    assert_equal haupt.id, team.express_license_league.id
+  end
+
+  # Das Zeitfenster gehoert zur Liga (League#express_license_window_open?): erlaubt
+  # der Verband die Expresslizenz, ist das Fenster dieser Liga aber noch zu, darf sie
+  # nicht gewaehlt werden. Sonst kombinierte die Auswahl die Erlaubnis der einen mit
+  # dem Fenster einer anderen Liga.
+  test 'express_license_league ueberspringt eine Liga mit geschlossenem Zeitfenster' do
+    haupt = express_ready_league(express: true, days_ahead: 30)
+    pokal = express_ready_league(express: true, name: 'FD-Pokal')
+    team = create(:team, league: haupt)
+    team.update!(cup_leagues: [pokal.id])
+
+    assert_equal pokal.id, team.express_license_league.id
+  end
+
+  # Der Kern des Fehlers, und der Fall, den ein blosser Vorrang der Hauptliga NICHT
+  # abfaengt: express_license_window_open? prueft `(erster Spieltag - heute) <= 3`
+  # ohne Untergrenze, eine abgelaufene Liga ist also dauerhaft offen. Die Hauptliga
+  # der laufenden Saison ist dagegen bis drei Tage vor ihrem ersten Spieltag zu –
+  # genau in den Wochen, in denen die Vereine lizenzieren. Der Vorrang greift dann
+  # nicht (die Hauptliga erlaubt ja nichts), und ohne Saisonfilter zieht der
+  # Alt-Eintrag den Antrag an einen Verband der Vorsaison.
+  test 'express_license_league ignoriert eine abgelaufene Liga aus einer fremden Saison' do
+    haupt = express_ready_league(express: true, name: 'Regionalliga Bayern', days_ahead: 30)
+    alt = express_ready_league(express: true, name: 'Alt-Pokal', season_id: '17', days_ahead: -300)
+    team = create(:team, league: haupt)
+    team.update!(cup_leagues: [alt.id])
+
+    assert alt.express_license_possible?,
+           'Vorbedingung: die abgelaufene Liga gilt als dauerhaft offen'
+    refute haupt.express_license_possible?,
+           'Vorbedingung: das Fenster der Hauptliga ist noch zu'
+    assert_nil team.express_license_league
+  end
+
+  # Eine Pokal-Liga derselben Saison bleibt waehlbar, auch wenn die Hauptliga die
+  # Expresslizenz nicht erlaubt. Der Saisonfilter darf nur fremde Saisons treffen,
+  # nicht den legitimen Pokal-Fall aus der Regel darueber.
+  test 'express_license_league nimmt die Pokal-Liga derselben Saison' do
+    haupt = express_ready_league(express: false, name: 'Regionalliga Bayern')
+    pokal = express_ready_league(express: true, name: 'FD-Pokal')
+    team = create(:team, league: haupt)
+    team.update!(cup_leagues: [pokal.id])
+
+    assert_equal pokal.id, team.express_license_league.id
+  end
+
+  # cup_leagues ist ein Integer-Array ohne Fremdschluessel und ohne
+  # Saisonbindung: Ein Eintrag aus einer abgeschlossenen Saison bleibt stehen, bis
+  # ihn jemand entfernt. Er darf die Zustimmungspflicht fuer einen Antrag der
+  # laufenden Saison nicht ausloesen, sonst verweist die Art.-13-Mail auf einen
+  # Verband, mit dem die Mannschaft in dieser Saison nichts zu tun hat.
+  test 'parental_consent_league ignoriert eine Pokal-Liga aus fremder Saison' do
+    haupt = create(:league, :current_season, name: 'Regionalliga Bayern')
+    alt = create(:league, :previous_season, name: 'Alt-Pokal', parental_consent_required: true)
+    team = create(:team, league: haupt)
+    team.update!(cup_leagues: [alt.id])
+
+    assert_equal alt.id, team.leagues.first.id,
+                 'Vorbedingung: der default_scope stellt die Alt-Saison nach vorn'
+    assert_nil team.parental_consent_league
+  end
+
+  # Gegenprobe zum Filter: Eine Pokal-Liga DERSELBEN Saison bleibt zustaendig,
+  # auch wenn die Hauptliga die Zustimmung nicht verlangt. Der Filter darf nur
+  # fremde Saisons treffen.
+  test 'parental_consent_league nimmt die Pokal-Liga derselben Saison' do
+    haupt = create(:league, :current_season, name: 'Regionalliga Bayern')
+    pokal = create(:league, :current_season, name: 'FD-Pokal', parental_consent_required: true)
+    team = create(:team, league: haupt)
+    team.update!(cup_leagues: [pokal.id])
+
+    assert_equal pokal.id, team.parental_consent_league.id
+  end
+
+  # Ohne Hauptliga fehlt der Anker fuer den Saisonvergleich. teams.league_id ist
+  # nullable, der Fremdschluessel aus #293 schliesst nur den Verweis ins Leere.
+  test 'parental_consent_league ist nil, wenn die Mannschaft keine Hauptliga hat' do
+    pokal = create(:league, :current_season, parental_consent_required: true)
+    team = create(:team, league: create(:league, :current_season))
+    team.update!(cup_leagues: [pokal.id])
+    team.update_columns(league_id: nil)
+
+    assert_nil team.reload.parental_consent_league
+  end
+
+  # Die Zustimmungspflicht der Hauptliga darf nicht an ihrer season_id haengen:
+  # Das Feld hat mit der Zustimmung nichts zu tun. Ein frueherer Entwurf pruefte
+  # den Saisonanker VOR der Hauptliga und lieferte hier nil, obwohl die Hauptliga
+  # das Flag selbst traegt — eine Lizenz waere dann ohne die verlangte Zustimmung
+  # erteilt worden. season_id traegt `validates presence`, die Spalte ist aber
+  # nullable und Altdaten-Importe sind hier historisch der Grund fuer solche Werte.
+  test 'parental_consent_league nennt die Hauptliga auch ohne lesbare Saison' do
+    haupt = create(:league, :current_season, name: 'Regionalliga Bayern', parental_consent_required: true)
+    team = create(:team, league: haupt)
+    haupt.update_columns(season_id: nil)
+
+    assert_equal haupt.id, team.reload.parental_consent_league&.id
+  end
+
+  # season_leagues ist die gemeinsame Grundlage fuer die Zustimmungspflicht UND
+  # fuer die Pflichtdokumente. Ohne Saison an der Hauptliga bleibt nur sie selbst,
+  # damit der fehlende Anker nicht ihre eigene Zustaendigkeit kippt.
+  test 'season_leagues enthaelt nur Ligen der Saison der Hauptliga' do
+    haupt = create(:league, :current_season)
+    gleiche = create(:league, :current_season)
+    fremde = create(:league, :previous_season)
+    team = create(:team, league: haupt)
+    team.update!(cup_leagues: [gleiche.id, fremde.id])
+
+    assert_equal [haupt.id, gleiche.id].sort, team.season_leagues.map(&:id).sort
+  end
+
+  test 'season_leagues ist leer ohne Hauptliga und nur sie selbst ohne Saison' do
+    haupt = create(:league, :current_season)
+    team = create(:team, league: haupt)
+
+    haupt.update_columns(season_id: nil)
+    assert_equal [haupt.id], team.reload.season_leagues.map(&:id)
+
+    team.update_columns(league_id: nil)
+    assert_empty team.reload.season_leagues
+  end
+
+  private
+
+  # Liga, deren Verband die Expresslizenz erlaubt (oder eben nicht) und deren erster
+  # Spieltag im Fenster liegt. Beides muss zusammenkommen, sonst ist
+  # League#express_license_possible? unabhaengig von der Auswahl schon false.
+  # `days_ahead` negativ = erster Spieltag liegt zurueck.
+  # sbk_email gehoert dazu: express_license_possible? verlangt seit api#461 eine
+  # erreichbare SBK, sonst waere jede hier gebaute Liga aus dem falschen Grund
+  # nicht express-faehig und die Tests darueber pruefen nichts mehr.
+  def express_ready_league(express:, name: nil, season_id: '18', days_ahead: 1)
+    sa = create(:state_association, express_license_enabled: express, sbk_email: 'sbk@example.de')
+    attrs = { game_operation: create(:game_operation, state_association: sa), season_id: season_id }
+    attrs[:name] = name if name
+    league = create(:league, **attrs)
+    create(:game_day, league: league, date: (Date.current + days_ahead).to_s)
+    league
+  end
 end
