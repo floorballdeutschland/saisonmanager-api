@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Eine abgeschlossene Pokal-Liga löst keine Elternzustimmung mehr aus**: Welche Liga die Zustimmung der gesetzlichen Vertretung verlangt, folgt seit 1.84.2 der Hauptliga der Mannschaft. Die Pokal-Ligen einer Mannschaft sind aber nicht an eine Saison gebunden: Der Eintrag bleibt stehen, bis ihn jemand entfernt, auch wenn der Wettbewerb längst gespielt ist. Eine solche Altliga konnte damit die Zustimmungspflicht für einen Antrag der laufenden Saison auslösen, und die Datenschutz-Mail an die gesetzliche Vertretung nannte dann diese Liga samt einem Verband, mit dem die Mannschaft in dieser Saison nichts mehr zu tun hat. Maßgeblich sind ab sofort nur Ligen der Saison, für die lizenziert wird. Im aktuellen Datenbestand trägt keine Mannschaft eine Pokal-Liga aus einer fremden Saison; die Regel greift also vorbeugend und ändert am laufenden Betrieb nichts.
+
 ## [1.84.2] - 2026-08-16
 
 ### Behoben

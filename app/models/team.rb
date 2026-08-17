@@ -57,17 +57,34 @@ class Team < ApplicationRecord
   # Art.-13-Mail müssen dieselbe Liga benennen, sonst liest die gesetzliche
   # Vertretung im Formular von der einen und in der Mail von der anderen.
   #
-  # Die Hauptliga hat Vorrang, weil sie der Regelfall ist. Ohne diesen Vorrang
-  # entscheidet der default_scope von League (season_id, game_operation_id,
-  # order_key) darüber, welche Liga gewinnt, und der stellt Pokal-Ligen fremder
-  # Verbände je nach game_operation_id vor die eigene Hauptliga.
+  # Nur Ligen der Saison der Hauptliga zählen. `cup_leagues` ist ein
+  # Integer-Array ohne Fremdschlüssel und ohne Saisonbindung, ein Eintrag aus
+  # einer vergangenen Saison bleibt also stehen, bis ihn jemand entfernt. Ohne
+  # diesen Filter könnte eine abgeschlossene Pokal-Liga die Zustimmungspflicht
+  # für einen Antrag der laufenden Saison auslösen und die Art.-13-Mail auf einen
+  # Verband verweisen, mit dem die Mannschaft in dieser Saison nichts zu tun hat.
+  # Die Lizenz wird ohnehin mit der Saison der Hauptliga gestempelt
+  # (PlayersController#request_license). Ohne Hauptliga fehlt der Anker und es
+  # wird nichts gewählt.
+  #
+  # `season_id` ist eine Textspalte, deshalb per String vergleichen und nicht per
+  # Range: numerisch gedacht wäre `'2'` kleiner als `'18'`, als Text ist es größer.
+  #
+  # Innerhalb der Saison hat die Hauptliga Vorrang, weil sie der Regelfall ist.
+  # Ohne diesen Vorrang entscheidet der default_scope von League (season_id,
+  # game_operation_id, order_key) darüber, welche Liga gewinnt, und der stellt
+  # Pokal-Ligen fremder Verbände je nach game_operation_id vor die eigene
+  # Hauptliga.
   #
   # Zwei `detect` statt eines sortierten Durchlaufs: `Array#sort_by` ist in MRI
   # nicht stabil und wirft ab acht gleichrangigen Elementen die Reihenfolge
   # durcheinander. Ausgerechnet in einer Methode, die Bestimmtheit herstellen
   # soll, waere das die falsche Grundlage.
   def parental_consent_league
-    candidates = leagues.to_a
+    season = league&.season_id
+    return nil if season.blank?
+
+    candidates = leagues.to_a.select { |l| l.season_id.to_s == season.to_s }
     candidates.detect { |l| l.id == league_id && l.parental_consent_required } ||
       candidates.detect(&:parental_consent_required)
   end

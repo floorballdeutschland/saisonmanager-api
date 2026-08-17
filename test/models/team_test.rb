@@ -138,4 +138,43 @@ class TeamTest < ActiveSupport::TestCase
                  'Vorbedingung: der default_scope stellt die Pokal-Liga nach vorn'
     assert_equal haupt.id, team.parental_consent_league.id
   end
+
+  # cup_leagues ist ein Integer-Array ohne Fremdschluessel und ohne
+  # Saisonbindung: Ein Eintrag aus einer abgeschlossenen Saison bleibt stehen, bis
+  # ihn jemand entfernt. Er darf die Zustimmungspflicht fuer einen Antrag der
+  # laufenden Saison nicht ausloesen, sonst verweist die Art.-13-Mail auf einen
+  # Verband, mit dem die Mannschaft in dieser Saison nichts zu tun hat.
+  test 'parental_consent_league ignoriert eine Pokal-Liga aus fremder Saison' do
+    haupt = create(:league, :current_season, name: 'Regionalliga Bayern')
+    alt = create(:league, :previous_season, name: 'Alt-Pokal', parental_consent_required: true)
+    team = create(:team, league: haupt)
+    team.update!(cup_leagues: [alt.id])
+
+    assert_equal alt.id, team.leagues.first.id,
+                 'Vorbedingung: der default_scope stellt die Alt-Saison nach vorn'
+    assert_nil team.parental_consent_league
+  end
+
+  # Gegenprobe zum Filter: Eine Pokal-Liga DERSELBEN Saison bleibt zustaendig,
+  # auch wenn die Hauptliga die Zustimmung nicht verlangt. Der Filter darf nur
+  # fremde Saisons treffen.
+  test 'parental_consent_league nimmt die Pokal-Liga derselben Saison' do
+    haupt = create(:league, :current_season, name: 'Regionalliga Bayern')
+    pokal = create(:league, :current_season, name: 'FD-Pokal', parental_consent_required: true)
+    team = create(:team, league: haupt)
+    team.update!(cup_leagues: [pokal.id])
+
+    assert_equal pokal.id, team.parental_consent_league.id
+  end
+
+  # Ohne Hauptliga fehlt der Anker fuer den Saisonvergleich. teams.league_id ist
+  # nullable, der Fremdschluessel aus #293 schliesst nur den Verweis ins Leere.
+  test 'parental_consent_league ist nil, wenn die Mannschaft keine Hauptliga hat' do
+    pokal = create(:league, :current_season, parental_consent_required: true)
+    team = create(:team, league: create(:league, :current_season))
+    team.update!(cup_leagues: [pokal.id])
+    team.update_columns(league_id: nil)
+
+    assert_nil team.reload.parental_consent_league
+  end
 end
