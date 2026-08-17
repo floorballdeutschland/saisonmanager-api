@@ -1,26 +1,32 @@
 module Admin
-  # Ansprechpersonen der Vereine und Mannschaften einer Saison, gebündelt für
-  # die Spielbetriebskommission.
+  # Ansprechpersonen der Vereine und Mannschaften der laufenden Saison,
+  # gebündelt für die Spielbetriebskommission.
   #
   # Die Angaben liegen längst im Saisonmanager, nur verstreut: der Verein hat
-  # eine Kontaktadresse und Vereinsmanager-Konten, die Mannschaft eine
-  # Kontaktperson und Teammanager-Konten. Wer sie bisher zusammentragen wollte,
-  # klickte sich durch die Vereinsverwaltung und die Benutzerliste – weshalb
-  # dieselben Angaben vor jeder Saison zusätzlich per Umfrage eingesammelt
-  # wurden.
+  # eine Kontaktadresse und die unter „Zusätzlich informieren" ausgewählten
+  # Vereinsmanager, die Mannschaft eine Kontaktperson und Teammanager-Konten.
+  # Wer sie bisher zusammentragen wollte, klickte sich durch die
+  # Vereinsverwaltung und die Benutzerliste, weshalb dieselben Angaben vor jeder
+  # Saison zusätzlich per Umfrage eingesammelt wurden.
   #
   # Gruppiert wird nach Verein, weil die Mannschaft an ihm hängt. Der Zuschnitt
   # kommt dagegen über die Ligen: Maßgeblich ist, wer im Spielbetrieb der
   # Kommission spielt, nicht, wo ein Verein beheimatet ist. Sonst fehlten
   # genau die Gastmannschaften aus anderen Landesverbänden, für die die
   # Kommission die Saison über zuständig ist.
+  #
+  # Auf Vereinsebene ist die Auswahl dieselbe wie beim Versand der Vereinspost
+  # (Club#notification_emails): die Kontaktadresse plus die ausdrücklich
+  # markierten Vereinsmanager. Wer nicht markiert ist, hat die Rolle, aber nicht
+  # die Zuständigkeit für den Schriftverkehr, und gehört deshalb nicht in eine
+  # Liste, aus der Serienmails entstehen.
   class ContactsController < ApplicationController
     VM_ROLE_ID = 4
     TM_ROLE_ID = 5
 
     before_action :authorize_contact_view!
 
-    # GET /api/v2/admin/contacts(?season_id=18)
+    # GET /api/v2/admin/contacts
     def index
       teams = scoped_teams
       render json: {
@@ -41,12 +47,11 @@ module Admin
     end
 
     def season_id
-      # Frei wählbar, weil die Frage „wer ist Ansprechperson?" typischerweise
-      # VOR der Saison gestellt wird, die Kommission also die kommende Saison
-      # im Blick hat, während der Saisonmanager noch auf der laufenden steht.
-      params[:season_id].presence&.to_s || Setting.current_season_id.to_s
+      @season_id ||= Setting.current_season_id.to_s
     end
 
+    # League.unscoped, weil der default_scope der Liga eine Sortierung mitbringt,
+    # die in dieser Unterabfrage nichts zu suchen hat.
     def scoped_teams
       leagues = League.unscoped.where(season_id: season_id)
       ph = current_user.permission_hash
@@ -78,9 +83,18 @@ module Admin
         name: club.name,
         contact_email: club.contact_email,
         state_association_name: state_association_names[club.state_association_id],
-        managers: (vm_by_club[club.id] || []).uniq { |m| m[:id] },
+        notify_managers: notify_managers_for(club, vm_by_club),
         teams: club_teams.map { |team| team_hash(team, tm_by_team) }
       }
+    end
+
+    # Nur die unter „Zusätzlich informieren" markierten Vereinsmanager. Die
+    # gespeicherten IDs werden dabei gegen die heutigen Rollen aufgelöst, wie
+    # beim Versand auch: Wer die Rolle verloren hat, verschwindet, ohne dass
+    # jemand die Markierung anfassen muss.
+    def notify_managers_for(club, vm_by_club)
+      marked = Array(club.notify_user_ids).map(&:to_i).to_set
+      (vm_by_club[club.id] || []).uniq { |m| m[:id] }.select { |m| marked.include?(m[:id]) }
     end
 
     def team_hash(team, tm_by_team)
@@ -99,26 +113,30 @@ module Admin
     # Nur Konten mit Vereins- oder Teammanager-Rolle, und nur nicht archivierte:
     # Ein archiviertes Konto kann sich nicht mehr anmelden und ist als
     # Ansprechperson keine Auskunft, sondern eine Falle.
+    #
+    # Beide Typvarianten abfragen, wie Club#club_managers: jsonb-Containment ist
+    # typstreng, `@> '[{"user_group_id":4}]'` findet einen Alt-Eintrag mit `"4"`
+    # nicht, und die Person fehlte dann kommentarlos in der Liste.
     def contact_users
       @contact_users ||= User.not_archived.where(
-        "permissions @> '[{\"user_group_id\": #{VM_ROLE_ID}}]' " \
-        "OR permissions @> '[{\"user_group_id\": #{TM_ROLE_ID}}]'"
+        'permissions @> ? OR permissions @> ? OR permissions @> ? OR permissions @> ?',
+        [{ user_group_id: VM_ROLE_ID }].to_json, [{ user_group_id: VM_ROLE_ID.to_s }].to_json,
+        [{ user_group_id: TM_ROLE_ID }].to_json, [{ user_group_id: TM_ROLE_ID.to_s }].to_json
       ).order(:last_name, :first_name).to_a
     end
 
+    # Zuordnung wie User#permission_hash[:vm], nur ohne dessen Query je Konto:
+    # maßgeblich ist der club_id der Rollen-Berechtigung, nicht die Spalte
+    # users.club_id. Beide können auseinanderlaufen, und ein Konto kann mehrere
+    # Vereine führen.
     def group_managers_by_club(users)
       result = Hash.new { |hash, key| hash[key] = [] }
       users.each do |user|
-        # Die Rollen-Berechtigung ist maßgeblich, nicht die Spalte users.club_id:
-        # Beide können auseinanderlaufen, und ein Konto kann mehrere Vereine
-        # führen (mehrere VM-Einträge).
         user.permissions.each do |perm|
           next unless perm['user_group_id'].to_i == VM_ROLE_ID
+          next if perm['club_id'].blank?
 
-          club_id = perm['club_id'].presence&.to_i || user.club_id
-          next unless club_id
-
-          result[club_id] << manager_hash(user)
+          result[perm['club_id'].to_i] << manager_hash(user)
         end
       end
       result

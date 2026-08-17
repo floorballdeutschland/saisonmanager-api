@@ -18,6 +18,8 @@ module Admin
                                email: 'anna@aal.example')
       @tm = create(:user, :tm, team_id: @team.id, first_name: 'Bruno', last_name: 'Sanchez',
                                email: 'bruno@aal.example')
+      # „Zusätzlich informieren" in der Vereinsverwaltung.
+      @club.update!(notify_user_ids: [@vm.id])
     end
 
     def login(user)
@@ -42,8 +44,8 @@ module Admin
       assert_equal 'Aal Berlin', club['name']
       assert_equal 'info@aal.example', club['contact_email']
       assert_equal 'Floorball-Verband Ost', club['state_association_name']
-      assert_equal ['anna@aal.example'], club['managers'].pluck('email')
-      assert_equal ['Anna Meier'], club['managers'].pluck('name')
+      assert_equal ['anna@aal.example'], club['notify_managers'].pluck('email')
+      assert_equal ['Anna Meier'], club['notify_managers'].pluck('name')
 
       team = club['teams'].sole
 
@@ -93,7 +95,7 @@ module Admin
       assert_equal ['Aal Berlin', 'Barsch Bremen'], get_contacts['clubs'].pluck('name')
     end
 
-    test 'die Saison laesst sich waehlen' do
+    test 'nur die laufende Saison, eine mitgeschickte Saison aendert nichts' do
       next_league = create(:league, game_operation: @go, season_id: '19', name: 'Regionalliga Ost')
       create(:team, league: next_league, club: create(:club, name: 'Zander Ulm'))
 
@@ -101,22 +103,64 @@ module Admin
 
       body = get_contacts(season_id: '19')
 
-      assert_equal '19', body['season_id']
-      assert_equal ['Zander Ulm'], body['clubs'].pluck('name')
+      assert_equal '18', body['season_id']
+      assert_equal ['Aal Berlin'], body['clubs'].pluck('name')
     end
 
     test 'archivierte Konten stehen nicht als Ansprechperson drin' do
       @vm.archive!(@vm.id)
       login(create(:user, :sbk_scoped, game_operation_id: @go.id))
 
-      assert_empty get_contacts['clubs'].sole['managers']
+      assert_empty get_contacts['clubs'].sole['notify_managers']
     end
 
     test 'ein Vereinsmanager ohne club_id-Spalte kommt ueber die Rolle mit' do
       @vm.update!(club_id: nil)
       login(create(:user, :sbk_scoped, game_operation_id: @go.id))
 
-      assert_equal ['anna@aal.example'], get_contacts['clubs'].sole['managers'].pluck('email')
+      assert_equal ['anna@aal.example'], get_contacts['clubs'].sole['notify_managers'].pluck('email')
+    end
+
+    test 'ein nicht markierter Vereinsmanager steht nicht drin' do
+      @club.update!(notify_user_ids: [])
+      login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+      club = get_contacts['clubs'].sole
+
+      assert_empty club['notify_managers']
+      # Die Kontaktadresse des Vereins bleibt davon unberührt.
+      assert_equal 'info@aal.example', club['contact_email']
+    end
+
+    test 'markiert wird nur, wer heute noch Vereinsmanager dieses Vereins ist' do
+      other_club = create(:club, name: 'Barsch Bremen')
+      stranger = create(:user, :vm, club_id: other_club.id, email: 'fremd@barsch.example')
+      @club.update!(notify_user_ids: [@vm.id, stranger.id, 999_999])
+
+      login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+      assert_equal ['anna@aal.example'], get_contacts['clubs'].sole['notify_managers'].pluck('email')
+    end
+
+    test 'ein Verein ohne Kontaktadresse und ohne Markierung bleibt sichtbar' do
+      @club.update!(contact_email: nil, notify_user_ids: [])
+      login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+      club = get_contacts['clubs'].sole
+
+      assert_equal 'Aal Berlin', club['name']
+      assert_nil club['contact_email']
+      assert_empty club['notify_managers']
+    end
+
+    test 'eine Alt-Rolle mit der Gruppen-ID als String zaehlt mit' do
+      legacy = create(:user, first_name: 'Dana', last_name: 'Fischer', email: 'dana@aal.example',
+                             permissions: [{ 'user_group_id' => '4', 'club_id' => @club.id.to_s }])
+      @club.update!(notify_user_ids: [legacy.id])
+
+      login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+      assert_equal ['dana@aal.example'], get_contacts['clubs'].sole['notify_managers'].pluck('email')
     end
 
     test 'ohne Spielbetriebsrolle ist die Liste gesperrt' do
