@@ -1,4 +1,17 @@
 class Game < ApplicationRecord
+  # Betreuerplätze im Spielbericht (Betreuer 1 bis 5).
+  MAX_COACHES = 5
+
+  # Ab dieser Saison stehen die Betreuer im öffentlichen Spielbericht. 18 ist
+  # 2026/2027; die Saison-IDs laufen fortlaufend, der Wert bleibt deshalb fest
+  # und wandert nicht mit Setting.current_season_id mit.
+  #
+  # Für die Altsaisons bleibt die Liste bewusst leer: Dort ist der Bestand
+  # lückenhaft (der Altdaten-Import kennt nur den zusammengesetzten Namen, viele
+  # Berichte haben gar keine Betreuer) und wird nicht nachgezogen. Eine
+  # halbvolle Liste sähe aus wie eine Aussage darüber, wer dabei war.
+  COACHES_PUBLIC_FROM_SEASON_ID = 18
+
   belongs_to :home_team, class_name: 'Team', optional: true
   belongs_to :guest_team, class_name: 'Team', optional: true
   belongs_to :game_day, inverse_of: :games
@@ -899,6 +912,8 @@ class Game < ApplicationRecord
       events: formatted_events,
       players: players_with_position,
       starting_players: starting_players_with_numbers,
+      home_coaches: public_coaches(home_team_coaches),
+      guest_coaches: public_coaches(guest_team_coaches),
       awards: awards_with_player_names,
       started:,
       ended:,
@@ -926,6 +941,42 @@ class Game < ApplicationRecord
       special_event_string:,
       referees:
     }
+  end
+
+  # Betreuer für den öffentlichen Spielbericht. Anders als hidden_elements gibt
+  # das hier nur die Namen heraus, nicht die Unterschrift (coachN_signed): Die
+  # ist ein Zustand des Berichts und geht die Öffentlichkeit nichts an.
+  #
+  # Leere Plätze fallen raus, die Reihenfolge bleibt die des Berichts.
+  def public_coaches(coaches)
+    return [] unless coaches_public?
+
+    coach_entries(coaches)
+  end
+
+  def coaches_public?
+    league.present? && league.season_id.to_i >= COACHES_PUBLIC_FROM_SEASON_ID
+  end
+
+  def coach_entries(coaches)
+    # Die JSONB-Spalten haben historisch den Default [] (Array); unangetastete
+    # Spiele liefern also kein Hash. Gleiche Normalisierung wie beim Schreiben
+    # in GamesController#add_coach.
+    return [] unless coaches.is_a?(Hash)
+
+    (1..MAX_COACHES).filter_map do |slot|
+      first_name = coaches["coach#{slot}_first_name"].to_s.strip
+      last_name  = coaches["coach#{slot}_last_name"].to_s.strip
+      name       = [last_name, first_name].reject(&:empty?).join(', ')
+      # Altdaten aus dem Vorsystem haben nur den zusammengesetzten Namen. Das
+      # Zerlegen räumt zugleich die halbleeren Einträge auf, die beim Schreiben
+      # entstehen konnten („Meier, " oder ", Anna"), inklusive des Falls, in dem
+      # nichts als das Komma übrig bleibt.
+      name = coaches["coach#{slot}_string"].to_s.split(',').map(&:strip).reject(&:empty?).join(', ') if name.empty?
+      next if name.empty?
+
+      { number: slot, first_name: first_name, last_name: last_name, name: name }
+    end
   end
 
   def hidden_elements
