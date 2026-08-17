@@ -109,6 +109,7 @@ class UserTest < ActiveSupport::TestCase
     items = u.permissions_items
 
     assert items[:menu_item_league_admin]
+    assert items[:menu_item_contact_admin]
     assert items[:menu_item_referee_admin]
     assert items[:menu_item_state_association_admin]
     assert items[:menu_item_api_key_admin]
@@ -125,6 +126,7 @@ class UserTest < ActiveSupport::TestCase
     assert items[:menu_item_player_admin_vm]
     assert items[:menu_item_user_vm]
     assert_not items[:menu_item_league_admin]
+    assert_not items[:menu_item_contact_admin]
     assert_not items[:menu_item_state_association_admin]
     assert_not items[:menu_item_referee_admin]
     assert_not items[:admin], 'VM darf den admin-Boolean nicht bekommen'

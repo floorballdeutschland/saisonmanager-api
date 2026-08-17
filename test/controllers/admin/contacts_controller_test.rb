@@ -95,6 +95,38 @@ module Admin
       assert_equal ['Aal Berlin', 'Barsch Bremen'], get_contacts['clubs'].pluck('name')
     end
 
+    # Eine Mannschaft spielt ihren Pokal oft in einem anderen Verband als ihre
+    # Hauptliga. Fuer diesen Pokal ist die Kommission zustaendig, ueber
+    # league_id allein fiele die Mannschaft aber heraus.
+    test 'eine Mannschaft, die nur ueber den Pokal in der Liga spielt, steht drin' do
+      foreign_go = create(:game_operation, state_association_id: create(:state_association).id)
+      foreign_league = create(:league, game_operation: foreign_go, season_id: '18', name: 'Landesliga Nord')
+      cup = create(:league, game_operation: @go, season_id: '18', name: 'Ostpokal')
+      cup_club = create(:club, name: 'Barsch Bremen')
+      create(:team, league: foreign_league, club: cup_club, name: 'Barsch Bremen 1',
+                    cup_leagues: [cup.id])
+
+      login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+      club = get_contacts['clubs'].find { |c| c['name'] == 'Barsch Bremen' }
+
+      assert club, 'Pokal-Mannschaft fehlt in der Kontaktliste'
+      # Genannt wird die Liga, wegen der sie hier steht, nicht ihre fremde
+      # Hauptliga.
+      assert_equal 'Ostpokal', club['teams'].sole['league_name']
+      assert_equal 'SBK Ost', club['teams'].sole['game_operation_name']
+    end
+
+    test 'ein bundesweiter SBK sieht alle Spielbetriebe' do
+      other_go = create(:game_operation, state_association_id: create(:state_association).id)
+      other_league = create(:league, game_operation: other_go, season_id: '18')
+      create(:team, league: other_league, club: create(:club, name: 'Zander Ulm'))
+
+      login(create(:user, :sbk_global))
+
+      assert_equal ['Aal Berlin', 'Zander Ulm'], get_contacts['clubs'].pluck('name')
+    end
+
     test 'nur die laufende Saison, eine mitgeschickte Saison aendert nichts' do
       next_league = create(:league, game_operation: @go, season_id: '19', name: 'Regionalliga Ost')
       create(:team, league: next_league, club: create(:club, name: 'Zander Ulm'))

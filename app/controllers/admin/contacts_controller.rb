@@ -40,7 +40,7 @@ module Admin
     # Gleiche Ebene wie die Ligaverwaltung (menu_item_league_admin): Wer den
     # Spielbetrieb führt, führt auch den Schriftverkehr dazu.
     def authorize_contact_view!
-      ph = current_user.permission_hash
+      ph = permission_hash
       return if ph[:admin].present? || ph[:sbk].present?
 
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
@@ -50,15 +50,32 @@ module Admin
       @season_id ||= Setting.current_season_id.to_s
     end
 
-    # League.unscoped, weil der default_scope der Liga eine Sortierung mitbringt,
-    # die in dieser Unterabfrage nichts zu suchen hat.
-    def scoped_teams
-      leagues = League.unscoped.where(season_id: season_id)
-      ph = current_user.permission_hash
-      go_ids = ph[:admin].present? ? nil : Array(ph[:sbk])
-      leagues = leagues.where(game_operation_id: go_ids) unless go_ids.nil? || go_ids.include?(0)
+    def permission_hash
+      @permission_hash ||= current_user.permission_hash
+    end
 
-      Team.where(league_id: leagues.select(:id))
+    # Ligen der Saison im Zustaendigkeitsbereich. League.unscoped, weil der
+    # default_scope der Liga eine Sortierung mitbringt, die hier nichts zu
+    # suchen hat.
+    def scoped_league_ids
+      @scoped_league_ids ||= begin
+        leagues = League.unscoped.where(season_id: season_id)
+        go_ids = permission_hash[:admin].present? ? nil : Array(permission_hash[:sbk])
+        leagues = leagues.where(game_operation_id: go_ids) unless go_ids.nil? || go_ids.include?(0)
+        leagues.pluck(:id)
+      end
+    end
+
+    # Auch die Mannschaften, die nur über cup_leagues zur Liga gehören. Eine
+    # Mannschaft spielt ihren Pokal oft in einem anderen Verband als ihre
+    # Hauptliga; genau für sie ist die Kommission die Saison über zuständig,
+    # und über league_id allein fiele sie heraus. Gleiche Abdeckung wie
+    # League#teams und League.license_teams_by_league.
+    def scoped_teams
+      return Team.none if scoped_league_ids.empty?
+
+      Team.where(league_id: scoped_league_ids)
+          .or(Team.where('cup_leagues && ARRAY[?]::int[]', scoped_league_ids))
           .includes(:club, :league)
           .order(:name)
     end
@@ -98,16 +115,32 @@ module Admin
     end
 
     def team_hash(team, tm_by_team)
+      league = league_in_scope(team)
       {
         id: team.id,
         name: team.name,
-        league_id: team.league_id,
-        league_name: team.league&.name,
-        game_operation_name: game_operation_names[team.league&.game_operation_id],
+        league_id: league&.id,
+        league_name: league&.name,
+        game_operation_name: game_operation_names[league&.game_operation_id],
         contact_person: team.contact_person,
         contact_email: team.contact_email,
         managers: (tm_by_team[team.id] || []).uniq { |m| m[:id] }
       }
+    end
+
+    # Die Liga, wegen der die Mannschaft in dieser Liste steht. Für eine
+    # Mannschaft, die nur über den Pokal hereinkommt, ist das nicht ihre
+    # Hauptliga: Die gehört einem anderen Verband, und ausgerechnet die zu
+    # nennen wäre für die Kommission, die den Pokal führt, keine Auskunft.
+    def league_in_scope(team)
+      return team.league if scoped_league_ids.include?(team.league_id)
+
+      cup_id = Array(team.cup_leagues).find { |id| scoped_league_ids.include?(id) }
+      scoped_leagues_by_id[cup_id] || team.league
+    end
+
+    def scoped_leagues_by_id
+      @scoped_leagues_by_id ||= League.unscoped.where(id: scoped_league_ids).index_by(&:id)
     end
 
     # Nur Konten mit Vereins- oder Teammanager-Rolle, und nur nicht archivierte:
