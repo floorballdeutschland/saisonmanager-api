@@ -1285,14 +1285,28 @@ class PlayersController < ApplicationController
     params.require(:player).permit(:birthdate, :first_name, :last_name, :gender, :nation_id, :email)
   end
 
-  # Setting.season_name statt seasons[...]['name']: Steht unter der Saison ein
-  # blanker String statt eines Hash, liefert String#[]('name') still nil, und die
-  # Lizenz bekäme als Gültigkeit stillschweigend das Kalenderjahr statt des
-  # Saisonjahres. Ein Antrag im Frühjahr wäre damit ein Jahr zu kurz gültig.
+  # Setting.season_start_year statt eines eigenen Parsers: Vorher stand hier
+  # `seasons[...]['name'].split('/').first.to_i`, und das war doppelt anfällig.
+  # Bei einem blanken String unter der Saison liefert String#[]('name') still nil.
+  # Und `split('/').first` verlangt, dass der Name mit den Ziffern BEGINNT — bei
+  # „Saison 2026/27" ergibt `'Saison 2026'.to_i` eine 0. Genau diese Schreibweise
+  # kommt im Bestand vor (Setting.season_start_year nennt beide). In beiden Fällen
+  # fiel die Gültigkeit still auf das Kalenderjahr, die Lizenz war also ein Jahr zu
+  # kurz gültig und konnte im Genehmigungsmoment schon abgelaufen sein.
+  #
+  # Ohne lesbares Jahr bleibt es beim Kalenderjahr, aber nicht mehr stumm: Hier
+  # entstehen geschriebene Daten (`licenses[..]['valid_until']`), und ohne Signal
+  # erfährt niemand davon. Bewusst kein 422: Eine Fehlkonfiguration im Saisonnamen
+  # darf die Lizenzerteilung nicht blockieren, das wäre ein Betriebsausfall als
+  # Antwort auf einen Tippfehler.
   def default_license_valid_until(season_id)
-    name = Setting.season_name(season_id)
-    first_year = name.to_s.split('/').first.to_i
-    end_year = first_year.positive? ? first_year + 1 : Date.today.year
-    Date.new(end_year, 7, 31)
+    start_year = Setting.season_start_year(season_id)
+    return Date.new(start_year + 1, 7, 31) if start_year
+
+    if defined?(Sentry)
+      Sentry.capture_message("Lizenz-Gueltigkeit ohne Saisonjahr (season_id=#{season_id}), " \
+                             'faellt auf das Kalenderjahr zurueck')
+    end
+    Date.new(Date.current.year, 7, 31)
   end
 end
