@@ -9,6 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Die Mail über eine erteilte Lizenz kommt auch bei krummer Saisonangabe an**: Der Betreff dieser Mail las den Saisonnamen an einer Stelle, die zwei Formen nicht verkraftete. Steht in der Konfiguration unter einer Saison nur der Name als reiner Text statt eines vollständigen Eintrags, blieb die Saison im Betreff stillschweigend leer und die Zeile endete auf einem Trennstrich ins Nichts. Fehlte der Eintrag zur laufenden Saison ganz, brach die Mail schon beim Erzeugen ab, und weil sie im Hintergrund verschickt wird, kam sie einfach nicht an, ohne Meldung an irgendwen. Die Auflösung des Saisonnamens liegt jetzt an einer Stelle, die beide Formen kennt, und ohne lesbaren Namen entfällt der Zusatz im Betreff, statt ihn halb anzuhängen.
+
+- **Eine krumme Saisonangabe verkürzt keine Lizenz mehr und legt keine Ligaseite lahm**: Dieselbe Absicherung greift jetzt an zwei weiteren Stellen. Die Gültigkeit einer neu beantragten Lizenz wird aus dem Saisonjahr berechnet und fiel bei unerwarteter Form unbemerkt auf das Kalenderjahr zurück, war also bei einem Antrag im Frühjahr ein Jahr zu kurz gültig. Und die Punktkorrekturen, die in jede Tabellenberechnung einfließen, hätten bei unerwarteter Form einen Serverfehler auf öffentlichen Ligaseiten ergeben. Im aktuellen Datenbestand tritt keiner der Fälle auf; die Absicherung schützt vor Korrekturen von Hand, für die es keine Maske gibt.
+
 ## [1.84.2] - 2026-08-16
 
 ### Behoben

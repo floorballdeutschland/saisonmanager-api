@@ -23,8 +23,30 @@ class Setting < ApplicationRecord
     current['league_categories']&.dig(league_category_id.to_s, 'name').to_s
   end
 
+  # Der seasons-Hash ist nicht typsicher: Je nach Altbestand steht unter einer
+  # Saison ein Hash mit 'name' oder ein blanker String, und die Spalte selbst
+  # könnte theoretisch gar kein Hash sein. `seasons_hash` fängt beides ab, damit
+  # die Aufrufer nicht jeder für sich prüfen müssen.
+  def self.seasons_hash
+    value = current&.seasons
+    value.is_a?(Hash) ? value : {}
+  end
+
   def self.current_season
-    current.seasons[current_season_id.to_s]
+    seasons_hash[current_season_id.to_s]
+  end
+
+  # Anzeigename einer Saison, oder nil wenn keiner lesbar ist. Die eine Stelle,
+  # an der die Formfrage entschieden wird, damit sie nicht an jedem Aufrufer neu
+  # hängt: Ein blanker String unter dem Key ergibt bei `entry['name']` still nil
+  # (String#[] sucht einen Teilstring, findet keinen), ein fehlender Key bei
+  # `entry['name']` einen NoMethodError. Beides fällt hinter `deliver_later`
+  # niemandem auf, die Mail kommt einfach nicht oder trägt eine leere Saison.
+  def self.season_name(season_id)
+    return nil if season_id.blank?
+
+    entry = seasons_hash[season_id.to_s]
+    entry.is_a?(Hash) ? entry['name'].presence : entry.presence
   end
 
   # Startjahr der aktiven Saison (2026/2027 → 2026). Maßgeblich überall dort, wo
@@ -44,8 +66,7 @@ class Setting < ApplicationRecord
   # Karriere-Stichtag stumm um ein Jahr, wodurch ganze Jahrgänge auf einmal als
   # beendet gälten und aus Vereins- und öffentlichen Listen verschwänden.
   def self.current_season_start_year
-    season = current_season
-    name = season.is_a?(Hash) ? season['name'] : season
+    name = season_name(current_season_id)
     year = name.to_s[/\d{4}/]&.to_i
     return year if year
 
@@ -87,9 +108,12 @@ class Setting < ApplicationRecord
     current_season['min_team_id'] || 0
   end
 
+  # name über season_name, nicht über v['name']: Bei einem blanken String unter
+  # dem Key liefert String#[]('name') still nil, und der Saison-Umschalter im
+  # Frontend zeigte dann einen namenlosen Eintrag.
   def self.seasons
-    current.seasons.map do |k, v|
-      { id: k.to_i, name: v['name'], current: (k.to_i == current_season_id) }
+    seasons_hash.keys.map do |k|
+      { id: k.to_i, name: season_name(k), current: (k.to_i == current_season_id) }
     end.reverse
   end
 
@@ -120,8 +144,15 @@ class Setting < ApplicationRecord
     entry['url'].presence
   end
 
+  # Gleiche Absicherung wie bei seasons_hash, und hier mit größerer Reichweite:
+  # League#table liest das bei jeder Tabellenberechnung, also auf jeder
+  # öffentlichen Ligaseite. Ein hand-editierter oder per Konsole korrigierter
+  # Wert mit falscher Form hätte dort einen 500er ergeben.
   def self.point_corrections(league_id)
-    current.point_corrections[league_id.to_s]
+    value = current&.point_corrections
+    return nil unless value.is_a?(Hash)
+
+    value[league_id.to_s]
   end
 
   # {

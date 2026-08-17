@@ -91,4 +91,67 @@ class SettingTest < ActiveSupport::TestCase
     assert_equal 1, current_entries.size
     assert_equal 18, current_entries.first[:id]
   end
+
+  # ---------------------------------------------------------------------------
+  # Formsicherheit der seasons-Leser. Je nach Altbestand steht unter einer Saison
+  # ein Hash mit 'name' oder ein blanker String, und beide Fehlformen scheitern
+  # LEISE: `entry['name']` auf einem String sucht einen Teilstring und liefert nil,
+  # ein fehlender Key wirft NoMethodError. Hinter deliver_later fällt beides
+  # niemandem auf.
+  # ---------------------------------------------------------------------------
+
+  test 'season_name liest den Namen aus einem Hash-Eintrag' do
+    create(:setting)
+
+    assert_equal 'Saison 2025/26', Setting.season_name('18')
+  end
+
+  test 'season_name liest einen blanken String als Namen' do
+    create(:setting, seasons: { '18' => 'Saison 2025/26' })
+
+    assert_equal 'Saison 2025/26', Setting.season_name('18')
+  end
+
+  test 'season_name ist nil bei unbekannter Saison, leerem Namen und leerer Eingabe' do
+    create(:setting, seasons: { '18' => { 'name' => '' } })
+
+    assert_nil Setting.season_name('18'), 'leerer Name zählt nicht als Name'
+    assert_nil Setting.season_name('99'), 'unbekannte Saison darf nicht werfen'
+    assert_nil Setting.season_name(nil)
+    assert_nil Setting.season_name('')
+  end
+
+  test 'seasons_hash faengt eine seasons-Spalte ab, die gar kein Hash ist' do
+    create(:setting)
+    Setting.first.update_columns(seasons: nil)
+    Rails.cache.delete('settings/current')
+
+    assert_empty Setting.seasons_hash
+    assert_nil Setting.season_name('18')
+    assert_equal [], Setting.seasons
+  end
+
+  test 'seasons benennt auch einen Eintrag, der als blanker String vorliegt' do
+    create(:setting, current_season_id: '18', seasons: { '18' => 'Saison 2025/26' })
+
+    entry = Setting.seasons.find { |s| s[:id] == 18 }
+    assert_equal 'Saison 2025/26', entry[:name],
+                 'sonst zeigt der Saison-Umschalter einen namenlosen Eintrag'
+  end
+
+  test 'current_season_start_year liest das Jahr auch aus einem blanken String' do
+    create(:setting, current_season_id: '18', seasons: { '18' => 'Saison 2026/2027' })
+
+    assert_equal 2026, Setting.current_season_start_year
+  end
+
+  # point_corrections hängt an League#table, also an jeder öffentlichen
+  # Ligaseite. Eine Fehlform dort hätte einen 500er ergeben.
+  test 'point_corrections faengt eine Spalte ab, die kein Hash ist' do
+    create(:setting)
+    Setting.first.update_columns(point_corrections: nil)
+    Rails.cache.delete('settings/current')
+
+    assert_nil Setting.point_corrections(1)
+  end
 end

@@ -1285,14 +1285,14 @@ class PlayersController < ApplicationController
     params.require(:player).permit(:birthdate, :first_name, :last_name, :gender, :nation_id, :email)
   end
 
+  # Setting.season_name statt seasons[...]['name']: Steht unter der Saison ein
+  # blanker String statt eines Hash, liefert String#[]('name') still nil, und die
+  # Lizenz bekäme als Gültigkeit stillschweigend das Kalenderjahr statt des
+  # Saisonjahres. Ein Antrag im Frühjahr wäre damit ein Jahr zu kurz gültig.
   def default_license_valid_until(season_id)
-    season = Setting.current.seasons[season_id.to_s]
-    end_year = if season
-                 first_year = season['name'].to_s.split('/').first.to_i
-                 first_year.positive? ? first_year + 1 : Date.today.year
-               else
-                 Date.today.year
-               end
+    name = Setting.season_name(season_id)
+    first_year = name.to_s.split('/').first.to_i
+    end_year = first_year.positive? ? first_year + 1 : Date.today.year
     Date.new(end_year, 7, 31)
   end
 end
