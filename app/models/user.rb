@@ -304,6 +304,9 @@ class User < ApplicationRecord
     result[:menu_item_club_admin] = ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
     # SBK-Übersicht „Spielberichte": Kontrolle der abgegebenen Berichte.
     result[:menu_item_match_report_admin] = ph[:admin].present? || ph[:sbk].present?
+    # Ansprechpersonen der Vereine und Mannschaften: gleiche Ebene wie die
+    # Ligaverwaltung – wer den Spielbetrieb führt, führt auch den Schriftverkehr.
+    result[:menu_item_contact_admin] = ph[:admin].present? || ph[:sbk].present?
     result[:menu_item_player_admin] = ph[:admin].present? || ph[:sbk].present?
     result[:menu_item_player_admin_vm] = ph[:vm].present?
 

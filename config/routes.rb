@@ -389,6 +389,8 @@ Rails.application.routes.draw do
             post :unarchive
           end
         end
+        # Ansprechpersonen der Vereine und Mannschaften einer Saison.
+        get 'contacts', to: 'contacts#index'
         resource :analytics, only: [:show]
         get 'system_health',         to: 'system_health#show'
         get 'system_health/summary', to: 'system_health#summary'
