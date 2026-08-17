@@ -161,7 +161,6 @@ module Admin
       {
         id: user.id,
         name: user.fullname,
-        username: user.user_name,
         email: user.email,
         last_login_at: user.last_login_at
       }
