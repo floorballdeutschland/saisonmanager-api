@@ -119,10 +119,13 @@ class PlayersController < ApplicationController
     # einem anderen Verband gehören kann. Der Antrag muss an die SBK genau des
     # Verbands gehen, der die Expresslizenz erlaubt – sonst erlaubt sie Verband A
     # und die Mail landet bei Verband B.
+    #
+    # Team#express_license_league statt eines eigenen `find`: Das Antragsformular
+    # (ClubsController#team_licenses_hash) nennt dieselbe Liga, und ein `find` über
+    # `team.leagues` würde hier dem default_scope von League folgen und damit
+    # womöglich eine andere wählen als die, die der Verein im Formular gesehen hat.
     express_league = nil
-    if params[:express] == true || params[:express] == 'true'
-      express_league = team.leagues.find(&:express_license_possible?)
-    end
+    express_league = team.express_license_league if params[:express] == true || params[:express] == 'true'
     express_requested = express_league.present?
 
     result = :ok
