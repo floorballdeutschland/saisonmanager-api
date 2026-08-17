@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.85.0] - 2026-08-18
+
 ### Neu
 
 - **Die Betreuer stehen im öffentlichen Spielbericht**: Wer eine Mannschaft am Spieltag betreut, wird im Spielbericht seit jeher erfasst, bis zu fünf Personen je Seite. Öffentlich zu sehen war davon nichts: Die Betreuer lagen bei den internen Feldern, die nur die Spielbetriebskommission, der eigene Verein und das Spielsekretariat aufrufen können. Auf der Spielseite standen damit die Aufstellung, die Starting six und die Schiedsrichter, aber die Bank blieb leer. Eine Zeitstrafe gegen einen Betreuer war davon mitbetroffen und erschien öffentlich ohne Namen. Beide Mannschaften listen ihre Betreuer jetzt unter der Aufstellung, in der Reihenfolge des Berichts, und die Strafe nennt wieder, wen sie trifft. Die Unterschrift bleibt intern, sie ist ein Zustand des Berichts und keine Angabe zur Person. Angezeigt wird das ab der Saison 2026/2027. Für die Altsaisons bleibt die Liste bewusst leer: Der Bestand dort ist lückenhaft und wird nicht nachgezogen, eine halbvolle Liste sähe aus wie eine Aussage darüber, wer auf der Bank saß.
