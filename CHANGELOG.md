@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Das Informationsblatt zur Datenverarbeitung kommt vom Verein, nicht aus dem Saisonmanager**: Seit dem 13. August konnte unter „Dokumentarten" die Adresse eines Informationsblattes gepflegt werden, das der Lizenzantrag und die Datenschutz-Mail an die gesetzliche Vertretung verlinkten. Hinterlegt war dort genau eine einzige, für alle Ligen gleiche Adresse, und die zeigte auf ein Informationsblatt für minderjährige Bundesligaspieler. Für eine Regionalliga, die die Elternzustimmung ebenfalls verlangt, passt dieses Blatt inhaltlich nicht, und ein Blatt pro Liga zu pflegen wäre für den einen Fall zu viel Maschinerie gewesen. Der Mechanismus ist deshalb wieder ausgebaut: Der Pflege-Abschnitt unter „Dokumentarten" entfällt, der Antrag verlinkt nichts mehr, und die Mail an die gesetzliche Vertretung verweist durchgehend auf den Verein. Die Information selbst ist damit nicht weggefallen, sie kommt nur wieder von dort, wo sie zur Liga passt. Art. 13 DSGVO verlangt, dass informiert wird, nicht dass der Saisonmanager das Blatt ausliefert.
+
 ## [1.84.2] - 2026-08-16
 
 ### Behoben
