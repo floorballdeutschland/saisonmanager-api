@@ -76,6 +76,24 @@ class PlayersExpressOhneSbkTest < ActionDispatch::IntegrationTest
     assert player.reload.licenses.first['express']
   end
 
+  # Der stille `return` im Mailer bleibt als zweite Absicherung stehen (der Mailer
+  # kann auch direkt gerufen werden), meldet aber jetzt. Vorher war er die einzige
+  # Stelle, die den Zustand kannte, und er sagte nichts.
+  test 'der Mailer meldet einen Antrag ohne erreichbare SBK, statt stumm abzubrechen' do
+    league = league_with(sbk_email: nil)
+    team = create(:team, league: league, club: @club)
+    player = player_of_club
+    captured = []
+    Sentry.stub(:capture_message, ->(msg) { captured << msg }) do
+      assert_emails 0 do
+        PlayerMailer.express_license_requested(player, team, league).deliver_now
+      end
+    end
+
+    assert_equal 1, captured.size, 'der Ausfall muss gemeldet werden'
+    assert_match(/ohne erreichbare SBK-Adresse/, captured.first)
+  end
+
   # Ein untergeordneter Landesverband pflegt oft kein eigenes Postfach. Über den
   # Verbund ist er erreichbar, die Expresslizenz muss dort weiter gehen — sonst
   # fiele sie für die drei LV der SBK Ost aus.
