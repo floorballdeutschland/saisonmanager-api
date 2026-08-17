@@ -72,6 +72,21 @@ class Team < ApplicationRecord
       candidates.detect(&:parental_consent_required)
   end
 
+  # Die Liga, wegen der eine Expresslizenz beantragt werden kann – oder nil, wenn
+  # keine sie erlaubt. Gleiche Ausgangslage wie bei parental_consent_league
+  # (siehe oben), nur mit schwererer Folge: Diese Liga bestimmt, welche SBK die
+  # Benachrichtigung erhält, wer als Antwortadresse eingetragen wird und welcher
+  # Verband damit die Zusatzkosten der Expresslizenz stellt.
+  #
+  # Die Hauptliga hat wieder Vorrang. Ohne ihn entscheidet der default_scope von
+  # League, und weil der zuerst nach `season_id` sortiert, gewinnt sogar ein
+  # Alt-Eintrag in `cup_leagues` aus einer vergangenen Saison.
+  def express_license_league(today: Date.current)
+    candidates = leagues.to_a
+    candidates.detect { |l| l.id == league_id && l.express_license_possible?(today:) } ||
+      candidates.detect { |l| l.express_license_possible?(today:) }
+  end
+
   def licenses
     Player.find_by_team_id(id)
   end

@@ -9,6 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Die Expresslizenz landet beim Verband der Liga, wegen der sie möglich ist**: Neben ihrer Hauptliga spielt eine Mannschaft oft in Pokal-Ligen, die einem anderen Verband gehören. Ob eine Expresslizenz beantragt werden kann, entscheidet jede dieser Ligen für sich, und welche davon den Antrag am Ende bekam, hing bislang an der Sortierung der Ligaliste statt daran, für welche Liga die Lizenz beantragt wurde. Weil diese Sortierung mit der Saison beginnt, gewann sogar ein liegengebliebener Pokal-Eintrag aus einer vergangenen Saison. Die Benachrichtigung ging dann an eine Spielbetriebskommission, mit der die Mannschaft in dieser Saison nichts mehr zu tun hat, und weil die Expresslizenz nach Gebührenordnung Zusatzkosten auslöst, stellte sie auch der falsche Verband. Maßgeblich ist ab sofort die Hauptliga, und nur wenn allein eine Pokal-Liga die Expresslizenz erlaubt, tritt diese an ihre Stelle. Dieselbe Regel gilt seit 1.84.2 schon für die Elternzustimmung.
+
+- **Das Antragsformular nennt die Liga, wegen der die Expresslizenz möglich ist**: Der Hinweis am Express-Häkchen sagte nur, dass Zusatzkosten anfallen und eine Spielbetriebskommission benachrichtigt wird, nicht welche. Wer die Leistung bestellte, konnte damit nicht sehen, dass die Möglichkeit aus einer Pokal-Liga stammt und die Rechnung von einem Verband kommt, der im Formular sonst nirgends auftaucht. Der Hinweis nennt diese Liga jetzt beim Namen.
+
 ## [1.84.2] - 2026-08-16
 
 ### Behoben
