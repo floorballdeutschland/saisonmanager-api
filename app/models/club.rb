@@ -138,17 +138,6 @@ class Club < ApplicationRecord
     end
   end
 
-  def update_state
-    return if postcode.blank?
-
-    states = Club.postcodes.select { |pc| pc[:from] < postcode.to_i && pc[:till] > postcode.to_i }
-
-    if states.present?
-      state = states.first[:isocode]
-      update_attributes(state:)
-    end
-  end
-
   def full_hash
     {
       id:,

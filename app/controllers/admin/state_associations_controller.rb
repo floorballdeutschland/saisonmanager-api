@@ -136,7 +136,16 @@ module Admin
                      logo banner_link_url]
       # Den übergeordneten Verband darf nur ein globaler Admin (um-)hängen.
       permitted << :parent_id if current_user.permission_hash[:admin].present?
+      # Der Zuständigkeitsbereich ebenso, und aus einem strengeren Grund als bei
+      # parent_id: an den Bundesländern hängt die Berechtigung, Spielorte
+      # abzuschalten, zusammenzuführen und zu löschen (#468). Dürfte ein
+      # regionaler SBK sein eigenes Feld pflegen, könnte er sich fremde
+      # Bundesländer eintragen und sich damit selbst Zugriff auf die Spielorte
+      # anderer Verbände geben. Anders als das Ändern einer Spielort-Anschrift,
+      # das bewusst in Kauf genommen ist, wäre das dauerhaft und flächig.
+      permitted << { states: [] } if current_user.permission_hash[:admin].present?
       attrs = params.require(:state_association).permit(*permitted)
+      normalize_states!(attrs)
       # Kontrollprozess-Flag wird ausschließlich am Root-Landesverband
       # konfiguriert; ein Kind erbt den Wert über
       # `effective_referee_license_review_enabled`.
@@ -157,6 +166,17 @@ module Admin
 
       person = switch_value(attrs, :referee_assignment_enabled)
       attrs[:person_level_assignment_default] = false unless main && person
+    end
+
+    # Bundesland-Kürzel aufräumen: die Maske schickt bei „nichts ausgewählt" ein
+    # Feld mit einem leeren String mit (Rails wirft ein leeres Array sonst ganz
+    # weg, und das Feld liesse sich nicht mehr leeren). Ohne das Filtern landete
+    # der leere String im Array und die Validierung meldete ein unbekanntes
+    # Bundesland ohne Namen.
+    def normalize_states!(attrs)
+      return unless attrs.key?(:states)
+
+      attrs[:states] = Array(attrs[:states]).map { |code| code.to_s.strip.downcase }.reject(&:blank?).uniq.sort
     end
 
     # Wert eines Schalters nach diesem Update: aus den Parametern, wenn er

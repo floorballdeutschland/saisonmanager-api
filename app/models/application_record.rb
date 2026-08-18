@@ -202,4 +202,44 @@ class ApplicationRecord < ActiveRecord::Base
       {from: 98501, till: 99998, region: 'Thüringen', isocode: 'de-th'},
     ]
   end
+
+  # Die 16 Bundeslaender als ISO-Kuerzel, abgeleitet aus den PLZ-Bereichen oben.
+  # Bewusst keine zweite Aufzaehlung: das Bundesland eines Spielorts entsteht aus
+  # genau dieser Tabelle (Arena#state), und die Zustaendigkeit eines
+  # Landesverbands wird dagegen geprueft (StateAssociation#states, #468). Zwei
+  # getrennte Listen wuerden irgendwann auseinanderlaufen, und dann waere die
+  # Zustaendigkeit fuer ein Bundesland stumm nicht mehr zuweisbar.
+  #
+  # Memoisiert auf der Klasse und nicht als Konstante, damit die Reihenfolge im
+  # Klassenrumpf keine Rolle spielt (postcodes ist eine Methode, kein Literal).
+  #
+  # `compact` ist Pflicht: zwei Bereiche (Jungholz, Kleinwalsertal) tragen nur
+  # `region: 'Ausserhalb der BRD'` und gar keinen isocode. Ohne das Filtern
+  # steckt ein nil in der Liste, und `sort` bricht damit sofort mit
+  # ArgumentError ab.
+  def self.german_states
+    @german_states ||= postcodes.filter_map { |pc| pc[:isocode] }.uniq.sort.freeze
+  end
+
+  # Bundesland-Kuerzel zu einer deutschen Postleitzahl, oder nil wenn die PLZ
+  # fehlt oder in keinem Bereich liegt.
+  #
+  # `cover?` und nicht `from < n && till > n`: die Bereiche sind einschliesslich,
+  # ein strikter Vergleich verfehlt jede PLZ, die genau auf einer Grenze liegt
+  # (09669 Frankenberg zum Beispiel). Genau so stand es im inzwischen geloeschten
+  # Club#update_state, das die Ableitung dreimal im Code als einziges falsch
+  # hatte.
+  #
+  # `dig` statt `fetch`, weil die beiden isocode-losen Bereiche (s. german_states)
+  # sonst mit KeyError abbrechen wuerden – und zwar bei fuenfstelligen PLZ, die
+  # jede Plausibilitaetspruefung fuer deutsch haelt.
+  #
+  # Bei mehrfach belegten PLZ gewinnt der erste Treffer der Tabelle: fuer 21039
+  # und 22145 steht Schleswig-Holstein vor Hamburg.
+  def self.state_for_postcode(postcode)
+    value = postcode.to_s.strip.to_i
+    return nil if value <= 0
+
+    postcodes.find { |pc| (pc[:from]..pc[:till]).cover?(value) }&.dig(:isocode)
+  end
 end

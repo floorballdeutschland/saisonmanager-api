@@ -9,6 +9,42 @@ class StateAssociation < ApplicationRecord
 
   validates :name, presence: true
   validate :parent_must_not_create_cycle
+  validate :states_must_be_known
+
+  # Bundeslaender, fuer die dieser Verband zustaendig ist, einschliesslich der
+  # Bundeslaender seiner untergeordneten Verbaende.
+  #
+  # Vererbungsrichtung ist hier bewusst umgekehrt zu allen effective_*-Methoden
+  # weiter unten: ein uebergeordneter Spielverbund (SBK Ost) betreut den Bereich
+  # seiner Kinder mit, waehrend Postfaecher und Flags vom Kind nach oben
+  # nachfragen. Deshalb wird nach unten gesammelt und nicht nach oben gelesen.
+  #
+  # Iterativ mit `seen`: parent_must_not_create_cycle haelt Ringverweise aus dem
+  # Bestand heraus, aber diese Methode haengt an einer Berechtigungspruefung, und
+  # ein Ringverweis aus der Zeit vor der Validierung wuerde sie in eine
+  # Endlosschleife schicken statt in eine Fehlermeldung.
+  def effective_states
+    collected = []
+    seen = []
+    queue = [self]
+    while (node = queue.shift)
+      next if seen.include?(node.id)
+
+      seen << node.id
+      collected.concat(node.states.to_a)
+      queue.concat(node.children.to_a)
+    end
+    collected.compact.uniq.sort
+  end
+
+  # Ist dieser Verband fuer das Bundesland zustaendig? nil-Bundesland (Spielort
+  # ohne brauchbare PLZ) ist nie zustaendig, sonst wuerde der Altbestand ohne
+  # Anschrift jedem Verband zufallen.
+  def covers_state?(state)
+    return false if state.blank?
+
+    effective_states.include?(state)
+  end
 
   def effective_express_license_enabled
     express_license_enabled || parent&.express_license_enabled
@@ -111,6 +147,12 @@ class StateAssociation < ApplicationRecord
       rsk_email:,
       parent_id:,
       parent_name: parent&.name,
+      states:,
+      # Der tatsaechlich greifende Bereich inklusive der untergeordneten
+      # Verbaende. Die Maske zeigt beides: eigene Auswahl zum Bearbeiten, den
+      # geerbten Rest als Hinweis (bei einem Spielverbund ist das eigene Feld
+      # ueblicherweise leer und der Bereich kommt komplett von den Kindern).
+      effective_states:,
       express_license_enabled:,
       referee_license_review_enabled:,
       effective_referee_license_review_enabled:,
@@ -153,6 +195,22 @@ class StateAssociation < ApplicationRecord
   end
 
   private
+
+  # Nur die 16 echten Bundeslaender, und zwar gegen dieselbe Quelle wie die
+  # Ableitung am Spielort (ApplicationRecord.german_states). Ein Tippfehler im
+  # Kuerzel wuerde sonst als „Verband ist fuer nichts zustaendig" durchgehen: die
+  # Pruefung faellt still auf den Bundesverband zurueck, es gibt also keine
+  # Fehlermeldung, an der es auffiele.
+  #
+  # `de-sonstige` ist bewusst nicht erlaubt. Der Wert existiert in der
+  # Vereinsmaske fuer Vereine mit Sitz im Ausland; ein Zustaendigkeitsbereich
+  # „Sonstige" ergibt dagegen keinen Sinn.
+  def states_must_be_known
+    unknown = states.to_a.compact - ApplicationRecord.german_states
+    return if unknown.empty?
+
+    errors.add(:states, "enthaelt unbekannte Bundeslaender: #{unknown.join(', ')}")
+  end
 
   # Die Verbandsmaske bietet als übergeordneten Verbund nur parentlose LVs an
   # und schließt den eigenen aus, per API ist parent_id aber ungeprüft. Ein

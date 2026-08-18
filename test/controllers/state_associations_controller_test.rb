@@ -47,6 +47,47 @@ class StateAssociationsControllerTest < ActionDispatch::IntegrationTest
     assert_nil @own_sa.reload.parent_id
   end
 
+  test 'Admin pflegt die Bundeslaender des Zustaendigkeitsbereichs' do
+    login(@admin)
+    put "/api/v2/admin/state_associations/#{@own_sa.id}",
+        params: { state_association: { name: 'X', states: %w[de-NI de-hb de-ni] } }
+
+    assert_response :success
+    # Normalisiert: kleingeschrieben, entdoppelt, sortiert.
+    assert_equal %w[de-hb de-ni], @own_sa.reload.states
+  end
+
+  test 'Bundeslaender lassen sich wieder leeren' do
+    @own_sa.update!(states: %w[de-ni])
+    login(@admin)
+    put "/api/v2/admin/state_associations/#{@own_sa.id}",
+        params: { state_association: { name: 'X', states: [''] } }
+
+    assert_response :success
+    assert_equal [], @own_sa.reload.states
+  end
+
+  test 'Unbekanntes Bundesland wird abgewiesen' do
+    login(@admin)
+    put "/api/v2/admin/state_associations/#{@own_sa.id}",
+        params: { state_association: { name: 'X', states: %w[de-xx] } }
+
+    assert_response :unprocessable_entity
+    assert_equal [], @own_sa.reload.states
+  end
+
+  test 'SBK kann den eigenen Zustaendigkeitsbereich NICHT ausweiten' do
+    # An den Bundeslaendern haengt der Zugriff auf Spielorte (#468). Duerfte der
+    # regionale SBK sein eigenes Feld pflegen, koennte er sich fremde
+    # Bundeslaender eintragen und damit Spielorte anderer Verbaende loeschen.
+    login(@sbk)
+    put "/api/v2/admin/state_associations/#{@own_sa.id}",
+        params: { state_association: { name: 'X', states: %w[de-nw] } }
+
+    assert_response :success
+    assert_equal [], @own_sa.reload.states
+  end
+
   test 'RSK hat keinen Zugriff auf die LV-Verwaltung' do
     login(@rsk)
     put "/api/v2/admin/state_associations/#{@own_sa.id}",
