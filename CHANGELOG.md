@@ -9,6 +9,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Ein Transferantrag geht wieder an den Verein, der auch in der Oberfläche steht**: Aus welchem Verein eine Person gerade kommt, wurde an drei Stellen verschieden ausgelegt. Die Spielerseite las die zuletzt eingetragene noch gültige Heimat-Zugehörigkeit, der Transferantrag dagegen die zuerst eingetragene, und der Vereinswechsel suchte sich den abgebenden Verein noch einmal anders. Solange nur eine Zugehörigkeit offen ist, fällt das nicht auf. Bei einigen hundert Profilen im Bestand sind zwei offen, und dort standen zwei verschiedene Vereine: Angezeigt wurde der eine, zur Genehmigung ging der Antrag an den anderen, der mit der Person nichts mehr zu tun hatte. Alle Leser gehen jetzt über dieselbe Stelle. Ein stiller Fehler kam dabei mit heraus: Der Transferantrag verlangte das Heimat-Kennzeichen als echten Wahrheitswert; in Altdaten steht dort Text, und für solche Profile meldete er „Spieler hat keinen aktiven Heimverein“, obwohl die Spielerseite sehr wohl einen zeigte. Außerdem führt ein unlesbares Enddatum aus dem Altbestand („unbekannt“, „0000-00-00“) an diesen Stellen nicht mehr zum Serverfehler. Eine solche Zugehörigkeit gilt jetzt als abgelaufen und begründet damit keine Zuständigkeit mehr, statt einen Verein still zum Heimatverein zu machen; gemeldet wird der Fall trotzdem, damit er nicht unsichtbar bleibt. Welcher der beiden Vereine bei den Doppelfällen der richtige ist, steht nicht in den Daten; sie werden deshalb nicht automatisch bereinigt, sondern von `rake players:report_double_home_clubs` zur Klärung aufgelistet.
+
+
 ## [1.87.2] - 2026-08-18
 
 ### Verbessert
