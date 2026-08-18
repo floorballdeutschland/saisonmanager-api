@@ -230,12 +230,36 @@ class Player < ApplicationRecord
   def valid_clubs(deadline)
     return [] unless clubs
 
-    clubs.reject { |l| valid_time?(l['valid_until'], deadline) }
+    # Strukturell kaputte Eintraege (kein Objekt) zaehlen nicht als Mitgliedschaft. Ohne
+    # den Riegel bricht jeder Leser darueber ab, und seit home_club_entry DIE Quelle fuer
+    # den Heimatverein ist, gehoert er hierher statt in jeden Aufrufer einzeln.
+    clubs.reject { |l| !l.is_a?(Hash) || valid_time?(l['valid_until'], deadline) }
   end
 
   def home_club(deadline)
-    last_home_club = home_club_hash(deadline)&.last
-    Club.find_by_id last_home_club['club_id'] if last_home_club
+    entry = home_club_entry(deadline)
+    Club.find_by_id entry['club_id'] if entry
+  end
+
+  # Der clubs-Eintrag, der den aktuellen Heimatverein traegt — die eine Quelle fuer
+  # jeden Leser, der wissen muss, aus welchem Verein eine Person gerade kommt.
+  #
+  # Es gab davon zwei, und sie widersprachen sich. `home_club` las den LETZTEN
+  # gueltigen Heimat-Eintrag, `Admin::TransferRequestsController` suchte mit
+  # `clubs.find { |c| c['home_club'] == true && c['valid_until'].nil? }` den ERSTEN.
+  # Bei 238 Profilen im Bestand (Stand 18.08.2026) sind zwei Heimat-Eintraege offen,
+  # und dort meinten die beiden verschiedene Vereine: Die Oberflaeche zeigte den
+  # einen, der Transferantrag ging zur Genehmigung an den anderen.
+  #
+  # Die alte Controller-Fassung wich in zwei weiteren Punkten ab, beide zum Nachteil:
+  #
+  #   - `== true` statt Boolean-Cast. In Altdaten steht das Flag als String; ein
+  #     solcher Eintrag galt dem Controller nicht als Heimat, und der Antrag scheiterte
+  #     mit "Spieler hat keinen aktiven Heimverein", obwohl `home_club` einen findet.
+  #   - `valid_until.nil?` statt Stichtagsvergleich. Eine Heimat-Zugehoerigkeit mit
+  #     einem Ende in der Zukunft gilt heute noch; der Controller zaehlte sie nicht.
+  def home_club_entry(deadline = Date.current)
+    home_club_hash(deadline)&.last
   end
 
   # Heimat-Zugehörigkeiten, die am Stichtag noch gelten.
@@ -248,9 +272,9 @@ class Player < ApplicationRecord
   def home_club_hash(deadline)
     return unless clubs
 
-    valid_clubs(deadline).reject do |l|
-      !ActiveModel::Type::Boolean.new.cast(l['home_club']) || valid_time?(l['valid_until'], deadline)
-    end
+    # valid_clubs hat mit demselben Praedikat bereits gefiltert; ein zweiter
+    # valid_time?-Aufruf waere tot und wuerde den Melde-Pfad doppelt anstossen.
+    valid_clubs(deadline).reject { |l| !ActiveModel::Type::Boolean.new.cast(l['home_club']) }
   end
 
   def current_licenses(sid = Setting.current_season_id)
@@ -298,26 +322,22 @@ class Player < ApplicationRecord
   end
 
   def transfer(new_club_id, user_id)
-    # get clubs
     player_clubs = clubs
-    # find old club
-    old_club = nil
-    player_clubs.each do |c|
-      old_club = c['club_id'] if c['home_club'] == true && c['valid_until'].nil?
-    end
+    # Derselbe Leser wie ueberall sonst, statt einer dritten eigenen Auslegung.
+    old_club = home_club_entry&.dig('club_id')
 
     player_clubs.map! do |c|
-      # only valid entries
-      if c['valid_until'].nil? || c['valid_until'] > Time.now
-        if c['home_club'] == true
-          # set all home clubs unvalid
-          c['valid_until'] = Time.now
-          c['valid_set_by'] = user_id
-        else
-          # set all non home clubs unvalid
-          c['valid_until'] = Time.now
-          c['valid_set_by'] = user_id
-        end
+      # Jede noch gueltige Zugehoerigkeit wird geschlossen, Heimat wie Zweitspielrecht:
+      # Wer den Verein wechselt, nimmt keine der alten mit.
+      #
+      # Die fruehere Bedingung lautete `c['valid_until'].nil? || c['valid_until'] > Time.now`.
+      # Fuer lesbare Daten war sie richtig — ActiveSupport patcht `Time#<=>`, sodass der
+      # String-gegen-Time-Vergleich koerziert. Bei einem unlesbaren valid_until warf sie
+      # aber `ArgumentError: comparison of String with Time failed`, und der Vereinswechsel
+      # brach ab. Ueber valid_time? ist dieser Fall jetzt abgedeckt.
+      if c.is_a?(Hash) && !valid_time?(c['valid_until'], Date.current)
+        c['valid_until'] = Time.now
+        c['valid_set_by'] = user_id
       end
 
       c
@@ -373,7 +393,7 @@ class Player < ApplicationRecord
       # deep_dup: die zusammengeführten Einträge landen auf dem Master; das
       # anschließende deactivate! mutiert die Clubs/Lizenzen der Secondary und
       # darf die Master-Kopien nicht mit anfassen.
-      master.clubs    = _merge_clubs(clubs, master.clubs)
+      master.clubs    = _merge_clubs(clubs, master.clubs, user_id)
       master.licenses = _merge_licenses(licenses, master.licenses)
       master.save!(validate: false)
 
@@ -941,6 +961,37 @@ class Player < ApplicationRecord
     true
   end
 
+  # Die Heimat-Zugehoerigkeiten, die heute noch laufen -- die eine Definition von "offen"
+  # fuer alle, die sie brauchen (Merge, Wartungslauf, Berichte).
+  #
+  # `valid_until.blank?` allein waere zu eng: `home_club_hash` laesst auch ein Ende in der
+  # ZUKUNFT als laufend gelten. Zwei so gelagerte Eintraege sind fuer den Leser zwei offene
+  # Heimatvereine, waeren aber an einer blank?-Pruefung vorbeigelaufen -- genau der
+  # Widerspruch, den es hier zu beseitigen gilt, haette in dieser Form ueberlebt.
+  #
+  # Eigene Auswertung statt `home_club_hash`, weil der Merge auf einem noch nicht
+  # gespeicherten Array arbeitet und nicht auf `self.clubs`.
+  def self.open_home_club_entries(entries)
+    Array(entries).select do |c|
+      next false unless c.is_a?(Hash)
+      next false unless ActiveModel::Type::Boolean.new.cast(c['home_club'])
+
+      c['valid_until'].blank? || _ende_in_der_zukunft?(c['valid_until'])
+    end
+  end
+
+  def self._ende_in_der_zukunft?(valid_until)
+    Date.parse(valid_until.to_s) >= Date.current
+  rescue ArgumentError, TypeError
+    # Unlesbares Altdatum: nicht als laufend werten. Sonst wuerde der Merge einen Eintrag
+    # schliessen, den kein Leser ohnehin als Heimat anerkennt.
+    false
+  end
+
+  def open_home_club_entries
+    self.class.open_home_club_entries(clubs)
+  end
+
   private
 
   # Entfernt die DELETED-Eintraege, die `deactivate!` bis api#472 an jede laufende
@@ -988,8 +1039,46 @@ class Player < ApplicationRecord
     end
   end
 
+  # true, wenn die Zugehoerigkeit am Stichtag abgelaufen war.
+  #
+  # Ein unlesbares Datum aus dem Altbestand ("unbekannt", "0000-00-00") war bisher kein
+  # Sonderfall: Date.parse brach ab, und jeder Leser darueber endete im 500er.
+  #
+  # Solche Eintraege gelten jetzt als abgelaufen — dieselbe Richtung wie
+  # `LicenseAccessScope#membership_current?`, und die vorsichtige: Ein kaputtes Datum
+  # darf keine Zustaendigkeit begruenden. Wuerde es als laufend gelten, machte es den
+  # Verein ueber `home_club_entry` zum Heimatverein und damit dessen SBK zustaendig
+  # (`sbk_can_access_player?`, `sbk_may_move_player?`) und zum abgebenden Verein eines
+  # Transferantrags. Aus einem lauten 500er wuerde eine stille Falschzustaendigkeit.
+  #
+  # Gemeldet wird der Fall trotzdem, sonst verschwindet er ganz: einmal pro Tag und
+  # Spieler, wie es `report_license_data_defect` haelt.
   def valid_time?(time, deadline)
-    !time.nil? && Date.parse(time) < deadline
+    # blank?, nicht nil?: Ein leeres valid_until heisst im Bestand "kein Ende" und wird
+    # von jedem Geschwistercode so gelesen (membership_current?, MembershipCloser, dem
+    # Legacy-Backfill). Mit nil? galte es als unlesbar und damit als abgelaufen -- das
+    # Profil haette keinen Heimatverein mehr und taeglich eine Sentry-Meldung.
+    return false if time.blank?
+
+    Date.parse(time.to_s) < deadline
+  rescue ArgumentError, TypeError => e
+    # Date::Error erbt von ArgumentError und ist damit mitgefangen.
+    report_membership_date_defect(time, e)
+    true
+  end
+
+  def report_membership_date_defect(time, error)
+    # `sbk_can_undo_deactivation?` schickt eine bewusst id-lose Kopie (`player.dup`) durch
+    # diesen Pfad. Ohne den Riegel kollabierte der Cache-Key auf einen globalen und
+    # drosselte danach alle Faelle, und die Meldung nennte keinen Spieler.
+    return if id.nil?
+    return unless Rails.cache.write("player_membership_date_defect/#{id}", true,
+                                    unless_exist: true, expires_in: 1.day)
+
+    message = "Spieler##{id}: valid_until ist unlesbar (#{time.inspect}), " \
+              "Zugehoerigkeit gilt als abgelaufen — #{error.class}"
+    Rails.logger.error(message)
+    Sentry.capture_message(message) if defined?(Sentry)
   end
 
   def select_license(licenses)
@@ -1020,7 +1109,7 @@ class Player < ApplicationRecord
   # Clubs des Secondary auf den Master übernehmen: alle Master-Einträge behalten,
   # vom Secondary nur ergänzen, was nicht bereits durch denselben aktiven Club
   # abgedeckt ist. deep_dup entkoppelt die Hashes von der Secondary.
-  def _merge_clubs(secondary_clubs, master_clubs)
+  def _merge_clubs(secondary_clubs, master_clubs, user_id = nil)
     secondary_clubs = (secondary_clubs || []).map(&:deep_dup)
     master_clubs    = (master_clubs || []).map(&:deep_dup)
 
@@ -1032,7 +1121,35 @@ class Player < ApplicationRecord
       c['valid_until'].nil? && master_active_club_ids.include?(c['club_id'])
     end
 
-    (master_clubs + additional).sort_by { |c| c['created_at'].to_s }
+    # club_id als zweiter Schluessel: sort_by ist in Ruby nicht als stabil zugesichert, und
+    # Eintraege ohne created_at (Altdaten-Import) teilen sich denselben Schluessel. Ohne
+    # Tiebreaker haenge die Auswahl an der Implementierung.
+    sortiert = (master_clubs + additional).sort_by { |c| [c['created_at'].to_s, c['club_id'].to_i] }
+    _close_surplus_home_clubs(sortiert, user_id)
+  end
+
+  # Nach dem Zusammenfuehren darf hoechstens ein Heimatverein offen sein.
+  #
+  # Die Entdoppelung darueber greift nur bei DEMSELBEN Verein. Zwei verschiedene offene
+  # Heimatvereine -- einer vom Master, einer von der Dublette -- ueberlebten beide, und
+  # danach widersprachen sich die Leser: `home_club` nimmt den letzten, der Transferantrag
+  # bestimmte den abgebenden Verein als ersten. Stand 18.08.2026 trugen 239 der 1231
+  # Merge-Ziele auf Produktion diesen Zustand, also fast jedes fuenfte.
+  #
+  # Behalten wird der zuletzt begonnene Eintrag: Der Merge fuehrt zwei Aufzeichnungen
+  # derselben Person zusammen, und aktuell ist die juengere Zugehoerigkeit. Eintraege ohne
+  # `created_at` (Altdaten-Import) sortieren dabei nach vorn und verlieren gegen einen
+  # datierten -- gewollt, denn ein undatierter Eintrag stammt aus einem Bestand, der vor
+  # allem Datierten liegt.
+  def _close_surplus_home_clubs(entries, user_id)
+    offen = self.class.open_home_club_entries(entries)
+    return entries if offen.size < 2
+
+    offen[0..-2].each do |c|
+      c['valid_until']  = Time.now
+      c['valid_set_by'] = user_id if user_id
+    end
+    entries
   end
 
   # Lizenzen zusammenführen: bei gleichem team_id UND season_id die History-Arrays
