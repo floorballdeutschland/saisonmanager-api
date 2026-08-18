@@ -22,6 +22,12 @@
 #                 Profile genau EINEN offenen Heimatverein -- die Doppelung ist erst
 #                 durch den Merge entstanden.
 #
+# In 15 Zeilen ist der bleibende Verein selbst eine Ablage. Das sind durchweg Faelle, in
+# denen BEIDE offenen Eintraege Ablagen sind -- kein Profil behaelt eine Ablage gegenueber
+# einem echten Verein. Welche der beiden bleibt, entscheidet dort der Altsystem-Stand.
+# Bewusst so belassen (Entscheidung vom 18.08.2026): Diese Profile liegen ohnehin
+# ausschliesslich in Ablagen, ein echter Verein steht nicht zur Wahl.
+#
 # Nicht enthalten sind 21 Faelle mit einem Transfer nach dem 09.07.2026 oder einem
 # gesetzten Enddatum. Ein heute vollzogener Wechsel sieht wegen des tagesgenauen
 # Stichtagsvergleichs bis Mitternacht wie eine Doppelung aus und ist keine.
