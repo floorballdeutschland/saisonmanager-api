@@ -9,6 +9,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Ein Landesverband trägt seine Bundesländer ein**: Welcher Verband für welches Bundesland zuständig ist, stand bisher nirgends im Saisonmanager. Gepflegt war die Zuordnung nur an einer Stelle im Code, mit der die Vereine einmalig ihrem Landesverband zugeordnet wurden, und dort kommt niemand heran, der sie ändern müsste. Die Verbandsmaske hat dafür jetzt ein Feld, mehrwertig, weil ein Verband mehrere Bundesländer betreut: der Floorball-Verband Niedersachsen und Bremen zwei, der Floorball-Verband Rheinland-Pfalz und Saarland zwei, der Floorball-Verband Berlin-Brandenburg zwei. Ein übergeordneter Spielverbund trägt dabei nichts Eigenes ein, sondern erbt den Bereich seiner untergeordneten Verbände, sodass die Zuordnung genau einmal beim zuständigen Landesverband steht. Gepflegt wird das Feld von der Administration und nicht von der Spielbetriebskommission des jeweiligen Verbands, denn daran soll künftig hängen, wer einen Spielort abschalten, zusammenführen und löschen darf. Dürfte jeder Verband seinen eigenen Bereich erweitern, könnte er sich damit selbst Zugriff auf die Spielorte der anderen verschaffen. Solange die Bundesländer nicht eingetragen sind, ändert sich nichts: Jede Auswertung fällt auf den bisherigen Weg zurück.
+
+### Behoben
+
+- **Die Lizenzgebühren-Berechnung startet wieder**: Zu Beginn trägt sie das Bundesland aus der Postleitzahl nach, wo es am Verein fehlt, weil die Auswertung danach gruppiert. Diese Zeile nutzte eine Schreibweise, die es seit einem Rails-Update nicht mehr gibt, und brach deshalb ab, sobald ein Verein ohne Bundesland eine passende Postleitzahl hatte. Die Berechnung endete damit, bevor sie irgendetwas gerechnet hatte. Aufgefallen ist es nicht, weil sie ausschließlich über die Konsole gestartet wird und niemand sie in dieser Zeit angestoßen hat.
+
+### Verbessert
+
+- **Das Bundesland zu einer Postleitzahl wird nur noch an einer Stelle bestimmt**: Die Zuordnung von Postleitzahlbereichen zu Bundesländern lag dreifach im Code, mit drei verschiedenen Fassungen. Eine davon verglich die Bereichsgrenzen so, dass eine Postleitzahl genau auf einer Grenze durchfiel, etwa die 09669 für Frankenberg in Sachsen; sie war zugleich die kaputte Zeile aus der Lizenzgebühren-Berechnung (siehe oben) und ist entfallen. Die verbleibenden Aufrufer teilen sich jetzt eine gemeinsame Ableitung, samt der Sonderfälle: Jungholz und Kleinwalsertal tragen deutsche Postleitzahlen, liegen aber in Österreich und ergeben deshalb kein Bundesland. Neu ist außerdem, dass eine vierstellige ausländische Postleitzahl nicht mehr durchrutscht. Die Bereichstabelle führt führende Nullen als kleinere Zahl, weshalb aus einer Schweizer 8001 bisher Sachsen wurde und aus einer österreichischen 6020 Sachsen-Anhalt.
+
 ## [1.86.0] - 2026-08-18
 
 ### Verbessert

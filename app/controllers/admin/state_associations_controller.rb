@@ -136,6 +136,23 @@ module Admin
                      logo banner_link_url]
       # Den übergeordneten Verband darf nur ein globaler Admin (um-)hängen.
       permitted << :parent_id if current_user.permission_hash[:admin].present?
+      # Der Zuständigkeitsbereich ebenso, und aus einem strengeren Grund als bei
+      # parent_id: an den Bundesländern soll künftig hängen, wer einen Spielort
+      # zusammenführen, löschen und abschalten darf (#468 – heute entscheidet
+      # das noch allein authorize_arena_lifecycle!). Dürfte ein regionaler SBK
+      # sein eigenes Feld pflegen, könnte er sich fremde Bundesländer eintragen
+      # und sich damit selbst Zugriff auf die Spielorte anderer Verbände geben.
+      # Anders als das Ändern einer Spielort-Anschrift, das bewusst in Kauf
+      # genommen ist, wäre das dauerhaft und flächig.
+      #
+      # Schreibweise und Reihenfolge räumt das Modell auf (normalize_states),
+      # damit Rake-Task und Konsole dieselbe Invariante halten. Hier steht nur
+      # die Rechteentscheidung.
+      #
+      # Zu wenig statt zu viel: schickt ein direkter API-Aufruf `states` als
+      # Skalar oder mit einem Nicht-String darin, verwirft `permit` den ganzen
+      # Schlüssel und der gespeicherte Wert bleibt unverändert stehen.
+      permitted << { states: [] } if current_user.permission_hash[:admin].present?
       attrs = params.require(:state_association).permit(*permitted)
       # Kontrollprozess-Flag wird ausschließlich am Root-Landesverband
       # konfiguriert; ein Kind erbt den Wert über
