@@ -147,6 +147,86 @@ module Admin
       assert_equal master.id, game_day.reload.arena_id
     end
 
+    # #451: `active` war über keine Maske erreichbar. Damit die Verwaltung den
+    # Zustand überhaupt anzeigen kann, muss er in der Liste mitkommen.
+    test 'Die Spielortliste liefert den Aktiv-Zustand mit' do
+      inactive = create(:arena, active: false)
+      login(create(:user, :sbk_scoped))
+
+      get '/api/v2/admin/arenas'
+
+      assert_response :success
+      by_id = JSON.parse(response.body).index_by { |a| a['id'] }
+      assert_equal true, by_id[@arena.id]['active']
+      assert_equal false, by_id[inactive.id]['active']
+    end
+
+    test 'SBK darf einen inaktiven Spielort wieder aktivieren' do
+      arena = create(:arena, active: false)
+      login(create(:user, :sbk_scoped))
+
+      put "/api/v2/admin/arenas/#{arena.id}",
+          params: { name: arena.name, city: arena.city, active: true }
+
+      assert_response :success
+      assert arena.reload.active
+      assert_equal true, JSON.parse(response.body)['active']
+    end
+
+    test 'SBK darf einen Spielort deaktivieren' do
+      login(create(:user, :sbk_scoped))
+
+      put "/api/v2/admin/arenas/#{@arena.id}",
+          params: { name: @arena.name, city: @arena.city, active: false }
+
+      assert_response :success
+      assert_not @arena.reload.active
+    end
+
+    test 'Admin darf einen inaktiven Spielort wieder aktivieren' do
+      arena = create(:arena, active: false)
+      login(create(:user, :admin))
+
+      put "/api/v2/admin/arenas/#{arena.id}",
+          params: { name: arena.name, city: arena.city, active: true }
+
+      assert_response :success
+      assert arena.reload.active
+    end
+
+    # Der Zustand bleibt stehen, wenn eine Maske ihn gar nicht mitschickt –
+    # sonst würde jedes Umbenennen einen Spielort stillschweigend deaktivieren.
+    test 'Ein Update ohne active laesst den Zustand unveraendert' do
+      login(create(:user, :sbk_scoped))
+
+      put "/api/v2/admin/arenas/#{@arena.id}", params: { name: 'Neue Halle', city: @arena.city }
+
+      assert_response :success
+      assert @arena.reload.active
+    end
+
+    # Regression auf die eigentliche Meldung aus #451: der Weg vom Aktivieren
+    # bis in die Spielplanverwaltung. additional_references filtert auf Arena.active.
+    test 'Ein wieder aktivierter Spielort steht im Spielplan zur Auswahl' do
+      league = create(:league)
+      arena = create(:arena, name: 'Gymnasium-Halle Puchheim', city: 'Puchheim', active: false)
+      login(create(:user, :admin))
+
+      get "/api/v2/admin/leagues/#{league.id}/additional_references"
+      assert_response :success
+      assert_not_includes JSON.parse(response.body)['arenas'].map { |a| a['name'] }, 'Gymnasium-Halle Puchheim'
+
+      put "/api/v2/admin/arenas/#{arena.id}",
+          params: { name: arena.name, city: arena.city, active: true }
+      assert_response :success
+
+      get "/api/v2/admin/leagues/#{league.id}/additional_references"
+
+      assert_response :success
+      names = JSON.parse(response.body)['arenas'].map { |a| a['name'] }
+      assert_includes names, 'Gymnasium-Halle Puchheim'
+    end
+
     private
 
     def login(user)

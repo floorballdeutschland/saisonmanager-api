@@ -89,7 +89,12 @@ module Admin
     end
 
     def arena_params
-      params.permit(:name, :city, :street, :housenumber, :postcode)
+      # `active` steuert, ob der Spielort im Spieltag-Dropdown auftaucht. Das Feld
+      # stammt aus der Altdatenübernahme und war bis #451 über keine Maske
+      # erreichbar – ein inaktiver Bestandsspielort war damit nicht selbst
+      # reparierbar. Anlegen setzt `active` weiterhin selbst (s. create), hier
+      # zählt es nur für update.
+      params.permit(:name, :city, :street, :housenumber, :postcode, :active)
     end
 
     def find_duplicates

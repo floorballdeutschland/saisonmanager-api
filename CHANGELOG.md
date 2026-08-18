@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Ein Spielort lässt sich wieder aktiv schalten**: Ob ein Spielort im Spieltag zur Auswahl steht, hängt an einem Kennzeichen, das seit der Altdatenübernahme von 2017 mitläuft und in der Verwaltung nirgends zu sehen war. Von den gut tausend Spielorten im Bestand trägt knapp die Hälfte das Kennzeichen nicht, sie fehlen also im Spielplan, ohne dass die Liste einen Unterschied gezeigt hätte. Wer das bemerkte, hatte keinen Weg zurück: Ändern ließ sich das Kennzeichen über keine Maske, und Löschen scheitert, sobald Spieltage an dem Eintrag hängen. Blieb nur, den Spielort neu anzulegen und die Dublette anschließend zusammenzuführen. Die Spielorte-Liste zeigt den Zustand jetzt in einer eigenen Spalte, und in der Bearbeiten-Maske schalten die Spielbetriebskommission und die Administration ihn um. Neu angelegte Spielorte sind unverändert von sich aus aktiv. Ein Altbestandseintrag ohne Namen oder Ort verlangt beim Aktivieren beides nachzutragen, denn genau daraus baut der Spielplan seine Ortsangabe.
+
 ## [1.85.0] - 2026-08-18
 
 ### Neu
