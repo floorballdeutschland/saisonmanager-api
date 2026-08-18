@@ -240,7 +240,63 @@ module Admin
       assert_includes names, 'Gymnasium-Halle Puchheim'
     end
 
+    # Gegenrichtung zum Test darueber, und die Zusage, die der CHANGELOG-Eintrag
+    # zum Abschalten gibt: Der Spielort verschwindet aus der Auswahlliste des
+    # Spielplans.
+    test 'Ein abgeschalteter Spielort verschwindet aus der Spielplan-Auswahl' do
+      league = create(:league)
+      arena = create(:arena, name: 'Gymnasium-Halle Puchheim', city: 'Puchheim')
+      login(create(:user, :admin))
+
+      get "/api/v2/admin/leagues/#{league.id}/additional_references"
+      assert_response :success
+      assert_includes JSON.parse(response.body)['arenas'].map { |a| a['name'] }, 'Gymnasium-Halle Puchheim'
+
+      put "/api/v2/admin/arenas/#{arena.id}",
+          params: { name: arena.name, city: arena.city, active: false }
+      assert_response :success
+
+      get "/api/v2/admin/leagues/#{league.id}/additional_references"
+
+      assert_response :success
+      assert_not_includes JSON.parse(response.body)['arenas'].map { |a| a['name'] }, 'Gymnasium-Halle Puchheim'
+    end
+
+    # Die Importvorlage haengt am selben Arena.active. Sie ist die haertere
+    # Folge des Abschaltens: Eine bereits verteilte Datei, die den Spielort
+    # nennt, laeuft danach im Import auf "Halle nicht erkannt".
+    test 'Ein abgeschalteter Spielort fehlt in der Importvorlage' do
+      league = create(:league)
+      arena = create(:arena, name: 'Gymnasium-Halle Puchheim', city: 'Puchheim')
+      login(create(:user, :admin))
+
+      assert_includes template_arena_names(league), 'Puchheim, Gymnasium-Halle Puchheim'
+
+      put "/api/v2/admin/arenas/#{arena.id}",
+          params: { name: arena.name, city: arena.city, active: false }
+      assert_response :success
+
+      assert_not_includes template_arena_names(league), 'Puchheim, Gymnasium-Halle Puchheim'
+    end
+
     private
+
+    # Spalte B des Hallen-Blocks der Importvorlage (arena.schedule_item).
+    def template_arena_names(league)
+      get "/api/v2/admin/leagues/#{league.id}/schedule_import_template.xlsx"
+      assert_response :success
+
+      file = Tempfile.new(['template', '.xlsx'])
+      file.binmode
+      file.write(response.body)
+      file.flush
+
+      Creek::Book.new(file.path, with_headers: false).sheets.flat_map do |sheet|
+        sheet.simple_rows.map { |row| row['B'] }
+      end.compact
+    ensure
+      file&.close
+    end
 
     def login(user)
       post '/api/v2/login', params: { username: user.user_name, password: 'password123' }

@@ -89,11 +89,13 @@ module Admin
     end
 
     def arena_params
-      # `active` steuert, ob der Spielort im Spieltag-Dropdown auftaucht. Das Feld
-      # stammt aus der Altdatenübernahme und war bis #451 über keine Maske
-      # erreichbar: ein inaktiver Bestandsspielort war damit nicht selbst
-      # reparierbar. Anlegen setzt `active` weiterhin selbst (s. create), hier
-      # zählt es nur für update.
+      # `active` steuert, ob der Spielort im Spieltag-Dropdown auftaucht. Bis
+      # ecc2f9b (#82, 1.12.0) hing `scope :active` an der Spalte `disabled`, die
+      # `arena_params` auch erlaubte; mit dem Entfernen von `disabled` wanderte
+      # der Scope auf das seit 2017 mitlaufende `active` (Default false) und
+      # ließ die knappe Hälfte des Bestandes aus dem Spieltag fallen, ohne dass
+      # eine Maske noch herangekommen wäre (#451). Anlegen setzt `active`
+      # weiterhin selbst (s. create), hier zählt es nur für update.
       #
       # Damit darf jede SBK auch abschalten, und das wirkt verbandsübergreifend
       # (der Spielort fällt überall aus dem Spieltag-Dropdown und aus der
