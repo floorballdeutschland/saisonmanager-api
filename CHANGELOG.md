@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Trifft die Spieleranlage auf ein vorhandenes Profil, sagt die Meldung jetzt, wie es weitergeht**: Angelegt wird nicht, sobald es zu Vorname, Nachname und Geburtsdatum schon ein Profil gibt. Genannt wurde bisher nur dessen interne Nummer („Es existiert ein Spieler mit diesen Daten (ID: 212). Anlegen nicht möglich."), und damit stand ein Vereinsmanager vor einer Sackgasse: Ein Profil eines fremden Vereins kann er nicht aufrufen, und ein deaktiviertes findet er auch über die Spielersuche des Transferantrags nicht, weil die nur aktive Profile kennt. Die Meldung nennt jetzt den nächsten Schritt. Gehört das Profil zum eigenen Verein, verweist sie auf die Vereinsspielerliste. Liegt es bei einem anderen Verein, auf den Transferantrag. Ist es deaktiviert, auf die zuständige Spielbetriebskommission, samt der Spieler-ID, damit die das Profil ohne Rückfrage findet.
+
 ## [1.87.0] - 2026-08-18
 
 ### Neu
