@@ -19,6 +19,20 @@ class ActiveSupport::TestCase
   # Phase 1 stellt Factories für Setting, GameOperation, Club, Arena, League,
   # Team, Player, User bereit (siehe test/README.md).
   include FactoryBot::Syntax::Methods
+
+  # Deaktivierung im Zustand VOR api#472: zusaetzlich zur Kennzeichnung sind alle
+  # gueltigen Vereinszugehoerigkeiten geschlossen und alle laufenden Lizenzen auf
+  # DELETED gesetzt.
+  #
+  # Auf Produktion liegen tausende Profile in genau diesem Zustand. Tests, die die
+  # Ruecknahme dieser Nebenwirkungen pruefen (`Player#reactivate!`,
+  # `rake players:reset_deactivation_side_effects`, `Club#players`), muessen ihn
+  # herstellen — `deactivate!` selbst erzeugt ihn nicht mehr.
+  def legacy_deactivate!(player, user_id, reason: nil)
+    player._void_memberships_and_licenses!(user_id, reason: reason || 'Deaktiviert')
+    player.deactivate!(user_id, reason: reason)
+    player
+  end
 end
 
 # Rack::Attack zählt seine Throttles in einem Cache-Store, den es sich beim

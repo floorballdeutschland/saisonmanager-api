@@ -106,15 +106,22 @@ class ClubTest < ActiveSupport::TestCase
   end
 
   # Club#players(include_deactivated:) – der Zweig, der die VM-Spielerliste speist.
-  # Aufgenommen wird nur, wessen Zugehoerigkeit die Deaktivierung selbst geschlossen
-  # hat; alles andere bleibt draussen wie bisher.
-  test 'players(include_deactivated: true) nimmt nur von der Deaktivierung geschlossene Zugehoerigkeiten' do
+  #
+  # Seit api#472 laesst die Deaktivierung die Zugehoerigkeit offen, deaktivierte
+  # Profile kommen also ueber den regulaeren Zweig herein. Der Zweig fuer
+  # geschlossene Zugehoerigkeiten deckt nur noch den Bestand ab (siehe
+  # legacy_deactivate!): aufgenommen wird dort nur, wessen Zugehoerigkeit die
+  # Deaktivierung selbst geschlossen hat.
+  test 'players(include_deactivated: true) nimmt Deaktivierte und den Alt-Bestand mit geschlossener Zugehoerigkeit' do
     club = create(:club)
     user_id = 4711
 
     aktiv       = create(:player, clubs: [{ 'club_id' => club.id, 'home_club' => true }])
     deaktiviert = create(:player, clubs: [{ 'club_id' => club.id, 'home_club' => true }])
     deaktiviert.deactivate!(user_id, reason: 'Karriereende')
+
+    alt_bestand = create(:player, clubs: [{ 'club_id' => club.id, 'home_club' => true }])
+    legacy_deactivate!(alt_bestand, user_id, reason: 'Karriereende')
 
     # Zweitspielrecht, das vor einem Jahr ablief; deaktiviert wurde spaeter von
     # derselben Person. Der Verein ist nicht mehr zustaendig, valid_set_by allein
@@ -124,7 +131,7 @@ class ClubTest < ActiveSupport::TestCase
       { 'club_id' => club.id, 'home_club' => false,
         'valid_until' => 1.year.ago.iso8601, 'valid_set_by' => user_id }
     ])
-    ausgelaufen.deactivate!(user_id, reason: 'Karriereende')
+    legacy_deactivate!(ausgelaufen, user_id, reason: 'Karriereende')
 
     # Die beiden folgenden Faelle haben ihr valid_until bewusst am Zeitpunkt der
     # Deaktivierung: sie fallen allein am Auslöser-Vergleich heraus, nicht schon an der
@@ -132,19 +139,20 @@ class ClubTest < ActiveSupport::TestCase
     #
     # Geschlossen von einer anderen Person als der, die deaktiviert hat.
     fremder_ausloeser = create(:player, clubs: [{ 'club_id' => club.id, 'home_club' => true }])
-    fremder_ausloeser.deactivate!(user_id, reason: 'Karriereende')
+    legacy_deactivate!(fremder_ausloeser, user_id, reason: 'Karriereende')
     fremder_ausloeser.update_column(:deactivated_by, user_id + 1)
 
     # Altdaten: geschlossen ohne valid_set_by. Bleiben bewusst ausgeblendet, wie vor
     # der Aenderung auch.
     legacy = create(:player, clubs: [{ 'club_id' => club.id, 'home_club' => true }])
-    legacy.deactivate!(user_id, reason: 'Karriereende')
+    legacy_deactivate!(legacy, user_id, reason: 'Karriereende')
     legacy.clubs.each { |c| c.delete('valid_set_by') }
     legacy.save!(validate: false)
 
     ids = club.players(include_deactivated: true).map(&:id)
     assert_includes ids, aktiv.id
-    assert_includes ids, deaktiviert.id
+    assert_includes ids, deaktiviert.id, 'offene Zugehoerigkeit trotz Deaktivierung'
+    assert_includes ids, alt_bestand.id, 'von der Alt-Deaktivierung geschlossene Zugehoerigkeit'
     refute_includes ids, ausgelaufen.id, 'abgelaufenes Zweitspielrecht darf nicht wieder auftauchen'
     refute_includes ids, fremder_ausloeser.id, 'fremder valid_set_by darf nicht als Deaktivierung gelten'
     refute_includes ids, legacy.id, 'Altdaten ohne valid_set_by bleiben ausgeblendet'

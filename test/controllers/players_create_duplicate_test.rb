@@ -7,8 +7,13 @@ require 'test_helper'
 # Für einen Vereinsmanager war das eine Sackgasse. Am 18.08.2026 stand ein VM
 # genau davor: Das Profil gehörte einem anderen Verein und war dort kurz zuvor
 # deaktiviert worden, also fand er es weder in seiner Spielerliste noch über die
-# Spielersuche des Transferantrags (die sucht in `Player.active`). Die Meldung
+# Spielersuche des Transferantrags (die suchte in `Player.active`). Die Meldung
 # sagt jetzt, was als Nächstes zu tun ist.
+#
+# Seit api#472 ist die Deaktivierung nur noch eine Kennzeichnung der Vereinsansicht:
+# Die Suche des Transferantrags findet solche Profile wieder, und ein Transfer ist
+# möglich. Deshalb verweist die Meldung auch bei einem deaktivierten Profil auf den
+# regulären Weg statt an die SBK; die Kennzeichnung kommt nur als Zusatz dazu.
 #
 # Eigene Datei, weil players_controller_test.rb sonst über Metrics/ClassLength läuft.
 class PlayersCreateDuplicateTest < ActionDispatch::IntegrationTest
@@ -35,20 +40,46 @@ class PlayersCreateDuplicateTest < ActionDispatch::IntegrationTest
     JSON.parse(response.body)['message']
   end
 
-  test 'deaktiviertes Profil verweist auf die SBK und nennt die Spieler-ID' do
+  # Der Fall vom 18.08.2026, jetzt unter der neuen Semantik: Das deaktivierte Profil
+  # eines fremden Vereins ist über den Transferantrag erreichbar, die Meldung darf den
+  # VM also nicht mehr an die SBK abschieben. Die Kennzeichnung wird trotzdem genannt,
+  # sonst wundert er sich, warum das Profil in keiner Vereinsliste steht.
+  test 'deaktiviertes Profil eines fremden Vereins verweist auf den Transferantrag' do
     fremder_verein = create(:club)
     vorhanden = create(:player,
                        clubs: [{ 'club_id' => fremder_verein.id, 'home_club' => true,
-                                 'created_at' => 3.years.ago.iso8601,
-                                 'valid_until' => 1.day.ago.iso8601 }],
+                                 'created_at' => 3.years.ago.iso8601 }],
                        deactivated_at: 1.day.ago)
 
     anlegen_versuchen(vorhanden)
 
     assert_response :unprocessable_entity
-    assert_match 'SBK', meldung
+    assert_match 'Transferantrag', meldung
+    assert_match 'deaktiviert', meldung
     assert_match "Spieler-ID #{vorhanden.id}", meldung
-    'Es darf kein zweites Profil entstanden sein'
+    assert_no_match(/kein zweites Profil/, meldung)
+  end
+
+  # Altbestand: Vor api#472 hat die Deaktivierung die Zugehörigkeit mitgeschlossen.
+  # In der VM-Spielerliste steht das Profil trotzdem, denn
+  # `Club#players(include_deactivated: true)` nimmt genau diese Zugehörigkeit mit.
+  # Ein Transferantrag gegen den eigenen Verein wäre hier der falsche Hinweis.
+  test 'von der Deaktivierung geschlossene eigene Zugehoerigkeit verweist auf die Spielerliste' do
+    geschlossen_am = 1.day.ago
+    vorhanden = create(:player,
+                       clubs: [{ 'club_id' => @club.id, 'home_club' => true,
+                                 'created_at' => 3.years.ago.iso8601,
+                                 'valid_until' => geschlossen_am.iso8601,
+                                 'valid_set_by' => @vm.id }],
+                       deactivated_at: geschlossen_am,
+                       deactivated_by: @vm.id)
+
+    anlegen_versuchen(vorhanden)
+
+    assert_response :unprocessable_entity
+    assert_match 'Spielerliste', meldung
+    assert_match 'deaktiviert', meldung
+    assert_no_match(/Transferantrag/, meldung)
   end
 
   test 'aktives Profil eines anderen Vereins verweist auf den Transferantrag' do
