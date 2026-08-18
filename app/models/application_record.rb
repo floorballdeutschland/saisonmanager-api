@@ -204,17 +204,25 @@ class ApplicationRecord < ActiveRecord::Base
   end
 
   # Die 16 Bundeslaender als ISO-Kuerzel, abgeleitet aus den PLZ-Bereichen oben.
-  # Bewusst keine zweite Aufzaehlung: das Bundesland eines Spielorts entsteht aus
-  # genau dieser Tabelle (Arena#state), und die Zustaendigkeit eines
-  # Landesverbands wird dagegen geprueft (StateAssociation#states, #468). Zwei
+  # Bewusst keine zweite Aufzaehlung: das Bundesland eines Vereins steht in
+  # Club#state und stammt aus genau dieser Tabelle, fuer Spielorte wird es
+  # kuenftig ueber state_for_postcode abgeleitet (#468). Dagegen wird die
+  # Zustaendigkeit eines Landesverbands geprueft (StateAssociation#states). Zwei
   # getrennte Listen wuerden irgendwann auseinanderlaufen, und dann waere die
   # Zustaendigkeit fuer ein Bundesland stumm nicht mehr zuweisbar.
   #
-  # Memoisiert auf der Klasse und nicht als Konstante, damit die Reihenfolge im
-  # Klassenrumpf keine Rolle spielt (postcodes ist eine Methode, kein Literal).
+  # Das Frontend fuehrt zwangslaeufig eine eigene Liste, weil es zusaetzlich
+  # Klartextnamen braucht. Beide Seiten sind auf dasselbe Literal festgenagelt
+  # (application_record_postcode_state_test.rb und german-states.spec.ts), damit
+  # ein Auseinanderlaufen in CI auffaellt und nicht erst beim Speichern.
   #
-  # `compact` ist Pflicht: zwei Bereiche (Jungholz, Kleinwalsertal) tragen nur
-  # `region: 'Ausserhalb der BRD'` und gar keinen isocode. Ohne das Filtern
+  # Memoisiert als Klassen-Instanzvariable, damit die Reihenfolge im Klassenrumpf
+  # keine Rolle spielt (postcodes ist eine Methode, kein Literal). Kein
+  # gemeinsamer Cache: Klassen-Ivars werden nicht vererbt, ein Aufruf ueber eine
+  # Subklasse baut eine eigene Kopie. Bei 16 Eintraegen ohne Belang.
+  #
+  # `filter_map` und nicht `map`: zwei Bereiche (Jungholz, Kleinwalsertal) tragen
+  # nur `region: 'Ausserhalb der BRD'` und gar keinen isocode. Ohne das Filtern
   # steckt ein nil in der Liste, und `sort` bricht damit sofort mit
   # ArgumentError ab.
   def self.german_states
@@ -222,24 +230,33 @@ class ApplicationRecord < ActiveRecord::Base
   end
 
   # Bundesland-Kuerzel zu einer deutschen Postleitzahl, oder nil wenn die PLZ
-  # fehlt oder in keinem Bereich liegt.
+  # fehlt, nicht deutsch aussieht oder in keinem Bereich liegt.
+  #
+  # Fuenfstelligkeit ist Teil der Methode und nicht Sache des Aufrufers. Die
+  # Tabelle fuehrt fuehrende Nullen als kleinere Zahl (`{from: 8001, till: 9669}`
+  # fuer Sachsen), eine vierstellige auslaendische PLZ trifft also einen echten
+  # Bereich: ohne diese Pruefung wird aus 8001 (Zuerich) ein `de-sn` und aus 6020
+  # (Innsbruck) ein `de-st`. Beide bisherigen Aufrufer haben das selbst geprueft;
+  # bei einer geteilten Methode, an der ab #468 eine Berechtigung haengt, gehoert
+  # es hierher – sonst verschafft ein Spielort in Zuerich dem FVS Zugriff.
   #
   # `cover?` und nicht `from < n && till > n`: die Bereiche sind einschliesslich,
   # ein strikter Vergleich verfehlt jede PLZ, die genau auf einer Grenze liegt
-  # (09669 Frankenberg zum Beispiel). Genau so stand es im inzwischen geloeschten
-  # Club#update_state, das die Ableitung dreimal im Code als einziges falsch
-  # hatte.
+  # (09669 Frankenberg, in der Tabelle als `8001..9669`). Genau so stand es im
+  # inzwischen geloeschten Club#update_state, das die Ableitung dreimal im Code
+  # als einziges falsch hatte.
   #
   # `dig` statt `fetch`, weil die beiden isocode-losen Bereiche (s. german_states)
   # sonst mit KeyError abbrechen wuerden – und zwar bei fuenfstelligen PLZ, die
-  # jede Plausibilitaetspruefung fuer deutsch haelt.
+  # diese Pruefung fuer deutsch haelt.
   #
   # Bei mehrfach belegten PLZ gewinnt der erste Treffer der Tabelle: fuer 21039
-  # und 22145 steht Schleswig-Holstein vor Hamburg.
+  # und 22145 steht Schleswig-Holstein vor Hamburg. Das folgt allein aus der
+  # Reihenfolge des Literals oben, deshalb haelt der Test es fest.
   def self.state_for_postcode(postcode)
-    value = postcode.to_s.strip.to_i
-    return nil if value <= 0
+    value = postcode.to_s.strip
+    return nil unless value.match?(/\A\d{5}\z/)
 
-    postcodes.find { |pc| (pc[:from]..pc[:till]).cover?(value) }&.dig(:isocode)
+    postcodes.find { |pc| (pc[:from]..pc[:till]).cover?(value.to_i) }&.dig(:isocode)
   end
 end

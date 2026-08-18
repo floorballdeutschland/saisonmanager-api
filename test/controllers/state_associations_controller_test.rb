@@ -58,6 +58,20 @@ class StateAssociationsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test 'Bundeslaender lassen sich wieder leeren' do
+    # So sendet die Maske: JSON mit einem echten leeren Array.
+    @own_sa.update!(states: %w[de-ni])
+    login(@admin)
+    put "/api/v2/admin/state_associations/#{@own_sa.id}",
+        params: { state_association: { name: 'X', states: [] } }, as: :json
+
+    assert_response :success
+    assert_equal [], @own_sa.reload.states
+  end
+
+  test 'Leerer String im Bereich zaehlt als kein Bundesland' do
+    # Formular-kodierte Aufrufer koennen ein leeres Array nicht ausdruecken und
+    # muessen einen leeren String schicken. Ohne das Filtern meldete die
+    # Validierung ein unbekanntes Bundesland ohne Namen.
     @own_sa.update!(states: %w[de-ni])
     login(@admin)
     put "/api/v2/admin/state_associations/#{@own_sa.id}",
@@ -76,16 +90,49 @@ class StateAssociationsControllerTest < ActionDispatch::IntegrationTest
     assert_equal [], @own_sa.reload.states
   end
 
-  test 'SBK kann den eigenen Zustaendigkeitsbereich NICHT ausweiten' do
-    # An den Bundeslaendern haengt der Zugriff auf Spielorte (#468). Duerfte der
+  test 'SBK kann den eigenen Zustaendigkeitsbereich weder ausweiten noch leeren' do
+    # An den Bundeslaendern haengt ab #468 der Zugriff auf Spielorte. Duerfte der
     # regionale SBK sein eigenes Feld pflegen, koennte er sich fremde
     # Bundeslaender eintragen und damit Spielorte anderer Verbaende loeschen.
+    #
+    # Die zweite Richtung ist der wahrscheinlichere Unfall: Die Maske sendet
+    # `states` bedingungslos mit, auch dem SBK, dem das Feld gar nicht angezeigt
+    # wird. Ein stilles Leeren erzeugt keine Fehlermeldung, an der es auffiele.
+    @own_sa.update!(states: %w[de-ni])
     login(@sbk)
+
     put "/api/v2/admin/state_associations/#{@own_sa.id}",
         params: { state_association: { name: 'X', states: %w[de-nw] } }
-
     assert_response :success
-    assert_equal [], @own_sa.reload.states
+    assert_equal %w[de-ni], @own_sa.reload.states
+
+    put "/api/v2/admin/state_associations/#{@own_sa.id}",
+        params: { state_association: { name: 'X', states: [] } }, as: :json
+    assert_response :success
+    assert_equal %w[de-ni], @own_sa.reload.states
+  end
+
+  test 'SBK kann keinen Landesverband mit eigenem Zustaendigkeitsbereich anlegen' do
+    # Beim Anlegen traegt nicht der permit-Filter, sondern authorize_admin!.
+    # Faellt diese Zeile einmal ("SBK darf eigene Untergliederungen anlegen"),
+    # legt sich jeder SBK einen LV mit selbst gewaehltem Bereich an und hat ab
+    # #468 Loeschrechte auf fremde Spielorte. Der update-Test faengt das nicht.
+    login(@sbk)
+    assert_no_difference -> { StateAssociation.count } do
+      post '/api/v2/admin/state_associations',
+           params: { state_association: { name: 'Selbst angelegt', short_name: 'SLB', states: %w[de-nw] } }
+    end
+
+    assert_response :forbidden
+  end
+
+  test 'Admin legt einen Landesverband mit Zustaendigkeitsbereich an' do
+    login(@admin)
+    post '/api/v2/admin/state_associations',
+         params: { state_association: { name: 'Neuer LV', short_name: 'NLV', states: %w[de-NW de-nw] } }
+
+    assert_response :created
+    assert_equal %w[de-nw], StateAssociation.find_by(short_name: 'NLV').states
   end
 
   test 'RSK hat keinen Zugriff auf die LV-Verwaltung' do

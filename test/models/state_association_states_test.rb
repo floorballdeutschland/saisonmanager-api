@@ -30,7 +30,35 @@ class StateAssociationStatesTest < ActiveSupport::TestCase
   test 'de-sonstige ist kein Zustaendigkeitsbereich' do
     # Die Vereinsmaske kennt den Wert fuer Vereine mit Sitz im Ausland, ein
     # Verband kann dafuer aber nicht zustaendig sein.
-    assert_not build(:state_association, states: ['de-sonstige']).valid?
+    sa = build(:state_association, states: ['de-sonstige'])
+
+    assert_not sa.valid?
+    # Auf die Meldung geprueft, damit der Test nicht gruen bleibt, wenn er
+    # eines Tages aus einem ganz anderen Grund ungueltig ist.
+    assert_match(/de-sonstige/, sa.errors.full_messages.join(' '))
+  end
+
+  test 'Schreibweise, Dubletten und Reihenfolge raeumt das Modell auf' do
+    # Nicht der Controller: sonst haelt nur die Maske die Invariante, und ein
+    # `DE-NW` aus Rake-Task oder Konsole wuerde gespeichert und wirkte nie.
+    sa = create(:state_association, states: ['de-NW', ' de-ni ', 'de-nw', ''])
+
+    assert_equal %w[de-ni de-nw], sa.states
+  end
+
+  test 'states nil wird zum leeren Bereich statt zum Datenbankfehler' do
+    assert_equal [], create(:state_association, states: nil).states
+  end
+
+  test 'covers_state? normalisiert das Argument' do
+    # Das Argument kommt von aussen, nicht aus `states`: `clubs.state` ist ein
+    # freies Textfeld ohne Inclusion-Validierung. Ein `DE-NW` aus einem Import
+    # wuerde den Verband sonst stumm von seinen eigenen Spielorten aussperren.
+    sa = create(:state_association, states: %w[de-nw])
+
+    assert sa.covers_state?('DE-NW')
+    assert sa.covers_state?(' de-nw ')
+    assert_not sa.covers_state?('de-he')
   end
 
   test 'Uebergeordneter Spielverbund erbt die Bundeslaender seiner Kinder' do
