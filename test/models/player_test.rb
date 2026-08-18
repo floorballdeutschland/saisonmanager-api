@@ -142,23 +142,32 @@ class PlayerTest < ActiveSupport::TestCase
   # Player#deactivate!(user_id, reason: nil)
   # ---------------------------------------------------------------------------
 
-  test 'deactivate! setzt valid_until auf allen Clubs ohne Ablaufdatum' do
+  # Der Kern von api#472: Die Deaktivierung ist eine Kennzeichnung fuer die
+  # Vereinsansicht und ruehrt die Stammdaten nicht an. Vorher schloss sie jede
+  # gueltige Zugehoerigkeit — beim Grund "Vereinsaustritt" verlor die Person damit
+  # ihren Heimatverein und war fuer den aufnehmenden Verein nicht mehr erreichbar.
+  test 'deactivate! laesst Vereinszugehoerigkeiten unberuehrt' do
     create(:setting, current_season_id: '18')
     user = create(:user)
     player = create(:player)
+    laeuft_bis = 3.months.from_now.iso8601
     player.clubs = [
       { 'club_id' => 1, 'home_club' => true },
-      { 'club_id' => 2, 'home_club' => false }
+      { 'club_id' => 2, 'home_club' => false, 'valid_until' => laeuft_bis, 'valid_set_by' => 99 }
     ]
     player.save!(validate: false)
 
-    player.deactivate!(user.id)
+    player.deactivate!(user.id, reason: 'Vereinsaustritt')
     player.reload
 
-    player.clubs.each do |c|
-      assert_not_nil c['valid_until'], "club_id #{c['club_id']} sollte valid_until haben"
-      assert_equal user.id, c['valid_set_by']
-    end
+    heim = player.clubs.find { |c| c['club_id'] == 1 }
+    assert_nil heim['valid_until'], 'Heimatzugehoerigkeit muss offen bleiben'
+    assert_nil heim['valid_set_by']
+
+    zweit = player.clubs.find { |c| c['club_id'] == 2 }
+    assert_equal laeuft_bis, zweit['valid_until'], 'Befristung darf nicht vorgezogen werden'
+    assert_equal 99, zweit['valid_set_by']
+    refute zweit.key?(Player::VALID_BEFORE_DEACTIVATION), 'ohne Eingriff braucht es keine Sicherung'
   end
 
   test 'deactivate! und reactivate! funktionieren bei nil-Clubs/-Lizenzen (Altdaten)' do
@@ -193,38 +202,24 @@ class PlayerTest < ActiveSupport::TestCase
     assert_equal other.id, player.clubs.first['valid_set_by']
   end
 
-  test 'deactivate! hängt DELETED-Eintrag an APPROVED-Lizenzen an' do
+  test 'deactivate! laesst laufende Lizenzen unberuehrt' do
     create(:setting, current_season_id: '18')
     user   = create(:user)
     league = create(:league, :current_season)
-    team   = create(:team, league: league)
     player = create(:player, with_licenses: [
-      { team: team, status: License::APPROVED }
+      { team: create(:team, league: league), status: License::APPROVED },
+      { team: create(:team, league: league), status: License::REQUESTED }
     ])
+    groessen = player.licenses.map { |l| l['history'].size }
 
     player.deactivate!(user.id, reason: 'Karriereende')
     player.reload
 
-    last = player.licenses.first['history'].last
-    assert_equal License::DELETED, last['license_status_id'].to_i
-    assert_equal 'Karriereende',   last['reason']
-    assert_equal user.id,          last['created_by']
-  end
-
-  test 'deactivate! hängt DELETED-Eintrag an REQUESTED-Lizenzen an' do
-    create(:setting, current_season_id: '18')
-    user   = create(:user)
-    league = create(:league, :current_season)
-    team   = create(:team, league: league)
-    player = create(:player, with_licenses: [
-      { team: team, status: License::REQUESTED }
-    ])
-
-    player.deactivate!(user.id)
-    player.reload
-
-    last = player.licenses.first['history'].last
-    assert_equal License::DELETED, last['license_status_id'].to_i
+    assert_equal groessen, player.licenses.map { |l| l['history'].size },
+                 'kein zusaetzlicher Verlaufseintrag'
+    player.licenses.each do |l|
+      refute_equal License::DELETED, l['history'].last['license_status_id'].to_i
+    end
   end
 
   test 'deactivate! berührt keine nicht-aktiven Lizenzen' do
@@ -256,20 +251,15 @@ class PlayerTest < ActiveSupport::TestCase
     assert_equal   'Vereinsaustritt', player.deactivation_reason
   end
 
-  test 'deactivate! ohne reason verwendet Standard-Grund Deaktiviert' do
+  test 'deactivate! ohne reason laesst deactivation_reason leer' do
     create(:setting, current_season_id: '18')
     user   = create(:user)
-    league = create(:league, :current_season)
-    team   = create(:team, league: league)
-    player = create(:player, with_licenses: [
-      { team: team, status: License::APPROVED }
-    ])
+    player = create(:player)
 
     player.deactivate!(user.id)
     player.reload
 
-    last = player.licenses.first['history'].last
-    assert_equal 'Deaktiviert', last['reason']
+    assert_nil player.deactivation_reason
   end
 
   # ---------------------------------------------------------------------------
@@ -305,14 +295,14 @@ class PlayerTest < ActiveSupport::TestCase
     assert_equal 'Karriereende', player.deactivation_reason
   end
 
-  test 'reactivate! stellt valid_until auf Clubs wieder her, die durch deactivate! gesetzt wurden' do
+  test 'reactivate! stellt valid_until auf Clubs wieder her, die eine Alt-Deaktivierung gesetzt hat' do
     create(:setting, current_season_id: '18')
     user   = create(:user)
     player = create(:player)
     player.clubs = [{ 'club_id' => 1, 'home_club' => true }]
     player.save!(validate: false)
 
-    player.deactivate!(user.id)
+    legacy_deactivate!(player, user.id)
     player.reload
     player.reactivate!
     player.reload
@@ -332,7 +322,7 @@ class PlayerTest < ActiveSupport::TestCase
     ]
     player.save!(validate: false)
 
-    player.deactivate!(user.id)
+    legacy_deactivate!(player, user.id)
     player.reload
     player.reactivate!
     player.reload
@@ -353,7 +343,7 @@ class PlayerTest < ActiveSupport::TestCase
       { team: team, status: License::APPROVED }
     ])
 
-    player.deactivate!(user.id, reason: 'Deaktiviert')
+    legacy_deactivate!(player, user.id, reason: 'Deaktiviert')
     player.reload
     original_size = player.licenses.first['history'].size
 
@@ -378,7 +368,7 @@ class PlayerTest < ActiveSupport::TestCase
         { team: team, status: License::APPROVED }
       ])
 
-      player.deactivate!(user.id, reason: reason)
+      legacy_deactivate!(player, user.id, reason: reason)
       player.reload
       original_size = player.licenses.first['history'].size
 
@@ -449,8 +439,105 @@ class PlayerTest < ActiveSupport::TestCase
   end
 
   # ---------------------------------------------------------------------------
+  # Player#reset_deactivation_side_effects!
+  # ---------------------------------------------------------------------------
+
+  # Der Bestand: tausende Profile tragen die Nebenwirkungen der alten Deaktivierung.
+  # Der Rake-Task nimmt sie zurueck, laesst die Entscheidung des Vereins aber stehen.
+  test 'reset_deactivation_side_effects! stellt Zugehoerigkeit und Lizenz her, behaelt die Kennzeichnung' do
+    create(:setting, current_season_id: '18')
+    user   = create(:user)
+    club   = create(:club)
+    league = create(:league, :current_season)
+    team   = create(:team, league: league)
+    player = create(:player, clubs: [{ 'club_id' => club.id, 'home_club' => true }],
+                             with_licenses: [{ team: team, status: License::APPROVED }])
+
+    legacy_deactivate!(player, user.id, reason: 'Vereinsaustritt')
+    player.reload
+    assert_not_nil player.clubs.first['valid_until'], 'Vorbedingung: Alt-Zustand steht'
+    verlauf_vorher = player.licenses.first['history'].size
+
+    assert player.reset_deactivation_side_effects!, 'es gab etwas zu bereinigen'
+    player.reload
+
+    assert_nil player.clubs.first['valid_until'], 'Zugehoerigkeit muss wieder offen sein'
+    assert_equal verlauf_vorher - 1, player.licenses.first['history'].size,
+                 'der DELETED-Eintrag der Deaktivierung muss weg sein'
+    assert_not_nil player.deactivated_at, 'die Kennzeichnung bleibt'
+    assert_equal user.id, player.deactivated_by
+    assert_includes club.players(include_deactivated: true).map(&:id), player.id
+  end
+
+  test 'reset_deactivation_side_effects! ist ein No-op fuer neue Deaktivierungen' do
+    create(:setting, current_season_id: '18')
+    user   = create(:user)
+    club   = create(:club)
+    league = create(:league, :current_season)
+    team   = create(:team, league: league)
+    player = create(:player, clubs: [{ 'club_id' => club.id, 'home_club' => true }],
+                             with_licenses: [{ team: team, status: License::APPROVED }])
+
+    player.deactivate!(user.id, reason: 'Vereinsaustritt')
+    player.reload
+    vorher = [player.clubs, player.licenses].to_json
+
+    refute player.reset_deactivation_side_effects!, 'es gibt nichts zu bereinigen'
+    player.reload
+
+    assert_equal vorher, [player.clubs, player.licenses].to_json
+    assert_not_nil player.deactivated_at
+  end
+
+  # ---------------------------------------------------------------------------
+  # Player#transfer(new_club_id, user_id)
+  # ---------------------------------------------------------------------------
+
+  # Ohne das waere die Person im aufnehmenden Verein sofort wieder aus der aktiven
+  # Liste verschwunden – mit der Kennzeichnung des abgebenden Vereins, an die der
+  # neue nicht gedacht hat.
+  test 'transfer nimmt die Deaktivierung des abgebenden Vereins zurueck' do
+    create(:setting, current_season_id: '18')
+    user  = create(:user)
+    alt   = create(:club)
+    neu   = create(:club)
+    player = create(:player, clubs: [{ 'club_id' => alt.id, 'home_club' => true }])
+    player.deactivate!(user.id, reason: 'Vereinsaustritt')
+
+    player.transfer(neu.id, user.id)
+    player.reload
+
+    assert_nil player.deactivated_at
+    assert_nil player.deactivated_by
+    assert_equal 'Vereinsaustritt', player.deactivation_reason, 'der Grund bleibt als Historie'
+    assert_includes neu.players.map(&:id), player.id
+  end
+
+  # ---------------------------------------------------------------------------
   # Player#merge_into!(master, user_id)
   # ---------------------------------------------------------------------------
+
+  # Beim Merge sind die Nebenwirkungen richtig: Die Dublette ist inhaltlich leer, ihre
+  # Eintraege liegen am Master. Sie darf nirgends mehr als aktives Mitglied oder
+  # Lizenznehmer auftauchen – seit api#472 steht das explizit in merge_into! und nicht
+  # mehr in deactivate!.
+  test 'merge_into! schliesst Zugehoerigkeit und Lizenz der Dublette' do
+    create(:setting, current_season_id: '18')
+    user   = create(:user)
+    club   = create(:club)
+    league = create(:league, :current_season)
+    team   = create(:team, league: league)
+    master = create(:player)
+    dublette = create(:player, clubs: [{ 'club_id' => club.id, 'home_club' => true }],
+                               with_licenses: [{ team: team, status: License::APPROVED }])
+
+    dublette.merge_into!(master, user.id)
+    dublette.reload
+
+    assert_not_nil dublette.clubs.first['valid_until'], 'Zugehoerigkeit der Dublette muss geschlossen sein'
+    assert_equal License::DELETED, dublette.licenses.first['history'].last['license_status_id'].to_i
+    refute_includes club.players(include_deactivated: true).map(&:id), dublette.id
+  end
 
   test 'merge_into! wirft ArgumentError wenn Secondary und Master identisch sind' do
     create(:setting, current_season_id: '18')
@@ -806,7 +893,7 @@ class PlayerTest < ActiveSupport::TestCase
       { 'club_id' => zweit.id, 'home_club' => false,
         'valid_until' => laeuft_bis, 'valid_set_by' => eingetragen_von }
     ])
-    player.deactivate!(4711, reason: 'Temporäre Pause')
+    legacy_deactivate!(player, 4711, reason: 'Temporäre Pause')
     player.reactivate!
 
     zweit_eintrag = player.clubs.find { |c| c['club_id'] == zweit.id }
@@ -821,7 +908,7 @@ class PlayerTest < ActiveSupport::TestCase
 
     # Zweiter Zyklus: die Sicherung wird neu geschrieben, nicht mit dem vorgezogenen
     # Datum ueberschrieben.
-    player.deactivate!(4711, reason: 'Temporäre Pause')
+    legacy_deactivate!(player, 4711, reason: 'Temporäre Pause')
     player.reactivate!
     assert_equal laeuft_bis, player.clubs.find { |c| c['club_id'] == zweit.id }['valid_until']
   end
@@ -836,7 +923,7 @@ class PlayerTest < ActiveSupport::TestCase
     player = create(:player, clubs: [{ 'club_id' => club.id, 'home_club' => false,
                                        'valid_until' => laeuft_bis, 'valid_set_by' => 99 }])
 
-    Player.find(player.id).deactivate!(4711, reason: 'Temporäre Pause')
+    legacy_deactivate!(Player.find(player.id), 4711, reason: 'Temporäre Pause')
     Player.find(player.id).reactivate!
 
     eintrag = Player.find(player.id).clubs.first
@@ -849,7 +936,7 @@ class PlayerTest < ActiveSupport::TestCase
   # aeltere liegen – zweimal deaktiviert ohne Reaktivierung, oder per merge_into! von
   # einer deaktivierten Dublette mitgekommen –, legte reactivate! das alte Enddatum auf
   # eine Zugehoerigkeit, die unbefristet war.
-  test 'deactivate! raeumt eine veraltete Sicherung an unbefristeter Zugehoerigkeit ab' do
+  test 'das Schliessen der Zugehoerigkeiten raeumt eine veraltete Sicherung ab' do
     club = create(:club)
     player = create(:player, clubs: [
       { 'club_id' => club.id, 'home_club' => true,
@@ -857,9 +944,9 @@ class PlayerTest < ActiveSupport::TestCase
                                                'valid_set_by' => 99 } }
     ])
 
-    player.deactivate!(4711, reason: 'Karriereende')
+    legacy_deactivate!(player, 4711, reason: 'Karriereende')
     refute player.clubs.first.key?(Player::VALID_BEFORE_DEACTIVATION),
-           'veraltete Sicherung muss beim Deaktivieren verschwinden'
+           'veraltete Sicherung muss beim Schliessen der Zugehoerigkeit verschwinden'
 
     player.reactivate!
     assert_nil player.clubs.first['valid_until'],
@@ -874,7 +961,7 @@ class PlayerTest < ActiveSupport::TestCase
     club = create(:club)
     player = create(:player, clubs: [{ 'club_id' => club.id, 'home_club' => false,
                                        'valid_until' => 3.months.from_now.iso8601, 'valid_set_by' => 99 }])
-    player.deactivate!(4711, reason: 'Temporäre Pause')
+    legacy_deactivate!(player, 4711, reason: 'Temporäre Pause')
 
     # Altdaten-Zustand herstellen: Sicherung entfernen, vorgezogenes Ende behalten.
     player.clubs.each { |c| c.delete(Player::VALID_BEFORE_DEACTIVATION) }

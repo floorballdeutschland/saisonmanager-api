@@ -89,14 +89,28 @@ module Admin
       assert_match(/JJJJ-MM-TT/, JSON.parse(response.body)['error'])
     end
 
-    test 'search_player findet deaktivierte Spieler nicht' do
-      @player.deactivate!(@admin.id, reason: 'Zusammenführung')
+    test 'search_player findet zusammengefuehrte Dubletten nicht' do
+      master = create(:player, first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-16')
+      @player.merge_into!(master, @admin.id)
       login(@admin)
       get '/api/v2/admin/transfer_requests/search_player', params: {
         first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15'
       }
       assert_response :success
       assert_nil JSON.parse(response.body)['player']
+    end
+
+    # Wer aus der Liste des abgebenden Vereins genommen wurde, muss fuer den
+    # aufnehmenden auffindbar bleiben – sonst ist der Vereinsaustritt eine Sackgasse
+    # (api#472).
+    test 'search_player findet deaktivierte Spieler' do
+      @player.deactivate!(@admin.id, reason: 'Vereinsaustritt')
+      login(@admin)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15'
+      }
+      assert_response :success
+      assert_equal @player.id, JSON.parse(response.body).dig('player', 'id')
     end
 
     test 'reiner VM darf nicht für fremden Verein suchen → 403' do
@@ -197,8 +211,9 @@ module Admin
       assert_equal @player.id, body['player']['id']
     end
 
-    test 'Antrag für deaktivierten Spieler wird abgelehnt → 422' do
-      @player.deactivate!(@admin.id, reason: 'Zusammenführung')
+    test 'Antrag für zusammengefuehrte Dublette wird abgelehnt → 422' do
+      master = create(:player, first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-16')
+      @player.merge_into!(master, @admin.id)
       login(@vm_requesting)
       assert_no_emails do
         post '/api/v2/admin/transfer_requests', params: {
@@ -207,7 +222,20 @@ module Admin
         }
       end
       assert_response :unprocessable_entity
-      assert_match(/deaktiviert/, JSON.parse(response.body)['error'])
+      assert_match(/zusammengeführt/, JSON.parse(response.body)['error'])
+    end
+
+    # Die Kennzeichnung des abgebenden Vereins ist kein Transferhindernis, und der
+    # Transfer raeumt sie ab: sonst waere die Person im aufnehmenden Verein sofort
+    # wieder aus der aktiven Liste verschwunden (api#472).
+    test 'Antrag für deaktivierten Spieler ist möglich' do
+      @player.deactivate!(@admin.id, reason: 'Vereinsaustritt')
+      login(@vm_requesting)
+      post '/api/v2/admin/transfer_requests', params: {
+        player_id: @player.id,
+        requesting_club_id: @requesting_club.id
+      }
+      assert_response :created
     end
 
     test 'VM kann keinen Antrag für fremden Verein erstellen → 403' do

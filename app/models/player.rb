@@ -28,7 +28,11 @@ class Player < ApplicationRecord
       first_name:,
       birthdate:,
       gender:,
-      club_id:
+      club_id:,
+      # Damit die Suche kennzeichnen kann, dass der Verein dieses Profil aus seiner
+      # aktiven Liste genommen hat. Seit api#472 ist es trotzdem auffindbar und
+      # transferierbar, also braucht der Treffer diesen Hinweis.
+      deactivated_at:
     }
   end
 
@@ -337,6 +341,8 @@ class Player < ApplicationRecord
                       season_id: Setting.current_season_id
                     })
 
+    clear_deactivation
+
     save!(validate: false)
   end
 
@@ -375,6 +381,12 @@ class Player < ApplicationRecord
       skipped_associations = _repoint_player_associations(master.id)
 
       self.merged_into_id = master.id
+      # Beim Merge sind die Nebenwirkungen richtig: Zugehoerigkeiten und Lizenzen
+      # liegen jetzt am Master (siehe _merge_clubs/_merge_licenses), und die Dublette
+      # darf nirgends mehr als aktives Mitglied oder Lizenznehmer auftauchen. Die
+      # regulaere Deaktivierung ruehrt beides bewusst nicht mehr an, deshalb steht das
+      # hier explizit.
+      _void_memberships_and_licenses!(user_id, reason: 'Zusammenführung')
       deactivate!(user_id, reason: 'Zusammenführung')
 
       MergeLog.record!(
@@ -480,16 +492,19 @@ class Player < ApplicationRecord
   end
 
   # Fenster um deactivated_at, in dem ein valid_until noch zu dieser Deaktivierung
-  # gehört. deactivate! schreibt beides im selben Aufruf, wenige Anweisungen
-  # auseinander; die Spanne deckt allein die Rundung der JSONB-Serialisierung ab.
-  # Sie kann naturgemäß nicht unterscheiden, ob im selben Moment auch ein Transfer
-  # lief – eine engere Schranke gibt es ohne eigenen Marker am Eintrag nicht.
+  # gehört. Bis api#472 schrieb deactivate! beides im selben Aufruf, wenige
+  # Anweisungen auseinander; die Spanne deckt allein die Rundung der
+  # JSONB-Serialisierung ab. Sie kann naturgemäß nicht unterscheiden, ob im selben
+  # Moment auch ein Transfer lief – eine engere Schranke gibt es ohne eigenen Marker
+  # am Eintrag nicht. Fuer neue Deaktivierungen ist beides gegenstandslos: sie
+  # ruehren die Zugehoerigkeiten nicht an.
   DEACTIVATION_CLOSE_WINDOW = 1.second
 
-  # Schlüssel im clubs-Eintrag, unter dem deactivate! die Befristung sichert, die es
-  # selbst überschreibt. Nur gesetzt, wenn es überhaupt eine gab, und von
-  # reactivate! wieder entfernt – bei Profilen, die vor dieser Änderung deaktiviert
-  # wurden, fehlt er, dort bleibt es beim bisherigen Verhalten (Befristung entfällt).
+  # Schlüssel im clubs-Eintrag, unter dem deactivate! bis api#472 die Befristung
+  # sicherte, die es selbst überschrieb. Nur gesetzt, wenn es überhaupt eine gab, und
+  # von reset_deactivation_side_effects! wieder entfernt – bei Profilen, die vor
+  # seiner Einführung deaktiviert wurden, fehlt er, dort bleibt es beim bisherigen
+  # Verhalten (Befristung entfällt). Neue Deaktivierungen schreiben ihn nicht mehr.
   VALID_BEFORE_DEACTIVATION = 'valid_before_deactivation'.freeze
 
   # Auswählbare Deaktivierungsgründe. Einzige Quelle für die Oberfläche und für
@@ -505,7 +520,8 @@ class Player < ApplicationRecord
   LEGACY_DEACTIVATION_REASONS = ['Deaktiviert'].freeze
 
   # Wahr, wenn das Ende dieser Vereinszugehörigkeit auf die Deaktivierung dieses
-  # Profils zurückgeht.
+  # Profils zurückgeht. Trifft nur noch auf den Bestand zu: seit api#472 schliesst
+  # `deactivate!` keine Zugehoerigkeit mehr.
   #
   # Der Stempel valid_set_by allein genügt als Merkmal nicht: den setzt jede Stelle,
   # die eine Zugehörigkeit schließt oder befristet anlegt (Vereinswechsel,
@@ -529,46 +545,28 @@ class Player < ApplicationRecord
                                                deactivated_at + DEACTIVATION_CLOSE_WINDOW)
   end
 
+  # Die Deaktivierung ist eine Kennzeichnung fuer die Vereins- und
+  # Mannschaftsansichten, kein Eingriff in die Stammdaten. Sie haelt das Profil aus
+  # der Spielerliste des Vereins heraus (`Club#players` filtert auf `Player.active`)
+  # und damit auch aus der Auswahl beim Lizenzantrag. Mehr soll sie nicht bewirken:
+  # Vereinszugehoerigkeit und Lizenzen bleiben, wie sie sind.
+  #
+  # Bis hierher schloss sie zusaetzlich JEDE noch gueltige Zugehoerigkeit und setzte
+  # alle laufenden Lizenzen (APPROVED/REQUESTED) auf DELETED. Damit war der
+  # haeufigste Anlass der schaedlichste: Beim Grund "Vereinsaustritt" verlor die
+  # Person ihren Heimatverein und fiel gleichzeitig aus jeder Suche, weil
+  # `global_search` und `Admin::TransferRequestsController#search_player` auf
+  # `Player.active` filterten. Der aufnehmende Verein fand sie nicht mehr, und weil
+  # Transferantrag und Direktzuweisung einen gueltigen Heimatverein verlangen, gab
+  # es keinen Weg zurueck ausser einer Reaktivierung durch die SBK. Auf Produktion
+  # traf das am 25.07.2026 drei Profile eines Vereins innerhalb von sechs Minuten,
+  # dazu weitere in anderen Vereinen.
+  #
+  # Die Ruecknahme dieser Nebenwirkungen bleibt in `reset_deactivation_side_effects!`
+  # (aufgerufen von `reactivate!` und vom Rake-Task fuer den Bestand): Profile, die
+  # vor dieser Aenderung deaktiviert wurden, tragen die geschlossenen
+  # Zugehoerigkeiten und die DELETED-Eintraege weiterhin.
   def deactivate!(user_id, reason: nil)
-    self.clubs ||= []
-    self.licenses ||= []
-
-    clubs.map! do |c|
-      if c['valid_until'].nil? || c['valid_until'].to_time > Time.now
-        # Befristete Zugehörigkeiten (Zweitspielrecht) verlieren durch das Vorziehen
-        # ihr Enddatum. Vorher festhalten, damit reactivate! sie mit der ursprünglichen
-        # Befristung zurückgeben kann statt unbefristet.
-        #
-        # Der else-Zweig ist kein Beiwerk: die Sicherung muss immer den Stand DIESER
-        # Deaktivierung abbilden. Eine ältere, nicht abgeräumte Sicherung (zweimal
-        # deaktiviert ohne Reaktivierung dazwischen, oder per merge_into! von einer
-        # deaktivierten Dublette mitgekommen) würde reactivate! sonst auf eine
-        # Zugehörigkeit legen, die unbefristet war – genau die Verfälschung, die dieser
-        # Fix verhindern soll.
-        if c['valid_until'].present?
-          c[VALID_BEFORE_DEACTIVATION] = { 'valid_until' => c['valid_until'],
-                                           'valid_set_by' => c['valid_set_by'] }
-        else
-          c.delete(VALID_BEFORE_DEACTIVATION)
-        end
-        c['valid_until'] = Time.now
-        c['valid_set_by'] = user_id
-      end
-      c
-    end
-
-    licenses.each do |license|
-      last_status = license['history']&.last&.dig('license_status_id').to_i
-      next unless last_status.in?([License::APPROVED, License::REQUESTED])
-
-      license['history'] << {
-        'license_status_id' => License::DELETED,
-        'reason' => reason || 'Deaktiviert',
-        'created_by' => user_id,
-        'created_at' => Time.now
-      }
-    end
-
     self.deactivated_at = Time.current
     self.deactivated_by = user_id
     self.deactivation_reason = reason
@@ -576,32 +574,48 @@ class Player < ApplicationRecord
   end
 
   def reactivate!
-    deactivated_user = deactivated_by
+    # Vor dem Loeschen der Kennzeichnung: `membership_closed_by_deactivation?` liest
+    # `deactivated_at` und `deactivated_by`.
+    reset_deactivation_side_effects!(persist: false)
+
+    self.deactivated_at = nil
+    self.deactivated_by = nil
+    save!(validate: false)
+  end
+
+  # Nimmt die Nebenwirkungen zurueck, die `deactivate!` bis api#472 mitgeschrieben
+  # hat: die von dieser Deaktivierung geschlossenen Vereinszugehoerigkeiten und die
+  # DELETED-Eintraege, die sie in den Lizenz-Verlauf gehaengt hat. Fuer alles, was
+  # danach deaktiviert wurde, ist die Methode ein No-op — `membership_closed_by_
+  # deactivation?` verlangt Stempel UND Zeitfenster der Deaktivierung, und einen
+  # DELETED-Eintrag schreibt seither niemand mehr.
+  #
+  # `persist: false` ueberlaesst das Speichern dem Aufrufer (`reactivate!` raeumt im
+  # selben Schreibvorgang auch die Kennzeichnung ab). Mit `persist: true` bleibt die
+  # Kennzeichnung stehen und nur die Bereinigung wird gespeichert; so heilt
+  # `rake players:reset_deactivation_side_effects` den Bestand, ohne die
+  # Entscheidung des Vereins zu ueberschreiben.
+  #
+  # Rueckgabe: ob es etwas zu bereinigen gab.
+  def reset_deactivation_side_effects!(persist: true)
     self.clubs ||= []
     self.licenses ||= []
 
     # Der frühere reine valid_set_by-Vergleich öffnete auch ein Zweitspielrecht wieder,
     # das lange vor der Deaktivierung abgelaufen war.
+    restored = false
     clubs.map! do |c|
-      restore_membership_validity(c) if membership_closed_by_deactivation?(c)
+      if membership_closed_by_deactivation?(c)
+        restore_membership_validity(c)
+        restored = true
+      end
       c
     end
 
-    deactivation_system_reasons = DEACTIVATION_REASONS + LEGACY_DEACTIVATION_REASONS
+    restored = true if pop_deactivation_license_entries!
 
-    licenses.each do |license|
-      last = license['history']&.last
-      next unless last &&
-                  last['license_status_id'].to_i == License::DELETED &&
-                  (deactivation_system_reasons.include?(last['reason']) || last['reason']&.start_with?('Sonstiges: ')) &&
-                  last['created_by'] == deactivated_user
-
-      license['history'].pop
-    end
-
-    self.deactivated_at = nil
-    self.deactivated_by = nil
-    save!(validate: false)
+    save!(validate: false) if persist && restored
+    restored
   end
 
   # Einheitlicher Einstieg für beide Sperr-Ebenen aus Issue #508.
@@ -825,7 +839,96 @@ class Player < ApplicationRecord
     save!
   end
 
+  # Schliesst jede noch gueltige Vereinszugehoerigkeit und setzt alle laufenden
+  # Lizenzen (APPROVED/REQUESTED) auf DELETED. Ausschliesslich fuer `merge_into!`:
+  # Die Dublette ist inhaltlich leer, ihre Eintraege liegen am Master.
+  #
+  # Bis api#472 stand dieser Rumpf in `deactivate!` und traf damit auch jede
+  # Deaktivierung durch einen Verein — siehe die Begruendung dort. Speichert nicht;
+  # `merge_into!` schreibt das Profil ohnehin.
+  def _void_memberships_and_licenses!(user_id, reason:)
+    self.clubs ||= []
+    self.licenses ||= []
+
+    clubs.map! do |c|
+      if c['valid_until'].nil? || c['valid_until'].to_time > Time.now
+        # Befristete Zugehörigkeiten (Zweitspielrecht) verlieren durch das Vorziehen
+        # ihr Enddatum. Vorher festhalten, damit reset_deactivation_side_effects! sie
+        # mit der ursprünglichen Befristung zurückgeben kann statt unbefristet.
+        #
+        # Der else-Zweig ist kein Beiwerk: die Sicherung muss immer den Stand DIESES
+        # Vorgangs abbilden. Eine ältere, nicht abgeräumte Sicherung würde die
+        # Rücknahme sonst auf eine Zugehörigkeit legen, die unbefristet war – genau
+        # die Verfälschung, die sie verhindern soll.
+        if c['valid_until'].present?
+          c[VALID_BEFORE_DEACTIVATION] = { 'valid_until' => c['valid_until'],
+                                           'valid_set_by' => c['valid_set_by'] }
+        else
+          c.delete(VALID_BEFORE_DEACTIVATION)
+        end
+        c['valid_until'] = Time.now
+        c['valid_set_by'] = user_id
+      end
+      c
+    end
+
+    licenses.each do |license|
+      last_status = license['history']&.last&.dig('license_status_id').to_i
+      next unless last_status.in?([License::APPROVED, License::REQUESTED])
+
+      license['history'] << {
+        'license_status_id' => License::DELETED,
+        'reason' => reason,
+        'created_by' => user_id,
+        'created_at' => Time.now
+      }
+    end
+  end
+
+  # Loescht die Deaktivierungs-Kennzeichnung ohne zu speichern; der Aufrufer schreibt
+  # das Profil ohnehin.
+  #
+  # Aufgerufen von jedem Weg, der eine neue Vereinszugehoerigkeit anlegt: Wer gerade
+  # aufgenommen wird, ist in diesem Verein aktiv, und die Kennzeichnung des
+  # abgebenden Vereins wuerde die Spielerliste des aufnehmenden leer aussehen lassen.
+  # Der Fall ist erst seit api#472 erreichbar — vorher lehnten Transferantrag und
+  # Direktzuweisung ein deaktiviertes Profil ab.
+  #
+  # `deactivation_reason` bleibt stehen, wie schon bei `reactivate!`: der Grund ist
+  # Historie, die Kennzeichnung ist der Zustand.
+  def clear_deactivation
+    return false if deactivated_at.blank?
+
+    self.deactivated_at = nil
+    self.deactivated_by = nil
+    true
+  end
+
   private
+
+  # Entfernt die DELETED-Eintraege, die `deactivate!` bis api#472 an jede laufende
+  # Lizenz gehaengt hat. Erkennungsmerkmal ist das Tripel aus Status, Grund und
+  # verfuegender Person: nur der oberste Eintrag, nur DELETED, nur mit einem Grund aus
+  # der Auswahl (oder einem freien "Sonstiges: …") und nur von derselben Person, die
+  # deaktiviert hat. Eine regulaere Loeschung durch die SBK traegt einen anderen Grund
+  # und bleibt damit stehen.
+  def pop_deactivation_license_entries!
+    system_reasons = DEACTIVATION_REASONS + LEGACY_DEACTIVATION_REASONS
+    popped = false
+
+    licenses.each do |license|
+      last = license['history']&.last
+      next unless last &&
+                  last['license_status_id'].to_i == License::DELETED &&
+                  (system_reasons.include?(last['reason']) || last['reason']&.start_with?('Sonstiges: ')) &&
+                  last['created_by'] == deactivated_by
+
+      license['history'].pop
+      popped = true
+    end
+
+    popped
+  end
 
   # Nimmt einer Zugehörigkeit das von deactivate! gesetzte Ende wieder ab: entweder
   # zurück auf die ursprüngliche Befristung oder, wenn es keine gab, wieder unbefristet.

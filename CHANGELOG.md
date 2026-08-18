@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Deaktivierte Spieler bleiben auffindbar, ihre Vereinsmitgliedschaft bleibt bestehen**: Die Deaktivierung sollte ein Spielerprofil aus der Spielerliste des Vereins nehmen, damit dort und beim Lizenzantrag nur noch stehen, wer tatsächlich spielt. Tatsächlich griff sie viel weiter: Sie beendete jede noch gültige Vereinszugehörigkeit, setzte alle laufenden Lizenzen auf ungültig, und weil die Spielersuche der Spielbetriebskommission und die Suche im Transferantrag ausschließlich aktive Profile lasen, war die Person danach für niemanden mehr zu finden. Am häufigsten traf das den Grund „Vereinsaustritt", also genau den Fall, in dem ein anderer Verein die Person kurz darauf aufnehmen will: Der aufnehmende Verein fand sie nicht, und weil Transferantrag und Direktzuweisung einen gültigen Hauptverein verlangen, gab es ohne Eingreifen der Spielbetriebskommission keinen Weg zurück. Die Deaktivierung ist jetzt genau das, was sie sein sollte, nämlich eine Kennzeichnung für die Ansichten von Vereins- und Mannschaftsverantwortlichen. Vereinszugehörigkeit und Lizenzen bleiben unberührt, die Spielersuche und die Suche im Transferantrag zeigen deaktivierte Profile und kennzeichnen sie als solche, und ein Transfer oder eine Freigabe nimmt die Kennzeichnung des abgebenden Vereins zurück, damit die Person im aufnehmenden Verein nicht sofort wieder aus der aktiven Liste fällt. Beim Zusammenführen doppelter Profile bleibt es beim bisherigen Verhalten: Dort sind die geschlossene Zugehörigkeit und die ungültigen Lizenzen richtig, weil die Einträge auf das führende Profil übergegangen sind. Für den Bestand nimmt ein Wartungslauf (`rake players:reset_deactivation_side_effects`) die Nebenwirkungen früherer Deaktivierungen zurück und lässt die Kennzeichnung stehen.
+
 ## [1.87.0] - 2026-08-18
 
 ### Neu

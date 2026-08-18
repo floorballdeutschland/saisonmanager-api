@@ -52,7 +52,13 @@ class PlayersController < ApplicationController
       return render json: [] if q.length < 2
 
       term = "%#{q}%"
-      players = Player.active.where(
+      # Nicht `Player.active`: Die Deaktivierung ist eine Kennzeichnung fuer die
+      # Vereins- und Mannschaftsansichten (siehe `Player#deactivate!`) und darf ein
+      # Profil nicht aus der Suche der SBK nehmen. Genau daran scheiterte der
+      # Vereinsaustritt — der aufnehmende Verein fand die Person nicht mehr.
+      # Ausgeschlossen bleiben zusammengefuehrte Dubletten: die sind durch den Master
+      # ersetzt (api#92) und dort liegen Spiele und Lizenzen.
+      players = Player.where(merged_into_id: nil).where(
         'last_name ILIKE :q OR first_name ILIKE :q OR concat(first_name, \' \', last_name) ILIKE :q OR concat(last_name, \', \', first_name) ILIKE :q',
         q: term
       ).order(:last_name, :first_name).limit(20)
@@ -748,6 +754,10 @@ class PlayersController < ApplicationController
                                       })
 
               success = false
+
+              # Wer aufgenommen wird, ist im neuen Verein aktiv – siehe
+              # Player#clear_deactivation.
+              player.clear_deactivation
 
               Player.transaction do
                 transfer.save!
