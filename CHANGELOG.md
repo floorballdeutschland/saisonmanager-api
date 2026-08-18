@@ -13,6 +13,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Verbessert
 
+- **Die Lizenzgebühren-Berechnung schreibt keine Vereinsdaten mehr**: Zu Beginn trug sie das Bundesland aus der Postleitzahl nach, wo es am Verein fehlte. Der Nachtrag war überflüssig, denn abgerechnet wird je Spielbetrieb: Maßgeblich sind die Liga, unter deren Mannschaft die Lizenz läuft, und der Spielbetrieb des Heimatvereins. Das Bundesland taucht im Export nur als Zusatzspalte auf, gruppiert wird nicht danach. Spielt eine Mannschaft aus Hessen in einer Liga des Floorball-Verbands Nordrhein-Westfalen, rechnet ohnehin dieser Verband ab, und nicht das Bundesland des Vereins. Die Zeile ist damit ersatzlos entfallen. Die beiden Bundesland-Spalten des Exports bleiben unverändert und zeigen weiterhin, was am Verein gepflegt ist. Neu befüllt wird das Feld durch die Berechnung nicht mehr, weil eine Auswertung keine Stammdaten schreiben soll.
+
 - **Trifft die Spieleranlage auf ein vorhandenes Profil, sagt die Meldung jetzt, wie es weitergeht**: Angelegt wird nicht, sobald es zu Vorname, Nachname und Geburtsdatum schon ein Profil gibt. Genannt wurde bisher nur dessen interne Nummer („Es existiert ein Spieler mit diesen Daten (ID: 212). Anlegen nicht möglich."), und damit stand ein Vereinsmanager vor einer Sackgasse: Ein Profil eines fremden Vereins kann er nicht aufrufen, und ein deaktiviertes findet er auch über die Spielersuche des Transferantrags nicht, weil die nur aktive Profile kennt. Die Meldung nennt jetzt den nächsten Schritt. Gehört das Profil zum eigenen Verein, verweist sie auf die Vereinsspielerliste. Liegt es bei einem anderen Verein, auf den Transferantrag. Ist es deaktiviert, auf die zuständige Spielbetriebskommission, samt der Spieler-ID, damit die das Profil ohne Rückfrage findet.
 
 
@@ -28,7 +30,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Behoben
 
-- **Die Lizenzgebühren-Berechnung startet wieder**: Zu Beginn trägt sie das Bundesland aus der Postleitzahl nach, wo es am Verein fehlt, weil die Auswertung danach gruppiert. Diese Zeile nutzte eine Schreibweise, die es seit einem Rails-Update nicht mehr gibt, und brach deshalb ab, sobald ein Verein ohne Bundesland eine passende Postleitzahl hatte. Die Berechnung endete damit, bevor sie irgendetwas gerechnet hatte. Aufgefallen ist es nicht, weil sie ausschließlich über die Konsole gestartet wird und niemand sie in dieser Zeit angestoßen hat.
+- **Die Lizenzgebühren-Berechnung startet wieder**: Zu Beginn trug sie das Bundesland aus der Postleitzahl nach, wo es am Verein fehlt. Diese Zeile nutzte eine Schreibweise, die es seit einem Rails-Update nicht mehr gibt, und brach deshalb ab, sobald ein Verein ohne Bundesland eine passende Postleitzahl hatte. Die Berechnung endete damit, bevor sie irgendetwas gerechnet hatte. Aufgefallen ist es nicht, weil sie ausschließlich über die Konsole gestartet wird und niemand sie in dieser Zeit angestoßen hat.
 
 ### Verbessert
 
