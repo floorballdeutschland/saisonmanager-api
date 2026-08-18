@@ -52,7 +52,13 @@ class PlayersController < ApplicationController
       return render json: [] if q.length < 2
 
       term = "%#{q}%"
-      players = Player.active.where(
+      # Nicht `Player.active`: Die Deaktivierung ist eine Kennzeichnung fuer die
+      # Vereins- und Mannschaftsansichten (siehe `Player#deactivate!`) und darf ein
+      # Profil nicht aus der Suche der SBK nehmen. Genau daran scheiterte der
+      # Vereinsaustritt — der aufnehmende Verein fand die Person nicht mehr.
+      # Ausgeschlossen bleiben zusammengefuehrte Dubletten: die sind durch den Master
+      # ersetzt (api#92) und dort liegen Spiele und Lizenzen.
+      players = Player.where(merged_into_id: nil).where(
         'last_name ILIKE :q OR first_name ILIKE :q OR concat(first_name, \' \', last_name) ILIKE :q OR concat(last_name, \', \', first_name) ILIKE :q',
         q: term
       ).order(:last_name, :first_name).limit(20)
@@ -544,11 +550,11 @@ class PlayersController < ApplicationController
 
         first_name = "%#{params['first_name'].to_s.downcase.strip}%"
         last_name = "%#{params['last_name'].to_s.downcase.strip}%"
-        existing_player_id = Player.where('first_name ILIKE ? AND last_name ILIKE ? AND birthdate = ?', first_name,
-                                          last_name, birthdate).limit(1).pluck(:id).first
+        existing_player = Player.where('first_name ILIKE ? AND last_name ILIKE ? AND birthdate = ?', first_name,
+                                       last_name, birthdate).limit(1).first
 
-        if existing_player_id.present?
-          render json: { message: "Es existiert ein Spieler mit diesen Daten (ID: #{existing_player_id}). Anlegen nicht möglich." },
+        if existing_player.present?
+          render json: { message: duplicate_player_message(existing_player, params[:club_id].to_i) },
                  status: :unprocessable_entity
         else
           pp = player_params
@@ -748,6 +754,10 @@ class PlayersController < ApplicationController
                                       })
 
               success = false
+
+              # Wer aufgenommen wird, ist im neuen Verein aktiv – siehe
+              # Player#clear_deactivation.
+              player.clear_deactivation
 
               Player.transaction do
                 transfer.save!
@@ -1123,6 +1133,53 @@ class PlayersController < ApplicationController
       end
       next false if entry['club_id'].blank?
       next false unless club_ids.include?(entry['club_id'].to_i)
+
+      membership_current?(player, entry['valid_until']) ||
+        player.membership_closed_by_deactivation?(entry)
+    end
+  end
+
+  # Die Anlage bricht ab, sobald es zu Vorname, Nachname und Geburtsdatum schon
+  # ein Profil gibt. Bisher nannte die Meldung nur dessen id, und die führt einen
+  # Vereinsmanager nirgendwohin: Ein Profil eines fremden Vereins kann er nicht
+  # aufrufen. Deshalb nennt die Meldung jetzt den nächsten Schritt; die id bleibt
+  # als Referenz für die SBK.
+  #
+  # Die Deaktivierung ist dabei keine Sackgasse mehr und deshalb auch nicht mehr der
+  # erste Zweig: Seit sie nur noch eine Kennzeichnung der Vereinsansicht ist, steht das
+  # Profil weiterhin in der VM-Liste des eigenen Vereins
+  # (`Club#players(include_deactivated: true)`) und ist über die Spielersuche des
+  # Transferantrags findbar und transferierbar. Ein Verweis an die SBK wäre jetzt ein
+  # unnötiger Umweg; die Kennzeichnung ist nur noch ein Zusatz zum jeweiligen Weg.
+  def duplicate_player_message(player, club_id)
+    hint = player.deactivated_at.present? ? ' Das Profil ist derzeit deaktiviert.' : ''
+
+    if own_club_membership?(player, club_id)
+      "Für diese Person gibt es bereits ein Spielerprofil in diesem Verein (Spieler-ID #{player.id})." \
+        "#{hint} Bitte in der Spielerliste des Vereins danach suchen."
+    else
+      "Für diese Person gibt es bereits ein Spielerprofil in einem anderen Verein (Spieler-ID #{player.id})." \
+        "#{hint} Ein Vereinswechsel läuft über einen Transferantrag. Bei Rückfragen bitte die zuständige " \
+        'SBK kontaktieren.'
+    end
+  end
+
+  # Nur eine noch laufende Zugehörigkeit zählt: Eine abgelaufene würde den
+  # Vereinsmanager in seine eigene Spielerliste schicken, wo das Profil nicht
+  # mehr auftaucht.
+  #
+  # Ausnahme ist die Zugehörigkeit, die eine Deaktivierung von vor api#472
+  # geschlossen hat. Solche Profile stehen sehr wohl in der VM-Liste, weil
+  # `Club#players(include_deactivated: true)` genau diesen Fall mitnimmt – ohne die
+  # Ausnahme schickte die Meldung den Vereinsmanager für seine eigenen Altfälle in
+  # einen Transferantrag gegen sich selbst. Dieselben zwei Fälle prüft
+  # `membership_grants_access?`.
+  def own_club_membership?(player, club_id)
+    return false unless club_id.positive?
+
+    Array(player.clubs).any? do |entry|
+      next false unless entry.is_a?(Hash)
+      next false unless entry['club_id'].to_i == club_id
 
       membership_current?(player, entry['valid_until']) ||
         player.membership_closed_by_deactivation?(entry)

@@ -171,6 +171,9 @@ class TransferRequest < ApplicationRecord
       'created_at' => Time.now,
       'valid_until' => valid_until
     }
+    # Wer eine Freigabe erhaelt, spielt im aufnehmenden Verein – siehe
+    # Player#clear_deactivation.
+    player.clear_deactivation
     player.save!(validate: false)
   end
 

@@ -9,6 +9,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Die Lizenzgebühren-Berechnung schreibt keine Vereinsdaten mehr**: Zu Beginn trug sie das Bundesland aus der Postleitzahl nach, wo es am Verein fehlte. Der Nachtrag war überflüssig, denn abgerechnet wird je Spielbetrieb: Maßgeblich sind die Liga, unter deren Mannschaft die Lizenz läuft, und der Spielbetrieb des Heimatvereins. Das Bundesland taucht im Export nur als Zusatzspalte auf, gruppiert wird nicht danach. Spielt eine Mannschaft aus Hessen in einer Liga des Floorball-Verbands Nordrhein-Westfalen, rechnet ohnehin dieser Verband ab, und nicht das Bundesland des Vereins. Die Zeile ist damit ersatzlos entfallen. Die beiden Bundesland-Spalten des Exports bleiben unverändert und zeigen weiterhin, was am Verein gepflegt ist. Neu befüllt wird das Feld durch die Berechnung nicht mehr, weil eine Auswertung keine Stammdaten schreiben soll.
+
+## [1.87.1] - 2026-08-18
+
+### Verbessert
+
+- **Trifft die Spieleranlage auf ein vorhandenes Profil, sagt die Meldung jetzt, wie es weitergeht**: Angelegt wird nicht, sobald es zu Vorname, Nachname und Geburtsdatum schon ein Profil gibt. Genannt wurde bisher nur dessen interne Nummer („Es existiert ein Spieler mit diesen Daten (ID: 212). Anlegen nicht möglich."), und damit stand ein Vereinsmanager vor einer Sackgasse: Ein Profil eines fremden Vereins kann er nicht aufrufen, und ein deaktiviertes findet er auch über die Spielersuche des Transferantrags nicht, weil die nur aktive Profile kennt. Die Meldung nennt jetzt den nächsten Schritt. Gehört das Profil zum eigenen Verein, verweist sie auf die Vereinsspielerliste. Liegt es bei einem anderen Verein, auf den Transferantrag. Ist es deaktiviert, auf die zuständige Spielbetriebskommission, samt der Spieler-ID, damit die das Profil ohne Rückfrage findet.
+
+
+### Behoben
+
+- **Deaktivierte Spieler bleiben auffindbar, ihre Vereinsmitgliedschaft bleibt bestehen**: Die Deaktivierung sollte ein Spielerprofil aus der Spielerliste des Vereins nehmen, damit dort und beim Lizenzantrag nur noch stehen, wer tatsächlich spielt. Tatsächlich griff sie viel weiter: Sie beendete jede noch gültige Vereinszugehörigkeit, setzte alle laufenden Lizenzen auf ungültig, und weil die Spielersuche der Spielbetriebskommission und die Suche im Transferantrag ausschließlich aktive Profile lasen, war die Person danach für niemanden mehr zu finden. Am häufigsten traf das den Grund „Vereinsaustritt", also genau den Fall, in dem ein anderer Verein die Person kurz darauf aufnehmen will: Der aufnehmende Verein fand sie nicht, und weil Transferantrag und Direktzuweisung einen gültigen Hauptverein verlangen, gab es ohne Eingreifen der Spielbetriebskommission keinen Weg zurück. Die Deaktivierung ist jetzt genau das, was sie sein sollte, nämlich eine Kennzeichnung für die Ansichten von Vereins- und Mannschaftsverantwortlichen. Vereinszugehörigkeit und Lizenzen bleiben unberührt, die Spielersuche und die Suche im Transferantrag zeigen deaktivierte Profile und kennzeichnen sie als solche, und ein Transfer oder eine Freigabe nimmt die Kennzeichnung des abgebenden Vereins zurück, damit die Person im aufnehmenden Verein nicht sofort wieder aus der aktiven Liste fällt. Beim Zusammenführen doppelter Profile bleibt es beim bisherigen Verhalten: Dort sind die geschlossene Zugehörigkeit und die ungültigen Lizenzen richtig, weil die Einträge auf das führende Profil übergegangen sind. Für den Bestand öffnet ein Wartungslauf (`rake players:reopen_memberships_after_deactivation`) die Zugehörigkeiten, die frühere Deaktivierungen geschlossen haben. Er lässt die Kennzeichnung stehen und rührt die Lizenzen nicht an: Was damals ungültig gesetzt wurde, bleibt ungültig, denn zurückzunehmen ist allein das, was die Profile untransferierbar gemacht hat. Die Meldung, die beim Anlegen auf ein vorhandenes Profil hinweist, schickt den Vereinsmanager bei einem deaktivierten Profil nicht mehr an die Spielbetriebskommission: Der reguläre Weg steht ihm jetzt ja offen, das Profil ist über die Spielersuche des Transferantrags zu finden und in der eigenen Vereinsliste sichtbar. Genannt wird die Kennzeichnung weiterhin, damit nachvollziehbar bleibt, warum das Profil nicht in jeder Liste auftaucht.
+
 ## [1.87.0] - 2026-08-18
 
 ### Neu
@@ -17,7 +32,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Behoben
 
-- **Die Lizenzgebühren-Berechnung startet wieder**: Zu Beginn trägt sie das Bundesland aus der Postleitzahl nach, wo es am Verein fehlt, weil die Auswertung danach gruppiert. Diese Zeile nutzte eine Schreibweise, die es seit einem Rails-Update nicht mehr gibt, und brach deshalb ab, sobald ein Verein ohne Bundesland eine passende Postleitzahl hatte. Die Berechnung endete damit, bevor sie irgendetwas gerechnet hatte. Aufgefallen ist es nicht, weil sie ausschließlich über die Konsole gestartet wird und niemand sie in dieser Zeit angestoßen hat.
+- **Die Lizenzgebühren-Berechnung startet wieder**: Zu Beginn trug sie das Bundesland aus der Postleitzahl nach, wo es am Verein fehlt. Diese Zeile nutzte eine Schreibweise, die es seit einem Rails-Update nicht mehr gibt, und brach deshalb ab, sobald ein Verein ohne Bundesland eine passende Postleitzahl hatte. Die Berechnung endete damit, bevor sie irgendetwas gerechnet hatte. Aufgefallen ist es nicht, weil sie ausschließlich über die Konsole gestartet wird und niemand sie in dieser Zeit angestoßen hat.
 
 ### Verbessert
 

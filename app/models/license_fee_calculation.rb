@@ -17,30 +17,18 @@ class LicenseFeeCalculation < ApplicationRecord
     end
   end
 
-  # Bundesland aus der PLZ nachtragen, wo es fehlt: die Auswertung gruppiert
-  # danach.
+  # Abgerechnet wird je Spielbetrieb. Massgeblich sind die Liga, unter deren
+  # Team die Lizenz laeuft (`league_id`, `license_club`), und der Spielbetrieb
+  # des Heimatvereins (`home_club_operation`). Das Bundesland des Vereins ist
+  # dafuer ohne Belang: `home_club_state` und `license_club_state` sind reine
+  # Zusatzspalten des Exports, gruppiert wird nicht danach.
   #
-  # Stand bis 1.86.0 als Club#update_state am Modell und lief seit dem
-  # Rails-Upgrade in einen NoMethodError (`update_attributes` gibt es seit 6.1
-  # nicht mehr), sobald ein Verein ohne Bundesland eine passende PLZ hatte. Die
-  # Berechnung brach damit ab, bevor sie irgendetwas gerechnet hatte. Als eigene
-  # Methode und nicht inline, weil start_calculation Dateien schreibt und ueber
-  # alle Spieler laeuft, sich also nicht sinnvoll testen laesst – dieser Teil
-  # schon.
-  #
-  # update_column und nicht update!: Vereine im Altbestand reissen sonst ihre
-  # eigenen Validierungen, und dann bricht die ganze Berechnung an einem
-  # Datensatz ab, den sie nur nebenbei aufraeumen wollte.
-  def self.backfill_missing_club_states
-    Club.where(state: nil).find_each do |club|
-      isocode = ApplicationRecord.state_for_postcode(club.postcode)
-      club.update_column(:state, isocode) if isocode
-    end
-  end
-
+  # Bis 1.87.0 trug diese Methode zu Beginn das fehlende Bundesland aus der
+  # Postleitzahl nach. Der Nachtrag war seit dem Rails-Upgrade kaputt
+  # (`update_attributes`) und liess die Berechnung abbrechen, bevor sie
+  # irgendetwas gerechnet hatte. Er ist ersatzlos entfallen und bewusst nicht
+  # repariert worden: Eine Auswertung soll keine Stammdaten schreiben.
   def self.start_calculation(user_id, season = Setting.current_season_id, _deadline = Date.today)
-    backfill_missing_club_states
-
     c = LicenseFeeCalculation.new
     c.started_at = Time.now
     c.season_id = season

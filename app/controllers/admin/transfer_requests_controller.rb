@@ -46,7 +46,10 @@ module Admin
         return render json: { error: 'Geburtsdatum muss im Format JJJJ-MM-TT übergeben werden' }, status: :unprocessable_entity
       end
 
-      player = Player.active.where(
+      # Deaktivierte Profile gehoeren in dieses Ergebnis: Die Kennzeichnung gilt fuer
+      # die Liste des abgebenden Vereins, nicht fuer die Aufnahme in einen neuen
+      # (siehe `Player#deactivate!`). Zusammengefuehrte Dubletten bleiben draussen.
+      player = Player.where(merged_into_id: nil).where(
         'LOWER(first_name) = ? AND LOWER(last_name) = ? AND birthdate = ?',
         first_name.downcase, last_name.downcase, birthdate
       ).first
@@ -90,8 +93,11 @@ module Admin
       player = Player.find_by(id: params[:player_id])
       return render json: { error: 'Spieler nicht gefunden' }, status: :not_found unless player
 
-      if player.deactivated_at.present?
-        return render json: { error: 'Spieler ist deaktiviert und kann nicht für einen Transfer ausgewählt werden' },
+      # Nicht `deactivated_at`: Eine Deaktivierung ist die Kennzeichnung des
+      # abgebenden Vereins und kein Transferhindernis. Eine zusammengefuehrte
+      # Dublette dagegen ist durch den Master ersetzt.
+      if player.merged_into_id.present?
+        return render json: { error: 'Dieses Profil wurde mit einem anderen zusammengeführt und kann nicht transferiert werden' },
                       status: :unprocessable_entity
       end
 
@@ -415,8 +421,11 @@ module Admin
       player = Player.find_by(id: params[:player_id])
       return render json: { error: 'Spieler nicht gefunden' }, status: :not_found unless player
 
-      if player.deactivated_at.present?
-        return render json: { error: 'Spieler ist deaktiviert und kann nicht für einen Transfer ausgewählt werden' },
+      # Nicht `deactivated_at`: Eine Deaktivierung ist die Kennzeichnung des
+      # abgebenden Vereins und kein Transferhindernis. Eine zusammengefuehrte
+      # Dublette dagegen ist durch den Master ersetzt.
+      if player.merged_into_id.present?
+        return render json: { error: 'Dieses Profil wurde mit einem anderen zusammengeführt und kann nicht transferiert werden' },
                       status: :unprocessable_entity
       end
 
