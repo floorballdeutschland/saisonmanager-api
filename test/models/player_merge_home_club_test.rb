@@ -163,7 +163,8 @@ class PlayerMergeHomeClubTest < ActiveSupport::TestCase
   # gespeicherten Array aus dem Merge. Sie muessen sich decken, sonst ist der Widerspruch
   # nur verschoben statt beseitigt.
   test 'open_home_club_entries und home_club_hash sind sich einig' do
-    a, b = create(:club), create(:club)
+    a = create(:club)
+    b = create(:club)
     faelle = [
       [{ 'club_id' => a.id, 'home_club' => true }],
       [{ 'club_id' => a.id, 'home_club' => 'true' }],
