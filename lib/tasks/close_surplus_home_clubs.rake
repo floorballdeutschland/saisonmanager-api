@@ -64,20 +64,40 @@ namespace :players do
       end
 
       behalten = zeile['behalten'].to_i
-      schliessen = zeile['schliessen'].to_s.split(';').map(&:to_i)
+      # Komma als inneres Trennzeichen, NICHT Semikolon: Das ist der Spaltentrenner der
+      # Datei selbst. Heute traegt jede Zeile genau eine zu schliessende ID, bei dreien
+      # waere die Spalte sonst nur noch mit Anfuehrungszeichen eindeutig.
+      schliessen = zeile['schliessen'].to_s.split(',').map(&:to_i)
 
-      offen = Array(player.clubs).select do |c|
-        c.is_a?(Hash) && ActiveModel::Type::Boolean.new.cast(c['home_club']) && c['valid_until'].blank?
-      end
+      offen = player.open_home_club_entries
 
       # Der Bestand kann sich seit dem Erstellen der Liste geaendert haben. Nur handeln,
       # wenn genau die erwartete Lage vorliegt -- sonst lieber melden als raten.
+      #
+      # club_id durchgehend ueber to_i: Im Bestand steht sie teils als String
+      # (lib/tasks/merge_clubs.rake:225 haelt das fest, und 17 Stellen in app/ vergleichen
+      # defensiv mit to_i). Ohne die Umwandlung wirft schon das sort mit
+      # "comparison of String with Integer failed" -- ausserhalb des rescue weiter unten,
+      # der Lauf risse also mitten im Bestand ab.
+      ist = offen.map { |c| c['club_id'].to_i }.sort
+      soll = ([behalten] + schliessen).sort
+
       if offen.size < 2
-        unveraendert += 1
+        # Nicht stillschweigend als "in Ordnung" durchwinken: Bleibt genau ein Eintrag
+        # offen, es ist aber der falsche, haengt das Profil weiter am falschen Verein und
+        # niemand erfaehrt davon. Das ist ein realer Fall, seit
+        # players:reopen_memberships_after_deactivation geschlossene Zugehoerigkeiten
+        # wieder oeffnet.
+        if offen.size == 1 && ist.first != behalten
+          puts "##{player.id}: nur noch #{Club.find_by(id: ist.first)&.name} offen, erwartet war " \
+               "#{Club.find_by(id: behalten)&.name} -- bitte pruefen"
+          abweichend += 1
+        else
+          unveraendert += 1
+        end
         next
       end
-      ist = offen.map { |c| c['club_id'] }.sort
-      soll = ([behalten] + schliessen).sort
+
       if ist != soll
         puts "##{player.id}: Lage weicht ab (erwartet #{soll.inspect}, vorgefunden #{ist.inspect}) -- uebersprungen"
         abweichend += 1
@@ -91,12 +111,20 @@ namespace :players do
       next if dry_run
 
       begin
-        player.clubs.each do |c|
-          next unless c.is_a?(Hash) && schliessen.include?(c['club_id'])
-          next unless c['valid_until'].blank?
-
-          c['valid_until'] = Time.now
+        # Ueber `offen` schreiben, nicht ueber alle clubs: Sonst traefe der Filter auch ein
+        # offenes ZWEITSPIELRECHT beim selben Verein und schloesse es mit. Der Lauf soll
+        # ausschliesslich den ueberzaehligen HEIMATverein schliessen.
+        betroffen = offen.select do |c|
+          schliessen.include?(c['club_id'].to_i) && c['valid_until'].blank?
         end
+        if betroffen.empty?
+          # Schon geschlossen. Kann vorkommen, weil ein heute geschlossener Eintrag dem
+          # tagesgenauen Leser bis Mitternacht weiter als offen gilt -- ein zweiter Lauf
+          # am selben Tag saehe ihn sonst erneut und stempelte ihn neu.
+          unveraendert += 1
+          next
+        end
+        betroffen.each { |c| c['valid_until'] = Time.now }
         player.save!(validate: false)
         geschlossen += 1
       rescue StandardError => e

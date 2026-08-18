@@ -86,4 +86,75 @@ class PlayerMergeHomeClubTest < ActiveSupport::TestCase
 
     assert_equal([verein.id], offene_heimat(master).map { |c| c['club_id'] })
   end
+  test 'auch bei drei offenen Heimatvereinen bleibt genau einer' do
+    a = create(:club)
+    b = create(:club)
+    c = create(:club)
+    master = create(:player, clubs: [
+      { 'club_id' => a.id, 'home_club' => true, 'created_at' => 5.years.ago.iso8601 },
+      { 'club_id' => b.id, 'home_club' => true, 'created_at' => 3.years.ago.iso8601 }
+    ])
+    dublette = create(:player, clubs: [{ 'club_id' => c.id, 'home_club' => true,
+                                        'created_at' => 1.year.ago.iso8601 }])
+
+    dublette.merge_into!(master, @user.id)
+    master.reload
+
+    assert_equal([c.id], offene_heimat(master).map { |x| x['club_id'] })
+  end
+
+  # In Altdaten steht das Flag als String. Wuerde der Cast fehlen, saehe die Auswahl
+  # einen solchen Eintrag nicht als Heimat und liesse ihn offen stehen.
+  test 'home_club als String zaehlt beim Zusammenfuehren als Heimatverein' do
+    alt = create(:club)
+    neu = create(:club)
+    master = create(:player, clubs: [{ 'club_id' => alt.id, 'home_club' => 'true',
+                                       'created_at' => 5.years.ago.iso8601 }])
+    dublette = create(:player, clubs: [{ 'club_id' => neu.id, 'home_club' => true,
+                                        'created_at' => 1.year.ago.iso8601 }])
+
+    dublette.merge_into!(master, @user.id)
+    master.reload
+
+    assert_equal(1, master.clubs.count { |c| ActiveModel::Type::Boolean.new.cast(c['home_club']) && c['valid_until'].blank? })
+  end
+
+  # Ein Ende in der Zukunft laeuft heute noch: `home_club_hash` zaehlt so einen Eintrag
+  # als gueltigen Heimatverein. Eine reine blank?-Pruefung haette ihn uebersehen und den
+  # Widerspruch bestehen lassen.
+  test 'ein Heimatverein mit Ende in der Zukunft zaehlt als offen und wird mitgeschlossen' do
+    alt = create(:club)
+    neu = create(:club)
+    master = create(:player, clubs: [{ 'club_id' => alt.id, 'home_club' => true,
+                                       'created_at' => 5.years.ago.iso8601,
+                                       'valid_until' => 60.days.from_now.iso8601 }])
+    dublette = create(:player, clubs: [{ 'club_id' => neu.id, 'home_club' => true,
+                                        'created_at' => 1.year.ago.iso8601 }])
+
+    dublette.merge_into!(master, @user.id)
+    master.reload
+
+    zu = master.clubs.find { |c| c['club_id'] == alt.id }
+    assert_not_nil zu['valid_until'], 'der Eintrag mit Zukunftsende muss geschlossen werden'
+    assert_equal([neu.id], master.clubs.select { |c| c['valid_until'].blank? }.map { |c| c['club_id'] })
+
+    # Bewusst NICHT gegen home_club_hash geprueft: Der Stichtagsvergleich ist tagesgenau,
+    # ein heute geschlossener Eintrag gilt dort bis Mitternacht weiter. Genauso verhaelt
+    # sich ein regulaerer Vereinswechsel. Massgeblich ist der gespeicherte Zustand.
+  end
+
+  # Ohne created_at teilen sich beide Eintraege den Sortierschluessel. sort_by ist in Ruby
+  # nicht als stabil zugesichert, der Tiebreaker macht die Auswahl reproduzierbar.
+  test 'ohne created_at ist die Auswahl trotzdem eindeutig' do
+    a = create(:club)
+    b = create(:club)
+    ergebnisse = 3.times.map do
+      master = create(:player, clubs: [{ 'club_id' => a.id, 'home_club' => true }])
+      dublette = create(:player, clubs: [{ 'club_id' => b.id, 'home_club' => true }])
+      dublette.merge_into!(master, @user.id)
+      offene_heimat(master.reload).map { |c| c['club_id'] }
+    end
+
+    assert_equal 1, ergebnisse.uniq.size, "Auswahl schwankt: #{ergebnisse.inspect}"
+  end
 end
