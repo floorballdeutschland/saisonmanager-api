@@ -548,10 +548,10 @@ class Player < ApplicationRecord
   # Die Deaktivierung ist eine Kennzeichnung fuer die Vereins- und
   # Mannschaftsansichten, kein Eingriff in die Stammdaten. Sie haelt das Profil aus
   # der Spielerliste des Vereins heraus (`Club#players` filtert auf `Player.active`)
-  # und damit auch aus der Auswahl beim Lizenzantrag. Mehr soll sie nicht bewirken:
-  # Vereinszugehoerigkeit und Lizenzen bleiben, wie sie sind.
+  # und damit aus der Auswahl beim Lizenzantrag. Mehr nicht: Vereinszugehoerigkeit
+  # und Lizenzen bleiben, wie sie sind.
   #
-  # Bis hierher schloss sie zusaetzlich JEDE noch gueltige Zugehoerigkeit und setzte
+  # Bis api#472 schloss sie zusaetzlich JEDE noch gueltige Zugehoerigkeit und setzte
   # alle laufenden Lizenzen (APPROVED/REQUESTED) auf DELETED. Damit war der
   # haeufigste Anlass der schaedlichste: Beim Grund "Vereinsaustritt" verlor die
   # Person ihren Heimatverein und fiel gleichzeitig aus jeder Suche, weil
@@ -562,10 +562,8 @@ class Player < ApplicationRecord
   # traf das am 25.07.2026 drei Profile eines Vereins innerhalb von sechs Minuten,
   # dazu weitere in anderen Vereinen.
   #
-  # Die Ruecknahme dieser Nebenwirkungen bleibt in `reset_deactivation_side_effects!`
-  # (aufgerufen von `reactivate!` und vom Rake-Task fuer den Bestand): Profile, die
-  # vor dieser Aenderung deaktiviert wurden, tragen die geschlossenen
-  # Zugehoerigkeiten und die DELETED-Eintraege weiterhin.
+  # Die offene Zugehoerigkeit ist dabei nicht Kosmetik, sondern das Mittel: Sie ist
+  # es, die das Profil transferierbar haelt.
   def deactivate!(user_id, reason: nil)
     self.deactivated_at = Time.current
     self.deactivated_by = user_id
@@ -573,49 +571,55 @@ class Player < ApplicationRecord
     save!(validate: false)
   end
 
+  # Nimmt die Deaktivierung samt ihrer Nebenwirkungen im Bestand zurueck: die von
+  # ihr geschlossenen Zugehoerigkeiten gehen wieder auf, die von ihr geschriebenen
+  # DELETED-Eintraege verschwinden aus dem Lizenz-Verlauf. Fuer alles, was seit
+  # api#472 deaktiviert wurde, sind beide Schritte ein No-op, weil es diese
+  # Nebenwirkungen nicht mehr gibt.
   def reactivate!
-    # Vor dem Loeschen der Kennzeichnung: `membership_closed_by_deactivation?` liest
-    # `deactivated_at` und `deactivated_by`.
-    reset_deactivation_side_effects!(persist: false)
+    # Vor dem Loeschen der Kennzeichnung: beide Schritte lesen `deactivated_at` und
+    # `deactivated_by`.
+    self.licenses ||= []
+    pop_deactivation_license_entries!
+    reopen_memberships_closed_by_deactivation!(persist: false)
 
     self.deactivated_at = nil
     self.deactivated_by = nil
     save!(validate: false)
   end
 
-  # Nimmt die Nebenwirkungen zurueck, die `deactivate!` bis api#472 mitgeschrieben
-  # hat: die von dieser Deaktivierung geschlossenen Vereinszugehoerigkeiten und die
-  # DELETED-Eintraege, die sie in den Lizenz-Verlauf gehaengt hat. Fuer alles, was
-  # danach deaktiviert wurde, ist die Methode ein No-op — `membership_closed_by_
-  # deactivation?` verlangt Stempel UND Zeitfenster der Deaktivierung, und einen
-  # DELETED-Eintrag schreibt seither niemand mehr.
+  # Oeffnet die Vereinszugehoerigkeiten, die eine Deaktivierung vor api#472
+  # geschlossen hat. Fuer alles, was danach deaktiviert wurde, ein No-op:
+  # `membership_closed_by_deactivation?` verlangt Stempel UND Zeitfenster der
+  # Deaktivierung, und geschlossen wird seither keine Zugehoerigkeit mehr.
+  #
+  # Laesst Kennzeichnung und Lizenzen unangetastet, und das ist der Punkt: Dass der
+  # Verein das Profil aus seiner Liste genommen hat, ist seine Entscheidung, und die
+  # damals ungueltig gesetzten Lizenzen bleiben ungueltig. Zurueckzunehmen ist
+  # allein die geschlossene Zugehoerigkeit, denn sie hat das Profil untransferierbar
+  # gemacht. So heilt `rake players:reopen_memberships_after_deactivation` den
+  # Bestand.
   #
   # `persist: false` ueberlaesst das Speichern dem Aufrufer (`reactivate!` raeumt im
-  # selben Schreibvorgang auch die Kennzeichnung ab). Mit `persist: true` bleibt die
-  # Kennzeichnung stehen und nur die Bereinigung wird gespeichert; so heilt
-  # `rake players:reset_deactivation_side_effects` den Bestand, ohne die
-  # Entscheidung des Vereins zu ueberschreiben.
+  # selben Schreibvorgang auch die Kennzeichnung ab).
   #
-  # Rueckgabe: ob es etwas zu bereinigen gab.
-  def reset_deactivation_side_effects!(persist: true)
+  # Rueckgabe: ob eine Zugehoerigkeit geoeffnet wurde.
+  def reopen_memberships_closed_by_deactivation!(persist: true)
     self.clubs ||= []
-    self.licenses ||= []
 
     # Der frühere reine valid_set_by-Vergleich öffnete auch ein Zweitspielrecht wieder,
     # das lange vor der Deaktivierung abgelaufen war.
-    restored = false
+    reopened = false
     clubs.map! do |c|
       if membership_closed_by_deactivation?(c)
         restore_membership_validity(c)
-        restored = true
+        reopened = true
       end
       c
     end
 
-    restored = true if pop_deactivation_license_entries!
-
-    save!(validate: false) if persist && restored
-    restored
+    save!(validate: false) if persist && reopened
+    reopened
   end
 
   # Einheitlicher Einstieg für beide Sperr-Ebenen aus Issue #508.

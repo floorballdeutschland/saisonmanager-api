@@ -1,15 +1,14 @@
 require 'test_helper'
 require 'rake'
 
-# Tests fuer players:reset_deactivation_side_effects
-# (lib/tasks/reset_deactivation_side_effects.rake): nimmt die Nebenwirkungen zurueck,
-# die Player#deactivate! bis api#472 mitgeschrieben hat — geschlossene
-# Vereinszugehoerigkeiten und DELETED-Eintraege im Lizenz-Verlauf —, ohne die
-# Kennzeichnung selbst anzufassen.
-class ResetDeactivationSideEffectsTest < ActiveSupport::TestCase
+# Tests fuer players:reopen_memberships_after_deactivation
+# (lib/tasks/reopen_memberships_after_deactivation.rake): oeffnet die
+# Vereinszugehoerigkeiten, die eine Deaktivierung vor api#472 geschlossen hat, und
+# laesst Kennzeichnung wie Lizenzen unangetastet.
+class ReopenMembershipsAfterDeactivationTest < ActiveSupport::TestCase
   setup do
     Rails.application.load_tasks if Rake::Task.tasks.empty?
-    @task = Rake::Task['players:reset_deactivation_side_effects']
+    @task = Rake::Task['players:reopen_memberships_after_deactivation']
     @task.reenable
 
     create(:setting, current_season_id: '18')
@@ -35,15 +34,15 @@ class ResetDeactivationSideEffectsTest < ActiveSupport::TestCase
     player.reload
   end
 
-  test 'oeffnet die geschlossene Zugehoerigkeit und nimmt den Lizenz-Eintrag zurueck' do
+  test 'oeffnet die geschlossene Zugehoerigkeit' do
     player = alt_deaktiviert
-    verlauf_vorher = player.licenses.first['history'].size
+    assert_not_nil player.clubs.first['valid_until'], 'Vorbedingung: Alt-Zustand steht'
 
     run_task
     player.reload
 
     assert_nil player.clubs.first['valid_until']
-    assert_equal verlauf_vorher - 1, player.licenses.first['history'].size
+    assert_includes @club.players(include_deactivated: true).map(&:id), player.id
   end
 
   test 'laesst die Kennzeichnung des Vereins stehen' do
@@ -55,20 +54,34 @@ class ResetDeactivationSideEffectsTest < ActiveSupport::TestCase
     assert_not_nil player.deactivated_at
     assert_equal @user.id, player.deactivated_by
     assert_equal 'Vereinsaustritt', player.deactivation_reason
+    refute_includes @club.players.map(&:id), player.id, 'aus der aktiven Liste bleibt es heraus'
+  end
+
+  # Was eine alte Deaktivierung ungueltig gesetzt hat, bleibt ungueltig. Der Lauf
+  # macht niemanden wieder spielberechtigt.
+  test 'laesst die Lizenzen ungueltig' do
+    player = alt_deaktiviert
+    verlauf_vorher = player.licenses.first['history'].size
+
+    run_task
+    player.reload
+
+    assert_equal verlauf_vorher, player.licenses.first['history'].size
+    assert_equal License::DELETED, player.licenses.first['history'].last['license_status_id'].to_i
   end
 
   test 'DRY_RUN schreibt nichts' do
     player = alt_deaktiviert
-    vorher = [player.clubs, player.licenses].to_json
+    vorher = player.clubs.to_json
 
     run_task({})
     player.reload
 
-    assert_equal vorher, [player.clubs, player.licenses].to_json
+    assert_equal vorher, player.clubs.to_json
   end
 
   # Bei einer zusammengefuehrten Dublette ist die geschlossene Zugehoerigkeit richtig:
-  # ihre Eintraege liegen am Master. Wuerde der Task sie oeffnen, stuende die Dublette
+  # ihre Eintraege liegen am Master. Wuerde der Lauf sie oeffnen, stuende die Dublette
   # wieder als Mitglied in der Vereinsliste.
   test 'ueberspringt zusammengefuehrte Dubletten' do
     master   = create(:player)

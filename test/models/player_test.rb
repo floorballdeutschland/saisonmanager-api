@@ -439,12 +439,13 @@ class PlayerTest < ActiveSupport::TestCase
   end
 
   # ---------------------------------------------------------------------------
-  # Player#reset_deactivation_side_effects!
+  # Player#reopen_memberships_closed_by_deactivation!
   # ---------------------------------------------------------------------------
 
-  # Der Bestand: tausende Profile tragen die Nebenwirkungen der alten Deaktivierung.
-  # Der Rake-Task nimmt sie zurueck, laesst die Entscheidung des Vereins aber stehen.
-  test 'reset_deactivation_side_effects! stellt Zugehoerigkeit und Lizenz her, behaelt die Kennzeichnung' do
+  # Der Bestand: tausende Profile tragen die geschlossene Zugehoerigkeit einer alten
+  # Deaktivierung. Der Rake-Task oeffnet sie, laesst aber die Entscheidung des
+  # Vereins und die ungueltigen Lizenzen stehen.
+  test 'reopen_memberships_closed_by_deactivation! oeffnet die Zugehoerigkeit, behaelt Kennzeichnung und Lizenzstatus' do
     create(:setting, current_season_id: '18')
     user   = create(:user)
     club   = create(:club)
@@ -458,34 +459,32 @@ class PlayerTest < ActiveSupport::TestCase
     assert_not_nil player.clubs.first['valid_until'], 'Vorbedingung: Alt-Zustand steht'
     verlauf_vorher = player.licenses.first['history'].size
 
-    assert player.reset_deactivation_side_effects!, 'es gab etwas zu bereinigen'
+    assert player.reopen_memberships_closed_by_deactivation!, 'es gab etwas zu oeffnen'
     player.reload
 
     assert_nil player.clubs.first['valid_until'], 'Zugehoerigkeit muss wieder offen sein'
-    assert_equal verlauf_vorher - 1, player.licenses.first['history'].size,
-                 'der DELETED-Eintrag der Deaktivierung muss weg sein'
+    assert_equal verlauf_vorher, player.licenses.first['history'].size,
+                 'die Lizenzen bleiben unangetastet'
+    assert_equal License::DELETED, player.licenses.first['history'].last['license_status_id'].to_i
     assert_not_nil player.deactivated_at, 'die Kennzeichnung bleibt'
     assert_equal user.id, player.deactivated_by
     assert_includes club.players(include_deactivated: true).map(&:id), player.id
   end
 
-  test 'reset_deactivation_side_effects! ist ein No-op fuer neue Deaktivierungen' do
+  test 'reopen_memberships_closed_by_deactivation! ist ein No-op fuer neue Deaktivierungen' do
     create(:setting, current_season_id: '18')
     user   = create(:user)
     club   = create(:club)
-    league = create(:league, :current_season)
-    team   = create(:team, league: league)
-    player = create(:player, clubs: [{ 'club_id' => club.id, 'home_club' => true }],
-                             with_licenses: [{ team: team, status: License::APPROVED }])
+    player = create(:player, clubs: [{ 'club_id' => club.id, 'home_club' => true }])
 
     player.deactivate!(user.id, reason: 'Vereinsaustritt')
     player.reload
-    vorher = [player.clubs, player.licenses].to_json
+    vorher = player.clubs.to_json
 
-    refute player.reset_deactivation_side_effects!, 'es gibt nichts zu bereinigen'
+    refute player.reopen_memberships_closed_by_deactivation!, 'es gibt nichts zu oeffnen'
     player.reload
 
-    assert_equal vorher, [player.clubs, player.licenses].to_json
+    assert_equal vorher, player.clubs.to_json
     assert_not_nil player.deactivated_at
   end
 
