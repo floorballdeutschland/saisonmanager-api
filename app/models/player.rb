@@ -230,7 +230,10 @@ class Player < ApplicationRecord
   def valid_clubs(deadline)
     return [] unless clubs
 
-    clubs.reject { |l| valid_time?(l['valid_until'], deadline) }
+    # Strukturell kaputte Eintraege (kein Objekt) zaehlen nicht als Mitgliedschaft. Ohne
+    # den Riegel bricht jeder Leser darueber ab, und seit home_club_entry DIE Quelle fuer
+    # den Heimatverein ist, gehoert er hierher statt in jeden Aufrufer einzeln.
+    clubs.reject { |l| !l.is_a?(Hash) || valid_time?(l['valid_until'], deadline) }
   end
 
   def home_club(deadline)
@@ -328,10 +331,10 @@ class Player < ApplicationRecord
       # Wer den Verein wechselt, nimmt keine der alten mit.
       #
       # Die fruehere Bedingung lautete `c['valid_until'].nil? || c['valid_until'] > Time.now`.
-      # Der zweite Teil war wirkungslos: valid_until kommt als String aus dem JSONB, und
-      # `"2026-08-18T10:00:00+02:00" > Time.now` ergibt in Ruby nicht etwa einen Fehler,
-      # sondern immer `false`. Eine Zugehoerigkeit, die erst in der Zukunft endet, blieb
-      # damit beim Wechsel offen stehen.
+      # Fuer lesbare Daten war sie richtig — ActiveSupport patcht `Time#<=>`, sodass der
+      # String-gegen-Time-Vergleich koerziert. Bei einem unlesbaren valid_until warf sie
+      # aber `ArgumentError: comparison of String with Time failed`, und der Vereinswechsel
+      # brach ab. Ueber valid_time? ist dieser Fall jetzt abgedeckt.
       if c.is_a?(Hash) && !valid_time?(c['valid_until'], Date.current)
         c['valid_until'] = Time.now
         c['valid_set_by'] = user_id
@@ -1008,18 +1011,35 @@ class Player < ApplicationRecord
   # true, wenn die Zugehoerigkeit am Stichtag abgelaufen war.
   #
   # Ein unlesbares Datum aus dem Altbestand ("unbekannt", "0000-00-00") war bisher kein
-  # Sonderfall: Date.parse brach ab, und jeder Leser darueber endete im 500er — die
-  # Vereinsspielerliste, der Heimatverein, seit dieser Aenderung auch der Vereinswechsel.
-  # Solche Eintraege gelten jetzt als laufend, wie es `membership_current?` im
-  # Controller-Concern schon haelt. Beim Wechsel ist das zugleich die sichere Richtung:
-  # Er schliesst den Eintrag dann, statt eine zweite offene Zugehoerigkeit stehenzulassen.
+  # Sonderfall: Date.parse brach ab, und jeder Leser darueber endete im 500er.
+  #
+  # Solche Eintraege gelten jetzt als abgelaufen — dieselbe Richtung wie
+  # `LicenseAccessScope#membership_current?`, und die vorsichtige: Ein kaputtes Datum
+  # darf keine Zustaendigkeit begruenden. Wuerde es als laufend gelten, machte es den
+  # Verein ueber `home_club_entry` zum Heimatverein und damit dessen SBK zustaendig
+  # (`sbk_can_access_player?`, `sbk_may_move_player?`) und zum abgebenden Verein eines
+  # Transferantrags. Aus einem lauten 500er wuerde eine stille Falschzustaendigkeit.
+  #
+  # Gemeldet wird der Fall trotzdem, sonst verschwindet er ganz: einmal pro Tag und
+  # Datenfehler, wie es `report_license_data_defect` haelt.
   def valid_time?(time, deadline)
     return false if time.nil?
 
     Date.parse(time.to_s) < deadline
-  rescue ArgumentError, TypeError
+  rescue ArgumentError, TypeError => e
     # Date::Error erbt von ArgumentError und ist damit mitgefangen.
-    false
+    report_membership_date_defect(time, e)
+    true
+  end
+
+  def report_membership_date_defect(time, error)
+    return unless Rails.cache.write("player_membership_date_defect/#{id}", true,
+                                    unless_exist: true, expires_in: 1.day)
+
+    message = "Spieler##{id}: valid_until ist unlesbar (#{time.inspect}), " \
+              "Zugehoerigkeit gilt als abgelaufen — #{error.class}"
+    Rails.logger.error(message)
+    Sentry.capture_message(message) if defined?(Sentry)
   end
 
   def select_license(licenses)

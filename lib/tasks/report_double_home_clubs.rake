@@ -22,11 +22,11 @@ namespace :players do
     rows = []
 
     Player.where(merged_into_id: nil).find_each do |player|
-      offen = Array(player.clubs).select do |c|
-        c.is_a?(Hash) &&
-          ActiveModel::Type::Boolean.new.cast(c['home_club']) &&
-          c['valid_until'].blank?
-      end
+      # Genau die Menge, aus der home_club_entry den maessgeblichen Eintrag waehlt.
+      # Eine eigene Auslegung waere hier besonders verkehrt: Der Bericht soll ja die
+      # Faelle zeigen, ueber die dieser Leser entscheidet. Insbesondere zaehlt eine
+      # Heimat-Zugehoerigkeit mit Ende in der Zukunft mit.
+      offen = player.home_club_hash(Date.current) || []
       next if offen.size < 2
 
       massgeblich = offen.last['club_id']
@@ -56,7 +56,7 @@ namespace :players do
       end
     end
 
-    next if ENV['CSV'].blank?
+    next if ENV['CSV'].blank? || rows.empty?
 
     CSV.open(ENV['CSV'], 'w') do |csv|
       csv << rows.first.keys
