@@ -9,6 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Ein Spielort lässt sich wieder aktiv schalten**: Ob ein Spielort im Spieltag zur Auswahl steht, hängt an einem Kennzeichen, das in der Verwaltung nirgends zu sehen war. Wirksam wurde es erst mit 1.12.0: Dort ist die Deaktivieren-Funktion als ungenutzt entfallen, und die Auswahl hing danach an einem zweiten, seit der Altdatenübernahme von 2017 mitlaufenden Feld, das im Bestand überwiegend nicht gesetzt ist. Seitdem fehlt knapp die Hälfte der gut tausend Spielorte im Spieltag, ohne dass die Liste einen Unterschied gezeigt hätte. Wer das bemerkte, hatte keinen Weg zurück: Ändern ließ sich das Kennzeichen über keine Maske, und Löschen scheitert, sobald Spieltage an dem Eintrag hängen. Blieb nur, den Spielort neu anzulegen und die Dublette anschließend zusammenzuführen. Die Spielorte-Liste zeigt den Zustand jetzt in einer eigenen Spalte, ein Filter blendet die inaktiven Einträge für sich ein, und in der Bearbeiten-Maske schalten die Spielbetriebskommission und die Administration ihn um, in beide Richtungen. Neu angelegte Spielorte sind unverändert von sich aus aktiv. Ein Altbestandseintrag ohne Namen oder Ort lässt sich, wie bei jeder anderen Änderung auch, erst speichern, wenn beides nachgetragen ist, denn genau daraus baut der Spielplan seine Ortsangabe.
+
+- **Beim Abschalten eines Spielorts ist zu bedenken, dass Spielorte allen Verbänden gemeinsam gehören**: Ein abgeschalteter Spielort fehlt überall im Spieltag und in der Importvorlage. Bereits eingetragene Spieltage behalten ihren Spielort, eine schon verteilte Import-Datei aber nicht: Nennt sie den Spielort, bricht der Import mit „Halle nicht erkannt" ab, was nach einem Tippfehler in der Datei aussieht und keiner ist. Abgeschaltet wird deshalb nur, was wirklich niemand mehr braucht.
+
 ## [1.85.0] - 2026-08-18
 
 ### Neu
