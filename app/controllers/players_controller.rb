@@ -544,11 +544,11 @@ class PlayersController < ApplicationController
 
         first_name = "%#{params['first_name'].to_s.downcase.strip}%"
         last_name = "%#{params['last_name'].to_s.downcase.strip}%"
-        existing_player_id = Player.where('first_name ILIKE ? AND last_name ILIKE ? AND birthdate = ?', first_name,
-                                          last_name, birthdate).limit(1).pluck(:id).first
+        existing_player = Player.where('first_name ILIKE ? AND last_name ILIKE ? AND birthdate = ?', first_name,
+                                       last_name, birthdate).limit(1).first
 
-        if existing_player_id.present?
-          render json: { message: "Es existiert ein Spieler mit diesen Daten (ID: #{existing_player_id}). Anlegen nicht möglich." },
+        if existing_player.present?
+          render json: { message: duplicate_player_message(existing_player, params[:club_id].to_i) },
                  status: :unprocessable_entity
         else
           pp = player_params
@@ -1126,6 +1126,41 @@ class PlayersController < ApplicationController
 
       membership_current?(player, entry['valid_until']) ||
         player.membership_closed_by_deactivation?(entry)
+    end
+  end
+
+  # Die Anlage bricht ab, sobald es zu Vorname, Nachname und Geburtsdatum schon
+  # ein Profil gibt. Bisher nannte die Meldung nur dessen id, und die führt einen
+  # Vereinsmanager nirgendwohin: Ein Profil eines fremden Vereins kann er nicht
+  # aufrufen, ein deaktiviertes findet er auch über die Spielersuche des
+  # Transferantrags nicht, denn die sucht in `Player.active`. Deshalb nennt die
+  # Meldung jetzt den nächsten Schritt; die id bleibt als Referenz für die SBK.
+  def duplicate_player_message(player, club_id)
+    if player.deactivated_at.present?
+      'Für diese Person gibt es bereits ein Spielerprofil, das derzeit deaktiviert ist. ' \
+        'Ein zweites Profil darf nicht angelegt werden. Bitte die zuständige SBK kontaktieren ' \
+        "und dabei die Spieler-ID #{player.id} angeben."
+    elsif own_club_membership?(player, club_id)
+      "Für diese Person gibt es bereits ein Spielerprofil in diesem Verein (Spieler-ID #{player.id}). " \
+        'Bitte in der Spielerliste des Vereins danach suchen.'
+    else
+      "Für diese Person gibt es bereits ein Spielerprofil in einem anderen Verein (Spieler-ID #{player.id}). " \
+        'Ein Vereinswechsel läuft über einen Transferantrag. Bei Rückfragen bitte die zustÃ¤ndige ' \
+        'SBK kontaktieren.'
+    end
+  end
+
+  # Nur eine noch laufende Zugehörigkeit zählt: Eine abgelaufene würde den
+  # Vereinsmanager in seine eigene Spielerliste schicken, wo das Profil nicht
+  # mehr auftaucht.
+  def own_club_membership?(player, club_id)
+    return false unless club_id.positive?
+
+    Array(player.clubs).any? do |entry|
+      next false unless entry.is_a?(Hash)
+      next false unless entry['club_id'].to_i == club_id
+
+      membership_current?(player, entry['valid_until'])
     end
   end
 
