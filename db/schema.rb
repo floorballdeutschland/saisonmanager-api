@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_08_18_110000) do
+ActiveRecord::Schema[7.1].define(version: 2026_08_19_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -145,6 +145,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_18_110000) do
     t.integer "required_below_age"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "required_from_birth_year"
     t.index ["game_operation_id", "name"], name: "index_document_types_on_game_operation_id_and_name", unique: true
     t.index ["key"], name: "index_document_types_on_key", unique: true
   end

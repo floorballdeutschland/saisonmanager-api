@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Eine Dokumentart kann jetzt für einen ganzen Geburtsjahrgang gelten**: Bisher ließ sich eine Dokumentart nur über ein Alter altersabhängig machen, und der Stichtag war tagesgenau der Tag der Lizenzbeantragung. Für manche Dokumente passt das nicht: Wer bei Antragstellung im Sommer noch 15 ist, wird im Laufe derselben Saison 16 und bräuchte das sportärztliche Attest dann doch — und umgekehrt entfiel ein Dokument bei einem späten Antrag plötzlich, obwohl es für dieselbe Saison bei allen Jahrgangskolleg*innen vorliegt. Zur Auswahl steht deshalb jetzt eine zweite Form der Altersregel: „ab Geburtsjahrgang". Sie gilt für alle, die im angegebenen Jahr oder später geboren sind, unabhängig von Geburtstag und Antragsdatum. Die beiden Formen schließen sich aus, und eine Dokumentart ohne Altersregel bleibt wie bisher immer erforderlich. Ein fester Jahrgang muss jede Saison nachgezogen werden; das ist so gewollt, weil es dem Denken der Vereine entspricht. Die Elternzustimmung, die über das Liga-Flag ohne Katalog-Eintrag angefordert wird, bleibt unverändert altersbasiert (unter 18).
+
 ## [1.87.3] - 2026-08-18
 
 ### Behoben

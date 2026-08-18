@@ -92,6 +92,51 @@ module Admin
       assert_not DocumentType.exists?(@scoped.id)
     end
 
+    # Die Altersregel muss ueber die Maske in beiden Formen pflegbar sein und in der
+    # Antwort auch wieder ankommen — sonst kann die Liste keine Kennzeichnung zeigen
+    # und das Bearbeiten-Formular nichts vorbelegen (#483).
+    test 'Geburtsjahrgang laesst sich pflegen und kommt in der Antwort zurueck' do
+      login(create(:user, :admin))
+
+      post '/api/v2/admin/document_types', params: {
+        document_type: { name: 'Sportärztliches Attest', required_from_birth_year: 2012 }
+      }
+      assert_response :created
+      body = JSON.parse(response.body)
+      assert_equal 2012, body['required_from_birth_year']
+      assert_nil body['required_below_age']
+
+      get '/api/v2/admin/document_types'
+      listed = JSON.parse(response.body).find { |d| d['key'] == 'sportarztliches_attest' }
+      assert_equal 2012, listed['required_from_birth_year']
+    end
+
+    # Der Wechsel der Regelart: Das Formular schickt die nicht gewaehlte Form leer
+    # mit, und leer muss die alte Angabe auch tatsaechlich abraeumen.
+    test 'Wechsel von Stichtagsalter auf Jahrgang raeumt die alte Angabe ab' do
+      attest = DocumentType.create!(name: 'Attest FD', required_below_age: 16)
+      login(create(:user, :admin))
+
+      patch "/api/v2/admin/document_types/#{attest.id}", params: {
+        document_type: { required_below_age: '', required_from_birth_year: 2012 }
+      }
+      assert_response :success
+      attest.reload
+      assert_nil attest.required_below_age
+      assert_equal 2012, attest.required_from_birth_year
+    end
+
+    test 'beide Altersregeln zusammen werden abgelehnt' do
+      login(create(:user, :admin))
+
+      post '/api/v2/admin/document_types', params: {
+        document_type: { name: 'Doppelregel', required_below_age: 16, required_from_birth_year: 2012 }
+      }
+      assert_response :unprocessable_entity
+      assert_match(/nur eine Altersregel/, JSON.parse(response.body)['errors'].join(' '))
+      assert_not DocumentType.exists?(name: 'Doppelregel')
+    end
+
     test 'VM hat keinen Zugriff' do
       login(create(:user, :vm, club_id: 1))
 
