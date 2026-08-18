@@ -147,7 +147,156 @@ module Admin
       assert_equal master.id, game_day.reload.arena_id
     end
 
+    # Erst mit dem erlaubten `active` ist POST mit `active: false` überhaupt
+    # erreichbar. Die Zusicherung aus #449 hängt daran, dass create den Wert
+    # nach arena_params setzt und nicht davor.
+    test 'Ein neu angelegter Spielort ist auch mit active false aktiv' do
+      login(create(:user, :sbk_scoped))
+
+      post '/api/v2/admin/arenas',
+           params: { name: 'Gymnasium-Halle Puchheim', city: 'Puchheim', active: false }
+
+      assert_response :created
+      assert Arena.find_by(name: 'Gymnasium-Halle Puchheim').active
+    end
+
+    # #451: `active` war über keine Maske erreichbar. Damit die Verwaltung den
+    # Zustand überhaupt anzeigen kann, muss er in der Liste mitkommen.
+    test 'Die Spielortliste liefert den Aktiv-Zustand mit' do
+      inactive = create(:arena, active: false)
+      login(create(:user, :sbk_scoped))
+
+      get '/api/v2/admin/arenas'
+
+      assert_response :success
+      by_id = JSON.parse(response.body).index_by { |a| a['id'] }
+      assert_equal true, by_id[@arena.id]['active']
+      assert_equal false, by_id[inactive.id]['active']
+    end
+
+    test 'SBK darf einen inaktiven Spielort wieder aktivieren' do
+      arena = create(:arena, active: false)
+      login(create(:user, :sbk_scoped))
+
+      put "/api/v2/admin/arenas/#{arena.id}",
+          params: { name: arena.name, city: arena.city, active: true }
+
+      assert_response :success
+      assert arena.reload.active
+      assert_equal true, JSON.parse(response.body)['active']
+    end
+
+    test 'SBK darf einen Spielort deaktivieren' do
+      login(create(:user, :sbk_scoped))
+
+      put "/api/v2/admin/arenas/#{@arena.id}",
+          params: { name: @arena.name, city: @arena.city, active: false }
+
+      assert_response :success
+      assert_not @arena.reload.active
+    end
+
+    test 'Admin darf einen inaktiven Spielort wieder aktivieren' do
+      arena = create(:arena, active: false)
+      login(create(:user, :admin))
+
+      put "/api/v2/admin/arenas/#{arena.id}",
+          params: { name: arena.name, city: arena.city, active: true }
+
+      assert_response :success
+      assert arena.reload.active
+    end
+
+    # Der Zustand bleibt stehen, wenn eine Maske ihn gar nicht mitschickt –
+    # sonst würde jedes Umbenennen einen Spielort stillschweigend deaktivieren.
+    test 'Ein Update ohne active laesst den Zustand unveraendert' do
+      login(create(:user, :sbk_scoped))
+
+      put "/api/v2/admin/arenas/#{@arena.id}", params: { name: 'Neue Halle', city: @arena.city }
+
+      assert_response :success
+      assert @arena.reload.active
+    end
+
+    # Regression auf die eigentliche Meldung aus #451: der Weg vom Aktivieren
+    # bis in die Spielplanverwaltung. additional_references filtert auf Arena.active.
+    test 'Ein wieder aktivierter Spielort steht im Spielplan zur Auswahl' do
+      league = create(:league)
+      arena = create(:arena, name: 'Gymnasium-Halle Puchheim', city: 'Puchheim', active: false)
+      login(create(:user, :admin))
+
+      get "/api/v2/admin/leagues/#{league.id}/additional_references"
+      assert_response :success
+      assert_not_includes JSON.parse(response.body)['arenas'].map { |a| a['name'] }, 'Gymnasium-Halle Puchheim'
+
+      put "/api/v2/admin/arenas/#{arena.id}",
+          params: { name: arena.name, city: arena.city, active: true }
+      assert_response :success
+
+      get "/api/v2/admin/leagues/#{league.id}/additional_references"
+
+      assert_response :success
+      names = JSON.parse(response.body)['arenas'].map { |a| a['name'] }
+      assert_includes names, 'Gymnasium-Halle Puchheim'
+    end
+
+    # Gegenrichtung zum Test darueber, und die Zusage, die der CHANGELOG-Eintrag
+    # zum Abschalten gibt: Der Spielort verschwindet aus der Auswahlliste des
+    # Spielplans.
+    test 'Ein abgeschalteter Spielort verschwindet aus der Spielplan-Auswahl' do
+      league = create(:league)
+      arena = create(:arena, name: 'Gymnasium-Halle Puchheim', city: 'Puchheim')
+      login(create(:user, :admin))
+
+      get "/api/v2/admin/leagues/#{league.id}/additional_references"
+      assert_response :success
+      assert_includes JSON.parse(response.body)['arenas'].map { |a| a['name'] }, 'Gymnasium-Halle Puchheim'
+
+      put "/api/v2/admin/arenas/#{arena.id}",
+          params: { name: arena.name, city: arena.city, active: false }
+      assert_response :success
+
+      get "/api/v2/admin/leagues/#{league.id}/additional_references"
+
+      assert_response :success
+      assert_not_includes JSON.parse(response.body)['arenas'].map { |a| a['name'] }, 'Gymnasium-Halle Puchheim'
+    end
+
+    # Die Importvorlage haengt am selben Arena.active. Sie ist die haertere
+    # Folge des Abschaltens: Eine bereits verteilte Datei, die den Spielort
+    # nennt, laeuft danach im Import auf "Halle nicht erkannt".
+    test 'Ein abgeschalteter Spielort fehlt in der Importvorlage' do
+      league = create(:league)
+      arena = create(:arena, name: 'Gymnasium-Halle Puchheim', city: 'Puchheim')
+      login(create(:user, :admin))
+
+      assert_includes template_arena_names(league), 'Puchheim, Gymnasium-Halle Puchheim'
+
+      put "/api/v2/admin/arenas/#{arena.id}",
+          params: { name: arena.name, city: arena.city, active: false }
+      assert_response :success
+
+      assert_not_includes template_arena_names(league), 'Puchheim, Gymnasium-Halle Puchheim'
+    end
+
     private
+
+    # Spalte B des Hallen-Blocks der Importvorlage (arena.schedule_item).
+    def template_arena_names(league)
+      get "/api/v2/admin/leagues/#{league.id}/schedule_import_template.xlsx"
+      assert_response :success
+
+      file = Tempfile.new(['template', '.xlsx'])
+      file.binmode
+      file.write(response.body)
+      file.flush
+
+      Creek::Book.new(file.path, with_headers: false).sheets.flat_map do |sheet|
+        sheet.simple_rows.map { |row| row['B'] }
+      end.compact
+    ensure
+      file&.close
+    end
 
     def login(user)
       post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
