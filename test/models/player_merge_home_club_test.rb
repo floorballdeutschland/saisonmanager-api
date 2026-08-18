@@ -157,4 +157,30 @@ class PlayerMergeHomeClubTest < ActiveSupport::TestCase
 
     assert_equal 1, ergebnisse.uniq.size, "Auswahl schwankt: #{ergebnisse.inspect}"
   end
+  # Seit #480 gibt es `home_club_entry` (ueber home_club_hash/valid_time?), seit diesem PR
+  # `open_home_club_entries`. Beide beantworten dieselbe Frage, arbeiten aber auf
+  # verschiedenen Eingaben -- die eine auf `self.clubs`, die andere auf einem noch nicht
+  # gespeicherten Array aus dem Merge. Sie muessen sich decken, sonst ist der Widerspruch
+  # nur verschoben statt beseitigt.
+  test 'open_home_club_entries und home_club_hash sind sich einig' do
+    a, b = create(:club), create(:club)
+    faelle = [
+      [{ 'club_id' => a.id, 'home_club' => true }],
+      [{ 'club_id' => a.id, 'home_club' => 'true' }],
+      [{ 'club_id' => a.id, 'home_club' => true, 'valid_until' => 60.days.from_now.iso8601 }],
+      [{ 'club_id' => a.id, 'home_club' => true, 'valid_until' => 60.days.ago.iso8601 }],
+      [{ 'club_id' => a.id, 'home_club' => true, 'valid_until' => 'unbekannt' }],
+      [{ 'club_id' => a.id, 'home_club' => true, 'valid_until' => '' }],
+      [{ 'club_id' => a.id, 'home_club' => false }],
+      [{ 'club_id' => a.id, 'home_club' => true }, { 'club_id' => b.id, 'home_club' => true }],
+      [nil, { 'club_id' => a.id, 'home_club' => true }]
+    ]
+
+    faelle.each_with_index do |clubs, i|
+      player = create(:player, clubs: clubs)
+      ueber_merge = player.open_home_club_entries.map { |c| c['club_id'] }
+      ueber_leser  = (player.home_club_hash(Date.current) || []).map { |c| c['club_id'] }
+      assert_equal ueber_leser, ueber_merge, "Fall #{i} weicht ab: #{clubs.inspect}"
+    end
+  end
 end

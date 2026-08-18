@@ -62,10 +62,13 @@ module Admin
       end
 
       if requesting_club_id > 0
-        home_club = player.clubs.find { |c| c['home_club'] == true && c['valid_until'].nil? }
-        if home_club&.dig('club_id') == requesting_club_id
-          return render json: { error: 'Spieler ist bereits in diesem Verein' }, status: :unprocessable_entity
-        end
+      # Derselbe Leser wie in create/direct_assign -- sonst faellt die Suche gegen den
+      # ersten offenen Heimat-Eintrag und der Antrag gleich danach gegen den letzten,
+      # und die Suche weist einen Antrag ab, den create zugelassen haette.
+      home_club = player.home_club_entry
+      if home_club&.dig('club_id') == requesting_club_id
+        return render json: { error: 'Spieler ist bereits in diesem Verein' }, status: :unprocessable_entity
+      end
       end
 
       if TransferRequest.active.where(player_id: player.id).exists?
@@ -121,8 +124,11 @@ module Admin
         return render json: { error: 'Fuer diesen Spieler ist bereits ein Transferantrag aktiv' }, status: :unprocessable_entity
       end
 
-      home_club_entry = player.clubs.find { |c| c['home_club'] == true && c['valid_until'].nil? }
-      former_club_id = home_club_entry&.dig('club_id')
+      # Player#home_club_entry ist die eine Quelle: Diese Stelle las frueher den ERSTEN
+      # offenen Heimat-Eintrag, waehrend Player#home_club den LETZTEN nimmt. Bei zwei
+      # offenen Eintraegen meinten beide verschiedene Vereine, und der Antrag ging an den
+      # falschen abgebenden Verein zur Genehmigung.
+      former_club_id = player.home_club_entry&.dig('club_id')
       return render json: { error: 'Spieler hat keinen aktiven Heimverein' }, status: :unprocessable_entity unless former_club_id
 
       if former_club_id == requesting_club_id
@@ -432,8 +438,11 @@ module Admin
       requesting_club = Club.find_by(id: params[:requesting_club_id].to_i)
       return render json: { error: 'Verein nicht gefunden' }, status: :not_found unless requesting_club
 
-      home_club_entry = player.clubs.find { |c| c['home_club'] == true && c['valid_until'].nil? }
-      former_club_id = home_club_entry&.dig('club_id')
+      # Player#home_club_entry ist die eine Quelle: Diese Stelle las frueher den ERSTEN
+      # offenen Heimat-Eintrag, waehrend Player#home_club den LETZTEN nimmt. Bei zwei
+      # offenen Eintraegen meinten beide verschiedene Vereine, und der Antrag ging an den
+      # falschen abgebenden Verein zur Genehmigung.
+      former_club_id = player.home_club_entry&.dig('club_id')
       return render json: { error: 'Spieler hat keinen aktiven Heimverein' }, status: :unprocessable_entity unless former_club_id
 
       former_club = Club.find_by(id: former_club_id)
