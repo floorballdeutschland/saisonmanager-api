@@ -393,7 +393,7 @@ class Player < ApplicationRecord
       # deep_dup: die zusammengeführten Einträge landen auf dem Master; das
       # anschließende deactivate! mutiert die Clubs/Lizenzen der Secondary und
       # darf die Master-Kopien nicht mit anfassen.
-      master.clubs    = _merge_clubs(clubs, master.clubs)
+      master.clubs    = _merge_clubs(clubs, master.clubs, user_id)
       master.licenses = _merge_licenses(licenses, master.licenses)
       master.save!(validate: false)
 
@@ -961,6 +961,37 @@ class Player < ApplicationRecord
     true
   end
 
+  # Die Heimat-Zugehoerigkeiten, die heute noch laufen -- die eine Definition von "offen"
+  # fuer alle, die sie brauchen (Merge, Wartungslauf, Berichte).
+  #
+  # `valid_until.blank?` allein waere zu eng: `home_club_hash` laesst auch ein Ende in der
+  # ZUKUNFT als laufend gelten. Zwei so gelagerte Eintraege sind fuer den Leser zwei offene
+  # Heimatvereine, waeren aber an einer blank?-Pruefung vorbeigelaufen -- genau der
+  # Widerspruch, den es hier zu beseitigen gilt, haette in dieser Form ueberlebt.
+  #
+  # Eigene Auswertung statt `home_club_hash`, weil der Merge auf einem noch nicht
+  # gespeicherten Array arbeitet und nicht auf `self.clubs`.
+  def self.open_home_club_entries(entries)
+    Array(entries).select do |c|
+      next false unless c.is_a?(Hash)
+      next false unless ActiveModel::Type::Boolean.new.cast(c['home_club'])
+
+      c['valid_until'].blank? || _ende_in_der_zukunft?(c['valid_until'])
+    end
+  end
+
+  def self._ende_in_der_zukunft?(valid_until)
+    Date.parse(valid_until.to_s) >= Date.current
+  rescue ArgumentError, TypeError
+    # Unlesbares Altdatum: nicht als laufend werten. Sonst wuerde der Merge einen Eintrag
+    # schliessen, den kein Leser ohnehin als Heimat anerkennt.
+    false
+  end
+
+  def open_home_club_entries
+    self.class.open_home_club_entries(clubs)
+  end
+
   private
 
   # Entfernt die DELETED-Eintraege, die `deactivate!` bis api#472 an jede laufende
@@ -1078,7 +1109,7 @@ class Player < ApplicationRecord
   # Clubs des Secondary auf den Master übernehmen: alle Master-Einträge behalten,
   # vom Secondary nur ergänzen, was nicht bereits durch denselben aktiven Club
   # abgedeckt ist. deep_dup entkoppelt die Hashes von der Secondary.
-  def _merge_clubs(secondary_clubs, master_clubs)
+  def _merge_clubs(secondary_clubs, master_clubs, user_id = nil)
     secondary_clubs = (secondary_clubs || []).map(&:deep_dup)
     master_clubs    = (master_clubs || []).map(&:deep_dup)
 
@@ -1090,7 +1121,35 @@ class Player < ApplicationRecord
       c['valid_until'].nil? && master_active_club_ids.include?(c['club_id'])
     end
 
-    (master_clubs + additional).sort_by { |c| c['created_at'].to_s }
+    # club_id als zweiter Schluessel: sort_by ist in Ruby nicht als stabil zugesichert, und
+    # Eintraege ohne created_at (Altdaten-Import) teilen sich denselben Schluessel. Ohne
+    # Tiebreaker haenge die Auswahl an der Implementierung.
+    sortiert = (master_clubs + additional).sort_by { |c| [c['created_at'].to_s, c['club_id'].to_i] }
+    _close_surplus_home_clubs(sortiert, user_id)
+  end
+
+  # Nach dem Zusammenfuehren darf hoechstens ein Heimatverein offen sein.
+  #
+  # Die Entdoppelung darueber greift nur bei DEMSELBEN Verein. Zwei verschiedene offene
+  # Heimatvereine -- einer vom Master, einer von der Dublette -- ueberlebten beide, und
+  # danach widersprachen sich die Leser: `home_club` nimmt den letzten, der Transferantrag
+  # bestimmte den abgebenden Verein als ersten. Stand 18.08.2026 trugen 239 der 1231
+  # Merge-Ziele auf Produktion diesen Zustand, also fast jedes fuenfte.
+  #
+  # Behalten wird der zuletzt begonnene Eintrag: Der Merge fuehrt zwei Aufzeichnungen
+  # derselben Person zusammen, und aktuell ist die juengere Zugehoerigkeit. Eintraege ohne
+  # `created_at` (Altdaten-Import) sortieren dabei nach vorn und verlieren gegen einen
+  # datierten -- gewollt, denn ein undatierter Eintrag stammt aus einem Bestand, der vor
+  # allem Datierten liegt.
+  def _close_surplus_home_clubs(entries, user_id)
+    offen = self.class.open_home_club_entries(entries)
+    return entries if offen.size < 2
+
+    offen[0..-2].each do |c|
+      c['valid_until']  = Time.now
+      c['valid_set_by'] = user_id if user_id
+    end
+    entries
   end
 
   # Lizenzen zusammenführen: bei gleichem team_id UND season_id die History-Arrays
