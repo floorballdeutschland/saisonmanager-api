@@ -234,8 +234,29 @@ class Player < ApplicationRecord
   end
 
   def home_club(deadline)
-    last_home_club = home_club_hash(deadline)&.last
-    Club.find_by_id last_home_club['club_id'] if last_home_club
+    entry = home_club_entry(deadline)
+    Club.find_by_id entry['club_id'] if entry
+  end
+
+  # Der clubs-Eintrag, der den aktuellen Heimatverein traegt — die eine Quelle fuer
+  # jeden Leser, der wissen muss, aus welchem Verein eine Person gerade kommt.
+  #
+  # Es gab davon zwei, und sie widersprachen sich. `home_club` las den LETZTEN
+  # gueltigen Heimat-Eintrag, `Admin::TransferRequestsController` suchte mit
+  # `clubs.find { |c| c['home_club'] == true && c['valid_until'].nil? }` den ERSTEN.
+  # Bei 238 Profilen im Bestand (Stand 18.08.2026) sind zwei Heimat-Eintraege offen,
+  # und dort meinten die beiden verschiedene Vereine: Die Oberflaeche zeigte den
+  # einen, der Transferantrag ging zur Genehmigung an den anderen.
+  #
+  # Die alte Controller-Fassung wich in zwei weiteren Punkten ab, beide zum Nachteil:
+  #
+  #   - `== true` statt Boolean-Cast. In Altdaten steht das Flag als String; ein
+  #     solcher Eintrag galt dem Controller nicht als Heimat, und der Antrag scheiterte
+  #     mit "Spieler hat keinen aktiven Heimverein", obwohl `home_club` einen findet.
+  #   - `valid_until.nil?` statt Stichtagsvergleich. Eine Heimat-Zugehoerigkeit mit
+  #     einem Ende in der Zukunft gilt heute noch; der Controller zaehlte sie nicht.
+  def home_club_entry(deadline = Date.current)
+    home_club_hash(deadline)&.last
   end
 
   # Heimat-Zugehörigkeiten, die am Stichtag noch gelten.
@@ -298,26 +319,22 @@ class Player < ApplicationRecord
   end
 
   def transfer(new_club_id, user_id)
-    # get clubs
     player_clubs = clubs
-    # find old club
-    old_club = nil
-    player_clubs.each do |c|
-      old_club = c['club_id'] if c['home_club'] == true && c['valid_until'].nil?
-    end
+    # Derselbe Leser wie ueberall sonst, statt einer dritten eigenen Auslegung.
+    old_club = home_club_entry&.dig('club_id')
 
     player_clubs.map! do |c|
-      # only valid entries
-      if c['valid_until'].nil? || c['valid_until'] > Time.now
-        if c['home_club'] == true
-          # set all home clubs unvalid
-          c['valid_until'] = Time.now
-          c['valid_set_by'] = user_id
-        else
-          # set all non home clubs unvalid
-          c['valid_until'] = Time.now
-          c['valid_set_by'] = user_id
-        end
+      # Jede noch gueltige Zugehoerigkeit wird geschlossen, Heimat wie Zweitspielrecht:
+      # Wer den Verein wechselt, nimmt keine der alten mit.
+      #
+      # Die fruehere Bedingung lautete `c['valid_until'].nil? || c['valid_until'] > Time.now`.
+      # Der zweite Teil war wirkungslos: valid_until kommt als String aus dem JSONB, und
+      # `"2026-08-18T10:00:00+02:00" > Time.now` ergibt in Ruby nicht etwa einen Fehler,
+      # sondern immer `false`. Eine Zugehoerigkeit, die erst in der Zukunft endet, blieb
+      # damit beim Wechsel offen stehen.
+      if c.is_a?(Hash) && !valid_time?(c['valid_until'], Date.current)
+        c['valid_until'] = Time.now
+        c['valid_set_by'] = user_id
       end
 
       c
@@ -988,8 +1005,21 @@ class Player < ApplicationRecord
     end
   end
 
+  # true, wenn die Zugehoerigkeit am Stichtag abgelaufen war.
+  #
+  # Ein unlesbares Datum aus dem Altbestand ("unbekannt", "0000-00-00") war bisher kein
+  # Sonderfall: Date.parse brach ab, und jeder Leser darueber endete im 500er — die
+  # Vereinsspielerliste, der Heimatverein, seit dieser Aenderung auch der Vereinswechsel.
+  # Solche Eintraege gelten jetzt als laufend, wie es `membership_current?` im
+  # Controller-Concern schon haelt. Beim Wechsel ist das zugleich die sichere Richtung:
+  # Er schliesst den Eintrag dann, statt eine zweite offene Zugehoerigkeit stehenzulassen.
   def valid_time?(time, deadline)
-    !time.nil? && Date.parse(time) < deadline
+    return false if time.nil?
+
+    Date.parse(time.to_s) < deadline
+  rescue ArgumentError, TypeError
+    # Date::Error erbt von ArgumentError und ist damit mitgefangen.
+    false
   end
 
   def select_license(licenses)
