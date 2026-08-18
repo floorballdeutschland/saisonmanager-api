@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Das Zusammenführen doppelter Spielerprofile lässt keinen zweiten Heimatverein mehr stehen**: Werden zwei Profile derselben Person zusammengeführt, übernimmt das führende Profil die Vereinszugehörigkeiten des aufgelösten. War auf beiden Seiten ein Heimatverein offen und waren es verschiedene Vereine, blieben danach beide offen — die Zusammenführung entdoppelte nur bei ein und demselben Verein. Sichtbar wurde das erst weiter hinten: Die Spielerseite zeigte den einen Verein, der Transferantrag schickte die Genehmigung an den anderen, mit dem die Person nichts mehr zu tun hatte. Beim Zusammenführen bleibt jetzt genau die zuletzt begonnene Zugehörigkeit offen, die übrige wird geschlossen; ein Zweitspielrecht bleibt unberührt. Für den Bestand räumt ein Wartungslauf (`rake players:close_surplus_home_clubs`) auf. Welcher Verein dabei bleibt, ist je Profil belegt und nicht hergeleitet: Steht dem Profil eine Ablage und ein echter Verein offen, bleibt der echte — die Ablage war der Behelf aus der Zeit, als es die Zusammenführung noch nicht gab, und der Verein kann das Profil bei sich selbst deaktivieren. Stehen zwei echte Vereine offen, entscheidet der Stand vor der Zusammenführung. Ausgenommen bleiben Profile mit einem kürzlich vollzogenen Vereinswechsel sowie die Ablage für Personen, die nicht mehr im Saisonmanager erscheinen wollten.
+
 ## [1.87.2] - 2026-08-18
 
 ### Verbessert

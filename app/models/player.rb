@@ -373,7 +373,7 @@ class Player < ApplicationRecord
       # deep_dup: die zusammengeführten Einträge landen auf dem Master; das
       # anschließende deactivate! mutiert die Clubs/Lizenzen der Secondary und
       # darf die Master-Kopien nicht mit anfassen.
-      master.clubs    = _merge_clubs(clubs, master.clubs)
+      master.clubs    = _merge_clubs(clubs, master.clubs, user_id)
       master.licenses = _merge_licenses(licenses, master.licenses)
       master.save!(validate: false)
 
@@ -1020,7 +1020,7 @@ class Player < ApplicationRecord
   # Clubs des Secondary auf den Master übernehmen: alle Master-Einträge behalten,
   # vom Secondary nur ergänzen, was nicht bereits durch denselben aktiven Club
   # abgedeckt ist. deep_dup entkoppelt die Hashes von der Secondary.
-  def _merge_clubs(secondary_clubs, master_clubs)
+  def _merge_clubs(secondary_clubs, master_clubs, user_id = nil)
     secondary_clubs = (secondary_clubs || []).map(&:deep_dup)
     master_clubs    = (master_clubs || []).map(&:deep_dup)
 
@@ -1032,7 +1032,33 @@ class Player < ApplicationRecord
       c['valid_until'].nil? && master_active_club_ids.include?(c['club_id'])
     end
 
-    (master_clubs + additional).sort_by { |c| c['created_at'].to_s }
+    _close_surplus_home_clubs((master_clubs + additional).sort_by { |c| c['created_at'].to_s }, user_id)
+  end
+
+  # Nach dem Zusammenfuehren darf hoechstens ein Heimatverein offen sein.
+  #
+  # Die Entdoppelung darueber greift nur bei DEMSELBEN Verein. Zwei verschiedene offene
+  # Heimatvereine -- einer vom Master, einer von der Dublette -- ueberlebten beide, und
+  # danach widersprachen sich die Leser: `home_club` nimmt den letzten, der Transferantrag
+  # bestimmte den abgebenden Verein als ersten. Stand 18.08.2026 trugen 239 der 1231
+  # Merge-Ziele auf Produktion diesen Zustand, also fast jedes fuenfte.
+  #
+  # Behalten wird der zuletzt begonnene Eintrag: Der Merge fuehrt zwei Aufzeichnungen
+  # derselben Person zusammen, und aktuell ist die juengere Zugehoerigkeit. Eintraege ohne
+  # `created_at` (Altdaten-Import) sortieren dabei nach vorn und verlieren gegen einen
+  # datierten -- gewollt, denn ein undatierter Eintrag stammt aus einem Bestand, der vor
+  # allem Datierten liegt.
+  def _close_surplus_home_clubs(entries, user_id)
+    offen = entries.select do |c|
+      c.is_a?(Hash) && ActiveModel::Type::Boolean.new.cast(c['home_club']) && c['valid_until'].blank?
+    end
+    return entries if offen.size < 2
+
+    offen[0..-2].each do |c|
+      c['valid_until']  = Time.now
+      c['valid_set_by'] = user_id if user_id
+    end
+    entries
   end
 
   # Lizenzen zusammenführen: bei gleichem team_id UND season_id die History-Arrays
