@@ -272,9 +272,9 @@ class Player < ApplicationRecord
   def home_club_hash(deadline)
     return unless clubs
 
-    valid_clubs(deadline).reject do |l|
-      !ActiveModel::Type::Boolean.new.cast(l['home_club']) || valid_time?(l['valid_until'], deadline)
-    end
+    # valid_clubs hat mit demselben Praedikat bereits gefiltert; ein zweiter
+    # valid_time?-Aufruf waere tot und wuerde den Melde-Pfad doppelt anstossen.
+    valid_clubs(deadline).reject { |l| !ActiveModel::Type::Boolean.new.cast(l['home_club']) }
   end
 
   def current_licenses(sid = Setting.current_season_id)
@@ -1021,9 +1021,13 @@ class Player < ApplicationRecord
   # Transferantrags. Aus einem lauten 500er wuerde eine stille Falschzustaendigkeit.
   #
   # Gemeldet wird der Fall trotzdem, sonst verschwindet er ganz: einmal pro Tag und
-  # Datenfehler, wie es `report_license_data_defect` haelt.
+  # Spieler, wie es `report_license_data_defect` haelt.
   def valid_time?(time, deadline)
-    return false if time.nil?
+    # blank?, nicht nil?: Ein leeres valid_until heisst im Bestand "kein Ende" und wird
+    # von jedem Geschwistercode so gelesen (membership_current?, MembershipCloser, dem
+    # Legacy-Backfill). Mit nil? galte es als unlesbar und damit als abgelaufen -- das
+    # Profil haette keinen Heimatverein mehr und taeglich eine Sentry-Meldung.
+    return false if time.blank?
 
     Date.parse(time.to_s) < deadline
   rescue ArgumentError, TypeError => e
@@ -1033,6 +1037,10 @@ class Player < ApplicationRecord
   end
 
   def report_membership_date_defect(time, error)
+    # `sbk_can_undo_deactivation?` schickt eine bewusst id-lose Kopie (`player.dup`) durch
+    # diesen Pfad. Ohne den Riegel kollabierte der Cache-Key auf einen globalen und
+    # drosselte danach alle Faelle, und die Meldung nennte keinen Spieler.
+    return if id.nil?
     return unless Rails.cache.write("player_membership_date_defect/#{id}", true,
                                     unless_exist: true, expires_in: 1.day)
 

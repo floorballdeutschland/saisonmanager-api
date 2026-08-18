@@ -62,10 +62,9 @@ module Admin
       end
 
       if requesting_club_id > 0
-      # Derselbe Leser wie in create/direct_assign. Stand hier die alte Fassung, verglich
-      # die Suche gegen den ersten offenen Eintrag und der Antrag gegen den letzten: Der VM
-      # des einen Vereins wurde mit "Spieler ist bereits in diesem Verein" geblockt, obwohl
-      # der Antrag zulaessig gewesen waere, und beim VM des anderen genau umgekehrt.
+      # Derselbe Leser wie in create/direct_assign -- sonst faellt die Suche gegen den
+      # ersten offenen Heimat-Eintrag und der Antrag gleich danach gegen den letzten,
+      # und die Suche weist einen Antrag ab, den create zugelassen haette.
       home_club = player.home_club_entry
       if home_club&.dig('club_id') == requesting_club_id
         return render json: { error: 'Spieler ist bereits in diesem Verein' }, status: :unprocessable_entity

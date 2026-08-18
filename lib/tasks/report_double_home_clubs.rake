@@ -2,10 +2,15 @@
 #
 # Listet die Profile, bei denen mehr als eine Heimat-Zugehoerigkeit offen ist.
 #
-# Bewusst nur ein Bericht und kein Reparaturlauf: In allen 238 Faellen des Bestands
-# (Stand 18.08.2026) stehen dort ZWEI VERSCHIEDENE Vereine, kein einziger ist eine
+# Bewusst nur ein Bericht und kein Reparaturlauf: Im Bestand (Stand 18.08.2026, 259
+# Profile) stehen dort durchweg ZWEI VERSCHIEDENE Vereine, kein einziger Fall ist eine
 # Dublette desselben Vereins. Welcher der richtige ist, steht in den Daten nicht --
 # ein Skript, das einen davon schliesst, raet.
+#
+# Die Zahl ist eine Momentaufnahme und schwankt schon deshalb, weil ein Vereinswechsel
+# den alten Eintrag auf `valid_until = jetzt` setzt: Der Stichtagsvergleich ist
+# tagesgenau, ein heute vollzogener Transfer sieht bis Mitternacht wie ein Doppeleintrag
+# aus und ist keiner. Solche Faelle stehen mit gesetztem Enddatum in der Liste.
 #
 # Seit api#479 richtet der Widerspruch keinen Schaden mehr an: Alle Leser gehen ueber
 # Player#home_club_entry und meinen damit denselben Verein (den letzten offenen).
