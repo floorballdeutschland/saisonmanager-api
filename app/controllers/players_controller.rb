@@ -637,6 +637,11 @@ class PlayersController < ApplicationController
           # add club to clubs array
           player.clubs << club_entry
 
+          # Wer ein Zweitspielrecht erhaelt, spielt im aufnehmenden Verein – siehe
+          # Player#clear_deactivation. Ohne das bliebe der neue Eintrag fuer den
+          # aufnehmenden Verein unsichtbar, weil Club#players auf Player.active filtert.
+          player.clear_deactivation
+
           if player.save
             render json: { success: true }
           else

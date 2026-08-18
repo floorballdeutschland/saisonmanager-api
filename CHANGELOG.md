@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Ein Zweitspielrecht nimmt eine Person jetzt auf beiden Wegen wieder in die Spielerliste**: Deaktiviert ein Verein eine Person, ist das seit Release 1.87.0 eine Kennzeichnung seiner eigenen Ansicht — sie fällt aus seiner aktiven Spielerliste und aus seiner Auswahl beim Lizenzantrag. Wird die Person danach irgendwo aufgenommen, verliert die Kennzeichnung ihren Sinn und wird abgeräumt, sonst wäre sie im aufnehmenden Verein sofort wieder unsichtbar. Ein Zweitspielrecht entsteht auf zwei Wegen, und nur einer tat das: Gab der abgebende Verein die Freigabe über den Transferantrag, war die Kennzeichnung weg. Legte die Spielbetriebskommission den Zweitverein direkt an, blieb sie stehen — der Eintrag war angelegt, aber der aufnehmende Verein sah die Person nicht in seiner Spielerliste und konnte für sie keine Lizenz beantragen. Für den Verein sah es aus, als wäre nichts passiert. Beide Wege verhalten sich jetzt gleich. Dass damit auch der abgebende Verein die Person wieder in seiner Liste sieht, ist beabsichtigt: Wer eine Aufnahme freigibt oder mitträgt, sieht die Person nicht mehr als inaktiv an, und er kann sie bei sich jederzeit erneut deaktivieren. Der Deaktivierungsgrund bleibt als Historie stehen.
+
 ## [1.87.3] - 2026-08-18
 
 ### Behoben

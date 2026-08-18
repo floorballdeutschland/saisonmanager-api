@@ -945,11 +945,25 @@ class Player < ApplicationRecord
   # Loescht die Deaktivierungs-Kennzeichnung ohne zu speichern; der Aufrufer schreibt
   # das Profil ohnehin.
   #
-  # Aufgerufen von jedem Weg, der eine neue Vereinszugehoerigkeit anlegt: Wer gerade
-  # aufgenommen wird, ist in diesem Verein aktiv, und die Kennzeichnung des
+  # Aufgerufen von jedem Weg, der eine noch gueltige Vereinszugehoerigkeit anlegt: Wer
+  # gerade aufgenommen wird, ist in diesem Verein aktiv, und die Kennzeichnung des
   # abgebenden Vereins wuerde die Spielerliste des aufnehmenden leer aussehen lassen.
   # Der Fall ist erst seit api#472 erreichbar — vorher lehnten Transferantrag und
   # Direktzuweisung ein deaktiviertes Profil ab.
+  #
+  # Die vier Wege, damit ein neuer nicht still daneben entsteht — beide Arten von
+  # Zugehoerigkeit, jeweils ueber Antrag und ueber die Direktzuweisung der SBK:
+  #   Heimatverein:      Player#transfer (aus TransferRequest),
+  #                      PlayersController#transfer
+  #   Zweitspielrecht:   TransferRequest#add_secondary_club_membership!,
+  #                      PlayersController#add_additional_club
+  # Nicht dabei ist die Neuanlage eines Profils (nie deaktiviert) und das
+  # Zurueckschreiben beim Aufheben einer Zusammenfuehrung (stellt einen Stand wieder
+  # her, statt einen neuen zu setzen).
+  #
+  # Die Kennzeichnung ist global, die Entscheidung dahinter vereinsbezogen: Eine
+  # Aufnahme hebt sie also auch fuer den abgebenden Verein auf. Das ist so gewollt —
+  # wer eine Freigabe erteilt, sieht die Person nicht mehr als inaktiv an (api#476).
   #
   # `deactivation_reason` bleibt stehen, wie schon bei `reactivate!`: der Grund ist
   # Historie, die Kennzeichnung ist der Zustand.
