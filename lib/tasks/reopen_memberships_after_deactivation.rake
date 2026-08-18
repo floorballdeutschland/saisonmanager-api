@@ -46,10 +46,10 @@ namespace :players do
 
     scope.order(:id).find_each do |player|
       # Vorher zaehlen: reopen_memberships_closed_by_deactivation! mutiert das
-      # Objekt, danach ist der Unterschied nicht mehr ablesbar.
-      memberships = Array(player.clubs).count do |c|
-        c.is_a?(Hash) && player.membership_closed_by_deactivation?(c)
-      end
+      # Objekt, danach ist der Unterschied nicht mehr ablesbar. Gezaehlt wird ueber
+      # dieselbe Methode, die der Lauf danach abarbeitet – sonst verspraeche der
+      # Dry-Run mehr, als die Ausfuehrung einloest.
+      memberships = player.memberships_reopenable.count
 
       if memberships.zero?
         unchanged += 1

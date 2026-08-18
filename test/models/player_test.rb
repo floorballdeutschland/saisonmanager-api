@@ -471,6 +471,75 @@ class PlayerTest < ActiveSupport::TestCase
     assert_includes club.players(include_deactivated: true).map(&:id), player.id
   end
 
+  # Das Erkennungsmerkmal (valid_set_by == deactivated_by, valid_until im Sekundenfenster
+  # um deactivated_at) trifft auch eine Zugehoerigkeit, die dieselbe Person unmittelbar
+  # zuvor per Transfer regulaer geschlossen hat. Wuerde der Lauf sie mitoeffnen, haette das
+  # Profil zwei offene Heimatvereine, und `Player#home_club` (letzter Treffer) und
+  # `Admin::TransferRequestsController` (erster Treffer) meinten verschiedene Vereine.
+  test 'reopen_memberships_closed_by_deactivation! erzeugt keinen zweiten offenen Heimatverein' do
+    create(:setting, current_season_id: '18')
+    user     = create(:user)
+    alt      = create(:club)
+    neu      = create(:club)
+    zeitpunkt = 1.day.ago
+
+    player = create(:player,
+                    clubs: [
+                      { 'club_id' => alt.id, 'home_club' => true,
+                        'created_at' => 3.years.ago.iso8601,
+                        'valid_until' => zeitpunkt.iso8601, 'valid_set_by' => user.id },
+                      { 'club_id' => neu.id, 'home_club' => true,
+                        'created_at' => zeitpunkt.iso8601 }
+                    ],
+                    deactivated_at: zeitpunkt, deactivated_by: user.id)
+
+    refute player.reopen_memberships_closed_by_deactivation!,
+           'der Altverein darf nicht geoeffnet werden, solange der neue offen ist'
+    player.reload
+
+    offene = player.clubs.select { |c| c['home_club'] && c['valid_until'].blank? }
+    assert_equal [neu.id], offene.map { |c| c['club_id'] },
+                 'genau ein offener Heimatverein, und zwar der neue'
+  end
+
+  # Der Dry-Run des Wartungslaufs zaehlt ueber memberships_reopenable. Beide Wege
+  # muessen dasselbe meinen, sonst verspricht der Dry-Run mehr als die Ausfuehrung.
+  test 'memberships_reopenable deckt sich mit dem, was der Lauf oeffnet' do
+    create(:setting, current_season_id: '18')
+    user   = create(:user)
+    club   = create(:club)
+    player = create(:player, clubs: [{ 'club_id' => club.id, 'home_club' => true }])
+
+    legacy_deactivate!(player, user.id, reason: 'Vereinsaustritt')
+    player.reload
+
+    assert_equal 1, player.memberships_reopenable.count
+    assert player.reopen_memberships_closed_by_deactivation!
+    player.reload
+    assert_equal 0, player.memberships_reopenable.count, 'nach dem Lauf bleibt nichts offen zu tun'
+  end
+
+  # Der Altbestand enthaelt clubs-Eintraege, die kein Hash sind. Ohne Riegel lief schon
+  # der Lesezugriff in ein NoMethodError – im Wartungslauf abgefangen, in reactivate!
+  # und Club#players(include_deactivated: true) dagegen als 500er.
+  test 'kaputter clubs-Eintrag bricht Deaktivierungs-Pfade nicht ab' do
+    create(:setting, current_season_id: '18')
+    user   = create(:user)
+    club   = create(:club)
+    player = create(:player, clubs: [{ 'club_id' => club.id, 'home_club' => true }])
+
+    legacy_deactivate!(player, user.id, reason: 'Vereinsaustritt')
+    player.reload
+    player.clubs = player.clubs + [nil]
+    player.save!(validate: false)
+    player.reload
+
+    assert_nothing_raised { player.memberships_reopenable }
+    assert_nothing_raised { player.reopen_memberships_closed_by_deactivation! }
+    assert_nothing_raised { club.players(include_deactivated: true) }
+    assert_nothing_raised { player.reload.reactivate! }
+  end
+
   test 'reopen_memberships_closed_by_deactivation! ist ein No-op fuer neue Deaktivierungen' do
     create(:setting, current_season_id: '18')
     user   = create(:user)

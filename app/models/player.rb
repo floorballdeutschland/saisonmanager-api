@@ -538,6 +538,13 @@ class Player < ApplicationRecord
   # Zugehörigkeiten, die ohne valid_set_by geschlossen wurden (Altdaten, Backfills),
   # erfüllen die Bedingung bewusst nicht: sie bleiben ausgeblendet, wie vorher auch.
   def membership_closed_by_deactivation?(membership)
+    # Strukturell kaputter Eintrag (kein Objekt): Der Altbestand enthaelt clubs-Eintraege,
+    # die kein Hash sind. Ohne diesen Riegel bricht schon der Lesezugriff darunter mit
+    # NoMethodError ab, und zwar nicht nur im Wartungslauf (der faengt es je Profil ab),
+    # sondern auch in `reactivate!` und `Club#players(include_deactivated: true)` – dort
+    # als 500er. Denselben Riegel haben `LicenseAccessScope#player_in_team_clubs?` und
+    # `PlayersController#membership_grants_access?`.
+    return false unless membership.is_a?(Hash)
     return false if deactivated_at.blank? || membership['valid_until'].blank?
     return false unless membership['valid_set_by'].present? && membership['valid_set_by'] == deactivated_by
 
@@ -607,19 +614,45 @@ class Player < ApplicationRecord
   def reopen_memberships_closed_by_deactivation!(persist: true)
     self.clubs ||= []
 
-    # Der frühere reine valid_set_by-Vergleich öffnete auch ein Zweitspielrecht wieder,
-    # das lange vor der Deaktivierung abgelaufen war.
-    reopened = false
-    clubs.map! do |c|
-      if membership_closed_by_deactivation?(c)
-        restore_membership_validity(c)
-        reopened = true
-      end
-      c
-    end
+    targets = memberships_reopenable
+    targets.each { |c| restore_membership_validity(c) }
 
-    save!(validate: false) if persist && reopened
-    reopened
+    save!(validate: false) if persist && targets.any?
+    targets.any?
+  end
+
+  # Die Zugehoerigkeiten, die `reopen_memberships_closed_by_deactivation!` oeffnen wuerde.
+  # Eigene Methode, damit der Wartungslauf im Dry-Run genau das zaehlt, was er spaeter auch
+  # tut, statt der blossen Kandidaten.
+  #
+  # Der frühere reine valid_set_by-Vergleich öffnete auch ein Zweitspielrecht wieder, das
+  # lange vor der Deaktivierung abgelaufen war; dagegen steht das Zeitfenster in
+  # `membership_closed_by_deactivation?`.
+  #
+  # Ein Heimatverein kommt zusaetzlich nur infrage, solange keiner offen ist. Das
+  # Erkennungsmerkmal (valid_set_by == deactivated_by, valid_until im Sekundenfenster um
+  # deactivated_at) trifft naemlich auch eine Zugehoerigkeit, die dieselbe Person
+  # unmittelbar zuvor per Transfer regulaer geschlossen hat. Ohne den Riegel haette das
+  # Profil danach zwei offene Heimatvereine – und die beiden Leser widersprechen sich:
+  # `Player#home_club` nimmt den letzten Treffer (Neuverein),
+  # `Admin::TransferRequestsController` bestimmt `former_club_id` als ersten (Altverein).
+  # Ein Transferantrag ginge dann an den falschen abgebenden Verein zur Genehmigung.
+  #
+  # Ob das Oeffnen den Eintrag wirklich unbefristet macht, haengt am gesicherten
+  # VALID_BEFORE_DEACTIVATION. Hier wird bewusst vom unguenstigsten Fall ausgegangen und
+  # jeder wiederhergestellte Heimatverein als offen gewertet: lieber eine Zugehoerigkeit
+  # zu wenig oeffnen als einen widerspruechlichen Zustand herstellen.
+  def memberships_reopenable
+    entries = Array(clubs)
+    open_home_club = entries.any? { |c| c.is_a?(Hash) && c['home_club'] && c['valid_until'].blank? }
+
+    entries.select do |c|
+      next false unless membership_closed_by_deactivation?(c)
+      next false if c['home_club'] && open_home_club
+
+      open_home_club ||= c['home_club'].present?
+      true
+    end
   end
 
   # Einheitlicher Einstieg für beide Sperr-Ebenen aus Issue #508.
