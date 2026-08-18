@@ -147,6 +147,19 @@ module Admin
       assert_equal master.id, game_day.reload.arena_id
     end
 
+    # Erst mit dem erlaubten `active` ist POST mit `active: false` überhaupt
+    # erreichbar. Die Zusicherung aus #449 hängt daran, dass create den Wert
+    # nach arena_params setzt und nicht davor.
+    test 'Ein neu angelegter Spielort ist auch mit active false aktiv' do
+      login(create(:user, :sbk_scoped))
+
+      post '/api/v2/admin/arenas',
+           params: { name: 'Gymnasium-Halle Puchheim', city: 'Puchheim', active: false }
+
+      assert_response :created
+      assert Arena.find_by(name: 'Gymnasium-Halle Puchheim').active
+    end
+
     # #451: `active` war über keine Maske erreichbar. Damit die Verwaltung den
     # Zustand überhaupt anzeigen kann, muss er in der Liste mitkommen.
     test 'Die Spielortliste liefert den Aktiv-Zustand mit' do

@@ -91,9 +91,17 @@ module Admin
     def arena_params
       # `active` steuert, ob der Spielort im Spieltag-Dropdown auftaucht. Das Feld
       # stammt aus der Altdatenübernahme und war bis #451 über keine Maske
-      # erreichbar – ein inaktiver Bestandsspielort war damit nicht selbst
+      # erreichbar: ein inaktiver Bestandsspielort war damit nicht selbst
       # reparierbar. Anlegen setzt `active` weiterhin selbst (s. create), hier
       # zählt es nur für update.
+      #
+      # Damit darf jede SBK auch abschalten, und das wirkt verbandsübergreifend
+      # (der Spielort fällt überall aus dem Spieltag-Dropdown und aus der
+      # Importvorlage). Bewusst so: Der Zustand ist reversibel und steht in der
+      # Liste, anders als bei destroy/merge geht nichts verloren. Die Zielregel
+      # ist eine andere, nämlich Zuständigkeit über das Bundesland des
+      # Spielorts (#468); dafür fehlt heute beides, Bundesland am Spielort und
+      # am Verband.
       params.permit(:name, :city, :street, :housenumber, :postcode, :active)
     end
 
