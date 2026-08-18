@@ -326,11 +326,7 @@ class ClubHomeGameOperationResolver
   def state_association_from_postcode(club)
     return nil unless club.postcode.to_s.strip.match?(/\A\d{5}\z/)
 
-    value = club.postcode.to_s.strip.to_i
-    # `cover?` schließt die Grenzen ein – Club#update_state vergleicht mit < / >
-    # und lässt Randwerte fälschlich durchfallen. `dig`, weil zwei Bereiche
-    # (Jungholz, Kleinwalsertal) gar keinen isocode tragen.
-    isocode = Club.postcodes.find { |pc| (pc[:from]..pc[:till]).cover?(value) }&.dig(:isocode)
+    isocode = ApplicationRecord.state_for_postcode(club.postcode)
     short = ClubStateAssociationResolver::STATE_TO_SA_SHORT[isocode]
     short && @sa_by_short_name[short]
   end

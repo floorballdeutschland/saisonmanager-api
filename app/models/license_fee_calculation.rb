@@ -17,9 +17,29 @@ class LicenseFeeCalculation < ApplicationRecord
     end
   end
 
+  # Bundesland aus der PLZ nachtragen, wo es fehlt: die Auswertung gruppiert
+  # danach.
+  #
+  # Stand bis 1.86.0 als Club#update_state am Modell und lief seit dem
+  # Rails-Upgrade in einen NoMethodError (`update_attributes` gibt es seit 6.1
+  # nicht mehr), sobald ein Verein ohne Bundesland eine passende PLZ hatte. Die
+  # Berechnung brach damit ab, bevor sie irgendetwas gerechnet hatte. Als eigene
+  # Methode und nicht inline, weil start_calculation Dateien schreibt und ueber
+  # alle Spieler laeuft, sich also nicht sinnvoll testen laesst – dieser Teil
+  # schon.
+  #
+  # update_column und nicht update!: Vereine im Altbestand reissen sonst ihre
+  # eigenen Validierungen, und dann bricht die ganze Berechnung an einem
+  # Datensatz ab, den sie nur nebenbei aufraeumen wollte.
+  def self.backfill_missing_club_states
+    Club.where(state: nil).find_each do |club|
+      isocode = ApplicationRecord.state_for_postcode(club.postcode)
+      club.update_column(:state, isocode) if isocode
+    end
+  end
+
   def self.start_calculation(user_id, season = Setting.current_season_id, _deadline = Date.today)
-    # update clubs where state is not set right now (by postcode)
-    Club.where(state: nil).each(&:update_state)
+    backfill_missing_club_states
 
     c = LicenseFeeCalculation.new
     c.started_at = Time.now

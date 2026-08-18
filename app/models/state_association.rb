@@ -9,6 +9,64 @@ class StateAssociation < ApplicationRecord
 
   validates :name, presence: true
   validate :parent_must_not_create_cycle
+  validate :states_must_be_known
+  before_validation :normalize_states
+
+  # Bundeslaender, fuer die dieser Verband zustaendig ist, einschliesslich der
+  # Bundeslaender seiner untergeordneten Verbaende.
+  #
+  # Vererbungsrichtung ist hier bewusst umgekehrt zu allen effective_*-Methoden
+  # weiter unten: ein uebergeordneter Spielverbund (SBK Ost) betreut den Bereich
+  # seiner Kinder mit, waehrend Postfaecher und Flags vom Kind nach oben
+  # nachfragen. Deshalb wird nach unten gesammelt und nicht nach oben gelesen.
+  #
+  # Iterativ mit `seen`: parent_must_not_create_cycle haelt Ringverweise aus dem
+  # Bestand heraus, aber an dieser Methode wird ab #468 eine Berechtigung
+  # haengen, und ein Ringverweis aus der Zeit vor der Validierung wuerde sie in
+  # eine Endlosschleife schicken statt in eine Fehlermeldung.
+  #
+  # Eine Abfrage je Knoten. Bei rund 15 Verbaenden und einem full_hash je Request
+  # ohne Belang; der Aufrufer aus #468 prueft dagegen je Spielort und muss das
+  # Ergebnis einmal vorhalten, statt den Baum pro Arena neu abzulaufen.
+  def effective_states
+    collected = []
+    seen = []
+    queue = [self]
+    while (node = queue.shift)
+      next if seen.include?(node.id)
+
+      seen << node.id
+      collected.concat(node.states.to_a)
+      queue.concat(node.children.to_a)
+    end
+    # `compact` gegen Altbestand: die Spalte ist `null: false` und die Elemente
+    # sind validiert, aber update_column und insert_all umgehen beides.
+    collected.compact.uniq.sort
+  end
+
+  # Ist dieser Verband fuer das Bundesland zustaendig?
+  #
+  # Noch ohne Aufrufer: die Berechtigungspruefung am Spielort kommt als eigener
+  # PR zu #468. Nicht loeschen, sondern dort verwenden.
+  #
+  # Das Argument wird normalisiert, weil es von aussen kommt und nicht aus
+  # `states`: `clubs.state` ist ein freies Textfeld (der Controller permittet es
+  # ungeprueft, eine Inclusion-Validierung gibt es nicht), und was die
+  # Altdaten-Importe dort hineingeschrieben haben, weiss niemand. Ein `DE-NW` aus
+  # so einer Quelle wuerde den NWFV sonst stumm von seinen eigenen Spielorten
+  # aussperren, und der Rueckfall saehe genau aus wie „Bundesland noch nicht
+  # gepflegt".
+  #
+  # Leeres Bundesland ist nie zustaendig. Das folgt zwar schon aus dem Inhalt von
+  # `states`, steht hier aber ausdruecklich: fuer Spielorte ohne brauchbare PLZ
+  # ist es die zugesicherte Eigenschaft, auf die #468 den Rueckfall auf den
+  # Bundesverband stuetzt.
+  def covers_state?(state)
+    normalized = state.to_s.strip.downcase
+    return false if normalized.blank?
+
+    effective_states.include?(normalized)
+  end
 
   def effective_express_license_enabled
     express_license_enabled || parent&.express_license_enabled
@@ -111,6 +169,12 @@ class StateAssociation < ApplicationRecord
       rsk_email:,
       parent_id:,
       parent_name: parent&.name,
+      states:,
+      # Der tatsaechlich greifende Bereich inklusive der untergeordneten
+      # Verbaende. Die Maske zeigt beides: eigene Auswahl zum Bearbeiten, den
+      # geerbten Rest als Hinweis (bei einem Spielverbund ist das eigene Feld
+      # ueblicherweise leer und der Bereich kommt komplett von den Kindern).
+      effective_states:,
       express_license_enabled:,
       referee_license_review_enabled:,
       effective_referee_license_review_enabled:,
@@ -153,6 +217,35 @@ class StateAssociation < ApplicationRecord
   end
 
   private
+
+  # Schreibweise, Dubletten und Reihenfolge vereinheitlichen. Im Modell und nicht
+  # im Controller, weil sonst die halbe Invariante dort und die andere Haelfte
+  # hier stuende: states_must_be_known lehnt einen leeren String und ein `DE-NW`
+  # ab, der Controller waescht beides vorher weg – die Waesche existiert also nur,
+  # weil das Modell streng ist. So halten Rake-Task, Konsole und Seed dieselbe
+  # Invariante wie die Maske. Gleiches Muster wie normalize_user_name (user.rb).
+  #
+  # `Array(states)` faengt nebenbei ein ausdrueckliches nil ab, das sonst erst
+  # als NotNullViolation aus der Datenbank kaeme statt als Feldfehler.
+  def normalize_states
+    self.states = Array(states).map { |code| code.to_s.strip.downcase }.reject(&:blank?).uniq.sort
+  end
+
+  # Nur die 16 echten Bundeslaender, und zwar gegen dieselbe Quelle wie die
+  # Ableitung am Spielort (ApplicationRecord.german_states). Ein Tippfehler im
+  # Kuerzel wuerde sonst als „Verband ist fuer nichts zustaendig" durchgehen: die
+  # Pruefung faellt still auf den Bundesverband zurueck, es gibt also keine
+  # Fehlermeldung, an der es auffiele.
+  #
+  # `de-sonstige` ist bewusst nicht erlaubt. Der Wert existiert in der
+  # Vereinsmaske fuer Vereine mit Sitz im Ausland; ein Zustaendigkeitsbereich
+  # „Sonstige" ergibt dagegen keinen Sinn.
+  def states_must_be_known
+    unknown = states.to_a.compact - ApplicationRecord.german_states
+    return if unknown.empty?
+
+    errors.add(:states, "enthaelt unbekannte Bundeslaender: #{unknown.join(', ')}")
+  end
 
   # Die Verbandsmaske bietet als übergeordneten Verbund nur parentlose LVs an
   # und schließt den eigenen aus, per API ist parent_id aber ungeprüft. Ein
