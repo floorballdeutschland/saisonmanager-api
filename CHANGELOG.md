@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.87.2] - 2026-08-18
+
 ### Verbessert
 
 - **Die Lizenzgebühren-Berechnung schreibt keine Vereinsdaten mehr**: Zu Beginn trug sie das Bundesland aus der Postleitzahl nach, wo es am Verein fehlte. Der Nachtrag war überflüssig, denn abgerechnet wird je Spielbetrieb: Maßgeblich sind die Liga, unter deren Mannschaft die Lizenz läuft, und der Spielbetrieb des Heimatvereins. Das Bundesland taucht im Export nur als Zusatzspalte auf, gruppiert wird nicht danach. Spielt eine Mannschaft aus Hessen in einer Liga des Floorball-Verbands Nordrhein-Westfalen, rechnet ohnehin dieser Verband ab, und nicht das Bundesland des Vereins. Die Zeile ist damit ersatzlos entfallen. Die beiden Bundesland-Spalten des Exports bleiben unverändert und zeigen weiterhin, was am Verein gepflegt ist. Neu befüllt wird das Feld durch die Berechnung nicht mehr, weil eine Auswertung keine Stammdaten schreiben soll.
