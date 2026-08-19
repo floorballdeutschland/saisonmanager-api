@@ -57,6 +57,13 @@ module Admin
       post '/api/v2/admin/blocked_ips', params: { blocked_ip: { ip: '198.51.100.5', reason: 'Test' } }
       assert_response :forbidden
       assert_not BlockedIp.exists?(ip: '198.51.100.5')
+
+      # Auch das zerstoerende Verb: authorize_admin! hat heute kein `only:`, ein
+      # spaeteres liesse ausgerechnet das Loeschen offen.
+      vorhanden = BlockedIp.create!(ip: '198.51.100.6', reason: 'Test')
+      delete "/api/v2/admin/blocked_ips/#{vorhanden.id}"
+      assert_response :forbidden
+      assert BlockedIp.exists?(vorhanden.id)
     end
 
     test 'ohne Anmeldung kein Zugriff' do

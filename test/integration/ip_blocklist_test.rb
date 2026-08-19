@@ -29,26 +29,66 @@ class IpBlocklistTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
-  # Der Kern: nginx haengt die echte Adresse per $proxy_add_x_forwarded_for
-  # HINTEN an eine mitgeschickte Kette, und Rack nimmt die letzte nicht
-  # vertraute Adresse. Ein vorangestellter X-Forwarded-For verschiebt req.ip
-  # deshalb nicht.
+  # Der Kern des Features, und die Stelle, an der die Testkonstruktion zaehlt.
+  #
+  # Rack::Request#ip geht ZUERST REMOTE_ADDR durch und kehrt bei der
+  # ersten nicht vertrauten Adresse zurueck; X-Forwarded-For wird nur gelesen,
+  # wenn REMOTE_ADDR ausschliesslich vertraute Adressen enthaelt
+  # (Rack::Request::TRUSTED_PROXIES: Loopback und die privaten Netze).
+  #
+  # In Produktion ist REMOTE_ADDR die Docker-Adresse von nginx, also vertraut,
+  # und erst dann entscheidet die Kette. Ein Test mit oeffentlicher REMOTE_ADDR
+  # wuerde den Header-Pfad also GAR NICHT ausfuehren und trotzdem gruen sein —
+  # deshalb steht hier PROXY davor.
+  PROXY = '172.18.0.5'.freeze
+
+  # nginx haengt die echte Adresse per $proxy_add_x_forwarded_for HINTEN an eine
+  # mitgeschickte Kette, und Rack nimmt daraus die letzte nicht vertraute
+  # Adresse. Ein vom Client vorangestellter Wert verschiebt req.ip deshalb nicht.
   test 'ein vorangestellter X-Forwarded-For hebt den Bann nicht auf' do
     get '/api/v2/init',
         headers: { 'X-Api-Key' => @key, 'X-Forwarded-For' => "203.0.113.9, #{GEBANNT}" },
-        env: { 'REMOTE_ADDR' => GEBANNT }
+        env: { 'REMOTE_ADDR' => PROXY }
 
     assert_response :not_found
   end
 
-  # Gegenrichtung: Wer nicht gebannt ist, darf sich nicht durch einen
-  # mitgeschickten Header eine Sperre einfangen.
+  # Gegenrichtung, und der Test, der rot wird, falls die Auswahl je auf die
+  # ERSTE Adresse der Kette kippt: Wer nicht gebannt ist, darf sich nicht durch
+  # einen mitgeschickten Header eine Sperre einfangen.
   test 'ein fremder X-Forwarded-For bannt keine unbeteiligte IP' do
     get '/api/v2/init',
         headers: { 'X-Api-Key' => @key, 'X-Forwarded-For' => "#{GEBANNT}, 203.0.113.7" },
-        env: { 'REMOTE_ADDR' => '203.0.113.7' }
+        env: { 'REMOTE_ADDR' => PROXY }
 
     assert_response :success
+  end
+
+  # Rack wertet seit 3.1 zuerst den RFC-7239-Header `Forwarded` aus; nginx setzt
+  # ihn nicht und reicht einen mitgeschickten unveraendert durch. Ohne die
+  # Zuweisung forwarded_priority am Kopf von rack_attack.rb bestimmte der Client
+  # damit selbst, was req.ip liefert — und koennte den Bann abschuetteln.
+  test 'ein mitgeschickter Forwarded-Header hebt den Bann nicht auf' do
+    get '/api/v2/init',
+        headers: { 'X-Api-Key' => @key,
+                   'Forwarded' => 'for=203.0.113.9',
+                   'X-Forwarded-For' => GEBANNT },
+        env: { 'REMOTE_ADDR' => PROXY }
+
+    assert_response :not_found
+  end
+
+  # Der Riegel gegen das eigene Netz (BlockedIp::UNBLOCKABLE) hat genau diesen
+  # Grund: Die Sperre greift vor allem anderen, auch vor der Pflegemaske. Wer
+  # sich selbst aussperrt, kann die Sperre nicht mehr aufheben — hier
+  # ausfuehrbar festgehalten statt nur als Kommentar behauptet.
+  test 'die Sperre trifft auch die Pflegemaske selbst' do
+    admin = create(:user, :admin)
+    post '/api/v2/login', params: { username: admin.user_name, password: 'password123' }
+    assert_response :success
+
+    get '/api/v2/admin/blocked_ips', env: { 'REMOTE_ADDR' => GEBANNT }
+    assert_response :not_found
   end
 
   # Der Bann greift vor dem Router, also auch fuer Pfade, die es nicht gibt.
@@ -86,6 +126,16 @@ class IpBlocklistTest < ActionDispatch::IntegrationTest
       get '/api/v2/init', headers: { 'X-Api-Key' => @key }, env: { 'REMOTE_ADDR' => frisch }
       assert_response :not_found
     end
+  end
+
+  # IPv6 kommt in mehreren Schreibweisen vor. Eingetragen wird hier die Langform,
+  # req.ip liefert die komprimierte — ohne normalize_ip im Modell griffe die
+  # Sperre nie, und in der Tabelle sahen beide identisch aus.
+  test 'eine IPv6-Adresse greift auch in anderer Schreibweise' do
+    BlockedIp.create!(ip: '2001:0DB8:0000:0000:0000:0000:0000:0001', reason: 'Test')
+
+    get '/api/v2/init', headers: { 'X-Api-Key' => @key }, env: { 'REMOTE_ADDR' => '2001:db8::1' }
+    assert_response :not_found
   end
 
   test 'ohne Bann fuehrt derselbe Pfad zum Routing-Fehler' do

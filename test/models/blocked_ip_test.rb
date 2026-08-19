@@ -27,11 +27,43 @@ class BlockedIpTest < ActiveSupport::TestCase
   # privaten Bereich.
   test 'eigenes und privates Netz sind nicht sperrbar' do
     ['127.0.0.1', '::1', '10.0.5.7', '172.18.0.3', '192.168.1.1', '169.254.1.1',
-     'fe80::1', 'fc00::1'].each do |wert|
+     'fe80::1', 'fc00::1',
+     # IPv4-mapped: dieselben Netze in IPv6-Schreibweise. Ohne die Abdeckung
+     # koennte der Riegel per Schreibweise umgangen werden.
+     '::ffff:10.0.0.1', '::ffff:127.0.0.1', '::ffff:192.168.1.1'].each do |wert|
       blocked = BlockedIp.new(ip: wert, reason: 'Test')
       assert_not blocked.valid?, "#{wert} haette geschuetzt sein muessen"
       assert_match(/privaten Netz/, blocked.errors.full_messages.join(' '))
     end
+  end
+
+  # Der teuerste Zustand des Features: ein Eintrag, der wie eine Sperre aussieht
+  # und keine ist. blocked? vergleicht exakte Adressen, ein Bereich kann req.ip
+  # also nie treffen — deshalb abweisen statt annehmen.
+  test 'eine Bereichsangabe wird abgewiesen' do
+    ['203.0.113.0/24', '203.0.113.5/32', '2001:db8::/32', '0.0.0.0/0'].each do |wert|
+      blocked = BlockedIp.new(ip: wert, reason: 'Test')
+      assert_not blocked.valid?, "#{wert} haette abgelehnt werden muessen"
+      assert_match(/einzelne Adresse/, blocked.errors.full_messages.join(' '))
+    end
+  end
+
+  # Aus einem Log oder einer RIPE-Abfrage kopierte Adressen kommen in Lang- oder
+  # Grossform. req.ip liefert die komprimierte Kleinform; ohne Normalisierung
+  # stuende in der Tabelle etwas, das nie greift und dort richtig aussieht.
+  test 'IPv6 wird auf die Form normalisiert, die req.ip liefert' do
+    [['2001:0DB8:0000:0000:0000:0000:0000:0001', '2001:db8::1'],
+     ['2001:DB8::1', '2001:db8::1'],
+     ['::FFFF:203.0.113.5', '::ffff:203.0.113.5']].each do |eingabe, erwartet|
+      blocked = BlockedIp.create!(ip: eingabe, reason: 'Test')
+      assert_equal erwartet, blocked.reload.ip
+      assert BlockedIp.blocked?(erwartet)
+      blocked.destroy!
+    end
+  end
+
+  test 'IPv4 bleibt unveraendert' do
+    assert_equal '203.0.113.5', BlockedIp.create!(ip: '203.0.113.5', reason: 'Test').reload.ip
   end
 
   test 'dieselbe Adresse nur einmal' do
