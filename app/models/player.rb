@@ -945,11 +945,44 @@ class Player < ApplicationRecord
   # Loescht die Deaktivierungs-Kennzeichnung ohne zu speichern; der Aufrufer schreibt
   # das Profil ohnehin.
   #
-  # Aufgerufen von jedem Weg, der eine neue Vereinszugehoerigkeit anlegt: Wer gerade
-  # aufgenommen wird, ist in diesem Verein aktiv, und die Kennzeichnung des
-  # abgebenden Vereins wuerde die Spielerliste des aufnehmenden leer aussehen lassen.
-  # Der Fall ist erst seit api#472 erreichbar — vorher lehnten Transferantrag und
-  # Direktzuweisung ein deaktiviertes Profil ab.
+  # Aufgerufen von jedem AUFNAHME-WEG DER OBERFLAECHE: Wer gerade aufgenommen wird,
+  # ist in diesem Verein aktiv, und die Kennzeichnung des abgebenden Vereins wuerde
+  # die Spielerliste des aufnehmenden leer aussehen lassen.
+  #
+  # Die vier Wege, damit ein neuer nicht still daneben entsteht — beide Arten von
+  # Zugehoerigkeit, jeweils ueber Antrag und ueber die Direktzuweisung der SBK:
+  #   Heimatverein:      Player#transfer (aus TransferRequest),
+  #                      PlayersController#transfer
+  #   Zweitspielrecht:   TransferRequest#add_secondary_club_membership!,
+  #                      PlayersController#add_additional_club
+  #
+  # Bewusst NICHT dabei sind drei weitere Schreiber von `clubs`, jeder aus eigenem
+  # Grund — die Liste oben ist also kein "wer clubs anfasst", sondern "wer jemanden
+  # aufnimmt":
+  #   - Neuanlage eines Profils (PlayersController, `Player.new`): war nie deaktiviert.
+  #   - merge_into!: uebernimmt offene Zugehoerigkeiten der Dublette auf den Master.
+  #     Ein deaktivierter Master bleibt deaktiviert, denn die Kennzeichnung ist die
+  #     Entscheidung SEINES Vereins und die Zusammenfuehrung ist keine Aufnahme.
+  #   - Die Wartungslaeufe unter lib/tasks (reopen_memberships_after_deactivation,
+  #     backfill_legacy_home_clubs): heilen Altbestand und lassen die Kennzeichnung
+  #     ausdruecklich stehen.
+  # Ebenfalls nicht dabei, weil es einen Stand wiederherstellt statt einen neuen zu
+  # setzen: das Zurueckschreiben bei der Ruecknahme einer Deaktivierung
+  # (`reactivate!`, `PlayersController#player_after_reactivation`).
+  #
+  # Erreichbar war der Fall auf den Antragswegen erst seit api#472 — vorher lehnte der
+  # Transferantrag ein deaktiviertes Profil ab, und der Vereinswechsel scheiterte am
+  # fehlenden offenen Heimatverein, den das alte `deactivate!` geschlossen hatte. Bei
+  # der Direktzuweisung eines Zweitspielrechts ging es schon vorher, nur raeumte dort
+  # nie jemand ab — genau der Befund aus api#476.
+  #
+  # Die Kennzeichnung ist global, die Entscheidung dahinter vereinsbezogen: Eine
+  # Aufnahme hebt sie also auch fuer den abgebenden Verein auf. Das ist so gewollt —
+  # wer eine Freigabe erteilt, sieht die Person nicht mehr als inaktiv an (api#476).
+  #
+  # Ungeprueft bleibt hier `merged_into_id`: `PlayersController#reactivate` lehnt eine
+  # zusammengefuehrte Dublette ausdruecklich ab, clear_deactivation tut das an keinem
+  # der vier Wege. Siehe api#486.
   #
   # `deactivation_reason` bleibt stehen, wie schon bei `reactivate!`: der Grund ist
   # Historie, die Kennzeichnung ist der Zustand.
