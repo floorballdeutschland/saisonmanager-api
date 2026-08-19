@@ -63,7 +63,7 @@ module Admin
 
     def document_type_params
       params.require(:document_type).permit(:name, :description, :game_operation_id, :validity,
-                                            :required_below_age, :template)
+                                            :required_below_age, :required_from_birth_year, :template)
     end
 
     def set_document_type

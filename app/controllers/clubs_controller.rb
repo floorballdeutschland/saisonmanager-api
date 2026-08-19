@@ -488,7 +488,9 @@ class ClubsController < ApplicationController
         last_requested = l['history'].select { |h| h['license_status_id'].to_i == License::REQUESTED }
                                      .max_by { |h| h['created_at'] }
         item[:grace_period_ends_at] = last_requested ? (last_requested['created_at'].to_time + License::GRACE_PERIOD).iso8601 : nil
-        # Altersabhängige Dokumentarten: Stichtag = Datum der Lizenzbeantragung.
+        # Altersabhängige Dokumentarten: Arten mit required_below_age rechnen gegen das
+        # Datum der Lizenzbeantragung, Arten mit required_from_birth_year sehen es nicht
+        # an (siehe DocumentType#required_for?).
         item[:required_documents] = DocumentType.required_keys(
           result[:required_documents],
           birthdate: p.birthdate,

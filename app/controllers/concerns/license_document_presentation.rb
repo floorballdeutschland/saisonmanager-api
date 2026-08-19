@@ -70,6 +70,7 @@ module LicenseDocumentPresentation
       game_operation_id: document_type.game_operation_id,
       validity: document_type.validity,
       required_below_age: document_type.required_below_age,
+      required_from_birth_year: document_type.required_from_birth_year,
       template_url: document_type.template.attached? ? rails_blob_url(document_type.template, disposition: 'attachment') : nil
     }
   end
