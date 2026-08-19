@@ -54,7 +54,9 @@ class BlockedIpTest < ActiveSupport::TestCase
   test 'IPv6 wird auf die Form normalisiert, die req.ip liefert' do
     [['2001:0DB8:0000:0000:0000:0000:0000:0001', '2001:db8::1'],
      ['2001:DB8::1', '2001:db8::1'],
-     ['::FFFF:203.0.113.5', '::ffff:203.0.113.5']].each do |eingabe, erwartet|
+     # Gemappt wird auf die punktierte Form kollabiert: req.ip liefert genau die.
+     ['::FFFF:203.0.113.5', '203.0.113.5'],
+     ['::ffff:203.0.113.5', '203.0.113.5']].each do |eingabe, erwartet|
       blocked = BlockedIp.create!(ip: eingabe, reason: 'Test')
       assert_equal erwartet, blocked.reload.ip
       assert BlockedIp.blocked?(erwartet)

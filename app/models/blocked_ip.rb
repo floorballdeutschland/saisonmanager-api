@@ -36,7 +36,10 @@ class BlockedIp < ApplicationRecord
   # stehen, damit ip_parsable sie noch sehen und ablehnen kann.
   before_validation :normalize_ip
 
-  validates :ip, presence: true, uniqueness: { case_sensitive: false }
+  # Ohne `case_sensitive: false`: normalize_ip schreibt alles klein, damit sind
+  # Validierung und Unique-Index deckungsgleich und die Pruefung kann den Index
+  # nutzen.
+  validates :ip, presence: true, uniqueness: true
   validates :reason, presence: true, length: { maximum: 200 }
   validate :ip_parsable
   validate :ip_blockable
@@ -100,7 +103,14 @@ class BlockedIp < ApplicationRecord
     return if ip.blank? || ip.to_s.include?('/')
 
     addr = parsed_ip
-    self.ip = addr.to_s if addr
+    return if addr.nil?
+
+    # IPv4-mapped auf die punktierte Form kollabieren: nginx traegt in
+    # X-Forwarded-For `$remote_addr` ein, und das ist `203.0.113.5`, nie
+    # `::ffff:203.0.113.5`. Ohne das Kollabieren waere eine aus einem
+    # Fremdsystem kopierte gemappte Adresse der letzte verbleibende Weg zu einem
+    # Eintrag, der wie eine Sperre aussieht und nie greift.
+    self.ip = (addr.ipv4_mapped? ? addr.native : addr).to_s
   end
 
   def ip_parsable
