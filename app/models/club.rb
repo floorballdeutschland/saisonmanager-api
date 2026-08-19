@@ -21,8 +21,8 @@ class Club < ApplicationRecord
 
   # Eine Adresse, nicht mehrere. Auf Produktion trug ein Verein zwei Adressen
   # mit Semikolon getrennt im Feld – beide bekamen nie etwas, weil das Feld als
-  # eine Adresse verschickt wird. Wer mehrere Empfänger braucht, wählt sie
-  # unter notify_user_ids aus.
+  # eine Adresse verschickt wird. Wer mehrere Empfänger braucht, lässt die
+  # Vereinsmanager mitlaufen (siehe notify_managers).
   EMAIL_FORMAT = /\A[^@\s;,]+@[^@\s;,]+\.[^@\s;,]+\z/
 
   # `if:` statt unbedingt: Auf Produktion trägt ein Verein bereits zwei
@@ -52,8 +52,8 @@ class Club < ApplicationRecord
         .select { |user| Array(user.permission_hash[:vm]).include?(id) }
   end
 
-  # Alle Empfänger der Vereinspost: die Kontaktadresse plus die ausgewählten
-  # Vereinsmanager.
+  # Alle Empfänger der Vereinspost: die Kontaktadresse plus die
+  # Vereinsmanager, die nicht abgewählt sind.
   def notification_emails
     ([contact_email] + notify_manager_emails)
       .map { |mail| mail.to_s.strip }
@@ -61,15 +61,38 @@ class Club < ApplicationRecord
       .uniq
   end
 
-  # Die Auswahl wird bei jedem Versand gegen die aktuellen Rechte aufgelöst.
-  # Ohne das bekäme jemand weiter Vereinspost, der die Rolle längst verloren
-  # hat – die gespeicherten IDs allein sagen darüber nichts.
+  # Der Verteiler wird bei jedem Versand aus den aktuellen Rechten gebildet,
+  # nicht aus gespeicherten IDs. Wer die Rolle verliert, fällt damit von selbst
+  # heraus; wer sie neu bekommt, ist von selbst dabei.
   def notify_manager_emails
-    ids = Array(notify_user_ids).map(&:to_i).reject(&:zero?)
-    return [] if ids.empty?
+    notify_managers.filter_map { |user| user.email.presence }
+  end
 
-    club_managers.select { |user| ids.include?(user.id) && user.email.present? }
-                 .map(&:email)
+  # Die Vereinsmanager, die Vereinspost bekommen: alle außer den abgewählten.
+  def notify_managers
+    excluded = notify_excluded_ids
+    club_managers.reject { |user| excluded.include?(user.id) }
+  end
+
+  def notify_excluded_ids
+    Array(notify_excluded_user_ids).map(&:to_i).to_set
+  end
+
+  # Nach außen bleibt es eine Auswahl: Die Maske hakt an, wer Post bekommt, und
+  # schickt genau diese IDs zurück. Gespeichert wird die Gegenmenge, damit ein
+  # später berufener Vereinsmanager ohne Zutun im Verteiler steht – er ist in
+  # keiner Abwahl genannt. Eine gespeicherte Auswahl hätte ihn ausgeschlossen.
+  def notify_user_ids
+    notify_managers.map(&:id)
+  end
+
+  # Nur Vereinsmanager, die es zum Zeitpunkt des Speicherns gibt, können
+  # abgewählt werden. Fremde oder erfundene IDs landen nicht in der Abwahl –
+  # sonst hinge dort Müll, der einen später berufenen Vereinsmanager mit
+  # derselben ID stillschweigend aus dem Verteiler nähme.
+  def notify_user_ids=(ids)
+    selected = Array(ids).map(&:to_i).to_set
+    self.notify_excluded_user_ids = club_managers.map(&:id).reject { |id| selected.include?(id) }
   end
 
   def deactivate!(user_id)
@@ -100,7 +123,7 @@ class Club < ApplicationRecord
   # PlayersController#reactivate.
   def players(include_deactivated: false)
     scope = include_deactivated ? Player.where(merged_into_id: nil) : Player.active
-    p = scope.where("players.clubs @> '[{\"club_id\": ?}]'", id).order(:last_name, :first_name)
+    p = scope.where('players.clubs @> ?', [{ club_id: id }].to_json).order(:last_name, :first_name)
     p.select do |pl|
       pl.clubs.map do |c|
         # Strukturell kaputter Eintrag (kein Objekt) aus dem Altbestand: zaehlt nicht als

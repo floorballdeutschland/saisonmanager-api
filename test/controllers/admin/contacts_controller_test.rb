@@ -18,8 +18,8 @@ module Admin
                                email: 'anna@aal.example')
       @tm = create(:user, :tm, team_id: @team.id, first_name: 'Bruno', last_name: 'Sanchez',
                                email: 'bruno@aal.example')
-      # „Zusätzlich informieren" in der Vereinsverwaltung.
-      @club.update!(notify_user_ids: [@vm.id])
+      # „Zusätzlich informieren" in der Vereinsverwaltung: standardmäßig alle
+      # Vereinsmanager, gespeichert wird nur die Abwahl.
     end
 
     def login(user)
@@ -153,7 +153,7 @@ module Admin
       assert_equal ['anna@aal.example'], get_contacts['clubs'].sole['notify_managers'].pluck('email')
     end
 
-    test 'ein nicht markierter Vereinsmanager steht nicht drin' do
+    test 'ein abgewaehlter Vereinsmanager steht nicht drin' do
       @club.update!(notify_user_ids: [])
       login(create(:user, :sbk_scoped, game_operation_id: @go.id))
 
@@ -164,17 +164,28 @@ module Admin
       assert_equal 'info@aal.example', club['contact_email']
     end
 
-    test 'markiert wird nur, wer heute noch Vereinsmanager dieses Vereins ist' do
+    test 'aufgefuehrt wird nur, wer heute noch Vereinsmanager dieses Vereins ist' do
       other_club = create(:club, name: 'Barsch Bremen')
-      stranger = create(:user, :vm, club_id: other_club.id, email: 'fremd@barsch.example')
-      @club.update!(notify_user_ids: [@vm.id, stranger.id, 999_999])
+      create(:user, :vm, club_id: other_club.id, email: 'fremd@barsch.example')
 
       login(create(:user, :sbk_scoped, game_operation_id: @go.id))
 
       assert_equal ['anna@aal.example'], get_contacts['clubs'].sole['notify_managers'].pluck('email')
     end
 
-    test 'ein Verein ohne Kontaktadresse und ohne Markierung bleibt sichtbar' do
+    # Die Abwahl gilt der Person, nicht der Position: Ein zweiter
+    # Vereinsmanager desselben Vereins bleibt drin.
+    test 'die Abwahl trifft nur den Abgewaehlten' do
+      create(:user, :vm, club_id: @club.id, first_name: 'Cem', last_name: 'Yilmaz',
+                         email: 'cem@aal.example')
+      @club.update!(notify_user_ids: [@vm.id])
+
+      login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+      assert_equal ['anna@aal.example'], get_contacts['clubs'].sole['notify_managers'].pluck('email')
+    end
+
+    test 'ein Verein ohne Kontaktadresse und ohne Empfaenger bleibt sichtbar' do
       @club.update!(contact_email: nil, notify_user_ids: [])
       login(create(:user, :sbk_scoped, game_operation_id: @go.id))
 
@@ -186,13 +197,13 @@ module Admin
     end
 
     test 'eine Alt-Rolle mit der Gruppen-ID als String zaehlt mit' do
-      legacy = create(:user, first_name: 'Dana', last_name: 'Fischer', email: 'dana@aal.example',
-                             permissions: [{ 'user_group_id' => '4', 'club_id' => @club.id.to_s }])
-      @club.update!(notify_user_ids: [legacy.id])
+      create(:user, first_name: 'Dana', last_name: 'Fischer', email: 'dana@aal.example',
+                    permissions: [{ 'user_group_id' => '4', 'club_id' => @club.id.to_s }])
 
       login(create(:user, :sbk_scoped, game_operation_id: @go.id))
 
-      assert_equal ['dana@aal.example'], get_contacts['clubs'].sole['notify_managers'].pluck('email')
+      assert_equal %w[anna@aal.example dana@aal.example],
+                   get_contacts['clubs'].sole['notify_managers'].pluck('email').sort
     end
 
     test 'ohne Spielbetriebsrolle ist die Liste gesperrt' do

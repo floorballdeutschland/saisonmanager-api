@@ -204,6 +204,25 @@ module Admin
       assert_includes JSON.parse(response.body).map { |t| t['key'] }, consent.key
     end
 
+    # Dasselbe fuer die Jahrgangsform: Ein aelterer Jahrgang faellt aus der Auswahl,
+    # der Jahrgang selbst bleibt drin. Und das neue Feld muss mit ausgeliefert
+    # werden, sonst kann die Oberflaeche die Regel nicht anzeigen.
+    test 'available_types blendet Jahrgangsarten fuer aeltere Jahrgaenge aus' do
+      attest = DocumentType.create!(name: 'Sportaerztliches Attest', required_from_birth_year: 2012)
+
+      @player.update!(birthdate: Date.new(2011, 12, 31))
+      get "/api/v2/admin/players/#{@player.id}/document_types"
+      assert_response :success
+      assert_not_includes JSON.parse(response.body).map { |t| t['key'] }, attest.key
+
+      im_jahrgang = create(:player, birthdate: Date.new(2012, 1, 1))
+      get "/api/v2/admin/players/#{im_jahrgang.id}/document_types"
+      assert_response :success
+      listed = JSON.parse(response.body).find { |t| t['key'] == attest.key }
+      assert_not_nil listed, 'der getroffene Jahrgang muss in der Auswahl stehen'
+      assert_equal 2012, listed['required_from_birth_year']
+    end
+
     # Der Spieler gehoert zwei Vereinen in verschiedenen Verbaenden. Der gescopte
     # SBK darf ihn lesen (eigener Verband), bekommt die Dokumente des fremden
     # Verbands aber nicht zu sehen – dann darf die Art auch nicht in der Auswahl

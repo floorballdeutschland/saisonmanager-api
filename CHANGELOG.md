@@ -9,6 +9,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.88.0] - 2026-08-19
+
+### Neu
+
+- **Vereinsmanager bekommen die Vereinspost jetzt standardmäßig**: Unter „Zusätzlich informieren" in der Vereinsverwaltung musste bisher jeder Vereinsmanager einzeln angehakt werden, damit er dieselben Nachrichten wie die Kontaktadresse bekommt. Wer neu in die Rolle kam, stand damit erst einmal außen vor, bis ihn jemand von Hand hinzufügte, und niemand sah, dass er fehlte. Jetzt ist die Auswahl umgekehrt: Alle Vereinsmanager eines Vereins sind angehakt, und gespeichert wird nur, wer ausdrücklich abgewählt wurde. Ein später berufener Vereinsmanager ist damit ohne Zutun im Verteiler. Für den Bestand sind alle bestehenden Abwahlen zurückgesetzt: Es bekommen also zunächst überall alle Vereinsmanager die Vereinspost. Wie bisher wird der Verteiler bei jedem Versand aus den aktuellen Rechten gebildet: Wer die Rolle verliert, fällt heraus.
+
+- **Eine Dokumentart kann jetzt für einen ganzen Geburtsjahrgang gelten**: Bisher ließ sich eine Dokumentart nur über ein Alter altersabhängig machen, und der Stichtag war tagesgenau der Tag der Lizenzbeantragung. Für manche Dokumente passt das nicht: Wer bei Antragstellung im Sommer noch 15 ist, wird im Laufe derselben Saison 16 und bräuchte das sportärztliche Attest dann doch — und umgekehrt entfiel ein Dokument bei einem späten Antrag plötzlich, obwohl es für dieselbe Saison bei allen Jahrgangskolleg*innen vorliegt. Zur Auswahl steht deshalb jetzt eine zweite Form der Altersregel: „ab Geburtsjahrgang". Sie gilt für alle, die im angegebenen Jahr oder später geboren sind, unabhängig von Geburtstag und Antragsdatum. Die beiden Formen schließen sich aus, und eine Dokumentart ohne Altersregel bleibt wie bisher immer erforderlich. Ein fester Jahrgang muss jede Saison nachgezogen werden; das ist so gewollt, weil es dem Denken der Vereine entspricht. Die Elternzustimmung, die über das Liga-Flag ohne Katalog-Eintrag angefordert wird, bleibt unverändert altersbasiert (unter 18).
+
+### Verbessert
+
+- **Server auf Rails 7.2 gehoben, zehn Sicherheitsmeldungen geschlossen**: Der Server lief auf einer Fassung des Anwendungsgerüsts, die keine Sicherheitskorrekturen mehr bekommt. Zehn offene Meldungen betrafen ihn, darunter eine als kritisch eingestufte: Beim Verkleinern hochgeladener Bilder öffnete die Bildbibliothek auch Formate, die für fremde Dateien nicht gedacht sind, worüber sich im ungünstigsten Fall Dateien vom Server auslesen ließen. Der Weg dorthin war bei uns bereits verengt, weil die Logo-Prüfung seit Juli den tatsächlichen Inhalt einer Datei bestimmt und nur echte PNG-, JPG- und WebP-Bilder in die Ablage lässt. Mit der neuen Fassung sperrt der Server diese Formate zusätzlich von sich aus. Für die Anwendung ändert sich nichts Sichtbares. Eine Kleinigkeit doch: Wer ein Bild hochlädt, dessen Inhalt nicht zur Endung passt, bekommt bei einer getarnten SVG jetzt die Meldung, dass die Datei nicht als Bild gelesen werden konnte. Abgewiesen wurde sie vorher wie nachher.
+
 ## [1.87.3] - 2026-08-18
 
 ### Behoben
