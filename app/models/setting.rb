@@ -7,10 +7,26 @@ class Setting < ApplicationRecord
   # geladen wurde (z. B. admin/penalty_codes schreibt über `Setting.current`).
   after_commit :flush_caches
 
+  # Zwei Ebenen, weil ein Treffer im Rails-Cache hier nicht gratis ist: der
+  # MemoryStore serialisiert seine Eintraege (DupCoder) und macht bei JEDEM
+  # Lesen ein Marshal.load des ganzen AR-Objekts samt seiner JSONB-Spalten
+  # (nations, penalties, seasons, systems, league_categories, league_classes).
+  # Bei 75 Aufrufstellen und Schleifen ueber Spieler oder Ligen summiert sich
+  # das zu Sekunden — in der Lizenzliste des Verbandes war es der groesste
+  # Einzelposten. Die anfrage-lokale Ebene davor macht daraus einen Lesezugriff
+  # pro Anfrage; `flush_caches` raeumt beide Ebenen ab.
   def self.current
-    Rails.cache.fetch('settings/current', expires_in: 1.hour) do
+    Current.setting ||= Rails.cache.fetch('settings/current', expires_in: 1.hour) do
       Setting.first
     end
+  end
+
+  # Beide Ebenen von `.current` abraeumen. Einziger Weg, den Zwischenspeicher zu
+  # verwerfen — wer an einer Setting-Zeile per `update_column(s)` oder Raw-SQL
+  # vorbei an den Callbacks schreibt, muss das hier selbst nachziehen.
+  def self.flush_current_cache
+    Current.setting = nil
+    Rails.cache.delete('settings/current')
   end
 
   def self.league_class(league_class_id)
@@ -221,7 +237,7 @@ class Setting < ApplicationRecord
   # dieser Cache ebenfalls fallen, sonst erscheint die neue Saison bis zu 30 min
   # verzögert.
   def flush_caches
-    Rails.cache.delete('settings/current')
+    Setting.flush_current_cache
     Rails.cache.delete('settings/init')
   end
 end

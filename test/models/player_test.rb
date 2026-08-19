@@ -32,6 +32,33 @@ class PlayerTest < ActiveSupport::TestCase
     refute_includes license_team_ids, previous_team.id
   end
 
+  # Die Schwelle gehoert vor die Schleife, nicht hinein: Setting.current_min_team
+  # laeuft ueber Setting.current, und dort kostet selbst ein Cache-Treffer ein
+  # Marshal.load der gesamten Konfiguration. In der Lizenzliste des Verbandes
+  # (Admin::LicensesController#index) lief dieser Block ueber die Lizenzen jedes
+  # Spielers und war damit der groesste Einzelposten der Antwortzeit.
+  test 'full_hash liest die Team-Schwelle einmal, nicht je Lizenz' do
+    league = create(:league, :current_season)
+    teams  = Array.new(4) { create(:team, league: league) }
+    create(:setting, current_season_id: '18')
+
+    player = create(:player, with_licenses: teams.map do |team|
+      { team: team, status: License::APPROVED }
+    end)
+
+    reads = 0
+    counting_threshold = lambda do
+      reads += 1
+      0
+    end
+    Setting.stub(:current_min_team, counting_threshold) do
+      player.full_hash(true, true)
+    end
+
+    assert_equal 4, player.licenses.size, 'Testaufbau: der Filter muss mehrere Lizenzen sehen'
+    assert_equal 1, reads, 'current_min_team darf nur einmal je full_hash gelesen werden'
+  end
+
   test 'full_hash mit current_min_team=0 (Fallback aus PR #168) lässt alle Lizenzen durch' do
     # Genau dieser Pfad ist der Bonner-Vorfall: ohne min_team_id rutschen
     # Lizenzen aus jeder Saison durch den Filter.

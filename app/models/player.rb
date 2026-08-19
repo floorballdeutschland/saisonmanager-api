@@ -57,7 +57,12 @@ class Player < ApplicationRecord
       # anschliessende map! auf nil und die Spieler-Detailansicht im Admin
       # antwortete mit 500 (Sentry SAISONMANAGER-19).
       p[:licenses] = if only_current_licenses
-                       (licenses || []).select { |l| l['team_id'].to_i >= Setting.current_min_team }
+                       # Die Schwelle einmal lesen, nicht je Lizenz: Setting.current_min_team
+                       # geht über Setting.current, und ein Treffer im MemoryStore ist dort
+                       # nicht gratis (siehe Setting.current). In der Lizenzliste des
+                       # Verbandes lief dieser Block über alle Lizenzen jedes Spielers.
+                       min_team_id = Setting.current_min_team
+                       (licenses || []).select { |l| l['team_id'].to_i >= min_team_id }
                      else
                        licenses || []
                      end

@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Die Lizenzliste des Verbandes lädt deutlich schneller**: Die Seite brauchte über zehn Sekunden, obwohl sie nur 25 Einträge auf einmal zeigt. Die Ursache lag nicht an der Menge der Lizenzen, sondern an einem Kostenfaktor pro Zeile: Beim Aufbau jeder einzelnen Zeile wurde die gesamte Grundkonfiguration des Saisonmanagers (Saisons, Ligaklassen, Strafenkatalog, Nationen) erneut aus dem Zwischenspeicher entpackt — bei einem Spieler mit mehreren Lizenzen sogar mehrfach. Diese Konfiguration wird jetzt einmal je Anfrage bereitgehalten. Weil sie an rund 75 Stellen im Saisonmanager gelesen wird, wirkt das über die Lizenzliste hinaus auf alle Ansichten, die viele Datensätze auf einmal aufbauen.
+
 ## [1.89.0] - 2026-08-19
 
 ### Neu
