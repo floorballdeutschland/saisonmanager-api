@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.88.0] - 2026-08-19
+
 ### Neu
 
 - **Vereinsmanager bekommen die Vereinspost jetzt standardmäßig**: Unter „Zusätzlich informieren" in der Vereinsverwaltung musste bisher jeder Vereinsmanager einzeln angehakt werden, damit er dieselben Nachrichten wie die Kontaktadresse bekommt. Wer neu in die Rolle kam, stand damit erst einmal außen vor, bis ihn jemand von Hand hinzufügte, und niemand sah, dass er fehlte. Jetzt ist die Auswahl umgekehrt: Alle Vereinsmanager eines Vereins sind angehakt, und gespeichert wird nur, wer ausdrücklich abgewählt wurde. Ein später berufener Vereinsmanager ist damit ohne Zutun im Verteiler. Für den Bestand sind alle bestehenden Abwahlen zurückgesetzt: Es bekommen also zunächst überall alle Vereinsmanager die Vereinspost. Wie bisher wird der Verteiler bei jedem Versand aus den aktuellen Rechten gebildet: Wer die Rolle verliert, fällt heraus.
