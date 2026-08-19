@@ -84,30 +84,40 @@ namespace :import do
       # Der Verein wird über seinen Landesverband eingeordnet, nicht mehr über
       # einen Heimat-Eintrag im `game_operations_hash`: Aus dem Landesverband
       # ergibt sich der zuständige Spielbetrieb (Club#main_game_operation_id).
-      # Das Altsystem kennt nur den Spielbetrieb, deshalb wird dessen
-      # Landesverband übernommen.
       #
       # Die `additional_game_operation_ids` des Altsystems wurden hier früher als
       # Gast-Einträge übernommen – genau die Quelle der Altlast im Hash. Sie
       # werden verworfen: Lesezugriff über Verbandsgrenzen hinweg regeln die
       # Vereins-Freigabe und die Liga.
       #
-      # Ohne Landesverband am Spielbetrieb bleibt das Feld leer. Der Verein ist
-      # dann nur für die Bundesebene sichtbar, was der ehrliche Zustand ist:
-      # Zuständig ist niemand, und ein geratener Verband wäre schlimmer.
+      # Das Altsystem kennt den Landesverband nicht, es kennt nur den
+      # Spielbetrieb. Der Wert ist hier also abgeleitet und nicht importiert --
+      # mit zwei Folgen, die beide einen Riegel brauchen:
+      #
+      #   - Bei einem BESTEHENDEN Verein wird er nicht angefasst. Sonst zöge ein
+      #     zweiter Importlauf die gepflegte Zuordnung wieder auf den
+      #     Alt-Spielbetrieb zurück und stellte genau den Fall wieder her, den
+      #     diese Umstellung behebt (ETV Hamburg zurück nach Niedersachsen).
+      #     Gepflegt wird der Landesverband in der Anwendung, nicht hier.
+      #   - Fehlt der Landesverband am Spielbetrieb, wird gar nichts geschrieben.
+      #     Ein nil wäre nach der Umstellung nicht bloß eine Lücke, sondern der
+      #     Verlust der Zuständigkeit: Der Verein fiele aus der Liste jedes
+      #     regionalen Verbands.
       sa_id = GameOperation.find_by(id: go_id)&.state_association_id
-      warn "WARN: Spielbetrieb #{go_id} hat keinen Landesverband" if sa_id.nil?
+      if sa_id.nil?
+        warn "WARN: Spielbetrieb #{go_id} hat keinen Landesverband -- " \
+             'neue Vereine bleiben ohne Zustaendigkeit und sind nur fuer die Bundesebene sichtbar'
+      end
 
       go['clubs'].each do |c|
         existing = Club.find_by(id: c['id'])
 
         if existing
           existing.update!(
-            name:                 c['name'],
-            long_name:            c['long_name'].presence,
-            short_name:           c['short_name'].presence,
-            state:                c['state'].presence,
-            state_association_id: sa_id
+            name:       c['name'],
+            long_name:  c['long_name'].presence,
+            short_name: c['short_name'].presence,
+            state:      c['state'].presence
           )
           updated += 1
         else
@@ -123,12 +133,11 @@ namespace :import do
               NOW(), NOW()
             )
             ON CONFLICT (id) DO UPDATE SET
-              name                 = EXCLUDED.name,
-              long_name            = EXCLUDED.long_name,
-              short_name           = EXCLUDED.short_name,
-              state                = EXCLUDED.state,
-              state_association_id = EXCLUDED.state_association_id,
-              updated_at           = NOW()
+              name       = EXCLUDED.name,
+              long_name  = EXCLUDED.long_name,
+              short_name = EXCLUDED.short_name,
+              state      = EXCLUDED.state,
+              updated_at = NOW()
           SQL
           created += 1
         end

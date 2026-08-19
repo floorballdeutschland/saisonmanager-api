@@ -593,7 +593,16 @@ class ClubsController < ApplicationController
              'Das kann nur die Bundesebene setzen.'
     end
 
-    ziel_go_id = GameOperation.id_by_state_association[StateAssociation.root_id(ziel_sa_id)]
+    ziel_wurzel_id = StateAssociation.root_id(ziel_sa_id)
+
+    # Eine Kennung, die es nicht gibt, ist ein anderer Fehler als ein Verband
+    # ohne Spielbetrieb, und die Meldung muss das sagen: Sonst wird jemand
+    # aufgefordert, einen Spielbetrieb anzulegen, obwohl er nur einen gültigen
+    # Verband auswählen muss. Die Anlage unterscheidet beides schon
+    # (state_association_error_message), das Bearbeiten warf sie zusammen.
+    return 'Der gewählte Landesverband existiert nicht.' if ziel_wurzel_id.nil?
+
+    ziel_go_id = GameOperation.id_by_state_association[ziel_wurzel_id]
 
     # Ein Landesverband, dessen Verbund keinen Spielbetrieb hat, hinterlässt
     # denselben unerreichbaren Verein wie ein leeres Feld – nur unauffälliger,

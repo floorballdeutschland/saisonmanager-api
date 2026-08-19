@@ -10,6 +10,24 @@
 # ist das am ETV Hamburg, der mit Landesverband Hamburg in der Vereinsliste von
 # Floorball Niedersachsen stand.
 #
+# WANN LAUFEN LASSEN
+#
+# Alle drei Tasks brauchen den neuen Code (`StateAssociation.root_id`,
+# `GameOperation.id_by_state_association`), koennen also erst NACH dem Deploy
+# laufen. Dazwischen liegt ein Fenster, in dem die Zustaendigkeit fuer die
+# betroffenen Vereine schon abgeleitet wird, die Daten aber noch nicht stimmen:
+#
+#   - Die sechs Hamburger Vereine haben keinen zustaendigen Spielbetrieb, solange
+#     :fbh_under_flvsh nicht gelaufen ist. Der FLV-SH verliert :update_club an
+#     fuenf Vereinen, die er heute betreut, der FVNB am ETV Hamburg. Nur die
+#     Bundesebene kann sie in diesem Fenster noch anfassen.
+#   - Die Vereine aus der Liste zu :fix_state_associations haengen bis zum Lauf
+#     an dem Verband, den ihr LV-Feld nennt, also teils am falschen.
+#
+# Das Fenster ist gewollt kurz zu halten: die drei Tasks direkt nach dem Deploy
+# laufen lassen, nicht am naechsten Tag. Auf .dev vorher durchspielen, dort ist
+# das Fenster ohne Belang. Kein Datenverlust, es geht nur um Leserechte.
+#
 # DREI AUFGABEN, DREI TASKS -- in dieser Reihenfolge auszufuehren
 #
 #   :fbh_under_flvsh
@@ -160,6 +178,7 @@ namespace :clubs do
   desc 'Vergleicht gespeicherte und abgeleitete Zustaendigkeit je Verein (rein lesend).'
   task responsibility_report: :environment do
     wechsel = []
+    neu_zugeordnet = []
     ohne_zustaendigkeit = []
 
     Club.order(:id).each do |club|
@@ -170,8 +189,18 @@ namespace :clubs do
                 .map { |h| h['game_operation_id'].to_i }.first
       neu = club.main_game_operation_id
 
-      ohne_zustaendigkeit << [club, alt] if neu.nil?
-      wechsel << [club, alt, neu] if neu.present? && alt.present? && alt != neu
+      if neu.nil?
+        ohne_zustaendigkeit << [club, alt]
+      elsif alt.blank?
+        # Eigene Gruppe und nicht stillschweigend unter "unveraendert": Diese
+        # Vereine waren bisher nur fuer die Bundesebene sichtbar und werden jetzt
+        # von einem einzelnen Verband verwaltet. Das ist meist gewollt, aber es
+        # ist eine Rechteaenderung und gehoert vor Augen -- gerade weil ein
+        # falsch gepflegter Landesverband hier ohne Gegenprobe durchschlaegt.
+        neu_zugeordnet << [club, neu]
+      elsif alt != neu
+        wechsel << [club, alt, neu]
+      end
     end
 
     namen = GameOperation.pluck(:id, :name).to_h
@@ -187,6 +216,14 @@ namespace :clubs do
       puts "   #{club.id.to_s.ljust(5)} #{club.name.to_s.ljust(34)} " \
            "#{namen[alt] || alt} -> #{namen[neu] || neu} " \
            "(LV: #{verbaende[club.state_association_id]&.strip || '-'})"
+    end
+
+    puts "\n-- Neu einem Verband zugeordnet (#{neu_zugeordnet.size}) --"
+    puts '   Bisher nur fuer die Bundesebene sichtbar, jetzt von diesem Verband'
+    puts '   verwaltet. Landesverband gegenpruefen, es gibt keine zweite Quelle mehr.'
+    neu_zugeordnet.each do |club, neu|
+      puts "   #{club.id.to_s.ljust(5)} #{club.name.to_s.ljust(34)} " \
+           "-> #{namen[neu] || neu} (LV: #{verbaende[club.state_association_id]&.strip || '-'})"
     end
 
     puts "\n-- Kein Verband zustaendig (#{ohne_zustaendigkeit.size}) --"
@@ -205,7 +242,9 @@ namespace :clubs do
            "vorher #{namen[alt] || '-'} (#{grund})"
     end
 
-    puts "\nOK: beide Wege sagen ueberall dasselbe." if wechsel.empty? && ohne_zustaendigkeit.empty?
+    if wechsel.empty? && neu_zugeordnet.empty? && ohne_zustaendigkeit.empty?
+      puts "\nOK: beide Wege sagen ueberall dasselbe."
+    end
   end
 
   # BELEG
@@ -277,9 +316,14 @@ namespace :clubs do
     end
 
     fbh.update!(parent: flvsh, sbk_email: nil, vsk_email: nil, rsk_email: nil)
-    # settings/init cached die Verbaende 30 Minuten; ohne Leerung zeigt die
-    # Oberflaeche den alten Baum weiter.
-    Rails.cache.delete('settings/init')
+
+    # Bewusst OHNE Rails.cache.delete('settings/init'): Der Cache-Store ist in
+    # Produktion :memory_store, also je Prozess eigen. Ein Rake-Lauf hat seinen
+    # eigenen Store und wuerde damit nichts leeren, was die laufenden
+    # Puma-Arbeiter betrifft -- der Aufruf saehe nur nach einem Riegel aus. Die
+    # Oberflaeche zeigt den alten Verbandsbaum deshalb bis zu 30 Minuten weiter,
+    # sofern nicht ohnehin ein Deploy die Container neu startet. Dieselbe
+    # Begruendung steht in app/models/current.rb.
 
     puts "\nGeschrieben. Zustaendig fuer Hamburg ist jetzt: " \
          "#{Club.where(state_association_id: fbh.id).first&.main_game_operation_id.inspect}"

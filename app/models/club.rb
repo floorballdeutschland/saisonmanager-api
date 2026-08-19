@@ -158,8 +158,10 @@ class Club < ApplicationRecord
     val.is_a?(Array) ? val : []
   end
 
+  # Ueber die je Request geladene Karte und nicht per find_by: Diese Methode
+  # laeuft in den Lizenzlisten je Zeile (Player#create_license_hash).
   def home_game_operation
-    GameOperation.find_by(id: main_game_operation_id)
+    GameOperation.by_id[main_game_operation_id]
   end
 
   # Der zustaendige Verband des Vereins: die Wurzel seiner Verbandskette. Fuer
@@ -480,14 +482,34 @@ class Club < ApplicationRecord
   # Der Landesverband am Spielbetrieb wird zuerst auf seine Wurzel gehoben und
   # erst dann der Teilbaum genommen. Zeigt ein Spielbetrieb nämlich auf einen
   # untergeordneten Verband (die Zuordnung ist heute nur per Konsole pflegbar,
-  # siehe Issue #492), gibt es für dessen ID keinen Teilbaum, und die Abfrage
-  # käme leer zurück statt mit dem Verbund, zu dem er gehört.
+  # siehe Issue #492), gibt es für dessen ID keinen Teilbaum.
+  #
+  # Der `select!` macht die Methode zur genauen Umkehrung von
+  # #main_game_operation_id: Ein Verbund kommt nur mit, wenn die Zuständigkeit
+  # für ihn tatsächlich bei einem der übergebenen Spielbetriebe liegt. Ohne diese
+  # Bedingung genügte es, irgendwo unter der Wurzel zu hängen, und das fällt in
+  # zwei erreichbaren Lagen auseinander:
+  #
+  #   1. Ein Spielbetrieb an einem UNTERGEORDNETEN Verband. Er bekäme den ganzen
+  #      Teilbaum des Verbunds, obwohl #main_game_operation_id auf den
+  #      Spielbetrieb des Verbunds zeigt. Genau das entsteht, sobald jemand nach
+  #      #492 einen Spielbetrieb für Hamburg anlegt: Er hätte alle Vereine
+  #      Schleswig-Holsteins in seiner Liste, mit Kontaktadresse.
+  #   2. Zwei Spielbetriebe an einem Verband. `id_by_state_association` behält
+  #      den mit der niedrigeren ID; der andere sähe den Teilbaum trotzdem.
+  #
+  # In beiden Fällen wären die Vereine gelistet, aber nicht bearbeitbar
+  # (`Club#user_permissions` fragt #main_game_operation_id), und ihre
+  # Spielerlisten antworteten leer. Also genau die Art stillen Widerspruchs, die
+  # diese Umstellung beseitigen soll.
   def self.responsible_state_association_ids(go_ids)
     ids = Array(go_ids).compact.map(&:to_i).reject(&:zero?)
     return [] if ids.empty?
 
+    go_by_root = GameOperation.id_by_state_association
     roots = GameOperation.where(id: ids).pluck(:state_association_id).compact
                          .map { |sa_id| StateAssociation.root_id(sa_id) }.compact.uniq
+    roots.select! { |root| ids.include?(go_by_root[root]) }
     StateAssociation.ids_under(roots)
   end
 

@@ -23,6 +23,15 @@ class GameOperation < ApplicationRecord
            .each_with_object({}) { |(sa_id, go_id), map| map[sa_id] ||= go_id }
   end
 
+  # Alle Spielbetriebe nach ID, je Request einmal geladen. Bei rund zehn Saetzen
+  # billiger als eine Abfrage je Nachschlag -- und die gab es: Club#home_game_operation
+  # laeuft in Player#create_license_hash je Lizenzzeile, in den Lizenzlisten also
+  # je Spieler. Vorher hing dort ein wochenlanger Rails.cache-Eintrag, der mit der
+  # Ableitung entfallen ist.
+  def self.by_id
+    Current.game_operations_by_id ||= all.index_by(&:id)
+  end
+
   # Vereine, fuer die dieser Spielbetrieb zustaendig ist: die Vereine in seinem
   # Landesverband und in allen Verbaenden darunter. Massgeblich fuer Zugriff auf
   # die Vereinsstammdaten; darueber hinaus gibt es Lesezugriff nur per

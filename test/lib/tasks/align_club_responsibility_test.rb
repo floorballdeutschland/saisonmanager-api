@@ -211,6 +211,22 @@ class AlignClubResponsibilityTest < ActiveSupport::TestCase
     assert_match(/#{wechsler.id}\s+Wechsler/, out)
   end
 
+  # Ein Verein, der bisher keinen gespeicherten Spielbetrieb hatte und jetzt einen
+  # abgeleiteten bekommt, fiel aus beiden Listen: `wechsel` verlangte einen alten
+  # Wert, `ohne_zustaendigkeit` einen fehlenden neuen. Er wechselt aber von "nur
+  # fuer die Bundesebene sichtbar" zu "von diesem Verband verwaltet", und das ist
+  # eine Rechteaenderung, die der Bericht als Tor vor dem Deploy zeigen muss.
+  test 'Bericht nennt Vereine, die neu einem Verband zugeordnet werden' do
+    neu_zugeordnet = create(:club, name: 'Neu zugeordnet', state_association_id: @flvsh.id,
+                                   game_operations_hash: [])
+
+    out, = run_task('clubs:responsibility_report')
+
+    assert_match(/Neu einem Verband zugeordnet \(1\)/, out)
+    assert_match(/#{neu_zugeordnet.id}\s+Neu zugeordnet/, out)
+    assert_match(/Zustaendigkeit wechselt \(0\)/, out)
+  end
+
   test 'Bericht nennt Vereine ohne zustaendigen Verband samt Ursache' do
     ohne_lv = create(:club, name: 'Ohne LV', state_association_id: nil)
     verbund_ohne_go = create(:club, name: 'Verbund ohne GO', state_association_id: @fbh.id)

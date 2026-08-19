@@ -579,6 +579,71 @@ class ClubTest < ActiveSupport::TestCase
   ensure
     ActiveSupport::Notifications.unsubscribe(subscriber)
   end
+  # --- home_clubs_of ist die Umkehrung von main_game_operation_id -------------
+  #
+  # Wer einen Verein LISTET, muss auch fuer ihn zustaendig sein. Liefen die beiden
+  # auseinander, waere ein Verein gelistet, aber nicht bearbeitbar, und seine
+  # Spielerliste antwortete leer -- genau die Art stillen Widerspruchs, die diese
+  # Umstellung beseitigen soll.
+
+  # Ein Spielbetrieb an einem UNTERGEORDNETEN Verband. Entsteht, sobald jemand
+  # nach #492 einen Spielbetrieb fuer Hamburg anlegt, das seit dem Datenlauf ein
+  # Unterverband von Schleswig-Holstein ist. Ohne die Filterung in
+  # responsible_state_association_ids saehe er alle Vereine des ganzen Verbunds,
+  # samt Kontaktadresse.
+  test 'home_clubs_of gibt einem Spielbetrieb am Unterverband keine fremden Vereine' do
+    verbund = create(:state_association)
+    kind = create(:state_association, parent: verbund)
+    verbund_go = create(:game_operation, state_association_id: verbund.id)
+    kind_go = create(:game_operation, state_association_id: kind.id)
+
+    im_verbund = create(:club, state_association_id: verbund.id)
+    im_kind = create(:club, state_association_id: kind.id)
+
+    # Zustaendig ist fuer beide der Spielbetrieb des Verbunds.
+    assert_equal verbund_go.id, im_verbund.main_game_operation_id
+    assert_equal verbund_go.id, im_kind.main_game_operation_id
+
+    assert_equal [im_kind.id, im_verbund.id].sort, Club.home_clubs_of([verbund_go.id]).pluck(:id).sort
+    assert_empty Club.home_clubs_of([kind_go.id]).pluck(:id),
+                 'ein Spielbetrieb am Unterverband ist fuer keinen Verein zustaendig und darf keinen listen'
+  end
+
+  # Zwei Spielbetriebe an einem Verband. id_by_state_association behaelt den mit
+  # der niedrigeren ID; der andere darf den Teilbaum deshalb nicht sehen.
+  test 'home_clubs_of gibt nur dem zustaendigen von zwei Spielbetrieben die Vereine' do
+    lv = create(:state_association)
+    erster = create(:game_operation, state_association_id: lv.id)
+    zweiter = create(:game_operation, state_association_id: lv.id)
+    club = create(:club, state_association_id: lv.id)
+
+    zustaendig, nicht_zustaendig = [erster, zweiter].partition { |go| go.id == club.main_game_operation_id }
+
+    assert_equal 1, zustaendig.size, 'genau einer der beiden ist zustaendig'
+    assert_equal [club.id], Club.home_clubs_of([zustaendig.first.id]).pluck(:id)
+    assert_empty Club.home_clubs_of([nicht_zustaendig.first.id]).pluck(:id)
+  end
+
+  # Gegenprobe ueber den ganzen Bestand: Fuer jeden Verein muss der Spielbetrieb,
+  # den main_game_operation_id nennt, ihn auch listen -- und kein anderer.
+  test 'home_clubs_of und main_game_operation_id stimmen ueber den Bestand ueberein' do
+    verbund = create(:state_association)
+    kind = create(:state_association, parent: verbund)
+    allein = create(:state_association)
+    create(:game_operation, state_association_id: verbund.id)
+    create(:game_operation, state_association_id: allein.id)
+    create(:game_operation, state_association_id: kind.id)
+
+    [verbund, kind, allein, create(:state_association)].each { |sa| create(:club, state_association_id: sa.id) }
+    create(:club, state_association_id: nil)
+
+    GameOperation.find_each do |go|
+      gelistet = Club.home_clubs_of([go.id]).pluck(:id).sort
+      zustaendig = Club.all.select { |c| c.main_game_operation_id == go.id }.map(&:id).sort
+      assert_equal zustaendig, gelistet, "Spielbetrieb #{go.id} listet andere Vereine als er verwaltet"
+    end
+  end
+
   # --- main_game_operation_id: Ableitung aus dem Landesverband ----------------
   #
   # Die Zustaendigkeit stand frueher als zweites Feld am Verein

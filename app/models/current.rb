@@ -15,11 +15,13 @@
 class Current < ActiveSupport::CurrentAttributes
   attribute :state_association_tree
   attribute :game_operation_id_by_state_association
+  attribute :game_operations_by_id
 
   # Aufzurufen, wenn ein Request die Verbandsstruktur selbst aendert. Ohne das
   # arbeitete der Rest desselben Requests mit dem Stand von vorher.
   def self.reset_association_structure
     self.state_association_tree = nil
     self.game_operation_id_by_state_association = nil
+    self.game_operations_by_id = nil
   end
 end

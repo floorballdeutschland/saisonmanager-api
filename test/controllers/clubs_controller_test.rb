@@ -776,6 +776,29 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_equal go.id, club.reload.main_game_operation_id
   end
 
+  # Eine Kennung, die es nicht gibt, ist ein anderer Fehler als ein Verband ohne
+  # Spielbetrieb. Vorher warf das Bearbeiten beides zusammen und forderte auf,
+  # einen Spielbetrieb anzulegen, obwohl nur ein gueltiger Verband zu waehlen war.
+  # Die Anlage unterschied es schon.
+  test 'admin_club_update unterscheidet beim Bearbeiten unbekannten Verband von fehlendem Spielbetrieb' do
+    sa = create(:state_association)
+    go = create(:game_operation, state_association_id: sa.id)
+    ohne_spielbetrieb = create(:state_association)
+    club = create(:club, state_association_id: sa.id)
+    login(create(:user, :admin))
+
+    post '/api/v2/admin/clubs', params: { id: club.id, club: { state_association_id: 999_999 } }
+    assert_response :forbidden
+    assert_match 'existiert nicht', JSON.parse(response.body)['message']
+
+    post '/api/v2/admin/clubs', params: { id: club.id,
+                                          club: { state_association_id: ohne_spielbetrieb.id } }
+    assert_response :forbidden
+    assert_match 'keinen Spielbetrieb', JSON.parse(response.body)['message']
+
+    assert_equal go.id, club.reload.main_game_operation_id
+  end
+
   # Die Meldung soll den Grund nennen, nicht nur dass etwas fehlt.
   test 'admin_club_update unterscheidet fehlenden und unbekannten Landesverband' do
     go = create(:game_operation, state_association_id: create(:state_association).id)
