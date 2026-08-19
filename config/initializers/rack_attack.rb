@@ -11,6 +11,47 @@ Rack::Request.forwarded_priority = [:x_forwarded]
 
 module Rack
   class Attack
+    # IPs, die dauerhaft abgewiesen werden. Bewusst eine kurze, kommentierte
+    # Liste im Code statt einer Tabelle: Ein Eintrag ist die Ausnahme, soll
+    # begründet sein und beim Lesen erklären, warum er noch da ist.
+    #
+    # Wirksam ist das nur, weil `req.ip` nicht vom Client bestimmbar ist: nginx
+    # setzt X-Forwarded-For über `$proxy_add_x_forwarded_for`, hängt die echte
+    # Adresse also hinten an eine mitgeschickte Kette, und Rack nimmt daraus die
+    # letzte nicht-vertraute Adresse. Zusammen mit `forwarded_priority` oben
+    # (siehe Kommentar am Dateikopf) laesst sich ein Bann nicht per Header
+    # abschütteln.
+    #
+    # Vor dem Entfernen eines Eintrags: kurz ins Log sehen, ob die Adresse noch
+    # anfragt. Ein stiller Dauergast wird sonst unbemerkt wieder durchgelassen.
+    BLOCKED_IPS = {
+      # 19.08.2026, IONOS-Shared-Hosting (infongq-eu99.clienthosting.eu).
+      # Fragte im 42-Sekunden-Takt vier Pfade ab und bekam auf alle nichts:
+      # `games/46299.json` und `game_operations/1/leagues.json` mit 401 (kein
+      # gültiger API-Key), dazu `fvd/leagues.json` und `FVD/leagues.json` mit
+      # 404 — die Route hat es nie gegeben, offenbar aus den öffentlichen
+      # Frontend-URLs (/fvd/…) geraten. Spiel 46299 ist seit dem 21.07.
+      # abgeschlossen, da lief also eine vergessene Anzeigetafel gegen ein
+      # beendetes Spiel. Kein Angriff, aber rund 6500 Zeilen Log am Tag: Rails
+      # meldet den Routing-Fehler als FATAL, und das verdeckt echte Fehler.
+      # Shared Hosting heisst: hinter der Adresse koennen fremde Kundenseiten
+      # liegen. Vertretbar, weil von dieser IP keine einzige Anfrage je
+      # beantwortet wurde, es also keinen laufenden Zugriff zu zerstoeren gibt.
+      '82.165.87.204' => 'kein Key, geratene Routen, seit Wochen nur 401/404'
+    }.freeze
+
+    blocklist('blocked-ips') do |req|
+      BLOCKED_IPS.key?(req.ip)
+    end
+
+    # Kein 403 mit Erklaerung: Wer hier landet, ist entweder ein vergessenes
+    # Skript, das die Antwort nie liest, oder jemand, dem wir nichts ueber die
+    # Regel verraten muessen. 404 ohne Rumpf ist die knappste wahre Aussage —
+    # fuer diese Adresse gibt es hier nichts.
+    self.blocklisted_responder = lambda do |_req|
+      [404, { 'Content-Type' => 'application/json' }, ['{}']]
+    end
+
     # Offene Endpunkte, die Mail an eine von außen bestimmte Adresse auslösen.
     # Sie brauchen weder Login noch API-Key, fallen also nicht unter den
     # Key-Throttle weiter unten.

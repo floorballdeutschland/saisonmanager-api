@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Eine dauerhaft fehlschlagende Fremdabfrage wird abgewiesen**: Eine Adresse aus einem Shared-Hosting-Rechenzentrum fragte seit Wochen im 42-Sekunden-Takt vier Adressen ab und bekam auf keine eine Antwort mit Daten: Zwei verlangen einen API-Schlüssel, den sie nicht mitschickte, die anderen zwei hat es nie gegeben. Betroffen war ein Spiel, dessen Spielbericht seit Juli geschlossen ist — dort lief offenbar eine vergessene Anzeigetafel. Für den Betrieb war das folgenlos, es füllte aber das Fehlerprotokoll mit mehreren tausend Zeilen am Tag und verdeckte damit echte Fehler. Die Adresse wird jetzt abgewiesen, bevor die Anfrage den Server überhaupt beschäftigt. Wer einen Zugang zur Schnittstelle braucht, beantragt ihn wie bisher; die Sperre betrifft ausschließlich diese eine Adresse.
+
 ## [1.88.0] - 2026-08-19
 
 ### Neu
