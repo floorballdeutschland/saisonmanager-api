@@ -46,6 +46,21 @@ class PlayersSecondaryClubDeactivationTest < ActionDispatch::IntegrationTest
     assert_includes @second_club.players.map(&:id), @player.id
   end
 
+  # Die andere Haelfte derselben Entscheidung, hier festgehalten damit sie nicht
+  # versehentlich zurueckgedreht wird: Die Kennzeichnung ist global, also sieht auch
+  # der abgebende Verein die Person wieder in seiner Liste. Gewollt laut Ruecksprache
+  # an api#476 — wer eine Aufnahme mittraegt, sieht die Person nicht mehr als inaktiv
+  # an, und er kann sie bei sich jederzeit erneut deaktivieren.
+  test 'der abgebende Verein sieht die Person ebenfalls wieder' do
+    @player.deactivate!(@sbk.id, reason: 'Pause')
+    login_as(@sbk)
+
+    post "/api/v2/admin/players/#{@player.id}/add_additional_club", params: { club_id: @second_club.id }
+
+    assert_response :success
+    assert_includes @home_club.players.map(&:id), @player.id
+  end
+
   # Gegenprobe zum Weg ueber den Antrag: Beide Wege legen denselben Eintrag an und
   # muessen zum selben Ergebnis kommen.
   test 'Vereinsfreigabe im Antrag kommt zum selben Ergebnis' do
@@ -77,6 +92,40 @@ class PlayersSecondaryClubDeactivationTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_nil @player.reload.deactivated_at
     assert_includes @second_club.players.map(&:id), @player.id
+  end
+
+  # Der Grund fuer `save!(validate: false)`: Player verlangt eine nation_id, der
+  # Altdaten-Import setzt sie nie. Mit Validierung bekam genau die betroffene
+  # Population 422 statt eines Zweitspielrechts, waehrend dieselbe Aufnahme ueber den
+  # Transferantrag durchlief.
+  test 'ein Legacy-Profil ohne Nationalitaet bekommt sein Zweitspielrecht' do
+    legacy = create(:player, clubs: [{ 'club_id' => @home_club.id, 'home_club' => true }])
+    legacy.update_columns(nation_id: nil)
+    assert_not legacy.reload.valid?, 'Vorbedingung: das Profil besteht die Validierung nicht'
+    legacy.deactivate!(@sbk.id, reason: 'Vereinsaustritt')
+    login_as(@sbk)
+
+    post "/api/v2/admin/players/#{legacy.id}/add_additional_club", params: { club_id: @second_club.id }
+
+    assert_response :success
+    assert_nil legacy.reload.deactivated_at
+    assert_includes @second_club.players.map(&:id), legacy.id
+  end
+
+  # Bereits vorhandenes Zweitspielrecht: Der Aufruf lehnt ab und laesst die
+  # Kennzeichnung stehen. Festgehalten, weil die Meldung nach Ordnung klingt, der
+  # aufnehmende Verein die Person aber weiterhin nicht sieht — in dem Fall ist
+  # `reactivate` der richtige Griff, nicht ein zweiter Versuch.
+  test 'ein bereits vorhandenes Zweitspielrecht raeumt die Kennzeichnung nicht ab' do
+    login_as(@sbk)
+    post "/api/v2/admin/players/#{@player.id}/add_additional_club", params: { club_id: @second_club.id }
+    assert_response :success
+
+    @player.reload.deactivate!(@sbk.id, reason: 'Pause')
+    post "/api/v2/admin/players/#{@player.id}/add_additional_club", params: { club_id: @second_club.id }
+
+    assert_response :unprocessable_entity
+    assert_not_nil @player.reload.deactivated_at
   end
 
   private

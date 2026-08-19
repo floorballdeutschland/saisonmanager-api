@@ -642,11 +642,17 @@ class PlayersController < ApplicationController
           # aufnehmenden Verein unsichtbar, weil Club#players auf Player.active filtert.
           player.clear_deactivation
 
-          if player.save
-            render json: { success: true }
-          else
-            render json: { message: player.errors }, status: :unprocessable_entity
-          end
+          # `validate: false` wie auf den drei Geschwisterwegen (Player#transfer,
+          # PlayersController#transfer, TransferRequest#add_secondary_club_membership!).
+          # Mit Validierung scheiterte hier genau die Population, um die es geht:
+          # `Player` verlangt eine nation_id, der Altdaten-Import setzt sie nie (siehe
+          # LegacyImport::HomeClubBackfillData), und ein solches Profil bekam 422 statt
+          # eines Zweitspielrechts — waehrend dieselbe Aufnahme ueber den Transferantrag
+          # durchlief. Angehaengt wird ein clubs-Eintrag; eine unbeteiligte fehlende
+          # Stammdatenangabe darf die Aufnahme nicht blockieren. Fehler beim Schreiben
+          # meldet ActiveRecord::RecordInvalid an ApplicationController.
+          player.save!(validate: false)
+          render json: { success: true }
         else
           render json: { message: 'Spieler bereits in dem Verein vorhanden' }, status: :unprocessable_entity
         end
