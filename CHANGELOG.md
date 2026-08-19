@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.89.0] - 2026-08-19
+
 ### Neu
 
 - **Gesperrte IP-Adressen lassen sich unter „System“ einsehen und pflegen**: Es gibt jetzt eine Liste der Adressen, deren Anfragen abgewiesen werden, mit Adresse, Grund, Zeitpunkt und der Person, die den Eintrag angelegt hat. Eintragen und Freigeben geschieht dort und wirkt sofort, ohne neue Programmversion. Der Grund ist ein Pflichtfeld: Er ist das Einzige, was später erklärt, warum eine Adresse noch gesperrt ist. Zwei Dinge sind beim Eintragen wichtig, sie stehen auch als Hinweis an der Maske: Eine gesperrte Adresse verliert die gesamte Anwendung einschließlich der Anmeldung, nicht nur die Schnittstelle — und hinter einer Adresse kann ein ganzer Standort stehen, etwa eine Halle, eine Schule oder ein Verein, dessen Anschluss alle teilen. Adressen aus privaten Netzen lassen sich nicht eintragen, weil sie ohnehin niemanden treffen könnten.
