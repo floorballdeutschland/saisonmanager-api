@@ -67,35 +67,32 @@ class LeagueTest < ActiveSupport::TestCase
     assert_equal l.draw_points, l.lost_overtime_points
   end
 
-  # Legacy-League-Zweig (league_system_id == 1 → 3-Punkte-System)
-  test 'won_points: legacy System 1 ergibt 3' do
-    l = League.new(legacy_league: true, league_system_id: '1')
-    assert_equal 3, l.won_points
+  # Legacy-League-Zweig: league_system_id trägt das Wertungssystem des
+  # Altsystems (1 = 3-Punkte, 2 = 2-Punkte, 4 = "Anderes").
+  def legacy_scheme(system_id)
+    l = League.new(legacy_league: true, league_system_id: system_id)
+    [l.won_points, l.draw_points, l.won_overtime_points, l.lost_overtime_points]
   end
 
-  test 'won_points: legacy anderes System ergibt 2' do
-    l = League.new(legacy_league: true, league_system_id: '2')
-    assert_equal 2, l.won_points
+  test 'legacy System 1 ist das 3-Punkte-System' do
+    assert_equal [3, 1, 2, 1], legacy_scheme('1')
   end
 
-  test 'draw_points: legacy System 1 ergibt 1' do
-    l = League.new(legacy_league: true, league_system_id: '1')
-    assert_equal 1, l.draw_points
+  # Bis 08/2026 fiel System 2 in denselben Sammelzweig wie 4 und gab null Punkte
+  # für ein Unentschieden. Das ist kein 2-Punkte-System.
+  test 'legacy System 2 gibt einen Punkt fuer ein Unentschieden' do
+    assert_equal [2, 1, 2, 1], legacy_scheme('2')
   end
 
-  test 'draw_points: legacy anderes System ergibt 0' do
-    l = League.new(legacy_league: true, league_system_id: '2')
-    assert_equal 0, l.draw_points
+  test 'legacy System 4 bleibt im Sammelzweig' do
+    assert_equal [2, 0, 0, 0], legacy_scheme('4')
   end
 
-  test 'won_overtime_points: legacy System 1 ergibt 2' do
-    l = League.new(legacy_league: true, league_system_id: '1')
-    assert_equal 2, l.won_overtime_points
-  end
-
-  test 'won_overtime_points: legacy anderes System ergibt 0' do
-    l = League.new(legacy_league: true, league_system_id: '2')
-    assert_equal 0, l.won_overtime_points
+  # Die Alt-Importe der Saisons 2 bis 5 liefen ohne dieses Feld; ein leeres Feld
+  # darf nicht versehentlich als System 1 gelten (''.to_i und nil.to_i sind 0).
+  test 'legacy ohne Wertungssystem bleibt im Sammelzweig' do
+    assert_equal [2, 0, 0, 0], legacy_scheme(nil)
+    assert_equal [2, 0, 0, 0], legacy_scheme('')
   end
 
   # ---------------------------------------------------------------------------
@@ -269,12 +266,15 @@ class LeagueTest < ActiveSupport::TestCase
 
   # Liga mit erstem Spieltag in `days_ahead` Tagen. `express` steuert den
   # Schalter am LV des Spielbetriebs; nil heißt: gar kein LV verknüpft.
-  def express_league(days_ahead:, express:)
+  # sbk_email gehoert zur Grundausstattung: express_license_possible? verlangt eine
+  # erreichbare SBK, sonst waere jeder Fall hier aus dem falschen Grund false.
+  def express_league(days_ahead:, express:, sbk_email: 'sbk@example.de')
     go =
       if express.nil?
         GameOperation.create!(name: 'GO ohne LV', short_name: 'GOX')
       else
-        sa = StateAssociation.create!(name: "LV #{express}", express_license_enabled: express)
+        sa = StateAssociation.create!(name: "LV #{express}", express_license_enabled: express,
+                                      sbk_email: sbk_email)
         GameOperation.create!(name: 'GO mit LV', short_name: 'GOY', state_association_id: sa.id)
       end
 
@@ -603,9 +603,34 @@ class LeagueTest < ActiveSupport::TestCase
   end
 
   test 'express_license_possible?: der uebergeordnete Verband kann es freigeben' do
-    parent = StateAssociation.create!(name: 'Dach-LV', express_license_enabled: true)
+    parent = StateAssociation.create!(name: 'Dach-LV', express_license_enabled: true,
+                                      sbk_email: 'dach-sbk@example.de')
     sa = StateAssociation.create!(name: 'Kind-LV', express_license_enabled: false, parent: parent)
     go = GameOperation.create!(name: 'GO mit Dach', short_name: 'GOD', state_association_id: sa.id)
+    league = build_league(go)
+    GameDay.create!(league: league, arena: build_arena, club: build_club, number: 1,
+                    date: (Date.current + 1).to_s)
+
+    assert league.express_license_possible?
+  end
+
+  # Die Expresslizenz ist im Kern die sofortige Benachrichtigung der SBK und kostet
+  # den Verein extra. Ohne erreichbare Adresse bricht der Mailer still ab
+  # (`return if sbk_email.blank?`), die Lizenz galt aber als Express-Antrag: bezahlte
+  # Eilbearbeitung, von der niemand erfuhr. Deshalb gar nicht erst anbieten.
+  test 'express_license_possible?: false ohne erreichbare SBK-Adresse' do
+    refute express_league(days_ahead: 1, express: true, sbk_email: nil).express_license_possible?
+  end
+
+  # Ein untergeordneter LV pflegt oft kein eigenes Postfach und ist ueber den
+  # Verbund trotzdem erreichbar. Der Vererbungsweg darf die Expresslizenz nicht
+  # blockieren, sonst faellt sie fuer die drei LV der SBK Ost aus.
+  test 'express_license_possible?: die Adresse des Verbunds genuegt' do
+    parent = StateAssociation.create!(name: 'Dach-LV mit Postfach', express_license_enabled: true,
+                                      sbk_email: 'dach-sbk@example.de')
+    sa = StateAssociation.create!(name: 'Kind-LV ohne Postfach', express_license_enabled: true,
+                                  sbk_email: nil, parent: parent)
+    go = GameOperation.create!(name: 'GO Kind', short_name: 'GOK', state_association_id: sa.id)
     league = build_league(go)
     GameDay.create!(league: league, arena: build_arena, club: build_club, number: 1,
                     date: (Date.current + 1).to_s)

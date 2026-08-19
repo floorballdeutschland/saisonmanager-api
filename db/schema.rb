@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_08_14_120000) do
+ActiveRecord::Schema[7.1].define(version: 2026_08_19_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -145,6 +145,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_14_120000) do
     t.integer "required_below_age"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "required_from_birth_year"
     t.index ["game_operation_id", "name"], name: "index_document_types_on_game_operation_id_and_name", unique: true
     t.index ["key"], name: "index_document_types_on_key", unique: true
   end
@@ -809,7 +810,6 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_14_120000) do
     t.jsonb "liveticker", default: {}
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.jsonb "info_links", default: {}, null: false
   end
 
   create_table "state_association_checklist_items", force: :cascade do |t|
@@ -852,6 +852,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_14_120000) do
     t.string "rsk_email", comment: "Postfach für Schiedsrichteransetzungen über den Saisonmanager"
     t.boolean "referee_assignment_external_enabled", default: false, null: false
     t.boolean "person_level_assignment_default", default: false, null: false
+    t.string "states", default: [], null: false, comment: "Bundeslaender im Zustaendigkeitsbereich (ISO-Kuerzel, z. B. de-nw)", array: true
     t.index ["parent_id"], name: "index_state_associations_on_parent_id"
   end
 
@@ -1019,6 +1020,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_14_120000) do
   add_foreign_key "state_association_releases", "game_operations", column: "recipient_game_operation_id"
   add_foreign_key "state_association_releases", "state_associations", column: "grantor_state_association_id"
   add_foreign_key "teams", "clubs"
+  add_foreign_key "teams", "leagues"
   add_foreign_key "transfer_requests", "clubs", column: "former_club_id"
   add_foreign_key "transfer_requests", "clubs", column: "requesting_club_id"
   add_foreign_key "transfer_requests", "players"

@@ -28,7 +28,11 @@ class Player < ApplicationRecord
       first_name:,
       birthdate:,
       gender:,
-      club_id:
+      club_id:,
+      # Damit die Suche kennzeichnen kann, dass der Verein dieses Profil aus seiner
+      # aktiven Liste genommen hat. Seit api#472 ist es trotzdem auffindbar und
+      # transferierbar, also braucht der Treffer diesen Hinweis.
+      deactivated_at:
     }
   end
 
@@ -226,12 +230,36 @@ class Player < ApplicationRecord
   def valid_clubs(deadline)
     return [] unless clubs
 
-    clubs.reject { |l| valid_time?(l['valid_until'], deadline) }
+    # Strukturell kaputte Eintraege (kein Objekt) zaehlen nicht als Mitgliedschaft. Ohne
+    # den Riegel bricht jeder Leser darueber ab, und seit home_club_entry DIE Quelle fuer
+    # den Heimatverein ist, gehoert er hierher statt in jeden Aufrufer einzeln.
+    clubs.reject { |l| !l.is_a?(Hash) || valid_time?(l['valid_until'], deadline) }
   end
 
   def home_club(deadline)
-    last_home_club = home_club_hash(deadline)&.last
-    Club.find_by_id last_home_club['club_id'] if last_home_club
+    entry = home_club_entry(deadline)
+    Club.find_by_id entry['club_id'] if entry
+  end
+
+  # Der clubs-Eintrag, der den aktuellen Heimatverein traegt — die eine Quelle fuer
+  # jeden Leser, der wissen muss, aus welchem Verein eine Person gerade kommt.
+  #
+  # Es gab davon zwei, und sie widersprachen sich. `home_club` las den LETZTEN
+  # gueltigen Heimat-Eintrag, `Admin::TransferRequestsController` suchte mit
+  # `clubs.find { |c| c['home_club'] == true && c['valid_until'].nil? }` den ERSTEN.
+  # Bei 238 Profilen im Bestand (Stand 18.08.2026) sind zwei Heimat-Eintraege offen,
+  # und dort meinten die beiden verschiedene Vereine: Die Oberflaeche zeigte den
+  # einen, der Transferantrag ging zur Genehmigung an den anderen.
+  #
+  # Die alte Controller-Fassung wich in zwei weiteren Punkten ab, beide zum Nachteil:
+  #
+  #   - `== true` statt Boolean-Cast. In Altdaten steht das Flag als String; ein
+  #     solcher Eintrag galt dem Controller nicht als Heimat, und der Antrag scheiterte
+  #     mit "Spieler hat keinen aktiven Heimverein", obwohl `home_club` einen findet.
+  #   - `valid_until.nil?` statt Stichtagsvergleich. Eine Heimat-Zugehoerigkeit mit
+  #     einem Ende in der Zukunft gilt heute noch; der Controller zaehlte sie nicht.
+  def home_club_entry(deadline = Date.current)
+    home_club_hash(deadline)&.last
   end
 
   # Heimat-Zugehörigkeiten, die am Stichtag noch gelten.
@@ -244,9 +272,9 @@ class Player < ApplicationRecord
   def home_club_hash(deadline)
     return unless clubs
 
-    valid_clubs(deadline).reject do |l|
-      !ActiveModel::Type::Boolean.new.cast(l['home_club']) || valid_time?(l['valid_until'], deadline)
-    end
+    # valid_clubs hat mit demselben Praedikat bereits gefiltert; ein zweiter
+    # valid_time?-Aufruf waere tot und wuerde den Melde-Pfad doppelt anstossen.
+    valid_clubs(deadline).reject { |l| !ActiveModel::Type::Boolean.new.cast(l['home_club']) }
   end
 
   def current_licenses(sid = Setting.current_season_id)
@@ -294,26 +322,22 @@ class Player < ApplicationRecord
   end
 
   def transfer(new_club_id, user_id)
-    # get clubs
     player_clubs = clubs
-    # find old club
-    old_club = nil
-    player_clubs.each do |c|
-      old_club = c['club_id'] if c['home_club'] == true && c['valid_until'].nil?
-    end
+    # Derselbe Leser wie ueberall sonst, statt einer dritten eigenen Auslegung.
+    old_club = home_club_entry&.dig('club_id')
 
     player_clubs.map! do |c|
-      # only valid entries
-      if c['valid_until'].nil? || c['valid_until'] > Time.now
-        if c['home_club'] == true
-          # set all home clubs unvalid
-          c['valid_until'] = Time.now
-          c['valid_set_by'] = user_id
-        else
-          # set all non home clubs unvalid
-          c['valid_until'] = Time.now
-          c['valid_set_by'] = user_id
-        end
+      # Jede noch gueltige Zugehoerigkeit wird geschlossen, Heimat wie Zweitspielrecht:
+      # Wer den Verein wechselt, nimmt keine der alten mit.
+      #
+      # Die fruehere Bedingung lautete `c['valid_until'].nil? || c['valid_until'] > Time.now`.
+      # Fuer lesbare Daten war sie richtig — ActiveSupport patcht `Time#<=>`, sodass der
+      # String-gegen-Time-Vergleich koerziert. Bei einem unlesbaren valid_until warf sie
+      # aber `ArgumentError: comparison of String with Time failed`, und der Vereinswechsel
+      # brach ab. Ueber valid_time? ist dieser Fall jetzt abgedeckt.
+      if c.is_a?(Hash) && !valid_time?(c['valid_until'], Date.current)
+        c['valid_until'] = Time.now
+        c['valid_set_by'] = user_id
       end
 
       c
@@ -336,6 +360,8 @@ class Player < ApplicationRecord
                       player_id: id,
                       season_id: Setting.current_season_id
                     })
+
+    clear_deactivation
 
     save!(validate: false)
   end
@@ -367,7 +393,7 @@ class Player < ApplicationRecord
       # deep_dup: die zusammengeführten Einträge landen auf dem Master; das
       # anschließende deactivate! mutiert die Clubs/Lizenzen der Secondary und
       # darf die Master-Kopien nicht mit anfassen.
-      master.clubs    = _merge_clubs(clubs, master.clubs)
+      master.clubs    = _merge_clubs(clubs, master.clubs, user_id)
       master.licenses = _merge_licenses(licenses, master.licenses)
       master.save!(validate: false)
 
@@ -375,6 +401,12 @@ class Player < ApplicationRecord
       skipped_associations = _repoint_player_associations(master.id)
 
       self.merged_into_id = master.id
+      # Beim Merge sind die Nebenwirkungen richtig: Zugehoerigkeiten und Lizenzen
+      # liegen jetzt am Master (siehe _merge_clubs/_merge_licenses), und die Dublette
+      # darf nirgends mehr als aktives Mitglied oder Lizenznehmer auftauchen. Die
+      # regulaere Deaktivierung ruehrt beides bewusst nicht mehr an, deshalb steht das
+      # hier explizit.
+      _void_memberships_and_licenses!(user_id, reason: 'Zusammenführung')
       deactivate!(user_id, reason: 'Zusammenführung')
 
       MergeLog.record!(
@@ -480,16 +512,19 @@ class Player < ApplicationRecord
   end
 
   # Fenster um deactivated_at, in dem ein valid_until noch zu dieser Deaktivierung
-  # gehört. deactivate! schreibt beides im selben Aufruf, wenige Anweisungen
-  # auseinander; die Spanne deckt allein die Rundung der JSONB-Serialisierung ab.
-  # Sie kann naturgemäß nicht unterscheiden, ob im selben Moment auch ein Transfer
-  # lief – eine engere Schranke gibt es ohne eigenen Marker am Eintrag nicht.
+  # gehört. Bis api#472 schrieb deactivate! beides im selben Aufruf, wenige
+  # Anweisungen auseinander; die Spanne deckt allein die Rundung der
+  # JSONB-Serialisierung ab. Sie kann naturgemäß nicht unterscheiden, ob im selben
+  # Moment auch ein Transfer lief – eine engere Schranke gibt es ohne eigenen Marker
+  # am Eintrag nicht. Fuer neue Deaktivierungen ist beides gegenstandslos: sie
+  # ruehren die Zugehoerigkeiten nicht an.
   DEACTIVATION_CLOSE_WINDOW = 1.second
 
-  # Schlüssel im clubs-Eintrag, unter dem deactivate! die Befristung sichert, die es
-  # selbst überschreibt. Nur gesetzt, wenn es überhaupt eine gab, und von
-  # reactivate! wieder entfernt – bei Profilen, die vor dieser Änderung deaktiviert
-  # wurden, fehlt er, dort bleibt es beim bisherigen Verhalten (Befristung entfällt).
+  # Schlüssel im clubs-Eintrag, unter dem deactivate! bis api#472 die Befristung
+  # sicherte, die es selbst überschrieb. Nur gesetzt, wenn es überhaupt eine gab, und
+  # von reset_deactivation_side_effects! wieder entfernt – bei Profilen, die vor
+  # seiner Einführung deaktiviert wurden, fehlt er, dort bleibt es beim bisherigen
+  # Verhalten (Befristung entfällt). Neue Deaktivierungen schreiben ihn nicht mehr.
   VALID_BEFORE_DEACTIVATION = 'valid_before_deactivation'.freeze
 
   # Auswählbare Deaktivierungsgründe. Einzige Quelle für die Oberfläche und für
@@ -505,7 +540,8 @@ class Player < ApplicationRecord
   LEGACY_DEACTIVATION_REASONS = ['Deaktiviert'].freeze
 
   # Wahr, wenn das Ende dieser Vereinszugehörigkeit auf die Deaktivierung dieses
-  # Profils zurückgeht.
+  # Profils zurückgeht. Trifft nur noch auf den Bestand zu: seit api#472 schliesst
+  # `deactivate!` keine Zugehoerigkeit mehr.
   #
   # Der Stempel valid_set_by allein genügt als Merkmal nicht: den setzt jede Stelle,
   # die eine Zugehörigkeit schließt oder befristet anlegt (Vereinswechsel,
@@ -522,6 +558,13 @@ class Player < ApplicationRecord
   # Zugehörigkeiten, die ohne valid_set_by geschlossen wurden (Altdaten, Backfills),
   # erfüllen die Bedingung bewusst nicht: sie bleiben ausgeblendet, wie vorher auch.
   def membership_closed_by_deactivation?(membership)
+    # Strukturell kaputter Eintrag (kein Objekt): Der Altbestand enthaelt clubs-Eintraege,
+    # die kein Hash sind. Ohne diesen Riegel bricht schon der Lesezugriff darunter mit
+    # NoMethodError ab, und zwar nicht nur im Wartungslauf (der faengt es je Profil ab),
+    # sondern auch in `reactivate!` und `Club#players(include_deactivated: true)` – dort
+    # als 500er. Denselben Riegel haben `LicenseAccessScope#player_in_team_clubs?` und
+    # `PlayersController#membership_grants_access?`.
+    return false unless membership.is_a?(Hash)
     return false if deactivated_at.blank? || membership['valid_until'].blank?
     return false unless membership['valid_set_by'].present? && membership['valid_set_by'] == deactivated_by
 
@@ -529,79 +572,107 @@ class Player < ApplicationRecord
                                                deactivated_at + DEACTIVATION_CLOSE_WINDOW)
   end
 
+  # Die Deaktivierung ist eine Kennzeichnung fuer die Vereins- und
+  # Mannschaftsansichten, kein Eingriff in die Stammdaten. Sie haelt das Profil aus
+  # der Spielerliste des Vereins heraus (`Club#players` filtert auf `Player.active`)
+  # und damit aus der Auswahl beim Lizenzantrag. Mehr nicht: Vereinszugehoerigkeit
+  # und Lizenzen bleiben, wie sie sind.
+  #
+  # Bis api#472 schloss sie zusaetzlich JEDE noch gueltige Zugehoerigkeit und setzte
+  # alle laufenden Lizenzen (APPROVED/REQUESTED) auf DELETED. Damit war der
+  # haeufigste Anlass der schaedlichste: Beim Grund "Vereinsaustritt" verlor die
+  # Person ihren Heimatverein und fiel gleichzeitig aus jeder Suche, weil
+  # `global_search` und `Admin::TransferRequestsController#search_player` auf
+  # `Player.active` filterten. Der aufnehmende Verein fand sie nicht mehr, und weil
+  # Transferantrag und Direktzuweisung einen gueltigen Heimatverein verlangen, gab
+  # es keinen Weg zurueck ausser einer Reaktivierung durch die SBK. Auf Produktion
+  # traf das am 25.07.2026 drei Profile eines Vereins innerhalb von sechs Minuten,
+  # dazu weitere in anderen Vereinen.
+  #
+  # Die offene Zugehoerigkeit ist dabei nicht Kosmetik, sondern das Mittel: Sie ist
+  # es, die das Profil transferierbar haelt.
   def deactivate!(user_id, reason: nil)
-    self.clubs ||= []
-    self.licenses ||= []
-
-    clubs.map! do |c|
-      if c['valid_until'].nil? || c['valid_until'].to_time > Time.now
-        # Befristete Zugehörigkeiten (Zweitspielrecht) verlieren durch das Vorziehen
-        # ihr Enddatum. Vorher festhalten, damit reactivate! sie mit der ursprünglichen
-        # Befristung zurückgeben kann statt unbefristet.
-        #
-        # Der else-Zweig ist kein Beiwerk: die Sicherung muss immer den Stand DIESER
-        # Deaktivierung abbilden. Eine ältere, nicht abgeräumte Sicherung (zweimal
-        # deaktiviert ohne Reaktivierung dazwischen, oder per merge_into! von einer
-        # deaktivierten Dublette mitgekommen) würde reactivate! sonst auf eine
-        # Zugehörigkeit legen, die unbefristet war – genau die Verfälschung, die dieser
-        # Fix verhindern soll.
-        if c['valid_until'].present?
-          c[VALID_BEFORE_DEACTIVATION] = { 'valid_until' => c['valid_until'],
-                                           'valid_set_by' => c['valid_set_by'] }
-        else
-          c.delete(VALID_BEFORE_DEACTIVATION)
-        end
-        c['valid_until'] = Time.now
-        c['valid_set_by'] = user_id
-      end
-      c
-    end
-
-    licenses.each do |license|
-      last_status = license['history']&.last&.dig('license_status_id').to_i
-      next unless last_status.in?([License::APPROVED, License::REQUESTED])
-
-      license['history'] << {
-        'license_status_id' => License::DELETED,
-        'reason' => reason || 'Deaktiviert',
-        'created_by' => user_id,
-        'created_at' => Time.now
-      }
-    end
-
     self.deactivated_at = Time.current
     self.deactivated_by = user_id
     self.deactivation_reason = reason
     save!(validate: false)
   end
 
+  # Nimmt die Deaktivierung samt ihrer Nebenwirkungen im Bestand zurueck: die von
+  # ihr geschlossenen Zugehoerigkeiten gehen wieder auf, die von ihr geschriebenen
+  # DELETED-Eintraege verschwinden aus dem Lizenz-Verlauf. Fuer alles, was seit
+  # api#472 deaktiviert wurde, sind beide Schritte ein No-op, weil es diese
+  # Nebenwirkungen nicht mehr gibt.
   def reactivate!
-    deactivated_user = deactivated_by
-    self.clubs ||= []
+    # Vor dem Loeschen der Kennzeichnung: beide Schritte lesen `deactivated_at` und
+    # `deactivated_by`.
     self.licenses ||= []
-
-    # Der frühere reine valid_set_by-Vergleich öffnete auch ein Zweitspielrecht wieder,
-    # das lange vor der Deaktivierung abgelaufen war.
-    clubs.map! do |c|
-      restore_membership_validity(c) if membership_closed_by_deactivation?(c)
-      c
-    end
-
-    deactivation_system_reasons = DEACTIVATION_REASONS + LEGACY_DEACTIVATION_REASONS
-
-    licenses.each do |license|
-      last = license['history']&.last
-      next unless last &&
-                  last['license_status_id'].to_i == License::DELETED &&
-                  (deactivation_system_reasons.include?(last['reason']) || last['reason']&.start_with?('Sonstiges: ')) &&
-                  last['created_by'] == deactivated_user
-
-      license['history'].pop
-    end
+    pop_deactivation_license_entries!
+    reopen_memberships_closed_by_deactivation!(persist: false)
 
     self.deactivated_at = nil
     self.deactivated_by = nil
     save!(validate: false)
+  end
+
+  # Oeffnet die Vereinszugehoerigkeiten, die eine Deaktivierung vor api#472
+  # geschlossen hat. Fuer alles, was danach deaktiviert wurde, ein No-op:
+  # `membership_closed_by_deactivation?` verlangt Stempel UND Zeitfenster der
+  # Deaktivierung, und geschlossen wird seither keine Zugehoerigkeit mehr.
+  #
+  # Laesst Kennzeichnung und Lizenzen unangetastet, und das ist der Punkt: Dass der
+  # Verein das Profil aus seiner Liste genommen hat, ist seine Entscheidung, und die
+  # damals ungueltig gesetzten Lizenzen bleiben ungueltig. Zurueckzunehmen ist
+  # allein die geschlossene Zugehoerigkeit, denn sie hat das Profil untransferierbar
+  # gemacht. So heilt `rake players:reopen_memberships_after_deactivation` den
+  # Bestand.
+  #
+  # `persist: false` ueberlaesst das Speichern dem Aufrufer (`reactivate!` raeumt im
+  # selben Schreibvorgang auch die Kennzeichnung ab).
+  #
+  # Rueckgabe: ob eine Zugehoerigkeit geoeffnet wurde.
+  def reopen_memberships_closed_by_deactivation!(persist: true)
+    self.clubs ||= []
+
+    targets = memberships_reopenable
+    targets.each { |c| restore_membership_validity(c) }
+
+    save!(validate: false) if persist && targets.any?
+    targets.any?
+  end
+
+  # Die Zugehoerigkeiten, die `reopen_memberships_closed_by_deactivation!` oeffnen wuerde.
+  # Eigene Methode, damit der Wartungslauf im Dry-Run genau das zaehlt, was er spaeter auch
+  # tut, statt der blossen Kandidaten.
+  #
+  # Der frühere reine valid_set_by-Vergleich öffnete auch ein Zweitspielrecht wieder, das
+  # lange vor der Deaktivierung abgelaufen war; dagegen steht das Zeitfenster in
+  # `membership_closed_by_deactivation?`.
+  #
+  # Ein Heimatverein kommt zusaetzlich nur infrage, solange keiner offen ist. Das
+  # Erkennungsmerkmal (valid_set_by == deactivated_by, valid_until im Sekundenfenster um
+  # deactivated_at) trifft naemlich auch eine Zugehoerigkeit, die dieselbe Person
+  # unmittelbar zuvor per Transfer regulaer geschlossen hat. Ohne den Riegel haette das
+  # Profil danach zwei offene Heimatvereine – und die beiden Leser widersprechen sich:
+  # `Player#home_club` nimmt den letzten Treffer (Neuverein),
+  # `Admin::TransferRequestsController` bestimmt `former_club_id` als ersten (Altverein).
+  # Ein Transferantrag ginge dann an den falschen abgebenden Verein zur Genehmigung.
+  #
+  # Ob das Oeffnen den Eintrag wirklich unbefristet macht, haengt am gesicherten
+  # VALID_BEFORE_DEACTIVATION. Hier wird bewusst vom unguenstigsten Fall ausgegangen und
+  # jeder wiederhergestellte Heimatverein als offen gewertet: lieber eine Zugehoerigkeit
+  # zu wenig oeffnen als einen widerspruechlichen Zustand herstellen.
+  def memberships_reopenable
+    entries = Array(clubs)
+    open_home_club = entries.any? { |c| c.is_a?(Hash) && c['home_club'] && c['valid_until'].blank? }
+
+    entries.select do |c|
+      next false unless membership_closed_by_deactivation?(c)
+      next false if c['home_club'] && open_home_club
+
+      open_home_club ||= c['home_club'].present?
+      true
+    end
   end
 
   # Einheitlicher Einstieg für beide Sperr-Ebenen aus Issue #508.
@@ -825,7 +896,127 @@ class Player < ApplicationRecord
     save!
   end
 
+  # Schliesst jede noch gueltige Vereinszugehoerigkeit und setzt alle laufenden
+  # Lizenzen (APPROVED/REQUESTED) auf DELETED. Ausschliesslich fuer `merge_into!`:
+  # Die Dublette ist inhaltlich leer, ihre Eintraege liegen am Master.
+  #
+  # Bis api#472 stand dieser Rumpf in `deactivate!` und traf damit auch jede
+  # Deaktivierung durch einen Verein — siehe die Begruendung dort. Speichert nicht;
+  # `merge_into!` schreibt das Profil ohnehin.
+  def _void_memberships_and_licenses!(user_id, reason:)
+    self.clubs ||= []
+    self.licenses ||= []
+
+    clubs.map! do |c|
+      if c['valid_until'].nil? || c['valid_until'].to_time > Time.now
+        # Befristete Zugehörigkeiten (Zweitspielrecht) verlieren durch das Vorziehen
+        # ihr Enddatum. Vorher festhalten, damit reset_deactivation_side_effects! sie
+        # mit der ursprünglichen Befristung zurückgeben kann statt unbefristet.
+        #
+        # Der else-Zweig ist kein Beiwerk: die Sicherung muss immer den Stand DIESES
+        # Vorgangs abbilden. Eine ältere, nicht abgeräumte Sicherung würde die
+        # Rücknahme sonst auf eine Zugehörigkeit legen, die unbefristet war – genau
+        # die Verfälschung, die sie verhindern soll.
+        if c['valid_until'].present?
+          c[VALID_BEFORE_DEACTIVATION] = { 'valid_until' => c['valid_until'],
+                                           'valid_set_by' => c['valid_set_by'] }
+        else
+          c.delete(VALID_BEFORE_DEACTIVATION)
+        end
+        c['valid_until'] = Time.now
+        c['valid_set_by'] = user_id
+      end
+      c
+    end
+
+    licenses.each do |license|
+      last_status = license['history']&.last&.dig('license_status_id').to_i
+      next unless last_status.in?([License::APPROVED, License::REQUESTED])
+
+      license['history'] << {
+        'license_status_id' => License::DELETED,
+        'reason' => reason,
+        'created_by' => user_id,
+        'created_at' => Time.now
+      }
+    end
+  end
+
+  # Loescht die Deaktivierungs-Kennzeichnung ohne zu speichern; der Aufrufer schreibt
+  # das Profil ohnehin.
+  #
+  # Aufgerufen von jedem Weg, der eine neue Vereinszugehoerigkeit anlegt: Wer gerade
+  # aufgenommen wird, ist in diesem Verein aktiv, und die Kennzeichnung des
+  # abgebenden Vereins wuerde die Spielerliste des aufnehmenden leer aussehen lassen.
+  # Der Fall ist erst seit api#472 erreichbar — vorher lehnten Transferantrag und
+  # Direktzuweisung ein deaktiviertes Profil ab.
+  #
+  # `deactivation_reason` bleibt stehen, wie schon bei `reactivate!`: der Grund ist
+  # Historie, die Kennzeichnung ist der Zustand.
+  def clear_deactivation
+    return false if deactivated_at.blank?
+
+    self.deactivated_at = nil
+    self.deactivated_by = nil
+    true
+  end
+
+  # Die Heimat-Zugehoerigkeiten, die heute noch laufen -- die eine Definition von "offen"
+  # fuer alle, die sie brauchen (Merge, Wartungslauf, Berichte).
+  #
+  # `valid_until.blank?` allein waere zu eng: `home_club_hash` laesst auch ein Ende in der
+  # ZUKUNFT als laufend gelten. Zwei so gelagerte Eintraege sind fuer den Leser zwei offene
+  # Heimatvereine, waeren aber an einer blank?-Pruefung vorbeigelaufen -- genau der
+  # Widerspruch, den es hier zu beseitigen gilt, haette in dieser Form ueberlebt.
+  #
+  # Eigene Auswertung statt `home_club_hash`, weil der Merge auf einem noch nicht
+  # gespeicherten Array arbeitet und nicht auf `self.clubs`.
+  def self.open_home_club_entries(entries)
+    Array(entries).select do |c|
+      next false unless c.is_a?(Hash)
+      next false unless ActiveModel::Type::Boolean.new.cast(c['home_club'])
+
+      c['valid_until'].blank? || _ende_in_der_zukunft?(c['valid_until'])
+    end
+  end
+
+  def self._ende_in_der_zukunft?(valid_until)
+    Date.parse(valid_until.to_s) >= Date.current
+  rescue ArgumentError, TypeError
+    # Unlesbares Altdatum: nicht als laufend werten. Sonst wuerde der Merge einen Eintrag
+    # schliessen, den kein Leser ohnehin als Heimat anerkennt.
+    false
+  end
+
+  def open_home_club_entries
+    self.class.open_home_club_entries(clubs)
+  end
+
   private
+
+  # Entfernt die DELETED-Eintraege, die `deactivate!` bis api#472 an jede laufende
+  # Lizenz gehaengt hat. Erkennungsmerkmal ist das Tripel aus Status, Grund und
+  # verfuegender Person: nur der oberste Eintrag, nur DELETED, nur mit einem Grund aus
+  # der Auswahl (oder einem freien "Sonstiges: …") und nur von derselben Person, die
+  # deaktiviert hat. Eine regulaere Loeschung durch die SBK traegt einen anderen Grund
+  # und bleibt damit stehen.
+  def pop_deactivation_license_entries!
+    system_reasons = DEACTIVATION_REASONS + LEGACY_DEACTIVATION_REASONS
+    popped = false
+
+    licenses.each do |license|
+      last = license['history']&.last
+      next unless last &&
+                  last['license_status_id'].to_i == License::DELETED &&
+                  (system_reasons.include?(last['reason']) || last['reason']&.start_with?('Sonstiges: ')) &&
+                  last['created_by'] == deactivated_by
+
+      license['history'].pop
+      popped = true
+    end
+
+    popped
+  end
 
   # Nimmt einer Zugehörigkeit das von deactivate! gesetzte Ende wieder ab: entweder
   # zurück auf die ursprüngliche Befristung oder, wenn es keine gab, wieder unbefristet.
@@ -848,8 +1039,46 @@ class Player < ApplicationRecord
     end
   end
 
+  # true, wenn die Zugehoerigkeit am Stichtag abgelaufen war.
+  #
+  # Ein unlesbares Datum aus dem Altbestand ("unbekannt", "0000-00-00") war bisher kein
+  # Sonderfall: Date.parse brach ab, und jeder Leser darueber endete im 500er.
+  #
+  # Solche Eintraege gelten jetzt als abgelaufen — dieselbe Richtung wie
+  # `LicenseAccessScope#membership_current?`, und die vorsichtige: Ein kaputtes Datum
+  # darf keine Zustaendigkeit begruenden. Wuerde es als laufend gelten, machte es den
+  # Verein ueber `home_club_entry` zum Heimatverein und damit dessen SBK zustaendig
+  # (`sbk_can_access_player?`, `sbk_may_move_player?`) und zum abgebenden Verein eines
+  # Transferantrags. Aus einem lauten 500er wuerde eine stille Falschzustaendigkeit.
+  #
+  # Gemeldet wird der Fall trotzdem, sonst verschwindet er ganz: einmal pro Tag und
+  # Spieler, wie es `report_license_data_defect` haelt.
   def valid_time?(time, deadline)
-    !time.nil? && Date.parse(time) < deadline
+    # blank?, nicht nil?: Ein leeres valid_until heisst im Bestand "kein Ende" und wird
+    # von jedem Geschwistercode so gelesen (membership_current?, MembershipCloser, dem
+    # Legacy-Backfill). Mit nil? galte es als unlesbar und damit als abgelaufen -- das
+    # Profil haette keinen Heimatverein mehr und taeglich eine Sentry-Meldung.
+    return false if time.blank?
+
+    Date.parse(time.to_s) < deadline
+  rescue ArgumentError, TypeError => e
+    # Date::Error erbt von ArgumentError und ist damit mitgefangen.
+    report_membership_date_defect(time, e)
+    true
+  end
+
+  def report_membership_date_defect(time, error)
+    # `sbk_can_undo_deactivation?` schickt eine bewusst id-lose Kopie (`player.dup`) durch
+    # diesen Pfad. Ohne den Riegel kollabierte der Cache-Key auf einen globalen und
+    # drosselte danach alle Faelle, und die Meldung nennte keinen Spieler.
+    return if id.nil?
+    return unless Rails.cache.write("player_membership_date_defect/#{id}", true,
+                                    unless_exist: true, expires_in: 1.day)
+
+    message = "Spieler##{id}: valid_until ist unlesbar (#{time.inspect}), " \
+              "Zugehoerigkeit gilt als abgelaufen — #{error.class}"
+    Rails.logger.error(message)
+    Sentry.capture_message(message) if defined?(Sentry)
   end
 
   def select_license(licenses)
@@ -880,7 +1109,7 @@ class Player < ApplicationRecord
   # Clubs des Secondary auf den Master übernehmen: alle Master-Einträge behalten,
   # vom Secondary nur ergänzen, was nicht bereits durch denselben aktiven Club
   # abgedeckt ist. deep_dup entkoppelt die Hashes von der Secondary.
-  def _merge_clubs(secondary_clubs, master_clubs)
+  def _merge_clubs(secondary_clubs, master_clubs, user_id = nil)
     secondary_clubs = (secondary_clubs || []).map(&:deep_dup)
     master_clubs    = (master_clubs || []).map(&:deep_dup)
 
@@ -892,7 +1121,35 @@ class Player < ApplicationRecord
       c['valid_until'].nil? && master_active_club_ids.include?(c['club_id'])
     end
 
-    (master_clubs + additional).sort_by { |c| c['created_at'].to_s }
+    # club_id als zweiter Schluessel: sort_by ist in Ruby nicht als stabil zugesichert, und
+    # Eintraege ohne created_at (Altdaten-Import) teilen sich denselben Schluessel. Ohne
+    # Tiebreaker haenge die Auswahl an der Implementierung.
+    sortiert = (master_clubs + additional).sort_by { |c| [c['created_at'].to_s, c['club_id'].to_i] }
+    _close_surplus_home_clubs(sortiert, user_id)
+  end
+
+  # Nach dem Zusammenfuehren darf hoechstens ein Heimatverein offen sein.
+  #
+  # Die Entdoppelung darueber greift nur bei DEMSELBEN Verein. Zwei verschiedene offene
+  # Heimatvereine -- einer vom Master, einer von der Dublette -- ueberlebten beide, und
+  # danach widersprachen sich die Leser: `home_club` nimmt den letzten, der Transferantrag
+  # bestimmte den abgebenden Verein als ersten. Stand 18.08.2026 trugen 239 der 1231
+  # Merge-Ziele auf Produktion diesen Zustand, also fast jedes fuenfte.
+  #
+  # Behalten wird der zuletzt begonnene Eintrag: Der Merge fuehrt zwei Aufzeichnungen
+  # derselben Person zusammen, und aktuell ist die juengere Zugehoerigkeit. Eintraege ohne
+  # `created_at` (Altdaten-Import) sortieren dabei nach vorn und verlieren gegen einen
+  # datierten -- gewollt, denn ein undatierter Eintrag stammt aus einem Bestand, der vor
+  # allem Datierten liegt.
+  def _close_surplus_home_clubs(entries, user_id)
+    offen = self.class.open_home_club_entries(entries)
+    return entries if offen.size < 2
+
+    offen[0..-2].each do |c|
+      c['valid_until']  = Time.now
+      c['valid_set_by'] = user_id if user_id
+    end
+    entries
   end
 
   # Lizenzen zusammenführen: bei gleichem team_id UND season_id die History-Arrays

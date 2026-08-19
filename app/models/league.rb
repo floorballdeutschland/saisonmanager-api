@@ -1,6 +1,7 @@
 class League < ApplicationRecord
   include UserTrackable
   include LeagueDirectEncounterTable
+  include LeagueTablePoints
   include LeagueBanner
   include LeagueLogo
   include LeagueRefereeAssignment
@@ -384,8 +385,22 @@ class League < ApplicationRecord
   # LV ihres Spielbetriebs, das Fenster von ihrem ersten Spieltag. Vorher kam der
   # Schalter vom LV des Vereins, sodass bei einer Mannschaft in mehreren Ligen die
   # Erlaubnis des einen Verbands mit dem Fenster einer fremden Liga kombinierbar war.
+  #
+  # Dritte Bedingung: Es muss eine SBK-Adresse erreichbar sein. Die Expresslizenz
+  # ist im Kern eine sofortige Benachrichtigung der zuständigen SBK und kostet den
+  # Verein nach Gebührenordnung extra. Ohne Adresse bricht
+  # PlayerMailer#express_license_requested still ab (`return if sbk_email.blank?`),
+  # die Lizenz wurde aber trotzdem als Express-Antrag gespeichert: Der Verein
+  # bezahlte die Eilbearbeitung, und niemand erfuhr von dem Antrag. Lieber gar
+  # nicht anbieten als eine Leistung verkaufen, die nachweislich nicht erbracht
+  # werden kann.
+  #
+  # effective_sbk_email, nicht sbk_email: Ein untergeordneter Landesverband erbt
+  # das Postfach seines Verbunds, hat also selbst keines gepflegt und ist trotzdem
+  # erreichbar.
   def express_license_possible?(today: Date.current)
     state_association&.effective_express_license_enabled.present? &&
+      state_association&.effective_sbk_email.present? &&
       express_license_window_open?(today:)
   end
 
@@ -447,49 +462,6 @@ class League < ApplicationRecord
 
   def meta_item
     attributes.select { |key, _value| %w[name short_name order_key].include?(key) }
-  end
-
-  def won_points
-    if legacy_league
-      league_system_id.to_i == 1 ? 3 : 2
-    else
-      case table_modus
-      when 'classic'
-        3
-      else
-        10
-      end
-    end
-  end
-
-  def draw_points
-    if legacy_league
-      league_system_id.to_i == 1 ? 1 : 0
-    else
-      case table_modus
-      when 'classic'
-        1
-      else
-        1
-      end
-    end
-  end
-
-  def won_overtime_points
-    if legacy_league
-      league_system_id.to_i == 1 ? 2 : 0
-    else
-      case table_modus
-      when 'classic'
-        2
-      else
-        0
-      end
-    end
-  end
-
-  def lost_overtime_points
-    draw_points
   end
 
   def scorer

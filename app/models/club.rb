@@ -103,7 +103,12 @@ class Club < ApplicationRecord
     p = scope.where('players.clubs @> ?', [{ club_id: id }].to_json).order(:last_name, :first_name)
     p.select do |pl|
       pl.clubs.map do |c|
-        if c['club_id'] != id
+        # Strukturell kaputter Eintrag (kein Objekt) aus dem Altbestand: zaehlt nicht als
+        # Mitgliedschaft. Ohne den Riegel bricht die Vereinsspielerliste mit einem 500er ab,
+        # sobald ein einziges Profil des Vereins so einen Eintrag traegt.
+        if !c.is_a?(Hash)
+          false
+        elsif c['club_id'] != id
           false
         elsif c['valid_until'].blank?
           true
@@ -135,17 +140,6 @@ class Club < ApplicationRecord
     Rails.cache.fetch("#{cache_key}/home_game_operation", expires_in: 1.week) do
       go = game_operations_hash.select { |g| g['home_game_operation'] == true }
       GameOperation.find_by_id go.first['game_operation_id'] if go.present?
-    end
-  end
-
-  def update_state
-    return if postcode.blank?
-
-    states = Club.postcodes.select { |pc| pc[:from] < postcode.to_i && pc[:till] > postcode.to_i }
-
-    if states.present?
-      state = states.first[:isocode]
-      update_attributes(state:)
     end
   end
 

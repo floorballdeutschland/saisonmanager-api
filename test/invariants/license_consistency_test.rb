@@ -59,36 +59,25 @@ class LicenseConsistencyTest < ActiveSupport::TestCase
 
   # --- Postconditions nach deactivate! ---
 
-  test 'nach deactivate!: keine APPROVED-Lizenz mehr aktiv' do
+  # Seit api#472 ist die Deaktivierung eine Kennzeichnung fuer die Vereinsansicht und
+  # kein Lizenzentzug: Wer mitten in der Saison aus der Liste genommen wird, behaelt
+  # seine Spielberechtigung. Die frueheren Invarianten ("nach deactivate! ist keine
+  # Lizenz mehr aktiv") gelten deshalb umgekehrt.
+  test 'nach deactivate!: laufende Lizenzen bleiben aktiv' do
     player = create(:player, with_licenses: [
-      { team: @team, status: License::APPROVED }
+      { team: @team, status: License::APPROVED },
+      { team: create(:team, league: @league), status: License::REQUESTED }
     ])
 
     player.deactivate!(@admin.id)
     player.reload
 
-    active = player.licenses.any? do |lic|
-      last = lic['history']&.max_by { |h| h['created_at'] }
-      License::ACTIVE_STATUSES.include?(last&.dig('license_status_id').to_i)
+    stati = player.licenses.map do |lic|
+      lic['history'].max_by { |h| h['created_at'] }['license_status_id'].to_i
     end
 
-    refute active, 'Nach deactivate! darf keine APPROVED/REQUESTED-Lizenz mehr aktiv sein'
-  end
-
-  test 'nach deactivate!: keine REQUESTED-Lizenz mehr aktiv' do
-    player = create(:player, with_licenses: [
-      { team: @team, status: License::REQUESTED }
-    ])
-
-    player.deactivate!(@admin.id)
-    player.reload
-
-    active = player.licenses.any? do |lic|
-      last = lic['history']&.max_by { |h| h['created_at'] }
-      last&.dig('license_status_id').to_i == License::REQUESTED
-    end
-
-    refute active, 'Nach deactivate! darf keine REQUESTED-Lizenz mehr vorhanden sein'
+    assert_equal [License::APPROVED, License::REQUESTED].sort, stati.sort,
+                 'deactivate! darf den Lizenzstatus nicht anfassen'
   end
 
   test 'nach deactivate!: bereits DELETED-Lizenz bleibt unverändert' do
@@ -121,7 +110,7 @@ class LicenseConsistencyTest < ActiveSupport::TestCase
       { team: @team, status: License::APPROVED }
     ])
 
-    player.deactivate!(@admin.id, reason: 'Deaktiviert')
+    legacy_deactivate!(player, @admin.id, reason: 'Deaktiviert')
     history_after_deactivate = player.reload.licenses.first['history'].size
 
     player.reactivate!

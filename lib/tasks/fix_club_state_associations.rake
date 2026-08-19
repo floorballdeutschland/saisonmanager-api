@@ -156,22 +156,11 @@ class ClubStateAssociationResolver
     club.postcode.to_s.strip.match?(/\A\d{5}\z/)
   end
 
-  # Bundesland laut den PLZ-Bereichen aus ApplicationRecord.postcodes.
-  #
-  # `cover?` schließt die Grenzen ein – Club#update_state vergleicht dort mit
-  # < / > und lässt Randwerte fälschlich durchfallen.
-  #
-  # `dig` statt `fetch`: zwei Bereiche (Jungholz, Kleinwalsertal) tragen nur
-  # `region: 'Außerhalb der BRD'` und gar keinen isocode. `fetch` würde dort mit
-  # KeyError abbrechen – und zwar bei fünfstelligen PLZ, die diese Prüfung sonst
-  # für deutsch hält.
-  #
-  # Bei mehrfach belegten PLZ gewinnt der erste Treffer der Tabelle. Für 21039
-  # und 22145 steht Schleswig-Holstein vor Hamburg; solche Vereine landen
-  # deshalb in der Prüfliste statt in der Korrektur.
+  # Bundesland laut den PLZ-Bereichen aus ApplicationRecord.postcodes. Die
+  # Feinheiten (einschließende Grenzen, isocode-lose Bereiche, mehrfach belegte
+  # PLZ wie 21039 und 22145) stehen bei ApplicationRecord.state_for_postcode.
   def postcode_state(club)
-    value = club.postcode.to_s.strip.to_i
-    Club.postcodes.find { |pc| (pc[:from]..pc[:till]).cover?(value) }&.dig(:isocode)
+    ApplicationRecord.state_for_postcode(club.postcode)
   end
 
   def state_confirmed_by_postcode?(club)

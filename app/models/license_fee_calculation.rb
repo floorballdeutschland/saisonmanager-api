@@ -17,10 +17,18 @@ class LicenseFeeCalculation < ApplicationRecord
     end
   end
 
+  # Abgerechnet wird je Spielbetrieb. Massgeblich sind die Liga, unter deren
+  # Team die Lizenz laeuft (`league_id`, `license_club`), und der Spielbetrieb
+  # des Heimatvereins (`home_club_operation`). Das Bundesland des Vereins ist
+  # dafuer ohne Belang: `home_club_state` und `license_club_state` sind reine
+  # Zusatzspalten des Exports, gruppiert wird nicht danach.
+  #
+  # Bis 1.87.0 trug diese Methode zu Beginn das fehlende Bundesland aus der
+  # Postleitzahl nach. Der Nachtrag war seit dem Rails-Upgrade kaputt
+  # (`update_attributes`) und liess die Berechnung abbrechen, bevor sie
+  # irgendetwas gerechnet hatte. Er ist ersatzlos entfallen und bewusst nicht
+  # repariert worden: Eine Auswertung soll keine Stammdaten schreiben.
   def self.start_calculation(user_id, season = Setting.current_season_id, _deadline = Date.today)
-    # update clubs where state is not set right now (by postcode)
-    Club.where(state: nil).each(&:update_state)
-
     c = LicenseFeeCalculation.new
     c.started_at = Time.now
     c.season_id = season

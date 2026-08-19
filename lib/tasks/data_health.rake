@@ -1,3 +1,20 @@
+# Prüfungen auf Datenzustände, die die Anwendung selbst nicht mehr herstellen
+# kann, aber auch nicht von allein bemerkt.
+#
+# ACHTUNG, Stand 16.08.2026: Dieser Task läuft NICHT im Cron. Die Crontab auf
+# dem Produktionsserver kennt `cleanup:all`, `licenses:expire`,
+# `licenses:expire_suspensions`, `transfers:expire`,
+# `referee_feedback:notify_available` und `system:disk_check`, aber keine
+# Datenprüfung. Jede Prüfung hier läuft also nur, wenn jemand sie von Hand
+# aufruft, und das tut nur, wer das Problem schon vermutet.
+#
+# Für Cron (täglich): 0 6 * * * docker exec saisonmanager_rails_api bundle exec rake data_health:check_all RAILS_ENV=production
+#
+# Der Exit-Code 1 bei Funden ist dabei nur die halbe Miete: Die übrigen Zeilen
+# der Crontab schreiben nach /var/log/*.log, den Rückgabewert wertet niemand
+# aus. Für einen Zustand, der monatelang unbemerkt bleiben kann, wäre eine
+# Sentry-Meldung der passendere Kanal, so wie es
+# `TeamsController#render_team_without_league` bereits macht.
 namespace :data_health do
   desc 'Alle Data-Health-Checks ausführen (exit 1 bei Funden)'
   task check_all: :environment do
@@ -7,7 +24,9 @@ namespace :data_health do
       missing_season_id: missing_season_id_findings,
       multiple_home_clubs: multiple_home_clubs_findings,
       season_min_ids_unset: season_min_ids_unset_findings,
-      duplicate_active_licenses: duplicate_active_licenses_findings
+      duplicate_active_licenses: duplicate_active_licenses_findings,
+      orphan_teams: orphan_teams_findings,
+      orphan_cup_leagues: orphan_cup_leagues_findings
     }
 
     results.each { |check, findings| report(check.to_s, findings, summary_for(check, findings)) }
@@ -61,6 +80,103 @@ namespace :data_health do
     findings = duplicate_active_licenses_findings
     report('duplicate_active_licenses', findings, summary_for(:duplicate_active_licenses, findings))
     exit 1 if findings.any?
+  end
+
+  desc 'Mannschaften deren league_id auf eine gelöschte Liga zeigt (Waisen)'
+  task orphan_teams: :environment do
+    findings = orphan_teams_findings
+    report('orphan_teams', findings, summary_for(:orphan_teams, findings))
+    exit 1 if findings.any?
+  end
+
+  desc 'Mannschaften mit gelöschten Liga-IDs in cup_leagues'
+  task orphan_cup_leagues: :environment do
+    findings = orphan_cup_leagues_findings
+    report('orphan_cup_leagues', findings, summary_for(:orphan_cup_leagues, findings))
+    exit 1 if findings.any?
+  end
+
+  # `teams.league_id` hatte bis #293 keinen Fremdschlüssel, obwohl `game_days`
+  # und `league_qualifications` ihn längst hatten (`db/schema.rb`). Eine
+  # Mannschaft konnte deshalb auf eine Liga zeigen, die es nicht mehr gibt, und
+  # niemand merkte es. Die Mannschaftsseite antwortete darauf vor #283 mit einem
+  # Serverfehler, seitdem mit einer eigenen Meldung; für Besucher ist sie in
+  # beiden Fällen leer.
+  #
+  # Den Riegel setzt jetzt die Migration `20260816090000`. Diese Prüfung bleibt
+  # als Netz für alles, was am Fremdschlüssel vorbeikommt: ein `pg_restore` ohne
+  # Constraints, ein `COPY` mit abgeschalteten Triggern, oder eine spätere
+  # Migration, die den Fremdschlüssel versehentlich mitnimmt.
+  #
+  # Woher der Altbestand stammt, ist nicht mehr rekonstruierbar. Belegbar ist nur
+  # der Weg über `League...delete_all` aus der Konsole; der einzige löschende
+  # Rake-Task (`cleanup:delete_empty_leagues`) überspringt Ligen mit
+  # Mannschaften. Siehe #293.
+  #
+  # Rohes SQL statt `where.missing(:league)`: Diese Prüfung soll unabhängig von
+  # jedem Scope und jeder Association-Konfiguration am Modell messen, was in der
+  # Datenbank steht. Genau das ist die Frage, die auch `add_foreign_key` stellt.
+  #
+  # `league_id IS NULL` zählt bewusst nicht mit: Der Fremdschlüssel lässt das
+  # ebenfalls zu, und eine Mannschaft ohne Liga meldet sich seit #283 mit einer
+  # eigenen, verständlichen Meldung.
+  def orphan_teams_findings
+    ActiveRecord::Base.connection.select_all(<<~SQL.squish).map do |row|
+      SELECT t.id, t.name, t.league_id, t.club_id
+      FROM teams t
+      LEFT JOIN leagues l ON l.id = t.league_id
+      WHERE t.league_id IS NOT NULL AND l.id IS NULL
+      ORDER BY t.league_id, t.id
+    SQL
+      { team_id: row['id'], team_name: row['name'],
+        missing_league_id: row['league_id'], club_id: row['club_id'] }
+    end
+  end
+
+  # Dasselbe für die Pokalligen. `cup_leagues` ist ein Integer-Array, dort kann
+  # es keinen Fremdschlüssel geben (Postgres kennt keine Fremdschlüssel auf
+  # Array-Elemente), und beim Löschen einer Liga wird ihre ID dort nicht
+  # entfernt. Das ist also die Hälfte von #293, die dauerhaft ein Netz braucht.
+  #
+  # Kein bekanntes Fehlverhalten in der Anwendung: `Team#all_league_ids` gibt die
+  # IDs zwar weiter, aber jeder Verbraucher löst sie über `League.where(id:)`
+  # oder eine Mengenschnittmenge auf, in der eine gelöschte ID nie trifft. Die
+  # Angabe ist schlicht falsch und wandert in Exporte und Verwaltungsansichten;
+  # sie gehört bereinigt, bevor jemand sie als Wahrheit behandelt.
+  #
+  # Die fehlenden IDs kommen aus demselben SQL, das die Zeile auswählt. Eine
+  # zweite Runde in Ruby (`League.exists?` je ID) wäre nicht nur ein N+1, sie
+  # wäre eine zweite Definition derselben Frage: Ein NULL-Element im Array ist
+  # für SQL ein Befund, für einen Ruby-Parser unsichtbar. Der Cronjob meldete
+  # dann dauerhaft einen Fund, den der Bereinigungslauf nicht auflösen kann.
+  def orphan_cup_leagues_findings
+    ActiveRecord::Base.connection.select_all(<<~SQL.squish).map do |row|
+      SELECT t.id, t.name,
+             (SELECT array_agg(cup_id) FROM unnest(t.cup_leagues) AS cup_id
+              WHERE NOT EXISTS (SELECT 1 FROM leagues l WHERE l.id = cup_id)) AS missing
+      FROM teams t
+      WHERE t.cup_leagues IS NOT NULL
+        AND array_length(t.cup_leagues, 1) > 0
+        AND EXISTS (
+          SELECT 1 FROM unnest(t.cup_leagues) AS cup_id
+          WHERE NOT EXISTS (SELECT 1 FROM leagues l WHERE l.id = cup_id)
+        )
+      ORDER BY t.id
+    SQL
+      { team_id: row['id'], team_name: row['name'],
+        missing_league_ids: parse_pg_int_array(row['missing']) }
+    end
+  end
+
+  # Postgres-Integer-Array in Ruby-Integer. `select_all` dekodiert Skalare, aber
+  # keine Arrays; je nach Treiberfassung kommt hier ein Ruby-Array oder das
+  # Literal "{12,13}". Beides wird behandelt, damit die Prüfung nicht an der
+  # Adapterversion hängt.
+  def parse_pg_int_array(value)
+    return [] if value.nil?
+    return Array(value).compact.map(&:to_i) unless value.is_a?(String)
+
+    value.scan(/-?\d+/).map(&:to_i)
   end
 
   def stale_active_licenses_findings
@@ -168,7 +284,11 @@ namespace :data_health do
       missing_season_id: "#{findings.size} Lizenz(en) ohne season_id (→ licenses:backfill_season_ids)",
       multiple_home_clubs: "#{findings.size} Player mit mehr als einem aktiven home_club=true-Eintrag",
       season_min_ids_unset: "#{findings.size} Saison(en) mit aktiven Ligen aber fehlendem min_league_id/min_team_id",
-      duplicate_active_licenses: "#{findings.size} Doppelt-APPROVED-Lizenz(en) pro (player, season_id, team_id)"
+      duplicate_active_licenses: "#{findings.size} Doppelt-APPROVED-Lizenz(en) pro (player, season_id, team_id)",
+      orphan_teams: "#{findings.size} Mannschaft(en) deren league_id auf eine gelöschte Liga zeigt " \
+                    '(→ cleanup:orphan_team_leagues)',
+      orphan_cup_leagues: "#{findings.size} Mannschaft(en) mit gelöschten Liga-IDs in cup_leagues " \
+                          '(→ cleanup:orphan_team_leagues)'
     }.fetch(check.to_sym, "#{findings.size} Befunde")
   end
 

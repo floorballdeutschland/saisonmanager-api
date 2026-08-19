@@ -112,7 +112,7 @@ class ClubsController < ApplicationController
     leagues = team.leagues
 
     if current_user && user_may_read_team_licenses?(leagues)
-      render json: team_licenses_hash(team, leagues)
+      render json: team_licenses_hash(team)
     elsif secretary_token_permits_team?(team)
       render json: secretary_team_licenses_hash(team)
     else
@@ -421,7 +421,12 @@ class ClubsController < ApplicationController
       license_status: status[:license_status] }
   end
 
-  def team_licenses_hash(team, leagues)
+  # Kein `leagues`-Parameter mehr: Seit api#457 und api#460 leiten beide Verbraucher
+  # ihre Ligaliste selbst aus dem Team ab (Team#express_license_league bzw.
+  # Team#season_leagues), weil sie unterschiedlich gefiltert sein muss. Die
+  # ungefilterte Liste des Aufrufers dient nur noch der Rechtepruefung, und die
+  # bleibt bewusst ungefiltert: Die SBK einer Pokal-Liga darf den Kader lesen.
+  def team_licenses_hash(team)
     result = {}
 
     result[:team] = team.full_hash
@@ -429,14 +434,38 @@ class ClubsController < ApplicationController
     # Maßgeblich ist der LV des Spielbetriebs der Liga, nicht der des Vereins:
     # Zuständig für den Spielbetrieb einer Liga ist allein deren Verband. Erlaubnis
     # und Zeitfenster müssen aus derselben Liga stammen (League#express_license_possible?).
-    result[:express_license_enabled] = leagues.any?(&:express_license_possible?)
+    #
+    # Auch hier die auslösende Liga mitgeben, nicht nur ein Ja/Nein: Der Verein
+    # bestellt mit der Expresslizenz eine kostenpflichtige Leistung, und wer sie
+    # abrechnet, hängt an dieser Liga. Ohne den Namen bestellt er bei einem Verband,
+    # den er im Formular nie gesehen hat – häufig eine Pokal-Liga fremden Verbands.
+    # Gleiche Wahl wie in PlayersController#request_license.
+    express_league = team.express_license_league
+    result[:express_license_enabled] = express_league.present?
+    result[:express_license_league] = express_league && { id: express_league.id, name: express_league.name }
     # Elternzustimmung: wird pro Liga über das Flag parental_consent_required
     # gesteuert. Das Flag steuert den Datenschutz-Block im Antragsformular;
     # als Pflichtdokument steckt die Zustimmung in required_documents und wird
     # dort wie jede andere Dokumentart nach Alter aufgelöst.
     # Ersetzt die frühere is_buli-Ableitung über league_classes.
-    result[:parental_consent_required] = leagues.any?(&:parental_consent_required)
-    result[:required_documents] = leagues.flat_map { |l| league_required_document_keys(l) }.uniq
+    #
+    # Neben dem Ja/Nein die auslösende Liga mitgeben (Team#parental_consent_league,
+    # gleiche Wahl wie in PlayersController#request_license): Das Formular soll
+    # nennen können, wegen welcher Liga es die Zustimmung verlangt. Ohne den Namen
+    # liest sich der Block wie eine Aussage über die Mannschaft insgesamt, obwohl
+    # ihn eine einzelne Liga auslöst – oft eine Pokal-Liga eines anderen Verbands.
+    consent_league = team.parental_consent_league
+    result[:parental_consent_required] = consent_league.present?
+    result[:parental_consent_league] = consent_league && { id: consent_league.id, name: consent_league.name }
+    # season_leagues, nicht das ungefilterte `leagues`: Sonst greift der
+    # Saisonfilter nur an einer Hälfte derselben Antwort. Eine liegengebliebene
+    # Pokal-Liga aus einer abgeschlossenen Saison zöge ihre Pflichtdokumente
+    # weiter in die laufende — und im Fall der Elternzustimmung entstünde genau
+    # der Widerspruch, den parental_consent_league beseitigen soll: Der
+    # Datenschutz-Block verschwindet, während die Upload-Zeile "Zustimmung der
+    # Erziehungsberechtigten" als offene Pflicht stehen bleibt, ohne dass das
+    # Formular noch sagt, welche Liga sie verlangt.
+    result[:required_documents] = team.season_leagues.flat_map { |l| league_required_document_keys(l) }.uniq
     # Katalog-Metadaten (Name, Vorlage, Gültigkeit, Altersgrenze) zu den
     # geforderten Dokumentarten – fürs Upload-UI im Team-Lizenzwesen.
     catalog = document_type_catalog(result[:required_documents] + ['parental_consent'])
@@ -459,7 +488,9 @@ class ClubsController < ApplicationController
         last_requested = l['history'].select { |h| h['license_status_id'].to_i == License::REQUESTED }
                                      .max_by { |h| h['created_at'] }
         item[:grace_period_ends_at] = last_requested ? (last_requested['created_at'].to_time + License::GRACE_PERIOD).iso8601 : nil
-        # Altersabhängige Dokumentarten: Stichtag = Datum der Lizenzbeantragung.
+        # Altersabhängige Dokumentarten: Arten mit required_below_age rechnen gegen das
+        # Datum der Lizenzbeantragung, Arten mit required_from_birth_year sehen es nicht
+        # an (siehe DocumentType#required_for?).
         item[:required_documents] = DocumentType.required_keys(
           result[:required_documents],
           birthdate: p.birthdate,

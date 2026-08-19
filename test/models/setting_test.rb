@@ -91,4 +91,153 @@ class SettingTest < ActiveSupport::TestCase
     assert_equal 1, current_entries.size
     assert_equal 18, current_entries.first[:id]
   end
+
+  # ---------------------------------------------------------------------------
+  # Formsicherheit der seasons-Leser. Je nach Altbestand steht unter einer Saison
+  # ein Hash mit 'name' oder ein blanker String, und beide Fehlformen scheitern
+  # LEISE: `entry['name']` auf einem String sucht einen Teilstring und liefert nil,
+  # ein fehlender Key wirft NoMethodError. Hinter deliver_later fällt beides
+  # niemandem auf.
+  # ---------------------------------------------------------------------------
+
+  test 'season_name liest den Namen aus einem Hash-Eintrag' do
+    create(:setting)
+
+    assert_equal 'Saison 2025/26', Setting.season_name('18')
+  end
+
+  test 'season_name liest einen blanken String als Namen' do
+    create(:setting, seasons: { '18' => 'Saison 2025/26' })
+
+    assert_equal 'Saison 2025/26', Setting.season_name('18')
+  end
+
+  test 'season_name ist nil bei unbekannter Saison, leerem Namen und leerer Eingabe' do
+    create(:setting, seasons: { '18' => { 'name' => '' } })
+
+    assert_nil Setting.season_name('18'), 'leerer Name zählt nicht als Name'
+    assert_nil Setting.season_name('99'), 'unbekannte Saison darf nicht werfen'
+    assert_nil Setting.season_name(nil)
+    assert_nil Setting.season_name('')
+  end
+
+  test 'seasons_hash faengt eine seasons-Spalte ab, die gar kein Hash ist' do
+    create(:setting)
+    Setting.first.update_columns(seasons: nil)
+    Rails.cache.delete('settings/current')
+
+    assert_empty Setting.seasons_hash
+    assert_nil Setting.season_name('18')
+    assert_equal [], Setting.seasons
+  end
+
+  test 'seasons benennt auch einen Eintrag, der als blanker String vorliegt' do
+    create(:setting, current_season_id: '18', seasons: { '18' => 'Saison 2025/26' })
+
+    entry = Setting.seasons.find { |s| s[:id] == 18 }
+    assert_equal 'Saison 2025/26', entry[:name],
+                 'sonst zeigt der Saison-Umschalter einen namenlosen Eintrag'
+  end
+
+  test 'current_season_start_year liest das Jahr auch aus einem blanken String' do
+    create(:setting, current_season_id: '18', seasons: { '18' => 'Saison 2026/2027' })
+
+    assert_equal 2026, Setting.current_season_start_year
+  end
+
+  # Der Fallback schätzt mit August-Grenze. Ohne festes Datum prüft ein Test dieses
+  # Zweigs von August bis Dezember nichts, weil die Schätzung dann zufällig
+  # dasselbe Jahr liefert wie ein korrekt gelesener Name.
+  test 'current_season_start_year schaetzt mit August-Grenze, wenn kein Jahr im Namen steht' do
+    create(:setting, current_season_id: '18', seasons: { '18' => 'Saison 26/27' })
+
+    travel_to Date.new(2026, 9, 1) do
+      assert_equal 2026, Setting.current_season_start_year
+    end
+    travel_to Date.new(2026, 3, 1) do
+      assert_equal 2025, Setting.current_season_start_year,
+                   'vor August gehoert der Stichtag zur vorigen Saison'
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # season_start_year: die Jahresextraktion. `split('/').first` verlangt, dass der
+  # Name mit den Ziffern beginnt, und ergibt bei „Saison 2026/27" eine 0 — genau
+  # der Fehler, der die Lizenz-Gueltigkeit ein Jahr zu kurz machte.
+  # ---------------------------------------------------------------------------
+
+  test 'season_start_year liest das Jahr in allen vorkommenden Schreibweisen' do
+    {
+      '2026/2027' => 2026,
+      '2026/27' => 2026,
+      'Saison 2026/27' => 2026,
+      'Saison 2026/2027' => 2026
+    }.each do |name, expected|
+      create(:setting, current_season_id: '18', seasons: { '18' => { 'name' => name } })
+      assert_equal expected, Setting.season_start_year('18'), "Schreibweise #{name.inspect}"
+    end
+  end
+
+  test 'season_start_year ist nil ohne Jahreszahl, ohne Eintrag und ohne Eingabe' do
+    create(:setting, current_season_id: '18', seasons: { '18' => { 'name' => 'Saison 26/27' } })
+
+    assert_nil Setting.season_start_year('18')
+    assert_nil Setting.season_start_year('99')
+    assert_nil Setting.season_start_year(nil)
+  end
+
+  # ---------------------------------------------------------------------------
+  # current_season liefert immer einen Hash. Sonst lesen current_min_team und
+  # current_min_league `['min_team_id']` auf einem String, bekommen still nil und
+  # verschlucken es im `|| 0`. Der 0-Fallback ist der dokumentierte Weg fuer einen
+  # FEHLENDEN Schluessel (#168), nicht fuer eine Fehlform.
+  # ---------------------------------------------------------------------------
+
+  test 'current_season ist auch bei einem blanken String ein Hash' do
+    create(:setting, current_season_id: '18', seasons: { '18' => 'Saison 2025/26' })
+
+    assert_equal({}, Setting.current_season)
+  end
+
+  test 'min_team und min_league brechen bei kaputter seasons-Spalte nicht ab' do
+    create(:setting)
+    Setting.first.update_columns(seasons: nil)
+    Rails.cache.delete('settings/current')
+
+    assert_equal 0, Setting.current_min_team
+    assert_equal 0, Setting.current_min_league
+  end
+
+  # point_corrections hängt an League#table, also an jeder öffentlichen
+  # Ligaseite. Zwei Ebenen können krumm sein, und die zweite ist die
+  # realistischere: die Spalte hat einen Default, der Eintrag pro Liga entsteht
+  # per Konsolen-Korrektur.
+  test 'point_corrections faengt eine Spalte ab, die kein Hash ist' do
+    create(:setting)
+    Setting.first.update_columns(point_corrections: nil)
+    Rails.cache.delete('settings/current')
+
+    assert_nil Setting.point_corrections(1)
+  end
+
+  test 'point_corrections faengt einen Liga-Eintrag mit falscher Form ab' do
+    create(:setting)
+
+    # Array: ergab in League#table einen TypeError, also einen 500er auf der
+    # öffentlichen Ligaseite.
+    Setting.first.update_columns(point_corrections: { '1' => [] })
+    Rails.cache.delete('settings/current')
+    assert_nil Setting.point_corrections(1)
+
+    # String: rechnete dort still ohne den Abzug weiter.
+    Setting.first.update_columns(point_corrections: { '1' => 'minus 3' })
+    Rails.cache.delete('settings/current')
+    assert_nil Setting.point_corrections(1)
+  end
+
+  test 'point_corrections liefert einen korrekten Eintrag unveraendert' do
+    create(:setting, point_corrections: { '1' => { '7' => -3 } })
+
+    assert_equal({ '7' => -3 }, Setting.point_corrections(1))
+  end
 end

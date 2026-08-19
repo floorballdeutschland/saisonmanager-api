@@ -3,10 +3,15 @@ class PlayerMailer < ApplicationMailer
     @player = player
     @team = team
     @league = team.league
-    season = Setting.current_season['name']
+    # Setting.season_name statt current_season['name']: Steht unter der Saison ein
+    # blanker String, liefert String#[]('name') still nil und die Mail trägt eine
+    # leere Saison im Betreff; fehlt der Key ganz, gab es einen NoMethodError
+    # hinter deliver_later, die Mail kam also gar nicht an und niemand erfuhr davon.
+    season = Setting.season_name(Setting.current_season_id)
     subject = "Lizenz erteilt – #{team.name}"
     subject += " (#{@league.name})" if @league
-    subject += " - #{season}"
+    # Nur mit lesbarem Namen anhängen, sonst endete der Betreff auf " - ".
+    subject += " - #{season}" if season.present?
     templated_mail(
       to: player.email,
       subject:,
@@ -21,7 +26,20 @@ class PlayerMailer < ApplicationMailer
     # An die SBK des Spielbetriebs der Liga, nicht an die des Vereinsverbands:
     # Über den Antrag entscheidet der Verband, der die Liga betreibt.
     sbk_email = league&.state_association&.effective_sbk_email
-    return if sbk_email.blank?
+
+    # Zweite Absicherung: League#express_license_possible? verlangt seit api#461
+    # eine erreichbare Adresse, dieser Zweig ist über das Antragsformular also
+    # nicht mehr erreichbar. Bleibt er trotzdem stehen, weil der Mailer auch direkt
+    # aufgerufen werden kann — und er meldet jetzt, statt nur stumm zurückzukehren:
+    # Vorher war dieser `return` die einzige Stelle, die den Zustand kannte, und
+    # der Verein hatte die kostenpflichtige Eilbearbeitung bereits bestellt.
+    if sbk_email.blank?
+      if defined?(Sentry)
+        Sentry.capture_message("Expresslizenz-Antrag ohne erreichbare SBK-Adresse " \
+                               "(league=#{league&.id.inspect}, team=#{team&.id.inspect})")
+      end
+      return
+    end
 
     templated_mail(
       to: sbk_email,
@@ -49,9 +67,6 @@ class PlayerMailer < ApplicationMailer
     @league = league
     @club = team&.club
     @season = season_name(league)
-    # Fehlt der Link, nennt die Vorlage stattdessen den Verein als Bezugsquelle –
-    # eine tote Adresse wäre für Eltern schlechter als keine.
-    @info_url = Setting.info_link_url('minor_privacy_bundesliga')
 
     templated_mail(
       to: guardian_email,
@@ -62,8 +77,7 @@ class PlayerMailer < ApplicationMailer
         club_name: @club&.name,
         team_name: team&.name,
         league_name: league&.name,
-        season: @season,
-        info_url: @info_url
+        season: @season
       }
     )
   end
@@ -73,15 +87,10 @@ class PlayerMailer < ApplicationMailer
   # Saison der Liga, nicht die laufende: Ein Antrag kann eine Liga der kommenden
   # Saison betreffen, während noch die alte aktiv ist.
   #
-  # Je nach Altbestand steht unter einer Saison ein Hash mit 'name' oder ein
-  # blanker String (vgl. Setting.current_season_start_year); `dig` bräche beim
-  # String mit TypeError ab, und hinter deliver_later fiele der Ausfall
-  # niemandem auf. Ohne lesbaren Namen bleibt die Zeile in der Mail weg: Die
-  # laufende Nummer der Saison sagt Eltern nichts.
+  # Die Formfrage (Hash mit 'name' oder blanker String) entscheidet
+  # Setting.season_name an einer Stelle. Ohne lesbaren Namen bleibt die Zeile in
+  # der Mail weg: Die laufende Nummer der Saison sagt Eltern nichts.
   def season_name(league)
-    return nil if league&.season_id.blank?
-
-    entry = Setting.current.seasons[league.season_id.to_s]
-    entry.is_a?(Hash) ? entry['name'].presence : entry.presence
+    Setting.season_name(league&.season_id)
   end
 end

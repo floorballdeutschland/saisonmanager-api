@@ -52,7 +52,13 @@ class PlayersController < ApplicationController
       return render json: [] if q.length < 2
 
       term = "%#{q}%"
-      players = Player.active.where(
+      # Nicht `Player.active`: Die Deaktivierung ist eine Kennzeichnung fuer die
+      # Vereins- und Mannschaftsansichten (siehe `Player#deactivate!`) und darf ein
+      # Profil nicht aus der Suche der SBK nehmen. Genau daran scheiterte der
+      # Vereinsaustritt — der aufnehmende Verein fand die Person nicht mehr.
+      # Ausgeschlossen bleiben zusammengefuehrte Dubletten: die sind durch den Master
+      # ersetzt (api#92) und dort liegen Spiele und Lizenzen.
+      players = Player.where(merged_into_id: nil).where(
         'last_name ILIKE :q OR first_name ILIKE :q OR concat(first_name, \' \', last_name) ILIKE :q OR concat(last_name, \', \', first_name) ILIKE :q',
         q: term
       ).order(:last_name, :first_name).limit(20)
@@ -86,8 +92,8 @@ class PlayersController < ApplicationController
     # Ohne auflösbare Liga gibt es weder Altersgrenze noch Saison und
     # Ligaklasse für die Lizenz. league wird unten mehrfach ohne Schutz
     # dereferenziert; das ergab denselben 500er wie auf der Mannschaftsseite
-    # (Sentry SAISONMANAGER-1C). Es gibt keinen Fremdschlüssel auf
-    # teams.league_id, die Spalte ist zudem nullable.
+    # (Sentry SAISONMANAGER-1C). teams.league_id ist nullable; der Fremdschlüssel
+    # aus #293 schließt nur den Verweis ins Leere, nicht die fehlende Liga.
     #
     # Vor der Rechteprüfung: Der Spielbetriebs-Scope der SBK-Rolle wird aus
     # genau dieser Liga abgeleitet. Stünde die Prüfung danach, bekäme die
@@ -119,10 +125,13 @@ class PlayersController < ApplicationController
     # einem anderen Verband gehören kann. Der Antrag muss an die SBK genau des
     # Verbands gehen, der die Expresslizenz erlaubt – sonst erlaubt sie Verband A
     # und die Mail landet bei Verband B.
+    #
+    # Team#express_license_league statt eines eigenen `find`: Das Antragsformular
+    # (ClubsController#team_licenses_hash) nennt dieselbe Liga, und ein `find` über
+    # `team.leagues` würde hier dem default_scope von League folgen und damit
+    # womöglich eine andere wählen als die, die der Verein im Formular gesehen hat.
     express_league = nil
-    if params[:express] == true || params[:express] == 'true'
-      express_league = team.leagues.find(&:express_license_possible?)
-    end
+    express_league = team.express_license_league if params[:express] == true || params[:express] == 'true'
     express_requested = express_league.present?
 
     result = :ok
@@ -219,7 +228,11 @@ class PlayersController < ApplicationController
       # die Mail eine Liga ohne Zustimmungspflicht und ließe an deren SBK
       # antworten. Verlangt keine Liga des Teams die Zustimmung, geht nichts
       # heraus: Das Antragsformular fragt die Adresse dann gar nicht erst ab.
-      consent_league = team.leagues.find(&:parental_consent_required)
+      #
+      # Team#parental_consent_league statt eines eigenen `find`: Das Formular
+      # (ClubsController#team_licenses_hash) nennt dieselbe Liga, und über den
+      # default_scope von League würde ein zweites `find` hier eine andere wählen.
+      consent_league = team.parental_consent_league
       if guardian_email && consent_league
         PlayerMailer.guardian_privacy_info(player, team, consent_league, guardian_email).deliver_later
       end
@@ -537,11 +550,11 @@ class PlayersController < ApplicationController
 
         first_name = "%#{params['first_name'].to_s.downcase.strip}%"
         last_name = "%#{params['last_name'].to_s.downcase.strip}%"
-        existing_player_id = Player.where('first_name ILIKE ? AND last_name ILIKE ? AND birthdate = ?', first_name,
-                                          last_name, birthdate).limit(1).pluck(:id).first
+        existing_player = Player.where('first_name ILIKE ? AND last_name ILIKE ? AND birthdate = ?', first_name,
+                                       last_name, birthdate).limit(1).first
 
-        if existing_player_id.present?
-          render json: { message: "Es existiert ein Spieler mit diesen Daten (ID: #{existing_player_id}). Anlegen nicht möglich." },
+        if existing_player.present?
+          render json: { message: duplicate_player_message(existing_player, params[:club_id].to_i) },
                  status: :unprocessable_entity
         else
           pp = player_params
@@ -741,6 +754,10 @@ class PlayersController < ApplicationController
                                       })
 
               success = false
+
+              # Wer aufgenommen wird, ist im neuen Verein aktiv – siehe
+              # Player#clear_deactivation.
+              player.clear_deactivation
 
               Player.transaction do
                 transfer.save!
@@ -1058,14 +1075,115 @@ class PlayersController < ApplicationController
   def vm_can_access_player?(ph, player)
     return false unless ph[:vm].present?
 
-    player.clubs.any? { |c| ph[:vm].include?(c['club_id'].to_i) }
+    membership_grants_access?(player, ph[:vm])
   end
 
   def tm_can_access_player?(ph, player)
     club_ids = tm_club_ids(ph)
     return false if club_ids.empty?
 
-    player.clubs.any? { |c| club_ids.include?(c['club_id'].to_i) }
+    membership_grants_access?(player, club_ids)
+  end
+
+  # Gibt eine Zugehörigkeit zu einem dieser Vereine HEUTE Zugriff auf das Profil?
+  #
+  # Beide Zweige lasen vorher den rohen clubs-Hash: Wer je Mitglied war, blieb
+  # dauerhaft zuständig, also auch `deactivate!`-bar. Am 16.07.2026 haben drei
+  # VM-Konten so 68 Spieler deaktiviert, deren offene Heimatzugehörigkeit einem
+  # anderen Verein gehörte. `deactivate!` schließt dann alle Zugehörigkeiten und
+  # setzt die laufenden Lizenzen (APPROVED/REQUESTED) auf DELETED; weil
+  # `Club#players` über `Player.active` filtert, fiel das Profil danach aus der
+  # Vereinsspielerliste des echten Vereins und stand in dessen VM-Liste nur noch
+  # hinter dem Deaktiviert-Schalter (#309). Stand 16.08.2026 waren rund 4.500
+  # aktive Spieler auf diesem Weg für einen Altverein erreichbar.
+  #
+  # Zwei Fälle zählen, wortgleich zu
+  # `Admin::PlayerChangeRequestsController#membership_grants_access?` und zu
+  # `Club#players(include_deactivated: true)`, aus dem die VM-Spielerliste kommt:
+  #
+  # (a) Die Zugehörigkeit gilt noch. Stichtag ist `Date.current` über
+  #     `membership_current?` (aus `LicenseAccessScope`), nicht `Time.now`: Eine
+  #     heute um 23:59 endende Zugehörigkeit gilt heute noch. Diese Methode ist
+  #     zugleich die einzige Stelle, die ein unlesbares `valid_until` aus dem
+  #     Altbestand („unbekannt", „0000-00-00") als Datenfehler meldet, statt die
+  #     Rechteprüfung mit einem 500er abzubrechen. Genau das wäre hier sonst neu
+  #     entstanden: Der VM/TM-Zweig hat vorher überhaupt kein Datum gelesen.
+  # (b) Sie wurde erst von DIESER Deaktivierung geschlossen. `deactivate!`
+  #     stempelt auch die eigene, gültige Mitgliedschaft; ohne (b) verlöre der
+  #     Verein mit dem Klick auf „Deaktivieren" den Zugriff auf sein eigenes
+  #     Profil und käme weder an die Daten noch an `reactivate`.
+  #     `membership_closed_by_deactivation?` verlangt Stempel UND Zeitfenster der
+  #     laufenden Deaktivierung, eine 2019 beendete Mitgliedschaft erfüllt das
+  #     nicht.
+  #
+  # Ohne beides bleibt ein kleiner Altbestand: Deaktivierungen aus der Zeit vor
+  # dem `valid_set_by`-Stempel und Profile ohne jede gültige Zugehörigkeit (Stand
+  # 16.08.2026 zwölf Fälle). Sie liegen ab hier bei Admin und bundesweiter SBK,
+  # denn ohne gültige Heimat findet auch `sbk_can_access_player?` nichts. Das ist
+  # dieselbe Grenze wie in #391 und #399.
+  def membership_grants_access?(player, club_ids)
+    Array(player.clubs).any? do |entry|
+      # Strukturell kaputter Eintrag (kein Objekt): zählt nicht als
+      # Mitgliedschaft, wird aber gemeldet statt still verworfen, wie in
+      # `LicenseAccessScope#player_in_team_clubs?`.
+      unless entry.is_a?(Hash)
+        report_license_data_defect("player_clubs_entry_broken/#{player.id}",
+                                   "Spieler##{player.id}: clubs-Eintrag ist kein Objekt (#{entry.class})")
+        next false
+      end
+      next false if entry['club_id'].blank?
+      next false unless club_ids.include?(entry['club_id'].to_i)
+
+      membership_current?(player, entry['valid_until']) ||
+        player.membership_closed_by_deactivation?(entry)
+    end
+  end
+
+  # Die Anlage bricht ab, sobald es zu Vorname, Nachname und Geburtsdatum schon
+  # ein Profil gibt. Bisher nannte die Meldung nur dessen id, und die führt einen
+  # Vereinsmanager nirgendwohin: Ein Profil eines fremden Vereins kann er nicht
+  # aufrufen. Deshalb nennt die Meldung jetzt den nächsten Schritt; die id bleibt
+  # als Referenz für die SBK.
+  #
+  # Die Deaktivierung ist dabei keine Sackgasse mehr und deshalb auch nicht mehr der
+  # erste Zweig: Seit sie nur noch eine Kennzeichnung der Vereinsansicht ist, steht das
+  # Profil weiterhin in der VM-Liste des eigenen Vereins
+  # (`Club#players(include_deactivated: true)`) und ist über die Spielersuche des
+  # Transferantrags findbar und transferierbar. Ein Verweis an die SBK wäre jetzt ein
+  # unnötiger Umweg; die Kennzeichnung ist nur noch ein Zusatz zum jeweiligen Weg.
+  def duplicate_player_message(player, club_id)
+    hint = player.deactivated_at.present? ? ' Das Profil ist derzeit deaktiviert.' : ''
+
+    if own_club_membership?(player, club_id)
+      "Für diese Person gibt es bereits ein Spielerprofil in diesem Verein (Spieler-ID #{player.id})." \
+        "#{hint} Bitte in der Spielerliste des Vereins danach suchen."
+    else
+      "Für diese Person gibt es bereits ein Spielerprofil in einem anderen Verein (Spieler-ID #{player.id})." \
+        "#{hint} Ein Vereinswechsel läuft über einen Transferantrag. Bei Rückfragen bitte die zuständige " \
+        'SBK kontaktieren.'
+    end
+  end
+
+  # Nur eine noch laufende Zugehörigkeit zählt: Eine abgelaufene würde den
+  # Vereinsmanager in seine eigene Spielerliste schicken, wo das Profil nicht
+  # mehr auftaucht.
+  #
+  # Ausnahme ist die Zugehörigkeit, die eine Deaktivierung von vor api#472
+  # geschlossen hat. Solche Profile stehen sehr wohl in der VM-Liste, weil
+  # `Club#players(include_deactivated: true)` genau diesen Fall mitnimmt – ohne die
+  # Ausnahme schickte die Meldung den Vereinsmanager für seine eigenen Altfälle in
+  # einen Transferantrag gegen sich selbst. Dieselben zwei Fälle prüft
+  # `membership_grants_access?`.
+  def own_club_membership?(player, club_id)
+    return false unless club_id.positive?
+
+    Array(player.clubs).any? do |entry|
+      next false unless entry.is_a?(Hash)
+      next false unless entry['club_id'].to_i == club_id
+
+      membership_current?(player, entry['valid_until']) ||
+        player.membership_closed_by_deactivation?(entry)
+    end
   end
 
   def tm_can_access_club?(ph, club_id)
@@ -1227,14 +1345,28 @@ class PlayersController < ApplicationController
     params.require(:player).permit(:birthdate, :first_name, :last_name, :gender, :nation_id, :email)
   end
 
+  # Setting.season_start_year statt eines eigenen Parsers: Vorher stand hier
+  # `seasons[...]['name'].split('/').first.to_i`, und das war doppelt anfällig.
+  # Bei einem blanken String unter der Saison liefert String#[]('name') still nil.
+  # Und `split('/').first` verlangt, dass der Name mit den Ziffern BEGINNT — bei
+  # „Saison 2026/27" ergibt `'Saison 2026'.to_i` eine 0. Genau diese Schreibweise
+  # kommt im Bestand vor (Setting.season_start_year nennt beide). In beiden Fällen
+  # fiel die Gültigkeit still auf das Kalenderjahr, die Lizenz war also ein Jahr zu
+  # kurz gültig und konnte im Genehmigungsmoment schon abgelaufen sein.
+  #
+  # Ohne lesbares Jahr bleibt es beim Kalenderjahr, aber nicht mehr stumm: Hier
+  # entstehen geschriebene Daten (`licenses[..]['valid_until']`), und ohne Signal
+  # erfährt niemand davon. Bewusst kein 422: Eine Fehlkonfiguration im Saisonnamen
+  # darf die Lizenzerteilung nicht blockieren, das wäre ein Betriebsausfall als
+  # Antwort auf einen Tippfehler.
   def default_license_valid_until(season_id)
-    season = Setting.current.seasons[season_id.to_s]
-    end_year = if season
-                 first_year = season['name'].to_s.split('/').first.to_i
-                 first_year.positive? ? first_year + 1 : Date.today.year
-               else
-                 Date.today.year
-               end
-    Date.new(end_year, 7, 31)
+    start_year = Setting.season_start_year(season_id)
+    return Date.new(start_year + 1, 7, 31) if start_year
+
+    if defined?(Sentry)
+      Sentry.capture_message("Lizenz-Gueltigkeit ohne Saisonjahr (season_id=#{season_id}), " \
+                             'faellt auf das Kalenderjahr zurueck')
+    end
+    Date.new(Date.current.year, 7, 31)
   end
 end

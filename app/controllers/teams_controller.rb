@@ -419,9 +419,10 @@ class TeamsController < ApplicationController
     team.league&.season_id || team.leagues.map(&:season_id).compact_blank.max_by(&:to_i)
   end
 
-  # Ein Team, dessen league_id ins Leere zeigt, ist kein normaler 404, sondern
-  # ein kaputter Datensatz: Es gibt keinen Fremdschlüssel auf teams.league_id,
-  # und die Spalte ist nullable. Ohne diese Meldung waere die Antwort von
+  # Ein Team ohne auflösbare Liga ist kein normaler 404, sondern ein kaputter
+  # Datensatz. teams.league_id ist nullable, und bis #293 fehlte dort auch der
+  # Fremdschlüssel; neue Waisen lässt die Datenbank seitdem nicht mehr zu, ein
+  # Team ohne Liga (NULL) dagegen weiterhin. Ohne diese Meldung waere die Antwort von
   # „diese Mannschaft gibt es nicht" nicht zu unterscheiden, und der Fall fiele
   # niemandem mehr auf – der 500er war bisher das einzige Signal.
   #

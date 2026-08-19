@@ -218,11 +218,16 @@ module Admin
     # Zugriff auf die persönlichen Unterlagen zu geben – Lesen, Hochladen und
     # Löschen –, auch Jahre nach dem Vereinswechsel.
     #
-    # ACHTUNG, kein erledigter Nachbar: Am Spielerprofil selbst
-    # (`PlayersController#vm_can_access_player?` / `#tm_can_access_player?`) fehlt
-    # derselbe Filter weiterhin, dort genügt jeder Eintrag im clubs-Hash. #391 hat
-    # nur den SBK-Zweig auf den gültigen Heimatverein gestellt. Die Unterlagen sind
-    # damit ab hier strenger als das Profil, an dem sie hängen – offen als #309.
+    # Am Spielerprofil greift seit #309 ebenfalls eine Gültigkeitsprüfung
+    # (`PlayersController#membership_grants_access?`, auf demselben
+    # `membership_current?`). Bis dahin genügte dort jeder Eintrag im clubs-Hash,
+    # die Unterlagen waren also strenger als das Profil, an dem sie hängen.
+    #
+    # Deckungsgleich sind die beiden trotzdem nicht: Am Profil zählt zusätzlich
+    # die Zugehörigkeit, die eine laufende Deaktivierung geschlossen hat, hier
+    # nicht. Deaktiviert ein Verein seinen eigenen Spieler, behält er also das
+    # Profil (sonst käme er nicht an `reactivate`) und verliert die Unterlagen.
+    # Ohne laufende Lizenz gäbe es hier ohnehin nichts zu sehen.
     #
     # Die Mitgliedschaftsprüfung ist `player_in_team_clubs?`, also dieselbe wie im
     # Lizenzantrag: Wer für eine Mannschaft eine Lizenz lösen darf, soll deren
@@ -241,7 +246,8 @@ module Admin
         if team_ids.empty?
           []
         else
-          # `teams.league_id` ist nullable und ohne Fremdschlüssel (vgl.
+          # `teams.league_id` ist nullable; seit #293 gibt es dort einen
+          # Fremdschlüssel, der aber nur den Verweis ins Leere ausschließt (vgl.
           # TeamsController#render_team_without_league). Ein Team ohne Liga fällt
           # aus `Team.current_season` heraus, weil `NULL IN (…)` niemals wahr ist –
           # das ist ein Datenfehler und keine Rechteentscheidung. Deshalb erst
@@ -371,9 +377,13 @@ module Admin
     # Zwei Gründe, eine Art aus der Auswahl zu lassen:
     #
     # (a) Der Spieler ist ihr altersmäßig entwachsen: required_below_age
-    #     überschritten, sie kann für ihn nie wieder gefordert sein. Ohne lesbares
+    #     überschritten oder ein Jahrgang vor required_from_birth_year. Ohne lesbares
     #     Geburtsdatum bleibt sie drin – required_for? entscheidet im Zweifel für
     #     "erforderlich", und dieselbe Regel gilt im Lizenzantrag.
+    #     Beim Alter ist das endgültig, denn Alter steigt nur. Beim Jahrgang gilt es
+    #     nur, solange die Zahl nach vorn gezogen wird: Senkt sie jemand, ist die Art
+    #     für die älteren Jahrgänge wieder erforderlich. Das trägt, weil hier je
+    #     Aufruf neu ausgewertet wird — eine gecachte Auswahl wäre falsch.
     # (b) Ein verbandsspezifisch gescopter SBK bekommt die Dokumente dieser Art
     #     ohnehin nicht zu sehen (filter_documents_by_scope). Dann darf die Art
     #     auch nicht in der Auswahl stehen, sonst lädt er in ein Loch hoch.
@@ -392,6 +402,7 @@ module Admin
         description: document_type.description,
         validity: document_type.validity,
         required_below_age: document_type.required_below_age,
+        required_from_birth_year: document_type.required_from_birth_year,
         game_operation_id: document_type.game_operation_id,
         game_operation_name: document_type.game_operation&.name,
         template_url: template_url_for(document_type)
