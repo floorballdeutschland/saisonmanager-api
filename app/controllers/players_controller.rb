@@ -1268,8 +1268,8 @@ class PlayersController < ApplicationController
   # hinweg und gehört damit in den Transferantrag oder zur bundesweiten SBK.
   # Freigaben regeln Einsicht, nicht Zugehörigkeit.
   #
-  # Ein Verein ohne Heimat-Spielbetrieb hat `main_game_operation_id == nil` und
-  # liegt damit in keinem Scope. Das ist gewollt: Diese Vereine (Altbestand)
+  # Ein Verein ohne Landesverband hat `main_game_operation_id == nil` und liegt
+  # damit in keinem Scope. Das ist gewollt: Diese Vereine (Ablage-Bestand)
   # bleiben wie die Profile ohne Heimatverein der bundesweiten Rolle vorbehalten.
   def sbk_may_move_player?(ph, player, club)
     return false unless sbk_can_access_player?(ph, player)
@@ -1334,7 +1334,7 @@ class PlayersController < ApplicationController
   end
 
   def derive_club_ids_for_go(go_ids)
-    Club.all.select { |c| go_ids.include?(c.main_game_operation_id) }.map(&:id)
+    Club.home_clubs_of(go_ids).pluck(:id)
   end
 
   def set_player

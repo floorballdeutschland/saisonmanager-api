@@ -95,7 +95,7 @@ module Admin
       foreign_go = create(:game_operation, state_association_id: sa.id)
       # Der Spieler muss dem Verband des SBK zugeordnet sein, damit die
       # Lese-Berechtigung greift (admin_or_sbk_for_player?).
-      club = create(:club, game_operations_hash: [{ 'home_game_operation' => true, 'game_operation_id' => own_go.id }])
+      club = create(:club, game_operation: own_go)
       @player.update!(clubs: [{ 'club_id' => club.id }])
 
       global = DocumentType.create!(name: 'Unterstellungserklärung')
@@ -121,7 +121,7 @@ module Admin
       sa = create(:state_association)
       own_go = create(:game_operation, state_association_id: sa.id)
       foreign_go = create(:game_operation, state_association_id: sa.id)
-      club = create(:club, game_operations_hash: [{ 'home_game_operation' => true, 'game_operation_id' => own_go.id }])
+      club = create(:club, game_operation: own_go)
       @player.update!(clubs: [{ 'club_id' => club.id }])
 
       foreign = DocumentType.create!(name: 'Fremd-Attest', game_operation_id: foreign_go.id)
@@ -141,7 +141,7 @@ module Admin
       sa = create(:state_association)
       own_go = create(:game_operation, state_association_id: sa.id)
       foreign_go = create(:game_operation, state_association_id: sa.id)
-      club = create(:club, game_operations_hash: [{ 'home_game_operation' => true, 'game_operation_id' => own_go.id }])
+      club = create(:club, game_operation: own_go)
       @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }])
 
       global = DocumentType.create!(name: 'Unterstellungserklärung')
@@ -168,10 +168,8 @@ module Admin
       sa = create(:state_association)
       home_go = create(:game_operation, state_association_id: sa.id)
       past_go = create(:game_operation, state_association_id: sa.id)
-      home_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
-                                                         'game_operation_id' => home_go.id }])
-      past_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
-                                                         'game_operation_id' => past_go.id }])
+      home_club = create(:club, game_operation: home_go)
+      past_club = create(:club, game_operation: past_go)
       @player.update!(clubs: [
         { 'club_id' => home_club.id, 'home_club' => true },
         { 'club_id' => past_club.id, 'valid_until' => 1.year.ago.iso8601 }
@@ -231,10 +229,8 @@ module Admin
       sa = create(:state_association)
       own_go = create(:game_operation, state_association_id: sa.id)
       foreign_go = create(:game_operation, state_association_id: sa.id)
-      own_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
-                                                       'game_operation_id' => own_go.id }])
-      foreign_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
-                                                            'game_operation_id' => foreign_go.id }])
+      own_club = create(:club, game_operation: own_go)
+      foreign_club = create(:club, game_operation: foreign_go)
       @player.update!(clubs: [
         { 'club_id' => own_club.id, 'home_club' => true },
         { 'club_id' => foreign_club.id }
@@ -281,8 +277,7 @@ module Admin
       sa = create(:state_association)
       home_go = create(:game_operation, state_association_id: sa.id)
       other_go = create(:game_operation, state_association_id: sa.id)
-      club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
-                                                    'game_operation_id' => home_go.id }])
+      club = create(:club, game_operation: home_go)
       @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }])
 
       own = DocumentType.create!(name: 'LV-Attest', game_operation_id: home_go.id)
@@ -571,8 +566,7 @@ module Admin
       sa = create(:state_association)
       @own_go = create(:game_operation, state_association_id: sa.id)
       foreign_go = create(:game_operation, state_association_id: sa.id)
-      club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
-                                                    'game_operation_id' => @own_go.id }])
+      club = create(:club, game_operation: @own_go)
       @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }])
 
       foreign = DocumentType.create!(name: 'Fremd-Attest', game_operation_id: foreign_go.id)

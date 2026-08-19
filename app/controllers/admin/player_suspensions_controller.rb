@@ -62,7 +62,7 @@ module Admin
     end
 
     # LESEN: dieselbe Regel wie bei den Lizenzdokumenten – ein Verein des
-    # Spielers ist über den Heimat-Spielbetrieb oder eine Vereins-Freigabe
+    # Spielers ist über den zustaendigen Spielbetrieb oder eine Vereins-Freigabe
     # lesbar, oder eine seiner Lizenzen hängt an einer Liga des eigenen
     # Spielbetriebs.
     def sbk_may_read?(perm_hash)
@@ -75,12 +75,12 @@ module Admin
 
     # SPERREN: Eine spielerweite Sperre blockiert *alle* Lizenzanträge, wirkt
     # also weit über den eigenen Spielbetrieb hinaus. Sie darf deshalb nur der
-    # Heimatverband des Spielers setzen und aufheben – der Spielbetrieb, an dem
-    # sein Verein als Heim-Spielbetrieb hängt.
+    # Heimatverband des Spielers setzen und aufheben – der Spielbetrieb, der fuer
+    # seinen Verein zustaendig ist.
     #
     # Eine Vereins-Freigabe reicht dafür ausdrücklich NICHT: Sie gewährt nur
     # Lesezugriff (siehe StateAssociationRelease und Club#user_permissions, wo
-    # :update_club ebenfalls am Heim-Spielbetrieb hängt).
+    # :update_club ebenfalls am zustaendigen Spielbetrieb hängt).
     #
     # Bezieht sich die Sperre dagegen auf eine einzelne Team-Lizenz, zählt
     # zusätzlich die Liga dieses Teams: Wer die Lizenz erteilt, darf sie auch
@@ -113,7 +113,7 @@ module Admin
         (@player.licenses || []).any? { |l| l['team_id'].to_i == team.id }
     end
 
-    # Heim-Spielbetriebe der Vereine des Spielers.
+    # Zustaendige Spielbetriebe der Vereine des Spielers.
     def player_home_game_operation_ids
       Club.where(id: player_club_ids).map(&:main_game_operation_id).compact.uniq
     end

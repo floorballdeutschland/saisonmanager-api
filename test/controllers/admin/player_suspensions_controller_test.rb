@@ -19,11 +19,7 @@ module Admin
       @heim_go = create(:game_operation, state_association_id: @heim_sa.id)
       @fremd_go = create(:game_operation)
 
-      @club = create(:club, state_association_id: @heim_sa.id, game_operations_hash: [
-        { 'home_game_operation' => true, 'game_operation_id' => @heim_go.id },
-        # Gast-Eintrag auf den fremden Spielbetrieb – die Altlast.
-        { 'home_game_operation' => false, 'game_operation_id' => @fremd_go.id }
-      ])
+      @club = create(:club, state_association_id: @heim_sa.id, game_operation: @heim_go)
       @player = create(:player, clubs: [{ 'club_id' => @club.id, 'home_club' => true }])
     end
 

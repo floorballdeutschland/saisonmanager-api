@@ -63,9 +63,7 @@ class PlayersTransferScopeTest < ActionDispatch::IntegrationTest
     player = player_homed_in(@go)
     grantor_sa = create(:state_association)
     grantor_go = create(:game_operation, state_association_id: grantor_sa.id)
-    released = create(:club, state_association_id: grantor_sa.id, game_operations_hash: [
-      { 'home_game_operation' => true, 'game_operation_id' => grantor_go.id }
-    ])
+    released = create(:club, state_association_id: grantor_sa.id, game_operation: grantor_go)
     StateAssociationRelease.create!(grantor_state_association_id: grantor_sa.id,
                                     recipient_game_operation_id: @go.id,
                                     season_id: Setting.current_season_id)
@@ -108,8 +106,7 @@ class PlayersTransferScopeTest < ActionDispatch::IntegrationTest
   private
 
   def club_in(game_operation)
-    create(:club, game_operations_hash: [{ 'home_game_operation' => true,
-                                           'game_operation_id' => game_operation.id }])
+    create(:club, game_operation: game_operation)
   end
 
   # Eigener Spieler statt einer geteilten Vorrichtung: Die Fabrik :club setzt

@@ -12,6 +12,63 @@ class StateAssociation < ApplicationRecord
   validate :states_must_be_known
   before_validation :normalize_states
 
+  after_commit { Current.reset_association_structure }
+
+  # Der Verbandsbaum, aus dem sich die Zustaendigkeit fuer Vereine ableitet
+  # (Club#main_game_operation_id). Einmal je Request aufgeloest statt je Verein:
+  # Die Vereinsliste, die Rollenvergabe und die Transferpruefung laufen ueber den
+  # ganzen Vereinsbestand, und eine Kette je Verein waere dort eine Abfrage je
+  # Verein.
+  #
+  # Zwischengespeichert in Current und nicht in Rails.cache, Begruendung dort.
+  #
+  # { roots: { sa_id => Wurzel-sa_id }, subtrees: { Wurzel-sa_id => [sa_id, ...] } }
+  def self.tree
+    Current.state_association_tree ||= build_tree
+  end
+
+  # Iterativ mit `seen`, aus demselben Grund wie effective_states: gegen einen
+  # Ringverweis aus der Zeit vor parent_must_not_create_cycle. Ein Verband in
+  # einem Ring wird sein eigener Spielverbund, damit er nicht ganz aus den
+  # Listen faellt.
+  #
+  # `parents.key?(up)` faengt einen Verweis auf einen geloeschten Verband ab:
+  # auf state_associations.parent_id liegt kein Fremdschluessel. Ohne die
+  # Pruefung waere die Wurzel eine ID, die es nicht gibt, und alle Vereine
+  # darunter haetten lautlos keinen zustaendigen Spielbetrieb mehr. So bleibt
+  # der letzte bekannte Verband die Wurzel.
+  def self.build_tree
+    parents = pluck(:id, :parent_id).to_h
+    roots = parents.keys.index_with do |id|
+      seen = []
+      node = id
+      while (up = parents[node]) && parents.key?(up) && !seen.include?(node)
+        seen << node
+        node = up
+      end
+      node
+    end
+
+    { roots:, subtrees: roots.keys.group_by { |id| roots[id] } }
+  end
+
+  # Der Spielverbund eines Landesverbands: er selbst, wenn er parentlos ist,
+  # sonst die Wurzel seiner Kette. Fuer Sachsen, Sachsen-Anhalt und Thueringen
+  # also SBK Ost.
+  def self.root_id(id)
+    return nil if id.blank?
+
+    tree[:roots][id.to_i]
+  end
+
+  # Alle Landesverbaende, deren Spielverbund einer der uebergebenen ist,
+  # einschliesslich der Wurzeln selbst. Das ist die Menge, fuer die der
+  # Spielbetrieb dieses Verbunds zustaendig ist.
+  def self.ids_under(root_ids)
+    subtrees = tree[:subtrees]
+    Array(root_ids).compact.map(&:to_i).flat_map { |root| subtrees[root] || [] }.uniq
+  end
+
   # Bundeslaender, fuer die dieser Verband zustaendig ist, einschliesslich der
   # Bundeslaender seiner untergeordneten Verbaende.
   #

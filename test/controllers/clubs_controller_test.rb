@@ -30,7 +30,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     sa = create(:state_association)
     go = create(:game_operation, state_association_id: sa.id)
     club = create(:club, contact_email: 'kontakt@example.org',
-                         game_operations_hash: [{ 'home_game_operation' => true, 'game_operation_id' => go.id }])
+                         game_operation: go)
     login(create(:user, :sbk_scoped, game_operation_id: go.id))
 
     get "/api/v2/admin/clubs/#{club.id}"
@@ -52,10 +52,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     guest_go = create(:game_operation, state_association_id: guest_sa.id)
     # Verein gehört home_go, trägt guest_go nur als Gast-Eintrag
     club = create(:club, state_association_id: home_sa.id, contact_email: 'kontakt@example.org',
-                         game_operations_hash: [
-                           { 'home_game_operation' => true, 'game_operation_id' => home_go.id },
-                           { 'home_game_operation' => false, 'game_operation_id' => guest_go.id }
-                         ])
+                         game_operation: home_go)
     login(create(:user, :sbk_scoped, game_operation_id: guest_go.id))
 
     get "/api/v2/admin/clubs/#{club.id}"
@@ -71,10 +68,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     guest_sa = create(:state_association)
     guest_go = create(:game_operation, state_association_id: guest_sa.id)
     club = create(:club, state_association_id: home_sa.id, contact_email: 'kontakt@example.org',
-                         game_operations_hash: [
-                           { 'home_game_operation' => true, 'game_operation_id' => home_go.id },
-                           { 'home_game_operation' => false, 'game_operation_id' => guest_go.id }
-                         ])
+                         game_operation: home_go)
     StateAssociationRelease.create!(grantor_state_association_id: home_sa.id,
                                     recipient_game_operation_id: guest_go.id,
                                     season_id: Setting.current_season_id)
@@ -91,7 +85,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     go = create(:game_operation, state_association_id: sa.id)
     other_sa = create(:state_association)
     other_go = create(:game_operation, state_association_id: other_sa.id)
-    club = create(:club, game_operations_hash: [{ 'home_game_operation' => true, 'game_operation_id' => go.id }])
+    club = create(:club, game_operation: go)
     login(create(:user, :sbk_scoped, game_operation_id: other_go.id))
 
     get "/api/v2/admin/clubs/#{club.id}"
@@ -105,8 +99,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     recipient_sa = create(:state_association)
     recipient_go = create(:game_operation, state_association_id: recipient_sa.id)
     club = create(:club, state_association_id: grantor_sa.id,
-                         game_operations_hash: [{ 'home_game_operation' => true,
-                                                  'game_operation_id' => grantor_go.id }])
+                         game_operation: grantor_go)
     StateAssociationRelease.create!(
       grantor_state_association_id: grantor_sa.id,
       recipient_game_operation_id: recipient_go.id,
@@ -122,8 +115,8 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
   test 'user_clubs_and_teams liefert SBK mit mehreren Spielbetrieben alle Vereine' do
     go1 = create(:game_operation)
     go2 = create(:game_operation)
-    club1 = create(:club, game_operations_hash: [{ 'home_game_operation' => true, 'game_operation_id' => go1.id }])
-    club2 = create(:club, game_operations_hash: [{ 'home_game_operation' => true, 'game_operation_id' => go2.id }])
+    club1 = create(:club, game_operation: go1)
+    club2 = create(:club, game_operation: go2)
     login(create(:user, permissions: [
       { 'user_group_id' => 2, 'game_operation_id' => go1.id },
       { 'user_group_id' => 2, 'game_operation_id' => go2.id }
@@ -143,10 +136,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
   test 'user_clubs_and_teams zeigt SBK nur Teams seines Spielbetriebs' do
     go_own = create(:game_operation)
     go_other = create(:game_operation)
-    club = create(:club, game_operations_hash: [
-      { 'home_game_operation' => true, 'game_operation_id' => go_own.id },
-      { 'game_operation_id' => go_other.id }
-    ])
+    club = create(:club, game_operation: go_own)
     own_team = create(:team, club: club, league: create(:league, :current_season, game_operation: go_own))
     other_team = create(:team, club: club, league: create(:league, :current_season, game_operation: go_other))
     login(create(:user, :sbk_scoped, game_operation_id: go_own.id))
@@ -168,9 +158,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
   test 'user_clubs_and_teams zeigt Gastverein mit Mannschaft in eigener Liga' do
     go_own = create(:game_operation)
     go_home = create(:game_operation)
-    gast = create(:club, game_operations_hash: [
-      { 'home_game_operation' => true, 'game_operation_id' => go_home.id }
-    ])
+    gast = create(:club, game_operation: go_home)
     gast_team = create(:team, club: gast, league: create(:league, :current_season, game_operation: go_own))
     login(create(:user, :sbk_scoped, game_operation_id: go_own.id))
 
@@ -187,10 +175,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
   test 'user_clubs_and_teams ignoriert reine Gast-Eintraege ohne Mannschaft' do
     go_own = create(:game_operation)
     go_home = create(:game_operation)
-    altlast = create(:club, game_operations_hash: [
-      { 'home_game_operation' => true, 'game_operation_id' => go_home.id },
-      { 'home_game_operation' => false, 'game_operation_id' => go_own.id }
-    ])
+    altlast = create(:club, game_operation: go_home)
     login(create(:user, :sbk_scoped, game_operation_id: go_own.id))
 
     get '/api/v2/user/clubs_and_teams'
@@ -204,9 +189,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     grantor_sa = create(:state_association)
     grantor_go = create(:game_operation, state_association_id: grantor_sa.id)
     go_own = create(:game_operation)
-    freigegeben = create(:club, state_association_id: grantor_sa.id, game_operations_hash: [
-      { 'home_game_operation' => true, 'game_operation_id' => grantor_go.id }
-    ])
+    freigegeben = create(:club, state_association_id: grantor_sa.id, game_operation: grantor_go)
     StateAssociationRelease.create!(grantor_state_association_id: grantor_sa.id,
                                     recipient_game_operation_id: go_own.id,
                                     season_id: Setting.current_season_id)
@@ -241,12 +224,8 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
   # Das Portal fragt deshalb diese Aktion, die andere Rollen ignoriert.
   test 'vm_clubs_and_teams liefert VM mit SBK-Rolle nur den eigenen Verein' do
     go = create(:game_operation)
-    eigener_club = create(:club, game_operations_hash: [
-      { 'home_game_operation' => true, 'game_operation_id' => go.id }
-    ])
-    fremder_club = create(:club, game_operations_hash: [
-      { 'home_game_operation' => true, 'game_operation_id' => go.id }
-    ])
+    eigener_club = create(:club, game_operation: go)
+    fremder_club = create(:club, game_operation: go)
     login(create(:user, permissions: [
       { 'user_group_id' => 2, 'game_operation_id' => go.id },
       { 'user_group_id' => 4, 'club_id' => eigener_club.id }
@@ -520,22 +499,20 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
   # GameOperation.find(0) und antwortete mit 404 „Nicht gefunden." – seitdem
   # konnte niemand mehr über die Oberfläche einen Verein anlegen.
 
-  def create_club_params(game_operation_id:, **club_attrs)
+  def create_club_params(state_association_id:, **club_attrs)
     {
       id: 0,
-      game_operation_id: game_operation_id,
       club: { name: 'Neuer Verein', short_name: 'NV', long_name: 'Neuer Verein e.V.',
-              state: 'de-ni' }.merge(club_attrs)
+              state: 'de-ni', state_association_id: state_association_id }.merge(club_attrs)
     }
   end
 
-  test 'admin_club_update legt einen Verein im eigenen Spielbetrieb an' do
+  test 'admin_club_update legt einen Verein im eigenen Verband an' do
     sa = create(:state_association)
     go = create(:game_operation, state_association_id: sa.id)
     login(create(:user, :sbk_scoped, game_operation_id: go.id))
 
-    post '/api/v2/admin/clubs', params: create_club_params(game_operation_id: go.id,
-                                                           state_association_id: sa.id)
+    post '/api/v2/admin/clubs', params: create_club_params(state_association_id: sa.id)
 
     assert_response :created
     club = Club.find(JSON.parse(response.body)['id'])
@@ -543,42 +520,116 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_equal go.id, club.main_game_operation_id
   end
 
-  # game_operation_id muss als Zahl im JSONB landen. Als String findet den Verein
-  # keine der jsonb-@>-Abfragen, und er fehlt anschließend in der
-  # Vereinsverwaltung – so entstanden in Produktion Vereine ohne Spielbetrieb.
-  test 'admin_club_update speichert game_operation_id als Zahl' do
+  # Der Landesverband kommt als String an (params sind Strings) und muss trotzdem
+  # zum zustaendigen Spielbetrieb aufloesen. Fand er ihn nicht, war der Verein
+  # anschliessend in keiner Vereinsliste - so entstanden in Produktion Vereine
+  # ohne Spielbetrieb.
+  test 'admin_club_update loest den Landesverband auch als String auf' do
     sa = create(:state_association)
     go = create(:game_operation, state_association_id: sa.id)
     login(create(:user, :sbk_scoped, game_operation_id: go.id))
 
-    post '/api/v2/admin/clubs', params: create_club_params(game_operation_id: go.id.to_s)
+    post '/api/v2/admin/clubs', params: create_club_params(state_association_id: sa.id.to_s)
 
     assert_response :created
     club = Club.find(JSON.parse(response.body)['id'])
-    assert_equal go.id, club.game_operations_hash.first['game_operation_id'],
-                 'game_operation_id muss als Integer gespeichert werden'
+    assert_equal go.id, club.main_game_operation_id
     assert_includes GameOperation.find(go.id).home_clubs.pluck(:id), club.id,
                     'Verein muss über home_clubs auffindbar sein'
   end
 
-  test 'admin_club_update meldet einen fehlenden Spielbetrieb verstaendlich' do
+  # Die Anlage ueber einen untergeordneten Verband ist der Regelfall fuer die
+  # Untergliederung von SBK Ost: zustaendig ist der Spielbetrieb des Verbunds.
+  test 'admin_club_update legt einen Verein im untergeordneten Verband an' do
+    verbund = create(:state_association)
+    kind = create(:state_association, parent: verbund)
+    go = create(:game_operation, state_association_id: verbund.id)
+    login(create(:user, :sbk_scoped, game_operation_id: go.id))
+
+    post '/api/v2/admin/clubs', params: create_club_params(state_association_id: kind.id)
+
+    assert_response :created
+    club = Club.find(JSON.parse(response.body)['id'])
+    assert_equal kind.id, club.state_association_id
+    assert_equal go.id, club.main_game_operation_id
+  end
+
+  # Das Frontend schickt den Verein FLACH, ohne `club`-Klammer: ClubService
+  # postet das Objekt direkt, und ActionController::ParamsWrapper baut daraus
+  # `params[:club]`. Der Wrapper nimmt dabei nur Modell-Spalten auf, weshalb
+  # dieser Weg eigens geprueft wird: Alle anderen Tests hier setzen die Klammer
+  # selbst und wuerden einen Wrapper-Fehler nicht sehen. Ohne
+  # `state_association_id` im gewickelten Hash liefe die Anlage in „Bitte einen
+  # Landesverband auswaehlen", obwohl die Maske einen gewaehlt hat.
+  test 'admin_club_update nimmt den flachen Rumpf des Formulars an' do
+    sa = create(:state_association)
+    go = create(:game_operation, state_association_id: sa.id)
+    login(create(:user, :sbk_scoped, game_operation_id: go.id))
+
+    post '/api/v2/admin/clubs',
+         params: { id: 0, name: 'Flach angelegt', short_name: 'FL',
+                   long_name: 'Flach angelegt e.V.', state: 'de-ni',
+                   state_association_id: sa.id },
+         as: :json
+
+    assert_response :created
+    club = Club.find(JSON.parse(response.body)['id'])
+    assert_equal sa.id, club.state_association_id
+    assert_equal go.id, club.main_game_operation_id
+  end
+
+  # Gegenprobe zum flachen Rumpf beim Bearbeiten: Auch dort darf die
+  # Zielpruefung greifen, sonst waere sie ueber den Weg der Maske umgehbar.
+  test 'admin_club_update prueft das Ziel auch beim flachen Rumpf' do
+    eigen_sa = create(:state_association)
+    fremd_sa = create(:state_association)
+    eigen_go = create(:game_operation, state_association_id: eigen_sa.id)
+    create(:game_operation, state_association_id: fremd_sa.id)
+    club = create(:club, state_association_id: eigen_sa.id)
+    login(create(:user, :sbk_scoped, game_operation_id: eigen_go.id))
+
+    post '/api/v2/admin/clubs',
+         params: { id: club.id, name: 'Verschoben', state_association_id: fremd_sa.id },
+         as: :json
+
+    assert_response :forbidden
+    assert_equal eigen_sa.id, club.reload.state_association_id
+  end
+
+  test 'admin_club_update meldet einen fehlenden Landesverband verstaendlich' do
     go = create(:game_operation, state_association_id: create(:state_association).id)
     login(create(:user, :sbk_scoped, game_operation_id: go.id))
 
     assert_no_difference('Club.count') do
-      post '/api/v2/admin/clubs', params: create_club_params(game_operation_id: 0)
+      post '/api/v2/admin/clubs', params: create_club_params(state_association_id: nil)
     end
 
     assert_response :unprocessable_entity
-    assert_match 'Spielbetrieb', JSON.parse(response.body)['message']
+    assert_match 'Landesverband', JSON.parse(response.body)['message']
   end
 
-  test 'admin_club_update meldet einen unbekannten Spielbetrieb statt 404' do
+  # Ein Landesverband ohne Spielbetrieb im Verbund haette einen Verein erzeugt,
+  # den anschliessend niemand sieht. Genau dieser Zustand hat die Umstellung
+  # ausgeloest, deshalb ein eigener Riegel mit eigener Meldung.
+  test 'admin_club_update lehnt einen Landesverband ohne Spielbetrieb ab' do
+    create(:game_operation, state_association_id: create(:state_association).id)
+    ohne_spielbetrieb = create(:state_association)
+    login(create(:user, :admin))
+
+    assert_no_difference('Club.count') do
+      post '/api/v2/admin/clubs', params: create_club_params(state_association_id: ohne_spielbetrieb.id)
+    end
+
+    assert_response :unprocessable_entity
+    assert_match 'keinen Spielbetrieb', JSON.parse(response.body)['message']
+  end
+
+  test 'admin_club_update meldet einen unbekannten Landesverband statt 404' do
     go = create(:game_operation, state_association_id: create(:state_association).id)
     login(create(:user, :sbk_scoped, game_operation_id: go.id))
 
     assert_no_difference('Club.count') do
-      post '/api/v2/admin/clubs', params: create_club_params(game_operation_id: 999_999)
+      post '/api/v2/admin/clubs', params: create_club_params(state_association_id: 999_999)
     end
 
     assert_response :unprocessable_entity
@@ -589,17 +640,15 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
   # Der Zweig hatte keinen Test, obwohl dieser PR den Unterscheider zwischen
   # Anlage und Aenderung angefasst hat (params[:id].zero? -> to_i.zero?).
 
-  test 'admin_club_update aendert einen bestehenden Verein und laesst den Spielbetrieb' do
+  test 'admin_club_update aendert einen bestehenden Verein und laesst den Landesverband' do
     sa = create(:state_association)
     go = create(:game_operation, state_association_id: sa.id)
-    club = create(:club, name: 'Alt', state_association_id: sa.id,
-                         game_operations_hash: [{ 'game_operation_id' => go.id,
-                                                  'home_game_operation' => true }])
+    club = create(:club, name: 'Alt', state_association_id: sa.id)
     login(create(:user, :sbk_scoped, game_operation_id: go.id))
 
     assert_no_difference('Club.count') do
-      post '/api/v2/admin/clubs', params: { id: club.id, game_operation_id: go.id,
-                                            club: { name: 'Neu' } }
+      post '/api/v2/admin/clubs', params: { id: club.id,
+                                            club: { name: 'Neu', state_association_id: sa.id } }
     end
 
     assert_response :success
@@ -608,129 +657,145 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
   end
 
   # Das Formular schickt den ganzen Verein zurueck, also auch ein
-  # game_operation_id, das es dort gar nicht zu bearbeiten gibt. Bei einem Verein
-  # ohne Heimat-Eintrag ist das nil - und `params.key?` verstand dieses nil als
-  # Aenderungswunsch. Betroffen waren ausgerechnet die Vereine ohne Spielbetrieb.
-  test 'admin_club_update speichert einen Verein ohne Spielbetrieb, wenn keiner mitkommt' do
-    club = create(:club, name: 'Alt', game_operations_hash: [])
-    login(create(:user, :admin))
+  # game_operation_id, das es nicht mehr gibt. Es darf mitkommen, ohne die
+  # Anfrage zu stoeren - sonst scheiterte jedes Speichern aus einer aelteren
+  # Frontend-Fassung.
+  test 'admin_club_update ignoriert ein mitgeschicktes game_operation_id' do
+    sa = create(:state_association)
+    go = create(:game_operation, state_association_id: sa.id)
+    fremd_go = create(:game_operation, state_association_id: create(:state_association).id)
+    club = create(:club, name: 'Alt', state_association_id: sa.id)
+    login(create(:user, :sbk_scoped, game_operation_id: go.id))
 
-    post '/api/v2/admin/clubs', params: { id: club.id, game_operation_id: nil,
-                                          club: { name: 'Neu' } }, as: :json
-
-    assert_response :success
-    assert_equal 'Neu', club.reload.name
-    assert_nil club.main_game_operation_id, 'ohne Angabe bleibt der Verein ohne Spielbetrieb'
-  end
-
-  test 'admin_club_update wertet einen leeren Spielbetrieb als nicht mitgeschickt' do
-    club = create(:club, name: 'Alt', game_operations_hash: [])
-    login(create(:user, :admin))
-
-    post '/api/v2/admin/clubs', params: { id: club.id, game_operation_id: '',
+    post '/api/v2/admin/clubs', params: { id: club.id, game_operation_id: fremd_go.id,
                                           club: { name: 'Neu' } }
 
     assert_response :success
-    assert_equal 'Neu', club.reload.name
+    club.reload
+    assert_equal 'Neu', club.name
+    assert_equal go.id, club.main_game_operation_id,
+                 'das alte Feld darf die Zustaendigkeit nicht mehr verschieben'
   end
 
-  # Die Lockerung darf den Schutz nicht aufheben: eine ausdrueckliche 0 ist keine
-  # fehlende Angabe, sondern eine Kennung, die es nicht gibt.
-  test 'admin_club_update weist eine 0 auch bei einem Verein ohne Spielbetrieb ab' do
-    club = create(:club, name: 'Alt', game_operations_hash: [])
+  # Ein Verein ohne Landesverband bleibt speicherbar. Sonst waeren ausgerechnet
+  # die Vereine nicht pflegbar, deren Stammdaten am dringendsten Pflege brauchen.
+  test 'admin_club_update speichert einen Verein ohne Landesverband' do
+    club = create(:club, name: 'Alt', state_association_id: nil)
     login(create(:user, :admin))
 
-    post '/api/v2/admin/clubs', params: { id: club.id, game_operation_id: 0,
-                                          club: { name: 'Neu' } }, as: :json
+    post '/api/v2/admin/clubs', params: { id: club.id, club: { name: 'Neu' } }, as: :json
 
-    assert_response :unprocessable_entity
-    assert_equal 'Alt', club.reload.name
+    assert_response :success
+    assert_equal 'Neu', club.reload.name
+    assert_nil club.main_game_operation_id, 'ohne Angabe bleibt der Verein ohne Zustaendigkeit'
   end
 
-  # Ohne Pruefung am Ziel konnte ein Verband einen Verein in einen fremden
-  # Spielbetrieb verschieben, der ihn nie aufgenommen hat - und verlor dabei
-  # selbst den Zugriff.
-  test 'admin_club_update verweigert das Verschieben in einen fremden Spielbetrieb' do
-    eigen_go = create(:game_operation, state_association_id: create(:state_association).id)
-    fremd_go = create(:game_operation, state_association_id: create(:state_association).id)
-    club = create(:club, game_operations_hash: [{ 'game_operation_id' => eigen_go.id,
-                                                  'home_game_operation' => true }])
+  # Der Landesverband entscheidet, wer den Verein verwaltet. Ohne Pruefung am Ziel
+  # koennte ein Verband einen Verein in einen fremden Verbund schieben, der ihn nie
+  # aufgenommen hat - und verlöre dabei selbst den Zugriff. Diese Pruefung hing
+  # vorher am Feld `game_operation_id` und musste mitwandern.
+  test 'admin_club_update verweigert das Verschieben in einen fremden Verband' do
+    eigen_sa = create(:state_association)
+    fremd_sa = create(:state_association)
+    eigen_go = create(:game_operation, state_association_id: eigen_sa.id)
+    create(:game_operation, state_association_id: fremd_sa.id)
+    club = create(:club, state_association_id: eigen_sa.id)
     login(create(:user, :sbk_scoped, game_operation_id: eigen_go.id))
 
-    post '/api/v2/admin/clubs', params: { id: club.id, game_operation_id: fremd_go.id,
-                                          club: { name: 'Verschoben' } }
+    post '/api/v2/admin/clubs', params: { id: club.id,
+                                          club: { name: 'Verschoben', state_association_id: fremd_sa.id } }
 
     assert_response :forbidden
-    assert_equal eigen_go.id, club.reload.main_game_operation_id
+    club.reload
+    assert_equal eigen_sa.id, club.state_association_id
+    assert_equal eigen_go.id, club.main_game_operation_id
   end
 
-  # game_operation_id: 0 haette den Heimat-Eintrag auf einen Spielbetrieb gesetzt,
-  # den es nicht gibt - der Verein waere aus jeder Vereinsliste verschwunden und
-  # ueber die Oberflaeche nicht mehr auffindbar gewesen.
-  test 'admin_club_update macht einen Verein nicht durch eine 0 unsichtbar' do
-    go = create(:game_operation, state_association_id: create(:state_association).id)
-    club = create(:club, game_operations_hash: [{ 'game_operation_id' => go.id,
-                                                  'home_game_operation' => true }])
+  # Innerhalb des eigenen Verbunds ist der Wechsel erlaubt: Zustaendig bleibt
+  # derselbe Spielbetrieb, es aendert sich nur die Ueberschrift in der Liste.
+  test 'admin_club_update erlaubt den Wechsel innerhalb des eigenen Verbunds' do
+    verbund = create(:state_association)
+    kind = create(:state_association, parent: verbund)
+    go = create(:game_operation, state_association_id: verbund.id)
+    club = create(:club, state_association_id: verbund.id)
     login(create(:user, :sbk_scoped, game_operation_id: go.id))
 
-    post '/api/v2/admin/clubs', params: { id: club.id, game_operation_id: 0,
-                                          club: { name: 'Kaputt' } }
+    post '/api/v2/admin/clubs', params: { id: club.id,
+                                          club: { state_association_id: kind.id } }
 
-    assert_response :unprocessable_entity
+    assert_response :success
+    club.reload
+    assert_equal kind.id, club.state_association_id
+    assert_equal go.id, club.main_game_operation_id, 'zustaendig bleibt der Verbund'
+  end
+
+  # Ein leeres Feld haette den Verein aus jeder Vereinsliste entfernt und ueber
+  # die Oberflaeche unauffindbar gemacht. Nur die Bundesebene darf das, sie sieht
+  # solche Vereine noch (Club.unassigned).
+  test 'admin_club_update macht einen Verein nicht durch einen leeren Verband unsichtbar' do
+    sa = create(:state_association)
+    go = create(:game_operation, state_association_id: sa.id)
+    club = create(:club, state_association_id: sa.id)
+    login(create(:user, :sbk_scoped, game_operation_id: go.id))
+
+    post '/api/v2/admin/clubs', params: { id: club.id, club: { name: 'Kaputt', state_association_id: '' } }
+
+    assert_response :forbidden
     assert_equal go.id, club.reload.main_game_operation_id
     assert_includes GameOperation.find(go.id).home_clubs.pluck(:id), club.id
   end
 
-  # Gegenprobe zum Wegfall des Gast-Eintrags: Altdaten mit einem solchen Eintrag
-  # gibt es bis zum Bereinigungslauf noch, und das Speichern der Vereinsmaske
-  # darf sie nicht wieder mitschleifen.
-  test 'admin_club_update entfernt Gast-Eintraege beim Wechsel des Heimat-Spielbetriebs' do
+  test 'admin_club_update laesst die Bundesebene den Landesverband leeren' do
     sa = create(:state_association)
-    home_go = create(:game_operation, state_association_id: sa.id)
-    other_go = create(:game_operation, state_association_id: sa.id)
-    guest_go = create(:game_operation, state_association_id: create(:state_association).id)
-    goh = [
-      { 'game_operation_id' => home_go.id, 'home_game_operation' => true },
-      { 'game_operation_id' => guest_go.id, 'home_game_operation' => false }
-    ]
-    club = create(:club, game_operations_hash: goh)
-    # SBK beider Spielbetriebe, damit die Zielpruefung nicht greift.
-    perms = [
-      { 'user_group_id' => 2, 'game_operation_id' => home_go.id },
-      { 'user_group_id' => 2, 'game_operation_id' => other_go.id }
-    ]
-    login(create(:user, permissions: perms))
+    create(:game_operation, state_association_id: sa.id)
+    club = create(:club, state_association_id: sa.id)
+    login(create(:user, :admin))
 
-    post '/api/v2/admin/clubs', params: { id: club.id, game_operation_id: other_go.id,
-                                          club: { name: 'Umgezogen' } }
+    post '/api/v2/admin/clubs', params: { id: club.id, club: { state_association_id: '' } }
 
     assert_response :success
-    club.reload
-    assert_equal other_go.id, club.main_game_operation_id
-    assert_equal [{ 'game_operation_id' => other_go.id, 'home_game_operation' => true }],
-                 club.game_operations_hash
-    refute_includes club.game_operations_hash.map { |h| h['game_operation_id'] }, guest_go.id
+    assert_nil club.reload.state_association_id
+  end
+
+  # Auch die Bundesebene darf einen Verein nicht in einen Verband ohne
+  # Spielbetrieb schieben: Der Verein waere danach fuer niemanden zustaendig, und
+  # in der Maske stuende trotzdem ein Verband. Genau dieser Zustand hat die
+  # Umstellung ausgeloest.
+  test 'admin_club_update verweigert den Wechsel in einen Verband ohne Spielbetrieb' do
+    sa = create(:state_association)
+    go = create(:game_operation, state_association_id: sa.id)
+    ohne_spielbetrieb = create(:state_association)
+    club = create(:club, state_association_id: sa.id)
+    login(create(:user, :admin))
+
+    post '/api/v2/admin/clubs', params: { id: club.id,
+                                          club: { state_association_id: ohne_spielbetrieb.id } }
+
+    assert_response :forbidden
+    assert_match 'keinen Spielbetrieb', JSON.parse(response.body)['message']
+    assert_equal go.id, club.reload.main_game_operation_id
   end
 
   # Die Meldung soll den Grund nennen, nicht nur dass etwas fehlt.
-  test 'admin_club_update unterscheidet fehlenden und unbekannten Spielbetrieb' do
+  test 'admin_club_update unterscheidet fehlenden und unbekannten Landesverband' do
     go = create(:game_operation, state_association_id: create(:state_association).id)
     login(create(:user, :sbk_scoped, game_operation_id: go.id))
 
-    post '/api/v2/admin/clubs', params: create_club_params(game_operation_id: 999_999)
+    post '/api/v2/admin/clubs', params: create_club_params(state_association_id: 999_999)
     assert_match 'existiert nicht', JSON.parse(response.body)['message']
 
-    post '/api/v2/admin/clubs', params: create_club_params(game_operation_id: 0)
+    post '/api/v2/admin/clubs', params: create_club_params(state_association_id: nil)
     assert_match 'auswählen', JSON.parse(response.body)['message']
   end
 
-  test 'admin_club_update verweigert die Anlage im fremden Spielbetrieb' do
+  test 'admin_club_update verweigert die Anlage im fremden Verband' do
     eigen_go = create(:game_operation, state_association_id: create(:state_association).id)
-    fremd_go = create(:game_operation, state_association_id: create(:state_association).id)
+    fremd_sa = create(:state_association)
+    create(:game_operation, state_association_id: fremd_sa.id)
     login(create(:user, :sbk_scoped, game_operation_id: eigen_go.id))
 
     assert_no_difference('Club.count') do
-      post '/api/v2/admin/clubs', params: create_club_params(game_operation_id: fremd_go.id)
+      post '/api/v2/admin/clubs', params: create_club_params(state_association_id: fremd_sa.id)
     end
 
     assert_response :forbidden
@@ -826,11 +891,9 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     sa = create(:state_association)
     go = create(:game_operation, state_association_id: sa.id)
     eigener = create(:club, state_association_id: sa.id,
-                            game_operations_hash: [{ 'game_operation_id' => go.id,
-                                                     'home_game_operation' => true }])
+                            game_operation: go)
     fremder_go = create(:game_operation, state_association_id: create(:state_association).id)
-    fremder = create(:club, game_operations_hash: [{ 'game_operation_id' => fremder_go.id,
-                                                     'home_game_operation' => true }])
+    fremder = create(:club, game_operation: fremder_go)
 
     mischrolle = create(:user, permissions: [
       { 'user_group_id' => 2, 'game_operation_id' => go.id },
@@ -852,8 +915,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     go = create(:game_operation, state_association_id: sa.id)
     fremder_go = create(:game_operation, state_association_id: create(:state_association).id)
     fremder = create(:club, state: 'de-he',
-                            game_operations_hash: [{ 'game_operation_id' => fremder_go.id,
-                                                     'home_game_operation' => true }])
+                            game_operation: fremder_go)
     login(create(:user, permissions: [
       { 'user_group_id' => 2, 'game_operation_id' => go.id },
       { 'user_group_id' => 4, 'game_operation_id' => 0, 'club_id' => fremder.id }
@@ -870,8 +932,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
   test 'admin_club_update laesst den VM den Spielbetrieb nicht wechseln' do
     go = create(:game_operation)
     fremd_go = create(:game_operation)
-    club = create(:club, game_operations_hash: [{ 'game_operation_id' => go.id,
-                                                  'home_game_operation' => true }])
+    club = create(:club, game_operation: go)
     login(create(:user, :vm, club_id: club.id))
 
     post '/api/v2/admin/clubs', params: { id: club.id, game_operation_id: fremd_go.id,
@@ -919,28 +980,28 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     login(create(:user, :vm, club_id: create(:club).id))
 
     assert_no_difference('Club.count') do
-      post '/api/v2/admin/clubs', params: create_club_params(game_operation_id: go.id)
+      post '/api/v2/admin/clubs', params: create_club_params(state_association_id: go.state_association_id)
     end
 
     assert_response :forbidden
   end
 
-  test 'admin_club_update laesst SBK Bundesland und Landesverband weiter aendern' do
+  # Das Bundesland ordnet den Verein nur geografisch ein und bleibt fuer die SBK
+  # frei aenderbar. Der Landesverband entscheidet dagegen ueber die
+  # Zustaendigkeit; hier bleibt er derselbe, geprueft wird also nur das Bundesland.
+  test 'admin_club_update laesst SBK das Bundesland weiter aendern' do
     sa = create(:state_association)
-    ziel_sa = create(:state_association)
     go = create(:game_operation, state_association_id: sa.id)
-    club = create(:club, state: 'de-he', state_association_id: sa.id,
-                         game_operations_hash: [{ 'game_operation_id' => go.id,
-                                                  'home_game_operation' => true }])
+    club = create(:club, state: 'de-he', state_association_id: sa.id)
     login(create(:user, :sbk_scoped, game_operation_id: go.id))
 
-    post '/api/v2/admin/clubs', params: { id: club.id, game_operation_id: go.id,
-                                          club: { state: 'de-by', state_association_id: ziel_sa.id } }
+    post '/api/v2/admin/clubs', params: { id: club.id,
+                                          club: { state: 'de-by', state_association_id: sa.id } }
 
     assert_response :success
     club.reload
     assert_equal 'de-by', club.state
-    assert_equal ziel_sa.id, club.state_association_id
+    assert_equal sa.id, club.state_association_id
   end
 
   # --- Empfaengerauswahl fuer die Vereinspost -----------------------------
@@ -997,8 +1058,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     grantor_go = create(:game_operation, state_association_id: grantor_sa.id)
     recipient_go = create(:game_operation, state_association_id: create(:state_association).id)
     club = create(:club, state_association_id: grantor_sa.id,
-                         game_operations_hash: [{ 'home_game_operation' => true,
-                                                  'game_operation_id' => grantor_go.id }])
+                         game_operation: grantor_go)
     StateAssociationRelease.create!(grantor_state_association_id: grantor_sa.id,
                                     recipient_game_operation_id: recipient_go.id,
                                     season_id: Setting.current_season_id)

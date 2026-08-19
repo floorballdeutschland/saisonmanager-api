@@ -469,8 +469,8 @@ class User < ApplicationRecord
     result[:referee_merge] = ph[:admin].present? || ph[:rsk].present?
 
     result[:club_deactivate] = ph[:admin].present? || ph[:sbk].present?
-    # Vereinsanlage bleibt beim Verband: Der Heimat-Spielbetrieb entscheidet,
-    # wer den Verein verwaltet, und den kann der Vereinsmanager nicht setzen.
+    # Vereinsanlage bleibt beim Verband: Der Landesverband entscheidet, wer den
+    # Verein verwaltet, und den kann der Vereinsmanager nicht setzen.
     result[:club_create] = ph[:admin].present? || ph[:sbk].present?
     # Eingeschränktes Vereinsformular: Bundesland, Landesverband und
     # Spielbetrieb ordnen den Verein ein und bleiben dem Verband vorbehalten

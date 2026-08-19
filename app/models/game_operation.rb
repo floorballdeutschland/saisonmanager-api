@@ -5,19 +5,33 @@ class GameOperation < ApplicationRecord
 
   default_scope { order(id: :asc) }
 
-  # Vereine, deren HEIMAT-Spielbetrieb dieser ist – die Vereine also, die diesem
-  # Verband gehören. Maßgeblich für Zugriff auf die Vereinsstammdaten; darüber
-  # hinaus gibt es Lesezugriff nur per Vereins-Freigabe
-  # (StateAssociationRelease).
+  after_commit { Current.reset_association_structure }
+
+  # Spielbetrieb je Landesverband, die zweite Haelfte der
+  # Zustaendigkeitsableitung am Verein (Club#main_game_operation_id):
+  # Landesverband, Wurzel der Verbandskette, Spielbetrieb dieser Wurzel.
   #
-  # Der frühere `#clubs` matchte den gesamten game_operations_hash und zog damit
-  # auch bloße Gast-Einträge heran. Er hatte zuletzt keinen Aufrufer mehr und ist
-  # mit dem Gast-Eintrag selbst entfallen.
+  # Zwischengespeichert in Current und nicht in Rails.cache, Begruendung dort.
+  #
+  # Ein Landesverband hat hoechstens einen Spielbetrieb; auf Produktion gilt das
+  # fuer alle zehn. Gaebe es doch zwei, gewinnt der mit der niedrigeren ID
+  # (`||=` auf der von default_scope nach ID sortierten Liste), damit die
+  # Zustaendigkeit eindeutig bleibt statt je Prozess anders auszufallen.
+  def self.id_by_state_association
+    Current.game_operation_id_by_state_association ||=
+      where.not(state_association_id: nil).pluck(:state_association_id, :id)
+           .each_with_object({}) { |(sa_id, go_id), map| map[sa_id] ||= go_id }
+  end
+
+  # Vereine, fuer die dieser Spielbetrieb zustaendig ist: die Vereine in seinem
+  # Landesverband und in allen Verbaenden darunter. Massgeblich fuer Zugriff auf
+  # die Vereinsstammdaten; darueber hinaus gibt es Lesezugriff nur per
+  # Vereins-Freigabe (StateAssociationRelease).
+  #
+  # Frueher stand die Zuordnung als Heimat-Eintrag im `game_operations_hash` des
+  # Vereins. Siehe Club#main_game_operation_id, warum sie jetzt abgeleitet wird.
   def home_clubs
-    Club.where(
-      'clubs.game_operations_hash @> ?',
-      [{ game_operation_id: id, home_game_operation: true }].to_json
-    ).order(:name)
+    Club.home_clubs_of([id]).order(:name)
   end
 
   def games

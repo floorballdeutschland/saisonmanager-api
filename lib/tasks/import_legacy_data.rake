@@ -81,14 +81,24 @@ namespace :import do
     data.each do |go|
       go_id = go['id']
 
-      go['clubs'].each do |c|
-        # Nur der Heimat-Spielbetrieb. Die `additional_game_operation_ids` des
-        # Altsystems wurden hier früher als Gast-Einträge übernommen – genau die
-        # Quelle, aus der die Altlast im game_operations_hash stammte. Sie werden
-        # bewusst verworfen: Lesezugriff über Verbandsgrenzen hinweg regeln die
-        # Vereins-Freigabe und die Liga.
-        goh = [{ 'game_operation_id' => go_id, 'home_game_operation' => true }]
+      # Der Verein wird über seinen Landesverband eingeordnet, nicht mehr über
+      # einen Heimat-Eintrag im `game_operations_hash`: Aus dem Landesverband
+      # ergibt sich der zuständige Spielbetrieb (Club#main_game_operation_id).
+      # Das Altsystem kennt nur den Spielbetrieb, deshalb wird dessen
+      # Landesverband übernommen.
+      #
+      # Die `additional_game_operation_ids` des Altsystems wurden hier früher als
+      # Gast-Einträge übernommen – genau die Quelle der Altlast im Hash. Sie
+      # werden verworfen: Lesezugriff über Verbandsgrenzen hinweg regeln die
+      # Vereins-Freigabe und die Liga.
+      #
+      # Ohne Landesverband am Spielbetrieb bleibt das Feld leer. Der Verein ist
+      # dann nur für die Bundesebene sichtbar, was der ehrliche Zustand ist:
+      # Zuständig ist niemand, und ein geratener Verband wäre schlimmer.
+      sa_id = GameOperation.find_by(id: go_id)&.state_association_id
+      warn "WARN: Spielbetrieb #{go_id} hat keinen Landesverband" if sa_id.nil?
 
+      go['clubs'].each do |c|
         existing = Club.find_by(id: c['id'])
 
         if existing
@@ -97,19 +107,19 @@ namespace :import do
             long_name:            c['long_name'].presence,
             short_name:           c['short_name'].presence,
             state:                c['state'].presence,
-            game_operations_hash: goh
+            state_association_id: sa_id
           )
           updated += 1
         else
           conn.execute(<<~SQL)
-            INSERT INTO clubs (id, name, long_name, short_name, state, game_operations_hash, created_at, updated_at)
+            INSERT INTO clubs (id, name, long_name, short_name, state, state_association_id, created_at, updated_at)
             VALUES (
               #{conn.quote(c['id'])},
               #{conn.quote(c['name'])},
               #{conn.quote(c['long_name'].presence)},
               #{conn.quote(c['short_name'].presence)},
               #{conn.quote(c['state'].presence)},
-              #{conn.quote(goh.to_json)},
+              #{conn.quote(sa_id)},
               NOW(), NOW()
             )
             ON CONFLICT (id) DO UPDATE SET
@@ -117,7 +127,7 @@ namespace :import do
               long_name            = EXCLUDED.long_name,
               short_name           = EXCLUDED.short_name,
               state                = EXCLUDED.state,
-              game_operations_hash = EXCLUDED.game_operations_hash,
+              state_association_id = EXCLUDED.state_association_id,
               updated_at           = NOW()
           SQL
           created += 1

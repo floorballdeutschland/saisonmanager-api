@@ -843,7 +843,7 @@ class Player < ApplicationRecord
              go_ids << ph[:admin] if ph[:admin].present?
              go_ids << ph[:sbk] if ph[:sbk].present?
 
-             # Heimat-Spielbetrieb oder Vereins-Freigabe – gemeinsame Regel mit
+             # Zustaendiger Spielbetrieb oder Vereins-Freigabe – gemeinsame Regel mit
              # ClubsController#can_read_admin_club? und Club.admin_user_clubs.
              #
              # Vorher: Intersection mit dem GESAMTEN game_operations_hash, also

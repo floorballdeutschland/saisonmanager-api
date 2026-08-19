@@ -8,8 +8,7 @@ class PermissionConsistencyTest < ActiveSupport::TestCase
     create(:setting, current_season_id: '18')
     @game_operation = create(:game_operation)
     @club = create(:club,
-                   game_operations_hash: [{ 'game_operation_id' => @game_operation.id,
-                                            'home_game_operation' => true }])
+                   game_operation: @game_operation)
     @league = create(:league, :current_season, game_operation: @game_operation)
     @team   = create(:team, league: @league, club: @club)
   end
