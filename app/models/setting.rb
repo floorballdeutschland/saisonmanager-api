@@ -9,12 +9,15 @@ class Setting < ApplicationRecord
 
   # Zwei Ebenen, weil ein Treffer im Rails-Cache hier nicht gratis ist: der
   # MemoryStore serialisiert seine Eintraege (DupCoder) und macht bei JEDEM
-  # Lesen ein Marshal.load des ganzen AR-Objekts samt seiner JSONB-Spalten
-  # (nations, penalties, seasons, systems, league_categories, league_classes).
-  # Bei 75 Aufrufstellen und Schleifen ueber Spieler oder Ligen summiert sich
-  # das zu Sekunden — in der Lizenzliste des Verbandes war es der groesste
-  # Einzelposten. Die anfrage-lokale Ebene davor macht daraus einen Lesezugriff
-  # pro Anfrage; `flush_caches` raeumt beide Ebenen ab.
+  # Lesen ein Marshal.load. Auf Produktion sind das 0,4 ms je Aufruf — fuer
+  # sich genommen wenig, aber `.current` hat 75 Aufrufstellen, und in Schleifen
+  # ueber Spieler oder Ligen multipliziert sich das (Messung 19.08.2026:
+  # 0,93 ms je `current_min_team`, mal 41 Lizenzen eines Spielers = 38 ms fuer
+  # eine einzige Zeile der Lizenzliste). Die anfrage-lokale Ebene davor macht
+  # daraus einen Lesezugriff pro Anfrage; `flush_caches` raeumt beide ab.
+  #
+  # Sie ersetzt nicht das Herausziehen aus Schleifenruempfen: 0 ms mal n ist
+  # zwar 0, aber der Aufruf selbst bleibt Arbeit. Beides zusammen wirkt.
   def self.current
     Current.setting ||= Rails.cache.fetch('settings/current', expires_in: 1.hour) do
       Setting.first

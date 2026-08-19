@@ -58,9 +58,10 @@ class Player < ApplicationRecord
       # antwortete mit 500 (Sentry SAISONMANAGER-19).
       p[:licenses] = if only_current_licenses
                        # Die Schwelle einmal lesen, nicht je Lizenz: Setting.current_min_team
-                       # geht über Setting.current, und ein Treffer im MemoryStore ist dort
-                       # nicht gratis (siehe Setting.current). In der Lizenzliste des
-                       # Verbandes lief dieser Block über alle Lizenzen jedes Spielers.
+                       # kostet 0,93 ms (Messung auf Produktion, siehe Setting.current).
+                       # Mal die Zahl der Lizenzen wird daraus der Posten, der die
+                       # Lizenzliste des Verbandes ausgebremst hat — ein Spieler mit 41
+                       # Lizenzen brauchte so 37 ms statt 0,02 ms fuer diesen Block.
                        min_team_id = Setting.current_min_team
                        (licenses || []).select { |l| l['team_id'].to_i >= min_team_id }
                      else
@@ -111,11 +112,11 @@ class Player < ApplicationRecord
     }
   end
 
+  # Setting.current, nicht Setting.first: full_hash nimmt nation_string in JEDE
+  # Zeile auf, und Setting.first ist eine ungepufferte Abfrage. In der
+  # Lizenzliste des Verbandes lief sie damit einmal je Lizenzzeile.
   def nation_string
-    setting = Setting.first
-    nations = setting['nations']
-
-    nations&.dig(nation_id.to_s, 'name')
+    Setting.current['nations']&.dig(nation_id.to_s, 'name')
   end
 
   def created_by_string

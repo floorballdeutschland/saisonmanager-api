@@ -32,11 +32,29 @@ class PlayerTest < ActiveSupport::TestCase
     refute_includes license_team_ids, previous_team.id
   end
 
+  # nation_string las die Konfiguration per Setting.first, also ungepuffert aus
+  # der Datenbank — und full_hash nimmt nation_string in JEDE Zeile auf. In der
+  # Lizenzliste des Verbandes war das eine Abfrage je Lizenzzeile.
+  test 'full_hash loest die Nation ohne eigene Datenbankabfrage auf' do
+    create(:setting, current_season_id: '18', nations: { '1' => { 'name' => 'Deutschland' } })
+    player = create(:player, nation_id: '1')
+    player.full_hash # Zwischenspeicher fuellen, wie im zweiten Schleifendurchlauf
+
+    queries = 0
+    counter = ->(*, payload) { queries += 1 unless payload[:name] == 'SCHEMA' }
+    ActiveSupport::Notifications.subscribed(counter, 'sql.active_record') do
+      3.times { player.full_hash }
+    end
+
+    assert_equal 'Deutschland', player.nation_string, 'Testaufbau: die Nation muss aufloesbar sein'
+    assert_equal 0, queries, 'full_hash darf die Konfiguration nicht je Aufruf neu laden'
+  end
+
   # Die Schwelle gehoert vor die Schleife, nicht hinein: Setting.current_min_team
-  # laeuft ueber Setting.current, und dort kostet selbst ein Cache-Treffer ein
-  # Marshal.load der gesamten Konfiguration. In der Lizenzliste des Verbandes
-  # (Admin::LicensesController#index) lief dieser Block ueber die Lizenzen jedes
-  # Spielers und war damit der groesste Einzelposten der Antwortzeit.
+  # kostet 0,93 ms je Aufruf (gemessen auf Produktion), und in der Lizenzliste
+  # des Verbandes (Admin::LicensesController#index) lief dieser Block ueber die
+  # Lizenzen jedes Spielers. Bei 41 Lizenzen waren das 37 ms fuer eine Zeile —
+  # der groesste Einzelposten der Antwortzeit.
   test 'full_hash liest die Team-Schwelle einmal, nicht je Lizenz' do
     league = create(:league, :current_season)
     teams  = Array.new(4) { create(:team, league: league) }
