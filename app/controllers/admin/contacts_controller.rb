@@ -105,13 +105,13 @@ module Admin
       }
     end
 
-    # Nur die unter „Zusätzlich informieren" markierten Vereinsmanager. Die
-    # gespeicherten IDs werden dabei gegen die heutigen Rollen aufgelöst, wie
-    # beim Versand auch: Wer die Rolle verloren hat, verschwindet, ohne dass
-    # jemand die Markierung anfassen muss.
+    # Die Vereinsmanager, die Vereinspost bekommen: alle des Vereins außer den
+    # unter „Zusätzlich informieren" abgewählten. Gebildet wird die Liste aus
+    # den heutigen Rollen, wie beim Versand auch – wer die Rolle verliert,
+    # verschwindet, ohne dass jemand etwas anfassen muss.
     def notify_managers_for(club, vm_by_club)
-      marked = Array(club.notify_user_ids).map(&:to_i).to_set
-      (vm_by_club[club.id] || []).uniq { |m| m[:id] }.select { |m| marked.include?(m[:id]) }
+      excluded = club.notify_excluded_ids
+      (vm_by_club[club.id] || []).uniq { |m| m[:id] }.reject { |m| excluded.include?(m[:id]) }
     end
 
     def team_hash(team, tm_by_team)

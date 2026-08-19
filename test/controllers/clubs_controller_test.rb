@@ -949,7 +949,6 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     club = create(:club)
     manager = create(:user, :vm, club_id: club.id, email: 'vm@verein.example')
     create(:user, :vm, club_id: create(:club).id, email: 'fremd@verein.example')
-    club.update!(notify_user_ids: [manager.id])
     login(create(:user, :admin))
 
     get "/api/v2/admin/clubs/#{club.id}/managers"
@@ -960,6 +959,25 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     manager_ids = body['managers'].map { |m| m['id'] }
     assert_equal [manager.id], manager_ids
     assert_equal 'vm@verein.example', body['managers'].first['email']
+  end
+
+  # Die Maske hakt an, wer Post bekommt. Ohne Zutun sind das alle – nur wer
+  # abgewählt wurde, kommt ohne Haken zurück.
+  test 'admin_club_managers hakt ohne Zutun alle Vereinsmanager an' do
+    club = create(:club)
+    a = create(:user, :vm, club_id: club.id, first_name: 'Anna', email: 'a@verein.example')
+    b = create(:user, :vm, club_id: club.id, first_name: 'Bruno', email: 'b@verein.example')
+    login(create(:user, :admin))
+
+    get "/api/v2/admin/clubs/#{club.id}/managers"
+
+    assert_response :success
+    assert_equal [a.id, b.id].sort, JSON.parse(response.body)['notify_user_ids'].sort
+
+    club.update!(notify_user_ids: [a.id])
+    get "/api/v2/admin/clubs/#{club.id}/managers"
+
+    assert_equal [a.id], JSON.parse(response.body)['notify_user_ids']
   end
 
   test 'admin_club_managers ist fuer den VM eines anderen Vereins gesperrt' do
@@ -1004,6 +1022,23 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     assert_equal [manager.id], club.reload.notify_user_ids
+  end
+
+  # Speichern ohne das Feld darf den Verteiler nicht anfassen. Sonst hätte
+  # jede Maske ohne die Auswahl – etwa das Umbenennen aus der Liga-Kopie –
+  # stillschweigend alle Vereinsmanager abgewählt.
+  test 'admin_club_update ohne das Feld laesst die Abwahl stehen' do
+    club = create(:club)
+    a = create(:user, :vm, club_id: club.id, email: 'a@verein.example')
+    b = create(:user, :vm, club_id: club.id, email: 'b@verein.example')
+    caller = create(:user, :vm, club_id: club.id)
+    club.update!(notify_user_ids: [a.id, caller.id])
+    login(caller)
+
+    post '/api/v2/admin/clubs', params: { id: club.id, club: { name: 'Neu' } }
+
+    assert_response :success
+    assert_equal [b.id], club.reload.notify_excluded_user_ids
   end
 
   test 'admin_club_update weist zwei Adressen im Kontaktfeld ab' do

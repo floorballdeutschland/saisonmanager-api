@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_08_19_100000) do
+ActiveRecord::Schema[7.1].define(version: 2026_08_19_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -124,7 +124,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_19_100000) do
     t.string "contact_email"
     t.datetime "deactivated_at"
     t.bigint "deactivated_by"
-    t.integer "notify_user_ids", default: [], null: false, array: true
+    t.integer "notify_excluded_user_ids", default: [], null: false, array: true
   end
 
   create_table "daily_metrics", force: :cascade do |t|
