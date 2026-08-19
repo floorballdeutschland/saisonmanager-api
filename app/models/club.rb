@@ -123,7 +123,7 @@ class Club < ApplicationRecord
   # PlayersController#reactivate.
   def players(include_deactivated: false)
     scope = include_deactivated ? Player.where(merged_into_id: nil) : Player.active
-    p = scope.where("players.clubs @> '[{\"club_id\": ?}]'", id).order(:last_name, :first_name)
+    p = scope.where('players.clubs @> ?', [{ club_id: id }].to_json).order(:last_name, :first_name)
     p.select do |pl|
       pl.clubs.map do |c|
         # Strukturell kaputter Eintrag (kein Objekt) aus dem Altbestand: zaehlt nicht als

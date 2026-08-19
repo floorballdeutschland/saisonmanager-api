@@ -1543,9 +1543,13 @@ class Game < ApplicationRecord
     in_players = where("players->'home' @> ?", [{ player_id: player_id }].to_json)
                  .or(where("players->'guest' @> ?", [{ player_id: player_id }].to_json))
     path = '$.** ? (@ == $v)'
+    # ::integer ist Pflicht, seit die Werte als echte Bind-Parameter statt als
+    # eingesetzter Text in die Abfrage gehen (Rails 7.2). jsonb_build_object
+    # nimmt "any" entgegen und kann den Typ eines untypisierten Parameters nicht
+    # herleiten; Postgres bricht sonst mit "could not determine data type" ab.
     in_sp_awards = where(
-      "jsonb_path_exists(starting_players, ?::jsonpath, jsonb_build_object('v', ?)) OR " \
-      "jsonb_path_exists(awards, ?::jsonpath, jsonb_build_object('v', ?))",
+      "jsonb_path_exists(starting_players, ?::jsonpath, jsonb_build_object('v', ?::integer)) OR " \
+      "jsonb_path_exists(awards, ?::jsonpath, jsonb_build_object('v', ?::integer))",
       path, player_id, path, player_id
     )
     where(id: in_players).or(where(id: in_sp_awards))

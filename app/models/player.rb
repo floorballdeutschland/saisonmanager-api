@@ -787,6 +787,15 @@ class Player < ApplicationRecord
     #   ]
     # )
 
+    # Das `?` steht hier INNERHALB eines SQL-Stringliterals ('?') und ueberlebt nur,
+    # weil find_by_sql ueber sanitize_sql_array laeuft — das ersetzt weiterhin
+    # textuell. Wer diese Methode auf `where` umstellt (naheliegend, find_by_team_ids
+    # daneben tut es schon), bekommt ab Rails 7.2 einen echten Bind-Parameter: Der
+    # Arel-Visitor zerlegt auch innerhalb von Quotes, und die Abfrage scheitert mit
+    # "bind message supplies 1 parameters, but prepared statement requires 0".
+    # Das trifft die oeffentlichen Lizenzlisten und das Sekretariat, siehe die
+    # Aufrufer in public_license_list_controller, public_secretary_controller,
+    # leagues_controller, teams_controller, League und Team.
     Player.find_by_sql [
       "select *, extr_license from (SELECT *, jsonb_array_elements(licenses) as extr_license FROM players ) as subqry WHERE extr_license->>'team_id' ='?' ORDER BY extr_license->>'team_id', last_name, first_name", team_id
     ]

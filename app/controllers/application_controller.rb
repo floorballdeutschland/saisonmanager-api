@@ -238,7 +238,14 @@ class ApplicationController < ActionController::Base
       # damit nicht auseinanderlaufen.
       loader = image.get('vips-loader')
     rescue Vips::Error
-      return 'Die Datei konnte nicht als Bild gelesen werden.'
+      # Hier landen seit Rails 7.2.3.2 auch die Formate, die vips zwar lesen
+      # könnte, aber nicht mehr darf: ActiveStorage schaltet beim Laden
+      # `Vips.block_untrusted(true)` und sperrt damit die als "unfuzzed"
+      # markierten Loader, darunter svgload. Eine getarnte SVG fällt deshalb
+      # schon hier durch und erreicht die Loader-Prüfung unten nicht mehr. Die
+      # Meldung nennt trotzdem die erlaubten Formate, damit der Hinweis auch in
+      # diesem Fall am Inhalt ansetzt und nicht an der Dateiendung.
+      return 'Die Datei konnte nicht als Bild gelesen werden. Erlaubt sind echte PNG-, JPG- oder WebP-Bilder.'
     end
 
     # Eigene Meldung, nicht dieselbe wie bei der Kopfzeilen-Prüfung: Browser

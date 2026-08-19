@@ -27,8 +27,12 @@ Rails.application.configure do
   config.action_controller.perform_caching = false
   config.cache_store = :null_store
 
-  # Raise exceptions instead of rendering exception templates.
-  config.action_dispatch.show_exceptions = false
+  # Raise exceptions instead of rendering exception templates. Seit Rails 7.2
+  # versteht die Einstellung nur noch :all, :rescuable und :none; das frühere
+  # false galt nicht mehr als "gar nichts abfangen", sondern fiel auf Abfangen
+  # zurück. Tests, die auf eine Ausnahme prüfen (fehlende Route, Fehler in einer
+  # Mailvorlage), sahen dann eine 404- oder 500-Antwort statt der Ausnahme.
+  config.action_dispatch.show_exceptions = :none
 
   # Disable request forgery protection in test environment.
   config.action_controller.allow_forgery_protection = false
