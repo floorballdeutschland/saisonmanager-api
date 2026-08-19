@@ -270,9 +270,12 @@ class ClubsController < ApplicationController
       return render json: { message: 'Keine Berechtigung' }, status: :forbidden
     end
 
+    excluded = club.notify_excluded_ids
+    managers = club.club_managers.sort_by { |user| user.fullname.strip.downcase }
+
     render json: {
-      notify_user_ids: Array(club.notify_user_ids),
-      managers: club.club_managers.sort_by { |user| user.fullname.strip.downcase }.map do |user|
+      notify_user_ids: managers.map(&:id).reject { |id| excluded.include?(id) },
+      managers: managers.map do |user|
         { id: user.id, name: user.fullname.strip.presence || user.user_name,
           user_name: user.user_name, email: user.email }
       end
