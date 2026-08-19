@@ -124,16 +124,43 @@ class DocumentTypeTest < ActiveSupport::TestCase
     assert DocumentType.new(name: 'C', required_from_birth_year: Date.current.year).valid?
   end
 
-  test 'age_rule benennt die greifende Form' do
-    assert_nil DocumentType.new(name: 'A').age_rule
-    assert_equal :below_age, DocumentType.new(name: 'B', required_below_age: 16).age_rule
-    assert_equal :from_birth_year, DocumentType.new(name: 'C', required_from_birth_year: 2012).age_rule
+  # Die Elternzustimmung ohne Katalog-Eintrag bleibt altersbasiert; der Jahrgang ist
+  # nichts, was sich ohne Eintrag herleiten ließe. Getestet über das Verhalten und
+  # nicht über die Konstante: Ein Konstantentest kann aus keinem fachlichen Grund
+  # fehlschlagen und sagt dem nächsten Leser nicht, was daran falsch wäre.
+  test 'Elternzustimmung ohne Katalog-Eintrag bleibt am Alter, nicht am Jahrgang' do
+    assert_empty DocumentType.where(key: 'parental_consent')
+
+    minderjaehrig = DocumentType.required_keys(%w[parental_consent],
+                                               birthdate: 15.years.ago.to_date.to_s,
+                                               requested_at: Time.current)
+    assert_equal %w[parental_consent], minderjaehrig
+
+    # Volljährig, aber ein Jahrgang, der bei einer Jahrgangsregel noch drin wäre:
+    # ohne Katalog-Eintrag zählt allein das Alter.
+    volljaehrig = DocumentType.required_keys(%w[parental_consent],
+                                             birthdate: 19.years.ago.to_date.to_s,
+                                             requested_at: Time.current)
+    assert_empty volljaehrig
   end
 
-  # Die Elternzustimmung ohne Katalog-Eintrag bleibt altersbasiert; der Jahrgang
-  # ist nichts, was sich ohne Eintrag herleiten ließe.
-  test 'Rückfallregel der Elternzustimmung bleibt altersbasiert' do
-    assert_equal({ 'parental_consent' => 18 }, DocumentType::FALLBACK_REQUIRED_BELOW_AGE)
+  # Ein Katalog-Eintrag schlägt die Rückfallregel: Trägt ein Verband für
+  # parental_consent eine Jahrgangsregel ein, gilt die und nicht die 18. Der Zweig
+  # ist erreichbar, weil required_keys `catalog[k] || fallback_type(k)` nimmt.
+  test 'ein Katalog-Eintrag fuer parental_consent schlaegt die Rueckfallregel' do
+    DocumentType.create!(name: 'Zustimmung', key: 'parental_consent',
+                         required_from_birth_year: 2012)
+
+    minderjaehrig_alter_jahrgang = DocumentType.required_keys(
+      %w[parental_consent], birthdate: '2011-01-01', requested_at: Time.current
+    )
+    assert_empty minderjaehrig_alter_jahrgang,
+                 'der Katalog-Eintrag entscheidet, obwohl die Person unter 18 ist'
+
+    im_jahrgang = DocumentType.required_keys(
+      %w[parental_consent], birthdate: '2013-01-01', requested_at: Time.current
+    )
+    assert_equal %w[parental_consent], im_jahrgang
   end
 
   test 'validity erlaubt nur once und per_season' do

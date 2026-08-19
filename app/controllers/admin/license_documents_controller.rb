@@ -377,10 +377,13 @@ module Admin
     # Zwei Gründe, eine Art aus der Auswahl zu lassen:
     #
     # (a) Der Spieler ist ihr altersmäßig entwachsen: required_below_age
-    #     überschritten oder ein Jahrgang vor required_from_birth_year, sie kann für
-    #     ihn nie wieder gefordert sein. Ohne lesbares Geburtsdatum bleibt sie drin –
-    #     required_for? entscheidet im Zweifel für "erforderlich", und dieselbe Regel
-    #     gilt im Lizenzantrag.
+    #     überschritten oder ein Jahrgang vor required_from_birth_year. Ohne lesbares
+    #     Geburtsdatum bleibt sie drin – required_for? entscheidet im Zweifel für
+    #     "erforderlich", und dieselbe Regel gilt im Lizenzantrag.
+    #     Beim Alter ist das endgültig, denn Alter steigt nur. Beim Jahrgang gilt es
+    #     nur, solange die Zahl nach vorn gezogen wird: Senkt sie jemand, ist die Art
+    #     für die älteren Jahrgänge wieder erforderlich. Das trägt, weil hier je
+    #     Aufruf neu ausgewertet wird — eine gecachte Auswahl wäre falsch.
     # (b) Ein verbandsspezifisch gescopter SBK bekommt die Dokumente dieser Art
     #     ohnehin nicht zu sehen (filter_documents_by_scope). Dann darf die Art
     #     auch nicht in der Auswahl stehen, sonst lädt er in ein Loch hoch.

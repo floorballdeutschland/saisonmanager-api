@@ -56,7 +56,8 @@ class DocumentType < ApplicationRecord
   # Welche der Liga-Keys sind für diesen Spieler tatsächlich erforderlich?
   # Stichtag für Arten mit `required_below_age` ist das Datum der
   # Lizenzbeantragung; Arten mit `required_from_birth_year` sehen es nicht an.
-  # Keys ohne Katalogeintrag (Freitext-Altbestand) bleiben erforderlich.
+  # Keys ohne Katalogeintrag (Freitext-Altbestand) bleiben erforderlich, ausgenommen
+  # die Keys aus FALLBACK_REQUIRED_BELOW_AGE.
   def self.required_keys(keys, birthdate:, requested_at:, catalog: nil)
     keys = Array(keys)
     return [] if keys.empty?
