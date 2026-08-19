@@ -1,5 +1,6 @@
 require 'test_helper'
 require 'rake'
+require 'csv'
 
 # Tests fuer clubs:fbh_under_flvsh und clubs:responsibility_report
 # (lib/tasks/align_club_responsibility.rake).
@@ -23,6 +24,8 @@ class AlignClubResponsibilityTest < ActiveSupport::TestCase
                                       vsk_email: 'info@floorball.hamburg',
                                       rsk_email: 'info@floorball.hamburg')
   end
+
+  teardown { File.delete(@csv) if @csv && File.exist?(@csv) }
 
   def run_task(name, dry_run: false)
     task = Rake::Task[name]
@@ -74,6 +77,122 @@ class AlignClubResponsibilityTest < ActiveSupport::TestCase
 
     assert_raises(SystemExit) { run_task('clubs:fbh_under_flvsh') }
     assert_nil @fbh.reload.parent_id
+  end
+
+  # --- clubs:fix_state_associations ------------------------------------------
+  #
+  # Korrigiert die Landesverbands-Zuordnung aus einer Liste. Die Entscheidung je
+  # Verein ist belegt, nicht hergeleitet, deshalb eine CSV und keine Regel.
+
+  def liste(zeilen)
+    @csv = Rails.root.join("tmp/lv_korrektur_test_#{SecureRandom.hex(4)}.csv").to_s
+    CSV.open(@csv, 'w', col_sep: ';') do |csv|
+      csv << %w[club_id name lv_kuerzel state beleg]
+      zeilen.each { |z| csv << z }
+    end
+    @csv
+  end
+
+  def run_fix(pfad, dry_run: false)
+    task = Rake::Task['clubs:fix_state_associations']
+    saved = ENV.to_hash.slice('CSV', 'DRY_RUN')
+    ENV['CSV'] = pfad
+    ENV['DRY_RUN'] = dry_run ? 'true' : 'false'
+    task.reenable
+    capture_io { task.invoke }
+  ensure
+    %w[CSV DRY_RUN].each { |k| ENV[k] = saved[k] }
+  end
+
+  test 'setzt den Landesverband und damit den zustaendigen Spielbetrieb' do
+    ziel_sa = create(:state_association, short_name: 'ZIEL')
+    ziel_go = create(:game_operation, state_association_id: ziel_sa.id)
+    club = create(:club, name: 'Wechsler', state_association_id: @fbh.id)
+
+    run_fix(liste([[club.id, 'Wechsler', 'ZIEL', '', 'Test']]))
+
+    club.reload
+    assert_equal ziel_sa.id, club.state_association_id
+    assert_equal ziel_go.id, club.main_game_operation_id
+  end
+
+  # Leeres state-Feld heisst „unveraendert lassen", nicht „leeren". Bei den
+  # Trophy-Auswahlteams traegt das Bundesland die vertretene Region und muss
+  # stehenbleiben, waehrend der Landesverband auf den Bundesverband wechselt.
+  test 'laesst das Bundesland stehen, wenn die Liste keines nennt' do
+    ziel_sa = create(:state_association, short_name: 'ZIEL')
+    create(:game_operation, state_association_id: ziel_sa.id)
+    club = create(:club, name: 'Auswahl Nord', state: 'de-sh', state_association_id: @fbh.id)
+
+    run_fix(liste([[club.id, 'Auswahl Nord', 'ZIEL', '', 'Auswahlteam']]))
+
+    assert_equal 'de-sh', club.reload.state, 'die vertretene Region darf nicht verlorengehen'
+  end
+
+  test 'setzt das Bundesland, wenn die Liste eines nennt' do
+    ziel_sa = create(:state_association, short_name: 'ZIEL')
+    create(:game_operation, state_association_id: ziel_sa.id)
+    club = create(:club, name: 'Falsch verortet', state: 'de-be', state_association_id: @fbh.id)
+
+    run_fix(liste([[club.id, 'Falsch verortet', 'ZIEL', 'de-sn', 'Sitz korrigiert']]))
+
+    assert_equal 'de-sn', club.reload.state
+  end
+
+  # Der Name in der Liste ist eine Sicherung: Steht unter der ID inzwischen ein
+  # anderer Verein (Merge, Neuanlage), ist die Entscheidung nicht mehr belegt.
+  # Ohne diese Pruefung wuerde der Lauf einem fremden Verein einen Verband
+  # zuweisen, den nie jemand fuer ihn entschieden hat.
+  test 'ueberspringt einen Verein, dessen Name nicht zur Liste passt' do
+    ziel_sa = create(:state_association, short_name: 'ZIEL')
+    create(:game_operation, state_association_id: ziel_sa.id)
+    club = create(:club, name: 'Inzwischen anders', state_association_id: @fbh.id)
+
+    out, = run_fix(liste([[club.id, 'Alter Name', 'ZIEL', '', 'Test']]))
+
+    assert_equal @fbh.id, club.reload.state_association_id
+    assert_match(/erwartet 'Alter Name'/, out)
+    assert_match(/1 Fehler/, out)
+  end
+
+  # Ein Ziel ohne Spielbetrieb im Verbund wuerde genau den Zustand herstellen,
+  # den die Umstellung beseitigt: ein Verband ist eingetragen, zustaendig ist
+  # niemand.
+  test 'ueberspringt ein Ziel ohne Spielbetrieb im Verbund' do
+    ohne_go = create(:state_association, short_name: 'OHNEGO')
+    club = create(:club, name: 'Verein', state_association_id: @flvsh.id)
+
+    out, = run_fix(liste([[club.id, 'Verein', 'OHNEGO', '', 'Test']]))
+
+    assert_equal @flvsh.id, club.reload.state_association_id
+    assert_not_equal ohne_go.id, club.state_association_id
+    assert_match(/keinen Spielbetrieb/, out)
+  end
+
+  test 'fix_state_associations Dry-Run schreibt nichts' do
+    ziel_sa = create(:state_association, short_name: 'ZIEL')
+    create(:game_operation, state_association_id: ziel_sa.id)
+    club = create(:club, name: 'Wechsler', state_association_id: @fbh.id)
+
+    run_fix(liste([[club.id, 'Wechsler', 'ZIEL', '', 'Test']]), dry_run: true)
+
+    assert_equal @fbh.id, club.reload.state_association_id
+  end
+
+  # Die mitgelieferte Liste ist der Datenlauf fuer Produktion. Sie muss lesbar
+  # sein und darf keine Zeile ohne Beleg enthalten: Der Beleg ist das Einzige,
+  # was spaeter erklaert, warum ein Verein diesen Verband hat.
+  test 'die mitgelieferte Liste ist vollstaendig belegt' do
+    pfad = Rails.root.join('lib/tasks/data/vereins_landesverbaende_2026_08_19.csv')
+    zeilen = CSV.read(pfad, headers: true, col_sep: ';')
+
+    assert_equal 23, zeilen.size
+    zeilen.each do |z|
+      assert z['club_id'].to_i.positive?, "club_id fehlt: #{z.inspect}"
+      assert z['name'].present?, "name fehlt: #{z.inspect}"
+      assert z['lv_kuerzel'].present?, "lv_kuerzel fehlt: #{z.inspect}"
+      assert z['beleg'].present?, "beleg fehlt: #{z.inspect}"
+    end
   end
 
   # Der Bericht ist das Tor vor dem Deploy: Jede Zeile ist ein Verein, der seinen

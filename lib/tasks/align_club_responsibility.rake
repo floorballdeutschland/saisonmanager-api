@@ -10,23 +10,153 @@
 # ist das am ETV Hamburg, der mit Landesverband Hamburg in der Vereinsliste von
 # Floorball Niedersachsen stand.
 #
-# ZWEI AUFGABEN, ZWEI TASKS
+# DREI AUFGABEN, DREI TASKS -- in dieser Reihenfolge auszufuehren
 #
-#   :report   Vergleicht die frueher gespeicherte Zustaendigkeit mit der jetzt
+#   :fbh_under_flvsh
+#             Haengt den Floorball Bund Hamburg unter den Floorballverband
+#             Schleswig-Holstein und raeumt dabei auf, was daran haengt.
+#             Beleg unten.
+#
+#   :fix_state_associations
+#             Korrigiert die Landesverbands-Zuordnung der Vereine, bei denen das
+#             Feld eine andere Frage beantwortet hat als die Zustaendigkeit.
+#             Entscheidung je Verein aus einer Liste, nicht aus einer Regel:
+#             lib/tasks/data/vereins_landesverbaende_2026_08_19.csv.
+#
+#   :responsibility_report
+#             Vergleicht die frueher gespeicherte Zustaendigkeit mit der jetzt
 #             abgeleiteten und nennt jeden Verein, bei dem sie auseinanderfaellt.
 #             Das ist das Tor vor dem Deploy: Jede Zeile ist ein Verein, der
 #             seinen Verband wechselt, ohne dass es jemand angeordnet hat.
-#             Rein lesend.
-#
-#   :fbh      Haengt den Floorball Bund Hamburg unter den Floorballverband
-#             Schleswig-Holstein und raeumt dabei auf, was daran haengt.
-#             Beleg unten.
+#             Rein lesend. Muss am Ende 0 Wechsel melden.
 #
 # Der Bericht laeuft nur, solange `clubs.game_operations_hash` noch existiert.
 # Mit dem Abbau der Spalte entfaellt er, dann gibt es keinen zweiten Wert mehr,
 # gegen den man vergleichen koennte -- und genau das ist das Ziel.
 
 namespace :clubs do
+  # BELEG
+  #
+  # Bei 18 der 19 Vereine, deren Zustaendigkeit sich mit der Umstellung
+  # verschieben wuerde, ist nicht der frueher gespeicherte Wert falsch, sondern
+  # das Landesverbands-Feld: Es hat eine andere Frage beantwortet als die
+  # Zustaendigkeit.
+  #
+  # Drei Muster, alle in der Liste einzeln belegt:
+  #
+  #   Auswahlteams   Bei den elf Trophy-Teams trug das Feld die *vertretene
+  #                  Region*. Ausrichter des Wettbewerbs ist der Bundesverband,
+  #                  und er pflegt die Auswahlen auch (Nutzer-Entscheidung vom
+  #                  19.08.2026). Die Region steht weiterhin in `clubs.state`,
+  #                  geht also nicht verloren.
+  #   Kein Verband   Fuer Mecklenburg-Vorpommern gibt es keinen Landesverband,
+  #                  fuer das Ausland auch nicht. Dort stand ein Platzhalter.
+  #                  Zustaendig ist der Verband, in dessen Spielbetrieb die
+  #                  Mannschaften antreten.
+  #   Ablage         Ablage- und Veranstaltungs-Vereine haben keinen Sitz; ihre
+  #                  LV-Werte waren zufaellig oder leer.
+  #
+  # Nur Verein 66 (Partisan Connewitz) ist ein echter Fehler im Feld: Sitz ist
+  # Leipzig-Connewitz, Ort und Bundesland standen auf Berlin.
+  #
+  # Warum eine Liste und keine Regel: Jede Zeile ist eine Einzelentscheidung mit
+  # eigener Begruendung. Eine Regel wuerde sie verdecken und beim naechsten
+  # Sonderfall stillschweigend das Falsche tun -- genau das war die Ursache des
+  # Problems, das dieser PR behebt.
+  #
+  # `state` wird nur gesetzt, wo die Liste einen Wert nennt. Leer heisst
+  # „unveraendert lassen", nicht „leeren": Bei den Auswahlteams traegt das Feld
+  # die Region und muss stehenbleiben.
+  #
+  # Dry-Run (Standard):
+  #   bundle exec rails clubs:fix_state_associations
+  # Ausfuehren:
+  #   bundle exec rails clubs:fix_state_associations DRY_RUN=false
+  # Andere Liste:
+  #   CSV=/pfad/zur/datei.csv
+  desc 'Korrigiert die Landesverbands-Zuordnung der Vereine aus einer Liste. DRY_RUN=false zum Ausfuehren.'
+  task fix_state_associations: :environment do
+    require 'csv'
+
+    dry_run = ENV['DRY_RUN'] != 'false'
+    pfad = ENV['CSV'].presence ||
+           Rails.root.join('lib/tasks/data/vereins_landesverbaende_2026_08_19.csv').to_s
+    abort "Liste nicht gefunden: #{pfad}" unless File.exist?(pfad)
+
+    zeilen = CSV.read(pfad, headers: true, col_sep: ';')
+    puts "=== Landesverbaende korrigieren #{dry_run ? '[DRY RUN]' : '[LIVE]'} ==="
+    puts "Liste: #{pfad} (#{zeilen.size} Eintraege)\n\n"
+
+    geaendert = 0
+    unveraendert = 0
+    fehler = 0
+
+    ActiveRecord::Base.transaction do
+      zeilen.each do |zeile|
+        club = Club.find_by(id: zeile['club_id'])
+        if club.nil?
+          puts "  FEHLER: Verein #{zeile['club_id']} (#{zeile['name']}) nicht gefunden"
+          fehler += 1
+          next
+        end
+
+        # Der Name aus der Liste ist eine Sicherung, keine Anzeige: Steht unter
+        # der ID inzwischen ein anderer Verein (Merge, Neuanlage), ist die
+        # Entscheidung nicht mehr belegt und darf nicht angewendet werden.
+        if zeile['name'].present? && club.name != zeile['name']
+          puts "  FEHLER: Verein #{club.id} heisst '#{club.name}', erwartet '#{zeile['name']}' -- uebersprungen"
+          fehler += 1
+          next
+        end
+
+        ziel = StateAssociation.find_by(short_name: zeile['lv_kuerzel'])
+        if ziel.nil?
+          puts "  FEHLER: Landesverband '#{zeile['lv_kuerzel']}' nicht gefunden (Verein #{club.id})"
+          fehler += 1
+          next
+        end
+
+        # Ohne Spielbetrieb am Ziel waere der Verein danach herrenlos. Das ist
+        # genau der Zustand, den die Umstellung beseitigt, und darf hier nicht
+        # neu entstehen.
+        ziel_go_id = GameOperation.id_by_state_association[StateAssociation.root_id(ziel.id)]
+        if ziel_go_id.nil?
+          puts "  FEHLER: '#{ziel.short_name}' hat keinen Spielbetrieb im Verbund (Verein #{club.id})"
+          fehler += 1
+          next
+        end
+
+        neuer_state = zeile['state'].presence
+        state_aenderung = neuer_state.present? && club.state != neuer_state
+
+        if club.state_association_id == ziel.id && !state_aenderung
+          unveraendert += 1
+          next
+        end
+
+        vorher_go = club.main_game_operation_id
+        attrs = { state_association_id: ziel.id }
+        attrs[:state] = neuer_state if state_aenderung
+
+        puts "  #{club.id.to_s.ljust(5)} #{club.name.to_s.ljust(32)} " \
+             "LV #{club.state_association_id.inspect} -> #{ziel.id} (#{ziel.short_name}), " \
+             "zustaendig #{vorher_go.inspect} -> #{ziel_go_id}" \
+             "#{state_aenderung ? ", Bundesland #{club.state.inspect} -> #{neuer_state}" : ''}"
+
+        club.update!(attrs) unless dry_run
+        geaendert += 1
+      end
+
+      raise ActiveRecord::Rollback if dry_run
+    end
+
+    puts
+    puts "#{geaendert} Verein(e) #{dry_run ? 'zu aendern' : 'geaendert'}, " \
+         "#{unveraendert} schon richtig, #{fehler} Fehler"
+    puts 'Dry-Run -- nichts geschrieben. Mit DRY_RUN=false ausfuehren.' if dry_run
+    puts 'Danach clubs:responsibility_report laufen lassen; er muss 0 Wechsel melden.' unless dry_run
+  end
+
   desc 'Vergleicht gespeicherte und abgeleitete Zustaendigkeit je Verein (rein lesend).'
   task responsibility_report: :environment do
     wechsel = []
