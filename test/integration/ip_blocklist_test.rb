@@ -9,11 +9,12 @@ require 'test_helper'
 # werden kann: Wuerde `req.ip` dem Client folgen, waere jede IP-Regel in dieser
 # Datei wirkungslos — auch die Drosselungen gegen Mail-Fluten.
 class IpBlocklistTest < ActionDispatch::IntegrationTest
-  GEBANNT = Rack::Attack::BLOCKED_IPS.keys.first
+  GEBANNT = '198.51.100.5'.freeze
 
   setup do
     create(:setting)
     @key, = ApiKey.generate(name: 'Test')
+    BlockedIp.create!(ip: GEBANNT, reason: 'Test')
   end
 
   test 'eine gebannte IP bekommt 404, auch mit gueltigem API-Key' do
@@ -57,6 +58,34 @@ class IpBlocklistTest < ActionDispatch::IntegrationTest
 
     assert_response :not_found
     assert_equal '{}', response.body, 'kein Rails-Fehlerrumpf, also kein RoutingError'
+  end
+
+  # Der Sinn der Verwaltungsmaske: Eine Freigabe muss ohne Deploy und ohne
+  # Neustart wirken. Der Cache wird dafuer beim Loeschen verworfen (after_commit).
+  test 'eine Freigabe wirkt sofort' do
+    with_real_cache do
+      get '/api/v2/init', headers: { 'X-Api-Key' => @key }, env: { 'REMOTE_ADDR' => GEBANNT }
+      assert_response :not_found
+
+      BlockedIp.find_by!(ip: GEBANNT).destroy!
+
+      get '/api/v2/init', headers: { 'X-Api-Key' => @key }, env: { 'REMOTE_ADDR' => GEBANNT }
+      assert_response :success, 'nach der Freigabe darf die Adresse nicht mehr haengen bleiben'
+    end
+  end
+
+  # Gegenrichtung: Eine neu eingetragene Sperre greift ebenso ohne Neustart.
+  test 'eine neue Sperre wirkt sofort' do
+    with_real_cache do
+      frisch = '198.51.100.99'
+      get '/api/v2/init', headers: { 'X-Api-Key' => @key }, env: { 'REMOTE_ADDR' => frisch }
+      assert_response :success
+
+      BlockedIp.create!(ip: frisch, reason: 'Test')
+
+      get '/api/v2/init', headers: { 'X-Api-Key' => @key }, env: { 'REMOTE_ADDR' => frisch }
+      assert_response :not_found
+    end
   end
 
   test 'ohne Bann fuehrt derselbe Pfad zum Routing-Fehler' do
