@@ -1,0 +1,170 @@
+# Eine dauerhaft abgewiesene Adresse. Ausgewertet wird das in
+# config/initializers/rack_attack.rb, vor dem Router — eine gesperrte Adresse
+# beschaeftigt den Server also nicht mit Routing und Controllern.
+#
+# Wirksam ist das nur, weil `req.ip` nicht vom Client bestimmbar ist: nginx
+# setzt X-Forwarded-For ueber $proxy_add_x_forwarded_for, haengt die echte
+# Adresse also hinten an eine mitgeschickte Kette, und Rack nimmt daraus die
+# letzte nicht vertraute Adresse.
+class BlockedIp < ApplicationRecord
+  # Wer wann welche Adresse gesperrt oder freigegeben hat, ist bei einer Sperre
+  # die halbe Information. papertrail haelt auch die geloeschten Eintraege.
+  has_paper_trail
+
+  # Adressen, die nicht gesperrt werden duerfen: private Netze, Loopback,
+  # Link-Local.
+  #
+  # ACHTUNG, der naheliegende Grund ist der falsche. Der eigene Reverse Proxy ist
+  # damit NICHT geschuetzt, denn er kann gar nicht getroffen werden: nginx setzt
+  # X-Forwarded-For an jedem proxy_pass (proxy.conf), Rack verwirft ein
+  # REMOTE_ADDR aus vertrauten Netzen und nimmt die letzte nicht vertraute
+  # Adresse der Kette. `req.ip` ist hinter nginx also immer der echte Client und
+  # nie 172.18.x.
+  #
+  # Zwei echte Gruende:
+  #   1. Ein privater Eintrag koennte nie greifen und waere damit dieselbe Klasse
+  #      wie eine Bereichsangabe — er sieht wie eine Sperre aus und ist keine.
+  #   2. Er deckt Zugriffe ab, die Rails ohne X-Forwarded-For erreichen, etwa
+  #      direkt aus dem Docker-Netz oder nach einem Umbau der Proxy-Kette.
+  #
+  # Was der Riegel ausdruecklich NICHT verhindert: sich mit der eigenen
+  # OEFFENTLICHEN Adresse auszusperren. Die ist sperrbar, die Sperre greift vor
+  # der Pflegemaske, und sie liesse sich dann nur noch ueber die Konsole loesen
+  # (siehe den Test dazu). Dagegen helfen der Pflichtgrund und papertrail, keine
+  # Liste.
+  UNBLOCKABLE = [
+    IPAddr.new('127.0.0.0/8'), IPAddr.new('::1/128'),
+    IPAddr.new('10.0.0.0/8'), IPAddr.new('172.16.0.0/12'), IPAddr.new('192.168.0.0/16'),
+    IPAddr.new('169.254.0.0/16'), IPAddr.new('fe80::/10'), IPAddr.new('fc00::/7')
+  ].freeze
+
+  CACHE_KEY = 'blocked_ips/all'.freeze
+
+  # Sicherheitsnetz fuer die Faelle, in denen after_commit nicht feuert oder ins
+  # Leere laeuft. Die Web-Schicht ist NICHT gemeint — Puma laeuft dort im
+  # Single-Process-Modus, der :memory_store ist prozessweit geteilt und eine
+  # Freigabe ueber die Maske wirkt sofort (siehe production.rb). Gemeint sind:
+  #   - Schreibwege aus einem anderen Prozess (rails runner, rake, cron): deren
+  #     Speicher-Cache ist ein eigener, der Webprozess erfaehrt nichts.
+  #   - Schreibwege am Modell vorbei (insert_all, update_all, delete_all, Roh-SQL
+  #     — auch die Migration dieses Features): dort gibt es kein after_commit.
+  # Kurz genug, dass beides zeitnah nachzieht.
+  CACHE_TTL = 2.minutes
+
+  # Muss VOR den Validierungen laufen und laesst eine Bereichsangabe bewusst
+  # stehen, damit ip_parsable sie noch sehen und ablehnen kann.
+  before_validation :normalize_ip
+
+  # Ohne `case_sensitive: false`: normalize_ip schreibt alles klein, damit sind
+  # Validierung und Unique-Index deckungsgleich und die Pruefung kann den Index
+  # nutzen.
+  validates :ip, presence: true, uniqueness: true
+  validates :reason, presence: true, length: { maximum: 200 }
+  validate :ip_parsable
+  validate :ip_blockable
+
+  after_commit :clear_cache
+
+  # Liste der gesperrten Adressen, gecacht: Ausgewertet wird sie bei JEDER
+  # Anfrage, eine Datenbankabfrage pro Request waere dafuer zu teuer.
+  def self.all_ips
+    Rails.cache.fetch(CACHE_KEY, expires_in: CACHE_TTL) { pluck(:ip).to_set }
+  end
+
+  # Der Aufruf aus der Middleware. Verglichen werden EXAKTE Adressen, keine Netze
+  # — deshalb normalisiert normalize_ip beim Schreiben auf die Form, die req.ip
+  # liefert, und deshalb lehnt ip_parsable Bereichsangaben ab.
+  #
+  # Faellt die Datenbank aus, wird NICHT gesperrt: Eine kaputte Sperrliste darf
+  # nicht den ganzen Betrieb abwuergen, und die Sperre ist eine
+  # Aufraeummassnahme, keine Sicherheitsschranke.
+  def self.blocked?(ip)
+    return false if ip.blank?
+
+    all_ips.include?(ip)
+  rescue StandardError => e
+    # Auch an Sentry, wie ueberall sonst im Projekt: Ein Ausfall hier heisst
+    # "die Sperre greift gerade nicht", und eine Logzeile allein geht in genau
+    # dem Rauschen unter, dessen Eindaemmung der Anlass dieses Features war.
+    Rails.logger.error("BlockedIp.blocked? failed: #{e.class}: #{e.message}")
+    Sentry.capture_exception(e) if defined?(Sentry)
+    false
+  end
+
+  def self.clear_cache
+    Rails.cache.delete(CACHE_KEY)
+  end
+
+  private
+
+  def clear_cache
+    self.class.clear_cache
+  end
+
+  # ArgumentError deckt beides ab: IPAddr::InvalidAddressError erbt davon
+  # (ueber IPAddr::Error), und ein leerer oder unsinniger String kommt je nach
+  # Eingabe als das eine oder das andere heraus.
+  def parsed_ip
+    IPAddr.new(ip.to_s)
+  rescue ArgumentError
+    nil
+  end
+
+  # Speichern in der Form, die `req.ip` zur Laufzeit liefert: klein geschrieben
+  # und bei IPv6 komprimiert. Ohne das wird eine aus einem Log kopierte Adresse
+  # wie `2001:DB8::1` gespeichert, sieht in der Tabelle richtig aus und trifft
+  # nie — dieselbe Falle wie bei einer Bereichsangabe.
+  #
+  # Eine Angabe mit `/` bleibt unangetastet, damit ip_parsable sie ablehnen kann.
+  # Wuerde hier normalisiert, verlore `82.165.87.0/24` still sein Praefix und
+  # spaerrte nur noch eine einzige Adresse.
+  def normalize_ip
+    return if ip.blank? || ip.to_s.include?('/')
+
+    addr = parsed_ip
+    return if addr.nil?
+
+    # IPv4-mapped auf die punktierte Form kollabieren: nginx traegt in
+    # X-Forwarded-For `$remote_addr` ein, und das ist `203.0.113.5`, nie
+    # `::ffff:203.0.113.5`. Ohne das Kollabieren waere eine aus einem
+    # Fremdsystem kopierte gemappte Adresse der letzte verbleibende Weg zu einem
+    # Eintrag, der wie eine Sperre aussieht und nie greift.
+    self.ip = (addr.ipv4_mapped? ? addr.native : addr).to_s
+  end
+
+  def ip_parsable
+    return if ip.blank?
+
+    return errors.add(:ip, 'ist keine gültige IP-Adresse') if parsed_ip.nil?
+    return unless ip.to_s.include?('/')
+
+    # Ein Bereich liesse sich eintragen und wuerde NIE greifen: blocked?
+    # vergleicht exakte Adressen. Ein Eintrag, der wie eine Sperre aussieht und
+    # keine ist, ist der teuerste Zustand dieses Features — deshalb abweisen
+    # statt stillschweigend annehmen.
+    errors.add(:ip, 'muss eine einzelne Adresse sein, kein Bereich (kein „/")')
+  end
+
+  def ip_blockable
+    addr = parsed_ip
+    return if addr.nil?
+
+    # Auch die IPv6-Schreibweisen derselben IPv4-Adresse pruefen: `::ffff:10.0.0.1`
+    # (mapped) und `::10.0.0.1` (die veraltete kompatible Form) sind 10.0.0.1,
+    # liegen aber in keinem der IPv4-Netze aus UNBLOCKABLE — `IPAddr#include?`
+    # gibt bei verschiedenen Familien false zurueck. `native` deckt beide Formen
+    # ab und gibt bei allem anderen self, wirft also nicht.
+    kandidaten = [addr, addr.native].uniq
+
+    return unless kandidaten.any? { |k| UNBLOCKABLE.any? { |net| net.include?(k) } }
+
+    errors.add(:ip, 'liegt im eigenen oder in einem privaten Netz und darf nicht gesperrt werden')
+  end
+
+  # Falls hier je Bereiche erlaubt werden sollen (siehe ip_parsable), muss dieser
+  # Riegel in BEIDE Richtungen pruefen. `IPAddr#include?` fragt nur, ob das
+  # Argument IM Netz liegt: `0.0.0.0/0` umfasst die privaten Netze, liegt aber in
+  # keinem davon und kaeme heute durch. Solange Bereiche abgewiesen werden, ist
+  # das folgenlos — mit Netzvergleich in blocked? waere es ein Totalausfall ohne
+  # Rueckweg ueber die Maske.
+end

@@ -391,6 +391,8 @@ Rails.application.routes.draw do
         # Ansprechpersonen der Vereine und Mannschaften der laufenden Saison.
         get 'contacts', to: 'contacts#index'
         resource :analytics, only: [:show]
+        # Sperrliste der Admin-Seite "System" (BlockedIp).
+        resources :blocked_ips, only: %i[index create destroy]
         get 'system_health',         to: 'system_health#show'
         get 'system_health/summary', to: 'system_health#summary'
         resources :arenas, only: %i[index create update destroy] do
