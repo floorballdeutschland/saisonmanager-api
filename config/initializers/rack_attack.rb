@@ -11,6 +11,29 @@ Rack::Request.forwarded_priority = [:x_forwarded]
 
 module Rack
   class Attack
+    # Dauerhaft abgewiesene Adressen. Gepflegt wird die Liste vom Admin unter
+    # "System" (BlockedIp), nicht mehr im Code: Eine Sperre entsteht aus einem
+    # Betriebsvorfall und soll nicht auf den naechsten Deploy warten.
+    #
+    # Greift vor dem Router. Das ist der Punkt: Bei geratenen Pfaden entstuende
+    # sonst ein RoutingError, den Rails als FATAL protokolliert — der Anlass
+    # dieser Regel war eine Adresse, die damit taeglich Tausende Zeilen Log
+    # gefuellt und echte Fehler verdeckt hat.
+    #
+    # Wirksam ist das nur, weil `req.ip` nicht vom Client bestimmbar ist, siehe
+    # den Kommentar am Dateikopf zu forwarded_priority.
+    blocklist('blocked-ips') do |req|
+      BlockedIp.blocked?(req.ip)
+    end
+
+    # Kein 403 mit Erklaerung: Wer hier landet, ist entweder ein vergessenes
+    # Skript, das die Antwort nie liest, oder jemand, dem wir nichts ueber die
+    # Regel verraten muessen. 404 ohne Rumpf ist die knappste wahre Aussage —
+    # fuer diese Adresse gibt es hier nichts.
+    self.blocklisted_responder = lambda do |_req|
+      [404, { 'Content-Type' => 'application/json' }, ['{}']]
+    end
+
     # Offene Endpunkte, die Mail an eine von außen bestimmte Adresse auslösen.
     # Sie brauchen weder Login noch API-Key, fallen also nicht unter den
     # Key-Throttle weiter unten.

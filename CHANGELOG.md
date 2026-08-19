@@ -9,6 +9,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Gesperrte IP-Adressen lassen sich unter „System“ einsehen und pflegen**: Es gibt jetzt eine Liste der Adressen, deren Anfragen abgewiesen werden, mit Adresse, Grund, Zeitpunkt und der Person, die den Eintrag angelegt hat. Eintragen und Freigeben geschieht dort und wirkt sofort, ohne neue Programmversion. Der Grund ist ein Pflichtfeld: Er ist das Einzige, was später erklärt, warum eine Adresse noch gesperrt ist. Zwei Dinge sind beim Eintragen wichtig, sie stehen auch als Hinweis an der Maske: Eine gesperrte Adresse verliert die gesamte Anwendung einschließlich der Anmeldung, nicht nur die Schnittstelle — und hinter einer Adresse kann ein ganzer Standort stehen, etwa eine Halle, eine Schule oder ein Verein, dessen Anschluss alle teilen. Adressen aus privaten Netzen lassen sich nicht eintragen, weil sie ohnehin niemanden treffen könnten.
+
+### Verbessert
+
+- **Eine dauerhaft fehlschlagende Fremdabfrage wird abgewiesen**: Eine Adresse aus einem Shared-Hosting-Rechenzentrum fragte seit Wochen im 42-Sekunden-Takt vier Adressen ab und bekam auf keine eine Antwort mit Daten: Zwei verlangen einen API-Schlüssel, den sie nicht mitschickte, die anderen zwei hat es nie gegeben. Betroffen war ein Spiel, dessen Spielbericht seit Juli geschlossen ist — dort lief offenbar eine vergessene Anzeigetafel. Für den Betrieb war das folgenlos, es füllte aber das Fehlerprotokoll mit mehreren tausend Zeilen am Tag und verdeckte damit echte Fehler. Die Anfragen werden jetzt abgewiesen, bevor sie Ligadaten oder Spielberichte anfassen. Wer einen Zugang zur Schnittstelle braucht, beantragt ihn wie bisher; abgewiesen wird ausschließlich diese eine Adresse.
+
 ## [1.88.0] - 2026-08-19
 
 ### Neu

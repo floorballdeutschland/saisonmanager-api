@@ -20,6 +20,22 @@ class ActiveSupport::TestCase
   # Team, Player, User bereit (siehe test/README.md).
   include FactoryBot::Syntax::Methods
 
+  # `Rails.cache` ist im Test-Env ein :null_store, `fetch` fuehrt seinen Block
+  # also IMMER aus. Wer Cache-Verhalten prueft — dass eine Invalidierung greift,
+  # dass ein Wert wirklich zwischengespeichert wird — testet damit nichts: Der
+  # Test besteht auch bei kaputter Invalidierung. Fuer solche Faelle hier ein
+  # echter Store, nur fuer die Dauer des Blocks.
+  #
+  # Rack::Attack ist davon unberuehrt, es zaehlt seit #282 in einem eigenen
+  # Store (siehe unten).
+  def with_real_cache
+    original = Rails.cache
+    Rails.cache = ActiveSupport::Cache::MemoryStore.new
+    yield
+  ensure
+    Rails.cache = original
+  end
+
   # Deaktivierung im Zustand VOR api#472: zusaetzlich zur Kennzeichnung sind alle
   # gueltigen Vereinszugehoerigkeiten geschlossen und alle laufenden Lizenzen auf
   # DELETED gesetzt.
