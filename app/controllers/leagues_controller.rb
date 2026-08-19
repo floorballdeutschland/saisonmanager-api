@@ -707,21 +707,23 @@ class LeaguesController < ApplicationController
   end
 
   def penalties
+    # merge statt `v['id'] = k`: v zeigt in die Konfiguration, die Setting.current
+    # zurueckgibt, und die ist seit der Anfrage-Memoisierung fuer die ganze
+    # Anfrage dieselbe Instanz. Eine Aenderung an Ort und Stelle wuerde den
+    # Schluessel dort hineinschreiben und das Attribut als geaendert markieren.
     penalties = Setting.current.penalties.reject do |_k, v|
                   v['disabled'].present?
-                end.map do |k, v|
-                  v['id'] = k
-                  v
-                end.sort_by { |i| i['order'] }
+                end.map { |k, v| v.merge('id' => k) }
+                   .sort_by { |i| i['order'] }
 
     render json: penalties
   end
 
   def penalty_codes
-    penalty_codes = Setting.current.penalty_codes.select { |_k, v| v['active'].present? }.map do |k, v|
-      v['id'] = k
-      v
-    end
+    # merge statt Aenderung an Ort und Stelle, siehe #penalties.
+    penalty_codes = Setting.current.penalty_codes
+                           .select { |_k, v| v['active'].present? }
+                           .map { |k, v| v.merge('id' => k) }
 
     render json: penalty_codes
   end

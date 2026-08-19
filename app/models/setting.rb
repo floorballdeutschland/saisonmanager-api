@@ -18,6 +18,19 @@ class Setting < ApplicationRecord
   #
   # Sie ersetzt nicht das Herausziehen aus Schleifenruempfen: 0 ms mal n ist
   # zwar 0, aber der Aufruf selbst bleibt Arbeit. Beides zusammen wirkt.
+  #
+  # ACHTUNG, die Rueckgabe ist GETEILT: Vorher lieferte jeder Aufruf ueber den
+  # Marshal-Rundlauf des MemoryStore eine eigene Kopie, eine Aenderung an Ort und
+  # Stelle blieb also folgenlos. Jetzt sehen alle Aufrufer einer Anfrage
+  # dieselbe Instanz. Wer die Konfiguration veraendern will, arbeitet auf einer
+  # Kopie (`.deep_dup`) oder baut neue Hashes (`merge`) — sonst landet die
+  # Aenderung im Attribut, gilt als `changed_in_place?` und wuerde von einem
+  # spaeteren `save!` derselben Anfrage mitgeschrieben.
+  #
+  # Wer die Konfiguration an den Callbacks vorbei aendert (`update_column(s)`,
+  # Raw-SQL, Konsole — so wird z. B. `nations` gepflegt), muss danach
+  # `flush_current_cache` aufrufen. Sonst haelt der Prozess bis zu einer Stunde
+  # den alten Stand, und das je Puma-Worker verschieden.
   def self.current
     Current.setting ||= Rails.cache.fetch('settings/current', expires_in: 1.hour) do
       Setting.first
