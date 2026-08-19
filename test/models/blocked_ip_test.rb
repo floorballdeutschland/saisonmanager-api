@@ -1,8 +1,9 @@
 require 'test_helper'
 
 # Sperrliste, gepflegt vom Admin unter "System". Der wichtigste Teil ist nicht
-# das Sperren, sondern der Riegel gegen das eigene Netz: Wer sich selbst
-# aussperrt, kann die Sperre auch nicht mehr ueber die Maske loesen.
+# das Sperren, sondern dass kein Eintrag entstehen kann, der wie eine Sperre
+# aussieht und nie greift: Bereichsangaben, IPv6-Schreibweisen und private
+# Adressen (die hinter nginx nie ein req.ip sind).
 class BlockedIpTest < ActiveSupport::TestCase
   test 'eine oeffentliche Adresse laesst sich sperren' do
     blocked = BlockedIp.new(ip: '198.51.100.5', reason: 'Dauerhaft 401')
@@ -22,15 +23,17 @@ class BlockedIpTest < ActiveSupport::TestCase
     end
   end
 
-  # Der Riegel. Ohne ihn nimmt ein Tippfehler die eigene Seite vom Netz: Das
-  # eigene nginx spricht Rails ueber das Docker-Netz an, liegt also in einem
-  # privaten Bereich.
+  # Der Riegel. Nicht, weil er den eigenen Proxy schuetzt — der kann gar nicht
+  # getroffen werden, siehe den Kommentar an UNBLOCKABLE — sondern weil ein
+  # privater Eintrag hinter nginx nie greifen wuerde und damit nur eine Sperre
+  # vortaeuscht.
   test 'eigenes und privates Netz sind nicht sperrbar' do
     ['127.0.0.1', '::1', '10.0.5.7', '172.18.0.3', '192.168.1.1', '169.254.1.1',
      'fe80::1', 'fc00::1',
-     # IPv4-mapped: dieselben Netze in IPv6-Schreibweise. Ohne die Abdeckung
-     # koennte der Riegel per Schreibweise umgangen werden.
-     '::ffff:10.0.0.1', '::ffff:127.0.0.1', '::ffff:192.168.1.1'].each do |wert|
+     # Dieselben Netze in IPv6-Schreibweise, mapped und in der veralteten
+     # kompatiblen Form. Ohne `native` im Riegel kaemen sie durch.
+     '::ffff:10.0.0.1', '::ffff:127.0.0.1', '::ffff:192.168.1.1',
+     '::10.0.0.1', '::192.168.1.1'].each do |wert|
       blocked = BlockedIp.new(ip: wert, reason: 'Test')
       assert_not blocked.valid?, "#{wert} haette geschuetzt sein muessen"
       assert_match(/privaten Netz/, blocked.errors.full_messages.join(' '))

@@ -31,10 +31,11 @@ class IpBlocklistTest < ActionDispatch::IntegrationTest
 
   # Der Kern des Features, und die Stelle, an der die Testkonstruktion zaehlt.
   #
-  # Rack::Request#ip geht ZUERST REMOTE_ADDR durch und kehrt bei der
-  # ersten nicht vertrauten Adresse zurueck; X-Forwarded-For wird nur gelesen,
-  # wenn REMOTE_ADDR ausschliesslich vertraute Adressen enthaelt
-  # (Rack::Request::TRUSTED_PROXIES: Loopback und die privaten Netze).
+  # Rack::Request#ip nimmt aus REMOTE_ADDR die LETZTE nicht vertraute Adresse
+  # (reverse_each); X-Forwarded-For wird nur gelesen, wenn REMOTE_ADDR
+  # ausschliesslich vertraute Adressen enthaelt. Was vertraut ist, entscheidet
+  # `Rack::Request.ip_filter` — voreingestellt Loopback, die privaten Netze und
+  # Link-Local.
   #
   # In Produktion ist REMOTE_ADDR die Docker-Adresse von nginx, also vertraut,
   # und erst dann entscheidet die Kette. Ein Test mit oeffentlicher REMOTE_ADDR
@@ -78,10 +79,11 @@ class IpBlocklistTest < ActionDispatch::IntegrationTest
     assert_response :not_found
   end
 
-  # Der Riegel gegen das eigene Netz (BlockedIp::UNBLOCKABLE) hat genau diesen
-  # Grund: Die Sperre greift vor allem anderen, auch vor der Pflegemaske. Wer
-  # sich selbst aussperrt, kann die Sperre nicht mehr aufheben — hier
-  # ausfuehrbar festgehalten statt nur als Kommentar behauptet.
+  # Die Sperre greift vor allem anderen, auch vor der Pflegemaske: Wer eine
+  # oeffentliche Adresse sperrt, hinter der er selbst sitzt, kommt nicht mehr an
+  # die Maske und muss ueber die Konsole heraus. UNBLOCKABLE hilft dagegen NICHT
+  # (es deckt nur private Netze, und die kann req.ip hinter nginx nie sein) —
+  # deshalb steht dieser Fall hier ausfuehrbar, statt als beruhigende Annahme.
   test 'die Sperre trifft auch die Pflegemaske selbst' do
     admin = create(:user, :admin)
     post '/api/v2/login', params: { username: admin.user_name, password: 'password123' }

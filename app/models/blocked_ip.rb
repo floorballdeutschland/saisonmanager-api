@@ -11,14 +11,27 @@ class BlockedIp < ApplicationRecord
   # die halbe Information. papertrail haelt auch die geloeschten Eintraege.
   has_paper_trail
 
-  # Adressen, die NIE gesperrt werden duerfen. Ohne diesen Riegel nimmt ein
-  # Tippfehler in der Maske die eigene Seite vom Netz: Gesperrt wird vor allem
-  # anderen, es gibt also keine Ausnahme fuer das eigene Frontend, und wer sich
-  # selbst aussperrt, kann die Sperre auch nicht mehr ueber die Maske loesen.
+  # Adressen, die nicht gesperrt werden duerfen: private Netze, Loopback,
+  # Link-Local.
   #
-  # Umfasst private Netze, Loopback und Link-Local. Der eigene Reverse Proxy
-  # spricht Rails ueber das Docker-Netz an, liegt also in einem privaten Bereich
-  # und ist damit mit abgedeckt.
+  # ACHTUNG, der naheliegende Grund ist der falsche. Der eigene Reverse Proxy ist
+  # damit NICHT geschuetzt, denn er kann gar nicht getroffen werden: nginx setzt
+  # X-Forwarded-For an jedem proxy_pass (proxy.conf), Rack verwirft ein
+  # REMOTE_ADDR aus vertrauten Netzen und nimmt die letzte nicht vertraute
+  # Adresse der Kette. `req.ip` ist hinter nginx also immer der echte Client und
+  # nie 172.18.x.
+  #
+  # Zwei echte Gruende:
+  #   1. Ein privater Eintrag koennte nie greifen und waere damit dieselbe Klasse
+  #      wie eine Bereichsangabe — er sieht wie eine Sperre aus und ist keine.
+  #   2. Er deckt Zugriffe ab, die Rails ohne X-Forwarded-For erreichen, etwa
+  #      direkt aus dem Docker-Netz oder nach einem Umbau der Proxy-Kette.
+  #
+  # Was der Riegel ausdruecklich NICHT verhindert: sich mit der eigenen
+  # OEFFENTLICHEN Adresse auszusperren. Die ist sperrbar, die Sperre greift vor
+  # der Pflegemaske, und sie liesse sich dann nur noch ueber die Konsole loesen
+  # (siehe den Test dazu). Dagegen helfen der Pflichtgrund und papertrail, keine
+  # Liste.
   UNBLOCKABLE = [
     IPAddr.new('127.0.0.0/8'), IPAddr.new('::1/128'),
     IPAddr.new('10.0.0.0/8'), IPAddr.new('172.16.0.0/12'), IPAddr.new('192.168.0.0/16'),
@@ -27,9 +40,15 @@ class BlockedIp < ApplicationRecord
 
   CACHE_KEY = 'blocked_ips/all'.freeze
 
-  # Sicherheitsnetz: Bleibt eine Invalidierung aus (etwa weil ein zweiter
-  # Prozess seinen eigenen Speicher-Cache haelt), heilt sich die Liste von
-  # selbst. Kurz genug, dass eine Freigabe zeitnah wirkt.
+  # Sicherheitsnetz fuer die Faelle, in denen after_commit nicht feuert oder ins
+  # Leere laeuft. Die Web-Schicht ist NICHT gemeint — Puma laeuft dort im
+  # Single-Process-Modus, der :memory_store ist prozessweit geteilt und eine
+  # Freigabe ueber die Maske wirkt sofort (siehe production.rb). Gemeint sind:
+  #   - Schreibwege aus einem anderen Prozess (rails runner, rake, cron): deren
+  #     Speicher-Cache ist ein eigener, der Webprozess erfaehrt nichts.
+  #   - Schreibwege am Modell vorbei (insert_all, update_all, delete_all, Roh-SQL
+  #     — auch die Migration dieses Features): dort gibt es kein after_commit.
+  # Kurz genug, dass beides zeitnah nachzieht.
   CACHE_TTL = 2.minutes
 
   # Muss VOR den Validierungen laufen und laesst eine Bereichsangabe bewusst
@@ -130,12 +149,12 @@ class BlockedIp < ApplicationRecord
     addr = parsed_ip
     return if addr.nil?
 
-    # Auch die IPv4-mapped Schreibweise pruefen: `::ffff:10.0.0.1` ist dieselbe
-    # Adresse wie `10.0.0.1`, liegt aber in keinem der IPv4-Netze aus
-    # UNBLOCKABLE. Ohne `native` liesse sich der Riegel per Schreibweise
-    # umgehen.
-    kandidaten = [addr]
-    kandidaten << addr.native if addr.ipv4_mapped?
+    # Auch die IPv6-Schreibweisen derselben IPv4-Adresse pruefen: `::ffff:10.0.0.1`
+    # (mapped) und `::10.0.0.1` (die veraltete kompatible Form) sind 10.0.0.1,
+    # liegen aber in keinem der IPv4-Netze aus UNBLOCKABLE — `IPAddr#include?`
+    # gibt bei verschiedenen Familien false zurueck. `native` deckt beide Formen
+    # ab und gibt bei allem anderen self, wirft also nicht.
+    kandidaten = [addr, addr.native].uniq
 
     return unless kandidaten.any? { |k| UNBLOCKABLE.any? { |net| net.include?(k) } }
 
