@@ -9,10 +9,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Spieler bekommen bei einem Transfer oder einer Spielerfreigabe nicht mehr sofort eine Mail mit Login-Aufforderung**: Stellte ein Verein eine Transferanfrage, ging die Mail „Neue Transferanfrage" nicht nur an den abgebenden Verein, sondern auch an den betroffenen Spieler. Ihr Text richtet sich aber ausschließlich an den Verein: Er fordert zum Anmelden im Saisonmanager auf und verlinkt in die Verwaltung, wo der Spieler weder Zugang noch Logindaten hat. Zu diesem Zeitpunkt ist der Spieler ohnehin nicht am Zug, sondern der abgebende Verein. Die erste Mail geht jetzt nur noch an den abgebenden Verein. Der Spieler wird erst dann angeschrieben, wenn er selbst entscheiden kann, nämlich mit der Anfrage nach seiner Zustimmung, die per Link ohne Anmeldung zustimmen oder ablehnen lässt.
+
 ### Verbessert
 
 - **Ein untergeordneter Landesverband erbt jetzt alle Einstellungen vom übergeordneten Verbund**: Hängt an einem Landesverband ein übergeordneter Verbund, kam bisher nur ein Teil des Blocks „Einstellungen" von dort. Der Kontrollprozess für Schiedsrichterlizenzen wurde vom Verbund bestimmt, die Expresslizenz war „eigener Wert oder Verbund", und alle übrigen Punkte (Papierspielberichtsbogen, die drei Ansetzungs-Optionen, Berichtsworkflow für rote Karten, manuelle Verfahrenseröffnung) pflegte der untergeordnete Verband selbst. Dieselbe Frage wurde damit an zwei Stellen beantwortet, und welche griff, hing vom Punkt ab. Jetzt gilt eine Regel für den ganzen Block: Ist ein übergeordneter Verbund gesetzt, kommen alle Einstellungen von dort, und zwar über die ganze Kette bis zur Wurzel. In der Verbandsmaske des untergeordneten Verbands sind die Felder gesperrt und zeigen den wirksamen Wert. Nicht betroffen sind die E-Mail-Adressen (sie bleiben ein Rückfall und weichen weiterhin einem eigenen Eintrag) sowie Stammdaten, Zuständigkeitsbereich, Logo, Banner, Spieltagscheckliste und Freigaben.
-
 
 ## [1.90.0] - 2026-08-20
 

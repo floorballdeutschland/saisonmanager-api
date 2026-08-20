@@ -1,8 +1,11 @@
 class TransferRequestMailer < ApplicationMailer
+  # Absichtlich ohne den Spieler als Empfaenger: der Text richtet sich an den
+  # abgebenden Verein und verlinkt in die Verwaltung, wofuer Spieler keinen
+  # Zugang haben. Der Spieler wird erst mit #player_confirmation_request
+  # angeschrieben, also wenn er selbst zustimmen oder ablehnen kann.
   def new_request_to_former_club(transfer_request)
     @transfer_request = transfer_request
-    recipients = (transfer_request.former_club.notification_emails +
-                  [transfer_request.player.email]).compact.uniq.select(&:present?)
+    recipients = transfer_request.former_club.notification_emails.compact.uniq.select(&:present?)
     return if recipients.empty?
 
     templated_mail(
