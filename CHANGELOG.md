@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.90.0] - 2026-08-20
+
 ### Behoben
 
 - **Ein Lesezugriff auf den Strafenkatalog konnte die Konfiguration verändern**: Beim Ausliefern der Strafen und Strafcodes wurde jedem Eintrag seine Nummer als Feld angehängt — und zwar direkt in der geladenen Konfiguration statt in einer Kopie. Bisher blieb das folgenlos, weil jeder Zugriff eine eigene Kopie bekam. Seit die Konfiguration je Anfrage nur noch einmal geladen wird, hätte ein späteres Speichern innerhalb derselben Anfrage diese Felder mit in die Datenbank geschrieben. Der Katalog wird jetzt beim Ausliefern nicht mehr angefasst.
