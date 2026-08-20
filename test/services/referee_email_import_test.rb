@@ -122,6 +122,87 @@ class RefereeEmailImportTest < ActiveSupport::TestCase
     assert_match(/UTF-8/, import.errors.join)
   end
 
+  # Die Zeilennummer im Report muss auf die Zeile in der Tabellenkalkulation
+  # zeigen. Eine verworfene Leerzeile darf sie nicht verschieben.
+  test 'nennt die Zeilennummer der Datei auch nach einer Leerzeile' do
+    create(:referee, lizenznummer: 4730, email: nil)
+    create(:referee, lizenznummer: 4731, email: nil)
+    content = "Lizenznummer;E-Mailadresse\n4730;a@example.org\n\n4731;kaputt\n"
+
+    report = RefereeEmailImport.new(csv_content: content).call
+
+    assert_equal 4, report[:invalid].first[:row]
+  end
+
+  # Die vier Toepfe muessen total_rows ergeben, sonst luegt die
+  # Zusammenfassung ueber einen bereits geschriebenen Datenbestand.
+  test 'jede Datenzeile landet in genau einem Topf' do
+    create(:referee, lizenznummer: 4740, email: nil)
+    create(:referee, lizenznummer: 4741, email: 'da@example.org')
+    content = "Lizenznummer;E-Mailadresse\n" \
+              "4740;neu@example.org\n" \
+              "4741;andere@example.org\n" \
+              "999222;unbekannt@example.org\n" \
+              "4740x;kaputt@example.org\n"
+
+    report = RefereeEmailImport.new(csv_content: content).call
+
+    assert_equal 4, report[:total_rows]
+    buckets = report.values_at(:updated, :skipped, :not_found, :invalid)
+    assert_equal report[:total_rows], buckets.sum(&:size)
+  end
+
+  test 'zaehlt Leerzeilen nicht als Datenzeilen' do
+    create(:referee, lizenznummer: 4750, email: nil)
+    content = "Lizenznummer;E-Mailadresse\n\n4750;a@example.org\n\n"
+
+    report = RefereeEmailImport.new(csv_content: content).call
+
+    assert_equal 1, report[:total_rows]
+    assert_equal 1, report[:updated].size
+  end
+
+  test 'weist eine Datei mit zu vielen Datenzeilen ab' do
+    rows = (1..(RefereeEmailImport::MAX_DATA_ROWS + 1)).map { |n| "#{n};a#{n}@example.org" }
+    import = RefereeEmailImport.new(csv_content: (['Lizenznummer;E-Mailadresse'] + rows).join("\n"))
+
+    assert_nil import.call
+    assert_match(/hoechstens|höchstens/, import.errors.join)
+  end
+
+  test 'meldet eine leere Adress-Zelle als eigene Zeile' do
+    referee = create(:referee, lizenznummer: 4760, email: nil)
+
+    report = RefereeEmailImport.new(csv_content: csv([[4760, '']])).call
+
+    assert_nil referee.reload.email
+    assert_equal 'E-Mailadresse fehlt', report[:invalid].first[:reason]
+  end
+
+  test 'erkennt Tabulator als Trennzeichen' do
+    referee = create(:referee, lizenznummer: 4770, email: nil)
+
+    report = RefereeEmailImport.new(
+      csv_content: csv([[4770, 'tab@example.org']], header: "Lizenznummer\tE-Mailadresse", sep: "\t")
+    ).call
+
+    assert_equal 'tab@example.org', referee.reload.email
+    assert_equal 1, report[:updated].size
+  end
+
+  # Der Fehler sitzt dann im Stammdatensatz, nicht in der CSV-Zeile - die Meldung
+  # muss den Schiedsrichter benennen, sonst sucht der Admin in der Datei.
+  test 'benennt bei einem ungueltigen Stammdatensatz den Schiedsrichter' do
+    referee = create(:referee, lizenznummer: 4780, email: nil)
+    referee.update_column(:vorname, '')
+
+    report = RefereeEmailImport.new(csv_content: csv([[4780, 'neu@example.org']])).call
+
+    assert_equal 0, report[:updated].size
+    assert_equal 1, report[:invalid].size
+    assert_includes report[:invalid].first[:value], '4780'
+  end
+
   test 'schreibt nicht an einen zusammengefuehrten Datensatz' do
     master = create(:referee, lizenznummer: 4719, email: nil)
     secondary = create(:referee, lizenznummer: 4720, email: nil)

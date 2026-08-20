@@ -17,11 +17,24 @@ class RefereeAccountCreator
   # Schiedsrichter, die ein Konto bekommen könnten: Adresse hinterlegt, noch kein
   # Konto verknüpft, Lizenznachweis im Fenster.
   #
-  # in_career_window schließt die Karriere-Beendeten aus (rund 4.250 Datensätze
-  # aus dem Nachimport). Ein Konto für jemanden, der seit vier Lizenzjahren nicht
-  # mehr pfeift, hilft niemandem und würde die Massenanlage zur Hälfte mit
-  # Historie füllen. Gäste haben keine Lizenznummer und damit keinen stabilen
-  # Benutzernamen.
+  # in_career_window verlangt ein vorhandenes Ablaufdatum jünger als der Stichtag.
+  # Es schließt damit ZWEI Gruppen aus, nicht eine: die Karriere-Beendeten (rund
+  # 4.250 Datensätze aus dem Nachimport) und die Datensätze ganz ohne Ablaufdatum.
+  # Letzteres trifft frisch angelegte Schiedsrichter — die bekommen über die
+  # Massenanlage also kein Konto, bis eine Gültigkeit eingetragen ist; einzeln
+  # anlegen geht weiter. Beides ist gewollt: Wer keinen Lizenznachweis hat, ist
+  # kein Fall für einen automatisch erzeugten Zugang.
+  #
+  # Gäste sind ausgenommen, weil sie keine eigene Zuständigkeit im Verband haben
+  # (Aushilfen, meist aus dem Ausland) und kein Selbstverwaltungskonto brauchen.
+  # Eine Lizenznummer KANN ein Gast tragen, sie ist für ihn nur nicht Pflicht —
+  # der Benutzername hängt an der separaten Bedingung eine Zeile tiefer.
+  #
+  # canonical ist bereits in in_career_window enthalten und steht hier nur zur
+  # Klarheit: Zusammengeführte Dubletten dürfen kein zweites Konto bekommen.
+  #
+  # where.not(referee_id: nil) im Unterquery ist tragend: Ohne diese Bedingung
+  # vergleicht NOT IN gegen NULL und die Kandidatenliste ist immer leer.
   def self.candidates
     Referee.canonical
            .in_career_window
@@ -31,10 +44,16 @@ class RefereeAccountCreator
            .where.not(id: User.where.not(referee_id: nil).select(:referee_id))
   end
 
-  # deliver_later: Für die Massenanlage wird die Begrüßungsmail in die Queue
-  # gelegt statt im Request verschickt — hundert Zustellungen hintereinander
-  # ließen den Request auflaufen und ein Timeout mittendrin hinterließe Konten,
-  # deren Mail nie rausging.
+  # deliver_later: Für die Massenanlage wird die Begrüßungsmail eingereiht statt im
+  # Request verschickt — hundert Zustellungen hintereinander ließen den Request
+  # auflaufen, und ein Timeout mittendrin hinterließe Konten, deren Mail nie
+  # rausging.
+  #
+  # Einschränkung, die man kennen muss: Produktion läuft auf dem ActiveJob-Default
+  # `:async`, also einem Threadpool im Prozess ohne Persistenz. Ein Deploy oder
+  # Neustart mitten in einer Tranche verwirft die noch nicht zugestellten Mails.
+  # `email_sent` heißt auf diesem Weg deshalb „eingereiht", nicht „zugestellt".
+  # Die Betroffenen kommen über „Passwort vergessen" trotzdem an ihr Konto.
   def initialize(referee, deliver_later: false)
     @referee = referee
     @deliver_later = deliver_later
@@ -54,7 +73,12 @@ class RefereeAccountCreator
     duplicate_email = User.exists?(email: @referee.email)
     user = build_user
 
-    return Result.new(error: user.errors.full_messages.to_sentence) unless user.save
+    unless user.save
+      # presence-Fallback: Bricht ein Callback per throw(:abort) ab, ist
+      # full_messages leer — der Aufrufer rendert dann 422 ohne jeden Text.
+      return Result.new(error: user.errors.full_messages.to_sentence.presence ||
+                               'Das Benutzerkonto konnte nicht angelegt werden.')
+    end
 
     Result.new(user: user, email_sent: send_welcome_mail(user), duplicate_email: duplicate_email)
   end

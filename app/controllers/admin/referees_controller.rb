@@ -5,15 +5,20 @@ module Admin
     before_action :authorize_referee_access!
 
     MAX_CSV_BYTES = 5 * 1024 * 1024
-    ALLOWED_CSV_CONTENT_TYPES = %w[text/csv text/plain application/vnd.ms-excel application/csv].freeze
+    # application/octet-stream ist dabei, weil Browser das für eine .csv real so
+    # schicken (Drag-and-drop, Windows ohne registrierte Zuordnung). Ohne den
+    # Eintrag wird eine einwandfreie Datei mit „Unzulässiger Datei-Typ" abgewiesen,
+    # was wie ein kaputter Export aussieht. Der Inhalt wird ohnehin geparst.
+    ALLOWED_CSV_CONTENT_TYPES = %w[text/csv text/plain application/vnd.ms-excel application/csv
+                                   text/comma-separated-values application/octet-stream].freeze
     before_action :set_referee,
                   only: %i[show update destroy games club_stats partners merge create_user destroy_user feedbacks]
 
     # Tranchengröße der Massenanlage. Bewusst klein: Der Aufruf legt höchstens so
     # viele Konten an und meldet zurück, wie viele offen bleiben — ein zweiter
-    # Klick nimmt die nächste Tranche. So stehen nie mehr als 100 Willkommens-
-    # mails gleichzeitig in der Queue, und ein Fehlgriff trifft nicht den ganzen
-    # Bestand.
+    # Klick nimmt die nächste Tranche. Damit gehen je Aufruf höchstens 100
+    # Willkommensmails raus (nicht insgesamt: zwei Klicks sind 200), und ein
+    # Fehlgriff trifft nicht den ganzen Bestand.
     MAX_BULK_USER_CREATIONS = 100
 
     # GET /api/v2/admin/referees
@@ -243,6 +248,14 @@ module Admin
       file = params[:file]
       return render(json: { error: 'CSV-Datei fehlt' }, status: :unprocessable_entity) if file.blank?
 
+      # Ein Nicht-Datei-Parameter (String, Array) käme durch beide Prüfungen unten
+      # durch — String#size gibt es, content_type nicht — und stürbe erst am
+      # `read` im 500er.
+      unless file.respond_to?(:read)
+        return render(json: { error: 'Der Parameter "file" enthält keine Datei.' },
+                      status: :unprocessable_entity)
+      end
+
       if file.respond_to?(:size) && file.size > MAX_CSV_BYTES
         return render(json: { error: "Datei zu groß (max. #{MAX_CSV_BYTES / 1024 / 1024} MB)" },
                       status: :unprocessable_entity)
@@ -277,24 +290,18 @@ module Admin
 
       candidates = RefereeAccountCreator.candidates
       total = candidates.count
-      batch = candidates.order(:lizenznummer).limit(MAX_BULK_USER_CREATIONS).to_a
+      # includes(:user): Der Service prüft je Datensatz auf ein vorhandenes Konto,
+      # das wären sonst 100 Einzelqueries je Klick.
+      batch = candidates.includes(:user).order(:lizenznummer).limit(MAX_BULK_USER_CREATIONS).to_a
 
       created = []
       failed = []
-      batch.each do |referee|
-        result = RefereeAccountCreator.new(referee, deliver_later: true).call
-        if result.success?
-          created << { id: referee.id, lizenznummer: referee.lizenznummer,
-                       name: "#{referee.vorname} #{referee.nachname}", email: referee.email,
-                       user_name: result.user.user_name, duplicate_email: result.duplicate_email }
-        else
-          failed << { id: referee.id, lizenznummer: referee.lizenznummer,
-                      name: "#{referee.vorname} #{referee.nachname}", error: result.error }
-        end
-      end
+      batch.each { |referee| create_account_for(referee, created, failed) }
 
       # remaining zählt die Fehlgeschlagenen mit: Sie erfüllen die Bedingungen
-      # weiter und tauchen beim nächsten Aufruf wieder auf.
+      # weiter und tauchen beim nächsten Aufruf wieder auf. Bleibt ein Datensatz
+      # dauerhaft hängen (etwa weil sein Benutzername schon belegt ist), sinkt die
+      # Zahl also nicht — die Fehlerliste benennt den Grund je Datensatz.
       render json: { requested: batch.size, created: created, failed: failed,
                      remaining: total - created.size, batch_size: MAX_BULK_USER_CREATIONS }
     end
@@ -333,6 +340,33 @@ module Admin
     end
 
     private
+
+    # Ein Datensatz je Aufruf, Fehler eingefangen: Ohne dieses rescue nimmt eine
+    # Ausnahme bei Datensatz 41 (etwa RecordNotUnique, wenn parallel jemand dasselbe
+    # Konto anlegt) den gesamten Report mit. Die 40 Konten davor sind dann angelegt
+    # und ihre Mails unterwegs, der Admin sieht aber nur „Die Konten konnten nicht
+    # angelegt werden" und hat keine Liste, wer schon ein Konto hat.
+    def create_account_for(referee, created, failed)
+      identity = { id: referee.id, lizenznummer: referee.lizenznummer,
+                   name: "#{referee.vorname} #{referee.nachname}" }
+      result = RefereeAccountCreator.new(referee, deliver_later: true).call
+
+      if result.success?
+        # email_sent mitgeben wie bei der Einzelanlage: Ein Konto, dessen
+        # Willkommensmail nicht rausging, ist ohne diese Angabe nicht mehr
+        # auffindbar — der Schiedsrichter kennt sein Initialpasswort nicht, und der
+        # Datensatz fällt aus der Kandidatenliste heraus.
+        created << identity.merge(email: referee.email, user_name: result.user.user_name,
+                                  duplicate_email: result.duplicate_email,
+                                  email_sent: result.email_sent)
+      else
+        failed << identity.merge(error: result.error)
+      end
+    rescue StandardError => e
+      Rails.logger.error("create_missing_users: Referee #{referee.id} fehlgeschlagen: #{e.class}: #{e.message}")
+      Sentry.capture_exception(e) if defined?(Sentry)
+      failed << identity.merge(error: "#{e.class}: #{e.message}")
+    end
 
     # Standard ist „alles außer Karriere beendet". Seit dem Nachimport der
     # Beendeten (rund 4.250 Datensätze) wäre die Liste sonst zur Hälfte Historie.
@@ -620,7 +654,10 @@ module Admin
       data[:season_game_count] = season_game_count unless season_game_count.nil?
       # Konto-Badge der Liste. Gleiche Grenze wie die Kontaktdaten: Wer die
       # Adressen der Schiris verwaltet, soll sehen, wer sich damit anmelden kann.
-      data[:has_user] = referee.user.present? if contact || full
+      # Bewusst nur hier und nicht auch unter `full`: Die Detailansicht liefert mit
+      # user_id/user_name schon mehr, und `full` ist nicht an die Kontaktdaten
+      # gebunden — ein Vereinsmanager erreicht sie für die Schiris seines Vereins.
+      data[:has_user] = referee.user.present? if contact
       # Die Detailansicht liefert die E-Mail wie bisher immer mit; in der Liste
       # nur für Rollen mit Zugriff auf Kontaktdaten (siehe can_view_contact_data?).
       data[:email] = referee.email if contact || full

@@ -8,18 +8,31 @@ require 'csv'
 # nicht durch einen älteren Verbandsexport verlieren — und das fiele niemandem
 # auf, weil die alte Adresse dabei spurlos verschwindet.
 class RefereeEmailImport
+  # Eine Datenzeile mit ihrer Nummer in der Datei. Die Nummer wird mitgeführt und
+  # nicht aus dem Schleifenindex abgeleitet: Verworfene Leerzeilen verschieben den
+  # Index, und der Report zeigte ab der ersten Leerzeile auf die falsche Zeile.
+  Row = Struct.new(:number, :cells, keyword_init: true)
+
+  # Obergrenze der verarbeiteten Datenzeilen. Der Import läuft in EINER
+  # Transaktion; ohne Grenze könnte eine versehentlich hochgeladene Großdatei in
+  # ein Timeout laufen, und der Rollback nähme dann auch den Report mit — der
+  # Admin sähe nur einen Fehler und wüsste nicht, was geschrieben wurde.
+  # Der gesamte Schiedsrichterbestand liegt deutlich darunter.
+  MAX_DATA_ROWS = 20_000
+
   # Kopfzeilen-Namen, unter denen die beiden Spalten erkannt werden. Aufgelöst
-  # wird über den Namen und nicht über die Position: Ein Export mit vertauschten
-  # Spalten würde sonst Lizenznummern als Adressen lesen und die Datei komplett
-  # als „ungültig" abweisen, ohne den Grund zu benennen.
+  # wird über den Namen und nicht über die Position: Bei vertauschten Spalten
+  # landen sonst alle Zeilen als „Lizenznummer ist keine Zahl" im Fehler-Topf,
+  # und die Datei sieht kaputt aus, statt dass die Zuordnung benannt wird.
   LICENSE_ALIASES = ['lizenznummer', 'lizenz-nr.', 'lizenz-nr', 'lizenznr.', 'lizenznr',
                      'lizenz nr.', 'lizenz nr'].freeze
   EMAIL_ALIASES = ['e-mailadresse', 'e-mail-adresse', 'e-mail adresse', 'e-mailadresse sr',
                    'e-mail', 'email', 'emailadresse', 'mail'].freeze
 
   # Kandidaten für das Spaltentrennzeichen. Deutsches Excel schreibt Semikolon,
-  # andere Werkzeuge Komma oder Tab — geraten wird nicht, sondern die Kopfzeile
-  # ausgezählt.
+  # andere Werkzeuge Komma oder Tab; ausgezählt wird die Kopfzeile. Enthält sie
+  # keines der drei (einspaltige Datei), bleibt es beim ersten Kandidaten, und
+  # die Datei scheitert an den fehlenden Pflichtspalten.
   COL_SEPS = [';', ',', "\t"].freeze
 
   attr_reader :errors
@@ -44,18 +57,25 @@ class RefereeEmailImport
     content = normalized_content
     return nil if content.nil?
 
-    col_sep = detect_col_sep(content)
-    raw = CSV.parse(content, col_sep: col_sep, row_sep: "\n", skip_blanks: true)
+    # Bewusst OHNE skip_blanks: Eine verworfene Leerzeile darf die Zeilennummern
+    # der folgenden Zeilen nicht verschieben. Leere Zeilen kommen als [] an und
+    # fallen unten mit den inhaltlich leeren Zeilen zusammen heraus.
+    raw = CSV.parse(content, col_sep: detect_col_sep(content), row_sep: "\n")
     header = raw.shift
 
     columns = resolve_columns(header)
     return nil if columns.nil?
 
-    rows = raw.map { |r| r.map { |v| v.to_s.strip } }
-              .reject { |r| columns.each_value.all? { |i| r[i].nil? || r[i].empty? } }
+    rows = data_rows(raw, columns)
 
     if rows.empty?
       @errors << 'CSV enthält keine Datenzeilen.'
+      return nil
+    end
+
+    if rows.size > MAX_DATA_ROWS
+      @errors << "Die Datei enthält #{rows.size} Datenzeilen, verarbeitet werden höchstens " \
+                 "#{MAX_DATA_ROWS}. Bitte in mehreren Dateien hochladen."
       return nil
     end
 
@@ -66,6 +86,20 @@ class RefereeEmailImport
   rescue EncodingError => e
     @errors << "Datei-Encoding wird nicht unterstützt (bitte als UTF-8 speichern): #{e.message}"
     nil
+  end
+
+  # Datenzeilen mit ihrer Nummer in der Datei. Leer ist eine Zeile, wenn in keiner
+  # ausgewerteten Spalte etwas steht; solche Zeilen zählen nicht mit, verschieben
+  # aber auch keine Nummer.
+  def data_rows(raw, columns)
+    raw.each_with_index.filter_map do |row, index|
+      values = Array(row).map { |v| v.to_s.strip }
+      next if columns.each_value.all? { |i| values[i].nil? || values[i].empty? }
+
+      # +2: Kopfzeile plus 1-basierte Zählung, damit die Nummer der Zeile in der
+      # Tabellenkalkulation entspricht.
+      Row.new(number: index + 2, cells: values)
+    end
   end
 
   # Encoding prüfen, BOM strippen, Zeilenenden vereinheitlichen — in dieser
@@ -118,8 +152,9 @@ class RefereeEmailImport
     columns
   end
 
-  # Trägt die Adressen ein und protokolliert jede Zeile in genau einem Topf.
-  # In einer Transaktion, damit ein unerwarteter Fehler nichts halb Angewandtes
+  # Trägt die Adressen ein und protokolliert jede verarbeitete Datenzeile in genau
+  # einem Topf, sodass die vier Zahlen des Reports `total_rows` ergeben. In einer
+  # Transaktion, damit ein unerwarteter Fehler nichts halb Angewandtes
   # zurücklässt, von dem der Report nie berichtet.
   def apply(rows, columns)
     report = { total_rows: rows.size, updated: [], skipped: [], not_found: [], invalid: [] }
@@ -127,11 +162,7 @@ class RefereeEmailImport
     ActiveRecord::Base.transaction do
       referees = load_referees(rows, columns)
 
-      rows.each_with_index do |row, index|
-        # +2: Kopfzeile plus 1-basierte Zählung, damit die Nummer der Zeile in
-        # der Tabellenkalkulation entspricht.
-        apply_row(report, referees, row, columns, index + 2)
-      end
+      rows.each { |row| apply_row(report, referees, row, columns) }
     end
 
     report
@@ -139,21 +170,22 @@ class RefereeEmailImport
 
   # Alle betroffenen Schiedsrichter in EINER Query. Zusammengeführte Dubletten
   # bleiben bewusst außen vor (canonical): Eine Adresse am aufgelösten Datensatz
-  # erreicht niemanden mehr.
+  # erreicht niemanden mehr. Sie landen im Report unter not_found, dessen Label
+  # deshalb „ohne aktiven Schiedsrichter" lautet und nicht „gibt es nicht".
   def load_referees(rows, columns)
-    numbers = rows.filter_map { |row| license_number(row[columns[:lizenznummer]]) }.uniq
+    numbers = rows.filter_map { |row| license_number(row.cells[columns[:lizenznummer]]) }.uniq
     return {} if numbers.empty?
 
     Referee.canonical.where(lizenznummer: numbers).index_by(&:lizenznummer)
   end
 
-  def apply_row(report, referees, row, columns, line)
-    raw_number = row[columns[:lizenznummer]].to_s.strip
-    raw_email  = row[columns[:email]].to_s.strip
+  def apply_row(report, referees, row, columns)
+    raw_number = row.cells[columns[:lizenznummer]].to_s.strip
+    raw_email  = row.cells[columns[:email]].to_s.strip
 
     number = license_number(raw_number)
     if number.nil?
-      report[:invalid] << { row: line, value: raw_number, reason: 'Lizenznummer ist keine Zahl' }
+      report[:invalid] << { row: row.number, value: raw_number, reason: 'Lizenznummer ist keine Zahl' }
       return
     end
 
@@ -164,35 +196,41 @@ class RefereeEmailImport
     end
 
     if raw_email.blank?
-      report[:invalid] << { row: line, value: raw_number, reason: 'E-Mailadresse fehlt' }
+      report[:invalid] << { row: row.number, value: raw_number, reason: 'E-Mailadresse fehlt' }
       return
     end
 
     unless raw_email.match?(URI::MailTo::EMAIL_REGEXP)
-      report[:invalid] << { row: line, value: raw_email, reason: 'E-Mailadresse ist ungültig' }
+      report[:invalid] << { row: row.number, value: raw_email, reason: 'E-Mailadresse ist ungültig' }
       return
     end
 
-    write_email(report, referee, raw_email, line)
+    write_email(report, referee, raw_email, row.number)
   end
 
   def write_email(report, referee, email, line)
     if referee.email.present?
       reason = referee.email.casecmp?(email) ? 'identical' : 'other_email'
-      report[:skipped] << entry(referee).merge(email: referee.email, csv_email: email, reason: reason)
+      report[:skipped] << entry(referee, line).merge(email: referee.email, csv_email: email, reason: reason)
       return
     end
 
     referee.email = email
     if referee.save
-      report[:updated] << entry(referee).merge(email: email)
+      report[:updated] << entry(referee, line).merge(email: email)
     else
-      report[:invalid] << { row: line, value: email, reason: referee.errors.full_messages.to_sentence }
+      # Referee validiert die Adresse selbst nicht (das tut der Import oben), also
+      # war hier der Stammdatensatz schon vorher ungültig — etwa ein Altbestand
+      # ohne Vornamen. Deshalb Name und Lizenznummer mit in die Meldung: Der Fehler
+      # sitzt im Profil, nicht in der Zeile.
+      report[:invalid] << { row: line, value: "#{referee.lizenznummer} #{referee.vorname} #{referee.nachname}",
+                            reason: referee.errors.full_messages.to_sentence }
     end
   end
 
-  def entry(referee)
-    { id: referee.id, lizenznummer: referee.lizenznummer, name: "#{referee.vorname} #{referee.nachname}" }
+  def entry(referee, line)
+    { row: line, id: referee.id, lizenznummer: referee.lizenznummer,
+      name: "#{referee.vorname} #{referee.nachname}" }
   end
 
   # Nur reine Ziffernfolgen gelten. Ein `to_i` würde aus "12a" still eine 12
