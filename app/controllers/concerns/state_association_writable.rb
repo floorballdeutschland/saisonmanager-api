@@ -67,13 +67,20 @@ module StateAssociationWritable
   # unten. Der SBK eines Verbunds pflegt dessen Einstellungen (und damit die
   # seiner Kinder), der SBK eines Kind-LV pflegt nirgends welche -- sein eigener
   # Datensatz erbt ohnehin.
+  #
+  # `.descendant_ids` und nicht `.ids_under`: Das eine ist die Reichweite einer
+  # Aenderung an diesem Verband, das andere die Zustaendigkeit, und `ids_under`
+  # liest `subtrees`, das nur nach Wurzeln indiziert ist. Fuer einen Verband
+  # mitten im Baum kaeme dort leer heraus. Das faellt hier zufaellig richtig aus
+  # (ein Kind-LV soll nichts setzen duerfen), waere aber aus dem falschen Grund
+  # richtig -- siehe die Begruendung an StateAssociation.descendant_ids.
   def settings_writable_state_associations
     return StateAssociation.all if global_state_association_manager?
 
     ph = current_user.permission_hash
     go_ids = (ph[:sbk] || []).reject(&:zero?).uniq
     sa_ids = GameOperation.where(id: go_ids).pluck(:state_association_id).compact
-    StateAssociation.where(id: StateAssociation.ids_under(sa_ids))
+    StateAssociation.where(id: sa_ids.flat_map { |id| StateAssociation.descendant_ids(id) }.uniq)
   end
 
   # Darf der aktuelle Nutzer die Einstellungen dieses Landesverbands setzen?
