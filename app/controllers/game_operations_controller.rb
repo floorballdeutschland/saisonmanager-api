@@ -82,7 +82,7 @@ class GameOperationsController < ApplicationController
       go_ids.flatten!
 
       if ph[:vm].present?
-        # Heimat-Spielbetrieb der eigenen Vereine plus die Spielbetriebe, in
+        # Zustaendiger Spielbetrieb der eigenen Vereine plus die Spielbetriebe, in
         # denen sie diese Saison tatsächlich eine Mannschaft haben.
         #
         # Vorher kamen die zusätzlichen Spielbetriebe aus

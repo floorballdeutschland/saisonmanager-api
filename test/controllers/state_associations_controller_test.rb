@@ -263,6 +263,133 @@ class StateAssociationsControllerTest < ActionDispatch::IntegrationTest
     Rack::Test::UploadedFile.new(path, 'image/png')
   end
 
+  # --- parent_id: verschiebt die Zustaendigkeit fuer einen ganzen Teilbaum -----
+  #
+  # Seit die Zustaendigkeit fuer Vereine am Landesverband haengt
+  # (Club#main_game_operation_id), holt ein Umhaengen die Verwaltung ALLER Vereine
+  # darunter zu einem anderen Spielbetrieb. Vorher entschied `parent_id` nur ueber
+  # Gruppierung und Postfach-Vererbung.
+
+  # @admin ist regional gescopt (game_operation_id: @own_go.id), nicht 0. Er darf
+  # jeden Landesverband bearbeiten -- das ist Bestandsverhalten, siehe oben -- aber
+  # nicht die Zustaendigkeit fuer dessen Vereine zu sich holen.
+  test 'ein regional gescopter Admin darf den uebergeordneten Verband nicht setzen' do
+    fremd_club = create(:club, state_association_id: @foreign_sa.id)
+    login(@admin)
+
+    put "/api/v2/admin/state_associations/#{@foreign_sa.id}",
+        params: { state_association: { name: 'X', parent_id: @own_sa.id } }
+
+    assert_response :success
+    assert_nil @foreign_sa.reload.parent_id, 'das Feld muss verworfen werden'
+    assert_nil fremd_club.reload.main_game_operation_id,
+               'die Vereine des fremden Verbands duerfen nicht zum eigenen Spielbetrieb wandern'
+  end
+
+  test 'die Bundesebene darf den uebergeordneten Verband setzen' do
+    fremd_club = create(:club, state_association_id: @foreign_sa.id)
+    login(create_user(user_group_id: 1, game_operation_id: 0))
+
+    put "/api/v2/admin/state_associations/#{@foreign_sa.id}",
+        params: { state_association: { name: 'X', parent_id: @own_sa.id } }
+
+    assert_response :success
+    assert_equal @own_sa.id, @foreign_sa.reload.parent_id
+    assert_equal @own_go.id, fremd_club.reload.main_game_operation_id
+  end
+
+  # Gegenstueck zu ClubsController#state_association_move_conflict: Dort wird das
+  # Verschieben EINES Vereins in einen Verbund ohne Spielbetrieb abgelehnt, auch
+  # fuer die Bundesebene. Ueber `parent_id` waere derselbe Zustand fuer N Vereine
+  # bisher ohne jede Pruefung erreichbar gewesen.
+  test 'der Wechsel in einen Verbund ohne Spielbetrieb wird abgelehnt' do
+    ohne_go = StateAssociation.create!(name: "Ohne GO #{SecureRandom.hex(4)}", short_name: 'OGO')
+    club = create(:club, state_association_id: @own_sa.id)
+    login(create_user(user_group_id: 1, game_operation_id: 0))
+
+    put "/api/v2/admin/state_associations/#{@own_sa.id}",
+        params: { state_association: { parent_id: ohne_go.id } }
+
+    assert_response :unprocessable_entity
+    assert_match(/kein Spielbetrieb/, JSON.parse(response.body)['errors'].first)
+    assert_match(/1 Verein/, JSON.parse(response.body)['errors'].first)
+    assert_nil @own_sa.reload.parent_id
+    assert_equal @own_go.id, club.reload.main_game_operation_id
+  end
+
+  # --- Loeschen ---------------------------------------------------------------
+  #
+  # Auf clubs.state_association_id liegt kein Fremdschluessel und kein dependent:.
+  # Ein Loeschen machte jeden Verein darunter lautlos herrenlos.
+
+  test 'ein Landesverband mit Vereinen wird nicht geloescht' do
+    club = create(:club, state_association_id: @own_sa.id)
+    login(create_user(user_group_id: 1, game_operation_id: 0))
+
+    delete "/api/v2/admin/state_associations/#{@own_sa.id}"
+
+    assert_response :unprocessable_entity
+    assert_match(/1 Verein/, JSON.parse(response.body)['errors'].first)
+    assert StateAssociation.exists?(@own_sa.id)
+    assert_equal @own_go.id, club.reload.main_game_operation_id
+  end
+
+  # Auch die Unterverbaende zaehlen: dependent: :nullify macht sie parentlos, ihre
+  # Vereine wechseln damit die Zustaendigkeit.
+  test 'ein Landesverband mit Unterverbaenden wird nicht geloescht' do
+    kind = StateAssociation.create!(name: "Kind #{SecureRandom.hex(4)}", short_name: 'KND',
+                                    parent: @own_sa)
+    club = create(:club, state_association_id: kind.id)
+    login(create_user(user_group_id: 1, game_operation_id: 0))
+
+    delete "/api/v2/admin/state_associations/#{@own_sa.id}"
+
+    assert_response :unprocessable_entity
+    assert_match(/untergeordnete/, JSON.parse(response.body)['errors'].first)
+    assert_equal @own_go.id, club.reload.main_game_operation_id
+  end
+
+  test 'ein leerer Landesverband wird geloescht' do
+    leer = StateAssociation.create!(name: "Leer #{SecureRandom.hex(4)}", short_name: 'LEE')
+    login(create_user(user_group_id: 1, game_operation_id: 0))
+
+    delete "/api/v2/admin/state_associations/#{leer.id}"
+
+    assert_response :no_content
+    assert_not StateAssociation.exists?(leer.id)
+  end
+
+  # --- Schreibzugriff auf den Teilbaum ----------------------------------------
+
+  # Wer fuer die Vereine eines untergeordneten Verbands zustaendig ist, muss auch
+  # dessen Verbandsdaten pflegen koennen. Nach dem Datenlauf zu dieser Umstellung
+  # ist das der Produktionszustand: Der Floorballverband Schleswig-Holstein
+  # verwaltet die Hamburger Vereine. Ohne diesen Zugriff koennte er dort weder den
+  # Zustaendigkeitsbereich (#468) noch das Logo pflegen noch eine Vereins-Freigabe
+  # zuruecknehmen -- das koennte nur die Bundesebene.
+  test 'SBK darf den untergeordneten Landesverband bearbeiten' do
+    kind = StateAssociation.create!(name: "Kind #{SecureRandom.hex(4)}", short_name: 'KND',
+                                    parent: @own_sa)
+    login(@sbk)
+
+    put "/api/v2/admin/state_associations/#{kind.id}",
+        params: { state_association: { name: 'Neu durch Verbund' } }
+
+    assert_response :success
+    assert_equal 'Neu durch Verbund', kind.reload.name
+  end
+
+  test 'SBK darf den Unterverband eines fremden Verbands NICHT bearbeiten' do
+    fremdes_kind = StateAssociation.create!(name: "Fremdes Kind #{SecureRandom.hex(4)}",
+                                            short_name: 'FKD', parent: @foreign_sa)
+    login(@sbk)
+
+    put "/api/v2/admin/state_associations/#{fremdes_kind.id}",
+        params: { state_association: { name: 'Übergriff' } }
+
+    assert_response :forbidden
+  end
+
   def create_user(user_group_id:, game_operation_id:)
     User.create!(
       user_name: "authuser_#{SecureRandom.hex(4)}",

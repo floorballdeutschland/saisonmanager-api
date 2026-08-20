@@ -509,9 +509,9 @@ class ClubsController < ApplicationController
     result
   end
 
-  # Gemeinsam für Anlage und Änderung. Der Spielbetrieb fehlt hier bewusst: er
-  # ist keine Spalte am Verein, sondern ein Eintrag im game_operations_hash, und
-  # kommt deshalb als eigener Parameter (siehe create_club / update_club).
+  # Gemeinsam für Anlage und Änderung. `state_association_id` ordnet den Verein
+  # ein und bestimmt damit den zuständigen Spielbetrieb; ein eigener
+  # Spielbetriebs-Parameter gibt es nicht mehr (siehe create_club / update_club).
   def club_params
     params.require(:club).permit(:name, :short_name, :long_name, :state, :state_association_id, :contact_email,
                                  notify_user_ids: [])
@@ -560,64 +560,87 @@ class ClubsController < ApplicationController
       'zuständigen Verband geändert werden.'
   end
 
-  # Vereinsänderung. Der Spielbetrieb ist optional – kommt er mit, wird der
-  # Heimat-Eintrag ersetzt.
+  # Der Landesverband entscheidet, welcher Spielbetrieb den Verein verwaltet
+  # (Club#main_game_operation_id). Ein Wechsel muss deshalb auch am ZIEL erlaubt
+  # sein: `:update_club` gilt nur für den bisher zuständigen Spielbetrieb, und
+  # ohne diese Prüfung könnte ein Verband einen Verein in einen fremden Verbund
+  # schieben, der ihn nie aufgenommen hat – und verlöre dabei selbst den Zugriff.
+  #
+  # Dieselbe Prüfung hing vorher am Feld `game_operation_id`. Sie musste
+  # mitwandern, weil das Feld entfallen ist: Sonst wäre aus einer bewachten
+  # Änderung eine unbewachte geworden, und zwar ohne dass es irgendwo aufgefallen
+  # wäre – `state_association_id` galt bisher als reines Einordnungsfeld.
+  #
+  # Gibt nil zurück, wenn nichts zu beanstanden ist, sonst die Meldung.
+  def state_association_move_conflict(club)
+    eingereicht = params[:club] || {}
+    return nil unless eingereicht.key?('state_association_id')
+
+    ziel_sa_id = eingereicht['state_association_id'].presence&.to_i
+    return nil if ziel_sa_id == club.state_association_id
+
+    global = current_user.permission_hash.values_at(:admin, :sbk).any? { |ids| Array(ids).include?(0) }
+
+    # Ohne Landesverband ist für den Verein kein Spielbetrieb zuständig, er
+    # erscheint danach nur noch im globalen Zugriff. Wer selbst global sieht, darf
+    # das (auf Produktion standen am 19.08.2026 vier Ablage-Vereine so da); ein
+    # einzelner Verband würde den Verein damit für sich und alle anderen
+    # unerreichbar machen.
+    if ziel_sa_id.nil?
+      return nil if global
+
+      return 'Ohne Landesverband ist kein Verband für den Verein zuständig. ' \
+             'Das kann nur die Bundesebene setzen.'
+    end
+
+    ziel_wurzel_id = StateAssociation.root_id(ziel_sa_id)
+
+    # Eine Kennung, die es nicht gibt, ist ein anderer Fehler als ein Verband
+    # ohne Spielbetrieb, und die Meldung muss das sagen: Sonst wird jemand
+    # aufgefordert, einen Spielbetrieb anzulegen, obwohl er nur einen gültigen
+    # Verband auswählen muss. Die Anlage unterscheidet beides schon
+    # (state_association_error_message), das Bearbeiten warf sie zusammen.
+    return 'Der gewählte Landesverband existiert nicht.' if ziel_wurzel_id.nil?
+
+    ziel_go_id = GameOperation.id_by_state_association[ziel_wurzel_id]
+
+    # Ein Landesverband, dessen Verbund keinen Spielbetrieb hat, hinterlässt
+    # denselben unerreichbaren Verein wie ein leeres Feld – nur unauffälliger,
+    # weil in der Maske ein Verband ausgewählt ist. Genau so kam es zu dem Fall,
+    # der diese Umstellung ausgelöst hat. Deshalb auch für die Bundesebene ein
+    # Riegel: Erst braucht der Verbund einen Spielbetrieb (Issue #492).
+    if ziel_go_id.nil?
+      return 'Für diesen Landesverband gibt es keinen Spielbetrieb. Der Verein ' \
+             'hätte danach keinen zuständigen Verband.'
+    end
+
+    return nil if global || ziel_go_id == club.main_game_operation_id
+
+    ziel_go = GameOperation.find_by(id: ziel_go_id)
+    return nil if ziel_go&.user_permissions(current_user)&.include?(:create_club)
+
+    'Keine Berechtigung für den Ziel-Spielbetrieb'
+  end
+
+  # Vereinsänderung. Ein `game_operation_id` im Rumpf wird nicht mehr gelesen:
+  # Der Landesverband ordnet den Verein ein, der zuständige Spielbetrieb ergibt
+  # sich daraus (Club#main_game_operation_id). Das Feld darf mitkommen, ohne die
+  # Anfrage zu stören – das Formular schickt den Verein unverändert zurück.
   def update_club(club)
     club.updated_by = current_user.id
 
-    # Einmal auswerten und wiederverwenden: Der Zweig unten schreibt
-    # `game_operations_hash` neu, und `full_club_access?` liest darüber den
-    # Heimat-Spielbetrieb. Nach der Zuweisung beantwortete ein zweiter Aufruf
-    # die Frage für den ZIEL-Spielbetrieb statt für den, der die Anfrage
-    # autorisiert hat.
+    # Einmal auswerten und wiederverwenden: `full_club_access?` leitet die
+    # Berechtigung über den Landesverband ab, und der wird unten geschrieben. Ein
+    # zweiter Aufruf beantwortete die Frage danach für den ZIEL-Verband statt für
+    # den, der die Anfrage autorisiert hat.
     voller_zugriff = full_club_access?(club)
 
     if !voller_zugriff && (meldung = restricted_field_conflict(club))
       return render json: { success: false, message: meldung }, status: :forbidden
     end
 
-    # `present?` statt `key?`: Das Formular schickt den ganzen Verein zurück,
-    # also auch ein `game_operation_id`, das es dort gar nicht zu bearbeiten
-    # gibt. Bei einem Verein ohne Heimat-Eintrag liefert Club#full_hash dafür
-    # nil, und `key?` verstand dieses nil als „soll geändert werden" – das
-    # Speichern scheiterte an der Prüfung unten, obwohl niemand etwas ändern
-    # wollte. Betroffen waren ausgerechnet die Vereine ohne Spielbetrieb, also
-    # die, deren Stammdaten am dringendsten Pflege brauchen.
-    #
-    # Eine ausdrückliche 0 oder eine unbekannte Kennung laufen weiterhin in die
-    # Meldung: in Ruby ist `0.present?` true, nur nil und "" gelten hier als
-    # „nicht mitgeschickt".
-    # `full_club_access?` zuerst: Das Formular schickt den Verein unverändert
-    # zurück, also auch bei einem Vereinsmanager immer ein game_operation_id.
-    # Ohne diese Klammer liefe der Zweig für ihn mit und schriebe den
-    # Heimat-Eintrag neu – bei gleicher Kennung folgenlos, aber es wäre der
-    # einzige Pfad, über den er den Spielbetrieb überhaupt anfassen kann.
-    if voller_zugriff && params[:game_operation_id].present?
-      target = resolve_game_operation(params[:game_operation_id])
-
-      # Eine 0 oder eine unbekannte ID hätte den Heimat-Eintrag auf einen
-      # Spielbetrieb gesetzt, den es nicht gibt. Der Verein wäre danach in
-      # keiner Vereinsliste mehr aufgetaucht (die Abfragen matchen per jsonb
-      # gegen eine echte ID) und über die Oberfläche nicht mehr auffindbar.
-      if target.nil?
-        return render json: { success: false, message: game_operation_error_message },
-                      status: :unprocessable_entity
-      end
-
-      # Wechselt der Heimat-Spielbetrieb, muss die Berechtigung auch am Ziel
-      # bestehen. `:update_club` gilt nur für den bisherigen Spielbetrieb – ohne
-      # diese Prüfung konnte ein Verband einen Verein in einen fremden
-      # Spielbetrieb verschieben, der ihn nie aufgenommen hat, und der bisherige
-      # Verband verlor dabei den Zugriff.
-      if target.id != club.main_game_operation_id &&
-         !target.user_permissions(current_user).include?(:create_club)
-        return render json: { message: 'Keine Berechtigung für den Ziel-Spielbetrieb' },
-                      status: :forbidden
-      end
-
-      # Der Hash trägt nur noch den Heimat-Eintrag. Vorher wurden hier zusätzlich
-      # die Gast-Einträge des Altdaten-Imports mitgeschleift.
-      club.game_operations_hash = [{ 'home_game_operation' => true, 'game_operation_id' => target.id }]
+    if voller_zugriff && (meldung = state_association_move_conflict(club))
+      return render json: { success: false, message: meldung }, status: :forbidden
     end
 
     if club.update(voller_zugriff ? club_params : restricted_club_params)
@@ -627,15 +650,14 @@ class ClubsController < ApplicationController
     end
   end
 
+  # Ohne Landesverband kein Verein: aus ihm ergibt sich, wer den Verein verwalten
+  # darf. Die Auswahl ersetzt das frühere Spielbetriebs-Feld, das nur bei der
+  # Neuanlage sichtbar war und beim Bearbeiten unerreichbar blieb.
   def create_club
     game_operation = resolve_create_game_operation
 
-    # Ohne Spielbetrieb kein Verein: der Heimat-Spielbetrieb entscheidet, wer
-    # den Verein verwalten darf. Vorher lief hier GameOperation.find(0) in einen
-    # RecordNotFound, und der Nutzer bekam „Nicht gefunden." – eine Meldung, die
-    # nach einem fehlenden Verein klingt.
     if game_operation.nil?
-      return render json: { success: false, message: game_operation_error_message },
+      return render json: { success: false, message: state_association_error_message },
                     status: :unprocessable_entity
     end
 
@@ -644,18 +666,11 @@ class ClubsController < ApplicationController
     end
 
     club = Club.new(club_params)
-    # game_operation_id bewusst als Integer: alle Abfragen auf den
-    # game_operations_hash vergleichen per jsonb `@>` gegen eine Zahl. Als String
-    # gespeichert (params sind Strings) findet den Verein keine dieser Abfragen –
-    # er fehlte anschließend in der Vereinsverwaltung.
-    club.game_operations_hash = [{ 'home_game_operation' => true,
-                                   'game_operation_id' => game_operation.id }]
     club.created_by = current_user.id
     club.updated_by = current_user.id
 
     # Ergebnis prüfen: Club.create gab vorher auch einen ungespeicherten Verein
-    # zurück, den die Antwort als 201 Created auswies. Club hat derzeit keine
-    # Validierungen, der Zweig ist also Vorsorge – und deshalb ohne Test.
+    # zurück, den die Antwort als 201 Created auswies.
     if club.save
       render json: club.full_hash, status: :created
     else
@@ -663,28 +678,27 @@ class ClubsController < ApplicationController
     end
   end
 
+  # Der Spielbetrieb, der für den neuen Verein zuständig wäre, abgeleitet aus dem
+  # gewählten Landesverband. nil heißt „kein Verband zuständig" und führt zur
+  # Meldung, statt einen Verein anzulegen, den anschließend nur noch die
+  # Bundesebene sieht (`Club.unassigned`) und der sonst niemandem gehört.
   def resolve_create_game_operation
-    resolve_game_operation(params[:game_operation_id])
-  end
+    sa_id = (params[:club] || {})[:state_association_id].presence
+    return nil if sa_id.nil?
 
-  # `find_by` statt `find`, damit eine unbekannte ID zu einer verständlichen
-  # Meldung führt statt zu einem 404 („Nicht gefunden." aus dem globalen
-  # rescue_from, was nach einem fehlenden Verein klingt).
-  def resolve_game_operation(raw_id)
-    go_id = raw_id.to_i
-    return nil unless go_id.positive?
-
+    go_id = GameOperation.id_by_state_association[StateAssociation.root_id(sa_id)]
     GameOperation.find_by(id: go_id)
   end
 
-  # Unterscheidet die beiden Gründe: nicht ausgewählt oder unbekannt. Vorher
-  # nannte beide Fälle dieselbe Meldung, obwohl nur der erste vom Nutzer kommt.
-  def game_operation_error_message
-    if params[:game_operation_id].to_i.positive?
-      'Der gewählte Spielbetrieb existiert nicht.'
-    else
-      'Bitte einen Spielbetrieb auswählen.'
-    end
+  # Unterscheidet die drei Gründe. Vorher nannten die ersten beiden dieselbe
+  # Meldung, obwohl nur der erste vom Nutzer kommt.
+  def state_association_error_message
+    sa_id = (params[:club] || {})[:state_association_id].presence
+    return 'Bitte einen Landesverband auswählen.' if sa_id.nil?
+    return 'Der gewählte Landesverband existiert nicht.' if StateAssociation.root_id(sa_id).nil?
+
+    'Für diesen Landesverband gibt es keinen Spielbetrieb. Der Verein hätte ' \
+      'keinen zuständigen Verband.'
   end
 
   # Ein Verein kann Teams in Ligen mehrerer Spielbetriebe haben (Gastvereine
@@ -698,7 +712,7 @@ class ClubsController < ApplicationController
   # und der frühere `GameOperation#clubs` (= ganzer game_operations_hash) ist
   # keine davon:
   #
-  # 1. Heimat-Spielbetrieb – die eigenen Vereine.
+  # 1. Zustaendiger Spielbetrieb – die eigenen Vereine.
   # 2. Vereins-Freigabe – ausdrücklich erteilt, saisongebunden, pflegbar.
   # 3. Vereine mit einer Mannschaft in einer eigenen Liga dieser Saison.
   #
@@ -771,7 +785,7 @@ class ClubsController < ApplicationController
     go_ids = (ph[:admin].to_a + ph[:sbk].to_a).reject(&:zero?)
     return false if go_ids.empty?
 
-    # Heimat-Spielbetrieb oder Vereins-Freigabe – gemeinsame Regel mit
+    # Zustaendiger Spielbetrieb oder Vereins-Freigabe – gemeinsame Regel mit
     # Club.admin_user_clubs und Player.admin_user_players.
     #
     # Der frühere Zweig „hängt als Gast-Spielbetrieb am Verein" ist bewusst

@@ -123,7 +123,7 @@ module Admin
     # Zwei Gründe, beide zulässig:
     #
     # (a) Der Spieler gehört einem Verein, den dieser Spielbetrieb lesen darf
-    #     (Heimat-Spielbetrieb oder Vereins-Freigabe) – der bisherige Weg, nur
+    #     (zustaendiger Spielbetrieb oder Vereins-Freigabe) – der bisherige Weg, nur
     #     ohne die Gast-Einträge aus dem Altdaten-Import 2010–2014.
     # (b) Eine seiner Lizenzen hängt an einer Liga dieses Spielbetriebs.
     #

@@ -176,22 +176,23 @@ class MergeClubsTest < ActiveSupport::TestCase
     assert_equal 1, user.reload.permissions.size
   end
 
-  # --- game_operations_hash --------------------------------------------------
+  # --- Zustaendigkeit --------------------------------------------------------
 
-  # Der Merge fasst den game_operations_hash des verbleibenden Vereins nicht an.
-  # Früher übernahm er die Gast-Einträge des aufgelösten Vereins – seit deren
-  # Wegfall wäre das die einzige Stelle, die sie wieder anlegt.
-  test 'laesst den game_operations_hash des verbleibenden Vereins unveraendert' do
-    source = create(:club, game_operations_hash: [
-      { 'home_game_operation' => true, 'game_operation_id' => 1 },
-      { 'home_game_operation' => false, 'game_operation_id' => 5 }
-    ])
-    target = create(:club, game_operations_hash: [{ 'home_game_operation' => true, 'game_operation_id' => 2 }])
+  # Der Merge fasst den Landesverband des verbleibenden Vereins nicht an: Er
+  # entscheidet, wer den Verein verwaltet, und der des aufgeloesten Vereins
+  # verschwindet mit ihm. Sonst koennte ein Merge die Zustaendigkeit stillschweigend
+  # an einen anderen Verband uebergeben.
+  test 'laesst den Landesverband des verbleibenden Vereins unveraendert' do
+    ziel_sa = create(:state_association)
+    ziel_go = create(:game_operation, state_association_id: ziel_sa.id)
+    source = create(:club, state_association_id: create(:state_association).id)
+    target = create(:club, state_association_id: ziel_sa.id)
 
     run_task('MERGES' => "#{source.id}:#{target.id}", 'DRY_RUN' => 'false')
 
-    assert_equal [{ 'home_game_operation' => true, 'game_operation_id' => 2 }],
-                 target.reload.game_operations_hash
+    target.reload
+    assert_equal ziel_sa.id, target.state_association_id
+    assert_equal ziel_go.id, target.main_game_operation_id
   end
 
   # --- Unique-Index ----------------------------------------------------------

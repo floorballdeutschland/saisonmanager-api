@@ -144,26 +144,31 @@ class Club < ApplicationRecord
     end
   end
 
-  # Enthält genau einen Eintrag: den Heimat-Spielbetrieb des Vereins
-  # (`home_game_operation: true`). Bis Release 1.78 standen hier zusätzlich
-  # Gast-Einträge (`home_game_operation: false`) aus dem Altdaten-Import
-  # 2010–2014. Die Anwendung hat sie nie geschrieben und nie nachgeführt, und
-  # seit 1.67.1 entschied auch keine Rechteprüfung mehr über sie. Sie sind
-  # ersatzlos entfallen: Wer fremde Vereine sehen muss, bekommt eine
-  # Vereins-Freigabe des zuständigen Landesverbands
-  # (StateAssociationRelease) oder ist über die Liga zuständig.
+  # Altlast ohne Aufgabe. Die Spalte trug den Heimat-Spielbetrieb des Vereins
+  # (`home_game_operation: true`), bis Release 1.78 zusätzlich Gast-Einträge aus
+  # dem Altdaten-Import 2010–2014.
   #
-  # Die Array-Form bleibt, weil die jsonb-Abfragen (`@>`) darauf aufbauen.
+  # Seit die Zuständigkeit aus dem Landesverband abgeleitet wird
+  # (#main_game_operation_id), entscheidet sie über nichts mehr. Der Leser bleibt
+  # nur, damit die Werte bis zum Abbau der Spalte lesbar sind, und wird von
+  # keiner Rechteprüfung und keiner Abfrage mehr benutzt. Nicht wieder
+  # heranziehen: Genau die zweite Quelle war das Problem.
   def game_operations_hash
     val = super
     val.is_a?(Array) ? val : []
   end
 
+  # Ueber die je Request geladene Karte und nicht per find_by: Diese Methode
+  # laeuft in den Lizenzlisten je Zeile (Player#create_license_hash).
   def home_game_operation
-    Rails.cache.fetch("#{cache_key}/home_game_operation", expires_in: 1.week) do
-      go = game_operations_hash.select { |g| g['home_game_operation'] == true }
-      GameOperation.find_by_id go.first['game_operation_id'] if go.present?
-    end
+    GameOperation.by_id[main_game_operation_id]
+  end
+
+  # Der zustaendige Verband des Vereins: die Wurzel seiner Verbandskette. Fuer
+  # einen Verein in Sachsen also SBK Ost, fuer einen in Hamburg dessen
+  # Elternverband. In der Oberflaeche heisst dieser Wert „Spielverbund".
+  def responsible_state_association_id
+    StateAssociation.root_id(state_association_id)
   end
 
   def full_hash
@@ -199,24 +204,35 @@ class Club < ApplicationRecord
     }
   end
 
-  # Boolean-Cast statt Truthy-Prüfung, aus demselben Grund wie in
-  # Player#home_club_hash: In Altdaten liegt das Flag als String, und `'false'`
-  # ist truthy. Ein Gast-Eintrag mit diesem Wert galt damit als Heimat-Eintrag —
-  # und weil diese Methode den zuständigen Verband bestimmt, bekam die SBK des
-  # Gastverbands Zugriff auf jeden Spieler mit Heimat in diesem Verein.
+  # Der zustaendige Spielbetrieb, abgeleitet aus dem Landesverband des Vereins:
+  # Landesverband, Wurzel der Verbandskette, Spielbetrieb dieser Wurzel.
   #
-  # `Club#home_game_operation` und die SQL-Bedingung in
-  # `without_home_game_operation` prüfen bereits strikt auf `true`; hier lief es
-  # auseinander: Derselbe Verein galt dort als „ohne Heimat-Spielbetrieb" und
-  # hier als zugeordnet.
+  # Frueher stand die Zuordnung als Heimat-Eintrag im `game_operations_hash` und
+  # musste am Verein gepflegt werden, unabhaengig vom Landesverband. Damit gab es
+  # zwei Felder fuer eine Frage, und sie liefen auseinander: Die Vereinsmaske
+  # zeigt einen aus dem Landesverband abgeleiteten „Spielverbund", gespeichert
+  # war aber ein davon unabhaengiger Spielbetrieb, und beim Bearbeiten war das
+  # Feld nicht einmal sichtbar (nur die Neuanlage hatte es). So verwaltete
+  # Floorball Niedersachsen den ETV Hamburg, waehrend die Maske Hamburg auswies,
+  # und niemand konnte das ueber die Oberflaeche sehen oder aendern.
+  #
+  # Ein Verein ohne Landesverband hat keinen zustaendigen Spielbetrieb, ebenso
+  # einer, dessen Verbund keinen Spielbetrieb hat. `nil` ist hier also ein
+  # gueltiger Wert und bedeutet „niemand ist zustaendig". Wer diese Vereine zu
+  # sehen bekommt, entscheidet .admin_user_clubs: nur der globale Zugriff, siehe
+  # dort und Club.unassigned.
   def main_game_operation_id
-    game_operations_hash.filter { |h| ActiveModel::Type::Boolean.new.cast(h['home_game_operation']) }
-                        .map { |h| h['game_operation_id'].to_i }.first
+    GameOperation.id_by_state_association[responsible_state_association_id]
   end
 
   # Darf ein Admin-/SBK-Scope diesen Verein LESEN? Genau zwei Gründe:
-  # der Heimat-Spielbetrieb des Vereins, oder eine aktuelle Vereins-Freigabe
+  # der zuständige Spielbetrieb des Vereins, oder eine aktuelle Vereins-Freigabe
   # (StateAssociationRelease) des Landesverbands, dem der Verein gehört.
+  #
+  # Beide Zweige lesen jetzt dasselbe Feld: der erste über die abgeleitete
+  # Zuständigkeit, der zweite über den Landesverband selbst. Vorher kam der eine
+  # aus `game_operations_hash` und der andere aus `state_association_id`, sie
+  # konnten sich also widersprechen.
   #
   # Einzige Quelle für diese Regel. Vorher stand sie dreimal getrennt im Code
   # (Vereinsliste, Vereins-Detail, Spielerliste eines Vereins) – und lief
@@ -236,18 +252,6 @@ class Club < ApplicationRecord
                            .where(recipient_game_operation_id: scope,
                                   grantor_state_association_id: state_association_id)
                            .exists?
-  end
-
-  def fix_game_operations_hash!
-    game_operations_hash.map! do |goh|
-      if goh['game_operation_id'].present? && goh['game_operation_id'].instance_of?(String)
-        goh['game_operation_id'] = goh['game_operation_id'].to_i
-      end
-
-      goh
-    end
-
-    save
   end
 
   def logo_url
@@ -324,7 +328,7 @@ class Club < ApplicationRecord
   # Vereine, für die der User vereinsgebundene Rollen (VM/TM) vergeben darf:
   # die eigenen VM-Vereine plus die Vereine der eigenen SBK-Spielbetriebe.
   #
-  # Für die SBK-Rolle ist der Heim-Spielbetrieb des Vereins maßgeblich
+  # Für die SBK-Rolle ist der zuständige Spielbetrieb des Vereins maßgeblich
   # (main_game_operation_id), analog zu :update_club in #user_permissions – ein
   # Verein, der in einem fremden Spielbetrieb nur als Gast antritt, gehört nicht
   # dazu. Freigaben nach StateAssociationRelease zählen ebenfalls nicht, die
@@ -343,10 +347,13 @@ class Club < ApplicationRecord
     # neben einer regionalen SBK-Rolle auch VM ist, verlor sonst genau die
     # eigenen Vereine, die außerhalb der SBK-Spielbetriebe liegen – obwohl eine
     # reine VM dort Konten anlegen darf.
+    # Die SBK-Vereine per Query statt per Schleife über den ganzen Bestand: die
+    # Zuständigkeit hängt jetzt an einer eigenen Spalte und muss nicht mehr je
+    # Verein aus einem jsonb-Feld gelesen werden. Ein Index auf
+    # `clubs.state_association_id` fehlt weiterhin; bei knapp 300 Vereinen ist der
+    # Sequential Scan unkritisch.
     ids = Array(ph[:vm])
-    if ph[:sbk].present?
-      ids += scope.select { |c| ph[:sbk].include?(c.main_game_operation_id) }.map(&:id)
-    end
+    ids += scope.merge(home_clubs_of(ph[:sbk])).pluck(:id) if ph[:sbk].present?
 
     scope.where(id: ids.uniq).order(:name)
   end
@@ -362,27 +369,22 @@ class Club < ApplicationRecord
   # Gruppierung loswerden soll – und zwar völlig lautlos.
   FALLBACK_STATE_ASSOCIATION_SHORT_NAME = 'FVD'.freeze
 
-  # Vereine ohne Heim-Spielbetrieb: kein Verband ist für sie zuständig.
-  # `@>` mit Teilobjekt matcht jeden Eintrag mit home_game_operation: true,
-  # unabhängig vom Spielbetrieb; die Negation trifft damit leere Hashes und
-  # solche mit ausschließlich Gast-Einträgen.
-  WITHOUT_HOME_GAME_OPERATION_SQL =
-    %(NOT (clubs.game_operations_hash @> '[{"home_game_operation": true}]')).freeze
-
-  # Gruppiert die Vereine nach ihrem *eingestellten* Landesverband
-  # (clubs.state_association_id) statt nach Spielbetrieb. Vorher richtete sich
-  # die Überschrift nach dem Spielbetrieb und widersprach damit dem, was im
-  # Verein selbst eingestellt ist – z. B. erschienen Vereine mit Landesverband
-  # Schleswig-Holstein unter „Floorball Niedersachsen". Untergeordnete
-  # Landesverbände (Sachsen, Sachsen-Anhalt, Thüringen) werden dadurch einzeln
-  # sichtbar statt gesammelt unter „SBK Ost".
+  # Gruppiert die Vereine nach ihrem eingestellten Landesverband
+  # (clubs.state_association_id). Untergeordnete Landesverbände (Sachsen,
+  # Sachsen-Anhalt, Thüringen) sind dadurch einzeln sichtbar statt gesammelt
+  # unter „SBK Ost".
   #
-  # Der Zugriffsumfang bleibt unverändert am Spielbetrieb: welche Vereine jemand
-  # sieht, richtet sich weiter nach seinen GameOperation-Rechten – nur die
-  # Gruppierung folgt dem Landesverband. Ein Verein im eigenen Spielbetrieb, der
-  # einem anderen Landesverband angehört (z. B. ETV Hamburg im Spielbetrieb
-  # Niedersachsen), bleibt deshalb sichtbar, nur unter der Überschrift seines
-  # eigenen Landesverbands.
+  # Überschrift und Zugriff kommen jetzt aus demselben Feld: der Zugriff über den
+  # Spielverbund (die Wurzel der Verbandskette, siehe
+  # #main_game_operation_id), die Überschrift über den Landesverband selbst.
+  # Beides kann sich also nicht mehr widersprechen. Vorher hing der Zugriff an
+  # einem zweiten, am Verein gepflegten Feld, und ein Verein konnte unter der
+  # Überschrift eines Verbands stehen, den ein völlig anderer verwaltete.
+  #
+  # Ein untergeordneter Verband behält damit seine eigene Gruppe, während der
+  # Verbund darüber den Zugriff trägt: Die Hamburger Vereine stehen unter
+  # „Floorball Bund Hamburg", verwaltet werden sie vom Spielbetrieb des
+  # Verbunds, dem Hamburg untergeordnet ist.
   def self.admin_user_clubs(user, include_deactivated: false)
     ph = user.permission_hash
     global_access = ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
@@ -398,10 +400,14 @@ class Club < ApplicationRecord
       go_ids.flatten!
     end
 
-    # Vereine ohne Heim-Spielbetrieb nur für globalen Zugriff: sie sind sonst
-    # unsichtbar und nicht bearbeitbar (in Produktion 13 neu angelegte Vereine).
+    # Vereine ohne Landesverband nur für globalen Zugriff: für sie ist kein
+    # Spielbetrieb zuständig, sie wären sonst unsichtbar und nicht bearbeitbar.
     # Ein einzelner Landesverband soll dafür aber nicht die unzugeordneten
     # Vereine aller anderen in seiner Liste haben.
+    #
+    # Auf Produktion waren das am 19.08.2026 vier Ablage-Vereine; der Datenlauf
+    # zu dieser Umstellung ordnet sie dem Bundesverband zu, danach ist die Menge
+    # regulär leer und der Zweig reine Vorsorge.
     scoped = home_clubs_of(go_ids, include_unassigned: global_access)
       .includes(logo_attachment: :blob)
     scoped = scoped.active unless include_deactivated
@@ -423,34 +429,104 @@ class Club < ApplicationRecord
     result
   end
 
-  # Heim-Vereine aller übergebenen Spielbetriebe – in einer Query statt einer pro
-  # Spielbetrieb. Auf clubs liegt derzeit kein Index, die @>-Bedingungen wären
-  # aber mit einem GIN-Index auf game_operations_hash index-fähig. Bei knapp 300
-  # Vereinen ist der Sequential Scan unkritisch.
+  # Vereine, für die die übergebenen Spielbetriebe zuständig sind: alle Vereine
+  # in den Landesverbänden unter dem Spielverbund des jeweiligen Spielbetriebs.
+  # Eine Query auf eine eigene Spalte statt der früheren jsonb-Bedingungen auf
+  # `game_operations_hash`. Einen Index gibt es auf beiden Wegen nicht, bei knapp
+  # 300 Vereinen ohne Belang; `Club.unassigned` (`NOT IN`) könnte ihn ohnehin
+  # nicht nutzen.
   #
-  # Nur Heim-Einträge: Ein Verein gehört genau einem Verband, und nur der
-  # verwaltet seine Stammdaten. Ein bloßer Gast-Eintrag im game_operations_hash
-  # reicht dafür nicht – die Einträge stammen aus dem Altdaten-Import 2010–2014,
-  # werden von der Anwendung nie geschrieben und nicht nachgeführt. Sie ließen
-  # die Verbände gegenseitig in ihre Vereinslisten sehen, ohne dass es jemand
-  # erteilt hätte. Fremde Vereine erscheinen nur über eine Vereins-Freigabe, also
-  # im „(freigegeben)"-Block.
+  # Nur der zuständige Verband verwaltet die Stammdaten eines Vereins. Fremde
+  # Vereine erscheinen ausschließlich über eine Vereins-Freigabe, also im
+  # „(freigegeben)"-Block.
+  #
+  # include_unassigned nimmt die Vereine mit, für die kein Spielbetrieb zuständig
+  # ist. Sie wären sonst für niemanden sichtbar; ein einzelner Verband soll sie
+  # aber nicht in seiner Liste haben, deshalb entscheidet der Aufrufer.
   def self.home_clubs_of(go_ids, include_unassigned: false)
-    predicates = Array.new(go_ids.size, 'clubs.game_operations_hash @> ?')
-    binds = go_ids.map do |id|
-      [{ game_operation_id: id.to_i, home_game_operation: true }].to_json
-    end
+    sa_ids = responsible_state_association_ids(go_ids)
+    return include_unassigned ? unassigned : none if sa_ids.empty?
+    return where(state_association_id: sa_ids) unless include_unassigned
 
-    # Ohne Bind-Platzhalter und deshalb hinter den Spielbetriebs-Bedingungen:
-    # die Binds werden positionsabhängig eingesetzt.
-    predicates << WITHOUT_HOME_GAME_OPERATION_SQL if include_unassigned
-    return none if predicates.empty?
+    where(state_association_id: sa_ids).or(unassigned)
+  end
 
-    # Klammern explizit, obwohl Rails String-Prädikate ohnehin in
-    # Arel::Nodes::Grouping wickelt: so ist die Bindung beim Lesen von to_sql
-    # eindeutig, und eine Weiterverwendung des Fragments außerhalb von `where`
-    # (to_sql, find_by_sql) verknüpft das OR nicht versehentlich mit einem AND.
-    where("(#{predicates.join(' OR ')})", *binds)
+  # Vereine, für die kein Spielbetrieb zuständig ist. Drei Gründe, und die beiden
+  # letzten sind die unauffälligen:
+  #
+  # 1. kein Landesverband gesetzt (auf Produktion am 19.08.2026 vier
+  #    Ablage-Vereine, die der Datenlauf zuordnet),
+  # 2. ein Landesverband, den es nicht gibt – auf clubs.state_association_id liegt
+  #    kein Fremdschlüssel, der Verweis kann ins Leere zeigen,
+  # 3. ein Landesverband, dessen Verbund keinen Spielbetrieb hat. Genau dieser
+  #    Fall hat die Umstellung ausgelöst: In der Maske steht ein Verband, und
+  #    trotzdem ist niemand zuständig.
+  #
+  # Alle drei müssen mit, sonst verschwindet der Verein auch aus der Liste der
+  # Bundesebene, also aus der einzigen, in der er zu reparieren ist. Er landet
+  # dann über Club.group_by_state_association unter seinem Landesverband oder in
+  # der Restgruppe „Ohne Landesverband".
+  #
+  # Formuliert als Gegenmenge der zugeordneten Verbände, damit alle drei Fälle
+  # von einer Bedingung erfasst werden, statt sie einzeln aufzuzählen und dabei
+  # einen zu übersehen.
+  def self.unassigned
+    zugeordnet = assigned_state_association_ids
+    # `NOT IN ()` wäre ungültiges SQL, und Rails macht daraus ein `1=1`. Der Fall
+    # ist deshalb ausdrücklich benannt: Gibt es keinen zuständigen Verband, ist
+    # kein Verein zugeordnet.
+    return all if zugeordnet.empty?
+
+    where(state_association_id: nil).or(where.not(state_association_id: zugeordnet))
+  end
+
+  # Landesverbände, für die überhaupt ein Spielbetrieb zuständig ist. Löst die
+  # beiden Karten einmal je Request auf; im globalen Zugriff ist diese Methode
+  # sogar deren erster Verbraucher, die zwei Abfragen fallen also hier an (der
+  # N+1-Test in club_test.rb zählt sie mit).
+  def self.assigned_state_association_ids
+    go_by_root = GameOperation.id_by_state_association
+    StateAssociation.tree[:roots].select { |_, root| go_by_root.key?(root) }.keys
+  end
+
+  # Landesverbände, für die die übergebenen Spielbetriebe zuständig sind.
+  #
+  # Zwei Schritte, und tragend ist nur der zweite: Die Hebung auf die Wurzel
+  # macht aus dem Landesverband des Spielbetriebs den Verbund und holt dessen
+  # ganzen Teilbaum; der `select!` nimmt davon alles wieder weg, wofür dieser
+  # Spielbetrieb nicht zuständig ist. Die Hebung allein ist also wirkungslos
+  # (ohne sie liefert `ids_under` für einen Unterverband ohnehin nichts, weil
+  # `subtrees` nur nach Wurzeln indiziert ist). Sie steht hier, weil sie die
+  # Absicht lesbar macht: erst den Verbund bestimmen, dann prüfen, ob er uns
+  # gehört.
+  #
+  # Der `select!` macht die Methode zur genauen Umkehrung von
+  # #main_game_operation_id: Ein Verbund kommt nur mit, wenn die Zuständigkeit
+  # für ihn tatsächlich bei einem der übergebenen Spielbetriebe liegt. Ohne diese
+  # Bedingung genügte es, irgendwo unter der Wurzel zu hängen, und das fällt in
+  # zwei erreichbaren Lagen auseinander:
+  #
+  #   1. Ein Spielbetrieb an einem UNTERGEORDNETEN Verband. Er bekäme den ganzen
+  #      Teilbaum des Verbunds, obwohl #main_game_operation_id auf den
+  #      Spielbetrieb des Verbunds zeigt. Genau das entsteht, sobald jemand nach
+  #      #492 einen Spielbetrieb für Hamburg anlegt: Er hätte alle Vereine
+  #      Schleswig-Holsteins in seiner Liste, mit Kontaktadresse.
+  #   2. Zwei Spielbetriebe an einem Verband. `id_by_state_association` behält
+  #      den mit der niedrigeren ID; der andere sähe den Teilbaum trotzdem.
+  #
+  # In beiden Fällen wären die Vereine gelistet, aber nicht bearbeitbar
+  # (`Club#user_permissions` fragt #main_game_operation_id), und ihre
+  # Spielerlisten antworteten leer. Also genau die Art stillen Widerspruchs, die
+  # diese Umstellung beseitigen soll.
+  def self.responsible_state_association_ids(go_ids)
+    ids = Array(go_ids).compact.map(&:to_i).reject(&:zero?)
+    return [] if ids.empty?
+
+    go_by_root = GameOperation.id_by_state_association
+    roots = GameOperation.where(id: ids).pluck(:state_association_id).compact
+                         .map { |sa_id| StateAssociation.root_id(sa_id) }.compact.uniq
+    roots.select! { |root| ids.include?(go_by_root[root]) }
+    StateAssociation.ids_under(roots)
   end
 
   # Baut je Landesverband eine Gruppe.

@@ -18,8 +18,7 @@ class LogoUploadFormatTest < ActionDispatch::IntegrationTest
     @go = create(:game_operation, state_association_id: @sa.id)
     # Keine Bundesliga: für die greift beim Logo eine zweite, strengere Hürde.
     @league = create(:league, game_operation: @go, league_class_id: 'rl')
-    @club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
-                                                   'game_operation_id' => @go.id }])
+    @club = create(:club, game_operation: @go)
     @team = create(:team, league: @league, club: @club)
     login(create(:user, :admin))
   end

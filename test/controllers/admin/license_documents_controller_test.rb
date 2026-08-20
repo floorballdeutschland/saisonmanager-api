@@ -90,12 +90,16 @@ module Admin
     end
 
     test 'gescopte SBK sieht globale und eigene, nicht aber fremde Verbandsdokumente' do
-      sa = create(:state_association)
-      own_go = create(:game_operation, state_association_id: sa.id)
-      foreign_go = create(:game_operation, state_association_id: sa.id)
+      # Zwei getrennte Landesverbaende, nicht zwei Spielbetriebe an einem: Sonst
+      # entscheidet die Erzeugungsreihenfolge, welcher zustaendig ist
+      # (GameOperation.id_by_state_association behaelt die niedrigere ID), und ein
+      # Vertauschen der beiden Zeilen liesse den Test aus dem falschen Grund
+      # gruen bleiben.
+      own_go = create(:game_operation, state_association_id: create(:state_association).id)
+      foreign_go = create(:game_operation, state_association_id: create(:state_association).id)
       # Der Spieler muss dem Verband des SBK zugeordnet sein, damit die
       # Lese-Berechtigung greift (admin_or_sbk_for_player?).
-      club = create(:club, game_operations_hash: [{ 'home_game_operation' => true, 'game_operation_id' => own_go.id }])
+      club = create(:club, game_operation: own_go)
       @player.update!(clubs: [{ 'club_id' => club.id }])
 
       global = DocumentType.create!(name: 'Unterstellungserklärung')
@@ -118,10 +122,14 @@ module Admin
     end
 
     test 'gescopte SBK darf ein fremdes Verbandsdokument nicht per show abrufen' do
-      sa = create(:state_association)
-      own_go = create(:game_operation, state_association_id: sa.id)
-      foreign_go = create(:game_operation, state_association_id: sa.id)
-      club = create(:club, game_operations_hash: [{ 'home_game_operation' => true, 'game_operation_id' => own_go.id }])
+      # Zwei getrennte Landesverbaende, nicht zwei Spielbetriebe an einem: Sonst
+      # entscheidet die Erzeugungsreihenfolge, welcher zustaendig ist
+      # (GameOperation.id_by_state_association behaelt die niedrigere ID), und ein
+      # Vertauschen der beiden Zeilen liesse den Test aus dem falschen Grund
+      # gruen bleiben.
+      own_go = create(:game_operation, state_association_id: create(:state_association).id)
+      foreign_go = create(:game_operation, state_association_id: create(:state_association).id)
+      club = create(:club, game_operation: own_go)
       @player.update!(clubs: [{ 'club_id' => club.id }])
 
       foreign = DocumentType.create!(name: 'Fremd-Attest', game_operation_id: foreign_go.id)
@@ -137,11 +145,15 @@ module Admin
 
     # --- available_types: Auswahlliste für den Upload am Spielerprofil ---
 
-    test 'available_types liefert globale Arten und die des Heimat-Spielbetriebs' do
-      sa = create(:state_association)
-      own_go = create(:game_operation, state_association_id: sa.id)
-      foreign_go = create(:game_operation, state_association_id: sa.id)
-      club = create(:club, game_operations_hash: [{ 'home_game_operation' => true, 'game_operation_id' => own_go.id }])
+    test 'available_types liefert globale Arten und die des zustaendigen Spielbetriebs' do
+      # Zwei getrennte Landesverbaende, nicht zwei Spielbetriebe an einem: Sonst
+      # entscheidet die Erzeugungsreihenfolge, welcher zustaendig ist
+      # (GameOperation.id_by_state_association behaelt die niedrigere ID), und ein
+      # Vertauschen der beiden Zeilen liesse den Test aus dem falschen Grund
+      # gruen bleiben.
+      own_go = create(:game_operation, state_association_id: create(:state_association).id)
+      foreign_go = create(:game_operation, state_association_id: create(:state_association).id)
+      club = create(:club, game_operation: own_go)
       @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }])
 
       global = DocumentType.create!(name: 'Unterstellungserklärung')
@@ -168,10 +180,8 @@ module Admin
       sa = create(:state_association)
       home_go = create(:game_operation, state_association_id: sa.id)
       past_go = create(:game_operation, state_association_id: sa.id)
-      home_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
-                                                         'game_operation_id' => home_go.id }])
-      past_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
-                                                         'game_operation_id' => past_go.id }])
+      home_club = create(:club, game_operation: home_go)
+      past_club = create(:club, game_operation: past_go)
       @player.update!(clubs: [
         { 'club_id' => home_club.id, 'home_club' => true },
         { 'club_id' => past_club.id, 'valid_until' => 1.year.ago.iso8601 }
@@ -228,13 +238,15 @@ module Admin
     # Verbands aber nicht zu sehen – dann darf die Art auch nicht in der Auswahl
     # stehen, sonst laedt er in ein Loch hoch.
     test 'available_types haelt fremde Verbandsarten vom gescopten SBK fern' do
-      sa = create(:state_association)
-      own_go = create(:game_operation, state_association_id: sa.id)
-      foreign_go = create(:game_operation, state_association_id: sa.id)
-      own_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
-                                                       'game_operation_id' => own_go.id }])
-      foreign_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
-                                                            'game_operation_id' => foreign_go.id }])
+      # Zwei getrennte Landesverbaende, nicht zwei Spielbetriebe an einem: Sonst
+      # entscheidet die Erzeugungsreihenfolge, welcher zustaendig ist
+      # (GameOperation.id_by_state_association behaelt die niedrigere ID), und ein
+      # Vertauschen der beiden Zeilen liesse den Test aus dem falschen Grund
+      # gruen bleiben.
+      own_go = create(:game_operation, state_association_id: create(:state_association).id)
+      foreign_go = create(:game_operation, state_association_id: create(:state_association).id)
+      own_club = create(:club, game_operation: own_go)
+      foreign_club = create(:club, game_operation: foreign_go)
       @player.update!(clubs: [
         { 'club_id' => own_club.id, 'home_club' => true },
         { 'club_id' => foreign_club.id }
@@ -281,8 +293,7 @@ module Admin
       sa = create(:state_association)
       home_go = create(:game_operation, state_association_id: sa.id)
       other_go = create(:game_operation, state_association_id: sa.id)
-      club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
-                                                    'game_operation_id' => home_go.id }])
+      club = create(:club, game_operation: home_go)
       @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }])
 
       own = DocumentType.create!(name: 'LV-Attest', game_operation_id: home_go.id)
@@ -568,11 +579,14 @@ module Admin
     # Verbandsart – lesbar ist der Spieler damit (admin_or_sbk_for_player?),
     # dieses eine Dokument aber nicht (document_visible?). Loggt den SBK ein.
     def foreign_document_for_scoped_sbk
-      sa = create(:state_association)
-      @own_go = create(:game_operation, state_association_id: sa.id)
-      foreign_go = create(:game_operation, state_association_id: sa.id)
-      club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
-                                                    'game_operation_id' => @own_go.id }])
+      # Zwei getrennte Landesverbaende, nicht zwei Spielbetriebe an einem: Sonst
+      # entscheidet die Erzeugungsreihenfolge, welcher zustaendig ist
+      # (GameOperation.id_by_state_association behaelt die niedrigere ID), und ein
+      # Vertauschen der beiden Zeilen liesse den Test aus dem falschen Grund
+      # gruen bleiben.
+      @own_go = create(:game_operation, state_association_id: create(:state_association).id)
+      foreign_go = create(:game_operation, state_association_id: create(:state_association).id)
+      club = create(:club, game_operation: @own_go)
       @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }])
 
       foreign = DocumentType.create!(name: 'Fremd-Attest', game_operation_id: foreign_go.id)

@@ -23,16 +23,14 @@ module Admin
         name: "Abgebender Verein #{SecureRandom.hex(4)}",
         short_name: "AV#{SecureRandom.hex(1)}",
         contact_email: 'former@test.example.com',
-        state_association: @state_association,
-        game_operations_hash: [{ 'game_operation_id' => @game_operation.id, 'home_game_operation' => true }]
+        state_association: @state_association
       )
 
       @requesting_club = Club.create!(
         name: "Aufnehmender Verein #{SecureRandom.hex(4)}",
         short_name: "AU#{SecureRandom.hex(1)}",
         contact_email: 'requesting@test.example.com',
-        state_association: @state_association,
-        game_operations_hash: [{ 'game_operation_id' => @game_operation.id, 'home_game_operation' => true }]
+        state_association: @state_association
       )
 
       create(:setting, current_season_id: '18')
@@ -183,7 +181,7 @@ module Admin
 
     test 'SBK ohne Zugriff auf den abgebenden Verein darf Direkt-Transfer nicht durchführen → 403' do
       other_club = create_club_in_other_game_operation
-      other_sbk = create_user_sbk(game_operation_id: other_club.game_operations_hash.first['game_operation_id'])
+      other_sbk = create_user_sbk(game_operation_id: other_club.main_game_operation_id)
 
       login(other_sbk)
       post '/api/v2/admin/transfer_requests/direct_assign', params: {
@@ -519,7 +517,7 @@ module Admin
         name: "Anderer LV #{SecureRandom.hex(4)}",
         short_name: "ALV#{SecureRandom.hex(2)}"
       )
-      game_operation = GameOperation.create!(
+      GameOperation.create!(
         name: "Anderer Spielbetrieb #{SecureRandom.hex(4)}",
         short_name: "ASB#{SecureRandom.hex(2)}",
         state_association: state_association
@@ -528,8 +526,7 @@ module Admin
         name: "Anderer Verein #{SecureRandom.hex(4)}",
         short_name: "AN#{SecureRandom.hex(1)}",
         contact_email: 'other@test.example.com',
-        state_association: state_association,
-        game_operations_hash: [{ 'game_operation_id' => game_operation.id, 'home_game_operation' => true }]
+        state_association: state_association
       )
     end
 
