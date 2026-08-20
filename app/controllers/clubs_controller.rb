@@ -132,7 +132,7 @@ class ClubsController < ApplicationController
       game_operation = league&.game_operation
       if game_operation && game_operation&.user_permissions(current_user)&.include?(:index_clubs)
         # Heim-Vereine des Spielbetriebs statt aller Hash-Treffer: Gast-Einträge
-        # sind Altlast aus dem Import 2010–2014 (siehe can_read_admin_club?).
+        # waren Altlast aus dem Import 2010–2014 (siehe can_read_admin_club?).
         own_ids = game_operation.home_clubs.pluck(:id)
         # Freigaben hier bewusst nach `league.season_id` und nicht nach
         # current_season – die Liga gibt die Saison vor, die Auswahl gilt für
@@ -716,8 +716,8 @@ class ClubsController < ApplicationController
   # 2. Vereins-Freigabe – ausdrücklich erteilt, saisongebunden, pflegbar.
   # 3. Vereine mit einer Mannschaft in einer eigenen Liga dieser Saison.
   #
-  # Punkt 3 ersetzt den Gast-Eintrag im Hash, und zwar genauer: Der Hash stammt
-  # aus dem Altdaten-Import 2010–2014, wird nie nachgeführt und war auf
+  # Punkt 3 ersetzt den Gast-Eintrag im Hash, und zwar genauer: Der Hash stammte
+  # aus dem Altdaten-Import 2010–2014, wurde nie nachgeführt und war auf
   # Produktion zu 85 % nicht mehr durch eine Liga gedeckt. Die Liga-Ableitung
   # ist immer aktuell und deckt Gastmannschaften auch dann ab, wenn deren
   # Landesverband nichts freigegeben hat – ohne dass daraus Zugriff auf die
@@ -789,9 +789,9 @@ class ClubsController < ApplicationController
     # Club.admin_user_clubs und Player.admin_user_players.
     #
     # Der frühere Zweig „hängt als Gast-Spielbetrieb am Verein" ist bewusst
-    # entfallen. Gast-Einträge im game_operations_hash werden von der Anwendung
-    # nie geschrieben – einzige Quelle ist der Altdaten-Import 2010–2014
-    # (import_legacy_data.rake) – und sie werden auch nicht nachgeführt, wenn
+    # entfallen. Gast-Einträge im game_operations_hash wurden von der Anwendung
+    # nie geschrieben – einzige Quelle war der Altdaten-Import 2010–2014, der sie
+    # inzwischen selbst nicht mehr schreibt – und sie wurden auch nicht nachgeführt, wenn
     # eine Mannschaft die Liga wechselt. Auf Produktion waren 183 von 220
     # Gast-Einträgen durch keine aktuelle Liga mehr gedeckt; sie öffneten
     # Landesverbänden gegenseitig die Vereinsstammdaten, ohne dass das jemand

@@ -317,6 +317,44 @@ class StateAssociationsControllerTest < ActionDispatch::IntegrationTest
     assert_equal @own_go.id, club.reload.main_game_operation_id
   end
 
+  # Das Leeren des Elternverbands war ungeprueft. Der Verband wird dadurch seine
+  # eigene Wurzel, und hat er keinen Spielbetrieb, verlieren alle Vereine im
+  # Teilbaum in einem Zug ihre Zustaendigkeit. Auffallen wuerde es nicht: Der
+  # Landesverband ist auflösbar, die Gruppe in der Vereinsliste sieht regulaer aus.
+  test 'das Leeren des uebergeordneten Verbands wird abgelehnt, wenn kein Spielbetrieb bleibt' do
+    kind = StateAssociation.create!(name: "Kind #{SecureRandom.hex(4)}", short_name: 'KND',
+                                    parent: @own_sa)
+    club = create(:club, state_association_id: kind.id)
+    login(create_user(user_group_id: 1, game_operation_id: 0))
+
+    put "/api/v2/admin/state_associations/#{kind.id}",
+        params: { state_association: { parent_id: '' } }
+
+    assert_response :unprocessable_entity
+    assert_match(/kein Spielbetrieb/, JSON.parse(response.body)['errors'].first)
+    assert_match(/1 Verein/, JSON.parse(response.body)['errors'].first)
+    assert_equal @own_sa.id, kind.reload.parent_id
+    assert_equal @own_go.id, club.reload.main_game_operation_id
+  end
+
+  # Gegenprobe: Hat der Verband einen eigenen Spielbetrieb, ist das Leeren in
+  # Ordnung -- er wird seine eigene Wurzel und bleibt zustaendig.
+  test 'das Leeren ist erlaubt, wenn der Verband selbst einen Spielbetrieb hat' do
+    kind = StateAssociation.create!(name: "Kind #{SecureRandom.hex(4)}", short_name: 'KND',
+                                    parent: @own_sa)
+    kind_go = GameOperation.create!(name: 'SBK Kind', short_name: 'SBK',
+                                    path: "sbk-kind-#{SecureRandom.hex(4)}", state_association: kind)
+    club = create(:club, state_association_id: kind.id)
+    login(create_user(user_group_id: 1, game_operation_id: 0))
+
+    put "/api/v2/admin/state_associations/#{kind.id}",
+        params: { state_association: { parent_id: '' } }
+
+    assert_response :success
+    assert_nil kind.reload.parent_id
+    assert_equal kind_go.id, club.reload.main_game_operation_id
+  end
+
   # --- Loeschen ---------------------------------------------------------------
   #
   # Auf clubs.state_association_id liegt kein Fremdschluessel und kein dependent:.

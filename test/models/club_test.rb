@@ -599,70 +599,119 @@ class ClubTest < ActiveSupport::TestCase
     assert_equal anderer.id, widerspruch.state_association_id
   end
 
-  # --- Die Altspalte entscheidet ueber nichts mehr ----------------------------
+  # --- role_assignable_for ----------------------------------------------------
   #
-  # `clubs.game_operations_hash` existiert weiter, der Reader auch, und auf
-  # Produktion stehen die Heimat-Eintraege noch drin. Solange das so ist, muss ein
-  # Test festhalten, dass sie ignoriert werden -- sonst baut jemand "fuer die
-  # Uebergangszeit" einen Rueckfall darauf ein, und die Suite bleibt gruen.
+  # Einzige Quelle fuer das Vereins-Dropdown der Benutzeranlage UND fuer die
+  # Pruefung in Admin::UsersController#create bzw. beim Vereinswechsel eines
+  # Kontos. Wer hier zu viel bekommt, kann einem VM- oder TM-Konto einen fremden
+  # Verein zuweisen und ihm damit Zugriff auf dessen Spielerliste verschaffen.
   #
-  # Der Aufbau ist bewusst WIDERSPRUECHLICH: Der Hash nennt einen fremden
-  # Spielbetrieb als Heimat, der Landesverband einen anderen. Genau diese Lage
-  # hatte der ETV Hamburg auf Produktion.
+  # Die Methode nimmt fuer die SBK-Rolle `home_clubs_of(ph[:sbk])`, also dieselbe
+  # Ableitung wie die Zustaendigkeit. Sie braucht deshalb dieselben Gegenproben:
+  # untergeordneter Verband, Spielbetrieb AM Unterverband, zweiter Spielbetrieb
+  # an einem Verband.
 
-  test 'ein widersprechender Heimat-Eintrag gibt keinen Zugriff' do
-    create(:setting, current_season_id: '18')
-    eigen_sa = create(:state_association)
-    eigen_go = create(:game_operation, state_association_id: eigen_sa.id)
-    fremd_go = create(:game_operation, state_association_id: create(:state_association).id)
+  test 'role_assignable_for gibt der SBK die Vereine ihres Verbunds samt Unterverbaenden' do
+    verbund = create(:state_association)
+    kind = create(:state_association, parent: verbund)
+    go = create(:game_operation, state_association_id: verbund.id)
+    fremd_sa = create(:state_association)
+    create(:game_operation, state_association_id: fremd_sa.id)
 
-    etv = create(:club, state_association_id: eigen_sa.id,
-                        game_operations_hash: [{ 'game_operation_id' => fremd_go.id,
-                                                 'home_game_operation' => true }])
+    eigener = create(:club, state_association_id: verbund.id)
+    im_kind = create(:club, state_association_id: kind.id)
+    fremder = create(:club, state_association_id: fremd_sa.id)
 
-    assert_equal eigen_go.id, etv.main_game_operation_id, 'der Landesverband entscheidet'
-    assert etv.readable_by_game_operations?([eigen_go.id])
-    assert_not etv.readable_by_game_operations?([fremd_go.id]),
-               'der Spielbetrieb aus dem Alt-Eintrag darf den Verein nicht lesen'
-    assert_includes etv.user_permissions(create(:user, :sbk_scoped, game_operation_id: eigen_go.id)), :update_club
-    assert_not_includes etv.user_permissions(create(:user, :sbk_scoped, game_operation_id: fremd_go.id)),
-                        :update_club
+    ids = Club.role_assignable_for(create(:user, :sbk_scoped, game_operation_id: go.id)).pluck(:id)
+
+    assert_includes ids, eigener.id
+    assert_includes ids, im_kind.id, 'der Verbund vergibt Rollen auch fuer seine Unterverbaende'
+    assert_not_includes ids, fremder.id
   end
 
-  test 'ein widersprechender Heimat-Eintrag bringt den Verein in keine fremde Liste' do
-    create(:setting, current_season_id: '18')
-    eigen_sa = create(:state_association)
-    eigen_go = create(:game_operation, state_association_id: eigen_sa.id)
-    fremd_go = create(:game_operation, state_association_id: create(:state_association).id)
+  # Der Fall aus Issue #492: Legt jemand einen Spielbetrieb an einem
+  # untergeordneten Verband an, ist er fuer dessen Vereine NICHT zustaendig --
+  # und darf fuer sie auch keine Rollen vergeben. Ohne diese Gegenprobe koennte
+  # er VM-Konten fuer alle Vereine des Verbunds anlegen.
+  test 'role_assignable_for gibt einem Spielbetrieb am Unterverband nichts' do
+    verbund = create(:state_association)
+    kind = create(:state_association, parent: verbund)
+    create(:game_operation, state_association_id: verbund.id)
+    kind_go = create(:game_operation, state_association_id: kind.id)
+    create(:club, state_association_id: kind.id)
 
-    etv = create(:club, state_association_id: eigen_sa.id,
-                        game_operations_hash: [{ 'game_operation_id' => fremd_go.id,
-                                                 'home_game_operation' => true }])
+    ids = Club.role_assignable_for(create(:user, :sbk_scoped, game_operation_id: kind_go.id)).pluck(:id)
 
-    assert_equal [etv.id], Club.home_clubs_of([eigen_go.id]).pluck(:id)
-    assert_empty Club.home_clubs_of([fremd_go.id]).pluck(:id)
-
-    fremde_liste = all_club_ids(Club.admin_user_clubs(create(:user, :sbk_scoped, game_operation_id: fremd_go.id)))
-    assert_not_includes fremde_liste, etv.id
-    assert_includes all_club_ids(Club.admin_user_clubs(create(:user, :sbk_scoped,
-                                                              game_operation_id: eigen_go.id))), etv.id
+    assert_empty ids
   end
 
-  # Auch die Rollenvergabe: Sie entschied fruehers ebenfalls ueber den Hash.
-  test 'ein widersprechender Heimat-Eintrag macht den Verein nicht rollen-zuweisbar' do
-    create(:setting, current_season_id: '18')
-    eigen_sa = create(:state_association)
-    eigen_go = create(:game_operation, state_association_id: eigen_sa.id)
-    fremd_go = create(:game_operation, state_association_id: create(:state_association).id)
+  test 'role_assignable_for gibt nur dem zustaendigen von zwei Spielbetrieben die Vereine' do
+    lv = create(:state_association)
+    erster = create(:game_operation, state_association_id: lv.id)
+    zweiter = create(:game_operation, state_association_id: lv.id)
+    club = create(:club, state_association_id: lv.id)
 
-    etv = create(:club, state_association_id: eigen_sa.id,
-                        game_operations_hash: [{ 'game_operation_id' => fremd_go.id,
-                                                 'home_game_operation' => true }])
+    zustaendig, nicht = [erster, zweiter].partition { |go| go.id == club.main_game_operation_id }
 
-    assert_includes Club.role_assignable_for(create(:user, :sbk_scoped, game_operation_id: eigen_go.id)).pluck(:id),
-                    etv.id
-    assert_not_includes Club.role_assignable_for(create(:user, :sbk_scoped,
-                                                        game_operation_id: fremd_go.id)).pluck(:id), etv.id
+    assert_equal [club.id],
+                 Club.role_assignable_for(create(:user, :sbk_scoped,
+                                                 game_operation_id: zustaendig.first.id)).pluck(:id)
+    assert_empty Club.role_assignable_for(create(:user, :sbk_scoped,
+                                                 game_operation_id: nicht.first.id)).pluck(:id)
+  end
+
+  # Ein Verein ohne zustaendigen Spielbetrieb gehoert in keinen regionalen Scope.
+  test 'role_assignable_for laesst Vereine ohne zustaendigen Spielbetrieb aus' do
+    lv = create(:state_association)
+    go = create(:game_operation, state_association_id: lv.id)
+    ohne = create(:club, state_association_id: nil)
+    verbund_ohne_go = create(:club, state_association_id: create(:state_association).id)
+
+    ids = Club.role_assignable_for(create(:user, :sbk_scoped, game_operation_id: go.id)).pluck(:id)
+
+    assert_not_includes ids, ohne.id
+    assert_not_includes ids, verbund_ohne_go.id
+  end
+
+  # Rollen additiv: Wer neben der SBK-Rolle auch VM ist, behaelt den eigenen
+  # Verein, selbst wenn er ausserhalb des SBK-Spielbetriebs liegt.
+  test 'role_assignable_for nimmt die eigenen VM-Vereine zusaetzlich' do
+    lv = create(:state_association)
+    go = create(:game_operation, state_association_id: lv.id)
+    eigener = create(:club, state_association_id: lv.id)
+    fremd_sa = create(:state_association)
+    create(:game_operation, state_association_id: fremd_sa.id)
+    vm_verein = create(:club, state_association_id: fremd_sa.id)
+
+    nutzer = create(:user, permissions: [
+      { 'user_group_id' => 2, 'game_operation_id' => go.id },
+      { 'user_group_id' => 4, 'club_id' => vm_verein.id }
+    ])
+
+    ids = Club.role_assignable_for(nutzer).pluck(:id)
+    assert_includes ids, eigener.id
+    assert_includes ids, vm_verein.id, 'die eigene VM-Rolle darf nicht verlorengehen'
+  end
+
+  test 'role_assignable_for gibt der Bundesebene alle Vereine' do
+    lv = create(:state_association)
+    create(:game_operation, state_association_id: lv.id)
+    create(:club, state_association_id: lv.id)
+    create(:club, state_association_id: nil)
+
+    assert_equal Club.active.count, Club.role_assignable_for(create(:user, :admin)).count
+  end
+
+  # Deaktivierte Vereine nur mit include_deactivated: Die Benutzeranlage prueft
+  # damit, weil ein Konto auch an einem deaktivierten Verein haengen kann.
+  test 'role_assignable_for nimmt deaktivierte Vereine nur auf Verlangen' do
+    lv = create(:state_association)
+    go = create(:game_operation, state_association_id: lv.id)
+    inaktiv = create(:club, state_association_id: lv.id, deactivated_at: Time.current)
+    nutzer = create(:user, :sbk_scoped, game_operation_id: go.id)
+
+    assert_not_includes Club.role_assignable_for(nutzer).pluck(:id), inaktiv.id
+    assert_includes Club.role_assignable_for(nutzer, include_deactivated: true).pluck(:id), inaktiv.id
   end
 
   # --- home_clubs_of ist die Umkehrung von main_game_operation_id -------------
@@ -732,9 +781,9 @@ class ClubTest < ActiveSupport::TestCase
 
   # --- main_game_operation_id: Ableitung aus dem Landesverband ----------------
   #
-  # Die Zustaendigkeit stand frueher als zweites Feld am Verein
-  # (`game_operations_hash`) und konnte dem Landesverband widersprechen. Jetzt
-  # gibt es nur eine Quelle.
+  # Die Zustaendigkeit stand frueher als zweites Feld am Verein und konnte dem
+  # Landesverband widersprechen. Die Spalte ist mit dem Abbau entfallen, es gibt
+  # jetzt strukturell nur eine Quelle.
 
   test 'main_game_operation_id nimmt den Spielbetrieb des eigenen Landesverbands' do
     lv = create(:state_association)
