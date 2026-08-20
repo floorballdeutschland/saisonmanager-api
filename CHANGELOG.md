@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Spieler bekommen bei einem Transfer oder einer Spielerfreigabe nicht mehr sofort eine Mail mit Login-Aufforderung**: Stellte ein Verein eine Transferanfrage, ging die Mail „Neue Transferanfrage" nicht nur an den abgebenden Verein, sondern auch an den betroffenen Spieler. Ihr Text richtet sich aber ausschließlich an den Verein: Er fordert zum Anmelden im Saisonmanager auf und verlinkt in die Verwaltung, wo der Spieler weder Zugang noch Logindaten hat. Zu diesem Zeitpunkt ist der Spieler ohnehin nicht am Zug, sondern der abgebende Verein. Die erste Mail geht jetzt nur noch an den abgebenden Verein. Der Spieler wird erst dann angeschrieben, wenn er selbst entscheiden kann, nämlich mit der Anfrage nach seiner Zustimmung, die per Link ohne Anmeldung zustimmen oder ablehnen lässt.
+
 ### Verbessert
 
 - **Ein Verein kann keinem zweiten Spielbetrieb mehr zugeordnet werden**: Am Verein lag neben dem Landesverband noch eine alte Angabe, die einen zuständigen Spielbetrieb und daneben beliebig viele weitere führen konnte. Die weiteren stammten aus dem Datenimport der Saisons 2010 bis 2014, wurden nie gepflegt und ließen sich über die Oberfläche auch nie eintragen; entschieden haben sie seit Sommer 2026 über nichts mehr. Seit der letzten Version ergibt sich der zuständige Verband allein aus dem Landesverband, deshalb ist die Angabe jetzt ganz entfernt. Für die Anwendung ändert sich nichts Sichtbares. Wer einen fremden Verein lesen muss, bekommt wie bisher eine Vereins-Freigabe des zuständigen Landesverbands; wer eine Gastmannschaft betreut, ist über die Liga zuständig.
