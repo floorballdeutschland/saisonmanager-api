@@ -272,6 +272,9 @@ Rails.application.routes.draw do
           delete :destroy_user, on: :member
           get :incorrect_assignments, on: :collection
           get :next_lizenznummer, on: :collection
+          post :import_emails, on: :collection
+          get :missing_user_count, on: :collection
+          post :create_missing_users, on: :collection
           get :feedbacks, on: :member
           resources :club_exclusions, only: %i[index create destroy],
                                       controller: 'referee_club_exclusions'

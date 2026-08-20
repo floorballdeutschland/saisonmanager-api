@@ -261,9 +261,17 @@ class User < ApplicationRecord
 
   # Wie send_reset_information, aber mit Begrüßungs-Mail (Benutzername + Link zum
   # erstmaligen Passwort-Setzen) für ein frisch angelegtes Schiedsrichter-Konto.
-  def send_referee_account_information
+  #
+  # deliver_later für die Massenanlage: Hundert Zustellungen im Request wären ein
+  # Timeout, und der Abbruch träfe die Konten, die dann schon angelegt sind.
+  # Liefert zurück, ob die Mail auf den Weg gebracht wurde.
+  def send_referee_account_information(deliver_later: false)
     self.password_reset_token = SecureRandom.uuid
-    UserMailer.referee_account_created(self).deliver_now if save(validate: false)
+    return false unless save(validate: false)
+
+    mail = UserMailer.referee_account_created(self)
+    deliver_later ? mail.deliver_later : mail.deliver_now
+    true
   end
 
   # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
@@ -329,6 +337,9 @@ class User < ApplicationRecord
     # Benutzerkonto für einen bestehenden Schiri anlegen: auch LV-RSK erlaubt.
     result[:referee_can_create_user] = ph[:admin].present? || ph[:rsk].present? if result[:menu_item_referee_admin]
     result[:referee_can_delete_user] = ph[:admin].present? if result[:menu_item_referee_admin]
+    # E-Mail-Import und Massenanlage von Konten: Beides greift in einem Zug über
+    # alle Verbände hinweg und bleibt daher der Verwaltung vorbehalten.
+    result[:referee_account_tools] = ph[:admin].present? if result[:menu_item_referee_admin]
     # Ansetzungen macht die Ansetzer-Rolle (in manchen LV von der RSK getrennt).
     # Sichtbar nur, wenn die Ansetzungslogik für den Landesverband freigeschaltet
     # ist (referee_assignment_enabled). National (FD, ohne LV) ist immer aktiv.
