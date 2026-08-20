@@ -180,20 +180,39 @@ module Admin
 
       ziel_id = eingereicht['parent_id'].presence&.to_i
       return nil if ziel_id == @state_association.parent_id
-      # Parentlos ist unbedenklich: Der Verband wird dann seine eigene Wurzel und
-      # braucht nur selbst einen Spielbetrieb -- das prüft er über seine Vereine
-      # ohnehin nicht, und ein Verband ohne Spielbetrieb ist ein bestehender,
-      # sichtbarer Zustand (Club.unassigned meldet ihn).
-      return nil if ziel_id.nil?
+
+      # Parentlos ist NICHT unbedenklich: Der Verband wird dann seine eigene
+      # Wurzel und braucht selbst einen Spielbetrieb. Hat er keinen, verlieren
+      # alle Vereine im Teilbaum in einem Zug ihre Zuständigkeit -- und das fällt
+      # nicht auf: Der Landesverband ist auflösbar, die Gruppe in der Vereinsliste
+      # sieht regulär aus, und `Club.log_unresolvable_state_associations` greift
+      # nur bei einem Verweis ins Leere.
+      #
+      # Genau so wäre der Floorball Bund Hamburg wieder herrenlos geworden, wenn
+      # jemand nach Issue #492 dort das Feld leert. Der Weg über das Verschieben
+      # eines einzelnen Vereins ist längst bewacht
+      # (ClubsController#state_association_move_conflict); dieser hier war die
+      # breitere Lücke daneben.
+      return parent_removal_conflict if ziel_id.nil?
 
       ziel_wurzel = StateAssociation.root_id(ziel_id)
       return 'Der gewählte übergeordnete Verband existiert nicht.' if ziel_wurzel.nil?
 
       return nil if GameOperation.id_by_state_association[ziel_wurzel].present?
 
-      betroffen = Club.where(state_association_id: StateAssociation.ids_under([@state_association.id])).count
+      betroffen = Club.where(state_association_id: StateAssociation.descendant_ids(@state_association.id)).count
       "Für den gewählten Verbund ist kein Spielbetrieb zuständig. #{betroffen} Verein(e) " \
         'würden dadurch ihren zuständigen Verband verlieren.'
+    end
+
+    # Der Verband wird seine eigene Wurzel. Das ist nur dann in Ordnung, wenn für
+    # ihn selbst ein Spielbetrieb zuständig ist.
+    def parent_removal_conflict
+      return nil if GameOperation.id_by_state_association[@state_association.id].present?
+
+      betroffen = Club.where(state_association_id: StateAssociation.descendant_ids(@state_association.id)).count
+      'Ohne übergeordneten Verband ist für diesen Landesverband kein Spielbetrieb ' \
+        "zuständig. #{betroffen} Verein(e) würden dadurch ihren zuständigen Verband verlieren."
     end
 
     def state_association_params
@@ -232,12 +251,38 @@ module Admin
       # Schlüssel und der gespeicherte Wert bleibt unverändert stehen.
       permitted << { states: [] } if current_user.permission_hash[:admin].present?
       attrs = params.require(:state_association).permit(*permitted)
-      # Kontrollprozess-Flag wird ausschließlich am Root-Landesverband
-      # konfiguriert; ein Kind erbt den Wert über
-      # `effective_referee_license_review_enabled`.
-      attrs[:referee_license_review_enabled] = false if attrs[:parent_id].present?
-      normalize_referee_assignment_switches!(attrs)
+      # Der Block „Einstellungen" (StateAssociation::INHERITED_SETTINGS, gelesen
+      # über die effective_*-Methoden) wird in zwei Fällen verworfen. Die Maske
+      # sperrt die Felder in beiden, ein direkter API-Aufruf umgeht sie.
+      #
+      # (a) Ein übergeordneter Verbund hängt dran: Dann kommen die Werte von
+      #     dort. Verworfen und nicht auf false gezwungen -- nimmt ein Admin den
+      #     Verbund später weg, steht der früher gepflegte eigene Stand wieder
+      #     da, statt still überall aus zu sein. Gelesen wird er ohnehin nicht,
+      #     solange der Verbund hängt.
+      # (b) Der Nutzer darf die Einstellungen dieses Verbands nicht setzen, weil
+      #     sie für dessen ganzen Teilbaum gälten. Siehe
+      #     StateAssociationWritable#settings_writable_state_associations.
+      if inherits_settings?(attrs) || !settings_writable?(@state_association)
+        StateAssociation::INHERITED_SETTINGS.each { |key| attrs.delete(key) }
+      else
+        normalize_referee_assignment_switches!(attrs)
+      end
       attrs
+    end
+
+    # Hat der Landesverband nach diesem Update einen übergeordneten Verbund?
+    #
+    # Nicht schlicht `attrs[:parent_id].present?`: parent_id darf nur ein globaler
+    # Admin schicken, `permit` streicht den Schlüssel allen anderen. Ohne den
+    # Rückfall auf den gespeicherten Stand könnte ein regionaler SBK die
+    # Einstellungen seines Kind-LV weiterhin überschreiben – genau der Fall, den
+    # diese Sperre verhindern soll. Beim Anlegen gibt es noch keinen Datensatz,
+    # dann entscheidet allein der Parameter.
+    def inherits_settings?(attrs)
+      return attrs[:parent_id].present? if attrs.key?(:parent_id)
+
+      @state_association&.parent_id.present?
     end
 
     # Die drei Ansetzungs-Optionen sind gestaffelt: die Personenebene setzt den

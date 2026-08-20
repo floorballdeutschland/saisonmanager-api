@@ -10,25 +10,11 @@
 # ist das am ETV Hamburg, der mit Landesverband Hamburg in der Vereinsliste von
 # Floorball Niedersachsen stand.
 #
-# WANN LAUFEN LASSEN
+# BEIDE TASKS SIND AUF STAGING UND PRODUKTION GELAUFEN (20.08.2026).
 #
-# Alle drei Tasks brauchen den neuen Code (`StateAssociation.root_id`,
-# `GameOperation.id_by_state_association`), koennen also erst NACH dem Deploy
-# laufen. Dazwischen liegt ein Fenster, in dem die Zustaendigkeit fuer die
-# betroffenen Vereine schon abgeleitet wird, die Daten aber noch nicht stimmen:
-#
-#   - Die sechs Hamburger Vereine haben keinen zustaendigen Spielbetrieb, solange
-#     :fbh_under_flvsh nicht gelaufen ist. Der FLV-SH verliert :update_club an
-#     fuenf Vereinen, die er heute betreut, der FVNB am ETV Hamburg. Nur die
-#     Bundesebene kann sie in diesem Fenster noch anfassen.
-#   - Die Vereine aus der Liste zu :fix_state_associations haengen bis zum Lauf
-#     an dem Verband, den ihr LV-Feld nennt, also teils am falschen.
-#
-# Das Fenster ist gewollt kurz zu halten: die drei Tasks direkt nach dem Deploy
-# laufen lassen, nicht am naechsten Tag. Auf .dev vorher durchspielen, dort ist
-# das Fenster ohne Belang. Kein Datenverlust, es geht nur um Leserechte.
-#
-# DREI AUFGABEN, DREI TASKS -- in dieser Reihenfolge auszufuehren
+# Sie bleiben stehen, weil sie die Entscheidung je Verein belegen und weil eine
+# wiederhergestellte oder aus einem Altstand aufgesetzte Datenbank sie erneut
+# braucht. Voreinstellung ist der Dry-Run, geschrieben wird nur mit DRY_RUN=false.
 #
 #   :fbh_under_flvsh
 #             Haengt den Floorball Bund Hamburg unter den Floorballverband
@@ -41,25 +27,70 @@
 #             Entscheidung je Verein aus einer Liste, nicht aus einer Regel:
 #             lib/tasks/data/vereins_landesverbaende_2026_08_19.csv.
 #
-#   :responsibility_report
-#             Vergleicht die frueher gespeicherte Zustaendigkeit mit der jetzt
-#             abgeleiteten und nennt jeden Verein, bei dem sie auseinanderfaellt.
-#             Das Tor NACH dem Datenlauf: Jede unerwartete Zeile ist ein Verein,
-#             der seinen Verband wechselt, ohne dass es jemand angeordnet hat.
-#             Rein lesend.
+#   :without_responsibility
+#             Nennt jeden Verein, fuer den kein Spielbetrieb zustaendig ist, mit
+#             Ursache. Rein lesend, als Dauerpruefung gedacht und nicht als
+#             Einmal-Lauf. Nach dem Datenlauf muss die Liste leer sein.
 #
-#             SOLLWERT ist nicht null, sondern GENAU EIN Wechsel: der ETV
-#             Hamburg (81). Er ist der Ausloeser der ganzen Umstellung und der
-#             einzige Verein, dessen Zustaendigkeit sich nicht ueber die CSV,
-#             sondern ueber :fbh_under_flvsh aendert (Landesverband Hamburg,
-#             gespeichert war Niedersachsen). Wer "0 erwartet" liest, haelt den
-#             Erfolg fuer einen Fehlschlag.
+# Die beiden schreibenden Tasks sind fuer die mitgelieferte Liste
+# reihenfolgeunabhaengig: Sie nennt weder den FBH als Ziel noch einen der sechs
+# Hamburger Vereine. Wer sie auf einen fremden Bestand anwendet, sollte trotzdem
+# erst :fbh_under_flvsh laufen lassen, weil :fix_state_associations ein Ziel ohne
+# zustaendigen Spielbetrieb ablehnt.
 #
-# Der Bericht laeuft nur, solange `clubs.game_operations_hash` noch existiert.
-# Mit dem Abbau der Spalte entfaellt er, dann gibt es keinen zweiten Wert mehr,
-# gegen den man vergleichen koennte -- und genau das ist das Ziel.
+# ENTFALLEN ist :responsibility_report. Er verglich den frueher in
+# `clubs.game_operations_hash` gespeicherten Wert gegen den abgeleiteten. Ohne
+# zweiten Wert gibt es nichts zu vergleichen, und genau das war das Ziel. Sein
+# Ergebnis auf Produktion vor dem Abbau: genau ein gewollter Wechsel (ETV
+# Hamburg, 81), kein Verein ohne Zustaendigkeit, keine unerwartete Neuzuordnung.
+#
+# Sein dritter Abschnitt lebt als :without_responsibility weiter -- er brauchte
+# die Spalte nie und ist die einzige Stelle, die die drei Ursachen unterscheidet.
+# Darauf verlassen sich Kommentare in Admin::StateAssociationsController und
+# import_legacy_data.rake.
 
 namespace :clubs do
+  # Vereine ohne zustaendigen Spielbetrieb, mit Ursache. Rein lesend.
+  #
+  # Der einzige Leser von Club.unassigned ausserhalb von Club.home_clubs_of, und
+  # die einzige Stelle, die die drei Ursachen unterscheidet. Das ist keine
+  # Kosmetik: Club.log_unresolvable_state_associations meldet nur den ins Leere
+  # zeigenden Verweis, und zwar nur, wenn ein global berechtigter Nutzer die
+  # Vereinsliste oeffnet. Der Fall "Landesverband existiert, sein Verbund hat
+  # aber keinen Spielbetrieb" -- also die Lage des ETV Hamburg, der Ausloeser der
+  # ganzen Umstellung -- erzeugt keine einzige Log-Zeile: Der Verband ist
+  # auflösbar, die Gruppe in der Liste sieht regulaer aus.
+  #
+  # Nach dem Datenlauf muss die Liste leer sein. Ist sie es nicht, hat jemand
+  # einen Landesverband umgehaengt oder geleert, ohne den Spielbetrieb zu haben.
+  desc 'Nennt Vereine ohne zustaendigen Spielbetrieb, mit Ursache (rein lesend).'
+  task without_responsibility: :environment do
+    verbaende = StateAssociation.pluck(:id, :name).to_h
+
+    ohne = Club.unassigned.order(:id).map do |club|
+      grund = if club.state_association_id.blank?
+                'kein Landesverband'
+              elsif verbaende.key?(club.state_association_id)
+                "Verbund von #{verbaende[club.state_association_id].to_s.strip} hat keinen Spielbetrieb"
+              else
+                "Landesverband #{club.state_association_id} existiert nicht"
+              end
+      [club, grund]
+    end
+
+    puts "=== Vereine ohne zustaendigen Spielbetrieb (#{ohne.size} von #{Club.count}) ==="
+    if ohne.empty?
+      puts 'OK: fuer jeden Verein ist ein Spielbetrieb zustaendig.'
+      next
+    end
+
+    puts 'Diese Vereine sieht nur die Bundesebene. Sie sind nicht verloren, aber'
+    puts 'kein Verband kann sie verwalten.'
+    ohne.each do |club, grund|
+      puts "   #{club.id.to_s.ljust(5)} #{club.name.to_s.ljust(34)} #{grund}"
+    end
+  end
+
   # BELEG
   #
   # Bei 18 der 19 Vereine, deren Zustaendigkeit sich mit der Umstellung
@@ -94,6 +125,14 @@ namespace :clubs do
   # `state` wird nur gesetzt, wo die Liste einen Wert nennt. Leer heisst
   # „unveraendert lassen", nicht „leeren": Bei den Auswahlteams traegt das Feld
   # die Region und muss stehenbleiben.
+  #
+  # Namen und Kuerzel in der Liste IMMER aus der Datenbank uebernehmen, nie aus
+  # einer formatierten Konsolenausgabe. Beim ersten Anlauf auf .dev fielen vier
+  # Zeilen durch die Namenspruefung, und alle vier gingen darauf zurueck: Zwei
+  # Vereine heissen „Sued" statt „Süd" abgeschrieben, bei einem sah ein
+  # fuehrendes Leerzeichen im Namen wie Spaltenausrichtung aus, und ein
+  # Verbandskuerzel war geraten (FVBY statt FVB). Die Pruefung hat es abgefangen,
+  # aber der Dry-Run ist dafuer die letzte Verteidigungslinie, nicht die erste.
   #
   # Dry-Run (Standard):
   #   bundle exec rails clubs:fix_state_associations
@@ -187,84 +226,15 @@ namespace :clubs do
     puts
     puts "#{geaendert} Verein(e) #{dry_run ? 'zu aendern' : 'geaendert'}, " \
          "#{unveraendert} schon richtig, #{fehler} Fehler"
-    puts 'Dry-Run -- nichts geschrieben. Mit DRY_RUN=false ausfuehren.' if dry_run
+    if dry_run
+      puts 'Dry-Run -- nichts geschrieben. Mit DRY_RUN=false ausfuehren.'
+      # Mit Exit 1 statt 0: Sonst liest ein Lauf, in dem JEDE Zeile durchgefallen
+      # ist, wie "nichts zu tun" -- gleiche Ausgabe, gleicher Exit-Status. Das
+      # nachgelagerte Tor dafuer (der frueherre Bericht) gibt es nicht mehr.
+      abort "#{fehler} Zeile(n) nicht anwendbar -- Liste zuerst korrigieren" if fehler.positive?
+    end
     unless dry_run
-      puts 'Danach clubs:responsibility_report laufen lassen. Erwartet wird GENAU EIN Wechsel:'
-      puts 'der ETV Hamburg (81), dessen Zustaendigkeit ueber clubs:fbh_under_flvsh wandert.'
-    end
-  end
-
-  desc 'Vergleicht gespeicherte und abgeleitete Zustaendigkeit je Verein (rein lesend).'
-  task responsibility_report: :environment do
-    wechsel = []
-    neu_zugeordnet = []
-    ohne_zustaendigkeit = []
-
-    Club.order(:id).each do |club|
-      # Der frueher gepflegte Wert, direkt aus der Spalte: Club#main_game_operation_id
-      # leitet inzwischen ab und taugt hier nicht als Vergleichsgroesse.
-      alt = club.game_operations_hash
-                .filter { |h| ActiveModel::Type::Boolean.new.cast(h['home_game_operation']) }
-                .map { |h| h['game_operation_id'].to_i }.first
-      neu = club.main_game_operation_id
-
-      if neu.nil?
-        ohne_zustaendigkeit << [club, alt]
-      elsif alt.blank?
-        # Eigene Gruppe und nicht stillschweigend unter "unveraendert": Diese
-        # Vereine waren bisher nur fuer die Bundesebene sichtbar und werden jetzt
-        # von einem einzelnen Verband verwaltet. Das ist meist gewollt, aber es
-        # ist eine Rechteaenderung und gehoert vor Augen -- gerade weil ein
-        # falsch gepflegter Landesverband hier ohne Gegenprobe durchschlaegt.
-        neu_zugeordnet << [club, neu]
-      elsif alt != neu
-        wechsel << [club, alt, neu]
-      end
-    end
-
-    namen = GameOperation.pluck(:id, :name).to_h
-    verbaende = StateAssociation.pluck(:id, :name).to_h
-
-    puts "=== Zustaendigkeit: gespeichert gegen abgeleitet ==="
-    puts "Vereine: #{Club.count}\n\n"
-
-    puts "-- Zustaendigkeit wechselt (#{wechsel.size}) --"
-    puts '   Jede Zeile ist ein Verein, der den Verband wechselt. Entweder ist sein'
-    puts '   Landesverband falsch gepflegt, oder der Wechsel ist gewollt.'
-    puts '   Nach dem vollstaendigen Datenlauf bleibt hier genau der ETV Hamburg (81)'
-    puts '   stehen: der gewollte Wechsel, den :fbh_under_flvsh ausloest.'
-    wechsel.each do |club, alt, neu|
-      puts "   #{club.id.to_s.ljust(5)} #{club.name.to_s.ljust(34)} " \
-           "#{namen[alt] || alt} -> #{namen[neu] || neu} " \
-           "(LV: #{verbaende[club.state_association_id]&.strip || '-'})"
-    end
-
-    puts "\n-- Neu einem Verband zugeordnet (#{neu_zugeordnet.size}) --"
-    puts '   Bisher nur fuer die Bundesebene sichtbar, jetzt von diesem Verband'
-    puts '   verwaltet. Landesverband gegenpruefen, es gibt keine zweite Quelle mehr.'
-    neu_zugeordnet.each do |club, neu|
-      puts "   #{club.id.to_s.ljust(5)} #{club.name.to_s.ljust(34)} " \
-           "-> #{namen[neu] || neu} (LV: #{verbaende[club.state_association_id]&.strip || '-'})"
-    end
-
-    puts "\n-- Kein Verband zustaendig (#{ohne_zustaendigkeit.size}) --"
-    puts '   Diese Vereine sieht nur die Bundesebene. Drei Ursachen: kein'
-    puts '   Landesverband, ein Landesverband den es nicht gibt, oder ein Verbund'
-    puts '   ohne Spielbetrieb (siehe Club.unassigned).'
-    ohne_zustaendigkeit.each do |club, alt|
-      grund = if club.state_association_id.blank?
-                'kein Landesverband'
-              elsif verbaende.key?(club.state_association_id)
-                'Verbund ohne Spielbetrieb'
-              else
-                "Landesverband #{club.state_association_id} existiert nicht"
-              end
-      puts "   #{club.id.to_s.ljust(5)} #{club.name.to_s.ljust(34)} " \
-           "vorher #{namen[alt] || '-'} (#{grund})"
-    end
-
-    if wechsel.empty? && neu_zugeordnet.empty? && ohne_zustaendigkeit.empty?
-      puts "\nOK: beide Wege sagen ueberall dasselbe."
+      puts 'Zustaendigkeit gegenpruefen: Club#main_game_operation_id je betroffenem Verein.'
     end
   end
 
@@ -330,7 +300,11 @@ namespace :clubs do
     ziel_go = GameOperation.by_id[GameOperation.id_by_state_association[StateAssociation.root_id(flvsh.id)]]
     abort "Fuer den FLV-SH (#{flvsh.id}) ist kein Spielbetrieb zustaendig -- sonst bleibt Hamburg herrenlos" if ziel_go.nil?
 
-    betroffen = Club.where(state_association_id: fbh.id).order(:id)
+    # Der ganze Teilbaum, nicht nur die direkt am FBH haengenden Vereine: Haengt
+    # unter ihm ein weiterer Verband, wechseln auch dessen Vereine die
+    # Zustaendigkeit. Zwingend VOR dem update! ermitteln -- danach ist der FBH
+    # keine Wurzel mehr und ids_under([fbh.id]) liefert leer.
+    betroffen = Club.where(state_association_id: StateAssociation.descendant_ids(fbh.id)).order(:id)
     puts "\n  Vereine, deren Zustaendigkeit dadurch #{ziel_go.name} wird (#{betroffen.count}):"
     betroffen.each do |c|
       puts "    #{c.id.to_s.ljust(5)} #{c.name.to_s.ljust(30)} vorher #{c.main_game_operation_id.inspect}"

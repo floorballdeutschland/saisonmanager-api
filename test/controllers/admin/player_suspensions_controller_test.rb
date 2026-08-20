@@ -3,11 +3,7 @@ require 'test_helper'
 # Rechte-Scope der Spielersperren. Vorher entschied der `game_operations_hash`
 # des Vereins, also auch bloße Gast-Einträge aus dem Altdaten-Import 2010–2014.
 # Zuständig ist jetzt der Spielbetrieb, der sich aus dem Landesverband des
-# Vereins ergibt (Club#main_game_operation_id).
-#
-# Der Verein im Setup trägt bewusst einen WIDERSPRECHENDEN Alt-Eintrag: Die
-# Spalte existiert weiter und hat auf Produktion noch Werte, also muss ein Test
-# festhalten, dass sie hier nichts mehr entscheidet.
+# Vereins ergibt (Club#main_game_operation_id); die Spalte ist abgebaut.
 #
 # Neue Regel:
 #   Lesen    – ein Verein des Spielers ist lesbar (zuständiger Spielbetrieb oder
@@ -23,11 +19,7 @@ module Admin
       @heim_go = create(:game_operation, state_association_id: @heim_sa.id)
       @fremd_go = create(:game_operation)
 
-      # Alt-Eintrag auf @fremd_go, Landesverband auf @heim_sa: Der Hash widerspricht
-      # der Zuständigkeit, und @heim_go muss gewinnen.
-      @club = create(:club, state_association_id: @heim_sa.id,
-                            game_operations_hash: [{ 'game_operation_id' => @fremd_go.id,
-                                                     'home_game_operation' => true }])
+      @club = create(:club, state_association_id: @heim_sa.id)
       assert_equal @heim_go.id, @club.main_game_operation_id
       @player = create(:player, clubs: [{ 'club_id' => @club.id, 'home_club' => true }])
     end
@@ -51,8 +43,8 @@ module Admin
       assert_equal 'application_block', JSON.parse(response.body)['kind']
     end
 
-    # Kern der Umstellung: Der Alt-Eintrag gibt kein Sperrrecht mehr, obwohl er
-    # @fremd_go ausdruecklich als Heimat nennt.
+    # Kern der Umstellung: Ein Spielbetrieb ohne Zustaendigkeit fuer den Verein
+    # des Spielers hat kein Sperrrecht.
     test 'fremder Spielbetrieb darf nicht spielerweit sperren' do
       login(create(:user, :sbk_scoped, game_operation_id: @fremd_go.id))
 

@@ -95,6 +95,50 @@ class AssociationTreeTest < ActiveSupport::TestCase
     assert_empty StateAssociation.ids_under([kind.id])
   end
 
+  # --- descendant_ids: Reichweite, nicht Zustaendigkeit -----------------------
+  #
+  # Der Unterschied zu ids_under ist die Fehlerquelle: ids_under liest `subtrees`
+  # und ist nur nach WURZELN indiziert. Fuer einen Verband mitten im Baum liefert
+  # es leer. Als Zustaendigkeitsabfrage ist das richtig, als Reichweitenabfrage
+  # falsch -- und genau daran hat eine Meldung "0 Verein(e) betroffen" gezeigt,
+  # wo es sechs waren.
+
+  test 'descendant_ids nimmt den Verband und alle darunter, auch mitten im Baum' do
+    wurzel = create(:state_association)
+    mitte = create(:state_association, parent: wurzel)
+    blatt = create(:state_association, parent: mitte)
+    fremd = create(:state_association)
+
+    assert_equal [mitte.id, blatt.id].sort, StateAssociation.descendant_ids(mitte.id).sort
+    assert_equal [wurzel.id, mitte.id, blatt.id].sort, StateAssociation.descendant_ids(wurzel.id).sort
+    assert_equal [blatt.id], StateAssociation.descendant_ids(blatt.id)
+    assert_not_includes StateAssociation.descendant_ids(wurzel.id), fremd.id
+  end
+
+  # Die Abgrenzung ausdruecklich festgehalten, damit niemand die beiden Methoden
+  # fuer Synonyme haelt.
+  test 'ids_under und descendant_ids sind fuer einen Unterverband verschieden' do
+    wurzel = create(:state_association)
+    kind = create(:state_association, parent: wurzel)
+
+    assert_empty StateAssociation.ids_under([kind.id]), 'zustaendig ist der Verbund, nicht das Kind'
+    assert_equal [kind.id], StateAssociation.descendant_ids(kind.id), 'die Reichweite ist das Kind selbst'
+  end
+
+  test 'descendant_ids ist leer fuer leere Kennungen' do
+    assert_empty StateAssociation.descendant_ids(nil)
+    assert_empty StateAssociation.descendant_ids('')
+  end
+
+  test 'descendant_ids haelt einen Ringverweis aus' do
+    a = create(:state_association)
+    b = create(:state_association, parent: a)
+    a.update_column(:parent_id, b.id)
+    Current.reset_association_structure
+
+    assert_equal [a.id, b.id].sort, StateAssociation.descendant_ids(a.id).sort
+  end
+
   # --- Current: die Karten muessen im selben Request mitgehen ----------------
   #
   # Beide after_commit-Haken sehen wie Kosmetik aus. Ohne sie arbeitet der Rest

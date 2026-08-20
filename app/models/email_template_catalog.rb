@@ -234,7 +234,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
     'TransferRequestMailer#new_request_to_former_club' => {
       mailer_class: 'TransferRequestMailer',
       action_name: 'new_request_to_former_club',
-      description: 'Neue Transfer-/Freigabe-Anfrage an den abgebenden Verein und den Spieler.',
+      description: 'Neue Transfer-/Freigabe-Anfrage an den abgebenden Verein.',
       default_subject: 'Neue {{request_noun}}: {{player_name}}',
       default_from: nil,
       default_reply_to: nil,

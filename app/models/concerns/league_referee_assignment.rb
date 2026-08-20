@@ -31,6 +31,6 @@ module LeagueRefereeAssignment
   def person_level_assignment_default?
     return false unless referee_assignment_mode == :person
 
-    game_operation&.state_association&.person_level_assignment_default? || false
+    game_operation&.state_association&.effective_person_level_assignment_default || false
   end
 end
