@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Ein Verein kann keinem zweiten Spielbetrieb mehr zugeordnet werden**: Am Verein lag neben dem Landesverband noch eine alte Angabe, die einen zuständigen Spielbetrieb und daneben beliebig viele weitere führen konnte. Die weiteren stammten aus dem Datenimport der Saisons 2010 bis 2014, wurden nie gepflegt und ließen sich über die Oberfläche auch nie eintragen; entschieden haben sie seit Sommer 2026 über nichts mehr. Seit der letzten Version ergibt sich der zuständige Verband allein aus dem Landesverband, deshalb ist die Angabe jetzt ganz entfernt. Für die Anwendung ändert sich nichts Sichtbares. Wer einen fremden Verein lesen muss, bekommt wie bisher eine Vereins-Freigabe des zuständigen Landesverbands; wer eine Gastmannschaft betreut, ist über die Liga zuständig.
+
 ## [1.90.0] - 2026-08-20
 
 ### Behoben

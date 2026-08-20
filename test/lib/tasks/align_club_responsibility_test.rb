@@ -2,7 +2,7 @@ require 'test_helper'
 require 'rake'
 require 'csv'
 
-# Tests fuer clubs:fbh_under_flvsh und clubs:responsibility_report
+# Tests fuer clubs:fbh_under_flvsh und clubs:fix_state_associations
 # (lib/tasks/align_club_responsibility.rake).
 #
 # Der erste Task haengt den Floorball Bund Hamburg unter den FLV-SH, damit die
@@ -257,80 +257,5 @@ class AlignClubResponsibilityTest < ActiveSupport::TestCase
       assert z['lv_kuerzel'].present?, "lv_kuerzel fehlt: #{z.inspect}"
       assert z['beleg'].present?, "beleg fehlt: #{z.inspect}"
     end
-  end
-
-  # Der Bericht ist das Tor vor dem Deploy: Jede Zeile ist ein Verein, der seinen
-  # Verband wechselt, ohne dass es jemand angeordnet hat.
-  test 'Bericht nennt Vereine, deren Zustaendigkeit sich verschiebt' do
-    fremd_go = create(:game_operation, state_association_id: create(:state_association).id)
-    # Gespeichert der fremde Spielbetrieb, abgeleitet der des eigenen Verbands:
-    # genau die Lage des ETV Hamburg vor der Umstellung.
-    wechsler = create(:club, name: 'Wechsler', state_association_id: @flvsh.id,
-                             game_operations_hash: [{ 'game_operation_id' => fremd_go.id,
-                                                      'home_game_operation' => true }])
-
-    out, = run_task('clubs:responsibility_report')
-
-    assert_match(/Zustaendigkeit wechselt \(1\)/, out)
-    assert_match(/#{wechsler.id}\s+Wechsler/, out)
-  end
-
-  # Ein Verein, der bisher keinen gespeicherten Spielbetrieb hatte und jetzt einen
-  # abgeleiteten bekommt, fiel aus beiden Listen: `wechsel` verlangte einen alten
-  # Wert, `ohne_zustaendigkeit` einen fehlenden neuen. Er wechselt aber von "nur
-  # fuer die Bundesebene sichtbar" zu "von diesem Verband verwaltet", und das ist
-  # eine Rechteaenderung, die der Bericht als Tor vor dem Deploy zeigen muss.
-  # Der Bericht liest die Altspalte weiter und castet das Flag mit
-  # ActiveModel::Type::Boolean. In Altdaten liegt es als String, und `'false'` ist
-  # truthy: Ein Truthiness-Test wuerde einen Gast-Eintrag als gespeicherte
-  # Zustaendigkeit lesen und -- schlimmer -- einen echten Heimat-Eintrag daneben
-  # verdecken. Der Bericht ist das Tor vor dem Deploy; ein falsches Tor ist
-  # schlechter als keins.
-  test 'Bericht ignoriert einen Gast-Eintrag mit dem String false' do
-    fremd_go = create(:game_operation, state_association_id: create(:state_association).id)
-    gast_go = create(:game_operation, state_association_id: create(:state_association).id)
-    wechsler = create(:club, name: 'Wechsler', state_association_id: @flvsh.id,
-                             game_operations_hash: [
-                               { 'game_operation_id' => gast_go.id, 'home_game_operation' => 'false' },
-                               { 'game_operation_id' => fremd_go.id, 'home_game_operation' => true }
-                             ])
-
-    out, = run_task('clubs:responsibility_report')
-
-    assert_match(/Zustaendigkeit wechselt \(1\)/, out)
-    assert_match(/#{wechsler.id}\s+Wechsler/, out)
-    assert_no_match(/#{gast_go.id} ->/, out)
-  end
-
-  test 'Bericht nennt Vereine, die neu einem Verband zugeordnet werden' do
-    neu_zugeordnet = create(:club, name: 'Neu zugeordnet', state_association_id: @flvsh.id,
-                                   game_operations_hash: [])
-
-    out, = run_task('clubs:responsibility_report')
-
-    assert_match(/Neu einem Verband zugeordnet \(1\)/, out)
-    assert_match(/#{neu_zugeordnet.id}\s+Neu zugeordnet/, out)
-    assert_match(/Zustaendigkeit wechselt \(0\)/, out)
-  end
-
-  test 'Bericht nennt Vereine ohne zustaendigen Verband samt Ursache' do
-    ohne_lv = create(:club, name: 'Ohne LV', state_association_id: nil)
-    verbund_ohne_go = create(:club, name: 'Verbund ohne GO', state_association_id: @fbh.id)
-
-    out, = run_task('clubs:responsibility_report')
-
-    assert_match(/Kein Verband zustaendig \(2\)/, out)
-    assert_match(/#{ohne_lv.id}\s+Ohne LV\s+.*kein Landesverband/, out)
-    assert_match(/#{verbund_ohne_go.id}\s+Verbund ohne GO\s+.*Verbund ohne Spielbetrieb/, out)
-  end
-
-  # Dritter Ursachen-Zweig: Auf clubs.state_association_id liegt kein
-  # Fremdschluessel, der Verweis kann ins Leere zeigen.
-  test 'Bericht nennt einen Landesverband, den es nicht gibt, als Ursache' do
-    waise = create(:club, name: 'Waise', state_association_id: 999_999)
-
-    out, = run_task('clubs:responsibility_report')
-
-    assert_match(/#{waise.id}\s+Waise\s+.*Landesverband 999999 existiert nicht/, out)
   end
 end

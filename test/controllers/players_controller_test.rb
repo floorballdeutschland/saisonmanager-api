@@ -910,17 +910,12 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
   end
 
   # admin_players_index (Spielerliste eines Vereins in der Spielerverwaltung):
-  # Der Alt-Eintrag im game_operations_hash gibt keinen Zugriff mehr, auch nicht,
-  # wenn er den eigenen Spielbetrieb nennt. Auf Produktion konnte eine SBK
-  # darueber 2.513 Spielerprofile fremder Vereine auflisten, ohne dass eine
-  # Freigabe erteilt war.
-  test 'admin_players_index sperrt Verein trotz Alt-Eintrag auf den eigenen Spielbetrieb' do
+  # Ein Verein eines fremden Landesverbands ist gesperrt. Frueher entschied der
+  # `game_operations_hash`, und darueber konnte eine SBK auf Produktion 2.513
+  # Spielerprofile fremder Vereine auflisten, ohne dass eine Freigabe erteilt war.
+  test 'admin_players_index sperrt den Verein eines fremden Landesverbands' do
     fremder_go = create(:game_operation)
-    # Landesverband beim fremden Spielbetrieb, im Alt-Eintrag der eigene: genau
-    # der Weg, ueber den der Zugriff frueher entstand.
-    gast_club = create(:club, state_association_id: fremder_go.state_association_id,
-                              game_operations_hash: [{ 'game_operation_id' => @game_operation.id,
-                                                       'home_game_operation' => true }])
+    gast_club = create(:club, state_association_id: fremder_go.state_association_id)
     create(:player, clubs: [{ 'club_id' => gast_club.id, 'home_club' => true }])
 
     login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))

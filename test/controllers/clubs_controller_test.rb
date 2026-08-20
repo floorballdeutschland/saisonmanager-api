@@ -81,24 +81,19 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_response :forbidden
   end
 
-  # Der Alt-Eintrag in `clubs.game_operations_hash` gibt keinen Zugriff auf die
-  # Vereinsstammdaten mehr, auch dann nicht, wenn er dem Landesverband
-  # WIDERSPRICHT. Genau diese Lage hatte der ETV Hamburg auf Produktion:
-  # Landesverband Hamburg, im Hash Floorball Niedersachsen.
+  # Nur der zustaendige Spielbetrieb kommt an die Vereinsstammdaten. Der
+  # ausdrueckliche Weg zu fremden Vereinen ist die Vereins-Freigabe, siehe den
+  # folgenden Test.
   #
-  # Die Spalte existiert weiter und traegt auf Produktion noch Werte. Der Test
-  # haelt deshalb fest, dass sie ignoriert wird -- sonst faellt ein Rueckfall
-  # darauf ("nur fuer die Uebergangszeit") niemandem auf. Der ausdrueckliche Weg
-  # zu fremden Vereinen ist die Vereins-Freigabe, siehe den folgenden Test.
-  test 'admin_club sperrt den Spielbetrieb aus einem widersprechenden Alt-Eintrag' do
+  # Bis zum Abbau von `clubs.game_operations_hash` stand hier ein Verein mit
+  # einem WIDERSPRECHENDEN Alt-Eintrag, damit auffaellt, wenn jemand die Spalte
+  # wieder heranzieht. Mit der Spalte ist der Fall strukturell erledigt.
+  test 'admin_club sperrt einen Spielbetrieb ohne Zustaendigkeit' do
     home_sa = create(:state_association)
     home_go = create(:game_operation, state_association_id: home_sa.id)
     guest_sa = create(:state_association)
     guest_go = create(:game_operation, state_association_id: guest_sa.id)
-    # Landesverband home_sa, im Alt-Eintrag aber guest_go als Heimat.
-    club = create(:club, state_association_id: home_sa.id, contact_email: 'kontakt@example.org',
-                         game_operations_hash: [{ 'game_operation_id' => guest_go.id,
-                                                  'home_game_operation' => true }])
+    club = create(:club, state_association_id: home_sa.id, contact_email: 'kontakt@example.org')
     assert_equal home_go.id, club.main_game_operation_id, 'der Landesverband entscheidet'
     login(create(:user, :sbk_scoped, game_operation_id: guest_go.id))
 

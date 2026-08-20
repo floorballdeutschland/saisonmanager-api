@@ -599,72 +599,6 @@ class ClubTest < ActiveSupport::TestCase
     assert_equal anderer.id, widerspruch.state_association_id
   end
 
-  # --- Die Altspalte entscheidet ueber nichts mehr ----------------------------
-  #
-  # `clubs.game_operations_hash` existiert weiter, der Reader auch, und auf
-  # Produktion stehen die Heimat-Eintraege noch drin. Solange das so ist, muss ein
-  # Test festhalten, dass sie ignoriert werden -- sonst baut jemand "fuer die
-  # Uebergangszeit" einen Rueckfall darauf ein, und die Suite bleibt gruen.
-  #
-  # Der Aufbau ist bewusst WIDERSPRUECHLICH: Der Hash nennt einen fremden
-  # Spielbetrieb als Heimat, der Landesverband einen anderen. Genau diese Lage
-  # hatte der ETV Hamburg auf Produktion.
-
-  test 'ein widersprechender Heimat-Eintrag gibt keinen Zugriff' do
-    create(:setting, current_season_id: '18')
-    eigen_sa = create(:state_association)
-    eigen_go = create(:game_operation, state_association_id: eigen_sa.id)
-    fremd_go = create(:game_operation, state_association_id: create(:state_association).id)
-
-    etv = create(:club, state_association_id: eigen_sa.id,
-                        game_operations_hash: [{ 'game_operation_id' => fremd_go.id,
-                                                 'home_game_operation' => true }])
-
-    assert_equal eigen_go.id, etv.main_game_operation_id, 'der Landesverband entscheidet'
-    assert etv.readable_by_game_operations?([eigen_go.id])
-    assert_not etv.readable_by_game_operations?([fremd_go.id]),
-               'der Spielbetrieb aus dem Alt-Eintrag darf den Verein nicht lesen'
-    assert_includes etv.user_permissions(create(:user, :sbk_scoped, game_operation_id: eigen_go.id)), :update_club
-    assert_not_includes etv.user_permissions(create(:user, :sbk_scoped, game_operation_id: fremd_go.id)),
-                        :update_club
-  end
-
-  test 'ein widersprechender Heimat-Eintrag bringt den Verein in keine fremde Liste' do
-    create(:setting, current_season_id: '18')
-    eigen_sa = create(:state_association)
-    eigen_go = create(:game_operation, state_association_id: eigen_sa.id)
-    fremd_go = create(:game_operation, state_association_id: create(:state_association).id)
-
-    etv = create(:club, state_association_id: eigen_sa.id,
-                        game_operations_hash: [{ 'game_operation_id' => fremd_go.id,
-                                                 'home_game_operation' => true }])
-
-    assert_equal [etv.id], Club.home_clubs_of([eigen_go.id]).pluck(:id)
-    assert_empty Club.home_clubs_of([fremd_go.id]).pluck(:id)
-
-    fremde_liste = all_club_ids(Club.admin_user_clubs(create(:user, :sbk_scoped, game_operation_id: fremd_go.id)))
-    assert_not_includes fremde_liste, etv.id
-    assert_includes all_club_ids(Club.admin_user_clubs(create(:user, :sbk_scoped,
-                                                              game_operation_id: eigen_go.id))), etv.id
-  end
-
-  # Auch die Rollenvergabe: Sie entschied fruehers ebenfalls ueber den Hash.
-  test 'ein widersprechender Heimat-Eintrag macht den Verein nicht rollen-zuweisbar' do
-    create(:setting, current_season_id: '18')
-    eigen_sa = create(:state_association)
-    eigen_go = create(:game_operation, state_association_id: eigen_sa.id)
-    fremd_go = create(:game_operation, state_association_id: create(:state_association).id)
-
-    etv = create(:club, state_association_id: eigen_sa.id,
-                        game_operations_hash: [{ 'game_operation_id' => fremd_go.id,
-                                                 'home_game_operation' => true }])
-
-    assert_includes Club.role_assignable_for(create(:user, :sbk_scoped, game_operation_id: eigen_go.id)).pluck(:id),
-                    etv.id
-    assert_not_includes Club.role_assignable_for(create(:user, :sbk_scoped,
-                                                        game_operation_id: fremd_go.id)).pluck(:id), etv.id
-  end
-
   # --- home_clubs_of ist die Umkehrung von main_game_operation_id -------------
   #
   # Wer einen Verein LISTET, muss auch fuer ihn zustaendig sein. Liefen die beiden
@@ -732,9 +666,9 @@ class ClubTest < ActiveSupport::TestCase
 
   # --- main_game_operation_id: Ableitung aus dem Landesverband ----------------
   #
-  # Die Zustaendigkeit stand frueher als zweites Feld am Verein
-  # (`game_operations_hash`) und konnte dem Landesverband widersprechen. Jetzt
-  # gibt es nur eine Quelle.
+  # Die Zustaendigkeit stand frueher als zweites Feld am Verein und konnte dem
+  # Landesverband widersprechen. Die Spalte ist mit dem Abbau entfallen, es gibt
+  # jetzt strukturell nur eine Quelle.
 
   test 'main_game_operation_id nimmt den Spielbetrieb des eigenen Landesverbands' do
     lv = create(:state_association)
