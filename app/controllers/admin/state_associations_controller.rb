@@ -232,12 +232,35 @@ module Admin
       # Schlüssel und der gespeicherte Wert bleibt unverändert stehen.
       permitted << { states: [] } if current_user.permission_hash[:admin].present?
       attrs = params.require(:state_association).permit(*permitted)
-      # Kontrollprozess-Flag wird ausschließlich am Root-Landesverband
-      # konfiguriert; ein Kind erbt den Wert über
-      # `effective_referee_license_review_enabled`.
-      attrs[:referee_license_review_enabled] = false if attrs[:parent_id].present?
-      normalize_referee_assignment_switches!(attrs)
+      if inherits_settings?(attrs)
+        # Hängt ein übergeordneter Verbund dran, kommt der ganze Block
+        # „Einstellungen" von dort (StateAssociation::INHERITED_SETTINGS, gelesen
+        # über die effective_*-Methoden). Die Maske sperrt die Felder, ein
+        # direkter API-Aufruf umgeht sie – deshalb werden sie hier verworfen.
+        #
+        # Verworfen und nicht auf false gezwungen: nimmt ein Admin den Verbund
+        # später wieder weg, steht der früher gepflegte eigene Stand wieder da,
+        # statt still überall aus zu sein. Gelesen wird der Rest ohnehin nicht,
+        # solange der Verbund hängt.
+        StateAssociation::INHERITED_SETTINGS.each { |key| attrs.delete(key) }
+      else
+        normalize_referee_assignment_switches!(attrs)
+      end
       attrs
+    end
+
+    # Hat der Landesverband nach diesem Update einen übergeordneten Verbund?
+    #
+    # Nicht schlicht `attrs[:parent_id].present?`: parent_id darf nur ein globaler
+    # Admin schicken, `permit` streicht den Schlüssel allen anderen. Ohne den
+    # Rückfall auf den gespeicherten Stand könnte ein regionaler SBK die
+    # Einstellungen seines Kind-LV weiterhin überschreiben – genau der Fall, den
+    # diese Sperre verhindern soll. Beim Anlegen gibt es noch keinen Datensatz,
+    # dann entscheidet allein der Parameter.
+    def inherits_settings?(attrs)
+      return attrs[:parent_id].present? if attrs.key?(:parent_id)
+
+      @state_association&.parent_id.present?
     end
 
     # Die drei Ansetzungs-Optionen sind gestaffelt: die Personenebene setzt den

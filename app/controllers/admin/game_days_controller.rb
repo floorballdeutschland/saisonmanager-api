@@ -177,7 +177,7 @@ module Admin
         # Das an die SBK gerichtete Hinweisfeld aus Schritt 3 des Spielberichts.
         record_comment: game.record_comment.presence,
 
-        scan_required: game.state_association&.scan_required || false,
+        scan_required: game.state_association&.effective_scan_required || false,
         scan: scan_hash(game, game_day),
         referee_report: referee_report_hash(game),
         proceeding_proposal: proceeding_proposal_hash(game),

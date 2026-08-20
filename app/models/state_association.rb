@@ -1,4 +1,25 @@
 class StateAssociation < ApplicationRecord
+  # Der Block „Einstellungen" der Verbandsmaske. Bei einem untergeordneten
+  # Landesverband kommen diese Werte vollstaendig vom uebergeordneten Verbund:
+  # gelesen ueber die effective_*-Methoden weiter unten, beim Speichern vom
+  # Admin::StateAssociationsController verworfen.
+  #
+  # Nicht dabei und bewusst weiterhin eigene Daten des Kind-LV: die Postfaecher
+  # (eigene Vererbung mit Rueckfall, siehe effective_vsk_email), der
+  # Zustaendigkeitsbereich (vererbt in die andere Richtung, siehe
+  # effective_states), Stammdaten, Logo, Banner, Spieltagscheckliste und
+  # Freigaben.
+  INHERITED_SETTINGS = %i[
+    express_license_enabled
+    referee_license_review_enabled
+    scan_required
+    referee_assignment_external_enabled
+    referee_assignment_enabled
+    person_level_assignment_default
+    report_form_email_enabled
+    manual_proceeding_creation
+  ].freeze
+
   belongs_to :parent, class_name: 'StateAssociation', optional: true
   has_many :children, class_name: 'StateAssociation', foreign_key: :parent_id, dependent: :nullify
   has_many :checklist_items, class_name: 'StateAssociationChecklistItem', dependent: :destroy
@@ -125,21 +146,68 @@ class StateAssociation < ApplicationRecord
     effective_states.include?(normalized)
   end
 
-  def effective_express_license_enabled
-    express_license_enabled || parent&.express_license_enabled
+  # Der Landesverband, an dem die Einstellungen tatsaechlich gepflegt werden:
+  # der eigene, und bei einem untergeordneten LV die Wurzel der Verbundskette.
+  #
+  # Iterativ mit `seen` aus demselben Grund wie in effective_states oben: ein
+  # Ringverweis aus der Zeit vor parent_must_not_create_cycle wuerde die Methode
+  # sonst in eine Endlosschleife schicken – und zwar auch beim Rendern der
+  # Maske, mit der man den Verweis zuruecknehmen wuerde.
+  #
+  # Bewusst nicht memoisiert: der Controller fragt vor dem Speichern (haengt ein
+  # Verbund dran?) und full_hash danach, und dazwischen kann sich parent_id
+  # geaendert haben. `parent` ist eine AR-Assoziation und nach dem ersten Zugriff
+  # ohnehin zwischengespeichert, die Kette ist also hoechstens eine Abfrage tief.
+  def settings_source
+    node = self
+    seen = []
+    while node.parent && seen.exclude?(node.id)
+      seen << node.id
+      node = node.parent
+    end
+    node
   end
 
-  # Abweichende Semantik zu effective_express_license_enabled (oben): Parent-LV
-  # dominiert; das eigene Flag wird ignoriert, sobald ein Parent gesetzt ist.
-  # Hintergrund: Der Schiedsrichter-Kursergebnis-Import wird vom uebergeordneten
-  # LV kontrolliert. StateAssociationsController erzwingt zusaetzlich
-  # referee_license_review_enabled = false fuer Kinder-LVs, damit dieses Feld
-  # nicht aus Versehen lokal gesetzt wird. Tests in
+  # Ein Wert aus dem Block „Einstellungen" der Verbandsmaske, inklusive
+  # Vererbung. Fuer jeden Schluessel aus INHERITED_SETTINGS gibt es unten eine
+  # eigene Methode, damit die Aufrufer greppbar bleiben.
+  def effective_setting(name)
+    settings_source.public_send(name)
+  end
+
+  def effective_express_license_enabled
+    effective_setting(:express_license_enabled)
+  end
+
+  # Der Kontrollprozess wird vom uebergeordneten LV kontrolliert: Der
+  # Schiedsrichter-Kursergebnis-Import laeuft dort. Tests in
   # referee_course_submit_policy_test.rb verankern diese Semantik.
   def effective_referee_license_review_enabled
-    return parent.referee_license_review_enabled if parent
+    effective_setting(:referee_license_review_enabled)
+  end
 
-    referee_license_review_enabled
+  def effective_scan_required
+    effective_setting(:scan_required)
+  end
+
+  def effective_referee_assignment_external_enabled
+    effective_setting(:referee_assignment_external_enabled)
+  end
+
+  def effective_referee_assignment_enabled
+    effective_setting(:referee_assignment_enabled)
+  end
+
+  def effective_person_level_assignment_default
+    effective_setting(:person_level_assignment_default)
+  end
+
+  def effective_report_form_email_enabled
+    effective_setting(:report_form_email_enabled)
+  end
+
+  def effective_manual_proceeding_creation
+    effective_setting(:manual_proceeding_creation)
   end
 
   # Postfach für Schiedsrichteransetzungen. Ohne eigenen Eintrag greift der
@@ -151,8 +219,10 @@ class StateAssociation < ApplicationRecord
 
   # Wie effective_rsk_email: Postfächer eines untergeordneten Landesverbands
   # fallen auf den übergeordneten Verbund zurück, und zwar über die ganze Kette
-  # bis zur Wurzel (anders als effective_express_license_enabled oben, das nur
-  # eine Ebene hochschaut). Nötig, weil das Formular die Felder bei Kind-LVs
+  # bis zur Wurzel. Anders als bei den Einstellungen (settings_source oben) ist
+  # das ein Rückfall und keine Übernahme: ein eigener Eintrag am Kind-LV gewinnt,
+  # gesperrt ist das Feld nur, solange keiner gepflegt ist. Nötig, weil das
+  # Formular die Felder bei Kind-LVs
   # sperrt und als „geerbt" ausweist, beim Speichern sogar nil mitschickt.
   #
   # Ohne Rückfall lasen alle Mailer die Adresse direkt am Kind-Datensatz: bei
@@ -175,6 +245,11 @@ class StateAssociation < ApplicationRecord
   # Hauptschalter lässt ein `referee_assignment_enabled = true` im Datensatz
   # zurück). Deshalb hier ausgewertet und nicht an den Feldern selbst.
   #
+  # Gelesen wird an `settings_source`, nicht am eigenen Datensatz: bei einem
+  # untergeordneten Landesverband bestimmt der übergeordnete Verbund, auf welchem
+  # Weg angesetzt wird. Ein Kind-LV hat die drei Schalter gar nicht mehr in der
+  # Maske, sein gespeicherter Stand ist damit nur noch ein Überbleibsel.
+  #
   #   :none   – nur die SBK setzt an (Weg 1, Freitext am Spiel)
   #   :club   – RSK pflegt Verein oder Freitext (Weg 3, reduzierte Ansicht)
   #   :person – Ansetzer-Rolle setzt personenscharf an (Weg 2)
@@ -182,8 +257,9 @@ class StateAssociation < ApplicationRecord
   # Die Personenebene gewinnt: sie schließt den reduzierten Modus aus, damit
   # nicht zwei Wege dasselbe Spiel bearbeiten.
   def referee_assignment_mode
-    return :none unless referee_assignment_external_enabled?
-    return :person if referee_assignment_enabled?
+    source = settings_source
+    return :none unless source.referee_assignment_external_enabled?
+    return :person if source.referee_assignment_enabled?
 
     :club
   end
@@ -234,18 +310,25 @@ class StateAssociation < ApplicationRecord
       effective_states:,
       express_license_enabled:,
       referee_license_review_enabled:,
-      effective_referee_license_review_enabled:,
       # Die tatsächlich greifenden Werte mitliefern, damit die Verbandsmaske bei
-      # einem untergeordneten LV nicht dessen eigenen (leeren) Wert anzeigt. Der
-      # Listen-Endpunkt liefert nur short_hash, ohne Postfächer und Flags, das
-      # Formular kann sie also nicht aus dem Parent-Datensatz lesen.
+      # einem untergeordneten LV nicht dessen eigenen (überbleibenden) Wert
+      # anzeigt. Der Listen-Endpunkt liefert nur short_hash, ohne Postfächer und
+      # Flags, das Formular kann sie also nicht aus dem Parent-Datensatz lesen.
       #
-      # Die drei Vererbungsarten unterscheiden sich, siehe die Methoden oben:
-      # express_license schaut eine Ebene hoch und liest dort das eigene Feld des
-      # Parents, referee_license_review wird vom Parent komplett bestimmt, die
-      # Postfächer laufen bis zur Wurzel. .present? normalisiert das mögliche nil
-      # aus dem ||-Ausdruck auf false.
+      # Einstellungen und Postfächer erben unterschiedlich, siehe die Methoden
+      # oben: die Einstellungen kommen bei gesetztem Verbund vollständig von der
+      # Wurzel der Kette (settings_source), die Postfächer sind ein Rückfall und
+      # weichen einem eigenen Eintrag. `.present?` normalisiert ein mögliches nil
+      # aus dem Altbestand auf false, damit die Maske keine Checkbox mit
+      # `undefined` befüllt.
       effective_express_license_enabled: effective_express_license_enabled.present?,
+      effective_referee_license_review_enabled: effective_referee_license_review_enabled.present?,
+      effective_scan_required: effective_scan_required.present?,
+      effective_referee_assignment_external_enabled: effective_referee_assignment_external_enabled.present?,
+      effective_referee_assignment_enabled: effective_referee_assignment_enabled.present?,
+      effective_person_level_assignment_default: effective_person_level_assignment_default.present?,
+      effective_report_form_email_enabled: effective_report_form_email_enabled.present?,
+      effective_manual_proceeding_creation: effective_manual_proceeding_creation.present?,
       effective_vsk_email:,
       effective_sbk_email:,
       effective_rsk_email:,

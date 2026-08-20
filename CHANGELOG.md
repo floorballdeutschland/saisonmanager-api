@@ -9,6 +9,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Ein untergeordneter Landesverband erbt jetzt alle Einstellungen vom übergeordneten Verbund**: Hängt an einem Landesverband ein übergeordneter Verbund, kam bisher nur ein Teil des Blocks „Einstellungen" von dort. Der Kontrollprozess für Schiedsrichterlizenzen wurde vom Verbund bestimmt, die Expresslizenz war „eigener Wert oder Verbund", und alle übrigen Punkte (Papierspielberichtsbogen, die drei Ansetzungs-Optionen, Berichtsworkflow für rote Karten, manuelle Verfahrenseröffnung) pflegte der untergeordnete Verband selbst. Dieselbe Frage wurde damit an zwei Stellen beantwortet, und welche griff, hing vom Punkt ab. Jetzt gilt eine Regel für den ganzen Block: Ist ein übergeordneter Verbund gesetzt, kommen alle Einstellungen von dort, und zwar über die ganze Kette bis zur Wurzel. In der Verbandsmaske des untergeordneten Verbands sind die Felder gesperrt und zeigen den wirksamen Wert. Nicht betroffen sind die E-Mail-Adressen (sie bleiben ein Rückfall und weichen weiterhin einem eigenen Eintrag) sowie Stammdaten, Zuständigkeitsbereich, Logo, Banner, Spieltagscheckliste und Freigaben.
+
+
 ## [1.90.0] - 2026-08-20
 
 ### Behoben
