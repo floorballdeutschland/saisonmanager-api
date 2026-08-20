@@ -95,6 +95,14 @@ namespace :clubs do
   # „unveraendert lassen", nicht „leeren": Bei den Auswahlteams traegt das Feld
   # die Region und muss stehenbleiben.
   #
+  # Namen und Kuerzel in der Liste IMMER aus der Datenbank uebernehmen, nie aus
+  # einer formatierten Konsolenausgabe. Beim ersten Anlauf auf .dev fielen vier
+  # Zeilen durch die Namenspruefung, und alle vier gingen darauf zurueck: Zwei
+  # Vereine heissen „Sued" statt „Süd" abgeschrieben, bei einem sah ein
+  # fuehrendes Leerzeichen im Namen wie Spaltenausrichtung aus, und ein
+  # Verbandskuerzel war geraten (FVBY statt FVB). Die Pruefung hat es abgefangen,
+  # aber der Dry-Run ist dafuer die letzte Verteidigungslinie, nicht die erste.
+  #
   # Dry-Run (Standard):
   #   bundle exec rails clubs:fix_state_associations
   # Ausfuehren:
