@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Spieler bekommen bei einem Transfer oder einer Spielerfreigabe nicht mehr sofort eine Mail mit Login-Aufforderung**: Stellte ein Verein eine Transferanfrage, ging die Mail „Neue Transferanfrage" nicht nur an den abgebenden Verein, sondern auch an den betroffenen Spieler. Ihr Text richtet sich aber ausschließlich an den Verein: Er fordert zum Anmelden im Saisonmanager auf und verlinkt in die Verwaltung, wo der Spieler weder Zugang noch Logindaten hat. Zu diesem Zeitpunkt ist der Spieler ohnehin nicht am Zug, sondern der abgebende Verein. Die erste Mail geht jetzt nur noch an den abgebenden Verein. Der Spieler wird erst dann angeschrieben, wenn er selbst entscheiden kann, nämlich mit der Anfrage nach seiner Zustimmung, die per Link ohne Anmeldung zustimmen oder ablehnen lässt.
+
 ## [1.90.0] - 2026-08-20
 
 ### Behoben
