@@ -4,6 +4,49 @@ require 'test_helper'
 # Setting-Zeilen pro Test. Tests hier decken die Symptome aus PR #168 ab —
 # `current_min_team`-Fallback auf 0, wenn `min_team_id` in der Saison fehlt.
 class SettingTest < ActiveSupport::TestCase
+  # Ein Treffer im Rails-Cache ist hier nicht gratis: der MemoryStore macht bei
+  # jedem Lesen ein Marshal.load des ganzen AR-Objekts samt JSONB-Spalten. Bei
+  # 75 Aufrufstellen war das auf Produktion der groesste Einzelposten der
+  # Lizenzliste des Verbandes. Die anfrage-lokale Ebene davor muss daher greifen.
+  # Gegenprobe ueber Setting.first, weil Rails.cache im Test :null_store ist —
+  # ohne die Memoisierung landet jeder Aufruf dort in der Datenbank.
+  test 'current liest die Konfiguration nur einmal je Vorgang' do
+    create(:setting)
+    Setting.current # Zwischenspeicher fuellen
+
+    reads = 0
+    counting_load = lambda do
+      reads += 1
+      Setting.unscoped.take
+    end
+    Setting.stub(:first, counting_load) do
+      3.times { Setting.current }
+    end
+
+    assert_equal 0, reads, 'Setting.current darf innerhalb eines Vorgangs nicht erneut laden'
+  end
+
+  test 'flush_current_cache verwirft den anfrage-lokalen Zwischenspeicher' do
+    create(:setting, current_season_id: 18)
+    assert_equal 18, Setting.current_season_id
+
+    # update_columns umgeht die Callbacks, raeumt also nicht selbst ab.
+    Setting.first.update_columns(systems: { '1' => { 'current_season_id' => 17 } })
+    Setting.flush_current_cache
+
+    assert_equal 17, Setting.current_season_id
+  end
+
+  # Der after_commit-Hook muss beide Ebenen treffen, nicht nur den Rails-Cache.
+  test 'ein Speichern verwirft den Zwischenspeicher' do
+    create(:setting, current_season_id: 18)
+    assert_equal 18, Setting.current_season_id
+
+    Setting.first.update!(systems: { '1' => { 'current_season_id' => 17 } })
+
+    assert_equal 17, Setting.current_season_id
+  end
+
   test 'current_season_id liest aus systems["1"]["current_season_id"]' do
     create(:setting, current_season_id: 18)
 
@@ -78,6 +121,7 @@ class SettingTest < ActiveSupport::TestCase
     assert_equal '', Setting.league_class(nil)
 
     Setting.first.update_columns(league_classes: nil)
+    Setting.flush_current_cache
     assert_equal '', Setting.league_class('rl')
   end
 
@@ -124,7 +168,7 @@ class SettingTest < ActiveSupport::TestCase
   test 'seasons_hash faengt eine seasons-Spalte ab, die gar kein Hash ist' do
     create(:setting)
     Setting.first.update_columns(seasons: nil)
-    Rails.cache.delete('settings/current')
+    Setting.flush_current_cache
 
     assert_empty Setting.seasons_hash
     assert_nil Setting.season_name('18')
@@ -202,7 +246,7 @@ class SettingTest < ActiveSupport::TestCase
   test 'min_team und min_league brechen bei kaputter seasons-Spalte nicht ab' do
     create(:setting)
     Setting.first.update_columns(seasons: nil)
-    Rails.cache.delete('settings/current')
+    Setting.flush_current_cache
 
     assert_equal 0, Setting.current_min_team
     assert_equal 0, Setting.current_min_league
@@ -215,7 +259,7 @@ class SettingTest < ActiveSupport::TestCase
   test 'point_corrections faengt eine Spalte ab, die kein Hash ist' do
     create(:setting)
     Setting.first.update_columns(point_corrections: nil)
-    Rails.cache.delete('settings/current')
+    Setting.flush_current_cache
 
     assert_nil Setting.point_corrections(1)
   end
@@ -226,12 +270,12 @@ class SettingTest < ActiveSupport::TestCase
     # Array: ergab in League#table einen TypeError, also einen 500er auf der
     # öffentlichen Ligaseite.
     Setting.first.update_columns(point_corrections: { '1' => [] })
-    Rails.cache.delete('settings/current')
+    Setting.flush_current_cache
     assert_nil Setting.point_corrections(1)
 
     # String: rechnete dort still ohne den Abzug weiter.
     Setting.first.update_columns(point_corrections: { '1' => 'minus 3' })
-    Rails.cache.delete('settings/current')
+    Setting.flush_current_cache
     assert_nil Setting.point_corrections(1)
   end
 

@@ -910,15 +910,17 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
   end
 
   # admin_players_index (Spielerliste eines Vereins in der Spielerverwaltung):
-  # Ein blosser Gast-Eintrag im game_operations_hash gibt keinen Zugriff mehr.
-  # Auf Produktion konnte eine SBK darueber 2.513 Spielerprofile fremder Vereine
-  # auflisten, ohne dass eine Freigabe erteilt war.
-  test 'admin_players_index sperrt Verein mit reinem Gast-Eintrag' do
+  # Der Alt-Eintrag im game_operations_hash gibt keinen Zugriff mehr, auch nicht,
+  # wenn er den eigenen Spielbetrieb nennt. Auf Produktion konnte eine SBK
+  # darueber 2.513 Spielerprofile fremder Vereine auflisten, ohne dass eine
+  # Freigabe erteilt war.
+  test 'admin_players_index sperrt Verein trotz Alt-Eintrag auf den eigenen Spielbetrieb' do
     fremder_go = create(:game_operation)
-    gast_club = create(:club, game_operations_hash: [
-      { 'home_game_operation' => true, 'game_operation_id' => fremder_go.id },
-      { 'home_game_operation' => false, 'game_operation_id' => @game_operation.id }
-    ])
+    # Landesverband beim fremden Spielbetrieb, im Alt-Eintrag der eigene: genau
+    # der Weg, ueber den der Zugriff frueher entstand.
+    gast_club = create(:club, state_association_id: fremder_go.state_association_id,
+                              game_operations_hash: [{ 'game_operation_id' => @game_operation.id,
+                                                       'home_game_operation' => true }])
     create(:player, clubs: [{ 'club_id' => gast_club.id, 'home_club' => true }])
 
     login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
@@ -934,9 +936,7 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
   test 'admin_players_index erlaubt freigegebenen Verein' do
     grantor_sa = create(:state_association)
     grantor_go = create(:game_operation, state_association_id: grantor_sa.id)
-    club = create(:club, state_association_id: grantor_sa.id, game_operations_hash: [
-      { 'home_game_operation' => true, 'game_operation_id' => grantor_go.id }
-    ])
+    club = create(:club, state_association_id: grantor_sa.id, game_operation: grantor_go)
     spieler = create(:player, clubs: [{ 'club_id' => club.id, 'home_club' => true }])
     StateAssociationRelease.create!(grantor_state_association_id: grantor_sa.id,
                                     recipient_game_operation_id: @game_operation.id,
@@ -955,13 +955,9 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
   # und sperrte damit die zustaendige SBK aus (Prod: 3.012 Spieler, api#389).
 
   test 'SBK des gueltigen Heimatvereins darf Spieler trotz abgelaufenem Alt-Eintrag oeffnen' do
-    heim_club = create(:club, game_operations_hash: [
-      { 'home_game_operation' => true, 'game_operation_id' => @game_operation.id }
-    ])
+    heim_club = create(:club, game_operation: @game_operation)
     alt_go = create(:game_operation)
-    alt_club = create(:club, game_operations_hash: [
-      { 'home_game_operation' => true, 'game_operation_id' => alt_go.id }
-    ])
+    alt_club = create(:club, game_operation: alt_go)
     player = create(:player, clubs: [
       { 'club_id' => alt_club.id, 'home_club' => true, 'valid_until' => 1.year.ago.iso8601 },
       { 'club_id' => heim_club.id, 'home_club' => true, 'created_at' => 1.year.ago.iso8601 }
@@ -977,13 +973,9 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
   # Gegenprobe: Der abgelaufene Eintrag gibt auch keinen Zugriff mehr. Vorher
   # war es genau umgekehrt, nur die Alt-SBK kam an das Profil.
   test 'SBK des abgelaufenen Alt-Eintrags darf den Spieler nicht mehr oeffnen' do
-    heim_club = create(:club, game_operations_hash: [
-      { 'home_game_operation' => true, 'game_operation_id' => @game_operation.id }
-    ])
+    heim_club = create(:club, game_operation: @game_operation)
     alt_go = create(:game_operation)
-    alt_club = create(:club, game_operations_hash: [
-      { 'home_game_operation' => true, 'game_operation_id' => alt_go.id }
-    ])
+    alt_club = create(:club, game_operation: alt_go)
     player = create(:player, clubs: [
       { 'club_id' => alt_club.id, 'home_club' => true, 'valid_until' => 1.year.ago.iso8601 },
       { 'club_id' => heim_club.id, 'home_club' => true, 'created_at' => 1.year.ago.iso8601 }
@@ -999,9 +991,7 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
   # jede Landes-SBK gesperrt (Prod: 76 aktive Spieler). Das ist ein Datenproblem
   # und in api#389 ausdruecklich nicht Teil des Fixes.
   test 'Spieler ohne gueltigen Heimateintrag bleibt fuer die Landes-SBK gesperrt' do
-    heim_club = create(:club, game_operations_hash: [
-      { 'home_game_operation' => true, 'game_operation_id' => @game_operation.id }
-    ])
+    heim_club = create(:club, game_operation: @game_operation)
     player = create(:player, clubs: [
       { 'club_id' => heim_club.id, 'home_club' => true, 'valid_until' => 1.year.ago.iso8601 }
     ])
@@ -1037,10 +1027,10 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     @deaktiviert_am ||= 7.days.ago.change(usec: 0)
   end
 
-  # Ein Verein mit Heimat-Spielbetrieb in diesem Spielbetrieb.
+  # Ein Verein, für den dieser Spielbetrieb zuständig ist. Die Factory übersetzt
+  # `game_operation:` in den Landesverband des Spielbetriebs.
   def club_in(game_operation)
-    create(:club, game_operations_hash: [{ 'home_game_operation' => true,
-                                           'game_operation_id' => game_operation.id }])
+    create(:club, game_operation: game_operation)
   end
 
   def fremder_spielbetrieb
@@ -1052,8 +1042,7 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
   # mehr zurücknehmen.
   test 'gescopte SBK reaktiviert ein vor Tagen deaktiviertes Profil' do
     admin = create(:user, :admin)
-    heim_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
-                                                       'game_operation_id' => @game_operation.id }])
+    heim_club = create(:club, game_operation: @game_operation)
     deaktiviert = create(:player, clubs: [{ 'club_id' => heim_club.id, 'home_club' => true,
                                             'valid_until' => deaktiviert_am.iso8601,
                                             'valid_set_by' => admin.id }],
@@ -1071,8 +1060,7 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     admin = create(:user, :admin)
     fremd_sa = create(:state_association)
     fremd_go = create(:game_operation, state_association_id: fremd_sa.id)
-    heim_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
-                                                       'game_operation_id' => @game_operation.id }])
+    heim_club = create(:club, game_operation: @game_operation)
     deaktiviert = create(:player, clubs: [{ 'club_id' => heim_club.id, 'home_club' => true,
                                             'valid_until' => deaktiviert_am.iso8601,
                                             'valid_set_by' => admin.id }],
@@ -1092,12 +1080,10 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
   # Eintrags an ein Profil, das im anderen Verband beheimatet ist.
   test 'gueltige Heimat schlaegt den hinteren, geschlossenen Eintrag' do
     admin = create(:user, :admin)
-    heimat_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
-                                                         'game_operation_id' => @game_operation.id }])
+    heimat_club = create(:club, game_operation: @game_operation)
     fremd_sa = create(:state_association)
     fremd_go = create(:game_operation, state_association_id: fremd_sa.id)
-    fremd_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
-                                                        'game_operation_id' => fremd_go.id }])
+    fremd_club = create(:club, game_operation: fremd_go)
     # Offener Legacy-Eintrag ohne created_at zuerst, dahinter der geschlossene.
     player = create(:player, clubs: [
       { 'club_id' => heimat_club.id, 'home_club' => true },
@@ -1123,8 +1109,7 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
   test 'Rueckfall greift nicht, wenn die Heimat schon vor der Deaktivierung endete' do
     admin = create(:user, :admin)
     vm = create(:user, :vm)
-    heim_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
-                                                       'game_operation_id' => @game_operation.id }])
+    heim_club = create(:club, game_operation: @game_operation)
     player = create(:player, clubs: [{ 'club_id' => heim_club.id, 'home_club' => true,
                                        'valid_until' => 3.years.ago.iso8601,
                                        'valid_set_by' => vm.id }],
@@ -1144,8 +1129,7 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
   # niemand zuständig ist. Solche Profile brauchen Datenpflege — Haltung aus api#389.
   test 'unaufloesbarer juengster Heimat-Eintrag bleibt eine Absage' do
     admin = create(:user, :admin)
-    heim_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
-                                                       'game_operation_id' => @game_operation.id }])
+    heim_club = create(:club, game_operation: @game_operation)
     player = create(:player, clubs: [
       { 'club_id' => heim_club.id, 'home_club' => true,
         'valid_until' => deaktiviert_am.iso8601, 'valid_set_by' => admin.id },
@@ -1164,8 +1148,7 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
   # nie beheimatet war.
   test 'home_club als String false zaehlt nicht als Heimat-Eintrag' do
     admin = create(:user, :admin)
-    gast_club = create(:club, game_operations_hash: [{ 'home_game_operation' => true,
-                                                       'game_operation_id' => @game_operation.id }])
+    gast_club = create(:club, game_operation: @game_operation)
     player = create(:player, clubs: [{ 'club_id' => gast_club.id, 'home_club' => 'false',
                                        'valid_until' => deaktiviert_am.iso8601,
                                        'valid_set_by' => admin.id }],

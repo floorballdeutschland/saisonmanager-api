@@ -57,7 +57,13 @@ class Player < ApplicationRecord
       # anschliessende map! auf nil und die Spieler-Detailansicht im Admin
       # antwortete mit 500 (Sentry SAISONMANAGER-19).
       p[:licenses] = if only_current_licenses
-                       (licenses || []).select { |l| l['team_id'].to_i >= Setting.current_min_team }
+                       # Die Schwelle einmal lesen, nicht je Lizenz: Setting.current_min_team
+                       # kostet 0,93 ms (Messung auf Produktion, siehe Setting.current).
+                       # Mal die Zahl der Lizenzen wird daraus der Posten, der die
+                       # Lizenzliste des Verbandes ausgebremst hat — ein Spieler mit 41
+                       # Lizenzen brauchte so 37 ms statt 0,02 ms fuer diesen Block.
+                       min_team_id = Setting.current_min_team
+                       (licenses || []).select { |l| l['team_id'].to_i >= min_team_id }
                      else
                        licenses || []
                      end
@@ -106,11 +112,11 @@ class Player < ApplicationRecord
     }
   end
 
+  # Setting.current, nicht Setting.first: full_hash nimmt nation_string in JEDE
+  # Zeile auf, und Setting.first ist eine ungepufferte Abfrage. In der
+  # Lizenzliste des Verbandes lief sie damit einmal je Lizenzzeile.
   def nation_string
-    setting = Setting.first
-    nations = setting['nations']
-
-    nations&.dig(nation_id.to_s, 'name')
+    Setting.current['nations']&.dig(nation_id.to_s, 'name')
   end
 
   def created_by_string
@@ -843,7 +849,7 @@ class Player < ApplicationRecord
              go_ids << ph[:admin] if ph[:admin].present?
              go_ids << ph[:sbk] if ph[:sbk].present?
 
-             # Heimat-Spielbetrieb oder Vereins-Freigabe – gemeinsame Regel mit
+             # Zustaendiger Spielbetrieb oder Vereins-Freigabe – gemeinsame Regel mit
              # ClubsController#can_read_admin_club? und Club.admin_user_clubs.
              #
              # Vorher: Intersection mit dem GESAMTEN game_operations_hash, also

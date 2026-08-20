@@ -11,10 +11,9 @@
 #      die Historie des aufgelösten Vereins bleibt am verbleibenden erhalten.
 #
 # Die Stammdaten des verbleibenden Vereins (Name, Kurzname, Registername,
-# Landesverband, Logo, Kontakt-E-Mail) bleiben unangetastet, ebenso sein
-# game_operations_hash: Dessen Heimat-Eintrag entscheidet weiter, wer den Verein
-# verwaltet, und der Heimat-Eintrag des aufgelösten Vereins verschwindet mit
-# ihm. Gast-Einträge wurden früher übernommen; das Konzept gibt es nicht mehr.
+# Landesverband, Logo, Kontakt-E-Mail) bleiben unangetastet. Sein Landesverband
+# entscheidet weiter, wer den Verein verwaltet; der des aufgelösten Vereins
+# verschwindet mit ihm.
 #
 # Dry-Run (Standard, rollt die Transaktion am Ende zurück):
 #   bundle exec rails clubs:merge MERGES="286:12"
@@ -132,7 +131,7 @@ module ClubMergeHelper
 
     def label(club)
       parts = ["LV #{club.state_association_id || '–'}"]
-      parts << "Heimat-Spielbetrieb #{club.main_game_operation_id || '–'}"
+      parts << "zustaendiger Spielbetrieb #{club.main_game_operation_id || '–'}"
       parts << "#{Team.by_club_id(club.id).count} Mannschaft(en)"
       parts.join(' | ')
     end

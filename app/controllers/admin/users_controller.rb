@@ -667,7 +667,7 @@ module Admin
     end
 
     def derive_club_ids_for_go(go_ids)
-      Club.all.select { |c| go_ids.include?(c.main_game_operation_id) }.map(&:id)
+      Club.home_clubs_of(go_ids).pluck(:id)
     end
 
     # Zulässige Team-Zuweisung für ein TM-Konto auflösen. Rückgabeform wie bei

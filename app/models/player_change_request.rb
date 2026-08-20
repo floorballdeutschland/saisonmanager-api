@@ -23,7 +23,7 @@ class PlayerChangeRequest < ApplicationRecord
   scope :pending, -> { where(status: 'pending') }
   scope :for_club, ->(club_id) { where(club_id: club_id) }
   scope :for_go, lambda { |go_ids|
-    club_ids = go_ids.include?(0) ? Club.pluck(:id) : Club.all.select { |c| go_ids.include?(c.main_game_operation_id) }.map(&:id)
+    club_ids = go_ids.include?(0) ? Club.pluck(:id) : Club.home_clubs_of(go_ids).pluck(:id)
     where(club_id: club_ids)
   }
 

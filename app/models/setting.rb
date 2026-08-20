@@ -7,10 +7,42 @@ class Setting < ApplicationRecord
   # geladen wurde (z. B. admin/penalty_codes schreibt über `Setting.current`).
   after_commit :flush_caches
 
+  # Zwei Ebenen, weil ein Treffer im Rails-Cache hier nicht gratis ist: der
+  # MemoryStore serialisiert seine Eintraege (DupCoder) und macht bei JEDEM
+  # Lesen ein Marshal.load. Auf Produktion sind das 0,4 ms je Aufruf — fuer
+  # sich genommen wenig, aber `.current` hat 75 Aufrufstellen, und in Schleifen
+  # ueber Spieler oder Ligen multipliziert sich das (Messung 19.08.2026:
+  # 0,93 ms je `current_min_team`, mal 41 Lizenzen eines Spielers = 38 ms fuer
+  # eine einzige Zeile der Lizenzliste). Die anfrage-lokale Ebene davor macht
+  # daraus einen Lesezugriff pro Anfrage; `flush_caches` raeumt beide ab.
+  #
+  # Sie ersetzt nicht das Herausziehen aus Schleifenruempfen: 0 ms mal n ist
+  # zwar 0, aber der Aufruf selbst bleibt Arbeit. Beides zusammen wirkt.
+  #
+  # ACHTUNG, die Rueckgabe ist GETEILT: Vorher lieferte jeder Aufruf ueber den
+  # Marshal-Rundlauf des MemoryStore eine eigene Kopie, eine Aenderung an Ort und
+  # Stelle blieb also folgenlos. Jetzt sehen alle Aufrufer einer Anfrage
+  # dieselbe Instanz. Wer die Konfiguration veraendern will, arbeitet auf einer
+  # Kopie (`.deep_dup`) oder baut neue Hashes (`merge`) — sonst landet die
+  # Aenderung im Attribut, gilt als `changed_in_place?` und wuerde von einem
+  # spaeteren `save!` derselben Anfrage mitgeschrieben.
+  #
+  # Wer die Konfiguration an den Callbacks vorbei aendert (`update_column(s)`,
+  # Raw-SQL, Konsole — so wird z. B. `nations` gepflegt), muss danach
+  # `flush_current_cache` aufrufen. Sonst haelt der Prozess bis zu einer Stunde
+  # den alten Stand, und das je Puma-Worker verschieden.
   def self.current
-    Rails.cache.fetch('settings/current', expires_in: 1.hour) do
+    Current.setting ||= Rails.cache.fetch('settings/current', expires_in: 1.hour) do
       Setting.first
     end
+  end
+
+  # Beide Ebenen von `.current` abraeumen. Einziger Weg, den Zwischenspeicher zu
+  # verwerfen — wer an einer Setting-Zeile per `update_column(s)` oder Raw-SQL
+  # vorbei an den Callbacks schreibt, muss das hier selbst nachziehen.
+  def self.flush_current_cache
+    Current.setting = nil
+    Rails.cache.delete('settings/current')
   end
 
   def self.league_class(league_class_id)
@@ -221,7 +253,7 @@ class Setting < ApplicationRecord
   # dieser Cache ebenfalls fallen, sonst erscheint die neue Saison bis zu 30 min
   # verzögert.
   def flush_caches
-    Rails.cache.delete('settings/current')
+    Setting.flush_current_cache
     Rails.cache.delete('settings/init')
   end
 end

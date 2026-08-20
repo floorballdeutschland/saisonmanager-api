@@ -10,7 +10,7 @@ module Admin
       create(:setting, current_season_id: '18')
       @admin = create(:user, :admin)
       @go = create(:game_operation)
-      @club = create(:club, game_operations_hash: [{ 'game_operation_id' => @go.id, 'home_game_operation' => true }])
+      @club = create(:club, game_operation: @go)
       @current_league = create(:league, :current_season)
       @previous_league = create(:league, :previous_season)
       @team = create(:team, club: @club, league: @current_league)
@@ -65,8 +65,7 @@ module Admin
       sbk = create(:user, :sbk_scoped, game_operation_id: @go.id)
       foreign_go = create(:game_operation)
       foreign_club = create(:club,
-                            game_operations_hash: [{ 'game_operation_id' => foreign_go.id,
-                                                     'home_game_operation' => true }])
+                            game_operation: foreign_go)
       foreign_team = create(:team, club: foreign_club, league: @current_league)
       login(sbk)
 

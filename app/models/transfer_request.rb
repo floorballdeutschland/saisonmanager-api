@@ -32,7 +32,7 @@ class TransferRequest < ApplicationRecord
   }
   scope :pending_for_club, ->(club_id) { where(former_club_id: club_id, status: 'pending_club') }
   scope :pending_for_lv, lambda { |go_ids|
-    club_ids = go_ids.include?(0) ? Club.pluck(:id) : Club.all.select { |c| go_ids.include?(c.main_game_operation_id) }.map(&:id)
+    club_ids = go_ids.include?(0) ? Club.pluck(:id) : Club.home_clubs_of(go_ids).pluck(:id)
     where(former_club_id: club_ids, status: 'pending_lv')
   }
   scope :for_requesting_club, ->(club_id) { where(requesting_club_id: club_id) }

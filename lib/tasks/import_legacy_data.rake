@@ -81,44 +81,64 @@ namespace :import do
     data.each do |go|
       go_id = go['id']
 
-      go['clubs'].each do |c|
-        # Nur der Heimat-Spielbetrieb. Die `additional_game_operation_ids` des
-        # Altsystems wurden hier früher als Gast-Einträge übernommen – genau die
-        # Quelle, aus der die Altlast im game_operations_hash stammte. Sie werden
-        # bewusst verworfen: Lesezugriff über Verbandsgrenzen hinweg regeln die
-        # Vereins-Freigabe und die Liga.
-        goh = [{ 'game_operation_id' => go_id, 'home_game_operation' => true }]
+      # Der Verein wird über seinen Landesverband eingeordnet, nicht mehr über
+      # einen Heimat-Eintrag im `game_operations_hash`: Aus dem Landesverband
+      # ergibt sich der zuständige Spielbetrieb (Club#main_game_operation_id).
+      #
+      # Die `additional_game_operation_ids` des Altsystems wurden hier früher als
+      # Gast-Einträge übernommen – genau die Quelle der Altlast im Hash. Sie
+      # werden verworfen: Lesezugriff über Verbandsgrenzen hinweg regeln die
+      # Vereins-Freigabe und die Liga.
+      #
+      # Das Altsystem kennt den Landesverband nicht, es kennt nur den
+      # Spielbetrieb. Der Wert ist hier also abgeleitet und nicht importiert --
+      # mit zwei Folgen, die beide einen Riegel brauchen:
+      #
+      #   - Bei einem BESTEHENDEN Verein wird er nicht angefasst. Sonst zöge ein
+      #     zweiter Importlauf die gepflegte Zuordnung wieder auf den
+      #     Alt-Spielbetrieb zurück und stellte genau den Fall wieder her, den
+      #     diese Umstellung behebt (ETV Hamburg zurück nach Niedersachsen).
+      #     Gepflegt wird der Landesverband in der Anwendung, nicht hier.
+      #   - Fehlt der Landesverband am Spielbetrieb, wird gewarnt, und ein NEUER
+      #     Verein bleibt ohne Zuständigkeit: Er ist dann nur für die Bundesebene
+      #     sichtbar (Club.unassigned). Das ist der ehrliche Zustand -- zuständig
+      #     ist niemand, und ein geratener Verband wäre schlimmer. Bestehende
+      #     Vereine behalten ihren Wert ohnehin.
+      sa_id = GameOperation.find_by(id: go_id)&.state_association_id
+      if sa_id.nil?
+        warn "WARN: Spielbetrieb #{go_id} hat keinen Landesverband -- " \
+             'neue Vereine bleiben ohne Zustaendigkeit und sind nur fuer die Bundesebene sichtbar'
+      end
 
+      go['clubs'].each do |c|
         existing = Club.find_by(id: c['id'])
 
         if existing
           existing.update!(
-            name:                 c['name'],
-            long_name:            c['long_name'].presence,
-            short_name:           c['short_name'].presence,
-            state:                c['state'].presence,
-            game_operations_hash: goh
+            name:       c['name'],
+            long_name:  c['long_name'].presence,
+            short_name: c['short_name'].presence,
+            state:      c['state'].presence
           )
           updated += 1
         else
           conn.execute(<<~SQL)
-            INSERT INTO clubs (id, name, long_name, short_name, state, game_operations_hash, created_at, updated_at)
+            INSERT INTO clubs (id, name, long_name, short_name, state, state_association_id, created_at, updated_at)
             VALUES (
               #{conn.quote(c['id'])},
               #{conn.quote(c['name'])},
               #{conn.quote(c['long_name'].presence)},
               #{conn.quote(c['short_name'].presence)},
               #{conn.quote(c['state'].presence)},
-              #{conn.quote(goh.to_json)},
+              #{conn.quote(sa_id)},
               NOW(), NOW()
             )
             ON CONFLICT (id) DO UPDATE SET
-              name                 = EXCLUDED.name,
-              long_name            = EXCLUDED.long_name,
-              short_name           = EXCLUDED.short_name,
-              state                = EXCLUDED.state,
-              game_operations_hash = EXCLUDED.game_operations_hash,
-              updated_at           = NOW()
+              name       = EXCLUDED.name,
+              long_name  = EXCLUDED.long_name,
+              short_name = EXCLUDED.short_name,
+              state      = EXCLUDED.state,
+              updated_at = NOW()
           SQL
           created += 1
         end

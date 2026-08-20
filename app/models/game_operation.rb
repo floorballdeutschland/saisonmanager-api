@@ -5,19 +5,48 @@ class GameOperation < ApplicationRecord
 
   default_scope { order(id: :asc) }
 
-  # Vereine, deren HEIMAT-Spielbetrieb dieser ist – die Vereine also, die diesem
-  # Verband gehören. Maßgeblich für Zugriff auf die Vereinsstammdaten; darüber
-  # hinaus gibt es Lesezugriff nur per Vereins-Freigabe
-  # (StateAssociationRelease).
+  after_commit { Current.reset_association_structure }
+
+  # Spielbetrieb je Landesverband, die zweite Haelfte der
+  # Zustaendigkeitsableitung am Verein (Club#main_game_operation_id):
+  # Landesverband, Wurzel der Verbandskette, Spielbetrieb dieser Wurzel.
   #
-  # Der frühere `#clubs` matchte den gesamten game_operations_hash und zog damit
-  # auch bloße Gast-Einträge heran. Er hatte zuletzt keinen Aufrufer mehr und ist
-  # mit dem Gast-Eintrag selbst entfallen.
+  # Zwischengespeichert in Current und nicht in Rails.cache, Begruendung dort.
+  #
+  # Ein Landesverband hat hoechstens einen Spielbetrieb; am 19.08.2026 galt das
+  # auf Produktion fuer alle zehn Spielbetriebe (bei 14 Landesverbaenden, vier
+  # davon ohne eigenen). Gaebe es doch zwei, gewinnt der mit der niedrigeren ID
+  # (`||=` auf der von default_scope nach ID sortierten Liste), damit die
+  # Zustaendigkeit eindeutig bleibt statt je Prozess anders auszufallen.
+  def self.id_by_state_association
+    Current.game_operation_id_by_state_association ||=
+      where.not(state_association_id: nil).pluck(:state_association_id, :id)
+           .each_with_object({}) { |(sa_id, go_id), map| map[sa_id] ||= go_id }
+  end
+
+  # Alle Spielbetriebe nach ID, je Request einmal geladen. Bei rund zehn Saetzen
+  # billiger als eine Abfrage je Nachschlag -- und die gab es: Club#home_game_operation
+  # laeuft in Player#create_license_hash je Lizenzzeile, in den Lizenzlisten also
+  # je Spieler. Vorher hing dort ein wochenlanger Rails.cache-Eintrag, der mit der
+  # Ableitung entfallen ist.
+  def self.by_id
+    Current.game_operations_by_id ||= all.index_by(&:id)
+  end
+
+  # Vereine, fuer die dieser Spielbetrieb zustaendig ist: die Vereine seines
+  # Verbunds und aller Verbaende darunter -- sofern er der zustaendige
+  # Spielbetrieb dieses Verbunds ist. Ein Spielbetrieb an einem UNTERGEORDNETEN
+  # Verband hat keine Vereine, auch wenn unter diesem Verband welche haengen;
+  # zustaendig ist dann der Spielbetrieb des Verbunds (siehe
+  # Club.responsible_state_association_ids und den Test dazu in club_test.rb).
+  #
+  # Massgeblich fuer Zugriff auf die Vereinsstammdaten; darueber hinaus gibt es
+  # Lesezugriff nur per Vereins-Freigabe (StateAssociationRelease).
+  #
+  # Frueher stand die Zuordnung als Heimat-Eintrag im `game_operations_hash` des
+  # Vereins. Siehe Club#main_game_operation_id, warum sie jetzt abgeleitet wird.
   def home_clubs
-    Club.where(
-      'clubs.game_operations_hash @> ?',
-      [{ game_operation_id: id, home_game_operation: true }].to_json
-    ).order(:name)
+    Club.home_clubs_of([id]).order(:name)
   end
 
   def games

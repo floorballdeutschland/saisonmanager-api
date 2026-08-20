@@ -1,0 +1,24 @@
+club_id;name;lv_kuerzel;state;beleg
+242;U17 Trophy Team Ost;FVD;;Auswahlteam - FD richtet den Wettbewerb aus und pflegt die Auswahlen (Nutzer 19.08.2026). Das LV-Feld trug die vertretene Region, nicht die Zustaendigkeit.
+243;U17 Trophy Team West;FVD;;Auswahlteam - siehe 242
+244;U17 Trophy Team Sued;FVD;;Auswahlteam - siehe 242
+245;U17 Trophy Team Nord;FVD;;Auswahlteam - siehe 242
+246;U17 Trophy Team Sachsen-Anhalt;FVD;;Auswahlteam - siehe 242
+263;U15 Trophy Team Sued;FVD;;Auswahlteam - siehe 242
+264;U15 Trophy Team Nord;FVD;;Auswahlteam - siehe 242
+265;U15 Trophy Team Sachsen-Anhalt;FVD;;Auswahlteam - siehe 242
+266;U15 Trophy Team Sachsen;FVD;;Auswahlteam - siehe 242
+267;U15 Trophy Team West;FVD;;Auswahlteam - siehe 242
+268;U15 Trophy Team Berlin-Brandenburg;FVD;;Auswahlteam - siehe 242
+107;Ablage Doppelung;FVD;;Ablage-Verein ohne Sitz. Der LV-Wert (NWFV) war zufaellig, zustaendig ist der Bundesverband.
+129;Ablage;FVD;;Ablage-Verein - siehe 107
+257;Floorball Final4;FVD;;Veranstaltungs-Verein des Bundesverbands. LV stand auf FVBB, weil das Final4 dort stattfand.
+220;SBK-OST;SBKOST;;Hilfsverein des Spielverbunds selbst, traegt dessen Namen und haelt 55 Mannschaften. Der Verbund verwaltet ihn, LV stand aber auf FVD.
+22;Pommerhoc Greifswald;FVBB;de-mv;Sitz in Mecklenburg-Vorpommern, dafuer gibt es keinen Landesverband. Gespielt wird im FVBB, der LV-Wert FVD war ein Platzhalter. Bundesland bleibt de-mv.
+195;Garz;FVBB;de-mv;Sitz in Mecklenburg-Vorpommern - siehe 22
+178;Hot Shots Innsbruck;FVBY;de-sonstige;Sitz in Oesterreich (Ort A-Innsbruck), dafuer gibt es keinen Landesverband. LV stand auf FVD, Bundesland falsch auf de-st. Gespielt wird im FVBY.
+66;Partisan Connewitz;FVS;de-sn;Einziger echter LV-Fehler: Sitz ist Leipzig-Connewitz, Ort und Bundesland standen auf Berlin. FVS laeuft ueber parent_id auf SBK Ost, der bisherigen Zustaendigkeit (Nutzer 19.08.2026).
+213;Ablage Sperrung;FVD;;Ohne LV. Enthaelt Personen mit DSGVO-Widerspruch und wird inhaltlich NICHT angefasst - nur der zustaendige Verband wird gesetzt, damit der Verein pflegbar bleibt.
+74;zz_not in use;FVD;;Ohne LV, Ablage-Verein.
+83;Ablage Ausland (IFF Trans);FVD;;Ohne LV, Ablage fuer Auslandstransfers.
+177;ZZ-Ablage;FVD;;Ohne LV, Ablage-Verein.

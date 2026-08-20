@@ -9,6 +9,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.90.0] - 2026-08-20
+
+### Behoben
+
+- **Ein Lesezugriff auf den Strafenkatalog konnte die Konfiguration verändern**: Beim Ausliefern der Strafen und Strafcodes wurde jedem Eintrag seine Nummer als Feld angehängt — und zwar direkt in der geladenen Konfiguration statt in einer Kopie. Bisher blieb das folgenlos, weil jeder Zugriff eine eigene Kopie bekam. Seit die Konfiguration je Anfrage nur noch einmal geladen wird, hätte ein späteres Speichern innerhalb derselben Anfrage diese Felder mit in die Datenbank geschrieben. Der Katalog wird jetzt beim Ausliefern nicht mehr angefasst.
+
+### Verbessert
+
+- **Der zuständige Verband eines Vereins ergibt sich jetzt aus dem Landesverband**: Bisher trug ein Verein zwei Angaben, die dieselbe Frage beantworten sollten: den Landesverband und, davon unabhängig, einen gespeicherten Spielbetrieb. Verwaltet wurde der Verein nach dem gespeicherten Spielbetrieb, angezeigt hat die Maske aber den aus dem Landesverband abgeleiteten „Spielverbund". Das Spielbetriebs-Feld selbst war nur beim Anlegen sichtbar, beim Bearbeiten also unerreichbar. Wichen die beiden voneinander ab, war das über die Oberfläche weder zu sehen noch zu ändern. Aufgefallen ist es am ETV Hamburg: Er stand mit Landesverband Hamburg in der Vereinsliste von Floorball Niedersachsen. Maßgeblich ist jetzt allein der Landesverband. Der zuständige Spielbetrieb ergibt sich aus ihm, bei einem untergeordneten Verband über den Verbund darüber. Für die Untergliederung von SBK Ost (Sachsen, Sachsen-Anhalt, Thüringen) ändert sich damit nichts, sie war schon vorher deckungsgleich. In der Vereinsliste behält jeder Landesverband seine eigene Überschrift, auch als Unterverband. Das Spielbetriebs-Feld entfällt aus der Vereinsanlage, ausgewählt wird der Landesverband. Zwei Dinge lehnt das Speichern jetzt ausdrücklich ab, weil sie einen Verein bisher unbemerkt unerreichbar machen konnten: der Wechsel in einen Landesverband, für den es keinen Spielbetrieb gibt, und das Leeren des Feldes durch einen einzelnen Verband. Der Landesverband Hamburg, der bisher keinen eigenen Spielbetrieb hat, ist dem Verband Schleswig-Holstein untergeordnet: Fünf seiner sechs Vereine wurden ohnehin von dort betreut, der sechste spielt dort. Für Hamburg gelten damit die Postfächer und Einstellungen von Schleswig-Holstein.
+
+- **Die Lizenzliste des Verbandes lädt deutlich schneller**: Die Seite brauchte über zehn Sekunden, obwohl sie nur 25 Einträge auf einmal zeigt. Die Ursache lag nicht an der Menge der Lizenzen, sondern daran, wie eine einzelne Zeile aufgebaut wurde: Beim Aussortieren der Lizenzen aus vergangenen Saisons wurde die Grundkonfiguration des Saisonmanagers für **jede einzelne Lizenz** einer Person neu nachgeschlagen statt einmal. Bei einer Person mit 41 Lizenzen dauerte allein dieser Schritt 37 Millisekunden statt 0,02. Dasselbe galt für das Auflösen der Nation, die bei jeder Zeile eine eigene Datenbankabfrage auslöste. Beides geschieht jetzt einmal, und die Konfiguration wird zusätzlich einmal je Anfrage bereitgehalten statt bei jedem der rund 75 Zugriffe neu entpackt. Das wirkt über die Lizenzliste hinaus auf alle Ansichten, die viele Datensätze auf einmal aufbauen.
+
 ## [1.89.0] - 2026-08-19
 
 ### Neu
