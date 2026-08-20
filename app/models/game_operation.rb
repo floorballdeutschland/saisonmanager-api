@@ -1,9 +1,48 @@
 class GameOperation < ApplicationRecord
+  # Erste URL-Segmente, die das Frontend selbst belegt. Der Spielbetriebs-Pfad
+  # wird zum ersten Segment der oeffentlichen Adresse (`/<path>/...`), und die
+  # Auffangroute ':association' steht dort als LETZTE Route. Ein Pfad aus dieser
+  # Liste erzeugt deshalb keinen Konflikt, sondern eine still unerreichbare
+  # Verbandsseite: Die konkrete Route gewinnt, der Spielbetrieb kommt nie dran.
+  #
+  # Bequemlichkeitspruefung, keine Sicherheitsgrenze -- die Liste muss den
+  # Top-Level-Routen des Frontends nachgefuehrt werden (app-routing.module.ts und
+  # die *routing*.module.ts der oeffentlichen Module). Verschaetzt sie sich nach
+  # unten, entsteht wieder nur die unerreichbare Seite von oben; nach oben blockt
+  # sie einen freien Pfad, und die Meldung sagt, welcher es war.
+  RESERVED_PATHS = %w[
+    api-zugang benutzername-vergessen email-bestaetigen live lizenzcheck
+    lizenzliste login mein-konto neues-passwort schiedsrichter schiri-feedback
+    spieler spielsekretariat spieltagscheckliste transfer-bestaetigung verein
+    verwaltung
+  ].freeze
+
   has_many :leagues
   belongs_to :state_association, optional: true
   has_one_attached :banner
 
   default_scope { order(id: :asc) }
+
+  validates :name, presence: true
+  validates :short_name, presence: true
+  # Der Pfad ist keine Kuer: Er traegt die oeffentliche Verbandsadresse (#slug)
+  # und `by_shortname` findet den Spielbetrieb ausschliesslich darueber. Am
+  # 19.08.2026 hatten alle zehn Spielbetriebe auf Produktion einen gesetzten,
+  # eindeutigen Kleinbuchstaben-Pfad; die Pflicht schreibt den Bestand fest,
+  # statt ihn zu aendern.
+  validates :path, presence: true,
+                   format: { with: /\A[a-z0-9]+(-[a-z0-9]+)*\z/,
+                             message: 'darf nur Kleinbuchstaben, Ziffern und einzelne Bindestriche enthalten' },
+                   uniqueness: { case_sensitive: false },
+                   exclusion: { in: RESERVED_PATHS,
+                                message: 'ist vom Frontend belegt und ergaebe eine unerreichbare Verbandsseite' }
+  # Ein Landesverband hat hoechstens einen Spielbetrieb. Ohne diese Pruefung
+  # entscheidet bei zwei Saetzen die niedrigere ID darueber, wer die Vereine des
+  # ganzen Verbunds verwaltet (siehe .id_by_state_association) -- der zweite
+  # Spielbetrieb waere also angelegt, sichtbar und wirkungslos.
+  validates :state_association_id, uniqueness: { allow_nil: true,
+                                                 message: 'hat bereits einen Spielbetrieb' }
+  before_validation :normalize_path
 
   after_commit { Current.reset_association_structure }
 
@@ -89,6 +128,54 @@ class GameOperation < ApplicationRecord
     result
   end
 
+  # Datensatz fuer die Spielbetriebs-Verwaltung. Bewusst nicht meta_hash:
+  # `national` steht dort nicht drin (es gehoert nicht in oeffentliche Antworten)
+  # und `path` ist hier der gespeicherte Wert, nicht der ueber #slug abgeleitete
+  # -- die Maske muss zeigen, was in der Spalte steht, sonst schreibt das
+  # Speichern die Ableitung als eigenen Wert fest.
+  def admin_hash
+    {
+      id: id,
+      name: name,
+      short_name: short_name,
+      path: path,
+      slug: slug,
+      national: national,
+      state_association_id: state_association_id,
+      state_association_name: state_association&.name,
+      banner_url: banner_url,
+      banner_link_url: banner_link_url,
+      dependencies: dependency_counts
+    }
+  end
+
+  # Was an diesem Spielbetrieb haengt. Jede der drei Zahlen ist ein Riegel gegen
+  # das Loeschen, siehe Admin::GameOperationsController#destroy.
+  def dependency_counts
+    {
+      leagues: leagues.unscope(:order).count,
+      clubs: Club.home_clubs_of([id]).count,
+      users: self.class.user_ids_referencing(id).size
+    }
+  end
+
+  # Benutzer, deren `permissions` auf diesen Spielbetrieb verweisen.
+  #
+  # In Ruby und nicht per jsonb-Containment: `permissions` traegt die
+  # game_operation_id teils als Zahl, teils als String (Altbestand), und
+  # `@> '[{"game_operation_id": 5}]'` findet die String-Variante nicht. Bei einer
+  # Loeschpruefung waere das der schlimmste Fehler von beiden -- der Riegel
+  # griffe nicht, und die Rolle zeigte danach auf eine ID, die es nicht mehr
+  # gibt. `permission_hash` selbst rechnet aus demselben Grund mit `.to_i`.
+  def self.user_ids_referencing(go_id)
+    User.where.not(permissions: nil)
+        .pluck(:id, :permissions)
+        .select do |_id, perms|
+          perms.is_a?(Array) && perms.any? { |perm| perm.is_a?(Hash) && perm['game_operation_id'].to_i == go_id }
+        end
+        .map(&:first)
+  end
+
   def user_permissions(user)
     perm = []
 
@@ -109,5 +196,25 @@ class GameOperation < ApplicationRecord
     perm << :create_club if admin || sbk
 
     perm
+  end
+
+  private
+
+  # Leerzeichen und Grossschreibung raeumt das Modell auf, damit Konsole und
+  # Maske dieselbe Invariante halten. Aus einem gesetzten Pfad wird darueber
+  # hinaus nichts gebastelt: Enthaelt er Umlaute oder Leerzeichen, gibt es eine
+  # Fehlermeldung statt einer stillen Ableitung -- der Pfad steht in Adressen,
+  # die Vereine verschicken, und soll bewusst gesetzt sein.
+  #
+  # Ist er leer, wird er aus dem Kuerzel abgeleitet. Genau das tat #slug bisher
+  # beim Lesen, und die Trennung war ein Fehler: `by_shortname` sucht
+  # ausschliesslich in der Spalte `path`. Ein Spielbetrieb ohne Pfad bekam also
+  # oeffentliche Links auf `short_name.parameterize` -- und unter dieser Adresse
+  # fand ihn der Endpunkt nicht. Beim Schreiben abzuleiten laesst beide Seiten
+  # denselben Wert sehen und macht ihn zugleich der Eindeutigkeitspruefung
+  # zugaenglich.
+  def normalize_path
+    self.path = path.strip.downcase if path.is_a?(String)
+    self.path = short_name.parameterize if path.blank? && short_name.present?
   end
 end

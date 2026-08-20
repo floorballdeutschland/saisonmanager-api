@@ -400,7 +400,14 @@ class UserTest < ActiveSupport::TestCase
     create(:setting, current_season_id: '18')
     lv_a = create(:state_association, name: 'LV A')
     lv_b = create(:state_association, name: 'LV B')
-    GameOperation.find_each { |go| go.update!(state_association: lv_a) }
+    # Alle vorhandenen Spielbetriebe auf LV A, mehrere davon also am selben
+    # Verband. Das legt die Validierung nicht mehr an (GameOperation validiert
+    # state_association_id auf Eindeutigkeit); die Gruppierung muss den Fall
+    # trotzdem vertragen, denn sie liest Altbestand. Darum ohne Validierung.
+    GameOperation.find_each do |go|
+      go.state_association = lv_a
+      go.save(validate: false)
+    end
     create(:game_operation, state_association_id: lv_b.id)
 
     admin = build_user(permissions: [{ 'user_group_id' => 1, 'game_operation_id' => 0 }])

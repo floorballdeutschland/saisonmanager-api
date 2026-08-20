@@ -179,7 +179,7 @@ module Admin
     test 'available_types beachtet nur aktuell gueltige Vereinszugehoerigkeiten' do
       sa = create(:state_association)
       home_go = create(:game_operation, state_association_id: sa.id)
-      past_go = create(:game_operation, state_association_id: sa.id)
+      past_go = create(:game_operation)
       home_club = create(:club, game_operation: home_go)
       past_club = create(:club, game_operation: past_go)
       @player.update!(clubs: [
@@ -292,7 +292,7 @@ module Admin
     test 'VM mit zusaetzlicher gescopter SBK-Rolle behaelt die eigenen Verbandsarten' do
       sa = create(:state_association)
       home_go = create(:game_operation, state_association_id: sa.id)
-      other_go = create(:game_operation, state_association_id: sa.id)
+      other_go = create(:game_operation)
       club = create(:club, game_operation: home_go)
       @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }])
 

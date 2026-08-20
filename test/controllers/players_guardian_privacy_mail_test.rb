@@ -94,7 +94,11 @@ class PlayersGuardianPrivacyMailTest < ActionDispatch::IntegrationTest
     pokal_go = create(:game_operation, state_association_id: pokal_sa.id)
     pokal = create(:league, :current_season, game_operation: pokal_go, name: 'FD-Pokal',
                                              parental_consent_required: true)
-    haupt_go = create(:game_operation, state_association_id: @sa.id)
+    # Eigener Landesverband mit demselben Postfach: Ein Verband hat hoechstens
+    # einen Spielbetrieb, und an @sa haengt schon der aus dem setup. Fuer die
+    # Zusicherung unten zaehlt allein das reply_to.
+    haupt_go = create(:game_operation,
+                      state_association: create(:state_association, sbk_email: 'sbk@example.de'))
     @league.update!(name: 'Regionalliga Bayern', game_operation: haupt_go,
                     parental_consent_required: true)
     @team.update!(cup_leagues: [pokal.id])

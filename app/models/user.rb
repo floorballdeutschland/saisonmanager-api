@@ -407,6 +407,13 @@ class User < ApplicationRecord
     # Verbands bleiben globalen Admins vorbehalten (Backend: authorize_admin! /
     # parent_id-Strip). Der globale SBK verwaltet alle LVs, aber nicht deren Lebenszyklus.
     result[:state_association_manage_lifecycle] = ph[:admin].present?
+    # Spielbetriebe anlegen und pflegen: nur BUNDESWEITE Admins, also `0` im
+    # Scope. Strenger als jeder andere Punkt hier, weil an einem Spielbetrieb
+    # zwei Felder haengen, die Rechte verschieben: `state_association_id` holt
+    # die Vereine eines fremden Verbandsbaums herueber, `national` hebt SBK, RSK
+    # und Ansetzer dieses Spielbetriebs auf globalen Scope. Begruendung im
+    # Langen an Admin::GameOperationsController.
+    result[:menu_item_game_operation_admin] = ph[:admin].present? && ph[:admin].include?(0)
     result[:menu_item_api_key_admin] = ph[:admin].present?
     result[:menu_item_transfer_requests] = ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
     result[:menu_item_transfer_requests_sbk] = ph[:admin].present? || ph[:sbk].present?
