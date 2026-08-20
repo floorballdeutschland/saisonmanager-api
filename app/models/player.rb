@@ -11,6 +11,17 @@ class Player < ApplicationRecord
   validate :nation_id_is_positive, if: -> { nation_id.present? }
   validates :email, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
 
+  # Führende/nachgestellte Leerzeichen verhindern das exakte Matching bei
+  # Transfer/Freigabe (api#496) — ein Leerzeichen ist dort unsichtbar, der
+  # Vergleich schlägt aber fehl. Neue und geänderte Profile bleiben so saubern
+  # als der Bestand, den `trim_player_names.rake` einmalig nachzieht.
+  before_validation :strip_names
+
+  def strip_names
+    self.first_name = first_name.strip if first_name.present?
+    self.last_name = last_name.strip if last_name.present?
+  end
+
   # wo kommt das her?
   # attr_accessor :hash, :prefix
 
