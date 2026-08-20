@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.92.0] - 2026-08-21
+
 ### Neu
 
 - **Die Schiedsrichterübersicht zeigt, wer ein Benutzerkonto hat**: In der Liste unter „Schiedsrichter" steht hinter dem Namen ein Zeichen, sobald zu einem Schiedsrichter ein Benutzerkonto gehört. Wer die Kontaktdaten der Schiedsrichter sieht (Verwaltung, RSK, Ansetzer), sieht damit auf einen Blick, wer sich anmelden und sein Profil, seine Verfügbarkeiten und seine Ansetzungen selbst pflegen kann. Die Vereinssicht auf die eigenen Vereinsschiedsrichter bleibt wie bisher ohne Kontaktdaten und damit auch ohne diese Angabe.
