@@ -218,8 +218,9 @@ class Club < ApplicationRecord
   #
   # Ein Verein ohne Landesverband hat keinen zustaendigen Spielbetrieb, ebenso
   # einer, dessen Verbund keinen Spielbetrieb hat. `nil` ist hier also ein
-  # gueltiger Wert und bedeutet „niemand ist zustaendig"; Club.home_clubs_of
-  # zeigt diese Vereine nur dem globalen Zugriff.
+  # gueltiger Wert und bedeutet „niemand ist zustaendig". Wer diese Vereine zu
+  # sehen bekommt, entscheidet .admin_user_clubs: nur der globale Zugriff, siehe
+  # dort und Club.unassigned.
   def main_game_operation_id
     GameOperation.id_by_state_association[responsible_state_association_id]
   end
@@ -347,8 +348,10 @@ class Club < ApplicationRecord
     # eigenen Vereine, die außerhalb der SBK-Spielbetriebe liegen – obwohl eine
     # reine VM dort Konten anlegen darf.
     # Die SBK-Vereine per Query statt per Schleife über den ganzen Bestand: die
-    # Zuständigkeit hängt jetzt an einer indizierten Spalte und muss nicht mehr
-    # je Verein aus einem jsonb-Feld gelesen werden.
+    # Zuständigkeit hängt jetzt an einer eigenen Spalte und muss nicht mehr je
+    # Verein aus einem jsonb-Feld gelesen werden. Ein Index auf
+    # `clubs.state_association_id` fehlt weiterhin; bei knapp 300 Vereinen ist der
+    # Sequential Scan unkritisch.
     ids = Array(ph[:vm])
     ids += scope.merge(home_clubs_of(ph[:sbk])).pluck(:id) if ph[:sbk].present?
 
@@ -398,9 +401,13 @@ class Club < ApplicationRecord
     end
 
     # Vereine ohne Landesverband nur für globalen Zugriff: für sie ist kein
-    # Spielbetrieb zuständig, sie wären sonst unsichtbar und nicht bearbeitbar
-    # (in Produktion vier Ablage-Vereine). Ein einzelner Landesverband soll dafür
-    # aber nicht die unzugeordneten Vereine aller anderen in seiner Liste haben.
+    # Spielbetrieb zuständig, sie wären sonst unsichtbar und nicht bearbeitbar.
+    # Ein einzelner Landesverband soll dafür aber nicht die unzugeordneten
+    # Vereine aller anderen in seiner Liste haben.
+    #
+    # Auf Produktion waren das am 19.08.2026 vier Ablage-Vereine; der Datenlauf
+    # zu dieser Umstellung ordnet sie dem Bundesverband zu, danach ist die Menge
+    # regulär leer und der Zweig reine Vorsorge.
     scoped = home_clubs_of(go_ids, include_unassigned: global_access)
       .includes(logo_attachment: :blob)
     scoped = scoped.active unless include_deactivated
@@ -424,8 +431,10 @@ class Club < ApplicationRecord
 
   # Vereine, für die die übergebenen Spielbetriebe zuständig sind: alle Vereine
   # in den Landesverbänden unter dem Spielverbund des jeweiligen Spielbetriebs.
-  # Eine Query über eine indizierte Spalte statt der früheren jsonb-Bedingungen
-  # auf `game_operations_hash`, für die es keinen Index gab.
+  # Eine Query auf eine eigene Spalte statt der früheren jsonb-Bedingungen auf
+  # `game_operations_hash`. Einen Index gibt es auf beiden Wegen nicht, bei knapp
+  # 300 Vereinen ohne Belang; `Club.unassigned` (`NOT IN`) könnte ihn ohnehin
+  # nicht nutzen.
   #
   # Nur der zuständige Verband verwaltet die Stammdaten eines Vereins. Fremde
   # Vereine erscheinen ausschließlich über eine Vereins-Freigabe, also im
@@ -445,7 +454,8 @@ class Club < ApplicationRecord
   # Vereine, für die kein Spielbetrieb zuständig ist. Drei Gründe, und die beiden
   # letzten sind die unauffälligen:
   #
-  # 1. kein Landesverband gesetzt (auf Produktion die vier Ablage-Vereine),
+  # 1. kein Landesverband gesetzt (auf Produktion am 19.08.2026 vier
+  #    Ablage-Vereine, die der Datenlauf zuordnet),
   # 2. ein Landesverband, den es nicht gibt – auf clubs.state_association_id liegt
   #    kein Fremdschlüssel, der Verweis kann ins Leere zeigen,
   # 3. ein Landesverband, dessen Verbund keinen Spielbetrieb hat. Genau dieser
@@ -470,8 +480,10 @@ class Club < ApplicationRecord
     where(state_association_id: nil).or(where.not(state_association_id: zugeordnet))
   end
 
-  # Landesverbände, für die überhaupt ein Spielbetrieb zuständig ist. Nutzt die je
-  # Request aufgelösten Karten, kostet also keine weitere Abfrage.
+  # Landesverbände, für die überhaupt ein Spielbetrieb zuständig ist. Löst die
+  # beiden Karten einmal je Request auf; im globalen Zugriff ist diese Methode
+  # sogar deren erster Verbraucher, die zwei Abfragen fallen also hier an (der
+  # N+1-Test in club_test.rb zählt sie mit).
   def self.assigned_state_association_ids
     go_by_root = GameOperation.id_by_state_association
     StateAssociation.tree[:roots].select { |_, root| go_by_root.key?(root) }.keys
@@ -479,10 +491,14 @@ class Club < ApplicationRecord
 
   # Landesverbände, für die die übergebenen Spielbetriebe zuständig sind.
   #
-  # Der Landesverband am Spielbetrieb wird zuerst auf seine Wurzel gehoben und
-  # erst dann der Teilbaum genommen. Zeigt ein Spielbetrieb nämlich auf einen
-  # untergeordneten Verband (die Zuordnung ist heute nur per Konsole pflegbar,
-  # siehe Issue #492), gibt es für dessen ID keinen Teilbaum.
+  # Zwei Schritte, und tragend ist nur der zweite: Die Hebung auf die Wurzel
+  # macht aus dem Landesverband des Spielbetriebs den Verbund und holt dessen
+  # ganzen Teilbaum; der `select!` nimmt davon alles wieder weg, wofür dieser
+  # Spielbetrieb nicht zuständig ist. Die Hebung allein ist also wirkungslos
+  # (ohne sie liefert `ids_under` für einen Unterverband ohnehin nichts, weil
+  # `subtrees` nur nach Wurzeln indiziert ist). Sie steht hier, weil sie die
+  # Absicht lesbar macht: erst den Verbund bestimmen, dann prüfen, ob er uns
+  # gehört.
   #
   # Der `select!` macht die Methode zur genauen Umkehrung von
   # #main_game_operation_id: Ein Verbund kommt nur mit, wenn die Zuständigkeit

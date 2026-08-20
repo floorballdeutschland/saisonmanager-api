@@ -9,9 +9,22 @@
 # Berechtigung auf Zeit.
 #
 # Gespeichert wird hier nur, was innerhalb EINES Requests vielfach gebraucht wird
-# und sich darin nicht aendert: der Verbandsbaum und die Spielbetriebe je
-# Landesverband. Beide zusammen loesen `Club#main_game_operation_id` auf, das in
-# den Vereins- und Spielerlisten je Datensatz laeuft.
+# und sich darin nicht aendert:
+#
+#   state_association_tree                   der Verbandsbaum (Wurzeln, Teilbaeume)
+#   game_operation_id_by_state_association    Spielbetrieb je Landesverband
+#   game_operations_by_id                     die Spielbetriebe selbst, nach ID
+#
+# Die ersten beiden loesen `Club#main_game_operation_id` auf, das in den Vereins-
+# und Spielerlisten je Datensatz laeuft. Das dritte haelt die vollstaendigen
+# Datensaetze fuer `Club#home_game_operation`, das in den Lizenzlisten je Zeile
+# den Namen braucht. Bei rund zehn Spielbetrieben ist das unkritisch; eine
+# groessere Tabelle gehoerte hier nicht hinein.
+#
+# Grenze der Zusicherung: Zurueckgesetzt wird vor jedem Request und per
+# `after_commit`. Eine Strukturaenderung INNERHALB einer noch offenen Transaktion
+# ist fuer den Rest derselben Transaktion also unsichtbar. Heute liest kein Pfad
+# den Baum zwischen Schreiben und Commit.
 class Current < ActiveSupport::CurrentAttributes
   attribute :state_association_tree
   attribute :game_operation_id_by_state_association

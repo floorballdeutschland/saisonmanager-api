@@ -583,9 +583,9 @@ class ClubsController < ApplicationController
 
     # Ohne Landesverband ist für den Verein kein Spielbetrieb zuständig, er
     # erscheint danach nur noch im globalen Zugriff. Wer selbst global sieht, darf
-    # das (die vier Ablage-Vereine auf Produktion stehen so da); ein einzelner
-    # Verband würde den Verein damit für sich und alle anderen unerreichbar
-    # machen.
+    # das (auf Produktion standen am 19.08.2026 vier Ablage-Vereine so da); ein
+    # einzelner Verband würde den Verein damit für sich und alle anderen
+    # unerreichbar machen.
     if ziel_sa_id.nil?
       return nil if global
 
@@ -680,7 +680,8 @@ class ClubsController < ApplicationController
 
   # Der Spielbetrieb, der für den neuen Verein zuständig wäre, abgeleitet aus dem
   # gewählten Landesverband. nil heißt „kein Verband zuständig" und führt zur
-  # Meldung, statt einen Verein anzulegen, den anschließend niemand sieht.
+  # Meldung, statt einen Verein anzulegen, den anschließend nur noch die
+  # Bundesebene sieht (`Club.unassigned`) und der sonst niemandem gehört.
   def resolve_create_game_operation
     sa_id = (params[:club] || {})[:state_association_id].presence
     return nil if sa_id.nil?

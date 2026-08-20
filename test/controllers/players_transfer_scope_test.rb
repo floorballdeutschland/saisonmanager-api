@@ -109,10 +109,10 @@ class PlayersTransferScopeTest < ActionDispatch::IntegrationTest
     create(:club, game_operation: game_operation)
   end
 
-  # Eigener Spieler statt einer geteilten Vorrichtung: Die Fabrik :club setzt
-  # KEINEN Heimat-Spielbetrieb, main_game_operation_id bliebe nil und damit
-  # ausserhalb jedes SBK-Scopes. Ein Test darauf prüfte den Datenmangel, nicht
-  # die Regel.
+  # Eigener Spieler statt einer geteilten Vorrichtung: Die Fabrik :club setzt ohne
+  # `game_operation:` KEINEN Landesverband, main_game_operation_id bliebe nil und
+  # der Verein damit ausserhalb jedes SBK-Scopes. Ein Test darauf prüfte den
+  # Datenmangel, nicht die Regel.
   def player_homed_in(game_operation)
     create(:player, clubs: [{ 'club_id' => club_in(game_operation).id, 'home_club' => true }])
   end

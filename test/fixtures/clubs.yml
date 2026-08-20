@@ -2,9 +2,10 @@
 # Generator-Gerüst, wurden von keinem Test referenziert und trugen weder
 # Bundesland noch Spielbetrieb.
 #
-# Seit die Vereinsverwaltung Vereine ohne Heim-Spielbetrieb ausdrücklich anzeigt
-# (Club.admin_user_clubs), erfüllten genau diese Platzhalter die Bedingung und
-# tauchten in jeder verbandsübergreifenden Vereinsliste auf. Tests, die exakte
+# Seit die Vereinsverwaltung Vereine ohne zuständigen Spielbetrieb ausdrücklich
+# anzeigt (Club.admin_user_clubs, Club.unassigned), erfüllten genau diese
+# Platzhalter die Bedingung und tauchten in jeder verbandsübergreifenden
+# Vereinsliste auf. Tests, die exakte
 # Vereinslisten prüfen, hätten sie ständig mitzählen müssen.
 #
 # Vereine in Tests über die Factory anlegen: create(:club, ...).

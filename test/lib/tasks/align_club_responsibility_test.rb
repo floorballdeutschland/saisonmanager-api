@@ -72,6 +72,20 @@ class AlignClubResponsibilityTest < ActiveSupport::TestCase
   # Ohne Spielbetrieb am Ziel waere Hamburg nach dem Lauf genauso herrenlos wie
   # vorher, nur mit einem Elternverband. Der Task bricht dann ab, statt eine
   # Aenderung zu schreiben, die ihren Zweck verfehlt.
+  test 'bricht ab, wenn es den FBH nicht gibt' do
+    @fbh.destroy!
+
+    assert_raises(SystemExit) { run_task('clubs:fbh_under_flvsh') }
+  end
+
+  test 'bricht ab, wenn es den FLV-SH nicht gibt' do
+    @flvsh_go.destroy!
+    @flvsh.destroy!
+
+    assert_raises(SystemExit) { run_task('clubs:fbh_under_flvsh') }
+    assert_nil @fbh.reload.parent_id
+  end
+
   test 'bricht ab, wenn der FLV-SH keinen Spielbetrieb hat' do
     @flvsh_go.destroy!
 
@@ -143,30 +157,80 @@ class AlignClubResponsibilityTest < ActiveSupport::TestCase
   # anderer Verein (Merge, Neuanlage), ist die Entscheidung nicht mehr belegt.
   # Ohne diese Pruefung wuerde der Lauf einem fremden Verein einen Verband
   # zuweisen, den nie jemand fuer ihn entschieden hat.
-  test 'ueberspringt einen Verein, dessen Name nicht zur Liste passt' do
+  test 'bricht ab, wenn der Name eines Vereins nicht zur Liste passt' do
     ziel_sa = create(:state_association, short_name: 'ZIEL')
     create(:game_operation, state_association_id: ziel_sa.id)
     club = create(:club, name: 'Inzwischen anders', state_association_id: @fbh.id)
 
-    out, = run_fix(liste([[club.id, 'Alter Name', 'ZIEL', '', 'Test']]))
+    fehler = assert_raises(RuntimeError) { run_fix(liste([[club.id, 'Alter Name', 'ZIEL', '', 'Test']])) }
 
+    assert_match(/nicht anwendbar/, fehler.message)
     assert_equal @fbh.id, club.reload.state_association_id
-    assert_match(/erwartet 'Alter Name'/, out)
-    assert_match(/1 Fehler/, out)
   end
 
   # Ein Ziel ohne Spielbetrieb im Verbund wuerde genau den Zustand herstellen,
   # den die Umstellung beseitigt: ein Verband ist eingetragen, zustaendig ist
   # niemand.
-  test 'ueberspringt ein Ziel ohne Spielbetrieb im Verbund' do
+  test 'bricht bei einem Ziel ohne Spielbetrieb im Verbund ab' do
     ohne_go = create(:state_association, short_name: 'OHNEGO')
     club = create(:club, name: 'Verein', state_association_id: @flvsh.id)
 
-    out, = run_fix(liste([[club.id, 'Verein', 'OHNEGO', '', 'Test']]))
+    assert_raises(RuntimeError) { run_fix(liste([[club.id, 'Verein', 'OHNEGO', '', 'Test']])) }
 
     assert_equal @flvsh.id, club.reload.state_association_id
     assert_not_equal ohne_go.id, club.state_association_id
-    assert_match(/keinen Spielbetrieb/, out)
+  end
+
+  # Die Liste ist ein Satz zusammengehoeriger Einzelentscheidungen. Ein Teil-Commit
+  # waere der gefaehrlichste Ausgang: die meisten Vereine richtig, einer
+  # stillschweigend beim falschen Verband, und der Lauf meldet Erfolg.
+  test 'schreibt keine einzige Zeile, wenn eine nicht anwendbar ist' do
+    ziel_sa = create(:state_association, short_name: 'ZIEL')
+    create(:game_operation, state_association_id: ziel_sa.id)
+    gut = create(:club, name: 'Anwendbar', state_association_id: @fbh.id)
+    schlecht = create(:club, name: 'Inzwischen anders', state_association_id: @fbh.id)
+
+    assert_raises(RuntimeError) do
+      run_fix(liste([[gut.id, 'Anwendbar', 'ZIEL', '', 'Test'],
+                     [schlecht.id, 'Alter Name', 'ZIEL', '', 'Test']]))
+    end
+
+    assert_equal @fbh.id, gut.reload.state_association_id,
+                 'auch die anwendbare Zeile darf nicht committen'
+    assert_equal @fbh.id, schlecht.reload.state_association_id
+  end
+
+  # Im Dry-Run soll ein Fehler weiter nur gemeldet werden: Er ist der Weg, die
+  # Liste vor dem Lauf zu pruefen, und darf nicht an der ersten schlechten Zeile
+  # abbrechen, bevor man die uebrigen gesehen hat.
+  test 'Dry-Run meldet nicht anwendbare Zeilen, ohne abzubrechen' do
+    ziel_sa = create(:state_association, short_name: 'ZIEL')
+    create(:game_operation, state_association_id: ziel_sa.id)
+    club = create(:club, name: 'Inzwischen anders', state_association_id: @fbh.id)
+
+    out, = run_fix(liste([[club.id, 'Alter Name', 'ZIEL', '', 'Test']]), dry_run: true)
+
+    assert_match(/erwartet 'Alter Name'/, out)
+    assert_match(/1 Fehler/, out)
+  end
+
+  test 'bricht bei einem unbekannten Landesverbands-Kuerzel ab' do
+    club = create(:club, name: 'Verein', state_association_id: @flvsh.id)
+
+    assert_raises(RuntimeError) { run_fix(liste([[club.id, 'Verein', 'GIBTSNICHT', '', 'Test']])) }
+
+    assert_equal @flvsh.id, club.reload.state_association_id
+  end
+
+  test 'bricht bei einem unbekannten Verein ab' do
+    ziel_sa = create(:state_association, short_name: 'ZIEL')
+    create(:game_operation, state_association_id: ziel_sa.id)
+
+    assert_raises(RuntimeError) { run_fix(liste([[999_999, 'Gibt es nicht', 'ZIEL', '', 'Test']])) }
+  end
+
+  test 'bricht ab, wenn die Liste fehlt' do
+    assert_raises(SystemExit) { run_fix('/tmp/gibt-es-nicht-4711.csv') }
   end
 
   test 'fix_state_associations Dry-Run schreibt nichts' do
@@ -216,6 +280,28 @@ class AlignClubResponsibilityTest < ActiveSupport::TestCase
   # Wert, `ohne_zustaendigkeit` einen fehlenden neuen. Er wechselt aber von "nur
   # fuer die Bundesebene sichtbar" zu "von diesem Verband verwaltet", und das ist
   # eine Rechteaenderung, die der Bericht als Tor vor dem Deploy zeigen muss.
+  # Der Bericht liest die Altspalte weiter und castet das Flag mit
+  # ActiveModel::Type::Boolean. In Altdaten liegt es als String, und `'false'` ist
+  # truthy: Ein Truthiness-Test wuerde einen Gast-Eintrag als gespeicherte
+  # Zustaendigkeit lesen und -- schlimmer -- einen echten Heimat-Eintrag daneben
+  # verdecken. Der Bericht ist das Tor vor dem Deploy; ein falsches Tor ist
+  # schlechter als keins.
+  test 'Bericht ignoriert einen Gast-Eintrag mit dem String false' do
+    fremd_go = create(:game_operation, state_association_id: create(:state_association).id)
+    gast_go = create(:game_operation, state_association_id: create(:state_association).id)
+    wechsler = create(:club, name: 'Wechsler', state_association_id: @flvsh.id,
+                             game_operations_hash: [
+                               { 'game_operation_id' => gast_go.id, 'home_game_operation' => 'false' },
+                               { 'game_operation_id' => fremd_go.id, 'home_game_operation' => true }
+                             ])
+
+    out, = run_task('clubs:responsibility_report')
+
+    assert_match(/Zustaendigkeit wechselt \(1\)/, out)
+    assert_match(/#{wechsler.id}\s+Wechsler/, out)
+    assert_no_match(/#{gast_go.id} ->/, out)
+  end
+
   test 'Bericht nennt Vereine, die neu einem Verband zugeordnet werden' do
     neu_zugeordnet = create(:club, name: 'Neu zugeordnet', state_association_id: @flvsh.id,
                                    game_operations_hash: [])
@@ -236,5 +322,15 @@ class AlignClubResponsibilityTest < ActiveSupport::TestCase
     assert_match(/Kein Verband zustaendig \(2\)/, out)
     assert_match(/#{ohne_lv.id}\s+Ohne LV\s+.*kein Landesverband/, out)
     assert_match(/#{verbund_ohne_go.id}\s+Verbund ohne GO\s+.*Verbund ohne Spielbetrieb/, out)
+  end
+
+  # Dritter Ursachen-Zweig: Auf clubs.state_association_id liegt kein
+  # Fremdschluessel, der Verweis kann ins Leere zeigen.
+  test 'Bericht nennt einen Landesverband, den es nicht gibt, als Ursache' do
+    waise = create(:club, name: 'Waise', state_association_id: 999_999)
+
+    out, = run_task('clubs:responsibility_report')
+
+    assert_match(/#{waise.id}\s+Waise\s+.*Landesverband 999999 existiert nicht/, out)
   end
 end

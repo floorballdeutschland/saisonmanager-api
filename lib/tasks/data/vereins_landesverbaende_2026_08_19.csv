@@ -13,10 +13,10 @@ club_id;name;lv_kuerzel;state;beleg
 107;Ablage Doppelung;FVD;;Ablage-Verein ohne Sitz. Der LV-Wert (NWFV) war zufaellig, zustaendig ist der Bundesverband.
 129;Ablage;FVD;;Ablage-Verein - siehe 107
 257;Floorball Final4;FVD;;Veranstaltungs-Verein des Bundesverbands. LV stand auf FVBB, weil das Final4 dort stattfand.
-220;SBK-OST;SBKOST;;Hilfsverein des Spielverbunds SBK Ost, traegt dessen Namen. LV stand auf FVD.
+220;SBK-OST;SBKOST;;Hilfsverein des Spielverbunds selbst, traegt dessen Namen und haelt 55 Mannschaften. Der Verbund verwaltet ihn, LV stand aber auf FVD.
 22;Pommerhoc Greifswald;FVBB;de-mv;Sitz in Mecklenburg-Vorpommern, dafuer gibt es keinen Landesverband. Gespielt wird im FVBB, der LV-Wert FVD war ein Platzhalter. Bundesland bleibt de-mv.
 195;Garz;FVBB;de-mv;Sitz in Mecklenburg-Vorpommern - siehe 22
-178;Hot Shots Innsbruck;FVBY;de-sonstige;Sitz in Oesterreich (Ort A-Innsbruck). Bundesland stand falsch auf de-st. Gespielt wird im FVBY.
+178;Hot Shots Innsbruck;FVBY;de-sonstige;Sitz in Oesterreich (Ort A-Innsbruck), dafuer gibt es keinen Landesverband. LV stand auf FVD, Bundesland falsch auf de-st. Gespielt wird im FVBY.
 66;Partisan Connewitz;FVS;de-sn;Einziger echter LV-Fehler: Sitz ist Leipzig-Connewitz, Ort und Bundesland standen auf Berlin. FVS laeuft ueber parent_id auf SBK Ost, der bisherigen Zustaendigkeit (Nutzer 19.08.2026).
 213;Ablage Sperrung;FVD;;Ohne LV. Enthaelt Personen mit DSGVO-Widerspruch und wird inhaltlich NICHT angefasst - nur der zustaendige Verband wird gesetzt, damit der Verein pflegbar bleibt.
 74;zz_not in use;FVD;;Ohne LV, Ablage-Verein.

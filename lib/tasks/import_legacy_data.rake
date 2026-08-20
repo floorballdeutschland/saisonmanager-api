@@ -99,10 +99,11 @@ namespace :import do
       #     Alt-Spielbetrieb zurück und stellte genau den Fall wieder her, den
       #     diese Umstellung behebt (ETV Hamburg zurück nach Niedersachsen).
       #     Gepflegt wird der Landesverband in der Anwendung, nicht hier.
-      #   - Fehlt der Landesverband am Spielbetrieb, wird gar nichts geschrieben.
-      #     Ein nil wäre nach der Umstellung nicht bloß eine Lücke, sondern der
-      #     Verlust der Zuständigkeit: Der Verein fiele aus der Liste jedes
-      #     regionalen Verbands.
+      #   - Fehlt der Landesverband am Spielbetrieb, wird gewarnt, und ein NEUER
+      #     Verein bleibt ohne Zuständigkeit: Er ist dann nur für die Bundesebene
+      #     sichtbar (Club.unassigned). Das ist der ehrliche Zustand -- zuständig
+      #     ist niemand, und ein geratener Verband wäre schlimmer. Bestehende
+      #     Vereine behalten ihren Wert ohnehin.
       sa_id = GameOperation.find_by(id: go_id)&.state_association_id
       if sa_id.nil?
         warn "WARN: Spielbetrieb #{go_id} hat keinen Landesverband -- " \

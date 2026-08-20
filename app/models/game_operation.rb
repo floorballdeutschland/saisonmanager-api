@@ -13,8 +13,9 @@ class GameOperation < ApplicationRecord
   #
   # Zwischengespeichert in Current und nicht in Rails.cache, Begruendung dort.
   #
-  # Ein Landesverband hat hoechstens einen Spielbetrieb; auf Produktion gilt das
-  # fuer alle zehn. Gaebe es doch zwei, gewinnt der mit der niedrigeren ID
+  # Ein Landesverband hat hoechstens einen Spielbetrieb; am 19.08.2026 galt das
+  # auf Produktion fuer alle zehn Spielbetriebe (bei 14 Landesverbaenden, vier
+  # davon ohne eigenen). Gaebe es doch zwei, gewinnt der mit der niedrigeren ID
   # (`||=` auf der von default_scope nach ID sortierten Liste), damit die
   # Zustaendigkeit eindeutig bleibt statt je Prozess anders auszufallen.
   def self.id_by_state_association
@@ -32,10 +33,15 @@ class GameOperation < ApplicationRecord
     Current.game_operations_by_id ||= all.index_by(&:id)
   end
 
-  # Vereine, fuer die dieser Spielbetrieb zustaendig ist: die Vereine in seinem
-  # Landesverband und in allen Verbaenden darunter. Massgeblich fuer Zugriff auf
-  # die Vereinsstammdaten; darueber hinaus gibt es Lesezugriff nur per
-  # Vereins-Freigabe (StateAssociationRelease).
+  # Vereine, fuer die dieser Spielbetrieb zustaendig ist: die Vereine seines
+  # Verbunds und aller Verbaende darunter -- sofern er der zustaendige
+  # Spielbetrieb dieses Verbunds ist. Ein Spielbetrieb an einem UNTERGEORDNETEN
+  # Verband hat keine Vereine, auch wenn unter diesem Verband welche haengen;
+  # zustaendig ist dann der Spielbetrieb des Verbunds (siehe
+  # Club.responsible_state_association_ids und den Test dazu in club_test.rb).
+  #
+  # Massgeblich fuer Zugriff auf die Vereinsstammdaten; darueber hinaus gibt es
+  # Lesezugriff nur per Vereins-Freigabe (StateAssociationRelease).
   #
   # Frueher stand die Zuordnung als Heimat-Eintrag im `game_operations_hash` des
   # Vereins. Siehe Club#main_game_operation_id, warum sie jetzt abgeleitet wird.

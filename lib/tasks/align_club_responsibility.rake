@@ -44,9 +44,16 @@
 #   :responsibility_report
 #             Vergleicht die frueher gespeicherte Zustaendigkeit mit der jetzt
 #             abgeleiteten und nennt jeden Verein, bei dem sie auseinanderfaellt.
-#             Das ist das Tor vor dem Deploy: Jede Zeile ist ein Verein, der
-#             seinen Verband wechselt, ohne dass es jemand angeordnet hat.
-#             Rein lesend. Muss am Ende 0 Wechsel melden.
+#             Das Tor NACH dem Datenlauf: Jede unerwartete Zeile ist ein Verein,
+#             der seinen Verband wechselt, ohne dass es jemand angeordnet hat.
+#             Rein lesend.
+#
+#             SOLLWERT ist nicht null, sondern GENAU EIN Wechsel: der ETV
+#             Hamburg (81). Er ist der Ausloeser der ganzen Umstellung und der
+#             einzige Verein, dessen Zustaendigkeit sich nicht ueber die CSV,
+#             sondern ueber :fbh_under_flvsh aendert (Landesverband Hamburg,
+#             gespeichert war Niedersachsen). Wer "0 erwartet" liest, haelt den
+#             Erfolg fuer einen Fehlschlag.
 #
 # Der Bericht laeuft nur, solange `clubs.game_operations_hash` noch existiert.
 # Mit dem Abbau der Spalte entfaellt er, dann gibt es keinen zweiten Wert mehr,
@@ -73,6 +80,8 @@ namespace :clubs do
   #                  Mannschaften antreten.
   #   Ablage         Ablage- und Veranstaltungs-Vereine haben keinen Sitz; ihre
   #                  LV-Werte waren zufaellig oder leer.
+  #   Verbands-      Verein 220 traegt den Namen des Spielverbunds SBK Ost und
+  #   eigene         gehoert ihm; sein LV-Wert stand auf dem Bundesverband.
   #
   # Nur Verein 66 (Partisan Connewitz) ist ein echter Fehler im Feld: Sitz ist
   # Leipzig-Connewitz, Ort und Bundesland standen auf Berlin.
@@ -165,6 +174,13 @@ namespace :clubs do
         geaendert += 1
       end
 
+      # Die Liste ist ein Satz zusammengehoeriger Einzelentscheidungen, kein
+      # Stapel unabhaengiger Aenderungen. Faellt eine Zeile durch (Verein
+      # gemergt, umbenannt, Kuerzel vertippt), waere ein Teil-Commit der
+      # gefaehrlichste Ausgang: 22 Vereine richtig, einer stillschweigend beim
+      # falschen Verband, Exit-Status 0. Die Abbruchgruende sind kein `raise`,
+      # sondern `next` -- ohne diese Klammer committete die Schleife.
+      raise "#{fehler} Zeile(n) nicht anwendbar -- nichts geschrieben" if fehler.positive? && !dry_run
       raise ActiveRecord::Rollback if dry_run
     end
 
@@ -172,7 +188,10 @@ namespace :clubs do
     puts "#{geaendert} Verein(e) #{dry_run ? 'zu aendern' : 'geaendert'}, " \
          "#{unveraendert} schon richtig, #{fehler} Fehler"
     puts 'Dry-Run -- nichts geschrieben. Mit DRY_RUN=false ausfuehren.' if dry_run
-    puts 'Danach clubs:responsibility_report laufen lassen; er muss 0 Wechsel melden.' unless dry_run
+    unless dry_run
+      puts 'Danach clubs:responsibility_report laufen lassen. Erwartet wird GENAU EIN Wechsel:'
+      puts 'der ETV Hamburg (81), dessen Zustaendigkeit ueber clubs:fbh_under_flvsh wandert.'
+    end
   end
 
   desc 'Vergleicht gespeicherte und abgeleitete Zustaendigkeit je Verein (rein lesend).'
@@ -212,6 +231,8 @@ namespace :clubs do
     puts "-- Zustaendigkeit wechselt (#{wechsel.size}) --"
     puts '   Jede Zeile ist ein Verein, der den Verband wechselt. Entweder ist sein'
     puts '   Landesverband falsch gepflegt, oder der Wechsel ist gewollt.'
+    puts '   Nach dem vollstaendigen Datenlauf bleibt hier genau der ETV Hamburg (81)'
+    puts '   stehen: der gewollte Wechsel, den :fbh_under_flvsh ausloest.'
     wechsel.each do |club, alt, neu|
       puts "   #{club.id.to_s.ljust(5)} #{club.name.to_s.ljust(34)} " \
            "#{namen[alt] || alt} -> #{namen[neu] || neu} " \
@@ -301,8 +322,13 @@ namespace :clubs do
       puts "  #{"#{feld}:".ljust(11)} #{fbh[feld].inspect} -> nil (faellt auf den FLV-SH zurueck)"
     end
 
-    ziel_go = GameOperation.find_by(state_association_id: flvsh.id)
-    abort "FLV-SH (#{flvsh.id}) hat keinen Spielbetrieb -- sonst bleibt Hamburg herrenlos" if ziel_go.nil?
+    # Ueber die Ableitung und nicht per find_by(state_association_id:): Bekommt der
+    # FLV-SH selbst einmal einen Elternverband, entscheidet dessen Spielbetrieb,
+    # und der direkte Nachschlag naehme den falschen (oder ginge leer aus, waehrend
+    # die Zustaendigkeit sehr wohl existiert). fix_state_associations macht es
+    # ebenso.
+    ziel_go = GameOperation.by_id[GameOperation.id_by_state_association[StateAssociation.root_id(flvsh.id)]]
+    abort "Fuer den FLV-SH (#{flvsh.id}) ist kein Spielbetrieb zustaendig -- sonst bleibt Hamburg herrenlos" if ziel_go.nil?
 
     betroffen = Club.where(state_association_id: fbh.id).order(:id)
     puts "\n  Vereine, deren Zustaendigkeit dadurch #{ziel_go.name} wird (#{betroffen.count}):"
