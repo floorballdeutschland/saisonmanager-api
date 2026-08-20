@@ -47,12 +47,30 @@ class TransferRequestPlayerNotificationTest < ActionMailer::TestCase
     assert_equal ['alter@example.de'], mail.to
   end
 
+  # Bisher hing an dieser Mail die Spieleradresse als stiller Ersatzempfaenger:
+  # Ohne Verteiler beim abgebenden Verein ging sie trotzdem raus, nur eben an den
+  # Falschen. Jetzt geht sie gar nicht raus, und das soll auch so bleiben, statt
+  # als NullMail zu verpuffen, die eine reine `mail.to`-Pruefung nicht von einem
+  # echten Versand unterscheidet.
   test 'ohne Verteiler beim abgebenden Verein wird gar nichts verschickt' do
     @former_club.update!(contact_email: nil)
+    tr = transfer_request
+
+    assert_emails 0 do
+      TransferRequestMailer.new_request_to_former_club(tr).deliver_now
+    end
+  end
+
+  # notification_emails speist sich aus contact_email *und* den Vereinsmanagern.
+  # Ohne diesen Fall wuerde eine Aenderung am Verteiler nur im contact_email-Zweig
+  # auffallen.
+  test 'der Verteiler umfasst auch die Vereinsmanager des abgebenden Vereins' do
+    @former_club.update!(contact_email: nil)
+    create(:user, :vm, club_id: @former_club.id, email: 'vm-alter@example.de')
 
     mail = TransferRequestMailer.new_request_to_former_club(transfer_request)
 
-    assert_nil mail.to
+    assert_equal ['vm-alter@example.de'], mail.to
   end
 
   test 'der Spieler bekommt die Zustimmungsanfrage mit Token-Links' do
