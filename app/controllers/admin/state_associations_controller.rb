@@ -180,20 +180,39 @@ module Admin
 
       ziel_id = eingereicht['parent_id'].presence&.to_i
       return nil if ziel_id == @state_association.parent_id
-      # Parentlos ist unbedenklich: Der Verband wird dann seine eigene Wurzel und
-      # braucht nur selbst einen Spielbetrieb -- das prüft er über seine Vereine
-      # ohnehin nicht, und ein Verband ohne Spielbetrieb ist ein bestehender,
-      # sichtbarer Zustand (Club.unassigned meldet ihn).
-      return nil if ziel_id.nil?
+
+      # Parentlos ist NICHT unbedenklich: Der Verband wird dann seine eigene
+      # Wurzel und braucht selbst einen Spielbetrieb. Hat er keinen, verlieren
+      # alle Vereine im Teilbaum in einem Zug ihre Zuständigkeit -- und das fällt
+      # nicht auf: Der Landesverband ist auflösbar, die Gruppe in der Vereinsliste
+      # sieht regulär aus, und `Club.log_unresolvable_state_associations` greift
+      # nur bei einem Verweis ins Leere.
+      #
+      # Genau so wäre der Floorball Bund Hamburg wieder herrenlos geworden, wenn
+      # jemand nach Issue #492 dort das Feld leert. Der Weg über das Verschieben
+      # eines einzelnen Vereins ist längst bewacht
+      # (ClubsController#state_association_move_conflict); dieser hier war die
+      # breitere Lücke daneben.
+      return parent_removal_conflict if ziel_id.nil?
 
       ziel_wurzel = StateAssociation.root_id(ziel_id)
       return 'Der gewählte übergeordnete Verband existiert nicht.' if ziel_wurzel.nil?
 
       return nil if GameOperation.id_by_state_association[ziel_wurzel].present?
 
-      betroffen = Club.where(state_association_id: StateAssociation.ids_under([@state_association.id])).count
+      betroffen = Club.where(state_association_id: StateAssociation.descendant_ids(@state_association.id)).count
       "Für den gewählten Verbund ist kein Spielbetrieb zuständig. #{betroffen} Verein(e) " \
         'würden dadurch ihren zuständigen Verband verlieren.'
+    end
+
+    # Der Verband wird seine eigene Wurzel. Das ist nur dann in Ordnung, wenn für
+    # ihn selbst ein Spielbetrieb zuständig ist.
+    def parent_removal_conflict
+      return nil if GameOperation.id_by_state_association[@state_association.id].present?
+
+      betroffen = Club.where(state_association_id: StateAssociation.descendant_ids(@state_association.id)).count
+      'Ohne übergeordneten Verband ist für diesen Landesverband kein Spielbetrieb ' \
+        "zuständig. #{betroffen} Verein(e) würden dadurch ihren zuständigen Verband verlieren."
     end
 
     def state_association_params

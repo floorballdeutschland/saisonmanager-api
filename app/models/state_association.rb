@@ -85,6 +85,32 @@ class StateAssociation < ApplicationRecord
   # Alle Landesverbaende, deren Spielverbund einer der uebergebenen ist,
   # einschliesslich der Wurzeln selbst. Das ist die Menge, fuer die der
   # Spielbetrieb dieses Verbunds zustaendig ist.
+  # Ein Verband und alle Verbaende darunter, unabhaengig davon, ob er selbst eine
+  # Wurzel ist.
+  #
+  # NICHT dasselbe wie .ids_under: Das liest `subtrees`, und das ist nur nach
+  # WURZELN indiziert. Fuer einen Verband mitten im Baum liefert es leer -- was
+  # als Zustaendigkeitsabfrage richtig ist (zustaendig ist dann der Verbund), als
+  # Reichweitenabfrage aber falsch. Wer wissen will, wie viele Vereine eine
+  # Aenderung an DIESEM Verband trifft, braucht diese Methode.
+  #
+  # Iterativ mit `seen`, aus demselben Grund wie in build_tree: gegen einen
+  # Ringverweis aus der Zeit vor parent_must_not_create_cycle.
+  def self.descendant_ids(id)
+    return [] if id.blank?
+
+    kinder = pluck(:id, :parent_id).group_by(&:last).transform_values { |paare| paare.map(&:first) }
+    gesammelt = []
+    schlange = [id.to_i]
+    while (knoten = schlange.shift)
+      next if gesammelt.include?(knoten)
+
+      gesammelt << knoten
+      schlange.concat(kinder[knoten] || [])
+    end
+    gesammelt
+  end
+
   def self.ids_under(root_ids)
     subtrees = tree[:subtrees]
     Array(root_ids).compact.map(&:to_i).flat_map { |root| subtrees[root] || [] }.uniq

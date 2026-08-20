@@ -144,20 +144,6 @@ class Club < ApplicationRecord
     end
   end
 
-  # Altlast ohne Aufgabe. Die Spalte trug den Heimat-Spielbetrieb des Vereins
-  # (`home_game_operation: true`), bis Release 1.78 zusätzlich Gast-Einträge aus
-  # dem Altdaten-Import 2010–2014.
-  #
-  # Seit die Zuständigkeit aus dem Landesverband abgeleitet wird
-  # (#main_game_operation_id), entscheidet sie über nichts mehr. Der Leser bleibt
-  # nur, damit die Werte bis zum Abbau der Spalte lesbar sind, und wird von
-  # keiner Rechteprüfung und keiner Abfrage mehr benutzt. Nicht wieder
-  # heranziehen: Genau die zweite Quelle war das Problem.
-  def game_operations_hash
-    val = super
-    val.is_a?(Array) ? val : []
-  end
-
   # Ueber die je Request geladene Karte und nicht per find_by: Diese Methode
   # laeuft in den Lizenzlisten je Zeile (Player#create_license_hash).
   def home_game_operation

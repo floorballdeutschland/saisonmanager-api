@@ -2,13 +2,20 @@ require 'test_helper'
 require 'rake'
 require 'csv'
 
-# Tests fuer clubs:fbh_under_flvsh und clubs:responsibility_report
+# Tests fuer clubs:fbh_under_flvsh und clubs:fix_state_associations
 # (lib/tasks/align_club_responsibility.rake).
 #
-# Der erste Task haengt den Floorball Bund Hamburg unter den FLV-SH, damit die
-# sechs Hamburger Vereine nach der Umstellung einen zustaendigen Spielbetrieb
-# haben. Ohne ihn koennte fuer sie niemand berechtigt werden: `permissions`
-# kennen nur `game_operation_id`, und Hamburg hat keinen Spielbetrieb.
+# `clubs:fbh_under_flvsh` haengt den Floorball Bund Hamburg unter den FLV-SH,
+# damit die sechs Hamburger Vereine nach der Umstellung einen zustaendigen
+# Spielbetrieb haben. Ohne ihn koennte fuer sie niemand berechtigt werden:
+# `permissions` kennen nur `game_operation_id`, und Hamburg hat keinen
+# Spielbetrieb.
+#
+# `clubs:fix_state_associations` korrigiert den Landesverband der Vereine, bei
+# denen das Feld eine andere Frage beantwortet hat als die Zustaendigkeit. Die
+# Entscheidung je Verein kommt aus einer CSV, nicht aus einer Regel; die Tests
+# pruefen deshalb vor allem die Riegel (Namenspruefung, Ziel ohne Spielbetrieb,
+# Abbruch statt Teil-Commit).
 #
 # Verbaende werden hier ueber ihre Kuerzel angelegt, weil der Task sie so sucht.
 class AlignClubResponsibilityTest < ActiveSupport::TestCase
@@ -107,6 +114,27 @@ class AlignClubResponsibilityTest < ActiveSupport::TestCase
     @csv
   end
 
+  # capture_io gibt nichts zurueck, wenn der Block wirft -- fuer einen Task, der
+  # bewusst mit `abort` endet, ist die Ausgabe damit verloren. Deshalb hier ohne
+  # capture_io und ohne run_fix: `$stdout` wird selbst umgelenkt, damit die
+  # Ausgabe VOR dem Abbruch erhalten bleibt.
+  def ausgabe_bei_abbruch(pfad, dry_run: false)
+    task = Rake::Task['clubs:fix_state_associations']
+    saved = ENV.to_hash.slice('CSV', 'DRY_RUN')
+    ENV['CSV'] = pfad
+    ENV['DRY_RUN'] = dry_run ? 'true' : 'false'
+    task.reenable
+
+    alt_stdout = $stdout
+    puffer = StringIO.new
+    $stdout = puffer
+    fehler = assert_raises(SystemExit) { task.invoke }
+    [puffer.string, fehler]
+  ensure
+    $stdout = alt_stdout
+    %w[CSV DRY_RUN].each { |k| ENV[k] = saved[k] }
+  end
+
   def run_fix(pfad, dry_run: false)
     task = Rake::Task['clubs:fix_state_associations']
     saved = ENV.to_hash.slice('CSV', 'DRY_RUN')
@@ -200,18 +228,39 @@ class AlignClubResponsibilityTest < ActiveSupport::TestCase
     assert_equal @fbh.id, schlecht.reload.state_association_id
   end
 
-  # Im Dry-Run soll ein Fehler weiter nur gemeldet werden: Er ist der Weg, die
-  # Liste vor dem Lauf zu pruefen, und darf nicht an der ersten schlechten Zeile
-  # abbrechen, bevor man die uebrigen gesehen hat.
-  test 'Dry-Run meldet nicht anwendbare Zeilen, ohne abzubrechen' do
+  # Der Dry-Run meldet ALLE nicht anwendbaren Zeilen, bevor er abbricht: Er ist
+  # der Weg, die Liste zu pruefen, und darf nicht an der ersten schlechten Zeile
+  # aufhoeren, bevor man die uebrigen gesehen hat.
+  #
+  # Am Ende aber mit Exit 1 und nicht 0. Sonst liest ein Lauf, in dem JEDE Zeile
+  # durchgefallen ist, wie "nichts zu tun" -- gleiche Ausgabe, gleicher
+  # Exit-Status. Ein nachgelagertes Tor dafuer gibt es seit dem Abbau von
+  # clubs:responsibility_report nicht mehr.
+  test 'Dry-Run meldet alle nicht anwendbaren Zeilen und bricht dann ab' do
     ziel_sa = create(:state_association, short_name: 'ZIEL')
     create(:game_operation, state_association_id: ziel_sa.id)
-    club = create(:club, name: 'Inzwischen anders', state_association_id: @fbh.id)
+    erster = create(:club, name: 'Inzwischen anders', state_association_id: @fbh.id)
+    zweiter = create(:club, name: 'Auch anders', state_association_id: @fbh.id)
 
-    out, = run_fix(liste([[club.id, 'Alter Name', 'ZIEL', '', 'Test']]), dry_run: true)
+    out, = ausgabe_bei_abbruch(liste([[erster.id, 'Alter Name', 'ZIEL', '', 'Test'],
+                                      [zweiter.id, 'Noch ein alter Name', 'ZIEL', '', 'Test']]),
+                               dry_run: true)
 
     assert_match(/erwartet 'Alter Name'/, out)
-    assert_match(/1 Fehler/, out)
+    assert_match(/erwartet 'Noch ein alter Name'/, out, 'auch die zweite Zeile muss gemeldet werden')
+    assert_match(/2 Fehler/, out)
+  end
+
+  # Gegenprobe: Ein sauberer Dry-Run bricht nicht ab.
+  test 'ein sauberer Dry-Run laeuft ohne Abbruch durch' do
+    ziel_sa = create(:state_association, short_name: 'ZIEL')
+    create(:game_operation, state_association_id: ziel_sa.id)
+    club = create(:club, name: 'Passt', state_association_id: @fbh.id)
+
+    out, = run_fix(liste([[club.id, 'Passt', 'ZIEL', '', 'Test']]), dry_run: true)
+
+    assert_match(/1 Verein\(e\) zu aendern, 0 schon richtig, 0 Fehler/, out)
+    assert_equal @fbh.id, club.reload.state_association_id
   end
 
   test 'bricht bei einem unbekannten Landesverbands-Kuerzel ab' do
@@ -257,80 +306,5 @@ class AlignClubResponsibilityTest < ActiveSupport::TestCase
       assert z['lv_kuerzel'].present?, "lv_kuerzel fehlt: #{z.inspect}"
       assert z['beleg'].present?, "beleg fehlt: #{z.inspect}"
     end
-  end
-
-  # Der Bericht ist das Tor vor dem Deploy: Jede Zeile ist ein Verein, der seinen
-  # Verband wechselt, ohne dass es jemand angeordnet hat.
-  test 'Bericht nennt Vereine, deren Zustaendigkeit sich verschiebt' do
-    fremd_go = create(:game_operation, state_association_id: create(:state_association).id)
-    # Gespeichert der fremde Spielbetrieb, abgeleitet der des eigenen Verbands:
-    # genau die Lage des ETV Hamburg vor der Umstellung.
-    wechsler = create(:club, name: 'Wechsler', state_association_id: @flvsh.id,
-                             game_operations_hash: [{ 'game_operation_id' => fremd_go.id,
-                                                      'home_game_operation' => true }])
-
-    out, = run_task('clubs:responsibility_report')
-
-    assert_match(/Zustaendigkeit wechselt \(1\)/, out)
-    assert_match(/#{wechsler.id}\s+Wechsler/, out)
-  end
-
-  # Ein Verein, der bisher keinen gespeicherten Spielbetrieb hatte und jetzt einen
-  # abgeleiteten bekommt, fiel aus beiden Listen: `wechsel` verlangte einen alten
-  # Wert, `ohne_zustaendigkeit` einen fehlenden neuen. Er wechselt aber von "nur
-  # fuer die Bundesebene sichtbar" zu "von diesem Verband verwaltet", und das ist
-  # eine Rechteaenderung, die der Bericht als Tor vor dem Deploy zeigen muss.
-  # Der Bericht liest die Altspalte weiter und castet das Flag mit
-  # ActiveModel::Type::Boolean. In Altdaten liegt es als String, und `'false'` ist
-  # truthy: Ein Truthiness-Test wuerde einen Gast-Eintrag als gespeicherte
-  # Zustaendigkeit lesen und -- schlimmer -- einen echten Heimat-Eintrag daneben
-  # verdecken. Der Bericht ist das Tor vor dem Deploy; ein falsches Tor ist
-  # schlechter als keins.
-  test 'Bericht ignoriert einen Gast-Eintrag mit dem String false' do
-    fremd_go = create(:game_operation, state_association_id: create(:state_association).id)
-    gast_go = create(:game_operation, state_association_id: create(:state_association).id)
-    wechsler = create(:club, name: 'Wechsler', state_association_id: @flvsh.id,
-                             game_operations_hash: [
-                               { 'game_operation_id' => gast_go.id, 'home_game_operation' => 'false' },
-                               { 'game_operation_id' => fremd_go.id, 'home_game_operation' => true }
-                             ])
-
-    out, = run_task('clubs:responsibility_report')
-
-    assert_match(/Zustaendigkeit wechselt \(1\)/, out)
-    assert_match(/#{wechsler.id}\s+Wechsler/, out)
-    assert_no_match(/#{gast_go.id} ->/, out)
-  end
-
-  test 'Bericht nennt Vereine, die neu einem Verband zugeordnet werden' do
-    neu_zugeordnet = create(:club, name: 'Neu zugeordnet', state_association_id: @flvsh.id,
-                                   game_operations_hash: [])
-
-    out, = run_task('clubs:responsibility_report')
-
-    assert_match(/Neu einem Verband zugeordnet \(1\)/, out)
-    assert_match(/#{neu_zugeordnet.id}\s+Neu zugeordnet/, out)
-    assert_match(/Zustaendigkeit wechselt \(0\)/, out)
-  end
-
-  test 'Bericht nennt Vereine ohne zustaendigen Verband samt Ursache' do
-    ohne_lv = create(:club, name: 'Ohne LV', state_association_id: nil)
-    verbund_ohne_go = create(:club, name: 'Verbund ohne GO', state_association_id: @fbh.id)
-
-    out, = run_task('clubs:responsibility_report')
-
-    assert_match(/Kein Verband zustaendig \(2\)/, out)
-    assert_match(/#{ohne_lv.id}\s+Ohne LV\s+.*kein Landesverband/, out)
-    assert_match(/#{verbund_ohne_go.id}\s+Verbund ohne GO\s+.*Verbund ohne Spielbetrieb/, out)
-  end
-
-  # Dritter Ursachen-Zweig: Auf clubs.state_association_id liegt kein
-  # Fremdschluessel, der Verweis kann ins Leere zeigen.
-  test 'Bericht nennt einen Landesverband, den es nicht gibt, als Ursache' do
-    waise = create(:club, name: 'Waise', state_association_id: 999_999)
-
-    out, = run_task('clubs:responsibility_report')
-
-    assert_match(/#{waise.id}\s+Waise\s+.*Landesverband 999999 existiert nicht/, out)
   end
 end

@@ -87,7 +87,7 @@ class GameOperationsController < ApplicationController
         #
         # Vorher kamen die zusätzlichen Spielbetriebe aus
         # `additional_game_operation_ids`, also aus Gast-Einträgen des
-        # Altdaten-Imports 2010–2014, die nie nachgeführt werden. Damit standen
+        # Altdaten-Imports 2010–2014, die nie nachgeführt wurden. Damit standen
         # hier Verbände, in denen der Verein seit Jahren nicht mehr spielt.
         go_ids |= Club.where(id: ph[:vm]).map(&:main_game_operation_id).compact
         go_ids |= Team.current_season

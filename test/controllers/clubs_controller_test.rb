@@ -81,32 +81,6 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_response :forbidden
   end
 
-  # Der Alt-Eintrag in `clubs.game_operations_hash` gibt keinen Zugriff auf die
-  # Vereinsstammdaten mehr, auch dann nicht, wenn er dem Landesverband
-  # WIDERSPRICHT. Genau diese Lage hatte der ETV Hamburg auf Produktion:
-  # Landesverband Hamburg, im Hash Floorball Niedersachsen.
-  #
-  # Die Spalte existiert weiter und traegt auf Produktion noch Werte. Der Test
-  # haelt deshalb fest, dass sie ignoriert wird -- sonst faellt ein Rueckfall
-  # darauf ("nur fuer die Uebergangszeit") niemandem auf. Der ausdrueckliche Weg
-  # zu fremden Vereinen ist die Vereins-Freigabe, siehe den folgenden Test.
-  test 'admin_club sperrt den Spielbetrieb aus einem widersprechenden Alt-Eintrag' do
-    home_sa = create(:state_association)
-    home_go = create(:game_operation, state_association_id: home_sa.id)
-    guest_sa = create(:state_association)
-    guest_go = create(:game_operation, state_association_id: guest_sa.id)
-    # Landesverband home_sa, im Alt-Eintrag aber guest_go als Heimat.
-    club = create(:club, state_association_id: home_sa.id, contact_email: 'kontakt@example.org',
-                         game_operations_hash: [{ 'game_operation_id' => guest_go.id,
-                                                  'home_game_operation' => true }])
-    assert_equal home_go.id, club.main_game_operation_id, 'der Landesverband entscheidet'
-    login(create(:user, :sbk_scoped, game_operation_id: guest_go.id))
-
-    get "/api/v2/admin/clubs/#{club.id}"
-
-    assert_response :forbidden
-  end
-
   # Gegenprobe: Mit Freigabe ist derselbe Zugriff erlaubt – die Freigabe ist
   # ausdrücklich erteilt, saisongebunden und über die Verbandsmaske pflegbar.
   test 'admin_club erlaubt Lesezugriff auf Gast-Verein MIT Vereins-Freigabe' do
@@ -199,7 +173,8 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
   end
 
   # Kern von Teil 2: Die Vereins-Zeilen kommen nicht mehr aus dem
-  # game_operations_hash, sondern aus den Mannschaften der eigenen Ligen. Ein
+  # dem entfallenen game_operations_hash, sondern aus den Mannschaften der
+  # eigenen Ligen. Ein
   # Gastverein bleibt damit erreichbar, obwohl sein Landesverband nichts
   # freigegeben hat – so behält z.B. Schleswig-Holstein die Nord-Mannschaften.
   test 'user_clubs_and_teams zeigt Gastverein mit Mannschaft in eigener Liga' do
@@ -217,9 +192,15 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_equal([gast_team.id], entry['teams'].map { |t| t['id'] })
   end
 
-  # Gegenprobe: Der bloße Gast-Eintrag im Hash reicht nicht mehr. Genau diese
-  # Altlast (183 von 220 Einträgen auf Produktion) soll wegfallen.
-  test 'user_clubs_and_teams ignoriert reine Gast-Eintraege ohne Mannschaft' do
+  # Gegenprobe zum Test darüber: Ein fremder Verein OHNE Mannschaft in einer
+  # eigenen Liga erscheint nicht. Nur die Mannschaft in der Liga bringt ihn in die
+  # Liste, nicht die blosse Zugehoerigkeit zu einem anderen Verband.
+  #
+  # Frueher trug ein Gast-Eintrag im `game_operations_hash` ihn hier hinein (183
+  # von 220 Eintraegen auf Produktion waren durch keine Liga gedeckt). Der Aufbau
+  # kann das seit dem Abbau der Spalte nicht mehr nachstellen; geprueft wird die
+  # Regel, die davon uebrig ist.
+  test 'user_clubs_and_teams zeigt einen fremden Verein ohne Mannschaft nicht' do
     go_own = create(:game_operation)
     go_home = create(:game_operation)
     altlast = create(:club, game_operation: go_home)
