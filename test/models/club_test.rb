@@ -599,6 +599,121 @@ class ClubTest < ActiveSupport::TestCase
     assert_equal anderer.id, widerspruch.state_association_id
   end
 
+  # --- role_assignable_for ----------------------------------------------------
+  #
+  # Einzige Quelle fuer das Vereins-Dropdown der Benutzeranlage UND fuer die
+  # Pruefung in Admin::UsersController#create bzw. beim Vereinswechsel eines
+  # Kontos. Wer hier zu viel bekommt, kann einem VM- oder TM-Konto einen fremden
+  # Verein zuweisen und ihm damit Zugriff auf dessen Spielerliste verschaffen.
+  #
+  # Die Methode nimmt fuer die SBK-Rolle `home_clubs_of(ph[:sbk])`, also dieselbe
+  # Ableitung wie die Zustaendigkeit. Sie braucht deshalb dieselben Gegenproben:
+  # untergeordneter Verband, Spielbetrieb AM Unterverband, zweiter Spielbetrieb
+  # an einem Verband.
+
+  test 'role_assignable_for gibt der SBK die Vereine ihres Verbunds samt Unterverbaenden' do
+    verbund = create(:state_association)
+    kind = create(:state_association, parent: verbund)
+    go = create(:game_operation, state_association_id: verbund.id)
+    fremd_sa = create(:state_association)
+    create(:game_operation, state_association_id: fremd_sa.id)
+
+    eigener = create(:club, state_association_id: verbund.id)
+    im_kind = create(:club, state_association_id: kind.id)
+    fremder = create(:club, state_association_id: fremd_sa.id)
+
+    ids = Club.role_assignable_for(create(:user, :sbk_scoped, game_operation_id: go.id)).pluck(:id)
+
+    assert_includes ids, eigener.id
+    assert_includes ids, im_kind.id, 'der Verbund vergibt Rollen auch fuer seine Unterverbaende'
+    assert_not_includes ids, fremder.id
+  end
+
+  # Der Fall aus Issue #492: Legt jemand einen Spielbetrieb an einem
+  # untergeordneten Verband an, ist er fuer dessen Vereine NICHT zustaendig --
+  # und darf fuer sie auch keine Rollen vergeben. Ohne diese Gegenprobe koennte
+  # er VM-Konten fuer alle Vereine des Verbunds anlegen.
+  test 'role_assignable_for gibt einem Spielbetrieb am Unterverband nichts' do
+    verbund = create(:state_association)
+    kind = create(:state_association, parent: verbund)
+    create(:game_operation, state_association_id: verbund.id)
+    kind_go = create(:game_operation, state_association_id: kind.id)
+    create(:club, state_association_id: kind.id)
+
+    ids = Club.role_assignable_for(create(:user, :sbk_scoped, game_operation_id: kind_go.id)).pluck(:id)
+
+    assert_empty ids
+  end
+
+  test 'role_assignable_for gibt nur dem zustaendigen von zwei Spielbetrieben die Vereine' do
+    lv = create(:state_association)
+    erster = create(:game_operation, state_association_id: lv.id)
+    zweiter = create(:game_operation, state_association_id: lv.id)
+    club = create(:club, state_association_id: lv.id)
+
+    zustaendig, nicht = [erster, zweiter].partition { |go| go.id == club.main_game_operation_id }
+
+    assert_equal [club.id],
+                 Club.role_assignable_for(create(:user, :sbk_scoped,
+                                                 game_operation_id: zustaendig.first.id)).pluck(:id)
+    assert_empty Club.role_assignable_for(create(:user, :sbk_scoped,
+                                                 game_operation_id: nicht.first.id)).pluck(:id)
+  end
+
+  # Ein Verein ohne zustaendigen Spielbetrieb gehoert in keinen regionalen Scope.
+  test 'role_assignable_for laesst Vereine ohne zustaendigen Spielbetrieb aus' do
+    lv = create(:state_association)
+    go = create(:game_operation, state_association_id: lv.id)
+    ohne = create(:club, state_association_id: nil)
+    verbund_ohne_go = create(:club, state_association_id: create(:state_association).id)
+
+    ids = Club.role_assignable_for(create(:user, :sbk_scoped, game_operation_id: go.id)).pluck(:id)
+
+    assert_not_includes ids, ohne.id
+    assert_not_includes ids, verbund_ohne_go.id
+  end
+
+  # Rollen additiv: Wer neben der SBK-Rolle auch VM ist, behaelt den eigenen
+  # Verein, selbst wenn er ausserhalb des SBK-Spielbetriebs liegt.
+  test 'role_assignable_for nimmt die eigenen VM-Vereine zusaetzlich' do
+    lv = create(:state_association)
+    go = create(:game_operation, state_association_id: lv.id)
+    eigener = create(:club, state_association_id: lv.id)
+    fremd_sa = create(:state_association)
+    create(:game_operation, state_association_id: fremd_sa.id)
+    vm_verein = create(:club, state_association_id: fremd_sa.id)
+
+    nutzer = create(:user, permissions: [
+      { 'user_group_id' => 2, 'game_operation_id' => go.id },
+      { 'user_group_id' => 4, 'club_id' => vm_verein.id }
+    ])
+
+    ids = Club.role_assignable_for(nutzer).pluck(:id)
+    assert_includes ids, eigener.id
+    assert_includes ids, vm_verein.id, 'die eigene VM-Rolle darf nicht verlorengehen'
+  end
+
+  test 'role_assignable_for gibt der Bundesebene alle Vereine' do
+    lv = create(:state_association)
+    create(:game_operation, state_association_id: lv.id)
+    create(:club, state_association_id: lv.id)
+    create(:club, state_association_id: nil)
+
+    assert_equal Club.active.count, Club.role_assignable_for(create(:user, :admin)).count
+  end
+
+  # Deaktivierte Vereine nur mit include_deactivated: Die Benutzeranlage prueft
+  # damit, weil ein Konto auch an einem deaktivierten Verein haengen kann.
+  test 'role_assignable_for nimmt deaktivierte Vereine nur auf Verlangen' do
+    lv = create(:state_association)
+    go = create(:game_operation, state_association_id: lv.id)
+    inaktiv = create(:club, state_association_id: lv.id, deactivated_at: Time.current)
+    nutzer = create(:user, :sbk_scoped, game_operation_id: go.id)
+
+    assert_not_includes Club.role_assignable_for(nutzer).pluck(:id), inaktiv.id
+    assert_includes Club.role_assignable_for(nutzer, include_deactivated: true).pluck(:id), inaktiv.id
+  end
+
   # --- home_clubs_of ist die Umkehrung von main_game_operation_id -------------
   #
   # Wer einen Verein LISTET, muss auch fuer ihn zustaendig sein. Liefen die beiden

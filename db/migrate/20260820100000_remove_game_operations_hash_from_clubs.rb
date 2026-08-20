@@ -22,9 +22,41 @@
 # Irreversibel: Der Inhalt ließe sich aus dem Landesverband zwar wieder
 # herstellen, aber nur in der Form, die diese Umstellung gerade beseitigt hat –
 # ein `down`, das die Altlast neu erzeugt, wäre schlimmer als keins.
+#
+# WAS DAS FÜR EINEN ROLLBACK BEDEUTET
+#
+# `rails db:rollback` ist ab hier tot: Diese Migration ist die jüngste, `STEP=1`
+# trifft also zuerst sie und wirft, bevor irgendetwas anderes zurückgeht. Wer
+# eine ältere Migration zurücknehmen muss, gibt `VERSION` ausdrücklich an.
+#
+# Ein Rollback des CODES auf 1.90.0 ist dagegen unkritisch: Dort gibt es den
+# Leser `Club#game_operations_hash` noch, aber ausser dem entfallenen Rake-Task
+# ruft ihn niemand auf. Ein Rollback über 1.90.0 hinaus ist unbrauchbar, weil der
+# Code davor die Spalte in SQL-Bedingungen liest; das endet in lauten 500ern,
+# nicht in stillen Fehlern.
 class RemoveGameOperationsHashFromClubs < ActiveRecord::Migration[7.2]
   def up
+    # Den ausgehenden Inhalt ins Deploy-Log schreiben, bevor er weg ist, wie in
+    # 20260817100000. Der Datenlauf ist am 20.08.2026 gelaufen und dokumentiert,
+    # aber die Werte je Verein sind danach nur noch aus einem Datenbank-Abzug zu
+    # holen. Fragt drei Wochen später ein Verband, warum er einen Verein früher
+    # gesehen hat, ist diese Zeile die Antwort.
+    belegte = select_all(<<~SQL.squish).to_a
+      SELECT id, game_operations_hash::text AS eintrag
+      FROM clubs
+      WHERE game_operations_hash IS NOT NULL
+        AND game_operations_hash::text NOT IN ('[]', 'null')
+      ORDER BY id
+    SQL
+    say "game_operations_hash vor dem Entfernen, #{belegte.size} belegte Zeile(n):"
+    belegte.each { |zeile| say "  Verein #{zeile['id']}: #{zeile['eintrag']}", true }
+
     remove_column :clubs, :game_operations_hash
+
+    # Wie in 20260817100000: Läuft in demselben `db:migrate` später eine
+    # Migration, die einen Club schreibt, hätte sie sonst die Spalte noch im
+    # Attributsatz.
+    Club.reset_column_information
   end
 
   def down

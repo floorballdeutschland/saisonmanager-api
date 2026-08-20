@@ -5,10 +5,17 @@ require 'csv'
 # Tests fuer clubs:fbh_under_flvsh und clubs:fix_state_associations
 # (lib/tasks/align_club_responsibility.rake).
 #
-# Der erste Task haengt den Floorball Bund Hamburg unter den FLV-SH, damit die
-# sechs Hamburger Vereine nach der Umstellung einen zustaendigen Spielbetrieb
-# haben. Ohne ihn koennte fuer sie niemand berechtigt werden: `permissions`
-# kennen nur `game_operation_id`, und Hamburg hat keinen Spielbetrieb.
+# `clubs:fbh_under_flvsh` haengt den Floorball Bund Hamburg unter den FLV-SH,
+# damit die sechs Hamburger Vereine nach der Umstellung einen zustaendigen
+# Spielbetrieb haben. Ohne ihn koennte fuer sie niemand berechtigt werden:
+# `permissions` kennen nur `game_operation_id`, und Hamburg hat keinen
+# Spielbetrieb.
+#
+# `clubs:fix_state_associations` korrigiert den Landesverband der Vereine, bei
+# denen das Feld eine andere Frage beantwortet hat als die Zustaendigkeit. Die
+# Entscheidung je Verein kommt aus einer CSV, nicht aus einer Regel; die Tests
+# pruefen deshalb vor allem die Riegel (Namenspruefung, Ziel ohne Spielbetrieb,
+# Abbruch statt Teil-Commit).
 #
 # Verbaende werden hier ueber ihre Kuerzel angelegt, weil der Task sie so sucht.
 class AlignClubResponsibilityTest < ActiveSupport::TestCase
@@ -107,6 +114,27 @@ class AlignClubResponsibilityTest < ActiveSupport::TestCase
     @csv
   end
 
+  # capture_io gibt nichts zurueck, wenn der Block wirft -- fuer einen Task, der
+  # bewusst mit `abort` endet, ist die Ausgabe damit verloren. Deshalb hier ohne
+  # capture_io und ohne run_fix: `$stdout` wird selbst umgelenkt, damit die
+  # Ausgabe VOR dem Abbruch erhalten bleibt.
+  def ausgabe_bei_abbruch(pfad, dry_run: false)
+    task = Rake::Task['clubs:fix_state_associations']
+    saved = ENV.to_hash.slice('CSV', 'DRY_RUN')
+    ENV['CSV'] = pfad
+    ENV['DRY_RUN'] = dry_run ? 'true' : 'false'
+    task.reenable
+
+    alt_stdout = $stdout
+    puffer = StringIO.new
+    $stdout = puffer
+    fehler = assert_raises(SystemExit) { task.invoke }
+    [puffer.string, fehler]
+  ensure
+    $stdout = alt_stdout
+    %w[CSV DRY_RUN].each { |k| ENV[k] = saved[k] }
+  end
+
   def run_fix(pfad, dry_run: false)
     task = Rake::Task['clubs:fix_state_associations']
     saved = ENV.to_hash.slice('CSV', 'DRY_RUN')
@@ -200,18 +228,39 @@ class AlignClubResponsibilityTest < ActiveSupport::TestCase
     assert_equal @fbh.id, schlecht.reload.state_association_id
   end
 
-  # Im Dry-Run soll ein Fehler weiter nur gemeldet werden: Er ist der Weg, die
-  # Liste vor dem Lauf zu pruefen, und darf nicht an der ersten schlechten Zeile
-  # abbrechen, bevor man die uebrigen gesehen hat.
-  test 'Dry-Run meldet nicht anwendbare Zeilen, ohne abzubrechen' do
+  # Der Dry-Run meldet ALLE nicht anwendbaren Zeilen, bevor er abbricht: Er ist
+  # der Weg, die Liste zu pruefen, und darf nicht an der ersten schlechten Zeile
+  # aufhoeren, bevor man die uebrigen gesehen hat.
+  #
+  # Am Ende aber mit Exit 1 und nicht 0. Sonst liest ein Lauf, in dem JEDE Zeile
+  # durchgefallen ist, wie "nichts zu tun" -- gleiche Ausgabe, gleicher
+  # Exit-Status. Ein nachgelagertes Tor dafuer gibt es seit dem Abbau von
+  # clubs:responsibility_report nicht mehr.
+  test 'Dry-Run meldet alle nicht anwendbaren Zeilen und bricht dann ab' do
     ziel_sa = create(:state_association, short_name: 'ZIEL')
     create(:game_operation, state_association_id: ziel_sa.id)
-    club = create(:club, name: 'Inzwischen anders', state_association_id: @fbh.id)
+    erster = create(:club, name: 'Inzwischen anders', state_association_id: @fbh.id)
+    zweiter = create(:club, name: 'Auch anders', state_association_id: @fbh.id)
 
-    out, = run_fix(liste([[club.id, 'Alter Name', 'ZIEL', '', 'Test']]), dry_run: true)
+    out, = ausgabe_bei_abbruch(liste([[erster.id, 'Alter Name', 'ZIEL', '', 'Test'],
+                                      [zweiter.id, 'Noch ein alter Name', 'ZIEL', '', 'Test']]),
+                               dry_run: true)
 
     assert_match(/erwartet 'Alter Name'/, out)
-    assert_match(/1 Fehler/, out)
+    assert_match(/erwartet 'Noch ein alter Name'/, out, 'auch die zweite Zeile muss gemeldet werden')
+    assert_match(/2 Fehler/, out)
+  end
+
+  # Gegenprobe: Ein sauberer Dry-Run bricht nicht ab.
+  test 'ein sauberer Dry-Run laeuft ohne Abbruch durch' do
+    ziel_sa = create(:state_association, short_name: 'ZIEL')
+    create(:game_operation, state_association_id: ziel_sa.id)
+    club = create(:club, name: 'Passt', state_association_id: @fbh.id)
+
+    out, = run_fix(liste([[club.id, 'Passt', 'ZIEL', '', 'Test']]), dry_run: true)
+
+    assert_match(/1 Verein\(e\) zu aendern, 0 schon richtig, 0 Fehler/, out)
+    assert_equal @fbh.id, club.reload.state_association_id
   end
 
   test 'bricht bei einem unbekannten Landesverbands-Kuerzel ab' do
