@@ -48,6 +48,51 @@ module StateAssociationWritable
     StateAssociation.where(id: StateAssociation.ids_under(sa_ids.map { |id| StateAssociation.root_id(id) }.compact))
   end
 
+  # Landesverbände, deren Block „Einstellungen" der aktuelle Nutzer setzen darf.
+  #
+  # Enger als #scoped_state_associations, und zwar bewusst an einer anderen
+  # Stelle des Baums: Dort wird von den eigenen Verbänden aus erst auf die
+  # *Wurzel* hochgegangen und dann der ganze Teilbaum freigegeben. Für Logo,
+  # Zuständigkeitsbereich und Freigaben ist das gewollt (der Verband, der die
+  # Vereine betreut, muss deren Stammdaten pflegen können), für die
+  # Einstellungen wäre es eine Rechteausweitung: Seit sie über
+  # StateAssociation#settings_source von der Wurzel kommen, setzt wer die Wurzel
+  # schreibt sie für *alle* Geschwister mit. Der SBK eines untergeordneten
+  # Landesverbands käme so an die Einstellungen aller anderen unter demselben
+  # Verbund -- über den Umweg Wurzel genau das, was
+  # Admin::StateAssociationsController#inherits_settings? am eigenen Datensatz
+  # verhindert.
+  #
+  # Deshalb hier ohne den Sprung auf die Wurzel: vom eigenen Verband aus nur nach
+  # unten. Der SBK eines Verbunds pflegt dessen Einstellungen (und damit die
+  # seiner Kinder), der SBK eines Kind-LV pflegt nirgends welche -- sein eigener
+  # Datensatz erbt ohnehin.
+  #
+  # `.descendant_ids` und nicht `.ids_under`: Das eine ist die Reichweite einer
+  # Aenderung an diesem Verband, das andere die Zustaendigkeit, und `ids_under`
+  # liest `subtrees`, das nur nach Wurzeln indiziert ist. Fuer einen Verband
+  # mitten im Baum kaeme dort leer heraus. Das faellt hier zufaellig richtig aus
+  # (ein Kind-LV soll nichts setzen duerfen), waere aber aus dem falschen Grund
+  # richtig -- siehe die Begruendung an StateAssociation.descendant_ids.
+  def settings_writable_state_associations
+    return StateAssociation.all if global_state_association_manager?
+
+    ph = current_user.permission_hash
+    go_ids = (ph[:sbk] || []).reject(&:zero?).uniq
+    sa_ids = GameOperation.where(id: go_ids).pluck(:state_association_id).compact
+    StateAssociation.where(id: sa_ids.flat_map { |id| StateAssociation.descendant_ids(id) }.uniq)
+  end
+
+  # Darf der aktuelle Nutzer die Einstellungen dieses Landesverbands setzen?
+  #
+  # `nil` ist das Anlegen: Dort gibt es noch keinen Datensatz, und die Aktion ist
+  # ohnehin globalen Admins vorbehalten (authorize_admin!).
+  def settings_writable?(state_association)
+    return true if state_association.nil?
+
+    settings_writable_state_associations.exists?(state_association.id)
+  end
+
   # Schreibzugriff auf @state_association: globaler Admin überall, SBK
   # ausschließlich auf den eigenen (gescopten) Landesverband. Setzt voraus,
   # dass @state_association vorher (z. B. via set_state_association) geladen ist.

@@ -547,10 +547,19 @@ class User < ApplicationRecord
   # (Spielbetrieb 0) sieht den Punkt, sobald irgendein Verband ihn nutzt.
   def manual_proceeding_active_for_sbk?(perm_hash)
     return false if perm_hash[:sbk].blank?
-    return StateAssociation.where(manual_proceeding_creation: true).exists? if perm_hash[:sbk].include?(0)
+
+    # Kein `where(manual_proceeding_creation: true)` mehr: Ein untergeordneter
+    # Landesverband erbt den Schalter vom übergeordneten Verbund, in seiner
+    # eigenen Zeile steht dann false – und umgekehrt ist ein dort stehendes true
+    # nach dem Anhängen eines Verbunds nur noch ein Überbleibsel und darf den
+    # Menüpunkt nicht mehr einblenden. Rund 15 Datensätze, das Laden kostet
+    # weniger als die Vererbung in SQL nachzubauen; die Kette selbst löst
+    # StateAssociation#settings_source über den je Request zwischengespeicherten
+    # Verbandsbaum auf, hier ist also kein eigenes Vorladen nötig.
+    return StateAssociation.all.any?(&:effective_manual_proceeding_creation) if perm_hash[:sbk].include?(0)
 
     sa_ids = GameOperation.where(id: perm_hash[:sbk]).pluck(:state_association_id).compact.uniq
-    StateAssociation.where(id: sa_ids, manual_proceeding_creation: true).exists?
+    StateAssociation.where(id: sa_ids).any?(&:effective_manual_proceeding_creation)
   end
 
   # True, wenn der/die Nutzer:in mindestens eine Mannschaft verantwortet, die in

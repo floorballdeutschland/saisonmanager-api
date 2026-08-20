@@ -149,7 +149,7 @@ class Game < ApplicationRecord
   end
 
   def report_form_workflow_enabled?
-    state_association&.report_form_email_enabled? || false
+    state_association&.effective_report_form_email_enabled || false
   end
 
   def home_team_name
@@ -926,7 +926,7 @@ class Game < ApplicationRecord
       game_operation_name: league.game_operation.name,
       game_operation_short_name: league.game_operation.short_name,
       game_operation_slug: league.game_operation.slug,
-      scan_required: state_association&.scan_required || false,
+      scan_required: state_association&.effective_scan_required || false,
       period_titles: league.period_titles,
       current_period_title:,
       arena: game_day.arena_id,

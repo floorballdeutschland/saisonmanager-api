@@ -97,8 +97,14 @@ class PlayersExpressOhneSbkTest < ActionDispatch::IntegrationTest
   # Ein untergeordneter Landesverband pflegt oft kein eigenes Postfach. Über den
   # Verbund ist er erreichbar, die Expresslizenz muss dort weiter gehen — sonst
   # fiele sie für die drei LV der SBK Ost aus.
+  #
+  # Der Schalter steht am Verbund, nicht am Kind-LV: Seit die Einstellungen bei
+  # gesetztem Verbund vollständig von dort kommen, ist das eigene
+  # express_license_enabled des Kind-LV (das `league_with` mitsetzt) wirkungslos.
+  # Geprüft wird hier der Rückfall des *Postfachs*, und der funktioniert anders –
+  # er weicht einem eigenen Eintrag.
   test 'die Adresse des Verbunds genuegt' do
-    parent = create(:state_association, sbk_email: 'dach-sbk@example.de')
+    parent = create(:state_association, sbk_email: 'dach-sbk@example.de', express_license_enabled: true)
     team = create(:team, league: league_with(sbk_email: nil, parent: parent), club: @club)
     player = player_of_club
     login_as(@vm)

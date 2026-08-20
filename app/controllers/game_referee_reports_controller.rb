@@ -79,11 +79,11 @@ class GameRefereeReportsController < ApplicationController
     # Berichtsworkflow bei roten Karten/besonderen Ereignissen. Ist er aus,
     # bleibt es beim analogen Vor-Ort-Prozess (Papierbericht) – der Upload
     # selbst löst dann nichts weiter aus.
-    return unless state_association&.report_form_email_enabled?
+    return unless state_association&.effective_report_form_email_enabled
 
     # Manueller Workflow: kein automatischer VSK-Versand, stattdessen ein
     # Verfahrensvorschlag an die SBK (idempotent bei erneutem Upload).
-    if state_association.manual_proceeding_creation?
+    if state_association.effective_manual_proceeding_creation
       _create_proceeding_proposal(state_association)
       return
     end
