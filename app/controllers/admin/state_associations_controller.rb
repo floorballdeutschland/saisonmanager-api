@@ -232,16 +232,19 @@ module Admin
       # Schlüssel und der gespeicherte Wert bleibt unverändert stehen.
       permitted << { states: [] } if current_user.permission_hash[:admin].present?
       attrs = params.require(:state_association).permit(*permitted)
-      if inherits_settings?(attrs)
-        # Hängt ein übergeordneter Verbund dran, kommt der ganze Block
-        # „Einstellungen" von dort (StateAssociation::INHERITED_SETTINGS, gelesen
-        # über die effective_*-Methoden). Die Maske sperrt die Felder, ein
-        # direkter API-Aufruf umgeht sie – deshalb werden sie hier verworfen.
-        #
-        # Verworfen und nicht auf false gezwungen: nimmt ein Admin den Verbund
-        # später wieder weg, steht der früher gepflegte eigene Stand wieder da,
-        # statt still überall aus zu sein. Gelesen wird der Rest ohnehin nicht,
-        # solange der Verbund hängt.
+      # Der Block „Einstellungen" (StateAssociation::INHERITED_SETTINGS, gelesen
+      # über die effective_*-Methoden) wird in zwei Fällen verworfen. Die Maske
+      # sperrt die Felder in beiden, ein direkter API-Aufruf umgeht sie.
+      #
+      # (a) Ein übergeordneter Verbund hängt dran: Dann kommen die Werte von
+      #     dort. Verworfen und nicht auf false gezwungen -- nimmt ein Admin den
+      #     Verbund später weg, steht der früher gepflegte eigene Stand wieder
+      #     da, statt still überall aus zu sein. Gelesen wird er ohnehin nicht,
+      #     solange der Verbund hängt.
+      # (b) Der Nutzer darf die Einstellungen dieses Verbands nicht setzen, weil
+      #     sie für dessen ganzen Teilbaum gälten. Siehe
+      #     StateAssociationWritable#settings_writable_state_associations.
+      if inherits_settings?(attrs) || !settings_writable?(@state_association)
         StateAssociation::INHERITED_SETTINGS.each { |key| attrs.delete(key) }
       else
         normalize_referee_assignment_switches!(attrs)

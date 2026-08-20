@@ -149,23 +149,22 @@ class StateAssociation < ApplicationRecord
   # Der Landesverband, an dem die Einstellungen tatsaechlich gepflegt werden:
   # der eigene, und bei einem untergeordneten LV die Wurzel der Verbundskette.
   #
-  # Iterativ mit `seen` aus demselben Grund wie in effective_states oben: ein
-  # Ringverweis aus der Zeit vor parent_must_not_create_cycle wuerde die Methode
-  # sonst in eine Endlosschleife schicken – und zwar auch beim Rendern der
-  # Maske, mit der man den Verweis zuruecknehmen wuerde.
+  # Ueber `self.class.root_id` und damit ueber denselben zwischengespeicherten
+  # Baum wie `Club#main_game_operation_id`, statt die `parent`-Kette selbst
+  # hochzulaufen. Drei Gruende: Der Baum wird einmal je Request aufgeloest (die
+  # Rechtepruefung beim Login fragt fuer jeden Verband des Nutzers), er faengt
+  # einen Verweis auf einen geloeschten Verband ab (auf `parent_id` liegt kein
+  # Fremdschluessel), und er behandelt einen Ringverweis aus der Zeit vor
+  # `parent_must_not_create_cycle` wie build_tree es tut, statt mit einer
+  # zweiten, moeglicherweise abweichenden Regel.
   #
-  # Bewusst nicht memoisiert: der Controller fragt vor dem Speichern (haengt ein
-  # Verbund dran?) und full_hash danach, und dazwischen kann sich parent_id
-  # geaendert haben. `parent` ist eine AR-Assoziation und nach dem ersten Zugriff
-  # ohnehin zwischengespeichert, die Kette ist also hoechstens eine Abfrage tief.
+  # `id.nil?` faengt den noch nicht gespeicherten Datensatz beim Anlegen ab, und
+  # ein `root == id` spart die Abfrage fuer den Regelfall ohne Verbund.
   def settings_source
-    node = self
-    seen = []
-    while node.parent && seen.exclude?(node.id)
-      seen << node.id
-      node = node.parent
-    end
-    node
+    root = id && self.class.root_id(id)
+    return self if root.nil? || root == id
+
+    self.class.find_by(id: root) || self
   end
 
   # Ein Wert aus dem Block „Einstellungen" der Verbandsmaske, inklusive
