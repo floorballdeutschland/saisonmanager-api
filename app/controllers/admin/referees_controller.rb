@@ -3,8 +3,23 @@ module Admin
     include RefereeScoping
 
     before_action :authorize_referee_access!
+
+    MAX_CSV_BYTES = 5 * 1024 * 1024
+    # application/octet-stream ist dabei, weil Browser das für eine .csv real so
+    # schicken (Drag-and-drop, Windows ohne registrierte Zuordnung). Ohne den
+    # Eintrag wird eine einwandfreie Datei mit „Unzulässiger Datei-Typ" abgewiesen,
+    # was wie ein kaputter Export aussieht. Der Inhalt wird ohnehin geparst.
+    ALLOWED_CSV_CONTENT_TYPES = %w[text/csv text/plain application/vnd.ms-excel application/csv
+                                   text/comma-separated-values application/octet-stream].freeze
     before_action :set_referee,
                   only: %i[show update destroy games club_stats partners merge create_user destroy_user feedbacks]
+
+    # Tranchengröße der Massenanlage. Bewusst klein: Der Aufruf legt höchstens so
+    # viele Konten an und meldet zurück, wie viele offen bleiben — ein zweiter
+    # Klick nimmt die nächste Tranche. Damit gehen je Aufruf höchstens 100
+    # Willkommensmails raus (nicht insgesamt: zwei Klicks sind 200), und ein
+    # Fehlgriff trifft nicht den ganzen Bestand.
+    MAX_BULK_USER_CREATIONS = 100
 
     # GET /api/v2/admin/referees
     def index
@@ -16,6 +31,9 @@ module Admin
       referees = Referee.includes(club: :state_association,
                                   referee_qualifications: :referee_qualification_type,
                                   referee_taggings: :referee_tag)
+      # Das Konto-Badge braucht die Verknüpfung je Zeile; ohne includes wäre das
+      # eine Query pro Schiedsrichter. Nur laden, wenn es auch ausgeliefert wird.
+      referees = referees.includes(:user) if can_view_contact_data?
 
       referees = scope_to_permitted_referees(referees)
 
@@ -208,48 +226,84 @@ module Admin
       return forbidden_response unless can_create_referee_login?
       return forbidden_response unless can_access_referee?(@referee)
 
-      if @referee.user.present?
-        return render json: { error: 'Diesem Schiedsrichter ist bereits ein Benutzerkonto zugeordnet.' },
-                      status: :unprocessable_entity
+      # Die fachlichen Vorbedingungen (Konto vorhanden, E-Mail fehlt) und der
+      # Aufbau des Kontos liegen im Service, damit Einzel- und Massenanlage nicht
+      # auseinanderlaufen. Das Admin-UI blockt die fehlende E-Mail zusätzlich
+      # clientseitig.
+      result = RefereeAccountCreator.new(@referee).call
+      unless result.success?
+        return render json: { error: result.error }, status: :unprocessable_entity
       end
 
-      # Ohne E-Mail wäre das Konto unbenutzbar: Das Initialpasswort verlässt den
-      # Server nur über den Link in der Willkommensmail, und auch „Passwort
-      # vergessen" braucht die Adresse. Das Admin-UI blockt bereits clientseitig.
-      if @referee.email.blank?
-        return render json: { error: 'Ohne hinterlegte E-Mail-Adresse kann kein Benutzerkonto angelegt werden. ' \
-                                     'Bitte zuerst die E-Mail-Adresse im Schiedsrichter-Profil eintragen.' },
-                      status: :unprocessable_entity
+      render json: referee_json(@referee.reload, full: true)
+                   .merge(email_sent: result.email_sent, duplicate_email: result.duplicate_email)
+    end
+
+    # POST /api/v2/admin/referees/import_emails
+    # Trägt E-Mail-Adressen aus einer CSV („Lizenznummer";„E-Mailadresse") in
+    # bestehende Schiedsrichter-Profile ein — nur dort, wo noch keine steht.
+    def import_emails
+      return forbidden_response unless can_manage_account_tools?
+
+      file = params[:file]
+      return render(json: { error: 'CSV-Datei fehlt' }, status: :unprocessable_entity) if file.blank?
+
+      # Ein Nicht-Datei-Parameter (String, Array) käme durch beide Prüfungen unten
+      # durch — String#size gibt es, content_type nicht — und stürbe erst am
+      # `read` im 500er.
+      unless file.respond_to?(:read)
+        return render(json: { error: 'Der Parameter "file" enthält keine Datei.' },
+                      status: :unprocessable_entity)
       end
 
-      duplicate_email = User.exists?(email: @referee.email)
-
-      user_name = @referee.lizenznummer.present? ? "sr-#{@referee.lizenznummer}" : "sr-g#{@referee.id}"
-
-      user = User.new(
-        user_name: user_name,
-        first_name: @referee.vorname,
-        last_name: @referee.nachname,
-        email: @referee.email.presence,
-        password: SecureRandom.hex(12),
-        permissions: [{ 'user_group_id' => 6 }],
-        referee_id: @referee.id
-      )
-
-      if user.save
-        email_sent = false
-        begin
-          if user.email.present?
-            user.send_referee_account_information
-            email_sent = true
-          end
-        rescue StandardError => e
-          Rails.logger.warn("create_user: Begrüßungs-Mail für User #{user.id} fehlgeschlagen: #{e.message}")
-        end
-        render json: referee_json(@referee.reload, full: true).merge(email_sent:, duplicate_email:)
-      else
-        render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
+      if file.respond_to?(:size) && file.size > MAX_CSV_BYTES
+        return render(json: { error: "Datei zu groß (max. #{MAX_CSV_BYTES / 1024 / 1024} MB)" },
+                      status: :unprocessable_entity)
       end
+
+      content_type = file.respond_to?(:content_type) ? file.content_type.to_s.split(';').first : nil
+      if content_type.present? && ALLOWED_CSV_CONTENT_TYPES.exclude?(content_type)
+        return render(json: { error: "Unzulässiger Datei-Typ (#{content_type}). Erwartet wird CSV." },
+                      status: :unprocessable_entity)
+      end
+
+      import = RefereeEmailImport.new(csv_content: file.read)
+      report = import.call
+      return render(json: { error: import.errors.join(' ') }, status: :unprocessable_entity) if report.nil?
+
+      render json: report
+    end
+
+    # GET /api/v2/admin/referees/missing_user_count
+    # Zählt die Schiedsrichter, für die die Massenanlage ein Konto erzeugen würde.
+    def missing_user_count
+      return forbidden_response unless can_manage_account_tools?
+
+      render json: { count: RefereeAccountCreator.candidates.count, batch_size: MAX_BULK_USER_CREATIONS }
+    end
+
+    # POST /api/v2/admin/referees/create_missing_users
+    # Legt für Schiedsrichter mit E-Mail, aber ohne Konto, Benutzerkonten an —
+    # höchstens MAX_BULK_USER_CREATIONS je Aufruf, der Rest über `remaining`.
+    def create_missing_users
+      return forbidden_response unless can_manage_account_tools?
+
+      candidates = RefereeAccountCreator.candidates
+      total = candidates.count
+      # includes(:user): Der Service prüft je Datensatz auf ein vorhandenes Konto,
+      # das wären sonst 100 Einzelqueries je Klick.
+      batch = candidates.includes(:user).order(:lizenznummer).limit(MAX_BULK_USER_CREATIONS).to_a
+
+      created = []
+      failed = []
+      batch.each { |referee| create_account_for(referee, created, failed) }
+
+      # remaining zählt die Fehlgeschlagenen mit: Sie erfüllen die Bedingungen
+      # weiter und tauchen beim nächsten Aufruf wieder auf. Bleibt ein Datensatz
+      # dauerhaft hängen (etwa weil sein Benutzername schon belegt ist), sinkt die
+      # Zahl also nicht — die Fehlerliste benennt den Grund je Datensatz.
+      render json: { requested: batch.size, created: created, failed: failed,
+                     remaining: total - created.size, batch_size: MAX_BULK_USER_CREATIONS }
     end
 
     # DELETE /api/v2/admin/referees/:id/destroy_user
@@ -286,6 +340,33 @@ module Admin
     end
 
     private
+
+    # Ein Datensatz je Aufruf, Fehler eingefangen: Ohne dieses rescue nimmt eine
+    # Ausnahme bei Datensatz 41 (etwa RecordNotUnique, wenn parallel jemand dasselbe
+    # Konto anlegt) den gesamten Report mit. Die 40 Konten davor sind dann angelegt
+    # und ihre Mails unterwegs, der Admin sieht aber nur „Die Konten konnten nicht
+    # angelegt werden" und hat keine Liste, wer schon ein Konto hat.
+    def create_account_for(referee, created, failed)
+      identity = { id: referee.id, lizenznummer: referee.lizenznummer,
+                   name: "#{referee.vorname} #{referee.nachname}" }
+      result = RefereeAccountCreator.new(referee, deliver_later: true).call
+
+      if result.success?
+        # email_sent mitgeben wie bei der Einzelanlage: Ein Konto, dessen
+        # Willkommensmail nicht rausging, ist ohne diese Angabe nicht mehr
+        # auffindbar — der Schiedsrichter kennt sein Initialpasswort nicht, und der
+        # Datensatz fällt aus der Kandidatenliste heraus.
+        created << identity.merge(email: referee.email, user_name: result.user.user_name,
+                                  duplicate_email: result.duplicate_email,
+                                  email_sent: result.email_sent)
+      else
+        failed << identity.merge(error: result.error)
+      end
+    rescue StandardError => e
+      Rails.logger.error("create_missing_users: Referee #{referee.id} fehlgeschlagen: #{e.class}: #{e.message}")
+      Sentry.capture_exception(e) if defined?(Sentry)
+      failed << identity.merge(error: "#{e.class}: #{e.message}")
+    end
 
     # Standard ist „alles außer Karriere beendet". Seit dem Nachimport der
     # Beendeten (rund 4.250 Datensätze) wäre die Liste sonst zur Hälfte Historie.
@@ -461,6 +542,14 @@ module Admin
       ph[:admin].present? || ph[:rsk].present?
     end
 
+    # E-Mail-Import und Massenanlage von Konten greifen in einem Zug über alle
+    # Verbände hinweg — auch über die, für die der aufrufende Nutzer nicht
+    # zuständig ist. Deshalb Admin-only, anders als die Einzelanlage
+    # (can_create_referee_login?, dort schützt can_access_referee? den Zugriff).
+    def can_manage_account_tools?
+      current_user.permission_hash[:admin].present?
+    end
+
     # Schiri-Feedback ist nur für Admin sowie die FD-Rollen (global gescopt, d. h.
     # rsk/ansetzer enthalten 0) sichtbar – nicht für LV-RSK, SBK oder VM.
     def can_view_feedback?
@@ -563,6 +652,12 @@ module Admin
       }
 
       data[:season_game_count] = season_game_count unless season_game_count.nil?
+      # Konto-Badge der Liste. Gleiche Grenze wie die Kontaktdaten: Wer die
+      # Adressen der Schiris verwaltet, soll sehen, wer sich damit anmelden kann.
+      # Bewusst nur hier und nicht auch unter `full`: Die Detailansicht liefert mit
+      # user_id/user_name schon mehr, und `full` ist nicht an die Kontaktdaten
+      # gebunden — ein Vereinsmanager erreicht sie für die Schiris seines Vereins.
+      data[:has_user] = referee.user.present? if contact
       # Die Detailansicht liefert die E-Mail wie bisher immer mit; in der Liste
       # nur für Rollen mit Zugriff auf Kontaktdaten (siehe can_view_contact_data?).
       data[:email] = referee.email if contact || full
