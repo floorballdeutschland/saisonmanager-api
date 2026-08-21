@@ -2,15 +2,20 @@
 #
 # HINTERGRUND
 #
-# Transfer/Freigabe verglich Namen bisher nur mit LOWER(), ohne TRIM(). Ein
-# Profil mit einem Leerzeichen am Namensende (z.B. "Daniel ") fand darüber
-# nie einen exakten Treffer, obwohl der abgebende oder aufnehmende Verein den
-# richtigen Namen eingegeben hat. Player#strip_names verhindert das jetzt bei
-# jedem Speichern; dieser Task räumt den Bestand einmalig auf.
+# Transfer/Freigabe verglich Namen bisher nur mit LOWER(), ohne den Rand zu
+# ignorieren. Ein Profil mit einem Leerzeichen am Namensende (z.B. "Daniel ")
+# fand darüber nie einen exakten Treffer, obwohl der abgebende oder aufnehmende
+# Verein den richtigen Namen eingegeben hat. Player#strip_names verhindert das
+# jetzt bei jedem Speichern; dieser Task räumt den Bestand einmalig auf.
 #
-# Kein Vorher-Nachher-Konflikt möglich: Zwei Profile mit identischem Vor-,
-# Nachnamen und Geburtsdatum wären schon vor dem Trimmen ein exakter Treffer
-# gewesen, das Trimmen ändert an dieser Auflösung nichts.
+# Was der Task an der Auflösung ändert: Zwei Profile, die sich nur im Rand
+# unterschieden ("Daniel" und "Daniel "), waren vorher zwei verschiedene Namen
+# und sind hinterher derselbe. Die Suche (Player.with_exact_name) ignoriert den
+# Rand schon vor dem Trimmen, gibt bei mehreren Treffern das älteste Profil
+# zurück und ändert diese Antwort durch den Lauf also nicht. Auf der Datenbank
+# liegt aber kein Unique-Index über Name und Geburtsdatum: Aus zwei vorher
+# unterscheidbaren Datensätzen können zwei identische werden. Die eigentliche
+# Auflösung ist die Dublettenzusammenführung, nicht dieser Task.
 #
 # AUFRUF
 #
@@ -18,20 +23,32 @@
 #   rake players:trim_names               # Vorschau (Dry-Run, Default)
 #   DRY_RUN=false rake players:trim_names  # ausführen
 #
-# Ein Lauf ist idempotent: Beim zweiten Mal findet er nichts mehr.
+# Ein Lauf ist idempotent: Beim zweiten Mal findet er nichts mehr. Andere
+# Schreibwege bleiben davon unberührt -- `save!(validate: false)`, `update_column`
+# und die rohen INSERTs der Altdaten-Importe laufen an Player#strip_names vorbei
+# und können neuen Rand anlegen.
 
 namespace :players do
   def players_trim_dry_run?
     ENV['DRY_RUN'] != 'false'
   end
 
-  def players_untrimmed_scope
-    Player.where('first_name <> TRIM(first_name) OR last_name <> TRIM(last_name)')
+  # Nur die Spalten, die wirklich Rand tragen. `to_s.strip` über beide Namen
+  # schriebe aus einem NULL-Vornamen ein '' -- eine stille Änderung an einem
+  # Datensatz, den der Task nur mitgelesen hat, weil der Nachname gepolstert war.
+  def players_name_trim_changes(player)
+    %i[first_name last_name].each_with_object({}) do |feld, changes|
+      wert = player[feld]
+      next unless wert.is_a?(String)
+
+      getrimmt = wert.strip
+      changes[feld] = getrimmt unless getrimmt == wert
+    end
   end
 
   desc 'Zeigt Spielerprofile mit Leerzeichen am Rand von Vor- oder Nachname'
   task report_untrimmed_names: :environment do
-    scope = players_untrimmed_scope
+    scope = Player.with_padded_name
     puts "== Profile mit Leerzeichen am Namensrand: #{scope.count} =="
     scope.find_each do |player|
       puts "  #{player.id}\t#{player.first_name.inspect} #{player.last_name.inspect}"
@@ -45,14 +62,15 @@ namespace :players do
 
     fixed = 0
 
-    players_untrimmed_scope.find_each do |player|
-      vorher = [player.first_name, player.last_name]
-      nachher = [player.first_name.to_s.strip, player.last_name.to_s.strip]
+    Player.with_padded_name.find_each do |player|
+      changes = players_name_trim_changes(player)
+      next if changes.empty?
 
-      puts "  #{player.id}\t#{vorher.inspect} → #{nachher.inspect}"
+      vorher = changes.keys.map { |feld| player[feld] }
+      puts "  #{player.id}\t#{changes.keys.join(', ')}: #{vorher.inspect} → #{changes.values.inspect}"
       # update_columns statt save: der Bestand kann anderswo bereits ungueltig
       # sein (fehlende nation_id o.ae.), das darf das Trimmen nicht blockieren.
-      player.update_columns(first_name: nachher[0], last_name: nachher[1]) unless dry
+      player.update_columns(changes) unless dry
       fixed += 1
     end
 

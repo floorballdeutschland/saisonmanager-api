@@ -11,7 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Behoben
 
-- **Ein Leerzeichen am Namensende verhinderte den exakten Treffer bei Transfer und Freigabe**: Trug ein Spielerprofil im Bestand ein zusätzliches Leerzeichen am Anfang oder Ende von Vor- oder Nachname, fand die Suche nach „exaktem Treffer" in einer Transferanfrage oder Freigabe das Profil nicht, obwohl Vorname, Nachname und Geburtsdatum stimmten — der Verein sah nur „Kein exakter Match". Neue und geänderte Profile bekommen jetzt beim Speichern automatisch getrimmte Namen, und der Abgleich bei Transfer/Freigabe ignoriert zusätzlich vorhandene Leerzeichen im Bestand. Ein einmaliger Wartungslauf (`rake players:trim_names`) räumt betroffene Bestandsprofile auf.
+- **Ein Leerzeichen am Namensende verhinderte den exakten Treffer bei Transfer und Freigabe**: Trug ein Spielerprofil im Bestand ein zusätzliches Leerzeichen am Anfang oder Ende von Vor- oder Nachname, fand die Suche nach „exaktem Treffer" in einer Transferanfrage oder Freigabe das Profil nicht, obwohl Vorname, Nachname und Geburtsdatum stimmten — der Verein sah nur „Kein exakter Match". Neue und geänderte Profile bekommen jetzt beim Speichern automatisch getrimmte Namen, und der Abgleich bei Transfer/Freigabe ignoriert vorhandene Leerzeichen im Bestand. Das gilt nicht nur für das Leerzeichen selbst, sondern auch für Tabulatoren und Zeilenumbrüche, wie sie beim Übernehmen aus Excel entstehen. Ein einmaliger Wartungslauf (`rake players:trim_names`) räumt betroffene Bestandsprofile auf; ein fehlender Vorname bleibt dabei fehlend und wird nicht zu einem leeren Feld.
 
 ### Neu
 

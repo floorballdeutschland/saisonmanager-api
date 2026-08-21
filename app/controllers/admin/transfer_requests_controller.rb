@@ -49,13 +49,16 @@ module Admin
       # Deaktivierte Profile gehoeren in dieses Ergebnis: Die Kennzeichnung gilt fuer
       # die Liste des abgebenden Vereins, nicht fuer die Aufnahme in einen neuen
       # (siehe `Player#deactivate!`). Zusammengefuehrte Dubletten bleiben draussen.
-      # TRIM zusaetzlich zu LOWER: Bestandsprofile mit einem Leerzeichen am
-      # Namensende (api#496) faenden sonst nie einen exakten Treffer, obwohl
-      # das Formular den eigenen Suchbegriff bereits trimmt (Zeilen 35-36).
-      player = Player.where(merged_into_id: nil).where(
-        'LOWER(TRIM(first_name)) = ? AND LOWER(TRIM(last_name)) = ? AND birthdate = ?',
-        first_name.downcase, last_name.downcase, birthdate
-      ).first
+      # `with_exact_name` ignoriert Randleerzeichen auf beiden Seiten des
+      # Vergleichs: Bestandsprofile mit einem Leerzeichen am Namensende
+      # (api#496) faenden sonst nie einen exakten Treffer, obwohl das Formular
+      # den eigenen Suchbegriff bereits trimmt (Zeilen 35-36).
+      #
+      # `.first` bleibt: Bei mehreren Treffern gewinnt die niedrigste ID, also
+      # das aelteste Profil. Das ist die gewollte Auflösung -- die Dubletten aus
+      # api#496 sind die spaeter angelegten.
+      player = Player.where(merged_into_id: nil)
+                     .with_exact_name(first_name, last_name, birthdate).first
 
       return render json: { player: nil } unless player
 
