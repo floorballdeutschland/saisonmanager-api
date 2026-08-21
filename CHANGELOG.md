@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.94.0] - 2026-08-21
+
 ### Neu
 
 - **Spielbetriebe lassen sich über die Oberfläche anlegen und pflegen**: Unter „Verwaltung" → „Spielbetriebe" verwaltet die Bundesebene die Spielbetriebe selbst, also Name, Kürzel, den Pfad der öffentlichen Verbandsseite, den zugeordneten Landesverband, das Banner und die Angabe, ob es der bundesweite Spielbetrieb ist. Bisher ging das ausschließlich über die Rails-Konsole, in der Oberfläche gab es Spielbetriebe nur als Auswahl. Der Pfad wird geprüft: Er muss aus Kleinbuchstaben, Ziffern und einzelnen Bindestrichen bestehen, darf nicht doppelt vorkommen und keines der Segmente belegen, die der Saisonmanager selbst verwendet, weil die Verbandsseite dann nicht erreichbar wäre. Wird kein Pfad angegeben, entsteht er aus dem Kürzel. Ein Landesverband kann höchstens einen Spielbetrieb haben; ein zweiter wird abgelehnt, statt angelegt und wirkungslos zu bleiben. Gelöscht werden kann nur, woran nichts mehr hängt: Der Saisonmanager nennt die Zahl der Ligen, der zuständigen Vereine, der Benutzerrollen, der Schiedsrichter, der Dokumentarten, der Schiedsrichter-Merkmale und der empfangenen Vereinsfreigaben, die den Spielbetrieb noch führen. Ein archiviertes Benutzerkonto hält das Löschen nicht auf, denn es kann sich nicht anmelden und wäre in der Benutzerverwaltung auch nicht zu finden. Der Landesverband lässt sich nicht wechseln, solange Vereine an diesem Spielbetrieb hängen, und ein Landesverband, den es nicht gibt, wird abgelehnt. Ausschließlich für bundesweite Administratoren, denn über den Landesverband am Spielbetrieb entscheidet sich, wer die Vereine eines ganzen Verbandsbaums verwaltet.
