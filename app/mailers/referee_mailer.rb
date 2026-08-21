@@ -1,14 +1,48 @@
 class RefereeMailer < ApplicationMailer
   REPLY_TO = 'sr-ansetzungen@floorball.de'
 
-  def license_notification(referee)
+  # `first_license`: Der Schiedsrichter trug vorher keine Lizenzstufe – meist eine
+  # Neuanlage aus dem Kursimport. Die Vorlage meldet dann eine erteilte statt
+  # einer aktualisierten Lizenz und behauptet nicht, die Lizenz sei „ab sofort
+  # auch" über den QR-Code auf dem Schiedsrichterausweis prüfbar: Wer seine erste
+  # Lizenz bekommt, hat noch keinen Ausweis in der Hand.
+  def license_notification(referee, first_license: false)
     @referee = referee
+    @first_license = first_license
 
     templated_mail(
       to: referee.email,
-      subject: "Schiedsrichterlizenz aktualisiert – #{referee.vorname} #{referee.nachname}",
+      subject: "Schiedsrichterlizenz #{first_license ? 'erteilt' : 'aktualisiert'} – " \
+               "#{referee.vorname} #{referee.nachname}",
       default_reply_to: 'rsk@floorball.de',
-      placeholders: { referee_name: "#{referee.vorname} #{referee.nachname}" }
+      placeholders: {
+        referee_name: "#{referee.vorname} #{referee.nachname}",
+        first_name: referee.vorname
+      }
+    )
+  end
+
+  # `changes` kommt aus RefereeQualificationDiff: die ergänzten und geänderten
+  # Zusatzqualifikationen dieses Speichervorgangs, nicht der komplette Bestand.
+  #
+  # Der Platzhalter qualification_names steht auch im Betreff zur Verfügung und
+  # ist zugleich der Rettungsanker für einen in der Admin-UI gepflegten Body:
+  # Ein gepflegter Body ersetzt das ERB-View komplett, die Liste unten fällt dann
+  # weg — über den Platzhalter bleiben die Namen erreichbar.
+  def qualification_notification(referee, changes)
+    @referee = referee
+    @changes = changes
+
+    templated_mail(
+      to: referee.email,
+      subject: "Zusatzqualifikation aktualisiert – #{referee.vorname} #{referee.nachname}",
+      default_reply_to: 'rsk@floorball.de',
+      placeholders: {
+        referee_name: "#{referee.vorname} #{referee.nachname}",
+        first_name: referee.vorname,
+        qualification_names: changes.map { |change| change[:name] }.join(', '),
+        qualification_list: changes.map { |change| qualification_line(change) }.join(', ')
+      }
     )
   end
 
@@ -26,7 +60,7 @@ class RefereeMailer < ApplicationMailer
       to: referee.email,
       subject: "Vorläufige Ansetzung – #{@date_label}",
       default_reply_to: REPLY_TO,
-      placeholders: { date: @date_label }
+      placeholders: { date: @date_label, first_name: referee.vorname }
     )
   end
 
@@ -45,6 +79,7 @@ class RefereeMailer < ApplicationMailer
       subject: "Ansetzung – #{game.game_day.date} #{game.home_team&.name} vs. #{game.guest_team&.name}",
       default_reply_to: REPLY_TO,
       placeholders: {
+        first_name: referee.vorname,
         game_date: game.game_day.date,
         game_time: game.start_time.to_s,
         home_team: game.home_team&.name,
@@ -71,6 +106,7 @@ class RefereeMailer < ApplicationMailer
       subject: "Schiedsrichtercoach-Ansetzung – #{game.game_day.date} #{game.home_team&.name} vs. #{game.guest_team&.name}",
       default_reply_to: REPLY_TO,
       placeholders: {
+        first_name: coach.vorname,
         game_date: game.game_day.date,
         game_time: game.start_time.to_s,
         home_team: game.home_team&.name,
@@ -96,6 +132,7 @@ class RefereeMailer < ApplicationMailer
       subject: "Ansetzung geändert – #{game.game_day.date} #{game.home_team&.name} vs. #{game.guest_team&.name}",
       default_reply_to: REPLY_TO,
       placeholders: {
+        first_name: referee.vorname,
         game_date: game.game_day.date,
         game_time: game.start_time.to_s,
         home_team: game.home_team&.name,
@@ -119,6 +156,7 @@ class RefereeMailer < ApplicationMailer
       subject: "Spielnummer #{game.game_number} | 24h Zeit für Berichtsformular",
       default_reply_to: sbk_reply_to(game),
       placeholders: {
+        first_name: "#{referee1.vorname} und #{referee2.vorname}",
         game_number: game.game_number,
         upload_url: @upload_url,
         deadline: deadline.strftime('%d.%m.%Y %H:%M')
@@ -186,6 +224,7 @@ class RefereeMailer < ApplicationMailer
       default_reply_to: rsk_reply_to(@referee),
       placeholders: {
         referee_name: "#{@referee.vorname} #{@referee.nachname}",
+        first_name: @referee.vorname,
         club_name: @club&.name.to_s,
         decision: @approved ? 'genehmigt' : 'abgelehnt'
       }
@@ -201,6 +240,14 @@ class RefereeMailer < ApplicationMailer
   # bestimmt.
   def visible_referee_notes(game, referee)
     game.referee_notes.presence if game.referee_notes_visible_to?(referee)
+  end
+
+  # „B-Coach (gültig bis 30.06.2027)" – damit ein in der Admin-UI gepflegter Body
+  # nicht nur die Namen, sondern auch die Ablaufdaten wiedergeben kann.
+  def qualification_line(change)
+    return change[:name] if change[:valid_until].blank?
+
+    "#{change[:name]} (gültig bis #{change[:valid_until].strftime('%d.%m.%Y')})"
   end
 
   # Ansetzungs-Postfach des Landesverbands, in dem der Schiri über seinen Verein

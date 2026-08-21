@@ -786,6 +786,86 @@ class LeaguesController < ApplicationController
     render json: { imported: imported, skipped: skipped, failed: failed }
   end
 
+  # Bestehende Mannschaften einem Pokal-/Endrundenwettbewerb hinzufügen, ohne sie
+  # zu kopieren: Die Liga wird in `teams.cup_leagues` eingetragen, die Hauptliga
+  # der Mannschaft bleibt unberührt. Damit spielt dieselbe Mannschaft mit
+  # demselben Kader und denselben Lizenzen in beiden Wettbewerben – eine Lizenz
+  # hängt an der Mannschaft, nicht an der Liga.
+  #
+  # Abgrenzung zu admin_import_teams: Der Import legt neue Mannschaften nach
+  # Tabellenplatz an (getrennter Kader). Hier melden sich Mannschaften einzeln
+  # zum Pokal an, und ihr bestehender Kader soll gelten.
+  #
+  # Geprüft wird die ZIELliga, genau wie beim Import: Wer den Wettbewerb
+  # verwalten darf, darf Mannschaften aufnehmen. Die Quell-Liga darf in einem
+  # fremden Spielbetrieb liegen – das ist der Zweck der Funktion.
+  def admin_add_existing_teams
+    league = find_league_or_not_found or return
+    return unless authorize_cup_entry!(league)
+
+    team_ids = Array(params[:team_ids]).map(&:to_i).uniq.reject(&:zero?)
+    return render json: { message: 'Keine Mannschaften angegeben' }, status: :unprocessable_entity if team_ids.empty?
+
+    teams = authorized_cup_teams(team_ids) or return
+
+    added = 0
+    skipped = 0
+    failed = 0
+
+    teams.each do |team|
+      # Hauptliga ist schon dieser Wettbewerb, oder der Eintrag steht bereits:
+      # nichts zu tun. Ohne diese Prüfung stünde die Liga doppelt im Array.
+      if team.league_id == league.id || team.cup_leagues.to_a.include?(league.id)
+        skipped += 1
+        next
+      end
+
+      if team.update(cup_leagues: team.cup_leagues.to_a + [league.id])
+        added += 1
+      else
+        # Kommt vor: `teams.club_id`/`league_id` sind nullabel, die
+        # belongs_to-Pflicht greift trotzdem, und verwaiste Mannschaften gibt es
+        # in den Altdaten. Ohne die Zeile im Log bliebe nur ein `failed: 1` ohne
+        # jeden Grund.
+        failed += 1
+        Rails.logger.error(
+          "admin_add_existing_teams: Mannschaft #{team.id} nicht aufgenommen: #{team.errors.full_messages.join(', ')}"
+        )
+      end
+    end
+
+    render json: { added: added, skipped: skipped, failed: failed }
+  end
+
+  # Eine über cup_leagues aufgenommene Mannschaft wieder aus dem Wettbewerb
+  # nehmen. Bewusst kein Löschen der Mannschaft: Ihre Hauptliga, ihr Kader und
+  # ihre Lizenzen gehören einem anderen Wettbewerb und dürfen von hier aus nicht
+  # verschwinden. Mannschaften, deren Hauptliga diese Liga ist, lehnt der
+  # Endpoint deshalb ab – die gehören in die Mannschaftsverwaltung.
+  def admin_remove_existing_team
+    league = find_league_or_not_found or return
+    return unless authorize_cup_entry!(league)
+
+    teams = authorized_cup_teams([params[:team_id].to_i]) or return
+    team = teams.first
+
+    if team.league_id == league.id
+      return render json: { message: 'Mannschaft gehört mit ihrer Hauptliga zu diesem Wettbewerb' },
+                    status: :unprocessable_entity
+    end
+
+    unless team.cup_leagues.to_a.include?(league.id)
+      return render json: { message: 'Mannschaft ist diesem Wettbewerb nicht zugeordnet' },
+                    status: :unprocessable_entity
+    end
+
+    if team.update(cup_leagues: team.cup_leagues.to_a - [league.id])
+      render json: { removed: true }
+    else
+      render json: team.errors, status: :unprocessable_entity
+    end
+  end
+
   # Liga-Logo, das Erkennungszeichen des Wettbewerbs. Getrennt vom Banner
   # nebenan, weil das eine Werbefläche mit Ziellink ist.
   #
@@ -906,8 +986,62 @@ class LeaguesController < ApplicationController
     ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
   end
 
+  # Aufnahme in einen Wettbewerb bzw. Entfernen daraus: Rechte auf der ZIELliga,
+  # plus der Grundcheck auf eine Admin-/SBK-Rolle wie bei admin_import_teams.
+  # Rendert die Antwort selbst und gibt false zurück, damit der Aufrufer
+  # abbrechen kann.
+  #
+  # Die Zielliga allein genügt nicht: Der Eintrag ändert den Datensatz der
+  # Mannschaft, und der gehört einem anderen Verband. Ohne die zweite Hürde in
+  # authorized_cup_teams könnte eine LV-SBK eine fremde Mannschaft in ihre eigene
+  # Liga ziehen und damit deren Kader, Lizenzen und Kontaktdaten lesen sowie über
+  # Team#season_leagues die Zustimmungspflicht und die Kostenträgerschaft für
+  # Expresslizenzen an sich ziehen.
+  def authorize_cup_entry!(league)
+    unless league.user_permissions(current_user).include?(:update_league)
+      render json: { message: 'Keine Berechtigung' }, status: :forbidden
+      return false
+    end
+
+    ph = current_user.permission_hash
+    unless ph[:admin].present? || ph[:sbk].present?
+      render json: { message: 'Keine Berechtigung' }, status: :forbidden
+      return false
+    end
+
+    true
+  end
+  private :authorize_cup_entry!
+
+  # Die Mannschaften zu den eingereichten IDs – aber nur, wenn der Aufrufer jede
+  # einzelne auch bearbeiten darf (:update_team, also Admin/SBK ihres eigenen
+  # Spielbetriebs oder bundesweit). Sonst 403 mit den beanstandeten IDs, statt
+  # den Rest still durchzulassen: Ein bundesweiter Wettbewerb bekommt seine
+  # Mannschaften bewusst, eine Teilmenge wäre hier ein halb ausgeführter Auftrag.
+  #
+  # Gibt nil zurück, wenn die Antwort schon gerendert wurde.
+  def authorized_cup_teams(team_ids)
+    teams = Team.where(id: team_ids).to_a
+    missing = team_ids - teams.map(&:id)
+    if missing.any?
+      render json: { message: "Mannschaft nicht gefunden: #{missing.join(', ')}" }, status: :not_found
+      return nil
+    end
+
+    forbidden = teams.reject { |t| t.user_permissions(current_user).include?(:update_team) }
+    if forbidden.any?
+      render json: { message: "Keine Berechtigung für Mannschaft: #{forbidden.map(&:id).join(', ')}" },
+             status: :forbidden
+      return nil
+    end
+
+    teams
+  end
+  private :authorized_cup_teams
+
   # Admin/SBK des Spielbetriebs der Liga (0 = global) – Scope für die reinen
   # Verwaltungs-Reads (Team-Index, Spielplan-Verwaltung).
+
   def admin_or_sbk_for_league?(league)
     ph = current_user.permission_hash
     go_id = league.game_operation_id.to_i

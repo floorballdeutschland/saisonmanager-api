@@ -49,10 +49,16 @@ module Admin
       # Deaktivierte Profile gehoeren in dieses Ergebnis: Die Kennzeichnung gilt fuer
       # die Liste des abgebenden Vereins, nicht fuer die Aufnahme in einen neuen
       # (siehe `Player#deactivate!`). Zusammengefuehrte Dubletten bleiben draussen.
-      player = Player.where(merged_into_id: nil).where(
-        'LOWER(first_name) = ? AND LOWER(last_name) = ? AND birthdate = ?',
-        first_name.downcase, last_name.downcase, birthdate
-      ).first
+      # `with_exact_name` ignoriert Randleerzeichen auf beiden Seiten des
+      # Vergleichs: Bestandsprofile mit einem Leerzeichen am Namensende
+      # (api#496) faenden sonst nie einen exakten Treffer, obwohl das Formular
+      # den eigenen Suchbegriff bereits trimmt (Zeilen 35-36).
+      #
+      # `.first` bleibt: Bei mehreren Treffern gewinnt die niedrigste ID, also
+      # das aelteste Profil. Das ist die gewollte Auflösung -- die Dubletten aus
+      # api#496 sind die spaeter angelegten.
+      player = Player.where(merged_into_id: nil)
+                     .with_exact_name(first_name, last_name, birthdate).first
 
       return render json: { player: nil } unless player
 
@@ -437,6 +443,14 @@ module Admin
 
       requesting_club = Club.find_by(id: params[:requesting_club_id].to_i)
       return render json: { error: 'Verein nicht gefunden' }, status: :not_found unless requesting_club
+
+      # Der abgebende Verein darf deaktiviert sein (ein aufgelöster Verein gibt
+      # seine Spieler ja gerade ab), der aufnehmende nicht: Er soll keine neuen
+      # Mitglieder mehr bekommen. Die Auswahlmaske bietet ihn nicht an, ein
+      # direkter Aufruf käme sonst aber durch.
+      if requesting_club.deactivated_at.present?
+        return render json: { error: 'Der aufnehmende Verein ist deaktiviert' }, status: :unprocessable_entity
+      end
 
       # Player#home_club_entry ist die eine Quelle: Diese Stelle las frueher den ERSTEN
       # offenen Heimat-Eintrag, waehrend Player#home_club den LETZTEN nimmt. Bei zwei

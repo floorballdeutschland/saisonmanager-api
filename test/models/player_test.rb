@@ -7,6 +7,39 @@ require 'test_helper'
 # Vorsaison-Lizenzen dadurch durch den Filter rutschten.
 class PlayerTest < ActiveSupport::TestCase
   # ---------------------------------------------------------------------------
+  # Player#strip_names (api#496)
+  # ---------------------------------------------------------------------------
+
+  test 'strip_names entfernt Leerzeichen am Rand von Vor- und Nachname beim Speichern' do
+    player = create(:player, first_name: ' Daniel ', last_name: 'Düsentrieb ')
+
+    assert_equal 'Daniel', player.first_name
+    assert_equal 'Düsentrieb', player.last_name
+  end
+
+  test 'strip_names macht aus einem Namen aus reinen Leerzeichen ein leeres Feld' do
+    player = create(:player, first_name: '   ', last_name: 'Düsentrieb')
+
+    assert_equal '', player.first_name
+  end
+
+  test 'with_exact_name findet ein tabulatorgepolstertes Bestandsprofil' do
+    player = create(:player, first_name: 'Daniel', last_name: 'Düsentrieb', birthdate: '1990-01-01')
+    player.update_columns(last_name: "Düsentrieb\t")
+
+    treffer = Player.with_exact_name('Daniel', 'Düsentrieb', Date.new(1990, 1, 1))
+
+    assert_equal [player.id], treffer.pluck(:id)
+  end
+
+  test 'strip_names uebersteht ein erneutes Speichern ohne Namensaenderung' do
+    player = create(:player, first_name: 'Daniel', last_name: 'Düsentrieb')
+
+    assert_nothing_raised { player.update!(email: 'daniel@example.com') }
+    assert_equal 'Daniel', player.first_name
+  end
+
+  # ---------------------------------------------------------------------------
   # Player#full_hash(with_licenses=true, only_current_licenses=true)
   # ---------------------------------------------------------------------------
 

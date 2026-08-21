@@ -5,7 +5,7 @@
 
 <p>
   ein <%= release ? 'Spielerfreigabe-Antrag' : 'Transferantrag' %> wartet auf die Genehmigung des Landesverbands
-  <strong><%= @transfer_request.former_club.state_association&.name %></strong>.
+  <strong><%= @transfer_request.former_club.responsible_state_association&.name %></strong>.
 </p>
 
 <p>

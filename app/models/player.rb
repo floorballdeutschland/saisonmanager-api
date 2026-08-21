@@ -11,6 +11,45 @@ class Player < ApplicationRecord
   validate :nation_id_is_positive, if: -> { nation_id.present? }
   validates :email, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
 
+  # Führende und nachgestellte Leerzeichen verhindern das exakte Matching bei
+  # Transfer/Freigabe (api#496) — am Bildschirm ist ein Leerzeichen am Namensende
+  # unsichtbar, der Vergleich schlägt aber fehl. Neu angelegte und geänderte
+  # Profile sind damit sauber; den Bestand zieht `trim_player_names.rake`
+  # einmalig nach.
+  before_validation :strip_names
+
+  # Randleerzeichen in Namen (api#496). Die beiden Bereiche gehören zusammen:
+  # `with_exact_name` muss genau den Rand ignorieren, den #strip_names beim
+  # Speichern entfernt, sonst findet die Suche einen Teil des Altbestands
+  # weiterhin nicht.
+  #
+  # Postgres `TRIM(x)` ist `btrim(x, ' ')` und kennt ausschließlich das
+  # Leerzeichen, `String#strip` räumt zusätzlich Tabulator, Zeilenumbruch,
+  # Wagenrücklauf, Zeilen- und Seitenvorschub weg. Ein Name mit Tabulator am
+  # Ende (CSV-/Excel-Import) wäre mit `TRIM` weder auffindbar noch würde
+  # `players:report_untrimmed_names` ihn melden — der Bericht meldete 0, und der
+  # Fehler bliebe. Deshalb `BTRIM` mit derselben Zeichenmenge auf beiden Seiten.
+  #
+  # Nicht abgedeckt bleibt das geschützte Leerzeichen (U+00A0) aus Word/Excel:
+  # `String#strip` entfernt es ebenfalls nicht, es hier wegzuräumen brächte die
+  # beiden Seiten wieder auseinander.
+  SQL_NAME_PADDING = "E' \\t\\n\\x0B\\f\\r'".freeze
+
+  # Exakter Treffer auf Vorname, Nachname und Geburtsdatum; Groß-/Kleinschreibung
+  # und Randleerzeichen auf beiden Seiten des Vergleichs ignoriert.
+  scope :with_exact_name, lambda { |first_name, last_name, birthdate|
+    where("LOWER(BTRIM(first_name, #{SQL_NAME_PADDING})) = ? AND " \
+          "LOWER(BTRIM(last_name, #{SQL_NAME_PADDING})) = ? AND birthdate = ?",
+          first_name.to_s.strip.downcase, last_name.to_s.strip.downcase, birthdate)
+  }
+
+  # Profile, deren Name am Rand Leerzeichen trägt. Grundlage von
+  # `players:report_untrimmed_names` und `players:trim_names`.
+  scope :with_padded_name, lambda {
+    where("first_name <> BTRIM(first_name, #{SQL_NAME_PADDING}) OR " \
+          "last_name <> BTRIM(last_name, #{SQL_NAME_PADDING})")
+  }
+
   # wo kommt das her?
   # attr_accessor :hash, :prefix
 
@@ -1116,6 +1155,15 @@ class Player < ApplicationRecord
   end
 
   private
+
+  # `is_a?(String)` und nicht `present?`: Ein Name aus ausschließlich
+  # Leerzeichen ist nicht `present?` und bliebe damit genau in dem Zustand
+  # stehen, der am dringendsten normalisiert werden muss — unsichtbar gefüllt,
+  # über keinen Namen findbar.
+  def strip_names
+    self.first_name = first_name.strip if first_name.is_a?(String)
+    self.last_name = last_name.strip if last_name.is_a?(String)
+  end
 
   def nation_id_is_positive
     errors.add(:nation_id, 'muss größer als 0 sein') unless nation_id.to_i > 0

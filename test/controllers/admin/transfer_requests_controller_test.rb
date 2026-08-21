@@ -111,6 +111,32 @@ module Admin
       assert_equal @player.id, JSON.parse(response.body).dig('player', 'id')
     end
 
+    # api#496: Altbestand mit einem Leerzeichen am Namensende (vor der
+    # Player#strip_names-Sicherung entstanden, hier per update_column simuliert,
+    # da save den Namen sonst schon vor dem Test trimmen würde) muss weiterhin als
+    # exakter Treffer gelten.
+    test 'search_player findet Spieler mit Leerzeichen am Namensende im Bestand' do
+      @player.update_column(:first_name, 'Max ')
+      login(@admin)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15'
+      }
+      assert_response :success
+      assert_equal @player.id, JSON.parse(response.body).dig('player', 'id')
+    end
+
+    # Postgres TRIM() kennt nur das Leerzeichen; ein Tabulator aus einem
+    # CSV-/Excel-Import bliebe damit unauffindbar (Player::SQL_NAME_PADDING).
+    test 'search_player findet Spieler mit Tabulator am Namensende im Bestand' do
+      @player.update_column(:last_name, "Mustermann\t")
+      login(@admin)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15'
+      }
+      assert_response :success
+      assert_equal @player.id, JSON.parse(response.body).dig('player', 'id')
+    end
+
     test 'reiner VM darf nicht für fremden Verein suchen → 403' do
       login(@vm_requesting)
       get '/api/v2/admin/transfer_requests/search_player', params: {
@@ -176,6 +202,35 @@ module Admin
           requesting_club_id: other_club.id
         }
       end
+      assert_response :created
+    end
+
+    # Die Vereinsauswahl der Maske bietet nur aktive Vereine an; ein direkter
+    # Aufruf soll deshalb nicht in einem deaktivierten Verein landen. Der
+    # ABGEBENDE Verein darf dagegen deaktiviert sein -- ein aufgelöster Verein
+    # gibt seine Spieler ja gerade ab.
+    test 'Direkt-Transfer in einen deaktivierten Verein → 422' do
+      @requesting_club.update!(deactivated_at: Time.current)
+
+      login(@sbk)
+      assert_no_emails do
+        post '/api/v2/admin/transfer_requests/direct_assign', params: {
+          player_id: @player.id,
+          requesting_club_id: @requesting_club.id
+        }
+      end
+      assert_response :unprocessable_entity
+      assert_equal 0, TransferRequest.where(player_id: @player.id).count
+    end
+
+    test 'Direkt-Transfer aus einem deaktivierten abgebenden Verein → 201' do
+      @former_club.update!(deactivated_at: Time.current)
+
+      login(@sbk)
+      post '/api/v2/admin/transfer_requests/direct_assign', params: {
+        player_id: @player.id,
+        requesting_club_id: @requesting_club.id
+      }
       assert_response :created
     end
 
