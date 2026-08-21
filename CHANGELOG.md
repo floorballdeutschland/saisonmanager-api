@@ -9,6 +9,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Die Transfermails nennen den Landesverband, der wirklich genehmigt**: In der Mail „Transferantrag zur Genehmigung" und in der Mail an die beiden Vereine stand der Landesverband, an dem der abgebende Verein hängt. Gehört dieser Landesverband zu einem Verbund, war das der Falsche: Gelesen und entschieden hat der Verbund, im Text stand der untergeordnete Verband. Für die Hamburger Vereine hieß es deshalb „wartet auf die Genehmigung des Landesverbands Floorball Bund Hamburg e.V.", während der Antrag beim Floorball Landesverband Schleswig-Holstein lag, der ihn auch gesehen und genehmigt hat. Beide Mails benennen jetzt den zuständigen Verband, also denselben, dessen Spielbetrieb über den Antrag entscheidet. Empfänger der Mail ist unverändert das Postfach des abgebenden Landesverbands, das bei einem untergeordneten Verband weiterhin auf den Verbund zurückfällt.
+
+### Verbessert
+
+- **Auch die Schiedsrichterdetails führen von jedem Spiel zum Spiel**: In „Meine Historie" verlinken die gepfiffenen Spiele seit dem 17. August auf die öffentliche Spielseite. Die Spielhistorie in den Schiedsrichterdetails, also die Sicht der RSK, der Ansetzer und der Verwaltung auf einen einzelnen Schiedsrichter, war weiterhin reiner Text. Sie liefert dazu jetzt dieselben Angaben mit, Liga und Verband je Spiel, sodass die Mannschaftsnamen dort ebenfalls zur Spielseite führen. Fehlt einem Altdaten-Spiel die Ligazuordnung, bleibt die Zeile wie in der Schiedsrichtersicht ohne Link.
+
 ## [1.93.0] - 2026-08-21
 
 ### Neu
@@ -20,14 +28,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Behoben
 
-- **Die Transfermails nennen den Landesverband, der wirklich genehmigt**: In der Mail „Transferantrag zur Genehmigung" und in der Mail an die beiden Vereine stand der Landesverband, an dem der abgebende Verein hängt. Gehört dieser Landesverband zu einem Verbund, war das der Falsche: Gelesen und entschieden hat der Verbund, im Text stand der untergeordnete Verband. Für die Hamburger Vereine hieß es deshalb „wartet auf die Genehmigung des Landesverbands Floorball Bund Hamburg e.V.", während der Antrag beim Floorball Landesverband Schleswig-Holstein lag, der ihn auch gesehen und genehmigt hat. Beide Mails benennen jetzt den zuständigen Verband, also denselben, dessen Spielbetrieb über den Antrag entscheidet. Empfänger der Mail ist unverändert das Postfach des abgebenden Landesverbands, das bei einem untergeordneten Verband weiterhin auf den Verbund zurückfällt.
 - **Direktzuweisung in einen anderen Landesverband ist wieder möglich**: Bei der Direktzuweisung eines Spielers (Verwaltung → „Transfer-Anfragen" → „Direktzuweisung") standen im Vereinsfeld nur die Vereine des eigenen Zuständigkeitsbereichs. Ein Landesverband konnte einen Spieler seines Spielbetriebs damit nicht in einen Verein eines anderen Landesverbands zuweisen, obwohl genau das erlaubt ist: Zustimmen muss allein der abgebende Verband. Das Feld führt jetzt alle aktiven Vereine. Wer zuweisen darf, richtet sich unverändert nach dem abgebenden Verein; der Hinweistext über dem Feld und das Rollenhandbuch nennen jetzt diese Regel, statt eine Beschränkung auf den eigenen Landesverband zu behaupten. Deaktivierte Vereine stehen in dieser Auswahl nicht und werden bei der Direktzuweisung auch dann abgewiesen, wenn sie auf anderem Weg übergeben werden.
 - **Die Vereinsauswahl eines Wettbewerbs kennt jetzt auch die aufgenommenen Mannschaften**: Wer eine Mannschaft über einen Pokalwettbewerb dabei hat, wurde in der Vereinsauswahl dieser Liga nicht angeboten, weil dort nur Mannschaften mit dieser Liga als Hauptliga gezählt wurden. Damit war der Verein als Ausrichter eines Pokal-Spieltags nicht wählbar. Zusätzlich sieht bundesweiter Zugriff (Verwaltung oder SBK über alle Verbände) in dieser Auswahl jetzt alle aktiven Vereine. Vorher war die Liste für einen frisch angelegten Wettbewerb des Bundesverbands praktisch leer, und damit ließ sich dort keine Mannschaft anlegen.
 - **In der Lizenzübersicht fehlte bei aufgenommenen Mannschaften der Verein**: Die Zeilen einer Mannschaft, die über einen Pokalwettbewerb in der Übersicht landet, blieben in der Vereinsspalte leer, weil die Zuordnung Mannschaft → Verein nur die Hauptliga kannte. Für die SBK des Pokals war das jede dieser Zeilen, der Vereinsfilter griff dort also nicht.
 
 ### Verbessert
 
-- **Auch die Schiedsrichterdetails führen von jedem Spiel zum Spiel**: In „Meine Historie" verlinken die gepfiffenen Spiele seit dem 17. August auf die öffentliche Spielseite. Die Spielhistorie in den Schiedsrichterdetails, also die Sicht der RSK, der Ansetzer und der Verwaltung auf einen einzelnen Schiedsrichter, war weiterhin reiner Text. Sie liefert dazu jetzt dieselben Angaben mit, Liga und Verband je Spiel, sodass die Mannschaftsnamen dort ebenfalls zur Spielseite führen. Fehlt einem Altdaten-Spiel die Ligazuordnung, bleibt die Zeile wie in der Schiedsrichtersicht ohne Link.
 - **Mails an Schiedsrichter grüßen mit dem Vornamen**: „Hallo Anna Beispiel," war als Anrede unnötig steif und stand so in allen Mails an die Schiedsrichter, von der Ansetzung über die vorläufige Einplanung und die Ansetzungsänderung bis zur Lizenzbenachrichtigung, der Entscheidung über die Vereins-Ausschlussliste und der Willkommensmail zum Schiedsrichterkonto. Die Anrede lautet jetzt überall „Hallo Anna,". Die Erinnerung an das Berichtsformular geht weiterhin an beide Schiris des Gespanns und nennt beide Vornamen. Wer die Mails unter „System" → „E-Mail-Vorlagen" selbst textet, hat für die Anrede den neuen Platzhalter `{{first_name}}`; in der Erinnerung an das Berichtsformular stehen darin beide Vornamen, mit „und" verbunden.
 
 ## [1.92.0] - 2026-08-21
