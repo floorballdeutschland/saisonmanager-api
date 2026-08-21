@@ -25,7 +25,20 @@ module Admin
 
       leagues         = leagues.to_a
       game_operations = GameOperation.where(id: leagues.map(&:game_operation_id).uniq).index_by(&:id)
-      team_club_map   = Team.where(league_id: leagues.map(&:id)).pluck(:id, :club_id).to_h
+      # Wie League.license_teams_by_league auch die Mannschaften, die nur über
+      # cup_leagues zur Liga gehören (Pokal/Endrunde). Ohne die Vereinigung blieb
+      # deren Verein in der Lizenzübersicht leer: Die Zeilen kommen aus
+      # League.licenses_for, das die Vereinigung kennt, der Verein aber aus dieser
+      # Zuordnung, die nur league_id kannte. Betroffen war genau die Sicht der
+      # Pokal-SBK, für die die Hauptliga der Mannschaft nicht in `leagues` steckt.
+      league_ids      = leagues.map(&:id)
+      team_club_map   = if league_ids.any?
+                          Team.where(league_id: league_ids)
+                              .or(Team.where('cup_leagues && ARRAY[?]::int[]', league_ids))
+                              .pluck(:id, :club_id).to_h
+                        else
+                          {}
+                        end
       clubs           = Club.where(id: team_club_map.values.uniq).index_by(&:id)
 
       # Die Lizenzlisten aller Ligen in einem Rutsch und genau einmal. Bisher lief

@@ -444,6 +444,14 @@ module Admin
       requesting_club = Club.find_by(id: params[:requesting_club_id].to_i)
       return render json: { error: 'Verein nicht gefunden' }, status: :not_found unless requesting_club
 
+      # Der abgebende Verein darf deaktiviert sein (ein aufgelöster Verein gibt
+      # seine Spieler ja gerade ab), der aufnehmende nicht: Er soll keine neuen
+      # Mitglieder mehr bekommen. Die Auswahlmaske bietet ihn nicht an, ein
+      # direkter Aufruf käme sonst aber durch.
+      if requesting_club.deactivated_at.present?
+        return render json: { error: 'Der aufnehmende Verein ist deaktiviert' }, status: :unprocessable_entity
+      end
+
       # Player#home_club_entry ist die eine Quelle: Diese Stelle las frueher den ERSTEN
       # offenen Heimat-Eintrag, waehrend Player#home_club den LETZTEN nimmt. Bei zwei
       # offenen Eintraegen meinten beide verschiedene Vereine, und der Antrag ging an den

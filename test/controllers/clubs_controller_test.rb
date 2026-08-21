@@ -18,6 +18,32 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_not body.any? { |c| c.key?('contact_email') }, 'contact_email darf nicht enthalten sein'
   end
 
+  # Zwei Tests, weil beide Richtungen tragen muessen: Die Anzeige-Aufrufer
+  # brauchen deaktivierte Vereine weiterhin (Bestandsdaten), die Direktzuweisung
+  # darf sie nicht anbieten.
+  test 'admin_club_all liefert deaktivierte Vereine standardmaessig mit' do
+    club = create(:club, deactivated_at: Time.current)
+    login(create(:user, :admin))
+
+    get '/api/v2/admin/clubs/all'
+
+    assert_response :success
+    assert(JSON.parse(response.body).any? { |c| c['id'] == club.id })
+  end
+
+  test 'admin_club_all laesst deaktivierte Vereine bei active_only weg' do
+    active = create(:club)
+    deactivated = create(:club, deactivated_at: Time.current)
+    login(create(:user, :admin))
+
+    get '/api/v2/admin/clubs/all', params: { active_only: true }
+
+    assert_response :success
+    ids = JSON.parse(response.body).map { |c| c['id'] }
+    assert_includes ids, active.id
+    assert_not_includes ids, deactivated.id
+  end
+
   test 'admin_club_all ist für reine Schiri-Logins gesperrt' do
     login(create(:user, permissions: [{ 'user_group_id' => 6 }]))
 
