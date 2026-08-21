@@ -21,6 +21,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Verbessert
 
+- **Auch die Schiedsrichterdetails führen von jedem Spiel zum Spiel**: In „Meine Historie" verlinken die gepfiffenen Spiele seit dem 17. August auf die öffentliche Spielseite. Die Spielhistorie in den Schiedsrichterdetails, also die Sicht der RSK, der Ansetzer und der Verwaltung auf einen einzelnen Schiedsrichter, war weiterhin reiner Text. Sie liefert dazu jetzt dieselben Angaben mit, Liga und Verband je Spiel, sodass die Mannschaftsnamen dort ebenfalls zur Spielseite führen. Fehlt einem Altdaten-Spiel die Ligazuordnung, bleibt die Zeile wie in der Schiedsrichtersicht ohne Link.
 - **Mails an Schiedsrichter grüßen mit dem Vornamen**: „Hallo Anna Beispiel," war als Anrede unnötig steif und stand so in allen Mails an die Schiedsrichter, von der Ansetzung über die vorläufige Einplanung und die Ansetzungsänderung bis zur Lizenzbenachrichtigung, der Entscheidung über die Vereins-Ausschlussliste und der Willkommensmail zum Schiedsrichterkonto. Die Anrede lautet jetzt überall „Hallo Anna,". Die Erinnerung an das Berichtsformular geht weiterhin an beide Schiris des Gespanns und nennt beide Vornamen. Wer die Mails unter „System" → „E-Mail-Vorlagen" selbst textet, hat für die Anrede den neuen Platzhalter `{{first_name}}`; in der Erinnerung an das Berichtsformular stehen darin beide Vornamen, mit „und" verbunden.
 
 ## [1.92.0] - 2026-08-21

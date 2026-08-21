@@ -731,6 +731,15 @@ module Admin
         home_team: game.home_team&.name,
         guest_team: game.guest_team&.name,
         league: game.league&.name,
+        # league_id + game_operation_slug ermoeglichen im Frontend den direkten
+        # Link zur (oeffentlichen) Spielseite: /:association/:leagueId/spiel/:matchId.
+        # Gleiche Felder wie in referee_history_controller#game_summary.
+        #
+        # Der Verband kommt aus der je Request geladenen Karte statt ueber
+        # game.league.game_operation: #incorrect_assignments laedt seine Spiele
+        # ohne Vorladen, dort waere das eine Abfrage je Zeile.
+        league_id: game.league&.id,
+        game_operation_slug: GameOperation.by_id[game.league&.game_operation_id]&.slug,
         season_id: game.game_day.league&.season_id,
         result: game.result_string
       }
