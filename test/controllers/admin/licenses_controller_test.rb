@@ -79,6 +79,23 @@ module Admin
       assert_response :forbidden
     end
 
+    # Eine Mannschaft, die über cup_leagues in einem Pokal eines fremden
+    # Spielbetriebs spielt: Für die SBK dieses Wettbewerbs steckt ihre Hauptliga
+    # nicht in `leagues`, der Verein muss trotzdem an der Zeile stehen.
+    test 'Verein steht an der Zeile einer per cup_leagues aufgenommenen Mannschaft' do
+      cup = create(:league, game_operation: @go2, season_id: '18')
+      @team_go1.update!(cup_leagues: [cup.id])
+      login_as(@sbk)
+
+      get '/api/v2/admin/licenses'
+
+      assert_response :success
+      row = JSON.parse(response.body).find { |r| r['player_id'] == @player_go1.id }
+      assert_not_nil row, 'die Mannschaft muss in der Lizenzübersicht des Pokals erscheinen'
+      assert_equal @club1.id, row['club_id']
+      assert_equal @club1.name, row['club_name']
+    end
+
     # -------------------------------------------------------------------------
     # license_type — Haupt-/Zusatzlizenz-Bestimmung (#291)
     # -------------------------------------------------------------------------
