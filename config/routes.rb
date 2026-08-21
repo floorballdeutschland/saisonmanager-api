@@ -346,6 +346,12 @@ Rails.application.routes.draw do
             delete :logo, action: :delete_logo
           end
         end
+        # Ohne :index -- die Liste kommt weiterhin von
+        # 'admin/game_operations' => game_operations#admin_game_operations
+        # weiter oben. Die ist nach Rollen gescopt und dient auch allen
+        # Auswahlfeldern; eine zweite Liste hier waere entweder eine Dublette
+        # oder (weil die aeltere Route zuerst greift) eine tote Route.
+        resources :game_operations, only: %i[show create update destroy]
         resources :api_keys, only: %i[index create update destroy] do
           get :usage, on: :member
         end

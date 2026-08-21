@@ -9,9 +9,10 @@ module Admin
       create(:setting)
       sa = create(:state_association)
       # Spielbetriebe mit Landesverband, damit der SBK-Scope nicht als
-      # nationaler Verband (state_association_id: nil) auf global gehoben wird.
+      # nationaler Verband auf global gehoben wird. Je einer, denn ein Verband
+      # hat hoechstens einen Spielbetrieb; die Fabrik legt selbst einen an.
       @go = create(:game_operation, state_association_id: sa.id)
-      @other_go = create(:game_operation, state_association_id: sa.id)
+      @other_go = create(:game_operation)
       @league = create(:league, game_operation: @go)
     end
 

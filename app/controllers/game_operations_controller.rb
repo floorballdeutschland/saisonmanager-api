@@ -115,6 +115,7 @@ class GameOperationsController < ApplicationController
     begin
       @game_operation.banner.attach(params[:banner])
       @game_operation.update!(banner_link_url: params[:banner_link_url].presence)
+      flush_init_cache
       render json: { banner_url: @game_operation.banner_url, banner_link_url: @game_operation.banner_link_url }
     rescue StandardError => e
       Rails.logger.error("Banner-Upload fehlgeschlagen (GameOperation #{@game_operation.id}): #{e.class}: #{e.message}")
@@ -127,6 +128,7 @@ class GameOperationsController < ApplicationController
 
     begin
       @game_operation.banner.purge
+      flush_init_cache
       render json: { success: true }
     rescue StandardError => e
       Rails.logger.error("Banner-Löschen fehlgeschlagen (GameOperation #{@game_operation.id}): #{e.class}: #{e.message}")
@@ -138,12 +140,23 @@ class GameOperationsController < ApplicationController
     return render json: { message: 'Keine Berechtigung' }, status: :forbidden unless admin?
 
     @game_operation.update!(banner_link_url: params[:banner_link_url].presence)
+    flush_init_cache
     render json: { banner_link_url: @game_operation.banner_link_url }
   rescue ActiveRecord::RecordInvalid => e
     render json: { message: e.message }, status: :unprocessable_entity
   end
 
   private
+
+  # Banner und Bannerlink stecken ueber GameOperation#meta_hash in /api/v2/init,
+  # das der Endpunkt 30 Minuten zwischenspeichert. Ohne Leerung zeigt die
+  # oeffentliche Verbandsseite nach einem Upload noch bis zu eine halbe Stunde
+  # das alte Banner -- was in der Maske wie ein fehlgeschlagener Upload aussieht.
+  # Dieselbe Leerung wie in Admin::GameOperationsController und
+  # Admin::StateAssociationsController (dort schon fuer Banner und Logo).
+  def flush_init_cache
+    Rails.cache.delete('settings/init')
+  end
 
   # Banner-Verwaltung: globaler Admin (0) oder Admin des konkreten Spielbetriebs.
   def admin?
