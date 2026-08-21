@@ -47,10 +47,13 @@ class UserMailer < ApplicationMailer
   def referee_account_created(user)
     @link = "#{FrontendUrl.base}/neues-passwort/#{user.password_reset_token}"
     @username = user.user_name
+    # Bei den per Massenanlage erzeugten Konten ist der Vorname gesetzt; fehlt er,
+    # bleibt die Anrede das schlichte "Hallo," statt "Hallo ,".
+    @first_name = user.first_name.presence
     templated_mail(
       to: user.email,
       subject: 'Dein Schiedsrichteraccount im Saisonmanager',
-      placeholders: { username: @username, link: @link }
+      placeholders: { username: @username, link: @link, first_name: @first_name.to_s }
     )
   end
 end
