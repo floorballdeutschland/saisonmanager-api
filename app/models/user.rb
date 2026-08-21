@@ -678,7 +678,17 @@ class User < ApplicationRecord
       ans_go_ids = [0]
     end
 
-    all_go = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11]
+    # Alle vorhandenen Spielbetriebe, und nicht mehr eine im Code gepflegte
+    # Liste: Seit Spielbetriebe ueber die Oberflaeche entstehen (#492),
+    # verschiebt jeder neue diesen Vergleich. Eine Rolle, die jeden einzelnen
+    # Spielbetrieb aufzaehlt statt `0` zu tragen, fiele mit dem naechsten neuen
+    # aus dem globalen Scope -- und verlöre dabei genau den Menuepunkt, ueber
+    # den der neue Spielbetrieb angelegt wurde
+    # (menu_item_game_operation_admin verlangt `0`).
+    #
+    # GameOperation.by_id ist je Request einmal geladen (Current), die Ableitung
+    # kostet also keine zusaetzliche Abfrage.
+    all_go = GameOperation.by_id.keys.sort
 
     result[:tm] = tm_team_ids if tm_team_ids.present?
     result[:vm] = vm_club_ids.uniq.sort if vm_club_ids.present?

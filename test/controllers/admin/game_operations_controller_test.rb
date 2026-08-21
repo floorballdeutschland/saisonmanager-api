@@ -230,6 +230,69 @@ module Admin
       assert_match(/Benutzerrolle/, JSON.parse(response.body)['errors'].join)
     end
 
+    # Auf document_types, referee_tags und state_association_releases liegt ein
+    # echter Fremdschluessel. Fehlt einer im dependency_counts, kommt keine
+    # Meldung, sondern eine ActiveRecord::InvalidForeignKey -- und der
+    # rescue_from StandardError im ApplicationController macht daraus eine 500
+    # „Server-Fehler." ohne jeden Hinweis auf die Ursache.
+    test 'Loeschen ist blockiert, solange eine Dokumentart daran haengt' do
+      DocumentType.create!(name: 'LV-Attest', game_operation_id: @go.id)
+      login(@admin)
+
+      delete "/api/v2/admin/game_operations/#{@go.id}"
+      assert_response :unprocessable_entity
+      assert_match(/Dokumentart/, JSON.parse(response.body)['errors'].join)
+      assert GameOperation.exists?(@go.id)
+    end
+
+    test 'Loeschen ist blockiert, solange ein Schiedsrichter-Merkmal daran haengt' do
+      RefereeTag.create!(name: 'Talent', game_operation_id: @go.id)
+      login(@admin)
+
+      delete "/api/v2/admin/game_operations/#{@go.id}"
+      assert_response :unprocessable_entity
+      assert_match(/Merkmal/, JSON.parse(response.body)['errors'].join)
+      assert GameOperation.exists?(@go.id)
+    end
+
+    test 'Loeschen ist blockiert, solange eine Vereinsfreigabe empfangen wurde' do
+      StateAssociationRelease.create!(grantor_state_association_id: create(:state_association).id,
+                                      recipient_game_operation_id: @go.id, season_id: '18')
+      login(@admin)
+
+      delete "/api/v2/admin/game_operations/#{@go.id}"
+      assert_response :unprocessable_entity
+      assert_match(/Vereinsfreigabe/, JSON.parse(response.body)['errors'].join)
+      assert GameOperation.exists?(@go.id)
+    end
+
+    # referees.game_operation_id traegt keinen Fremdschluessel: Der Verweis
+    # verschwindet lautlos. Admin::RefereesController leitet die Sichtbarkeit
+    # daraus ab, der Schiedsrichter waere danach fuer keine RSK mehr sichtbar
+    # und nicht ansetzbar.
+    test 'Loeschen ist blockiert, solange Schiedsrichter daran haengen' do
+      create(:referee, game_operation_id: @go.id)
+      login(@admin)
+
+      delete "/api/v2/admin/game_operations/#{@go.id}"
+      assert_response :unprocessable_entity
+      assert_match(/Schiedsrichter/, JSON.parse(response.body)['errors'].join)
+      assert GameOperation.exists?(@go.id)
+    end
+
+    # Ein archiviertes Konto kann sich nicht anmelden, und die
+    # Benutzerverwaltung listet es nicht. Zaehlte seine Rolle mit, waere der
+    # Spielbetrieb dauerhaft undloeschbar, ohne dass sich herausfinden liesse,
+    # an welchem Konto es haengt.
+    test 'ein archiviertes Konto blockiert das Loeschen nicht' do
+      archiviert = create(:user, :sbk_scoped, game_operation_id: @go.id)
+      archiviert.archive!(@admin.id)
+      login(@admin)
+
+      delete "/api/v2/admin/game_operations/#{@go.id}"
+      assert_response :no_content
+    end
+
     test 'ein Spielbetrieb ohne Anhang laesst sich loeschen' do
       login(@admin)
 
@@ -251,8 +314,39 @@ module Admin
           params: { game_operation: { name: @go.name, short_name: @go.short_name,
                                       path: @go.path, state_association_id: kind.id } }
       assert_response :unprocessable_entity
-      assert_match(/uebergeordneten Verbund|übergeordneten Verbund/, JSON.parse(response.body)['errors'].join)
+      assert_match(/Erst die Vereine umhängen/, JSON.parse(response.body)['errors'].join)
       assert_equal @sa.id, @go.reload.state_association_id
+    end
+
+    # Der unauffaellige der drei Faelle: Das Ziel ist selbst eine Wurzel, die
+    # Eindeutigkeitspruefung greift nicht (die Wurzel hat noch keinen
+    # Spielbetrieb), und trotzdem verlieren die heutigen Vereine ihren
+    # zustaendigen Verband -- der bisherige Verbund steht danach ohne
+    # Spielbetrieb da und seine Vereine fallen in Club.unassigned.
+    test 'Umhaengen auf eine andere Wurzel wird abgelehnt, solange Vereine zustaendig sind' do
+      create(:club, state_association_id: @sa.id)
+      andere_wurzel = create(:state_association)
+      login(@admin)
+
+      put "/api/v2/admin/game_operations/#{@go.id}",
+          params: { game_operation: { name: @go.name, short_name: @go.short_name,
+                                      path: @go.path, state_association_id: andere_wurzel.id } }
+      assert_response :unprocessable_entity
+      assert_equal @sa.id, @go.reload.state_association_id
+    end
+
+    # Auf game_operations.state_association_id liegt kein Fremdschluessel. Ohne
+    # Pruefung speichert der Spielbetrieb mit einer Verbands-ID, die es nicht
+    # gibt, und ist danach fuer nichts zustaendig -- ohne Fehlermeldung.
+    test 'ein Landesverband, den es nicht gibt, wird abgelehnt' do
+      login(@admin)
+
+      post '/api/v2/admin/game_operations',
+           params: { game_operation: { name: 'Ins Leere', short_name: 'ILE', path: 'ile',
+                                       state_association_id: 999_999 } }
+      assert_response :unprocessable_entity
+      assert_match(/existiert nicht/, JSON.parse(response.body)['errors'].join)
+      assert_nil GameOperation.find_by(path: 'ile')
     end
 
     test 'das Feld leeren wird abgelehnt, solange Vereine zustaendig sind' do

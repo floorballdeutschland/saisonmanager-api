@@ -86,6 +86,15 @@ module Admin
 
       render json: { errors: @game_operation.errors.full_messages.presence || ['Löschen nicht möglich'] },
              status: :unprocessable_entity
+    rescue ActiveRecord::InvalidForeignKey
+      # Auffangnetz hinter dependency_counts: Auf game_operations zeigen vier
+      # Fremdschluessel, und ein fuenfter kaeme ohne diese Datei aus. Ohne das
+      # Rescue faengt der `rescue_from StandardError` im ApplicationController
+      # die Ausnahme und antwortet 500 „Server-Fehler." -- also ohne jeden
+      # Hinweis darauf, dass am Spielbetrieb noch etwas haengt.
+      render json: { errors: ['Am Spielbetrieb hängen noch Daten, die dem Löschen im Weg stehen. ' \
+                              'Bitte an die Entwicklung melden, welcher Spielbetrieb betroffen ist.'] },
+             status: :unprocessable_entity
     end
 
     private
@@ -102,15 +111,24 @@ module Admin
     end
 
     # Beim Umhaengen auf einen anderen Landesverband wechselt die Zustaendigkeit
-    # fuer ganze Verbandsbaeume. Die Zahlen kommen in die Meldung, damit die
+    # fuer ganze Verbandsbaeume. Die Zahl kommt in die Meldung, damit die
     # Reichweite vor dem Speichern dasteht und nicht erst hinterher an einer
     # kuerzeren Vereinsliste auffaellt.
     #
-    # Abgelehnt wird nur der Fall, der Vereine herrenlos macht: Der Spielbetrieb
-    # ist heute fuer Vereine zustaendig und soll auf einen Landesverband
-    # wechseln (oder gar keinen), der nicht die Wurzel seines Verbandsbaums ist.
-    # Ein Spielbetrieb an einem untergeordneten Verband hat keine Vereine
-    # (GameOperation#home_clubs), die bisherigen faenden also keinen Nachfolger.
+    # Abgelehnt wird JEDE Aenderung des Landesverbands, solange dieser
+    # Spielbetrieb fuer Vereine zustaendig ist -- ohne Unterscheidung nach Ziel,
+    # denn die Vereine verliert er in allen drei Faellen:
+    #
+    # * kein Landesverband mehr: niemand ist mehr fuer sie zustaendig,
+    # * ein untergeordneter Verband: zustaendig ist immer der Spielbetrieb der
+    #   Wurzel des Verbandsbaums, dieser Spielbetrieb hat danach keine Vereine
+    #   (GameOperation#home_clubs),
+    # * eine andere Wurzel: er ist danach fuer DEREN Vereine zustaendig, und die
+    #   bisherigen fallen in Club.unassigned. Genau dieser Fall sah harmlos aus
+    #   und war es nicht -- eine Wurzel ohne eigenen Spielbetrieb nimmt die neue
+    #   Zuordnung widerspruchslos an, die alte Wurzel steht danach ohne da.
+    #
+    # Aufloesung ist immer dieselbe: erst die Vereine umhaengen, dann das Feld.
     def state_association_move_conflict
       eingereicht = params[:game_operation] || {}
       return nil unless eingereicht.key?('state_association_id')
@@ -121,25 +139,25 @@ module Admin
       betroffen = Club.home_clubs_of([@game_operation.id]).count
       return nil if betroffen.zero?
 
-      if ziel_id.nil?
-        return "Für diesen Spielbetrieb sind #{betroffen} Verein(e) zuständig. Ohne Landesverband " \
-               'verlieren sie ihren zuständigen Verband. Erst die Vereine umhängen, dann das Feld leeren.'
-      end
-
-      ziel_wurzel = StateAssociation.root_id(ziel_id)
-      return 'Der gewählte Landesverband existiert nicht.' if ziel_wurzel.nil?
-      return nil if ziel_wurzel == ziel_id
-
-      'Der gewählte Landesverband hat einen übergeordneten Verbund. Zuständig ist immer der ' \
-        "Spielbetrieb der Wurzel des Verbandsbaums, dieser Spielbetrieb hätte danach keine Vereine mehr – " \
-        "die heutigen #{betroffen} verlieren ihren zuständigen Verband."
+      "Für diesen Spielbetrieb sind #{betroffen} Verein(e) zuständig. Nach einem Wechsel des " \
+        'Landesverbands verlieren sie ihren zuständigen Verband. Erst die Vereine umhängen, ' \
+        'dann den Landesverband ändern.'
     end
 
+    DEPENDENCY_LABELS = {
+      leagues: '%d Liga/Ligen',
+      clubs: '%d Verein(e)',
+      users: '%d Benutzerrolle(n)',
+      referees: '%d Schiedsrichter',
+      document_types: '%d Dokumentart(en)',
+      referee_tags: '%d Schiedsrichter-Merkmal(e)',
+      releases: '%d empfangene Vereinsfreigabe(n)'
+    }.freeze
+
     def deletion_conflict_message(counts)
-      teile = []
-      teile << "#{counts[:leagues]} Liga/Ligen" if counts[:leagues].positive?
-      teile << "#{counts[:clubs]} Verein(e)" if counts[:clubs].positive?
-      teile << "#{counts[:users]} Benutzerrolle(n)" if counts[:users].positive?
+      teile = DEPENDENCY_LABELS.filter_map do |key, label|
+        format(label, counts[key]) if counts[key].to_i.positive?
+      end
 
       "Am Spielbetrieb hängen noch #{teile.to_sentence}. Sie würden ihren Verband verlieren " \
         'beziehungsweise ins Leere zeigen. Erst umhängen, dann löschen.'

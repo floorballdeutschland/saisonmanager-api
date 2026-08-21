@@ -42,6 +42,15 @@ class GameOperation < ApplicationRecord
   # Spielbetrieb waere also angelegt, sichtbar und wirkungslos.
   validates :state_association_id, uniqueness: { allow_nil: true,
                                                  message: 'hat bereits einen Spielbetrieb' }
+  # Auf game_operations.state_association_id liegt kein Fremdschluessel, und
+  # `belongs_to ... optional: true` prueft nichts. Ohne diese Zeile speichert ein
+  # Spielbetrieb auch mit einer Verbands-ID, die es nicht gibt: `admin_hash`
+  # zeigt dann keinen Verbandsnamen, und Club.responsible_state_association_ids
+  # verwirft ihn ueber `.compact`. Er ist fuer nichts zustaendig, und nirgends
+  # steht ein Fehler -- genau die Art stillen Widerspruchs, die die Maske
+  # beseitigen soll.
+  validates :state_association, presence: { message: 'existiert nicht' },
+                                if: -> { state_association_id.present? }
   before_validation :normalize_path
 
   after_commit { Current.reset_association_structure }
@@ -149,13 +158,30 @@ class GameOperation < ApplicationRecord
     }
   end
 
-  # Was an diesem Spielbetrieb haengt. Jede der drei Zahlen ist ein Riegel gegen
-  # das Loeschen, siehe Admin::GameOperationsController#destroy.
+  # Was an diesem Spielbetrieb haengt. Jede Zahl ist ein Riegel gegen das
+  # Loeschen, siehe Admin::GameOperationsController#destroy.
+  #
+  # Zwei Sorten Eintrag, und beide muessen mit:
+  #
+  # * Ligen, Dokumentarten, Schiedsrichter-Tags und empfangene Vereinsfreigaben
+  #   haengen an einem Fremdschluessel (db/schema.rb). Fehlt einer hier, gibt es
+  #   keine Meldung, sondern eine `ActiveRecord::InvalidForeignKey` aus Postgres
+  #   -- der Controller antwortet dann 500 „Server-Fehler." und sagt nicht, was
+  #   im Weg steht.
+  # * Vereine, Benutzerrollen und Schiedsrichter haengen OHNE Fremdschluessel
+  #   dran (die Vereinszuordnung ist ueberhaupt abgeleitet). Fehlt einer hier,
+  #   verschwindet der Bezug lautlos: Ein Schiedsrichter an diesem Spielbetrieb
+  #   ist danach fuer keine RSK mehr sichtbar (Admin::RefereesController), ohne
+  #   Fehler und ohne Hinweis.
   def dependency_counts
     {
       leagues: leagues.unscope(:order).count,
       clubs: Club.home_clubs_of([id]).count,
-      users: self.class.user_ids_referencing(id).size
+      users: self.class.user_ids_referencing(id).size,
+      referees: Referee.where(game_operation_id: id).count,
+      document_types: DocumentType.where(game_operation_id: id).count,
+      referee_tags: RefereeTag.where(game_operation_id: id).count,
+      releases: StateAssociationRelease.where(recipient_game_operation_id: id).count
     }
   end
 
@@ -167,8 +193,15 @@ class GameOperation < ApplicationRecord
   # Loeschpruefung waere das der schlimmste Fehler von beiden -- der Riegel
   # griffe nicht, und die Rolle zeigte danach auf eine ID, die es nicht mehr
   # gibt. `permission_hash` selbst rechnet aus demselben Grund mit `.to_i`.
+  #
+  # Ohne `not_archived`: Ein vor Jahren archiviertes SBK-Konto haelt den
+  # Spielbetrieb dauerhaft undloeschbar, und die Meldung nennt keinen
+  # Benutzernamen -- die Benutzerverwaltung listet archivierte Konten nicht,
+  # der Riegel waere also nicht aufloesbar. Anmelden kann sich ein solches
+  # Konto nicht (ApplicationController#current_user), seine Rolle richtet
+  # deshalb keinen Schaden an.
   def self.user_ids_referencing(go_id)
-    User.where.not(permissions: nil)
+    User.not_archived.where.not(permissions: nil)
         .pluck(:id, :permissions)
         .select do |_id, perms|
           perms.is_a?(Array) && perms.any? { |perm| perm.is_a?(Hash) && perm['game_operation_id'].to_i == go_id }

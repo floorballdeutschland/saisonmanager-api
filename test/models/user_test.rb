@@ -1,7 +1,17 @@
 require 'test_helper'
 
 class UserTest < ActiveSupport::TestCase
-  ALL_GO = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11].freeze
+  # Rollen ueber ALLE Spielbetriebe. `permission_hash` hebt eine solche Rolle auf
+  # globalen Scope ([0]), und „alle" liest es aus der Datenbank statt aus einer im
+  # Code gepflegten ID-Liste -- seit Spielbetriebe ueber die Oberflaeche entstehen
+  # (#492), hoerte ein Literal hier mit dem naechsten neuen Spielbetrieb
+  # stillschweigend auf, „alle" zu bedeuten.
+  def perms_fuer_alle_go(user_group_id)
+    go_ids = GameOperation.pluck(:id).sort
+    assert go_ids.any?, 'ohne Spielbetriebe im Bestand prueft der Test nichts'
+
+    go_ids.map { |go_id| { 'user_group_id' => user_group_id, 'game_operation_id' => go_id } }
+  end
 
   def build_user(permissions:, teams: [])
     User.create!(
@@ -23,7 +33,7 @@ class UserTest < ActiveSupport::TestCase
   end
 
   test 'permission_hash: Admin mit allen GOs ergibt [0]' do
-    perms = ALL_GO.map { |go| { 'user_group_id' => 1, 'game_operation_id' => go } }
+    perms = perms_fuer_alle_go(1)
     u = build_user(permissions: perms)
     assert_equal [0], u.permission_hash[:admin]
     assert_nil u.permission_hash[:sbk]
@@ -36,7 +46,7 @@ class UserTest < ActiveSupport::TestCase
   end
 
   test 'permission_hash: SBK mit allen GOs ergibt [0]' do
-    perms = ALL_GO.map { |go| { 'user_group_id' => 2, 'game_operation_id' => go } }
+    perms = perms_fuer_alle_go(2)
     u = build_user(permissions: perms)
     assert_equal [0], u.permission_hash[:sbk]
     assert_nil u.permission_hash[:admin]
@@ -70,7 +80,7 @@ class UserTest < ActiveSupport::TestCase
   end
 
   test 'permission_hash: RSK mit allen GOs ergibt [0]' do
-    perms = ALL_GO.map { |go| { 'user_group_id' => 3, 'game_operation_id' => go } }
+    perms = perms_fuer_alle_go(3)
     u = build_user(permissions: perms)
     assert_equal [0], u.permission_hash[:rsk]
   end
@@ -104,7 +114,7 @@ class UserTest < ActiveSupport::TestCase
   # ---------------------------------------------------------------------------
 
   test 'permissions_items: Admin bekommt alle admin-gebundenen Menüeinträge' do
-    perms = ALL_GO.map { |go| { 'user_group_id' => 1, 'game_operation_id' => go } }
+    perms = perms_fuer_alle_go(1)
     u = build_user(permissions: perms)
     items = u.permissions_items
 
@@ -259,7 +269,7 @@ class UserTest < ActiveSupport::TestCase
   end
 
   test 'permission_hash: Ansetzer mit allen GOs ergibt [0]' do
-    perms = ALL_GO.map { |go| { 'user_group_id' => 7, 'game_operation_id' => go } }
+    perms = perms_fuer_alle_go(7)
     u = build_user(permissions: perms)
     assert_equal [0], u.permission_hash[:ansetzer]
   end
@@ -317,14 +327,14 @@ class UserTest < ActiveSupport::TestCase
   end
 
   test 'permissions_items: Admin sieht Verfahrensvorschläge unabhängig vom Landesverband' do
-    perms = ALL_GO.map { |go| { 'user_group_id' => 1, 'game_operation_id' => go } }
+    perms = perms_fuer_alle_go(1)
     u = build_user(permissions: perms)
 
     assert u.permissions_items[:menu_item_proceeding_proposal_admin]
   end
 
   test 'permissions_items: globale SBK sieht Verfahrensvorschläge, sobald ein LV sie nutzt' do
-    perms = ALL_GO.map { |go| { 'user_group_id' => 2, 'game_operation_id' => go } }
+    perms = perms_fuer_alle_go(2)
     u = build_user(permissions: perms)
 
     assert_not u.permissions_items[:menu_item_proceeding_proposal_admin]
@@ -377,13 +387,13 @@ class UserTest < ActiveSupport::TestCase
   end
 
   test 'club_ids: Admin gibt nil/leeres Ergebnis zurück (kein :vm im Hash)' do
-    perms = ALL_GO.map { |go| { 'user_group_id' => 1, 'game_operation_id' => go } }
+    perms = perms_fuer_alle_go(1)
     u = build_user(permissions: perms)
     assert_nil u.club_ids
   end
 
   test 'club_ids: SBK gibt nil/leeres Ergebnis zurück (kein :vm im Hash)' do
-    perms = ALL_GO.map { |go| { 'user_group_id' => 2, 'game_operation_id' => go } }
+    perms = perms_fuer_alle_go(2)
     u = build_user(permissions: perms)
     assert_nil u.club_ids
   end
@@ -393,9 +403,9 @@ class UserTest < ActiveSupport::TestCase
   # Landesverbänden. Leere Landesverbände bleiben dabei sichtbar, damit ein
   # Verband ohne Vereine nicht samt Anlege-Knopf aus der Verwaltung fällt.
   #
-  # game_operation_id 0 = global. Die vorherige Fassung listete stattdessen
-  # ALL_GO auf; diese IDs gibt es als Fixture nicht, der Zugriff war also in
-  # Wahrheit leer und die Zusicherung hing an den Platzhalter-Fixtures.
+  # game_operation_id 0 = global. Die vorherige Fassung zaehlte stattdessen eine
+  # feste ID-Liste auf; diese IDs gibt es als Fixture nicht, der Zugriff war also
+  # in Wahrheit leer und die Zusicherung hing an den Platzhalter-Fixtures.
   test 'Club.admin_user_clubs: globaler Admin erhält Einträge für alle Landesverbände' do
     create(:setting, current_season_id: '18')
     lv_a = create(:state_association, name: 'LV A')
@@ -649,5 +659,31 @@ class UserTest < ActiveSupport::TestCase
     )
     assert_not dup.valid?
     assert dup.errors[:user_name].present?
+  end
+
+  # Die Liste aller Spielbetriebe stand als Literal im Code ([1..6, 8..11]).
+  # Seit sie ueber die Oberflaeche entstehen (#492), verschiebt jeder neue den
+  # Vergleich: Eine Rolle, die jeden einzelnen Spielbetrieb aufzaehlt statt `0`
+  # zu tragen, fiel mit dem naechsten neuen aus dem globalen Scope -- und verlor
+  # damit auch den Menuepunkt, ueber den sie ihn angelegt hat.
+  test 'eine Rolle ueber alle vorhandenen Spielbetriebe ist global, unabhaengig von den IDs' do
+    create(:setting)
+    create_list(:game_operation, 2)
+
+    admin = build_user(permissions: perms_fuer_alle_go(1))
+
+    assert_equal [0], admin.permission_hash[:admin]
+    assert admin.permissions_items[:menu_item_game_operation_admin]
+
+    # Und nach einem weiteren Spielbetrieb ebenso. Der Haken in GameOperation
+    # haengt an `after_commit` und feuert im Test nicht (transaktional), deshalb
+    # den Request-Zwischenspeicher hier von Hand leeren.
+    create(:game_operation)
+    Current.reset_association_structure
+
+    admin = build_user(permissions: perms_fuer_alle_go(1))
+
+    assert_equal [0], admin.permission_hash[:admin],
+                 'ein neu angelegter Spielbetrieb darf eine Rolle ueber alle nicht aus dem globalen Scope werfen'
   end
 end
