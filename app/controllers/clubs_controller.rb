@@ -144,9 +144,30 @@ class ClubsController < ApplicationController
         # Vereine, die in DIESER Liga eine Mannschaft haben – der Ersatz für den
         # Gast-Eintrag, und genauer als er: Ein Gastverein muss als Ausrichter
         # wählbar bleiben, auch ohne Freigabe seines Landesverbands.
-        league_club_ids = Team.where(league_id: league.id).flat_map(&:all_club_ids).uniq
-        render json: Club.where(id: (own_ids + released_ids + league_club_ids).uniq)
-                         .order(:name).map(&:full_hash)
+        # `league.teams` statt `Team.where(league_id:)`: In einem Pokalwettbewerb
+        # hängen Mannschaften über `cup_leagues` und nicht über ihre league_id.
+        # Ohne das fehlte deren Verein in der Auswahl und wäre als Ausrichter
+        # eines Pokal-Spieltags nicht wählbar.
+        league_club_ids = league.teams.flat_map(&:all_club_ids).uniq
+        # Bundesweiter Zugriff (Admin oder SBK mit game_operation_id 0) sieht alle
+        # aktiven Vereine – analog zum global_access-Zweig in
+        # Club.admin_user_clubs. Ohne das war die Auswahl für einen frisch
+        # angelegten Wettbewerb des Bundesverbands praktisch leer: Der
+        # Bundesverband hat kaum eigene Heim-Vereine, und ohne Mannschaft in der
+        # Liga greift auch league_club_ids nicht. Genau der Fall einer Mannschaft,
+        # die ausschließlich den Pokal spielt und dort erst angelegt werden muss.
+        ph = current_user.permission_hash
+        global_access = ph[:admin].to_a.include?(0) || ph[:sbk].to_a.include?(0)
+        scope = if global_access
+                  Club.active
+                else
+                  Club.where(id: (own_ids + released_ids + league_club_ids).uniq)
+                end
+        # full_hash liest logo_url und logo_small_url, beide fassen die
+        # ActiveStorage-Anlage an. Ohne Preload kostet das je Verein zwei
+        # zusätzliche Abfragen – bei bundesweitem Zugriff über alle aktiven
+        # Vereine. Gleiche Vorsorge wie in Club.admin_user_clubs.
+        render json: scope.includes(logo_attachment: :blob).order(:name).map(&:full_hash)
       else
         render json: { message: 'Keine Berechtigung' }, status: :forbidden
       end
