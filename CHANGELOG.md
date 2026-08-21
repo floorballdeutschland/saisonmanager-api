@@ -9,6 +9,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.94.0] - 2026-08-21
+
+### Neu
+
+- **Spielbetriebe lassen sich über die Oberfläche anlegen und pflegen**: Unter „Verwaltung" → „Spielbetriebe" verwaltet die Bundesebene die Spielbetriebe selbst, also Name, Kürzel, den Pfad der öffentlichen Verbandsseite, den zugeordneten Landesverband, das Banner und die Angabe, ob es der bundesweite Spielbetrieb ist. Bisher ging das ausschließlich über die Rails-Konsole, in der Oberfläche gab es Spielbetriebe nur als Auswahl. Der Pfad wird geprüft: Er muss aus Kleinbuchstaben, Ziffern und einzelnen Bindestrichen bestehen, darf nicht doppelt vorkommen und keines der Segmente belegen, die der Saisonmanager selbst verwendet, weil die Verbandsseite dann nicht erreichbar wäre. Wird kein Pfad angegeben, entsteht er aus dem Kürzel. Ein Landesverband kann höchstens einen Spielbetrieb haben; ein zweiter wird abgelehnt, statt angelegt und wirkungslos zu bleiben. Gelöscht werden kann nur, woran nichts mehr hängt: Der Saisonmanager nennt die Zahl der Ligen, der zuständigen Vereine, der Benutzerrollen, der Schiedsrichter, der Dokumentarten, der Schiedsrichter-Merkmale und der empfangenen Vereinsfreigaben, die den Spielbetrieb noch führen. Ein archiviertes Benutzerkonto hält das Löschen nicht auf, denn es kann sich nicht anmelden und wäre in der Benutzerverwaltung auch nicht zu finden. Der Landesverband lässt sich nicht wechseln, solange Vereine an diesem Spielbetrieb hängen, und ein Landesverband, den es nicht gibt, wird abgelehnt. Ausschließlich für bundesweite Administratoren, denn über den Landesverband am Spielbetrieb entscheidet sich, wer die Vereine eines ganzen Verbandsbaums verwaltet.
+
+### Behoben
+
+- **Ein Leerzeichen am Namensende verhinderte den exakten Treffer bei Transfer und Freigabe**: Trug ein Spielerprofil im Bestand ein zusätzliches Leerzeichen am Anfang oder Ende von Vor- oder Nachname, fand die Suche nach „exaktem Treffer" in einer Transferanfrage oder Freigabe das Profil nicht, obwohl Vorname, Nachname und Geburtsdatum stimmten — der Verein sah nur „Kein exakter Match". Neue und geänderte Profile bekommen jetzt beim Speichern automatisch getrimmte Namen, und der Abgleich bei Transfer/Freigabe ignoriert vorhandene Leerzeichen im Bestand. Das gilt nicht nur für das Leerzeichen selbst, sondern auch für Tabulatoren und Zeilenumbrüche, wie sie beim Übernehmen aus Excel entstehen. Ein einmaliger Wartungslauf (`rake players:trim_names`) räumt betroffene Bestandsprofile auf; ein fehlender Vorname bleibt dabei fehlend und wird nicht zu einem leeren Feld.
+- **Die Transfermails nennen den Landesverband, der wirklich genehmigt**: In der Mail „Transferantrag zur Genehmigung" und in der Mail an die beiden Vereine stand der Landesverband, an dem der abgebende Verein hängt. Gehört dieser Landesverband zu einem Verbund, war das der Falsche: Gelesen und entschieden hat der Verbund, im Text stand der untergeordnete Verband. Für die Hamburger Vereine hieß es deshalb „wartet auf die Genehmigung des Landesverbands Floorball Bund Hamburg e.V.", während der Antrag beim Floorball Landesverband Schleswig-Holstein lag, der ihn auch gesehen und genehmigt hat. Beide Mails benennen jetzt den zuständigen Verband, also denselben, dessen Spielbetrieb über den Antrag entscheidet. Empfänger der Mail ist unverändert das Postfach des abgebenden Landesverbands, das bei einem untergeordneten Verband weiterhin auf den Verbund zurückfällt.
+
+### Verbessert
+
+- **Auch die Schiedsrichterdetails führen von jedem Spiel zum Spiel**: In „Meine Historie" verlinken die gepfiffenen Spiele seit dem 17. August auf die öffentliche Spielseite. Die Spielhistorie in den Schiedsrichterdetails, also die Sicht der RSK, der Ansetzer und der Verwaltung auf einen einzelnen Schiedsrichter, war weiterhin reiner Text. Sie liefert dazu jetzt dieselben Angaben mit, Liga und Verband je Spiel, sodass die Mannschaftsnamen dort ebenfalls zur Spielseite führen. Fehlt einem Altdaten-Spiel die Ligazuordnung, bleibt die Zeile wie in der Schiedsrichtersicht ohne Link.
+
 ## [1.93.0] - 2026-08-21
 
 ### Neu

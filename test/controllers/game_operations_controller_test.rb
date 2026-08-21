@@ -28,6 +28,23 @@ class GameOperationsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 'https://example.org', @go.reload.banner_link_url
   end
 
+  # Banner und Bannerlink stecken ueber GameOperation#meta_hash in /api/v2/init,
+  # das der Endpunkt 30 Minuten zwischenspeichert. Ohne Leerung zeigt die
+  # oeffentliche Verbandsseite nach dem Speichern noch eine halbe Stunde das
+  # alte Banner -- in der Maske sieht das wie ein fehlgeschlagener Upload aus.
+  test 'banner_link leert den init-Cache' do
+    with_real_cache do
+      Rails.cache.write('settings/init', { alt: true })
+      login(create(:user, :admin))
+
+      patch "/api/v2/admin/game_operations/#{@go.id}/banner_link",
+            params: { banner_link_url: 'https://example.org' }
+      assert_response :success
+
+      assert_nil Rails.cache.read('settings/init')
+    end
+  end
+
   test 'banner_link darf der globale Admin ändern' do
     login(create(:user, :admin))
 

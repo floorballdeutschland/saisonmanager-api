@@ -157,6 +157,14 @@ class Club < ApplicationRecord
     StateAssociation.root_id(state_association_id)
   end
 
+  # Derselbe Verband als Datensatz, fuer Texte, die ihn benennen muessen (die
+  # Transfermails). `state_association` ist dort der falsche Wert: Genehmigen
+  # darf der Verbund -- siehe main_game_operation_id -- und ein Kind-LV wie der
+  # Floorball Bund Hamburg entscheidet ueber nichts.
+  def responsible_state_association
+    StateAssociation.find_by(id: responsible_state_association_id)
+  end
+
   def full_hash
     {
       id:,

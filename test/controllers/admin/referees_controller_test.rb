@@ -177,6 +177,27 @@ module Admin
       assert_equal 1, entry['season_game_count']
     end
 
+    # Die Spielhistorie der Schiedsrichterdetails soll aus RSK-Sicht dieselben
+    # Links zur Spielseite tragen wie „Meine Historie" im Schiedsrichterbereich
+    # (/:association/:leagueId/spiel/:matchId). Dafuer braucht das Frontend je
+    # Spiel die Liga-ID und den Verband-Slug.
+    test 'games liefert je Spiel Liga-ID und Verband-Slug fuer den Link zur Spielseite' do
+      sa      = create(:state_association)
+      go      = create(:game_operation, state_association_id: sa.id, path: 'rsk-verband')
+      club    = create(:club, state_association_id: sa.id)
+      referee = create(:referee, club_id: club.id)
+      league  = create(:league, game_operation: go, season_id: '18')
+      create(:game, game_day: create(:game_day, league: league), officiating_referee_ids: [referee.id])
+      login(rsk_user(go.id))
+
+      get "/api/v2/admin/referees/#{referee.id}/games"
+
+      assert_response :success
+      game = response.parsed_body.first
+      assert_equal league.id, game['league_id']
+      assert_equal 'rsk-verband', game['game_operation_slug']
+    end
+
     test 'partners aggregiert gemeinsame Einsätze und trennt laufende Saison von der Gesamthistorie' do
       referee = create(:referee)
       often   = create(:referee, nachname: 'Oft')

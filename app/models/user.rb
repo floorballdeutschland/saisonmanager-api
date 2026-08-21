@@ -407,6 +407,13 @@ class User < ApplicationRecord
     # Verbands bleiben globalen Admins vorbehalten (Backend: authorize_admin! /
     # parent_id-Strip). Der globale SBK verwaltet alle LVs, aber nicht deren Lebenszyklus.
     result[:state_association_manage_lifecycle] = ph[:admin].present?
+    # Spielbetriebe anlegen und pflegen: nur BUNDESWEITE Admins, also `0` im
+    # Scope. Strenger als jeder andere Punkt hier, weil an einem Spielbetrieb
+    # zwei Felder haengen, die Rechte verschieben: `state_association_id` holt
+    # die Vereine eines fremden Verbandsbaums herueber, `national` hebt SBK, RSK
+    # und Ansetzer dieses Spielbetriebs auf globalen Scope. Begruendung im
+    # Langen an Admin::GameOperationsController.
+    result[:menu_item_game_operation_admin] = ph[:admin].present? && ph[:admin].include?(0)
     result[:menu_item_api_key_admin] = ph[:admin].present?
     result[:menu_item_transfer_requests] = ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
     result[:menu_item_transfer_requests_sbk] = ph[:admin].present? || ph[:sbk].present?
@@ -671,7 +678,17 @@ class User < ApplicationRecord
       ans_go_ids = [0]
     end
 
-    all_go = [1, 2, 3, 4, 5, 6, 8, 9, 10, 11]
+    # Alle vorhandenen Spielbetriebe, und nicht mehr eine im Code gepflegte
+    # Liste: Seit Spielbetriebe ueber die Oberflaeche entstehen (#492),
+    # verschiebt jeder neue diesen Vergleich. Eine Rolle, die jeden einzelnen
+    # Spielbetrieb aufzaehlt statt `0` zu tragen, fiele mit dem naechsten neuen
+    # aus dem globalen Scope -- und verlöre dabei genau den Menuepunkt, ueber
+    # den der neue Spielbetrieb angelegt wurde
+    # (menu_item_game_operation_admin verlangt `0`).
+    #
+    # GameOperation.by_id ist je Request einmal geladen (Current), die Ableitung
+    # kostet also keine zusaetzliche Abfrage.
+    all_go = GameOperation.by_id.keys.sort
 
     result[:tm] = tm_team_ids if tm_team_ids.present?
     result[:vm] = vm_club_ids.uniq.sort if vm_club_ids.present?
