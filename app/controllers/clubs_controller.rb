@@ -157,13 +157,17 @@ class ClubsController < ApplicationController
         # Liga greift auch league_club_ids nicht. Genau der Fall einer Mannschaft,
         # die ausschließlich den Pokal spielt und dort erst angelegt werden muss.
         ph = current_user.permission_hash
-        global_ids = if ph[:admin].to_a.include?(0) || ph[:sbk].to_a.include?(0)
-                       Club.active.pluck(:id)
-                     else
-                       []
-                     end
-        render json: Club.where(id: (own_ids + released_ids + league_club_ids + global_ids).uniq)
-                         .order(:name).map(&:full_hash)
+        global_access = ph[:admin].to_a.include?(0) || ph[:sbk].to_a.include?(0)
+        scope = if global_access
+                  Club.active
+                else
+                  Club.where(id: (own_ids + released_ids + league_club_ids).uniq)
+                end
+        # full_hash liest logo_url und logo_small_url, beide fassen die
+        # ActiveStorage-Anlage an. Ohne Preload kostet das je Verein zwei
+        # zusätzliche Abfragen – bei bundesweitem Zugriff über alle aktiven
+        # Vereine. Gleiche Vorsorge wie in Club.admin_user_clubs.
+        render json: scope.includes(logo_attachment: :blob).order(:name).map(&:full_hash)
       else
         render json: { message: 'Keine Berechtigung' }, status: :forbidden
       end

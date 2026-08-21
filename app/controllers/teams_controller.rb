@@ -312,6 +312,18 @@ class TeamsController < ApplicationController
           invalid = invalid_cup_league_ids(params[:team][:cup_leagues], go_id, team.cup_leagues)
           return render json: { errors: ["Ungültige Liga-IDs: #{invalid.join(', ')}"] }, status: :unprocessable_entity if invalid.any?
         end
+
+        # Auch der leere bzw. fehlende Fall: Genau dann werden alle Einträge
+        # ausgetragen, und das ist die Richtung, die ohne Prüfung durchging.
+        if params[:team].key?(:cup_leagues) && team.cup_leagues.present?
+          go_id ||= League.find_by(id: params[:team][:league_id] || team.league_id)&.game_operation_id
+          removals = unauthorized_cup_league_removals(params[:team][:cup_leagues], go_id, team.cup_leagues)
+          if removals.any?
+            return render json: { errors: ["Keine Berechtigung für Liga-IDs: #{removals.join(', ')}"] },
+                          status: :forbidden
+          end
+        end
+
         if team.update(team_params)
           render json: team
         else
@@ -424,14 +436,36 @@ class TeamsController < ApplicationController
     leagues = League.where(id: submitted_ids).index_by(&:id)
 
     submitted_ids.reject do |id|
-      next true if existing_ids.include?(id)
-
       league = leagues[id]
+      # Zuerst die Existenz, dann der Bestandsschutz: Sonst wäre eine auf eine
+      # gelöschte Liga zeigende Alt-ID für immer wieder zulässig, obwohl genau
+      # solche Reste hier ausfallen sollen.
       next false if league.nil?
+      next true if existing_ids.include?(id)
 
       league.game_operation_id == home_go_id ||
         league.user_permissions(current_user).include?(:update_league)
     end
+  end
+
+  # Wettbewerbe, die aus `cup_leagues` verschwinden würden und die der Aufrufer
+  # nicht selbst verwalten darf.
+  #
+  # Ohne diese Prüfung wäre das Austragen ungeschützt: Das Aufnehmen und das
+  # Entfernen über LeaguesController verlangen Rechte auf dem Wettbewerb, ein
+  # `PUT admin/teams` mit verkürztem `cup_leagues` ging dagegen ohne jede Prüfung
+  # durch – der eigene Landesverband hätte die Mannschaft aus dem fremden Pokal
+  # nehmen können. Die Maske schickt vorhandene Einträge unverändert mit, sie
+  # löst das also nicht aus.
+  def unauthorized_cup_league_removals(submitted, home_go_id, existing)
+    submitted_ids = Array(submitted).map(&:to_i)
+    dropped = Array(existing).map(&:to_i) - submitted_ids
+    return [] if dropped.empty?
+
+    League.where(id: dropped).reject do |league|
+      league.game_operation_id == home_go_id ||
+        league.user_permissions(current_user).include?(:update_league)
+    end.map(&:id)
   end
 
   # Die league_id eines Teams pinnt es normalerweise auf genau eine Saison

@@ -59,6 +59,57 @@ class TeamsCupLeagueScopeTest < ActionDispatch::IntegrationTest
     assert_includes @team.reload.cup_leagues, @other_lv_league.id
   end
 
+  # Das Austragen war die ungeschuetzte Richtung: Aufnehmen und Entfernen ueber
+  # den Wettbewerb verlangen Rechte auf ihm, ein verkuerztes cup_leagues im
+  # Mannschafts-PUT ging ohne jede Pruefung durch.
+  test 'LV-SBK darf die Mannschaft nicht per verkuerztem cup_leagues aus dem fremden Pokal nehmen' do
+    @team.update!(cup_leagues: [@cup.id])
+    login(create(:user, :sbk_scoped, game_operation_id: @lv_go.id))
+
+    post '/api/v2/admin/teams',
+         params: { id: @team.id, league_id: @lv_league.id, team: { cup_leagues: [] } }, as: :json
+
+    assert_response :forbidden
+    assert_includes @team.reload.cup_leagues, @cup.id
+  end
+
+  test 'LV-SBK darf eine Liga des eigenen Spielbetriebs wieder austragen' do
+    @team.update!(cup_leagues: [@other_lv_league.id])
+    login(create(:user, :sbk_scoped, game_operation_id: @lv_go.id))
+
+    post '/api/v2/admin/teams',
+         params: { id: @team.id, league_id: @lv_league.id, team: { cup_leagues: [] } }, as: :json
+
+    assert_response :success
+    assert_empty @team.reload.cup_leagues.to_a
+  end
+
+  test 'bundesweiter Admin darf den eigenen Pokal wieder austragen' do
+    @team.update!(cup_leagues: [@cup.id])
+    login(create(:user, :admin))
+
+    post '/api/v2/admin/teams',
+         params: { id: @team.id, league_id: @lv_league.id, team: { cup_leagues: [] } }, as: :json
+
+    assert_response :success
+    assert_empty @team.reload.cup_leagues.to_a
+  end
+
+  # Ein Eintrag, dessen Liga es nicht mehr gibt, soll beim naechsten Speichern
+  # ausfallen und nicht durch den Bestandsschutz konserviert werden.
+  test 'ein Eintrag auf eine geloeschte Liga bleibt unzulaessig' do
+    dead = create(:league, game_operation: @lv_go)
+    @team.update!(cup_leagues: [dead.id])
+    dead_id = dead.id
+    dead.destroy!
+    login(create(:user, :admin))
+
+    post '/api/v2/admin/teams',
+         params: { id: @team.id, league_id: @lv_league.id, team: { cup_leagues: [dead_id] } }, as: :json
+
+    assert_response :unprocessable_entity
+  end
+
   test 'eine ins Leere zeigende Liga-ID bleibt unzulaessig' do
     login(create(:user, :admin))
 

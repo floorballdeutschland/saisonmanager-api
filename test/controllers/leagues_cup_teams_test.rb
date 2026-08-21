@@ -70,6 +70,53 @@ class LeaguesCupTeamsTest < ActionDispatch::IntegrationTest
     assert_empty own.reload.cup_leagues.to_a
   end
 
+  # Die Zielliga allein reicht als Hürde nicht: Der Eintrag ändert den Datensatz
+  # einer Mannschaft aus einem fremden Verband. Ohne die zweite Prüfung könnte
+  # eine LV-SBK eine fremde Mannschaft in ihre EIGENE Liga ziehen und damit an
+  # deren Kader, Lizenzen und Kontaktdaten kommen.
+  test 'SBK darf keine fremde Mannschaft in die eigene Liga ziehen' do
+    own_league = create(:league, game_operation: @lv_go, name: 'Eigene Liga Ost')
+    other_go = create(:game_operation)
+    other_league = create(:league, game_operation: other_go, name: 'Liga Bayern')
+    foreign = create(:team, league: other_league, club: create(:club))
+    login(create(:user, :sbk_scoped, game_operation_id: @lv_go.id))
+
+    post "/api/v2/admin/leagues/#{own_league.id}/add_existing_teams", params: { team_ids: [foreign.id] }
+
+    assert_response :forbidden
+    assert_empty foreign.reload.cup_leagues.to_a
+  end
+
+  test 'SBK darf eine eigene Mannschaft in die eigene Liga aufnehmen' do
+    own_cup = create(:league, game_operation: @lv_go, name: 'Ost-Pokal')
+    login(create(:user, :sbk_scoped, game_operation_id: @lv_go.id))
+
+    post "/api/v2/admin/leagues/#{own_cup.id}/add_existing_teams", params: { team_ids: [@team.id] }
+
+    assert_response :success
+    assert_includes @team.reload.cup_leagues, own_cup.id
+  end
+
+  test 'eine unbekannte Mannschafts-ID beantwortet der Endpoint mit 404 statt sie zu verschlucken' do
+    login(create(:user, :admin))
+
+    post "/api/v2/admin/leagues/#{@cup.id}/add_existing_teams", params: { team_ids: [@team.id, 999_999] }
+
+    assert_response :not_found
+    assert_empty @team.reload.cup_leagues.to_a, 'die Aufnahme darf nicht halb ausgefuehrt werden'
+  end
+
+  test 'Entfernen sperrt eine Mannschaft, die der Aufrufer nicht bearbeiten darf' do
+    @team.update!(cup_leagues: [@cup.id])
+    other_go = create(:game_operation)
+    login(create(:user, :sbk_scoped, game_operation_id: other_go.id))
+
+    delete "/api/v2/admin/leagues/#{@cup.id}/existing_teams/#{@team.id}"
+
+    assert_response :forbidden
+    assert_includes @team.reload.cup_leagues, @cup.id
+  end
+
   test 'ohne Mannschaften antwortet der Endpoint mit 422' do
     login(create(:user, :admin))
 
