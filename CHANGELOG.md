@@ -9,6 +9,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Bestehende Mannschaften lassen sich in einen Pokalwettbewerb aufnehmen**: Ein Pokal liegt im Spielbetrieb des Bundesverbands, die teilnehmenden Mannschaften spielen ihre Punktrunde aber in den Ligen der Landesverbände und melden sich einzeln zum Pokal. Unter „Ligen" → Mannschaften des Wettbewerbs gibt es dafür „Bestandsmannschaft aufnehmen": Quell-Liga auswählen, Mannschaften ankreuzen, aufnehmen. Die Mannschaft wird nicht kopiert, sie behält ihre Hauptliga, und ihr Kader samt Lizenzen gilt in beiden Wettbewerben – eine Lizenz hängt an der Mannschaft, nicht an der Liga. Die Auswahl der Quell-Liga umfasst alle Spielbetriebe. Aufnehmen darf, wer den Wettbewerb selbst verwaltet; ein Landesverband kann keine Mannschaft in einen fremden Pokal eintragen. Aufgenommene Mannschaften stehen in der Liste mit ihrer Herkunft (Liga und Verband) und lassen sich dort auch wieder aus dem Wettbewerb nehmen, ohne dass die Mannschaft selbst verschwindet. Wer ausschließlich den Pokal spielt, wird wie bisher über „Neue Mannschaft" angelegt.
+
+### Behoben
+
+- **Die Vereinsauswahl eines Wettbewerbs kennt jetzt auch die aufgenommenen Mannschaften**: Wer eine Mannschaft über einen Pokalwettbewerb dabei hat, wurde in der Vereinsauswahl dieser Liga nicht angeboten, weil dort nur Mannschaften mit dieser Liga als Hauptliga gezählt wurden. Damit war der Verein als Ausrichter eines Pokal-Spieltags nicht wählbar. Zusätzlich sieht bundesweiter Zugriff (Verwaltung oder SBK über alle Verbände) in dieser Auswahl jetzt alle aktiven Vereine. Vorher war die Liste für einen frisch angelegten Wettbewerb des Bundesverbands praktisch leer, und damit ließ sich dort keine Mannschaft anlegen.
+- **In der Lizenzübersicht fehlte bei aufgenommenen Mannschaften der Verein**: Die Zeilen einer Mannschaft, die über einen Pokalwettbewerb in der Übersicht landet, blieben in der Vereinsspalte leer, weil die Zuordnung Mannschaft → Verein nur die Hauptliga kannte. Für die SBK des Pokals war das jede dieser Zeilen, der Vereinsfilter griff dort also nicht.
+
 ### Verbessert
 
 - **Mails an Schiedsrichter grüßen mit dem Vornamen**: „Hallo Anna Beispiel," war als Anrede unnötig steif und stand so in allen Mails an die Schiedsrichter, von der Ansetzung über die vorläufige Einplanung und die Ansetzungsänderung bis zur Lizenzbenachrichtigung, der Entscheidung über die Vereins-Ausschlussliste und der Willkommensmail zum Schiedsrichterkonto. Die Anrede lautet jetzt überall „Hallo Anna,". Die Erinnerung an das Berichtsformular geht weiterhin an beide Schiris des Gespanns und nennt beide Vornamen. Wer die Mails unter „System" → „E-Mail-Vorlagen" selbst textet, hat für die Anrede den neuen Platzhalter `{{first_name}}`; in der Erinnerung an das Berichtsformular stehen darin beide Vornamen, mit „und" verbunden.

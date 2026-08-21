@@ -122,6 +122,8 @@ Rails.application.routes.draw do
       post 'admin/leagues/:id/copy', to: 'leagues#admin_copy'
       post 'admin/leagues/:id/copy_preround_licenses', to: 'leagues#copy_preround_licenses'
       post 'admin/leagues/:id/import_teams', to: 'leagues#admin_import_teams'
+      post 'admin/leagues/:id/add_existing_teams', to: 'leagues#admin_add_existing_teams'
+      delete 'admin/leagues/:id/existing_teams/:team_id', to: 'leagues#admin_remove_existing_team'
       post 'admin/leagues/:id/upload_banner', to: 'leagues#admin_upload_banner'
       delete 'admin/leagues/:id/banner', to: 'leagues#admin_delete_banner'
       post 'admin/leagues/:id/upload_logo', to: 'leagues#admin_upload_logo'

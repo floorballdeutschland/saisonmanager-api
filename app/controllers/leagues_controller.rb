@@ -786,6 +786,77 @@ class LeaguesController < ApplicationController
     render json: { imported: imported, skipped: skipped, failed: failed }
   end
 
+  # Bestehende Mannschaften einem Pokal-/Endrundenwettbewerb hinzufügen, ohne sie
+  # zu kopieren: Die Liga wird in `teams.cup_leagues` eingetragen, die Hauptliga
+  # der Mannschaft bleibt unberührt. Damit spielt dieselbe Mannschaft mit
+  # demselben Kader und denselben Lizenzen in beiden Wettbewerben – eine Lizenz
+  # hängt an der Mannschaft, nicht an der Liga.
+  #
+  # Abgrenzung zu admin_import_teams: Der Import legt neue Mannschaften nach
+  # Tabellenplatz an (getrennter Kader). Hier melden sich Mannschaften einzeln
+  # zum Pokal an, und ihr bestehender Kader soll gelten.
+  #
+  # Geprüft wird die ZIELliga, genau wie beim Import: Wer den Wettbewerb
+  # verwalten darf, darf Mannschaften aufnehmen. Die Quell-Liga darf in einem
+  # fremden Spielbetrieb liegen – das ist der Zweck der Funktion.
+  def admin_add_existing_teams
+    league = find_league_or_not_found or return
+    return unless authorize_cup_entry!(league)
+
+    team_ids = Array(params[:team_ids]).map(&:to_i).uniq.reject(&:zero?)
+    return render json: { message: 'Keine Mannschaften angegeben' }, status: :unprocessable_entity if team_ids.empty?
+
+    added = 0
+    skipped = 0
+    failed = 0
+
+    Team.where(id: team_ids).find_each do |team|
+      # Hauptliga ist schon dieser Wettbewerb, oder der Eintrag steht bereits:
+      # nichts zu tun. Ohne diese Prüfung stünde die Liga doppelt im Array.
+      if team.league_id == league.id || team.cup_leagues.to_a.include?(league.id)
+        skipped += 1
+        next
+      end
+
+      if team.update(cup_leagues: team.cup_leagues.to_a + [league.id])
+        added += 1
+      else
+        failed += 1
+      end
+    end
+
+    render json: { added: added, skipped: skipped, failed: failed }
+  end
+
+  # Eine über cup_leagues aufgenommene Mannschaft wieder aus dem Wettbewerb
+  # nehmen. Bewusst kein Löschen der Mannschaft: Ihre Hauptliga, ihr Kader und
+  # ihre Lizenzen gehören einem anderen Wettbewerb und dürfen von hier aus nicht
+  # verschwinden. Mannschaften, deren Hauptliga diese Liga ist, lehnt der
+  # Endpoint deshalb ab – die gehören in die Mannschaftsverwaltung.
+  def admin_remove_existing_team
+    league = find_league_or_not_found or return
+    return unless authorize_cup_entry!(league)
+
+    team = Team.find_by(id: params[:team_id])
+    return render json: { message: 'Mannschaft nicht gefunden' }, status: :not_found unless team
+
+    if team.league_id == league.id
+      return render json: { message: 'Mannschaft gehört mit ihrer Hauptliga zu diesem Wettbewerb' },
+                    status: :unprocessable_entity
+    end
+
+    unless team.cup_leagues.to_a.include?(league.id)
+      return render json: { message: 'Mannschaft ist diesem Wettbewerb nicht zugeordnet' },
+                    status: :unprocessable_entity
+    end
+
+    if team.update(cup_leagues: team.cup_leagues.to_a - [league.id])
+      render json: { removed: true }
+    else
+      render json: team.errors, status: :unprocessable_entity
+    end
+  end
+
   # Liga-Logo, das Erkennungszeichen des Wettbewerbs. Getrennt vom Banner
   # nebenan, weil das eine Werbefläche mit Ziellink ist.
   #
@@ -908,6 +979,26 @@ class LeaguesController < ApplicationController
 
   # Admin/SBK des Spielbetriebs der Liga (0 = global) – Scope für die reinen
   # Verwaltungs-Reads (Team-Index, Spielplan-Verwaltung).
+  # Aufnahme in einen Wettbewerb bzw. Entfernen daraus: Rechte auf der ZIELliga,
+  # plus der Grundcheck auf eine Admin-/SBK-Rolle wie bei admin_import_teams –
+  # die Mannschaftsdaten der Quelle stammen aus einem fremden Spielbetrieb.
+  # Rendert die Antwort selbst und gibt false zurück, damit der Aufrufer
+  # abbrechen kann.
+  def authorize_cup_entry!(league)
+    unless league.user_permissions(current_user).include?(:update_league)
+      render json: { message: 'Keine Berechtigung' }, status: :forbidden
+      return false
+    end
+
+    ph = current_user.permission_hash
+    unless ph[:admin].present? || ph[:sbk].present?
+      render json: { message: 'Keine Berechtigung' }, status: :forbidden
+      return false
+    end
+
+    true
+  end
+
   def admin_or_sbk_for_league?(league)
     ph = current_user.permission_hash
     go_id = league.game_operation_id.to_i
