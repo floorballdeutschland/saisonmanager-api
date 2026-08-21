@@ -11,7 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Behoben
 
-- **Direktzuweisung in einen anderen Landesverband ist wieder möglich**: Bei der Direktzuweisung eines Spielers (Verwaltung → „Transfer-Anfragen" → „Direktzuweisung") standen im Vereinsfeld nur die Vereine des eigenen Zuständigkeitsbereichs. Ein Landesverband konnte einen Spieler seines Spielbetriebs damit nicht in einen Verein eines anderen Landesverbands zuweisen, obwohl genau das erlaubt ist: Zustimmen muss allein der abgebende Verband. Das Feld führt jetzt alle aktiven Vereine. Wer zuweisen darf, richtet sich unverändert nach dem abgebenden Verein; der Hinweistext über dem Feld und das Rollenhandbuch nennen jetzt diese Regel, statt eine Beschränkung auf den eigenen Landesverband zu behaupten. Deaktivierte Vereine nehmen keine Spieler mehr auf.
+- **Direktzuweisung in einen anderen Landesverband ist wieder möglich**: Bei der Direktzuweisung eines Spielers (Verwaltung → „Transfer-Anfragen" → „Direktzuweisung") standen im Vereinsfeld nur die Vereine des eigenen Zuständigkeitsbereichs. Ein Landesverband konnte einen Spieler seines Spielbetriebs damit nicht in einen Verein eines anderen Landesverbands zuweisen, obwohl genau das erlaubt ist: Zustimmen muss allein der abgebende Verband. Das Feld führt jetzt alle aktiven Vereine. Wer zuweisen darf, richtet sich unverändert nach dem abgebenden Verein; der Hinweistext über dem Feld und das Rollenhandbuch nennen jetzt diese Regel, statt eine Beschränkung auf den eigenen Landesverband zu behaupten. Deaktivierte Vereine stehen in dieser Auswahl nicht und werden bei der Direktzuweisung auch dann abgewiesen, wenn sie auf anderem Weg übergeben werden.
 
 ### Verbessert
 

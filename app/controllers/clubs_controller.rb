@@ -161,10 +161,12 @@ class ClubsController < ApplicationController
   # interne Felder (public_hash). Reine Schiri-Logins haben keinen Zugriff.
   #
   # active_only grenzt auf nicht deaktivierte Vereine ein. Standard bleibt die
-  # vollständige Liste: Die Anzeige-Aufrufer brauchen deaktivierte Vereine, um
-  # Bestandsdaten (alte Mitgliedschaften, Spieltage) überhaupt benennen zu
-  # können. Nur Masken, die einen Verein *neu* zuweisen, setzen den Parameter --
-  # ein deaktivierter Verein darf dort nicht auswählbar sein.
+  # vollständige Liste, weil Bestandsdaten (alte Mitgliedschaften, Spieltage)
+  # sonst nicht mehr benennbar wären. Gesetzt wird der Parameter bislang nur von
+  # der Direktzuweisung, deren Auswahl keinen deaktivierten Zielverein anbieten
+  # darf. Das Spielerprofil weist mit dem Zusatzverein ebenfalls zu und setzt
+  # ihn nicht -- dort ist ein deaktivierter Verein weiter wählbar, und
+  # PlayersController#add_additional_club prüft es serverseitig auch nicht.
   def admin_club_all
     ph = current_user.permission_hash
     unless %i[admin sbk vm tm rsk ansetzer].any? { |role| ph[role].present? }
