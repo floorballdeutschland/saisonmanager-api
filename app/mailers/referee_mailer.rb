@@ -1,12 +1,19 @@
 class RefereeMailer < ApplicationMailer
   REPLY_TO = 'sr-ansetzungen@floorball.de'
 
-  def license_notification(referee)
+  # `first_license`: Der Schiedsrichter trug vorher keine Lizenzstufe – meist eine
+  # Neuanlage aus dem Kursimport. Die Vorlage meldet dann eine erteilte statt
+  # einer aktualisierten Lizenz und behauptet nicht, die Lizenz sei „ab sofort
+  # auch" über den QR-Code auf dem Schiedsrichterausweis prüfbar: Wer seine erste
+  # Lizenz bekommt, hat noch keinen Ausweis in der Hand.
+  def license_notification(referee, first_license: false)
     @referee = referee
+    @first_license = first_license
 
     templated_mail(
       to: referee.email,
-      subject: "Schiedsrichterlizenz aktualisiert – #{referee.vorname} #{referee.nachname}",
+      subject: "Schiedsrichterlizenz #{first_license ? 'erteilt' : 'aktualisiert'} – " \
+               "#{referee.vorname} #{referee.nachname}",
       default_reply_to: 'rsk@floorball.de',
       placeholders: {
         referee_name: "#{referee.vorname} #{referee.nachname}",
@@ -33,7 +40,8 @@ class RefereeMailer < ApplicationMailer
       placeholders: {
         referee_name: "#{referee.vorname} #{referee.nachname}",
         first_name: referee.vorname,
-        qualification_names: changes.map { |change| change[:name] }.join(', ')
+        qualification_names: changes.map { |change| change[:name] }.join(', '),
+        qualification_list: changes.map { |change| qualification_line(change) }.join(', ')
       }
     )
   end
@@ -232,6 +240,14 @@ class RefereeMailer < ApplicationMailer
   # bestimmt.
   def visible_referee_notes(game, referee)
     game.referee_notes.presence if game.referee_notes_visible_to?(referee)
+  end
+
+  # „B-Coach (gültig bis 30.06.2027)" – damit ein in der Admin-UI gepflegter Body
+  # nicht nur die Namen, sondern auch die Ablaufdaten wiedergeben kann.
+  def qualification_line(change)
+    return change[:name] if change[:valid_until].blank?
+
+    "#{change[:name]} (gültig bis #{change[:valid_until].strftime('%d.%m.%Y')})"
   end
 
   # Ansetzungs-Postfach des Landesverbands, in dem der Schiri über seinen Verein

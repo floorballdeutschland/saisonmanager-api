@@ -57,12 +57,25 @@ class RefereeQualificationDiffTest < ActiveSupport::TestCase
     assert_nil changes.first[:valid_until]
   end
 
+  # Eingabe in umgekehrter Reihenfolge, damit ein Wegfall der Sortierung auffaellt.
+  # „B-Coach" vor „Beobachter", weil '-' vor 'e' sortiert.
   test 'sortiert mehrere Aenderungen nach Name' do
     changes = RefereeQualificationDiff.changes(
       before: {}, after: { @beob.id => nil, @coach.id => nil }
     )
 
     namen = changes.map { |change| change[:name] }
-    assert_equal [@coach.name, @beob.name].sort, namen
+    assert_equal [@coach.name, @beob.name], namen
+  end
+
+  # Strukturell unerreichbar (der Verweis auf den Typ ist Pflicht), aber wenn es
+  # doch passiert, darf keine Mail ueber eine namenlose Qualifikation rausgehen.
+  test 'ueberspringt einen unbekannten Qualifikationstyp' do
+    changes = RefereeQualificationDiff.changes(
+      before: {}, after: { @coach.id => nil, 999_999 => nil }
+    )
+
+    namen = changes.map { |change| change[:name] }
+    assert_equal [@coach.name], namen
   end
 end

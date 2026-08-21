@@ -53,11 +53,57 @@ module Admin
         assert_response :success
       end
 
+      # Nicht nur zaehlen, sondern pruefen, WER die Mail bekommt: Bei einer
+      # verdrehten Bedingung bliebe die Zahl 1 und die Mail ginge an den
+      # falschen Schiedsrichter.
+      perform_enqueued_jobs
+      assert_equal ['direkt@example.org'], ActionMailer::Base.deliveries.last.to
+
       assert_equal 1, JSON.parse(response.body)['license_notifications']
       assert_equal 'applied', direkt_result.reload.status
       assert_not direkt_result.license_notification_pending
       assert_equal 'pending_review', wartet_result.reload.status
       assert wartet_result.license_notification_pending
+    end
+
+    # Die Antwort trennt „ohne Adresse" von „nichts zu melden": Nach einem Kurs
+    # mit vielen Zeilen ist das erste eine Aufgabenliste, das zweite in Ordnung.
+    test 'submit zaehlt die nicht erreichbaren Schiedsrichter getrennt' do
+      result_for(create(:referee, email: 'direkt@example.org', lizenzstufe: nil, gueltigkeit: nil),
+                 match_type: 'exact_match')
+      result_for(create(:referee, email: nil, lizenzstufe: nil, gueltigkeit: nil),
+                 match_type: 'exact_match')
+      login(@admin)
+
+      assert_enqueued_emails 1 do
+        post "/api/v2/admin/referee_course_imports/#{@import.id}/submit"
+        assert_response :success
+      end
+
+      antwort = JSON.parse(response.body)
+      assert_equal 1, antwort['license_notifications']
+      assert_equal 1, antwort['license_notifications_unreachable']
+    end
+
+    # Der Kommentar an RefereeNotification verspricht, dass ein Fehlschlag beim
+    # Versand den Vorgang nicht umwirft: Der Import ist angewendet, die Mail
+    # laesst sich nachholen, ein 500er hinterliesse einen halb angewendeten
+    # Import.
+    test 'ein Fehler beim Versand laesst den Import angewendet' do
+      referee = create(:referee, email: 'direkt@example.org', lizenzstufe: nil, gueltigkeit: nil)
+      result = result_for(referee, match_type: 'exact_match')
+      login(@admin)
+
+      # Der Fehler fliegt dort, wo RefereeNotification ihn abfaengt: beim Bauen
+      # und Einreihen der Mail.
+      RefereeMailer.stub(:license_notification, ->(*, **) { raise 'SMTP kaputt' }) do
+        post "/api/v2/admin/referee_course_imports/#{@import.id}/submit"
+      end
+
+      assert_response :success
+      assert_equal 'applied', result.reload.status
+      assert_equal 'G', referee.reload.lizenzstufe
+      assert_equal 0, JSON.parse(response.body)['license_notifications']
     end
 
     # Scheitert eine spätere Zeile, rollt die Transaktion alles zurück. Es darf

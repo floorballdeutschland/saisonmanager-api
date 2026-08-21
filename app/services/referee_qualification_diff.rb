@@ -28,8 +28,19 @@ module RefereeQualificationDiff
     return [] if changed.empty?
 
     names = RefereeQualificationType.where(id: changed.map(&:first)).pluck(:id, :name).to_h
-    benannt = changed.map do |type_id, valid_until, kind|
-      { name: names[type_id] || 'Zusatzqualifikation', valid_until: valid_until, kind: kind }
+    # Einen Typ ohne Namen gibt es strukturell nicht (referee_qualifications.
+    # referee_qualification_type_id ist ein Pflicht-Verweis, die Zeile ist also
+    # angelegt, bevor hier gelesen wird). Sollte er doch auftreten, bleibt er
+    # draußen: Eine Mail über eine namenlose „Zusatzqualifikation" hilft dem
+    # Schiedsrichter nicht und die Zeile wäre auch für den Support nicht
+    # auflösbar.
+    benannt = changed.filter_map do |type_id, valid_until, kind|
+      unless names.key?(type_id)
+        Rails.logger.warn("RefereeQualificationDiff: unbekannter Qualifikationstyp #{type_id} übersprungen")
+        next
+      end
+
+      { name: names[type_id], valid_until: valid_until, kind: kind }
     end
     benannt.sort_by { |change| change[:name] }
   end

@@ -95,9 +95,25 @@ class RefereeCourseResultApplierTest < ActiveSupport::TestCase
     assert_not result.reload.license_notification_pending
   end
 
+  # Ohne das `if license_changed` am Vermerk wuerde jede LV-Freigabe einer
+  # nachgereichten Zeile eine Mail ueber eine Lizenz schicken, die sich nie
+  # bewegt hat.
+  test 'review-pflichtige Zeile ohne Lizenzaenderung vermerkt nichts' do
+    RefereeLicenseLevel.create!(name: 'G', validity_years: 1)
+    ref = create(:referee, email: 'schiri@example.org',
+                           lizenzstufe: 'G', gueltigkeit: Date.new(2026, 7, 31))
+    result = make_result(referee: ref)
+
+    RefereeCourseResultApplier.new(result, performed_by_user: @admin).call(review_required: true)
+
+    assert_not result.reload.license_notification_pending
+  end
+
   test 'unveraenderte Lizenz schickt keine Mail' do
-    # Ohne RefereeLicenseLevel-Eintrag gilt die Default-Dauer von einem Jahr:
-    # Kursjahr 2025 + 1 → Regeljahr 2026 → 31.07.2026. Genau der Stand des Schiris.
+    # Kursjahr 2025 + validity_years 1 → Regeljahr 2026 → 31.07.2026, genau der
+    # Stand des Schiris. Die Stufe explizit anlegen, damit der Test nicht an der
+    # Default-Dauer haengt.
+    RefereeLicenseLevel.create!(name: 'G', validity_years: 1)
     ref = create(:referee, email: 'schiri@example.org',
                            lizenzstufe: 'G', gueltigkeit: Date.new(2026, 7, 31))
     result = make_result(referee: ref, master_email_final: ref.email)
@@ -122,6 +138,54 @@ class RefereeCourseResultApplierTest < ActiveSupport::TestCase
       applier.deliver_pending_license_notification
     end
     assert_equal 'neu@example.org', result.reload.referee.email
+  end
+
+  # Der Kursimport legt Schiedsrichter an, die noch keinen Ausweis in der Hand
+  # halten – die Mail darf ihnen keine „aktualisierte" Lizenz melden und den
+  # QR-Code auf dem Ausweis nicht als vorhanden voraussetzen.
+  test 'Neuanlage bekommt die Mail zur erteilten, nicht zur aktualisierten Lizenz' do
+    result = make_result(referee: nil,
+                         master_email_by_importer: 'neu@example.org',
+                         master_email_final: 'neu@example.org')
+    applier = RefereeCourseResultApplier.new(result, performed_by_user: @admin)
+    applier.call(review_required: false)
+    applier.deliver_pending_license_notification
+    perform_enqueued_jobs
+
+    mail = ActionMailer::Base.deliveries.last
+    assert_includes mail.subject, 'Schiedsrichterlizenz erteilt'
+    assert_includes mail.body.to_s, 'wurde im Saisonmanager eine Schiedsrichterlizenz eingetragen'
+    assert_includes mail.body.to_s, 'sobald du ihn erhalten hast'
+  end
+
+  test 'Bestandsschiri mit Stufe bekommt die Mail zur aktualisierten Lizenz' do
+    RefereeLicenseLevel.create!(name: 'G', validity_years: 1)
+    ref = create(:referee, email: 'schiri@example.org',
+                           lizenzstufe: 'N1', gueltigkeit: Date.new(2026, 7, 31))
+    applier = RefereeCourseResultApplier.new(
+      make_result(referee: ref, master_email_final: ref.email), performed_by_user: @admin
+    )
+    applier.call(review_required: false)
+    applier.deliver_pending_license_notification
+    perform_enqueued_jobs
+
+    mail = ActionMailer::Base.deliveries.last
+    assert_includes mail.subject, 'Schiedsrichterlizenz aktualisiert'
+    assert_includes mail.body.to_s, 'deine Schiedsrichterlizenz wurde im Saisonmanager aktualisiert'
+  end
+
+  # Ein zweiter Aufruf derselben Instanz darf nicht noch eine Mail schicken.
+  test 'der Merker ist nach dem Versand leer' do
+    ref = create(:referee, email: 'schiri@example.org', lizenzstufe: nil, gueltigkeit: nil)
+    applier = RefereeCourseResultApplier.new(
+      make_result(referee: ref, master_email_final: ref.email), performed_by_user: @admin
+    )
+    applier.call(review_required: false)
+    applier.deliver_pending_license_notification
+
+    assert_enqueued_emails 0 do
+      assert_equal RefereeNotification::NOTHING, applier.deliver_pending_license_notification
+    end
   end
 
   test 'ohne hinterlegte Adresse schickt der Applier keine Mail' do

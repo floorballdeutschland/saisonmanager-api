@@ -1,10 +1,20 @@
+<% if @first_license %>
+<h2>Schiedsrichterlizenz erteilt</h2>
+<% else %>
 <h2>Schiedsrichterlizenz aktualisiert</h2>
+<% end %>
 
 <p>Hallo <%= @referee.vorname %>,</p>
 
+<% if @first_license %>
+<p>
+  für dich wurde im Saisonmanager eine Schiedsrichterlizenz eingetragen.
+</p>
+<% else %>
 <p>
   deine Schiedsrichterlizenz wurde im Saisonmanager aktualisiert.
 </p>
+<% end %>
 
 <% if @referee.lizenznummer.present? %>
 <p><strong>Lizenznummer:</strong> <%= @referee.lizenznummer %></p>
@@ -18,9 +28,15 @@
 <p><strong>Gültigkeit:</strong> <%= @referee.gueltigkeit.strftime('%d.%m.%Y') %></p>
 <% end %>
 
+<% if @first_license %>
+<p>
+  Die Lizenz ist im <a href="https://saisonmanager.de/lizenzcheck?q=<%= @referee.lizenznummer %>">Lizenzchecker</a> hinterlegt und damit auch über den QR-Code auf dem Schiedsrichterausweis überprüfbar, sobald du ihn erhalten hast.
+</p>
+<% else %>
 <p>
   Die Lizenz ist damit ab sofort auch im <a href="https://saisonmanager.de/lizenzcheck?q=<%= @referee.lizenznummer %>">Lizenzchecker</a>, also über den QR-Code auf deinem Schiedsrichterausweis, überprüfbar.
 </p>
+<% end %>
 
 <p>
   Bei Fragen oder Unstimmigkeiten wende dich bitte an die Regel- und Schiedsrichterkommission von Floorball Deutschland (rsk@floorball.de).<br>

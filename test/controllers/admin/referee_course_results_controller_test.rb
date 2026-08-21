@@ -96,6 +96,8 @@ module Admin
         assert_response :success
       end
 
+      perform_enqueued_jobs
+      assert_equal ['schiri@example.org'], ActionMailer::Base.deliveries.last.to
       assert_not result.reload.license_notification_pending
     end
 

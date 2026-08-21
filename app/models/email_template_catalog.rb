@@ -107,7 +107,9 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
     'RefereeMailer#license_notification' => {
       mailer_class: 'RefereeMailer',
       action_name: 'license_notification',
-      description: 'Benachrichtigung an Schiri über aktualisierte Lizenz.',
+      description: 'Benachrichtigung an Schiri über eine aktualisierte Lizenz. Trug der Schiri vorher keine ' \
+                   'Lizenzstufe (meist eine Neuanlage aus dem Kursimport), meldet die Mail eine erteilte statt ' \
+                   'einer aktualisierten Lizenz – im gepflegten Betreff ist diese Unterscheidung nicht abbildbar.',
       default_subject: 'Schiedsrichterlizenz aktualisiert – {{referee_name}}',
       default_from: nil,
       default_reply_to: 'rsk@floorball.de',
@@ -127,7 +129,10 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       placeholders: [
         { key: 'referee_name', description: 'Vor- und Nachname des Schiris' },
         { key: 'first_name', description: 'Vorname des Schiris' },
-        { key: 'qualification_names', description: 'Namen der betroffenen Qualifikationen, mit Komma getrennt' }
+        { key: 'qualification_names', description: 'Namen der betroffenen Qualifikationen, mit Komma getrennt' },
+        { key: 'qualification_list',
+          description: 'Wie qualification_names, zusätzlich je Qualifikation das Ablaufdatum ' \
+                       'in Klammern („B-Coach (gültig bis 30.06.2027)")' }
       ]
     },
     'RefereeMailer#club_exclusion_requested' => {

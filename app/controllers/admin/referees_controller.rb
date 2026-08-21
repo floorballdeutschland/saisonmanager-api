@@ -114,15 +114,27 @@ module Admin
 
       @referee.assign_attributes(safe_referee_params)
       license_fields_changed = (@referee.changed & %w[lizenznummer gueltigkeit lizenzstufe]).any?
+      # Vor dem Speichern lesen: Wer bis jetzt keine Stufe trug, bekommt seine
+      # Lizenz erteilt und nicht aktualisiert.
+      first_license = @referee.lizenzstufe_was.blank?
 
       if @referee.save
         qualification_changes = can_edit_full? ? sync_qualifications(@referee) : []
         sync_tags(@referee) if can_manage_tags?
         # Zwei getrennte Mails, wenn Lizenz und Qualifikation im selben Speichern
         # geändert wurden: Es sind zwei pflegbare Vorlagen mit je eigenem Betreff.
-        RefereeNotification.license_update(@referee) if license_fields_changed
-        RefereeNotification.qualification_update(@referee, qualification_changes)
+        license_mail = if license_fields_changed
+                         RefereeNotification.license_update(@referee, first_license: first_license)
+                       else
+                         RefereeNotification::NOTHING
+                       end
+        qualification_mail = RefereeNotification.qualification_update(@referee, qualification_changes)
+
+        # Ausgang mitgeben wie bei der Kontenanlage (siehe create_user): Ein
+        # Fehlschlag beim Versand wirft den Vorgang bewusst nicht um, ohne diese
+        # Angabe hielte die Verwaltung den Schiedsrichter aber für unterrichtet.
         render json: referee_json(@referee.reload, full: true)
+                     .merge(license_mail: license_mail, qualification_mail: qualification_mail)
       else
         render json: { errors: @referee.errors.full_messages }, status: :unprocessable_entity
       end

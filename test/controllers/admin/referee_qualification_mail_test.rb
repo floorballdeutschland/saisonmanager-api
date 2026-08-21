@@ -48,6 +48,37 @@ module Admin
       assert_includes mail.body.to_s, '30.06.2027'
     end
 
+    # Deckt die drei uebrigen Zweige der Vorlage ab: Mehrzahl in der Einleitung,
+    # der Zusatz „(aktualisiert)" und „ohne Ablaufdatum".
+    test 'die Mail unterscheidet mehrere, geaenderte und unbefristete Qualifikationen' do
+      add_qualification(@referee, @coach, valid_until: Date.new(2026, 6, 30))
+      geaendert = [{ qualification_type_id: @coach.id, valid_until: '30.06.2027' },
+                   { qualification_type_id: @beob.id, valid_until: nil }]
+      put_qualifications(@referee, geaendert)
+      perform_enqueued_jobs
+
+      body = ActionMailer::Base.deliveries.last.body.to_s
+      assert_includes body, 'wurden im Saisonmanager Zusatzqualifikationen eingetragen'
+      assert_includes body, '(aktualisiert)'
+      assert_includes body, 'ohne Ablaufdatum'
+    end
+
+    # Ein in der Admin-UI gepflegter Body ersetzt das ERB-View komplett – dann
+    # tragen nur noch die Platzhalter die Inhalte. qualification_list ist der
+    # einzige, der auch die Ablaufdaten mitbringt.
+    test 'ein gepflegter Body kann Namen und Ablaufdatum ueber Platzhalter ausgeben' do
+      EmailTemplate.create!(mailer_class: 'RefereeMailer', action_name: 'qualification_notification',
+                            subject: 'Neu: {{qualification_names}}',
+                            body: '<p>Hallo {{first_name}}: {{qualification_list}}</p>')
+
+      put_qualifications(@referee, [{ qualification_type_id: @coach.id, valid_until: '30.06.2027' }])
+      perform_enqueued_jobs
+
+      mail = ActionMailer::Base.deliveries.last
+      assert_equal "Neu: #{@coach.name}", mail.subject
+      assert_includes mail.body.to_s, "#{@coach.name} (gültig bis 30.06.2027)"
+    end
+
     test 'geaenderte Gueltigkeit loest eine Mail aus' do
       add_qualification(@referee, @coach, valid_until: Date.new(2026, 6, 30))
 
@@ -97,6 +128,25 @@ module Admin
       assert_enqueued_emails 0 do
         put_qualifications(gast, [{ qualification_type_id: @coach.id, valid_until: nil }])
       end
+    end
+
+    # Ein LV-RSK darf die Qualifikationen nicht pflegen (can_edit_full? ist
+    # false, sync_qualifications laeuft nicht). Dann darf auch keine Mail ueber
+    # Aenderungen rausgehen, die nie geschrieben wurden.
+    test 'ohne Recht auf die Qualifikationen wird nichts geschrieben und nichts gemeldet' do
+      sa = create(:state_association)
+      go = create(:game_operation, state_association_id: sa.id)
+      lv_rsk = create(:user, :rsk_scoped, game_operation_id: go.id)
+      referee = create(:referee, email: 'schiri@example.org', club: create(:club, state_association_id: sa.id))
+      login(lv_rsk)
+
+      assert_enqueued_emails 0 do
+        put "/api/v2/admin/referees/#{referee.id}",
+            params: { referee: { qualifications: [{ qualification_type_id: @coach.id, valid_until: nil }] } }
+        assert_response :success
+      end
+
+      assert_empty referee.reload.referee_qualifications
     end
 
     test 'beim Anlegen eines Schiris geht keine Mail raus' do

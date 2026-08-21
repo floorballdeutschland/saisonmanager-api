@@ -128,9 +128,21 @@ module Admin
       # warten, sind hier still – ihre Mail geht beim Approve raus. Der Versand
       # selbst ist eingereiht (deliver_later), ein Kursimport mit vielen Zeilen
       # läuft dem Request also nicht davon.
-      notifications = appliers.count(&:deliver_pending_license_notification)
+      #
+      # Nicht erreichbar und nichts zu melden getrennt zählen: Nach einem Kurs mit
+      # vierzig Zeilen ist „28 ohne hinterlegte Adresse" eine Aufgabenliste,
+      # „28 ohne Änderung" dagegen in Ordnung. Eine reine Gesamtzahl beantwortet
+      # das nicht.
+      outcomes = appliers.map(&:deliver_pending_license_notification)
+      sent = outcomes.count(RefereeNotification::SENT)
+      unreachable = outcomes.count(RefereeNotification::UNREACHABLE)
+      Rails.logger.info("Kursimport #{@import.id}: #{sent} Lizenzmail(s) eingereiht, " \
+                        "#{unreachable} ohne Adresse oder Gast, " \
+                        "#{outcomes.count(RefereeNotification::FAILED)} fehlgeschlagen")
 
-      render json: @import.reload.full_hash.merge(license_notifications: notifications)
+      render json: @import.reload.full_hash.merge(
+        license_notifications: sent, license_notifications_unreachable: unreachable
+      )
     rescue SubmitRowError => e
       render json: {
         error: e.message,

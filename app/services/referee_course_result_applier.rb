@@ -12,19 +12,27 @@ class RefereeCourseResultApplier
     @result = result
     @performed_by_user = performed_by_user
     @notify_referee = nil
+    @notify_first_license = false
   end
 
   # Verschickt die Lizenzmail, sofern dieser Lauf eine fällig gemacht hat.
+  # Rückgabe: einer der RefereeNotification-Ausgänge (:sent, :unreachable,
+  # :failed) bzw. :nothing, wenn dieser Lauf nichts zu melden hatte.
   #
   # Bewusst NICHT in `call`: Der Submit wendet alle Zeilen eines Imports in EINER
   # Transaktion an (siehe Admin::RefereeCourseImportsController#submit). Ein
   # Versand innerhalb der Transaktion würde bei einem Fehler in einer späteren
   # Zeile Mails zu Lizenzen hinterlassen, die nach dem Rollback nie geschrieben
   # wurden. Der Aufrufer ruft diese Methode deshalb nach dem Commit.
+  #
+  # Nach dem Versand ist der Merker leer: Ein zweiter Aufruf derselben Instanz
+  # schickt nicht noch eine Mail.
   def deliver_pending_license_notification
-    return false if @notify_referee.nil?
+    return RefereeNotification::NOTHING if @notify_referee.nil?
 
-    RefereeNotification.license_update(@notify_referee)
+    referee = @notify_referee
+    @notify_referee = nil
+    RefereeNotification.license_update(referee, first_license: @notify_first_license)
   end
 
   # Wendet einen Course-Result auf einen Referee an. Wenn `review_required`
@@ -42,6 +50,9 @@ class RefereeCourseResultApplier
 
     ActiveRecord::Base.transaction do
       referee = @result.referee || create_new_referee
+      # Vor dem Schreiben lesen: Wer noch keine Stufe trug, bekommt seine Lizenz
+      # erteilt und nicht aktualisiert – die Mail formuliert das anders.
+      first_license = referee.lizenzstufe.blank?
       license_changed = apply_license_fields(referee)
       apply_master_fields(referee) unless review_required
 
@@ -56,7 +67,17 @@ class RefereeCourseResultApplier
       else
         # Zwei Wege enden hier: die direkt durchlaufende Zeile (license_changed)
         # und die vom LV freigegebene, deren Änderung beim Submit vermerkt wurde.
-        @notify_referee = referee if license_changed || @result.license_notification_pending
+        if license_changed || @result.license_notification_pending
+          @notify_referee = referee
+          # Bei der LV-Freigabe steht die Stufe schon (der Submit hat sie
+          # geschrieben), first_license ist dort also immer false. Für die
+          # Neuanlagen – der Fall, auf den es ankommt – trägt das schon
+          # gespeicherte new_referee_created die Erstvergabe. Ein Bestandsschiri
+          # ganz ohne Lizenzstufe, dessen Zeile ins Review geht, bekommt darum
+          # „aktualisiert" statt „erteilt"; das ist die einzige Unschärfe und
+          # spart eine zweite Spalte.
+          @notify_first_license = first_license || @result.new_referee_created
+        end
         @result.license_notification_pending = false
         @result.status = 'applied'
         @result.applied_at = Time.current
