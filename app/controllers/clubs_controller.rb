@@ -180,6 +180,14 @@ class ClubsController < ApplicationController
   # (Schiri-, User-, Spieler-, Spieltag-Verwaltung, Lizenzlisten). Für alle
   # Verwaltungsrollen inkl. VM/TM zugänglich, aber ohne contact_email und
   # interne Felder (public_hash). Reine Schiri-Logins haben keinen Zugriff.
+  #
+  # active_only grenzt auf nicht deaktivierte Vereine ein. Standard bleibt die
+  # vollständige Liste, weil Bestandsdaten (alte Mitgliedschaften, Spieltage)
+  # sonst nicht mehr benennbar wären. Gesetzt wird der Parameter bislang nur von
+  # der Direktzuweisung, deren Auswahl keinen deaktivierten Zielverein anbieten
+  # darf. Das Spielerprofil weist mit dem Zusatzverein ebenfalls zu und setzt
+  # ihn nicht -- dort ist ein deaktivierter Verein weiter wählbar, und
+  # PlayersController#add_additional_club prüft es serverseitig auch nicht.
   def admin_club_all
     ph = current_user.permission_hash
     unless %i[admin sbk vm tm rsk ansetzer].any? { |role| ph[role].present? }
@@ -187,6 +195,7 @@ class ClubsController < ApplicationController
     end
 
     clubs = Club.includes(logo_attachment: :blob).order(:name)
+    clubs = clubs.active if ActiveModel::Type::Boolean.new.cast(params[:active_only])
     render json: clubs.map(&:public_hash)
   end
 
