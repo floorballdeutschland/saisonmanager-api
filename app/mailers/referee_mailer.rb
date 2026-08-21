@@ -8,7 +8,10 @@ class RefereeMailer < ApplicationMailer
       to: referee.email,
       subject: "Schiedsrichterlizenz aktualisiert – #{referee.vorname} #{referee.nachname}",
       default_reply_to: 'rsk@floorball.de',
-      placeholders: { referee_name: "#{referee.vorname} #{referee.nachname}" }
+      placeholders: {
+        referee_name: "#{referee.vorname} #{referee.nachname}",
+        first_name: referee.vorname
+      }
     )
   end
 
@@ -26,7 +29,7 @@ class RefereeMailer < ApplicationMailer
       to: referee.email,
       subject: "Vorläufige Ansetzung – #{@date_label}",
       default_reply_to: REPLY_TO,
-      placeholders: { date: @date_label }
+      placeholders: { date: @date_label, first_name: referee.vorname }
     )
   end
 
@@ -45,6 +48,7 @@ class RefereeMailer < ApplicationMailer
       subject: "Ansetzung – #{game.game_day.date} #{game.home_team&.name} vs. #{game.guest_team&.name}",
       default_reply_to: REPLY_TO,
       placeholders: {
+        first_name: referee.vorname,
         game_date: game.game_day.date,
         game_time: game.start_time.to_s,
         home_team: game.home_team&.name,
@@ -71,6 +75,7 @@ class RefereeMailer < ApplicationMailer
       subject: "Schiedsrichtercoach-Ansetzung – #{game.game_day.date} #{game.home_team&.name} vs. #{game.guest_team&.name}",
       default_reply_to: REPLY_TO,
       placeholders: {
+        first_name: coach.vorname,
         game_date: game.game_day.date,
         game_time: game.start_time.to_s,
         home_team: game.home_team&.name,
@@ -96,6 +101,7 @@ class RefereeMailer < ApplicationMailer
       subject: "Ansetzung geändert – #{game.game_day.date} #{game.home_team&.name} vs. #{game.guest_team&.name}",
       default_reply_to: REPLY_TO,
       placeholders: {
+        first_name: referee.vorname,
         game_date: game.game_day.date,
         game_time: game.start_time.to_s,
         home_team: game.home_team&.name,
@@ -119,6 +125,7 @@ class RefereeMailer < ApplicationMailer
       subject: "Spielnummer #{game.game_number} | 24h Zeit für Berichtsformular",
       default_reply_to: sbk_reply_to(game),
       placeholders: {
+        first_name: "#{referee1.vorname} und #{referee2.vorname}",
         game_number: game.game_number,
         upload_url: @upload_url,
         deadline: deadline.strftime('%d.%m.%Y %H:%M')
@@ -186,6 +193,7 @@ class RefereeMailer < ApplicationMailer
       default_reply_to: rsk_reply_to(@referee),
       placeholders: {
         referee_name: "#{@referee.vorname} #{@referee.nachname}",
+        first_name: @referee.vorname,
         club_name: @club&.name.to_s,
         decision: @approved ? 'genehmigt' : 'abgelehnt'
       }
