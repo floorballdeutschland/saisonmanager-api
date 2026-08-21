@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Direktzuweisung in einen anderen Landesverband ist wieder möglich**: Bei der Direktzuweisung eines Spielers (Verwaltung → „Transfer-Anfragen" → „Direktzuweisung") standen im Vereinsfeld nur die Vereine des eigenen Zuständigkeitsbereichs. Ein Landesverband konnte einen Spieler seines Spielbetriebs damit nicht in einen Verein eines anderen Landesverbands zuweisen, obwohl genau das erlaubt ist: Zustimmen muss allein der abgebende Verband. Das Feld führt jetzt alle aktiven Vereine. Wer zuweisen darf, richtet sich unverändert nach dem abgebenden Verein. Deaktivierte Vereine nehmen keine Spieler mehr auf.
+
 ### Verbessert
 
 - **Mails an Schiedsrichter grüßen mit dem Vornamen**: „Hallo Anna Beispiel," war als Anrede unnötig steif und stand so in allen Mails an die Schiedsrichter, von der Ansetzung über die vorläufige Einplanung und die Ansetzungsänderung bis zur Lizenzbenachrichtigung, der Entscheidung über die Vereins-Ausschlussliste und der Willkommensmail zum Schiedsrichterkonto. Die Anrede lautet jetzt überall „Hallo Anna,". Die Erinnerung an das Berichtsformular geht weiterhin an beide Schiris des Gespanns und nennt beide Vornamen. Wer die Mails unter „System" → „E-Mail-Vorlagen" selbst textet, hat für die Anrede den neuen Platzhalter `{{first_name}}`; in der Erinnerung an das Berichtsformular stehen darin beide Vornamen, mit „und" verbunden.

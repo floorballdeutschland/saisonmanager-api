@@ -179,6 +179,35 @@ module Admin
       assert_response :created
     end
 
+    # Die Vereinsauswahl der Maske bietet nur aktive Vereine an; ein direkter
+    # Aufruf soll deshalb nicht in einem deaktivierten Verein landen. Der
+    # ABGEBENDE Verein darf dagegen deaktiviert sein -- ein aufgelöster Verein
+    # gibt seine Spieler ja gerade ab.
+    test 'Direkt-Transfer in einen deaktivierten Verein → 422' do
+      @requesting_club.update!(deactivated_at: Time.current)
+
+      login(@sbk)
+      assert_no_emails do
+        post '/api/v2/admin/transfer_requests/direct_assign', params: {
+          player_id: @player.id,
+          requesting_club_id: @requesting_club.id
+        }
+      end
+      assert_response :unprocessable_entity
+      assert_equal 0, TransferRequest.where(player_id: @player.id).count
+    end
+
+    test 'Direkt-Transfer aus einem deaktivierten abgebenden Verein → 201' do
+      @former_club.update!(deactivated_at: Time.current)
+
+      login(@sbk)
+      post '/api/v2/admin/transfer_requests/direct_assign', params: {
+        player_id: @player.id,
+        requesting_club_id: @requesting_club.id
+      }
+      assert_response :created
+    end
+
     test 'SBK ohne Zugriff auf den abgebenden Verein darf Direkt-Transfer nicht durchführen → 403' do
       other_club = create_club_in_other_game_operation
       other_sbk = create_user_sbk(game_operation_id: other_club.main_game_operation_id)
