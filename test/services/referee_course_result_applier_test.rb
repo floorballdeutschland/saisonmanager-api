@@ -1,6 +1,10 @@
 require 'test_helper'
 
 class RefereeCourseResultApplierTest < ActiveSupport::TestCase
+  # ActiveSupport::TestCase bringt die Mail-Assertions hier nicht mit (anders als
+  # ActionDispatch::IntegrationTest).
+  include ActionMailer::TestHelper
+
   def setup
     @admin = create(:user, :admin)
     @import = RefereeCourseImport.create!(
@@ -38,6 +42,108 @@ class RefereeCourseResultApplierTest < ActiveSupport::TestCase
       status:                    'pending_review'
     }
     RefereeCourseResult.create!(defaults.merge(overrides))
+  end
+
+  # ---- Lizenzmail -------------------------------------------------------
+  #
+  # Der Versand liegt bewusst nicht in `call`: Der Submit wendet alle Zeilen
+  # eines Imports in EINER Transaktion an, ein Versand darin hinterließe bei
+  # einem Fehler in einer späteren Zeile Mails zu zurückgerollten Lizenzen.
+
+  test 'direkt angewendete Lizenzaenderung schickt die Mail nach dem Commit' do
+    ref = create(:referee, email: 'schiri@example.org', lizenzstufe: nil, gueltigkeit: nil)
+    # master_email_final muss die Adresse tragen: Bei review_required=false
+    # uebernimmt der Applier die Stammdaten und leert dabei bewusst leere Felder –
+    # ohne sie stuende der Schiri danach ohne E-Mail da.
+    result = make_result(referee: ref, master_email_final: ref.email)
+    applier = RefereeCourseResultApplier.new(result, performed_by_user: @admin)
+
+    assert_enqueued_emails 0 do
+      applier.call(review_required: false)
+    end
+    assert_enqueued_emails 1 do
+      applier.deliver_pending_license_notification
+    end
+  end
+
+  test 'review-pflichtige Zeile vermerkt die Mail statt sie zu schicken' do
+    ref = create(:referee, email: 'schiri@example.org', lizenzstufe: nil, gueltigkeit: nil)
+    result = make_result(referee: ref)
+    applier = RefereeCourseResultApplier.new(result, performed_by_user: @admin)
+
+    applier.call(review_required: true)
+
+    assert_enqueued_emails 0 do
+      applier.deliver_pending_license_notification
+    end
+    assert result.reload.license_notification_pending
+  end
+
+  # Zweiter Lauf über dieselbe Zeile (die LV-Freigabe): Die Lizenzfelder ändern
+  # sich nicht mehr, gemeldet wird über den Vermerk aus dem Submit.
+  test 'die Freigabe schickt die beim Submit vermerkte Mail' do
+    ref = create(:referee, email: 'schiri@example.org', lizenzstufe: nil, gueltigkeit: nil)
+    result = make_result(referee: ref, master_email_final: 'schiri@example.org')
+    RefereeCourseResultApplier.new(result, performed_by_user: @admin).call(review_required: true)
+
+    freigabe = RefereeCourseResultApplier.new(result, performed_by_user: @admin)
+    freigabe.call(review_required: false)
+
+    assert_enqueued_emails 1 do
+      freigabe.deliver_pending_license_notification
+    end
+    assert_not result.reload.license_notification_pending
+  end
+
+  test 'unveraenderte Lizenz schickt keine Mail' do
+    # Ohne RefereeLicenseLevel-Eintrag gilt die Default-Dauer von einem Jahr:
+    # Kursjahr 2025 + 1 → Regeljahr 2026 → 31.07.2026. Genau der Stand des Schiris.
+    ref = create(:referee, email: 'schiri@example.org',
+                           lizenzstufe: 'G', gueltigkeit: Date.new(2026, 7, 31))
+    result = make_result(referee: ref, master_email_final: ref.email)
+    applier = RefereeCourseResultApplier.new(result, performed_by_user: @admin)
+
+    applier.call(review_required: false)
+
+    assert_enqueued_emails 0 do
+      applier.deliver_pending_license_notification
+    end
+    assert_not result.reload.license_notification_pending
+  end
+
+  test 'Neuanlage aus dem Kurs bekommt die Mail an die Adresse aus der CSV' do
+    result = make_result(referee: nil,
+                         master_email_by_importer: 'neu@example.org',
+                         master_email_final: 'neu@example.org')
+    applier = RefereeCourseResultApplier.new(result, performed_by_user: @admin)
+    applier.call(review_required: false)
+
+    assert_enqueued_emails 1 do
+      applier.deliver_pending_license_notification
+    end
+    assert_equal 'neu@example.org', result.reload.referee.email
+  end
+
+  test 'ohne hinterlegte Adresse schickt der Applier keine Mail' do
+    ref = create(:referee, email: nil, lizenzstufe: nil, gueltigkeit: nil)
+    applier = RefereeCourseResultApplier.new(make_result(referee: ref), performed_by_user: @admin)
+    applier.call(review_required: false)
+
+    assert_enqueued_emails 0 do
+      applier.deliver_pending_license_notification
+    end
+  end
+
+  test 'ein Gast bekommt keine Lizenzmail' do
+    gast = create(:referee, guest: true, lizenznummer: nil, email: 'gast@example.org',
+                            lizenzstufe: nil, gueltigkeit: nil)
+    result = make_result(referee: gast, master_email_final: gast.email)
+    applier = RefereeCourseResultApplier.new(result, performed_by_user: @admin)
+    applier.call(review_required: false)
+
+    assert_enqueued_emails 0 do
+      applier.deliver_pending_license_notification
+    end
   end
 
   test 'wendet Lizenz auf bestehenden Referee an (gueltigkeit aus validity_years)' do

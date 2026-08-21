@@ -11,6 +11,20 @@ class RefereeCourseResultApplier
   def initialize(result, performed_by_user:)
     @result = result
     @performed_by_user = performed_by_user
+    @notify_referee = nil
+  end
+
+  # Verschickt die Lizenzmail, sofern dieser Lauf eine fällig gemacht hat.
+  #
+  # Bewusst NICHT in `call`: Der Submit wendet alle Zeilen eines Imports in EINER
+  # Transaktion an (siehe Admin::RefereeCourseImportsController#submit). Ein
+  # Versand innerhalb der Transaktion würde bei einem Fehler in einer späteren
+  # Zeile Mails zu Lizenzen hinterlassen, die nach dem Rollback nie geschrieben
+  # wurden. Der Aufrufer ruft diese Methode deshalb nach dem Commit.
+  def deliver_pending_license_notification
+    return false if @notify_referee.nil?
+
+    RefereeNotification.license_update(@notify_referee)
   end
 
   # Wendet einen Course-Result auf einen Referee an. Wenn `review_required`
@@ -28,13 +42,22 @@ class RefereeCourseResultApplier
 
     ActiveRecord::Base.transaction do
       referee = @result.referee || create_new_referee
-      apply_license_fields(referee)
+      license_changed = apply_license_fields(referee)
       apply_master_fields(referee) unless review_required
 
       @result.referee = referee
       if review_required
+        # Die Lizenzfelder stehen ab jetzt beim Schiri, die Mail wartet aber auf
+        # die Freigabe des Landesverbands. Beim Approve sind die Werte schon
+        # gesetzt und ändern sich nicht mehr – ohne dieses Merkmal wäre dort
+        # nicht mehr zu erkennen, dass es etwas zu melden gibt.
+        @result.license_notification_pending = true if license_changed
         @result.status = 'pending_review'
       else
+        # Zwei Wege enden hier: die direkt durchlaufende Zeile (license_changed)
+        # und die vom LV freigegebene, deren Änderung beim Submit vermerkt wurde.
+        @notify_referee = referee if license_changed || @result.license_notification_pending
+        @result.license_notification_pending = false
         @result.status = 'applied'
         @result.applied_at = Time.current
         @result.reviewed_by_user = @performed_by_user
@@ -93,6 +116,11 @@ class RefereeCourseResultApplier
     referee
   end
 
+  # Rückgabe: true, wenn sich Lizenzstufe oder Gültigkeit tatsächlich ändern.
+  # Maßgeblich für die Lizenzmail – ein Import, der einem Schiri exakt die Stufe
+  # und Gültigkeit einträgt, die er schon hat (kommt bei nachgereichten Zeilen
+  # und Wiederholungsabnahmen vor), soll keine Mail auslösen. Eine Neuanlage
+  # ändert immer, weil sie ohne Lizenzstufe erzeugt wird.
   def apply_license_fields(referee)
     log_downgrade_if_any(referee)
     # Gültigkeit aus der Dauer der Lizenzstufe ableiten (Stichtag im Jahr
@@ -101,10 +129,12 @@ class RefereeCourseResultApplier
     # gesetzte @result.gueltigkeit, wenn kein Kursstichtag vorliegt.
     gueltigkeit = RefereeLicenseLevel.gueltigkeit_for(@result.lizenzstufe, @result.kursstichtag) ||
                   @result.gueltigkeit
+    changed = referee.lizenzstufe != @result.lizenzstufe || referee.gueltigkeit != gueltigkeit
     referee.update!(
       lizenzstufe: @result.lizenzstufe,
       gueltigkeit: gueltigkeit
     )
+    changed
   end
 
   # Eine Lizenzstufen-Tabelle hat eine `position` (siehe RefereeLicenseLevel).

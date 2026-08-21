@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_08_20_100000) do
+ActiveRecord::Schema[7.2].define(version: 2026_08_21_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -684,6 +684,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_20_100000) do
     t.text "rejection_reason"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "license_notification_pending", default: false, null: false
     t.index ["referee_course_import_id"], name: "index_referee_course_results_on_referee_course_import_id"
     t.index ["referee_id"], name: "index_referee_course_results_on_referee_id"
     t.index ["reviewed_by_user_id"], name: "index_referee_course_results_on_reviewed_by_user_id"

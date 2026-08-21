@@ -15,6 +15,29 @@ class RefereeMailer < ApplicationMailer
     )
   end
 
+  # `changes` kommt aus RefereeQualificationDiff: die ergänzten und geänderten
+  # Zusatzqualifikationen dieses Speichervorgangs, nicht der komplette Bestand.
+  #
+  # Der Platzhalter qualification_names steht auch im Betreff zur Verfügung und
+  # ist zugleich der Rettungsanker für einen in der Admin-UI gepflegten Body:
+  # Ein gepflegter Body ersetzt das ERB-View komplett, die Liste unten fällt dann
+  # weg — über den Platzhalter bleiben die Namen erreichbar.
+  def qualification_notification(referee, changes)
+    @referee = referee
+    @changes = changes
+
+    templated_mail(
+      to: referee.email,
+      subject: "Zusatzqualifikation aktualisiert – #{referee.vorname} #{referee.nachname}",
+      default_reply_to: 'rsk@floorball.de',
+      placeholders: {
+        referee_name: "#{referee.vorname} #{referee.nachname}",
+        first_name: referee.vorname,
+        qualification_names: changes.map { |change| change[:name] }.join(', ')
+      }
+    )
+  end
+
   def tentative_assignment_notification(referee, date)
     @referee = referee
     @date = date

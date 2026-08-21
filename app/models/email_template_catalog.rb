@@ -116,6 +116,20 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'referee_name', description: 'Vor- und Nachname des Schiris' }
       ]
     },
+    'RefereeMailer#qualification_notification' => {
+      mailer_class: 'RefereeMailer',
+      action_name: 'qualification_notification',
+      description: 'Benachrichtigung an Schiri über eine ergänzte oder geänderte Zusatzqualifikation. ' \
+                   'Ein Wegfall wird nicht gemeldet.',
+      default_subject: 'Zusatzqualifikation aktualisiert – {{referee_name}}',
+      default_from: nil,
+      default_reply_to: 'rsk@floorball.de',
+      placeholders: [
+        { key: 'referee_name', description: 'Vor- und Nachname des Schiris' },
+        { key: 'first_name', description: 'Vorname des Schiris' },
+        { key: 'qualification_names', description: 'Namen der betroffenen Qualifikationen, mit Komma getrennt' }
+      ]
+    },
     'RefereeMailer#club_exclusion_requested' => {
       mailer_class: 'RefereeMailer',
       action_name: 'club_exclusion_requested',
