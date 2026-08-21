@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.93.0] - 2026-08-21
+
 ### Neu
 
 - **Schiedsrichter erfahren von einer neuen Zusatzqualifikation per Mail**: Wird im Schiedsrichterprofil eine Zusatzqualifikation ergänzt oder deren Gültigkeit geändert, geht an den Schiedsrichter eine Mail mit der Qualifikation und dem Ablaufdatum, sofern eine E-Mailadresse hinterlegt ist. Gemeldet wird nur, was neu ist oder sich geändert hat: Ein Speichern des Profils ohne Änderung an den Qualifikationen löst keine Mail aus, der Wegfall einer Qualifikation ebenfalls nicht. Ändern sich Lizenz und Qualifikation im selben Speichervorgang, gehen zwei Mails raus, weil beide Vorlagen unter „System" → „E-Mail-Vorlagen" eigenständig gepflegt werden; für einen selbst getexteten Text stehen die Platzhalter `{{qualification_names}}` (nur die Namen) und `{{qualification_list}}` (Namen samt Ablaufdatum) bereit. Gastschiedsrichter bekommen wie bei der Lizenzmail keine Post, und beim Anlegen eines Schiedsrichters bleibt es still: Was der Schiedsrichter noch nie gesehen hat, wird ihm nicht als Aktualisierung gemeldet.
