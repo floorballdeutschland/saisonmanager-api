@@ -88,6 +88,31 @@ class StateAssociationEffectiveEmailTest < ActiveSupport::TestCase
     assert_equal ['sbk@verbund.example.com'], mail.to
   end
 
+  # Der Text nannte den Landesverband des abgebenden Vereins. Fuer einen Verein
+  # unter einem Verbund war das der Falsche: Gelesen und genehmigt hat der
+  # Verbund, im Text stand der Kind-LV (auf Prod der Floorball Bund Hamburg,
+  # obwohl der Landesverband Schleswig-Holstein entschieden hat).
+  test 'Mailtext nennt den genehmigenden Verbund, nicht den Kind-LV' do
+    verbund = create(:state_association, name: 'Verbund Nord', sbk_email: 'nord@example.com')
+    kind = create(:state_association, name: 'Kind-LV Sued', parent: verbund)
+    tr = transfer_request_between(kind, kind)
+
+    body = TransferRequestMailer.pending_lv_notification(tr).body.decoded
+    assert_includes body, 'Verbund Nord'
+    assert_not_includes body, 'Kind-LV Sued'
+
+    clubs_body = TransferRequestMailer.clubs_informed_lv_pending(tr).body.decoded
+    assert_includes clubs_body, 'Verbund Nord'
+    assert_not_includes clubs_body, 'Kind-LV Sued'
+  end
+
+  test 'ohne Verbund nennt der Mailtext den Landesverband des Vereins selbst' do
+    solo = create(:state_association, name: 'Solo-LV', sbk_email: 'solo@example.com')
+    tr = transfer_request_between(solo, solo)
+
+    assert_includes TransferRequestMailer.pending_lv_notification(tr).body.decoded, 'Solo-LV'
+  end
+
   test 'Abschlussmail nennt die SBK des Verbunds als Empfaenger' do
     mail = TransferRequestMailer.transfer_completed(transfer_request_between(@child, @child))
 
