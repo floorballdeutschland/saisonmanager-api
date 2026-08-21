@@ -56,6 +56,16 @@ class RefereeMailGreetingTest < ActionMailer::TestCase
     assert_not_includes body, 'Hallo Anna Beispiel,'
   end
 
+  test 'Qualifikations-Mail gruesst nur mit dem Vornamen' do
+    typ = RefereeQualificationType.create!(name: 'B-Coach')
+    body = RefereeMailer.qualification_notification(
+      @referee, [{ name: typ.name, valid_until: Date.new(2027, 6, 30), kind: :added }]
+    ).body.encoded
+
+    assert_includes body, 'Hallo Anna,'
+    assert_not_includes body, 'Hallo Anna Beispiel,'
+  end
+
   test 'Lizenz-Mail gruesst nur mit dem Vornamen' do
     body = RefereeMailer.license_notification(@referee).body.encoded
 

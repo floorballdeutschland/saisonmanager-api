@@ -1,0 +1,33 @@
+<h2>Zusatzqualifikation aktualisiert</h2>
+
+<p>Hallo <%= @referee.vorname %>,</p>
+
+<p>
+  <% if @changes.size == 1 %>
+    für dich wurde im Saisonmanager eine Zusatzqualifikation eingetragen:
+  <% else %>
+    für dich wurden im Saisonmanager Zusatzqualifikationen eingetragen:
+  <% end %>
+</p>
+
+<ul>
+  <% @changes.each do |change| %>
+    <li>
+      <strong><%= change[:name] %></strong><%= ' (aktualisiert)' if change[:kind] == :updated %><br>
+      <% if change[:valid_until].present? %>
+        gültig bis <%= change[:valid_until].strftime('%d.%m.%Y') %>
+      <% else %>
+        ohne Ablaufdatum
+      <% end %>
+    </li>
+  <% end %>
+</ul>
+
+<p>
+  Deine Qualifikationen stehen in deinem <a href="<%= frontend_base_url %>/schiedsrichter/profil">Schiedsrichter-Profil</a>.
+</p>
+
+<p>
+  Bei Fragen oder Unstimmigkeiten wende dich bitte an die Regel- und Schiedsrichterkommission von Floorball Deutschland (rsk@floorball.de).<br>
+  <a href="<%= frontend_base_url %>"><%= frontend_host %></a>
+</p>

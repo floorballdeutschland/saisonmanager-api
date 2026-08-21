@@ -95,6 +95,7 @@ module Admin
       RefereeCourseResultApplier.reset_license_level_positions_cache!
 
       already_submitted = false
+      appliers = []
       ActiveRecord::Base.transaction do
         @import.lock!
         unless @import.status == 'in_review'
@@ -108,8 +109,9 @@ module Admin
           review_required = RefereeCourseSubmitPolicy.review_required?(result, target_state_association)
 
           begin
-            RefereeCourseResultApplier.new(result, performed_by_user: current_user)
-                                      .call(review_required: review_required)
+            applier = RefereeCourseResultApplier.new(result, performed_by_user: current_user)
+            applier.call(review_required: review_required)
+            appliers << applier
           rescue RefereeCourseResultApplier::Error => e
             raise SubmitRowError.new(idx + 1, result, e.message)
           end
@@ -121,7 +123,26 @@ module Admin
         return render(json: { error: 'Import wurde bereits eingereicht' }, status: :unprocessable_entity)
       end
 
-      render json: @import.reload.full_hash
+      # Erst nach dem Commit, damit ein Fehler in einer späteren Zeile keine Mails
+      # zu zurückgerollten Lizenzen hinterlässt. Zeilen, die auf das LV-Review
+      # warten, sind hier still – ihre Mail geht beim Approve raus. Der Versand
+      # selbst ist eingereiht (deliver_later), ein Kursimport mit vielen Zeilen
+      # läuft dem Request also nicht davon.
+      #
+      # Nicht erreichbar und nichts zu melden getrennt zählen: Nach einem Kurs mit
+      # vierzig Zeilen ist „28 ohne hinterlegte Adresse" eine Aufgabenliste,
+      # „28 ohne Änderung" dagegen in Ordnung. Eine reine Gesamtzahl beantwortet
+      # das nicht.
+      outcomes = appliers.map(&:deliver_pending_license_notification)
+      sent = outcomes.count(RefereeNotification::SENT)
+      unreachable = outcomes.count(RefereeNotification::UNREACHABLE)
+      Rails.logger.info("Kursimport #{@import.id}: #{sent} Lizenzmail(s) eingereiht, " \
+                        "#{unreachable} ohne Adresse oder Gast, " \
+                        "#{outcomes.count(RefereeNotification::FAILED)} fehlgeschlagen")
+
+      render json: @import.reload.full_hash.merge(
+        license_notifications: sent, license_notifications_unreachable: unreachable
+      )
     rescue SubmitRowError => e
       render json: {
         error: e.message,
