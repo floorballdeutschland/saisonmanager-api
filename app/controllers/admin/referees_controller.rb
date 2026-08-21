@@ -96,6 +96,10 @@ module Admin
       referee.game_operation_id = assigned_game_operation_id if restricted_user? && referee.game_operation_id.blank?
 
       if referee.save
+        # Beim Anlegen geht bewusst keine Mail raus – weder zur Lizenz noch zu
+        # den Qualifikationen. Der Datensatz entsteht hier gerade erst; erfahren
+        # soll der Schiri von ihm über die Willkommensmail seines Kontos, nicht
+        # über eine „aktualisiert"-Mail zu Daten, die er noch nie gesehen hat.
         sync_qualifications(referee) if can_edit_full?
         sync_tags(referee) if can_manage_tags?
         render json: referee_json(referee.reload, full: true), status: :created
@@ -110,13 +114,27 @@ module Admin
 
       @referee.assign_attributes(safe_referee_params)
       license_fields_changed = (@referee.changed & %w[lizenznummer gueltigkeit lizenzstufe]).any?
-      notify = @referee.email.present? && license_fields_changed && !@referee.guest?
+      # Vor dem Speichern lesen: Wer bis jetzt keine Stufe trug, bekommt seine
+      # Lizenz erteilt und nicht aktualisiert.
+      first_license = @referee.lizenzstufe_was.blank?
 
       if @referee.save
-        sync_qualifications(@referee) if can_edit_full?
+        qualification_changes = can_edit_full? ? sync_qualifications(@referee) : []
         sync_tags(@referee) if can_manage_tags?
-        RefereeMailer.license_notification(@referee).deliver_later if notify
+        # Zwei getrennte Mails, wenn Lizenz und Qualifikation im selben Speichern
+        # geändert wurden: Es sind zwei pflegbare Vorlagen mit je eigenem Betreff.
+        license_mail = if license_fields_changed
+                         RefereeNotification.license_update(@referee, first_license: first_license)
+                       else
+                         RefereeNotification::NOTHING
+                       end
+        qualification_mail = RefereeNotification.qualification_update(@referee, qualification_changes)
+
+        # Ausgang mitgeben wie bei der Kontenanlage (siehe create_user): Ein
+        # Fehlschlag beim Versand wirft den Vorgang bewusst nicht um, ohne diese
+        # Angabe hielte die Verwaltung den Schiedsrichter aber für unterrichtet.
         render json: referee_json(@referee.reload, full: true)
+                     .merge(license_mail: license_mail, qualification_mail: qualification_mail)
       else
         render json: { errors: @referee.errors.full_messages }, status: :unprocessable_entity
       end
@@ -441,8 +459,11 @@ module Admin
       can_edit_full? ? referee_params : restricted_referee_params
     end
 
+    # Setzt die Zusatzqualifikationen komplett neu und liefert die ergänzten und
+    # geänderten zurück (für die Benachrichtigungsmail, siehe
+    # RefereeQualificationDiff).
     def sync_qualifications(referee)
-      return unless params[:referee][:qualifications]
+      return [] unless params[:referee][:qualifications]
 
       incoming = Array(params[:referee][:qualifications]).filter_map do |q|
         type_id = q[:qualification_type_id].to_i
@@ -454,6 +475,10 @@ module Admin
         nil
       end
 
+      # Vor destroy_all lesen: Danach ist jede Zeile neu und der Vergleich
+      # zwischen „schon da" und „neu eingetragen" nicht mehr möglich.
+      before = referee.referee_qualifications.pluck(:referee_qualification_type_id, :valid_until).to_h
+
       ActiveRecord::Base.transaction do
         referee.referee_qualifications.destroy_all
         incoming.each do |attrs|
@@ -463,6 +488,9 @@ module Admin
           )
         end
       end
+
+      after = incoming.to_h { |attrs| [attrs[:qualification_type_id], attrs[:valid_until]] }
+      RefereeQualificationDiff.changes(before: before, after: after)
     end
 
     # Setzt die Tag-Zuordnungen eines Schiris neu (nur die Tags, die der Nutzer

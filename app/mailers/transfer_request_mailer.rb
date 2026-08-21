@@ -18,6 +18,11 @@ class TransferRequestMailer < ApplicationMailer
     )
   end
 
+  # Empfaenger ist die Postfachkette des abgebenden Vereins (eigenes Postfach,
+  # sonst das des Verbunds). BENANNT wird im Text dagegen der zustaendige
+  # Verband (Club#responsible_state_association), denn genehmigen darf nur der.
+  # Beides faellt nur auseinander, wenn ein Kind-LV ein eigenes Postfach
+  # pflegt: Dann liest es die Mail, entscheiden tut weiterhin der Verbund.
   def pending_lv_notification(transfer_request)
     @transfer_request = transfer_request
     sbk_email = transfer_request.former_club.state_association&.effective_sbk_email

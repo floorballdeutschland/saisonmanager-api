@@ -71,6 +71,8 @@ module Admin
       ActiveRecord::Base.transaction do
         orphan_referee = orphan_referee_for(@result)
         @result.status = 'rejected'
+        # Eine zurückgewiesene Zeile löst keine Lizenzmail aus.
+        @result.license_notification_pending = false
         @result.reviewed_by_user = current_user
         @result.reviewed_at = Time.current
         @result.rejection_reason = reason
@@ -96,8 +98,11 @@ module Admin
       apply_final_master_fields(@result, params[:master_final] || {})
       sync_state_association(@result)
 
-      RefereeCourseResultApplier.new(@result, performed_by_user: current_user)
-                                .call(review_required: false)
+      applier = RefereeCourseResultApplier.new(@result, performed_by_user: current_user)
+      applier.call(review_required: false)
+      # Nach dem Commit: Die Lizenzmail zu einer review-pflichtigen Zeile geht
+      # erst hier raus, nicht schon beim Submit.
+      applier.deliver_pending_license_notification
       render json: @result.reload.short_hash
     rescue RefereeCourseResultApplier::Error => e
       render json: { error: e.message }, status: :unprocessable_entity

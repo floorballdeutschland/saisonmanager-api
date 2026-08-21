@@ -83,7 +83,73 @@ module Admin
       assert_equal 'applied', result.reload.status
     end
 
+    # Die Lizenzmail zu einer review-pflichtigen Zeile geht erst mit der Freigabe
+    # des Landesverbands raus. Beim Submit stehen die Lizenzfelder zwar schon beim
+    # Schiri, gemeldet wird sie aber erst hier — vermerkt über
+    # license_notification_pending.
+    test 'approve schickt die beim Submit vermerkte Lizenzmail' do
+      result = pending_result(license_notification_pending: true)
+      login(@admin)
+
+      assert_enqueued_emails 1 do
+        post "/api/v2/admin/referee_course_results/#{result.id}/approve"
+        assert_response :success
+      end
+
+      perform_enqueued_jobs
+      assert_equal ['schiri@example.org'], ActionMailer::Base.deliveries.last.to
+      assert_not result.reload.license_notification_pending
+    end
+
+    # Hat der Submit an der Lizenz nichts geändert (nachgereichte Zeile,
+    # Wiederholungsabnahme mit identischer Stufe), ist nichts vermerkt und die
+    # Freigabe meldet auch nichts.
+    test 'approve ohne vermerkte Aenderung schickt keine Mail' do
+      result = pending_result(license_notification_pending: false)
+      login(@admin)
+
+      assert_enqueued_emails 0 do
+        post "/api/v2/admin/referee_course_results/#{result.id}/approve"
+        assert_response :success
+      end
+    end
+
+    test 'reject schickt keine Mail und nimmt den Vermerk zurueck' do
+      result = pending_result(license_notification_pending: true)
+      login(@admin)
+
+      assert_enqueued_emails 0 do
+        post "/api/v2/admin/referee_course_results/#{result.id}/reject", params: { reason: 'Falscher Kurs' }
+        assert_response :success
+      end
+
+      assert_not result.reload.license_notification_pending
+    end
+
     private
+
+    # Zeile, die auf die LV-Freigabe wartet: Lizenzfelder stehen (der Submit hat
+    # sie geschrieben), der Schiri ist erreichbar.
+    def pending_result(license_notification_pending:)
+      referee = create(:referee, email: 'schiri@example.org',
+                                 lizenzstufe: 'G', gueltigkeit: Date.new(2026, 7, 31))
+      RefereeCourseResult.create!(
+        referee_course_import: @import,
+        referee: referee,
+        status: 'pending_review',
+        match_type: 'partial_match',
+        match_field_count: 4,
+        csv_vorname: referee.vorname, csv_nachname: referee.nachname,
+        # Der Approve übernimmt die Stammdaten (apply_master_fields) und leert
+        # dabei bewusst leere Felder — ohne die Adresse hier wäre der Schiri nach
+        # der Freigabe ohne E-Mail und die Mail fiele aus.
+        master_email_final: referee.email,
+        lizenzstufe: 'G',
+        gueltigkeit: Date.new(2026, 7, 31),
+        kursstichtag: Date.new(2025, 8, 3),
+        license_notification_pending: license_notification_pending
+      )
+    end
 
     def login(user)
       post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
