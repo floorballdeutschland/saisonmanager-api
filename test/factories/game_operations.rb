@@ -2,6 +2,10 @@ FactoryBot.define do
   factory :game_operation do
     sequence(:name) { |n| "Spielverband #{n}" }
     sequence(:short_name) { |n| "GO#{n}" }
+    # Pflichtfeld und eindeutig: der Pfad traegt die oeffentliche Verbandsadresse
+    # (GameOperation#slug, `by_shortname`). Ohne ihn hier faellt jeder Test auf
+    # die Validierung, statt den Fall zu pruefen, um den es ihm geht.
+    sequence(:path) { |n| "go#{n}" }
 
     # Jeder Spielbetrieb bekommt einen eigenen Landesverband, wie in Produktion:
     # dort hat jeder der zehn genau einen. Das ist keine Kosmetik, sondern

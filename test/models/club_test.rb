@@ -648,7 +648,13 @@ class ClubTest < ActiveSupport::TestCase
   test 'role_assignable_for gibt nur dem zustaendigen von zwei Spielbetrieben die Vereine' do
     lv = create(:state_association)
     erster = create(:game_operation, state_association_id: lv.id)
-    zweiter = create(:game_operation, state_association_id: lv.id)
+    # Zwei Spielbetriebe an einem Verband legt die Validierung nicht mehr an
+    # (GameOperation validiert state_association_id auf Eindeutigkeit). Der
+    # Rueckfall in .id_by_state_association bleibt aber und wird hier geprueft:
+    # Altbestand, Konsolenschreibzugriff und `update_column` kommen daran vorbei.
+    # Deshalb ohne Validierung speichern, statt den Fall aus dem Test zu nehmen.
+    zweiter = build(:game_operation, state_association_id: lv.id)
+    zweiter.save(validate: false)
     club = create(:club, state_association_id: lv.id)
 
     zustaendig, nicht = [erster, zweiter].partition { |go| go.id == club.main_game_operation_id }
@@ -749,7 +755,13 @@ class ClubTest < ActiveSupport::TestCase
   test 'home_clubs_of gibt nur dem zustaendigen von zwei Spielbetrieben die Vereine' do
     lv = create(:state_association)
     erster = create(:game_operation, state_association_id: lv.id)
-    zweiter = create(:game_operation, state_association_id: lv.id)
+    # Zwei Spielbetriebe an einem Verband legt die Validierung nicht mehr an
+    # (GameOperation validiert state_association_id auf Eindeutigkeit). Der
+    # Rueckfall in .id_by_state_association bleibt aber und wird hier geprueft:
+    # Altbestand, Konsolenschreibzugriff und `update_column` kommen daran vorbei.
+    # Deshalb ohne Validierung speichern, statt den Fall aus dem Test zu nehmen.
+    zweiter = build(:game_operation, state_association_id: lv.id)
+    zweiter.save(validate: false)
     club = create(:club, state_association_id: lv.id)
 
     zustaendig, nicht_zustaendig = [erster, zweiter].partition { |go| go.id == club.main_game_operation_id }

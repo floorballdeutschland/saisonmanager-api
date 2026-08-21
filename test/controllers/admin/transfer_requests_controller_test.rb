@@ -111,6 +111,32 @@ module Admin
       assert_equal @player.id, JSON.parse(response.body).dig('player', 'id')
     end
 
+    # api#496: Altbestand mit einem Leerzeichen am Namensende (vor der
+    # Player#strip_names-Sicherung entstanden, hier per update_column simuliert,
+    # da save den Namen sonst schon vor dem Test trimmen würde) muss weiterhin als
+    # exakter Treffer gelten.
+    test 'search_player findet Spieler mit Leerzeichen am Namensende im Bestand' do
+      @player.update_column(:first_name, 'Max ')
+      login(@admin)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15'
+      }
+      assert_response :success
+      assert_equal @player.id, JSON.parse(response.body).dig('player', 'id')
+    end
+
+    # Postgres TRIM() kennt nur das Leerzeichen; ein Tabulator aus einem
+    # CSV-/Excel-Import bliebe damit unauffindbar (Player::SQL_NAME_PADDING).
+    test 'search_player findet Spieler mit Tabulator am Namensende im Bestand' do
+      @player.update_column(:last_name, "Mustermann\t")
+      login(@admin)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15'
+      }
+      assert_response :success
+      assert_equal @player.id, JSON.parse(response.body).dig('player', 'id')
+    end
+
     test 'reiner VM darf nicht für fremden Verein suchen → 403' do
       login(@vm_requesting)
       get '/api/v2/admin/transfer_requests/search_player', params: {

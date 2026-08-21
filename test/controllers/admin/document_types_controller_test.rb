@@ -6,7 +6,9 @@ module Admin
       create(:setting)
       @sa = create(:state_association)
       @go = create(:game_operation, state_association_id: @sa.id)
-      @other_go = create(:game_operation, state_association_id: @sa.id)
+      # Eigener Landesverband: Ein Verband hat hoechstens einen Spielbetrieb.
+      # Fuer diesen Test ist nur wichtig, dass die beiden verschieden sind.
+      @other_go = create(:game_operation)
       @global = DocumentType.create!(name: 'Unterstellungserklärung')
       @scoped = DocumentType.create!(name: 'LV-Attest', game_operation_id: @go.id)
       @foreign = DocumentType.create!(name: 'Fremd-Dokument', game_operation_id: @other_go.id)
