@@ -5,7 +5,7 @@
 
 <p>
   der abgebende Verein hat den folgenden <%= release ? 'Spielerfreigabe-Antrag' : 'Transferantrag' %> bestätigt. Er liegt jetzt beim
-  Landesverband <strong><%= @transfer_request.former_club.state_association&.name %></strong>
+  Landesverband <strong><%= @transfer_request.former_club.responsible_state_association&.name %></strong>
   zur abschließenden Genehmigung.
 </p>
 
