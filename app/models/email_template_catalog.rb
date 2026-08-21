@@ -88,6 +88,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_from: nil,
       default_reply_to: 'rsk@floorball.de',
       placeholders: [
+        { key: 'first_name', description: 'Vorname des Empfängers (für die Anrede)' },
         { key: 'username', description: 'Benutzername des Kontos (z. B. sr-3204)' },
         { key: 'link', description: 'Link zum (erstmaligen) Setzen des Passworts' }
       ]
@@ -106,12 +107,32 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
     'RefereeMailer#license_notification' => {
       mailer_class: 'RefereeMailer',
       action_name: 'license_notification',
-      description: 'Benachrichtigung an Schiri über aktualisierte Lizenz.',
+      description: 'Benachrichtigung an Schiri über eine aktualisierte Lizenz. Trug der Schiri vorher keine ' \
+                   'Lizenzstufe (meist eine Neuanlage aus dem Kursimport), meldet die Mail eine erteilte statt ' \
+                   'einer aktualisierten Lizenz – im gepflegten Betreff ist diese Unterscheidung nicht abbildbar.',
       default_subject: 'Schiedsrichterlizenz aktualisiert – {{referee_name}}',
       default_from: nil,
       default_reply_to: 'rsk@floorball.de',
       placeholders: [
+        { key: 'first_name', description: 'Vorname des Empfängers (für die Anrede)' },
         { key: 'referee_name', description: 'Vor- und Nachname des Schiris' }
+      ]
+    },
+    'RefereeMailer#qualification_notification' => {
+      mailer_class: 'RefereeMailer',
+      action_name: 'qualification_notification',
+      description: 'Benachrichtigung an Schiri über eine ergänzte oder geänderte Zusatzqualifikation. ' \
+                   'Ein Wegfall wird nicht gemeldet.',
+      default_subject: 'Zusatzqualifikation aktualisiert – {{referee_name}}',
+      default_from: nil,
+      default_reply_to: 'rsk@floorball.de',
+      placeholders: [
+        { key: 'referee_name', description: 'Vor- und Nachname des Schiris' },
+        { key: 'first_name', description: 'Vorname des Schiris' },
+        { key: 'qualification_names', description: 'Namen der betroffenen Qualifikationen, mit Komma getrennt' },
+        { key: 'qualification_list',
+          description: 'Wie qualification_names, zusätzlich je Qualifikation das Ablaufdatum ' \
+                       'in Klammern („B-Coach (gültig bis 30.06.2027)")' }
       ]
     },
     'RefereeMailer#club_exclusion_requested' => {
@@ -138,6 +159,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       # Reply-To wird zur Laufzeit gesetzt (RSK-E-Mail des Verbands).
       default_reply_to: nil,
       placeholders: [
+        { key: 'first_name', description: 'Vorname des Empfängers (für die Anrede)' },
         { key: 'referee_name', description: 'Vor- und Nachname des Schiris' },
         { key: 'club_name', description: 'Name des betroffenen Vereins' },
         { key: 'decision', description: 'genehmigt oder abgelehnt' }
@@ -151,6 +173,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_from: nil,
       default_reply_to: 'sr-ansetzungen@floorball.de',
       placeholders: [
+        { key: 'first_name', description: 'Vorname des Empfängers (für die Anrede)' },
         { key: 'date', description: 'Datum der Ansetzung (lang formatiert)' }
       ]
     },
@@ -162,6 +185,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_from: nil,
       default_reply_to: 'sr-ansetzungen@floorball.de',
       placeholders: [
+        { key: 'first_name', description: 'Vorname des Empfängers (für die Anrede)' },
         { key: 'game_date', description: 'Datum des Spieltags' },
         { key: 'game_time', description: 'Anpfiff (Startzeit des Spiels)' },
         { key: 'home_team', description: 'Name der Heimmannschaft' },
@@ -178,6 +202,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_from: nil,
       default_reply_to: 'sr-ansetzungen@floorball.de',
       placeholders: [
+        { key: 'first_name', description: 'Vorname des/der Schiedsrichtercoach/in (für die Anrede)' },
         { key: 'game_date', description: 'Datum des Spieltags' },
         { key: 'game_time', description: 'Anpfiff (Startzeit des Spiels)' },
         { key: 'home_team', description: 'Name der Heimmannschaft' },
@@ -194,6 +219,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_from: nil,
       default_reply_to: 'sr-ansetzungen@floorball.de',
       placeholders: [
+        { key: 'first_name', description: 'Vorname des Empfängers (für die Anrede)' },
         { key: 'game_date', description: 'Datum des Spieltags' },
         { key: 'game_time', description: 'Anpfiff (Startzeit des Spiels)' },
         { key: 'home_team', description: 'Name der Heimmannschaft' },
@@ -211,6 +237,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_from: nil,
       default_reply_to: nil,
       placeholders: [
+        { key: 'first_name', description: 'Vornamen beider Schiris für die Anrede, verbunden mit „und“ (die Mail geht an beide)' },
         { key: 'game_number', description: 'Spielnummer' },
         # Ohne diese beiden Platzhalter könnte eine gepflegte Vorlage weder den
         # Link noch die Frist enthalten: ein nicht leerer Body ersetzt das
