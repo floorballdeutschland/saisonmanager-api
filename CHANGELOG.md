@@ -9,6 +9,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.95.0] - 2026-08-22
+
+### Neu
+
+- **Die Gespannpartner stehen in der Ansetzung oben**: Im Feld für Schiri 2 standen alle Kandidaten strikt alphabetisch und ohne jede Kennzeichnung, sodass der Gespannpartner von Schiri 1 für den Ansetzer nicht von einem beliebigen Namen zu unterscheiden war. Die Auswahl zieht die Partner jetzt nach oben: zuerst die im Schiedsrichterprofil hinterlegte Partner-Lizenznummer mit dem Vermerk „Gespann", dahinter bis zu fünf häufige Partner aus den Spielberichten, jeweils mit der Zahl der gemeinsamen Einsätze (laufende Saison vor Gesamtzahl). Der Rest der Liste bleibt alphabetisch. Gefiltert wird nichts, es wird nur umsortiert, und vorgezogen wird nur, wer am Spieltag überhaupt zur Auswahl steht. Die automatische Vorbelegung von Schiri 2 aus der hinterlegten Nummer bleibt unverändert. Damit beantwortet sich die wiederholte Bitte nach mehreren Partner-Lizenznummern im Profil, ohne dass jemand eine zweite Nummer pflegen muss: Weitere Partner kommen aus den tatsächlichen Einsätzen. Fällt die Einsatzhistorie aus, bleibt die alphabetische Liste stehen, und die hinterlegte Nummer wird weiterhin vorgezogen. Der Hinweistext am Feld im Profil erklärt jetzt außerdem, wie die Nummer wirkt und warum eine genügt.
+
+### Verbessert
+
+- **Spielbetrieb und Landesverband stehen in einer Maske**: Mit 1.94.0 bekam der Spielbetrieb einen eigenen Menüpunkt „Spielbetriebe" neben dem Landesverband. Das sind zwei Hälften derselben Sache, denn ein Spielbetrieb gehört zu genau einem Verband, und über diese Zuordnung entscheidet sich, für welche Vereine er zuständig ist. Zwei Masken führten prompt zu zwei Wahrheiten: Am Spielbetrieb Rheinland-Pfalz/Saar stand „rlpsaar" als Kürzel, am zugehörigen Verband „RLPSAAR". Der Spielbetrieb ist deshalb jetzt ein Abschnitt der Verbandsmaske unter „Verwaltung" → „Landesverbände", der eigene Menüpunkt entfällt. Ein Wurzelverband ohne Spielbetrieb bekommt dort einen Knopf, der ihn anlegt, mit Name und Kürzel aus dem Verband vorbelegt; bei acht von zehn Spielbetrieben ist das Kürzel ohnehin das des Verbands. Ein untergeordneter Verband bekommt kein Formular, sondern die Auskunft, in welchem Spielbetrieb des Verbunds er spielt. Diese Angabe stand vorher nirgends, obwohl vier von vierzehn Verbänden so spielen (Hamburg im Spielbetrieb von Schleswig-Holstein, dazu Sachsen, Sachsen-Anhalt und Thüringen in SBK Ost). Das Auswahlfeld „Landesverband" am Spielbetrieb entfällt, weil der Verband der Zusammenhang ist, in dem der Abschnitt steht, und kein Feld, das man verstellen kann. Als Ersatz für die entfallene Übersicht bekommt die Verbandsliste eine Spalte „Spielbetrieb"; untergeordnete Verbände stehen dort mit „über den Verbund". Ein Spielbetrieb ohne Verband hinge an keiner Verbandsseite und wird in der Liste ausdrücklich genannt, statt lautlos unsichtbar zu werden. Der Abschnitt bleibt wie bisher bundesweiten Administratoren vorbehalten, und er fragt ohne dieses Recht nichts ab.
+
 ## [1.94.0] - 2026-08-21
 
 ### Neu
