@@ -102,13 +102,7 @@ module Admin
       player = Player.find_by(id: params[:player_id])
       return render json: { error: 'Spieler nicht gefunden' }, status: :not_found unless player
 
-      # Nicht `deactivated_at`: Eine Deaktivierung ist die Kennzeichnung des
-      # abgebenden Vereins und kein Transferhindernis. Eine zusammengefuehrte
-      # Dublette dagegen ist durch den Master ersetzt.
-      if player.merged_into_id.present?
-        return render json: { error: 'Dieses Profil wurde mit einem anderen zusammengeführt und kann nicht transferiert werden' },
-                      status: :unprocessable_entity
-      end
+      return merged_player_response if player.merged_into_id.present?
 
       # Ohne E-Mail-Adresse kann der Spieler den Transfer später nicht bestätigen,
       # daher den Antrag gar nicht erst starten (gleiche Meldung wie in approve_club).
@@ -270,6 +264,8 @@ module Admin
         return render json: { error: 'Nicht berechtigt' }, status: :forbidden
       end
 
+      return merged_player_response if tr.player.merged_into_id.present?
+
       if tr.request_type == 'release'
         tr.execute_release!(current_user.id)
       elsif tr.effective_date.nil? || tr.effective_date <= Date.today
@@ -327,6 +323,8 @@ module Admin
       if tr.effective_date.present? && tr.effective_date > Date.today
         return render json: { error: "Transfer wird erst am #{tr.effective_date.strftime('%d.%m.%Y')} wirksam" }, status: :unprocessable_entity
       end
+
+      return merged_player_response if tr.player.merged_into_id.present?
 
       tr.execute_transfer!(current_user.id)
       render json: tr.as_json
@@ -433,13 +431,7 @@ module Admin
       player = Player.find_by(id: params[:player_id])
       return render json: { error: 'Spieler nicht gefunden' }, status: :not_found unless player
 
-      # Nicht `deactivated_at`: Eine Deaktivierung ist die Kennzeichnung des
-      # abgebenden Vereins und kein Transferhindernis. Eine zusammengefuehrte
-      # Dublette dagegen ist durch den Master ersetzt.
-      if player.merged_into_id.present?
-        return render json: { error: 'Dieses Profil wurde mit einem anderen zusammengeführt und kann nicht transferiert werden' },
-                      status: :unprocessable_entity
-      end
+      return merged_player_response if player.merged_into_id.present?
 
       requesting_club = Club.find_by(id: params[:requesting_club_id].to_i)
       return render json: { error: 'Verein nicht gefunden' }, status: :not_found unless requesting_club
@@ -522,6 +514,20 @@ module Admin
     end
 
     private
+
+    # Nicht `deactivated_at`: Eine Deaktivierung ist die Kennzeichnung des
+    # abgebenden Vereins und kein Transferhindernis. Eine zusammengefuehrte
+    # Dublette dagegen ist durch den Master ersetzt.
+    #
+    # Geprüft nicht nur beim Anlegen, sondern auch beim Genehmigen und
+    # Vollziehen (api#486): Der Merge kann mitten im Verfahren passieren, und
+    # seit `clear_deactivation` die Kennzeichnung stehen lässt, entwertete
+    # `execute_transfer!` sonst die Lizenzen des abgebenden Vereins und schriebe
+    # eine Zugehörigkeit, die niemand mehr zu sehen bekommt.
+    def merged_player_response
+      render json: { error: 'Dieses Profil wurde mit einem anderen zusammengeführt und kann nicht transferiert werden' },
+             status: :unprocessable_entity
+    end
 
     # Darf der Nutzer für diesen Verein handeln? Stärkere Rollen gehen der
     # VM-Vereinsbindung vor: wer neben der VM-Rolle auch Admin oder SBK ist,

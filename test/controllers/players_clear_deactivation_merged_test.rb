@@ -68,6 +68,31 @@ class PlayersClearDeactivationMergedTest < ActionDispatch::IntegrationTest
                     'die Mitgliedschaft selbst entsteht weiter, nur die Kennzeichnung bleibt'
   end
 
+  # Der Merge kann mitten im Verfahren passieren: #create weist eine Dublette ab,
+  # approve_lv und execute taten es nicht. Seit die Kennzeichnung stehen bleibt,
+  # entwertete der Vollzug sonst die Lizenzen und schrieb eine Zugehörigkeit,
+  # die niemand mehr zu sehen bekommt.
+  test 'approve_lv einer zwischenzeitlich zusammengefuehrten Dublette wird abgewiesen' do
+    tr = transfer_request_for(merged_player, 'pending_lv')
+    login_as(@admin)
+
+    patch "/api/v2/admin/transfer_requests/#{tr.id}/approve_lv"
+
+    assert_response :unprocessable_entity
+    assert_match(/zusammengeführt/, JSON.parse(response.body)['error'])
+    assert_equal 'pending_lv', tr.reload.status
+  end
+
+  test 'execute einer zwischenzeitlich zusammengefuehrten Dublette wird abgewiesen' do
+    tr = transfer_request_for(merged_player, 'scheduled')
+    login_as(@admin)
+
+    patch "/api/v2/admin/transfer_requests/#{tr.id}/execute"
+
+    assert_response :unprocessable_entity
+    assert_equal 'scheduled', tr.reload.status
+  end
+
   # Gegenprobe: Wer aus der Liste seines Vereins genommen wurde, ist im
   # aufnehmenden Verein wieder aktiv (api#472). Diese Wirkung bleibt.
   test 'ein regulaer deaktiviertes Profil wird beim Transfer wieder aktiv' do
@@ -92,6 +117,14 @@ class PlayersClearDeactivationMergedTest < ActionDispatch::IntegrationTest
     dublette.merge_into!(master, @admin.id)
     assert_not_nil dublette.reload.deactivated_at, 'Vorbedingung: der Merge kennzeichnet die Dublette'
     dublette
+  end
+
+  def transfer_request_for(player, status)
+    TransferRequest.create!(
+      player: player, requesting_club: @new_club, former_club: @former_club,
+      status: status, request_type: 'transfer', created_by: @admin.id,
+      season_id: Setting.current_season_id
+    )
   end
 
   def login_as(user)
