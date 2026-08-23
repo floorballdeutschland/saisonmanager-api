@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Masken, die einen Verein zuweisen, bieten keine deaktivierten Vereine mehr an**: Im Spielerprofil (Zusatzverein), im Schiedsrichterprofil (Verein) und beim Bearbeiten eines Spieltags (Ausrichter) standen deaktivierte Vereine in der Auswahl, während die Direktzuweisung sie seit 1.93.0 weglässt. Alle drei Masken benennen mit derselben Liste aber auch den bereits gespeicherten Verein, dürfen deaktivierte Vereine also nicht einfach weglassen, sonst stünde ein Bestandseintrag ohne Namen da. Die Vereinsliste der Verwaltung nennt deshalb jetzt zu jedem Verein seinen Zustand, und die Masken grenzen damit nur die Auswahl ein: Ein bereits eingetragener deaktivierter Verein bleibt sichtbar und benannt, neu auswählbar ist er nicht mehr. Die öffentlichen Endpunkte, die dieselbe Vereinsdarstellung verwenden, bleiben unverändert.
+
 ## [1.95.0] - 2026-08-22
 
 ### Neu
