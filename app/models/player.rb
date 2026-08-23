@@ -1008,6 +1008,18 @@ class Player < ApplicationRecord
   # `deactivation_reason` bleibt stehen, wie schon bei `reactivate!`: der Grund ist
   # Historie, die Kennzeichnung ist der Zustand.
   def clear_deactivation
+    # Eine zusammengefuehrte Dublette bleibt gekennzeichnet (api#486): Sie ist
+    # nur deshalb deaktiviert, weil merge_into! sie ersetzt hat, und genau darauf
+    # verlaesst sich der Merge -- ohne die Kennzeichnung stuende sie wieder als
+    # aktives Mitglied in der Vereinsspielerliste und in der Auswahl beim
+    # Lizenzantrag, neben dem fuehrenden Profil. PlayersController#reactivate
+    # lehnt sie aus demselben Grund ausdruecklich ab.
+    #
+    # Der Aufruf tut hier still nichts, wie bei einem nicht deaktivierten Profil:
+    # Die Aufnahme selbst abzulehnen waere die deutlichere Aussage, wuerde aber
+    # das Verhalten der drei Aufnahmewege aendern, und ueber die Oberfläche ist
+    # der Fall nicht erreichbar (die Spielersuche filtert merged_into_id).
+    return false if merged_into_id.present?
     return false if deactivated_at.blank?
 
     self.deactivated_at = nil
