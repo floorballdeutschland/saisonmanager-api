@@ -27,6 +27,7 @@ class RefereeChangeRequest < ApplicationRecord
   validates :reason, length: { maximum: 200 }
   validates :decision_note, length: { maximum: 200 }
   validate :new_value_must_be_a_date, if: -> { correction_type == 'geburtsdatum' && new_value.present? }
+  validate :new_club_must_be_active, on: :create, if: -> { club_change? && new_club.present? }
   validate :no_open_request, on: :create
   validate :must_change_something, on: :create
 
@@ -158,16 +159,32 @@ class RefereeChangeRequest < ApplicationRecord
   end
 
   def parsed_birthdate!
-    Date.parse(new_value.to_s)
+    Date.iso8601(new_value.to_s)
   rescue ArgumentError, TypeError
     errors.add(:new_value, 'muss ein gültiges Datum sein (JJJJ-MM-TT)')
     raise ActiveRecord::RecordInvalid, self
   end
 
+  # Bewusst Date.iso8601 und nicht Date.parse: Date.parse liest auch Bruchstücke
+  # („03" wird zum 3. des laufenden Monats). So ein Wert käme durch die
+  # Zukunftsprüfung, sähe im Antrag nach einem Versehen aus und überschriebe bei
+  # der Genehmigung das echte Geburtsdatum. Nebenbei hält die strenge Form den
+  # Vergleich in must_change_something ehrlich, der auf der ISO-Schreibweise von
+  # current_value beruht.
   def new_value_must_be_a_date
-    date = Date.parse(new_value.to_s)
+    date = Date.iso8601(new_value.to_s)
     errors.add(:new_value, 'darf nicht in der Zukunft liegen') if date > Date.current
   rescue ArgumentError, TypeError
     errors.add(:new_value, 'muss ein gültiges Datum sein (JJJJ-MM-TT)')
+  end
+
+  # Die Vereinsauswahl im Profil zeigt nur aktive Vereine; ein Antrag auf einen
+  # stillgelegten Verein (Ablage, Fusion) käme also nur an der Maske vorbei und
+  # würde den Schiri bei der Genehmigung in einen Verein setzen, den es nicht
+  # mehr gibt.
+  def new_club_must_be_active
+    return if new_club.deactivated_at.nil?
+
+    errors.add(:new_club, 'ist nicht aktiv')
   end
 end

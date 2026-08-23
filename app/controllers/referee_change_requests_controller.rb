@@ -25,6 +25,12 @@ class RefereeChangeRequestsController < ApplicationController
 
     RefereeMailer.change_requested(change_request).deliver_later
     render json: payload, status: :created
+  rescue ActiveRecord::RecordNotUnique
+    # Doppelklick oder zweiter Tab: no_open_request prüft vor dem Insert, den
+    # Teilindex hält erst die Datenbank. Ohne diesen Zweig käme statt der
+    # Meldung ein 500er, obwohl der erste Antrag korrekt angelegt wurde.
+    render json: { errors: ['Für dieses Feld liegt bereits ein offener Antrag vor.'] },
+           status: :unprocessable_entity
   end
 
   # DELETE /api/v2/referee/change_requests/:id

@@ -89,6 +89,35 @@ class RefereeChangeRequestsControllerTest < ActionDispatch::IntegrationTest
     assert_response :unprocessable_entity
   end
 
+  test 'zweiter Antrag zum selben Feld wird abgewiesen' do
+    login(@user)
+    params = { change_request: { correction_type: 'nachname', new_value: 'Musterfrau' } }
+
+    post '/api/v2/referee/change_requests', params: params
+    assert_response :created
+
+    post '/api/v2/referee/change_requests', params: params
+    assert_response :unprocessable_entity
+  end
+
+  # Doppelklick: Bei zwei gleichzeitigen Anfragen sieht die Vorpruefung
+  # no_open_request den ersten Antrag noch nicht, und erst der Teilindex haelt
+  # den zweiten. Hier nachgestellt, indem die Vorpruefung ins Leere greift; ohne
+  # den rescue im Controller waere die Antwort ein 500er.
+  test 'gleichzeitiger zweiter Antrag meldet 422 statt eines Serverfehlers' do
+    login(@user)
+    params = { change_request: { correction_type: 'nachname', new_value: 'Musterfrau' } }
+
+    post '/api/v2/referee/change_requests', params: params
+    assert_response :created
+
+    RefereeChangeRequest.stub(:pending, RefereeChangeRequest.none) do
+      post '/api/v2/referee/change_requests', params: params
+    end
+
+    assert_response :unprocessable_entity
+  end
+
   test 'fremde Antraege sind nicht erreichbar' do
     fremd = create(:referee, club: @club)
     request = RefereeChangeRequest.create!(referee: fremd, correction_type: 'nachname', new_value: 'X')

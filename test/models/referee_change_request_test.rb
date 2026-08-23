@@ -33,6 +33,13 @@ class RefereeChangeRequestTest < ActiveSupport::TestCase
     assert_equal Date.new(1990, 1, 1), @referee.reload.geburtsdatum
   end
 
+  # Date.parse liest Bruchstuecke: "03" wuerde zum 3. des laufenden Monats und
+  # bei der Genehmigung das echte Geburtsdatum ueberschreiben.
+  test 'Datums-Bruchstueck wird abgewiesen' do
+    assert_not build_request(correction_type: 'geburtsdatum', new_value: '03').valid?
+    assert_not build_request(correction_type: 'geburtsdatum', new_value: '1990-1-1').valid?
+  end
+
   test 'Geburtsdatum in der Zukunft wird abgewiesen' do
     request = build_request(correction_type: 'geburtsdatum', new_value: 1.year.from_now.to_date.iso8601)
 
@@ -48,6 +55,12 @@ class RefereeChangeRequestTest < ActiveSupport::TestCase
 
   test 'Vereinsantrag ohne Verein ist ungueltig' do
     assert_not build_request(correction_type: 'verein').valid?
+  end
+
+  test 'stillgelegter Verein ist nicht beantragbar' do
+    @other_club.update!(deactivated_at: Time.current)
+
+    assert_not build_request(correction_type: 'verein', new_club: @other_club).valid?
   end
 
   test 'Antrag ohne Aenderung wird abgewiesen' do
@@ -94,6 +107,30 @@ class RefereeChangeRequestTest < ActiveSupport::TestCase
     assert request.reject!(99, 'Nachweis fehlt')
     assert_equal 'Beispiel', @referee.reload.nachname
     assert_equal 'Nachweis fehlt', request.reload.decision_note
+  end
+
+  # Der Antrag darf nicht am toten Zweitprofil haengenbleiben: Der Schiri saehe
+  # ihn nicht mehr, die RSK koennte ihn aber weiter genehmigen.
+  test 'offener Antrag wandert beim Zusammenfuehren zum Master' do
+    zweitprofil = create(:referee, vorname: 'Anna', nachname: 'Beispiel', club: @club)
+    antrag = RefereeChangeRequest.create!(referee: zweitprofil, correction_type: 'nachname',
+                                          new_value: 'Musterfrau')
+
+    zweitprofil.merge_into!(@referee, 1)
+
+    assert_equal @referee.id, antrag.reload.referee_id
+  end
+
+  test 'doppelter offener Antrag zum selben Feld faellt beim Zusammenfuehren weg' do
+    create_request(correction_type: 'nachname', new_value: 'Musterfrau')
+    zweitprofil = create(:referee, vorname: 'Anna', nachname: 'Beispiel', club: @club)
+    doppelt = RefereeChangeRequest.create!(referee: zweitprofil, correction_type: 'nachname',
+                                           new_value: 'Andere')
+
+    zweitprofil.merge_into!(@referee, 1)
+
+    assert_not RefereeChangeRequest.exists?(doppelt.id)
+    assert_equal 1, @referee.reload.referee_change_requests.pending.count
   end
 
   test 'aktueller Wert wird zum Anzeigezeitpunkt gelesen' do
