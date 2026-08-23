@@ -221,6 +221,21 @@ class MergeClubsTest < ActiveSupport::TestCase
     assert_equal target.id, exclusion.reload.club_id
   end
 
+  # Ohne referee_change_requests.new_club_id in plain_columns bricht der Merge
+  # am Fremdschluessel ab, sobald ein Schiri je einen Wechsel in den
+  # aufzuloesenden Verein beantragt hat.
+  test 'hängt beantragte Vereinswechsel um' do
+    source = create(:club)
+    target = create(:club)
+    referee = create(:referee, club: create(:club))
+    antrag = RefereeChangeRequest.create!(referee: referee, correction_type: 'verein', new_club: source)
+
+    run_task('MERGES' => "#{source.id}:#{target.id}", 'DRY_RUN' => 'false')
+
+    assert_equal target.id, antrag.reload.new_club_id
+    assert_not Club.exists?(source.id)
+  end
+
   # --- Vorbedingungen --------------------------------------------------------
 
   test 'überspringt unbekannte IDs, ohne abzubrechen' do

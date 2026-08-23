@@ -253,6 +253,8 @@ Rails.application.routes.draw do
       delete 'referee/availabilities/:id',   to: 'referee_availabilities#destroy'
 
       get 'referee/clubs', to: 'referee_club_exclusions#clubs'
+      post 'referee/change_requests', to: 'referee_change_requests#create'
+      delete 'referee/change_requests/:id', to: 'referee_change_requests#destroy'
       post 'referee/club_exclusions/requests', to: 'referee_club_exclusions#create'
       delete 'referee/club_exclusions/requests/:id', to: 'referee_club_exclusions#destroy'
 
@@ -283,6 +285,12 @@ Rails.application.routes.draw do
         end
         get 'referee_club_exclusions/clubs', to: 'referee_club_exclusions#clubs'
         resources :referee_club_exclusion_requests, only: %i[index] do
+          member do
+            post :approve
+            post :reject
+          end
+        end
+        resources :referee_change_requests, only: %i[index] do
           member do
             post :approve
             post :reject

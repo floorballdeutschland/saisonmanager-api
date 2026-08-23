@@ -364,6 +364,10 @@ class User < ApplicationRecord
     # Landesverband soll die Anträge weder sehen noch entscheiden.
     result[:menu_item_referee_exclusions] =
       ph[:admin].present? || (ph[:ansetzer].present? && ph[:ansetzer].include?(0))
+    # Korrekturanträge zu den Stammdaten (Name, Geburtsdatum, Verein) entscheidet
+    # dagegen die RSK des zuständigen Landesverbands: Es geht um Stammdaten und
+    # nicht um Ansetzbarkeit.
+    result[:menu_item_referee_change_requests] = ph[:admin].present? || ph[:rsk].present?
     # Strafcode-Verwaltung („Einstellungen" im Schiedsrichterwesen) – nur Admin.
     result[:menu_item_referee_settings] = ph[:admin].present?
     # Schiri-Feedback der Vereine ist nur am Schiri-Profil sichtbar – für Admin

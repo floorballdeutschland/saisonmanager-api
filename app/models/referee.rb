@@ -14,6 +14,7 @@ class Referee < ApplicationRecord
   has_many :referee_taggings, dependent: :destroy
   has_many :referee_club_exclusions, dependent: :destroy
   has_many :referee_club_exclusion_requests, dependent: :destroy
+  has_many :referee_change_requests, dependent: :destroy
   has_many :game_day_referee_confirmations, dependent: :destroy
   has_many :referee_qualification_types, through: :referee_qualifications
   has_many :referee_tags, through: :referee_taggings
@@ -243,6 +244,15 @@ class Referee < ApplicationRecord
       master_pending_club_ids = master.referee_club_exclusion_requests.pending.pluck(:club_id)
       referee_club_exclusion_requests.pending.where(club_id: master_pending_club_ids).destroy_all
       referee_club_exclusion_requests.reload.update_all(referee_id: master.id)
+
+      # Stammdaten-Korrekturen genauso: Bleiben sie am Zweitprofil, sieht der
+      # Schiri seinen offenen Antrag nicht mehr (sein Konto hängt am Master),
+      # die RSK könnte ihn aber weiter genehmigen und schriebe den korrigierten
+      # Wert auf die tote Zeile. Der Teilindex lässt je Feld nur einen offenen
+      # Antrag zu, deshalb fällt der zweite weg.
+      master_pending_types = master.referee_change_requests.pending.pluck(:correction_type)
+      referee_change_requests.pending.where(correction_type: master_pending_types).destroy_all
+      referee_change_requests.reload.update_all(referee_id: master.id)
 
       if user.present?
         if master.user.nil?

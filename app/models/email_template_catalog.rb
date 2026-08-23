@@ -135,6 +135,39 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
                        'in Klammern („B-Coach (gültig bis 30.06.2027)")' }
       ]
     },
+    'RefereeMailer#change_requested' => {
+      mailer_class: 'RefereeMailer',
+      action_name: 'change_requested',
+      description: 'Antrag eines Schiris auf Korrektur seiner Stammdaten (Vorname, Nachname, ' \
+                   'Geburtsdatum oder Verein). Geht an das RSK-Postfach des Landesverbands, in dem ' \
+                   'der Verein des Schiris liegt.',
+      default_subject: 'Antrag Stammdatenkorrektur – {{referee_name}}',
+      default_from: nil,
+      # Reply-To wird zur Laufzeit gesetzt (Schiri bzw. RSK-E-Mail des Verbands).
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'referee_name', description: 'Vor- und Nachname des Schiris' },
+        { key: 'field', description: 'Betroffenes Feld (Vorname, Nachname, Geburtsdatum, Verein)' },
+        { key: 'current_value', description: 'Wert, der bisher im Profil steht' },
+        { key: 'requested_value', description: 'Beantragter neuer Wert' }
+      ]
+    },
+    'RefereeMailer#change_decision' => {
+      mailer_class: 'RefereeMailer',
+      action_name: 'change_decision',
+      description: 'Entscheidung der RSK über einen Antrag auf Stammdatenkorrektur.',
+      default_subject: 'Stammdatenkorrektur {{decision}} – {{field}}',
+      default_from: nil,
+      # Reply-To wird zur Laufzeit gesetzt (RSK-E-Mail des Verbands).
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname des Empfängers (für die Anrede)' },
+        { key: 'referee_name', description: 'Vor- und Nachname des Schiris' },
+        { key: 'field', description: 'Betroffenes Feld (Vorname, Nachname, Geburtsdatum, Verein)' },
+        { key: 'requested_value', description: 'Beantragter neuer Wert' },
+        { key: 'decision', description: 'genehmigt oder abgelehnt' }
+      ]
+    },
     'RefereeMailer#club_exclusion_requested' => {
       mailer_class: 'RefereeMailer',
       action_name: 'club_exclusion_requested',
