@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Eine zusammengeführte Dublette bleibt gekennzeichnet, auch wenn sie neu aufgenommen wird**: Wer ein doppeltes Spielerprofil zusammenführt, verlässt sich darauf, dass die Dublette danach nirgends mehr als aktives Mitglied oder Lizenznehmer auftaucht. Die Wege, die eine neue Vereinszugehörigkeit anlegen (Transfer, Direktzuweisung und Vereinsfreigabe), räumten diese Kennzeichnung ab, ohne zu prüfen, ob es sich um eine Dublette handelt. Sie stand dann wieder in der Vereinsspielerliste und in der Auswahl beim Lizenzantrag, neben dem führenden Profil. Die Reaktivierung über die Spielerverwaltung lehnt eine Dublette schon länger ausdrücklich ab, jetzt gilt dieselbe Regel für alle Aufnahmewege. Über die Oberfläche war der Fall kaum erreichbar, weil die Spielersuche zusammengeführte Profile ohnehin ausblendet.
+
 ## [1.95.0] - 2026-08-22
 
 ### Neu
