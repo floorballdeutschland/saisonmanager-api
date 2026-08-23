@@ -489,11 +489,19 @@ module Admin
       entries = []
       errors = []
 
-      Array(params[:referee][:qualifications]).each_with_index do |q, index|
+      qualification_rows.each_with_index do |q, index|
         field = "qualifications[#{index}]"
+
+        # Eine Zeile, die kein Objekt ist (`qualifications: ["foo"]`), lief bis
+        # hierher in einen 500: `String#[]` mit einem Symbol wirft.
+        unless q.respond_to?(:key?)
+          errors << "#{field}: erwartet wird ein Objekt mit qualification_type_id und valid_until"
+          next
+        end
+
         type_id = q[:qualification_type_id].to_s.strip
 
-        unless type_id.match?(/\A[1-9]\d*\z/)
+        unless type_id.match?(/\A\d+\z/) && type_id.to_i.positive?
           errors << "#{field}.qualification_type_id: „#{q[:qualification_type_id]}“ ist keine Qualifikations-ID"
           next
         end
@@ -510,6 +518,19 @@ module Admin
 
       errors.concat(qualification_reference_errors(entries))
       [entries, errors]
+    end
+
+    # Die Zeilen der Eingabe. Ein Formular-Post schickt sie index-adressiert
+    # (`referee[qualifications][0][…]`), und daraus macht Rails einen Hash, kein
+    # Array. `Array()` liefert darauf den ganzen Wrapper als EINEN Eintrag,
+    # weil ActionController::Parameters weder to_a noch to_ary kennt -- die
+    # Meldung spräche dann über eine Zeile, die es so nicht gibt.
+    def qualification_rows
+      raw = params[:referee][:qualifications]
+      return raw if raw.is_a?(Array)
+      return raw.values if raw.respond_to?(:values)
+
+      Array(raw)
     end
 
     # Doppelte und unbekannte Qualifikationen: Beide liefen bisher in einen 500,

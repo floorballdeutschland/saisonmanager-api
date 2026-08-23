@@ -49,7 +49,7 @@ module Admin
                                    { qualification_type_id: @beob.id, valid_until: '30.06.2027' }])
 
       assert_response :unprocessable_entity
-      assert_match(/mehrfach|2-mal/, errors.join)
+      assert_match(/2-mal angegeben/, errors.join)
       assert_equal [@coach.id], qualification_type_ids
     end
 
@@ -72,6 +72,27 @@ module Admin
       assert_not_equal 'Neuername', @referee.reload.nachname
     end
 
+    # Eine Zeile, die kein Objekt ist, lief in einen 500 (String#[] mit Symbol).
+    test 'eine Zeile ohne Objektform wird abgewiesen' do
+      put_referee(qualifications: ['B-Coach'])
+
+      assert_response :unprocessable_entity
+      assert_match(/erwartet wird ein Objekt/, errors.join)
+      assert_equal [@coach.id], qualification_type_ids
+    end
+
+    # Formular-Posts adressieren die Zeilen über den Index; daraus macht Rails
+    # einen Hash. Ohne Normalisierung spraeche die Meldung ueber eine Zeile, die
+    # es so nicht gibt.
+    test 'index-adressierte Zeilen werden wie ein Array gelesen' do
+      put "/api/v2/admin/referees/#{@referee.id}", params: {
+        referee: { qualifications: { '0' => { qualification_type_id: @beob.id, valid_until: '30.06.2028' } } }
+      }
+
+      assert_response :success
+      assert_equal [@beob.id], qualification_type_ids
+    end
+
     # Gegenprobe: Die gültige Eingabe wird wie bisher komplett neu gesetzt.
     test 'gueltige Eingabe setzt die Qualifikationen neu' do
       put_referee(qualifications: [{ qualification_type_id: @beob.id, valid_until: '30.06.2028' }])
@@ -79,6 +100,25 @@ module Admin
       assert_response :success
       assert_equal [@beob.id], qualification_type_ids
       assert_equal Date.new(2028, 6, 30), @referee.referee_qualifications.first.valid_until
+    end
+
+    # Das Alles-Löschen haengt an der Truthiness der leeren Liste. Form-encoded
+    # verwirft Rack sie, deshalb `as: :json`.
+    test 'eine leere Liste loescht alle Qualifikationen' do
+      put "/api/v2/admin/referees/#{@referee.id}",
+          params: { referee: { qualifications: [] } }, as: :json
+
+      assert_response :success
+      assert_equal [], qualification_type_ids
+    end
+
+    # Ohne den Schluessel bleibt der Bestand unangetastet -- sonst loeschte jedes
+    # Speichern aus einer anderen Maske die Qualifikationen mit.
+    test 'ein Aufruf ohne qualifications laesst den Bestand stehen' do
+      put_referee(nachname: 'Neuername')
+
+      assert_response :success
+      assert_equal [@coach.id], qualification_type_ids
     end
 
     private
