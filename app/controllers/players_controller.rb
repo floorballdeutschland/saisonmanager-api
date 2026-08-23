@@ -613,6 +613,14 @@ class PlayersController < ApplicationController
 
     if ph[:admin].present? || sbk_may_move_player?(ph, player, club)
 
+      # Gleiche Regel wie bei der Direktzuweisung (api#511): Ein deaktivierter
+      # Verein nimmt keine Spieler mehr auf, auch nicht als Zweitverein. Die
+      # Auswahlmaske bietet ihn nicht mehr an (fe#318), ein direkter Aufruf käme
+      # sonst aber durch.
+      if club.deactivated_at.present?
+        return render json: { message: 'Der aufnehmende Verein ist deaktiviert' }, status: :unprocessable_entity
+      end
+
       # if player and club present, we check if the club.id is already in the players clubs hash
       if player.present? &&
          club.present?
