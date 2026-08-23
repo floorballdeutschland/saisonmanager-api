@@ -291,6 +291,23 @@ module Admin
       assert_response :created
     end
 
+    # api#512: Der mehrstufige Prozess prüfte den aufnehmenden Verein an keiner
+    # Stelle, während die Direktzuweisung ihn seit api#511 abweist. Geprüft wird
+    # jetzt beim Anlegen, beim Genehmigen und beim Vollziehen, weil zwischen
+    # Antrag und Vollzug Tage liegen.
+    test 'Antrag in einen deaktivierten aufnehmenden Verein → 422' do
+      @requesting_club.update!(deactivated_at: Time.current)
+      login(@vm_requesting)
+      assert_no_emails do
+        post '/api/v2/admin/transfer_requests', params: {
+          player_id: @player.id,
+          requesting_club_id: @requesting_club.id
+        }
+      end
+      assert_response :unprocessable_entity
+      assert_equal 0, TransferRequest.where(player_id: @player.id).count
+    end
+
     test 'VM kann keinen Antrag für fremden Verein erstellen → 403' do
       other_club = Club.create!(
         name: "Fremder Verein #{SecureRandom.hex(4)}",
@@ -500,11 +517,68 @@ module Admin
       assert_response :forbidden
     end
 
+    # Der Fall aus api#512: Zwischen Antrag und LV-Genehmigung liegen zwei Mails
+    # und die Spielerbestätigung, in der Praxis also Tage. Wird der Zielverein in
+    # diesem Fenster deaktiviert, darf die Genehmigung nicht durchlaufen.
+    test 'approve_lv in einen zwischenzeitlich deaktivierten Verein → 422' do
+      tr = create_transfer_request(status: 'pending_lv')
+      @requesting_club.update!(deactivated_at: Time.current)
+      login(@sbk)
+      assert_no_emails do
+        patch "/api/v2/admin/transfer_requests/#{tr.id}/approve_lv"
+      end
+      assert_response :unprocessable_entity
+      assert_equal 'pending_lv', tr.reload.status
+      assert_equal [@former_club.id], @player.reload.clubs.map { |c| c['club_id'] },
+                   'die Zugehörigkeit darf sich durch den abgewiesenen Aufruf nicht ändern'
+    end
+
+    # Auch die Freigabe legt eine Mitgliedschaft im aufnehmenden Verein an, der
+    # Riegel sitzt deshalb vor der Verzweigung nach request_type.
+    test 'approve_lv einer Freigabe in einen deaktivierten Verein → 422' do
+      tr = create_transfer_request(status: 'pending_lv', request_type: 'release')
+      @requesting_club.update!(deactivated_at: Time.current)
+      login(@sbk)
+      assert_no_emails do
+        patch "/api/v2/admin/transfer_requests/#{tr.id}/approve_lv"
+      end
+      assert_response :unprocessable_entity
+      assert_equal 'pending_lv', tr.reload.status
+      assert_equal 1, @player.reload.clubs.size
+    end
+
     test 'approve_lv bei falschem Status → 422' do
       tr = create_transfer_request(status: 'pending_club')
       login(@sbk)
       patch "/api/v2/admin/transfer_requests/#{tr.id}/approve_lv"
       assert_response :unprocessable_entity
+    end
+
+    # ---------------------------------------------------------------------------
+    # PATCH /api/v2/admin/transfer_requests/:id/execute
+    # ---------------------------------------------------------------------------
+
+    # Der geplante Transfer ist der deutlichste Fall aus api#512: Zwischen
+    # Genehmigung und Vollzug liegen mindestens sieben Tage.
+    test 'execute in einen zwischenzeitlich deaktivierten Verein → 422' do
+      tr = create_transfer_request(status: 'scheduled')
+      @requesting_club.update!(deactivated_at: Time.current)
+      login(@sbk)
+      assert_no_emails do
+        patch "/api/v2/admin/transfer_requests/#{tr.id}/execute"
+      end
+      assert_response :unprocessable_entity
+      assert_equal 'scheduled', tr.reload.status
+      assert_equal [@former_club.id], @player.reload.clubs.map { |c| c['club_id'] }
+    end
+
+    # Gegenprobe: Der reguläre Vollzug bleibt unberührt.
+    test 'execute in einen aktiven Verein → Status approved' do
+      tr = create_transfer_request(status: 'scheduled')
+      login(@sbk)
+      patch "/api/v2/admin/transfer_requests/#{tr.id}/execute"
+      assert_response :success
+      assert_equal 'approved', tr.reload.status
     end
 
     # ---------------------------------------------------------------------------
@@ -613,7 +687,7 @@ module Admin
       assert_response :success
     end
 
-    def create_transfer_request(status:, effective_date: nil)
+    def create_transfer_request(status:, effective_date: nil, request_type: 'transfer')
       # token wird im before_create callback generiert; bei direkt gesetztem
       # Status (z.B. pending_lv) ist er trotzdem vorhanden.
       TransferRequest.create!(
@@ -623,7 +697,8 @@ module Admin
         status: status,
         created_by: @vm_requesting.id,
         season_id: 18,
-        effective_date: effective_date
+        effective_date: effective_date,
+        request_type: request_type
       )
     end
   end

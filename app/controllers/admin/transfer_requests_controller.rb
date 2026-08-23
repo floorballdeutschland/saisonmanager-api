@@ -125,6 +125,7 @@ module Admin
 
       requesting_club = Club.find_by(id: requesting_club_id)
       return render json: { error: 'Verein nicht gefunden' }, status: :not_found unless requesting_club
+      return deactivated_requesting_club_response if requesting_club.deactivated_at.present?
 
       if TransferRequest.active.where(player_id: player.id).exists?
         return render json: { error: 'Fuer diesen Spieler ist bereits ein Transferantrag aktiv' }, status: :unprocessable_entity
@@ -270,6 +271,11 @@ module Admin
         return render json: { error: 'Nicht berechtigt' }, status: :forbidden
       end
 
+      # Auch die Freigabe legt eine Mitgliedschaft im aufnehmenden Verein an
+      # (execute_release! über add_secondary_club_membership!), der Riegel sitzt
+      # deshalb vor der Verzweigung.
+      return deactivated_requesting_club_response if tr.requesting_club.deactivated_at.present?
+
       if tr.request_type == 'release'
         tr.execute_release!(current_user.id)
       elsif tr.effective_date.nil? || tr.effective_date <= Date.today
@@ -327,6 +333,8 @@ module Admin
       if tr.effective_date.present? && tr.effective_date > Date.today
         return render json: { error: "Transfer wird erst am #{tr.effective_date.strftime('%d.%m.%Y')} wirksam" }, status: :unprocessable_entity
       end
+
+      return deactivated_requesting_club_response if tr.requesting_club.deactivated_at.present?
 
       tr.execute_transfer!(current_user.id)
       render json: tr.as_json
@@ -444,13 +452,7 @@ module Admin
       requesting_club = Club.find_by(id: params[:requesting_club_id].to_i)
       return render json: { error: 'Verein nicht gefunden' }, status: :not_found unless requesting_club
 
-      # Der abgebende Verein darf deaktiviert sein (ein aufgelöster Verein gibt
-      # seine Spieler ja gerade ab), der aufnehmende nicht: Er soll keine neuen
-      # Mitglieder mehr bekommen. Die Auswahlmaske bietet ihn nicht an, ein
-      # direkter Aufruf käme sonst aber durch.
-      if requesting_club.deactivated_at.present?
-        return render json: { error: 'Der aufnehmende Verein ist deaktiviert' }, status: :unprocessable_entity
-      end
+      return deactivated_requesting_club_response if requesting_club.deactivated_at.present?
 
       # Player#home_club_entry ist die eine Quelle: Diese Stelle las frueher den ERSTEN
       # offenen Heimat-Eintrag, waehrend Player#home_club den LETZTEN nimmt. Bei zwei
@@ -522,6 +524,25 @@ module Admin
     end
 
     private
+
+    # Der abgebende Verein darf deaktiviert sein (ein aufgelöster Verein gibt
+    # seine Spieler ja gerade ab), der aufnehmende nicht: Er soll keine neuen
+    # Mitglieder mehr bekommen. Die Auswahlmaske bietet ihn nicht an, ein
+    # direkter Aufruf käme sonst aber durch.
+    #
+    # Geprüft an vier Stellen, weil der mehrstufige Prozess über Tage läuft und
+    # die Deaktivierung in jedem Schritt dazwischen fallen kann (api#512): beim
+    # Anlegen, damit der Antrag nicht erst am Ende scheitert, und beim
+    # Genehmigen und Vollziehen, damit sie überhaupt greift. Die Direktzuweisung
+    # nutzt dieselbe Meldung, damit es eine Begründung bleibt.
+    #
+    # Bewusst hier und nicht in TransferRequest#execute_transfer!: Ein `raise`
+    # dort wäre die eine Quelle, ließe #approve_lv und #execute aber in einen
+    # 500 laufen, weil nur #direct_assign ein `rescue ActiveRecord::RecordInvalid`
+    # hat.
+    def deactivated_requesting_club_response
+      render json: { error: 'Der aufnehmende Verein ist deaktiviert' }, status: :unprocessable_entity
+    end
 
     # Darf der Nutzer für diesen Verein handeln? Stärkere Rollen gehen der
     # VM-Vereinsbindung vor: wer neben der VM-Rolle auch Admin oder SBK ist,
