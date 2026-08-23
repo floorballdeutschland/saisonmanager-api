@@ -71,6 +71,10 @@ class RefereeProfileController < ApplicationController
       gueltigkeit: @referee.gueltigkeit&.strftime('%d.%m.%Y'),
       geburtsdatum: @referee.geburtsdatum&.strftime('%d.%m.%Y'),
       verein: @referee.club&.name,
+      # Die ID zusätzlich zum Namen: Die Vereinsauswahl im Korrekturantrag
+      # blendet den eigenen Verein aus, und über den Namen wäre das bei zwei
+      # gleichnamigen Vereinen der falsche.
+      club_id: @referee.club_id,
       landesverband: @referee.landesverband,
       # Vereine, für die die Person nicht angesetzt werden möchte, plus die
       # laufenden Anträge dazu. Gepflegt wird das im selben Profilbereich wie

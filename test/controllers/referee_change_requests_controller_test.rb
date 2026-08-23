@@ -26,6 +26,16 @@ class RefereeChangeRequestsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 'Musterfrau', requests.first['requested_value']
   end
 
+  test 'Profil nennt den eigenen Verein mit ID' do
+    login(@user)
+    get '/api/v2/referee/profile'
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal @club.id, body['club_id']
+    assert_equal 'Eigener Verein', body['verein']
+  end
+
   test 'Antrag anlegen liefert die Antragsliste und verschickt eine Mail an die RSK' do
     login(@user)
 
