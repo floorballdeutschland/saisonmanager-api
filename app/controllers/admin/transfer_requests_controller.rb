@@ -68,6 +68,12 @@ module Admin
       end
 
       if requesting_club_id > 0
+      # Dieselbe Auskunft wie in create, sonst meldet die Suche einen Treffer und
+      # der Antrag faellt gleich danach auf 422 (api#512).
+      if Club.find_by(id: requesting_club_id)&.deactivated_at.present?
+        return deactivated_requesting_club_response
+      end
+
       # Derselbe Leser wie in create/direct_assign -- sonst faellt die Suche gegen den
       # ersten offenen Heimat-Eintrag und der Antrag gleich danach gegen den letzten,
       # und die Suche weist einen Antrag ab, den create zugelassen haette.
@@ -119,6 +125,7 @@ module Admin
 
       requesting_club = Club.find_by(id: requesting_club_id)
       return render json: { error: 'Verein nicht gefunden' }, status: :not_found unless requesting_club
+      return deactivated_requesting_club_response if requesting_club.deactivated_at.present?
 
       if TransferRequest.active.where(player_id: player.id).exists?
         return render json: { error: 'Fuer diesen Spieler ist bereits ein Transferantrag aktiv' }, status: :unprocessable_entity
@@ -204,6 +211,11 @@ module Admin
         return render json: { error: 'Nicht berechtigt' }, status: :forbidden
       end
 
+      # Auch mitten in der Kette: Sonst arbeitet der abgebende Verein einen
+      # Antrag ab, der bei approve_lv garantiert abgewiesen wird, und der
+      # Spieler bekommt eine Bestaetigungsmail dafuer.
+      return deactivated_requesting_club_response if tr.requesting_club.deactivated_at.present?
+
       unless tr.player.email.present?
         return render json: {
           error: 'Für das Spielerprofil ist keine E-Mailadresse hinterlegt. Bitte den aktuellen Verein oder die zuständige SBK kontaktieren.'
@@ -266,6 +278,11 @@ module Admin
 
       return merged_player_response if tr.player.merged_into_id.present?
 
+      # Auch die Freigabe legt eine Mitgliedschaft im aufnehmenden Verein an
+      # (execute_release! über add_secondary_club_membership!), der Riegel sitzt
+      # deshalb vor der Verzweigung.
+      return deactivated_requesting_club_response if tr.requesting_club.deactivated_at.present?
+
       if tr.request_type == 'release'
         tr.execute_release!(current_user.id)
       elsif tr.effective_date.nil? || tr.effective_date <= Date.today
@@ -325,6 +342,7 @@ module Admin
       end
 
       return merged_player_response if tr.player.merged_into_id.present?
+      return deactivated_requesting_club_response if tr.requesting_club.deactivated_at.present?
 
       tr.execute_transfer!(current_user.id)
       render json: tr.as_json
@@ -436,13 +454,7 @@ module Admin
       requesting_club = Club.find_by(id: params[:requesting_club_id].to_i)
       return render json: { error: 'Verein nicht gefunden' }, status: :not_found unless requesting_club
 
-      # Der abgebende Verein darf deaktiviert sein (ein aufgelöster Verein gibt
-      # seine Spieler ja gerade ab), der aufnehmende nicht: Er soll keine neuen
-      # Mitglieder mehr bekommen. Die Auswahlmaske bietet ihn nicht an, ein
-      # direkter Aufruf käme sonst aber durch.
-      if requesting_club.deactivated_at.present?
-        return render json: { error: 'Der aufnehmende Verein ist deaktiviert' }, status: :unprocessable_entity
-      end
+      return deactivated_requesting_club_response if requesting_club.deactivated_at.present?
 
       # Player#home_club_entry ist die eine Quelle: Diese Stelle las frueher den ERSTEN
       # offenen Heimat-Eintrag, waehrend Player#home_club den LETZTEN nimmt. Bei zwei
@@ -527,6 +539,30 @@ module Admin
     def merged_player_response
       render json: { error: 'Dieses Profil wurde mit einem anderen zusammengeführt und kann nicht transferiert werden' },
              status: :unprocessable_entity
+    end
+
+    # Der abgebende Verein darf deaktiviert sein (ein aufgelöster Verein gibt
+    # seine Spieler ja gerade ab), der aufnehmende nicht: Er soll keine neuen
+    # Mitglieder mehr bekommen. Die Auswahlmaske bietet ihn nicht an, ein
+    # direkter Aufruf käme sonst aber durch.
+    #
+    # Geprüft an jedem Schritt, weil der mehrstufige Prozess über Tage läuft und
+    # die Deaktivierung dazwischen fallen kann (api#512): bei der Suche und beim
+    # Anlegen, damit der Antrag gar nicht erst entsteht, bei der Vereinsfreigabe,
+    # damit niemand einen aussichtslosen Antrag abarbeitet, und beim Genehmigen
+    # und Vollziehen, damit sie in jedem Fall greift. Die Direktzuweisung nutzt
+    # dieselbe Meldung, damit es eine Begründung bleibt.
+    #
+    # Nicht geprüft wird in #player_approve: Der Spieler bestätigt dort über
+    # einen Mail-Link ohne Anmeldung, und die Aktion antwortet mit einem
+    # Redirect, nicht mit JSON. Der Riegel bei #approve_lv greift danach.
+    #
+    # Bewusst hier und nicht in TransferRequest#execute_transfer!: Ein `raise`
+    # dort wäre die eine Quelle, ließe #approve_lv und #execute aber in einen
+    # 500 laufen, weil nur #direct_assign ein `rescue ActiveRecord::RecordInvalid`
+    # hat.
+    def deactivated_requesting_club_response
+      render json: { error: 'Der aufnehmende Verein ist deaktiviert' }, status: :unprocessable_entity
     end
 
     # Darf der Nutzer für diesen Verein handeln? Stärkere Rollen gehen der
