@@ -68,6 +68,12 @@ module Admin
       end
 
       if requesting_club_id > 0
+      # Dieselbe Auskunft wie in create, sonst meldet die Suche einen Treffer und
+      # der Antrag faellt gleich danach auf 422 (api#512).
+      if Club.find_by(id: requesting_club_id)&.deactivated_at.present?
+        return deactivated_requesting_club_response
+      end
+
       # Derselbe Leser wie in create/direct_assign -- sonst faellt die Suche gegen den
       # ersten offenen Heimat-Eintrag und der Antrag gleich danach gegen den letzten,
       # und die Suche weist einen Antrag ab, den create zugelassen haette.
@@ -210,6 +216,11 @@ module Admin
       unless ph[:admin].present? || ph[:vm]&.include?(tr.former_club_id)
         return render json: { error: 'Nicht berechtigt' }, status: :forbidden
       end
+
+      # Auch mitten in der Kette: Sonst arbeitet der abgebende Verein einen
+      # Antrag ab, der bei approve_lv garantiert abgewiesen wird, und der
+      # Spieler bekommt eine Bestaetigungsmail dafuer.
+      return deactivated_requesting_club_response if tr.requesting_club.deactivated_at.present?
 
       unless tr.player.email.present?
         return render json: {
@@ -530,11 +541,16 @@ module Admin
     # Mitglieder mehr bekommen. Die Auswahlmaske bietet ihn nicht an, ein
     # direkter Aufruf käme sonst aber durch.
     #
-    # Geprüft an vier Stellen, weil der mehrstufige Prozess über Tage läuft und
-    # die Deaktivierung in jedem Schritt dazwischen fallen kann (api#512): beim
-    # Anlegen, damit der Antrag nicht erst am Ende scheitert, und beim
-    # Genehmigen und Vollziehen, damit sie überhaupt greift. Die Direktzuweisung
-    # nutzt dieselbe Meldung, damit es eine Begründung bleibt.
+    # Geprüft an jedem Schritt, weil der mehrstufige Prozess über Tage läuft und
+    # die Deaktivierung dazwischen fallen kann (api#512): bei der Suche und beim
+    # Anlegen, damit der Antrag gar nicht erst entsteht, bei der Vereinsfreigabe,
+    # damit niemand einen aussichtslosen Antrag abarbeitet, und beim Genehmigen
+    # und Vollziehen, damit sie in jedem Fall greift. Die Direktzuweisung nutzt
+    # dieselbe Meldung, damit es eine Begründung bleibt.
+    #
+    # Nicht geprüft wird in #player_approve: Der Spieler bestätigt dort über
+    # einen Mail-Link ohne Anmeldung, und die Aktion antwortet mit einem
+    # Redirect, nicht mit JSON. Der Riegel bei #approve_lv greift danach.
     #
     # Bewusst hier und nicht in TransferRequest#execute_transfer!: Ein `raise`
     # dort wäre die eine Quelle, ließe #approve_lv und #execute aber in einen

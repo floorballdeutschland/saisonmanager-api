@@ -308,6 +308,18 @@ module Admin
       assert_equal 0, TransferRequest.where(player_id: @player.id).count
     end
 
+    # Gegenrichtung, eigene Prüfung in #create: Ein aufgelöster Verein gibt seine
+    # Spieler gerade ab, der Antrag muss also durchgehen.
+    test 'Antrag aus einem deaktivierten abgebenden Verein → 201' do
+      @former_club.update!(deactivated_at: Time.current)
+      login(@vm_requesting)
+      post '/api/v2/admin/transfer_requests', params: {
+        player_id: @player.id,
+        requesting_club_id: @requesting_club.id
+      }
+      assert_response :created
+    end
+
     test 'VM kann keinen Antrag für fremden Verein erstellen → 403' do
       other_club = Club.create!(
         name: "Fremder Verein #{SecureRandom.hex(4)}",
@@ -547,11 +559,49 @@ module Admin
       assert_equal 1, @player.reload.clubs.size
     end
 
+    # Gegenprobe zum Riegel vor der request_type-Verzweigung: Die Freigabe in
+    # einen aktiven Verein läuft weiter durch.
+    test 'approve_lv einer Freigabe in einen aktiven Verein → approved' do
+      tr = create_transfer_request(status: 'pending_lv', request_type: 'release')
+      login(@sbk)
+      patch "/api/v2/admin/transfer_requests/#{tr.id}/approve_lv"
+      assert_response :success
+      assert_equal 'approved', tr.reload.status
+      assert_includes @player.reload.clubs.map { |c| c['club_id'] }, @requesting_club.id
+    end
+
     test 'approve_lv bei falschem Status → 422' do
       tr = create_transfer_request(status: 'pending_club')
       login(@sbk)
       patch "/api/v2/admin/transfer_requests/#{tr.id}/approve_lv"
       assert_response :unprocessable_entity
+    end
+
+    # Der abgebende Verein arbeitet den Antrag ab, bevor die LV-Genehmigung
+    # kommt. Ist der Zielverein bis dahin deaktiviert, ist der Antrag
+    # aussichtslos, und die Bestätigungsmail an den Spieler waere umsonst.
+    test 'approve_club in einen zwischenzeitlich deaktivierten Verein → 422' do
+      tr = create_transfer_request(status: 'pending_club')
+      @requesting_club.update!(deactivated_at: Time.current)
+      login(@vm_former)
+      assert_no_emails do
+        patch "/api/v2/admin/transfer_requests/#{tr.id}/approve_club"
+      end
+      assert_response :unprocessable_entity
+      assert_equal 'pending_club', tr.reload.status
+    end
+
+    # Die Suche gibt dieselbe Auskunft wie das Anlegen, statt einen Treffer zu
+    # melden, der gleich danach auf 422 faellt.
+    test 'search_player mit deaktiviertem aufnehmenden Verein → 422' do
+      @requesting_club.update!(deactivated_at: Time.current)
+      login(@vm_requesting)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15',
+        requesting_club_id: @requesting_club.id
+      }
+      assert_response :unprocessable_entity
+      assert_match(/deaktiviert/, JSON.parse(response.body)['error'])
     end
 
     # ---------------------------------------------------------------------------
