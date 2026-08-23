@@ -194,6 +194,10 @@ class ClubsController < ApplicationController
   # nicht mitliefert (fe#318). Bewusst hier statt in Club#public_hash: Der
   # Zustand gehört in die Verwaltungsliste, nicht in die key-geschützten
   # öffentlichen Endpunkte, die denselben Hash verwenden.
+  #
+  # Die Auswahl ist damit die eine Hälfte; serverseitig weisen
+  # PlayersController#add_additional_club und die Neuanlage einen deaktivierten
+  # Verein seit api#521 ohnehin ab.
   def admin_club_all
     ph = current_user.permission_hash
     unless %i[admin sbk vm tm rsk ansetzer].any? { |role| ph[role].present? }

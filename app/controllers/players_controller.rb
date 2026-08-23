@@ -530,13 +530,25 @@ class PlayersController < ApplicationController
       # to_i, weil `zero?` sonst bei fehlendem id (nil) und bei "0" als String
       # mit einem 500er abbricht. Ohne id ist die Anlage gemeint.
       create_modus = params[:id].to_i.zero?
+      club = Club.find(params[:club_id])
       # check: game operation permission if create_modus
       #   has: create team for that go?
       #   else : unpermitted!
       # check: league permission unless create_modus
       #   has: update league for that league?
       #   else : unpermitted!
-      if create_modus && Club.find(params[:club_id])&.user_permissions(current_user)&.include?(:create_player) # create
+      if create_modus && club&.user_permissions(current_user)&.include?(:create_player) # create
+
+        # Dieselbe Regel wie beim Zusatzverein und bei der Direktzuweisung: Ein
+        # deaktivierter Verein nimmt keine Spieler mehr auf. Hier wiegt sie
+        # schwerer, denn die Anlage schreibt eine HEIMAT-Zugehörigkeit, und
+        # `user_permissions` vergibt :create_player unabhängig vom Zustand des
+        # Vereins -- der Vereinsmanager eines aufgelösten Vereins legte also
+        # weiter Profile in ihm an.
+        if club.deactivated_at.present?
+          return render json: { message: 'Der Verein ist deaktiviert und kann keine Spieler aufnehmen.' },
+                        status: :unprocessable_entity
+        end
 
         if params['first_name'].blank? || params['last_name'].blank? || params['birthdate'].blank?
           return render json: { message: 'Vorname, Nachname und Geburtsdatum sind erforderlich.' }, status: :unprocessable_entity
@@ -578,7 +590,7 @@ class PlayersController < ApplicationController
             render json: { message: player.errors.full_messages.to_sentence }, status: :unprocessable_entity
           end
         end
-      elsif !create_modus && Club.find(params[:club_id])&.user_permissions(current_user)&.include?(:update_player) # update
+      elsif !create_modus && club&.user_permissions(current_user)&.include?(:update_player) # update
         # update
         player = Player.find(params[:id])
         # IDOR-Schutz: Die :update_player-Berechtigung wird gegen params[:club_id]
@@ -612,6 +624,14 @@ class PlayersController < ApplicationController
     ph = current_user.permission_hash
 
     if ph[:admin].present? || sbk_may_move_player?(ph, player, club)
+
+      # Gleiche Regel wie bei der Direktzuweisung (api#511): Ein deaktivierter
+      # Verein nimmt keine Spieler mehr auf, auch nicht als Zweitverein. Die
+      # Auswahlmaske bietet ihn nicht mehr an (fe#318), ein direkter Aufruf käme
+      # sonst aber durch.
+      if club.deactivated_at.present?
+        return render json: { message: 'Der aufnehmende Verein ist deaktiviert' }, status: :unprocessable_entity
+      end
 
       # if player and club present, we check if the club.id is already in the players clubs hash
       if player.present? &&
