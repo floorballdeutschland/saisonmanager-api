@@ -15,10 +15,12 @@ module Admin
       @club_other = create(:club, state_association_id: @sa_other.id)
       @referee_other = create(:referee, club: @club_other)
 
-      @assigner = create(:user, :assigner_scoped, game_operation_id: @go_own.id)
+      # Entscheidungsstelle ist die bundesweite Ansetzung (Spielbetrieb 0).
+      @assigner = create(:user, :assigner_scoped, game_operation_id: 0)
+      @lv_assigner = create(:user, :assigner_scoped, game_operation_id: @go_own.id)
     end
 
-    test 'LV-Ansetzer sieht nur Antraege der eigenen Schiris' do
+    test 'FD-Ansetzer sieht die Antraege aller Verbaende' do
       own = pending_request(@referee, @club_other)
       foreign = pending_request(@referee_other, @club_own)
 
@@ -28,7 +30,32 @@ module Admin
       assert_response :success
       ids = JSON.parse(response.body).map { |r| r['id'] }
       assert_includes ids, own.id
-      assert_not_includes ids, foreign.id
+      assert_includes ids, foreign.id
+    end
+
+    # Die Antragsmail geht an die bundesweite Ansetzung, dort wird entschieden.
+    # Ein LV-Ansetzer soll die Antraege deshalb gar nicht erst sehen, auch nicht
+    # die seiner eigenen Schiris.
+    test 'LV-Ansetzer hat keinen Zugriff auf die Antraege' do
+      request = pending_request(@referee, @club_other)
+
+      login(@lv_assigner)
+      get '/api/v2/admin/referee_club_exclusion_requests?status=pending'
+      assert_response :forbidden
+
+      post "/api/v2/admin/referee_club_exclusion_requests/#{request.id}/approve"
+      assert_response :forbidden
+      assert_equal 'pending', request.reload.status
+    end
+
+    test 'LV-Ansetzer pflegt die Liste auch nicht direkt' do
+      login(@lv_assigner)
+
+      post "/api/v2/admin/referees/#{@referee.id}/club_exclusions",
+           params: { exclusion: { club_id: @club_other.id, reason: 'Absprache' } }
+
+      assert_response :forbidden
+      assert_not RefereeClubExclusion.exists?(referee_id: @referee.id, club_id: @club_other.id)
     end
 
     test 'SBK hat keinen Zugriff' do
@@ -74,17 +101,17 @@ module Admin
       assert_not RefereeClubExclusion.exists?(referee_id: @referee.id, club_id: @club_other.id)
     end
 
-    test 'Antrag eines fremden Schiris ist nicht entscheidbar' do
+    test 'Antrag eines Schiris aus einem anderen Verband ist entscheidbar' do
       foreign = pending_request(@referee_other, @club_own)
 
       login(@assigner)
       post "/api/v2/admin/referee_club_exclusion_requests/#{foreign.id}/approve"
 
-      assert_response :not_found
-      assert_equal 'pending', foreign.reload.status
+      assert_response :success
+      assert_equal 'approved', foreign.reload.status
     end
 
-    test 'Ansetzer pflegt die Liste eines Schiris direkt' do
+    test 'FD-Ansetzer pflegt die Liste eines Schiris direkt' do
       login(@assigner)
 
       post "/api/v2/admin/referees/#{@referee.id}/club_exclusions",
@@ -111,11 +138,11 @@ module Admin
       assert_not RefereeClubExclusion.exists?(referee_id: @referee.id, club_id: @club_own.id)
     end
 
-    test 'Liste eines Schiris ausserhalb des Scopes ist nicht abrufbar' do
+    test 'Liste eines Schiris aus einem anderen Verband ist abrufbar' do
       login(@assigner)
       get "/api/v2/admin/referees/#{@referee_other.id}/club_exclusions"
 
-      assert_response :not_found
+      assert_response :success
     end
 
     private

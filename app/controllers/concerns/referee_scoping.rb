@@ -50,6 +50,20 @@ module RefereeScoping
     render json: { error: 'Nicht berechtigt' }, status: :forbidden
   end
 
+  # Engeres Gate fuer die Vereins-Ausschluesse: nur Admin und die bundesweite,
+  # global gescopte Ansetzung von Floorball Deutschland. Ueber die Antraege
+  # entscheidet diese eine Stelle, und dorthin geht auch die Antragsmail; ein
+  # Landesverband soll sie weder sehen noch entscheiden. Die Ansetzung selbst
+  # (Spiele, Verfuegbarkeiten) bleibt bei authorize_assigner! und damit
+  # weiterhin bei den Landesverbaenden.
+  def authorize_national_assigner!
+    ph = permission_hash
+    return if ph[:admin].present?
+    return if ph[:ansetzer].present? && ph[:ansetzer].include?(0)
+
+    render json: { error: 'Nicht berechtigt' }, status: :forbidden
+  end
+
   def referee_scope_go_ids(perm_hash)
     ((perm_hash[:rsk] || []) + (perm_hash[:ansetzer] || []))
       .reject(&:zero?).uniq

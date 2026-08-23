@@ -1,12 +1,16 @@
 module Admin
   # Pflege der Vereins-Ausschlussliste eines Schiedsrichters durch die Ansetzung,
   # ohne den Umweg über einen Antrag. Sichtbar am Schiri-Profil.
+  #
+  # Dieselbe Stelle wie bei den Anträgen: die bundesweite Ansetzung von Floorball
+  # Deutschland. Sonst führte ein Landesverband die Liste, über deren Anträge er
+  # nicht entscheidet.
   class RefereeClubExclusionsController < ApplicationController
     include RefereeScoping
     include RefereeClubExclusionPresenter
 
     before_action :authenticate_user
-    before_action :authorize_assigner!
+    before_action :authorize_national_assigner!
     before_action :set_referee, only: %i[index create destroy]
 
     # GET /api/v2/admin/referee_club_exclusions/clubs

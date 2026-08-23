@@ -44,6 +44,29 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_not_includes ids, deactivated.id
   end
 
+  # fe#318: Die Masken, die einen Verein zuweisen UND den gespeicherten benennen
+  # (Spielerprofil, Schiedsrichterprofil, Spieltag), koennen mit active_only
+  # nichts anfangen -- der Bestandswert fiele aus der Liste. Sie brauchen die
+  # volle Liste plus den Zustand, um nur die Auswahl einzugrenzen.
+  test 'admin_club_all nennt den Zustand jedes Vereins' do
+    active = create(:club)
+    deactivated = create(:club, deactivated_at: Time.current)
+    login(create(:user, :admin))
+
+    get '/api/v2/admin/clubs/all'
+
+    assert_response :success
+    body = JSON.parse(response.body).index_by { |c| c['id'] }
+    assert_equal false, body[active.id]['deactivated']
+    assert_equal true, body[deactivated.id]['deactivated']
+  end
+
+  # Der Zustand gehoert in die Verwaltungsliste, nicht in die oeffentlichen
+  # Endpunkte, die denselben public_hash rendern.
+  test 'Club#public_hash bleibt ohne den Zustand' do
+    assert_not create(:club, deactivated_at: Time.current).public_hash.key?(:deactivated)
+  end
+
   test 'admin_club_all ist für reine Schiri-Logins gesperrt' do
     login(create(:user, permissions: [{ 'user_group_id' => 6 }]))
 
