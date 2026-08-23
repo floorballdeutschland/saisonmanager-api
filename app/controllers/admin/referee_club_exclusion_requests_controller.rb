@@ -1,13 +1,14 @@
 module Admin
   # Anträge der Schiedsrichter auf Aufnahme oder Streichung eines Vereins in
-  # ihrer Ausschlussliste. Entschieden von der Ansetzung des zuständigen
-  # Spielbetriebs; der Bestand ist über RefereeScoping auf die eigenen Schiris
-  # begrenzt, ein global gescopter (FD-)Ansetzer sieht alle.
+  # ihrer Ausschlussliste. Entschieden ausschließlich von der bundesweiten
+  # Ansetzung von Floorball Deutschland (authorize_national_assigner!), an die
+  # auch die Antragsmail geht. Das Scoping über RefereeScoping bleibt stehen,
+  # greift für diese Rollen aber nicht mehr ein.
   class RefereeClubExclusionRequestsController < ApplicationController
     include RefereeScoping
 
     before_action :authenticate_user
-    before_action :authorize_assigner!
+    before_action :authorize_national_assigner!
     before_action :set_request, only: %i[approve reject]
 
     # GET /api/v2/admin/referee_club_exclusion_requests?status=pending

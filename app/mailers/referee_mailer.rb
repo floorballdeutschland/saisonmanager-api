@@ -190,19 +190,23 @@ class RefereeMailer < ApplicationMailer
     )
   end
 
-  # Neuer Antrag eines Schiris auf einen Vereins-Ausschluss – geht an das
-  # Ansetzungs-Postfach des zuständigen Landesverbands (rsk_email, geerbt vom
-  # übergeordneten Verband).
+  # Neuer Antrag eines Schiris auf einen Vereins-Ausschluss. Empfänger ist
+  # ausnahmslos das zentrale Ansetzungs-Postfach von Floorball Deutschland.
+  #
+  # Bewusst NICHT an das rsk_email des Landesverbands: Entschieden werden die
+  # Anträge von der Ansetzer-Rolle (menu_item_referee_exclusions), und die liegt
+  # bundesweit bei der RSK von Floorball Deutschland. Ein Landesverband bekam die
+  # Mail zwar, fand den Antrag aber in keiner Maske wieder, konnte ihn also weder
+  # bestätigen noch ablehnen.
   def club_exclusion_requested(exclusion_request)
     @exclusion_request = exclusion_request
     @referee = exclusion_request.referee
     @club = exclusion_request.club
-    recipient = rsk_reply_to(@referee)
 
     templated_mail(
-      to: recipient,
+      to: REPLY_TO,
       subject: "Antrag Vereins-Ausschluss – #{@referee.vorname} #{@referee.nachname}",
-      default_reply_to: @referee.email.presence || recipient,
+      default_reply_to: @referee.email.presence || REPLY_TO,
       placeholders: {
         referee_name: "#{@referee.vorname} #{@referee.nachname}",
         club_name: @club&.name.to_s,
@@ -221,7 +225,9 @@ class RefereeMailer < ApplicationMailer
     templated_mail(
       to: @referee.email,
       subject: "Vereins-Ausschluss #{@approved ? 'genehmigt' : 'abgelehnt'} – #{@club&.name}",
-      default_reply_to: rsk_reply_to(@referee),
+      # Wie beim Antrag selbst: Eine Rückfrage zur Entscheidung gehört zu der
+      # Stelle, die entschieden hat, und nicht zum Landesverband.
+      default_reply_to: REPLY_TO,
       placeholders: {
         referee_name: "#{@referee.vorname} #{@referee.nachname}",
         first_name: @referee.vorname,
@@ -248,13 +254,6 @@ class RefereeMailer < ApplicationMailer
     return change[:name] if change[:valid_until].blank?
 
     "#{change[:name]} (gültig bis #{change[:valid_until].strftime('%d.%m.%Y')})"
-  end
-
-  # Ansetzungs-Postfach des Landesverbands, in dem der Schiri über seinen Verein
-  # hängt; ohne eigenen Eintrag greift der übergeordnete Verband, zuletzt die
-  # zentrale Adresse.
-  def rsk_reply_to(referee)
-    referee.club&.state_association&.effective_rsk_email.presence || REPLY_TO
   end
 
   # SBK-Adresse des Spielbetriebs (Landesverband des game_operation, aufgelöst
