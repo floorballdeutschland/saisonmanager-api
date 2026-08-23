@@ -11,7 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Behoben
 
-- **Ein deaktivierter Verein bekommt keinen Zusatzspieler mehr**: Die Karte „Zusatzverein hinzufügen" im Spielerprofil trug einen Spieler auch in einen deaktivierten Verein ein, mit Gültigkeit bis zum nächsten 15.07. Geprüft wurden nur die Berechtigung und ob der Spieler dort schon Mitglied ist. Damit stand dieselbe Regel an zwei Stellen unterschiedlich, denn die Direktzuweisung weist einen deaktivierten aufnehmenden Verein seit 1.93.0 ab. Der Zusatzverein tut das jetzt ebenfalls, mit derselben Begründung. Bestehende Einträge auf deaktivierte Vereine bleiben unverändert stehen; ob sie bereinigt werden, ist eine eigene Frage und braucht zuerst eine Zählung.
+- **Ein deaktivierter Verein bekommt keine Spieler mehr**: Die Karte „Zusatzverein hinzufügen" im Spielerprofil trug einen Spieler auch in einen deaktivierten Verein ein, mit Gültigkeit bis zum nächsten 15.07. Geprüft wurden nur die Berechtigung und ob der Spieler dort schon Mitglied ist. Damit stand dieselbe Regel an zwei Stellen unterschiedlich, denn die Direktzuweisung weist einen deaktivierten aufnehmenden Verein seit 1.93.0 ab. Der Zusatzverein tut das jetzt ebenfalls, mit derselben Begründung. Dasselbe galt für die Neuanlage eines Spielers: Der Vereinsmanager eines aufgelösten Vereins konnte dort weiter neue Profile mit Heimatzugehörigkeit anlegen, weil das Recht dazu unabhängig vom Zustand des Vereins vergeben wird. Auch dieser Weg ist jetzt zu. Bestehende Einträge auf deaktivierte Vereine bleiben unverändert stehen; ob sie bereinigt werden, ist eine eigene Frage und braucht zuerst eine Zählung.
 
 ## [1.95.0] - 2026-08-22
 

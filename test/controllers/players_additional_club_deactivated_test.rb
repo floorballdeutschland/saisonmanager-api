@@ -37,7 +37,42 @@ class PlayersAdditionalClubDeactivatedTest < ActionDispatch::IntegrationTest
     assert_includes @player.reload.clubs.map { |c| c['club_id'] }, target.id
   end
 
+  # Zweiter Schreibweg im selben Controller: Die Neuanlage legt eine
+  # HEIMAT-Zugehörigkeit an, und `Club#user_permissions` vergibt
+  # :create_player unabhängig vom Zustand des Vereins.
+  test 'Neuanlage in einem deaktivierten Verein wird abgewiesen' do
+    target = create(:club, game_operation: @go, deactivated_at: Time.current)
+    login_as(@admin)
+
+    assert_no_difference -> { Player.count } do
+      neuanlage(target)
+    end
+
+    assert_response :unprocessable_entity
+    assert_match(/deaktiviert/, JSON.parse(response.body)['message'])
+  end
+
+  test 'Neuanlage in einem aktiven Verein bleibt möglich' do
+    target = create(:club, game_operation: @go)
+    login_as(@admin)
+
+    assert_difference -> { Player.count }, 1 do
+      neuanlage(target)
+    end
+
+    assert_response :success, response.body
+  end
+
   private
+
+  # `as: :json`, damit ParamsWrapper die flachen Felder unter `player`
+  # einsammelt -- so ruft die Oberfläche den Endpunkt auch auf.
+  def neuanlage(club)
+    post '/api/v2/admin/players.json',
+         params: { club_id: club.id, first_name: 'Neue', last_name: 'Person',
+                   birthdate: '2000-01-01', gender: 'w', nation_id: '1' },
+         as: :json
+  end
 
   def login_as(user)
     post '/api/v2/login', params: { username: user.user_name, password: 'password123' }, as: :json
