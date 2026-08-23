@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Anträge zur Vereins-Ausschlussliste erreichen die entscheidende Stelle**: Beantragt ein Schiedsrichter, einen Verein auf seine Ausschlussliste zu setzen oder wieder zu streichen, ging die Benachrichtigung an das Ansetzungs-Postfach seines Landesverbands. Entschieden werden diese Anträge aber von der Ansetzung von Floorball Deutschland; im Landesverband taucht der Antrag in keiner Maske auf, er lässt sich dort also weder bestätigen noch ablehnen. Die Bitte um eine Entscheidung landete damit bei einer Stelle, die sie gar nicht treffen kann. Antrags- und Entscheidungsmail gehen jetzt immer an das zentrale Ansetzungs-Postfach von Floorball Deutschland, und auch eine Antwort auf die Entscheidungsmail erreicht diese Stelle statt des Landesverbands. Am Ablauf selbst ändert sich nichts: Anträge stellt der Schiedsrichter weiterhin im eigenen Profil, entschieden werden sie unter „Schiedsrichterwesen" bei „Vereins-Ausschlüsse".
+
 ## [1.95.0] - 2026-08-22
 
 ### Neu
