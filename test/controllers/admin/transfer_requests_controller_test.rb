@@ -569,7 +569,8 @@ module Admin
       end
       assert_response :unprocessable_entity
       assert_equal 'scheduled', tr.reload.status
-      assert_equal [@former_club.id], @player.reload.clubs.map { |c| c['club_id'] }
+      assert_equal [@former_club.id], @player.reload.clubs.map { |c| c['club_id'] },
+                   'die Zugehörigkeit darf sich durch den abgewiesenen Aufruf nicht ändern'
     end
 
     # Gegenprobe: Der reguläre Vollzug bleibt unberührt.
