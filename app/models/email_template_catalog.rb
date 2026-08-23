@@ -143,7 +143,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
                    'Deutschland, weil dort über die Anträge entschieden wird.',
       default_subject: 'Antrag Vereins-Ausschluss – {{referee_name}}',
       default_from: nil,
-      # Reply-To wird zur Laufzeit gesetzt (Schiri bzw. RSK-E-Mail des Verbands).
+      # Reply-To wird zur Laufzeit gesetzt (Schiri bzw. zentrales Postfach).
       default_reply_to: nil,
       placeholders: [
         { key: 'referee_name', description: 'Vor- und Nachname des Schiris' },

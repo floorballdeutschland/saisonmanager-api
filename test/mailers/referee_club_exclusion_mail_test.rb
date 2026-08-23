@@ -15,8 +15,8 @@ class RefereeClubExclusionMailTest < ActionMailer::TestCase
   test 'Antrag geht an das zentrale Ansetzungs-Postfach und nicht an den Landesverband' do
     mail = RefereeMailer.club_exclusion_requested(exclusion_request)
 
-    assert_equal ['sr-ansetzungen@floorball.de'], mail.to
-    assert_not_includes Array(mail.cc), 'ansetzung@lv.example'
+    empfaenger = Array(mail.to) + Array(mail.cc) + Array(mail.bcc)
+    assert_equal ['sr-ansetzungen@floorball.de'], empfaenger
   end
 
   test 'Rueckfragen zum Antrag gehen an den Schiri, ersatzweise an das zentrale Postfach' do

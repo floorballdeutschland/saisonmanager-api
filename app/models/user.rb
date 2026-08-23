@@ -358,9 +358,12 @@ class User < ApplicationRecord
     # personenscharfen Ansetzung (Weg 2) und bleibt deshalb an ansetzer_active
     # gebunden; im reduzierten Modus gibt es keine Verfügbarkeiten zu sichten.
     result[:menu_item_referee_availability] = ph[:admin].present? || ansetzer_active
-    # Anträge der Schiris auf Vereins-Ausschlüsse und deren Pflege am Schiri-Profil
-    # – dieselbe Rolle wie die Ansetzung, weil die Liste nur dort wirkt.
-    result[:menu_item_referee_exclusions] = ph[:admin].present? || ansetzer_active
+    # Anträge der Schiris auf Vereins-Ausschlüsse und deren Pflege am Schiri-Profil.
+    # Bewusst enger als die Ansetzung selbst: Entschieden wird bundesweit von der
+    # Ansetzung von Floorball Deutschland, dorthin geht auch die Antragsmail. Ein
+    # Landesverband soll die Anträge weder sehen noch entscheiden.
+    result[:menu_item_referee_exclusions] =
+      ph[:admin].present? || (ph[:ansetzer].present? && ph[:ansetzer].include?(0))
     # Strafcode-Verwaltung („Einstellungen" im Schiedsrichterwesen) – nur Admin.
     result[:menu_item_referee_settings] = ph[:admin].present?
     # Schiri-Feedback der Vereine ist nur am Schiri-Profil sichtbar – für Admin
