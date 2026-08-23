@@ -1,5 +1,6 @@
 class RefereeProfileController < ApplicationController
   include RefereeClubExclusionPresenter
+  include RefereeChangeRequestPresenter
 
   before_action :authenticate_user
   before_action :require_referee_account
@@ -36,6 +37,10 @@ class RefereeProfileController < ApplicationController
   # selbst änderbarer Name wäre dort eine Fälschungsmöglichkeit. Pflege daher
   # ausschließlich über die Schiedsrichterverwaltung; auch „Mein Konto" sperrt
   # Schiri-Konten (UserSettingsController#update_name).
+  #
+  # Für Name, Geburtsdatum und Verein gibt es statt der direkten Änderung den
+  # Korrekturantrag (RefereeChangeRequestsController), über den die RSK des
+  # Landesverbands entscheidet.
   def profile_params
     params.require(:referee).permit(
       :telefonnummer,
@@ -71,7 +76,9 @@ class RefereeProfileController < ApplicationController
       # laufenden Anträge dazu. Gepflegt wird das im selben Profilbereich wie
       # die übrigen Angaben für Ansetzungen.
       club_exclusions: club_exclusions_json(@referee),
-      club_exclusion_requests: club_exclusion_requests_json(@referee)
+      club_exclusion_requests: club_exclusion_requests_json(@referee),
+      # Korrekturanträge zu den gesperrten Stammdaten, siehe profile_params.
+      change_requests: change_requests_json(@referee)
     }
   end
 end

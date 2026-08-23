@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Schiedsrichter können eine Korrektur ihrer Stammdaten beantragen**: Vorname, Nachname, Geburtsdatum und Verein sind im Schiedsrichterprofil gesperrt, und das aus gutem Grund: Der Name steht auf dem digitalen Schiedsrichterausweis, und der Verein entscheidet über Zuständigkeit und Ansetzbarkeit. Wer einen Fehler in diesen Angaben fand, musste bisher eine Mail schreiben, und niemand konnte später nachvollziehen, wer was wann beantragt hatte. Es gibt jetzt denselben Antragsweg wie bei den Spielerprofilen: Im Profil steht neben jedem der vier Felder „Korrektur beantragen", der Schiedsrichter trägt den neuen Wert und auf Wunsch eine kurze Begründung ein, und der Antrag geht an die RSK des Landesverbands, in dem sein Verein liegt. Dort liegt er unter „Schiedsrichterwesen" bei „Stammdaten-Korrekturen" zur Entscheidung. Mit der Genehmigung wird der Wert direkt am Profil übernommen, bei einer Ablehnung bleibt alles stehen und die Begründung geht an den Schiedsrichter. Pro Feld ist immer nur ein Antrag offen, ein Antrag lässt sich bis zur Entscheidung selbst zurückziehen, und ein Antrag, der nichts ändert oder ein unlesbares Datum enthält, wird gar nicht erst angenommen. Der Verlauf bleibt am Profil sichtbar, samt Rückmeldung der Kommission. Wer als RSK global (Floorball Deutschland) gesetzt ist, sieht alle Anträge; die Ansetzer-Rolle bleibt außen vor, weil es um Stammdaten und nicht um Ansetzbarkeit geht.
+
 ## [1.95.0] - 2026-08-22
 
 ### Neu

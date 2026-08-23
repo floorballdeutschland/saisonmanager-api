@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_08_21_100000) do
+ActiveRecord::Schema[7.2].define(version: 2026_08_23_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -607,6 +607,24 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_21_100000) do
     t.datetime "updated_at", precision: nil, null: false
   end
 
+  create_table "referee_change_requests", force: :cascade do |t|
+    t.bigint "referee_id", null: false
+    t.string "correction_type", null: false, comment: "vorname, nachname, geburtsdatum oder verein"
+    t.string "new_value"
+    t.bigint "new_club_id"
+    t.string "reason", limit: 200
+    t.string "status", default: "pending", null: false
+    t.string "decision_note", limit: 200
+    t.integer "requested_by_user_id"
+    t.integer "reviewed_by_user_id"
+    t.datetime "decided_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["referee_id", "correction_type"], name: "index_referee_change_requests_pending_unique", unique: true, where: "((status)::text = 'pending'::text)"
+    t.index ["referee_id"], name: "index_referee_change_requests_on_referee_id"
+    t.index ["status"], name: "index_referee_change_requests_on_status"
+  end
+
   create_table "referee_club_exclusion_requests", force: :cascade do |t|
     t.bigint "referee_id", null: false
     t.bigint "club_id", null: false
@@ -915,7 +933,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_21_100000) do
     t.index ["former_club_id"], name: "index_transfer_requests_on_former_club_id"
     t.index ["player_confirmation_token"], name: "index_transfer_requests_on_player_confirmation_token", unique: true
     t.index ["player_id"], name: "index_transfer_requests_on_player_id"
-    t.index ["player_id"], name: "index_transfer_requests_on_player_id_active", unique: true, where: "((status)::text = ANY ((ARRAY['pending_club'::character varying, 'pending_player'::character varying, 'pending_lv'::character varying, 'scheduled'::character varying])::text[]))"
+    t.index ["player_id"], name: "index_transfer_requests_on_player_id_active", unique: true, where: "((status)::text = ANY (ARRAY[('pending_club'::character varying)::text, ('pending_player'::character varying)::text, ('pending_lv'::character varying)::text, ('scheduled'::character varying)::text]))"
     t.index ["request_type"], name: "index_transfer_requests_on_request_type"
     t.index ["requesting_club_id"], name: "index_transfer_requests_on_requesting_club_id"
     t.index ["status"], name: "index_transfer_requests_on_status"
@@ -1009,6 +1027,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_21_100000) do
   add_foreign_key "referee_assignments", "referees", column: "referee1_id"
   add_foreign_key "referee_assignments", "referees", column: "referee2_id"
   add_foreign_key "referee_availabilities", "referees"
+  add_foreign_key "referee_change_requests", "clubs", column: "new_club_id"
+  add_foreign_key "referee_change_requests", "referees"
   add_foreign_key "referee_club_exclusion_requests", "clubs"
   add_foreign_key "referee_club_exclusion_requests", "referees"
   add_foreign_key "referee_club_exclusions", "clubs"

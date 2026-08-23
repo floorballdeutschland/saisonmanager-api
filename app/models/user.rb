@@ -361,6 +361,10 @@ class User < ApplicationRecord
     # Anträge der Schiris auf Vereins-Ausschlüsse und deren Pflege am Schiri-Profil
     # – dieselbe Rolle wie die Ansetzung, weil die Liste nur dort wirkt.
     result[:menu_item_referee_exclusions] = ph[:admin].present? || ansetzer_active
+    # Korrekturanträge zu den Stammdaten (Name, Geburtsdatum, Verein) entscheidet
+    # die RSK des zuständigen Landesverbands, nicht die Ansetzung: Es geht um
+    # Stammdaten und nicht um Ansetzbarkeit.
+    result[:menu_item_referee_change_requests] = ph[:admin].present? || ph[:rsk].present?
     # Strafcode-Verwaltung („Einstellungen" im Schiedsrichterwesen) – nur Admin.
     result[:menu_item_referee_settings] = ph[:admin].present?
     # Schiri-Feedback der Vereine ist nur am Schiri-Profil sichtbar – für Admin
