@@ -186,8 +186,9 @@ class ClubsController < ApplicationController
   # sonst nicht mehr benennbar wären. Gesetzt wird der Parameter bislang nur von
   # der Direktzuweisung, deren Auswahl keinen deaktivierten Zielverein anbieten
   # darf. Das Spielerprofil weist mit dem Zusatzverein ebenfalls zu und setzt
-  # ihn nicht -- dort ist ein deaktivierter Verein weiter wählbar, und
-  # PlayersController#add_additional_club prüft es serverseitig auch nicht.
+  # ihn nicht, dort ist ein deaktivierter Verein weiter wählbar (fe#318);
+  # serverseitig weist PlayersController#add_additional_club ihn seit api#521
+  # aber ab.
   def admin_club_all
     ph = current_user.permission_hash
     unless %i[admin sbk vm tm rsk ansetzer].any? { |role| ph[role].present? }
