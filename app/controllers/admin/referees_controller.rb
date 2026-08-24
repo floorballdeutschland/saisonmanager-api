@@ -95,12 +95,15 @@ module Admin
       referee = Referee.new(safe_referee_params)
       referee.game_operation_id = assigned_game_operation_id if restricted_user? && referee.game_operation_id.blank?
 
+      qualifications, qualification_errors = read_qualifications
+      return render json: { errors: qualification_errors }, status: :unprocessable_entity if qualification_errors.any?
+
       if referee.save
         # Beim Anlegen geht bewusst keine Mail raus – weder zur Lizenz noch zu
         # den Qualifikationen. Der Datensatz entsteht hier gerade erst; erfahren
         # soll der Schiri von ihm über die Willkommensmail seines Kontos, nicht
         # über eine „aktualisiert"-Mail zu Daten, die er noch nie gesehen hat.
-        sync_qualifications(referee) if can_edit_full?
+        sync_qualifications(referee, qualifications) if qualifications
         sync_tags(referee) if can_manage_tags?
         render json: referee_json(referee.reload, full: true), status: :created
       else
@@ -118,8 +121,13 @@ module Admin
       # Lizenz erteilt und nicht aktualisiert.
       first_license = @referee.lizenzstufe_was.blank?
 
+      # Ebenfalls vor dem Speichern: Eine unbrauchbare Qualifikationszeile darf
+      # den Vorgang nicht halb durchlaufen lassen (api#515).
+      qualifications, qualification_errors = read_qualifications
+      return render json: { errors: qualification_errors }, status: :unprocessable_entity if qualification_errors.any?
+
       if @referee.save
-        qualification_changes = can_edit_full? ? sync_qualifications(@referee) : []
+        qualification_changes = qualifications ? sync_qualifications(@referee, qualifications) : []
         sync_tags(@referee) if can_manage_tags?
         # Zwei getrennte Mails, wenn Lizenz und Qualifikation im selben Speichern
         # geändert wurden: Es sind zwei pflegbare Vorlagen mit je eigenem Betreff.
@@ -459,22 +467,96 @@ module Admin
       can_edit_full? ? referee_params : restricted_referee_params
     end
 
-    # Setzt die Zusatzqualifikationen komplett neu und liefert die ergänzten und
-    # geänderten zurück (für die Benachrichtigungsmail, siehe
-    # RefereeQualificationDiff).
-    def sync_qualifications(referee)
-      return [] unless params[:referee][:qualifications]
+    # Liest die Zusatzqualifikationen aus der Eingabe und liefert
+    # [Einträge, Fehlermeldungen]. Ohne das Feld in der Eingabe ist der erste
+    # Wert nil, dann bleiben die bestehenden Qualifikationen unangetastet.
+    #
+    # api#515: Vorher verwarf ein `filter_map` jede unbrauchbare Zeile still.
+    # Weil `sync_qualifications` mit `destroy_all` arbeitet, war die bestehende
+    # Qualifikation danach weg, und die Antwort war eine 200 ohne Hinweis, ohne
+    # Meldung und ohne Log-Eintrag. Seit api#514 wiegt das schwerer, denn der
+    # Wegfall einer Qualifikation wird dem Schiedsrichter bewusst nicht gemeldet.
+    #
+    # Über die Oberfläche ist keiner dieser Fälle erreichbar: Das Formular nutzt
+    # `<input type="date">` und schickt immer ein parsbares Datum. Ein direkter
+    # API-Aufruf kommt hier an, und der bekommt jetzt eine 422 mit Feldnamen.
+    def read_qualifications
+      # Ohne das Recht zur vollen Bearbeitung bleibt das Feld wie bisher
+      # unbeachtet: kein Abgleich und auch keine Fehlermeldung.
+      return [nil, []] unless can_edit_full?
+      return [nil, []] unless params[:referee][:qualifications]
 
-      incoming = Array(params[:referee][:qualifications]).filter_map do |q|
-        type_id = q[:qualification_type_id].to_i
-        next unless type_id.positive?
+      entries = []
+      errors = []
 
-        valid_until = q[:valid_until].presence ? Date.strptime(q[:valid_until], '%d.%m.%Y') : nil
-        { qualification_type_id: type_id, valid_until: valid_until }
-      rescue Date::Error
-        nil
+      qualification_rows.each_with_index do |q, index|
+        field = "qualifications[#{index}]"
+
+        # Eine Zeile, die kein Objekt ist (`qualifications: ["foo"]`), lief bis
+        # hierher in einen 500: `String#[]` mit einem Symbol wirft.
+        unless q.respond_to?(:key?)
+          errors << "#{field}: erwartet wird ein Objekt mit qualification_type_id und valid_until"
+          next
+        end
+
+        type_id = q[:qualification_type_id].to_s.strip
+
+        unless type_id.match?(/\A\d+\z/) && type_id.to_i.positive?
+          errors << "#{field}.qualification_type_id: „#{q[:qualification_type_id]}“ ist keine Qualifikations-ID"
+          next
+        end
+
+        begin
+          valid_until = q[:valid_until].presence ? Date.strptime(q[:valid_until].to_s, '%d.%m.%Y') : nil
+        rescue Date::Error
+          errors << "#{field}.valid_until: „#{q[:valid_until]}“ ist kein Datum im Format TT.MM.JJJJ"
+          next
+        end
+
+        entries << { qualification_type_id: type_id.to_i, valid_until: valid_until }
       end
 
+      errors.concat(qualification_reference_errors(entries))
+      [entries, errors]
+    end
+
+    # Die Zeilen der Eingabe. Ein Formular-Post schickt sie index-adressiert
+    # (`referee[qualifications][0][…]`), und daraus macht Rails einen Hash, kein
+    # Array. `Array()` liefert darauf den ganzen Wrapper als EINEN Eintrag,
+    # weil ActionController::Parameters weder to_a noch to_ary kennt -- die
+    # Meldung spräche dann über eine Zeile, die es so nicht gibt.
+    def qualification_rows
+      raw = params[:referee][:qualifications]
+      return raw if raw.is_a?(Array)
+      return raw.values if raw.respond_to?(:values)
+
+      Array(raw)
+    end
+
+    # Doppelte und unbekannte Qualifikationen: Beide liefen bisher in einen 500,
+    # die erste über die Uniqueness-Validierung von RefereeQualification, die
+    # zweite über das erforderliche `belongs_to`. Beides ist eine Eingabe und
+    # gehört als 422 beantwortet.
+    def qualification_reference_errors(entries)
+      errors = []
+
+      entries.map { |e| e[:qualification_type_id] }.tally.each do |type_id, count|
+        errors << "qualifications: Qualifikation #{type_id} ist #{count}-mal angegeben" if count > 1
+      end
+
+      known = RefereeQualificationType.where(id: entries.map { |e| e[:qualification_type_id] }.uniq).pluck(:id)
+      (entries.map { |e| e[:qualification_type_id] }.uniq - known).each do |type_id|
+        errors << "qualifications: Qualifikation #{type_id} gibt es nicht"
+      end
+
+      errors
+    end
+
+    # Setzt die Zusatzqualifikationen komplett neu und liefert die ergänzten und
+    # geänderten zurück (für die Benachrichtigungsmail, siehe
+    # RefereeQualificationDiff). Die Eingabe ist zu diesem Zeitpunkt geprüft,
+    # siehe read_qualifications.
+    def sync_qualifications(referee, incoming)
       # Vor destroy_all lesen: Danach ist jede Zeile neu und der Vergleich
       # zwischen „schon da" und „neu eingetragen" nicht mehr möglich.
       before = referee.referee_qualifications.pluck(:referee_qualification_type_id, :valid_until).to_h

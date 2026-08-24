@@ -95,8 +95,23 @@ class Club < ApplicationRecord
     self.notify_excluded_user_ids = club_managers.map(&:id).reject { |id| selected.include?(id) }
   end
 
+  # Die Deaktivierung beendet die laufenden Transferantraege und Freigaben AUF
+  # diesen Verein (api#528). Im Modell und nicht in der Controller-Aktion, damit
+  # kein Weg daran vorbeifuehrt.
+  #
+  # Die Mails gehen erst nach der Transaktion raus, wie bei
+  # TransferRequest#execute_transfer!: Ein Fehlschlag beim Versand soll die
+  # Deaktivierung nicht zurueckdrehen.
   def deactivate!(user_id)
-    update!(deactivated_at: Time.current, deactivated_by: user_id)
+    ended = nil
+
+    Club.transaction do
+      update!(deactivated_at: Time.current, deactivated_by: user_id)
+      ended = TransferRequest.end_for_deactivated_club(id)
+    end
+
+    ended.each { |tr| TransferRequestMailer.club_deactivated_notification(tr).deliver_later }
+    ended
   end
 
   def reactivate!
@@ -283,40 +298,16 @@ class Club < ApplicationRecord
     # der Verein sonst selbst.
     perm << :update_own_club if admin || sbk || vm
 
-    # Teammanager*innen legen ebenfalls Spieler*innen an – sie stellen die
-    # Mannschaft auf und brauchen dafür Neuzugänge, ohne auf den
-    # Vereinsmanager zu warten. Die Anlage hängt dabei am Verein und nicht an
-    # der Mannschaft: Der neue Eintrag wird als Heimatmitgliedschaft dieses
-    # Vereins geführt, eine Kaderzuordnung entsteht nicht. Stammdaten
-    # nachträglich ändern (`:update_player`) darf weiterhin nur der Verband,
-    # und `:update_own_club` bleibt beim Vereinsmanager.
-    #
-    # Reichweite deshalb nicht deckungsgleich mit der des VM: Der legt nur im
-    # eigenen Verein an, ein TM einer Spielgemeinschaft auch in den übrigen
-    # beteiligten Vereinen (siehe #managed_by_team_manager?).
-    #
-    # Bewusst als letztes Glied der Oder-Kette, damit die Teamabfrage
-    # entfällt, sobald eine der anderen Rollen schon greift.
-    perm << :create_player if admin || sbk || vm || managed_by_team_manager?(ph)
+    # Die Anlage hängt am Verein, nicht an der Mannschaft: Der neue Eintrag
+    # wird als Heimatmitgliedschaft dieses Vereins geführt, eine
+    # Kaderzuordnung entsteht nicht. Wer in den Verein aufgenommen wird,
+    # entscheidet deshalb der Vereinsmanager. Teammanager*innen hatten das
+    # Recht bis api#530 ebenfalls; sie stellen weiter auf und melden Lizenzen
+    # an, den Neuzugang legt der Verein an. Stammdaten
+    # nachträglich ändern (`:update_player`) darf unverändert nur der Verband.
+    perm << :create_player if admin || sbk || vm
 
     perm
-  end
-
-  # True, wenn der zum permission_hash gehörende Account eine Mannschaft
-  # dieses Vereins betreut. Spielgemeinschaften zählen über
-  # `Team#all_club_ids` mit – die beteiligten Vereine stellen gemeinsam den
-  # Kader, also gilt der Zugriff für alle davon (gleiche Regel wie in
-  # `ClubsController#vm_clubs_and_teams` und `PlayersController#tm_club_ids`;
-  # bewusst nicht die abweichende Ableitung aus `LicenseAccessScope`).
-  #
-  # `ph[:tm]` ist in `User#permission_hash` bereits auf Mannschaften der
-  # laufenden Saison gefiltert; `Team.current_season` hier ist Redundanz, die
-  # den Gleichklang mit `tm_club_ids` hält. Kein Test trifft den Scope daher
-  # isoliert.
-  def managed_by_team_manager?(ph)
-    return false if ph[:tm].blank?
-
-    Team.current_season.where(id: ph[:tm]).any? { |team| team.all_club_ids.include?(id) }
   end
 
   # Vereine, für die der User vereinsgebundene Rollen (VM/TM) vergeben darf:

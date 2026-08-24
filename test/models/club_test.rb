@@ -885,10 +885,10 @@ class ClubTest < ActiveSupport::TestCase
     assert_includes club.errors.attribute_names, :short_name
   end
 
-  # Aus dem Bündel des Vereinsmanagers bekommen Teammanager*innen
-  # ausschließlich :create_player. :update_own_club bleibt beim
-  # Vereinsmanager, Stammdaten ändern beim Verband.
-  test 'Teammanager darf im Verein der eigenen Mannschaft Spieler anlegen' do
+  # Die Spieleranlage gehört dem Verein. Teammanager*innen hatten sie bis
+  # api#530 auch; das Portal „Meine Spieler*innen" zeigt ihnen den Knopf
+  # seither abgeblendet, die Entscheidung fällt hier.
+  test 'Teammanager darf im Verein der eigenen Mannschaft keine Spieler anlegen' do
     create(:setting, current_season_id: '18')
     club = create(:club)
     team = create(:team, club:, league: create(:league, :current_season))
@@ -896,26 +896,17 @@ class ClubTest < ActiveSupport::TestCase
 
     perm = club.user_permissions(tm)
 
-    assert_includes perm, :create_player
+    assert_not_includes perm, :create_player
     assert_not_includes perm, :update_player
     assert_not_includes perm, :update_club
     assert_not_includes perm, :update_own_club
   end
 
-  test 'Teammanager darf in einem fremden Verein keine Spieler anlegen' do
-    create(:setting, current_season_id: '18')
-    team = create(:team, club: create(:club), league: create(:league, :current_season))
-    fremder_club = create(:club)
-    tm = create(:user, :tm, team_id: team.id)
-
-    assert_not_includes fremder_club.user_permissions(tm), :create_player
-  end
-
-  # Spielgemeinschaften stellen den Kader gemeinsam, also gilt die Anlage für
-  # jeden beteiligten Verein. Es zählt Team#all_club_ids, wie überall bei
-  # Spielgemeinschaften. Das ist die eine Stelle, an der ein TM weiter reicht
-  # als ein VM, der nur im eigenen Verein anlegt.
-  test 'Teammanager einer Spielgemeinschaft darf in allen beteiligten Vereinen anlegen' do
+  # Spielgemeinschaften stellen den Kader gemeinsam, und über
+  # `Team#all_club_ids` reichte die Anlage des TM früher in jeden beteiligten
+  # Verein. Das war die eine Stelle, an der ein TM weiter reichte als ein VM –
+  # sie ist mit dem Recht mit weggefallen.
+  test 'Teammanager einer Spielgemeinschaft darf in keinem beteiligten Verein anlegen' do
     create(:setting, current_season_id: '18')
     haupt = create(:club)
     partner = create(:club)
@@ -923,20 +914,8 @@ class ClubTest < ActiveSupport::TestCase
                          syndicate: true, syndicate_clubs: [partner.id])
     tm = create(:user, :tm, team_id: team.id)
 
-    assert_includes haupt.user_permissions(tm), :create_player
-    assert_includes partner.user_permissions(tm), :create_player
-  end
-
-  # Wer nur eine Mannschaft einer vergangenen Saison betreut hat, legt nichts
-  # an. Gepinnt wird das Außenverhalten; die Saisongrenze selbst zieht schon
-  # User#permission_hash, ph[:tm] ist hier leer.
-  test 'Teammanager einer Mannschaft aus einer alten Saison darf nichts anlegen' do
-    create(:setting, current_season_id: '18')
-    club = create(:club)
-    team = create(:team, club:, league: create(:league, :previous_season))
-    tm = create(:user, :tm, team_id: team.id)
-
-    assert_not_includes club.user_permissions(tm), :create_player
+    assert_not_includes haupt.user_permissions(tm), :create_player
+    assert_not_includes partner.user_permissions(tm), :create_player
   end
 
   # Mehrfachrollen sind schon einmal daran gescheitert, dass eine Rollenkette
@@ -954,7 +933,7 @@ class ClubTest < ActiveSupport::TestCase
 
     assert_includes vm_club.user_permissions(user), :create_player
     assert_includes vm_club.user_permissions(user), :update_own_club
-    assert_includes tm_club.user_permissions(user), :create_player
+    assert_not_includes tm_club.user_permissions(user), :create_player
     assert_not_includes tm_club.user_permissions(user), :update_own_club
   end
 end

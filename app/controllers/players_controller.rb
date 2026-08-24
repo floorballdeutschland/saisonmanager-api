@@ -530,13 +530,25 @@ class PlayersController < ApplicationController
       # to_i, weil `zero?` sonst bei fehlendem id (nil) und bei "0" als String
       # mit einem 500er abbricht. Ohne id ist die Anlage gemeint.
       create_modus = params[:id].to_i.zero?
+      club = Club.find(params[:club_id])
       # check: game operation permission if create_modus
       #   has: create team for that go?
       #   else : unpermitted!
       # check: league permission unless create_modus
       #   has: update league for that league?
       #   else : unpermitted!
-      if create_modus && Club.find(params[:club_id])&.user_permissions(current_user)&.include?(:create_player) # create
+      if create_modus && club&.user_permissions(current_user)&.include?(:create_player) # create
+
+        # Dieselbe Regel wie beim Zusatzverein und bei der Direktzuweisung: Ein
+        # deaktivierter Verein nimmt keine Spieler mehr auf. Hier wiegt sie
+        # schwerer, denn die Anlage schreibt eine HEIMAT-Zugehörigkeit, und
+        # `user_permissions` vergibt :create_player unabhängig vom Zustand des
+        # Vereins -- der Vereinsmanager eines aufgelösten Vereins legte also
+        # weiter Profile in ihm an.
+        if club.deactivated_at.present?
+          return render json: { message: 'Der Verein ist deaktiviert und kann keine Spieler aufnehmen.' },
+                        status: :unprocessable_entity
+        end
 
         if params['first_name'].blank? || params['last_name'].blank? || params['birthdate'].blank?
           return render json: { message: 'Vorname, Nachname und Geburtsdatum sind erforderlich.' }, status: :unprocessable_entity
@@ -578,7 +590,7 @@ class PlayersController < ApplicationController
             render json: { message: player.errors.full_messages.to_sentence }, status: :unprocessable_entity
           end
         end
-      elsif !create_modus && Club.find(params[:club_id])&.user_permissions(current_user)&.include?(:update_player) # update
+      elsif !create_modus && club&.user_permissions(current_user)&.include?(:update_player) # update
         # update
         player = Player.find(params[:id])
         # IDOR-Schutz: Die :update_player-Berechtigung wird gegen params[:club_id]
@@ -595,6 +607,18 @@ class PlayersController < ApplicationController
         else
           render json: player.errors, status: :unprocessable_entity
         end
+      elsif create_modus
+        # Das Anlegen liegt beim Vereinsmanager (Club#user_permissions). Die
+        # Vereinssicht blendet den Knopf ab, ein noch offener Tab oder ein
+        # direkter Aufruf landet hier.
+        #
+        # Der Rollenhinweis nur, wenn die Anlage auch gemeint war: `create_modus`
+        # gilt oben ebenso für eine mitgeschickte, aber unlesbare id („abc" wird
+        # zu 0). Gemeint ist dann eine Änderung, und der Hinweis schickte die
+        # Fehlersuche in die Anlage statt an die id.
+        anlage_gemeint = params[:id].blank? || params[:id].to_s.strip == '0'
+        render json: { message: anlage_gemeint ? creation_denied_message(club) : 'Keine Berechtigung' },
+               status: :forbidden
       else
         render json: { message: 'Keine Berechtigung' }, status: :forbidden
       end
@@ -612,6 +636,14 @@ class PlayersController < ApplicationController
     ph = current_user.permission_hash
 
     if ph[:admin].present? || sbk_may_move_player?(ph, player, club)
+
+      # Gleiche Regel wie bei der Direktzuweisung (api#511): Ein deaktivierter
+      # Verein nimmt keine Spieler mehr auf, auch nicht als Zweitverein. Die
+      # Auswahlmaske bietet ihn nicht mehr an (fe#318), ein direkter Aufruf käme
+      # sonst aber durch.
+      if club.deactivated_at.present?
+        return render json: { message: 'Der aufnehmende Verein ist deaktiviert' }, status: :unprocessable_entity
+      end
 
       # if player and club present, we check if the club.id is already in the players clubs hash
       if player.present? &&
@@ -890,7 +922,9 @@ class PlayersController < ApplicationController
     player = Player.find_by(id: params[:id])
     return render json: { message: 'Spieler nicht gefunden.' }, status: :not_found unless player
     return render json: { message: 'Spieler ist bereits deaktiviert.' }, status: :unprocessable_entity if player.deactivated_at.present?
-    return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless can_manage_player?(player)
+    unless can_deactivate_player?(player)
+      return render json: { message: deactivation_denied_message(player) }, status: :forbidden
+    end
 
     reason = sanitize_deactivation_reason(params[:reason])
     return render json: { message: 'Ungültiger Deaktivierungsgrund.' }, status: :unprocessable_entity if reason == :invalid
@@ -908,10 +942,8 @@ class PlayersController < ApplicationController
     # die Heimat-Zugehörigkeit, weshalb die reguläre Prüfung ab dem Tag danach
     # nein sagt (siehe sbk_can_undo_deactivation?).
     ph = current_user.permission_hash
-    unless ph[:admin].present? || sbk_can_access_player?(ph, player) ||
-           vm_can_access_player?(ph, player) || tm_can_access_player?(ph, player) ||
-           sbk_can_undo_deactivation?(ph, player)
-      return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    unless can_deactivate_player?(player) || sbk_can_undo_deactivation?(ph, player)
+      return render json: { message: deactivation_denied_message(player) }, status: :forbidden
     end
 
     # Eine zusammengefuehrte Dublette ist nur deshalb deaktiviert, weil merge_into!
@@ -1066,10 +1098,51 @@ class PlayersController < ApplicationController
     )
   end
 
+  # Lesender Zugriff auf ein Profil und das Pflegen der E-Mail-Adresse: hier
+  # zählt der Teammanager mit, er stellt aus diesem Bestand seinen Kader auf.
   def can_manage_player?(player)
     ph = current_user.permission_hash
     ph[:admin].present? || sbk_can_access_player?(ph, player) ||
       vm_can_access_player?(ph, player) || tm_can_access_player?(ph, player)
+  end
+
+  # Deaktivieren und Reaktivieren dagegen nicht: Die Deaktivierung nimmt das
+  # Profil aus der Spielerliste des Vereins und damit aus der Auswahl beim
+  # Lizenzantrag (`Club#players` filtert auf `Player.active`, siehe
+  # Player#deactivate!). Sie ordnet also den Bestand des Vereins und nicht die
+  # Aufstellung einer Mannschaft. Dieselben Rollen wie beim Anlegen; der
+  # Vereinsbezug kommt hier aus der heute gültigen Zugehörigkeit der Person,
+  # nicht aus einem übergebenen Verein.
+  def can_deactivate_player?(player)
+    ph = current_user.permission_hash
+    ph[:admin].present? || sbk_can_access_player?(ph, player) ||
+      vm_can_access_player?(ph, player)
+  end
+
+  # Eigene Meldung statt „Keine Berechtigung.", wenn der Zugriff genau daran
+  # scheitert, dass hier ein Teammanager steht: Die Oberfläche zeigt ihm die
+  # Knöpfe nicht, ein noch offener Tab oder ein direkter Aufruf landet hier.
+  #
+  # Vereinsbezogen und nicht über die Rollen des Kontos, damit der Hinweis auch
+  # die Doppelrolle trifft (VM in einem Verein, TM in einem anderen -- der Fall
+  # in club_test.rb, „wer VM des einen und TM im anderen Verein ist"). Für jede
+  # andere Rolle wäre der Hinweis falsch, die ist schlicht nicht zuständig.
+  def deactivation_denied_message(player)
+    ph = current_user.permission_hash
+    if tm_can_access_player?(ph, player) && !vm_can_access_player?(ph, player)
+      'Deaktivieren und Reaktivieren darf nur der Vereinsmanager des Vereins.'
+    else
+      'Keine Berechtigung.'
+    end
+  end
+
+  def creation_denied_message(club)
+    ph = current_user.permission_hash
+    if tm_can_access_club?(ph, club.id) && !ph[:vm].to_a.include?(club.id)
+      'Spieler*innen anlegen darf nur der Vereinsmanager des Vereins.'
+    else
+      'Keine Berechtigung'
+    end
   end
 
   def vm_can_access_player?(ph, player)

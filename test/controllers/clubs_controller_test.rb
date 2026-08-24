@@ -44,6 +44,29 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_not_includes ids, deactivated.id
   end
 
+  # fe#318: Die Masken, die einen Verein zuweisen UND den gespeicherten benennen
+  # (Spielerprofil, Schiedsrichterprofil, Spieltag), koennen mit active_only
+  # nichts anfangen -- der Bestandswert fiele aus der Liste. Sie brauchen die
+  # volle Liste plus den Zustand, um nur die Auswahl einzugrenzen.
+  test 'admin_club_all nennt den Zustand jedes Vereins' do
+    active = create(:club)
+    deactivated = create(:club, deactivated_at: Time.current)
+    login(create(:user, :admin))
+
+    get '/api/v2/admin/clubs/all'
+
+    assert_response :success
+    body = JSON.parse(response.body).index_by { |c| c['id'] }
+    assert_equal false, body[active.id]['deactivated']
+    assert_equal true, body[deactivated.id]['deactivated']
+  end
+
+  # Der Zustand gehoert in die Verwaltungsliste, nicht in die oeffentlichen
+  # Endpunkte, die denselben public_hash rendern.
+  test 'Club#public_hash bleibt ohne den Zustand' do
+    assert_not create(:club, deactivated_at: Time.current).public_hash.key?(:deactivated)
+  end
+
   test 'admin_club_all ist für reine Schiri-Logins gesperrt' do
     login(create(:user, permissions: [{ 'user_group_id' => 6 }]))
 
@@ -1041,6 +1064,29 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_nil club.reload.deactivated_at
   end
 
+  # api#528: Der Riegel sitzt im Modell, damit kein Weg daran vorbeifuehrt --
+  # hier die Verdrahtung ueber den Endpunkt, den die Vereinsmaske aufruft.
+  test 'admin_club_deactivate beendet die laufenden Antraege auf den Verein' do
+    sa = create(:state_association)
+    go = create(:game_operation, state_association_id: sa.id)
+    former = create(:club, game_operation: go, contact_email: 'abgebend@test.example')
+    target = create(:club, game_operation: go)
+    player = create(:player, email: 'spieler@test.example',
+                             clubs: [{ 'club_id' => former.id, 'home_club' => true }])
+    tr = TransferRequest.create!(player: player, requesting_club: target, former_club: former,
+                                 status: 'pending_lv', request_type: 'transfer',
+                                 created_by: create(:user, :admin).id,
+                                 season_id: Setting.current_season_id)
+    login(create(:user, :admin))
+
+    post "/api/v2/admin/clubs/#{target.id}/deactivate"
+
+    assert_response :success
+    assert_equal 'withdrawn', tr.reload.status
+    assert_equal 1, JSON.parse(response.body)['ended_transfer_requests'],
+                 'die Antwort nennt die Nebenwirkung'
+  end
+
   test 'admin_club_reactivate bleibt für den VM gesperrt' do
     club = create(:club)
     club.deactivate!(create(:user, :admin).id)
@@ -1189,11 +1235,11 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 'gut@example.org', club.reload.contact_email
   end
 
-  # Das Portal „Meine Spieler*innen" zeigt den Anlege-Knopf ohne eigene
-  # Rollenprüfung an jedem Verein dieser Liste. Das trägt nur, solange jeder
-  # gelieferte Verein auch :create_player erlaubt. Wird der Endpunkt einmal
-  # erweitert, erschiene der Knopf sonst für Vereine, die mit 403 antworten.
-  test 'vm_clubs_and_teams liefert dem TM nur Vereine mit create_player' do
+  # Das Portal „Meine Spieler*innen" ist auch die Vereinssicht des
+  # Teammanagers: Er sieht den Bestand seines Vereins, legt aber nichts an
+  # (der Knopf steht dort abgeblendet). Der Verein muss also in der Liste
+  # stehen, obwohl er kein :create_player erlaubt.
+  test 'vm_clubs_and_teams liefert dem TM seinen Verein ohne manage_players' do
     club = create(:club)
     team = create(:team, club: club, league: create(:league, :current_season))
     tm = create(:user, :tm, team_id: team.id)
@@ -1202,11 +1248,31 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     get '/api/v2/vm/clubs_and_teams'
 
     assert_response :success
-    ids = JSON.parse(response.body).map { |c| c['id'] }
-    assert_includes ids, club.id
-    ids.each do |id|
-      assert_includes Club.find(id).user_permissions(tm), :create_player
-    end
+    eintrag = JSON.parse(response.body).find { |c| c['id'] == club.id }
+    assert eintrag, 'der Verein der eigenen Mannschaft muss in der Liste stehen'
+    assert_not eintrag['manage_players']
+    assert_not_includes club.user_permissions(tm), :create_player
+  end
+
+  # Die Kehrseite: Das Flag ist die einzige Quelle, aus der die Vereinssicht die
+  # Knöpfe ableitet. Ein VM muss es also bekommen, sonst stünde der Knopf an
+  # einem Verein abgeblendet, in dem die API das Anlegen erlaubt.
+  test 'vm_clubs_and_teams setzt manage_players fuer den eigenen VM-Verein' do
+    vm_club = create(:club)
+    tm_club = create(:club)
+    team = create(:team, club: tm_club, league: create(:league, :current_season))
+    user = create(:user, teams: [team.id], permissions: [
+      { 'user_group_id' => 4, 'game_operation_id' => 0, 'club_id' => vm_club.id },
+      { 'user_group_id' => 5, 'game_operation_id' => 0 }
+    ])
+    login(user)
+
+    get '/api/v2/vm/clubs_and_teams'
+
+    assert_response :success
+    flags = JSON.parse(response.body).to_h { |c| [c['id'], c['manage_players']] }
+    assert_equal true, flags[vm_club.id]
+    assert_equal false, flags[tm_club.id]
   end
 
   private

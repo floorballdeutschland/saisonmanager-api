@@ -38,6 +38,37 @@ class TransferRequest < ApplicationRecord
   scope :for_requesting_club, ->(club_id) { where(requesting_club_id: club_id) }
   scope :for_former_club, ->(club_id) { where(former_club_id: club_id) }
 
+  # Beendet die laufenden Antraege AUF einen Verein, der gerade deaktiviert
+  # wurde, und liefert sie zurueck (der Aufrufer verschickt die Mails, siehe
+  # Club#deactivate!).
+  #
+  # api#528: Ohne diesen Schritt bleibt ein Antrag auf einen aufgeloesten Verein
+  # stehen und ist unerfuellbar, denn seit api#512 weist der Transferprozess
+  # einen deaktivierten aufnehmenden Verein an jedem Schritt ab. Schlimmer noch:
+  # `active` deckt genau diese vier Status ab und wird in #create geprueft -- ein
+  # gestrandeter Antrag blockierte damit JEDEN neuen Antrag desselben Spielers,
+  # auch auf einen ganz anderen Verein.
+  #
+  # Antraege AUS dem Verein bleiben unberuehrt, ein aufgeloester Verein gibt
+  # seine Spieler ja gerade ab. Freigaben laufen mit: Sie legen ueber
+  # `add_secondary_club_membership!` ebenfalls eine Mitgliedschaft im
+  # aufnehmenden Verein an und sind genauso unerfuellbar.
+  #
+  # Status `withdrawn` wie bei #cancel und #withdraw, statt eines eigenen: Der
+  # Antrag ist annulliert, und die vier laufenden Status sind dieselben.
+  def self.end_for_deactivated_club(club_id)
+    active.where(requesting_club_id: club_id).to_a.select do |tr|
+      transaction do
+        tr.lock!
+        # Innerhalb der Sperre erneut lesen, wie in #expire!: Eine
+        # zwischenzeitliche Genehmigung darf nicht ueberschrieben werden.
+        next false unless tr.status.in?(%w[pending_club pending_player pending_lv scheduled])
+
+        tr.update!(status: 'withdrawn', player_confirmation_token: nil)
+      end
+    end
+  end
+
   # Annulliert einen noch offenen Antrag automatisch (Fristablauf).
   # Sperrt und prüft den Status erneut innerhalb der Transaktion, damit eine
   # zwischenzeitliche Genehmigung (execute_transfer!/approve_lv) nicht

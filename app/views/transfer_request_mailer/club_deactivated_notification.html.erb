@@ -1,0 +1,26 @@
+<% release = @transfer_request.request_type == 'release' %>
+<h2><%= release ? 'Spielerfreigabe-Antrag beendet' : 'Transferantrag beendet' %></h2>
+
+<p>Hallo,</p>
+
+<p>
+  der folgende <%= release ? 'Spielerfreigabe-Antrag' : 'Transferantrag' %> ist beendet, weil der aufnehmende Verein
+  im Saisonmanager deaktiviert wurde. Ein deaktivierter Verein nimmt keine Spieler mehr auf,
+  der Antrag kann deshalb nicht mehr genehmigt oder vollzogen werden.
+</p>
+
+<p>
+  <strong>Spieler:</strong> <%= @transfer_request.player.first_name %> <%= @transfer_request.player.last_name %><br>
+  <strong>Abgebender Verein:</strong> <%= @transfer_request.former_club.name %><br>
+  <strong>Aufnehmender Verein:</strong> <%= @transfer_request.requesting_club.name %> (deaktiviert)
+</p>
+
+<p>
+  Der Spieler bleibt im abgebenden Verein. Ein Wechsel in einen anderen Verein ist ab jetzt wieder
+  möglich, dafür stellt der aufnehmende Verein einen neuen Antrag.
+</p>
+
+<p>
+  Das Saisonmanager-Team<br>
+  <a href="<%= frontend_base_url %>"><%= frontend_host %></a>
+</p>

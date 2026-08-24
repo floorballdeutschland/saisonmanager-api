@@ -89,6 +89,18 @@ class ClubsController < ApplicationController
         vm_club_ids.include?(club.id) || tm_team_ids.include?(team.id)
       end
       item[:teams] = teams.map(&:full_hash)
+      # Ob dieser Verein dem Konto gehört, also ob darin angelegt werden darf
+      # (api#530). Die Vereinssicht hängt daran auch „Deaktivieren" und
+      # „Reaktivieren": dieselben Rollen, nur bezieht die Prüfung dort den
+      # Verein aus der Zugehörigkeit der Person statt aus dem Aufruf
+      # (PlayersController#can_deactivate_player?). Aus derselben Quelle wie die
+      # Prüfung beim Schreiben, damit das Portal „Meine Spieler*innen" nicht aus
+      # zwei unterschiedlich gescopten Angaben zusammenrechnen muss:
+      # `permissions[:vm]` im Browser kennt den
+      # Spielbetrieb des Vereins nicht, `Club#user_permissions` schon, und ein
+      # zwischenzeitlich geändertes Recht steht im localStorage des Browsers
+      # noch alt. Vorbild: admin/clubs/role_assignable.
+      item[:manage_players] = club.user_permissions(current_user).include?(:create_player)
       item
     }
   end
@@ -183,11 +195,21 @@ class ClubsController < ApplicationController
   #
   # active_only grenzt auf nicht deaktivierte Vereine ein. Standard bleibt die
   # vollständige Liste, weil Bestandsdaten (alte Mitgliedschaften, Spieltage)
-  # sonst nicht mehr benennbar wären. Gesetzt wird der Parameter bislang nur von
-  # der Direktzuweisung, deren Auswahl keinen deaktivierten Zielverein anbieten
-  # darf. Das Spielerprofil weist mit dem Zusatzverein ebenfalls zu und setzt
-  # ihn nicht -- dort ist ein deaktivierter Verein weiter wählbar, und
-  # PlayersController#add_additional_club prüft es serverseitig auch nicht.
+  # sonst nicht mehr benennbar wären. Gesetzt wird der Parameter von Masken, die
+  # nichts anderes tun als zuweisen, etwa der Direktzuweisung.
+  #
+  # `deactivated` für die Masken, die beides aus einer Liste bedienen: Das
+  # Spielerprofil, das Schiedsrichterprofil und die Spieltagsmaske weisen einen
+  # Verein zu UND benennen den bereits gespeicherten. Mit `active_only` fiele
+  # der Bestandswert aus der Liste und stünde ohne Namen da, ohne die Angabe
+  # konnten sie umgekehrt nicht selbst filtern, weil public_hash den Zustand
+  # nicht mitliefert (fe#318). Bewusst hier statt in Club#public_hash: Der
+  # Zustand gehört in die Verwaltungsliste, nicht in die key-geschützten
+  # öffentlichen Endpunkte, die denselben Hash verwenden.
+  #
+  # Die Auswahl ist damit die eine Hälfte; serverseitig weisen
+  # PlayersController#add_additional_club und die Neuanlage einen deaktivierten
+  # Verein seit api#521 ohnehin ab.
   def admin_club_all
     ph = current_user.permission_hash
     unless %i[admin sbk vm tm rsk ansetzer].any? { |role| ph[role].present? }
@@ -196,7 +218,7 @@ class ClubsController < ApplicationController
 
     clubs = Club.includes(logo_attachment: :blob).order(:name)
     clubs = clubs.active if ActiveModel::Type::Boolean.new.cast(params[:active_only])
-    render json: clubs.map(&:public_hash)
+    render json: clubs.map { |club| club.public_hash.merge(deactivated: club.deactivated_at.present?) }
   end
 
   # Wie #admin_club_all, aber eingegrenzt auf die Vereine, für die der User
@@ -234,8 +256,11 @@ class ClubsController < ApplicationController
       return render json: { error: 'Keine Berechtigung' }, status: :forbidden
     end
 
-    club.deactivate!(current_user.id)
-    render json: club.full_hash
+    # Die Zahl der beendeten Transferanträge/Freigaben gehört in die Antwort:
+    # Die Deaktivierung hat damit eine Nebenwirkung, die der Aufrufer sonst
+    # nirgends sieht (api#528).
+    ended = club.deactivate!(current_user.id)
+    render json: club.full_hash.merge(ended_transfer_requests: ended.size)
   end
 
   def admin_club_reactivate

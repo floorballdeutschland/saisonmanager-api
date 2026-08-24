@@ -1,5 +1,8 @@
 class RefereeMailer < ApplicationMailer
   REPLY_TO = 'sr-ansetzungen@floorball.de'
+  # Regel- und Schiedsrichterkommission von Floorball Deutschland. Auffangadresse
+  # für Stammdaten, wenn kein Landesverband zu ermitteln ist.
+  RSK_REPLY_TO = 'rsk@floorball.de'
 
   # `first_license`: Der Schiedsrichter trug vorher keine Lizenzstufe – meist eine
   # Neuanlage aus dem Kursimport. Die Vorlage meldet dann eine erteilte statt
@@ -190,19 +193,23 @@ class RefereeMailer < ApplicationMailer
     )
   end
 
-  # Neuer Antrag eines Schiris auf einen Vereins-Ausschluss – geht an das
-  # Ansetzungs-Postfach des zuständigen Landesverbands (rsk_email, geerbt vom
-  # übergeordneten Verband).
+  # Neuer Antrag eines Schiris auf einen Vereins-Ausschluss. Empfänger ist
+  # ausnahmslos das zentrale Ansetzungs-Postfach von Floorball Deutschland.
+  #
+  # Bewusst NICHT an das rsk_email des Landesverbands: Entschieden werden die
+  # Anträge von der Ansetzer-Rolle (menu_item_referee_exclusions), und die liegt
+  # bundesweit bei der RSK von Floorball Deutschland. Ein Landesverband bekam die
+  # Mail zwar, fand den Antrag aber in keiner Maske wieder, konnte ihn also weder
+  # bestätigen noch ablehnen.
   def club_exclusion_requested(exclusion_request)
     @exclusion_request = exclusion_request
     @referee = exclusion_request.referee
     @club = exclusion_request.club
-    recipient = rsk_reply_to(@referee)
 
     templated_mail(
-      to: recipient,
+      to: REPLY_TO,
       subject: "Antrag Vereins-Ausschluss – #{@referee.vorname} #{@referee.nachname}",
-      default_reply_to: @referee.email.presence || recipient,
+      default_reply_to: @referee.email.presence || REPLY_TO,
       placeholders: {
         referee_name: "#{@referee.vorname} #{@referee.nachname}",
         club_name: @club&.name.to_s,
@@ -221,7 +228,9 @@ class RefereeMailer < ApplicationMailer
     templated_mail(
       to: @referee.email,
       subject: "Vereins-Ausschluss #{@approved ? 'genehmigt' : 'abgelehnt'} – #{@club&.name}",
-      default_reply_to: rsk_reply_to(@referee),
+      # Wie beim Antrag selbst: Eine Rückfrage zur Entscheidung gehört zu der
+      # Stelle, die entschieden hat, und nicht zum Landesverband.
+      default_reply_to: REPLY_TO,
       placeholders: {
         referee_name: "#{@referee.vorname} #{@referee.nachname}",
         first_name: @referee.vorname,
@@ -231,7 +240,55 @@ class RefereeMailer < ApplicationMailer
     )
   end
 
+  # Neuer Antrag eines Schiris auf Korrektur seiner Stammdaten. Geht an die RSK
+  # des Landesverbands, in dem sein Verein liegt: Dort wird entschieden, und
+  # dort liegen die Nachweise (Ausweis, Vereinsmeldung).
+  def change_requested(change_request)
+    @change_request = change_request
+    @referee = change_request.referee
+    recipient = lv_rsk_email(@referee)
+
+    templated_mail(
+      to: recipient,
+      subject: "Antrag Stammdatenkorrektur – #{@referee.vorname} #{@referee.nachname}",
+      default_reply_to: @referee.email.presence || recipient,
+      placeholders: {
+        referee_name: "#{@referee.vorname} #{@referee.nachname}",
+        field: change_request.label.to_s,
+        current_value: change_request.current_value.to_s,
+        requested_value: change_request.requested_value.to_s
+      }
+    )
+  end
+
+  # Entscheidung der RSK über einen Korrekturantrag, adressiert an den Schiri.
+  def change_decision(change_request)
+    @change_request = change_request
+    @referee = change_request.referee
+    @approved = change_request.status == 'approved'
+
+    templated_mail(
+      to: @referee.email,
+      subject: "Stammdatenkorrektur #{@approved ? 'genehmigt' : 'abgelehnt'} – #{change_request.label}",
+      default_reply_to: lv_rsk_email(@referee),
+      placeholders: {
+        referee_name: "#{@referee.vorname} #{@referee.nachname}",
+        first_name: @referee.vorname,
+        field: change_request.label.to_s,
+        requested_value: change_request.requested_value.to_s,
+        decision: @approved ? 'genehmigt' : 'abgelehnt'
+      }
+    )
+  end
+
   private
+
+  # Postfach der RSK des Landesverbands, in dem der Schiri über seinen Verein
+  # hängt; ohne eigenen Eintrag greift der übergeordnete Verband, zuletzt die
+  # zentrale Adresse.
+  def lv_rsk_email(referee)
+    referee.club&.state_association&.effective_rsk_email.presence || RSK_REPLY_TO
+  end
 
   # Zusätzliche Spielinformationen des Ansetzers, aber nur für Empfänger:innen,
   # die zum Versandzeitpunkt tatsächlich angesetzt sind (Game#referee_notes_
@@ -248,13 +305,6 @@ class RefereeMailer < ApplicationMailer
     return change[:name] if change[:valid_until].blank?
 
     "#{change[:name]} (gültig bis #{change[:valid_until].strftime('%d.%m.%Y')})"
-  end
-
-  # Ansetzungs-Postfach des Landesverbands, in dem der Schiri über seinen Verein
-  # hängt; ohne eigenen Eintrag greift der übergeordnete Verband, zuletzt die
-  # zentrale Adresse.
-  def rsk_reply_to(referee)
-    referee.club&.state_association&.effective_rsk_email.presence || REPLY_TO
   end
 
   # SBK-Adresse des Spielbetriebs (Landesverband des game_operation, aufgelöst

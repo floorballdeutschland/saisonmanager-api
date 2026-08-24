@@ -88,6 +88,30 @@ class TransferRequestMailer < ApplicationMailer
     )
   end
 
+  # Der aufnehmende Verein wurde deaktiviert, der Antrag ist damit beendet
+  # (api#528). Empfaenger sind der Spieler und der abgebende Verein: Der Spieler
+  # hat unter Umstaenden schon zugestimmt und wartet, der abgebende Verein
+  # behaelt ihn nun doch. Der aufnehmende Verein bekommt bewusst keine Mail, sein
+  # Postfach ist bei einem aufgeloesten Verein selten noch besetzt, und die
+  # Deaktivierung kam von seiner Seite.
+  def club_deactivated_notification(transfer_request)
+    @transfer_request = transfer_request
+    recipients = ([transfer_request.player.email] +
+                  transfer_request.former_club.notification_emails)
+                 .map { |mail| mail.to_s.strip }.reject(&:blank?).uniq
+    return if recipients.empty?
+
+    templated_mail(
+      to: recipients,
+      subject: "#{request_noun(transfer_request)} beendet, Verein deaktiviert: #{player_name(transfer_request)}",
+      placeholders: {
+        request_noun: request_noun(transfer_request),
+        player_name: player_name(transfer_request),
+        club_name: transfer_request.requesting_club.name
+      }
+    )
+  end
+
   def player_rejected_clubs_notification(transfer_request)
     @transfer_request = transfer_request
     recipients = (

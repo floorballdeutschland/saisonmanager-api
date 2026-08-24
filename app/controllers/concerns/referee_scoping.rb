@@ -50,6 +50,20 @@ module RefereeScoping
     render json: { error: 'Nicht berechtigt' }, status: :forbidden
   end
 
+  # Engeres Gate fuer die Vereins-Ausschluesse: nur Admin und die bundesweite,
+  # global gescopte Ansetzung von Floorball Deutschland. Ueber die Antraege
+  # entscheidet diese eine Stelle, und dorthin geht auch die Antragsmail; ein
+  # Landesverband soll sie weder sehen noch entscheiden. Die Ansetzung selbst
+  # (Spiele, Verfuegbarkeiten) bleibt bei authorize_assigner! und damit
+  # weiterhin bei den Landesverbaenden.
+  def authorize_national_assigner!
+    ph = permission_hash
+    return if ph[:admin].present?
+    return if ph[:ansetzer].present? && ph[:ansetzer].include?(0)
+
+    render json: { error: 'Nicht berechtigt' }, status: :forbidden
+  end
+
   def referee_scope_go_ids(perm_hash)
     ((perm_hash[:rsk] || []) + (perm_hash[:ansetzer] || []))
       .reject(&:zero?).uniq
@@ -69,8 +83,18 @@ module RefereeScoping
                 .uniq
   end
 
+  # Eigene Zustaendigkeit ueber Club.responsible_state_association_ids und nicht
+  # ueber GameOperation#state_association_id: Ein Spielverbund wie SBK Ost haengt
+  # an einem eigenen Landesverband, seine Vereine liegen aber in den
+  # untergeordneten Landesverbaenden (Sachsen-Anhalt, Thueringen, Sachsen). Die
+  # Spalte allein liefert nur die Wurzel, und die hatte auf Produktion am
+  # 24.08.2026 einen Verein und keinen einzigen Schiedsrichter -- der RSK des
+  # Verbunds sah damit ausschliesslich die Schiris einer fremden Vereins-Freigabe
+  # und keinen aus dem eigenen Bestand (2028 fehlten). Dieselbe Kette liest die
+  # Vereinsliste (Club.home_clubs_of) und die Rollenvergabe schon; nur das
+  # Schiri-Scoping war beim Umstieg auf den Verbandsbaum stehen geblieben.
   def lv_club_ids(go_ids)
-    own_sa_ids = GameOperation.where(id: go_ids).pluck(:state_association_id).compact
+    own_sa_ids = Club.responsible_state_association_ids(go_ids)
     # Vereins-Freigaben: Hat ein anderer LV seine Vereine an einen dieser
     # Spielbetriebe freigegeben (StateAssociationRelease), gehören dessen Schiris
     # ebenfalls zum ansetzbaren Bestand (analog Club.admin_user_clubs).

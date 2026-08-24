@@ -1,0 +1,22 @@
+<h2>Stammdatenkorrektur <%= @approved ? 'genehmigt' : 'abgelehnt' %></h2>
+
+<p>Hallo <%= @referee.vorname %>,</p>
+
+<p>
+  dein Antrag auf Korrektur deiner Stammdaten wurde
+  <strong><%= @approved ? 'genehmigt' : 'abgelehnt' %></strong>.
+</p>
+
+<p>
+  <strong>Feld:</strong> <%= @change_request.label %><br>
+  <strong>Beantragt:</strong> <%= @change_request.requested_value %>
+</p>
+
+<% if @change_request.decision_note.present? %>
+<p><strong>Rückmeldung der Schiedsrichterkommission:</strong> <%= @change_request.decision_note %></p>
+<% end %>
+
+<p>
+  Deine Angaben findest du in deinem Schiedsrichterprofil.<br>
+  <a href="<%= frontend_base_url %>/schiedsrichter/profil">Profil öffnen</a>
+</p>

@@ -135,14 +135,48 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
                        'in Klammern („B-Coach (gültig bis 30.06.2027)")' }
       ]
     },
+    'RefereeMailer#change_requested' => {
+      mailer_class: 'RefereeMailer',
+      action_name: 'change_requested',
+      description: 'Antrag eines Schiris auf Korrektur seiner Stammdaten (Vorname, Nachname, ' \
+                   'Geburtsdatum oder Verein). Geht an das RSK-Postfach des Landesverbands, in dem ' \
+                   'der Verein des Schiris liegt.',
+      default_subject: 'Antrag Stammdatenkorrektur – {{referee_name}}',
+      default_from: nil,
+      # Reply-To wird zur Laufzeit gesetzt (Schiri bzw. RSK-E-Mail des Verbands).
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'referee_name', description: 'Vor- und Nachname des Schiris' },
+        { key: 'field', description: 'Betroffenes Feld (Vorname, Nachname, Geburtsdatum, Verein)' },
+        { key: 'current_value', description: 'Wert, der bisher im Profil steht' },
+        { key: 'requested_value', description: 'Beantragter neuer Wert' }
+      ]
+    },
+    'RefereeMailer#change_decision' => {
+      mailer_class: 'RefereeMailer',
+      action_name: 'change_decision',
+      description: 'Entscheidung der RSK über einen Antrag auf Stammdatenkorrektur.',
+      default_subject: 'Stammdatenkorrektur {{decision}} – {{field}}',
+      default_from: nil,
+      # Reply-To wird zur Laufzeit gesetzt (RSK-E-Mail des Verbands).
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname des Empfängers (für die Anrede)' },
+        { key: 'referee_name', description: 'Vor- und Nachname des Schiris' },
+        { key: 'field', description: 'Betroffenes Feld (Vorname, Nachname, Geburtsdatum, Verein)' },
+        { key: 'requested_value', description: 'Beantragter neuer Wert' },
+        { key: 'decision', description: 'genehmigt oder abgelehnt' }
+      ]
+    },
     'RefereeMailer#club_exclusion_requested' => {
       mailer_class: 'RefereeMailer',
       action_name: 'club_exclusion_requested',
       description: 'Antrag eines Schiris auf Aufnahme oder Streichung eines Vereins in seiner ' \
-                   'Ausschlussliste. Geht an das Ansetzungs-Postfach (RSK-E-Mail) des Landesverbands.',
+                   'Ausschlussliste. Geht immer an das zentrale Ansetzungs-Postfach von Floorball ' \
+                   'Deutschland, weil dort über die Anträge entschieden wird.',
       default_subject: 'Antrag Vereins-Ausschluss – {{referee_name}}',
       default_from: nil,
-      # Reply-To wird zur Laufzeit gesetzt (Schiri bzw. RSK-E-Mail des Verbands).
+      # Reply-To wird zur Laufzeit gesetzt (Schiri bzw. zentrales Postfach).
       default_reply_to: nil,
       placeholders: [
         { key: 'referee_name', description: 'Vor- und Nachname des Schiris' },
@@ -156,7 +190,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       description: 'Entscheidung der Ansetzung über einen Antrag zur Vereins-Ausschlussliste.',
       default_subject: 'Vereins-Ausschluss {{decision}} – {{club_name}}',
       default_from: nil,
-      # Reply-To wird zur Laufzeit gesetzt (RSK-E-Mail des Verbands).
+      # Reply-To wird zur Laufzeit gesetzt (zentrales Ansetzungs-Postfach).
       default_reply_to: nil,
       placeholders: [
         { key: 'first_name', description: 'Vorname des Empfängers (für die Anrede)' },
@@ -351,6 +385,20 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       placeholders: [
         { key: 'request_noun', description: 'Bezeichnung des Antrags (Transferantrag/Spielerfreigabe-Antrag)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' }
+      ]
+    },
+    'TransferRequestMailer#club_deactivated_notification' => {
+      mailer_class: 'TransferRequestMailer',
+      action_name: 'club_deactivated_notification',
+      description: 'Benachrichtigung an den Spieler und den abgebenden Verein, dass der Antrag beendet ist, ' \
+                   'weil der aufnehmende Verein deaktiviert wurde.',
+      default_subject: '{{request_noun}} beendet, Verein deaktiviert: {{player_name}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'request_noun', description: 'Bezeichnung des Antrags (Transferantrag/Spielerfreigabe-Antrag)' },
+        { key: 'player_name', description: 'Vor- und Nachname des Spielers' },
+        { key: 'club_name', description: 'Name des deaktivierten aufnehmenden Vereins' }
       ]
     },
     'TransferRequestMailer#player_rejected_clubs_notification' => {

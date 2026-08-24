@@ -1,0 +1,27 @@
+<h2>Antrag auf Stammdatenkorrektur</h2>
+
+<p>
+  <%= @referee.vorname %> <%= @referee.nachname %>
+  <% if @referee.lizenznummer.present? %>(Lizenznummer <%= @referee.lizenznummer %>)<% end %>
+  beantragt eine Korrektur der eigenen Stammdaten.
+</p>
+
+<p>
+  <strong>Feld:</strong> <%= @change_request.label %><br>
+  <strong>Bisher:</strong> <%= @change_request.current_value.presence || 'nicht hinterlegt' %><br>
+  <strong>Beantragt:</strong> <%= @change_request.requested_value %>
+  <% if @change_request.reason.present? %>
+    <br><strong>Begründung:</strong> <%= @change_request.reason %>
+  <% end %>
+</p>
+
+<p>
+  Der Antrag liegt im Saisonmanager unter „Schiedsrichterwesen &rarr; Stammdaten-Korrekturen“ zur
+  Entscheidung bereit.<br>
+  <a href="<%= frontend_base_url %>/verwaltung/schiedsrichter-korrekturen">Anträge öffnen</a>
+</p>
+
+<p>
+  Mit der Genehmigung wird der Wert direkt am Schiedsrichterprofil übernommen. Bitte den Nachweis
+  vorher wie gewohnt prüfen.
+</p>

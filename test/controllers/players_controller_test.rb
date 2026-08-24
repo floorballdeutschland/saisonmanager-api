@@ -1258,9 +1258,11 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
 
   # Beendetes Spiel mit @player (Trikot 7) in der Heim-Aufstellung.
   # admin_player_update, Anlege-Zweig. Der Endpunkt war bis hierher ohne
-  # Testabdeckung, obwohl an ihm die vereinsgebundene Berechtigung hängt.
-  test 'TM legt im Verein der eigenen Mannschaft eine Spielerin an' do
-    login_as(create(:user, :tm, team_id: @team.id))
+  # Testabdeckung, obwohl an ihm die vereinsgebundene Berechtigung hängt. Seit
+  # api#530 legt nur der Vereinsmanager an, der TM nicht mehr (Rollengrenze in
+  # players_club_decisions_role_test.rb).
+  test 'VM legt im eigenen Verein eine Spielerin an' do
+    login_as(create(:user, :vm, club_id: @club.id))
 
     assert_difference 'Player.count', 1 do
       post '/api/v2/admin/players.json',
@@ -1276,9 +1278,9 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert player.clubs.first['home_club'], 'der neue Eintrag ist die Heimatmitgliedschaft'
   end
 
-  test 'TM darf in einem fremden Verein nichts anlegen' do
+  test 'VM darf in einem fremden Verein nichts anlegen' do
     fremder = create(:club)
-    login_as(create(:user, :tm, team_id: @team.id))
+    login_as(create(:user, :vm, club_id: @club.id))
 
     assert_no_difference 'Player.count' do
       post '/api/v2/admin/players.json',
@@ -1292,8 +1294,8 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
 
   # Grenze, die der Anlage gegenübersteht: Wer angelegt ist, wird vom Verband
   # gepflegt (:update_player).
-  test 'TM aendert die Stammdaten einer bestehenden Person nicht' do
-    login_as(create(:user, :tm, team_id: @team.id))
+  test 'VM aendert die Stammdaten einer bestehenden Person nicht' do
+    login_as(create(:user, :vm, club_id: @club.id))
 
     post '/api/v2/admin/players.json',
          params: { id: @player.id, club_id: @club.id, first_name: 'Geaendert',
@@ -1304,8 +1306,8 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_not_equal 'Geaendert', @player.reload.first_name
   end
 
-  test 'Dublette wird auch dem TM verweigert' do
-    login_as(create(:user, :tm, team_id: @team.id))
+  test 'Dublette wird auch dem VM verweigert' do
+    login_as(create(:user, :vm, club_id: @club.id))
 
     assert_no_difference 'Player.count' do
       post '/api/v2/admin/players.json',
@@ -1322,7 +1324,7 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
   # war auch bei gescheiterter Validierung 201. Die Oberfläche meldete Erfolg
   # und leitete weiter, angelegt war nichts.
   test 'gescheiterte Validierung antwortet 422 statt 201' do
-    login_as(create(:user, :tm, team_id: @team.id))
+    login_as(create(:user, :vm, club_id: @club.id))
 
     assert_no_difference 'Player.count' do
       post '/api/v2/admin/players.json',
@@ -1336,7 +1338,7 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
 
   # params[:id] kam als nil oder als String und brach mit einem 500er ab.
   test 'fehlende id gilt als Anlage statt als Serverfehler' do
-    login_as(create(:user, :tm, team_id: @team.id))
+    login_as(create(:user, :vm, club_id: @club.id))
 
     assert_difference 'Player.count', 1 do
       post '/api/v2/admin/players.json',
