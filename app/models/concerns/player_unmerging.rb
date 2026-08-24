@@ -35,6 +35,33 @@ module PlayerUnmerging
   # in diesem Modell auch das Parsen unlesbarer Altdaten.
   class UnmergeRefused < StandardError; end
 
+  # Kehrt einen Merge um. Gegenstueck zu `merge_into!`, gedacht fuer Fehl-Merges: zwei
+  # verschiedene Personen, die die Dubletten-Heuristik ueber ein um eine Ziffer abweichendes
+  # Geburtsdatum zusammengezogen hat. `_shares_game_with?` kann die nicht erkennen, wenn
+  # beide in verschiedenen Ligen spielen, denn verschiedene Ligen heissen nie dasselbe Spiel.
+  #
+  # Zurueck gehen:
+  #   - die Spielaufstellungen, die `_rewrite_player_game_references` umgeschrieben hat.
+  #     Zugeordnet wird ueber das Team der jeweiligen Spielseite: gehoert es zu einer Lizenz
+  #     dieses Profils, war der Eintrag dieses Profils.
+  #   - die auf den Master kopierten Lizenzen (ueber die Lizenz-UUID) und Zugehoerigkeiten
+  #     (ueber club_id und created_at, die das deep_dup unveraendert laesst)
+  #   - Lizenzdokumente, die an einer dieser Lizenzen haengen
+  #   - Deaktivierung, `merged_into_id` und die vom Merge geschlossene Zugehoerigkeit
+  #
+  # Nicht automatisch zurueck, sondern gemeldet:
+  #   - Transfers, Korrekturantraege, Sperren, Transferantraege. `_repoint_player_associations`
+  #     hat sie per `update_all` verschoben, ohne Spur, welche Zeile von welchem Profil kam.
+  #   - Felder, die der Merge von hier auf einen leeren Master uebertragen hat (Name,
+  #     Geburtsdatum, Geschlecht, Nation, E-Mail, security_id).
+  #
+  # Der MergeLog-Eintrag bleibt stehen: er protokolliert, was passiert ist.
+  #
+  # Die wieder geoeffneten Lizenzen stehen danach auf ihrem Stand VOR dem Merge, also unter
+  # Umstaenden APPROVED in einer abgelaufenen Saison. Den Saisonwechsel traegt
+  # `rake seasons:invalidate_stale_licenses` nach.
+  #
+  # Rueckgabe: Hash mit den Anzahlen und `:manual`.
   def unmerge_from!(user_id)
     refuse_unmerge 'Profil ist nicht zusammengeführt' if merged_into_id.blank?
 
