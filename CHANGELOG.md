@@ -9,6 +9,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Zusatzqualifikationen stehen im Schiedsrichterprofil und auf dem Ausweis**: Wer einen Aufbaukurs abgeschlossen hat, etwa als Spielleiter oder Beobachter, findet die Qualifikation samt Gültigkeitsdatum in der Schiedsrichterverwaltung eingetragen und im öffentlichen Lizenzcheck ausgewiesen. Im eigenen Profil und auf dem digitalen Schiedsrichterausweis fehlte sie: Dort standen nur Lizenzstufe und Lizenzgültigkeit. Damit sah die betroffene Person über ihre eigene Qualifikation weniger als jeder Dritte, der ihre Lizenznummer in den Lizenzcheck eingibt, obwohl derselbe Lizenzcheck hinter dem QR-Code des eigenen Ausweises steckt. Beide Ansichten führen die Zusatzqualifikationen jetzt mit, nach Namen sortiert und mit demselben Farbschema wie die Lizenzgültigkeit: grün, solange sie gilt, rot ab dem Tag danach. Auf dem Ausweis ist Abgelaufenes zusätzlich durchgestrichen und im Profil steht „abgelaufen am" statt „gültig bis", damit die Aussage nicht allein an der Farbe hängt. Eine Qualifikation ohne hinterlegtes Ablaufdatum wird ohne Datum und ohne Farbe geführt, weil dazu keine Aussage vorliegt. Abgelaufene Qualifikationen bleiben stehen und verschwinden nicht still, sonst wäre für die betroffene Person nicht zu unterscheiden, ob eine Qualifikation abgelaufen oder nie erworben ist. Gepflegt werden die Einträge weiterhin ausschließlich von der Schiedsrichterkommission, das Profil zeigt sie nur an. Wer keine Zusatzqualifikation hinterlegt hat, sieht die neuen Abschnitte nicht.
+
+### Behoben
+
+- **Der digitale Schiedsrichterausweis zählt den Ablauftag selbst noch als gültig**: Steht als Lizenzgültigkeit der heutige Tag, wies der Ausweis die Lizenz bereits ab Mitternacht als abgelaufen aus, rot statt grün. Die API rechnet anders: Eine Lizenz gilt bis einschließlich ihres Ablaufdatums, und dieselbe Regel gilt bei der Ansetzung und in der Schiedsrichterverwaltung, die dafür ausdrücklich das Tagesende ansetzt. Am letzten Gültigkeitstag widersprach der Ausweis also der Lizenz, die er ausweist. Verglichen wird jetzt gegen den Tagesbeginn, damit der Ablauftag vollständig zählt. Nebenbei nimmt der Ausweis kein Datum mehr an, das es nicht gibt: Aus dem 31.02. machte die Datumsrechnung stillschweigend den 3. März und damit eine Gültigkeit, die nirgends hinterlegt ist; ein unlesbares Datum gilt jetzt als abgelaufen statt als gültig.
+
 ## [1.96.0] - 2026-08-24
 
 ### Neu
