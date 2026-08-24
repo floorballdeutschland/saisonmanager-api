@@ -101,21 +101,40 @@ class RefereeProfileControllerTest < ActionDispatch::IntegrationTest
   end
 
   test 'show liefert die Zusatzqualifikationen mit Gueltigkeit, nach Namen sortiert' do
-    spielleiter = RefereeQualificationType.create!(name: 'Spielleiter', short_name: 'SL')
-    beobachter  = RefereeQualificationType.create!(name: 'Beobachter', short_name: 'BEO')
+    spielleiter = RefereeQualificationType.create!(name: 'Spielleiter')
+    beobachter  = RefereeQualificationType.create!(name: 'Beobachter')
+    # Klein geschrieben: Ohne Rücksicht auf die Groß-/Kleinschreibung stünde der
+    # Name hinter allen anderen, anders als in der Pflegeliste der RSK.
+    coach = RefereeQualificationType.create!(name: 'coach')
     RefereeQualification.create!(referee: @referee, referee_qualification_type: spielleiter,
                                  valid_until: Date.new(2031, 6, 30))
     RefereeQualification.create!(referee: @referee, referee_qualification_type: beobachter,
                                  valid_until: Date.new(2028, 12, 31))
+    RefereeQualification.create!(referee: @referee, referee_qualification_type: coach,
+                                 valid_until: Date.new(2029, 3, 31))
 
     login(@user)
     get '/api/v2/referee/profile'
     assert_response :success
 
     quals = JSON.parse(response.body)['qualifications']
-    assert_equal(%w[Beobachter Spielleiter], quals.map { |q| q['qualification_type_name'] })
-    assert_equal(%w[BEO SL], quals.map { |q| q['short_name'] })
-    assert_equal(['31.12.2028', '30.06.2031'], quals.map { |q| q['valid_until'] })
+    assert_equal(%w[Beobachter coach Spielleiter], quals.map { |q| q['qualification_type_name'] })
+    assert_equal(['31.12.2028', '31.03.2029', '30.06.2031'], quals.map { |q| q['valid_until'] })
+  end
+
+  # Strukturell kann das heute nicht passieren, weil qualifications_json
+  # ausschließlich über @referee liest. Der Test ist der Wächter gegen eine
+  # spätere Umstellung auf eine Abfrage über RefereeQualification.
+  test 'show liefert die Qualifikationen eines fremden Schiedsrichters nicht mit' do
+    fremd = create(:referee, vorname: 'Fremd', nachname: 'Person')
+    typ = RefereeQualificationType.create!(name: 'Nur beim Fremden')
+    RefereeQualification.create!(referee: fremd, referee_qualification_type: typ,
+                                 valid_until: Date.new(2031, 6, 30))
+
+    login(@user)
+    get '/api/v2/referee/profile'
+    assert_response :success
+    assert_equal [], JSON.parse(response.body)['qualifications']
   end
 
   test 'show liefert eine abgelaufene Qualifikation und eine ohne Ablaufdatum weiter' do

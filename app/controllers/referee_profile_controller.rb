@@ -94,17 +94,20 @@ class RefereeProfileController < ApplicationController
   end
 
   # Nach Namen sortiert, damit die Reihenfolge auf dem Ausweis nicht von der
-  # Anlagereihenfolge abhängt. Abgelaufene bleiben in der Liste: Das Frontend
-  # zeichnet sie rot, und ein stilles Weglassen wäre für die betroffene Person
-  # nicht von „nie erworben“ zu unterscheiden.
+  # Anlagereihenfolge abhängt. `downcase`, weil Ruby sonst byteweise sortiert
+  # und ein klein geschriebener Name hinter allen groß geschriebenen stünde,
+  # anders als in der Pflegeliste der RSK, die in SQL sortiert.
+  #
+  # Abgelaufene bleiben in der Liste: Das Frontend zeichnet sie rot, und ein
+  # stilles Weglassen wäre für die betroffene Person nicht von „nie erworben“ zu
+  # unterscheiden.
   def qualifications_json
     @referee.referee_qualifications
             .includes(:referee_qualification_type)
-            .sort_by { |q| q.referee_qualification_type&.name.to_s }
+            .sort_by { |q| q.referee_qualification_type&.name.to_s.downcase }
             .map do |q|
       {
         qualification_type_name: q.referee_qualification_type&.name,
-        short_name: q.referee_qualification_type&.short_name,
         valid_until: q.valid_until&.strftime('%d.%m.%Y')
       }
     end
