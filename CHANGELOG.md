@@ -17,6 +17,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 - **Der digitale Schiedsrichterausweis zählt den Ablauftag selbst noch als gültig**: Steht als Lizenzgültigkeit der heutige Tag, wies der Ausweis die Lizenz bereits ab Mitternacht als abgelaufen aus, rot statt grün. Die API rechnet anders: Eine Lizenz gilt bis einschließlich ihres Ablaufdatums, und dieselbe Regel gilt bei der Ansetzung und in der Schiedsrichterverwaltung, die dafür ausdrücklich das Tagesende ansetzt. Am letzten Gültigkeitstag widersprach der Ausweis also der Lizenz, die er ausweist. Verglichen wird jetzt gegen den Tagesbeginn, damit der Ablauftag vollständig zählt. Nebenbei nimmt der Ausweis kein Datum mehr an, das es nicht gibt: Aus dem 31.02. machte die Datumsrechnung stillschweigend den 3. März und damit eine Gültigkeit, die nirgends hinterlegt ist; ein unlesbares Datum gilt jetzt als abgelaufen statt als gültig.
 
+### Verbessert
+
+- **Die Mannschaftsseite rechnet ihre Scorerwerte nicht mehr bei jedem Aufruf neu**: Die Übersicht einer Mannschaft las bei jedem Abruf alle beendeten Spiele der Saison und wertete je Spiel die komplette Ereignis-Liste aus, um Tore, Vorlagen und Strafminuten zu summieren. Das Ergebnis ist für alle Aufrufer identisch und ändert sich nur, wenn ein Spielbericht abgeschlossen wird, wurde aber nirgends zwischengespeichert. Die Werte liegen jetzt fünf Minuten im Zwischenspeicher, wie bei der Scorerliste einer Liga, die dieselben Zahlen je Liga statt je Mannschaft zeigt. Gespeichert werden ausschließlich die Zahlen; Spielernamen, Mannschaftsnamen und Logos löst die Seite weiter frisch auf, eine Umbenennung ist also sofort sichtbar. Schaltet eine Liga ihre öffentliche Scorerliste um, wirkt das ebenfalls sofort. Anlass war eine Messung des maschinellen Verkehrs auf der Produktion: Dieser Endpunkt war der mit Abstand häufigste Einzelabruf ohne Absenderkennung, rund 10.000 Aufrufe in sieben Tagen, fast alle von einer einzigen Gegenstelle.
+
 ## [1.96.0] - 2026-08-24
 
 ### Neu

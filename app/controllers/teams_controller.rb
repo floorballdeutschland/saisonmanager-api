@@ -42,12 +42,6 @@ class TeamsController < ApplicationController
     leagues = team.leagues.where(season_id: team_season_id).to_a
     primary_league = leagues.first
 
-    # Evaluate scorer directly from the team's season's ended games
-    current_season_games = Game.by_team_id(team.id)
-                               .where(ended: true)
-                               .joins(game_day: :league)
-                               .where(leagues: { season_id: team_season_id })
-
     # Die öffentliche Scorerliste folgt der Liga-Einstellung enable_scorer (in
     # der Altersklasse U13 und jünger per Vorgabe aus). Gefiltert wird pro
     # beitragender Liga, nicht pauschal über das Team: Spielt ein Team zusätzlich
@@ -58,24 +52,28 @@ class TeamsController < ApplicationController
     # sie sind keine personenbezogene Rangliste.
     visible_league_ids = leagues.select(&:enable_scorer).map(&:id)
 
-    team_scorer_data = {}
-    visible_scorer_data = {}
-    current_season_games.includes(:game_day).each do |game|
-      next if game.result.nil?
+    # Der teure Teil dieses Endpunkts: Er liest ALLE beendeten Spiele der Saison
+    # und wertet je Spiel die Ereignis-Liste aus (Game#evaluate_scorer). Bisher
+    # geschah das bei jedem Aufruf neu, obwohl das Ergebnis für alle Aufrufer
+    # identisch ist und sich nur ändert, wenn ein Spielbericht abgeschlossen
+    # wird. Deshalb gecacht, wie leagues/:id/scorer (dieselben Zahlen, nur je
+    # Liga statt je Team) und players#stats.
+    #
+    # Gecacht werden ausschließlich die Zahlen. Die Spielernamen löst
+    # scorer_entries weiter frisch auf, damit eine Umbenennung sofort sichtbar
+    # bleibt, dieselbe Aufteilung wie in players#stats.
+    #
+    # Der Key trägt die Saison des Teams, sonst lieferte ein Team nach dem
+    # Saisonwechsel die Werte der Vorsaison weiter. Die sichtbaren Ligen stehen
+    # ebenfalls im Key: Schaltet eine Liga enable_scorer um, wirkt das damit
+    # sofort und nicht erst nach Ablauf der TTL.
+    scorer_stores = Rails.cache.fetch(
+      "teams/#{team.id}/stats/scorer/#{team_season_id}/#{visible_league_ids.sort.join('-')}",
+      expires_in: 5.minutes
+    ) { collect_scorer_stores(team, team_season_id, visible_league_ids) }
 
-      begin
-        game_score = game.evaluate_scorer
-        visible = visible_league_ids.include?(game.game_day.league_id)
-        game_score.each do |player_id, score|
-          next unless score[:team_id] == team.id
-
-          add_scorer_score(team_scorer_data, player_id, score)
-          add_scorer_score(visible_scorer_data, player_id, score) if visible
-        end
-      rescue StandardError => e
-        Rails.logger.warn("evaluate_scorer failed for game #{game.id}: #{e.message}")
-      end
-    end
+    team_scorer_data = scorer_stores[:team]
+    visible_scorer_data = scorer_stores[:visible]
 
     scorer_visible = visible_league_ids.present?
     scorer_list = scorer_visible ? scorer_entries(visible_scorer_data) : []
@@ -514,6 +512,42 @@ class TeamsController < ApplicationController
                        penalty_ms_tech penalty_ms_full penalty_ms1 penalty_ms2 penalty_ms3].freeze
 
   # Addiert die Werte eines Spiels auf den Zwischenstand eines Spielers.
+  # Summiert die Scorerwerte des Teams aus den beendeten Spielen der Saison,
+  # einmal über alle Ligen (Team-Summen) und einmal nur über die Ligen, die ihre
+  # Scorerliste öffentlich zeigen. Reine Zahlen, damit das Ergebnis cachebar
+  # ist; die Namen kommen erst in scorer_entries dazu.
+  #
+  # Ein Spiel mit kaputten Ereignis-Daten darf die Auswertung der übrigen nicht
+  # verhindern, deshalb wird je Spiel gerettet und weitergezählt.
+  def collect_scorer_stores(team, team_season_id, visible_league_ids)
+    team_scorer_data = {}
+    visible_scorer_data = {}
+
+    games = Game.by_team_id(team.id)
+                .where(ended: true)
+                .joins(game_day: :league)
+                .where(leagues: { season_id: team_season_id })
+
+    games.includes(:game_day).each do |game|
+      next if game.result.nil?
+
+      begin
+        game_score = game.evaluate_scorer
+        visible = visible_league_ids.include?(game.game_day.league_id)
+        game_score.each do |player_id, score|
+          next unless score[:team_id] == team.id
+
+          add_scorer_score(team_scorer_data, player_id, score)
+          add_scorer_score(visible_scorer_data, player_id, score) if visible
+        end
+      rescue StandardError => e
+        Rails.logger.warn("evaluate_scorer failed for game #{game.id}: #{e.message}")
+      end
+    end
+
+    { team: team_scorer_data, visible: visible_scorer_data }
+  end
+
   def add_scorer_score(store, player_id, score)
     if store[player_id]
       SCORER_COUNTERS.each do |k|
