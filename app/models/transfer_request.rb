@@ -12,6 +12,13 @@ class TransferRequest < ApplicationRecord
   # Sperre nicht aus.
   TRANSFER_LOCK_PERIOD = 4.weeks
 
+  # Die Konten, die an einem Antrag gehandelt haben können. Auswahl und
+  # Reihenfolge spiegeln die Statusmaschine; "expired" und die Beendigung durch
+  # eine Vereinsdeaktivierung stehen bewusst nicht darin, das sind
+  # Systemvorgänge ohne handelndes Konto.
+  ACTOR_COLUMNS = %i[created_by approved_by_club_user_id approved_by_lv_user_id
+                     rejected_by revoked_by withdrawn_by].freeze
+
   belongs_to :player
   belongs_to :requesting_club, class_name: 'Club'
   belongs_to :former_club, class_name: 'Club'
@@ -82,7 +89,31 @@ class TransferRequest < ApplicationRecord
     end
   end
 
-  def as_json(*)
+  def actor_user_ids
+    ACTOR_COLUMNS.map { |column| self[column] }.compact.uniq
+  end
+
+  # Namen der beteiligten Konten für mehrere Anträge in einer Abfrage. Die
+  # Übersicht rendert sonst je Antrag eine eigene User-Abfrage, und die Liste
+  # wächst mit jeder Saison.
+  def self.actor_names_for(records)
+    ids = Array(records).flat_map(&:actor_user_ids).uniq
+    return {} if ids.empty?
+
+    User.where(id: ids).index_by(&:id).transform_values(&:full_with_username)
+  end
+
+  # actors: vorab aufgelöste Namen (siehe actor_names_for). Ohne die Option löst
+  # der Antrag sie für sich allein auf – richtig, aber eine Abfrage je Datensatz,
+  # deshalb reicht die Übersicht die gemeinsame Auflösung durch.
+  #
+  # Ausgegeben werden Konto-ID *und* Name: Der Name ist die Anzeige, die ID
+  # bleibt die belastbare Angabe, wenn ein Konto zwischenzeitlich umbenannt oder
+  # gelöscht wurde. Ein nicht mehr auffindbares Konto liefert einen leeren
+  # Namen, die ID steht weiterhin.
+  def as_json(options = nil)
+    actors = (options.is_a?(Hash) && options[:actors]) || TransferRequest.actor_names_for([self])
+
     {
       id:,
       status:,
@@ -93,8 +124,25 @@ class TransferRequest < ApplicationRecord
       revocation_reason:,
       effective_date: effective_date&.iso8601,
       created_at: created_at&.iso8601,
+      created_by:,
+      created_by_name: actors[created_by],
+      club_approved_at: club_approved_at&.iso8601,
+      approved_by_club_user_id:,
+      approved_by_club_user_name: actors[approved_by_club_user_id],
+      player_approved_at: player_approved_at&.iso8601,
+      player_rejected_at: player_rejected_at&.iso8601,
       lv_approved_at: lv_approved_at&.iso8601,
+      approved_by_lv_user_id:,
+      approved_by_lv_user_name: actors[approved_by_lv_user_id],
+      rejected_at: rejected_at&.iso8601,
+      rejected_by:,
+      rejected_by_name: actors[rejected_by],
       revoked_at: revoked_at&.iso8601,
+      revoked_by:,
+      revoked_by_name: actors[revoked_by],
+      withdrawn_at: withdrawn_at&.iso8601,
+      withdrawn_by:,
+      withdrawn_by_name: actors[withdrawn_by],
       player: player_hash,
       requesting_club: club_hash(requesting_club),
       former_club: club_hash(former_club)
