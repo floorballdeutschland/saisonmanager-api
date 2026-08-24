@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_08_23_100000) do
+ActiveRecord::Schema[7.2].define(version: 2026_08_24_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -930,10 +930,12 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_23_100000) do
     t.datetime "player_approved_at"
     t.datetime "player_rejected_at"
     t.boolean "direct", default: false, null: false
+    t.integer "withdrawn_by"
+    t.datetime "withdrawn_at"
     t.index ["former_club_id"], name: "index_transfer_requests_on_former_club_id"
     t.index ["player_confirmation_token"], name: "index_transfer_requests_on_player_confirmation_token", unique: true
     t.index ["player_id"], name: "index_transfer_requests_on_player_id"
-    t.index ["player_id"], name: "index_transfer_requests_on_player_id_active", unique: true, where: "((status)::text = ANY ((ARRAY['pending_club'::character varying, 'pending_player'::character varying, 'pending_lv'::character varying, 'scheduled'::character varying])::text[]))"
+    t.index ["player_id"], name: "index_transfer_requests_on_player_id_active", unique: true, where: "((status)::text = ANY (ARRAY[('pending_club'::character varying)::text, ('pending_player'::character varying)::text, ('pending_lv'::character varying)::text, ('scheduled'::character varying)::text]))"
     t.index ["request_type"], name: "index_transfer_requests_on_request_type"
     t.index ["requesting_club_id"], name: "index_transfer_requests_on_requesting_club_id"
     t.index ["status"], name: "index_transfer_requests_on_status"

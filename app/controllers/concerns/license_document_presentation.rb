@@ -27,15 +27,40 @@ module LicenseDocumentPresentation
     keys
   end
 
-  # Map { <typ>: bool, <typ>_url: url } für eine Lizenz. parental_consent ist
-  # (wie bisher) immer enthalten.
+  # Map { <typ>: bool, <typ>_url: url, <typ>_uploaded_at: zeitpunkt } für eine
+  # Lizenz. parental_consent ist (wie bisher) immer enthalten.
+  #
+  # _uploaded_at hängt an derselben Bedingung wie _url: Ohne abrufbare Datei
+  # soll auch kein Datum erscheinen, sonst wiese die Genehmigungsübersicht einen
+  # Upload aus, den dort niemand öffnen kann. Als Zeitpunkt zählt created_at des
+  # Dokuments, nicht das des Anhangs – ein erneuter Upload löscht den bisherigen
+  # Datensatz und legt einen neuen an (Admin::LicenseDocumentsController#create),
+  # created_at ist damit stets der Zeitpunkt des aktuellen Uploads.
   def document_map_for(player_id, license_season_id, docs_by_key, required_keys, catalog)
     result = {}
     (%w[parental_consent] | Array(required_keys)).each do |key|
       doc = current_document(player_id, key, license_season_id, docs_by_key, catalog)
+      attached = doc&.file&.attached?
+
+      # Ein Datensatz ohne Anhang ist ein Defekt (verlorener Blob, abgebrochener
+      # Upload) und die Ansichten melden dafür „fehlt", während der Datensatz
+      # weiterbesteht. Ohne Spur würde daraus still eine falsche Aussage über den
+      # Verein, deshalb hier die einzige Stelle, an der das auffallen kann.
+      if doc.present? && !attached
+        Rails.logger.warn(
+          "LicenseDocument #{doc.id} (Spieler #{player_id}, #{key}) ohne Anhang – " \
+          'die Lizenzansichten melden das Dokument als fehlend'
+        )
+      end
+
       result[key.to_sym] = doc.present?
       result["#{key}_url".to_sym] =
-        doc&.file&.attached? ? rails_blob_url(doc.file, disposition: 'inline') : nil
+        attached ? rails_blob_url(doc.file, disposition: 'inline') : nil
+      # iso8601 wie bei jedem anderen Zeitstempel im Projekt: Ein roher
+      # TimeWithZone hinge am Framework-Vorgabeformat, und ein anderes Format
+      # ließe die date-Pipe im Frontend werfen statt nur diese Zelle leer zu
+      # lassen.
+      result["#{key}_uploaded_at".to_sym] = attached ? doc.created_at&.iso8601 : nil
     end
     result
   end

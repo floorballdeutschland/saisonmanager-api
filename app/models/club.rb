@@ -107,7 +107,7 @@ class Club < ApplicationRecord
 
     Club.transaction do
       update!(deactivated_at: Time.current, deactivated_by: user_id)
-      ended = TransferRequest.end_for_deactivated_club(id)
+      ended = TransferRequest.end_for_deactivated_club(id, user_id)
     end
 
     ended.each { |tr| TransferRequestMailer.club_deactivated_notification(tr).deliver_later }

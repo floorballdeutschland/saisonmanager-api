@@ -19,6 +19,14 @@ class RefereeCourseResult < ApplicationRecord
   scope :rejected,               -> { where(status: 'rejected') }
   scope :for_state_associations, ->(ids) { where(state_association_id: ids) }
 
+  # Nur Zeilen aus eingereichten Importen warten wirklich auf die LV-Freigabe.
+  # Der Import-Service legt JEDE Zeile sofort beim Upload mit `pending_review`
+  # an, waehrend der Import selbst auf `in_review` steht -- `pending_review`
+  # allein trennt die Importeurs-Vorschau also nicht von der Freigabe-Warteschlange.
+  scope :awaiting_lv_review, lambda {
+    joins(:referee_course_import).where(referee_course_imports: { status: 'submitted' })
+  }
+
   # Symmetrische Match-Regel, die sowohl der Import-Service als auch der
   # LV-Review-Controller verwenden muessen, damit der Match-Score zwischen
   # initialem Import und nachtraeglicher Bearbeitung konsistent bleibt: leeres
@@ -57,6 +65,12 @@ class RefereeCourseResult < ApplicationRecord
     else
       csv_val == ref_val
     end
+  end
+
+  # Gegenstueck zum Scope `awaiting_lv_review` fuer eine einzelne Zeile: Freigeben
+  # und Zurueckweisen duerfen nur Zeilen, deren Import eingereicht ist.
+  def awaiting_lv_review?
+    referee_course_import.status == 'submitted'
   end
 
   # Final master values default to importer-chosen values until LV review

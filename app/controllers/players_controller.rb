@@ -79,7 +79,9 @@ class PlayersController < ApplicationController
       # Standardmäßig nur die aktuelle Saison; mit all_licenses=true die
       # vollständige, saisonübergreifende Lizenzhistorie (Spielerprofil).
       only_current = params[:all_licenses].to_s != 'true'
-      render json: result.full_hash(true, only_current, true)
+      hash = result.full_hash(true, only_current, true)
+      resolve_club_actor_names!(hash)
+      render json: hash
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
     end
@@ -1096,6 +1098,69 @@ class PlayersController < ApplicationController
       game_operation: league&.game_operation&.short_name,
       team_name:      team_names[entry[:team_id]]
     )
+  end
+
+  # Wer eine Vereinszugehörigkeit angelegt oder beendet hat, wird beim Anlegen
+  # und beim Beenden in den Eintrag geschrieben (created_by, valid_set_by) und
+  # reist auch schon im JSON mit – aber nur als Konto-ID und damit unlesbar.
+  # Nachvollziehbar wird ein Transfer oder eine Freigabe erst mit dem Namen.
+  # Einträge aus dem Altbestand tragen die Schlüssel nicht, dort bleibt es leer.
+  #
+  # Aufgelöst wird für jeden, der das Profil ohnehin öffnen darf. Eine engere
+  # Fassung (nur Admin und zuständige SBK) wäre in genau dieser Antwort schon
+  # widerlegt: Player#full_hash löst für die Lizenzhistorie created_by_name
+  # ungeprüft auf, und die Profilmaske zeigt es an – Vereins- und Teammanager
+  # sehen dort seit langem, welches Verbandskonto eine Lizenz genehmigt hat.
+  # Eine Ausnahme allein für die Vereinseinträge wäre eine Regel, die dieselbe
+  # Maske an der Nachbarzeile bricht.
+  #
+  # Ausgegeben wird der Name ohne Benutzernamen, anders als bei der
+  # Lizenzhistorie: Angemeldet wird sich in diesem Projekt allein über den
+  # Benutzernamen, und für die Frage "wer war das" trägt der Name zusammen mit
+  # der ID die Aussage bereits.
+  def resolve_club_actor_names!(hash)
+    entries = Array(hash[:clubs])
+    # Strukturell kaputte Eintraege (kein Objekt) ueberspringen, wie in
+    # Player#home_club_entry: In diesem Bestand liegen solche Eintraege, und ohne
+    # den Riegel bricht jeder Leser darueber ab. Eine Namensanzeige darf die
+    # ganze Profilmaske nicht mitreissen.
+    memberships = entries.select { |c| c.is_a?(Hash) }
+    return if memberships.empty?
+
+    # Die IDs stammen aus JSONB und sind nicht typgarantiert: Ein Altbestand mit
+    # "42" statt 42 wuerde von User.where gefunden (ActiveRecord castet), aber
+    # unter dem Integer-Schluessel abgelegt und beim Nachschlagen verfehlt. Die
+    # Maske behauptete dann "Name nicht verfuegbar" fuer ein Konto, das gerade
+    # geladen wurde.
+    ids = memberships.flat_map { |c| [c['created_by'], c['valid_set_by']] }
+                     .filter_map { |v| Integer(v, exception: false) }.uniq
+
+    names = resolve_user_names(ids)
+
+    # Auf Kopien statt auf den Eintraegen selbst: full_hash legt unter clubs das
+    # AR-Attribut ab, kein Duplikat. Ein spaeteres save wuerde die reinen
+    # Anzeigenamen sonst in die Mitgliedschaft schreiben, wo sie beim naechsten
+    # Umbenennen still veralten. Kaputte Eintraege bleiben unveraendert stehen,
+    # damit die Antwort nichts verliert.
+    hash[:clubs] = entries.map do |c|
+      next c unless c.is_a?(Hash)
+
+      c.merge(
+        'created_by_name' => names[c['created_by'].to_i],
+        'valid_set_by_name' => names[c['valid_set_by'].to_i]
+      )
+    end
+  end
+
+  # fullname ist bei einem Konto ohne Vor- und Nachnamen ein blosses Leerzeichen
+  # und nicht nil -- User validiert die beiden Felder nicht. Ungefiltert waere
+  # das im Frontend ein "gueltiger" Name, der nichts aussagt und zugleich den
+  # Rueckfall auf die Konto-ID verdeckt. Gleiches Muster wie in
+  # ClubsController#managers.
+  def resolve_user_names(ids)
+    return {} if ids.empty?
+
+    User.where(id: ids).index_by(&:id).transform_values { |u| u.fullname.strip.presence }
   end
 
   # Lesender Zugriff auf ein Profil und das Pflegen der E-Mail-Adresse: hier
