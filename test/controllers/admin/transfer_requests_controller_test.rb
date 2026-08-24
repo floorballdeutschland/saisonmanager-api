@@ -675,6 +675,230 @@ module Admin
       assert_response :forbidden
     end
 
+    # ---------------------------------------------------------------------------
+    # Userkennung: welches Konto hat gehandelt
+    # ---------------------------------------------------------------------------
+
+    # Die Konten standen längst in der Tabelle, wurden aber nie ausgeliefert.
+    # Damit war nachträglich nicht zu klären, wer einen Transfer oder eine
+    # Freigabe angelegt und genehmigt hat.
+    test 'Antrag nennt das anlegende Konto mit Namen' do
+      login(@vm_requesting)
+      post '/api/v2/admin/transfer_requests', params: {
+        player_id: @player.id,
+        requesting_club_id: @requesting_club.id
+      }
+      assert_response :created
+      body = JSON.parse(response.body)
+      assert_equal @vm_requesting.id, body['created_by']
+      assert_equal @vm_requesting.fullname, body['created_by_name']
+    end
+
+    test 'Vereinsfreigabe nennt das genehmigende Konto samt Zeitpunkt' do
+      tr = create_transfer_request(status: 'pending_club')
+      login(@vm_former)
+      patch "/api/v2/admin/transfer_requests/#{tr.id}/approve_club"
+      assert_response :success
+      body = JSON.parse(response.body)
+      assert_equal @vm_former.id, body['approved_by_club_user_id']
+      assert_equal @vm_former.fullname, body['approved_by_club_user_name']
+      assert body['club_approved_at'].present?, 'Zeitpunkt der Vereinsfreigabe muss mitreisen'
+    end
+
+    test 'LV-Genehmigung nennt das genehmigende Konto' do
+      tr = create_transfer_request(status: 'pending_lv', effective_date: 1.month.from_now.to_date)
+      login(@sbk)
+      patch "/api/v2/admin/transfer_requests/#{tr.id}/approve_lv"
+      assert_response :success
+      body = JSON.parse(response.body)
+      assert_equal @sbk.id, body['approved_by_lv_user_id']
+      assert_equal @sbk.fullname, body['approved_by_lv_user_name']
+    end
+
+    test 'Ablehnung nennt das ablehnende Konto samt Zeitpunkt' do
+      tr = create_transfer_request(status: 'pending_club')
+      login(@vm_former)
+      patch "/api/v2/admin/transfer_requests/#{tr.id}/reject_club",
+            params: { rejection_reason: 'Beitrag offen' }
+      assert_response :success
+      body = JSON.parse(response.body)
+      assert_equal @vm_former.id, body['rejected_by']
+      assert_equal @vm_former.fullname, body['rejected_by_name']
+      assert body['rejected_at'].present?
+    end
+
+    # Der Abbruch war der einzige Vorgang ohne jede Spur: Anlegen, Freigabe,
+    # Genehmigung, Ablehnung und Widerruf hielten ihr Konto fest, das
+    # Zurückziehen und das Annullieren nicht.
+    test 'Zurückziehen durch den Verein hält das Konto fest' do
+      tr = create_transfer_request(status: 'pending_club')
+      login(@vm_requesting)
+      patch "/api/v2/admin/transfer_requests/#{tr.id}/withdraw"
+      assert_response :success
+      body = JSON.parse(response.body)
+      assert_equal 'withdrawn', body['status']
+      assert_equal @vm_requesting.id, body['withdrawn_by']
+      assert_equal @vm_requesting.fullname, body['withdrawn_by_name']
+      assert body['withdrawn_at'].present?
+      assert_equal @vm_requesting.id, tr.reload.withdrawn_by
+    end
+
+    test 'Annullieren durch die SBK hält das Konto fest' do
+      tr = create_transfer_request(status: 'pending_lv')
+      login(@sbk)
+      patch "/api/v2/admin/transfer_requests/#{tr.id}/cancel"
+      assert_response :success
+      body = JSON.parse(response.body)
+      assert_equal 'withdrawn', body['status']
+      assert_equal @sbk.id, body['withdrawn_by']
+      assert_equal @sbk.fullname, body['withdrawn_by_name']
+      assert_equal @sbk.id, tr.reload.withdrawn_by
+    end
+
+    test 'LV-Ablehnung nennt das ablehnende Konto' do
+      tr = create_transfer_request(status: 'pending_lv')
+      login(@sbk)
+      patch "/api/v2/admin/transfer_requests/#{tr.id}/reject_lv",
+            params: { rejection_reason: 'Sperrfrist läuft' }
+      assert_response :success
+      body = JSON.parse(response.body)
+      assert_equal @sbk.id, body['rejected_by']
+      assert_equal @sbk.fullname, body['rejected_by_name']
+      assert body['rejected_at'].present?
+    end
+
+    # Der Widerruf ist der einzige Schritt mit Begründungstext; die Chronik baut
+    # ihn aus revoked_at, revoked_by und revocation_reason.
+    test 'Widerruf einer Freigabe nennt das widerrufende Konto' do
+      tr = create_transfer_request(status: 'pending_lv', request_type: 'release')
+      login(@sbk)
+      patch "/api/v2/admin/transfer_requests/#{tr.id}/approve_lv"
+      assert_response :success
+
+      patch "/api/v2/admin/transfer_requests/#{tr.id}/revoke",
+            params: { revocation_reason: 'Irrtum bei der Freigabe' }
+      assert_response :success
+      body = JSON.parse(response.body)
+      assert_equal @sbk.id, body['revoked_by']
+      assert_equal @sbk.fullname, body['revoked_by_name']
+      assert body['revoked_at'].present?
+      assert_equal 'Irrtum bei der Freigabe', body['revocation_reason']
+    end
+
+    # Die Person bestätigt über den Link in ihrer Mail, ohne Anmeldung. Der
+    # Zeitpunkt muss mitreisen, ein Konto gibt es dazu nicht – die Chronik zeigt
+    # den Schritt sonst gar nicht an.
+    test 'Bestätigung durch die Person liefert den Zeitpunkt ohne Konto' do
+      tr = create_transfer_request(status: 'pending_player')
+      get '/api/v2/admin/transfer_requests/player_approve',
+          params: { token: tr.player_confirmation_token }
+
+      login(@admin)
+      get "/api/v2/admin/transfer_requests/#{tr.id}"
+      assert_response :success
+      body = JSON.parse(response.body)
+      assert body['player_approved_at'].present?, 'Zeitpunkt der Bestätigung muss mitreisen'
+      assert_nil body['player_rejected_at']
+    end
+
+    # Bewusster Unterschied zum Spielerprofil: In der Transferansicht sind die
+    # Vereine Partei des Vorgangs, sie sollen sehen, wer entschieden hat.
+    test 'Vereinsmanager sieht die handelnden Konten seines Vorgangs' do
+      tr = create_transfer_request(status: 'pending_lv', effective_date: 1.month.from_now.to_date)
+      login(@sbk)
+      patch "/api/v2/admin/transfer_requests/#{tr.id}/approve_lv"
+      assert_response :success
+
+      login(@vm_requesting)
+      get "/api/v2/admin/transfer_requests/#{tr.id}"
+      assert_response :success
+      assert_equal @sbk.fullname, JSON.parse(response.body)['approved_by_lv_user_name']
+    end
+
+    # Der Benutzername ist in diesem Projekt die halbe Anmeldung (Login läuft
+    # allein über ihn) und hat in einer Ansicht, die auch den Vereinen offensteht,
+    # nichts verloren. Für die Zuordnung genügen Name und Konto-ID.
+    test 'Konto-Namen enthalten den Benutzernamen nicht' do
+      tr = create_transfer_request(status: 'pending_club')
+      login(@admin)
+      get "/api/v2/admin/transfer_requests/#{tr.id}"
+      assert_response :success
+
+      name = JSON.parse(response.body)['created_by_name']
+      assert_equal @vm_requesting.fullname, name
+      assert_not_includes name.to_s, @vm_requesting.user_name
+    end
+
+    # Der dritte Weg in den Status "withdrawn" neben withdraw und cancel:
+    # Club#deactivate! kennt das handelnde Konto (es steht in
+    # clubs.deactivated_by), gab es aber nicht an den Antrag weiter. Ein so
+    # beendeter Vorgang wäre in der Chronik der einzige ohne Abschlussschritt.
+    test 'Vereinsdeaktivierung hält das handelnde Konto am Antrag fest' do
+      tr = create_transfer_request(status: 'pending_club')
+
+      @requesting_club.deactivate!(@admin.id)
+
+      tr.reload
+      assert_equal 'withdrawn', tr.status
+      assert_equal @admin.id, tr.withdrawn_by
+      assert tr.withdrawn_at.present?
+
+      login(@admin)
+      get "/api/v2/admin/transfer_requests/#{tr.id}"
+      assert_response :success
+      assert_equal @admin.fullname, JSON.parse(response.body)['withdrawn_by_name']
+    end
+
+    # Die Übersicht darf die Namen nicht je Zeile nachladen; der Aufwand wüchse
+    # sonst mit der Zahl der Anträge. Gemessen wird der Zuwachs und nicht eine
+    # absolute Zahl: Der Request fragt die users-Tabelle schon für die
+    # Anmeldung und die Rechteprüfung mehrfach ab, das ist Bestand und hat mit
+    # der Namensauflösung nichts zu tun.
+    test 'Übersicht lädt die Konten nicht je Zeile nach' do
+      # Je Spieler ist nur ein aktiver Antrag zulässig
+      # (index_transfer_requests_on_player_id_active), die Liste braucht also
+      # je Antrag eine eigene Person.
+      first = create_request_for_new_player(@vm_requesting)
+      login(@admin)
+
+      with_one = count_user_queries { get '/api/v2/admin/transfer_requests' }
+      assert_response :success
+      assert_equal 1, JSON.parse(response.body).size
+
+      # Drei verschiedene anlegende Konten: Bekämen alle Zeilen denselben Namen
+      # aus der gemeinsamen Auflösung, bliebe das bei einem einzigen Konto
+      # unbemerkt.
+      second = create_request_for_new_player(@vm_former)
+      third = create_request_for_new_player(@admin)
+
+      with_three = count_user_queries { get '/api/v2/admin/transfer_requests' }
+      assert_response :success
+
+      body = JSON.parse(response.body)
+      assert_equal 3, body.size
+      by_id = body.index_by { |row| row['id'] }
+      assert_equal @vm_requesting.fullname, by_id[first.id]['created_by_name']
+      assert_equal @vm_former.fullname, by_id[second.id]['created_by_name']
+      assert_equal @admin.fullname, by_id[third.id]['created_by_name']
+
+      assert_equal with_one, with_three,
+                   'zusätzliche Zeilen dürfen keine zusätzliche User-Abfrage kosten ' \
+                   "(#{with_one} bei einer, #{with_three} bei drei Zeilen)"
+    end
+
+    # Ein zwischenzeitlich gelöschtes Konto darf die Antwort nicht sprengen; die
+    # ID bleibt die belastbare Angabe.
+    test 'unauffindbares Konto liefert die ID ohne Namen' do
+      tr = create_transfer_request(status: 'pending_club')
+      tr.update_columns(created_by: 999_999)
+      login(@admin)
+      get "/api/v2/admin/transfer_requests/#{tr.id}"
+      assert_response :success
+      body = JSON.parse(response.body)
+      assert_equal 999_999, body['created_by']
+      assert_nil body['created_by_name']
+    end
+
     private
 
     def create_user(user_group_id:, game_operation_id: 0, club_id: nil)
@@ -683,7 +907,12 @@ module Admin
                     else
                       [{ 'user_group_id' => user_group_id, 'game_operation_id' => game_operation_id }]
                     end
+      # Mit Vor- und Nachnamen: Ohne sie liefert User#fullname nur ein
+      # Leerzeichen, und die Tests zur Userkennung würden gegen einen leeren
+      # String prüfen, statt gegen den Namen, um den es geht.
       User.create!(
+        first_name: "Vor#{SecureRandom.hex(3)}",
+        last_name: "Nach#{SecureRandom.hex(3)}",
         user_name: "user_#{SecureRandom.hex(6)}",
         password: 'password123',
         password_confirmation: 'password123',
@@ -712,6 +941,8 @@ module Admin
 
     def create_user_sbk(game_operation_id:)
       User.create!(
+        first_name: "Vor#{SecureRandom.hex(3)}",
+        last_name: "Nach#{SecureRandom.hex(3)}",
         user_name: "sbk_#{SecureRandom.hex(6)}",
         password: 'password123',
         password_confirmation: 'password123',
@@ -722,6 +953,8 @@ module Admin
 
     def create_user_sbk_and_vm(game_operation_id:, club_id:)
       User.create!(
+        first_name: "Vor#{SecureRandom.hex(3)}",
+        last_name: "Nach#{SecureRandom.hex(3)}",
         user_name: "sbkvm_#{SecureRandom.hex(6)}",
         password: 'password123',
         password_confirmation: 'password123',
@@ -736,6 +969,22 @@ module Admin
     def login(user)
       post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
       assert_response :success
+    end
+
+    def create_request_for_new_player(creator = @vm_requesting)
+      TransferRequest.create!(
+        player: create(:player), requesting_club: @requesting_club, former_club: @former_club,
+        status: 'pending_club', created_by: creator.id, season_id: 18
+      )
+    end
+
+    def count_user_queries(&block)
+      queries = 0
+      counter = lambda do |_name, _start, _finish, _id, payload|
+        queries += 1 if payload[:sql]&.include?('"users"')
+      end
+      ActiveSupport::Notifications.subscribed(counter, 'sql.active_record', &block)
+      queries
     end
 
     def create_transfer_request(status:, effective_date: nil, request_type: 'transfer')

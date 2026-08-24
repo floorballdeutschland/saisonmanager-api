@@ -25,7 +25,14 @@ module Admin
         scopes.reduce { |combined, scope| combined.or(scope) } || TransferRequest.none
       end
 
-      render json: requests.order(created_at: :desc).map(&:as_json)
+      # Die Namen der beteiligten Konten einmal für die ganze Liste auflösen;
+      # je Antrag einzeln wäre es eine Abfrage pro Zeile. Spieler und Vereine
+      # aus demselben Grund vorladen: as_json liest je Zeile player_hash und
+      # zweimal club_hash, das waren bisher drei Abfragen pro Antrag.
+      records = requests.includes(:player, :requesting_club, :former_club)
+                        .order(created_at: :desc).to_a
+      actors = TransferRequest.actor_names_for(records)
+      render json: records.map { |tr| tr.as_json(actors: actors) }
     end
 
     def search_player
@@ -391,7 +398,8 @@ module Admin
         return render json: { error: 'Nicht berechtigt' }, status: :forbidden
       end
 
-      tr.update!(status: 'withdrawn', player_confirmation_token: nil)
+      tr.update!(status: 'withdrawn', withdrawn_by: current_user.id, withdrawn_at: Time.current,
+                 player_confirmation_token: nil)
       render json: tr.as_json
     end
 
@@ -521,7 +529,8 @@ module Admin
         return render json: { error: 'Nicht berechtigt' }, status: :forbidden
       end
 
-      tr.update!(status: 'withdrawn', player_confirmation_token: nil)
+      tr.update!(status: 'withdrawn', withdrawn_by: current_user.id, withdrawn_at: Time.current,
+                 player_confirmation_token: nil)
       render json: tr.as_json
     end
 
