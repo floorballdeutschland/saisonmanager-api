@@ -41,10 +41,26 @@ module LicenseDocumentPresentation
     (%w[parental_consent] | Array(required_keys)).each do |key|
       doc = current_document(player_id, key, license_season_id, docs_by_key, catalog)
       attached = doc&.file&.attached?
+
+      # Ein Datensatz ohne Anhang ist ein Defekt (verlorener Blob, abgebrochener
+      # Upload) und die Ansichten melden dafür „fehlt", während der Datensatz
+      # weiterbesteht. Ohne Spur würde daraus still eine falsche Aussage über den
+      # Verein, deshalb hier die einzige Stelle, an der das auffallen kann.
+      if doc.present? && !attached
+        Rails.logger.warn(
+          "LicenseDocument #{doc.id} (Spieler #{player_id}, #{key}) ohne Anhang – " \
+          'die Lizenzansichten melden das Dokument als fehlend'
+        )
+      end
+
       result[key.to_sym] = doc.present?
       result["#{key}_url".to_sym] =
         attached ? rails_blob_url(doc.file, disposition: 'inline') : nil
-      result["#{key}_uploaded_at".to_sym] = attached ? doc.created_at : nil
+      # iso8601 wie bei jedem anderen Zeitstempel im Projekt: Ein roher
+      # TimeWithZone hinge am Framework-Vorgabeformat, und ein anderes Format
+      # ließe die date-Pipe im Frontend werfen statt nur diese Zelle leer zu
+      # lassen.
+      result["#{key}_uploaded_at".to_sym] = attached ? doc.created_at&.iso8601 : nil
     end
     result
   end
