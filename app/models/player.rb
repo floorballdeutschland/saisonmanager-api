@@ -451,8 +451,8 @@ class Player < ApplicationRecord
       # darf nirgends mehr als aktives Mitglied oder Lizenznehmer auftauchen. Die
       # regulaere Deaktivierung ruehrt beides bewusst nicht mehr an, deshalb steht das
       # hier explizit.
-      _void_memberships_and_licenses!(user_id, reason: 'Zusammenführung')
-      deactivate!(user_id, reason: 'Zusammenführung')
+      _void_memberships_and_licenses!(user_id, reason: MERGE_REASON)
+      deactivate!(user_id, reason: MERGE_REASON)
 
       MergeLog.record!(
         object_type: 'player',
@@ -462,6 +462,90 @@ class Player < ApplicationRecord
       )
     end
     skipped_associations
+  end
+
+  # Kehrt einen Merge um. Gegenstueck zu `merge_into!`, gedacht fuer Fehl-Merges: zwei
+  # verschiedene Personen, die die Dubletten-Heuristik ueber ein um eine Ziffer abweichendes
+  # Geburtsdatum zusammengezogen hat. `_shares_game_with?` kann die nicht erkennen, wenn
+  # beide in verschiedenen Ligen spielen, denn verschiedene Ligen heissen nie dasselbe Spiel.
+  #
+  # Zurueck gehen:
+  #   - die Spielaufstellungen, die `_rewrite_player_game_references` umgeschrieben hat.
+  #     Zugeordnet wird ueber das Team der jeweiligen Spielseite: gehoert es zu einer Lizenz
+  #     dieses Profils, war der Eintrag dieses Profils.
+  #   - die auf den Master kopierten Lizenzen (ueber die Lizenz-UUID) und Zugehoerigkeiten
+  #     (ueber club_id und created_at, die das deep_dup unveraendert laesst)
+  #   - Lizenzdokumente, die an einer dieser Lizenzen haengen
+  #   - Deaktivierung, `merged_into_id` und die vom Merge geschlossene Zugehoerigkeit
+  #
+  # Nicht automatisch zurueck, sondern gemeldet:
+  #   - Transfers, Korrekturantraege, Sperren, Transferantraege. `_repoint_player_associations`
+  #     hat sie per `update_all` verschoben, ohne Spur, welche Zeile von welchem Profil kam.
+  #   - Felder, die der Merge von hier auf einen leeren Master uebertragen hat (Name,
+  #     Geburtsdatum, Geschlecht, Nation, E-Mail, security_id).
+  #
+  # Der MergeLog-Eintrag bleibt stehen: er protokolliert, was passiert ist.
+  #
+  # Die wieder geoeffneten Lizenzen stehen danach auf ihrem Stand VOR dem Merge, also unter
+  # Umstaenden APPROVED in einer abgelaufenen Saison. Den Saisonwechsel traegt
+  # `rake seasons:invalidate_stale_licenses` nach.
+  #
+  # Rueckgabe: Hash mit den Anzahlen und `:manual`.
+  def unmerge_from!(user_id)
+    raise ArgumentError, 'Profil ist nicht zusammengeführt' if merged_into_id.blank?
+
+    master = Player.find_by(id: merged_into_id)
+    raise ArgumentError, "Master ##{merged_into_id} nicht gefunden" if master.nil?
+    raise ArgumentError, "Master ##{master.id} ist selbst zusammengeführt" if master.merged_into_id.present?
+
+    unless deactivation_reason == MERGE_REASON
+      raise ArgumentError,
+            "Deaktivierungsgrund ist #{deactivation_reason.inspect}, erwartet #{MERGE_REASON.inspect}"
+    end
+
+    own_license_ids = Array(licenses).filter_map { |l| l['id'] if l.is_a?(Hash) }
+    if own_license_ids.size != Array(licenses).size
+      raise ArgumentError, 'Dublette hat Lizenzen ohne id; die Kopien am Master sind nicht zuordenbar'
+    end
+
+    master_own = Array(master.licenses).reject { |l| l.is_a?(Hash) && own_license_ids.include?(l['id']) }
+    geteilte_teams = _license_team_ids(licenses) & _license_team_ids(master_own)
+    if geteilte_teams.any?
+      raise ArgumentError,
+            "Beide Profile haben Lizenzen in denselben Teams (#{geteilte_teams.to_a.sort.join(', ')}); " \
+            'die Spielaufstellungen sind dann nicht eindeutig zuordenbar'
+    end
+
+    bilanz = { games: 0, licenses: 0, clubs: 0, reopened: 0, documents: 0, manual: {} }
+
+    ActiveRecord::Base.transaction do
+      bilanz[:games]    = _restore_player_game_references(master.id)
+      bilanz[:licenses] = Array(master.licenses).size - master_own.size
+      master.licenses   = master_own
+      bilanz[:clubs]    = _remove_merged_clubs_from(master)
+      bilanz[:reopened] = _reopen_master_memberships_closed_by_merge(master)
+      master.save!(validate: false)
+
+      bilanz[:documents] = LicenseDocument.where(player_id: master.id, license_id: own_license_ids)
+                                          .update_all(player_id: id)
+      bilanz[:manual]    = _associations_needing_review(master)
+
+      _pop_merge_license_entries!
+      self.merged_into_id = nil
+      # reactivate! raeumt nur deactivated_at/_by ab, den Grund laesst es stehen (bei einer
+      # regulaeren Reaktivierung ist er Teil der Historie). Hier muss er weg: der Merge, auf
+      # den er sich beruft, gilt nicht mehr.
+      self.deactivation_reason = nil
+      # reactivate! oeffnet die vom Merge geschlossene Zugehoerigkeit (sie traegt
+      # valid_set_by == deactivated_by im Sekundenfenster) und raeumt die Kennzeichnung ab.
+      # Die Lizenzeintraege des Merges popt es nicht, das ist eine Zeile darueber passiert.
+      reactivate!
+    end
+
+    Rails.logger.info(
+      "unmerge_from!: ##{id} aus Master ##{master.id} geloest (User ##{user_id}): #{bilanz.inspect}"
+    )
+    bilanz
   end
 
   # Öffentliche Vorab-Prüfung für Merge-Anträge: kommen beide Spieler gemeinsam
@@ -583,6 +667,18 @@ class Player < ApplicationRecord
   # Fassungen ohne Auswahl. reactivate! muss sie weiterhin erkennen, die
   # Oberfläche bietet sie nicht an.
   LEGACY_DEACTIVATION_REASONS = ['Deaktiviert'].freeze
+
+  # Grund, den `merge_into!` an Deaktivierung und Lizenzverlauf schreibt. Bewusst NICHT in
+  # DEACTIVATION_REASONS: `reactivate!` soll die Lizenzeintraege eines Merges gerade nicht
+  # poppen, dafuer gibt es `unmerge_from!`.
+  MERGE_REASON = 'Zusammenführung'.freeze
+
+  # Zeitfenster, in dem eine am Master geschlossene Zugehoerigkeit als "vom Merge
+  # geschlossen" gilt. Deutlich weiter als DEACTIVATION_CLOSE_WINDOW, weil zwischen den
+  # beiden Schreibvorgaengen des Merges (`_close_surplus_home_clubs` am Master, dann
+  # `deactivate!` an der Dublette) das Umschreiben der Spielaufstellungen liegt -- bei einem
+  # Profil mit vielen Spielen sind das Sekunden.
+  MERGE_CLOSE_WINDOW = 1.minute
 
   # Wahr, wenn das Ende dieser Vereinszugehörigkeit auf die Deaktivierung dieses
   # Profils zurückgeht. Trifft nur noch auf den Bestand zu: seit api#472 schliesst
@@ -1310,6 +1406,148 @@ class Player < ApplicationRecord
 
   # Kommen self und master gemeinsam in mindestens einer Aufstellung vor? Dann
   # würde ein Merge einen doppelten player_id-Eintrag im selben Spiel erzeugen.
+  # Kehrt `_rewrite_player_game_references` um: schreibt master_id dort auf dieses Profil
+  # zurueck, wo die Spielseite zu einem Team einer Lizenz dieses Profils gehoert. Ohne diese
+  # Seitenbedingung traefe es auch die eigenen Aufstellungen des Masters.
+  def _restore_player_game_references(master_id)
+    team_ids = _license_team_ids(licenses)
+    return 0 if team_ids.empty?
+
+    count = 0
+    Game.referencing_player(master_id).find_each do |game|
+      changed = false
+
+      %w[home guest].each do |side|
+        seiten_team = side == 'home' ? game.home_team_id : game.guest_team_id
+        next unless team_ids.include?(seiten_team)
+
+        lineup = game.players.is_a?(Hash) ? game.players[side] : nil
+        Array(lineup).each do |p|
+          next unless p.is_a?(Hash) && p['player_id'] == master_id
+
+          p['player_id'] = id
+          changed = true
+        end
+
+        changed = _restore_position_map_side(game.starting_players, side, master_id) || changed
+        changed = _restore_position_map_side(game.awards, side, master_id) || changed
+      end
+
+      next unless changed
+
+      game.save!(validate: false)
+      count += 1
+    end
+    count
+  end
+
+  # Wie `_rewrite_position_map`, aber nur fuer eine Spielseite und in die andere Richtung.
+  def _restore_position_map_side(container, side, master_id)
+    return false unless container.is_a?(Hash)
+
+    entry = container[side]
+    return false if entry.blank?
+
+    changed = false
+    if entry.is_a?(Hash)
+      entry.each do |key, value|
+        next unless value == master_id
+
+        entry[key] = id
+        changed = true
+      end
+    elsif entry.is_a?(Array)
+      entry.each do |e|
+        next unless e.is_a?(Hash) && e['player_id'] == master_id
+
+        e['player_id'] = id
+        changed = true
+      end
+    end
+    changed
+  end
+
+  def _license_team_ids(lics)
+    Array(lics).filter_map { |l| l['team_id'].to_i if l.is_a?(Hash) && l['team_id'].present? }.to_set
+  end
+
+  # Entfernt die Zugehoerigkeiten, die der Merge von hier auf den Master kopiert hat.
+  # Schluessel ist club_id + created_at: `_merge_clubs` kopiert per deep_dup, beide Werte
+  # bleiben unveraendert, und ein eigener Eintrag des Masters kann dieselbe Kombination nicht
+  # tragen.
+  def _remove_merged_clubs_from(master)
+    schluessel = Array(clubs).filter_map do |c|
+      [c['club_id'], c['created_at'].to_s] if c.is_a?(Hash)
+    end.to_set
+    return 0 if schluessel.empty?
+
+    vorher = Array(master.clubs).size
+    master.clubs = Array(master.clubs).reject do |c|
+      c.is_a?(Hash) && schluessel.include?([c['club_id'], c['created_at'].to_s])
+    end
+    vorher - Array(master.clubs).size
+  end
+
+  # Oeffnet die Zugehoerigkeiten, die der Merge am MASTER geschlossen hat. Seit api#481
+  # raeumt `_merge_clubs` ueberzaehlige offene Heimatvereine per
+  # `_close_surplus_home_clubs` ab, und das trifft je nach created_at auch den eigenen
+  # Eintrag des Masters. Merges vor api#481 (u.a. der Dubletten-Lauf vom 08.07.2026) haben
+  # das nicht getan, dort ist der Aufruf ein No-op.
+  #
+  # Erkennungsmerkmal ist dasselbe wie bei `membership_closed_by_deactivation?`: dieselbe
+  # verfuegende Person wie die Deaktivierung der Dublette, und ein Enddatum im Zeitfenster
+  # um deren Zeitstempel.
+  def _reopen_master_memberships_closed_by_merge(master)
+    return 0 if deactivated_at.blank? || deactivated_by.blank?
+
+    count = 0
+    Array(master.clubs).each do |c|
+      next unless c.is_a?(Hash) && c['valid_until'].present?
+      next unless c['valid_set_by'].present? && c['valid_set_by'] == deactivated_by
+      next unless c['valid_until'].to_time.between?(deactivated_at - MERGE_CLOSE_WINDOW,
+                                                    deactivated_at + MERGE_CLOSE_WINDOW)
+
+      vorher = c.delete(VALID_BEFORE_DEACTIVATION)
+      if vorher.is_a?(Hash) && vorher['valid_until'].present?
+        c['valid_until'] = vorher['valid_until']
+        c['valid_set_by'] = vorher['valid_set_by']
+      else
+        c.delete('valid_until')
+        c.delete('valid_set_by')
+      end
+      count += 1
+    end
+    count
+  end
+
+  # Popt die DELETED-Eintraege, die `_void_memberships_and_licenses!` beim Merge an jede
+  # damals laufende Lizenz gehaengt hat. Bewusst eng: nur der oberste Eintrag, nur DELETED,
+  # nur mit dem Merge-Grund und derselben verfuegenden Person wie die Deaktivierung.
+  def _pop_merge_license_entries!
+    self.licenses ||= []
+    licenses.each do |license|
+      last = Array(license['history']).last
+      next unless last.is_a?(Hash) &&
+                  last['license_status_id'].to_i == License::DELETED &&
+                  last['reason'] == MERGE_REASON &&
+                  last['created_by'] == deactivated_by
+
+      license['history'].pop
+    end
+  end
+
+  # Assoziationen, die `_repoint_player_associations` per update_all auf den Master
+  # verschoben hat. Welche Zeile von welchem Profil kam, steht nirgends, darum werden sie
+  # nur gemeldet und nicht angefasst.
+  def _associations_needing_review(master)
+    {
+      'transfer' => Transfer.where(player_id: master.id).pluck(:id),
+      'player_change_request' => PlayerChangeRequest.where(player_id: master.id).pluck(:id),
+      'player_suspension' => PlayerSuspension.where(player_id: master.id).pluck(:id),
+      'transfer_request' => TransferRequest.where(player_id: master.id).pluck(:id)
+    }.reject { |_typ, ids| ids.empty? }
+  end
+
   def _shares_game_with?(master)
     shared = Game.referencing_player(id).to_a & Game.referencing_player(master.id).to_a
     shared.any? { |game| game.player_in_lineup?(id) && game.player_in_lineup?(master.id) }
