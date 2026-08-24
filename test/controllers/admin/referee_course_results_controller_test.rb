@@ -185,6 +185,10 @@ module Admin
       assert_not_includes ids, @draft_result.id
     end
 
+    # Der Statuswechsel wird hier direkt gesetzt: Ueber die API wird ein bereits
+    # eingereichter Import nie mehr `cancelled` (#destroy verlangt `in_review`).
+    # Erreichbar ist die Lage nur ueber die Datenbank, und genau dagegen sichert
+    # der Guard.
     test 'index zeigt keine Zeilen eines abgebrochenen Imports' do
       @import.update!(status: 'cancelled')
       login(@admin)
@@ -242,6 +246,27 @@ module Admin
       assert_equal 'pending_review', @result.reload.status
     end
 
+    # Gegenrichtung zum Guard: Nach dem Submit gehoert die Zeile dem LV, der
+    # Importeur darf sie nicht mehr bearbeiten. Ohne diesen Test steht auf dem
+    # eingereichten Import ueberhaupt kein update-Fall mehr, seit die drei
+    # Gueltigkeits-Tests auf den Entwurfs-Import umgezogen sind.
+    test 'update auf die Zeile eines eingereichten Imports ist gesperrt' do
+      login(@admin)
+
+      patch "/api/v2/admin/referee_course_results/#{@result.id}", params: { lizenzstufe: 'G' }
+
+      assert_response :forbidden
+    end
+
+    test 'reject auf die Zeile eines nicht eingereichten Imports aendert nichts' do
+      login(@admin)
+
+      post "/api/v2/admin/referee_course_results/#{@draft_result.id}/reject", params: { reason: 'Egal' }
+
+      assert_response :unprocessable_entity
+      assert_equal 'pending_review', @draft_result.reload.status
+    end
+
     # --- Snapshot: was sieht der LV? ---------------------------------------
     # Ohne geburtsdatum/email im Snapshot zeigt die Maske in der Spalte
     # „Datenbank" ein „—", obwohl der Wert beim Schiri steht — eine Abweichung
@@ -278,6 +303,85 @@ module Admin
       row = response.parsed_body.find { |r| r['id'] == @result.id }
       assert_equal 'UV Zwigge 07', row['matched_club']['name']
       assert_equal 'Unihockeyverein Zwigge 07 e.V.', row['csv']['verein']
+    end
+
+    # Der Kern des zweiten Befunds: `matched_club` faellt beim Import auf den
+    # Verein des Schiedsrichters zurueck, wenn der Name aus der Datei nicht
+    # trifft. Wer damit die Abweichung berechnet, sieht Gleichheit, obwohl der
+    # Score den Verein als Nicht-Treffer zaehlt. `csv_club_match` traegt darum
+    # ausschliesslich das Ergebnis des Namens-Lookups.
+    test 'index unterscheidet den Namenstreffer aus der Datei vom finalen Verein' do
+      club = create(:club, name: 'UV Zwigge 07')
+      referee = create(:referee, club_id: club.id)
+      # Genau die Lage aus dem Kursimport: Datei schreibt aus, Datenbank kuerzt,
+      # der Import setzt deshalb den Verein des Schiedsrichters als Fallback.
+      @result.update!(referee: referee,
+                      csv_verein: 'Unihockeyverein Zwigge 07 e.V.',
+                      master_club_id_final: club.id)
+      login(@admin)
+
+      get '/api/v2/admin/referee_course_results'
+
+      assert_response :success
+      row = response.parsed_body.find { |r| r['id'] == @result.id }
+      assert_equal 'UV Zwigge 07', row['matched_club']['name']
+      assert_nil row['csv_club_match']
+    end
+
+    test 'index liefert den Namenstreffer, wenn die Schreibweise passt' do
+      club = create(:club, name: 'UV Zwigge 07')
+      @result.update!(csv_verein: ' uv zwigge 07 ', master_club_id_final: club.id)
+      login(@admin)
+
+      get '/api/v2/admin/referee_course_results'
+
+      assert_response :success
+      row = response.parsed_body.find { |r| r['id'] == @result.id }
+      assert_equal club.id, row['csv_club_match']['id']
+    end
+
+    # Der LV darf den Verein beim Freigeben setzen. Dann muss die Zeile den
+    # Landesverband des gesetzten Vereins tragen, nicht den des Importvorschlags
+    # -- ueber dieses Feld filtert die Freigabeliste spaeter.
+    test 'approve uebernimmt den vom LV gesetzten Verein samt Landesverband' do
+      ziel_lv = create(:state_association)
+      ziel_club = create(:club, name: 'Zielverein', state_association_id: ziel_lv.id)
+      result = pending_result(license_notification_pending: false)
+      result.update!(master_club_id_by_importer: nil, master_club_id_final: nil)
+      login(@admin)
+
+      post "/api/v2/admin/referee_course_results/#{result.id}/approve",
+           params: { master_final: { club_id: ziel_club.id } }
+
+      assert_response :success
+      assert_equal ziel_club.id, result.reload.master_club_id_final
+      assert_equal ziel_club.id, result.referee.reload.club_id
+      assert_equal ziel_lv.id, result.state_association_id
+    end
+
+    # Der Ausgang der Lizenzmail darf nicht verschwiegen werden: Ein Schiri ohne
+    # hinterlegte Adresse ist eine Aufgabe fuer den Reviewer. Als reiner Erfolg
+    # gemeldet wuerde das nie jemand bemerken.
+    test 'approve meldet den Ausgang der Lizenzmail zurueck' do
+      result = pending_result(license_notification_pending: true)
+      login(@admin)
+
+      post "/api/v2/admin/referee_course_results/#{result.id}/approve"
+
+      assert_response :success
+      assert_equal RefereeNotification::SENT.to_s, response.parsed_body['license_notification']
+    end
+
+    test 'approve meldet einen Schiri ohne Adresse als nicht erreichbar' do
+      result = pending_result(license_notification_pending: true)
+      result.referee.update!(email: nil)
+      result.update!(master_email_final: nil)
+      login(@admin)
+
+      post "/api/v2/admin/referee_course_results/#{result.id}/approve"
+
+      assert_response :success
+      assert_equal RefereeNotification::UNREACHABLE.to_s, response.parsed_body['license_notification']
     end
 
     private
