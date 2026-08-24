@@ -607,6 +607,13 @@ class PlayersController < ApplicationController
         else
           render json: player.errors, status: :unprocessable_entity
         end
+      elsif create_modus
+        # Eigene Meldung, weil hier fast immer ein Teammanager steht: Das
+        # Anlegen liegt beim Vereinsmanager (Club#user_permissions). Die
+        # Vereinssicht blendet den Knopf ab, ein noch offener Tab oder ein
+        # direkter Aufruf landet hier.
+        render json: { message: 'Spieler*innen anlegen darf nur der Vereinsmanager des Vereins.' },
+               status: :forbidden
       else
         render json: { message: 'Keine Berechtigung' }, status: :forbidden
       end
