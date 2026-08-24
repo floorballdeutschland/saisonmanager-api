@@ -516,13 +516,13 @@ class Player < ApplicationRecord
             'die Spielaufstellungen sind dann nicht eindeutig zuordenbar'
     end
 
-    bilanz = { games: 0, licenses: 0, clubs: 0, reopened: 0, documents: 0, manual: {} }
+    bilanz = { games: 0, licenses: 0, clubs: 0, clubs_manual: [], reopened: 0, documents: 0, manual: {} }
 
     ActiveRecord::Base.transaction do
       bilanz[:games]    = _restore_player_game_references(master.id)
       bilanz[:licenses] = Array(master.licenses).size - master_own.size
       master.licenses   = master_own
-      bilanz[:clubs]    = _remove_merged_clubs_from(master)
+      bilanz[:clubs], bilanz[:clubs_manual] = _remove_merged_clubs_from(master)
       bilanz[:reopened] = _reopen_master_memberships_closed_by_merge(master)
       master.save!(validate: false)
 
@@ -1472,31 +1472,60 @@ class Player < ApplicationRecord
   end
 
   # Entfernt die Zugehoerigkeiten, die der Merge von hier auf den Master kopiert hat.
-  # Schluessel ist club_id + created_at: `_merge_clubs` kopiert per deep_dup, beide Werte
-  # bleiben unveraendert, und ein eigener Eintrag des Masters kann dieselbe Kombination nicht
-  # tragen.
+  # Schluessel ist club_id + created_at, denn `_merge_clubs` kopiert per deep_dup und laesst
+  # beide Werte unveraendert.
+  #
+  # Der Schluessel traegt aber nur, solange created_at gesetzt ist. Im Altbestand fehlt es
+  # (derselbe Grund, aus dem `_merge_clubs` beim Sortieren club_id als Tiebreaker braucht),
+  # und dann ist ein Eintrag des Masters nicht mehr von einer Kopie zu unterscheiden. Genau
+  # dort darf nichts geloescht werden: `_merge_clubs` verwirft eine OFFENE Zugehoerigkeit der
+  # Dublette, wenn der Master denselben Verein offen hat -- der gleichnamige Eintrag am
+  # Master ist dann sein eigener. Belegt an Moritz Winter 12635/8282, wo beide Profile
+  # denselben Heimatverein ohne created_at tragen.
+  #
+  # Also: nur entfernen, wenn created_at gesetzt ist UND genau ein Eintrag des Masters dazu
+  # passt. Alles andere wird zur Pruefung gemeldet.
+  #
+  # Rueckgabe: [Anzahl entfernt, Vereins-IDs zur Handpruefung]
   def _remove_merged_clubs_from(master)
-    schluessel = Array(clubs).filter_map do |c|
-      [c['club_id'], c['created_at'].to_s] if c.is_a?(Hash)
-    end.to_set
-    return 0 if schluessel.empty?
+    bestand = Array(master.clubs)
+    zu_entfernen = []
+    ambivalent = []
 
-    vorher = Array(master.clubs).size
-    master.clubs = Array(master.clubs).reject do |c|
-      c.is_a?(Hash) && schluessel.include?([c['club_id'], c['created_at'].to_s])
+    Array(clubs).each do |c|
+      next unless c.is_a?(Hash)
+
+      if c['created_at'].blank?
+        ambivalent << c['club_id']
+        next
+      end
+
+      treffer = bestand.each_index.reject { |i| zu_entfernen.include?(i) }.select do |i|
+        mc = bestand[i]
+        mc.is_a?(Hash) && mc['club_id'] == c['club_id'] &&
+          mc['created_at'].to_s == c['created_at'].to_s
+      end
+
+      if treffer.size == 1
+        zu_entfernen << treffer.first
+      else
+        ambivalent << c['club_id']
+      end
     end
-    vorher - Array(master.clubs).size
+
+    master.clubs = bestand.reject.with_index { |_, i| zu_entfernen.include?(i) }
+    [zu_entfernen.size, ambivalent.uniq]
   end
 
   # Oeffnet die Zugehoerigkeiten, die der Merge am MASTER geschlossen hat. Seit api#481
-  # raeumt `_merge_clubs` ueberzaehlige offene Heimatvereine per
-  # `_close_surplus_home_clubs` ab, und das trifft je nach created_at auch den eigenen
-  # Eintrag des Masters. Merges vor api#481 (u.a. der Dubletten-Lauf vom 08.07.2026) haben
-  # das nicht getan, dort ist der Aufruf ein No-op.
+  # raeumt `_merge_clubs` ueberzaehlige offene Heimatvereine per `_close_surplus_home_clubs`
+  # ab, und das trifft je nach created_at auch den eigenen Eintrag des Masters. Merges vor
+  # api#481 (u.a. der Dubletten-Lauf vom 08.07.2026) haben das nicht getan, dort ist der
+  # Aufruf ein No-op.
   #
-  # Erkennungsmerkmal ist dasselbe wie bei `membership_closed_by_deactivation?`: dieselbe
-  # verfuegende Person wie die Deaktivierung der Dublette, und ein Enddatum im Zeitfenster
-  # um deren Zeitstempel.
+  # Erkennungsmerkmal wie bei `membership_closed_by_deactivation?`: dieselbe verfuegende
+  # Person wie die Deaktivierung der Dublette, und ein Enddatum im Zeitfenster um deren
+  # Zeitstempel.
   def _reopen_master_memberships_closed_by_merge(master)
     return 0 if deactivated_at.blank? || deactivated_by.blank?
 

@@ -13,11 +13,23 @@
 # in derselben Saison bei einem anderen Verein. Eine Person spielt nicht gleichzeitig in
 # zwei Regionalligen verschiedener Landesteile.
 #
-# Belegter Fall (Meldung TV Lilienthal, 24.08.2026):
+# Freigegeben am 24.08.2026, nach Durchsicht aller 678 zusammengefuehrten Profile:
+#
 #   26679 Alexander Schmidt, geb 15.07.2015, TV Lilienthal
 #     -> 24193 Alexander Schmidt, geb 12.07.2015, SC Potsdam
-#   Beide waren in S16 und S17 parallel lizenziert, 26679 in der Regionalliga Nordwest
-#   (Teams 6659, 7105, 7122), 24193 beim SC Potsdam.
+#   Beide in S16 und S17 parallel lizenziert, 26679 in der Regionalliga Nordwest
+#   (Teams 6659, 7105, 7122), 24193 beim SC Potsdam. Gemeldet vom TV Lilienthal.
+#
+#   12635 Moritz Winter, geb 17.07.2000, ATS Buntentor
+#     -> 8282 Moritz Winter, geb 17.02.2000, UV Zwigge 07
+#   Kollision in S3. Hier weicht der MONAT ab, nicht nur ein Tag.
+#
+# Der Scan fand 19 Profile mit dieser Signatur (abweichendes Geburtsdatum UND erteilte
+# Lizenz in derselben Saison bei einem anderen Verein). Die uebrigen 17 bleiben bewusst
+# zusammengefuehrt (Entscheidung vom 24.08.2026): Bei sechs tragen beide Profile dieselben
+# Vereine, die Kollision entsteht nur aus der Paarung -- das ist ein echtes Duplikat mit
+# Zweitspielrecht. Die restlichen elf sind Profile ab ID 29000 aus dem Altdaten-Import
+# 2010-2014, die in S2/S4 gegen die Ablage `zz_not in use` kollidieren.
 #
 # Zweiter Schritt, der die Zugehoerigkeit danach ganz entfernte: Der Merge nahm die offene
 # Heimatmitgliedschaft mit auf den Master, der hatte danach zwei offene Heimatvereine, und
@@ -81,7 +93,17 @@ namespace :players do
     puts "Spiele zurueckgeschrieben:   #{bilanz[:games]}"
     puts "Lizenzen vom Master geloest: #{bilanz[:licenses]}"
     puts "Zugehoerigkeiten entfernt:   #{bilanz[:clubs]}"
+    puts "Zugehoerigkeiten geoeffnet:  #{bilanz[:reopened]} (am Master, vom Merge geschlossen)"
     puts "Lizenzdokumente zurueck:     #{bilanz[:documents]}"
+
+    if bilanz[:clubs_manual].present?
+      puts
+      puts 'VON HAND PRUEFEN — diese Zugehoerigkeiten tragen kein created_at, eine Kopie ist'
+      puts 'dort nicht vom eigenen Eintrag des Masters zu unterscheiden. Nichts geloescht:'
+      bilanz[:clubs_manual].each do |cid|
+        puts "  Verein #{cid} #{Club.find_by(id: cid)&.name}"
+      end
+    end
 
     if bilanz[:manual].present?
       puts

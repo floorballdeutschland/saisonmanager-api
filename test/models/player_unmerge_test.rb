@@ -106,6 +106,27 @@ class PlayerUnmergeTest < ActiveSupport::TestCase
     assert_match(/nicht zusammengeführt/, fehler.message)
   end
 
+  # Altbestand: Zugehoerigkeiten ohne created_at sind nicht von einer Kopie zu
+  # unterscheiden. `_merge_clubs` verwirft die OFFENE Zugehoerigkeit der Dublette, wenn der
+  # Master denselben Verein offen hat -- der gleichnamige Eintrag am Master ist dann sein
+  # eigener und darf nicht verschwinden. Belegt an Moritz Winter 12635/8282.
+  test 'eine Zugehoerigkeit ohne created_at wird gemeldet statt geloescht' do
+    gemeinsam = create(:club)
+    @master.update!(clubs: [{ 'club_id' => gemeinsam.id, 'home_club' => true }])
+    @dublette.update!(clubs: [{ 'club_id' => gemeinsam.id, 'home_club' => true }])
+
+    @dublette.merge_into!(@master, @user.id)
+    bilanz = @dublette.reload.unmerge_from!(@user.id)
+    @master.reload
+
+    assert_equal 0, bilanz[:clubs], 'ohne created_at darf nichts entfernt werden'
+    assert_equal [gemeinsam.id], bilanz[:clubs_manual]
+    assert_equal [gemeinsam.id], Array(@master.clubs).map { |c| c['club_id'] },
+                 'der eigene Eintrag des Masters muss stehen bleiben'
+    assert_equal [gemeinsam.id], offene_vereine(@master),
+                 'und er muss wieder offen sein'
+  end
+
   def lizenz_fuer(team)
     { 'id' => Digest::UUID.uuid_v4, 'team_id' => team.id, 'season_id' => team.league.season_id,
       'history' => [{ 'license_status_id' => License::APPROVED,
