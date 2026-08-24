@@ -387,6 +387,20 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' }
       ]
     },
+    'TransferRequestMailer#club_deactivated_notification' => {
+      mailer_class: 'TransferRequestMailer',
+      action_name: 'club_deactivated_notification',
+      description: 'Benachrichtigung an den Spieler und den abgebenden Verein, dass der Antrag beendet ist, ' \
+                   'weil der aufnehmende Verein deaktiviert wurde.',
+      default_subject: '{{request_noun}} beendet, Verein deaktiviert: {{player_name}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'request_noun', description: 'Bezeichnung des Antrags (Transferantrag/Spielerfreigabe-Antrag)' },
+        { key: 'player_name', description: 'Vor- und Nachname des Spielers' },
+        { key: 'club_name', description: 'Name des deaktivierten aufnehmenden Vereins' }
+      ]
+    },
     'TransferRequestMailer#player_rejected_clubs_notification' => {
       mailer_class: 'TransferRequestMailer',
       action_name: 'player_rejected_clubs_notification',

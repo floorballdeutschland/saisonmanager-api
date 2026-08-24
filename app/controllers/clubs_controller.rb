@@ -244,8 +244,11 @@ class ClubsController < ApplicationController
       return render json: { error: 'Keine Berechtigung' }, status: :forbidden
     end
 
-    club.deactivate!(current_user.id)
-    render json: club.full_hash
+    # Die Zahl der beendeten Transferanträge/Freigaben gehört in die Antwort:
+    # Die Deaktivierung hat damit eine Nebenwirkung, die der Aufrufer sonst
+    # nirgends sieht (api#528).
+    ended = club.deactivate!(current_user.id)
+    render json: club.full_hash.merge(ended_transfer_requests: ended.size)
   end
 
   def admin_club_reactivate

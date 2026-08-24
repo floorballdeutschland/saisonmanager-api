@@ -95,8 +95,23 @@ class Club < ApplicationRecord
     self.notify_excluded_user_ids = club_managers.map(&:id).reject { |id| selected.include?(id) }
   end
 
+  # Die Deaktivierung beendet die laufenden Transferantraege und Freigaben AUF
+  # diesen Verein (api#528). Im Modell und nicht in der Controller-Aktion, damit
+  # kein Weg daran vorbeifuehrt.
+  #
+  # Die Mails gehen erst nach der Transaktion raus, wie bei
+  # TransferRequest#execute_transfer!: Ein Fehlschlag beim Versand soll die
+  # Deaktivierung nicht zurueckdrehen.
   def deactivate!(user_id)
-    update!(deactivated_at: Time.current, deactivated_by: user_id)
+    ended = nil
+
+    Club.transaction do
+      update!(deactivated_at: Time.current, deactivated_by: user_id)
+      ended = TransferRequest.end_for_deactivated_club(id)
+    end
+
+    ended.each { |tr| TransferRequestMailer.club_deactivated_notification(tr).deliver_later }
+    ended
   end
 
   def reactivate!

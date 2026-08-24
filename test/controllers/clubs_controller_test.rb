@@ -1064,6 +1064,29 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_nil club.reload.deactivated_at
   end
 
+  # api#528: Der Riegel sitzt im Modell, damit kein Weg daran vorbeifuehrt --
+  # hier die Verdrahtung ueber den Endpunkt, den die Vereinsmaske aufruft.
+  test 'admin_club_deactivate beendet die laufenden Antraege auf den Verein' do
+    sa = create(:state_association)
+    go = create(:game_operation, state_association_id: sa.id)
+    former = create(:club, game_operation: go, contact_email: 'abgebend@test.example')
+    target = create(:club, game_operation: go)
+    player = create(:player, email: 'spieler@test.example',
+                             clubs: [{ 'club_id' => former.id, 'home_club' => true }])
+    tr = TransferRequest.create!(player: player, requesting_club: target, former_club: former,
+                                 status: 'pending_lv', request_type: 'transfer',
+                                 created_by: create(:user, :admin).id,
+                                 season_id: Setting.current_season_id)
+    login(create(:user, :admin))
+
+    post "/api/v2/admin/clubs/#{target.id}/deactivate"
+
+    assert_response :success
+    assert_equal 'withdrawn', tr.reload.status
+    assert_equal 1, JSON.parse(response.body)['ended_transfer_requests'],
+                 'die Antwort nennt die Nebenwirkung'
+  end
+
   test 'admin_club_reactivate bleibt für den VM gesperrt' do
     club = create(:club)
     club.deactivate!(create(:user, :admin).id)
