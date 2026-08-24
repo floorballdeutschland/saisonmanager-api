@@ -83,8 +83,18 @@ module RefereeScoping
                 .uniq
   end
 
+  # Eigene Zustaendigkeit ueber Club.responsible_state_association_ids und nicht
+  # ueber GameOperation#state_association_id: Ein Spielverbund wie SBK Ost haengt
+  # an einem eigenen Landesverband, seine Vereine liegen aber in den
+  # untergeordneten Landesverbaenden (Sachsen-Anhalt, Thueringen, Sachsen). Die
+  # Spalte allein liefert nur die Wurzel, und die hatte auf Produktion am
+  # 24.08.2026 einen Verein und keinen einzigen Schiedsrichter -- der RSK des
+  # Verbunds sah damit ausschliesslich die Schiris einer fremden Vereins-Freigabe
+  # und keinen aus dem eigenen Bestand (2028 fehlten). Dieselbe Kette liest die
+  # Vereinsliste (Club.home_clubs_of) und die Rollenvergabe schon; nur das
+  # Schiri-Scoping war beim Umstieg auf den Verbandsbaum stehen geblieben.
   def lv_club_ids(go_ids)
-    own_sa_ids = GameOperation.where(id: go_ids).pluck(:state_association_id).compact
+    own_sa_ids = Club.responsible_state_association_ids(go_ids)
     # Vereins-Freigaben: Hat ein anderer LV seine Vereine an einen dieser
     # Spielbetriebe freigegeben (StateAssociationRelease), gehören dessen Schiris
     # ebenfalls zum ansetzbaren Bestand (analog Club.admin_user_clubs).
