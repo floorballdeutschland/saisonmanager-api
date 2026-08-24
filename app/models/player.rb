@@ -466,33 +466,6 @@ class Player < ApplicationRecord
     skipped_associations
   end
 
-  # Kehrt einen Merge um. Gegenstueck zu `merge_into!`, gedacht fuer Fehl-Merges: zwei
-  # verschiedene Personen, die die Dubletten-Heuristik ueber ein um eine Ziffer abweichendes
-  # Geburtsdatum zusammengezogen hat. `_shares_game_with?` kann die nicht erkennen, wenn
-  # beide in verschiedenen Ligen spielen, denn verschiedene Ligen heissen nie dasselbe Spiel.
-  #
-  # Zurueck gehen:
-  #   - die Spielaufstellungen, die `_rewrite_player_game_references` umgeschrieben hat.
-  #     Zugeordnet wird ueber das Team der jeweiligen Spielseite: gehoert es zu einer Lizenz
-  #     dieses Profils, war der Eintrag dieses Profils.
-  #   - die auf den Master kopierten Lizenzen (ueber die Lizenz-UUID) und Zugehoerigkeiten
-  #     (ueber club_id und created_at, die das deep_dup unveraendert laesst)
-  #   - Lizenzdokumente, die an einer dieser Lizenzen haengen
-  #   - Deaktivierung, `merged_into_id` und die vom Merge geschlossene Zugehoerigkeit
-  #
-  # Nicht automatisch zurueck, sondern gemeldet:
-  #   - Transfers, Korrekturantraege, Sperren, Transferantraege. `_repoint_player_associations`
-  #     hat sie per `update_all` verschoben, ohne Spur, welche Zeile von welchem Profil kam.
-  #   - Felder, die der Merge von hier auf einen leeren Master uebertragen hat (Name,
-  #     Geburtsdatum, Geschlecht, Nation, E-Mail, security_id).
-  #
-  # Der MergeLog-Eintrag bleibt stehen: er protokolliert, was passiert ist.
-  #
-  # Die wieder geoeffneten Lizenzen stehen danach auf ihrem Stand VOR dem Merge, also unter
-  # Umstaenden APPROVED in einer abgelaufenen Saison. Den Saisonwechsel traegt
-  # `rake seasons:invalidate_stale_licenses` nach.
-  #
-  # Rueckgabe: Hash mit den Anzahlen und `:manual`.
   # Öffentliche Vorab-Prüfung für Merge-Anträge: kommen beide Spieler gemeinsam
   # in einer Aufstellung vor, sind es sicher zwei verschiedene Personen.
   def shares_game_with?(other)
