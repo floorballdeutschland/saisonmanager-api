@@ -126,7 +126,48 @@ module Admin
       assert_not result.reload.license_notification_pending
     end
 
+    # Dieselbe Ursache wie in RefereeScoping#lv_club_ids: In die Ergebniszeile
+    # schreibt der Controller die rohe `clubs.state_association_id`, also den
+    # untergeordneten Landesverband. Der Reviewer-Scope las dagegen nur die Wurzel
+    # am Spielbetrieb -- der RSK eines Spielverbunds bekam seine eigenen
+    # Kursergebnisse damit nie zur Freigabe.
+    test 'RSK eines Spielverbunds sieht die Kursergebnisse der untergeordneten Landesverbaende' do
+      verbund = create(:state_association, referee_license_review_enabled: true)
+      go = create(:game_operation, state_association_id: verbund.id)
+      kind = create(:state_association, parent_id: verbund.id)
+      @result.update!(state_association_id: kind.id)
+
+      login(rsk_user(go.id))
+      get '/api/v2/admin/referee_course_results'
+
+      assert_response :success
+      assert_includes response.parsed_body.map { |r| r['id'] }, @result.id
+    end
+
+    test 'RSK eines Spielverbunds sieht die Kursergebnisse eines fremden Landesverbands nicht' do
+      verbund = create(:state_association, referee_license_review_enabled: true)
+      go = create(:game_operation, state_association_id: verbund.id)
+      create(:state_association, parent_id: verbund.id)
+      @result.update!(state_association_id: create(:state_association).id)
+
+      login(rsk_user(go.id))
+      get '/api/v2/admin/referee_course_results'
+
+      assert_response :success
+      assert_not_includes response.parsed_body.map { |r| r['id'] }, @result.id
+    end
+
     private
+
+    def rsk_user(go_id)
+      User.create!(
+        user_name: "rsk_#{SecureRandom.hex(4)}",
+        password: 'password123',
+        password_confirmation: 'password123',
+        permissions: [{ 'user_group_id' => 3, 'game_operation_id' => go_id }],
+        teams: []
+      )
+    end
 
     # Zeile, die auf die LV-Freigabe wartet: Lizenzfelder stehen (der Submit hat
     # sie geschrieben), der Schiri ist erreichbar.

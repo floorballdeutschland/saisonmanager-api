@@ -128,7 +128,14 @@ module Admin
       return nil unless perm_hash[:rsk].present?
 
       go_ids = perm_hash[:rsk].reject(&:zero?)
-      GameOperation.where(id: go_ids).pluck(:state_association_id).compact.uniq
+      # Ueber den Verbandsbaum und nicht ueber GameOperation#state_association_id:
+      # In die Ergebniszeile schreibt #sync_state_association die rohe
+      # `clubs.state_association_id`, also bei einem Spielverbund den
+      # untergeordneten Landesverband. Die Spalte des Spielbetriebs traegt nur die
+      # Wurzel, damit haette der RSK eines Verbunds seine eigenen
+      # Kursergebnisse nie zu sehen bekommen. Gleiche Ursache wie in
+      # RefereeScoping#lv_club_ids.
+      Club.responsible_state_association_ids(go_ids)
     end
 
     def importer_can_edit?(result)
