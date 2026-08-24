@@ -4,18 +4,28 @@ module Admin
 
     # GET /api/v2/admin/referee_course_results
     # Liste aller offenen Ergebnisse, gefiltert nach Rolle:
-    #   - Admin / RSK FD (Scope 0): alle pending_review
-    #   - RSK eines LV: nur pending_review in seinen Landesverbänden
+    #   - Admin / RSK FD (Scope 0): alle Zeilen auf `pending_review`
+    #   - RSK eines LV: davon die seiner Landesverbände
+    # „Offen" heißt hier zweierlei: Die Zeile steht auf `pending_review` UND ihr
+    # Import ist eingereicht.
+    #
+    # `awaiting_lv_review` ist hier nicht optional: Ohne den Import-Status
+    # standen auch die Vorschauzeilen eines noch nicht eingereichten und die
+    # eines abgebrochenen Imports mit einem „Freigeben"-Knopf in dieser Liste.
     def index
       ph = current_user.permission_hash
       scope = RefereeCourseResult.pending_review
+                                 .awaiting_lv_review
                                  .includes(:referee, :referee_course_import, :state_association)
 
       sa_ids = reviewer_state_association_ids(ph)
       return forbidden_response if sa_ids.nil?
 
       scope = scope.for_state_associations(sa_ids) unless sa_ids == :all
-      render json: scope.order(:created_at).map { |r| short_result_hash(r) }
+      results = scope.order(:created_at).to_a
+      clubs = clubs_by_id_for(results)
+      csv_clubs = csv_club_matches_for(results)
+      render json: results.map { |r| short_result_hash(r, clubs, csv_clubs) }
     end
 
     # PATCH /api/v2/admin/referee_course_results/:id
@@ -62,6 +72,7 @@ module Admin
     # nicht freigegeben hat.
     def reject
       return forbidden_response unless reviewer_can_approve?(@result)
+      return not_submitted_response unless @result.awaiting_lv_review?
       return render(json: { error: 'Nicht im Review-Status' }, status: :unprocessable_entity) \
         unless @result.status == 'pending_review'
 
@@ -92,6 +103,7 @@ module Admin
     # über `master_final` ändern. Lizenzstufe und Gültigkeit sind unveränderbar.
     def approve
       return forbidden_response unless reviewer_can_approve?(@result)
+      return not_submitted_response unless @result.awaiting_lv_review?
       return render(json: { error: 'Nicht im Review-Status' }, status: :unprocessable_entity) \
         unless @result.status == 'pending_review'
 
@@ -99,13 +111,27 @@ module Admin
       sync_state_association(@result)
 
       applier = RefereeCourseResultApplier.new(@result, performed_by_user: current_user)
-      applier.call(review_required: false)
+      begin
+        applier.call(review_required: false)
+      rescue RefereeCourseResultApplier::Error => e
+        # Die Meldung des Appliers traegt Validierungstexte und die interne
+        # Result-ID; fuer den Reviewer ist sie unbrauchbar. Der Vorgang gehoert
+        # aber in die Diagnose, sonst ist spaeter nicht zu rekonstruieren,
+        # welche Zeile warum nicht durchging.
+        Rails.logger.error("Kursfreigabe Result ##{@result.id} fehlgeschlagen: #{e.class}: #{e.message}")
+        Sentry.capture_exception(e) if defined?(Sentry)
+        return render(json: { error: 'Die Freigabe konnte nicht gespeichert werden' },
+                      status: :unprocessable_entity)
+      end
+
       # Nach dem Commit: Die Lizenzmail zu einer review-pflichtigen Zeile geht
-      # erst hier raus, nicht schon beim Submit.
-      applier.deliver_pending_license_notification
-      render json: @result.reload.short_hash
-    rescue RefereeCourseResultApplier::Error => e
-      render json: { error: e.message }, status: :unprocessable_entity
+      # erst hier raus, nicht schon beim Submit. Der Ausgang wird gemeldet und
+      # nicht verworfen: „kein Empfaenger hinterlegt" ist eine Aufgabe fuer den
+      # Reviewer, und als Erfolg gemeldet wuerde sie nie jemand bemerken.
+      # Gleiche Begruendung wie beim Submit (RefereeCourseImportsController).
+      outcome = applier.deliver_pending_license_notification
+      Rails.logger.info("Kursfreigabe Result ##{@result.id}: Lizenzmail #{outcome}")
+      render json: @result.reload.short_hash.merge(license_notification: outcome)
     end
 
     private
@@ -118,6 +144,16 @@ module Admin
 
     def forbidden_response
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
+    end
+
+    # Zeilen eines nicht eingereichten oder abgebrochenen Imports sind keine
+    # Freigabe-Faelle. Nach dem Filter in #index kann eine frisch geladene Liste
+    # sie gar nicht mehr enthalten; erreichbar bleiben eine vor diesem Stand
+    # geladene Maske, direkte API-Aufrufe und Statusaenderungen an der Datenbank
+    # (auf Produktion vorgekommen). Der Guard ist also bewusst defensiv.
+    def not_submitted_response
+      render json: { error: 'Der Import ist nicht eingereicht. Die Liste wird neu geladen.' },
+             status: :unprocessable_entity
     end
 
     # Liefert die State-Association-IDs, deren Vorgänge der Benutzer reviewen
@@ -203,8 +239,15 @@ module Admin
       referee
     end
 
+    # Der finale Verein ist massgeblich, nicht der des Importeurs: Beim Freigeben
+    # darf der LV den Verein aendern, und der Applier schreibt genau diesen Wert
+    # auf den Schiedsrichter. Laege hier weiter der Importeurs-Verein, truege die
+    # Zeile dauerhaft den Landesverband des unkorrigierten Vereins, und ueber
+    # genau dieses Feld filtert `for_state_associations` spaeter.
+    # Im `update`-Pfad sind beide Seiten gleich, dort spiegelt
+    # `sync_final_with_importer` unmittelbar davor.
     def sync_state_association(result)
-      club = Club.find_by(id: result.master_club_id_by_importer)
+      club = Club.find_by(id: result.master_club_id_final)
       result.state_association_id = club&.state_association_id
     end
 
@@ -236,20 +279,70 @@ module Admin
       'partial_match'
     end
 
-    def short_result_hash(result)
+    # Clubs der ganzen Liste in einer Abfrage: Sowohl der Verein des Schiris als
+    # auch der gematchte Verein der Zeile werden je Zeile gebraucht, einzeln
+    # geladen waeren das bis zu zwei Abfragen pro Zeile. Die Liste umfasst dabei
+    # nicht einen Kurs, sondern alle offenen Zeilen aller eingereichten Importe
+    # in den Landesverbaenden des Reviewers.
+    def clubs_by_id_for(results)
+      ids = results.flat_map { |r| [r.referee&.club_id, r.master_club_id_final] }.compact.uniq
+      Club.where(id: ids).index_by(&:id)
+    end
+
+    # Vereinsnamen aus der Datei in einer Abfrage aufloesen, geschluesselt nach
+    # der normalisierten Schreibweise. Der Lookup ist derselbe wie im
+    # Import-Service und in `recompute_match_field_count` (exakter Name, nur
+    # Gross-/Kleinschreibung und Randleerzeichen egal), damit die Anzeige nicht
+    # anders urteilt als der gespeicherte Score.
+    def csv_club_matches_for(results)
+      names = results.filter_map { |r| r.csv_verein.presence&.strip }.uniq
+      return {} if names.empty?
+
+      Club.where('LOWER(name) IN (?)', names.map(&:downcase))
+          .index_by { |club| club.name.strip.downcase }
+    end
+
+    def short_result_hash(result, clubs = {}, csv_clubs = {})
       base = result.short_hash
+      referee = result.referee
+      # Vollstaendiger Snapshot inklusive Geburtsdatum, E-Mail und Vereinsname:
+      # Fehlt ein Feld hier, zeigt die Freigabe-Maske in der Spalte „Datenbank"
+      # ein „—", obwohl der Wert beim Schiri steht. Eine Abweichung in genau
+      # diesem Feld ist dann nicht zu sehen, und der Match-Score (zaehlt alle
+      # sechs Merkmale) wird unerklaerlich.
       base[:referee_snapshot] = {
-        id: result.referee&.id,
-        vorname: result.referee&.vorname,
-        nachname: result.referee&.nachname,
-        lizenznummer: result.referee&.lizenznummer,
-        club_id: result.referee&.club_id
+        id: referee&.id,
+        vorname: referee&.vorname,
+        nachname: referee&.nachname,
+        lizenznummer: referee&.lizenznummer,
+        geburtsdatum: referee&.geburtsdatum,
+        email: referee&.email,
+        club_id: referee&.club_id,
+        club_name: clubs[referee&.club_id]&.name
       }
+      # Der Verein, den die Freigabe schreiben wuerde. `csv.verein` traegt den
+      # Namen aus der Datei, der hier gematchte Club den Stand der Datenbank --
+      # beides braucht die Maske, um einen Vereins-Konflikt zu zeigen.
+      base[:matched_club] = club_snapshot(clubs[result.master_club_id_final])
+      # Der Verein, den der Name aus der Datei trifft, oder nichts. Bewusst
+      # getrennt von `matched_club`: Das traegt `master_club_id_final`, und das
+      # faellt beim Import auf den Verein des Schiedsrichters zurueck, wenn der
+      # Name nicht trifft (`matched_club&.id || referee&.club_id` im
+      # Import-Service). Wer damit die Abweichung berechnet, bekommt fuer den
+      # haeufigsten Teilmatch ueberhaupt (ausgeschriebener Vereinsname in der
+      # Datei gegen die Kurzform in der Datenbank) faelschlich Gleichheit.
+      base[:csv_club_match] = club_snapshot(csv_clubs[result.csv_verein.presence&.strip&.downcase])
       base[:state_association] = if result.state_association
                                    { id: result.state_association.id,
                                      name: result.state_association.name }
                                  end
       base
+    end
+
+    def club_snapshot(club)
+      return nil unless club
+
+      { id: club.id, name: club.name, state_association_id: club.state_association_id }
     end
 
     def to_integer(value)
