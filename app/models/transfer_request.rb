@@ -13,9 +13,13 @@ class TransferRequest < ApplicationRecord
   TRANSFER_LOCK_PERIOD = 4.weeks
 
   # Die Konten, die an einem Antrag gehandelt haben können. Auswahl und
-  # Reihenfolge spiegeln die Statusmaschine; "expired" und die Beendigung durch
-  # eine Vereinsdeaktivierung stehen bewusst nicht darin, das sind
-  # Systemvorgänge ohne handelndes Konto.
+  # Reihenfolge spiegeln die Statusmaschine.
+  #
+  # Nicht darin, weil es dazu kein Konto gibt: der Fristablauf (#expire!, läuft
+  # aus rake transfers:expire) und die Bestätigung oder Ablehnung durch die
+  # Person selbst (tokenbasiert, ohne Anmeldung). Die Beendigung durch eine
+  # Vereinsdeaktivierung dagegen HAT ein Konto und schreibt es seit dieser
+  # Änderung nach withdrawn_by (siehe end_for_deactivated_club).
   ACTOR_COLUMNS = %i[created_by approved_by_club_user_id approved_by_lv_user_id
                      rejected_by revoked_by withdrawn_by].freeze
 
@@ -63,7 +67,13 @@ class TransferRequest < ApplicationRecord
   #
   # Status `withdrawn` wie bei #cancel und #withdraw, statt eines eigenen: Der
   # Antrag ist annulliert, und die vier laufenden Status sind dieselben.
-  def self.end_for_deactivated_club(club_id)
+  # user_id ist das Konto, das den Verein deaktiviert hat. Club#deactivate!
+  # kennt es (es steht auch in clubs.deactivated_by), gab es aber nicht weiter,
+  # und der Antrag verlor damit seinen Abschluss. Das ist der dritte Weg in den
+  # Status "withdrawn" neben #withdraw und #cancel; ohne Konto und Zeitpunkt
+  # wäre ein so beendeter Vorgang in der Chronik der einzige ohne jeden
+  # Abschlussschritt.
+  def self.end_for_deactivated_club(club_id, user_id = nil)
     active.where(requesting_club_id: club_id).to_a.select do |tr|
       transaction do
         tr.lock!
@@ -71,7 +81,8 @@ class TransferRequest < ApplicationRecord
         # zwischenzeitliche Genehmigung darf nicht ueberschrieben werden.
         next false unless tr.status.in?(%w[pending_club pending_player pending_lv scheduled])
 
-        tr.update!(status: 'withdrawn', player_confirmation_token: nil)
+        tr.update!(status: 'withdrawn', withdrawn_by: user_id, withdrawn_at: Time.current,
+                   player_confirmation_token: nil)
       end
     end
   end
@@ -96,11 +107,17 @@ class TransferRequest < ApplicationRecord
   # Namen der beteiligten Konten für mehrere Anträge in einer Abfrage. Die
   # Übersicht rendert sonst je Antrag eine eigene User-Abfrage, und die Liste
   # wächst mit jeder Saison.
+  #
+  # fullname und nicht full_with_username: Diese Ansicht steht auch den
+  # Vereinsmanagern beider beteiligter Vereine offen (siehe transfer_visible?),
+  # angemeldet wird sich in diesem Projekt allein über den Benutzernamen, und
+  # für die Frage "wer war das" trägt der Name zusammen mit der mitgelieferten
+  # Konto-ID die Aussage bereits.
   def self.actor_names_for(records)
     ids = Array(records).flat_map(&:actor_user_ids).uniq
     return {} if ids.empty?
 
-    User.where(id: ids).index_by(&:id).transform_values(&:full_with_username)
+    User.where(id: ids).index_by(&:id).transform_values(&:fullname)
   end
 
   # actors: vorab aufgelöste Namen (siehe actor_names_for). Ohne die Option löst

@@ -26,8 +26,11 @@ module Admin
       end
 
       # Die Namen der beteiligten Konten einmal für die ganze Liste auflösen;
-      # je Antrag einzeln wäre es eine Abfrage pro Zeile.
-      records = requests.order(created_at: :desc).to_a
+      # je Antrag einzeln wäre es eine Abfrage pro Zeile. Spieler und Vereine
+      # aus demselben Grund vorladen: as_json liest je Zeile player_hash und
+      # zweimal club_hash, das waren bisher drei Abfragen pro Antrag.
+      records = requests.includes(:player, :requesting_club, :former_club)
+                        .order(created_at: :desc).to_a
       actors = TransferRequest.actor_names_for(records)
       render json: records.map { |tr| tr.as_json(actors: actors) }
     end

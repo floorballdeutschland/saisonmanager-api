@@ -80,7 +80,7 @@ class PlayersController < ApplicationController
       # vollständige, saisonübergreifende Lizenzhistorie (Spielerprofil).
       only_current = params[:all_licenses].to_s != 'true'
       hash = result.full_hash(true, only_current, true)
-      resolve_club_actor_names!(hash) if may_see_club_actor_names?(result)
+      resolve_club_actor_names!(hash)
       render json: hash
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
@@ -1100,30 +1100,30 @@ class PlayersController < ApplicationController
     )
   end
 
-  # Wer eine Vereinszugehörigkeit angelegt oder beendet hat, steht seit jeher in
-  # den Einträgen (created_by, valid_set_by) und reist auch schon im JSON mit –
-  # aber nur als Konto-ID und damit unlesbar. Nachvollziehbar wird ein Transfer
-  # oder eine Freigabe erst mit dem Namen.
+  # Wer eine Vereinszugehörigkeit angelegt oder beendet hat, wird beim Anlegen
+  # und beim Beenden in den Eintrag geschrieben (created_by, valid_set_by) und
+  # reist auch schon im JSON mit – aber nur als Konto-ID und damit unlesbar.
+  # Nachvollziehbar wird ein Transfer oder eine Freigabe erst mit dem Namen.
+  # Einträge aus dem Altbestand tragen die Schlüssel nicht, dort bleibt es leer.
   #
-  # Enger gefasst als der Zugriff auf das Profil: can_manage_player? lässt auch
-  # Vereins- und Teammanager an diese Ansicht, und gegenüber denen ist das
-  # handelnde Konto eines Verbandes keine Auskunft, die dieses Profil schuldet.
-  # Die Zuständigkeit für den Vorgang liegt bei Verband und Geschäftsstelle,
-  # dort wird auch nachgefragt.
-  def may_see_club_actor_names?(player)
-    ph = current_user.permission_hash
-    ph[:admin].present? || sbk_can_access_player?(ph, player)
-  end
-
-  # Die IDs beider Spalten in einer Abfrage auflösen. Ein zwischenzeitlich
-  # gelöschtes Konto liefert keinen Namen; die ID bleibt im Eintrag stehen, sie
-  # ist die belastbare Angabe.
+  # Aufgelöst wird für jeden, der das Profil ohnehin öffnen darf. Eine engere
+  # Fassung (nur Admin und zuständige SBK) wäre in genau dieser Antwort schon
+  # widerlegt: Player#full_hash löst für die Lizenzhistorie created_by_name
+  # ungeprüft auf, und die Profilmaske zeigt es an – Vereins- und Teammanager
+  # sehen dort seit langem, welches Verbandskonto eine Lizenz genehmigt hat.
+  # Eine Ausnahme allein für die Vereinseinträge wäre eine Regel, die dieselbe
+  # Maske an der Nachbarzeile bricht.
+  #
+  # Ausgegeben wird der Name ohne Benutzernamen, anders als bei der
+  # Lizenzhistorie: Angemeldet wird sich in diesem Projekt allein über den
+  # Benutzernamen, und für die Frage "wer war das" trägt der Name zusammen mit
+  # der ID die Aussage bereits.
   def resolve_club_actor_names!(hash)
     entries = Array(hash[:clubs])
     ids = entries.flat_map { |c| [c['created_by'], c['valid_set_by']] }.compact.uniq
     return if ids.empty?
 
-    names = User.where(id: ids).index_by(&:id).transform_values(&:full_with_username)
+    names = User.where(id: ids).index_by(&:id).transform_values(&:fullname)
     entries.each do |c|
       c['created_by_name'] = names[c['created_by']]
       c['valid_set_by_name'] = names[c['valid_set_by']]
