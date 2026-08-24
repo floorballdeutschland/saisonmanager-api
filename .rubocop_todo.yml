@@ -358,8 +358,14 @@ Metrics/ModuleLength:
   # Der Legacy-Import-Transformer ist ein kohäsives Modul reiner Mapping-Funktionen
   # und wächst mit jeder zusätzlich abgebildeten Entität – von der Modullängenprüfung
   # ausgenommen.
+  # PlayerUnmerging kehrt EINEN Vorgang um (`Player#merge_into!`) und muss dazu jede
+  # seiner Nebenwirkungen einzeln kennen: Aufstellungen, Lizenzen, Zugehoerigkeiten,
+  # Dokumente, Kennzeichnung. Die Laenge steckt fast vollstaendig in den Belegen, warum
+  # ein Schritt verweigert statt geraten wird. Ein Aufteilen wuerde die Umkehrung eines
+  # Vorgangs auf mehrere Dateien streuen, ohne etwas zu vereinfachen.
   Exclude:
     - 'app/services/legacy_import/transformer.rb'
+    - 'app/models/concerns/player_unmerging.rb'
 
 # Offense count: 4
 # Configuration parameters: CountKeywordArgs, MaxOptionalParameters.
