@@ -886,7 +886,7 @@ class ClubTest < ActiveSupport::TestCase
   end
 
   # Die Spieleranlage gehört dem Verein. Teammanager*innen hatten sie bis
-  # 1.95.0 auch; das Portal „Meine Spieler*innen" zeigt ihnen den Knopf
+  # api#530 auch; das Portal „Meine Spieler*innen" zeigt ihnen den Knopf
   # seither abgeblendet, die Entscheidung fällt hier.
   test 'Teammanager darf im Verein der eigenen Mannschaft keine Spieler anlegen' do
     create(:setting, current_season_id: '18')

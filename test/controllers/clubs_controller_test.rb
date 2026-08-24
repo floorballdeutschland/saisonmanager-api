@@ -1239,7 +1239,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
   # Teammanagers: Er sieht den Bestand seines Vereins, legt aber nichts an
   # (der Knopf steht dort abgeblendet). Der Verein muss also in der Liste
   # stehen, obwohl er kein :create_player erlaubt.
-  test 'vm_clubs_and_teams liefert dem TM seinen Verein ohne create_player' do
+  test 'vm_clubs_and_teams liefert dem TM seinen Verein ohne manage_players' do
     club = create(:club)
     team = create(:team, club: club, league: create(:league, :current_season))
     tm = create(:user, :tm, team_id: team.id)
@@ -1248,9 +1248,31 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     get '/api/v2/vm/clubs_and_teams'
 
     assert_response :success
-    ids = JSON.parse(response.body).map { |c| c['id'] }
-    assert_includes ids, club.id
+    eintrag = JSON.parse(response.body).find { |c| c['id'] == club.id }
+    assert eintrag, 'der Verein der eigenen Mannschaft muss in der Liste stehen'
+    assert_not eintrag['manage_players']
     assert_not_includes club.user_permissions(tm), :create_player
+  end
+
+  # Die Kehrseite: Das Flag ist die einzige Quelle, aus der die Vereinssicht die
+  # Knöpfe ableitet. Ein VM muss es also bekommen, sonst stünde der Knopf an
+  # einem Verein abgeblendet, in dem die API das Anlegen erlaubt.
+  test 'vm_clubs_and_teams setzt manage_players fuer den eigenen VM-Verein' do
+    vm_club = create(:club)
+    tm_club = create(:club)
+    team = create(:team, club: tm_club, league: create(:league, :current_season))
+    user = create(:user, teams: [team.id], permissions: [
+      { 'user_group_id' => 4, 'game_operation_id' => 0, 'club_id' => vm_club.id },
+      { 'user_group_id' => 5, 'game_operation_id' => 0 }
+    ])
+    login(user)
+
+    get '/api/v2/vm/clubs_and_teams'
+
+    assert_response :success
+    flags = JSON.parse(response.body).to_h { |c| [c['id'], c['manage_players']] }
+    assert_equal true, flags[vm_club.id]
+    assert_equal false, flags[tm_club.id]
   end
 
   private

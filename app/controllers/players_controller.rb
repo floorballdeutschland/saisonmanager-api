@@ -611,7 +611,14 @@ class PlayersController < ApplicationController
         # Das Anlegen liegt beim Vereinsmanager (Club#user_permissions). Die
         # Vereinssicht blendet den Knopf ab, ein noch offener Tab oder ein
         # direkter Aufruf landet hier.
-        render json: { message: creation_denied_message }, status: :forbidden
+        #
+        # Der Rollenhinweis nur, wenn die Anlage auch gemeint war: `create_modus`
+        # gilt oben ebenso für eine mitgeschickte, aber unlesbare id („abc" wird
+        # zu 0). Gemeint ist dann eine Änderung, und der Hinweis schickte die
+        # Fehlersuche in die Anlage statt an die id.
+        anlage_gemeint = params[:id].blank? || params[:id].to_s.strip == '0'
+        render json: { message: anlage_gemeint ? creation_denied_message(club) : 'Keine Berechtigung' },
+               status: :forbidden
       else
         render json: { message: 'Keine Berechtigung' }, status: :forbidden
       end
@@ -916,7 +923,7 @@ class PlayersController < ApplicationController
     return render json: { message: 'Spieler nicht gefunden.' }, status: :not_found unless player
     return render json: { message: 'Spieler ist bereits deaktiviert.' }, status: :unprocessable_entity if player.deactivated_at.present?
     unless can_deactivate_player?(player)
-      return render json: { message: deactivation_denied_message }, status: :forbidden
+      return render json: { message: deactivation_denied_message(player) }, status: :forbidden
     end
 
     reason = sanitize_deactivation_reason(params[:reason])
@@ -936,7 +943,7 @@ class PlayersController < ApplicationController
     # nein sagt (siehe sbk_can_undo_deactivation?).
     ph = current_user.permission_hash
     unless can_deactivate_player?(player) || sbk_can_undo_deactivation?(ph, player)
-      return render json: { message: deactivation_denied_message }, status: :forbidden
+      return render json: { message: deactivation_denied_message(player) }, status: :forbidden
     end
 
     # Eine zusammengefuehrte Dublette ist nur deshalb deaktiviert, weil merge_into!
@@ -1099,40 +1106,43 @@ class PlayersController < ApplicationController
       vm_can_access_player?(ph, player) || tm_can_access_player?(ph, player)
   end
 
-  # Deaktivieren und Reaktivieren dagegen nicht: Die Deaktivierung schließt
-  # alle Vereinszugehörigkeiten und setzt die laufenden Lizenzen auf DELETED,
-  # entscheidet also über die Mitgliedschaft im Verein und nicht über die
-  # Aufstellung einer Mannschaft. Dieselbe Grenze wie beim Anlegen
-  # (Club#user_permissions, :create_player).
+  # Deaktivieren und Reaktivieren dagegen nicht: Die Deaktivierung nimmt das
+  # Profil aus der Spielerliste des Vereins und damit aus der Auswahl beim
+  # Lizenzantrag (`Club#players` filtert auf `Player.active`, siehe
+  # Player#deactivate!). Sie ordnet also den Bestand des Vereins und nicht die
+  # Aufstellung einer Mannschaft. Dieselben Rollen wie beim Anlegen; der
+  # Vereinsbezug kommt hier aus der heute gültigen Zugehörigkeit der Person,
+  # nicht aus einem übergebenen Verein.
   def can_deactivate_player?(player)
     ph = current_user.permission_hash
     ph[:admin].present? || sbk_can_access_player?(ph, player) ||
       vm_can_access_player?(ph, player)
   end
 
-  # Eigene Meldung statt „Keine Berechtigung.", weil hier fast immer ein
-  # Teammanager steht: Die Oberfläche zeigt ihm die Knöpfe nicht, ein noch
-  # offener Tab oder ein direkter Aufruf landet hier. Für alle anderen Rollen
-  # wäre der Rollenhinweis falsch, die sind schlicht nicht zuständig.
-  def deactivation_denied_message
-    if team_manager_only?
+  # Eigene Meldung statt „Keine Berechtigung.", wenn der Zugriff genau daran
+  # scheitert, dass hier ein Teammanager steht: Die Oberfläche zeigt ihm die
+  # Knöpfe nicht, ein noch offener Tab oder ein direkter Aufruf landet hier.
+  #
+  # Vereinsbezogen und nicht über die Rollen des Kontos, damit der Hinweis auch
+  # die Doppelrolle trifft (VM in einem Verein, TM in einem anderen -- der Fall
+  # in club_test.rb, „wer VM des einen und TM im anderen Verein ist"). Für jede
+  # andere Rolle wäre der Hinweis falsch, die ist schlicht nicht zuständig.
+  def deactivation_denied_message(player)
+    ph = current_user.permission_hash
+    if tm_can_access_player?(ph, player) && !vm_can_access_player?(ph, player)
       'Deaktivieren und Reaktivieren darf nur der Vereinsmanager des Vereins.'
     else
       'Keine Berechtigung.'
     end
   end
 
-  def creation_denied_message
-    if team_manager_only?
+  def creation_denied_message(club)
+    ph = current_user.permission_hash
+    if tm_can_access_club?(ph, club.id) && !ph[:vm].to_a.include?(club.id)
       'Spieler*innen anlegen darf nur der Vereinsmanager des Vereins.'
     else
       'Keine Berechtigung'
     end
-  end
-
-  def team_manager_only?
-    ph = current_user.permission_hash
-    ph[:tm].present? && ph[:vm].blank? && ph[:sbk].blank? && ph[:admin].blank?
   end
 
   def vm_can_access_player?(ph, player)

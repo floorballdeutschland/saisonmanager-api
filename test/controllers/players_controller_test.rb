@@ -1259,8 +1259,8 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
   # Beendetes Spiel mit @player (Trikot 7) in der Heim-Aufstellung.
   # admin_player_update, Anlege-Zweig. Der Endpunkt war bis hierher ohne
   # Testabdeckung, obwohl an ihm die vereinsgebundene Berechtigung hängt. Seit
-  # 1.95.0 legt nur der Vereinsmanager an, der TM nicht mehr (Rollengrenze in
-  # players_create_role_test.rb).
+  # api#530 legt nur der Vereinsmanager an, der TM nicht mehr (Rollengrenze in
+  # players_club_decisions_role_test.rb).
   test 'VM legt im eigenen Verein eine Spielerin an' do
     login_as(create(:user, :vm, club_id: @club.id))
 

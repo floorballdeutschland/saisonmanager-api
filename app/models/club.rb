@@ -302,8 +302,8 @@ class Club < ApplicationRecord
     # wird als Heimatmitgliedschaft dieses Vereins geführt, eine
     # Kaderzuordnung entsteht nicht. Wer in den Verein aufgenommen wird,
     # entscheidet deshalb der Vereinsmanager. Teammanager*innen hatten das
-    # Recht bis einschließlich 1.95.0 ebenfalls; sie stellen weiter auf und
-    # melden Lizenzen an, den Neuzugang legt der Verein an. Stammdaten
+    # Recht bis api#530 ebenfalls; sie stellen weiter auf und melden Lizenzen
+    # an, den Neuzugang legt der Verein an. Stammdaten
     # nachträglich ändern (`:update_player`) darf unverändert nur der Verband.
     perm << :create_player if admin || sbk || vm
 

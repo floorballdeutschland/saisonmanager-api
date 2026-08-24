@@ -89,6 +89,18 @@ class ClubsController < ApplicationController
         vm_club_ids.include?(club.id) || tm_team_ids.include?(team.id)
       end
       item[:teams] = teams.map(&:full_hash)
+      # Ob dieser Verein dem Konto gehört, also ob darin angelegt werden darf
+      # (api#530). Die Vereinssicht hängt daran auch „Deaktivieren" und
+      # „Reaktivieren": dieselben Rollen, nur bezieht die Prüfung dort den
+      # Verein aus der Zugehörigkeit der Person statt aus dem Aufruf
+      # (PlayersController#can_deactivate_player?). Aus derselben Quelle wie die
+      # Prüfung beim Schreiben, damit das Portal „Meine Spieler*innen" nicht aus
+      # zwei unterschiedlich gescopten Angaben zusammenrechnen muss:
+      # `permissions[:vm]` im Browser kennt den
+      # Spielbetrieb des Vereins nicht, `Club#user_permissions` schon, und ein
+      # zwischenzeitlich geändertes Recht steht im localStorage des Browsers
+      # noch alt. Vorbild: admin/clubs/role_assignable.
+      item[:manage_players] = club.user_permissions(current_user).include?(:create_player)
       item
     }
   end
