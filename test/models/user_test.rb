@@ -182,6 +182,24 @@ class UserTest < ActiveSupport::TestCase
     assert items[:menu_item_referee_admin]
   end
 
+  # Die Knöpfe „Deaktivieren"/„Reaktivieren" im Spielerprofil hängen allein an
+  # diesem Flag (Frontend: player-edit, canDeactivate/canReactivate). Seit
+  # api#530 ordnet den Vereinsbestand der Vereinsmanager, der Teammanager
+  # pflegt weiter die E-Mail-Adresse. Ohne diesen Test käme ein
+  # wiedereingesetztes `|| ph[:tm].present?` als Knopf zurück, der 403 liefert.
+  test 'permissions_items: TM darf nicht deaktivieren, pflegt aber die E-Mail-Adresse' do
+    create(:setting, current_season_id: '18')
+    league = create(:league, :current_season)
+    team = create(:team, league: league)
+    tm = build_user(permissions: [{ 'user_group_id' => 5, 'game_operation_id' => league.game_operation_id }],
+                    teams: [team.id])
+    vm = build_user(permissions: [{ 'user_group_id' => 4, 'club_id' => create(:club).id }])
+
+    assert_not tm.permissions_items[:player_deactivate]
+    assert tm.permissions_items[:update_player_email]
+    assert vm.permissions_items[:player_deactivate]
+  end
+
   # ---------------------------------------------------------------------------
   # menu_item_team_game_days (Meine Auswärtsspieltage)
   # ---------------------------------------------------------------------------
