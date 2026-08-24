@@ -55,11 +55,13 @@ namespace :players do
   desc 'Kehrt einen Fehl-Merge um (MERGED_ID=…, USER_ID=…). DRY_RUN=false zum Ausfuehren.'
   task unmerge: :environment do
     dry_run = ENV['DRY_RUN'] != 'false'
+    force = ENV['FORCE'] == 'true'
 
-    merged_id = ENV['MERGED_ID'].to_i
-    abort 'MERGED_ID nicht gesetzt' if merged_id.zero?
-    user_id = ENV['USER_ID'].to_i
-    abort 'USER_ID nicht gesetzt' if user_id.zero?
+    # Integer() statt to_i: '2 6679'.to_i ist 2 und '26679x'.to_i ist 26679. Eine
+    # verstuemmelte ID kann auf ein ANDERES zusammengefuehrtes Profil treffen, und dann
+    # wuerde der Lauf den falschen Merge aufloesen.
+    merged_id = Integer(ENV.fetch('MERGED_ID', nil).to_s.strip)
+    user_id   = Integer(ENV.fetch('USER_ID', nil).to_s.strip)
     abort "User ##{user_id} nicht gefunden" unless User.exists?(id: user_id)
 
     dublette = Player.find_by(id: merged_id)
@@ -71,12 +73,16 @@ namespace :players do
 
     puts "=== Merge umkehren #{dry_run ? '[DRY RUN]' : '[LIVE]'} ==="
     puts "Dublette: ##{dublette.id} #{dublette.first_name} #{dublette.last_name}, " \
-         "geb #{dublette.birthdate}, deaktiviert #{dublette.deactivated_at} (#{dublette.deactivation_reason})"
+         "geb #{dublette.birthdate}, deaktiviert #{dublette.deactivated_at} " \
+         "(#{dublette.deactivation_reason})"
     puts "Master:   ##{master.id} #{master.first_name} #{master.last_name}, geb #{master.birthdate}"
 
     if dublette.birthdate.to_s == master.birthdate.to_s
-      puts 'HINWEIS: Beide tragen dasselbe Geburtsdatum. Das ist NICHT das Muster eines'
-      puts '         Fehl-Merges — bitte vorher fachlich klaeren, ob die Umkehrung richtig ist.'
+      puts
+      puts 'Beide tragen dasselbe Geburtsdatum. Das ist NICHT das Muster eines Fehl-Merges,'
+      puts 'sondern das eines echten Duplikats.'
+      abort 'ABBRUCH: bei gleichem Geburtsdatum nur mit FORCE=true (vorher fachlich klaeren)' \
+        unless dry_run || force
     end
 
     bilanz = nil
@@ -85,24 +91,52 @@ namespace :players do
         bilanz = dublette.unmerge_from!(user_id)
         raise ActiveRecord::Rollback if dry_run
       end
-    rescue ArgumentError => e
-      abort "ABBRUCH: #{e.message}"
+    rescue Player::UnmergeRefused => e
+      abort "ABBRUCH (Vorbedingung nicht erfuellt, nichts geaendert): #{e.message}"
     end
 
     puts
-    puts "Spiele zurueckgeschrieben:   #{bilanz[:games]}"
-    puts "Lizenzen vom Master geloest: #{bilanz[:licenses]}"
-    puts "Zugehoerigkeiten entfernt:   #{bilanz[:clubs]}"
-    puts "Zugehoerigkeiten geoeffnet:  #{bilanz[:reopened]} (am Master, vom Merge geschlossen)"
-    puts "Lizenzdokumente zurueck:     #{bilanz[:documents]}"
+    puts "Spiele zurueckgeschrieben:     #{bilanz[:games]}"
+    puts "Lizenzen vom Master geloest:   #{bilanz[:licenses]}"
+    puts "Lizenzen der Dublette zurueck: #{bilanz[:licenses_self]}"
+    puts "Zugehoerigkeiten entfernt:     #{bilanz[:clubs]}"
+    puts "Zugehoerigkeiten geoeffnet:    #{bilanz[:reopened]} am Master, " \
+         "#{bilanz[:reopened_self]} an der Dublette"
+    puts "Lizenzdokumente zurueck:       #{bilanz[:documents]}"
+
+    if bilanz[:games_manual].positive?
+      puts
+      puts "ACHTUNG: #{bilanz[:games_manual]} Spielreferenz(en) am Master gehoeren zu einem Team,"
+      puts 'in dem KEINES der beiden Profile eine Lizenz hat. Die Herkunft ist offen, sie sind'
+      puts 'stehen geblieben. Vor dem Abschluss klaeren, sonst bleiben zwei Laufbahnen vermischt.'
+    end
 
     if bilanz[:clubs_manual].present?
       puts
-      puts 'VON HAND PRUEFEN — diese Zugehoerigkeiten tragen kein created_at, eine Kopie ist'
-      puts 'dort nicht vom eigenen Eintrag des Masters zu unterscheiden. Nichts geloescht:'
+      puts 'VON HAND PRUEFEN — Zugehoerigkeiten ohne eindeutigen Beleg, nichts geloescht:'
       bilanz[:clubs_manual].each do |cid|
-        puts "  Verein #{cid} #{Club.find_by(id: cid)&.name}"
+        puts cid.is_a?(Integer) ? "  Verein #{cid} #{Club.find_by(id: cid)&.name}" : "  #{cid}"
       end
+    end
+
+    if bilanz[:reopened_manual].present?
+      puts
+      puts 'VON HAND PRUEFEN — am Master geschlossen, aber nicht gefahrlos zu oeffnen'
+      puts '(Befristung unbekannt oder es ist schon ein Heimatverein offen):'
+      bilanz[:reopened_manual].each { |cid| puts "  Verein #{cid} #{Club.find_by(id: cid)&.name}" }
+    end
+
+    if bilanz[:documents_manual].present?
+      puts
+      puts 'VON HAND PRUEFEN — Lizenzdokumente ohne license_id oder mit Kollision am Ziel:'
+      puts "  #{bilanz[:documents_manual].join(', ')}"
+    end
+
+    if bilanz[:fields].present?
+      puts
+      puts 'VON HAND PRUEFEN — diese Felder des Masters stimmen mit der Dublette ueberein und'
+      puts 'koennen vom Merge uebertragen worden sein:'
+      puts "  #{bilanz[:fields].join(', ')}"
     end
 
     if bilanz[:manual].present?
@@ -115,6 +149,12 @@ namespace :players do
     if dry_run
       puts 'DRY RUN — zurueckgerollt, nichts geaendert. Mit DRY_RUN=false ausfuehren.'
     else
+      # Erst hier, nach dem Commit: Rails.logger ist nicht transaktional, ein Log im Modell
+      # wuerde auch jeden Probelauf als vollzogen protokollieren.
+      Rails.logger.info(
+        "players:unmerge: ##{dublette.id} aus Master ##{master.id} geloest " \
+        "(User ##{user_id}): #{bilanz.inspect}"
+      )
       puts 'Ausgefuehrt. Jetzt seasons:invalidate_stale_licenses laufen lassen, damit die'
       puts 'wieder geoeffneten Lizenzen abgelaufener Saisons den Saisonwechsel-Status bekommen.'
     end

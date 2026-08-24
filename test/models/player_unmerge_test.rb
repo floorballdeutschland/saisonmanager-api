@@ -89,7 +89,7 @@ class PlayerUnmergeTest < ActiveSupport::TestCase
 
     @dublette.merge_into!(@master, @user.id)
 
-    fehler = assert_raises(ArgumentError) { @dublette.reload.unmerge_from!(@user.id) }
+    fehler = assert_raises(PlayerUnmerging::UnmergeRefused) { @dublette.reload.unmerge_from!(@user.id) }
     assert_match(/denselben Teams/, fehler.message)
   end
 
@@ -97,12 +97,12 @@ class PlayerUnmergeTest < ActiveSupport::TestCase
     @dublette.deactivate!(@user.id, reason: 'Vereinsaustritt')
     @dublette.update_columns(merged_into_id: @master.id)
 
-    fehler = assert_raises(ArgumentError) { @dublette.reload.unmerge_from!(@user.id) }
+    fehler = assert_raises(PlayerUnmerging::UnmergeRefused) { @dublette.reload.unmerge_from!(@user.id) }
     assert_match(/Deaktivierungsgrund/, fehler.message)
   end
 
   test 'die Umkehrung verweigert sich bei einem Profil, das nicht zusammengefuehrt ist' do
-    fehler = assert_raises(ArgumentError) { @dublette.unmerge_from!(@user.id) }
+    fehler = assert_raises(PlayerUnmerging::UnmergeRefused) { @dublette.unmerge_from!(@user.id) }
     assert_match(/nicht zusammengeführt/, fehler.message)
   end
 
@@ -125,6 +125,102 @@ class PlayerUnmergeTest < ActiveSupport::TestCase
                  'der eigene Eintrag des Masters muss stehen bleiben'
     assert_equal [gemeinsam.id], offene_vereine(@master),
                  'und er muss wieder offen sein'
+  end
+
+  # Der gefaehrlichste Fall, von beiden Reviews unabhaengig reproduziert: `_merge_clubs`
+  # VERWIRFT eine offene Zugehoerigkeit der Dublette, wenn der Master denselben Verein offen
+  # hat. Es existiert dann keine Kopie, und der gleichnamige Eintrag am Master ist SEIN
+  # eigener. Stimmen zusaetzlich die created_at ueberein (Backfills stempeln gleich), traf
+  # die erste Fassung den Master und liess einen echten Menschen ohne Verein zurueck.
+  test 'die eigene Zugehoerigkeit des Masters bleibt, wenn auch created_at uebereinstimmt' do
+    gemeinsam = create(:club)
+    stempel = 3.years.ago.iso8601
+    @master.update!(clubs: [{ 'club_id' => gemeinsam.id, 'home_club' => true, 'created_at' => stempel }],
+                    licenses: [lizenz_fuer(create(:team, club: gemeinsam))])
+    @dublette.update!(clubs: [{ 'club_id' => gemeinsam.id, 'home_club' => true, 'created_at' => stempel }])
+
+    @dublette.merge_into!(@master, @user.id)
+    bilanz = @dublette.reload.unmerge_from!(@user.id)
+    @master.reload
+
+    assert_equal 0, bilanz[:clubs], 'ohne Beleg fuer eine Kopie darf nichts entfernt werden'
+    assert_equal [gemeinsam.id], bilanz[:clubs_manual]
+    assert_equal [gemeinsam.id], Array(@master.clubs).map { |c| c['club_id'] },
+                 'der eigene Eintrag des Masters muss stehen bleiben'
+    assert_equal [gemeinsam.id], offene_vereine(@master), 'und er muss wieder offen sein'
+  end
+
+  # Ohne lizenziertes Team ist die Pruefung auf geteilte Teams leer und damit wertlos, und
+  # die Rueckschreibung findet nichts. Zusammen sieht das wie ein Erfolg aus, waehrend jede
+  # Spielteilnahme beim anderen Menschen bleibt.
+  test 'ohne lizenziertes Team der Dublette wird verweigert, solange der Master Spiele hat' do
+    @dublette.merge_into!(@master, @user.id)
+    @dublette.reload.update!(licenses: [])
+
+    fehler = assert_raises(PlayerUnmerging::UnmergeRefused) { @dublette.reload.unmerge_from!(@user.id) }
+    assert_match(/keine Lizenz mit team_id/, fehler.message)
+    assert_equal [@master.id], aufstellung_ids(@spiel_dublette), 'nichts angefasst'
+  end
+
+  # Schreibt nach dem Merge etwas anderes in den Verlauf (Saisonwechsel, SBK-Entscheidung),
+  # liegt der Merge-Eintrag nicht mehr oben. Ihn aus der Mitte zu ziehen verfaelscht den
+  # Verlauf, ihn stehen zu lassen haelt die Lizenz ungueltig.
+  test 'ein Verlaufseintrag nach der Zusammenfuehrung laesst verweigern' do
+    @dublette.merge_into!(@master, @user.id)
+    @dublette.reload
+    @dublette.licenses.first['history'] << { 'license_status_id' => License::DELETED,
+                                             'reason' => 'Saisonwechsel — Lizenz aus Vorsaison',
+                                             'created_by' => @user.id,
+                                             'created_at' => Time.now.iso8601 }
+    @dublette.save!(validate: false)
+
+    fehler = assert_raises(PlayerUnmerging::UnmergeRefused) { @dublette.reload.unmerge_from!(@user.id) }
+    assert_match(/nicht der oberste/, fehler.message)
+  end
+
+  test 'Spielreferenzen ohne Bezug zu beiden Profilen werden gezaehlt und bleiben stehen' do
+    fremdes_spiel = spiel_mit(create(:team), @dublette)
+
+    @dublette.merge_into!(@master, @user.id)
+    bilanz = @dublette.reload.unmerge_from!(@user.id)
+
+    assert_equal 1, bilanz[:games_manual]
+    assert_equal [@master.id], aufstellung_ids(fremdes_spiel),
+                 'nicht zuordenbar heisst stehen lassen, aber melden'
+  end
+
+  # `_repoint_license_documents` laesst beim Merge ein kollidierendes Dokument bewusst an der
+  # Dublette stehen. Ein pauschales update_all zurueck laeuft dann in den Unique-Index.
+  test 'ein kollidierendes Lizenzdokument wird gemeldet statt verschoben' do
+    lizenz_id = @dublette.licenses.first['id']
+    @dublette.merge_into!(@master, @user.id)
+
+    am_master = dokument(@master, lizenz_id, 'ausweis')
+    dokument(@dublette, lizenz_id, 'ausweis')
+    ohne_lizenz = dokument(@master, nil, 'zustimmung')
+
+    bilanz = @dublette.reload.unmerge_from!(@user.id)
+
+    assert_equal 0, bilanz[:documents]
+    assert_equal [am_master.id, ohne_lizenz.id].sort, bilanz[:documents_manual].sort
+    assert_equal @master.id, am_master.reload.player_id
+  end
+
+  test 'ein zuordenbares Lizenzdokument geht zurueck an die Dublette' do
+    lizenz_id = @dublette.licenses.first['id']
+    @dublette.merge_into!(@master, @user.id)
+    doc = dokument(@master, lizenz_id, 'ausweis')
+
+    bilanz = @dublette.reload.unmerge_from!(@user.id)
+
+    assert_equal 1, bilanz[:documents]
+    assert_equal @dublette.id, doc.reload.player_id
+  end
+
+  def dokument(player, lizenz_id, art)
+    doc = LicenseDocument.new(player_id: player.id, license_id: lizenz_id, document_type: art)
+    doc.save!(validate: false)
+    doc
   end
 
   def lizenz_fuer(team)
