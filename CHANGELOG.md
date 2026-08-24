@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Die Mannschaftsseite rechnet ihre Scorerwerte nicht mehr bei jedem Aufruf neu**: Die Übersicht einer Mannschaft las bei jedem Abruf alle beendeten Spiele der Saison und wertete je Spiel die komplette Ereignis-Liste aus, um Tore, Vorlagen und Strafminuten zu summieren. Das Ergebnis ist für alle Aufrufer identisch und ändert sich nur, wenn ein Spielbericht abgeschlossen wird, wurde aber nirgends zwischengespeichert. Die Werte liegen jetzt fünf Minuten im Zwischenspeicher, wie bei der Scorerliste einer Liga, die dieselben Zahlen je Liga statt je Mannschaft zeigt. Gespeichert werden ausschließlich die Zahlen; Spielernamen, Mannschaftsnamen und Logos löst die Seite weiter frisch auf, eine Umbenennung ist also sofort sichtbar. Schaltet eine Liga ihre öffentliche Scorerliste um, wirkt das ebenfalls sofort. Anlass war eine Messung des maschinellen Verkehrs auf der Produktion: Dieser Endpunkt war der mit Abstand häufigste Einzelabruf ohne Absenderkennung, rund 10.000 Aufrufe in sieben Tagen, fast alle von einer einzigen Gegenstelle.
+
 ## [1.96.0] - 2026-08-24
 
 ### Neu

@@ -283,14 +283,6 @@ class TeamsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 1, messages.size
   end
 
-  def with_real_cache
-    original = Rails.cache
-    Rails.cache = ActiveSupport::Cache::MemoryStore.new
-    yield
-  ensure
-    Rails.cache = original
-  end
-
   # Eine Liga hart entfernen, obwohl noch eine Mannschaft auf sie zeigt. Genau
   # so sind die Datensätze entstanden, um die es in diesen Tests geht.
   #
@@ -420,6 +412,87 @@ class TeamsControllerTest < ActionDispatch::IntegrationTest
     assert_equal [visible_player.id], scorer_player_ids
     # Die Summen zählen weiter alle Spiele des Teams, also beide Tore.
     assert_equal 2, body['totals']['goals']
+  end
+
+  # Nachweis, dass die Auswertung tatsächlich aus dem Cache kommt: Nach dem
+  # ersten Aufruf bekommt das Team ein weiteres beendetes Spiel mit einem Tor.
+  # Ohne Cache stünde danach eine 2 in den Summen. Dass die 1 bleibt, ist die
+  # gewollte Unschärfe von 5 Minuten, dieselbe wie bei leagues/:id/scorer.
+  #
+  # Ohne echten Store liefe der Block von Rails.cache.fetch bei jedem Aufruf,
+  # der Test würde also auch bei fehlendem Cache bestehen (siehe with_real_cache
+  # in test_helper.rb).
+  test 'stats liefert die Scorerwerte innerhalb der TTL aus dem Cache' do
+    login(create(:user, :admin))
+    team = team_with_scorer(enable_scorer: true)
+
+    with_real_cache do
+      get "/api/v2/teams/#{team.id}/stats"
+      assert_response :success
+      assert_equal 1, JSON.parse(response.body)['totals']['goals']
+
+      game_with_goal(team, team.league, 8)
+
+      get "/api/v2/teams/#{team.id}/stats"
+      assert_response :success
+      assert_equal 1, JSON.parse(response.body)['totals']['goals'],
+                   'Die Werte wurden neu berechnet, der Cache greift nicht'
+    end
+  end
+
+  # Gegenprobe zum Test darüber: Ohne Cache ist das zweite Spiel sofort da. So
+  # bleibt belegt, dass die 1 oben am Cache liegt und nicht daran, dass der
+  # Helfer kein zweites Tor anlegt.
+  test 'stats zählt ein neues Spiel ohne Cache sofort mit' do
+    login(create(:user, :admin))
+    team = team_with_scorer(enable_scorer: true)
+
+    get "/api/v2/teams/#{team.id}/stats"
+    assert_equal 1, JSON.parse(response.body)['totals']['goals']
+
+    game_with_goal(team, team.league, 8)
+
+    get "/api/v2/teams/#{team.id}/stats"
+    assert_equal 2, JSON.parse(response.body)['totals']['goals']
+  end
+
+  test 'stats liefert nach dem Umschalten von enable_scorer sofort die neue Sichtbarkeit' do
+    login(create(:user, :admin))
+    team = team_with_scorer(enable_scorer: true)
+
+    with_real_cache do
+      get "/api/v2/teams/#{team.id}/stats"
+      assert_response :success
+      assert JSON.parse(response.body)['scorer_visible']
+
+      # Die sichtbaren Ligen stehen im Cache-Key. Ohne sie liefe die Maske bis
+      # zum Ablauf der TTL weiter mit der alten Sichtbarkeit.
+      team.league.update!(enable_scorer: false)
+
+      get "/api/v2/teams/#{team.id}/stats"
+      assert_response :success
+      body = JSON.parse(response.body)
+      assert_not body['scorer_visible']
+      assert_empty body['scorer']
+      # Die Team-Summen bleiben davon unberührt, sie zählen alle Ligen.
+      assert_equal 1, body['totals']['goals']
+    end
+  end
+
+  test 'stats trennt die gecachten Werte zweier Teams' do
+    login(create(:user, :admin))
+    team_a = team_with_scorer(enable_scorer: true)
+    team_b = create(:team, league: create(:league, game_operation: @go, enable_scorer: true), club: @club)
+    game_with_goal(team_b, team_b.league, 9)
+    game_with_goal(team_b, team_b.league, 11)
+
+    with_real_cache do
+      get "/api/v2/teams/#{team_a.id}/stats"
+      assert_equal 1, JSON.parse(response.body)['totals']['goals']
+
+      get "/api/v2/teams/#{team_b.id}/stats"
+      assert_equal 2, JSON.parse(response.body)['totals']['goals']
+    end
   end
 
   test 'destroy lehnt Löschung mit 422 ab, wenn eine Spieltag-Bestätigung existiert (DB-FK)' do
