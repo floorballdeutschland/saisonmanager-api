@@ -1120,14 +1120,47 @@ class PlayersController < ApplicationController
   # der ID die Aussage bereits.
   def resolve_club_actor_names!(hash)
     entries = Array(hash[:clubs])
-    ids = entries.flat_map { |c| [c['created_by'], c['valid_set_by']] }.compact.uniq
-    return if ids.empty?
+    # Strukturell kaputte Eintraege (kein Objekt) ueberspringen, wie in
+    # Player#home_club_entry: In diesem Bestand liegen solche Eintraege, und ohne
+    # den Riegel bricht jeder Leser darueber ab. Eine Namensanzeige darf die
+    # ganze Profilmaske nicht mitreissen.
+    memberships = entries.select { |c| c.is_a?(Hash) }
+    return if memberships.empty?
 
-    names = User.where(id: ids).index_by(&:id).transform_values(&:fullname)
-    entries.each do |c|
-      c['created_by_name'] = names[c['created_by']]
-      c['valid_set_by_name'] = names[c['valid_set_by']]
+    # Die IDs stammen aus JSONB und sind nicht typgarantiert: Ein Altbestand mit
+    # "42" statt 42 wuerde von User.where gefunden (ActiveRecord castet), aber
+    # unter dem Integer-Schluessel abgelegt und beim Nachschlagen verfehlt. Die
+    # Maske behauptete dann "Name nicht verfuegbar" fuer ein Konto, das gerade
+    # geladen wurde.
+    ids = memberships.flat_map { |c| [c['created_by'], c['valid_set_by']] }
+                     .filter_map { |v| Integer(v, exception: false) }.uniq
+
+    names = resolve_user_names(ids)
+
+    # Auf Kopien statt auf den Eintraegen selbst: full_hash legt unter clubs das
+    # AR-Attribut ab, kein Duplikat. Ein spaeteres save wuerde die reinen
+    # Anzeigenamen sonst in die Mitgliedschaft schreiben, wo sie beim naechsten
+    # Umbenennen still veralten. Kaputte Eintraege bleiben unveraendert stehen,
+    # damit die Antwort nichts verliert.
+    hash[:clubs] = entries.map do |c|
+      next c unless c.is_a?(Hash)
+
+      c.merge(
+        'created_by_name' => names[c['created_by'].to_i],
+        'valid_set_by_name' => names[c['valid_set_by'].to_i]
+      )
     end
+  end
+
+  # fullname ist bei einem Konto ohne Vor- und Nachnamen ein blosses Leerzeichen
+  # und nicht nil -- User validiert die beiden Felder nicht. Ungefiltert waere
+  # das im Frontend ein "gueltiger" Name, der nichts aussagt und zugleich den
+  # Rueckfall auf die Konto-ID verdeckt. Gleiches Muster wie in
+  # ClubsController#managers.
+  def resolve_user_names(ids)
+    return {} if ids.empty?
+
+    User.where(id: ids).index_by(&:id).transform_values { |u| u.fullname.strip.presence }
   end
 
   # Lesender Zugriff auf ein Profil und das Pflegen der E-Mail-Adresse: hier

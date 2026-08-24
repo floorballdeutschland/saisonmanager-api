@@ -941,6 +941,8 @@ module Admin
 
     def create_user_sbk(game_operation_id:)
       User.create!(
+        first_name: "Vor#{SecureRandom.hex(3)}",
+        last_name: "Nach#{SecureRandom.hex(3)}",
         user_name: "sbk_#{SecureRandom.hex(6)}",
         password: 'password123',
         password_confirmation: 'password123',
@@ -951,6 +953,8 @@ module Admin
 
     def create_user_sbk_and_vm(game_operation_id:, club_id:)
       User.create!(
+        first_name: "Vor#{SecureRandom.hex(3)}",
+        last_name: "Nach#{SecureRandom.hex(3)}",
         user_name: "sbkvm_#{SecureRandom.hex(6)}",
         password: 'password123',
         password_confirmation: 'password123',

@@ -67,13 +67,15 @@ class TransferRequest < ApplicationRecord
   #
   # Status `withdrawn` wie bei #cancel und #withdraw, statt eines eigenen: Der
   # Antrag ist annulliert, und die vier laufenden Status sind dieselben.
-  # user_id ist das Konto, das den Verein deaktiviert hat. Club#deactivate!
-  # kennt es (es steht auch in clubs.deactivated_by), gab es aber nicht weiter,
-  # und der Antrag verlor damit seinen Abschluss. Das ist der dritte Weg in den
-  # Status "withdrawn" neben #withdraw und #cancel; ohne Konto und Zeitpunkt
-  # wäre ein so beendeter Vorgang in der Chronik der einzige ohne jeden
-  # Abschlussschritt.
-  def self.end_for_deactivated_club(club_id, user_id = nil)
+  #
+  # Das ist damit der dritte Weg in den Status `withdrawn` neben #withdraw und
+  # #cancel. user_id ist das Konto, das den Verein deaktiviert hat: Es war hier
+  # bisher nicht bekannt, obwohl Club#deactivate! es kennt und nach
+  # clubs.deactivated_by schreibt -- ohne Konto und Zeitpunkt waere ein so
+  # beendeter Vorgang in der Chronik der einzige ohne jeden Abschlussschritt.
+  # Pflichtargument und kein Vorgabewert, damit ein kuenftiger Aufrufer nicht
+  # still wieder den Zustand herstellt, den das gerade beseitigt.
+  def self.end_for_deactivated_club(club_id, user_id)
     active.where(requesting_club_id: club_id).to_a.select do |tr|
       transaction do
         tr.lock!
@@ -117,7 +119,11 @@ class TransferRequest < ApplicationRecord
     ids = Array(records).flat_map(&:actor_user_ids).uniq
     return {} if ids.empty?
 
-    User.where(id: ids).index_by(&:id).transform_values(&:fullname)
+    # strip.presence, weil fullname bei einem Konto ohne Vor- und Nachnamen ein
+    # blosses Leerzeichen liefert und nicht nil -- User validiert die beiden
+    # Felder nicht. Ungefiltert waere das in der Chronik ein "gueltiger" Name,
+    # der nichts aussagt und zugleich den Rueckfall auf die Konto-ID verdeckt.
+    User.where(id: ids).index_by(&:id).transform_values { |u| u.fullname.strip.presence }
   end
 
   # actors: vorab aufgelöste Namen (siehe actor_names_for). Ohne die Option löst
