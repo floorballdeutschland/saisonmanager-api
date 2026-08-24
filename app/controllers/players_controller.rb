@@ -607,6 +607,11 @@ class PlayersController < ApplicationController
         else
           render json: player.errors, status: :unprocessable_entity
         end
+      elsif create_modus
+        # Das Anlegen liegt beim Vereinsmanager (Club#user_permissions). Die
+        # Vereinssicht blendet den Knopf ab, ein noch offener Tab oder ein
+        # direkter Aufruf landet hier.
+        render json: { message: creation_denied_message }, status: :forbidden
       else
         render json: { message: 'Keine Berechtigung' }, status: :forbidden
       end
@@ -910,7 +915,9 @@ class PlayersController < ApplicationController
     player = Player.find_by(id: params[:id])
     return render json: { message: 'Spieler nicht gefunden.' }, status: :not_found unless player
     return render json: { message: 'Spieler ist bereits deaktiviert.' }, status: :unprocessable_entity if player.deactivated_at.present?
-    return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless can_manage_player?(player)
+    unless can_deactivate_player?(player)
+      return render json: { message: deactivation_denied_message }, status: :forbidden
+    end
 
     reason = sanitize_deactivation_reason(params[:reason])
     return render json: { message: 'Ungültiger Deaktivierungsgrund.' }, status: :unprocessable_entity if reason == :invalid
@@ -928,10 +935,8 @@ class PlayersController < ApplicationController
     # die Heimat-Zugehörigkeit, weshalb die reguläre Prüfung ab dem Tag danach
     # nein sagt (siehe sbk_can_undo_deactivation?).
     ph = current_user.permission_hash
-    unless ph[:admin].present? || sbk_can_access_player?(ph, player) ||
-           vm_can_access_player?(ph, player) || tm_can_access_player?(ph, player) ||
-           sbk_can_undo_deactivation?(ph, player)
-      return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    unless can_deactivate_player?(player) || sbk_can_undo_deactivation?(ph, player)
+      return render json: { message: deactivation_denied_message }, status: :forbidden
     end
 
     # Eine zusammengefuehrte Dublette ist nur deshalb deaktiviert, weil merge_into!
@@ -1086,10 +1091,48 @@ class PlayersController < ApplicationController
     )
   end
 
+  # Lesender Zugriff auf ein Profil und das Pflegen der E-Mail-Adresse: hier
+  # zählt der Teammanager mit, er stellt aus diesem Bestand seinen Kader auf.
   def can_manage_player?(player)
     ph = current_user.permission_hash
     ph[:admin].present? || sbk_can_access_player?(ph, player) ||
       vm_can_access_player?(ph, player) || tm_can_access_player?(ph, player)
+  end
+
+  # Deaktivieren und Reaktivieren dagegen nicht: Die Deaktivierung schließt
+  # alle Vereinszugehörigkeiten und setzt die laufenden Lizenzen auf DELETED,
+  # entscheidet also über die Mitgliedschaft im Verein und nicht über die
+  # Aufstellung einer Mannschaft. Dieselbe Grenze wie beim Anlegen
+  # (Club#user_permissions, :create_player).
+  def can_deactivate_player?(player)
+    ph = current_user.permission_hash
+    ph[:admin].present? || sbk_can_access_player?(ph, player) ||
+      vm_can_access_player?(ph, player)
+  end
+
+  # Eigene Meldung statt „Keine Berechtigung.", weil hier fast immer ein
+  # Teammanager steht: Die Oberfläche zeigt ihm die Knöpfe nicht, ein noch
+  # offener Tab oder ein direkter Aufruf landet hier. Für alle anderen Rollen
+  # wäre der Rollenhinweis falsch, die sind schlicht nicht zuständig.
+  def deactivation_denied_message
+    if team_manager_only?
+      'Deaktivieren und Reaktivieren darf nur der Vereinsmanager des Vereins.'
+    else
+      'Keine Berechtigung.'
+    end
+  end
+
+  def creation_denied_message
+    if team_manager_only?
+      'Spieler*innen anlegen darf nur der Vereinsmanager des Vereins.'
+    else
+      'Keine Berechtigung'
+    end
+  end
+
+  def team_manager_only?
+    ph = current_user.permission_hash
+    ph[:tm].present? && ph[:vm].blank? && ph[:sbk].blank? && ph[:admin].blank?
   end
 
   def vm_can_access_player?(ph, player)

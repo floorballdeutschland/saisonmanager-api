@@ -484,7 +484,11 @@ class User < ApplicationRecord
     result[:player_add_additional_clubs] = ph[:admin].present? || ph[:sbk].present?
     result[:player_remove_additional_clubs] = ph[:admin].present? || ph[:sbk].present?
 
-    result[:player_deactivate] = ph[:admin].present? || ph[:sbk].present? || ph[:vm].present? || ph[:tm].present?
+    # Wie das Anlegen eine Vereinsentscheidung: Die Deaktivierung schließt die
+    # Vereinszugehörigkeiten und setzt die laufenden Lizenzen auf DELETED.
+    # Teammanager*innen sehen den Bestand weiter, entscheiden aber nicht über
+    # die Mitgliedschaft (Backend: PlayersController#can_deactivate_player?).
+    result[:player_deactivate] = ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
     result[:update_player_email] = ph[:vm].present? || ph[:tm].present?
     result[:player_set_license_to_transfer] = ph[:admin].present?
     # Erst-/Zweitlizenz-Zuordnung (GF-Erwachsenenbereich) setzen/tauschen
