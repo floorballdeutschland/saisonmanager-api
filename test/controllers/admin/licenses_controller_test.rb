@@ -200,6 +200,60 @@ module Admin
       assert row['documents']['use_url'].present?
     end
 
+    # Die Genehmigungsübersicht soll erkennbar machen, was seit dem letzten
+    # Durchgang neu hochgeladen wurde. Dafür reist der Uploadzeitpunkt neben der
+    # URL mit.
+    test 'documents-Map führt den Uploadzeitpunkt je Dokumentart' do
+      DocumentType.create!(name: 'Unterstellungserklärung', key: 'use')
+      @league_go1.update!(required_documents: ['use'])
+      doc = attach_pdf(LicenseDocument.new(player: @player_go1, document_type: 'use'))
+      doc.update_columns(created_at: Time.zone.parse('2026-08-12 09:30:00'))
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses'
+      row = JSON.parse(response.body).find { |r| r['player_id'] == @player_go1.id }
+      assert_equal Time.zone.parse('2026-08-12 09:30:00'),
+                   Time.zone.parse(row['documents']['use_uploaded_at']),
+                   'Uploadzeitpunkt muss dem created_at des Dokuments entsprechen'
+    end
+
+    # Kein Datum ohne abrufbares Dokument – sonst wiese die Übersicht einen
+    # Upload aus, den dort niemand öffnen kann.
+    test 'documents-Map lässt den Uploadzeitpunkt ohne Dokument leer' do
+      DocumentType.create!(name: 'Unterstellungserklärung', key: 'use')
+      @league_go1.update!(required_documents: ['use'])
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses'
+      row = JSON.parse(response.body).find { |r| r['player_id'] == @player_go1.id }
+      assert row['documents'].key?('use_uploaded_at'), 'Frontend-Kontrakt: Key immer vorhanden'
+      assert_nil row['documents']['use_uploaded_at']
+    end
+
+    # Ein erneuter Upload ersetzt den Datensatz, das Datum muss mitwandern –
+    # sonst bliebe ein nachgereichtes Dokument in der Übersicht „alt".
+    test 'erneuter Upload setzt den Uploadzeitpunkt neu' do
+      DocumentType.create!(name: 'Unterstellungserklärung', key: 'use')
+      @league_go1.update!(required_documents: ['use'])
+      old = attach_pdf(LicenseDocument.new(player: @player_go1, document_type: 'use'))
+      old.update_columns(created_at: Time.zone.parse('2026-06-01 08:00:00'))
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses'
+      row = JSON.parse(response.body).find { |r| r['player_id'] == @player_go1.id }
+      assert_equal Time.zone.parse('2026-06-01 08:00:00'),
+                   Time.zone.parse(row['documents']['use_uploaded_at'])
+
+      old.destroy!
+      attach_pdf(LicenseDocument.new(player: @player_go1, document_type: 'use'))
+
+      get '/api/v2/admin/licenses'
+      row = JSON.parse(response.body).find { |r| r['player_id'] == @player_go1.id }
+      assert_operator Time.zone.parse(row['documents']['use_uploaded_at']), :>,
+                      Time.zone.parse('2026-06-01 08:00:00'),
+                      'Nach dem Ersetzen muss der neue Uploadzeitpunkt gelten'
+    end
+
     test 'per_season-Dokument aus der Vorsaison zählt nicht für die aktuelle Lizenz' do
       DocumentType.create!(name: 'Sportärztliches Attest', key: 'attest', validity: 'per_season')
       @league_go1.update!(required_documents: ['attest'])
