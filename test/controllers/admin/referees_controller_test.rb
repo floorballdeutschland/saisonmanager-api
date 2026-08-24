@@ -50,6 +50,54 @@ module Admin
       assert_response :created
     end
 
+    # Ein Spielverbund (SBK Ost) haengt an einem eigenen Landesverband, seine
+    # Vereine liegen aber in den untergeordneten. Sein RSK sah deshalb keinen
+    # einzigen eigenen Schiedsrichter: Das Scoping las nur
+    # GameOperation#state_association_id, also die Wurzel, und die traegt in
+    # Produktion keine Vereine mit Schiris.
+    test 'RSK eines Spielverbunds sieht die Schiris der untergeordneten Landesverbaende' do
+      verbund = create(:state_association)
+      go = create(:game_operation, state_association_id: verbund.id)
+      kind = create(:state_association, parent_id: verbund.id)
+      referee = create(:referee, club_id: create(:club, state_association_id: kind.id).id)
+
+      login(rsk_user(go.id))
+      get '/api/v2/admin/referees'
+
+      assert_response :success
+      assert_includes response.parsed_body.map { |r| r['id'] }, referee.id
+    end
+
+    # Zweiter Pfad derselben Ursache: das Detail prueft ueber can_access_referee?
+    # und antwortete mit 403 auf einen Schiri des eigenen Verbunds.
+    test 'RSK eines Spielverbunds darf den Schiri eines untergeordneten Landesverbands oeffnen' do
+      verbund = create(:state_association)
+      go = create(:game_operation, state_association_id: verbund.id)
+      kind = create(:state_association, parent_id: verbund.id)
+      referee = create(:referee, club_id: create(:club, state_association_id: kind.id).id)
+
+      login(rsk_user(go.id))
+      get "/api/v2/admin/referees/#{referee.id}"
+
+      assert_response :success
+    end
+
+    # Gegenprobe: Der Baum weitet den Bestand nur nach unten. Ein fremder
+    # Landesverband ohne Verbund und ohne Freigabe bleibt aussen vor.
+    test 'RSK eines Spielverbunds sieht keine Schiris eines fremden Landesverbands' do
+      verbund = create(:state_association)
+      go = create(:game_operation, state_association_id: verbund.id)
+      create(:state_association, parent_id: verbund.id)
+      fremd = create(:state_association)
+      referee = create(:referee, club_id: create(:club, state_association_id: fremd.id).id)
+
+      login(rsk_user(go.id))
+      get '/api/v2/admin/referees'
+
+      assert_response :success
+      assert_not_includes response.parsed_body.map { |r| r['id'] }, referee.id
+    end
+
     test 'LV-RSK darf für einen bestehenden Schiri ein Benutzerkonto anlegen' do
       sa = create(:state_association)
       go = create(:game_operation, state_association_id: sa.id)
