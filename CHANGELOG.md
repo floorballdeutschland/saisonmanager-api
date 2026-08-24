@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Zusatzqualifikationen stehen im Schiedsrichterprofil und auf dem Ausweis**: Wer einen Aufbaukurs abgeschlossen hat, etwa als Spielleiter oder Beobachter, findet die Qualifikation samt Gültigkeitsdatum in der Schiedsrichterverwaltung eingetragen und im öffentlichen Lizenzcheck ausgewiesen. Im eigenen Profil und auf dem digitalen Schiedsrichterausweis fehlte sie: Dort standen nur Lizenzstufe und Lizenzgültigkeit. Damit sah die betroffene Person über ihre eigene Qualifikation weniger als jeder Dritte, der ihre Lizenznummer in den Lizenzcheck eingibt, obwohl derselbe Lizenzcheck hinter dem QR-Code des eigenen Ausweises steckt. Beide Ansichten führen die Zusatzqualifikationen jetzt mit, nach Namen sortiert und mit demselben Farbschema wie die Lizenzgültigkeit: grün, solange sie gilt, rot ab dem Tag danach. Eine Qualifikation ohne hinterlegtes Ablaufdatum wird ohne Datum und ohne Farbe geführt, weil dazu keine Aussage vorliegt. Abgelaufene Qualifikationen bleiben stehen und verschwinden nicht still, sonst wäre für die betroffene Person nicht zu unterscheiden, ob eine Qualifikation abgelaufen oder nie erworben ist. Gepflegt werden die Einträge weiterhin ausschließlich von der Schiedsrichterkommission, das Profil zeigt sie nur an. Wer keine Zusatzqualifikation hinterlegt hat, sieht die neuen Abschnitte nicht.
+
 ## [1.96.0] - 2026-08-24
 
 ### Neu

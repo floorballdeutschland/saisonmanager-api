@@ -82,7 +82,31 @@ class RefereeProfileController < ApplicationController
       club_exclusions: club_exclusions_json(@referee),
       club_exclusion_requests: club_exclusion_requests_json(@referee),
       # Korrekturanträge zu den gesperrten Stammdaten, siehe profile_params.
-      change_requests: change_requests_json(@referee)
+      change_requests: change_requests_json(@referee),
+      # Zusatzqualifikationen mit ihrer Gültigkeit. Sie stehen im öffentlichen
+      # Lizenzcheck (RefereesController#show), also hinter dem QR-Code des
+      # eigenen Ausweises: Ohne sie hier sähe die betroffene Person auf Profil
+      # und Ausweis weniger als jeder Dritte, der ihre Lizenznummer eingibt.
+      # Gepflegt werden sie von der Schiedsrichterkommission, deshalb rein
+      # lesend und ohne Eintrag in profile_params.
+      qualifications: qualifications_json
     }
+  end
+
+  # Nach Namen sortiert, damit die Reihenfolge auf dem Ausweis nicht von der
+  # Anlagereihenfolge abhängt. Abgelaufene bleiben in der Liste: Das Frontend
+  # zeichnet sie rot, und ein stilles Weglassen wäre für die betroffene Person
+  # nicht von „nie erworben“ zu unterscheiden.
+  def qualifications_json
+    @referee.referee_qualifications
+            .includes(:referee_qualification_type)
+            .sort_by { |q| q.referee_qualification_type&.name.to_s }
+            .map do |q|
+      {
+        qualification_type_name: q.referee_qualification_type&.name,
+        short_name: q.referee_qualification_type&.short_name,
+        valid_until: q.valid_until&.strftime('%d.%m.%Y')
+      }
+    end
   end
 end
