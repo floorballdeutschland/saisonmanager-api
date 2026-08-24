@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.97.0] - 2026-08-24
+
 ### Neu
 
 - **Bei Transfers und Freigaben ist nachträglich ersichtlich, welches Konto gehandelt hat**: Wer einen Antrag gestellt, die Vereinsfreigabe erteilt, die Genehmigung des Verbandes ausgesprochen, abgelehnt oder widerrufen hat, wurde von Anfang an mitgeschrieben, aber nie ausgeliefert. Nach Abschluss eines Vorgangs war damit nicht mehr zu klären, wer ihn veranlasst hat, und genau diese Frage kam in der Vergangenheit mehrfach auf. Die Transferansicht führt jetzt zu jedem Schritt das handelnde Konto samt Zeitpunkt, und im Spielerprofil steht bei jeder Vereinszugehörigkeit, wer sie angelegt und wer sie beendet hat, soweit der Eintrag ein Konto trägt; Zugehörigkeiten aus dem Altbestand bleiben ohne Angabe. Ausgegeben werden Name und Konto-ID zusammen: Der Name ist die Anzeige, die ID bleibt die belastbare Angabe, wenn ein Konto zwischenzeitlich umbenannt oder gelöscht wurde. Ein nicht mehr auffindbares Konto führt zur ID ohne Namen, statt die Ansicht abbrechen zu lassen. Sichtbar sind die Namen für alle, die den Vorgang beziehungsweise das Profil ohnehin öffnen dürfen; im Spielerprofil weist die Lizenzhistorie das handelnde Konto seit langem genauso aus, eine Ausnahme allein für die Vereinseinträge wäre in derselben Maske nicht vermittelbar. Ausgegeben wird der Name ohne den Benutzernamen: Angemeldet wird sich in diesem Projekt allein über den Benutzernamen, und für die Frage, wer gehandelt hat, tragen Name und Konto-ID die Aussage bereits.
