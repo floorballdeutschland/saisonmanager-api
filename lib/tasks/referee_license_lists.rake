@@ -12,13 +12,21 @@
 # kommenden sieben Tage (Freitag bis einschließlich Donnerstag), sodass jedes
 # Spiel genau eine Mail bekommt:
 #
-#   # Server in UTC:            Do 22:00 UTC = Fr 00:00 (MESZ)
-#   0 22 * * 4  docker exec saisonmanager_rails_api bundle exec rake referee_license_lists:notify RAILS_ENV=production
-#   # Server in Europe/Berlin:
-#   0 0 * * 5   docker exec saisonmanager_rails_api bundle exec rake referee_license_lists:notify RAILS_ENV=production
+#   # Prod-Server steht auf Etc/UTC:
+#   0 23 * * 4  docker exec saisonmanager_rails_api bundle exec rake referee_license_lists:notify RAILS_ENV=production
 #
-# Die Zeitzone des Servers entscheidet nur über die Cron-Zeile; das Fenster
-# selbst rechnet der Notifier immer im Kalender des Spielbetriebs
+# Die Stunde muss die Zeitumstellung aushalten, sonst rutscht der Lauf auf einen
+# anderen Wochentag und damit das ganze Fenster um einen Tag. 23:00 UTC am
+# Donnerstag ist in der Winterzeit Freitag 0:00 und in der Sommerzeit Freitag
+# 1:00, liegt also in beiden Fällen auf dem Freitag.
+#
+# 22:00 UTC wäre falsch: Das ist nur in der Sommerzeit Freitag 0:00, in der
+# Winterzeit dagegen Donnerstag 23:00. Genau die Winterzeit ist die Saison, das
+# Fenster wäre dort Donnerstag bis Mittwoch, und ein Donnerstagsspiel bekäme
+# seine Mail nach dem Anpfiff.
+#
+# Steht der Server auf Europe/Berlin, ist es einfach `0 0 * * 5`. Das Fenster
+# selbst rechnet der Notifier ohnehin immer im Kalender des Spielbetriebs
 # (Europe/Berlin), unabhängig von der Zone der Anwendung (UTC).
 #
 # Vorschau ohne Versand:
