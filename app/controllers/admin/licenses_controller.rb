@@ -45,9 +45,11 @@ module Admin
       # league.licenses zweimal – erst zum Sammeln der Spieler-IDs für die
       # Dokumente, dann erneut zum Bauen der Antwort – und beide Male Liga für
       # Liga, also je Liga eine eigene Spieler-Abfrage über die players-Tabelle.
-      # Diese Liste liest weder Logos noch other_licenses, daher :light und
-      # with_other_licenses: false.
-      licenses_by_league = League.licenses_for(leagues, team_hash: :light, with_other_licenses: false)
+      # Diese Liste liest weder Logos noch other_licenses noch das Freigabedatum,
+      # daher :light und beide Schalter aus. with_release_dates: false spart eine
+      # Abfrage ueber die Spieler ALLER Ligen der Saison.
+      licenses_by_league = League.licenses_for(leagues, team_hash: :light, with_other_licenses: false,
+                                               with_release_dates: false)
 
       # Pre-load all license documents for players in these leagues (grouped by
       # [player_id, doc_type] – Dokumente gelten pro Spieler, saisonübergreifend)
@@ -116,6 +118,9 @@ module Admin
               express:              lic['express'] || false,
               requested_at:         player_data[:team_license][:requested_at],
               approved_at:          player_data[:team_license][:approved_at],
+              # Datum der Vereins-Freigabe (genehmigter Freigabe-Antrag), leer
+              # bei Spielern, die keine brauchten.
+              released_at:          player_data[:team_license][:released_at],
               required_documents:   required_keys,
               valid_until:          lic['valid_until'],
               documents:            document_map_for(player_data[:id], league.season_id, license_docs_by_key, required_keys, catalog)
