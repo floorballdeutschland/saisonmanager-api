@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.98.0] - 2026-08-25
+
 ### Neu
 
 - **Freigabedatum in der Lizenzliste**: Die Lizenzliste einer Liga (Lizenzwesen, Lizenzlisten) zeigt zu jeder Lizenz jetzt zusätzlich das Datum, an dem die Freigabe des Spielers oder der Spielerin für den Verein der Mannschaft vom Landesverband vollzogen wurde. Damit steht neben dem Beantragungs- und dem Erteilungsdatum, die dieselbe Liste ebenfalls neu ausweist, auch die dritte für die Fristenprüfung nach Lizenzordnung und SPO nötige Angabe in der Liste selbst, statt sie je Spieler beim Verband nachfragen zu müssen. Maßgeblich ist der Vollzug durch den Landesverband und nicht die davor liegende Zustimmung des abgebenden Vereins: Erst mit dem Vollzug entsteht die Zugehörigkeit zum aufnehmenden Verein, der Spieler ist also erst ab diesem Zeitpunkt freigegeben. Liegen mehrere wirksame Freigaben vor, etwa bei einer Spielgemeinschaft an mehrere beteiligte Vereine, wird die früheste ausgewiesen, denn ab ihr ist der Spieler spielberechtigt. Als Beleg zählt ausschließlich der genehmigte Freigabe-Antrag aus der Saison der jeweiligen Liga; ein Zusatzverein, der ohne dieses Verfahren direkt eingetragen wurde, erscheint deshalb ohne Datum, obwohl eine Freigabe vorliegen kann. Wer keine Freigabe braucht, hat an dieser Stelle wie bisher keinen Eintrag. Der Saisonmanager prüft die Fristen nicht und markiert nichts, er zeigt die Daten nur an.
