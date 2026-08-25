@@ -447,12 +447,19 @@ module Admin
         game.update!(nominated_referee_string: public_string) if public_string.present?
       end
 
-      expires_at = 72.hours.from_now
-      license_token = Rails.application.message_verifier('license_list').generate(
-        { game_id: assignment.game_id, expires_at: expires_at.iso8601 },
-        expires_in: 72.hours
-      )
-      license_list_url = "#{FrontendUrl.base}/lizenzliste?token=#{CGI.escape(license_token)}"
+      # Die Lizenzlisten reisen normalerweise NICHT mit der Ansetzungsmail: Der
+      # Link ist nur bis zum Tag nach dem Spiel gültig, angesetzt wird aber oft
+      # Wochen vorher. Sie kommen deshalb im Wochenlauf wenige Tage vor dem Spiel
+      # (RefereeLicenseListNotifier).
+      #
+      # Ausnahme: Liegt das Spiel schon im Fenster des nächsten Wochenlaufs, käme
+      # keine Mail mehr davor, und eine kurzfristige Ansetzung würde die Listen
+      # also nie bekommen. Dann gehen sie direkt hier mit, und die Ansetzung wird als
+      # benachrichtigt markiert, damit der Wochenlauf sie nicht wiederholt.
+      link = LicenseListLink.new(game)
+      imminent = RefereeLicenseListNotifier.window_covers?(game.game_date)
+      license_list_url = imminent ? link.url : nil
+      expires_at = license_list_url.present? ? link.expires_at : nil
 
       coach = assignment.coach
       assignment.referees.each do |referee|
@@ -490,6 +497,8 @@ module Admin
           license_expires_at: expires_at
         ).deliver_later
       end
+
+      assignment.update_column(:license_lists_notified_at, Time.current) if license_list_url.present?
 
       notify_host_if_complete(game.game_day)
 

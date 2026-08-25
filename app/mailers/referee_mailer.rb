@@ -77,6 +77,16 @@ class RefereeMailer < ApplicationMailer
     @license_expires_at = license_expires_at
     @referee_notes = visible_referee_notes(game, referee)
 
+    attach_assignment_calendar(
+      game,
+      recipient: referee,
+      role: :referee,
+      officials: partner && "#{partner.vorname} #{partner.nachname}",
+      coach_name: coach && "#{coach.vorname} #{coach.nachname}",
+      club_contact_email: club_contact_email,
+      notes: @referee_notes
+    )
+
     templated_mail(
       to: referee.email,
       subject: "Ansetzung – #{game.game_day.date} #{game.home_team&.name} vs. #{game.guest_team&.name}",
@@ -104,6 +114,15 @@ class RefereeMailer < ApplicationMailer
     @license_expires_at = license_expires_at
     @referee_notes = visible_referee_notes(game, coach)
 
+    attach_assignment_calendar(
+      game,
+      recipient: coach,
+      role: :coach,
+      officials: official_names.presence,
+      club_contact_email: club_contact_email,
+      notes: @referee_notes
+    )
+
     templated_mail(
       to: coach.email,
       subject: "Schiedsrichtercoach-Ansetzung – #{game.game_day.date} #{game.home_team&.name} vs. #{game.guest_team&.name}",
@@ -116,6 +135,30 @@ class RefereeMailer < ApplicationMailer
         guest_team: game.guest_team&.name,
         officials: official_names.to_s,
         referee_notes: @referee_notes.to_s
+      }
+    )
+  end
+
+  # Lizenzlisten zu den anstehenden Spielen eines Empfängers, gebündelt in einer
+  # Mail (RefereeLicenseListNotifier). `entries` sind Hashes mit :game, :date,
+  # :role, :url und :expires_at, aufsteigend nach Anpfiff sortiert.
+  #
+  # Bewusst getrennt von der Ansetzungsmail: Der Link gilt nur bis zum Tag nach
+  # dem Spiel, angesetzt wird aber oft Wochen vorher.
+  def license_lists_notification(recipient, entries)
+    @recipient = recipient
+    @entries = entries
+    @date_range = date_range_label(entries.map { |entry| entry[:date] })
+
+    templated_mail(
+      to: recipient.email,
+      subject: "Lizenzlisten für deine Ansetzungen (#{@date_range})",
+      default_reply_to: REPLY_TO,
+      placeholders: {
+        first_name: recipient.vorname,
+        date_range: @date_range,
+        game_count: entries.size.to_s,
+        game_list: entries.map { |entry| license_list_line(entry) }.join("\n")
       }
     )
   end
@@ -305,6 +348,45 @@ class RefereeMailer < ApplicationMailer
     return change[:name] if change[:valid_until].blank?
 
     "#{change[:name]} (gültig bis #{change[:valid_until].strftime('%d.%m.%Y')})"
+  end
+
+  # ICS-Anhang für eine Ansetzungsmail, damit der Termin mit einem Klick im
+  # eigenen Kalender landet. Ohne lesbares Spieltagsdatum liefert der Kalender
+  # nil; die Mail geht dann ohne Anhang raus statt gar nicht.
+  #
+  # `method=PUBLISH` gehört in den Content-Type, nicht nur in die Datei: Outlook
+  # entscheidet daran, ob es den Anhang als übernehmbaren Termin anbietet.
+  # Setzt @calendar_attached, damit die Vorlage den Anhang nur dann erwähnt, wenn
+  # er wirklich dranhängt.
+  def attach_assignment_calendar(game, **options)
+    calendar = RefereeAssignmentCalendar.new(game, **options)
+    ics = calendar.to_ical
+    @calendar_attached = ics.present?
+    return unless @calendar_attached
+
+    attachments[calendar.filename] = {
+      mime_type: 'text/calendar; charset=UTF-8; method=PUBLISH',
+      content: ics
+    }
+  end
+
+  # „28.02.2026" bei einem Tag, „27.02.–01.03.2026" bei mehreren.
+  def date_range_label(dates)
+    days = dates.compact.uniq.sort
+    return '' if days.empty?
+    return days.first.strftime('%d.%m.%Y') if days.size == 1
+
+    "#{days.first.strftime('%d.%m.')}–#{days.last.strftime('%d.%m.%Y')}"
+  end
+
+  # Eine Zeile je Spiel für {{game_list}}. Nur Notnagel für einen in der Admin-UI
+  # gepflegten Body: Platzhalterwerte werden dort HTML-escaped, der Link steht
+  # deshalb als Text und nicht als Verweis.
+  def license_list_line(entry)
+    game = entry[:game]
+    time = game.start_time.presence
+    label = [entry[:date].strftime('%d.%m.%Y'), time].compact.join(' ')
+    "#{label} #{game.home_team&.name} vs. #{game.guest_team&.name}: #{entry[:url]}"
   end
 
   # SBK-Adresse des Spielbetriebs (Landesverband des game_operation, aufgelöst
