@@ -59,13 +59,6 @@ class GameDaysControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
-  private
-
-  def login(user)
-    post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
-    assert_response :success
-  end
-
   # Sentry SAISONMANAGER-3F: Das Anlegen mit leerer Ausrichter-Auswahl kam als
   # 500 zurueck, weil die 0 des Formulars ungebremst in den Fremdschluessel lief.
   test 'Anlegen mit leerer Ausrichter-Auswahl legt den Spieltag an' do
@@ -88,6 +81,20 @@ class GameDaysControllerTest < ActionDispatch::IntegrationTest
                                club_id: Club.maximum(:id).to_i + 1000 } }
 
     assert_response :bad_request
-    assert_not_nil JSON.parse(response.body)['error']
+    # Der Text landet unveraendert in der Meldung im Frontend, er muss also
+    # lesbar sein. `errors` traegt die Zuordnung zum Feld. Der Attributname
+    # bleibt englisch, wie bei jeder anderen Meldung hier auch (de.yml deckt
+    # bewusst nur Datums- und Zeitformate ab, s. config/application.rb).
+    fehler = JSON.parse(response.body)
+    assert_kind_of String, fehler['error']
+    assert_match(/club/i, fehler['error'])
+    assert fehler['errors'].key?('club'), "keine Feldzuordnung: #{fehler['errors']}"
+  end
+
+  private
+
+  def login(user)
+    post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
+    assert_response :success
   end
 end

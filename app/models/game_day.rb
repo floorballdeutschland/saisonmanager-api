@@ -48,8 +48,8 @@ class GameDay < ApplicationRecord
   # `optional: true` erlaubt nil, prüft aber nicht, ob eine gesetzte ID
   # existiert. Ohne diese Prüfung entscheidet das erst die Datenbank, und dann
   # ist es ein Serverfehler statt einer Rückmeldung am Feld.
-  validates :club, presence: true, if: -> { club_id.present? }
-  validates :arena, presence: true, if: -> { arena_id.present? }
+  validates :club, presence: { message: 'gibt es nicht' }, if: -> { club_id.present? }
+  validates :arena, presence: { message: 'gibt es nicht' }, if: -> { arena_id.present? }
 
   # 14
   scope :past_games, lambda {
