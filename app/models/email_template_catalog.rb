@@ -214,7 +214,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
     'RefereeMailer#published_assignment_notification' => {
       mailer_class: 'RefereeMailer',
       action_name: 'published_assignment_notification',
-      description: 'Veröffentlichte Ansetzung eines Schiris für ein konkretes Spiel.',
+      description: 'Veröffentlichte Ansetzung eines Schiris für ein konkretes Spiel. Enthält den Termin als Kalenderdatei (.ics) im Anhang. Die Lizenzlisten der beiden Mannschaften reisen NICHT mit, sondern kommen wenige Tage vor dem Spiel in einer eigenen Mail (RefereeMailer#license_lists_notification). Ausnahme: Bei einer kurzfristigen Ansetzung (Spiel innerhalb der nächsten sieben Tage) liegen sie direkt hier bei.',
       default_subject: 'Ansetzung – {{game_date}} {{home_team}} vs. {{guest_team}}',
       default_from: nil,
       default_reply_to: 'sr-ansetzungen@floorball.de',
@@ -231,7 +231,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
     'RefereeMailer#published_coach_notification' => {
       mailer_class: 'RefereeMailer',
       action_name: 'published_coach_notification',
-      description: 'Veröffentlichte Ansetzung an den/die Schiedsrichtercoach/in (mit Lizenzlisten und Spieltag-Details).',
+      description: 'Veröffentlichte Ansetzung an den/die Schiedsrichtercoach/in, mit Spieltag-Details und dem Termin als Kalenderdatei (.ics) im Anhang. Die Lizenzlisten kommen wenige Tage vor dem Spiel in einer eigenen Mail (RefereeMailer#license_lists_notification) und liegen hier nur bei einer kurzfristigen Ansetzung bei.',
       default_subject: 'Schiedsrichtercoach-Ansetzung – {{game_date}} {{home_team}} vs. {{guest_team}}',
       default_from: nil,
       default_reply_to: 'sr-ansetzungen@floorball.de',
@@ -243,6 +243,25 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'guest_team', description: 'Name der Gastmannschaft' },
         { key: 'officials', description: 'Namen der angesetzten Schiedsrichter/innen' },
         { key: 'referee_notes', description: 'Zusätzliche Spielinformationen des Ansetzers (leer, falls keine hinterlegt)' }
+      ]
+    },
+    'RefereeMailer#license_lists_notification' => {
+      mailer_class: 'RefereeMailer',
+      action_name: 'license_lists_notification',
+      description: 'Lizenzlisten der beteiligten Mannschaften zu den anstehenden Ansetzungen, gebündelt in einer Mail ' \
+                   'je Schiedsrichter/in bzw. Coach. Läuft wöchentlich in der Nacht Donnerstag → Freitag und deckt die ' \
+                   'kommenden sieben Tage ab; jeder Link gilt bis zum Tag nach dem jeweiligen Spiel. Achtung: Ein hier ' \
+                   'gepflegter Body ersetzt die eingebaute Tabelle und damit die anklickbaren Links, {{game_list}} ' \
+                   'liefert die Spiele dann nur als Text (Platzhalterwerte werden im gepflegten Body escaped). Für eine ' \
+                   'reine Wortlaut-Änderung besser nur den Betreff pflegen.',
+      default_subject: 'Lizenzlisten für deine Ansetzungen ({{date_range}})',
+      default_from: nil,
+      default_reply_to: 'sr-ansetzungen@floorball.de',
+      placeholders: [
+        { key: 'first_name', description: 'Vorname des Empfängers (für die Anrede)' },
+        { key: 'date_range', description: 'Zeitraum der enthaltenen Spiele, z. B. „27.02.–01.03.2026"' },
+        { key: 'game_count', description: 'Anzahl der enthaltenen Spiele' },
+        { key: 'game_list', description: 'Die Spiele als Text, eine Zeile je Spiel (Datum, Anpfiff, Begegnung, Link)' }
       ]
     },
     'RefereeMailer#updated_assignment_notification' => {

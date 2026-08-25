@@ -1,0 +1,41 @@
+<h2>Lizenzlisten für deine Ansetzungen</h2>
+
+<p>Hallo <%= @recipient.vorname %>,</p>
+
+<p>
+  <% if @entries.size == 1 %>
+    hier ist die Lizenzliste der beteiligten Mannschaften für dein nächstes Spiel:
+  <% else %>
+    hier sind die Lizenzlisten der beteiligten Mannschaften für deine nächsten <%= @entries.size %> Spiele:
+  <% end %>
+</p>
+
+<table>
+  <tr>
+    <td><strong>Datum</strong></td>
+    <td><strong>Anpfiff</strong></td>
+    <td><strong>Spiel</strong></td>
+    <td></td>
+  </tr>
+  <% @entries.each do |entry| %>
+  <tr>
+    <td><%= entry[:date].strftime('%d.%m.%Y') %></td>
+    <td><%= entry[:game].start_time.presence || '–' %></td>
+    <td>
+      <%= entry[:game].home_team&.name %> vs. <%= entry[:game].guest_team&.name %>
+      <% if entry[:role] == :coach %>(als Schiedsrichtercoach/in)<% end %>
+    </td>
+    <td><a href="<%= entry[:url] %>">Lizenzlisten ansehen</a></td>
+  </tr>
+  <% end %>
+</table>
+
+<p style="font-size: 0.9em; color: #555;">
+  Jeder Link gilt bis zum Ende des Tages nach dem jeweiligen Spiel. Bis zum Anpfiff
+  können noch Expresslizenzen hinzukommen. Die Liste zeigt beim Öffnen immer den
+  aktuellen Stand.
+</p>
+
+<p>
+  Bei Fragen antworte auf diese E-Mail oder wende dich an <a href="mailto:sr-ansetzungen@floorball.de">sr-ansetzungen@floorball.de</a>.
+</p>
