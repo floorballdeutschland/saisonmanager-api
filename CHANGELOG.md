@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **E-Mails gehen bei einem vorübergehenden Fehler des Mailservers nicht mehr verloren**: Ein Kursimport hat am 24.08.2026 zweiundzwanzig Lizenzmails innerhalb von vier Sekunden verschickt. Microsoft 365 lässt pro Postfach nur wenige gleichzeitige Verbindungen zu und wies vier davon mit „432 4.3.2 Concurrent connections limit exceeded" ab. Diese vier Mails waren damit endgültig verloren: Ein abgewiesener Zustellversuch wurde bisher nicht wiederholt, und die Warteschlange liegt im Arbeitsspeicher, hält also nichts für später fest. Die betroffenen Schiedsrichter erfuhren von ihrer neuen Lizenz nichts, während der Import sie als unterrichtet meldete, weil er nur prüfen kann, ob eine Mail eingereiht wurde, nicht ob sie später hinausgeht. Zwei Änderungen dagegen: Der Versand öffnet jetzt immer nur eine Verbindung zur Zeit, eine Tranche kann das Limit also nicht mehr aus eigener Kraft reißen, und die Reihenfolge der Mails bleibt dabei erhalten. Und ein vorübergehender Fehler, also das Verbindungslimit, eine abgerissene oder eine nicht zustande gekommene Verbindung, führt zu bis zu fünf Zustellversuchen mit wachsendem Abstand statt zum Verwerfen. Dauerhafte Fehler wie eine unbrauchbare Empfängeradresse werden weiterhin sofort gemeldet, weil daran kein weiterer Versuch etwas ändert. Bleibt eine Mail auch nach dem letzten Versuch liegen, landet der Fall wie bisher in der Fehlerüberwachung und wird nicht stillschweigend verschluckt. Betroffen war der gesamte Mailversand, aufgefallen ist es an den Lizenzmails, weil dort die meisten Mails auf einmal entstehen.
+
 ## [1.97.1] - 2026-08-25
 
 ### Behoben
