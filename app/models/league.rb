@@ -873,8 +873,11 @@ class League < ApplicationRecord
   # team_hash: :light liefert nur die Felder, die Lizenzlisten lesen, und lässt
   # damit die Logo- und Spielbetriebs-Auflösung weg.
   # with_other_licenses: false spart das Nachladen der fremden Teams.
+  # with_release_dates: false spart die Freigabe-Abfrage. Nur die Lizenzliste
+  # einer Liga zeigt das Datum; die Verbandsuebersicht laedt ueber ALLE Ligen
+  # einer Saison und wuerde die Abfrage sonst fuer nichts bezahlen.
   def self.licenses_for(leagues, full_license_hash: true, only_current_licenses: true,
-                        team_hash: :full, with_other_licenses: true)
+                        team_hash: :full, with_other_licenses: true, with_release_dates: true)
     leagues = Array(leagues)
     return {} if leagues.empty?
 
@@ -885,11 +888,55 @@ class League < ApplicationRecord
     teams_by_id = all_teams.index_by(&:id)
     teams_by_id.merge!(license_foreign_teams(team_licenses, teams_by_id.keys)) if with_other_licenses
 
+    release_dates = with_release_dates ? license_release_dates(team_licenses, all_teams) : {}
+
     leagues.to_h do |league|
       [league.id, league.build_license_items(teams_by_league[league.id] || [], team_licenses, teams_by_id,
                                              full_license_hash, only_current_licenses,
-                                             team_hash, with_other_licenses)]
+                                             team_hash, with_other_licenses,
+                                             release_dates:)]
     end
+  end
+
+  # Zeitpunkt, zu dem eine Freigabe wirksam wurde, je [Spieler, Verein, Saison],
+  # in einer Abfrage fuer alle Ligen des Aufrufs.
+  #
+  # Ausgegeben wird `lv_approved_at`, also der VOLLZUG DURCH DEN LANDESVERBAND
+  # -- nicht die Zustimmung des abgebenden Vereins (`club_approved_at`), die im
+  # dreistufigen Verfahren davor liegt und bis zu EXPIRE_AFTER_DAYS frueher sein
+  # kann. Erst mit dem Vollzug legt execute_release! die Mitgliedschaft im
+  # aufnehmenden Verein an, der Spieler ist also erst ab diesem Zeitpunkt
+  # freigegeben.
+  #
+  # Quelle ist ausschliesslich der genehmigte Freigabe-Antrag, nicht der
+  # Zweitvereins-Eintrag in Player#clubs: Den legt auch
+  # PlayersController#add_additional_club an -- ein aktiver Weg fuer Admin und
+  # SBK, nicht bloss Altbestand -- und sein Anlagedatum belegt keine Freigabe.
+  # Wer den Zusatzverein auf diesem Weg bekommen hat, bleibt hier deshalb leer,
+  # obwohl er freigegeben ist. Siehe CHANGELOG zu dieser Grenze.
+  #
+  # Sortierung absteigend, damit `to_h` (letzter Treffer je Schluessel gewinnt)
+  # den AELTESTEN Satz behaelt: Freigegeben ist der Spieler ab der ersten
+  # wirksamen Freigabe, und genau das ist die Angabe, gegen die eine Frist
+  # gelesen wird. Ein spaeterer zweiter Antrag darf sie nicht ueberschreiben.
+  # Wer die Sortierung anfasst, dreht diese Auswahl stillschweigend um.
+  #
+  # `where.not(lv_approved_at: nil)` ist rein vorsorglich: execute_release! ist
+  # heute der einzige Weg in den Status `approved` und setzt den Zeitpunkt immer
+  # (execute_transfer! ebenfalls, ist fuer Freigaben aber nicht erreichbar). Ein
+  # kuenftiger Genehmigungsweg, der die Spalte vergisst, wuerde durch die
+  # NULLS-Sortierung von Postgres sonst ein echtes Datum verdecken.
+  def self.license_release_dates(team_licenses, teams)
+    player_ids = team_licenses.each_value.flat_map { |players| players.map(&:id) }.uniq
+    club_ids = teams.flat_map(&:all_club_ids).compact.uniq
+    return {} if player_ids.empty? || club_ids.empty?
+
+    TransferRequest.where(request_type: 'release', status: 'approved',
+                          player_id: player_ids, requesting_club_id: club_ids)
+                   .where.not(lv_approved_at: nil)
+                   .order(lv_approved_at: :desc)
+                   .pluck(:player_id, :requesting_club_id, :season_id, :lv_approved_at)
+                   .to_h { |pid, club_id, season, approved_at| [[pid, club_id, season.to_i], approved_at] }
   end
 
   # Teams je Liga in einer Abfrage. Deckt wie League#teams auch die Teams ab, die
@@ -940,12 +987,14 @@ class League < ApplicationRecord
   end
 
   def build_license_items(league_teams, team_licenses, teams_by_id, full_license_hash,
-                          only_current_licenses, team_hash = :full, with_other_licenses = true)
+                          only_current_licenses, team_hash = :full, with_other_licenses = true,
+                          release_dates: {})
     active_statuses = [License::APPROVED, License::REQUESTED].to_set
 
     result = []
     league_teams.each do |team|
       team_item = team_hash == :full ? team.full_hash : League.license_light_team_hash(team)
+      team_club_ids = team.all_club_ids
 
       team_item[:players] = []
       (team_licenses[team.id] || []).each do |player|
@@ -967,9 +1016,14 @@ class League < ApplicationRecord
 
         last_status_code = License::NAMES[last_status_id.to_i]
 
-        approved_at = (last_status['created_at'].to_datetime if last_status_id == 1)
+        # .to_i wie zwei Zeilen darueber: Die Status-ID liegt in der JSONB-History
+        # nicht typgarantiert vor. Ohne die Umwandlung stand eine Lizenz mit
+        # '1'/'2' als String zwar in der Liste, aber ohne Beantragungs- und
+        # Erteilungsdatum -- seit die Lizenzliste beide zeigt, ist das kein
+        # kosmetischer Mangel mehr.
+        approved_at = (last_status['created_at'].to_datetime if last_status_id.to_i == 1)
         requested_at = license['history'].select do |lh|
-                         lh['license_status_id'] == 2
+                         lh['license_status_id'].to_i == 2
                        end.last&.dig('created_at')&.then { |ts| ts.to_datetime }
 
         player_item[:team_license] = {
@@ -978,7 +1032,8 @@ class League < ApplicationRecord
           last_status_id:,
           last_status_code:,
           approved_at:,
-          requested_at:
+          requested_at:,
+          released_at: release_date_for(player, team_club_ids, release_dates)
         }
 
         if with_other_licenses
@@ -992,6 +1047,21 @@ class League < ApplicationRecord
     end
 
     result
+  end
+
+  # Freigabedatum des Spielers fuer die Mannschaft dieser Liste.
+  #
+  # Eine Spielgemeinschaft gehoert mehreren Vereinen -- freigegeben ist der
+  # Spieler schon, wenn EINER davon die Freigabe erhalten hat. Bei mehreren
+  # zaehlt deshalb die FRUEHESTE (`min`), passend zur Sortierung in
+  # license_release_dates: Die Liste beantwortet, seit wann der Spieler
+  # freigegeben ist, nicht wann das zuletzt bestaetigt wurde.
+  #
+  # Die Saison im Schluessel ist die der LIGA, nicht die laufende: Die Liste
+  # einer vergangenen Saison zeigt die Freigaben von damals.
+  def release_date_for(player, team_club_ids, release_dates)
+    season = season_id.to_i
+    team_club_ids.filter_map { |club_id| release_dates[[player.id, club_id, season]] }.min
   end
 
   # Weitere aktive Lizenzen desselben Spielers in dieser Saison, ohne die des

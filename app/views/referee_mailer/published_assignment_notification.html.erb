@@ -40,8 +40,20 @@
   <a href="<%= @license_list_url %>">Lizenzlisten ansehen</a>
 </p>
 <p style="font-size: 0.9em; color: #555;">
-  Hinweis: Der Link ist 72 Stunden gültig (bis <%= I18n.l(@license_expires_at, format: :long) %>).
-  Es können bis zum Spieltag noch Expresslizenzen hinzukommen – prüfe die Liste daher ggf. nochmals kurz vor dem Spiel.
+  Der Link gilt bis <%= I18n.l(@license_expires_at, format: :long) %>, also bis zum Tag nach dem Spiel.
+  Bis zum Anpfiff können noch Expresslizenzen hinzukommen. Die Liste zeigt beim Öffnen immer den aktuellen Stand.
+</p>
+<% elsif @license_lists_follow %>
+<p style="font-size: 0.9em; color: #555;">
+  Die Lizenzlisten der beteiligten Mannschaften schicken wir dir wenige Tage vor dem Spiel
+  in einer eigenen E-Mail. So ist der Link dann gültig, wenn du ihn brauchst.
+</p>
+<% end %>
+
+<% if @calendar_attached %>
+<p style="font-size: 0.9em; color: #555;">
+  Im Anhang dieser E-Mail liegt der Termin als Kalenderdatei (.ics). Damit trägst du
+  ihn mit einem Klick in deinen Kalender ein.
 </p>
 <% end %>
 

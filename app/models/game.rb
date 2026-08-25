@@ -1395,6 +1395,15 @@ class Game < ApplicationRecord
     end
   end
 
+  # Spieltagsdatum als Date, oder nil. `game_days.date` ist eine Textspalte, und
+  # der Altbestand enthält unplausible Einträge. Ein Parse-Fehler darf nicht
+  # mitten in einem Mailversand hochkommen (siehe #545).
+  def game_date
+    Date.parse(game_day&.date.to_s)
+  rescue Date::Error, TypeError
+    nil
+  end
+
   def start_date
     return nil if game_day&.date.blank? || start_time.blank?
 
