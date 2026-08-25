@@ -32,6 +32,29 @@ class RefereeLicenseListNotifierTest < ActiveSupport::TestCase
     travel_to(FRIDAY_NIGHT) { RefereeLicenseListNotifier.new.run }
   end
 
+  # Lässt die Zustellung an eine Adresse scheitern, wie ein abgewiesener
+  # Empfänger in Produktion (`raise_delivery_errors` ist dort aktiv). Ein
+  # Interceptor greift im echten Zustellweg von deliver_now, nicht erst an einem
+  # ersetzten Mailer.
+  class RejectingInterceptor
+    class << self
+      attr_accessor :address
+
+      def delivering_email(mail)
+        raise Net::SMTPFatalError, "550 abgewiesen: #{address}" if mail.to.include?(address)
+      end
+    end
+  end
+
+  def with_failing_mail_for(referee)
+    RejectingInterceptor.address = referee.email
+    ActionMailer::Base.register_interceptor(RejectingInterceptor)
+    yield
+  ensure
+    ActionMailer::Base.unregister_interceptor(RejectingInterceptor)
+    RejectingInterceptor.address = nil
+  end
+
   test 'Fenster laeuft vom Lauftag sieben Tage weit' do
     travel_to FRIDAY_NIGHT do
       window = RefereeLicenseListNotifier.window
@@ -146,7 +169,7 @@ class RefereeLicenseListNotifierTest < ActiveSupport::TestCase
   # nicht abbrechen und die übrigen Mails nicht verhindern.
   test 'unlesbares Spieltagsdatum bricht den Lauf nicht ab' do
     kaputt = assignment_on('2026-03-07', referee2: nil)
-    kaputt.game.game_day.update_column(:date, '2026-03-07 oder so')
+    kaputt.game.game_day.update_column(:date, 'unbekannt')
     assignment_on('2026-03-08', referee1: @partner, referee2: nil)
 
     result = nil
@@ -156,6 +179,58 @@ class RefereeLicenseListNotifierTest < ActiveSupport::TestCase
 
     assert_equal 1, result[:assignments]
     assert_equal ['partner@example.de'], ActionMailer::Base.deliveries.last.to
+  end
+
+  # Ein unmögliches, aber formgerechtes Datum im Fenster: „2026-02-30" passiert
+  # jeden Formatfilter, lässt TO_DATE aber werfen. Weil die Abfrage über den
+  # gesamten Altbestand läuft (license_lists_notified_at ist überall NULL), hätte
+  # ein einziger solcher Spieltag den ganzen Versand verhindert.
+  test 'unmoegliches Datum im Fenster verhindert den Versand nicht' do
+    thursday_night = Time.utc(2026, 2, 26, 23, 10) # Fenster 27.02. bis 05.03.
+    kaputt = assignment_on('2026-03-01', referee2: nil)
+    kaputt.game.game_day.update_column(:date, '2026-02-30')
+    assignment_on('2026-03-02', referee1: @partner, referee2: nil)
+
+    result = nil
+    assert_emails 1 do
+      result = travel_to(thursday_night) { RefereeLicenseListNotifier.new.run }
+    end
+
+    assert_equal 1, result[:assignments]
+    assert_equal ['partner@example.de'], ActionMailer::Base.deliveries.last.to
+    assert_nil kaputt.reload.license_lists_notified_at
+  end
+
+  # `raise_delivery_errors` ist in Produktion aktiv. Ein abgewiesener Empfänger
+  # darf den Lauf nicht abbrechen, und die übrigen Mails müssen hinausgehen.
+  test 'eine fehlgeschlagene Mail stoppt den Lauf nicht' do
+    fehler = assignment_on('2026-03-07', referee2: nil)
+    ok = assignment_on('2026-03-08', referee1: @partner, referee2: nil)
+
+    result = nil
+    assert_emails 1 do
+      result = with_failing_mail_for(@referee) { run_notifier }
+    end
+
+    assert_equal 1, result[:mails]
+    assert_equal 1, result[:failures]
+    assert_equal 1, result[:assignments]
+    # Die gescheiterte Ansetzung bleibt unmarkiert, damit ein Wiederholungslauf
+    # sie nachliefert.
+    assert_nil fehler.reload.license_lists_notified_at
+    assert_not_nil ok.reload.license_lists_notified_at
+  end
+
+  # Beide Schiris eines Gespanns: Geht die Mail an einen von ihnen nicht raus,
+  # darf die Ansetzung nicht als erledigt gelten, sonst bekäme er nie eine Liste.
+  test 'Ansetzung bleibt unmarkiert, wenn nur einer der beiden Schiris erreicht wird' do
+    assignment = assignment_on('2026-03-07')
+
+    assert_emails 1 do
+      with_failing_mail_for(@partner) { run_notifier }
+    end
+
+    assert_nil assignment.reload.license_lists_notified_at
   end
 
   test 'window_covers erkennt kurzfristige Spiele' do

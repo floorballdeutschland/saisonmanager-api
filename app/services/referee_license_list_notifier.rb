@@ -43,30 +43,49 @@ class RefereeLicenseListNotifier
     date.present? && window(from:).cover?(date)
   end
 
-  def initialize(from: self.class.today)
+  # `assignments` engt den Lauf ein, etwa auf eine einzelne Ansetzung nach einer
+  # kurzfristigen Umbesetzung. Das Fenster gilt trotzdem: Liegt das Spiel noch
+  # weit weg, schickt der nächste Wochenlauf die Listen.
+  def initialize(from: self.class.today, assignments: RefereeAssignment.all)
     @window = self.class.window(from: from)
+    @scope = assignments
   end
 
-  # Gibt { mails:, assignments: } zurück. Für eine Vorschau ohne Versand und ohne
-  # Markierung: each_bundle direkt aufrufen (siehe DRY_RUN im Rake-Task).
+  # Gibt { mails:, assignments:, failures: } zurück. Für eine Vorschau ohne Versand
+  # und ohne Markierung: each_bundle direkt aufrufen (siehe DRY_RUN im Rake-Task).
+  #
+  # Ein Fehler je Mail darf den Lauf nicht abbrechen: `raise_delivery_errors` ist
+  # in Produktion aktiv, ein einziger abgewiesener Empfänger würde sonst aus `run`
+  # herausfliegen, bevor irgendetwas markiert ist. Die schon verschickten Mails
+  # käme ein Wiederholungslauf dann doppelt, und jedes Spiel, das bis zum nächsten
+  # Freitag aus dem Fenster fällt, bekäme nie eine Liste. Gleiches Vorgehen wie im
+  # RefereeFeedbackNotifier: loggen, an Sentry melden, weitermachen.
   def run(deliver_now: true)
-    notified_assignment_ids = Set.new
+    sent_ids = Set.new
+    failed_ids = Set.new
     mails = 0
+    failures = 0
 
     each_bundle do |recipient, entries|
-      notified_assignment_ids.merge(entries.map { |entry| entry[:assignment_id] })
+      ids = entries.map { |entry| entry[:assignment_id] }
 
-      mail = RefereeMailer.license_lists_notification(recipient, entries)
-      deliver_now ? mail.deliver_now : mail.deliver_later
-      mails += 1
+      if deliver(recipient, entries, deliver_now: deliver_now)
+        mails += 1
+        sent_ids.merge(ids)
+      else
+        failures += 1
+        failed_ids.merge(ids)
+      end
     end
 
-    if notified_assignment_ids.any?
-      RefereeAssignment.where(id: notified_assignment_ids.to_a)
-                       .update_all(license_lists_notified_at: Time.current)
-    end
+    # Eine Ansetzung wird nur markiert, wenn JEDE Mail zu ihr durchging. Sonst
+    # bekäme der zweite Schiedsrichter eines Gespanns nie eine Liste, weil die
+    # Ansetzung wegen der Mail an den ersten schon als erledigt gilt. Eine
+    # doppelte Liste ist das kleinere Übel als keine.
+    to_mark = sent_ids - failed_ids
+    RefereeAssignment.where(id: to_mark.to_a).update_all(license_lists_notified_at: Time.current) if to_mark.any?
 
-    { mails: mails, assignments: notified_assignment_ids.size }
+    { mails: mails, assignments: to_mark.size, failures: failures }
   end
 
   # Empfänger mit ihren Spielen des Fensters, aufsteigend nach Anpfiff.
@@ -78,6 +97,20 @@ class RefereeLicenseListNotifier
   end
 
   private
+
+  # True bei erfolgreichem Versand bzw. Einreihen, false bei einem Fehler.
+  def deliver(recipient, entries, deliver_now:)
+    mail = RefereeMailer.license_lists_notification(recipient, entries)
+    deliver_now ? mail.deliver_now : mail.deliver_later
+    true
+  rescue StandardError => e
+    Rails.logger.warn(
+      "Lizenzlisten-Mail fehlgeschlagen – Schiedsrichter #{recipient.id} " \
+      "(#{entries.size} Spiel(e)): #{e.class}: #{e.message}"
+    )
+    Sentry.capture_exception(e) if defined?(Sentry)
+    false
+  end
 
   # { referee_id => { recipient:, entries: [...] } }
   def collect
@@ -109,18 +142,28 @@ class RefereeLicenseListNotifier
     per_recipient
   end
 
-  # Vorfilter in SQL auf das Fenster; die endgültige Prüfung läuft in Ruby, weil
-  # `game_days.date` eine Textspalte ist und ein unplausibler Eintrag hier
-  # TO_DATE zum Stolpern bringen könnte.
+  # Vorfilter in SQL, die endgültige Prüfung läuft in Ruby (`Game#game_date`).
+  #
+  # Bewusst ein TEXTvergleich und kein TO_DATE: `game_days.date` ist eine
+  # Textspalte, und im Altbestand steht dort auch ein unmöglicher, aber
+  # formgerechter Wert wie „2026-02-30". Der passiert jeden Formatfilter, lässt
+  # TO_DATE aber mit „date/time field value out of range" werfen und riss so schon
+  # einmal eine ganze Übersicht in einen Serverfehler
+  # (game_day_secretary_links_controller). Hier wäre es schlimmer: Weil
+  # `license_lists_notified_at` neu ist und überall NULL steht, läuft die Prüfung
+  # über den gesamten Altbestand und nicht nur über die aktuelle Woche. Ein
+  # einziger solcher Spieltag hätte den Versand komplett verhindert.
+  #
+  # Im ISO-Format sortiert Text richtig, der Vergleich ist also gleichwertig.
+  # Abweichend formatierte Altwerte fallen entweder heraus oder werden in Ruby
+  # von `Date.parse` abgefangen.
   def pending_assignments
-    RefereeAssignment.published
-                     .where(license_lists_notified_at: nil)
-                     .joins(game: { game_day: :league })
-                     .includes(:referee1, :referee2, :coach,
-                               game: [:home_team, :guest_team, { game_day: %i[arena league] }])
-                     .where("game_days.date ~ '^\\d{4}-\\d{2}-\\d{2}$'")
-                     .where("TO_DATE(game_days.date, 'YYYY-MM-DD') BETWEEN ? AND ?",
-                            @window.first, @window.last)
+    @scope.published
+          .where(license_lists_notified_at: nil)
+          .joins(game: { game_day: :league })
+          .includes(:referee1, :referee2, :coach,
+                    game: [:home_team, :guest_team, { game_day: %i[arena league] }])
+          .where('game_days.date BETWEEN ? AND ?', @window.first.to_s, @window.last.to_s)
   end
 
   # Der angesetzte Verein (club_assignment) stellt seine Schiedsrichter selbst;

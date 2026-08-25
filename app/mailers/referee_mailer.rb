@@ -75,6 +75,9 @@ class RefereeMailer < ApplicationMailer
     @club_contact_email = club_contact_email
     @license_list_url = license_list_url
     @license_expires_at = license_expires_at
+    # Nur versprechen, was auch kommt: Ohne lesbares Spieltagsdatum findet der
+    # Wochenlauf das Spiel nie, die Folgemail bliebe also aus.
+    @license_lists_follow = license_list_url.blank? && game.game_date.present?
     @referee_notes = visible_referee_notes(game, referee)
 
     attach_assignment_calendar(
@@ -112,6 +115,7 @@ class RefereeMailer < ApplicationMailer
     @club_contact_email = club_contact_email
     @license_list_url = license_list_url
     @license_expires_at = license_expires_at
+    @license_lists_follow = license_list_url.blank? && game.game_date.present?
     @referee_notes = visible_referee_notes(game, coach)
 
     attach_assignment_calendar(

@@ -75,6 +75,76 @@ module Admin
       assert_empty ActionMailer::Base.deliveries
     end
 
+    # Wer nach dem Wochenlauf ins Gespann kommt, stünde sonst ohne Liste da: Die
+    # Ansetzung gilt als benachrichtigt, obwohl die neue Person nichts bekam.
+    test 'Umbesetzung kurz vor dem Spiel schickt dem neuen Schiri die Listen' do
+      assignment = publish_assignment_for(Date.current + 2)
+      assert_not_nil assignment.license_lists_notified_at
+      nachgesetzt = create(:referee, email: 'neu@example.de')
+      ActionMailer::Base.deliveries.clear
+
+      login(@admin)
+      perform_enqueued_jobs do
+        patch "/api/v2/admin/referee_assignments/#{assignment.id}",
+              params: { assignment: { referee1_id: nachgesetzt.id } }
+      end
+      assert_response :success
+
+      lizenzmails = ActionMailer::Base.deliveries.select { |m| m.subject.start_with?('Lizenzlisten') }
+      assert_includes lizenzmails.flat_map(&:to), 'neu@example.de'
+    end
+
+    # Weit vor dem Spiel gibt es nichts sofort, aber die Marke muss fallen, damit
+    # der Wochenlauf die neue Besetzung erfasst.
+    test 'Umbesetzung weit vor dem Spiel gibt die Ansetzung an den Wochenlauf zurueck' do
+      assignment = publish_assignment_for(Date.current + 2)
+      assert_not_nil assignment.license_lists_notified_at
+      game_day = assignment.game.game_day
+      game_day.update_column(:date, (Date.current + 21).to_s)
+      ActionMailer::Base.deliveries.clear
+
+      login(@admin)
+      patch "/api/v2/admin/referee_assignments/#{assignment.id}",
+            params: { assignment: { referee1_id: create(:referee, email: 'neu@example.de').id } }
+      assert_response :success
+
+      assert_nil assignment.reload.license_lists_notified_at
+    end
+
+    # Verlegung: Der bereits verschickte Link läuft am Tag nach dem ALTEN Termin
+    # ab, taugt für den neuen Termin also nicht mehr.
+    test 'Verlegung eines Spieltags gibt die Ansetzung an den Wochenlauf zurueck' do
+      assignment = publish_assignment_for(Date.current + 2)
+      assert_not_nil assignment.license_lists_notified_at
+      game_day = assignment.game.game_day
+
+      login(@admin)
+      patch "/api/v2/game_days/#{game_day.id}",
+            params: { game_day: { date: (Date.current + 30).to_s } }
+      assert_response :success
+
+      assert_nil assignment.reload.license_lists_notified_at
+    end
+
+    # Ohne lesbares Spieltagsdatum findet der Wochenlauf das Spiel nie. Dann darf
+    # die Mail auch keine Folgemail versprechen.
+    test 'ohne lesbares Spieltagsdatum verspricht die Mail keine Folgemail' do
+      game_day = create(:game_day, league: @league, date: '2026-03-07')
+      game_day.update_column(:date, 'unbekannt')
+      game = create(:game, game_day: game_day, start_time: '14:00',
+                           home_team: create(:team, league: @league), guest_team: create(:team, league: @league))
+      assignment = RefereeAssignment.create!(game: game, referee1: @referee, status: 'tentative')
+
+      login(@admin)
+      perform_enqueued_jobs { post "/api/v2/admin/referee_assignments/#{assignment.id}/publish" }
+      assert_response :success
+
+      html_bodies.each do |body|
+        assert_not_includes body, 'Lizenzlisten ansehen'
+        assert_not_includes body, 'wenige Tage vor dem Spiel'
+      end
+    end
+
     # Der Kalendertermin gehört dagegen in jede Ansetzungsmail, egal wie weit das
     # Spiel entfernt ist.
     test 'der Kalendertermin liegt unabhaengig vom Abstand bei' do

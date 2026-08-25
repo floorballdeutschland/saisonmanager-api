@@ -53,5 +53,10 @@ namespace :referee_license_lists do
     # Prozessende verloren (wie in referee_feedback:notify_available).
     result = notifier.run(deliver_now: true)
     puts "Lizenzlisten: #{result[:mails]} Mail(s) für #{result[:assignments]} Ansetzung(en)."
+    # Eine gescheiterte Mail bricht den Lauf nicht ab (der Fall steht im Log und
+    # in Sentry), darf hier aber nicht untergehen: Die betroffenen Ansetzungen
+    # bleiben unmarkiert und kommen beim nächsten Lauf wieder dran, was vor dem
+    # Spieltag zu spät sein kann.
+    puts "ACHTUNG: #{result[:failures]} Mail(s) konnten nicht zugestellt werden." if result[:failures].positive?
   end
 end

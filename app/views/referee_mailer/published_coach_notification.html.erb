@@ -40,7 +40,7 @@
   Der Link gilt bis <%= I18n.l(@license_expires_at, format: :long) %>, also bis zum Tag nach dem Spiel.
   Bis zum Anpfiff können noch Expresslizenzen hinzukommen. Die Liste zeigt beim Öffnen immer den aktuellen Stand.
 </p>
-<% else %>
+<% elsif @license_lists_follow %>
 <p style="font-size: 0.9em; color: #555;">
   Die Lizenzlisten der beteiligten Mannschaften schicken wir dir wenige Tage vor dem Spiel
   in einer eigenen E-Mail. So ist der Link dann gültig, wenn du ihn brauchst.

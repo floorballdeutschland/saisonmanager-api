@@ -76,6 +76,15 @@ class GameDaysController < ApplicationController
           game_day.games.each { |game| GameChangeNotifier.notify(game) }
         end
 
+        # Ein verschobener Spieltag entwertet bereits verschickte Lizenzlisten:
+        # Deren Link läuft am Tag nach dem ALTEN Termin ab. Die Marke der
+        # Ansetzung löschen, damit der Wochenlauf vor dem neuen Termin frische
+        # Links schickt, statt die Ansetzung für erledigt zu halten.
+        if game_day.saved_change_to_date?
+          RefereeAssignment.where(game_id: game_day.games.select(:id))
+                           .update_all(license_lists_notified_at: nil)
+        end
+
         render json: { success: true }
       else
         # `errors` als Objekt ist im Frontend nicht darstellbar, dort landet es
