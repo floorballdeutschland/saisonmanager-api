@@ -38,6 +38,19 @@ class GameDay < ApplicationRecord
   validates :date, format: { with: DATE_FORMAT, message: 'muss im Format JJJJ-MM-TT vorliegen' },
                    allow_blank: true, if: :date_changed?
 
+  # Das Formular schickt für eine leere Auswahl bei Halle und Ausrichter eine 0
+  # statt nichts. Als ID ist die 0 wertlos, und weil `optional: true` die
+  # Existenz nicht prüft, lief sie ungebremst bis in die Fremdschlüssel und kam
+  # als 500 zurück (PG::ForeignKeyViolation, Sentry SAISONMANAGER-3F). Gemeint
+  # ist "nicht gesetzt", also wird sie dazu gemacht.
+  before_validation :normalize_blank_references
+
+  # `optional: true` erlaubt nil, prüft aber nicht, ob eine gesetzte ID
+  # existiert. Ohne diese Prüfung entscheidet das erst die Datenbank, und dann
+  # ist es ein Serverfehler statt einer Rückmeldung am Feld.
+  validates :club, presence: true, if: -> { club_id.present? }
+  validates :arena, presence: true, if: -> { arena_id.present? }
+
   # 14
   scope :past_games, lambda {
                        where("TO_DATE(date, 'YYYY-MM-DD') > (now()::date - interval '14 days') AND TO_DATE(date, 'YYYY-MM-DD') <= (now()::date + interval '100 days') ")
@@ -87,5 +100,12 @@ class GameDay < ApplicationRecord
     end
 
     h
+  end
+
+  private
+
+  def normalize_blank_references
+    self.club_id = nil if club_id.to_i.zero?
+    self.arena_id = nil if arena_id.to_i.zero?
   end
 end

@@ -65,4 +65,29 @@ class GameDaysControllerTest < ActionDispatch::IntegrationTest
     post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
     assert_response :success
   end
+
+  # Sentry SAISONMANAGER-3F: Das Anlegen mit leerer Ausrichter-Auswahl kam als
+  # 500 zurueck, weil die 0 des Formulars ungebremst in den Fremdschluessel lief.
+  test 'Anlegen mit leerer Ausrichter-Auswahl legt den Spieltag an' do
+    login(create(:user, :admin))
+
+    post '/api/v2/game_days',
+         params: { game_day: { league_id: @league.id, number: 2, date: '2026-05-01', club_id: 0, arena_id: 0 } }
+
+    assert_response :created
+    angelegt = GameDay.order(:id).last
+    assert_nil angelegt.club_id
+    assert_nil angelegt.arena_id
+  end
+
+  test 'Anlegen mit unbekanntem Ausrichter meldet den Fehler, statt zu scheitern' do
+    login(create(:user, :admin))
+
+    post '/api/v2/game_days',
+         params: { game_day: { league_id: @league.id, number: 3, date: '2026-05-01',
+                               club_id: Club.maximum(:id).to_i + 1000 } }
+
+    assert_response :bad_request
+    assert_not_nil JSON.parse(response.body)['error']
+  end
 end

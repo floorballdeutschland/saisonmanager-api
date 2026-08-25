@@ -110,4 +110,60 @@ class GameDayTest < ActiveSupport::TestCase
   ensure
     ActiveSupport::Notifications.unsubscribe(subscriber)
   end
+
+  # ---------------------------------------------------------------------------
+  # Leere Auswahl für Halle/Ausrichter (Sentry SAISONMANAGER-3F). Das Formular
+  # schickt dafür eine 0. `belongs_to optional: true` lässt sie durch, der
+  # Fremdschlüssel nicht: PG::ForeignKeyViolation, also ein 500 statt einer
+  # Rückmeldung am Feld.
+  # ---------------------------------------------------------------------------
+
+  test 'club_id 0 wird als leere Auswahl gespeichert statt als Fremdschluesselfehler' do
+    league = create(:league, :current_season)
+
+    game_day = GameDay.new(league:, number: 1, date: '2026-01-01', club_id: 0)
+
+    assert game_day.save, "nicht speicherbar: #{game_day.errors.full_messages}"
+    assert_nil game_day.reload.club_id
+  end
+
+  test 'arena_id 0 wird als leere Auswahl gespeichert' do
+    league = create(:league, :current_season)
+
+    game_day = GameDay.new(league:, number: 1, date: '2026-01-01', arena_id: 0)
+
+    assert game_day.save, "nicht speicherbar: #{game_day.errors.full_messages}"
+    assert_nil game_day.reload.arena_id
+  end
+
+  test 'ein nicht vorhandener Verein wird abgelehnt, nicht an die Datenbank gereicht' do
+    league = create(:league, :current_season)
+    fehlende_id = Club.maximum(:id).to_i + 1000
+
+    game_day = GameDay.new(league:, number: 1, date: '2026-01-01', club_id: fehlende_id)
+
+    assert_not game_day.save
+    assert game_day.errors[:club].present?, "keine Rueckmeldung am Feld: #{game_day.errors.full_messages}"
+  end
+
+  test 'eine nicht vorhandene Halle wird abgelehnt' do
+    league = create(:league, :current_season)
+    fehlende_id = Arena.maximum(:id).to_i + 1000
+
+    game_day = GameDay.new(league:, number: 1, date: '2026-01-01', arena_id: fehlende_id)
+
+    assert_not game_day.save
+    assert game_day.errors[:arena].present?, "keine Rueckmeldung am Feld: #{game_day.errors.full_messages}"
+  end
+
+  test 'gesetzte Halle und Ausrichter bleiben unangetastet' do
+    league = create(:league, :current_season)
+    arena  = create(:arena)
+    club   = create(:club)
+
+    game_day = GameDay.create!(league:, arena:, club:, number: 1, date: '2026-01-01')
+
+    assert_equal arena.id, game_day.reload.arena_id
+    assert_equal club.id, game_day.club_id
+  end
 end
