@@ -41,6 +41,11 @@ module SaisonmanagerApi
     # „translation missing".
     config.i18n.fallbacks = [:en]
 
+    # Zustellauftrag mit Retry für transiente SMTP-Fehler (siehe
+    # RetryingMailDeliveryJob). Der Default ActionMailer::MailDeliveryJob
+    # verwirft die Mail beim ersten Fehlschlag.
+    config.action_mailer.delivery_job = 'RetryingMailDeliveryJob'
+
     config.middleware.use Rack::Attack
   end
 end
