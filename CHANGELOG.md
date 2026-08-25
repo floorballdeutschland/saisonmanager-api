@@ -9,6 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.97.1] - 2026-08-25
+
+### Behoben
+
+- **Ein Spieltag mit leerer Ausrichter- oder Hallenauswahl lässt sich wieder anlegen**: Beide Felder dürfen offen bleiben, das Formular schickt für die leere Auswahl aber eine 0 statt gar nichts. Als Verweis ist die 0 wertlos, und weil bei einem optionalen Verweis zwar der leere Wert erlaubt, die Existenz aber nicht geprüft wird, lief sie ungebremst bis in die Datenbank und kam von dort als Serverfehler zurück. Die betroffene Person sah einen abgebrochenen Speichervorgang ohne Hinweis, woran es lag, und konnte nichts dagegen tun, weil das Feld ja bewusst leer bleiben sollte. Die 0 wird jetzt als das gelesen, was sie meint, nämlich als nicht gesetzt. Ein Verweis auf einen Verein oder eine Halle, die es nicht gibt, wird zudem abgelehnt, bevor die Datenbank darüber entscheidet, und die Ablehnung nennt jetzt den Grund im Klartext statt als Serverfehler; die Meldung war dort bislang ein Datenobjekt, das die Oberfläche gar nicht darstellen konnte. Gesetzte Angaben bleiben unverändert.
+
 ## [1.97.0] - 2026-08-24
 
 ### Neu

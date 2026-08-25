@@ -36,7 +36,14 @@ class GameDaysController < ApplicationController
 
         render json: { success: true }, status: :created
       else
-        render json: { success: false, error: game_day.errors }, status: 400
+        # `errors` als Objekt ist im Frontend nicht darstellbar, dort landet es
+        # als "[object Object]" in der Meldung. Der Klartext geht deshalb nach
+        # `error` (wie beim Löschen weiter unten), die Struktur zusätzlich nach
+        # `errors`, damit eine Maske sie später je Feld zuordnen kann.
+        render json: { success: false,
+                       error: game_day.errors.full_messages.join(', '),
+                       errors: game_day.errors.as_json },
+               status: 400
       end
     else
       render json: { message: 'Keine Berechtigung.' }, status: :forbidden
@@ -71,7 +78,14 @@ class GameDaysController < ApplicationController
 
         render json: { success: true }
       else
-        render json: { success: false, error: game_day.errors }, status: 400
+        # `errors` als Objekt ist im Frontend nicht darstellbar, dort landet es
+        # als "[object Object]" in der Meldung. Der Klartext geht deshalb nach
+        # `error` (wie beim Löschen weiter unten), die Struktur zusätzlich nach
+        # `errors`, damit eine Maske sie später je Feld zuordnen kann.
+        render json: { success: false,
+                       error: game_day.errors.full_messages.join(', '),
+                       errors: game_day.errors.as_json },
+               status: 400
       end
     else
       render json: { message: 'Keine Berechtigung.' }, status: :forbidden
