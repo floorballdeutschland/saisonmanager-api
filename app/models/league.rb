@@ -885,11 +885,40 @@ class League < ApplicationRecord
     teams_by_id = all_teams.index_by(&:id)
     teams_by_id.merge!(license_foreign_teams(team_licenses, teams_by_id.keys)) if with_other_licenses
 
+    release_dates = license_release_dates(team_licenses, all_teams)
+
     leagues.to_h do |league|
       [league.id, league.build_license_items(teams_by_league[league.id] || [], team_licenses, teams_by_id,
                                              full_license_hash, only_current_licenses,
-                                             team_hash, with_other_licenses)]
+                                             team_hash, with_other_licenses,
+                                             release_dates:)]
     end
+  end
+
+  # Datum der Vereins-Freigabe je [Spieler, Verein, Saison], in einer Abfrage
+  # fuer alle Ligen des Aufrufs.
+  #
+  # Quelle ist ausschliesslich der genehmigte Freigabe-Antrag
+  # (TransferRequest mit request_type "release"), nicht der Zweitvereins-Eintrag
+  # in Player#clubs: Der entsteht auch ohne Freigabeverfahren (Altbestand,
+  # direkt gesetzter Zusatzverein) und traegt dann ein Anlagedatum, das keine
+  # Freigabe belegt. Ein Spieler ohne Freigabe bleibt hier deshalb leer.
+  #
+  # lv_approved_at setzt execute_release! bei jedem Vollzug, `where.not` ist nur
+  # der Riegel gegen Altbestand: Ein Satz ohne Zeitpunkt wuerde durch die
+  # NULLS-LAST-Sortierung von Postgres sonst als juengster gewinnen und ein
+  # echtes Datum verdecken.
+  def self.license_release_dates(team_licenses, teams)
+    player_ids = team_licenses.each_value.flat_map { |players| players.map(&:id) }.uniq
+    club_ids = teams.flat_map(&:all_club_ids).compact.uniq
+    return {} if player_ids.empty? || club_ids.empty?
+
+    TransferRequest.where(request_type: 'release', status: 'approved',
+                          player_id: player_ids, requesting_club_id: club_ids)
+                   .where.not(lv_approved_at: nil)
+                   .order(:lv_approved_at)
+                   .pluck(:player_id, :requesting_club_id, :season_id, :lv_approved_at)
+                   .to_h { |pid, club_id, season, approved_at| [[pid, club_id, season.to_i], approved_at] }
   end
 
   # Teams je Liga in einer Abfrage. Deckt wie League#teams auch die Teams ab, die
@@ -940,12 +969,14 @@ class League < ApplicationRecord
   end
 
   def build_license_items(league_teams, team_licenses, teams_by_id, full_license_hash,
-                          only_current_licenses, team_hash = :full, with_other_licenses = true)
+                          only_current_licenses, team_hash = :full, with_other_licenses = true,
+                          release_dates: {})
     active_statuses = [License::APPROVED, License::REQUESTED].to_set
 
     result = []
     league_teams.each do |team|
       team_item = team_hash == :full ? team.full_hash : League.license_light_team_hash(team)
+      team_club_ids = team.all_club_ids
 
       team_item[:players] = []
       (team_licenses[team.id] || []).each do |player|
@@ -978,7 +1009,8 @@ class League < ApplicationRecord
           last_status_id:,
           last_status_code:,
           approved_at:,
-          requested_at:
+          requested_at:,
+          released_at: release_date_for(player, team_club_ids, release_dates)
         }
 
         if with_other_licenses
@@ -992,6 +1024,15 @@ class League < ApplicationRecord
     end
 
     result
+  end
+
+  # Freigabedatum des Spielers fuer die Mannschaft dieser Liste. Eine
+  # Spielgemeinschaft gehoert mehreren Vereinen -- freigegeben ist der Spieler
+  # schon, wenn einer davon die Freigabe erhalten hat; bei mehreren zaehlt die
+  # juengste.
+  def release_date_for(player, team_club_ids, release_dates)
+    season = season_id.to_i
+    team_club_ids.filter_map { |club_id| release_dates[[player.id, club_id, season]] }.max
   end
 
   # Weitere aktive Lizenzen desselben Spielers in dieser Saison, ohne die des

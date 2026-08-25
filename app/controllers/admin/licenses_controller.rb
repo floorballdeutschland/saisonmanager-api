@@ -116,6 +116,9 @@ module Admin
               express:              lic['express'] || false,
               requested_at:         player_data[:team_license][:requested_at],
               approved_at:          player_data[:team_license][:approved_at],
+              # Datum der Vereins-Freigabe (genehmigter Freigabe-Antrag), leer
+              # bei Spielern, die keine brauchten.
+              released_at:          player_data[:team_license][:released_at],
               required_documents:   required_keys,
               valid_until:          lic['valid_until'],
               documents:            document_map_for(player_data[:id], league.season_id, license_docs_by_key, required_keys, catalog)
