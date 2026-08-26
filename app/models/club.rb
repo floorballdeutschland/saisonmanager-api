@@ -42,27 +42,47 @@ class Club < ApplicationRecord
   # "ZZ-Ablage", "zz_not in use" ...). Diese Zugehoerigkeit ist deshalb keine
   # Mitgliedschaft, sondern die Markierung "dieses Profil ist die Dublette".
   #
-  # Erkennung ueber den Namen und nicht ueber eine ID-Liste: Die Ablagen sind
-  # gewachsener Altbestand, dasselbe Muster liest schon
-  # `LegacyImport::HomeClubBackfillData::PLACEHOLDER_CLUB_PATTERN`.
-  ABLAGE_NAME_PATTERN = '(^z_|^zz|ablage|not in use|doppelung)'.freeze
+  # Das Muster ist am Namensanfang verankert und deckt damit genau den am 18.08.2026
+  # bestaetigten Bestand ab. `LegacyImport::HomeClubBackfillData::PLACEHOLDER_CLUB_PATTERN`
+  # liest bewusst weiter (auch "ablage", "doppelung", "not in use" mitten im Namen) und
+  # ist deshalb NICHT dieselbe Konstante: Dort schliesst ein Fehltreffer nur einen
+  # moeglichen Zielverein aus, das Profil wird uebersehen. Hier verwirft ein Fehltreffer
+  # eine echte Mitgliedschaft, ohne Meldung. "Ablagerung SV" oder "FC Doppelungen" waeren
+  # dem weiten Muster zum Opfer gefallen. `\y` ist die Wortgrenze, "Ablage Doppelung"
+  # trifft, "Ablagerung" nicht.
+  #
+  # Nicht erfasst ist "BW" (Produktion 136), ein nachgeahmter Landesverband ohne
+  # Namensmerkmal. Bewusst: `deactivated_at IS NOT NULL` mitzupruefen wuerde jeden
+  # aufgeloesten echten Verein zur Ablage machen, und dessen Mitgliedschaft ist echte
+  # Historie. Der Einzelfall gehoert in den Datenlauf, nicht in diese Regel.
+  ABLAGE_NAME_PATTERN = '(^z_|^zz|^ablage\y)'.freeze
 
-  # "Ablage Sperrung" (Produktion: Verein 213) ist KEINE Ablage in
-  # diesem Sinn. Dort liegen Personen, die einen Widerspruch nach Art. 21 DSGVO
-  # erklaert haben und nicht mehr im Saisonmanager erscheinen wollen. Diese Profile
-  # duerfen nie in einen echten Verein zurueckwandern, also darf die Zugehoerigkeit
-  # auch nie gegen einen echten Verein verlieren.
-  ABLAGE_EXCLUDED_NAME_PATTERN = '^ablage sperrung'.freeze
+  # "Ablage Sperrung" (Produktion: Verein 213) ist KEINE Ablage in diesem Sinn. Dort liegen
+  # Personen, die einen Widerspruch nach Art. 21 DSGVO erklaert haben und nicht mehr im
+  # Saisonmanager erscheinen wollen. Das ist eine Entscheidung und kein Behelf.
+  #
+  # Erkennung ueber "sperrung" an beliebiger Stelle UND ueber die ID. Ein am Namensanfang
+  # verankertes Muster waere hier zu scharf: `Club` normalisiert den Namen nicht, ein
+  # fuehrendes Leerzeichen kommt im Bestand vor (siehe `all_state_associations`), und eine
+  # Umbenennung durch eine Spielbetriebskommission wuerde aus dem Widerspruchs-Verein
+  # wortlos eine Ablage machen. Ein echter Verein mit "Sperrung" im Namen ist nicht zu
+  # erwarten, ein Fehltreffer waere hier ausserdem die harmlose Richtung.
+  WIDERSPRUCH_NAME_PATTERN = 'sperrung'.freeze
+  WIDERSPRUCH_CLUB_IDS = [213].freeze
 
-  # Bewusst NICHT zusaetzlich `deactivated_at IS NOT NULL`: Ein aufgeloester echter
-  # Verein ist keine Ablage, seine Mitgliedschaft ist echte Historie und darf beim
-  # Merge nicht verworfen werden. Der eine Bestandsfall ohne Namensmerkmal ("BW",
-  # Produktion 136, nachgeahmter Landesverband) bleibt damit hier aussen vor und
-  # gehoert in den Datenlauf, nicht in diese Regel.
+  # Behelfs-Ablagen: Beim Zusammenfuehren nicht uebernehmen, und als offener Heimatverein
+  # verlieren sie gegen jeden echten Verein.
   def self.ablage_ids
     where('name ~* ?', ABLAGE_NAME_PATTERN)
-      .where.not('name ~* ?', ABLAGE_EXCLUDED_NAME_PATTERN)
+      .where.not('name ~* ? OR id IN (?)', WIDERSPRUCH_NAME_PATTERN, WIDERSPRUCH_CLUB_IDS)
       .pluck(:id)
+  end
+
+  # Die Widerspruchs-Ablage: Sie gewinnt als offener Heimatverein gegen alles andere. Der
+  # Widerspruch darf durch eine Zusammenlegung nicht stillschweigend aufgehoben werden,
+  # auch nicht dadurch, dass der Eintrag der aeltere von zwei offenen ist.
+  def self.widerspruch_ids
+    where('name ~* ? OR id IN (?)', WIDERSPRUCH_NAME_PATTERN, WIDERSPRUCH_CLUB_IDS).pluck(:id)
   end
 
   # Vereinsmanager dieses Vereins. Kandidaten per jsonb-Containment vorfiltern

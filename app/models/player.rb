@@ -1226,7 +1226,7 @@ class Player < ApplicationRecord
     # Eintraege ohne created_at (Altdaten-Import) teilen sich denselben Schluessel. Ohne
     # Tiebreaker haenge die Auswahl an der Implementierung.
     sortiert = (master_clubs + additional).sort_by { |c| [c['created_at'].to_s, c['club_id'].to_i] }
-    _close_surplus_home_clubs(sortiert, user_id, ablage_ids)
+    _close_surplus_home_clubs(sortiert, user_id, ablage_ids, Club.widerspruch_ids.to_set)
   end
 
   # Nach dem Zusammenfuehren darf hoechstens ein Heimatverein offen sein.
@@ -1243,19 +1243,34 @@ class Player < ApplicationRecord
   # datierten -- gewollt, denn ein undatierter Eintrag stammt aus einem Bestand, der vor
   # allem Datierten liegt.
   #
-  # Eine Ablage verliert immer gegen einen echten Verein, unabhaengig vom Datum. Sonst
-  # gewinnt sie die Regel "der zuletzt begonnene bleibt" regelmaessig: Das Parken in der
-  # Ablage geschah spaeter als der Eintritt in den echten Verein. Genau so von Hand
-  # entschieden im Datenlauf vom 18.08.2026 (`players:close_surplus_home_clubs`,
-  # "Ablage-Regel"); hier steht dieselbe Regel jetzt im Code.
-  def _close_surplus_home_clubs(entries, user_id, ablage_ids = Club.ablage_ids.to_set)
+  # Das Datum entscheidet erst innerhalb einer Vorrangstufe. Drei Stufen, von oben:
+  #
+  #   1. Widerspruch nach Art. 21 DSGVO ("Ablage Sperrung"). Er gewinnt gegen alles. Wuerde
+  #      hier das Datum entscheiden, hoebe eine Zusammenlegung den Widerspruch auf, sobald
+  #      der Eintrag der aeltere von zwei offenen ist: Die Person stuende als Mitglied eines
+  #      echten Vereins in dessen Spielerliste und waere transferierbar. Der aeltere ist
+  #      dabei der wahrscheinlichere Fall, denn ein nach dem Widerspruch neu angelegtes
+  #      Zweitprofil traegt den juengeren Eintrag.
+  #   2. Echter Verein.
+  #   3. Behelfs-Ablage. Sie verliert gegen jeden echten Verein, unabhaengig vom Datum:
+  #      Das Parken in der Ablage geschah spaeter als der Eintritt in den echten Verein, das
+  #      Datum liesse sie also regelmaessig gewinnen. Genau so von Hand entschieden im
+  #      Datenlauf vom 18.08.2026 (`players:close_surplus_home_clubs`, "Ablage-Regel").
+  #
+  # `ablage_ids` und `widerspruch_ids` werden uebergeben und nicht hier geholt: Der einzige
+  # Aufrufer kennt sie schon, und ein Default wuerde die Abfragen im Sammel-Merge je
+  # Zusammenlegung ein zweites Mal machen.
+  def _close_surplus_home_clubs(entries, user_id, ablage_ids, widerspruch_ids)
     offen = self.class.open_home_club_entries(entries)
     return entries if offen.size < 2
 
-    echte = offen.reject { |c| ablage_ids.include?(c['club_id'].to_i) }
+    widerspruch = offen.select { |c| widerspruch_ids.include?(c['club_id'].to_i) }
+    echte = offen.reject do |c|
+      ablage_ids.include?(c['club_id'].to_i) || widerspruch_ids.include?(c['club_id'].to_i)
+    end
     # equal? statt Array-Differenz: Zwei Eintraege desselben Vereins koennen als Hash
     # gleich sein, und dann wuerde `-` beide entfernen.
-    behalten = (echte.presence || offen).last
+    behalten = (widerspruch.presence || echte.presence || offen).last
 
     offen.each do |c|
       next if c.equal?(behalten)
