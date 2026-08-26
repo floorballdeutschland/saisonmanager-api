@@ -14,7 +14,12 @@ module Admin
 
     def index
       types = scoped_sbk? ? DocumentType.for_game_operations(sbk_go_ids) : DocumentType.all
-      upload_counts = LicenseDocument.group(:document_type).count
+      # Nur die aktuellen Fassungen: Archivierte (abgelöste oder als Nachweis
+      # aufbewahrte) Zeilen sind kein Bestand, den die Katalogansicht als
+      # "so oft hochgeladen" ausweisen soll. Der Löschschutz `in_use?` zählt
+      # bewusst anders – eine Art ohne aktuelle Uploads kann sich deshalb als
+      # unbenutzt zeigen und trotzdem nicht löschbar sein.
+      upload_counts = LicenseDocument.active.group(:document_type).count
       league_counts = league_usage_counts
 
       render json: types.order(:name).map { |dt|
@@ -51,7 +56,10 @@ module Admin
 
     def destroy
       if in_use?(@document_type)
-        return render json: { error: 'Dokumentart wird bereits verwendet (Uploads oder Liga-Konfiguration) und kann nicht gelöscht werden.' },
+        # Die Verwendungszahl der Liste zaehlt nur aktive Uploads, dieser Riegel
+        # auch archivierte Nachweise. Ohne den Zusatz stuende die SBK vor einer
+        # Art mit "0 Uploads, 0 Ligen", die sich trotzdem nicht loeschen laesst.
+        return render json: { error: 'Dokumentart wird bereits verwendet (aktuelle oder archivierte Uploads oder Liga-Konfiguration) und kann nicht gelöscht werden.' },
                       status: :unprocessable_entity
       end
 
@@ -98,6 +106,9 @@ module Admin
     end
 
     def in_use?(document_type)
+      # Hier bewusst OHNE .active: Auch eine archivierte Fassung verweist über
+      # den Key auf die Dokumentart. Verschwindet die Art aus dem Katalog, liest
+      # der Nachweis sich nur noch als Freitext-Altbestand.
       return true if LicenseDocument.exists?(document_type: document_type.key)
 
       league_usage_counts[document_type.key].to_i.positive?

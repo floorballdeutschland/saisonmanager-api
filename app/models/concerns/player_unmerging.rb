@@ -471,8 +471,9 @@ module PlayerUnmerging
 
   # Holt die Lizenzdokumente zurueck, die an einer Lizenz dieses Profils haengen.
   #
-  # Zeilenweise statt per update_all: `license_documents` hat einen Unique-Index auf
-  # (player_id, license_id, document_type), und `_repoint_license_documents` laesst beim
+  # Zeilenweise statt per update_all: `license_documents` hat einen partiellen Unique-Index
+  # auf (player_id, license_id, document_type), der nur fuer aktive (nicht archivierte)
+  # Zeilen gilt, und `_repoint_license_documents` laesst beim
   # Merge ein kollidierendes Dokument bewusst an der Dublette stehen -- genau der Zustand,
   # in dem ein pauschales update_all mit RecordNotUnique abbricht.
   #
@@ -491,8 +492,10 @@ module PlayerUnmerging
       end
       next unless own_license_ids.include?(doc.license_id)
 
-      if LicenseDocument.exists?(player_id: id, license_id: doc.license_id,
-                                 document_type: doc.document_type)
+      # Nur aktive Zeilen kollidieren (partieller Eindeutigkeits-Index).
+      if doc.archived_at.nil? &&
+         LicenseDocument.active.exists?(player_id: id, license_id: doc.license_id,
+                                        document_type: doc.document_type)
         verbleibend << doc.id
         next
       end

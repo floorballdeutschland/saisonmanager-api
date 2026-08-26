@@ -902,6 +902,42 @@ class PlayerTest < ActiveSupport::TestCase
     assert_includes skipped, { type: 'license_document', id: dup.id }
   end
 
+  # Nur AKTIVE Zeilen stehen im (partiellen) Unique-Index. Zaehlte eine
+  # archivierte Fassung am Master weiter als Kollision, bliebe das aktive
+  # Dokument der Dublette dort liegen -- an einem Profil, das nach dem Merge
+  # niemand mehr oeffnet, und nur mit einer Zeile im Protokoll.
+  test 'merge_into! verschiebt ein Dokument, dessen Gegenstueck am Master nur archiviert ist' do
+    user      = create(:user)
+    master    = create(:player)
+    secondary = create(:player)
+    build_license_document(player: master, license_id: 'L1', document_type: 'pass')
+      .archive!(reason: 'replaced')
+    aktiv = build_license_document(player: secondary, license_id: 'L1', document_type: 'pass')
+
+    skipped = secondary.merge_into!(master, user.id)
+
+    assert_equal master.id, aktiv.reload.player_id
+    assert_equal 0, LicenseDocument.where(player_id: secondary.id).count
+    dokument_meldungen = skipped.select { |e| e[:type] == 'license_document' }
+    assert_empty dokument_meldungen
+    assert_equal 1, LicenseDocument.active.where(player_id: master.id).count
+  end
+
+  test 'merge_into! verschiebt auch eine archivierte Fassung neben ein aktives Gegenstueck' do
+    user      = create(:user)
+    master    = create(:player)
+    secondary = create(:player)
+    build_license_document(player: master, license_id: 'L1', document_type: 'pass')
+    archiviert = build_license_document(player: secondary, license_id: 'L1', document_type: 'pass')
+    archiviert.archive!(reason: 'replaced')
+
+    secondary.merge_into!(master, user.id)
+
+    assert_equal master.id, archiviert.reload.player_id
+    assert_equal 2, LicenseDocument.where(player_id: master.id).count
+    assert_equal 1, LicenseDocument.active.where(player_id: master.id).count
+  end
+
   test 'merge_into! haengt Sperren auf den Master um' do
     user      = create(:user)
     master    = create(:player)
