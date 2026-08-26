@@ -23,7 +23,8 @@ module Admin
                                            referee_license_review_enabled: true,
                                            referee_assignment_external_enabled: true,
                                            referee_assignment_enabled: true,
-                                           person_level_assignment_default: true } }
+                                           person_level_assignment_default: true,
+                                           requested_license_playable: true } }
 
       assert_response :success
       @child.reload
@@ -51,6 +52,29 @@ module Admin
 
       assert_response :success
       assert @verbund.reload.report_form_email_enabled
+    end
+
+    # Gegenstueck zum Sperr-Test oben, und zwar strukturell ueber dieselbe
+    # Konstante: Eine neue Einstellung, die jemand in INHERITED_SETTINGS
+    # eintraegt, aber in der permit-Liste vergisst, wuerde vom negativen Test
+    # allein nicht auffallen -- ein Feld, das nie geschrieben wird, besteht ihn.
+    # Genau so waere `requested_license_playable` als stiller Schalter in die
+    # Maske gekommen.
+    #
+    # Alle drei Ansetzungs-Optionen zusammen gesetzt, weil sie gestaffelt sind:
+    # normalize_referee_assignment_switches! zwingt die unteren auf false,
+    # solange der Hauptschalter fehlt.
+    test 'ohne Verbund laesst sich jede Einstellung auch wirklich setzen' do
+      login(create(:user, :admin))
+
+      patch "/api/v2/admin/state_associations/#{@verbund.id}",
+            params: { state_association: StateAssociation::INHERITED_SETTINGS.index_with { true } }
+
+      assert_response :success
+      @verbund.reload
+      StateAssociation::INHERITED_SETTINGS.each do |setting|
+        assert @verbund.public_send(setting), "#{setting} wurde nicht gespeichert (fehlt es in der permit-Liste?)"
+      end
     end
 
     # parent_id darf nur ein globaler Admin schicken; für alle anderen streicht

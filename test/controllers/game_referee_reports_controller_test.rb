@@ -35,6 +35,33 @@ class GameRefereeReportsControllerTest < ActionDispatch::IntegrationTest
     assert_response :created
   end
 
+  # `assert_enqueued_emails` allein prueft diesen Aufrufweg nicht zu Ende:
+  # `deliver_later` serialisiert nur die Argumente, der Mailer laeuft dabei
+  # nicht. Eine falsche Parameterzahl an dieser Stelle -- api#564 hat hier zwei
+  # Parameter entfernt -- waere fuer CI unsichtbar geblieben und erst beim
+  # Zustellen in Produktion aufgeschlagen, also lautlos fuer den Schiri, der den
+  # Bericht hochgeladen hat.
+  #
+  # Zugleich die einzige Stelle, die das aus dem Spiel abgeleitete Gespann
+  # prueft: Vorher gab der Controller referee1/referee2 mit, jetzt liest der
+  # Mailer sie selbst aus `game.referee_assignment`. Waere die Ableitung leer,
+  # bliebe der Schiedsrichter-Block im View still leer.
+  test 'die zugestellte VSK-Mail nennt das Gespann und traegt keine Unterschrift' do
+    login(@user)
+
+    perform_enqueued_jobs do
+      upload_report
+      assert_response :created
+    end
+
+    mail = ActionMailer::Base.deliveries.last
+    assert mail, 'die Mail muss tatsaechlich zugestellt worden sein'
+    body = (mail.html_part || mail).decoded
+    assert_includes body, 'Ref Eree'
+    # Der automatische Weg kennt keine entscheidende Person: keine Grussformel.
+    assert_not_includes body, 'Mit sportlichen'
+  end
+
   test 'deaktivierter Workflow versendet keine E-Mail' do
     @sa.update!(report_form_email_enabled: false)
     login(@user)

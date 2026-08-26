@@ -152,6 +152,30 @@ class Game < ApplicationRecord
     state_association&.effective_report_form_email_enabled || false
   end
 
+  # Laesst der Landesverband dieser Liga das Aufstellen mit einem gestellten,
+  # aber noch nicht entschiedenen Lizenzantrag zu?
+  #
+  # Ueber die Liga und nicht ueber den Verein des Teams: Zustaendig fuer den
+  # Spielbetrieb einer Liga ist allein deren Verband. Eine Mannschaft, die
+  # zusaetzlich im Pokal eines anderen Verbands antritt, richtet sich dort nach
+  # dessen Regel -- gleiche Wahl wie bei scan_required und der Expresslizenz.
+  def requested_license_playable?
+    state_association&.effective_requested_license_playable || false
+  end
+
+  # Zaehlt dieser Lizenzstatus fuer dieses Spiel als spielberechtigt?
+  #
+  # Die eine Stelle, an der die Regel steht: Der Kader-Dialog im Frontend
+  # filtert nach derselben Aussage (TeamLineupPlayerPipe), und
+  # GamesController#lineup_license_warning liest sie hier nach. Nur der offene
+  # Antrag kommt hinzu; „abgelehnt", „zurueckgezogen" und „gesperrt" bleiben
+  # ausgeschlossen, auch wenn der Verband den Schalter gesetzt hat.
+  def license_status_playable?(status_id)
+    return true if status_id.to_i == License::APPROVED
+
+    status_id.to_i == License::REQUESTED && requested_license_playable?
+  end
+
   def home_team_name
     home_team&.name
   end
@@ -927,6 +951,11 @@ class Game < ApplicationRecord
       game_operation_short_name: league.game_operation.short_name,
       game_operation_slug: league.game_operation.slug,
       scan_required: state_association&.effective_scan_required || false,
+      # Der Kader-Dialog im Spielbericht laesst mit diesem Schalter auch
+      # Personen mit gestelltem, noch nicht entschiedenem Lizenzantrag zu.
+      # Gehoert an das Spiel und nicht an die Mannschaft: Entschieden wird es
+      # vom Verband der Liga, in der gespielt wird.
+      requested_license_playable: requested_license_playable?,
       period_titles: league.period_titles,
       current_period_title:,
       arena: game_day.arena_id,
