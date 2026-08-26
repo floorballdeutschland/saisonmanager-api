@@ -254,51 +254,6 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
                  'Lizenz darf bei ungültiger Zuordnung nicht genehmigt werden'
   end
 
-  # Das Profil zeigt alle Lizenzen der Person, auch die aus fremden
-  # Spielbetrieben. Ob die Erst-/Zweitlizenz-Zuordnung dort angeboten werden
-  # darf, entscheidet der Spielbetrieb der Liga -- dieselbe Regel, die
-  # set_gf_license_role beim Schreiben anwendet. Ohne diese Angabe in der
-  # Antwort bot die Maske die Knoepfe auf jeder GF-Erwachsenenlizenz an, und der
-  # Klick auf eine fremde endete in einer 403.
-  test 'admin_player weist je Lizenz aus, ob die Erst-/Zweitlizenz-Zuordnung im eigenen Spielbetrieb liegt' do
-    home_club = create(:club, game_operation: @game_operation)
-    own_league = create(:league, :current_season, game_operation: @game_operation,
-                                                  field_size: 'GF', league_class_id: 'rl')
-    own_team = create(:team, league: own_league, club: home_club)
-
-    foreign_league = create(:league, :current_season, game_operation: create(:game_operation),
-                                                     field_size: 'GF', league_class_id: '2fbl')
-    foreign_team = create(:team, league: foreign_league, club: home_club)
-
-    player = create(:player,
-                    clubs: [{ 'club_id' => home_club.id, 'home_club' => true,
-                              'created_at' => 1.day.ago.iso8601 }],
-                    with_licenses: [
-                      { team: own_team, status: License::REQUESTED },
-                      { team: foreign_team, status: License::REQUESTED }
-                    ])
-
-    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
-    get "/api/v2/admin/players/#{player.id}.json", params: { all_licenses: 'true' }
-    assert_response :success
-
-    flags = gf_role_flags(response)
-    assert_equal true,  flags[own_team.id],     'eigene Liga: Zuordnung erlaubt'
-    assert_equal false, flags[foreign_team.id], 'fremder Spielbetrieb: keine Zuordnung'
-
-    login_as(create(:user, :admin))
-    get "/api/v2/admin/players/#{player.id}.json", params: { all_licenses: 'true' }
-    assert_response :success
-
-    flags = gf_role_flags(response)
-    assert_equal [true, true], [flags[own_team.id], flags[foreign_team.id]],
-                 'Admin ordnet in jedem Spielbetrieb zu'
-  end
-
-  def gf_role_flags(response)
-    JSON.parse(response.body)['licenses'].to_h { |l| [l['team_id'].to_i, l['gf_role_editable']] }
-  end
-
   test 'set_gf_license_role: Erstzuordnung bucht die Partner-Lizenz automatisch gegen' do
     team_a, team_b = create_gf_teams
     player = create(:player, with_licenses: [

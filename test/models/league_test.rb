@@ -774,7 +774,11 @@ class LeagueTest < ActiveSupport::TestCase
   test 'licenses: jede Lizenz der Saison traegt Mannschafts- und Liganamen, auch die abgelehnte' do
     create(:setting, current_season_id: '18')
     target_league = create(:league, :current_season, name: 'Zielliga')
-    other_league  = create(:league, :current_season, name: 'Fremdliga')
+    # Eigener Spielbetrieb fuer die Fremdliga: Genau daran scheiterte der
+    # nachgeholte Abruf (can_read_admin_team? prueft den Spielbetrieb der Liga).
+    # Ohne ihn pruefte der Test nur "Lizenz ausserhalb der gelisteten Liga".
+    other_league  = create(:league, :current_season, name: 'Fremdliga',
+                                                     game_operation: create(:game_operation))
     denied_league = create(:league, :current_season, name: 'Abgelehnt-Liga')
     target_team   = create(:team, league: target_league, name: 'Zielmannschaft')
     other_team    = create(:team, league: other_league, name: 'Fremdmannschaft')

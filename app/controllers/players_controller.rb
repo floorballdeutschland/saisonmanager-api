@@ -1214,8 +1214,15 @@ class PlayersController < ApplicationController
       next unless lic.is_a?(Hash)
 
       go_id = lic[:league].is_a?(Hash) ? lic[:league][:game_operation_id] : nil
-      lic[:gf_role_editable] = admin || sbk_global ||
-                               (go_id.present? && ph[:sbk].to_a.include?(go_id))
+      # `go_id.present?` steht bewusst VOR den Rollen und nicht nur im
+      # SBK-Zweig: Sonst kuerzen `admin` und `sbk_global` ab, und eine Lizenz
+      # ohne aufloesbare Liga (geloeschtes Team, Team ohne league_id) waere fuer
+      # sie als zuordenbar gemeldet. Genau die weist der Schreibweg danach mit
+      # 422 ab (`unless league&.gf_adult?`) -- das Feld verspraeche also etwas,
+      # das kein Konto einloesen kann. Bei vorhandener Liga aendert die Klammer
+      # fuer keine Rolle das Ergebnis.
+      lic[:gf_role_editable] = go_id.present? &&
+                               (admin || sbk_global || ph[:sbk].to_a.include?(go_id))
     end
   end
 
