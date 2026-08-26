@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_08_25_120000) do
+ActiveRecord::Schema[7.2].define(version: 2026_08_26_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -464,8 +464,13 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_25_120000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.bigint "season_id"
+    t.datetime "archived_at"
+    t.string "archived_reason"
+    t.bigint "archived_by_id"
+    t.index ["archived_by_id"], name: "index_license_documents_on_archived_by_id"
+    t.index ["player_id", "archived_at"], name: "index_license_documents_on_player_id_and_archived_at"
     t.index ["player_id", "document_type"], name: "index_license_documents_on_player_id_and_document_type"
-    t.index ["player_id", "license_id", "document_type"], name: "idx_license_documents_unique", unique: true
+    t.index ["player_id", "license_id", "document_type"], name: "idx_license_documents_unique", unique: true, where: "(archived_at IS NULL)"
     t.index ["player_id"], name: "index_license_documents_on_player_id"
     t.index ["uploaded_by_id"], name: "index_license_documents_on_uploaded_by_id"
   end
@@ -1022,6 +1027,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_25_120000) do
   add_foreign_key "league_qualifications", "leagues", column: "target_league_id"
   add_foreign_key "leagues", "game_operations"
   add_foreign_key "license_documents", "players"
+  add_foreign_key "license_documents", "users", column: "archived_by_id"
   add_foreign_key "license_documents", "users", column: "uploaded_by_id"
   add_foreign_key "player_change_requests", "players"
   add_foreign_key "player_change_requests", "players", column: "secondary_player_id"

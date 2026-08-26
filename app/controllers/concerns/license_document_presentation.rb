@@ -5,8 +5,13 @@
 module LicenseDocumentPresentation
   private
 
+  # Nur die aktive Fassung: Archivierte Zeilen (abgeloest oder geloescht, aber
+  # als Nachweis aufbewahrt) sind kein aktueller Nachweis. Ohne den Filter
+  # meldete die Genehmigungsuebersicht ein geloeschtes Dokument weiter als
+  # vorhanden.
   def license_documents_by_player_and_type(player_ids)
-    LicenseDocument.where(player_id: player_ids)
+    LicenseDocument.active
+                   .where(player_id: player_ids)
                    .includes(file_attachment: :blob)
                    .group_by { |d| [d.player_id, d.document_type] }
   end

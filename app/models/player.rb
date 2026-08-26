@@ -1368,12 +1368,14 @@ class Player < ApplicationRecord
   end
 
   def _repoint_license_documents(secondary_id, master_id)
-    existing = LicenseDocument.where(player_id: master_id)
+    # Nur aktive Zeilen kollidieren: Der Eindeutigkeits-Index gilt seit der
+    # Archivierung nur noch fuer sie.
+    existing = LicenseDocument.active.where(player_id: master_id)
                               .pluck(:license_id, :document_type).to_set
     skipped = []
     LicenseDocument.where(player_id: secondary_id).find_each do |doc|
       key = [doc.license_id, doc.document_type]
-      if existing.include?(key)
+      if doc.archived_at.nil? && existing.include?(key)
         Rails.logger.warn(
           "merge_into!: Lizenzdokument ##{doc.id} bleibt bei Spieler ##{secondary_id} " \
           "(Master ##{master_id} hat ein identisches Dokument)"
@@ -1383,7 +1385,7 @@ class Player < ApplicationRecord
       end
 
       doc.update_columns(player_id: master_id)
-      existing << key
+      existing << key if doc.archived_at.nil?
     end
     skipped
   end

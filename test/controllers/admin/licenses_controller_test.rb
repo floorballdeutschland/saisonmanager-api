@@ -275,6 +275,23 @@ module Admin
       assert_nil row['documents']['use_uploaded_at']
     end
 
+    # Eine archivierte Fassung ist kein aktueller Nachweis: abgeloest oder
+    # geloescht, nur zur Belegbarkeit aufbewahrt. Ohne den Filter meldete die
+    # Genehmigungsuebersicht ein geloeschtes Dokument weiter als vorhanden.
+    test 'archivierte Fassung zaehlt in der Genehmigungsuebersicht nicht als vorhanden' do
+      DocumentType.create!(name: 'Unterstellungserklärung', key: 'use')
+      @league_go1.update!(required_documents: ['use'])
+      doc = attach_pdf(LicenseDocument.new(player: @player_go1, document_type: 'use'))
+      doc.archive!(reason: 'deleted')
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses'
+      row = JSON.parse(response.body).find { |r| r['player_id'] == @player_go1.id }
+      assert_not row['documents']['use'], 'archivierte Fassung darf nicht als Nachweis zaehlen'
+      assert_nil row['documents']['use_url']
+      assert_nil row['documents']['use_uploaded_at']
+    end
+
     # Zweiter Aufrufer von document_map_for: die Liga-Detailansicht der SBK
     # (players#admin_licenses). Sie speist im Frontend auch den
     # Genehmigungsdialog und war bisher ganz ohne Test -- die documents-Map

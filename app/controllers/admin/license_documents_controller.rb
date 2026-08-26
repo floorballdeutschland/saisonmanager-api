@@ -2,6 +2,11 @@ module Admin
   class LicenseDocumentsController < ApplicationController
     # sbk_can_access_license? / sbk_global? – Scope über die Liga der Lizenz.
     include LicenseAccessScope
+    # league_required_document_keys / license_requested_at – dieselbe Auflösung
+    # der Pflichtdokumente wie in den Lizenzansichten. Der lokale Katalog-Helfer
+    # heißt deshalb catalog_for: Er nimmt Dokumente statt Keys und lädt den
+    # Verband mit.
+    include LicenseDocumentPresentation
 
     before_action :set_player
     before_action :check_read_permission, only: %i[index show available_types]
@@ -26,8 +31,13 @@ module Admin
     def index
       # Dokumente gelten pro Spieler (saisonübergreifend), die Abfrage holt
       # deshalb alle Dokumente des Spielers – license_id filtert hier nicht.
-      docs = @player.license_documents.includes(file_attachment: :blob).order(created_at: :desc).to_a
-      catalog = document_type_catalog(docs)
+      scope = @player.license_documents
+      # Voreinstellung ist der aktuelle Bestand. Archivierte Fassungen kommen
+      # nur auf ausdrückliche Anforderung mit, sonst stünden abgelöste und
+      # gelöschte Dokumente in der Oberfläche wie aktuelle Nachweise.
+      scope = scope.active unless include_archived?
+      docs = scope.includes(:archived_by, file_attachment: :blob).order(created_at: :desc).to_a
+      catalog = catalog_for(docs)
       docs = filter_documents_by_scope(docs, catalog)
       render json: docs.map { |d| document_json(d, catalog) }
     end
@@ -47,8 +57,8 @@ module Admin
       # an, und damit ließ sich beides aushebeln, was diese Aktion schützt.
       # `find_by(key: [...])` liefert irgendeinen Treffer der Liste (in der Praxis
       # den globalen), die Scope-Prüfung unten winkt also durch; und die
-      # Ersetzungs-Abfrage `where(document_type: [...])` löscht die Dokumente
-      # ALLER genannten Arten, auch die eines fremden Verbands. Gespeichert wurde
+      # Ersetzungs-Abfrage `where(document_type: [...])` löst die Dokumente
+      # ALLER genannten Arten ab, auch die eines fremden Verbands. Gespeichert wurde
       # anschließend eine Zeile mit dem Array als Text.
       document_type = params[:document_type]
       unless document_type.is_a?(String) && document_type.present?
@@ -69,15 +79,19 @@ module Admin
       doc.file.attach(params[:file])
 
       # Pro Spieler gibt es je Dokumentart genau ein aktuelles Dokument – ein
-      # neuer Upload ersetzt alle vorhandenen dieser Art (auch Altbestand, der
-      # noch an einer konkreten Lizenz hing). Erst löschen, dann validieren:
-      # sonst schlägt die Eindeutigkeits-Validierung gegen das zu ersetzende
-      # Dokument an. Bei ungültigem Upload rollt die Transaktion das Löschen
-      # zurück, der Bestand bleibt unverändert.
-      existing = @player.license_documents.where(document_type: document_type)
+      # neuer Upload löst alle vorhandenen dieser Art ab (auch Altbestand, der
+      # noch an einer konkreten Lizenz hing). Erst archivieren, dann validieren:
+      # sonst schlägt die Eindeutigkeits-Validierung gegen das abzulösende
+      # Dokument an. Bei ungültigem Upload rollt die Transaktion die
+      # Archivierung zurück, der Bestand bleibt unverändert.
+      #
+      # Archiviert statt gelöscht, damit die abgelöste Fassung samt Anhang
+      # nachweisbar bleibt: Bis hierher verschwand mit dem Ersetzen auch die
+      # Grundlage jeder Lizenz, die auf dem alten Dokument erteilt worden war.
+      existing = @player.license_documents.active.where(document_type: document_type)
       saved = false
       ActiveRecord::Base.transaction do
-        existing.find_each(&:destroy)
+        existing.find_each { |old| old.archive!(reason: 'replaced', user: current_user) }
         saved = doc.save
         raise ActiveRecord::Rollback unless saved
       end
@@ -86,16 +100,31 @@ module Admin
         return render json: { errors: doc.errors.full_messages }, status: :unprocessable_entity
       end
 
-      render json: document_json(doc, document_type_catalog([doc])), status: :created
+      render json: document_json(doc, catalog_for([doc])), status: :created
     end
 
+    # Löschen heißt nicht mehr in jedem Fall vernichten. Beruht eine ERTEILTE
+    # Lizenz auf dem Dokument, bleibt es als archivierte Fassung stehen: Der
+    # Verein verliert es aus seiner Ablage, der Verband kann weiterhin belegen,
+    # worauf er die Lizenz erteilt hat. Endgültig löschen kann nur Admin – auch
+    # eine bereits archivierte Fassung.
     def destroy
       doc = @player.license_documents.find(params[:id])
       return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless document_visible?(doc)
 
-      doc.file.purge
-      doc.destroy!
-      render json: { success: true }
+      if admin?
+        purge_document(doc)
+      elsif doc.archived?
+        # Archiviert ist archiviert: Sonst ließe sich der Nachweis in zwei
+        # Schritten beseitigen – erst ersetzen, dann die alte Fassung löschen.
+        render json: { message: 'Archivierte Nachweise kann nur die Administration löschen.' },
+               status: :forbidden
+      elsif relied_upon_by_approved_license?(doc)
+        doc.archive!(reason: 'deleted', user: current_user)
+        render json: { success: true, archived: true }
+      else
+        purge_document(doc)
+      end
     end
 
     private
@@ -281,10 +310,76 @@ module Admin
       @perm_hash ||= current_user.permission_hash
     end
 
+    def admin?
+      perm_hash[:admin].present?
+    end
+
+    def include_archived?
+      ActiveModel::Type::Boolean.new.cast(params[:include_archived])
+    end
+
+    def purge_document(doc)
+      doc.file.purge
+      doc.destroy!
+      render json: { success: true }
+    end
+
+    # Beruht eine ERTEILTE Lizenz dieses Spielers auf dem Dokument? Dann ist es
+    # der Nachweis einer Genehmigung und wird beim Löschen archiviert statt
+    # vernichtet.
+    #
+    # Maßgeblich sind die Pflichtdokumente der Ligen, in denen der Spieler eine
+    # erteilte Lizenz hat, nach derselben Regel aufgelöst wie in den
+    # Lizenzansichten (Altersgrenzen gegen das Antragsdatum, Elternzustimmung
+    # zusätzlich über das Liga-Flag). Bewusst über ALLE Saisons: Auch eine
+    # Lizenz von vor zwei Jahren wurde auf einer Unterlage erteilt.
+    #
+    # Bei per_season-Arten zählt nur die Fassung aus der Saison der Lizenz – ein
+    # Upload aus einer anderen Saison war nie ihre Grundlage.
+    #
+    # Freiwillige Uploads, die keine Liga verlangt, bleiben damit ganz normal
+    # löschbar.
+    def relied_upon_by_approved_license?(doc)
+      per_season = DocumentType.find_by(key: doc.document_type)&.per_season?
+
+      approved_license_requirements.any? do |req|
+        req[:keys].include?(doc.document_type) &&
+          (!per_season || req[:season_id].to_s == doc.season_id.to_s)
+      end
+    end
+
+    # Je erteilter Lizenz: { keys: <aufgelöste Pflichtdokumente>, season_id: <Saison der Liga> }.
+    def approved_license_requirements
+      @approved_license_requirements ||= begin
+        approved = Array(@player.licenses).select { |l| approved_license?(l) }
+        teams = Team.where(id: approved.filter_map { |l| l['team_id'] }.uniq)
+                    .includes(:league).index_by(&:id)
+
+        approved.filter_map do |license|
+          team = teams[license['team_id'].to_i]
+          next if team.nil? || team.league.nil?
+
+          league_keys = team.season_leagues.flat_map { |l| league_required_document_keys(l) }.uniq
+          next if league_keys.empty?
+
+          { keys: DocumentType.required_keys(league_keys, birthdate: @player.birthdate,
+                                             requested_at: license_requested_at(license)),
+            season_id: team.league.season_id }
+        end
+      end
+    end
+
+    # Der Verlaufsleser des Modells statt einer eigenen Rechnung: Die Sortierung
+    # über die JSONB-Zeitstempel ist ein Zeichenkettenvergleich und hat schon
+    # einmal danebengegriffen.
+    def approved_license?(license)
+      @player.current_license_status(license)&.dig('license_status_id').to_i == License::APPROVED
+    end
+
     # Katalog der referenzierten Dokumentarten, keyed per document_type-Key.
     # game_operation wird eager geladen, damit document_json/Scoping ohne N+1
     # auf Verband und Sichtbarkeit zugreifen können.
-    def document_type_catalog(docs)
+    def catalog_for(docs)
       keys = docs.map(&:document_type).uniq
       return {} if keys.empty?
 
@@ -331,7 +426,7 @@ module Admin
     def document_visible?(doc)
       return true if unrestricted_document_access?
 
-      document_in_scope?(doc, document_type_catalog([doc]), perm_hash[:sbk])
+      document_in_scope?(doc, catalog_for([doc]), perm_hash[:sbk])
     end
 
     # Schreibseite, gleiche Regel wie die Leseseite (document_in_scope?) und wie
@@ -429,6 +524,12 @@ module Admin
         content_type: doc.file.content_type,
         byte_size: doc.file.byte_size,
         created_at: doc.created_at,
+        # Leer bei der aktuellen Fassung. Gesetzt heißt: abgelöst ('replaced')
+        # oder gelöscht ('deleted'), als Nachweis aufbewahrt und weiterhin
+        # abrufbar.
+        archived_at: doc.archived_at&.iso8601,
+        archived_reason: doc.archived_reason,
+        archived_by: doc.archived_by&.full_with_username,
         url: rails_blob_url(doc.file, disposition: 'inline')
       }
     end

@@ -491,8 +491,10 @@ module PlayerUnmerging
       end
       next unless own_license_ids.include?(doc.license_id)
 
-      if LicenseDocument.exists?(player_id: id, license_id: doc.license_id,
-                                 document_type: doc.document_type)
+      # Nur aktive Zeilen kollidieren (partieller Eindeutigkeits-Index).
+      if doc.archived_at.nil? &&
+         LicenseDocument.active.exists?(player_id: id, license_id: doc.license_id,
+                                        document_type: doc.document_type)
         verbleibend << doc.id
         next
       end
