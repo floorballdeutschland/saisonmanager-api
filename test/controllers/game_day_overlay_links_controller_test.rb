@@ -46,12 +46,30 @@ class GameDayOverlayLinksControllerTest < ActionDispatch::IntegrationTest
     assert_response :created
   end
 
-  test 'Teammanager einer beteiligten Mannschaft darf' do
+  test 'Teammanager der Heimmannschaft darf' do
     login(create(:user, :tm, team_id: @home.id))
 
     post "/api/v2/user/game_days/#{@game_day.id}/overlay_link"
 
     assert_response :created
+  end
+
+  # Gestreamt wird aus der Halle des Ausrichters. Der Gast war bis 1.98.x
+  # mitberechtigt, weil der Concern jede beteiligte Mannschaft durchließ.
+  test 'Vereinsmanager des Gastvereins darf nicht' do
+    login(create(:user, :vm, club_id: @guest.club_id))
+
+    post "/api/v2/user/game_days/#{@game_day.id}/overlay_link"
+
+    assert_response :forbidden
+  end
+
+  test 'Teammanager der Gastmannschaft darf nicht' do
+    login(create(:user, :tm, team_id: @guest.id))
+
+    post "/api/v2/user/game_days/#{@game_day.id}/overlay_link"
+
+    assert_response :forbidden
   end
 
   test 'SBK eines fremden Spielbetriebs darf nicht' do

@@ -124,9 +124,10 @@ class GameDaySecretaryLinksController < ApplicationController
   DATE_PATTERN = '^\d{4}-\d{2}-\d{2}$'.freeze
 
   def seed_game_days
-    return [] if vm_club_ids.empty? && tm_team_ids.empty?
+    ids = candidate_game_day_ids
+    return [] if ids.empty?
 
-    GameDay.where(id: hosted_game_day_ids + participating_game_day_ids)
+    GameDay.where(id: ids)
            .where(
              'game_days.date IS NULL ' \
              "OR game_days.date !~ :pattern " \
@@ -138,19 +139,41 @@ class GameDaySecretaryLinksController < ApplicationController
            .to_a
   end
 
-  def hosted_game_day_ids
-    return [] if vm_club_ids.empty?
+  # Nur Spieltage des ausrichtenden Vereins – die Auswärtsspieltage einer
+  # eigenen Mannschaft gehören seit api#551 nicht mehr dazu. Am Tisch sitzt der
+  # Ausrichter; die Übersicht soll nicht mehr zeigen, als sich vergeben lässt.
+  #
+  # Für den Teammanager ist das der Verein seiner Mannschaft(en). Ob dieser
+  # Spieltag dann wirklich eine seiner Mannschaften enthält, entscheidet
+  # may_manage_game_day_link? je Spieltag – hier wird nur vorausgewählt.
+  def candidate_game_day_ids
+    club_ids = (vm_club_ids + tm_team_club_ids).uniq
+    hosted = club_ids.present? ? GameDay.where(club_id: club_ids).pluck(:id) : []
 
-    GameDay.where(club_id: vm_club_ids).pluck(:id)
+    hosted + hostless_home_game_day_ids
   end
 
-  def participating_game_day_ids
-    team_ids = tm_team_ids
-    team_ids += Team.where(club_id: vm_club_ids).pluck(:id) if vm_club_ids.present?
+  # `all_club_ids` statt `club_id`: Eine Spielgemeinschaft richtet auch unter
+  # ihrem Partnerverein aus, und dann steht dessen ID am Spieltag.
+  def tm_team_club_ids
+    return [] if tm_team_ids.empty?
+
+    Team.where(id: tm_team_ids).flat_map(&:all_club_ids).compact.uniq
+  end
+
+  # Spieltage ohne Ausrichter tragen kein `club_id`, über das sie zu finden
+  # wären, kommen aber über den Rückfall in `hosting_club_ids` durch die
+  # Rechteprüfung. Ohne diesen Zweig stünden sie nicht in der Übersicht, obwohl
+  # der Verein den Link erzeugen darf – und einen anderen Weg dorthin hat er nicht.
+  #
+  # Nur Heimmannschaften, denn genau die bildet der Rückfall ab.
+  def hostless_home_game_day_ids
+    team_ids = (tm_team_ids + Team.where(club_id: vm_club_ids).pluck(:id)).uniq
     return [] if team_ids.empty?
 
-    GameDay.joins(:games)
-           .where('games.home_team_id IN (:t) OR games.guest_team_id IN (:t)', t: team_ids.uniq)
+    GameDay.where(club_id: nil)
+           .joins(:games)
+           .where(games: { home_team_id: team_ids })
            .distinct
            .pluck(:id)
   end

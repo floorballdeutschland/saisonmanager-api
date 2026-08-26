@@ -34,18 +34,46 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
     assert_equal [@game_day.id], body['game_day_ids']
   end
 
-  test 'Vereinsmanager eines beteiligten Gastvereins darf einen Link erzeugen' do
+  test 'Vereinsmanager des Gastvereins bekommt 403' do
     login(create(:user, :vm, club_id: @guest_club.id))
+
+    post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
+
+    assert_response :forbidden
+    assert_equal 0, GameDaySecretaryLink.count,
+                 'am Sekretariatstisch sitzt der Ausrichter, nicht der Gast'
+  end
+
+  test 'Teammanager der Heimmannschaft darf einen Link erzeugen' do
+    login(create(:user, :tm, team_id: @home.id))
 
     post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
 
     assert_response :created
   end
 
-  test 'Teammanager einer beteiligten Mannschaft darf einen Link erzeugen' do
-    login(create(:user, :tm, team_id: @home.id))
+  test 'Teammanager der Gastmannschaft bekommt 403' do
+    login(create(:user, :tm, team_id: @guest.id))
 
     post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
+
+    assert_response :forbidden
+    assert_equal 0, GameDaySecretaryLink.count
+  end
+
+  # Eine Spielgemeinschaft steht mit einem Verein in `club_id` und ihren
+  # Partnervereinen in `syndicate_clubs`. Richtet sie unter dem Partner aus,
+  # trägt der Spieltag dessen ID – ein Vergleich nur über `club_id` sperrte sie
+  # aus ihrer eigenen Halle aus.
+  test 'Teammanager einer Spielgemeinschaft darf am Spieltag des Partnervereins' do
+    partner = create(:club)
+    sg = create(:team, league: @league, club: @host_club,
+                       syndicate: true, syndicate_clubs: [partner.id])
+    day = create_game_day(@league, partner)
+    Game.create!(game_day: day, home_team: sg, guest_team: @guest, start_time: '12:00')
+    login(create(:user, :tm, team_id: sg.id))
+
+    post "/api/v2/user/game_days/#{day.id}/secretary_link"
 
     assert_response :created
   end
@@ -292,6 +320,56 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_equal [], JSON.parse(response.body),
                  'Admin und SBK erzeugen ihre Links in der Spielplan-Verwaltung'
+  end
+
+  test 'Übersicht des Gastvereins nennt den Auswärtsspieltag nicht' do
+    login(create(:user, :vm, club_id: @guest_club.id))
+
+    get '/api/v2/user/secretary_game_days'
+
+    assert_response :success
+    assert_equal [], JSON.parse(response.body),
+                 'der Gast soll fremde Spieltage weder sehen noch vergeben können'
+  end
+
+  test 'Übersicht des Gastvereins bleibt auch als Teammanager leer' do
+    login(create(:user, :tm, team_id: @guest.id))
+
+    get '/api/v2/user/secretary_game_days'
+
+    assert_response :success
+    assert_equal [], JSON.parse(response.body)
+  end
+
+  # Der Spielplan-Import legt Spieltage ohne Halle und ohne Ausrichter an. Ohne
+  # Rückfall auf die Heimmannschaft käme für die niemand mehr an den Link, und
+  # diese Seite ist der einzige Weg des Vereins dorthin.
+  test 'Spieltag ohne Ausrichter bleibt für den Verein der Heimmannschaft erreichbar' do
+    @game_day.update!(club: nil)
+    login(create(:user, :vm, club_id: @host_club.id))
+
+    get '/api/v2/user/secretary_game_days'
+
+    assert_response :success
+    ids = JSON.parse(response.body).flat_map { |g| g['game_days'].map { |gd| gd['id'] } }
+    assert_includes ids, @game_day.id
+
+    post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
+
+    assert_response :created
+  end
+
+  test 'Spieltag ohne Ausrichter bleibt dem Gastverein verschlossen' do
+    @game_day.update!(club: nil)
+    login(create(:user, :vm, club_id: @guest_club.id))
+
+    get '/api/v2/user/secretary_game_days'
+
+    assert_equal [], JSON.parse(response.body)
+
+    post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
+
+    assert_response :forbidden
   end
 
   test 'zwei Spieltage ohne Halle am selben Tag bleiben getrennte Gruppen' do
