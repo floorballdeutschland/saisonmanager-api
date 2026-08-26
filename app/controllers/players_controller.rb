@@ -81,6 +81,7 @@ class PlayersController < ApplicationController
       only_current = params[:all_licenses].to_s != 'true'
       hash = result.full_hash(true, only_current, true)
       resolve_club_actor_names!(hash)
+      annotate_gf_role_scope!(hash)
       render json: hash
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
@@ -286,12 +287,29 @@ class PlayersController < ApplicationController
              ([License::APPROVED, License::DENIED, License::REQUESTED].include?(params[:license_status_id].to_i) ||
               ([License::TRANSFER].include?(params[:license_status_id].to_i) && current_user.permission_hash[:admin].present?)
              )
-            lic['history'] << {
+            entry = {
               license_status_id: params[:license_status_id].to_i,
               reason: params[:reason] || '',
               created_by: current_user.id,
               created_at: Time.now
             }
+            # Jeder `beantragt`-Eintrag von hier aus wird markiert und startet die
+            # Karenzzeit damit nicht neu. Dieser Endpunkt ist Admin und SBK
+            # vorbehalten (siehe Rechteprüfung oben), ein Verein beantragt hier
+            # also nie: Was hier entsteht, ist immer eine Verwaltungskorrektur.
+            # Die erste Beantragung läuft über request_license und bleibt
+            # unmarkiert.
+            #
+            # Bewusst nicht auf `abgelehnt -> beantragt` eingeengt. Der Weg aus
+            # `erteilt` heraus ist der teurere Fall – dort ist die Gebühr sicher
+            # angefallen –, und er ist real erreichbar: Die Lizenzübersicht wird
+            # einmal geladen und nicht nachgeführt, ein Widerruf-Klick auf einer
+            # veralteten Zeile schickt also `beantragt` auf eine inzwischen
+            # erteilte Lizenz. Siehe License.grace_period_anchor.
+            if params[:license_status_id].to_i == License::REQUESTED
+              entry[License::REVOKED_REJECTION_KEY] = true
+            end
+            lic['history'] << entry
             if params[:license_status_id].to_i == License::APPROVED
               approved_team_id = lic['team_id']
               lic['valid_until'] = params[:valid_until].presence || default_license_valid_until(lic['season_id']).iso8601
@@ -467,9 +485,7 @@ class PlayersController < ApplicationController
                     status: :unprocessable_entity
     end
 
-    last_requested = found_license['history']
-                       .select { |h| h['license_status_id'].to_i == License::REQUESTED }
-                       .max_by { |h| h['created_at'] }
+    last_requested = License.grace_period_anchor(found_license['history'])
 
     if last_requested && (Time.now - last_requested['created_at'].to_time) < License::GRACE_PERIOD
       player.licenses.reject! { |l| l['id'] == params[:license_id] }
@@ -500,11 +516,23 @@ class PlayersController < ApplicationController
       if license['id'] == params[:license_id]
         found_license = license
 
-        license['history'] << {
+        entry = {
           license_status_id: status,
           created_by: current_user.id,
           created_at: Time.now
         }
+        # Der einzige Weg hierher mit `beantragt` ist reenable_license_request,
+        # also das Wiedereinstellen einer Lizenz, die es schon gibt: Der Verein
+        # hat für sie längst einmal beantragt, und genau dieser erste Antrag
+        # hatte seine Karenzzeit. Ein zweites Gratis-Fenster gäbe es sonst für
+        # jede Wiedereinstellung, und das Zurückziehen darin löscht die Lizenz
+        # ersatzlos – samt der Ablehnung, die sie kostenpflichtig macht.
+        #
+        # Die erste Beantragung läuft nicht hier durch, sondern über
+        # request_license, und bleibt unmarkiert. Siehe
+        # License.grace_period_anchor.
+        entry[License::REVOKED_REJECTION_KEY] = true if status == License::REQUESTED
+        license['history'] << entry
       end
 
       license
@@ -1149,6 +1177,52 @@ class PlayersController < ApplicationController
         'created_by_name' => names[c['created_by'].to_i],
         'valid_set_by_name' => names[c['valid_set_by'].to_i]
       )
+    end
+  end
+
+  # Je Lizenz: Darf dieses Konto die Erst-/Zweitlizenz-Zuordnung dieser Lizenz
+  # setzen? Genau die Frage, die set_gf_license_role beantwortet -- zuständig ist
+  # der Spielbetrieb der Liga, an der die Lizenz hängt.
+  #
+  # Das Profil zeigt ALLE Lizenzen der Person, saisonübergreifend und über
+  # Spielbetriebe hinweg. Die Maske konnte den Unterschied bisher nicht kennen:
+  # Der an das Frontend gesendete permissions-Hash (User#permissions_items) ist
+  # ein flacher Ja/Nein-Hash ohne Spielbetriebe, `player_set_gf_role` heißt dort
+  # nur "ist Admin oder SBK". Also bot sie die Knöpfe auf jeder
+  # GF-Erwachsenenlizenz an, und auf einer Lizenz außerhalb des eigenen
+  # Spielbetriebs endete der Klick in einer 403. Gemeldet am 26.08.2026 von der
+  # SBK Niedersachsen, die die Zuordnung an der 2.-FBL-Lizenz eines ihrer
+  # Regionalliga-Spieler versuchte.
+  #
+  # Der Spielbetrieb kommt aus dem bereits aufgelösten Liga-Hash und nicht über
+  # sbk_can_access_license?: Das Ergebnis ist dasselbe (Team -> Liga ->
+  # game_operation_id), aber ohne eine weitere Team-Abfrage je Lizenz und ohne
+  # die Datenfehler-Meldung jener Methode. Ein Profil mit vierzig Altlizenzen
+  # löst sonst für jedes gelöschte Team eine Sentry-Meldung aus, obwohl hier
+  # nichts entschieden, sondern nur angezeigt wird.
+  #
+  # Ohne auflösbare Liga bleibt es bei false: Wer nicht weiß, welcher Verband
+  # zuständig ist, ordnet nichts zu. Für VM und TM ist der Wert immer false,
+  # denn die Zuordnung ist Verbandssache (permissions_items:
+  # player_set_gf_role).
+  def annotate_gf_role_scope!(hash)
+    ph = current_user.permission_hash
+    admin = ph[:admin].present?
+    sbk_global = ph[:sbk].present? && ph[:sbk].include?(0)
+
+    Array(hash[:licenses]).each do |lic|
+      next unless lic.is_a?(Hash)
+
+      go_id = lic[:league].is_a?(Hash) ? lic[:league][:game_operation_id] : nil
+      # `go_id.present?` steht bewusst VOR den Rollen und nicht nur im
+      # SBK-Zweig: Sonst kuerzen `admin` und `sbk_global` ab, und eine Lizenz
+      # ohne aufloesbare Liga (geloeschtes Team, Team ohne league_id) waere fuer
+      # sie als zuordenbar gemeldet. Genau die weist der Schreibweg danach mit
+      # 422 ab (`unless league&.gf_adult?`) -- das Feld verspraeche also etwas,
+      # das kein Konto einloesen kann. Bei vorhandener Liga aendert die Klammer
+      # fuer keine Rolle das Ergebnis.
+      lic[:gf_role_editable] = go_id.present? &&
+                               (admin || sbk_global || ph[:sbk].to_a.include?(go_id))
     end
   end
 
