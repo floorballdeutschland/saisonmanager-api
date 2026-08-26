@@ -38,9 +38,12 @@ module LicenseDocumentPresentation
   # _uploaded_at hängt an derselben Bedingung wie _url: Ohne abrufbare Datei
   # soll auch kein Datum erscheinen, sonst wiese die Genehmigungsübersicht einen
   # Upload aus, den dort niemand öffnen kann. Als Zeitpunkt zählt created_at des
-  # Dokuments, nicht das des Anhangs – ein erneuter Upload löscht den bisherigen
-  # Datensatz und legt einen neuen an (Admin::LicenseDocumentsController#create),
-  # created_at ist damit stets der Zeitpunkt des aktuellen Uploads.
+  # Dokuments, nicht das des Anhangs – ein erneuter Upload archiviert den
+  # bisherigen Datensatz und legt einen neuen an
+  # (Admin::LicenseDocumentsController#create). Dass created_at damit stets der
+  # Zeitpunkt des AKTUELLEN Uploads ist, hängt am `.active` in
+  # license_documents_by_player_and_type: Ohne den Filter käme die archivierte
+  # Fassung mit und `max_by(&:created_at)` entschiede zwischen beiden.
   def document_map_for(player_id, license_season_id, docs_by_key, required_keys, catalog)
     result = {}
     (%w[parental_consent] | Array(required_keys)).each do |key|

@@ -67,6 +67,16 @@ class LicenseDocumentTest < ActiveSupport::TestCase
     assert doc.file.attached?, 'der Anhang bleibt'
   end
 
+  # Ohne diese Ausnahme meldete der Controller Erfolg fuer eine Archivierung,
+  # die nicht stattgefunden hat.
+  test 'archive! meldet sich, wenn die Zeile nicht mehr da ist' do
+    doc = build_document
+    doc.save!
+    LicenseDocument.where(id: doc.id).delete_all
+
+    assert_raises(ActiveRecord::RecordNotSaved) { doc.archive!(reason: 'replaced') }
+  end
+
   test 'archive! nimmt keinen unbekannten Grund an' do
     doc = build_document
     doc.save!

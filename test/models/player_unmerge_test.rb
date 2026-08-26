@@ -206,6 +206,22 @@ class PlayerUnmergeTest < ActiveSupport::TestCase
     assert_equal @master.id, am_master.reload.player_id
   end
 
+  # Gegenstueck zur Kollisionsregel im Merge: Eine archivierte Fassung besetzt
+  # den Platz nicht, das Dokument darf also zurueck.
+  test 'eine archivierte Fassung am Master geht trotz aktiver Zeile an der Dublette zurueck' do
+    lizenz_id = @dublette.licenses.first['id']
+    @dublette.merge_into!(@master, @user.id)
+    am_master = dokument(@master, lizenz_id, 'ausweis')
+    am_master.archive!(reason: 'replaced')
+    dokument(@dublette, lizenz_id, 'ausweis')
+
+    bilanz = @dublette.reload.unmerge_from!(@user.id)
+
+    assert_equal 1, bilanz[:documents]
+    assert_empty bilanz[:documents_manual]
+    assert_equal @dublette.id, am_master.reload.player_id
+  end
+
   test 'ein zuordenbares Lizenzdokument geht zurueck an die Dublette' do
     lizenz_id = @dublette.licenses.first['id']
     @dublette.merge_into!(@master, @user.id)

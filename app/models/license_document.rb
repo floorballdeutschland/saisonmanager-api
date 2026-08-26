@@ -8,9 +8,16 @@
 #
 # Eine abgelöste Fassung wird nicht mehr gelöscht, sondern archiviert
 # (`archived_at`): Der Anhang bleibt abrufbar, damit nachweisbar ist, worauf
-# eine erteilte Lizenz beruhte. Aktiv ist je Spieler und Dokumentart weiterhin
-# genau eine Zeile – dafür sorgen die Eindeutigkeits-Validierung und der
-# partielle Index, beide auf `archived_at IS NULL` eingeschränkt.
+# eine erteilte Lizenz beruhte.
+#
+# Aktiv ist je Spieler und Dokumentart genau eine Zeile. Durchgesetzt wird das
+# vom Upload-Weg: `Admin::LicenseDocumentsController#create` löst ALLE aktiven
+# Zeilen der Art ab, unabhängig von der license_id. Validierung und partieller
+# Index sichern nur das engere Tripel (player_id, license_id, document_type),
+# und bei `license_id IS NULL` – dem Normalfall für spielerbezogene Uploads –
+# greift allein die Validierung, weil NULL-Werte in einem Postgres-Unique-Index
+# verschieden sind. Beide sind auf `archived_at IS NULL` eingeschränkt, sonst
+# ließe sich eine einmal ersetzte Art nicht wieder hochladen.
 class LicenseDocument < ApplicationRecord
   belongs_to :player
   belongs_to :uploaded_by, class_name: 'User', optional: true
@@ -51,8 +58,14 @@ class LicenseDocument < ApplicationRecord
       raise ArgumentError, "unbekannter Archivierungsgrund: #{reason.inspect}"
     end
 
-    update_columns(archived_at: Time.current, archived_reason: reason,
-                   archived_by_id: user&.id, updated_at: Time.current)
+    # update_columns liefert false, wenn die Zeile nicht mehr da ist. Der
+    # Aufrufer meldete dann Erfolg fuer eine Archivierung, die nicht
+    # stattgefunden hat – bei einem Nachweis der falscheste aller Ausgaenge.
+    geschrieben = update_columns(archived_at: Time.current, archived_reason: reason,
+                                 archived_by_id: user&.id, updated_at: Time.current)
+    raise ActiveRecord::RecordNotSaved.new('Dokument konnte nicht archiviert werden', self) unless geschrieben
+
+    true
   end
 
   private

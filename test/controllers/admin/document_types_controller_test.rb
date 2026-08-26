@@ -94,6 +94,27 @@ module Admin
       assert_not DocumentType.exists?(@scoped.id)
     end
 
+    # Die beiden Seiten zaehlen bewusst verschieden: Die Verwendungsspalte
+    # zeigt den aktuellen Bestand, der Loeschschutz auch archivierte Nachweise.
+    # Ohne Letzteres stuende ein aufbewahrter Nachweis nur noch als Freitext da,
+    # sobald jemand die Dokumentart entfernt.
+    test 'nur archivierte Nachweise zaehlen nicht als Verwendung, schuetzen die Art aber weiter' do
+      doc = LicenseDocument.new(player: create(:player), document_type: @global.key)
+      doc.file.attach(io: StringIO.new('%PDF-1.4'), filename: 'd.pdf', content_type: 'application/pdf')
+      doc.save!
+      doc.archive!(reason: 'deleted')
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/document_types'
+      assert_response :success
+      eintrag = JSON.parse(response.body).find { |t| t['key'] == @global.key }
+      assert_equal 0, eintrag['usage_count']
+
+      delete "/api/v2/admin/document_types/#{@global.id}"
+      assert_response :unprocessable_entity
+      assert DocumentType.exists?(@global.id)
+    end
+
     # Die Altersregel muss ueber die Maske in beiden Formen pflegbar sein und in der
     # Antwort auch wieder ankommen — sonst kann die Liste keine Kennzeichnung zeigen
     # und das Bearbeiten-Formular nichts vorbelegen (#483).

@@ -6,6 +6,10 @@ class Player < ApplicationRecord
   belongs_to :created_at_user, class_name: 'User', optional: true
   belongs_to :updated_at_user, class_name: 'User', optional: true
 
+  # Auch archivierte Nachweise gehen mit: Wird ein Spielerprofil wirklich
+  # geloescht (und nicht nur deaktiviert), soll nichts von der Person
+  # zurueckbleiben. Das Archiv sichert die Belegbarkeit gegen das Ersetzen und
+  # Loeschen einzelner Dokumente, nicht gegen das Loeschen der Person.
   has_many :license_documents, dependent: :destroy
   has_many :suspensions, class_name: 'PlayerSuspension', dependent: :destroy
 
