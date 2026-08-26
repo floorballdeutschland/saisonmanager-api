@@ -295,8 +295,9 @@ class PlayersController < ApplicationController
             # Jeder `beantragt`-Eintrag von hier aus wird markiert und startet die
             # Karenzzeit damit nicht neu. Dieser Endpunkt ist Admin und SBK
             # vorbehalten (siehe Rechteprüfung oben), ein Verein beantragt hier
-            # also nie: Was hier entsteht, ist immer eine Verwaltungskorrektur
-            # und keine neue Beantragung.
+            # also nie: Was hier entsteht, ist immer eine Verwaltungskorrektur.
+            # Die erste Beantragung läuft über request_license und bleibt
+            # unmarkiert.
             #
             # Bewusst nicht auf `abgelehnt -> beantragt` eingeengt. Der Weg aus
             # `erteilt` heraus ist der teurere Fall – dort ist die Gebühr sicher
@@ -514,11 +515,23 @@ class PlayersController < ApplicationController
       if license['id'] == params[:license_id]
         found_license = license
 
-        license['history'] << {
+        entry = {
           license_status_id: status,
           created_by: current_user.id,
           created_at: Time.now
         }
+        # Der einzige Weg hierher mit `beantragt` ist reenable_license_request,
+        # also das Wiedereinstellen einer Lizenz, die es schon gibt: Der Verein
+        # hat für sie längst einmal beantragt, und genau dieser erste Antrag
+        # hatte seine Karenzzeit. Ein zweites Gratis-Fenster gäbe es sonst für
+        # jede Wiedereinstellung, und das Zurückziehen darin löscht die Lizenz
+        # ersatzlos – samt der Ablehnung, die sie kostenpflichtig macht.
+        #
+        # Die erste Beantragung läuft nicht hier durch, sondern über
+        # request_license, und bleibt unmarkiert. Siehe
+        # License.grace_period_anchor.
+        entry[License::REVOKED_REJECTION_KEY] = true if status == License::REQUESTED
+        license['history'] << entry
       end
 
       license

@@ -42,14 +42,20 @@ class License < ApplicationRecord
   # Der `beantragt`-Eintrag, ab dem die Karenzzeit läuft – oder nil, wenn es
   # keinen gibt.
   #
-  # Unterschieden wird nach dem Weg, nicht nach dem Statuswechsel: Was Admin oder
-  # SBK über handle_license_request schreiben, ist markiert und zählt nicht;
-  # derselbe Wechsel über reenable_license_request (Verein) ist unmarkiert und
-  # zählt, denn dort beantragt der Verein tatsächlich neu.
+  # Gezählt wird nur die erste Beantragung einer Lizenz, also der Eintrag aus
+  # PlayersController#request_license. Alles, was danach wieder auf `beantragt`
+  # setzt, ist markiert und zählt nicht: die Verwaltungskorrektur von Admin oder
+  # SBK (handle_license_request), das Wiedereinstellen durch den Verein
+  # (reenable_license_request) und der zurückgeschriebene Status nach Ablauf
+  # einer Sperre (Player#lift_suspension!).
   #
-  # Ohne diese Unterscheidung eröffnete jede Verwaltungskorrektur ein neues
+  # Ohne diese Unterscheidung eröffnete jeder dieser Wege ein neues
   # Gratis-Fenster, und ein Zurückziehen darin löscht die Lizenz ersatzlos – samt
-  # der Historie, die den Vorgang gerade belegt.
+  # der Historie, die sie kostenpflichtig macht. Kostenfrei löschen kann damit
+  # nur, wer den Antrag gerade selbst gestellt hat.
+  #
+  # Die Markierung hängt am Weg, nicht am Statuswechsel: Sie wird beim Schreiben
+  # gesetzt, weil nur dort bekannt ist, wer handelt und warum.
   #
   # Maßgeblich bleibt der Zeitpunkt des Antrags selbst: Lehnt die SBK innerhalb
   # der ersten Stunde ab und widerruft gleich darauf, liegt der ursprüngliche
