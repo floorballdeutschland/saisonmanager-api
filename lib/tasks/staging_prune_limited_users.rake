@@ -55,17 +55,20 @@ namespace :staging do
                survivors.first
     abort 'ABBRUCH: kein Fallback-Benutzer für die FK-Umhängung gefunden.' if fallback.nil?
 
-    # Alle Fremdschlüssel, die auf users zeigen (aus db/schema.rb).
-    fk_columns = {
-      'game_day_secretary_links' => 'created_by_id',
-      'game_referee_reports' => 'uploaded_by_id',
-      'game_scans' => 'uploaded_by_id',
-      'license_documents' => 'uploaded_by_id',
-      'referee_course_imports' => 'uploaded_by_user_id',
-      'referee_course_results' => 'reviewed_by_user_id'
-    }
-
     conn = ActiveRecord::Base.connection
+
+    # Alle Fremdschlüssel, die auf users zeigen – aus dem Schema gelesen, nicht
+    # von Hand gepflegt. Die frühere Liste war zweimal unvollständig
+    # (game_day_overlay_links.created_by_id fehlte von Anfang an,
+    # license_documents.archived_by_id kam später dazu), und jede Lücke lässt
+    # das `delete_all` weiter unten an einer Fremdschlüssel-Verletzung
+    # scheitern: Der Prune bricht dann komplett ab, mitten im Staging-Refresh.
+    # Eine Tabelle kann mehrere solche Spalten tragen, deshalb Paare statt Hash.
+    fk_columns = conn.tables.flat_map do |table|
+      conn.foreign_keys(table)
+          .select { |fk| fk.to_table == 'users' }
+          .map { |fk| [table, fk.column] }
+    end
     id_list = remove_ids.join(',')
 
     ActiveRecord::Base.transaction do

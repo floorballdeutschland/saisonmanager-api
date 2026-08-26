@@ -23,7 +23,7 @@ module Admin
       assert_nil doc.license_id
     end
 
-    test 'neuer Upload ersetzt alle vorhandenen Dokumente derselben Art (auch Lizenz-Altbestand)' do
+    test 'neuer Upload loest alle vorhandenen Dokumente derselben Art ab (auch Lizenz-Altbestand)' do
       old_doc = LicenseDocument.new(player: @player, license_id: 'alte-lizenz-uuid', document_type: 'use')
       old_doc.file.attach(io: StringIO.new('%PDF-1.4 alt'), filename: 'alt.pdf', content_type: 'application/pdf')
       old_doc.save!
@@ -32,7 +32,7 @@ module Admin
            params: { document_type: 'use', file: fixture_file_upload('dokument.pdf', 'application/pdf') }
 
       assert_response :created
-      docs = @player.license_documents.where(document_type: 'use')
+      docs = @player.license_documents.active.where(document_type: 'use')
       assert_equal 1, docs.count
       assert_not_equal old_doc.id, docs.sole.id
     end
@@ -44,7 +44,7 @@ module Admin
         assert_response :created
       end
 
-      assert_equal 1, @player.license_documents.where(document_type: 'use').count
+      assert_equal 1, @player.license_documents.active.where(document_type: 'use').count
     end
 
     test 'ungültiger Upload lässt das bestehende Dokument unangetastet' do
@@ -57,6 +57,13 @@ module Admin
 
       assert_response :unprocessable_entity
       assert LicenseDocument.exists?(existing.id), 'Rollback muss das alte Dokument erhalten'
+      # Seit der Archivierung genuegt "existiert noch" als Nachweis nicht mehr:
+      # Ohne Rollback stuende die alte Fassung archiviert da und der Spieler
+      # haette gar kein aktuelles Dokument dieser Art.
+      existing.reload
+      assert_not existing.archived?, 'die alte Fassung muss aktiv bleiben'
+      assert_nil existing.archived_reason
+      assert_equal 1, @player.license_documents.active.where(document_type: 'use').count
     end
 
     test 'Index liefert ohne license_id-Filter alle Dokumente des Spielers' do
@@ -315,6 +322,321 @@ module Admin
       assert_includes JSON.parse(response.body).map { |d| d['document_type'] }, own.key
     end
 
+    # --- Archivierung: abgeloeste und geloeschte Nachweise bleiben belegbar ---
+
+    # Der Kern des Umbaus: Bis hierher loeschte ein neuer Upload die bisherige
+    # Fassung samt Datei. Damit verschwand die Grundlage jeder Lizenz, die auf
+    # ihr erteilt worden war -- created_at und uploaded_by galten immer nur fuer
+    # die juengste Fassung.
+    test 'abgeloeste Fassung bleibt mit Anhang, Grund und Konto erhalten' do
+      old_doc = attach_document('use')
+      handelnder = create(:user, :admin)
+      login(handelnder)
+
+      post "/api/v2/admin/players/#{@player.id}/license_documents",
+           params: { document_type: 'use', file: fixture_file_upload('dokument.pdf', 'application/pdf') }
+      assert_response :created
+
+      old_doc.reload
+      assert old_doc.archived?, 'die abgeloeste Fassung muss erhalten bleiben'
+      assert_equal 'replaced', old_doc.archived_reason
+      assert_equal handelnder.id, old_doc.archived_by_id
+      assert old_doc.file.attached?, 'der Anhang darf nicht gepurged sein'
+      assert_equal 1, @player.license_documents.active.count
+    end
+
+    test 'Index zeigt archivierte Fassungen nur auf Anforderung' do
+      alt = attach_document('use')
+      alt.archive!(reason: 'replaced')
+      aktuell = attach_document('use')
+
+      get "/api/v2/admin/players/#{@player.id}/license_documents"
+      assert_response :success
+      ids = JSON.parse(response.body).map { |d| d['id'] }
+      assert_equal [aktuell.id], ids
+
+      get "/api/v2/admin/players/#{@player.id}/license_documents", params: { include_archived: true }
+      assert_response :success
+      body = JSON.parse(response.body)
+      assert_equal [alt.id, aktuell.id].sort, body.map { |d| d['id'] }.sort
+      archiviert = body.find { |d| d['id'] == alt.id }
+      assert archiviert['archived_at'].present?
+      assert_equal 'replaced', archiviert['archived_reason']
+      assert_nil body.find { |d| d['id'] == aktuell.id }['archived_at']
+    end
+
+    test 'Loeschen eines Pflichtdokuments mit erteilter Lizenz archiviert, statt zu vernichten' do
+      doc = required_document_with_approved_license
+      login(create(:user, :vm, club_id: @doc_club.id))
+
+      delete "/api/v2/admin/players/#{@player.id}/license_documents/#{doc.id}"
+
+      assert_response :success
+      assert JSON.parse(response.body)['archived']
+      doc.reload
+      assert_equal 'deleted', doc.archived_reason
+      assert doc.file.attached?, 'der Nachweis muss abrufbar bleiben'
+
+      # Aus dem aktuellen Bestand ist er trotzdem verschwunden.
+      get "/api/v2/admin/players/#{@player.id}/license_documents"
+      assert_empty JSON.parse(response.body)
+    end
+
+    test 'Loeschen ohne Lizenz, die darauf beruht, vernichtet weiterhin' do
+      club = create(:club)
+      team = create(:team, club: club, league: create(:league, required_documents: ['use']))
+      @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }],
+                      licenses: licenses_for(team))
+      # Freiwilliger Upload: keine Liga verlangt diese Art.
+      doc = attach_document('freiwillig')
+      login(create(:user, :vm, club_id: club.id))
+
+      delete "/api/v2/admin/players/#{@player.id}/license_documents/#{doc.id}"
+
+      assert_response :success
+      assert_not LicenseDocument.exists?(doc.id)
+    end
+
+    # Nur die ERTEILUNG bindet. Solange die Lizenz nur beantragt ist, hat der
+    # Verband auf dieser Unterlage noch nichts entschieden.
+    test 'beantragte Lizenz allein haelt das Dokument nicht' do
+      club = create(:club)
+      team = create(:team, club: club, league: create(:league, required_documents: ['use']))
+      @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }],
+                      licenses: build(:player, with_licenses: [{ team: team, status: License::REQUESTED }]).licenses)
+      doc = attach_document('use')
+      login(create(:user, :vm, club_id: club.id))
+
+      delete "/api/v2/admin/players/#{@player.id}/license_documents/#{doc.id}"
+
+      assert_response :success
+      assert_not LicenseDocument.exists?(doc.id)
+    end
+
+    # Sonst liesse sich der Nachweis in zwei Schritten beseitigen: erst
+    # ersetzen, dann die archivierte Fassung loeschen.
+    test 'VM darf eine archivierte Fassung nicht loeschen' do
+      doc = required_document_with_approved_license
+      doc.archive!(reason: 'replaced')
+      login(create(:user, :vm, club_id: @doc_club.id))
+
+      delete "/api/v2/admin/players/#{@player.id}/license_documents/#{doc.id}"
+
+      assert_response :forbidden
+      assert LicenseDocument.exists?(doc.id)
+    end
+
+    # Der eine Weg, auf dem die Grundlage einer Erteilung doch verschwindet.
+    # Er bleibt offen (Loeschverlangen nach Datenschutzrecht), aber nicht
+    # geraeuschlos.
+    test 'Admin loescht auch ein Dokument mit erteilter Lizenz endgueltig, hinterlaesst aber eine Spur' do
+      doc = required_document_with_approved_license
+
+      log = capture_rails_log do
+        delete "/api/v2/admin/players/#{@player.id}/license_documents/#{doc.id}"
+      end
+
+      assert_response :success
+      assert_not LicenseDocument.exists?(doc.id)
+      assert_match(/endgueltig geloescht/, log)
+      assert_match(/##{doc.id}/, log)
+    end
+
+    test 'ein Dokument ohne erteilte Lizenz wird ohne Aufhebens geloescht' do
+      doc = attach_document('freiwillig')
+
+      log = capture_rails_log do
+        delete "/api/v2/admin/players/#{@player.id}/license_documents/#{doc.id}"
+      end
+
+      assert_response :success
+      assert_no_match(/endgueltig geloescht/, log)
+    end
+
+    # per_season-Arten gelten je Saison. Eine Fassung aus einer anderen Saison
+    # war nie die Grundlage dieser Lizenz.
+    test 'per_season: Fassung aus einer anderen Saison als die Lizenz bleibt loeschbar' do
+      DocumentType.create!(name: 'Attest', key: 'attest', validity: 'per_season')
+      club = create(:club)
+      team = create(:team, club: club,
+                           league: create(:league, season_id: '18', required_documents: ['attest']))
+      @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }],
+                      licenses: licenses_for(team))
+      alt = attach_document('attest')
+      alt.update_columns(season_id: 17)
+      login(create(:user, :vm, club_id: club.id))
+
+      delete "/api/v2/admin/players/#{@player.id}/license_documents/#{alt.id}"
+
+      assert_response :success
+      assert_not LicenseDocument.exists?(alt.id)
+    end
+
+    test 'per_season: Fassung aus der Saison der Lizenz wird archiviert' do
+      DocumentType.create!(name: 'Attest', key: 'attest', validity: 'per_season')
+      club = create(:club)
+      team = create(:team, club: club,
+                           league: create(:league, season_id: '18', required_documents: ['attest']))
+      @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }],
+                      licenses: licenses_for(team))
+      doc = attach_document('attest')
+      doc.update_columns(season_id: 18)
+      login(create(:user, :vm, club_id: club.id))
+
+      delete "/api/v2/admin/players/#{@player.id}/license_documents/#{doc.id}"
+
+      assert_response :success
+      assert_equal 'deleted', doc.reload.archived_reason
+    end
+
+    # Ein Datensatz ohne Anhang (verlorener Blob) verschwand vor der
+    # Archivierung mit dem naechsten Upload. Jetzt ueberdauert er ihn -- und
+    # `rails_blob_url(nil)` haette die Archivansicht dauerhaft mit einem
+    # Serverfehler beendet.
+    test 'archivierte Fassung ohne Anhang bricht die Archivansicht nicht' do
+      alt = attach_document('use')
+      alt.file.purge
+
+      post "/api/v2/admin/players/#{@player.id}/license_documents",
+           params: { document_type: 'use', file: fixture_file_upload('dokument.pdf', 'application/pdf') }
+      assert_response :created
+
+      get "/api/v2/admin/players/#{@player.id}/license_documents", params: { include_archived: true }
+      assert_response :success
+      ohne_datei = JSON.parse(response.body).find { |d| d['id'] == alt.id }
+      assert ohne_datei, 'die archivierte Fassung muss gelistet bleiben'
+      assert_nil ohne_datei['url']
+      assert_nil ohne_datei['filename']
+    end
+
+    test 'Abruf einer Fassung ohne Anhang meldet, statt zu werfen' do
+      doc = attach_document('use')
+      doc.file.purge
+
+      get "/api/v2/admin/players/#{@player.id}/license_documents/#{doc.id}"
+
+      assert_response :not_found
+    end
+
+    # --- Archivierte Nachweise gehoeren dem Verband, nicht dem Verein ---
+
+    test 'VM sieht archivierte Fassungen auch mit include_archived nicht' do
+      doc = required_document_with_approved_license
+      doc.archive!(reason: 'deleted')
+      login(create(:user, :vm, club_id: @doc_club.id))
+
+      get "/api/v2/admin/players/#{@player.id}/license_documents", params: { include_archived: true }
+
+      assert_response :success
+      assert_empty JSON.parse(response.body)
+    end
+
+    test 'VM kommt auch nicht ueber den Einzelabruf an eine archivierte Fassung' do
+      doc = required_document_with_approved_license
+      doc.archive!(reason: 'deleted')
+      login(create(:user, :vm, club_id: @doc_club.id))
+
+      get "/api/v2/admin/players/#{@player.id}/license_documents/#{doc.id}"
+
+      assert_response :forbidden
+    end
+
+    test 'gescopte SBK sieht auch mit include_archived kein fremdes Verbandsdokument' do
+      foreign, doc = foreign_document_for_scoped_sbk
+      doc.archive!(reason: 'replaced')
+
+      get "/api/v2/admin/players/#{@player.id}/license_documents", params: { include_archived: true }
+
+      assert_response :success
+      assert_not_includes JSON.parse(response.body).map { |d| d['document_type'] }, foreign.key
+    end
+
+    # --- Was als Grundlage einer Erteilung zaehlt ---
+
+    # Der Verein kann eine erteilte Lizenz ueber reenable_license_request ohne
+    # Statusvorbedingung wieder auf "beantragt" setzen. Zaehlte nur der aktuelle
+    # Status, waere der Nachweis danach in einem zweiten Aufruf endgueltig weg.
+    test 'einmal erteilt bleibt geschuetzt, auch wenn der Status zurueckgesetzt wurde' do
+      club = create(:club)
+      team = create(:team, club: club, league: create(:league, required_documents: ['use']))
+      lizenz = build(:player, with_licenses: [{ team: team }]).licenses.first
+      lizenz['history'] << { 'license_status_id' => License::REQUESTED,
+                             'created_at' => Time.current.iso8601 }
+      @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }], licenses: [lizenz])
+      doc = attach_document('use')
+      login(create(:user, :vm, club_id: club.id))
+
+      delete "/api/v2/admin/players/#{@player.id}/license_documents/#{doc.id}"
+
+      assert_response :success
+      assert LicenseDocument.exists?(doc.id), 'der Nachweis darf nicht vernichtet werden'
+      assert_equal 'deleted', doc.reload.archived_reason
+    end
+
+    # Die Spalte season_id kam erst im Juli 2026 dazu und wurde nicht
+    # rueckwirkend gefuellt. Fuer diese Zeilen ist die Saison unbekannt und
+    # nicht "eine andere" -- sie tragen gerade den Altbestand erteilter Lizenzen.
+    test 'per_season: Fassung ohne Saison gilt im Zweifel als Grundlage' do
+      DocumentType.create!(name: 'Attest', key: 'attest', validity: 'per_season')
+      club = create(:club)
+      team = create(:team, club: club,
+                           league: create(:league, season_id: '18', required_documents: ['attest']))
+      @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }],
+                      licenses: licenses_for(team))
+      alt = attach_document('attest')
+      alt.update_columns(season_id: nil)
+      login(create(:user, :vm, club_id: club.id))
+
+      delete "/api/v2/admin/players/#{@player.id}/license_documents/#{alt.id}"
+
+      assert_response :success
+      assert_equal 'deleted', alt.reload.archived_reason
+    end
+
+    # Laesst sich die Grundlage nicht mehr ermitteln, wird aufbewahrt statt
+    # vernichtet -- ein Datenfehler darf keinen Nachweis kosten.
+    test 'erteilte Lizenz ohne auflösbare Mannschaft schuetzt die Unterlagen' do
+      club = create(:club)
+      team = create(:team, club: club, league: create(:league, required_documents: ['use']))
+      lizenzen = licenses_for(team)
+      @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }], licenses: lizenzen)
+      doc = attach_document('freiwillig')
+      login(create(:user, :vm, club_id: club.id))
+      team.destroy!
+
+      delete "/api/v2/admin/players/#{@player.id}/license_documents/#{doc.id}"
+
+      assert_response :success
+      assert_equal 'deleted', doc.reload.archived_reason
+    end
+
+    test 'TM loescht ein Pflichtdokument mit erteilter Lizenz nicht endgueltig' do
+      doc = required_document_with_approved_license
+      team = Team.find(@player.licenses.first['team_id'])
+      login(create(:user, :tm, team_id: team.id))
+
+      delete "/api/v2/admin/players/#{@player.id}/license_documents/#{doc.id}"
+
+      assert_response :success
+      assert_equal 'deleted', doc.reload.archived_reason
+    end
+
+    test 'gescopte SBK loescht ein Pflichtdokument mit erteilter Lizenz nicht endgueltig' do
+      go = create(:game_operation, state_association_id: create(:state_association).id)
+      club = create(:club, game_operation: go)
+      team = create(:team, club: club,
+                           league: create(:league, game_operation: go, required_documents: ['use']))
+      @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }],
+                      licenses: licenses_for(team))
+      doc = attach_document('use')
+      login(create(:user, :sbk_scoped, game_operation_id: go.id))
+
+      delete "/api/v2/admin/players/#{@player.id}/license_documents/#{doc.id}"
+
+      assert_response :success
+      assert_equal 'deleted', doc.reload.archived_reason
+    end
+
     # --- Schreibseite: derselbe Verbands-Scope wie beim Lesen ---
 
     test 'gescopte SBK darf ein fremdes Verbandsdokument nicht loeschen' do
@@ -566,6 +888,16 @@ module Admin
     # Lizenz-Hashes in der Form, in der sie in Player#licenses liegen.
     def licenses_for(*teams)
       build(:player, with_licenses: teams.map { |team| { team: team } }).licenses
+    end
+
+    # Spieler mit erteilter Lizenz in einer Liga, die 'use' als Pflichtdokument
+    # fuehrt, plus das dazugehoerige Dokument. Setzt @doc_club fuer den VM-Login.
+    def required_document_with_approved_license
+      @doc_club = create(:club)
+      team = create(:team, club: @doc_club, league: create(:league, required_documents: ['use']))
+      @player.update!(clubs: [{ 'club_id' => @doc_club.id, 'home_club' => true }],
+                      licenses: licenses_for(team))
+      attach_document('use')
     end
 
     def attach_document(document_type)
