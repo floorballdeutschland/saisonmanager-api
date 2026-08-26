@@ -214,12 +214,31 @@ class RefereeMailer < ApplicationMailer
     )
   end
 
-  def referee_report_to_vsk(vsk_email, uploader, game, report, referee1, referee2, game_url: nil, checklist_answers: [])
+  # `opened_by`: das Konto, das den Verfahrensvorschlag angenommen hat. Nur der
+  # manuelle Weg kennt es (Admin::ProceedingProposalsController#open) und setzt
+  # damit die Unterschrift unter die Grußformel: Die Mail geht im Namen der SBK
+  # an die VSK, und die soll sehen, wer dort entschieden hat. Auf dem
+  # automatischen Weg (GameRefereeReportsController) drückt niemand einen Knopf,
+  # dort bleibt es nil und die Mail endet wie bisher ohne Grußformel.
+  #
+  # Der Name kommt aus dem Konto und nicht aus einem Freitext, damit die
+  # Unterschrift nicht behaupten kann, was das Protokoll am Vorschlag
+  # (`decided_by_id`) nicht deckt.
+  #
+  # Das Gespann wird hier aus dem Spiel gelesen und nicht mehr uebergeben: Beide
+  # Aufrufer haben es aus derselben Quelle geholt (`game.referee_assignment`),
+  # und die doppelte Ableitung kostete zwei Parameter, ohne dass sie je
+  # auseinanderfallen konnten.
+  def referee_report_to_vsk(vsk_email, uploader, game, report,
+                            game_url: nil, checklist_answers: [], opened_by: nil)
+    assignment = game.referee_assignment
+
     @uploader = uploader
     @game = game
-    @referee1 = referee1
-    @referee2 = referee2
+    @referee1 = assignment&.referee1
+    @referee2 = assignment&.referee2
     @game_url = game_url
+    @opened_by_name = opened_by&.fullname&.strip.presence
     @checklist_answers = checklist_answers
     @checklist_all_ok = checklist_answers.all? { |a| a['answer'] == true }
     @checklist_failed_items = checklist_answers.select { |a| a['answer'] == false }
@@ -236,7 +255,7 @@ class RefereeMailer < ApplicationMailer
       to: vsk_email,
       subject: "Berichtsformular eingereicht – Spielnummer #{game.game_number}",
       default_reply_to: sbk_reply_to(game),
-      placeholders: { game_number: game.game_number }
+      placeholders: { game_number: game.game_number, opened_by_name: @opened_by_name.to_s }
     )
   end
 

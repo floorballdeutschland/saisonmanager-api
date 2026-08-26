@@ -30,8 +30,14 @@ module Admin
 
     # POST /api/v2/admin/proceeding_proposals/:id/open
     # Eröffnet das Verfahren: VSK-Mail (Reply-To = SBK) und Status opened.
+    #
+    # Die Mail geht im Namen der SBK an die VSK und trägt deshalb die
+    # Unterschrift des Kontos, das den Vorschlag angenommen hat – dieselbe
+    # Person, die `decided_by_id` festhält. Vorher endete sie ohne Absender, und
+    # die VSK bekam eine Verfahrenseröffnung, der niemand ansah, wer sie
+    # entschieden hat.
     def open
-      send_report_to_vsk(@proposal)
+      send_report_to_vsk(@proposal, current_user)
       @proposal.update!(status: 'opened', decided_by_id: current_user.id, decided_at: Time.current)
       render json: full_hash(@proposal)
     end
@@ -65,18 +71,17 @@ module Admin
       current_user.permission_hash[:sbk] || []
     end
 
-    def send_report_to_vsk(proposal)
+    def send_report_to_vsk(proposal, opened_by)
       game = proposal.game
       vsk_email = proposal.state_association.effective_vsk_email
       report = proposal.report
       return if vsk_email.blank? || report.nil?
 
-      assignment = game.referee_assignment
       RefereeMailer.referee_report_to_vsk(
         vsk_email, User.find_by(id: proposal.created_by_id), game, report,
-        assignment&.referee1, assignment&.referee2,
         game_url: game.url,
-        checklist_answers: game.checklist_answers || []
+        checklist_answers: game.checklist_answers || [],
+        opened_by: opened_by
       ).deliver_later
     end
 

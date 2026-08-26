@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Die eröffnete Verfahrensmeldung an die VSK trägt jetzt eine Unterschrift**: Landesverbände, die den manuellen Weg gewählt haben, bekommen ein hochgeladenes Berichtsformular nicht automatisch an die Verbandsspruchkammer weitergeleitet, sondern als Verfahrensvorschlag zur Entscheidung an ihre Spielbetriebskommission. Nimmt dort jemand den Vorschlag an, geht die Mail samt Formular im Namen der Kommission an die Spruchkammer. Wer sie ausgelöst hat, stand darin bisher nirgends: Die Mail nannte nur das Konto, das das Formular hochgeladen hatte, meist die Schiedsrichterin oder der Schiedsrichter, und endete beim Hinweis auf den Anhang. Für die Spruchkammer sah eine Verfahrenseröffnung damit aus wie eine automatische Weiterleitung. Sie schließt jetzt mit einer Grußformel und dem Vor- und Nachnamen des Kontos, das den Vorschlag angenommen hat, also derselben Person, die am Vorschlag als entscheidende Stelle protokolliert ist. Der Name kommt aus dem Konto und ist kein Freitext. Auf dem automatischen Weg, bei dem niemand einen Knopf drückt, bleibt die Mail unverändert ohne Grußformel; ebenso bei einem Konto, für das kein Name hinterlegt ist. Für Verbände, die den Wortlaut der Mail selbst pflegen, steht der Name zusätzlich als Platzhalter „opened_by_name" zur Verfügung.
+
 ## [1.99.1] - 2026-08-26
 
 ### Behoben

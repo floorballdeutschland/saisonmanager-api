@@ -49,3 +49,14 @@
 <% end %>
 
 <p>Das Berichtsformular ist dieser E-Mail als Anhang beigefügt.</p>
+
+<%# Unterschrift nur auf dem manuellen Weg: Dort hat eine Person den
+    Verfahrensvorschlag angenommen und die Mail damit selbst ausgeloest, und die
+    VSK soll sehen, wer das war. Auf dem automatischen Weg drueckt niemand einen
+    Knopf, dort bleibt der Name leer und die Mail endet wie bisher. %>
+<% if @opened_by_name.present? %>
+<p>
+  Mit sportlichen Grüßen<br />
+  <%= @opened_by_name %>
+</p>
+<% end %>
