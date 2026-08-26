@@ -1,11 +1,20 @@
 # Wer darf für einen Spieltag einen Zugangslink erzeugen: Admin, der SBK des
 # Spielbetriebs, der Vereinsmanager des ausrichtenden Vereins und der
-# Teammanager einer Mannschaft, deren Verein ausrichtet.
+# Teammanager einer an diesem Spieltag spielenden Mannschaft, deren Verein
+# ausrichtet. Die zweite Bedingung ist nicht redundant: Der Teammanager der
+# zweiten Mannschaft des Ausrichters kommt an einen Spieltag ohne seine
+# Mannschaft nicht heran.
 #
 # Die Linie endet am Ausrichter, nicht bei „irgendwie beteiligt": Am
 # Sekretariatstisch sitzt der Ausrichter, und gestreamt wird ebenfalls aus
-# seiner Halle. Bis 1.98.x kam auch der Gastverein an beides heran und sah
-# dadurch in der Sekretariats-Übersicht fremde Spieltage (api#551).
+# seiner Halle. Vorher kam auch der Gastverein an beides heran und sah dadurch
+# in der Sekretariats-Übersicht fremde Spieltage (api#551).
+#
+# Für den Overlay-Zugang ist das bewusst enger als das Recht am Spielbericht
+# selbst: `Game#user_permissions` gibt dem Gastverein weiter
+# `pregame_edit_guest` für seine eigene Aufstellung. Wer seinen Teil des
+# Berichts führen darf, darf damit nicht automatisch die Bühnengrafik des
+# Ausrichters bespielen.
 #
 # Herausgezogen, weil zwei Funktionen dieselbe Frage beantworten müssen: der
 # Sekretariatslink und der Overlay-Zugang für die Livestream-Grafiken. Zwei
@@ -33,13 +42,13 @@ module GameDayLinkAuthorization
     go_id = game_day.league&.game_operation_id
     return true if ph[:sbk].present? && (ph[:sbk].include?(0) || ph[:sbk].include?(go_id))
 
-    # `game_days.club_id` ist nullable und wird bei `0` aktiv auf `nil` gesetzt
-    # (GameDay#normalize_blank_references); der Spielplan-Import legt Spieltage
-    # ohne Halle und ohne Ausrichter an. Ohne Ausrichter gibt es hier bewusst
-    # keinen Zugang: Wer den Link braucht, trägt den Ausrichter nach, und das
-    # kann jeder jederzeit. Ein Ersatz aus den Heimmannschaften wäre an einem
-    # Turniertag ohnehin nicht "der Ausrichter", sondern jeder Verein mit
-    # Heimspiel – für eine Zusatzfunktion die falsche Aufweichung der Regel.
+    # `game_days.club_id` ist nullable, und der Spielplan-Import quittiert einen
+    # fehlenden Ausrichter nur mit einer Warnung (LeaguesController), legt den
+    # Spieltag also an. Ohne Ausrichter gibt es hier bewusst keinen Zugang: Wer
+    # den Link braucht, trägt den Ausrichter nach, und das kann jeder jederzeit.
+    # Ein Ersatz aus den Heimmannschaften wäre an einem Turniertag ohnehin nicht
+    # "der Ausrichter", sondern jeder Verein mit Heimspiel – für eine
+    # Zusatzfunktion die falsche Aufweichung der Regel.
     host_club_id = game_day.club_id
     return false if host_club_id.blank?
 
@@ -49,16 +58,16 @@ module GameDayLinkAuthorization
   end
 
   # Die Mannschaften dieses Spieltags, die der/die Angemeldete als Teammanager:in
-  # betreut. Verglichen wird anschließend über `all_club_ids`: Eine
-  # Spielgemeinschaft, die unter ihrem Partnerverein ausrichtet, fiele sonst
-  # durch, obwohl sie am eigenen Tisch sitzt.
+  # betreut. Verglichen wird anschließend in may_manage_game_day_link? über
+  # `all_club_ids`: Eine Spielgemeinschaft, die unter ihrem Partnerverein
+  # ausrichtet, fiele sonst durch, obwohl sie am eigenen Tisch sitzt.
   def own_teams(game_day)
-    tm_team_ids = permissions[:tm]
+    managed_team_ids = permissions[:tm]
 
     game_day.games
             .flat_map { |g| [g.home_team, g.guest_team] }
             .compact
-            .select { |team| tm_team_ids.include?(team.id) }
+            .select { |team| managed_team_ids.include?(team.id) }
   end
 
   def authorize_game_day_link!

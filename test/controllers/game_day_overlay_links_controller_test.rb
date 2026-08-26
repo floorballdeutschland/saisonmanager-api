@@ -54,8 +54,11 @@ class GameDayOverlayLinksControllerTest < ActionDispatch::IntegrationTest
     assert_response :created
   end
 
-  # Gestreamt wird aus der Halle des Ausrichters. Der Gast war bis 1.98.x
-  # mitberechtigt, weil der Concern jede beteiligte Mannschaft durchließ.
+  # Gestreamt wird aus der Halle des Ausrichters. Der Gast war vorher
+  # mitberechtigt, weil der Concern jeden beteiligten Verein und jede beteiligte
+  # Mannschaft durchließ, nicht nur den Ausrichter (api#551). Das gilt für beide
+  # folgenden Tests: Der Vereinsmanager kam über den Vereins-Zweig durch, der
+  # Teammanager über den Mannschafts-Zweig.
   test 'Vereinsmanager des Gastvereins darf nicht' do
     login(create(:user, :vm, club_id: @guest.club_id))
 

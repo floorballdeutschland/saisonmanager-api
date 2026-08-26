@@ -52,9 +52,11 @@ class GameDaySecretaryLinksController < ApplicationController
       game_days: game_days.map { |gd| game_day_stub(gd) }
     }, status: :created
   rescue ArgumentError
-    # coverable_game_days kann nur leer werden, wenn der Spieltag zwischen
-    # Rechteprüfung und Auswahl seine Spiele verliert (die TM-Berechtigung hängt
-    # daran). Selten, aber ein 500 wäre die falsche Antwort darauf.
+    # coverable_game_days wird leer, wenn dem Spieltag zwischen Rechteprüfung
+    # und Auswahl die Grundlage der eigenen Berechtigung abhandenkommt: der
+    # Ausrichter (VM) oder die eigenen Spiele (TM). In der Spielplan-Verwaltung
+    # ist beides ein normaler Vorgang. Selten, aber ein 500 wäre die falsche
+    # Antwort darauf.
     render json: { error: 'Für diesen Spieltag gibt es nichts mehr zu vergeben.' },
            status: :unprocessable_entity
   end
@@ -94,9 +96,9 @@ class GameDaySecretaryLinksController < ApplicationController
             .select { |gd| may_manage_game_day_link?(gd) }
   end
 
-  # Spieltage im Zeitfenster, an denen der/die Angemeldete als VM oder TM
-  # beteiligt ist, samt aller Spieltage derselben Halle am selben Tag –
-  # gruppiert nach [arena_id, date, ohne-Halle-Kennung].
+  # Spieltage im Zeitfenster, die ein Verein des/der Angemeldeten ausrichtet,
+  # samt aller Spieltage derselben Halle am selben Tag – gruppiert nach
+  # [arena_id, date, ohne-Halle-Kennung].
   #
   # Spieltage ohne Halle oder ohne verwertbares Datum lassen sich nicht
   # zusammenfassen und bilden je eine eigene Gruppe. Die Spieltag-ID gehört
@@ -108,8 +110,22 @@ class GameDaySecretaryLinksController < ApplicationController
 
     keyed, unkeyed = seeds.partition { |gd| gd.arena_id.present? && gd.date.present? }
     groups = sibling_game_days(keyed).group_by { |gd| [gd.arena_id, gd.date, nil] }
-    unkeyed.each { |gd| groups[[nil, gd.date, gd.id]] = [gd] }
+    load_with_games(unkeyed).each { |gd| groups[[nil, gd.date, gd.id]] = [gd] }
     groups
+  end
+
+  # Die nicht gruppierbaren Spieltage gehen ohne den Umweg über
+  # sibling_game_days direkt in die Rechteprüfung. Ihre Spiele, Ligen und
+  # Mannschaften gehören deshalb hier geladen: `own_teams` fasst zu jedem Spiel
+  # beide Mannschaften als Objekt an, und einzeln nachgeladen sind das zwei
+  # Abfragen je Spiel. Gemessen bei vier Spieltagen mit je drei Spielen: 41
+  # Abfragen statt 17, und der Abstand wächst mit jedem Spieltag.
+  def load_with_games(game_days)
+    return [] if game_days.empty?
+
+    GameDay.where(id: game_days.map(&:id))
+           .includes(:league, games: %i[home_team guest_team])
+           .to_a
   end
 
   # `game_days.date` ist Text. Ein leerer Wert ergibt in TO_DATE eine Datumsangabe
@@ -140,8 +156,14 @@ class GameDaySecretaryLinksController < ApplicationController
   end
 
   # Nur Spieltage des ausrichtenden Vereins – die Auswärtsspieltage einer
-  # eigenen Mannschaft gehören seit api#551 nicht mehr dazu. Am Tisch sitzt der
-  # Ausrichter; die Übersicht soll nicht mehr zeigen, als sich vergeben lässt.
+  # eigenen Mannschaft gehören bewusst nicht mehr dazu (Anlass api#551). Am
+  # Tisch sitzt der Ausrichter; die Übersicht soll nicht mehr zeigen, als sich
+  # vergeben lässt.
+  #
+  # Nach außen ändert die Vorauswahl nichts: `index` prüft ohnehin je Spieltag
+  # nach und lässt eine Gruppe ohne berechtigten Spieltag ganz weg. Sie spart
+  # Arbeit, keine Ergebnisse – deshalb hängt an ihr auch kein eigener Test außer
+  # dem für die Spielgemeinschaft, wo `all_club_ids` sehr wohl sichtbar wird.
   #
   # Für den Teammanager ist das der Verein seiner Mannschaft(en). Ob dieser
   # Spieltag dann wirklich eine seiner Mannschaften enthält, entscheidet
