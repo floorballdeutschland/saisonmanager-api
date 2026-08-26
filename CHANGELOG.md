@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Die Vereinsspielerliste zeigt die E-Mail-Adressen und zählt die fehlenden**: Unter „Meine Spieler*innen" pflegt der Verein die E-Mail-Adressen seiner Spielerinnen und Spieler. Gebraucht werden sie unter anderem für die Zustimmung zu einem Transfer und für die Elternzustimmung; fehlt eine, läuft der jeweilige Vorgang ins Leere. Die Liste nannte die Adresse bisher nicht, sodass sich nur durch Öffnen jedes einzelnen Profils feststellen ließ, bei wem noch keine hinterlegt ist. Sie steht jetzt als eigene Spalte zwischen Geschlecht und Status, und unter der Gesamtzahl steht, bei wie vielen Personen sie fehlt. Neu offengelegt wird damit nichts: Wer diese Liste sieht, konnte die Adresse im Profil daneben ohnehin einsehen und ändern. Deaktivierte Personen zählen nur mit, solange sie eingeblendet sind.
+
 ## [1.99.1] - 2026-08-26
 
 ### Behoben

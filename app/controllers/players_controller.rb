@@ -1014,6 +1014,16 @@ class PlayersController < ApplicationController
 
     render json: players.map { |p|
       base = p.meta_hash
+      # Die E-Mail-Adresse gehoert in diese Liste, weil sie hier gepflegt wird:
+      # Der Endpunkt daneben (update_email) schreibt sie, und die Vereinssicht
+      # soll auf einen Blick zeigen, bei wem sie noch fehlt. Ohne sie musste der
+      # Verein jedes Profil einzeln oeffnen, um das herauszufinden.
+      #
+      # Bewusst hier und nicht in Player#meta_hash: Der Hash speist auch
+      # Ansichten, die die Adresse nichts angeht (Spielberichte, oeffentliche
+      # Kader). Wer diese Liste sieht, oeffnet ohnehin jedes Profil samt
+      # full_hash, das die Adresse laengst nennt.
+      base[:email] = p.email
       current_lics = (p.licenses || []).select { |l| leagues_by_team.key?(l['team_id'].to_i) }
       if current_lics.present?
         # Ein Eintrag pro Liga-Lizenz der laufenden Saison, höchste Liga zuerst;
