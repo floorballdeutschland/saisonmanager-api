@@ -159,17 +159,190 @@ module Admin
       assert_equal @player.id, JSON.parse(response.body).dig('player', 'id')
     end
 
-    test 'SBK mit zusätzlicher VM-Rolle darf nicht für Verein außerhalb des Spielbetriebs suchen → 403' do
-      foreign_club = Club.create!(
-        name: "Fremdverband Verein #{SecureRandom.hex(4)}",
-        short_name: "FV#{SecureRandom.hex(1)}"
-      )
+    # Der gemeldete Fall: SBK Niedersachsen und zugleich VM eines Vereins gibt
+    # einen Spieler ihres Spielbetriebs an einen Verein in einem anderen
+    # Landesverband ab. Zuständig ist der abgebende Verband, also sie selbst --
+    # `#direct_assign` hätte den Vorgang zugelassen, die Suche davor brach mit
+    # 403 ab und ließ sie nie bis dorthin kommen.
+    #
+    # `create_club_in_other_game_operation` und nicht ein Verein ohne
+    # Landesverband: Ein fehlender Spielbetrieb ist `nil` und damit ein anderer
+    # Eingabewert für `ph[:sbk].include?` als eine fremde Spielbetriebs-ID. Nur
+    # der zweite ist der gemeldete Fall.
+    test 'SBK mit zusätzlicher VM-Rolle darf für Verein eines anderen Landesverbands suchen, wenn der abgebende Verein im eigenen Spielbetrieb liegt' do
       login(@sbk_and_vm)
       get '/api/v2/admin/transfer_requests/search_player', params: {
         first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15',
-        requesting_club_id: foreign_club.id
+        requesting_club_id: create_club_in_other_game_operation.id
+      }
+      assert_response :success
+      assert_equal @player.id, JSON.parse(response.body).dig('player', 'id')
+    end
+
+    # Der ganze gemeldete Weg an einem Stück: erst suchen, dann zuweisen, beides
+    # LV-übergreifend mit Doppelrolle. Die beiden Schritte einzeln zu prüfen war
+    # genau die Lücke -- der Fehler bestand darin, dass sie auseinander liefen.
+    test 'SBK mit zusätzlicher VM-Rolle: Suche und Direktzuweisung in einen anderen Landesverband' do
+      other_club = create_club_in_other_game_operation
+      login(@sbk_and_vm)
+
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15',
+        requesting_club_id: other_club.id
+      }
+      assert_response :success
+
+      post '/api/v2/admin/transfer_requests/direct_assign', params: {
+        player_id: JSON.parse(response.body).dig('player', 'id'),
+        requesting_club_id: other_club.id
+      }
+      assert_response :created
+      assert_equal 'approved', JSON.parse(response.body)['status']
+      assert_equal other_club.id, @player.reload.home_club_entry['club_id']
+    end
+
+    # Gegenprobe: Liegt weder der abgebende noch der aufnehmende Verein im
+    # eigenen Spielbetrieb, bleibt es bei der Absage. Sonst wäre die
+    # Vereinsbindung der VM-Rolle für jede SBK-Doppelrolle aufgehoben. Zwei
+    # verschiedene fremde Vereine, damit die Absage nicht auch aus „Spieler ist
+    # bereits in diesem Verein" kommen könnte.
+    test 'SBK mit zusätzlicher VM-Rolle darf nicht suchen, wenn auch der abgebende Verein außerhalb liegt → 403' do
+      foreign_home_club = create_club_in_other_game_operation
+      foreign_player = Player.create!(
+        first_name: 'Erika',
+        last_name: 'Fremdverband',
+        birthdate: '1996-07-21',
+        nation_id: '1',
+        gender: 'w',
+        email: 'erika.fremdverband@example.com',
+        clubs: [{ 'club_id' => foreign_home_club.id, 'home_club' => true, 'valid_until' => nil }],
+        licenses: []
+      )
+      login(@sbk_and_vm)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: foreign_player.first_name, last_name: foreign_player.last_name,
+        birthdate: '1996-07-21', requesting_club_id: create_club_in_other_game_operation.id
       }
       assert_response :forbidden
+    end
+
+    # Ein Verein ohne zuständigen Landesverband hat `main_game_operation_id` nil
+    # und liegt damit in keinem Spielbetrieb. Er bleibt für die Doppelrolle
+    # gesperrt, solange der abgebende Verein nicht ihr eigener ist. Eigener Test,
+    # weil `nil` ein anderer Eingabewert ist als eine fremde Spielbetriebs-ID.
+    test 'SBK mit zusätzlicher VM-Rolle darf nicht suchen, wenn der abgebende Verein keinen Spielbetrieb hat → 403' do
+      homeless_club = Club.create!(
+        name: "Verein ohne LV #{SecureRandom.hex(4)}",
+        short_name: "OL#{SecureRandom.hex(1)}"
+      )
+      homeless_player = Player.create!(
+        first_name: 'Nils',
+        last_name: 'Verbandslos',
+        birthdate: '1994-02-02',
+        nation_id: '1',
+        gender: 'm',
+        email: 'nils.verbandslos@example.com',
+        clubs: [{ 'club_id' => homeless_club.id, 'home_club' => true, 'valid_until' => nil }],
+        licenses: []
+      )
+      login(@sbk_and_vm)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: homeless_player.first_name, last_name: homeless_player.last_name,
+        birthdate: '1994-02-02', requesting_club_id: create_club_in_other_game_operation.id
+      }
+      assert_response :forbidden
+    end
+
+    # Der aufnehmende Verein im eigenen Spielbetrieb bleibt für sich genommen
+    # ein Grund: Eine SBK soll für einen Verein ihres Verbands auch dann
+    # arbeiten können, wenn der Spieler von außerhalb kommt.
+    test 'SBK mit zusätzlicher VM-Rolle darf für eigenen Verein suchen, wenn der Spieler von außerhalb kommt' do
+      incoming_player = Player.create!(
+        first_name: 'Jonas',
+        last_name: 'Zuzug',
+        birthdate: '1999-01-09',
+        nation_id: '1',
+        gender: 'm',
+        email: 'jonas.zuzug@example.com',
+        clubs: [{ 'club_id' => create_club_in_other_game_operation.id, 'home_club' => true, 'valid_until' => nil }],
+        licenses: []
+      )
+      login(@sbk_and_vm)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: incoming_player.first_name, last_name: incoming_player.last_name,
+        birthdate: '1999-01-09', requesting_club_id: @requesting_club.id
+      }
+      assert_response :success
+      assert_equal incoming_player.id, JSON.parse(response.body).dig('player', 'id')
+    end
+
+    # Ohne offenen Heimat-Eintrag gibt es keinen abgebenden Verein und damit
+    # keine Zuständigkeit, an der sich eine Rechtefrage entscheiden ließe. Die
+    # Suche muss das Datenproblem benennen und darf es nicht als Rechteproblem
+    # ausgeben, sonst sucht die zuständige Person den Fehler bei ihrer Rolle.
+    # Derselbe Wortlaut wie in #create und #direct_assign.
+    test 'Spieler ohne aktiven Heimatverein meldet das Datenproblem, nicht fehlende Rechte → 422' do
+      @player.update!(clubs: [{ 'club_id' => @former_club.id, 'home_club' => true,
+                               'valid_until' => 1.day.ago.iso8601 }])
+      login(@sbk_and_vm)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15',
+        requesting_club_id: create_club_in_other_game_operation.id
+      }
+      assert_response :unprocessable_entity
+      assert_equal 'Spieler hat keinen aktiven Heimverein', JSON.parse(response.body)['error']
+    end
+
+    # Zeigt der Heimat-Eintrag auf einen gelöschten Verein, ist das ebenfalls ein
+    # Datenfehler und keine Rechtefrage. Kein 500.
+    test 'Heimat-Eintrag ohne auffindbaren Verein meldet den Datenfehler → 404' do
+      @player.update!(clubs: [{ 'club_id' => 999_999, 'home_club' => true, 'valid_until' => nil }])
+      login(@sbk_and_vm)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15',
+        requesting_club_id: @requesting_club.id
+      }
+      assert_response :not_found
+      assert_equal 'Abgebender Verein nicht gefunden', JSON.parse(response.body)['error']
+    end
+
+    # Ohne Zielverein ist die Frage „darf sie für diesen Verein handeln" nicht zu
+    # stellen; entschieden wird dann allein über den abgebenden Verein. Die
+    # Maske schickt immer einen Verein mit (transfer-request.service.ts), der
+    # Fall ist also nur über einen Direktaufruf erreichbar. Festgehalten, weil
+    # die Antwort sich mit dieser Änderung von 403 auf 200 verschiebt.
+    test 'SBK mit zusätzlicher VM-Rolle darf ohne Zielverein suchen, wenn der abgebende Verein im eigenen Spielbetrieb liegt' do
+      login(@sbk_and_vm)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15'
+      }
+      assert_response :success
+      assert_equal @player.id, JSON.parse(response.body).dig('player', 'id')
+    end
+
+    # Die beiden übrigen Zweige der Rechteprüfung sind nur mit einer VM-Rolle
+    # daneben überhaupt erreichbar, weil die Prüfung sonst gar nicht erst läuft.
+    # Bundesweiter Scope (FD) und Administration dürfen verbandsübergreifend,
+    # unabhängig davon, wo abgebender und aufnehmender Verein liegen.
+    test 'bundesweit gescopte SBK mit VM-Rolle darf für jeden Verein suchen' do
+      global_sbk_and_vm = create_user_sbk_and_vm(game_operation_id: 0, club_id: @vm_only_club.id)
+      login(global_sbk_and_vm)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15',
+        requesting_club_id: create_club_in_other_game_operation.id
+      }
+      assert_response :success
+    end
+
+    test 'Administration mit VM-Rolle darf für jeden Verein suchen' do
+      admin_and_vm = create_user(user_group_id: 1, game_operation_id: 0, club_id: @vm_only_club.id)
+      admin_and_vm.update!(permissions: admin_and_vm.permissions + [{ 'user_group_id' => 4, 'club_id' => @vm_only_club.id.to_s }])
+      login(admin_and_vm)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15',
+        requesting_club_id: create_club_in_other_game_operation.id
+      }
+      assert_response :success
     end
 
     test 'SBK mit zusätzlicher VM-Rolle führt Direkt-Transfer durch → 201' do
@@ -316,6 +489,28 @@ module Admin
       post '/api/v2/admin/transfer_requests', params: {
         player_id: @player.id,
         requesting_club_id: @requesting_club.id
+      }
+      assert_response :created
+    end
+
+    # Gleiche Regel wie in search_player, sonst meldet die Suche einen Treffer
+    # und der Antrag fällt gleich danach auf 403 -- dieselbe Falle wie beim
+    # deaktivierten aufnehmenden Verein in api#512.
+    test 'SBK mit zusätzlicher VM-Rolle darf Antrag für Verein eines anderen Landesverbands stellen' do
+      other_club = create_club_in_other_game_operation
+      login(@sbk_and_vm)
+
+      # Erst suchen, dann beantragen: Genau diese Kopplung war der Fehler, die
+      # Suche meldete einen Treffer und der Antrag fiel danach durch.
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15',
+        requesting_club_id: other_club.id
+      }
+      assert_response :success
+
+      post '/api/v2/admin/transfer_requests', params: {
+        player_id: @player.id,
+        requesting_club_id: other_club.id
       }
       assert_response :created
     end

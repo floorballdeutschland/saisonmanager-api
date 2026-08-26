@@ -69,25 +69,42 @@ module Admin
 
       return render json: { player: nil } unless player
 
+      # Der abgebende Verein steht VOR der Rechtepruefung, und das ist keine
+      # Stilfrage: Ohne offenen Heimat-Eintrag gibt es keinen Verein, der abgibt,
+      # also auch keinen zustaendigen Landesverband, an dem sich eine
+      # Zustaendigkeit messen liesse. Die Pruefung koennte daraus nur ein „nicht
+      # berechtigt" machen und meldete ein Datenproblem als Rechteproblem: Die
+      # zustaendige Person suchte den Fehler bei ihrer Rolle statt bei den Daten,
+      # und die Meldung zeigte auf die Rollenvergabe statt auf die fehlende
+      # Mitgliedschaftszeile. #create und #direct_assign antworten hier seit jeher
+      # fachlich; die Suche zieht nach, sonst meldet sie einen Treffer und der
+      # Antrag faellt gleich danach durch (dieselbe Regel wie beim deaktivierten
+      # aufnehmenden Verein, api#512).
+      #
+      # Derselbe Leser wie in create/direct_assign -- sonst faellt die Suche gegen
+      # den ersten offenen Heimat-Eintrag und der Antrag gleich danach gegen den
+      # letzten, und die Suche weist einen Antrag ab, den create zugelassen haette.
+      former_club_id = player.home_club_entry&.dig('club_id')
+      return no_home_club_response unless former_club_id
+
+      former_club = Club.find_by(id: former_club_id)
+      return former_club_missing_response unless former_club
+
       requesting_club_id = params[:requesting_club_id].to_i
-      if ph[:vm].present? && !may_act_for_club?(ph, requesting_club_id)
+      if ph[:vm].present? && !may_act_for_club?(ph, requesting_club_id, former_club)
         return render json: { error: 'Nicht berechtigt fuer diesen Verein' }, status: :forbidden
       end
 
       if requesting_club_id > 0
-      # Dieselbe Auskunft wie in create, sonst meldet die Suche einen Treffer und
-      # der Antrag faellt gleich danach auf 422 (api#512).
-      if Club.find_by(id: requesting_club_id)&.deactivated_at.present?
-        return deactivated_requesting_club_response
-      end
+        # Dieselbe Auskunft wie in create, sonst meldet die Suche einen Treffer und
+        # der Antrag faellt gleich danach auf 422 (api#512).
+        if Club.find_by(id: requesting_club_id)&.deactivated_at.present?
+          return deactivated_requesting_club_response
+        end
 
-      # Derselbe Leser wie in create/direct_assign -- sonst faellt die Suche gegen den
-      # ersten offenen Heimat-Eintrag und der Antrag gleich danach gegen den letzten,
-      # und die Suche weist einen Antrag ab, den create zugelassen haette.
-      home_club = player.home_club_entry
-      if home_club&.dig('club_id') == requesting_club_id
-        return render json: { error: 'Spieler ist bereits in diesem Verein' }, status: :unprocessable_entity
-      end
+        if former_club_id == requesting_club_id
+          return render json: { error: 'Spieler ist bereits in diesem Verein' }, status: :unprocessable_entity
+        end
       end
 
       if TransferRequest.active.where(player_id: player.id).exists?
@@ -125,8 +142,22 @@ module Admin
         }, status: :unprocessable_entity
       end
 
+      # Player#home_club_entry ist die eine Quelle: Diese Stelle las frueher den ERSTEN
+      # offenen Heimat-Eintrag, waehrend Player#home_club den LETZTEN nimmt. Bei zwei
+      # offenen Eintraegen meinten beide verschiedene Vereine, und der Antrag ging an den
+      # falschen abgebenden Verein zur Genehmigung.
+      #
+      # Steht wie in #search_player vor der Rechtepruefung: Der abgebende Verein
+      # entscheidet ueber die Zustaendigkeit, ohne ihn gibt es keine zu pruefen,
+      # und ein Datenproblem soll nicht als Rechteproblem herauskommen.
+      former_club_id = player.home_club_entry&.dig('club_id')
+      return no_home_club_response unless former_club_id
+
+      former_club = Club.find_by(id: former_club_id)
+      return former_club_missing_response unless former_club
+
       requesting_club_id = params[:requesting_club_id].to_i
-      if ph[:vm].present? && !may_act_for_club?(ph, requesting_club_id)
+      if ph[:vm].present? && !may_act_for_club?(ph, requesting_club_id, former_club)
         return render json: { error: 'Nicht berechtigt fuer diesen Verein' }, status: :forbidden
       end
 
@@ -138,19 +169,9 @@ module Admin
         return render json: { error: 'Fuer diesen Spieler ist bereits ein Transferantrag aktiv' }, status: :unprocessable_entity
       end
 
-      # Player#home_club_entry ist die eine Quelle: Diese Stelle las frueher den ERSTEN
-      # offenen Heimat-Eintrag, waehrend Player#home_club den LETZTEN nimmt. Bei zwei
-      # offenen Eintraegen meinten beide verschiedene Vereine, und der Antrag ging an den
-      # falschen abgebenden Verein zur Genehmigung.
-      former_club_id = player.home_club_entry&.dig('club_id')
-      return render json: { error: 'Spieler hat keinen aktiven Heimverein' }, status: :unprocessable_entity unless former_club_id
-
       if former_club_id == requesting_club_id
         return render json: { error: 'Spieler ist bereits in diesem Verein' }, status: :unprocessable_entity
       end
-
-      former_club = Club.find_by(id: former_club_id)
-      return render json: { error: 'Abgebender Verein nicht gefunden' }, status: :not_found unless former_club
 
       request_type = params[:request_type].to_s == 'release' ? 'release' : 'transfer'
 
@@ -469,16 +490,16 @@ module Admin
       # offenen Eintraegen meinten beide verschiedene Vereine, und der Antrag ging an den
       # falschen abgebenden Verein zur Genehmigung.
       former_club_id = player.home_club_entry&.dig('club_id')
-      return render json: { error: 'Spieler hat keinen aktiven Heimverein' }, status: :unprocessable_entity unless former_club_id
+      return no_home_club_response unless former_club_id
 
       former_club = Club.find_by(id: former_club_id)
-      return render json: { error: 'Abgebender Verein nicht gefunden' }, status: :not_found unless former_club
+      return former_club_missing_response unless former_club
 
       if former_club_id == requesting_club.id
         return render json: { error: 'Spieler ist bereits in diesem Verein' }, status: :unprocessable_entity
       end
 
-      unless sbk_may_assign?(ph, former_club, requesting_club)
+      unless sbk_may_assign?(ph, former_club)
         return render json: { error: 'Nicht berechtigt (abgebender Verein liegt außerhalb des eigenen Landesverbands).' },
                       status: :forbidden
       end
@@ -574,15 +595,67 @@ module Admin
       render json: { error: 'Der aufnehmende Verein ist deaktiviert' }, status: :unprocessable_entity
     end
 
-    # Darf der Nutzer für diesen Verein handeln? Stärkere Rollen gehen der
-    # VM-Vereinsbindung vor: wer neben der VM-Rolle auch Admin oder SBK ist,
-    # wurde sonst von der eigenen schwächeren Rolle ausgesperrt (SBK + VM kam
-    # so nie bis zum Direkt-Transfer, obwohl #direct_assign es erlaubt hätte).
-    def may_act_for_club?(ph, club_id)
+    # Kein offener Heimat-Eintrag heisst: kein abgebender Verein, kein Transfer.
+    # Ein Datenproblem, kein Rechteproblem, der Wortlaut zeigt deshalb auf die
+    # Mitgliedschaft und nicht auf die Rolle. Suche, Antrag und Direktzuweisung
+    # teilen ihn sich, damit die drei Schritte nicht verschiedene Gruende fuer
+    # denselben Zustand nennen.
+    def no_home_club_response
+      render json: { error: 'Spieler hat keinen aktiven Heimverein' }, status: :unprocessable_entity
+    end
+
+    # Der Heimat-Eintrag zeigt auf einen Verein, den es nicht mehr gibt. Ebenfalls
+    # ein Datenfehler, und ebenfalls in allen drei Schritten derselbe.
+    def former_club_missing_response
+      render json: { error: 'Abgebender Verein nicht gefunden' }, status: :not_found
+    end
+
+    # Darf der Nutzer für diesen Verein handeln? `club_id` ist an beiden
+    # Aufrufstellen der AUFNEHMENDE Verein, `former_club` der abgebende.
+    #
+    # Die Rollen werden additiv ausgewertet, weil sie verschiedene Fragen
+    # beantworten:
+    #
+    # Für den VM zählt der aufnehmende Verein, und die Bindung an den eigenen
+    # ist richtig: Ein Vereinsmanager beantragt nur für sich selbst.
+    #
+    # Für die SBK gilt daneben die Regel des gesamten Transferverfahrens --
+    # zuständig ist der Landesverband des ABGEBENDEN Vereins (api#220,
+    # `#sbk_may_assign?`, `#lv_authorized?`). Ohne diesen Zweig prüfte der
+    # SBK-Zweig dieselbe `club_id` wie der VM-Zweig, also den aufnehmenden
+    # Verein und damit die falsche Seite: Eine SBK, die zusätzlich VM eines
+    # Vereins ist, kam für einen Spieler ihres eigenen Spielbetriebs nicht bis
+    # zur Direktzuweisung, sobald der aufnehmende Verein in einem anderen
+    # Landesverband lag, obwohl `#direct_assign` sie zugelassen hätte. Genau
+    # diese Lücke riss api#220 auf, als es `#direct_assign` auf den abgebenden
+    # Verein umstellte; der Hinweis aus api#213 („SBK + VM kam so nie bis zum
+    # Direkt-Transfer") beschrieb den Stand davor, als `#direct_assign` noch
+    # beide Vereine prüfte.
+    #
+    # Wer neben der VM-Rolle Admin oder SBK ist, wird also nach der stärkeren
+    # Rolle beurteilt und nicht von der eigenen schwächeren ausgesperrt.
+    #
+    # Eine SBK OHNE VM-Rolle erreicht diese Methode gar nicht: An beiden
+    # Aufrufstellen steht `ph[:vm].present?` davor. In `#search_player` heißt
+    # das, dass für sie überhaupt keine Vereinsbindung greift; in `#create`,
+    # dass sie schon an der Rollenprüfung am Methodenanfang scheitert (ein
+    # regulärer Antrag kommt vom aufnehmenden Verein, nicht vom Verband).
+    #
+    # Der bisherige Zweig über den aufnehmenden Verein bleibt daneben stehen:
+    # Eine SBK, die einen Verein ihres Spielbetriebs aufnehmen lässt, soll
+    # einen Antrag weiterhin für ihn stellen können, auch wenn der Spieler von
+    # außerhalb kommt.
+    #
+    # `former_club` ist Pflicht und nie nil: Beide Aufrufstellen lösen ihn vor
+    # der Prüfung auf und beantworten einen fehlenden Heimatverein fachlich
+    # (`#no_home_club_response`). Ein Vorgabewert würde eine künftige dritte
+    # Aufrufstelle still auf den alten, falschen Zweig zurückfallen lassen.
+    def may_act_for_club?(ph, club_id, former_club)
       return true if ph[:admin].present?
       return true if ph[:vm].present? && ph[:vm].include?(club_id)
       return false if ph[:sbk].blank?
       return true if ph[:sbk].include?(0)
+      return true if sbk_may_assign?(ph, former_club)
 
       club = Club.find_by(id: club_id)
       club.present? && ph[:sbk].include?(club.main_game_operation_id)
@@ -592,7 +665,7 @@ module Admin
     # abgebenden Vereins (der verliert das Mitglied und muss zustimmen); der
     # aufnehmende Verein kann in jedem anderen Landesverband liegen. Global
     # gescopte SBK (FD) und Admin dürfen ohnehin verbandsübergreifend.
-    def sbk_may_assign?(ph, former_club, _requesting_club)
+    def sbk_may_assign?(ph, former_club)
       return true if ph[:admin].present?
       return false unless ph[:sbk].present?
       return true if ph[:sbk].include?(0)
