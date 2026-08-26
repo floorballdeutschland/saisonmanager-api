@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Der Widerruf einer Ablehnung eröffnet dem Verein keine neue kostenfreie Rücknahmefrist**: Ein Lizenzantrag kann innerhalb einer Stunde nach der Beantragung kostenfrei zurückgezogen werden; er wird dann ersatzlos gelöscht, statt den Status „zurückgezogen" zu bekommen. Diese Frist rechnete ab dem jüngsten Beantragungs-Eintrag der Lizenz. Seit die Spielbetriebskommission eine versehentliche Ablehnung widerrufen kann, entsteht dabei ein solcher Eintrag mit dem Zeitpunkt des Widerrufs — die Frist begann damit von neuem, obwohl der Antrag selbst Wochen alt und längst kostenpflichtig war. Der Verein hätte in dieser Stunde eine Lizenz, für die eine Gebühr angefallen ist, kostenfrei und spurlos löschen können, und mit ihr die Historie der irrtümlichen Ablehnung, die gerade der Beleg dafür ist. Der Eintrag aus einem Widerruf zählt für die Frist deshalb nicht mehr mit: Maßgeblich bleibt die letzte echte Beantragung durch den Verein. Zurückziehen ist weiter möglich, nach Ablauf der ursprünglichen Frist aber wie bei jedem anderen Antrag mit dem Status „zurückgezogen" und ohne Löschung. Stellt der Verein einen zurückgezogenen Antrag selbst wieder ein, bekommt er wie bisher eine neue Frist, denn dort beantragt er tatsächlich neu. Die Anzeige der Frist in der Vereinsansicht und die Aktion selbst treffen jetzt dieselbe Entscheidung; vorher hätte die Seite einen Countdown angezeigt, den das Zurückziehen nicht eingelöst hätte.
+
 ## [1.98.1] - 2026-08-26
 
 ### Behoben

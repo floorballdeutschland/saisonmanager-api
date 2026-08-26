@@ -286,12 +286,21 @@ class PlayersController < ApplicationController
              ([License::APPROVED, License::DENIED, License::REQUESTED].include?(params[:license_status_id].to_i) ||
               ([License::TRANSFER].include?(params[:license_status_id].to_i) && current_user.permission_hash[:admin].present?)
              )
-            lic['history'] << {
+            entry = {
               license_status_id: params[:license_status_id].to_i,
               reason: params[:reason] || '',
               created_by: current_user.id,
               created_at: Time.now
             }
+            # Widerruf einer Ablehnung: Dieser `beantragt`-Eintrag darf das
+            # kostenfreie Zeitfenster nicht neu starten, sonst bekäme der Verein
+            # für einen längst kostenpflichtigen Antrag eine Gratis-Löschung.
+            # Siehe License.grace_period_anchor.
+            if params[:license_status_id].to_i == License::REQUESTED &&
+               last_status['license_status_id'].to_i == License::DENIED
+              entry[License::REVOKED_REJECTION_KEY] = true
+            end
+            lic['history'] << entry
             if params[:license_status_id].to_i == License::APPROVED
               approved_team_id = lic['team_id']
               lic['valid_until'] = params[:valid_until].presence || default_license_valid_until(lic['season_id']).iso8601
@@ -467,9 +476,7 @@ class PlayersController < ApplicationController
                     status: :unprocessable_entity
     end
 
-    last_requested = found_license['history']
-                       .select { |h| h['license_status_id'].to_i == License::REQUESTED }
-                       .max_by { |h| h['created_at'] }
+    last_requested = License.grace_period_anchor(found_license['history'])
 
     if last_requested && (Time.now - last_requested['created_at'].to_time) < License::GRACE_PERIOD
       player.licenses.reject! { |l| l['id'] == params[:license_id] }
