@@ -287,12 +287,29 @@ class PlayersController < ApplicationController
              ([License::APPROVED, License::DENIED, License::REQUESTED].include?(params[:license_status_id].to_i) ||
               ([License::TRANSFER].include?(params[:license_status_id].to_i) && current_user.permission_hash[:admin].present?)
              )
-            lic['history'] << {
+            entry = {
               license_status_id: params[:license_status_id].to_i,
               reason: params[:reason] || '',
               created_by: current_user.id,
               created_at: Time.now
             }
+            # Jeder `beantragt`-Eintrag von hier aus wird markiert und startet die
+            # Karenzzeit damit nicht neu. Dieser Endpunkt ist Admin und SBK
+            # vorbehalten (siehe Rechteprüfung oben), ein Verein beantragt hier
+            # also nie: Was hier entsteht, ist immer eine Verwaltungskorrektur.
+            # Die erste Beantragung läuft über request_license und bleibt
+            # unmarkiert.
+            #
+            # Bewusst nicht auf `abgelehnt -> beantragt` eingeengt. Der Weg aus
+            # `erteilt` heraus ist der teurere Fall – dort ist die Gebühr sicher
+            # angefallen –, und er ist real erreichbar: Die Lizenzübersicht wird
+            # einmal geladen und nicht nachgeführt, ein Widerruf-Klick auf einer
+            # veralteten Zeile schickt also `beantragt` auf eine inzwischen
+            # erteilte Lizenz. Siehe License.grace_period_anchor.
+            if params[:license_status_id].to_i == License::REQUESTED
+              entry[License::REVOKED_REJECTION_KEY] = true
+            end
+            lic['history'] << entry
             if params[:license_status_id].to_i == License::APPROVED
               approved_team_id = lic['team_id']
               lic['valid_until'] = params[:valid_until].presence || default_license_valid_until(lic['season_id']).iso8601
@@ -468,9 +485,7 @@ class PlayersController < ApplicationController
                     status: :unprocessable_entity
     end
 
-    last_requested = found_license['history']
-                       .select { |h| h['license_status_id'].to_i == License::REQUESTED }
-                       .max_by { |h| h['created_at'] }
+    last_requested = License.grace_period_anchor(found_license['history'])
 
     if last_requested && (Time.now - last_requested['created_at'].to_time) < License::GRACE_PERIOD
       player.licenses.reject! { |l| l['id'] == params[:license_id] }
@@ -501,11 +516,23 @@ class PlayersController < ApplicationController
       if license['id'] == params[:license_id]
         found_license = license
 
-        license['history'] << {
+        entry = {
           license_status_id: status,
           created_by: current_user.id,
           created_at: Time.now
         }
+        # Der einzige Weg hierher mit `beantragt` ist reenable_license_request,
+        # also das Wiedereinstellen einer Lizenz, die es schon gibt: Der Verein
+        # hat für sie längst einmal beantragt, und genau dieser erste Antrag
+        # hatte seine Karenzzeit. Ein zweites Gratis-Fenster gäbe es sonst für
+        # jede Wiedereinstellung, und das Zurückziehen darin löscht die Lizenz
+        # ersatzlos – samt der Ablehnung, die sie kostenpflichtig macht.
+        #
+        # Die erste Beantragung läuft nicht hier durch, sondern über
+        # request_license, und bleibt unmarkiert. Siehe
+        # License.grace_period_anchor.
+        entry[License::REVOKED_REJECTION_KEY] = true if status == License::REQUESTED
+        license['history'] << entry
       end
 
       license

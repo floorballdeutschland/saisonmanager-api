@@ -73,9 +73,15 @@ module LicenseDocumentPresentation
 
   # Zeitpunkt der Lizenzbeantragung (Stichtag für altersabhängige Dokumente).
   # Bewusst der LETZTE REQUESTED-Eintrag – konsistent zu requested_at in
-  # League#licenses und zur Grace-Period-Logik (nach Rückzug + Neuantrag zählt
-  # der aktuelle Antrag). Ohne lesbares Antragsdatum greift in
-  # DocumentType.required_keys der Fallback auf das heutige Datum.
+  # League#licenses (nach Rückzug + Neuantrag zählt der aktuelle Antrag). Ohne
+  # lesbares Antragsdatum greift in DocumentType.required_keys der Fallback auf
+  # das heutige Datum.
+  #
+  # Nicht mehr konsistent zur Karenzzeit: License.grace_period_anchor überspringt
+  # seit api#554 Einträge aus Verwaltungskorrekturen. Hier bleibt der jüngste
+  # Antrag maßgeblich, auch ein korrigierter – ob die Altersgrenze eines
+  # Pflichtdokuments nach einer Korrektur neu gerechnet werden soll, ist eine
+  # eigene fachliche Frage und ausdrücklich nicht mit entschieden.
   def license_requested_at(license)
     entry = Array(license && license['history'])
             .select { |h| h['license_status_id'].to_i == License::REQUESTED }
