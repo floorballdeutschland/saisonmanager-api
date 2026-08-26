@@ -786,12 +786,22 @@ class Player < ApplicationRecord
         # Nur reaktivieren, wenn die Lizenz seit der Sperre nicht manuell anders gesetzt wurde.
         next unless last_status_id == License::SUSPENDED
 
-        license['history'] << {
+        restored = {
           'license_status_id' => entry['previous_status_id'].to_i,
           'reason' => reason,
           'created_by' => user_id,
           'created_at' => Time.now
         }
+        # War die Lizenz vor der Sperre `beantragt`, entsteht hier ein
+        # `beantragt`-Eintrag mit aktuellem Zeitstempel, obwohl niemand neu
+        # beantragt hat – die Sperre ist bloß abgelaufen. Ohne Markierung
+        # begänne damit eine neue Karenzzeit, und der Verein könnte die Lizenz
+        # samt Sperrhistorie ersatzlos löschen. Siehe
+        # License.grace_period_anchor.
+        if restored['license_status_id'] == License::REQUESTED
+          restored[License::REVOKED_REJECTION_KEY] = true
+        end
+        license['history'] << restored
       end
 
       suspension.update!(lifted_at: Time.current, lifted_by: user_id)

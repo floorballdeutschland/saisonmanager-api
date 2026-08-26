@@ -402,6 +402,44 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 'Regionalliga Bayern', body['parental_consent_league']['name']
   end
 
+  # Die Vereinsansicht kennzeichnet das kostenfreie Zurueckziehen im Klartext
+  # ("kostenfrei bis HH:MM", eigener Linktext). Sie muss dieselbe Auswahl treffen
+  # wie die Aktion, sonst verspricht die Seite eine Gratis-Loeschung, die das
+  # Zurueckziehen nicht einloest. Nach einer Verwaltungskorrektur zeigt das
+  # Fristende deshalb auf den URSPRUENGLICHEN Antrag und liegt in der
+  # Vergangenheit.
+  test 'user_team_licenses startet die Karenzzeit nach einem Widerruf nicht neu' do
+    go = create(:game_operation)
+    league = create(:league, :current_season, game_operation: go)
+    club = create(:club)
+    team = create(:team, league: league, club: club)
+    original_at = 3.days.ago
+    player = create(:player,
+                    clubs: [{ 'club_id' => club.id, 'home_club' => true, 'created_at' => 5.days.ago.iso8601 }])
+    player.update!(licenses: [{
+                     'id' => Digest::UUID.uuid_v4, 'team_id' => team.id,
+                     'season_id' => league.season_id, 'league_class_id' => league.league_class_id,
+                     'history' => [
+                       { 'license_status_id' => License::REQUESTED, 'created_at' => original_at.iso8601 },
+                       { 'license_status_id' => License::DENIED, 'created_at' => 2.days.ago.iso8601 },
+                       { 'license_status_id' => License::REQUESTED, 'created_at' => 1.minute.ago.iso8601,
+                         License::REVOKED_REJECTION_KEY => true }
+                     ]
+                   }])
+    login(create(:user, :vm, club_id: club.id))
+
+    get "/api/v2/user/team/#{team.id}/licenses"
+
+    assert_response :success
+    item = JSON.parse(response.body)['current_requests'].find { |x| x['id'] == player.id }
+    assert item, 'der wieder offene Antrag muss in der Liste stehen'
+    assert item['can_withdraw'],
+           'der Antrag gilt weiter als beantragt, das Zurueckziehen bleibt angeboten'
+    ends_at = Time.parse(item['grace_period_ends_at'])
+    assert_in_delta (original_at + License::GRACE_PERIOD).to_i, ends_at.to_i, 5
+    assert ends_at.past?, 'die Frist des urspruenglichen Antrags ist laengst abgelaufen'
+  end
+
   # Die Pflicht kann allein aus einer Pokal-Liga eines anderen Verbands kommen.
   # Dann muss das Formular diese nennen und nicht die Hauptliga – sonst zeigt der
   # Datenschutz-Block eine Liga an, waehrend die Mail an die gesetzliche
