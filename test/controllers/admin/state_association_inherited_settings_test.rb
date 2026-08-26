@@ -23,7 +23,8 @@ module Admin
                                            referee_license_review_enabled: true,
                                            referee_assignment_external_enabled: true,
                                            referee_assignment_enabled: true,
-                                           person_level_assignment_default: true } }
+                                           person_level_assignment_default: true,
+                                           requested_license_playable: true } }
 
       assert_response :success
       @child.reload

@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Landesverbände können Personen mit gestelltem Lizenzantrag zum Spielbetrieb zulassen**: Aufstellen durfte bisher ausnahmslos nur, wessen Lizenz für die aufstellende Mannschaft erteilt war. Der Kader-Dialog im Spielbericht blendete alles andere aus, und wer eine solche Person dennoch eintrug, bekam die Meldung, ihre Lizenz sei nicht erteilt. Für Landesverbände, deren Spielbetriebskommission über die Anträge erst nach dem Spieltag entscheidet, war das zu streng: Dort gilt eine Person als einsetzbar, sobald ihr Verein den Antrag gestellt hat. In der Verbandsmaske steht dafür jetzt unter den Einstellungen, direkt bei der Expresslizenz, der Schalter „Spieler*innen mit beantragter Lizenz sind einsetzbar". Er ist bewusst ausgeschaltet und ändert für alle Verbände, die ihn nicht setzen, nichts. Ist er gesetzt, erscheinen Personen mit dem Lizenzstatus „beantragt" im Kader-Dialog und lassen sich ohne Warnung aufstellen. Zugelassen ist dabei ausschließlich der offene Antrag: Ein abgelehnter, zurückgezogener, gelöschter oder gesperrter Status bleibt eine Warnung wie bisher, ebenso eine Lizenz, die gar nicht für die aufstellende Mannschaft gestellt wurde, und eine, deren Lizenzklasse nicht zur Spielklasse passt. Maßgeblich ist der Landesverband des Spielbetriebs, dem die Liga gehört, nicht der des Vereins: Eine Mannschaft, die zusätzlich im Pokal eines anderen Verbands antritt, richtet sich dort nach dessen Regel, also dieselbe Zuständigkeit wie bei der Expresslizenz und der Scanpflicht. Hängt ein Landesverband an einem übergeordneten Spielverbund, kommt der Schalter wie der ganze Einstellungsblock von dort. Am Recht, eine Lizenz zu erteilen, und an der Gebührenpflicht ändert sich nichts; der Schalter entscheidet allein darüber, ob vor der Entscheidung gespielt werden darf.
+
 ## [1.99.1] - 2026-08-26
 
 ### Behoben
