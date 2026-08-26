@@ -18,6 +18,7 @@ class StateAssociation < ApplicationRecord
     person_level_assignment_default
     report_form_email_enabled
     manual_proceeding_creation
+    requested_license_playable
   ].freeze
 
   belongs_to :parent, class_name: 'StateAssociation', optional: true
@@ -235,6 +236,18 @@ class StateAssociation < ApplicationRecord
     effective_setting(:manual_proceeding_creation)
   end
 
+  # Duerfen Personen mit dem Lizenzstatus „beantragt" aufgestellt werden?
+  #
+  # Fuer die Aufstellungsregel gelesen wird der Wert ausschliesslich ueber die
+  # Liga des Spiels (League#state_association), nicht ueber den Verein:
+  # Zustaendig fuer den Spielbetrieb einer Liga ist allein deren Verband.
+  # Daneben nennt ihn `full_hash` fuer die Verbandsmaske. Eine Mannschaft, die
+  # zusaetzlich im Pokal eines anderen Verbands antritt, richtet sich dort nach
+  # dessen Regel.
+  def effective_requested_license_playable
+    effective_setting(:requested_license_playable)
+  end
+
   # Postfach für Schiedsrichteransetzungen. Ohne eigenen Eintrag greift der
   # übergeordnete Verband (Floorball Deutschland pflegt dort die zentrale
   # Adresse), damit Anträge nirgends ins Leere laufen.
@@ -354,10 +367,12 @@ class StateAssociation < ApplicationRecord
       effective_person_level_assignment_default: effective_person_level_assignment_default.present?,
       effective_report_form_email_enabled: effective_report_form_email_enabled.present?,
       effective_manual_proceeding_creation: effective_manual_proceeding_creation.present?,
+      effective_requested_license_playable: effective_requested_license_playable.present?,
       effective_vsk_email:,
       effective_sbk_email:,
       effective_rsk_email:,
       manual_proceeding_creation:,
+      requested_license_playable:,
       # Die drei gestaffelten Ansetzungs-Schalter. `referee_assignment_enabled`
       # heißt in der Maske jetzt „Ansetzungen auf Personenebene"; der
       # Spaltenname bleibt, um den Bestand nicht anzufassen.
