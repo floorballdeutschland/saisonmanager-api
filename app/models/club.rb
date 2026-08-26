@@ -35,6 +35,36 @@ class Club < ApplicationRecord
 
   scope :active, -> { where(deactivated_at: nil) }
 
+  # --- Ablagen ---------------------------------------------------------------
+  #
+  # Vor `Player#merge_into!` gab es keine Zusammenlegung: Ein doppelt angelegtes
+  # Spielerprofil wanderte per Transfer in einen Sammelverein ("Ablage Doppelung",
+  # "ZZ-Ablage", "zz_not in use" ...). Diese Zugehoerigkeit ist deshalb keine
+  # Mitgliedschaft, sondern die Markierung "dieses Profil ist die Dublette".
+  #
+  # Erkennung ueber den Namen und nicht ueber eine ID-Liste: Die Ablagen sind
+  # gewachsener Altbestand, dasselbe Muster liest schon
+  # `LegacyImport::HomeClubBackfillData::PLACEHOLDER_CLUB_PATTERN`.
+  ABLAGE_NAME_PATTERN = '(^z_|^zz|ablage|not in use|doppelung)'.freeze
+
+  # "Ablage Sperrung" (Produktion: Verein 213) ist KEINE Ablage in
+  # diesem Sinn. Dort liegen Personen, die einen Widerspruch nach Art. 21 DSGVO
+  # erklaert haben und nicht mehr im Saisonmanager erscheinen wollen. Diese Profile
+  # duerfen nie in einen echten Verein zurueckwandern, also darf die Zugehoerigkeit
+  # auch nie gegen einen echten Verein verlieren.
+  ABLAGE_EXCLUDED_NAME_PATTERN = '^ablage sperrung'.freeze
+
+  # Bewusst NICHT zusaetzlich `deactivated_at IS NOT NULL`: Ein aufgeloester echter
+  # Verein ist keine Ablage, seine Mitgliedschaft ist echte Historie und darf beim
+  # Merge nicht verworfen werden. Der eine Bestandsfall ohne Namensmerkmal ("BW",
+  # Produktion 136, nachgeahmter Landesverband) bleibt damit hier aussen vor und
+  # gehoert in den Datenlauf, nicht in diese Regel.
+  def self.ablage_ids
+    where('name ~* ?', ABLAGE_NAME_PATTERN)
+      .where.not('name ~* ?', ABLAGE_EXCLUDED_NAME_PATTERN)
+      .pluck(:id)
+  end
+
   # Vereinsmanager dieses Vereins. Kandidaten per jsonb-Containment vorfiltern
   # und dann über permission_hash bestätigen, das allein die Sonderfälle kennt
   # (Mehrfachrollen, Alt-Einträge).

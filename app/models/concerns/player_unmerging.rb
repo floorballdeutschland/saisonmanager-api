@@ -320,6 +320,11 @@ module PlayerUnmerging
   # Eintrag, der kein Hash ist (kommt im Altbestand vor, siehe
   # `membership_closed_by_deactivation?`).
   #
+  # Ablage-Zugehoerigkeiten der Dublette kopiert `_merge_clubs` nicht mehr. Bei einem Merge
+  # ab dieser Aenderung findet sich am Master also gar kein Treffer, und die Ablage wird zur
+  # Handpruefung gemeldet statt entfernt. Das ist richtig so: Bei Merges davor IST sie
+  # kopiert worden und muss weg, und beide Faelle sind hier nicht unterscheidbar.
+  #
   # Rueckgabe: [Anzahl entfernt, Vereins-IDs zur Handpruefung]
   def _remove_merged_clubs_from(master)
     bestand = Array(master.clubs)
