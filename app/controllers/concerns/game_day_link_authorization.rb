@@ -33,28 +33,19 @@ module GameDayLinkAuthorization
     go_id = game_day.league&.game_operation_id
     return true if ph[:sbk].present? && (ph[:sbk].include?(0) || ph[:sbk].include?(go_id))
 
-    host_club_ids = hosting_club_ids(game_day)
-    return false if host_club_ids.empty?
+    # `game_days.club_id` ist nullable und wird bei `0` aktiv auf `nil` gesetzt
+    # (GameDay#normalize_blank_references); der Spielplan-Import legt Spieltage
+    # ohne Halle und ohne Ausrichter an. Ohne Ausrichter gibt es hier bewusst
+    # keinen Zugang: Wer den Link braucht, trägt den Ausrichter nach, und das
+    # kann jeder jederzeit. Ein Ersatz aus den Heimmannschaften wäre an einem
+    # Turniertag ohnehin nicht "der Ausrichter", sondern jeder Verein mit
+    # Heimspiel – für eine Zusatzfunktion die falsche Aufweichung der Regel.
+    host_club_id = game_day.club_id
+    return false if host_club_id.blank?
 
-    return true if ph[:vm].present? && ph[:vm].intersect?(host_club_ids)
+    return true if ph[:vm].present? && ph[:vm].include?(host_club_id)
 
-    ph[:tm].present? && own_teams(game_day).any? { |team| team.all_club_ids.intersect?(host_club_ids) }
-  end
-
-  # Der ausrichtende Verein.
-  #
-  # `game_days.club_id` ist nullable und wird bei `0` aktiv auf `nil` gesetzt
-  # (GameDay#normalize_blank_references); der Spielplan-Import legt Spieltage
-  # bewusst ohne Halle und ohne Ausrichter an. Ohne Rückfall bliebe für sie
-  # niemand übrig, der den Link ausgeben kann, und die Sekretariats-Übersicht
-  # ist der einzige Weg des Vereins dorthin.
-  #
-  # Der Rückfall nimmt die Vereine der Heimmannschaften, also den faktischen
-  # Ausrichter. Ein Gastverein kommt darüber nicht herein.
-  def hosting_club_ids(game_day)
-    return [game_day.club_id] if game_day.club_id.present?
-
-    game_day.games.filter_map { |g| g.home_team&.club_id }.uniq
+    ph[:tm].present? && own_teams(game_day).any? { |team| team.all_club_ids.include?(host_club_id) }
   end
 
   # Die Mannschaften dieses Spieltags, die der/die Angemeldete als Teammanager:in

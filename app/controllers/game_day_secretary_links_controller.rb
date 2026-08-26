@@ -148,9 +148,9 @@ class GameDaySecretaryLinksController < ApplicationController
   # may_manage_game_day_link? je Spieltag – hier wird nur vorausgewählt.
   def candidate_game_day_ids
     club_ids = (vm_club_ids + tm_team_club_ids).uniq
-    hosted = club_ids.present? ? GameDay.where(club_id: club_ids).pluck(:id) : []
+    return [] if club_ids.empty?
 
-    hosted + hostless_home_game_day_ids
+    GameDay.where(club_id: club_ids).pluck(:id)
   end
 
   # `all_club_ids` statt `club_id`: Eine Spielgemeinschaft richtet auch unter
@@ -159,23 +159,6 @@ class GameDaySecretaryLinksController < ApplicationController
     return [] if tm_team_ids.empty?
 
     Team.where(id: tm_team_ids).flat_map(&:all_club_ids).compact.uniq
-  end
-
-  # Spieltage ohne Ausrichter tragen kein `club_id`, über das sie zu finden
-  # wären, kommen aber über den Rückfall in `hosting_club_ids` durch die
-  # Rechteprüfung. Ohne diesen Zweig stünden sie nicht in der Übersicht, obwohl
-  # der Verein den Link erzeugen darf – und einen anderen Weg dorthin hat er nicht.
-  #
-  # Nur Heimmannschaften, denn genau die bildet der Rückfall ab.
-  def hostless_home_game_day_ids
-    team_ids = (tm_team_ids + Team.where(club_id: vm_club_ids).pluck(:id)).uniq
-    return [] if team_ids.empty?
-
-    GameDay.where(club_id: nil)
-           .joins(:games)
-           .where(games: { home_team_id: team_ids })
-           .distinct
-           .pluck(:id)
   end
 
   def sibling_game_days(game_days)

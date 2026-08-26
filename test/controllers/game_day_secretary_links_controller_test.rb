@@ -341,53 +341,39 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
     assert_equal [], JSON.parse(response.body)
   end
 
-  # Der Spielplan-Import legt Spieltage ohne Halle und ohne Ausrichter an. Ohne
-  # Rückfall auf die Heimmannschaft käme für die niemand mehr an den Link, und
-  # diese Seite ist der einzige Weg des Vereins dorthin.
-  test 'Spieltag ohne Ausrichter bleibt für den Verein der Heimmannschaft erreichbar' do
+  # Ohne Ausrichter kein Link – und das ist die Absicht, nicht eine Lücke. Ein
+  # Ersatz aus den Heimmannschaften wäre an einem Turniertag nicht "der
+  # Ausrichter", sondern jeder Verein mit Heimspiel. Für eine Zusatzfunktion,
+  # deren Voraussetzung jeder jederzeit nachtragen kann, ist das die falsche
+  # Aufweichung der Regel. Geprüft mit dem Verein der Heimmannschaft, also dem
+  # aussichtsreichsten Anwärter: Auch er kommt nicht heran.
+  test 'Spieltag ohne Ausrichter hat keinen Sekretariatslink' do
     @game_day.update!(club: nil)
     login(create(:user, :vm, club_id: @host_club.id))
 
     get '/api/v2/user/secretary_game_days'
 
     assert_response :success
-    ids = JSON.parse(response.body).flat_map { |g| g['game_days'].map { |gd| gd['id'] } }
-    assert_includes ids, @game_day.id
-
-    post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
-
-    assert_response :created
-  end
-
-  # Der einzige Fall ohne Ausrichter, den es in der laufenden Saison auf
-  # Produktion wirklich gibt, ist der Turniertag: zehn Spiele, fuenf Vereine mit
-  # Heimspielen, kein Ausrichter eingetragen. Der Rueckfall gibt dort jedem
-  # Verein mit Heimspiel den Link, denn welcher von ihnen am Tisch sitzt, steht
-  # nirgends. Wer nur auswaerts spielt, bleibt draussen (Test darunter).
-  test 'Turniertag ohne Ausrichter: auch der zweite Verein mit Heimspiel darf' do
-    @game_day.update!(club: nil)
-    second_club = create(:club)
-    second_home = create(:team, league: @league, club: second_club)
-    Game.create!(game_day: @game_day, home_team: second_home, guest_team: @home,
-                 start_time: '16:00')
-    login(create(:user, :vm, club_id: second_club.id))
-
-    post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
-
-    assert_response :created
-  end
-
-  test 'Spieltag ohne Ausrichter bleibt dem Gastverein verschlossen' do
-    @game_day.update!(club: nil)
-    login(create(:user, :vm, club_id: @guest_club.id))
-
-    get '/api/v2/user/secretary_game_days'
-
     assert_equal [], JSON.parse(response.body)
 
     post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
 
     assert_response :forbidden
+  end
+
+  # Der Weg zurück steht offen und braucht keinen Sonderfall im Code: Sobald der
+  # Ausrichter eingetragen ist, ist der Link da.
+  test 'nachgetragener Ausrichter macht den Spieltag wieder erreichbar' do
+    @game_day.update!(club: nil)
+    login(create(:user, :vm, club_id: @host_club.id))
+    post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
+    assert_response :forbidden
+
+    @game_day.update!(club: @host_club)
+
+    post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
+
+    assert_response :created
   end
 
   test 'zwei Spieltage ohne Halle am selben Tag bleiben getrennte Gruppen' do
