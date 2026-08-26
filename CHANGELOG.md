@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.98.3] - 2026-08-26
+
 ### Behoben
 
 - **Eine Zweitlizenz in einem anderen Spielbetrieb warf die zuständige Spielbetriebskommission aus ihrer eigenen Liga**: Die Karte, mit der ein Lizenzantrag entschieden wird, listet alle Lizenzen der Person in der laufenden Saison. Den Namen der jeweiligen Mannschaft holte die Ansicht dafür einzeln nach, und dieser Abruf ist auf den Spielbetrieb der Liga dieser Mannschaft begrenzt. Bei einer Zweitlizenz in einem anderen Verband wurde er deshalb abgewiesen, und weil ein abgewiesener Zugriff auf die Startseite zurückführt, verschwand die halb geöffnete Antragsliste samt Filterung, noch bevor über den Antrag entschieden werden konnte. Betroffen war genau der Fall, für den die Karte gebaut ist: eine Spielerin oder ein Spieler mit Lizenzen in zwei Spielbetrieben, etwa Erstlizenz in der 2. Bundesliga und Zweitlizenz in der Regionalliga. Gemeldet am 26. August 2026 aus der Regionalliga Nordwest. Die Namen von Mannschaft und Liga stehen jetzt in der Antwort, mit der die Liste ohnehin geladen wird; der einzelne Abruf entfällt und mit ihm die Abweisung. Das ist zugleich ein Aufruf weniger je Lizenzzeile. Angezeigt wird unverändert alles, was vorher zu sehen war, auch abgelehnte Zweitlizenzen. Eine Lizenz, deren Mannschaft gelöscht wurde, zeigt wie bisher nur ihre Kennung.
