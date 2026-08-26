@@ -70,7 +70,7 @@ module Admin
       return render json: { player: nil } unless player
 
       requesting_club_id = params[:requesting_club_id].to_i
-      if ph[:vm].present? && !may_act_for_club?(ph, requesting_club_id)
+      if ph[:vm].present? && !may_act_for_club?(ph, requesting_club_id, player)
         return render json: { error: 'Nicht berechtigt fuer diesen Verein' }, status: :forbidden
       end
 
@@ -126,7 +126,7 @@ module Admin
       end
 
       requesting_club_id = params[:requesting_club_id].to_i
-      if ph[:vm].present? && !may_act_for_club?(ph, requesting_club_id)
+      if ph[:vm].present? && !may_act_for_club?(ph, requesting_club_id, player)
         return render json: { error: 'Nicht berechtigt fuer diesen Verein' }, status: :forbidden
       end
 
@@ -578,14 +578,48 @@ module Admin
     # VM-Vereinsbindung vor: wer neben der VM-Rolle auch Admin oder SBK ist,
     # wurde sonst von der eigenen schwächeren Rolle ausgesperrt (SBK + VM kam
     # so nie bis zum Direkt-Transfer, obwohl #direct_assign es erlaubt hätte).
-    def may_act_for_club?(ph, club_id)
+    #
+    # Die Rollen werden additiv ausgewertet, weil sie verschiedene Fragen
+    # beantworten. Für den VM ist `club_id` der aufnehmende Verein, und die
+    # Bindung an den eigenen ist richtig: Ein Vereinsmanager beantragt nur für
+    # sich selbst. Für die SBK gilt daneben die Regel des gesamten
+    # Transferverfahrens -- zuständig ist der Landesverband des ABGEBENDEN
+    # Vereins (api#220, `#sbk_may_assign?`, `#lv_authorized?`). Ohne diesen
+    # Zweig erbte der SBK-Pfad die Vereinsbindung des VM und prüfte den
+    # aufnehmenden Verein, also die falsche Seite: Eine SBK, die zusätzlich
+    # VM eines Vereins ist, kam für einen Spieler ihres eigenen Spielbetriebs
+    # nicht bis zur Direktzuweisung, sobald der aufnehmende Verein in einem
+    # anderen Landesverband lag -- obwohl `#direct_assign` sie zugelassen
+    # hätte. Eine SBK ohne VM-Rolle war nie betroffen, für sie läuft die
+    # Prüfung wegen `ph[:vm].present?` an den Aufrufstellen gar nicht erst.
+    #
+    # Der bisherige Zweig über den aufnehmenden Verein bleibt daneben stehen:
+    # Eine SBK, die einen Verein ihres Spielbetriebs aufnehmen lässt, soll
+    # einen Antrag weiterhin für ihn stellen können, auch wenn der Spieler von
+    # außerhalb kommt.
+    def may_act_for_club?(ph, club_id, player = nil)
       return true if ph[:admin].present?
       return true if ph[:vm].present? && ph[:vm].include?(club_id)
       return false if ph[:sbk].blank?
       return true if ph[:sbk].include?(0)
+      return true if sbk_scope_covers_former_club?(ph, player)
 
       club = Club.find_by(id: club_id)
       club.present? && ph[:sbk].include?(club.main_game_operation_id)
+    end
+
+    # Liegt der abgebende Verein des Spielers im SBK-Scope? Bewusst über
+    # `#sbk_may_assign?` und `Player#home_club_entry`, damit „zuständig ist der
+    # abgebende Landesverband" und „welcher Eintrag ist die Heimat" je eine
+    # Quelle behalten und Suche, Antrag und Direktzuweisung nicht auseinander
+    # laufen (dieselbe Falle wie beim ersten/letzten offenen Heimat-Eintrag in
+    # `#direct_assign`).
+    def sbk_scope_covers_former_club?(ph, player)
+      former_club_id = player&.home_club_entry&.dig('club_id')
+      return false if former_club_id.blank?
+
+      former_club = Club.find_by(id: former_club_id)
+      former_club.present? && sbk_may_assign?(ph, former_club, nil)
     end
 
     # Für die Freigabe zählt wie bei #lv_authorized? nur der Landesverband des

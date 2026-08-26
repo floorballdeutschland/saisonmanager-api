@@ -159,7 +159,12 @@ module Admin
       assert_equal @player.id, JSON.parse(response.body).dig('player', 'id')
     end
 
-    test 'SBK mit zusätzlicher VM-Rolle darf nicht für Verein außerhalb des Spielbetriebs suchen → 403' do
+    # Der gemeldete Fall: SBK Niedersachsen und zugleich VM eines Vereins gibt
+    # einen Spieler ihres Spielbetriebs an einen Verein in einem anderen
+    # Landesverband ab. Zuständig ist der abgebende Verband, also sie selbst --
+    # `#direct_assign` hätte den Vorgang zugelassen, die Suche davor brach mit
+    # 403 ab und ließ sie nie bis dorthin kommen.
+    test 'SBK mit zusätzlicher VM-Rolle darf für Verein eines anderen Landesverbands suchen, wenn der abgebende Verein im eigenen Spielbetrieb liegt' do
       foreign_club = Club.create!(
         name: "Fremdverband Verein #{SecureRandom.hex(4)}",
         short_name: "FV#{SecureRandom.hex(1)}"
@@ -169,7 +174,61 @@ module Admin
         first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15',
         requesting_club_id: foreign_club.id
       }
+      assert_response :success
+      assert_equal @player.id, JSON.parse(response.body).dig('player', 'id')
+    end
+
+    # Gegenprobe: Liegt weder der abgebende noch der aufnehmende Verein im
+    # eigenen Spielbetrieb, bleibt es bei der Absage. Sonst wäre die
+    # Vereinsbindung der VM-Rolle für jede SBK-Doppelrolle aufgehoben.
+    test 'SBK mit zusätzlicher VM-Rolle darf nicht suchen, wenn auch der abgebende Verein außerhalb liegt → 403' do
+      foreign_club = Club.create!(
+        name: "Fremdverband Verein #{SecureRandom.hex(4)}",
+        short_name: "FV#{SecureRandom.hex(1)}"
+      )
+      foreign_player = Player.create!(
+        first_name: 'Erika',
+        last_name: 'Fremdverband',
+        birthdate: '1996-07-21',
+        nation_id: '1',
+        gender: 'w',
+        email: 'erika.fremdverband@example.com',
+        clubs: [{ 'club_id' => foreign_club.id, 'home_club' => true, 'valid_until' => nil }],
+        licenses: []
+      )
+      login(@sbk_and_vm)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: foreign_player.first_name, last_name: foreign_player.last_name,
+        birthdate: '1996-07-21', requesting_club_id: foreign_club.id
+      }
       assert_response :forbidden
+    end
+
+    # Der aufnehmende Verein im eigenen Spielbetrieb bleibt für sich genommen
+    # ein Grund: Eine SBK soll für einen Verein ihres Verbands auch dann
+    # arbeiten können, wenn der Spieler von außerhalb kommt.
+    test 'SBK mit zusätzlicher VM-Rolle darf für eigenen Verein suchen, wenn der Spieler von außerhalb kommt' do
+      foreign_club = Club.create!(
+        name: "Fremdverband Verein #{SecureRandom.hex(4)}",
+        short_name: "FV#{SecureRandom.hex(1)}"
+      )
+      incoming_player = Player.create!(
+        first_name: 'Jonas',
+        last_name: 'Zuzug',
+        birthdate: '1999-01-09',
+        nation_id: '1',
+        gender: 'm',
+        email: 'jonas.zuzug@example.com',
+        clubs: [{ 'club_id' => foreign_club.id, 'home_club' => true, 'valid_until' => nil }],
+        licenses: []
+      )
+      login(@sbk_and_vm)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: incoming_player.first_name, last_name: incoming_player.last_name,
+        birthdate: '1999-01-09', requesting_club_id: @requesting_club.id
+      }
+      assert_response :success
+      assert_equal incoming_player.id, JSON.parse(response.body).dig('player', 'id')
     end
 
     test 'SBK mit zusätzlicher VM-Rolle führt Direkt-Transfer durch → 201' do
@@ -316,6 +375,23 @@ module Admin
       post '/api/v2/admin/transfer_requests', params: {
         player_id: @player.id,
         requesting_club_id: @requesting_club.id
+      }
+      assert_response :created
+    end
+
+    # Gleiche Regel wie in search_player, sonst meldet die Suche einen Treffer
+    # und der Antrag fällt gleich danach auf 403 -- dieselbe Falle wie beim
+    # deaktivierten aufnehmenden Verein in api#512.
+    test 'SBK mit zusätzlicher VM-Rolle darf Antrag für Verein eines anderen Landesverbands stellen' do
+      foreign_club = Club.create!(
+        name: "Fremdverband Verein #{SecureRandom.hex(4)}",
+        short_name: "FV#{SecureRandom.hex(1)}",
+        contact_email: 'fremd@test.example.com'
+      )
+      login(@sbk_and_vm)
+      post '/api/v2/admin/transfer_requests', params: {
+        player_id: @player.id,
+        requesting_club_id: foreign_club.id
       }
       assert_response :created
     end
