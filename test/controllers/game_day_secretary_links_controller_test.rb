@@ -359,6 +359,24 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
     assert_response :created
   end
 
+  # Der einzige Fall ohne Ausrichter, den es in der laufenden Saison auf
+  # Produktion wirklich gibt, ist der Turniertag: zehn Spiele, fuenf Vereine mit
+  # Heimspielen, kein Ausrichter eingetragen. Der Rueckfall gibt dort jedem
+  # Verein mit Heimspiel den Link, denn welcher von ihnen am Tisch sitzt, steht
+  # nirgends. Wer nur auswaerts spielt, bleibt draussen (Test darunter).
+  test 'Turniertag ohne Ausrichter: auch der zweite Verein mit Heimspiel darf' do
+    @game_day.update!(club: nil)
+    second_club = create(:club)
+    second_home = create(:team, league: @league, club: second_club)
+    Game.create!(game_day: @game_day, home_team: second_home, guest_team: @home,
+                 start_time: '16:00')
+    login(create(:user, :vm, club_id: second_club.id))
+
+    post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
+
+    assert_response :created
+  end
+
   test 'Spieltag ohne Ausrichter bleibt dem Gastverein verschlossen' do
     @game_day.update!(club: nil)
     login(create(:user, :vm, club_id: @guest_club.id))
