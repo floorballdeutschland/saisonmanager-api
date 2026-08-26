@@ -1063,7 +1063,7 @@ class League < ApplicationRecord
   # Erstlizenz in der 2. Bundesliga.
   #
   # `teams_by_id` traegt hier bereits jede Mannschaft, auf die eine Lizenz dieser
-  # Spieler verweist (League.license_foreign_teams laedt sie ohne Rueck­sicht auf
+  # Spieler verweist (League.license_foreign_teams laedt sie ohne Ruecksicht auf
   # Status und Saison, mit `includes(:league)`). Die Benennung kostet also keine
   # weitere Abfrage und deckt auch abgelehnte Lizenzen ab, die
   # `other_license_items` bewusst weglaesst.
