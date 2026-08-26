@@ -1020,10 +1020,27 @@ class PlayersController < ApplicationController
       # Verein jedes Profil einzeln oeffnen, um das herauszufinden.
       #
       # Bewusst hier und nicht in Player#meta_hash: Der Hash speist auch
-      # Ansichten, die die Adresse nichts angeht (Spielberichte, oeffentliche
-      # Kader). Wer diese Liste sieht, oeffnet ohnehin jedes Profil samt
-      # full_hash, das die Adresse laengst nennt.
-      base[:email] = p.email
+      # Ansichten, die die Adresse nichts angeht (der Kader-Dialog im
+      # Spielbericht ueber ClubsController#team_licenses_hash, die
+      # Vereinsspielerliste ueber Player.admin_user_players).
+      #
+      # An can_manage_player? gebunden, also an dasselbe Recht wie das Profil,
+      # das die Adresse ohnehin nennt (full_hash) und aendern laesst
+      # (update_email). Fuer VM und TM ist das dieselbe Menge wie die Liste
+      # selbst: Beide Seiten entscheiden ueber membership_grants_access?. Fuer
+      # die SBK nicht -- die Liste haengt am Verein
+      # (derive_club_ids_for_go, Club#players nimmt jede gueltige
+      # Zugehoerigkeit), sbk_can_access_player? dagegen am Heimatverein der
+      # Person. Eine Zweitmitgliedschaft im eigenen Verein bei Heimatverein in
+      # einem fremden Verband steht damit in der Liste, ihr Profil antwortet
+      # aber mit 403. Ohne diese Bindung waere die Spalte fuer genau diese
+      # Zeilen neue Offenlegung gewesen, erreichbar ueber keinen anderen Weg.
+      #
+      # Kein N+1: sbk_can_access_player? schlaegt den Heimatverein nach, aber
+      # die Personen einer Vereinsliste teilen sich eine Handvoll davon, und der
+      # Query-Cache des Requests fasst die wiederholte Abfrage zusammen. Admin,
+      # VM und TM entscheiden ohne jede Abfrage.
+      base[:email] = p.email if can_manage_player?(p)
       current_lics = (p.licenses || []).select { |l| leagues_by_team.key?(l['team_id'].to_i) }
       if current_lics.present?
         # Ein Eintrag pro Liga-Lizenz der laufenden Saison, höchste Liga zuerst;
