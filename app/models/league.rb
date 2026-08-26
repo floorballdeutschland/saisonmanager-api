@@ -1038,6 +1038,7 @@ class League < ApplicationRecord
 
         if with_other_licenses
           player_item[:other_licenses] = other_license_items(player, team.id, teams_by_id, active_statuses)
+          annotate_license_teams!(player_item, teams_by_id)
         end
 
         team_item[:players] << player_item
@@ -1047,6 +1048,41 @@ class League < ApplicationRecord
     end
 
     result
+  end
+
+  # Mannschaft und Liga je Lizenz benennen. Die Genehmigungskarte listet ALLE
+  # Lizenzen der Saison und braucht zu jeder den Namen; die rohen Lizenzeintraege
+  # tragen nur eine team_id.
+  #
+  # Bisher holte das Frontend je Lizenz `admin/teams/:id` nach. Das ist nicht nur
+  # ein Aufruf je Zeile, es scheiterte auch: `can_read_admin_team?` prueft den
+  # Spielbetrieb der Liga der Mannschaft, eine Zweitlizenz in einem anderen
+  # Verband gibt also 403 -- und der warf die zustaendige SBK aus der eigenen
+  # Liga heraus auf die Startseite, bevor sie den Antrag entscheiden konnte.
+  # Gemeldet am 26.08.2026 aus der Regionalliga Nordwest zu einem Spieler mit
+  # Erstlizenz in der 2. Bundesliga.
+  #
+  # `teams_by_id` traegt hier bereits jede Mannschaft, auf die eine Lizenz dieser
+  # Spieler verweist (League.license_foreign_teams laedt sie ohne Rueck­sicht auf
+  # Status und Saison, mit `includes(:league)`). Die Benennung kostet also keine
+  # weitere Abfrage und deckt auch abgelehnte Lizenzen ab, die
+  # `other_license_items` bewusst weglaesst.
+  #
+  # Nur wenn die fremden Mannschaften geladen sind (`with_other_licenses`):
+  # Sonst stehen sie nicht in `teams_by_id`, und die Namen wuerden je nach
+  # Aufrufer fehlen, statt einheitlich zu erscheinen. Eine Lizenz ohne
+  # auflösbare Mannschaft (geloescht) bleibt ohne Namen; die Karte zeigt dann
+  # wie bisher die ID.
+  def annotate_license_teams!(player_item, teams_by_id)
+    Array(player_item[:licenses]).each do |lic|
+      next unless lic.is_a?(Hash)
+
+      team = teams_by_id[lic['team_id'].to_i]
+      next unless team
+
+      lic[:team_name] = team.name
+      lic[:league_name] = team.league&.name
+    end
   end
 
   # Freigabedatum des Spielers fuer die Mannschaft dieser Liste.

@@ -765,6 +765,38 @@ class LeagueTest < ActiveSupport::TestCase
                  'Andere Liga in derselben Saison: in other_licenses sichtbar'
   end
 
+  # Die Genehmigungskarte listet alle Lizenzen der Saison und braucht je Lizenz
+  # den Namen der Mannschaft. Holte sie ihn per admin/teams/:id nach, scheiterte
+  # das bei einer Lizenz in einem fremden Spielbetrieb mit 403 und warf die
+  # zustaendige SBK aus ihrer eigenen Liga auf die Startseite. Deshalb steht der
+  # Name in der Antwort -- auch fuer eine ABGELEHNTE Lizenz, die
+  # other_license_items bewusst weglaesst.
+  test 'licenses: jede Lizenz der Saison traegt Mannschafts- und Liganamen, auch die abgelehnte' do
+    create(:setting, current_season_id: '18')
+    target_league = create(:league, :current_season, name: 'Zielliga')
+    other_league  = create(:league, :current_season, name: 'Fremdliga')
+    denied_league = create(:league, :current_season, name: 'Abgelehnt-Liga')
+    target_team   = create(:team, league: target_league, name: 'Zielmannschaft')
+    other_team    = create(:team, league: other_league, name: 'Fremdmannschaft')
+    denied_team   = create(:team, league: denied_league, name: 'Abgelehnt-Mannschaft')
+
+    player = create(:player, with_licenses: [
+      { team: target_team, status: License::APPROVED, season_id: '18' },
+      { team: other_team,  status: License::APPROVED, season_id: '18' },
+      { team: denied_team, status: License::DENIED,   season_id: '18' }
+    ])
+
+    result = target_league.licenses
+    player_entry = result.find { |t| t[:id] == target_team.id }[:players].find { |p| p[:id] == player.id }
+    refute_nil player_entry
+
+    named = player_entry[:licenses].to_h { |l| [l['team_id'].to_i, [l[:team_name], l[:league_name]]] }
+    assert_equal %w[Zielmannschaft Zielliga], named[target_team.id]
+    assert_equal %w[Fremdmannschaft Fremdliga], named[other_team.id]
+    assert_equal %w[Abgelehnt-Mannschaft Abgelehnt-Liga], named[denied_team.id],
+                 'abgelehnte Lizenz braucht den Namen genauso, other_licenses laesst sie weg'
+  end
+
   test 'licenses: other_licenses listet keine Lizenzen aus Vorsaisons' do
     create(:setting, current_season_id: '18')
     target_league   = create(:league, :current_season)
