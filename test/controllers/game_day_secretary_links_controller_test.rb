@@ -34,18 +34,46 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
     assert_equal [@game_day.id], body['game_day_ids']
   end
 
-  test 'Vereinsmanager eines beteiligten Gastvereins darf einen Link erzeugen' do
+  test 'Vereinsmanager des Gastvereins bekommt 403' do
     login(create(:user, :vm, club_id: @guest_club.id))
+
+    post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
+
+    assert_response :forbidden
+    assert_equal 0, GameDaySecretaryLink.count,
+                 'am Sekretariatstisch sitzt der Ausrichter, nicht der Gast'
+  end
+
+  test 'Teammanager der Heimmannschaft darf einen Link erzeugen' do
+    login(create(:user, :tm, team_id: @home.id))
 
     post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
 
     assert_response :created
   end
 
-  test 'Teammanager einer beteiligten Mannschaft darf einen Link erzeugen' do
-    login(create(:user, :tm, team_id: @home.id))
+  test 'Teammanager der Gastmannschaft bekommt 403' do
+    login(create(:user, :tm, team_id: @guest.id))
 
     post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
+
+    assert_response :forbidden
+    assert_equal 0, GameDaySecretaryLink.count
+  end
+
+  # Eine Spielgemeinschaft steht mit einem Verein in `club_id` und ihren
+  # Partnervereinen in `syndicate_clubs`. Richtet sie unter dem Partner aus,
+  # trägt der Spieltag dessen ID – ein Vergleich nur über `club_id` sperrte sie
+  # aus ihrer eigenen Halle aus.
+  test 'Teammanager einer Spielgemeinschaft darf am Spieltag des Partnervereins' do
+    partner = create(:club)
+    sg = create(:team, league: @league, club: @host_club,
+                       syndicate: true, syndicate_clubs: [partner.id])
+    day = create_game_day(@league, partner)
+    Game.create!(game_day: day, home_team: sg, guest_team: @guest, start_time: '12:00')
+    login(create(:user, :tm, team_id: sg.id))
+
+    post "/api/v2/user/game_days/#{day.id}/secretary_link"
 
     assert_response :created
   end
@@ -294,6 +322,141 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
                  'Admin und SBK erzeugen ihre Links in der Spielplan-Verwaltung'
   end
 
+  test 'Übersicht des Gastvereins nennt den Auswärtsspieltag nicht' do
+    login(create(:user, :vm, club_id: @guest_club.id))
+
+    get '/api/v2/user/secretary_game_days'
+
+    assert_response :success
+    assert_equal [], JSON.parse(response.body),
+                 'der Gast soll fremde Spieltage nicht in seiner Übersicht finden'
+  end
+
+  test 'Übersicht des Gastvereins bleibt auch als Teammanager leer' do
+    login(create(:user, :tm, team_id: @guest.id))
+
+    get '/api/v2/user/secretary_game_days'
+
+    assert_response :success
+    assert_equal [], JSON.parse(response.body)
+  end
+
+  # Die Vorauswahl der Übersicht (candidate_game_day_ids) sucht über
+  # `game_days.club_id`. Für eine Spielgemeinschaft steht dort der Partnerverein,
+  # nicht der Verein, unter dem sie geführt wird – deshalb sammelt
+  # tm_team_club_ids die `all_club_ids` der betreuten Mannschaften.
+  #
+  # Bewusst in einer anderen Halle an einem anderen Tag als @game_day: Läge der
+  # Spieltag in derselben Halle am selben Tag, zöge ihn sibling_game_days über
+  # den Spieltag des eigenen Vereins mit herein und der Test wäre grün, ohne die
+  # Vorauswahl zu prüfen.
+  test 'Übersicht nennt der Spielgemeinschaft den Spieltag des Partnervereins' do
+    partner = create(:club)
+    sg = create(:team, league: @league, club: @host_club,
+                       syndicate: true, syndicate_clubs: [partner.id])
+    day = create_game_day(@league, partner, arena: create(:arena, name: 'Partnerhalle'),
+                                            date: 25.days.from_now.to_date.to_s)
+    Game.create!(game_day: day, home_team: sg, guest_team: @guest, start_time: '12:00')
+    login(create(:user, :tm, team_id: sg.id))
+
+    get '/api/v2/user/secretary_game_days'
+
+    assert_response :success
+    ids = JSON.parse(response.body).flat_map { |g| g['game_days'].map { |gd| gd['id'] } }
+    assert_includes ids, day.id,
+                    'ohne all_club_ids findet die Spielgemeinschaft ihren eigenen Spieltag nicht'
+  end
+
+  # Der eigene Auswärtsspieltag verschwindet nicht aus der Halle, er wird
+  # herabgestuft: Richtet der Verein am selben Tag in derselben Halle einen
+  # eigenen Spieltag aus, steht der fremde weiter als Belegungshinweis daneben.
+  # Nur dieser Test unterscheidet „korrekt herabgestuft" von „stumm verschwunden".
+  test 'eigener Auswärtsspieltag rutscht in die Hallenbelegung des Gastes' do
+    own = create_game_day(create(:league, game_operation: @go), @guest_club)
+    Game.create!(game_day: own,
+                 home_team: create(:team, league: own.league, club: @guest_club),
+                 guest_team: create(:team, league: own.league, club: create(:club)),
+                 start_time: '18:00')
+    login(create(:user, :vm, club_id: @guest_club.id))
+
+    get '/api/v2/user/secretary_game_days'
+
+    group = JSON.parse(response.body).first
+    own_ids = group['game_days'].map { |gd| gd['id'] }
+    hall_ids = group['other_game_days_in_hall'].map { |gd| gd['id'] }
+    assert_equal [own.id], own_ids
+    assert_equal [@game_day.id], hall_ids,
+                 'der Auswärtsspieltag bleibt als Belegungshinweis sichtbar, nur ohne Zugriff'
+  end
+
+  # Spieltage ohne Halle gehen ohne den Umweg über sibling_game_days direkt in
+  # die Rechteprüfung, und `own_teams` fasst dort zu jedem Spiel beide
+  # Mannschaften als Objekt an. Ohne Preloading kostet das je Spiel zwei
+  # Abfragen — bei acht Spieltagen mit je drei Spielen gemessen 77 statt 18.
+  # Der Test hält fest, dass mehr Spieltage die Abfragezahl nicht mitwachsen
+  # lassen.
+  test 'die Abfragezahl der Übersicht wächst nicht mit den Spieltagen ohne Halle' do
+    user = create(:user, :tm, team_id: @home.id)
+    @game_day.update!(arena: nil)
+    login(user)
+    queries_for_one = count_queries { get '/api/v2/user/secretary_game_days' }
+    assert_response :success
+
+    3.times { |i| hall_less_game_day_for(user, number: i + 2) }
+    queries_for_four = count_queries { get '/api/v2/user/secretary_game_days' }
+
+    assert_response :success
+    assert_equal 4, JSON.parse(response.body).size
+    assert_equal queries_for_one, queries_for_four,
+                 "Abfragen: #{queries_for_one} bei einem Spieltag, " \
+                 "#{queries_for_four} bei vier — Preloading fehlt"
+  end
+
+  # authorize_vm_or_tm! hängt an create UND show: Der Gast hat auch den
+  # Lesezugriff auf den Linkstatus verloren, nicht nur die Ausgabe.
+  test 'Gastverein sieht auch den Zustand eines Links nicht' do
+    login(create(:user, :vm, club_id: @guest_club.id))
+
+    get "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
+
+    assert_response :forbidden
+  end
+
+  # Ohne Ausrichter kein Link – und das ist die Absicht, nicht eine Lücke. Ein
+  # Ersatz aus den Heimmannschaften wäre an einem Turniertag nicht "der
+  # Ausrichter", sondern jeder Verein mit Heimspiel. Für eine Zusatzfunktion,
+  # deren Voraussetzung jeder jederzeit nachtragen kann, ist das die falsche
+  # Aufweichung der Regel. Geprüft mit dem Verein der Heimmannschaft, also dem
+  # aussichtsreichsten Anwärter: Auch er kommt nicht heran.
+  test 'Spieltag ohne Ausrichter hat keinen Sekretariatslink' do
+    @game_day.update!(club: nil)
+    login(create(:user, :vm, club_id: @host_club.id))
+
+    get '/api/v2/user/secretary_game_days'
+
+    assert_response :success
+    assert_equal [], JSON.parse(response.body)
+
+    post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
+
+    assert_response :forbidden
+  end
+
+  # Der Weg zurück steht offen und braucht keinen Sonderfall im Code: Sobald der
+  # Ausrichter eingetragen ist, ist der Link da.
+  test 'nachgetragener Ausrichter macht den Spieltag wieder erreichbar' do
+    @game_day.update!(club: nil)
+    login(create(:user, :vm, club_id: @host_club.id))
+    post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
+    assert_response :forbidden
+
+    @game_day.update!(club: @host_club)
+
+    post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
+
+    assert_response :created
+  end
+
   test 'zwei Spieltage ohne Halle am selben Tag bleiben getrennte Gruppen' do
     @game_day.update!(arena: nil)
     second = create_game_day(create(:league, game_operation: @go), @host_club, arena: nil)
@@ -443,6 +606,34 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
 
   def create_game_day(league, club, date: @date, arena: @arena)
     GameDay.create!(league: league, arena: arena, club: club, number: 1, date: date)
+  end
+
+  def count_queries(&block)
+    count = 0
+    counter = lambda do |_name, _start, _finish, _id, payload|
+      count += 1 unless payload[:name] == 'SCHEMA' ||
+                        payload[:sql].start_with?('BEGIN', 'COMMIT', 'ROLLBACK')
+    end
+    ActiveSupport::Notifications.subscribed(counter, 'sql.active_record', &block)
+    count
+  end
+
+  # Ein weiterer Spieltag ohne Halle beim selben Ausrichter, mit drei Spielen
+  # und einer eigenen Mannschaft des angemeldeten Teammanagers. Ohne Halle
+  # bildet er eine eigene Gruppe und läuft damit durch den Zweig, den der
+  # Abfragezähler oben prüft.
+  def hall_less_game_day_for(user, number:)
+    league = create(:league, game_operation: @go)
+    day = GameDay.create!(league: league, arena: nil, club: @host_club,
+                          number: number, date: @date)
+    home = create(:team, league: league, club: @host_club)
+    3.times do |i|
+      Game.create!(game_day: day, home_team: home,
+                   guest_team: create(:team, league: league, club: create(:club)),
+                   start_time: "1#{i}:00")
+    end
+    user.update!(teams: user.teams + [home.id])
+    day
   end
 
   # Zweiter Spieltag in derselben Halle am selben Tag – die Konstellation, um
