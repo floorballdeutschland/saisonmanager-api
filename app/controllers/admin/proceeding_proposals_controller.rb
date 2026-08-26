@@ -33,9 +33,10 @@ module Admin
     #
     # Die Mail geht im Namen der SBK an die VSK und trägt deshalb die
     # Unterschrift des Kontos, das den Vorschlag angenommen hat – dieselbe
-    # Person, die `decided_by_id` festhält. Vorher endete sie ohne Absender, und
-    # die VSK bekam eine Verfahrenseröffnung, der niemand ansah, wer sie
-    # entschieden hat.
+    # Person, die `decided_by_id` festhält. Absender und Reply-To trug die Mail
+    # immer (`sbk_reply_to`), und der Rumpf nannte das hochladende Konto — was
+    # fehlte, war die Unterschrift der entscheidenden Stelle: Die VSK bekam eine
+    # Verfahrenseröffnung, der niemand ansah, wer sie entschieden hat.
     def open
       send_report_to_vsk(@proposal, current_user)
       @proposal.update!(status: 'opened', decided_by_id: current_user.id, decided_at: Time.current)

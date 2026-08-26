@@ -29,6 +29,11 @@ class ProceedingProposalSignatureTest < ActionDispatch::IntegrationTest
     report.save!
     @proposal = ProceedingProposal.create!(game: @game, state_association: @sa, status: 'pending',
                                            created_by_id: @uploader.id)
+    # Das Gespann leitet der Mailer seit api#564 selbst aus dem Spiel ab, statt
+    # es uebergeben zu bekommen. Ohne einen Ansetzungs-Datensatz bliebe der
+    # Block im View leer und der Refactor ungeprueft.
+    @referee = Referee.create!(vorname: 'Rita', nachname: 'Pfeife', lizenznummer: 54_321)
+    RefereeAssignment.create!(game: @game, referee1_id: @referee.id, status: 'published')
   end
 
   test 'die Verfahrenseroeffnung traegt den Namen der entscheidenden Person' do
@@ -52,6 +57,8 @@ class ProceedingProposalSignatureTest < ActionDispatch::IntegrationTest
 
     assert_includes body, 'Uli Uploader'
     assert_match(/Mit sportlichen Grüßen.*Sara Schiedsrichterin/m, body)
+    # Das aus dem Spiel abgeleitete Gespann steht weiterhin in der Mail.
+    assert_includes body, 'Rita Pfeife'
   end
 
   # Der automatische Weg kennt keine entscheidende Person. Ohne Namen bleibt die
