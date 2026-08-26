@@ -78,9 +78,10 @@ class PlayersLicenseGracePeriodTest < ActionDispatch::IntegrationTest
                  'die irrtuemliche Ablehnung bleibt als Beleg in der Historie'
   end
 
-  # Gegenprobe: Die Markierung haengt am Widerruf einer ABLEHNUNG, nicht an jedem
-  # Wechsel auf `beantragt`. Stellt der Verein einen zurueckgezogenen Antrag
-  # wieder ein, stellt er tatsaechlich neu und behaelt seine Karenzzeit.
+  # Gegenprobe zum Weg, nicht zum Statuswechsel: Der Verein beantragt ueber
+  # reenable_license_request, und dieser Weg fuehrt gar nicht durch die
+  # Markierungslogik von handle_license_request. Er stellt tatsaechlich neu und
+  # behaelt deshalb seine Karenzzeit.
   test 'Wiedereinstellung durch den Verein behaelt die Karenzzeit' do
     license_id = license_with([
       { 'license_status_id' => License::REQUESTED,
@@ -104,5 +105,111 @@ class PlayersLicenseGracePeriodTest < ActionDispatch::IntegrationTest
            'der eigene Neuantrag bleibt innerhalb der Stunde kostenfrei'
     @player.reload
     assert_empty @player.licenses
+  end
+
+  # Welche Uebergaenge markiert werden, hielt kein Test fest: Die Bedingung liess
+  # sich auf "jeder Wechsel auf beantragt" aufweiten, ohne dass die Suite es
+  # merkte. Die Tabelle schliesst genau diese Naht.
+  #
+  # Erwartet wird die Markierung fuer JEDEN Ausgangsstatus, denn dieser Endpunkt
+  # ist Admin und SBK vorbehalten: Was hier entsteht, ist immer eine
+  # Verwaltungskorrektur. Der Weg aus `erteilt` heraus ist dabei der teurere -
+  # dort ist die Gebuehr sicher angefallen - und er ist ueber eine veraltete
+  # Zeile der Lizenzuebersicht real erreichbar.
+  {
+    'abgelehnt' => License::DENIED,
+    'erteilt' => License::APPROVED,
+    'zurueckgezogen' => License::WITHDRAWN,
+    'ungueltig wg. Transfer' => License::TRANSFER
+  }.each do |label, from_status|
+    test "Wechsel von #{label} auf beantragt wird als Korrektur markiert" do
+      license_id = license_with([
+        { 'license_status_id' => License::REQUESTED,
+          'created_at' => 3.days.ago.iso8601 },
+        { 'license_status_id' => from_status,
+          'created_at' => 2.days.ago.iso8601 }
+      ])
+
+      login_as(create(:user, :admin))
+      post "/api/v2/admin/players/#{@player.id}/handle_license_request",
+           params: { license_id: license_id, license_status_id: License::REQUESTED },
+           as: :json
+      assert_response :ok
+
+      @player.reload
+      entry = @player.licenses.first['history'].max_by { |h| h['created_at'] }
+      assert entry[License::REVOKED_REJECTION_KEY],
+             "#{label} -> beantragt muss markiert sein, sonst startet die Karenzzeit neu"
+    end
+  end
+
+  # Der teuerste Fall am ganzen Weg, und er war vorher offen: Aus `erteilt`
+  # heraus schrieb der Widerruf einen unmarkierten Eintrag, der Verein konnte
+  # eine erteilte Lizenz binnen einer Stunde gratis und spurlos loeschen.
+  test 'Widerruf einer Erteilung eroeffnet keine neue Karenzzeit' do
+    license_id = license_with([
+      { 'license_status_id' => License::REQUESTED,
+        'created_at' => 3.days.ago.iso8601 },
+      { 'license_status_id' => License::APPROVED,
+        'created_at' => 2.days.ago.iso8601 }
+    ])
+
+    login_as(create(:user, :admin))
+    post "/api/v2/admin/players/#{@player.id}/handle_license_request",
+         params: { license_id: license_id, license_status_id: License::REQUESTED },
+         as: :json
+    assert_response :ok
+
+    login_as(create(:user, :vm, club_id: @club.id))
+    post "/api/v2/user/players/#{@player.id}/withdraw_license",
+         params: { license_id: license_id },
+         as: :json
+
+    assert_response :ok
+    assert_nil JSON.parse(response.body)['grace_period_deletion']
+    @player.reload
+    assert_equal 1, @player.licenses.length,
+                 'eine erteilte Lizenz darf nicht gratis verschwinden'
+  end
+
+  # Bleibt kein unmarkierter Antrag uebrig, liefert der Anker nil. Dass der
+  # Aufrufer daraus "kostenpflichtig" macht und nicht "kostenfrei", war
+  # ungeschuetzt: Die Umkehrung der Bedingung lief gruen durch.
+  test 'ohne verwertbaren Antrag bleibt das Zurueckziehen kostenpflichtig' do
+    license_id = license_with([
+      { 'license_status_id' => License::REQUESTED,
+        'created_at' => 1.minute.ago.iso8601,
+        License::REVOKED_REJECTION_KEY => true }
+    ])
+
+    login_as(create(:user, :vm, club_id: @club.id))
+    post "/api/v2/user/players/#{@player.id}/withdraw_license",
+         params: { license_id: license_id },
+         as: :json
+
+    assert_response :ok
+    assert_nil JSON.parse(response.body)['grace_period_deletion']
+    @player.reload
+    assert_equal 1, @player.licenses.length
+    assert_equal License::WITHDRAWN,
+                 @player.licenses.first['history'].max_by { |h| h['created_at'] }['license_status_id'].to_i
+  end
+
+  # Die Frist ist exklusiv: Genau GRACE_PERIOD alt ist bereits kostenpflichtig.
+  test 'genau am Ende der Karenzzeit ist das Zurueckziehen kostenpflichtig' do
+    license_id = license_with([
+      { 'license_status_id' => License::REQUESTED,
+        'created_at' => License::GRACE_PERIOD.ago.iso8601 }
+    ])
+
+    login_as(create(:user, :vm, club_id: @club.id))
+    post "/api/v2/user/players/#{@player.id}/withdraw_license",
+         params: { license_id: license_id },
+         as: :json
+
+    assert_response :ok
+    assert_nil JSON.parse(response.body)['grace_period_deletion']
+    @player.reload
+    assert_equal 1, @player.licenses.length
   end
 end

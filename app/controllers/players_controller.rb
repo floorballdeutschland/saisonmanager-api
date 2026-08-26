@@ -292,12 +292,19 @@ class PlayersController < ApplicationController
               created_by: current_user.id,
               created_at: Time.now
             }
-            # Widerruf einer Ablehnung: Dieser `beantragt`-Eintrag darf das
-            # kostenfreie Zeitfenster nicht neu starten, sonst bekäme der Verein
-            # für einen längst kostenpflichtigen Antrag eine Gratis-Löschung.
-            # Siehe License.grace_period_anchor.
-            if params[:license_status_id].to_i == License::REQUESTED &&
-               last_status['license_status_id'].to_i == License::DENIED
+            # Jeder `beantragt`-Eintrag von hier aus wird markiert und startet die
+            # Karenzzeit damit nicht neu. Dieser Endpunkt ist Admin und SBK
+            # vorbehalten (siehe Rechteprüfung oben), ein Verein beantragt hier
+            # also nie: Was hier entsteht, ist immer eine Verwaltungskorrektur
+            # und keine neue Beantragung.
+            #
+            # Bewusst nicht auf `abgelehnt -> beantragt` eingeengt. Der Weg aus
+            # `erteilt` heraus ist der teurere Fall – dort ist die Gebühr sicher
+            # angefallen –, und er ist real erreichbar: Die Lizenzübersicht wird
+            # einmal geladen und nicht nachgeführt, ein Widerruf-Klick auf einer
+            # veralteten Zeile schickt also `beantragt` auf eine inzwischen
+            # erteilte Lizenz. Siehe License.grace_period_anchor.
+            if params[:license_status_id].to_i == License::REQUESTED
               entry[License::REVOKED_REJECTION_KEY] = true
             end
             lic['history'] << entry

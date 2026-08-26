@@ -17,8 +17,14 @@ class License < ApplicationRecord
   # statt Status WITHDRAWN) zurückgezogen werden kann.
   GRACE_PERIOD = 1.hour
 
-  # Markierung an einem `beantragt`-Eintrag, der aus dem Widerruf einer Ablehnung
-  # stammt und deshalb das kostenfreie Zeitfenster nicht neu startet.
+  # Markierung an einem `beantragt`-Eintrag, der aus einer Verwaltungskorrektur
+  # stammt (Admin/SBK über handle_license_request) und deshalb die Karenzzeit
+  # nicht neu startet. Der Name stammt vom ersten Anlass, dem Widerruf einer
+  # Ablehnung; gesetzt wird er inzwischen für jeden Weg über diesen Endpunkt.
+  #
+  # Der Wert landet in JSONB und ist damit Bestandsdaten: Wird er geändert,
+  # gelten alle vorhandenen Markierungen als nicht gesetzt und die Lücke ist
+  # wieder offen. Ein Test hält ihn deshalb fest.
   REVOKED_REJECTION_KEY = 'revoked_rejection'.freeze
 
   NAMES = {
@@ -33,28 +39,33 @@ class License < ApplicationRecord
     License::SUSPENDED => 'gesperrt'
   }.freeze
 
-  # Der `beantragt`-Eintrag, ab dem das kostenfreie Zeitfenster läuft – oder nil,
-  # wenn es keinen gibt.
+  # Der `beantragt`-Eintrag, ab dem die Karenzzeit läuft – oder nil, wenn es
+  # keinen gibt.
   #
-  # Übersprungen werden Einträge aus dem Widerruf einer Ablehnung: Der Antrag ist
-  # dann Wochen alt und längst kostenpflichtig, der Widerruf korrigiert nur einen
-  # Irrtum der SBK. Ohne diese Ausnahme eröffnete jeder Widerruf ein neues
+  # Unterschieden wird nach dem Weg, nicht nach dem Statuswechsel: Was Admin oder
+  # SBK über handle_license_request schreiben, ist markiert und zählt nicht;
+  # derselbe Wechsel über reenable_license_request (Verein) ist unmarkiert und
+  # zählt, denn dort beantragt der Verein tatsächlich neu.
+  #
+  # Ohne diese Unterscheidung eröffnete jede Verwaltungskorrektur ein neues
   # Gratis-Fenster, und ein Zurückziehen darin löscht die Lizenz ersatzlos – samt
-  # der Historie der irrtümlichen Ablehnung, die gerade der Beleg dafür ist.
+  # der Historie, die den Vorgang gerade belegt.
   #
-  # Eine Wiedereinstellung durch den Verein selbst (reenable_license_request)
-  # trägt die Markierung NICHT und eröffnet weiterhin ein Fenster: Dort stellt der
-  # Verein tatsächlich neu und soll den Irrtum genauso zurücknehmen können wie
-  # beim ersten Antrag.
+  # Maßgeblich bleibt der Zeitpunkt des Antrags selbst: Lehnt die SBK innerhalb
+  # der ersten Stunde ab und widerruft gleich darauf, liegt der ursprüngliche
+  # Antrag noch in seinem eigenen Fenster und das Zurückziehen bleibt kostenfrei.
   #
-  # Bleibt nichts übrig, ist das Ergebnis nil und der Aufrufer behandelt den Fall
-  # wie eine abgelaufene Frist – kostenpflichtig. Das ist die sichere Richtung:
-  # Ein Altbestand ohne lesbaren Antragszeitpunkt darf keine Gratis-Löschung
-  # auslösen.
+  # Einträge ohne verwertbaren Zeitpunkt fallen heraus (Altdaten-Import baut die
+  # Historie mit `compact`, `created_at` kann fehlen). Bleibt dadurch nichts
+  # übrig, ist das Ergebnis nil: withdraw_license_request setzt dann WITHDRAWN,
+  # also kostenpflichtig, und die Vereinsansicht liefert kein Fristende. Das ist
+  # die sichere Richtung – ein unlesbarer Antragszeitpunkt darf keine
+  # Gratis-Löschung auslösen, und ohne den Filter würfe `max_by` hier.
   def self.grace_period_anchor(history)
     Array(history)
       .select { |h| h['license_status_id'].to_i == REQUESTED && !h[REVOKED_REJECTION_KEY] }
-      .max_by { |h| h['created_at'] }
+      .reject { |h| h['created_at'].blank? }
+      .max_by { |h| h['created_at'].to_s }
   end
 
   # Frühester Genehmigungszeitpunkt (APPROVED) eines Lizenz-Hashes als Tiebreaker

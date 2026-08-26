@@ -543,8 +543,14 @@ class ClubsController < ApplicationController
         cs = p.current_license_status(l)
         item[:current_status] = cs
         item[:can_withdraw] = (cs['license_status_id'] == License::REQUESTED)
-        # Dieselbe Auswahl wie im Zurückziehen selbst (PlayersController), sonst
-        # zeigte die Ansicht einen Countdown, den die Aktion nicht einlöst.
+        # Dieselbe Auswahl wie in PlayersController#withdraw_license_request. Liefe
+        # die Anzeige nach einer anderen Regel, versprach die Seite ein
+        # kostenfreies Zurückziehen ("kostenfrei bis …", eigener Linktext), das
+        # die Aktion nicht einlöst.
+        #
+        # Bewusst nicht license_requested_at weiter unten: Die Altersgrenzen der
+        # Pflichtdokumente hängen weiter am jüngsten Antrag, unabhängig davon,
+        # wer ihn geschrieben hat.
         last_requested = License.grace_period_anchor(l['history'])
         item[:grace_period_ends_at] = last_requested ? (last_requested['created_at'].to_time + License::GRACE_PERIOD).iso8601 : nil
         # Altersabhängige Dokumentarten: Arten mit required_below_age rechnen gegen das
