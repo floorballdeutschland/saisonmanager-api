@@ -81,6 +81,7 @@ class PlayersController < ApplicationController
       only_current = params[:all_licenses].to_s != 'true'
       hash = result.full_hash(true, only_current, true)
       resolve_club_actor_names!(hash)
+      annotate_gf_role_scope!(hash)
       render json: hash
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
@@ -1149,6 +1150,45 @@ class PlayersController < ApplicationController
         'created_by_name' => names[c['created_by'].to_i],
         'valid_set_by_name' => names[c['valid_set_by'].to_i]
       )
+    end
+  end
+
+  # Je Lizenz: Darf dieses Konto die Erst-/Zweitlizenz-Zuordnung dieser Lizenz
+  # setzen? Genau die Frage, die set_gf_license_role beantwortet -- zuständig ist
+  # der Spielbetrieb der Liga, an der die Lizenz hängt.
+  #
+  # Das Profil zeigt ALLE Lizenzen der Person, saisonübergreifend und über
+  # Spielbetriebe hinweg. Die Maske konnte den Unterschied bisher nicht kennen:
+  # Der an das Frontend gesendete permissions-Hash (User#permissions_items) ist
+  # ein flacher Ja/Nein-Hash ohne Spielbetriebe, `player_set_gf_role` heißt dort
+  # nur "ist Admin oder SBK". Also bot sie die Knöpfe auf jeder
+  # GF-Erwachsenenlizenz an, und auf einer Lizenz außerhalb des eigenen
+  # Spielbetriebs endete der Klick in einer 403. Gemeldet am 26.08.2026 von der
+  # SBK Niedersachsen, die die Zuordnung an der 2.-FBL-Lizenz eines ihrer
+  # Regionalliga-Spieler versuchte.
+  #
+  # Der Spielbetrieb kommt aus dem bereits aufgelösten Liga-Hash und nicht über
+  # sbk_can_access_license?: Das Ergebnis ist dasselbe (Team -> Liga ->
+  # game_operation_id), aber ohne eine weitere Team-Abfrage je Lizenz und ohne
+  # die Datenfehler-Meldung jener Methode. Ein Profil mit vierzig Altlizenzen
+  # löst sonst für jedes gelöschte Team eine Sentry-Meldung aus, obwohl hier
+  # nichts entschieden, sondern nur angezeigt wird.
+  #
+  # Ohne auflösbare Liga bleibt es bei false: Wer nicht weiß, welcher Verband
+  # zuständig ist, ordnet nichts zu. Für VM und TM ist der Wert immer false,
+  # denn die Zuordnung ist Verbandssache (permissions_items:
+  # player_set_gf_role).
+  def annotate_gf_role_scope!(hash)
+    ph = current_user.permission_hash
+    admin = ph[:admin].present?
+    sbk_global = ph[:sbk].present? && ph[:sbk].include?(0)
+
+    Array(hash[:licenses]).each do |lic|
+      next unless lic.is_a?(Hash)
+
+      go_id = lic[:league].is_a?(Hash) ? lic[:league][:game_operation_id] : nil
+      lic[:gf_role_editable] = admin || sbk_global ||
+                               (go_id.present? && ph[:sbk].to_a.include?(go_id))
     end
   end
 

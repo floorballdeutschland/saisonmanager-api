@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Die Erst-/Zweitlizenz-Zuordnung wurde im Spielerprofil auch für Lizenzen fremder Spielbetriebe angeboten**: Das Profil einer Spielerin oder eines Spielers zeigt alle Lizenzen der Person, über Saisons und Spielbetriebe hinweg. Zuständig für die Zuordnung von Erst- und Zweitlizenz im Großfeld-Erwachsenenbereich ist aber allein der Verband der Liga, an der die jeweilige Lizenz hängt. Die Maske konnte diesen Unterschied nicht kennen, denn die an das Frontend gesendete Rechteauskunft ist eine flache Ja/Nein-Liste ohne Spielbetriebe: „darf zuordnen" hieß dort nur „ist Administration oder Spielbetriebskommission". Sie bot die Knöpfe deshalb auf jeder Großfeld-Erwachsenenlizenz an, und auf einer Lizenz außerhalb des eigenen Spielbetriebs wies die Schnittstelle den Klick mit einer Rechtemeldung ab. Weil auf diesem Aufruf keine eigene Fehlerbehandlung lag, griff die allgemeine Regel für abgewiesene Zugriffe und leitete auf die Startseite um: Die Zuordnung schlug nicht nur fehl, das Profil war auch weg. Gemeldet wurde das von der Spielbetriebskommission eines Landesverbandes, die einen ihrer Regionalliga-Spieler bearbeitete, dessen Erstlizenz in der 2. Bundesliga liegt. Das Profil weist die Zuständigkeit jetzt je Lizenz aus, sodass die Zuordnung nur dort angeboten wird, wo sie auch möglich ist. An der Regel selbst ändert sich nichts, und wer eine Zuordnung im eigenen Spielbetrieb setzt, bucht die Gegenseite wie bisher automatisch gegen, auch wenn die in einem anderen Spielbetrieb liegt. Lizenzen ohne auflösbare Liga, etwa aus dem Altbestand mit gelöschter Mannschaft, gelten dabei als nicht zuordenbar.
+
 ## [1.98.1] - 2026-08-26
 
 ### Behoben
