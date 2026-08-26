@@ -238,9 +238,10 @@ class StateAssociation < ApplicationRecord
 
   # Duerfen Personen mit dem Lizenzstatus „beantragt" aufgestellt werden?
   #
-  # Gelesen wird der Wert ausschliesslich ueber die Liga des Spiels
-  # (League#state_association), nicht ueber den Verein: Zustaendig fuer den
-  # Spielbetrieb einer Liga ist allein deren Verband. Eine Mannschaft, die
+  # Fuer die Aufstellungsregel gelesen wird der Wert ausschliesslich ueber die
+  # Liga des Spiels (League#state_association), nicht ueber den Verein:
+  # Zustaendig fuer den Spielbetrieb einer Liga ist allein deren Verband.
+  # Daneben nennt ihn `full_hash` fuer die Verbandsmaske. Eine Mannschaft, die
   # zusaetzlich im Pokal eines anderen Verbands antritt, richtet sich dort nach
   # dessen Regel.
   def effective_requested_license_playable

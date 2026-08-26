@@ -1,5 +1,6 @@
 # Aufstellen darf bisher nur, wessen Lizenz erteilt ist: Der Kader-Dialog im
-# Spielbericht blendet alles andere aus (TeamLineupPlayerPipe im Frontend), und
+# Spielbericht blendet alles andere aus, solange es nicht schon in der
+# Aufstellung steht (TeamLineupPlayerPipe im Frontend), und
 # `GamesController#lineup_license_warning` meldet einen Spieler mit dem Status
 # „beantragt" als nicht spielberechtigt.
 #

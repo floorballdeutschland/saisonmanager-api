@@ -74,6 +74,57 @@ class GamesRequestedLicensePlayableTest < ActionDispatch::IntegrationTest
     assert_nil aufstellen(@requested, 7)
   end
 
+  # Vor dem Schalter brach die Statuspruefung jeden nicht erteilten Antrag ab,
+  # bevor der Ligaklassen-Vergleich ueberhaupt drankam. Mit dem Schalter faellt
+  # ein beantragter Antrag zum ersten Mal in diesen Zweig -- und das CHANGELOG
+  # sichert ausdruecklich zu, dass er dort weiterhin warnt.
+  test 'der Schalter hebt die Pruefung der Lizenzklasse nicht auf' do
+    @sa.update!(requested_license_playable: true)
+    # Die Liga steht auf der Werkseinstellung 1fbl; die Lizenz muss die Klasse
+    # ausdruecklich abweichend tragen, sonst kopiert die Factory sie aus der Liga
+    # und der Fall waere gar nicht darstellbar.
+    fremde_klasse = create(:player,
+                           clubs: [{ 'club_id' => @club.id, 'home_club' => true }],
+                           with_licenses: [{ team: @home_team, status: License::REQUESTED,
+                                             league_class_id: 'rl' }])
+
+    assert_match(/Lizenzklasse .* passt nicht zur Spielklasse/, aufstellen(fremde_klasse, 9))
+  end
+
+  # Der Schalter laesst den offenen Antrag zu, nicht den entschiedenen. Eine
+  # Sperre waere die schwerste Verwechslung: Sie ist kein Anzeigefehler, sondern
+  # eine Integritaetsfrage.
+  test 'zurueckgezogen und gesperrt bleiben auch mit dem Schalter eine Warnung' do
+    @sa.update!(requested_license_playable: true)
+
+    { License::WITHDRAWN => 'zurückgezogen', License::SUSPENDED => 'gesperrt' }.each_with_index do |(status, name), i|
+      spieler = create(:player,
+                       clubs: [{ 'club_id' => @club.id, 'home_club' => true }],
+                       with_licenses: [{ team: @home_team, status: status }])
+
+      warnung = aufstellen(spieler, 20 + i)
+
+      assert_match(/nicht erteilt/, warnung)
+      assert_match(/#{name}/, warnung)
+    end
+  end
+
+  # Die Status-ID liegt in der JSONB-Historie nicht typgarantiert vor; im
+  # Bestand stehen sie auch als Zeichenkette (siehe die Begruendung an
+  # PublicSecretaryController#…, wo derselbe Cast das Erteilungsdatum rettet).
+  # lineup_license_warning castet heute schon vor dem Aufruf, die Regel selbst
+  # muss es trotzdem aushalten -- sonst wuerde eine spaetere Vereinfachung auf
+  # `status_id == License::REQUESTED` gruen durchgehen und solche Zeilen still
+  # ausschliessen.
+  test 'die Regel haelt eine als Zeichenkette gespeicherte Status-ID aus' do
+    @sa.update!(requested_license_playable: true)
+    game = Game.find(@game.id)
+
+    assert game.license_status_playable?('1')
+    assert game.license_status_playable?('2')
+    assert_not game.license_status_playable?('3')
+  end
+
   test 'der Spielabruf nennt die Regel, damit der Kader-Dialog danach filtern kann' do
     assert_not @game.full_hash[:requested_license_playable]
 
