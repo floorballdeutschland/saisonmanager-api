@@ -91,15 +91,11 @@ class GameRefereeReportsController < ApplicationController
     vsk_email = state_association&.effective_vsk_email
     return if vsk_email.blank?
 
-    assignment = @game.referee_assignment
-    r1 = assignment&.referee1
-    r2 = assignment&.referee2
-
     game_url = @game.url
     checklist_answers = @game.checklist_answers || []
 
     RefereeMailer.referee_report_to_vsk(
-      vsk_email, current_user, @game, report, r1, r2,
+      vsk_email, current_user, @game, report,
       game_url: game_url, checklist_answers: checklist_answers
     ).deliver_later
   end

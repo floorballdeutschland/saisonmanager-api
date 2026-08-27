@@ -27,7 +27,8 @@ class StateAssociationInheritedSettingsTest < ActiveSupport::TestCase
                      referee_assignment_enabled: true,
                      person_level_assignment_default: true,
                      report_form_email_enabled: true,
-                     manual_proceeding_creation: true)
+                     manual_proceeding_creation: true,
+                     requested_license_playable: true)
     child = create(:state_association, parent: verbund)
 
     assert_equal verbund, child.settings_source
