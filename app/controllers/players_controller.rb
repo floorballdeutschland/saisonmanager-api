@@ -86,6 +86,14 @@ class PlayersController < ApplicationController
       hash = result.full_hash(true, only_current, true)
       resolve_club_actor_names!(hash)
       annotate_gf_role_scope!(hash)
+      # Ob DIESES Konto DIESES Profil deaktivieren darf. Aus derselben Quelle
+      # wie die Prüfung beim Schreiben, denn die Rollenliste im Browser
+      # (`player_deactivate`) kann die Frage nicht beantworten: Sie gilt global,
+      # während die Freigabe an Teammanager*innen am einzelnen Verein hängt.
+      # Ein globales Flag zeigte einem Teammanager die Knöpfe entweder in jedem
+      # Verein oder in keinem, und beides wäre falsch. Vorbild: `manage_players`
+      # in vm/clubs_and_teams.
+      hash[:can_deactivate] = can_deactivate_player?(result)
       render json: hash
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized

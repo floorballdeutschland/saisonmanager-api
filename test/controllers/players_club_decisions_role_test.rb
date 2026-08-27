@@ -299,6 +299,30 @@ class PlayersClubDecisionsRoleTest < ActionDispatch::IntegrationTest
     assert_nil spieler.reload.deactivated_at
   end
 
+  # Das Spielerprofil zeigt dieselben Knöpfe wie die Vereinsliste. Weil die
+  # Freigabe am Verein hängt, kann das Rollen-Flag im Browser sie nicht
+  # steuern; die Antwort zum Profil sagt es deshalb je Profil.
+  test 'Profil nennt dem Teammanager, ob er deaktivieren darf' do
+    login_as(tm_im_freigegebenen_verein)
+    spieler = spieler_im_verein
+
+    get "/api/v2/admin/players/#{spieler.id}.json"
+
+    assert_response :success
+    assert_equal true, JSON.parse(response.body)['can_deactivate']
+  end
+
+  test 'Profil verneint es dem Teammanager ohne Freigabe' do
+    team = create(:team, club: @club, league: create(:league, :current_season))
+    login_as(create(:user, :tm, team_id: team.id))
+    spieler = spieler_im_verein
+
+    get "/api/v2/admin/players/#{spieler.id}.json"
+
+    assert_response :success
+    assert_equal false, JSON.parse(response.body)['can_deactivate']
+  end
+
   # Die Absage muss den Weg nennen: Ohne den Hinweis auf die Vereinsverwaltung
   # erfährt ein Teammanager nirgends, dass sich daran etwas ändern lässt.
   test 'Absage nennt die Vereinsverwaltung als Weg' do
