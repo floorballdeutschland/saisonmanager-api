@@ -308,7 +308,9 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_from: nil,
       default_reply_to: nil,
       placeholders: [
-        { key: 'game_number', description: 'Spielnummer' }
+        { key: 'game_number', description: 'Spielnummer' },
+        { key: 'opened_by_name', description: 'Vor- und Nachname der Person, die den Verfahrensvorschlag ' \
+                                              'angenommen hat (leer beim automatischen Versand)' }
       ]
     },
     'TransferRequestMailer#new_request_to_former_club' => {

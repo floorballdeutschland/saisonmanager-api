@@ -13,6 +13,15 @@ class LeaguesController < ApplicationController
   # Kopfzeile mitschicken können. Begründung an TeamsController#calendar.
   KEYLESS_ACTIONS = %i[calendar].freeze
 
+  # Meldung, wenn die Importmaske ohne ausgewählte Datei abgeschickt wurde.
+  # Als Konstante, damit der Test genau den Text prüft, den die Maske zeigt.
+  FEHLENDE_IMPORTDATEI = 'Keine Importdatei erhalten. Bitte zuerst eine Datei auswählen.'.freeze
+
+  # Meldung, wenn die hochgeladene Datei sich nicht als Arbeitsmappe öffnen
+  # lässt. Bewusst getrennt von „Datei ungütig, Vorlage verwenden!" weiter
+  # unten: Das meint eine lesbare Mappe mit falschem Blattnamen.
+  DATEI_NICHT_LESBAR = 'Datei konnte nicht gelesen werden. Bitte die unveränderte Excel-Vorlage (.xlsx) hochladen.'.freeze
+
   skip_before_action :authenticate_user, except: COOKIE_ONLY_ACTIONS
   before_action :authenticate_public_request, except: COOKIE_ONLY_ACTIONS + KEYLESS_ACTIONS
   after_action :track_public_view,
@@ -181,185 +190,231 @@ class LeaguesController < ApplicationController
   end
 
   def admin_schedule_import_games
-    if current_user && params[:file].present?
+    # Bewusst zwei getrennte Prüfungen: Bis 27.08.2026 hingen fehlende Anmeldung
+    # und fehlende Datei in einer Bedingung, deren Else-Zweig pauschal mit 401
+    # "Nicht eingeloggt." antwortete. Ein 401 ist im Frontend aber der einzige
+    # Status, der abmeldet (ErrorInterceptor: logout + Weiterleitung auf /login).
+    # Wer den Knopf ohne ausgewählte Datei drückte, flog also aus einer voll
+    # gültigen Sitzung. Kein Randfall: In den 30 Tagen vor diesem Fix trugen auf
+    # Produktion 11 von 12 Importversuchen `"file"=>""`.
+    #
+    # Der Anmelde-Zweig bleibt nötig, obwohl der ApplicationController
+    # `authenticate_user` als before_action führt: Diese Action steht nicht in
+    # COOKIE_ONLY_ACTIONS, überspringt den Filter also und passiert
+    # `authenticate_public_request` bereits mit dem Frontend-API-Key.
+    return render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized unless current_user
 
+    if params[:file].blank?
+      # Antwortform wie die übrigen Importfehler weiter unten (JSON-String in
+      # `message`), damit die Maske die Meldung in ihre Fehlerliste stellt.
+      # Status 422 statt 400, weil ein Pflichtparameter fehlt und nicht etwa
+      # eine Datei unlesbar ist – dieselbe Lesart wie beim
+      # ParameterMissing-Handler im ApplicationController.
+      return render json: { message: { errors: [FEHLENDE_IMPORTDATEI], warnings: [] }.to_json },
+                    status: :unprocessable_entity
+    end
+
+    errors = []
+    warnings = []
+
+    # Alles, was beim Öffnen der Datei schiefgeht, ist ein Eingabefehler und
+    # keine Störung: eine verwechselte Datei (Creek prüft die Endung und wirft
+    # `RuntimeError: Not a valid file format.`), eine in .xlsx umbenannte
+    # Fremddatei (`Zip::Error`), ein gültiges Zip ohne Tabellenteil
+    # (`Errno::ENOENT` beim Griff nach xl/workbook.xml). Ohne diesen rescue
+    # landete das alles im globalen StandardError-Handler und damit als 500
+    # „Server-Fehler." samt Sentry-Meldung. Für die hochladende Person las sich
+    # ein verwechseltes Dateiformat damit als Serverstörung, an der sie nichts
+    # ändern kann.
+    #
+    # Die weite Fehlerklasse ist hier Absicht und keine Nachlässigkeit: Sie
+    # umschließt nur diese zwei Zeilen, in denen ausschließlich eine fremde
+    # Datei verarbeitet wird. Damit ein echter Bibliotheksfehler trotzdem
+    # auffindbar bleibt, geht er ins Log, nur eben nicht als Alarm.
+    begin
       creek = Creek::Book.new params[:file], with_headers: false
       sheet = creek.sheets[0]
+    rescue StandardError => e
+      Rails.logger.warn("Spielplanimport: Datei nicht lesbar (#{e.class}: #{e.message})")
+      return render json: { message: { errors: [DATEI_NICHT_LESBAR], warnings: }.to_json },
+                    status: :unprocessable_entity
+    end
 
-      errors = []
-      warnings = []
+    # Eine Arbeitsmappe ganz ohne Blätter fiele sonst erst unten bei
+    # `sheet.name` auf, wieder als 500.
+    if sheet.nil?
+      return render json: { message: { errors: [DATEI_NICHT_LESBAR], warnings: }.to_json },
+                    status: :unprocessable_entity
+    end
 
-      user_id = current_user.id
+    user_id = current_user.id
 
-      if sheet.name == 'Import'
-        league = League.find(sheet.simple_rows.to_a[1]['A'])
-        if league
+    if sheet.name == 'Import'
+      league = League.find(sheet.simple_rows.to_a[1]['A'])
+      if league
 
-          if league.user_permissions(current_user)&.include?(:import_games)
+        if league.user_permissions(current_user)&.include?(:import_games)
 
-            # Ein Re-Import ist erlaubt, solange noch kein Spiel begonnen/gespielt
-            # wurde – der bestehende (nur geplante) Spielplan wird dann unten
-            # komplett ersetzt. Sobald ein Spiel begonnen/gespielt ist, wird der
-            # gesamte Import blockiert (kein Teil-Überschreiben).
-            if league_schedule_started?(league)
-              errors << 'Liga hat bereits begonnene oder gespielte Spiele – ein erneuter Import ist nicht mehr möglich.'
-            end
+          # Ein Re-Import ist erlaubt, solange noch kein Spiel begonnen/gespielt
+          # wurde – der bestehende (nur geplante) Spielplan wird dann unten
+          # komplett ersetzt. Sobald ein Spiel begonnen/gespielt ist, wird der
+          # gesamte Import blockiert (kein Teil-Überschreiben).
+          if league_schedule_started?(league)
+            errors << 'Liga hat bereits begonnene oder gespielte Spiele – ein erneuter Import ist nicht mehr möglich.'
+          end
 
-            arena_ids = Arena.active.pluck(:id)
-            teams = league.teams
-            team_ids = teams.map(&:id)
-            club_ids = teams.map(&:all_club_ids).flatten.compact.uniq
+          arena_ids = Arena.active.pluck(:id)
+          teams = league.teams
+          team_ids = teams.map(&:id)
+          club_ids = teams.map(&:all_club_ids).flatten.compact.uniq
 
-            game_days = {}
-            games = {}
-            used_game_numbers = []
+          game_days = {}
+          games = {}
+          used_game_numbers = []
 
-            sheet.simple_rows.each_with_index do |row, i|
-              next if i < 9
-              break if row['A'].blank? || errors.present?
+          sheet.simple_rows.each_with_index do |row, i|
+            next if i < 9
+            break if row['A'].blank? || errors.present?
 
-              game_days[row['C'].to_i] ||= {}
-              games[row['C'].to_i] ||= []
+            game_days[row['C'].to_i] ||= {}
+            games[row['C'].to_i] ||= []
 
-              home_team_id = if row['H'].present? && team_ids.include?(row['H'].to_i)
-                               row['H'].to_i
-                             else
-                               errors << "Zeile #{i + 1}: Heimteam nicht erkannt"
-                               nil
-                             end
-
-              guest_team_id = if row['I'].present? && team_ids.include?(row['I'].to_i)
-                                row['I'].to_i
-                              else
-                                errors << "Zeile #{i + 1}: Gastteam nicht erkannt"
-                                nil
-                              end
-
-              game_number = if row['B'].present? && !used_game_numbers.include?(row['B'].to_i)
-                              number = row['B'].to_i
-                              used_game_numbers << number
-
-                              number
-                            else
-                              errors << "Zeile #{i + 1}: Spielnummer nicht erkannt, oder doppelt verwendet"
-                              nil
-                            end
-
-              parsed_start_time = if row['E'].instance_of?(Time)
-                                    row['E'].strftime('%H:%M')
-                                  elsif row['E'].instance_of?(String) && /^[0-2]\d{1}:\d{2}$/.match(row['E'])
-                                    row['E']
-                                  elsif row['E'].instance_of?(String) && /^[0-2]\d{1}:\d{2}:\d{2}$/.match(row['E'])
-                                    row['E'][0..4]
-                                  else
-                                    errors << "Zeile #{i + 1}: Startzeit nicht erkannt, falsches Format?"
-                                    nil
-                                  end
-
-              games[row['C'].to_i] << {
-                home_team_id:,
-                game_number:,
-                guest_team_id:,
-                start_time: parsed_start_time,
-                nominated_referee_string: row['J'].present? ? row['J'] : '',
-                series_title: import_cell_string(row['K']),
-                series_number: import_cell_string(row['L']),
-                created_by: user_id
-              }
-
-              next if game_days[row['C'].to_i].present?
-
-              parsed_date = if row['D'].instance_of?(Date)
-                              row['D'].to_s
-                            elsif row['D'].instance_of?(Time)
-                              row['D'].to_date.to_s
-                            elsif row['D'].instance_of?(String)
-                              begin
-                                Date.parse(row['D']).to_s
-                              rescue Date::Error => e
-                                errors << "Zeile #{i + 1}: Fehlerhaftes Datum #{row['D'].class}, #{row['D']}"
-                              end
-                            else
-                              errors << "Zeile #{i + 1}: Datum nicht erkannt #{row['D'].class}, #{row['D']}"
-                              nil
-                            end
-
-              arena_id = if row['F'].present?
-                           if arena_ids.include?(row['F'].to_i)
-                             row['F'].to_i
+            home_team_id = if row['H'].present? && team_ids.include?(row['H'].to_i)
+                             row['H'].to_i
                            else
-                             errors << "Zeile #{i + 1}: Halle nicht erkannt"
+                             errors << "Zeile #{i + 1}: Heimteam nicht erkannt"
                              nil
                            end
-                         else
-                           warnings << "Zeile #{i + 1}: Keine Halle hinterlegt"
-                           nil
-                         end
 
-              club_id = if row['G'].present?
-                          if club_ids.include?(row['G'].to_i)
-                            row['G'].to_i
+            guest_team_id = if row['I'].present? && team_ids.include?(row['I'].to_i)
+                              row['I'].to_i
+                            else
+                              errors << "Zeile #{i + 1}: Gastteam nicht erkannt"
+                              nil
+                            end
+
+            game_number = if row['B'].present? && !used_game_numbers.include?(row['B'].to_i)
+                            number = row['B'].to_i
+                            used_game_numbers << number
+
+                            number
                           else
-                            errors << "Zeile #{i + 1}: Ausrichter nicht erkannt"
+                            errors << "Zeile #{i + 1}: Spielnummer nicht erkannt, oder doppelt verwendet"
                             nil
                           end
-                        else
-                          warnings << "Zeile #{i + 1}: Kein Ausrichter hinterlegt"
-                          nil
-                        end
 
-              game_day_number = if row['A'].present?
-                                  row['A'].to_i
+            parsed_start_time = if row['E'].instance_of?(Time)
+                                  row['E'].strftime('%H:%M')
+                                elsif row['E'].instance_of?(String) && /^[0-2]\d{1}:\d{2}$/.match(row['E'])
+                                  row['E']
+                                elsif row['E'].instance_of?(String) && /^[0-2]\d{1}:\d{2}:\d{2}$/.match(row['E'])
+                                  row['E'][0..4]
                                 else
-                                  errors << "Zeile #{i + 1}: Spieltagsnummer nicht erkannt"
+                                  errors << "Zeile #{i + 1}: Startzeit nicht erkannt, falsches Format?"
                                   nil
                                 end
 
-              game_days[row['C'].to_i] = {
-                date: parsed_date,
-                number: game_day_number,
-                league_id: league.id,
-                arena_id:,
-                club_id:,
-                created_by: user_id
-              }
+            games[row['C'].to_i] << {
+              home_team_id:,
+              game_number:,
+              guest_team_id:,
+              start_time: parsed_start_time,
+              nominated_referee_string: row['J'].present? ? row['J'] : '',
+              series_title: import_cell_string(row['K']),
+              series_number: import_cell_string(row['L']),
+              created_by: user_id
+            }
 
-              # test
-            end
-          else
-            errors << 'fehlende Berechtigung'
+            next if game_days[row['C'].to_i].present?
+
+            parsed_date = if row['D'].instance_of?(Date)
+                            row['D'].to_s
+                          elsif row['D'].instance_of?(Time)
+                            row['D'].to_date.to_s
+                          elsif row['D'].instance_of?(String)
+                            begin
+                              Date.parse(row['D']).to_s
+                            rescue Date::Error => e
+                              errors << "Zeile #{i + 1}: Fehlerhaftes Datum #{row['D'].class}, #{row['D']}"
+                            end
+                          else
+                            errors << "Zeile #{i + 1}: Datum nicht erkannt #{row['D'].class}, #{row['D']}"
+                            nil
+                          end
+
+            arena_id = if row['F'].present?
+                         if arena_ids.include?(row['F'].to_i)
+                           row['F'].to_i
+                         else
+                           errors << "Zeile #{i + 1}: Halle nicht erkannt"
+                           nil
+                         end
+                       else
+                         warnings << "Zeile #{i + 1}: Keine Halle hinterlegt"
+                         nil
+                       end
+
+            club_id = if row['G'].present?
+                        if club_ids.include?(row['G'].to_i)
+                          row['G'].to_i
+                        else
+                          errors << "Zeile #{i + 1}: Ausrichter nicht erkannt"
+                          nil
+                        end
+                      else
+                        warnings << "Zeile #{i + 1}: Kein Ausrichter hinterlegt"
+                        nil
+                      end
+
+            game_day_number = if row['A'].present?
+                                row['A'].to_i
+                              else
+                                errors << "Zeile #{i + 1}: Spieltagsnummer nicht erkannt"
+                                nil
+                              end
+
+            game_days[row['C'].to_i] = {
+              date: parsed_date,
+              number: game_day_number,
+              league_id: league.id,
+              arena_id:,
+              club_id:,
+              created_by: user_id
+            }
+
+            # test
           end
         else
-          errors << 'Liga konnte nicht gefunden werden, Abbruch.'
+          errors << 'fehlende Berechtigung'
         end
       else
-        errors << 'Datei ungütig, Vorlage verwenden!'
-      end
-
-      if errors.present?
-        render json: { message: { errors:, warnings: }.to_json },
-               status: :bad_request
-      else
-        begin
-          # Löschen + Neuanlegen atomar: schlägt das Neuanlegen fehl, rollt die
-          # Transaktion inkl. Löschung zurück; der bisherige Spielplan bleibt
-          # erhalten. Da die Parse-Fehlerprüfung oben schon durchlaufen ist,
-          # wird nur bei fehlerfreiem Import gelöscht/ersetzt.
-          ActiveRecord::Base.transaction do
-            rebuild_schedule!(league, game_days, games)
-          end
-
-          render json: { errors:, warnings: }
-        rescue ActiveRecord::RecordInvalid => e
-          # Neuanlage fehlgeschlagen -> Transaktion wurde zurückgerollt, der
-          # bestehende Spielplan ist unverändert. Sauberer Fehler statt 500.
-          render json: { message: { errors: ["Import fehlgeschlagen, Spielplan unverändert: #{e.message}"],
-                                    warnings: }.to_json },
-                 status: :bad_request
-        end
+        errors << 'Liga konnte nicht gefunden werden, Abbruch.'
       end
     else
-      render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
+      errors << 'Datei ungütig, Vorlage verwenden!'
+    end
+
+    if errors.present?
+      render json: { message: { errors:, warnings: }.to_json },
+             status: :bad_request
+    else
+      begin
+        # Löschen + Neuanlegen atomar: schlägt das Neuanlegen fehl, rollt die
+        # Transaktion inkl. Löschung zurück; der bisherige Spielplan bleibt
+        # erhalten. Da die Parse-Fehlerprüfung oben schon durchlaufen ist,
+        # wird nur bei fehlerfreiem Import gelöscht/ersetzt.
+        ActiveRecord::Base.transaction do
+          rebuild_schedule!(league, game_days, games)
+        end
+
+        render json: { errors:, warnings: }
+      rescue ActiveRecord::RecordInvalid => e
+        # Neuanlage fehlgeschlagen -> Transaktion wurde zurückgerollt, der
+        # bestehende Spielplan ist unverändert. Sauberer Fehler statt 500.
+        render json: { message: { errors: ["Import fehlgeschlagen, Spielplan unverändert: #{e.message}"],
+                                  warnings: }.to_json },
+               status: :bad_request
+      end
     end
   end
 
