@@ -43,7 +43,7 @@ class PlayersController < ApplicationController
 
   def global_search
     if current_user
-      ph = current_user.permission_hash
+      ph = user_permission_hash
       unless ph[:admin].present? || ph[:sbk].present?
         return render json: { message: 'Keine Berechtigung' }, status: :forbidden
       end
@@ -63,7 +63,10 @@ class PlayersController < ApplicationController
         q: term
       ).order(:last_name, :first_name).limit(20)
 
-      render json: players.map(&:search_hash)
+      # Jeder Treffer sagt, ob diese Stelle ihn auch oeffnen darf: Die Suche geht
+      # ueber den gesamten Bestand, das Profil dahinter nicht. Siehe
+      # #search_scope_hint.
+      render json: players.map { |p| p.search_hash.merge(search_scope_hint(p)) }
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
     end
@@ -1267,9 +1270,59 @@ class PlayersController < ApplicationController
   # Lesender Zugriff auf ein Profil und das Pflegen der E-Mail-Adresse: hier
   # zählt der Teammanager mit, er stellt aus diesem Bestand seinen Kader auf.
   def can_manage_player?(player)
-    ph = current_user.permission_hash
+    ph = user_permission_hash
     ph[:admin].present? || sbk_can_access_player?(ph, player) ||
       vm_can_access_player?(ph, player) || tm_can_access_player?(ph, player)
+  end
+
+  # Kann diese Stelle den Treffer der Spielersuche ueberhaupt oeffnen, und wenn
+  # nicht: wer ist zustaendig?
+  #
+  # Die Suche laeuft bewusst ueber den gesamten Bestand — eine Landes-SBK muss
+  # eine zuziehende Person finden koennen, sonst kaeme kein Transfer zustande
+  # (siehe #global_search). Das Profil selbst haengt an `can_manage_player?`, also
+  # fuer die SBK am Heimat-Spielbetrieb und fuer VM/TM an einer heute gueltigen
+  # Vereinszugehoerigkeit. Die Trefferliste bot deshalb Links an, die die Maske
+  # mit 403 abweist, und der generische 403-Zweig des Frontends warf dabei auf die
+  # Startseite: aus jedem Treffer eines anderen Landesverbands wurde ein Rauswurf
+  # samt verlorener Suche.
+  #
+  # Bewusst dieselbe Methode wie #admin_player und nicht eine eigene Fassung: Nur
+  # so koennen Kennzeichnung und Absage nicht auseinanderlaufen. Eine Verkuerzung
+  # auf `sbk_can_access_player?` waere naheliegend und falsch — sie sperrte jede
+  # Doppelrolle aus den Profilen des eigenen Vereins aus.
+  #
+  # `manageable` steht an JEDEM Treffer, auch am oeffenbaren. Ein Feld, das nur im
+  # Absagefall mitkommt, waere im Frontend nicht von „alte Antwort ohne dieses
+  # Feld" zu unterscheiden, und die Liste wuerde im Zweifel wieder verlinken.
+  # `responsible` dagegen nur dort, wo es etwas zu sagen hat.
+  #
+  # `responsible` bleibt aus ZWEI Gruenden leer, und das Frontend darf deshalb
+  # keinen davon behaupten: ohne gueltige Heimat-Zugehoerigkeit (dieselbe Luecke,
+  # die schon `sbk_can_access_player?` sperrt, api#389) und bei einem Heimatverein,
+  # fuer den kein Spielbetrieb zustaendig ist (`Club#main_game_operation_id` ist
+  # dort bewusst nil, siehe dort; Stand 2026 rund zwei Dutzend Vereine). Der
+  # Hinweis nennt dann keinen Verband, statt einen zu erfinden.
+  #
+  # Stichtag `Date.today` wie in `sbk_can_access_player?`: Zwei verschiedene
+  # Uhren fuer dieselbe Frage ergaeben um Mitternacht eine Kennzeichnung, die der
+  # Maske dahinter widerspricht.
+  def search_scope_hint(player)
+    return { manageable: true } if can_manage_player?(player)
+
+    { manageable: false,
+      responsible: player.home_club(Date.today)&.home_game_operation&.name }
+  end
+
+  # Der Rechte-Hash je Anfrage nur einmal: #global_search prueft bis zu 20 Treffer
+  # in einer Antwort, und jeder Aufruf von User#permission_hash laeuft ueber
+  # `League.current_season.pluck(:id)`. Innerhalb einer Anfrage aendern sich die
+  # Rechte nicht, gecacht wird auf der Controller-Instanz und damit nur fuer sie.
+  #
+  # Gilt fuer die Rechtepruefungen rund um ein Spielerprofil, die hier darunter
+  # stehen; die uebrigen Aktionen des Controllers lesen den Hash weiterhin direkt.
+  def user_permission_hash
+    @user_permission_hash ||= current_user.permission_hash
   end
 
   # Deaktivieren und Reaktivieren dagegen nicht: Die Deaktivierung nimmt das
@@ -1280,7 +1333,7 @@ class PlayersController < ApplicationController
   # Vereinsbezug kommt hier aus der heute gültigen Zugehörigkeit der Person,
   # nicht aus einem übergebenen Verein.
   def can_deactivate_player?(player)
-    ph = current_user.permission_hash
+    ph = user_permission_hash
     ph[:admin].present? || sbk_can_access_player?(ph, player) ||
       vm_can_access_player?(ph, player)
   end
@@ -1294,7 +1347,7 @@ class PlayersController < ApplicationController
   # in club_test.rb, „wer VM des einen und TM im anderen Verein ist"). Für jede
   # andere Rolle wäre der Hinweis falsch, die ist schlicht nicht zuständig.
   def deactivation_denied_message(player)
-    ph = current_user.permission_hash
+    ph = user_permission_hash
     if tm_can_access_player?(ph, player) && !vm_can_access_player?(ph, player)
       'Deaktivieren und Reaktivieren darf nur der Vereinsmanager des Vereins.'
     else
@@ -1303,7 +1356,7 @@ class PlayersController < ApplicationController
   end
 
   def creation_denied_message(club)
-    ph = current_user.permission_hash
+    ph = user_permission_hash
     if tm_can_access_club?(ph, club.id) && !ph[:vm].to_a.include?(club.id)
       'Spieler*innen anlegen darf nur der Vereinsmanager des Vereins.'
     else
@@ -1429,10 +1482,13 @@ class PlayersController < ApplicationController
     tm_club_ids(ph).include?(club_id)
   end
 
+  # Wie #user_permission_hash je Anfrage nur einmal: Ueber die Spielersuche kaeme
+  # sonst je Treffer eine Team-Abfrage samt all_club_ids dazu. `ph` stammt in
+  # jedem Aufruf aus demselben Konto, der Wert haengt also an nichts anderem.
   def tm_club_ids(ph)
     return [] unless ph[:tm].present?
 
-    Team.current_season.where(id: ph[:tm]).flat_map(&:all_club_ids).uniq
+    @tm_club_ids ||= Team.current_season.where(id: ph[:tm]).flat_map(&:all_club_ids).uniq
   end
 
   def sanitize_deactivation_reason(raw)
