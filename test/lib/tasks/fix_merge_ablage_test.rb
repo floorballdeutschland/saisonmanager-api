@@ -19,11 +19,14 @@ class FixMergeAblageTest < ActiveSupport::TestCase
 
   teardown { File.delete(@csv) if @csv && File.exist?(@csv) }
 
+  # Zeilen ohne `beginn` werden hier auf die Spaltenzahl gebracht, damit die Tests lesbar
+  # bleiben: [player_id, aktion, ablage, oeffnen, beleg] genuegt, [.., beginn, beleg] geht
+  # ebenso.
   def liste(zeilen)
     @csv = Rails.root.join("tmp/fix_merge_ablage_test_#{SecureRandom.hex(4)}.csv").to_s
     CSV.open(@csv, 'w', col_sep: ';') do |csv|
-      csv << %w[player_id aktion ablage oeffnen beleg]
-      zeilen.each { |z| csv << z }
+      csv << %w[player_id aktion ablage oeffnen beginn beleg]
+      zeilen.each { |z| csv << (z.size == 5 ? z[0..3] + [nil, z[4]] : z) }
     end
     @csv
   end
@@ -150,6 +153,45 @@ class FixMergeAblageTest < ActiveSupport::TestCase
     assert_equal(1, eintrag(p, @verein.id).count { |c| c['valid_until'].blank? })
     juengste = eintrag(p, @verein.id).find { |c| c['valid_until'].blank? }
     assert_equal 6.years.ago.iso8601, juengste['created_at']
+  end
+
+  # Ohne `beginn` traegt der neue Eintrag den heutigen Tag und behauptet, die Mitgliedschaft
+  # habe heute begonnen. Das sortiert ihn ausserdem als juengsten Eintrag, und eine kuenftige
+  # Zusammenlegung liest ihn dann als aktuellen Heimatverein.
+  test 'ein neuer Eintrag traegt den Beginn aus der Liste' do
+    p = create(:player, clubs: [{ 'club_id' => @ablage.id, 'home_club' => true,
+                                  'created_at' => 2.years.ago.iso8601 }])
+
+    run_task(liste([[p.id, 'schliessen', @ablage.id, @verein.id, '2020-06-30', 'Lizenz S11']]))
+
+    neu = eintrag(p, @verein.id).first
+    assert_equal [@verein.id], offen(p)
+    assert_equal Time.zone.parse('2020-06-30').iso8601, neu['created_at']
+  end
+
+  test 'ohne Beginn faellt der neue Eintrag auf heute zurueck' do
+    p = create(:player, clubs: [{ 'club_id' => @ablage.id, 'home_club' => true,
+                                  'created_at' => 2.years.ago.iso8601 }])
+
+    run_task(liste([[p.id, 'schliessen', @ablage.id, @verein.id, 'Beleg']]))
+
+    assert_equal Date.current, Time.zone.parse(eintrag(p, @verein.id).first['created_at']).to_date
+  end
+
+  # Ein vorhandener geschlossener Eintrag gewinnt gegen die Spalte: Sein eigenes created_at
+  # ist der bessere Beleg, und ein zweiter Eintrag desselben Vereins waere ein Datenfehler.
+  test 'Beginn wird ignoriert, wenn ein Eintrag wiedereroeffnet wird' do
+    beginn = 9.years.ago.iso8601
+    p = create(:player, clubs: [
+      { 'club_id' => @verein.id, 'home_club' => true, 'created_at' => beginn,
+        'valid_until' => 4.years.ago.iso8601 },
+      { 'club_id' => @ablage.id, 'home_club' => true, 'created_at' => 2.years.ago.iso8601 }
+    ])
+
+    run_task(liste([[p.id, 'schliessen', @ablage.id, @verein.id, '2020-06-30', 'Beleg']]))
+
+    assert_equal beginn, eintrag(p, @verein.id).first['created_at']
+    assert_equal 1, eintrag(p, @verein.id).size
   end
 
   test 'Dry-Run schreibt nichts' do

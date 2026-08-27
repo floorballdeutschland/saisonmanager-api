@@ -40,15 +40,27 @@
 #     richtig.
 #   - "Ablage Sperrung" (213). Widerspruch nach Art. 21 DSGVO: Diese Personen wollen nicht
 #     mehr im Saisonmanager erscheinen und duerfen nie in einen echten Verein zurueck.
-#   - 15 Faelle zur Handpruefung: 14 mehrdeutige (darunter vier mit Auslandsepisode in der
-#     Historie, die das Transferverfahren betreffen) und Profil 2733, dessen belegter Verein
+#   - 13 Faelle zur Handpruefung: vier mit Auslandsepisode in der Historie (das
+#     Transferverfahren entscheidet, nicht dieser Lauf), acht, in denen der
+#     Transfer-Datensatz einen anderen Verein nennt als die Lizenzen (vor der
+#     Freigabe-Logik konnte ein Profil in mehreren Vereinen offen stehen; welcher der
+#     richtige ist, entscheidet dort ein Mensch), und Profil 2733, dessen belegter Verein
 #     deaktiviert ist -- ihn zu oeffnen wuerde die Person in einen stillgelegten Verein
 #     einbuchen. Keiner dieser Faelle ist in S17 oder S18 aktiv, sie blockieren also keine
 #     Lizenzierung.
 #
-# Von 1239 Merge-Zielen betrifft das 59 Profile. Drei davon sind in S17 aktiv und damit die
+# Vierte Belegart fuer zwei der Zeilen: der TRANSFER in die Ablage. Sein `former_club_id`
+# nennt den Verein zum Parkzeitpunkt unmittelbar. Aufgenommen sind nur die zwei Faelle, in
+# denen er den Lizenzen nicht widerspricht (6796, 10247).
+#
+# Von 1239 Merge-Zielen betrifft das 61 Profile. Drei davon sind in S17 aktiv und damit die
 # eigentlich dringenden: 4742 Ludemann, 4876 Brueckner (der gemeldete Fall) und 5463
 # Rustemeier.
+#
+# Spalte `beginn`: nur fuer die Zeilen, in denen kein geschlossener Eintrag des Zielvereins
+# existiert und der Lauf einen neuen anlegen muss (Stand 27.08.2026 neun Zeilen). Sie traegt
+# das Datum des Belegs, damit der Eintrag nicht behauptet, die Mitgliedschaft habe am Tag des
+# Laufs begonnen.
 #
 # Drei Aktionen je Zeile:
 #   entfernen    Der Ablage-Eintrag ist eine KOPIE aus der Dublette (gleicher Verein UND
@@ -114,6 +126,7 @@ namespace :players do
       # "129" gegen 129 und der Lauf meldete jede Zeile als abweichend.
       ablage = zeile['ablage'].presence&.to_i
       oeffnen = zeile['oeffnen'].to_i
+      beginn = zeile['beginn'].presence
 
       # Bewusst `valid_until.blank?` und NICHT `open_home_club_entries`: Dessen
       # Stichtagsvergleich ist tagesgenau, ein heute geschlossener Eintrag gilt dort bis
@@ -177,9 +190,15 @@ namespace :players do
             wieder.delete('valid_set_by')
             wieder['source'] = quelle
           else
+            # `beginn` aus der Liste, wo es einen gibt: Es ist das Datum des Belegs, also der
+            # Zeitpunkt, zu dem die Mitgliedschaft nachweislich bestand. Ohne ihn traegt der
+            # neue Eintrag den heutigen Tag und behauptet, sie habe heute begonnen -- das ist
+            # nicht nur falsch aufgeschrieben, es sortiert den Eintrag auch als den juengsten
+            # und liesse eine kuenftige Zusammenlegung ihn als aktuellen Heimatverein lesen.
+            # Dieselbe Ueberlegung steht in `LegacyImport::HomeClubBackfill#build_entry`.
             eintraege << { 'club_id' => oeffnen, 'home_club' => true,
-                           'created_at' => Time.now.iso8601, 'created_by' => user_id,
-                           'source' => quelle }
+                           'created_at' => (beginn ? Time.zone.parse(beginn).iso8601 : Time.now.iso8601),
+                           'created_by' => user_id, 'source' => quelle }
           end
 
           player.clubs = eintraege
