@@ -35,6 +35,68 @@ class Club < ApplicationRecord
 
   scope :active, -> { where(deactivated_at: nil) }
 
+  # --- Ablagen ---------------------------------------------------------------
+  #
+  # Vor `Player#merge_into!` gab es keine Zusammenlegung: Ein doppelt angelegtes
+  # Spielerprofil wanderte per Transfer in einen Sammelverein ("Ablage Doppelung",
+  # "ZZ-Ablage", "zz_not in use" ...). Diese Zugehoerigkeit ist deshalb keine
+  # Mitgliedschaft, sondern die Markierung "dieses Profil ist die Dublette".
+  #
+  # Das Muster ist am Namensanfang verankert und deckt damit genau den am 18.08.2026
+  # bestaetigten Bestand ab. `LegacyImport::HomeClubBackfillData::PLACEHOLDER_CLUB_PATTERN`
+  # liest bewusst weiter (auch "ablage", "doppelung", "not in use" mitten im Namen) und
+  # ist deshalb NICHT dieselbe Konstante: Dort schliesst ein Fehltreffer nur einen
+  # moeglichen Zielverein aus, das Profil wird uebersehen. Hier verwirft ein Fehltreffer
+  # eine echte Mitgliedschaft, ohne Meldung. "Ablagerung SV" oder "FC Doppelungen" waeren
+  # dem weiten Muster zum Opfer gefallen. `\y` ist die Wortgrenze, "Ablage Doppelung"
+  # trifft, "Ablagerung" nicht.
+  #
+  # Nicht erfasst ist "BW" (Produktion 136), ein nachgeahmter Landesverband ohne
+  # Namensmerkmal. Bewusst: `deactivated_at IS NOT NULL` mitzupruefen wuerde jeden
+  # aufgeloesten echten Verein zur Ablage machen, und dessen Mitgliedschaft ist echte
+  # Historie. Der Einzelfall gehoert in den Datenlauf, nicht in diese Regel.
+  ABLAGE_NAME_PATTERN = '(^z_|^zz|^ablage\y)'.freeze
+
+  # Zwei dieser Vereine tragen eine ENTSCHEIDUNG und keinen Behelf. Sie werden beim
+  # Zusammenfuehren uebernommen wie ein echter Verein:
+  #
+  #   "Ablage Sperrung" (Produktion 213): Widerspruch nach Art. 21 DSGVO. Diese Personen
+  #     wollen nicht mehr im Saisonmanager erscheinen und duerfen nie in einen echten Verein
+  #     zurueckwandern.
+  #   "Ablage Ausland (IFF Trans)" (Produktion 83): das laufende Verfahren fuer einen
+  #     Transfer ins Ausland, kein Altbestand. Stand 27.08.2026 tragen alle 13 betroffenen
+  #     Profile einen Transfer-Datensatz in diesen Verein, angelegt von namentlichen
+  #     Verbandskonten, 44 Eintraege in 2024, 44 in 2025, 28 in 2026. Wer im Ausland spielt,
+  #     ist dort richtig eingetragen; ihn beim Merge auf einen deutschen Verein zu ziehen
+  #     wuerde eine Rueckkehr behaupten, die es nicht gab.
+  #
+  # Erkennung an beliebiger Stelle im Namen und nicht am Anfang: `Club` normalisiert den
+  # Namen nicht, ein fuehrendes Leerzeichen kommt im Bestand vor (siehe
+  # `all_state_associations`), und eine Umbenennung wuerde aus einem dieser Vereine wortlos
+  # eine Ablage machen. Ein Fehltreffer ist hier ausserdem die harmlose Richtung: Der
+  # Eintrag wird dann nur wie ein echter Verein behandelt.
+  ENTSCHEIDUNG_NAME_PATTERN = '(sperrung|ausland|iff)'.freeze
+
+  # Der Widerspruch gewinnt zusaetzlich gegen jeden echten Verein, siehe
+  # `Player#_close_surplus_home_clubs`. Die ID ist der zweite Riegel neben dem Namen.
+  WIDERSPRUCH_NAME_PATTERN = 'sperrung'.freeze
+  WIDERSPRUCH_CLUB_IDS = [213].freeze
+
+  # Behelfs-Ablagen: Beim Zusammenfuehren nicht uebernehmen, und als offener Heimatverein
+  # verlieren sie gegen jeden echten Verein.
+  def self.ablage_ids
+    where('name ~* ?', ABLAGE_NAME_PATTERN)
+      .where.not('name ~* ? OR id IN (?)', ENTSCHEIDUNG_NAME_PATTERN, WIDERSPRUCH_CLUB_IDS)
+      .pluck(:id)
+  end
+
+  # Die Widerspruchs-Ablage: Sie gewinnt als offener Heimatverein gegen alles andere. Der
+  # Widerspruch darf durch eine Zusammenlegung nicht stillschweigend aufgehoben werden,
+  # auch nicht dadurch, dass der Eintrag der aeltere von zwei offenen ist.
+  def self.widerspruch_ids
+    where('name ~* ? OR id IN (?)', WIDERSPRUCH_NAME_PATTERN, WIDERSPRUCH_CLUB_IDS).pluck(:id)
+  end
+
   # Vereinsmanager dieses Vereins. Kandidaten per jsonb-Containment vorfiltern
   # und dann über permission_hash bestätigen, das allein die Sonderfälle kennt
   # (Mehrfachrollen, Alt-Einträge).

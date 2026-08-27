@@ -1200,9 +1200,19 @@ class Player < ApplicationRecord
   # Clubs des Secondary auf den Master übernehmen: alle Master-Einträge behalten,
   # vom Secondary nur ergänzen, was nicht bereits durch denselben aktiven Club
   # abgedeckt ist. deep_dup entkoppelt die Hashes von der Secondary.
+  #
+  # Ablage-Zugehoerigkeiten der Dublette bleiben dabei zurueck (siehe `Club.ablage_ids`).
+  # Vor dem Merge war der Transfer in eine Ablage der Behelf, um ein doppelt angelegtes
+  # Profil aus dem Weg zu raeumen; der Eintrag markiert also genau das Profil, das hier
+  # aufgeloest wird. Ihn mitzunehmen dreht die Aussage um und macht die Ablage zum
+  # aktuellen Verein des echten Profils. Auf Produktion war das am 26.08.2026 bei acht
+  # Merge-Zielen so, darunter Spieler 4876 mit 148 Spielen und Lizenz in S17.
   def _merge_clubs(secondary_clubs, master_clubs, user_id = nil)
-    secondary_clubs = (secondary_clubs || []).map(&:deep_dup)
-    master_clubs    = (master_clubs || []).map(&:deep_dup)
+    ablage_ids   = Club.ablage_ids.to_set
+    master_clubs = (master_clubs || []).map(&:deep_dup)
+    secondary_clubs = (secondary_clubs || []).map(&:deep_dup).reject do |c|
+      c.is_a?(Hash) && ablage_ids.include?(c['club_id'].to_i)
+    end
 
     master_active_club_ids = master_clubs
                              .select { |c| c['valid_until'].nil? }
@@ -1216,7 +1226,7 @@ class Player < ApplicationRecord
     # Eintraege ohne created_at (Altdaten-Import) teilen sich denselben Schluessel. Ohne
     # Tiebreaker haenge die Auswahl an der Implementierung.
     sortiert = (master_clubs + additional).sort_by { |c| [c['created_at'].to_s, c['club_id'].to_i] }
-    _close_surplus_home_clubs(sortiert, user_id)
+    _close_surplus_home_clubs(sortiert, user_id, ablage_ids, Club.widerspruch_ids.to_set)
   end
 
   # Nach dem Zusammenfuehren darf hoechstens ein Heimatverein offen sein.
@@ -1232,11 +1242,39 @@ class Player < ApplicationRecord
   # `created_at` (Altdaten-Import) sortieren dabei nach vorn und verlieren gegen einen
   # datierten -- gewollt, denn ein undatierter Eintrag stammt aus einem Bestand, der vor
   # allem Datierten liegt.
-  def _close_surplus_home_clubs(entries, user_id)
+  #
+  # Das Datum entscheidet erst innerhalb einer Vorrangstufe. Drei Stufen, von oben:
+  #
+  #   1. Widerspruch nach Art. 21 DSGVO ("Ablage Sperrung"). Er gewinnt gegen alles. Wuerde
+  #      hier das Datum entscheiden, hoebe eine Zusammenlegung den Widerspruch auf, sobald
+  #      der Eintrag der aeltere von zwei offenen ist: Die Person stuende als Mitglied eines
+  #      echten Vereins in dessen Spielerliste und waere transferierbar. Der aeltere ist
+  #      dabei der wahrscheinlichere Fall, denn ein nach dem Widerspruch neu angelegtes
+  #      Zweitprofil traegt den juengeren Eintrag.
+  #   2. Echter Verein.
+  #   3. Behelfs-Ablage. Sie verliert gegen jeden echten Verein, unabhaengig vom Datum:
+  #      Das Parken in der Ablage geschah spaeter als der Eintritt in den echten Verein, das
+  #      Datum liesse sie also regelmaessig gewinnen. Genau so von Hand entschieden im
+  #      Datenlauf vom 18.08.2026 (`players:close_surplus_home_clubs`, "Ablage-Regel").
+  #
+  # `ablage_ids` und `widerspruch_ids` werden uebergeben und nicht hier geholt: Der einzige
+  # Aufrufer kennt sie schon, und ein Default wuerde die Abfragen im Sammel-Merge je
+  # Zusammenlegung ein zweites Mal machen.
+  def _close_surplus_home_clubs(entries, user_id, ablage_ids, widerspruch_ids)
     offen = self.class.open_home_club_entries(entries)
     return entries if offen.size < 2
 
-    offen[0..-2].each do |c|
+    widerspruch = offen.select { |c| widerspruch_ids.include?(c['club_id'].to_i) }
+    echte = offen.reject do |c|
+      ablage_ids.include?(c['club_id'].to_i) || widerspruch_ids.include?(c['club_id'].to_i)
+    end
+    # equal? statt Array-Differenz: Zwei Eintraege desselben Vereins koennen als Hash
+    # gleich sein, und dann wuerde `-` beide entfernen.
+    behalten = (widerspruch.presence || echte.presence || offen).last
+
+    offen.each do |c|
+      next if c.equal?(behalten)
+
       c['valid_until']  = Time.now
       c['valid_set_by'] = user_id if user_id
     end
