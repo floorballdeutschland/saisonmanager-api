@@ -9,6 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Eine Landes-Spielbetriebskommission konnte einen Spieler nicht mehr für einen Verein eines anderen Landesverbands freigeben**: Seit dem 13. August 2026 galt für beide Wege, auf denen eine Vereinszugehörigkeit unmittelbar geschrieben wird, dieselbe Regel: Heimatverein und Zielverein müssen im eigenen Spielbetrieb liegen. Für den Vereinswechsel ist das richtig, für die Freigabe war es zu eng. Der Unterschied liegt in dem, was geschrieben wird: Ein Wechsel setzt den neuen Verein als Heimatverein, und wer ihn ausführt, ist danach für das Profil zuständig und passiert jede weitere Prüfung -- genau davor schützt die Bedingung über den Zielverein. Eine Freigabe schreibt eine Zweitzugehörigkeit, der abgebende Verband behält sein Mitglied, und es entsteht keine Zuständigkeit, vor der zu schützen wäre. Maßgeblich ist für sie deshalb allein der Verband des abgebenden Vereins, genau wie im Antragsweg, wo dieselbe Freigabe in jeden anderen Landesverband hinein möglich ist. Wer den Spieler hat, darf ihn überall hin freigeben; die Zuständigkeit für den Spieler selbst bleibt Bedingung, eine fremde Kommission kommt an ein Profil, das sie nichts angeht, weiterhin nicht heran. Der Vereinswechsel bleibt unverändert auf den eigenen Spielbetrieb begrenzt und gehört über Verbandsgrenzen hinweg in den Transferantrag oder zur bundesweiten Kommission. Gemeldet am 27. August 2026 an einer Spielerin aus Brandenburg, die für einen Verein in Sachsen-Anhalt freigegeben werden sollte; die abgelaufene Freigabe des Vorjahres steht in ihrem Profil, der Knopf „Erneut freigeben" lief in dieselbe Ablehnung.
+
+- **Jede Spielbetriebskommission konnte jede Freigabe im ganzen Bundesgebiet beenden**: Das Beenden einer Freigabe prüfte nur, ob überhaupt eine Spielbetriebsrolle vorliegt, nicht für welchen Verband sie gilt -- anders als das Erteilen und anders als der Widerruf in der Transferübersicht, die beide am abgebenden Verein hängen. Es gilt jetzt dieselbe Zuständigkeit wie beim Erteilen.
+
 ## [1.100.1] - 2026-08-27
 
 ### Behoben

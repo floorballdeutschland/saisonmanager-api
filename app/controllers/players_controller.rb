@@ -668,7 +668,24 @@ class PlayersController < ApplicationController
 
     ph = current_user.permission_hash
 
-    if ph[:admin].present? || sbk_may_move_player?(ph, player, club)
+    # Nur Bedingung (a) aus sbk_may_move_player?, also die Zustaendigkeit fuer den
+    # SPIELER -- der Zielverein darf in jedem anderen Landesverband liegen.
+    #
+    # api#417 hat beide Schreibwege gemeinsam begrenzt und dabei den Unterschied
+    # zwischen ihnen eingezogen: Der Transfer schreibt einen Eintrag mit
+    # `home_club: true` und verschafft der handelnden Stelle damit Zustaendigkeit
+    # fuer das Profil; genau davor schuetzt dort die Bedingung ueber den
+    # Zielverein. Eine Freigabe schreibt `home_club: false`. Der abgebende Verband
+    # behaelt das Mitglied, es entsteht keine neue Zustaendigkeit, und der Weg
+    # taugt deshalb auch nicht dazu, sich welche zu verschaffen.
+    #
+    # Damit gilt hier dieselbe Regel wie im Antragsweg, wo eine Freigabe
+    # ausschliesslich am abgebenden Verband haengt
+    # (Admin::TransferRequestsController#sbk_may_assign?, #lv_authorized?): Wer
+    # den Spieler hat, darf ihn ueberall hin freigeben. Der Transfer unten bleibt
+    # unveraendert -- ein Vereinswechsel ueber Spielbetriebe hinweg gehoert in den
+    # Transferantrag oder zur bundesweiten Rolle.
+    if ph[:admin].present? || sbk_can_access_player?(ph, player)
 
       # Gleiche Regel wie bei der Direktzuweisung (api#511): Ein deaktivierter
       # Verein nimmt keine Spieler mehr auf, auch nicht als Zweitverein. Die
@@ -725,7 +742,13 @@ class PlayersController < ApplicationController
 
     ph = current_user.permission_hash
 
-    if ph[:admin].present? || ph[:sbk].present?
+    # Dieselbe Zustaendigkeit wie beim Erteilen, und dieselbe wie beim Widerruf im
+    # Antragsweg (Admin::TransferRequestsController#revoke ueber #lv_authorized?):
+    # der Verband des abgebenden Vereins. Geprueft wurde hier bisher nur, OB eine
+    # Spielbetriebsrolle vorliegt -- jede Landes-SBK konnte damit jede Freigabe
+    # jedes Profils im Bundesgebiet beenden, auch die eines Verbands, mit dem sie
+    # nichts zu tun hat.
+    if ph[:admin].present? || sbk_can_access_player?(ph, player)
 
       # if player and club present, we check if the club.id is already in the players clubs hash
       if player.present? &&
@@ -1525,8 +1548,10 @@ class PlayersController < ApplicationController
     ph[:sbk].include?(home_club.main_game_operation_id)
   end
 
-  # Darf diese Stelle den Spieler in DIESEN Verein setzen (transfer,
-  # add_additional_club)?
+  # Darf diese Stelle den Spieler in DIESEN Verein setzen (transfer)?
+  #
+  # Seit die Freigabe nur noch (a) prueft, ist der Transfer der einzige Aufrufer:
+  # Er schreibt einen Eintrag mit `home_club: true`, die Freigabe nicht.
   #
   # Beide Aktionen prüften vorher nur, OB jemand eine Spielbetriebsrolle hat,
   # nicht WELCHEN Spielbetrieb. Eine auf einen Verband beschränkte Rolle konnte
