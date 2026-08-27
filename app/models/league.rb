@@ -908,12 +908,21 @@ class League < ApplicationRecord
   # aufnehmenden Verein an, der Spieler ist also erst ab diesem Zeitpunkt
   # freigegeben.
   #
-  # Quelle ist ausschliesslich der genehmigte Freigabe-Antrag, nicht der
-  # Zweitvereins-Eintrag in Player#clubs: Den legt auch
-  # PlayersController#add_additional_club an -- ein aktiver Weg fuer Admin und
-  # SBK, nicht bloss Altbestand -- und sein Anlagedatum belegt keine Freigabe.
-  # Wer den Zusatzverein auf diesem Weg bekommen hat, bleibt hier deshalb leer,
-  # obwohl er freigegeben ist. Siehe CHANGELOG zu dieser Grenze.
+  # Quelle ist ausschliesslich der genehmigte Freigabe-Vorgang, nicht der
+  # Zweitvereins-Eintrag in Player#clubs.
+  #
+  # Diese Grenze hat sich mit api#572 verschoben: PlayersController#add_additional_club
+  # -- ein aktiver Weg fuer Admin und SBK, nicht bloss Altbestand -- schreibt seither
+  # ebenfalls einen Vorgang und erscheint damit hier. Das ist gewollt: Der Vorgang
+  # traegt als `lv_approved_at` den Zeitpunkt, zu dem die Zugehoerigkeit im
+  # aufnehmenden Verein entstanden ist, also genau das, was diese Spalte meint. Bis
+  # dahin blieb, wer den Zusatzverein auf diesem Weg bekommen hatte, hier leer,
+  # obwohl er freigegeben war.
+  #
+  # Zwei Restfaelle bleiben ohne Datum, beide bewusst: Freigaben aus der Zeit vor
+  # api#572, soweit der Datenlauf `transfers:backfill_profile_releases` sie nicht
+  # nachtragen konnte, und Freigaben zu einem Profil ohne ermittelbaren abgebenden
+  # Verein, fuer das der Vorgang mangels Pflichtangabe nicht entsteht.
   #
   # Sortierung absteigend, damit `to_h` (letzter Treffer je Schluessel gewinnt)
   # den AELTESTEN Satz behaelt: Freigegeben ist der Spieler ab der ersten
@@ -921,11 +930,12 @@ class League < ApplicationRecord
   # gelesen wird. Ein spaeterer zweiter Antrag darf sie nicht ueberschreiben.
   # Wer die Sortierung anfasst, dreht diese Auswahl stillschweigend um.
   #
-  # `where.not(lv_approved_at: nil)` ist rein vorsorglich: execute_release! ist
-  # heute der einzige Weg in den Status `approved` und setzt den Zeitpunkt immer
-  # (execute_transfer! ebenfalls, ist fuer Freigaben aber nicht erreichbar). Ein
-  # kuenftiger Genehmigungsweg, der die Spalte vergisst, wuerde durch die
-  # NULLS-Sortierung von Postgres sonst ein echtes Datum verdecken.
+  # `where.not(lv_approved_at: nil)` ist rein vorsorglich: Alle Wege in den Status
+  # `approved` setzen den Zeitpunkt (execute_release!, seit api#572 auch
+  # PlayersController#record_direct_release! und der Datenlauf; execute_transfer!
+  # ebenfalls, ist fuer Freigaben aber nicht erreichbar). Ein kuenftiger
+  # Genehmigungsweg, der die Spalte vergisst, wuerde durch die NULLS-Sortierung von
+  # Postgres sonst ein echtes Datum verdecken.
   def self.license_release_dates(team_licenses, teams)
     player_ids = team_licenses.each_value.flat_map { |players| players.map(&:id) }.uniq
     club_ids = teams.flat_map(&:all_club_ids).compact.uniq

@@ -45,6 +45,13 @@ class BackfillProfileReleasesTest < ActiveSupport::TestCase
     ])
   end
 
+  # Beginn der laufenden Spielzeit -- dieselbe Regel wie im Lauf.
+  def saisonbeginn
+    beginn = Time.zone.local(Date.current.year, 7, 1)
+    beginn -= 1.year if beginn > Time.current
+    beginn
+  end
+
   # Das reguläre Ende, das beide Schreibwege setzen: 15.07., 00:00 Uhr Ortszeit.
   def regulaeres_ende
     ende = Date.new(Date.today.year, 7, 15).to_time
@@ -121,18 +128,59 @@ class BackfillProfileReleasesTest < ActiveSupport::TestCase
     assert_equal 'Freigabe im Spielerprofil beendet', tr.revocation_reason
   end
 
-  # Gegenprobe: Auslaufen am Stichtag ist kein Widerruf. Der Zeitstempel trägt
-  # den Versatz der schreibenden Zone -- umgerechnet in die Anwendungszone wäre
-  # aus Berliner Mitternacht der 14.07., 22:00 Uhr geworden, und der Lauf hätte
-  # einen Widerruf erfunden, den es nie gab.
+  # Gegenprobe: Auslaufen am Stichtag ist kein Widerruf. Der Zeitstempel trägt den
+  # Versatz der schreibenden Zone -- mit `Time.zone.parse` in die Anwendungszone
+  # (UTC) umgerechnet wäre aus Berliner Mitternacht der 14.07., 22:00 Uhr
+  # geworden, und der Lauf hätte einen Widerruf erfunden, den es nie gab.
+  #
+  # Der Eintrag liegt bewusst kurz nach Saisonbeginn: Weiter zurück reicht der
+  # Lauf nicht, er stempelt die laufende Saison. Zwischen dem 1. und dem 15. Juli
+  # ist der Stichtag noch nicht vergangen, dann gilt die Freigabe schlicht als
+  # laufend -- die Zusicherung bleibt richtig, prüft aber weniger.
   test 'am Stichtag ausgelaufene Freigabe bleibt genehmigt' do
-    ausgelaufen = Date.new(Date.today.year, 7, 15).to_time
-    ausgelaufen -= 1.year if ausgelaufen > Time.now
-    profil_mit_freigabe(erteilt_am: ausgelaufen - 1.month, valid_until: ausgelaufen.iso8601(3))
+    stichtag = Date.new(saisonbeginn.year, 7, 15)
+    profil_mit_freigabe(erteilt_am: saisonbeginn + 2.days,
+                        valid_until: "#{stichtag.iso8601}T00:00:00.000+02:00")
 
-    run_task('DRY_RUN' => 'false', 'SINCE' => (ausgelaufen - 2.months).strftime('%Y-%m-%d'))
+    run_task('DRY_RUN' => 'false', 'SINCE' => saisonbeginn.strftime('%Y-%m-%d'))
 
     assert_equal 'approved', TransferRequest.last.status
+  end
+
+  # Der Lauf stempelt jede Zeile mit der LAUFENDEN Saison. Reichte SINCE weiter
+  # zurück, bekämen ältere Freigaben die falsche -- und das bliebe unsichtbar,
+  # weil die Lizenzliste nach der Saison der Liga aufschlüsselt.
+  test 'SINCE vor dem Saisonbeginn wird abgewiesen' do
+    profil_mit_freigabe
+
+    assert_raises(SystemExit) do
+      run_task('DRY_RUN' => 'false', 'SINCE' => (saisonbeginn - 2.months).strftime('%Y-%m-%d'))
+    end
+  end
+
+  # Ein handelndes Konto, das es nicht gibt: `.to_i` hätte daraus stillschweigend
+  # Konto 0 gemacht -- ein Vorgang, dessen Urheber in der Übersicht leer bleibt.
+  test 'unbekanntes handelndes Konto wird übersprungen' do
+    create(:player, clubs: [
+      { 'club_id' => @home_club.id, 'home_club' => true, 'created_at' => 1.year.ago.iso8601 },
+      { 'club_id' => @target.id, 'home_club' => false, 'created_by' => 999_999,
+        'created_at' => @freigabe_am.iso8601, 'valid_until' => regulaeres_ende }
+    ])
+
+    assert_no_difference -> { TransferRequest.count } do
+      run_task('DRY_RUN' => 'false')
+    end
+  end
+
+  # Ein vorhandenes, aber unlesbares Enddatum wird nicht ausgelegt: Beide
+  # Auslegungen schrieben etwas Falsches -- eine Freigabe, die es nicht gibt,
+  # oder einen erfundenen Widerruf.
+  test 'unlesbares Enddatum wird übersprungen' do
+    profil_mit_freigabe(valid_until: 'bis auf Weiteres')
+
+    assert_no_difference -> { TransferRequest.count } do
+      run_task('DRY_RUN' => 'false')
+    end
   end
 
   test 'ohne eindeutigen Heimatverein wird übersprungen' do

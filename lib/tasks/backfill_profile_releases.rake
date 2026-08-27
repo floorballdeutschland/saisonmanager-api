@@ -36,8 +36,13 @@
 #
 # Bewusst nur die laufende Saison: `season_id` ist Pflichtspalte, und der Lauf setzt die
 # aktuelle. Fuer aeltere Freigaben waere sie zu ermitteln, und ein Vorgang, den in der
-# Uebersicht ohnehin niemand mehr sucht, waere den Aufwand nicht wert. SINCE deshalb nur
-# innerhalb der laufenden Saison verschieben.
+# Uebersicht ohnehin niemand mehr sucht, waere den Aufwand nicht wert. SINCE laesst sich
+# deshalb nur innerhalb der laufenden Saison verschieben; frueher weist der Lauf ab.
+#
+# Nicht bloss Anzeige: `League.license_release_dates` liest genau `release`+`approved` und
+# speist damit die Spalte „Freigabedatum" der Lizenzliste. Die nachgetragenen Zeilen fuellen
+# dort also eine fristenrelevante Angabe, die fuer im Profil erteilte Freigaben bisher leer
+# blieb. Das ist gewollt und der Grund fuer die Strenge dieses Laufs.
 #
 # Zuerst api#572 ausliefern, dann diesen Lauf. Sonst entstehen zwischen Lauf und Auslieferung
 # neue Eintraege ohne Vorgang.
@@ -69,6 +74,20 @@ def _release_regulaeres_ende?(roh)
 
   zeitpunkt.month == 7 && zeitpunkt.day == 15 &&
     zeitpunkt.hour.zero? && zeitpunkt.min.zero? && zeitpunkt.sec.zero?
+end
+
+# Beginn der laufenden Spielzeit: der 1. Juli, der zuletzt vergangen ist. Derselbe
+# Stichtag, um den herum die Freigaben auslaufen (15.07.).
+def _release_saisonbeginn
+  beginn = Time.zone.local(Date.current.year, 7, 1)
+  beginn -= 1.year if beginn > Time.current
+  beginn
+end
+
+# Eine Konto-Kennung aus dem JSONB, oder nil. Wie oben: kein blindes `.to_i`.
+def _release_konto(wert)
+  id = Integer(wert.to_s, exception: false)
+  id if id && User.exists?(id: id)
 end
 
 def _release_zeit(wert)
@@ -117,6 +136,17 @@ namespace :transfers do
     season_id = Setting.current_season_id
     abort 'Keine aktuelle Saison gesetzt' if season_id.blank?
 
+    # Der Lauf stempelt jede Zeile mit der LAUFENDEN Saison. Eine aeltere Freigabe
+    # bekaeme damit die falsche, und das bleibt unsichtbar: Die Lizenzliste
+    # schluesselt ueber `League.release_date_for` nach der Saison der Liga auf, das
+    # Freigabedatum erschiene also in der falschen Liste und fehlte in der
+    # richtigen. Eine Konvention im Kopfkommentar ist dagegen kein Schutz.
+    if since < _release_saisonbeginn
+      abort "SINCE #{since.strftime('%d.%m.%Y')} liegt vor dem Beginn der laufenden Saison " \
+            "(#{_release_saisonbeginn.strftime('%d.%m.%Y')}). Der Lauf stempelt die laufende Saison " \
+            'und darf deshalb nicht weiter zurueckreichen.'
+    end
+
     puts "=== Freigaben aus dem Spielerprofil nachtragen #{dry_run ? '[DRY RUN]' : '[LIVE]'} ==="
     puts "Zeitraum ab #{since.strftime('%d.%m.%Y')}, Saison #{season_id}"
     puts
@@ -135,10 +165,27 @@ namespace :transfers do
         AND (e->>'created_at') >= #{ActiveRecord::Base.connection.quote(since.strftime('%Y-%m-%d'))}
     SQL
 
+    # Unlesbares wird gezaehlt und ausgegeben, nicht verworfen: Der Praefixfilter
+    # oben laesst jede Schreibweise durch, die mit einem ISO-Datum beginnt, und der
+    # Kommentar dort begruendet ihn gerade damit, dass der Altbestand unlesbare
+    # Werte enthaelt. Fielen sie hier lautlos heraus, taeuschte die Schlusszeile
+    # Vollstaendigkeit vor. `JSON.parse` ebenso: ein Abbruch mitten im Lauf liesse
+    # den Bediener ohne Bilanz zurueck.
+    unlesbar = []
     roh_eintraege = ActiveRecord::Base.connection.select_rows(sql).filter_map do |player_id, roh|
-      eintrag = roh.is_a?(String) ? JSON.parse(roh) : roh
+      eintrag = begin
+        roh.is_a?(String) ? JSON.parse(roh) : roh
+      rescue JSON::ParserError => e
+        unlesbar << "##{player_id}: clubs-Eintrag nicht lesbar (#{e.message})"
+        next
+      end
+
       zeitpunkt = _release_zeit(eintrag['created_at'])
-      next if zeitpunkt.nil? || zeitpunkt < since
+      if zeitpunkt.nil?
+        unlesbar << "##{player_id}: created_at nicht lesbar (#{eintrag['created_at'].inspect})"
+        next
+      end
+      next if zeitpunkt < since
 
       [player_id.to_i, eintrag, zeitpunkt]
     end
@@ -162,15 +209,26 @@ namespace :transfers do
     eintraege.each do |player_id, eintrag, zeitpunkt|
       club_id = eintrag['club_id'].to_i
       player = players[player_id]
-      kennung = "##{player_id} #{player&.first_name} #{player&.last_name}"
+      unless player
+        puts "##{player_id}: Profil nicht gefunden -- uebersprungen"
+        uebersprungen += 1
+        next
+      end
+
+      kennung = "##{player_id} #{player.first_name} #{player.last_name}"
 
       if _release_vorgang_vorhanden?(vorgaenge, player_id, club_id, zeitpunkt)
         vorhanden += 1
         next
       end
 
-      if eintrag['created_by'].blank?
-        puts "#{kennung}: kein handelndes Konto am Eintrag -- uebersprungen"
+      # `.to_i` genuegt nicht: `created_by` ist NOT NULL ohne Fremdschluessel, ein
+      # nicht-numerischer Altwert wuerde als Konto 0 geschrieben und stuende in der
+      # Uebersicht als Vorgang ohne auflösbares Konto. Der Lauf ist an jeder anderen
+      # Ableitungsstelle streng, hier auch.
+      handelnd = Integer(eintrag['created_by'].to_s, exception: false)
+      unless handelnd && User.exists?(id: handelnd)
+        puts "#{kennung}: kein gueltiges handelndes Konto am Eintrag (#{eintrag['created_by'].inspect}) -- uebersprungen"
         uebersprungen += 1
         next
       end
@@ -195,6 +253,18 @@ namespace :transfers do
         next
       end
 
+      # Ein vorhandenes, aber unlesbares Enddatum wird nicht ausgelegt: Beide
+      # Auslegungen schreiben etwas Falsches -- als „laeuft noch" stuende eine
+      # Freigabe in der Uebersicht und in der Lizenzliste, die es nicht gibt, als
+      # „beendet" ein erfundener Widerruf. Und weil `_release_regulaeres_ende?`
+      # bewusst mit einem anderen Parser liest (siehe dort), faellt ein Wert, den
+      # nur einer der beiden versteht, sonst genau in die schreibende Auslegung.
+      if eintrag['valid_until'].present? && _release_zeit(eintrag['valid_until']).nil?
+        puts "#{kennung}: Enddatum nicht lesbar (#{eintrag['valid_until'].inspect}) -- uebersprungen"
+        uebersprungen += 1
+        next
+      end
+
       ende = _release_zeit(eintrag['valid_until'])
       vorzeitig_beendet = ende.present? && ende < Time.current &&
                           !_release_regulaeres_ende?(eintrag['valid_until'])
@@ -202,7 +272,10 @@ namespace :transfers do
       puts "#{kennung}: #{former_club_id} → #{club_id} am #{zeitpunkt.strftime('%d.%m.%Y')}" \
            "#{vorzeitig_beendet ? " (beendet am #{ende.strftime('%d.%m.%Y')})" : ''}"
 
-      next if dry_run
+      if dry_run
+        nachgetragen += 1
+        next
+      end
 
       begin
         ActiveRecord::Base.transaction do
@@ -213,8 +286,8 @@ namespace :transfers do
             status: 'approved',
             request_type: 'release',
             direct: true,
-            created_by: eintrag['created_by'].to_i,
-            approved_by_lv_user_id: eintrag['created_by'].to_i,
+            created_by: handelnd,
+            approved_by_lv_user_id: handelnd,
             lv_approved_at: zeitpunkt,
             season_id: season_id
           )
@@ -222,7 +295,7 @@ namespace :transfers do
           if vorzeitig_beendet
             tr.update!(
               status: 'revoked',
-              revoked_by: (eintrag['valid_set_by'] || eintrag['created_by']).to_i,
+              revoked_by: _release_konto(eintrag['valid_set_by']) || handelnd,
               revoked_at: ende,
               revocation_reason: 'Freigabe im Spielerprofil beendet'
             )
@@ -235,19 +308,28 @@ namespace :transfers do
         end
         nachgetragen += 1
       rescue StandardError => e
+        # Mit Backtrace: Der Rumpf schreibt in drei Schritten (create!, update!,
+        # update_columns), und ohne ihn ist hinterher nicht zu sagen, welcher.
         puts "  FEHLER: #{e.class}: #{e.message}"
+        puts(e.backtrace.first(5).map { |z| "    #{z}" })
         fehler += 1
       end
     end
 
-    nachgetragen = eintraege.size - vorhanden - uebersprungen - fehler if dry_run
-
+    # Nicht subtrahiert, sondern gezaehlt: „alles, was sonst nirgends gezaehlt
+    # wurde" meldete jeden kuenftig ergaenzten Abbruchzweig stillschweigend als
+    # Erfolg.
     puts
+    unlesbar.each { |zeile| puts "NICHT GELESEN #{zeile}" }
     puts "#{eintraege.size} Zweitvereins-Eintraege im Zeitraum: #{vorhanden} mit Vorgang, " \
          "#{nachgetragen} #{dry_run ? 'nachzutragen' : 'nachgetragen'}, " \
-         "#{uebersprungen} uebersprungen, #{fehler} Fehler."
+         "#{uebersprungen} uebersprungen, #{unlesbar.size} nicht lesbar, #{fehler} Fehler."
     puts 'Dry-Run — nichts geschrieben. Mit DRY_RUN=false ausfuehren.' if dry_run
 
-    exit 1 if fehler.positive?
+    # Ein unlesbarer Eintrag ist kein Fehler DIESES Laufs, aber er gehoert vor
+    # Augen: Er zaehlt in den Exit-Code, damit ein protokollierter Lauf nicht grün
+    # meldet, obwohl etwas ungesehen liegen blieb. Die bewussten Auslassungen
+    # (`uebersprungen`) tun das nicht -- sie sind das erwartete Ergebnis.
+    exit 1 if fehler.positive? || unlesbar.any?
   end
 end

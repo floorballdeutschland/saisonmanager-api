@@ -113,6 +113,69 @@ class PlayersReleaseTransferRequestTest < ActionDispatch::IntegrationTest
     assert_equal 'approved', tr.reload.status
   end
 
+  # Der Widerruf muss GENAU die beendete Freigabe treffen. Eine regulaer am
+  # Stichtag ausgelaufene Freigabe an denselben Verein bleibt bewusst auf
+  # `approved` stehen -- der Widerruf darf sie nicht erwischen. Das ist nicht
+  # bloss Anzeige: `League.license_release_dates` liest `release`+`approved` und
+  # speist damit die Spalte „Freigabedatum" der Lizenzliste je Saison.
+  test 'der Widerruf trifft nicht die Freigabe einer frueheren Saison' do
+    alt = TransferRequest.create!(
+      player_id: @player.id, requesting_club_id: @target.id, former_club_id: @home_club.id,
+      status: 'approved', request_type: 'release', created_by: @admin.id,
+      approved_by_lv_user_id: @admin.id, lv_approved_at: 14.months.ago, season_id: 17
+    )
+
+    login_as(@admin)
+    freigabe_erteilen(@target)
+    neu = TransferRequest.last
+    assert_not_equal alt.id, neu.id, 'Vorbedingung: es sind zwei Vorgaenge'
+
+    freigabe_beenden(@target, valid_until_of(@target))
+
+    assert_response :success
+    assert_equal 'revoked', neu.reload.status
+    assert_equal 'approved', alt.reload.status,
+                 'die Freigabe der frueheren Saison bleibt unberuehrt'
+  end
+
+  # Und wenn es zur beendeten Freigabe gar keinen Vorgang gibt (vor api#572
+  # erteilt, vom Datenlauf uebersprungen), wird lieber nichts widerrufen als das
+  # Falsche: Der alte Vorgang bleibt stehen, das ist der Zustand von vorher.
+  test 'ohne passenden Vorgang wird nichts widerrufen' do
+    alt = TransferRequest.create!(
+      player_id: @player.id, requesting_club_id: @target.id, former_club_id: @home_club.id,
+      status: 'approved', request_type: 'release', created_by: @admin.id,
+      approved_by_lv_user_id: @admin.id, lv_approved_at: 14.months.ago, season_id: 17
+    )
+    # Freigabe von Hand, ohne Vorgang -- so sieht der Altbestand aus.
+    @player.clubs += [{ 'club_id' => @target.id, 'home_club' => false, 'created_by' => @admin.id,
+                        'created_at' => 2.days.ago.iso8601,
+                        'valid_until' => 1.year.from_now.iso8601 }]
+    @player.save!(validate: false)
+
+    login_as(@admin)
+    freigabe_beenden(@target, valid_until_of(@target))
+
+    assert_response :success
+    assert_equal 'approved', alt.reload.status
+  end
+
+  # Die Vorgangszeile ist die Zugabe, nicht der Zweck: Eine fehlende
+  # Saison-Konfiguration darf die Freigabe nicht scheitern lassen.
+  # `transfer_requests.season_id` ist NOT NULL ohne Validierung, ein nil kaeme
+  # sonst als 500 heraus und rollte die Zugehoerigkeit mit zurueck.
+  test 'ohne laufende Saison bleibt die Freigabe bestehen, nur ohne Vorgang' do
+    Setting.stub(:current_season_id, nil) do
+      login_as(@admin)
+      assert_no_difference -> { TransferRequest.count } do
+        freigabe_erteilen(@target)
+      end
+    end
+
+    assert_response :success
+    assert_includes @player.reload.clubs.map { |c| c['club_id'] }, @target.id
+  end
+
   private
 
   def freigabe_erteilen(club)

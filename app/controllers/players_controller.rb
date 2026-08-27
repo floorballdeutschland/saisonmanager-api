@@ -1,4 +1,5 @@
 class PlayersController < ApplicationController
+  include PlayerReleaseRecording
   include LicenseDocumentPresentation
   include LicenseAccessScope
 
@@ -736,11 +737,13 @@ class PlayersController < ApplicationController
       if player.present? &&
          club.present?
 
-        # `beendet` hält fest, ob dieser Aufruf tatsächlich eine laufende
-        # Zugehörigkeit gestempelt hat: Die Bedingung unten vergleicht auch das
-        # mitgeschickte `valid_until`, ein Aufruf kann also folgenlos bleiben.
-        # Ohne die Unterscheidung widerriefe der folgenlose Aufruf den Vorgang.
-        beendet = false
+        # Gesammelt werden die Eintraege SELBST und nicht bloss ein Ja/Nein:
+        # Erstens kann dieser Aufruf folgenlos bleiben (die Bedingung unten
+        # vergleicht auch das mitgeschickte `valid_until`), und ein folgenloser
+        # Aufruf darf keinen Vorgang widerrufen. Zweitens braucht der Widerruf
+        # den Zeitpunkt der Erteilung, um den richtigen Vorgang zu treffen --
+        # ohne ihn koennte er die Freigabe einer vergangenen Saison erwischen.
+        beendete = []
 
         player.clubs.map! do |c|
           # additional club == ! home
@@ -749,15 +752,18 @@ class PlayersController < ApplicationController
           if !c['home_club'] &&
              c['club_id'] == club.id &&
              c['valid_until'].present? && c['valid_until'].to_time > Time.now && c['valid_until'] == params[:valid_until]
+            # Vor dem Ueberschreiben lesen: `created_at` bleibt zwar stehen, aber
+            # der Eintrag wird hier veraendert und soll unveraendert weitergereicht
+            # werden, was tatsaechlich erteilt wurde.
+            beendete << c['created_at']
             c['valid_until'] = Time.now
             c['valid_set_by'] = current_user.id
-            beendet = true
           end
 
           c
         end
 
-        if save_with_release_revocation(player, club, beendet)
+        if save_with_release_revocation(player, club, beendete)
           render json: { success: true }
         else
           render json: { message: player.errors }, status: :unprocessable_entity
@@ -1599,70 +1605,6 @@ class PlayersController < ApplicationController
   # abgeschlossener Vorgang, `direct: true`, genehmigendes Konto ist das
   # handelnde. Ein Freigabeschritt des abgebenden Vereins hat hier nicht
   # stattgefunden und wird deshalb auch nicht behauptet.
-  def save_with_release_record(player, club, former_club_id)
-    ActiveRecord::Base.transaction do
-      raise ActiveRecord::Rollback unless player.save
-
-      record_direct_release!(player, club, former_club_id)
-      true
-    end
-  end
-
-  # Der abgebende Verein ist Pflichtspalte des Vorgangs. Ohne gültige
-  # Heimat-Zugehörigkeit (Altbestand) oder ohne den Verein dazu bleibt die
-  # Freigabe ohne Vorgangszeile, statt abgewiesen zu werden: Der Antragsweg
-  # weist genau diese Profile bereits ab (`no_home_club_response`), die Freigabe
-  # über das Profil ist für sie der einzige verbliebene Weg.
-  def record_direct_release!(player, club, former_club_id)
-    return if former_club_id.blank? || !Club.exists?(id: former_club_id)
-
-    tr = TransferRequest.create!(
-      player_id: player.id,
-      requesting_club_id: club.id,
-      former_club_id: former_club_id,
-      status: 'approved',
-      request_type: 'release',
-      direct: true,
-      created_by: current_user.id,
-      approved_by_lv_user_id: current_user.id,
-      lv_approved_at: Time.current,
-      season_id: Setting.current_season_id
-    )
-    # `before_create` erzeugt den Bestätigungslink des Spielers unbedingt. Der
-    # gehört zu einem laufenden Antrag; auf jedem anderen Weg nach `approved`
-    # wird er beim Abschluss geleert.
-    tr.update!(player_confirmation_token: nil)
-  end
-
-  # Gegenstück zu #save_with_release_record: Wird eine Freigabe im Spielerprofil
-  # beendet, gehört der Vorgang auf `revoked`. Sonst stünde in der Übersicht
-  # weiter eine erteilte Freigabe, die es nicht mehr gibt. Gilt auch für
-  # Freigaben aus dem Antragsweg -- deren Vorgang blieb hier schon immer
-  # unberührt.
-  #
-  # Nicht über `TransferRequest#revoke_release!`: Der Widerruf dort entwertet
-  # zusätzlich die Lizenzen des aufnehmenden Vereins. Was dieser Knopf tut,
-  # bleibt unverändert; mitgeschrieben wird nur, was er tut.
-  def save_with_release_revocation(player, club, beendet)
-    ActiveRecord::Base.transaction do
-      raise ActiveRecord::Rollback unless player.save
-
-      revoke_release_record!(player, club) if beendet
-      true
-    end
-  end
-
-  def revoke_release_record!(player, club)
-    tr = TransferRequest.where(player_id: player.id, requesting_club_id: club.id,
-                               request_type: 'release', status: 'approved')
-                        .order(:lv_approved_at, :id).last
-    return unless tr
-
-    tr.update!(status: 'revoked', revoked_by: current_user.id, revoked_at: Time.current,
-               revocation_reason: 'Freigabe im Spielerprofil beendet',
-               player_confirmation_token: nil)
-  end
-
   # Darf diese Stelle eine Deaktivierung zurücknehmen?
   #
   # Das Problem: `Player#deactivate!` stempelt ALLE Zugehörigkeiten, auch die
