@@ -630,7 +630,22 @@ class PlayersController < ApplicationController
         # geprüft – der Spieler muss auch tatsächlich diesem Verein angehören,
         # sonst ließe sich über einen beliebigen eigenen Verein jeder Spieler
         # überschreiben.
-        unless (player.clubs || []).any? { |c| c['club_id'].to_i == params[:club_id].to_i }
+        #
+        # HEIMATzugehörigkeit, nicht irgendeine: Geprüft wurde bisher jeder
+        # Eintrag, ein Zweitspielrecht also mit. Stammdaten pflegt aber der
+        # zuständige Verband (siehe Club#user_permissions zu :update_player), und
+        # zuständig ist der des Heimatvereins – wer eine Freigabe erhalten hat,
+        # stellt den Spieler auf, er verwaltet ihn nicht. Sonst ist jede Freigabe
+        # ein Generalschlüssel auf Name, Geburtsdatum und E-Mail-Adresse.
+        #
+        # Nur das Merkmal, nicht die Gültigkeit: `Player#deactivate!` stempelt
+        # auch die Heimat, eine Gültigkeitsprüfung sperrte den Verband aus genau
+        # den Profilen aus, die er selbst deaktiviert hat.
+        heimat_im_verein = (player.clubs || []).any? do |c|
+          ActiveModel::Type::Boolean.new.cast(c['home_club']) &&
+            c['club_id'].to_i == params[:club_id].to_i
+        end
+        unless heimat_im_verein
           return render json: { message: 'Spieler gehört nicht zu diesem Verein.' }, status: :forbidden
         end
 

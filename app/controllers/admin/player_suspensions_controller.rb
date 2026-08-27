@@ -113,9 +113,37 @@ module Admin
         (@player.licenses || []).any? { |l| l['team_id'].to_i == team.id }
     end
 
-    # Zustaendige Spielbetriebe der Vereine des Spielers.
+    # Zustaendige Spielbetriebe der HEIMATvereine des Spielers.
+    #
+    # Der Filter auf `home_club` fehlte, obwohl der Name der Methode und der
+    # Kommentar an `sbk_may_suspend?` ihn beide behaupten („Eine Vereins-Freigabe
+    # reicht dafuer ausdruecklich NICHT"). Gelesen wurde JEDE Zugehoerigkeit, ein
+    # Zweitspielrecht also mit -- womit der Verband des aufnehmenden Vereins eine
+    # spielerWEITE Sperre setzen konnte, die alle Lizenzantraege blockiert, auch
+    # die im Heimatverband, mit dem er nichts zu tun hat.
+    #
+    # Erreichbar war das bisher nur ueber den mehrstufigen Antragsweg; seit die
+    # Freigabe im Spielerprofil verbandsuebergreifend geht, genuegt ein Aufruf.
+    # Die Luecke ist aelter als diese Aenderung, aber sie gehoert zu ihr.
+    #
+    # Nur das Merkmal, nicht die Gueltigkeit: `Player#deactivate!` stempelt ALLE
+    # Zugehoerigkeiten, auch die Heimat. Eine zusaetzliche Gueltigkeitspruefung
+    # naehme dem Heimatverband die Zustaendigkeit fuer genau die Profile, die er
+    # selbst deaktiviert hat (dieselbe Falle wie in
+    # PlayersController#sbk_can_undo_deactivation?).
+    #
+    # Boolean-Cast wie in `Player#home_club_hash`: In Altdaten liegt das Merkmal
+    # auch als Zeichenkette vor, und `'false'` ist in Ruby wahr.
     def player_home_game_operation_ids
-      Club.where(id: player_club_ids).map(&:main_game_operation_id).compact.uniq
+      Club.where(id: player_home_club_ids).map(&:main_game_operation_id).compact.uniq
+    end
+
+    def player_home_club_ids
+      heimat = (@player.clubs || []).select do |c|
+        ActiveModel::Type::Boolean.new.cast(c['home_club'])
+      end
+
+      heimat.filter_map { |c| c['club_id']&.to_i }
     end
 
     def player_clubs_readable?(perm_hash)

@@ -184,6 +184,76 @@ class PlayersTransferScopeTest < ActionDispatch::IntegrationTest
     assert_equal [foreign[:club].id], home_club_ids(player)
   end
 
+  # Was eine Freigabe NICHT verschafft. Beide Stellen lasen bisher jede
+  # Vereinszugehoerigkeit statt nur die Heimat; erreichbar war das ueber den
+  # mehrstufigen Antragsweg, seit der Lockerung oben mit einem Aufruf.
+  test 'eine Freigabe verschafft dem fremden Verband keine Stammdatenhoheit' do
+    player = player_homed_in(@go)
+    foreign = foreign_go_with_club
+    login_as(create(:user, :sbk_scoped, game_operation_id: @go.id))
+    post "/api/v2/admin/players/#{player.id}/add_additional_club", params: { club_id: foreign[:club].id }
+    assert_response :success
+
+    login_as(create(:user, :sbk_scoped, game_operation_id: foreign[:go].id))
+    post '/api/v2/admin/players.json',
+         params: { id: player.id, club_id: foreign[:club].id, first_name: 'Fremd',
+                   last_name: player.last_name, birthdate: player.birthdate.to_s,
+                   gender: player.gender, nation_id: player.nation_id },
+         as: :json
+
+    assert_response :forbidden
+    assert_not_equal 'Fremd', player.reload.first_name,
+                     'der Vorname darf sich durch den abgewiesenen Aufruf nicht aendern'
+  end
+
+  # Gegenprobe: Der Heimatverband darf die Stammdaten weiterhin pflegen.
+  test 'der Heimatverband pflegt die Stammdaten weiter' do
+    heimat = club_in(@go)
+    player = create(:player, clubs: [{ 'club_id' => heimat.id, 'home_club' => true }])
+    login_as(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post '/api/v2/admin/players.json',
+         params: { id: player.id, club_id: heimat.id, first_name: 'Neu',
+                   last_name: player.last_name, birthdate: player.birthdate.to_s,
+                   gender: player.gender, nation_id: player.nation_id },
+         as: :json
+
+    assert_response :success, response.body
+    assert_equal 'Neu', player.reload.first_name
+  end
+
+  # Eine spielerweite Sperre blockiert ALLE Lizenzantraege, auch die im
+  # Heimatverband. Der Kommentar an `sbk_may_suspend?` sagt ausdruecklich, eine
+  # Freigabe duerfe dafuer nicht genuegen -- die Zustaendigkeitsabfrage las aber
+  # jede Zugehoerigkeit.
+  test 'eine Freigabe erlaubt dem fremden Verband keine spielerweite Sperre' do
+    player = player_homed_in(@go)
+    foreign = foreign_go_with_club
+    login_as(create(:user, :sbk_scoped, game_operation_id: @go.id))
+    post "/api/v2/admin/players/#{player.id}/add_additional_club", params: { club_id: foreign[:club].id }
+    assert_response :success
+
+    login_as(create(:user, :sbk_scoped, game_operation_id: foreign[:go].id))
+    assert_no_difference -> { PlayerSuspension.count } do
+      post "/api/v2/admin/players/#{player.id}/suspensions",
+           params: { valid_until: 3.months.from_now.to_date.iso8601, reason: 'Test' }, as: :json
+    end
+
+    assert_response :forbidden
+  end
+
+  test 'der Heimatverband darf weiterhin sperren' do
+    player = player_homed_in(@go)
+    login_as(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    assert_difference -> { PlayerSuspension.count }, 1 do
+      post "/api/v2/admin/players/#{player.id}/suspensions",
+           params: { valid_until: 3.months.from_now.to_date.iso8601, reason: 'Test' }, as: :json
+    end
+
+    assert_response :success, response.body
+  end
+
   private
 
   def club_in(game_operation)
