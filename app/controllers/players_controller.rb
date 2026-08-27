@@ -1398,7 +1398,28 @@ class PlayersController < ApplicationController
   def can_deactivate_player?(player)
     ph = user_permission_hash
     ph[:admin].present? || sbk_can_access_player?(ph, player) ||
-      vm_can_access_player?(ph, player)
+      vm_can_access_player?(ph, player) || tm_can_manage_players?(ph, player)
+  end
+
+  # Hat der Verein Anlegen, Deaktivieren und Reaktivieren seinen
+  # Teammanager*innen geöffnet (`clubs.team_managers_manage_players`), zählt
+  # die TM-Zugehörigkeit hier mit – aber nur zu den Vereinen, die den Schalter
+  # tatsächlich gesetzt haben. Wer in zwei Vereinen Teammanager ist,
+  # entscheidet damit im einen und im anderen nicht, und zwar genau so, wie es
+  # die Doppelrolle VM/TM schon heute tut.
+  #
+  # Die Vereinsliste wird vor `membership_grants_access?` auf die
+  # freigeschalteten Vereine eingeschränkt und nicht danach: Sonst gäbe eine
+  # Zugehörigkeit zu einem nicht freigeschalteten Verein den Zugriff auf ein
+  # Profil, das zusätzlich in einem freigeschalteten Verein steht.
+  def tm_can_manage_players?(ph, player)
+    club_ids = tm_club_ids(ph)
+    return false if club_ids.empty?
+
+    freigeschaltet = Club.where(id: club_ids, team_managers_manage_players: true).pluck(:id)
+    return false if freigeschaltet.empty?
+
+    membership_grants_access?(player, freigeschaltet)
   end
 
   # Eigene Meldung statt „Keine Berechtigung.", wenn der Zugriff genau daran
@@ -1409,10 +1430,16 @@ class PlayersController < ApplicationController
   # die Doppelrolle trifft (VM in einem Verein, TM in einem anderen -- der Fall
   # in club_test.rb, „wer VM des einen und TM im anderen Verein ist"). Für jede
   # andere Rolle wäre der Hinweis falsch, die ist schlicht nicht zuständig.
+  #
+  # Die Meldung nennt den Grund seit dem Vereinsschalter genauer: Nicht das
+  # System behält das Recht dem Vereinsmanager vor, sondern dieser Verein hat
+  # es nicht freigegeben. Der Hinweis auf die Vereinsverwaltung ist die einzige
+  # Stelle, an der ein Teammanager erfährt, dass sich daran etwas ändern lässt.
   def deactivation_denied_message(player)
     ph = user_permission_hash
     if tm_can_access_player?(ph, player) && !vm_can_access_player?(ph, player)
-      'Deaktivieren und Reaktivieren darf nur der Vereinsmanager des Vereins.'
+      'Deaktivieren und Reaktivieren hat dieser Verein dem Vereinsmanager vorbehalten. ' \
+        'Er kann es in der Vereinsverwaltung für Teammanager*innen freigeben.'
     else
       'Keine Berechtigung.'
     end
@@ -1421,7 +1448,8 @@ class PlayersController < ApplicationController
   def creation_denied_message(club)
     ph = user_permission_hash
     if tm_can_access_club?(ph, club.id) && !ph[:vm].to_a.include?(club.id)
-      'Spieler*innen anlegen darf nur der Vereinsmanager des Vereins.'
+      'Spieler*innen anlegen hat dieser Verein dem Vereinsmanager vorbehalten. ' \
+        'Er kann es in der Vereinsverwaltung für Teammanager*innen freigeben.'
     else
       'Keine Berechtigung'
     end
@@ -1546,12 +1574,13 @@ class PlayersController < ApplicationController
   end
 
   # Wie #user_permission_hash je Anfrage nur einmal: Ueber die Spielersuche kaeme
-  # sonst je Treffer eine Team-Abfrage samt all_club_ids dazu. `ph` stammt in
-  # jedem Aufruf aus demselben Konto, der Wert haengt also an nichts anderem.
-  def tm_club_ids(ph)
-    return [] unless ph[:tm].present?
-
-    @tm_club_ids ||= Team.current_season.where(id: ph[:tm]).flat_map(&:all_club_ids).uniq
+  # sonst je Treffer eine Team-Abfrage samt all_club_ids dazu. Der Cache sitzt
+  # jetzt am Konto (User#tm_club_ids), weil `Club#user_permissions` dieselbe
+  # Liste braucht -- zwei Fassungen derselben Frage laufen auseinander. `ph`
+  # bleibt als Parameter stehen, damit die Aufrufer unveraendert bleiben; er
+  # stammt ohnehin aus genau diesem Konto.
+  def tm_club_ids(_ph)
+    current_user.tm_club_ids
   end
 
   def sanitize_deactivation_reason(raw)

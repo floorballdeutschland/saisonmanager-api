@@ -207,4 +207,111 @@ class PlayersClubDecisionsRoleTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_nil spieler.reload.deactivated_at
   end
+
+  # --- Freigabe durch den Verein ------------------------------------------------
+  #
+  # `clubs.team_managers_manage_players`: Der Verein entscheidet, ob seine
+  # Teammanager*innen den Bestand pflegen. Ohne den Schalter gilt alles oben,
+  # mit ihm gelten für den TM in diesem Verein dieselben Endpunkte wie für den
+  # VM. Der Schalter selbst bleibt ihm verschlossen (clubs_controller_test).
+
+  def tm_im_freigegebenen_verein
+    @club.update!(team_managers_manage_players: true)
+    team = create(:team, club: @club, league: create(:league, :current_season))
+    create(:user, :tm, team_id: team.id)
+  end
+
+  test 'Teammanager legt an, wenn der Verein es freigegeben hat' do
+    login_as(tm_im_freigegebenen_verein)
+
+    assert_difference 'Player.count', 1 do
+      anlegen(@club.id)
+    end
+
+    assert_response :created
+    assert_equal @club.id, Player.last.clubs.first['club_id']
+  end
+
+  test 'Teammanager deaktiviert und reaktiviert, wenn der Verein es freigegeben hat' do
+    login_as(tm_im_freigegebenen_verein)
+    spieler = spieler_im_verein
+
+    post "/api/v2/admin/players/#{spieler.id}/deactivate", params: { reason: 'Karriereende' }
+    assert_response :success
+    assert spieler.reload.deactivated_at.present?
+
+    post "/api/v2/admin/players/#{spieler.id}/reactivate"
+    assert_response :success
+    assert_nil spieler.reload.deactivated_at
+  end
+
+  # Der Schalter hängt am Verein und nicht am Konto. Für die Deaktivierung ist
+  # das die eigentliche Prüfung: Der Verein kommt dort nicht aus dem Aufruf,
+  # sondern aus der Zugehörigkeit der Person, und ein Konto kann für
+  # Mannschaften mehrerer Vereine zuständig sein.
+  test 'Freigabe eines Vereins oeffnet nicht den anderen' do
+    frei = create(:club, team_managers_manage_players: true)
+    league = create(:league, :current_season)
+    team_frei = create(:team, club: frei, league:)
+    team_gesperrt = create(:team, club: @club, league:)
+    user = create(:user, :tm, team_id: team_frei.id)
+    user.update!(teams: [team_frei.id, team_gesperrt.id])
+    login_as(user)
+
+    gesperrt_spieler = spieler_im_verein
+    frei_spieler = create(:player, clubs: [{ 'club_id' => frei.id, 'home_club' => true,
+                                             'created_at' => 1.year.ago.iso8601 }])
+
+    post "/api/v2/admin/players/#{gesperrt_spieler.id}/deactivate", params: { reason: 'Karriereende' }
+    assert_response :forbidden
+    assert_nil gesperrt_spieler.reload.deactivated_at
+
+    post "/api/v2/admin/players/#{frei_spieler.id}/deactivate", params: { reason: 'Karriereende' }
+    assert_response :success
+
+    assert_no_difference 'Player.count' do
+      anlegen(@club.id)
+    end
+    assert_response :forbidden
+
+    assert_difference 'Player.count', 1 do
+      anlegen(frei.id)
+    end
+    assert_response :created
+  end
+
+  # Die Freigabe gilt für die Mannschaften DIESES Vereins. Ein fremder
+  # Teammanager bekommt durch sie nichts -- sonst wäre der Schalter kein
+  # Vereinsrecht, sondern ein offenes Tor.
+  test 'Freigabe erteilt einem fremden Teammanager nichts' do
+    @club.update!(team_managers_manage_players: true)
+    fremdes_team = create(:team, club: create(:club), league: create(:league, :current_season))
+    login_as(create(:user, :tm, team_id: fremdes_team.id))
+    spieler = spieler_im_verein
+
+    assert_no_difference 'Player.count' do
+      anlegen(@club.id)
+    end
+    assert_response :forbidden
+
+    post "/api/v2/admin/players/#{spieler.id}/deactivate", params: { reason: 'Karriereende' }
+    assert_response :forbidden
+    assert_nil spieler.reload.deactivated_at
+  end
+
+  # Die Absage muss den Weg nennen: Ohne den Hinweis auf die Vereinsverwaltung
+  # erfährt ein Teammanager nirgends, dass sich daran etwas ändern lässt.
+  test 'Absage nennt die Vereinsverwaltung als Weg' do
+    team = create(:team, club: @club, league: create(:league, :current_season))
+    login_as(create(:user, :tm, team_id: team.id))
+    spieler = spieler_im_verein
+
+    anlegen(@club.id)
+    assert_response :forbidden
+    assert_match 'Vereinsverwaltung', JSON.parse(response.body)['message']
+
+    post "/api/v2/admin/players/#{spieler.id}/deactivate", params: { reason: 'Karriereende' }
+    assert_response :forbidden
+    assert_match 'Vereinsverwaltung', JSON.parse(response.body)['message']
+  end
 end

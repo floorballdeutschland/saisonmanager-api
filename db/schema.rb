@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_08_27_100000) do
+ActiveRecord::Schema[7.2].define(version: 2026_08_28_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -133,6 +133,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_27_100000) do
     t.datetime "deactivated_at"
     t.bigint "deactivated_by"
     t.integer "notify_excluded_user_ids", default: [], null: false, array: true
+    t.boolean "team_managers_manage_players", default: false, null: false, comment: "Wenn true: Teammanager dieses Vereins duerfen Spieler anlegen, deaktivieren und reaktivieren"
   end
 
   create_table "daily_metrics", force: :cascade do |t|
