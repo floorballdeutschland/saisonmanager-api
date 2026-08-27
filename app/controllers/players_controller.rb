@@ -43,7 +43,7 @@ class PlayersController < ApplicationController
 
   def global_search
     if current_user
-      ph = current_user.permission_hash
+      ph = user_permission_hash
       unless ph[:admin].present? || ph[:sbk].present?
         return render json: { message: 'Keine Berechtigung' }, status: :forbidden
       end
@@ -63,7 +63,10 @@ class PlayersController < ApplicationController
         q: term
       ).order(:last_name, :first_name).limit(20)
 
-      render json: players.map(&:search_hash)
+      # Jeder Treffer sagt, ob diese Stelle ihn auch oeffnen darf: Die Suche geht
+      # ueber den gesamten Bestand, das Profil dahinter nicht. Siehe
+      # #search_scope_hint.
+      render json: players.map { |p| p.search_hash.merge(search_scope_hint(p)) }
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
     end
@@ -1267,9 +1270,43 @@ class PlayersController < ApplicationController
   # Lesender Zugriff auf ein Profil und das Pflegen der E-Mail-Adresse: hier
   # zählt der Teammanager mit, er stellt aus diesem Bestand seinen Kader auf.
   def can_manage_player?(player)
-    ph = current_user.permission_hash
+    ph = user_permission_hash
     ph[:admin].present? || sbk_can_access_player?(ph, player) ||
       vm_can_access_player?(ph, player) || tm_can_access_player?(ph, player)
+  end
+
+  # Kann diese Stelle den Treffer der Spielersuche ueberhaupt oeffnen, und wenn
+  # nicht: wer ist zustaendig?
+  #
+  # Die Suche laeuft bewusst ueber den gesamten Bestand — eine Landes-SBK muss
+  # eine zuziehende Person finden koennen, sonst kaeme kein Transfer zustande
+  # (siehe #global_search). Das Profil selbst begrenzt #admin_player dagegen auf
+  # den Heimat-Spielbetrieb. Die Trefferliste bot deshalb Links an, die die Maske
+  # mit 403 abweist, und der generische 403-Zweig des Frontends warf dabei auf die
+  # Startseite: aus jedem Treffer eines anderen Landesverbands wurde ein Rauswurf
+  # samt verlorener Suche.
+  #
+  # `manageable` steht an JEDEM Treffer, auch am oeffenbaren. Ein Feld, das nur im
+  # Absagefall mitkommt, waere im Frontend nicht von „alte Antwort ohne dieses
+  # Feld" zu unterscheiden, und die Liste wuerde im Zweifel wieder verlinken.
+  # `responsible` dagegen nur dort, wo es etwas zu sagen hat.
+  #
+  # Ohne gueltigen Heimatverein bleibt `responsible` nil — dieselbe Luecke, die
+  # schon `sbk_can_access_player?` sperrt (api#389). Der Hinweis nennt dann keinen
+  # Verband, statt einen zu erfinden.
+  def search_scope_hint(player)
+    return { manageable: true } if can_manage_player?(player)
+
+    { manageable: false,
+      responsible: player.home_club(Date.current)&.home_game_operation&.name }
+  end
+
+  # Der Rechte-Hash je Anfrage nur einmal: #global_search prueft bis zu 20 Treffer
+  # in einer Antwort, und jeder Aufruf von User#permission_hash laeuft ueber
+  # `League.current_season.pluck(:id)`. Innerhalb einer Anfrage aendern sich die
+  # Rechte nicht, gecacht wird auf der Controller-Instanz und damit nur fuer sie.
+  def user_permission_hash
+    @user_permission_hash ||= current_user.permission_hash
   end
 
   # Deaktivieren und Reaktivieren dagegen nicht: Die Deaktivierung nimmt das
@@ -1429,10 +1466,13 @@ class PlayersController < ApplicationController
     tm_club_ids(ph).include?(club_id)
   end
 
+  # Wie #user_permission_hash je Anfrage nur einmal: Ueber die Spielersuche kaeme
+  # sonst je Treffer eine Team-Abfrage samt all_club_ids dazu. `ph` stammt in
+  # jedem Aufruf aus demselben Konto, der Wert haengt also an nichts anderem.
   def tm_club_ids(ph)
     return [] unless ph[:tm].present?
 
-    Team.current_season.where(id: ph[:tm]).flat_map(&:all_club_ids).uniq
+    @tm_club_ids ||= Team.current_season.where(id: ph[:tm]).flat_map(&:all_club_ids).uniq
   end
 
   def sanitize_deactivation_reason(raw)
