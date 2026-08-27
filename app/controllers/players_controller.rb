@@ -1280,31 +1280,47 @@ class PlayersController < ApplicationController
   #
   # Die Suche laeuft bewusst ueber den gesamten Bestand — eine Landes-SBK muss
   # eine zuziehende Person finden koennen, sonst kaeme kein Transfer zustande
-  # (siehe #global_search). Das Profil selbst begrenzt #admin_player dagegen auf
-  # den Heimat-Spielbetrieb. Die Trefferliste bot deshalb Links an, die die Maske
+  # (siehe #global_search). Das Profil selbst haengt an `can_manage_player?`, also
+  # fuer die SBK am Heimat-Spielbetrieb und fuer VM/TM an einer heute gueltigen
+  # Vereinszugehoerigkeit. Die Trefferliste bot deshalb Links an, die die Maske
   # mit 403 abweist, und der generische 403-Zweig des Frontends warf dabei auf die
   # Startseite: aus jedem Treffer eines anderen Landesverbands wurde ein Rauswurf
   # samt verlorener Suche.
+  #
+  # Bewusst dieselbe Methode wie #admin_player und nicht eine eigene Fassung: Nur
+  # so koennen Kennzeichnung und Absage nicht auseinanderlaufen. Eine Verkuerzung
+  # auf `sbk_can_access_player?` waere naheliegend und falsch — sie sperrte jede
+  # Doppelrolle aus den Profilen des eigenen Vereins aus.
   #
   # `manageable` steht an JEDEM Treffer, auch am oeffenbaren. Ein Feld, das nur im
   # Absagefall mitkommt, waere im Frontend nicht von „alte Antwort ohne dieses
   # Feld" zu unterscheiden, und die Liste wuerde im Zweifel wieder verlinken.
   # `responsible` dagegen nur dort, wo es etwas zu sagen hat.
   #
-  # Ohne gueltigen Heimatverein bleibt `responsible` nil — dieselbe Luecke, die
-  # schon `sbk_can_access_player?` sperrt (api#389). Der Hinweis nennt dann keinen
-  # Verband, statt einen zu erfinden.
+  # `responsible` bleibt aus ZWEI Gruenden leer, und das Frontend darf deshalb
+  # keinen davon behaupten: ohne gueltige Heimat-Zugehoerigkeit (dieselbe Luecke,
+  # die schon `sbk_can_access_player?` sperrt, api#389) und bei einem Heimatverein,
+  # fuer den kein Spielbetrieb zustaendig ist (`Club#main_game_operation_id` ist
+  # dort bewusst nil, siehe dort; Stand 2026 rund zwei Dutzend Vereine). Der
+  # Hinweis nennt dann keinen Verband, statt einen zu erfinden.
+  #
+  # Stichtag `Date.today` wie in `sbk_can_access_player?`: Zwei verschiedene
+  # Uhren fuer dieselbe Frage ergaeben um Mitternacht eine Kennzeichnung, die der
+  # Maske dahinter widerspricht.
   def search_scope_hint(player)
     return { manageable: true } if can_manage_player?(player)
 
     { manageable: false,
-      responsible: player.home_club(Date.current)&.home_game_operation&.name }
+      responsible: player.home_club(Date.today)&.home_game_operation&.name }
   end
 
   # Der Rechte-Hash je Anfrage nur einmal: #global_search prueft bis zu 20 Treffer
   # in einer Antwort, und jeder Aufruf von User#permission_hash laeuft ueber
   # `League.current_season.pluck(:id)`. Innerhalb einer Anfrage aendern sich die
   # Rechte nicht, gecacht wird auf der Controller-Instanz und damit nur fuer sie.
+  #
+  # Gilt fuer die Rechtepruefungen rund um ein Spielerprofil, die hier darunter
+  # stehen; die uebrigen Aktionen des Controllers lesen den Hash weiterhin direkt.
   def user_permission_hash
     @user_permission_hash ||= current_user.permission_hash
   end
@@ -1317,7 +1333,7 @@ class PlayersController < ApplicationController
   # Vereinsbezug kommt hier aus der heute gültigen Zugehörigkeit der Person,
   # nicht aus einem übergebenen Verein.
   def can_deactivate_player?(player)
-    ph = current_user.permission_hash
+    ph = user_permission_hash
     ph[:admin].present? || sbk_can_access_player?(ph, player) ||
       vm_can_access_player?(ph, player)
   end
@@ -1331,7 +1347,7 @@ class PlayersController < ApplicationController
   # in club_test.rb, „wer VM des einen und TM im anderen Verein ist"). Für jede
   # andere Rolle wäre der Hinweis falsch, die ist schlicht nicht zuständig.
   def deactivation_denied_message(player)
-    ph = current_user.permission_hash
+    ph = user_permission_hash
     if tm_can_access_player?(ph, player) && !vm_can_access_player?(ph, player)
       'Deaktivieren und Reaktivieren darf nur der Vereinsmanager des Vereins.'
     else
@@ -1340,7 +1356,7 @@ class PlayersController < ApplicationController
   end
 
   def creation_denied_message(club)
-    ph = current_user.permission_hash
+    ph = user_permission_hash
     if tm_can_access_club?(ph, club.id) && !ph[:vm].to_a.include?(club.id)
       'Spieler*innen anlegen darf nur der Vereinsmanager des Vereins.'
     else
