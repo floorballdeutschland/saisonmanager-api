@@ -17,6 +17,11 @@ class LeaguesController < ApplicationController
   # Als Konstante, damit der Test genau den Text prüft, den die Maske zeigt.
   FEHLENDE_IMPORTDATEI = 'Keine Importdatei erhalten. Bitte zuerst eine Datei auswählen.'.freeze
 
+  # Meldung, wenn die hochgeladene Datei sich nicht als Arbeitsmappe öffnen
+  # lässt. Bewusst getrennt von „Datei ungütig, Vorlage verwenden!" weiter
+  # unten: Das meint eine lesbare Mappe mit falschem Blattnamen.
+  DATEI_NICHT_LESBAR = 'Datei konnte nicht gelesen werden. Bitte die unveränderte Excel-Vorlage (.xlsx) hochladen.'.freeze
+
   skip_before_action :authenticate_user, except: COOKIE_ONLY_ACTIONS
   before_action :authenticate_public_request, except: COOKIE_ONLY_ACTIONS + KEYLESS_ACTIONS
   after_action :track_public_view,
@@ -209,11 +214,38 @@ class LeaguesController < ApplicationController
                     status: :unprocessable_entity
     end
 
-    creek = Creek::Book.new params[:file], with_headers: false
-    sheet = creek.sheets[0]
-
     errors = []
     warnings = []
+
+    # Alles, was beim Öffnen der Datei schiefgeht, ist ein Eingabefehler und
+    # keine Störung: eine verwechselte Datei (Creek prüft die Endung und wirft
+    # `RuntimeError: Not a valid file format.`), eine in .xlsx umbenannte
+    # Fremddatei (`Zip::Error`), ein gültiges Zip ohne Tabellenteil
+    # (`Errno::ENOENT` beim Griff nach xl/workbook.xml). Ohne diesen rescue
+    # landete das alles im globalen StandardError-Handler und damit als 500
+    # „Server-Fehler." samt Sentry-Meldung. Für die hochladende Person las sich
+    # ein verwechseltes Dateiformat damit als Serverstörung, an der sie nichts
+    # ändern kann.
+    #
+    # Die weite Fehlerklasse ist hier Absicht und keine Nachlässigkeit: Sie
+    # umschließt nur diese zwei Zeilen, in denen ausschließlich eine fremde
+    # Datei verarbeitet wird. Damit ein echter Bibliotheksfehler trotzdem
+    # auffindbar bleibt, geht er ins Log, nur eben nicht als Alarm.
+    begin
+      creek = Creek::Book.new params[:file], with_headers: false
+      sheet = creek.sheets[0]
+    rescue StandardError => e
+      Rails.logger.warn("Spielplanimport: Datei nicht lesbar (#{e.class}: #{e.message})")
+      return render json: { message: { errors: [DATEI_NICHT_LESBAR], warnings: }.to_json },
+                    status: :unprocessable_entity
+    end
+
+    # Eine Arbeitsmappe ganz ohne Blätter fiele sonst erst unten bei
+    # `sheet.name` auf, wieder als 500.
+    if sheet.nil?
+      return render json: { message: { errors: [DATEI_NICHT_LESBAR], warnings: }.to_json },
+                    status: :unprocessable_entity
+    end
 
     user_id = current_user.id
 
