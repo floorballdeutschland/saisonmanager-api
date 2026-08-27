@@ -2,6 +2,7 @@ class PlayersController < ApplicationController
   include PlayerReleaseRecording
   include LicenseDocumentPresentation
   include LicenseAccessScope
+  include CsvUploadValidation
 
   before_action :set_player, only: %i[show update destroy]
   skip_before_action :authenticate_user, only: %i[transfers_public stats]
@@ -1055,18 +1056,8 @@ class PlayersController < ApplicationController
   end
 
   def vm_players_index
-    ph = current_user.permission_hash
-    club_id = params[:club_id]&.to_i
-    return render json: { message: 'club_id fehlt.' }, status: :bad_request unless club_id.present? && club_id > 0
-
-    sbk_ok = ph[:sbk].present? && (ph[:sbk].include?(0) || derive_club_ids_for_go(ph[:sbk]).include?(club_id))
-    allowed = ph[:admin].present? || sbk_ok ||
-              (ph[:vm].present? && ph[:vm].include?(club_id)) ||
-              tm_can_access_club?(ph, club_id)
-    return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless allowed
-
-    club = Club.find_by(id: club_id)
-    return render json: { message: 'Verein nicht gefunden.' }, status: :not_found unless club
+    club = resolve_vm_club
+    return if performed?
 
     # Ueber Club#players: abgelaufene Freigaben bleiben draussen (der fruehere Roh-Query
     # clubs @> {club_id} ignorierte valid_until und zeigte sie weiterhin an).
@@ -1107,6 +1098,13 @@ class PlayersController < ApplicationController
       # Query-Cache des Requests fasst die wiederholte Abfrage zusammen. Admin,
       # VM und TM entscheiden ohne jede Abfrage.
       base[:email] = p.email if can_manage_player?(p)
+      # Die Nationalitaet gehoert zu den Stammdaten, die der CSV-Export dieser
+      # Liste ausgibt und der Import nachtraegt. Ungated wie Geburtsdatum und
+      # Geschlecht daneben: Wer die Liste des Vereins sehen darf, sieht diese
+      # Angabe im Profil ohnehin (full_hash). Nur die E-Mail-Adresse haengt an
+      # einem eigenen Recht, siehe darueber.
+      base[:nation_id] = p.nation_id
+      base[:nation_string] = p.nation_string
       current_lics = (p.licenses || []).select { |l| leagues_by_team.key?(l['team_id'].to_i) }
       if current_lics.present?
         # Ein Eintrag pro Liga-Lizenz der laufenden Saison, höchste Liga zuerst;
@@ -1148,7 +1146,78 @@ class PlayersController < ApplicationController
     end
   end
 
+  # POST /admin/vm/players/import (club_id, file)
+  #
+  # Traegt fehlende Stammdaten aus einer CSV im Format des Listen-Exports nach.
+  # Geschrieben wird nur, wo im Profil noch nichts steht — die Regel und ihre
+  # Begruendung stehen in PlayerMasterDataImport.
+  #
+  # Der Zugang haengt an derselben Pruefung wie die Liste selbst
+  # (resolve_vm_club), die Schreibrechte je Feld an denselben Rechten wie die
+  # Maske daneben: die Adresse an can_manage_player? (wie #update_email), die
+  # uebrigen Stammdaten an `update_player` (Admin/SBK). Fuer VM und TM ist das
+  # dieselbe Aufteilung wie in der Maske daneben: Adresse ja, Geburtsdatum,
+  # Geschlecht und Nationalitaet nur ueber den Aenderungsantrag. Der Report
+  # benennt jedes uebersprungene Feld mit Grund, statt es stillschweigend zu
+  # verwerfen — sonst sieht eine gepflegte Spalte aus wie ein verlorener Upload.
+  def vm_import
+    club = resolve_vm_club
+    return if performed?
+
+    file = params[:file]
+    upload_error = csv_upload_error(file)
+    return render(json: { message: upload_error }, status: :unprocessable_entity) if upload_error
+
+    ph = current_user.permission_hash
+    players = club.players(include_deactivated: true)
+    import = PlayerMasterDataImport.new(
+      csv_content: file.read,
+      players: players,
+      email_writable_ids: players.select { |p| can_manage_player?(p) }.map(&:id),
+      may_write_master_data: ph[:admin].present? || ph[:sbk].present?,
+      actor_id: current_user.id
+    )
+    report = import.call
+    return render(json: { message: import.errors.join(' ') }, status: :unprocessable_entity) if report.nil?
+
+    render json: report
+  end
+
   private
+
+  # Der Verein aus `club_id`, geprueft gegen dieselben Rechte wie die
+  # Vereinsspielerliste. Rendert im Fehlerfall selbst und liefert nil; der
+  # Aufrufer bricht mit `return if performed?` ab.
+  #
+  # Eine Methode fuer Liste und Import, damit die beiden Zugaenge nicht
+  # auseinanderlaufen koennen: Wer die Liste eines Vereins sieht, kommt auch an
+  # dessen Import-Maske — was dort tatsaechlich geschrieben wird, entscheiden
+  # anschliessend die Feldrechte.
+  def resolve_vm_club
+    ph = current_user.permission_hash
+    club_id = params[:club_id]&.to_i
+    unless club_id.present? && club_id > 0
+      render json: { message: 'club_id fehlt.' }, status: :bad_request
+      return nil
+    end
+
+    sbk_ok = ph[:sbk].present? && (ph[:sbk].include?(0) || derive_club_ids_for_go(ph[:sbk]).include?(club_id))
+    allowed = ph[:admin].present? || sbk_ok ||
+              (ph[:vm].present? && ph[:vm].include?(club_id)) ||
+              tm_can_access_club?(ph, club_id)
+    unless allowed
+      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+      return nil
+    end
+
+    club = Club.find_by(id: club_id)
+    unless club
+      render json: { message: 'Verein nicht gefunden.' }, status: :not_found
+      return nil
+    end
+
+    club
+  end
 
   # season_id → league_id → aggregierte Stats aus allen beendeten Spielen mit
   # diesem Spieler in der Aufstellung. current_season: true rechnet nur die
