@@ -36,6 +36,56 @@ class PlayerMergeLicenseEvidenceTest < ActiveSupport::TestCase
       'history' => [{ 'license_status_id' => status, 'created_at' => erteilt_am.iso8601 }] }
   end
 
+  # Der Stichtagsvergleich in `valid_time?` ist tagesgenau, ein heute geschlossener Eintrag
+  # gilt also bis Mitternacht als gueltig. Solange die Zusammenlegung den JUENGSTEN Eintrag
+  # behielt, fiel das nicht auf. Jetzt kann der behaltene der aeltere sein, und ohne
+  # Vorrang des laufenden Eintrags naennte jeder Leser bis Mitternacht weiter den gerade
+  # geschlossenen: Die Maske zeigte den falschen Verein, und ein noch am selben Tag
+  # gestellter Transferantrag ginge an den falschen Landesverband.
+  test 'jeder Leser nennt den belegten Verein noch am Tag der Zusammenlegung' do
+    elster = create(:club, name: 'UHC Elster')
+    weissenfels = create(:club, name: 'UHC Weissenfels')
+    elster_team = create(:team, club: elster)
+
+    master = create(:player, clubs: [heimat(elster, 5.years.ago)],
+                             licenses: [lizenz(elster_team, 1.year.ago)])
+    dublette = create(:player, clubs: [heimat(weissenfels, 2.years.ago)])
+
+    dublette.merge_into!(master, @user.id)
+    master.reload
+
+    assert_equal elster.id, master.home_club_entry['club_id']
+    assert_equal elster.id, master.home_club(Date.current)&.id
+  end
+
+  # Gegenprobe zum Vorrang: Er darf nur den heute beendeten Eintrag zuruecksetzen, nicht
+  # eine echte befristete Zugehoerigkeit, die noch laeuft.
+  test 'ein Ende in der Zukunft verliert nicht gegen einen aelteren offenen Eintrag' do
+    alt = create(:club)
+    befristet = create(:club)
+    spieler = create(:player, clubs: [
+      { 'club_id' => alt.id, 'home_club' => true,
+        'created_at' => 5.years.ago.iso8601 },
+      { 'club_id' => befristet.id, 'home_club' => true,
+        'created_at' => 1.year.ago.iso8601,
+        'valid_until' => 60.days.from_now.iso8601 }
+    ])
+
+    assert_equal befristet.id, spieler.home_club_entry['club_id']
+  end
+
+  # Steht nur ein einziger, heute beendeter Eintrag da, bleibt es beim bisherigen
+  # Verhalten: Er gilt bis Mitternacht weiter, sonst haette die Person heute gar keinen
+  # Heimatverein und faellt aus jeder Vereinsliste.
+  test 'ein einzelner heute beendeter Eintrag gilt weiter' do
+    verein = create(:club)
+    spieler = create(:player, clubs: [{ 'club_id' => verein.id, 'home_club' => true,
+                                        'created_at' => 5.years.ago.iso8601,
+                                        'valid_until' => Time.zone.now.iso8601 }])
+
+    assert_equal verein.id, spieler.home_club_entry['club_id']
+  end
+
   test 'die zuletzt erteilte Lizenz schlaegt das juengere Datum der Fehlanlage' do
     elster = create(:club, name: 'UHC Elster')
     weissenfels = create(:club, name: 'UHC Weissenfels')
@@ -204,6 +254,47 @@ class PlayerMergeLicenseEvidenceTest < ActiveSupport::TestCase
                  '22:25 UTC ist spaeter als 23:59+02:00, auch wenn die Zeichenkette es umdreht'
   end
 
+  # Der gefaehrliche Fall: Waere ein unlesbarer Eintrag nur uebersprungen worden, gewaenne
+  # hier die aeltere Erteilung, und die Regel benennte mit voller Bestimmtheit den falschen
+  # Verein. Ohne Beleg faellt sie stattdessen auf die Datumsregel zurueck.
+  test 'ein unlesbarer juengster Eintrag laesst keine aeltere Lizenz gewinnen' do
+    alt = create(:club)
+    neu = create(:club)
+    alt_team = create(:team, club: alt)
+    neu_team = create(:team, club: neu)
+    unlesbar = { 'team_id' => neu_team.id, 'season_id' => '18',
+                 'history' => [{ 'license_status_id' => License::APPROVED,
+                                 'created_at' => 'kein Datum' }] }
+
+    master = create(:player, clubs: [heimat(alt, 1.year.ago)],
+                             licenses: [lizenz(alt_team, 5.years.ago), unlesbar])
+    dublette = create(:player, clubs: [heimat(neu, 5.years.ago)])
+
+    dublette.merge_into!(master, @user.id)
+    master.reload
+
+    assert_equal [alt.id], offene_heimat(master),
+                 'ohne verwertbaren Beleg entscheidet das juengere Datum, nicht die alte Lizenz'
+  end
+
+  test 'ein fehlender Zeitstempel macht den Beleg ebenso unbrauchbar' do
+    alt = create(:club)
+    neu = create(:club)
+    alt_team = create(:team, club: alt)
+    neu_team = create(:team, club: neu)
+    ohne_datum = { 'team_id' => neu_team.id, 'season_id' => '18',
+                   'history' => [{ 'license_status_id' => License::APPROVED }] }
+
+    master = create(:player, clubs: [heimat(alt, 1.year.ago)],
+                             licenses: [lizenz(alt_team, 5.years.ago), ohne_datum])
+    dublette = create(:player, clubs: [heimat(neu, 5.years.ago)])
+
+    dublette.merge_into!(master, @user.id)
+    master.reload
+
+    assert_equal [alt.id], offene_heimat(master)
+  end
+
   test 'ein unlesbarer Zeitstempel kippt die Auswahl nicht' do
     alt = create(:club)
     neu = create(:club)
@@ -219,6 +310,127 @@ class PlayerMergeLicenseEvidenceTest < ActiveSupport::TestCase
     master.reload
 
     assert_equal [neu.id], offene_heimat(master)
+  end
+
+  # `Time.zone.parse` lehnt ein Bruchstueck nicht ab, sondern ergaenzt es aus dem heutigen
+  # Datum. "12x" wird zum 12. des laufenden Monats und schluege damit jede echte Erteilung.
+  test 'ein Datumsbruchstueck wird nicht aus dem heutigen Datum ergaenzt' do
+    alt = create(:club)
+    neu = create(:club)
+    alt_team = create(:team, club: alt)
+    bruchstueck = { 'team_id' => alt_team.id, 'season_id' => '18',
+                    'history' => [{ 'license_status_id' => License::APPROVED,
+                                    'created_at' => '12x' }] }
+
+    master = create(:player, clubs: [heimat(alt, 5.years.ago)], licenses: [bruchstueck])
+    dublette = create(:player, clubs: [heimat(neu, 1.year.ago)])
+
+    dublette.merge_into!(master, @user.id)
+    master.reload
+
+    assert_equal [neu.id], offene_heimat(master),
+                 'ein erfundener Zeitpunkt darf keinen Verein bestimmen'
+  end
+
+  # Sammelimporte teilen sich regelmaessig einen Zeitstempel. Zwei Erteilungen in derselben
+  # Sekunde bei verschiedenen Vereinen sind kein Beleg, sondern ein Gleichstand.
+  test 'zwei gleich alte Erteilungen bei verschiedenen Vereinen ergeben keinen Beleg' do
+    alt = create(:club)
+    neu = create(:club)
+    alt_team = create(:team, club: alt)
+    dritter_team = create(:team, club: create(:club))
+    gleichzeitig = 2.years.ago
+
+    master = create(:player, clubs: [heimat(alt, 5.years.ago)],
+                             licenses: [lizenz(alt_team, gleichzeitig),
+                                        lizenz(dritter_team, gleichzeitig)])
+    dublette = create(:player, clubs: [heimat(neu, 1.year.ago)])
+
+    dublette.merge_into!(master, @user.id)
+    master.reload
+
+    assert_equal [neu.id], offene_heimat(master)
+  end
+
+  test 'eine Kennung, die keine Zahl ist, ergibt keinen Beleg' do
+    alt = create(:club)
+    neu = create(:club)
+    alt_team = create(:team, club: alt)
+    beschaedigt = { 'team_id' => "#{alt_team.id}abc", 'season_id' => '18',
+                    'history' => [{ 'license_status_id' => License::APPROVED,
+                                    'created_at' => 1.month.ago.iso8601 }] }
+
+    master = create(:player, clubs: [heimat(alt, 5.years.ago)], licenses: [beschaedigt])
+    dublette = create(:player, clubs: [heimat(neu, 1.year.ago)])
+
+    dublette.merge_into!(master, @user.id)
+    master.reload
+
+    assert_equal [neu.id], offene_heimat(master),
+                 'to_i haette daraus ein gueltiges fremdes Team gemacht'
+  end
+
+  # Die Kennung als Zeichenkette ist dagegen Bestand und muss zaehlen.
+  test 'eine Kennung als Zeichenkette belegt wie eine Zahl' do
+    elster = create(:club)
+    fehlanlage = create(:club)
+    elster_team = create(:team, club: elster)
+    als_text = { 'team_id' => elster_team.id.to_s, 'season_id' => '18',
+                 'history' => [{ 'license_status_id' => License::APPROVED,
+                                 'created_at' => 1.month.ago.iso8601 }] }
+
+    master = create(:player, clubs: [heimat(elster, 5.years.ago)], licenses: [als_text])
+    dublette = create(:player, clubs: [heimat(fehlanlage, 1.year.ago)])
+
+    dublette.merge_into!(master, @user.id)
+    master.reload
+
+    assert_equal [elster.id], offene_heimat(master)
+  end
+
+  # Nachvollziehbarkeit: Der behaltene Eintrag sagt, nach welcher Regel er feststand.
+  test 'der behaltene Eintrag vermerkt die entscheidende Regel' do
+    elster = create(:club)
+    fehlanlage = create(:club)
+    elster_team = create(:team, club: elster)
+
+    master = create(:player, clubs: [heimat(elster, 5.years.ago)],
+                             licenses: [lizenz(elster_team, 1.year.ago)])
+    dublette = create(:player, clubs: [heimat(fehlanlage, 2.years.ago)])
+    dublette.merge_into!(master, @user.id)
+
+    behalten = master.reload.clubs.find { |c| c['club_id'] == elster.id }
+    assert_equal Player::DECIDED_BY_LICENSE, behalten[Player::HOME_CLUB_DECIDED_BY]
+
+    ohne_beleg_master = create(:player, clubs: [heimat(create(:club), 5.years.ago)])
+    neuer = create(:club)
+    create(:player, clubs: [heimat(neuer, 1.year.ago)]).merge_into!(ohne_beleg_master, @user.id)
+
+    nach_datum = ohne_beleg_master.reload.clubs.find { |c| c['club_id'] == neuer.id }
+    assert_equal Player::DECIDED_BY_DATE, nach_datum[Player::HOME_CLUB_DECIDED_BY]
+  end
+
+  # Derselbe Fehler wie beim Beleg, eine Methode weiter: Der geltende Lizenzstatus ist
+  # ueberall der LETZTE Verlaufseintrag. Sortierte die Zusammenfuehrung lexikalisch, koennte
+  # eine geloeschte Lizenz wieder als erteilt hervorgehen.
+  test 'gemischte Offsets kehren die Verlaufsreihenfolge einer Lizenz nicht um' do
+    team = create(:team)
+    erteilt = { 'license_status_id' => License::APPROVED,
+                'created_at' => '2026-08-12T23:59:00.000+02:00' }
+    geloescht = { 'license_status_id' => License::DELETED,
+                  'created_at' => '2026-08-12T22:25:00.000+00:00' }
+
+    master = create(:player, licenses: [{ 'team_id' => team.id, 'season_id' => '18',
+                                          'history' => [erteilt] }])
+    dublette = create(:player, licenses: [{ 'team_id' => team.id, 'season_id' => '18',
+                                            'history' => [geloescht] }])
+
+    dublette.merge_into!(master, @user.id)
+    master.reload
+
+    verlauf = master.licenses.find { |l| l['team_id'] == team.id }['history']
+    assert_equal License::DELETED, verlauf.last['license_status_id'],
+                 '22:25 UTC ist spaeter als 23:59+02:00 und muss am Ende stehen'
   end
 
   test 'eine Lizenz auf ein geloeschtes Team ergibt keinen Beleg' do
