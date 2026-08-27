@@ -699,10 +699,15 @@ class PlayersController < ApplicationController
             created_at: Time.now,
             valid_until:
           }
+          # Der abgebende Verein wird VOR dem Anhängen gelesen: `home_club_entry`
+          # liefe sonst über den frisch angehängten Eintrag mit, der noch
+          # Symbol-Schlüssel trägt und dabei als „keine Heimat" durchginge.
+          former_club_id = player.home_club_entry&.dig('club_id')
+
           # add club to clubs array
           player.clubs << club_entry
 
-          if player.save
+          if save_with_release_record(player, club, former_club_id)
             render json: { success: true }
           else
             render json: { message: player.errors }, status: :unprocessable_entity
@@ -731,6 +736,12 @@ class PlayersController < ApplicationController
       if player.present? &&
          club.present?
 
+        # `beendet` hält fest, ob dieser Aufruf tatsächlich eine laufende
+        # Zugehörigkeit gestempelt hat: Die Bedingung unten vergleicht auch das
+        # mitgeschickte `valid_until`, ein Aufruf kann also folgenlos bleiben.
+        # Ohne die Unterscheidung widerriefe der folgenlose Aufruf den Vorgang.
+        beendet = false
+
         player.clubs.map! do |c|
           # additional club == ! home
           # entry only for given club
@@ -740,12 +751,13 @@ class PlayersController < ApplicationController
              c['valid_until'].present? && c['valid_until'].to_time > Time.now && c['valid_until'] == params[:valid_until]
             c['valid_until'] = Time.now
             c['valid_set_by'] = current_user.id
+            beendet = true
           end
 
           c
         end
 
-        if player.save
+        if save_with_release_revocation(player, club, beendet)
           render json: { success: true }
         else
           render json: { message: player.errors }, status: :unprocessable_entity
@@ -1571,6 +1583,84 @@ class PlayersController < ApplicationController
     return true if ph[:sbk].include?(0)
 
     ph[:sbk].include?(club.main_game_operation_id)
+  end
+
+  # Freigabe (Zweitspielrecht) über das Spielerprofil: Zugehörigkeit und
+  # Vorgangszeile entstehen gemeinsam oder gar nicht.
+  #
+  # Warum es die Vorgangszeile überhaupt braucht: Fachlich ist das dieselbe
+  # Freigabe wie über den Antragsweg. `TransferRequest#execute_release!` schreibt
+  # genau denselben clubs-Eintrag, führt aber einen Vorgang mit. Über das Profil
+  # erteilt, stand die Freigabe bisher nur in players.clubs -- die Übersicht
+  # „Transferanträge" liest transfer_requests und zeigte sie deshalb nie an.
+  #
+  # Angelegt wie bei der Direktzuweisung
+  # (Admin::TransferRequestsController#direct_assign): als bereits
+  # abgeschlossener Vorgang, `direct: true`, genehmigendes Konto ist das
+  # handelnde. Ein Freigabeschritt des abgebenden Vereins hat hier nicht
+  # stattgefunden und wird deshalb auch nicht behauptet.
+  def save_with_release_record(player, club, former_club_id)
+    ActiveRecord::Base.transaction do
+      raise ActiveRecord::Rollback unless player.save
+
+      record_direct_release!(player, club, former_club_id)
+      true
+    end
+  end
+
+  # Der abgebende Verein ist Pflichtspalte des Vorgangs. Ohne gültige
+  # Heimat-Zugehörigkeit (Altbestand) oder ohne den Verein dazu bleibt die
+  # Freigabe ohne Vorgangszeile, statt abgewiesen zu werden: Der Antragsweg
+  # weist genau diese Profile bereits ab (`no_home_club_response`), die Freigabe
+  # über das Profil ist für sie der einzige verbliebene Weg.
+  def record_direct_release!(player, club, former_club_id)
+    return if former_club_id.blank? || !Club.exists?(id: former_club_id)
+
+    tr = TransferRequest.create!(
+      player_id: player.id,
+      requesting_club_id: club.id,
+      former_club_id: former_club_id,
+      status: 'approved',
+      request_type: 'release',
+      direct: true,
+      created_by: current_user.id,
+      approved_by_lv_user_id: current_user.id,
+      lv_approved_at: Time.current,
+      season_id: Setting.current_season_id
+    )
+    # `before_create` erzeugt den Bestätigungslink des Spielers unbedingt. Der
+    # gehört zu einem laufenden Antrag; auf jedem anderen Weg nach `approved`
+    # wird er beim Abschluss geleert.
+    tr.update!(player_confirmation_token: nil)
+  end
+
+  # Gegenstück zu #save_with_release_record: Wird eine Freigabe im Spielerprofil
+  # beendet, gehört der Vorgang auf `revoked`. Sonst stünde in der Übersicht
+  # weiter eine erteilte Freigabe, die es nicht mehr gibt. Gilt auch für
+  # Freigaben aus dem Antragsweg -- deren Vorgang blieb hier schon immer
+  # unberührt.
+  #
+  # Nicht über `TransferRequest#revoke_release!`: Der Widerruf dort entwertet
+  # zusätzlich die Lizenzen des aufnehmenden Vereins. Was dieser Knopf tut,
+  # bleibt unverändert; mitgeschrieben wird nur, was er tut.
+  def save_with_release_revocation(player, club, beendet)
+    ActiveRecord::Base.transaction do
+      raise ActiveRecord::Rollback unless player.save
+
+      revoke_release_record!(player, club) if beendet
+      true
+    end
+  end
+
+  def revoke_release_record!(player, club)
+    tr = TransferRequest.where(player_id: player.id, requesting_club_id: club.id,
+                               request_type: 'release', status: 'approved')
+                        .order(:lv_approved_at, :id).last
+    return unless tr
+
+    tr.update!(status: 'revoked', revoked_by: current_user.id, revoked_at: Time.current,
+               revocation_reason: 'Freigabe im Spielerprofil beendet',
+               player_confirmation_token: nil)
   end
 
   # Darf diese Stelle eine Deaktivierung zurücknehmen?

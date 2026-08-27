@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Eine über das Spielerprofil erteilte Freigabe tauchte in der Übersicht „Transferanträge" nicht auf**: Eine Freigabe (Zweitspielrecht) lässt sich auf zwei Wegen erteilen, über den Antragsweg und unmittelbar im Spielerprofil. Beide schreiben denselben Eintrag in die Vereinszugehörigkeiten des Spielers, aber nur der Antragsweg führte einen Vorgang mit. Die Übersicht liest die Vorgänge -- eine im Profil erteilte Freigabe war dort deshalb nie zu sehen, weder für die zuständige Spielbetriebskommission noch für die beiden beteiligten Vereine, und sie fehlte ebenso im CSV-Export. Sie wird jetzt wie die Direktzuweisung als bereits abgeschlossener Vorgang mitgeschrieben: Kennzeichnung „direkt", Status „genehmigt", genehmigendes Konto ist das handelnde. Ein Freigabeschritt des abgebenden Vereins hat dabei nicht stattgefunden und wird auch nicht behauptet. Zugehörigkeit und Vorgang entstehen gemeinsam oder gar nicht; ein abgewiesener Aufruf hinterlässt weiterhin nichts. Wird eine Freigabe im Spielerprofil beendet, wird der zugehörige Vorgang widerrufen -- sonst stünde in der Übersicht weiter eine erteilte Freigabe, die es nicht mehr gibt. Das gilt auch für Freigaben aus dem Antragsweg, deren Vorgang beim Beenden im Profil bisher unberührt blieb. Was der Knopf „Freigabe beenden" tut, ändert sich dadurch nicht: Er beendet die Zugehörigkeit, entwertet aber weiterhin keine Lizenzen des aufnehmenden Vereins -- anders als der Widerruf aus der Transferübersicht. Ohne gültigen Heimatverein bleibt die Freigabe wie bisher möglich, dann allerdings ohne Vorgangszeile, weil der abgebende Verein Pflichtangabe des Vorgangs ist; der Antragsweg weist solche Altbestandsprofile ohnehin ab, und die Freigabe über das Profil ist für sie der einzige verbliebene Weg. Bereits erteilte Freigaben bleiben unberücksichtigt, die Übersicht zeigt sie ab dieser Änderung nur für neu erteilte.
+
 ## [1.100.1] - 2026-08-27
 
 ### Behoben
