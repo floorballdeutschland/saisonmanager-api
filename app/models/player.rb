@@ -309,8 +309,24 @@ class Player < ApplicationRecord
   #     mit "Spieler hat keinen aktiven Heimverein", obwohl `home_club` einen findet.
   #   - `valid_until.nil?` statt Stichtagsvergleich. Eine Heimat-Zugehoerigkeit mit
   #     einem Ende in der Zukunft gilt heute noch; der Controller zaehlte sie nicht.
+  #
+  # Unter mehreren gueltigen Eintraegen gewinnt zuerst der noch LAUFENDE und erst danach
+  # der zuletzt begonnene. Der Stichtagsvergleich in `valid_time?` ist tagesgenau, ein
+  # heute beendeter Eintrag gilt hier also bis Mitternacht weiter. Solange `.last` allein
+  # entschied, fiel das nicht auf: Wer eine Zugehoerigkeit beendet, beendet die aeltere,
+  # und der juengste Eintrag war ohnehin der laufende. Seit die Zusammenlegung ihren
+  # Heimatverein nach Beleg statt nach Datum waehlt (siehe `_close_surplus_home_clubs`),
+  # kann der behaltene der AELTERE der beiden sein. Ohne diesen Vorrang naennte jeder
+  # Leser bis Mitternacht weiter den gerade geschlossenen: Die Oberflaeche zeigte den
+  # falschen Verein, und ein noch am selben Tag gestellter Transferantrag ginge ueber
+  # `former_club_id` an den falschen Landesverband -- genau der Widerspruch, gegen den
+  # diese Methode eingefuehrt wurde.
   def home_club_entry(deadline = Date.current)
-    home_club_hash(deadline)&.last
+    gueltig = home_club_hash(deadline)
+    return nil if gueltig.blank?
+
+    laufend = gueltig.reject { |c| _endet_bis_zum_stichtag?(c['valid_until'], deadline) }
+    (laufend.presence || gueltig).last
   end
 
   # Heimat-Zugehörigkeiten, die am Stichtag noch gelten.
@@ -420,6 +436,12 @@ class Player < ApplicationRecord
   # Kaputter SQL-Default, der versehentlich als String in security_id landete.
   PLACEHOLDER_SECURITY_ID = 'uuid_generate_v4()'.freeze
 
+  # Vermerk am behaltenen Heimatverein einer Zusammenlegung: nach welcher Regel er
+  # feststand. Siehe `_close_surplus_home_clubs`.
+  HOME_CLUB_DECIDED_BY = 'home_club_decided_by'.freeze
+  DECIDED_BY_LICENSE = 'lizenzbeleg'.freeze
+  DECIDED_BY_DATE = 'anlagedatum'.freeze
+
   # Führt die Secondary (self) in den Master zusammen und deaktiviert self.
   # Gibt die Liste der Verknüpfungen zurück, die wegen Unique-Index-Kollision
   # NICHT auf den Master umgehängt werden konnten und am (deaktivierten)
@@ -444,8 +466,14 @@ class Player < ApplicationRecord
       # deep_dup: die zusammengeführten Einträge landen auf dem Master; das
       # anschließende deactivate! mutiert die Clubs/Lizenzen der Secondary und
       # darf die Master-Kopien nicht mit anfassen.
-      master.clubs    = _merge_clubs(clubs, master.clubs, user_id)
+      #
+      # Lizenzen zuerst: Stehen nach dem Zusammenfuehren zwei Heimatvereine offen,
+      # entscheidet die zuletzt erteilte Lizenz, welcher davon bleibt (siehe
+      # `_close_surplus_home_clubs`). Dafuer muss der gemeinsame Lizenzbestand beider
+      # Profile schon stehen -- die entscheidende Lizenz kann von jedem der beiden
+      # kommen.
       master.licenses = _merge_licenses(licenses, master.licenses)
+      master.clubs    = _merge_clubs(clubs, master.clubs, user_id, master.licenses)
       master.save!(validate: false)
 
       _rewrite_player_game_references(master.id)
@@ -1207,7 +1235,7 @@ class Player < ApplicationRecord
   # aufgeloest wird. Ihn mitzunehmen dreht die Aussage um und macht die Ablage zum
   # aktuellen Verein des echten Profils. Auf Produktion war das am 26.08.2026 bei acht
   # Merge-Zielen so, darunter Spieler 4876 mit 148 Spielen und Lizenz in S17.
-  def _merge_clubs(secondary_clubs, master_clubs, user_id = nil)
+  def _merge_clubs(secondary_clubs, master_clubs, user_id = nil, merged_licenses = nil)
     ablage_ids   = Club.ablage_ids.to_set
     master_clubs = (master_clubs || []).map(&:deep_dup)
     secondary_clubs = (secondary_clubs || []).map(&:deep_dup).reject do |c|
@@ -1226,7 +1254,8 @@ class Player < ApplicationRecord
     # Eintraege ohne created_at (Altdaten-Import) teilen sich denselben Schluessel. Ohne
     # Tiebreaker haenge die Auswahl an der Implementierung.
     sortiert = (master_clubs + additional).sort_by { |c| [c['created_at'].to_s, c['club_id'].to_i] }
-    _close_surplus_home_clubs(sortiert, user_id, ablage_ids, Club.widerspruch_ids.to_set)
+    _close_surplus_home_clubs(sortiert, user_id, ablage_ids, Club.widerspruch_ids.to_set,
+                              merged_licenses)
   end
 
   # Nach dem Zusammenfuehren darf hoechstens ein Heimatverein offen sein.
@@ -1237,11 +1266,34 @@ class Player < ApplicationRecord
   # bestimmte den abgebenden Verein als ersten. Stand 18.08.2026 trugen 239 der 1231
   # Merge-Ziele auf Produktion diesen Zustand, also fast jedes fuenfte.
   #
-  # Behalten wird der zuletzt begonnene Eintrag: Der Merge fuehrt zwei Aufzeichnungen
-  # derselben Person zusammen, und aktuell ist die juengere Zugehoerigkeit. Eintraege ohne
-  # `created_at` (Altdaten-Import) sortieren dabei nach vorn und verlieren gegen einen
-  # datierten -- gewollt, denn ein undatierter Eintrag stammt aus einem Bestand, der vor
-  # allem Datierten liegt.
+  # Entschieden wird in zwei Schritten: erst der Beleg, dann das Datum.
+  #
+  # Belegt ist der Verein, bei dem zuletzt eine Lizenz ERTEILT wurde. Steht er unter den
+  # Kandidaten, gewinnt er. Ein Datum sagt nur, wann ein Eintrag angelegt wurde, eine
+  # erteilte Lizenz dagegen, dass die Person fuer diesen Verein tatsaechlich spielberechtigt
+  # war. Die Fehlanlage einer Dublette traegt regelmaessig das juengere Datum und nie eine
+  # Lizenz, weil sie genau deshalb angelegt wurde, weil das echte Profil nicht gefunden
+  # wurde. Ohne den Beleg gewann sie. Auf Produktion war das am 27.08.2026 bei 161 der 1238
+  # Merge-Ziele die Lage, dass der offene Heimatverein aus der Dublette stammt; in 126
+  # Faellen bestaetigt die Lizenz genau diesen Verein, in 9 den des Masters. Die Regel
+  # entscheidet also nicht "Master schlaegt Dublette" -- das waere in 126 Faellen falsch --
+  # sondern "Beleg schlaegt Datum".
+  #
+  # Der Datenlauf vom 27.08.2026 (`players:fix_merge_ablage`) hat denselben Gedanken von
+  # Hand angewandt, aber breiter: Er kannte vier Belegarten (Zugehoerigkeit bis zum Parken,
+  # regulaeres Ende, juengste je erteilte Lizenz, `former_club_id` des Transfers) und
+  # liess bei Widerspruch zwischen ihnen den Fall aus der Liste heraus, damit ein Mensch
+  # ihn entscheidet -- 13 der 87 Faelle gingen so an die Handpruefung. Hier steht nur die
+  # erteilte Lizenz, und wo sie fehlt, entscheidet das Datum weiter, statt anzuhalten. Das
+  # ist eine bewusste Verengung: Eine Zusammenlegung laeuft im Dialog oder im Sammellauf
+  # und hat niemanden, den sie fragen koennte. Wo der Beleg mehrdeutig ist, faellt sie
+  # deshalb auf das Verhalten von vorher zurueck und nicht auf eine zweitbeste Vermutung.
+  #
+  # Fehlt der Beleg oder nennt er einen dritten Verein, bleibt es beim zuletzt begonnenen
+  # Eintrag: Der Merge fuehrt zwei Aufzeichnungen derselben Person zusammen, und aktuell ist
+  # dann die juengere Zugehoerigkeit. Eintraege ohne `created_at` (Altdaten-Import)
+  # sortieren dabei nach vorn und verlieren gegen einen datierten -- gewollt, denn ein
+  # undatierter Eintrag stammt aus einem Bestand, der vor allem Datierten liegt.
   #
   # Das Datum entscheidet erst innerhalb einer Vorrangstufe. Drei Stufen, von oben:
   #
@@ -1251,7 +1303,10 @@ class Player < ApplicationRecord
   #      echten Vereins in dessen Spielerliste und waere transferierbar. Der aeltere ist
   #      dabei der wahrscheinlichere Fall, denn ein nach dem Widerspruch neu angelegtes
   #      Zweitprofil traegt den juengeren Eintrag.
-  #   2. Echter Verein.
+  #   2. Echter Verein. Der Beleg wirkt nur innerhalb dieser Stufe: Er sagt, welcher von
+  #      mehreren echten Vereinen der richtige ist, und darf keine Ablage und keinen
+  #      Widerspruch aushebeln. Eine erteilte Lizenz kann es zu einer Ablage ohnehin nicht
+  #      geben, wohl aber zu dem echten Verein, aus dem heraus jemand widersprochen hat.
   #   3. Behelfs-Ablage. Sie verliert gegen jeden echten Verein, unabhaengig vom Datum:
   #      Das Parken in der Ablage geschah spaeter als der Eintritt in den echten Verein, das
   #      Datum liesse sie also regelmaessig gewinnen. Genau so von Hand entschieden im
@@ -1259,8 +1314,11 @@ class Player < ApplicationRecord
   #
   # `ablage_ids` und `widerspruch_ids` werden uebergeben und nicht hier geholt: Der einzige
   # Aufrufer kennt sie schon, und ein Default wuerde die Abfragen im Sammel-Merge je
-  # Zusammenlegung ein zweites Mal machen.
-  def _close_surplus_home_clubs(entries, user_id, ablage_ids, widerspruch_ids)
+  # Zusammenlegung ein zweites Mal machen. Der Beleg wird aus demselben Grund erst NACH dem
+  # Riegel unten aufgeloest und nicht vom Aufrufer mitgegeben: Die weit ueberwiegende
+  # Zusammenlegung hat gar keine zwei offenen Heimatvereine, und die Team-Abfrage waere dort
+  # eine Abfrage je Merge fuer nichts.
+  def _close_surplus_home_clubs(entries, user_id, ablage_ids, widerspruch_ids, merged_licenses = nil)
     offen = self.class.open_home_club_entries(entries)
     return entries if offen.size < 2
 
@@ -1268,9 +1326,17 @@ class Player < ApplicationRecord
     echte = offen.reject do |c|
       ablage_ids.include?(c['club_id'].to_i) || widerspruch_ids.include?(c['club_id'].to_i)
     end
+    kandidaten = widerspruch.presence || echte.presence || offen
+    belegt = _belegter_eintrag(kandidaten, _last_approved_license_club_id(merged_licenses))
     # equal? statt Array-Differenz: Zwei Eintraege desselben Vereins koennen als Hash
     # gleich sein, und dann wuerde `-` beide entfernen.
-    behalten = (widerspruch.presence || echte.presence || offen).last
+    behalten = belegt || kandidaten.last
+    # Am geschlossenen Eintrag steht seit jeher, WER ihn geschlossen hat. Am behaltenen
+    # stand bisher nichts, und damit war einer Zusammenlegung hinterher nicht anzusehen,
+    # nach welcher Regel ihr Verein feststand. Genau diese Frage stand am Anfang dieser
+    # Aenderung (Spieler 4876) und war nur ueber die Rekonstruktion aus der Dublette zu
+    # beantworten. Der Vermerk ist reine Nachvollziehbarkeit, kein Leser wertet ihn aus.
+    behalten[HOME_CLUB_DECIDED_BY] = belegt ? DECIDED_BY_LICENSE : DECIDED_BY_DATE
 
     offen.each do |c|
       next if c.equal?(behalten)
@@ -1279,6 +1345,116 @@ class Player < ApplicationRecord
       c['valid_set_by'] = user_id if user_id
     end
     entries
+  end
+
+  # Der Eintrag des belegten Vereins unter den Kandidaten, oder nil, wenn es keinen Beleg
+  # gibt oder er einen Verein nennt, der gar nicht zur Auswahl steht (der Normalfall
+  # "Wechsel nach der letzten Lizenz").
+  #
+  # `.last` und nicht `.first`: Fuehren mehrere offene Eintraege zu demselben belegten
+  # Verein, entscheidet unter ihnen wieder das Datum wie im Rest der Methode.
+  # Endet die Zugehoerigkeit spaetestens am Stichtag? Ein Ende in der Zukunft laeuft heute
+  # noch und zaehlt deshalb nicht dazu, ein unlesbares Datum ebenso wenig: `valid_time?`
+  # meldet es bereits nach Sentry, und hier eine zweite Auslegung dafuer zu erfinden wuerde
+  # den Eintrag stillschweigend entwerten.
+  def _endet_bis_zum_stichtag?(valid_until, deadline)
+    return false if valid_until.blank?
+
+    Date.parse(valid_until.to_s) <= deadline.to_date
+  rescue ArgumentError, TypeError
+    false
+  end
+
+  def _belegter_eintrag(kandidaten, beleg_club_id)
+    return nil if beleg_club_id.nil?
+
+    kandidaten.select { |c| c['club_id'].to_i == beleg_club_id.to_i }.last
+  end
+
+  # Der Verein, bei dem zuletzt eine Lizenz ERTEILT wurde, oder nil, wenn sich das nicht
+  # zweifelsfrei sagen laesst.
+  #
+  # nil heisst also nicht nur "keine erteilte Lizenz im Bestand", sondern jeder Zweifel:
+  # ein Erteilungszeitpunkt, der sich nicht lesen laesst, zwei Erteilungen bei
+  # verschiedenen Vereinen im selben Augenblick, eine Kennung, die keine Zahl ist, ein
+  # geloeschtes Team, ein Team ohne Verein. In all diesen Faellen faellt die Auswahl auf
+  # die Datumsregel zurueck, also auf genau das Verhalten von vor dieser Aenderung. Das ist
+  # die einzige Richtung, in die der Zweifel aufgeloest werden darf: Ein Beleg, der sich
+  # irrt, benennt mit voller Bestimmtheit den falschen Verein, und niemand sieht es.
+  #
+  # Massgeblich ist der Zeitpunkt der Erteilung, nicht der heutige Status der Lizenz. Eine
+  # spaeter wegen eines Transfers ungueltig gewordene Lizenz belegt weiterhin, dass die
+  # Person damals fuer diesen Verein spielberechtigt war, und genau darum geht es hier.
+  #
+  # Verglichen wird ueber geparste Zeitpunkte statt ueber die Zeichenkette: Die
+  # Verlaufseintraege tragen ihren jeweiligen UTC-Offset, sodass "…T23:59:00.000+02:00"
+  # lexikalisch VOR "…T18:25:00.000+00:00" liegt, obwohl es der spaetere Zeitpunkt ist.
+  #
+  # Ein Erteilungszeitpunkt, der sich nicht lesen laesst, macht den GESAMTEN Beleg
+  # unbrauchbar, statt nur diesen einen Eintrag zu ueberspringen. Ueberspringen waere
+  # gefaehrlicher als es aussieht: Ist ausgerechnet die juengste Erteilung unlesbar, ruecht
+  # eine aeltere an ihre Stelle und die Regel benennt den Verein, den die Person verlassen
+  # hat. Fehlt der Zeitstempel ganz, gilt dasselbe -- und das ist keine Theorie, der
+  # Altdaten-Import baut die Historie mit `compact` und laesst `created_at` weg, wenn die
+  # Quelle keinen Zeitpunkt hatte (siehe `LegacyImport::Transformer` und
+  # `License.grace_period_anchor`).
+  def _last_approved_license_club_id(licenses)
+    belege = []
+
+    Array(licenses).each do |license|
+      next unless license.is_a?(Hash)
+
+      Array(license['history']).each do |eintrag|
+        next unless eintrag.is_a?(Hash) && eintrag['license_status_id'].to_i == License::APPROVED
+
+        zeit = _parse_zeitpunkt(eintrag['created_at'])
+        return nil if zeit.nil?
+
+        belege << [zeit, Integer(license['team_id'].to_s, exception: false)]
+      end
+    end
+    return nil if belege.empty?
+
+    _eindeutiger_club(belege)
+  end
+
+  # Der Verein der juengsten Erteilung -- aber nur, wenn er eindeutig ist.
+  #
+  # `Integer(..., exception: false)` statt `to_i`: `to_i` macht aus einer Kennung wie
+  # "980190968abc" klaglos eine gueltige Zahl und schlaegt damit bei einem beschaedigten
+  # Wert auf ein echtes, fremdes Team durch. Die Kennung liegt in JSONB und ist nicht
+  # typgarantiert, "42" ist Bestand, "42abc" waere ein Fund.
+  def _eindeutiger_club(belege)
+    juengste = belege.max_by(&:first).first
+    team_ids = belege.select { |zeit, _| zeit == juengste }.map(&:last).uniq
+    return nil if team_ids.any?(&:nil?)
+
+    gefunden = Team.where(id: team_ids).pluck(:id, :club_id).to_h
+    clubs = team_ids.map { |id| gefunden[id] }
+    # Ein geloeschtes Team oder eines ohne Verein laesst sich nicht zuordnen, und zwei
+    # Erteilungen in derselben Sekunde bei verschiedenen Vereinen sind kein Beleg, sondern
+    # ein Gleichstand. Sammelimporte teilen sich regelmaessig einen Zeitstempel.
+    return nil if clubs.any?(&:nil?) || clubs.uniq.size != 1
+
+    clubs.first
+  end
+
+  # Der Zeitstempel eines Verlaufseintrags, oder nil, wenn er sich nicht einordnen laesst.
+  #
+  # Der Formatriegel ist nicht kosmetisch. `Time.zone.parse` lehnt Bruchstuecke nicht ab,
+  # sondern ERGAENZT sie aus dem heutigen Datum: "12x" wird zum 12. des laufenden Monats,
+  # "18:25" zu heute um 18:25. Ein solcher Wert wirft nichts, sieht gueltig aus und liegt
+  # naturgemaess ganz vorn -- er schluege damit jede echte Erteilung und bestimmte den
+  # Heimatverein aus einem erfundenen Zeitpunkt.
+  ISO_DATUM = /\A\d{4}-\d{2}-\d{2}/
+
+  def _parse_zeitpunkt(wert)
+    return wert.to_time if wert.respond_to?(:to_time) && !wert.is_a?(String)
+    return nil unless wert.to_s.match?(ISO_DATUM)
+
+    Time.zone.parse(wert.to_s)
+  rescue ArgumentError, TypeError
+    nil
   end
 
   # Lizenzen zusammenführen: bei gleichem team_id UND season_id die History-Arrays
@@ -1292,9 +1468,17 @@ class Player < ApplicationRecord
         l['team_id'].to_s == lic['team_id'].to_s && l['season_id'].to_s == lic['season_id'].to_s
       end
       if existing
+        # Sortiert wird nach geparstem Zeitpunkt und erst bei Gleichstand nach der
+        # Zeichenkette. Genau hier treffen die Verlaufseintraege zweier Profile aufeinander,
+        # und damit die Stelle im Bestand, an der verschiedene UTC-Offsets am
+        # wahrscheinlichsten sind: "…T23:59+02:00" steht lexikalisch VOR "…T22:25+00:00" und
+        # ist doch der spaetere Zeitpunkt. Da der geltende Lizenzstatus ueberall als der
+        # LETZTE Eintrag gelesen wird, koennte eine geloeschte Lizenz sonst aus der
+        # Zusammenlegung wieder als erteilt hervorgehen. Ein unlesbarer Zeitstempel sortiert
+        # nach vorn, wie vorher auch.
         existing['history'] = ((existing['history'] || []) + (lic['history'] || []))
                               .uniq { |h| [h['created_at'].to_s, h['license_status_id'].to_s] }
-                              .sort_by { |h| h['created_at'].to_s }
+                              .sort_by { |h| [_parse_zeitpunkt(h['created_at']) || Time.at(0), h['created_at'].to_s] }
       else
         result << lic
       end
