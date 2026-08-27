@@ -1,4 +1,5 @@
 class PlayersController < ApplicationController
+  include PlayerReleaseRecording
   include LicenseDocumentPresentation
   include LicenseAccessScope
 
@@ -738,10 +739,15 @@ class PlayersController < ApplicationController
             created_at: Time.now,
             valid_until:
           }
+          # Der abgebende Verein wird VOR dem Anhängen gelesen: `home_club_entry`
+          # liefe sonst über den frisch angehängten Eintrag mit, der noch
+          # Symbol-Schlüssel trägt und dabei als „keine Heimat" durchginge.
+          former_club_id = player.home_club_entry&.dig('club_id')
+
           # add club to clubs array
           player.clubs << club_entry
 
-          if player.save
+          if save_with_release_record(player, club, former_club_id)
             render json: { success: true }
           else
             render json: { message: player.errors }, status: :unprocessable_entity
@@ -776,6 +782,14 @@ class PlayersController < ApplicationController
       if player.present? &&
          club.present?
 
+        # Gesammelt werden die Eintraege SELBST und nicht bloss ein Ja/Nein:
+        # Erstens kann dieser Aufruf folgenlos bleiben (die Bedingung unten
+        # vergleicht auch das mitgeschickte `valid_until`), und ein folgenloser
+        # Aufruf darf keinen Vorgang widerrufen. Zweitens braucht der Widerruf
+        # den Zeitpunkt der Erteilung, um den richtigen Vorgang zu treffen --
+        # ohne ihn koennte er die Freigabe einer vergangenen Saison erwischen.
+        beendete = []
+
         player.clubs.map! do |c|
           # additional club == ! home
           # entry only for given club
@@ -783,6 +797,10 @@ class PlayersController < ApplicationController
           if !c['home_club'] &&
              c['club_id'] == club.id &&
              c['valid_until'].present? && c['valid_until'].to_time > Time.now && c['valid_until'] == params[:valid_until]
+            # Vor dem Ueberschreiben lesen: `created_at` bleibt zwar stehen, aber
+            # der Eintrag wird hier veraendert und soll unveraendert weitergereicht
+            # werden, was tatsaechlich erteilt wurde.
+            beendete << c['created_at']
             c['valid_until'] = Time.now
             c['valid_set_by'] = current_user.id
           end
@@ -790,7 +808,7 @@ class PlayersController < ApplicationController
           c
         end
 
-        if player.save
+        if save_with_release_revocation(player, club, beendete)
           render json: { success: true }
         else
           render json: { message: player.errors }, status: :unprocessable_entity
@@ -1623,6 +1641,20 @@ class PlayersController < ApplicationController
     ph[:sbk].include?(club.main_game_operation_id)
   end
 
+  # Freigabe (Zweitspielrecht) über das Spielerprofil: Zugehörigkeit und
+  # Vorgangszeile entstehen gemeinsam oder gar nicht.
+  #
+  # Warum es die Vorgangszeile überhaupt braucht: Fachlich ist das dieselbe
+  # Freigabe wie über den Antragsweg. `TransferRequest#execute_release!` schreibt
+  # genau denselben clubs-Eintrag, führt aber einen Vorgang mit. Über das Profil
+  # erteilt, stand die Freigabe bisher nur in players.clubs -- die Übersicht
+  # „Transferanträge" liest transfer_requests und zeigte sie deshalb nie an.
+  #
+  # Angelegt wie bei der Direktzuweisung
+  # (Admin::TransferRequestsController#direct_assign): als bereits
+  # abgeschlossener Vorgang, `direct: true`, genehmigendes Konto ist das
+  # handelnde. Ein Freigabeschritt des abgebenden Vereins hat hier nicht
+  # stattgefunden und wird deshalb auch nicht behauptet.
   # Darf diese Stelle eine Deaktivierung zurücknehmen?
   #
   # Das Problem: `Player#deactivate!` stempelte ALLE Zugehörigkeiten, auch die
