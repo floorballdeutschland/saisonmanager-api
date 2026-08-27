@@ -176,7 +176,107 @@ class PlayersReleaseTransferRequestTest < ActionDispatch::IntegrationTest
     assert_includes @player.reload.clubs.map { |c| c['club_id'] }, @target.id
   end
 
+  # Die eigentliche Nutzenaussage, bis in die Lizenzliste geprueft:
+  # `League.license_release_dates` liest genau `release`+`approved` und fuellt
+  # damit die Spalte „Freigabedatum". Vor api#572 blieb sie fuer eine im Profil
+  # erteilte Freigabe leer, obwohl die Freigabe vorlag.
+  test 'die Freigabe fuellt das Freigabedatum in der Lizenzliste' do
+    liga = create(:league, :current_season)
+    mannschaft = create(:team, league: liga, club: @target)
+    @player.licenses = [{ 'id' => Digest::UUID.uuid_v4, 'team_id' => mannschaft.id,
+                          'season_id' => liga.season_id,
+                          'history' => [{ 'license_status_id' => License::APPROVED,
+                                          'created_at' => 1.month.ago.iso8601 }] }]
+    @player.save!(validate: false)
+
+    assert_nil freigabedatum(liga), 'Vorbedingung: ohne Freigabe steht dort nichts'
+
+    login_as(@admin)
+    freigabe_erteilen(@target)
+
+    assert_response :success
+    assert_not_nil freigabedatum(liga), 'die im Profil erteilte Freigabe muss die Spalte fuellen'
+    assert_in_delta Time.current.to_i, freigabedatum(liga).to_i, 60
+  end
+
+  # Freigaben an verschiedene Vereine stehen nebeneinander (Spielgemeinschaft).
+  # Das Beenden der einen darf die andere nicht anfassen -- der Widerruf filtert
+  # nach dem aufnehmenden Verein.
+  test 'das Beenden einer Freigabe laesst die Freigabe an einen anderen Verein stehen' do
+    zweiter = create(:club, game_operation: @go)
+    login_as(@admin)
+    freigabe_erteilen(@target)
+    erste = TransferRequest.last
+    freigabe_erteilen(zweiter)
+    zweite = TransferRequest.last
+    assert_not_equal erste.id, zweite.id
+
+    freigabe_beenden(@target, valid_until_of(@target))
+
+    assert_response :success
+    assert_equal 'revoked', erste.reload.status
+    assert_equal 'approved', zweite.reload.status
+  end
+
+  # Erteilen, beenden, am selben Tag erneut erteilen. Der zweite Widerruf muss
+  # den ZWEITEN Vorgang treffen; der erste ist bereits widerrufen und faellt
+  # ueber den Status-Filter heraus.
+  test 'nach erneutem Erteilen trifft der Widerruf den neuen Vorgang' do
+    login_as(@admin)
+    freigabe_erteilen(@target)
+    erste = TransferRequest.last
+    freigabe_beenden(@target, valid_until_of(@target))
+    assert_equal 'revoked', erste.reload.status
+
+    freigabe_erteilen(@target)
+    zweite = TransferRequest.last
+    assert_not_equal erste.id, zweite.id, 'Vorbedingung: eine zweite Freigabe ist moeglich'
+
+    freigabe_beenden(@target, valid_until_of(@target))
+
+    assert_response :success
+    assert_equal 'revoked', zweite.reload.status
+    assert_equal @admin.id, erste.reload.revoked_by, 'der erste Vorgang bleibt, wie er war'
+  end
+
+  # Eine Freigabe aus dem ANTRAGSWEG, im Profil beendet. Bis api#572 blieb ihr
+  # Vorgang dabei auf `approved` stehen. Der Widerruf laeuft bewusst nicht ueber
+  # TransferRequest#revoke_release!: Der entwertet zusaetzlich die Lizenzen des
+  # aufnehmenden Vereins, und was dieser Knopf tut, sollte sich nicht aendern.
+  test 'eine Freigabe aus dem Antragsweg wird im Profil widerrufen, ohne Lizenzen zu entwerten' do
+    mannschaft = create(:team, league: create(:league, :current_season), club: @target)
+    @player.update!(email: 'spieler@example.com')
+    tr = TransferRequest.create!(
+      player_id: @player.id, requesting_club_id: @target.id, former_club_id: @home_club.id,
+      status: 'pending_lv', request_type: 'release', created_by: @admin.id, season_id: 18
+    )
+    tr.execute_release!(@admin.id)
+    assert_equal 'approved', tr.reload.status
+
+    @player.reload
+    @player.licenses = [{ 'id' => Digest::UUID.uuid_v4, 'team_id' => mannschaft.id,
+                          'season_id' => '18',
+                          'history' => [{ 'license_status_id' => License::APPROVED,
+                                          'created_at' => 1.day.ago.iso8601 }] }]
+    @player.save!(validate: false)
+
+    login_as(@admin)
+    freigabe_beenden(@target, valid_until_of(@target))
+
+    assert_response :success
+    assert_equal 'revoked', tr.reload.status, 'der Vorgang des Antragswegs wird mitgefuehrt'
+    letzter_status = @player.reload.licenses.first['history'].last['license_status_id'].to_i
+    assert_equal License::APPROVED, letzter_status,
+                 'die Lizenz bleibt unberuehrt -- dieser Knopf entwertet keine Lizenzen'
+  end
+
   private
+
+  # Das Freigabedatum, wie die Lizenzliste der Liga es ausweist.
+  def freigabedatum(liga)
+    eintrag = liga.reload.licenses.first
+    eintrag[:players].find { |p| p[:id] == @player.id }&.dig(:team_license, :released_at)
+  end
 
   def freigabe_erteilen(club)
     post "/api/v2/admin/players/#{@player.id}/add_additional_club", params: { club_id: club.id }
@@ -187,8 +287,16 @@ class PlayersReleaseTransferRequestTest < ActionDispatch::IntegrationTest
          params: { club_id: club.id, valid_until: }
   end
 
+  # Das Enddatum der noch LAUFENDEN Freigabe. `find` ohne diese Bedingung traefe
+  # nach einem Beenden-und-neu-Erteilen den alten, bereits beendeten Eintrag --
+  # der Aufruf bliebe folgenlos und der Test gruen aus dem falschen Grund.
   def valid_until_of(club)
-    @player.reload.clubs.find { |c| c['club_id'] == club.id && !c['home_club'] }['valid_until']
+    eintrag = @player.reload.clubs.select do |c|
+      c['club_id'] == club.id && !c['home_club'] &&
+        c['valid_until'].present? && c['valid_until'].to_time > Time.current
+    end.last
+    assert eintrag, "keine laufende Freigabe an Verein #{club.id}"
+    eintrag['valid_until']
   end
 
   def login_as(user)
