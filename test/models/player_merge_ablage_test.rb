@@ -23,7 +23,7 @@ class PlayerMergeAblageTest < ActiveSupport::TestCase
 
   test 'Club.ablage_ids erkennt die Namensmuster des Bestands' do
     ablagen = ['Ablage Doppelung', 'ZZ-Ablage', 'zz_not in use', 'Z_TSV Ebersgöns 200 not in use',
-               'Ablage', 'ZZZ neu', 'Ablage Ausland (IFF Trans)'].map { |n| create(:club, name: n) }
+               'Ablage', 'ZZZ neu'].map { |n| create(:club, name: n) }
     echt = create(:club, name: 'UHC Elster')
 
     ids = Club.ablage_ids
@@ -151,6 +151,47 @@ class PlayerMergeAblageTest < ActiveSupport::TestCase
 
     assert_includes master.clubs.map { |c| c['club_id'] }, sperrung.id
     assert_equal [sperrung.id], offene_heimat(master)
+  end
+
+  # "Ablage Ausland (IFF Trans)" ist das laufende Verfahren fuer einen Transfer ins Ausland
+  # und kein Behelf: Auf Produktion trugen am 27.08.2026 alle 13 betroffenen Profile einen
+  # Transfer-Datensatz in diesen Verein, angelegt von namentlichen Verbandskonten.
+  test 'die Auslands-Ablage ist keine Behelfs-Ablage' do
+    ausland = create(:club, name: 'Ablage Ausland (IFF Trans)')
+
+    assert_not_includes Club.ablage_ids, ausland.id
+    assert_not_includes Club.widerspruch_ids, ausland.id, 'sie gewinnt nicht gegen alles, nur das Datum zaehlt'
+  end
+
+  test 'der Auslands-Eintrag der Dublette wandert mit und bleibt als juengerer offen' do
+    ausland = create(:club, name: 'Ablage Ausland (IFF Trans)')
+    verein = create(:club, name: 'UHC Elster')
+    master = create(:player, clubs: [{ 'club_id' => verein.id, 'home_club' => true,
+                                       'created_at' => 5.years.ago.iso8601 }])
+    dublette = create(:player, clubs: [{ 'club_id' => ausland.id, 'home_club' => true,
+                                         'created_at' => 1.year.ago.iso8601 }])
+
+    dublette.merge_into!(master, @user.id)
+    master.reload
+
+    assert_equal [ausland.id], offene_heimat(master),
+                 'wer im Ausland spielt, wird nicht auf einen deutschen Verein zurueckgezogen'
+  end
+
+  # Die Kehrseite: Der Auslandseintrag geniesst keinen Vorrang, ein spaeterer Vereinseintritt
+  # ist die Rueckkehr und gewinnt.
+  test 'ein juengerer echter Verein gewinnt gegen den aelteren Auslands-Eintrag' do
+    ausland = create(:club, name: 'Ablage Ausland (IFF Trans)')
+    verein = create(:club, name: 'UHC Elster')
+    master = create(:player, clubs: [{ 'club_id' => ausland.id, 'home_club' => true,
+                                       'created_at' => 5.years.ago.iso8601 }])
+    dublette = create(:player, clubs: [{ 'club_id' => verein.id, 'home_club' => true,
+                                         'created_at' => 1.year.ago.iso8601 }])
+
+    dublette.merge_into!(master, @user.id)
+    master.reload
+
+    assert_equal [verein.id], offene_heimat(master)
   end
 
   # Der Fall, den die Datumsregel allein falsch entscheidet: Die Sperrung ist der AELTERE
@@ -282,7 +323,7 @@ class PlayerMergeAblageTest < ActiveSupport::TestCase
   # Ein Zweitspielrecht in einer Ablage ist derselbe Behelf und hat am Master ebenso nichts
   # zu suchen.
   test 'ein Zweitspielrecht in der Ablage wandert nicht mit' do
-    ablage = create(:club, name: 'Ablage Ausland (IFF Trans)')
+    ablage = create(:club, name: 'zz_not in use')
     verein = create(:club, name: 'UHC Elster')
     master = create(:player, clubs: [{ 'club_id' => verein.id, 'home_club' => true }])
     dublette = create(:player, clubs: [{ 'club_id' => ablage.id, 'home_club' => false }])

@@ -57,16 +57,28 @@ class Club < ApplicationRecord
   # Historie. Der Einzelfall gehoert in den Datenlauf, nicht in diese Regel.
   ABLAGE_NAME_PATTERN = '(^z_|^zz|^ablage\y)'.freeze
 
-  # "Ablage Sperrung" (Produktion: Verein 213) ist KEINE Ablage in diesem Sinn. Dort liegen
-  # Personen, die einen Widerspruch nach Art. 21 DSGVO erklaert haben und nicht mehr im
-  # Saisonmanager erscheinen wollen. Das ist eine Entscheidung und kein Behelf.
+  # Zwei dieser Vereine tragen eine ENTSCHEIDUNG und keinen Behelf. Sie werden beim
+  # Zusammenfuehren uebernommen wie ein echter Verein:
   #
-  # Erkennung ueber "sperrung" an beliebiger Stelle UND ueber die ID. Ein am Namensanfang
-  # verankertes Muster waere hier zu scharf: `Club` normalisiert den Namen nicht, ein
-  # fuehrendes Leerzeichen kommt im Bestand vor (siehe `all_state_associations`), und eine
-  # Umbenennung durch eine Spielbetriebskommission wuerde aus dem Widerspruchs-Verein
-  # wortlos eine Ablage machen. Ein echter Verein mit "Sperrung" im Namen ist nicht zu
-  # erwarten, ein Fehltreffer waere hier ausserdem die harmlose Richtung.
+  #   "Ablage Sperrung" (Produktion 213): Widerspruch nach Art. 21 DSGVO. Diese Personen
+  #     wollen nicht mehr im Saisonmanager erscheinen und duerfen nie in einen echten Verein
+  #     zurueckwandern.
+  #   "Ablage Ausland (IFF Trans)" (Produktion 83): das laufende Verfahren fuer einen
+  #     Transfer ins Ausland, kein Altbestand. Stand 27.08.2026 tragen alle 13 betroffenen
+  #     Profile einen Transfer-Datensatz in diesen Verein, angelegt von namentlichen
+  #     Verbandskonten, 44 Eintraege in 2024, 44 in 2025, 28 in 2026. Wer im Ausland spielt,
+  #     ist dort richtig eingetragen; ihn beim Merge auf einen deutschen Verein zu ziehen
+  #     wuerde eine Rueckkehr behaupten, die es nicht gab.
+  #
+  # Erkennung an beliebiger Stelle im Namen und nicht am Anfang: `Club` normalisiert den
+  # Namen nicht, ein fuehrendes Leerzeichen kommt im Bestand vor (siehe
+  # `all_state_associations`), und eine Umbenennung wuerde aus einem dieser Vereine wortlos
+  # eine Ablage machen. Ein Fehltreffer ist hier ausserdem die harmlose Richtung: Der
+  # Eintrag wird dann nur wie ein echter Verein behandelt.
+  ENTSCHEIDUNG_NAME_PATTERN = '(sperrung|ausland|iff)'.freeze
+
+  # Der Widerspruch gewinnt zusaetzlich gegen jeden echten Verein, siehe
+  # `Player#_close_surplus_home_clubs`. Die ID ist der zweite Riegel neben dem Namen.
   WIDERSPRUCH_NAME_PATTERN = 'sperrung'.freeze
   WIDERSPRUCH_CLUB_IDS = [213].freeze
 
@@ -74,7 +86,7 @@ class Club < ApplicationRecord
   # verlieren sie gegen jeden echten Verein.
   def self.ablage_ids
     where('name ~* ?', ABLAGE_NAME_PATTERN)
-      .where.not('name ~* ? OR id IN (?)', WIDERSPRUCH_NAME_PATTERN, WIDERSPRUCH_CLUB_IDS)
+      .where.not('name ~* ? OR id IN (?)', ENTSCHEIDUNG_NAME_PATTERN, WIDERSPRUCH_CLUB_IDS)
       .pluck(:id)
   end
 
