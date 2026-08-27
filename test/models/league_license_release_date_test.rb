@@ -62,9 +62,12 @@ class LeagueLicenseReleaseDateTest < ActiveSupport::TestCase
   end
 
   test 'eine Zweitvereins-Zugehoerigkeit ohne Freigabeverfahren zaehlt nicht' do
-    # add_additional_club (Admin/SBK) legt genau so einen Eintrag an, ohne
-    # Antrag. Sein created_at belegt keine Freigabe -- die dokumentierte Grenze
-    # des Features, siehe License#license_release_dates.
+    # Ein blosser clubs-Eintrag ohne Vorgang: So sieht der Altbestand aus, und so
+    # sah bis api#572 auch aus, was `add_additional_club` schrieb. Sein created_at
+    # belegt fuer sich genommen keine Freigabe. Seit api#572 legt der Controller
+    # den Vorgang mit an und erscheint deshalb sehr wohl in dieser Liste (siehe
+    # players_release_transfer_request_test); hier wird bewusst am Controller
+    # vorbei geschrieben, um den Restbestand ohne Vorgang zu pruefen.
     player = player_with_license
     player.clubs = [{ 'club_id' => @club.id, 'home_club' => false,
                       'created_at' => RELEASED_AT, 'valid_until' => nil }]
