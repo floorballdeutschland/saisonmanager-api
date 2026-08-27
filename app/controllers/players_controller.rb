@@ -631,7 +631,29 @@ class PlayersController < ApplicationController
         # geprüft – der Spieler muss auch tatsächlich diesem Verein angehören,
         # sonst ließe sich über einen beliebigen eigenen Verein jeder Spieler
         # überschreiben.
-        unless (player.clubs || []).any? { |c| c['club_id'].to_i == params[:club_id].to_i }
+        #
+        # HEIMATzugehörigkeit, nicht irgendeine: Geprüft wurde bisher jeder
+        # Eintrag, ein Zweitspielrecht also mit. Stammdaten pflegt aber der
+        # zuständige Verband (siehe Club#user_permissions zu :update_player), und
+        # zuständig ist der des Heimatvereins – wer eine Freigabe erhalten hat,
+        # stellt den Spieler auf, er verwaltet ihn nicht. Sonst ist jede Freigabe
+        # ein Generalschlüssel auf Name, Geburtsdatum und E-Mail-Adresse.
+        #
+        # Geprüft wird nur das Merkmal, nicht zusätzlich die Gültigkeit. Zu
+        # schließen ist die Lücke, die eine ZWEITzugehörigkeit aufreißt; wer bei
+        # einer abgelaufenen Heimatzugehörigkeit noch zuständig ist, ist eine
+        # eigene Frage und für den Lesezugriff längst entschieden (api#389,
+        # siehe `sbk_can_access_player?`). Eine Gültigkeitsprüfung nähme hier
+        # zusätzlich die Profile mit, die vor api#472 deaktiviert wurden: Damals
+        # schloss `Player#deactivate!` auch die Heimatzugehörigkeit, und was
+        # davon nicht durch `reactivate!` oder
+        # `players:reopen_memberships_after_deactivation` wieder offen ist, wäre
+        # danach für seinen Verband unbearbeitbar.
+        heimat_im_verein = (player.clubs || []).any? do |c|
+          ActiveModel::Type::Boolean.new.cast(c['home_club']) &&
+            c['club_id'].to_i == params[:club_id].to_i
+        end
+        unless heimat_im_verein
           return render json: { message: 'Spieler gehört nicht zu diesem Verein.' }, status: :forbidden
         end
 
@@ -669,7 +691,24 @@ class PlayersController < ApplicationController
 
     ph = current_user.permission_hash
 
-    if ph[:admin].present? || sbk_may_move_player?(ph, player, club)
+    # Nur Bedingung (a) aus sbk_may_move_player?, also die Zustaendigkeit fuer den
+    # SPIELER -- der Zielverein darf in jedem anderen Landesverband liegen.
+    #
+    # api#417 hat beide Schreibwege gemeinsam begrenzt und dabei den Unterschied
+    # zwischen ihnen eingezogen: Der Transfer schreibt einen Eintrag mit
+    # `home_club: true` und verschafft der handelnden Stelle damit Zustaendigkeit
+    # fuer das Profil; genau davor schuetzt dort die Bedingung ueber den
+    # Zielverein. Eine Freigabe schreibt `home_club: false`. Der abgebende Verband
+    # behaelt das Mitglied, es entsteht keine neue Zustaendigkeit, und der Weg
+    # taugt deshalb auch nicht dazu, sich welche zu verschaffen.
+    #
+    # Damit gilt hier dieselbe Regel wie im Antragsweg, wo eine Freigabe
+    # ausschliesslich am abgebenden Verband haengt
+    # (Admin::TransferRequestsController#sbk_may_assign?, #lv_authorized?): Wer
+    # den Spieler hat, darf ihn ueberall hin freigeben. Der Transfer unten bleibt
+    # unveraendert -- ein Vereinswechsel ueber Spielbetriebe hinweg gehoert in den
+    # Transferantrag oder zur bundesweiten Rolle.
+    if ph[:admin].present? || sbk_can_access_player?(ph, player)
 
       # Gleiche Regel wie bei der Direktzuweisung (api#511): Ein deaktivierter
       # Verein nimmt keine Spieler mehr auf, auch nicht als Zweitverein. Die
@@ -731,7 +770,13 @@ class PlayersController < ApplicationController
 
     ph = current_user.permission_hash
 
-    if ph[:admin].present? || ph[:sbk].present?
+    # Dieselbe Zustaendigkeit wie beim Erteilen, und dieselbe wie beim Widerruf im
+    # Antragsweg (Admin::TransferRequestsController#revoke ueber #lv_authorized?):
+    # der Verband des abgebenden Vereins. Geprueft wurde hier bisher nur, OB eine
+    # Spielbetriebsrolle vorliegt -- jede Landes-SBK konnte damit jede Freigabe
+    # jedes Profils im Bundesgebiet beenden, auch die eines Verbands, mit dem sie
+    # nichts zu tun hat.
+    if ph[:admin].present? || sbk_can_access_player?(ph, player)
 
       # if player and club present, we check if the club.id is already in the players clubs hash
       if player.present? &&
@@ -1543,8 +1588,10 @@ class PlayersController < ApplicationController
     ph[:sbk].include?(home_club.main_game_operation_id)
   end
 
-  # Darf diese Stelle den Spieler in DIESEN Verein setzen (transfer,
-  # add_additional_club)?
+  # Darf diese Stelle den Spieler in DIESEN Verein setzen (transfer)?
+  #
+  # Seit die Freigabe nur noch (a) prueft, ist der Transfer der einzige Aufrufer:
+  # Er schreibt einen Eintrag mit `home_club: true`, die Freigabe nicht.
   #
   # Beide Aktionen prüften vorher nur, OB jemand eine Spielbetriebsrolle hat,
   # nicht WELCHEN Spielbetrieb. Eine auf einen Verband beschränkte Rolle konnte
@@ -1565,15 +1612,18 @@ class PlayersController < ApplicationController
   # über Spielbetriebe hinweg läuft über den Transferantrag (`TransferRequest`)
   # mit LV-Freigabe oder über die bundesweite SBK.
   #
-  # Ein Profil ohne gültigen Heimatverein (Altbestand, deaktiviert) fällt durch
-  # (a) und bleibt damit Admin und bundesweiter SBK vorbehalten. Das ist kein
-  # Sonderfall des Alltags: Jeder Weg, der eine Heimat-Mitgliedschaft schließt
-  # (`transfer` hier, `Player#transfer`, die TransferRequest-Verarbeitung), öffnet
-  # im selben Vorgang die neue. Vereinslos wird ein Profil nur durch
-  # `deactivate!`, und dort ist die Antwort `reactivate`. Für die verbleibenden
-  # Altfälle ist die Zuständigkeit ohnehin nicht eindeutig bestimmbar, siehe #399.
+  # Ein Profil ohne gültigen Heimatverein (Altbestand) fällt durch (a) und bleibt
+  # damit Admin und bundesweiter SBK vorbehalten. Das ist kein Sonderfall des
+  # Alltags: Jeder Weg, der eine Heimat-Mitgliedschaft schließt (`transfer` hier,
+  # `Player#transfer`, die TransferRequest-Verarbeitung), öffnet im selben Vorgang
+  # die neue. Für die verbleibenden Altfälle ist die Zuständigkeit ohnehin nicht
+  # eindeutig bestimmbar, siehe #399.
   #
-  # (b) über `readable_by_game_operations?` und nicht über einen reinen Vergleich
+  # Eine Deaktivierung gehört seit api#472 nicht mehr dazu: `Player#deactivate!`
+  # setzt nur noch die Kennzeichnung und lässt die Zugehörigkeit offen, gerade
+  # damit das Profil transferierbar bleibt. Geschlossene Heimat-Einträge gibt es
+  # deshalb nur noch aus der Zeit davor.
+  #
   # (b) bewusst als reiner Vergleich mit `main_game_operation_id` und NICHT über
   # `readable_by_game_operations?`: Eine Vereins-Freigabe (`StateAssociationRelease`)
   # macht einen fremden Verein lesbar, sie holt ihn aber nicht in den eigenen
@@ -1607,10 +1657,15 @@ class PlayersController < ApplicationController
   # stattgefunden und wird deshalb auch nicht behauptet.
   # Darf diese Stelle eine Deaktivierung zurücknehmen?
   #
-  # Das Problem: `Player#deactivate!` stempelt ALLE Zugehörigkeiten, auch die
-  # Heimat. Ab dem Tag danach findet `sbk_can_access_player?` keinen gültigen
-  # Heimatverein mehr und sagt nein — eine Landes-SBK durfte deaktivieren, aber
+  # Das Problem: `Player#deactivate!` stempelte ALLE Zugehörigkeiten, auch die
+  # Heimat. Ab dem Tag danach fand `sbk_can_access_player?` keinen gültigen
+  # Heimatverein mehr und sagte nein — eine Landes-SBK durfte deaktivieren, aber
   # ihre eigene Entscheidung nicht zurücknehmen (gemessen, nicht vermutet).
+  #
+  # Vergangenheitsform, und das ist wichtig: Seit api#472 lässt `deactivate!` die
+  # Zugehörigkeiten offen. Dieser Zweig trägt den Altbestand von davor, für alles
+  # Spätere ist er wirkungslos. Wer ihn als Beleg dafür heranzieht, was
+  # `deactivate!` heute tut, irrt sich.
   #
   # Die Regel ist deshalb nicht „irgendein früherer Heimatverein", sondern:
   # **Zuständig ist, wer für das Profil zuständig WÄRE, sobald es wieder aktiv
