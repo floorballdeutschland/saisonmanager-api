@@ -2,6 +2,7 @@ class PlayersController < ApplicationController
   include PlayerReleaseRecording
   include LicenseDocumentPresentation
   include LicenseAccessScope
+  include ClubListAccess
 
   before_action :set_player, only: %i[show update destroy]
   skip_before_action :authenticate_user, only: %i[transfers_public stats]
@@ -1059,11 +1060,7 @@ class PlayersController < ApplicationController
     club_id = params[:club_id]&.to_i
     return render json: { message: 'club_id fehlt.' }, status: :bad_request unless club_id.present? && club_id > 0
 
-    sbk_ok = ph[:sbk].present? && (ph[:sbk].include?(0) || derive_club_ids_for_go(ph[:sbk]).include?(club_id))
-    allowed = ph[:admin].present? || sbk_ok ||
-              (ph[:vm].present? && ph[:vm].include?(club_id)) ||
-              tm_can_access_club?(ph, club_id)
-    return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless allowed
+    return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless club_list_access?(ph, club_id)
 
     club = Club.find_by(id: club_id)
     return render json: { message: 'Verein nicht gefunden.' }, status: :not_found unless club
@@ -1541,19 +1538,6 @@ class PlayersController < ApplicationController
     end
   end
 
-  def tm_can_access_club?(ph, club_id)
-    tm_club_ids(ph).include?(club_id)
-  end
-
-  # Wie #user_permission_hash je Anfrage nur einmal: Ueber die Spielersuche kaeme
-  # sonst je Treffer eine Team-Abfrage samt all_club_ids dazu. `ph` stammt in
-  # jedem Aufruf aus demselben Konto, der Wert haengt also an nichts anderem.
-  def tm_club_ids(ph)
-    return [] unless ph[:tm].present?
-
-    @tm_club_ids ||= Team.current_season.where(id: ph[:tm]).flat_map(&:all_club_ids).uniq
-  end
-
   def sanitize_deactivation_reason(raw)
     value = raw.is_a?(String) ? raw.strip.slice(0, 255) : nil
     return nil if value.blank?
@@ -1713,10 +1697,6 @@ class PlayersController < ApplicationController
       copy
     end
     restored
-  end
-
-  def derive_club_ids_for_go(go_ids)
-    Club.home_clubs_of(go_ids).pluck(:id)
   end
 
   def set_player
