@@ -126,11 +126,15 @@ module Admin
     # Freigabe im Spielerprofil verbandsuebergreifend geht, genuegt ein Aufruf.
     # Die Luecke ist aelter als diese Aenderung, aber sie gehoert zu ihr.
     #
-    # Nur das Merkmal, nicht die Gueltigkeit: `Player#deactivate!` stempelt ALLE
-    # Zugehoerigkeiten, auch die Heimat. Eine zusaetzliche Gueltigkeitspruefung
-    # naehme dem Heimatverband die Zustaendigkeit fuer genau die Profile, die er
-    # selbst deaktiviert hat (dieselbe Falle wie in
-    # PlayersController#sbk_can_undo_deactivation?).
+    # Gelesen wird nur das Merkmal, nicht zusaetzlich die Gueltigkeit. Zu
+    # schliessen ist die Luecke, die eine ZWEITzugehoerigkeit aufreisst -- wer bei
+    # einer abgelaufenen Heimatzugehoerigkeit noch sperren darf, ist eine eigene
+    # Frage und waere hier eine zweite, unausgesprochene Verschaerfung. Sie traefe
+    # vor allem die Profile, die vor api#472 deaktiviert wurden: Damals schloss
+    # `Player#deactivate!` auch die Heimatzugehoerigkeit (heute laesst es sie
+    # bewusst offen, gerade damit das Profil transferierbar bleibt), und was davon
+    # nicht wieder geoeffnet wurde, koennte danach sein eigener Verband nicht mehr
+    # sperren.
     #
     # Boolean-Cast wie in `Player#home_club_hash`: In Altdaten liegt das Merkmal
     # auch als Zeichenkette vor, und `'false'` ist in Ruby wahr.
