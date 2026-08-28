@@ -77,6 +77,29 @@ class RefereeMailer < ApplicationMailer
     )
   end
 
+  # Erinnerung an den angesetzten Schiedsrichtercoach, sobald sein Spiel
+  # angepfiffen ist. Der Link zeigt direkt auf den Bogen dieses Spiels, damit er
+  # ihn während des Spiels aufschlagen und die Kriterien vor Augen haben kann.
+  def observation_due(coach, game)
+    @coach = coach
+    @game = game
+    @observation_url = "#{FrontendUrl.base}/schiedsrichter/meine-beobachtungen/neu/#{game.id}"
+
+    templated_mail(
+      to: coach.email,
+      subject: "Beobachtungsbogen – #{game.game_day&.date} #{game.home_team&.name} vs. #{game.guest_team&.name}",
+      default_reply_to: REPLY_TO,
+      placeholders: {
+        first_name: coach.vorname,
+        game_date: game.game_day&.date.to_s,
+        game_time: game.start_time.to_s,
+        home_team: game.home_team&.name.to_s,
+        guest_team: game.guest_team&.name.to_s,
+        observation_url: @observation_url
+      }
+    )
+  end
+
   def tentative_assignment_notification(referee, date)
     @referee = referee
     @date = date
