@@ -93,7 +93,7 @@ class PlayersController < ApplicationController
       # Ein globales Flag zeigte einem Teammanager die Knöpfe entweder in jedem
       # Verein oder in keinem, und beides wäre falsch. Vorbild: `manage_players`
       # in vm/clubs_and_teams.
-      hash[:can_deactivate] = can_deactivate_player?(result)
+      hash[:can_deactivate] = can_toggle_deactivation?(result)
       render json: hash
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
@@ -1034,7 +1034,7 @@ class PlayersController < ApplicationController
     return render json: { message: 'Ungültiger Deaktivierungsgrund.' }, status: :unprocessable_entity if reason == :invalid
 
     player.deactivate!(current_user.id, reason: reason)
-    render json: player.full_hash(false, false, false)
+    render json: deactivation_toggle_hash(player)
   end
 
   def reactivate
@@ -1059,7 +1059,7 @@ class PlayersController < ApplicationController
     end
 
     player.reactivate!
-    render json: player.full_hash(false, false, false)
+    render json: deactivation_toggle_hash(player)
   end
 
   def vm_players_index
@@ -1407,6 +1407,29 @@ class PlayersController < ApplicationController
     ph = user_permission_hash
     ph[:admin].present? || sbk_can_access_player?(ph, player) ||
       vm_can_access_player?(ph, player) || tm_can_manage_players?(ph, player)
+  end
+
+  # Ob DIESES Konto den Deaktivierungs-Schalter DIESES Profils bedienen darf.
+  # Gespiegelt wird die Prüfung der Aktion, die als nächste ansteht: Am aktiven
+  # Profil ist das `deactivate`, am deaktivierten `reactivate` -- und die lässt
+  # zusätzlich `sbk_can_undo_deactivation?` durch, weil eine Deaktivierung von
+  # vor api#472 die Heimat-Zugehörigkeit gestempelt hat und die reguläre
+  # Prüfung ab dem Tag danach nein sagt. Ohne diesen Zweig verschwände für die
+  # SBK genau an den Profilen der Knopf, für die der Endpunkt ihn hat.
+  def can_toggle_deactivation?(player)
+    return can_deactivate_player?(player) if player.deactivated_at.nil?
+
+    can_deactivate_player?(player) || sbk_can_undo_deactivation?(user_permission_hash, player)
+  end
+
+  # Die Antwort auf `deactivate` und `reactivate`. Sie trägt dasselbe
+  # `can_deactivate` wie das Profil selbst, weil die Maske sie ungefiltert
+  # übernimmt (`this.player = updated`) und daraus den Gegenknopf ableitet.
+  # Ohne das Feld griff dort der Rückfall auf das globale Rollen-Flag
+  # `player_deactivate`, und das ist für einen reinen Teammanager false: Nach
+  # dem Deaktivieren fehlte ihm „Reaktivieren" bis zum nächsten Seitenaufruf.
+  def deactivation_toggle_hash(player)
+    player.full_hash(false, false, false).merge(can_deactivate: can_toggle_deactivation?(player))
   end
 
   # Hat der Verein Anlegen, Deaktivieren und Reaktivieren seinen

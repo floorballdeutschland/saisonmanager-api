@@ -323,6 +323,40 @@ class PlayersClubDecisionsRoleTest < ActionDispatch::IntegrationTest
     assert_equal false, JSON.parse(response.body)['can_deactivate']
   end
 
+  # Die Maske uebernimmt die Antwort auf die Aktion ungefiltert
+  # (`this.player = updated`) und leitet den Gegenknopf daraus ab. Trug sie das
+  # Feld nicht, griff dort der Rueckfall auf das globale Rollen-Flag
+  # `player_deactivate` -- und das ist fuer einen reinen Teammanager false.
+  # Nach dem Deaktivieren fehlte ihm deshalb „Reaktivieren", bis die Seite neu
+  # geladen wurde, und umgekehrt genauso.
+  test 'Antwort auf Deaktivieren und Reaktivieren nennt den Gegenknopf' do
+    login_as(tm_im_freigegebenen_verein)
+    spieler = spieler_im_verein
+
+    post "/api/v2/admin/players/#{spieler.id}/deactivate", params: { reason: 'Karriereende' }
+    assert_response :success
+    assert_equal true, JSON.parse(response.body)['can_deactivate']
+
+    post "/api/v2/admin/players/#{spieler.id}/reactivate"
+    assert_response :success
+    assert_equal true, JSON.parse(response.body)['can_deactivate']
+  end
+
+  # Gegenprobe zur Deaktivierung ohne Freigabe: Auch die Ruecknahme ist eine
+  # Vereinsentscheidung. Ohne diesen Fall war `reactivate` allein im Happy Path
+  # belegt.
+  test 'Teammanager reaktiviert ohne Freigabe nicht' do
+    team = create(:team, club: @club, league: create(:league, :current_season))
+    login_as(create(:user, :tm, team_id: team.id))
+    spieler = spieler_im_verein(deactivated_at: 2.days.ago)
+
+    post "/api/v2/admin/players/#{spieler.id}/reactivate"
+
+    assert_response :forbidden
+    assert_match 'Vereinsverwaltung', JSON.parse(response.body)['message']
+    assert spieler.reload.deactivated_at.present?
+  end
+
   # Die Absage muss den Weg nennen: Ohne den Hinweis auf die Vereinsverwaltung
   # erfährt ein Teammanager nirgends, dass sich daran etwas ändern lässt.
   test 'Absage nennt die Vereinsverwaltung als Weg' do
