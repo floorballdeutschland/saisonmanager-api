@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_08_28_120000) do
+ActiveRecord::Schema[7.2].define(version: 2026_08_29_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -808,6 +808,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_28_120000) do
     t.date "valid_until"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.index ["referee_id", "referee_qualification_type_id"], name: "index_referee_qualifications_on_referee_and_type", unique: true
     t.index ["referee_id"], name: "index_referee_qualifications_on_referee_id"
     t.index ["referee_qualification_type_id"], name: "index_referee_qualifications_on_referee_qualification_type_id"
   end
