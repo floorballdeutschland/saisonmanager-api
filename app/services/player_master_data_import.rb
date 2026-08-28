@@ -19,10 +19,13 @@ require 'csv'
 #
 # Die Rechteteilung entspricht der Maske daneben: Die E-Mail-Adresse pflegt der
 # Verein selbst (`update_email`), Geburtsdatum, Geschlecht und Nationalität
-# ändert nur Admin/SBK (`update_player`) — für den Verein führt der Weg dorthin
-# über den Änderungsantrag. Der Import darf dieser Trennung keine Hintertür
-# geben, auch nicht für ein leeres Feld: Ein Geburtsdatum, das nie geprüft
-# wurde, wiegt genauso schwer wie ein geändertes.
+# ändert nur der zuständige Verband am HEIMATverein (`update_player`, siehe
+# PlayersController#master_data_writable_ids) — für den Verein führt der Weg
+# dorthin über den Änderungsantrag. Der Import darf dieser Trennung keine
+# Hintertür geben, auch nicht für ein leeres Feld: Ein Geburtsdatum, das nie
+# geprüft wurde, wiegt genauso schwer wie ein geändertes. Beide Rechte kommen
+# deshalb als MENGE von Profil-IDs herein und nicht als Ja/Nein für den ganzen
+# Lauf.
 class PlayerMasterDataImport
   # Eine Datenzeile mit ihrer Nummer in der Datei. Die Nummer wird mitgeführt und
   # nicht aus dem Schleifenindex abgeleitet: Verworfene Leerzeilen verschieben den
@@ -46,12 +49,22 @@ class PlayerMasterDataImport
   # Namen und nicht über die Position: Wer in Excel eine Spalte einfügt oder
   # verschiebt, soll nicht eine Datei bekommen, die stumm die falschen Werte
   # zuordnet. Der jeweils erste Eintrag ist die Überschrift des eigenen Exports.
+  #
+  # Ein Feld darf MEHRERE Spalten haben, und je Zeile gilt die erste nicht leere
+  # in der Reihenfolge dieser Liste. Gebraucht wird das für die Nationalität: Der
+  # Export schreibt sie zweimal, als „Nation-ID" und als Klartext, und der
+  # Klartext ist die einzige der beiden Spalten, die ein Mensch ohne
+  # Nachschlagewerk füllen kann. Wer sie füllte, bekam bis hierher „keine Angabe
+  # in der Datei" gemeldet — eine Auskunft, die seiner Handlung widerspricht.
+  # Die ID steht vorn, weil sie eindeutig ist; der Klartext greift nur, wo sie
+  # fehlt.
   ALIASES = {
     id: ['id', 'spieler-id', 'spieler id', 'spielerid', 'player_id'],
     email: ['e-mail', 'e-mailadresse', 'e-mail-adresse', 'e-mail adresse', 'email', 'emailadresse', 'mail'],
     birthdate: %w[geburtsdatum geburtstag birthdate],
     gender: %w[geschlecht gender],
-    nation_id: ['nation-id', 'nation id', 'nationid', 'nation_id']
+    nation_id: ['nation-id', 'nation id', 'nationid', 'nation_id',
+                'nationalität', 'nationalitaet', 'nationality', 'nation']
   }.freeze
 
   # Felder, die nur mit dem Recht `update_player` (Admin/SBK) nachgetragen
@@ -74,14 +87,17 @@ class PlayerMasterDataImport
   # email_writable_ids: die IDs, deren Adresse dieser Account schreiben darf
   #          (can_manage_player?). Für VM und TM ist das die ganze Liste, für die
   #          SBK nicht — siehe PlayersController#vm_players_index.
-  # may_write_master_data: darf dieser Account Geburtsdatum, Geschlecht und
-  #          Nationalität nachtragen (`update_player`)?
+  # master_data_writable_ids: die IDs, deren Geburtsdatum, Geschlecht und
+  #          Nationalität dieser Account nachtragen darf. Ebenfalls eine Menge und
+  #          kein Ja/Nein: Der Bestand eines Vereins enthält auch Zweitmitglied-
+  #          schaften und Freigaben, und für die ist eine andere Stelle zuständig
+  #          — siehe PlayersController#master_data_writable_ids.
   # actor_id: wird als `updated_by` in die geschriebenen Profile eingetragen.
-  def initialize(csv_content:, players:, email_writable_ids:, may_write_master_data:, actor_id: nil)
+  def initialize(csv_content:, players:, email_writable_ids:, master_data_writable_ids:, actor_id: nil)
     @csv_content = csv_content.to_s
     @players_by_id = players.index_by(&:id)
     @email_writable_ids = email_writable_ids.to_set
-    @may_write_master_data = may_write_master_data
+    @master_data_writable_ids = master_data_writable_ids.to_set
     @actor_id = actor_id
     @errors = []
   end
@@ -170,9 +186,12 @@ class PlayerMasterDataImport
     end
 
     normalized = header.map { |h| h.to_s.strip.downcase.gsub(/\s+/, ' ') }
+    # Sortiert nach der Alias-Liste, nicht nach der Position in der Datei: Für ein
+    # Feld mit mehreren Spalten entscheidet diese Reihenfolge, welche zuerst
+    # gelesen wird (Nation-ID vor Klartext).
     columns = ALIASES.filter_map do |field, aliases|
-      index = normalized.index { |h| aliases.include?(h) }
-      [field, index] if index
+      indexes = aliases.filter_map { |a| normalized.index(a) }.uniq
+      [field, indexes] if indexes.any?
     end.to_h
 
     if columns[:id].nil?
@@ -183,8 +202,8 @@ class PlayerMasterDataImport
 
     if (columns.keys - [:id]).empty?
       @errors << 'Die CSV enthält keine Spalte mit nachtragbaren Angaben. Erwartet wird ' \
-                 'mindestens eine der Spalten "E-Mail", "Geburtsdatum", "Geschlecht" oder ' \
-                 '"Nation-ID".'
+                 'mindestens eine der Spalten "E-Mail", "Geburtsdatum", "Geschlecht", ' \
+                 '"Nationalität" oder "Nation-ID".'
       return nil
     end
 
@@ -197,7 +216,7 @@ class PlayerMasterDataImport
   def data_rows(raw, columns)
     raw.each_with_index.filter_map do |row, index|
       values = Array(row).map { |v| v.to_s.strip }
-      next if columns.each_value.all? { |i| values[i].nil? || values[i].empty? }
+      next if columns.each_value.all? { |indexes| indexes.all? { |i| values[i].nil? || values[i].empty? } }
 
       # +2: Kopfzeile plus 1-basierte Zählung, damit die Nummer der Zeile in der
       # Tabellenkalkulation entspricht.
@@ -223,7 +242,7 @@ class PlayerMasterDataImport
   end
 
   def apply_row(report, row, columns)
-    raw_id = row.cells[columns[:id]].to_s.strip
+    raw_id = row.cells[columns[:id].first].to_s.strip
     id = raw_id.match?(/\A\d+\z/) ? raw_id.to_i : nil
     if id.nil? || id.zero?
       report[:invalid] << { row: row.number, value: raw_id, reason: 'ID ist keine Zahl' }
@@ -261,7 +280,16 @@ class PlayerMasterDataImport
 
   # Teilt die Wertspalten der Zeile in „schreiben", „überspringen" und
   # „unbrauchbar" auf. Der Reihenfolge nach: leere Zelle (nichts angeboten),
-  # fehlendes Recht, belegtes Feld, ungültiger Wert.
+  # unveränderter Wert, fehlendes Recht, belegtes Feld, ungültiger Wert.
+  #
+  # Der UNVERÄNDERTE Wert steht vor der Rechteprüfung, und das ist der Normalfall
+  # dieser Maske: Geburtsdatum und Nationalität sind Pflichtfelder, der Export
+  # füllt sie also in praktisch jeder Zeile, und ein Verein, der nur die
+  # E-Mail-Spalte ergänzt, schickt sie unverändert zurück. Stand die Rechteprüfung
+  # zuerst, bekam JEDE Zeile drei Meldungen „nur über den Änderungsantrag" — ein
+  # Bericht, der nach hundert abgewiesenen Änderungen aussieht, obwohl niemand
+  # etwas ändern wollte, und in dem die wenigen echten Treffer untergehen. Ein
+  # Recht kann nur fehlen, wo tatsächlich etwas anderes in der Zelle steht.
   #
   # „Belegt" wird VOR der Gültigkeit geprüft: Steht im Profil schon eine
   # Adresse, ist ein Tippfehler in der CSV-Zelle ohne Folge, und ein Fehler
@@ -272,27 +300,25 @@ class PlayerMasterDataImport
     skipped = {}
     invalid = {}
 
-    columns.each do |field, index|
+    columns.each do |field, indexes|
       next if field == :id
 
-      raw = row.cells[index].to_s.strip
-      next if raw.empty?
-
-      if MASTER_DATA_FIELDS.include?(field) && !@may_write_master_data
-        skipped[field] = 'no_permission'
-        next
-      end
-      if field == :email && !@email_writable_ids.include?(player.id)
-        skipped[field] = 'no_permission'
-        next
-      end
-
-      if player.public_send(field).present?
-        skipped[field] = current_value(player, field).to_s.casecmp?(normalize(field, raw).to_s) ? 'identical' : 'already_set'
-        next
-      end
+      # Erste nicht leere Spalte dieses Feldes, siehe ALIASES.
+      raw = indexes.filter_map { |i| row.cells[i].to_s.strip.presence }.first
+      next if raw.nil?
 
       normalized = normalize(field, raw)
+
+      if player.public_send(field).present?
+        skipped[field] = occupied_reason(player, field, normalized)
+        next
+      end
+
+      unless writable?(field, player)
+        skipped[field] = 'no_permission'
+        next
+      end
+
       if normalized.nil?
         invalid[field] = raw
       else
@@ -301,6 +327,25 @@ class PlayerMasterDataImport
     end
 
     [values, skipped, invalid]
+  end
+
+  # Der Grund fuer ein belegtes Feld. Ein unveraenderter Wert ist nie eine
+  # abgewiesene Aenderung, auch nicht ohne Recht: Es wurde ja nichts geaendert.
+  def occupied_reason(player, field, normalized)
+    return 'identical' if current_value(player, field).to_s.casecmp?(normalized.to_s)
+
+    writable?(field, player) ? 'already_set' : 'no_permission'
+  end
+
+  # Darf dieser Account dieses Feld dieses Profils schreiben? Die Mengen kommen
+  # aus dem Controller, weil die Antwort am einzelnen Profil hängt und nicht am
+  # Lauf — siehe #initialize.
+  def writable?(field, player)
+    if MASTER_DATA_FIELDS.include?(field)
+      @master_data_writable_ids.include?(player.id)
+    else
+      @email_writable_ids.include?(player.id)
+    end
   end
 
   # Der gespeicherte Wert in der Schreibweise, in der auch die CSV-Zelle
@@ -315,8 +360,29 @@ class PlayerMasterDataImport
     case field
     when :email     then raw.match?(URI::MailTo::EMAIL_REGEXP) ? raw : nil
     when :gender    then GENDERS[raw.downcase]
-    when :nation_id then raw.match?(/\A\d+\z/) && raw.to_i.positive? ? raw.to_i : nil
+    when :nation_id then parse_nation(raw)
     when :birthdate then parse_date(raw)
+    end
+  end
+
+  # Nation-ID oder Klartext. Der Klartext wird gegen `Setting.current` aufgelöst,
+  # also gegen dieselbe Liste, aus der `Player#nation_string` und damit die
+  # Export-Spalte stammt — ein unveränderter Export ist damit garantiert lesbar.
+  # Ein unbekannter Name endet als „unbrauchbar" und nicht als stiller Verlust:
+  # Eine eigene Schreibweise („deutsch", „GER") soll der Verein gemeldet
+  # bekommen, statt sie für eingetragen zu halten.
+  def parse_nation(raw)
+    return raw.to_i if raw.match?(/\A\d+\z/) && raw.to_i.positive?
+
+    nation_ids_by_name[raw.downcase]
+  end
+
+  def nation_ids_by_name
+    @nation_ids_by_name ||= (Setting.current['nations'] || {}).each_with_object({}) do |(id, data), acc|
+      name = data.is_a?(Hash) ? data['name'] : data
+      next if name.blank?
+
+      acc[name.to_s.strip.downcase] = id.to_i
     end
   end
 
@@ -357,7 +423,7 @@ class PlayerMasterDataImport
   INVALID_REASONS = {
     email: 'E-Mail-Adresse ist ungültig',
     gender: 'Geschlecht muss m, w oder d sein',
-    nation_id: 'Nation-ID ist keine Zahl',
+    nation_id: 'Nationalität ist unbekannt (erwartet wird die Nation-ID oder ihr Klartext aus dem Export)',
     birthdate: 'Geburtsdatum muss TT.MM.JJJJ sein und darf nicht in der Zukunft liegen'
   }.freeze
 

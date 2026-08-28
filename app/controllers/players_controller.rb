@@ -650,11 +650,11 @@ class PlayersController < ApplicationController
         # davon nicht durch `reactivate!` oder
         # `players:reopen_memberships_after_deactivation` wieder offen ist, wäre
         # danach für seinen Verband unbearbeitbar.
-        heimat_im_verein = (player.clubs || []).any? do |c|
-          ActiveModel::Type::Boolean.new.cast(c['home_club']) &&
-            c['club_id'].to_i == params[:club_id].to_i
-        end
-        unless heimat_im_verein
+        #
+        # Dieselbe Methode wie im CSV-Nachtrag (#master_data_writable_ids): Die
+        # beiden Schreibwege auf dieselben Stammdaten duerfen nicht
+        # auseinanderlaufen.
+        unless home_club_membership?(player, params[:club_id])
           return render json: { message: 'Spieler gehört nicht zu diesem Verein.' }, status: :forbidden
         end
 
@@ -1155,8 +1155,11 @@ class PlayersController < ApplicationController
   # Der Zugang haengt an derselben Pruefung wie die Liste selbst
   # (resolve_vm_club), die Schreibrechte je Feld an denselben Rechten wie die
   # Maske daneben: die Adresse an can_manage_player? (wie #update_email), die
-  # uebrigen Stammdaten an `update_player` (Admin/SBK). Fuer VM und TM ist das
-  # dieselbe Aufteilung wie in der Maske daneben: Adresse ja, Geburtsdatum,
+  # uebrigen Stammdaten an `update_player` PLUS Heimatzugehoerigkeit (wie
+  # #admin_player_update, siehe #master_data_writable_ids). Beides je Profil und
+  # nicht einmal fuer den ganzen Lauf — der Bestand eines Vereins enthaelt auch
+  # Zweitmitgliedschaften und Freigaben. Fuer VM und TM ist das dieselbe
+  # Aufteilung wie in der Maske daneben: Adresse ja, Geburtsdatum,
   # Geschlecht und Nationalitaet nur ueber den Aenderungsantrag. Der Report
   # benennt jedes uebersprungene Feld mit Grund, statt es stillschweigend zu
   # verwerfen — sonst sieht eine gepflegte Spalte aus wie ein verlorener Upload.
@@ -1168,13 +1171,12 @@ class PlayersController < ApplicationController
     upload_error = csv_upload_error(file)
     return render(json: { message: upload_error }, status: :unprocessable_entity) if upload_error
 
-    ph = current_user.permission_hash
     players = club.players(include_deactivated: true)
     import = PlayerMasterDataImport.new(
       csv_content: file.read,
       players: players,
       email_writable_ids: players.select { |p| can_manage_player?(p) }.map(&:id),
-      may_write_master_data: ph[:admin].present? || ph[:sbk].present?,
+      master_data_writable_ids: master_data_writable_ids(club, players),
       actor_id: current_user.id
     )
     report = import.call
@@ -1217,6 +1219,44 @@ class PlayersController < ApplicationController
     end
 
     club
+  end
+
+  # Die IDs, deren Geburtsdatum, Geschlecht und Nationalitaet dieser Account
+  # ueber DIESEN Verein nachtragen darf.
+  #
+  # Bewusst je Spieler und nicht einmal fuer den ganzen Lauf: Ein blosses
+  # `ph[:sbk].present?` waere an zwei Stellen weiter als der regulaere
+  # Schreibweg (#admin_player_update) und damit ein Weg an ihm vorbei.
+  #
+  # (a) Der Bestand kommt aus `Club#players`, also inklusive Zweitmitgliedschaft
+  #     und Freigabe. Wer nur eine Freigabe in diesem Verein hat, seinen
+  #     Heimatverein aber in einem fremden Verband, waere ueber die CSV
+  #     beschreibbar gewesen, ueber die Maske daneben nicht (403). Genau die
+  #     Luecke, die dort mit „sonst ist jede Freigabe ein Generalschluessel"
+  #     geschlossen ist.
+  # (b) Eine Doppelrolle SBK + Vereinsmanager (seit api#561 real) kommt ueber den
+  #     VM-Zweig von #resolve_vm_club in jeden eigenen Verein — auch in einen, fuer
+  #     dessen Spielbetrieb die SBK-Rolle nicht gilt. `ph[:sbk].present?` ist
+  #     trotzdem wahr und haette dort Stammdaten geschrieben.
+  #
+  # Deshalb dieselben zwei Bedingungen wie in #admin_player_update: die
+  # GO-Zustaendigkeit ueber `Club#user_permissions` UND die Heimatzugehoerigkeit
+  # in genau diesem Verein.
+  def master_data_writable_ids(club, players)
+    return [] unless club.user_permissions(current_user).include?(:update_player)
+
+    players.select { |p| home_club_membership?(p, club.id) }.map(&:id)
+  end
+
+  # Ist dieser Verein der HEIMATverein des Spielers? Gemeinsame Regel von
+  # #admin_player_update und #master_data_writable_ids; die Begruendung (und
+  # warum die Gueltigkeit bewusst nicht mitgeprueft wird) steht dort.
+  def home_club_membership?(player, club_id)
+    (player.clubs || []).any? do |c|
+      c.is_a?(Hash) &&
+        ActiveModel::Type::Boolean.new.cast(c['home_club']) &&
+        c['club_id'].to_i == club_id.to_i
+    end
   end
 
   # season_id → league_id → aggregierte Stats aus allen beendeten Spielen mit

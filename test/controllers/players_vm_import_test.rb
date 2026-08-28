@@ -241,6 +241,116 @@ class PlayersVmImportTest < ActionDispatch::IntegrationTest
     assert zeile.key?('nation_string')
   end
 
+  # Der Bestand eines Vereins ist nicht dasselbe wie sein Zustaendigkeitsbereich:
+  # `Club#players` liefert auch Zweitmitgliedschaften und Freigaben. Stammdaten
+  # pflegt aber der Verband des HEIMATvereins — die Maske daneben
+  # (#admin_player_update) weist genau diesen Fall mit 403 ab, „sonst ist jede
+  # Freigabe ein Generalschluessel". Der Import darf daran nicht vorbeifuehren.
+  test 'ein Gastspieler mit fremdem Heimatverein bekommt keine Stammdaten' do
+    fremder_verein = create(:club, game_operation: create(:game_operation))
+    gast = create(:player, birthdate: nil, gender: nil, email: nil,
+                           clubs: [{ 'club_id' => fremder_verein.id, 'home_club' => true },
+                                   { 'club_id' => @club.id, 'home_club' => false }])
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    report = import_csv("ID;Geburtsdatum;Geschlecht\n#{gast.id};01.02.2010;w\n")
+
+    assert_empty report['updated']
+    assert_equal 1, report['skipped'].size
+    reasons = report['skipped'].first['reasons']
+    assert_equal 'no_permission', reasons['birthdate']
+    assert_equal 'no_permission', reasons['gender']
+    gast.reload
+    assert_nil gast.birthdate
+    assert_nil gast.gender
+  end
+
+  # Doppelrolle SBK + Vereinsmanager, seit api#561 real. Der Zugang zur Maske
+  # kommt hier aus der VM-Rolle, die SBK-Rolle gilt fuer einen ganz anderen
+  # Spielbetrieb. Ein blosses „hat irgendwo eine SBK-Rolle" haette daraus ein
+  # Schreibrecht auf Stammdaten gemacht, das `Club#user_permissions` fuer diesen
+  # Verein nicht vergibt.
+  test 'die Doppelrolle SBK und Vereinsmanager traegt im eigenen Verein keine Stammdaten nach' do
+    eigener_verein = create(:club, game_operation: create(:game_operation))
+    spieler = create(:player, birthdate: nil, email: nil,
+                              clubs: [{ 'club_id' => eigener_verein.id, 'home_club' => true }])
+    login(create(:user, permissions: [
+      { 'user_group_id' => 2, 'game_operation_id' => @go.id },
+      { 'user_group_id' => 4, 'game_operation_id' => 0, 'club_id' => eigener_verein.id }
+    ]))
+
+    post '/api/v2/admin/vm/players/import',
+         params: { club_id: eigener_verein.id,
+                   file: csv_upload("ID;Geburtsdatum;E-Mail\n#{spieler.id};01.02.2010;neu@example.org\n") }
+    assert_response :success
+    report = JSON.parse(response.body)
+
+    # Die Adresse darf der Verein, das Geburtsdatum nicht.
+    assert_equal 1, report['updated'].size
+    assert_equal 'no_permission', report['updated'].first['skipped']['birthdate']
+    spieler.reload
+    assert_nil spieler.birthdate
+    assert_equal 'neu@example.org', spieler.email
+  end
+
+  # Der Normalfall dieser Maske: Der Verein ergaenzt eine Spalte und laedt die
+  # uebrigen unveraendert zurueck. Geburtsdatum und Nationalitaet sind
+  # Pflichtfelder, stehen also in jeder Zeile — stuende die Rechtepruefung vor
+  # dem Vergleich, meldete der Bericht fuer jede Zeile drei abgewiesene
+  # Aenderungen, die niemand vorhatte.
+  test 'der unveraenderte Export erzeugt keine Rechte-Meldung' do
+    login(create(:user, :vm, club_id: @club.id))
+
+    zeile = [@mit_adresse.id, @mit_adresse.birthdate.strftime('%d.%m.%Y'),
+             @mit_adresse.gender.downcase, 'Deutschland', @mit_adresse.nation_id,
+             'gepflegt@example.org'].join(';')
+    report = import_csv("ID;Geburtsdatum;Geschlecht;Nationalität;Nation-ID;E-Mail\n#{zeile}\n")
+
+    assert_empty report['updated']
+    assert_equal 1, report['skipped'].size
+    reasons = report['skipped'].first['reasons']
+    assert_equal %w[identical], reasons.values.uniq, reasons.inspect
+  end
+
+  # Die Klartext-Spalte des Exports war eine Sackgasse: Sie stand in der Datei,
+  # wurde aber nicht gelesen. Wer sie fuellte, bekam „keine Angabe in der Datei"
+  # gemeldet. Sie ist die einzige der beiden Nationalitaets-Spalten, die ein
+  # Mensch ohne Nachschlagewerk fuellen kann.
+  test 'die Nationalitaet wird auch im Klartext gelesen' do
+    ohne_nation = create(:player, clubs: [{ 'club_id' => @club.id, 'home_club' => true }])
+    ohne_nation.update_column(:nation_id, nil)
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    report = import_csv("ID;Nationalität;Nation-ID\n#{ohne_nation.id};Deutschland;\n")
+
+    assert_equal 1, report['updated'].size
+    assert_equal '1', ohne_nation.reload.nation_id
+  end
+
+  # Die ID gewinnt, wo beide Spalten gefuellt sind: Sie ist eindeutig, der
+  # Klartext haengt an einer Schreibweise.
+  test 'die Nation-ID gilt vor dem Klartext' do
+    ohne_nation = create(:player, clubs: [{ 'club_id' => @club.id, 'home_club' => true }])
+    ohne_nation.update_column(:nation_id, nil)
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    import_csv("ID;Nationalität;Nation-ID\n#{ohne_nation.id};Deutschland;2\n")
+
+    assert_equal '2', ohne_nation.reload.nation_id
+  end
+
+  test 'eine unbekannte Nationalitaet landet als unbrauchbar im Report' do
+    ohne_nation = create(:player, clubs: [{ 'club_id' => @club.id, 'home_club' => true }])
+    ohne_nation.update_column(:nation_id, nil)
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    report = import_csv("ID;Nationalität\n#{ohne_nation.id};GER\n")
+
+    assert_equal 1, report['invalid'].size
+    assert_match 'Nationalität ist unbekannt', report['invalid'].first['reason']
+    assert_nil ohne_nation.reload.nation_id
+  end
+
   private
 
   def import_csv(content)
