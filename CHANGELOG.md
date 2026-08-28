@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Das Stufenfeld der Schiedsrichterverwaltung findet jetzt auch Zusatzqualifikationen**: Unter „Schiedsrichter" filterte das Feld neben dem Landesverband ausschließlich über die Lizenzstufe, und die Frage „wer ist bei uns Beobachter?" war nur durch das Durchklicken der Einzelprofile zu beantworten -- die Zusatzqualifikationen standen zwar in jedem Profil, aber in keiner Liste. Dasselbe Feld liest jetzt beide Quellen: die Lizenzstufe wie bisher und zusätzlich Kürzel und Name der Zusatzqualifikationen. Die Schreibweise ist dabei gleichgültig, und ab drei Zeichen genügt der Wortanfang, damit „Beobacht" reicht. Kürzere Eingaben werden bewusst ganz verglichen: Lizenzstufen sind ein bis zwei Zeichen lang, und ein Wortanfangs-Treffer auf „A" holte sonst jeden Ausbilder in die Liste der A-Schiedsrichter. Damit die Trefferliste zeigt, warum jemand darin steht, liefert die Liste die Zusatzqualifikationen jetzt mit; im Frontend stehen sie als Kürzel neben der Stufe und im CSV-Export in einer eigenen Spalte. Ein zweites Filterfeld wäre dafür nur eine weitere Stelle gewesen, an der man den Namen exakt treffen muss.
+
 ## [1.101.0] - 2026-08-27
 
 ### Behoben

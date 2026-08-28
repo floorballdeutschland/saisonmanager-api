@@ -758,7 +758,12 @@ module Admin
         # der Liste. Der Stichtag wird je Request einmal berechnet, nicht je Zeile.
         license_status: referee.license_status(career_end_cutoff),
         tags: referee_tags_for(referee).map { |t| tag_summary(t) },
-        tag_ids: referee_tags_for(referee).map(&:id)
+        tag_ids: referee_tags_for(referee).map(&:id),
+        # Auch in der Liste, nicht nur unter `full`: Der Stufenfilter sucht auch
+        # in den Zusatzqualifikationen, und eine Trefferliste, die den Grund des
+        # Treffers verschweigt, ist nicht prüfbar. Die Verknüpfung ist im index
+        # schon eingeschlossen, kostet dort also keine Query je Zeile.
+        qualifications: referee.referee_qualifications.map { |q| qualification_json(q) }
       }
 
       data[:season_game_count] = season_game_count unless season_game_count.nil?
@@ -781,7 +786,6 @@ module Admin
           plz: referee.plz,
           ort: referee.ort,
           partner_lizenznummer: referee.partner_lizenznummer,
-          qualifications: referee.referee_qualifications.map { |q| qualification_json(q) },
           user_id: referee.user&.id,
           user_name: referee.user&.user_name
         )
@@ -829,6 +833,7 @@ module Admin
         id: q.id,
         qualification_type_id: q.referee_qualification_type_id,
         qualification_type_name: q.referee_qualification_type&.name,
+        qualification_type_short_name: q.referee_qualification_type&.short_name,
         valid_until: q.valid_until&.strftime('%d.%m.%Y')
       }
     end
