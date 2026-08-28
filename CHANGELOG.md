@@ -9,6 +9,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Schiedsrichtercoaches geben ihre Beobachtungen im Saisonmanager ab**: Der Beobachtungsbogen („Referee Coaching Form") lief bisher über ein Microsoft-Formular. Die Rückmeldungen lagen damit außerhalb des Systems, waren mit keinem Spiel und keiner Person verknüpft, und die beobachtete Person bekam sie nur zu sehen, wenn jemand sie ihr von Hand weiterreichte. Der Bogen steht jetzt unter „Meine Beobachtungen" und richtet sich an Personen mit gültiger Zusatzqualifikation „B" -- derselbe Personenkreis, der auch als Schiedsrichtercoach angesetzt werden kann. Der Bogen bildet das Formular ab: fünf Bewertungen (Stocklinie, Körperspiellinie, Strafenlinie, Spielleitung, Gesamtspielbewertung) auf einer Skala von 1 bis 7, jeweils für Schiedsrichter 1, Schiedsrichter 2 und das Gespann, dazu die Erläuterungen zu jeder Linie sowie Spielbeschreibung, Sonstiges und abschließende Bemerkungen. Was der Saisonmanager bereits kennt, wird nicht erneut abgefragt: Datum, Mannschaften, Liga, Gespann und der Name des Coaches stehen am Spiel. Die neun Kopffragen des Formulars entfallen damit, aus zwanzig Fragen werden elf. Abgeben darf, wer für das Spiel als Coach angesetzt war; in Spielbetrieben, die nicht personenscharf ansetzen, darf ein Coach zusätzlich ein Spiel des eigenen Spielbetriebs wählen. Ein Bogen je Spiel und Coach, zukünftige Spiele sind gesperrt.
+
+- **Die beobachtete Person liest ihre Rückmeldung selbst**: Sie steht unter „Meine Beobachtungen erhalten" im Schiedsrichterportal und wird per Mail angekündigt (abbestellbar über die Konto-Einstellung für Info-Mails). Die Mail nennt bewusst weder Note noch Text: Gelesen wird die Rückmeldung im Portal, wo die Skala mit ihren ausformulierten Stufen danebensteht. Jede Person sieht die gemeinsamen Texte, die Bewertung des Gespanns und ihre eigenen Einzelbewertungen -- nicht die ihres Gespannpartners. Das ist der Unterschied zum Vereins-Feedback, das die Mannschaften abgeben und das die beobachtete Person weiterhin nicht sieht; beide bestehen unabhängig nebeneinander.
+
+- **Beobachtungen am Schiedsrichterprofil in der Verwaltung**: Admin, Schiedsrichterkommission und Ansetzung sehen die vollständigen Bögen einschließlich der Bewertungen beider Gespannmitglieder, dazu den Schnitt der Einzelbewertungen dieser Person. Anders als beim Vereins-Feedback ist die Sicht nicht auf die bundesweiten Rollen begrenzt: Ein Landesverband, der selbst coacht, sieht die Bögen seines eigenen Spielbetriebs. Ein Bogen lässt sich zurücknehmen, dann verschwindet er aus der Sicht der beobachteten Person und aus dem Schnitt; der Coach sieht weiter, dass es ihn gab. Die Inhalte bleiben unveränderlich. Nach dem Ausrollen müssen sich Schiedsrichtercoaches, Kommissionen und Ansetzung einmal neu anmelden, damit der Menüpunkt erscheint.
+
 ## [1.101.0] - 2026-08-27
 
 ### Behoben

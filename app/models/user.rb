@@ -293,6 +293,15 @@ class User < ApplicationRecord
 
     return result if tm_blocked
 
+    # Beobachtungsbögen des Schiedsrichtercoaches – VOR dem Early-Return unten
+    # und außerhalb seiner Bedingung. Der Early-Return bricht für ein REINES
+    # Schiedsrichterkonto ab und vergibt danach gar nichts mehr; genau das ist
+    # aber der Normalfall eines Coaches. Stünden die beiden Schlüssel weiter
+    # unten, bekäme sie nur, wer zusätzlich RSK, Ansetzer, VM, TM oder Admin ist.
+    # Hier oben gelten sie für beide Wege.
+    result[:show_page_referee_observations] = referee_id.present?
+    result[:menu_item_referee_observations] = referee_coach_qualified?
+
     if has_schiri_role && !ph[:admin].present? && !ph[:sbk].present? && !ph[:rsk].present? && !ph[:ansetzer].present? && !ph[:vm].present? && !ph[:tm].present?
       result[:menu_item_referee_profile] = true
       result[:show_page_referee_profile] = true
@@ -376,6 +385,12 @@ class User < ApplicationRecord
       ph[:admin].present? ||
       (ph[:rsk].present? && ph[:rsk].include?(0)) ||
       (ph[:ansetzer].present? && ph[:ansetzer].include?(0))
+    # Beobachtungen am Schiri-Profil in der Verwaltung. Bewusst weiter gefasst
+    # als referee_feedback_view: Ein Landesverband, der selbst coacht, muss seine
+    # eigenen Bögen sehen. Begrenzt wird nicht die Rolle, sondern der
+    # Spielbetrieb (RefereeObservationPolicy#visible_scope).
+    result[:referee_observation_view] =
+      ph[:admin].present? || ph[:rsk].present? || ph[:ansetzer].present?
     result[:menu_item_referee_course_import] = has_full_referee_access
     result[:menu_item_referee_course_review] = has_full_referee_access || lv_rsk_review_enabled?(ph)
     result[:menu_item_referee_vm] = ph[:vm].present?
@@ -532,6 +547,19 @@ class User < ApplicationRecord
 
     sa_ids = GameOperation.where(id: go_ids).pluck(:state_association_id).compact.uniq
     StateAssociation.where(id: sa_ids).any?(&:effective_referee_license_review_enabled)
+  end
+
+  # Ist dieses Konto ein Schiedsrichtercoach (gültige Zusatzqualifikation „B…")?
+  # Entscheidet allein über den Menüpunkt „Meine Beobachtungen"; ob zu einem
+  # konkreten Spiel abgegeben werden darf, prüft RefereeObservationPolicy noch
+  # einmal gegen den Spieltag.
+  #
+  # Die Abfrage läuft nur, wenn überhaupt ein Schiedsrichterprofil hängt – für
+  # alle anderen Konten kostet der Schlüssel nichts.
+  def referee_coach_qualified?
+    return false if referee_id.blank?
+
+    Referee.coach_qualified.exists?(id: referee_id)
   end
 
   # True, wenn die Ansetzungslogik für den/die Ansetzer:in aktiv ist. Globale

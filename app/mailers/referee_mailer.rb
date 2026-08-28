@@ -49,6 +49,34 @@ class RefereeMailer < ApplicationMailer
     )
   end
 
+  # Eine neue Beobachtung liegt vor. Geht an die beobachtete Person, nicht an das
+  # Gespann als Ganzes: Jede Person bekommt ihre eigene Mail, weil sie im Portal
+  # auch nur ihre eigenen Einzelbewertungen sieht.
+  #
+  # Die Mail nennt bewusst keine Bewertung und keinen Text. Eine Rückmeldung, die
+  # in der Vorschau des Mailprogramms aufblitzt, ist kein Coaching – gelesen wird
+  # sie im Portal, wo die Skala danebensteht.
+  def observation_available(referee, observation)
+    @referee = referee
+    @observation = observation
+    @game = observation.game
+    @observation_url = "#{FrontendUrl.base}/schiedsrichter/beobachtungen"
+
+    templated_mail(
+      to: referee.email,
+      subject: "Neue Beobachtung – #{@game&.game_day&.date} #{@game&.home_team&.name} vs. #{@game&.guest_team&.name}",
+      default_reply_to: RSK_REPLY_TO,
+      placeholders: {
+        first_name: referee.vorname,
+        coach_name: observation.coach_name.to_s,
+        game_date: @game&.game_day&.date.to_s,
+        home_team: @game&.home_team&.name.to_s,
+        guest_team: @game&.guest_team&.name.to_s,
+        observation_url: @observation_url
+      }
+    )
+  end
+
   def tentative_assignment_notification(referee, date)
     @referee = referee
     @date = date
