@@ -251,6 +251,7 @@ class Club < ApplicationRecord
       state:,
       state_association_id:,
       contact_email:,
+      team_managers_manage_players:,
       logo_url:,
       logo_small_url:,
       game_operation_id: main_game_operation_id,
@@ -350,6 +351,17 @@ class Club < ApplicationRecord
 
     vm = ph[:vm].present? && ph[:vm].include?(id)
 
+    # Der Verein kann Anlegen, Deaktivieren und Reaktivieren zusätzlich seinen
+    # Teammanager*innen öffnen. Ohne den Schalter bleibt es bei api#530, und
+    # das ist die Voreinstellung: Wer nichts einstellt, behält das heutige
+    # Verhalten.
+    #
+    # Reihenfolge der Bedingungen bewusst so: `user.tm_club_ids` fragt die
+    # Mannschaften der laufenden Saison ab, und `user_permissions` wird je
+    # Verein gerufen (vm/clubs_and_teams schleift darüber). Solange der
+    # Schalter aus ist – der Normalfall – entsteht diese Abfrage gar nicht.
+    tm = team_managers_manage_players? && user.tm_club_ids.include?(id)
+
     perm << :update_club if admin || sbk
     perm << :update_player if admin || sbk
 
@@ -364,10 +376,17 @@ class Club < ApplicationRecord
     # wird als Heimatmitgliedschaft dieses Vereins geführt, eine
     # Kaderzuordnung entsteht nicht. Wer in den Verein aufgenommen wird,
     # entscheidet deshalb der Vereinsmanager. Teammanager*innen hatten das
-    # Recht bis api#530 ebenfalls; sie stellen weiter auf und melden Lizenzen
-    # an, den Neuzugang legt der Verein an. Stammdaten
-    # nachträglich ändern (`:update_player`) darf unverändert nur der Verband.
-    perm << :create_player if admin || sbk || vm
+    # Recht bis api#530 ebenfalls und bekommen es seither nur zurück, wenn der
+    # Verein es ihnen ausdrücklich erteilt (`team_managers_manage_players`);
+    # ohne das stellen sie auf und melden Lizenzen an, den Neuzugang legt der
+    # Verein an. Stammdaten nachträglich ändern (`:update_player`) darf
+    # unverändert nur der Verband.
+    #
+    # Der Schalter wirkt allein auf dieses Recht und nicht auf
+    # :update_own_club: Er wird in der Vereinsverwaltung gesetzt, und die
+    # steht dem Teammanager nicht offen – er kann sich das Recht also nicht
+    # selbst erteilen.
+    perm << :create_player if admin || sbk || vm || tm
 
     perm
   end

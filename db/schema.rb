@@ -133,6 +133,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_29_100000) do
     t.datetime "deactivated_at"
     t.bigint "deactivated_by"
     t.integer "notify_excluded_user_ids", default: [], null: false, array: true
+    t.boolean "team_managers_manage_players", default: false, null: false, comment: "Wenn true: Teammanager dieses Vereins duerfen Spieler anlegen, deaktivieren und reaktivieren"
   end
 
   create_table "daily_metrics", force: :cascade do |t|

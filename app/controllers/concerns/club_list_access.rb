@@ -39,11 +39,12 @@ module ClubListAccess
   end
 
   # Wie #user_permission_hash je Anfrage nur einmal: Ueber die Spielersuche kaeme
-  # sonst je Treffer eine Team-Abfrage samt all_club_ids dazu. `ph` stammt in
-  # jedem Aufruf aus demselben Konto, der Wert haengt also an nichts anderem.
-  def tm_club_ids(ph)
-    return [] unless ph[:tm].present?
-
-    @tm_club_ids ||= Team.current_season.where(id: ph[:tm]).flat_map(&:all_club_ids).uniq
+  # sonst je Treffer eine Team-Abfrage samt all_club_ids dazu. Der Cache sitzt
+  # am Konto (User#tm_club_ids), weil `Club#user_permissions` dieselbe Liste
+  # braucht -- zwei Fassungen derselben Frage laufen auseinander. `ph` bleibt
+  # als Parameter stehen, damit die Aufrufer unveraendert bleiben; er stammt
+  # ohnehin aus genau diesem Konto.
+  def tm_club_ids(_ph)
+    current_user.tm_club_ids
   end
 end
