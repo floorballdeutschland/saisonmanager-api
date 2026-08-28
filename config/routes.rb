@@ -409,6 +409,11 @@ Rails.application.routes.draw do
         end
         # Ansprechpersonen der Vereine und Mannschaften der laufenden Saison.
         get 'contacts', to: 'contacts#index'
+        # Spielerdaten-Rangliste (Verein und Landesverband, #465). Bewusst hier und
+        # nicht bei den flachen admin/players/*-Routen weiter oben: Die enden auf
+        # get 'admin/players/:id', und ein neues Wortsegment davor waere dort eine
+        # Frage der Reihenfolge statt einer eigenen Route.
+        get 'player_statistics', to: 'player_statistics#index'
         resource :analytics, only: [:show]
         # Sperrliste der Admin-Seite "System" (BlockedIp).
         resources :blocked_ips, only: %i[index create destroy]
