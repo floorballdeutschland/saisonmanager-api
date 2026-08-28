@@ -161,6 +161,7 @@ Rails.application.routes.draw do
       post 'admin/players/:id/merge', to: 'players#merge'
       get   'admin/vm/players', to: 'players#vm_players_index'
       patch 'admin/vm/players/:id/email', to: 'players#update_email'
+      post  'admin/vm/players/import', to: 'players#vm_import'
 
       post 'admin/players/:id/handle_license_request', to: 'players#handle_license_request'
       post 'admin/players/:id/set_gf_license_role', to: 'players#set_gf_license_role'
