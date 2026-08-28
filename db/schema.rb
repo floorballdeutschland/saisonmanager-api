@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_08_28_100000) do
+ActiveRecord::Schema[7.2].define(version: 2026_08_29_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -521,6 +521,33 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_28_100000) do
     t.index ["status"], name: "index_player_change_requests_on_status"
   end
 
+  create_table "player_game_stats", force: :cascade do |t|
+    t.bigint "player_id", null: false
+    t.bigint "team_id", null: false
+    t.bigint "league_id", null: false
+    t.bigint "club_id", null: false, comment: "teams.club_id -- Spielgemeinschaften bleiben unberuecksichtigt (Vorgabe aus #465)"
+    t.string "season_id", comment: "leagues.season_id -- bewusst string wie dort, nie als Range filtern"
+    t.integer "game_operation_id"
+    t.string "league_class_id"
+    t.integer "games", default: 0, null: false
+    t.integer "goals", default: 0, null: false
+    t.integer "assists", default: 0, null: false
+    t.integer "penalty_minutes", default: 0, null: false
+    t.datetime "computed_at", null: false
+    t.index ["club_id", "season_id"], name: "index_player_game_stats_on_club_id_and_season_id"
+    t.index ["game_operation_id", "season_id"], name: "index_player_game_stats_on_game_operation_id_and_season_id"
+    t.index ["league_class_id"], name: "index_player_game_stats_on_league_class_id"
+    t.index ["player_id", "league_id", "team_id"], name: "index_player_game_stats_unique", unique: true
+  end
+
+  create_table "player_stat_profiles", primary_key: "player_id", force: :cascade do |t|
+    t.bigint "home_club_id"
+    t.integer "home_game_operation_id"
+    t.datetime "computed_at", null: false
+    t.index ["home_club_id"], name: "index_player_stat_profiles_on_home_club_id"
+    t.index ["home_game_operation_id"], name: "index_player_stat_profiles_on_home_game_operation_id"
+  end
+
   create_table "player_suspensions", force: :cascade do |t|
     t.bigint "player_id", null: false
     t.bigint "team_id"
@@ -782,6 +809,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_28_100000) do
     t.date "valid_until"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.index ["referee_id", "referee_qualification_type_id"], name: "index_referee_qualifications_on_referee_and_type", unique: true
     t.index ["referee_id"], name: "index_referee_qualifications_on_referee_id"
     t.index ["referee_qualification_type_id"], name: "index_referee_qualifications_on_referee_qualification_type_id"
   end
@@ -1033,6 +1061,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_28_100000) do
   add_foreign_key "license_documents", "users", column: "uploaded_by_id"
   add_foreign_key "player_change_requests", "players"
   add_foreign_key "player_change_requests", "players", column: "secondary_player_id"
+  add_foreign_key "player_game_stats", "players"
   add_foreign_key "players", "players", column: "merged_into_id"
   add_foreign_key "referee_assignments", "games"
   add_foreign_key "referee_assignments", "referees", column: "referee1_id"

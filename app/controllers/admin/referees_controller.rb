@@ -751,6 +751,9 @@ module Admin
         club_id: referee.club_id,
         club_name: referee.club&.name,
         landesverband: referee.landesverband,
+        # Kürzel für die Listenspalte „Region"; der volle Name bleibt daneben
+        # stehen, weil Filter, CSV-Export und Detailansicht ihn brauchen.
+        landesverband_short: referee.landesverband_short_name,
         lizenzstufe: referee.lizenzstufe,
         gueltigkeit: referee.gueltigkeit&.strftime('%d.%m.%Y'),
         active: !referee.guest? && referee.gueltigkeit.present? && referee.gueltigkeit >= Date.current,
@@ -758,7 +761,12 @@ module Admin
         # der Liste. Der Stichtag wird je Request einmal berechnet, nicht je Zeile.
         license_status: referee.license_status(career_end_cutoff),
         tags: referee_tags_for(referee).map { |t| tag_summary(t) },
-        tag_ids: referee_tags_for(referee).map(&:id)
+        tag_ids: referee_tags_for(referee).map(&:id),
+        # Auch in der Liste, nicht nur unter `full`: Der Stufenfilter sucht auch
+        # in den Zusatzqualifikationen, und eine Trefferliste, die den Grund des
+        # Treffers verschweigt, ist nicht prüfbar. Die Verknüpfung ist im index
+        # schon eingeschlossen, kostet dort also keine Query je Zeile.
+        qualifications: referee.referee_qualifications.map { |q| qualification_json(q) }
       }
 
       data[:season_game_count] = season_game_count unless season_game_count.nil?
@@ -781,7 +789,6 @@ module Admin
           plz: referee.plz,
           ort: referee.ort,
           partner_lizenznummer: referee.partner_lizenznummer,
-          qualifications: referee.referee_qualifications.map { |q| qualification_json(q) },
           user_id: referee.user&.id,
           user_name: referee.user&.user_name
         )
@@ -829,7 +836,15 @@ module Admin
         id: q.id,
         qualification_type_id: q.referee_qualification_type_id,
         qualification_type_name: q.referee_qualification_type&.name,
-        valid_until: q.valid_until&.strftime('%d.%m.%Y')
+        qualification_type_short_name: q.referee_qualification_type&.short_name,
+        valid_until: q.valid_until&.strftime('%d.%m.%Y'),
+        # Der Stufenfilter findet bewusst auch abgelaufene Qualifikationen: Wer
+        # nach „Beobachter“ sucht, sucht den Bestand und nicht die Restlaufzeit.
+        # Dann muss die Liste aber zeigen, dass ein Treffer aus dem Altbestand
+        # kommt — sonst liest sich eine 2024er Qualifikation wie eine laufende.
+        # Der Stichtag gehört wie bei `license_status` auf den Server und nicht
+        # in den Browser, der sonst ein formatiertes Datum zurückparsen müsste.
+        expired: q.valid_until.present? && q.valid_until < Date.current
       }
     end
 
