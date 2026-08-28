@@ -936,4 +936,67 @@ class ClubTest < ActiveSupport::TestCase
     assert_not_includes tm_club.user_permissions(user), :create_player
     assert_not_includes tm_club.user_permissions(user), :update_own_club
   end
+
+  # Der Verein kann das Recht seinen Teammanager*innen erteilen. Es bleibt
+  # dabei genau dieses eine Recht: Die Stammdaten des Vereins und die
+  # Spielerstammdaten sind davon unberührt, und den Schalter selbst erreicht
+  # der TM nicht (:update_own_club).
+  test 'Teammanager darf anlegen, wenn der Verein es freigegeben hat' do
+    create(:setting, current_season_id: '18')
+    club = create(:club, team_managers_manage_players: true)
+    team = create(:team, club:, league: create(:league, :current_season))
+    tm = create(:user, :tm, team_id: team.id)
+
+    perm = club.user_permissions(tm)
+
+    assert_includes perm, :create_player
+    assert_not_includes perm, :update_own_club
+    assert_not_includes perm, :update_player
+    assert_not_includes perm, :update_club
+  end
+
+  # Der Schalter hängt am Verein und nicht am Konto: Wer für Mannschaften
+  # zweier Vereine zuständig ist, richtet sich in jedem nach dessen
+  # Entscheidung.
+  test 'Freigabe wirkt nur im freigegebenen Verein' do
+    create(:setting, current_season_id: '18')
+    frei = create(:club, team_managers_manage_players: true)
+    gesperrt = create(:club)
+    league = create(:league, :current_season)
+    team_frei = create(:team, club: frei, league:)
+    team_gesperrt = create(:team, club: gesperrt, league:)
+    tm = create(:user, :tm, team_id: team_frei.id)
+    tm.update!(teams: [team_frei.id, team_gesperrt.id])
+
+    assert_includes frei.user_permissions(tm), :create_player
+    assert_not_includes gesperrt.user_permissions(tm), :create_player
+  end
+
+  # Die Spielgemeinschaft ist der Fall, in dem der TM über `Team#all_club_ids`
+  # weiter reicht als ein VM. Das ist hier gewollt und keine Lücke: Der
+  # Partnerverein hat den Schalter selbst gesetzt, und wer den Kader gemeinsam
+  # stellt, kann ihn auch gemeinsam pflegen wollen. Der Verein, der ihn nicht
+  # gesetzt hat, bleibt trotz derselben Mannschaft geschlossen.
+  test 'Freigabe des Partnervereins wirkt, die des Hauptvereins fehlt' do
+    create(:setting, current_season_id: '18')
+    haupt = create(:club)
+    partner = create(:club, team_managers_manage_players: true)
+    team = create(:team, club: haupt, league: create(:league, :current_season),
+                         syndicate: true, syndicate_clubs: [partner.id])
+    tm = create(:user, :tm, team_id: team.id)
+
+    assert_includes partner.user_permissions(tm), :create_player
+    assert_not_includes haupt.user_permissions(tm), :create_player
+  end
+
+  # Der Schalter erteilt ein Recht an die Teammanager*innen und nicht an jeden:
+  # Wer mit dem Verein überhaupt nichts zu tun hat, bekommt durch ihn nichts.
+  test 'Freigabe erteilt Fremden kein Recht' do
+    create(:setting, current_season_id: '18')
+    club = create(:club, team_managers_manage_players: true)
+    fremdes_team = create(:team, club: create(:club), league: create(:league, :current_season))
+    tm = create(:user, :tm, team_id: fremdes_team.id)
+
+    assert_not_includes club.user_permissions(tm), :create_player
+  end
 end

@@ -38,6 +38,12 @@ class Referee < ApplicationRecord
     club&.state_association&.name
   end
 
+  # Kürzel des Landesverbands für Listenspalten. Nullable in der Datenbank,
+  # deshalb muss die Anzeige auf den vollen Namen zurückfallen können.
+  def landesverband_short_name
+    club&.state_association&.short_name
+  end
+
   # :active | :lapsed | :career_ended | :unknown. Für Listen den Stichtag einmal
   # berechnen und durchreichen, statt ihn je Datensatz neu zu ermitteln.
   def license_status(cutoff = self.class.career_end_cutoff)
@@ -96,7 +102,36 @@ class Referee < ApplicationRecord
   scope :by_landesverband, lambda { |lv|
     joins(club: :state_association).where(state_associations: { name: lv })
   }
-  scope :by_lizenzstufe, ->(stufe) { where(lizenzstufe: stufe) }
+  # Ein Eingabefeld, zwei Quellen: die Lizenzstufe des Schiedsrichters und seine
+  # Zusatzqualifikationen. Wer nach „Beobachter" sucht, meint dieselbe Spalte der
+  # Verwaltungsliste wie jemand, der „A" eingibt — ein zweites Filterfeld dafür
+  # wäre nur eine weitere Stelle, an der man den Namen exakt treffen muss.
+  #
+  # Stufe, Kürzel und Qualifikationsname werden ganz verglichen (case-insensitiv).
+  # Ab drei Zeichen zählt beim Namen zusätzlich der Wortanfang, damit „Beobacht"
+  # reicht. Kürzere Eingaben bleiben bewusst exakt: Lizenzstufen sind ein bis zwei
+  # Zeichen lang, und ein Präfix-Treffer auf „A" holte sonst jeden „Ausbilder" in
+  # die Liste der A-Schiedsrichter.
+  scope :by_lizenzstufe, lambda { |stufe|
+    value = stufe.to_s.strip
+    return all if value.blank?
+
+    name_match = if value.length >= 3
+                   'LOWER(referee_qualification_types.name) LIKE :prefix'
+                 else
+                   'LOWER(referee_qualification_types.name) = :exact'
+                 end
+    qualified = RefereeQualification
+                .joins(:referee_qualification_type)
+                .where(
+                  "LOWER(referee_qualification_types.short_name) = :exact OR #{name_match}",
+                  exact: value.downcase,
+                  prefix: "#{Referee.sanitize_sql_like(value.downcase)}%"
+                )
+                .select(:referee_id)
+
+    where('LOWER(referees.lizenzstufe) = ?', value.downcase).or(where(id: qualified))
+  }
   scope :search, lambda { |q|
     tokens = q.to_s.strip.split(/\s+/).reject(&:empty?).first(5)
     return none if tokens.empty?

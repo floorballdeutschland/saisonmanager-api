@@ -576,15 +576,22 @@ class ClubsController < ApplicationController
   # Spielbetriebs-Parameter gibt es nicht mehr (siehe create_club / update_club).
   def club_params
     params.require(:club).permit(:name, :short_name, :long_name, :state, :state_association_id, :contact_email,
-                                 notify_user_ids: [])
+                                 :team_managers_manage_players, notify_user_ids: [])
   end
 
   # Vereinsmanager-Fassung: ohne die Felder, die den Verein einordnen.
   # `state` und `state_association_id` entscheiden mit darüber, wer den Verein
   # verwalten und wer seine Spieler sperren darf – ein Verein könnte sich sonst
   # selbst in einen anderen Landesverband umhängen.
+  # `team_managers_manage_players` steht bewusst in BEIDEN Fassungen: Wer die
+  # Rechte im Verein vergibt, ist der Verein selbst, und der Vereinsmanager ist
+  # genau die Rolle, die den Schalter braucht. Ein Feld, das die
+  # Vereinsverwaltung anzeigt, aber nur der Verband schreiben kann, wäre für
+  # ihn eine Maske ohne Wirkung (und `restricted_field_conflict` müsste es dann
+  # als Konflikt melden).
   def restricted_club_params
-    params.require(:club).permit(:name, :short_name, :long_name, :contact_email, notify_user_ids: [])
+    params.require(:club).permit(:name, :short_name, :long_name, :contact_email,
+                                 :team_managers_manage_players, notify_user_ids: [])
   end
 
   def full_club_access?(club)
