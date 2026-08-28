@@ -9,20 +9,12 @@ module LeagueRefereeAssignment
   # :club   – RSK pflegt Verein oder Freitext (Weg 3, reduzierte Ansicht)
   # :person – Ansetzer-Rolle setzt personenscharf an (Weg 2)
   #
-  # „National" kommt ausdrücklich aus GameOperation#national und NICHT aus einem
-  # fehlenden Landesverband: die FD-GameOperation hat sehr wohl einen
-  # StateAssociation-Datensatz (für das Verbandslogo), siehe die Begründung in
-  # User#permission_hash. Über `state_association.nil?` liefe der
-  # Bundesspielbetrieb still in die LV-Schalter – und fiele aus der Ansetzung,
-  # sobald dort jemand den Hauptschalter abwählt.
+  # Der Modus haengt am Spielbetrieb, nicht an der einzelnen Liga; entschieden
+  # wird er in GameOperation#referee_assignment_mode (inklusive des Sonderfalls
+  # Bundesspielbetrieb). Eine Liga ohne Spielbetrieb kann nicht angesetzt werden
+  # und faellt wie dort auf :person zurueck.
   def referee_assignment_mode
-    go = game_operation
-    return :person if go.nil? || go.national?
-
-    sa = go.state_association
-    return :person if sa.nil?
-
-    sa.referee_assignment_mode
+    game_operation&.referee_assignment_mode || :person
   end
 
   # Neue Spiele dieser Liga gleich für die Personenebene markieren? Der

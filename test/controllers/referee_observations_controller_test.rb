@@ -126,6 +126,54 @@ class RefereeObservationsControllerTest < ActionDispatch::IntegrationTest
     assert entry['done']
   end
 
+  test 'Coach sieht den eigenen zurueckgenommenen Bogen weiterhin' do
+    observation = create(:referee_observation, :with_rating, coach: @coach, status: 'hidden')
+    login(@coach_user)
+
+    get '/api/v2/referee/observations'
+    assert_response :success
+    assert_equal([observation.id], JSON.parse(response.body).map { |o| o['id'] })
+  end
+
+  # Die freie Auswahl trifft ohne Einschraenkung jedes Spiel des Spielbetriebs im
+  # Rueckblickfenster. Ein Spiel ohne eingetragenes Gespann kann dabei nur im
+  # Fehler enden (RefereeObservationSubmission::NO_REFEREES_ERROR) und wird
+  # deshalb gar nicht erst angeboten.
+  test 'freie Auswahl listet Spiele mit Gespann und laesst Spiele ohne Gespann weg' do
+    free_sa = create(:state_association, referee_assignment_external_enabled: false)
+    free_go = create(:game_operation, state_association: free_sa)
+    free_league = create(:league, game_operation: free_go)
+    free_day = create(:game_day, league: free_league,
+                                 date: (RefereeObservationPolicy::ZONE.today - 3).strftime('%Y-%m-%d'))
+    with_crew = create(:game, game_day: free_day,
+                              officiating_referee_ids: [@referee1.id, @referee2.id])
+    without_crew = create(:game, game_day: free_day, officiating_referee_ids: [])
+    @coach.update!(game_operation_id: free_go.id)
+
+    login(@coach_user)
+    get '/api/v2/referee/observations/games'
+    assert_response :success
+
+    ids = JSON.parse(response.body).map { |g| g['game_id'] }
+    assert_includes ids, with_crew.id
+    assert_not_includes ids, without_crew.id
+    assert_includes ids, @game.id, 'Das angesetzte Spiel bleibt unabhaengig davon in der Liste'
+  end
+
+  test 'personenscharf angesetzter Spielbetrieb bietet keine freie Auswahl an' do
+    other = create(:game, game_day: @game_day,
+                          officiating_referee_ids: [@referee1.id, @referee2.id])
+    @coach.update!(game_operation_id: @go.id)
+
+    login(@coach_user)
+    get '/api/v2/referee/observations/games'
+    assert_response :success
+
+    ids = JSON.parse(response.body).map { |g| g['game_id'] }
+    assert_includes ids, @game.id
+    assert_not_includes ids, other.id
+  end
+
   test 'Konto ohne Schiedsrichterprofil bekommt 403' do
     login(create(:user, :admin))
     get '/api/v2/referee/observations'

@@ -26,10 +26,16 @@ class RefereeObservationPolicy
   # Ist die angemeldete Person am Stichtag als Schiedsrichtercoach qualifiziert
   # (gültige Zusatzqualifikation „B…")? Ohne Stichtag gilt heute – so entscheidet
   # sich auch der Menüpunkt.
+  #
+  # Je Stichtag gemerkt: Die Spielauswahl fragt fuer jedes Spiel einzeln, und die
+  # Stichtage wiederholen sich (ein Spieltag, viele Spiele).
   def coach_qualified?(date = Date.current)
     return false if referee.nil?
 
-    Referee.coach_qualified(date).exists?(id: referee.id)
+    @coach_qualified ||= {}
+    return @coach_qualified[date] if @coach_qualified.key?(date)
+
+    @coach_qualified[date] = Referee.coach_qualified(date).exists?(id: referee.id)
   end
 
   # Darf zu diesem Spiel ein Bogen abgegeben werden? Zwei Wege, beide setzen die
@@ -56,35 +62,64 @@ class RefereeObservationPolicy
     free_choice_allowed?(game)
   end
 
-  # Bögen, die dieses Konto sehen darf. Die Sichten überlagern sich additiv, ein
-  # Coach kann zugleich beobachtet werden und ein LV-RSK zugleich Coach sein.
-  def visible_scope
+  # Bögen, die die VERWALTUNGSSICHT dieses Kontos zeigen darf – die Rollensicht
+  # am Schiri-Profil. Ausschließlich über den Spielbetrieb der Rolle.
+  #
+  # Die eigene Betroffenheit gehört bewusst NICHT hinein: Wer selbst beobachtet
+  # oder beobachtet wurde, liest seinen Bogen im Selfservice, und dort ohne die
+  # Einzelnoten des Gespannpartners (RefereeObservationSerializer). Stünde die
+  # persönliche Sicht auch hier, könnte jede Person mit irgendeiner RSK- oder
+  # Ansetzer-Rolle den gemeinsamen Bogen über das Profil ihres Partners
+  # aufrufen und dessen Noten mitlesen – über jede Verbandsgrenze hinweg, weil
+  # die Verwaltung den vollständigen Bogen serialisiert.
+  def admin_scope
     return RefereeObservation.all if global_reader?
+    return RefereeObservation.where(game_operation_id: scoped_game_operation_ids) if scoped_reader?
 
-    scopes = []
-    scopes << RefereeObservation.where(game_operation_id: scoped_game_operation_ids) if scoped_reader?
-    if referee
-      # Eigene Bögen auch im Status hidden: Der Coach soll sehen, dass seine
-      # Rückmeldung zurückgenommen wurde, statt sie stillschweigend zu verlieren.
-      scopes << RefereeObservation.for_coach(referee.id)
-      scopes << RefereeObservation.visible.for_referee(referee.id)
-    end
+    RefereeObservation.none
+  end
 
-    scopes.reduce { |combined, scope| combined.or(scope) } || RefereeObservation.none
+  # Bögen, deren Status dieses Konto ändern darf. Enger als admin_scope: Die
+  # Ansetzung liest nur, und die eigene Betroffenheit begründet erst recht kein
+  # Schreibrecht – sonst nähme die beobachtete Person die Kritik an sich selbst
+  # aus der Welt, im fremden Spielbetrieb und ohne dass es jemand sieht.
+  def moderation_scope
+    return RefereeObservation.none unless can_moderate?
+    return RefereeObservation.all if ph[:admin].present? || Array(ph[:rsk]).include?(0)
+
+    RefereeObservation.where(game_operation_id: Array(ph[:rsk]).reject(&:zero?))
   end
 
   # Zurücknehmen und Wiederherstellen eines Bogens (status). Kein Schritt im
   # Normalfluss – die beobachtete Person sieht den Text sofort –, sondern der
   # Notausgang für eine entgleiste Rückmeldung.
+  #
+  # Nur die Rollenfrage; welchen Bogen diese Rolle erreicht, entscheidet
+  # moderation_scope.
   def can_moderate?
     ph[:admin].present? || ph[:rsk].present?
   end
 
   # Darf die Verwaltungssicht (Schiri-Profil) Bögen anzeigen? Anders als beim
   # Vereins-Feedback auch für verbandsgebundene RSK/Ansetzer – begrenzt wird
-  # nicht die Rolle, sondern über visible_scope der Spielbetrieb.
+  # nicht die Rolle, sondern über admin_scope der Spielbetrieb.
   def can_view_admin?
     global_reader? || scoped_reader?
+  end
+
+  # Spielbetriebe, in denen dieses Konto ein Spiel frei wählen darf: die eigenen,
+  # soweit dort nicht personenscharf angesetzt wird. Öffentlich, damit die
+  # Vorauswahl der Spiele dieselbe Regel schon in SQL anwendet, statt hinterher
+  # jedes Spiel des Verbands einzeln zu verwerfen – und damit der Modus einmal
+  # geladen wird und nicht je Spiel.
+  def free_choice_game_operation_ids
+    return [] if referee.nil?
+
+    @free_choice_game_operation_ids ||=
+      GameOperation.includes(:state_association)
+                   .where(id: coach_game_operation_ids)
+                   .reject { |go| go.referee_assignment_mode == :person }
+                   .map(&:id)
   end
 
   private
@@ -120,12 +155,15 @@ class RefereeObservationPolicy
       [referee.club&.main_game_operation_id, referee.game_operation_id].compact.uniq
   end
 
+  # Der Ansetzungsmodus hängt am Spielbetrieb, nicht an der einzelnen Liga
+  # (GameOperation#referee_assignment_mode). Deshalb genügt hier die Liste der
+  # freigewählten Spielbetriebe; über die Liga danach noch einmal nachzufragen
+  # würde je Spiel den Landesverband nachladen.
   def free_choice_allowed?(game)
-    league = game.league
-    return false if league.nil?
-    return false if league.referee_assignment_mode == :person
+    go_id = game.league&.game_operation_id
+    return false if go_id.blank?
 
-    coach_game_operation_ids.include?(league.game_operation_id)
+    free_choice_game_operation_ids.include?(go_id)
   end
 
   # game_days.date ist eine Textspalte; strikt im Spaltenformat lesen, damit

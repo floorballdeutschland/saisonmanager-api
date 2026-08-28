@@ -59,6 +59,23 @@ class UserRefereeObservationMenuTest < ActiveSupport::TestCase
     assert_not items[:menu_item_referee_profile]
   end
 
+  # Lesen und Zuruecknehmen sind zwei Rechte. Haengt der Knopf im Frontend am
+  # Leserecht, sieht ihn auch die Ansetzung -- und laeuft beim Klick in eine 403
+  # (RefereeObservationPolicy#can_moderate?).
+  test 'die Ansetzung darf lesen, bekommt aber den Schluessel zum Zuruecknehmen nicht' do
+    items = create(:user, :assigner_scoped,
+                   game_operation_id: create(:game_operation).id).permissions_items
+
+    assert items[:referee_observation_view]
+    assert_not items[:referee_observation_moderate]
+  end
+
+  test 'Admin und Schiedsrichterkommission duerfen zuruecknehmen' do
+    assert create(:user, :admin).permissions_items[:referee_observation_moderate]
+    assert create(:user, :rsk_scoped, game_operation_id: create(:game_operation).id)
+      .permissions_items[:referee_observation_moderate]
+  end
+
   private
 
   def coach_referee

@@ -78,6 +78,62 @@ module Admin
       assert_equal 'visible', @observation.reload.status
     end
 
+    # Der Test darueber greift die Doppelrolle NICHT ab: Die Fabrik :rsk_scoped
+    # legt ein Konto ohne Schiedsrichterprofil an, und genau das Profil war die
+    # Luecke. Ein aktiver Schiedsrichter mit einer RSK-Rolle irgendwo ist der
+    # Normalfall, kein Sonderfall.
+    test 'beobachtete Person mit RSK-Rolle nimmt den Bogen ueber sich selbst nicht zurueck' do
+      login(create(:user, :rsk_scoped, game_operation_id: create(:game_operation).id,
+                                       referee: @referee))
+
+      patch "/api/v2/admin/referee_observations/#{@observation.id}", params: { status: 'hidden' }
+      assert_response :not_found
+      assert_equal 'visible', @observation.reload.status,
+                   'Wer beobachtet wurde, darf die Kritik an sich selbst nicht aus der Welt nehmen'
+    end
+
+    test 'Coach mit RSK-Rolle nimmt den eigenen Bogen in einem fremden Spielbetrieb nicht zurueck' do
+      coach_user = create(:user, :rsk_scoped, game_operation_id: create(:game_operation).id,
+                                              referee: @observation.coach)
+      login(coach_user)
+
+      patch "/api/v2/admin/referee_observations/#{@observation.id}", params: { status: 'hidden' }
+      assert_response :not_found
+      assert_equal 'visible', @observation.reload.status
+    end
+
+    # Die Verwaltungssicht serialisiert den vollstaendigen Bogen, also auch die
+    # Einzelnoten des Gespannpartners. Sie darf deshalb ausschliesslich aus der
+    # Rollensicht schoepfen: Wuerde die eigene Betroffenheit sie mit aufspannen,
+    # laese jeder Schiedsrichter mit irgendeiner Rolle ueber das Profil seines
+    # Partners dessen Noten mit -- quer ueber jede Verbandsgrenze.
+    test 'beobachtete Person mit Rolle liest ueber die Verwaltung nicht die Noten des Gespannpartners' do
+      partner = create(:referee)
+      @observation.ratings.create!(referee: partner, position: 2, stick_play_rating: 2,
+                                   physical_play_rating: 2, penalty_line_rating: 2,
+                                   game_management_rating: 2, overall_rating: 2)
+      login(create(:user, :rsk_scoped, game_operation_id: create(:game_operation).id,
+                                       referee: @referee))
+
+      get "/api/v2/admin/referees/#{partner.id}/observations"
+      assert_response :success
+
+      body = JSON.parse(response.body)
+      rated = body['observations'].flat_map { |o| o['ratings'] }.map { |r| r['referee_id'] }
+      assert_not_includes rated, partner.id,
+                          'Die Noten des Gespannpartners gehoeren nicht in die Verwaltungssicht ' \
+                          'eines Kontos, dessen Rolle den Spielbetrieb gar nicht umfasst'
+      assert_empty body['observations']
+      assert_equal 0, body['summary']['count']
+    end
+
+    test 'reines Schiedsrichterkonto hat keine Verwaltungssicht auf die eigenen Boegen' do
+      login(create(:user, referee: @referee,
+                          permissions: [{ 'user_group_id' => 6, 'game_operation_id' => 0 }]))
+      get "/api/v2/admin/referees/#{@referee.id}/observations"
+      assert_response :forbidden
+    end
+
     private
 
     def login(user)

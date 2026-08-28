@@ -76,33 +76,21 @@ class RefereeObservationPolicyTest < ActiveSupport::TestCase
     assert_not RefereeObservationPolicy.new(user).can_observe?(game)
   end
 
-  # --- Lesesicht ---
-
-  test 'beobachtete Person sieht ihren Bogen, aber keinen zurueckgenommenen' do
-    referee = create(:referee)
-    visible = create(:referee_observation, :with_rating, rated_referee: referee)
-    hidden = create(:referee_observation, :with_rating, rated_referee: referee, status: 'hidden')
-    user = user_for(referee)
-
-    ids = RefereeObservationPolicy.new(user).visible_scope.pluck(:id)
-    assert_includes ids, visible.id
-    assert_not_includes ids, hidden.id
-  end
-
-  test 'Coach sieht den eigenen Bogen auch zurueckgenommen' do
-    coach = create(:referee)
-    hidden = create(:referee_observation, :with_rating, coach: coach, status: 'hidden')
-
-    ids = RefereeObservationPolicy.new(user_for(coach)).visible_scope.pluck(:id)
-    assert_includes ids, hidden.id
-  end
+  # --- Verwaltungssicht ---
+  #
+  # admin_scope beantwortet ausschliesslich die Rollenfrage. Was jemand als
+  # BETROFFENE Person lesen darf, beantworten die Selfservice-Endpunkte
+  # (for_coach bzw. visible.for_referee) -- und die serialisieren ohne die Noten
+  # des Gespannpartners. Beides in einem Scope war die Ursache gleich zweier
+  # Luecken: eines Datenlecks in der Verwaltungsliste und eines Schreibzugriffs
+  # auf den Bogen ueber die eigene Person.
 
   test 'LV-RSK sieht nur Boegen des eigenen Spielbetriebs' do
     own = create(:referee_observation, :with_rating)
     other = create(:referee_observation, :with_rating)
     user = create(:user, :rsk_scoped, game_operation_id: own.game_operation_id)
 
-    ids = RefereeObservationPolicy.new(user).visible_scope.pluck(:id)
+    ids = RefereeObservationPolicy.new(user).admin_scope.pluck(:id)
     assert_includes ids, own.id
     assert_not_includes ids, other.id
   end
@@ -111,16 +99,67 @@ class RefereeObservationPolicyTest < ActiveSupport::TestCase
     one = create(:referee_observation, :with_rating)
     two = create(:referee_observation, :with_rating)
 
-    ids = RefereeObservationPolicy.new(create(:user, :admin)).visible_scope.pluck(:id)
+    ids = RefereeObservationPolicy.new(create(:user, :admin)).admin_scope.pluck(:id)
     assert_includes ids, one.id
     assert_includes ids, two.id
   end
 
-  test 'unbeteiligter Schiedsrichter sieht nichts' do
-    create(:referee_observation, :with_rating)
-    user = user_for(create(:referee))
+  test 'die eigene Betroffenheit spannt die Verwaltungssicht nicht auf' do
+    referee = create(:referee)
+    rated = create(:referee_observation, :with_rating, rated_referee: referee)
+    written = create(:referee_observation, :with_rating, coach: referee)
+    user = create(:user, :rsk_scoped, game_operation_id: create(:game_operation).id,
+                                      referee: referee)
 
-    assert_empty RefereeObservationPolicy.new(user).visible_scope.pluck(:id)
+    ids = RefereeObservationPolicy.new(user).admin_scope.pluck(:id)
+    assert_not_includes ids, rated.id
+    assert_not_includes ids, written.id
+  end
+
+  test 'reines Schiedsrichterkonto hat keine Verwaltungssicht' do
+    observation = create(:referee_observation, :with_rating)
+    user = user_for(observation.coach)
+
+    assert_empty RefereeObservationPolicy.new(user).admin_scope.pluck(:id)
+  end
+
+  # --- Moderation ---
+
+  test 'Admin moderiert jeden Bogen' do
+    observation = create(:referee_observation, :with_rating)
+
+    ids = RefereeObservationPolicy.new(create(:user, :admin)).moderation_scope.pluck(:id)
+    assert_includes ids, observation.id
+  end
+
+  test 'LV-RSK moderiert nur den eigenen Spielbetrieb' do
+    own = create(:referee_observation, :with_rating)
+    other = create(:referee_observation, :with_rating)
+    user = create(:user, :rsk_scoped, game_operation_id: own.game_operation_id)
+
+    ids = RefereeObservationPolicy.new(user).moderation_scope.pluck(:id)
+    assert_includes ids, own.id
+    assert_not_includes ids, other.id
+  end
+
+  test 'die Ansetzung liest, moderiert aber nicht' do
+    observation = create(:referee_observation, :with_rating)
+    user = create(:user, :assigner_scoped, game_operation_id: observation.game_operation_id)
+    policy = RefereeObservationPolicy.new(user)
+
+    assert_includes policy.admin_scope.pluck(:id), observation.id
+    assert_not policy.can_moderate?
+    assert_empty policy.moderation_scope.pluck(:id)
+  end
+
+  test 'beobachtete Person mit RSK-Rolle moderiert den Bogen ueber sich selbst nicht' do
+    referee = create(:referee)
+    observation = create(:referee_observation, :with_rating, rated_referee: referee)
+    user = create(:user, :rsk_scoped, game_operation_id: create(:game_operation).id,
+                                      referee: referee)
+
+    assert_not_includes RefereeObservationPolicy.new(user).moderation_scope.pluck(:id),
+                        observation.id
   end
 
   private

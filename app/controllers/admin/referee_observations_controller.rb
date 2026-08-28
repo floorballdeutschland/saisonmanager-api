@@ -5,7 +5,13 @@ module Admin
   # Anders als beim Vereins-Feedback ist die Sicht nicht auf die global gescopten
   # FD-Rollen begrenzt. Ein Landesverband, der selbst coacht, muss die eigenen
   # Bögen sehen; begrenzt wird deshalb nicht die Rolle, sondern über
-  # RefereeObservationPolicy#visible_scope der Spielbetrieb.
+  # RefereeObservationPolicy#admin_scope der Spielbetrieb.
+  #
+  # Beide Endpunkte lesen ausschließlich aus den Rollen-Scopes der Policy und nie
+  # aus deren persönlicher Sicht: Diese Maske zeigt den vollständigen Bogen samt
+  # der Noten beider Gespannmitglieder, und Statusänderungen sind ein Eingriff in
+  # eine Rückmeldung über eine andere Person. Beides darf nicht daran hängen,
+  # dass das Konto in dem Bogen selbst vorkommt.
   class RefereeObservationsController < ApplicationController
     before_action :authenticate_user
 
@@ -18,7 +24,7 @@ module Admin
       return forbidden unless policy.can_view_admin?
 
       referee = Referee.find(params[:referee_id])
-      observations = policy.visible_scope
+      observations = policy.admin_scope
                            .for_referee(referee.id)
                            .includes(:ratings, game: { game_day: { league: :game_operation } })
                            .order(submitted_at: :desc)
@@ -42,7 +48,7 @@ module Admin
       return render json: { error: 'Ungültiger Status' }, status: :unprocessable_entity unless
         %w[visible hidden].include?(status)
 
-      observation = policy.visible_scope.find(params[:id])
+      observation = policy.moderation_scope.find(params[:id])
       observation.update!(status: status)
       head :no_content
     rescue ActiveRecord::RecordNotFound

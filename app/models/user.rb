@@ -388,9 +388,14 @@ class User < ApplicationRecord
     # Beobachtungen am Schiri-Profil in der Verwaltung. Bewusst weiter gefasst
     # als referee_feedback_view: Ein Landesverband, der selbst coacht, muss seine
     # eigenen Bögen sehen. Begrenzt wird nicht die Rolle, sondern der
-    # Spielbetrieb (RefereeObservationPolicy#visible_scope).
+    # Spielbetrieb (RefereeObservationPolicy#admin_scope).
     result[:referee_observation_view] =
       ph[:admin].present? || ph[:rsk].present? || ph[:ansetzer].present?
+    # Zuruecknehmen und Wiederherstellen eines Bogens. Enger als das Lesen: Die
+    # Ansetzung sieht die Boegen, greift aber nicht in sie ein
+    # (RefereeObservationPolicy#can_moderate?). Ohne eigenen Schluessel stuende
+    # der Knopf auch bei ihr in der Maske und liefe in eine Absage.
+    result[:referee_observation_moderate] = ph[:admin].present? || ph[:rsk].present?
     result[:menu_item_referee_course_import] = has_full_referee_access
     result[:menu_item_referee_course_review] = has_full_referee_access || lv_rsk_review_enabled?(ph)
     result[:menu_item_referee_vm] = ph[:vm].present?

@@ -108,6 +108,17 @@ class GameOperation < ApplicationRecord
     leagues.current_season.with_resolved_media_includes.first(5)
   end
 
+  # Ansetzungsmodus dieses Spielbetriebs (:none/:club/:person). Die Schalter
+  # stehen am Landesverband, gefragt wird aber fast immer ueber den Spielbetrieb
+  # -- und der Bundesspielbetrieb hat sie gar nicht. Eine Stelle dafuer, damit
+  # League#referee_assignment_mode (LeagueRefereeAssignment) und die Vorauswahl
+  # der Beobachtungsspiele nicht zwei Fassungen derselben Regel pflegen.
+  def referee_assignment_mode
+    return :person if national?
+
+    state_association&.referee_assignment_mode || :person
+  end
+
   def slug
     path.presence || short_name&.parameterize
   end

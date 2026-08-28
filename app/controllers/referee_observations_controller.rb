@@ -37,8 +37,12 @@ class RefereeObservationsController < ApplicationController
     existing = RefereeObservation.for_coach(@referee.id)
                                  .where(game_id: games.map(&:id))
                                  .index_by(&:game_id)
+    # Gespanne fuer die ganze Liste in zwei Abfragen; einzeln waeren es zwei je
+    # Spiel, und die Liste kann in einem Spielbetrieb ohne personenscharfe
+    # Ansetzung mehrere hundert Spiele lang sein.
+    crews = Game.feedback_referees_for(games)
 
-    render json: games.map { |game| candidate_json(game, existing[game.id]) }
+    render json: games.map { |game| candidate_json(game, existing[game.id], crews[game.id]) }
   end
 
   # POST /api/v2/referee/observations
@@ -83,33 +87,52 @@ class RefereeObservationsController < ApplicationController
     render json: { error: 'Kein Schiedsrichterprofil gefunden' }, status: :forbidden unless @referee
   end
 
+  # Ein Spiel, zu dem kein Schiedsrichter auflösbar ist, kann niemandem zugeordnet
+  # werden: RefereeObservationSubmission weist es mit NO_REFEREES_ERROR ab, und
+  # der Bogen hätte niemanden zu bewerten. Die Bedingung nimmt also kein wählbares
+  # Spiel weg, sondern nur solche, die im Fehler enden würden.
+  HAS_REFEREES_SQL = <<~SQL.squish
+    COALESCE(array_length(games.officiating_referee_ids, 1), 0) > 0
+    OR COALESCE(array_length(games.referee_ids, 1), 0) > 0
+    OR COALESCE(array_length(games.nominated_referee_ids, 1), 0) > 0
+    OR COALESCE(games.referee1_string, '') <> ''
+    OR COALESCE(games.referee2_string, '') <> ''
+  SQL
+
   # Vorauswahl für #games: Spiele mit Coach-Ansetzung auf die eigene Person plus –
   # in Spielbetrieben ohne personenscharfe Ansetzung – die Spiele des eigenen
   # Spielbetriebs. Die eigentliche Entscheidung trifft danach die Policy; diese
   # Query hält nur die Menge klein.
+  #
+  # Der zweite Zweig ist die teure Hälfte: Er trifft ohne Einschränkung jedes
+  # Spiel des Verbands aus dem Rückblickfenster. Er greift deshalb nur, wo frei
+  # gewählt werden darf (Spielbetriebe ohne personenscharfe Ansetzung – wo
+  # personenscharf angesetzt wird, verwarf die Policy die Spiele bisher einzeln
+  # hinterher), und nur für Spiele mit einem eingetragenen Gespann. Die
+  # Coach-Ansetzung bleibt davon unberührt: Ein angesetztes Spiel steht in der
+  # Liste, auch wenn dort noch kein Gespann gepflegt ist.
   def candidate_games
     today = RefereeObservationPolicy::ZONE.today
     assigned_game_ids = RefereeAssignment.where(coach_id: @referee.id).select(:game_id)
 
     Game
       .joins(game_day: :league)
-      .includes(:home_team, :guest_team, game_day: { league: :game_operation })
+      .includes(:home_team, :guest_team, :referee_assignment, game_day: { league: :game_operation })
       .where("TO_DATE(game_days.date, 'YYYY-MM-DD') BETWEEN ? AND ?", today - LOOKBACK_DAYS.days, today)
-      .where('games.id IN (:assigned) OR leagues.game_operation_id IN (:go_ids)',
-             assigned: assigned_game_ids, go_ids: own_game_operation_ids)
+      .where("games.id IN (:assigned) OR (leagues.game_operation_id IN (:go_ids) AND (#{HAS_REFEREES_SQL}))",
+             assigned: assigned_game_ids, go_ids: free_choice_game_operation_ids)
       .order('game_days.date DESC')
       .to_a
   end
 
   # -1 statt einer leeren Liste: `IN ()` ist kein gültiges SQL, und ein leeres
   # Array würde die ODER-Bedingung sonst zu `IN (NULL)` machen.
-  def own_game_operation_ids
-    ids = [@referee.club&.main_game_operation_id, @referee.game_operation_id].compact.uniq
-    ids.presence || [-1]
+  def free_choice_game_operation_ids
+    policy.free_choice_game_operation_ids.presence || [-1]
   end
 
-  def candidate_json(game, observation)
-    referees, referee_names = game.feedback_referees
+  def candidate_json(game, observation, crew = nil)
+    referees, referee_names = crew || game.feedback_referees
     {
       game_id: game.id,
       game_number: game.game_number,
