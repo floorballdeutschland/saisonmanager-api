@@ -56,15 +56,22 @@ module Admin
       return unless authorize!
 
       rows = page_rows
-      render json: {
+      payload = {
         scope: scope_payload,
         as_of: rows.filter_map { |r| r['computed_at'] }.max,
         total: total_count,
         page: page,
         per_page: per_page,
-        filters: filter_options,
         players: players_payload(rows)
       }
+      # Auswahllisten nur mit der ersten Seite. Sie haengen an scope_rows und nicht an
+      # den gesetzten Filtern, koennen sich beim Blaettern also gar nicht aendern --
+      # jede Folgeseite haette sie umsonst neu berechnet, und das sind vier
+      # DISTINCT-Abfragen ueber die Zeilen im Blick, bundesweit ueber die ganze
+      # Tabelle. Aendert sich der Blick (anderer Verein, anderer Vereinsfilter),
+      # beginnt die Ansicht ohnehin wieder bei Seite 1 und bekommt sie dort.
+      payload[:filters] = filter_options if page == 1
+      render json: payload
     rescue ActiveRecord::StatementInvalid, ActiveRecord::ConnectionNotEstablished => e
       # Wie in Admin::AnalyticsController: Ein Aggregat ist kein Kernbestand. Faellt es
       # aus, soll die Oberflaeche das sagen koennen, statt einen 500er zu zeigen.
@@ -352,6 +359,9 @@ module Admin
 
     # Nur Werte, die im Bestand dieses Blicks wirklich vorkommen. Alles andere baute
     # Auswahlfelder, die zwangslaeufig leere Ergebnisse liefern.
+    #
+    # Teuer: vier DISTINCT-Abfragen ueber scope_rows. Deshalb ruft #index das hier nur
+    # fuer die erste Seite.
     def filter_options
       options = {
         seasons: season_options,

@@ -535,8 +535,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_28_120000) do
     t.datetime "computed_at", null: false
     t.index ["club_id", "season_id"], name: "index_player_game_stats_on_club_id_and_season_id"
     t.index ["game_operation_id", "season_id"], name: "index_player_game_stats_on_game_operation_id_and_season_id"
+    t.index ["league_class_id"], name: "index_player_game_stats_on_league_class_id"
     t.index ["player_id", "league_id", "team_id"], name: "index_player_game_stats_unique", unique: true
-    t.index ["player_id"], name: "index_player_game_stats_on_player_id"
   end
 
   create_table "player_stat_profiles", primary_key: "player_id", force: :cascade do |t|

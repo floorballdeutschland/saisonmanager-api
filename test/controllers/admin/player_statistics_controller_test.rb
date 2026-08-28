@@ -178,6 +178,35 @@ module Admin
       assert_equal ['Bussard'], statistics(club_filter_id: @club2.id)['players'].pluck('last_name')
     end
 
+    # Die Kernaussage des Vorgangs: Zugeordnet wird ueber die Mannschaft, in deren
+    # Aufstellung die Person stand, und nicht ueber ihre heutige Vereinszugehoerigkeit.
+    # Wer die Saison ueber den Verein wechselt, hat deshalb zwei Zeilen, und jede
+    # Vereinsansicht zeigt nur die eigenen Spiele.
+    test 'ein Vereinswechsel innerhalb der Saison zaehlt bei jedem Verein nur dessen Spiele' do
+      wechslerin = mitglied_von(@club2, first_name: 'Fine', last_name: 'Falke')
+      # Zwei Tore fuer den alten Verein ...
+      spiel_ost(home_lineup: [aufstellung(12, wechslerin)], events: [tor(12), tor(12)])
+      # ... ein Tor fuer den neuen, in derselben Saison.
+      spiel_ost(home_team: @team2, home_lineup: [aufstellung(12, wechslerin)], events: [tor(12)])
+      PlayerStats::Refresher.new.run!
+      login(create(:user, :admin))
+
+      assert_equal [[@club.id, 1, 2], [@club2.id, 1, 1]],
+                   PlayerGameStat.where(player_id: wechslerin.id).order(:club_id)
+                                 .pluck(:club_id, :games, :goals)
+
+      # Beim alten Verein ist sie nicht mehr gemeldet, ihre damaligen Spiele zaehlen
+      # dort trotzdem -- und nur sie.
+      beim_alten = falke(statistics(club_id: @club.id, only_current_members: false))
+      beim_neuen = falke(statistics(club_id: @club2.id))
+      im_verband = falke(statistics)
+
+      assert_equal [1, 2], beim_alten.values_at('games', 'goals')
+      assert_equal [1, 1], beim_neuen.values_at('games', 'goals')
+      # Der Verbandsmodus ist die Vereinigung und zaehlt beide Vereine zusammen.
+      assert_equal [2, 3], im_verband.values_at('games', 'goals')
+    end
+
     # ---------------------------------------------------------------- Schalter
 
     test 'ohne den Schalter stehen nur aktuell gemeldete Spieler in der Liste' do
@@ -242,6 +271,17 @@ module Admin
       assert_nil filters['teams']
     end
 
+    # Die Auswahllisten haengen an der Menge im Blick und nicht an den gesetzten
+    # Filtern, koennen sich beim Blaettern also nicht aendern. Sie kosten aber vier
+    # DISTINCT-Abfragen, deshalb kommen sie nur mit der ersten Seite.
+    test 'die Auswahllisten kommen nur mit der ersten Seite' do
+      login(create(:user, :admin))
+      params = { club_id: @club.id, only_current_members: false, include_deactivated: true, per_page: 1 }
+
+      assert_not_nil statistics(**params, page: 1)['filters']
+      assert_nil statistics(**params, page: 2)['filters']
+    end
+
     test 'Mindestspiele blenden Spieler unterhalb der Schwelle aus' do
       login(create(:user, :admin))
 
@@ -291,6 +331,10 @@ module Admin
     def login(user)
       post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
       assert_response :success
+    end
+
+    def falke(body)
+      body['players'].find { |player| player['last_name'] == 'Falke' }
     end
 
     def mitglied_von(club, attrs = {})

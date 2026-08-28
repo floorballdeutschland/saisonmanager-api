@@ -140,6 +140,51 @@ module PlayerStats
       assert_equal %w[17 18], PlayerGameStat.order(:season_id).pluck(:season_id)
     end
 
+    # Ein Spiel ohne aufloesbare Mannschaft ist genau der Fall, den der rescue je Spiel
+    # abfaengt. Er darf dabei nicht spurlos verschwinden: Der Lauf ist unbeaufsichtigt
+    # und endet auch mit uebersprungenen Spielen mit Exit 0.
+    test 'uebersprungene Spiele werden gemeldet' do
+      spiel = ended_game(home_lineup: [lineup(7, @spieler)], events: [goal(7)])
+      spiel.update_column(:home_team_id, 999_999)
+
+      messages = []
+      ergebnis = nil
+      Sentry.stub(:capture_message, ->(message, *) { messages << message }) do
+        ergebnis = Refresher.new.run!
+      end
+
+      assert_equal 1, ergebnis[:skipped_games]
+      assert_equal 1, messages.size
+      assert_includes messages.first, 'uebersprungen'
+    end
+
+    test 'ein Lauf ohne uebersprungene Spiele meldet nichts' do
+      ended_game(home_lineup: [lineup(7, @spieler)], events: [goal(7)])
+
+      messages = []
+      Sentry.stub(:capture_message, ->(message, *) { messages << message }) do
+        Refresher.new.run!
+      end
+
+      assert_empty messages
+    end
+
+    # Die Drosselung haengt an Rails.cache. Im Test-Env ist das ein :null_store, in dem
+    # jedes write durchgeht -- ohne echten Store pruefte der Test sie gar nicht.
+    test 'die Meldung ueber uebersprungene Spiele wiederholt sich nicht bei jedem Lauf' do
+      spiel = ended_game(home_lineup: [lineup(7, @spieler)], events: [goal(7)])
+      spiel.update_column(:home_team_id, 999_999)
+
+      messages = []
+      with_real_cache do
+        Sentry.stub(:capture_message, ->(message, *) { messages << message }) do
+          2.times { Refresher.new.run! }
+        end
+      end
+
+      assert_equal 1, messages.size
+    end
+
     test 'DRY_RUN schreibt nichts' do
       ended_game(home_lineup: [lineup(7, @spieler)], events: [goal(7)])
 

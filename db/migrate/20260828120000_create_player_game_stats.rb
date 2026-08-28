@@ -25,7 +25,11 @@
 class CreatePlayerGameStats < ActiveRecord::Migration[7.2]
   def change
     create_table :player_game_stats do |t|
-      t.references :player, null: false, foreign_key: true
+      # index: false -- der Unique-Index unten beginnt mit player_id und deckt jede
+      # Suche nach dem Profil bereits ab. Ein zweiter Index auf derselben Spalte waere
+      # in einer Tabelle, die jede Nacht komplett neu geschrieben wird, nur
+      # Schreibaufwand ohne Gegenwert.
+      t.references :player, null: false, foreign_key: true, index: false
       # Ohne Fremdschluessel auf Liga und Team: beide werden geloescht
       # (League-Loeschung, cleanup:orphan_team_leagues), und eine Ranglisten-Zeile
       # darf das nicht blockieren. Verwaiste Zeilen raeumt der volle Lauf weg.
@@ -53,6 +57,10 @@ class CreatePlayerGameStats < ActiveRecord::Migration[7.2]
                                                                    name: 'index_player_game_stats_unique'
     add_index :player_game_stats, %i[club_id season_id]
     add_index :player_game_stats, %i[game_operation_id season_id]
+    # Die Spielklasse ist Filter UND Auswahlliste der Ansicht; letztere ist ein
+    # DISTINCT ueber die ganze Tabelle, sobald niemand auf einen Verein eingeschraenkt
+    # ist. Ohne Index ist das garantiert ein sequentieller Durchlauf.
+    add_index :player_game_stats, :league_class_id
 
     # Schnappschuss des laufenden Heimatvereins, eine Zeile pro Profil.
     #

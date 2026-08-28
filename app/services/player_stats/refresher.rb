@@ -17,6 +17,7 @@ module PlayerStats
   # uebersehen. SEASON_ID/LEAGUE_ID gibt es fuer den gezielten Nachlauf am Tag.
   class Refresher
     GAME_BATCH = 200
+    SKIPPED_REPORT_KEY = 'player_stats/skipped_games'.freeze
     INSERT_SLICE = 1000
     PROFILE_BATCH = 1000
 
@@ -46,12 +47,36 @@ module PlayerStats
       # ansehen.
       orphans = full? ? remove_orphans : 0
       profiles = full? ? refresh_profiles : 0
+      report_skipped_games(skipped_games) if full?
 
       { leagues:, rows:, skipped_games:, orphans:, profiles:,
         computed_at: @computed_at, seconds: (Time.current - started).round(1) }
     end
 
     private
+
+    # Uebersprungene Spiele muessen aus dem Lauf herauskommen.
+    #
+    # Der rescue je Spiel ist richtig -- ein kaputtes Spiel darf die Liga nicht
+    # mitreissen --, aber der Lauf ist unbeaufsichtigt: Er endet mit Exit 0, der
+    # Endpunkt antwortet weiter mit 200, und die einzige Spur ist eine Zeile in
+    # /var/log/player_stats.log. Bricht evaluate_scorer durch eine Datenaenderung
+    # reihenweise weg, sinken die Zahlen der Rangliste still.
+    #
+    # Deshalb dieselbe Behandlung wie bei einer unlesbaren Zugehoerigkeit
+    # (Player#report_membership_date_defect): melden, und hoechstens einmal am Tag,
+    # damit ein Nachlauf am selben Tag nicht nachlegt.
+    #
+    # Ein Probelauf meldet nichts: DRY_RUN schreibt nicht und markiert nicht.
+    def report_skipped_games(count)
+      return if count.zero? || @dry_run
+      return unless Rails.cache.write(SKIPPED_REPORT_KEY, true, unless_exist: true, expires_in: 1.day)
+
+      message = "PlayerStats::Refresher: #{count} Spiel(e) uebersprungen -- " \
+                'die Spielerdaten-Rangliste zaehlt sie nicht mit'
+      Rails.logger.error(message)
+      Sentry.capture_message(message) if defined?(Sentry)
+    end
 
     def full?
       @season_id.nil? && @league_id.nil?
