@@ -38,6 +38,12 @@ class Referee < ApplicationRecord
     club&.state_association&.name
   end
 
+  # Kürzel des Landesverbands für Listenspalten. Nullable in der Datenbank,
+  # deshalb muss die Anzeige auf den vollen Namen zurückfallen können.
+  def landesverband_short_name
+    club&.state_association&.short_name
+  end
+
   # :active | :lapsed | :career_ended | :unknown. Für Listen den Stichtag einmal
   # berechnen und durchreichen, statt ihn je Datensatz neu zu ermitteln.
   def license_status(cutoff = self.class.career_end_cutoff)

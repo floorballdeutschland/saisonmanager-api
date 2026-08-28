@@ -20,7 +20,7 @@ module Admin
       @beobachter = RefereeQualificationType.create!(name: 'Beobachter', short_name: 'BEO')
       @ausbilder = RefereeQualificationType.create!(name: 'Ausbilder', short_name: 'AUS')
 
-      @lv = create(:state_association, name: 'Filterverband')
+      @lv = create(:state_association, name: 'Filterverband', short_name: 'FIL')
       @club = create(:club, state_association: @lv)
 
       # Die Lizenzstufen sind bewusst disjunkt zu den Qualifikationen verteilt,
@@ -95,6 +95,19 @@ module Admin
       login(@admin)
 
       assert_empty nummern(lizenzstufe: 'Zeitnehmer')
+    end
+
+    # Die Listenspalte „Region" zeigt das Kürzel, der volle Name bleibt für
+    # Filter und CSV-Export daneben stehen.
+    test 'die Liste liefert Kuerzel und Namen des Landesverbands' do
+      login(@admin)
+
+      get '/api/v2/admin/referees', params: { landesverband: 'Filterverband' }
+      assert_response :success
+      row = response.parsed_body.find { |r| r['lizenznummer'] == 720_001 }
+
+      assert_equal 'FIL', row['landesverband_short']
+      assert_equal 'Filterverband', row['landesverband']
     end
 
     test 'die Liste liefert die Zusatzqualifikationen mit' do

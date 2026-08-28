@@ -751,6 +751,9 @@ module Admin
         club_id: referee.club_id,
         club_name: referee.club&.name,
         landesverband: referee.landesverband,
+        # Kürzel für die Listenspalte „Region"; der volle Name bleibt daneben
+        # stehen, weil Filter, CSV-Export und Detailansicht ihn brauchen.
+        landesverband_short: referee.landesverband_short_name,
         lizenzstufe: referee.lizenzstufe,
         gueltigkeit: referee.gueltigkeit&.strftime('%d.%m.%Y'),
         active: !referee.guest? && referee.gueltigkeit.present? && referee.gueltigkeit >= Date.current,
