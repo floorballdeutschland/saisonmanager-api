@@ -82,6 +82,17 @@ module Admin
       assert_equal [720_002], nummern(lizenzstufe: 'Ausbilder')
     end
 
+    # Die Grenze der Praefix-Regel, und die einzige Stelle, an der sie still
+    # kippen koennte: Zwei Zeichen sind noch kein Wortanfang. Ein spaeterer
+    # Griff nach `>= 2` bliebe ohne diesen Test gruen und holte wieder jeden
+    # Ausbilder in die Liste der Stufe „Au".
+    test 'zwei Zeichen sind noch kein Wortanfang' do
+      login(@admin)
+
+      assert_empty nummern(lizenzstufe: 'Au')
+      assert_empty nummern(lizenzstufe: 'Be')
+    end
+
     # Der Landesverbandsfilter bringt einen JOIN mit; der Stufenfilter verodert
     # zwei Bedingungen. Beides zusammen muss die Schnittmenge liefern.
     test 'Qualifikationsfilter laesst sich mit dem Landesverband kombinieren' do
@@ -120,6 +131,36 @@ module Admin
       assert_equal(['Beobachter'], row['qualifications'].map { |q| q['qualification_type_name'] })
       assert_equal(['BEO'], row['qualifications'].map { |q| q['qualification_type_short_name'] })
       assert_equal(['30.06.2028'], row['qualifications'].map { |q| q['valid_until'] })
+    end
+
+    # Der Altbestand bleibt bewusst auffindbar: „Wer ist Beobachter?" fragt nach
+    # dem Bestand und nicht nach der Restlaufzeit. Dann muss die Zeile aber
+    # sagen, dass ihr Treffer abgelaufen ist -- sonst beantwortet die Liste die
+    # Frage stillschweigend mit dem Altbestand mit.
+    test 'abgelaufene Zusatzqualifikation wird gefunden und als abgelaufen ausgewiesen' do
+      RefereeQualification.create!(referee: @andere_qualifikation, referee_qualification_type: @beobachter,
+                                   valid_until: Date.current + 1)
+      RefereeQualification.create!(referee: @ohne_qualifikation, referee_qualification_type: @beobachter,
+                                   valid_until: Date.current - 1)
+      login(@admin)
+
+      get '/api/v2/admin/referees', params: { lizenzstufe: 'Beobachter' }
+      assert_response :success
+      rows = response.parsed_body.select { |r| r['lizenznummer'].to_i >= 720_000 }
+
+      assert_equal [720_001, 720_002, 720_003], rows.map { |r| r['lizenznummer'] }.sort
+
+      beobachter = rows.to_h do |r|
+        [r['lizenznummer'], r['qualifications'].find { |q| q['qualification_type_name'] == 'Beobachter' }]
+      end
+
+      assert_not beobachter[720_002]['expired']
+      assert beobachter[720_003]['expired']
+      # Ohne Ablaufdatum ist nichts abgelaufen.
+      ausbilder = rows.find { |r| r['lizenznummer'] == 720_002 }['qualifications']
+                      .find { |q| q['qualification_type_name'] == 'Ausbilder' }
+
+      assert_not ausbilder['expired']
     end
   end
 end
