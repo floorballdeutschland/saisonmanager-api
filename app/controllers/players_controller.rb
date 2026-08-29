@@ -2,6 +2,9 @@ class PlayersController < ApplicationController
   include PlayerReleaseRecording
   include LicenseDocumentPresentation
   include LicenseAccessScope
+  include CsvUploadValidation
+  include ClubListAccess
+  include PlayerMasterDataAccess
 
   before_action :set_player, only: %i[show update destroy]
   skip_before_action :authenticate_user, only: %i[transfers_public stats]
@@ -86,6 +89,14 @@ class PlayersController < ApplicationController
       hash = result.full_hash(true, only_current, true)
       resolve_club_actor_names!(hash)
       annotate_gf_role_scope!(hash)
+      # Ob DIESES Konto DIESES Profil deaktivieren darf. Aus derselben Quelle
+      # wie die Prüfung beim Schreiben, denn die Rollenliste im Browser
+      # (`player_deactivate`) kann die Frage nicht beantworten: Sie gilt global,
+      # während die Freigabe an Teammanager*innen am einzelnen Verein hängt.
+      # Ein globales Flag zeigte einem Teammanager die Knöpfe entweder in jedem
+      # Verein oder in keinem, und beides wäre falsch. Vorbild: `manage_players`
+      # in vm/clubs_and_teams.
+      hash[:can_deactivate] = can_toggle_deactivation?(result)
       render json: hash
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
@@ -649,11 +660,11 @@ class PlayersController < ApplicationController
         # davon nicht durch `reactivate!` oder
         # `players:reopen_memberships_after_deactivation` wieder offen ist, wäre
         # danach für seinen Verband unbearbeitbar.
-        heimat_im_verein = (player.clubs || []).any? do |c|
-          ActiveModel::Type::Boolean.new.cast(c['home_club']) &&
-            c['club_id'].to_i == params[:club_id].to_i
-        end
-        unless heimat_im_verein
+        #
+        # Dieselbe Methode wie im CSV-Nachtrag (#master_data_writable_ids): Die
+        # beiden Schreibwege auf dieselben Stammdaten duerfen nicht
+        # auseinanderlaufen.
+        unless home_club_membership?(player, params[:club_id])
           return render json: { message: 'Spieler gehört nicht zu diesem Verein.' }, status: :forbidden
         end
 
@@ -1026,7 +1037,7 @@ class PlayersController < ApplicationController
     return render json: { message: 'Ungültiger Deaktivierungsgrund.' }, status: :unprocessable_entity if reason == :invalid
 
     player.deactivate!(current_user.id, reason: reason)
-    render json: player.full_hash(false, false, false)
+    render json: deactivation_toggle_hash(player)
   end
 
   def reactivate
@@ -1051,22 +1062,12 @@ class PlayersController < ApplicationController
     end
 
     player.reactivate!
-    render json: player.full_hash(false, false, false)
+    render json: deactivation_toggle_hash(player)
   end
 
   def vm_players_index
-    ph = current_user.permission_hash
-    club_id = params[:club_id]&.to_i
-    return render json: { message: 'club_id fehlt.' }, status: :bad_request unless club_id.present? && club_id > 0
-
-    sbk_ok = ph[:sbk].present? && (ph[:sbk].include?(0) || derive_club_ids_for_go(ph[:sbk]).include?(club_id))
-    allowed = ph[:admin].present? || sbk_ok ||
-              (ph[:vm].present? && ph[:vm].include?(club_id)) ||
-              tm_can_access_club?(ph, club_id)
-    return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless allowed
-
-    club = Club.find_by(id: club_id)
-    return render json: { message: 'Verein nicht gefunden.' }, status: :not_found unless club
+    club = resolve_vm_club
+    return if performed?
 
     # Ueber Club#players: abgelaufene Freigaben bleiben draussen (der fruehere Roh-Query
     # clubs @> {club_id} ignorierte valid_until und zeigte sie weiterhin an).
@@ -1107,6 +1108,13 @@ class PlayersController < ApplicationController
       # Query-Cache des Requests fasst die wiederholte Abfrage zusammen. Admin,
       # VM und TM entscheiden ohne jede Abfrage.
       base[:email] = p.email if can_manage_player?(p)
+      # Die Nationalitaet gehoert zu den Stammdaten, die der CSV-Export dieser
+      # Liste ausgibt und der Import nachtraegt. Ungated wie Geburtsdatum und
+      # Geschlecht daneben: Wer die Liste des Vereins sehen darf, sieht diese
+      # Angabe im Profil ohnehin (full_hash). Nur die E-Mail-Adresse haengt an
+      # einem eigenen Recht, siehe darueber.
+      base[:nation_id] = p.nation_id
+      base[:nation_string] = p.nation_string
       current_lics = (p.licenses || []).select { |l| leagues_by_team.key?(l['team_id'].to_i) }
       if current_lics.present?
         # Ein Eintrag pro Liga-Lizenz der laufenden Saison, höchste Liga zuerst;
@@ -1148,7 +1156,76 @@ class PlayersController < ApplicationController
     end
   end
 
+  # POST /admin/vm/players/import (club_id, file)
+  #
+  # Traegt fehlende Stammdaten aus einer CSV im Format des Listen-Exports nach.
+  # Geschrieben wird nur, wo im Profil noch nichts steht — die Regel und ihre
+  # Begruendung stehen in PlayerMasterDataImport.
+  #
+  # Der Zugang haengt an derselben Pruefung wie die Liste selbst
+  # (resolve_vm_club), die Schreibrechte je Feld an denselben Rechten wie die
+  # Maske daneben: die Adresse an can_manage_player? (wie #update_email), die
+  # uebrigen Stammdaten an `update_player` PLUS Heimatzugehoerigkeit (wie
+  # #admin_player_update, siehe #master_data_writable_ids). Beides je Profil und
+  # nicht einmal fuer den ganzen Lauf — der Bestand eines Vereins enthaelt auch
+  # Zweitmitgliedschaften und Freigaben. Fuer VM und TM ist das dieselbe
+  # Aufteilung wie in der Maske daneben: Adresse ja, Geburtsdatum,
+  # Geschlecht und Nationalitaet nur ueber den Aenderungsantrag. Der Report
+  # benennt jedes uebersprungene Feld mit Grund, statt es stillschweigend zu
+  # verwerfen — sonst sieht eine gepflegte Spalte aus wie ein verlorener Upload.
+  def vm_import
+    club = resolve_vm_club
+    return if performed?
+
+    file = params[:file]
+    upload_error = csv_upload_error(file)
+    return render(json: { message: upload_error }, status: :unprocessable_entity) if upload_error
+
+    players = club.players(include_deactivated: true)
+    import = PlayerMasterDataImport.new(
+      csv_content: file.read,
+      players: players,
+      email_writable_ids: players.select { |p| can_manage_player?(p) }.map(&:id),
+      master_data_writable_ids: master_data_writable_ids(club, players),
+      actor_id: current_user.id
+    )
+    report = import.call
+    return render(json: { message: import.errors.join(' ') }, status: :unprocessable_entity) if report.nil?
+
+    render json: report
+  end
+
   private
+
+  # Der Verein aus `club_id`, geprueft gegen dieselben Rechte wie die
+  # Vereinsspielerliste. Rendert im Fehlerfall selbst und liefert nil; der
+  # Aufrufer bricht mit `return if performed?` ab.
+  #
+  # Eine Methode fuer Liste und Import, damit die beiden Zugaenge nicht
+  # auseinanderlaufen koennen: Wer die Liste eines Vereins sieht, kommt auch an
+  # dessen Import-Maske — was dort tatsaechlich geschrieben wird, entscheiden
+  # anschliessend die Feldrechte.
+  def resolve_vm_club
+    ph = current_user.permission_hash
+    club_id = params[:club_id]&.to_i
+    unless club_id.present? && club_id > 0
+      render json: { message: 'club_id fehlt.' }, status: :bad_request
+      return nil
+    end
+
+    unless club_list_access?(ph, club_id)
+      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+      return nil
+    end
+
+    club = Club.find_by(id: club_id)
+    unless club
+      render json: { message: 'Verein nicht gefunden.' }, status: :not_found
+      return nil
+    end
+
+    club
+  end
 
   # season_id → league_id → aggregierte Stats aus allen beendeten Spielen mit
   # diesem Spieler in der Aufstellung. current_season: true rechnet nur die
@@ -1398,7 +1475,51 @@ class PlayersController < ApplicationController
   def can_deactivate_player?(player)
     ph = user_permission_hash
     ph[:admin].present? || sbk_can_access_player?(ph, player) ||
-      vm_can_access_player?(ph, player)
+      vm_can_access_player?(ph, player) || tm_can_manage_players?(ph, player)
+  end
+
+  # Ob DIESES Konto den Deaktivierungs-Schalter DIESES Profils bedienen darf.
+  # Gespiegelt wird die Prüfung der Aktion, die als nächste ansteht: Am aktiven
+  # Profil ist das `deactivate`, am deaktivierten `reactivate` -- und die lässt
+  # zusätzlich `sbk_can_undo_deactivation?` durch, weil eine Deaktivierung von
+  # vor api#472 die Heimat-Zugehörigkeit gestempelt hat und die reguläre
+  # Prüfung ab dem Tag danach nein sagt. Ohne diesen Zweig verschwände für die
+  # SBK genau an den Profilen der Knopf, für die der Endpunkt ihn hat.
+  def can_toggle_deactivation?(player)
+    return can_deactivate_player?(player) if player.deactivated_at.nil?
+
+    can_deactivate_player?(player) || sbk_can_undo_deactivation?(user_permission_hash, player)
+  end
+
+  # Die Antwort auf `deactivate` und `reactivate`. Sie trägt dasselbe
+  # `can_deactivate` wie das Profil selbst, weil die Maske sie ungefiltert
+  # übernimmt (`this.player = updated`) und daraus den Gegenknopf ableitet.
+  # Ohne das Feld griff dort der Rückfall auf das globale Rollen-Flag
+  # `player_deactivate`, und das ist für einen reinen Teammanager false: Nach
+  # dem Deaktivieren fehlte ihm „Reaktivieren" bis zum nächsten Seitenaufruf.
+  def deactivation_toggle_hash(player)
+    player.full_hash(false, false, false).merge(can_deactivate: can_toggle_deactivation?(player))
+  end
+
+  # Hat der Verein Anlegen, Deaktivieren und Reaktivieren seinen
+  # Teammanager*innen geöffnet (`clubs.team_managers_manage_players`), zählt
+  # die TM-Zugehörigkeit hier mit – aber nur zu den Vereinen, die den Schalter
+  # tatsächlich gesetzt haben. Wer in zwei Vereinen Teammanager ist,
+  # entscheidet damit im einen und im anderen nicht, und zwar genau so, wie es
+  # die Doppelrolle VM/TM schon heute tut.
+  #
+  # Die Vereinsliste wird vor `membership_grants_access?` auf die
+  # freigeschalteten Vereine eingeschränkt und nicht danach: Sonst gäbe eine
+  # Zugehörigkeit zu einem nicht freigeschalteten Verein den Zugriff auf ein
+  # Profil, das zusätzlich in einem freigeschalteten Verein steht.
+  def tm_can_manage_players?(ph, player)
+    club_ids = tm_club_ids(ph)
+    return false if club_ids.empty?
+
+    freigeschaltet = Club.where(id: club_ids, team_managers_manage_players: true).pluck(:id)
+    return false if freigeschaltet.empty?
+
+    membership_grants_access?(player, freigeschaltet)
   end
 
   # Eigene Meldung statt „Keine Berechtigung.", wenn der Zugriff genau daran
@@ -1409,10 +1530,16 @@ class PlayersController < ApplicationController
   # die Doppelrolle trifft (VM in einem Verein, TM in einem anderen -- der Fall
   # in club_test.rb, „wer VM des einen und TM im anderen Verein ist"). Für jede
   # andere Rolle wäre der Hinweis falsch, die ist schlicht nicht zuständig.
+  #
+  # Die Meldung nennt den Grund seit dem Vereinsschalter genauer: Nicht das
+  # System behält das Recht dem Vereinsmanager vor, sondern dieser Verein hat
+  # es nicht freigegeben. Der Hinweis auf die Vereinsverwaltung ist die einzige
+  # Stelle, an der ein Teammanager erfährt, dass sich daran etwas ändern lässt.
   def deactivation_denied_message(player)
     ph = user_permission_hash
     if tm_can_access_player?(ph, player) && !vm_can_access_player?(ph, player)
-      'Deaktivieren und Reaktivieren darf nur der Vereinsmanager des Vereins.'
+      'Deaktivieren und Reaktivieren hat dieser Verein dem Vereinsmanager vorbehalten. ' \
+        'Er kann es in der Vereinsverwaltung für Teammanager*innen freigeben.'
     else
       'Keine Berechtigung.'
     end
@@ -1421,7 +1548,8 @@ class PlayersController < ApplicationController
   def creation_denied_message(club)
     ph = user_permission_hash
     if tm_can_access_club?(ph, club.id) && !ph[:vm].to_a.include?(club.id)
-      'Spieler*innen anlegen darf nur der Vereinsmanager des Vereins.'
+      'Spieler*innen anlegen hat dieser Verein dem Vereinsmanager vorbehalten. ' \
+        'Er kann es in der Vereinsverwaltung für Teammanager*innen freigeben.'
     else
       'Keine Berechtigung'
     end
@@ -1539,19 +1667,6 @@ class PlayersController < ApplicationController
       membership_current?(player, entry['valid_until']) ||
         player.membership_closed_by_deactivation?(entry)
     end
-  end
-
-  def tm_can_access_club?(ph, club_id)
-    tm_club_ids(ph).include?(club_id)
-  end
-
-  # Wie #user_permission_hash je Anfrage nur einmal: Ueber die Spielersuche kaeme
-  # sonst je Treffer eine Team-Abfrage samt all_club_ids dazu. `ph` stammt in
-  # jedem Aufruf aus demselben Konto, der Wert haengt also an nichts anderem.
-  def tm_club_ids(ph)
-    return [] unless ph[:tm].present?
-
-    @tm_club_ids ||= Team.current_season.where(id: ph[:tm]).flat_map(&:all_club_ids).uniq
   end
 
   def sanitize_deactivation_reason(raw)
@@ -1713,10 +1828,6 @@ class PlayersController < ApplicationController
       copy
     end
     restored
-  end
-
-  def derive_club_ids_for_go(go_ids)
-    Club.home_clubs_of(go_ids).pluck(:id)
   end
 
   def set_player

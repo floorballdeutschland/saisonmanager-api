@@ -161,6 +161,7 @@ Rails.application.routes.draw do
       post 'admin/players/:id/merge', to: 'players#merge'
       get   'admin/vm/players', to: 'players#vm_players_index'
       patch 'admin/vm/players/:id/email', to: 'players#update_email'
+      post  'admin/vm/players/import', to: 'players#vm_import'
 
       post 'admin/players/:id/handle_license_request', to: 'players#handle_license_request'
       post 'admin/players/:id/set_gf_license_role', to: 'players#set_gf_license_role'
@@ -418,6 +419,11 @@ Rails.application.routes.draw do
         end
         # Ansprechpersonen der Vereine und Mannschaften der laufenden Saison.
         get 'contacts', to: 'contacts#index'
+        # Spielerdaten-Rangliste (Verein und Landesverband, #465). Bewusst hier und
+        # nicht bei den flachen admin/players/*-Routen weiter oben: Die enden auf
+        # get 'admin/players/:id', und ein neues Wortsegment davor waere dort eine
+        # Frage der Reihenfolge statt einer eigenen Route.
+        get 'player_statistics', to: 'player_statistics#index'
         resource :analytics, only: [:show]
         # Sperrliste der Admin-Seite "System" (BlockedIp).
         resources :blocked_ips, only: %i[index create destroy]

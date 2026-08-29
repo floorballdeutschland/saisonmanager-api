@@ -1313,6 +1313,85 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_equal false, flags[tm_club.id]
   end
 
+  # Der Schalter des Vereins (`team_managers_manage_players`) wirkt über
+  # dieselbe Quelle: Die Vereinssicht muss dem TM danach die Knöpfe zeigen,
+  # sonst stünden sie abgeblendet an einem Verein, in dem die API das Anlegen
+  # inzwischen erlaubt.
+  test 'vm_clubs_and_teams setzt manage_players fuer den TM des freigegebenen Vereins' do
+    frei = create(:club, team_managers_manage_players: true)
+    gesperrt = create(:club)
+    league = create(:league, :current_season)
+    team_frei = create(:team, club: frei, league:)
+    team_gesperrt = create(:team, club: gesperrt, league:)
+    tm = create(:user, :tm, team_id: team_frei.id)
+    tm.update!(teams: [team_frei.id, team_gesperrt.id])
+    login(tm)
+
+    get '/api/v2/vm/clubs_and_teams'
+
+    assert_response :success
+    flags = JSON.parse(response.body).to_h { |c| [c['id'], c['manage_players']] }
+    assert_equal true, flags[frei.id]
+    assert_equal false, flags[gesperrt.id]
+  end
+
+  # Der Schalter steht in der Vereinsverwaltung, und die gehört dem
+  # Vereinsmanager: Er muss ihn setzen können, obwohl sein Formular
+  # eingeschränkt ist (restricted_club_params).
+  test 'admin_club_update laesst den VM die Freigabe fuer Teammanager setzen' do
+    club = create(:club)
+    login(create(:user, :vm, club_id: club.id))
+
+    post '/api/v2/admin/clubs',
+         params: { id: club.id, club: { name: club.name, team_managers_manage_players: true } },
+         as: :json
+
+    assert_response :success
+    assert club.reload.team_managers_manage_players
+    assert_equal true, JSON.parse(response.body)['team_managers_manage_players']
+  end
+
+  test 'admin_club_update laesst die Freigabe auch wieder zurueckziehen' do
+    club = create(:club, team_managers_manage_players: true)
+    login(create(:user, :vm, club_id: club.id))
+
+    post '/api/v2/admin/clubs',
+         params: { id: club.id, club: { name: club.name, team_managers_manage_players: false } },
+         as: :json
+
+    assert_response :success
+    assert_not club.reload.team_managers_manage_players
+  end
+
+  # Die eigentliche Grenze des Schalters: Wer ihn nur bekommen, aber nicht
+  # vergeben soll, darf die Vereinsverwaltung nicht schreiben. Sonst erteilte
+  # sich ein Teammanager das Recht selbst.
+  test 'admin_club_update laesst den TM die Freigabe nicht setzen' do
+    club = create(:club)
+    team = create(:team, club: club, league: create(:league, :current_season))
+    login(create(:user, :tm, team_id: team.id))
+
+    post '/api/v2/admin/clubs',
+         params: { id: club.id, club: { name: club.name, team_managers_manage_players: true } },
+         as: :json
+
+    assert_response :forbidden
+    assert_not club.reload.team_managers_manage_players
+  end
+
+  # Auch mit gesetztem Schalter bleibt es beim einen Recht: Der TM des
+  # freigegebenen Vereins verwaltet Spieler, nicht den Verein.
+  test 'admin_club_update bleibt fuer den TM des freigegebenen Vereins gesperrt' do
+    club = create(:club, team_managers_manage_players: true)
+    team = create(:team, club: club, league: create(:league, :current_season))
+    login(create(:user, :tm, team_id: team.id))
+
+    post '/api/v2/admin/clubs', params: { id: club.id, club: { name: 'Umbenannt' } }, as: :json
+
+    assert_response :forbidden
+    assert_not_equal 'Umbenannt', club.reload.name
+  end
+
   private
 
   def login(user)
