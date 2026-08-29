@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.102.0] - 2026-08-29
+
 ### Neu
 
 - **Schiedsrichtercoaches geben ihre Beobachtungen im Saisonmanager ab**: Der Beobachtungsbogen („Referee Coaching Form") lief bisher über ein Microsoft-Formular. Die Rückmeldungen lagen damit außerhalb des Systems, waren mit keinem Spiel und keiner Person verknüpft, und die beobachtete Person bekam sie nur zu sehen, wenn jemand sie ihr von Hand weiterreichte. Der Bogen steht jetzt unter „Meine Beobachtungen" und richtet sich an Personen mit gültiger Zusatzqualifikation „B" -- derselbe Personenkreis, der auch als Schiedsrichtercoach angesetzt werden kann. Der Bogen bildet das Formular ab: fünf Bewertungen (Stocklinie, Körperspiellinie, Strafenlinie, Spielleitung, Gesamtspielbewertung) auf einer Skala von 1 bis 7, jeweils für Schiedsrichter 1, Schiedsrichter 2 und das Gespann, dazu die Erläuterungen zu jeder Linie sowie Spielbeschreibung, Sonstiges und abschließende Bemerkungen. Was der Saisonmanager bereits kennt, wird nicht erneut abgefragt: Datum, Mannschaften, Liga, Gespann und der Name des Coaches stehen am Spiel. Die neun Kopffragen des Formulars entfallen damit, aus zwanzig Fragen werden elf. Abgeben darf, wer für das Spiel als Coach angesetzt war; in Spielbetrieben, die nicht personenscharf ansetzen, darf ein Coach zusätzlich ein Spiel des eigenen Spielbetriebs wählen, sofern dort ein Gespann eingetragen ist -- ohne Gespann hätte der Bogen niemanden zu bewerten. Ein Bogen je Spiel und Coach, zukünftige Spiele sind gesperrt.
