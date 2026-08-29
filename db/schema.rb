@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_08_27_100000) do
+ActiveRecord::Schema[7.2].define(version: 2026_08_29_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -133,6 +133,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_27_100000) do
     t.datetime "deactivated_at"
     t.bigint "deactivated_by"
     t.integer "notify_excluded_user_ids", default: [], null: false, array: true
+    t.boolean "team_managers_manage_players", default: false, null: false, comment: "Wenn true: Teammanager dieses Vereins duerfen Spieler anlegen, deaktivieren und reaktivieren"
   end
 
   create_table "daily_metrics", force: :cascade do |t|
@@ -520,6 +521,33 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_27_100000) do
     t.index ["status"], name: "index_player_change_requests_on_status"
   end
 
+  create_table "player_game_stats", force: :cascade do |t|
+    t.bigint "player_id", null: false
+    t.bigint "team_id", null: false
+    t.bigint "league_id", null: false
+    t.bigint "club_id", null: false, comment: "teams.club_id -- Spielgemeinschaften bleiben unberuecksichtigt (Vorgabe aus #465)"
+    t.string "season_id", comment: "leagues.season_id -- bewusst string wie dort, nie als Range filtern"
+    t.integer "game_operation_id"
+    t.string "league_class_id"
+    t.integer "games", default: 0, null: false
+    t.integer "goals", default: 0, null: false
+    t.integer "assists", default: 0, null: false
+    t.integer "penalty_minutes", default: 0, null: false
+    t.datetime "computed_at", null: false
+    t.index ["club_id", "season_id"], name: "index_player_game_stats_on_club_id_and_season_id"
+    t.index ["game_operation_id", "season_id"], name: "index_player_game_stats_on_game_operation_id_and_season_id"
+    t.index ["league_class_id"], name: "index_player_game_stats_on_league_class_id"
+    t.index ["player_id", "league_id", "team_id"], name: "index_player_game_stats_unique", unique: true
+  end
+
+  create_table "player_stat_profiles", primary_key: "player_id", force: :cascade do |t|
+    t.bigint "home_club_id"
+    t.integer "home_game_operation_id"
+    t.datetime "computed_at", null: false
+    t.index ["home_club_id"], name: "index_player_stat_profiles_on_home_club_id"
+    t.index ["home_game_operation_id"], name: "index_player_stat_profiles_on_home_game_operation_id"
+  end
+
   create_table "player_suspensions", force: :cascade do |t|
     t.bigint "player_id", null: false
     t.bigint "team_id"
@@ -586,6 +614,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_27_100000) do
     t.integer "coach_id"
     t.integer "club_id"
     t.datetime "license_lists_notified_at"
+    t.datetime "observation_reminder_sent_at"
     t.index ["club_id"], name: "index_referee_assignments_on_club_id"
     t.index ["coach_id"], name: "index_referee_assignments_on_coach_id"
     t.index ["game_id"], name: "index_referee_assignments_on_game_id", unique: true
@@ -766,6 +795,52 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_27_100000) do
     t.index ["name"], name: "index_referee_license_levels_on_name", unique: true
   end
 
+  create_table "referee_observation_ratings", force: :cascade do |t|
+    t.bigint "referee_observation_id", null: false
+    t.bigint "referee_id", null: false
+    t.string "referee_name"
+    t.integer "position", null: false
+    t.integer "stick_play_rating"
+    t.integer "physical_play_rating"
+    t.integer "penalty_line_rating"
+    t.integer "game_management_rating"
+    t.integer "overall_rating"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["referee_id"], name: "index_referee_observation_ratings_on_referee_id"
+    t.index ["referee_observation_id", "referee_id"], name: "index_ror_on_observation_and_referee", unique: true
+    t.index ["referee_observation_id"], name: "index_ror_on_observation"
+  end
+
+  create_table "referee_observations", force: :cascade do |t|
+    t.bigint "game_id", null: false
+    t.bigint "coach_id", null: false
+    t.bigint "referee_assignment_id"
+    t.bigint "game_operation_id", null: false
+    t.bigint "created_by_user_id", null: false
+    t.string "coach_name"
+    t.text "match_description"
+    t.text "stick_play_comment"
+    t.text "physical_play_comment"
+    t.text "penalty_line_comment"
+    t.text "game_management_comment"
+    t.text "other_matters"
+    t.text "final_comments"
+    t.integer "pair_stick_play_rating"
+    t.integer "pair_physical_play_rating"
+    t.integer "pair_penalty_line_rating"
+    t.integer "pair_game_management_rating"
+    t.integer "pair_overall_rating"
+    t.string "status", default: "visible", null: false
+    t.datetime "submitted_at", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["coach_id"], name: "index_referee_observations_on_coach_id"
+    t.index ["game_id", "coach_id"], name: "index_referee_observations_on_game_id_and_coach_id", unique: true
+    t.index ["game_id"], name: "index_referee_observations_on_game_id"
+    t.index ["game_operation_id"], name: "index_referee_observations_on_game_operation_id"
+  end
+
   create_table "referee_qualification_types", force: :cascade do |t|
     t.string "name", null: false
     t.string "short_name"
@@ -781,6 +856,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_27_100000) do
     t.date "valid_until"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.index ["referee_id", "referee_qualification_type_id"], name: "index_referee_qualifications_on_referee_and_type", unique: true
     t.index ["referee_id"], name: "index_referee_qualifications_on_referee_id"
     t.index ["referee_qualification_type_id"], name: "index_referee_qualifications_on_referee_qualification_type_id"
   end
@@ -1032,6 +1108,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_27_100000) do
   add_foreign_key "license_documents", "users", column: "uploaded_by_id"
   add_foreign_key "player_change_requests", "players"
   add_foreign_key "player_change_requests", "players", column: "secondary_player_id"
+  add_foreign_key "player_game_stats", "players"
   add_foreign_key "players", "players", column: "merged_into_id"
   add_foreign_key "referee_assignments", "games"
   add_foreign_key "referee_assignments", "referees", column: "referee1_id"
@@ -1049,6 +1126,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_27_100000) do
   add_foreign_key "referee_course_results", "state_associations"
   add_foreign_key "referee_course_results", "users", column: "reviewed_by_user_id"
   add_foreign_key "referee_feedbacks", "games"
+  add_foreign_key "referee_observation_ratings", "referee_observations"
+  add_foreign_key "referee_observations", "games"
   add_foreign_key "referee_qualifications", "referee_qualification_types"
   add_foreign_key "referee_qualifications", "referees"
   add_foreign_key "referee_taggings", "referee_tags"

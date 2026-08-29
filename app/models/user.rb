@@ -293,6 +293,15 @@ class User < ApplicationRecord
 
     return result if tm_blocked
 
+    # Beobachtungsbögen des Schiedsrichtercoaches – VOR dem Early-Return unten
+    # und außerhalb seiner Bedingung. Der Early-Return bricht für ein REINES
+    # Schiedsrichterkonto ab und vergibt danach gar nichts mehr; genau das ist
+    # aber der Normalfall eines Coaches. Stünden die beiden Schlüssel weiter
+    # unten, bekäme sie nur, wer zusätzlich RSK, Ansetzer, VM, TM oder Admin ist.
+    # Hier oben gelten sie für beide Wege.
+    result[:show_page_referee_observations] = referee_id.present?
+    result[:menu_item_referee_observations] = referee_coach_qualified?
+
     if has_schiri_role && !ph[:admin].present? && !ph[:sbk].present? && !ph[:rsk].present? && !ph[:ansetzer].present? && !ph[:vm].present? && !ph[:tm].present?
       result[:menu_item_referee_profile] = true
       result[:show_page_referee_profile] = true
@@ -376,6 +385,17 @@ class User < ApplicationRecord
       ph[:admin].present? ||
       (ph[:rsk].present? && ph[:rsk].include?(0)) ||
       (ph[:ansetzer].present? && ph[:ansetzer].include?(0))
+    # Beobachtungen am Schiri-Profil in der Verwaltung. Bewusst weiter gefasst
+    # als referee_feedback_view: Ein Landesverband, der selbst coacht, muss seine
+    # eigenen Bögen sehen. Begrenzt wird nicht die Rolle, sondern der
+    # Spielbetrieb (RefereeObservationPolicy#admin_scope).
+    result[:referee_observation_view] =
+      ph[:admin].present? || ph[:rsk].present? || ph[:ansetzer].present?
+    # Zuruecknehmen und Wiederherstellen eines Bogens. Enger als das Lesen: Die
+    # Ansetzung sieht die Boegen, greift aber nicht in sie ein
+    # (RefereeObservationPolicy#can_moderate?). Ohne eigenen Schluessel stuende
+    # der Knopf auch bei ihr in der Maske und liefe in eine Absage.
+    result[:referee_observation_moderate] = ph[:admin].present? || ph[:rsk].present?
     result[:menu_item_referee_course_import] = has_full_referee_access
     result[:menu_item_referee_course_review] = has_full_referee_access || lv_rsk_review_enabled?(ph)
     result[:menu_item_referee_vm] = ph[:vm].present?
@@ -516,6 +536,30 @@ class User < ApplicationRecord
     permission_hash[:vm]
   end
 
+  # Vereine, in denen das Konto Teammanager*in ist: die Vereine der eigenen
+  # Mannschaften aus der laufenden Saison, bei einer Spielgemeinschaft alle
+  # beteiligten (Team#all_club_ids).
+  #
+  # Das Gegenstück zu #club_ids (VM), und wie dort keine Rechteaussage: Ob der
+  # Teammanager in diesen Vereinen anlegen und deaktivieren darf, hängt am
+  # Schalter des jeweiligen Vereins (Club#user_permissions).
+  #
+  # Auf der Instanz gecacht, weil `Club#user_permissions` je Verein gefragt
+  # wird; ohne den Cache entstünde in vm/clubs_and_teams je Verein eine
+  # Team-Abfrage. `ph[:tm]` stammt immer aus diesem Konto, der Wert hängt also
+  # an nichts anderem. Einzige Quelle für diese Liste – die zweite Fassung im
+  # PlayersController delegiert hierher, damit die beiden nicht auseinanderlaufen.
+  def tm_club_ids
+    @tm_club_ids ||= begin
+      team_ids = permission_hash[:tm]
+      if team_ids.present?
+        Team.current_season.where(id: team_ids).flat_map(&:all_club_ids).uniq
+      else
+        []
+      end
+    end
+  end
+
   def sbk_state_association_menu_item?(perm_hash)
     !perm_hash[:admin].present? &&
       perm_hash[:sbk].present? &&
@@ -532,6 +576,19 @@ class User < ApplicationRecord
 
     sa_ids = GameOperation.where(id: go_ids).pluck(:state_association_id).compact.uniq
     StateAssociation.where(id: sa_ids).any?(&:effective_referee_license_review_enabled)
+  end
+
+  # Ist dieses Konto ein Schiedsrichtercoach (gültige Zusatzqualifikation „B…")?
+  # Entscheidet allein über den Menüpunkt „Meine Beobachtungen"; ob zu einem
+  # konkreten Spiel abgegeben werden darf, prüft RefereeObservationPolicy noch
+  # einmal gegen den Spieltag.
+  #
+  # Die Abfrage läuft nur, wenn überhaupt ein Schiedsrichterprofil hängt – für
+  # alle anderen Konten kostet der Schlüssel nichts.
+  def referee_coach_qualified?
+    return false if referee_id.blank?
+
+    Referee.coach_qualified.exists?(id: referee_id)
   end
 
   # True, wenn die Ansetzungslogik für den/die Ansetzer:in aktiv ist. Globale

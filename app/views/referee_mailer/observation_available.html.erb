@@ -1,0 +1,30 @@
+<h2>Neue Beobachtung</h2>
+
+<p>Hallo <%= @referee.vorname %>,</p>
+
+<p>
+  zu deinem Einsatz
+  <% if @game&.game_day&.date.present? %>
+    am <%= @game.game_day.date %>
+  <% end %>
+  <% if @game&.home_team || @game&.guest_team %>
+    (<%= @game&.home_team&.name %> vs. <%= @game&.guest_team&.name %>)
+  <% end %>
+  liegt eine Rückmeldung deines Schiedsrichtercoaches vor<%= " (#{@observation.coach_name})" if @observation.coach_name.present? %>.
+</p>
+
+<p>
+  <a href="<%= @observation_url %>">Beobachtung im Saisonmanager lesen</a>
+</p>
+
+<p>
+  Die Bewertungen stehen dort zusammen mit der Skala, nach der sie vergeben wurden –
+  deshalb steht in dieser Mail bewusst kein Ergebnis.
+</p>
+
+<p>
+  Fragen zur Rückmeldung klärst du am besten direkt mit deinem Coach. Bei Fragen zum
+  Verfahren wende dich an die Regel- und Schiedsrichterkommission von Floorball
+  Deutschland (rsk@floorball.de).<br>
+  <a href="<%= frontend_base_url %>"><%= frontend_host %></a>
+</p>

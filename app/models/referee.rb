@@ -18,6 +18,16 @@ class Referee < ApplicationRecord
   has_many :game_day_referee_confirmations, dependent: :destroy
   has_many :referee_qualification_types, through: :referee_qualifications
   has_many :referee_tags, through: :referee_taggings
+  # Beobachtungsbögen, die diese Person als Schiedsrichtercoach geschrieben hat.
+  # dependent: :destroy wie bei allen Schiri-Anhängen – dabei verschwinden auch
+  # die Rückmeldungen, die dieser Coach ÜBER ANDERE geschrieben hat. Das Löschen
+  # eines Schiedsrichters ist Admin/FD-RSK vorbehalten und für Fehlanlagen
+  # gedacht; für den Regelfall zweier Profile derselben Person zieht
+  # merge_into! die Bögen stattdessen auf das Masterprofil um.
+  has_many :referee_observations, foreign_key: :coach_id, inverse_of: :coach, dependent: :destroy
+  # Bewertungen, die diese Person als beobachtete Schiedsrichterin bzw.
+  # beobachteter Schiedsrichter erhalten hat.
+  has_many :referee_observation_ratings, dependent: :destroy
 
   validates :lizenznummer,
             uniqueness: { allow_nil: true },
@@ -36,6 +46,12 @@ class Referee < ApplicationRecord
 
   def landesverband
     club&.state_association&.name
+  end
+
+  # Kürzel des Landesverbands für Listenspalten. Nullable in der Datenbank,
+  # deshalb muss die Anzeige auf den vollen Namen zurückfallen können.
+  def landesverband_short_name
+    club&.state_association&.short_name
   end
 
   # :active | :lapsed | :career_ended | :unknown. Für Listen den Stichtag einmal
@@ -96,7 +112,49 @@ class Referee < ApplicationRecord
   scope :by_landesverband, lambda { |lv|
     joins(club: :state_association).where(state_associations: { name: lv })
   }
-  scope :by_lizenzstufe, ->(stufe) { where(lizenzstufe: stufe) }
+  # Ein Eingabefeld, zwei Quellen: die Lizenzstufe des Schiedsrichters und seine
+  # Zusatzqualifikationen. Wer nach „Beobachter" sucht, meint dieselbe Spalte der
+  # Verwaltungsliste wie jemand, der „A" eingibt — ein zweites Filterfeld dafür
+  # wäre nur eine weitere Stelle, an der man den Namen exakt treffen muss.
+  #
+  # Stufe, Kürzel und Qualifikationsname werden ganz verglichen (case-insensitiv).
+  # Ab drei Zeichen zählt beim Namen zusätzlich der Wortanfang, damit „Beobacht"
+  # reicht. Kürzere Eingaben bleiben bewusst exakt: Lizenzstufen sind ein bis zwei
+  # Zeichen lang, und ein Präfix-Treffer auf „A" holte sonst jeden „Ausbilder" in
+  # die Liste der A-Schiedsrichter.
+  scope :by_lizenzstufe, lambda { |stufe|
+    value = stufe.to_s.strip
+    return all if value.blank?
+
+    name_match = if value.length >= 3
+                   'LOWER(referee_qualification_types.name) LIKE :prefix'
+                 else
+                   'LOWER(referee_qualification_types.name) = :exact'
+                 end
+    qualified = RefereeQualification
+                .joins(:referee_qualification_type)
+                .where(
+                  "LOWER(referee_qualification_types.short_name) = :exact OR #{name_match}",
+                  exact: value.downcase,
+                  prefix: "#{Referee.sanitize_sql_like(value.downcase)}%"
+                )
+                .select(:referee_id)
+
+    where('LOWER(referees.lizenzstufe) = ?', value.downcase).or(where(id: qualified))
+  }
+
+  # Schiedsrichtercoaches (Beobachter): gültige Zusatzqualifikation „B…" am
+  # Stichtag. Bewusst ein Präfix-Vergleich und kein Flag – der Katalog der
+  # Qualifikationstypen wird administrativ gepflegt und führt neben „B" auch
+  # „B-Coach" und „Beobachter". Ein leeres valid_until gilt als unbefristet.
+  # Einzige Definition dieser Gruppe; die Ansetzung (available_coaches) und die
+  # Beobachtungsbögen (RefereeObservationPolicy) fragen beide hier.
+  scope :coach_qualified, lambda { |date = Date.current|
+    joins(referee_qualifications: :referee_qualification_type)
+      .where('referee_qualification_types.name LIKE ?', 'B%')
+      .where('referee_qualifications.valid_until IS NULL OR referee_qualifications.valid_until >= ?', date)
+      .distinct
+  }
   scope :search, lambda { |q|
     tokens = q.to_s.strip.split(/\s+/).reject(&:empty?).first(5)
     return none if tokens.empty?
@@ -253,6 +311,25 @@ class Referee < ApplicationRecord
       master_pending_types = master.referee_change_requests.pending.pluck(:correction_type)
       referee_change_requests.pending.where(correction_type: master_pending_types).destroy_all
       referee_change_requests.reload.update_all(referee_id: master.id)
+
+      # Beobachtungsbögen: Der Coach-Bezug und die erhaltenen Bewertungen wandern
+      # aufs Masterprofil, sonst hinge die Entwicklungshistorie am toten
+      # Zweitprofil und wäre für die betroffene Person unsichtbar (ihr Konto
+      # hängt am Master). Beide Seiten müssen Dubletten überspringen: Hat das
+      # Masterprofil zum selben Spiel bereits einen Bogen bzw. im selben Bogen
+      # schon eine Bewertung, bricht sonst der jeweilige Unique-Index. Das ist
+      # kein theoretischer Fall — bei zwei Profilen derselben Person kann ein
+      # Coach beide nacheinander erwischt haben.
+      master_observed_game_ids = master.referee_observations.pluck(:game_id)
+      referee_observations.where.not(game_id: master_observed_game_ids).update_all(coach_id: master.id)
+      referee_observations.reload.destroy_all
+
+      master_rated_observation_ids =
+        RefereeObservationRating.where(referee_id: master.id).pluck(:referee_observation_id)
+      referee_observation_ratings
+        .where.not(referee_observation_id: master_rated_observation_ids)
+        .update_all(referee_id: master.id)
+      referee_observation_ratings.reload.destroy_all
 
       if user.present?
         if master.user.nil?
