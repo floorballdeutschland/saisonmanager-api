@@ -1,0 +1,33 @@
+<h2>Beobachtungsbogen</h2>
+
+<p>Hallo <%= @coach.vorname %>,</p>
+
+<p>
+  dein Beobachtungsbogen für
+  <strong><%= @game.home_team&.name %> vs. <%= @game.guest_team&.name %></strong>
+  <% if @game.game_day&.date.present? %>
+    am <%= @game.game_day.date %><%= " um #{@game.start_time}" if @game.start_time.present? %>
+  <% end %>
+  steht bereit.
+</p>
+
+<p>
+  <a href="<%= @observation_url %>">Beobachtungsbogen öffnen</a>
+</p>
+
+<p>
+  Du kannst ihn schon während des Spiels aufschlagen: Dort stehen die
+  Bewertungskriterien und die Skala von 1 bis 7 mit ihren Stufen. Abgeben lässt
+  er sich, sobald du alle Bewertungen vergeben hast.
+</p>
+
+<p>
+  Nach dem Absenden ist die Rückmeldung für die beobachteten Schiedsrichter*innen
+  sichtbar und lässt sich nicht mehr ändern.
+</p>
+
+<p>
+  Bei Fragen wende dich an die Ansetzung von Floorball Deutschland
+  (sr-ansetzungen@floorball.de).<br>
+  <a href="<%= frontend_base_url %>"><%= frontend_host %></a>
+</p>

@@ -263,6 +263,13 @@ Rails.application.routes.draw do
       get 'referee/history/tests', to: 'referee_history#tests'
       get 'referee/history/partners', to: 'referee_history#partners'
 
+      # Beobachtungsbögen des Schiedsrichtercoaches. Dasselbe Konto in zwei
+      # Rollen: als Coach schreiben, als beobachtete Person lesen.
+      get  'referee/observations',          to: 'referee_observations#index'
+      get  'referee/observations/games',    to: 'referee_observations#games'
+      get  'referee/observations/received', to: 'referee_observations#received'
+      post 'referee/observations',          to: 'referee_observations#create'
+
       namespace :admin do
         resources :leagues, only: [] do
           resources :qualifications, only: %i[create update destroy],
@@ -281,6 +288,7 @@ Rails.application.routes.draw do
           get :missing_user_count, on: :collection
           post :create_missing_users, on: :collection
           get :feedbacks, on: :member
+          resources :observations, only: %i[index], controller: 'referee_observations'
           resources :club_exclusions, only: %i[index create destroy],
                                       controller: 'referee_club_exclusions'
         end
@@ -298,6 +306,7 @@ Rails.application.routes.draw do
           end
         end
         resources :referee_feedbacks, only: %i[update]
+        resources :referee_observations, only: %i[update]
         get 'referee_feedback_analytics', to: 'referee_feedback_analytics#index'
         get 'referee_feedback_analytics/export', to: 'referee_feedback_analytics#export'
         resources :feedback_themes, only: %i[index create update destroy]

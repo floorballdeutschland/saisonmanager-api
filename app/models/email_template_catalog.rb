@@ -228,6 +228,38 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'referee_notes', description: 'Zusätzliche Spielinformationen des Ansetzers (leer, falls keine hinterlegt)' }
       ]
     },
+    'RefereeMailer#observation_due' => {
+      mailer_class: 'RefereeMailer',
+      action_name: 'observation_due',
+      description: 'Erinnerung an den angesetzten Schiedsrichtercoach, dass sein Beobachtungsbogen bereitsteht. Geht mit dem Anpfiff raus, damit der Bogen schon während des Spiels aufgeschlagen werden kann. Nur an angesetzte Coaches und nur, solange der Bogen nicht abgegeben ist.',
+      default_subject: 'Beobachtungsbogen – {{game_date}} {{home_team}} vs. {{guest_team}}',
+      default_from: nil,
+      default_reply_to: 'sr-ansetzungen@floorball.de',
+      placeholders: [
+        { key: 'first_name', description: 'Vorname des/der Schiedsrichtercoach/in (für die Anrede)' },
+        { key: 'game_date', description: 'Datum des Spieltags' },
+        { key: 'game_time', description: 'Anpfiff (Startzeit des Spiels)' },
+        { key: 'home_team', description: 'Name der Heimmannschaft' },
+        { key: 'guest_team', description: 'Name der Gastmannschaft' },
+        { key: 'observation_url', description: 'Direktlink auf den Beobachtungsbogen dieses Spiels' }
+      ]
+    },
+    'RefereeMailer#observation_available' => {
+      mailer_class: 'RefereeMailer',
+      action_name: 'observation_available',
+      description: 'Hinweis an die beobachtete Schiedsrichterin bzw. den beobachteten Schiedsrichter, dass eine neue Beobachtung des Schiedsrichtercoaches vorliegt. Nennt bewusst weder Bewertung noch Text – gelesen wird die Rückmeldung im Portal, wo die Skala danebensteht.',
+      default_subject: 'Neue Beobachtung – {{game_date}} {{home_team}} vs. {{guest_team}}',
+      default_from: nil,
+      default_reply_to: 'rsk@floorball.de',
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der beobachteten Person (für die Anrede)' },
+        { key: 'coach_name', description: 'Name des/der Schiedsrichtercoach/in' },
+        { key: 'game_date', description: 'Datum des Spieltags' },
+        { key: 'home_team', description: 'Name der Heimmannschaft' },
+        { key: 'guest_team', description: 'Name der Gastmannschaft' },
+        { key: 'observation_url', description: 'Link auf die eigenen Beobachtungen im Saisonmanager' }
+      ]
+    },
     'RefereeMailer#published_coach_notification' => {
       mailer_class: 'RefereeMailer',
       action_name: 'published_coach_notification',

@@ -23,20 +23,15 @@
 class RefereeFeedbackWindow
   FILLABLE_AFTER_HOURS = 24
 
-  # Spieltagsdaten sind lokale Daten: In `game_days.date` steht der Tag, an dem
-  # in der Halle gespielt wird, ohne Zeitzone. Der Anpfiff wird deshalb in
-  # dieser Zone aufgelöst und nicht in der Anwendungszone. Die ist UTC, weil
-  # `config.time_zone` nicht gesetzt ist, und weicht abends um zwei Stunden ab.
-  #
-  # Öffentlich, damit Tests mit demselben Kalender rechnen wie diese Klasse:
-  # Wer sein Spiel auf `Date.current` legt, baut zwischen 22:00 und 24:00 UTC
-  # ein Spiel von GESTERN und wartet dann vergeblich darauf, dass das
-  # 24-Stunden-Fenster noch geschlossen ist.
-  ZONE = ActiveSupport::TimeZone['Europe/Berlin'].freeze
+  # Kalender des Spielbetriebs, siehe GameKickoff. Als Konstante hier belassen,
+  # weil Aufrufer und Tests sie unter diesem Namen lesen: Wer sein Spiel auf
+  # `Date.current` legt, baut zwischen 22:00 und 24:00 UTC ein Spiel von GESTERN
+  # und wartet dann vergeblich darauf, dass das 24-Stunden-Fenster schließt.
+  ZONE = GameKickoff::ZONE
 
   # Heute, aus Sicht des Spielbetriebs.
   def self.today
-    ZONE.today
+    GameKickoff.today
   end
 
   def initialize(game)
@@ -68,21 +63,7 @@ class RefereeFeedbackWindow
     start && start + FILLABLE_AFTER_HOURS.hours
   end
 
-  # Anpfiff in lokaler Zeit. Fehlt nur die Uhrzeit, wird vom Tagesbeginn des
-  # Spieltags gerechnet, damit ein Spiel ohne gepflegte Startzeit nicht crasht.
-  #
-  # game_days.date ist eine Textspalte. Das Datum wird deshalb strikt im Format
-  # der Spalte geparst (wie TO_DATE(..., 'YYYY-MM-DD') in den Queries) und nicht
-  # per Time.zone.parse über den Gesamtstring: Bei unbrauchbarem Inhalt würde
-  # dieses aus „kein Datum 10:00" stillschweigend heute 10:00 Uhr machen und das
-  # Fenster damit auf einen frei erfundenen Zeitpunkt legen.
   def game_start
-    date = @game.game_day&.date
-    return nil if date.blank?
-
-    day = Date.strptime(date.to_s, '%Y-%m-%d')
-    ZONE.parse("#{day} #{@game.start_time}".strip)
-  rescue ArgumentError, TypeError
-    nil
+    GameKickoff.at(@game)
   end
 end

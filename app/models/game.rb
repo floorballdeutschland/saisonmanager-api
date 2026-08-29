@@ -373,11 +373,15 @@ class Game < ApplicationRecord
   # nominated_referee_ids (Referee-PKs). Reihenfolge wie gespeichert. Für das
   # Schiri-Feedback: zeigt dem Team, wer angesetzt war, und verknüpft die Abgabe
   # mit den konkreten Schiedsrichtern.
-  def nominated_referees
+  #
+  # `by_id` ist ein bereits geladener Nachschlag Referee-PK => Referee. Ohne ihn
+  # laedt die Methode selbst; mit ihm kommt eine ganze Spielliste mit einer
+  # Abfrage aus (siehe .feedback_referees_for).
+  def nominated_referees(by_id: nil)
     ids = Array(nominated_referee_ids).reject(&:zero?).first(2)
     return [] if ids.empty?
 
-    by_id = Referee.where(id: ids).index_by(&:id)
+    by_id ||= Referee.where(id: ids).index_by(&:id)
     ids.filter_map { |rid| by_id[rid] }
   end
 
@@ -406,19 +410,19 @@ class Game < ApplicationRecord
   # Referee-Record) entfallen. Für das Schiri-Feedback: verknüpft die Abgabe mit
   # den Schiris, die das Spiel wirklich gepfiffen haben – nicht mit der (oft
   # leeren) Ansetzung (nominated_referees).
-  def officiating_referees
+  def officiating_referees(by_id: nil, by_license: nil)
     pks = Array(officiating_referee_ids).map(&:to_i).reject(&:zero?).uniq
     if pks.any?
-      by_id = Referee.where(id: pks).index_by(&:id)
-      resolved = pks.filter_map { |pk| by_id[pk] }
+      lookup = by_id || Referee.where(id: pks).index_by(&:id)
+      resolved = pks.filter_map { |pk| lookup[pk] }
       return resolved if resolved.any?
     end
 
     licenses = officiating_referee_licenses.compact.uniq
     return [] if licenses.empty?
 
-    by_license = Referee.where(lizenznummer: licenses).index_by(&:lizenznummer)
-    licenses.filter_map { |lic| by_license[lic] }
+    lookup = by_license || Referee.where(lizenznummer: licenses).index_by(&:lizenznummer)
+    licenses.filter_map { |lic| lookup[lic] }
   end
 
   # Klartext-Namen der eingesetzten Schiedsrichter aus dem Spielbericht
@@ -434,11 +438,29 @@ class Game < ApplicationRecord
   # Die Namen stammen konsistent aus DENSELBEN Records (damit referee_names nie
   # andere Personen benennt als referee1_id/referee2_id); erst wenn gar kein
   # Schiri auflösbar ist, dienen die Bericht-Klartextnamen als Fallback.
-  def feedback_referees
-    referees = officiating_referees.presence || nominated_referees
+  def feedback_referees(by_id: nil, by_license: nil)
+    referees = officiating_referees(by_id: by_id, by_license: by_license).presence ||
+               nominated_referees(by_id: by_id)
     names = referees.map { |r| "#{r.vorname} #{r.nachname}".strip }
     names = officiating_referee_names if names.empty?
     [referees, names]
+  end
+
+  # #feedback_referees fuer eine ganze Liste von Spielen: zwei Abfragen statt
+  # zwei je Spiel. Die Auswahlregel bleibt in #feedback_referees, hier wird nur
+  # der Nachschlag vorgeladen -- sonst liefen zwei Fassungen derselben Regel
+  # auseinander. Liefert { game_id => [referees, names] }.
+  def self.feedback_referees_for(games)
+    games = Array(games)
+    pks = games.flat_map do |game|
+      Array(game.officiating_referee_ids) + Array(game.nominated_referee_ids)
+    end.map(&:to_i).reject(&:zero?).uniq
+    licenses = games.flat_map(&:officiating_referee_licenses).compact.uniq
+
+    by_id = pks.any? ? Referee.where(id: pks).index_by(&:id) : {}
+    by_license = licenses.any? ? Referee.where(lizenznummer: licenses).index_by(&:lizenznummer) : {}
+
+    games.to_h { |game| [game.id, game.feedback_referees(by_id: by_id, by_license: by_license)] }
   end
 
   # Seite der Aufstellung ('home'/'guest'), auf der die Mannschaft in diesem
