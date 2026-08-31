@@ -275,6 +275,37 @@ class RefereeTest < ActiveSupport::TestCase
     assert_includes Referee.search('Schröder'), treffer
   end
 
+  # Die Gegenrichtung, im Review aufgefallen: In Altimporten steht die
+  # Ersatzschreibweise im Bestand. Ohne die dritte Suchform war so ein Name mit
+  # Umlaut nicht zu finden -- derselbe Fehlschlag wie der gemeldete, nur mit
+  # vertauschten Rollen.
+  test 'search: findet den Digraph-Namen im Bestand mit Umlaut in der Anfrage' do
+    schroeder = Referee.create!(lizenznummer: 30_012, vorname: 'Tim', nachname: 'Schroeder')
+    baecker = Referee.create!(lizenznummer: 30_013, vorname: 'Ute', nachname: 'Baecker')
+
+    assert_includes Referee.search('Schröder'), schroeder
+    assert_includes Referee.search('Bäcker'), baecker
+  end
+
+  # Collation-empfindlich und deshalb ausdrücklich geprüft: `lower()` in Postgres
+  # und `String#downcase` in Ruby müssen denselben Großumlaut kleinschreiben,
+  # sonst falten Spalte und Anfrage auseinander.
+  test 'search: findet einen durchgehend gross erfassten Umlautnamen' do
+    treffer = Referee.create!(lizenznummer: 30_014, vorname: 'MAX', nachname: 'SCHRÖDER')
+
+    assert_includes Referee.search('Schröder'), treffer
+    assert_includes Referee.search('schroder'), treffer
+  end
+
+  # Die Zusatzformen duerfen keine Sammelabfrage werden: "ae" wuerde ueber
+  # Digraph→Umlaut zu "a" und damit zu einem LIKE auf %a%.
+  test 'search: kurze Eingaben werden nicht zur Sammelabfrage' do
+    Referee.create!(lizenznummer: 30_015, vorname: 'Ann', nachname: 'Kowalski')
+
+    assert_equal ['ae'], Referee.search_forms('ae')
+    assert_empty Referee.search('ae')
+  end
+
   test 'search: ß und ss treffen einander' do
     scharf = Referee.create!(lizenznummer: 30_004, vorname: 'Lea', nachname: 'Weiß')
     doppel = Referee.create!(lizenznummer: 30_005, vorname: 'Nils', nachname: 'Weiss')
@@ -314,11 +345,16 @@ class RefereeTest < ActiveSupport::TestCase
     assert_empty Referee.search('Schröder')
   end
 
-  # Ein Prozentzeichen ist ein Suchwort, kein Suchmuster.
+  # Ein Prozentzeichen ist ein Suchwort, kein Suchmuster. Beide Richtungen
+  # pruefen: dass es nichts einsammelt UND dass es woertlich trifft, wo es
+  # wirklich steht.
   test 'search: maskiert LIKE-Sonderzeichen' do
     Referee.create!(lizenznummer: 30_011, vorname: 'Ann', nachname: 'Kowalski')
+    unterstrich = Referee.create!(lizenznummer: 30_016, vorname: 'Bo', nachname: 'Ba_r')
 
     assert_empty Referee.search('%')
+    assert_includes Referee.search('Ba_r'), unterstrich
+    assert_empty Referee.search('Baxr')
   end
 
   def partner_game(referee_ids, season_id: '18')
