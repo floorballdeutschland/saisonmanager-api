@@ -165,16 +165,61 @@ class Referee < ApplicationRecord
     # Jeder Token muss in vorname, nachname oder lizenznummer vorkommen –
     # dadurch matchen Multi-Wort-Queries wie "Max Müller" auch, wenn Vor-
     # und Nachname in separaten Spalten stehen.
-    relation = all
-    tokens.each do |t|
-      like = "%#{t.downcase}%"
-      relation = relation.where(
-        'LOWER(vorname) LIKE :t OR LOWER(nachname) LIKE :t OR lizenznummer::text LIKE :t',
-        t: like
-      )
-    end
-    relation
+    tokens.reduce(all) { |relation, token| relation.where(*Referee.token_condition(token)) }
   }
+
+  # Ein Name und seine Ersatzschreibweise sollen denselben Treffer liefern:
+  # "Schröder", "Schroeder" und "Schroder" ebenso wie "Müller" und "Mueller".
+  # Vorher fand die Suche nur die exakte Schreibweise; `Schroder` lieferte null
+  # Treffer, obwohl `Schröder` neun hat. Aufgefallen bei der Aufarbeitung des
+  # Spieltags in Wernigerode am 30.08.2026, wo ein Schiedsrichter nicht in den
+  # Spielbericht kam.
+  UMLAUT_TO_BASE = { 'ß' => 'ss', 'ä' => 'a', 'ö' => 'o', 'ü' => 'u' }.freeze
+
+  # Nur für die Anfrage, nicht für die Spalte (Begründung an folded_sql).
+  DIGRAPH_TO_UMLAUT = { 'ae' => 'ä', 'oe' => 'ö', 'ue' => 'ü', 'ss' => 'ß' }.freeze
+
+  def self.fold_umlauts(value)
+    UMLAUT_TO_BASE.reduce(value.to_s.downcase) { |acc, (from, to)| acc.gsub(from, to) }
+  end
+
+  # Die Schreibweisen, unter denen ein Suchwort die entfaltete Spalte treffen
+  # darf. Zwei genügen: das Wort selbst entfaltet, und das Wort mit
+  # Digraph→Umlaut gelesen und dann entfaltet. Letzteres holt "Mueller" zu
+  # "Müller", ohne dass die Spalte den Digraph kennen muss.
+  def self.search_forms(token)
+    as_umlaut = DIGRAPH_TO_UMLAUT.reduce(token.to_s.downcase) { |acc, (from, to)| acc.gsub(from, to) }
+    [fold_umlauts(token), fold_umlauts(as_umlaut)].uniq
+  end
+
+  # Die Spalte wird nur entfaltet (ö → o), der Digraph bleibt außen vor: Ein
+  # zusätzliches oe → o würde "Joel" auf "Jol" und "Neuer" auf "Nur" abbilden und
+  # die Trefferliste ohne Not verrauschen. Diese Richtung übernimmt die Anfrage
+  # über search_forms, die dafür eine zweite Schreibweise mitprüft.
+  #
+  # `column` kommt ausschließlich aus dem Literalpaar unten, nicht aus Parametern.
+  def self.folded_sql(column)
+    "translate(replace(lower(#{column}), 'ß', 'ss'), 'äöü', 'aou')"
+  end
+
+  # [sql, binds] für ein Suchwort: entfalteter Vor- oder Nachname in einer der
+  # Schreibweisen, oder die Lizenznummer (die keine Umlaute kennt).
+  #
+  # `sanitize_sql_like` wie in by_lizenzstufe: Ohne die Maskierung wäre ein `%`
+  # oder `_` in der Eingabe ein Suchmuster und keine Suche.
+  def self.token_condition(token)
+    binds = { lizenz: "%#{sanitize_sql_like(token.downcase)}%" }
+    clauses = ['lizenznummer::text LIKE :lizenz']
+
+    search_forms(token).each_with_index do |form, index|
+      key = :"form#{index}"
+      binds[key] = "%#{sanitize_sql_like(form)}%"
+      clauses << "#{folded_sql('vorname')} LIKE :#{key}"
+      clauses << "#{folded_sql('nachname')} LIKE :#{key}"
+    end
+
+    [clauses.join(' OR '), binds]
+  end
 
   # Spiele dieses Schiris. Kanonisch über die stabile Referee-PK in
   # officiating_referee_ids (Fundament #45), sodass auch Gäste (ohne Lizenznummer)
