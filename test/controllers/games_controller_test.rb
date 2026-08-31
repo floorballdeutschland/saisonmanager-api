@@ -619,6 +619,87 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
     assert_nil game.reload.audience
   end
 
+  # ---------------------------------------------------------------------------
+  # Spielstart: Schiedsrichter-1-Pflicht und ihre Begründung
+  # ---------------------------------------------------------------------------
+
+  # Der Fall aus Wernigerode am 30.08.2026: Das Gespann war eingetragen, nur in
+  # Platz 2. Die alte Meldung nannte allein die Regel, vor einem sichtbar
+  # gefüllten Schiri-Feld also scheinbar grundlos -- 23 abgewiesene Startversuche
+  # über 88 Minuten. Die Meldung muss den Platz benennen.
+  test 'set_flag: nur Schiedsrichter 2 eingetragen -- die Absage benennt den Platz' do
+    @game.update!(players: { 'home' => [{ 'id' => 1 }], 'guest' => [{ 'id' => 2 }] },
+                  referee1_string: '0 , ', referee2_string: '5824 Trosien, Max')
+    login(create(:user, :admin))
+
+    post "/api/v2/user/games/#{@game.id}/set_flag", params: { game: { started: true } }
+
+    assert_response :unprocessable_entity
+    message = JSON.parse(response.body)['message']
+    assert_includes message, 'nur Schiedsrichter 2'
+    assert_includes message, 'Schiedsrichter 1'
+    assert_not @game.reload.started
+  end
+
+  test 'set_flag: gar kein Schiedsrichter -- die Absage nennt die Regel' do
+    @game.update!(players: { 'home' => [{ 'id' => 1 }], 'guest' => [{ 'id' => 2 }] })
+    login(create(:user, :admin))
+
+    post "/api/v2/user/games/#{@game.id}/set_flag", params: { game: { started: true } }
+
+    assert_response :unprocessable_entity
+    message = JSON.parse(response.body)['message']
+    assert_includes message, 'mindestens Schiedsrichter 1'
+    assert_not_includes message, 'nur Schiedsrichter 2'
+    assert_not @game.reload.started
+  end
+
+  test 'set_flag: mit Schiedsrichter 1 startet das Spiel' do
+    @game.update!(players: { 'home' => [{ 'id' => 1 }], 'guest' => [{ 'id' => 2 }] },
+                  referee1_string: '5605 Schröder, Tobias', referee2_string: '5824 Trosien, Max')
+    login(create(:user, :admin))
+
+    post "/api/v2/user/games/#{@game.id}/set_flag", params: { game: { started: true } }
+
+    assert_response :success
+    assert @game.reload.started
+  end
+
+  # Ohne dieses Flag müsste der Spielbericht den belegten Platz aus `referees`
+  # erraten -- und das geht nicht, weil dieselbe Lage dort zwei verschiedene
+  # Gestalten hat. Fall 1: Platz 1 wurde gesetzt und wieder geleert, es steht der
+  # Platzhalter "0 , " drin, auf den die Regex in Game#referees passt -- er
+  # erscheint als vollwertiger Eintrag mit Lizenz "0" und leerem Namen.
+  test 'das Spiel liefert referee1_present, weil referees den leeren Platz mitfuehrt' do
+    @game.update!(referee1_string: '0 , ', referee2_string: '5824 Trosien, Max')
+    login(create(:user, :admin))
+
+    get "/api/v2/games/#{@game.id}.json"
+
+    body = JSON.parse(response.body)
+    assert_equal false, body['referee1_present']
+    assert_equal 2, body['referees'].size, 'der leere Platzhalter zaehlt in referees mit'
+    assert_equal '', body['referees'].first['last_name'], 'und steht dort an erster Stelle'
+  end
+
+  # Fall 2, und der wahrscheinlichere in Wernigerode: Platz 1 wurde nie
+  # angefasst, das Gespann ging direkt in Platz 2. Dann hat `referees` genau
+  # einen Eintrag, mit echtem Namen an erster Stelle -- er sieht also aus wie ein
+  # gesetzter Schiedsrichter 1, obwohl Platz 1 leer ist. Genau deshalb taugt
+  # `referees` nicht als Beleg und das Flag ist noetig.
+  test 'das Spiel liefert referee1_present auch bei nie gesetztem Platz 1' do
+    @game.update!(referee1_string: nil, referee2_string: '5824 Trosien, Max')
+    login(create(:user, :admin))
+
+    get "/api/v2/games/#{@game.id}.json"
+
+    body = JSON.parse(response.body)
+    assert_equal false, body['referee1_present']
+    assert_equal 1, body['referees'].size
+    assert_equal 'Trosien', body['referees'].first['last_name'],
+                 'der Schiri aus Platz 2 steht an erster Stelle'
+  end
+
   private
 
   # Ein Spiel, dessen Ausrichter weder Heim- noch Gastverein ist. Genau diese
