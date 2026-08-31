@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.102.1] - 2026-08-31
+
 ### Behoben
 
 - **Zurück aus einem Spiel landet wieder auf demselben Spieltag**: Wer sich ein Spiel des 5. Spieltags ansah — etwa um es sich in den Kalender zu holen — und dann zurückging, kam auf dem aktuellen Spieltag heraus, im August also auf dem 1. Spieltagsübersicht und Einzelspiel liegen am selben Router-Outlet: Beim Klick auf ein Spiel wird die Liste verworfen, und weil ihre Adresse für jeden Spieltag dieselbe war, gab es nach dem Zurückgehen nichts, woraus sie den gewählten Spieltag hätte wiederherstellen können. Der Spieltag steht jetzt in der Adresse (`?spieltag=`) und übersteht damit den Sprung ins Spiel, den Zurück-Knopf des Browsers und ein Neuladen der Seite; er ist außerdem verlinkbar. Dasselbe gilt für das Feld „Spielbegegnungen" der Tabellenseite, das den gewählten Spieltag bisher gar nicht festhielt. Die Runden-Umschalter bei Pokal und Turnier bleiben unberührt. Rein im Frontend behoben, ohne Änderung an der API.
