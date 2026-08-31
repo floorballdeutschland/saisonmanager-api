@@ -1,7 +1,10 @@
 require 'test_helper'
+require_relative 'transfer_request_test_helpers'
 
 module Admin
   class TransferRequestsControllerTest < ActionDispatch::IntegrationTest
+    include TransferRequestTestHelpers
+
     setup do
       # StateAssociation mit sbk_email – nötig damit pending_lv_notification
       # verschickt wird (mailer hat early return wenn sbk_email fehlt).
@@ -231,9 +234,14 @@ module Admin
     # gesperrt, solange der abgebende Verein nicht ihr eigener ist. Eigener Test,
     # weil `nil` ein anderer Eingabewert ist als eine fremde Spielbetriebs-ID.
     test 'SBK mit zusätzlicher VM-Rolle darf nicht suchen, wenn der abgebende Verein keinen Spielbetrieb hat → 403' do
+      # Mit Kontaktadresse, damit der Test auf dem Rechtezweig bleibt: Seit
+      # api#581 weist die Suche einen abgebenden Verein ohne Postfach und ohne
+      # Vereinsmanager vorher als Datenproblem ab (422), und die Rechteprüfung
+      # käme gar nicht mehr dran.
       homeless_club = Club.create!(
         name: "Verein ohne LV #{SecureRandom.hex(4)}",
-        short_name: "OL#{SecureRandom.hex(1)}"
+        short_name: "OL#{SecureRandom.hex(1)}",
+        contact_email: 'ohne-lv@test.example.com'
       )
       homeless_player = Player.create!(
         first_name: 'Nils',
@@ -304,6 +312,140 @@ module Admin
       }
       assert_response :not_found
       assert_equal 'Abgebender Verein nicht gefunden', JSON.parse(response.body)['error']
+    end
+
+    # api#581: Dieselbe Auskunft wie in #create. Sonst meldet die Suche einen
+    # Treffer und der Antrag fällt gleich danach auf 422 -- dasselbe Nachziehen
+    # wie beim deaktivierten aufnehmenden Verein (api#512).
+    test 'search_player weist abgebenden Verein ohne Postfach und ohne Vereinsmanager ab → 422' do
+      make_former_club_unreachable
+      login(@vm_requesting)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15',
+        requesting_club_id: @requesting_club.id
+      }
+      assert_response :unprocessable_entity
+      assert_match(/weder eine Vereins-E-Mailadresse/, JSON.parse(response.body)['error'])
+    end
+
+    # Die Rückfallebene, die die Meldung selbst nennt: Die Suche ist der einzige
+    # Weg, auf dem die Direktzuweisungs-Maske ihren Spieler findet
+    # (transfer-request-direct.component.ts bricht ohne `foundPlayer` ab). Wies
+    # sie auch die SBK ab, war aus der 14-Tage-Verzögerung eine Sackgasse
+    # geworden: Die Vereinsmanagerin wird an die SBK verwiesen, und die kam über
+    # die Maske nicht weiter.
+    test 'search_player laesst die SBK auch bei unerreichbarem abgebenden Verein durch' do
+      make_former_club_unreachable
+      login(@sbk)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15',
+        requesting_club_id: @requesting_club.id
+      }
+      assert_response :success
+      assert_equal @player.id, JSON.parse(response.body).dig('player', 'id')
+    end
+
+    # Der ganze Ausweg an einem Stück, wie in api#561: Die beiden Schritte
+    # einzeln zu prüfen war dort genau die Lücke.
+    test 'SBK: Suche und Direktzuweisung bei unerreichbarem abgebenden Verein' do
+      make_former_club_unreachable
+      login(@sbk)
+
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15',
+        requesting_club_id: @requesting_club.id
+      }
+      assert_response :success
+
+      post '/api/v2/admin/transfer_requests/direct_assign', params: {
+        player_id: JSON.parse(response.body).dig('player', 'id'),
+        requesting_club_id: @requesting_club.id
+      }
+      assert_response :created
+      assert_equal 'approved', JSON.parse(response.body)['status']
+    end
+
+    # Der Admin genehmigt in approve_club selbst, für ihn strandet der Antrag
+    # also nicht. Ihn abzuweisen hieß, die stärkere Rolle schlechter zu stellen
+    # als die schwächere und sie an eine SBK zu verweisen, die approve_club
+    # gar nicht darf.
+    test 'Admin darf trotz unerreichbaren abgebenden Vereins anlegen → 201' do
+      make_former_club_unreachable
+      login(@admin)
+      post '/api/v2/admin/transfer_requests', params: {
+        player_id: @player.id,
+        requesting_club_id: @requesting_club.id
+      }
+      assert_response :created
+    end
+
+    # Zwei Adressen mit Semikolon in einem Feld, das als EINE Adresse verschickt
+    # wird: Auf Produktion vorhanden (siehe Club::EMAIL_FORMAT), und niemand hat
+    # je etwas bekommen. Genau der Zustand aus #581, nur mit gefülltem Feld --
+    # eine Prüfung auf `present?` hätte ihn durchgelassen.
+    test 'Antrag an abgebenden Verein mit unzustellbarer Sammeladresse → 422' do
+      @former_club.update_column(:contact_email, 'a@test.example.com;b@test.example.com')
+      @vm_former.update!(permissions: [])
+      login(@vm_requesting)
+      post '/api/v2/admin/transfer_requests', params: {
+        player_id: @player.id,
+        requesting_club_id: @requesting_club.id
+      }
+      assert_response :unprocessable_entity
+      assert_match(/weder eine Vereins-E-Mailadresse/, JSON.parse(response.body)['error'])
+    end
+
+    # Reihenfolge der Absagen: Ein laufender Antrag ist der nähere Grund. Stand
+    # die Stammdaten-Auskunft davor, ging die beantragende Person wegen der
+    # Stammdaten zur SBK, obwohl ihr Antrag längst lief.
+    test 'laufender Antrag wird vor den fehlenden Stammdaten gemeldet' do
+      create_transfer_request(status: 'pending_club')
+      make_former_club_unreachable
+      login(@vm_requesting)
+      post '/api/v2/admin/transfer_requests', params: {
+        player_id: @player.id,
+        requesting_club_id: @requesting_club.id
+      }
+      assert_response :unprocessable_entity
+      assert_equal 'Fuer diesen Spieler ist bereits ein Transferantrag aktiv',
+                   JSON.parse(response.body)['error']
+    end
+
+    # Die Meldung nennt den abgebenden Verein beim Namen. Stand sie vor der
+    # Rechteprüfung, erfuhr die Vereinsmanagerin eines fremden Vereins damit den
+    # Heimatverein einer beliebigen Person.
+    test 'fremder Vereinsmanager bekommt 403 und nicht den Namen des abgebenden Vereins' do
+      make_former_club_unreachable
+      other_club = create_club_in_other_game_operation
+      login(@vm_requesting)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15',
+        requesting_club_id: other_club.id
+      }
+      assert_response :forbidden
+      assert_no_match(/#{Regexp.escape(@former_club.name)}/, response.body)
+    end
+
+    # Bestandsanträge aus der Zeit vor dem Riegel müssen auflösbar bleiben:
+    # Steckte die Prüfung in einem gemeinsamen before_action oder in
+    # find_transfer_request, wären sie stumm eingesperrt und blockierten über
+    # den active-Guard bis zum Fristablauf.
+    test 'ein bestehender Antrag bleibt trotz unerreichbaren Vereins annullierbar' do
+      tr = create_transfer_request(status: 'pending_club')
+      make_former_club_unreachable
+      login(@sbk)
+      patch "/api/v2/admin/transfer_requests/#{tr.id}/cancel"
+      assert_response :success
+      assert_equal 'withdrawn', tr.reload.status
+    end
+
+    test 'ein bestehender Antrag bleibt trotz unerreichbaren Vereins genehmigungsfaehig' do
+      tr = create_transfer_request(status: 'pending_club')
+      make_former_club_unreachable
+      login(@admin)
+      patch "/api/v2/admin/transfer_requests/#{tr.id}/approve_club"
+      assert_response :success
+      assert_equal 'pending_player', tr.reload.status
     end
 
     # Ohne Zielverein ist die Frage „darf sie für diesen Verein handeln" nicht zu
@@ -490,6 +632,72 @@ module Admin
         player_id: @player.id,
         requesting_club_id: @requesting_club.id
       }
+      assert_response :created
+    end
+
+    # api#581: Hat der abgebende Verein weder Postfach noch Vereinsmanager, hat
+    # die erste Mail des Verfahrens keinen Empfänger und niemand außer einem
+    # Admin könnte den Antrag genehmigen. Er bliebe 14 Tage in pending_club
+    # liegen und sperrte über den active-Guard jeden weiteren Antrag desselben
+    # Spielers, auch den auf einen anderen Verein.
+    test 'Antrag an abgebenden Verein ohne Postfach und ohne Vereinsmanager → 422' do
+      make_former_club_unreachable
+      login(@vm_requesting)
+      assert_no_emails do
+        post '/api/v2/admin/transfer_requests', params: {
+          player_id: @player.id,
+          requesting_club_id: @requesting_club.id
+        }
+      end
+      assert_response :unprocessable_entity
+      error = JSON.parse(response.body)['error']
+      assert_match(/weder eine Vereins-E-Mailadresse/, error)
+      # Der Verein wird beim Namen genannt, damit klar ist, wessen Stammdaten fehlen.
+      assert_match(/#{Regexp.escape(@former_club.name)}/, error)
+      assert_equal 0, TransferRequest.where(player_id: @player.id).count
+    end
+
+    # Eines von beiden genügt: Die Mail kommt an, und der Verein kann sich um
+    # einen Zugang oder um die zuständige SBK kümmern.
+    test 'Antrag an abgebenden Verein mit Kontaktadresse, aber ohne Vereinsmanager → 201' do
+      @vm_former.update!(permissions: [])
+      login(@vm_requesting)
+      assert_emails 1 do
+        post '/api/v2/admin/transfer_requests', params: {
+          player_id: @player.id,
+          requesting_club_id: @requesting_club.id
+        }
+      end
+      assert_response :created
+    end
+
+    # Umgekehrt ebenso: Ohne Kontaktadresse geht die Mail an die persönliche
+    # Adresse des Vereinsmanagers, und er kann den Antrag genehmigen.
+    test 'Antrag an abgebenden Verein mit Vereinsmanager, aber ohne Kontaktadresse → 201' do
+      @former_club.update!(contact_email: nil)
+      @vm_former.update!(email: 'vm.former@test.example.com')
+      login(@vm_requesting)
+      assert_emails 1 do
+        post '/api/v2/admin/transfer_requests', params: {
+          player_id: @player.id,
+          requesting_club_id: @requesting_club.id
+        }
+      end
+      assert_response :created
+    end
+
+    # Die Abwahl aus der Vereinspost entscheidet über den Verteiler, nicht über
+    # die Rolle: Der Vereinsmanager sieht den Antrag in seiner Übersicht und kann
+    # ihn genehmigen. Der Antrag geht deshalb durch, auch wenn keine Mail rausgeht.
+    test 'abgewaehlter Vereinsmanager reicht als Bearbeiter → 201' do
+      @former_club.update!(contact_email: nil, notify_user_ids: [])
+      login(@vm_requesting)
+      assert_no_emails do
+        post '/api/v2/admin/transfer_requests', params: {
+          player_id: @player.id,
+          requesting_club_id: @requesting_club.id
+        }
+      end
       assert_response :created
     end
 
@@ -1092,109 +1300,6 @@ module Admin
       body = JSON.parse(response.body)
       assert_equal 999_999, body['created_by']
       assert_nil body['created_by_name']
-    end
-
-    private
-
-    def create_user(user_group_id:, game_operation_id: 0, club_id: nil)
-      permissions = if club_id
-                      [{ 'user_group_id' => user_group_id, 'game_operation_id' => game_operation_id, 'club_id' => club_id }]
-                    else
-                      [{ 'user_group_id' => user_group_id, 'game_operation_id' => game_operation_id }]
-                    end
-      # Mit Vor- und Nachnamen: Ohne sie liefert User#fullname nur ein
-      # Leerzeichen, und die Tests zur Userkennung würden gegen einen leeren
-      # String prüfen, statt gegen den Namen, um den es geht.
-      User.create!(
-        first_name: "Vor#{SecureRandom.hex(3)}",
-        last_name: "Nach#{SecureRandom.hex(3)}",
-        user_name: "user_#{SecureRandom.hex(6)}",
-        password: 'password123',
-        password_confirmation: 'password123',
-        permissions: permissions,
-        teams: []
-      )
-    end
-
-    def create_club_in_other_game_operation
-      state_association = StateAssociation.create!(
-        name: "Anderer LV #{SecureRandom.hex(4)}",
-        short_name: "ALV#{SecureRandom.hex(2)}"
-      )
-      GameOperation.create!(
-        name: "Anderer Spielbetrieb #{SecureRandom.hex(4)}",
-        short_name: "ASB#{SecureRandom.hex(2)}",
-        state_association: state_association
-      )
-      Club.create!(
-        name: "Anderer Verein #{SecureRandom.hex(4)}",
-        short_name: "AN#{SecureRandom.hex(1)}",
-        contact_email: 'other@test.example.com',
-        state_association: state_association
-      )
-    end
-
-    def create_user_sbk(game_operation_id:)
-      User.create!(
-        first_name: "Vor#{SecureRandom.hex(3)}",
-        last_name: "Nach#{SecureRandom.hex(3)}",
-        user_name: "sbk_#{SecureRandom.hex(6)}",
-        password: 'password123',
-        password_confirmation: 'password123',
-        permissions: [{ 'user_group_id' => 2, 'game_operation_id' => game_operation_id }],
-        teams: []
-      )
-    end
-
-    def create_user_sbk_and_vm(game_operation_id:, club_id:)
-      User.create!(
-        first_name: "Vor#{SecureRandom.hex(3)}",
-        last_name: "Nach#{SecureRandom.hex(3)}",
-        user_name: "sbkvm_#{SecureRandom.hex(6)}",
-        password: 'password123',
-        password_confirmation: 'password123',
-        permissions: [
-          { 'user_group_id' => 2, 'game_operation_id' => game_operation_id },
-          { 'user_group_id' => 4, 'club_id' => club_id.to_s }
-        ],
-        teams: []
-      )
-    end
-
-    def login(user)
-      post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
-      assert_response :success
-    end
-
-    def create_request_for_new_player(creator = @vm_requesting)
-      TransferRequest.create!(
-        player: create(:player), requesting_club: @requesting_club, former_club: @former_club,
-        status: 'pending_club', created_by: creator.id, season_id: 18
-      )
-    end
-
-    def count_user_queries(&block)
-      queries = 0
-      counter = lambda do |_name, _start, _finish, _id, payload|
-        queries += 1 if payload[:sql]&.include?('"users"')
-      end
-      ActiveSupport::Notifications.subscribed(counter, 'sql.active_record', &block)
-      queries
-    end
-
-    def create_transfer_request(status:, effective_date: nil, request_type: 'transfer')
-      # token wird im before_create callback generiert; bei direkt gesetztem
-      # Status (z.B. pending_lv) ist er trotzdem vorhanden.
-      TransferRequest.create!(
-        player: @player,
-        requesting_club: @requesting_club,
-        former_club: @former_club,
-        status: status,
-        created_by: @vm_requesting.id,
-        season_id: 18,
-        effective_date: effective_date,
-        request_type: request_type
-      )
     end
   end
 end
