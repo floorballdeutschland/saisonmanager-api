@@ -1037,8 +1037,8 @@ class GamesController < ApplicationController
   def _referee1_missing_message(game, action)
     if game.referee2_present?
       'Es ist nur Schiedsrichter 2 eingetragen, Schiedsrichter 1 ist leer. ' \
-        'Bei einem Gespann aus einer Person gehört sie in das Feld "Schiedsrichter 1" -- ' \
-        "erst dann kann #{action} werden."
+        'Leitet nur eine Person das Spiel, gehört sie in das Feld „Schiedsrichter 1“. ' \
+        "Erst dann kann #{action} werden."
     else
       "Es muss mindestens Schiedsrichter 1 eingetragen sein, bevor #{action} werden kann."
     end

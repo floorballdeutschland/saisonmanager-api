@@ -1006,11 +1006,19 @@ class Game < ApplicationRecord
       notice_string:,
       special_event_string:,
       referees:,
-      # Ausdrücklich als Flag, nicht aus `referees` ableitbar: Game#referees
-      # überspringt leere Plätze, ein allein gefüllter Platz 2 steht dort also an
-      # erster Stelle. Der Spielbericht braucht die Platznummer, um den Start
-      # genauso zu sperren wie set_flag es tut, statt den Knopf anzubieten und
-      # erst am Klick abzuweisen.
+      # Ausdrücklich als Flag, nicht aus `referees` ableitbar: Dort fehlt die
+      # Platznummer, und zwar auf zwei verschiedene Weisen, je nachdem ob Platz 1
+      # nie angefasst wurde oder gesetzt und wieder geleert:
+      #
+      #   referee1_string nil    -> EIN Eintrag, der Schiri aus Platz 2 an erster
+      #                             Stelle (`next unless ref.present?`)
+      #   referee1_string '0 , ' -> ZWEI Eintraege, davor ein Phantom mit Lizenz
+      #                             "0" und leeren Namen -- auf den Platzhalter
+      #                             passt die Regex in #referees naemlich
+      #
+      # Der Spielbericht braucht die Platznummer, um den Start genauso zu sperren
+      # wie set_flag es tut, statt den Knopf anzubieten und erst am Klick
+      # abzuweisen.
       referee1_present: referee1_present?
     }
   end

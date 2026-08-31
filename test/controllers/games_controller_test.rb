@@ -666,10 +666,10 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
   end
 
   # Ohne dieses Flag müsste der Spielbericht den belegten Platz aus `referees`
-  # erraten -- und das geht nicht: Auf den leeren Platzhalter "0 , " passt die
-  # Regex in Game#referees, er erscheint dort also als vollwertiger Eintrag mit
-  # Lizenz "0" und leerem Namen. Ein Blick auf referees[0] oder referees.size
-  # meldet damit einen Schiedsrichter, den es nicht gibt.
+  # erraten -- und das geht nicht, weil dieselbe Lage dort zwei verschiedene
+  # Gestalten hat. Fall 1: Platz 1 wurde gesetzt und wieder geleert, es steht der
+  # Platzhalter "0 , " drin, auf den die Regex in Game#referees passt -- er
+  # erscheint als vollwertiger Eintrag mit Lizenz "0" und leerem Namen.
   test 'das Spiel liefert referee1_present, weil referees den leeren Platz mitfuehrt' do
     @game.update!(referee1_string: '0 , ', referee2_string: '5824 Trosien, Max')
     login(create(:user, :admin))
@@ -680,6 +680,24 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
     assert_equal false, body['referee1_present']
     assert_equal 2, body['referees'].size, 'der leere Platzhalter zaehlt in referees mit'
     assert_equal '', body['referees'].first['last_name'], 'und steht dort an erster Stelle'
+  end
+
+  # Fall 2, und der wahrscheinlichere in Wernigerode: Platz 1 wurde nie
+  # angefasst, das Gespann ging direkt in Platz 2. Dann hat `referees` genau
+  # einen Eintrag, mit echtem Namen an erster Stelle -- er sieht also aus wie ein
+  # gesetzter Schiedsrichter 1, obwohl Platz 1 leer ist. Genau deshalb taugt
+  # `referees` nicht als Beleg und das Flag ist noetig.
+  test 'das Spiel liefert referee1_present auch bei nie gesetztem Platz 1' do
+    @game.update!(referee1_string: nil, referee2_string: '5824 Trosien, Max')
+    login(create(:user, :admin))
+
+    get "/api/v2/games/#{@game.id}.json"
+
+    body = JSON.parse(response.body)
+    assert_equal false, body['referee1_present']
+    assert_equal 1, body['referees'].size
+    assert_equal 'Trosien', body['referees'].first['last_name'],
+                 'der Schiri aus Platz 2 steht an erster Stelle'
   end
 
   private
