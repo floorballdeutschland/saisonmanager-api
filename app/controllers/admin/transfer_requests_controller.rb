@@ -89,7 +89,6 @@ module Admin
 
       former_club = Club.find_by(id: former_club_id)
       return former_club_missing_response unless former_club
-      return unreachable_former_club_response(former_club) unless former_club.reachable_for_requests?
 
       requesting_club_id = params[:requesting_club_id].to_i
       if ph[:vm].present? && !may_act_for_club?(ph, requesting_club_id, former_club)
@@ -110,6 +109,15 @@ module Admin
 
       if TransferRequest.active.where(player_id: player.id).exists?
         return render json: { error: 'Fuer diesen Spieler ist bereits ein Transferantrag aktiv' }, status: :unprocessable_entity
+      end
+
+      # Zuletzt, anders als die uebrigen Datenpruefungen: Die Erreichbarkeit
+      # entscheidet nichts ueber die Zustaendigkeit, sie darf also hinter der
+      # Rechtepruefung stehen -- und muss es, weil die Meldung den abgebenden
+      # Verein beim Namen nennt. Vor der Rechtepruefung erfuehre die
+      # Vereinsmanagerin eines fremden Vereins den Heimatverein der Person.
+      if unreachable_former_club?(ph, former_club)
+        return unreachable_former_club_response(former_club)
       end
 
       render json: { player: player.search_hash }
@@ -156,7 +164,6 @@ module Admin
 
       former_club = Club.find_by(id: former_club_id)
       return former_club_missing_response unless former_club
-      return unreachable_former_club_response(former_club) unless former_club.reachable_for_requests?
 
       requesting_club_id = params[:requesting_club_id].to_i
       if ph[:vm].present? && !may_act_for_club?(ph, requesting_club_id, former_club)
@@ -173,6 +180,16 @@ module Admin
 
       if former_club_id == requesting_club_id
         return render json: { error: 'Spieler ist bereits in diesem Verein' }, status: :unprocessable_entity
+      end
+
+      # Nach den uebrigen Absagen, nicht davor: Ein laufender Antrag und „ist
+      # schon in diesem Verein" sind die naeherliegenden Gruende, und wer
+      # stattdessen die Auskunft ueber fehlende Stammdaten bekommt, geht wegen
+      # der Stammdaten zur SBK, obwohl sein Antrag laengst laeuft. Ausserdem
+      # nennt die Meldung den abgebenden Verein beim Namen, das gehoert hinter
+      # die Rechtepruefung.
+      if unreachable_former_club?(ph, former_club)
+        return unreachable_former_club_response(former_club)
       end
 
       request_type = params[:request_type].to_s == 'release' ? 'release' : 'transfer'
@@ -629,6 +646,28 @@ module Admin
     # kennt keinen `pending_club`-Schritt, sie braucht den abgebenden Verein
     # also nicht zum Handeln. Sie ist damit der Weg, der auch fuer einen Verein
     # ohne gepflegte Stammdaten bleibt.
+
+    # Trifft der Riegel diesen Aufrufer? Nur den, der den `pending_club`-Schritt
+    # tatsaechlich braucht.
+    #
+    # Admin und SBK brauchen ihn nicht: Der Admin genehmigt in `approve_club`
+    # selbst (dort steht `ph[:admin].present? || ph[:vm]&.include?`), die SBK
+    # kann den Antrag annullieren und ueber `#direct_assign` ganz ohne
+    # abgebenden Verein zuweisen. Fuer beide ist ein solcher Antrag also kein
+    # gestrandeter, und die Absage nahm ihnen genau den Ausweg, auf den die
+    # Meldung die Vereinsmanagerin verweist: `#search_player` ist der einzige
+    # Weg, auf dem die Direktzuweisungs-Maske ihren Spieler findet
+    # (transfer-request-direct.component.ts bricht ohne `foundPlayer` ab), die
+    # Rueckfallebene waere damit selbst gesperrt gewesen.
+    #
+    # Uebrig bleibt der reine Vereinsmanager, und fuer ihn ist der Antrag von
+    # der ersten Sekunde an aussichtslos.
+    def unreachable_former_club?(permission_hash, former_club)
+      return false if permission_hash[:admin].present? || permission_hash[:sbk].present?
+
+      !former_club.reachable_for_requests?
+    end
+
     def unreachable_former_club_response(former_club)
       render json: {
         error: "Für den abgebenden Verein #{former_club.name} ist weder eine Vereins-E-Mailadresse " \

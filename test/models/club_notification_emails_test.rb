@@ -129,6 +129,35 @@ class ClubNotificationEmailsTest < ActiveSupport::TestCase
     assert_predicate @club, :reachable_for_requests?
   end
 
+  # Der Altbestand, den das Projekt kennt: ein leergeraeumtes Feld, das nicht
+  # nil ist. Eine Pruefung, die nur `nil` abfaengt, haelt den Verein fuer
+  # erreichbar, und der Antrag strandet wie in #581.
+  test 'eine Kontaktadresse aus Leerzeichen zaehlt nicht' do
+    @club.update_column(:contact_email, '   ')
+
+    assert_not_predicate @club.reload, :reachable_for_requests?
+  end
+
+  # Gefragt ist Zustellbarkeit, nicht Befuelltheit: Zwei Adressen mit Semikolon
+  # gehen als EINE Adresse heraus und erreichen niemanden. Auf Produktion
+  # vorhanden, und die Formatvalidierung greift nur beim Anfassen des Feldes,
+  # der Eintrag bleibt also stehen. `update_column`, weil genau diese
+  # Validierung ihn sonst nicht speichern liesse.
+  test 'eine unzustellbare Sammeladresse zaehlt nicht' do
+    @club.update_column(:contact_email, 'a@verein.example;b@verein.example')
+
+    assert_not_predicate @club.reload, :reachable_for_requests?
+  end
+
+  # Gegenprobe zur Formatpruefung: Ein Verein mit unzustellbarer Sammeladresse,
+  # aber mit Vereinsmanager bleibt erreichbar -- der liest den Vorgang.
+  test 'eine Sammeladresse mit Vereinsmanager bleibt erreichbar' do
+    @club.update_column(:contact_email, 'a@verein.example;b@verein.example')
+    vm(@club, email: 'a@verein.example')
+
+    assert_predicate @club.reload, :reachable_for_requests?
+  end
+
   # Ein archivierter Zugang kann sich nicht anmelden. club_managers filtert ihn
   # heraus, der Verein bleibt damit unerreichbar.
   test 'ein archivierter Vereinsmanager zaehlt nicht' do

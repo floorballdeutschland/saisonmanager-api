@@ -130,10 +130,17 @@ class Club < ApplicationRecord
   # Verteiler und nimmt dem Vereinsmanager weder die Rolle noch den Zugriff auf
   # den Vorgang. Er sieht ihn in der Übersicht und kann ihn genehmigen.
   #
+  # Gegen EMAIL_FORMAT und nicht auf `present?`: Gefragt ist Zustellbarkeit,
+  # nicht Befuelltheit. Auf Produktion traegt ein Verein zwei Adressen mit
+  # Semikolon in dem Feld (siehe EMAIL_FORMAT oben) -- die Mail geht als EINE
+  # Adresse heraus und erreicht niemanden, der Verein ist also genauso
+  # unerreichbar wie ohne Eintrag. Die Formatvalidierung greift nur
+  # `if: :contact_email_changed?`, im Bestand steht so etwas deshalb weiterhin.
+  #
   # Die Kontaktadresse zuerst, weil sie ohne Abfrage zu haben ist:
   # `club_managers` liest die Benutzertabelle.
   def reachable_for_requests?
-    return true if contact_email.to_s.strip.present?
+    return true if contact_email.to_s.strip.match?(EMAIL_FORMAT)
 
     club_managers.any?
   end
