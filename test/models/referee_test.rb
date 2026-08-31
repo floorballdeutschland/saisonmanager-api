@@ -244,6 +244,119 @@ class RefereeTest < ActiveSupport::TestCase
     assert_equal([more.id, fewer.id], partners.map { |p| p[:referee_id] })
   end
 
+  # ---------------------------------------------------------------------------
+  # Suche: Umlaute und ihre Ersatzschreibweisen
+  # ---------------------------------------------------------------------------
+
+  # Der gemeldete Fall: Auf Produktion hat "Schröder" neun Treffer, "Schroder"
+  # hatte null. Wer den Umlaut nicht tippt (oder ein Geraet benutzt, das ihn
+  # verschluckt), fand den Schiedsrichter nicht und kam nicht in den Spielbericht.
+  test 'search: findet den Umlautnamen ohne Umlaut in der Anfrage' do
+    treffer = Referee.create!(lizenznummer: 30_001, vorname: 'Tobias', nachname: 'Schröder')
+
+    assert_includes Referee.search('Schroder'), treffer
+    assert_includes Referee.search('Schröder'), treffer
+    assert_includes Referee.search('Schroeder'), treffer
+  end
+
+  test 'search: findet den Umlautnamen auch in der Digraph-Schreibweise' do
+    treffer = Referee.create!(lizenznummer: 30_002, vorname: 'Max', nachname: 'Müller')
+
+    assert_includes Referee.search('Mueller'), treffer
+    assert_includes Referee.search('Muller'), treffer
+    assert_includes Referee.search('Müller'), treffer
+  end
+
+  # Umgekehrt: Steht der Name ohne Umlaut in der Datenbank, muss die Anfrage MIT
+  # Umlaut ihn finden. Beide Seiten werden auf dieselbe Form gebracht.
+  test 'search: findet den umlautfreien Namen mit Umlaut in der Anfrage' do
+    treffer = Referee.create!(lizenznummer: 30_003, vorname: 'Jan', nachname: 'Schroder')
+
+    assert_includes Referee.search('Schröder'), treffer
+  end
+
+  # Die Gegenrichtung, im Review aufgefallen: In Altimporten steht die
+  # Ersatzschreibweise im Bestand. Ohne die dritte Suchform war so ein Name mit
+  # Umlaut nicht zu finden -- derselbe Fehlschlag wie der gemeldete, nur mit
+  # vertauschten Rollen.
+  test 'search: findet den Digraph-Namen im Bestand mit Umlaut in der Anfrage' do
+    schroeder = Referee.create!(lizenznummer: 30_012, vorname: 'Tim', nachname: 'Schroeder')
+    baecker = Referee.create!(lizenznummer: 30_013, vorname: 'Ute', nachname: 'Baecker')
+
+    assert_includes Referee.search('Schröder'), schroeder
+    assert_includes Referee.search('Bäcker'), baecker
+  end
+
+  # Collation-empfindlich und deshalb ausdrücklich geprüft: `lower()` in Postgres
+  # und `String#downcase` in Ruby müssen denselben Großumlaut kleinschreiben,
+  # sonst falten Spalte und Anfrage auseinander.
+  test 'search: findet einen durchgehend gross erfassten Umlautnamen' do
+    treffer = Referee.create!(lizenznummer: 30_014, vorname: 'MAX', nachname: 'SCHRÖDER')
+
+    assert_includes Referee.search('Schröder'), treffer
+    assert_includes Referee.search('schroder'), treffer
+  end
+
+  # Die Zusatzformen duerfen keine Sammelabfrage werden: "ae" wuerde ueber
+  # Digraph→Umlaut zu "a" und damit zu einem LIKE auf %a%.
+  test 'search: kurze Eingaben werden nicht zur Sammelabfrage' do
+    Referee.create!(lizenznummer: 30_015, vorname: 'Ann', nachname: 'Kowalski')
+
+    assert_equal ['ae'], Referee.search_forms('ae')
+    assert_empty Referee.search('ae')
+  end
+
+  test 'search: ß und ss treffen einander' do
+    scharf = Referee.create!(lizenznummer: 30_004, vorname: 'Lea', nachname: 'Weiß')
+    doppel = Referee.create!(lizenznummer: 30_005, vorname: 'Nils', nachname: 'Weiss')
+
+    assert_includes Referee.search('Weiss'), scharf
+    assert_includes Referee.search('Weiß'), doppel
+  end
+
+  test 'search: der Vorname zaehlt genauso' do
+    treffer = Referee.create!(lizenznummer: 30_006, vorname: 'Jörg', nachname: 'Ahlberg')
+
+    assert_includes Referee.search('Joerg'), treffer
+    assert_includes Referee.search('Jorg'), treffer
+  end
+
+  # Die bestehenden Wege duerfen sich nicht verschieben.
+  test 'search: reine Zahl bleibt die exakte Lizenznummer' do
+    treffer = Referee.create!(lizenznummer: 30_007, vorname: 'Ida', nachname: 'Nummer')
+    Referee.create!(lizenznummer: 300_071, vorname: 'Nicht', nachname: 'Gemeint')
+
+    assert_equal [treffer], Referee.search('30007').to_a
+  end
+
+  test 'search: jedes Wort einer Mehrwortanfrage muss zutreffen' do
+    treffer = Referee.create!(lizenznummer: 30_008, vorname: 'Max', nachname: 'Müller')
+    anderer = Referee.create!(lizenznummer: 30_009, vorname: 'Max', nachname: 'Schmidt')
+
+    ergebnis = Referee.search('Max Mueller')
+
+    assert_includes ergebnis, treffer
+    assert_not_includes ergebnis, anderer
+  end
+
+  test 'search: grenzt weiterhin ein, statt alles zu liefern' do
+    Referee.create!(lizenznummer: 30_010, vorname: 'Ann', nachname: 'Kowalski')
+
+    assert_empty Referee.search('Schröder')
+  end
+
+  # Ein Prozentzeichen ist ein Suchwort, kein Suchmuster. Beide Richtungen
+  # pruefen: dass es nichts einsammelt UND dass es woertlich trifft, wo es
+  # wirklich steht.
+  test 'search: maskiert LIKE-Sonderzeichen' do
+    Referee.create!(lizenznummer: 30_011, vorname: 'Ann', nachname: 'Kowalski')
+    unterstrich = Referee.create!(lizenznummer: 30_016, vorname: 'Bo', nachname: 'Ba_r')
+
+    assert_empty Referee.search('%')
+    assert_includes Referee.search('Ba_r'), unterstrich
+    assert_empty Referee.search('Baxr')
+  end
+
   def partner_game(referee_ids, season_id: '18')
     league = create(:league, season_id: season_id)
     create(:game, game_day: create(:game_day, league: league), officiating_referee_ids: referee_ids)

@@ -114,6 +114,37 @@ class Club < ApplicationRecord
         .select { |user| Array(user.permission_hash[:vm]).include?(id) }
   end
 
+  # Kann dieser Verein einen Vorgang entgegennehmen, der ihm zur Bearbeitung
+  # vorgelegt wird? Nein, wenn es weder ein Postfach gibt, an das die
+  # Benachrichtigung ginge, noch einen Vereinsmanager, der sie abarbeiten
+  # könnte. Ein Transferantrag an einen solchen Verein bleibt liegen, bis die
+  # Frist ihn annulliert (api#581).
+  #
+  # Eines von beiden genügt: Mit Kontaktadresse ohne Vereinsmanager kommt die
+  # Mail an und der Verein kann sich um einen Zugang oder um die zuständige SBK
+  # kümmern; mit Vereinsmanager ohne Kontaktadresse geht die Mail an dessen
+  # persönliche Adresse.
+  #
+  # Bewusst `contact_email` und nicht `notification_emails`: Eine Abwahl aus der
+  # Vereinspost (`notify_excluded_user_ids`) ist eine Entscheidung über den
+  # Verteiler und nimmt dem Vereinsmanager weder die Rolle noch den Zugriff auf
+  # den Vorgang. Er sieht ihn in der Übersicht und kann ihn genehmigen.
+  #
+  # Gegen EMAIL_FORMAT und nicht auf `present?`: Gefragt ist Zustellbarkeit,
+  # nicht Befuelltheit. Auf Produktion traegt ein Verein zwei Adressen mit
+  # Semikolon in dem Feld (siehe EMAIL_FORMAT oben) -- die Mail geht als EINE
+  # Adresse heraus und erreicht niemanden, der Verein ist also genauso
+  # unerreichbar wie ohne Eintrag. Die Formatvalidierung greift nur
+  # `if: :contact_email_changed?`, im Bestand steht so etwas deshalb weiterhin.
+  #
+  # Die Kontaktadresse zuerst, weil sie ohne Abfrage zu haben ist:
+  # `club_managers` liest die Benutzertabelle.
+  def reachable_for_requests?
+    return true if contact_email.to_s.strip.match?(EMAIL_FORMAT)
+
+    club_managers.any?
+  end
+
   # Alle Empfänger der Vereinspost: die Kontaktadresse plus die
   # Vereinsmanager, die nicht abgewählt sind.
   def notification_emails

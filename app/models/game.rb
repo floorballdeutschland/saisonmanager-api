@@ -364,9 +364,24 @@ class Game < ApplicationRecord
   # Format "<license_id> <lastname>, <firstname>"; ein leerer Eintrag ist "0 , ".
   # Eine echte Lizenz (>0) oder ein eingetragener Name zählt als gesetzt.
   def referee1_present?
-    return false if referee1_string.blank?
+    self.class.referee_slot_present?(referee1_string)
+  end
 
-    referee1_string.sub(/\A0\s/, '').gsub(/[\s,]/, '').present?
+  # Dasselbe für den zweiten Platz. Nicht für eine Pflichtprüfung -- Schiri 2
+  # bleibt optional, unterklassige Spiele haben oft nur einen. Gebraucht wird es,
+  # um die Absage beim Spielstart zu begründen: Ist NUR Platz 2 belegt, hat
+  # jemand das Gespann in das falsche Feld getragen, und der Hinweis „Schiri 1
+  # fehlt" liest sich vor einem sichtbar gefüllten Schiri-Feld wie ein Fehler des
+  # Systems. Am 30.08.2026 kostete das in Wernigerode 23 abgewiesene
+  # Startversuche über 88 Minuten.
+  def referee2_present?
+    self.class.referee_slot_present?(referee2_string)
+  end
+
+  def self.referee_slot_present?(slot_string)
+    return false if slot_string.blank?
+
+    slot_string.sub(/\A0\s/, '').gsub(/[\s,]/, '').present?
   end
 
   # Angesetztes Schiri-Gespann als Referee-Datensätze (max. 2), aufgelöst aus den
@@ -990,7 +1005,21 @@ class Game < ApplicationRecord
       notice_type:,
       notice_string:,
       special_event_string:,
-      referees:
+      referees:,
+      # Ausdrücklich als Flag, nicht aus `referees` ableitbar: Dort fehlt die
+      # Platznummer, und zwar auf zwei verschiedene Weisen, je nachdem ob Platz 1
+      # nie angefasst wurde oder gesetzt und wieder geleert:
+      #
+      #   referee1_string nil    -> EIN Eintrag, der Schiri aus Platz 2 an erster
+      #                             Stelle (`next unless ref.present?`)
+      #   referee1_string '0 , ' -> ZWEI Eintraege, davor ein Phantom mit Lizenz
+      #                             "0" und leeren Namen -- auf den Platzhalter
+      #                             passt die Regex in #referees naemlich
+      #
+      # Der Spielbericht braucht die Platznummer, um den Start genauso zu sperren
+      # wie set_flag es tut, statt den Knopf anzubieten und erst am Klick
+      # abzuweisen.
+      referee1_present: referee1_present?
     }
   end
 
