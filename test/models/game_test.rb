@@ -394,6 +394,23 @@ class GameTest < ActiveSupport::TestCase
     assert build_game(referee1_string: '0 Mustermann, Max').referee1_present?
   end
 
+  # referee2_present? begründet nur die Absage (siehe _referee1_missing_message),
+  # es ist keine zweite Pflichtprüfung: Schiri 2 bleibt optional.
+  test 'referee2_present?: unterscheidet leeren Platzhalter von echtem Eintrag' do
+    assert_not build_game(referee2_string: nil).referee2_present?
+    assert_not build_game(referee2_string: '0 , ').referee2_present?
+    assert build_game(referee2_string: '5824 Trosien, Max').referee2_present?
+  end
+
+  # Die beiden Plätze sind unabhängig -- genau die Konstellation, die in
+  # Wernigerode entstand.
+  test 'referee1_present? bleibt falsch, wenn nur Platz 2 belegt ist' do
+    game = build_game(referee1_string: '0 , ', referee2_string: '5824 Trosien, Max')
+
+    assert_not game.referee1_present?
+    assert game.referee2_present?
+  end
+
   # ---------------------------------------------------------------------------
   # Eingefrorene Straf-Labels (R1)
   # ---------------------------------------------------------------------------
