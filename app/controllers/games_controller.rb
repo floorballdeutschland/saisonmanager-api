@@ -788,9 +788,8 @@ class GamesController < ApplicationController
         end
 
         unless game.referee1_present?
-          return render json: {
-            message: 'Es muss mindestens Schiedsrichter 1 eingetragen sein, bevor das Spiel gestartet werden kann.'
-          }, status: :unprocessable_entity
+          return render json: { message: _referee1_missing_message(game, 'das Spiel gestartet') },
+                        status: :unprocessable_entity
         end
       end
 
@@ -1026,7 +1025,23 @@ class GamesController < ApplicationController
   def _missing_referee_error(game)
     return nil if game.referee1_present?
 
-    'Es muss mindestens Schiedsrichter 1 eingetragen sein, bevor der Spielbericht abgeschlossen werden kann.'
+    _referee1_missing_message(game, 'der Spielbericht abgeschlossen')
+  end
+
+  # Die Absage benennt den Platz, nicht nur die Regel. Ist Platz 2 belegt und
+  # Platz 1 leer, steht in der Maske ein Schiedsrichter -- „mindestens
+  # Schiedsrichter 1 muss eingetragen sein" liest sich davor wie eine Fehlfunktion,
+  # und niemand kommt darauf, dass die Platznummer gemeint ist. Genau daran hing
+  # der Spieltag der U13 KF RL Ost am 30.08.2026 in Wernigerode: Das Gespann war
+  # eingetragen, nur eben in Platz 2.
+  def _referee1_missing_message(game, action)
+    if game.referee2_present?
+      'Es ist nur Schiedsrichter 2 eingetragen, Schiedsrichter 1 ist leer. ' \
+        'Leitet nur eine Person das Spiel, gehört sie in das Feld „Schiedsrichter 1“. ' \
+        "Erst dann kann #{action} werden."
+    else
+      "Es muss mindestens Schiedsrichter 1 eingetragen sein, bevor #{action} werden kann."
+    end
   end
 
   def _checklist_incomplete_error(game)
