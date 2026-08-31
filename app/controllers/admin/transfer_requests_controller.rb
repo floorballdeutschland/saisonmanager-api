@@ -89,6 +89,7 @@ module Admin
 
       former_club = Club.find_by(id: former_club_id)
       return former_club_missing_response unless former_club
+      return unreachable_former_club_response(former_club) unless former_club.reachable_for_requests?
 
       requesting_club_id = params[:requesting_club_id].to_i
       if ph[:vm].present? && !may_act_for_club?(ph, requesting_club_id, former_club)
@@ -155,6 +156,7 @@ module Admin
 
       former_club = Club.find_by(id: former_club_id)
       return former_club_missing_response unless former_club
+      return unreachable_former_club_response(former_club) unless former_club.reachable_for_requests?
 
       requesting_club_id = params[:requesting_club_id].to_i
       if ph[:vm].present? && !may_act_for_club?(ph, requesting_club_id, former_club)
@@ -608,6 +610,31 @@ module Admin
     # ein Datenfehler, und ebenfalls in allen drei Schritten derselbe.
     def former_club_missing_response
       render json: { error: 'Abgebender Verein nicht gefunden' }, status: :not_found
+    end
+
+    # Der abgebende Verein hat weder Postfach noch Vereinsmanager (api#581): Die
+    # erste Mail des Verfahrens (`new_request_to_former_club`) hat keinen
+    # Empfaenger und bricht still ab, und `approve_club`/`reject_club` verlangen
+    # die VM-Rolle dieses Vereins. Der Antrag bliebe in `pending_club` liegen,
+    # liefe erst nach `EXPIRE_AFTER_DAYS` auf `expired` und sperrte bis dahin
+    # ueber `TransferRequest.active` JEDEN weiteren Antrag desselben Spielers,
+    # auch den auf einen anderen Verein. Dieselbe Art gestrandeter Antrag wie
+    # beim deaktivierten aufnehmenden Verein (api#512, api#528).
+    #
+    # Ein Datenproblem, kein Rechteproblem: Der Wortlaut zeigt deshalb auf die
+    # fehlenden Stammdaten und nennt den Verein beim Namen, damit die
+    # beantragende Person weiss, wen die SBK zu ergaenzen hat.
+    #
+    # Nicht in #direct_assign geprueft: Die Direktzuweisung durch den Verband
+    # kennt keinen `pending_club`-Schritt, sie braucht den abgebenden Verein
+    # also nicht zum Handeln. Sie ist damit der Weg, der auch fuer einen Verein
+    # ohne gepflegte Stammdaten bleibt.
+    def unreachable_former_club_response(former_club)
+      render json: {
+        error: "Für den abgebenden Verein #{former_club.name} ist weder eine Vereins-E-Mailadresse " \
+               'hinterlegt noch ein Vereinsmanager benannt. Der Verein kann den Antrag daher nicht ' \
+               'bearbeiten. Bitte die zuständige SBK kontaktieren.'
+      }, status: :unprocessable_entity
     end
 
     # Darf der Nutzer für diesen Verein handeln? `club_id` ist an beiden

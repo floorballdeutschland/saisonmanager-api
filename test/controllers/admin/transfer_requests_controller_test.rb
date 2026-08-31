@@ -231,9 +231,14 @@ module Admin
     # gesperrt, solange der abgebende Verein nicht ihr eigener ist. Eigener Test,
     # weil `nil` ein anderer Eingabewert ist als eine fremde Spielbetriebs-ID.
     test 'SBK mit zusätzlicher VM-Rolle darf nicht suchen, wenn der abgebende Verein keinen Spielbetrieb hat → 403' do
+      # Mit Kontaktadresse, damit der Test auf dem Rechtezweig bleibt: Seit
+      # api#581 weist die Suche einen abgebenden Verein ohne Postfach und ohne
+      # Vereinsmanager vorher als Datenproblem ab (422), und die Rechteprüfung
+      # käme gar nicht mehr dran.
       homeless_club = Club.create!(
         name: "Verein ohne LV #{SecureRandom.hex(4)}",
-        short_name: "OL#{SecureRandom.hex(1)}"
+        short_name: "OL#{SecureRandom.hex(1)}",
+        contact_email: 'ohne-lv@test.example.com'
       )
       homeless_player = Player.create!(
         first_name: 'Nils',
@@ -304,6 +309,20 @@ module Admin
       }
       assert_response :not_found
       assert_equal 'Abgebender Verein nicht gefunden', JSON.parse(response.body)['error']
+    end
+
+    # api#581: Dieselbe Auskunft wie in #create. Sonst meldet die Suche einen
+    # Treffer und der Antrag fällt gleich danach auf 422 -- dasselbe Nachziehen
+    # wie beim deaktivierten aufnehmenden Verein (api#512).
+    test 'search_player weist abgebenden Verein ohne Postfach und ohne Vereinsmanager ab → 422' do
+      make_former_club_unreachable
+      login(@vm_requesting)
+      get '/api/v2/admin/transfer_requests/search_player', params: {
+        first_name: 'Max', last_name: 'Mustermann', birthdate: '1995-03-15',
+        requesting_club_id: @requesting_club.id
+      }
+      assert_response :unprocessable_entity
+      assert_match(/weder eine Vereins-E-Mailadresse/, JSON.parse(response.body)['error'])
     end
 
     # Ohne Zielverein ist die Frage „darf sie für diesen Verein handeln" nicht zu
@@ -490,6 +509,72 @@ module Admin
         player_id: @player.id,
         requesting_club_id: @requesting_club.id
       }
+      assert_response :created
+    end
+
+    # api#581: Hat der abgebende Verein weder Postfach noch Vereinsmanager, hat
+    # die erste Mail des Verfahrens keinen Empfänger und niemand außer einem
+    # Admin könnte den Antrag genehmigen. Er bliebe 14 Tage in pending_club
+    # liegen und sperrte über den active-Guard jeden weiteren Antrag desselben
+    # Spielers, auch den auf einen anderen Verein.
+    test 'Antrag an abgebenden Verein ohne Postfach und ohne Vereinsmanager → 422' do
+      make_former_club_unreachable
+      login(@vm_requesting)
+      assert_no_emails do
+        post '/api/v2/admin/transfer_requests', params: {
+          player_id: @player.id,
+          requesting_club_id: @requesting_club.id
+        }
+      end
+      assert_response :unprocessable_entity
+      error = JSON.parse(response.body)['error']
+      assert_match(/weder eine Vereins-E-Mailadresse/, error)
+      # Der Verein wird beim Namen genannt, damit klar ist, wessen Stammdaten fehlen.
+      assert_match(/#{Regexp.escape(@former_club.name)}/, error)
+      assert_equal 0, TransferRequest.where(player_id: @player.id).count
+    end
+
+    # Eines von beiden genügt: Die Mail kommt an, und der Verein kann sich um
+    # einen Zugang oder um die zuständige SBK kümmern.
+    test 'Antrag an abgebenden Verein mit Kontaktadresse, aber ohne Vereinsmanager → 201' do
+      @vm_former.update!(permissions: [])
+      login(@vm_requesting)
+      assert_emails 1 do
+        post '/api/v2/admin/transfer_requests', params: {
+          player_id: @player.id,
+          requesting_club_id: @requesting_club.id
+        }
+      end
+      assert_response :created
+    end
+
+    # Umgekehrt ebenso: Ohne Kontaktadresse geht die Mail an die persönliche
+    # Adresse des Vereinsmanagers, und er kann den Antrag genehmigen.
+    test 'Antrag an abgebenden Verein mit Vereinsmanager, aber ohne Kontaktadresse → 201' do
+      @former_club.update!(contact_email: nil)
+      @vm_former.update!(email: 'vm.former@test.example.com')
+      login(@vm_requesting)
+      assert_emails 1 do
+        post '/api/v2/admin/transfer_requests', params: {
+          player_id: @player.id,
+          requesting_club_id: @requesting_club.id
+        }
+      end
+      assert_response :created
+    end
+
+    # Die Abwahl aus der Vereinspost entscheidet über den Verteiler, nicht über
+    # die Rolle: Der Vereinsmanager sieht den Antrag in seiner Übersicht und kann
+    # ihn genehmigen. Der Antrag geht deshalb durch, auch wenn keine Mail rausgeht.
+    test 'abgewaehlter Vereinsmanager reicht als Bearbeiter → 201' do
+      @former_club.update!(contact_email: nil, notify_user_ids: [])
+      login(@vm_requesting)
+      assert_no_emails do
+        post '/api/v2/admin/transfer_requests', params: {
+          player_id: @player.id,
+          requesting_club_id: @requesting_club.id
+        }
+      end
       assert_response :created
     end
 
@@ -1114,6 +1199,13 @@ module Admin
         permissions: permissions,
         teams: []
       )
+    end
+
+    # Der abgebende Verein ohne jeden Bearbeiter: kein Postfach und kein Konto
+    # mit der VM-Rolle für diesen Verein (api#581). Das setup gibt ihm beides.
+    def make_former_club_unreachable
+      @former_club.update!(contact_email: nil)
+      @vm_former.update!(permissions: [])
     end
 
     def create_club_in_other_game_operation

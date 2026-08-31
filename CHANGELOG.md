@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Transferantrag an einen Verein, der ihn nicht bearbeiten kann, wird gar nicht erst angelegt**: Hat der abgebende Verein weder eine Vereins-E-Mailadresse hinterlegt noch einen Vereinsmanager benannt, war der Antrag von der ersten Sekunde an aussichtslos: Die Benachrichtigung an den abgebenden Verein hatte keinen Empfänger und ging still ins Nichts, und genehmigen oder ablehnen darf in diesem Schritt nur ein Vereinsmanager genau dieses Vereins. Der Antrag blieb 14 Tage stehen, bis die Frist ihn annullierte, und sperrte in dieser Zeit jeden weiteren Antrag desselben Spielers, auch den auf einen ganz anderen Verein. Der Antrag wird jetzt beim Anlegen abgewiesen, mit einer Meldung, die den Verein beim Namen nennt und auf die fehlenden Stammdaten zeigt statt auf die eigene Rolle. Die Spielersuche im Transferformular sagt dasselbe, damit sie keinen Treffer meldet, an dem der Antrag gleich danach scheitert. Eines von beidem genügt: Mit Kontaktadresse ohne Vereinsmanager kommt die Mail an, mit Vereinsmanager ohne Kontaktadresse geht sie an dessen persönliche Adresse. Wer aus der Vereinspost abgewählt ist, zählt weiterhin als Bearbeiter, denn die Abwahl entscheidet über den Verteiler und nicht über die Rolle. Die Direktzuweisung durch den Verband bleibt möglich, sie kennt den Freigabeschritt des abgebenden Vereins nicht und ist damit der Weg, der für einen Verein ohne gepflegte Stammdaten offen bleibt.
+
 ## [1.102.0] - 2026-08-29
 
 ### Neu
