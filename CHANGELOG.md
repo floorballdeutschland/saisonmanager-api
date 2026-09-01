@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Die Livestream-Overlays zeigen die Zwischenstände der parallelen Partien desselben Spieltags**: Die Spieltagsübersicht im Stream nannte laufende Spiele anderer Hallen bisher nur mit „läuft", ohne Stand. Das war Absicht: Das Spieltags-Token hebt die Zehn-Minuten-Verzögerung für die Spiele seines eigenen Spieltags auf, und für die übrige Liga sollte sie greifen. Diese Verzögerung richtet sich aber gegen API-Schlüssel ohne Echtzeit-Freigabe und nicht gegen das Publikum: Dieselben Zahlen stehen auf der öffentlichen Live-Seite, die der Frontend-Schlüssel mit Echtzeit-Freigabe bedient. Der Filter hielt die Stände damit gerade dort zurück, wo sie am meisten helfen, ohne sie irgendwo sonst zu verbergen. Sie kommen jetzt mit, samt der Kennzeichnung, ob eine Partie läuft, beendet oder noch nicht angepfiffen ist. Eng bleibt der Zugang durch den Endpunkt selbst und nicht durch einen Filter: Liga und Spieltagsnummer kommen ausschließlich aus dem Token, ausgeliefert werden also nur die Partien desselben Spieltags derselben Liga, und das Token läuft von selbst ab. Einen Parameter, mit dem sich eine andere Liga anfordern ließe, gibt es hier weiterhin nicht. Mit dem Filter entfällt zugleich eine Fußangel: Der Cache-Eintrag hängt an Liga und Spieltagsnummer und wird von allen Hallen desselben Spieltags geteilt, ein je Token unterschiedliches Ergebnis war darin nur außerhalb des Cache-Zugriffs korrekt zu bilden.
+
 ## [1.102.1] - 2026-08-31
 
 ### Behoben

@@ -12,7 +12,8 @@
 # ApplicationController#delay_live_data? hängt an @authenticated_api_key, und
 # die Variable wird hier nie gesetzt, weil authenticate_public_request nicht
 # läuft. Der Unterschied zu einem Schlüssel mit Echtzeit-Freigabe: Dieses Token
-# gilt nur für die Spiele eines Spieltags und läuft von selbst ab.
+# reicht nur bis zu den Partien EINES Spieltags EINER Liga und läuft von selbst
+# ab. Wie weit genau, steht bei #build_overlay_schedule.
 class PublicOverlayController < ApplicationController
   # Obergrenze für den Steuerzustand. Er wird bei jedem Abruf mit ausgeliefert,
   # also begrenzt diese Zahl zugleich den Datenverkehr, den ein weitergegebenes
@@ -265,53 +266,39 @@ class PublicOverlayController < ApplicationController
     # ausgelöst. Ohne Nummer gibt es keinen ligaweiten Spieltag.
     return [] if number.blank?
 
-    raw = Rails.cache.fetch("leagues/#{league.id}/overlay_schedule/#{number}", expires_in: 30.seconds) do
+    Rails.cache.fetch("leagues/#{league.id}/overlay_schedule/#{number}", expires_in: 30.seconds) do
       league.games(number).map(&:schedule_item)
     end
-
-    # Das Filtern gehört NACH das `fetch`, nicht hinein. Der Schlüssel hängt an
-    # Liga und Spieltagsnummer, NICHT am Token: alle Hallen desselben Spieltags
-    # teilen ihn sich. Läge der Filter im Block, bekäme das zweite Token die für
-    # das erste gefilterte Liste – sein eigenes Spiel ohne Stand, das fremde dafür
-    # live. Genau verkehrt herum. Weil der Test-Store :null_store ist, sieht die CI
-    # so etwas nur mit einem eigens gesetzten Store, siehe den Test
-    # 'zwei Tokens derselben Liga sehen jeweils nur ihr eigenes Spiel live'.
-    strip_foreign_live_scores(raw)
   end
 
-  # HIER LIEGT DIE AUSNAHME, UND HIER ENDET SIE.
+  # HIER STAND EIN FILTER, UND WARUM ER WEG IST.
   #
-  # Das Token hebt die Zehn-Minuten-Verzögerung für die Spiele SEINES Spieltags
-  # auf, für die übrige Liga ausdrücklich nicht. `delay_live_scores` aus dem
-  # ApplicationController hilft dabei nicht: Es hängt an `delay_live_data?`, und
-  # das ist hier immer false, weil `authenticate_public_request` nicht läuft und
-  # @authenticated_api_key deshalb nie gesetzt wird. Ein Aufruf wäre also ein
-  # wirkungsloser Platzhalter, der wie eine Absicherung aussieht.
+  # Bis hierher wurden die Zwischenstände laufender Partien AUS ANDEREN HALLEN
+  # aus dieser Liste entfernt (`strip_foreign_live_scores`). Die Begründung: Das
+  # Token hebt die Zehn-Minuten-Verzögerung für die Spiele SEINES Spieltags auf,
+  # für die übrige Liga ausdrücklich nicht.
   #
-  # Deshalb wird hier unabhängig davon gefiltert: Zwischenstände laufender
-  # Partien aus anderen Hallen fallen weg, das eigene Spiel bleibt live.
-  def strip_foreign_live_scores(schedule)
-    own = own_game_ids
-
-    schedule.map do |entry|
-      next entry if own.include?(entry_value(entry, :game_id))
-      next entry unless running_entry?(entry)
-
-      # Beide Schlüsselformen leeren statt `merge(result: nil)`. Mit den heute
-      # eingesetzten Stores ist die String-Form toter Code: :null_store im Test
-      # gibt den Block-Rückgabewert unverändert durch, und :memory_store in
-      # Produktion serialisiert über DupCoder, nicht über Marshal, und liefert
-      # Symbole zurück (nachgemessen). Sie steht als Vorsorge für einen Store
-      # mit JSON-Kodierung (Redis, Memcached), wo die Schlüssel als Strings
-      # zurückkämen: Ein Symbol-Merge legte dann einen zweiten, leeren Schlüssel
-      # daneben und ließe den gefüllten stehen, die Verzögerung fiele still aus.
-      stripped = entry.dup
-      [:result, 'result', :result_string, 'result_string'].each do |key|
-        stripped[key] = nil if stripped.key?(key)
-      end
-      stripped
-    end
-  end
+  # Diese Verzögerung richtet sich aber gegen API-Schlüssel ohne
+  # Echtzeit-Freigabe (`ApplicationController#delay_live_data?`) und nicht gegen
+  # das Publikum: Dieselben Zahlen stehen auf der öffentlichen Live-Seite, die
+  # der Frontend-Schlüssel mit Echtzeit-Freigabe bedient. Der Filter hielt die
+  # Zwischenstände also gerade dort zurück, wo sie am meisten helfen -- in der
+  # Spieltagsübersicht einer Übertragung -- ohne sie irgendwo sonst zu
+  # verbergen. Ergebnisse laufender Partien in Klammern sind der Zweck dieser
+  # Übersicht, und der Verband hat es so entschieden.
+  #
+  # ENG BLEIBT ES TROTZDEM, und zwar durch den Endpunkt selbst statt durch einen
+  # Filter: `league` kommt allein aus dem Token, `number` allein aus dessen
+  # Spieltag. Ausgeliefert werden also ausschließlich die Partien DESSELBEN
+  # Spieltags DERSELBEN Liga, und das Token läuft von selbst ab. Einen
+  # `league_id`-Parameter gibt es hier bewusst nicht.
+  #
+  # Mit dem Filter ist auch seine Fußangel weg: Der Cache-Schlüssel hängt an
+  # Liga und Spieltagsnummer, NICHT am Token, also teilen sich alle Hallen
+  # desselben Spieltags einen Eintrag. Ein Filter, der je Token ein anderes
+  # Ergebnis liefern muss, durfte deshalb nur außerhalb des `fetch` laufen; lag
+  # er darin, bekam das zweite Token die Sicht des ersten. Diese Klasse von
+  # Fehler kann es hier nicht mehr geben.
 
   def running_games
     @running_games ||= overlay_schedule.select { |entry| running_entry?(entry) }.map do |entry|
