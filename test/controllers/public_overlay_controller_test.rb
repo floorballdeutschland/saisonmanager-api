@@ -52,6 +52,73 @@ class PublicOverlayControllerTest < ActionDispatch::IntegrationTest
     _link, @token = GameDayOverlayLink.generate!(game_day: @game_day, created_by: @user)
   end
 
+  # ── Formkurve ─────────────────────────────────────────────────────────────
+
+  test 'die Formkurve liefert die letzten beendeten Partien beider Mannschaften' do
+    # Drei beendete Partien der Heimmannschaft, absteigend im Datum, dazu eine
+    # unbeendete, die nicht mitkommen darf.
+    fruehe = beendetes_spiel(@home, '2026-09-05', 5, 2)
+    spaetere = beendetes_spiel(@home, '2026-09-12', 1, 4, heim: false)
+    unbeendet = create(:game, game_day: create(:game_day, league: @league, date: '2026-09-19'),
+                              home_team: @home, guest_team: create(:team, league: @league),
+                              started: true, ended: false)
+
+    get '/api/v2/public/overlay/form', params: { token: @token }
+
+    assert_response :success
+    form = JSON.parse(response.body)['form']
+
+    heim = form['home']
+    assert_equal @home.id, heim['id']
+    assert_equal 'Heimverein', heim['name']
+
+    ids = heim['games'].map { |g| g['game_id'] }
+    assert_not_includes ids, unbeendet.id, 'ein laufendes Spiel gehoert nicht in die Formkurve'
+    assert_equal [spaetere.id, fruehe.id], ids, 'neueste Partie zuerst'
+
+    # Auswaertsniederlage 1:4 aus Sicht der Heimmannschaft dieses Spiels.
+    assert_equal 'loss', heim['games'].first['outcome']
+    assert_equal false, heim['games'].first['home']
+    assert_equal 1, heim['games'].first['goals']
+    assert_equal 4, heim['games'].first['opponent_goals']
+
+    assert_equal 'win', heim['games'].last['outcome']
+    assert form.key?(%(guest)), %(die Gastmannschaft muss im Ergebnis stehen)
+    assert_equal [], form['guest']['games'], 'die Gastmannschaft hat noch nichts gespielt'
+  end
+
+  test 'ein Unentschieden und ein fehlender Stand werden nicht zur Niederlage' do
+    beendetes_spiel(@home, '2026-09-05', 3, 3)
+    ohne_stand = create(:game, game_day: create(:game_day, league: @league, date: '2026-09-06'),
+                               home_team: @home, guest_team: create(:team, league: @league),
+                               started: false, ended: true, events: [])
+
+    get '/api/v2/public/overlay/form', params: { token: @token }
+
+    assert_response :success
+    spiele = JSON.parse(response.body)['form']['home']['games']
+
+    assert_equal 'draw', spiele.find { |g| g['goals'] == 3 }['outcome']
+    eintrag = spiele.find { |g| g['game_id'] == ohne_stand.id }
+    assert_nil eintrag['outcome'], 'ohne Stand keine Aussage'
+    assert_nil eintrag['goals']
+  end
+
+  test 'die Formkurve nennt hoechstens fuenf Partien' do
+    7.times { |i| beendetes_spiel(@home, format('2026-09-%02d', i + 1), 2, 1) }
+
+    get '/api/v2/public/overlay/form', params: { token: @token }
+
+    assert_response :success
+    assert_equal 5, JSON.parse(response.body)['form']['home']['games'].size
+  end
+
+  test 'die Formkurve braucht ein gueltiges Token' do
+    get '/api/v2/public/overlay/form', params: { token: 'gibtesnicht' }
+
+    assert_response :gone
+  end
+
   # ── Zugang ────────────────────────────────────────────────────────────────
 
   test 'ohne Token gibt es keine Daten' do
@@ -625,5 +692,21 @@ class PublicOverlayControllerTest < ActionDispatch::IntegrationTest
   def login(user)
     post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
     assert_response :success
+  end
+
+  # Ein beendetes Spiel der Mannschaft, an einem eigenen Spieltag mit Datum.
+  # `game_days.date` ist eine Zeichenkette, deshalb wird hier ISO geschrieben --
+  # danach sortiert der Endpunkt.
+  def beendetes_spiel(team, datum, eigene, fremde, heim: true)
+    gegner = create(:team, league: @league)
+    tag = create(:game_day, league: @league, date: datum)
+
+    create(:game, game_day: tag,
+                  home_team: heim ? team : gegner,
+                  guest_team: heim ? gegner : team,
+                  started: true, ended: true,
+                  events: [{ 'row' => 1, 'period' => 1,
+                             'home_goals' => heim ? eigene : fremde,
+                             'guest_goals' => heim ? fremde : eigene }])
   end
 end

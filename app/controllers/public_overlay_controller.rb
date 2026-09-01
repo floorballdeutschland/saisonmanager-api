@@ -122,6 +122,28 @@ class PublicOverlayController < ApplicationController
     render json: league_frame.merge(schedule: overlay_schedule)
   end
 
+  # GET /api/v2/public/overlay/form?token=XXX
+  #
+  # Formkurve beider Mannschaften des aktiven Spiels: die letzten beendeten
+  # Partien, neueste zuerst. Eigener Endpunkt und nicht Teil des Spielabrufs:
+  # Der geht bei jedem Tor neu heraus, diese Liste aendert sich hoechstens, wenn
+  # ein Spiel endet.
+  def form
+    return if render_missing_league
+
+    game = resolve_game
+    return render json: { message: 'Kein Spiel für diesen Spieltag.' }, status: :not_found if game.nil?
+
+    expires_in 30.seconds
+    render json: league_frame.merge(
+      game_id: game.id,
+      form: {
+        home: team_form(game.home_team),
+        guest: team_form(game.guest_team)
+      }
+    )
+  end
+
   # POST /api/v2/public/overlay/state?token=XXX
   #
   # Das Dock schreibt den kompletten Zustand, nicht einzelne Felder: Die
@@ -317,6 +339,77 @@ class PublicOverlayController < ApplicationController
 
   def own_game_ids
     @own_game_ids ||= @link.game_day.games.pluck(:id).to_set
+  end
+
+  # So viele Partien, wie eine Formkurve traegt. Fuenf ist die uebliche Laenge,
+  # und mehr passt neben der zweiten Mannschaft nicht ins Bild.
+  FORM_GAMES = 5
+
+  def team_form(team)
+    return nil if team.nil?
+
+    {
+      id: team.id,
+      name: team.name,
+      short_name: team.ticker_short_name,
+      games: Rails.cache.fetch("teams/#{team.id}/overlay_form", expires_in: 5.minutes) do
+        recent_games(team).map { |game| form_entry(game, team) }
+      end
+    }
+  end
+
+  # ACHTUNG, `game_days.date` ist eine Zeichenkette und keine Datumsspalte.
+  # Absteigend sortiert wird also als TEXT. Fuer das ISO-Format (2026-09-19),
+  # das die Anwendung schreibt, ist das chronologisch; ein Altbestand in einer
+  # anderen Schreibweise waere es nicht. Diese Auskunft betrifft nur die
+  # laufende Saison einer Uebertragung, deshalb bleibt es bei der Sortierung in
+  # der Datenbank -- sie erlaubt das LIMIT, und ohne das laedt eine Mannschaft
+  # ihre ganze Saison.
+  def recent_games(team)
+    Game.by_team_id(team.id)
+        .where(ended: true)
+        .joins(:game_day)
+        .includes(:game_day, :home_team, :guest_team)
+        .order(Arel.sql('game_days.date DESC NULLS LAST, games.start_time DESC NULLS LAST'))
+        .limit(FORM_GAMES)
+  end
+
+  def form_entry(game, team)
+    heim = game.home_team_id == team.id
+    gegner = heim ? game.guest_team : game.home_team
+    result = game.result || {}
+    eigene = heim ? result[:home_goals] : result[:guest_goals]
+    fremde = heim ? result[:guest_goals] : result[:home_goals]
+
+    {
+      game_id: game.id,
+      date: game.game_day&.date,
+      home: heim,
+      opponent: gegner&.name,
+      opponent_short: gegner&.ticker_short_name,
+      goals: eigene,
+      opponent_goals: fremde,
+      # Aus Sicht DIESER Mannschaft. nil, wenn der Stand fehlt: `Game#result`
+      # gibt nichts zurueck, solange ein Spiel nicht begonnen hat, und ein
+      # beendetes Spiel ohne Ereignisse gibt es im Bestand auch. Ein Rueckfall
+      # auf 0:0 waere hier eine erfundene Niederlage.
+      outcome: outcome_for(eigene, fremde),
+      # Am gruenen Tisch entschieden. Gehoert ins Bild, weil ein 0:3 ohne diesen
+      # Hinweis wie ein gespieltes Ergebnis aussieht.
+      forfait: result[:forfait] == true
+    }
+  end
+
+  def outcome_for(eigene, fremde)
+    return nil unless eigene.is_a?(Integer) && fremde.is_a?(Integer)
+    # Bei der beidseitigen Wertung setzt League#forfait_goals BEIDE Seiten
+    # negativ (-3:-3). Das ist kein Unentschieden, sondern zwei Niederlagen, und
+    # eine Formkurve kann das nicht darstellen -- also keine Aussage.
+    return nil if eigene.negative? || fremde.negative?
+    return 'win' if eigene > fremde
+    return 'loss' if eigene < fremde
+
+    'draw'
   end
 
   def entry_value(entry, key)
