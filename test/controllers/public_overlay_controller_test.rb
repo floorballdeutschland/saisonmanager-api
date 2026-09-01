@@ -391,13 +391,14 @@ class PublicOverlayControllerTest < ActionDispatch::IntegrationTest
     assert_response :not_found
   end
 
-  # ── Die Verzögerung endet am eigenen Spieltag ─────────────────────────────
-  # Das Token hebt sie nur für die Spiele SEINES Spieltags auf. Eine parallel
-  # laufende Partie in einer anderen Halle steht ohne Zwischenstand im
-  # Spielplan. `delay_live_scores` aus dem ApplicationController greift hier
-  # nicht (delay_live_data? ist ohne API-Key immer false), deshalb muss der
-  # eigene Filter das leisten.
-  test 'parallel laufende Partien kommen ohne Zwischenstand' do
+  # ── Zwischenstände des eigenen Spieltags ──────────────────────────────────
+  # Bis 2026-09 wurden die Zwischenstände paralleler Partien hier entfernt. Sie
+  # kommen jetzt mit, weil die Spieltagsübersicht einer Übertragung genau davon
+  # lebt und dieselben Zahlen auf der öffentlichen Live-Seite ohnehin stehen
+  # (die Verzögerung gilt API-Schlüsseln ohne Echtzeit-Freigabe, nicht dem
+  # Publikum). Die Grenze zieht der Endpunkt: dieselbe Liga, dieselbe
+  # Spieltagsnummer, siehe den Test darunter.
+  test 'parallel laufende Partien kommen mit Zwischenstand' do
     parallel_day = create(:game_day, league: @league, number: @game_day.number)
     parallel_game = create(:game, game_day: parallel_day,
                                   home_team: create(:team, league: @league, name: 'Dritter'),
@@ -415,11 +416,34 @@ class PublicOverlayControllerTest < ActionDispatch::IntegrationTest
 
     fremd = schedule.find { |g| g['game_id'] == parallel_game.id }
     assert fremd.present?, 'die parallele Partie fehlt im Spielplan'
-    assert_nil fremd['result'], 'der Zwischenstand der fremden Halle darf nicht mitkommen'
-    assert_nil fremd['result_string']
+    assert_equal '4:1', fremd['result_string'], 'der Zwischenstand der anderen Halle gehört dazu'
+    assert fremd['started'], 'und die Kennzeichnung, dass sie läuft'
+    assert_not fremd['ended']
 
     eigen = schedule.find { |g| g['game_id'] == @game.id }
     assert_equal '2:0', eigen['result_string'], 'das eigene Spiel bleibt live'
+  end
+
+  # Die Grenze des Tokens. Ohne diesen Test wäre nicht festgehalten, dass die
+  # Freigabe der Zwischenstände an Liga UND Spieltagsnummer hängt und nicht am
+  # Wegfall des Filters.
+  test 'eine parallele Partie einer ANDEREN Liga kommt gar nicht mit' do
+    fremde_liga = create(:league, game_operation: @go, name: 'Andere Liga')
+    fremder_tag = create(:game_day, league: fremde_liga, number: @game_day.number)
+    fremdes_spiel = create(:game, game_day: fremder_tag,
+                                  home_team: create(:team, league: fremde_liga),
+                                  guest_team: create(:team, league: fremde_liga),
+                                  started: true, ended: false,
+                                  events: [{ 'row' => 1, 'period' => 1, 'event_type' => 'goal',
+                                             'event_team' => 'home', 'home_number' => 7,
+                                             'home_goals' => 1, 'guest_goals' => 0,
+                                             'added_at' => 30.seconds.ago.to_i }])
+
+    get '/api/v2/public/overlay/schedule', params: { token: @token }
+
+    assert_response :success
+    ids = JSON.parse(response.body)['schedule'].map { |g| g['game_id'] }
+    assert_not_includes ids, fremdes_spiel.id
   end
 
   test 'beendete Partien anderer Hallen behalten ihren Endstand' do
@@ -478,14 +502,14 @@ class PublicOverlayControllerTest < ActionDispatch::IntegrationTest
   #
   # config/environments/test.rb setzt :null_store, jeder `Rails.cache.fetch` fuehrt
   # seinen Block also bei jedem Aufruf aus. Die CI hat den warmen Cache deshalb
-  # noch nie gesehen, und genau dort sitzt die Falle: Der Schluessel
-  # `leagues/<id>/overlay_schedule/<nummer>` haengt an Liga und Spieltag, NICHT am
-  # Token. Alle Hallen desselben Spieltags teilen ihn sich. Zieht jemand das
-  # Filtern in den fetch-Block (naheliegende Optimierung, spart ein map je
-  # Anfrage), bekommt das zweite Token die fuer das erste gefilterte Liste: sein
-  # eigenes Spiel ohne Stand, das fremde live. Mit :null_store bleibt die Suite
-  # dabei gruen.
-  test 'zwei Tokens derselben Liga sehen jeweils nur ihr eigenes Spiel live' do
+  # noch nie gesehen. Der Schluessel `leagues/<id>/overlay_schedule/<nummer>`
+  # haengt an Liga und Spieltag, NICHT am Token, alle Hallen desselben Spieltags
+  # teilen ihn sich also. Solange die Zwischenstaende je Token gefiltert wurden,
+  # war das eine Falle: Lag der Filter im fetch-Block (naheliegende
+  # Optimierung), bekam das zweite Token die fuer das erste gefilterte Liste.
+  # Ohne Filter muss der geteilte Eintrag fuer beide Tokens gleich stimmen, und
+  # das prueft dieser Test -- mit :null_store bliebe die Suite auch hier gruen.
+  test 'beide Tokens derselben Liga sehen denselben Spielplan, auch aus dem Cache' do
     parallel_day = create(:game_day, league: @league, number: @game_day.number)
     parallel_game = create(:game, game_day: parallel_day,
                                   home_team: create(:team, league: @league),
@@ -497,27 +521,30 @@ class PublicOverlayControllerTest < ActionDispatch::IntegrationTest
                                              'added_at' => 20.minutes.ago.to_i }])
     _link, fremd_token = GameDayOverlayLink.generate!(game_day: parallel_day, created_by: @user)
 
+    # Der Cache-Schlüssel hängt an Liga und Spieltagsnummer, nicht am Token:
+    # Beide Hallen teilen sich einen Eintrag. Solange ein Filter je Token ein
+    # anderes Ergebnis lieferte, war das eine Fußangel (das zweite Token bekam
+    # die Sicht des ersten, wenn der Filter im `fetch` lag). Ohne Filter muss
+    # der geteilte Eintrag für beide stimmen -- dieser Test hält das fest,
+    # deshalb ein echter Store statt :null_store.
     vorher = Rails.cache
     Rails.cache = ActiveSupport::Cache::MemoryStore.new
     begin
-      # Erstes Token waermt den gemeinsamen Schluessel.
       get '/api/v2/public/overlay/schedule', params: { token: @token }
       assert_response :success
       erste = JSON.parse(response.body)['schedule']
-      assert_equal '2:0', erste.find { |g| g['game_id'] == @game.id }['result_string'],
-                   'eigenes Spiel bleibt live'
-      assert_nil erste.find { |g| g['game_id'] == parallel_game.id }['result_string'],
-                 'fremdes Spiel ohne Stand'
 
-      # Zweites Token trifft den warmen Schluessel und muss trotzdem seine eigene
-      # Sicht bekommen, nicht die des ersten.
+      # Zweites Token trifft den warmen Schlüssel.
       get '/api/v2/public/overlay/schedule', params: { token: fremd_token }
       assert_response :success
       zweite = JSON.parse(response.body)['schedule']
-      assert_equal '0:1', zweite.find { |g| g['game_id'] == parallel_game.id }['result_string'],
-                   'aus Sicht des zweiten Tokens ist DIESES Spiel das eigene'
-      assert_nil zweite.find { |g| g['game_id'] == @game.id }['result_string'],
-                 'und das erste Spiel ist jetzt das fremde'
+
+      [[erste, 'erstes Token'], [zweite, 'zweites Token']].each do |schedule, wer|
+        assert_equal '2:0', schedule.find { |g| g['game_id'] == @game.id }['result_string'],
+                     "#{wer} sieht den Stand der ersten Halle"
+        assert_equal '0:1', schedule.find { |g| g['game_id'] == parallel_game.id }['result_string'],
+                     "#{wer} sieht den Stand der zweiten Halle"
+      end
     ensure
       Rails.cache = vorher
     end
