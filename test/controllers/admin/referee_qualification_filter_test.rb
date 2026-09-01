@@ -34,7 +34,8 @@ module Admin
 
       RefereeQualification.create!(referee: @mit_qualifikation, referee_qualification_type: @beobachter,
                                    valid_until: Date.new(2028, 6, 30))
-      RefereeQualification.create!(referee: @andere_qualifikation, referee_qualification_type: @ausbilder)
+      RefereeQualification.create!(referee: @andere_qualifikation, referee_qualification_type: @ausbilder,
+                                   valid_until: Date.new(2028, 6, 30))
     end
 
     def login(user)

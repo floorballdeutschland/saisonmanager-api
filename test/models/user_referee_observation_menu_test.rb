@@ -80,7 +80,8 @@ class UserRefereeObservationMenuTest < ActiveSupport::TestCase
 
   def coach_referee
     referee = create(:referee)
-    RefereeQualification.create!(referee: referee, referee_qualification_type: @b_type)
+    RefereeQualification.create!(referee: referee, referee_qualification_type: @b_type,
+                                 valid_until: 1.year.from_now.to_date)
     referee
   end
 
