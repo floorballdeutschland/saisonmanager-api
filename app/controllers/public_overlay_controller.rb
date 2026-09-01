@@ -12,7 +12,10 @@
 # ApplicationController#delay_live_data? hängt an @authenticated_api_key, und
 # die Variable wird hier nie gesetzt, weil authenticate_public_request nicht
 # läuft. Der Unterschied zu einem Schlüssel mit Echtzeit-Freigabe: Dieses Token
-# gilt nur für die Spiele eines Spieltags und läuft von selbst ab.
+# reicht nur bis zu EINER Liga -- dem Spieltag des Tokens und, in der
+# Formkurve, den zuletzt beendeten Partien seiner beiden Mannschaften in
+# derselben Liga -- und läuft von selbst ab. Wie weit genau, steht bei
+# #build_overlay_schedule und bei #recent_games.
 class PublicOverlayController < ApplicationController
   # Obergrenze für den Steuerzustand. Er wird bei jedem Abruf mit ausgeliefert,
   # also begrenzt diese Zahl zugleich den Datenverkehr, den ein weitergegebenes
@@ -119,6 +122,28 @@ class PublicOverlayController < ApplicationController
 
     expires_in 15.seconds
     render json: league_frame.merge(schedule: overlay_schedule)
+  end
+
+  # GET /api/v2/public/overlay/form?token=XXX
+  #
+  # Formkurve beider Mannschaften des aktiven Spiels: die letzten beendeten
+  # Partien, neueste zuerst. Eigener Endpunkt und nicht Teil des Spielabrufs:
+  # Der geht bei jedem Tor neu heraus, diese Liste aendert sich hoechstens, wenn
+  # ein Spiel endet.
+  def form
+    return if render_missing_league
+
+    game = resolve_game
+    return render json: { message: 'Kein Spiel für diesen Spieltag.' }, status: :not_found if game.nil?
+
+    expires_in 30.seconds
+    render json: league_frame.merge(
+      game_id: game.id,
+      form: {
+        home: team_form(game.home_team, game),
+        guest: team_form(game.guest_team, game)
+      }
+    )
   end
 
   # POST /api/v2/public/overlay/state?token=XXX
@@ -265,53 +290,33 @@ class PublicOverlayController < ApplicationController
     # ausgelöst. Ohne Nummer gibt es keinen ligaweiten Spieltag.
     return [] if number.blank?
 
-    raw = Rails.cache.fetch("leagues/#{league.id}/overlay_schedule/#{number}", expires_in: 30.seconds) do
+    Rails.cache.fetch("leagues/#{league.id}/overlay_schedule/#{number}", expires_in: 30.seconds) do
       league.games(number).map(&:schedule_item)
     end
-
-    # Das Filtern gehört NACH das `fetch`, nicht hinein. Der Schlüssel hängt an
-    # Liga und Spieltagsnummer, NICHT am Token: alle Hallen desselben Spieltags
-    # teilen ihn sich. Läge der Filter im Block, bekäme das zweite Token die für
-    # das erste gefilterte Liste – sein eigenes Spiel ohne Stand, das fremde dafür
-    # live. Genau verkehrt herum. Weil der Test-Store :null_store ist, sieht die CI
-    # so etwas nur mit einem eigens gesetzten Store, siehe den Test
-    # 'zwei Tokens derselben Liga sehen jeweils nur ihr eigenes Spiel live'.
-    strip_foreign_live_scores(raw)
   end
 
-  # HIER LIEGT DIE AUSNAHME, UND HIER ENDET SIE.
+  # HIER STAND EIN FILTER, UND WARUM ER WEG IST.
   #
-  # Das Token hebt die Zehn-Minuten-Verzögerung für die Spiele SEINES Spieltags
-  # auf, für die übrige Liga ausdrücklich nicht. `delay_live_scores` aus dem
-  # ApplicationController hilft dabei nicht: Es hängt an `delay_live_data?`, und
-  # das ist hier immer false, weil `authenticate_public_request` nicht läuft und
-  # @authenticated_api_key deshalb nie gesetzt wird. Ein Aufruf wäre also ein
-  # wirkungsloser Platzhalter, der wie eine Absicherung aussieht.
+  # Bis hierher wurden die Zwischenstände laufender Partien AUS ANDEREN HALLEN
+  # aus dieser Liste entfernt (`strip_foreign_live_scores`), weil das Token die
+  # Zehn-Minuten-Verzögerung nur für die Spiele SEINES Spieltags aufheben sollte.
   #
-  # Deshalb wird hier unabhängig davon gefiltert: Zwischenstände laufender
-  # Partien aus anderen Hallen fallen weg, das eigene Spiel bleibt live.
-  def strip_foreign_live_scores(schedule)
-    own = own_game_ids
-
-    schedule.map do |entry|
-      next entry if own.include?(entry_value(entry, :game_id))
-      next entry unless running_entry?(entry)
-
-      # Beide Schlüsselformen leeren statt `merge(result: nil)`. Mit den heute
-      # eingesetzten Stores ist die String-Form toter Code: :null_store im Test
-      # gibt den Block-Rückgabewert unverändert durch, und :memory_store in
-      # Produktion serialisiert über DupCoder, nicht über Marshal, und liefert
-      # Symbole zurück (nachgemessen). Sie steht als Vorsorge für einen Store
-      # mit JSON-Kodierung (Redis, Memcached), wo die Schlüssel als Strings
-      # zurückkämen: Ein Symbol-Merge legte dann einen zweiten, leeren Schlüssel
-      # daneben und ließe den gefüllten stehen, die Verzögerung fiele still aus.
-      stripped = entry.dup
-      [:result, 'result', :result_string, 'result_string'].each do |key|
-        stripped[key] = nil if stripped.key?(key)
-      end
-      stripped
-    end
-  end
+  # Diese Verzögerung richtet sich aber gegen API-Schlüssel ohne
+  # Echtzeit-Freigabe (`ApplicationController#delay_live_data?`) und nicht gegen
+  # das Publikum: Dieselben Zahlen stehen auf der öffentlichen Live-Seite, die
+  # der Frontend-Schlüssel bedient. Der Filter hielt die Zwischenstände also
+  # gerade dort zurück, wo sie am meisten helfen -- in der Spieltagsübersicht
+  # einer Übertragung -- ohne sie irgendwo sonst zu verbergen. (Die Aussage
+  # hängt daran, dass jener Schlüssel `realtime` gesetzt hat; auf Produktion
+  # geprüft, im Code steht es nicht.)
+  #
+  # Die Grenze zieht der Endpunkt: `league` und `number` kommen allein aus dem
+  # Token, ein `league_id`-Parameter existiert nicht. Und der Cache-Schlüssel
+  # hängt an Liga und Spieltagsnummer, NICHT am Token -- alle Hallen desselben
+  # Spieltags teilen ihn sich. Ein je Token unterschiedliches Ergebnis war darin
+  # nur außerhalb des `fetch` korrekt zu bilden; ohne Filter stellt sich die
+  # Frage für DIESEN Schlüssel nicht mehr. Für den je Mannschaft und Spiel
+  # gebildeten Schlüssel der Formkurve gilt sie weiter, siehe #team_form.
 
   def running_games
     @running_games ||= overlay_schedule.select { |entry| running_entry?(entry) }.map do |entry|
@@ -330,6 +335,131 @@ class PublicOverlayController < ApplicationController
 
   def own_game_ids
     @own_game_ids ||= @link.game_day.games.pluck(:id).to_set
+  end
+
+  # So viele Partien, wie eine Formkurve traegt. Fuenf ist die uebliche Laenge,
+  # und mehr passt neben der zweiten Mannschaft nicht ins Bild.
+  FORM_GAMES = 5
+
+  def team_form(team, current_game)
+    return nil if team.nil?
+
+    {
+      id: team.id,
+      name: team.name,
+      short_name: team.ticker_short_name,
+      # Das übertragene Spiel gehört NICHT in seine eigene Formkurve: Sobald es
+      # auf `ended` steht, wäre es sonst bei beiden Mannschaften Eintrag Nummer
+      # eins -- und die Nachbetrachtung nach dem Schlusspfiff ist genau der
+      # Moment, in dem dieses Bild eingeblendet wird. Deshalb steht seine id
+      # auch im Cache-Schlüssel, sonst trüge ein Eintrag für ein anderes Spiel
+      # desselben Spieltags die falsche Ausnahme.
+      #
+      # 30 Sekunden wie die übrigen ligaweiten Antworten und nicht 5 Minuten:
+      # Nichts löscht diesen Schlüssel (`Game#flush_league_caches` kennt ihn
+      # nicht), Tabelle und Spielplan im SELBEN Bild wären nach einem Spielende
+      # also aktuell und die Formkurve daneben minutenlang alt.
+      games: Rails.cache.fetch(
+        "teams/#{team.id}/overlay_form/#{league.id}/#{current_game.id}",
+        expires_in: 30.seconds
+      ) do
+        recent_games(team, current_game).map { |game| form_entry(game, team) }
+      end
+    }
+  end
+
+  # ACHTUNG, `game_days.date` ist eine Zeichenkette und keine Datumsspalte.
+  # Absteigend sortiert wird also als TEXT. Fuer das ISO-Format (2026-09-19),
+  # das die Anwendung schreibt, ist das chronologisch; ein Altbestand in einer
+  # anderen Schreibweise waere es nicht -- `GameDay` prueft das Format nur bei
+  # geaenderten Zeilen und begruendet das ausdruecklich mit vorhandenen
+  # abweichenden Bestandszeilen. Sortiert wird trotzdem in der Datenbank, denn
+  # erst das erlaubt das LIMIT; ohne das laedt eine Mannschaft ihre ganze
+  # Historie, um fuenf Zeilen zu zeigen.
+  #
+  # NUR die Liga des Tokens. Das ist die Grenze, mit der dieser Zugang im ganzen
+  # Controller begruendet ist (siehe Klassenkommentar): `Game.by_team_id` allein
+  # ist ein reines `home_team_id OR guest_team_id` ohne Liga und Saison, und ein
+  # Team behaelt seine id, wenn es ueber `cup_leagues` in einem Pokal
+  # mitgemeldet wird -- ausgeliefert waeren damit auch Partien anderer Ligen.
+  # Fachlich ist die Ligaform ohnehin das Gemeinte: In einer Bundesligapartie
+  # sagt die Bundesligaform etwas, ein Pokalspiel gegen einen Regionalligisten
+  # nicht. Zu Saisonbeginn ist die Kurve dafuer leer, und das Overlay benennt
+  # diesen Zustand.
+  #
+  # Vorgeladen wird `game_day: :league` mit: `Game#result` greift bei
+  # Verlaengerung und kampflosen Spielen auf die Liga zu, und
+  # `ticker_short_name` faellt auf den Verein zurueck -- ohne diese Kette ergaben
+  # fuenf Zeilen bis zu fuenfzehn Nachfragen.
+  #
+  # Der Ligafilter haelt zugleich ligalose Spieltage heraus, und das ist keine
+  # Formsache: `game_days.league_id` ist nullable, und `Game#result` greift bei
+  # kampflos gewerteten Spielen und bei Verlaengerung auf `league` zu
+  # (`forfait_goals`, `period_titles`). Ohne diesen Riegel endete die ganze
+  # Formkurve in `NoMethodError: undefined method forfait_goals for nil` --
+  # nachgestellt. Der INNER JOIN auf die Liga sichert dasselbe ein zweites Mal
+  # und traegt den Preload.
+  def recent_games(team, current_game)
+    Game.by_team_id(team.id)
+        .where(ended: true)
+        .where.not(id: current_game.id)
+        .joins(game_day: :league)
+        .where(game_days: { league_id: league.id })
+        .includes(game_day: :league, home_team: :club, guest_team: :club)
+        .order(Arel.sql('game_days.date DESC NULLS LAST, games.start_time DESC NULLS LAST'))
+        .limit(FORM_GAMES)
+  end
+
+  def form_entry(game, team)
+    heim = game.home_team_id == team.id
+    gegner = heim ? game.guest_team : game.home_team
+    result = game.result || {}
+    eigene = heim ? result[:home_goals] : result[:guest_goals]
+    fremde = heim ? result[:guest_goals] : result[:home_goals]
+
+    ausgang = outcome_for(eigene, fremde)
+
+    {
+      game_id: game.id,
+      date: game.game_day&.date,
+      home: heim,
+      opponent: gegner&.name,
+      opponent_short: gegner&.ticker_short_name,
+      # Ohne Wertung auch keine Tore. Das betrifft die beidseitige Wertung am
+      # gruenen Tisch, die BEIDE Seiten negativ setzt (-3:-3): Wenn die Wertung
+      # dazu schon keine Aussage macht, waere ein "-3:-3" im Bild die dazu
+      # passende Falschaussage.
+      goals: ausgang.nil? ? nil : eigene,
+      opponent_goals: ausgang.nil? ? nil : fremde,
+      # Verlaengerung und Penaltyschiessen gehoeren in eine Formkurve: Ein Sieg
+      # n. V. ist ein anderer als ein regulaerer. Beides liegt in `result`
+      # bereits fertig vor.
+      overtime: result[:overtime] == true,
+      # Aus dem Hash und nicht per zweitem `game.result_postfix`: `Game#result`
+      # hat ihn dort schon abgelegt, und der Aufruf greift bei Verlaengerung auf
+      # `league.period_titles` zu.
+      postfix: result[:overtime] ? result.dig(:postfix, :short).presence : nil,
+      # Aus Sicht DIESER Mannschaft. nil, wenn der Stand fehlt: `Game#result`
+      # gibt nichts zurueck, solange ein Spiel nicht begonnen hat, und ein
+      # beendetes Spiel ohne Ereignisse gibt es im Bestand auch. Ein Rueckfall
+      # auf 0:0 waere hier eine erfundene Niederlage.
+      outcome: ausgang,
+      # Am gruenen Tisch entschieden. Gehoert ins Bild, weil ein 0:3 ohne diesen
+      # Hinweis wie ein gespieltes Ergebnis aussieht.
+      forfait: result[:forfait] == true
+    }
+  end
+
+  def outcome_for(eigene, fremde)
+    return nil unless eigene.is_a?(Integer) && fremde.is_a?(Integer)
+    # Bei der beidseitigen Wertung setzt League#forfait_goals BEIDE Seiten
+    # negativ (-3:-3). Das ist kein Unentschieden, sondern zwei Niederlagen, und
+    # eine Formkurve kann das nicht darstellen -- also keine Aussage.
+    return nil if eigene.negative? || fremde.negative?
+    return 'win' if eigene > fremde
+    return 'loss' if eigene < fremde
+
+    'draw'
   end
 
   def entry_value(entry, key)
