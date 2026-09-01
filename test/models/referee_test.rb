@@ -357,6 +357,26 @@ class RefereeTest < ActiveSupport::TestCase
     assert_empty Referee.search('Baxr')
   end
 
+  # api#585: `coach_qualified` las ein leeres valid_until als „unbefristet". Mit
+  # dem Pflichtfeld gibt es diese Bedeutung nicht mehr -- sonst waere das
+  # Weglassen des Datums der bequemere Weg zu einer nie ablaufenden
+  # Beobachterberechtigung als das Datum selbst. Die Zeile ist nur noch als
+  # Altbestand erreichbar, deshalb `validate: false`.
+  test 'coach_qualified zaehlt eine B-Qualifikation ohne Ablaufdatum nicht mit' do
+    b_type = RefereeQualificationType.create!(name: "B-Coach #{SecureRandom.hex(3)}")
+    ohne_datum = make_referee(lizenznummer: 20_901)
+    gueltig = make_referee(lizenznummer: 20_902)
+    RefereeQualification.new(referee: ohne_datum, referee_qualification_type: b_type,
+                             valid_until: nil).save!(validate: false)
+    RefereeQualification.create!(referee: gueltig, referee_qualification_type: b_type,
+                                 valid_until: 1.year.from_now.to_date)
+
+    qualifiziert = Referee.coach_qualified.pluck(:id)
+
+    assert_includes qualifiziert, gueltig.id
+    assert_not_includes qualifiziert, ohne_datum.id
+  end
+
   def partner_game(referee_ids, season_id: '18')
     league = create(:league, season_id: season_id)
     create(:game, game_day: create(:game_day, league: league), officiating_referee_ids: referee_ids)

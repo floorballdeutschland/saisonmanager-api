@@ -8,7 +8,22 @@ class RefereeQualificationTest < ActiveSupport::TestCase
   setup do
     @referee = create(:referee, lizenznummer: 730_001)
     @type = RefereeQualificationType.create!(name: "Beobachter #{SecureRandom.hex(4)}", short_name: 'BEO')
-    RefereeQualification.create!(referee: @referee, referee_qualification_type: @type)
+    RefereeQualification.create!(referee: @referee, referee_qualification_type: @type,
+                                 valid_until: Date.new(2027, 6, 30))
+  end
+
+  # api#585: Eine Zusatzqualifikation ohne Ablaufdatum gibt es nicht mehr. Vorher
+  # war das leere Feld eine eigene Bedeutung („unbefristet", siehe
+  # Referee.coach_qualified) und damit der bequemere Weg zu einer nie
+  # ablaufenden Berechtigung als das Datum selbst.
+  test 'ohne Gueltigkeit laesst sich keine Qualifikation anlegen' do
+    ohne_datum = RefereeQualification.new(referee: @referee,
+                                          referee_qualification_type: RefereeQualificationType.create!(
+                                            name: "Spielleiter #{SecureRandom.hex(4)}", short_name: 'SPL'
+                                          ))
+
+    assert_not ohne_datum.valid?
+    assert_match(/muss angegeben werden/, ohne_datum.errors.full_messages.join)
   end
 
   test 'dieselbe Qualifikation laesst sich kein zweites Mal anlegen' do

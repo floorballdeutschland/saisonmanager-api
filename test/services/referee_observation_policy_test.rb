@@ -172,7 +172,11 @@ class RefereeObservationPolicyTest < ActiveSupport::TestCase
     create(:user, referee: referee, permissions: [{ 'user_group_id' => 6, 'game_operation_id' => 0 }])
   end
 
-  def coach_referee(club: nil, valid_until: nil)
+  # Die Gueltigkeit ist seit api#585 Pflichtfeld, der Standard also ein Datum und
+  # nicht mehr `nil`. Ein leeres valid_until galt vorher als unbefristet und war
+  # damit der bequemste Standard fuer diese Helfermethode; genau diese Bedeutung
+  # ist weggefallen.
+  def coach_referee(club: nil, valid_until: 1.year.from_now.to_date)
     referee = create(:referee, club: club)
     RefereeQualification.create!(referee: referee, referee_qualification_type: @b_type,
                                  valid_until: valid_until)
