@@ -113,6 +113,155 @@ class PublicOverlayControllerTest < ActionDispatch::IntegrationTest
     assert_equal 5, JSON.parse(response.body)['form']['home']['games'].size
   end
 
+  test 'das uebertragene Spiel steht nicht in seiner eigenen Formkurve' do
+    beendetes_spiel(@home, '2026-09-05', 3, 1)
+    @game.update!(ended: true)
+
+    get '/api/v2/public/overlay/form', params: { token: @token }
+
+    assert_response :success
+    ids = JSON.parse(response.body)['form']['home']['games'].map { |g| g['game_id'] }
+    assert_not_includes ids, @game.id, 'die uebertragene Partie gehoert nicht in ihre eigene Kurve'
+    assert_equal 1, ids.size
+  end
+
+  test 'die Formkurve zeigt nur Partien derselben Liga' do
+    eigene = beendetes_spiel(@home, '2026-09-05', 3, 1)
+
+    # Dieselbe Mannschaft in einer anderen Liga: Ueber cup_leagues behaelt ein
+    # Team seine id, `Game.by_team_id` allein wuerde solche Partien mitnehmen.
+    fremde_liga = create(:league, game_operation: @go, name: 'Pokal')
+    fremder_tag = create(:game_day, league: fremde_liga, date: '2026-09-14')
+    fremdes = create(:game, game_day: fremder_tag,
+                            home_team: @home,
+                            guest_team: create(:team, league: fremde_liga),
+                            started: true, ended: true,
+                            events: [{ 'row' => 1, 'period' => 1, 'time' => '05:00',
+                                       'home_goals' => 9, 'guest_goals' => 0 }])
+
+    get '/api/v2/public/overlay/form', params: { token: @token }
+
+    assert_response :success
+    ids = JSON.parse(response.body)['form']['home']['games'].map { |g| g['game_id'] }
+    assert_includes ids, eigene.id
+    assert_not_includes ids, fremdes.id, 'eine Partie einer anderen Liga gehoert nicht dazu'
+  end
+
+  test 'ein beendetes Spiel an einem ligalosen Spieltag laesst die Formkurve nicht abstuerzen' do
+    # `game_days.league_id` ist nullable, und `Game#result` greift bei kampflos
+    # gewerteten Spielen auf die Liga zu. Nimmt man Ligafilter UND Liga-Join aus
+    # `recent_games` heraus, endet dieser Test in
+    # `NoMethodError: undefined method forfait_goals for nil` -- nachgestellt.
+    ligaloser_tag = create(:game_day, league: @league, date: '2026-09-05')
+    create(:game, game_day: ligaloser_tag,
+                  home_team: @home,
+                  guest_team: create(:team, league: @league),
+                  started: true, ended: true, forfait: 1)
+    # `belongs_to :league` verlangt die Liga, ein solcher Spieltag entsteht also
+    # nur als Altbestand -- deshalb an der Validierung vorbei.
+    ligaloser_tag.update_column(:league_id, nil)
+
+    get '/api/v2/public/overlay/form', params: { token: @token }
+
+    assert_response :success
+    assert_equal [], JSON.parse(response.body)['form']['home']['games']
+  end
+
+  test 'eine einseitige Wertung am gruenen Tisch ist als solche gekennzeichnet' do
+    tag = create(:game_day, league: @league, date: '2026-09-05')
+    # forfait 2: Heimsieg am gruenen Tisch.
+    create(:game, game_day: tag, home_team: @home,
+                  guest_team: create(:team, league: @league),
+                  started: true, ended: true, forfait: 2)
+
+    get '/api/v2/public/overlay/form', params: { token: @token }
+
+    assert_response :success
+    eintrag = JSON.parse(response.body)['form']['home']['games'].first
+
+    assert_equal 'win', eintrag['outcome']
+    assert eintrag['forfait'], 'die Wertung am gruenen Tisch muss erkennbar sein'
+    assert_equal @league.forfait_goals, eintrag['goals']
+  end
+
+  test 'eine beidseitige Wertung ergibt weder Wertung noch Tore' do
+    tag = create(:game_day, league: @league, date: '2026-09-05')
+    # forfait 3 setzt BEIDE Seiten negativ. Das sind zwei Niederlagen, kein
+    # Unentschieden -- und ein "-3:-3" im Bild waere die passende Falschaussage.
+    create(:game, game_day: tag, home_team: @home,
+                  guest_team: create(:team, league: @league),
+                  started: true, ended: true, forfait: 3)
+
+    get '/api/v2/public/overlay/form', params: { token: @token }
+
+    assert_response :success
+    eintrag = JSON.parse(response.body)['form']['home']['games'].first
+
+    assert_nil eintrag['outcome'], 'zwei Niederlagen sind kein Unentschieden'
+    assert_nil eintrag['goals'], 'ohne Wertung auch keine negativen Tore'
+    assert_nil eintrag['opponent_goals']
+  end
+
+  test 'ein Sieg nach Verlaengerung ist von einem regulaeren zu unterscheiden' do
+    tag = create(:game_day, league: @league, date: '2026-09-05')
+    create(:game, game_day: tag, home_team: @home,
+                  guest_team: create(:team, league: @league),
+                  started: true, ended: true, overtime: true,
+                  events: [{ 'row' => 1, 'period' => 1, 'time' => '05:00',
+                             'home_goals' => 1, 'guest_goals' => 0 },
+                           # Die Liga der Factory spielt HAELFTEN (`periods`
+                           # ist nicht 3), dort ist Abschnitt 3 die
+                           # Verlaengerung und 4 das Penaltyschiessen.
+                           # `result_postfix` entscheidet am LETZTEN Ereignis,
+                           # welchen Zusatz es liefert.
+                           { 'row' => 2, 'period' => 3, 'time' => '02:00',
+                             'home_goals' => 2, 'guest_goals' => 1 }])
+
+    get '/api/v2/public/overlay/form', params: { token: @token }
+
+    assert_response :success
+    eintrag = JSON.parse(response.body)['form']['home']['games'].first
+
+    assert_equal 'win', eintrag['outcome']
+    assert eintrag['overtime']
+    assert_equal 'n.V.', eintrag['postfix']
+  end
+
+  # Wie beim Spielplan: Der Test-Store ist :null_store, ein Cache-Fehler waere
+  # in der CI also unsichtbar. Der Schluessel der Formkurve haengt an Mannschaft,
+  # Liga UND Spiel -- letzteres, weil das uebertragene Spiel aus seiner eigenen
+  # Kurve fallen muss. Ohne das Spiel im Schluessel bekaeme ein zweites Spiel
+  # desselben Spieltags die Ausnahme des ersten.
+  test 'zwei Spiele desselben Spieltags bekommen jeweils ihre eigene Formkurve' do
+    zweites_heim = create(:team, league: @league, name: 'Drittverein')
+    zweites = create(:game, game_day: @game_day, home_team: zweites_heim,
+                            guest_team: @home, start_time: '20:00',
+                            started: true, ended: true,
+                            events: [{ 'row' => 1, 'period' => 1, 'time' => '05:00',
+                                       'home_goals' => 1, 'guest_goals' => 0 }])
+    @game.update!(ended: true)
+
+    vorher = Rails.cache
+    Rails.cache = ActiveSupport::Cache::MemoryStore.new
+    begin
+      get '/api/v2/public/overlay/form', params: { token: @token, game_id: @game.id }
+      assert_response :success
+      erste = JSON.parse(response.body)['form']['home']['games'].map { |g| g['game_id'] }
+
+      get '/api/v2/public/overlay/form', params: { token: @token, game_id: zweites.id }
+      assert_response :success
+      # Aus Sicht des zweiten Spiels ist @home die GASTmannschaft.
+      zweite = JSON.parse(response.body)['form']['guest']['games'].map { |g| g['game_id'] }
+
+      assert_includes erste, zweites.id, 'das zweite Spiel gehoert in die Kurve des ersten'
+      assert_not_includes erste, @game.id
+      assert_includes zweite, @game.id, 'und umgekehrt'
+      assert_not_includes zweite, zweites.id
+    ensure
+      Rails.cache = vorher
+    end
+  end
+
   test 'die Formkurve braucht ein gueltiges Token' do
     get '/api/v2/public/overlay/form', params: { token: 'gibtesnicht' }
 
@@ -510,6 +659,9 @@ class PublicOverlayControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     ids = JSON.parse(response.body)['schedule'].map { |g| g['game_id'] }
+    # BEIDE Richtungen: Ohne die zweite Zusicherung bestünde der Test auch bei
+    # einem komplett leeren Spielplan.
+    assert_includes ids, @game.id, 'das eigene Spiel muss drinstehen'
     assert_not_includes ids, fremdes_spiel.id
   end
 
@@ -705,7 +857,7 @@ class PublicOverlayControllerTest < ActionDispatch::IntegrationTest
                   home_team: heim ? team : gegner,
                   guest_team: heim ? gegner : team,
                   started: true, ended: true,
-                  events: [{ 'row' => 1, 'period' => 1,
+                  events: [{ 'row' => 1, 'period' => 1, 'time' => '05:00',
                              'home_goals' => heim ? eigene : fremde,
                              'guest_goals' => heim ? fremde : eigene }])
   end
