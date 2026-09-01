@@ -297,6 +297,13 @@ module Admin
           nachname: r.nachname,
           lizenzstufe: r.lizenzstufe,
           kurzfristig_mobil: r.kurzfristig_mobil,
+          # Nummer aus dem Profilabschnitt „Ansetzungsinformationen", den die
+          # Schiedsrichter genau dafür ausfüllen, dass die Ansetzung sie
+          # kurzfristig erreicht. Ohne sie steht das Kennzeichen „kurzfristig
+          # mobil" in der Auswahl, aber kein Weg, die Person auch anzurufen.
+          # Der Endpunkt hängt an authorize_person_level!, sieht also nur
+          # Admin und die Ansetzer-Rolle.
+          telefonnummer: r.telefonnummer,
           partner_lizenznummer: r.partner_lizenznummer,
           club_id: r.club_id,
           excluded_club_ids: excluded_clubs[r.id] || [],
@@ -337,6 +344,11 @@ module Admin
           vorname: r.vorname,
           nachname: r.nachname,
           lizenzstufe: r.lizenzstufe,
+          # Wie in #available: Coaches werden ebenso kurzfristig disponiert,
+          # und die Oberfläche zeigt die Nummer nur zum Kennzeichen. Ohne das
+          # Kennzeichen im selben Datensatz bliebe sie bei Coaches unsichtbar.
+          kurzfristig_mobil: r.kurzfristig_mobil,
+          telefonnummer: r.telefonnummer,
           club_id: r.club_id,
           excluded_club_ids: excluded_clubs[r.id] || []
         }
@@ -1023,7 +1035,12 @@ module Admin
         nachname: r.nachname,
         lizenzstufe: r.lizenzstufe,
         partner_lizenznummer: r.partner_lizenznummer,
-        # Nur für die RSK in der Ansetzungs-Ansicht sichtbar (dringender Fall, #643).
+        # Kontakt zum angesetzten Gespann, für den dringenden Fall am Spieltag
+        # (#643). Ausgeliefert an alle, die #index erreichen: Admin, aktive
+        # Ansetzer und eine LV-RSK im reduzierten Modus — letztere allerdings
+        # nur über die API, ihre Oberfläche (fb-assignment-club-index) ruft
+        # diesen Endpunkt nicht auf. Der alte Kommentar hier nannte die RSK als
+        # einzige Empfängerin, was die Reichweite genau verkehrt herum angab.
         telefonnummer: r.telefonnummer
       }
     end

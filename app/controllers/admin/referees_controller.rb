@@ -63,7 +63,7 @@ module Admin
     def show
       return forbidden_response unless can_access_referee?(@referee)
 
-      render json: referee_json(@referee, full: true)
+      render json: referee_json(@referee, full: true, contact: can_view_contact_data?)
     end
 
     # GET /api/v2/admin/referees/:id/feedbacks
@@ -105,7 +105,8 @@ module Admin
         # über eine „aktualisiert"-Mail zu Daten, die er noch nie gesehen hat.
         sync_qualifications(referee, qualifications) if qualifications
         sync_tags(referee) if can_manage_tags?
-        render json: referee_json(referee.reload, full: true), status: :created
+        render json: referee_json(referee.reload, full: true, contact: can_view_contact_data?),
+               status: :created
       else
         render json: { errors: referee.errors.full_messages }, status: :unprocessable_entity
       end
@@ -141,7 +142,7 @@ module Admin
         # Ausgang mitgeben wie bei der Kontenanlage (siehe create_user): Ein
         # Fehlschlag beim Versand wirft den Vorgang bewusst nicht um, ohne diese
         # Angabe hielte die Verwaltung den Schiedsrichter aber für unterrichtet.
-        render json: referee_json(@referee.reload, full: true)
+        render json: referee_json(@referee.reload, full: true, contact: can_view_contact_data?)
                      .merge(license_mail: license_mail, qualification_mail: qualification_mail)
       else
         render json: { errors: @referee.errors.full_messages }, status: :unprocessable_entity
@@ -261,7 +262,7 @@ module Admin
         return render json: { error: result.error }, status: :unprocessable_entity
       end
 
-      render json: referee_json(@referee.reload, full: true)
+      render json: referee_json(@referee.reload, full: true, contact: can_view_contact_data?)
                    .merge(email_sent: result.email_sent, duplicate_email: result.duplicate_email)
     end
 
@@ -349,7 +350,7 @@ module Admin
       end
 
       user.destroy!
-      render json: referee_json(@referee.reload, full: true)
+      render json: referee_json(@referee.reload, full: true, contact: can_view_contact_data?)
     rescue ActiveRecord::InvalidForeignKey
       render json: { error: 'Benutzerkonto kann nicht gelöscht werden: Es existieren noch verknüpfte ' \
                             'Einträge (z.B. Spielberichte oder Dokumente).' },
@@ -772,13 +773,30 @@ module Admin
       data[:season_game_count] = season_game_count unless season_game_count.nil?
       # Konto-Badge der Liste. Gleiche Grenze wie die Kontaktdaten: Wer die
       # Adressen der Schiris verwaltet, soll sehen, wer sich damit anmelden kann.
-      # Bewusst nur hier und nicht auch unter `full`: Die Detailansicht liefert mit
-      # user_id/user_name schon mehr, und `full` ist nicht an die Kontaktdaten
-      # gebunden — ein Vereinsmanager erreicht sie für die Schiris seines Vereins.
+      # An `contact` und nicht an `full`, weil `full` die Kontaktdaten-Grenze
+      # nicht zieht — ein Vereinsmanager erreicht die Detailansicht für die
+      # Schiris seines Vereins. Seit #show ebenfalls `contact` durchreicht,
+      # steht das Feld auch in der Detailantwort; ausgewertet wird es nur in der
+      # Liste, das Detail hat dafür user_id/user_name.
       data[:has_user] = referee.user.present? if contact
       # Die Detailansicht liefert die E-Mail wie bisher immer mit; in der Liste
       # nur für Rollen mit Zugriff auf Kontaktdaten (siehe can_view_contact_data?).
       data[:email] = referee.email if contact || full
+      # Telefonnummer und „kurzfristig mobil" stammen aus dem Profilabschnitt
+      # „Ansetzungsinformationen". Der Hinweis am Feld selbst ist enger als die
+      # Abschnittsüberschrift: „wird ausschließlich in dringenden Fällen von der
+      # RSK bei der Ansetzung genutzt". Ausgeliefert wird die Nummer an Admin,
+      # RSK und Ansetzer — also auch dauerhaft und nicht nur im dringenden Fall;
+      # den Hinweistext an die tatsächliche Nutzung anzupassen wäre der ehrliche
+      # Folgeschritt (nicht Teil dieses Vorgangs).
+      #
+      # An can_view_contact_data? und bewusst NICHT an `full`: Die Detailansicht
+      # erreicht auch ein Vereinsmanager für die Schiedsrichter seines Vereins,
+      # und der setzt nicht an.
+      if contact
+        data[:telefonnummer] = referee.telefonnummer
+        data[:kurzfristig_mobil] = referee.kurzfristig_mobil
+      end
 
       if full
         data.merge!(

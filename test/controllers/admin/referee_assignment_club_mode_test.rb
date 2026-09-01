@@ -207,6 +207,9 @@ module Admin
       get "/api/v2/admin/referee_assignments/available?date=#{Date.today + 7}"
       assert_response :forbidden
 
+      get "/api/v2/admin/referee_assignments/available_coaches?date=#{Date.today + 7}"
+      assert_response :forbidden
+
       post '/api/v2/admin/referee_assignments',
            params: { assignment: { game_id: game.id, status: 'tentative' } }
       assert_response :forbidden
