@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Die Ansetzung sieht die Telefonnummern der kurzfristig verfügbaren Schiedsrichter**: Im eigenen Profil füllen die Schiedsrichter den Abschnitt „Ansetzungsinformationen" aus, mit Telefonnummer, Heimatadresse, Wunschpartner und dem Kennzeichen „Ich bin kurzfristig mobil", ausdrücklich mit dem Hinweis, dass diese Angaben der Ansetzung dienen. Die Telefonnummer kam davon nicht dort an, wo sie gebraucht wird: Die Auswahlliste der verfügbaren Schiedsrichter lieferte zwar das Kennzeichen „kurzfristig mobil" mit, aber keine Nummer, und die Schiedsrichter-Verwaltung führte sie in keiner ihrer Antworten. Wer kurzfristig ein Gespann suchte, sah also genau die Personen markiert, die einspringen könnten, hatte aber keinen Weg, sie anzurufen. (Für das bereits angesetzte Gespann lieferte die Schnittstelle die Nummer seit dem Frühjahr, angezeigt wurde sie auch dort nie.) Jetzt steht sie in der Ansetzung neben jeder kurzfristig verfügbaren Person und als wählbarer Link unter dem besetzten Feld, dazu im Schiedsrichter-Profil der Verwaltung zusammen mit dem Kennzeichen. Bewusst nur zum Kennzeichen und nicht bei jedem Kandidaten: Wer nicht kurzfristig einspringt, wird aus dieser Liste heraus auch nicht angerufen. Trägt jemand das Kennzeichen ohne Nummer, sagt die Liste das ausdrücklich, statt die Zeile einfach leer zu lassen — sonst sähe die Lücke wie ein Ladefehler aus. Die Zweckbindung bleibt: Ausgeliefert wird die Nummer nur an Verwaltung, RSK und Ansetzung, also an die Rollen, die auch die übrigen Kontaktdaten sehen. Ein Vereinsmanager, der über die Schnittstelle an das Profil der Schiedsrichter seines Vereins kommt, bekommt weder Nummer noch Kennzeichen. Der Aufruf zum Wählen wird dabei aus dem Freitextfeld aufbereitet: Eine Eingabe wie „030 1234567 (ab 18 Uhr)" hätte als Link sonst die „18" mitgewählt, und eine Durchwahl hinter einer Raute wäre stillschweigend abgeschnitten worden — beides hätte eine gültige, aber falsche Nummer gewählt.
+
 ## [1.103.0] - 2026-09-01
 
 ### Neu

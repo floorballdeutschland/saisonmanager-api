@@ -79,6 +79,68 @@ module Admin
       assert_equal [own_club.id, excluded_club.id].sort, entry['excluded_club_ids'].sort
     end
 
+    # Die Ansetzung sieht am Kennzeichen „kurzfristig mobil", wen sie kurzfristig
+    # fragen kann; ohne Telefonnummer im selben Datensatz blieb der Hinweis
+    # folgenlos, weil die Nummer bis dahin nirgends in der Oberflaeche stand.
+    test 'available liefert die Telefonnummer der Auswahl mit' do
+      sa = create(:state_association, referee_assignment_enabled: true)
+      go = create(:game_operation, state_association_id: sa.id)
+      club = create(:club, state_association_id: sa.id)
+
+      date = Date.today + 7
+      referee = create(:referee, club_id: club.id, telefonnummer: '0170 1234567',
+                                 kurzfristig_mobil: true)
+      RefereeAvailability.create!(referee: referee, date: date)
+
+      login(create(:user, :assigner_scoped, game_operation_id: go.id))
+      get "/api/v2/admin/referee_assignments/available?date=#{date}"
+
+      assert_response :success
+      entry = JSON.parse(response.body).find { |r| r['id'] == referee.id }
+      assert_equal '0170 1234567', entry['telefonnummer']
+      assert_equal true, entry['kurzfristig_mobil']
+    end
+
+    # Der Frontend-Rueckfall der Ansetzungsansicht liest die Nummer einer bereits
+    # gespeicherten Ansetzung ausschliesslich aus diesem Stub -- und zwar im
+    # Regelfall, nicht als Notbehelf: #available wirft tagesgleich Angesetzte per
+    # `where.not(id: assigned_ids)` aus der Kandidatenliste, fuer ein gesetztes
+    # Gespann greift also immer der Stub. Faellt das Feld weg, zeigt die Ansicht
+    # stumm keine Nummer mehr; bis hierher hat das kein Test bemerkt.
+    test 'index liefert die Telefonnummer des angesetzten Gespanns mit' do
+      sa = create(:state_association, referee_assignment_enabled: true)
+      go = create(:game_operation, state_association_id: sa.id)
+      game = assignable_game(go)
+      referee = create(:referee, telefonnummer: '0170 1234567')
+      assignment = RefereeAssignment.create!(game: game, referee1_id: referee.id,
+                                             status: 'tentative')
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/referee_assignments'
+
+      assert_response :success
+      entry = response.parsed_body.find { |a| a['id'] == assignment.id }
+      assert_not_nil entry
+      assert_equal '0170 1234567', entry['referee1']['telefonnummer']
+    end
+
+    test 'available_coaches liefert die Telefonnummer der Auswahl mit' do
+      sa = create(:state_association, referee_assignment_enabled: true)
+      go = create(:game_operation, state_association_id: sa.id)
+      club = create(:club, state_association_id: sa.id)
+
+      date = Date.today + 7
+      coach = coach_referee(club, date)
+      coach.update!(telefonnummer: '0151 7654321')
+
+      login(create(:user, :assigner_scoped, game_operation_id: go.id))
+      get "/api/v2/admin/referee_assignments/available_coaches?date=#{date}"
+
+      assert_response :success
+      entry = JSON.parse(response.body).find { |r| r['id'] == coach.id }
+      assert_equal '0151 7654321', entry['telefonnummer']
+    end
+
     test 'available_coaches liefert die Vereins-Ausschlussliste mit' do
       sa = create(:state_association, referee_assignment_enabled: true)
       go = create(:game_operation, state_association_id: sa.id)
