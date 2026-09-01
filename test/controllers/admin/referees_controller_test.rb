@@ -403,8 +403,8 @@ module Admin
 
     # Die Nummer aus dem Profilabschnitt „Ansetzungsinformationen" ist fuer die
     # Ansetzung gedacht, stand aber in keiner Antwort der Schiedsrichter-
-    # Verwaltung. Ein Ansetzer sah das Kennzeichen „kurzfristig mobil" nirgends
-    # und die Nummer nirgends.
+    # Verwaltung -- weder die Nummer noch das Kennzeichen. In der Ansetzungs-
+    # Auswahl gab es das Kennzeichen bereits, nur keine Nummer dazu.
     test 'Ansetzer sieht Telefonnummer und kurzfristig mobil im Schiri-Detail' do
       sa = create(:state_association, referee_assignment_enabled: true)
       go = create(:game_operation, state_association_id: sa.id)
@@ -432,6 +432,28 @@ module Admin
       assert_response :success
       entry = response.parsed_body.find { |r| r['id'] == referee.id }
       assert_equal '0170 1234567', entry['telefonnummer']
+    end
+
+    # Der eigentliche Regelweg des Vereinsmanagers ist die LISTE seiner
+    # Vereinsschiris, nicht das Detail. Die `contact`-Schranke des index hatte
+    # keine einzige Gegenprobe: `contact = true` liess die gesamte Datei gruen
+    # durchlaufen, obwohl damit Telefonnummer, E-Mail und Konto-Badge an jeden
+    # Vereinsmanager gegangen waeren.
+    test 'VM bekommt in der Schiri-Liste keine Kontaktdaten' do
+      club = create(:club)
+      referee = create(:referee, club_id: club.id, telefonnummer: '0170 1234567',
+                                 kurzfristig_mobil: true, email: 'schiri@example.org')
+      login(vm_user(club.id))
+
+      get '/api/v2/admin/referees'
+
+      assert_response :success
+      entry = response.parsed_body.find { |r| r['id'] == referee.id }
+      assert_not_nil entry, 'die eigenen Vereinsschiris bleiben sichtbar'
+      assert_not entry.key?('telefonnummer')
+      assert_not entry.key?('kurzfristig_mobil')
+      assert_not entry.key?('email')
+      assert_not entry.key?('has_user')
     end
 
     # Gegenprobe zur Zweckbindung: Der Vereinsmanager erreicht das Detail seiner
