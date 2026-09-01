@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Die Ansetzung sieht die Telefonnummern der Schiedsrichter wieder**: Im eigenen Profil füllen die Schiedsrichter den Abschnitt „Ansetzungsinformationen" aus, mit Telefonnummer, Heimatadresse, Wunschpartner und dem Kennzeichen „Ich bin kurzfristig mobil", ausdrücklich mit dem Hinweis, dass diese Angaben allein der Ansetzung dienen. Die Telefonnummer kam davon nirgends an: Die Auswahlliste der verfügbaren Schiedsrichter lieferte zwar das Kennzeichen „kurzfristig mobil" mit, aber keine Nummer, und die Schiedsrichter-Verwaltung führte sie in keiner ihrer Antworten. Wer kurzfristig ein Gespann suchte, sah also genau die Personen markiert, die einspringen könnten, hatte aber keinen Weg, sie anzurufen. Die Nummer steht jetzt in der Auswahl der verfügbaren Schiedsrichter und der möglichen Coaches sowie in Liste und Detail der Schiedsrichter-Verwaltung, dort zusammen mit dem Kennzeichen „kurzfristig mobil". Die Zweckbindung bleibt: Ausgeliefert wird die Nummer nur an die Rollen, die auch die übrigen Kontaktdaten sehen, also Verwaltung, RSK und Ansetzung. Ein Vereinsmanager erreicht das Detail der Schiedsrichter seines Vereins, setzt aber nicht an und bekommt weder Nummer noch Kennzeichen.
+
 ## [1.103.0] - 2026-09-01
 
 ### Neu

@@ -63,7 +63,7 @@ module Admin
     def show
       return forbidden_response unless can_access_referee?(@referee)
 
-      render json: referee_json(@referee, full: true)
+      render json: referee_json(@referee, full: true, contact: can_view_contact_data?)
     end
 
     # GET /api/v2/admin/referees/:id/feedbacks
@@ -779,6 +779,15 @@ module Admin
       # Die Detailansicht liefert die E-Mail wie bisher immer mit; in der Liste
       # nur für Rollen mit Zugriff auf Kontaktdaten (siehe can_view_contact_data?).
       data[:email] = referee.email if contact || full
+      # Telefonnummer und „kurzfristig mobil" stammen aus dem Profilabschnitt
+      # „Ansetzungsinformationen" und dienen laut Hinweis dort ausschließlich der
+      # Ansetzung. Deshalb an can_view_contact_data? (Verwaltung, RSK, Ansetzer)
+      # und bewusst NICHT an `full`: Die Detailansicht erreicht auch ein
+      # Vereinsmanager für die Schiedsrichter seines Vereins, und der setzt nicht an.
+      if contact
+        data[:telefonnummer] = referee.telefonnummer
+        data[:kurzfristig_mobil] = referee.kurzfristig_mobil
+      end
 
       if full
         data.merge!(

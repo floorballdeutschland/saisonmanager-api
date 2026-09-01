@@ -401,6 +401,54 @@ module Admin
       assert_not_includes response.body, 'kapitaen@example.com'
     end
 
+    # Die Nummer aus dem Profilabschnitt „Ansetzungsinformationen" ist fuer die
+    # Ansetzung gedacht, stand aber in keiner Antwort der Schiedsrichter-
+    # Verwaltung. Ein Ansetzer sah das Kennzeichen „kurzfristig mobil" nirgends
+    # und die Nummer nirgends.
+    test 'Ansetzer sieht Telefonnummer und kurzfristig mobil im Schiri-Detail' do
+      sa = create(:state_association, referee_assignment_enabled: true)
+      go = create(:game_operation, state_association_id: sa.id)
+      club = create(:club, state_association_id: sa.id)
+      referee = create(:referee, club_id: club.id, telefonnummer: '0170 1234567',
+                                 kurzfristig_mobil: true)
+
+      login(create(:user, :assigner_scoped, game_operation_id: go.id))
+      get "/api/v2/admin/referees/#{referee.id}"
+
+      assert_response :success
+      assert_equal '0170 1234567', response.parsed_body['telefonnummer']
+      assert_equal true, response.parsed_body['kurzfristig_mobil']
+    end
+
+    test 'RSK sieht die Telefonnummer auch in der Liste' do
+      sa = create(:state_association)
+      go = create(:game_operation, state_association_id: sa.id)
+      club = create(:club, state_association_id: sa.id)
+      referee = create(:referee, club_id: club.id, telefonnummer: '0170 1234567')
+
+      login(rsk_user(go.id))
+      get '/api/v2/admin/referees'
+
+      assert_response :success
+      entry = response.parsed_body.find { |r| r['id'] == referee.id }
+      assert_equal '0170 1234567', entry['telefonnummer']
+    end
+
+    # Gegenprobe zur Zweckbindung: Der Vereinsmanager erreicht das Detail seiner
+    # Schiedsrichter, setzt aber nicht an und bekommt die Ansetzungsdaten nicht.
+    test 'VM bekommt im Schiri-Detail keine Telefonnummer' do
+      club = create(:club)
+      referee = create(:referee, club_id: club.id, telefonnummer: '0170 1234567',
+                                 kurzfristig_mobil: true)
+      login(vm_user(club.id))
+
+      get "/api/v2/admin/referees/#{referee.id}"
+
+      assert_response :success
+      assert_not response.parsed_body.key?('telefonnummer')
+      assert_not response.parsed_body.key?('kurzfristig_mobil')
+    end
+
     private
 
     # Spiel mit tatsächlich eingesetzten Schiris (officiating_referee_ids).

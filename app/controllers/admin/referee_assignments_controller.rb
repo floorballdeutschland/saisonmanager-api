@@ -297,6 +297,13 @@ module Admin
           nachname: r.nachname,
           lizenzstufe: r.lizenzstufe,
           kurzfristig_mobil: r.kurzfristig_mobil,
+          # Nummer aus dem Profilabschnitt „Ansetzungsinformationen", den die
+          # Schiedsrichter genau dafür ausfüllen, dass die Ansetzung sie
+          # kurzfristig erreicht. Ohne sie steht das Kennzeichen „kurzfristig
+          # mobil" in der Auswahl, aber kein Weg, die Person auch anzurufen.
+          # Der Endpunkt hängt an authorize_person_level!, sieht also nur
+          # Admin und die Ansetzer-Rolle.
+          telefonnummer: r.telefonnummer,
           partner_lizenznummer: r.partner_lizenznummer,
           club_id: r.club_id,
           excluded_club_ids: excluded_clubs[r.id] || [],
@@ -337,6 +344,8 @@ module Admin
           vorname: r.vorname,
           nachname: r.nachname,
           lizenzstufe: r.lizenzstufe,
+          # Wie in #available: Coaches werden ebenso kurzfristig disponiert.
+          telefonnummer: r.telefonnummer,
           club_id: r.club_id,
           excluded_club_ids: excluded_clubs[r.id] || []
         }
@@ -1023,7 +1032,9 @@ module Admin
         nachname: r.nachname,
         lizenzstufe: r.lizenzstufe,
         partner_lizenznummer: r.partner_lizenznummer,
-        # Nur für die RSK in der Ansetzungs-Ansicht sichtbar (dringender Fall, #643).
+        # Kontakt zum angesetzten Gespann, für den dringenden Fall am Spieltag
+        # (#643). Sichtbar für alle Rollen, die die Ansetzungs-Ansicht erreichen:
+        # Verwaltung, Ansetzer und die RSK im reduzierten Modus.
         telefonnummer: r.telefonnummer
       }
     end
