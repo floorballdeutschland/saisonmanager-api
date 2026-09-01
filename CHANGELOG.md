@@ -9,6 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.104.0] - 2026-09-01
+
+### Verbessert
+
+- **Die Gültigkeit einer Zusatzqualifikation ist Pflichtfeld**: Spielleiter, Beobachter und die übrigen Zusatzqualifikationen ließen sich in der Schiedsrichter-Verwaltung ohne Ablaufdatum speichern. Das leere Feld war dabei nicht bloß eine fehlende Angabe, sondern hatte eine eigene Bedeutung: Die Abfrage der Schiedsrichtercoaches (`Referee.coach_qualified`) las es ausdrücklich als „unbefristet". Das Weglassen des Datums war damit der bequemere Weg zu einer nie ablaufenden Beobachterberechtigung als das Datum selbst, und keine Auswertung konnte den Unterschied zwischen „gilt dauerhaft" und „hat nie jemand ausgefüllt" mehr auflösen. Jetzt verlangen Anlegen und Bearbeiten ein Ablaufdatum, im Formular als Pflichtfeld mit Hinweis und in der Schnittstelle als Fehlermeldung mit Feldnamen statt einer stillschweigend halb gespeicherten Zeile. Eine Zusatzqualifikation ohne Datum zählt entsprechend nicht mehr als gültig. Ein Datenlauf war dafür nicht nötig: Die Prüfung des Bestands vor der Auslieferung ergab, dass alle 65 hinterlegten Zusatzqualifikationen bereits ein Ablaufdatum tragen. Für den Fall, dass später doch eine Zeile ohne Datum auftaucht, liegt der Lauf (`referees:backfill_qualification_valid_until`) bereit; er wäre nötig, weil das Bearbeiten-Formular immer alle Qualifikationszeilen mitschickt und eine Altzeile ohne Datum den betroffenen Schiedsrichter sonst auch bei einer reinen Namensänderung nicht mehr speicherbar machen würde.
+
 ## [1.103.1] - 2026-09-01
 
 ### Behoben

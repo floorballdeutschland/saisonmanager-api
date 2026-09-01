@@ -137,13 +137,17 @@ class RefereeProfileControllerTest < ActionDispatch::IntegrationTest
     assert_equal [], JSON.parse(response.body)['qualifications']
   end
 
-  test 'show liefert eine abgelaufene Qualifikation und eine ohne Ablaufdatum weiter' do
+  # Die Zeile ohne Ablaufdatum ist seit api#585 nicht mehr anlegbar (Pflichtfeld),
+  # kann als Altbestand aber noch in der Datenbank stehen -- deshalb hier mit
+  # `validate: false` erzeugt. Das Profil ist eine Anzeige und hat auch diesen
+  # Fall auszugeben, statt die Qualifikation zu verschweigen.
+  test 'show liefert eine abgelaufene Qualifikation und einen Altbestand ohne Ablaufdatum weiter' do
     abgelaufen = RefereeQualificationType.create!(name: 'Abgelaufen')
     unbefristet = RefereeQualificationType.create!(name: 'Ohne Datum')
     RefereeQualification.create!(referee: @referee, referee_qualification_type: abgelaufen,
                                  valid_until: Date.new(2020, 1, 31))
-    RefereeQualification.create!(referee: @referee, referee_qualification_type: unbefristet,
-                                 valid_until: nil)
+    RefereeQualification.new(referee: @referee, referee_qualification_type: unbefristet,
+                             valid_until: nil).save!(validate: false)
 
     login(@user)
     get '/api/v2/referee/profile'

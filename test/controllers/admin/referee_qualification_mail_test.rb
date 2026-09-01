@@ -25,7 +25,7 @@ module Admin
       assert_response :success
     end
 
-    def add_qualification(referee, type, valid_until: nil)
+    def add_qualification(referee, type, valid_until: Date.new(2027, 6, 30))
       referee.referee_qualifications.create!(referee_qualification_type: type, valid_until: valid_until)
     end
 
@@ -48,19 +48,35 @@ module Admin
       assert_includes mail.body.to_s, '30.06.2027'
     end
 
-    # Deckt die drei uebrigen Zweige der Vorlage ab: Mehrzahl in der Einleitung,
-    # der Zusatz „(aktualisiert)" und „ohne Ablaufdatum".
-    test 'die Mail unterscheidet mehrere, geaenderte und unbefristete Qualifikationen' do
+    # Deckt die zwei uebrigen ueber die Maske erreichbaren Zweige der Vorlage ab:
+    # Mehrzahl in der Einleitung und der Zusatz „(aktualisiert)". Der dritte
+    # Zweig („ohne Ablaufdatum") ist seit api#585 kein Ergebnis der Maske mehr,
+    # er wird darunter fuer sich geprueft.
+    test 'die Mail unterscheidet mehrere und geaenderte Qualifikationen' do
       add_qualification(@referee, @coach, valid_until: Date.new(2026, 6, 30))
       geaendert = [{ qualification_type_id: @coach.id, valid_until: '30.06.2027' },
-                   { qualification_type_id: @beob.id, valid_until: nil }]
+                   { qualification_type_id: @beob.id, valid_until: '31.12.2028' }]
       put_qualifications(@referee, geaendert)
       perform_enqueued_jobs
 
       body = ActionMailer::Base.deliveries.last.body.to_s
       assert_includes body, 'wurden im Saisonmanager Zusatzqualifikationen eingetragen'
       assert_includes body, '(aktualisiert)'
-      assert_includes body, 'ohne Ablaufdatum'
+      assert_includes body, '30.06.2027'
+      assert_includes body, '31.12.2028'
+    end
+
+    # Der Zweig ohne Ablaufdatum bleibt als Riegel in Vorlage und Platzhalter
+    # stehen, obwohl die Maske ihn seit api#585 nicht mehr erzeugen kann: Ohne
+    # ihn waere ein leeres valid_until ein `strftime` auf nil, also eine
+    # Ausnahme mitten im Zustellen. Deshalb hier direkt am Mailer geprueft und
+    # nicht ueber die Maske.
+    test 'ein Aenderungseintrag ohne Ablaufdatum bringt die Mail nicht um' do
+      mail = RefereeMailer.qualification_notification(
+        @referee, [{ name: @coach.name, valid_until: nil, kind: :added }]
+      )
+
+      assert_includes mail.body.to_s, 'ohne Ablaufdatum'
     end
 
     # Ein in der Admin-UI gepflegter Body ersetzt das ERB-View komplett – dann
@@ -96,18 +112,20 @@ module Admin
     end
 
     test 'ein Wegfall loest keine Mail aus' do
-      add_qualification(@referee, @coach)
-      add_qualification(@referee, @beob)
+      add_qualification(@referee, @coach, valid_until: Date.new(2027, 6, 30))
+      add_qualification(@referee, @beob, valid_until: Date.new(2027, 6, 30))
 
+      # @coach bleibt unveraendert stehen, @beob fällt weg: Gemeldet wuerde nur
+      # eine neue oder geaenderte Qualifikation, also keine.
       assert_enqueued_emails 0 do
-        put_qualifications(@referee, [{ qualification_type_id: @coach.id, valid_until: nil }])
+        put_qualifications(@referee, [{ qualification_type_id: @coach.id, valid_until: '30.06.2027' }])
       end
     end
 
     # Zwei pflegbare Vorlagen mit je eigenem Betreff, also zwei Mails.
     test 'Lizenz und Qualifikation im selben Speichern ergeben zwei Mails' do
       assert_enqueued_emails 2 do
-        put_qualifications(@referee, [{ qualification_type_id: @coach.id, valid_until: nil }],
+        put_qualifications(@referee, [{ qualification_type_id: @coach.id, valid_until: '30.06.2027' }],
                            lizenzstufe: 'A')
       end
     end
@@ -116,7 +134,7 @@ module Admin
       ohne_mail = create(:referee, email: nil)
 
       assert_enqueued_emails 0 do
-        put_qualifications(ohne_mail, [{ qualification_type_id: @coach.id, valid_until: nil }])
+        put_qualifications(ohne_mail, [{ qualification_type_id: @coach.id, valid_until: '30.06.2027' }])
       end
     end
 
@@ -126,7 +144,7 @@ module Admin
       gast = create(:referee, guest: true, lizenznummer: nil, email: 'gast@example.org')
 
       assert_enqueued_emails 0 do
-        put_qualifications(gast, [{ qualification_type_id: @coach.id, valid_until: nil }])
+        put_qualifications(gast, [{ qualification_type_id: @coach.id, valid_until: '30.06.2027' }])
       end
     end
 

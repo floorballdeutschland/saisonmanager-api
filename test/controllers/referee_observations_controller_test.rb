@@ -15,7 +15,8 @@ class RefereeObservationsControllerTest < ActionDispatch::IntegrationTest
                           officiating_referee_ids: [@referee1.id, @referee2.id])
 
     @coach = create(:referee, vorname: 'Cem', nachname: 'Coach')
-    RefereeQualification.create!(referee: @coach, referee_qualification_type: @b_type, valid_until: nil)
+    RefereeQualification.create!(referee: @coach, referee_qualification_type: @b_type,
+                                 valid_until: 1.year.from_now.to_date)
     RefereeAssignment.create!(game: @game, coach: @coach, status: 'published')
     @coach_user = referee_user(@coach)
   end
@@ -60,7 +61,8 @@ class RefereeObservationsControllerTest < ActionDispatch::IntegrationTest
 
   test 'Coach ohne Ansetzung bekommt 403' do
     other_coach = create(:referee)
-    RefereeQualification.create!(referee: other_coach, referee_qualification_type: @b_type)
+    RefereeQualification.create!(referee: other_coach, referee_qualification_type: @b_type,
+                                 valid_until: 1.year.from_now.to_date)
     login(referee_user(other_coach))
 
     post '/api/v2/referee/observations', params: payload, as: :json

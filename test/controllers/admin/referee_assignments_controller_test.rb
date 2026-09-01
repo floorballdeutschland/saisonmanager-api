@@ -314,7 +314,10 @@ module Admin
     def coach_referee(club, date)
       referee = create(:referee, club_id: club.id)
       type = RefereeQualificationType.create!(name: "B-Coach #{SecureRandom.hex(3)}")
-      RefereeQualification.create!(referee: referee, referee_qualification_type: type, valid_until: nil)
+      # Ein Datum nach dem Spieltag: Die Gueltigkeit ist seit api#585 Pflichtfeld,
+      # ein leeres Feld galt vorher als unbefristet.
+      RefereeQualification.create!(referee: referee, referee_qualification_type: type,
+                                   valid_until: date + 1.year)
       RefereeAvailability.create!(referee: referee, date: date)
       referee
     end

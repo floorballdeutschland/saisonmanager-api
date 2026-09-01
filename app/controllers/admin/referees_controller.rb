@@ -507,8 +507,20 @@ module Admin
           next
         end
 
+        # api#585: Die Gueltigkeit ist Pflicht. Der Riegel steht hier und nicht
+        # erst in der Modellvalidierung: `sync_qualifications` laeuft nach
+        # `@referee.save`, ein dort scheiterndes `create!` waere also eine 500
+        # auf einen Schiedsrichter, dessen uebrige Felder schon geschrieben
+        # sind -- genau der halb durchgelaufene Vorgang, den api#515
+        # abgestellt hat. Die Modellvalidierung bleibt der Riegel fuer alles,
+        # was nicht durch diesen Controller schreibt.
+        if q[:valid_until].blank?
+          errors << "#{field}.valid_until: Gueltigkeit ist ein Pflichtfeld"
+          next
+        end
+
         begin
-          valid_until = q[:valid_until].presence ? Date.strptime(q[:valid_until].to_s, '%d.%m.%Y') : nil
+          valid_until = Date.strptime(q[:valid_until].to_s, '%d.%m.%Y')
         rescue Date::Error
           errors << "#{field}.valid_until: „#{q[:valid_until]}“ ist kein Datum im Format TT.MM.JJJJ"
           next

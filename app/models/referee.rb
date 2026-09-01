@@ -146,13 +146,21 @@ class Referee < ApplicationRecord
   # Schiedsrichtercoaches (Beobachter): gültige Zusatzqualifikation „B…" am
   # Stichtag. Bewusst ein Präfix-Vergleich und kein Flag – der Katalog der
   # Qualifikationstypen wird administrativ gepflegt und führt neben „B" auch
-  # „B-Coach" und „Beobachter". Ein leeres valid_until gilt als unbefristet.
+  # „B-Coach" und „Beobachter".
+  #
+  # Ein leeres valid_until galt bis api#585 als unbefristet. Seit die Gültigkeit
+  # Pflichtfeld ist (RefereeQualification), gibt es diese Bedeutung nicht mehr:
+  # Eine Zeile ohne Datum ist kein Dauerauftrag, sondern ein Altbestand, der mit
+  # `referees:backfill_qualification_valid_until` bereinigt wurde. Sie zählt
+  # deshalb nicht mehr mit – sonst wäre das Weglassen des Datums der bequemere
+  # Weg zu einer nie ablaufenden Beobachterberechtigung als das Datum selbst.
+  #
   # Einzige Definition dieser Gruppe; die Ansetzung (available_coaches) und die
   # Beobachtungsbögen (RefereeObservationPolicy) fragen beide hier.
   scope :coach_qualified, lambda { |date = Date.current|
     joins(referee_qualifications: :referee_qualification_type)
       .where('referee_qualification_types.name LIKE ?', 'B%')
-      .where('referee_qualifications.valid_until IS NULL OR referee_qualifications.valid_until >= ?', date)
+      .where('referee_qualifications.valid_until >= ?', date)
       .distinct
   }
   scope :search, lambda { |q|
