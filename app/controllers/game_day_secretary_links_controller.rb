@@ -226,11 +226,19 @@ class GameDaySecretaryLinksController < ApplicationController
 
   # Aktive Overlay-Zugänge je Spieltag. Anders als der Sekretariatslink gilt ein
   # Overlay-Token für genau einen Spieltag (GameDayOverlayLink), deshalb hier
-  # keine Zuordnungstabelle und kein Tie-Break: höchstens eine Zeile je Spieltag.
+  # keine Zuordnungstabelle.
+  #
+  # `order(:created_at)` trotz des eindeutigen Index aus
+  # 20260902110000: `index_by` behält bei gleichem Schlüssel den zuletzt
+  # gelesenen Eintrag, und wenn diese Reihenfolge doch einmal etwas entscheidet,
+  # soll es der zuletzt erzeugte Zugang sein. Dieselbe Absicherung wie oben beim
+  # Sekretariatslink, aus demselben Grund: Eine falsche Auskunft darüber, wem
+  # ein Zugang gehört, ist schlimmer als gar keine.
   def active_overlay_links_by_game_day(game_day_ids)
     GameDayOverlayLink.active
                       .where(game_day_id: game_day_ids)
                       .includes(:created_by)
+                      .order(:created_at)
                       .index_by(&:game_day_id)
   end
 

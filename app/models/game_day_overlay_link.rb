@@ -33,14 +33,21 @@ class GameDayOverlayLink < ApplicationRecord
   def self.generate!(game_day:, created_by:)
     raw_token = SecureRandom.urlsafe_base64(32)
 
-    where(game_day:).destroy_all
+    # Löschen und Anlegen gehören zusammen: Ohne Transaktion gibt es dazwischen
+    # ein Fenster ohne Zugang, in dem die Übersicht „kein Zugang" meldet. Den
+    # Doppelbestand verhindert erst der eindeutige Index auf game_day_id
+    # (Migration 20260902110000); die Transaktion sorgt dafür, dass der zweite
+    # gleichzeitige Versuch sauber zurückrollt statt halb fertig zu enden.
+    link = transaction do
+      where(game_day:).destroy_all
 
-    link = create!(
-      game_day: game_day,
-      created_by: created_by,
-      token_digest: Digest::SHA256.hexdigest(raw_token),
-      expires_at: LIFETIME.from_now
-    )
+      create!(
+        game_day: game_day,
+        created_by: created_by,
+        token_digest: Digest::SHA256.hexdigest(raw_token),
+        expires_at: LIFETIME.from_now
+      )
+    end
 
     [link, raw_token]
   end

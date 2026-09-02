@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_09_02_100000) do
+ActiveRecord::Schema[7.2].define(version: 2026_09_02_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -213,7 +213,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_02_100000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["created_by_id"], name: "index_game_day_overlay_links_on_created_by_id"
-    t.index ["game_day_id"], name: "index_game_day_overlay_links_on_game_day_id"
+    t.index ["game_day_id"], name: "index_game_day_overlay_links_on_game_day_id", unique: true
     t.index ["token_digest"], name: "index_game_day_overlay_links_on_token_digest", unique: true
   end
 

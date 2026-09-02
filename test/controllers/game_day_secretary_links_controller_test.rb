@@ -314,6 +314,12 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
     assert_equal true, stubs[@game_day.id].dig('overlay_link', 'active')
     assert_equal 'Mia Berg', stubs[@game_day.id].dig('overlay_link', 'created_by')
     assert_not_nil stubs[@game_day.id].dig('overlay_link', 'expires_at')
+    # Der Schlüssel muss DA sein und auf nil stehen. Das Frontend unterscheidet
+    # „kein Zugang" (null) von „Feld fehlt" (ältere API, dann fragt es selbst
+    # nach); ohne diese Zeile bestünde der Test auch, wenn der Schlüssel ganz
+    # fehlte, und der Vertrag des getrennten Rollouts wäre ungeprüft.
+    assert stubs[second.id].key?('overlay_link'),
+           'das Feld gehört an jeden eigenen Spieltag, auch ohne Zugang'
     assert_nil stubs[second.id]['overlay_link'],
                'ein Token gilt für genau einen Spieltag, nicht für die ganze Halle'
   end
