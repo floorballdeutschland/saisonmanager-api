@@ -107,8 +107,17 @@ module Admin
         end
       end
 
-      if TransferRequest.active.where(player_id: player.id).exists?
-        return render json: { error: 'Fuer diesen Spieler ist bereits ein Transferantrag aktiv' }, status: :unprocessable_entity
+      # Die Suche kennt die Antragsart noch nicht -- die Maske laesst sie erst am
+      # gefundenen Spieler waehlen. Sie kann deshalb nur beides pruefen und das
+      # Ergebnis mitgeben: `blocked_request_types` schaltet die betroffene
+      # Auswahl in der Maske ab, statt den Treffer zu verschweigen und die
+      # Absage erst in #create zu bringen.
+      #
+      # Abgewiesen wird nur, wenn KEINE der beiden Arten mehr moeglich ist --
+      # sonst nimmt die Suche einen Antrag vorweg, den #create zulassen wuerde.
+      blocked = blocked_request_types(player, requesting_club_id)
+      if blocked.sort == %w[release transfer]
+        return render json: { error: both_request_types_active_error }, status: :unprocessable_entity
       end
 
       # Zuletzt, anders als die uebrigen Datenpruefungen: Die Erreichbarkeit
@@ -120,7 +129,7 @@ module Admin
         return unreachable_former_club_response(former_club)
       end
 
-      render json: { player: player.search_hash }
+      render json: { player: player.search_hash, blocked_request_types: blocked }
     end
 
     def show
@@ -174,8 +183,13 @@ module Admin
       return render json: { error: 'Verein nicht gefunden' }, status: :not_found unless requesting_club
       return deactivated_requesting_club_response if requesting_club.deactivated_at.present?
 
-      if TransferRequest.active.where(player_id: player.id).exists?
-        return render json: { error: 'Fuer diesen Spieler ist bereits ein Transferantrag aktiv' }, status: :unprocessable_entity
+      # Steht vor der Datumspruefung und der Sperrfrist, weil ein laufender
+      # Antrag der naehere Grund ist. Die Antragsart wird deshalb hier schon
+      # gelesen und nicht erst unten: Der Riegel greift je Art verschieden.
+      request_type = params[:request_type].to_s == 'release' ? 'release' : 'transfer'
+
+      if blocked_request_types(player, requesting_club_id).include?(request_type)
+        return render json: { error: active_request_error(request_type) }, status: :unprocessable_entity
       end
 
       if former_club_id == requesting_club_id
@@ -191,8 +205,6 @@ module Admin
       if unreachable_former_club?(ph, former_club)
         return unreachable_former_club_response(former_club)
       end
-
-      request_type = params[:request_type].to_s == 'release' ? 'release' : 'transfer'
 
       # Transfersperrfrist: nach einem erfolgreich abgeschlossenen Transfer ist
       # für den Spieler TRANSFER_LOCK_PERIOD lang kein neuer Transferantrag
@@ -523,7 +535,10 @@ module Admin
                       status: :forbidden
       end
 
-      if TransferRequest.active.where(player_id: player.id).exists?
+      # Nur laufende TRANSFERS sperren die Direktzuweisung: Sie ist selbst ein
+      # Transfer. Laufende Freigaben stehen ihr nicht entgegen, sie enden mit dem
+      # Vollzug (TransferRequest#annul_pending_releases!).
+      if TransferRequest.active_transfers.where(player_id: player.id).exists?
         return render json: { error: 'Für diesen Spieler ist bereits ein Transfer aktiv. Bitte zuerst annullieren.' },
                       status: :unprocessable_entity
       end
@@ -575,6 +590,51 @@ module Admin
     end
 
     private
+
+    # Welche Antragsarten sind fuer diesen Spieler gerade gesperrt?
+    #
+    # Transfer: hoechstens einer je Spieler. Ein Spieler wechselt nicht in zwei
+    # Vereine, und der zweite Antrag entwertete die Lizenzen des ersten.
+    #
+    # Freigabe: hoechstens eine je Spieler UND Zielverein. Mehrere Freigaben auf
+    # verschiedene Vereine sind der Regelfall und dieser Riegel deshalb kein
+    # Verbot, sondern nur die Absage an das Duplikat -- ein zweiter Antrag auf
+    # denselben Verein liefe folgenlos auf "approved", weil
+    # add_secondary_club_membership! die bestehende Mitgliedschaft erkennt.
+    #
+    # Ueber Kreuz sperrt nichts: Ein laufender Transfer haelt eine Freigabe
+    # nicht auf und umgekehrt. Wird der Transfer vollzogen, enden die offenen
+    # Freigaben mit ihm (TransferRequest#annul_pending_releases!) -- das ist der
+    # Grund, warum sie hier durchgelassen werden koennen.
+    #
+    # Ohne aufnehmenden Verein (Suche mit requesting_club_id 0) ist die
+    # Freigabe-Regel nicht auswertbar, sie gilt dann als offen: Die Absage
+    # gehoert an die Stelle, die den Verein kennt, und das ist #create.
+    def blocked_request_types(player, requesting_club_id)
+      active = TransferRequest.active.where(player_id: player.id)
+      blocked = []
+      blocked << 'transfer' if active.where(request_type: 'transfer').exists?
+      if requesting_club_id.to_i.positive? &&
+         active.where(request_type: 'release', requesting_club_id: requesting_club_id).exists?
+        blocked << 'release'
+      end
+      blocked
+    end
+
+    # Der Wortlaut des Transferfalls bleibt unveraendert: Er steht so in der
+    # Maske und in den Tests, die die Reihenfolge der Absagen festhalten.
+    def active_request_error(request_type)
+      if request_type == 'release'
+        'Fuer diesen Spieler ist bereits ein Freigabeantrag fuer diesen Verein aktiv'
+      else
+        'Fuer diesen Spieler ist bereits ein Transferantrag aktiv'
+      end
+    end
+
+    def both_request_types_active_error
+      'Fuer diesen Spieler ist bereits ein Transferantrag aktiv, und ein Freigabeantrag fuer diesen ' \
+        'Verein laeuft ebenfalls'
+    end
 
     # Nicht `deactivated_at`: Eine Deaktivierung ist die Kennzeichnung des
     # abgebenden Vereins und kein Transferhindernis. Eine zusammengefuehrte

@@ -34,6 +34,14 @@ class TransferRequest < ApplicationRecord
   before_create :generate_player_confirmation_token
 
   scope :active, -> { where(status: %w[pending_club pending_player pending_lv scheduled]) }
+  # Nach Antragsart getrennt, weil die Eindeutigkeitsregeln auseinanderlaufen:
+  # je Spieler hoechstens ein laufender Transfer, je Spieler und Zielverein
+  # hoechstens eine laufende Freigabe. Mehrere Freigaben auf verschiedene
+  # Vereine sind der Regelfall -- ein Spieler kann fuer mehr als einen Verein
+  # eine Freigabe brauchen (siehe die beiden partiellen Unique-Indizes
+  # index_transfer_requests_on_player_id_active_transfer/_release).
+  scope :active_transfers, -> { active.where(request_type: 'transfer') }
+  scope :active_releases, -> { active.where(request_type: 'release') }
   # Noch nicht abgeschlossene Anträge (Genehmigungen unvollständig), die die
   # Frist überschritten haben. "scheduled" ist bereits vollständig genehmigt und
   # wartet nur auf das Wirksamkeitsdatum – wird daher NICHT annulliert.
@@ -176,6 +184,7 @@ class TransferRequest < ApplicationRecord
     raise ActiveRecord::RecordInvalid, self unless status.in?(%w[pending_lv scheduled])
 
     secondary_club_ids = nil
+    annulled_releases = []
 
     TransferRequest.transaction do
       player.lock!
@@ -188,6 +197,7 @@ class TransferRequest < ApplicationRecord
 
       invalidate_licenses!
       player.transfer(requesting_club_id, user_id || approved_by_lv_user_id)
+      annulled_releases = annul_pending_releases!(user_id || approved_by_lv_user_id)
       update!(
         status: 'approved',
         approved_by_lv_user_id: approved_by_lv_user_id || user_id,
@@ -198,6 +208,9 @@ class TransferRequest < ApplicationRecord
 
     Rails.cache.delete('transfers')
     send_completion_emails(secondary_club_ids)
+    annulled_releases.each do |release|
+      TransferRequestMailer.release_annulled_by_transfer(release, self).deliver_later
+    end
   end
 
   def execute_release!(user_id)
@@ -249,6 +262,34 @@ class TransferRequest < ApplicationRecord
   end
 
   private
+
+  # Ein Vereinswechsel schliesst JEDE bestehende Zugehoerigkeit, auch die
+  # Zweitspielrechte (siehe Player#transfer). Ein noch laufender Freigabeantrag
+  # geht damit ins Leere: Genehmigt wuerde er vom alten Heimatverein und dessen
+  # Landesverband -- also von einer Stelle, die den Spieler nicht mehr hat --
+  # und traege eine Zugehoerigkeit ein, ueber die nun der neue Heimatverein zu
+  # entscheiden haette. Deshalb enden die offenen Freigaben mit dem Vollzug.
+  #
+  # Status `withdrawn` wie bei #cancel, #withdraw und
+  # .end_for_deactivated_club: Der Antrag ist annulliert, nicht abgelehnt.
+  #
+  # Innerhalb der Transaktion von #execute_transfer! und deshalb ohne eigene:
+  # Die Zeilen werden einzeln gesperrt und ihr Status danach erneut gelesen,
+  # damit eine parallel durchlaufende Genehmigung (#execute_release!) nicht
+  # ueberschrieben wird. Beide Wege sperren zuerst die Spielerzeile, sie koennen
+  # sich also nicht ueberholen.
+  #
+  # Rueckgabe sind die tatsaechlich beendeten Antraege -- die Mails verschickt
+  # der Aufrufer nach dem Commit.
+  def annul_pending_releases!(user_id)
+    TransferRequest.active_releases.where(player_id:).where.not(id:).to_a.select do |release|
+      release.lock!
+      next false unless release.status.in?(%w[pending_club pending_player pending_lv scheduled])
+
+      release.update!(status: 'withdrawn', withdrawn_by: user_id, withdrawn_at: Time.current,
+                      player_confirmation_token: nil)
+    end
+  end
 
   def generate_player_confirmation_token
     self.player_confirmation_token = SecureRandom.urlsafe_base64(32)

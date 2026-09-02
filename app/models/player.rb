@@ -1569,26 +1569,54 @@ class Player < ApplicationRecord
 
   ACTIVE_TRANSFER_REQUEST_STATUSES = %w[pending_club pending_player pending_lv scheduled].freeze
 
+  # Zwei partielle Unique-Indizes, nicht mehr einer: höchstens ein aktiver
+  # TRANSFER pro Spieler, und höchstens eine aktive FREIGABE pro Spieler und
+  # Zielverein. Beide Regeln werden hier nachgebildet, weil ein Verstoß am
+  # `update_columns` in eine RecordNotUnique und damit mitten in den Merge
+  # liefe.
+  #
+  # Freigaben auf verschiedene Vereine wandern deshalb alle mit; vor der
+  # Aufteilung der Indizes blieb ab dem zweiten aktiven Antrag jeder weitere am
+  # Secondary hängen, auch wenn er mit dem des Masters nie kollidiert hätte.
   def _repoint_transfer_requests(secondary_id, master_id)
     scope = TransferRequest.where(player_id: secondary_id)
     scope.where.not(status: ACTIVE_TRANSFER_REQUEST_STATUSES).update_all(player_id: master_id)
 
-    # Partieller Unique-Index: höchstens ein aktiver Antrag pro Spieler.
-    master_has_active = TransferRequest.where(player_id: master_id,
-                                              status: ACTIVE_TRANSFER_REQUEST_STATUSES).exists?
+    master_active = TransferRequest.where(player_id: master_id,
+                                          status: ACTIVE_TRANSFER_REQUEST_STATUSES)
+    master_has_active_transfer = master_active.where(request_type: 'transfer').exists?
+    master_release_club_ids = master_active.where(request_type: 'release')
+                                           .pluck(:requesting_club_id).to_set
+
     skipped = []
     scope.where(status: ACTIVE_TRANSFER_REQUEST_STATUSES).find_each do |tr|
-      if master_has_active
+      if tr.request_type == 'release'
+        if master_release_club_ids.include?(tr.requesting_club_id)
+          Rails.logger.warn(
+            "merge_into!: aktiver Freigabe-Antrag ##{tr.id} bleibt bei Spieler ##{secondary_id} " \
+            "(Master ##{master_id} hat bereits einen aktiven Freigabe-Antrag auf Verein " \
+            "##{tr.requesting_club_id})"
+          )
+          skipped << { type: 'transfer_request', id: tr.id }
+          next
+        end
+
+        tr.update_columns(player_id: master_id)
+        master_release_club_ids << tr.requesting_club_id
+        next
+      end
+
+      if master_has_active_transfer
         Rails.logger.warn(
           "merge_into!: aktiver Transfer-Antrag ##{tr.id} bleibt bei Spieler ##{secondary_id} " \
-          "(Master ##{master_id} hat bereits einen aktiven Antrag)"
+          "(Master ##{master_id} hat bereits einen aktiven Transfer-Antrag)"
         )
         skipped << { type: 'transfer_request', id: tr.id }
         next
       end
 
       tr.update_columns(player_id: master_id)
-      master_has_active = true
+      master_has_active_transfer = true
     end
     skipped
   end
