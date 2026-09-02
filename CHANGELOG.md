@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Overlay-Zugang steht neben dem Sekretariats-Link**: Wer eine Partie überträgt, sitzt nicht zwangsläufig am Kampfgericht, und beide brauchen unterschiedliche Zugänge. Der Zugang für die Livestream-Overlays ließ sich bisher aber nur im Spielbericht eines einzelnen Spiels erzeugen, während der Verein seine Sekretariats-Links unter „Verein › Spielsekretariat" ausgibt. Wer nur streamen wollte, musste sich also erst ein Spiel des Spieltags heraussuchen oder umständlich über den Sekretariats-Link gehen, der ihm nebenbei Aufstellung, Spielbericht und die Lizenzlisten beider Mannschaften öffnet. Jetzt steht der Abschnitt „Livestream-Overlays" auf derselben Seite, bei jedem Spieltag unterhalb des Sekretariats-Links: Adressen für Anzeigetafel und Bedienfeld, die fertige OBS-Szenensammlung zum Herunterladen und das Zurückziehen eines vergebenen Zugangs. Damit lässt sich die Szenensammlung schon am Vorabend einrichten, und der Stream bekommt seinen eigenen Link, den niemand mit dem des Sekretariats teilen muss. Die Rechteregel ist unverändert dieselbe wie beim Sekretariats-Link, sie endet also beim Ausrichter. Anders als dieser gilt ein Overlay-Zugang immer nur für einen Spieltag und nicht für die ganze Halle, weil das Token genau dessen Spiele bedient; laufen an einem Tag mehrere Ligen in derselben Halle, steht deshalb je Spieltag ein eigener Abschnitt. Die Übersicht nennt dazu, ob für einen Spieltag schon ein Zugang läuft, bis wann und von wem er stammt. Das ist kein Beiwerk: Ein zweiter Klick auf „Neu erzeugen" entwertet den bereits weitergegebenen Link samt heruntergeladener Szenensammlung, und ohne diese Angabe wäre nicht zu sehen, dass jemand anders im Verein den Zugang längst eingerichtet hat. Das Token selbst bleibt wie bisher nur einmal sichtbar, nämlich in der Antwort auf das Erzeugen.
+
 ## [1.105.0] - 2026-09-02
 
 ### Behoben

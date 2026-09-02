@@ -298,6 +298,53 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
     assert_not_nil group.dig('link', 'expires_at')
   end
 
+  # Die Übersicht ist seit api#599 auch die Ausgabestelle des Overlay-Zugangs.
+  # Ohne den Zustand je Spieltag ließe sich dort nicht anzeigen, dass schon ein
+  # Zugang läuft – und ein zweiter Klick entwertete den bereits weitergegebenen.
+  test 'Übersicht nennt den aktiven Overlay-Zugang je Spieltag' do
+    second = build_parallel_game_day(@go)
+    creator = create(:user, :vm, club_id: @host_club.id, first_name: 'Mia', last_name: 'Berg')
+    GameDayOverlayLink.generate!(game_day: @game_day, created_by: creator)
+
+    login(create(:user, :vm, club_id: @host_club.id))
+    get '/api/v2/user/secretary_game_days'
+
+    assert_response :success
+    stubs = JSON.parse(response.body).first['game_days'].index_by { |gd| gd['id'] }
+    assert_equal true, stubs[@game_day.id].dig('overlay_link', 'active')
+    assert_equal 'Mia Berg', stubs[@game_day.id].dig('overlay_link', 'created_by')
+    assert_not_nil stubs[@game_day.id].dig('overlay_link', 'expires_at')
+    assert_nil stubs[second.id]['overlay_link'],
+               'ein Token gilt für genau einen Spieltag, nicht für die ganze Halle'
+  end
+
+  test 'Übersicht meldet einen abgelaufenen Overlay-Zugang nicht als aktiv' do
+    link, = GameDayOverlayLink.generate!(game_day: @game_day,
+                                         created_by: create(:user, :vm, club_id: @host_club.id))
+    link.update!(expires_at: 1.hour.ago)
+
+    login(create(:user, :vm, club_id: @host_club.id))
+    get '/api/v2/user/secretary_game_days'
+
+    stub = JSON.parse(response.body).first['game_days'].find { |gd| gd['id'] == @game_day.id }
+    assert_nil stub['overlay_link']
+  end
+
+  # Der Zustand hängt am Recht: `other_game_days_in_hall` sind fremde Spieltage,
+  # für die es hier nichts zu vergeben gibt – und deren Erzeuger:in niemanden
+  # außerhalb des Vereins etwas angeht.
+  test 'Übersicht nennt den Overlay-Zugang fremder Spieltage nicht' do
+    foreign_day = build_foreign_game_day
+    GameDayOverlayLink.generate!(game_day: foreign_day, created_by: create(:user, :admin))
+
+    login(create(:user, :vm, club_id: @host_club.id))
+    get '/api/v2/user/secretary_game_days'
+
+    foreign = JSON.parse(response.body).first['other_game_days_in_hall'].first
+    assert_equal foreign_day.id, foreign['id']
+    assert_not foreign.key?('overlay_link')
+  end
+
   test 'Übersicht weist fremde Spieltage derselben Halle getrennt aus' do
     foreign_day = build_foreign_game_day
 
