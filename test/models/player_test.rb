@@ -887,6 +887,66 @@ class PlayerTest < ActiveSupport::TestCase
     assert_includes skipped, { type: 'transfer_request', id: sec_tr.id }
   end
 
+  # Seit der Aufteilung des Unique-Index kollidieren Freigaben nur noch je
+  # Zielverein. Vorher blieb ab dem zweiten aktiven Antrag jeder weitere am
+  # Zweitprofil haengen, auch wenn er mit dem des Masters nie kollidiert haette.
+  test 'merge_into! haengt Freigabe-Antraege auf verschiedene Vereine alle um' do
+    user      = create(:user)
+    master    = create(:player)
+    secondary = create(:player)
+    master_release = build_transfer_request(player: master, status: 'pending_lv',
+                                            request_type: 'release')
+    master_release.save!(validate: false)
+    first = build_transfer_request(player: secondary, status: 'pending_lv', request_type: 'release')
+    first.save!(validate: false)
+    second = build_transfer_request(player: secondary, status: 'pending_club', request_type: 'release')
+    second.save!(validate: false)
+
+    skipped = secondary.merge_into!(master, user.id)
+
+    assert_empty skipped
+    assert_equal master.id, first.reload.player_id
+    assert_equal master.id, second.reload.player_id
+    assert_equal master.id, master_release.reload.player_id
+  end
+
+  test 'merge_into! laesst den Freigabe-Antrag auf denselben Verein am Zweitprofil' do
+    user       = create(:user)
+    master     = create(:player)
+    secondary  = create(:player)
+    ziel       = create(:club)
+    master_release = build_transfer_request(player: master, status: 'pending_lv',
+                                            request_type: 'release', requesting_club: ziel)
+    master_release.save!(validate: false)
+    sec_release = build_transfer_request(player: secondary, status: 'pending_lv',
+                                         request_type: 'release', requesting_club: ziel)
+    sec_release.save!(validate: false)
+
+    skipped = secondary.merge_into!(master, user.id)
+
+    assert_equal secondary.id, sec_release.reload.player_id
+    assert_includes skipped, { type: 'transfer_request', id: sec_release.id }
+  end
+
+  # Der Transfer-Riegel bleibt der strenge: Eine laufende Freigabe am Master
+  # haelt den Transfer-Antrag des Zweitprofils nicht auf, ein laufender
+  # Transfer schon (siehe den Test darueber).
+  test 'merge_into! haengt den Transfer-Antrag neben einer Freigabe des Masters um' do
+    user      = create(:user)
+    master    = create(:player)
+    secondary = create(:player)
+    master_release = build_transfer_request(player: master, status: 'pending_lv',
+                                            request_type: 'release')
+    master_release.save!(validate: false)
+    sec_transfer = build_transfer_request(player: secondary, status: 'pending_lv')
+    sec_transfer.save!(validate: false)
+
+    skipped = secondary.merge_into!(master, user.id)
+
+    assert_empty skipped
+    assert_equal master.id, sec_transfer.reload.player_id
+  end
+
   test 'merge_into! haengt Lizenzdokumente um und laesst Duplikate am Zweitprofil' do
     user      = create(:user)
     master    = create(:player)

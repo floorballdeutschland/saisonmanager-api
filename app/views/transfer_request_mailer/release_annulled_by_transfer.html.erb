@@ -1,0 +1,27 @@
+<h2>Spielerfreigabe-Antrag beendet</h2>
+
+<p>Hallo,</p>
+
+<p>
+  der folgende Spielerfreigabe-Antrag ist beendet, weil der Spieler in einen anderen Verein
+  transferiert wurde. Ein Vereinswechsel schließt alle bestehenden Zugehörigkeiten des Spielers,
+  auch Zweitspielrechte und Freigaben. Über eine Freigabe entscheidet ab jetzt der neue
+  Heimatverein.
+</p>
+
+<p>
+  <strong>Spieler:</strong> <%= @transfer_request.player.first_name %> <%= @transfer_request.player.last_name %><br>
+  <strong>Beantragte Freigabe für:</strong> <%= @transfer_request.requesting_club.name %><br>
+  <strong>Bisheriger Heimatverein:</strong> <%= @transfer_request.former_club.name %><br>
+  <strong>Neuer Heimatverein:</strong> <%= @transfer.requesting_club.name %>
+</p>
+
+<p>
+  Ein neuer Freigabe-Antrag ist ab jetzt wieder möglich. Er geht dann an den neuen Heimatverein
+  und dessen Landesverband.
+</p>
+
+<p>
+  Das Saisonmanager-Team<br>
+  <a href="<%= frontend_base_url %>"><%= frontend_host %></a>
+</p>

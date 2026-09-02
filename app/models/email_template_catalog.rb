@@ -454,6 +454,20 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'club_name', description: 'Name des deaktivierten aufnehmenden Vereins' }
       ]
     },
+    'TransferRequestMailer#release_annulled_by_transfer' => {
+      mailer_class: 'TransferRequestMailer',
+      action_name: 'release_annulled_by_transfer',
+      description: 'Benachrichtigung an den freigebenden Zielverein und den Spieler, dass ein laufender ' \
+                   'Freigabeantrag beendet ist, weil der Spieler in einen anderen Verein transferiert wurde.',
+      default_subject: 'Spielerfreigabe-Antrag beendet, Spieler transferiert: {{player_name}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'player_name', description: 'Vor- und Nachname des Spielers' },
+        { key: 'club_name', description: 'Name des Vereins, der die Freigabe beantragt hatte' },
+        { key: 'new_club_name', description: 'Name des neuen Heimatvereins aus dem vollzogenen Transfer' }
+      ]
+    },
     'TransferRequestMailer#player_rejected_clubs_notification' => {
       mailer_class: 'TransferRequestMailer',
       action_name: 'player_rejected_clubs_notification',

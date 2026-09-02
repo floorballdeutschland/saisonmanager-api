@@ -167,6 +167,37 @@ class TransferRequestMailer < ApplicationMailer
     )
   end
 
+  # Ein laufender Freigabeantrag ist mit dem Vollzug eines Transfers beendet
+  # (siehe TransferRequest#annul_pending_releases!). Empfaenger sind der Verein,
+  # der die Freigabe wollte, und der Spieler selbst: Beide warten auf eine
+  # Entscheidung, die nun nicht mehr kommt.
+  #
+  # Der abgebende Verein und sein Landesverband bekommen bewusst keine eigene
+  # Mail -- sie stehen bereits in den Empfaengern von #transfer_completed, und
+  # der Vollzug ist dort die Nachricht. Ein zweites Schreiben zum selben Vorgang
+  # legte nahe, es sei ein zweiter.
+  #
+  # `transfer_request` ist die FREIGABE, `transfer` der vollzogene Transfer:
+  # Die Mail nennt den neuen Heimatverein, und der steht nur am Transfer.
+  def release_annulled_by_transfer(transfer_request, transfer)
+    @transfer_request = transfer_request
+    @transfer = transfer
+    recipients = (transfer_request.requesting_club.notification_emails +
+                  [transfer_request.player.email])
+                 .map { |mail| mail.to_s.strip }.reject(&:blank?).uniq
+    return if recipients.empty?
+
+    templated_mail(
+      to: recipients,
+      subject: "Spielerfreigabe-Antrag beendet, Spieler transferiert: #{player_name(transfer_request)}",
+      placeholders: {
+        player_name: player_name(transfer_request),
+        club_name: transfer_request.requesting_club.name,
+        new_club_name: transfer.requesting_club.name
+      }
+    )
+  end
+
   def secondary_club_notification(transfer_request, club)
     @transfer_request = transfer_request
     @club = club
