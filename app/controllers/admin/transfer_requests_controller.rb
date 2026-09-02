@@ -108,16 +108,16 @@ module Admin
       end
 
       # Die Suche kennt die Antragsart noch nicht -- die Maske laesst sie erst am
-      # gefundenen Spieler waehlen. Sie kann deshalb nur beides pruefen und das
-      # Ergebnis mitgeben: `blocked_request_types` schaltet die betroffene
-      # Auswahl in der Maske ab, statt den Treffer zu verschweigen und die
-      # Absage erst in #create zu bringen.
+      # gefundenen Spieler waehlen. Sie prueft deshalb beide und gibt das
+      # Ergebnis mit: Die Maske schaltet die gesperrte Auswahl ab und nennt den
+      # Grund, statt den Treffer zu verschweigen und die Absage erst in #create
+      # zu bringen.
       #
       # Abgewiesen wird nur, wenn KEINE der beiden Arten mehr moeglich ist --
       # sonst nimmt die Suche einen Antrag vorweg, den #create zulassen wuerde.
-      blocked = blocked_request_types(player, requesting_club_id)
-      if blocked.sort == %w[release transfer]
-        return render json: { error: both_request_types_active_error }, status: :unprocessable_entity
+      blocked = request_block_reasons(player, requesting_club_id)
+      if blocked.keys.sort == %w[release transfer]
+        return render json: { error: combined_block_error(blocked) }, status: :unprocessable_entity
       end
 
       # Zuletzt, anders als die uebrigen Datenpruefungen: Die Erreichbarkeit
@@ -129,7 +129,13 @@ module Admin
         return unreachable_former_club_response(former_club)
       end
 
-      render json: { player: player.search_hash, blocked_request_types: blocked }
+      # Die Arten UND die Begruendungen: Die Maske schaltet die gesperrte Auswahl
+      # ab und nennt den Grund. Ohne den Grund wuerde sie „laufender Antrag"
+      # behaupten, wo die Transfersperrfrist laeuft -- zwei verschiedene
+      # Sachverhalte mit verschiedenen Folgen (annullieren lassen vs. warten).
+      render json: { player: player.search_hash,
+                     blocked_request_types: blocked.keys,
+                     blocked_request_reasons: blocked }
     end
 
     def show
@@ -183,13 +189,16 @@ module Admin
       return render json: { error: 'Verein nicht gefunden' }, status: :not_found unless requesting_club
       return deactivated_requesting_club_response if requesting_club.deactivated_at.present?
 
-      # Steht vor der Datumspruefung und der Sperrfrist, weil ein laufender
-      # Antrag der naehere Grund ist. Die Antragsart wird deshalb hier schon
-      # gelesen und nicht erst unten: Der Riegel greift je Art verschieden.
+      # Die Antragsart wird hier gelesen und nicht erst unten beim Wunschdatum:
+      # Der Riegel gleich darunter greift je Art verschieden.
       request_type = params[:request_type].to_s == 'release' ? 'release' : 'transfer'
 
-      if blocked_request_types(player, requesting_club_id).include?(request_type)
-        return render json: { error: active_request_error(request_type) }, status: :unprocessable_entity
+      # Ein Riegel fuer beide Sperrgruende (laufender Antrag, Transfersperrfrist),
+      # damit #create und #search_player nicht auseinanderlaufen: Was die Maske
+      # abschaltet, weist #create ab, und mit demselben Wortlaut.
+      blocked_reason = request_block_reasons(player, requesting_club_id)[request_type]
+      if blocked_reason
+        return render json: { error: blocked_reason }, status: :unprocessable_entity
       end
 
       if former_club_id == requesting_club_id
@@ -204,26 +213,6 @@ module Admin
       # die Rechtepruefung.
       if unreachable_former_club?(ph, former_club)
         return unreachable_former_club_response(former_club)
-      end
-
-      # Transfersperrfrist: nach einem erfolgreich abgeschlossenen Transfer ist
-      # für den Spieler TRANSFER_LOCK_PERIOD lang kein neuer Transferantrag
-      # möglich. Maßgeblich ist der tatsächliche Abschlusszeitpunkt
-      # (Transfer.created_at), nicht das LV-Genehmigungsdatum – relevant bei
-      # geplanten Transfers mit Wunschdatum. Freigaben sind nicht betroffen.
-      if request_type == 'transfer'
-        last_transfer = Transfer.where(player_id: player.id)
-                                .where('created_at > ?', TransferRequest::TRANSFER_LOCK_PERIOD.ago)
-                                .order(created_at: :desc)
-                                .first
-        if last_transfer
-          lock_until = last_transfer.created_at + TransferRequest::TRANSFER_LOCK_PERIOD
-          return render json: {
-            error: "Für diesen Spieler wurde am #{last_transfer.created_at.strftime('%d.%m.%Y')} ein Transfer " \
-                   "abgeschlossen. Ein neuer Transferantrag ist erst ab dem #{lock_until.strftime('%d.%m.%Y')} möglich " \
-                   '(Transfersperrfrist von 4 Wochen).'
-          }, status: :unprocessable_entity
-        end
       end
 
       effective_date = nil
@@ -255,6 +244,13 @@ module Admin
       else
         render json: { errors: tr.errors.full_messages }, status: :unprocessable_entity
       end
+    rescue ActiveRecord::RecordNotUnique
+      # Der Riegel oben und das INSERT sind nicht atomar; der eigentliche
+      # Waechter sind die partiellen Unique-Indizes. Ein Doppelklick oder zwei
+      # Vereinsmanager desselben Vereins gleichzeitig kamen sonst beide durch
+      # die Pruefung, und der zweite bekam einen 500 statt der Absage, die es
+      # hier schon gibt (wie in #direct_assign).
+      render json: { error: active_request_error(request_type) }, status: :unprocessable_entity
     end
 
     def approve_club
@@ -463,12 +459,30 @@ module Admin
         return redirect_to "#{base_url}?result=error", allow_other_host: true
       end
 
-      unless tr.status == 'pending_player'
-        result = tr.status.in?(%w[pending_lv scheduled approved]) ? 'already_approved' : 'error'
-        return redirect_to "#{base_url}?result=#{result}", allow_other_host: true
+      # Status unter der Zeilensperre lesen UND schreiben, wie #expire! und
+      # .end_for_deactivated_club: Der Antrag hat inzwischen vier fremde
+      # Schreiber (Fristablauf, Vereinsdeaktivierung, Annullierung durch die
+      # SBK und seit den parallelen Freigaben auch der Vollzug eines Transfers,
+      # TransferRequest#annul_pending_releases!). Ohne die Sperre schrieb dieser
+      # Aufruf `pending_lv` in eine gerade annullierte Zeile zurueck -- der
+      # Vorgang waere wieder aktiv, trueg aber `withdrawn_at`, kein Konto und
+      # keinen Token mehr.
+      status_before = nil
+      updated = TransferRequest.transaction do
+        tr.lock!
+        status_before = tr.status
+        if tr.status == 'pending_player'
+          tr.update!(status: 'pending_lv', player_approved_at: Time.current)
+          true
+        else
+          false
+        end
       end
 
-      tr.update!(status: 'pending_lv', player_approved_at: Time.current)
+      unless updated
+        result = status_before.in?(%w[pending_lv scheduled approved]) ? 'already_approved' : 'error'
+        return redirect_to "#{base_url}?result=#{result}", allow_other_host: true
+      end
 
       TransferRequestMailer.pending_lv_notification(tr).deliver_later
       TransferRequestMailer.clubs_informed_lv_pending(tr).deliver_later
@@ -484,12 +498,24 @@ module Admin
         return redirect_to "#{base_url}?result=error", allow_other_host: true
       end
 
-      unless tr.status == 'pending_player'
-        result = tr.status == 'rejected_by_player' ? 'already_rejected' : 'error'
-        return redirect_to "#{base_url}?result=#{result}", allow_other_host: true
+      # Dieselbe Sperre wie in #player_approve, aus demselben Grund.
+      status_before = nil
+      updated = TransferRequest.transaction do
+        tr.lock!
+        status_before = tr.status
+        if tr.status == 'pending_player'
+          tr.update!(status: 'rejected_by_player', player_rejected_at: Time.current,
+                     player_confirmation_token: nil)
+          true
+        else
+          false
+        end
       end
 
-      tr.update!(status: 'rejected_by_player', player_rejected_at: Time.current, player_confirmation_token: nil)
+      unless updated
+        result = status_before == 'rejected_by_player' ? 'already_rejected' : 'error'
+        return redirect_to "#{base_url}?result=#{result}", allow_other_host: true
+      end
 
       TransferRequestMailer.player_rejected_clubs_notification(tr).deliver_later
 
@@ -610,30 +636,63 @@ module Admin
     # Ohne aufnehmenden Verein (Suche mit requesting_club_id 0) ist die
     # Freigabe-Regel nicht auswertbar, sie gilt dann als offen: Die Absage
     # gehoert an die Stelle, die den Verein kennt, und das ist #create.
-    def blocked_request_types(player, requesting_club_id)
+    def request_block_reasons(player, requesting_club_id)
       active = TransferRequest.active.where(player_id: player.id)
-      blocked = []
-      blocked << 'transfer' if active.where(request_type: 'transfer').exists?
+      reasons = {}
+
+      if active.where(request_type: 'transfer').exists?
+        reasons['transfer'] = active_request_error('transfer')
+      elsif (lock_reason = transfer_lock_reason(player))
+        reasons['transfer'] = lock_reason
+      end
+
       if requesting_club_id.to_i.positive? &&
          active.where(request_type: 'release', requesting_club_id: requesting_club_id).exists?
-        blocked << 'release'
+        reasons['release'] = active_request_error('release')
       end
-      blocked
+
+      reasons
+    end
+
+    # Transfersperrfrist: nach einem erfolgreich abgeschlossenen Transfer ist
+    # für den Spieler TRANSFER_LOCK_PERIOD lang kein neuer Transferantrag
+    # möglich. Maßgeblich ist der tatsächliche Abschlusszeitpunkt
+    # (Transfer.created_at), nicht das LV-Genehmigungsdatum – relevant bei
+    # geplanten Transfers mit Wunschdatum. Freigaben sind nicht betroffen.
+    #
+    # Steht in `request_block_reasons` und nicht mehr allein in #create: Die
+    # Maske fragte sonst einen Spieler ab, bekam „nichts gesperrt" und brachte
+    # die Absage erst nach dem Ausfüllen -- genau das, was die Auskunft der
+    # Suche vermeiden soll.
+    def transfer_lock_reason(player)
+      last_transfer = Transfer.where(player_id: player.id)
+                              .where('created_at > ?', TransferRequest::TRANSFER_LOCK_PERIOD.ago)
+                              .order(created_at: :desc)
+                              .first
+      return nil unless last_transfer
+
+      lock_until = last_transfer.created_at + TransferRequest::TRANSFER_LOCK_PERIOD
+      "Für diesen Spieler wurde am #{last_transfer.created_at.strftime('%d.%m.%Y')} ein Transfer " \
+        "abgeschlossen. Ein neuer Transferantrag ist erst ab dem #{lock_until.strftime('%d.%m.%Y')} " \
+        'möglich (Transfersperrfrist von 4 Wochen).'
     end
 
     # Der Wortlaut des Transferfalls bleibt unveraendert: Er steht so in der
     # Maske und in den Tests, die die Reihenfolge der Absagen festhalten.
+    # Beide Gruende in einem Satzpaar, wenn gar nichts mehr geht. Die
+    # Einzelmeldungen enden nicht einheitlich auf einen Punkt (die
+    # Sperrfrist-Auskunft tut es, die Riegel-Meldungen nicht), deshalb wird er
+    # hier vereinheitlicht statt doppelt gesetzt.
+    def combined_block_error(reasons)
+      reasons.values.map { |reason| "#{reason.sub(/[.\s]*\z/, '')}." }.join(' ')
+    end
+
     def active_request_error(request_type)
       if request_type == 'release'
         'Fuer diesen Spieler ist bereits ein Freigabeantrag fuer diesen Verein aktiv'
       else
         'Fuer diesen Spieler ist bereits ein Transferantrag aktiv'
       end
-    end
-
-    def both_request_types_active_error
-      'Fuer diesen Spieler ist bereits ein Transferantrag aktiv, und ein Freigabeantrag fuer diesen ' \
-        'Verein laeuft ebenfalls'
     end
 
     # Nicht `deactivated_at`: Eine Deaktivierung ist die Kennzeichnung des
@@ -694,9 +753,10 @@ module Admin
     # Empfaenger und bricht still ab, und `approve_club`/`reject_club` verlangen
     # die VM-Rolle dieses Vereins. Der Antrag bliebe in `pending_club` liegen,
     # liefe erst nach `EXPIRE_AFTER_DAYS` auf `expired` und sperrte bis dahin
-    # ueber `TransferRequest.active` JEDEN weiteren Antrag desselben Spielers,
-    # auch den auf einen anderen Verein. Dieselbe Art gestrandeter Antrag wie
-    # beim deaktivierten aufnehmenden Verein (api#512, api#528).
+    # jeden weiteren Antrag derselben Art (seit der Aufteilung des Unique-Index:
+    # Transfers untereinander, Freigaben je Zielverein). Dieselbe Art
+    # gestrandeter Antrag wie beim deaktivierten aufnehmenden Verein (api#512,
+    # api#528).
     #
     # Ein Datenproblem, kein Rechteproblem: Der Wortlaut zeigt deshalb auf die
     # fehlenden Stammdaten und nennt den Verein beim Namen, damit die

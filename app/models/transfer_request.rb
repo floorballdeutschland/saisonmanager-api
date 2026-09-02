@@ -2,6 +2,15 @@ class TransferRequest < ApplicationRecord
   STATUSES = %w[pending_club pending_player pending_lv scheduled approved
                 rejected_by_club rejected_by_player rejected_by_lv revoked withdrawn expired].freeze
 
+  # Die beiden Antragsarten. Validiert und nicht bloss dokumentiert, seit die
+  # Eindeutigkeit am Spaltenwert haengt: Die partiellen Unique-Indizes greifen
+  # nur bei genau diesen Literalen (siehe
+  # 20260902100000_split_transfer_request_active_index). Ein dritter Wert --
+  # 'Release' aus einem kuenftigen Import genuegte -- faellt aus BEIDEN
+  # Indizes und aus `blocked_request_types` heraus und liesse damit beliebig
+  # viele laufende Antraege je Spieler zu.
+  REQUEST_TYPES = %w[transfer release].freeze
+
   # Offene Anträge ohne vollständige Genehmigung werden nach dieser Frist
   # automatisch annulliert (siehe rake transfers:expire / Status "expired").
   EXPIRE_AFTER_DAYS = 14
@@ -28,6 +37,7 @@ class TransferRequest < ApplicationRecord
   belongs_to :former_club, class_name: 'Club'
 
   validates :status, inclusion: { in: STATUSES }
+  validates :request_type, inclusion: { in: REQUEST_TYPES }
   validates :rejection_reason, presence: true, if: -> { status.in?(%w[rejected_by_club rejected_by_lv]) }
   validates :revocation_reason, presence: true, if: -> { status == 'revoked' }
 
@@ -66,7 +76,10 @@ class TransferRequest < ApplicationRecord
   # einen deaktivierten aufnehmenden Verein an jedem Schritt ab. Schlimmer noch:
   # `active` deckt genau diese vier Status ab und wird in #create geprueft -- ein
   # gestrandeter Antrag blockierte damit JEDEN neuen Antrag desselben Spielers,
-  # auch auf einen ganz anderen Verein.
+  # auch auf einen ganz anderen Verein. Seit der Aufteilung des Unique-Index
+  # sperrt er nur noch die eigene Antragsart (Transfers untereinander, Freigaben
+  # je Zielverein) -- ein gestrandeter Antrag bleibt aber auch dann eine Sperre,
+  # die niemand aufloest.
   #
   # Antraege AUS dem Verein bleiben unberuehrt, ein aufgeloester Verein gibt
   # seine Spieler ja gerade ab. Freigaben laufen mit: Sie legen ueber

@@ -178,6 +178,137 @@ module Admin
       assert_equal 'withdrawn', release.reload.status
     end
 
+    # Der Riegel liegt nicht nur im Controller: Die beiden partiellen
+    # Unique-Indizes sind der eigentliche Waechter (der Controller prueft und
+    # schreibt nicht atomar). Ohne diesen Test kaeme ein falsches
+    # `where`-Praedikat oder ein vergessenes `unique: true` durch alle
+    # Controller-Faelle, weil die alle am Riegel davor haengen bleiben.
+    test 'die Datenbank laesst keine zweite laufende Freigabe auf denselben Verein zu' do
+      create_release_request(club: @requesting_club)
+
+      assert_raises ActiveRecord::RecordNotUnique do
+        TransferRequest.create!(
+          player: @player, requesting_club: @requesting_club, former_club: @former_club,
+          status: 'pending_lv', created_by: @vm.id, season_id: 18, request_type: 'release'
+        )
+      end
+    end
+
+    test 'die Datenbank laesst keinen zweiten laufenden Transfer zu' do
+      create_transfer_request(status: 'pending_club')
+
+      assert_raises ActiveRecord::RecordNotUnique do
+        TransferRequest.create!(
+          player: @player, requesting_club: create_second_requesting_club,
+          former_club: @former_club, status: 'pending_lv', created_by: @vm.id,
+          season_id: 18, request_type: 'transfer'
+        )
+      end
+    end
+
+    test 'die Datenbank laesst Freigaben auf verschiedene Vereine zu' do
+      create_release_request(club: @requesting_club)
+
+      assert_nothing_raised do
+        create_release_request(club: create_second_requesting_club)
+      end
+    end
+
+    # Der geplante Transfer wird nicht in #approve_lv vollzogen, sondern erst
+    # spaeter in #execute. Ohne diesen Fall bliebe ein Ausfall der Annullierung
+    # auf diesem Weg gruen.
+    test 'der Vollzug eines geplanten Transfers annulliert die offenen Freigaben' do
+      release = create_release_request(club: create_second_requesting_club)
+      tr = create_transfer_request(status: 'scheduled')
+      tr.update!(effective_date: Date.today - 1, approved_by_lv_user_id: @admin.id,
+                 lv_approved_at: Time.current)
+      login(@admin)
+
+      patch "/api/v2/admin/transfer_requests/#{tr.id}/execute"
+
+      assert_response :success
+      assert_equal 'approved', tr.reload.status
+      assert_equal 'withdrawn', release.reload.status
+      assert_equal @admin.id, release.withdrawn_by
+    end
+
+    # Freigabe und Transfer auf DENSELBEN Verein: Die Freigabe wird mit dem
+    # Vollzug gegenstandslos, weil die Zugehoerigkeit ohnehin entsteht -- nur
+    # als Heimat statt als Zweitspielrecht.
+    test 'die Freigabe auf den Zielverein des Transfers wird ebenfalls annulliert' do
+      release = create_release_request(club: @requesting_club)
+      tr = create_transfer_request(status: 'pending_lv')
+      login(@admin)
+
+      patch "/api/v2/admin/transfer_requests/#{tr.id}/approve_lv"
+
+      assert_response :success
+      assert_equal 'withdrawn', release.reload.status
+      assert_equal @requesting_club.id, @player.reload.home_club_entry['club_id']
+    end
+
+    # ---------------------------------------------------------------------------
+    # Transfersperrfrist: dieselbe Auskunft in Suche und Antrag
+    # ---------------------------------------------------------------------------
+
+    # Die Sperrfrist stand nur in #create. Die Suche meldete „nichts gesperrt",
+    # die Maske bot den Transfer an, und die Absage kam erst nach dem
+    # Ausfuellen -- genau das, was die Auskunft der Suche vermeiden soll.
+    test 'search_player meldet die Transfersperrfrist als gesperrten Transfer' do
+      Transfer.create!(player_id: @player.id, former_club_id: create_second_requesting_club.id,
+                       new_club_id: @former_club.id, created_by: @admin.id, season_id: 18)
+      login(@admin)
+
+      search_player(@requesting_club.id)
+
+      assert_response :success
+      body = JSON.parse(response.body)
+      assert_equal ['transfer'], body['blocked_request_types']
+      assert_match(/Transfersperrfrist/, body.dig('blocked_request_reasons', 'transfer'))
+    end
+
+    test 'Transferantrag innerhalb der Sperrfrist wird abgewiesen' do
+      Transfer.create!(player_id: @player.id, former_club_id: create_second_requesting_club.id,
+                       new_club_id: @former_club.id, created_by: @admin.id, season_id: 18)
+      login(@vm)
+
+      post '/api/v2/admin/transfer_requests', params: {
+        player_id: @player.id,
+        requesting_club_id: @requesting_club.id
+      }
+
+      assert_response :unprocessable_entity
+      assert_match(/Transfersperrfrist/, JSON.parse(response.body)['error'])
+    end
+
+    # Die Freigabe ist von der Sperrfrist ausdruecklich nicht betroffen: Sie
+    # aendert den Heimatverein nicht.
+    test 'Freigabeantrag innerhalb der Transfersperrfrist ist moeglich' do
+      Transfer.create!(player_id: @player.id, former_club_id: create_second_requesting_club.id,
+                       new_club_id: @former_club.id, created_by: @admin.id, season_id: 18)
+      login(@vm)
+
+      post '/api/v2/admin/transfer_requests', params: {
+        player_id: @player.id,
+        requesting_club_id: @requesting_club.id,
+        request_type: 'release'
+      }
+
+      assert_response :created
+    end
+
+    # Der Antragstyp traegt seit der Aufteilung die Eindeutigkeit: Ein dritter
+    # Wert faellt aus beiden Indizes und aus dem Riegel heraus.
+    test 'ein unbekannter Antragstyp wird nicht gespeichert' do
+      tr = TransferRequest.new(
+        player: @player, requesting_club: @requesting_club, former_club: @former_club,
+        status: 'pending_club', created_by: @vm.id, season_id: 18, request_type: 'Release'
+      )
+
+      assert_not tr.valid?
+      assert_includes tr.errors.attribute_names, :request_type
+    end
+
     private
 
     def login(user)
