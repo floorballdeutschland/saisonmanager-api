@@ -23,13 +23,15 @@ class GameDaySecretaryLinksController < ApplicationController
     groups = hall_day_groups
     return render json: [] if groups.empty?
 
-    links_by_game_day = active_links_by_game_day(groups.values.flatten.map(&:id))
+    all_ids = groups.values.flatten.map(&:id)
+    links_by_game_day = active_links_by_game_day(all_ids)
+    overlays_by_game_day = active_overlay_links_by_game_day(all_ids)
 
     payload = groups.map do |(arena_id, date, _standalone_id), game_days|
       covered = game_days.select { |gd| may_manage_game_day_link?(gd) }
       next if covered.empty?
 
-      hall_day_json(arena_id, date, game_days, covered, links_by_game_day)
+      hall_day_json(arena_id, date, game_days, covered, links_by_game_day, overlays_by_game_day)
     end.compact
 
     render json: payload.sort_by { |g| g[:date].to_s }
@@ -222,7 +224,25 @@ class GameDaySecretaryLinksController < ApplicationController
     end
   end
 
-  def hall_day_json(arena_id, date, game_days, covered, links_by_game_day)
+  # Aktive Overlay-Zugänge je Spieltag. Anders als der Sekretariatslink gilt ein
+  # Overlay-Token für genau einen Spieltag (GameDayOverlayLink), deshalb hier
+  # keine Zuordnungstabelle.
+  #
+  # `order(:created_at)` trotz des eindeutigen Index aus
+  # 20260902110000: `index_by` behält bei gleichem Schlüssel den zuletzt
+  # gelesenen Eintrag, und wenn diese Reihenfolge doch einmal etwas entscheidet,
+  # soll es der zuletzt erzeugte Zugang sein. Dieselbe Absicherung wie oben beim
+  # Sekretariatslink, aus demselben Grund: Eine falsche Auskunft darüber, wem
+  # ein Zugang gehört, ist schlimmer als gar keine.
+  def active_overlay_links_by_game_day(game_day_ids)
+    GameDayOverlayLink.active
+                      .where(game_day_id: game_day_ids)
+                      .includes(:created_by)
+                      .order(:created_at)
+                      .index_by(&:game_day_id)
+  end
+
+  def hall_day_json(arena_id, date, game_days, covered, links_by_game_day, overlays_by_game_day)
     # Nur lesen, wenn über die Halle gruppiert wurde. Ein Spieltag ohne
     # verwertbares Datum landet mit arena_id nil in einer eigenen Gruppe, hätte
     # aber sehr wohl eine Halle – Name ohne ID widerspräche der Zusage, die das
@@ -238,13 +258,29 @@ class GameDaySecretaryLinksController < ApplicationController
       # Ein Link deckt nur die Spieltage ab, für die der/die Angemeldete
       # berechtigt ist. Weicht das von den Spieltagen der Halle ab, soll das
       # Frontend es benennen können statt stillschweigend weniger zu liefern.
-      game_days: covered.map { |gd| game_day_stub(gd) },
+      game_days: covered.map { |gd| game_day_stub(gd).merge(overlay_link: overlay_link_json(overlays_by_game_day[gd.id])) },
       other_game_days_in_hall: (game_days - covered).map { |gd| game_day_stub(gd) },
       link: link && {
         expires_at: link.expires_at.iso8601,
         created_by: link.created_by&.fullname,
         game_day_ids: link.covered_game_day_ids
       }
+    }
+  end
+
+  # Nur der Zustand, nie das Token: Der Klartext existiert einmalig in der
+  # Antwort auf GameDayOverlayLinksController#create.
+  #
+  # Steht bewusst nur an den eigenen Spieltagen (`covered`), nicht an
+  # `other_game_days_in_hall`: Wer für einen Spieltag keinen Zugang vergeben
+  # darf, braucht auch den Namen dessen nicht zu erfahren, der ihn vergeben hat.
+  def overlay_link_json(link)
+    return nil if link.nil?
+
+    {
+      active: true,
+      expires_at: link.expires_at.iso8601,
+      created_by: link.created_by&.fullname
     }
   end
 
