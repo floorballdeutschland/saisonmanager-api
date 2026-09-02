@@ -814,6 +814,95 @@ module Admin
       assert_response :forbidden
     end
 
+    # Der Kern von #595: Die Nachweise sind Voraussetzung für den Lizenzantrag,
+    # die Rechteprüfung verlangte aber eine schon bestehende Lizenz auf genau der
+    # Mannschaft des TM. Zu Saisonbeginn war damit gar kein Upload möglich –
+    # obwohl der TM den Spieler in „Meine Spieler*innen" sieht (die Liste kommt
+    # vereinsweit aus `Club#players`) und sein Profil öffnen darf.
+    test 'TM laedt ohne bestehende Lizenz Dokumente des eigenen Vereinsspielers hoch' do
+      club = create(:club)
+      team = create(:team, club: club)
+      @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }], licenses: [])
+      DocumentType.create!(name: 'Anti-Doping', key: 'anti_doping')
+
+      login(create(:user, :tm, team_id: team.id))
+
+      get "/api/v2/admin/players/#{@player.id}/license_documents"
+      assert_response :success
+
+      get "/api/v2/admin/players/#{@player.id}/document_types"
+      assert_response :success
+      assert_includes JSON.parse(response.body).map { |t| t['key'] }, 'anti_doping'
+
+      post "/api/v2/admin/players/#{@player.id}/license_documents",
+           params: { document_type: 'anti_doping', file: fixture_file_upload('dokument.pdf', 'application/pdf') }
+      assert_response :created
+    end
+
+    # Der zweite Alltagsfall: Der Trainer der ersten Mannschaft trägt für einen
+    # Jugendspieler nach. Der steht in der Vereinsliste, seine Lizenz hängt aber
+    # an einer anderen Mannschaft desselben Vereins.
+    test 'TM kommt an die Unterlagen eines Vereinsspielers mit Lizenz an fremder Mannschaft' do
+      club = create(:club)
+      own_team = create(:team, club: club)
+      other_team = create(:team, club: club)
+      @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }],
+                      licenses: licenses_for(other_team))
+      attach_document('use')
+
+      login(create(:user, :tm, team_id: own_team.id))
+      get "/api/v2/admin/players/#{@player.id}/license_documents"
+
+      assert_response :success
+      assert_equal 1, JSON.parse(response.body).size
+    end
+
+    # Die Erweiterung reicht nur so weit wie das Spielerprofil selbst: Ein TM
+    # eines fremden Vereins bleibt draußen, auch wenn seine Mannschaft in
+    # derselben Liga spielt.
+    test 'TM eines fremden Vereins kommt nicht an die Unterlagen' do
+      club = create(:club)
+      foreign_club = create(:club)
+      league = create(:league)
+      team = create(:team, club: club, league: league)
+      foreign_team = create(:team, club: foreign_club, league: league)
+      @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }],
+                      licenses: licenses_for(team))
+      doc = attach_document('use')
+
+      login(create(:user, :tm, team_id: foreign_team.id))
+
+      get "/api/v2/admin/players/#{@player.id}/license_documents"
+      assert_response :forbidden
+
+      get "/api/v2/admin/players/#{@player.id}/document_types"
+      assert_response :forbidden
+
+      delete "/api/v2/admin/players/#{@player.id}/license_documents/#{doc.id}"
+      assert_response :forbidden
+      assert LicenseDocument.exists?(doc.id), 'Das Dokument muss erhalten bleiben'
+
+      post "/api/v2/admin/players/#{@player.id}/license_documents",
+           params: { document_type: 'use', file: fixture_file_upload('dokument.pdf', 'application/pdf') }
+      assert_response :forbidden
+    end
+
+    # Der Vereinsweg hängt an den Mannschaften der LAUFENDEN Saison
+    # (`User#tm_club_ids` filtert über `Team.current_season`). Ein TM, dessen
+    # Mannschaft nur in einer vergangenen Saison existiert, hat schon keine
+    # `permission_hash[:tm]` mehr und darf auch über den Verein nicht hinein.
+    test 'TM einer Mannschaft aus vergangener Saison kommt nicht hinein' do
+      club = create(:club)
+      past_team = create(:team, club: club, league: create(:league, :previous_season))
+      @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }], licenses: [])
+      attach_document('use')
+
+      login(create(:user, :tm, team_id: past_team.id))
+      get "/api/v2/admin/players/#{@player.id}/license_documents"
+
+      assert_response :forbidden
+    end
+
     # Der Saisonfilter für sich: Der Spieler gehört dem Partnerverein weiterhin,
     # das Syndikats-Team ist aber aus einer vergangenen Saison. Die Zugehörigkeit
     # allein hielte die Tür sonst dauerhaft offen.

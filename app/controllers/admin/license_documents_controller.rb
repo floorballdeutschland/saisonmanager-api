@@ -220,6 +220,31 @@ module Admin
       ph = perm_hash
       return false if ph[:tm].blank?
 
+      # Zwei Wege, beide zulaessig, aufgebaut wie `vm_for_player?` daneben:
+      #
+      # (a) Der TM verwaltet einen Verein, dem der Spieler HEUTE angehoert
+      #     (`User#tm_club_ids`: die Vereine seiner Teams der laufenden Saison,
+      #     SG-/Syndikats-Partner inbegriffen). Das ist genau die Regel, die auch
+      #     ueber das Spielerprofil selbst entscheidet
+      #     (`PlayersController#tm_can_access_player?`).
+      # (b) Eine LAUFENDE Lizenz haengt an einem seiner Teams
+      #     (`current_license_teams`).
+      #
+      # (a) ist neu und behebt einen Widerspruch: Der TM sah den Spieler in
+      # „Meine Spieler*innen" (die Liste kommt vereinsweit aus `Club#players`),
+      # durfte sein Profil oeffnen und die E-Mail-Adresse pflegen, bekam am
+      # Dokumentenblock aber 403, solange keine Lizenz auf genau seinem Team lag.
+      # Damit war der Upload zu Saisonbeginn unmoeglich, obwohl die Nachweise
+      # (Anti-Doping-Erklaerung, Zustimmung der Erziehungsberechtigten)
+      # Voraussetzung fuer den Lizenzantrag sind, und ebenso fuer jeden Spieler,
+      # dessen Lizenz an einem anderen Team des Vereins haengt.
+      #
+      # (b) bleibt daneben stehen und ist nicht ueberfluessig: `all_club_ids`
+      # nimmt `syndicate_clubs` nur bei gesetztem `syndicate`-Kennzeichen mit,
+      # `player_in_team_clubs?` immer. Ein Team mit Partnervereinen ohne dieses
+      # Kennzeichen faellt sonst aus (a) heraus.
+      return true if (current_user.tm_club_ids & player_active_club_ids).present?
+
       (ph[:tm] & current_license_teams.map(&:id)).present?
     end
 

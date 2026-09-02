@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Teammanager konnten keine Spielerdokumente hochladen**: „Meine Spieler*innen" zeigt dem Teammanager den ganzen Vereinsbestand, und das Spielerprofil öffnet sich auch – Name, Geburtsdatum und E-Mail-Adresse stehen dort und lassen sich pflegen. Der Dokumentenblock desselben Profils antwortete dagegen mit „Keine Berechtigung", sichtbar als die beiden Meldungen „Dokumente konnten nicht geladen werden" und „Die Dokumentarten konnten nicht geladen werden. Ohne sie ist kein Upload möglich". Grund war eine Rechteprüfung, die vom Teammanager eine bereits bestehende Lizenz auf genau seiner Mannschaft verlangte, während Liste und Profil an einer gültigen Vereinszugehörigkeit hängen. Das traf zwei Alltagsfälle: Zu Saisonbeginn gibt es noch keine Lizenz, obwohl die Nachweise (Anti-Doping-Erklärung, Zustimmung der Erziehungsberechtigten) Voraussetzung für deren Beantragung sind – der Upload war damit unmöglich, bis jemand anders die Lizenz beantragte. Und der Trainer der ersten Mannschaft kam nicht an die Unterlagen eines Jugendspielers, dessen Lizenz an einer anderen Mannschaft des Vereins hängt. Der Teammanager war nie ausgeschlossen gedacht – beide Rechteprüfungen des Dokumentenbereichs führen ihn ausdrücklich –, sein Zweig hatte nur die Vereinsregel nicht, die der Vereinsmanager daneben seit api#423 trägt. Jetzt entscheidet dieselbe Regel wie über das Profil selbst: eine heute gültige Zugehörigkeit zu einem Verein der eigenen Mannschaften, SG-Partner inbegriffen. Der bisherige Weg über die laufende Lizenz bleibt daneben bestehen. Ein Teammanager eines fremden Vereins bleibt draußen, ebenso einer, dessen Mannschaft nur in einer vergangenen Saison existiert. Damit entfällt der Umweg, betroffenen Trainern die Vereinsmanager-Rolle zu geben, die deutlich mehr mitbringt (unter anderem Spieleranlage, Transferanträge und Benutzerverwaltung).
+
 ## [1.104.0] - 2026-09-01
 
 ### Verbessert
