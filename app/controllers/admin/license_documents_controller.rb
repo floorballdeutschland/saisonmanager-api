@@ -13,7 +13,8 @@ module Admin
 
     before_action :set_player
     before_action :check_read_permission, only: %i[index show available_types]
-    before_action :check_write_permission, only: %i[create destroy]
+    before_action :check_write_permission, only: %i[create]
+    before_action :check_delete_permission, only: %i[destroy]
 
     # Dokumentarten, die für DIESEN Spieler hochgeladen werden können – die
     # Auswahlliste für den Upload am Spielerprofil. Der Katalog-Abruf
@@ -174,6 +175,34 @@ module Admin
       render json: { message: 'Keine Berechtigung.' }, status: :forbidden
     end
 
+    # Löschen ist nicht Hochladen, und für den Teammanager fällt beides ab
+    # hier auseinander.
+    #
+    # Der neue Vereinsweg (`tm_club_ids`) ist dafür gedacht, Nachweise
+    # NACHZUTRAGEN — er hebt die Bedingung „es gibt schon eine Lizenz auf
+    # genau meiner Mannschaft" auf, damit der Upload zu Saisonbeginn überhaupt
+    # möglich ist. Am Löschen hängt aber die Gegenrichtung: Solange keine
+    # ERTEILTE Lizenz auf dem Dokument beruht, vernichtet #destroy es
+    # endgültig (`purge_document`), und genau dieser Zustand ist der
+    # Saisonbeginn. Über den Vereinsweg käme damit jede Teammanagerin an die
+    # Zustimmung der Erziehungsberechtigten einer Jugendspielerin einer
+    # anderen Mannschaft ihres Vereins — ein Recht, das sie vorher nicht
+    # hatte und das weder der Titel dieses Vorgangs noch das Handbuch
+    # zusagen („hochladen, ansehen und ersetzen").
+    #
+    # Ersetzen bleibt möglich: Das läuft über #create, das die abgelöste
+    # Fassung archiviert statt sie zu löschen.
+    #
+    # Für Verband und Vereinsmanager ändert sich nichts, deren Regeln sind
+    # unverändert.
+    def check_delete_permission
+      return if admin_or_sbk_for_player?
+      return if vm_for_player?
+      return if tm_license_team_for_player?
+
+      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+
     # Zwei Gründe, beide zulässig:
     #
     # (a) Der Spieler gehört einem Verein, den dieser Spielbetrieb lesen darf
@@ -224,9 +253,15 @@ module Admin
       #
       # (a) Der TM verwaltet einen Verein, dem der Spieler HEUTE angehoert
       #     (`User#tm_club_ids`: die Vereine seiner Teams der laufenden Saison,
-      #     SG-/Syndikats-Partner inbegriffen). Das ist genau die Regel, die auch
-      #     ueber das Spielerprofil selbst entscheidet
-      #     (`PlayersController#tm_can_access_player?`).
+      #     SG-/Syndikats-Partner inbegriffen). Dieselbe Frage entscheidet ueber
+      #     das Spielerprofil selbst (`PlayersController#tm_can_access_player?`)
+      #     -- nicht wortgleich: Dort zaehlt zusaetzlich eine Zugehoerigkeit,
+      #     die erst die Deaktivierung geschlossen hat
+      #     (`membership_closed_by_deactivation?`), `player_active_club_ids`
+      #     hier nicht. Bei einem deaktivierten Spieler bleibt der TM also am
+      #     Profil drin und am Dokumentenblock draussen. Praktisch selten (die
+      #     Vereinsliste filtert deaktivierte Profile heraus) und die
+      #     vorsichtigere Richtung, deshalb bewusst so.
       # (b) Eine LAUFENDE Lizenz haengt an einem seiner Teams
       #     (`current_license_teams`).
       #
@@ -244,6 +279,16 @@ module Admin
       # `player_in_team_clubs?` immer. Ein Team mit Partnervereinen ohne dieses
       # Kennzeichen faellt sonst aus (a) heraus.
       return true if (current_user.tm_club_ids & player_active_club_ids).present?
+
+      tm_license_team_for_player?
+    end
+
+    # Weg (b) allein: eine LAUFENDE Lizenz an einem Team dieses TM. Das war die
+    # ganze bisherige Regel und bleibt die Bedingung fuer das Loeschen (siehe
+    # #check_delete_permission).
+    def tm_license_team_for_player?
+      ph = perm_hash
+      return false if ph[:tm].blank?
 
       (ph[:tm] & current_license_teams.map(&:id)).present?
     end

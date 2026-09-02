@@ -903,6 +903,47 @@ module Admin
       assert_response :forbidden
     end
 
+    # Die Kehrseite des Vereinswegs: Er ist zum Nachtragen da, nicht zum
+    # Vernichten. Ohne eine erteilte Lizenz auf dem Dokument löscht #destroy
+    # endgültig, und genau das ist der Zustand zu Saisonbeginn — der TM einer
+    # anderen Mannschaft desselben Vereins bekäme sonst ein Recht, das er vor
+    # dieser Änderung nicht hatte.
+    test 'TM darf ueber den Vereinsweg hochladen, aber nicht loeschen' do
+      club = create(:club)
+      own_team = create(:team, club: club)
+      other_team = create(:team, club: club)
+      @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }],
+                      licenses: licenses_for(other_team))
+      doc = attach_document('use')
+      DocumentType.create!(name: 'Anti-Doping', key: 'anti_doping')
+
+      login(create(:user, :tm, team_id: own_team.id))
+
+      post "/api/v2/admin/players/#{@player.id}/license_documents",
+           params: { document_type: 'anti_doping', file: fixture_file_upload('dokument.pdf', 'application/pdf') }
+      assert_response :created
+
+      delete "/api/v2/admin/players/#{@player.id}/license_documents/#{doc.id}"
+      assert_response :forbidden
+      assert LicenseDocument.exists?(doc.id), 'Das Dokument muss erhalten bleiben'
+    end
+
+    # Gegenprobe: Der bisherige Weg bleibt unberührt. Liegt eine laufende Lizenz
+    # an der eigenen Mannschaft, darf der TM löschen wie vorher.
+    test 'TM mit laufender Lizenz an der eigenen Mannschaft darf loeschen' do
+      club = create(:club)
+      own_team = create(:team, club: club)
+      @player.update!(clubs: [{ 'club_id' => club.id, 'home_club' => true }],
+                      licenses: licenses_for(own_team))
+      doc = attach_document('use')
+
+      login(create(:user, :tm, team_id: own_team.id))
+
+      delete "/api/v2/admin/players/#{@player.id}/license_documents/#{doc.id}"
+      assert_response :success
+      assert_not LicenseDocument.exists?(doc.id)
+    end
+
     # Der Saisonfilter für sich: Der Spieler gehört dem Partnerverein weiterhin,
     # das Syndikats-Team ist aber aus einer vergangenen Saison. Die Zugehörigkeit
     # allein hielte die Tür sonst dauerhaft offen.
