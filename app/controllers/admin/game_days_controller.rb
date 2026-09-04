@@ -262,21 +262,53 @@ module Admin
       }
     end
 
-    # Spiel steht noch aus: nicht begonnen UND Spieltag in der Zukunft.
+    # Spiel steht noch aus: nicht begonnen UND der Anpfiff liegt in der Zukunft.
     #
     # Beide Bedingungen zusammen. Nur „nicht begonnen" würde einen liegen
     # gebliebenen Bericht von vorletzter Woche mit ausblenden – genau den, den
-    # die SBK sehen muss. Nur „Datum in der Zukunft" würde einen vorab
-    # geführten Bericht nicht mehr prüfen.
+    # die SBK sehen muss. Nur „in der Zukunft" würde einen vorab geführten
+    # Bericht nicht mehr prüfen.
     #
-    # Verglichen wird in Europe/Berlin: Der Server läuft in UTC, und `Date.today`
-    # hinge dort in den ersten Stunden nach Mitternacht noch am Vortag – der
-    # laufende Spieltag zählte dann als Zukunft.
+    # Maßgeblich ist der ANPFIFF, nicht der Kalendertag. Mit dem Kalendertag
+    # trüge ab 00:00 jedes Spiel des laufenden Spieltags wieder alle drei
+    # Hinweise: Samstagmittag stünden sechzig Partien mit Anpfiff 16:00, 18:00
+    # und 20:00 als „Unterschriften fehlen" in der Arbeitsansicht, also genau
+    # der Effekt, den diese Prüfung abschaffen soll, nur auf den spielstärksten
+    # Tag der Woche verengt.
+    #
+    # Gerechnet wird in Europe/Berlin (Game#start_date tut das ebenfalls): Der
+    # Server läuft in UTC, und `Date.today` hinge dort in den ersten Stunden
+    # nach Mitternacht noch am Vortag.
+    #
+    # Ohne gepflegte Anpfiffzeit bleibt nur der Kalendertag, und dann bewusst
+    # `>=`: Wann das Spiel an diesem Tag stattfindet, ist nicht bekannt, also
+    # wird bis Tagesende nicht gemahnt. Ohne Datum gilt das Spiel als nicht
+    # ausstehend – das ist die sichere Richtung, denn ein Bericht, der zu Recht
+    # Nacharbeit braucht, darf nicht wegen eines leeren Feldes unsichtbar sein.
     def upcoming?(game)
       return false unless game.game_status.blank? || game.game_status == 'pregame'
 
+      kickoff = game_kickoff(game)
+      return kickoff > Time.current if kickoff
+
       date = game_day_date(game.game_day)
-      date.present? && date > Time.find_zone!('Europe/Berlin').today
+      date.present? && date >= berlin_today
+    end
+
+    # Anpfiff als Zeitpunkt, oder nil ohne Datum bzw. ohne Uhrzeit.
+    # `game_days.date` ist eine Textspalte und im Altbestand auch mal unlesbar;
+    # Game#start_date parst sie ohne eigene Absicherung, deshalb der rescue.
+    def game_kickoff(game)
+      game.start_date
+    rescue ArgumentError, TypeError
+      nil
+    end
+
+    # Einmal je Request statt einmal je Zeile: Bei MAX_ROWS = 2000 wurde die Zone
+    # sonst zweitausendfach aufgelöst, und ein Request über Mitternacht mischte
+    # zwei verschiedene „heute".
+    def berlin_today
+      @berlin_today ||= Time.find_zone!('Europe/Berlin').today
     end
 
     # game_days.date ist eine Textspalte und im Altbestand auch mal leer oder
