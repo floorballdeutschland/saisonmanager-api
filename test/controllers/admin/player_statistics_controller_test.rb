@@ -321,11 +321,94 @@ module Admin
       assert_not_nil statistics(club_id: @club.id)['as_of']
     end
 
+    # ---------------------------------------------------------------- Export
+
+    test 'der Export liefert alle Treffer der Filterauswahl, nicht nur eine Seite' do
+      login(create(:user, :admin))
+      params = { club_id: @club.id, only_current_members: false, include_deactivated: true }
+
+      seite = statistics(**params, per_page: 1)
+      export = export_statistics(**params, per_page: 1)
+
+      assert_equal 1, seite['players'].size
+      assert_equal 3, export['players'].size
+      assert_equal 3, export['total']
+      assert_not export['truncated']
+    end
+
+    test 'der Export haelt sich an Filter und Sortierung' do
+      login(create(:user, :admin))
+      params = { club_id: @club.id, only_current_members: false, include_deactivated: true }
+
+      assert_equal %w[Adler Corvus Dohle],
+                   export_statistics(**params, sort: 'name')['players'].pluck('last_name')
+      assert_equal ['Adler'], export_statistics(**params, min_games: 2)['players'].pluck('last_name')
+      assert_equal ['Adler'], export_statistics(club_id: @club.id, q: 'adl')['players'].pluck('last_name')
+    end
+
+    test 'der Export nennt Verein und Stand wie die Liste' do
+      login(create(:user, :admin))
+
+      export = export_statistics
+      assert_equal 'association', export['scope']['mode']
+      assert_not_nil export['as_of']
+      assert_equal @club.name, export['players'].find { |p| p['last_name'] == 'Adler' }['home_club']
+    end
+
+    test 'der Export haengt an denselben Rechten wie die Liste' do
+      login(create(:user, :vm, club_id: @club.id))
+      export_statistics(club_id: @club.id)
+      assert_response :success
+
+      # Verbandsmodus ist Admin/SBK vorbehalten -- auch im Export.
+      export_statistics
+      assert_response :forbidden
+
+      login(create(:user, :vm, club_id: @club_west.id))
+      export_statistics(club_id: @club.id)
+      assert_response :forbidden
+    end
+
+    test 'der Export weist einen fremden Vereinsfilter ab' do
+      login(create(:user, :sbk_scoped, game_operation_id: @go_ost.id))
+      export_statistics(club_filter_id: @club_west.id)
+
+      assert_response :forbidden
+    end
+
+    test 'der Export kuerzt an der Obergrenze und sagt es' do
+      login(create(:user, :admin))
+      with_export_limit(2) do
+        export = export_statistics(club_id: @club.id, only_current_members: false,
+                                   include_deactivated: true)
+
+        assert_equal 2, export['players'].size
+        assert export['truncated']
+      end
+    end
+
     private
 
     def statistics(params = {})
       get '/api/v2/admin/player_statistics.json', params: params
       response.parsed_body
+    end
+
+    def export_statistics(params = {})
+      get '/api/v2/admin/player_statistics/export.json', params: params
+      response.parsed_body
+    end
+
+    # Wie with_batch_size in referee_account_tools_test: Die echte Grenze liegt bei
+    # 50.000 Zeilen, die im Test niemand erzeugt.
+    def with_export_limit(rows)
+      original = Admin::PlayerStatisticsController::MAX_EXPORT_ROWS
+      Admin::PlayerStatisticsController.send(:remove_const, :MAX_EXPORT_ROWS)
+      Admin::PlayerStatisticsController.const_set(:MAX_EXPORT_ROWS, rows)
+      yield
+    ensure
+      Admin::PlayerStatisticsController.send(:remove_const, :MAX_EXPORT_ROWS)
+      Admin::PlayerStatisticsController.const_set(:MAX_EXPORT_ROWS, original)
     end
 
     def login(user)

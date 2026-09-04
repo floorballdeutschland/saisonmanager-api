@@ -424,6 +424,8 @@ Rails.application.routes.draw do
         # get 'admin/players/:id', und ein neues Wortsegment davor waere dort eine
         # Frage der Reihenfolge statt einer eigenen Route.
         get 'player_statistics', to: 'player_statistics#index'
+        # Derselbe Blick ungeblaettert, fuer den CSV-Export der Oberflaeche.
+        get 'player_statistics/export', to: 'player_statistics#export'
         resource :analytics, only: [:show]
         # Sperrliste der Admin-Seite "System" (BlockedIp).
         resources :blocked_ips, only: %i[index create destroy]

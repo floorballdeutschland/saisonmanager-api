@@ -39,6 +39,53 @@ class CalendarControllerTest < ActionDispatch::IntegrationTest
     assert_equal 'text/calendar', response.media_type
   end
 
+  # Der Anpfiff ist deutsche Ortszeit, und die Datei muss das auch sagen. Ohne
+  # TZID schrieb die Bibliothek `DTSTART:20260905T140000` ohne Zone und ohne Z,
+  # also eine „floating time": Ein Kalender-Programm liest sie als Ortszeit des
+  # Betrachters. In Deutschland fiel das nicht auf, ein Abonnent in London hatte
+  # den Anpfiff eine Stunde daneben. Die beigelegte VTIMEZONE half nicht, weil
+  # kein Termin sie referenzierte.
+  test 'Anpfiff und Spielende tragen die Zeitzone Europe/Berlin' do
+    game_with(start_time: '14:00')
+
+    get "/api/v2/calendar/teams/#{@home.id}.ics"
+
+    assert_response :success
+    # Nur der Termin, nicht die ganze Datei: In der VTIMEZONE steht planmäßig
+    # ein DTSTART ohne TZID, dort beschreibt es die Umstellungsregel selbst.
+    termin = vevents(response.body).first
+    assert_includes termin, 'DTSTART;TZID=Europe/Berlin:20260905T140000'
+    assert_match(%r{DTEND;TZID=Europe/Berlin:20260905T\d{6}}, termin)
+    assert_no_match(/^DTSTART:/, termin)
+    assert_no_match(/^DTEND:/, termin)
+  end
+
+  # Gegenprobe zur TZID: Die VTIMEZONE muss die Zone auch beilegen, sonst
+  # verweist der Termin auf eine Zone, die die Datei nicht kennt.
+  test 'die referenzierte Zone liegt als VTIMEZONE bei' do
+    game_with(start_time: '14:00')
+
+    get "/api/v2/calendar/teams/#{@home.id}.ics"
+
+    assert_response :success
+    assert_includes response.body, 'BEGIN:VTIMEZONE'
+    assert_includes response.body, 'TZID:Europe/Berlin'
+  end
+
+  # RFC 5545 verlangt CREATED und LAST-MODIFIED in UTC, also mit Z. Die
+  # Bibliothek hängt das Z nur an, wenn die TZID 'UTC' lautet; ein bloßer
+  # UTC-Zeitstempel wurde sonst ebenfalls als floating time geschrieben.
+  test 'CREATED und LAST-MODIFIED stehen in UTC' do
+    game_with(start_time: '14:00')
+
+    get "/api/v2/calendar/teams/#{@home.id}.ics"
+
+    assert_response :success
+    body = unfold(response.body)
+    assert_match(/^CREATED:\d{8}T\d{6}Z$/, body)
+    assert_match(/^LAST-MODIFIED:\d{8}T\d{6}Z$/, body)
+  end
+
   # Manche Kalender-Programme lassen die Endung weg und fragen mit Accept: */*.
   test 'ein Abo ohne .ics-Endung bekommt ebenfalls einen Kalender' do
     game_with(start_time: '14:00')
@@ -167,6 +214,20 @@ class CalendarControllerTest < ActionDispatch::IntegrationTest
   end
 
   private
+
+  # ICS faltet Zeilen nach 75 Zeichen um (Fortsetzung mit einem Leerzeichen)
+  # und trennt sie mit CRLF. Eine Prüfung auf Zeilenanfang oder Zeilenende muss
+  # deshalb auf dem entfalteten Text mit normalen Umbrüchen laufen, sonst
+  # schlägt sie am \r fehl oder zufällig je nach Länge des Nachbarfeldes.
+  # Die VEVENT-Blöcke, entfaltet. Eine Prüfung „steht nicht in der Datei" muss
+  # sich auf den Termin beschränken, sonst trifft sie die VTIMEZONE mit.
+  def vevents(body)
+    unfold(body).scan(/BEGIN:VEVENT\n(.*?)END:VEVENT/m).flatten
+  end
+
+  def unfold(body)
+    body.gsub(/\r\n[ \t]/, '').gsub("\r\n", "\n")
+  end
 
   def count_queries(&block)
     count = 0
