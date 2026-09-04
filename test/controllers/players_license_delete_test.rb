@@ -10,7 +10,7 @@ class PlayersLicenseDeleteTest < ActionDispatch::IntegrationTest
   setup do
     create(:setting, current_season_id: '18')
     @game_operation = create(:game_operation)
-    @club = create(:club)
+    @club = create(:club, game_operation: @game_operation)
     @league = create(:league, :current_season, game_operation: @game_operation)
     @team = create(:team, league: @league, club: @club)
     @player = create(:player,
@@ -47,6 +47,77 @@ class PlayersLicenseDeleteTest < ActionDispatch::IntegrationTest
 
   def current_entry
     @player.reload.licenses.first['history'].max_by { |h| h['created_at'] }
+  end
+
+  # --- Doppelte Lizenz-ids im selben Profil ---------------------------------
+  #
+  # Nach einer Zusammenfuehrung kann dieselbe id zweimal im Profil stehen:
+  # _merge_licenses fasst nur bei gleichem team_id UND season_id zusammen.
+  # Geprueft wurde bisher der erste Treffer, geschrieben hat das map! JEDEN --
+  # eine Loeschung traf damit auch die abgerechnete Lizenz einer alten Saison,
+  # die License.deletable? gerade ausschliesst.
+
+  test 'loescht nur den geprueften Eintrag, nicht jeden mit derselben id' do
+    doppel_id = Digest::UUID.uuid_v4
+    verlauf = lambda do |zeitpunkt|
+      [{ 'license_status_id' => License::APPROVED,
+         'created_at' => zeitpunkt, 'created_by' => nil }]
+    end
+    @player.update!(licenses: [
+                      { 'id' => doppel_id, 'team_id' => @team.id,
+                        'season_id' => @league.season_id,
+                        'history' => verlauf.call(2.days.ago.iso8601) },
+                      { 'id' => doppel_id, 'team_id' => @team.id,
+                        'season_id' => '15',
+                        'history' => verlauf.call(3.years.ago.iso8601) }
+                    ])
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+
+    delete_license(doppel_id, reason: 'Doppelt angelegt, siehe Mail des Vereins')
+
+    assert_response :ok
+    lizenzen = @player.reload.licenses
+    assert_equal License::DELETED,
+                 lizenzen[0]['history'].max_by { |h| h['created_at'] }['license_status_id'].to_i,
+                 'die gepruefte Lizenz der laufenden Saison muss geloescht sein'
+    assert_equal License::APPROVED,
+                 lizenzen[1]['history'].max_by { |h| h['created_at'] }['license_status_id'].to_i,
+                 'die abgerechnete Altsaison darf NICHT mitgeloescht werden'
+  end
+
+  # --- Verbands-Scope am Knopf ----------------------------------------------
+
+  # Die eigene Lizenz ja, die des fremden Verbandes nein -- und beides im selben
+  # Profil, denn genau so tritt der Fall auf: Eine Landes-SBK sieht das Profil
+  # ihres Heimatspielers, der zusaetzlich eine Lizenz in einem Bundesliga-Team
+  # eines anderen Spielbetriebs haelt. `delete_allowed` kannte den Spielbetrieb
+  # nicht, der rote Knopf stand also auch dort, und der Klick endete nach
+  # eingegebener Begruendung in einer 403.
+  test 'delete_allowed folgt dem Verbands-Scope je Lizenz' do
+    fremder_verband = create(:game_operation)
+    fremde_liga = create(:league, :current_season, game_operation: fremder_verband)
+    fremdes_team = create(:team, league: fremde_liga, club: create(:club, game_operation: fremder_verband))
+
+    eigene_id = Digest::UUID.uuid_v4
+    fremde_id = Digest::UUID.uuid_v4
+    verlauf = [{ 'license_status_id' => License::APPROVED,
+                 'created_at' => 2.days.ago.iso8601, 'created_by' => nil }]
+    @player.update!(licenses: [
+                      { 'id' => eigene_id, 'team_id' => @team.id,
+                        'season_id' => @league.season_id, 'history' => verlauf },
+                      { 'id' => fremde_id, 'team_id' => fremdes_team.id,
+                        'season_id' => fremde_liga.season_id, 'history' => verlauf }
+                    ])
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+
+    get "/api/v2/admin/players/#{@player.id}.json"
+
+    assert_response :success
+    nach_id = JSON.parse(response.body)['licenses'].index_by { |l| l['id'] }
+    assert_equal true, nach_id[eigene_id]['delete_allowed'],
+                 'die eigene Lizenz muss loeschbar bleiben'
+    assert_equal false, nach_id[fremde_id]['delete_allowed'],
+                 'der rote Knopf darf bei einem fremden Verband gar nicht erst erscheinen'
   end
 
   # --- Der gewollte Weg -----------------------------------------------------

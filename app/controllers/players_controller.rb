@@ -88,7 +88,7 @@ class PlayersController < ApplicationController
       only_current = params[:all_licenses].to_s != 'true'
       hash = result.full_hash(true, only_current, true)
       resolve_club_actor_names!(hash)
-      annotate_gf_role_scope!(hash)
+      annotate_license_scopes!(hash)
       # Ob DIESES Konto DIESES Profil deaktivieren darf. Aus derselben Quelle
       # wie die Prüfung beim Schreiben, denn die Rollenliste im Browser
       # (`player_deactivate`) kann die Frage nicht beantworten: Sie gilt global,
@@ -270,7 +270,15 @@ class PlayersController < ApplicationController
     player = Player.find(params[:id])
     ph = current_user.permission_hash
 
-    license = player.licenses.find { |lic| lic['id'] == params[:license_id] }
+    # Ueber den INDEX und nicht ueber die id: Ein Profil kann dieselbe Lizenz-id
+    # mehrfach tragen (dokumentierter Altbestand nach Zusammenfuehrungen, weil
+    # _merge_licenses nur bei gleichem team_id UND season_id zusammenfasst).
+    # Geprueft wurde bisher der erste Treffer, geschrieben hat das map! weiter
+    # unten dagegen JEDEN -- eine Loeschung traf damit womoeglich eine zweite,
+    # abgerechnete Lizenz einer alten Saison, die License.deletable? gerade
+    # ausschliesst.
+    license_index = player.licenses.index { |lic| lic['id'] == params[:license_id] }
+    license = license_index && player.licenses[license_index]
 
     if (ph[:admin].present? || sbk_can_access_license?(ph, license)) && player.present?
       # Beide Prüfungen antworten, statt still durchzulaufen. Bis hierher endete
@@ -311,7 +319,7 @@ class PlayersController < ApplicationController
 
       approved_team_id = nil
 
-      player.licenses.map! do |lic|
+      player.licenses.map!.with_index do |lic, idx|
         # Über License.current_status_id statt über `history.sort_by.last`: Der
         # Leser kommt mit einer leeren oder fehlenden History zurecht. Vorher
         # stand dort ein `nil['license_status_id']`, also ein 500 für jede Lizenz
@@ -321,7 +329,7 @@ class PlayersController < ApplicationController
         # überhaupt etwas ändert: Derselbe Status noch einmal gesetzt (etwa ein
         # Doppelklick oder eine veraltete Zeile in der Liste) schreibt keinen
         # zweiten Eintrag und ist kein Fehler.
-        if lic['id'] == params[:license_id] &&
+        if idx == license_index &&
            License.current_status_id(lic) != params[:license_status_id].to_i
           entry = {
             license_status_id: params[:license_status_id].to_i,
@@ -1401,10 +1409,15 @@ class PlayersController < ApplicationController
   # nichts entschieden, sondern nur angezeigt wird.
   #
   # Ohne auflösbare Liga bleibt es bei false: Wer nicht weiß, welcher Verband
-  # zuständig ist, ordnet nichts zu. Für VM und TM ist der Wert immer false,
-  # denn die Zuordnung ist Verbandssache (permissions_items:
-  # player_set_gf_role).
-  def annotate_gf_role_scope!(hash)
+  # zuständig ist, ordnet nichts zu und löscht nichts. Für VM und TM sind beide
+  # Werte immer false, denn beides ist Verbandssache (permissions_items:
+  # player_set_gf_role, player_delete_license).
+  #
+  # Derselbe Scope trägt zwei Felder: `gf_role_editable` und `delete_allowed`.
+  # Beide Knöpfe hängen an einem flachen Recht, beide Endpunkte scopen dahinter
+  # auf den Spielbetrieb der Liga, und ohne diese Stelle verspräche die Maske
+  # etwas, das der Schreibweg mit 403 abweist.
+  def annotate_license_scopes!(hash)
     ph = current_user.permission_hash
     admin = ph[:admin].present?
     sbk_global = ph[:sbk].present? && ph[:sbk].include?(0)
@@ -1420,8 +1433,22 @@ class PlayersController < ApplicationController
       # 422 ab (`unless league&.gf_adult?`) -- das Feld verspraeche also etwas,
       # das kein Konto einloesen kann. Bei vorhandener Liga aendert die Klammer
       # fuer keine Rolle das Ergebnis.
-      lic[:gf_role_editable] = go_id.present? &&
-                               (admin || sbk_global || ph[:sbk].to_a.include?(go_id))
+      im_scope = go_id.present? &&
+                 (admin || sbk_global || ph[:sbk].to_a.include?(go_id))
+
+      lic[:gf_role_editable] = im_scope
+
+      # Loeschen unterliegt demselben Verbands-Scope. Player#delete_allowed
+      # kennt nur Saison und Status, das Recht `player_delete_license` ist ein
+      # flacher Ja/Nein-Wert -- ohne diese Zeile trug jede Lizenz eines FREMDEN
+      # Verbandes den roten Knopf, und der Klick endete nach eingegebener
+      # Begruendung in einer 403 vom Endpunkt (der scopet korrekt ueber
+      # sbk_can_access_license?). Gemeldet wurde genau dieses Muster schon
+      # einmal fuer die Erst-/Zweitlizenz-Zuordnung, siehe oben.
+      #
+      # Nur einschraenken, nie ausweiten: Was die Saison- und Statusregel
+      # bereits ablehnt, bleibt abgelehnt.
+      lic[:delete_allowed] &&= im_scope
     end
   end
 
