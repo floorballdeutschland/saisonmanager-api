@@ -119,30 +119,46 @@ class PublicSecretaryController < ApplicationController
         }
       end
 
-      league = contexts[team_id][:league]
+      league  = contexts[team_id][:league]
+      leagues = contexts[team_id][:leagues].presence || [league].compact
       hash[team_id.to_s] = {
         team_name: team.name,
         # Die Liga des Spieltags, in dem die Mannschaft an diesem Tag antritt –
         # nicht Team#league_id. Bei einem Pokalspiel in derselben Halle wäre das
         # ihre Hauptliga und damit die falsche Überschrift.
+        #
+        # `league_id`/`league_name` bleiben die FRÜHESTE Begegnung des Tages und
+        # damit abwärtskompatibel. Maßgeblich für die Gruppierung ist aber
+        # `leagues`: Tritt eine Mannschaft am selben Tag in derselben Halle in
+        # zwei Ligen an (vormittags Liga, nachmittags Pokal), gehört ihre
+        # Lizenzliste unter BEIDE Überschriften. Mit nur einer Liga fehlte sie
+        # unter der zweiten vollständig, und das Sekretariat des zweiten Spiels
+        # suchte sie dort vergeblich – in der flachen Liste vorher war sie
+        # wenigstens auffindbar.
         league_id: league&.id,
         league_name: league&.name,
+        leagues: leagues.map { |l| { id: l.id, name: l.name } },
         players: entries
       }
     end
   end
 
-  # Mannschaft -> { Liga, Spieltagsdatum } aus den Spielen des Links. `games`
-  # kommt bereits nach Datum und Anwurf sortiert herein, die erste Begegnung
-  # gibt also den Ausschlag: Tritt eine Mannschaft an einem Tag in zwei Ligen an
-  # (Liga und Pokal), steht ihre Lizenzliste bei der früheren.
+  # Mannschaft -> { Liga, Spieltagsdatum, alle Ligen } aus den Spielen des Links.
+  # `games` kommt bereits nach Datum und Anwurf sortiert herein, die erste
+  # Begegnung gibt also `:league` vor (Reihenfolge und Abwärtskompatibilität).
+  #
+  # `:leagues` sammelt darüber hinaus JEDE Liga, in der die Mannschaft an diesem
+  # Link beteiligt ist. Ohne diese Sammlung bekäme eine Mannschaft, die
+  # vormittags in der Liga und nachmittags im Pokal antritt, nur die frühere,
+  # und unter der zweiten Überschrift fehlte ihre Lizenzliste ganz.
   def team_contexts(games)
     games.each_with_object({}) do |game, hash|
       game_day = game.game_day
       next unless game_day
 
       [game.home_team_id, game.guest_team_id].compact.each do |team_id|
-        hash[team_id] ||= { league: game_day.league, date: game_day.date.to_s }
+        ctx = (hash[team_id] ||= { league: game_day.league, date: game_day.date.to_s, leagues: [] })
+        ctx[:leagues] << game_day.league if game_day.league && ctx[:leagues].exclude?(game_day.league)
       end
     end
   end

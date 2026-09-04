@@ -129,6 +129,40 @@ class PublicSecretaryControllerTest < ActionDispatch::IntegrationTest
     assert_equal 'Pokal', JSON.parse(response.body).dig('license_lists', @home.id.to_s, 'league_name')
   end
 
+  # Zwei Ligen am selben Tag in derselben Halle: Die Mannschaft gehoert unter
+  # BEIDE Ueberschriften. Mit nur einer Liga fehlte ihre Lizenzliste unter der
+  # zweiten vollstaendig, und das Sekretariat des zweiten Spiels suchte sie dort
+  # vergeblich -- in der flachen Liste vorher war sie wenigstens auffindbar.
+  test 'GET /public/secretary nennt alle Ligen einer Mannschaft des Tages' do
+    cup = League.create!(game_operation: @go, name: 'Pokal', season_id: '1', table_modus: 'classic')
+    cup_day = GameDay.create!(league: cup, arena: @arena, club: @club, number: 1, date: '2026-01-01')
+    Game.create!(game_day: cup_day, home_team: @home, guest_team: @guest, start_time: '14:00')
+
+    _link, raw_token = GameDaySecretaryLink.generate!(game_days: [@game_day, cup_day], created_by: @user)
+
+    get '/api/v2/public/secretary', params: { token: raw_token }
+
+    assert_response :success
+    eintrag = JSON.parse(response.body).dig('license_lists', @home.id.to_s)
+    namen = eintrag['leagues'].map { |l| l['name'] }
+    assert_includes namen, 'Testliga'
+    assert_includes namen, 'Pokal'
+    # league_id bleibt abwaertskompatibel die erste der Ligen, damit aeltere
+    # Leser der Antwort weiter etwas Sinnvolles bekommen.
+    assert_equal eintrag['leagues'].first['id'], eintrag['league_id']
+  end
+
+  # Der Normalfall bleibt eine einzige Liga, und die steht auch in `leagues`.
+  test 'GET /public/secretary fuehrt auch bei einer Liga die Liste leagues' do
+    _link, raw_token = GameDaySecretaryLink.generate!(game_days: [@game_day], created_by: @user)
+
+    get '/api/v2/public/secretary', params: { token: raw_token }
+
+    assert_response :success
+    eintrag = JSON.parse(response.body).dig('license_lists', @home.id.to_s)
+    assert_equal [@league.id], eintrag['leagues'].map { |l| l['id'] }
+  end
+
   test 'GET /public/secretary ohne Token liefert 400' do
     get '/api/v2/public/secretary'
     assert_response :bad_request
