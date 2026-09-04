@@ -49,8 +49,6 @@ class PublicLicenseListControllerTest < ActionDispatch::IntegrationTest
     assert_equal ['Xaver Abele', 'Berta Mueller', 'Anton Zander'], names
   end
 
-<<<<<<< HEAD
-=======
   # Ein Verlaufseintrag ohne `created_at` liess `max_by` platzen: „comparison of
   # NilClass with String failed", also eine 500 auf dem oeffentlichen Link kurz
   # vor Anwurf. Solche Eintraege gibt es im Altbestand.
@@ -83,7 +81,6 @@ class PublicLicenseListControllerTest < ActionDispatch::IntegrationTest
     assert_not_nil entry['approved_at'], 'Genehmigungsdatum fehlt bei Status als String'
   end
 
->>>>>>> origin/main
   test 'GET /public/license-list mit ungültigem Token liefert 410' do
     get '/api/v2/public/license_list', params: { token: 'kaputt' }
     assert_response :gone
