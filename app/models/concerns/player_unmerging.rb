@@ -160,6 +160,118 @@ module PlayerUnmerging
     bilanz
   end
 
+  # Dreht die Richtung eines Merges: das zusammengefuehrte Profil (self) wird Master, der
+  # bisherige Master wird die Dublette.
+  #
+  # Anlass: `players:merge_duplicates` fuehrt immer in die KLEINSTE ID zusammen. Bei einem
+  # echten Duplikat ist das ein Muenzwurf, und er faellt regelmaessig gegen das Profil, das
+  # der Verein benutzt. Belegt an Pavel Lubentsov (3743 in 180, 08.07.2026): Danach stand der
+  # undatierte Alteintrag FBC Phoenix Leipzig als Heimatverein offen, waehrend der Merge die
+  # laufende Zugehoerigkeit beim SSC Leipzig geschlossen hatte. Sichtbar wird das Profil
+  # damit beim falschen Verein, und die ganze Laufbahn haengt an einer ID, die niemand kennt.
+  #
+  # Warum nicht `unmerge_from!` und danach von Hand in die andere Richtung: Beide
+  # Vorbedingungen von `unmerge_from!` verweigern bei einem echten Duplikat, und zwar zu
+  # Recht. Sie schuetzen die Zuordnung der Spielaufstellungen, wenn ZWEI Personen getrennt
+  # werden. Hier ist es eine Person: Lizenzen ohne id und Lizenzen in denselben Teams sind
+  # bei ihr der Normalfall (Lubentsov: drei Lizenzen ohne id, drei geteilte Teams), und was
+  # zwischen den beiden Profilen falsch zugeordnet wuerde, fuehrt der zweite Schritt sofort
+  # wieder zusammen. Deshalb bleibt der Rueckweg hier ganz aus: Spielreferenzen werden nicht
+  # zurueckgeschrieben, sie wandern in einem Zug auf den neuen Master.
+  #
+  # Ablauf:
+  #   1. self wird auferweckt: Merge-Eintraege im Lizenzverlauf gepoppt, Kennzeichnung und
+  #      Grund abgeraeumt, die vom Merge geschlossene Zugehoerigkeit wieder geoeffnet.
+  #   2. Am alten Master werden die kopierten ZUGEHOERIGKEITEN entfernt, sonst legt der
+  #      Gegenmerge sie ein zweites Mal an. Die kopierten LIZENZEN bleiben bewusst stehen:
+  #      `_merge_licenses` fuehrt sie ueber team_id mit den eigenen zusammen, und nur so
+  #      kommen Verlaufseintraege mit, die NACH dem Merge am Master entstanden sind (bei
+  #      Lubentsov der Saisonwechsel vom 12.08.2026 auf 13 Lizenzen). Wer sie vorher
+  #      abzieht, stellt Lizenzen wieder auf "erteilt", die laengst abgelaufen sind.
+  #   3. Der alte Master wird per `merge_into!` in self gemergt. Derselbe Weg wie jeder
+  #      andere Merge, inklusive Spielreferenzen, Assoziationen und der Entscheidung ueber
+  #      den offenen Heimatverein (`_close_surplus_home_clubs`, Beleg schlaegt Datum).
+  #   4. Geschwister-Dubletten, also weitere Profile, die auf den alten Master zeigen,
+  #      werden auf self umgehaengt. Eine Kette `X -> alter Master -> self` loest ausser
+  #      `LegacyImport::HomeClubBackfillData` niemand auf; jeder andere Leser vergleicht
+  #      `merged_into_id` genau eine Stufe und landete auf einem deaktivierten Profil.
+  #
+  # Nicht automatisch, sondern gemeldet: dasselbe wie bei `unmerge_from!`. Transfers,
+  # Korrekturantraege, Sperren und Transferantraege wandern mit `merge_into!` auf self, die
+  # Herkunft steht nirgends. Das ist hier aber unschaedlich, denn beide Profile beschreiben
+  # dieselbe Person und alles landet am selben Ziel.
+  #
+  # Rueckgabe: Hash mit den Anzahlen.
+  def swap_merge_master!(user_id)
+    refuse_unmerge 'Profil ist nicht zusammengeführt' if merged_into_id.blank?
+
+    alt = Player.find_by(id: merged_into_id)
+    refuse_unmerge "Alter Master ##{merged_into_id} nicht gefunden" if alt.nil?
+    refuse_unmerge "Alter Master ##{alt.id} ist selbst zusammengeführt" if alt.merged_into_id.present?
+
+    unless deactivation_reason == MERGE_REASON
+      refuse_unmerge "Deaktivierungsgrund ist #{deactivation_reason.inspect}, " \
+                     "erwartet #{MERGE_REASON.inspect}"
+    end
+
+    bilanz = { games: 0, licenses_self: 0, clubs: 0, clubs_manual: [], reopened_self: 0,
+               repointed: 0, skipped: [] }
+
+    ActiveRecord::Base.transaction do
+      # Sperren, bevor gelesen wird: beide JSONB-Arrays werden als Ganzes zurueckgeschrieben.
+      # Eine gleichzeitige Lizenzerteilung waere sonst still ueberschrieben.
+      lock!
+      alt.lock!
+
+      teams_vorher   = _license_team_ids(licenses) | _license_team_ids(alt.licenses)
+      vereine_vorher = _membership_club_ids(clubs) | _membership_club_ids(alt.clubs)
+      bilanz[:games] = Game.referencing_player(alt.id).count
+
+      stamp_at = deactivated_at
+      stamp_by = deactivated_by
+      offen_vorher = _merge_closed_membership_club_ids(stamp_at, stamp_by)
+
+      bilanz[:licenses_self] = _pop_merge_license_entries!
+      self.merged_into_id = nil
+      # Wie bei `unmerge_from!`: `reactivate!` laesst den Grund stehen, hier muss er weg.
+      # Der Merge, auf den er sich beruft, gilt fuer dieses Profil nicht mehr.
+      self.deactivation_reason = nil
+      self.updated_by = user_id
+      reactivate!
+
+      offen_nachher = _merge_closed_membership_club_ids(stamp_at, stamp_by)
+      bilanz[:reopened_self] = offen_vorher.size - offen_nachher.size
+      if offen_nachher.any?
+        refuse_unmerge "Profil ##{id}: vom Merge geschlossene Zugehoerigkeit(en) bei Verein " \
+                       "#{offen_nachher.uniq.join(', ')} sind nicht wieder aufgegangen " \
+                       '(Erkennungsfenster von reactivate! verpasst)'
+      end
+
+      bilanz[:clubs], bilanz[:clubs_manual] = _remove_merged_clubs_from(alt)
+      alt.updated_by = user_id
+      alt.save!(validate: false)
+
+      begin
+        bilanz[:skipped] = alt.merge_into!(self, user_id)
+      rescue ArgumentError => e
+        # `merge_into!` verweigert bei gemeinsamer Aufstellung im selben Spiel. Bei einer
+        # echten Dublette kann das vorkommen (dieselbe Person zweimal im Bogen), und dann
+        # ist die Richtung nicht drehbar, ohne den Bogen vorher zu korrigieren.
+        refuse_unmerge "Gegenmerge abgelehnt: #{e.message}"
+      end
+
+      bilanz[:repointed] = Player.where(merged_into_id: alt.id).where.not(id: id)
+                                 .update_all(merged_into_id: id, updated_by: user_id,
+                                             updated_at: Time.current)
+
+      reload
+      alt.reload
+      _verify_swapped_master!(alt, teams_vorher, vereine_vorher)
+    end
+
+    bilanz
+  end
+
   def refuse_unmerge(nachricht)
     raise UnmergeRefused, nachricht
   end
@@ -535,5 +647,64 @@ module PlayerUnmerging
       'player_suspension' => PlayerSuspension.where(player_id: master.id).pluck(:id),
       'transfer_request' => TransferRequest.where(player_id: master.id).pluck(:id)
     }.reject { |_typ, ids| ids.empty? }
+  end
+  # Vereins-IDs aller Zugehoerigkeiten, offen oder geschlossen. Grundlage der
+  # Nachbedingung von `swap_merge_master!`: Kein Verein, der vor dem Richtungswechsel an
+  # einem der beiden Profile stand, darf danach fehlen.
+
+  def _membership_club_ids(eintraege)
+    Array(eintraege).filter_map { |c| c['club_id'].to_i if c.is_a?(Hash) && c['club_id'].present? }.to_set
+  end
+
+  # Nachbedingungen des Richtungswechsels. Jede einzelne beschreibt einen Zustand, der ohne
+  # Pruefung als Erfolg durchgeht und im Betrieb erst Wochen spaeter auffaellt.
+  def _verify_swapped_master!(alt, teams_vorher, vereine_vorher)
+    if merged_into_id.present? || deactivated_at.present?
+      refuse_unmerge "Neuer Master ##{id} ist nicht aktiv (merged_into=#{merged_into_id.inspect}, " \
+                     "deaktiviert=#{deactivated_at.inspect})"
+    end
+
+    unless alt.merged_into_id == id && alt.deactivated_at.present? &&
+           alt.deactivation_reason == MERGE_REASON
+      refuse_unmerge "Alter Master ##{alt.id} steht nicht als Dublette da " \
+                     "(merged_into=#{alt.merged_into_id.inspect}, " \
+                     "deaktiviert=#{alt.deactivated_at.inspect}, " \
+                     "Grund=#{alt.deactivation_reason.inspect})"
+    end
+
+    # Bleibt eine Aufstellung am alten Master stehen, fehlt sie in der Laufbahn des neuen
+    # und der deaktivierte Datensatz taucht weiter in Spielberichten auf.
+    verbliebene = Game.referencing_player(alt.id).count
+    if verbliebene.positive?
+      refuse_unmerge "#{verbliebene} Spielreferenz(en) zeigen weiter auf den alten Master ##{alt.id}"
+    end
+
+    fehlende_teams = teams_vorher - _license_team_ids(licenses)
+    if fehlende_teams.any?
+      refuse_unmerge "Lizenzen der Teams #{fehlende_teams.to_a.sort.join(', ')} fehlen am " \
+                     "neuen Master ##{id}"
+    end
+
+    fehlende_vereine = vereine_vorher - _membership_club_ids(clubs)
+    if fehlende_vereine.any?
+      refuse_unmerge "Zugehoerigkeiten bei Verein #{fehlende_vereine.to_a.sort.join(', ')} " \
+                     "fehlen am neuen Master ##{id}"
+    end
+
+    # Strenge Definition wie in `unmerge_from!`: `open_home_club_entries` wertet ein heute
+    # geschlossenes Enddatum bis Mitternacht als laufend.
+    offen = Array(clubs).count do |c|
+      c.is_a?(Hash) && ActiveModel::Type::Boolean.new.cast(c['home_club']) && c['valid_until'].blank?
+    end
+    unless offen == 1
+      refuse_unmerge "Neuer Master ##{id} haette #{offen} offene Heimatvereine; " \
+                     'die Leser widersprechen sich dann'
+    end
+
+    ketten = Player.where(merged_into_id: alt.id).pluck(:id)
+    return if ketten.empty?
+
+    refuse_unmerge "Profil(e) #{ketten.join(', ')} zeigen weiter auf den alten Master " \
+                   "##{alt.id}, der selbst zusammengeführt ist"
   end
 end
