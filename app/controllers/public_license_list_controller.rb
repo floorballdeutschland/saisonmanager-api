@@ -31,7 +31,9 @@ class PublicLicenseListController < ApplicationController
   def team_license_list(team)
     return [] unless team
 
-    players = Player.find_by_team_id(team.id)
+    # Nach Nachnamen, siehe Player#license_list_sort_key. Vor dem Aufbau
+    # sortieren: Der Eintrag traegt nur den zusammengesetzten Anzeigenamen.
+    players = Player.find_by_team_id(team.id).sort_by(&:license_list_sort_key)
     players.filter_map do |player|
       license = player.extr_license
       next unless license
@@ -51,6 +53,6 @@ class PublicLicenseListController < ApplicationController
         approved_at: approved_entry&.dig('created_at'),
         valid_until: license['valid_until']
       }
-    end.sort_by { |p| p[:name] }
+    end
   end
 end

@@ -36,6 +36,19 @@ class PublicLicenseListControllerTest < ActionDispatch::IntegrationTest
     assert_equal '2026-07-31', entry['valid_until']
   end
 
+  test 'GET /public/license-list sortiert nach Nachnamen' do
+    [%w[Anton Zander], %w[Xaver Abele], %w[Berta Mueller]].each do |first_name, last_name|
+      create(:player, first_name:, last_name:,
+                      with_licenses: [{ team: @home, status: License::APPROVED }])
+    end
+
+    get '/api/v2/public/license_list', params: { token: token_for(@game.id) }
+
+    assert_response :success
+    names = JSON.parse(response.body)['home_team_licenses'].map { |p| p['name'] }
+    assert_equal ['Xaver Abele', 'Berta Mueller', 'Anton Zander'], names
+  end
+
   test 'GET /public/license-list mit ungültigem Token liefert 410' do
     get '/api/v2/public/license_list', params: { token: 'kaputt' }
     assert_response :gone

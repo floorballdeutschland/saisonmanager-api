@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Lizenzlisten standen nach Vornamen**: Die Lizenzlisten des Spielsekretariats-Links und die der Schiedsrichteransetzung bauten erst den Anzeigenamen „Vorname Nachname" zusammen und sortierten dann danach. Gesucht wird am Spieltisch aber nach dem Nachnamen, so wie auf jeder Mannschaftsaufstellung – zwischen Anwurf und Aufstellungskontrolle ist das der Unterschied zwischen Nachschlagen und Durchlesen. Beide Listen stehen jetzt nach Nachnamen, bei Namensgleichheit nach Vornamen. Umlaute zählen dabei wie ihr Grundbuchstabe: Ohne diese Umschrift landete „Öztürk" hinter „Zimmermann", weil Ö in der Zeichenreihenfolge über Z liegt, und gerade in einer alphabetischen Liste fällt ein falsch einsortierter Name auf. Die Anzeige des Namens bleibt unverändert.
+
 ## [1.106.0] - 2026-09-02
 
 ### Neu
