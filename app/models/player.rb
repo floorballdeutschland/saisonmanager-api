@@ -754,41 +754,54 @@ class Player < ApplicationRecord
     end
   end
 
-  # Einheitlicher Einstieg für beide Sperr-Ebenen aus Issue #508.
-  # team_id == nil  → Beantragungssperre (Ebene 2): blockiert neue Anträge und
-  #                   setzt ALLE aktuell aktiven Lizenzen auf "gesperrt".
-  # team_id gesetzt → Lizenzaussetzung (Ebene 1): setzt nur die Lizenz dieses Teams aus.
-  def suspend!(valid_until:, user_id:, team_id: nil, valid_from: Date.current, reason: nil)
+  # Einheitlicher Einstieg für alle Sperren (#508, Geltungsbereich aus #604).
+  #
+  # `scope_kind` entscheidet, wie weit die Sperre reicht:
+  #   all         – der ganze Spieler; setzt ALLE aktiven Lizenzen auf
+  #                 "gesperrt" und blockiert neue Lizenzanträge.
+  #   team        – eine einzelne Team-Lizenz; setzt diese auf "gesperrt".
+  #   competition – Altersklasse + Feldgröße + Wettbewerbsgruppen der
+  #                 übergebenen Liga.
+  #   league      – nur diese eine Liga.
+  #
+  # Ohne Angabe ergibt sich der Bereich wie vor #604 aus der team_id, damit
+  # bestehende Aufrufe unverändert gelten.
+  #
+  # **Der Status landet nur bei `all` und `team` in der Lizenzhistorie.** Eine
+  # Mannschaft hängt über Team#cup_leagues auch an ihren Pokalligen, dieselbe
+  # Lizenz steht also in der Lizenzliste der Liga UND in der des Pokals. Ein
+  # einzelner Statuswert kann eine auf einen Wettbewerb begrenzte Sperre
+  # deshalb nicht abbilden – er wäre in einer der beiden Listen falsch. Für
+  # `competition` und `league` bleibt die Lizenz auf ihrem Status, und der
+  # Sperrzustand wird je Liga aus `player_suspensions` dazugelesen (#605). Der
+  # Vorgang selbst ist dort ohnehin vollständig dokumentiert.
+  # `scope` fasst den Geltungsbereich zusammen: { kind:, league:,
+  # competition_groups: }. Als ein Argument, weil die drei Angaben nur
+  # zusammen einen Sinn ergeben -- eine Wettbewerbssperre ohne Liga hat keinen
+  # Schluessel, eine Ligasperre keine Gruppen.
+  def suspend!(user_id:, team_id: nil, scope: {}, valid_from: Date.current,
+               valid_until: nil, games_total: nil, reason: nil)
+    scope_kind = scope[:kind].presence ||
+                 (team_id.present? ? PlayerSuspension::SCOPE_TEAM : PlayerSuspension::SCOPE_ALL)
+    league = scope[:league]
     suspension = nil
 
     ActiveRecord::Base.transaction do
       lock! if persisted?
       self.licenses ||= []
-      affected = []
-
-      licenses.each do |license|
-        next if team_id.present? && license['team_id'].to_i != team_id.to_i
-
-        # Altdaten-Lizenzen können `_id` statt `id` oder gar keine id haben — vor dem
-        # Speichern stabilisieren, damit lift_suspension! exakt dieselbe Lizenz findet.
-        license['id'] ||= license.delete('_id') || Digest::UUID.uuid_v4
-
-        last_status_id = license['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
-        next unless License::ACTIVE_STATUSES.include?(last_status_id)
-
-        license['history'] << {
-          'license_status_id' => License::SUSPENDED,
-          'reason' => reason.presence || 'Spielersperre',
-          'created_by' => user_id,
-          'created_at' => Time.now
-        }
-        affected << { 'license_id' => license['id'], 'previous_status_id' => last_status_id }
-      end
+      affected = write_suspended_status!(scope_kind, team_id, reason, user_id)
 
       suspension = suspensions.create!(
-        team_id:,
+        scope_kind:,
+        team_id: (team_id if scope_kind == PlayerSuspension::SCOPE_TEAM),
+        league_id: league&.id,
+        season_id: league&.season_id,
+        age_group: (league&.effective_age_group if scope_kind == PlayerSuspension::SCOPE_COMPETITION),
+        field_size: (league&.effective_field_size if scope_kind == PlayerSuspension::SCOPE_COMPETITION),
+        competition_groups: suspension_groups(scope_kind, scope[:competition_groups]),
         valid_from:,
         valid_until:,
+        games_total:,
         reason:,
         affected_licenses: affected,
         created_by: user_id
@@ -842,23 +855,66 @@ class Player < ApplicationRecord
   end
 
   # Lazy-Ablauf: hebt fällige Sperren dieses Spielers auf (auch ohne Cron korrekt).
+  #
+  # Fällig ist eine Sperre mit abgelaufenem Enddatum – und eine über Spiele, bei
+  # der die Spiele abgesessen sind. Letzteres hebt normalerweise schon
+  # PlayerSuspension#count_game! auf; hier bleibt es als Netz, falls das
+  # Aufheben dort an einem Fehler vorbeigelaufen ist.
   def expire_due_suspensions!(date: Date.current, user_id: nil)
-    suspensions.due(date).each do |suspension|
-      lift_suspension!(suspension, user_id: user_id || suspension.created_by, reason: 'Sperre abgelaufen')
+    due = suspensions.due(date).to_a +
+          suspensions.active.games_based.to_a.select(&:served_out?)
+
+    due.uniq.each do |suspension|
+      reason = suspension.served_out? ? 'Sperre abgesessen' : 'Sperre abgelaufen'
+      lift_suspension!(suspension, user_id: user_id || suspension.created_by, reason:)
     end
   end
 
-  # Greift die Beantragungssperre (Ebene 2) zu einem bestimmten Datum?
+  # Greift eine Beantragungssperre (Geltungsbereich "alles") zu diesem Datum?
   def application_blocked?(date: Date.current)
     expire_due_suspensions!(date:)
     suspensions.active.player_wide.covering(date).exists?
   end
 
-  # Besteht eine aktive Lizenzaussetzung (Ebene 1) für ein konkretes Team?
-  # Verhindert, dass eine gesperrte Team-Lizenz durch einen Neuantrag umgangen wird.
-  def suspended_for_team?(team_id, date: Date.current)
+  # Aktive Sperren, die an diesem Tag laufen.
+  def active_suspensions(date: Date.current)
+    suspensions.active.covering(date).to_a
+  end
+
+  # Die Sperre, die einer Lizenz für dieses Team entgegensteht – oder nil.
+  # Verhindert, dass eine gesperrte Lizenz durch einen Neuantrag umgangen wird.
+  def suspension_for_team(team_id, date: Date.current)
     expire_due_suspensions!(date:)
-    suspensions.active.where(team_id:).covering(date).exists?
+    team = Team.includes(:league).find_by(id: team_id)
+
+    active_suspensions(date:).find do |suspension|
+      if team.present?
+        suspension.covers_team?(team)
+      else
+        suspension.team_id.to_i == team_id.to_i
+      end
+    end
+  end
+
+  def suspended_for_team?(team_id, date: Date.current)
+    suspension_for_team(team_id, date:).present?
+  end
+
+  # Die Lizenz dieses Teams in dieser Saison – ohne Statusfilter.
+  def license_for_team(team_id, season_id: nil)
+    (licenses || []).find do |l|
+      next false unless l['team_id'].to_i == team_id.to_i
+      next true if season_id.blank?
+
+      lic_season = l['season_id'] || l.dig('league', 'season_id')
+      lic_season.nil? || lic_season.to_s == season_id.to_s
+    end
+  end
+
+  # Wäre der Spieler für dieses Team spielberechtigt, wenn es keine Sperre gäbe?
+  # Grundlage für das Abzählen einer Sperre über X Spiele.
+  def eligible_for_team?(team_id, season_id: nil)
+    LicenseEffectiveStatus.eligible?(license_for_team(team_id, season_id:))
   end
 
   def self.find_by_team_id(team_id)
@@ -1103,6 +1159,51 @@ class Player < ApplicationRecord
   end
 
   private
+
+  # Setzt die betroffenen Lizenzen auf "gesperrt" und liefert die Liste, aus der
+  # lift_suspension! den vorherigen Status zurückholt.
+  #
+  # Nur fuer die Geltungsbereiche `all` und `team`: Beide sind in jedem
+  # Wettbewerb dieser Lizenz eindeutig. Eine auf einen Wettbewerb begrenzte
+  # Sperre laesst den Status stehen, siehe suspend!.
+  def write_suspended_status!(scope_kind, team_id, reason, user_id)
+    return [] unless [PlayerSuspension::SCOPE_ALL, PlayerSuspension::SCOPE_TEAM].include?(scope_kind)
+
+    affected = []
+    licenses.each do |license|
+      next if scope_kind == PlayerSuspension::SCOPE_TEAM && license['team_id'].to_i != team_id.to_i
+
+      # Altdaten-Lizenzen können `_id` statt `id` oder gar keine id haben — vor dem
+      # Speichern stabilisieren, damit lift_suspension! exakt dieselbe Lizenz findet.
+      license['id'] ||= license.delete('_id') || Digest::UUID.uuid_v4
+
+      last_status_id = license['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
+      next unless License::ACTIVE_STATUSES.include?(last_status_id)
+
+      license['history'] << {
+        'license_status_id' => License::SUSPENDED,
+        'reason' => reason.presence || 'Spielersperre',
+        'created_by' => user_id,
+        'created_at' => Time.now
+      }
+      affected << { 'license_id' => license['id'], 'previous_status_id' => last_status_id }
+    end
+    affected
+  end
+
+  # Wettbewerbsgruppen nur beim Wettbewerbs-Geltungsbereich.
+  #
+  # `nil` heißt "nicht angegeben" und ergibt die Vorbelegung (Ligaspielbetrieb
+  # und DM/Endrunde, nicht der Pokal). Eine leere Liste heißt dagegen
+  # "ausdrücklich alles abgewählt" und läuft in die Validierung. Die beiden
+  # Fälle auseinanderzuhalten ist der Punkt: Fiele die leere Auswahl auf die
+  # Vorbelegung zurück, würde genau das gesperrt, was gerade abgewählt wurde.
+  def suspension_groups(scope_kind, groups)
+    return [] unless scope_kind == PlayerSuspension::SCOPE_COMPETITION
+    return PlayerSuspension::DEFAULT_COMPETITION_GROUPS if groups.nil?
+
+    Array(groups).map(&:to_s).select(&:present?)
+  end
 
   # Entfernt die DELETED-Eintraege, die `deactivate!` bis api#472 an jede laufende
   # Lizenz gehaengt hat. Erkennungsmerkmal ist das Tripel aus Status, Grund und

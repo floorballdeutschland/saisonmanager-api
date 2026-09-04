@@ -155,5 +155,143 @@ module Admin
 
       assert_response :forbidden
     end
+
+    # -------------------------------------------------------------------------
+    # Geltungsbereich und Dauer (#604)
+    # -------------------------------------------------------------------------
+
+    test 'Heimatverband darf eine Sperre auf einen Wettbewerb setzen' do
+      login(create(:user, :sbk_scoped, game_operation_id: @heim_go.id))
+      liga = create(:league, :current_season, game_operation: @heim_go, league_modus: 'league',
+                                              age_group: 'Herren', field_size: 'GF')
+
+      post "/api/v2/admin/players/#{@player.id}/suspensions",
+           params: { scope_kind: 'competition', league_id: liga.id, games_total: 3,
+                     competition_groups: [League::GROUP_LIGA], reason: 'Tätlichkeit' }
+
+      assert_response :created
+      body = JSON.parse(response.body)
+      assert_equal 'competition', body['scope_kind']
+      assert_equal 3, body['games_total']
+      assert_equal 3, body['remaining_games']
+      assert_nil body['valid_until'], 'eine Sperre über Spiele braucht kein Enddatum'
+      assert_equal 'Herren Großfeld, Ligaspielbetrieb', body['scope_summary']
+    end
+
+    # Eine Wettbewerbssperre greift in jeder Liga derselben Altersklasse, auch
+    # in fremden Verbaenden. Sie bleibt deshalb dem Heimatverband vorbehalten.
+    test 'Verband der Liga darf keine Wettbewerbssperre setzen' do
+      liga = create(:league, :current_season, game_operation: @fremd_go, league_modus: 'league')
+      team = create(:team, league: liga, club: @club)
+      @player.update!(licenses: [{ 'id' => 'l1', 'team_id' => team.id, 'season_id' => '18',
+                                   'history' => [{ 'license_status_id' => License::APPROVED,
+                                                   'created_at' => 1.day.ago.iso8601 }] }])
+      login(create(:user, :sbk_scoped, game_operation_id: @fremd_go.id))
+
+      post "/api/v2/admin/players/#{@player.id}/suspensions",
+           params: { scope_kind: 'competition', league_id: liga.id, games_total: 2 }
+
+      assert_response :forbidden
+      assert_equal 0, @player.reload.suspensions.count
+    end
+
+    # Wer die Lizenz erteilt, darf sie aussetzen -- aber nur fuer einen Spieler,
+    # der mit dieser Liga zu tun hat.
+    test 'Verband der Liga darf auf seine Liga sperren' do
+      liga = create(:league, :current_season, game_operation: @fremd_go, league_modus: 'league')
+      team = create(:team, league: liga, club: @club)
+      @player.update!(licenses: [{ 'id' => 'l1', 'team_id' => team.id, 'season_id' => '18',
+                                   'history' => [{ 'license_status_id' => License::APPROVED,
+                                                   'created_at' => 1.day.ago.iso8601 }] }])
+      login(create(:user, :sbk_scoped, game_operation_id: @fremd_go.id))
+
+      post "/api/v2/admin/players/#{@player.id}/suspensions",
+           params: { scope_kind: 'league', league_id: liga.id, games_total: 1 }
+
+      assert_response :created
+      assert_equal 'league', JSON.parse(response.body)['scope_kind']
+    end
+
+    test 'Ligasperre auf einen Spieler ohne Bezug zur Liga wird abgelehnt' do
+      liga = create(:league, :current_season, game_operation: @fremd_go, league_modus: 'league')
+      create(:team, league: liga)
+      login(create(:user, :sbk_scoped, game_operation_id: @fremd_go.id))
+
+      post "/api/v2/admin/players/#{@player.id}/suspensions",
+           params: { scope_kind: 'league', league_id: liga.id, games_total: 1 }
+
+      assert_response :forbidden
+    end
+
+    test 'eine Sperre ohne Enddatum und ohne Spiele wird abgelehnt' do
+      login(create(:user, :sbk_scoped, game_operation_id: @heim_go.id))
+
+      post "/api/v2/admin/players/#{@player.id}/suspensions", params: { reason: 'ohne Dauer' }
+
+      assert_response :unprocessable_entity
+      assert_match(/Enddatum oder eine Anzahl von Spielen/, JSON.parse(response.body)['message'])
+    end
+
+    test 'ein unlesbares Ablaufdatum wird abgelehnt' do
+      login(create(:user, :sbk_scoped, game_operation_id: @heim_go.id))
+
+      post "/api/v2/admin/players/#{@player.id}/suspensions", params: { valid_until: 'übermorgen' }
+
+      assert_response :unprocessable_entity
+    end
+
+    test 'eine Wettbewerbssperre ohne Liga wird abgelehnt' do
+      login(create(:user, :sbk_scoped, game_operation_id: @heim_go.id))
+
+      post "/api/v2/admin/players/#{@player.id}/suspensions",
+           params: { scope_kind: 'competition', games_total: 2 }
+
+      assert_response :unprocessable_entity
+      assert_match(/fehlt die Liga/, JSON.parse(response.body)['message'])
+    end
+
+    test 'alle Wettbewerbe abgewählt wird abgelehnt statt still vorbelegt' do
+      login(create(:user, :sbk_scoped, game_operation_id: @heim_go.id))
+      liga = create(:league, :current_season, game_operation: @heim_go, league_modus: 'league')
+
+      post "/api/v2/admin/players/#{@player.id}/suspensions",
+           params: { scope_kind: 'competition', league_id: liga.id, games_total: 2,
+                     competition_groups: [] }
+
+      assert_response :unprocessable_entity
+    end
+
+    # -------------------------------------------------------------------------
+    # Manuelles Aufheben (#605)
+    # -------------------------------------------------------------------------
+
+    test 'Sperre lässt sich mit Begründung aufheben' do
+      login(create(:user, :sbk_scoped, game_operation_id: @heim_go.id))
+      suspend
+      suspension_id = JSON.parse(response.body)['id']
+
+      delete "/api/v2/admin/players/#{@player.id}/suspensions/#{suspension_id}",
+             params: { reason: 'Einspruch erfolgreich' }
+
+      assert_response :success
+      body = JSON.parse(response.body)
+      assert_not body['active']
+      assert_not_nil body['lifted_at']
+    end
+
+    test 'fremder Spielbetrieb darf eine Wettbewerbssperre nicht aufheben' do
+      login(create(:user, :sbk_scoped, game_operation_id: @heim_go.id))
+      liga = create(:league, :current_season, game_operation: @fremd_go, league_modus: 'league')
+      post "/api/v2/admin/players/#{@player.id}/suspensions",
+           params: { scope_kind: 'competition', league_id: liga.id, games_total: 2 }
+      assert_response :created
+      suspension_id = JSON.parse(response.body)['id']
+
+      login(create(:user, :sbk_scoped, game_operation_id: @fremd_go.id))
+      delete "/api/v2/admin/players/#{@player.id}/suspensions/#{suspension_id}"
+
+      assert_response :forbidden
+      assert PlayerSuspension.find(suspension_id).active?
+    end
   end
 end

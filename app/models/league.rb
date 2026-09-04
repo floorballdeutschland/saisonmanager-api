@@ -6,6 +6,7 @@ class League < ApplicationRecord
   include LeagueLogo
   include LeagueRefereeAssignment
   include LeagueCompetition
+  include LeagueLicenseSuspensions
 
   has_many :game_days
   has_many :qualifications, class_name: 'LeagueQualification',
@@ -891,12 +892,13 @@ class League < ApplicationRecord
     teams_by_id.merge!(license_foreign_teams(team_licenses, teams_by_id.keys)) if with_other_licenses
 
     release_dates = with_release_dates ? license_release_dates(team_licenses, all_teams) : {}
+    suspensions = license_suspensions(team_licenses)
 
     leagues.to_h do |league|
       [league.id, league.build_license_items(teams_by_league[league.id] || [], team_licenses, teams_by_id,
                                              full_license_hash, only_current_licenses,
                                              team_hash, with_other_licenses,
-                                             release_dates:)]
+                                             lookups: { release_dates:, suspensions: })]
     end
   end
 
@@ -1000,7 +1002,12 @@ class League < ApplicationRecord
 
   def build_license_items(league_teams, team_licenses, teams_by_id, full_license_hash,
                           only_current_licenses, team_hash = :full, with_other_licenses = true,
-                          release_dates: {})
+                          lookups: {})
+    # `lookups` bündelt die beiden vorab geladenen Nachschlage-Tabellen
+    # (:release_dates, :suspensions). Als ein Argument, weil beide denselben
+    # Zweck haben: Sie ersparen der Zeile eine eigene Abfrage.
+    release_dates = lookups[:release_dates] || {}
+    suspensions   = lookups[:suspensions] || {}
     active_statuses = [License::APPROVED, License::REQUESTED].to_set
 
     result = []
@@ -1020,12 +1027,22 @@ class League < ApplicationRecord
 
         player_item = player.full_hash(full_license_hash, only_current_licenses)
 
-        last_status = license['history']&.max_by { |h| h['created_at'] }
-        next unless last_status
+        # Maßgeblich ist der Status, den die Lizenz OHNE Sperre hätte. Eine
+        # Mannschaft hängt über cup_leagues auch an ihren Pokalligen, dieselbe
+        # Lizenz steht also in dieser Liste und in der des Pokals; der
+        # gespeicherte Sperrstatus kann nur einer der beiden gerecht werden.
+        # Bis #605 filterte diese Stelle hart auf erteilt/beantragt, und eine
+        # gesperrte Lizenz verschwand deshalb aus JEDER Liste -- auch aus der
+        # des Pokals, in dem der Spieler weiterhin spielen darf.
+        base_status = LicenseEffectiveStatus.base_entry(license)
+        next unless base_status
 
-        last_status_id = last_status['license_status_id']
-        next unless active_statuses.include?(last_status_id.to_i)
+        base_status_id = base_status['license_status_id']
+        next unless active_statuses.include?(base_status_id.to_i)
 
+        # Greift eine aktive Sperre auf diese Lizenz in DIESER Liga?
+        suspension = Array(suspensions[player.id]).find { |s| s.covers_license_in?(self, team) }
+        last_status_id = suspension ? License::SUSPENDED : base_status_id
         last_status_code = License::NAMES[last_status_id.to_i]
 
         # .to_i wie zwei Zeilen darueber: Die Status-ID liegt in der JSONB-History
@@ -1033,16 +1050,23 @@ class League < ApplicationRecord
         # '1'/'2' als String zwar in der Liste, aber ohne Beantragungs- und
         # Erteilungsdatum -- seit die Lizenzliste beide zeigt, ist das kein
         # kosmetischer Mangel mehr.
-        approved_at = (last_status['created_at'].to_datetime if last_status_id.to_i == 1)
+        #
+        # Das Erteilungsdatum kommt aus dem Basis-Eintrag: Eine gesperrte Lizenz
+        # ist erteilt, und ohne den Rückgriff stünde die Zeile ohne Datum da.
+        approved_at = (base_status['created_at'].to_datetime if base_status_id.to_i == 1)
         requested_at = license['history'].select do |lh|
                          lh['license_status_id'].to_i == 2
                        end.last&.dig('created_at')&.then { |ts| ts.to_datetime }
 
         player_item[:team_license] = {
           license:,
-          last_status:,
+          last_status: suspension ? LicenseEffectiveStatus.current_entry(license) : base_status,
           last_status_id:,
           last_status_code:,
+          # Der Status ohne Sperre, damit die Oberfläche zeigen kann, worauf
+          # die Lizenz nach dem Ablauf zurückfällt.
+          base_status_id:,
+          suspension: suspension_item(suspension),
           approved_at:,
           requested_at:,
           released_at: release_date_for(player, team_club_ids, release_dates)
@@ -1119,7 +1143,10 @@ class League < ApplicationRecord
       t_id = l['team_id'].to_i
       next if t_id == team_id
 
-      current_status = l['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
+      # Wie in build_license_items der Status OHNE Sperre: Eine gesperrte
+      # Zweitlizenz gehoert in die Genehmigungskarte, sonst faellt sie aus dem
+      # Kontext, in dem ueber die Erst-/Zweitlizenz-Zuordnung entschieden wird.
+      current_status = LicenseEffectiveStatus.base_status_id(l)
       next unless active_statuses.include?(current_status)
 
       other_team = teams_by_id[t_id]
@@ -1154,7 +1181,7 @@ class League < ApplicationRecord
     team_licenses = Player.find_by_team_ids(league_teams.map(&:id))
 
     status = { '1' => 'erteilt', '2' => 'beantragt', '3' => 'abgelehnt', '4' => 'gelöscht', '5' => 'Löschung beantragt',
-               '6' => 'Transfer', '7' => 'ignoriert' }
+               '6' => 'Transfer', '7' => 'ignoriert', '8' => 'zurückgezogen', '9' => 'gesperrt' }
 
     league_teams.each do |team|
       puts team.name

@@ -15,17 +15,31 @@ module Admin
 
     def create
       valid_until = parse_date(params[:valid_until])
-      return render json: { message: 'Ablaufdatum fehlt oder ungültig.' }, status: :unprocessable_entity if valid_until.nil?
+      if params[:valid_until].present? && valid_until.nil?
+        return render json: { message: 'Ablaufdatum ungültig.' }, status: :unprocessable_entity
+      end
 
-      valid_from = parse_date(params[:valid_from]) || Date.current
-      team_id    = params[:team_id].presence
+      games_total = params[:games_total].presence&.to_i
+      if valid_until.nil? && games_total.nil?
+        return render json: { message: 'Eine Sperre braucht ein Enddatum oder eine Anzahl von Spielen.' },
+                      status: :unprocessable_entity
+      end
+
+      scope_kind = suspension_scope_kind
+      if scope_kind == PlayerSuspension::SCOPE_COMPETITION && scope_league.blank?
+        return render json: { message: 'Für eine Sperre auf einen Wettbewerb fehlt die Liga, aus der sie stammt.' },
+                      status: :unprocessable_entity
+      end
 
       suspension = @player.suspend!(
-        team_id:,
-        valid_from:,
+        user_id: current_user.id,
+        team_id: params[:team_id].presence,
+        scope: { kind: scope_kind, league: scope_league,
+                 competition_groups: params[:competition_groups] },
+        valid_from: parse_date(params[:valid_from]) || Date.current,
         valid_until:,
-        reason: params[:reason].presence,
-        user_id: current_user.id
+        games_total:,
+        reason: params[:reason].presence
       )
 
       render json: suspension_json(suspension), status: :created
@@ -33,9 +47,14 @@ module Admin
       render json: { message: e.record.errors.full_messages.join(', ') }, status: :unprocessable_entity
     end
 
+    # Manuelles Aufheben durch Admin oder SBK. Der Grund landet in der
+    # Lizenzhistorie, damit im Verlauf steht, warum die Lizenz vor dem Ablauf
+    # der Sperre wieder gilt.
     def destroy
       suspension = @player.suspensions.find(params[:id])
-      @player.lift_suspension!(suspension, user_id: current_user.id)
+      reason = params[:reason].presence
+      @player.lift_suspension!(suspension, user_id: current_user.id,
+                                           reason: reason ? "Sperre aufgehoben: #{reason}" : 'Sperre aufgehoben')
       render json: suspension_json(suspension.reload)
     end
 
@@ -91,11 +110,25 @@ module Admin
     # Altdaten-Import 2010–2014. Damit hätte ein Landesverband Spieler fremder
     # Vereine sperren können, ohne dass es jemand erteilt hätte. Das war die
     # letzte Stelle, die den Hash für eine Rechteentscheidung gelesen hat.
+    #
+    # Seit #604 haengt die Antwort am Geltungsbereich: `all` und `competition`
+    # reichen ueber den eigenen Spielbetrieb hinaus (eine Wettbewerbssperre
+    # greift in jeder Liga derselben Altersklasse, auch in fremden Verbaenden)
+    # und bleiben deshalb dem Heimatverband vorbehalten. `league` und `team`
+    # darf auch der Verband der betroffenen Liga setzen.
     def sbk_may_suspend?(perm_hash)
       return false if perm_hash[:sbk].blank?
       return true if sbk_global?(perm_hash)
       return true if (perm_hash[:sbk] & player_home_game_operation_ids).present?
 
+      case suspension_scope_kind
+      when PlayerSuspension::SCOPE_TEAM then sbk_may_suspend_team?(perm_hash)
+      when PlayerSuspension::SCOPE_LEAGUE then sbk_may_suspend_league?(perm_hash)
+      else false
+      end
+    end
+
+    def sbk_may_suspend_team?(perm_hash)
       team = Team.find_by(id: suspension_scope_team_id)
       return false if team.blank?
       return false unless sbk_can_access_team?(perm_hash, team)
@@ -111,6 +144,49 @@ module Admin
       # dort mit derselben Begründung.
       player_in_team_clubs?(@player, team) ||
         (@player.licenses || []).any? { |l| l['team_id'].to_i == team.id }
+    end
+
+    # Wie bei der Team-Sperre: Der Spielbetrieb der Liga genuegt, aber der
+    # Spieler muss mit dieser Liga zu tun haben. Ohne die zweite Schranke
+    # koennte eine SBK eine beliebige eigene Liga angeben und damit eine Sperre
+    # auf einen fremden Spieler schreiben.
+    def sbk_may_suspend_league?(perm_hash)
+      league = scope_league
+      return false if league.blank?
+      return false unless perm_hash[:sbk].include?(league.game_operation_id)
+
+      league_team_ids = Team.where(league_id: league.id)
+                            .or(Team.where('cup_leagues && ARRAY[?]::int[]', [league.id]))
+                            .pluck(:id)
+      return false if league_team_ids.empty?
+
+      (@player.licenses || []).any? { |l| league_team_ids.include?(l['team_id'].to_i) } ||
+        Team.where(id: league_team_ids).any? { |t| player_in_team_clubs?(@player, t) }
+    end
+
+    # Der Geltungsbereich der Anfrage. Beim Anlegen aus den Parametern, beim
+    # Aufheben aus der bestehenden Sperre.
+    def suspension_scope_kind
+      if action_name == 'create'
+        kind = params[:scope_kind].presence
+        return kind if PlayerSuspension::SCOPE_KINDS.include?(kind)
+
+        return params[:team_id].presence ? PlayerSuspension::SCOPE_TEAM : PlayerSuspension::SCOPE_ALL
+      end
+
+      @player.suspensions.find_by(id: params[:id])&.scope_kind
+    end
+
+    # Die Liga, aus der eine Wettbewerbs- oder Ligasperre stammt.
+    def scope_league
+      return @scope_league if defined?(@scope_league)
+
+      @scope_league = League.find_by(id: params[:league_id]) if params[:league_id].present?
+      @scope_league ||= if action_name == 'create'
+                          Team.find_by(id: params[:team_id])&.league if params[:team_id].present?
+                        else
+                          League.find_by(id: @player.suspensions.find_by(id: params[:id])&.league_id)
+                        end
     end
 
     # Zustaendige Spielbetriebe der HEIMATvereine des Spielers.
@@ -186,6 +262,17 @@ module Admin
         team_id:     suspension.team_id,
         team_name:   team&.name,
         kind:        suspension.player_wide? ? 'application_block' : 'license_suspension',
+        scope_kind:  suspension.scope_kind,
+        scope_summary: suspension.scope_summary,
+        league_id:   suspension.league_id,
+        league_name: (League.unscoped.find_by(id: suspension.league_id)&.name if suspension.league_id),
+        season_id:   suspension.season_id,
+        age_group:   suspension.age_group,
+        field_size:  suspension.field_size,
+        competition_groups: Array(suspension.competition_groups),
+        games_total:     suspension.games_total,
+        games_served:    suspension.games_served,
+        remaining_games: suspension.remaining_games,
         valid_from:  suspension.valid_from,
         valid_until: suspension.valid_until,
         reason:      suspension.reason,

@@ -949,6 +949,15 @@ class GamesController < ApplicationController
         end
         game.save
 
+        # Sperren ueber eine Anzahl von Spielen zaehlen hier ab (#604): Ein Spiel
+        # gilt als abgesessen, sobald sein Spielbericht abgeschlossen ist. Auch
+        # bei `finalized`, denn ein direkt finalisiertes Spiel ist gewertet.
+        # Idempotent ueber served_game_ids, ein erneut geoeffneter und wieder
+        # geschlossener Bericht zaehlt also nicht zweimal.
+        if %w[match_record_closed finalized].include?(params[:game_status])
+          PlayerSuspension.count_closed_game!(game.reload, user_id: current_user&.id)
+        end
+
         if params[:game_status] == 'match_record_closed'
           _maybe_send_incident_report_reminder(game)
           _maybe_send_checklist_confirmation(game)

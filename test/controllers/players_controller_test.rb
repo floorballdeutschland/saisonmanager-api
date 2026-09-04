@@ -1361,4 +1361,37 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
       players: { 'home' => [{ 'trikot_number' => 7, 'player_id' => @player.id }], 'guest' => [] }
     )
   end
+  # Eine Wettbewerbssperre blockiert nicht jeden Antrag, aber jeden in ihrem
+  # Geltungsbereich -- und die Absage benennt ihn (#604).
+  test 'Wettbewerbssperre verhindert den Lizenzantrag in ihrer Liga' do
+    @league.update!(league_modus: 'league', age_group: 'Herren', field_size: 'GF')
+    @player.suspend!(user_id: create(:user, :admin).id, valid_until: Date.current + 30,
+                     scope: { kind: PlayerSuspension::SCOPE_COMPETITION, league: @league,
+                              competition_groups: [League::GROUP_LIGA] })
+    login_as(create(:user, :vm, club_id: @club.id))
+
+    post "/api/v2/user/players/#{@player.id}/request_license",
+         params: { team_id: @team.id }, as: :json
+
+    assert_response :unprocessable_entity
+    assert_match(/Ligaspielbetrieb/, JSON.parse(response.body)['message'])
+    assert_equal 0, @player.reload.licenses.length
+  end
+
+  test 'Wettbewerbssperre der Liga verhindert keinen Antrag im Pokal' do
+    @league.update!(league_modus: 'league', age_group: 'Herren', field_size: 'GF')
+    pokal = create(:league, :current_season, game_operation: @game_operation, league_modus: 'cup',
+                                             age_group: 'Herren', field_size: 'GF')
+    pokal_team = create(:team, league: pokal, club: @club)
+    @player.suspend!(user_id: create(:user, :admin).id, valid_until: Date.current + 30,
+                     scope: { kind: PlayerSuspension::SCOPE_COMPETITION, league: @league,
+                              competition_groups: [League::GROUP_LIGA] })
+    login_as(create(:user, :vm, club_id: @club.id))
+
+    post "/api/v2/user/players/#{@player.id}/request_license",
+         params: { team_id: pokal_team.id }, as: :json
+
+    assert_response :ok
+    assert_equal 1, @player.reload.licenses.length
+  end
 end

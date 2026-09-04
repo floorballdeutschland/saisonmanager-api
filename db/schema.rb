@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_09_02_110000) do
+ActiveRecord::Schema[7.2].define(version: 2026_09_04_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -552,7 +552,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_02_110000) do
     t.bigint "player_id", null: false
     t.bigint "team_id"
     t.date "valid_from", null: false
-    t.date "valid_until", null: false
+    t.date "valid_until"
     t.text "reason"
     t.jsonb "affected_licenses", default: [], null: false
     t.bigint "created_by"
@@ -560,8 +560,18 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_02_110000) do
     t.bigint "lifted_by"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "scope_kind", null: false
+    t.integer "games_total"
+    t.integer "games_served", default: 0, null: false
+    t.jsonb "served_game_ids", default: [], null: false
+    t.string "season_id"
+    t.string "age_group"
+    t.string "field_size"
+    t.string "competition_groups", default: [], null: false, array: true
+    t.bigint "league_id"
     t.index ["player_id", "lifted_at"], name: "index_player_suspensions_on_player_id_and_lifted_at"
     t.index ["player_id"], name: "index_player_suspensions_on_player_id"
+    t.index ["scope_kind", "lifted_at"], name: "index_player_suspensions_on_scope_kind_and_lifted_at"
     t.index ["valid_until"], name: "index_player_suspensions_on_valid_until"
   end
 
@@ -1017,9 +1027,9 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_02_110000) do
     t.datetime "withdrawn_at"
     t.index ["former_club_id"], name: "index_transfer_requests_on_former_club_id"
     t.index ["player_confirmation_token"], name: "index_transfer_requests_on_player_confirmation_token", unique: true
-    t.index ["player_id", "requesting_club_id"], name: "index_transfer_requests_on_player_id_active_release", unique: true, where: "(((status)::text = ANY ((ARRAY['pending_club'::character varying, 'pending_player'::character varying, 'pending_lv'::character varying, 'scheduled'::character varying])::text[])) AND ((request_type)::text = 'release'::text))"
+    t.index ["player_id", "requesting_club_id"], name: "index_transfer_requests_on_player_id_active_release", unique: true, where: "(((status)::text = ANY (ARRAY[('pending_club'::character varying)::text, ('pending_player'::character varying)::text, ('pending_lv'::character varying)::text, ('scheduled'::character varying)::text])) AND ((request_type)::text = 'release'::text))"
     t.index ["player_id"], name: "index_transfer_requests_on_player_id"
-    t.index ["player_id"], name: "index_transfer_requests_on_player_id_active_transfer", unique: true, where: "(((status)::text = ANY ((ARRAY['pending_club'::character varying, 'pending_player'::character varying, 'pending_lv'::character varying, 'scheduled'::character varying])::text[])) AND ((request_type)::text = 'transfer'::text))"
+    t.index ["player_id"], name: "index_transfer_requests_on_player_id_active_transfer", unique: true, where: "(((status)::text = ANY (ARRAY[('pending_club'::character varying)::text, ('pending_player'::character varying)::text, ('pending_lv'::character varying)::text, ('scheduled'::character varying)::text])) AND ((request_type)::text = 'transfer'::text))"
     t.index ["request_type"], name: "index_transfer_requests_on_request_type"
     t.index ["requesting_club_id"], name: "index_transfer_requests_on_requesting_club_id"
     t.index ["status"], name: "index_transfer_requests_on_status"

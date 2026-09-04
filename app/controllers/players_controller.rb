@@ -154,6 +154,7 @@ class PlayersController < ApplicationController
 
     result = :ok
     player = nil
+    blocking_suspension = nil
 
     ActiveRecord::Base.transaction do
       player = Player.lock.find(params[:id])
@@ -172,7 +173,10 @@ class PlayersController < ApplicationController
         raise ActiveRecord::Rollback
       end
 
-      if player.suspended_for_team?(team.id)
+      # Deckt jeden Geltungsbereich ab: die Sperre auf diese Mannschaft, die auf
+      # ihre Liga und die auf den Wettbewerb, in dem die Liga liegt (#604).
+      blocking_suspension = player.suspension_for_team(team.id)
+      if blocking_suspension.present?
         result = :team_suspended
         raise ActiveRecord::Rollback
       end
@@ -223,8 +227,16 @@ class PlayersController < ApplicationController
       render json: { message: 'Für diesen Spieler besteht eine aktive Sperre. Es können keine Lizenzen beantragt werden.' },
              status: :unprocessable_entity
     when :team_suspended
-      render json: { message: 'Die Lizenz dieses Spielers für dieses Team ist gesperrt. Ein neuer Antrag ist erst nach Ablauf der Sperre möglich.' },
-             status: :unprocessable_entity
+      # Der Geltungsbereich gehört in die Meldung: Bei einer Wettbewerbssperre
+      # ist nicht diese eine Lizenz gesperrt, sondern der ganze Wettbewerb, und
+      # ohne die Angabe sähe der Verein nur eine Absage ohne Grund.
+      scope = blocking_suspension&.scope_summary
+      message = if scope.present?
+                  "Für diesen Spieler besteht eine Sperre (#{scope}). Ein neuer Antrag ist erst nach Ablauf der Sperre möglich."
+                else
+                  'Die Lizenz dieses Spielers für dieses Team ist gesperrt. Ein neuer Antrag ist erst nach Ablauf der Sperre möglich.'
+                end
+      render json: { message: }, status: :unprocessable_entity
     when :duplicate
       render json: { message: 'Der Spieler hat schon einen Lizenzantrag für dieses Team' },
              status: :unprocessable_entity
