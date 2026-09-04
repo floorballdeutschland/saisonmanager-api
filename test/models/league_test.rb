@@ -1227,4 +1227,85 @@ class LeagueTest < ActiveSupport::TestCase
   ensure
     ActiveSupport::Notifications.unsubscribe(subscriber)
   end
+  # ---------------------------------------------------------------------------
+  # Ligamodus playoff und Wettbewerbsgruppe (#603)
+  # ---------------------------------------------------------------------------
+
+  test 'competition_group: league und playoff liegen beide im Ligaspielbetrieb' do
+    assert_equal League::GROUP_LIGA, League.new(league_modus: 'league').competition_group
+    assert_equal League::GROUP_LIGA, League.new(league_modus: 'playoff').competition_group
+  end
+
+  test 'competition_group: cup ist Pokal, champ ist Meisterschaft' do
+    assert_equal League::GROUP_POKAL, League.new(league_modus: 'cup').competition_group
+    assert_equal League::GROUP_MEISTERSCHAFT, League.new(league_modus: 'champ').competition_group
+  end
+
+  test 'competition_group: fehlender Modus ergibt Ligaspielbetrieb, nicht nil' do
+    # Sichere Richtung: Eine Sperre im Ligaspielbetrieb greift dann eher zu
+    # weit als zu kurz. 1597 Altligen tragen keinen Modus.
+    assert_equal League::GROUP_LIGA, League.new(league_modus: nil).competition_group
+    assert_equal League::GROUP_LIGA, League.new(league_modus: '').competition_group
+  end
+
+  test 'competition_group: Altligen entscheiden über league_category_id' do
+    assert_equal League::GROUP_LIGA, League.new(legacy_league: true, league_category_id: '1').competition_group
+    assert_equal League::GROUP_POKAL, League.new(legacy_league: true, league_category_id: '4').competition_group
+    assert_equal League::GROUP_MEISTERSCHAFT,
+                 League.new(legacy_league: true, league_category_id: '102').competition_group
+  end
+
+  test 'knockout?: Pokal und Playoff ja, Liga und Meisterschaft nein' do
+    assert League.new(league_modus: 'cup').knockout?
+    assert League.new(league_modus: 'playoff').knockout?
+    assert_not League.new(league_modus: 'league').knockout?
+    assert_not League.new(league_modus: 'champ').knockout?
+  end
+
+  test 'league_modus: playoff ist ein gültiger Wert, Unsinn nicht' do
+    league = build(:league, league_modus: 'playoff')
+    assert league.valid?, league.errors.full_messages.join(', ')
+
+    league.league_modus = 'endrunde'
+    assert_not league.valid?
+
+    # Altligen ohne Modus bleiben gültig.
+    league.league_modus = nil
+    assert league.valid?
+  end
+
+  test 'league_type gibt playoff nach außen weiter' do
+    assert_equal 'playoff', build(:league, league_modus: 'playoff').league_type
+  end
+
+  test 'effective_age_group: erbt von der Hauptrunde, wenn das Feld leer ist' do
+    haupt = create(:league, age_group: 'Herren', field_size: 'GF')
+    playoff = create(:league, league_modus: 'playoff', age_group: nil, field_size: nil,
+                              league_id_preround: haupt.id)
+
+    assert_equal 'Herren', playoff.effective_age_group
+    assert_equal 'GF', playoff.effective_field_size
+  end
+
+  test 'effective_age_group: eigener Wert schlägt den der Hauptrunde' do
+    haupt = create(:league, age_group: 'Herren', field_size: 'GF')
+    playoff = create(:league, league_modus: 'playoff', age_group: 'U17 Junioren', field_size: 'KF',
+                              league_id_preround: haupt.id)
+
+    assert_equal 'U17 Junioren', playoff.effective_age_group
+    assert_equal 'KF', playoff.effective_field_size
+  end
+
+  test 'preround_league: kein Selbstbezug und keine Endlosschleife' do
+    league = create(:league, age_group: 'Herren')
+    league.update_column(:league_id_preround, league.id)
+
+    assert_nil league.reload.preround_league
+    assert_equal 'Herren', league.effective_age_group
+  end
+
+  test 'full_hash nennt die Wettbewerbsgruppe' do
+    league = create(:league, league_modus: 'playoff')
+    assert_equal League::GROUP_LIGA, league.full_hash[:competition_group]
+  end
 end
