@@ -49,6 +49,38 @@ class PublicLicenseListControllerTest < ActionDispatch::IntegrationTest
     assert_equal ['Xaver Abele', 'Berta Mueller', 'Anton Zander'], names
   end
 
+  # Ein Verlaufseintrag ohne `created_at` liess `max_by` platzen: „comparison of
+  # NilClass with String failed", also eine 500 auf dem oeffentlichen Link kurz
+  # vor Anwurf. Solche Eintraege gibt es im Altbestand.
+  test 'GET /public/license-list uebersteht einen Verlaufseintrag ohne created_at' do
+    player = create(:player, with_licenses: [{ team: @home, status: License::APPROVED }])
+    player.licenses.first['history'] << { 'license_status_id' => License::APPROVED }
+    player.save!
+
+    get '/api/v2/public/license_list', params: { token: token_for(@game.id) }
+
+    assert_response :success
+    names = JSON.parse(response.body)['home_team_licenses'].map { |e| e['name'] }
+    assert_includes names, "#{player.first_name} #{player.last_name}"
+  end
+
+  # Der Status liegt im JSONB mal als Zahl, mal als String vor. Ohne `to_i`
+  # blieb „Genehmigt am" leer -- ausgerechnet die Spalte, an der am Kampfgericht
+  # die Spielberechtigung abgelesen wird.
+  test 'GET /public/license-list liest das Genehmigungsdatum auch bei Status als String' do
+    player = create(:player, with_licenses: [{ team: @home, status: License::APPROVED }])
+    player.licenses.first['history'].each do |h|
+      h['license_status_id'] = h['license_status_id'].to_s
+    end
+    player.save!
+
+    get '/api/v2/public/license_list', params: { token: token_for(@game.id) }
+
+    assert_response :success
+    entry = JSON.parse(response.body)['home_team_licenses'].first
+    assert_not_nil entry['approved_at'], 'Genehmigungsdatum fehlt bei Status als String'
+  end
+
   test 'GET /public/license-list mit ungültigem Token liefert 410' do
     get '/api/v2/public/license_list', params: { token: 'kaputt' }
     assert_response :gone
