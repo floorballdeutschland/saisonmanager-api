@@ -9,7 +9,9 @@ require 'icalendar/tzinfo'
 module IcalRenderable
   extend ActiveSupport::Concern
 
-  ICAL_TIMEZONE = 'Europe/Berlin'.freeze
+  # Eine Quelle für die Zone: Game#start_date rechnet in ihr, Game#ical
+  # schreibt sie als TZID an jeden Termin, hier steht die passende VTIMEZONE.
+  ICAL_TIMEZONE = Game::ICAL_TIMEZONE
 
   private
 
