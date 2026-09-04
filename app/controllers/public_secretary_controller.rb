@@ -85,7 +85,10 @@ class PublicSecretaryController < ApplicationController
       team = Team.find_by(id: team_id)
       next unless team
 
-      players = Player.find_by_team_id(team_id)
+      # Vor dem Aufbau sortieren statt danach: Der Eintrag traegt nur den
+      # zusammengesetzten Anzeigenamen, eine Sortierung darueber liefe nach
+      # Vornamen.
+      players = Player.find_by_team_id(team_id).sort_by(&:license_list_sort_key)
       entries = players.filter_map do |player|
         license = player.extr_license
         next unless license
@@ -112,7 +115,7 @@ class PublicSecretaryController < ApplicationController
           approved_at: approved_entry&.dig('created_at'),
           valid_until: license['valid_until']
         }
-      end.sort_by { |p| p[:name] }
+      end
 
       hash[team_id.to_s] = { team_name: team.name, players: entries }
     end

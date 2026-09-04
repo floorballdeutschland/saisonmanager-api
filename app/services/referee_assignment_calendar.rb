@@ -22,7 +22,7 @@ require 'icalendar/tzinfo'
 # Anpfiff eine „floating time" und landete beim Empfänger auf der falschen
 # Uhrzeit.
 class RefereeAssignmentCalendar
-  TIMEZONE = 'Europe/Berlin'
+  TIMEZONE = Game::ICAL_TIMEZONE
   PRODID = '-//Floorball Deutschland//Saisonmanager//DE'
 
   # Ohne Anpfiffzeit wird ein ganztägiger Termin erzeugt: Das Datum steht fest,
