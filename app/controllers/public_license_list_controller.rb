@@ -31,18 +31,31 @@ class PublicLicenseListController < ApplicationController
   def team_license_list(team)
     return [] unless team
 
-    players = Player.find_by_team_id(team.id)
+    # Nach Nachnamen, siehe Player#license_list_sort_key. Vor dem Aufbau
+    # sortieren: Der Eintrag traegt nur den zusammengesetzten Anzeigenamen.
+    players = Player.find_by_team_id(team.id).sort_by(&:license_list_sort_key)
     players.filter_map do |player|
       license = player.extr_license
       next unless license
 
-      last_status = license['history']&.max_by { |h| h['created_at'] }
+      # `to_s` ist Pflicht, nicht Zierde: Ein Verlaufseintrag ohne `created_at`
+      # laesst `max_by` mit „comparison of NilClass with String failed" platzen,
+      # und das ist eine 500 auf dem oeffentlichen Lizenzlink, kurz vor Anwurf.
+      # Solche Eintraege gibt es im Altbestand; im Sekretariats-Controller ist
+      # derselbe Absturz deshalb bereits so abgefangen.
+      last_status = license['history']&.max_by { |h| h['created_at'].to_s }
       next unless last_status
 
       last_status_id = last_status['license_status_id'].to_i
       next unless [License::APPROVED, License::REQUESTED].include?(last_status_id)
 
-      approved_entry = license['history']&.select { |h| h['license_status_id'] == 1 }&.last
+      # `to_i` und die Konstante statt der nackten 1: Liegt der Status als String
+      # „1" im JSONB — im Altbestand beides anzutreffen —, bliebe `approved_at`
+      # sonst leer, und leer ist ausgerechnet die Spalte „Genehmigt am", an der
+      # am Kampfgericht die Spielberechtigung abgelesen wird.
+      approved_entry = license['history']&.select do |h|
+        h['license_status_id'].to_i == License::APPROVED
+      end&.last
 
       {
         name: "#{player.first_name} #{player.last_name}",
@@ -51,6 +64,6 @@ class PublicLicenseListController < ApplicationController
         approved_at: approved_entry&.dig('created_at'),
         valid_until: license['valid_until']
       }
-    end.sort_by { |p| p[:name] }
+    end
   end
 end
