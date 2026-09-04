@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Teammanager-Demokonto für DJK Holzbüttgen auf Staging**: Die kuratierten Demo-Konten des Testsystems (`db/staging_demo_users.json`, angelegt von `staging:seed_demo_users`) kannten als Teammanager bisher nur `demo_tm_koeln`. Wer eine Teammanager-Ansicht mit vielen Mannschaften in einer Vereinszugehörigkeit prüfen wollte, hat sich das Konto von Hand angelegt, und genau das übersteht keinen Refresh: Der Klon der Produktivdatenbank ersetzt die Benutzertabelle vollständig, danach legt der Seed nur an, was in der Liste steht. Neu enthält die Liste `demo_tm_hobu` für DJK Holzbüttgen (Verein 202), dessen Mannschaften wie beim Kölner Konto frisch über den Verein der laufenden Saison aufgelöst werden, weil Mannschafts-IDs zwischen zwei Ständen wandern. Betrifft ausschließlich das Testsystem, auf der Produktivumgebung ändert sich nichts.
+
 ## [1.106.0] - 2026-09-02
 
 ### Neu
