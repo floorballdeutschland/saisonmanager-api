@@ -456,27 +456,28 @@ class UserTest < ActiveSupport::TestCase
     assert_equal first_call, second_call
   end
 
-  test 'permissions_items: Admin darf Lizenzstatus auf TRANSFER setzen' do
+  test 'permissions_items: das Recht auf den Status TRANSFER gibt es nicht mehr' do
+    # Der Status wird nur noch beim Transfer-Vollzug gesetzt
+    # (TransferRequest#invalidate_licenses!), von Hand gar nicht mehr. Weder
+    # Admin noch sonst jemand bekommt dafür ein Recht.
     u = build_user(permissions: [{ 'user_group_id' => 1, 'game_operation_id' => 0 }])
-    assert u.permissions_items[:player_set_license_to_transfer]
+    assert_not u.permissions_items.key?(:player_set_license_to_transfer)
   end
 
-  test 'permissions_items: früher hartcodierter Sonder-Nutzer ohne Admin-Rechte darf NICHT mehr Lizenzstatus auf TRANSFER setzen' do
-    # Das frühere special_user-Sonderrecht (hartcodierte Nutzernamen) wurde
-    # entfernt; ohne Admin-Rolle gibt es das Recht nicht mehr.
-    u = User.create!(
-      user_name: 'jho_admin',
-      password: 'password123',
-      password_confirmation: 'password123',
-      permissions: [{ 'user_group_id' => 4, 'club_id' => 1 }],
-      teams: []
-    )
-    assert_not u.permissions_items[:player_set_license_to_transfer]
+  test 'permissions_items: Admin und SBK dürfen Lizenzen löschen' do
+    admin = build_user(permissions: [{ 'user_group_id' => 1, 'game_operation_id' => 0 }])
+    assert admin.permissions_items[:player_delete_license]
+
+    sbk = build_user(permissions: [{ 'user_group_id' => 2, 'game_operation_id' => 3 }])
+    assert sbk.permissions_items[:player_delete_license]
   end
 
-  test 'permissions_items: normaler VM-Nutzer (kein Admin) darf NICHT Lizenzstatus auf TRANSFER setzen' do
-    u = build_user(permissions: [{ 'user_group_id' => 4, 'club_id' => 99 }])
-    assert_not u.permissions_items[:player_set_license_to_transfer]
+  test 'permissions_items: Vereins- und Teammanager dürfen KEINE Lizenzen löschen' do
+    vm = build_user(permissions: [{ 'user_group_id' => 4, 'club_id' => 99 }])
+    assert_not vm.permissions_items[:player_delete_license]
+
+    tm = build_user(permissions: [{ 'user_group_id' => 5, 'club_id' => 99 }])
+    assert_not tm.permissions_items[:player_delete_license]
   end
 
   # ---------------------------------------------------------------------------
