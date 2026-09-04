@@ -81,13 +81,21 @@ module LegacyImport
     }.freeze
 
     # id_lizenzstatus → license_status_id (License-Konstanten) für die
-    # licenses-History. Glücksfall: Alt 1–6 entspricht 1:1 den neuen IDs.
+    # licenses-History. Alt 1–4 und 6 entsprechen 1:1 den neuen IDs.
+    #
+    # Einzige Ausnahme ist die alte 5 („loeschung_beantragt"): Den Zwischenschritt
+    # gibt es im neuen Lizenzwesen nicht mehr, der Status ist dort entfallen (siehe
+    # License). Ein finaler 5er im Altbestand heißt „der Verein wollte die Lizenz
+    # loswerden, der Verband hat es nie bestätigt" – am nächsten liegt dem heute
+    # WITHDRAWN. Die Abbildung MUSS stehen bleiben: Transformer#license_attrs fällt bei einem
+    # unbekannten Schlüssel auf `id_lizenzstatus.to_i` zurück und schriebe die
+    # nackte 5 in die History, für die es dann keinen Namen mehr gibt.
     LIZENZSTATUS_TO_STATUS_ID = {
       1 => License::APPROVED,
       2 => License::REQUESTED,
       3 => License::DENIED,
       4 => License::DELETED,
-      5 => License::DELETE_REQUESTED,
+      5 => License::WITHDRAWN,
       6 => License::TRANSFER
     }.freeze
 

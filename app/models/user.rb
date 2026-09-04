@@ -511,7 +511,17 @@ class User < ApplicationRecord
     # aber nicht (Backend: PlayersController#can_deactivate_player?, api#530).
     result[:player_deactivate] = ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
     result[:update_player_email] = ph[:vm].present? || ph[:tm].present?
-    result[:player_set_license_to_transfer] = ph[:admin].present?
+    # Lizenz löschen (mit Pflicht-Begründung). Bewusst dieselbe Runde wie die
+    # Sperre darunter: Wer eine Lizenz aussetzen darf, darf sie auch zurücknehmen.
+    #
+    # Den früheren Eintrag `player_set_license_to_transfer` gibt es nicht mehr. Er
+    # gehörte zum Knopf „für Transfer ungültig setzen", und den braucht niemand
+    # mehr: Jeder Vereinswechsel läuft über TransferRequest#execute_transfer!, das
+    # eine Zeile vor Player#transfer selbst invalidate_licenses! ruft und die
+    # Lizenzen des abgebenden Vereins auf TRANSFER setzt – auch bei der
+    # Direktzuweisung, die intern denselben Weg nimmt. Der Knopf war zudem
+    # admin-only, die SBK hat ihn nie gesehen.
+    result[:player_delete_license] = ph[:admin].present? || ph[:sbk].present?
     # Erst-/Zweitlizenz-Zuordnung (GF-Erwachsenenbereich) setzen/tauschen
     result[:player_set_gf_role] = ph[:admin].present? || ph[:sbk].present?
     result[:player_merge] = ph[:admin].present? || ph[:sbk].present?

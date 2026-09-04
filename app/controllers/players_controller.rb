@@ -177,7 +177,7 @@ class PlayersController < ApplicationController
         raise ActiveRecord::Rollback
       end
 
-      active_statuses = [License::APPROVED, License::REQUESTED, License::DELETE_REQUESTED].map(&:to_s).to_set
+      active_statuses = License::ACTIVE_STATUSES.map(&:to_s).to_set
       if player.licenses.any? do |l|
            next false unless l['team_id'].to_i == team.id && l['season_id'].to_s == league.season_id.to_s
 
@@ -278,6 +278,11 @@ class PlayersController < ApplicationController
                       status: :unprocessable_entity
       end
 
+      if params[:license_status_id].to_i == License::DELETED
+        blocked = License.delete_blocked_reason(license, params[:reason])
+        return render json: { message: blocked }, status: :unprocessable_entity if blocked
+      end
+
       # Optionale Erst-/Zweitlizenz-Zuordnung bei der Genehmigung (nur GF-Erwachsenenbereich).
       gf_role = params[:gf_role].presence
       if gf_role
@@ -298,10 +303,13 @@ class PlayersController < ApplicationController
         if lic['id'] == params[:license_id]
           last_status = lic['history'].sort_by { |h| h['created_at'] }.last
 
+          # TRANSFER (6) steht hier bewusst nicht mehr: Den Status setzt
+          # TransferRequest#invalidate_licenses! beim Vollzug selbst, und das ist
+          # der einzige Weg, auf dem ein Spieler den Verein wechselt. Der frühere
+          # Knopf „für Transfer ungültig setzen" war eine Handarbeit daneben.
           if last_status['license_status_id'].to_i != params[:license_status_id].to_i &&
-             ([License::APPROVED, License::DENIED, License::REQUESTED].include?(params[:license_status_id].to_i) ||
-              ([License::TRANSFER].include?(params[:license_status_id].to_i) && current_user.permission_hash[:admin].present?)
-             )
+             [License::APPROVED, License::DENIED, License::REQUESTED,
+              License::DELETED].include?(params[:license_status_id].to_i)
             entry = {
               license_status_id: params[:license_status_id].to_i,
               reason: params[:reason] || '',
@@ -325,6 +333,15 @@ class PlayersController < ApplicationController
               entry[License::REVOKED_REJECTION_KEY] = true
             end
             lic['history'] << entry
+            if params[:license_status_id].to_i == License::DELETED && lic['gf_role'].present?
+              # Eine gelöschte Lizenz gehört nicht mehr zum Wettbewerb.
+              # gf_competition_licenses überspringt sie ohnehin (nur ACTIVE_STATUSES),
+              # das Erst-/Zweitlizenz-Abzeichen im Profil hinge aber weiter an ihr und
+              # behauptete eine Zuordnung, die es nicht mehr gibt. gf_role_history
+              # behält den Verlauf. Eine Gegenbuchung auf die Partner-Lizenz gibt es
+              # nicht: Welche jetzt Erstlizenz sein soll, entscheidet der Verband.
+              player.assign_gf_role(lic, nil, current_user.id, 'license_deleted')
+            end
             if params[:license_status_id].to_i == License::APPROVED
               approved_team_id = lic['team_id']
               lic['valid_until'] = params[:valid_until].presence || default_license_valid_until(lic['season_id']).iso8601
