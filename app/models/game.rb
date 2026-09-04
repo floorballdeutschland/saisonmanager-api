@@ -1521,8 +1521,24 @@ class Game < ApplicationRecord
     "#{FrontendUrl.base}/#{league.game_operation.slug}/#{league.id}/spiel/#{id}"
   end
 
+  # nil, wenn das Spiel keinen auflösbaren Spieltag hat.
+  #
+  # `game_day` ist zwar Pflicht (`belongs_to` ohne `optional`), aber
+  # `GameDay#games` kennt kein `dependent:`. Ein gelöschter Spieltag lässt
+  # seine Spiele also mit einer game_day_id auf einen nicht mehr vorhandenen
+  # Datensatz zurück, und über diese Altbestände stolperte `game_title` an
+  # `league.name` (Game#league delegiert an `game_day.league`). Das riss den
+  # ganzen Kalender mit: eine einzige verwaiste Begegnung machte aus dem Abo
+  # einer Mannschaft HTTP 500 (Sentry SAISONMANAGER-3Q), auch für die 25
+  # gesunden Spiele daneben.
+  #
+  # Ein Spiel ohne Spieltag hat weder Datum noch Halle noch Liga – es gibt
+  # nichts zu zeigen. Es fällt daher heraus, so wie ein Spiel ohne Anpfiffzeit
+  # (siehe IcalRenderable#render_ical).
   def ical
     require 'icalendar'
+
+    return nil if game_day.nil? || game_day.league.nil?
 
     event = ::Icalendar::Event.new
     event.dtstart = Icalendar::Values::DateTime.new(start_date) if start_date

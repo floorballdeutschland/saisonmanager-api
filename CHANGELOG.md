@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Kalender-Abo einer Mannschaft blieb leer**: Wer den Spielplan seiner Mannschaft in Google Calendar, Apple Kalender oder Outlook abonniert hatte, bekam unter Umständen dauerhaft keine Termine mehr — der Abruf endete mit einem Serverfehler, und zwar für den gesamten Kalender, nicht nur für die eine betroffene Begegnung. Ursache waren fünf Spiele aus dem Altdaten-Import, bei denen die Verknüpfung zum Spieltag leer ist. Ein solches Spiel hat weder Datum noch Halle noch Liga, der Kalender versuchte aber dennoch, aus der Liga einen Titel zu bilden, und stolperte dabei. Ein Spiel ohne auflösbaren Spieltag fällt jetzt aus dem Abo heraus, so wie das bei einem Spiel ohne Anpfiffzeit schon immer der Fall war; die gesunden Spiele daneben kommen wieder mit. Dasselbe gilt, wenn der Spieltag steht, aber seine Liga fehlt. Betroffen waren alle drei Abo-Adressen (Mannschaft, Liga, Einzelspiel), weil sie sich denselben Bauplan teilen.
+
 ## [1.106.0] - 2026-09-02
 
 ### Neu
