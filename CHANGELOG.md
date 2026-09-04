@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Lizenzlisten des Spielsekretariats nennen die Liga**: Ein Sekretariats-Link deckt alle Ligen einer Halle an einem Tag ab, der Reiter „Lizenzlisten" zeigte deshalb sämtliche Mannschaften des Tages hintereinander weg, quer über die Altersklassen. Welche Mannschaft zu welcher Liga gehört, war daran nicht abzulesen. Jede Lizenzliste trägt jetzt ihre Liga, damit die Ansicht sie danach gliedern kann. Maßgeblich ist die Liga des Spieltags, in dem die Mannschaft an diesem Tag antritt, nicht ihre Stammliga: Bei einem Pokalspiel in derselben Halle stünde sonst die falsche Überschrift darüber.
+
 ### Behoben
 
 - **Lizenzlisten standen nach Vornamen**: Die Lizenzlisten des Spielsekretariats-Links und die der Schiedsrichteransetzung bauten erst den Anzeigenamen „Vorname Nachname" zusammen und sortierten dann danach. Gesucht wird am Spieltisch aber nach dem Nachnamen, so wie auf jeder Mannschaftsaufstellung – zwischen Anwurf und Aufstellungskontrolle ist das der Unterschied zwischen Nachschlagen und Durchlesen. Beide Listen stehen jetzt nach Nachnamen, bei Namensgleichheit nach Vornamen. Umlaute zählen dabei wie ihr Grundbuchstabe: Ohne diese Umschrift landete „Öztürk" hinter „Zimmermann", weil Ö in der Zeichenreihenfolge über Z liegt, und gerade in einer alphabetischen Liste fällt ein falsch einsortierter Name auf. Die Anzeige des Namens bleibt unverändert.

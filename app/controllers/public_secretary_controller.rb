@@ -80,9 +80,11 @@ class PublicSecretaryController < ApplicationController
   end
 
   def build_license_lists(games)
-    team_ids = games.flat_map { |g| [g.home_team_id, g.guest_team_id] }.compact.uniq
-    team_ids.each_with_object({}) do |team_id, hash|
-      team = Team.find_by(id: team_id)
+    contexts = team_contexts(games)
+    teams = Team.where(id: contexts.keys).index_by(&:id)
+
+    ordered_team_ids(contexts, teams).each_with_object({}) do |team_id, hash|
+      team = teams[team_id]
       next unless team
 
       # Vor dem Aufbau sortieren statt danach: Der Eintrag traegt nur den
@@ -117,7 +119,47 @@ class PublicSecretaryController < ApplicationController
         }
       end
 
-      hash[team_id.to_s] = { team_name: team.name, players: entries }
+      league = contexts[team_id][:league]
+      hash[team_id.to_s] = {
+        team_name: team.name,
+        # Die Liga des Spieltags, in dem die Mannschaft an diesem Tag antritt –
+        # nicht Team#league_id. Bei einem Pokalspiel in derselben Halle wäre das
+        # ihre Hauptliga und damit die falsche Überschrift.
+        league_id: league&.id,
+        league_name: league&.name,
+        players: entries
+      }
+    end
+  end
+
+  # Mannschaft -> { Liga, Spieltagsdatum } aus den Spielen des Links. `games`
+  # kommt bereits nach Datum und Anwurf sortiert herein, die erste Begegnung
+  # gibt also den Ausschlag: Tritt eine Mannschaft an einem Tag in zwei Ligen an
+  # (Liga und Pokal), steht ihre Lizenzliste bei der früheren.
+  def team_contexts(games)
+    games.each_with_object({}) do |game, hash|
+      game_day = game.game_day
+      next unless game_day
+
+      [game.home_team_id, game.guest_team_id].compact.each do |team_id|
+        hash[team_id] ||= { league: game_day.league, date: game_day.date.to_s }
+      end
+    end
+  end
+
+  # Dieselbe Ordnung wie die Spieltage des Links: Datum, dann Liganame. Der
+  # Mannschaftsname und die id hängen als Schlussglieder an, damit die Antwort
+  # zwischen zwei Abrufen gleich bleibt.
+  #
+  # Ein Verlass ist das im Browser trotzdem nicht: `license_lists` ist ein
+  # Objekt mit den Mannschafts-ids als Schlüssel, und JavaScript zieht
+  # zahlenartige Schlüssel unabhängig von der Einfügereihenfolge nach vorn. Die
+  # Ansicht ordnet deshalb selbst, anhand von league_id. Die Reihenfolge hier
+  # ist für alle anderen Leser der Antwort.
+  def ordered_team_ids(contexts, teams)
+    contexts.keys.sort_by do |team_id|
+      [contexts[team_id][:date], contexts[team_id][:league]&.name.to_s,
+       teams[team_id]&.name.to_s, team_id]
     end
   end
 end

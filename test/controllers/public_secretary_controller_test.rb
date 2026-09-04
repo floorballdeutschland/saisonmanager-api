@@ -93,6 +93,42 @@ class PublicSecretaryControllerTest < ActionDispatch::IntegrationTest
     assert_equal ['Cem Ahrens', 'Anna Ötztaler', 'Bea Zander'], names
   end
 
+  test 'GET /public/secretary nennt je Lizenzliste die Liga des Spieltags' do
+    other_league = League.create!(game_operation: @go, name: 'U13', season_id: '1', table_modus: 'classic')
+    other_day = GameDay.create!(league: other_league, arena: @arena, club: @club, number: 1,
+                                date: '2026-01-01')
+    u13_home = Team.create!(league: other_league, club: @club, name: 'U13 Heim')
+    u13_guest = Team.create!(league: other_league, club: @club, name: 'U13 Gast')
+    Game.create!(game_day: other_day, home_team: u13_home, guest_team: u13_guest)
+
+    _link, raw_token = GameDaySecretaryLink.generate!(game_days: [@game_day, other_day], created_by: @user)
+
+    get '/api/v2/public/secretary', params: { token: raw_token }
+
+    assert_response :success
+    lists = JSON.parse(response.body)['license_lists']
+    assert_equal 'Testliga', lists[@home.id.to_s]['league_name']
+    assert_equal @league.id, lists[@home.id.to_s]['league_id']
+    assert_equal 'U13', lists[u13_home.id.to_s]['league_name']
+    assert_equal other_league.id, lists[u13_home.id.to_s]['league_id']
+  end
+
+  test 'GET /public/secretary nennt die Liga des Spieltags, nicht die Stammliga der Mannschaft' do
+    # Pokalspiel in derselben Halle: Die Mannschaft ist in der Testliga
+    # beheimatet, tritt hier aber im Pokal an.
+    cup = League.create!(game_operation: @go, name: 'Pokal', season_id: '1', table_modus: 'classic')
+    cup_day = GameDay.create!(league: cup, arena: @arena, club: @club, number: 1, date: '2026-01-02')
+    Game.create!(game_day: cup_day, home_team: @home, guest_team: @guest)
+
+    _link, raw_token = GameDaySecretaryLink.generate!(game_days: [cup_day], created_by: @user)
+
+    get '/api/v2/public/secretary', params: { token: raw_token }
+
+    assert_response :success
+    assert_equal @league.id, @home.league_id
+    assert_equal 'Pokal', JSON.parse(response.body).dig('license_lists', @home.id.to_s, 'league_name')
+  end
+
   test 'GET /public/secretary ohne Token liefert 400' do
     get '/api/v2/public/secretary'
     assert_response :bad_request
