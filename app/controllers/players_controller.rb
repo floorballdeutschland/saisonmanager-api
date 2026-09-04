@@ -1433,9 +1433,7 @@ class PlayersController < ApplicationController
       # 422 ab (`unless league&.gf_adult?`) -- das Feld verspraeche also etwas,
       # das kein Konto einloesen kann. Bei vorhandener Liga aendert die Klammer
       # fuer keine Rolle das Ergebnis.
-      im_scope = go_id.present? &&
-                 (admin || sbk_global || ph[:sbk].to_a.include?(go_id))
-
+      im_scope = go_id.present? && (admin || sbk_global || ph[:sbk].to_a.include?(go_id))
       lic[:gf_role_editable] = im_scope
 
       # Loeschen unterliegt demselben Verbands-Scope. Player#delete_allowed
