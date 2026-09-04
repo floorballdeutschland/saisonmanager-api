@@ -238,6 +238,17 @@ module Admin
     end
 
     def flags(game)
+      # Die drei `missing_*` sind Hinweise auf fehlende Nacharbeit, keine
+      # Tatsachenaussagen: Zuschauerzahl, Unterschriften und zweiter
+      # Schiedsrichter stehen erst am Spieltag fest. Für ein Spiel, das noch
+      # aussteht, wären sie zwangsläufig alle gesetzt – die halbe Restsaison
+      # trüge dann eine Auffälligkeit, und die Markierung verlöre ihren Wert.
+      #
+      # Die übrigen Flags bleiben unberührt: protest, forfait,
+      # special_event_string und Strafen kann nur setzen, wer den Bericht
+      # führt, ein ausstehendes Spiel trägt sie also ohnehin nicht.
+      pending = upcoming?(game)
+
       {
         protest: game.protest || false,
         forfait: game.forfait.to_i.positive?,
@@ -245,10 +256,38 @@ module Admin
         severe_penalty_count: severe_penalty_count(game),
         # nil? statt blank?: 0 Zuschauer ist eine gültige Angabe, aber `0.blank?`
         # ist in Rails false – blank? würde die fehlende Angabe also nie melden.
-        missing_audience: game.audience.nil?,
-        missing_signatures: !signatures_complete?(game),
-        missing_referee2: game.referee2_string.blank?
+        missing_audience: !pending && game.audience.nil?,
+        missing_signatures: !pending && !signatures_complete?(game),
+        missing_referee2: !pending && game.referee2_string.blank?
       }
+    end
+
+    # Spiel steht noch aus: nicht begonnen UND Spieltag in der Zukunft.
+    #
+    # Beide Bedingungen zusammen. Nur „nicht begonnen" würde einen liegen
+    # gebliebenen Bericht von vorletzter Woche mit ausblenden – genau den, den
+    # die SBK sehen muss. Nur „Datum in der Zukunft" würde einen vorab
+    # geführten Bericht nicht mehr prüfen.
+    #
+    # Verglichen wird in Europe/Berlin: Der Server läuft in UTC, und `Date.today`
+    # hinge dort in den ersten Stunden nach Mitternacht noch am Vortag – der
+    # laufende Spieltag zählte dann als Zukunft.
+    def upcoming?(game)
+      return false unless game.game_status.blank? || game.game_status == 'pregame'
+
+      date = game_day_date(game.game_day)
+      date.present? && date > Time.find_zone!('Europe/Berlin').today
+    end
+
+    # game_days.date ist eine Textspalte und im Altbestand auch mal leer oder
+    # unlesbar. strptime statt Date.parse aus demselben Grund wie in `days_after`.
+    def game_day_date(game_day)
+      raw = game_day&.date.to_s
+      return nil if raw.blank?
+
+      Date.strptime(raw, '%Y-%m-%d')
+    rescue Date::Error
+      nil
     end
 
     # Zählt Strafen ab 5 Minuten inkl. Matchstrafen.

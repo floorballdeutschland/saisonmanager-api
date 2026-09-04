@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Die halbe Restsaison war als auffällig markiert**: Die Arbeitsansicht „Spielberichte" hebt Spiele hervor, an denen für die SBK etwas zu tun ist, unter anderem wenn Unterschriften, Zuschauerzahl oder der zweite Schiedsrichter fehlen. Diese drei Angaben stehen aber erst am Spieltag fest, und geprüft wurden sie unbesehen an jedem Spiel der Saison. Jedes noch nicht ausgetragene Spiel trug damit zwangsläufig eine Auffälligkeit, und weil das für den ganzen Rest des Spielplans galt, sagte die Markierung nichts mehr aus. Sie bleibt jetzt aus, solange ein Spiel noch nicht begonnen hat und sein Spieltag in der Zukunft liegt. Beides zusammen, und das ist der Punkt: Ein liegen gebliebener Bericht von vorletzter Woche bleibt auffällig, denn genau den soll die Ansicht zeigen, und ein vorab geführter Bericht eines künftigen Spieltags wird weiter geprüft. Einspruch, Nichtantritt, besondere Vorkommnisse und schwere Strafen sind davon unberührt; die kann ohnehin nur setzen, wer den Bericht führt.
+
 ## [1.106.0] - 2026-09-02
 
 ### Neu

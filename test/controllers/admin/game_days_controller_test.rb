@@ -252,6 +252,52 @@ module Admin
       assert_not flags['missing_audience']
     end
 
+    test 'ausstehendes Spiel meldet keine fehlenden Angaben' do
+      future = GameDay.create!(league: @league, arena: @arena, club: @club, number: 2,
+                               date: 30.days.from_now.strftime('%Y-%m-%d'))
+      game = create_game(future, game_number: '30')
+
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      flags = row(game.id)['flags']
+      assert_not flags['missing_signatures']
+      assert_not flags['missing_referee2']
+      assert_not flags['missing_audience']
+    end
+
+    test 'liegen gebliebener Bericht eines vergangenen Spieltags bleibt auffaellig' do
+      past = GameDay.create!(league: @league, arena: @arena, club: @club, number: 3,
+                             date: 7.days.ago.strftime('%Y-%m-%d'))
+      game = create_game(past, game_number: '31')
+
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      flags = row(game.id)['flags']
+      assert flags['missing_signatures']
+      assert flags['missing_referee2']
+      assert flags['missing_audience']
+    end
+
+    test 'vorab gefuehrter Bericht eines kuenftigen Spieltags wird weiter geprueft' do
+      future = GameDay.create!(league: @league, arena: @arena, club: @club, number: 4,
+                               date: 30.days.from_now.strftime('%Y-%m-%d'))
+      game = create_game(future, game_number: '32')
+      game.update!(game_status: 'aftergame')
+
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      assert row(game.id)['flags']['missing_signatures']
+    end
+
+    test 'unlesbares Spieltagsdatum gilt nicht als Zukunft' do
+      broken = GameDay.create!(league: @league, arena: @arena, club: @club, number: 5, date: '')
+      game = create_game(broken, game_number: '33')
+
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      assert row(game.id)['flags']['missing_signatures']
+    end
+
     test 'fremder game_operation_id-Filter weitet den eigenen Scope nicht' do
       login(sbk_user(@go.id))
       get OVERVIEW_PATH, params: { game_operation_id: @other_go.id.to_s }
