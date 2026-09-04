@@ -252,6 +252,117 @@ module Admin
       assert_not flags['missing_audience']
     end
 
+    test 'ausstehendes Spiel meldet keine fehlenden Angaben' do
+      future = GameDay.create!(league: @league, arena: @arena, club: @club, number: 2,
+                               date: 30.days.from_now.strftime('%Y-%m-%d'))
+      game = create_game(future, game_number: '30')
+
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      flags = row(game.id)['flags']
+      assert_not flags['missing_signatures']
+      assert_not flags['missing_referee2']
+      assert_not flags['missing_audience']
+    end
+
+    test 'liegen gebliebener Bericht eines vergangenen Spieltags bleibt auffaellig' do
+      past = GameDay.create!(league: @league, arena: @arena, club: @club, number: 3,
+                             date: 7.days.ago.strftime('%Y-%m-%d'))
+      game = create_game(past, game_number: '31')
+
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      flags = row(game.id)['flags']
+      assert flags['missing_signatures']
+      assert flags['missing_referee2']
+      assert flags['missing_audience']
+    end
+
+    test 'vorab gefuehrter Bericht eines kuenftigen Spieltags wird weiter geprueft' do
+      future = GameDay.create!(league: @league, arena: @arena, club: @club, number: 4,
+                               date: 30.days.from_now.strftime('%Y-%m-%d'))
+      game = create_game(future, game_number: '32')
+      game.update!(game_status: 'aftergame')
+
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      assert row(game.id)['flags']['missing_signatures']
+    end
+
+    # Die Zone ist die einzige nicht triviale Entscheidung dieser Pruefung, und
+    # ohne einen Test an der Grenze liesse sie sich durch Date.today ersetzen,
+    # ohne dass etwas rot wird. 23:30 UTC ist in Berlin bereits der Folgetag.
+    test 'kurz nach Mitternacht Berliner Zeit zaehlt der Spieltag als heute' do
+      travel_to Time.utc(2026, 2, 7, 23, 30) do
+        heute = GameDay.create!(league: @league, arena: @arena, club: @club, number: 6,
+                                date: '2026-02-08')
+        game = create_game(heute, game_number: '34')
+        game.update!(start_time: '16:00')
+
+        login(sbk_user(@go.id))
+        get OVERVIEW_PATH
+        # Anpfiff 16:00 liegt noch vor uns, also keine Mahnung.
+        assert_not row(game.id)['flags']['missing_signatures']
+      end
+    end
+
+    # Der Kern des Fixes: Massgeblich ist der Anpfiff, nicht der Kalendertag.
+    # Mit dem Kalendertag trueg ab 00:00 jedes Spiel des laufenden Spieltags
+    # wieder alle drei Hinweise.
+    test 'am Spieltag vor dem Anpfiff meldet das Spiel nichts' do
+      travel_to Time.find_zone!('Europe/Berlin').local(2026, 2, 7, 12, 0) do
+        heute = GameDay.create!(league: @league, arena: @arena, club: @club, number: 7,
+                                date: '2026-02-07')
+        game = create_game(heute, game_number: '35')
+        game.update!(start_time: '20:00')
+
+        login(sbk_user(@go.id))
+        get OVERVIEW_PATH
+        flags = row(game.id)['flags']
+        assert_not flags['missing_signatures']
+        assert_not flags['missing_referee2']
+        assert_not flags['missing_audience']
+      end
+    end
+
+    # Gegenprobe: Nach dem Anpfiff gehoert der nie begonnene Bericht auf den
+    # Tisch der SBK, auch wenn der Spieltag noch laeuft.
+    test 'am Spieltag nach dem Anpfiff wird das Spiel wieder auffaellig' do
+      travel_to Time.find_zone!('Europe/Berlin').local(2026, 2, 7, 21, 0) do
+        heute = GameDay.create!(league: @league, arena: @arena, club: @club, number: 8,
+                                date: '2026-02-07')
+        game = create_game(heute, game_number: '36')
+        game.update!(start_time: '20:00')
+
+        login(sbk_user(@go.id))
+        get OVERVIEW_PATH
+        assert row(game.id)['flags']['missing_signatures']
+      end
+    end
+
+    # Ohne Anpfiffzeit ist nicht bekannt, wann das Spiel stattfindet: dann bis
+    # Tagesende nicht mahnen.
+    test 'ohne Anpfiffzeit gilt der ganze Spieltag als ausstehend' do
+      travel_to Time.find_zone!('Europe/Berlin').local(2026, 2, 7, 23, 0) do
+        heute = GameDay.create!(league: @league, arena: @arena, club: @club, number: 9,
+                                date: '2026-02-07')
+        game = create_game(heute, game_number: '37')
+
+        login(sbk_user(@go.id))
+        get OVERVIEW_PATH
+        assert_not row(game.id)['flags']['missing_signatures']
+      end
+    end
+
+    test 'unlesbares Spieltagsdatum gilt nicht als Zukunft' do
+      broken = GameDay.create!(league: @league, arena: @arena, club: @club, number: 5, date: '')
+      game = create_game(broken, game_number: '33')
+
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      assert row(game.id)['flags']['missing_signatures']
+    end
+
     test 'fremder game_operation_id-Filter weitet den eigenen Scope nicht' do
       login(sbk_user(@go.id))
       get OVERVIEW_PATH, params: { game_operation_id: @other_go.id.to_s }
