@@ -135,7 +135,8 @@ class PlayerSuspension < ApplicationRecord
     when SCOPE_LEAGUE then League.unscoped.find_by(id: league_id)&.name || 'eine Liga'
     when SCOPE_COMPETITION
       [[age_group.presence, field_size_label].compact.join(' '),
-       competition_group_labels].reject(&:blank?).join(', ')
+       competition_group_labels,
+       game_operation_label].reject(&:blank?).join(', ')
     else scope_kind.to_s
     end
   end
@@ -229,8 +230,18 @@ class PlayerSuspension < ApplicationRecord
     return false unless season_id.blank? || season_id.to_s == league.season_id.to_s
     return false unless Array(competition_groups).include?(league.competition_group)
     return false unless dimension_matches?(age_group, league.effective_age_group)
+    return false unless dimension_matches?(field_size, league.effective_field_size)
 
-    dimension_matches?(field_size, league.effective_field_size)
+    # Spielbetriebs-Grenze. Bundesliga und Regionalliga sind beide "Herren
+    # Grossfeld, Ligaspielbetrieb"; die SBK hat ihre Weisungsbefugnis aber nur
+    # im eigenen Spielbetrieb. Ohne diese Pruefung haette eine Sperre der SBK FD
+    # still auch die Ligen der Landesverbaende erfasst.
+    #
+    # Anders als bei Altersklasse und Feldgroesse zaehlt hier NICHT "leer gilt
+    # als Treffer": Ein leerer Wert an der SPERRE heisst "alle Spielbetriebe"
+    # (nur die Bundesadministration darf das setzen), ein leerer Wert an der
+    # LIGA ist ein Datenfehler und darf keine fremde Sperre einfangen.
+    game_operation_id.blank? || game_operation_id.to_i == league.game_operation_id.to_i
   end
 
   # Ein leerer Wert auf einer der beiden Seiten gilt als Treffer. Das ist die
@@ -248,6 +259,14 @@ class PlayerSuspension < ApplicationRecord
     when 'KF' then 'Kleinfeld'
     else field_size.presence
     end
+  end
+
+  # Ohne Spielbetriebs-Grenze wird das ausdruecklich gesagt: Eine Sperre, die
+  # in jedem Verband greift, darf nicht wie eine gewoehnliche aussehen.
+  def game_operation_label
+    return 'alle Spielbetriebe' if game_operation_id.blank?
+
+    GameOperation.find_by(id: game_operation_id)&.name
   end
 
   def competition_group_labels

@@ -35,7 +35,8 @@ module Admin
         user_id: current_user.id,
         team_id: params[:team_id].presence,
         scope: { kind: scope_kind, league: scope_league,
-                 competition_groups: params[:competition_groups] },
+                 competition_groups: params[:competition_groups],
+                 all_game_operations: all_game_operations? },
         valid_from: parse_date(params[:valid_from]) || Date.current,
         valid_until:,
         games_total:,
@@ -59,6 +60,18 @@ module Admin
     end
 
     private
+
+    # Eine Wettbewerbssperre ohne Spielbetriebs-Grenze greift in JEDEM Verband
+    # derselben Altersklasse. Die SBK hat ihre Weisungsbefugnis nur im eigenen
+    # Spielbetrieb, deshalb bleibt die Entgrenzung der Bundesadministration und
+    # der globalen SBK-Rolle vorbehalten -- der Wunsch allein genuegt nicht,
+    # sonst waere die Grenze eine Bitte und keine Regel.
+    def all_game_operations?
+      return false unless ActiveModel::Type::Boolean.new.cast(params[:all_game_operations])
+
+      ph = current_user.permission_hash
+      ph[:admin].present? || sbk_global?(ph)
+    end
 
     def set_player
       @player = Player.find(params[:player_id])
@@ -267,6 +280,7 @@ module Admin
         league_id:   suspension.league_id,
         league_name: (League.unscoped.find_by(id: suspension.league_id)&.name if suspension.league_id),
         season_id:   suspension.season_id,
+        game_operation_id: suspension.game_operation_id,
         age_group:   suspension.age_group,
         field_size:  suspension.field_size,
         competition_groups: Array(suspension.competition_groups),

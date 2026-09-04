@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_09_04_100000) do
+ActiveRecord::Schema[7.2].define(version: 2026_09_04_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -569,6 +569,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_04_100000) do
     t.string "field_size"
     t.string "competition_groups", default: [], null: false, array: true
     t.bigint "league_id"
+    t.bigint "game_operation_id"
     t.index ["player_id", "lifted_at"], name: "index_player_suspensions_on_player_id_and_lifted_at"
     t.index ["player_id"], name: "index_player_suspensions_on_player_id"
     t.index ["scope_kind", "lifted_at"], name: "index_player_suspensions_on_scope_kind_and_lifted_at"

@@ -798,6 +798,7 @@ class Player < ApplicationRecord
         season_id: league&.season_id,
         age_group: (league&.effective_age_group if scope_kind == PlayerSuspension::SCOPE_COMPETITION),
         field_size: (league&.effective_field_size if scope_kind == PlayerSuspension::SCOPE_COMPETITION),
+        game_operation_id: suspension_game_operation_id(scope_kind, league, scope[:all_game_operations]),
         competition_groups: suspension_groups(scope_kind, scope[:competition_groups]),
         valid_from:,
         valid_until:,
@@ -1189,6 +1190,20 @@ class Player < ApplicationRecord
       affected << { 'license_id' => license['id'], 'previous_status_id' => last_status_id }
     end
     affected
+  end
+
+  # Spielbetriebs-Grenze einer Wettbewerbssperre.
+  #
+  # Standard ist der Spielbetrieb der Liga, aus der die Sperre stammt: Die SBK
+  # hat ihre Weisungsbefugnis nur dort, und Bundesliga und Regionalliga liegen
+  # im selben Wettbewerb ("Herren Grossfeld, Ligaspielbetrieb"), aber in
+  # verschiedenen Spielbetrieben. `nil` heisst "alle Spielbetriebe" und ist der
+  # Bundesadministration vorbehalten; der Controller entscheidet, wer das darf.
+  def suspension_game_operation_id(scope_kind, league, all_game_operations)
+    return nil unless scope_kind == PlayerSuspension::SCOPE_COMPETITION
+    return nil if all_game_operations
+
+    league&.game_operation_id
   end
 
   # Wettbewerbsgruppen nur beim Wettbewerbs-Geltungsbereich.

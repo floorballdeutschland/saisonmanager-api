@@ -175,7 +175,7 @@ module Admin
       assert_equal 3, body['games_total']
       assert_equal 3, body['remaining_games']
       assert_nil body['valid_until'], 'eine Sperre über Spiele braucht kein Enddatum'
-      assert_equal 'Herren Großfeld, Ligaspielbetrieb', body['scope_summary']
+      assert_equal "Herren Großfeld, Ligaspielbetrieb, #{@heim_go.name}", body['scope_summary']
     end
 
     # Eine Wettbewerbssperre greift in jeder Liga derselben Altersklasse, auch
@@ -292,6 +292,38 @@ module Admin
 
       assert_response :forbidden
       assert PlayerSuspension.find(suspension_id).active?
+    end
+
+    # Die Entgrenzung des Spielbetriebs bleibt der Bundesadministration
+    # vorbehalten: Eine Sperre ohne Grenze greift in jedem Verband derselben
+    # Altersklasse, und die SBK hat ihre Weisungsbefugnis nur im eigenen
+    # Spielbetrieb (Rueckmeldung der SBK FD vom 04.09.2026).
+    test 'SBK kann die Spielbetriebs-Grenze nicht abwaehlen' do
+      login(create(:user, :sbk_scoped, game_operation_id: @heim_go.id))
+      liga = create(:league, :current_season, game_operation: @heim_go, league_modus: 'league',
+                                              age_group: 'Herren', field_size: 'GF')
+
+      post "/api/v2/admin/players/#{@player.id}/suspensions",
+           params: { scope_kind: 'competition', league_id: liga.id, games_total: 2,
+                     all_game_operations: true }
+
+      assert_response :created
+      assert_equal @heim_go.id, JSON.parse(response.body)['game_operation_id']
+    end
+
+    test 'Admin darf die Sperre ueber alle Spielbetriebe legen' do
+      login(create(:user, :admin))
+      liga = create(:league, :current_season, game_operation: @heim_go, league_modus: 'league',
+                                              age_group: 'Herren', field_size: 'GF')
+
+      post "/api/v2/admin/players/#{@player.id}/suspensions",
+           params: { scope_kind: 'competition', league_id: liga.id, games_total: 2,
+                     all_game_operations: true }
+
+      assert_response :created
+      body = JSON.parse(response.body)
+      assert_nil body['game_operation_id']
+      assert_match(/alle Spielbetriebe/, body['scope_summary'])
     end
   end
 end

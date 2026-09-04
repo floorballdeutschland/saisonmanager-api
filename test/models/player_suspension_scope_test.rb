@@ -403,6 +403,86 @@ class PlayerSuspensionScopeTest < ActiveSupport::TestCase
                                  scope: { kind: PlayerSuspension::SCOPE_COMPETITION, league: @liga,
                                           competition_groups: [League::GROUP_LIGA] })
 
-    assert_equal 'Herren Großfeld, Ligaspielbetrieb', suspension.scope_summary
+    assert_equal "Herren Großfeld, Ligaspielbetrieb, #{@go.name}", suspension.scope_summary
+  end
+  # ---------------------------------------------------------------------------
+  # Spielbetriebs-Grenze (Rueckmeldung der SBK FD vom 04.09.2026)
+  # ---------------------------------------------------------------------------
+
+  test 'Wettbewerbssperre bleibt im Spielbetrieb, aus dem sie stammt' do
+    # Bundesliga und Regionalliga sind beide "Herren Grossfeld,
+    # Ligaspielbetrieb". Die SBK hat ihre Weisungsbefugnis aber nur im eigenen
+    # Spielbetrieb; ohne die Grenze haette eine Sperre der SBK FD still auch
+    # die Ligen der Landesverbaende erfasst.
+    fremder_go = create(:game_operation)
+    lv_liga = create(:league, :current_season, game_operation: fremder_go, league_modus: 'league',
+                                               age_group: 'Herren', field_size: 'GF')
+    player = licensed_player
+    suspension = player.suspend!(user_id: @user.id, valid_until: Date.current + 30,
+                                 scope: { kind: PlayerSuspension::SCOPE_COMPETITION, league: @liga })
+
+    assert_equal @go.id, suspension.game_operation_id
+    assert suspension.covers_league?(@liga)
+    assert_not suspension.covers_league?(lv_liga)
+  end
+
+  test 'ohne Spielbetriebs-Grenze greift die Sperre in jedem Verband' do
+    fremder_go = create(:game_operation)
+    lv_liga = create(:league, :current_season, game_operation: fremder_go, league_modus: 'league',
+                                               age_group: 'Herren', field_size: 'GF')
+    player = licensed_player
+    suspension = player.suspend!(user_id: @user.id, valid_until: Date.current + 30,
+                                 scope: { kind: PlayerSuspension::SCOPE_COMPETITION, league: @liga,
+                                          all_game_operations: true })
+
+    assert_nil suspension.game_operation_id
+    assert suspension.covers_league?(lv_liga)
+  end
+
+  test 'ein Spiel im fremden Spielbetrieb zaehlt nicht ab' do
+    fremder_go = create(:game_operation)
+    lv_liga = create(:league, :current_season, game_operation: fremder_go, league_modus: 'league',
+                                               age_group: 'Herren', field_size: 'GF')
+    lv_team = create(:team, league: lv_liga)
+    player = create(:player, with_licenses: [
+      { team: @team, status: License::APPROVED },
+      { team: lv_team, status: License::APPROVED }
+    ])
+    suspension = player.suspend!(user_id: @user.id, games_total: 3,
+                                 scope: { kind: PlayerSuspension::SCOPE_COMPETITION, league: @liga })
+
+    PlayerSuspension.count_closed_game!(closed_game(league: lv_liga, home: lv_team,
+                                                    guest: create(:team, league: lv_liga)))
+
+    assert_equal 0, suspension.reload.games_served
+  end
+
+  test 'Zweitlizenz in einer anderen Altersklasse zaehlt kein Spiel ab' do
+    # Rueckmeldung der SBK FD: U13 maennlich Kleinfeld und U13 weiblich
+    # Grossfeld sind zwei Wettbewerbe, keine zwei abgesessenen Spiele.
+    andere_ak = league_with(modus: 'league', age_group: 'U13 Juniorinnen', field_size: 'KF')
+    andere_team = create(:team, league: andere_ak)
+    player = create(:player, with_licenses: [
+      { team: @team, status: License::APPROVED },
+      { team: andere_team, status: License::APPROVED }
+    ])
+    suspension = player.suspend!(user_id: @user.id, games_total: 3,
+                                 scope: { kind: PlayerSuspension::SCOPE_COMPETITION, league: @liga })
+
+    PlayerSuspension.count_closed_game!(closed_game(league: andere_ak, home: andere_team,
+                                                    guest: create(:team, league: andere_ak)))
+    assert_equal 0, suspension.reload.games_served
+
+    PlayerSuspension.count_closed_game!(closed_game(league: @liga))
+    assert_equal 1, suspension.reload.games_served
+  end
+
+  test 'scope_summary nennt den Spielbetrieb' do
+    player = licensed_player
+    suspension = player.suspend!(user_id: @user.id, valid_until: Date.current + 30,
+                                 scope: { kind: PlayerSuspension::SCOPE_COMPETITION, league: @liga,
+                                          competition_groups: [League::GROUP_LIGA] })
+
+    assert_equal "Herren Großfeld, Ligaspielbetrieb, #{@go.name}", suspension.scope_summary
   end
 end
