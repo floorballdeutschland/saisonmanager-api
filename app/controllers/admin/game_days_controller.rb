@@ -238,6 +238,17 @@ module Admin
     end
 
     def flags(game)
+      # Die drei `missing_*` sind Hinweise auf fehlende Nacharbeit, keine
+      # Tatsachenaussagen: Zuschauerzahl, Unterschriften und zweiter
+      # Schiedsrichter stehen erst am Spieltag fest. Für ein Spiel, das noch
+      # aussteht, wären sie zwangsläufig alle gesetzt – die halbe Restsaison
+      # trüge dann eine Auffälligkeit, und die Markierung verlöre ihren Wert.
+      #
+      # Die übrigen Flags bleiben unberührt: protest, forfait,
+      # special_event_string und Strafen kann nur setzen, wer den Bericht
+      # führt, ein ausstehendes Spiel trägt sie also ohnehin nicht.
+      pending = upcoming?(game)
+
       {
         protest: game.protest || false,
         forfait: game.forfait.to_i.positive?,
@@ -245,10 +256,70 @@ module Admin
         severe_penalty_count: severe_penalty_count(game),
         # nil? statt blank?: 0 Zuschauer ist eine gültige Angabe, aber `0.blank?`
         # ist in Rails false – blank? würde die fehlende Angabe also nie melden.
-        missing_audience: game.audience.nil?,
-        missing_signatures: !signatures_complete?(game),
-        missing_referee2: game.referee2_string.blank?
+        missing_audience: !pending && game.audience.nil?,
+        missing_signatures: !pending && !signatures_complete?(game),
+        missing_referee2: !pending && game.referee2_string.blank?
       }
+    end
+
+    # Spiel steht noch aus: nicht begonnen UND der Anpfiff liegt in der Zukunft.
+    #
+    # Beide Bedingungen zusammen. Nur „nicht begonnen" würde einen liegen
+    # gebliebenen Bericht von vorletzter Woche mit ausblenden – genau den, den
+    # die SBK sehen muss. Nur „in der Zukunft" würde einen vorab geführten
+    # Bericht nicht mehr prüfen.
+    #
+    # Maßgeblich ist der ANPFIFF, nicht der Kalendertag. Mit dem Kalendertag
+    # trüge ab 00:00 jedes Spiel des laufenden Spieltags wieder alle drei
+    # Hinweise: Samstagmittag stünden sechzig Partien mit Anpfiff 16:00, 18:00
+    # und 20:00 als „Unterschriften fehlen" in der Arbeitsansicht, also genau
+    # der Effekt, den diese Prüfung abschaffen soll, nur auf den spielstärksten
+    # Tag der Woche verengt.
+    #
+    # Gerechnet wird in Europe/Berlin (Game#start_date tut das ebenfalls): Der
+    # Server läuft in UTC, und `Date.today` hinge dort in den ersten Stunden
+    # nach Mitternacht noch am Vortag.
+    #
+    # Ohne gepflegte Anpfiffzeit bleibt nur der Kalendertag, und dann bewusst
+    # `>=`: Wann das Spiel an diesem Tag stattfindet, ist nicht bekannt, also
+    # wird bis Tagesende nicht gemahnt. Ohne Datum gilt das Spiel als nicht
+    # ausstehend – das ist die sichere Richtung, denn ein Bericht, der zu Recht
+    # Nacharbeit braucht, darf nicht wegen eines leeren Feldes unsichtbar sein.
+    def upcoming?(game)
+      return false unless game.game_status.blank? || game.game_status == 'pregame'
+
+      kickoff = game_kickoff(game)
+      return kickoff > Time.current if kickoff
+
+      date = game_day_date(game.game_day)
+      date.present? && date >= berlin_today
+    end
+
+    # Anpfiff als Zeitpunkt, oder nil ohne Datum bzw. ohne Uhrzeit.
+    # `game_days.date` ist eine Textspalte und im Altbestand auch mal unlesbar;
+    # Game#start_date parst sie ohne eigene Absicherung, deshalb der rescue.
+    def game_kickoff(game)
+      game.start_date
+    rescue ArgumentError, TypeError
+      nil
+    end
+
+    # Einmal je Request statt einmal je Zeile: Bei MAX_ROWS = 2000 wurde die Zone
+    # sonst zweitausendfach aufgelöst, und ein Request über Mitternacht mischte
+    # zwei verschiedene „heute".
+    def berlin_today
+      @berlin_today ||= Time.find_zone!('Europe/Berlin').today
+    end
+
+    # game_days.date ist eine Textspalte und im Altbestand auch mal leer oder
+    # unlesbar. strptime statt Date.parse aus demselben Grund wie in `days_after`.
+    def game_day_date(game_day)
+      raw = game_day&.date.to_s
+      return nil if raw.blank?
+
+      Date.strptime(raw, '%Y-%m-%d')
+    rescue Date::Error
+      nil
     end
 
     # Zählt Strafen ab 5 Minuten inkl. Matchstrafen.
