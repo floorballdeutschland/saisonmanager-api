@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Ligamodus „Playoffs/Playdowns"**: Playoffs und Playdowns waren bisher als Pokal angelegt, weil sie Ausscheidungswettbewerbe sind. Fachlich sind sie aber etwas anderes: die Fortsetzung einer bestehenden Liga in kleinerer Besetzung. Der FD-Pokal dagegen ist ein eigener Wettbewerb, separat geführt und mit eigenem Teilnehmerfeld. Solange beides denselben Modus trug, konnte das keine Prüfung auseinanderhalten, und genau darauf kommt es bei Spielersperren an: Eine Sperre im Ligaspielbetrieb muss in den Playoffs weitergelten, im Pokal nicht. Neben „Liga", „Pokal" und „DM/Endrunde" steht deshalb jetzt „Playoffs/Playdowns" zur Wahl. Der neue Modus verhält sich in Spielplan und Darstellung genau wie der Pokal, verlangt also keine Ligaklasse und zeigt einen Turnierbaum statt einer Tabelle; unterschieden wird er nur dort, wo die Zugehörigkeit zum Wettbewerb zählt. Dazu kennt jede Liga jetzt ihre Wettbewerbsgruppe: Liga und Playoffs bilden den Ligaspielbetrieb, der Pokal steht für sich, DM und Endrunden bilden eine dritte Gruppe. Dass die Endrunden eine eigene Gruppe behalten, obwohl sie fachlich ebenfalls Fortführungen sind, ist Absicht: Die Regel dazu gehört in die Vorbelegung des Sperrformulars und nicht in die Zuordnung selbst, damit ein abweichender Einzelfall ein Klick bleibt und keine Datenmigration. Ein fehlender oder unbekannter Modus zählt zum Ligaspielbetrieb, denn ein gesperrter Spieler, der wegen eines leeren Feldes auflaufen darf, wäre der schwerere Fehler. Fehlt einer Playoff-Liga die Altersklasse oder die Feldgröße, gilt die der Hauptrunde: Genau diese beiden Felder bleiben an Playoff- und Endrundenligen oft leer, weil solche Ligen mitten in der Saison entstehen, und ohne den Rückgriff hinge die Sperrwirkung an einer Eingabe, die niemand nachträgt. Der Bestand bleibt unberührt, bereits angelegte Playoff-Ligen tragen weiterhin „Pokal", solange sie nicht umgestellt werden.
+
 ## [1.106.0] - 2026-09-02
 
 ### Neu
