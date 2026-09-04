@@ -64,13 +64,13 @@ class PlayersLicenseDeleteTest < ActionDispatch::IntegrationTest
          'created_at' => zeitpunkt, 'created_by' => nil }]
     end
     @player.update!(licenses: [
-                      { 'id' => doppel_id, 'team_id' => @team.id,
-                        'season_id' => @league.season_id,
-                        'history' => verlauf.call(2.days.ago.iso8601) },
-                      { 'id' => doppel_id, 'team_id' => @team.id,
-                        'season_id' => '15',
-                        'history' => verlauf.call(3.years.ago.iso8601) }
-                    ])
+      { 'id' => doppel_id, 'team_id' => @team.id,
+        'season_id' => @league.season_id,
+        'history' => verlauf.call(2.days.ago.iso8601) },
+      { 'id' => doppel_id, 'team_id' => @team.id,
+        'season_id' => '15',
+        'history' => verlauf.call(3.years.ago.iso8601) }
+    ])
     login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
 
     delete_license(doppel_id, reason: 'Doppelt angelegt, siehe Mail des Vereins')
@@ -103,11 +103,11 @@ class PlayersLicenseDeleteTest < ActionDispatch::IntegrationTest
     verlauf = [{ 'license_status_id' => License::APPROVED,
                  'created_at' => 2.days.ago.iso8601, 'created_by' => nil }]
     @player.update!(licenses: [
-                      { 'id' => eigene_id, 'team_id' => @team.id,
-                        'season_id' => @league.season_id, 'history' => verlauf },
-                      { 'id' => fremde_id, 'team_id' => fremdes_team.id,
-                        'season_id' => fremde_liga.season_id, 'history' => verlauf }
-                    ])
+      { 'id' => eigene_id, 'team_id' => @team.id,
+        'season_id' => @league.season_id, 'history' => verlauf },
+      { 'id' => fremde_id, 'team_id' => fremdes_team.id,
+        'season_id' => fremde_liga.season_id, 'history' => verlauf }
+    ])
     login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
 
     get "/api/v2/admin/players/#{@player.id}.json"
