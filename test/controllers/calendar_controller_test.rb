@@ -142,6 +142,69 @@ class CalendarControllerTest < ActionDispatch::IntegrationTest
     assert_not_includes response.body, "sm_game_#{ohne_zeit.id}"
   end
 
+  # Vorher HTTP 500 (Sentry SAISONMANAGER-3Q): `game_day.league` in Game#league,
+  # aufgerufen aus `game_title`. Eine einzige solche Begegnung riss das
+  # komplette Abo mit — das Kalender-Programm bekam gar keine Termine mehr,
+  # auch nicht die gesunden daneben.
+  #
+  # `update_column` statt eines gelöschten Spieltags, weil genau das der Zustand
+  # auf Prod ist: `games.game_day_id` hat einen Fremdschlüssel, ist aber
+  # nullable. Ein Spieltag lässt sich also nicht unter seinen Spielen
+  # weglöschen (beide Löschpfade räumen ohnehin erst die Spiele ab) — wohl aber
+  # steht die Spalte leer. Fünf Spiele auf Prod sind so, alle `legacy = true`,
+  # also aus dem Altdaten-Import, der die Modell-Validierung nie durchlief.
+  # Ein Test, der stattdessen `GameDay.delete_all` versucht, läuft in eine
+  # ForeignKeyViolation und prüft den echten Fall nie.
+  test 'ein Spiel ohne Spieltag fällt aus dem Kalender statt ihn zu kippen' do
+    verwaist = game_with(start_time: '14:00')
+    verwaist.update_column(:game_day_id, nil)
+
+    get "/api/v2/calendar/teams/#{@home.id}.ics"
+
+    assert_response :success
+    assert_includes response.body, 'BEGIN:VCALENDAR'
+    assert_not_includes response.body, "sm_game_#{verwaist.id}"
+  end
+
+  test 'ein gesundes Spiel bleibt neben einem Spiel ohne Spieltag im Kalender' do
+    gesund = game_with(start_time: '14:00')
+    verwaist = game_with(start_time: '16:00', number: 2)
+    verwaist.update_column(:game_day_id, nil)
+
+    get "/api/v2/calendar/teams/#{@home.id}.ics"
+
+    assert_response :success
+    assert_includes response.body, "sm_game_#{gesund.id}"
+    assert_not_includes response.body, "sm_game_#{verwaist.id}"
+  end
+
+  # Zweite Stufe derselben Lücke: Der Spieltag steht, aber seine Liga fehlt.
+  # `game_days.league_id` ist genauso nullable wie `games.game_day_id`, und
+  # `game_title` braucht `league.name` und `league.game_operation.short_name`.
+  test 'ein Spiel mit Spieltag ohne Liga fällt aus dem Kalender' do
+    ohne_liga = game_with(start_time: '14:00')
+    ohne_liga.game_day.update_column(:league_id, nil)
+
+    get "/api/v2/calendar/teams/#{@home.id}.ics"
+
+    assert_response :success
+    assert_includes response.body, 'BEGIN:VCALENDAR'
+    assert_not_includes response.body, "sm_game_#{ohne_liga.id}"
+  end
+
+  # Auch der Einzelspiel-Kalender darf nicht kippen: derselbe Concern, aber ein
+  # eigener Pfad, und beim letzten Fix an dieser Datei fehlte ausgerechnet er.
+  test 'auch der Einzelspiel-Kalender übersteht ein Spiel ohne Spieltag' do
+    verwaist = game_with(start_time: '14:00')
+    verwaist.update_column(:game_day_id, nil)
+
+    get "/api/v2/calendar/games/#{verwaist.id}.ics"
+
+    assert_response :success
+    assert_includes response.body, 'BEGIN:VCALENDAR'
+    assert_not_includes response.body, 'BEGIN:VEVENT'
+  end
+
   # Gegenprobe zum Key-Verzicht: Er gilt nur für die Kalender-Actions. Die
   # JSON-Endpunkte derselben Controller müssen weiter einen Key verlangen, sonst
   # hätte der Fix die öffentliche API nebenbei geöffnet.
@@ -211,6 +274,32 @@ class CalendarControllerTest < ActionDispatch::IntegrationTest
     # Größenordnung, nicht eine exakte Zahl.
     assert_operator liga_queries, :<, 15, "Liga-Kalender: #{liga_queries} Abfragen, Preloading fehlt"
     assert_operator einzel_queries, :<, 10, "Spiel-Kalender: #{einzel_queries} Abfragen, Preloading fehlt"
+  end
+
+  # Dieselbe Fehlerklasse eine Ebene tiefer: `leagues.game_operation_id` ist im
+  # Schema nullable, `game_title` liest dort `short_name` und `url` den `slug`.
+  # Ohne den Riegel riss eine Liga ohne Verband das Abo genauso mit wie ein
+  # Spiel ohne Spieltag, und zwar zusaetzlich im Liga-Abo, das der INNER JOIN
+  # sonst schuetzt.
+  test 'Liga ohne Spielbetrieb kippt das Abo nicht' do
+    gesund = game_with(start_time: '14:00')
+
+    waise = create(:league, game_operation: @go)
+    waise.update_column(:game_operation_id, nil)
+    tag = GameDay.create!(
+      league: waise, arena: create(:arena), club: @club, number: 9, date: '2026-09-06'
+    )
+    Game.create!(
+      game_day: tag, home_team: @home, guest_team: @guest, start_time: '16:00',
+      started: false, ended: false, forfait: 0, overtime: false, legacy: false,
+      events: [], players: { 'home' => [], 'guest' => [] }
+    )
+
+    get "/api/v2/calendar/teams/#{@home.id}.ics"
+
+    assert_response :success
+    # Das gesunde Spiel steht drin, das kaputte faellt still heraus.
+    assert_includes response.body, "sm_game_#{gesund.id}"
   end
 
   private
