@@ -12,6 +12,10 @@ class Game < ApplicationRecord
   # halbvolle Liste sähe aus wie eine Aussage darüber, wer dabei war.
   COACHES_PUBLIC_FROM_SEASON_ID = 18
 
+  # Zeitzone des Spielbetriebs. Anpfiffzeiten sind deutsche Ortszeit, nicht die
+  # Zone der Anwendung (UTC), und die ICS-Dateien müssen das auch sagen.
+  ICAL_TIMEZONE = 'Europe/Berlin'.freeze
+
   belongs_to :home_team, class_name: 'Team', optional: true
   belongs_to :guest_team, class_name: 'Team', optional: true
   belongs_to :game_day, inverse_of: :games
@@ -1487,7 +1491,7 @@ class Game < ApplicationRecord
   def start_date
     return nil if game_day&.date.blank? || start_time.blank?
 
-    ActiveSupport::TimeZone['Europe/Berlin'].parse("#{game_day.date} #{start_time}")
+    ActiveSupport::TimeZone[ICAL_TIMEZONE].parse("#{game_day.date} #{start_time}")
   end
 
   def end_date
@@ -1521,7 +1525,8 @@ class Game < ApplicationRecord
     "#{FrontendUrl.base}/#{league.game_operation.slug}/#{league.id}/spiel/#{id}"
   end
 
-  # nil, wenn das Spiel keinen auflösbaren Spieltag hat.
+  # Ein Termin des Kalender-Abos, oder nil, wenn das Spiel keinen auflösbaren
+  # Spieltag hat.
   #
   # `game_day` ist zwar Pflicht (`belongs_to` ohne `optional`), aber
   # `GameDay#games` kennt kein `dependent:`. Ein gelöschter Spieltag lässt
@@ -1530,19 +1535,31 @@ class Game < ApplicationRecord
   # `league.name` (Game#league delegiert an `game_day.league`). Das riss den
   # ganzen Kalender mit: eine einzige verwaiste Begegnung machte aus dem Abo
   # einer Mannschaft HTTP 500 (Sentry SAISONMANAGER-3Q), auch für die 25
-  # gesunden Spiele daneben.
+  # gesunden Spiele daneben. Ein Spiel ohne Spieltag hat weder Datum noch Halle
+  # noch Liga, es gibt also nichts zu zeigen; es fällt heraus, so wie ein Spiel
+  # ohne Anpfiffzeit (siehe IcalRenderable#render_ical).
   #
-  # Ein Spiel ohne Spieltag hat weder Datum noch Halle noch Liga – es gibt
-  # nichts zu zeigen. Es fällt daher heraus, so wie ein Spiel ohne Anpfiffzeit
-  # (siehe IcalRenderable#render_ical).
+  # Anpfiff und Spielende tragen die TZID ausdrücklich. Ohne sie schreibt die
+  # Bibliothek eine „floating time": `DTSTART:20261108T140000` ohne Zone und
+  # ohne Z. Ein Kalender-Programm liest das als Ortszeit des Betrachters, und
+  # die beigelegte VTIMEZONE (siehe IcalRenderable) referenziert dann kein
+  # einziger Termin, ist also wirkungslos. In Deutschland fiel das nicht auf,
+  # bei einem Abonnenten in London landete der Anpfiff eine Stunde daneben.
+  #
+  # CREATED und LAST-MODIFIED müssen laut RFC 5545 in UTC stehen, also mit
+  # abschließendem Z. Die Bibliothek hängt das Z nur an, wenn die TZID
+  # 'UTC' lautet; ein bloßer UTC-Zeitstempel wird sonst ebenfalls als
+  # floating time geschrieben.
   def ical
     require 'icalendar'
 
     return nil if game_day.nil? || game_day.league.nil?
 
     event = ::Icalendar::Event.new
-    event.dtstart = Icalendar::Values::DateTime.new(start_date) if start_date
-    event.dtend = Icalendar::Values::DateTime.new(end_date) if start_date
+    if start_date
+      event.dtstart = Icalendar::Values::DateTime.new(start_date, 'tzid' => ICAL_TIMEZONE)
+      event.dtend = Icalendar::Values::DateTime.new(end_date, 'tzid' => ICAL_TIMEZONE)
+    end
     event.summary = game_title
 
     event.description = "Im Saisonmanager findest du das Spiel mit Liveergebnissen unter #{url}"
@@ -1554,8 +1571,8 @@ class Game < ApplicationRecord
 
     event.ip_class = 'PUBLIC'
     event.attach = Icalendar::Values::Uri.new url
-    event.created = created_at
-    event.last_modified = updated_at
+    event.created = Icalendar::Values::DateTime.new(created_at.utc, 'tzid' => 'UTC')
+    event.last_modified = Icalendar::Values::DateTime.new(updated_at.utc, 'tzid' => 'UTC')
 
     event
   end
