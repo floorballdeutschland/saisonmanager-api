@@ -214,6 +214,7 @@ class PlayersLicenseDeleteTest < ActionDispatch::IntegrationTest
                    reason: 'für Transfer ungültig gesetzt' },
          as: :json
 
+    assert_response :unprocessable_entity
     assert_equal License::APPROVED, current_entry['license_status_id'].to_i,
                  'der Status darf sich über diesen Endpunkt nicht mehr auf TRANSFER ändern'
   end

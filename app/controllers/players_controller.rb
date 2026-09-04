@@ -273,6 +273,18 @@ class PlayersController < ApplicationController
     license = player.licenses.find { |lic| lic['id'] == params[:license_id] }
 
     if (ph[:admin].present? || sbk_can_access_license?(ph, license)) && player.present?
+      # Beide Prüfungen antworten, statt still durchzulaufen. Bis hierher endete
+      # eine unbekannte Lizenz-id und ein nicht vorgesehener Zielstatus in einem
+      # `map!`, das nichts fand oder nichts tat, und der Endpunkt meldete
+      # trotzdem `success: true`. Die Oberfläche zeigte dann eine Bestätigung für
+      # einen Statuswechsel, den es nie gab.
+      return render json: { message: 'Lizenz nicht gefunden.' }, status: :not_found if license.blank?
+
+      unless License::HANDLED_STATUSES.include?(params[:license_status_id].to_i)
+        return render json: { message: 'Dieser Lizenzstatus lässt sich hier nicht setzen.' },
+                      status: :unprocessable_entity
+      end
+
       if params[:license_status_id].to_i == License::APPROVED && player.application_blocked?
         return render json: { message: 'Für diesen Spieler besteht eine aktive Sperre. Lizenzen können nicht erteilt werden.' },
                       status: :unprocessable_entity
@@ -300,52 +312,52 @@ class PlayersController < ApplicationController
       approved_team_id = nil
 
       player.licenses.map! do |lic|
-        if lic['id'] == params[:license_id]
-          last_status = lic['history'].sort_by { |h| h['created_at'] }.last
-
-          # TRANSFER (6) steht hier bewusst nicht mehr: Den Status setzt
-          # TransferRequest#invalidate_licenses! beim Vollzug selbst, und das ist
-          # der einzige Weg, auf dem ein Spieler den Verein wechselt. Der frühere
-          # Knopf „für Transfer ungültig setzen" war eine Handarbeit daneben.
-          if last_status['license_status_id'].to_i != params[:license_status_id].to_i &&
-             [License::APPROVED, License::DENIED, License::REQUESTED,
-              License::DELETED].include?(params[:license_status_id].to_i)
-            entry = {
-              license_status_id: params[:license_status_id].to_i,
-              reason: params[:reason] || '',
-              created_by: current_user.id,
-              created_at: Time.now
-            }
-            # Jeder `beantragt`-Eintrag von hier aus wird markiert und startet die
-            # Karenzzeit damit nicht neu. Dieser Endpunkt ist Admin und SBK
-            # vorbehalten (siehe Rechteprüfung oben), ein Verein beantragt hier
-            # also nie: Was hier entsteht, ist immer eine Verwaltungskorrektur.
-            # Die erste Beantragung läuft über request_license und bleibt
-            # unmarkiert.
-            #
-            # Bewusst nicht auf `abgelehnt -> beantragt` eingeengt. Der Weg aus
-            # `erteilt` heraus ist der teurere Fall – dort ist die Gebühr sicher
-            # angefallen –, und er ist real erreichbar: Die Lizenzübersicht wird
-            # einmal geladen und nicht nachgeführt, ein Widerruf-Klick auf einer
-            # veralteten Zeile schickt also `beantragt` auf eine inzwischen
-            # erteilte Lizenz. Siehe License.grace_period_anchor.
-            if params[:license_status_id].to_i == License::REQUESTED
-              entry[License::REVOKED_REJECTION_KEY] = true
-            end
-            lic['history'] << entry
-            if params[:license_status_id].to_i == License::DELETED && lic['gf_role'].present?
-              # Eine gelöschte Lizenz gehört nicht mehr zum Wettbewerb.
-              # gf_competition_licenses überspringt sie ohnehin (nur ACTIVE_STATUSES),
-              # das Erst-/Zweitlizenz-Abzeichen im Profil hinge aber weiter an ihr und
-              # behauptete eine Zuordnung, die es nicht mehr gibt. gf_role_history
-              # behält den Verlauf. Eine Gegenbuchung auf die Partner-Lizenz gibt es
-              # nicht: Welche jetzt Erstlizenz sein soll, entscheidet der Verband.
-              player.assign_gf_role(lic, nil, current_user.id, 'license_deleted')
-            end
-            if params[:license_status_id].to_i == License::APPROVED
-              approved_team_id = lic['team_id']
-              lic['valid_until'] = params[:valid_until].presence || default_license_valid_until(lic['season_id']).iso8601
-            end
+        # Über License.current_status_id statt über `history.sort_by.last`: Der
+        # Leser kommt mit einer leeren oder fehlenden History zurecht. Vorher
+        # stand dort ein `nil['license_status_id']`, also ein 500 für jede Lizenz
+        # ohne Verlauf. Auf Produktiv gibt es zwei davon.
+        #
+        # Der Zielstatus ist oben geprüft, hier bleibt nur die Frage, ob sich
+        # überhaupt etwas ändert: Derselbe Status noch einmal gesetzt (etwa ein
+        # Doppelklick oder eine veraltete Zeile in der Liste) schreibt keinen
+        # zweiten Eintrag und ist kein Fehler.
+        if lic['id'] == params[:license_id] &&
+           License.current_status_id(lic) != params[:license_status_id].to_i
+          entry = {
+            license_status_id: params[:license_status_id].to_i,
+            reason: params[:reason] || '',
+            created_by: current_user.id,
+            created_at: Time.now
+          }
+          # Jeder `beantragt`-Eintrag von hier aus wird markiert und startet die
+          # Karenzzeit damit nicht neu. Dieser Endpunkt ist Admin und SBK
+          # vorbehalten (siehe Rechteprüfung oben), ein Verein beantragt hier
+          # also nie: Was hier entsteht, ist immer eine Verwaltungskorrektur.
+          # Die erste Beantragung läuft über request_license und bleibt
+          # unmarkiert.
+          #
+          # Bewusst nicht auf `abgelehnt -> beantragt` eingeengt. Der Weg aus
+          # `erteilt` heraus ist der teurere Fall – dort ist die Gebühr sicher
+          # angefallen –, und er ist real erreichbar: Die Lizenzübersicht wird
+          # einmal geladen und nicht nachgeführt, ein Widerruf-Klick auf einer
+          # veralteten Zeile schickt also `beantragt` auf eine inzwischen
+          # erteilte Lizenz. Siehe License.grace_period_anchor.
+          if params[:license_status_id].to_i == License::REQUESTED
+            entry[License::REVOKED_REJECTION_KEY] = true
+          end
+          (lic['history'] ||= []) << entry
+          if params[:license_status_id].to_i == License::DELETED && lic['gf_role'].present?
+            # Eine gelöschte Lizenz gehört nicht mehr zum Wettbewerb.
+            # gf_competition_licenses überspringt sie ohnehin (nur ACTIVE_STATUSES),
+            # das Erst-/Zweitlizenz-Abzeichen im Profil hinge aber weiter an ihr und
+            # behauptete eine Zuordnung, die es nicht mehr gibt. gf_role_history
+            # behält den Verlauf. Eine Gegenbuchung auf die Partner-Lizenz gibt es
+            # nicht: Welche jetzt Erstlizenz sein soll, entscheidet der Verband.
+            player.assign_gf_role(lic, nil, current_user.id, 'license_deleted')
+          end
+          if params[:license_status_id].to_i == License::APPROVED
+            approved_team_id = lic['team_id']
+            lic['valid_until'] = params[:valid_until].presence || default_license_valid_until(lic['season_id']).iso8601
           end
         end
 

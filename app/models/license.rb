@@ -39,6 +39,15 @@ class License < ApplicationRecord
   # wieder offen. Ein Test hält ihn deshalb fest.
   REVOKED_REJECTION_KEY = 'revoked_rejection'.freeze
 
+  # Zielstatus, die PlayersController#handle_license_request setzen kann. Alles
+  # andere lehnt der Endpunkt ab, statt still nichts zu tun.
+  #
+  # TRANSFER fehlt bewusst: Den setzt der Transfer-Vollzug selbst
+  # (TransferRequest#invalidate_licenses!). IGNORED ist reiner Altbestand und
+  # bekommt keinen neuen Schreibweg. SUSPENDED hängt an einer Sperre mit
+  # Laufzeit und wird über Player#suspend! gesetzt, nicht über diesen Endpunkt.
+  HANDLED_STATUSES = [APPROVED, DENIED, REQUESTED, DELETED].freeze
+
   # Jüngster History-Eintrag = aktueller Status. Über den Zeitstempel und nicht
   # über die Position im Array: Angehängt wird die History an vielen Stellen,
   # sortiert ist sie nirgends garantiert.
