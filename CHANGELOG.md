@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Spielerdaten als CSV**: Die Spielerdaten-Rangliste hat oben rechts einen Knopf „CSV-Export". Er liefert die Datei zur Auswahl, die gerade in der Maske steht — dieselben Filter, dieselbe Sortierung, aber alle Treffer und nicht die sichtbaren fünfzig Zeilen. Das ist der eigentliche Punkt: Wer wissen will, welche Jugendlichen seines Vereins über die Jahre wie viele Einsätze haben, oder wer im Landesverband eine Liste für die Auszeichnung der Saison braucht, arbeitet danach im Tabellenblatt weiter, und dort ist eine Seite von fünfzig nutzlos. Die Datei enthält Nachname und Vorname getrennt, in der Verbandsansicht den Heimatverein, Spiele, Tore, Vorlagen, Punkte, Punkte pro Spiel, Strafminuten, erste und letzte Saison mit Einsatz, ob die Person deaktiviert ist, und die Spieler-ID als eindeutigen Schlüssel bei Namensgleichheit. Semikolon, Zeichensatz und Dezimalkomma sind wie bei den übrigen Exporten auf die deutsche Tabellenkalkulation gebaut. Es gilt dieselbe Rechteregel wie für die Ansicht selbst, der Export öffnet also keine Tür: Der Vereins- oder Teammanager bekommt seinen Verein, die Spielbetriebskommission ihren Spielbetrieb, und ein fremder Vereinsfilter wird abgewiesen statt still leer beantwortet. Technisch ist es ein eigener Weg (`GET admin/player_statistics/export`) und kein großes `per_page` an der Liste: Der bundesweite Blick sind rund 31.000 Personen, und die aus Fünfzigerseiten zusammenzutragen wären hunderte derselben Aggregatabfrage, jede mit tieferem Versatz. Bei 50.000 Zeilen endet die Datei, und die Oberfläche sagt das dann auch, statt stillschweigend zu kürzen.
+
 ## [1.106.0] - 2026-09-02
 
 ### Neu

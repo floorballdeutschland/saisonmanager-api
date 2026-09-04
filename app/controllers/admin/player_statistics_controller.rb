@@ -26,6 +26,11 @@ module Admin
     DEFAULT_PER_PAGE = 50
     MAX_PER_PAGE = 200
 
+    # Obergrenze des Exports. Der bundesweite Blick zaehlt derzeit rund 31.000 Personen
+    # (Volllauf 08/2026), die Grenze ist also Reissleine und nicht Zuschnitt -- wird sie
+    # doch erreicht, sagt die Antwort das mit `truncated`, statt still zu kuerzen.
+    MAX_EXPORT_ROWS = 50_000
+
     # Sortierschluessel als Weissliste. Die Werte gehen als SQL in ORDER BY, es darf
     # also nichts anderes als genau diese Ausdruecke hineinkommen.
     SORT_EXPRESSIONS = {
@@ -73,14 +78,44 @@ module Admin
       payload[:filters] = filter_options if page == 1
       render json: payload
     rescue ActiveRecord::StatementInvalid, ActiveRecord::ConnectionNotEstablished => e
-      # Wie in Admin::AnalyticsController: Ein Aggregat ist kein Kernbestand. Faellt es
-      # aus, soll die Oberflaeche das sagen koennen, statt einen 500er zu zeigen.
-      Rails.logger.error("PlayerStatisticsController#index failed: #{e.class}: #{e.message}")
-      Sentry.capture_exception(e) if defined?(Sentry)
-      render json: { error: 'Spielerdaten konnten nicht geladen werden.' }, status: :service_unavailable
+      aggregate_unavailable(e, 'index')
+    end
+
+    # GET /api/v2/admin/player_statistics/export
+    #
+    # Derselbe Blick wie #index, mit denselben Filtern, derselben Sortierung und
+    # denselben Rechten -- nur ungeblaettert, damit der CSV-Export der Oberflaeche die
+    # GANZE Filterauswahl bekommt und nicht die sichtbaren 50 Zeilen.
+    #
+    # Deshalb ein eigener Weg und kein grosses `per_page` am Blaetter-Endpunkt: Der
+    # bundesweite Blick sind rund 31.000 Zeilen, und die aus 50er-Seiten
+    # zusammenzutragen waere ein Hundertfaches derselben Aggregatabfrage, jede mit
+    # tieferem OFFSET. Die Auswahllisten (`filters`) und die zweite Zaehlabfrage
+    # (`total`) entfallen hier, der Export braucht beides nicht.
+    def export
+      return unless authorize!
+
+      rows = export_rows
+      render json: {
+        scope: scope_payload,
+        as_of: rows.filter_map { |r| r['computed_at'] }.max,
+        total: rows.size,
+        truncated: rows.size >= MAX_EXPORT_ROWS,
+        players: players_payload(rows)
+      }
+    rescue ActiveRecord::StatementInvalid, ActiveRecord::ConnectionNotEstablished => e
+      aggregate_unavailable(e, 'export')
     end
 
     private
+
+    # Wie in Admin::AnalyticsController: Ein Aggregat ist kein Kernbestand. Faellt es
+    # aus, soll die Oberflaeche das sagen koennen, statt einen 500er zu zeigen.
+    def aggregate_unavailable(error, action)
+      Rails.logger.error("PlayerStatisticsController##{action} failed: #{error.class}: #{error.message}")
+      Sentry.capture_exception(error) if defined?(Sentry)
+      render json: { error: 'Spielerdaten konnten nicht geladen werden.' }, status: :service_unavailable
+    end
 
     # ------------------------------------------------------------------ Rechte
 
@@ -211,27 +246,34 @@ module Admin
     end
 
     def page_rows
-      sql = grouped_rows
-            .select(
-              'players.id AS player_id',
-              'players.first_name AS first_name',
-              'players.last_name AS last_name',
-              'players.deactivated_at AS deactivated_at',
-              'player_stat_profiles.home_club_id AS home_club_id',
-              'SUM(player_game_stats.games) AS games',
-              'SUM(player_game_stats.goals) AS goals',
-              'SUM(player_game_stats.assists) AS assists',
-              'SUM(player_game_stats.penalty_minutes) AS penalty_minutes',
-              "MIN(#{SEASON_NUMERIC}) AS first_season_id",
-              "MAX(#{SEASON_NUMERIC}) AS last_season_id",
-              'MAX(player_game_stats.computed_at) AS computed_at'
-            )
-            .order(Arel.sql(order_clause))
-            .limit(per_page)
-            .offset((page - 1) * per_page)
-            .to_sql
+      select_rows(row_query.limit(per_page).offset((page - 1) * per_page))
+    end
 
-      PlayerGameStat.connection.select_all(sql).to_a
+    def export_rows
+      select_rows(row_query.limit(MAX_EXPORT_ROWS))
+    end
+
+    def select_rows(relation)
+      PlayerGameStat.connection.select_all(relation.to_sql).to_a
+    end
+
+    def row_query
+      grouped_rows
+        .select(
+          'players.id AS player_id',
+          'players.first_name AS first_name',
+          'players.last_name AS last_name',
+          'players.deactivated_at AS deactivated_at',
+          'player_stat_profiles.home_club_id AS home_club_id',
+          'SUM(player_game_stats.games) AS games',
+          'SUM(player_game_stats.goals) AS goals',
+          'SUM(player_game_stats.assists) AS assists',
+          'SUM(player_game_stats.penalty_minutes) AS penalty_minutes',
+          "MIN(#{SEASON_NUMERIC}) AS first_season_id",
+          "MAX(#{SEASON_NUMERIC}) AS last_season_id",
+          'MAX(player_game_stats.computed_at) AS computed_at'
+        )
+        .order(Arel.sql(order_clause))
     end
 
     def total_count
