@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Den Papierspielberichtsbogen konnte nicht hochladen, wer ihn ausfüllt**: Erlaubt war der Upload nur der SBK, dem Verband und dem Vereinsmanager des ausrichtenden Vereins. Am Sekretariatstisch sitzt aber oft jemand anders: der Teammanager einer beteiligten Mannschaft, ein Vereinsmanager des Gastvereins oder das Spielsekretariat mit dem Einmal-Link, das gar kein Benutzerkonto hat. Alle drei sahen das Feld „Scan hochladen", denn die Oberfläche blendet es allen ein, die den Spielbericht führen dürfen – die Absage kam erst beim Absenden. Der Upload steht jetzt genau derselben Runde offen wie der Spielbericht selbst, den Sekretariats-Link eingeschlossen; ohne Anmeldung wird dabei der Aussteller des Links als Urheber vermerkt, wie überall auf diesem Weg. Das Entfernen eines hochgeladenen Bogens bleibt bewusst bei Verband und SBK, denn das ist Kontrolle und nicht Berichtsführung. Im selben Zug behoben: Auch das bloße Nachsehen, ob schon ein Bogen vorliegt, hing an derselben Prüfung. Die Berichtsansicht fragt das beim Öffnen im Hintergrund ab, und eine Absage darauf warf auf die Startseite – bei einem Spiel mit Scan-Pflicht flog ein Teammanager also aus dem Bericht, bevor er etwas tun konnte.
+
 ## [1.106.0] - 2026-09-02
 
 ### Neu

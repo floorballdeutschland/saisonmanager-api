@@ -1,4 +1,12 @@
+# Papierspielberichtsbogen zu einem Spiel: hochladen, ansehen, entfernen.
 class GameScansController < ApplicationController
+  include SecretaryTokenAuthenticatable
+
+  # Lesen und Hochladen stehen derselben Runde offen wie der Spielbericht selbst,
+  # also auch dem Spielsekretariat per Einmal-Link, das ohne Benutzerkonto
+  # arbeitet. `destroy` bleibt an der Anmeldung, siehe check_permission.
+  skip_before_action :authenticate_user, only: %i[show create]
+  before_action :authenticate_with_secretary_token_or_user, only: %i[show create]
   before_action :set_game
   before_action :check_permission
 
@@ -21,7 +29,10 @@ class GameScansController < ApplicationController
 
     scan = GameScan.new(
       game: @game,
-      uploaded_by: current_user,
+      # Ohne Anmeldung (Sekretariats-Link) wird der Aussteller des Links
+      # eingetragen, wie überall auf dem Token-Pfad. Siehe
+      # SecretaryTokenAuthenticatable#secretary_or_current_user_id.
+      uploaded_by_id: secretary_or_current_user_id,
       expires_at: Time.current + 12.months
     )
     scan.scan_file.attach(params[:file])
@@ -33,6 +44,10 @@ class GameScansController < ApplicationController
     end
   end
 
+  # Löschen ist Kontrolle, nicht Berichtsführung: bewusst nur Admin und die SBK
+  # des Spielbetriebs, nicht die weitere Runde aus check_permission. Ein
+  # Sekretariats-Link kommt hier gar nicht erst an, `authenticate_user` gilt für
+  # diese Action unverändert.
   def destroy
     ph = current_user.permission_hash
     game_operation_id = @game.game_day.league.game_operation_id.to_i
@@ -57,21 +72,25 @@ class GameScansController < ApplicationController
     @game = Game.find(params[:game_id])
   end
 
+  # Derselbe Maßstab wie der Spielbericht (GamesController#can_edit_game?): Wer
+  # den Bericht führen darf, lädt auch den Papierbogen dazu hoch. Vorher waren es
+  # nur Admin, die SBK des Spielbetriebs und der Vereinsmanager des Ausrichters –
+  # nicht die Teammanager der beteiligten Mannschaften, nicht die
+  # Vereinsmanager der beteiligten Vereine und nicht das Spielsekretariat per
+  # Link, obwohl die Oberfläche allen dreien das Feld einblendet.
+  #
+  # Das traf nicht nur den Upload: `show` hängt an derselben Prüfung, die
+  # Berichtsansicht ruft ihn bei Scan-Pflicht beim Öffnen ab, und der
+  # ErrorInterceptor wirft bei 403 auf die Startseite. Wer den Bogen hochladen
+  # sollte, flog also aus der Ansicht, bevor er etwas tun konnte.
+  #
+  # Rolle und Token sind additiv, keiner der beiden Wege sticht den anderen
+  # (#428).
   def check_permission
-    ph = current_user.permission_hash
-    game_operation_id = @game.game_day.league.game_operation_id.to_i
+    return if secretary_token_permits_game?(@game)
+    return if current_user && @game.can_edit_lineup?(current_user)
 
-    admin_or_sbk = if ph[:admin].present? || ph[:sbk].present?
-                     gos = [ph[:admin], ph[:sbk]].flatten.compact.map(&:to_i)
-                     gos.include?(0) || gos.include?(game_operation_id)
-                   end
-
-    hosting_club_id = @game.game_day.club_id
-    vm_of_hosting_club = ph[:vm].present? && ph[:vm].include?(hosting_club_id)
-
-    unless admin_or_sbk || vm_of_hosting_club
-      render json: { message: 'Keine Berechtigung.' }, status: :forbidden
-    end
+    render json: { message: 'Keine Berechtigung.' }, status: :forbidden
   end
 
   def scan_json(scan)
