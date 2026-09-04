@@ -65,6 +65,34 @@ class PublicSecretaryControllerTest < ActionDispatch::IntegrationTest
     assert_equal '2026-07-31', entry['valid_until']
   end
 
+  test 'GET /public/secretary sortiert die Lizenzliste nach Nachnamen' do
+    %w[Zander Abele Mueller].each_with_index do |last_name, i|
+      create(:player, first_name: %w[Anton Xaver Berta][i], last_name:,
+                      with_licenses: [{ team: @home, status: License::APPROVED }])
+    end
+    _link, raw_token = GameDaySecretaryLink.generate!(game_days: [@game_day], created_by: @user)
+
+    get '/api/v2/public/secretary', params: { token: raw_token }
+
+    assert_response :success
+    names = JSON.parse(response.body).dig('license_lists', @home.id.to_s, 'players').map { |p| p['name'] }
+    assert_equal ['Xaver Abele', 'Berta Mueller', 'Anton Zander'], names
+  end
+
+  test 'GET /public/secretary sortiert Umlaute nicht ans Ende' do
+    [%w[Anna Ötztaler], %w[Bea Zander], %w[Cem Ahrens]].each do |first_name, last_name|
+      create(:player, first_name:, last_name:,
+                      with_licenses: [{ team: @home, status: License::APPROVED }])
+    end
+    _link, raw_token = GameDaySecretaryLink.generate!(game_days: [@game_day], created_by: @user)
+
+    get '/api/v2/public/secretary', params: { token: raw_token }
+
+    assert_response :success
+    names = JSON.parse(response.body).dig('license_lists', @home.id.to_s, 'players').map { |p| p['name'] }
+    assert_equal ['Cem Ahrens', 'Anna Ötztaler', 'Bea Zander'], names
+  end
+
   test 'GET /public/secretary ohne Token liefert 400' do
     get '/api/v2/public/secretary'
     assert_response :bad_request

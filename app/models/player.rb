@@ -1102,6 +1102,22 @@ class Player < ApplicationRecord
     self.class.open_home_club_entries(clubs)
   end
 
+  # Sortierschlüssel der Lizenzlisten: Nachname vor Vorname. Am Spieltisch wird
+  # nach dem Nachnamen gesucht, so wie auf jeder Mannschaftsaufstellung.
+  #
+  # transliterate, nicht nur downcase: Sonst landet „Öztürk" hinter
+  # „Zimmermann", weil Ö in der Zeichenreihenfolge über Z liegt – und genau in
+  # einer alphabetischen Liste fällt ein falsch einsortierter Name auf.
+  #
+  # Die id hält die Reihenfolge stabil: sort_by ist es nicht, und zwei
+  # Namensgleiche einer Mannschaft sprängen sonst zwischen zwei Abrufen hin und
+  # her – die Sekretariatsseite wird am Tisch immer wieder neu geladen.
+  def license_list_sort_key
+    [I18n.transliterate(last_name.to_s).downcase,
+     I18n.transliterate(first_name.to_s).downcase,
+     id.to_i]
+  end
+
   private
 
   # Entfernt die DELETED-Eintraege, die `deactivate!` bis api#472 an jede laufende

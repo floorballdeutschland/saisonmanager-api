@@ -9,7 +9,9 @@ require 'icalendar/tzinfo'
 module IcalRenderable
   extend ActiveSupport::Concern
 
-  ICAL_TIMEZONE = 'Europe/Berlin'.freeze
+  # Eine Quelle für die Zone: Game#start_date rechnet in ihr, Game#ical
+  # schreibt sie als TZID an jeden Termin, hier steht die passende VTIMEZONE.
+  ICAL_TIMEZONE = Game::ICAL_TIMEZONE
 
   private
 
@@ -18,9 +20,14 @@ module IcalRenderable
   # Spiele ohne Anpfiffzeit haben kein `dtstart` (siehe Game#ical) und gehören
   # nicht in ein Abo: ein Termin ohne Zeitpunkt ist für den Kalender nutzlos.
   # Sie fallen hier heraus, statt als leerer Eintrag mitzulaufen.
+  #
+  # `filter_map` statt `map`, weil Game#ical zusätzlich nil liefert, wenn das
+  # Spiel keinen auflösbaren Spieltag hat. Ohne das `compact` liefe die
+  # anschließende Auswahl auf `nil.dtstart` – also erneut auf HTTP 500, nur
+  # eine Zeile später.
   def render_ical(games)
     ical = ::Icalendar::Calendar.new
-    events = Array(games).map(&:ical).select(&:dtstart)
+    events = Array(games).filter_map(&:ical).select(&:dtstart)
     events.each { |event| ical.add_event(event) }
 
     # Nur mit mindestens einem Termin: `tz.ical_timezone` braucht einen

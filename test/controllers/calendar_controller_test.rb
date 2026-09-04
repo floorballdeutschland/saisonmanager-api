@@ -39,6 +39,53 @@ class CalendarControllerTest < ActionDispatch::IntegrationTest
     assert_equal 'text/calendar', response.media_type
   end
 
+  # Der Anpfiff ist deutsche Ortszeit, und die Datei muss das auch sagen. Ohne
+  # TZID schrieb die Bibliothek `DTSTART:20260905T140000` ohne Zone und ohne Z,
+  # also eine „floating time": Ein Kalender-Programm liest sie als Ortszeit des
+  # Betrachters. In Deutschland fiel das nicht auf, ein Abonnent in London hatte
+  # den Anpfiff eine Stunde daneben. Die beigelegte VTIMEZONE half nicht, weil
+  # kein Termin sie referenzierte.
+  test 'Anpfiff und Spielende tragen die Zeitzone Europe/Berlin' do
+    game_with(start_time: '14:00')
+
+    get "/api/v2/calendar/teams/#{@home.id}.ics"
+
+    assert_response :success
+    # Nur der Termin, nicht die ganze Datei: In der VTIMEZONE steht planmäßig
+    # ein DTSTART ohne TZID, dort beschreibt es die Umstellungsregel selbst.
+    termin = vevents(response.body).first
+    assert_includes termin, 'DTSTART;TZID=Europe/Berlin:20260905T140000'
+    assert_match(%r{DTEND;TZID=Europe/Berlin:20260905T\d{6}}, termin)
+    assert_no_match(/^DTSTART:/, termin)
+    assert_no_match(/^DTEND:/, termin)
+  end
+
+  # Gegenprobe zur TZID: Die VTIMEZONE muss die Zone auch beilegen, sonst
+  # verweist der Termin auf eine Zone, die die Datei nicht kennt.
+  test 'die referenzierte Zone liegt als VTIMEZONE bei' do
+    game_with(start_time: '14:00')
+
+    get "/api/v2/calendar/teams/#{@home.id}.ics"
+
+    assert_response :success
+    assert_includes response.body, 'BEGIN:VTIMEZONE'
+    assert_includes response.body, 'TZID:Europe/Berlin'
+  end
+
+  # RFC 5545 verlangt CREATED und LAST-MODIFIED in UTC, also mit Z. Die
+  # Bibliothek hängt das Z nur an, wenn die TZID 'UTC' lautet; ein bloßer
+  # UTC-Zeitstempel wurde sonst ebenfalls als floating time geschrieben.
+  test 'CREATED und LAST-MODIFIED stehen in UTC' do
+    game_with(start_time: '14:00')
+
+    get "/api/v2/calendar/teams/#{@home.id}.ics"
+
+    assert_response :success
+    body = unfold(response.body)
+    assert_match(/^CREATED:\d{8}T\d{6}Z$/, body)
+    assert_match(/^LAST-MODIFIED:\d{8}T\d{6}Z$/, body)
+  end
+
   # Manche Kalender-Programme lassen die Endung weg und fragen mit Accept: */*.
   test 'ein Abo ohne .ics-Endung bekommt ebenfalls einen Kalender' do
     game_with(start_time: '14:00')
@@ -93,6 +140,69 @@ class CalendarControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_includes response.body, "sm_game_#{mit_zeit.id}"
     assert_not_includes response.body, "sm_game_#{ohne_zeit.id}"
+  end
+
+  # Vorher HTTP 500 (Sentry SAISONMANAGER-3Q): `game_day.league` in Game#league,
+  # aufgerufen aus `game_title`. Eine einzige solche Begegnung riss das
+  # komplette Abo mit — das Kalender-Programm bekam gar keine Termine mehr,
+  # auch nicht die gesunden daneben.
+  #
+  # `update_column` statt eines gelöschten Spieltags, weil genau das der Zustand
+  # auf Prod ist: `games.game_day_id` hat einen Fremdschlüssel, ist aber
+  # nullable. Ein Spieltag lässt sich also nicht unter seinen Spielen
+  # weglöschen (beide Löschpfade räumen ohnehin erst die Spiele ab) — wohl aber
+  # steht die Spalte leer. Fünf Spiele auf Prod sind so, alle `legacy = true`,
+  # also aus dem Altdaten-Import, der die Modell-Validierung nie durchlief.
+  # Ein Test, der stattdessen `GameDay.delete_all` versucht, läuft in eine
+  # ForeignKeyViolation und prüft den echten Fall nie.
+  test 'ein Spiel ohne Spieltag fällt aus dem Kalender statt ihn zu kippen' do
+    verwaist = game_with(start_time: '14:00')
+    verwaist.update_column(:game_day_id, nil)
+
+    get "/api/v2/calendar/teams/#{@home.id}.ics"
+
+    assert_response :success
+    assert_includes response.body, 'BEGIN:VCALENDAR'
+    assert_not_includes response.body, "sm_game_#{verwaist.id}"
+  end
+
+  test 'ein gesundes Spiel bleibt neben einem Spiel ohne Spieltag im Kalender' do
+    gesund = game_with(start_time: '14:00')
+    verwaist = game_with(start_time: '16:00', number: 2)
+    verwaist.update_column(:game_day_id, nil)
+
+    get "/api/v2/calendar/teams/#{@home.id}.ics"
+
+    assert_response :success
+    assert_includes response.body, "sm_game_#{gesund.id}"
+    assert_not_includes response.body, "sm_game_#{verwaist.id}"
+  end
+
+  # Zweite Stufe derselben Lücke: Der Spieltag steht, aber seine Liga fehlt.
+  # `game_days.league_id` ist genauso nullable wie `games.game_day_id`, und
+  # `game_title` braucht `league.name` und `league.game_operation.short_name`.
+  test 'ein Spiel mit Spieltag ohne Liga fällt aus dem Kalender' do
+    ohne_liga = game_with(start_time: '14:00')
+    ohne_liga.game_day.update_column(:league_id, nil)
+
+    get "/api/v2/calendar/teams/#{@home.id}.ics"
+
+    assert_response :success
+    assert_includes response.body, 'BEGIN:VCALENDAR'
+    assert_not_includes response.body, "sm_game_#{ohne_liga.id}"
+  end
+
+  # Auch der Einzelspiel-Kalender darf nicht kippen: derselbe Concern, aber ein
+  # eigener Pfad, und beim letzten Fix an dieser Datei fehlte ausgerechnet er.
+  test 'auch der Einzelspiel-Kalender übersteht ein Spiel ohne Spieltag' do
+    verwaist = game_with(start_time: '14:00')
+    verwaist.update_column(:game_day_id, nil)
+
+    get "/api/v2/calendar/games/#{verwaist.id}.ics"
+
+    assert_response :success
+    assert_includes response.body, 'BEGIN:VCALENDAR'
+    assert_not_includes response.body, 'BEGIN:VEVENT'
   end
 
   # Gegenprobe zum Key-Verzicht: Er gilt nur für die Kalender-Actions. Die
@@ -166,7 +276,47 @@ class CalendarControllerTest < ActionDispatch::IntegrationTest
     assert_operator einzel_queries, :<, 10, "Spiel-Kalender: #{einzel_queries} Abfragen, Preloading fehlt"
   end
 
+  # Dieselbe Fehlerklasse eine Ebene tiefer: `leagues.game_operation_id` ist im
+  # Schema nullable, `game_title` liest dort `short_name` und `url` den `slug`.
+  # Ohne den Riegel riss eine Liga ohne Verband das Abo genauso mit wie ein
+  # Spiel ohne Spieltag, und zwar zusaetzlich im Liga-Abo, das der INNER JOIN
+  # sonst schuetzt.
+  test 'Liga ohne Spielbetrieb kippt das Abo nicht' do
+    gesund = game_with(start_time: '14:00')
+
+    waise = create(:league, game_operation: @go)
+    waise.update_column(:game_operation_id, nil)
+    tag = GameDay.create!(
+      league: waise, arena: create(:arena), club: @club, number: 9, date: '2026-09-06'
+    )
+    Game.create!(
+      game_day: tag, home_team: @home, guest_team: @guest, start_time: '16:00',
+      started: false, ended: false, forfait: 0, overtime: false, legacy: false,
+      events: [], players: { 'home' => [], 'guest' => [] }
+    )
+
+    get "/api/v2/calendar/teams/#{@home.id}.ics"
+
+    assert_response :success
+    # Das gesunde Spiel steht drin, das kaputte faellt still heraus.
+    assert_includes response.body, "sm_game_#{gesund.id}"
+  end
+
   private
+
+  # ICS faltet Zeilen nach 75 Zeichen um (Fortsetzung mit einem Leerzeichen)
+  # und trennt sie mit CRLF. Eine Prüfung auf Zeilenanfang oder Zeilenende muss
+  # deshalb auf dem entfalteten Text mit normalen Umbrüchen laufen, sonst
+  # schlägt sie am \r fehl oder zufällig je nach Länge des Nachbarfeldes.
+  # Die VEVENT-Blöcke, entfaltet. Eine Prüfung „steht nicht in der Datei" muss
+  # sich auf den Termin beschränken, sonst trifft sie die VTIMEZONE mit.
+  def vevents(body)
+    unfold(body).scan(/BEGIN:VEVENT\n(.*?)END:VEVENT/m).flatten
+  end
+
+  def unfold(body)
+    body.gsub(/\r\n[ \t]/, '').gsub("\r\n", "\n")
+  end
 
   def count_queries(&block)
     count = 0
