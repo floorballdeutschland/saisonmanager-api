@@ -114,17 +114,21 @@ class Player < ApplicationRecord
                      end
 
       if license_with_titles
+        # Einmal lesen statt je Lizenz, aus demselben Grund wie current_min_team oben.
+        current_season_id = Setting.current_season_id.to_s
+
         p[:licenses].map! do |lic|
-          last_status_id = nil
           lic['history']&.map! do |lh|
             lh[:created_by_name] = User.find_by(id: lh['created_by'])&.full_with_username
             lh[:license_status] = License::NAMES[lh['license_status_id'].to_i]
-            last_status_id = lh['license_status_id'].to_i
 
             lh
           end
 
-          lic[:set_transfer_allowed] = (last_status_id == License::APPROVED)
+          # Dieselbe Regel, die der Endpunkt anwendet (License.deletable?), damit der
+          # Knopf gar nicht erst erscheint, wo handle_license_request gleich ablehnen
+          # würde.
+          lic[:delete_allowed] = License.deletable?(lic, current_season_id)
 
           team = Team.find_by(id: lic['team_id'])
           lic[:team] = team&.full_hash
