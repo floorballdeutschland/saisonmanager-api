@@ -1553,7 +1553,23 @@ class Game < ApplicationRecord
   def ical
     require 'icalendar'
 
-    return nil if game_day.nil? || game_day.league.nil?
+    # Der Riegel deckt bewusst auch `game_operation`: `game_title` liest dort
+    # `short_name`, `url` den `slug`, und `leagues.game_operation_id` ist im
+    # Schema nullable. Ohne diese dritte Pruefung bliebe dieselbe Fehlerklasse
+    # offen -- und zwar zusaetzlich im LIGA-Abo, das der INNER JOIN in
+    # LeaguesController sonst schuetzt, weil dort kein Spiel ohne Spieltag
+    # auftauchen kann.
+    #
+    # Der Ausfall darf nicht spurlos verschwinden. Aufgefallen ist der Fall nur,
+    # weil der Googlebot die 500 erzeugte; nimmt man die 500 weg, ohne etwas an
+    # ihre Stelle zu setzen, faellt das naechste verwaiste Spiel niemandem mehr
+    # auf und das Abo bleibt still lueckenhaft.
+    if game_day.nil? || game_day.league.nil? || game_day.league.game_operation.nil?
+      Rails.logger.warn(
+        "[ical] Spiel #{id} ohne aufloesbaren Spieltag, Liga oder Spielbetrieb, Termin ausgelassen"
+      )
+      return nil
+    end
 
     event = ::Icalendar::Event.new
     if start_date

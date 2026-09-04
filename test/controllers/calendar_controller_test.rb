@@ -276,6 +276,32 @@ class CalendarControllerTest < ActionDispatch::IntegrationTest
     assert_operator einzel_queries, :<, 10, "Spiel-Kalender: #{einzel_queries} Abfragen, Preloading fehlt"
   end
 
+  # Dieselbe Fehlerklasse eine Ebene tiefer: `leagues.game_operation_id` ist im
+  # Schema nullable, `game_title` liest dort `short_name` und `url` den `slug`.
+  # Ohne den Riegel riss eine Liga ohne Verband das Abo genauso mit wie ein
+  # Spiel ohne Spieltag, und zwar zusaetzlich im Liga-Abo, das der INNER JOIN
+  # sonst schuetzt.
+  test 'Liga ohne Spielbetrieb kippt das Abo nicht' do
+    gesund = game_with(start_time: '14:00')
+
+    waise = create(:league, game_operation: @go)
+    waise.update_column(:game_operation_id, nil)
+    tag = GameDay.create!(
+      league: waise, arena: create(:arena), club: @club, number: 9, date: '2026-09-06'
+    )
+    Game.create!(
+      game_day: tag, home_team: @home, guest_team: @guest, start_time: '16:00',
+      started: false, ended: false, forfait: 0, overtime: false, legacy: false,
+      events: [], players: { 'home' => [], 'guest' => [] }
+    )
+
+    get "/api/v2/calendar/teams/#{@home.id}.ics"
+
+    assert_response :success
+    # Das gesunde Spiel steht drin, das kaputte faellt still heraus.
+    assert_includes response.body, "sm_game_#{gesund.id}"
+  end
+
   private
 
   # ICS faltet Zeilen nach 75 Zeichen um (Fortsetzung mit einem Leerzeichen)
