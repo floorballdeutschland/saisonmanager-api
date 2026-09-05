@@ -5,6 +5,7 @@ class League < ApplicationRecord
   include LeagueBanner
   include LeagueLogo
   include LeagueRefereeAssignment
+  include LeagueCompetition
 
   has_many :game_days
   has_many :qualifications, class_name: 'LeagueQualification',
@@ -296,6 +297,7 @@ class League < ApplicationRecord
       legacy_league:,
       field_size:,
       league_modus:,
+      competition_group:,
       has_preround:,
 
       league_id_direct_encounters:,

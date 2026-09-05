@@ -62,9 +62,19 @@ namespace :players do
     end
 
     bilanz = nil
+    endzustand = nil
     begin
       ActiveRecord::Base.transaction do
         bilanz = neu.swap_merge_master!(user_id)
+        # Innerhalb der Transaktion lesen: Im Probelauf beschreibt ein Bericht nach dem
+        # Rollback den Zustand VORHER, also das Gegenteil dessen, wonach gefragt war. Die
+        # erste Fassung meldete so "Heimatverein nil" fuer einen Lauf, der ihn gerade
+        # zurueckgeholt hatte.
+        neu.reload
+        endzustand = "Neuer Master ##{neu.id}: #{Array(neu.licenses).size} Lizenzen, " \
+                     "#{Array(neu.clubs).size} Zugehoerigkeiten, " \
+                     "Heimatverein #{neu.home_club(Date.current)&.name.inspect}, " \
+                     "#{Game.referencing_player(neu.id).count} Spiele"
         raise ActiveRecord::Rollback if dry_run
       end
     rescue Player::UnmergeRefused => e
@@ -92,11 +102,8 @@ namespace :players do
       bilanz[:skipped].each { |eintrag| puts "  #{eintrag}" }
     end
 
-    neu.reload
     puts
-    puts "Neuer Master ##{neu.id}: #{Array(neu.licenses).size} Lizenzen, " \
-         "#{Array(neu.clubs).size} Zugehoerigkeiten, Heimatverein #{neu.home_club(Date.current)&.name.inspect}, " \
-         "#{Game.referencing_player(neu.id).count} Spiele"
+    puts endzustand
 
     puts
     if dry_run

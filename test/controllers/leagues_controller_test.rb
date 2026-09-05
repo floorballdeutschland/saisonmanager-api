@@ -346,7 +346,7 @@ class LeaguesControllerTest < ActionDispatch::IntegrationTest
                                       name: 'Verbandsliga Nord', short_name: 'VL N',
                                       league_class_id: 'vl', league_category_id: '1',
                                       league_system_id: '2', league_type: 'league',
-                                      league_modus: 'double', table_modus: 'classic',
+                                      league_modus: 'league', table_modus: 'classic',
                                       has_preround: true, female: true, enable_scorer: true,
                                       field_size: 'GF', periods: 3, period_length: 20,
                                       overtime_length: 10, order_key: '5',

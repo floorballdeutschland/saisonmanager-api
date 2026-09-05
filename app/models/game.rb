@@ -1525,7 +1525,19 @@ class Game < ApplicationRecord
     "#{FrontendUrl.base}/#{league.game_operation.slug}/#{league.id}/spiel/#{id}"
   end
 
-  # Ein Termin des Kalender-Abos.
+  # Ein Termin des Kalender-Abos, oder nil, wenn das Spiel keinen auflösbaren
+  # Spieltag hat.
+  #
+  # `game_day` ist zwar Pflicht (`belongs_to` ohne `optional`), aber
+  # `GameDay#games` kennt kein `dependent:`. Ein gelöschter Spieltag lässt
+  # seine Spiele also mit einer game_day_id auf einen nicht mehr vorhandenen
+  # Datensatz zurück, und über diese Altbestände stolperte `game_title` an
+  # `league.name` (Game#league delegiert an `game_day.league`). Das riss den
+  # ganzen Kalender mit: eine einzige verwaiste Begegnung machte aus dem Abo
+  # einer Mannschaft HTTP 500 (Sentry SAISONMANAGER-3Q), auch für die 25
+  # gesunden Spiele daneben. Ein Spiel ohne Spieltag hat weder Datum noch Halle
+  # noch Liga, es gibt also nichts zu zeigen; es fällt heraus, so wie ein Spiel
+  # ohne Anpfiffzeit (siehe IcalRenderable#render_ical).
   #
   # Anpfiff und Spielende tragen die TZID ausdrücklich. Ohne sie schreibt die
   # Bibliothek eine „floating time": `DTSTART:20261108T140000` ohne Zone und
@@ -1540,6 +1552,24 @@ class Game < ApplicationRecord
   # floating time geschrieben.
   def ical
     require 'icalendar'
+
+    # Der Riegel deckt bewusst auch `game_operation`: `game_title` liest dort
+    # `short_name`, `url` den `slug`, und `leagues.game_operation_id` ist im
+    # Schema nullable. Ohne diese dritte Pruefung bliebe dieselbe Fehlerklasse
+    # offen -- und zwar zusaetzlich im LIGA-Abo, das der INNER JOIN in
+    # LeaguesController sonst schuetzt, weil dort kein Spiel ohne Spieltag
+    # auftauchen kann.
+    #
+    # Der Ausfall darf nicht spurlos verschwinden. Aufgefallen ist der Fall nur,
+    # weil der Googlebot die 500 erzeugte; nimmt man die 500 weg, ohne etwas an
+    # ihre Stelle zu setzen, faellt das naechste verwaiste Spiel niemandem mehr
+    # auf und das Abo bleibt still lueckenhaft.
+    if game_day.nil? || game_day.league.nil? || game_day.league.game_operation.nil?
+      Rails.logger.warn(
+        "[ical] Spiel #{id} ohne aufloesbaren Spieltag, Liga oder Spielbetrieb, Termin ausgelassen"
+      )
+      return nil
+    end
 
     event = ::Icalendar::Event.new
     if start_date
