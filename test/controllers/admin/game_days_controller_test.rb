@@ -433,5 +433,39 @@ module Admin
       post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
       assert_response :success
     end
+    # Die Ligenliste des Auswahlfelds kommt vom Server und nicht aus den
+    # ausgelieferten Zeilen: Bei `truncated` faellt der aelteste Bestand weg,
+    # und eine Liga, die nur dort vorkommt, stuende sonst nicht einmal zur
+    # Auswahl -- ihr Fehlen waere nicht zu erklaeren.
+    test 'die Antwort nennt alle Ligen des Zeitraums' do
+      zweite = create(:league, :current_season, game_operation: @go, name: 'Zweite Liga')
+      tag = GameDay.create!(league: zweite, arena: @arena, club: @club, number: 20,
+                            date: 3.days.ago.strftime('%Y-%m-%d'))
+      create_game(tag, game_number: '90')
+
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+
+      namen = JSON.parse(response.body)['leagues'].map { |l| l['name'] }
+      assert_includes namen, 'Zweite Liga'
+      assert_operator namen.size, :>=, 2
+    end
+
+    # Und sie bleibt vollstaendig, wenn bereits eine Liga gewaehlt ist. Sonst
+    # boete das Feld nach dem ersten Setzen nur noch die eine gewaehlte an.
+    test 'die Ligenliste schrumpft nicht durch die Ligaauswahl' do
+      zweite = create(:league, :current_season, game_operation: @go, name: 'Zweite Liga')
+      tag = GameDay.create!(league: zweite, arena: @arena, club: @club, number: 21,
+                            date: 3.days.ago.strftime('%Y-%m-%d'))
+      create_game(tag, game_number: '91')
+
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH, params: { league_id: zweite.id }
+
+      body = JSON.parse(response.body)
+      assert_operator body['leagues'].size, :>=, 2, 'die Auswahl darf die Liste nicht kuerzen'
+      liga_ids = body['games'].map { |g| g['league_id'] }.uniq
+      assert_equal [zweite.id], liga_ids, 'die Zeilen selbst sind auf die Liga gefiltert'
+    end
   end
 end
