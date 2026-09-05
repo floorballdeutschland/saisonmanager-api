@@ -160,7 +160,7 @@ class PublicSecretaryControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     eintrag = JSON.parse(response.body).dig('license_lists', @home.id.to_s)
-    assert_equal [@league.id], eintrag['leagues'].map { |l| l['id'] }
+    assert_equal([@league.id], eintrag['leagues'].map { |l| l['id'] })
   end
 
   test 'GET /public/secretary ohne Token liefert 400' do
