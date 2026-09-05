@@ -306,7 +306,6 @@ players = players_data.map.with_index(1) do |pd, i|
         'league_class_id'   => '1fbl',
         'league_category_id'=> '1000',
         'requested_at'      => '2024-09-01',
-        'set_transfer_allowed' => true,
         'history' => [
           {
             'license_status_id' => 2,

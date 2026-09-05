@@ -3,8 +3,20 @@ class License < ApplicationRecord
   REQUESTED = 2
   DENIED = 3
   DELETED = 4
-  DELETE_REQUESTED = 5
+  # Die 5 hieß 'ungültig: Löschung beantragt' und ist ersatzlos entfallen: kein
+  # Schreibweg im Code und auf Produktiv kein einziger Datensatz – weder als
+  # aktueller Status noch irgendwo in einer History. Das Altsystem kannte den
+  # Zwischenschritt „Verein beantragt die Löschung, Verband bestätigt"; heute zieht
+  # der Verein selbst zurück (WITHDRAWN) oder der Verband löscht (DELETED). Der
+  # Legacy-Import bildet die alte 5 deshalb auf WITHDRAWN ab, siehe
+  # LegacyImport::Vocab::LIZENZSTATUS_TO_STATUS_ID. Die Zahl wird nicht neu vergeben.
   TRANSFER = 6
+  # Reiner Altbestand. Auf Produktiv tragen ihn 545 Lizenzen (Stand 04.09.2026),
+  # ausnahmslos ohne season_id, ohne reason und mit dem jüngsten Eintrag aus 2022 –
+  # alle aus dem Altsystem, das damit eine erteilte Lizenz stilllegte, ohne sie zu
+  # löschen. Im neuen Code gibt es keinen Schreibweg und soll keiner entstehen: Der
+  # Status existiert nur noch, damit diese Lizenzen einen Namen haben statt einer
+  # nackten 7.
   IGNORED = 7
   WITHDRAWN = 8
   SUSPENDED = 9
@@ -27,12 +39,66 @@ class License < ApplicationRecord
   # wieder offen. Ein Test hält ihn deshalb fest.
   REVOKED_REJECTION_KEY = 'revoked_rejection'.freeze
 
+  # Zielstatus, die PlayersController#handle_license_request setzen kann. Alles
+  # andere lehnt der Endpunkt ab, statt still nichts zu tun.
+  #
+  # TRANSFER fehlt bewusst: Den setzt der Transfer-Vollzug selbst
+  # (TransferRequest#invalidate_licenses!). IGNORED ist reiner Altbestand und
+  # bekommt keinen neuen Schreibweg. SUSPENDED hängt an einer Sperre mit
+  # Laufzeit und wird über Player#suspend! gesetzt, nicht über diesen Endpunkt.
+  HANDLED_STATUSES = [APPROVED, DENIED, REQUESTED, DELETED].freeze
+
+  # Jüngster History-Eintrag = aktueller Status. Über den Zeitstempel und nicht
+  # über die Position im Array: Angehängt wird die History an vielen Stellen,
+  # sortiert ist sie nirgends garantiert.
+  def self.current_status_id(license)
+    license['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
+  end
+
+  # Die eine Stelle, an der steht, welche Lizenz sich löschen lässt. Player#full_hash
+  # setzt danach das Kennzeichen `delete_allowed` für den Knopf im Profil,
+  # PlayersController#handle_license_request lehnt danach ab. Fielen die beiden
+  # auseinander, böte die Oberfläche einen Knopf an, der in ein 422 läuft.
+  #
+  # Bewusst eng: nur die laufende Saison – eine abgerechnete Saison rührt niemand
+  # per Klick an – und nur ein aktiver Status. „Gelöscht" auf eine bereits
+  # abgelehnte, zurückgezogene oder für einen Transfer ungültige Lizenz zu legen,
+  # benennt nur den Endzustand um, ohne etwas zu ändern.
+  def self.deletable?(license, current_season_id = Setting.current_season_id)
+    return false if license.blank?
+    return false unless license['season_id'].to_s == current_season_id.to_s
+
+    ACTIVE_STATUSES.include?(current_status_id(license))
+  end
+
+  # Meldung, warum sich die Lizenz nicht löschen lässt – oder nil, wenn nichts
+  # dagegen spricht.
+  #
+  # Die Begründung ist Pflicht und steht bewusst neben der Regel: Das Löschen ist
+  # der einzige Weg, auf dem eine erteilte Lizenz aus der Vereinsansicht
+  # verschwindet, ohne dass ein Vorgang dahinterstünde, den man nachlesen könnte.
+  # Der Freitext IST die Begründung. Er landet in der History und über die
+  # Gebührenrechnung, die jede Lizenz der Saison mitsamt History exportiert
+  # (Player#main_license_hash → select_license, ohne Statusfilter), auch bei der
+  # Abrechnungsstelle: Eine gelöschte Lizenz fällt nicht aus der Gebühr, und das
+  # soll sie auch nicht – sonst wäre der Knopf ein Weg daran vorbei.
+  def self.delete_blocked_reason(license, reason, current_season_id = Setting.current_season_id)
+    return 'Lizenz nicht gefunden.' if license.blank?
+    return 'Zum Löschen einer Lizenz ist eine Begründung erforderlich.' if reason.to_s.strip.blank?
+    return nil if deletable?(license, current_season_id)
+
+    if license['season_id'].to_s == current_season_id.to_s
+      'Nur erteilte oder beantragte Lizenzen lassen sich löschen.'
+    else
+      'Es lassen sich nur Lizenzen der laufenden Saison löschen.'
+    end
+  end
+
   NAMES = {
     License::APPROVED => 'erteilt',
     License::REQUESTED => 'beantragt',
     License::DENIED => 'abgelehnt',
     License::DELETED => 'ungültig: gelöscht',
-    License::DELETE_REQUESTED => 'ungültig: Löschung beantragt',
     License::TRANSFER => 'ungültig wg. Transfer',
     License::IGNORED => 'ungültig: ignoriert',
     License::WITHDRAWN => 'zurückgezogen',

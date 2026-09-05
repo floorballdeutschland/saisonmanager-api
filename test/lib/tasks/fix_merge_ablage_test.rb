@@ -139,10 +139,15 @@ class FixMergeAblageTest < ActiveSupport::TestCase
 
   # Gibt es mehrere geschlossene Eintraege desselben Vereins, gewinnt der zuletzt beendete.
   test 'von mehreren Eintraegen desselben Vereins wird der jueangste geoeffnet' do
+    # Den Zeitstempel EINMAL bilden und wiederverwenden. `6.years.ago.iso8601`
+    # zweimal ausgewertet liefert zwei verschiedene Sekunden, sobald zwischen
+    # Aufbau und Vergleich die Sekunde umspringt -- der Test war damit flaky und
+    # hat die CI mehrfach ohne Grund rot gefaerbt.
+    juengster_beginn = 6.years.ago.iso8601
     p = create(:player, clubs: [
       { 'club_id' => @verein.id, 'home_club' => true, 'created_at' => 9.years.ago.iso8601,
         'valid_until' => 8.years.ago.iso8601 },
-      { 'club_id' => @verein.id, 'home_club' => true, 'created_at' => 6.years.ago.iso8601,
+      { 'club_id' => @verein.id, 'home_club' => true, 'created_at' => juengster_beginn,
         'valid_until' => 4.years.ago.iso8601 },
       { 'club_id' => @ablage.id, 'home_club' => true, 'created_at' => 2.years.ago.iso8601 }
     ])
@@ -152,7 +157,7 @@ class FixMergeAblageTest < ActiveSupport::TestCase
     assert_equal [@verein.id], offen(p)
     assert_equal(1, eintrag(p, @verein.id).count { |c| c['valid_until'].blank? })
     juengste = eintrag(p, @verein.id).find { |c| c['valid_until'].blank? }
-    assert_equal 6.years.ago.iso8601, juengste['created_at']
+    assert_equal juengster_beginn, juengste['created_at']
   end
 
   # Ohne `beginn` traegt der neue Eintrag den heutigen Tag und behauptet, die Mitgliedschaft

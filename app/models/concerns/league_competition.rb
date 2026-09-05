@@ -7,9 +7,17 @@
 module LeagueCompetition
   extend ActiveSupport::Concern
 
-  # Ligamodi des Liga-Formulars. `playoff` verhaelt sich in Spielplan und
-  # Darstellung wie `cup` (Ausscheidungswettbewerb, keine Ligaklasse), ist aber
-  # die Fortsetzung einer bestehenden Liga und kein eigener Wettbewerb.
+  # Ligamodi des Liga-Formulars. `playoff` verhaelt sich im Spielplan wie `cup`
+  # (Turnierbaum statt Tabelle), ist aber die Fortsetzung einer bestehenden Liga
+  # und kein eigener Wettbewerb.
+  #
+  # In EINEM Punkt verhaelt es sich ausdruecklich NICHT wie der Pokal: Die
+  # Ligaklasse bleibt gepflegt. Sie ist zwar nicht Pflicht, aber das
+  # Wettbewerbszeichen leitet sich aus ihr ab (competition-theme im Frontend
+  # erwartet fuer playoff+1fbl den Schluessel 1fbl-m), und das Liga-Formular
+  # laesst sie beim Wechsel auf playoff bewusst stehen. Ein frueherer Stand
+  # dieses Kommentars behauptete das Gegenteil; wer daraufhin das Feld leert,
+  # nimmt der Liga ihr Zeichen.
   #
   # Der Unterschied traegt eine fachliche Entscheidung: Eine Spielersperre im
   # Ligaspielbetrieb gilt in den Playoffs weiter, im Pokal nicht, weil der
@@ -20,7 +28,8 @@ module LeagueCompetition
   # aus `league_category_id` ab, siehe League#league_type. Daher allow_blank.
   MODI = %w[league cup playoff champ].freeze
 
-  # Ausscheidungswettbewerbe: Turnierbaum statt Tabelle, keine Ligaklasse.
+  # Ausscheidungswettbewerbe: Turnierbaum statt Tabelle. Der Pokal traegt keine
+  # Ligaklasse, der Playoff sehr wohl (siehe MODI).
   KNOCKOUT_MODI = %w[cup playoff].freeze
 
   # Wettbewerbsgruppen fuer den Geltungsbereich einer Spielersperre.

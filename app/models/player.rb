@@ -114,17 +114,21 @@ class Player < ApplicationRecord
                      end
 
       if license_with_titles
+        # Einmal lesen statt je Lizenz, aus demselben Grund wie current_min_team oben.
+        current_season_id = Setting.current_season_id.to_s
+
         p[:licenses].map! do |lic|
-          last_status_id = nil
           lic['history']&.map! do |lh|
             lh[:created_by_name] = User.find_by(id: lh['created_by'])&.full_with_username
             lh[:license_status] = License::NAMES[lh['license_status_id'].to_i]
-            last_status_id = lh['license_status_id'].to_i
 
             lh
           end
 
-          lic[:set_transfer_allowed] = (last_status_id == License::APPROVED)
+          # Dieselbe Regel, die der Endpunkt anwendet (License.deletable?), damit der
+          # Knopf gar nicht erst erscheint, wo handle_license_request gleich ablehnen
+          # würde.
+          lic[:delete_allowed] = License.deletable?(lic, current_season_id)
 
           team = Team.find_by(id: lic['team_id'])
           lic[:team] = team&.full_hash
@@ -1157,6 +1161,22 @@ class Player < ApplicationRecord
 
   def open_home_club_entries
     self.class.open_home_club_entries(clubs)
+  end
+
+  # Sortierschlüssel der Lizenzlisten: Nachname vor Vorname. Am Spieltisch wird
+  # nach dem Nachnamen gesucht, so wie auf jeder Mannschaftsaufstellung.
+  #
+  # transliterate, nicht nur downcase: Sonst landet „Öztürk" hinter
+  # „Zimmermann", weil Ö in der Zeichenreihenfolge über Z liegt – und genau in
+  # einer alphabetischen Liste fällt ein falsch einsortierter Name auf.
+  #
+  # Die id hält die Reihenfolge stabil: sort_by ist es nicht, und zwei
+  # Namensgleiche einer Mannschaft sprängen sonst zwischen zwei Abrufen hin und
+  # her – die Sekretariatsseite wird am Tisch immer wieder neu geladen.
+  def license_list_sort_key
+    [I18n.transliterate(last_name.to_s).downcase,
+     I18n.transliterate(first_name.to_s).downcase,
+     id.to_i]
   end
 
   private
