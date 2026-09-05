@@ -115,6 +115,12 @@ module Admin
               gf_role:              lic['gf_role'],
               license_status_id:    last_status_id,
               license_status:       License::NAMES[last_status_id],
+              # Der Status ohne Sperre und die Sperre selbst (#605). Bis dahin
+              # verschwand eine gesperrte Lizenz ganz aus dieser Uebersicht,
+              # statt ihren Status zu zeigen.
+              base_status_id:       player_data[:team_license][:base_status_id].to_i,
+              base_status:          License::NAMES[player_data[:team_license][:base_status_id].to_i],
+              suspension:           player_data[:team_license][:suspension],
               express:              lic['express'] || false,
               requested_at:         player_data[:team_license][:requested_at],
               approved_at:          player_data[:team_license][:approved_at],
