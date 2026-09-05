@@ -1,4 +1,5 @@
 class PlayersController < ApplicationController
+  include LicenseScopeAnnotation
   include PlayerReleaseRecording
   include LicenseDocumentPresentation
   include LicenseAccessScope
@@ -154,6 +155,7 @@ class PlayersController < ApplicationController
 
     result = :ok
     player = nil
+    blocking_suspension = nil
 
     ActiveRecord::Base.transaction do
       player = Player.lock.find(params[:id])
@@ -172,7 +174,10 @@ class PlayersController < ApplicationController
         raise ActiveRecord::Rollback
       end
 
-      if player.suspended_for_team?(team.id)
+      # Deckt jeden Geltungsbereich ab: die Sperre auf diese Mannschaft, die auf
+      # ihre Liga und die auf den Wettbewerb, in dem die Liga liegt (#604).
+      blocking_suspension = player.suspension_for_team(team.id)
+      if blocking_suspension.present?
         result = :team_suspended
         raise ActiveRecord::Rollback
       end
@@ -223,8 +228,16 @@ class PlayersController < ApplicationController
       render json: { message: 'Für diesen Spieler besteht eine aktive Sperre. Es können keine Lizenzen beantragt werden.' },
              status: :unprocessable_entity
     when :team_suspended
-      render json: { message: 'Die Lizenz dieses Spielers für dieses Team ist gesperrt. Ein neuer Antrag ist erst nach Ablauf der Sperre möglich.' },
-             status: :unprocessable_entity
+      # Der Geltungsbereich gehört in die Meldung: Bei einer Wettbewerbssperre
+      # ist nicht diese eine Lizenz gesperrt, sondern der ganze Wettbewerb, und
+      # ohne die Angabe sähe der Verein nur eine Absage ohne Grund.
+      scope = blocking_suspension&.scope_summary
+      message = if scope.present?
+                  "Für diesen Spieler besteht eine Sperre (#{scope}). Ein neuer Antrag ist erst nach Ablauf der Sperre möglich."
+                else
+                  'Die Lizenz dieses Spielers für dieses Team ist gesperrt. Ein neuer Antrag ist erst nach Ablauf der Sperre möglich.'
+                end
+      render json: { message: }, status: :unprocessable_entity
     when :duplicate
       render json: { message: 'Der Spieler hat schon einen Lizenzantrag für dieses Team' },
              status: :unprocessable_entity
@@ -1384,69 +1397,6 @@ class PlayersController < ApplicationController
         'created_by_name' => names[c['created_by'].to_i],
         'valid_set_by_name' => names[c['valid_set_by'].to_i]
       )
-    end
-  end
-
-  # Je Lizenz: Darf dieses Konto die Erst-/Zweitlizenz-Zuordnung dieser Lizenz
-  # setzen? Genau die Frage, die set_gf_license_role beantwortet -- zuständig ist
-  # der Spielbetrieb der Liga, an der die Lizenz hängt.
-  #
-  # Das Profil zeigt ALLE Lizenzen der Person, saisonübergreifend und über
-  # Spielbetriebe hinweg. Die Maske konnte den Unterschied bisher nicht kennen:
-  # Der an das Frontend gesendete permissions-Hash (User#permissions_items) ist
-  # ein flacher Ja/Nein-Hash ohne Spielbetriebe, `player_set_gf_role` heißt dort
-  # nur "ist Admin oder SBK". Also bot sie die Knöpfe auf jeder
-  # GF-Erwachsenenlizenz an, und auf einer Lizenz außerhalb des eigenen
-  # Spielbetriebs endete der Klick in einer 403. Gemeldet am 26.08.2026 von der
-  # SBK Niedersachsen, die die Zuordnung an der 2.-FBL-Lizenz eines ihrer
-  # Regionalliga-Spieler versuchte.
-  #
-  # Der Spielbetrieb kommt aus dem bereits aufgelösten Liga-Hash und nicht über
-  # sbk_can_access_license?: Das Ergebnis ist dasselbe (Team -> Liga ->
-  # game_operation_id), aber ohne eine weitere Team-Abfrage je Lizenz und ohne
-  # die Datenfehler-Meldung jener Methode. Ein Profil mit vierzig Altlizenzen
-  # löst sonst für jedes gelöschte Team eine Sentry-Meldung aus, obwohl hier
-  # nichts entschieden, sondern nur angezeigt wird.
-  #
-  # Ohne auflösbare Liga bleibt es bei false: Wer nicht weiß, welcher Verband
-  # zuständig ist, ordnet nichts zu und löscht nichts. Für VM und TM sind beide
-  # Werte immer false, denn beides ist Verbandssache (permissions_items:
-  # player_set_gf_role, player_delete_license).
-  #
-  # Derselbe Scope trägt zwei Felder: `gf_role_editable` und `delete_allowed`.
-  # Beide Knöpfe hängen an einem flachen Recht, beide Endpunkte scopen dahinter
-  # auf den Spielbetrieb der Liga, und ohne diese Stelle verspräche die Maske
-  # etwas, das der Schreibweg mit 403 abweist.
-  def annotate_license_scopes!(hash)
-    ph = current_user.permission_hash
-    admin = ph[:admin].present?
-    sbk_global = ph[:sbk].present? && ph[:sbk].include?(0)
-
-    Array(hash[:licenses]).each do |lic|
-      next unless lic.is_a?(Hash)
-
-      go_id = lic[:league].is_a?(Hash) ? lic[:league][:game_operation_id] : nil
-      # `go_id.present?` steht bewusst VOR den Rollen und nicht nur im
-      # SBK-Zweig: Sonst kuerzen `admin` und `sbk_global` ab, und eine Lizenz
-      # ohne aufloesbare Liga (geloeschtes Team, Team ohne league_id) waere fuer
-      # sie als zuordenbar gemeldet. Genau die weist der Schreibweg danach mit
-      # 422 ab (`unless league&.gf_adult?`) -- das Feld verspraeche also etwas,
-      # das kein Konto einloesen kann. Bei vorhandener Liga aendert die Klammer
-      # fuer keine Rolle das Ergebnis.
-      im_scope = go_id.present? && (admin || sbk_global || ph[:sbk].to_a.include?(go_id))
-      lic[:gf_role_editable] = im_scope
-
-      # Loeschen unterliegt demselben Verbands-Scope. Player#delete_allowed
-      # kennt nur Saison und Status, das Recht `player_delete_license` ist ein
-      # flacher Ja/Nein-Wert -- ohne diese Zeile trug jede Lizenz eines FREMDEN
-      # Verbandes den roten Knopf, und der Klick endete nach eingegebener
-      # Begruendung in einer 403 vom Endpunkt (der scopet korrekt ueber
-      # sbk_can_access_license?). Gemeldet wurde genau dieses Muster schon
-      # einmal fuer die Erst-/Zweitlizenz-Zuordnung, siehe oben.
-      #
-      # Nur einschraenken, nie ausweiten: Was die Saison- und Statusregel
-      # bereits ablehnt, bleibt abgelehnt.
-      lic[:delete_allowed] &&= im_scope
     end
   end
 

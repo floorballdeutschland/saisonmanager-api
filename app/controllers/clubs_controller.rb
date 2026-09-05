@@ -445,16 +445,38 @@ class ClubsController < ApplicationController
   def secretary_team_licenses_hash(team)
     players = Club.where(id: team.all_club_ids).flat_map(&:players).compact.uniq
 
+    # Sperren EINMAL fuer alle Spieler laden, statt je Zeile Player#
+    # suspended_for_team? zu fragen: Das liest nicht nur pro Spieler nach, es
+    # raeumt ueber expire_due_suspensions! auch abgelaufene Sperren auf und
+    # SCHREIBT damit im Lesepfad. Bei einem Kader von vierzig Personen waeren
+    # das vierzig Abfragen plus Schreibvorgaenge, und diese Liste wird am
+    # Spieltisch dauernd neu geladen.
+    #
+    # Fachlich noetig ist die Vorablade, weil `write_suspended_status!` den
+    # Status 9 nur bei den Geltungsbereichen `all` und `team` in die Lizenz
+    # stempelt. Eine Wettbewerbs- oder Ligasperre steht ausschliesslich in der
+    # Sperrtabelle -- der Kaderdialog haette einen so Gesperrten unveraendert
+    # als erteilt gefuehrt.
+    sperren = PlayerSuspension.active.covering(Date.current)
+                              .where(player_id: players.map(&:id))
+                              .group_by(&:player_id)
+
     current_requests = players.filter_map do |player|
       license = player.licenses_by_team(team.id)
       next if license.blank?
+
+      gesperrt = sperren[player.id]&.find { |s| s.covers_team?(team) }
 
       {
         id: player.id,
         last_name: player.last_name,
         first_name: player.first_name,
         birthdate: player.birthdate,
-        current_status: secretary_license_status(player, license)
+        current_status: secretary_license_status(player, license),
+        # Nur der Klartext des Geltungsbereichs, nicht der Freitext-Grund: Der
+        # bleibt der Verbandsansicht vorbehalten, wie beim Verlaufseintrag
+        # darueber.
+        suspension: gesperrt && { scope: gesperrt.scope_summary }
       }
     end
 

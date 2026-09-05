@@ -53,7 +53,14 @@ class ClubsSecretarySquadTest < ActionDispatch::IntegrationTest
     body = JSON.parse(response.body)
     item = body['current_requests'].sole
 
-    assert_equal %w[birthdate current_status first_name id last_name], item.keys.sort
+    # `suspension` kam mit #604 dazu und traegt bewusst NUR den Klartext des
+    # Geltungsbereichs ("Herren Grossfeld, Ligaspielbetrieb, SBK Ost"), nie den
+    # Freitext-Grund und nie die verfuegende Stelle -- genau wie der
+    # Verlaufseintrag darunter. Dass jemand gesperrt ist, muss am Spieltisch zu
+    # sehen sein, warum er es ist, geht das Sekretariat nichts an.
+    assert_equal %w[birthdate current_status first_name id last_name suspension],
+                 item.keys.sort
+    assert_nil item['suspension'], 'ohne Sperre bleibt das Feld leer'
     assert_not_includes response.body, 'privat@example.org'
     # Lizenzwesen bleibt der angemeldeten Vereinsverwaltung vorbehalten.
     assert_not body.key?('other_players')
@@ -158,5 +165,22 @@ class ClubsSecretarySquadTest < ActionDispatch::IntegrationTest
       events: [],
       players: { 'home' => [], 'guest' => [] }
     )
+  end
+  # Eine Wettbewerbssperre steht NICHT in der Lizenzhistorie, sondern nur in der
+  # Sperrtabelle. Der Kaderdialog haette einen so Gesperrten unveraendert als
+  # erteilt gefuehrt.
+  test 'eine Wettbewerbssperre ist am Token sichtbar, ihr Grund nicht' do
+    @player.suspend!(scope: { kind: PlayerSuspension::SCOPE_COMPETITION, league: @league },
+                     games_total: 2, reason: 'Taetlichkeit gegen den Schiedsrichter',
+                     user_id: create(:user, :admin).id)
+
+    get "/api/v2/user/team/#{@home_team.id}/licenses",
+        params: { secretary_token: @token }, headers: { 'X-Api-Key' => API_KEY }
+
+    assert_response :success
+    item = JSON.parse(response.body)['current_requests'].sole
+    assert_not_nil item['suspension'], 'die Sperre muss am Spieltisch auffallen'
+    assert_includes item['suspension']['scope'], 'Ligaspielbetrieb'
+    assert_not_includes response.body, 'Taetlichkeit gegen den Schiedsrichter'
   end
 end
