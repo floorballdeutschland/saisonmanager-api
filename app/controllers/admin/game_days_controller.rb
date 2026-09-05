@@ -43,6 +43,7 @@ module Admin
 
       render json: {
         truncated:,
+        leagues: leagues_in_scope,
         games: games.filter_map { |game| safe_game_row(game, editor_names) }
       }
     end
@@ -79,7 +80,25 @@ module Admin
       [ph[:admin], ph[:sbk]].compact.flatten.map(&:to_i)
     end
 
-    def filtered_scope
+    # Alle Ligen des Zeitraums, unabhaengig von der Ligaauswahl UND von der
+    # Zeilendeckelung.
+    #
+    # Aus den ausgelieferten Zeilen liesse sich die Liste nicht ehrlich bauen:
+    # Bei `truncated` faellt der aelteste Bestand weg, und eine Liga, die nur
+    # dort vorkommt, stuende dann nicht einmal im Auswahlfeld -- sie waere nicht
+    # auszuwaehlen und ihr Fehlen nicht zu erklaeren. Ohne die Ligaauswahl, weil
+    # das Feld sonst nach dem ersten Setzen nur noch die eine gewaehlte Liga
+    # anboete.
+    def leagues_in_scope
+      filtered_scope(apply_league: false)
+        .reorder(nil)
+        .distinct
+        .pluck('leagues.id', 'leagues.name')
+        .map { |id, name| { id:, name: } }
+        .sort_by { |l| l[:name].to_s }
+    end
+
+    def filtered_scope(apply_league: true)
       scope = Game.joins(game_day: :league).includes(
         :home_team, :guest_team, :game_referee_report, :proceeding_proposal,
         { game_scan: :uploaded_by },
@@ -94,7 +113,9 @@ module Admin
       if params[:game_operation_id].present?
         scope = scope.where(leagues: { game_operation_id: filter_integer(:game_operation_id) })
       end
-      scope = scope.where(game_days: { league_id: filter_integer(:league_id) }) if params[:league_id].present?
+      if apply_league && params[:league_id].present?
+        scope = scope.where(game_days: { league_id: filter_integer(:league_id) })
+      end
 
       # game_days.date ist eine Textspalte – Vergleiche müssen über TO_DATE laufen.
       # NULLIF fängt die leeren Datumsstrings des Altbestands ab (TO_DATE('') liefert
