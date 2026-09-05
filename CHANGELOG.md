@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.108.0] - 2026-09-05
+
 ### Behoben
 
 - **Der Liga-Filter der Spielberichte zeigte nicht alle Spiele**: Die Arbeitsansicht lädt höchstens 2000 Zeilen und lässt beim Deckeln die ältesten Spieltage weg. Der Liga-Filter wirkte bisher erst danach, also nur auf dem behaltenen Ausschnitt: Wer eine Liga wählte, sah deren Spiele aus dem jüngsten Fenster, während gerade die liegen gebliebenen Berichte vom Saisonstart fehlten. Ligen, die nur im abgeschnittenen Teil vorkamen, standen nicht einmal im Auswahlfeld, sodass ihr Fehlen auch nicht zu erklären war. Der Filter greift jetzt vor der Deckelung, und die Liste der Ligen kommt unabhängig davon vom Server.
