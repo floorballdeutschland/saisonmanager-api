@@ -281,7 +281,10 @@ module Admin
 
     test 'fremder Spielbetrieb darf eine Wettbewerbssperre nicht aufheben' do
       login(create(:user, :sbk_scoped, game_operation_id: @heim_go.id))
-      liga = create(:league, :current_season, game_operation: @fremd_go, league_modus: 'league')
+      # Vorlage aus dem EIGENEN Spielbetrieb: Eine fremde Liga als Vorlage
+      # anzugeben ist der SBK verwehrt, siehe den Test darunter.
+      liga = create(:league, :current_season, game_operation: @heim_go, league_modus: 'league',
+                                              age_group: 'Herren', field_size: 'GF')
       post "/api/v2/admin/players/#{@player.id}/suspensions",
            params: { scope_kind: 'competition', league_id: liga.id, games_total: 2 }
       assert_response :created
@@ -292,6 +295,58 @@ module Admin
 
       assert_response :forbidden
       assert PlayerSuspension.find(suspension_id).active?
+    end
+
+    # Die angegebene Liga ist die Vorlage fuer Altersklasse, Feldgroesse UND
+    # Spielbetrieb der Sperre. Eine fremde Vorlage haette eine Sperre erzeugt,
+    # die in fremden Ligen greift und in den eigenen gerade nicht -- und damit
+    # den Riegel auf `all_game_operations` umgangen, ohne ihn zu setzen.
+    test 'SBK kann keine Liga eines fremden Spielbetriebs als Vorlage nehmen' do
+      login(create(:user, :sbk_scoped, game_operation_id: @heim_go.id))
+      fremde_liga = create(:league, :current_season, game_operation: @fremd_go,
+                                                     league_modus: 'league',
+                                                     age_group: 'Herren', field_size: 'GF')
+
+      post "/api/v2/admin/players/#{@player.id}/suspensions",
+           params: { scope_kind: 'competition', league_id: fremde_liga.id, games_total: 2 }
+
+      assert_response :forbidden
+      assert_equal 0, @player.reload.suspensions.count
+    end
+
+    # Beim Aufheben kommt die Liga aus der GESPEICHERTEN Sperre, nicht aus den
+    # Parametern. Sonst suchte sich der Antragsteller selbst aus, gegen welche
+    # Liga sein Recht geprueft wird: Eine SBK West haette eine Ligasperre der
+    # SBK Ost aufgehoben, indem sie eine EIGENE Liga mitschickt, in der der
+    # Spieler zufaellig eine Lizenz haelt.
+    test 'mitgeschickte league_id verschafft kein Recht zum Aufheben' do
+      # Ligasperre der SBK Ost auf ihre eigene Liga.
+      ost_liga = create(:league, :current_season, game_operation: @heim_go, league_modus: 'league')
+      ost_team = create(:team, league: ost_liga, club: @club)
+      @player.update!(licenses: [{ 'id' => 'ost', 'team_id' => ost_team.id, 'season_id' => '18',
+                                   'history' => [{ 'license_status_id' => License::APPROVED,
+                                                   'created_at' => 1.day.ago.iso8601 }] }])
+      login(create(:user, :sbk_scoped, game_operation_id: @heim_go.id))
+      post "/api/v2/admin/players/#{@player.id}/suspensions",
+           params: { scope_kind: 'league', league_id: ost_liga.id, games_total: 1 }
+      assert_response :created
+      suspension_id = JSON.parse(response.body)['id']
+
+      # Die SBK West hat eine eigene Liga, in der derselbe Spieler antritt.
+      west_liga = create(:league, :current_season, game_operation: @fremd_go, league_modus: 'league')
+      west_team = create(:team, league: west_liga, club: @club)
+      @player.update!(licenses: @player.reload.licenses + [
+        { 'id' => 'west', 'team_id' => west_team.id, 'season_id' => '18',
+          'history' => [{ 'license_status_id' => License::APPROVED,
+                          'created_at' => 1.day.ago.iso8601 }] }
+      ])
+
+      login(create(:user, :sbk_scoped, game_operation_id: @fremd_go.id))
+      delete "/api/v2/admin/players/#{@player.id}/suspensions/#{suspension_id}",
+             params: { league_id: west_liga.id }
+
+      assert_response :forbidden
+      assert PlayerSuspension.find(suspension_id).active?, 'die fremde Sperre muss stehen bleiben'
     end
 
     # Die Entgrenzung des Spielbetriebs bleibt der Bundesadministration

@@ -1410,10 +1410,31 @@ class GamesController < ApplicationController
     license = player.licenses_by_team(team_id)
     return "Kein Lizenzantrag für #{player.first_name} #{player.last_name} im aufstellenden Team" if license.blank?
 
-    last_status = license['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
+    last_status = license['history']&.max_by { |h| h['created_at'].to_s }&.dig('license_status_id').to_i
     unless game.license_status_playable?(last_status)
       status_name = License::NAMES[last_status] || 'unbekannt'
       return "Lizenz von #{player.first_name} #{player.last_name} ist nicht erteilt (Status: #{status_name})"
+    end
+
+    # Sperren, die NICHT in der Lizenzhistorie stehen (#604).
+    #
+    # `write_suspended_status!` stempelt den Status 9 nur bei den
+    # Geltungsbereichen `all` und `team`. Eine Wettbewerbs- oder Ligasperre
+    # betrifft je nach Auswahl viele Lizenzen, teils in fremden Verbaenden, und
+    # wird deshalb nicht in jede einzelne hineingeschrieben -- sie steht in der
+    # Sperrtabelle. Diese Pruefung liest nur die Historie und sah eine solche
+    # Sperre folglich gar nicht: Der Gesperrte galt als spielberechtigt, lief
+    # auf, und weil `count_closed_game!` allein `eligible_for_team?` prueft und
+    # nicht die Aufstellung, zaehlte das Spiel obendrein als abgesessen. Nach
+    # zwei Spielen hob sich die Sperre selbst auf, ohne je gewirkt zu haben.
+    #
+    # `suspended_for_team?` kennt alle vier Geltungsbereiche (PlayerSuspension#
+    # covers_team?) und deckt damit auch die beiden ab, die einen Stempel
+    # bekommen -- doppelt gemeldet wird nichts, weil der Statuszweig darueber
+    # dann schon zurueckgekehrt ist.
+    if player.suspended_for_team?(team_id)
+      return "#{player.first_name} #{player.last_name} ist gesperrt " \
+             "(#{player.suspension_for_team(team_id)&.scope_summary})"
     end
 
     # String-Vergleich der Ligaklassen-Codes (1fbl/2fbl/rl/vl/ll). Wettbewerbe

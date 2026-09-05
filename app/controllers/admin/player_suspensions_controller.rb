@@ -132,13 +132,39 @@ module Admin
     def sbk_may_suspend?(perm_hash)
       return false if perm_hash[:sbk].blank?
       return true if sbk_global?(perm_hash)
-      return true if (perm_hash[:sbk] & player_home_game_operation_ids).present?
+
+      if (perm_hash[:sbk] & player_home_game_operation_ids).present?
+        return competition_boundary_in_own_scope?(perm_hash)
+      end
 
       case suspension_scope_kind
       when PlayerSuspension::SCOPE_TEAM then sbk_may_suspend_team?(perm_hash)
       when PlayerSuspension::SCOPE_LEAGUE then sbk_may_suspend_league?(perm_hash)
       else false
       end
+    end
+
+    # Bei einer WETTBEWERBSsperre bestimmt die angegebene Liga, in welchem
+    # Spielbetrieb die Sperre spaeter greift: Player#suspension_game_operation_id
+    # speichert deren `game_operation_id`, und `competition_covers?` prueft sie.
+    #
+    # Der Heimatverband darf sperren, aber die Grenze muss im eigenen
+    # Spielbetrieb liegen. Ohne diese Schranke haette eine Landes-SBK eine Liga
+    # eines FREMDEN Spielbetriebs als Vorlage angeben koennen: Gespeichert wuerde
+    # dann dessen game_operation_id, die Sperre griffe in fremden Ligen und in
+    # den eigenen gerade nicht. Das ist derselbe Gedanke wie beim Riegel auf
+    # `all_game_operations` (dort darf die SBK die Grenze nicht abwaehlen) --
+    # ueber eine fremde Vorlage waere er sonst zu umgehen, ohne ihn zu setzen.
+    #
+    # Nur der Wettbewerbs-Geltungsbereich ist betroffen: `all` nennt keine Liga,
+    # `team` und `league` haben ihre eigenen Schranken weiter unten.
+    def competition_boundary_in_own_scope?(perm_hash)
+      return true unless suspension_scope_kind == PlayerSuspension::SCOPE_COMPETITION
+
+      league = scope_league
+      return true if league.blank?
+
+      perm_hash[:sbk].include?(league.game_operation_id)
     end
 
     def sbk_may_suspend_team?(perm_hash)
@@ -191,15 +217,23 @@ module Admin
     end
 
     # Die Liga, aus der eine Wettbewerbs- oder Ligasperre stammt.
+    #
+    # BEIM AUFHEBEN kommt sie ausschliesslich aus der gespeicherten Sperre, nie
+    # aus den Parametern. Sonst suchte sich der Antragsteller selbst aus, gegen
+    # welche Liga sein Recht geprueft wird: Eine SBK West haette eine Sperre der
+    # SBK Ost aufheben koennen, indem sie eine eigene Liga mitschickt, in der
+    # der Spieler zufaellig eine Lizenz haelt. `params[:league_id]` gehoert zum
+    # ANLEGEN, wo es die Liga der neuen Sperre benennt.
     def scope_league
       return @scope_league if defined?(@scope_league)
 
-      @scope_league = League.find_by(id: params[:league_id]) if params[:league_id].present?
-      @scope_league ||= if action_name == 'create'
-                          Team.find_by(id: params[:team_id])&.league if params[:team_id].present?
-                        else
-                          League.find_by(id: @player.suspensions.find_by(id: params[:id])&.league_id)
-                        end
+      @scope_league =
+        if action_name == 'create'
+          League.find_by(id: params[:league_id]) ||
+            (Team.find_by(id: params[:team_id])&.league if params[:team_id].present?)
+        else
+          League.find_by(id: @player.suspensions.find_by(id: params[:id])&.league_id)
+        end
     end
 
     # Zustaendige Spielbetriebe der HEIMATvereine des Spielers.
