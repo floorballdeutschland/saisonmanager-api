@@ -66,6 +66,30 @@ class PlayerSuspension < ApplicationRecord
   scope :covering, ->(date) { where('valid_from <= :d AND (valid_until IS NULL OR valid_until >= :d)', d: date) }
   scope :due, ->(date) { active.where('valid_until IS NOT NULL AND valid_until < ?', date) }
 
+  # Aktive Sperren dieser Spieler -- je Spieler-id, in EINER Abfrage. Jede
+  # Lizenzliste braucht dieselbe Nachschlagetabelle: Der angezeigte Status
+  # entsteht aus dem Basis-Eintrag der Lizenzhistorie und den Sperren, und ohne
+  # die Vorabladung faellt eine Abfrage je Spieler an.
+  #
+  # `date: nil` laesst das Zeitfenster offen. Das brauchen die Lizenzlisten
+  # eines Spieltags: Sie gelten fuer EIN Datum, und das ist das des Spieltags,
+  # nicht der Tag des Abrufs -- ein Link lebt 72 Stunden und wird auch am
+  # Vorabend geoeffnet. Bei mehreren Spieltagen in einer Antwort unterscheidet
+  # sich das Datum je Mannschaft, deshalb wird dann in Ruby mit
+  # `window_covers?` gefiltert statt in SQL.
+  #
+  # Bewusst OHNE Lazy-Ablauf (Player#expire_due_suspensions!): Diese Listen sind
+  # GET-Anfragen, teils oeffentlich und ohne Anmeldung. Aufgeraeumt wird die
+  # History beim naechsten Blick ins Spielerprofil.
+  def self.active_by_player(player_ids, date: Date.current)
+    ids = Array(player_ids).compact.uniq
+    return {} if ids.empty?
+
+    scope = active.where(player_id: ids)
+    scope = scope.covering(date) if date.present?
+    scope.group_by(&:player_id)
+  end
+
   # Klartext einer Wettbewerbsgruppe. Dieselben Woerter wie im Sperrformular
   # (`playerAdmin.edit.group_*`), damit eine Absage der API die Auswahl
   # benennt, die der Anwender vor sich sieht.
