@@ -457,9 +457,7 @@ class ClubsController < ApplicationController
     # stempelt. Eine Wettbewerbs- oder Ligasperre steht ausschliesslich in der
     # Sperrtabelle -- der Kaderdialog haette einen so Gesperrten unveraendert
     # als erteilt gefuehrt.
-    sperren = PlayerSuspension.active.covering(Date.current)
-                              .where(player_id: players.map(&:id))
-                              .group_by(&:player_id)
+    sperren = PlayerSuspension.active_by_player(players.map(&:id))
 
     current_requests = players.filter_map do |player|
       license = player.licenses_by_team(team.id)
@@ -563,15 +561,29 @@ class ClubsController < ApplicationController
       l = p.licenses_by_team(team.id)
       if l.present?
         item = p.full_hash
-        item[:team_license] = l
-        cs = p.current_license_status(l)
+        # Die Lizenz OHNE die Begruendung der Sperre. Der ganze Lizenz-Hash
+        # geht hier an Verein und Mannschaft, und `write_suspended_status!`
+        # schreibt die Begruendung samt sperrendem Konto in die Historie --
+        # die stand damit in `team_license.history` und in `current_status`,
+        # waehrend das Feld `suspension` daneben sie korrekt weglaesst.
+        # Begruendungen ANDERER Status bleiben: Warum ein Antrag abgelehnt
+        # oder eine Lizenz geloescht wurde, ist genau die Auskunft, die der
+        # Verein braucht.
+        license = license_without_suspension_reason(l)
+        item[:team_license] = license
+        cs = p.current_license_status(license)
         item[:current_status] = cs
         # Die Sperre auf dieser Lizenz -- ohne Begruendung: Der Verein soll
         # sehen, DASS und wie lange gesperrt ist, das Warum bleibt beim
         # Verband. Noetig ist die Angabe, weil eine Wettbewerbs- oder
         # Ligasperre den Lizenzstatus gar nicht anfasst (#605): Ohne sie stand
         # die Zeile hier weiter auf „erteilt".
-        suspension = Array(suspensions[p.id]).find { |s| s.covers_team?(team) }
+        #
+        # Gefragt wird ueber die Wettbewerbe, in denen die Lizenz gilt, nicht
+        # ueber die Stammliga allein: Eine Mannschaft haengt ueber
+        # `cup_leagues` auch an ihren Pokalligen, und eine dort gesetzte
+        # Ligasperre war hier sonst unsichtbar.
+        suspension = license_suspension_for(Array(suspensions[p.id]), team)
         item[:suspension] = suspension && { scope_summary: suspension.scope_summary,
                                             valid_until: suspension.valid_until,
                                             games_total: suspension.games_total,
@@ -603,6 +615,36 @@ class ClubsController < ApplicationController
     end
 
     result
+  end
+
+  # Die Lizenz mit bereinigter Historie: Aus den Sperr-Eintraegen fallen
+  # Begruendung und sperrendes Konto heraus. Beides gehoert dem Verband, und
+  # `current_license_status` loest `created_by` sonst zu Klarnamen und
+  # Benutzernamen der Person auf, die die Sperre verhaengt hat.
+  #
+  # Kopiert statt am Original gearbeitet: Der Hash stammt aus `player.licenses`
+  # und wuerde sonst bei jedem spaeteren `save` in dieser Anfrage ohne
+  # Begruendung zurueckgeschrieben.
+  def license_without_suspension_reason(license)
+    copy = license.deep_dup
+    Array(copy['history']).each do |entry|
+      next unless entry['license_status_id'].to_i == License::SUSPENDED
+
+      entry.delete('reason')
+      entry.delete('created_by')
+    end
+    copy
+  end
+
+  # Die Sperre, die auf der Lizenz dieser Mannschaft liegt -- in irgendeinem
+  # Wettbewerb, in dem die Lizenz gilt. Ohne jede Liga (Altbestand: Team ohne
+  # `league_id`) entscheidet die Mannschaft selbst, sonst bliebe eine
+  # spielerweite Sperre unsichtbar.
+  def license_suspension_for(suspensions, team)
+    leagues = [team.league, *League.where(id: Array(team.cup_leagues))].compact.uniq
+    return suspensions.find { |s| s.covers_team?(team) } if leagues.empty?
+
+    suspensions.find { |s| leagues.any? { |league| s.covers_license_in?(league, team) } }
   end
 
   # Gemeinsam für Anlage und Änderung. `state_association_id` ordnet den Verein

@@ -90,7 +90,11 @@ class PublicSecretaryController < ApplicationController
       Player.find_by_team_id(team_id).sort_by(&:license_list_sort_key)
     end
     # Eine Abfrage fuer alle Mannschaften der Halle, nicht eine je Spieler.
-    suspensions = PlayerSuspension.active_by_player(players_by_team.values.flatten.map(&:id))
+    # Ohne Zeitfenster in SQL: Der Link kann mehrere Spieltage mit
+    # verschiedenen Daten umfassen, und massgeblich ist das Datum des
+    # SPIELTAGS, nicht der Tag des Abrufs. Gefiltert wird deshalb je
+    # Mannschaft mit `window_covers?`.
+    suspensions = PlayerSuspension.active_by_player(players_by_team.values.flatten.map(&:id), date: nil)
 
     ordered_team_ids(contexts, teams).each_with_object({}) do |team_id, hash|
       team = teams[team_id]
@@ -98,6 +102,7 @@ class PublicSecretaryController < ApplicationController
 
       league  = contexts[team_id][:league]
       leagues = contexts[team_id][:leagues].presence || [league].compact
+      date    = suspension_date(contexts[team_id][:date])
 
       entries = (players_by_team[team_id] || []).filter_map do |player|
         license = player.extr_license
@@ -124,9 +129,17 @@ class PublicSecretaryController < ApplicationController
         # derselben Halle in Liga und Pokal an, steht dieselbe Lizenzliste
         # unter beiden Ueberschriften -- und eine Ligasperre gilt nur unter
         # einer von beiden.
-        active = Array(suspensions[player.id])
+        active = Array(suspensions[player.id]).select { |s| s.window_covers?(date) }
         suspended = leagues.select { |l| active.any? { |s| s.covers_license_in?(l, team) } }
-        suspension = active.find { |s| suspended.any? { |l| s.covers_license_in?(l, team) } }
+        # Ohne Liga am Spieltag ist die Frage je Liga nicht zu beantworten.
+        # Dann entscheidet die Mannschaft -- sonst faerbte ein Datenfehler eine
+        # spielerweite Sperre auf „erteilt", und das ist die Richtung, in die
+        # eine Lizenzliste nie irren darf.
+        suspension = if leagues.any?
+                       active.find { |s| suspended.any? { |l| s.covers_license_in?(l, team) } }
+                     else
+                       active.find { |s| s.covers_team?(team) }
+                     end
 
         # to_i wie zwei Zeilen darueber: als String gespeicherte Status liessen
         # das Erteilungsdatum sonst leer – genau die Spalte, an der das
@@ -136,10 +149,20 @@ class PublicSecretaryController < ApplicationController
         {
           name: "#{player.first_name} #{player.last_name}",
           birthdate: player.birthdate,
-          license_status: License::NAMES[base_status_id],
-          # Die Liste weiss selbst nicht, unter welcher Ueberschrift sie gerade
-          # steht; die Ansicht schon. Deshalb die betroffenen Ligen und nicht
-          # ein fertiges „gesperrt".
+          # `license_status` traegt die Sperre, sobald sie IRGENDEINE Liga
+          # dieses Links erfasst -- auch wenn die Zeile unter zwei
+          # Ueberschriften steht und nur unter einer gilt. Das ist Absicht:
+          # Eine Ansicht, die `suspended_league_ids` noch nicht kennt (aeltere
+          # Fassung, fremder Leser des oeffentlichen Links), liest genau dieses
+          # Feld. Sie soll dann uebermarkieren und nicht „erteilt" behaupten --
+          # vor dieser Aenderung fiel die Zeile bei einer Mannschafts- oder
+          # spielerweiten Sperre ganz aus der Liste, „spielberechtigt" waere
+          # also eine echte Verschlechterung gewesen.
+          license_status: License::NAMES[suspension ? License::SUSPENDED : base_status_id],
+          # Der Status OHNE Sperre, fuer die Feinentscheidung je Ueberschrift:
+          # Die Liste weiss selbst nicht, unter welcher sie gerade steht, die
+          # Ansicht schon.
+          base_license_status: License::NAMES[base_status_id],
           suspended_league_ids: suspended.map(&:id),
           # Nur der Geltungsbereich, nicht die Begruendung -- wie im
           # Kaderdialog. Warum jemand gesperrt ist, bleibt der Verbandsansicht
@@ -170,6 +193,15 @@ class PublicSecretaryController < ApplicationController
         players: entries
       }
     end
+  end
+
+  # `game_days.date` ist eine Zeichenkette, keine Datumsspalte. Ohne lesbares
+  # Datum bleibt der Tag des Abrufs -- die Lage von vorher, keine
+  # Verschlechterung.
+  def suspension_date(raw)
+    Date.parse(raw.to_s)
+  rescue ArgumentError, TypeError
+    Date.current
   end
 
   # Mannschaft -> { Liga, Spieltagsdatum, alle Ligen } aus den Spielen des Links.

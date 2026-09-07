@@ -20,9 +20,11 @@ class PublicLicenseListController < ApplicationController
       },
       # Die Liga des SPIELS entscheidet ueber die Sperren, nicht die Stammliga
       # der Mannschaft: Ein Pokalspiel laeuft in der Pokalliga, und eine im
-      # Ligaspielbetrieb gesperrte Lizenz gilt dort weiter.
-      home_team_licenses: team_license_list(game.home_team, game.game_day.league),
-      guest_team_licenses: team_license_list(game.guest_team, game.game_day.league),
+      # Ligaspielbetrieb gesperrte Lizenz gilt dort weiter. Und das Datum des
+      # SPIELTAGS entscheidet ueber das Sperrfenster, nicht der Tag des
+      # Abrufs: Der Link lebt 72 Stunden und wird auch am Vorabend geoeffnet.
+      home_team_licenses: team_license_list(game.home_team, game.game_day.league, game_date(game)),
+      guest_team_licenses: team_license_list(game.guest_team, game.game_day.league, game_date(game)),
       expires_at: payload[:expires_at]
     }
   rescue ActiveRecord::RecordNotFound
@@ -31,13 +33,22 @@ class PublicLicenseListController < ApplicationController
 
   private
 
-  def team_license_list(team, league)
+  # `game_days.date` ist eine Zeichenkette, keine Datumsspalte. Ohne lesbares
+  # Datum bleibt der Tag des Abrufs -- das ist die Lage von vorher und keine
+  # Verschlechterung.
+  def game_date(game)
+    Date.parse(game.game_day&.date.to_s)
+  rescue ArgumentError, TypeError
+    Date.current
+  end
+
+  def team_license_list(team, league, date)
     return [] unless team
 
     # Nach Nachnamen, siehe Player#license_list_sort_key. Vor dem Aufbau
     # sortieren: Der Eintrag traegt nur den zusammengesetzten Anzeigenamen.
     players = Player.find_by_team_id(team.id).sort_by(&:license_list_sort_key)
-    suspensions = PlayerSuspension.active_by_player(players.map(&:id))
+    suspensions = PlayerSuspension.active_by_player(players.map(&:id), date: date)
 
     players.filter_map do |player|
       license = player.extr_license
