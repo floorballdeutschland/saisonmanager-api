@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.109.0] - 2026-09-07
+
 ### Behoben
 
 - **Die Begründung einer Spielersperre ging an Verein und Mannschaft**: Eine Sperre auf alles oder auf eine einzelne Mannschaft schreibt ihren Grund in den Verlauf der Lizenz, und dieser Verlauf geht als Ganzes in die Antragsübersicht des Vereins. Dort stand die Begründung damit im Klartext, dazu Name und Benutzerkennung der Person, die die Sperre verhängt hat – während das Feld daneben, das die Sperre benennt, sie korrekt weglässt. Eine Disziplinarstrafe gehört dem Verband, nicht dem Verein, dessen Mannschaft der Spieler angehört. Aus den Sperr-Einträgen fallen Begründung und Konto jetzt heraus, bevor die Lizenz den Verein erreicht. Begründungen anderer Status bleiben unberührt: Warum ein Antrag abgelehnt oder eine Lizenz gelöscht wurde, ist genau die Auskunft, die der Verein braucht.
