@@ -377,7 +377,12 @@ class Player < ApplicationRecord
   end
 
   def current_license_status(license)
-    status = license['history']&.sort_by { |h| h['created_at'] }&.last
+    # `to_s` wie in LicenseEffectiveStatus: Ein Verlaufseintrag ohne
+    # `created_at` -- im Altbestand vorhanden -- liess den Vergleich mit
+    # „comparison of NilClass with String failed" auffliegen. Das ist eine 500
+    # in der Antragsuebersicht des Vereins, nicht bloss eine schiefe
+    # Sortierung.
+    status = license['history']&.sort_by { |h| h['created_at'].to_s }&.last
     return unless status
 
     status[:created_by_name] = User.find_by(id: status['created_by'])&.full_with_username
