@@ -66,6 +66,55 @@ class PlayerSuspension < ApplicationRecord
   scope :covering, ->(date) { where('valid_from <= :d AND (valid_until IS NULL OR valid_until >= :d)', d: date) }
   scope :due, ->(date) { active.where('valid_until IS NOT NULL AND valid_until < ?', date) }
 
+  # Aktive Sperren dieser Spieler -- je Spieler-id, in EINER Abfrage. Jede
+  # Lizenzliste braucht dieselbe Nachschlagetabelle: Der angezeigte Status
+  # entsteht aus dem Basis-Eintrag der Lizenzhistorie und den Sperren, und ohne
+  # die Vorabladung faellt eine Abfrage je Spieler an.
+  #
+  # `date: nil` laesst das Zeitfenster offen. Das brauchen die Lizenzlisten
+  # eines Spieltags: Sie gelten fuer EIN Datum, und das ist das des Spieltags,
+  # nicht der Tag des Abrufs -- ein Link lebt 72 Stunden und wird auch am
+  # Vorabend geoeffnet. Bei mehreren Spieltagen in einer Antwort unterscheidet
+  # sich das Datum je Mannschaft, deshalb wird dann in Ruby mit
+  # `window_covers?` gefiltert statt in SQL.
+  #
+  # Bewusst OHNE Lazy-Ablauf (Player#expire_due_suspensions!): Diese Listen sind
+  # GET-Anfragen, teils oeffentlich und ohne Anmeldung. Aufgeraeumt wird die
+  # History beim naechsten Blick ins Spielerprofil.
+  def self.active_by_player(player_ids, date: Date.current)
+    ids = Array(player_ids).compact.uniq
+    return {} if ids.empty?
+
+    scope = active.where(player_id: ids)
+    scope = scope.covering(date) if date.present?
+    scope.group_by(&:player_id)
+  end
+
+  # Klartext einer Wettbewerbsgruppe. Dieselben Woerter wie im Sperrformular
+  # (`playerAdmin.edit.group_*`), damit eine Absage der API die Auswahl
+  # benennt, die der Anwender vor sich sieht.
+  GROUP_LABELS = {
+    League::GROUP_LIGA          => 'Ligaspielbetrieb',
+    League::GROUP_POKAL         => 'Pokal',
+    League::GROUP_MEISTERSCHAFT => 'DM/Endrunde'
+  }.freeze
+
+  def self.competition_group_label(group)
+    GROUP_LABELS.fetch(group.to_s, group.to_s)
+  end
+
+  # Die Wettbewerbsgruppen, die eine Sperre am Ende traegt: die uebergebenen
+  # oder, wenn nichts kam, die Vorbelegung. An EINER Stelle, weil zwei Leser
+  # dieselbe Antwort brauchen -- Player#suspend! beim Schreiben und der
+  # Controller beim Pruefen, ob die Sperre ueberhaupt in ihrer eigenen Liga
+  # gilt. Eine zweite Auslegung waere genau die Art Abweichung, die niemandem
+  # auffaellt.
+  def self.effective_competition_groups(groups)
+    return DEFAULT_COMPETITION_GROUPS.dup if groups.nil?
+
+    Array(groups).map(&:to_s).select(&:present?)
+  end
+
   def player_wide?
     scope_kind == SCOPE_ALL
   end
@@ -270,9 +319,7 @@ class PlayerSuspension < ApplicationRecord
   end
 
   def competition_group_labels
-    labels = { League::GROUP_LIGA => 'Ligaspielbetrieb', League::GROUP_POKAL => 'Pokal',
-               League::GROUP_MEISTERSCHAFT => 'DM/Endrunde' }
-    Array(competition_groups).map { |g| labels.fetch(g, g) }.join(' und ')
+    Array(competition_groups).map { |g| self.class.competition_group_label(g) }.join(' und ')
   end
 
   def valid_until_after_valid_from

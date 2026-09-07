@@ -18,8 +18,13 @@ class PublicLicenseListController < ApplicationController
         guest_team: game.guest_team&.name,
         league_name: game.game_day.league.name
       },
-      home_team_licenses: team_license_list(game.home_team),
-      guest_team_licenses: team_license_list(game.guest_team),
+      # Die Liga des SPIELS entscheidet ueber die Sperren, nicht die Stammliga
+      # der Mannschaft: Ein Pokalspiel laeuft in der Pokalliga, und eine im
+      # Ligaspielbetrieb gesperrte Lizenz gilt dort weiter. Und das Datum des
+      # SPIELTAGS entscheidet ueber das Sperrfenster, nicht der Tag des
+      # Abrufs: Der Link lebt 72 Stunden und wird auch am Vorabend geoeffnet.
+      home_team_licenses: team_license_list(game.home_team, game.game_day.league, game_date(game)),
+      guest_team_licenses: team_license_list(game.guest_team, game.game_day.league, game_date(game)),
       expires_at: payload[:expires_at]
     }
   rescue ActiveRecord::RecordNotFound
@@ -28,26 +33,44 @@ class PublicLicenseListController < ApplicationController
 
   private
 
-  def team_license_list(team)
+  # `game_days.date` ist eine Zeichenkette, keine Datumsspalte. Ohne lesbares
+  # Datum bleibt der Tag des Abrufs -- das ist die Lage von vorher und keine
+  # Verschlechterung.
+  def game_date(game)
+    Date.parse(game.game_day&.date.to_s)
+  rescue ArgumentError, TypeError
+    Date.current
+  end
+
+  def team_license_list(team, league, date)
     return [] unless team
 
     # Nach Nachnamen, siehe Player#license_list_sort_key. Vor dem Aufbau
     # sortieren: Der Eintrag traegt nur den zusammengesetzten Anzeigenamen.
     players = Player.find_by_team_id(team.id).sort_by(&:license_list_sort_key)
+    suspensions = PlayerSuspension.active_by_player(players.map(&:id), date: date)
+
     players.filter_map do |player|
       license = player.extr_license
       next unless license
 
-      # `to_s` ist Pflicht, nicht Zierde: Ein Verlaufseintrag ohne `created_at`
-      # laesst `max_by` mit „comparison of NilClass with String failed" platzen,
-      # und das ist eine 500 auf dem oeffentlichen Lizenzlink, kurz vor Anwurf.
-      # Solche Eintraege gibt es im Altbestand; im Sekretariats-Controller ist
-      # derselbe Absturz deshalb bereits so abgefangen.
-      last_status = license['history']&.max_by { |h| h['created_at'].to_s }
-      next unless last_status
+      # Der Status OHNE Sperre ist die Grundlage, die Sperre kommt getrennt
+      # dazu (#605): Eine Wettbewerbs- oder Ligasperre steht gar nicht in der
+      # Lizenzhistorie, weil dieselbe Lizenz in der Liga gesperrt und im Pokal
+      # erteilt sein kann. Wer nur die History liest, sieht sie nicht -- am
+      # Spieltisch stand der Gesperrte deshalb als spielberechtigt.
+      #
+      # LicenseEffectiveStatus.base_entry vergleicht `created_at.to_s`: Ein
+      # Verlaufseintrag ohne Zeitstempel liess `max_by` mit „comparison of
+      # NilClass with String failed" platzen, und das ist eine 500 auf dem
+      # oeffentlichen Lizenzlink, kurz vor Anwurf.
+      base_status = LicenseEffectiveStatus.base_entry(license)
+      next unless base_status
 
-      last_status_id = last_status['license_status_id'].to_i
-      next unless [License::APPROVED, License::REQUESTED].include?(last_status_id)
+      base_status_id = base_status['license_status_id'].to_i
+      next unless [License::APPROVED, License::REQUESTED].include?(base_status_id)
+
+      suspension = Array(suspensions[player.id]).find { |s| s.covers_license_in?(league, team) }
 
       # `to_i` und die Konstante statt der nackten 1: Liegt der Status als String
       # „1" im JSONB — im Altbestand beides anzutreffen —, bliebe `approved_at`
@@ -60,7 +83,11 @@ class PublicLicenseListController < ApplicationController
       {
         name: "#{player.first_name} #{player.last_name}",
         birthdate: player.birthdate,
-        license_status: License::NAMES[last_status_id],
+        license_status: License::NAMES[suspension ? License::SUSPENDED : base_status_id],
+        # Nur der Geltungsbereich, nicht die Begruendung -- wie im Kaderdialog
+        # des Spielsekretariats. Warum jemand gesperrt ist, bleibt der
+        # Verbandsansicht vorbehalten.
+        suspension_scope: suspension&.scope_summary,
         approved_at: approved_entry&.dig('created_at'),
         valid_until: license['valid_until']
       }

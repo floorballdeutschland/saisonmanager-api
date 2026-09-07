@@ -377,7 +377,12 @@ class Player < ApplicationRecord
   end
 
   def current_license_status(license)
-    status = license['history']&.sort_by { |h| h['created_at'] }&.last
+    # `to_s` wie in LicenseEffectiveStatus: Ein Verlaufseintrag ohne
+    # `created_at` -- im Altbestand vorhanden -- liess den Vergleich mit
+    # „comparison of NilClass with String failed" auffliegen. Das ist eine 500
+    # in der Antragsuebersicht des Vereins, nicht bloss eine schiefe
+    # Sortierung.
+    status = license['history']&.sort_by { |h| h['created_at'].to_s }&.last
     return unless status
 
     status[:created_by_name] = User.find_by(id: status['created_by'])&.full_with_username
@@ -1235,9 +1240,8 @@ class Player < ApplicationRecord
   # Vorbelegung zurück, würde genau das gesperrt, was gerade abgewählt wurde.
   def suspension_groups(scope_kind, groups)
     return [] unless scope_kind == PlayerSuspension::SCOPE_COMPETITION
-    return PlayerSuspension::DEFAULT_COMPETITION_GROUPS if groups.nil?
 
-    Array(groups).map(&:to_s).select(&:present?)
+    PlayerSuspension.effective_competition_groups(groups)
   end
 
   # Entfernt die DELETED-Eintraege, die `deactivate!` bis api#472 an jede laufende
