@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **„Meine Auswärtsspieltage" begann mit dem entferntesten Spieltag**: Die Liste für Team- und Vereinsmanager war rein nach Datum absteigend sortiert. Ganz oben stand damit der Spieltag, der am weitesten in der Zukunft liegt, obwohl dort nur „Bestätigung ab …" zu lesen ist; die Spieltage, für die tatsächlich eine Bestätigung ansteht, rutschten darunter und bei mehreren Mannschaften aus dem Blick. Jetzt kommen erst alle Spieltage bis einschließlich heute mit dem neuesten oben, danach die künftigen aufsteigend, der nächste also zuerst. (Frontend)
+
 ## [1.108.0] - 2026-09-05
 
 ### Behoben
