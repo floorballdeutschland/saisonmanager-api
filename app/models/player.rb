@@ -1240,9 +1240,8 @@ class Player < ApplicationRecord
   # Vorbelegung zurück, würde genau das gesperrt, was gerade abgewählt wurde.
   def suspension_groups(scope_kind, groups)
     return [] unless scope_kind == PlayerSuspension::SCOPE_COMPETITION
-    return PlayerSuspension::DEFAULT_COMPETITION_GROUPS if groups.nil?
 
-    Array(groups).map(&:to_s).select(&:present?)
+    PlayerSuspension.effective_competition_groups(groups)
   end
 
   # Entfernt die DELETED-Eintraege, die `deactivate!` bis api#472 an jede laufende

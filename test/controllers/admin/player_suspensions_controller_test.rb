@@ -178,6 +178,54 @@ module Admin
       assert_equal "Herren Großfeld, Ligaspielbetrieb, #{@heim_go.name}", body['scope_summary']
     end
 
+    # Der haeufigste Anlass ueberhaupt: die Matchstrafe im Pokalspiel. Die
+    # Vorbelegung des Formulars ist Ligaspielbetrieb + DM, die Gruppe der
+    # Pokalliga ist also nicht dabei -- die Sperre wuerde angelegt, Spiele
+    # abzaehlen, ablaufen und in keiner einzigen Liga gelten, auch nicht in
+    # der, aus der sie stammt.
+    test 'eine Wettbewerbssperre, die ihre eigene Liga nicht erfasst, wird abgelehnt' do
+      login(create(:user, :sbk_scoped, game_operation_id: @heim_go.id))
+      pokal = create(:league, :current_season, game_operation: @heim_go, league_modus: 'cup',
+                                               age_group: 'Herren', field_size: 'GF')
+
+      post "/api/v2/admin/players/#{@player.id}/suspensions",
+           params: { scope_kind: 'competition', league_id: pokal.id, games_total: 3 }
+
+      assert_response :unprocessable_entity
+      meldung = JSON.parse(response.body)['message']
+      assert_includes meldung, pokal.name
+      assert_includes meldung, 'Pokal'
+      assert_equal 0, @player.reload.suspensions.count
+    end
+
+    test 'mit ausgewaehltem Pokal geht dieselbe Sperre durch' do
+      login(create(:user, :sbk_scoped, game_operation_id: @heim_go.id))
+      pokal = create(:league, :current_season, game_operation: @heim_go, league_modus: 'cup',
+                                               age_group: 'Herren', field_size: 'GF')
+
+      post "/api/v2/admin/players/#{@player.id}/suspensions",
+           params: { scope_kind: 'competition', league_id: pokal.id, games_total: 3,
+                     competition_groups: [League::GROUP_POKAL] }
+
+      assert_response :created
+      assert @player.reload.suspensions.first.covers_league?(pokal)
+    end
+
+    # Dieselbe Falle steckt in den Playoffs, solange sie als Pokal angelegt
+    # sind (siehe leagues:mark_playoffs). Nach der Umstellung gehoert die Liga
+    # zum Ligaspielbetrieb und die Vorbelegung passt wieder.
+    test 'eine Playoff-Liga passt zur Vorbelegung' do
+      login(create(:user, :sbk_scoped, game_operation_id: @heim_go.id))
+      playoffs = create(:league, :current_season, game_operation: @heim_go, league_modus: 'playoff',
+                                                  age_group: 'Herren', field_size: 'GF')
+
+      post "/api/v2/admin/players/#{@player.id}/suspensions",
+           params: { scope_kind: 'competition', league_id: playoffs.id, games_total: 3 }
+
+      assert_response :created
+      assert @player.reload.suspensions.first.covers_league?(playoffs)
+    end
+
     # Eine Wettbewerbssperre greift in jeder Liga derselben Altersklasse, auch
     # in fremden Verbaenden. Sie bleibt deshalb dem Heimatverband vorbehalten.
     test 'Verband der Liga darf keine Wettbewerbssperre setzen' do

@@ -31,6 +31,10 @@ module Admin
                       status: :unprocessable_entity
       end
 
+      if (fehler = competition_misses_own_league)
+        return render json: { message: fehler }, status: :unprocessable_entity
+      end
+
       suspension = @player.suspend!(
         user_id: current_user.id,
         team_id: params[:team_id].presence,
@@ -60,6 +64,39 @@ module Admin
     end
 
     private
+
+    # Eine Sperre, die in der Liga, aus der sie stammt, gar nicht gilt.
+    #
+    # Der Geltungsbereich `competition` ist die Kombination aus Altersklasse,
+    # Feldgroesse und Wettbewerbsgruppen, und vorbelegt sind Ligaspielbetrieb
+    # und DM/Endrunde. Wird die Sperre aus einer Pokalliga heraus angelegt --
+    # der haeufigste Anlass ueberhaupt, die Matchstrafe im Pokalspiel --, dann
+    # ist die Gruppe dieser Liga (`pokal`) nicht dabei: Die Sperre wird
+    # angelegt, zaehlt Spiele ab, laeuft ab und wirkt in keiner einzigen Liga,
+    # auch nicht in der, aus der sie stammt. Das faellt niemandem auf, denn
+    # angelegt wurde sie ja.
+    #
+    # Dieselbe Falle steckte in den Playoffs, solange sie als Pokal angelegt
+    # sind (siehe leagues:mark_playoffs). Der Riegel bleibt auch danach noetig:
+    # Er faengt jede kuenftige Kombination ab, nicht nur die eine.
+    #
+    # Abgelehnt statt still ergaenzt: Welcher Wettbewerb gesperrt gehoert, ist
+    # eine fachliche Entscheidung. Wer aus einer Pokalliga heraus den
+    # Ligaspielbetrieb sperren will, meint die Vorlage-Liga der Liga -- und die
+    # kennt nur die verhaengende Stelle.
+    def competition_misses_own_league
+      return nil unless suspension_scope_kind == PlayerSuspension::SCOPE_COMPETITION
+
+      league = scope_league
+      return nil if league.blank?
+
+      groups = PlayerSuspension.effective_competition_groups(params[:competition_groups])
+      return nil if groups.include?(league.competition_group)
+
+      "Der Geltungsbereich erfasst die Liga nicht, aus der die Sperre stammt " \
+        "(#{league.name}: #{PlayerSuspension.competition_group_label(league.competition_group)}). " \
+        'Die Sperre würde dort nicht gelten. Bitte den Wettbewerb der Liga mit auswählen.'
+    end
 
     # Eine Wettbewerbssperre ohne Spielbetriebs-Grenze greift in JEDEM Verband
     # derselben Altersklasse. Die SBK hat ihre Weisungsbefugnis nur im eigenen
