@@ -553,6 +553,10 @@ class ClubsController < ApplicationController
     all_players = clubs.map(&:players).flatten.compact
     # Eine Abfrage fuer alle Spieler des Vereins statt einer je Zeile.
     suspensions = PlayerSuspension.active_by_player(all_players.map(&:id))
+    # Ebenso die Wettbewerbe der Mannschaft: Sie haengen an `team` und nicht am
+    # Spieler, gehoeren also VOR die Schleife. Innen waeren es bei vierzig
+    # Lizenzen vierzig Abfragen -- genau das, was die Zeile darueber vermeidet.
+    team_leagues = [team.league, *League.where(id: Array(team.cup_leagues))].compact.uniq
 
     result[:current_requests] = []
     result[:other_players] = []
@@ -583,7 +587,7 @@ class ClubsController < ApplicationController
         # ueber die Stammliga allein: Eine Mannschaft haengt ueber
         # `cup_leagues` auch an ihren Pokalligen, und eine dort gesetzte
         # Ligasperre war hier sonst unsichtbar.
-        suspension = license_suspension_for(Array(suspensions[p.id]), team)
+        suspension = license_suspension_for(Array(suspensions[p.id]), team, team_leagues)
         item[:suspension] = suspension && { scope_summary: suspension.scope_summary,
                                             valid_until: suspension.valid_until,
                                             games_total: suspension.games_total,
@@ -640,8 +644,7 @@ class ClubsController < ApplicationController
   # Wettbewerb, in dem die Lizenz gilt. Ohne jede Liga (Altbestand: Team ohne
   # `league_id`) entscheidet die Mannschaft selbst, sonst bliebe eine
   # spielerweite Sperre unsichtbar.
-  def license_suspension_for(suspensions, team)
-    leagues = [team.league, *League.where(id: Array(team.cup_leagues))].compact.uniq
+  def license_suspension_for(suspensions, team, leagues)
     return suspensions.find { |s| s.covers_team?(team) } if leagues.empty?
 
     suspensions.find { |s| leagues.any? { |league| s.covers_license_in?(league, team) } }

@@ -211,6 +211,25 @@ class LicenseListsSuspensionTest < ActionDispatch::IntegrationTest
     assert_equal 'gesperrt', entry['license_status']
   end
 
+  # Ohne Liga am Spieltag ist die Frage je Ueberschrift nicht zu beantworten --
+  # dann entscheidet die Mannschaft. Sonst faerbte ein Datenfehler ausgerechnet
+  # eine spielerweite Sperre auf „erteilt", und das ist die Richtung, in die
+  # eine Lizenzliste nie irren darf. `suspended_league_ids` bleibt dabei leer,
+  # weil es keine Liga gibt, auf die es zeigen koennte.
+  test 'ohne Liga am Spieltag entscheidet die Mannschaft' do
+    @player.suspend!(user_id: @admin.id, team_id: @home.id, valid_until: Date.current + 30,
+                     scope: { kind: PlayerSuspension::SCOPE_TEAM })
+    # `league_id` ist nullable; der Weg dahin ist ein Datenfehler, kein
+    # regulaerer Zustand -- deshalb an den Validierungen vorbei.
+    @liga_game_day.update_column(:league_id, nil)
+
+    entry = secretary_entry([@liga_game_day])
+
+    assert_equal 'gesperrt', entry['license_status']
+    assert_equal [], entry['suspended_league_ids']
+    assert entry['suspension_scope'].present?
+  end
+
   # --- Das Datum des Spieltags, nicht der Tag des Abrufs ------------------
 
   # Der Link lebt 72 Stunden, und seit der Spieltagscheckliste wird die Liste
