@@ -9,6 +9,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Eine Sperre, die aus einer Pokalliga heraus verhängt wird, galt nirgends**: Der Geltungsbereich „dieser Wettbewerb" ist die Kombination aus Altersklasse, Feldgröße und Wettbewerbsgruppen, und vorbelegt sind Ligaspielbetrieb und DM/Endrunde. Wird die Sperre aus einer Pokalliga heraus angelegt – die Matchstrafe im Pokalspiel, der häufigste Anlass überhaupt –, dann ist die Gruppe dieser Liga nicht dabei: Die Sperre wurde angelegt, zählte Spiele ab, lief ab und wirkte in keiner einzigen Liga, auch nicht in der, aus der sie stammt. Auffallen konnte das niemandem, denn angelegt war sie ja, und im Spielerprofil stand sie mit Reststand. Ein solcher Antrag wird jetzt abgelehnt, mit Nennung der Liga und ihres Wettbewerbs. Abgelehnt und nicht still ergänzt: Welcher Wettbewerb gesperrt gehört, ist eine fachliche Entscheidung, und wer aus einer Pokalliga heraus den Ligaspielbetrieb sperren will, meint die Liga dahinter – die kennt nur die verhängende Stelle.
+
+### Verbessert
+
+- **Playoffs und Playdowns im Bestand werden als solche geführt**: Der Ligamodus „Playoffs/Playdowns" steht seit 1.107.0 zur Wahl, der Bestand blieb aber unberührt: Wer vorher angelegt wurde, trug weiterhin „Pokal". Das hat zwei Folgen, und beide fallen erst spät auf. Erstens gilt eine Sperre im Ligaspielbetrieb dort nicht, obwohl die Playoffs die Fortsetzung derselben Liga sind – wer in der letzten Partie der Hauptrunde gesperrt wird, läuft in der ersten Playoff-Partie auf. Zweitens zeigt die Übertragungsgrafik das Bild des Pokals statt das der Liga, denn auch sie liest den Ligamodus. Ein neuer Wartungslauf stellt den Bestand um. Er rät dabei nicht: Umgestellt wird eine Liga, die Ziel einer eingetragenen Playoff-, Playdown- oder Relegations-Qualifikation ist, die eine Vorrunde fortsetzt, oder die Playoff, Playdown, Meister-, Ab-, Aufstiegs- oder Platzierungsrunde im Namen trägt. Steht Pokal, Cup oder Trophy im Namen, bleibt sie, wo sie ist – es sei denn, es gibt die eingetragene Qualifikation, denn eine gepflegte Beziehung wiegt schwerer als eine Benennung. Alles ohne Merkmal bleibt unangetastet und wird zum Nachsehen aufgelistet. Standardmäßig läuft er als Probe und schreibt nichts; die Ausgabe nennt am Ende den Aufruf, mit dem sich der Lauf zurücknehmen lässt. Der Turnierbaum bleibt in beiden Fällen, denn Ausscheidungswettbewerb ist die Playoff-Runde weiterhin.
+
+
 ## [1.108.0] - 2026-09-05
 
 ### Behoben

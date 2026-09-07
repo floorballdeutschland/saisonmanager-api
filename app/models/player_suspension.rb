@@ -66,6 +66,31 @@ class PlayerSuspension < ApplicationRecord
   scope :covering, ->(date) { where('valid_from <= :d AND (valid_until IS NULL OR valid_until >= :d)', d: date) }
   scope :due, ->(date) { active.where('valid_until IS NOT NULL AND valid_until < ?', date) }
 
+  # Klartext einer Wettbewerbsgruppe. Dieselben Woerter wie im Sperrformular
+  # (`playerAdmin.edit.group_*`), damit eine Absage der API die Auswahl
+  # benennt, die der Anwender vor sich sieht.
+  GROUP_LABELS = {
+    League::GROUP_LIGA          => 'Ligaspielbetrieb',
+    League::GROUP_POKAL         => 'Pokal',
+    League::GROUP_MEISTERSCHAFT => 'DM/Endrunde'
+  }.freeze
+
+  def self.competition_group_label(group)
+    GROUP_LABELS.fetch(group.to_s, group.to_s)
+  end
+
+  # Die Wettbewerbsgruppen, die eine Sperre am Ende traegt: die uebergebenen
+  # oder, wenn nichts kam, die Vorbelegung. An EINER Stelle, weil zwei Leser
+  # dieselbe Antwort brauchen -- Player#suspend! beim Schreiben und der
+  # Controller beim Pruefen, ob die Sperre ueberhaupt in ihrer eigenen Liga
+  # gilt. Eine zweite Auslegung waere genau die Art Abweichung, die niemandem
+  # auffaellt.
+  def self.effective_competition_groups(groups)
+    return DEFAULT_COMPETITION_GROUPS.dup if groups.nil?
+
+    Array(groups).map(&:to_s).select(&:present?)
+  end
+
   def player_wide?
     scope_kind == SCOPE_ALL
   end
@@ -270,9 +295,7 @@ class PlayerSuspension < ApplicationRecord
   end
 
   def competition_group_labels
-    labels = { League::GROUP_LIGA => 'Ligaspielbetrieb', League::GROUP_POKAL => 'Pokal',
-               League::GROUP_MEISTERSCHAFT => 'DM/Endrunde' }
-    Array(competition_groups).map { |g| labels.fetch(g, g) }.join(' und ')
+    Array(competition_groups).map { |g| self.class.competition_group_label(g) }.join(' und ')
   end
 
   def valid_until_after_valid_from
