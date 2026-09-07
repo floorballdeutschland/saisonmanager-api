@@ -66,6 +66,22 @@ class PlayerSuspension < ApplicationRecord
   scope :covering, ->(date) { where('valid_from <= :d AND (valid_until IS NULL OR valid_until >= :d)', d: date) }
   scope :due, ->(date) { active.where('valid_until IS NOT NULL AND valid_until < ?', date) }
 
+  # Aktive Sperren dieser Spieler, die an diesem Tag laufen -- je Spieler-id, in
+  # EINER Abfrage. Jede Lizenzliste braucht dieselbe Nachschlagetabelle: Der
+  # angezeigte Status entsteht aus dem Basis-Eintrag der Lizenzhistorie und den
+  # Sperren, und ohne die Vorabladung faellt eine Abfrage je Spieler an.
+  #
+  # Bewusst OHNE Lazy-Ablauf (Player#expire_due_suspensions!): Diese Listen sind
+  # GET-Anfragen, teils oeffentlich und ohne Anmeldung. `covering` laesst eine
+  # abgelaufene Sperre gar nicht erst durch, und aufgeraeumt wird die History
+  # beim naechsten Blick ins Spielerprofil.
+  def self.active_by_player(player_ids, date: Date.current)
+    ids = Array(player_ids).compact.uniq
+    return {} if ids.empty?
+
+    active.covering(date).where(player_id: ids).group_by(&:player_id)
+  end
+
   def player_wide?
     scope_kind == SCOPE_ALL
   end

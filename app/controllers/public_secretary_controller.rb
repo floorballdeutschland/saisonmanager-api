@@ -83,44 +83,73 @@ class PublicSecretaryController < ApplicationController
     contexts = team_contexts(games)
     teams = Team.where(id: contexts.keys).index_by(&:id)
 
+    # Vor dem Aufbau sortieren statt danach: Der Eintrag traegt nur den
+    # zusammengesetzten Anzeigenamen, eine Sortierung darueber liefe nach
+    # Vornamen.
+    players_by_team = teams.keys.index_with do |team_id|
+      Player.find_by_team_id(team_id).sort_by(&:license_list_sort_key)
+    end
+    # Eine Abfrage fuer alle Mannschaften der Halle, nicht eine je Spieler.
+    suspensions = PlayerSuspension.active_by_player(players_by_team.values.flatten.map(&:id))
+
     ordered_team_ids(contexts, teams).each_with_object({}) do |team_id, hash|
       team = teams[team_id]
       next unless team
 
-      # Vor dem Aufbau sortieren statt danach: Der Eintrag traegt nur den
-      # zusammengesetzten Anzeigenamen, eine Sortierung darueber liefe nach
-      # Vornamen.
-      players = Player.find_by_team_id(team_id).sort_by(&:license_list_sort_key)
-      entries = players.filter_map do |player|
+      league  = contexts[team_id][:league]
+      leagues = contexts[team_id][:leagues].presence || [league].compact
+
+      entries = (players_by_team[team_id] || []).filter_map do |player|
         license = player.extr_license
         next unless license
 
-        # to_s im Sortierschlüssel: ein Historieneintrag ohne created_at ließ
-        # max_by mit „comparison of NilClass with String failed" auffliegen. Seit
-        # ein Link mehrere Ligen umfasst, risse ein einziger solcher Datensatz
-        # die Lizenzlisten aller Mannschaften der Halle mit.
-        last_status = license['history']&.max_by { |h| h['created_at'].to_s }
-        next unless last_status
+        # Der Status OHNE Sperre ist die Grundlage, die Sperre kommt getrennt
+        # dazu (#605): Eine Wettbewerbs- oder Ligasperre steht nicht in der
+        # Lizenzhistorie, weil dieselbe Lizenz in der Liga gesperrt und im
+        # Pokal erteilt sein kann. Wer nur die History liest, sieht sie nicht
+        # -- am Spieltisch stand der Gesperrte deshalb als spielberechtigt.
+        #
+        # LicenseEffectiveStatus.base_entry vergleicht `created_at.to_s`: ein
+        # Historieneintrag ohne Zeitstempel liess `max_by` mit „comparison of
+        # NilClass with String failed" auffliegen, und seit ein Link mehrere
+        # Ligen umfasst, risse ein einziger solcher Datensatz die Lizenzlisten
+        # aller Mannschaften der Halle mit.
+        base_status = LicenseEffectiveStatus.base_entry(license)
+        next unless base_status
 
-        last_status_id = last_status['license_status_id'].to_i
-        next unless [License::APPROVED, License::REQUESTED].include?(last_status_id)
+        base_status_id = base_status['license_status_id'].to_i
+        next unless [License::APPROVED, License::REQUESTED].include?(base_status_id)
 
-        # to_i wie zwei Zeilen darüber: als String gespeicherte Status ließen das
-        # Erteilungsdatum sonst leer – genau die Spalte, an der das Sekretariat
-        # die Spielberechtigung abliest.
+        # Je Liga ausgewertet, nicht je Mannschaft: Tritt sie am selben Tag in
+        # derselben Halle in Liga und Pokal an, steht dieselbe Lizenzliste
+        # unter beiden Ueberschriften -- und eine Ligasperre gilt nur unter
+        # einer von beiden.
+        active = Array(suspensions[player.id])
+        suspended = leagues.select { |l| active.any? { |s| s.covers_license_in?(l, team) } }
+        suspension = active.find { |s| suspended.any? { |l| s.covers_license_in?(l, team) } }
+
+        # to_i wie zwei Zeilen darueber: als String gespeicherte Status liessen
+        # das Erteilungsdatum sonst leer – genau die Spalte, an der das
+        # Sekretariat die Spielberechtigung abliest.
         approved_entry = license['history']&.select { |h| h['license_status_id'].to_i == License::APPROVED }&.last
 
         {
           name: "#{player.first_name} #{player.last_name}",
           birthdate: player.birthdate,
-          license_status: License::NAMES[last_status_id],
+          license_status: License::NAMES[base_status_id],
+          # Die Liste weiss selbst nicht, unter welcher Ueberschrift sie gerade
+          # steht; die Ansicht schon. Deshalb die betroffenen Ligen und nicht
+          # ein fertiges „gesperrt".
+          suspended_league_ids: suspended.map(&:id),
+          # Nur der Geltungsbereich, nicht die Begruendung -- wie im
+          # Kaderdialog. Warum jemand gesperrt ist, bleibt der Verbandsansicht
+          # vorbehalten.
+          suspension_scope: suspension&.scope_summary,
           approved_at: approved_entry&.dig('created_at'),
           valid_until: license['valid_until']
         }
       end
 
-      league  = contexts[team_id][:league]
-      leagues = contexts[team_id][:leagues].presence || [league].compact
       hash[team_id.to_s] = {
         team_name: team.name,
         # Die Liga des Spieltags, in dem die Mannschaft an diesem Tag antritt –

@@ -15,18 +15,13 @@ module LeagueLicenseSuspensions
 
   class_methods do
     # Aktive Sperren der Spieler dieser Listen, je Spieler, in einer Abfrage.
-    #
-    # Bewusst OHNE Lazy-Ablauf: Player#expire_due_suspensions! wuerde in einem
-    # GET ueber alle Ligen einer Saison schreiben. Noetig ist das hier nicht,
-    # denn `covering` laesst eine abgelaufene Sperre gar nicht erst durch, und
-    # der angezeigte Status kommt aus dem Basis-Eintrag der History und nicht
-    # aus dem Sperr-Eintrag. Aufgeraeumt wird die History beim naechsten Blick
-    # ins Spielerprofil.
+    # Zur Begruendung, warum hier nichts ablaeuft, siehe
+    # PlayerSuspension.active_by_player -- dieselbe Tabelle lesen auch die
+    # Lizenzlisten des Spieltags und die Antragsuebersicht des Vereins.
     def license_suspensions(team_licenses)
-      player_ids = team_licenses.each_value.flat_map { |players| players.map(&:id) }.uniq
-      return {} if player_ids.empty?
-
-      PlayerSuspension.active.covering(Date.current).where(player_id: player_ids).group_by(&:player_id)
+      PlayerSuspension.active_by_player(
+        team_licenses.each_value.flat_map { |players| players.map(&:id) }
+      )
     end
   end
 

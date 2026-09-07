@@ -553,6 +553,8 @@ class ClubsController < ApplicationController
 
     clubs = Club.find(team.all_club_ids)
     all_players = clubs.map(&:players).flatten.compact
+    # Eine Abfrage fuer alle Spieler des Vereins statt einer je Zeile.
+    suspensions = PlayerSuspension.active_by_player(all_players.map(&:id))
 
     result[:current_requests] = []
     result[:other_players] = []
@@ -564,6 +566,16 @@ class ClubsController < ApplicationController
         item[:team_license] = l
         cs = p.current_license_status(l)
         item[:current_status] = cs
+        # Die Sperre auf dieser Lizenz -- ohne Begruendung: Der Verein soll
+        # sehen, DASS und wie lange gesperrt ist, das Warum bleibt beim
+        # Verband. Noetig ist die Angabe, weil eine Wettbewerbs- oder
+        # Ligasperre den Lizenzstatus gar nicht anfasst (#605): Ohne sie stand
+        # die Zeile hier weiter auf „erteilt".
+        suspension = Array(suspensions[p.id]).find { |s| s.covers_team?(team) }
+        item[:suspension] = suspension && { scope_summary: suspension.scope_summary,
+                                            valid_until: suspension.valid_until,
+                                            games_total: suspension.games_total,
+                                            remaining_games: suspension.remaining_games }
         item[:can_withdraw] = (cs['license_status_id'] == License::REQUESTED)
         # Dieselbe Auswahl wie in PlayersController#withdraw_license_request. Liefe
         # die Anzeige nach einer anderen Regel, versprach die Seite ein
