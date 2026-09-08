@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Der Lizenzstufen-Katalog trug keine Rangfolge, und zwei Stufen fehlten ganz**: Die Stufen haben im Katalog eine Position, die ihren Rang festhält – niedrigere Position, höhere Stufe. Gesetzt war sie nie, bei keiner einzigen Stufe. Drei Dinge liefen deshalb ins Leere: Die Lizenzstufen-Spalte der Schiedsrichterverwaltung sortierte alphabetisch statt nach Rang, die Katalogpflege selbst fiel auf die Namensreihenfolge zurück, und die Downgrade-Warnung des Kursimports war toter Code – sie prüft zwei Positionen gegeneinander und bricht ab, sobald eine fehlt, es wurde also noch nie eine Herabstufung protokolliert. Ein Rake-Lauf (`referees:license_level_catalog`, mit `DRY_RUN`) setzt die Positionen in der Reihenfolge N1 bis N4 vor L1 bis L3 vor LJ. Er legt dabei die Stufe **N4** an, die an 44 Schiedsrichtern und in 445 Kursergebnissen steht, aber nie einen Katalogeintrag hatte – inaktiv, also nicht mehr vergebbar, wie N3. Und er räumt einen Fehler auf, der ohne Katalog nicht auffiel: In den Kursergebnissen stand teils der Name des **Kurses** statt der Lizenzstufe. „G3" ist der Kurs, der zur L3 führt, „G2" der zur L2; dazu ein kleingeschriebenes „l1". Über diese Zeilen wanderten die Kursnamen bei jedem Import auf die Schiedsrichter – fünf tragen deshalb heute eine Stufe, die es nicht gibt. Ohne die Bereinigung wüchse der Fehler nach jedem Kursimport nach, und die Positionen liefen erneut ins Leere.
+
 ## [1.111.0] - 2026-09-08
 
 ### Neu
