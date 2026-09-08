@@ -27,6 +27,10 @@ module Admin
         { referee_course_import: import,
           referee: @referee,
           status: 'pending_review',
+          # Automatisch aus der Lage des Imports: Seit dem zeilenweisen
+          # Einreichen haengt die Freigabe-Warteschlange am Stempel der Zeile,
+          # nicht am Import-Status.
+          submitted_at: (Time.current if status == 'submitted'),
           match_type: 'partial_match',
           match_field_count: 5,
           csv_lizenznummer: @referee.lizenznummer,
