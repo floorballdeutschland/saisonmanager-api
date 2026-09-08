@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Kursimport: einzelne Zeilen zurückstellen statt die ganze Datei zu blockieren**: Ein Kursergebnis-Import hat hundert Zeilen, und zwanzig davon haben Abweichungen – ein Vereinsname, den die Datei ausschreibt und die Datenbank kürzt, ein Namensvetter, ein fehlendes Kursdatum, eine offene Rückfrage. Bisher war die Datei die Einheit des Einreichens: Fehlte einer einzigen Zeile die Lizenzstufe, wies die Vorprüfung den ganzen Import ab, und wer die restlichen achtzig eintragen wollte, musste die CSV von Hand teilen. Jetzt stellt der Importeur die unklaren Zeilen zurück und reicht die übrigen ein. Der Import bleibt dabei offen und nimmt die zurückgestellten Zeilen nach der Klärung nach – die Klärungsliste steht damit im System und nicht mehr nur in der Excel des Importeurs. Eine Zeile, die nie kommt (Doppelmeldung, zurückgezogene Teilnahme), kann er verwerfen; erst dann ist der Import abgeschlossen. Bewusst nicht der einfachere Weg „alles einreichen, der Landesverband klärt später": Der Submit schreibt Lizenzstufe und Gültigkeit sofort auf den Schiedsrichter, und ein Zurückweisen des Landesverbands nimmt sie einem Bestandsschiedsrichter nicht wieder ab – bei einem falsch zugeordneten Namensvetter stünde die Lizenz bei der falschen Person. Dass eine Zeile eingereicht ist, merkt sich deshalb die Zeile selbst und nicht mehr der Import: Ein teilweise eingereichter Import enthält beides, Zeilen die beim Landesverband warten und solche, die noch niemand eingereicht hat, und nur die erste Gruppe gehört in die Freigabe.
+
 ## [1.110.0] - 2026-09-08
 
 ### Neu
