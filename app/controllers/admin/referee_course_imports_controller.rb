@@ -241,6 +241,15 @@ module Admin
       base = result.short_hash
       base[:referee_snapshot] = referee_snapshot(result.referee) if result.referee
       base[:matched_club]     = club_snapshot(result.master_club_id_by_importer)
+      # Getrennt vom Zielwert daneben: `matched_club` faellt auf den Verein des
+      # Schiedsrichters zurueck, wenn der Name aus der Datei nichts trifft
+      # (`matched_club&.id || referee&.club_id` im Import-Service). Wer die
+      # Maske daran haengt, bekommt fuer genau den haeufigsten Fall faelschlich
+      # Gleichheit gemeldet -- dieselbe Ursache wie in der Freigabe-Maske
+      # (api#540). Der Wert traegt zusaetzlich die Herkunft des Treffers.
+      csv_match = club_lookup.resolve(result.csv_verein) if result.csv_verein.present?
+      base[:csv_club_match]      = csv_club_snapshot(csv_match)
+      base[:csv_club_match_type] = csv_match&.last
       base[:age_at_kursstichtag] = age_at(result.master_geburtsdatum_by_importer, result.kursstichtag)
       base[:previous_season_game_count] = previous_season_game_count(result.referee)
       base
@@ -260,11 +269,32 @@ module Admin
       }
     end
 
+    # Aus dem Bestand, den `club_lookup` fuer diese Anfrage ohnehin geladen hat:
+    # ein `Club.find_by` je Zeile waren bei einem Import mit hundert Zeilen
+    # hundert vermeidbare Abfragen.
     def club_snapshot(club_id)
-      club = Club.find_by(id: club_id)
+      club = club_lookup.club_by_id(club_id)
       return nil unless club
 
       { id: club.id, name: club.name, state_association_id: club.state_association_id }
+    end
+
+    # Was der Vereinsname aus der Datei trifft, samt Herkunft des Treffers --
+    # exakt, ueber den Langnamen, normalisiert oder aus der Alias-Liste. Ein
+    # nicht-exakter Treffer ist eine Schlussfolgerung des Systems und gehoert
+    # dem Importeur vor Augen, damit er sie pruefen kann. Die Herkunft ohne
+    # Treffer (mehrdeutig, unbekannt, Platzhalter) traegt `csv_club_match_type`.
+    def csv_club_snapshot(pair)
+      club, match_type = pair
+      return nil unless club
+
+      { id: club.id, name: club.name, state_association_id: club.state_association_id,
+        match_type: match_type }
+    end
+
+    # Ein Lookup je Request, nicht je Zeile (#show rendert den ganzen Import).
+    def club_lookup
+      @club_lookup ||= RefereeClubLookup.new
     end
 
     def age_at(birthdate, reference_date)
