@@ -112,7 +112,7 @@ class RefereeCourseImportServiceTest < ActiveSupport::TestCase
     assert_equal Date.new(2026, 7, 31), result.gueltigkeit
   end
 
-  test 'verein wird nur bei exaktem Namens-Match übernommen' do
+  test 'verein wird bei einem Namenstreffer übernommen, ohne Treffer nicht' do
     sa = create(:state_association)
     Club.create!(name: 'Exakter Name e.V.', state_association_id: sa.id)
 
@@ -125,6 +125,100 @@ class RefereeCourseImportServiceTest < ActiveSupport::TestCase
     result2 = import2.referee_course_results.first
     assert_nil result2.master_club_id_by_importer
     assert_nil result2.state_association_id
+  end
+
+  # --- Vereinsabgleich (api#542) -----------------------------------------
+  # Die Kursdateien schreiben den Vereinsnamen aus, die Datenbank führt die
+  # Kurzform. Der frühere reine `LOWER(name)`-Vergleich traf das nicht: Im
+  # Import vom 24.08.2026 war der Verein bei 45 von 49 Teilmatches der einzige
+  # Grund für den Nicht-Treffer. Aufgelöst wird jetzt über RefereeClubLookup —
+  # und zwar konservativ: Mehrdeutiges wird nicht geraten.
+
+  test 'ausgeschriebener Vereinsname trifft über den Langnamen' do
+    sa = create(:state_association)
+    club = Club.create!(name: 'UV Zwigge 07', long_name: 'Unihockeyverein Zwigge 07 e.V.',
+                        state_association_id: sa.id)
+
+    import = call(['999;X;Y;01.01.2000;Unihockeyverein Zwigge 07 e.V.;;G;01.08.2025;G;10;;;;;A'])
+    result = import.referee_course_results.first
+
+    assert_equal club.id, result.master_club_id_by_importer
+    # Ohne Vereinstreffer bleibt der Landesverband leer und die Zeile landet
+    # ohne Zuständigkeit in der Freigabe.
+    assert_equal sa.id, result.state_association_id
+  end
+
+  test 'Schreibweise mit e.V. und Satzzeichen trifft normalisiert' do
+    club = Club.create!(name: 'TV Frisch-Auf Bochum')
+
+    import = call(['999;X;Y;01.01.2000;T.V. Frisch-Auf Bochum e.V.;;G;01.08.2025;G;10;;;;;A'])
+
+    assert_equal club.id, import.referee_course_results.first.master_club_id_by_importer
+  end
+
+  # Der Kern des konservativen Wegs: Treffen zwei Vereine dieselbe
+  # normalisierte Schreibweise, wird NICHT gewählt. Lieber kein Verein als der
+  # falsche — ein falsch zugeordneter Verein bestimmt den Landesverband und
+  # damit, wer die Zeile freigibt.
+  test 'mehrdeutige Schreibweise ordnet keinen Verein zu' do
+    Club.create!(name: 'SV Test e.V.')
+    Club.create!(name: 'SV Test')
+
+    import = call(['999;X;Y;01.01.2000;S.V. Test e.V.;;G;01.08.2025;G;10;;;;;A'])
+    result = import.referee_course_results.first
+
+    assert_nil result.master_club_id_by_importer
+    assert_nil result.state_association_id
+  end
+
+  test 'Statuseintrag im Vereinsfeld ordnet keinen Verein zu' do
+    Club.create!(name: 'Karriere beendet')
+
+    import = call(['999;X;Y;01.01.2000;Karriere beendet;;G;01.08.2025;G;10;;;;;A'])
+
+    assert_nil import.referee_course_results.first.master_club_id_by_importer
+  end
+
+  # Der Vereinstreffer zählt im Match-Score mit. Vorher blieb eine Zeile mit
+  # ausgeschriebenem Vereinsnamen auf 5/6 stehen — als Teilmatch ging sie zur
+  # Freigabe an den Landesverband, obwohl nichts abwich.
+  test 'ausgeschriebener Vereinsname macht aus dem Teilmatch einen 6/6-Treffer' do
+    sa = create(:state_association)
+    club = Club.create!(name: 'UV Zwigge 07', long_name: 'Unihockeyverein Zwigge 07 e.V.',
+                        state_association_id: sa.id)
+    Referee.create!(
+      lizenznummer: 520, vorname: 'Sönke', nachname: 'Grimpen',
+      geburtsdatum: Date.new(1970, 4, 17),
+      email: 'sg@example.de', club_id: club.id
+    )
+
+    import = call(['520;Grimpen;Sönke;17.04.1970;Unihockeyverein Zwigge 07 e.V.;' \
+                   'sg@example.de;F;03.08.2025;F-25-2;46;;;;;A'])
+    result = import.referee_course_results.first
+
+    assert_equal 6, result.match_field_count
+    assert_equal 'exact_match', result.match_type
+  end
+
+  # Gegenprobe zur Zeile darüber: Der Schiedsrichter gehört einem anderen
+  # Verein, der Treffer aus der Datei ist also eine echte Abweichung und muss
+  # eine bleiben.
+  test 'ein anderer Verein bleibt eine Abweichung' do
+    club = Club.create!(name: 'UV Zwigge 07', long_name: 'Unihockeyverein Zwigge 07 e.V.')
+    anderer = Club.create!(name: 'TV Anderswo')
+    Referee.create!(
+      lizenznummer: 520, vorname: 'Sönke', nachname: 'Grimpen',
+      geburtsdatum: Date.new(1970, 4, 17),
+      email: 'sg@example.de', club_id: anderer.id
+    )
+
+    import = call(['520;Grimpen;Sönke;17.04.1970;Unihockeyverein Zwigge 07 e.V.;' \
+                   'sg@example.de;F;03.08.2025;F-25-2;46;;;;;A'])
+    result = import.referee_course_results.first
+
+    assert_equal 5, result.match_field_count
+    assert_equal 'partial_match', result.match_type
+    assert_equal club.id, result.master_club_id_by_importer
   end
 
   test 'leere Zeilen werden ignoriert' do

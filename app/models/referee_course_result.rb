@@ -32,9 +32,11 @@ class RefereeCourseResult < ApplicationRecord
   # initialem Import und nachtraeglicher Bearbeitung konsistent bleibt: leeres
   # Feld auf einer Seite zaehlt als Match.
   # csv_attrs: Hash mit Keys :lizenznummer, :vorname, :nachname, :geburtsdatum,
-  # :verein, :email. Der Vereinsabgleich passiert ueber den exakten Namens-Match
-  # gegen den club_id-Lookup-Block (verlangt symmetrische Semantik mit dem
-  # Import).
+  # :verein, :email. Den Vereinsabgleich macht der uebergebene Block (beide
+  # Aufrufer reichen RefereeClubLookup durch: Alias, exakt name/long_name, dann
+  # normalisiert; mehrdeutig gilt als kein Treffer) -- die Semantik MUSS auf
+  # beiden Seiten dieselbe sein, sonst faellt der Score beim Bearbeiten anders
+  # aus als beim Import.
   def self.count_csv_to_referee_matches(csv_attrs, referee, club_lookup:)
     return 0 unless referee
 

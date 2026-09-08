@@ -42,6 +42,11 @@ class RefereeCourseImportService
 
   REQUIRED_FIELDS = %i[lizenznummer nachname vorname geburtsdatum].freeze
 
+  # Ausgaenge des Vereinsabgleichs, die keinen Verein liefern und deshalb im
+  # Import-Log namentlich auftauchen. `blank` und `placeholder` gehoeren nicht
+  # dazu: Eine leere Zelle oder ein „Karriere beendet" ist kein offener Fall.
+  UNMATCHED_CLUB_TYPES = %i[none ambiguous alias_target_missing].freeze
+
   # Plausibilitätsgrenzen für Datumsangaben. Date.strptime nimmt mit %Y auch
   # zweistellige Jahre an ("03.08.25" → Jahr 25), was aus einem als TT.MM.JJ
   # formatierten Excel-Blatt kommt und sonst unbemerkt eine Lizenz mit
@@ -78,6 +83,7 @@ class RefereeCourseImportService
       rows.each do |row|
         create_result(import, row, columns)
       end
+      log_club_matches(import)
 
       import
     end
@@ -322,7 +328,8 @@ class RefereeCourseImportService
 
     warnings += reactivation_warning(referee)
 
-    matched_club = exact_club_match(csv_verein)
+    matched_club, club_match_type = club_lookup.resolve(csv_verein)
+    tally_club_match(csv_verein, club_match_type)
 
     importer_attrs = {
       master_lizenznummer_by_importer: csv_lizenznummer || referee&.lizenznummer,
@@ -446,14 +453,50 @@ class RefereeCourseImportService
 
   def count_matches(csv_attrs, referee)
     RefereeCourseResult.count_csv_to_referee_matches(
-      csv_attrs, referee, club_lookup: ->(name) { exact_club_match(name) }
+      csv_attrs, referee, club_lookup: ->(name) { club_lookup.club(name) }
     )
   end
 
-  def exact_club_match(name)
-    return nil if name.blank?
+  # Ein Lookup je Import, nicht je Zeile: Er laedt die Vereine einmal und baut
+  # seine Indexe auf. Der Stand aendert sich waehrend eines Imports nicht.
+  #
+  # Bewusst dieselbe Aufloesung wie die Schiedsrichter-Excel
+  # (RefereeClubLookup): Alias-Liste, exakt `name`, exakt `long_name`, dann
+  # normalisiert (ohne „e.V.", ohne Satzzeichen) gegen beide. Mehrdeutige
+  # Treffer werden NICHT geraten, sondern gelten als kein Treffer.
+  #
+  # Vorher stand hier ein reiner `LOWER(name)`-Vergleich. Der traf die
+  # Kursdateien nicht, weil sie den Vereinsnamen ausschreiben, waehrend die
+  # Datenbank die Kurzform fuehrt: Im Import vom 24.08.2026 war der Verein bei
+  # 45 von 49 Teilmatches der einzige Grund fuer den Nicht-Treffer (api#542).
+  # 267 der 283 aktiven Vereine tragen einen Langnamen, bei 139 weicht er von
+  # der Kurzform ab -- genau diese Faelle loest der Langname jetzt auf.
+  def club_lookup
+    @club_lookup ||= RefereeClubLookup.new
+  end
 
-    Club.where('LOWER(name) = LOWER(?)', name.strip).first
+  # Herkunft der Treffer je Import mitschreiben. Ohne diese Zeile ist spaeter
+  # nicht zu klaeren, ob ein Verein exakt, ueber den Langnamen oder gar nicht
+  # zugeordnet wurde -- und welche Schreibweisen in die Alias-Liste gehoeren.
+  def tally_club_match(name, match_type)
+    return if name.blank?
+
+    @club_match_tally ||= Hash.new(0)
+    @club_match_tally[match_type] += 1
+
+    @unmatched_club_names ||= []
+    @unmatched_club_names << name if UNMATCHED_CLUB_TYPES.include?(match_type)
+  end
+
+  def log_club_matches(import)
+    return if @club_match_tally.blank?
+
+    tally = @club_match_tally.map { |type, count| "#{type}=#{count}" }.join(' ')
+    Rails.logger.info("Kursimport #{import.id}: Vereinsabgleich #{tally}")
+    return if @unmatched_club_names.blank?
+
+    Rails.logger.info("Kursimport #{import.id}: Vereinsname ohne Treffer: " \
+                      "#{@unmatched_club_names.uniq.join(' | ')}")
   end
 
   def build_course_data(row, columns, warnings:)

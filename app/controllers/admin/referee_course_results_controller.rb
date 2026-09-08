@@ -263,12 +263,12 @@ module Admin
         verein:       result.csv_verein
       }
       # Identische Semantik wie beim initialen Import (siehe
-      # RefereeCourseResult.count_csv_to_referee_matches): Vereinsabgleich ueber
-      # exakten Namens-Lookup gegen Club.name, damit das Score-Ergebnis nicht
-      # davon abhaengt, ob es beim Import oder beim Edit berechnet wurde.
+      # RefereeCourseResult.count_csv_to_referee_matches): derselbe
+      # RefereeClubLookup, damit das Score-Ergebnis nicht davon abhaengt, ob es
+      # beim Import oder beim Edit berechnet wurde.
       RefereeCourseResult.count_csv_to_referee_matches(
         csv_attrs, result.referee,
-        club_lookup: ->(name) { Club.where('LOWER(name) = LOWER(?)', name.to_s.strip).first }
+        club_lookup: ->(name) { club_lookup.club(name) }
       )
     end
 
@@ -289,17 +289,25 @@ module Admin
       Club.where(id: ids).index_by(&:id)
     end
 
-    # Vereinsnamen aus der Datei in einer Abfrage aufloesen, geschluesselt nach
-    # der normalisierten Schreibweise. Der Lookup ist derselbe wie im
-    # Import-Service und in `recompute_match_field_count` (exakter Name, nur
-    # Gross-/Kleinschreibung und Randleerzeichen egal), damit die Anzeige nicht
-    # anders urteilt als der gespeicherte Score.
+    # Vereinsnamen aus der Datei aufloesen, geschluesselt nach der
+    # kleingeschriebenen Schreibweise aus der Datei. Derselbe Lookup wie im
+    # Import-Service und in `recompute_match_field_count`, damit die Anzeige
+    # nicht anders urteilt als der gespeicherte Score.
+    #
+    # Der Wert traegt neben dem Verein die Herkunft des Treffers: Ein Treffer
+    # ueber den Langnamen oder die normalisierte Schreibweise ist eine
+    # Schlussfolgerung und keine Gleichheit -- die Maske sagt das.
     def csv_club_matches_for(results)
       names = results.filter_map { |r| r.csv_verein.presence&.strip }.uniq
       return {} if names.empty?
 
-      Club.where('LOWER(name) IN (?)', names.map(&:downcase))
-          .index_by { |club| club.name.strip.downcase }
+      names.to_h { |name| [name.downcase, club_lookup.resolve(name)] }
+    end
+
+    # Ein Lookup je Request. Die Liste umfasst alle offenen Zeilen aller
+    # eingereichten Importe, ein Lookup je Zeile waere entsprechend teuer.
+    def club_lookup
+      @club_lookup ||= RefereeClubLookup.new
     end
 
     def short_result_hash(result, clubs = {}, csv_clubs = {})
@@ -331,7 +339,7 @@ module Admin
       # Import-Service). Wer damit die Abweichung berechnet, bekommt fuer den
       # haeufigsten Teilmatch ueberhaupt (ausgeschriebener Vereinsname in der
       # Datei gegen die Kurzform in der Datenbank) faelschlich Gleichheit.
-      base[:csv_club_match] = club_snapshot(csv_clubs[result.csv_verein.presence&.strip&.downcase])
+      base[:csv_club_match] = csv_club_snapshot(csv_clubs[result.csv_verein.presence&.strip&.downcase])
       base[:state_association] = if result.state_association
                                    { id: result.state_association.id,
                                      name: result.state_association.name }
@@ -343,6 +351,16 @@ module Admin
       return nil unless club
 
       { id: club.id, name: club.name, state_association_id: club.state_association_id }
+    end
+
+    # `resolve`-Paar aus `csv_club_matches_for`: Verein plus Herkunft. Ein
+    # Ausgang ohne Verein (mehrdeutig, unbekannt) bleibt `nil` -- die Maske
+    # zeigt dann wie bisher den Nicht-Treffer.
+    def csv_club_snapshot(pair)
+      club, match_type = pair
+      return nil unless club
+
+      club_snapshot(club).merge(match_type: match_type)
     end
 
     def to_integer(value)

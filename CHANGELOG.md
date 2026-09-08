@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Kursimport: Vereinsnamen aus der Kursdatei werden zuverlässiger zugeordnet**: Die Kursdateien schreiben den Vereinsnamen aus („Unihockeyverein Zwigge 07 e.V."), die Datenbank führt die Kurzform („UV Zwigge 07"). Der Abgleich verglich beides Zeichen für Zeichen und fand nichts – im Import vom 24.08.2026 war der Verein bei 45 von 49 Teilmatches der einzige Grund dafür, dass eine Zeile als Abweichung beim Landesverband zur Freigabe landete, obwohl an ihr nichts abwich. Zugeordnet wird jetzt in derselben Reihenfolge wie beim Abgleich der Schiedsrichter-Excel: gepflegte Namensliste, dann der Vereinsname, dann der Langname, dann beide ohne „e.V." und Satzzeichen. 267 der 283 aktiven Vereine tragen einen Langnamen, bei 139 weicht er von der Kurzform ab – genau diese Fälle löst er auf. Bewusst konservativ: Geraten wird nichts. Treffen zwei Vereine dieselbe Schreibweise, ordnet der Import keinen zu, statt sich einen auszusuchen – ein falscher Verein bestimmt den falschen Landesverband und damit, wer die Zeile freigibt. Ähnlichkeiten werden gar nicht erst gesucht („SG Berlin" träfe sonst überzeugend falsch auf „Z88 Berlin"); wo ein Name nicht aufzulösen ist, gehört er in die gepflegte Liste. Und weil ein Treffer über den Langnamen oder die bereinigte Schreibweise eine Schlussfolgerung ist und keine Gleichheit, nennen beide Masken sie: Der Importeur und der Landesverband sehen, worüber ein Verein zugeordnet wurde. Nebenbei zeigt die Importeurs-Maske jetzt überhaupt erst, ob der Name aus der Datei einen Verein getroffen hat – bisher las sie den Zielwert der Zeile, und der fällt auf den Verein des Schiedsrichters zurück, meldete also für den häufigsten Nicht-Treffer Gleichheit.
+
 ## [1.110.0] - 2026-09-08
 
 ### Neu

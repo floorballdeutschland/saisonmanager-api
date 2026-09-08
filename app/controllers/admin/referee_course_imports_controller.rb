@@ -195,6 +195,13 @@ module Admin
       base = result.short_hash
       base[:referee_snapshot] = referee_snapshot(result.referee) if result.referee
       base[:matched_club]     = club_snapshot(result.master_club_id_by_importer)
+      # Getrennt vom Zielwert daneben: `matched_club` faellt auf den Verein des
+      # Schiedsrichters zurueck, wenn der Name aus der Datei nichts trifft
+      # (`matched_club&.id || referee&.club_id` im Import-Service). Wer die
+      # Maske daran haengt, bekommt fuer genau den haeufigsten Fall faelschlich
+      # Gleichheit gemeldet -- dieselbe Ursache wie in der Freigabe-Maske
+      # (api#540). Der Wert traegt zusaetzlich die Herkunft des Treffers.
+      base[:csv_club_match]   = csv_club_snapshot(result.csv_verein)
       base[:age_at_kursstichtag] = age_at(result.master_geburtsdatum_by_importer, result.kursstichtag)
       base[:previous_season_game_count] = previous_season_game_count(result.referee)
       base
@@ -219,6 +226,25 @@ module Admin
       return nil unless club
 
       { id: club.id, name: club.name, state_association_id: club.state_association_id }
+    end
+
+    # Was der Vereinsname aus der Datei trifft, samt Herkunft des Treffers --
+    # exakt, ueber den Langnamen, normalisiert oder aus der Alias-Liste. Ein
+    # nicht-exakter Treffer ist eine Schlussfolgerung des Systems und gehoert
+    # dem Importeur vor Augen, damit er sie pruefen kann.
+    def csv_club_snapshot(name)
+      return nil if name.blank?
+
+      club, match_type = club_lookup.resolve(name)
+      return nil unless club
+
+      { id: club.id, name: club.name, state_association_id: club.state_association_id,
+        match_type: match_type }
+    end
+
+    # Ein Lookup je Request, nicht je Zeile (#show rendert den ganzen Import).
+    def club_lookup
+      @club_lookup ||= RefereeClubLookup.new
     end
 
     def age_at(birthdate, reference_date)

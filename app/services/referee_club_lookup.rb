@@ -83,6 +83,21 @@ class RefereeClubLookup
          .strip
   end
 
+  # Der Verein zu einem Namen, oder nichts. Fuer Aufrufer, die den Datensatz
+  # brauchen und nicht die Herkunft des Treffers.
+  def club(name)
+    resolve(name).first
+  end
+
+  # Verein samt Herkunft des Treffers. Der Kursimport zeigt die Herkunft an:
+  # Ein Treffer ueber den Langnamen oder ueber die normalisierte Schreibweise
+  # ist eine Schlussfolgerung des Systems, und die soll der Importeur pruefen
+  # koennen, statt sie fuer einen exakten Treffer zu halten.
+  def resolve(name)
+    result = call(name)
+    [result.club_id && @clubs_by_id[result.club_id], result.match_type]
+  end
+
   def call(name)
     key = name.to_s.strip.downcase
     return Result.new(club_id: nil, match_type: :blank) if key.empty?
