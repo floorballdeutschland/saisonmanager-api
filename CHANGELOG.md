@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Gastschiedsrichter sind ansetzbar**: Ein Gast ist eine Aushilfe ohne eigene Zuständigkeit im Verband – meist aus dem Ausland oder einem anderen Verband – und trägt deshalb keine Lizenznummer und kein Lizenzdatum. Genau daran fiel er aus der Ansetzung heraus: Die Kandidatenliste des Tages, die Coach-Liste und die Wochenend-Matrix schlossen Gäste ausdrücklich aus, ein Gast war über die Oberfläche also nicht anzusetzen. Blieb der Weg über den Spielbericht, wo der Gast als Freitext landet und die Ansetzung nichts davon weiß. Gäste stehen jetzt in der Auswahl und in der Matrix. Sie brauchen dafür keine hinterlegte Verfügbarkeit: Ein Gast hat im Regelfall kein Selbstverwaltungskonto und kann gar keine hinterlegen – verlangte die Auswahl auch von ihm eine, bliebe er dauerhaft unansetzbar. Ob er kann, klärt die Ansetzung wie bisher direkt mit ihm. Alles andere gilt unverändert: Wer am selben Tag schon angesetzt ist, fällt aus der Liste, eine nach einem Merge aufgelöste Gast-Dublette kommt nicht zurück, und der Verbands-Scope bleibt, wie er ist – ein Gast ohne Verein gehört keinem Landesverband und ist damit nur für Admin und die bundesweite Ansetzung sichtbar; wer ihn im Landesverband braucht, ordnet ihn dort einem Verein zu. In der Auswahl sind Gäste als solche gekennzeichnet und von der Lizenzstufen-Vorauswahl ausgenommen, die sonst genau bei nationalen Spieltagen jeden Gast weggefiltert hätte. Die Benachrichtigungen laufen mit, soweit eine E-Mail hinterlegt ist; ohne Adresse wird keine verschickt, wie bei jedem anderen auch.
+
 ## [1.110.0] - 2026-09-08
 
 ### Neu
