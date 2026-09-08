@@ -299,7 +299,283 @@ module Admin
       assert_nil assignment.reload.notified_tentative_at
     end
 
+    # -------------------------------------------------------------------------
+    # Gastschiedsrichter: Aushilfen ohne eigene Zustaendigkeit im Verband. Sie
+    # haben im Regelfall kein Selbstverwaltungskonto und koennen daher keine
+    # Verfuegbarkeit hinterlegen -- die Auswahl verlangt von ihnen keine.
+    # -------------------------------------------------------------------------
+
+    test 'available bietet einen Gast ohne hinterlegte Verfuegbarkeit an' do
+      sa = create(:state_association, referee_assignment_enabled: true)
+      go = create(:game_operation, state_association_id: sa.id)
+      club = create(:club, state_association_id: sa.id)
+      date = Date.today + 7
+      guest = create(:referee, guest: true, lizenznummer: nil, club_id: club.id)
+
+      login(create(:user, :assigner_scoped, game_operation_id: go.id))
+      get "/api/v2/admin/referee_assignments/available?date=#{date}"
+
+      assert_response :success
+      entry = response.parsed_body.find { |r| r['id'] == guest.id }
+      assert_not_nil entry, 'Gast steht ohne Verfuegbarkeit in der Auswahl'
+      assert_equal true, entry['guest']
+      assert_equal "G-#{guest.id}", entry['lizenznummer_display']
+    end
+
+    # Gegenprobe: Die Verfuegbarkeits-Bedingung gilt fuer alle anderen weiter.
+    # Ein OR, das sie versehentlich ganz aushebelt, fiele hier auf.
+    test 'available bleibt fuer regulaere Schiris an die Verfuegbarkeit gebunden' do
+      sa = create(:state_association, referee_assignment_enabled: true)
+      go = create(:game_operation, state_association_id: sa.id)
+      club = create(:club, state_association_id: sa.id)
+      date = Date.today + 7
+      without_availability = create(:referee, club_id: club.id)
+
+      login(create(:user, :assigner_scoped, game_operation_id: go.id))
+      get "/api/v2/admin/referee_assignments/available?date=#{date}"
+
+      assert_response :success
+      assert_not_includes response.parsed_body.map { |r| r['id'] }, without_availability.id
+    end
+
+    test 'available wirft einen tagesgleich angesetzten Gast aus der Auswahl' do
+      sa = create(:state_association, referee_assignment_enabled: true)
+      go = create(:game_operation, state_association_id: sa.id)
+      club = create(:club, state_association_id: sa.id)
+      game = assignable_game(go) # Spieltag: Date.today + 7
+      guest = create(:referee, guest: true, lizenznummer: nil, club_id: club.id)
+      RefereeAssignment.create!(game: game, referee1_id: guest.id, status: 'tentative')
+
+      login(create(:user, :assigner_scoped, game_operation_id: go.id))
+      get "/api/v2/admin/referee_assignments/available?date=#{Date.today + 7}"
+
+      assert_response :success
+      assert_not_includes response.parsed_body.map { |r| r['id'] }, guest.id
+    end
+
+    # Nach einem Merge bleibt der aufgeloeste Datensatz bestehen; er darf nicht
+    # ueber die Gast-Ausnahme in die Auswahl zurueckkommen.
+    test 'available bietet eine aufgeloeste Gast-Dublette nicht an' do
+      sa = create(:state_association, referee_assignment_enabled: true)
+      go = create(:game_operation, state_association_id: sa.id)
+      club = create(:club, state_association_id: sa.id)
+      master = create(:referee, club_id: club.id)
+      merged = create(:referee, guest: true, lizenznummer: nil, club_id: club.id,
+                                merged_into_id: master.id)
+
+      login(create(:user, :assigner_scoped, game_operation_id: go.id))
+      get "/api/v2/admin/referee_assignments/available?date=#{Date.today + 7}"
+
+      assert_response :success
+      assert_not_includes response.parsed_body.map { |r| r['id'] }, merged.id
+    end
+
+    # Der Verbands-Scope gilt fuer Gaeste unveraendert: Ein Gast ohne Verein und
+    # ohne Spielbetrieb gehoert keinem Landesverband und ist deshalb nur fuer
+    # Admin und die bundesweite Ansetzung sichtbar.
+    test 'LV-Ansetzer sieht einen Gast ohne Verein nicht, der Admin schon' do
+      sa = create(:state_association, referee_assignment_enabled: true)
+      go = create(:game_operation, state_association_id: sa.id)
+      date = Date.today + 7
+      guest = create(:referee, guest: true, lizenznummer: nil, club_id: nil)
+
+      login(create(:user, :assigner_scoped, game_operation_id: go.id))
+      get "/api/v2/admin/referee_assignments/available?date=#{date}"
+
+      assert_response :success
+      assert_not_includes response.parsed_body.map { |r| r['id'] }, guest.id
+
+      login(create(:user, :admin))
+      get "/api/v2/admin/referee_assignments/available?date=#{date}"
+
+      assert_response :success
+      assert_includes response.parsed_body.map { |r| r['id'] }, guest.id
+    end
+
+    # Bewusst ein Gast im Verband des Ansetzers: `#create` prüft nur das Spiel
+    # (`authorize_game_scope!`), nicht die Person — ein Gast ohne Verein wäre
+    # für diesen Ansetzer in `#available` unsichtbar und trotzdem ansetzbar.
+    # Diese Lücke ist Altbestand und gilt für jeden Schiedsrichter (siehe
+    # api#635); ein Test darf sie nicht als gewolltes Verhalten festschreiben.
+    test 'Ansetzung eines Gastes wird gespeichert' do
+      sa = create(:state_association, referee_assignment_enabled: true)
+      go = create(:game_operation, state_association_id: sa.id)
+      club = create(:club, state_association_id: sa.id)
+      game = assignable_game(go)
+      guest = create(:referee, guest: true, lizenznummer: nil, club_id: club.id)
+      login(create(:user, :assigner_scoped, game_operation_id: go.id))
+
+      post '/api/v2/admin/referee_assignments',
+           params: { assignment: { game_id: game.id, referee1_id: guest.id, status: 'tentative' } }
+
+      assert_response :created
+      assert_equal guest.id, RefereeAssignment.find(response.parsed_body['id']).referee1_id
+    end
+
+    # Gaeste tragen kein Ablaufdatum und fielen ueber Referee.active aus der
+    # Matrix -- eine Gast-Ansetzung fehlte damit im Bild des Wochenendes.
+    test 'Verfuegbarkeits-Matrix enthaelt den angesetzten Gast trotz fehlender Gueltigkeit' do
+      sa = create(:state_association, referee_assignment_enabled: true)
+      go = create(:game_operation, state_association_id: sa.id)
+      club = create(:club, state_association_id: sa.id)
+      game = assignable_game(go)
+      guest = create(:referee, guest: true, lizenznummer: nil, club_id: club.id)
+      RefereeAssignment.create!(game: game, referee1_id: guest.id, status: 'tentative')
+      licensed = create(:referee, club_id: club.id, gueltigkeit: Date.today + 90)
+      lapsed = create(:referee, club_id: club.id, gueltigkeit: Date.today - 1)
+
+      login(create(:user, :assigner_scoped, game_operation_id: go.id))
+      get '/api/v2/admin/referee_assignments/availability'
+
+      assert_response :success
+      ids = response.parsed_body['referees'].map { |r| r['id'] }
+      assert_includes ids, guest.id
+      assert_includes ids, licensed.id
+      # Fuer regulaere Schiedsrichter bleibt das gueltige Lizenzdatum Bedingung.
+      assert_not_includes ids, lapsed.id
+    end
+
+    # Die Gegenprobe zur Zeile darueber, und der Grund fuer die Einschraenkung:
+    # Ein Gast kann keine Verfuegbarkeit hinterlegen, seine Zeile waere also an
+    # JEDEM Wochenende durchgehend rot -- so viele dauerhaft rote Zeilen, wie es
+    # Gast-Datensaetze gibt, und sie verschieben die Summen unter den
+    # Wochenenden. In der Matrix stehen deshalb nur Gaeste mit Bezug zum
+    # Fenster: angesetzt oder mit gemeldetem Termin.
+    test 'Verfuegbarkeits-Matrix laesst einen Gast ohne Bezug zum Fenster weg' do
+      sa = create(:state_association, referee_assignment_enabled: true)
+      go = create(:game_operation, state_association_id: sa.id)
+      club = create(:club, state_association_id: sa.id)
+      game = assignable_game(go)
+      ohne_bezug = create(:referee, guest: true, lizenznummer: nil, club_id: club.id)
+      gemeldet = create(:referee, guest: true, lizenznummer: nil, club_id: club.id)
+      RefereeAvailability.create!(referee: gemeldet, date: game.game_day.date.to_date)
+
+      login(create(:user, :assigner_scoped, game_operation_id: go.id))
+      get '/api/v2/admin/referee_assignments/availability'
+
+      assert_response :success
+      ids = response.parsed_body['referees'].map { |r| r['id'] }
+      assert_includes ids, gemeldet.id
+      assert_not_includes ids, ohne_bezug.id
+    end
+
+    # `#available_coaches` hat dieselbe Aenderung bekommen wie `#available`,
+    # aber ohne Test -- und dort ist sie verschachtelter: Der OR steht vor dem
+    # Join auf die Zusatzqualifikation, dem LIKE 'B%' und einem `distinct`,
+    # und `scope_to_permitted_referees` legt selbst noch ein `.or` darum.
+    test 'available_coaches enthaelt den Gast mit B-Qualifikation ohne Verfuegbarkeit' do
+      sa = create(:state_association, referee_assignment_enabled: true)
+      go = create(:game_operation, state_association_id: sa.id)
+      club = create(:club, state_association_id: sa.id)
+      game = assignable_game(go)
+      date = game.game_day.date.to_date
+      guest = create(:referee, guest: true, lizenznummer: nil, club_id: club.id)
+      qualify_as_coach(guest, date)
+      ohne_verfuegbarkeit = create(:referee, club_id: club.id)
+      qualify_as_coach(ohne_verfuegbarkeit, date)
+      login(create(:user, :assigner_scoped, game_operation_id: go.id))
+
+      get "/api/v2/admin/referee_assignments/available_coaches?date=#{date}"
+
+      assert_response :success
+      eintraege = response.parsed_body
+      gast = eintraege.find { |r| r['id'] == guest.id }
+      assert_not_nil gast, 'Gast fehlt in der Coach-Auswahl'
+      # Das Kennzeichen ist der ganze Vertrag, an dem die Oberflaeche haengt.
+      assert_equal true, gast['guest']
+      # Gegenprobe: Fuer regulaere Coaches bleibt die Verfuegbarkeit Bedingung,
+      # der OR darf nicht zu weit greifen.
+      assert_not_includes eintraege.map { |r| r['id'] }, ohne_verfuegbarkeit.id
+    end
+
+    # Abgedeckt war nur der Gast OHNE Verein. Der Gast mit Verein in einem
+    # fremden Landesverband ist die Lage, in der ein fehlender Scope auffaellt:
+    # Ein Leck dort zeigte jedem LV-Ansetzer bundesweit alle Gaeste.
+    test 'ein Gast eines fremden Landesverbands bleibt unsichtbar' do
+      sa = create(:state_association, referee_assignment_enabled: true)
+      go = create(:game_operation, state_association_id: sa.id)
+      eigener_club = create(:club, state_association_id: sa.id)
+      game = assignable_game(go)
+      date = game.game_day.date.to_date
+      eigener_gast = create(:referee, guest: true, lizenznummer: nil, club_id: eigener_club.id)
+      RefereeAvailability.create!(referee: eigener_gast, date: date)
+      fremder_club = create(:club, state_association_id: create(:state_association).id)
+      fremder_gast = create(:referee, guest: true, lizenznummer: nil, club_id: fremder_club.id)
+      RefereeAvailability.create!(referee: fremder_gast, date: date)
+      login(create(:user, :assigner_scoped, game_operation_id: go.id))
+
+      get "/api/v2/admin/referee_assignments/available?date=#{date}"
+      assert_response :success
+      ids = response.parsed_body.map { |r| r['id'] }
+      assert_includes ids, eigener_gast.id
+      assert_not_includes ids, fremder_gast.id
+
+      get '/api/v2/admin/referee_assignments/availability'
+      assert_response :success
+      matrix_ids = response.parsed_body['referees'].map { |r| r['id'] }
+      assert_includes matrix_ids, eigener_gast.id
+      assert_not_includes matrix_ids, fremder_gast.id
+    end
+
+    # Der eine Fall, in dem der `merged_into_id`-Riegel wirklich etwas tut: Die
+    # Dublette hat VOR dem Zusammenfuehren einen Termin gemeldet und kaeme sonst
+    # ueber die Verfuegbarkeits-Seite zurueck in die Auswahl -- mit dem
+    # aufgeloesten Datensatz.
+    test 'eine aufgeloeste Gast-Dublette mit gemeldetem Termin bleibt draussen' do
+      sa = create(:state_association, referee_assignment_enabled: true)
+      go = create(:game_operation, state_association_id: sa.id)
+      club = create(:club, state_association_id: sa.id)
+      game = assignable_game(go)
+      date = game.game_day.date.to_date
+      master = create(:referee, guest: true, lizenznummer: nil, club_id: club.id)
+      dublette = create(:referee, guest: true, lizenznummer: nil, club_id: club.id,
+                                  merged_into_id: master.id)
+      RefereeAvailability.create!(referee: dublette, date: date)
+      login(create(:user, :assigner_scoped, game_operation_id: go.id))
+
+      get "/api/v2/admin/referee_assignments/available?date=#{date}"
+
+      assert_response :success
+      ids = response.parsed_body.map { |r| r['id'] }
+      assert_not_includes ids, dublette.id
+      assert_includes ids, master.id
+    end
+
+    # `lizenznummer_display` liefert fuer einen Gast die Ersatzform „G-<id>",
+    # also die interne Datenbank-ID. Im oeffentlichen Spielplan hat die nichts
+    # zu suchen -- vor der Ansetzbarkeit von Gaesten konnte sie dort nicht
+    # auftreten.
+    test 'der oeffentliche Spielplan zeigt zum Gast keine Ersatznummer' do
+      sa = create(:state_association, referee_assignment_enabled: true)
+      go = create(:game_operation, state_association_id: sa.id)
+      club = create(:club, state_association_id: sa.id)
+      game = assignable_game(go)
+      guest = create(:referee, guest: true, lizenznummer: nil, club_id: club.id,
+                               vorname: 'Max', nachname: 'Mustermann')
+      regulaer = create(:referee, club_id: club.id, lizenznummer: 100_234,
+                                  vorname: 'Tom', nachname: 'Meier')
+      assignment = RefereeAssignment.create!(game: game, referee1_id: guest.id,
+                                             referee2_id: regulaer.id, status: 'tentative')
+      login(create(:user, :assigner_scoped, game_operation_id: go.id))
+
+      post "/api/v2/admin/referee_assignments/#{assignment.id}/publish"
+
+      assert_response :success
+      oeffentlich = game.reload.nominated_referee_string
+      assert_equal 'Mustermann, Max / 100234 Meier, Tom', oeffentlich
+      assert_no_match(/G-/, oeffentlich)
+    end
+
     private
+
+    # Schiri mit gueltiger B-Zusatzlizenz, aber OHNE Verfuegbarkeit -- der
+    # Unterschied zu `coach_referee`, an dem die Gast-Ausnahme haengt.
+    def qualify_as_coach(referee, date)
+      type = RefereeQualificationType.create!(name: "B-Coach #{SecureRandom.hex(3)}")
+      RefereeQualification.create!(referee: referee, referee_qualification_type: type,
+                                   valid_until: date + 1.year)
+      referee
+    end
 
     # Spiel, das in der Ansetzungs-Liste auftaucht: noch nicht begonnen und für die
     # Personenebene markiert. Die Markierung stand bis August 2026 als Sentinel-Text

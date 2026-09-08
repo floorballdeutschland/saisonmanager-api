@@ -253,7 +253,9 @@ class RefereeMailer < ApplicationMailer
     @upload_url = game.url
 
     templated_mail(
-      to: [referee1.email, referee2.email].compact,
+      # `compact_blank` statt `compact`: Eine leere Adresse ist kein Empfänger,
+      # `to: ['']` scheitert genauso wie `to: []`.
+      to: [referee1.email, referee2.email].compact_blank,
       subject: "Spielnummer #{game.game_number} | 24h Zeit für Berichtsformular",
       default_reply_to: sbk_reply_to(game),
       placeholders: {
