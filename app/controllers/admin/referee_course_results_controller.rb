@@ -1,17 +1,19 @@
 module Admin
   class RefereeCourseResultsController < ApplicationController
-    before_action :set_result, only: %i[update approve reject]
+    before_action :set_result, only: %i[update discard approve reject]
 
     # GET /api/v2/admin/referee_course_results
     # Liste aller offenen Ergebnisse, gefiltert nach Rolle:
     #   - Admin / RSK FD (Scope 0): alle Zeilen auf `pending_review`
     #   - RSK eines LV: davon die seiner Landesverbände
-    # „Offen" heißt hier zweierlei: Die Zeile steht auf `pending_review` UND ihr
-    # Import ist eingereicht.
+    # „Offen" heißt hier zweierlei: Die Zeile steht auf `pending_review` UND sie
+    # ist eingereicht (`submitted_at`).
     #
-    # `awaiting_lv_review` ist hier nicht optional: Ohne den Import-Status
+    # `awaiting_lv_review` ist hier nicht optional: Ohne den Einreichungs-Stempel
     # standen auch die Vorschauzeilen eines noch nicht eingereichten und die
-    # eines abgebrochenen Imports mit einem „Freigeben"-Knopf in dieser Liste.
+    # eines abgebrochenen Imports mit einem „Freigeben"-Knopf in dieser Liste --
+    # und seit dem zeilenweisen Einreichen zusaetzlich die zurueckgestellten
+    # Zeilen eines teilweise eingereichten Imports.
     def index
       ph = current_user.permission_hash
       scope = RefereeCourseResult.pending_review
@@ -30,12 +32,20 @@ module Admin
 
     # PATCH /api/v2/admin/referee_course_results/:id
     # Der Importeur bearbeitet vor Submit die Master-Werte, die Lizenzstufe
-    # + Gültigkeit und/oder den Match-Pointer (falls der Auto-Match daneben
-    # liegt — z.B. bei Namensvettern). Nach Submit ist diese Route gesperrt.
+    # + Gültigkeit, den Match-Pointer (falls der Auto-Match daneben liegt —
+    # z.B. bei Namensvettern) und stellt die Zeile ggf. zurück. Sobald die
+    # Zeile eingereicht ist, ist diese Route für sie gesperrt.
     def update
       return forbidden_response unless importer_can_edit?(@result)
 
       attrs = update_params
+
+      # `|| false`, weil die Spalte NOT NULL ist: `cast('')` und `cast(nil)`
+      # ergeben `nil`, und das schluege als NotNullViolation im 500er auf
+      # (kein RecordInvalid, also auch kein 422).
+      if attrs.key?(:deferred)
+        @result.deferred = ActiveModel::Type::Boolean.new.cast(attrs[:deferred]) || false
+      end
 
       if attrs.key?(:referee_id)
         new_id = attrs[:referee_id].presence
@@ -62,6 +72,41 @@ module Admin
 
       @result.save!
       render json: @result.short_hash
+    end
+
+    # POST /api/v2/admin/referee_course_results/:id/discard
+    # Der Importeur verwirft eine noch nicht eingereichte Zeile — die
+    # Doppelmeldung, der zurückgezogene Kursteilnehmer. Ohne diesen Weg bliebe
+    # eine zurückgestellte Zeile, die nie kommt, für immer offen und hielte
+    # ihren Import auf `partially_submitted`.
+    #
+    # Angewendet wurde hier noch nichts (weder Lizenz noch Neuanlage), es gibt
+    # also nichts zurückzunehmen — anders als beim `reject` des Landesverbands.
+    def discard
+      return forbidden_response unless importer_can_edit?(@result)
+
+      # Den Import mitsperren: Sonst kann sich das Verwerfen mit einem
+      # laufenden Submit ueberholen. Der Submit haelt den Import gesperrt und
+      # zaehlt am Ende die offenen Zeilen; committet das Verwerfen erst danach,
+      # sieht er diese Zeile noch als offen und setzt `partially_submitted`,
+      # waehrend `close_if_done!` hier noch `in_review` gelesen hat und nichts
+      # tut. Der Import haengt dann mit null offenen Zeilen fest -- nicht
+      # einreichbar, nicht abbrechbar.
+      import = @result.referee_course_import
+      import.with_lock do
+        @result.update!(
+          status: 'rejected',
+          deferred: false,
+          rejection_reason: params[:reason].to_s.strip.presence || 'Vom Importeur verworfen',
+          reviewed_by_user: current_user,
+          reviewed_at: Time.current
+        )
+        import.close_if_done!
+      end
+
+      render json: @result.reload.short_hash
+    rescue ActiveRecord::RecordInvalid => e
+      render json: { error: e.message }, status: :unprocessable_entity
     end
 
     # POST /api/v2/admin/referee_course_results/:id/reject
@@ -152,7 +197,7 @@ module Admin
     # geladene Maske, direkte API-Aufrufe und Statusaenderungen an der Datenbank
     # (auf Produktion vorgekommen). Der Guard ist also bewusst defensiv.
     def not_submitted_response
-      render json: { error: 'Der Import ist nicht eingereicht. Die Liste wird neu geladen.' },
+      render json: { error: 'Diese Zeile ist nicht eingereicht. Die Liste wird neu geladen.' },
              status: :unprocessable_entity
     end
 
@@ -174,8 +219,20 @@ module Admin
       Club.responsible_state_association_ids(go_ids)
     end
 
+    # Zwei Bedingungen, nicht eine: Ein teilweise eingereichter Import ist
+    # weiter bearbeitbar (seine zurückgestellten Zeilen sollen ja geklärt und
+    # nachgereicht werden), seine bereits eingereichten Zeilen sind es nicht.
     def importer_can_edit?(result)
-      return false unless result.referee_course_import.status == 'in_review'
+      return false unless result.referee_course_import.editable?
+      return false if result.submitted?
+      # Der Zeilenstatus zusaetzlich zum Stempel: Eine verworfene Zeile
+      # (`rejected`, nie eingereicht) traegt kein `submitted_at` und waere sonst
+      # weiter bearbeitbar -- ihr Verwerfen-Vermerk (Grund, Benutzer, Zeitpunkt)
+      # liesse sich ueberschreiben. Und eine `applied`-Zeile ohne Stempel, wie
+      # sie nur ueber eine Datenbank-Aenderung entsteht, koennte ueber `discard`
+      # auf `rejected` gesetzt werden, ohne dass die geschriebene Lizenz
+      # zurueckgenommen wird.
+      return false unless result.status == 'pending_review'
 
       ph = current_user.permission_hash
       ph[:admin].present? || (ph[:rsk].present? && ph[:rsk].include?(0))
@@ -191,7 +248,8 @@ module Admin
     end
 
     def update_params
-      params.permit(:lizenzstufe, :gueltigkeit, :referee_id, master_by_importer: {}).to_h.symbolize_keys
+      params.permit(:lizenzstufe, :gueltigkeit, :referee_id, :deferred, master_by_importer: {})
+            .to_h.symbolize_keys
     end
 
     def apply_importer_master_fields(result, fields)

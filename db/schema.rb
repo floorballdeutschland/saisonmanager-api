@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_09_04_110000) do
+ActiveRecord::Schema[7.2].define(version: 2026_09_08_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -749,12 +749,15 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_04_110000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.boolean "license_notification_pending", default: false, null: false
+    t.boolean "deferred", default: false, null: false
+    t.datetime "submitted_at"
     t.index ["referee_course_import_id"], name: "index_referee_course_results_on_referee_course_import_id"
     t.index ["referee_id"], name: "index_referee_course_results_on_referee_id"
     t.index ["reviewed_by_user_id"], name: "index_referee_course_results_on_reviewed_by_user_id"
     t.index ["state_association_id", "status"], name: "index_referee_course_results_on_state_association_id_and_status"
     t.index ["state_association_id"], name: "index_referee_course_results_on_state_association_id"
     t.index ["status"], name: "index_referee_course_results_on_status"
+    t.index ["submitted_at"], name: "index_referee_course_results_on_submitted_at"
   end
 
   create_table "referee_feedback_invitations", force: :cascade do |t|
