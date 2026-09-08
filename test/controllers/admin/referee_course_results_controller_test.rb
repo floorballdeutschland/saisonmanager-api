@@ -10,9 +10,13 @@ module Admin
         uploaded_by_user: @admin, filename: 't.csv', total_rows: 1, status: 'submitted'
       )
       # Kursjahr 2025: Ablaufjahr hängt an der Dauer der zugeordneten Stufe.
+      # `submitted_at` gehoert zur Lage „eingereicht, wartet auf den LV": Danach
+      # filtert `awaiting_lv_review`, nicht mehr nach dem Import-Status. Eine
+      # Zeile ohne den Stempel ist eine, die der Submit nie angefasst hat.
       @result = RefereeCourseResult.create!(
         referee_course_import: @import,
         status: 'pending_review',
+        submitted_at: Time.current,
         match_type: 'new_entry',
         match_field_count: 0,
         csv_vorname: 'V', csv_nachname: 'N',
@@ -79,6 +83,7 @@ module Admin
         referee_course_import: @import,
         referee: referee,
         status: 'pending_review',
+        submitted_at: Time.current,
         match_type: 'exact_match',
         match_field_count: 6,
         csv_vorname: referee.vorname, csv_nachname: referee.nachname,
@@ -405,6 +410,9 @@ module Admin
         referee_course_import: import,
         referee: referee,
         status: 'pending_review',
+        # Automatisch aus der Lage des Imports: Eine Zeile im eingereichten
+        # Import ist eingereicht, eine im Entwurf nicht.
+        submitted_at: (Time.current if import.status == 'submitted'),
         match_type: 'partial_match',
         match_field_count: 4,
         csv_vorname: referee.vorname, csv_nachname: referee.nachname,

@@ -1,6 +1,6 @@
 module Admin
   class RefereeCourseResultsController < ApplicationController
-    before_action :set_result, only: %i[update approve reject]
+    before_action :set_result, only: %i[update discard approve reject]
 
     # GET /api/v2/admin/referee_course_results
     # Liste aller offenen Ergebnisse, gefiltert nach Rolle:
@@ -30,12 +30,15 @@ module Admin
 
     # PATCH /api/v2/admin/referee_course_results/:id
     # Der Importeur bearbeitet vor Submit die Master-Werte, die Lizenzstufe
-    # + Gültigkeit und/oder den Match-Pointer (falls der Auto-Match daneben
-    # liegt — z.B. bei Namensvettern). Nach Submit ist diese Route gesperrt.
+    # + Gültigkeit, den Match-Pointer (falls der Auto-Match daneben liegt —
+    # z.B. bei Namensvettern) und stellt die Zeile ggf. zurück. Sobald die
+    # Zeile eingereicht ist, ist diese Route für sie gesperrt.
     def update
       return forbidden_response unless importer_can_edit?(@result)
 
       attrs = update_params
+
+      @result.deferred = ActiveModel::Type::Boolean.new.cast(attrs[:deferred]) if attrs.key?(:deferred)
 
       if attrs.key?(:referee_id)
         new_id = attrs[:referee_id].presence
@@ -62,6 +65,31 @@ module Admin
 
       @result.save!
       render json: @result.short_hash
+    end
+
+    # POST /api/v2/admin/referee_course_results/:id/discard
+    # Der Importeur verwirft eine noch nicht eingereichte Zeile — die
+    # Doppelmeldung, der zurückgezogene Kursteilnehmer. Ohne diesen Weg bliebe
+    # eine zurückgestellte Zeile, die nie kommt, für immer offen und hielte
+    # ihren Import auf `partially_submitted`.
+    #
+    # Angewendet wurde hier noch nichts (weder Lizenz noch Neuanlage), es gibt
+    # also nichts zurückzunehmen — anders als beim `reject` des Landesverbands.
+    def discard
+      return forbidden_response unless importer_can_edit?(@result)
+
+      @result.update!(
+        status: 'rejected',
+        deferred: false,
+        rejection_reason: params[:reason].to_s.strip.presence || 'Vom Importeur verworfen',
+        reviewed_by_user: current_user,
+        reviewed_at: Time.current
+      )
+      close_import_if_done(@result.referee_course_import)
+
+      render json: @result.reload.short_hash
+    rescue ActiveRecord::RecordInvalid => e
+      render json: { error: e.message }, status: :unprocessable_entity
     end
 
     # POST /api/v2/admin/referee_course_results/:id/reject
@@ -174,11 +202,24 @@ module Admin
       Club.responsible_state_association_ids(go_ids)
     end
 
+    # Zwei Bedingungen, nicht eine: Ein teilweise eingereichter Import ist
+    # weiter bearbeitbar (seine zurückgestellten Zeilen sollen ja geklärt und
+    # nachgereicht werden), seine bereits eingereichten Zeilen sind es nicht.
     def importer_can_edit?(result)
-      return false unless result.referee_course_import.status == 'in_review'
+      return false unless result.referee_course_import.editable?
+      return false if result.submitted?
 
       ph = current_user.permission_hash
       ph[:admin].present? || (ph[:rsk].present? && ph[:rsk].include?(0))
+    end
+
+    # Ein teilweise eingereichter Import ist fertig, sobald keine offene Zeile
+    # mehr auf den Importeur wartet.
+    def close_import_if_done(import)
+      return unless import.status == 'partially_submitted'
+      return if import.referee_course_results.open_for_importer.exists?
+
+      import.update!(status: 'submitted')
     end
 
     def reviewer_can_approve?(result)
@@ -191,7 +232,8 @@ module Admin
     end
 
     def update_params
-      params.permit(:lizenzstufe, :gueltigkeit, :referee_id, master_by_importer: {}).to_h.symbolize_keys
+      params.permit(:lizenzstufe, :gueltigkeit, :referee_id, :deferred, master_by_importer: {})
+            .to_h.symbolize_keys
     end
 
     def apply_importer_master_fields(result, fields)
