@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.110.0] - 2026-09-08
+
 ### Neu
 
 - **Alle Livestream-Thumbnails eines Spieltags auf einmal**: Die Übertragungen der Bundesligen werden zentral auf YouTube eingerichtet, das Vorschaubild gab es aber nur einzeln – je Partie die Spielansicht öffnen, warten, herunterladen. Im Spielplan der Verwaltung steht jetzt an jedem Spieltag der Knopf „Thumbnails". Er zeichnet für jedes Spiel des Spieltags das Livestream-Bild und legt alle zusammen als ZIP ab – in einem Ordner und in der Reihenfolge des Spieltags benannt, damit die Sortierung der Reihenfolge folgt, in der die Streams angelegt werden. Gezeichnet wird derselbe Bildaufbau wie einzeln und mit demselben Code, damit die beiden Wege nicht auseinanderlaufen können. Nur die Fassung „Livestream": Das Highlight-Bild trägt den Endstand und ist erst nach dem Spiel sinnvoll, der Stapel wird vorher gebraucht. Ein Spiel, dessen Mannschaften noch nicht feststehen – die K.-o.-Runde vor der Auslosung –, bekommt ein Bild mit Platzhalter statt keines, denn der Stream wird ja vorher eingerichtet. Und was den Bildern fehlt, wird benannt: Beim einzelnen Bild steht der Hinweis neben der Vorschau, die man ohnehin ansieht, im Stapel sieht niemand sechs Bilder durch. Eine Meldung fasst deshalb zusammen, welche Paarung ohne Vereinswappen auskommen musste und welches Spiel sich gar nicht zeichnen ließ; ein Fehlschlag bei einem Spiel bricht den Stapel nicht ab.
