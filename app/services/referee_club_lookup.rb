@@ -76,11 +76,23 @@ class RefereeClubLookup
     value.to_s.downcase
          .gsub('ß', 'ss')
          .gsub(/e\.\s*v\.?/, ' ')
-         .gsub(/\be\s*v\b/, ' ')
+         # Nur als nachgestellte Rechtsform, nicht am Wortanfang: `\be\s*v\b`
+         # strich auch das Praefix eines „EV Landsberg" weg -- normalisiert
+         # „landsberg", was mit einem ganz anderen Verein zusammenfallen kann,
+         # ohne dass der Mehrdeutigkeits-Riegel es sieht (die Namen sind ja
+         # verschieden). Die Punkt-Schreibweise deckt die Zeile darueber ab.
+         .gsub(/(?<=[a-zäöü0-9])\s+e\s*v\b/, ' ')
          .delete('.')
          .gsub(/[^a-zäöü0-9]+/, ' ')
          .squeeze(' ')
          .strip
+  end
+
+  # Der Verein zu einer ID aus dem schon geladenen Bestand. Ersetzt ein
+  # `Club.find_by(id:)` je Zeile in den Aufrufern, die den Lookup ohnehin
+  # halten.
+  def club_by_id(id)
+    id && @clubs_by_id[id]
   end
 
   # Der Verein zu einem Namen, oder nichts. Fuer Aufrufer, die den Datensatz

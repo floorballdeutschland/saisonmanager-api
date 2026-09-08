@@ -247,8 +247,14 @@ module Admin
     # Im `update`-Pfad sind beide Seiten gleich, dort spiegelt
     # `sync_final_with_importer` unmittelbar davor.
     def sync_state_association(result)
-      club = Club.find_by(id: result.master_club_id_final)
-      result.state_association_id = club&.state_association_id
+      club = club_lookup.club_by_id(result.master_club_id_final)
+      # Rueckfall auf den Landesverband des Schiedsrichter-Vereins, wenn der
+      # Zielverein keinen traegt: `for_state_associations` filtert NULL heraus,
+      # die Zeile waere fuer den zustaendigen RSK unsichtbar und gleichzeitig
+      # reviewpflichtig. Gleiche Regel wie im Import
+      # (RefereeCourseImportService#state_association_for).
+      result.state_association_id =
+        club&.state_association_id.presence || result.referee&.club&.state_association_id
     end
 
     def recompute_match_field_count(result)
@@ -268,7 +274,7 @@ module Admin
       # beim Import oder beim Edit berechnet wurde.
       RefereeCourseResult.count_csv_to_referee_matches(
         csv_attrs, result.referee,
-        club_lookup: ->(name) { club_lookup.club(name) }
+        club_lookup: ->(name) { club_lookup.call(name) }
       )
     end
 
@@ -339,7 +345,14 @@ module Admin
       # Import-Service). Wer damit die Abweichung berechnet, bekommt fuer den
       # haeufigsten Teilmatch ueberhaupt (ausgeschriebener Vereinsname in der
       # Datei gegen die Kurzform in der Datenbank) faelschlich Gleichheit.
-      base[:csv_club_match] = csv_club_snapshot(csv_clubs[result.csv_verein.presence&.strip&.downcase])
+      csv_match = csv_clubs[result.csv_verein.presence&.strip&.downcase]
+      base[:csv_club_match] = csv_club_snapshot(csv_match)
+      # Auch ohne Verein aussagekraeftig: „mehrdeutig -- zwei Vereine
+      # kollidieren, hier braucht es einen Alias" sah in der Maske genauso aus
+      # wie „unbekannt" und wie „Karriere beendet". Die Alias-Liste ist der
+      # vorgesehene Pflegeweg, und die Maske muss sagen koennen, wann sie
+      # gebraucht wird.
+      base[:csv_club_match_type] = csv_match&.last
       base[:state_association] = if result.state_association
                                    { id: result.state_association.id,
                                      name: result.state_association.name }

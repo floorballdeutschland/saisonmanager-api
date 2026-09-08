@@ -123,6 +123,77 @@ module Admin
       assert_equal 'exact_match', result.match_type
     end
 
+    # Ohne die Herkunft ohne Treffer sah „mehrdeutig -- zwei Vereine kollidieren,
+    # hier braucht es einen Alias auf eine ID" in der Maske genauso aus wie
+    # „unbekannter Name" und wie „Karriere beendet". Die Alias-Liste ist der
+    # vorgesehene Pflegeweg, und nur diese Angabe sagt, wann sie gebraucht wird.
+    test 'die Importeurs-Maske meldet eine mehrdeutige Schreibweise als solche' do
+      Club.create!(name: 'SV Test e.V.')
+      Club.create!(name: 'SV Test')
+      import, = import_with_row(status: 'in_review', csv_verein: 'S.V. Test e.V.')
+      login(@admin)
+
+      get "/api/v2/admin/referee_course_imports/#{import.id}"
+
+      assert_response :success
+      row = response.parsed_body['results'].first
+      assert_nil row['csv_club_match']
+      assert_equal 'ambiguous', row['csv_club_match_type']
+    end
+
+    test 'die Freigabe-Maske meldet einen unbekannten Namen als solchen' do
+      import_with_row(status: 'submitted', csv_verein: 'Gibt es nicht e.V.')
+      login(@admin)
+
+      get '/api/v2/admin/referee_course_results'
+
+      assert_response :success
+      row = response.parsed_body.first
+      assert_nil row['csv_club_match']
+      assert_equal 'none', row['csv_club_match_type']
+    end
+
+    # Die Alias-Liste hat die hoechste Prioritaet und ist die einzige Stufe, die
+    # per Konfiguration auf einen beliebigen Verein zeigen kann -- der Pfad mit
+    # dem groessten Schadenspotenzial. Die ausgelieferte Datei bleibt
+    # unangetastet, gestellt wird nur ihr Inhalt.
+    test 'ein Alias-Treffer wird als solcher gemeldet' do
+      import, = import_with_row(status: 'in_review', csv_verein: 'Floorball Grizzlys Zwigge')
+      login(@admin)
+
+      RefereeClubLookup.stub(:load_aliases, { 'Floorball Grizzlys Zwigge' => @club.id }) do
+        get "/api/v2/admin/referee_course_imports/#{import.id}"
+      end
+
+      assert_response :success
+      match = response.parsed_body['results'].first['csv_club_match']
+      assert_equal @club.id, match['id']
+      assert_equal 'alias', match['match_type']
+    end
+
+    # Import und Bearbeiten rechnen denselben Score -- hier in einem Zug statt
+    # in zwei getrennten Tests auf handgesetzten Fixtures: Der Import laeuft
+    # ueber den Service, danach speichert der Controller die Zeile.
+    test 'der Score bleibt vom Import bis zum Bearbeiten derselbe' do
+      RefereeLicenseLevel.create!(name: 'G', validity_years: 1)
+      csv = "Lizenznummer;Name;Vorname;Geburtsdatum;Verein;E-Mail Adresse;Kurs 1;Kurs 1;" \
+            "Kurs 1 Testversion;Kurs 1;Kurs 2;Kurs 2;Kurs 2 Testversion;Kurs 2;Ausbilder\n" \
+            "#{@referee.lizenznummer};Morgenroth;Paul;18.07.2000;Unihockeyverein Zwigge 07 e.V.;" \
+            "paul@example.org;G;01.08.2025;G;10;;;;;A\n"
+      import = RefereeCourseImportService.new(
+        csv_content: csv, filename: 'kurs.csv', uploaded_by_user: @admin
+      ).call
+      result = import.referee_course_results.first
+      assert_equal 6, result.match_field_count
+      login(@admin)
+
+      patch "/api/v2/admin/referee_course_results/#{result.id}", params: { lizenzstufe: 'G' }
+
+      assert_response :success
+      assert_equal 6, result.reload.match_field_count
+      assert_equal 'exact_match', result.match_type
+    end
+
     test 'eine mehrdeutige Schreibweise bleibt beim Bearbeiten ein Nicht-Treffer' do
       Club.create!(name: 'SV Test e.V.')
       Club.create!(name: 'SV Test')

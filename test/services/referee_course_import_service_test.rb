@@ -179,6 +179,43 @@ class RefereeCourseImportServiceTest < ActiveSupport::TestCase
     assert_nil import.referee_course_results.first.master_club_id_by_importer
   end
 
+  # Ein Platzhalter statt eines Vereinsnamens ist keine Abweichung, sondern
+  # keine Aussage -- wie eine leere Zelle. Vorher kostete „-" einen
+  # Match-Punkt: dieselbe Zeile mit leerer Zelle erreichte 6/6 und lief durch,
+  # mit „-" landete sie als Teilmatch beim Landesverband.
+  test 'ein Platzhalter im Vereinsfeld kostet keinen Match-Punkt' do
+    club = Club.create!(name: 'UV Zwigge 07')
+    Referee.create!(
+      lizenznummer: 520, vorname: 'Sönke', nachname: 'Grimpen',
+      geburtsdatum: Date.new(1970, 4, 17), email: 'sg@example.de', club_id: club.id
+    )
+
+    import = call(['520;Grimpen;Sönke;17.04.1970;-;sg@example.de;F;03.08.2025;F-25-2;46;;;;;A'])
+    result = import.referee_course_results.first
+
+    assert_equal 6, result.match_field_count
+    assert_equal 'exact_match', result.match_type
+  end
+
+  # Der aufgeloeste Verein bestimmt die Zustaendigkeit. Traegt er keinen
+  # Landesverband, wuerde die Zeile fuer jeden RSK unsichtbar
+  # (`for_state_associations` filtert NULL) und gleichzeitig reviewpflichtig.
+  test 'ein Verein ohne Landesverband faellt auf den Verband des Schiedsrichter-Vereins zurueck' do
+    sa = create(:state_association)
+    heimat = Club.create!(name: 'TV Heimat', state_association_id: sa.id)
+    ohne_lv = Club.create!(name: 'UV Ohne Verband', state_association_id: nil)
+    Referee.create!(
+      lizenznummer: 521, vorname: 'Ada', nachname: 'Ohnelv',
+      geburtsdatum: Date.new(1980, 1, 1), club_id: heimat.id
+    )
+
+    import = call(['521;Ohnelv;Ada;01.01.1980;UV Ohne Verband;;G;01.08.2025;G;10;;;;;A'])
+    result = import.referee_course_results.first
+
+    assert_equal ohne_lv.id, result.master_club_id_by_importer
+    assert_equal sa.id, result.state_association_id
+  end
+
   # Der Vereinstreffer zählt im Match-Score mit. Vorher blieb eine Zeile mit
   # ausgeschriebenem Vereinsnamen auf 5/6 stehen — als Teilmatch ging sie zur
   # Freigabe an den Landesverband, obwohl nichts abwich.

@@ -47,6 +47,11 @@ class RefereeCourseImportService
   # dazu: Eine leere Zelle oder ein „Karriere beendet" ist kein offener Fall.
   UNMATCHED_CLUB_TYPES = %i[none ambiguous alias_target_missing].freeze
 
+  # Deckel fuer die namentliche Liste im Log. Eine Datei mit hundert
+  # unbekannten Schreibweisen soll eine Arbeitsliste hinterlassen, keine
+  # Logzeile ohne Ende.
+  UNMATCHED_LOG_LIMIT = 50
+
   # Plausibilitätsgrenzen für Datumsangaben. Date.strptime nimmt mit %Y auch
   # zweistellige Jahre an ("03.08.25" → Jahr 25), was aus einem als TT.MM.JJ
   # formatierten Excel-Blatt kommt und sonst unbemerkt eine Lizenz mit
@@ -80,6 +85,8 @@ class RefereeCourseImportService
         total_rows: rows.size
       )
 
+      @club_match_tally = Hash.new(0)
+      @unmatched_club_names = []
       rows.each do |row|
         create_result(import, row, columns)
       end
@@ -350,7 +357,7 @@ class RefereeCourseImportService
     }
 
     state_association_id =
-      Club.find_by(id: importer_attrs[:master_club_id_by_importer])&.state_association_id
+      state_association_for(importer_attrs[:master_club_id_by_importer], referee)
 
     RefereeCourseResult.create!(
       referee_course_import: import,
@@ -453,7 +460,7 @@ class RefereeCourseImportService
 
   def count_matches(csv_attrs, referee)
     RefereeCourseResult.count_csv_to_referee_matches(
-      csv_attrs, referee, club_lookup: ->(name) { club_lookup.club(name) }
+      csv_attrs, referee, club_lookup: ->(name) { club_lookup.call(name) }
     )
   end
 
@@ -475,17 +482,35 @@ class RefereeCourseImportService
     @club_lookup ||= RefereeClubLookup.new
   end
 
+  # Zustaendiger Landesverband der Zeile. Der aufgeloeste Verein bestimmt ihn;
+  # traegt der keinen (Bestand gibt es), faellt die Zeile auf den
+  # Landesverband des Schiedsrichter-Vereins zurueck.
+  #
+  # Ohne den Rueckfall waere die Zeile schlechter geroutet als vor dem
+  # Vereins-Lookup: `for_state_associations` filtert NULL heraus, der RSK des
+  # zustaendigen Landesverbands sieht die Zeile also nie -- waehrend
+  # RefereeCourseSubmitPolicy bei fehlendem LV gleichzeitig Review erzwingt.
+  # Reviewpflichtig und fuer den Zustaendigen unsichtbar.
+  def state_association_for(club_id, referee)
+    club = club_lookup.club_by_id(club_id)
+    return club.state_association_id if club&.state_association_id.present?
+
+    referee&.club&.state_association_id
+  end
+
   # Herkunft der Treffer je Import mitschreiben. Ohne diese Zeile ist spaeter
   # nicht zu klaeren, ob ein Verein exakt, ueber den Langnamen oder gar nicht
   # zugeordnet wurde -- und welche Schreibweisen in die Alias-Liste gehoeren.
   def tally_club_match(name, match_type)
     return if name.blank?
 
-    @club_match_tally ||= Hash.new(0)
     @club_match_tally[match_type] += 1
+    return unless UNMATCHED_CLUB_TYPES.include?(match_type)
 
-    @unmatched_club_names ||= []
-    @unmatched_club_names << name if UNMATCHED_CLUB_TYPES.include?(match_type)
+    # Zeilenumbrueche zusammenziehen: Eine gequotete CSV-Zelle darf sie
+    # enthalten (der Header-Parser rechnet damit), und im Log zerreissen sie
+    # die Zeile.
+    @unmatched_club_names << name.gsub(/\s+/, ' ')
   end
 
   def log_club_matches(import)
@@ -493,10 +518,21 @@ class RefereeCourseImportService
 
     tally = @club_match_tally.map { |type, count| "#{type}=#{count}" }.join(' ')
     Rails.logger.info("Kursimport #{import.id}: Vereinsabgleich #{tally}")
+    # Die Alias-Ziele sind Produktions-IDs. Auf einem anderen Stand zeigt ein
+    # Alias entweder ins Leere (`alias_target_missing`) oder -- schlimmer --
+    # auf einen fremden Verein, und zwar mit dem staerksten Vertrauensgrad.
+    # Diese Zeile sagt, dass die Vereinsauflösung hier nicht belastbar ist.
+    if club_lookup.missing_alias_targets.any?
+      Rails.logger.warn("Kursimport #{import.id}: #{club_lookup.missing_alias_targets.size} von " \
+                        "#{club_lookup.alias_count} Alias-Zielen fehlen in dieser Datenbank")
+    end
     return if @unmatched_club_names.blank?
 
+    names = @unmatched_club_names.uniq
+    listed = names.first(UNMATCHED_LOG_LIMIT)
+    rest = names.size - listed.size
     Rails.logger.info("Kursimport #{import.id}: Vereinsname ohne Treffer: " \
-                      "#{@unmatched_club_names.uniq.join(' | ')}")
+                      "#{listed.join(' | ')}#{" | … und #{rest} weitere" if rest.positive?}")
   end
 
   def build_course_data(row, columns, warnings:)
