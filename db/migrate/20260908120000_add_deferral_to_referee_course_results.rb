@@ -32,6 +32,17 @@ class AddDeferralToRefereeCourseResults < ActiveRecord::Migration[7.2]
   end
 
   def down
+    # Zuerst der Status, den es ohne die Spalten nicht mehr gibt: Ein Import auf
+    # `partially_submitted` faellt sonst aus `STATUSES`, jedes `update!` darauf
+    # scheitert an der Validierung, und die alte `awaiting_lv_review` (Filter
+    # ueber den Import-Status) nimmt seine schon eingereichten Zeilen aus der
+    # Freigabe-Warteschlange. `in_review` und nicht `submitted`, sonst geraeten
+    # die zurueckgestellten Zeilen in die Freigabe.
+    execute <<~SQL.squish
+      UPDATE referee_course_imports SET status = 'in_review'
+      WHERE status = 'partially_submitted'
+    SQL
+
     remove_index :referee_course_results, :submitted_at
     remove_column :referee_course_results, :submitted_at
     remove_column :referee_course_results, :deferred

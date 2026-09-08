@@ -23,6 +23,18 @@ class RefereeCourseImport < ApplicationRecord
     EDITABLE_STATUSES.include?(status)
   end
 
+  # Ein teilweise eingereichter Import ist fertig, sobald keine offene Zeile
+  # mehr auf den Importeur wartet -- die letzte wurde nachgereicht oder
+  # verworfen. Am Modell und nicht im Controller, weil beide Wege dort
+  # vorbeikommen: das Verwerfen einer Zeile und der Submit, der nichts mehr zu
+  # tun findet (Selbstheilung, falls sich die beiden ueberholt haben).
+  def close_if_done!
+    return unless status == 'partially_submitted'
+    return if referee_course_results.open_for_importer.exists?
+
+    update!(status: 'submitted')
+  end
+
   def source_csv_url
     return nil unless source_csv.attached?
 
@@ -31,6 +43,10 @@ class RefereeCourseImport < ApplicationRecord
 
   def progress_counts
     counts = referee_course_results.group(:status).count
+    # Die offenen Zeilen in einer zweiten Abfrage nach zurueckgestellt/nicht
+    # aufteilen, statt beide Zahlen einzeln zu zaehlen: `index` rendert alle
+    # Importe ohne Paginierung, jede Extra-Abfrage zaehlt dort pro Import.
+    open_counts = referee_course_results.open_for_importer.group(:deferred).count
     {
       total: total_rows,
       pending_review: counts.fetch('pending_review', 0),
@@ -38,8 +54,8 @@ class RefereeCourseImport < ApplicationRecord
       rejected: counts.fetch('rejected', 0),
       # Getrennt von `pending_review`, das beide Lagen umfasst: die Zeile, die
       # beim Landesverband wartet, und die vom Importeur zurueckgestellte.
-      deferred: referee_course_results.deferred.count,
-      submittable: referee_course_results.submittable.count
+      deferred: open_counts.fetch(true, 0),
+      submittable: open_counts.fetch(false, 0)
     }
   end
 

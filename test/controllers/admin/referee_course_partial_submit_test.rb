@@ -49,6 +49,18 @@ module Admin
       )
     end
 
+    # Ein RSK mit regionalem Scope ist kein Importeur: Der Kursimport liegt beim
+    # RSK des Bundes (Scope 0) bzw. beim Admin.
+    def regional_rsk(go_id)
+      User.create!(
+        user_name: "rsk_#{SecureRandom.hex(4)}",
+        password: 'password123',
+        password_confirmation: 'password123',
+        permissions: [{ 'user_group_id' => 3, 'game_operation_id' => go_id }],
+        teams: []
+      )
+    end
+
     def login(user)
       post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
       assert_response :success
@@ -227,6 +239,87 @@ module Admin
       assert_response :forbidden
       assert_equal 'pending_review', eingereicht.reload.status
       assert_nil eingereicht.rejection_reason
+    end
+
+    test 'ein regionaler RSK darf keine Zeile verwerfen' do
+      zeile = row(deferred: true)
+      go = create(:game_operation)
+      login(regional_rsk(go.id))
+
+      post "/api/v2/admin/referee_course_results/#{zeile.id}/discard"
+
+      assert_response :forbidden
+      assert_equal 'pending_review', zeile.reload.status
+    end
+
+    # Der Verwerfen-Vermerk (Grund, Benutzer, Zeitpunkt) ist der Audit-Trail der
+    # Zeile und darf nicht ueberschreibbar sein.
+    test 'eine verworfene Zeile ist nicht weiter bearbeitbar' do
+      zeile = row(deferred: true)
+      login(@admin)
+      post "/api/v2/admin/referee_course_results/#{zeile.id}/discard"
+      assert_response :success
+      vermerk = zeile.reload.reviewed_at
+
+      post "/api/v2/admin/referee_course_results/#{zeile.id}/discard", params: { reason: 'Nochmal' }
+      assert_response :forbidden
+
+      patch "/api/v2/admin/referee_course_results/#{zeile.id}", params: { lizenzstufe: 'G' }
+      assert_response :forbidden
+
+      assert_equal 'Vom Importeur verworfen', zeile.reload.rejection_reason
+      assert_equal vermerk.to_i, zeile.reviewed_at.to_i
+    end
+
+    # Der Entwurf, dessen Zeilen alle verworfen sind: Es ist keine Zeile
+    # zurueckgestellt, es ist gar keine mehr offen. Die Meldung muss den
+    # Unterschied machen, sonst sucht der Importeur eine Zeile zum
+    # Wiederaufnehmen, die es nicht gibt -- der Weg ist Abbrechen.
+    test 'sind alle Zeilen verworfen, sagt der Submit das und nicht etwas anderes' do
+      zeile = row
+      login(@admin)
+      patch "/api/v2/admin/referee_course_results/#{zeile.id}", params: { deferred: true }
+      assert_response :success
+      post "/api/v2/admin/referee_course_results/#{zeile.id}/discard"
+      assert_response :success
+
+      post "/api/v2/admin/referee_course_imports/#{@import.id}/submit"
+
+      assert_response :unprocessable_entity
+      assert_match(/Keine offenen Zeilen mehr/, response.parsed_body['error'])
+      assert_equal 'in_review', @import.reload.status
+    end
+
+    # Selbstheilung: Ueberholen sich ein Verwerfen und ein Submit, kann ein
+    # Import auf `partially_submitted` mit null offenen Zeilen stehen bleiben --
+    # dann ist er weder einreichbar noch abbrechbar. Der Submit zieht den
+    # Abschluss nach, statt nur abzuweisen.
+    test 'ein teilweise eingereichter Import ohne offene Zeilen wird beim Submit abgeschlossen' do
+      row
+      login(@admin)
+      post "/api/v2/admin/referee_course_imports/#{@import.id}/submit"
+      assert_response :success
+      # Die Lage von Hand herstellen, wie sie das Rennen hinterlassen konnte.
+      @import.update!(status: 'partially_submitted')
+
+      post "/api/v2/admin/referee_course_imports/#{@import.id}/submit"
+
+      assert_response :unprocessable_entity
+      assert_equal 'submitted', @import.reload.status
+    end
+
+    test 'ein teilweise eingereichter Import laesst sich nicht abbrechen' do
+      row
+      row(deferred: true)
+      login(@admin)
+      post "/api/v2/admin/referee_course_imports/#{@import.id}/submit"
+      assert_response :success
+
+      delete "/api/v2/admin/referee_course_imports/#{@import.id}"
+
+      assert_response :unprocessable_entity
+      assert_match(/Teilweise eingereichte/, response.parsed_body['error'])
+      assert_equal 'partially_submitted', @import.reload.status
     end
 
     # Die Freigabe haengt an der Zeile, nicht am Import: Ein teilweise

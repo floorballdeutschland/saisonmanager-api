@@ -73,8 +73,16 @@ module Admin
 
     # DELETE /api/v2/admin/referee_course_imports/:id
     def destroy
-      return render(json: { error: 'Import bereits abgeschlossen' }, status: :unprocessable_entity) \
-        unless @import.status == 'in_review'
+      unless @import.status == 'in_review'
+        # Ein teilweise eingereichter Import ist NICHT abgeschlossen, aber auch
+        # nicht mehr abbrechbar: Ein Teil seiner Zeilen ist angewendet.
+        message = if @import.status == 'partially_submitted'
+                    'Teilweise eingereichte Importe können nicht abgebrochen werden'
+                  else
+                    'Import bereits abgeschlossen'
+                  end
+        return render(json: { error: message }, status: :unprocessable_entity)
+      end
 
       @import.update!(status: 'cancelled')
       head :no_content
@@ -96,8 +104,7 @@ module Admin
         unless @import.editable?
 
       if @import.referee_course_results.submittable.none?
-        return render(json: { error: 'Keine einreichbaren Zeilen: alle offenen Zeilen sind zurückgestellt' },
-                      status: :unprocessable_entity)
+        return render(json: { error: nothing_to_submit_error }, status: :unprocessable_entity)
       end
 
       validation_error = preflight_validation_error(@import.referee_course_results.submittable)
@@ -125,7 +132,8 @@ module Admin
             applier.call(review_required: review_required)
             # Nach dem Applier gesetzt und nicht vorher: Sein `save!` gehoert
             # ihm, dieses Merkmal dem Submit. Ab jetzt ist die Zeile aus der
-            # Hand des Importeurs und in der Warteschlange des LV.
+            # Hand des Importeurs -- entweder angewendet oder in der
+            # Warteschlange des Landesverbands.
             result.update!(submitted_at: Time.current)
             appliers << applier
           rescue RefereeCourseResultApplier::Error => e
@@ -137,6 +145,9 @@ module Admin
         @import.update!(
           status: @import.referee_course_results.open_for_importer.none? ? 'submitted' : 'partially_submitted'
         )
+        # Das Verwerfen der letzten offenen Zeile sperrt den Import mit, damit
+        # sich die beiden Wege nicht ueberholen -- siehe
+        # RefereeCourseResultsController#discard.
       end
 
       if already_submitted
@@ -172,6 +183,20 @@ module Admin
     end
 
     private
+
+    # Zwei Lagen, die denselben leeren `submittable`-Scope erzeugen und dem
+    # Importeur Verschiedenes sagen muessen. „Nichts mehr offen" heisst zudem:
+    # Ein teilweise eingereichter Import ist fertig -- das zieht
+    # `close_if_done!` hier nach, falls sich ein Verwerfen und ein Submit
+    # ueberholt haben.
+    def nothing_to_submit_error
+      if @import.referee_course_results.open_for_importer.exists?
+        'Keine einreichbaren Zeilen: alle offenen Zeilen sind zurückgestellt'
+      else
+        @import.close_if_done!
+        'Keine offenen Zeilen mehr: alle Zeilen sind eingereicht oder verworfen'
+      end
+    end
 
     # Prueft nur die uebergebenen Zeilen: Eine zurueckgestellte Zeile ohne
     # Lizenzstufe darf die uebrigen nicht blockieren -- genau daran scheiterte

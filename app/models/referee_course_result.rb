@@ -96,9 +96,11 @@ class RefereeCourseResult < ApplicationRecord
     submitted_at.present? && referee_course_import.status != 'cancelled'
   end
 
-  # Noch in der Hand des Importeurs: nicht eingereicht, also auch nicht
-  # angewendet. Nur solche Zeilen darf er bearbeiten, zurueckstellen und
-  # verwerfen.
+  # Eingereicht: Der Submit hat die Zeile angefasst -- sie ist angewendet oder
+  # wartet auf die Freigabe des Landesverbands. Die Gegenrichtung („noch in der
+  # Hand des Importeurs") ist die Bedingung fuers Bearbeiten, Zurueckstellen
+  # und Verwerfen; sie verlangt zusaetzlich den Zeilenstatus, siehe
+  # RefereeCourseResultsController#importer_can_edit?.
   def submitted?
     submitted_at.present?
   end

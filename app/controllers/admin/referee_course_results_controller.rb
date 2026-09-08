@@ -6,12 +6,14 @@ module Admin
     # Liste aller offenen Ergebnisse, gefiltert nach Rolle:
     #   - Admin / RSK FD (Scope 0): alle Zeilen auf `pending_review`
     #   - RSK eines LV: davon die seiner Landesverbände
-    # „Offen" heißt hier zweierlei: Die Zeile steht auf `pending_review` UND ihr
-    # Import ist eingereicht.
+    # „Offen" heißt hier zweierlei: Die Zeile steht auf `pending_review` UND sie
+    # ist eingereicht (`submitted_at`).
     #
-    # `awaiting_lv_review` ist hier nicht optional: Ohne den Import-Status
+    # `awaiting_lv_review` ist hier nicht optional: Ohne den Einreichungs-Stempel
     # standen auch die Vorschauzeilen eines noch nicht eingereichten und die
-    # eines abgebrochenen Imports mit einem „Freigeben"-Knopf in dieser Liste.
+    # eines abgebrochenen Imports mit einem „Freigeben"-Knopf in dieser Liste --
+    # und seit dem zeilenweisen Einreichen zusaetzlich die zurueckgestellten
+    # Zeilen eines teilweise eingereichten Imports.
     def index
       ph = current_user.permission_hash
       scope = RefereeCourseResult.pending_review
@@ -38,7 +40,12 @@ module Admin
 
       attrs = update_params
 
-      @result.deferred = ActiveModel::Type::Boolean.new.cast(attrs[:deferred]) if attrs.key?(:deferred)
+      # `|| false`, weil die Spalte NOT NULL ist: `cast('')` und `cast(nil)`
+      # ergeben `nil`, und das schluege als NotNullViolation im 500er auf
+      # (kein RecordInvalid, also auch kein 422).
+      if attrs.key?(:deferred)
+        @result.deferred = ActiveModel::Type::Boolean.new.cast(attrs[:deferred]) || false
+      end
 
       if attrs.key?(:referee_id)
         new_id = attrs[:referee_id].presence
@@ -78,14 +85,24 @@ module Admin
     def discard
       return forbidden_response unless importer_can_edit?(@result)
 
-      @result.update!(
-        status: 'rejected',
-        deferred: false,
-        rejection_reason: params[:reason].to_s.strip.presence || 'Vom Importeur verworfen',
-        reviewed_by_user: current_user,
-        reviewed_at: Time.current
-      )
-      close_import_if_done(@result.referee_course_import)
+      # Den Import mitsperren: Sonst kann sich das Verwerfen mit einem
+      # laufenden Submit ueberholen. Der Submit haelt den Import gesperrt und
+      # zaehlt am Ende die offenen Zeilen; committet das Verwerfen erst danach,
+      # sieht er diese Zeile noch als offen und setzt `partially_submitted`,
+      # waehrend `close_if_done!` hier noch `in_review` gelesen hat und nichts
+      # tut. Der Import haengt dann mit null offenen Zeilen fest -- nicht
+      # einreichbar, nicht abbrechbar.
+      import = @result.referee_course_import
+      import.with_lock do
+        @result.update!(
+          status: 'rejected',
+          deferred: false,
+          rejection_reason: params[:reason].to_s.strip.presence || 'Vom Importeur verworfen',
+          reviewed_by_user: current_user,
+          reviewed_at: Time.current
+        )
+        import.close_if_done!
+      end
 
       render json: @result.reload.short_hash
     rescue ActiveRecord::RecordInvalid => e
@@ -180,7 +197,7 @@ module Admin
     # geladene Maske, direkte API-Aufrufe und Statusaenderungen an der Datenbank
     # (auf Produktion vorgekommen). Der Guard ist also bewusst defensiv.
     def not_submitted_response
-      render json: { error: 'Der Import ist nicht eingereicht. Die Liste wird neu geladen.' },
+      render json: { error: 'Diese Zeile ist nicht eingereicht. Die Liste wird neu geladen.' },
              status: :unprocessable_entity
     end
 
@@ -208,18 +225,17 @@ module Admin
     def importer_can_edit?(result)
       return false unless result.referee_course_import.editable?
       return false if result.submitted?
+      # Der Zeilenstatus zusaetzlich zum Stempel: Eine verworfene Zeile
+      # (`rejected`, nie eingereicht) traegt kein `submitted_at` und waere sonst
+      # weiter bearbeitbar -- ihr Verwerfen-Vermerk (Grund, Benutzer, Zeitpunkt)
+      # liesse sich ueberschreiben. Und eine `applied`-Zeile ohne Stempel, wie
+      # sie nur ueber eine Datenbank-Aenderung entsteht, koennte ueber `discard`
+      # auf `rejected` gesetzt werden, ohne dass die geschriebene Lizenz
+      # zurueckgenommen wird.
+      return false unless result.status == 'pending_review'
 
       ph = current_user.permission_hash
       ph[:admin].present? || (ph[:rsk].present? && ph[:rsk].include?(0))
-    end
-
-    # Ein teilweise eingereichter Import ist fertig, sobald keine offene Zeile
-    # mehr auf den Importeur wartet.
-    def close_import_if_done(import)
-      return unless import.status == 'partially_submitted'
-      return if import.referee_course_results.open_for_importer.exists?
-
-      import.update!(status: 'submitted')
     end
 
     def reviewer_can_approve?(result)
