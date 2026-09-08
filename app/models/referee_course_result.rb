@@ -19,12 +19,35 @@ class RefereeCourseResult < ApplicationRecord
   scope :rejected,               -> { where(status: 'rejected') }
   scope :for_state_associations, ->(ids) { where(state_association_id: ids) }
 
-  # Nur Zeilen aus eingereichten Importen warten wirklich auf die LV-Freigabe.
-  # Der Import-Service legt JEDE Zeile sofort beim Upload mit `pending_review`
-  # an, waehrend der Import selbst auf `in_review` steht -- `pending_review`
-  # allein trennt die Importeurs-Vorschau also nicht von der Freigabe-Warteschlange.
+  # Die drei Lagen einer noch nicht eingereichten Zeile. `status` und
+  # `submitted_at` muessen in allen dreien stehen: `pending_review` allein
+  # traegt auch die beim LV wartenden Zeilen, und ohne den Statusfilter wuerde
+  # ein zweiter Submit eine vom Importeur verworfene Zeile doch noch anwenden.
+  #
+  # Vom Importeur zurueckgestellt: wartet auf eine Klaerung ausserhalb des
+  # Systems und wird beim Einreichen uebersprungen.
+  scope :deferred,          -> { where(deferred: true, submitted_at: nil, status: 'pending_review') }
+  # Die Zeilen, die ein Submit dieses Imports anwenden wuerde.
+  scope :submittable,       -> { where(deferred: false, submitted_at: nil, status: 'pending_review') }
+  # Alles, was der Importeur noch in der Hand hat -- einreichbar oder
+  # zurueckgestellt. Daran haengt, ob ein Import abgeschlossen ist.
+  scope :open_for_importer, -> { where(submitted_at: nil, status: 'pending_review') }
+
+  # Nur eingereichte Zeilen warten wirklich auf die LV-Freigabe. Der
+  # Import-Service legt JEDE Zeile sofort beim Upload mit `pending_review` an --
+  # der Zeilenstatus allein trennt die Importeurs-Vorschau also nicht von der
+  # Freigabe-Warteschlange.
+  #
+  # Das Merkmal ist `submitted_at` und nicht der Import-Status: Seit dem
+  # zeilenweisen Einreichen enthaelt ein Import auf `partially_submitted` beides
+  # -- wartende und noch gar nicht eingereichte (zurueckgestellte) Zeilen.
+  # Abgebrochene Importe bleiben ausgeschlossen; deren Zeilen tragen zwar kein
+  # `submitted_at`, aber der Riegel ist bewusst doppelt (auf Produktion sind
+  # Statusaenderungen an der Datenbank vorgekommen).
   scope :awaiting_lv_review, lambda {
-    joins(:referee_course_import).where(referee_course_imports: { status: 'submitted' })
+    joins(:referee_course_import)
+      .where.not(submitted_at: nil)
+      .where.not(referee_course_imports: { status: 'cancelled' })
   }
 
   # Symmetrische Match-Regel, die sowohl der Import-Service als auch der
@@ -32,9 +55,12 @@ class RefereeCourseResult < ApplicationRecord
   # initialem Import und nachtraeglicher Bearbeitung konsistent bleibt: leeres
   # Feld auf einer Seite zaehlt als Match.
   # csv_attrs: Hash mit Keys :lizenznummer, :vorname, :nachname, :geburtsdatum,
-  # :verein, :email. Der Vereinsabgleich passiert ueber den exakten Namens-Match
-  # gegen den club_id-Lookup-Block (verlangt symmetrische Semantik mit dem
-  # Import).
+  # :verein, :email. Den Vereinsabgleich macht der uebergebene Block; er
+  # bekommt den Namen aus der Datei und liefert ein
+  # RefereeClubLookup::Result (Alias, exakt name/long_name, dann normalisiert;
+  # mehrdeutig gilt als kein Treffer). Die Semantik MUSS auf beiden Seiten
+  # dieselbe sein, sonst faellt der Score beim Bearbeiten anders aus als beim
+  # Import.
   def self.count_csv_to_referee_matches(csv_attrs, referee, club_lookup:)
     return 0 unless referee
 
@@ -45,15 +71,26 @@ class RefereeCourseResult < ApplicationRecord
     matches += 1 if field_match?(csv_attrs[:geburtsdatum], referee.geburtsdatum, :geburtsdatum)
     matches += 1 if field_match?(csv_attrs[:email], referee.email, :email)
 
-    csv_verein = csv_attrs[:verein]
-    if csv_verein.blank? || referee.club_id.blank?
-      matches += 1
-    else
-      matched = club_lookup.call(csv_verein)
-      matches += 1 if matched && matched.id == referee.club_id
-    end
+    matches += 1 if club_match?(csv_attrs[:verein], referee, club_lookup)
 
     matches
+  end
+
+  # Wie bei den anderen fuenf Merkmalen zaehlt „keine Aussage" als Treffer:
+  # leere Zelle, kein Verein beim Schiedsrichter -- und ein Platzhalter statt
+  # eines Vereinsnamens. Die Kursdateien fuehren im Vereinsfeld
+  # gelegentlich „-", „ohne Verein" oder „Karriere beendet"
+  # (RefereeClubLookup::PLACEHOLDERS); das ist kein abweichender Verein,
+  # sondern gar keiner. Ohne diese Zeile kostete ein „-" einen Match-Punkt und
+  # schickte die Zeile zur Freigabe an den Landesverband, waehrend dieselbe
+  # Zeile mit leerer Zelle 6/6 erreichte.
+  def self.club_match?(csv_verein, referee, club_lookup)
+    return true if csv_verein.blank? || referee.club_id.blank?
+
+    result = club_lookup.call(csv_verein)
+    return true if result.match_type == :placeholder
+
+    result.club_id == referee.club_id
   end
 
   def self.field_match?(csv_val, ref_val, field)
@@ -68,9 +105,18 @@ class RefereeCourseResult < ApplicationRecord
   end
 
   # Gegenstueck zum Scope `awaiting_lv_review` fuer eine einzelne Zeile: Freigeben
-  # und Zurueckweisen duerfen nur Zeilen, deren Import eingereicht ist.
+  # und Zurueckweisen duerfen nur eingereichte Zeilen.
   def awaiting_lv_review?
-    referee_course_import.status == 'submitted'
+    submitted_at.present? && referee_course_import.status != 'cancelled'
+  end
+
+  # Eingereicht: Der Submit hat die Zeile angefasst -- sie ist angewendet oder
+  # wartet auf die Freigabe des Landesverbands. Die Gegenrichtung („noch in der
+  # Hand des Importeurs") ist die Bedingung fuers Bearbeiten, Zurueckstellen
+  # und Verwerfen; sie verlangt zusaetzlich den Zeilenstatus, siehe
+  # RefereeCourseResultsController#importer_can_edit?.
+  def submitted?
+    submitted_at.present?
   end
 
   # Final master values default to importer-chosen values until LV review
@@ -98,6 +144,8 @@ class RefereeCourseResult < ApplicationRecord
       referee_id:,
       state_association_id:,
       status:,
+      deferred:,
+      submitted_at: submitted_at&.iso8601,
       match_type:,
       match_field_count:,
       lizenzstufe:,

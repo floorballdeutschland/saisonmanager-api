@@ -330,6 +330,7 @@ Rails.application.routes.draw do
           post :submit, on: :member
         end
         resources :referee_course_results, only: %i[index update] do
+          post :discard, on: :member
           post :approve, on: :member
           post :reject, on: :member
         end

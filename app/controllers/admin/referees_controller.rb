@@ -21,11 +21,32 @@ module Admin
     # Fehlgriff trifft nicht den ganzen Bestand.
     MAX_BULK_USER_CREATIONS = 100
 
+    # Sortierbare Spalten der Verwaltungsliste. Die Schlüssel sind die Namen der
+    # Spalten in der Oberfläche, nicht die der Datenbank, und zerfallen in drei
+    # Klassen: eigene Spalte (`lizenznummer`, `lizenzstufe`, `gueltigkeit`),
+    # über einen Join (`name` als nachname/vorname, `verein`, `landesverband`)
+    # und berechnet (siehe COMPUTED_SORTS).
+    #
+    # Gegenstück im Frontend ist der Typ `RefereeSortColumn`
+    # (src/app/_models/referee.interface.ts). Die beiden Listen müssen
+    # übereinstimmen; ein hier fehlender Schlüssel antwortet mit 422.
+    SORT_COLUMNS = %w[name lizenznummer lizenzstufe qualifikationen landesverband gueltigkeit verein
+                      spiele].freeze
+    SORT_DIRECTIONS = %w[asc desc].freeze
+    # Berechnete Spalten: Die Einsatzzahl der Saison zählt season_game_counts je
+    # Anfrage aus den Spielberichten, die Qualifikationen sind eine Liste je
+    # Schiedsrichter. Beide werden nach dem Laden in Ruby sortiert, auf der nach
+    # Namen geordneten Liste.
+    COMPUTED_SORTS = %w[qualifikationen spiele].freeze
+
     # GET /api/v2/admin/referees
     def index
       unless valid_status_filter?
         return render json: { errors: ["Unbekannter Status-Filter: #{params[:status]}"] },
                       status: :unprocessable_entity
+      end
+      if (sort_errors = sort_param_errors).any?
+        return render json: { errors: sort_errors }, status: :unprocessable_entity
       end
 
       referees = Referee.includes(club: :state_association,
@@ -45,16 +66,13 @@ module Admin
         referees = referees.where(id: RefereeTagging.where(referee_tag_id: params[:tag_id]).select(:referee_id))
       end
 
-      sort_col = params[:sort] == 'lizenznummer' ? 'lizenznummer' : 'nachname'
+      sort_col = params[:sort].to_s.presence || 'name'
       sort_dir = params[:sort_dir] == 'desc' ? 'DESC' : 'ASC'
-      referees = if sort_col == 'lizenznummer'
-                   referees.order(Arel.sql("lizenznummer #{sort_dir} NULLS LAST"))
-                 else
-                   referees.order(Arel.sql("nachname #{sort_dir}, vorname #{sort_dir}"))
-                 end
+      referees = order_referees(referees, sort_col, sort_dir)
 
       referees = referees.to_a
       counts = season_game_counts(referees)
+      referees = sort_computed(referees, sort_col, sort_dir, counts) if COMPUTED_SORTS.include?(sort_col)
       contact = can_view_contact_data?
       render json: referees.map { |r| referee_json(r, season_game_count: counts[r.lizenznummer].to_i, contact:) }
     end
@@ -753,6 +771,119 @@ module Admin
       counts
     end
 
+    # Unbekannte Werte werden abgewiesen und nicht auf den Namen zurückgeführt --
+    # dieselbe Entscheidung wie beim Status-Filter derselben Aktion, aus demselben
+    # Grund: Wer nach „Gültigkeit" sortiert und eine Namensliste bekommt, liest
+    # sie als „diese Lizenzen laufen als nächste ab". Ein stiller Rückfall wäre
+    # genau dann unsichtbar, wenn er auftritt -- nach einem Frontend-Deploy vor
+    # dem der API. `to_s` faengt dabei `?sort[]=name` ab (params waere ein Array).
+    def sort_param_errors
+      errors = []
+      if params[:sort].present? && SORT_COLUMNS.exclude?(params[:sort].to_s)
+        errors << "Unbekannte Sortierspalte: #{params[:sort]}"
+      end
+      if params[:sort_dir].present? && SORT_DIRECTIONS.exclude?(params[:sort_dir].to_s)
+        errors << "Unbekannte Sortierrichtung: #{params[:sort_dir]}"
+      end
+      errors
+    end
+
+    # Sortierung in SQL, soweit die Spalte dort steht.
+    #
+    # Leere Werte stehen in beiden Richtungen unten (NULLS LAST): „ohne Angabe"
+    # ist kein Extremwert, sondern eine Lücke, und wer eine Spalte absteigend
+    # sortiert, sucht ihr oberes Ende und nicht die Datensätze, die sie nicht
+    # ausfüllen.
+    #
+    # Die Lizenzstufe sortiert alphabetisch nach ihrem Namen und NICHT nach
+    # Rang: Die Rangfolge steht als `position` im Stufenkatalog
+    # (RefereeLicenseLevel, niedrigere Position = höhere Stufe), die ist aber
+    # nicht gepflegt (überall nil), und die Namen tragen sie nicht -- neben A…G
+    # gibt es L1/N1. Alphabetisch ist damit das, was heute ehrlich möglich ist;
+    # sobald der Katalog Positionen hat, gehört hier ein Join dorthin.
+    #
+    # Zweitschlüssel ist immer der Name, damit gleiche Werte eine feste
+    # Reihenfolge haben und zwei Aufrufe dieselbe Liste liefern -- auch bei der
+    # Lizenznummer, denn Gastschiedsrichter haben keine, und ihr NULL-Schwanz
+    # kam sonst in der Reihenfolge zurück, die Postgres gerade liefert.
+    def order_referees(referees, sort_col, sort_dir)
+      by_name = 'referees.nachname ASC, referees.vorname ASC'
+      case sort_col
+      when 'lizenznummer'
+        referees.order(Arel.sql("referees.lizenznummer #{sort_dir} NULLS LAST, #{by_name}"))
+      when 'lizenzstufe'
+        referees.order(Arel.sql("NULLIF(referees.lizenzstufe, '') #{sort_dir} NULLS LAST, #{by_name}"))
+      when 'gueltigkeit'
+        referees.order(Arel.sql("referees.gueltigkeit #{sort_dir} NULLS LAST, #{by_name}"))
+      when 'landesverband'
+        # Nach dem Kürzel, denn das steht in der Spalte „Region"; der volle Name
+        # ist nur der Rückfall, wenn keines gepflegt ist (dieselbe Kette wie
+        # Referee#landesverband_short_name). Sortierte die Liste nach dem vollen
+        # Namen, sähe die Spalte nach dem Klick auf ihren eigenen Kopf ungeordnet
+        # aus, sobald Kürzel und Name unterschiedlich einsortieren.
+        referees.left_joins(club: :state_association)
+                .order(Arel.sql("COALESCE(NULLIF(state_associations.short_name, ''), " \
+                                "state_associations.name) #{sort_dir} NULLS LAST, #{by_name}"))
+      when 'verein'
+        referees.left_joins(:club).order(Arel.sql("clubs.name #{sort_dir} NULLS LAST, #{by_name}"))
+      when *COMPUTED_SORTS
+        referees.order(Arel.sql(by_name))
+      else
+        referees.order(Arel.sql("referees.nachname #{sort_dir}, referees.vorname #{sort_dir}"))
+      end
+    end
+
+    # Nachsortierung der beiden berechneten Spalten. Die Liste kommt nach Namen
+    # geordnet herein; der ursprüngliche Platz ist der Zweitschlüssel, weil
+    # Array#sort in Ruby nicht stabil ist.
+    def sort_computed(referees, sort_col, sort_dir, counts)
+      desc = sort_dir == 'DESC'
+      referees.each_with_index.map { |referee, i| [computed_sort_key(referee, sort_col, counts), i, referee] }
+                              .sort { |a, b| compare_sort_keys(a, b, desc) }
+                              .map(&:last)
+    end
+
+    def computed_sort_key(referee, sort_col, counts)
+      # Ein Gastschiedsrichter hat keine Lizenznummer und damit nach dieser
+      # Zählung nie Einsätze (season_game_counts schlüsselt auf ihr) -- er landet
+      # bei den Nullen, nicht irgendwo. Das ist der bestehende Zustand der
+      # Spalte; die Sortierung macht ihn nur sichtbar.
+      return counts[referee.lizenznummer].to_i if sort_col == 'spiele'
+
+      # Dieselben Beschriftungen wie in der Zelle (Kürzel, sonst Name); die Zelle
+      # zeigt sie in derselben Reihenfolge, weil referee_json sie ebenso sortiert.
+      # transliterate, damit „Überregional" bei den U steht und nicht hinter Z:
+      # Ruby vergleicht Bytes, die SQL-Sortierungen daneben die Collation.
+      labels = referee.referee_qualifications.filter_map { |q| qualification_label(q).presence }
+      ActiveSupport::Inflector.transliterate(labels.sort.join(', ')).downcase
+    end
+
+    # Der Typ ist Pflicht (NOT NULL plus Fremdschlüssel), deshalb ohne &. -- ein
+    # Datensatz ohne ihn soll auffallen und nicht als Qualifikation ohne
+    # Beschriftung bei denen ohne Qualifikation landen.
+    def qualification_label(qualification)
+      type = qualification.referee_qualification_type
+      type.short_name.presence || type.name.to_s
+    end
+
+    def compare_sort_keys(left, right, desc)
+      cmp = compare_sort_values(left.first, right.first, desc)
+      cmp.zero? ? left[1] <=> right[1] : cmp
+    end
+
+    # Leere Zeichenketten stehen unten, in beiden Richtungen – wie NULLIF plus
+    # NULLS LAST bei der Lizenzstufe. Die 0 der Einsatzzahl ist dagegen ein
+    # echter Wert und wandert mit der Richtung.
+    def compare_sort_values(left, right, desc)
+      left_blank = left.respond_to?(:empty?) && left.empty?
+      right_blank = right.respond_to?(:empty?) && right.empty?
+      return 0 if left_blank && right_blank
+      return 1 if left_blank
+      return -1 if right_blank
+
+      desc ? (right <=> left) : (left <=> right)
+    end
+
     def referee_json(referee, full: false, season_game_count: nil, contact: false)
       data = {
         id: referee.id,
@@ -779,7 +910,15 @@ module Admin
         # in den Zusatzqualifikationen, und eine Trefferliste, die den Grund des
         # Treffers verschweigt, ist nicht prüfbar. Die Verknüpfung ist im index
         # schon eingeschlossen, kostet dort also keine Query je Zeile.
-        qualifications: referee.referee_qualifications.map { |q| qualification_json(q) }
+        # Nach Beschriftung sortiert, nicht in Speicherreihenfolge: Die Zelle der
+        # Verwaltungsliste zeigt genau diese Reihenfolge, und die Sortierung nach
+        # der Spalte bildet denselben Schlüssel (computed_sort_key). Ohne das
+        # sortierte die Liste nach einem String, der so nirgends auf dem Schirm
+        # steht. sync_qualifications legt die Zeilen bei jeder Änderung neu an,
+        # die Speicherreihenfolge ist also ohnehin die der letzten Eingabe.
+        qualifications: referee.referee_qualifications
+                               .sort_by { |q| qualification_label(q).downcase }
+                               .map { |q| qualification_json(q) }
       }
 
       data[:season_game_count] = season_game_count unless season_game_count.nil?

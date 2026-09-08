@@ -152,4 +152,12 @@ class RefereeClubLookupTest < ActiveSupport::TestCase
     assert(aliases.values.all? { |id| id.is_a?(Integer) && id.positive? })
     assert aliases.key?('SVGO Bremen')
   end
+  # `\be\s*v\b` strich auch das Praefix: „EV Landsberg" wurde zu „landsberg"
+  # und fiel damit mit einem ganz anderen Verein zusammen, ohne dass der
+  # Mehrdeutigkeits-Riegel es sehen konnte (die Namen sind verschieden).
+  test 'normalize laesst ein fuehrendes EV stehen' do
+    assert_equal 'ev landsberg', RefereeClubLookup.normalize('EV Landsberg')
+    assert_equal 'ev landsberg', RefereeClubLookup.normalize('EV Landsberg e.V.')
+    assert_equal 'landsberg', RefereeClubLookup.normalize('Landsberg e. V.')
+  end
 end

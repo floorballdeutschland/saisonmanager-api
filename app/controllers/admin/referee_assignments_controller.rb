@@ -276,10 +276,10 @@ module Admin
       # Verbands-Scope wie in der Verfügbarkeits-Matrix: ein LV-Ansetzer sieht nur
       # Schiris seines Verbands (inkl. via Freigabe zugeordneter Vereine), ein
       # globaler/FD-Ansetzer alle. Die Lizenz-Vorauswahl passiert clientseitig.
-      # Verfügbar = hat für den Tag eine Verfügbarkeit hinterlegt und ist nicht
-      # bereits tagesgleich angesetzt.
+      # Verfügbar = hat für den Tag eine Verfügbarkeit hinterlegt (Gäste: immer,
+      # siehe #selectable_referees) und ist nicht bereits tagesgleich angesetzt.
       referees = scope_to_permitted_referees(
-        Referee.where(guest: false).where(id: available_ids).where.not(id: assigned_ids)
+        selectable_referees(available_ids).where.not(id: assigned_ids)
       ).includes(referee_taggings: :referee_tag).order(:nachname, :vorname).to_a
 
       # Vereine, für die die Person nicht angesetzt werden möchte (eigener Verein
@@ -296,6 +296,10 @@ module Admin
           vorname: r.vorname,
           nachname: r.nachname,
           lizenzstufe: r.lizenzstufe,
+          # Gäste tragen keine Lizenzstufe und stehen ohne Verfügbarkeit in der
+          # Liste: Die Oberfläche kennzeichnet sie und nimmt sie aus der
+          # Lizenzstufen-Vorauswahl heraus.
+          guest: r.guest,
           kurzfristig_mobil: r.kurzfristig_mobil,
           # Nummer aus dem Profilabschnitt „Ansetzungsinformationen", den die
           # Schiedsrichter genau dafür ausfüllen, dass die Ansetzung sie
@@ -325,7 +329,7 @@ module Admin
       # nur Coaches des eigenen Verbands (inkl. via Freigabe zugeordneter
       # Vereine), ein globaler/FD-Ansetzer alle.
       referees = scope_to_permitted_referees(
-        Referee.where(guest: false).where(id: available_ids)
+        selectable_referees(available_ids)
       )
                  .joins(referee_qualifications: :referee_qualification_type)
                  .where('referee_qualification_types.name LIKE ?', 'B%')
@@ -344,6 +348,7 @@ module Admin
           vorname: r.vorname,
           nachname: r.nachname,
           lizenzstufe: r.lizenzstufe,
+          guest: r.guest,
           # Wie in #available: Coaches werden ebenso kurzfristig disponiert,
           # und die Oberfläche zeigt die Nummer nur zum Kennzeichen. Ohne das
           # Kennzeichen im selben Datensatz bliebe sie bei Coaches unsichtbar.
@@ -592,8 +597,19 @@ module Admin
       # Spielbetrieb FD) sieht alle Referees, sonst die des eigenen LV. Bewusst
       # über scope_to_permitted_referees statt go_ids – referees.game_operation_id
       # ist oft leer, die Verbandszuordnung läuft v. a. über den Verein.
-      referees = scope_to_permitted_referees(Referee.active.where(guest: false))
-                 .order(:nachname, :vorname)
+      # Gäste haben kein Ablaufdatum und fielen durch #active heraus; sie stehen
+      # in der Matrix, damit eine Gast-Ansetzung im Bild des Wochenendes
+      # auftaucht statt zu fehlen.
+      #
+      # Aber nur die mit Bezug zu diesem Fenster: Ein Gast kann keine
+      # Verfügbarkeit hinterlegen, seine Zeile wäre also an jedem Wochenende
+      # durchgehend rot — so viele dauerhaft rote Zeilen, wie es
+      # Gast-Datensätze gibt, und sie verschieben zusätzlich die Summen unter
+      # den Wochenenden. Angesetzt oder gemeldet ist der Bezug, den es braucht.
+      relevant_guest_ids = (assigned.keys + available.keys).uniq
+      referees = scope_to_permitted_referees(
+        Referee.active.or(Referee.canonical.where(guest: true, id: relevant_guest_ids))
+      ).order(:nachname, :vorname)
 
       sorted_keys = weekends.keys.sort
       render json: {
@@ -625,6 +641,7 @@ module Admin
             vorname: r.vorname,
             nachname: r.nachname,
             lizenzstufe: r.lizenzstufe,
+            guest: r.guest,
             states:
           }
         end
@@ -632,6 +649,31 @@ module Admin
     end
 
     private
+
+    # Kandidaten für eine Ansetzung an einem Tag: alle mit hinterlegter
+    # Verfügbarkeit — plus die Gäste.
+    #
+    # Gäste sind Aushilfen ohne eigene Zuständigkeit im Verband (meist aus dem
+    # Ausland oder einem anderen Verband) und haben im Regelfall kein
+    # Selbstverwaltungskonto, können also gar keine Verfügbarkeit hinterlegen.
+    # Verlangte die Auswahl auch von ihnen eine, blieben sie dauerhaft
+    # unansetzbar. Sie stehen deshalb ohne diese Bedingung in der Liste; ob sie
+    # können, klärt die Ansetzung wie bisher direkt mit ihnen.
+    #
+    # Der Verbands-Scope gilt für Gäste unverändert (scope_to_permitted_referees
+    # beim Aufrufer): Ein Gast ohne Verein und ohne Spielbetrieb ist damit nur
+    # für Admin und die bundesweite Ansetzung sichtbar.
+    #
+    # `canonical` auf beiden Zweigen: Bis hierher hielt das `guest: false` der
+    # Aufrufer eine aufgelöste Gast-Dublette auch auf der Verfügbarkeits-Seite
+    # heraus. Ohne es käme ein gemergter Gast, der vor dem Zusammenführen einen
+    # Termin gemeldet hat, über `where(id: available_ids)` zurück in die
+    # Auswahl — mit dem aufgelösten Datensatz. Für reguläre Schiedsrichter ist
+    # `canonical` dieselbe Regel, die die Verfügbarkeits-Matrix über
+    # `Referee.active` ohnehin anwendet.
+    def selectable_referees(available_ids)
+      Referee.canonical.where(id: available_ids).or(Referee.canonical.where(guest: true))
+    end
 
     # Samstag des Spielwochenendes für ein Datum: So → Vortag (Sa),
     # Sa → selbst, Mo–Fr → kommender Sa (Fr-Spiele zählen zum folgenden Wochenende).
@@ -692,9 +734,7 @@ module Admin
     def notify_published_lineup_change(assignment, previous_official_ids)
       game = assignment.game
 
-      parts = assignment.referees.map do |r|
-        [r.lizenznummer_display.presence, "#{r.nachname}, #{r.vorname}"].compact.join(' ')
-      end
+      parts = assignment.referees.map { |r| public_referee_name(r) }
       # Immer schreiben (auch leer): Werden alle Schiris entfernt, muss der
       # öffentliche Spielplan die alten Namen verlieren – nicht stehen lassen.
       game.update!(nominated_referee_string: parts.join(' / '))
@@ -1021,10 +1061,18 @@ module Admin
       if assignment.club_assignment?
         assignment.club&.name.to_s
       else
-        assignment.referees.map do |r|
-          [r.lizenznummer_display.presence, "#{r.nachname}, #{r.vorname}"].compact.join(' ')
-        end.join(' / ')
+        assignment.referees.map { |r| public_referee_name(r) }.join(' / ')
       end
+    end
+
+    # Name für den öffentlichen Spielplan. Die echte Lizenznummer gehört dort
+    # hin, `lizenznummer_display` aber nicht: Für einen Gast liefert es die
+    # Ersatzform `G-<id>` — die interne Datenbank-ID, für den Leser des
+    # Spielplans sinnfrei. Vor der Ansetzbarkeit von Gästen konnte sie hier
+    # nicht auftreten.
+    def public_referee_name(referee)
+      [referee.lizenznummer&.to_s.presence, "#{referee.nachname}, #{referee.vorname}"]
+        .compact.join(' ')
     end
 
     def referee_stub(r)
@@ -1034,6 +1082,7 @@ module Admin
         vorname: r.vorname,
         nachname: r.nachname,
         lizenzstufe: r.lizenzstufe,
+        guest: r.guest,
         partner_lizenznummer: r.partner_lizenznummer,
         # Kontakt zum angesetzten Gespann, für den dringenden Fall am Spieltag
         # (#643). Ausgeliefert an alle, die #index erreichen: Admin, aktive
