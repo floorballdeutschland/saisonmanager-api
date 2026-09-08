@@ -1225,6 +1225,12 @@ class GamesController < ApplicationController
     r1 = assignment.referee1
     r2 = assignment.referee2
     return unless r1 && r2
+    # Ohne Adresse gibt es keinen Empfänger, und der Versand ist der einzige
+    # Mailweg der Ansetzung ohne eigene Adressprüfung: `to: []` scheitert im
+    # Job (auf Produktion mit `raise_delivery_errors`), also Fehler samt
+    # Wiederholungen und Sentry-Eintrag, ohne dass jemand die fehlende
+    # Erinnerung bemerkt. Bei Gästen ist die fehlende Adresse der Regelfall.
+    return if r1.email.blank? || r2.email.blank?
 
     deadline = Time.current + 24.hours
     RefereeMailer.incident_report_reminder(r1, r2, game, deadline).deliver_later
