@@ -73,23 +73,41 @@ module Admin
 
     # DELETE /api/v2/admin/referee_course_imports/:id
     def destroy
-      return render(json: { error: 'Import bereits abgeschlossen' }, status: :unprocessable_entity) \
-        unless @import.status == 'in_review'
+      unless @import.status == 'in_review'
+        # Ein teilweise eingereichter Import ist NICHT abgeschlossen, aber auch
+        # nicht mehr abbrechbar: Ein Teil seiner Zeilen ist angewendet.
+        message = if @import.status == 'partially_submitted'
+                    'Teilweise eingereichte Importe können nicht abgebrochen werden'
+                  else
+                    'Import bereits abgeschlossen'
+                  end
+        return render(json: { error: message }, status: :unprocessable_entity)
+      end
 
       @import.update!(status: 'cancelled')
       head :no_content
     end
 
     # POST /api/v2/admin/referee_course_imports/:id/submit
-    # Importeur reicht den Import ein. Jede Ergebniszeile wird je nach
-    # LV-Setting (referee_license_review_enabled) und Match-Typ entweder
-    # direkt auf den Referee angewendet (`applied`) oder bleibt für die LV-
-    # Kontrolle stehen (`pending_review`).
+    # Importeur reicht die einreichbaren Zeilen ein -- alle ausser den von ihm
+    # zurueckgestellten. Jede davon wird je nach LV-Setting
+    # (referee_license_review_enabled) und Match-Typ entweder direkt auf den
+    # Referee angewendet (`applied`) oder bleibt für die LV-Kontrolle stehen
+    # (`pending_review`).
+    #
+    # Bleiben zurueckgestellte Zeilen uebrig, endet der Import auf
+    # `partially_submitted` und kann nach deren Klaerung erneut eingereicht
+    # werden. Der Scope `submittable` haelt den zweiten Lauf von den Zeilen des
+    # ersten fern.
     def submit
       return render(json: { error: 'Import nicht im Review-Status' }, status: :unprocessable_entity) \
-        unless @import.status == 'in_review'
+        unless @import.editable?
 
-      validation_error = preflight_validation_error(@import)
+      if @import.referee_course_results.submittable.none?
+        return render(json: { error: nothing_to_submit_error }, status: :unprocessable_entity)
+      end
+
+      validation_error = preflight_validation_error(@import.referee_course_results.submittable)
       return render(json: { error: validation_error }, status: :unprocessable_entity) if validation_error
 
       RefereeCourseResultApplier.reset_license_level_positions_cache!
@@ -98,25 +116,38 @@ module Admin
       appliers = []
       ActiveRecord::Base.transaction do
         @import.lock!
-        unless @import.status == 'in_review'
+        rows = @import.referee_course_results.submittable.order(:id).to_a
+        if !@import.editable? || rows.empty?
           # Zweiter paralleler Submit hat uns ueberholt.
           already_submitted = true
           raise ActiveRecord::Rollback
         end
 
-        @import.referee_course_results.order(:id).each_with_index do |result, idx|
+        rows.each_with_index do |result, idx|
           target_state_association = StateAssociation.find_by(id: result.state_association_id)
           review_required = RefereeCourseSubmitPolicy.review_required?(result, target_state_association)
 
           begin
             applier = RefereeCourseResultApplier.new(result, performed_by_user: current_user)
             applier.call(review_required: review_required)
+            # Nach dem Applier gesetzt und nicht vorher: Sein `save!` gehoert
+            # ihm, dieses Merkmal dem Submit. Ab jetzt ist die Zeile aus der
+            # Hand des Importeurs -- entweder angewendet oder in der
+            # Warteschlange des Landesverbands.
+            result.update!(submitted_at: Time.current)
             appliers << applier
           rescue RefereeCourseResultApplier::Error => e
             raise SubmitRowError.new(idx + 1, result, e.message)
           end
         end
-        @import.update!(status: 'submitted')
+        # Nicht `submittable`, sondern `open_for_importer`: Die zurueckgestellten
+        # Zeilen sind gerade nicht einreichbar, halten den Import aber offen.
+        @import.update!(
+          status: @import.referee_course_results.open_for_importer.none? ? 'submitted' : 'partially_submitted'
+        )
+        # Das Verwerfen der letzten offenen Zeile sperrt den Import mit, damit
+        # sich die beiden Wege nicht ueberholen -- siehe
+        # RefereeCourseResultsController#discard.
       end
 
       if already_submitted
@@ -153,9 +184,24 @@ module Admin
 
     private
 
-    def preflight_validation_error(import)
-      results = import.referee_course_results
+    # Zwei Lagen, die denselben leeren `submittable`-Scope erzeugen und dem
+    # Importeur Verschiedenes sagen muessen. „Nichts mehr offen" heisst zudem:
+    # Ein teilweise eingereichter Import ist fertig -- das zieht
+    # `close_if_done!` hier nach, falls sich ein Verwerfen und ein Submit
+    # ueberholt haben.
+    def nothing_to_submit_error
+      if @import.referee_course_results.open_for_importer.exists?
+        'Keine einreichbaren Zeilen: alle offenen Zeilen sind zurückgestellt'
+      else
+        @import.close_if_done!
+        'Keine offenen Zeilen mehr: alle Zeilen sind eingereicht oder verworfen'
+      end
+    end
 
+    # Prueft nur die uebergebenen Zeilen: Eine zurueckgestellte Zeile ohne
+    # Lizenzstufe darf die uebrigen nicht blockieren -- genau daran scheiterte
+    # vorher die ganze Datei.
+    def preflight_validation_error(results)
       missing_stufe = results.where(lizenzstufe: [nil, '']).count
       return "Für #{missing_stufe} Datensätze fehlt die Lizenzstufe" if missing_stufe.positive?
 
