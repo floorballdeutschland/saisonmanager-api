@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Die Schiedsrichterliste lässt sich nach jeder Spalte sortieren**: Sortierbar waren bisher nur Lizenznummer und Name; wer wissen wollte, welche Lizenzen als nächste ablaufen, wer die meisten Einsätze hat oder wie viele Schiedsrichter ein Verein stellt, musste die Liste exportieren. Jede Spalte des Kopfes trägt jetzt einen Sortierknopf und schaltet bei erneutem Klick die Richtung um – auch die beiden, die in der Datenbank gar keine Spalte sind: die Zusatzqualifikationen (sortiert nach derselben Beschriftung, die in der Zelle steht) und die Einsätze der Saison, die je Abruf aus den Spielberichten gezählt werden. Leere Werte stehen dabei in beiden Richtungen unten: Wer nach Lizenzstufe absteigend sortiert, sucht die höchste Stufe und nicht die Datensätze ohne Angabe; für die Gültigkeit, den Verein, den Landesverband und die Qualifikationen gilt dasselbe. Zweitschlüssel ist immer der Name, damit zwei Abrufe dieselbe Reihenfolge liefern. Die Einsätze beginnen als einzige Spalte absteigend – die Frage an sie lautet „wer pfeift viel?" und nicht „wer gar nicht?".
+
 ## [1.110.0] - 2026-09-08
 
 ### Neu
