@@ -598,10 +598,18 @@ module Admin
       # über scope_to_permitted_referees statt go_ids – referees.game_operation_id
       # ist oft leer, die Verbandszuordnung läuft v. a. über den Verein.
       # Gäste haben kein Ablaufdatum und fielen durch #active heraus; sie stehen
-      # in der Matrix wie in der Auswahl, damit eine Gast-Ansetzung im Bild des
-      # Wochenendes auftaucht statt zu fehlen.
-      referees = scope_to_permitted_referees(Referee.active.or(Referee.canonical.where(guest: true)))
-                 .order(:nachname, :vorname)
+      # in der Matrix, damit eine Gast-Ansetzung im Bild des Wochenendes
+      # auftaucht statt zu fehlen.
+      #
+      # Aber nur die mit Bezug zu diesem Fenster: Ein Gast kann keine
+      # Verfügbarkeit hinterlegen, seine Zeile wäre also an jedem Wochenende
+      # durchgehend rot — so viele dauerhaft rote Zeilen, wie es
+      # Gast-Datensätze gibt, und sie verschieben zusätzlich die Summen unter
+      # den Wochenenden. Angesetzt oder gemeldet ist der Bezug, den es braucht.
+      relevant_guest_ids = (assigned.keys + available.keys).uniq
+      referees = scope_to_permitted_referees(
+        Referee.active.or(Referee.canonical.where(guest: true, id: relevant_guest_ids))
+      ).order(:nachname, :vorname)
 
       sorted_keys = weekends.keys.sort
       render json: {
@@ -656,11 +664,15 @@ module Admin
     # beim Aufrufer): Ein Gast ohne Verein und ohne Spielbetrieb ist damit nur
     # für Admin und die bundesweite Ansetzung sichtbar.
     #
-    # merged_into_id nur auf der Gast-Seite: Die Verfügbarkeits-Seite bleibt
-    # unverändert, während aufgelöste Gast-Dubletten nicht neu in die Auswahl
-    # kommen.
+    # `canonical` auf beiden Zweigen: Bis hierher hielt das `guest: false` der
+    # Aufrufer eine aufgelöste Gast-Dublette auch auf der Verfügbarkeits-Seite
+    # heraus. Ohne es käme ein gemergter Gast, der vor dem Zusammenführen einen
+    # Termin gemeldet hat, über `where(id: available_ids)` zurück in die
+    # Auswahl — mit dem aufgelösten Datensatz. Für reguläre Schiedsrichter ist
+    # `canonical` dieselbe Regel, die die Verfügbarkeits-Matrix über
+    # `Referee.active` ohnehin anwendet.
     def selectable_referees(available_ids)
-      Referee.where(id: available_ids).or(Referee.where(guest: true, merged_into_id: nil))
+      Referee.canonical.where(id: available_ids).or(Referee.canonical.where(guest: true))
     end
 
     # Samstag des Spielwochenendes für ein Datum: So → Vortag (Sa),
@@ -722,9 +734,7 @@ module Admin
     def notify_published_lineup_change(assignment, previous_official_ids)
       game = assignment.game
 
-      parts = assignment.referees.map do |r|
-        [r.lizenznummer_display.presence, "#{r.nachname}, #{r.vorname}"].compact.join(' ')
-      end
+      parts = assignment.referees.map { |r| public_referee_name(r) }
       # Immer schreiben (auch leer): Werden alle Schiris entfernt, muss der
       # öffentliche Spielplan die alten Namen verlieren – nicht stehen lassen.
       game.update!(nominated_referee_string: parts.join(' / '))
@@ -1051,10 +1061,18 @@ module Admin
       if assignment.club_assignment?
         assignment.club&.name.to_s
       else
-        assignment.referees.map do |r|
-          [r.lizenznummer_display.presence, "#{r.nachname}, #{r.vorname}"].compact.join(' ')
-        end.join(' / ')
+        assignment.referees.map { |r| public_referee_name(r) }.join(' / ')
       end
+    end
+
+    # Name für den öffentlichen Spielplan. Die echte Lizenznummer gehört dort
+    # hin, `lizenznummer_display` aber nicht: Für einen Gast liefert es die
+    # Ersatzform `G-<id>` — die interne Datenbank-ID, für den Leser des
+    # Spielplans sinnfrei. Vor der Ansetzbarkeit von Gästen konnte sie hier
+    # nicht auftreten.
+    def public_referee_name(referee)
+      [referee.lizenznummer&.to_s.presence, "#{referee.nachname}, #{referee.vorname}"]
+        .compact.join(' ')
     end
 
     def referee_stub(r)
