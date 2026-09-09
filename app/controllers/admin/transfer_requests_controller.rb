@@ -33,8 +33,8 @@ module Admin
       # je Antrag einzeln wäre es eine Abfrage pro Zeile. Spieler und Vereine
       # aus demselben Grund vorladen: as_json liest je Zeile player_hash und
       # zweimal club_hash, das waren bisher drei Abfragen pro Antrag.
-      records = requests.includes(:player, :requesting_club, :former_club)
-                        .order(created_at: :desc).to_a
+      records = season_scope(requests).includes(:player, :requesting_club, :former_club)
+                                      .order(created_at: :desc).to_a
       actors = TransferRequest.actor_names_for(records)
       render json: records.map { |tr| tr.as_json(actors: actors) }
     end
@@ -61,8 +61,8 @@ module Admin
         return render json: { error: 'Nicht berechtigt' }, status: :forbidden
       end
 
-      records = incoming_scope(ph).includes(:player, :requesting_club, :former_club)
-                                  .order(lv_approved_at: :desc, created_at: :desc).to_a
+      records = season_scope(incoming_scope(ph)).includes(:player, :requesting_club, :former_club)
+                                                .order(lv_approved_at: :desc, created_at: :desc).to_a
       actors = TransferRequest.actor_names_for(records)
       render json: records.map { |tr| tr.as_json(actors: actors) }
     end
@@ -915,6 +915,29 @@ module Admin
       end
 
       false
+    end
+
+    # Beide Listen zeigen standardmaessig nur die laufende Saison.
+    #
+    # Ohne den Filter wuchsen sie unbegrenzt: Weder #index noch #incoming kannte
+    # einen Saisonbezug, und der Saisonwechsel fasst `transfer_requests` nicht an
+    # (er schreibt nur `current_season_id` in die Einstellungen). Nach dem ersten
+    # Wechsel waeren die Vorgaenge der Vorsaison einfach stehen geblieben und die
+    # neuen obendrauf -- auf Produktion sind das heute schon 442 Zeilen in einer
+    # einzigen Saison.
+    #
+    # `all_seasons=true` liefert weiterhin alles, und nichts wird geloescht. Das
+    # ist keine Bequemlichkeit, sondern Bedingung: Der Landesverband stellt seine
+    # Gebuehren fuer erteilte Freigaben am Saisonende, und der Beleg dafuer ist
+    # der Vorgang. Wer die Vorsaison abrechnet, braucht sie vollstaendig.
+    #
+    # `season_id` ist hier eine echte Integer-Spalte -- anders als
+    # `leagues.season_id`, das als `character varying` vergleicht und bei einem
+    # Bereichsfilter still zu viel trifft.
+    def season_scope(scope)
+      return scope if ActiveModel::Type::Boolean.new.cast(params[:all_seasons])
+
+      scope.where(season_id: Setting.current_season_id.to_i)
     end
 
     def find_transfer_request
