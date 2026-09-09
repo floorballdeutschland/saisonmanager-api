@@ -88,6 +88,57 @@ module Admin
       assert_includes ids, alt.id
     end
 
+    # Der gefaehrlichste Fall des Filters. `scheduled` ist vollstaendig
+    # genehmigt und wartet nur auf das Wirksamkeitsdatum -- `expirable` faengt
+    # ihn ausdruecklich NICHT ab, und `effective_date` hat keine Obergrenze.
+    # Faellt so eine Zeile beim Saisonwechsel aus der Liste, ist der
+    # "Vollziehen"-Knopf nur noch ueber eine URL erreichbar, auf die nichts
+    # verlinkt: Der Wechsel findet nie statt, ohne Mail und ohne Logeintrag.
+    test 'ein terminierter Vorgang der Vorsaison bleibt sichtbar' do
+      terminiert = vorsaison_vorgang
+      terminiert.update_columns(status: 'scheduled', effective_date: 1.month.from_now.to_date)
+      login(@admin)
+
+      get '/api/v2/admin/transfer_requests'
+      assert_response :success
+
+      ids = JSON.parse(response.body).map { |zeile| zeile['id'] }
+      assert_includes ids, terminiert.id,
+                      'ein offener Vorgang darf nie hinter dem Saisonfilter verschwinden'
+    end
+
+    # Gilt fuer jeden offenen Status, nicht nur fuer scheduled: Die
+    # pending-Fristen haengen an einem Cron, der eingetragen sein muss.
+    test 'offene Antraege der Vorsaison bleiben in jedem Status sichtbar' do
+      login(@admin)
+
+      TransferRequest::ACTIVE_STATUSES.each do |status|
+        offen = vorsaison_vorgang
+        offen.update_columns(status: status)
+
+        get '/api/v2/admin/transfer_requests'
+        assert_response :success
+
+        ids = JSON.parse(response.body).map { |zeile| zeile['id'] }
+        assert_includes ids, offen.id, "Status #{status}"
+      end
+    end
+
+    # Gegenprobe: Der Filter greift weiterhin fuer abgeschlossene Vorgaenge.
+    # Ohne sie liesse sich die Ausnahme auf alle Status ausweiten, ohne dass
+    # ein Test faellt.
+    test 'ein abgeschlossener Vorgang der Vorsaison bleibt ausgeblendet' do
+      abgeschlossen = vorsaison_vorgang
+      abgeschlossen.update_columns(status: 'withdrawn')
+      login(@admin)
+
+      get '/api/v2/admin/transfer_requests'
+      assert_response :success
+
+      ids = JSON.parse(response.body).map { |zeile| zeile['id'] }
+      assert_not_includes ids, abgeschlossen.id
+    end
+
     # Wie create_incoming_request, nur in der Vorsaison: aufnehmender Verein im
     # eigenen Spielbetrieb, abgebender ausserhalb.
     def incoming_vorsaison_vorgang

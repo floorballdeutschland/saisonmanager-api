@@ -176,15 +176,39 @@ module Admin
       assert_equal 'revoked', zeile['status']
     end
 
+    # Gegenprobe zur Aufnahme von `revoked`: Die uebrigen Endzustaende gehoeren
+    # weiterhin nicht hinein. `withdrawn` ist der heikle davon -- ein durch
+    # einen spaeteren Vereinswechsel annullierter Antrag stuende sonst als
+    # "abgeschlossener eingehender Vorgang" in der Liste, also genau die
+    # Verwechslung, die die Aenderung beseitigen soll, nur umgekehrt.
+    test 'die uebrigen Endzustaende bleiben draussen' do
+      login(@sbk)
+
+      %w[withdrawn expired rejected_by_lv rejected_by_player pending_player].each do |status|
+        tr = create_incoming_request
+        tr.update_columns(status: status)
+
+        get '/api/v2/admin/transfer_requests/incoming'
+        assert_response :success
+
+        ids = JSON.parse(response.body).map { |z| z['id'] }
+        assert_not_includes ids, tr.id, "Status #{status}"
+      end
+    end
     # Postgres sortiert NULL bei DESC nach OBEN. Heute setzt jeder Weg nach
     # `approved`/`scheduled` den Zeitstempel, ein kuenftiger koennte ihn
     # vergessen -- und stuende dann mit leerer Datumsspalte an der Spitze.
     # Dieselbe Vorsorge wie in League.license_release_dates.
+    #
+    # `ohne` wird ZULETZT angelegt: Waere die Sortierung allein `created_at`
+    # absteigend -- also die lv_approved_at-Klausel komplett weggefallen --,
+    # stuende es damit oben und der Test faellt. Andersherum ginge genau dieser
+    # Fehler durch.
     test 'ein Vorgang ohne Genehmigungsdatum steht unten' do
-      ohne = create_incoming_request
-      ohne.update_columns(lv_approved_at: nil)
       mit = create_incoming_request
       mit.update_columns(lv_approved_at: 1.day.ago)
+      ohne = create_incoming_request
+      ohne.update_columns(lv_approved_at: nil)
       login(@sbk)
 
       get '/api/v2/admin/transfer_requests/incoming'

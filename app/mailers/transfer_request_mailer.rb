@@ -161,10 +161,14 @@ class TransferRequestMailer < ApplicationMailer
   # abgebende Landesverband hat ihn ausgeloest und bekommt keine.
   #
   # Der aufnehmende Landesverband ist der eigentliche Grund fuer diese Mail: Bis
-  # hierher erfuhr er von einem Widerruf ueber keinen Kanal. Er steht auch nicht
-  # in der Uebersicht "Eingehende Transfers & Freigaben" -- die zeigt
-  # abgeschlossene Vorgaenge, und ein widerrufener faellt heraus. Ohne diese
-  # Nachricht verschwindet die Zeile einfach.
+  # hierher erfuhr er von einem Widerruf ueber keinen Kanal.
+  #
+  # In der Uebersicht "Eingehende Transfers & Freigaben" steht ein widerrufener
+  # Vorgang inzwischen (siehe INCOMING_STATUSES) -- die Mail ist damit nicht
+  # ueberfluessig geworden, sondern bleibt der einzige Kanal, der nicht am
+  # Saisonfilter haengt: Wird eine Freigabe der Vorsaison nach dem
+  # Saisonwechsel widerrufen, ist die Zeile standardmaessig aus beiden Listen
+  # heraus, und die Zweitmitgliedschaft endet trotzdem.
   #
   # Die Begruendung reist mit: Sie ist beim Widerruf Pflicht (siehe #revoke),
   # und ohne sie ist die Nachricht fuer den Empfaenger nicht einzuordnen.
@@ -176,7 +180,22 @@ class TransferRequestMailer < ApplicationMailer
       transfer_request.former_club.notification_emails +
       [transfer_request.player.email, receiving_sa&.effective_sbk_email]
     ).compact.uniq.select(&:present?)
-    return if recipients.empty?
+
+    # Nicht stumm zurueckkehren wie die uebrigen Mails dieser Datei: Bei keiner
+    # von ihnen ist die Folge, dass ein Verein einen nicht mehr
+    # spielberechtigten Spieler aufstellt. Ein leerer Verteiler heisst hier,
+    # dass der Widerruf ueber keinen einzigen Kanal ankommt -- und der Vorgang
+    # faellt aus beiden Listen, sobald er aus der laufenden Saison heraus ist.
+    # Gleiches Muster wie PlayerMailer#express_license_requested.
+    if recipients.empty?
+      if defined?(Sentry)
+        Sentry.capture_message(
+          "Widerruf ohne Empfaenger: TransferRequest##{transfer_request.id} -- " \
+          'weder Vereine noch Landesverband noch Spieler haben eine Adresse.'
+        )
+      end
+      return
+    end
 
     templated_mail(
       to: recipients,

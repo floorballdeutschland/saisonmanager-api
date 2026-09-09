@@ -57,11 +57,13 @@ module Admin
     # Vorgaenge; Handlungsrechte entstehen dabei keine, weil jede schreibende
     # Aktion weiter den abgebenden Verein prueft.
     #
-    # Nur `approved` und `scheduled`: Ein Vorgang, der noch bei der abgebenden
-    # Seite liegt, ist fuer den aufnehmenden Landesverband nichts, worauf er
-    # reagieren koennte -- die Ansicht wuerde eine Handlungsmoeglichkeit
-    # suggerieren, die es hier nicht gibt. `scheduled` steht daneben, weil der
-    # Wechsel beschlossen ist und nur das Datum noch aussteht.
+    # Nur abgeschlossene Vorgaenge (siehe INCOMING_STATUSES): Ein Antrag, der
+    # noch bei der abgebenden Seite liegt, ist fuer den aufnehmenden
+    # Landesverband nichts, worauf er reagieren koennte -- die Ansicht wuerde
+    # eine Handlungsmoeglichkeit suggerieren, die es hier nicht gibt.
+    # `scheduled` steht daneben, weil der Wechsel beschlossen ist und nur das
+    # Datum noch aussteht, `revoked`, weil eine zurueckgezogene Freigabe nicht
+    # spurlos verschwinden darf.
     def incoming
       ph = current_user.permission_hash
       unless ph[:admin].present? || ph[:sbk].present?
@@ -945,7 +947,32 @@ module Admin
     def season_scope(scope)
       return scope if ActiveModel::Type::Boolean.new.cast(params[:all_seasons])
 
-      scope.where(season_id: Setting.current_season_id.to_i)
+      # Offene Vorgaenge bleiben IMMER sichtbar, auch aus einer frueheren
+      # Saison. Der Filter zielt auf den wachsenden Altbestand, und der besteht
+      # aus abgeschlossenen Vorgaengen -- ein offener will noch etwas von
+      # jemandem.
+      #
+      # `scheduled` ist der Grund, warum das kein Feinschliff ist: Ein Transfer
+      # mit Wirksamkeitsdatum wird vom Landesverband genehmigt und wartet dann,
+      # `season_id` steht seit der Anlage fest, und `effective_date` hat keine
+      # Obergrenze. Faellt so eine Zeile beim Saisonwechsel aus der Liste, ist
+      # der "Vollziehen"-Knopf nur noch ueber eine URL erreichbar, auf die
+      # nichts verlinkt -- der Wechsel findet nie statt, und `expirable` faengt
+      # `scheduled` ausdruecklich nicht ab. Dasselbe gilt fuer die
+      # pending-Status, deren Frist an einem Cron haengt, der eingetragen sein
+      # muss.
+      # Ohne gepflegte Saison waere `.to_i` eine 0 und der Filter liesse nichts
+      # uebrig -- eine leere Liste mit 200, die wie "keine Vorgaenge" aussieht.
+      # Dann lieber ungefiltert und gemeldet: Zu viel zu zeigen ist hier der
+      # harmlosere Fehler.
+      saison = Setting.current_season_id.to_i
+      if saison.zero?
+        Sentry.capture_message('transfer_requests: current_season_id ist nicht gepflegt') if defined?(Sentry)
+        return scope
+      end
+
+      laufend = scope.where(season_id: saison)
+      laufend.or(scope.where(status: TransferRequest::ACTIVE_STATUSES))
     end
 
     def find_transfer_request
@@ -990,10 +1017,18 @@ module Admin
       unbekannt = Array(go_ids).map(&:to_i).reject(&:zero?) - GameOperation.where(id: go_ids).pluck(:id)
       return if unbekannt.empty?
 
-      Rails.logger.warn(
-        "transfer_requests#incoming: Konto #{current_user.id} verweist auf " \
-        "Spielbetrieb(e) #{unbekannt.inspect}, die es nicht gibt -- die Liste bleibt deshalb leer."
-      )
+      # Cache-Riegel und Sentry wie in TeamsController#render_team_without_league:
+      # Eine Logzeile allein geht auf STDOUT des Containers und ist damit
+      # gleichzeitig laut (bei jedem Seitenaufruf erneut) und unauffindbar.
+      # `breadcrumbs_logger` macht aus einem `logger.warn` KEIN Sentry-Event --
+      # nur eine Wegmarke an einem Event, das es hier gar nicht gibt.
+      return unless Rails.cache.write("transfer_incoming_scope_unresolvable/#{current_user.id}",
+                                      true, unless_exist: true, expires_in: 1.day)
+
+      meldung = "transfer_requests#incoming: Konto #{current_user.id} verweist auf " \
+                "Spielbetrieb(e) #{unbekannt.inspect}, die es nicht gibt -- die Liste bleibt deshalb leer."
+      Rails.logger.error(meldung)
+      Sentry.capture_message(meldung) if defined?(Sentry)
     end
 
     def derive_club_ids_for_go(go_ids)

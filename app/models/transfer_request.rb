@@ -43,7 +43,14 @@ class TransferRequest < ApplicationRecord
 
   before_create :generate_player_confirmation_token
 
-  scope :active, -> { where(status: %w[pending_club pending_player pending_lv scheduled]) }
+  # Die Status, in denen ein Vorgang noch etwas von jemandem will. `scheduled`
+  # gehoert dazu: vollstaendig genehmigt, aber erst mit dem Wirksamkeitsdatum
+  # vollzogen -- und `expirable` faengt ihn ausdruecklich NICHT ab. Als
+  # Konstante, weil der Saisonfilter der Listen sie ebenfalls braucht: Ein
+  # offener Vorgang darf nie hinter einem Filter verschwinden.
+  ACTIVE_STATUSES = %w[pending_club pending_player pending_lv scheduled].freeze
+
+  scope :active, -> { where(status: ACTIVE_STATUSES) }
   # Nach Antragsart getrennt, weil die Eindeutigkeitsregeln auseinanderlaufen:
   # je Spieler hoechstens ein laufender Transfer, je Spieler und Zielverein
   # hoechstens eine laufende Freigabe. Mehrere Freigaben auf verschiedene
@@ -270,10 +277,11 @@ class TransferRequest < ApplicationRecord
 
     Rails.cache.delete('transfers')
 
-    # Nach dem Commit: Bis hierher erfuhr die aufnehmende Seite von einem
-    # Widerruf ueber keinen Kanal -- weder per Mail noch in der Uebersicht
-    # "Eingehende Transfers & Freigaben", aus der ein widerrufener Vorgang
-    # herausfaellt. Der Verein setzt den Spieler unter Umstaenden gerade ein.
+    # Nach dem Commit, nicht in der Transaktion. Bis hierher erfuhr die
+    # aufnehmende Seite von einem Widerruf ueber keinen Kanal; der Verein setzt
+    # den Spieler unter Umstaenden gerade ein. Die Uebersicht zeigt widerrufene
+    # Vorgaenge inzwischen, aber sie haengt am Saisonfilter -- ein Widerruf zu
+    # einer Freigabe der Vorsaison steht in keiner der beiden Listen.
     TransferRequestMailer.release_revoked(self).deliver_later
   end
 

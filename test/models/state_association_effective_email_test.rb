@@ -138,11 +138,33 @@ class StateAssociationEffectiveEmailTest < ActiveSupport::TestCase
       tr.send(:send_completion_emails, [])
     end
 
-    empfaenger = ActionMailer::Base.deliveries.flat_map(&:to)
+    # Die Zahl und nicht nur die eine Adresse: Ein Test auf
+    # `assert_not_includes 'sbk@fremd...'` liesse eine wiedereingefuehrte Mail
+    # an das VSK-Postfach, an die Vereinsadressen oder an ein geerbtes Kind-LV
+    # anstandslos durch. `send_completion_emails([])` erzeugt genau eine.
+    assert_equal 1, ActionMailer::Base.deliveries.size,
+                 'genau eine Abschlussmail, keine zweite an den aufnehmenden LV'
 
+    empfaenger = ActionMailer::Base.deliveries.flat_map(&:to)
     assert_includes empfaenger, 'sbk@verbund.example.com',
                     'die abgebende Seite wird weiterhin benachrichtigt'
     assert_not_includes empfaenger, 'sbk@fremd.example.com'
+  end
+
+  # Die Zusatzmail hing an ZWEI Absendestellen. Der Freigabeweg ist der, um den
+  # es fachlich geht (Zweitspielrecht) -- ohne diesen Test liesse er sich
+  # wieder einbauen, ohne dass etwas faellt.
+  test 'auch der Freigabeweg verschickt keine zweite Mail an den aufnehmenden LV' do
+    fremder_lv = create(:state_association, sbk_email: 'sbk@fremd.example.com')
+    tr = transfer_request_between(@child, fremder_lv)
+    tr.update!(request_type: 'release', status: 'pending_lv')
+
+    perform_enqueued_jobs do
+      tr.execute_release!(create(:user).id)
+    end
+
+    assert_equal 1, ActionMailer::Base.deliveries.size
+    assert_not_includes ActionMailer::Base.deliveries.flat_map(&:to), 'sbk@fremd.example.com'
   end
 
   # Der Widerruf einer bereits ERTEILTEN Freigabe erreichte die aufnehmende
@@ -161,10 +183,18 @@ class StateAssociationEffectiveEmailTest < ActiveSupport::TestCase
 
     mail = ActionMailer::Base.deliveries.last
     assert_not_nil mail
-    assert_includes mail.to, 'sbk@fremd.example.com'
     assert_includes mail.subject, 'zurueckgezogen'
     assert_includes mail.body.decoded, 'Irrtum bei der Freigabe',
                     'die Begruendung ist der einzige einordnende Inhalt'
+
+    # Der Empfaengerkreis ist die Aussage dieser Mail, nicht ein Detail: Eine
+    # Reduktion auf einen einzigen Empfaenger oder ein versehentlich ergaenztes
+    # Postfach der abgebenden Seite liefe sonst still durch.
+    assert_includes mail.to, 'sbk@fremd.example.com', 'der aufnehmende Landesverband'
+    assert_includes mail.to, 'neu@example.com', 'der freigegebene Verein'
+    assert_includes mail.to, 'alt@example.com', 'der Heimverein'
+    assert_not_includes mail.to, 'sbk@verbund.example.com',
+                        'der abgebende LV hat den Widerruf ausgeloest'
   end
 
   test 'Spieltags-Veto erreicht die SBK des Verbunds' do
