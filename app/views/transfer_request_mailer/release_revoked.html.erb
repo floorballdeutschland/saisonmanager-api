@@ -24,9 +24,12 @@
 <% end %>
 
 <p>
-  Die Zweitmitgliedschaft ist damit beendet, und die Lizenzen des Spielers beim
-  freigegebenen Verein sind auf „zurückgezogen" gesetzt. Der Spieler darf für
-  diesen Verein nicht mehr eingesetzt werden.
+  Die Zweitmitgliedschaft ist damit beendet. Der Spieler darf für diesen Verein
+  nicht mehr eingesetzt werden.
+  <% if @licenses_invalidated %>
+    Die Lizenzen des Spielers beim freigegebenen Verein sind auf
+    „zurückgezogen" gesetzt.
+  <% end %>
 </p>
 
 <p>

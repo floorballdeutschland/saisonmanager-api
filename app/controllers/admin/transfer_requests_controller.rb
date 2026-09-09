@@ -975,6 +975,23 @@ module Admin
       laufend.or(scope.where(status: TransferRequest::ACTIVE_STATUSES))
     end
 
+    # Bewusster Versatz, den dieser Filter NICHT aufloest: Er misst
+    # `season_id`, die bei der Anlage gestempelt und nie fortgeschrieben wird.
+    # Die Gebuehrenabrechnung der Landesverbaende misst dagegen
+    # `lv_approved_at` (siehe die CSV-Ausfuhr im Frontend).
+    #
+    # Ein Antrag, der vor dem Saisonwechsel gestellt und danach genehmigt wird,
+    # traegt deshalb die alte `season_id` bei neuem Genehmigungsdatum -- er
+    # steht im Beleg der Vorsaison, die womoeglich schon abgerechnet ist. Das
+    # Fenster ist eng: `TransferRequest.expirable` annulliert liegengebliebene
+    # Antraege nach EXPIRE_AFTER_DAYS (14), und die CSV traegt das
+    # Genehmigungsdatum je Zeile -- wer abrechnet, sieht den Ausreisser.
+    #
+    # Nicht ueber `lv_approved_at` gefiltert, weil es dafuer eine Zuordnung
+    # Datum -> Saison braeuchte, die es im System nicht gibt: Saisons haben
+    # weder Start- noch Enddatum, `Setting.current_season_id` ist ein
+    # umgelegter Schalter.
+
     def find_transfer_request
       tr = TransferRequest.find_by(id: params[:id])
       render json: { error: 'Nicht gefunden' }, status: :not_found unless tr

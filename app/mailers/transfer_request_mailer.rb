@@ -172,8 +172,16 @@ class TransferRequestMailer < ApplicationMailer
   #
   # Die Begruendung reist mit: Sie ist beim Widerruf Pflicht (siehe #revoke),
   # und ohne sie ist die Nachricht fuer den Empfaenger nicht einzuordnen.
-  def release_revoked(transfer_request)
+  # `licenses_invalidated` unterscheidet die beiden Widerrufswege: Ueber den
+  # Vorgang (#revoke_release!) werden die Lizenzen des aufnehmenden Vereins
+  # mit entwertet, ueber das Spielerprofil
+  # (PlayerReleaseRecording#save_with_release_revocation) bewusst nicht -- dort
+  # wird nur mitgeschrieben, was der Knopf ohnehin tut. Die Nachricht darf
+  # nichts behaupten, was nicht passiert ist; die beendete Zweitmitgliedschaft
+  # ist beiden Wegen gemeinsam und der Grund fuer die Mail.
+  def release_revoked(transfer_request, licenses_invalidated: true)
     @transfer_request = transfer_request
+    @licenses_invalidated = licenses_invalidated
     receiving_sa = transfer_request.requesting_club.state_association
     recipients = (
       transfer_request.requesting_club.notification_emails +
