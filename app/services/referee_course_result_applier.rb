@@ -127,8 +127,14 @@ class RefereeCourseResultApplier
     ActiveRecord::Base.connection.execute(
       "SELECT pg_advisory_xact_lock(#{LIZENZNUMMER_LOCK_KEY})"
     )
+    # MAX ueber ALLE Schiedsrichter, Gaeste eingeschlossen: Die Eindeutigkeit
+    # der Lizenznummer gilt fuer die ganze Tabelle. Mit `guest: false` blieb ein
+    # Gast, der (faelschlich, siehe Admin::RefereesController#safe_referee_params) eine
+    # Nummer trug, fuer die Vergabe unsichtbar -- die naechste Neuanlage bekam
+    # genau seine Nummer und scheiterte an der Validierung, was den ganzen
+    # Submit zurueckrollte.
     lizenznummer = @result.master_lizenznummer_final.presence ||
-                   (Referee.where(guest: false).maximum(:lizenznummer).to_i + 1)
+                   (Referee.maximum(:lizenznummer).to_i + 1)
 
     referee = Referee.create!(attrs.merge(lizenznummer: lizenznummer))
     @result.new_referee_created = true
