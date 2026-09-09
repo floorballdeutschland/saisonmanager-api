@@ -696,14 +696,19 @@ class ClubsController < ApplicationController
   # unten liest.
   #
   # Im Controller und nicht als `validates :presence` am Modell: Vereine werden
-  # auch ausserhalb dieser Maske geschrieben -- `deactivate!`/`reactivate!`
-  # (beide `update!`), die Liga-Kopie, das Zusammenfuehren von Spielerprofilen.
-  # Eine Modellregel haette jeden Verein mit unvollstaendigem Bestand fuer all
-  # das gesperrt, ohne dass es irgendwo eine Maske gaebe, in der man es
-  # nachtragen koennte -- und der Bestand ist unvollstaendig, es gibt keinen
-  # Datenlauf dazu. An genau dieser Falle sind `short_name` und
-  # `contact_email` schon einmal vorbeigebaut worden (siehe die
-  # `if: :..._changed?`-Bedingungen in Club).
+  # auch ausserhalb dieser Maske geschrieben: `deactivate!`/`reactivate!` (beide
+  # `update!`) und drei Rake-Tasks, darunter `align_club_responsibility` mit
+  # einem `update!`. Eine Modellregel haette jeden Verein mit unvollstaendigem
+  # Bestand dafuer gesperrt, ohne dass es irgendwo eine Maske gaebe, in der man
+  # es nachtragen koennte -- und der Bestand ist unvollstaendig, es gibt keinen
+  # Datenlauf dazu. Ein Verein liesse sich dann nicht einmal mehr deaktivieren.
+  # An genau dieser Falle sind `short_name` und `contact_email` schon einmal
+  # vorbeigebaut worden (siehe die `if: :..._changed?`-Bedingungen in Club).
+  #
+  # Die Liga-Kopie und `Player#merge_into!` stehen hier bewusst NICHT mehr,
+  # obwohl der geerbte `contact_email`-Kommentar sie nennt: Die Liga-Kopie fasst
+  # Ligen und Mannschaften an, der Merge schreibt `players.clubs` (JSONB) --
+  # beide ruehren die `clubs`-Zeile nicht an.
   REQUIRED_CLUB_FIELDS = {
     'name' => 'Name',
     'short_name' => 'Kürzel',
