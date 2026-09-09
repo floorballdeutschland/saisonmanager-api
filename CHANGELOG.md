@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Kursimport: die gewählten Lizenzstufen verschwanden aus der Maske**: Im Kursergebnis-Import trägt der Importeur je Zeile die Lizenzstufe ein, und jede Auswahl wird sofort einzeln gespeichert. Angezeigt wurde sie danach trotzdem nicht mehr zuverlässig: Sobald die Tabelle neu gezeichnet wurde, standen sämtliche Auswahlfelder wieder auf „bitte wählen". Neu gezeichnet wird sie beim Neuladen der Seite, nach dem Verwerfen einer Zeile, nach dem Einreichen und immer dann, wenn das Speichern einer Zeile fehlschlägt — zuletzt gemeldet nach dem Zurückstellen einer Zeile, bei der genau dieser Fehlerfall eintrat. Gespeichert war alles, verloren ging nur die Anzeige; wer es nicht wusste, trug die Stufen ein zweites Mal ein. Ursache war die Reihenfolge im Auswahlfeld: Der Wert wurde gesetzt, bevor die Liste der Stufen darunter überhaupt existierte, und ein Wert ohne passenden Eintrag verfällt — nachgetragen wurde er nie. Am Speichern und an den Daten ändert sich nichts, das Feld zeigt jetzt nur, was ohnehin schon in der Datenbank steht.
+
 ## [1.112.0] - 2026-09-09
 
 ### Neu
