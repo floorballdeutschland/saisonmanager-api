@@ -151,6 +151,43 @@ class TransferRequestMailer < ApplicationMailer
     )
   end
 
+  # Widerruf einer bereits ERTEILTEN Freigabe (#640). Nur dieser Fall ist
+  # gemeint: `revoke` laesst nur `request_type` "release" mit Status "approved"
+  # zu, ein noch laufender Antrag wird zurueckgezogen und nicht widerrufen.
+  #
+  # Empfaenger sind die Seiten, die den Widerruf NICHT veranlasst haben und von
+  # ihm betroffen sind: der Verein, der den Spieler jetzt nicht mehr einsetzen
+  # darf, sein Landesverband, der Heimverein und der Spieler selbst. Der
+  # abgebende Landesverband hat ihn ausgeloest und bekommt keine.
+  #
+  # Der aufnehmende Landesverband ist der eigentliche Grund fuer diese Mail: Bis
+  # hierher erfuhr er von einem Widerruf ueber keinen Kanal. Er steht auch nicht
+  # in der Uebersicht "Eingehende Transfers & Freigaben" -- die zeigt
+  # abgeschlossene Vorgaenge, und ein widerrufener faellt heraus. Ohne diese
+  # Nachricht verschwindet die Zeile einfach.
+  #
+  # Die Begruendung reist mit: Sie ist beim Widerruf Pflicht (siehe #revoke),
+  # und ohne sie ist die Nachricht fuer den Empfaenger nicht einzuordnen.
+  def release_revoked(transfer_request)
+    @transfer_request = transfer_request
+    receiving_sa = transfer_request.requesting_club.state_association
+    recipients = (
+      transfer_request.requesting_club.notification_emails +
+      transfer_request.former_club.notification_emails +
+      [transfer_request.player.email, receiving_sa&.effective_sbk_email]
+    ).compact.uniq.select(&:present?)
+    return if recipients.empty?
+
+    templated_mail(
+      to: recipients,
+      subject: "Spielerfreigabe zurueckgezogen: #{player_name(transfer_request)}",
+      placeholders: {
+        player_name: player_name(transfer_request),
+        revocation_reason: transfer_request.revocation_reason.to_s
+      }
+    )
+  end
+
   # Ein laufender Freigabeantrag ist mit dem Vollzug eines Transfers beendet
   # (siehe TransferRequest#annul_pending_releases!). Empfaenger sind der Verein,
   # der die Freigabe wollte, und der Spieler selbst: Beide warten auf eine

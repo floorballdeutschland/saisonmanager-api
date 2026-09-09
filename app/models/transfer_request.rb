@@ -269,6 +269,12 @@ class TransferRequest < ApplicationRecord
     end
 
     Rails.cache.delete('transfers')
+
+    # Nach dem Commit: Bis hierher erfuhr die aufnehmende Seite von einem
+    # Widerruf ueber keinen Kanal -- weder per Mail noch in der Uebersicht
+    # "Eingehende Transfers & Freigaben", aus der ein widerrufener Vorgang
+    # herausfaellt. Der Verein setzt den Spieler unter Umstaenden gerade ein.
+    TransferRequestMailer.release_revoked(self).deliver_later
   end
 
   private

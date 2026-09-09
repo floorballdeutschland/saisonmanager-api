@@ -1,0 +1,35 @@
+<h2>Spielerfreigabe zurückgezogen</h2>
+
+<p>Hallo,</p>
+
+<p>
+  eine bereits erteilte Spielerfreigabe wurde vom abgebenden Landesverband
+  zurückgezogen:
+</p>
+
+<p>
+  <strong>Spieler:</strong> <%= @transfer_request.player.first_name %> <%= @transfer_request.player.last_name %><br>
+  <strong>Heimverein:</strong> <%= @transfer_request.former_club.name %><br>
+  <strong>War freigegeben an:</strong> <%= @transfer_request.requesting_club.name %><br>
+  <% if @transfer_request.lv_approved_at.present? %>
+    <strong>Erteilt am:</strong> <%= @transfer_request.lv_approved_at.strftime('%d.%m.%Y') %><br>
+  <% end %>
+  <strong>Zurückgezogen am:</strong> <%= @transfer_request.revoked_at&.strftime('%d.%m.%Y') %>
+</p>
+
+<% if @transfer_request.revocation_reason.present? %>
+  <p>
+    <strong>Begründung:</strong> <%= @transfer_request.revocation_reason %>
+  </p>
+<% end %>
+
+<p>
+  Die Zweitmitgliedschaft ist damit beendet, und die Lizenzen des Spielers beim
+  freigegebenen Verein sind auf „zurückgezogen" gesetzt. Der Spieler darf für
+  diesen Verein nicht mehr eingesetzt werden.
+</p>
+
+<p>
+  Das Saisonmanager-Team<br>
+  <a href="<%= frontend_base_url %>"><%= frontend_host %></a>
+</p>

@@ -145,6 +145,28 @@ class StateAssociationEffectiveEmailTest < ActiveSupport::TestCase
     assert_not_includes empfaenger, 'sbk@fremd.example.com'
   end
 
+  # Der Widerruf einer bereits ERTEILTEN Freigabe erreichte die aufnehmende
+  # Seite ueber keinen Kanal: `revoke_release!` verschickte nichts, und aus der
+  # Uebersicht "Eingehende Transfers & Freigaben" faellt ein widerrufener
+  # Vorgang heraus -- die Zeile verschwand einfach. Der Verein setzt den Spieler
+  # zu dem Zeitpunkt womoeglich gerade ein.
+  test 'Widerruf einer Freigabe erreicht den aufnehmenden Landesverband' do
+    fremder_lv = create(:state_association, sbk_email: 'sbk@fremd.example.com')
+    tr = transfer_request_between(@child, fremder_lv)
+    tr.update!(request_type: 'release', status: 'approved', lv_approved_at: Time.current)
+
+    perform_enqueued_jobs do
+      tr.revoke_release!(create(:user).id, 'Irrtum bei der Freigabe')
+    end
+
+    mail = ActionMailer::Base.deliveries.last
+    assert_not_nil mail
+    assert_includes mail.to, 'sbk@fremd.example.com'
+    assert_includes mail.subject, 'zurueckgezogen'
+    assert_includes mail.body.decoded, 'Irrtum bei der Freigabe',
+                    'die Begruendung ist der einzige einordnende Inhalt'
+  end
+
   test 'Spieltags-Veto erreicht die SBK des Verbunds' do
     game_day = create(:game_day)
     referee_mail = GameDayMailer.referee_checklist_veto(game_day, create(:referee), [], @child)

@@ -416,6 +416,19 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' }
       ]
     },
+    'TransferRequestMailer#release_revoked' => {
+      mailer_class: 'TransferRequestMailer',
+      action_name: 'release_revoked',
+      description: 'Information an den freigegebenen Verein, seinen Landesverband, den Heimverein und ' \
+                   'den Spieler, dass eine erteilte Spielerfreigabe zurückgezogen wurde.',
+      default_subject: 'Spielerfreigabe zurueckgezogen: {{player_name}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'player_name', description: 'Vor- und Nachname des Spielers' },
+        { key: 'revocation_reason', description: 'Begründung des Widerrufs' }
+      ]
+    },
     'TransferRequestMailer#rejected_notification' => {
       mailer_class: 'TransferRequestMailer',
       action_name: 'rejected_notification',
