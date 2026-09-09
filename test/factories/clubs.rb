@@ -18,5 +18,24 @@ FactoryBot.define do
     end
 
     state_association { game_operation&.state_association }
+
+    # Ein Verein, dessen Stammdaten vollstaendig sind. Seit #641 blockieren
+    # fehlende Pflichtangaben jedes Speichern ueber die Vereinsmaske
+    # (ClubsController::REQUIRED_CLUB_FIELDS); Tests, die etwas ANDERES an der
+    # Maske pruefen, brauchen deshalb einen vollstaendigen Ausgangszustand.
+    #
+    # Nicht im Grundbaukasten, sondern als Merkmal: Der Bestand auf Produktion
+    # ist unvollstaendig, und ein Verein ohne Anschrift muss ein moeglicher
+    # Testfall bleiben. `contact_email` gehoert aus demselben Grund hierher --
+    # gesetzt entscheidet es mit darueber, wer Vereinspost bekommt
+    # (Club#notification_emails).
+    trait :mit_stammdaten do
+      long_name { "#{name} e.V." }
+      street { 'Musterweg' }
+      house_number { '1' }
+      postcode { '30159' }
+      city { 'Hannover' }
+      sequence(:contact_email) { |n| "verein#{n}@example.org" }
+    end
   end
 end
