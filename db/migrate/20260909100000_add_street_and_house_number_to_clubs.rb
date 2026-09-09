@@ -10,21 +10,25 @@
 # Spalten daneben zu legen haette dauerhaft zwei Felder fuer dieselbe Frage im
 # Schema hinterlassen.
 #
-# GELESEN wird aus beiden Spalten bisher nirgends. GESCHRIEBEN schon: Der
-# Altdaten-Import 2010-2014 fuellt sie aus den alten Dumps
-# (`LegacyImport::Transformer#club_attrs`, aufgerufen aus
-# `lib/tasks/import_old_seasons.rake`), und `db/seeds.rb` setzt `city` fuer die
-# Demovereine. Vereine, die der Altimport angelegt hat, tragen also bereits
-# Ort und Postleitzahl -- unverifizierte Werte von 2010 bis 2014.
+# GELESEN wird aus beiden Spalten bisher nirgends -- die Anwendung zeigt Ort
+# und Postleitzahl eines Vereins an keiner Stelle an. GESCHRIEBEN schon:
+# `LegacyImport::Transformer#club_attrs` (aus `lib/tasks/import_old_seasons.rake`)
+# und `db/seeds.rb`.
 #
-# Kein Backfill und kein Datenlauf, auch nicht in die andere Richtung: Diese
-# Altwerte werden nicht geleert. Sie sind das Beste, was zu diesen Vereinen
-# vorliegt, und wer die Anschrift ueber die Maske speichert, muss ohnehin alle
-# acht Pflichtangaben stellen und sieht die beiden Felder dabei. Wo nichts
-# steht, bleibt es leer und wird leer angezeigt.
+# Sie stehen deshalb nicht leer da. Produktion am 09.09.2026: 216 der 281
+# aktiven Vereine tragen einen Ort, 217 eine Postleitzahl, 216 beides. Die
+# Werte sind brauchbar -- Stichprobe und Formatpruefung: jede der 217
+# Postleitzahlen ein sauberer Fuenfsteller, Postleitzahl und Ort passen
+# zueinander, Ort und Bundesland zum Verein. Angelegt wurden sie mit der
+# Datenuebernahme zum Systemstart (April bis Juni 2026), nicht in einem alten
+# Import.
 #
-# Vor dem Deploy einmal zaehlen, wie gross der Altbestand ist:
-#   Club.active.where.not(city: [nil, '']).count
+# Das ist die gute Nachricht fuer die Einfuehrung: Fuer diese 216 Vereine
+# fehlen nur noch Strasse und Hausnummer, nicht die ganze Anschrift. Deshalb
+# kein Backfill in die eine und kein Leeren in die andere Richtung -- wer die
+# Maske speichert, muss ohnehin alle acht Pflichtangaben stellen und sieht Ort
+# und Postleitzahl dabei, kann sie also im selben Zug bestaetigen oder
+# richtigstellen. Bei den uebrigen 65 bleibt es leer und wird leer angezeigt.
 class AddStreetAndHouseNumberToClubs < ActiveRecord::Migration[7.2]
   def change
     add_column :clubs, :street, :string
