@@ -7,7 +7,10 @@ require 'test_helper'
 # über den Verein, bei Spieltags-, Expresslizenz- und Berichtsmails über den
 # Spielbetrieb der Liga.
 class StateAssociationEffectiveEmailTest < ActiveSupport::TestCase
+  include ActiveJob::TestHelper
+
   setup do
+    ActionMailer::Base.deliveries.clear
     create(:setting, current_season_id: '18')
 
     @verbund = create(:state_association,
@@ -119,19 +122,79 @@ class StateAssociationEffectiveEmailTest < ActiveSupport::TestCase
     assert_includes mail.to, 'sbk@verbund.example.com'
   end
 
-  # Wechsel zwischen zwei Kind-LVs desselben Verbunds: unterschiedliche
-  # state_association_id, aber dasselbe geerbte Postfach. Ohne Vergleich der
-  # effektiven Adresse bekaeme der Verbund zwei Mails zum selben Vorgang.
-  test 'kein zweites Schreiben an den aufnehmenden LV bei geteiltem Postfach' do
-    zweites_kind = create(:state_association, parent: @verbund)
+  # Der aufnehmende Landesverband bekommt keine eigene Abschlussmail mehr --
+  # auch dann nicht, wenn hinter ihm ein anderes Postfach steht als beim
+  # abgebenden. Genau dieser Fall hat sie frueher ausgeloest.
+  #
+  # Der Vorgang ist entschieden, wenn sie ankommt: Sie forderte nichts und
+  # verdeckte im SBK-Postfach die Nachrichten, die etwas fordern. Was der
+  # aufnehmende Verband daraus wissen wollte, steht in seiner Uebersicht
+  # „Eingehende Transfers & Freigaben".
+  test 'aufnehmender LV bekommt keine eigene Abschlussmail' do
+    fremder_lv = create(:state_association, sbk_email: 'sbk@fremd.example.com')
+    tr = transfer_request_between(@child, fremder_lv)
 
-    assert_not transfer_request_between(@child, zweites_kind).send(:notify_receiving_lv?)
+    perform_enqueued_jobs do
+      tr.send(:send_completion_emails, [])
+    end
+
+    # Die Zahl und nicht nur die eine Adresse: Ein Test auf
+    # `assert_not_includes 'sbk@fremd...'` liesse eine wiedereingefuehrte Mail
+    # an das VSK-Postfach, an die Vereinsadressen oder an ein geerbtes Kind-LV
+    # anstandslos durch. `send_completion_emails([])` erzeugt genau eine.
+    assert_equal 1, ActionMailer::Base.deliveries.size,
+                 'genau eine Abschlussmail, keine zweite an den aufnehmenden LV'
+
+    empfaenger = ActionMailer::Base.deliveries.flat_map(&:to)
+    assert_includes empfaenger, 'sbk@verbund.example.com',
+                    'die abgebende Seite wird weiterhin benachrichtigt'
+    assert_not_includes empfaenger, 'sbk@fremd.example.com'
   end
 
-  test 'aufnehmender LV mit eigenem Postfach wird weiterhin benachrichtigt' do
+  # Die Zusatzmail hing an ZWEI Absendestellen. Der Freigabeweg ist der, um den
+  # es fachlich geht (Zweitspielrecht) -- ohne diesen Test liesse er sich
+  # wieder einbauen, ohne dass etwas faellt.
+  test 'auch der Freigabeweg verschickt keine zweite Mail an den aufnehmenden LV' do
     fremder_lv = create(:state_association, sbk_email: 'sbk@fremd.example.com')
+    tr = transfer_request_between(@child, fremder_lv)
+    tr.update!(request_type: 'release', status: 'pending_lv')
 
-    assert transfer_request_between(@child, fremder_lv).send(:notify_receiving_lv?)
+    perform_enqueued_jobs do
+      tr.execute_release!(create(:user).id)
+    end
+
+    assert_equal 1, ActionMailer::Base.deliveries.size
+    assert_not_includes ActionMailer::Base.deliveries.flat_map(&:to), 'sbk@fremd.example.com'
+  end
+
+  # Der Widerruf einer bereits ERTEILTEN Freigabe erreichte die aufnehmende
+  # Seite ueber keinen Kanal: `revoke_release!` verschickte nichts, und aus der
+  # Uebersicht "Eingehende Transfers & Freigaben" faellt ein widerrufener
+  # Vorgang heraus -- die Zeile verschwand einfach. Der Verein setzt den Spieler
+  # zu dem Zeitpunkt womoeglich gerade ein.
+  test 'Widerruf einer Freigabe erreicht den aufnehmenden Landesverband' do
+    fremder_lv = create(:state_association, sbk_email: 'sbk@fremd.example.com')
+    tr = transfer_request_between(@child, fremder_lv)
+    tr.update!(request_type: 'release', status: 'approved', lv_approved_at: Time.current)
+
+    perform_enqueued_jobs do
+      tr.revoke_release!(create(:user).id, 'Irrtum bei der Freigabe')
+    end
+
+    mail = ActionMailer::Base.deliveries.last
+    assert_not_nil mail
+    assert_includes mail.subject, 'zurueckgezogen'
+    assert_includes mail.body.decoded, 'Irrtum bei der Freigabe',
+                    'die Begruendung ist der einzige einordnende Inhalt'
+
+    # Der Empfaengerkreis ist die Aussage dieser Mail, nicht ein Detail: Eine
+    # Reduktion auf einen einzigen Empfaenger oder ein versehentlich ergaenztes
+    # Postfach der abgebenden Seite liefe sonst still durch.
+    assert_includes mail.to, 'sbk@fremd.example.com', 'der aufnehmende Landesverband'
+    assert_includes mail.to, 'neu@example.com', 'der freigegebene Verein'
+    assert_includes mail.to, 'alt@example.com', 'der Heimverein'
+    assert_not_includes mail.to, 'sbk@verbund.example.com',
+                        'der abgebende LV hat den Widerruf ausgeloest'
   end
 
   test 'Spieltags-Veto erreicht die SBK des Verbunds' do

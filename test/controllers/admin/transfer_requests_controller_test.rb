@@ -5,68 +5,7 @@ module Admin
   class TransferRequestsControllerTest < ActionDispatch::IntegrationTest
     include TransferRequestTestHelpers
 
-    setup do
-      # StateAssociation mit sbk_email – nötig damit pending_lv_notification
-      # verschickt wird (mailer hat early return wenn sbk_email fehlt).
-      @state_association = StateAssociation.create!(
-        name: "LV Test #{SecureRandom.hex(4)}",
-        short_name: "LV#{SecureRandom.hex(2)}",
-        sbk_email: 'sbk@test.example.com'
-      )
-
-      @game_operation = GameOperation.create!(
-        name: "SBK Test #{SecureRandom.hex(4)}",
-        short_name: "ST#{SecureRandom.hex(2)}",
-        state_association: @state_association
-      )
-
-      # contact_email auf Clubs setzen – sonst geben rejected_notification und
-      # player_rejected_clubs_notification 0 Mails ab (early return im Mailer).
-      @former_club = Club.create!(
-        name: "Abgebender Verein #{SecureRandom.hex(4)}",
-        short_name: "AV#{SecureRandom.hex(1)}",
-        contact_email: 'former@test.example.com',
-        state_association: @state_association
-      )
-
-      @requesting_club = Club.create!(
-        name: "Aufnehmender Verein #{SecureRandom.hex(4)}",
-        short_name: "AU#{SecureRandom.hex(1)}",
-        contact_email: 'requesting@test.example.com',
-        state_association: @state_association
-      )
-
-      create(:setting, current_season_id: '18')
-
-      @player = Player.create!(
-        first_name: 'Max',
-        last_name: 'Mustermann',
-        birthdate: '1995-03-15',
-        nation_id: '1',
-        gender: 'm',
-        email: 'max.mustermann@example.com',
-        clubs: [{ 'club_id' => @former_club.id, 'home_club' => true, 'valid_until' => nil }],
-        licenses: []
-      )
-
-      # Verein außerhalb des Test-Spielbetriebs, für den nur die VM-Rolle greift.
-      @vm_only_club = Club.create!(
-        name: "Nur-VM Verein #{SecureRandom.hex(4)}",
-        short_name: "NV#{SecureRandom.hex(1)}"
-      )
-
-      @vm_requesting = create_user(user_group_id: 4, club_id: @requesting_club.id)
-      @vm_former     = create_user(user_group_id: 4, club_id: @former_club.id)
-      @sbk           = create_user_sbk(game_operation_id: @game_operation.id)
-      @admin         = create_user(user_group_id: 1, game_operation_id: 0)
-      @tm            = create_user(user_group_id: 5, game_operation_id: 0)
-      # Mehrfachrolle wie im gemeldeten Fall: SBK eines Verbands und zugleich
-      # VM eines Vereins, der nicht der aufnehmende Verein ist.
-      @sbk_and_vm = create_user_sbk_and_vm(
-        game_operation_id: @game_operation.id,
-        club_id: @vm_only_club.id
-      )
-    end
+    setup { setup_transfer_request_world }
 
     # ---------------------------------------------------------------------------
     # GET /api/v2/admin/transfer_requests/search_player

@@ -43,7 +43,14 @@ class TransferRequest < ApplicationRecord
 
   before_create :generate_player_confirmation_token
 
-  scope :active, -> { where(status: %w[pending_club pending_player pending_lv scheduled]) }
+  # Die Status, in denen ein Vorgang noch etwas von jemandem will. `scheduled`
+  # gehoert dazu: vollstaendig genehmigt, aber erst mit dem Wirksamkeitsdatum
+  # vollzogen -- und `expirable` faengt ihn ausdruecklich NICHT ab. Als
+  # Konstante, weil der Saisonfilter der Listen sie ebenfalls braucht: Ein
+  # offener Vorgang darf nie hinter einem Filter verschwinden.
+  ACTIVE_STATUSES = %w[pending_club pending_player pending_lv scheduled].freeze
+
+  scope :active, -> { where(status: ACTIVE_STATUSES) }
   # Nach Antragsart getrennt, weil die Eindeutigkeitsregeln auseinanderlaufen:
   # je Spieler hoechstens ein laufender Transfer, je Spieler und Zielverein
   # hoechstens eine laufende Freigabe. Mehrere Freigaben auf verschiedene
@@ -246,9 +253,6 @@ class TransferRequest < ApplicationRecord
 
     Rails.cache.delete('transfers')
     TransferRequestMailer.transfer_completed(self).deliver_later
-    return unless notify_receiving_lv?
-
-    TransferRequestMailer.transfer_completed_receiving_lv(self).deliver_later
   end
 
   def revoke_release!(user_id, reason)
@@ -272,6 +276,45 @@ class TransferRequest < ApplicationRecord
     end
 
     Rails.cache.delete('transfers')
+
+    # Nach dem Commit, nicht in der Transaktion. Bis hierher erfuhr die
+    # aufnehmende Seite von einem Widerruf ueber keinen Kanal; der Verein setzt
+    # den Spieler unter Umstaenden gerade ein. Die Uebersicht zeigt widerrufene
+    # Vorgaenge inzwischen, aber sie haengt am Saisonfilter -- ein Widerruf zu
+    # einer Freigabe der Vorsaison steht in keiner der beiden Listen.
+    TransferRequestMailer.release_revoked(self).deliver_later
+  end
+
+  # Anschrift und Kontakt beider Vereine, fuer die Transferrechnung (#641).
+  #
+  # Die Rechnung stellt der abgebende Landesverband an den aufnehmenden Verein.
+  # Er braucht dessen ladungsfaehige Anschrift, und der aufnehmende Verein
+  # braucht die Gegenseite, um die Rechnung einzuordnen. Beide Seiten deshalb,
+  # nicht nur eine.
+  #
+  # Erst am vollzogenen Vorgang: Vorher gibt es keine Rechnung. `scheduled` ist
+  # zwar vollstaendig genehmigt, aber noch nicht vollzogen; abgelehnte,
+  # widerrufene und abgelaufene Antraege fallen ebenfalls heraus.
+  #
+  # NUR Transfers. `approved` ist nicht der Abschluss des Transfers, sondern der
+  # beider Antragsarten -- `execute_release!` und
+  # `PlayerReleaseRecording#record_direct_release!` schreiben ihn ebenso, und
+  # zwei der drei Wege dorthin sind Freigaben. Fuer eine Freigabe stimmen aber
+  # weder der Anlass (sie loest keine Transferrechnung aus) noch die
+  # Beschriftung: `requesting_club` ist dort der Zweitverein und `former_club`
+  # der Stammverein, nicht aufnehmender und abgebender Verein. Soll die Ansicht
+  # spaeter auch Freigaben tragen, gehoeren die Beschriftungen mit umgestellt.
+  #
+  # Bewusst NICHT in `as_json`: Denselben Hash rendert auch die Antragsliste,
+  # und die zieht ueber jeden Vorgang, den ein Konto sehen darf. Anschriften
+  # gehoeren in den einzelnen Vorgang, den jemand geoeffnet hat.
+  def club_address_hashes
+    return nil unless status == 'approved' && request_type == 'transfer'
+
+    {
+      requesting_club: requesting_club.address_hash,
+      former_club: former_club.address_hash
+    }
   end
 
   private
@@ -383,23 +426,17 @@ class TransferRequest < ApplicationRecord
     player.save!(validate: false)
   end
 
-  # Zusatzmail an den aufnehmenden Landesverband nur, wenn dahinter ein anderes
-  # Postfach steht. Der Vergleich läuft über die effektive Adresse, nicht über
-  # state_association_id: Zwei Vereine in verschiedenen Kind-LVs desselben
-  # Verbunds haben unterschiedliche IDs, erben aber dasselbe SBK-Postfach, das
-  # sonst zwei Mails zum selben Vorgang bekäme (die zweite mit dem Zusatz
-  # „aufnehmender LV", der dann eine zweite Instanz suggeriert).
-  def notify_receiving_lv?
-    receiving = requesting_club.state_association&.effective_sbk_email
-    return false if receiving.blank?
-
-    receiving != former_club.state_association&.effective_sbk_email
-  end
-
+  # Der aufnehmende Landesverband bekommt bewusst KEINE eigene Abschlussmail
+  # mehr. Sie forderte nichts von ihm -- der Vollzug ist entschieden, wenn sie
+  # ankommt -- und stand damit als Pflichtlektuere in einem Postfach, in dem
+  # jede weitere Zeile die handlungsbeduerftigen Nachrichten verdeckt. Was er
+  # daraus wissen wollte, steht jetzt in seiner Uebersicht „Eingehende
+  # Transfers & Freigaben", die er ansieht, wenn er es braucht.
+  #
+  # Die Abschlussmail an die abgebende Seite bleibt: Dort sitzt die
+  # Zustaendigkeit, und sie loest die Transferrechnung aus.
   def send_completion_emails(secondary_club_ids)
     TransferRequestMailer.transfer_completed(self).deliver_later
-
-    TransferRequestMailer.transfer_completed_receiving_lv(self).deliver_later if notify_receiving_lv?
 
     secondary_club_ids.each do |club_id|
       club = Club.find_by(id: club_id)

@@ -307,6 +307,27 @@ class Club < ApplicationRecord
     }
   end
 
+  # Anschrift und Kontakt des Vereins -- die Angaben, aus denen der abgebende
+  # Landesverband seine Transferrechnung schreibt (#641).
+  #
+  # Bewusst NICHT in `full_hash`: Der volle Vereins-Hash reist ueber
+  # GameDay#full_hash durch jede Spieltags-Antwort, und Strasse und Hausnummer
+  # eines Vereins sind haeufig die Privatanschrift eines Vorstandsmitglieds.
+  # Die gehoert an die zwei Stellen, die sie brauchen -- die Vereinsmaske und
+  # den abgeschlossenen Transfervorgang -- und nicht in jede Spielansicht, die
+  # ein angemeldetes Konto oeffnet. Gleiche Begruendung wie bei
+  # `admin_club_managers`.
+  def address_hash
+    {
+      long_name:,
+      street:,
+      house_number:,
+      postcode:,
+      city:,
+      contact_email:
+    }
+  end
+
   # Der zustaendige Spielbetrieb, abgeleitet aus dem Landesverband des Vereins:
   # Landesverband, Wurzel der Verbandskette, Spielbetrieb dieser Wurzel.
   #
