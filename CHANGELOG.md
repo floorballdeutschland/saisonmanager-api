@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Der Verein pflegt die Logos seiner Mannschaften selbst**: Ein abweichendes Mannschaftslogo konnte bisher nur der Verband setzen – der Vereinsmanager pflegt sein Vereinslogo, kam an die Mannschaften aber nicht heran, obwohl genau dort die Vorlagen liegen. Die Vereinsverwaltung führt jetzt einen Abschnitt „Abweichende Logos pro Team" mit allen Mannschaften der laufenden Saison: Logo setzen, ersetzen, zurücknehmen. **Ohne eigenes Logo trägt eine Mannschaft immer das Vereinslogo** – das war schon vorher so und bleibt der Regelfall, ein eigenes Logo ist die Ausnahme für Mannschaften, die als Zweitvertretung oder Spielgemeinschaft anders auftreten. Ein Zurücknehmen führt deshalb nicht in einen Zustand ohne Zeichen, sondern zum Vereinslogo zurück. Das Recht ist eng gefasst und hängt ausdrücklich nicht am Bearbeiten der Mannschaft: Liga-Zuordnung, Pokal-Wettbewerbe und Kurzname bleiben beim Verband, der auch die Logos weiterhin pflegen kann. Bei einer Spielgemeinschaft darf jeder beteiligte Verein das gemeinsame Logo setzen und auch überschreiben – ein Verbund tritt als eine Mannschaft an, und wer sie gemeinsam stellt, pflegt auch ihr Zeichen. Die Mannschaftsliste steht auch dem zuständigen Landesverband offen, dort allerdings ohne Knopf für eine Mannschaft, die in der Liga eines anderen Verbands spielt: Das Logo folgt dem Spielbetrieb der Liga. In Tabelle und Stream-Grafiken erscheint ein geändertes Logo mit bis zu fünf Minuten Verzögerung, weil beide Ansichten zwischengespeichert werden; im Spielplan und auf der Mannschaftsseite sofort.
+
 ## [1.112.0] - 2026-09-09
 
 ### Neu

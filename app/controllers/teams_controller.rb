@@ -377,11 +377,17 @@ class TeamsController < ApplicationController
            status: :unprocessable_entity
   end
 
+  # Abweichendes Logo einer Mannschaft. Ohne eigenes Logo zeigt die Mannschaft
+  # überall das Logo ihres Vereins (Team#logo_url_fallback), dieser Endpunkt
+  # setzt also die Ausnahme – der Regelfall bleibt das Vereinslogo.
+  #
+  # `:update_team_logo` und nicht `:update_team`: Der Verein pflegt sein Zeichen
+  # selbst, die Spielbetriebsdaten der Mannschaft bleiben beim Verband.
   def admin_upload_logo
     if current_user
       team = Team.find(params[:id])
 
-      unless team.user_permissions(current_user).include?(:update_team)
+      unless team.user_permissions(current_user).include?(:update_team_logo)
         return render json: { message: 'Keine Berechtigung' }, status: :forbidden
       end
 
@@ -398,6 +404,37 @@ class TeamsController < ApplicationController
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
     end
+  end
+
+  # Abweichendes Logo zurücknehmen: Danach greift wieder das Vereinslogo.
+  #
+  # Antwort trägt deshalb die Adressen NACH dem Löschen, also die des
+  # Vereinslogos (`logo_url_fallback`) – die Maske zeigt damit sofort das Bild,
+  # das die Mannschaft ab jetzt überall trägt, ohne den Verein nachzuladen.
+  # `logo_url` ist nach dem Purge leer und wäre als Antwort irreführend.
+  def admin_delete_logo
+    return render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized unless current_user
+
+    team = Team.find(params[:id])
+
+    unless team.user_permissions(current_user).include?(:update_team_logo)
+      return render json: { message: 'Keine Berechtigung' }, status: :forbidden
+    end
+
+    begin
+      team.logo.purge if team.logo.attached?
+      # Der Anhang ist über die Zuordnung gecacht; ohne reload liest der Fallback
+      # weiter das gerade gelöschte Logo und die Maske zeigte es erneut an.
+      team.reload
+    rescue StandardError => e
+      # Eng um den Ablage-Zugriff gelegt und nicht um die ganze Aktion: Ein
+      # `rescue` am Methodenende fing auch das RecordNotFound von Team.find und
+      # meldete eine unbekannte Mannschaft als 500 statt als 404.
+      Rails.logger.error("Mannschaftslogo-Löschen fehlgeschlagen (Team #{team.id}): #{e.class}: #{e.message}")
+      return render json: { message: 'Logo konnte nicht gelöscht werden.' }, status: :internal_server_error
+    end
+
+    render json: { logo_url: team.logo_url_fallback, logo_small_url: team.logo_small_url_fallback }
   end
 
   def team_params

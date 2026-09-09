@@ -145,6 +145,7 @@ Rails.application.routes.draw do
       get 'admin/clubs/role_assignable', to: 'clubs#admin_club_role_assignable'
       get 'admin/clubs', to: 'clubs#admin_club_index'
       get 'admin/clubs/:id/managers', to: 'clubs#admin_club_managers'
+      get 'admin/clubs/:id/teams', to: 'clubs#admin_club_teams'
       get 'admin/clubs/:id', to: 'clubs#admin_club'
       post 'admin/clubs', to: 'clubs#admin_club_update'
       post 'admin/clubs/:id/upload_logo', to: 'clubs#admin_upload_logo'
@@ -152,6 +153,7 @@ Rails.application.routes.draw do
       post 'admin/clubs/:id/reactivate', to: 'clubs#admin_club_reactivate'
 
       post 'admin/teams/:id/upload_logo', to: 'teams#admin_upload_logo'
+      delete 'admin/teams/:id/logo', to: 'teams#admin_delete_logo'
 
       post 'admin/players/:id/transfer', to: 'players#transfer'
       post 'admin/players/:id/add_additional_club', to: 'players#add_additional_club'
