@@ -297,7 +297,7 @@ class ClubsController < ApplicationController
       # ausdrücken. Bewusst hier statt in Club#full_hash: Der Hash reist über
       # GameDay#full_hash durch jede Spieltags-Antwort, wo eine
       # benutzerbezogene Angabe nichts zu suchen hat.
-      render json: club.full_hash.merge(edit_restricted: !full_club_access?(club))
+      render json: club.full_hash.merge(club.address_hash).merge(edit_restricted: !full_club_access?(club))
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
     end
@@ -655,6 +655,7 @@ class ClubsController < ApplicationController
   # Spielbetriebs-Parameter gibt es nicht mehr (siehe create_club / update_club).
   def club_params
     params.require(:club).permit(:name, :short_name, :long_name, :state, :state_association_id, :contact_email,
+                                 :street, :house_number, :postcode, :city,
                                  :team_managers_manage_players, notify_user_ids: [])
   end
 
@@ -670,7 +671,45 @@ class ClubsController < ApplicationController
   # als Konflikt melden).
   def restricted_club_params
     params.require(:club).permit(:name, :short_name, :long_name, :contact_email,
+                                 :street, :house_number, :postcode, :city,
                                  :team_managers_manage_players, notify_user_ids: [])
+  end
+
+  # Pflichtangaben der Vereinsmaske (#641). Ohne ladungsfaehige Anschrift und
+  # ohne Kontakt kann der abgebende Landesverband seine Transferrechnung nicht
+  # stellen; das Speichern bleibt deshalb gesperrt, bis alle acht Felder
+  # stehen. Die Reihenfolge ist die der Maske, damit die Meldung von oben nach
+  # unten liest.
+  #
+  # Im Controller und nicht als `validates :presence` am Modell: Vereine werden
+  # auch ausserhalb dieser Maske geschrieben -- `deactivate!`/`reactivate!`
+  # (beide `update!`), die Liga-Kopie, das Zusammenfuehren von Spielerprofilen.
+  # Eine Modellregel haette jeden Verein mit unvollstaendigem Bestand fuer all
+  # das gesperrt, ohne dass es irgendwo eine Maske gaebe, in der man es
+  # nachtragen koennte -- und der Bestand ist unvollstaendig, es gibt keinen
+  # Datenlauf dazu. An genau dieser Falle sind `short_name` und
+  # `contact_email` schon einmal vorbeigebaut worden (siehe die
+  # `if: :..._changed?`-Bedingungen in Club).
+  REQUIRED_CLUB_FIELDS = {
+    'name' => 'Name',
+    'short_name' => 'Kürzel',
+    'long_name' => 'Name laut Vereinsregister',
+    'street' => 'Straße',
+    'house_number' => 'Hausnummer',
+    'postcode' => 'Postleitzahl',
+    'city' => 'Ort',
+    'contact_email' => 'Kontakt-E-Mail'
+  }.freeze
+
+  # Liefert die Meldung, wenn eine Pflichtangabe fehlt -- sonst nil. Geprueft
+  # wird der Verein NACH `assign_attributes`, also der Stand, der gespeichert
+  # wuerde: Der eingeschraenkte Zugriff schickt nicht alle Felder mit, und was
+  # er nicht schickt, steht bereits am Datensatz.
+  def missing_required_fields_message(club)
+    fehlend = REQUIRED_CLUB_FIELDS.reject { |feld, _| club.public_send(feld).to_s.strip.present? }.values
+    return nil if fehlend.empty?
+
+    "Bitte ausfüllen: #{fehlend.join(', ')}."
   end
 
   def full_club_access?(club)
@@ -791,8 +830,14 @@ class ClubsController < ApplicationController
       return render json: { success: false, message: meldung }, status: :forbidden
     end
 
-    if club.update(voller_zugriff ? club_params : restricted_club_params)
-      render json: club.full_hash
+    club.assign_attributes(voller_zugriff ? club_params : restricted_club_params)
+
+    if (meldung = missing_required_fields_message(club))
+      return render json: { success: false, message: meldung }, status: :unprocessable_entity
+    end
+
+    if club.save
+      render json: club.full_hash.merge(club.address_hash)
     else
       render json: club.errors, status: :unprocessable_entity
     end
@@ -817,10 +862,14 @@ class ClubsController < ApplicationController
     club.created_by = current_user.id
     club.updated_by = current_user.id
 
+    if (meldung = missing_required_fields_message(club))
+      return render json: { success: false, message: meldung }, status: :unprocessable_entity
+    end
+
     # Ergebnis prüfen: Club.create gab vorher auch einen ungespeicherten Verein
     # zurück, den die Antwort als 201 Created auswies.
     if club.save
-      render json: club.full_hash, status: :created
+      render json: club.full_hash.merge(club.address_hash), status: :created
     else
       render json: club.errors, status: :unprocessable_entity
     end

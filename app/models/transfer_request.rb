@@ -274,6 +274,31 @@ class TransferRequest < ApplicationRecord
     Rails.cache.delete('transfers')
   end
 
+  # Anschrift und Kontakt beider Vereine, fuer die Transferrechnung (#641).
+  #
+  # Die Rechnung stellt der abgebende Landesverband an den aufnehmenden Verein.
+  # Er braucht dessen ladungsfaehige Anschrift, und der aufnehmende Verein
+  # braucht die Gegenseite, um die Rechnung einzuordnen. Beide Seiten deshalb,
+  # nicht nur eine.
+  #
+  # Erst am abgeschlossenen Vorgang: Vorher gibt es keine Rechnung. `approved`
+  # und nicht auch `scheduled` -- ein terminierter Antrag ist vollstaendig
+  # genehmigt, aber noch nicht vollzogen; erst `execute_transfer!` setzt ihn auf
+  # `approved`. Abgelehnte, widerrufene und abgelaufene Antraege fallen damit
+  # ebenfalls heraus.
+  #
+  # Bewusst NICHT in `as_json`: Denselben Hash rendert auch die Antragsliste,
+  # und die zieht ueber jeden Vorgang, den ein Konto sehen darf. Anschriften
+  # gehoeren in den einzelnen Vorgang, den jemand geoeffnet hat.
+  def club_address_hashes
+    return nil unless status == 'approved'
+
+    {
+      requesting_club: requesting_club.address_hash,
+      former_club: former_club.address_hash
+    }
+  end
+
   private
 
   # Ein Vereinswechsel schliesst JEDE bestehende Zugehoerigkeit, auch die

@@ -999,4 +999,37 @@ class ClubTest < ActiveSupport::TestCase
 
     assert_not_includes club.user_permissions(tm), :create_player
   end
+  # --- Anschrift (#641) -------------------------------------------------------
+
+  # Die Pflichtangaben der Vereinsmaske haengen am Controller, nicht am
+  # Datensatz. Dieser Test haelt den Unterschied fest: Ein Verein aus dem
+  # Altbestand -- und der Bestand ist unvollstaendig, es gab keinen Datenlauf --
+  # muss sich weiter deaktivieren lassen. `deactivate!` laeuft ueber `update!`,
+  # eine `validates :presence` am Modell haette genau hier zugeschlagen, und
+  # zwar ohne Maske, in der man die Anschrift haette nachtragen koennen.
+  test 'deactivate! kommt ohne Anschrift aus' do
+    club = create(:club, long_name: nil, street: nil, postcode: nil, city: nil, contact_email: nil)
+
+    club.deactivate!(create(:user).id)
+
+    assert club.reload.deactivated_at.present?
+  end
+
+  # Der volle Vereins-Hash reist ueber GameDay#full_hash durch jede
+  # Spieltags-Antwort. Strasse und Hausnummer eines Vereins sind haeufig die
+  # Privatanschrift eines Vorstandsmitglieds und haben dort nichts zu suchen --
+  # sie stehen in `address_hash`, den nur die Vereinsmaske und der
+  # abgeschlossene Transfervorgang ausliefern.
+  test 'full_hash traegt die Anschrift nicht' do
+    club = create(:club, :mit_stammdaten)
+
+    assert_empty club.full_hash.keys & %i[street house_number postcode city]
+    assert_equal %i[long_name street house_number postcode city contact_email], club.address_hash.keys
+  end
+
+  test 'public_hash traegt weder Anschrift noch Kontakt' do
+    club = create(:club, :mit_stammdaten)
+
+    assert_empty club.public_hash.keys & %i[street house_number postcode city contact_email]
+  end
 end

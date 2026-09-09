@@ -146,7 +146,16 @@ module Admin
         return render json: { error: 'Nicht berechtigt' }, status: :forbidden
       end
 
-      render json: tr.as_json
+      # Die Anschriften haengen am abgeschlossenen Vorgang und nur dort
+      # (TransferRequest#club_address_hashes). Kein eigenes Rechte-Gate: Wer den
+      # Vorgang sehen darf, ist der abgebende Landesverband, ein Admin oder ein
+      # Vereinsmanager einer der beiden beteiligten Vereine -- genau der Kreis,
+      # der die Rechnung stellt oder bekommt.
+      payload = tr.as_json
+      anschriften = tr.club_address_hashes
+      payload[:club_addresses] = anschriften if anschriften
+
+      render json: payload
     end
 
     def create

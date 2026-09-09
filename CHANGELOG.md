@@ -9,6 +9,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Vereinsanschrift und Rechnungsdaten im abgeschlossenen Transfer**: Der abgebende Landesverband stellt bei einem Transfer eine Rechnung an den aufnehmenden Verein – und hatte dafür bisher keine Anschrift. Am Verein standen Name, Kürzel, Name laut Vereinsregister, Bundesland und eine Kontakt-E-Mail; wohin die Rechnung geht, musste jeder Verband selbst wissen oder erfragen. Die Vereinsverwaltung führt jetzt Straße, Hausnummer, Postleitzahl und Ort, und der abgeschlossene Transfervorgang zeigt neben dem Protokoll die Daten **beider** beteiligten Vereine – Name laut Vereinsregister, Anschrift und Kontakt-E-Mail. Beide Seiten deshalb, weil auch der aufnehmende Verein wissen muss, von wem die Rechnung kommt. Erst am abgeschlossenen Vorgang: Vorher gibt es keine Rechnung, ein laufender, abgelehnter oder zurückgezogener Antrag zeigt die Anschriften nicht. Wer den Vorgang sehen darf, sieht auch den Block – der zuständige Verband, ein Admin und die Vereinsmanager der beiden Vereine; ein eigenes Rechte-Gate gibt es nicht, weil das genau der Kreis ist, der die Rechnung stellt oder bekommt. Die Anschrift pflegt der Verein selbst: Sie steht in der Vereinsverwaltung, die dem Vereinsmanager offensteht, und nicht nur in der Fassung des Verbands.
+- **Die Vereinsverwaltung verlangt vollständige Stammdaten**: Speichern geht nur noch, wenn Name, Kürzel, Name laut Vereinsregister, Straße, Hausnummer, Postleitzahl, Ort und Kontakt-E-Mail stehen – bisher galt das nur für Name und Kürzel, und auch nur im Browser. Fehlt etwas, nennt die Meldung die fehlenden Felder. Das trifft bewusst auch einen Bestandsverein, der eigentlich nur seinen Namen ändern wollte: Ohne Anschrift und Kontakt läuft der Transferprozess ins Leere, und die Maske ist die einzige Stelle, an der es auffällt. Nachgetragen wird nichts – wo bisher nichts gepflegt ist, bleibt es leer und wird leer angezeigt, bis der Verein oder sein Landesverband es einträgt. Die Regel hängt am Formular und nicht am Datensatz: Ein Verein aus dem Altbestand lässt sich weiterhin deaktivieren, in einer Liga-Kopie mitschreiben und bei einem Spieler-Merge anfassen, ohne dass die fehlende Anschrift dazwischenfunkt.
+
 ## [1.111.0] - 2026-09-08
 
 ### Neu

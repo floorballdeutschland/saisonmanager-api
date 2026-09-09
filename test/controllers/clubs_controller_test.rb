@@ -614,11 +614,16 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
   # GameOperation.find(0) und antwortete mit 404 „Nicht gefunden." – seitdem
   # konnte niemand mehr über die Oberfläche einen Verein anlegen.
 
+  # Vollstaendiger Satz: Seit #641 blockieren fehlende Pflichtangaben das
+  # Speichern (ClubsController::REQUIRED_CLUB_FIELDS). Wer eine einzelne
+  # Angabe pruefen will, uebergibt sie leer.
   def create_club_params(state_association_id:, **club_attrs)
     {
       id: 0,
       club: { name: 'Neuer Verein', short_name: 'NV', long_name: 'Neuer Verein e.V.',
-              state: 'de-ni', state_association_id: state_association_id }.merge(club_attrs)
+              state: 'de-ni', state_association_id: state_association_id,
+              street: 'Musterweg', house_number: '1', postcode: '30159', city: 'Hannover',
+              contact_email: 'verein@example.org' }.merge(club_attrs)
     }
   end
 
@@ -684,7 +689,8 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     post '/api/v2/admin/clubs',
          params: { id: 0, name: 'Flach angelegt', short_name: 'FL',
                    long_name: 'Flach angelegt e.V.', state: 'de-ni',
-                   state_association_id: sa.id },
+                   state_association_id: sa.id, street: 'Musterweg', house_number: '1',
+                   postcode: '30159', city: 'Hannover', contact_email: 'flach@example.org' },
          as: :json
 
     assert_response :created
@@ -758,7 +764,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
   test 'admin_club_update aendert einen bestehenden Verein und laesst den Landesverband' do
     sa = create(:state_association)
     go = create(:game_operation, state_association_id: sa.id)
-    club = create(:club, name: 'Alt', state_association_id: sa.id)
+    club = create(:club, :mit_stammdaten, name: 'Alt', state_association_id: sa.id)
     login(create(:user, :sbk_scoped, game_operation_id: go.id))
 
     assert_no_difference('Club.count') do
@@ -779,7 +785,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     sa = create(:state_association)
     go = create(:game_operation, state_association_id: sa.id)
     fremd_go = create(:game_operation, state_association_id: create(:state_association).id)
-    club = create(:club, name: 'Alt', state_association_id: sa.id)
+    club = create(:club, :mit_stammdaten, name: 'Alt', state_association_id: sa.id)
     login(create(:user, :sbk_scoped, game_operation_id: go.id))
 
     post '/api/v2/admin/clubs', params: { id: club.id, game_operation_id: fremd_go.id,
@@ -795,7 +801,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
   # Ein Verein ohne Landesverband bleibt speicherbar. Sonst waeren ausgerechnet
   # die Vereine nicht pflegbar, deren Stammdaten am dringendsten Pflege brauchen.
   test 'admin_club_update speichert einen Verein ohne Landesverband' do
-    club = create(:club, name: 'Alt', state_association_id: nil)
+    club = create(:club, :mit_stammdaten, name: 'Alt', state_association_id: nil)
     login(create(:user, :admin))
 
     post '/api/v2/admin/clubs', params: { id: club.id, club: { name: 'Neu' } }, as: :json
@@ -832,7 +838,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     verbund = create(:state_association)
     kind = create(:state_association, parent: verbund)
     go = create(:game_operation, state_association_id: verbund.id)
-    club = create(:club, state_association_id: verbund.id)
+    club = create(:club, :mit_stammdaten, state_association_id: verbund.id)
     login(create(:user, :sbk_scoped, game_operation_id: go.id))
 
     post '/api/v2/admin/clubs', params: { id: club.id,
@@ -863,7 +869,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
   test 'admin_club_update laesst die Bundesebene den Landesverband leeren' do
     sa = create(:state_association)
     create(:game_operation, state_association_id: sa.id)
-    club = create(:club, state_association_id: sa.id)
+    club = create(:club, :mit_stammdaten, state_association_id: sa.id)
     login(create(:user, :admin))
 
     post '/api/v2/admin/clubs', params: { id: club.id, club: { state_association_id: '' } }
@@ -965,7 +971,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test 'admin_club_update laesst den VM Name, Kuerzel und Kontakt aendern' do
-    club = create(:club, name: 'Alt', short_name: 'ALT', contact_email: 'alt@example.org')
+    club = create(:club, :mit_stammdaten, name: 'Alt', short_name: 'ALT', contact_email: 'alt@example.org')
     login(create(:user, :vm, club_id: club.id))
 
     post '/api/v2/admin/clubs', params: { id: club.id,
@@ -1010,7 +1016,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
   # dürfen das Speichern nicht blockieren.
   test 'admin_club_update speichert, wenn der VM die vorbehaltenen Felder unveraendert zuruecksendet' do
     sa = create(:state_association)
-    club = create(:club, name: 'Alt', state: 'de-he', state_association_id: sa.id)
+    club = create(:club, :mit_stammdaten, name: 'Alt', state: 'de-he', state_association_id: sa.id)
     login(create(:user, :vm, club_id: club.id))
 
     post '/api/v2/admin/clubs', params: { id: club.id,
@@ -1070,7 +1076,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
   test 'admin_club_update laesst den VM den Spielbetrieb nicht wechseln' do
     go = create(:game_operation)
     fremd_go = create(:game_operation)
-    club = create(:club, game_operation: go)
+    club = create(:club, :mit_stammdaten, game_operation: go)
     login(create(:user, :vm, club_id: club.id))
 
     post '/api/v2/admin/clubs', params: { id: club.id, game_operation_id: fremd_go.id,
@@ -1153,7 +1159,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
   test 'admin_club_update laesst SBK das Bundesland weiter aendern' do
     sa = create(:state_association)
     go = create(:game_operation, state_association_id: sa.id)
-    club = create(:club, state: 'de-he', state_association_id: sa.id)
+    club = create(:club, :mit_stammdaten, state: 'de-he', state_association_id: sa.id)
     login(create(:user, :sbk_scoped, game_operation_id: go.id))
 
     post '/api/v2/admin/clubs', params: { id: club.id,
@@ -1234,7 +1240,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test 'admin_club_update speichert die Empfaengerauswahl des VM' do
-    club = create(:club)
+    club = create(:club, :mit_stammdaten)
     manager = create(:user, :vm, club_id: club.id, email: 'vm@verein.example')
     login(create(:user, :vm, club_id: club.id))
 
@@ -1249,7 +1255,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
   # jede Maske ohne die Auswahl – etwa das Umbenennen aus der Liga-Kopie –
   # stillschweigend alle Vereinsmanager abgewählt.
   test 'admin_club_update ohne das Feld laesst die Abwahl stehen' do
-    club = create(:club)
+    club = create(:club, :mit_stammdaten)
     a = create(:user, :vm, club_id: club.id, email: 'a@verein.example')
     b = create(:user, :vm, club_id: club.id, email: 'b@verein.example')
     caller = create(:user, :vm, club_id: club.id)
@@ -1339,7 +1345,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
   # Vereinsmanager: Er muss ihn setzen können, obwohl sein Formular
   # eingeschränkt ist (restricted_club_params).
   test 'admin_club_update laesst den VM die Freigabe fuer Teammanager setzen' do
-    club = create(:club)
+    club = create(:club, :mit_stammdaten)
     login(create(:user, :vm, club_id: club.id))
 
     post '/api/v2/admin/clubs',
@@ -1352,7 +1358,7 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test 'admin_club_update laesst die Freigabe auch wieder zurueckziehen' do
-    club = create(:club, team_managers_manage_players: true)
+    club = create(:club, :mit_stammdaten, team_managers_manage_players: true)
     login(create(:user, :vm, club_id: club.id))
 
     post '/api/v2/admin/clubs',
