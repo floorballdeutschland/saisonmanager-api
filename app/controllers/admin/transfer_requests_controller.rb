@@ -5,6 +5,10 @@ module Admin
     skip_before_action :authenticate_user, only: %i[player_approve player_reject]
     skip_before_action :authorize_transfer_access!, only: %i[player_approve player_reject]
 
+    # Nur abgeschlossene Vorgaenge stehen in der Liste der eingehenden Transfers,
+    # siehe #incoming.
+    INCOMING_STATUSES = %w[approved scheduled].freeze
+
     def index
       ph = current_user.permission_hash
       requests = if ph[:admin].present?
@@ -31,6 +35,34 @@ module Admin
       # zweimal club_hash, das waren bisher drei Abfragen pro Antrag.
       records = requests.includes(:player, :requesting_club, :former_club)
                         .order(created_at: :desc).to_a
+      actors = TransferRequest.actor_names_for(records)
+      render json: records.map { |tr| tr.as_json(actors: actors) }
+    end
+
+    # Eingehende Transfers und Freigaben: Vorgaenge, die einen Verein des eigenen
+    # Spielbetriebs auf der AUFNEHMENDEN Seite haben und von einem Verein
+    # ausserhalb kommen.
+    #
+    # Bewusst eine eigene Aktion und nicht ein breiteres #index: Die Hauptliste
+    # ist am abgebenden Verein festgemacht, und daran haengt die Zustaendigkeit
+    # (#lv_authorized?) -- also Genehmigen, Ablehnen, Vollziehen und
+    # Annullieren. Hier geht es um reine Auskunft ueber abgeschlossene
+    # Vorgaenge; Handlungsrechte entstehen dabei keine, weil jede schreibende
+    # Aktion weiter den abgebenden Verein prueft.
+    #
+    # Nur `approved` und `scheduled`: Ein Vorgang, der noch bei der abgebenden
+    # Seite liegt, ist fuer den aufnehmenden Landesverband nichts, worauf er
+    # reagieren koennte -- die Ansicht wuerde eine Handlungsmoeglichkeit
+    # suggerieren, die es hier nicht gibt. `scheduled` steht daneben, weil der
+    # Wechsel beschlossen ist und nur das Datum noch aussteht.
+    def incoming
+      ph = current_user.permission_hash
+      unless ph[:admin].present? || ph[:sbk].present?
+        return render json: { error: 'Nicht berechtigt' }, status: :forbidden
+      end
+
+      records = incoming_scope(ph).includes(:player, :requesting_club, :former_club)
+                                  .order(lv_approved_at: :desc, created_at: :desc).to_a
       actors = TransferRequest.actor_names_for(records)
       render json: records.map { |tr| tr.as_json(actors: actors) }
     end
@@ -896,6 +928,19 @@ module Admin
       return true if ph[:sbk].include?(0)
 
       ph[:sbk].include?(tr.former_club.main_game_operation_id)
+    end
+
+    # Global gescopte SBK (FD) und Admin haben kein „ausserhalb": Ihr
+    # Vereinsbestand ist der gesamte Bestand, ein Ausschluss der eigenen Vereine
+    # liesse die Liste immer leer. Sie erhalten daher alle vollzogenen
+    # Vorgaenge -- dieselben Daten, die ihnen #index ohnehin zeigt, nur auf die
+    # abgeschlossenen eingegrenzt.
+    def incoming_scope(ph)
+      completed = TransferRequest.where(status: INCOMING_STATUSES)
+      return completed if ph[:admin].present? || ph[:sbk].include?(0)
+
+      club_ids = derive_club_ids_for_go(ph[:sbk])
+      completed.where(requesting_club_id: club_ids).where.not(former_club_id: club_ids)
     end
 
     def derive_club_ids_for_go(go_ids)
