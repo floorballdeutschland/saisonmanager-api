@@ -298,6 +298,31 @@ class RefereeCourseResultApplierTest < ActiveSupport::TestCase
     assert_equal 10_000, result.referee.lizenznummer
   end
 
+  # Der Fall aus dem Betrieb: Ein Gast hielt die naechste freie Nummer, die
+  # Vergabe suchte ihr MAX aber nur unter den Nicht-Gaesten. Die Neuanlage bekam
+  # damit genau seine Nummer, scheiterte an der Eindeutigkeit -- und riss den
+  # gesamten Submit mit zurueck, weil er in einer Transaktion laeuft.
+  test 'vergibt keine Nummer, die ein Gast belegt' do
+    Referee.delete_all
+    create(:referee, lizenznummer: 9_998)
+    gast = create(:referee, guest: true, lizenznummer: 9_999)
+
+    result = make_result(
+      referee: nil,
+      master_lizenznummer_by_importer: nil,
+      master_lizenznummer_final: nil,
+      master_vorname_final: 'Neue', master_nachname_final: 'Person'
+    )
+
+    RefereeCourseResultApplier.new(result, performed_by_user: @admin)
+                              .call(review_required: false)
+    result.reload
+    assert result.new_referee_created
+    assert_equal 10_000, result.master_lizenznummer_final
+    assert_equal 10_000, result.referee.lizenznummer
+    assert_equal 9_999, gast.reload.lizenznummer
+  end
+
   test 'übernimmt vorgegebene Lizenznummer bei Neuanlage' do
     result = make_result(
       referee: nil,
