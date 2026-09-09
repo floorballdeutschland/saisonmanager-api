@@ -393,6 +393,7 @@ Rails.application.routes.draw do
         end
         resources :transfer_requests, only: %i[index show create] do
           collection do
+            get :incoming
             get :search_player
             get :player_approve
             get :player_reject

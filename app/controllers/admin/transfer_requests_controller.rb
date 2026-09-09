@@ -5,6 +5,17 @@ module Admin
     skip_before_action :authenticate_user, only: %i[player_approve player_reject]
     skip_before_action :authorize_transfer_access!, only: %i[player_approve player_reject]
 
+    # Nur abgeschlossene Vorgaenge stehen in der Liste der eingehenden Transfers,
+    # siehe #incoming.
+    # Abgeschlossene Vorgaenge -- und `revoked` gehoert dazu.
+    #
+    # Ein Widerruf beendet eine bereits ERTEILTE Freigabe: Die Zweitmitgliedschaft
+    # endet, die Lizenzen beim freigegebenen Verein werden ungueltig. Ohne
+    # `revoked` fiel die Zeile aus der Liste und war damit von "hat es nie
+    # gegeben" nicht zu unterscheiden -- waehrend der Verein den Spieler
+    # womoeglich gerade einsetzt. Die Statusspalte weist sie aus.
+    INCOMING_STATUSES = %w[approved scheduled revoked].freeze
+
     def index
       ph = current_user.permission_hash
       requests = if ph[:admin].present?
@@ -29,8 +40,39 @@ module Admin
       # je Antrag einzeln wäre es eine Abfrage pro Zeile. Spieler und Vereine
       # aus demselben Grund vorladen: as_json liest je Zeile player_hash und
       # zweimal club_hash, das waren bisher drei Abfragen pro Antrag.
-      records = requests.includes(:player, :requesting_club, :former_club)
-                        .order(created_at: :desc).to_a
+      records = season_scope(requests).includes(:player, :requesting_club, :former_club)
+                                      .order(created_at: :desc).to_a
+      actors = TransferRequest.actor_names_for(records)
+      render json: records.map { |tr| tr.as_json(actors: actors) }
+    end
+
+    # Eingehende Transfers und Freigaben: Vorgaenge, die einen Verein des eigenen
+    # Spielbetriebs auf der AUFNEHMENDEN Seite haben und von einem Verein
+    # ausserhalb kommen.
+    #
+    # Bewusst eine eigene Aktion und nicht ein breiteres #index: Die Hauptliste
+    # ist am abgebenden Verein festgemacht, und daran haengt die Zustaendigkeit
+    # (#lv_authorized?) -- also Genehmigen, Ablehnen, Vollziehen und
+    # Annullieren. Hier geht es um reine Auskunft ueber abgeschlossene
+    # Vorgaenge; Handlungsrechte entstehen dabei keine, weil jede schreibende
+    # Aktion weiter den abgebenden Verein prueft.
+    #
+    # Nur abgeschlossene Vorgaenge (siehe INCOMING_STATUSES): Ein Antrag, der
+    # noch bei der abgebenden Seite liegt, ist fuer den aufnehmenden
+    # Landesverband nichts, worauf er reagieren koennte -- die Ansicht wuerde
+    # eine Handlungsmoeglichkeit suggerieren, die es hier nicht gibt.
+    # `scheduled` steht daneben, weil der Wechsel beschlossen ist und nur das
+    # Datum noch aussteht, `revoked`, weil eine zurueckgezogene Freigabe nicht
+    # spurlos verschwinden darf.
+    def incoming
+      ph = current_user.permission_hash
+      unless ph[:admin].present? || ph[:sbk].present?
+        return render json: { error: 'Nicht berechtigt' }, status: :forbidden
+      end
+
+      records = season_scope(incoming_scope(ph)).includes(:player, :requesting_club, :former_club)
+                                                .order(Arel.sql('lv_approved_at DESC NULLS LAST'),
+                                                       created_at: :desc).to_a
       actors = TransferRequest.actor_names_for(records)
       render json: records.map { |tr| tr.as_json(actors: actors) }
     end
@@ -885,6 +927,71 @@ module Admin
       false
     end
 
+    # Beide Listen zeigen standardmaessig nur die laufende Saison.
+    #
+    # Ohne den Filter wuchsen sie unbegrenzt: Weder #index noch #incoming kannte
+    # einen Saisonbezug, und der Saisonwechsel fasst `transfer_requests` nicht an
+    # (er schreibt nur `current_season_id` in die Einstellungen). Nach dem ersten
+    # Wechsel waeren die Vorgaenge der Vorsaison einfach stehen geblieben und die
+    # neuen obendrauf -- auf Produktion sind das heute schon 442 Zeilen in einer
+    # einzigen Saison.
+    #
+    # `all_seasons=true` liefert weiterhin alles, und nichts wird geloescht. Das
+    # ist keine Bequemlichkeit, sondern Bedingung: Der Landesverband stellt seine
+    # Gebuehren fuer erteilte Freigaben am Saisonende, und der Beleg dafuer ist
+    # der Vorgang. Wer die Vorsaison abrechnet, braucht sie vollstaendig.
+    #
+    # `season_id` ist hier eine echte Integer-Spalte -- anders als
+    # `leagues.season_id`, das als `character varying` vergleicht und bei einem
+    # Bereichsfilter still zu viel trifft.
+    def season_scope(scope)
+      return scope if ActiveModel::Type::Boolean.new.cast(params[:all_seasons])
+
+      # Offene Vorgaenge bleiben IMMER sichtbar, auch aus einer frueheren
+      # Saison. Der Filter zielt auf den wachsenden Altbestand, und der besteht
+      # aus abgeschlossenen Vorgaengen -- ein offener will noch etwas von
+      # jemandem.
+      #
+      # `scheduled` ist der Grund, warum das kein Feinschliff ist: Ein Transfer
+      # mit Wirksamkeitsdatum wird vom Landesverband genehmigt und wartet dann,
+      # `season_id` steht seit der Anlage fest, und `effective_date` hat keine
+      # Obergrenze. Faellt so eine Zeile beim Saisonwechsel aus der Liste, ist
+      # der "Vollziehen"-Knopf nur noch ueber eine URL erreichbar, auf die
+      # nichts verlinkt -- der Wechsel findet nie statt, und `expirable` faengt
+      # `scheduled` ausdruecklich nicht ab. Dasselbe gilt fuer die
+      # pending-Status, deren Frist an einem Cron haengt, der eingetragen sein
+      # muss.
+      # Ohne gepflegte Saison waere `.to_i` eine 0 und der Filter liesse nichts
+      # uebrig -- eine leere Liste mit 200, die wie "keine Vorgaenge" aussieht.
+      # Dann lieber ungefiltert und gemeldet: Zu viel zu zeigen ist hier der
+      # harmlosere Fehler.
+      saison = Setting.current_season_id.to_i
+      if saison.zero?
+        Sentry.capture_message('transfer_requests: current_season_id ist nicht gepflegt') if defined?(Sentry)
+        return scope
+      end
+
+      laufend = scope.where(season_id: saison)
+      laufend.or(scope.where(status: TransferRequest::ACTIVE_STATUSES))
+    end
+
+    # Bewusster Versatz, den dieser Filter NICHT aufloest: Er misst
+    # `season_id`, die bei der Anlage gestempelt und nie fortgeschrieben wird.
+    # Die Gebuehrenabrechnung der Landesverbaende misst dagegen
+    # `lv_approved_at` (siehe die CSV-Ausfuhr im Frontend).
+    #
+    # Ein Antrag, der vor dem Saisonwechsel gestellt und danach genehmigt wird,
+    # traegt deshalb die alte `season_id` bei neuem Genehmigungsdatum -- er
+    # steht im Beleg der Vorsaison, die womoeglich schon abgerechnet ist. Das
+    # Fenster ist eng: `TransferRequest.expirable` annulliert liegengebliebene
+    # Antraege nach EXPIRE_AFTER_DAYS (14), und die CSV traegt das
+    # Genehmigungsdatum je Zeile -- wer abrechnet, sieht den Ausreisser.
+    #
+    # Nicht ueber `lv_approved_at` gefiltert, weil es dafuer eine Zuordnung
+    # Datum -> Saison braeuchte, die es im System nicht gibt: Saisons haben
+    # weder Start- noch Enddatum, `Setting.current_season_id` ist ein
+    # umgelegter Schalter.
+
     def find_transfer_request
       tr = TransferRequest.find_by(id: params[:id])
       render json: { error: 'Nicht gefunden' }, status: :not_found unless tr
@@ -896,6 +1003,49 @@ module Admin
       return true if ph[:sbk].include?(0)
 
       ph[:sbk].include?(tr.former_club.main_game_operation_id)
+    end
+
+    # Global gescopte SBK (FD) und Admin haben kein „ausserhalb": Ihr
+    # Vereinsbestand ist der gesamte Bestand, ein Ausschluss der eigenen Vereine
+    # liesse die Liste immer leer. Sie erhalten daher alle vollzogenen
+    # Vorgaenge -- dieselben Daten, die ihnen #index ohnehin zeigt, nur auf die
+    # abgeschlossenen eingegrenzt.
+    def incoming_scope(ph)
+      completed = TransferRequest.where(status: INCOMING_STATUSES)
+      return completed if ph[:admin].present? || ph[:sbk].to_a.include?(0)
+
+      club_ids = derive_club_ids_for_go(ph[:sbk])
+      warn_unresolvable_scope(ph[:sbk]) if club_ids.empty?
+
+      completed.where(requesting_club_id: club_ids).where.not(former_club_id: club_ids)
+    end
+
+    # Ein leerer Vereinsbestand macht aus der Abfrage ein `1=0`, und die Antwort
+    # ist eine leere Liste mit 200. Fuer einen jungen Landesverband ohne eigene
+    # Vereine ist das richtig, fuer einen Rechte-Eintrag auf einen geloeschten
+    # Spielbetrieb ist es ein Defekt -- und beides sah bisher gleich aus,
+    # dauerhaft und ohne eine Zeile irgendwo.
+    #
+    # Keine Fehlermeldung an den Benutzer: Der legitime Fall ist nicht
+    # unterscheidbar, solange der Spielbetrieb existiert. Unterscheidbar ist der
+    # andere -- eine ID, zu der es keinen Spielbetrieb gibt -- und genau der
+    # wird benannt.
+    def warn_unresolvable_scope(go_ids)
+      unbekannt = Array(go_ids).map(&:to_i).reject(&:zero?) - GameOperation.where(id: go_ids).pluck(:id)
+      return if unbekannt.empty?
+
+      # Cache-Riegel und Sentry wie in TeamsController#render_team_without_league:
+      # Eine Logzeile allein geht auf STDOUT des Containers und ist damit
+      # gleichzeitig laut (bei jedem Seitenaufruf erneut) und unauffindbar.
+      # `breadcrumbs_logger` macht aus einem `logger.warn` KEIN Sentry-Event --
+      # nur eine Wegmarke an einem Event, das es hier gar nicht gibt.
+      return unless Rails.cache.write("transfer_incoming_scope_unresolvable/#{current_user.id}",
+                                      true, unless_exist: true, expires_in: 1.day)
+
+      meldung = "transfer_requests#incoming: Konto #{current_user.id} verweist auf " \
+                "Spielbetrieb(e) #{unbekannt.inspect}, die es nicht gibt -- die Liste bleibt deshalb leer."
+      Rails.logger.error(meldung)
+      Sentry.capture_message(meldung) if defined?(Sentry)
     end
 
     def derive_club_ids_for_go(go_ids)
