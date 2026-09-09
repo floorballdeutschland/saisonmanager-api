@@ -1268,14 +1268,21 @@ class ClubsControllerTest < ActionDispatch::IntegrationTest
     assert_equal [b.id], club.reload.notify_excluded_user_ids
   end
 
+  # `:mit_stammdaten` ist hier nicht Beiwerk: Ohne die Pflichtangaben antwortet
+  # seit api#641 schon `missing_required_fields_message` mit 422, und der Test
+  # waere gruen, ohne die Formatpruefung an `Club#contact_email` je zu
+  # erreichen. Die Antwortform unterscheidet die beiden 422 -- `club.errors`
+  # liefert das Feld, der Pflicht-Riegel eine `message`.
   test 'admin_club_update weist zwei Adressen im Kontaktfeld ab' do
-    club = create(:club, contact_email: 'gut@example.org')
+    club = create(:club, :mit_stammdaten, contact_email: 'gut@example.org')
     login(create(:user, :vm, club_id: club.id))
 
     post '/api/v2/admin/clubs', params: { id: club.id,
                                           club: { contact_email: 'a@example.org; b@example.org' } }
 
     assert_response :unprocessable_entity
+    assert_includes JSON.parse(response.body).keys, 'contact_email',
+                    'die Formatpruefung muss antworten, nicht der Pflicht-Riegel'
     assert_equal 'gut@example.org', club.reload.contact_email
   end
 

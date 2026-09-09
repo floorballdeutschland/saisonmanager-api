@@ -281,17 +281,24 @@ class TransferRequest < ApplicationRecord
   # braucht die Gegenseite, um die Rechnung einzuordnen. Beide Seiten deshalb,
   # nicht nur eine.
   #
-  # Erst am abgeschlossenen Vorgang: Vorher gibt es keine Rechnung. `approved`
-  # und nicht auch `scheduled` -- ein terminierter Antrag ist vollstaendig
-  # genehmigt, aber noch nicht vollzogen; erst `execute_transfer!` setzt ihn auf
-  # `approved`. Abgelehnte, widerrufene und abgelaufene Antraege fallen damit
-  # ebenfalls heraus.
+  # Erst am vollzogenen Vorgang: Vorher gibt es keine Rechnung. `scheduled` ist
+  # zwar vollstaendig genehmigt, aber noch nicht vollzogen; abgelehnte,
+  # widerrufene und abgelaufene Antraege fallen ebenfalls heraus.
+  #
+  # NUR Transfers. `approved` ist nicht der Abschluss des Transfers, sondern der
+  # beider Antragsarten -- `execute_release!` und
+  # `PlayerReleaseRecording#record_direct_release!` schreiben ihn ebenso, und
+  # zwei der drei Wege dorthin sind Freigaben. Fuer eine Freigabe stimmen aber
+  # weder der Anlass (sie loest keine Transferrechnung aus) noch die
+  # Beschriftung: `requesting_club` ist dort der Zweitverein und `former_club`
+  # der Stammverein, nicht aufnehmender und abgebender Verein. Soll die Ansicht
+  # spaeter auch Freigaben tragen, gehoeren die Beschriftungen mit umgestellt.
   #
   # Bewusst NICHT in `as_json`: Denselben Hash rendert auch die Antragsliste,
   # und die zieht ueber jeden Vorgang, den ein Konto sehen darf. Anschriften
   # gehoeren in den einzelnen Vorgang, den jemand geoeffnet hat.
   def club_address_hashes
-    return nil unless status == 'approved'
+    return nil unless status == 'approved' && request_type == 'transfer'
 
     {
       requesting_club: requesting_club.address_hash,

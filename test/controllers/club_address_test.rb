@@ -108,6 +108,33 @@ class ClubAddressTest < ActionDispatch::IntegrationTest
                  [club.street, club.house_number, club.postcode, club.city]
   end
 
+  # Engeres Gate als der Rest der Stammdaten: Ein fremder Landesverband darf
+  # ueber eine Vereins-Freigabe die Stammdaten lesen, aber die Freigabe ist
+  # keine fuer die Wohnanschrift eines Vorstandsmitglieds. Gleiche Regel wie bei
+  # `admin_club_managers`, wo dieselbe Ueberlegung schon getroffen wurde.
+  test 'admin_club haelt die Anschrift vom freigegebenen Fremdverband zurueck' do
+    create(:setting, current_season_id: '18')
+    eigen_sa = create(:state_association)
+    create(:game_operation, state_association_id: eigen_sa.id)
+    club = create(:club, :mit_stammdaten, state_association_id: eigen_sa.id)
+
+    fremd_sa = create(:state_association)
+    fremd_go = create(:game_operation, state_association_id: fremd_sa.id)
+    StateAssociationRelease.create!(grantor_state_association_id: eigen_sa.id,
+                                    recipient_game_operation_id: fremd_go.id,
+                                    season_id: Setting.current_season_id)
+    login(create(:user, :sbk_scoped, game_operation_id: fremd_go.id))
+
+    get "/api/v2/admin/clubs/#{club.id}"
+
+    assert_response :success, 'die Stammdaten bleiben ueber die Freigabe lesbar'
+    body = JSON.parse(response.body)
+    assert_equal club.name, body['name']
+    assert_nil body['street']
+    assert_nil body['postcode']
+    assert_nil body['city']
+  end
+
   test 'admin_club liefert die Anschrift mit' do
     club = create(:club, :mit_stammdaten, street: 'Musterweg', house_number: '1',
                                           postcode: '30159', city: 'Hannover')

@@ -146,16 +146,7 @@ module Admin
         return render json: { error: 'Nicht berechtigt' }, status: :forbidden
       end
 
-      # Die Anschriften haengen am abgeschlossenen Vorgang und nur dort
-      # (TransferRequest#club_address_hashes). Kein eigenes Rechte-Gate: Wer den
-      # Vorgang sehen darf, ist der abgebende Landesverband, ein Admin oder ein
-      # Vereinsmanager einer der beiden beteiligten Vereine -- genau der Kreis,
-      # der die Rechnung stellt oder bekommt.
-      payload = tr.as_json
-      anschriften = tr.club_address_hashes
-      payload[:club_addresses] = anschriften if anschriften
-
-      render json: payload
+      render_transfer_request(tr)
     end
 
     def create
@@ -249,7 +240,7 @@ module Admin
 
       if tr.save
         TransferRequestMailer.new_request_to_former_club(tr).deliver_later
-        render json: tr.as_json, status: :created
+        render_transfer_request(tr, status: :created)
       else
         render json: { errors: tr.errors.full_messages }, status: :unprocessable_entity
       end
@@ -294,7 +285,7 @@ module Admin
 
       TransferRequestMailer.player_confirmation_request(tr).deliver_later
 
-      render json: tr.as_json
+      render_transfer_request(tr)
     end
 
     def reject_club
@@ -324,7 +315,7 @@ module Admin
       )
 
       TransferRequestMailer.rejected_notification(tr).deliver_later
-      render json: tr.as_json
+      render_transfer_request(tr)
     end
 
     def approve_lv
@@ -359,7 +350,7 @@ module Admin
         )
       end
 
-      render json: tr.as_json
+      render_transfer_request(tr)
     end
 
     def revoke
@@ -385,7 +376,7 @@ module Admin
       end
 
       tr.revoke_release!(current_user.id, reason)
-      render json: tr.as_json
+      render_transfer_request(tr)
     end
 
     def execute
@@ -409,7 +400,7 @@ module Admin
       return deactivated_requesting_club_response if tr.requesting_club.deactivated_at.present?
 
       tr.execute_transfer!(current_user.id)
-      render json: tr.as_json
+      render_transfer_request(tr)
     end
 
     def reject_lv
@@ -439,7 +430,7 @@ module Admin
       )
 
       TransferRequestMailer.rejected_notification(tr).deliver_later
-      render json: tr.as_json
+      render_transfer_request(tr)
     end
 
     def withdraw
@@ -457,7 +448,7 @@ module Admin
 
       tr.update!(status: 'withdrawn', withdrawn_by: current_user.id, withdrawn_at: Time.current,
                  player_confirmation_token: nil)
-      render json: tr.as_json
+      render_transfer_request(tr)
     end
 
     def player_approve
@@ -596,7 +587,7 @@ module Admin
         tr.execute_transfer!(current_user.id)
       end
 
-      render json: tr.as_json, status: :created
+      render_transfer_request(tr, status: :created)
     rescue ActiveRecord::RecordNotUnique
       render json: { error: 'Für diesen Spieler ist bereits ein Transfer aktiv. Bitte zuerst annullieren.' },
              status: :unprocessable_entity
@@ -621,7 +612,7 @@ module Admin
 
       tr.update!(status: 'withdrawn', withdrawn_by: current_user.id, withdrawn_at: Time.current,
                  player_confirmation_token: nil)
-      render json: tr.as_json
+      render_transfer_request(tr)
     end
 
     private
@@ -892,6 +883,29 @@ module Admin
       end
 
       false
+    end
+
+    # Jede Antwort, die einen einzelnen Vorgang zurueckgibt, traegt am
+    # vollzogenen Transfer die Anschriften beider Vereine
+    # (TransferRequest#club_address_hashes).
+    #
+    # Ein gemeinsamer Helfer und nicht nur in `show`: `approve_lv` und `execute`
+    # geben den Vorgang zurueck, NACHDEM sie ihn auf `approved` gesetzt haben,
+    # und die Detailansicht uebernimmt diese Antwort als neuen Stand. Trug sie
+    # die Anschriften nicht, verschwand der Block genau in dem Moment, fuer den
+    # er gebaut ist -- der Verband genehmigt, die Rechnung ist faellig, und die
+    # Anschrift kam erst nach einem Neuladen von Hand.
+    #
+    # Kein eigenes Rechte-Gate: Wer den Vorgang sehen oder bewegen darf, ist der
+    # zustaendige Landesverband, ein Admin oder ein Vereinsmanager einer der
+    # beiden beteiligten Vereine -- genau der Kreis, der die Rechnung stellt
+    # oder bekommt.
+    def render_transfer_request(transfer_request, status: :ok)
+      payload = transfer_request.as_json
+      anschriften = transfer_request.club_address_hashes
+      payload[:club_addresses] = anschriften if anschriften
+
+      render json: payload, status: status
     end
 
     def find_transfer_request

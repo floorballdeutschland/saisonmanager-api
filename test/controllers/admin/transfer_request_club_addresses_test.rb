@@ -87,6 +87,37 @@ module Admin
       end
     end
 
+    # `approved` ist nicht der Abschluss des Transfers, sondern der beider
+    # Antragsarten -- `execute_release!` und `record_direct_release!` schreiben
+    # ihn ebenso. Eine Freigabe loest keine Transferrechnung aus, und die
+    # Beschriftungen der Ansicht stimmen dort nicht: `requesting_club` ist der
+    # Zweitverein, `former_club` der Stammverein.
+    test 'abgeschlossene Freigabe liefert die Anschriften nicht' do
+      tr = create_transfer_request(status: 'approved', request_type: 'release')
+      login(@sbk)
+
+      get "/api/v2/admin/transfer_requests/#{tr.id}"
+      assert_response :success
+      assert_nil JSON.parse(response.body)['club_addresses']
+    end
+
+    # Der Moment, fuer den die Ansicht gebaut ist: Der Verband genehmigt, der
+    # Vorgang wird vollzogen, und die Rechnung ist faellig. Die Detailansicht
+    # uebernimmt die Antwort der Aktion als neuen Stand -- trug sie die
+    # Anschriften nicht, verschwand der Block genau hier, bis jemand die Seite
+    # von Hand neu laedt.
+    test 'die Genehmigung liefert die Anschriften unmittelbar mit' do
+      tr = create_transfer_request(status: 'pending_lv')
+      login(@sbk)
+
+      patch "/api/v2/admin/transfer_requests/#{tr.id}/approve_lv"
+      assert_response :success
+
+      body = JSON.parse(response.body)
+      assert_equal 'approved', body['status']
+      assert_equal 'Zielweg', body.dig('club_addresses', 'requesting_club', 'street')
+    end
+
     # Kein eigenes Rechte-Gate: Wer den Vorgang sehen darf, ist Partei oder
     # zustaendiger Verband. Der aufnehmende Verein bekommt die Rechnung und muss
     # sie einordnen koennen.

@@ -297,7 +297,21 @@ class ClubsController < ApplicationController
       # ausdrücken. Bewusst hier statt in Club#full_hash: Der Hash reist über
       # GameDay#full_hash durch jede Spieltags-Antwort, wo eine
       # benutzerbezogene Angabe nichts zu suchen hat.
-      render json: club.full_hash.merge(club.address_hash).merge(edit_restricted: !full_club_access?(club))
+      # Die Anschrift nur an den, der den Verein auch pflegen darf. Engeres Gate
+      # als `can_read_admin_club?` und aus demselben Grund wie bei
+      # `admin_club_managers`: Dort darf ein fremder Landesverband mit
+      # Vereins-Freigabe die Stammdaten lesen, aber nicht die Kontaktdaten der
+      # Vereinsmanager bekommen. Strasse und Hausnummer eines Vereins sind
+      # haeufig die Privatanschrift eines Vorstandsmitglieds und stehen damit
+      # auf derselben Seite -- eine Freigabe fuer die Stammdaten ist keine fuer
+      # die Wohnanschrift.
+      #
+      # `:update_own_club` und nicht `full_club_access?`: Der Vereinsmanager
+      # pflegt die Anschrift selbst, hat aber nur den eingeschraenkten Zugriff.
+      darf_pflegen = club.user_permissions(current_user).include?(:update_own_club)
+      anschrift = darf_pflegen ? club.address_hash : {}
+
+      render json: club.full_hash.merge(anschrift).merge(edit_restricted: !full_club_access?(club))
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
     end
