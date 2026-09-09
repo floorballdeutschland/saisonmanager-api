@@ -7,7 +7,14 @@ module Admin
 
     # Nur abgeschlossene Vorgaenge stehen in der Liste der eingehenden Transfers,
     # siehe #incoming.
-    INCOMING_STATUSES = %w[approved scheduled].freeze
+    # Abgeschlossene Vorgaenge -- und `revoked` gehoert dazu.
+    #
+    # Ein Widerruf beendet eine bereits ERTEILTE Freigabe: Die Zweitmitgliedschaft
+    # endet, die Lizenzen beim freigegebenen Verein werden ungueltig. Ohne
+    # `revoked` fiel die Zeile aus der Liste und war damit von "hat es nie
+    # gegeben" nicht zu unterscheiden -- waehrend der Verein den Spieler
+    # womoeglich gerade einsetzt. Die Statusspalte weist sie aus.
+    INCOMING_STATUSES = %w[approved scheduled revoked].freeze
 
     def index
       ph = current_user.permission_hash
@@ -62,7 +69,8 @@ module Admin
       end
 
       records = season_scope(incoming_scope(ph)).includes(:player, :requesting_club, :former_club)
-                                                .order(lv_approved_at: :desc, created_at: :desc).to_a
+                                                .order(Arel.sql('lv_approved_at DESC NULLS LAST'),
+                                                       created_at: :desc).to_a
       actors = TransferRequest.actor_names_for(records)
       render json: records.map { |tr| tr.as_json(actors: actors) }
     end
@@ -960,10 +968,32 @@ module Admin
     # abgeschlossenen eingegrenzt.
     def incoming_scope(ph)
       completed = TransferRequest.where(status: INCOMING_STATUSES)
-      return completed if ph[:admin].present? || ph[:sbk].include?(0)
+      return completed if ph[:admin].present? || ph[:sbk].to_a.include?(0)
 
       club_ids = derive_club_ids_for_go(ph[:sbk])
+      warn_unresolvable_scope(ph[:sbk]) if club_ids.empty?
+
       completed.where(requesting_club_id: club_ids).where.not(former_club_id: club_ids)
+    end
+
+    # Ein leerer Vereinsbestand macht aus der Abfrage ein `1=0`, und die Antwort
+    # ist eine leere Liste mit 200. Fuer einen jungen Landesverband ohne eigene
+    # Vereine ist das richtig, fuer einen Rechte-Eintrag auf einen geloeschten
+    # Spielbetrieb ist es ein Defekt -- und beides sah bisher gleich aus,
+    # dauerhaft und ohne eine Zeile irgendwo.
+    #
+    # Keine Fehlermeldung an den Benutzer: Der legitime Fall ist nicht
+    # unterscheidbar, solange der Spielbetrieb existiert. Unterscheidbar ist der
+    # andere -- eine ID, zu der es keinen Spielbetrieb gibt -- und genau der
+    # wird benannt.
+    def warn_unresolvable_scope(go_ids)
+      unbekannt = Array(go_ids).map(&:to_i).reject(&:zero?) - GameOperation.where(id: go_ids).pluck(:id)
+      return if unbekannt.empty?
+
+      Rails.logger.warn(
+        "transfer_requests#incoming: Konto #{current_user.id} verweist auf " \
+        "Spielbetrieb(e) #{unbekannt.inspect}, die es nicht gibt -- die Liste bleibt deshalb leer."
+      )
     end
 
     def derive_club_ids_for_go(go_ids)

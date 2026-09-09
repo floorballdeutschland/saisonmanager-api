@@ -158,5 +158,40 @@ module Admin
                    'zusätzliche Zeilen dürfen keine zusätzliche User-Abfrage kosten ' \
                    "(#{with_one} bei einer, #{with_three} bei drei Zeilen)"
     end
+
+    # Ein Widerruf beendet eine bereits ERTEILTE Freigabe. Faellt die Zeile aus
+    # der Liste, ist "wurde widerrufen" von "hat es nie gegeben" nicht zu
+    # unterscheiden -- waehrend der Verein den Spieler womoeglich einsetzt.
+    test 'eine widerrufene Freigabe bleibt mit ihrem Status in der Liste' do
+      tr = create_incoming_request(request_type: 'release')
+      tr.update_columns(status: 'revoked', revoked_at: Time.current,
+                        revocation_reason: 'Irrtum bei der Freigabe')
+      login(@sbk)
+
+      get '/api/v2/admin/transfer_requests/incoming'
+      assert_response :success
+
+      zeile = JSON.parse(response.body).find { |z| z['id'] == tr.id }
+      assert_not_nil zeile, 'die Zeile darf nicht verschwinden'
+      assert_equal 'revoked', zeile['status']
+    end
+
+    # Postgres sortiert NULL bei DESC nach OBEN. Heute setzt jeder Weg nach
+    # `approved`/`scheduled` den Zeitstempel, ein kuenftiger koennte ihn
+    # vergessen -- und stuende dann mit leerer Datumsspalte an der Spitze.
+    # Dieselbe Vorsorge wie in League.license_release_dates.
+    test 'ein Vorgang ohne Genehmigungsdatum steht unten' do
+      ohne = create_incoming_request
+      ohne.update_columns(lv_approved_at: nil)
+      mit = create_incoming_request
+      mit.update_columns(lv_approved_at: 1.day.ago)
+      login(@sbk)
+
+      get '/api/v2/admin/transfer_requests/incoming'
+      assert_response :success
+
+      ids = JSON.parse(response.body).map { |z| z['id'] }
+      assert_equal [mit.id, ohne.id], ids
+    end
   end
 end
