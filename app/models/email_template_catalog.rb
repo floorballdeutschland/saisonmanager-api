@@ -416,18 +416,6 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' }
       ]
     },
-    'TransferRequestMailer#transfer_completed_receiving_lv' => {
-      mailer_class: 'TransferRequestMailer',
-      action_name: 'transfer_completed_receiving_lv',
-      description: 'Bestätigung an den aufnehmenden Landesverband, dass der Transfer/die Freigabe vollzogen wurde.',
-      default_subject: '{{completion_noun}}: {{player_name}}',
-      default_from: nil,
-      default_reply_to: nil,
-      placeholders: [
-        { key: 'completion_noun', description: 'Abschluss-Bezeichnung (Transfer vollzogen (aufnehmender LV)/Spielerfreigabe erteilt (aufnehmender LV))' },
-        { key: 'player_name', description: 'Vor- und Nachname des Spielers' }
-      ]
-    },
     'TransferRequestMailer#rejected_notification' => {
       mailer_class: 'TransferRequestMailer',
       action_name: 'rejected_notification',

@@ -7,7 +7,10 @@ require 'test_helper'
 # über den Verein, bei Spieltags-, Expresslizenz- und Berichtsmails über den
 # Spielbetrieb der Liga.
 class StateAssociationEffectiveEmailTest < ActiveSupport::TestCase
+  include ActiveJob::TestHelper
+
   setup do
+    ActionMailer::Base.deliveries.clear
     create(:setting, current_season_id: '18')
 
     @verbund = create(:state_association,
@@ -119,19 +122,27 @@ class StateAssociationEffectiveEmailTest < ActiveSupport::TestCase
     assert_includes mail.to, 'sbk@verbund.example.com'
   end
 
-  # Wechsel zwischen zwei Kind-LVs desselben Verbunds: unterschiedliche
-  # state_association_id, aber dasselbe geerbte Postfach. Ohne Vergleich der
-  # effektiven Adresse bekaeme der Verbund zwei Mails zum selben Vorgang.
-  test 'kein zweites Schreiben an den aufnehmenden LV bei geteiltem Postfach' do
-    zweites_kind = create(:state_association, parent: @verbund)
-
-    assert_not transfer_request_between(@child, zweites_kind).send(:notify_receiving_lv?)
-  end
-
-  test 'aufnehmender LV mit eigenem Postfach wird weiterhin benachrichtigt' do
+  # Der aufnehmende Landesverband bekommt keine eigene Abschlussmail mehr --
+  # auch dann nicht, wenn hinter ihm ein anderes Postfach steht als beim
+  # abgebenden. Genau dieser Fall hat sie frueher ausgeloest.
+  #
+  # Der Vorgang ist entschieden, wenn sie ankommt: Sie forderte nichts und
+  # verdeckte im SBK-Postfach die Nachrichten, die etwas fordern. Was der
+  # aufnehmende Verband daraus wissen wollte, steht in seiner Uebersicht
+  # „Eingehende Transfers & Freigaben".
+  test 'aufnehmender LV bekommt keine eigene Abschlussmail' do
     fremder_lv = create(:state_association, sbk_email: 'sbk@fremd.example.com')
+    tr = transfer_request_between(@child, fremder_lv)
 
-    assert transfer_request_between(@child, fremder_lv).send(:notify_receiving_lv?)
+    perform_enqueued_jobs do
+      tr.send(:send_completion_emails, [])
+    end
+
+    empfaenger = ActionMailer::Base.deliveries.flat_map(&:to)
+
+    assert_includes empfaenger, 'sbk@verbund.example.com',
+                    'die abgebende Seite wird weiterhin benachrichtigt'
+    assert_not_includes empfaenger, 'sbk@fremd.example.com'
   end
 
   test 'Spieltags-Veto erreicht die SBK des Verbunds' do

@@ -246,9 +246,6 @@ class TransferRequest < ApplicationRecord
 
     Rails.cache.delete('transfers')
     TransferRequestMailer.transfer_completed(self).deliver_later
-    return unless notify_receiving_lv?
-
-    TransferRequestMailer.transfer_completed_receiving_lv(self).deliver_later
   end
 
   def revoke_release!(user_id, reason)
@@ -383,23 +380,17 @@ class TransferRequest < ApplicationRecord
     player.save!(validate: false)
   end
 
-  # Zusatzmail an den aufnehmenden Landesverband nur, wenn dahinter ein anderes
-  # Postfach steht. Der Vergleich läuft über die effektive Adresse, nicht über
-  # state_association_id: Zwei Vereine in verschiedenen Kind-LVs desselben
-  # Verbunds haben unterschiedliche IDs, erben aber dasselbe SBK-Postfach, das
-  # sonst zwei Mails zum selben Vorgang bekäme (die zweite mit dem Zusatz
-  # „aufnehmender LV", der dann eine zweite Instanz suggeriert).
-  def notify_receiving_lv?
-    receiving = requesting_club.state_association&.effective_sbk_email
-    return false if receiving.blank?
-
-    receiving != former_club.state_association&.effective_sbk_email
-  end
-
+  # Der aufnehmende Landesverband bekommt bewusst KEINE eigene Abschlussmail
+  # mehr. Sie forderte nichts von ihm -- der Vollzug ist entschieden, wenn sie
+  # ankommt -- und stand damit als Pflichtlektuere in einem Postfach, in dem
+  # jede weitere Zeile die handlungsbeduerftigen Nachrichten verdeckt. Was er
+  # daraus wissen wollte, steht jetzt in seiner Uebersicht „Eingehende
+  # Transfers & Freigaben", die er ansieht, wenn er es braucht.
+  #
+  # Die Abschlussmail an die abgebende Seite bleibt: Dort sitzt die
+  # Zustaendigkeit, und sie loest die Transferrechnung aus.
   def send_completion_emails(secondary_club_ids)
     TransferRequestMailer.transfer_completed(self).deliver_later
-
-    TransferRequestMailer.transfer_completed_receiving_lv(self).deliver_later if notify_receiving_lv?
 
     secondary_club_ids.each do |club_id|
       club = Club.find_by(id: club_id)

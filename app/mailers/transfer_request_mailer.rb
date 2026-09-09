@@ -151,22 +151,6 @@ class TransferRequestMailer < ApplicationMailer
     )
   end
 
-  def transfer_completed_receiving_lv(transfer_request)
-    @transfer_request = transfer_request
-    sbk_email = transfer_request.requesting_club.state_association&.effective_sbk_email
-    return unless sbk_email.present?
-
-    subject = release?(transfer_request) ? 'Spielerfreigabe erteilt (aufnehmender LV)' : 'Transfer vollzogen (aufnehmender LV)'
-    templated_mail(
-      to: sbk_email,
-      subject: "#{subject}: #{player_name(transfer_request)}",
-      placeholders: {
-        completion_noun: subject,
-        player_name: player_name(transfer_request)
-      }
-    )
-  end
-
   # Ein laufender Freigabeantrag ist mit dem Vollzug eines Transfers beendet
   # (siehe TransferRequest#annul_pending_releases!). Empfaenger sind der Verein,
   # der die Freigabe wollte, und der Spieler selbst: Beide warten auf eine
