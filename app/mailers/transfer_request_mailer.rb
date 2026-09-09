@@ -151,18 +151,66 @@ class TransferRequestMailer < ApplicationMailer
     )
   end
 
-  def transfer_completed_receiving_lv(transfer_request)
+  # Widerruf einer bereits ERTEILTEN Freigabe (#640). Nur dieser Fall ist
+  # gemeint: `revoke` laesst nur `request_type` "release" mit Status "approved"
+  # zu, ein noch laufender Antrag wird zurueckgezogen und nicht widerrufen.
+  #
+  # Empfaenger sind die Seiten, die den Widerruf NICHT veranlasst haben und von
+  # ihm betroffen sind: der Verein, der den Spieler jetzt nicht mehr einsetzen
+  # darf, sein Landesverband, der Heimverein und der Spieler selbst. Der
+  # abgebende Landesverband hat ihn ausgeloest und bekommt keine.
+  #
+  # Der aufnehmende Landesverband ist der eigentliche Grund fuer diese Mail: Bis
+  # hierher erfuhr er von einem Widerruf ueber keinen Kanal.
+  #
+  # In der Uebersicht "Eingehende Transfers & Freigaben" steht ein widerrufener
+  # Vorgang inzwischen (siehe INCOMING_STATUSES) -- die Mail ist damit nicht
+  # ueberfluessig geworden, sondern bleibt der einzige Kanal, der nicht am
+  # Saisonfilter haengt: Wird eine Freigabe der Vorsaison nach dem
+  # Saisonwechsel widerrufen, ist die Zeile standardmaessig aus beiden Listen
+  # heraus, und die Zweitmitgliedschaft endet trotzdem.
+  #
+  # Die Begruendung reist mit: Sie ist beim Widerruf Pflicht (siehe #revoke),
+  # und ohne sie ist die Nachricht fuer den Empfaenger nicht einzuordnen.
+  # `licenses_invalidated` unterscheidet die beiden Widerrufswege: Ueber den
+  # Vorgang (#revoke_release!) werden die Lizenzen des aufnehmenden Vereins
+  # mit entwertet, ueber das Spielerprofil
+  # (PlayerReleaseRecording#save_with_release_revocation) bewusst nicht -- dort
+  # wird nur mitgeschrieben, was der Knopf ohnehin tut. Die Nachricht darf
+  # nichts behaupten, was nicht passiert ist; die beendete Zweitmitgliedschaft
+  # ist beiden Wegen gemeinsam und der Grund fuer die Mail.
+  def release_revoked(transfer_request, licenses_invalidated: true)
     @transfer_request = transfer_request
-    sbk_email = transfer_request.requesting_club.state_association&.effective_sbk_email
-    return unless sbk_email.present?
+    @licenses_invalidated = licenses_invalidated
+    receiving_sa = transfer_request.requesting_club.state_association
+    recipients = (
+      transfer_request.requesting_club.notification_emails +
+      transfer_request.former_club.notification_emails +
+      [transfer_request.player.email, receiving_sa&.effective_sbk_email]
+    ).compact.uniq.select(&:present?)
 
-    subject = release?(transfer_request) ? 'Spielerfreigabe erteilt (aufnehmender LV)' : 'Transfer vollzogen (aufnehmender LV)'
+    # Nicht stumm zurueckkehren wie die uebrigen Mails dieser Datei: Bei keiner
+    # von ihnen ist die Folge, dass ein Verein einen nicht mehr
+    # spielberechtigten Spieler aufstellt. Ein leerer Verteiler heisst hier,
+    # dass der Widerruf ueber keinen einzigen Kanal ankommt -- und der Vorgang
+    # faellt aus beiden Listen, sobald er aus der laufenden Saison heraus ist.
+    # Gleiches Muster wie PlayerMailer#express_license_requested.
+    if recipients.empty?
+      if defined?(Sentry)
+        Sentry.capture_message(
+          "Widerruf ohne Empfaenger: TransferRequest##{transfer_request.id} -- " \
+          'weder Vereine noch Landesverband noch Spieler haben eine Adresse.'
+        )
+      end
+      return
+    end
+
     templated_mail(
-      to: sbk_email,
-      subject: "#{subject}: #{player_name(transfer_request)}",
+      to: recipients,
+      subject: "Spielerfreigabe zurueckgezogen: #{player_name(transfer_request)}",
       placeholders: {
-        completion_noun: subject,
-        player_name: player_name(transfer_request)
+        player_name: player_name(transfer_request),
+        revocation_reason: transfer_request.revocation_reason.to_s
       }
     )
   end

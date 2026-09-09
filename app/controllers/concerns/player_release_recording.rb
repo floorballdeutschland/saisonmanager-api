@@ -78,12 +78,33 @@ module PlayerReleaseRecording
   # zusätzlich die Lizenzen des aufnehmenden Vereins. Was dieser Knopf tut,
   # bleibt unverändert; mitgeschrieben wird nur, was er tut.
   def save_with_release_revocation(player, club, beendete)
-    ActiveRecord::Base.transaction do
+    widerrufen = []
+
+    erfolg = ActiveRecord::Base.transaction do
       raise ActiveRecord::Rollback unless player.save
 
-      beendete.each { |erteilt_am| revoke_release_record!(player, club, erteilt_am) }
+      beendete.each do |erteilt_am|
+        vorgang = revoke_release_record!(player, club, erteilt_am)
+        widerrufen << vorgang if vorgang
+      end
       true
     end
+
+    # Erst nach dem Commit: Ein Rollback darf keine Nachricht zu einem Widerruf
+    # ausloesen, den es nicht gibt.
+    #
+    # `licenses_invalidated: false`, weil dieser Weg die Lizenzen des
+    # aufnehmenden Vereins bewusst NICHT entwertet (siehe oben) -- die Mail darf
+    # nichts behaupten, was hier nicht passiert ist. Die Zweitmitgliedschaft
+    # endet trotzdem, und das ist der Grund fuer die Nachricht: Der Verein darf
+    # den Spieler nicht mehr einsetzen und erfuhr es bisher ueber keinen Kanal.
+    if erfolg
+      widerrufen.each do |vorgang|
+        TransferRequestMailer.release_revoked(vorgang, licenses_invalidated: false).deliver_later
+      end
+    end
+
+    erfolg
   end
 
   # Widerruft den Vorgang, der GENAU DIESE Freigabe geschrieben hat.
@@ -132,6 +153,7 @@ module PlayerReleaseRecording
     tr.update!(status: 'revoked', revoked_by: current_user.id, revoked_at: Time.current,
                revocation_reason: 'Freigabe im Spielerprofil beendet',
                player_confirmation_token: nil)
+    tr
   end
 
   # Die Freigabe steht, die Vorgangszeile nicht. Bewusst kein Abbruch (siehe die

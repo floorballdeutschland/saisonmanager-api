@@ -6,6 +6,8 @@ require 'test_helper'
 # wie die über den Antragsweg erteilte (`TransferRequest#execute_release!`
 # schreibt genau denselben clubs-Eintrag, führt aber einen Vorgang mit).
 class PlayersReleaseTransferRequestTest < ActionDispatch::IntegrationTest
+  include ActiveJob::TestHelper
+
   setup do
     create(:setting, current_season_id: '18')
     @go = create(:game_operation, state_association_id: create(:state_association).id)
@@ -97,6 +99,45 @@ class PlayersReleaseTransferRequestTest < ActionDispatch::IntegrationTest
     assert_equal @admin.id, tr.revoked_by
     assert_not_nil tr.revoked_at
     assert_equal 'Freigabe im Spielerprofil beendet', tr.revocation_reason
+  end
+
+  # Auch dieser Weg beendet die Zweitmitgliedschaft -- der Verein darf den
+  # Spieler nicht mehr einsetzen und erfuhr es bisher ueber keinen Kanal.
+  #
+  # Die Nachricht darf dabei nur behaupten, was hier passiert: Anders als
+  # `TransferRequest#revoke_release!` entwertet dieser Weg die Lizenzen des
+  # aufnehmenden Vereins bewusst NICHT.
+  test 'das Beenden im Spielerprofil benachrichtigt die betroffene Seite' do
+    login_as(@admin)
+    freigabe_erteilen(@target)
+    @target.update!(contact_email: 'zweitverein@example.org')
+    ActionMailer::Base.deliveries.clear
+
+    perform_enqueued_jobs do
+      freigabe_beenden(@target, valid_until_of(@target))
+    end
+    assert_response :success
+
+    mail = ActionMailer::Base.deliveries.last
+    assert_not_nil mail, 'der freigegebene Verein wird benachrichtigt'
+    assert_includes mail.to, 'zweitverein@example.org'
+    assert_includes mail.subject, 'zurueckgezogen'
+    assert_not_includes mail.body.decoded, 'zurückgezogen“ gesetzt',
+                        'dieser Weg entwertet keine Lizenzen und darf es nicht behaupten'
+  end
+
+  # Gegenprobe zur Transaktion: Scheitert das Speichern, darf keine Nachricht
+  # zu einem Widerruf rausgehen, den es nicht gibt.
+  test 'ein folgenloser Aufruf verschickt keine Nachricht' do
+    login_as(@admin)
+    freigabe_erteilen(@target)
+    ActionMailer::Base.deliveries.clear
+
+    perform_enqueued_jobs do
+      freigabe_beenden(@target, '2030-01-01T00:00:00.000+01:00')
+    end
+
+    assert_empty ActionMailer::Base.deliveries
   end
 
   # `remove_additional_club` stempelt nur Einträge, deren `valid_until` mit dem
