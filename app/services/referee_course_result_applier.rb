@@ -129,7 +129,7 @@ class RefereeCourseResultApplier
     )
     # MAX ueber ALLE Schiedsrichter, Gaeste eingeschlossen: Die Eindeutigkeit
     # der Lizenznummer gilt fuer die ganze Tabelle. Mit `guest: false` blieb ein
-    # Gast, der (faelschlich, siehe RefereesController#safe_referee_params) eine
+    # Gast, der (faelschlich, siehe Admin::RefereesController#safe_referee_params) eine
     # Nummer trug, fuer die Vergabe unsichtbar -- die naechste Neuanlage bekam
     # genau seine Nummer und scheiterte an der Validierung, was den ganzen
     # Submit zurueckrollte.

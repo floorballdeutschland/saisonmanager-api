@@ -508,6 +508,26 @@ module Admin
       assert_nil referee.reload.lizenznummer
     end
 
+    # Gegenstueck: Der eingeschraenkte Zugriff darf die Lizenznummer nicht
+    # pflegen (`restricted_referee_params` laesst sie nicht durch) und soll sie
+    # deshalb auch nicht ueber den Gast-Haken loeschen koennen -- das waere
+    # unwiderruflich und fuer diese Rolle nicht zurueckzunehmen. Ein Gast mit
+    # Nummer bleibt dort also stehen; kollidieren kann er nicht mehr, seit die
+    # Vergabe alle Schiedsrichter mitzaehlt.
+    test 'eingeschraenkter Zugriff loescht die Lizenznummer nicht ueber den Gast-Haken' do
+      sa = create(:state_association)
+      go = create(:game_operation, state_association_id: sa.id)
+      club = create(:club, state_association_id: sa.id)
+      referee = create(:referee, lizenznummer: 987_659, club_id: club.id, game_operation_id: go.id)
+      login(rsk_user(go.id))
+
+      put "/api/v2/admin/referees/#{referee.id}", params: { referee: { guest: true } }
+
+      assert_response :success
+      assert_equal 987_659, referee.reload.lizenznummer
+      assert_predicate referee, :guest?
+    end
+
     # Die Vorbelegung im Formular rechnet dieselbe Nummer aus wie der
     # Kursimport. Zaehlte sie Gaeste nicht mit, schlaege sie eine Nummer vor,
     # die schon vergeben ist.

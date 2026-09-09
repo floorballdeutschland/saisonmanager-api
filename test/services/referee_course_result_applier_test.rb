@@ -317,7 +317,9 @@ class RefereeCourseResultApplierTest < ActiveSupport::TestCase
     RefereeCourseResultApplier.new(result, performed_by_user: @admin)
                               .call(review_required: false)
     result.reload
+    assert result.new_referee_created
     assert_equal 10_000, result.master_lizenznummer_final
+    assert_equal 10_000, result.referee.lizenznummer
     assert_equal 9_999, gast.reload.lizenznummer
   end
 

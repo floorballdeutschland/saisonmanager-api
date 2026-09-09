@@ -494,11 +494,18 @@ module Admin
     # Neuanlage bekam dieselbe Nummer und lief in die Eindeutigkeit.
     #
     # `nil` statt nur weglassen: Wird ein bestehender Datensatz zum Gast
-    # gemacht, muss seine Nummer aktiv frei werden. Auch fuer den
-    # eingeschraenkten Zugriff, der die Nummer selbst nicht pflegen darf --
-    # sonst bliebe genau ueber diesen Weg ein Gast mit Nummer zurueck.
+    # gemacht, muss seine Nummer aktiv frei werden.
+    #
+    # Nur im vollen Zugriff. `restricted_referee_params` laesst `:lizenznummer`
+    # bewusst nicht durch, erlaubt aber `:guest` -- ueber diese Tuer duerfte
+    # der Haken die Nummer nicht doch loeschen: unwiderruflich, ohne Spur, und
+    # zurueck kaeme der eingeschraenkte Zugriff nicht (die Validierung verlangt
+    # sie beim Abwaehlen wieder). Ein Gast mit Nummer bleibt dort also stehen
+    # wie bisher; harmlos, seit die Vergabe alle Schiedsrichter mitzaehlt.
     def safe_referee_params
-      attrs = can_edit_full? ? referee_params : restricted_referee_params
+      return restricted_referee_params unless can_edit_full?
+
+      attrs = referee_params
       return attrs unless guest_after_save?(attrs)
 
       attrs.merge(lizenznummer: nil)
