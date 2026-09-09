@@ -471,6 +471,58 @@ module Admin
       assert_not response.parsed_body.key?('kurzfristig_mobil')
     end
 
+    # Ein Gast traegt keine Lizenznummer. Das Anlageformular belegt das Feld
+    # aber mit der naechsten freien Nummer vor und blendet es beim Haken "Gast"
+    # nur aus -- der Wert kam also mit. Der Gast belegte damit eine Nummer, die
+    # in keinem MAX ueber die Nicht-Gaeste auftauchte, und die naechste
+    # Neuanlage lief in die Eindeutigkeit.
+    test 'Gast wird ohne Lizenznummer angelegt' do
+      login(@admin)
+
+      post '/api/v2/admin/referees', params: {
+        referee: { lizenznummer: 987_655, vorname: 'Gast', nachname: 'Aushilfe', guest: true }
+      }
+
+      assert_response :created
+      assert_nil Referee.find(response.parsed_body['id']).lizenznummer
+    end
+
+    test 'Umstellung auf Gast gibt die Lizenznummer frei' do
+      referee = create(:referee, lizenznummer: 987_656)
+      login(@admin)
+
+      put "/api/v2/admin/referees/#{referee.id}", params: { referee: { guest: true } }
+
+      assert_response :success
+      assert_nil referee.reload.lizenznummer
+    end
+
+    test 'ein Gast behaelt beim Speichern keine Nummer aus dem Formular' do
+      referee = create(:referee, guest: true, lizenznummer: nil)
+      login(@admin)
+
+      put "/api/v2/admin/referees/#{referee.id}",
+          params: { referee: { lizenznummer: 987_657, vorname: 'Gast' } }
+
+      assert_response :success
+      assert_nil referee.reload.lizenznummer
+    end
+
+    # Die Vorbelegung im Formular rechnet dieselbe Nummer aus wie der
+    # Kursimport. Zaehlte sie Gaeste nicht mit, schlaege sie eine Nummer vor,
+    # die schon vergeben ist.
+    test 'next_lizenznummer zaehlt auch Gaeste mit' do
+      Referee.delete_all
+      create(:referee, lizenznummer: 9_998)
+      create(:referee, guest: true, lizenznummer: 9_999)
+      login(@admin)
+
+      get '/api/v2/admin/referees/next_lizenznummer'
+
+      assert_response :success
+      assert_equal 10_000, response.parsed_body['next_lizenznummer']
+    end
+
     private
 
     # Spiel mit tatsächlich eingesetzten Schiris (officiating_referee_ids).

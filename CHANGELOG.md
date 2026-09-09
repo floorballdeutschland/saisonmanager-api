@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Gast-Schiedsrichter belegten Lizenznummern und legten damit den Kursimport lahm**: Ein Gast ist eine Aushilfe ohne eigene Zuständigkeit im Verband, trägt keine Lizenznummer und wird als „G-…" geführt. Über das Anlageformular hat er trotzdem eine bekommen: Es belegt das Nummernfeld mit der nächsten freien Nummer vor, und der Haken „Gast" blendete das Feld nur aus — der Wert blieb stehen und wurde mitgespeichert. Aufgefallen ist das an anderer Stelle: Die automatische Vergabe einer neuen Nummer suchte den höchsten Wert **unter den Nicht-Gästen**, während die Eindeutigkeit für alle Schiedsrichter gilt. Die Nummer eines Gasts galt damit als frei und wurde ein zweites Mal vergeben. Im Kursergebnis-Import brach daran die Neuanlage eines Schiedsrichters mit „Lizenznummer has already been taken" ab, und weil der Import alle Zeilen in einer Transaktion anwendet, riss die eine Zeile den ganzen Vorgang mit zurück — kein Weg vorbei, außer die Nummer von Hand zu setzen. Dieselbe falsche Rechnung stand hinter der Vorbelegung im Anlageformular, die also ebenfalls eine bereits vergebene Nummer vorschlug. Jetzt zählt die Vergabe alle Schiedsrichter mit, ein Gast bekommt beim Speichern keine Nummer mehr, und wer einen bestehenden Datensatz zum Gast macht, gibt dessen Nummer frei. Die bereits belegten Nummern werden mit dem Update freigegeben; steht im Spielplan zu einer veröffentlichten Ansetzung die Nummer eines Gasts, verschwindet sie dort mit — sie gehört sonst später einem anderen Menschen. An den Ansetzungen selbst ändert sich nichts, sie verweisen auf den Datensatz und nicht auf die Nummer.
+
 ## [1.112.0] - 2026-09-09
 
 ### Neu

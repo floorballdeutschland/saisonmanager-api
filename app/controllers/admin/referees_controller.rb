@@ -260,7 +260,10 @@ module Admin
     def next_lizenznummer
       return forbidden_response unless can_create_referee?
 
-      max = Referee.where(guest: false).maximum(:lizenznummer) || 0
+      # Ueber ALLE Schiedsrichter, siehe RefereeCourseResultApplier: Eine
+      # Nummer, die ein Gast belegt, waere sonst als naechste frei -- und
+      # scheiterte beim Speichern an der Eindeutigkeit.
+      max = Referee.maximum(:lizenznummer) || 0
       render json: { next_lizenznummer: max + 1 }
     end
 
@@ -482,8 +485,29 @@ module Admin
       )
     end
 
+    # Ein Gast ist eine Aushilfe ohne eigene Zustaendigkeit im Verband und
+    # traegt deshalb keine Lizenznummer -- angezeigt wird er als "G-<id>".
+    # Das Anlageformular belegt die Nummer aber mit der naechsten freien vor,
+    # und beim Haken "Gast" wurde das Feld nur ausgeblendet: Der Wert blieb im
+    # Formular und kam hier an. Der Gast belegte damit eine Nummer aus dem
+    # laufenden Bestand, ohne in dessen MAX aufzutauchen -- die naechste
+    # Neuanlage bekam dieselbe Nummer und lief in die Eindeutigkeit.
+    #
+    # `nil` statt nur weglassen: Wird ein bestehender Datensatz zum Gast
+    # gemacht, muss seine Nummer aktiv frei werden. Auch fuer den
+    # eingeschraenkten Zugriff, der die Nummer selbst nicht pflegen darf --
+    # sonst bliebe genau ueber diesen Weg ein Gast mit Nummer zurueck.
     def safe_referee_params
-      can_edit_full? ? referee_params : restricted_referee_params
+      attrs = can_edit_full? ? referee_params : restricted_referee_params
+      return attrs unless guest_after_save?(attrs)
+
+      attrs.merge(lizenznummer: nil)
+    end
+
+    def guest_after_save?(attrs)
+      return ActiveModel::Type::Boolean.new.cast(attrs[:guest]).present? if attrs.key?(:guest)
+
+      @referee&.guest?
     end
 
     # Liest die Zusatzqualifikationen aus der Eingabe und liefert
