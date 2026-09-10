@@ -91,6 +91,14 @@ class GameDay < ApplicationRecord
   # Mannschaft hat. Mehrdeutig heißt hier bewusst "unbekannt": Wer daraus einen
   # Streamschlüssel liest, sendet sonst auf einen geratenen Kanal.
   def hosting_team
+    # Ohne Ausrichter gibt es keine ausrichtende Mannschaft. Ohne diesen Riegel
+    # liefe `Team.by_club_id(nil)` in `where(club_id: nil)` -- und `teams.club_id`
+    # ist ebenfalls nullable. Gibt es in der Liga genau eine vereinslose
+    # Mannschaft, gälte die als Ausrichter und ihr Streamschlüssel würde
+    # herausgegeben. `game_days.club_id` ist wirklich nil-fähig: Die leere
+    # Auswahl im Formular kommt als 0 an und wird zu nil normalisiert.
+    return nil if club_id.blank?
+
     kandidaten = Team.by_club_id(club_id).where(league_id: league_id).to_a
     kandidaten.size == 1 ? kandidaten.first : nil
   end

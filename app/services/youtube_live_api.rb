@@ -6,8 +6,8 @@ require 'json'
 
 # Der schmale Zugang zur YouTube Live Streaming API.
 #
-# BEWUSST OHNE GEM: Gebraucht werden vier Aufrufe (laufende Übertragungen,
-# geplante Übertragungen, Streamzustand, Beenden). Der offizielle
+# BEWUSST OHNE GEM: Gebraucht werden drei Aufrufe (laufende Übertragungen,
+# Streamzustand, Beenden). Der offizielle
 # `google-api-client` zieht dafür eine große Abhängigkeitskette in ein Image,
 # das sonst ohne Google-Code auskommt, und sein Discovery-Mechanismus lädt beim
 # ersten Aufruf ein mehrere Megabyte großes Schema nach -- in einem Cronjob, der
@@ -32,6 +32,12 @@ class YoutubeLiveApi
 
   API_ROOT = 'https://www.googleapis.com/youtube/v3'
   TOKEN_URL = 'https://oauth2.googleapis.com/token'
+
+  # Ein Deckel gegen eine Endlosschleife: Liefert die Gegenstelle denselben
+  # `nextPageToken` zurueck, dreht sich der Cronjob sonst ewig und verbrennt
+  # alle 20 Sekunden Kontingent -- und der Fuenf-Minuten-Takt legt Prozesse
+  # uebereinander. 50 Seiten sind 2500 Uebertragungen, weit jenseits einer Saison.
+  MAX_PAGES = 50
 
   # Ein Cronjob darf nicht an einer hängenden Verbindung stehen bleiben: Der
   # nächste Lauf käme fünf Minuten später dazu, und nach einer Stunde lägen
@@ -79,6 +85,20 @@ class YoutubeLiveApi
     ergebnis
   end
 
+  # Wie #streams, meldet aber zusaetzlich, zu welchen angefragten IDs KEINE
+  # Antwort kam.
+  #
+  # Der Unterschied entscheidet ueber eine unwiderrufliche Handlung: Eine
+  # Uebertragung, deren Streamzustand fehlt, ist nicht "ohne Signal" -- ueber sie
+  # ist schlicht nichts bekannt. Ohne diese Unterscheidung wuerde sie entweder
+  # ewig uebersprungen (kein Timer, keine Notabschaltung) oder faelschlich als
+  # tot behandelt.
+  def streams_mit_luecken(ids)
+    angefragt = Array(ids).compact.uniq
+    gefunden = streams(angefragt)
+    [gefunden, angefragt - gefunden.keys]
+  end
+
   # Beendet eine laufende Übertragung. Kostet 50 Kontingenteinheiten, die
   # Abfragen dagegen je eine.
   def complete!(broadcast_id)
@@ -90,8 +110,12 @@ class YoutubeLiveApi
   def broadcasts(status)
     ergebnis = []
     seite = nil
+    seiten = 0
 
     loop do
+      seiten += 1
+      raise Error, "liveBroadcasts blaettert endlos (mehr als #{MAX_PAGES} Seiten)" if seiten > MAX_PAGES
+
       params = { part: 'id,snippet,contentDetails', broadcastStatus: status,
                  broadcastType: 'all', maxResults: 50 }
       params[:pageToken] = seite if seite
@@ -150,11 +174,7 @@ class YoutubeLiveApi
   end
 
   def ausfuehren(uri, request)
-    antwort = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true,
-                                                      open_timeout: OPEN_TIMEOUT,
-                                                      read_timeout: READ_TIMEOUT) do |http|
-      http.request(request)
-    end
+    antwort = verbinden(uri, request)
 
     unless antwort.is_a?(Net::HTTPSuccess)
       # Der Körper der Fehlerantwort trägt den Grund ("quotaExceeded",
@@ -167,5 +187,24 @@ class YoutubeLiveApi
     antwort.body.presence ? JSON.parse(antwort.body) : {}
   rescue JSON::ParserError => e
     raise Error, "Antwort von #{uri.path} ist kein JSON: #{e.message}"
+  end
+
+  # ALLE Netzwerkfehler werden zu Error.
+  #
+  # Ohne diese Umverpackung greift KEIN rescue im Projekt: StreamWatchdog#beende
+  # und der Rake-Task fangen `YoutubeLiveApi::Error`, ein `Net::ReadTimeout`
+  # fliegt daran vorbei und reisst den ganzen Lauf ab -- die uebrigen
+  # Uebertragungen werden dann in diesem Durchgang nicht mehr geprueft, und im
+  # Task entfaellt das Sentry-Ereignis. Genau das, was die Kommentare an beiden
+  # Stellen zu verhindern versprechen.
+  def verbinden(uri, request)
+    Net::HTTP.start(uri.hostname, uri.port, use_ssl: true,
+                                            open_timeout: OPEN_TIMEOUT,
+                                            read_timeout: READ_TIMEOUT) do |http|
+      http.request(request)
+    end
+  rescue Timeout::Error, SystemCallError, SocketError, IOError,
+         OpenSSL::SSL::SSLError => e
+    raise Error, "#{request.method} #{uri.path} nicht erreichbar: #{e.class} #{e.message}"
   end
 end

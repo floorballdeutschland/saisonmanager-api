@@ -31,6 +31,20 @@ class Setting < ApplicationRecord
   # Raw-SQL, Konsole — so wird z. B. `nations` gepflegt), muss danach
   # `flush_current_cache` aufrufen. Sonst haelt der Prozess bis zu einer Stunde
   # den alten Stand, und das je Puma-Worker verschieden.
+  def self.current
+    Current.setting ||= Rails.cache.fetch('settings/current', expires_in: 1.hour) do
+      Setting.first
+    end
+  end
+
+  # Beide Ebenen von `.current` abraeumen. Einziger Weg, den Zwischenspeicher zu
+  # verwerfen — wer an einer Setting-Zeile per `update_column(s)` oder Raw-SQL
+  # vorbei an den Callbacks schreibt, muss das hier selbst nachziehen.
+  def self.flush_current_cache
+    Current.setting = nil
+    Rails.cache.delete('settings/current')
+  end
+
   # Vorlage für den Titel einer Übertragung.
   #
   # Die Vorgabe ist die Form, die die Excel-Formel bisher gebaut hat:
@@ -55,20 +69,6 @@ class Setting < ApplicationRecord
 
   def self.stream_description_template
     current&.stream_templates&.dig('description').presence || DEFAULT_STREAM_DESCRIPTION
-  end
-
-  def self.current
-    Current.setting ||= Rails.cache.fetch('settings/current', expires_in: 1.hour) do
-      Setting.first
-    end
-  end
-
-  # Beide Ebenen von `.current` abraeumen. Einziger Weg, den Zwischenspeicher zu
-  # verwerfen — wer an einer Setting-Zeile per `update_column(s)` oder Raw-SQL
-  # vorbei an den Callbacks schreibt, muss das hier selbst nachziehen.
-  def self.flush_current_cache
-    Current.setting = nil
-    Rails.cache.delete('settings/current')
   end
 
   def self.league_class(league_class_id)

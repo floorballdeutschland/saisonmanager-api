@@ -33,7 +33,14 @@ module Admin
       spieltage = scoped_game_days
       return if performed?
 
-      spieltage = spieltage.includes(:league, :arena, :club, games: %i[home_team guest_team]).to_a
+      # `:club` an den Mannschaften ist nicht schmückendes Beiwerk: `meta_hash`
+      # liest `logo_url_fallback`, und das fällt auf das Vereinswappen zurück.
+      # Ohne das Mitladen sind das zwei zusätzliche Abfragen je Spiel -- derselbe
+      # Fall, den GameDay#full_hash bereits kommentiert löst.
+      spieltage = spieltage.includes(
+        :league, :arena, :club,
+        games: [{ home_team: :club }, { guest_team: :club }]
+      ).to_a
       spiele = spieltage.flat_map(&:games)
       saetze = StreamBroadcast.where(game_id: spiele.map(&:id)).order(:created_at).index_by(&:game_id)
 
@@ -64,14 +71,32 @@ module Admin
       return render json: { error: 'broadcast_id fehlt' }, status: :bad_request if broadcast_id.blank?
 
       satz = StreamBroadcast.find_or_initialize_by(broadcast_id: broadcast_id)
-      satz.assign_attributes(game_id: spiel.id, title: params[:title].presence,
-                             stream_id: params[:stream_id].presence)
+
+      # Dieselbe Übertragung für ein anderes Spiel zu melden ist fast immer ein
+      # Versehen (kopierte Kennung). Stillschweigend umzuhängen ließe das alte
+      # Spiel mit einem `live_stream_link` auf eine Übertragung zurück, die im
+      # Streaming-Bereich dort nicht mehr auftaucht.
+      if satz.game_id.present? && satz.game_id != spiel.id
+        return render json: { error: 'Diese Übertragung ist bereits einem anderen Spiel zugeordnet.' },
+                      status: :conflict
+      end
+
+      # `.presence` nur beim Setzen, nicht beim Leeren: Ein zweiter Aufruf ohne
+      # Titel darf den vorhandenen nicht löschen.
+      satz.game_id = spiel.id
+      satz.title = params[:title] if params[:title].present?
+      satz.stream_id = params[:stream_id] if params[:stream_id].present?
       satz.save!
 
-      link_setzen(spiel, broadcast_id)
+      link_hinweis = link_setzen(spiel, broadcast_id)
 
       spieltag = spiel.game_day
-      render json: entry(spiel.reload, spieltag, spieltag&.stream_key, satz), status: :created
+      antwort = entry(spiel.reload, spieltag, spieltag&.stream_key, satz)
+      # Ob der Link geschrieben wurde, und wenn nicht, warum. Ohne diese Angabe
+      # ist "warum steht im Spielplan nichts" von außen nicht zu beantworten.
+      antwort[:link_written] = link_hinweis.nil?
+      antwort[:link_skipped_reason] = link_hinweis
+      render json: antwort, status: :created
     end
 
     # GET admin/streaming/settings
@@ -91,12 +116,15 @@ module Admin
       # Leer heißt "wieder die Vorgabe", nicht "leerer Titel": Ein Stream ohne
       # Titel wäre bei YouTube namenlos, und ein leeres Feld ist der
       # naheliegende Weg, eine verunglückte Vorlage loszuwerden.
-      neu = {
-        'title' => params[:title].to_s.strip,
-        'description' => params[:description].to_s.strip
-      }.compact_blank
+      # Nur anfassen, was wirklich übergeben wurde. Aus einem unvollständigen
+      # Aufruf einen vollständigen Zustand zu bauen, setzte bei einem `PUT` mit
+      # nur `title` die Beschreibung unbemerkt auf die Vorgabe zurück -- was wie
+      # ein Anzeigefehler aussieht und Datenverlust ist.
+      neu = (setting.stream_templates || {}).dup
+      neu['title'] = params[:title].to_s.strip if params.key?(:title)
+      neu['description'] = params[:description].to_s.strip if params.key?(:description)
 
-      setting.update!(stream_templates: neu)
+      setting.update!(stream_templates: neu.compact_blank)
       render json: templates_hash
     end
 
@@ -152,8 +180,8 @@ module Admin
       # Verbandskanal geht.
       GameDay.where(date: (von..bis).map(&:to_s), league_id: streamed_league_ids)
     rescue Date::Error
-      # `game_days.date` ist eine Textspalte, und ein unparsbares Datum käme sonst
-      # als 500 zurück -- eine vertippte Adresszeile ist aber ein Eingabefehler.
+      # `from` und `to` kommen als Freitext aus der Adresszeile. Ohne diesen
+      # Riegel käme ein Tippfehler als 500 zurück, obwohl er ein Eingabefehler ist.
       render json: { error: 'from und to müssen Datumsangaben im Format JJJJ-MM-TT sein' },
              status: :bad_request
     end
@@ -174,15 +202,27 @@ module Admin
     # Überschreiben darf der Verein jederzeit: Das Feld steht im Spielbericht,
     # und dieser Abruf fasst einen vorhandenen Wert nie an.
     def link_setzen(spiel, broadcast_id)
-      return unless params[:privacy_status].to_s == 'public'
-      return if spiel.live_stream_link.present?
+      return 'nicht öffentlich' unless params[:privacy_status].to_s == 'public'
+      return 'am Spiel steht bereits ein Link' if spiel.live_stream_link.present?
 
-      spiel.update_columns(live_stream_link: "https://www.youtube.com/watch?v=#{broadcast_id}")
+      # `update!` und NICHT `update_columns`: Game trägt
+      # `after_commit :flush_league_caches`, und `live_stream_link` steckt über
+      # `meta_hash` im gecachten Spielplan der Liga. Mit `update_columns` stünde
+      # der Link in der Datenbank, im öffentlichen Spielplan aber erst nach
+      # Ablauf des Zwischenspeichers -- genau in den Minuten vor dem Anwurf, in
+      # denen die Zuschauer ihn suchen.
+      spiel.update!(live_stream_link: "https://www.youtube.com/watch?v=#{broadcast_id}")
+      nil
     end
 
     def entry(spiel, spieltag, schluessel, satz)
       spiel.meta_hash.merge(
         start_at: spiel.start_date&.iso8601,
+        # Die öffentliche Spielseite baut `Game#url` -- das Verbandssegment ist
+        # `GameOperation#slug` und nicht der kleingeschriebene Kurzname, und
+        # diese Regel soll nicht ein zweites Mal im Frontend stehen. Die
+        # Beschreibung der Übertragung verweist darauf.
+        public_url: spiel.url,
         stream_key: schluessel,
         streamable: schluessel.present?,
         game_day: game_day_hash(spieltag),

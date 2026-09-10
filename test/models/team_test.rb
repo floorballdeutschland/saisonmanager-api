@@ -316,6 +316,13 @@ class TeamTest < ActiveSupport::TestCase
 
   # Wer den Schlüssel ausdrücklich ausliefern darf, muss ihn weiterhin bekommen
   # können -- sonst wäre die Sperre nicht eng, sondern kaputt.
+  test 'eine verschachtelte Serialisierung fuehrt keinen stream_key' do
+    team = create(:team, stream_key: 'abcd-efgh-ijkl-mnop-qrst')
+
+    assert_not_includes Team.where(id: team.id).to_json, 'abcd-efgh'
+    assert_not_includes team.club.as_json(include: :teams).to_json, 'abcd-efgh'
+  end
+
   test 'stream_key laesst sich ausdruecklich serialisieren' do
     team = create(:team, stream_key: 'abcd-efgh-ijkl-mnop-qrst')
 

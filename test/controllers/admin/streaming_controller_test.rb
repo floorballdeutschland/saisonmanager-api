@@ -58,6 +58,35 @@ module Admin
       assert_response :unauthorized
     end
 
+    # Der Kommentar am Controller stützt sich darauf, dass `permission_hash` einen
+    # SBK eines NATIONALEN Spielbetriebs auf Scope 0 zusammenklappt. Genau diese
+    # Person ist die Zielgruppe des Bereichs -- geprüft wurde bisher nur eine
+    # Rolle mit ausdrücklich eingetragener 0, der Kollaps-Zweig also nie.
+    test 'FD-SBK ueber einen nationalen Spielbetrieb kommt durch' do
+      fd = create(:game_operation, :national)
+      login(create(:user, :sbk_scoped, game_operation_id: fd.id))
+
+      get '/api/v2/admin/streaming/games', params: { from: '2026-09-12', to: '2026-09-14' }
+
+      assert_response :success
+    end
+
+    test 'die FD-SBK sieht den Streamschluessel, nicht nur die Liste' do
+      login(create(:user, :sbk_global))
+
+      get '/api/v2/admin/streaming/games', params: { from: '2026-09-12', to: '2026-09-14' }
+
+      assert_equal STREAM_KEY, response.parsed_body.first['stream_key']
+    end
+
+    test 'GEGENPROBE: regionale SBK bekommt die Vorlagen nicht' do
+      login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+      get '/api/v2/admin/streaming/settings'
+
+      assert_response :forbidden
+    end
+
     # --- Zuschnitt ------------------------------------------------------------
 
     test 'Spieltag einer Liga liefert alle Hallen dieser Nummer' do
@@ -249,6 +278,72 @@ module Admin
       assert_response :not_found
     end
 
+    test 'nennt die oeffentliche Spielseite fuer die Beschreibung' do
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/streaming/games', params: { league_id: @league.id, game_day_number: 1 }
+
+      # Über Game#url gebaut, damit das Verbandssegment (GameOperation#slug)
+      # nicht ein zweites Mal im Frontend nachgebaut wird.
+      assert_equal @game.url, response.parsed_body.first['public_url']
+    end
+
+    # Dieselbe Übertragung für ein anderes Spiel zu melden ist fast immer ein
+    # Versehen (kopierte Kennung). Stillschweigend umzuhängen ließe das alte
+    # Spiel mit einem Link auf eine Übertragung zurück, die dort nicht mehr steht.
+    test 'dieselbe Uebertragung laesst sich nicht auf ein anderes Spiel umhaengen' do
+      zweites = Game.create!(game_day: @game_day, home_team: @guest, guest_team: @home,
+                             start_time: '20:00', forfait: 0, overtime: false, legacy: false,
+                             events: [], players: { 'home' => [], 'guest' => [] })
+      login(create(:user, :admin))
+      post "/api/v2/admin/streaming/games/#{@game.id}/broadcast",
+           params: { broadcast_id: 'yt-123', privacy_status: 'public' }
+
+      post "/api/v2/admin/streaming/games/#{zweites.id}/broadcast",
+           params: { broadcast_id: 'yt-123', privacy_status: 'public' }
+
+      assert_response :conflict
+      assert_equal @game.id, StreamBroadcast.find_by(broadcast_id: 'yt-123').game_id
+    end
+
+    test 'ein zweiter Aufruf ohne Titel loescht den vorhandenen nicht' do
+      login(create(:user, :admin))
+      post "/api/v2/admin/streaming/games/#{@game.id}/broadcast",
+           params: { broadcast_id: 'yt-123', privacy_status: 'public', title: 'MFBC vs FFC' }
+
+      post "/api/v2/admin/streaming/games/#{@game.id}/broadcast",
+           params: { broadcast_id: 'yt-123', privacy_status: 'public' }
+
+      assert_equal 'MFBC vs FFC', StreamBroadcast.find_by(broadcast_id: 'yt-123').title
+    end
+
+    # "Warum steht im Spielplan kein Link" ist von außen sonst nicht zu
+    # beantworten -- die Antwort sähe in allen Fällen gleich aus.
+    test 'die Antwort sagt, ob der Link geschrieben wurde' do
+      login(create(:user, :admin))
+
+      post "/api/v2/admin/streaming/games/#{@game.id}/broadcast",
+           params: { broadcast_id: 'yt-123', privacy_status: 'unlisted' }
+
+      assert_not response.parsed_body['link_written']
+      assert_equal 'nicht öffentlich', response.parsed_body['link_skipped_reason']
+    end
+
+    # Der Link steckt über `meta_hash` im gecachten Spielplan der Liga. Mit
+    # `update_columns` stünde er in der Datenbank, im öffentlichen Spielplan aber
+    # erst nach Ablauf des Zwischenspeichers.
+    test 'das Schreiben des Links raeumt den Spielplan-Cache der Liga ab' do
+      login(create(:user, :admin))
+      with_real_cache do
+        Rails.cache.write("leagues/#{@league.id}/schedule", 'alt')
+
+        post "/api/v2/admin/streaming/games/#{@game.id}/broadcast",
+             params: { broadcast_id: 'yt-123', privacy_status: 'public' }
+
+        assert_nil Rails.cache.read("leagues/#{@league.id}/schedule")
+      end
+    end
+
     # --- Vorlagen -------------------------------------------------------------
 
     test 'liefert die Vorgabevorlagen, solange nichts gepflegt ist' do
@@ -286,6 +381,21 @@ module Admin
       assert_response :success
       assert_equal Setting::DEFAULT_STREAM_TITLE, Setting.stream_title_template
       assert_equal Setting::DEFAULT_STREAM_DESCRIPTION, Setting.stream_description_template
+    end
+
+    # Aus einem unvollständigen Aufruf einen vollständigen Zustand zu bauen,
+    # setzte bei einem PUT mit nur `title` die Beschreibung unbemerkt zurück --
+    # das sieht wie ein Anzeigefehler aus und ist Datenverlust.
+    test 'ein PUT mit nur einem Feld laesst das andere stehen' do
+      login(create(:user, :admin))
+      put '/api/v2/admin/streaming/settings',
+          params: { title: 'Eigener Titel', description: 'Eigene Beschreibung' }
+
+      put '/api/v2/admin/streaming/settings', params: { title: 'Neuer Titel' }
+
+      assert_response :success
+      assert_equal 'Neuer Titel', Setting.stream_title_template
+      assert_equal 'Eigene Beschreibung', Setting.stream_description_template
     end
 
     test 'GEGENPROBE: regionale SBK darf die Vorlagen nicht aendern' do

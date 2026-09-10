@@ -22,6 +22,13 @@ class StreamWatchdogTest < ActiveSupport::TestCase
       @streams.slice(*Array(ids))
     end
 
+    # Wie der echte Client: was gefunden wurde, und wozu nichts zurückkam.
+    def streams_mit_luecken(ids)
+      angefragt = Array(ids).compact.uniq
+      gefunden = streams(angefragt)
+      [gefunden, angefragt - gefunden.keys]
+    end
+
     def complete!(broadcast_id)
       @completed << broadcast_id
       {}
@@ -122,7 +129,8 @@ class StreamWatchdogTest < ActiveSupport::TestCase
 
   # --- Ausnahme 1: Übergabe an das nächste Spiel ----------------------------
 
-  test 'beendet bei offenem Spielbericht, wenn gleich das nächste Heimspiel auf demselben Schlüssel startet' do
+  test 'übergibt an die nächste Partie, wenn die laufende abgeschlossen ist' do
+    @game.update!(game_status: 'match_record_closed')
     spiel_anlegen('20:10')
     satz_anlegen(signal_lost_at: nil)
 
@@ -130,7 +138,51 @@ class StreamWatchdogTest < ActiveSupport::TestCase
     StreamWatchdog.new(api: api, now: @now).run
 
     assert_equal [BROADCAST_ID], api.completed
-    assert_match(/nächste Spiel/, StreamBroadcast.find_by(broadcast_id: BROADCAST_ID).ended_reason)
+    assert_match(/nächste Partie/, StreamBroadcast.find_by(broadcast_id: BROADCAST_ID).ended_reason)
+  end
+
+  # Verglichen wird der PAPIERANWURF der nächsten Partie. Zieht sich die laufende
+  # (Verlängerung, Penaltyschießen, verspäteter Anwurf), darf der Plan keine
+  # sendende Übertragung kappen -- unwiderruflich, mitten im Spiel.
+  test 'GEGENPROBE: übergibt nicht, solange gesendet wird und der Bericht offen ist' do
+    spiel_anlegen('20:10')
+    satz_anlegen(signal_lost_at: nil)
+
+    api = api_mit(status: 'active')
+    ergebnis = StreamWatchdog.new(api: api, now: @now).run
+
+    assert_empty api.completed
+    assert(ergebnis[:problems].any? { |p| p.include?('nicht übergeben') })
+  end
+
+  # Wer den Stream eine Viertelstunde vor Anwurf startet (Kameracheck,
+  # Einlaufmusik), verlor ihn sonst fünf Minuten vor dem Anpfiff: Die Übergabe
+  # sah ein Spiel beginnen und schaltete die Übertragung ab, die genau dazu
+  # gehört.
+  test 'GEGENPROBE: der Vorlauf zur eigenen Partie ist keine Übergabe' do
+    kommendes = spiel_anlegen('20:10')
+    satz_anlegen(signal_lost_at: nil)
+    StreamBroadcast.find_by(broadcast_id: BROADCAST_ID).update!(game_id: kommendes.id)
+
+    api = api_mit(status: 'active')
+    StreamWatchdog.new(api: api, now: @now).run
+
+    assert_empty api.completed
+  end
+
+  # Ein verspäteter Anwurf darf die Übergabe nicht dauerhaft verhindern -- sonst
+  # bliebe der Schlüssel bis zur Notabschaltung nach drei Stunden belegt.
+  test 'übergibt auch an eine Partie, deren Anwurf schon zurückliegt' do
+    @game.update!(game_status: 'match_record_closed')
+    verspaetet = spiel_anlegen('19:55')
+    satz_anlegen(signal_lost_at: nil)
+    StreamBroadcast.find_by(broadcast_id: BROADCAST_ID).update!(game_id: @game.id)
+
+    api = api_mit(status: 'active')
+    StreamWatchdog.new(api: api, now: @now).run
+
+    assert_equal [BROADCAST_ID], api.completed
+    assert_not_nil verspaetet
   end
 
   test 'GEGENPROBE: nächstes Heimspiel erst in zwei Stunden -- keine Übergabe' do
@@ -226,6 +278,8 @@ class StreamWatchdogTest < ActiveSupport::TestCase
 
   test 'ein Satz zu einer nicht mehr laufenden Übertragung wird geschlossen' do
     satz_anlegen(signal_lost_at: @now - 5.minutes)
+    StreamBroadcast.find_by(broadcast_id: BROADCAST_ID)
+                   .update!(last_active_at: @now - 30.minutes)
 
     ergebnis = StreamWatchdog.new(api: FakeApi.new, now: @now).run
 
@@ -256,7 +310,7 @@ class StreamWatchdogTest < ActiveSupport::TestCase
     assert_empty ergebnis[:ended]
     assert_not StreamBroadcast.find_by(broadcast_id: BROADCAST_ID).ended?,
                'der Satz muss offen bleiben, damit der nächste Lauf es erneut versucht'
-    assert(ergebnis[:notes].any? { |n| n.include?('FEHLER beim Beenden') })
+    assert(ergebnis[:problems].any? { |p| p.include?('Beenden von') })
   end
 
   # --- Der Schlüssel gehört dem Ausrichter ----------------------------------
@@ -302,25 +356,36 @@ class StreamWatchdogTest < ActiveSupport::TestCase
   end
 
   test 'ein Ausrichter mit mehreren Partien: Übergabe zur nächsten, Abschaltung erst nach der letzten' do
+    @game.update!(game_status: 'match_record_closed')
     zweites = spiel_anlegen('20:10')
 
     # 20:00 -- die erste Partie ist durch, die zweite beginnt in zehn Minuten.
     satz_anlegen(signal_lost_at: nil)
+    StreamBroadcast.find_by(broadcast_id: BROADCAST_ID).update!(game_id: @game.id)
     api = api_mit(status: 'active')
     StreamWatchdog.new(api: api, now: @now).run
     assert_equal [BROADCAST_ID], api.completed, 'die laufende Übertragung muss den Schlüssel freigeben'
 
+    # Für die zweite Partie wird eine EIGENE Übertragung angelegt -- ein
+    # beendeter Satz wird bewusst nicht wiederbelebt, sonst ginge der Beleg
+    # verloren, warum unwiderruflich abgeschaltet wurde.
+    StreamBroadcast.create!(broadcast_id: 'bc-2', stream_id: STREAM_ID,
+                            title: 'Zweite Partie', game_id: zweites.id,
+                            last_active_at: @now, signal_lost_at: nil)
+
     # 22:30 -- auch die zweite ist durch, Bericht geschlossen, kein Signal mehr.
     zweites.update!(game_status: 'match_record_closed')
     spaeter = Time.zone.parse('2026-03-07 22:30:00 +01:00')
-    StreamBroadcast.find_by(broadcast_id: BROADCAST_ID)
-                   .update!(ended_at: nil, ended_reason: nil, signal_lost_at: spaeter - 20.minutes)
+    StreamBroadcast.find_by(broadcast_id: 'bc-2').update!(signal_lost_at: spaeter - 20.minutes)
 
-    api2 = api_mit(status: 'inactive')
+    api2 = FakeApi.new(
+      broadcasts: [{ id: 'bc-2', title: 'Zweite Partie', stream_id: STREAM_ID }],
+      streams: { STREAM_ID => { status: 'inactive', key: STREAM_KEY } }
+    )
     StreamWatchdog.new(api: api2, now: spaeter).run
 
-    assert_equal [BROADCAST_ID], api2.completed
-    satz = StreamBroadcast.find_by(broadcast_id: BROADCAST_ID)
+    assert_equal ['bc-2'], api2.completed
+    satz = StreamBroadcast.find_by(broadcast_id: 'bc-2')
     assert_equal zweites.id, satz.game_id
     assert_match(/Spielbericht geschlossen/, satz.ended_reason)
   end
@@ -350,6 +415,168 @@ class StreamWatchdogTest < ActiveSupport::TestCase
 
     assert_equal ['bc-verbund'], api.completed
     assert_equal verbund_spiel.id, StreamBroadcast.find_by(broadcast_id: 'bc-verbund').game_id
+  end
+
+  # --- Grenzwerte ------------------------------------------------------------
+
+  # `.round` machte aus der dokumentierten Regel "seit 15 Minuten" faktisch
+  # "seit 14 Minuten 30". Diese beiden Prüfsätze frieren die Regel auf die
+  # Sekunde ein.
+  test 'genau 15 Minuten ohne Signal beenden' do
+    @game.update!(game_status: 'match_record_closed')
+    satz_anlegen(signal_lost_at: @now - 15.minutes)
+
+    api = api_mit(status: 'inactive')
+    StreamWatchdog.new(api: api, now: @now).run
+
+    assert_equal [BROADCAST_ID], api.completed
+  end
+
+  test 'GEGENPROBE: 14 Minuten 59 Sekunden beenden nicht' do
+    @game.update!(game_status: 'match_record_closed')
+    satz_anlegen(signal_lost_at: @now - 15.minutes + 1.second)
+
+    api = api_mit(status: 'inactive')
+    StreamWatchdog.new(api: api, now: @now).run
+
+    assert_empty api.completed
+  end
+
+  test 'genau drei Stunden lösen die Notabschaltung aus' do
+    satz_anlegen(signal_lost_at: @now - 3.hours)
+
+    api = api_mit(status: 'inactive')
+    StreamWatchdog.new(api: api, now: @now).run
+
+    assert_equal [BROADCAST_ID], api.completed
+  end
+
+  # Der erste Lauf nach einem Signalabriss setzt nur den Timer. Ohne diesen
+  # Prüfsatz käme ein Umbau auf `signal_lost_at || last_active_at` unbemerkt
+  # durch und beendete beim ersten Aussetzer -- der teuerste denkbare Fehlgriff.
+  test 'der erste Signalverlust startet nur den Timer' do
+    @game.update!(game_status: 'match_record_closed')
+    satz_anlegen(signal_lost_at: nil)
+
+    api = api_mit(status: 'inactive')
+    StreamWatchdog.new(api: api, now: @now).run
+
+    assert_empty api.completed
+    assert_equal @now.to_i,
+                 StreamBroadcast.find_by(broadcast_id: BROADCAST_ID).signal_lost_at.to_i
+  end
+
+  # --- Die gemeldete Zuordnung schlägt die Heuristik ---------------------------
+
+  test 'eine gemeldete Spielzuordnung wird nicht durch die Heuristik ersetzt' do
+    fremdes = Game.create!(game_day: @game_day, home_team: @guest, guest_team: @home,
+                           start_time: '19:00', forfait: 0, overtime: false, legacy: false,
+                           game_status: 'match_record_closed',
+                           events: [], players: { 'home' => [], 'guest' => [] })
+    satz_anlegen(signal_lost_at: @now - 20.minutes)
+    # Gemeldet ist das 18:00-Spiel; die Heuristik fände das jüngere 19:00-Spiel.
+    StreamBroadcast.find_by(broadcast_id: BROADCAST_ID).update!(game_id: @game.id)
+    @game.update!(game_status: 'pregame')
+
+    api = api_mit(status: 'inactive')
+    StreamWatchdog.new(api: api, now: @now).run
+
+    assert_empty api.completed, 'der gemeldete Spielbericht ist offen -- nicht beenden'
+    assert_equal @game.id, StreamBroadcast.find_by(broadcast_id: BROADCAST_ID).game_id
+    assert_not_nil fremdes
+  end
+
+  test 'eine gemeldete Zuordnung wird nicht mit nil überschrieben' do
+    @home.update!(stream_key: nil)
+    satz_anlegen(signal_lost_at: @now - 5.minutes)
+    StreamBroadcast.find_by(broadcast_id: BROADCAST_ID).update!(game_id: @game.id)
+
+    api = api_mit(status: 'inactive')
+    StreamWatchdog.new(api: api, now: @now).run
+
+    assert_equal @game.id, StreamBroadcast.find_by(broadcast_id: BROADCAST_ID).game_id
+  end
+
+  # Fehlt bei einer Partie des Spieltags die Anwurfzeit, wäre "das jüngste Spiel
+  # mit Anwurf" womöglich das vorherige -- mit geschlossenem Bericht, während die
+  # Übertragung des laufenden sendet.
+  test 'eine Partie ohne Anwurfzeit sperrt die Zuordnung des ganzen Spieltags' do
+    @game.update!(game_status: 'match_record_closed')
+    Game.create!(game_day: @game_day, home_team: @guest, guest_team: @home,
+                 start_time: '', forfait: 0, overtime: false, legacy: false,
+                 events: [], players: { 'home' => [], 'guest' => [] })
+    satz_anlegen(signal_lost_at: @now - 20.minutes)
+
+    api = api_mit(status: 'inactive')
+    ergebnis = StreamWatchdog.new(api: api, now: @now).run
+
+    assert_empty api.completed
+    assert(ergebnis[:notes].any? { |n| n.include?('ohne Anwurfzeit') })
+  end
+
+  # --- Buchhaltung -------------------------------------------------------------
+
+  # Eine im Voraus angelegte Übertragung ist bei YouTube `ready`, nicht `active`.
+  # Ohne diesen Riegel bekäme sie fünf Minuten später ein `ended_at` und stünde
+  # im Streaming-Bereich als "beendet", bevor sie je gelaufen ist.
+  test 'eine im Voraus gemeldete Übertragung wird nicht als beendet gestempelt' do
+    StreamBroadcast.create!(broadcast_id: 'bc-geplant', stream_id: STREAM_ID,
+                            title: 'Nächste Woche', game_id: @game.id)
+
+    StreamWatchdog.new(api: FakeApi.new, now: @now).run
+
+    assert_not StreamBroadcast.find_by(broadcast_id: 'bc-geplant').ended?
+  end
+
+  test 'eine gerade noch sendende Übertragung wird nicht sofort abgeschlossen' do
+    satz_anlegen(signal_lost_at: nil)
+    StreamBroadcast.find_by(broadcast_id: BROADCAST_ID).update!(last_active_at: @now - 1.minute)
+
+    StreamWatchdog.new(api: FakeApi.new, now: @now).run
+
+    assert_not StreamBroadcast.find_by(broadcast_id: BROADCAST_ID).ended?,
+               'eine einmalige Leerantwort darf keine laufenden Sätze abräumen'
+  end
+
+  test 'der Probelauf schreibt auch nichts in die Buchhaltung' do
+    satz_anlegen(signal_lost_at: @now - 5.minutes)
+    StreamBroadcast.find_by(broadcast_id: BROADCAST_ID).update!(last_active_at: @now - 30.minutes)
+
+    StreamWatchdog.new(api: FakeApi.new, dry_run: true, now: @now).run
+
+    assert_not StreamBroadcast.find_by(broadcast_id: BROADCAST_ID).ended?
+  end
+
+  # `ended_reason` ist der einzige Beleg dafür, warum unwiderruflich abgeschaltet
+  # wurde. Die Transition ist bei YouTube nicht sofort sichtbar -- der nächste
+  # Lauf darf ihn nicht überschreiben.
+  test 'ein selbst beendeter Satz wird nicht wiederbelebt' do
+    satz_anlegen(signal_lost_at: nil)
+    satz = StreamBroadcast.find_by(broadcast_id: BROADCAST_ID)
+    satz.update!(ended_at: @now - 1.minute, ended_reason: 'Spielbericht geschlossen, seit 20 min kein Signal')
+
+    api = api_mit(status: 'active')
+    ergebnis = StreamWatchdog.new(api: api, now: @now).run
+
+    assert_equal 'Spielbericht geschlossen, seit 20 min kein Signal', satz.reload.ended_reason
+    assert(ergebnis[:problems].any? { |p| p.include?('läuft bei YouTube aber wieder') })
+  end
+
+  # Ein Stream, dessen Zustand die Schnittstelle nicht liefert, ist nicht "ohne
+  # Signal" -- über ihn ist nichts bekannt. Daraus abzuschalten hiesse, auf
+  # Unwissen hin unwiderruflich zu handeln.
+  test 'ein Stream ohne abrufbaren Zustand startet keinen Timer, meldet aber' do
+    satz_anlegen(signal_lost_at: nil)
+    api = FakeApi.new(
+      broadcasts: [{ id: BROADCAST_ID, title: 'Heim vs Gast', stream_id: STREAM_ID }],
+      streams: {}
+    )
+
+    ergebnis = StreamWatchdog.new(api: api, now: @now).run
+
+    assert_empty api.completed
+    assert_nil StreamBroadcast.find_by(broadcast_id: BROADCAST_ID).signal_lost_at
+    assert(ergebnis[:problems].any? { |p| p.include?('nicht abrufbar') })
   end
 
   private

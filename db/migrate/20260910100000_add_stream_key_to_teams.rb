@@ -5,9 +5,9 @@
 # Bisher stand er in einer Excel-Datei der Spielbetriebskommission ("Übersicht
 # Streams und Thumbnails", Blatt "Streamingkeys"), aus der die Livestreams von
 # Hand über eine Zwischen-CSV bei YouTube angelegt wurden. Der Schlüssel gehört
-# aber an die Mannschaft: Er entscheidet, auf welchen Kanal ein Heimspiel
-# gesendet wird, und ohne ihn kann der Watchdog eine laufende Übertragung nicht
-# dem Spiel zuordnen, das dort läuft.
+# aber an die Mannschaft: Er entscheidet, auf welchen Kanal ein ausgerichteter
+# Spieltag gesendet wird, und ohne ihn kann der Watchdog eine laufende
+# Übertragung nicht dem Spiel zuordnen, das dort läuft.
 #
 # AN DER MANNSCHAFT, NICHT AM VEREIN: Im Bestand hat derselbe Verein je Liga
 # einen anderen Schlüssel -- Floor Fighters Chemnitz sendet die 1. FBL Damen auf
@@ -19,7 +19,10 @@
 # Verein einen Spieltag mit mehreren Partien aus, laufen sie alle über seinen
 # einen Schlüssel -- auch die, in denen er selbst nicht Heim ist. Ausrichter
 # eines Spieltags ist `game_days.club_id`; zusammen mit `game_days.league_id`
-# ist das genau eine Mannschaft, und an der hängt der Schlüssel.
+# ergibt das die Mannschaft, an der der Schlüssel hängt -- ein Spielverbund
+# richtet dabei über einen seiner Vereine aus. Eindeutig ist das nicht in jedem
+# Fall (kein oder mehr als ein Treffer), und `GameDay#hosting_team` antwortet
+# dann bewusst mit nil statt zu raten.
 #
 # BEWUSST OHNE EINDEUTIGKEITSPRÜFUNG: Der Schlüssel ist bei YouTube dauerhaft
 # und überlebt die Saison, die Mannschaft nicht -- `teams` bekommt je Saison
@@ -27,8 +30,8 @@
 # Mannschaft der alten und der neuen Saison denselben Wert, und ein Unique-Index
 # würde genau die gewollte Übernahme blockieren. Die Auflösung Schlüssel →
 # Mannschaft ist deshalb über das Datum eindeutig zu machen (nur eine der
-# Mannschaften hat heute ein Heimspiel), nicht über die Datenbank; siehe
-# StreamWatchdog#game_for.
+# Mannschaften richtet heute aus), nicht über die Datenbank; siehe
+# StreamWatchdog#spiel_fuer.
 #
 # Der Schlüssel ist ein Geheimnis: Wer ihn hat, sendet auf den Verbandskanal.
 # Er darf in keiner öffentlichen Antwort auftauchen (siehe
