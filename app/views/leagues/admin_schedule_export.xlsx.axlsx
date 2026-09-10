@@ -1,0 +1,57 @@
+# Spielplan-Export einer Liga. Die Spaltenfolge stammt aus
+# LeaguesController::SCHEDULE_COLUMNS (+ SCHEDULE_EXPORT_COLUMNS) und ist damit
+# dieselbe, die der Import liest – bewusst ohne Anleitungszeilen und ohne das
+# Blatt "Import" der Vorlage: Diese Datei geht an andere Systeme, nicht zurück
+# in den Saisonmanager.
+wb = xlsx_package.workbook
+
+# Datumsspalte als echtes Datum ausgeben (der Wert ist ein Date, siehe
+# LeaguesController#schedule_export_date). Ohne eigenes Format zeigt Excel die
+# Tageszahl statt des Datums.
+date_style = wb.styles.add_style(format_code: 'DD.MM.YYYY')
+header_style = wb.styles.add_style(b: true)
+row_styles = ([nil] * 3) + [date_style] + ([nil] * (@columns.length - 4))
+
+wb.add_worksheet(name: 'Spielplan') do |sheet|
+  sheet.add_row @columns, style: header_style
+
+  @rows.each do |row|
+    sheet.add_row row, style: row_styles
+  end
+
+  # Erste Zeile beim Blättern stehen lassen – ein Spielplan ist länger als ein
+  # Bildschirm, und ohne Überschrift sind zwölf ID-Spalten nicht zuzuordnen.
+  sheet.sheet_view do |view|
+    view.pane do |pane|
+      pane.top_left_cell = 'A2'
+      pane.state = :frozen
+      pane.y_split = 1
+    end
+  end
+
+  sheet.column_widths 14, 11, 11, 12, 9, 10, 14, 12, 12, 20, 16, 12, 24, 24, 28, 24, 9
+end
+
+wb.add_worksheet(name: 'Info') do |sheet|
+  sheet.add_row ['Liga', @league.name]
+  sheet.add_row ['Liga-ID', @league.id]
+  sheet.add_row ['Spielbetrieb', @league.game_operation&.name]
+  sheet.add_row ['Saison', Setting.season_name(@league.season_id)]
+  sheet.add_row ['Stand', Time.zone.now.strftime('%d.%m.%Y %H:%M')]
+  sheet.add_row ['Spiele', @rows.length]
+
+  sheet.column_widths 16, nil
+end
+
+# Die ID-Spalten des Spielplans sind ohne Zuordnung nicht lesbar. Für Hallen und
+# Ausrichter steht der Klartext in derselben Zeile; die Teams stehen zusätzlich
+# hier, weil externe Auswertungen sie über die gesamte Saison hinweg brauchen –
+# auch für Teams, die im exportierten Spielplan (noch) nicht vorkommen.
+wb.add_worksheet(name: 'Teams') do |sheet|
+  sheet.add_row %w[id Name]
+  @teams.each do |team|
+    sheet.add_row [team.id, team.name]
+  end
+
+  sheet.column_widths 8, nil
+end
