@@ -7,6 +7,8 @@ require 'csv'
 # erste Test hält das fest, weil die beiden Stellen sonst auseinanderlaufen,
 # ohne dass es irgendwo auffällt.
 class LeaguesScheduleExportTest < ActionDispatch::IntegrationTest
+  XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'.freeze
+
   setup do
     @go = GameOperation.create!(name: 'GO', short_name: 'GO')
     @league = League.create!(game_operation: @go, name: 'Testliga Nord', season_id: '18',
@@ -105,6 +107,89 @@ class LeaguesScheduleExportTest < ActionDispatch::IntegrationTest
     assert_equal Date.new(2026, 4, 6), rows[1]['D'].to_date
   ensure
     file&.close
+  end
+
+  # Ohne Endung antwortete der Endpunkt vor diesem Riegel mit 500 samt
+  # Sentry-Meldung: respond_to warf UnknownFormat, und die faengt der globale
+  # rescue_from im ApplicationController.
+  test 'ohne Endung kommt die Tabellenkalkulations-Fassung' do
+    game_day = create_game_day(number: 1, date: '2026-04-06')
+    create_game(game_day, game_number: '1')
+    login(admin_user)
+
+    get "/api/v2/admin/leagues/#{@league.id}/schedule_export"
+
+    assert_response :success
+    assert_equal XLSX_MIME, response.media_type
+  end
+
+  test 'ein nicht unterstuetztes Format wird sauber abgewiesen' do
+    login(admin_user)
+
+    get "/api/v2/admin/leagues/#{@league.id}/schedule_export.json"
+
+    assert_response :not_acceptable
+    assert_match 'Format', JSON.parse(response.body)['message']
+  end
+
+  test 'die CSV nennt ihren Zeichensatz und traegt keinen BOM' do
+    game_day = create_game_day(number: 1, date: '2026-04-06')
+    create_game(game_day, game_number: '1', nominated_referee_string: 'Mustermann/Müller')
+    login(admin_user)
+
+    get "/api/v2/admin/leagues/#{@league.id}/schedule_export.csv"
+
+    assert_response :success
+    assert_equal 'utf-8', response.headers['Content-Type'][/charset=([^;]+)/, 1]
+    # Ein BOM stuende als unsichtbares Zeichen in der ersten Ueberschrift und
+    # verfaelschte sie fuer jedes einlesende System.
+    assert_not_equal [0xEF, 0xBB, 0xBF], response.body.bytes.first(3)
+    assert_includes response.body, 'Mustermann/Müller'
+  end
+
+  # Ein Teamname, der mit = beginnt, ist in der Tabellenkalkulation sonst eine
+  # ausgefuehrte Formel. Die xlsx-Fassung entschaerft das ueber caxlsx von
+  # selbst, die CSV brauchte eine eigene Stelle.
+  test 'die CSV fuehrt keine Formeln aus' do
+    formula_team = Team.create!(league: @league, club: @club, name: '=HYPERLINK("http://boese","klick")')
+    game_day = create_game_day(number: 1, date: '2026-04-06')
+    Game.create!(game_day:, home_team: formula_team, guest_team: @guest, game_number: '1')
+    login(admin_user)
+
+    cell = export_csv[1][12]
+
+    assert cell.start_with?("'"), "Formelzelle nicht entschaerft: #{cell.inspect}"
+  end
+
+  # Zwei Spieltage mit gleicher Nummer und gleichem Datum: Den Ausschlag gibt
+  # die kleinste Spielnummer, und ein Spiel OHNE Nummer darf dabei nicht als 0
+  # zaehlen und den Spieltag nach vorne ziehen.
+  test 'Spiele ohne Nummer verschieben die Spieltagsreihenfolge nicht' do
+    late = create_game_day(number: 1, date: '2026-04-06')
+    create_game(late, game_number: '9')
+    create_game(late, game_number: '')
+    early = create_game_day(number: 1, date: '2026-04-06')
+    create_game(early, game_number: '5')
+    login(admin_user)
+
+    assert_equal %w[5 9], export_csv.drop(1).map { |r| r[1] }.first(2)
+  end
+
+  # Altbestand: die Datumsspalte ist Text, die ISO-Pruefung greift nur bei
+  # Aenderungen. Als Rohtext sortierte "11.08.2026" vor jedem ISO-Datum,
+  # waehrend in der Datumszelle der geparste Wert steht.
+  test 'ein Datum in deutscher Schreibweise sortiert nach seinem echten Wert' do
+    german = create_game_day(number: 1, date: '2026-08-11')
+    create_game(german, game_number: '2')
+    # Am Modell vorbei: Die ISO-Prüfung laesst eine deutsche Schreibweise heute
+    # nicht mehr durch, im Altbestand steht sie trotzdem – genau diese Zeilen
+    # sind der Grund fuer den geparsten Sortierschluessel.
+    german.update_column(:date, '11.08.2026')
+    iso = create_game_day(number: 1, date: '2026-04-06')
+    create_game(iso, game_number: '1')
+    login(admin_user)
+
+    assert_equal(%w[2026-04-06 2026-08-11], export_csv.drop(1).map { |r| r[3] })
   end
 
   test 'ohne Anmeldung kein Export' do

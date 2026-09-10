@@ -37,6 +37,13 @@ class LeaguesController < ApplicationController
   # Spaltenreihenfolge des Imports zerstören.
   SCHEDULE_EXPORT_COLUMNS = %w[Heimteam Gastteam Halle Ausrichter Spiel-ID].freeze
 
+  # Formate des Spielplan-Exports. Ohne diese Liste beantwortete ein Aufruf mit
+  # unbekannter oder fehlender Endung die Anfrage NICHT mit 406: `respond_to`
+  # wirft ActionController::UnknownFormat, das ist ein StandardError, und der
+  # globale rescue_from im ApplicationController macht daraus auf Produktion
+  # einen 500er samt Sentry-Meldung. Ein Lesezeichen ohne Endung genügte dafür.
+  SCHEDULE_EXPORT_FORMATS = %w[xlsx csv].freeze
+
   skip_before_action :authenticate_user, except: COOKIE_ONLY_ACTIONS
   before_action :authenticate_public_request, except: COOKIE_ONLY_ACTIONS + KEYLESS_ACTIONS
   after_action :track_public_view,
@@ -229,6 +236,13 @@ class LeaguesController < ApplicationController
       return render json: { message: 'Kein Zugriff' }, status: :forbidden
     end
 
+    # Vor dem Laden der Zeilen: Ein unbrauchbares Format soll nicht erst den
+    # ganzen Spielplan einlesen, um danach abgewiesen zu werden.
+    unless SCHEDULE_EXPORT_FORMATS.include?(params[:format].to_s)
+      return render json: { message: 'Nicht unterstütztes Format. Möglich sind .xlsx und .csv.' },
+                    status: :not_acceptable
+    end
+
     @columns = SCHEDULE_COLUMNS + SCHEDULE_EXPORT_COLUMNS
     @rows = schedule_export_rows(@league)
     @teams = @league.teams
@@ -236,9 +250,15 @@ class LeaguesController < ApplicationController
     respond_to do |format|
       format.xlsx { render xlsx: 'admin_schedule_export', filename: schedule_export_filename(@league, 'xlsx') }
       format.csv do
+        # Zeichensatz ausdrücklich benennen: Die Datei trägt Umlaute (Hallen-,
+        # Vereins- und Schiedsrichternamen), und ohne Angabe rät der Empfänger.
+        # Bewusst OHNE BOM: Der BOM hilft nur dem Doppelklick in Excel unter
+        # Windows und steht dafür als unsichtbares Zeichen in der ersten
+        # Überschrift, wo ihn ein einlesendes System mitliest. Für den Weg in
+        # die Tabellenkalkulation gibt es die xlsx-Fassung.
         send_data schedule_export_csv(@columns, @rows),
                   filename: schedule_export_filename(@league, 'csv'),
-                  type: 'text/csv'
+                  type: 'text/csv; charset=utf-8'
       end
     end
   end
@@ -1183,15 +1203,29 @@ class LeaguesController < ApplicationController
   # Alle Spiele der Liga als flache Zeilen in der Spaltenfolge von
   # SCHEDULE_COLUMNS + SCHEDULE_EXPORT_COLUMNS.
   #
-  # Sortiert wie die Spielplanverwaltung (LeaguesController#admin_game_schedule):
-  # Spieltagsnummer, dann Datum, dann kleinste Spielnummer. `game_days.date` ist
-  # eine Textspalte im ISO-Format, sortiert als Text also richtig.
+  # Sortiert nach Spieltagsnummer, Datum und kleinster Spielnummer. Bewusst
+  # nicht als „genau wie #admin_game_schedule" beschrieben: Dort liest der
+  # dritte Schlüssel `gd[:games].first[:number]`, während Game#meta_hash den
+  # Wert als `game_number` ablegt – er ist dort immer nil und der Tiebreak
+  # damit wirkungslos. Bei zwei Spieltagen mit gleicher Nummer und gleichem
+  # Datum können beide Reihenfolgen deshalb auseinanderfallen; der Export
+  # sortiert bewusst nach dem, was in der Datei steht.
+  #
+  # Sortiert wird über das GEPARSTE Datum, nicht über den Rohtext. `game_days.date`
+  # ist eine Textspalte, deren ISO-Prüfung nur bei Änderungen greift (siehe
+  # GameDay), im Altbestand stehen dort auch Werte wie „11.08.2026". Als Text
+  # sortierte ein solcher Spieltag vor jedem ISO-Datum, während in seiner
+  # Datumszelle der geparste Wert steht – die Datei wäre gegen ihre eigene
+  # Spalte falsch sortiert gewesen.
   def schedule_export_rows(league)
     game_days = league.game_days.includes(:arena, :club, games: %i[home_team guest_team]).to_a
 
     ordered = game_days.sort_by do |game_day|
-      first_number = game_day.games.map { |game| game.game_number.to_i }.min || 0
-      [game_day.number.to_i, game_day.date.to_s, first_number]
+      # Spiele ohne Nummer zaehlen fuer den Tiebreak nicht mit: `''.to_i` ist 0
+      # und zog einen Spieltag sonst vor alle anderen, obwohl seine uebrigen
+      # Spiele hohe Nummern tragen.
+      numbers = game_day.games.filter_map { |game| game.game_number.presence&.to_i }
+      [game_day.number.to_i, schedule_export_sort_date(game_day.date), numbers.min || 0]
     end
 
     # Die Gruppierung fasst im Import die Spiele eines Spieltags zusammen. Nach
@@ -1252,15 +1286,47 @@ class LeaguesController < ApplicationController
   end
   private :schedule_export_date
 
+  # Sortierschlüssel zum Datum: immer ein String, damit sich geparste und
+  # unparsbare Werte überhaupt vergleichen lassen. Ein lesbares Datum wird nach
+  # ISO normalisiert und sortiert damit chronologisch; was sich nicht parsen
+  # lässt, behält seinen Rohtext und landet nach seiner Schreibweise – falsch
+  # sortieren kann nur noch, was ohnehin keine erkennbare Datumsangabe ist.
+  def schedule_export_sort_date(raw)
+    value = schedule_export_date(raw)
+
+    value.is_a?(Date) ? value.iso8601 : value.to_s
+  end
+  private :schedule_export_sort_date
+
   def schedule_export_csv(columns, rows)
     CSV.generate do |csv|
       csv << columns
       # ISO 8601 statt der deutschen Schreibweise: Die CSV ist der maschinelle
       # Weg, und 03.04. ist ohne Absprache nicht von 04.03. zu unterscheiden.
-      rows.each { |row| csv << row.map { |value| value.is_a?(Date) ? value.iso8601 : value } }
+      rows.each do |row|
+        csv << row.map do |value|
+          value.is_a?(Date) ? value.iso8601 : schedule_export_csv_cell(value)
+        end
+      end
     end
   end
   private :schedule_export_csv
+
+  # Entschärft Zellen, die eine Tabellenkalkulation als Formel läse. Betroffen
+  # sind die Freitextfelder (Serien-Titel, Schiedsrichter, Team-, Hallen- und
+  # Vereinsnamen); Zahlen und Datumsangaben kommen hier als Integer bzw. Date an
+  # und bleiben unberührt, ein negativer Wert wird also nicht verstümmelt.
+  #
+  # caxlsx macht dasselbe für die xlsx-Fassung von sich aus (escape_formulas
+  # steht dort per Default an). Ohne diese Stelle verhielten sich die beiden
+  # Formate desselben Endpunkts unterschiedlich – und die CSV ist die Fassung,
+  # die laut Changelog an Vereinsseiten weitergereicht wird.
+  def schedule_export_csv_cell(value)
+    return value unless value.is_a?(String) && value.match?(/\A[=+\-@\t\r]/)
+
+    "'#{value}"
+  end
+  private :schedule_export_csv_cell
 
   def schedule_export_filename(league, extension)
     name = league.name.to_s.parameterize.presence || 'liga'

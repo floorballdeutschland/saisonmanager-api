@@ -37,7 +37,10 @@ wb.add_worksheet(name: 'Info') do |sheet|
   sheet.add_row ['Liga-ID', @league.id]
   sheet.add_row ['Spielbetrieb', @league.game_operation&.name]
   sheet.add_row ['Saison', Setting.season_name(@league.season_id)]
-  sheet.add_row ['Stand', Time.zone.now.strftime('%d.%m.%Y %H:%M')]
+  # Ausdrücklich Europe/Berlin: Rails setzt kein config.time_zone, Time.zone ist
+  # also UTC – der Stempel läge im Winter eine, im Sommer zwei Stunden vor der
+  # Uhrzeit, zu der jemand die Datei gezogen hat.
+  sheet.add_row ['Stand', Time.find_zone!('Europe/Berlin').now.strftime('%d.%m.%Y %H:%M')]
   sheet.add_row ['Spiele', @rows.length]
 
   sheet.column_widths 16, nil

@@ -117,7 +117,11 @@ Rails.application.routes.draw do
       get 'admin/leagues/:id/teams', to: 'leagues#admin_league_team_index'
       get 'admin/leagues/:id/game_schedule', to: 'leagues#admin_game_schedule'
       get 'admin/leagues/:id/schedule_import_template', to: 'leagues#admin_schedule_import_template'
-      get 'admin/leagues/:id/schedule_export', to: 'leagues#admin_schedule_export'
+      # defaults: Ohne Endung liefert der Endpunkt die Tabellenkalkulations-Fassung,
+      # wie es die Nachbarroute schedule_import_template seit jeher tut. Ein
+      # unbekanntes Format faengt die Action selbst ab (SCHEDULE_EXPORT_FORMATS).
+      get 'admin/leagues/:id/schedule_export', to: 'leagues#admin_schedule_export',
+                                               defaults: { format: 'xlsx' }
       get 'admin/leagues/:id/additional_references', to: 'leagues#additional_references'
       get 'admin/leagues/:id/licenses', to: 'players#admin_licenses'
       post 'admin/leagues/:id/copy', to: 'leagues#admin_copy'
