@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_09_10_110000) do
+ActiveRecord::Schema[7.2].define(version: 2026_09_10_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -455,6 +455,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_10_110000) do
     t.jsonb "point_corrections", default: {}, null: false, comment: "Punktekorrekturen je Team ({ team_id => { points: ... } }); ersetzt das globale Setting.point_corrections"
     t.string "league_class_name"
     t.string "league_category_name"
+    t.string "stream_playlist"
     t.index ["game_operation_id"], name: "index_leagues_on_game_operation_id"
     t.index ["legacy_ref"], name: "index_leagues_on_legacy_ref", unique: true, where: "(legacy_ref IS NOT NULL)"
   end

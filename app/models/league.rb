@@ -294,6 +294,10 @@ class League < ApplicationRecord
       before_deadline:,
       parental_consent_required:,
       referee_feedback_enabled:,
+      # Name der YouTube-Playlist der Übertragungen dieser Liga. Kein Geheimnis --
+      # die Playlists des Verbandskanals sind öffentlich; der Streamschlüssel, der
+      # es ist, hängt dagegen an der Mannschaft und steht in keinem Hash.
+      stream_playlist:,
 
       legacy_league:,
       field_size:,

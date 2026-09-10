@@ -157,10 +157,8 @@ class StreamWatchdog
   # Schlüssel, auch die, in denen er selbst nicht Heim ist. Über die
   # Heimmannschaft zu suchen fände dort das falsche Spiel oder gar keines.
   #
-  # Ausrichter eines Spieltags ist `game_days.club_id`; zusammen mit
-  # `game_days.league_id` ist das genau eine Mannschaft, und an der hängt der
-  # Schlüssel. Ein Spielverbund richtet über einen seiner Vereine aus, deshalb
-  # zählt `syndicate_clubs` mit.
+  # Wer ausrichtet, sagt GameDay#hosting_team -- die eine Stelle, an der diese
+  # Frage beantwortet wird.
   #
   # Gesucht ist dann das jüngste Spiel dieses Spieltags, dessen Anwurf hinter uns
   # liegt. Bleibt es mehrdeutig, wird nichts zugeordnet und es greift allein die
@@ -198,18 +196,17 @@ class StreamWatchdog
     Game.where(game_day_id: spieltage.map(&:id)).preload(:game_day).to_a
   end
 
+  # Wer ausrichtet, beantwortet GameDay#hosting_team -- und nur die. Die Regel
+  # hier ein zweites Mal hinzuschreiben (Verein gleich, Spielverbund mitzählen)
+  # liefe irgendwann auseinander, und der Unterschied fiele erst auf, wenn der
+  # Wächter die falsche Übertragung beendet.
   def spieltage_der_ausrichter(teams, tage)
     return [] if teams.blank?
 
+    team_ids = teams.map(&:id)
     GameDay.where(date: tage.map(&:to_s), league_id: teams.map(&:league_id).uniq)
            .to_a
-           .select { |spieltag| teams.any? { |team| richtet_aus?(team, spieltag) } }
-  end
-
-  def richtet_aus?(team, spieltag)
-    return false unless team.league_id == spieltag.league_id
-
-    team.club_id == spieltag.club_id || team.syndicate_clubs.to_a.include?(spieltag.club_id)
+           .select { |spieltag| team_ids.include?(spieltag.hosting_team&.id) }
   end
 
   # Übertragungen, die YouTube nicht mehr als laufend führt: von Hand beendet,

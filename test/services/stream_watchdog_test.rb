@@ -45,7 +45,10 @@ class StreamWatchdogTest < ActiveSupport::TestCase
     # Schlüssel am Ausrichter hängt und nicht am Heimteam, prüfen die Tests
     # weiter unten, in denen die beiden auseinanderfallen.
     @home = create(:team, league: @league, club: @club, stream_key: STREAM_KEY)
-    @guest = create(:team, league: @league, club: @club)
+    # Eigener Verein: Zwei Mannschaften desselben Vereins in EINER Liga machen
+    # den Ausrichter mehrdeutig, und GameDay#hosting_team antwortet dann bewusst
+    # mit nil. Das ist richtig so -- hier soll aber der Normalfall stehen.
+    @guest = create(:team, league: @league, club: create(:club))
     @game = spiel_anlegen('18:00')
 
     # Anwurf 18:00 Berlin, "jetzt" zwei Stunden später -- das Spiel läuft oder
@@ -178,7 +181,7 @@ class StreamWatchdogTest < ActiveSupport::TestCase
                                        number: 1, date: '2026-03-07')
     zweites_heim = create(:team, league: zweite_liga, club: @club, stream_key: STREAM_KEY)
     Game.create!(game_day: zweiter_spieltag, home_team: zweites_heim,
-                 guest_team: create(:team, league: zweite_liga, club: @club),
+                 guest_team: create(:team, league: zweite_liga, club: create(:club)),
                  start_time: '18:00', forfait: 0, overtime: false, legacy: false,
                  game_status: 'match_record_closed',
                  events: [], players: { 'home' => [], 'guest' => [] })

@@ -74,6 +74,32 @@ class GameDay < ApplicationRecord
     club.name if club.present?
   end
 
+  # Die Mannschaft, die diesen Spieltag ausrichtet.
+  #
+  # Ausrichter ist der Verein in `club_id`; zusammen mit der Liga dieses
+  # Spieltags ist das genau eine Mannschaft. Ein Spielverbund richtet über einen
+  # seiner Vereine aus, deshalb `Team.by_club_id` (das zieht `syndicate_clubs`
+  # mit) statt eines schlichten Vergleichs auf `teams.club_id`.
+  #
+  # DIESE METHODE IST DIE EINZIGE STELLE, DIE "wer richtet aus" BEANTWORTET.
+  # Der Streamschlüssel hängt daran -- gesendet wird aus der Halle, und wer die
+  # Halle stellt, stellt die Technik. Ein zweiter Weg zur selben Frage liefe
+  # unweigerlich auseinander, und der Unterschied fiele erst auf, wenn eine
+  # Übertragung auf dem falschen Kanal landet. Auch StreamWatchdog fragt hier.
+  #
+  # nil, wenn der ausrichtende Verein in dieser Liga keine oder mehr als eine
+  # Mannschaft hat. Mehrdeutig heißt hier bewusst "unbekannt": Wer daraus einen
+  # Streamschlüssel liest, sendet sonst auf einen geratenen Kanal.
+  def hosting_team
+    kandidaten = Team.by_club_id(club_id).where(league_id: league_id).to_a
+    kandidaten.size == 1 ? kandidaten.first : nil
+  end
+
+  # Der YouTube-Streamschlüssel, über den dieser Spieltag gesendet wird, oder nil.
+  def stream_key
+    hosting_team&.stream_key
+  end
+
   def deletable?
     !games.present? # TODO: current_season?!
   end
