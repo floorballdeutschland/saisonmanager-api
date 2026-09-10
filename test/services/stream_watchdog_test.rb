@@ -41,6 +41,9 @@ class StreamWatchdogTest < ActiveSupport::TestCase
     @arena = create(:arena)
     @game_day = GameDay.create!(league: @league, arena: @arena, club: @club,
                                 number: 1, date: '2026-03-07')
+    # @club richtet aus UND stellt die Heimmannschaft -- der Regelfall. Dass der
+    # Schlüssel am Ausrichter hängt und nicht am Heimteam, prüfen die Tests
+    # weiter unten, in denen die beiden auseinanderfallen.
     @home = create(:team, league: @league, club: @club, stream_key: STREAM_KEY)
     @guest = create(:team, league: @league, club: @club)
     @game = spiel_anlegen('18:00')
@@ -168,8 +171,8 @@ class StreamWatchdogTest < ActiveSupport::TestCase
   # --- Zuordnung Schlüssel -> Spiel -----------------------------------------
 
   test 'mehrdeutiger Schlüssel ordnet kein Spiel zu und beendet nichts' do
-    # Derselbe Schlüssel an zwei Mannschaften, beide heute mit Heimspiel: Der
-    # Watchdog darf nicht raten, welche gerade sendet.
+    # Derselbe Schlüssel an zwei Mannschaften, die heute beide einen Spieltag
+    # ausrichten: Der Watchdog darf nicht raten, welcher gerade sendet.
     zweite_liga = create(:league, game_operation: @go)
     zweiter_spieltag = GameDay.create!(league: zweite_liga, arena: @arena, club: @club,
                                        number: 1, date: '2026-03-07')
@@ -187,7 +190,7 @@ class StreamWatchdogTest < ActiveSupport::TestCase
 
     assert_empty api.completed
     assert_nil StreamBroadcast.find_by(broadcast_id: BROADCAST_ID).game_id
-    assert(ergebnis[:notes].any? { |n| n.include?('mehrere Mannschaften') })
+    assert(ergebnis[:notes].any? { |n| n.include?('mehrere Spieltage') })
   end
 
   test 'ein Spiel von gestern gilt nicht mehr als das laufende' do
@@ -251,6 +254,99 @@ class StreamWatchdogTest < ActiveSupport::TestCase
     assert_not StreamBroadcast.find_by(broadcast_id: BROADCAST_ID).ended?,
                'der Satz muss offen bleiben, damit der nächste Lauf es erneut versucht'
     assert(ergebnis[:notes].any? { |n| n.include?('FEHLER beim Beenden') })
+  end
+
+  # --- Der Schlüssel gehört dem Ausrichter ----------------------------------
+
+  test 'ordnet über den Ausrichter zu, auch wenn dieser nicht die Heimmannschaft ist' do
+    # Ein Verein richtet einen Spieltag aus, in dem er selbst nicht spielt --
+    # gesendet wird trotzdem über seinen Schlüssel, denn er stellt die Halle.
+    gast_a = create(:team, league: @league, club: create(:club))
+    gast_b = create(:team, league: @league, club: create(:club))
+    fremdes_spiel = Game.create!(game_day: @game_day, home_team: gast_a, guest_team: gast_b,
+                                 start_time: '19:00', forfait: 0, overtime: false, legacy: false,
+                                 game_status: 'match_record_closed',
+                                 events: [], players: { 'home' => [], 'guest' => [] })
+    satz_anlegen(signal_lost_at: @now - 20.minutes)
+
+    api = api_mit(status: 'inactive')
+    StreamWatchdog.new(api: api, now: @now).run
+
+    assert_equal [BROADCAST_ID], api.completed
+    satz = StreamBroadcast.find_by(broadcast_id: BROADCAST_ID)
+    assert_equal fremdes_spiel.id, satz.game_id,
+                 'zugeordnet wird das jüngste Spiel des ausgerichteten Spieltags'
+  end
+
+  test 'GEGENPROBE: Heimmannschaft mit Schlüssel, aber ein anderer Verein richtet aus' do
+    # Auswärts gespielt: Die Mannschaft trägt den Schlüssel, sendet aber nicht --
+    # die Technik steht in der fremden Halle. Ihr Schlüssel darf dieses Spiel
+    # nicht einfangen.
+    fremder_spieltag = GameDay.create!(league: @league, arena: @arena, club: create(:club),
+                                       number: 2, date: '2026-03-07')
+    Game.create!(game_day: fremder_spieltag, home_team: @home, guest_team: @guest,
+                 start_time: '18:00', forfait: 0, overtime: false, legacy: false,
+                 game_status: 'match_record_closed',
+                 events: [], players: { 'home' => [], 'guest' => [] })
+    @game.destroy!
+    satz_anlegen(signal_lost_at: @now - 20.minutes)
+
+    api = api_mit(status: 'inactive')
+    StreamWatchdog.new(api: api, now: @now).run
+
+    assert_empty api.completed
+    assert_nil StreamBroadcast.find_by(broadcast_id: BROADCAST_ID).game_id
+  end
+
+  test 'ein Ausrichter mit mehreren Partien: Übergabe zur nächsten, Abschaltung erst nach der letzten' do
+    zweites = spiel_anlegen('20:10')
+
+    # 20:00 -- die erste Partie ist durch, die zweite beginnt in zehn Minuten.
+    satz_anlegen(signal_lost_at: nil)
+    api = api_mit(status: 'active')
+    StreamWatchdog.new(api: api, now: @now).run
+    assert_equal [BROADCAST_ID], api.completed, 'die laufende Übertragung muss den Schlüssel freigeben'
+
+    # 22:30 -- auch die zweite ist durch, Bericht geschlossen, kein Signal mehr.
+    zweites.update!(game_status: 'match_record_closed')
+    spaeter = Time.zone.parse('2026-03-07 22:30:00 +01:00')
+    StreamBroadcast.find_by(broadcast_id: BROADCAST_ID)
+                   .update!(ended_at: nil, ended_reason: nil, signal_lost_at: spaeter - 20.minutes)
+
+    api2 = api_mit(status: 'inactive')
+    StreamWatchdog.new(api: api2, now: spaeter).run
+
+    assert_equal [BROADCAST_ID], api2.completed
+    satz = StreamBroadcast.find_by(broadcast_id: BROADCAST_ID)
+    assert_equal zweites.id, satz.game_id
+    assert_match(/Spielbericht geschlossen/, satz.ended_reason)
+  end
+
+  test 'ein Spielverbund richtet über einen seiner Vereine aus' do
+    ausrichtender_verein = create(:club)
+    create(:team, league: @league, club: create(:club), stream_key: 'verbund-key',
+                  syndicate: true, syndicate_clubs: [ausrichtender_verein.id])
+    verbund_spieltag = GameDay.create!(league: @league, arena: @arena, club: ausrichtender_verein,
+                                       number: 3, date: '2026-03-07')
+    # Bewusst NICHT die Heimmannschaft: Sonst fände der alte Weg über das
+    # Heimteam das Spiel ebenfalls, und der Verbundspfad wäre nicht belegt.
+    verbund_spiel = Game.create!(game_day: verbund_spieltag,
+                                 home_team: create(:team, league: @league, club: create(:club)),
+                                 guest_team: @guest,
+                                 start_time: '18:00', forfait: 0, overtime: false, legacy: false,
+                                 game_status: 'match_record_closed',
+                                 events: [], players: { 'home' => [], 'guest' => [] })
+    StreamBroadcast.create!(broadcast_id: 'bc-verbund', stream_id: 'stream-verbund',
+                            title: 'Verbund', signal_lost_at: @now - 20.minutes)
+
+    api = FakeApi.new(
+      broadcasts: [{ id: 'bc-verbund', title: 'Verbund', stream_id: 'stream-verbund' }],
+      streams: { 'stream-verbund' => { status: 'inactive', key: 'verbund-key' } }
+    )
+    StreamWatchdog.new(api: api, now: @now).run
+
+    assert_equal ['bc-verbund'], api.completed
+    assert_equal verbund_spiel.id, StreamBroadcast.find_by(broadcast_id: 'bc-verbund').game_id
   end
 
   private

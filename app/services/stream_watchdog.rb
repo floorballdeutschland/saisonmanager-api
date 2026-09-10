@@ -32,8 +32,9 @@
 #
 # Die Zuordnung Übertragung → Spiel läuft über den Streamschlüssel: YouTube sagt,
 # welcher Schlüssel an der Übertragung hängt, `teams.stream_key` sagt, welcher
-# Mannschaft er gehört, und das heutige Heimspiel dieser Mannschaft ist das
-# gesuchte. Findet sich keines, greift nur die Notabschaltung.
+# Mannschaft er gehört, und deren heute AUSGERICHTETER Spieltag trägt das
+# gesuchte Spiel. Ausrichter und Heimmannschaft sind nicht dasselbe -- siehe
+# #spiel_fuer. Findet sich kein Spiel, greift nur die Notabschaltung.
 class StreamWatchdog
   # Wie lange ohne Signal, bevor ein geschlossener Spielbericht zum Abschalten
   # führt.
@@ -84,11 +85,11 @@ class StreamWatchdog
       return nil
     end
 
-    team_ids = Team.where(stream_key: zustand[:key]).pluck(:id) if zustand[:key].present?
-    spiel = spiel_fuer(team_ids)
+    teams = zustand[:key].present? ? Team.where(stream_key: zustand[:key]).to_a : []
+    spiel = spiel_fuer(teams)
     satz.game_id = spiel&.id
 
-    if uebergabe_faellig?(team_ids)
+    if uebergabe_faellig?(teams)
       return beende(satz, broadcast, 'das nächste Spiel auf demselben Streamschlüssel startet gleich')
     end
 
@@ -147,46 +148,68 @@ class StreamWatchdog
     nil
   end
 
-  # Das Spiel, das gerade läuft oder eben gelaufen ist: das jüngste Heimspiel
-  # dieser Mannschaft, dessen Anwurf hinter uns liegt.
+  # Das Spiel, das gerade läuft oder eben gelaufen ist.
   #
-  # Mehrere Mannschaften können denselben Schlüssel tragen -- die Mannschaft der
-  # Vorsaison behält ihn, wenn die Ligakopie ihn weiterreicht. Über den Tag wird
-  # das eindeutig: Nur eine davon spielt heute. Bleibt es mehrdeutig, wird nichts
-  # zugeordnet, und es greift allein die Notabschaltung. Lieber eine Übertragung
-  # zu lange als die falsche zu früh beendet.
-  def spiel_fuer(team_ids)
-    return nil if team_ids.blank?
-
-    kandidaten = heimspiele(team_ids, [tag_heute, tag_heute - 1]).select do |spiel|
+  # DER SCHLÜSSEL GEHÖRT DEM AUSRICHTER, NICHT DER HEIMMANNSCHAFT. Gesendet wird
+  # aus der Halle, und wer die Halle stellt, stellt die Technik -- das ist meist,
+  # aber nicht immer die Heimmannschaft. Richtet ein Verein einen Spieltag mit
+  # mehreren Partien aus, laufen sie alle nacheinander über seinen einen
+  # Schlüssel, auch die, in denen er selbst nicht Heim ist. Über die
+  # Heimmannschaft zu suchen fände dort das falsche Spiel oder gar keines.
+  #
+  # Ausrichter eines Spieltags ist `game_days.club_id`; zusammen mit
+  # `game_days.league_id` ist das genau eine Mannschaft, und an der hängt der
+  # Schlüssel. Ein Spielverbund richtet über einen seiner Vereine aus, deshalb
+  # zählt `syndicate_clubs` mit.
+  #
+  # Gesucht ist dann das jüngste Spiel dieses Spieltags, dessen Anwurf hinter uns
+  # liegt. Bleibt es mehrdeutig, wird nichts zugeordnet und es greift allein die
+  # Notabschaltung -- lieber eine Übertragung zu lange als die falsche zu früh
+  # beendet.
+  def spiel_fuer(teams)
+    kandidaten = spiele_des_tages(teams, [tag_heute, tag_heute - 1]).select do |spiel|
       anwurf = spiel.start_date
       anwurf && anwurf <= @now && (@now - anwurf) < GAME_LOOKBACK
     end
     return nil if kandidaten.empty?
 
-    if kandidaten.map(&:home_team_id).uniq.size > 1
-      notiz('Streamschlüssel trifft heute auf mehrere Mannschaften -- keine Zuordnung')
+    if kandidaten.map(&:game_day_id).uniq.size > 1
+      notiz('Streamschlüssel trifft heute auf mehrere Spieltage -- keine Zuordnung')
       return nil
     end
 
     kandidaten.max_by(&:start_date)
   end
 
-  def uebergabe_faellig?(team_ids)
-    return false if team_ids.blank?
-
-    heimspiele(team_ids, [tag_heute]).any? do |spiel|
+  # Ein Ausrichter mit mehreren Partien an einem Tag ist der Regelfall, nicht die
+  # Ausnahme: Sie laufen nacheinander über denselben Schlüssel, und jede braucht
+  # eine eigene Übertragung. Die vorherige muss weg, bevor die nächste anfängt.
+  def uebergabe_faellig?(teams)
+    spiele_des_tages(teams, [tag_heute]).any? do |spiel|
       anwurf = spiel.start_date
       anwurf && anwurf > @now && anwurf <= @now + HANDOVER_LEAD
     end
   end
 
-  def heimspiele(team_ids, tage)
-    Game.joins(:game_day)
-        .where(home_team_id: team_ids)
-        .where(game_days: { date: tage.map(&:to_s) })
-        .preload(:game_day)
-        .to_a
+  def spiele_des_tages(teams, tage)
+    spieltage = spieltage_der_ausrichter(teams, tage)
+    return [] if spieltage.empty?
+
+    Game.where(game_day_id: spieltage.map(&:id)).preload(:game_day).to_a
+  end
+
+  def spieltage_der_ausrichter(teams, tage)
+    return [] if teams.blank?
+
+    GameDay.where(date: tage.map(&:to_s), league_id: teams.map(&:league_id).uniq)
+           .to_a
+           .select { |spieltag| teams.any? { |team| richtet_aus?(team, spieltag) } }
+  end
+
+  def richtet_aus?(team, spieltag)
+    return false unless team.league_id == spieltag.league_id
+
+    team.club_id == spieltag.club_id || team.syndicate_clubs.to_a.include?(spieltag.club_id)
   end
 
   # Übertragungen, die YouTube nicht mehr als laufend führt: von Hand beendet,

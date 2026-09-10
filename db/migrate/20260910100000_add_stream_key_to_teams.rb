@@ -14,6 +14,13 @@
 # einen anderen Kanal als die 1. FBL Herren. Ein Feld am Verein könnte das nicht
 # abbilden.
 #
+# BENUTZT WIRD ER ÜBER DEN AUSRICHTER, NICHT ÜBER DIE HEIMMANNSCHAFT. Gesendet
+# wird aus der Halle, und wer die Halle stellt, stellt die Technik. Richtet ein
+# Verein einen Spieltag mit mehreren Partien aus, laufen sie alle über seinen
+# einen Schlüssel -- auch die, in denen er selbst nicht Heim ist. Ausrichter
+# eines Spieltags ist `game_days.club_id`; zusammen mit `game_days.league_id`
+# ist das genau eine Mannschaft, und an der hängt der Schlüssel.
+#
 # BEWUSST OHNE EINDEUTIGKEITSPRÜFUNG: Der Schlüssel ist bei YouTube dauerhaft
 # und überlebt die Saison, die Mannschaft nicht -- `teams` bekommt je Saison
 # einen neuen Datensatz. Sobald die Ligakopie den Schlüssel mitnimmt, tragen die
