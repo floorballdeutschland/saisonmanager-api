@@ -74,7 +74,42 @@ module Admin
       render json: entry(spiel.reload, spieltag, spieltag&.stream_key, satz), status: :created
     end
 
+    # GET admin/streaming/settings
+    def settings
+      render json: templates_hash
+    end
+
+    # PUT admin/streaming/settings
+    #
+    # Die Vorlagen liegen in den Einstellungen und nicht im Browser: Die Titel
+    # sind öffentlich und sollen einheitlich sein, unabhängig davon, wer den
+    # Knopf drückt.
+    def update_settings
+      setting = Setting.current
+      return render json: { error: 'Einstellungen nicht gefunden' }, status: :not_found unless setting
+
+      # Leer heißt "wieder die Vorgabe", nicht "leerer Titel": Ein Stream ohne
+      # Titel wäre bei YouTube namenlos, und ein leeres Feld ist der
+      # naheliegende Weg, eine verunglückte Vorlage loszuwerden.
+      neu = {
+        'title' => params[:title].to_s.strip,
+        'description' => params[:description].to_s.strip
+      }.compact_blank
+
+      setting.update!(stream_templates: neu)
+      render json: templates_hash
+    end
+
     private
+
+    def templates_hash
+      {
+        title: Setting.stream_title_template,
+        description: Setting.stream_description_template,
+        default_title: Setting::DEFAULT_STREAM_TITLE,
+        default_description: Setting::DEFAULT_STREAM_DESCRIPTION
+      }
+    end
 
     def authorize!
       ph = current_user.permission_hash

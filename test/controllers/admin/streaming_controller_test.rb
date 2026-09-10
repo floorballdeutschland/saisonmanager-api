@@ -249,6 +249,54 @@ module Admin
       assert_response :not_found
     end
 
+    # --- Vorlagen -------------------------------------------------------------
+
+    test 'liefert die Vorgabevorlagen, solange nichts gepflegt ist' do
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/streaming/settings'
+
+      assert_response :success
+      body = response.parsed_body
+      assert_equal Setting::DEFAULT_STREAM_TITLE, body['title']
+      assert_equal Setting::DEFAULT_STREAM_TITLE, body['default_title']
+      assert_includes body['description'], '{heim}'
+    end
+
+    test 'speichert eigene Vorlagen' do
+      login(create(:user, :admin))
+
+      put '/api/v2/admin/streaming/settings',
+          params: { title: '{liga}: {heim} – {gast}', description: 'Anwurf {uhrzeit}' }
+
+      assert_response :success
+      assert_equal '{liga}: {heim} – {gast}', Setting.stream_title_template
+      assert_equal 'Anwurf {uhrzeit}', Setting.stream_description_template
+    end
+
+    # Ein leeres Feld ist der naheliegende Weg, eine verunglückte Vorlage
+    # loszuwerden -- ein Stream ohne Titel wäre bei YouTube namenlos.
+    test 'eine geleerte Vorlage faellt auf die Vorgabe zurueck' do
+      login(create(:user, :admin))
+      put '/api/v2/admin/streaming/settings', params: { title: 'Eigen', description: 'Eigen' }
+      assert_equal 'Eigen', Setting.stream_title_template
+
+      put '/api/v2/admin/streaming/settings', params: { title: '   ', description: '' }
+
+      assert_response :success
+      assert_equal Setting::DEFAULT_STREAM_TITLE, Setting.stream_title_template
+      assert_equal Setting::DEFAULT_STREAM_DESCRIPTION, Setting.stream_description_template
+    end
+
+    test 'GEGENPROBE: regionale SBK darf die Vorlagen nicht aendern' do
+      login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+      put '/api/v2/admin/streaming/settings', params: { title: 'Fremd' }
+
+      assert_response :forbidden
+      assert_equal Setting::DEFAULT_STREAM_TITLE, Setting.stream_title_template
+    end
+
     private
 
     def login(user)

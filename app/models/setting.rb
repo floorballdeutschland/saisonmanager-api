@@ -31,6 +31,32 @@ class Setting < ApplicationRecord
   # Raw-SQL, Konsole — so wird z. B. `nations` gepflegt), muss danach
   # `flush_current_cache` aufrufen. Sonst haelt der Prozess bis zu einer Stunde
   # den alten Stand, und das je Puma-Worker verschieden.
+  # Vorlage für den Titel einer Übertragung.
+  #
+  # Die Vorgabe ist die Form, die die Excel-Formel bisher gebaut hat:
+  # "MFBC Leipzig vs Floor Fighters Chemnitz | 1. FBL Herren | 12.09.26 | 2".
+  # Die letzte Zahl ist die Spielnummer.
+  DEFAULT_STREAM_TITLE = '{heim} vs {gast} | {liga} | {datum} | {spielnummer}'.freeze
+
+  # Die Beschreibung war bisher leer. Sie kostet nichts und beantwortet die
+  # Fragen, die unter jedem Stream in den Kommentaren stehen: Welche Liga,
+  # welcher Spieltag, wo -- und wo steht der Liveticker.
+  DEFAULT_STREAM_DESCRIPTION = <<~TEXT.strip.freeze
+    {liga} – {spieltag}. Spieltag
+    {heim} vs. {gast}
+    {wochentag}, {datum_lang}, {uhrzeit} Uhr – {halle}
+
+    Spielbericht und Liveticker: {spiel_url}
+  TEXT
+
+  def self.stream_title_template
+    current&.stream_templates&.dig('title').presence || DEFAULT_STREAM_TITLE
+  end
+
+  def self.stream_description_template
+    current&.stream_templates&.dig('description').presence || DEFAULT_STREAM_DESCRIPTION
+  end
+
   def self.current
     Current.setting ||= Rails.cache.fetch('settings/current', expires_in: 1.hour) do
       Setting.first
