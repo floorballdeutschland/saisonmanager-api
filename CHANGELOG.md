@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Eine im Spielerprofil erteilte Freigabe teilte sich niemandem mit**: Eine Freigabe (Zweitspielrecht) kann auf zwei Wegen entstehen — über den Antrag, den der aufnehmende Verein stellt, oder direkt im Spielerprofil durch die zuständige Stelle. Fachlich ist beides dieselbe Freigabe, und beide schreiben denselben Eintrag in die Vereinszugehörigkeiten des Spielers. Nur verschickte der Weg über das Profil keine einzige Nachricht: Der Vorgang stand danach in der Übersicht auf „Genehmigt", ohne dass der aufnehmende Verein, der abgebende Verein, der Spieler oder der zuständige Landesverband davon erfahren hätten. Der aufnehmende Verein durfte den Spieler ab diesem Moment einsetzen und wusste es nicht; das Gegenstück, das Beenden einer Freigabe im Profil, benachrichtigt die Betroffenen bereits seit 1.112.0. Aufgefallen ist es einem Landesverband, der die Nachrichten des Saisonmanagers automatisiert auswertet und den stummen Übergang für einen defekten Auslöser hielt. Jetzt geht dieselbe Nachricht raus, die auch der Antragsweg an dieser Stelle verschickt („Spielerfreigabe erteilt"), und an denselben Verteiler: beide Vereine, der Spieler und der Landesverband des abgebenden Vereins. An der Freigabe selbst ändert sich nichts. Profile aus dem Altbestand ohne gültige Heimat-Zugehörigkeit bekommen weiterhin keinen Vorgang und damit auch keine Nachricht — dort fehlt der abgebende Verein, den die Nachricht benennen müsste; die Freigabe bleibt für sie wie bisher möglich.
+
 ## [1.112.1] - 2026-09-10
 
 ### Behoben
