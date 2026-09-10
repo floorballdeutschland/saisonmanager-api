@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Transfer und Freigabe: Spielernummer in der Detailansicht**: In der Detailansicht eines Transfer- oder Freigabevorgangs steht die Spielernummer jetzt in Klammern hinter dem Namen. Der abgebende Landesverband stellt zum abgeschlossenen Vorgang die Transferrechnung und muss die Person dafür in seiner eigenen Ablage wiederfinden — namensgleiche Personen gibt es, eine zweite Nummer nicht. Bisher stand die Nummer nur in der Adresszeile der Seite und musste von dort abgelesen werden.
+
 ## [1.112.1] - 2026-09-10
 
 ### Behoben
