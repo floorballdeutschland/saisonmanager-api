@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Lizenz-Export: Spieler-ID und volles Geburtsdatum**: Der CSV-Export der Lizenzverwaltung führt jetzt als erste Spalte die Spieler-ID und nennt statt des Geburtsjahrs das vollständige Geburtsdatum. Die Datei ist die Arbeitsgrundlage für die Weiterverarbeitung – Abrechnung, Meldungen an den Landesverband, Abgleich mit einer eigenen Liste –, und dafür fehlten ihr genau diese zwei Angaben: Ohne Nummer lässt sich eine Zeile nicht eindeutig einem Profil zuordnen, und namensgleiche Personen desselben Jahrgangs trennt der Jahrgang nicht. Wer die Zeile bisher zuordnen wollte, suchte den Namen erneut in der Anwendung. Beides betrifft ausschließlich die Datei: Die Tabelle auf dem Bildschirm zeigt weiterhin nur den Jahrgang, und es werden keine Angaben ausgeführt, die der Abrufende nicht ohnehin in der Übersicht sieht. Die übrigen Spalten bleiben unverändert, nur stehen sie durch die neue erste Spalte um eine Stelle weiter rechts.
+
 ## [1.112.1] - 2026-09-10
 
 ### Behoben
