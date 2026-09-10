@@ -30,6 +30,20 @@ class YoutubeLiveApi
   class Error < StandardError; end
   class NotConfigured < Error; end
 
+  # DIE KATEGORIE MUSS ERHALTEN BLEIBEN. Der Unterschied zwischen "Kontingent
+  # alle" und "Token widerrufen" ist der zwischen Abwarten und Handeln -- steckt
+  # er nur in der Zeichenkette, kann weder eine Alarmregel darauf ansetzen noch
+  # der Aufrufer entscheiden, ob ein Weitermachen überhaupt Sinn hat. Sentry
+  # gruppiert nach Klasse; drei Klassen sind drei Alarme statt eines Rauschens.
+  #
+  # `TransportError`: Netz, DNS, TLS, Zeitüberschreitung -- geht vorbei.
+  # `QuotaExceeded`: Tageskontingent erschöpft -- jeder weitere Aufruf ist
+  #   verschwendet, der Lauf sollte abbrechen.
+  # `AuthError`: Token widerrufen oder Rechte weg -- braucht einen Menschen.
+  class TransportError < Error; end
+  class QuotaExceeded < Error; end
+  class AuthError < Error; end
+
   API_ROOT = 'https://www.googleapis.com/youtube/v3'
   TOKEN_URL = 'https://oauth2.googleapis.com/token'
 
@@ -173,6 +187,19 @@ class YoutubeLiveApi
     ausfuehren(uri, request)
   end
 
+  # Aus Status und Grund die passende Klasse. Der Grund steht im Körper, nicht
+  # im Status: Ein 403 ist je nach `reason` entweder ein erschöpftes Kontingent
+  # oder ein Rechteproblem, und die beiden verlangen Gegensätzliches.
+  def fehlerklasse(antwort)
+    return AuthError if antwort.code.to_i == 401
+
+    koerper = antwort.body.to_s
+    return QuotaExceeded if koerper.include?('quotaExceeded') || koerper.include?('rateLimitExceeded')
+    return AuthError if koerper.match?(/invalid_grant|insufficientPermissions|forbidden|authError/)
+
+    Error
+  end
+
   def ausfuehren(uri, request)
     antwort = verbinden(uri, request)
 
@@ -180,8 +207,10 @@ class YoutubeLiveApi
       # Der Körper der Fehlerantwort trägt den Grund ("quotaExceeded",
       # "invalid_grant", "incompatibleParameters"). Ohne ihn steht im Log nur
       # eine Statuszeile, und der Unterschied zwischen "Kontingent alle" und
-      # "Token widerrufen" ist genau der zwischen Abwarten und Handeln.
-      raise Error, "#{request.method} #{uri.path} → #{antwort.code}: #{antwort.body.to_s[0, 500]}"
+      # "Token widerrufen" ist genau der zwischen Abwarten und Handeln -- er
+      # steckt deshalb auch in der Fehlerklasse, nicht nur im Text.
+      meldung = "#{request.method} #{uri.path} → #{antwort.code}: #{antwort.body.to_s[0, 500]}"
+      raise fehlerklasse(antwort), meldung
     end
 
     antwort.body.presence ? JSON.parse(antwort.body) : {}
@@ -203,8 +232,14 @@ class YoutubeLiveApi
                                             read_timeout: READ_TIMEOUT) do |http|
       http.request(request)
     end
+  # `Net::HTTPBadResponse` und `Net::HTTPHeaderSyntaxError` erben NICHT von
+  # `IOError`, sondern direkt von `StandardError` -- sie fielen sonst durch,
+  # obwohl sie der häufigste der Ausreißer sind (Proxy dazwischen, Gegenstelle
+  # schließt mitten im Kopf). `Zlib`-Fehler entstehen, wenn Net::HTTP eine
+  # abgeschnittene gzip-Antwort auspackt.
   rescue Timeout::Error, SystemCallError, SocketError, IOError,
-         OpenSSL::SSL::SSLError => e
-    raise Error, "#{request.method} #{uri.path} nicht erreichbar: #{e.class} #{e.message}"
+         OpenSSL::SSL::SSLError, Net::HTTPBadResponse, Net::HTTPHeaderSyntaxError,
+         Zlib::Error => e
+    raise TransportError, "#{request.method} #{uri.path} nicht erreichbar: #{e.class} #{e.message}"
   end
 end

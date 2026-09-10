@@ -417,6 +417,113 @@ class StreamWatchdogTest < ActiveSupport::TestCase
     assert_equal verbund_spiel.id, StreamBroadcast.find_by(broadcast_id: 'bc-verbund').game_id
   end
 
+  # --- Der Übergabepfad darf nicht verstummen ---------------------------------
+
+  # DER GEFÄHRLICHSTE ZUSTAND: Läuft die alte Übertragung mit Signal weiter und
+  # bleibt ihr Bericht offen, während die nächste Partie längst angepfiffen ist,
+  # gab es weder Übergabe noch Notabschaltung (deren Timer läuft nur bei
+  # Signalverlust) noch irgendeine Meldung. Der Schlüssel war dauerhaft belegt,
+  # und niemand erfuhr davon.
+  test 'meldet, wenn die nächste Partie längst läuft und noch gesendet wird' do
+    spiel_anlegen('19:00')
+    satz_anlegen(signal_lost_at: nil)
+    StreamBroadcast.find_by(broadcast_id: BROADCAST_ID).update!(game_id: @game.id)
+
+    api = api_mit(status: 'active')
+    ergebnis = StreamWatchdog.new(api: api, now: @now).run
+
+    assert_empty api.completed
+    assert(ergebnis[:problems].any? { |p| p.include?('läuft seit') },
+           'ein überfälliger Anwurf muss gemeldet werden, nicht verstummen')
+  end
+
+  # Der Vorlauf-Schutz hing allein an `spiel`; ohne bekannte Zuordnung und bei
+  # kurzem Signalausfall schaltete die Übergabe die Übertragung ab, die zur
+  # gleich beginnenden Partie gehört.
+  test 'übergibt nicht, wenn gar kein Spiel zugeordnet ist' do
+    @home.update!(stream_key: nil)
+    spiel_anlegen('20:10')
+    satz_anlegen(signal_lost_at: @now - 2.minutes)
+
+    api = api_mit(status: 'inactive')
+    StreamWatchdog.new(api: api, now: @now).run
+
+    assert_empty api.completed
+  end
+
+  # Ein Ausrichter mit Heimspieltag am Samstag UND am Sonntag ist in der
+  # Bundesliga der Regelfall. Die Mehrdeutigkeitsprüfung vor dem Zeitfilter
+  # sperrte damit die Zuordnung den ganzen Sonntag.
+  test 'ein Spieltag am Vortag sperrt die Zuordnung des heutigen nicht' do
+    gestern = GameDay.create!(league: @league, arena: @arena, club: @club,
+                              number: 9, date: '2026-03-06')
+    Game.create!(game_day: gestern, home_team: @home, guest_team: @guest,
+                 start_time: '18:00', forfait: 0, overtime: false, legacy: false,
+                 game_status: 'match_record_closed',
+                 events: [], players: { 'home' => [], 'guest' => [] })
+    @game.update!(game_status: 'match_record_closed')
+    satz_anlegen(signal_lost_at: @now - 20.minutes)
+
+    api = api_mit(status: 'inactive')
+    StreamWatchdog.new(api: api, now: @now).run
+
+    assert_equal [BROADCAST_ID], api.completed
+    assert_equal @game.id, StreamBroadcast.find_by(broadcast_id: BROADCAST_ID).game_id
+  end
+
+  # Der Grenzwert der Notabschaltung war nach unten offen: Zwischen 20 Minuten
+  # und drei Stunden lag kein Prüfsatz.
+  test 'GEGENPROBE: zwei Stunden 59 Minuten lösen die Notabschaltung nicht aus' do
+    satz_anlegen(signal_lost_at: @now - 3.hours + 1.second)
+
+    api = api_mit(status: 'inactive')
+    StreamWatchdog.new(api: api, now: @now).run
+
+    assert_empty api.completed
+  end
+
+  # Die Transition zu `complete` ist bei YouTube nicht sofort sichtbar, der
+  # nächste Lauf kommt aber in fünf Minuten. Ohne Karenz erzeugte JEDE saubere
+  # Abschaltung ein Sentry-Ereignis und eine Cron-Fehlermail.
+  test 'eine eben beendete Übertragung meldet noch kein Problem' do
+    satz_anlegen(signal_lost_at: nil)
+    StreamBroadcast.find_by(broadcast_id: BROADCAST_ID)
+                   .update!(ended_at: @now - 1.minute, ended_reason: 'Spielbericht geschlossen')
+
+    api = api_mit(status: 'active')
+    ergebnis = StreamWatchdog.new(api: api, now: @now).run
+
+    assert_empty ergebnis[:problems]
+    assert(ergebnis[:notes].any? { |n| n.include?('eben beendet') })
+  end
+
+  # Der Beleg, WARUM unwiderruflich abgeschaltet wurde, ist das Einzige, was
+  # nach einem Fehlgriff bleibt. `beende` schreibt ihn vor `complete!` -- die
+  # Buchhaltung darf ihn danach nicht übermalen.
+  test 'die Buchhaltung überschreibt einen vorhandenen Beendigungsgrund nicht' do
+    StreamBroadcast.create!(broadcast_id: 'bc-halb', stream_id: STREAM_ID,
+                            title: 'Halb beendet',
+                            ended_reason: 'Spielbericht geschlossen, seit 20 min kein Signal',
+                            last_active_at: @now - 1.hour)
+
+    StreamWatchdog.new(api: FakeApi.new, now: @now).run
+
+    satz = StreamBroadcast.find_by(broadcast_id: 'bc-halb')
+    assert_equal 'Spielbericht geschlossen, seit 20 min kein Signal', satz.ended_reason
+  end
+
+  # Ohne obere Schranke bliebe eine Übertragung, deren aktiven Zustand der
+  # Wächter nie erwischt hat (Cron-Ausfall, Deploy, sehr kurze Sendung), für
+  # immer als laufend stehen.
+  test 'ein Satz ohne je gesehenes Signal wird nach der Notfrist geschlossen' do
+    StreamBroadcast.create!(broadcast_id: 'bc-nie', stream_id: STREAM_ID,
+                            title: 'Nie gesehen', created_at: @now - 4.hours)
+
+    StreamWatchdog.new(api: FakeApi.new, now: @now).run
+
+    assert StreamBroadcast.find_by(broadcast_id: 'bc-nie').ended?
+  end
+
   # --- Grenzwerte ------------------------------------------------------------
 
   # `.round` machte aus der dokumentierten Regel "seit 15 Minuten" faktisch
@@ -553,7 +660,7 @@ class StreamWatchdogTest < ActiveSupport::TestCase
   test 'ein selbst beendeter Satz wird nicht wiederbelebt' do
     satz_anlegen(signal_lost_at: nil)
     satz = StreamBroadcast.find_by(broadcast_id: BROADCAST_ID)
-    satz.update!(ended_at: @now - 1.minute, ended_reason: 'Spielbericht geschlossen, seit 20 min kein Signal')
+    satz.update!(ended_at: @now - 1.hour, ended_reason: 'Spielbericht geschlossen, seit 20 min kein Signal')
 
     api = api_mit(status: 'active')
     ergebnis = StreamWatchdog.new(api: api, now: @now).run
@@ -576,7 +683,11 @@ class StreamWatchdogTest < ActiveSupport::TestCase
 
     assert_empty api.completed
     assert_nil StreamBroadcast.find_by(broadcast_id: BROADCAST_ID).signal_lost_at
-    assert(ergebnis[:problems].any? { |p| p.include?('nicht abrufbar') })
+    # Gemeldet wird EINMAL, über die Sammelmeldung -- nicht zusätzlich je
+    # Übertragung, sonst steht im Bericht die doppelte Zahl.
+    assert_equal 1, ergebnis[:problems].size
+    assert(ergebnis[:problems].any? { |p| p.include?('kein Zustand zurück') })
+    assert(ergebnis[:notes].any? { |n| n.include?('Zustand nicht abrufbar') })
   end
 
   private

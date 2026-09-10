@@ -63,6 +63,15 @@ module Admin
     # Meldet zurück, dass für dieses Spiel eine YouTube-Übertragung angelegt
     # wurde. Angelegt wird sie im Browser -- dort liegt das fertige Thumbnail,
     # und nur dort ist jemand angemeldet, der auf dem Kanal schreiben darf.
+    #
+    # ZWEIMAL AUFGERUFEN, UND DAS IST ABSICHT: Der erste Aufruf kommt direkt nach
+    # dem Anlegen und dient nur der Registrierung -- ab da existiert die
+    # Übertragung, und der Wächter muss sie kennen, auch wenn danach etwas
+    # schiefgeht. Der zweite kommt nach dem Binden mit `bound=true` und gibt den
+    # Link für den öffentlichen Spielplan frei. Ohne diese Trennung stünde dort
+    # ein Link auf eine Übertragung, die nie Signal bekommt: Der Wächter
+    # überspringt ungebundene Übertragungen ausdrücklich, beendet sie also auch
+    # nie, und der tote Link bliebe stehen.
     def record_broadcast
       spiel = Game.find_by(id: params[:id])
       return render json: { error: 'Spiel nicht gefunden' }, status: :not_found unless spiel
@@ -202,6 +211,9 @@ module Admin
     # Überschreiben darf der Verein jederzeit: Das Feld steht im Spielbericht,
     # und dieser Abruf fasst einen vorhandenen Wert nie an.
     def link_setzen(spiel, broadcast_id)
+      # Erst wenn die Übertragung an ihren Stream gebunden ist. Vorher empfängt
+      # sie kein Signal, und ihr Link wäre im öffentlichen Spielplan tot.
+      return 'noch nicht an den Stream gebunden' unless bound?
       return 'nicht öffentlich' unless params[:privacy_status].to_s == 'public'
       return 'am Spiel steht bereits ein Link' if spiel.live_stream_link.present?
 
@@ -211,8 +223,29 @@ module Admin
       # der Link in der Datenbank, im öffentlichen Spielplan aber erst nach
       # Ablauf des Zwischenspeichers -- genau in den Minuten vor dem Anwurf, in
       # denen die Zuschauer ihn suchen.
+      #
+      # Damit läuft auch `before_save :correct_teams!` mit, das eine
+      # Mannschafts-ID von 0 auf nil normalisiert. Das ist gewollt und keine
+      # Nebenwirkung, die es zu vermeiden gälte: Dieselbe Reparatur nimmt jeder
+      # andere Speicherweg am Spiel ebenfalls vor, und eine 0 ist dort in keinem
+      # Fall ein gültiger Wert. Den Callback zu umgehen hieße, eine kaputte
+      # Zeile bewusst kaputt zu lassen.
       spiel.update!(live_stream_link: "https://www.youtube.com/watch?v=#{broadcast_id}")
       nil
+    end
+
+    # Fehlt die Angabe, gilt die Übertragung als gebunden.
+    #
+    # Der Streaming-Bereich schickt sie in beiden Aufrufen mit und steuert damit,
+    # wann der Link öffentlich wird. Ein Aufrufer, der das Flag nicht kennt (ein
+    # Skript, ein älteres Frontend), hat aber keinen zweiten Aufruf, der es
+    # nachreicht -- für ihn bliebe der Link dauerhaft aus, und der Grund stünde
+    # nur in einem Feld, das er nicht liest. Das Zurückhalten ist die Ausnahme
+    # und muss deshalb ausdrücklich angefordert werden, nicht die Vorgabe sein.
+    def bound?
+      return true unless params.key?(:bound)
+
+      ActiveModel::Type::Boolean.new.cast(params[:bound]).present?
     end
 
     def entry(spiel, spieltag, schluessel, satz)

@@ -90,7 +90,84 @@ class StreamingTaskTest < ActiveSupport::TestCase
     vorher.each { |key, wert| wert.nil? ? ENV.delete(key) : ENV[key] = wert }
   end
 
+  # Ein deutsches Excel exportiert mit Semikolon. Mit fest verdrahtetem Komma
+  # wäre JEDE Spalte nil, jede Zeile würde still übersprungen, und die Ausgabe
+  # lautete "0 Schlüssel gesetzt, 0 unverändert" -- von einem echten "alles schon
+  # aktuell" nicht zu unterscheiden. Für einen Task, der Geheimnisse einträgt,
+  # ist das die schlechtestmögliche Rückmeldung.
+  test 'liest auch eine mit Semikolon getrennte Datei' do
+    team = create(:team, league: @liga, club: @club, name: 'MFBC Leipzig')
+
+    ausgabe, = import_roh("liga;mannschaft;streamschluessel\n1. FBL Herren;MFBC Leipzig;m9p7-bvy0")
+
+    assert_equal 'm9p7-bvy0', team.reload.stream_key
+    assert_match(/1 Schlüssel gesetzt/, ausgabe)
+  end
+
+  test 'bricht bei fehlender Pflichtspalte ab, statt still nichts zu tun' do
+    ausgabe, status = import_roh("liga,verein,schluessel\n1. FBL Herren,MFBC Leipzig,abcd")
+
+    assert_equal 1, status
+    assert_match(/Fehlende Spalte/, ausgabe)
+  end
+
+  # Ein vertippter Mannschaftsname leitet sonst den Stream eines Vereins auf den
+  # Kanal eines anderen -- das gehört in die Prüfliste, nicht als Wort in den
+  # Fließtext.
+  test 'ersetzt einen vorhandenen Schluessel nicht stillschweigend' do
+    team = create(:team, league: @liga, club: @club, name: 'MFBC Leipzig',
+                         stream_key: 'alt-schluessel')
+
+    ausgabe, status = import(['1. FBL Herren,MFBC Leipzig,neu-schluessel'])
+
+    assert_equal 'alt-schluessel', team.reload.stream_key
+    assert_equal 1, status
+    assert_match(/trägt bereits einen anderen Schlüssel/, ausgabe)
+  end
+
+  test 'vergibt denselben Schluessel nicht an zwei Mannschaften' do
+    create(:team, league: @liga, club: @club, name: 'Erste', stream_key: 'abcd-efgh')
+    zweite = create(:team, league: @liga, club: create(:club), name: 'Zweite')
+
+    ausgabe, status = import(['1. FBL Herren,Zweite,abcd-efgh'])
+
+    assert_nil zweite.reload.stream_key
+    assert_equal 1, status
+    assert_match(/hängt schon an Mannschaft/, ausgabe)
+  end
+
+  # Jede offene Zeile ist eine Mannschaft ohne Schlüssel -- also eine
+  # Übertragung, die der Wächter später keinem Spiel zuordnen kann.
+  test 'endet mit Fehlercode, wenn Zeilen offen bleiben' do
+    _, status = import(['1. FBL Herren,Unbekannte Mannschaft,abcd'])
+
+    assert_equal 1, status
+  end
+
+  test 'der Probelauf endet trotz offener Zeilen ohne Fehlercode' do
+    _, status = import(['1. FBL Herren,Unbekannte Mannschaft,abcd'], 'DRY_RUN' => '1')
+
+    assert_equal 0, status
+  end
+
+  test 'zaehlt Zeilen ohne Angaben getrennt' do
+    create(:team, league: @liga, club: @club, name: 'MFBC Leipzig')
+
+    ausgabe, = import(['1. FBL Herren,MFBC Leipzig,abcd', ',,', '1. FBL Herren,,'])
+
+    assert_match(/2 Zeile\(n\) ohne Angaben/, ausgabe)
+  end
+
   private
+
+  def import_roh(inhalt, env = {})
+    datei = Tempfile.new(['keys', '.csv'])
+    datei.write(inhalt)
+    datei.flush
+    run_task('streaming:import_keys', env.merge('CSV' => datei.path))
+  ensure
+    datei.close!
+  end
 
   def import(zeilen, env = {})
     datei = Tempfile.new(['keys', '.csv'])

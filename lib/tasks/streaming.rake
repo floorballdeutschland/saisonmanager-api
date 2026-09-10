@@ -6,7 +6,13 @@ require 'csv'
 #
 # MUSS per Cron laufen, sonst greift er nie. Alle fünf Minuten, rund um die Uhr:
 #
-#   */5 * * * * docker exec saisonmanager_rails_api bundle exec rake streaming:watchdog RAILS_ENV=production >> /var/log/streaming-watchdog.log 2>&1
+#   */5 * * * * docker exec saisonmanager_rails_api bundle exec rake streaming:watchdog RAILS_ENV=production >> /var/log/streaming-watchdog.log
+#
+# BEWUSST OHNE `2>&1`: Der gewoehnliche Verlauf geht nach stdout und damit in
+# die Logdatei, Probleme gehen nach stderr. Cron verschickt Mail, wenn ein Job
+# etwas ausgibt -- lenkt man beide Stroeme um, ist der Fehlercode wirkungslos
+# und niemand erfaehrt je von einem haengengebliebenen Stream. So bleibt der
+# Alltag still und nur die Ausnahme meldet sich.
 #
 # Anders als beim wöchentlichen Lizenzlistenversand spielt die Zeitzone hier
 # keine Rolle -- ein Fünf-Minuten-Takt trifft jede Stunde, in Winter- wie in
@@ -36,8 +42,11 @@ namespace :streaming do
       # eine Variable bei einem Neustart weg, sähe das ohne diesen Zweig
       # wochenlang aus wie Normalbetrieb.
       if Rails.env.production?
-        Sentry.capture_message("#{meldung} -- der Livestream-Wächter läuft leer") if defined?(Sentry)
-        Sentry.close if defined?(Sentry)
+        if defined?(Sentry)
+          Sentry.capture_message('Livestream-Waechter: kein YouTube-Zugang eingerichtet',
+                                 level: :error, extra: { fehlend: meldung })
+          Sentry.close
+        end
         abort "#{meldung}, auf Produktion ist das ein Ausfall."
       end
 
@@ -66,7 +75,11 @@ namespace :streaming do
     zeit = Time.current.in_time_zone('Europe/Berlin').strftime('%d.%m.%Y %H:%M')
     puts "[#{zeit}] #{ergebnis[:active]} laufende Übertragung(en)#{' (PROBELAUF)' if dry_run}"
 
-    ergebnis[:notes].each { |note| puts "  #{note}" }
+    # Probleme nach stderr, damit Cron sie zustellt (siehe Kopf); der Rest
+    # nach stdout in die Logdatei.
+    ergebnis[:notes].each do |note|
+      note.start_with?('PROBLEM:') ? warn("  #{note}") : puts("  #{note}")
+    end
 
     ergebnis[:closed_stale].each do |titel|
       puts "  abgeschlossen (nicht mehr aktiv): #{titel}"
@@ -84,7 +97,16 @@ namespace :streaming do
     next if ergebnis[:problems].blank?
 
     if defined?(Sentry)
-      Sentry.capture_message("Livestream-Wächter: #{ergebnis[:problems].join(' | ')}")
+      # FESTER TITEL, Einzelheiten als Zusatz: Sentry gruppiert nach dem Text
+      # der Meldung. Stuenden Titel und Minutenzahlen darin, entstuende bei
+      # einem Fuenf-Minuten-Takt alle fuenf Minuten ein NEUES Issue -- in einem
+      # Projekt, das sich Frontend und API teilen. Ein Issue mit steigender
+      # Zaehlung ist die Meldung, die man liest; hundert Einzel-Issues sind
+      # die, die man stummschaltet.
+      Sentry.capture_message('Livestream-Waechter meldet Probleme',
+                             level: :warning,
+                             extra: { probleme: ergebnis[:problems],
+                                      anzahl: ergebnis[:problems].size })
       Sentry.close
     end
     abort "#{ergebnis[:problems].size} Problem(e), siehe oben."
@@ -177,6 +199,13 @@ namespace :streaming do
     end
 
     puts "#{gesetzt} Schlüssel gesetzt, #{unveraendert} unverändert, #{leer} Zeile(n) ohne Angaben."
+
+    # Eine Datenzeile ohne Mannschaft oder Schluessel ist derselbe Fall wie
+    # eine nicht zugeordnete: Sie sieht nach Arbeit aus und hat keine getan.
+    # Verrutscht beim Export eine Spalte, faengt der Kopfzeilen-Riegel das
+    # nicht -- dann stuende hier sonst wieder "0 gesetzt" bei Status 0.
+    offen << "#{leer} Zeile(n) ohne Mannschaft oder Schlüssel" if leer.positive?
+
     next if offen.empty?
 
     puts "#{offen.size} Zeile(n) nicht zugeordnet -- von Hand prüfen:"
@@ -184,6 +213,13 @@ namespace :streaming do
     # Jede offene Zeile ist eine Mannschaft ohne Schlüssel -- also eine
     # Übertragung, die der Wächter später keinem Spiel zuordnen kann. Unter Cron
     # oder in einer Pipeline wäre Status 0 hier ein stiller Fehlschlag.
-    abort "#{offen.size} Zeile(n) konnten nicht zugeordnet werden." unless dry_run
+    # Der geschriebene Stand gehoert IN die Abbruchmeldung: Sie geht nach
+    # stderr, die Zusammenfassung nach stdout. Wer die Stroeme trennt, laese
+    # sonst nur "konnte nicht zugeordnet werden" und hielte den Lauf fuer
+    # folgenlos -- bei einem Task, der Geheimnisse eintraegt.
+    unless dry_run
+      abort "#{offen.size} Zeile(n) konnten nicht zugeordnet werden. " \
+            "#{gesetzt} Schluessel wurden bereits gesetzt; ein erneuter Lauf ist gefahrlos."
+    end
   end
 end

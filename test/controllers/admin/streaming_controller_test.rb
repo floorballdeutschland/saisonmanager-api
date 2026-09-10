@@ -344,6 +344,44 @@ module Admin
       end
     end
 
+    # Der Link darf erst in den öffentlichen Spielplan, wenn die Übertragung an
+    # ihren Stream gebunden ist -- eine ungebundene empfängt nie ein Bild, und
+    # der Wächter überspringt sie, beendet sie also auch nie. Der Link zeigte
+    # dann dauerhaft ins Leere.
+    test 'haelt den Link zurueck, solange nicht gebunden ist' do
+      login(create(:user, :admin))
+
+      post "/api/v2/admin/streaming/games/#{@game.id}/broadcast",
+           params: { broadcast_id: 'yt-123', privacy_status: 'public', bound: 'false' }
+
+      assert_response :created
+      assert_nil @game.reload.live_stream_link
+      assert_equal 'noch nicht an den Stream gebunden', response.parsed_body['link_skipped_reason']
+    end
+
+    test 'schreibt den Link, sobald das Binden gemeldet ist' do
+      login(create(:user, :admin))
+      post "/api/v2/admin/streaming/games/#{@game.id}/broadcast",
+           params: { broadcast_id: 'yt-123', privacy_status: 'public', bound: 'false' }
+
+      post "/api/v2/admin/streaming/games/#{@game.id}/broadcast",
+           params: { broadcast_id: 'yt-123', privacy_status: 'public', bound: 'true' }
+
+      assert response.parsed_body['link_written']
+      assert_equal 'https://www.youtube.com/watch?v=yt-123', @game.reload.live_stream_link
+    end
+
+    # Ein Aufrufer, der das Flag nicht kennt, hat keinen zweiten Aufruf, der es
+    # nachreicht -- für ihn bliebe der Link sonst dauerhaft aus.
+    test 'ohne die Angabe wird der Link geschrieben wie bisher' do
+      login(create(:user, :admin))
+
+      post "/api/v2/admin/streaming/games/#{@game.id}/broadcast",
+           params: { broadcast_id: 'yt-123', privacy_status: 'public' }
+
+      assert_equal 'https://www.youtube.com/watch?v=yt-123', @game.reload.live_stream_link
+    end
+
     # --- Vorlagen -------------------------------------------------------------
 
     test 'liefert die Vorgabevorlagen, solange nichts gepflegt ist' do

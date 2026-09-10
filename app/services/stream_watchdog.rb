@@ -78,7 +78,16 @@ class StreamWatchdog
     zustaende, ohne_antwort = @api.streams_mit_luecken(aktive.filter_map { |b| b[:stream_id] })
     melde_luecken(aktive, ohne_antwort)
 
-    beendet = aktive.filter_map { |broadcast| pruefe(broadcast, zustaende) }
+    beendet = []
+    aktive.each do |broadcast|
+      ergebnis = pruefe(broadcast, zustaende)
+      beendet << ergebnis if ergebnis
+    rescue YoutubeLiveApi::QuotaExceeded => e
+      # Ein erschöpftes Kontingent ist ein Zustand, kein Einzelereignis: Jeder
+      # weitere Abschaltversuch kostet 50 Einheiten und scheitert genauso.
+      problem("Kontingent erschöpft, Lauf abgebrochen: #{e.message}")
+      break
+    end
 
     zusammenfassung(aktive.size, beendet, verschwunden)
   end
@@ -94,21 +103,37 @@ class StreamWatchdog
     zustand = zustaende[broadcast[:stream_id]]
 
     if broadcast[:stream_id].blank?
-      # Ohne gebundenen Stream gibt es kein Signal zu messen. Nichts tun ist hier
-      # richtig: Das ist kein Zustand, den der Wächter durch Abschalten
-      # verbessert.
-      notiz("#{broadcast[:title]}: kein gebundener Stream, übersprungen")
+      # Ohne gebundenen Stream gibt es kein Signal zu messen -- weder die
+      # 15-Minuten-Regel noch die Notabschaltung könnten je greifen, denn beide
+      # hängen am Signalverlust. Die Übertragung stünde sonst für immer "live"
+      # und produzierte alle fünf Minuten eine Logzeile, die niemand liest:
+      # genau der Zustand, gegen den dieser Wächter existiert.
+      #
+      # Deshalb zählt hier die Zeit seit der Anlage. Nach der Notfrist wird
+      # abgeschaltet, vorher gemeldet -- eine Übertragung ohne Bindung empfängt
+      # ohnehin nie ein Bild.
+      alter = satz.created_at ? @now - satz.created_at : 0
+      if alter >= ABANDONED_AFTER
+        return beende(satz, broadcast,
+                      "Notabschaltung: seit #{(alter / 3600).floor} h ohne gebundenen Stream")
+      end
+
+      problem("#{broadcast[:title]}: kein gebundener Stream -- sie empfängt kein Bild")
       return nil
     end
 
     if zustand.nil? || zustand[:status].blank?
+      # Die Sammelmeldung in `melde_luecken` nennt diese Übertragung schon.
+      # Zweimal zu melden macht aus einem Problem zwei und lässt die Zahl im
+      # Bericht doppelt so hoch aussehen, wie die Lage ist.
+      #
       # GEBUNDEN, ABER UNBEKANNT -- ein anderer Fall als "kein Signal". Die
       # Übertragung hängt an einem Stream, über dessen Zustand die Schnittstelle
       # nichts sagt (gelöschte Ressource, Teilantwort, fehlendes Recht). Daraus
       # "kein Signal" zu machen hiesse, auf Unwissen hin unwiderruflich
       # abzuschalten. Der Timer läuft deshalb nicht -- aber es bleibt auch nicht
       # still: Der Lauf meldet es als Problem.
-      problem("#{broadcast[:title]}: Stream gebunden, aber sein Zustand ist nicht abrufbar")
+      notiz("#{broadcast[:title]}: Stream gebunden, Zustand nicht abrufbar -- kein Timer")
       return nil
     end
 
@@ -224,20 +249,29 @@ class StreamWatchdog
     spieltage = spieltage_der_ausrichter(teams, [tag_heute, tag_heute - 1])
     return nil if spieltage.empty?
 
-    if spieltage.size > 1
+    # ERST der Zeitfilter, DANN die Mehrdeutigkeit. Andersherum sperrte ein
+    # Ausrichter mit Heimspieltag am Samstag UND am Sonntag die Zuordnung den
+    # ganzen Sonntag -- in der Bundesliga der Regelfall, nicht die Ausnahme. Der
+    # Vortag wird nur wegen der Übertragungen nach Mitternacht mitgeführt; nach
+    # dem Zeitfilter ist er tagsüber ohnehin leer.
+    kandidaten = spiele_von(spieltage).select do |spiel|
+      anwurf = spiel.start_date
+      anwurf && anwurf <= @now && (@now - anwurf) < GAME_LOOKBACK
+    end
+    return nil if kandidaten.empty?
+
+    if kandidaten.map(&:game_day_id).uniq.size > 1
       notiz('Streamschlüssel trifft mehrere Spieltage -- keine Zuordnung')
       return nil
     end
 
-    spiele = spiele_von(spieltage)
-    if spiele.any? { |spiel| spiel.start_date.nil? }
+    # Eine Partie ohne Anwurfzeit auf DEMSELBEN Spieltag macht "das jüngste
+    # Spiel" unbrauchbar: Das wäre womöglich das vorherige -- mit geschlossenem
+    # Bericht, während die Übertragung des laufenden sendet.
+    geschwister = spiele_von(spieltage).select { |spiel| spiel.game_day_id == kandidaten.first.game_day_id }
+    if geschwister.any? { |spiel| spiel.start_date.nil? }
       notiz('Spieltag enthält eine Partie ohne Anwurfzeit -- keine Zuordnung')
       return nil
-    end
-
-    kandidaten = spiele.select do |spiel|
-      anwurf = spiel.start_date
-      anwurf <= @now && (@now - anwurf) < GAME_LOOKBACK
     end
 
     kandidaten.max_by(&:start_date)
@@ -271,21 +305,51 @@ class StreamWatchdog
       return false
     end
 
-    kommend = spiele_von(spieltage).select do |kandidat|
-      anwurf = kandidat.start_date
-      anwurf && anwurf > @now - HANDOVER_LEAD && anwurf <= @now + HANDOVER_LEAD
+    # Die eigene Partie zählt nicht als Nachfolger: Wer den Stream mit Vorlauf
+    # startet, verlöre ihn sonst kurz vor dem Anpfiff. Ohne bekannte Zuordnung
+    # lässt sich das nicht auseinanderhalten -- dann wird gar nicht übergeben.
+    if spiel.nil? && satz.game_id.nil?
+      notiz("#{satz.title}: kein Spiel zugeordnet -- keine Übergabe")
+      return false
     end
-    kommend -= [spiel].compact
-    kommend.reject! { |kandidat| kandidat.id == satz.game_id }
-    return false if kommend.empty?
+
+    andere = spiele_von(spieltage).reject do |kandidat|
+      kandidat.id == spiel&.id || kandidat.id == satz.game_id
+    end
+
+    if andere.any? { |kandidat| kandidat.start_date.nil? }
+      # Wie bei der Zuordnung: Ohne Anwurfzeit ist unbekannt, wann die nächste
+      # Partie beginnt -- und auf Unwissen hin wird nicht abgeschaltet.
+      notiz("#{satz.title}: Partie ohne Anwurfzeit auf dem Spieltag -- keine Übergabe")
+      return false
+    end
+
+    # ZWEI VERSCHIEDENE FENSTER, und das ist der Kern dieser Methode:
+    #
+    #   * Der BERICHT schaut weit zurück. Ein Anwurf, der lange zurückliegt,
+    #     während die alte Übertragung noch sendet, ist genau die Lage, die sonst
+    #     vollständig verstummt: keine Übergabe, keine Notabschaltung (deren
+    #     Timer läuft nur bei Signalverlust), keine Meldung -- der Schlüssel
+    #     bliebe dauerhaft belegt, ohne dass es jemand erfährt.
+    #   * Das ABSCHALTEN bleibt eng. Übergeben wird nur um den Anwurf herum;
+    #     sonst risse eine Partie vom Nachmittag am Abend noch eine Sendung ab.
+    naechster = andere.select { |kandidat| kandidat.start_date > @now - GAME_LOOKBACK }
+                      .min_by(&:start_date)
+    return false if naechster.nil?
 
     if signal_aktiv && !spiel&.match_record_closed?
-      problem("#{satz.title}: die nächste Partie beginnt, aber die laufende Übertragung " \
+      # NICHT abschalten, solange gesendet wird und das laufende Spiel nicht
+      # abgeschlossen ist: Verglichen wird der Papieranwurf, und eine
+      # Verlängerung darf keine sendende Übertragung kappen.
+      verzug = ((@now - naechster.start_date) / 60).floor
+      lage = verzug.negative? ? 'beginnt gleich' : "läuft seit #{verzug} min"
+      problem("#{satz.title}: die nächste Partie #{lage}, aber die laufende Übertragung " \
               'sendet noch und ihr Spielbericht ist nicht geschlossen -- nicht übergeben')
       return false
     end
 
-    true
+    naechster.start_date > @now - HANDOVER_LEAD &&
+      naechster.start_date <= @now + HANDOVER_LEAD
   end
 
   def spiele_von(spieltage)
@@ -312,11 +376,13 @@ class StreamWatchdog
   #
   # DREI EINSCHRÄNKUNGEN, ohne die das mehr kaputt macht als es aufräumt:
   #
-  #   * Nur Sätze, die schon einmal Signal hatten. Eine im Voraus angelegte
-  #     Übertragung ist bei YouTube `ready`, nicht `active` -- ohne diese
-  #     Bedingung bekäme jeder eine Woche vorher eingerichtete Stream fünf
-  #     Minuten später ein `ended_at` und stünde im Streaming-Bereich als
-  #     "beendet", bevor er je gelaufen ist.
+  #   * Nur Sätze, die schon einmal Signal hatten -- oder deren Anlage lange
+  #     genug zurückliegt. Eine im Voraus angelegte Übertragung ist bei YouTube
+  #     `ready`, nicht `active`; ohne die erste Bedingung bekäme jeder eine Woche
+  #     vorher eingerichtete Stream fünf Minuten später ein `ended_at` und stünde
+  #     im Streaming-Bereich als "beendet", bevor er je gelaufen ist. Ohne die
+  #     zweite bliebe eine Übertragung, deren `active`-Zustand der Wächter nie
+  #     erwischt hat (Cron-Ausfall, Deploy, sehr kurze Sendung), für immer offen.
   #   * Erst nach SIGNAL_TIMEOUT ohne Signal. Eine formal erfolgreiche
   #     Leerantwort (200 ohne `items`) schlösse sonst schlagartig alle laufenden
   #     Sätze.
@@ -325,9 +391,20 @@ class StreamWatchdog
   def schliesse_verschwundene(aktive_ids)
     return [] if @dry_run
 
+    # `ended_reason: nil` ist der Kern: Ein Satz, dessen Grund schon steht, hat
+    # `beende` durchlaufen -- `complete!` war erfolgreich, nur das abschließende
+    # Speichern scheiterte. Ohne diese Bedingung überschriebe die Buchhaltung
+    # genau den Beleg, für den `beende` seine Reihenfolge umdreht, und machte
+    # den Satz nebenbei wiederbelebbar.
     veraltet = StreamBroadcast.running
-                              .where.not(last_active_at: nil)
-                              .where('last_active_at < ?', @now - SIGNAL_TIMEOUT)
+                              .where(ended_reason: nil)
+                              .where('COALESCE(last_active_at, created_at) < ?', @now - ABANDONED_AFTER)
+                              .or(
+                                StreamBroadcast.running
+                                               .where(ended_reason: nil)
+                                               .where.not(last_active_at: nil)
+                                               .where('last_active_at < ?', @now - SIGNAL_TIMEOUT)
+                              )
                               .where.not(broadcast_id: aktive_ids)
     veraltet.map do |satz|
       satz.update!(ended_at: @now, ended_reason: 'auf YouTube nicht mehr aktiv')
@@ -354,8 +431,17 @@ class StreamWatchdog
       if satz.ended_reason == BOOKKEEPING_REASON
         satz.assign_attributes(ended_at: nil, ended_reason: nil)
       else
-        problem("#{broadcast[:title]}: wurde am #{satz.ended_at} beendet " \
-                "(#{satz.ended_reason}), läuft bei YouTube aber wieder")
+        # KARENZ, sonst meldet der Normalfall einen Fehler: Die Transition zu
+        # `complete` ist bei YouTube nicht sofort sichtbar, der nächste Lauf
+        # kommt aber in fünf Minuten. Ohne diese Frist erzeugte JEDE saubere
+        # Abschaltung ein Sentry-Ereignis und eine Cron-Fehlermail -- und nach
+        # zwei Wochen schaltet jemand den Alarm ab.
+        if satz.ended_at && satz.ended_at > @now - SIGNAL_TIMEOUT
+          notiz("#{broadcast[:title]}: eben beendet, bei YouTube noch als aktiv geführt")
+        else
+          problem("#{broadcast[:title]}: wurde am #{satz.ended_at} beendet " \
+                  "(#{satz.ended_reason}), läuft bei YouTube aber wieder")
+        end
         return nil
       end
     end
@@ -385,9 +471,13 @@ class StreamWatchdog
   end
 
   # Ein Problem ist eine Notiz, die jemanden erreichen muss.
+  #
+  # Im Probelauf bleibt es eine Notiz: "meldet, was er tun würde, und tut nichts"
+  # gilt auch für Sentry und den Fehlercode -- sonst wäre eine Vorschau nicht
+  # folgenlos, und in einer Pipeline endete sie rot.
   def problem(text)
     @notes << "PROBLEM: #{text}"
-    @probleme << text
+    @probleme << text unless @dry_run
   end
 
   def zusammenfassung(aktiv, beendet, verschwunden)
