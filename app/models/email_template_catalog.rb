@@ -404,6 +404,19 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' }
       ]
     },
+    'TransferRequestMailer#transfer_scheduled' => {
+      mailer_class: 'TransferRequestMailer',
+      action_name: 'transfer_scheduled',
+      description: 'Information an Vereine, Spieler und abgebenden LV, dass der Transfer genehmigt ist und ' \
+                   'zum Wunschdatum vollzogen wird.',
+      default_subject: 'Transfer genehmigt, Vollzug am {{effective_date}}: {{player_name}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'player_name', description: 'Vor- und Nachname des Spielers' },
+        { key: 'effective_date', description: 'Wunschdatum des Transfers (TT.MM.JJJJ)' }
+      ]
+    },
     'TransferRequestMailer#transfer_completed' => {
       mailer_class: 'TransferRequestMailer',
       action_name: 'transfer_completed',
