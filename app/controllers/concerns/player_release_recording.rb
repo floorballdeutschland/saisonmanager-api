@@ -100,7 +100,7 @@ module PlayerReleaseRecording
     # den Spieler nicht mehr einsetzen und erfuhr es bisher ueber keinen Kanal.
     if erfolg
       widerrufen.each do |vorgang|
-        TransferRequestMailer.release_revoked(vorgang, licenses_invalidated: false).deliver_later
+        TransferRequestMailer.deliver_to_all_audiences(:release_revoked, vorgang, licenses_invalidated: false)
       end
     end
 

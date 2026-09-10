@@ -384,7 +384,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
     'TransferRequestMailer#clubs_informed_lv_pending' => {
       mailer_class: 'TransferRequestMailer',
       action_name: 'clubs_informed_lv_pending',
-      description: 'Information an die Vereine und den Spieler, dass der Antrag beim Landesverband liegt.',
+      description: 'Information an die Vereine und den Spieler, dass der Antrag beim Landesverband liegt. Geht in zwei getrennten Sendungen raus (Vereine/Verband und Spieler); die Sendung an den Spieler traegt zusaetzlich die Datenschutzinformation nach Art. 13 DSGVO.',
       default_subject: '{{request_noun}} liegt beim Landesverband: {{player_name}}',
       default_from: nil,
       default_reply_to: nil,
@@ -407,7 +407,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
     'TransferRequestMailer#transfer_completed' => {
       mailer_class: 'TransferRequestMailer',
       action_name: 'transfer_completed',
-      description: 'Bestätigung an Vereine, Spieler und abgebenden LV, dass der Transfer/die Freigabe vollzogen wurde.',
+      description: 'Bestätigung an Vereine, Spieler und abgebenden LV, dass der Transfer/die Freigabe vollzogen wurde. Geht in zwei getrennten Sendungen raus (Vereine/Verband und Spieler); die Sendung an den Spieler traegt zusaetzlich die Datenschutzinformation nach Art. 13 DSGVO.',
       default_subject: '{{completion_noun}}: {{player_name}}',
       default_from: nil,
       default_reply_to: nil,
@@ -420,7 +420,9 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       mailer_class: 'TransferRequestMailer',
       action_name: 'release_revoked',
       description: 'Information an den freigegebenen Verein, seinen Landesverband, den Heimverein und ' \
-                   'den Spieler, dass eine erteilte Spielerfreigabe zurückgezogen wurde.',
+                   'den Spieler, dass eine erteilte Spielerfreigabe zurückgezogen wurde.' \
+                   ' Geht in zwei getrennten Sendungen raus (Vereine/Verband und Spieler); '\
+                   'die Sendung an den Spieler traegt zusaetzlich die Datenschutzinformation nach Art. 13 DSGVO.',
       default_subject: 'Spielerfreigabe zurueckgezogen: {{player_name}}',
       default_from: nil,
       default_reply_to: nil,
@@ -445,7 +447,8 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       mailer_class: 'TransferRequestMailer',
       action_name: 'club_deactivated_notification',
       description: 'Benachrichtigung an den Spieler und den abgebenden Verein, dass der Antrag beendet ist, ' \
-                   'weil der aufnehmende Verein deaktiviert wurde.',
+                   'weil der aufnehmende Verein deaktiviert wurde.' \
+                   ' Geht in zwei getrennten Sendungen raus (Vereine/Verband und Spieler); die Sendung an den Spieler traegt zusaetzlich die Datenschutzinformation nach Art. 13 DSGVO.',
       default_subject: '{{request_noun}} beendet, Verein deaktiviert: {{player_name}}',
       default_from: nil,
       default_reply_to: nil,
@@ -459,7 +462,8 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       mailer_class: 'TransferRequestMailer',
       action_name: 'release_annulled_by_transfer',
       description: 'Benachrichtigung an den freigebenden Zielverein und den Spieler, dass ein laufender ' \
-                   'Freigabeantrag beendet ist, weil der Spieler in einen anderen Verein transferiert wurde.',
+                   'Freigabeantrag beendet ist, weil der Spieler in einen anderen Verein transferiert wurde.' \
+                   ' Geht in zwei getrennten Sendungen raus (Vereine/Verband und Spieler); die Sendung an den Spieler traegt zusaetzlich die Datenschutzinformation nach Art. 13 DSGVO.',
       default_subject: 'Spielerfreigabe-Antrag beendet, Spieler transferiert: {{player_name}}',
       default_from: nil,
       default_reply_to: nil,

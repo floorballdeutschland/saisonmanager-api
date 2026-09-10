@@ -80,4 +80,148 @@ class TransferRequestPlayerNotificationTest < ActionMailer::TestCase
     assert_equal ['carl@example.de'], mail.to
     assert_includes mail.body.encoded, tr.player_confirmation_token
   end
+
+  # --- Getrennte Empfaengerkreise ---------------------------------------------
+  #
+  # Bis hierher standen Vereinspostfaecher und die private Adresse der Person in
+  # einem gemeinsamen `to:`. Damit lag die Adresse beim aufnehmenden Verein,
+  # bevor ueberhaupt entschieden war.
+
+  # Beide Aufrufformen je Aktion in einem Durchlauf: Eine neue Vorgangsmail, die
+  # den Empfaengerkreis nicht trennt, faellt sonst erst auf, wenn sie in
+  # Produktion die Adresse ausliefert.
+  SPLIT_ACTIONS = [
+    [:clubs_informed_lv_pending, 1],
+    [:transfer_completed, 1],
+    [:club_deactivated_notification, 1],
+    [:release_revoked, 1],
+    [:release_annulled_by_transfer, 2]
+  ].freeze
+
+  test 'keine Vorgangsmail traegt die private Adresse im Verteiler der Vereine' do
+    tr = transfer_request
+
+    SPLIT_ACTIONS.each do |action, arity|
+      args = Array.new(arity) { tr }
+      to_clubs = TransferRequestMailer.public_send(action, *args)
+      to_person = TransferRequestMailer.public_send(action, *args, audience: 'player')
+
+      assert_not_includes Array(to_clubs.to), @player.email,
+                          "#{action}: Spieleradresse steht im Verteiler der Vereine"
+      # Welche Vereinspostfaecher es sind, entscheidet die einzelne Nachricht
+      # (release_annulled_by_transfer geht bewusst nur an den Zielverein) --
+      # geprueft wird hier, dass ueberhaupt eines uebrig bleibt.
+      assert_not_empty Array(to_clubs.to), "#{action}: der Verteiler der Vereine ist leer"
+      assert_equal [@player.email], Array(to_person.to),
+                   "#{action}: die Nachricht an die Person geht nicht ausschliesslich an sie"
+    end
+  end
+
+  test 'die Vollzugsmail erreicht beide Kreise, aber in getrennten Sendungen' do
+    tr = transfer_request
+
+    assert_emails 2 do
+      perform_enqueued_jobs do
+        TransferRequestMailer.deliver_to_all_audiences(:transfer_completed, tr)
+      end
+    end
+  end
+
+  # Ein Tippfehler im Empfaengerkreis darf nicht in den Vereins-Zweig fallen --
+  # das waere genau die Zustellung, die diese Trennung beseitigt.
+  test 'ein unbekannter Empfaengerkreis bricht ab' do
+    tr = transfer_request
+
+    assert_raises(ArgumentError) do
+      TransferRequestMailer.transfer_completed(tr, audience: 'landesverband').deliver_now
+    end
+  end
+
+  test 'ohne hinterlegte Adresse der Person geht nur die Sendung an die Vereine raus' do
+    @player.update!(email: nil)
+    tr = transfer_request
+
+    # Eingereiht werden weiterhin beide Sendungen; die leere faellt erst im Job
+    # als NullMail aus (deliver_later wertet die Aktion nicht vorab aus).
+    # Gezaehlt wird deshalb die tatsaechliche Zustellung.
+    assert_emails 1 do
+      perform_enqueued_jobs do
+        TransferRequestMailer.deliver_to_all_audiences(:transfer_completed, tr)
+      end
+    end
+  end
+
+  # --- Datenschutzinformation (Art. 13 DSGVO) ---------------------------------
+
+  test 'die Zustimmungsanfrage traegt die Datenschutzinformation' do
+    body = TransferRequestMailer.player_confirmation_request(transfer_request).body.decoded
+
+    assert_includes body, 'Art. 13 DSGVO'
+    assert_includes body, PrivacyPolicy.url
+    assert_includes body, PrivacyPolicy.responsible_body
+  end
+
+  test 'die Datenschutzinformation benennt den zustaendigen Landesverband' do
+    body = TransferRequestMailer.transfer_completed(transfer_request, audience: 'player').body.decoded
+
+    assert_includes body, @state_association.name
+  end
+
+  test 'die Sendung an die Vereine traegt die Datenschutzinformation nicht' do
+    body = TransferRequestMailer.transfer_completed(transfer_request).body.decoded
+
+    assert_not_includes body, 'Art. 13 DSGVO'
+  end
+
+  # Der Grund, warum die Information im Layout steht und nicht im View: Ein
+  # gepflegter Vorlagentext ERSETZT das View. Stuende sie dort, waere die
+  # Pflichtangabe mit der ersten Textaenderung in der Admin-Oberflaeche still
+  # verschwunden.
+  test 'ein gepflegter Vorlagentext entfernt die Datenschutzinformation nicht' do
+    EmailTemplate.create!(mailer_class: 'TransferRequestMailer', action_name: 'transfer_completed',
+                          locale: 'de', body: '<p>Eigener Text der Verwaltung</p>')
+
+    body = TransferRequestMailer.transfer_completed(transfer_request, audience: 'player').body.decoded
+
+    assert_includes body, 'Eigener Text der Verwaltung'
+    assert_includes body, 'Art. 13 DSGVO'
+  end
+
+  # --- Alarm zum unzustellbaren Widerruf --------------------------------------
+
+  def revocation_messages(&)
+    captured = []
+    Sentry.stub(:capture_message, ->(message) { captured << message }, &)
+    captured
+  end
+
+  # Seit die Nachricht getrennt rausgeht, ist eine leere Haelfte der Normalfall.
+  # Der Alarm meinte aber nie das, sondern: Der Widerruf erreicht niemanden.
+  test 'eine Person ohne Adresse loest keinen Widerrufs-Alarm aus' do
+    @player.update!(email: nil)
+    tr = transfer_request(request_type: 'release')
+
+    captured = revocation_messages do
+      TransferRequestMailer.release_revoked(tr).deliver_now
+      TransferRequestMailer.release_revoked(tr, audience: 'player').deliver_now
+    end
+
+    assert_empty captured
+  end
+
+  test 'erreicht der Widerruf niemanden, wird genau einmal gemeldet' do
+    @player.update!(email: nil)
+    @requesting_club.update!(contact_email: nil)
+    @former_club.update!(contact_email: nil)
+    @state_association.update!(sbk_email: nil)
+    tr = transfer_request(request_type: 'release')
+
+    captured = revocation_messages do
+      TransferRequestMailer.release_revoked(tr).deliver_now
+      TransferRequestMailer.release_revoked(tr, audience: 'player').deliver_now
+    end
+
+    assert_equal 1, captured.size
+    assert_includes captured.first, "TransferRequest##{tr.id}"
+  end
 end

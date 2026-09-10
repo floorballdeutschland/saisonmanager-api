@@ -9,6 +9,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Transfermails an die betroffene Person tragen die Datenschutzinformation nach Art. 13 DSGVO**: Wer im Saisonmanager einen Transfer- oder Freigabeantrag gestellt bekommt, erfuhr davon bisher allein über die Bitte um Zustimmung — ohne einen Hinweis darauf, wer die Daten verarbeitet, zu welchem Zweck, auf welcher Grundlage, wer sie bekommt, wie lange sie bleiben und welche Rechte dagegen bestehen. Art. 13 DSGVO verlangt diese Unterrichtung genau dort, wo die Person das erste Mal mit dem Vorgang zu tun hat. Jede Nachricht des Transferprozesses, die an die Person selbst geht — die Zustimmungsanfrage, die Information über die Vorlage beim Landesverband, der Vollzug, der Widerruf einer Freigabe, die Beendigung durch eine Vereinsdeaktivierung —, trägt jetzt einen entsprechenden Abschnitt. Er benennt den Betreiber des Saisonmanagers als Verantwortlichen und zusätzlich den Landesverband, der über den konkreten Vorgang entscheidet, samt dessen Kontaktadresse; die ausführliche Datenschutzerklärung ist verlinkt. Nachrichten an Vereins- und Verbandspostfächer bekommen den Abschnitt nicht, dort gehört er nicht hin. Der Text hängt bewusst am Rahmen der Mail und nicht an der einzelnen Vorlage: Ein in der Verwaltung gepflegter eigener Textbaustein ersetzt sonst den ganzen Inhalt, und eine Pflichtangabe, die mit der ersten Textänderung still verschwindet, ist keine.
+
+### Verbessert
+
+- **Die private E-Mail-Adresse steht nicht mehr im Verteiler der Vereine**: Fünf Nachrichten des Transferprozesses gingen an die Vereinspostfächer und an die betroffene Person in einer gemeinsamen Sendung — beide Vereine, der Landesverband und die Person standen zusammen im Empfängerfeld. Damit lag die private Adresse mit der ersten Nachricht beim aufnehmenden Verein, oft bevor über den Antrag überhaupt entschieden war, und ohne dass die Person davon erfährt oder sie dorthin gegeben hätte. Betroffen waren die Information über die Vorlage beim Landesverband, der Vollzug, der Widerruf einer erteilten Freigabe, die Beendigung durch eine Vereinsdeaktivierung und die Beendigung eines Freigabeantrags durch einen Transfer. Diese Nachrichten gehen jetzt getrennt raus: eine an die Vereins- und Verbandspostfächer, eine an die Person. Inhalt und Betreff sind unverändert, es sind nur zwei Sendungen statt einer; wer beide Rollen hat, bekommt entsprechend zwei. Umgekehrt entsteht das Problem nicht — Vereins- und Verbandsadressen sind veröffentlichte Postfächer. Der Alarm für den Fall, dass ein Widerruf niemanden erreicht, prüft weiterhin den gesamten Verteiler und schlägt nicht schon an, wenn nur eine der beiden Hälften leer ist.
+
 ## [1.112.1] - 2026-09-10
 
 ### Behoben

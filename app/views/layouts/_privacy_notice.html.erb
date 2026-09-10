@@ -1,0 +1,66 @@
+<%#
+  Datenschutzinformation nach Art. 13 DSGVO, angehaengt an jede Nachricht an die
+  betroffene Person selbst (siehe TransferRequestMailer::AUDIENCES).
+
+  Bewusst im Layout und nicht in den einzelnen Views: Ein gepflegter
+  EmailTemplate-Body ERSETZT das View (siehe TemplatedMailer#templated_mail),
+  erzwingt aber weiterhin `layout: 'mailer'`. Stuende die Information im View,
+  waere sie mit der ersten Textaenderung in der Admin-Oberflaeche still
+  verschwunden -- und niemandem faellt eine fehlende Pflichtangabe auf.
+%>
+<hr style="margin-top:32px;margin-bottom:12px;border:none;border-top:1px solid #dddddd;">
+<div style="font-size:0.8em;color:#555555;line-height:1.5;">
+  <p style="margin-bottom:8px;"><strong>Information zur Datenverarbeitung (Art. 13 DSGVO)</strong></p>
+
+  <p style="margin-bottom:8px;">
+    Du bekommst diese Nachricht, weil im Saisonmanager ein Vorgang zu deiner
+    Spielberechtigung bearbeitet wird. Eine Handlung deinerseits ist allein
+    deshalb nicht erforderlich.
+  </p>
+
+  <p style="margin-bottom:8px;">
+    <%# Ohne Satzpunkt: Der Name endet in aller Regel selbst auf einen ("e.V."). %>
+    <strong>Verantwortlich</strong> für den Betrieb des Saisonmanagers:
+    <%= PrivacyPolicy.responsible_body %>
+    <% if @privacy_authority.present? %>
+      <% sbk_email = @privacy_authority.effective_sbk_email %>
+      Über den Vorgang selbst entscheidet <%= @privacy_authority.name %>.
+      <% if sbk_email.present? %>
+        Fragen dazu beantwortet <a href="mailto:<%= sbk_email %>"><%= sbk_email %></a>.
+      <% end %>
+    <% end %>
+  </p>
+
+  <p style="margin-bottom:8px;">
+    <strong>Zweck und Rechtsgrundlage:</strong> Verarbeitet werden dein Vor- und
+    Nachname, dein bisheriger und dein künftiger Verein, deine E-Mail-Adresse
+    sowie Datum, Status und Begründung der Entscheidung – um über deine
+    Spielberechtigung zu entscheiden und den Spielbetrieb durchzuführen.
+    Grundlage ist Art. 6 Abs. 1 lit. b und lit. f DSGVO in Verbindung mit der
+    Spielordnung des Verbands.
+  </p>
+
+  <p style="margin-bottom:8px;">
+    <strong>Empfänger:</strong> der abgebende und der aufnehmende Verein sowie
+    der zuständige Landesverband. Eine Übermittlung in ein Drittland findet
+    nicht statt.
+  </p>
+
+  <p style="margin-bottom:8px;">
+    <strong>Speicherdauer:</strong> solange der Nachweis deiner
+    Spielberechtigung und die Abrechnung des Vorgangs es erfordern.
+  </p>
+
+  <p style="margin-bottom:8px;">
+    <strong>Deine Rechte:</strong> Auskunft, Berichtigung, Löschung,
+    Einschränkung der Verarbeitung, Datenübertragbarkeit und Widerspruch
+    (Art. 15–21 DSGVO) sowie Beschwerde bei einer Datenschutz-Aufsichtsbehörde.
+    Wende dich dafür an
+    <%= @privacy_authority.present? ? "#{@privacy_authority.name} oder an #{PrivacyPolicy.responsible_body}" : PrivacyPolicy.responsible_body %>.
+  </p>
+
+  <p style="margin-bottom:0;">
+    Ausführliche Datenschutzerklärung:
+    <a href="<%= PrivacyPolicy.url %>"><%= PrivacyPolicy.url %></a>
+  </p>
+</div>

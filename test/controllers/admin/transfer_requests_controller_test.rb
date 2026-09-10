@@ -428,7 +428,9 @@ module Admin
 
     test 'SBK mit zusätzlicher VM-Rolle führt Direkt-Transfer durch → 201' do
       login(@sbk_and_vm)
-      assert_emails 1 do
+      # Zwei Sendungen statt einer: Die Abschlussmail geht getrennt an die
+      # Vereinspostfaecher und an den Spieler (TransferRequestMailer::AUDIENCES).
+      assert_emails 2 do
         post '/api/v2/admin/transfer_requests/direct_assign', params: {
           player_id: @player.id,
           requesting_club_id: @requesting_club.id
@@ -450,7 +452,9 @@ module Admin
       other_club = create_club_in_other_game_operation
 
       login(@sbk) # @sbk ist nur für @game_operation (LV des abgebenden Vereins) zuständig
-      assert_emails 1 do
+      # Zwei Sendungen statt einer: Die Abschlussmail geht getrennt an die
+      # Vereinspostfaecher und an den Spieler (TransferRequestMailer::AUDIENCES).
+      assert_emails 2 do
         post '/api/v2/admin/transfer_requests/direct_assign', params: {
           player_id: @player.id,
           requesting_club_id: other_club.id
@@ -775,7 +779,9 @@ module Admin
     test 'Spieler bestätigt via Token → 302 Redirect, Status pending_lv' do
       tr = create_transfer_request(status: 'pending_player')
       token = tr.player_confirmation_token
-      assert_emails 2 do
+      # Drei Sendungen: an den Landesverband, an die Vereine und -- davon
+      # getrennt -- an den Spieler selbst (TransferRequestMailer::AUDIENCES).
+      assert_emails 3 do
         get "/api/v2/admin/transfer_requests/player_approve", params: { token: token }
       end
       assert_response :redirect
@@ -835,7 +841,9 @@ module Admin
     test 'SBK genehmigt LV → Status approved (sofortiger Transfer)' do
       tr = create_transfer_request(status: 'pending_lv')
       login(@sbk)
-      assert_emails 1 do
+      # Zwei Sendungen statt einer: Die Abschlussmail geht getrennt an die
+      # Vereinspostfaecher und an den Spieler (TransferRequestMailer::AUDIENCES).
+      assert_emails 2 do
         patch "/api/v2/admin/transfer_requests/#{tr.id}/approve_lv"
       end
       assert_response :success
@@ -847,7 +855,9 @@ module Admin
     test 'Admin genehmigt LV → Status approved' do
       tr = create_transfer_request(status: 'pending_lv')
       login(@admin)
-      assert_emails 1 do
+      # Zwei Sendungen statt einer: Die Abschlussmail geht getrennt an die
+      # Vereinspostfaecher und an den Spieler (TransferRequestMailer::AUDIENCES).
+      assert_emails 2 do
         patch "/api/v2/admin/transfer_requests/#{tr.id}/approve_lv"
       end
       assert_response :success

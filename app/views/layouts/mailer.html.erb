@@ -9,5 +9,9 @@
 
   <body>
     <%= yield %>
+    <%# Datenschutzinformation nur an die betroffene Person; das Flag setzen die
+        Mailer-Aktionen (siehe TransferRequestMailer#audience_recipients). Im Layout,
+        damit ein gepflegter EmailTemplate-Body sie nicht mit entfernt. %>
+    <%= render 'layouts/privacy_notice' if @privacy_notice %>
   </body>
 </html>

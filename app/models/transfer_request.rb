@@ -229,7 +229,7 @@ class TransferRequest < ApplicationRecord
     Rails.cache.delete('transfers')
     send_completion_emails(secondary_club_ids)
     annulled_releases.each do |release|
-      TransferRequestMailer.release_annulled_by_transfer(release, self).deliver_later
+      TransferRequestMailer.deliver_to_all_audiences(:release_annulled_by_transfer, release, self)
     end
   end
 
@@ -252,7 +252,7 @@ class TransferRequest < ApplicationRecord
     end
 
     Rails.cache.delete('transfers')
-    TransferRequestMailer.transfer_completed(self).deliver_later
+    TransferRequestMailer.deliver_to_all_audiences(:transfer_completed, self)
   end
 
   def revoke_release!(user_id, reason)
@@ -282,7 +282,7 @@ class TransferRequest < ApplicationRecord
     # den Spieler unter Umstaenden gerade ein. Die Uebersicht zeigt widerrufene
     # Vorgaenge inzwischen, aber sie haengt am Saisonfilter -- ein Widerruf zu
     # einer Freigabe der Vorsaison steht in keiner der beiden Listen.
-    TransferRequestMailer.release_revoked(self).deliver_later
+    TransferRequestMailer.deliver_to_all_audiences(:release_revoked, self)
   end
 
   # Anschrift und Kontakt beider Vereine, fuer die Transferrechnung (#641).
@@ -436,7 +436,7 @@ class TransferRequest < ApplicationRecord
   # Die Abschlussmail an die abgebende Seite bleibt: Dort sitzt die
   # Zustaendigkeit, und sie loest die Transferrechnung aus.
   def send_completion_emails(secondary_club_ids)
-    TransferRequestMailer.transfer_completed(self).deliver_later
+    TransferRequestMailer.deliver_to_all_audiences(:transfer_completed, self)
 
     secondary_club_ids.each do |club_id|
       club = Club.find_by(id: club_id)
