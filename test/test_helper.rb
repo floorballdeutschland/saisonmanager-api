@@ -49,6 +49,20 @@ class ActiveSupport::TestCase
     player.deactivate!(user_id, reason: reason)
     player
   end
+
+  # Legt Spieltag und Anpfiff eines Spiels so, dass die Sperrfrist des
+  # Schiri-Feedbacks (RefereeFeedbackWindow) noch laeuft: Anpfiff vor einer
+  # Stunde, gerechnet im Kalender des Spielbetriebs.
+  #
+  # Ein Spiel „von heute" genuegt dafuer nicht: Seit die Frist 12 statt 24
+  # Stunden betraegt, ist ein Vormittagsspiel am Abend bereits freigeschaltet —
+  # der Test haengt sonst an der Uhrzeit des Laufs.
+  def within_feedback_lock_period!(game)
+    kickoff = RefereeFeedbackWindow::ZONE.now - 1.hour
+    game.game_day.update!(date: kickoff.to_date.to_s)
+    game.update!(start_time: kickoff.strftime('%H:%M'))
+    game
+  end
 end
 
 # Rack::Attack zählt seine Throttles in einem Cache-Store, den es sich beim

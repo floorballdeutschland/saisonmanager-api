@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Schiedsrichter-Feedback ist schon 12 Stunden nach dem Spiel möglich**: Das Feedback-Formular öffnete bisher erst 24 Stunden nach dem Anpfiff — der Abstand zum Spiel ist gewollt, eine Rückmeldung soll nicht in der Emotion direkt nach dem Schlusspfiff entstehen. In der Praxis fiel damit aber die Gelegenheit weg, zu der die Mannschaft die Frage überhaupt beantwortet: Ein Samstagabendspiel wurde erst am Sonntagabend freigeschaltet, an dem alle längst auf der Heimreise oder wieder im Alltag sind, und ein Sonntagsspiel erst am Montag. Die Frist beträgt jetzt 12 Stunden. Der Abstand bleibt damit erhalten — über Nacht schlafen muss weiterhin jeder —, das Fenster öffnet aber noch am Tag nach dem Spiel bzw. am Abend eines Vormittagsspiels. Die zweite Bedingung ist unverändert: Ohne abgeschlossenen Spielbericht gibt es kein Feedback, weil erst dann feststeht, welches Gespann tatsächlich gepfiffen hat. Maßgeblich bleibt das spätere der beiden Ereignisse. Die Info-Mail an die Teammanager und die Einladung an den Feedback-Kontakt gehen weiterhin genau dann raus, wenn das Fenster wirklich offen ist, also künftig früher; die Bitte, die Rückmeldung dann innerhalb von 24 Stunden abzugeben, bleibt bestehen. Ein Ende hat das Fenster wie bisher nicht — eine späte Rückmeldung ist wertvoller als keine.
+
 ## [1.112.1] - 2026-09-10
 
 ### Behoben

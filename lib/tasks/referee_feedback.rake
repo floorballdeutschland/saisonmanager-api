@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 # Benachrichtigung für Schiri-Feedback. Dies ist der reguläre Versandweg: Das
-# Abgabefenster öffnet erst 24 h nach Anpfiff (RefereeFeedbackWindow), also in der
-# Regel deutlich nach dem Bericht-Abschluss. Der direkte Aufruf in
+# Abgabefenster öffnet erst Stunden nach dem Anpfiff (RefereeFeedbackWindow), in
+# der Regel also nach dem Bericht-Abschluss. Der direkte Aufruf in
 # GamesController#set_game_status greift nur bei spät geschlossenen Berichten.
 # Der Task fängt außerdem Spiele ab, die noch keine Benachrichtigung erhalten
 # haben – etwa in Ligen, die erst nachträglich per referee_feedback_enabled
