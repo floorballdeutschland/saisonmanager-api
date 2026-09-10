@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Erteilte Lizenz auf „beantragt" zurücksetzen**: Wird eine Lizenz erteilt, obwohl noch etwas fehlte — der Spielerpass, die Elternzustimmung, ein Dokument, das erst nachgereicht wird —, gab es bisher keinen Weg zurück. Der Antrag war aus der Entscheidungsliste der Liga verschwunden (die zeigt nur offene Anträge), und übrig blieben zwei schlechte Möglichkeiten: die Lizenz löschen, was den Verein zu einem neuen, kostenpflichtigen Antrag zwingt, oder sie erteilt lassen. Admin und Spielbetriebskommission können sie im Spielerprofil jetzt mit Pflicht-Begründung auf „beantragt" zurücksetzen; der Antrag steht danach wieder in der Entscheidungsliste der Liga und lässt sich nach dem Nachreichen erneut erteilen. Die Begründung steht dauerhaft im Verlauf der Lizenz und ist auch für den Verein sichtbar — ohne sie läse sich die verschwundene Spielberechtigung in der Vereinsansicht wie ein Fehler des Systems. Die frühere Erteilung bleibt im Verlauf stehen: Zurücksetzen ist kein Weg an der Lizenzgebühr vorbei, und dem Verein entsteht daraus auch kein neues kostenfreies Zeitfenster zum Zurückziehen. Das Gültigkeitsdatum aus der Erteilung wird geleert, damit die Lizenzliste des Spielsekretariats für einen offenen Antrag nicht weiter ein „gültig bis" meldet. Die Erst-/Zweitlizenz-Zuordnung im Großfeld-Erwachsenenbereich bleibt dagegen erhalten — anders als beim Löschen, wo sie abgeräumt wird —, denn ein offener Antrag gehört weiter zum laufenden Wettbewerb, und ein Abräumen kostete den Verband den einmal pro Saison erlaubten Tausch, nur um denselben Stand wiederherzustellen. Angeboten wird der Weg eng: nur für erteilte Lizenzen der laufenden Saison und nur im eigenen Spielbetrieb. Eine gesperrte Lizenz bleibt außen vor, sonst hätte ein Klick die laufende Sperre aus der Lizenz herausgeschrieben. Zu beachten: „beantragt" ist nicht überall spielsperrend — Landesverbände, die das Aufstellen mit einem offenen Antrag erlauben, lassen den Spieler weiter spielen.
+
 ## [1.112.1] - 2026-09-10
 
 ### Behoben
