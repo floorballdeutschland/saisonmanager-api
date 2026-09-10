@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Datenschutzerklärung in der Navigation verlinkt**: Neben dem Impressum steht jetzt ein zweiter Eintrag „Datenschutz", der auf https://floorball.de/datenschutz/ führt. Er erscheint in der Seitenleiste und im mobilen Menü, angemeldet wie abgemeldet. Bisher war das Impressum der einzige Rechtslink der Anwendung; die Datenschutzerklärung war von hier aus überhaupt nicht erreichbar. Aufgefallen ist das durch die Rückmeldung eines Vereins, der vor der Eingabe von Mitgliederdaten wissen wollte, worüber er seine Mitglieder zu informieren hat, und nichts fand, worauf er verweisen könnte. Umgesetzt ist rein die Verlinkung: Die Erklärung selbst wird auf floorball.de gepflegt, und dass sie auch die Verarbeitung im Saisonmanager beschreibt, ist dort nachzutragen.
+
 ## [1.112.1] - 2026-09-10
 
 ### Behoben
