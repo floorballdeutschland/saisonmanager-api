@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Spielerdaten-Export nennt das Geburtsdatum**: Der CSV-Export der Spielerdaten-Rangliste führt jetzt neben der Spieler-ID auch das Geburtsdatum. Die Datei wird weiterverarbeitet – Abrechnung, Meldung an den Landesverband, Abgleich mit einer eigenen Liste –, und dafür fehlte ihr das eine Merkmal, das zwei namensgleiche Personen sicher trennt; die ID beantwortet das nur, solange die Gegenliste sie auch führt. Ausschließlich in der Datei: Die Ansicht selbst zeigt das Geburtsdatum nicht und bekommt es auch nicht mehr geliefert als vorher. Rechte, Filter und Sortierung des Exports bleiben unverändert – wer die Liste sehen darf, sieht dieselben Personen wie bisher, nur mit einer Spalte mehr.
+
 ## [1.112.1] - 2026-09-10
 
 ### Behoben
