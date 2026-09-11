@@ -27,7 +27,7 @@ module Admin
       @team_west = create(:team, league: @liga_west, club: @club_west, name: 'Cormoran Koeln 1')
 
       # Zwei Einsaetze fuer den Verein, zwei Tore, eine Vorlage, 2 Strafminuten.
-      @stamm = mitglied_von(@club, first_name: 'Anna', last_name: 'Adler')
+      @stamm = mitglied_von(@club, first_name: 'Anna', last_name: 'Adler', birthdate: '2004-03-17')
       # Ein Einsatz, ein Tor -- fuer den zweiten Verein desselben Landesverbands.
       @nachbar = mitglied_von(@club2, first_name: 'Bea', last_name: 'Bussard')
       # Hat frueher fuer @club gespielt, ist heute im anderen Landesverband gemeldet.
@@ -374,6 +374,26 @@ module Admin
       export_statistics(club_filter_id: @club_west.id)
 
       assert_response :forbidden
+    end
+
+    # Verlangt fuer die Weiterverarbeitung der Datei: Zwei namensgleiche Personen
+    # trennt erst das Geburtsdatum. Ein eigenes Datum am Datensatz und nicht der
+    # Vorgabewert der Fabrik, sonst wuerde auch eine feste Zeichenkette bestehen.
+    test 'der Export nennt das Geburtsdatum' do
+      login(create(:user, :admin))
+
+      zeile = export_statistics(club_id: @club.id)['players'].find { |p| p['last_name'] == 'Adler' }
+
+      assert_equal '2004-03-17', zeile['birthdate']
+    end
+
+    # Die Ansicht zeigt das Geburtsdatum nicht, also liefert sie es auch nicht aus.
+    test 'die Liste selbst liefert das Geburtsdatum nicht mit' do
+      login(create(:user, :admin))
+
+      zeile = statistics(club_id: @club.id)['players'].find { |p| p['last_name'] == 'Adler' }
+
+      assert_not zeile.key?('birthdate')
     end
 
     test 'der Export kuerzt an der Obergrenze und sagt es' do
