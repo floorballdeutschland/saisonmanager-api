@@ -63,6 +63,10 @@ class RefereeAssignmentCalendar
   def event
     ::Icalendar::Event.new.tap do |event|
       apply_times(event)
+      # Der Domainteil bleibt auf .org, obwohl der Saisonmanager auf .de laeuft:
+      # Die UID ist ein Bezeichner und keine Adresse. Ein Kalender erkennt einen
+      # bereits abonnierten Termin daran wieder -- eine geaenderte UID legt ihn
+      # ein zweites Mal an, statt den vorhandenen zu aktualisieren.
       event.uid = "sm_referee_assignment_#{@game.id}_#{@role}_#{@recipient.id}@saisonmanager.org"
       # Wie Game#ical: der Zeitstempel des Versands als monoton wachsende
       # Versionsnummer des Termins.

@@ -17,8 +17,12 @@
 
 Rails.application.config.middleware.insert_before 0, Rack::Cors do
   allow do
-    origins 'https://saisonmanager.de', 'https://saisonmanager.org',
-            'https://sr.floorball.de', 'http://localhost:4200'
+    # saisonmanager.org ist raus: Die Domain leitet im nginx dauerhaft (301) auf
+    # .de um, es laeuft dort also keine Seite mehr, die als Herkunft auftreten
+    # koennte. Eine Freigabe fuer eine Herkunft, die es nicht gibt, verdeckt nur,
+    # welche Adressen tatsaechlich Zugriff haben.
+    origins 'https://saisonmanager.de', 'https://sr.floorball.de',
+            'http://localhost:4200'
 
     resource '*',
              headers: :any,
