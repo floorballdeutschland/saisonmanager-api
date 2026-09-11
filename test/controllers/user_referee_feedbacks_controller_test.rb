@@ -11,7 +11,7 @@ class UserRefereeFeedbacksControllerTest < ActionDispatch::IntegrationTest
     @club = create(:club)
     @home = create(:team, league: @league, club: @club, name: 'Heim')
     @guest = create(:team, league: @league, club: @club, name: 'Gast')
-    # Zwei Tage zurück, damit die 24-Stunden-Sperre (RefereeFeedbackWindow) offen
+    # Zwei Tage zurück, damit die Sperrfrist (RefereeFeedbackWindow) abgelaufen
     # ist und die Tests unten die Abgabe selbst prüfen.
     @game_day = create(:game_day, league: @league, club: @club, date: 2.days.ago.to_date.to_s)
     @game = create(:game,
@@ -74,8 +74,8 @@ class UserRefereeFeedbacksControllerTest < ActionDispatch::IntegrationTest
     assert_equal 0, RefereeFeedback.count
   end
 
-  test 'Abgabe vor Ablauf der 24 Stunden nach dem Spiel wird abgewiesen' do
-    @game_day.update!(date: RefereeFeedbackWindow.today.to_s)
+  test 'Abgabe vor Ablauf der Sperrfrist nach dem Spiel wird abgewiesen' do
+    within_feedback_lock_period!(@game)
     login(@tm)
 
     post '/api/v2/user/referee_feedbacks',
@@ -86,8 +86,8 @@ class UserRefereeFeedbacksControllerTest < ActionDispatch::IntegrationTest
     assert_equal 0, RefereeFeedback.count
   end
 
-  test 'Uebersicht listet das Spiel schon vor Ablauf der 24 Stunden mit kuenftigem fillable_from' do
-    @game_day.update!(date: RefereeFeedbackWindow.today.to_s)
+  test 'Uebersicht listet das Spiel schon in der Sperrfrist mit kuenftigem fillable_from' do
+    within_feedback_lock_period!(@game)
     login(@tm)
 
     get '/api/v2/user/referee_feedbacks'

@@ -5,7 +5,7 @@ Hallo,
 
 <% if @source == :captain %>du bist im Spielbericht als Kapitän*in der Mannschaft <%= @team.name %> eingetragen. Deine Mannschaft hat hinterlegt, dass das Schiedsrichter-Feedback von der Spielführung abgegeben wird.<% else %>deine Adresse ist bei der Mannschaft <%= @team.name %> als Kontakt für das Schiedsrichter-Feedback hinterlegt.<% end %>
 
-Für dieses Spiel ist der Spielbericht abgeschlossen und die 24 Stunden nach dem Spiel sind um. Das Feedback kann jetzt abgegeben werden:
+Für dieses Spiel ist der Spielbericht abgeschlossen und die <%= RefereeFeedbackWindow::FILLABLE_AFTER_HOURS %> Stunden nach dem Spiel sind um. Das Feedback kann jetzt abgegeben werden:
 
 <%= @team.name %><% if @opponent_name.present? %> – <%= @opponent_name %><% end %>
 <% if @league_name.present? %><%= @league_name %>

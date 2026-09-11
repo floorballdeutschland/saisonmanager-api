@@ -2,8 +2,8 @@
 
 # Benachrichtigt die Teammanager beider Mannschaften eines Spiels, dass das
 # Schiri-Feedback-Formular ausfüllbar ist. Wann das Fenster öffnet, entscheidet
-# RefereeFeedbackWindow: abgeschlossener Spielbericht UND mindestens 24 h nach
-# Anpfiff.
+# RefereeFeedbackWindow: abgeschlossener Spielbericht UND mindestens
+# RefereeFeedbackWindow::FILLABLE_AFTER_HOURS Stunden nach Anpfiff.
 #
 # Hat eine Mannschaft einen Feedback-Kontakt hinterlegt (Kapitän*in des Spiels
 # oder eine frei eingetragene Adresse, siehe RefereeFeedbackContact), geht
@@ -17,7 +17,7 @@
 # Cron-Lauf des Rake-Tasks referee_feedback:notify_available, weil das Fenster in
 # der Regel erst Stunden nach dem Bericht-Abschluss öffnet. Der direkte Aufruf
 # beim Abschluss (GamesController#set_game_status) greift nur, wenn der Bericht
-# ohnehin später als 24 h nach dem Spiel geschlossen wird – dann geht die Mail
+# ohnehin erst nach Ablauf der Sperrfrist geschlossen wird – dann geht die Mail
 # sofort raus.
 class RefereeFeedbackNotifier
   def initialize(game)
@@ -110,12 +110,12 @@ class RefereeFeedbackNotifier
   end
 
   # Fällig, sobald das Abgabefenster offen ist (RefereeFeedbackWindow: Bericht
-  # abgeschlossen UND 24 h nach Anpfiff), die Liga Feedback aktiviert hat und
-  # noch nicht benachrichtigt wurde.
+  # abgeschlossen UND Sperrfrist nach Anpfiff abgelaufen), die Liga Feedback
+  # aktiviert hat und noch nicht benachrichtigt wurde.
   #
   # Direkt beim Bericht-Abschluss ist das im Regelfall noch nicht erfüllt – dann
-  # verschickt der Cron-Lauf des Rake-Tasks die Mails, sobald die 24 Stunden um
-  # sind. Die Mail soll nicht auf ein Formular zeigen, das noch gesperrt ist.
+  # verschickt der Cron-Lauf des Rake-Tasks die Mails, sobald die Sperrfrist um
+  # ist. Die Mail soll nicht auf ein Formular zeigen, das noch gesperrt ist.
   def due?
     @game.referee_feedback_notified_at.nil? &&
       @game.league&.referee_feedback_enabled? &&
