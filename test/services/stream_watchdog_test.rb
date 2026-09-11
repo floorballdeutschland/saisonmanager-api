@@ -6,12 +6,15 @@ require 'test_helper'
 class StreamWatchdogTest < ActiveSupport::TestCase
   # Ersetzt YoutubeLiveApi. Hält fest, was beendet wurde, statt es zu tun.
   class FakeApi
-    attr_reader :completed
+    attr_reader :completed, :published
 
-    def initialize(broadcasts: [], streams: {})
+    def initialize(broadcasts: [], streams: {}, publish_result: :veroeffentlicht, publish_error: nil)
       @broadcasts = broadcasts
       @streams = streams
       @completed = []
+      @published = []
+      @publish_result = publish_result
+      @publish_error = publish_error
     end
 
     def active_broadcasts
@@ -32,6 +35,15 @@ class StreamWatchdogTest < ActiveSupport::TestCase
     def complete!(broadcast_id)
       @completed << broadcast_id
       {}
+    end
+
+    # Wie der echte Client: :veroeffentlicht, :schon_oeffentlich oder
+    # :verschwunden -- oder ein hinterlegter Fehler.
+    def publish!(broadcast_id)
+      @published << broadcast_id
+      raise @publish_error if @publish_error
+
+      @publish_result
     end
   end
 
@@ -690,7 +702,182 @@ class StreamWatchdogTest < ActiveSupport::TestCase
     assert(ergebnis[:notes].any? { |n| n.include?('Zustand nicht abrufbar') })
   end
 
+  # --- Zusage an den Ausrichter: nach dem Spiel oeffentlich -------------------
+  #
+  # Ein paar Vereine senden ihr Heimspiel selbst und haben zugesagt bekommen,
+  # dass unsere Uebertragung waehrenddessen nicht gelistet laeuft. Danach soll
+  # die Aufzeichnung oeffentlich auf dem Verbandskanal stehen -- sonst ist die
+  # halbe Zusage eine ganze Loeschung.
+
+  test 'veroeffentlicht eine faellige Uebertragung und verlinkt sie im Spielplan' do
+    satz = zusage_satz(ended_at: @now - StreamWatchdog::PROMOTE_DELAY - 1.minute)
+    api = FakeApi.new
+
+    ergebnis = StreamWatchdog.new(api: api, now: @now).run
+
+    assert_equal [BROADCAST_ID], api.published
+    assert_equal @now.to_i, satz.reload.promoted_at.to_i
+    assert_equal "https://www.youtube.com/watch?v=#{BROADCAST_ID}", @game.reload.live_stream_link
+    assert_equal 1, ergebnis[:published].size
+  end
+
+  # Der Verein sendet nach dem Schlusspfiff weiter -- Interviews, Abmoderation.
+  # Waehrenddessen darf unsere Aufzeichnung nicht oeffentlich danebenstehen.
+  test 'GEGENPROBE: vor Ablauf der Frist bleibt sie nicht gelistet' do
+    satz = zusage_satz(ended_at: @now - StreamWatchdog::PROMOTE_DELAY + 1.minute)
+    api = FakeApi.new
+
+    StreamWatchdog.new(api: api, now: @now).run
+
+    assert_empty api.published
+    assert_nil satz.reload.promoted_at
+    assert_nil @game.reload.live_stream_link
+  end
+
+  # Ohne den Riegel wuerde jede aus einem anderen Grund nicht gelistete
+  # Aufzeichnung -- Probelauf, interne Aufnahme -- oeffentlich, und das ist
+  # nicht zurueckzunehmen.
+  # DER teure Fall: Ein Wochenende wird Tage vorher eingerichtet. Bei YouTube ist
+  # so eine Uebertragung `ready` und taucht nicht unter den aktiven auf -- die
+  # Buchhaltung stempelt ihr deshalb nach drei Stunden ein `ended_at`. Wuerde die
+  # Freischaltung darauf hoeren, stuende die Aufzeichnung des Zusage-Vereins Tage
+  # VOR seinem Spiel oeffentlich auf dem Kanal, genau neben der Uebertragung, die
+  # er selbst faehrt. Zurueckholen laesst sich das nicht.
+  test 'GEGENPROBE: eine vorab angelegte, nie gelaufene Uebertragung wird nicht veroeffentlicht' do
+    satz = zusage_satz(ended_at: @now - 1.day, last_active_at: nil)
+    api = FakeApi.new
+
+    StreamWatchdog.new(api: api, now: @now).run
+
+    assert_empty api.published
+    assert_nil satz.reload.promoted_at
+    assert_nil @game.reload.live_stream_link
+  end
+
+  # Der Weg dorthin, ueber die echte Buchhaltung statt ueber ein gesetztes Feld.
+  test 'GEGENPROBE: die Buchhaltung macht eine vorab angelegte Uebertragung nicht faellig' do
+    satz = StreamBroadcast.create!(broadcast_id: BROADCAST_ID, stream_id: STREAM_ID,
+                                   title: 'Heim vs Gast', game: @game,
+                                   promote_to_public: true,
+                                   created_at: @now - 2.days)
+    api = FakeApi.new
+
+    # Erster Lauf: Die Buchhaltung schliesst den Satz, weil er bei YouTube nicht
+    # aktiv ist. Zweiter Lauf: Er ist "beendet" und die Frist laengst um.
+    StreamWatchdog.new(api: api, now: @now - 1.day).run
+    StreamWatchdog.new(api: api, now: @now).run
+
+    assert_predicate satz.reload, :ended?
+    assert_empty api.published
+    assert_nil satz.promoted_at
+  end
+
+  # Die Frist ist eine Zusage an die Vereine, keine beliebige Zahl.
+  test 'die Frist betraegt drei Stunden' do
+    assert_equal 3.hours, StreamWatchdog::PROMOTE_DELAY
+  end
+
+  # Ein dauerhaft scheiternder Satz kostet je Versuch 51 Kontingenteinheiten --
+  # alle fuenf Minuten, bis das Tageskontingent weg ist und der Waechter seine
+  # eigentliche Aufgabe nicht mehr erledigt.
+  test 'ein erschoepftes Kontingent bricht die Veroeffentlichungen ab' do
+    zusage_satz(ended_at: @now - 1.day)
+    api = FakeApi.new(publish_error: YoutubeLiveApi::QuotaExceeded.new('quotaExceeded'))
+
+    ergebnis = StreamWatchdog.new(api: api, now: @now).run
+
+    assert_equal 1, api.published.size
+    assert(ergebnis[:problems].any? { |p| p.include?('Kontingent erschoepft') })
+  end
+
+  # Eine Zusage, die nie faellig wird, faellt sonst lautlos aus dem System.
+  test 'eine seit Tagen offene Zusage wird gemeldet' do
+    zusage_satz(ended_at: nil).update!(created_at: @now - 2.days)
+
+    ergebnis = StreamWatchdog.new(api: FakeApi.new, now: @now).run
+
+    assert(ergebnis[:problems].any? { |p| p.include?('Zusage seit ueber') })
+  end
+
+  test 'GEGENPROBE: ohne Zusage wird nichts veroeffentlicht' do
+    satz = zusage_satz(ended_at: @now - 1.day, promote_to_public: false)
+    api = FakeApi.new
+
+    StreamWatchdog.new(api: api, now: @now).run
+
+    assert_empty api.published
+    assert_nil satz.reload.promoted_at
+  end
+
+  test 'GEGENPROBE: eine noch laufende Uebertragung wird nicht veroeffentlicht' do
+    satz = zusage_satz(ended_at: nil)
+    api = FakeApi.new
+
+    StreamWatchdog.new(api: api, now: @now).run
+
+    assert_empty api.published
+    assert_nil satz.reload.promoted_at
+  end
+
+  test 'im Probelauf wird nichts veroeffentlicht' do
+    satz = zusage_satz(ended_at: @now - 1.day)
+    api = FakeApi.new
+
+    ergebnis = StreamWatchdog.new(api: api, now: @now, dry_run: true).run
+
+    assert_empty api.published
+    assert_nil satz.reload.promoted_at
+    assert(ergebnis[:notes].any? { |n| n.include?('wuerde veroeffentlichen') })
+  end
+
+  # Ein bereits gesetzter Link ist von Hand gepflegt oder von einem frueheren
+  # Lauf -- ihn zu ueberschreiben nimmt dem Spielplan eine bewusste Eintragung.
+  test 'ein vorhandener Link im Spielplan bleibt stehen' do
+    @game.update!(live_stream_link: 'https://example.org/eigener-stream')
+    zusage_satz(ended_at: @now - 1.day)
+
+    StreamWatchdog.new(api: FakeApi.new, now: @now).run
+
+    assert_equal 'https://example.org/eigener-stream', @game.reload.live_stream_link
+  end
+
+  # Die Uebertragung gibt es nicht mehr. Abgehakt wird sie trotzdem, sonst laeuft
+  # der Cronjob alle fuenf Minuten in dieselbe leere Antwort -- verlinkt wird
+  # aber nichts, der Link zeigte ins Leere.
+  test 'eine verschwundene Uebertragung wird abgehakt, aber nicht verlinkt' do
+    satz = zusage_satz(ended_at: @now - 1.day)
+    api = FakeApi.new(publish_result: :verschwunden)
+
+    StreamWatchdog.new(api: api, now: @now).run
+
+    assert_not_nil satz.reload.promoted_at
+    assert_nil @game.reload.live_stream_link
+  end
+
+  # Kein Stempel bei einem voruebergehenden Fehler: Der naechste Lauf soll es
+  # erneut versuchen. Gemeldet wird er trotzdem -- eine still nicht eingeloeste
+  # Zusage faellt sonst niemandem auf.
+  test 'ein Fehler beim Veroeffentlichen wird gemeldet und nicht abgehakt' do
+    satz = zusage_satz(ended_at: @now - 1.day)
+    api = FakeApi.new(publish_error: YoutubeLiveApi::TransportError.new('Netz weg'))
+
+    ergebnis = StreamWatchdog.new(api: api, now: @now).run
+
+    assert_nil satz.reload.promoted_at
+    assert(ergebnis[:problems].any? { |p| p.include?('Veroeffentlichung fehlgeschlagen') })
+  end
+
   private
+
+  # `last_active_at` gehoert zum Normalfall dazu: Es ist der Beleg, dass wirklich
+  # gesendet wurde. Ohne ihn ist eine Uebertragung nur angelegt (siehe den Test
+  # zur vorab angelegten Uebertragung).
+  def zusage_satz(ended_at:, promote_to_public: true, last_active_at: :gesendet)
+    StreamBroadcast.create!(broadcast_id: BROADCAST_ID, stream_id: STREAM_ID,
+                            title: 'Heim vs Gast', game: @game,
+                            last_active_at: last_active_at == :gesendet ? (ended_at || @now) : last_active_at,
+                            ended_at: ended_at, promote_to_public: promote_to_public)
+  end
 
   def spiel_anlegen(start_time)
     Game.create!(game_day: @game_day, home_team: @home, guest_team: @guest,

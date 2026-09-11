@@ -445,6 +445,213 @@ module Admin
       assert_equal Setting::DEFAULT_STREAM_TITLE, Setting.stream_title_template
     end
 
+    # --- Zusage an den Ausrichter ---------------------------------------------
+
+    test 'ohne Zusage wird oeffentlich vorgeschlagen' do
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/streaming/games', params: { from: '2026-09-12', to: '2026-09-14' }
+
+      eintrag = response.parsed_body.first
+      assert_equal 'public', eintrag['privacy_default']
+      assert_not eintrag['game_day']['hosting_club_unlisted']
+    end
+
+    # Die Zusage haengt am AUSRICHTER, nicht an der Heimmannschaft: Gesendet wird
+    # aus der Halle. Ein Ausrichter mit Zusage nimmt deshalb auch die Partien
+    # mit, in denen er nicht Heim ist.
+    test 'mit Zusage des Ausrichters wird nicht gelistet vorgeschlagen' do
+      @club.update!(stream_default_unlisted: true)
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/streaming/games', params: { from: '2026-09-12', to: '2026-09-14' }
+
+      eintrag = response.parsed_body.first
+      assert_equal 'unlisted', eintrag['privacy_default']
+      assert eintrag['game_day']['hosting_club_unlisted']
+      assert_equal @club.id, eintrag['game_day']['hosting_club_id']
+    end
+
+    # Der Kern der Regel, und bisher nur behauptet: In den uebrigen Tests ist der
+    # Zusage-Verein zugleich Ausrichter UND Heim, die Unterscheidung faellt also
+    # nicht auf. Gesendet wird aus der Halle -- ein Ausrichter mit Zusage nimmt
+    # deshalb auch die Partien mit, in denen er nicht Heim ist.
+    test 'die Zusage folgt dem Ausrichter, nicht der Heimmannschaft' do
+      fremder = create(:club, stream_default_unlisted: true)
+      @game_day.update!(club: fremder)
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/streaming/games', params: { from: '2026-09-12', to: '2026-09-14' }
+
+      assert_equal 'unlisted', response.parsed_body.first['privacy_default']
+    end
+
+    test 'GEGENPROBE: die Zusage der Heimmannschaft allein wirkt nicht' do
+      @club.update!(stream_default_unlisted: true)
+      @game_day.update!(club: create(:club))
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/streaming/games', params: { from: '2026-09-12', to: '2026-09-14' }
+
+      assert_equal 'public', response.parsed_body.first['privacy_default'],
+                   'der Ausrichter hat keine Zusage -- gesendet wird aus seiner Halle'
+    end
+
+    # Zwei Mannschaften desselben Vereins in einer Liga machen den Ausrichter
+    # mehrdeutig: `hosting_team` antwortet dann mit nil, es gibt also keinen
+    # Streamschluessel. Die Zusage haengt trotzdem am Verein und gilt weiter --
+    # genau deshalb liest sie `club` und nicht `hosting_team&.club`.
+    test 'die Zusage gilt auch bei mehrdeutigem Ausrichter' do
+      create(:team, league: @league, club: @club, name: 'MFBC Leipzig II')
+      @club.update!(stream_default_unlisted: true)
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/streaming/games', params: { from: '2026-09-12', to: '2026-09-14' }
+
+      eintrag = response.parsed_body.first
+      assert_equal 'unlisted', eintrag['privacy_default']
+      assert_nil eintrag['stream_key'], 'mehrdeutig heisst: kein Schluessel'
+    end
+
+    # Der einzige nicht rueckholbare Fehler, und die Oberflaeche kann ihn nicht
+    # sehen: Sie entscheidet nach der Liste, die sie geladen hat.
+    test 'oeffentlich trotz Zusage wird in der Antwort vermerkt' do
+      @club.update!(stream_default_unlisted: true)
+      login(create(:user, :admin))
+
+      post "/api/v2/admin/streaming/games/#{@game.id}/broadcast",
+           params: { broadcast_id: 'yt-uebergangen', privacy_status: 'public' }
+
+      assert response.parsed_body['zusage_uebergangen']
+    end
+
+    test 'GEGENPROBE: ohne Zusage ist nichts uebergangen' do
+      login(create(:user, :admin))
+
+      post "/api/v2/admin/streaming/games/#{@game.id}/broadcast",
+           params: { broadcast_id: 'yt-normal', privacy_status: 'public' }
+
+      assert_not response.parsed_body['zusage_uebergangen']
+    end
+
+    # Der Waechter kann den Satz zuerst angelegt haben (erste Meldung
+    # gescheitert, Uebertragung schon live). Ein `if new_record?` liesse die
+    # Zusage dann fuer immer auf false stehen.
+    test 'ein vom Waechter angelegter Satz bekommt die Zusage nachtraeglich' do
+      @club.update!(stream_default_unlisted: true)
+      StreamBroadcast.create!(broadcast_id: 'yt-waechter', title: 'vom Waechter')
+      login(create(:user, :admin))
+
+      post "/api/v2/admin/streaming/games/#{@game.id}/broadcast",
+           params: { broadcast_id: 'yt-waechter', privacy_status: 'unlisted' }
+
+      assert StreamBroadcast.find_by(broadcast_id: 'yt-waechter').promote_to_public
+    end
+
+    test 'die Pflegeliste enthaelt die Ausrichter der laufenden Saison' do
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/streaming/hosts'
+
+      assert_response :success
+      assert_includes response.parsed_body.map { |v| v['id'] }, @club.id
+    end
+
+    # Ohne diesen Zusatz liesse sich eine Zusage nicht mehr abwaehlen, sobald der
+    # Verein einmal keinen Spieltag ausrichtet -- sie wirkte weiter, waere aber
+    # unsichtbar.
+    test 'die Pflegeliste enthaelt auch einen Verein mit Zusage ohne Spieltag' do
+      fremder = create(:club, stream_default_unlisted: true)
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/streaming/hosts'
+
+      assert_includes response.parsed_body.map { |v| v['id'] }, fremder.id
+    end
+
+    test 'die Zusage laesst sich setzen und wieder abwaehlen' do
+      login(create(:user, :admin))
+
+      put "/api/v2/admin/streaming/hosts/#{@club.id}", params: { stream_default_unlisted: true }
+
+      assert_response :success
+      assert @club.reload.stream_default_unlisted
+
+      put "/api/v2/admin/streaming/hosts/#{@club.id}", params: { stream_default_unlisted: false }
+
+      assert_response :success
+      assert_not @club.reload.stream_default_unlisted
+    end
+
+    # Ein halbfertiger Aufruf naehme einem Verein sonst still seine Zusage.
+    test 'GEGENPROBE: ohne Angabe bleibt die Zusage unveraendert' do
+      @club.update!(stream_default_unlisted: true)
+      login(create(:user, :admin))
+
+      put "/api/v2/admin/streaming/hosts/#{@club.id}"
+
+      assert_response :bad_request
+      assert @club.reload.stream_default_unlisted
+    end
+
+    test 'GEGENPROBE: regionale SBK darf die Zusagen weder sehen noch setzen' do
+      login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+      get '/api/v2/admin/streaming/hosts'
+      assert_response :forbidden
+
+      put "/api/v2/admin/streaming/hosts/#{@club.id}", params: { stream_default_unlisted: true }
+      assert_response :forbidden
+      assert_not @club.reload.stream_default_unlisted
+    end
+
+    # --- Auftrag zur spaeteren Veroeffentlichung ------------------------------
+
+    test 'eine nicht gelistete Uebertragung eines Zusage-Ausrichters wird spaeter veroeffentlicht' do
+      @club.update!(stream_default_unlisted: true)
+      login(create(:user, :admin))
+
+      post "/api/v2/admin/streaming/games/#{@game.id}/broadcast",
+           params: { broadcast_id: 'yt-zusage', privacy_status: 'unlisted' }
+
+      assert_response :created
+      assert StreamBroadcast.find_by(broadcast_id: 'yt-zusage').promote_to_public
+    end
+
+    test 'GEGENPROBE: nicht gelistet ohne Zusage bleibt es' do
+      login(create(:user, :admin))
+
+      post "/api/v2/admin/streaming/games/#{@game.id}/broadcast",
+           params: { broadcast_id: 'yt-probe', privacy_status: 'unlisted' }
+
+      assert_not StreamBroadcast.find_by(broadcast_id: 'yt-probe').promote_to_public
+    end
+
+    test 'GEGENPROBE: oeffentlich angelegt braucht keine Veroeffentlichung' do
+      @club.update!(stream_default_unlisted: true)
+      login(create(:user, :admin))
+
+      post "/api/v2/admin/streaming/games/#{@game.id}/broadcast",
+           params: { broadcast_id: 'yt-offen', privacy_status: 'public' }
+
+      assert_not StreamBroadcast.find_by(broadcast_id: 'yt-offen').promote_to_public
+    end
+
+    # Der zweite Aufruf kommt nach dem Binden. Wird die Zusage in der Zwischenzeit
+    # abgewaehlt, darf das die laufende Uebertragung nicht umdeuten.
+    test 'eine abgewaehlte Zusage aendert den Auftrag der laufenden Uebertragung nicht' do
+      @club.update!(stream_default_unlisted: true)
+      login(create(:user, :admin))
+
+      post "/api/v2/admin/streaming/games/#{@game.id}/broadcast",
+           params: { broadcast_id: 'yt-lauf', privacy_status: 'unlisted' }
+      @club.update!(stream_default_unlisted: false)
+      post "/api/v2/admin/streaming/games/#{@game.id}/broadcast",
+           params: { broadcast_id: 'yt-lauf', privacy_status: 'unlisted', bound: true }
+
+      assert StreamBroadcast.find_by(broadcast_id: 'yt-lauf').promote_to_public
+    end
+
     private
 
     def login(user)

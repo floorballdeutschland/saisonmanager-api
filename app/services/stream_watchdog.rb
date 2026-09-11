@@ -55,6 +55,24 @@ class StreamWatchdog
   # Spielbericht von gestern zugeordnet.
   GAME_LOOKBACK = 8.hours
 
+  # Wie lange eine "nicht gelistete" Uebertragung nach dem Ende so bleibt, bevor
+  # sie oeffentlich wird (siehe #veroeffentliche_faellige).
+  #
+  # Nicht null: Der Ausrichter sendet parallel selbst, und sein Programm endet
+  # nicht mit dem Schlusspfiff -- Interviews, Abmoderation. Waehrend er noch
+  # live ist, darf unsere Aufzeichnung nicht oeffentlich danebenstehen; genau
+  # das ist die Zusage. Drei Stunden sind der Abstand, auf den sich der Verband
+  # festgelegt hat: am Spieltagabend oeffentlich, aber nicht neben dem laufenden
+  # Stream.
+  PROMOTE_DELAY = 3.hours
+
+  # Ab wann eine offene Zusage gemeldet wird, und ab wann sie nicht mehr
+  # versucht wird. Siehe #melde_offene_zusagen: Eine Zusage, die nie faellig
+  # wird, faellt sonst lautlos aus dem System -- niemand wartet auf ein Video,
+  # das er nicht sieht.
+  PROMOTE_OVERDUE = 24.hours
+  PROMOTE_MAX_AGE = 7.days
+
   attr_reader :notes, :probleme
 
   def initialize(api: nil, dry_run: false, now: Time.current)
@@ -70,10 +88,19 @@ class StreamWatchdog
 
   # Liefert eine Zusammenfassung für die Ausgabe des Rake-Tasks.
   def run
+    # GANZ VORN, vor dem ersten API-Aufruf: Faellig wird die Veroeffentlichung
+    # Stunden nach dem Ende, also typischerweise in einem Lauf, in dem nichts
+    # mehr sendet -- hinter dem `return` unten liefe sie an einem ruhigen Abend
+    # nie. Und vor `active_broadcasts`, weil der Aufruf selbst scheitern kann:
+    # Ein erschoepftes Kontingent setzte sonst die Zusage fuer den Rest des Tages
+    # aus, ohne dass jemand den Zusammenhang saehe.
+    veroeffentlicht = veroeffentliche_faellige
+    melde_offene_zusagen
+
     aktive = @api.active_broadcasts
     verschwunden = schliesse_verschwundene(aktive.map { |b| b[:id] })
 
-    return zusammenfassung(0, [], verschwunden) if aktive.empty?
+    return zusammenfassung(0, [], verschwunden, veroeffentlicht) if aktive.empty?
 
     zustaende, ohne_antwort = @api.streams_mit_luecken(aktive.filter_map { |b| b[:stream_id] })
     melde_luecken(aktive, ohne_antwort)
@@ -89,7 +116,7 @@ class StreamWatchdog
       break
     end
 
-    zusammenfassung(aktive.size, beendet, verschwunden)
+    zusammenfassung(aktive.size, beendet, verschwunden, veroeffentlicht)
   end
 
   private
@@ -423,6 +450,125 @@ class StreamWatchdog
   # ("auf YouTube nicht mehr aktiv") dürfen dagegen zurückkommen.
   BOOKKEEPING_REASON = 'auf YouTube nicht mehr aktiv'
 
+  # Nicht gelistete Uebertragungen, deren Zusage-Frist abgelaufen ist, auf
+  # oeffentlich stellen.
+  #
+  # Der Ausloeser ist `ended_at` und nicht die Anwurfzeit: Was zaehlt, ist das
+  # Ende der SENDUNG. Eine Verlaengerung, ein spaeter Anwurf oder ein
+  # Tagesstream verschieben es, und die Zusage haengt am parallelen Senden, nicht
+  # am Spielplan.
+  #
+  # `promote_to_public` ist der Riegel: Veroeffentlicht wird nur, was wegen einer
+  # Zusage nicht gelistet ist. Eine Aufzeichnung, die jemand aus einem anderen
+  # Grund nicht gelistet hat -- Probelauf, interne Aufnahme -- bleibt, wie sie
+  # ist. Heuristisch "alles Nichtgelistete nach drei Stunden oeffentlich" waere
+  # ein oeffentlich gestelltes Video, das nie oeffentlich werden sollte, und das
+  # ist nicht zurueckzunehmen.
+  def veroeffentliche_faellige
+    faellig = StreamBroadcast.where(promote_to_public: true, promoted_at: nil)
+                             # `last_active_at` ist der Beleg, dass wirklich
+                             # gesendet wurde -- und ohne ihn ist `ended_at`
+                             # KEINER: Die Buchhaltung (#schliesse_verschwundene)
+                             # stempelt es auch fuer eine Uebertragung, die bei
+                             # YouTube erst `ready` ist und deshalb nicht unter
+                             # den aktiven auftaucht. Eingerichtet wird ein
+                             # Wochenende aber Tage vorher. Ohne diese Zeile
+                             # stuende die Aufzeichnung des Zusage-Vereins
+                             # sechs Stunden nach dem Anlegen oeffentlich auf
+                             # dem Kanal -- Tage VOR seinem Spiel, und genau
+                             # neben der Uebertragung, die er selbst faehrt.
+                             .where.not(last_active_at: nil)
+                             .where(ended_at: (@now - PROMOTE_MAX_AGE)..(@now - PROMOTE_DELAY))
+
+    ergebnisse = []
+    faellig.find_each do |satz|
+      ergebnis = veroeffentliche(satz)
+      ergebnisse << ergebnis if ergebnis
+    rescue YoutubeLiveApi::QuotaExceeded => e
+      # Wie in der Schleife ueber die laufenden Uebertragungen: Jeder weitere
+      # Versuch kostet 51 Einheiten und scheitert genauso.
+      problem("Kontingent erschoepft, Veroeffentlichungen abgebrochen: #{e.message}")
+      break
+    end
+    ergebnisse
+  end
+
+  # Eine Zusage, die nie faellig wird, faellt sonst lautlos aus dem System: Die
+  # Abfrage oben verlangt ein Sendeende, und es gibt Wege, auf denen keines
+  # entsteht -- eine halb durchgelaufene Beendigung, eine Uebertragung, die der
+  # Browser nie melden konnte, ein nicht eingetragener Cronjob. Niemand wartet
+  # auf ein Video, das er nicht sieht; ohne diese Meldung merkt es erst der
+  # Verein, dem etwas zugesagt wurde.
+  def melde_offene_zusagen
+    offen = StreamBroadcast.where(promote_to_public: true, promoted_at: nil)
+                           .where(created_at: ..(@now - PROMOTE_OVERDUE))
+                           .where('ended_at IS NULL OR ended_at < ?', @now - PROMOTE_MAX_AGE)
+
+    offen.find_each do |satz|
+      problem("Zusage seit ueber #{(PROMOTE_OVERDUE / 1.hour).to_i} h offen und nicht eingeloest: " \
+              "#{satz.broadcast_id} (#{satz.title})")
+    end
+  end
+
+  def veroeffentliche(satz)
+    if @dry_run
+      notiz("[Probelauf] wuerde veroeffentlichen: #{satz.broadcast_id}")
+      return { broadcast_id: satz.broadcast_id, result: 'dry_run' }
+    end
+
+    ergebnis = @api.publish!(satz.broadcast_id)
+    # VERLINKEN VOR DEM STEMPEL: Scheitert das Schreiben ins Spiel, soll der
+    # naechste Lauf es nachholen -- mit gesetztem `promoted_at` faellt der Satz
+    # aus der Abfrage, das Video waere oeffentlich und im Spielplan stuende nie
+    # etwas. Ein zweiter Durchgang ist harmlos, `publish!` meldet dann
+    # `:schon_oeffentlich`.
+    verlinkt = verlinke_aufzeichnung(satz) if %i[veroeffentlicht schon_oeffentlich].include?(ergebnis)
+    # Auch `:verschwunden` und `:zurueckgezogen` werden abgehakt: Im einen Fall
+    # gibt es die Uebertragung nicht mehr, im anderen hat jemand sie bewusst
+    # zurueckgezogen. Ein zweiter Versuch aendert an beidem nichts, und ohne den
+    # Stempel liefe der Cronjob alle fuenf Minuten in dieselbe Antwort.
+    satz.update!(promoted_at: @now)
+    notiz("veroeffentlicht (#{ergebnis}#{verlinkt ? ', im Spielplan verlinkt' : ''}): #{satz.broadcast_id}")
+    { broadcast_id: satz.broadcast_id, result: ergebnis.to_s, linked: verlinkt || false }
+  rescue YoutubeLiveApi::QuotaExceeded
+    # Nicht hier behandeln: Der Aufrufer bricht die Schleife ab, statt das
+    # Kontingent Satz fuer Satz weiter zu verbrennen.
+    raise
+  rescue YoutubeLiveApi::Error, ActiveRecord::ActiveRecordError => e
+    # Kein Stempel: Ein Netzfehler ist voruebergehend, und die Veroeffentlichung
+    # soll im naechsten Lauf erneut versucht werden. Gemeldet wird sie trotzdem
+    # -- eine Zusage, die still nicht eingeloest wird, faellt sonst niemandem
+    # auf. `ActiveRecordError` mit dabei wie in #beende: Ein Altdatensatz, an
+    # dem `Game#update!` eine Validierung reisst, riss sonst den ganzen Lauf mit
+    # und damit auch die Abschaltung haengender Uebertragungen.
+    problem("Veroeffentlichung fehlgeschlagen (#{satz.broadcast_id}): #{e.class} #{e.message}")
+    nil
+  end
+
+  # Den Link der jetzt oeffentlichen Aufzeichnung in den Spielplan schreiben.
+  #
+  # HIER UND NICHT NUR BEIM ANLEGEN: `Admin::StreamingController#link_setzen`
+  # schreibt den Link ausdruecklich NUR fuer oeffentliche Uebertragungen -- ein
+  # nicht gelisteter Link waere fuer Zuschauer tot. Bei einer Zusage ist die
+  # Uebertragung aber genau deshalb nicht gelistet, der Link bliebe also fuer
+  # immer aus, und die Aufzeichnung waere zwar oeffentlich, aber ueber den
+  # Spielplan nicht zu finden. Das ist die zweite Haelfte der Zusage: live nicht
+  # parallel, danach bei uns auffindbar.
+  #
+  # Nur auf ein leeres Feld: Steht dort schon etwas, hat es jemand von Hand
+  # gesetzt oder ein zweiter Lauf war schneller. Ein Ueberschreiben nimmt dem
+  # Spielplan einen Link, den jemand bewusst dorthin gestellt hat.
+  def verlinke_aufzeichnung(satz)
+    spiel = satz.game
+    return false if spiel.nil? || spiel.live_stream_link.present?
+
+    # `update!` wie im Controller, damit `flush_league_caches` laeuft -- sonst
+    # steht der Link in der Datenbank, im oeffentlichen Spielplan aber erst nach
+    # Ablauf des Zwischenspeichers.
+    spiel.update!(live_stream_link: "https://www.youtube.com/watch?v=#{satz.broadcast_id}")
+    true
+  end
+
   def satz_fuer(broadcast)
     satz = StreamBroadcast.find_or_initialize_by(broadcast_id: broadcast[:id])
     satz.assign_attributes(title: broadcast[:title], stream_id: broadcast[:stream_id])
@@ -480,8 +626,9 @@ class StreamWatchdog
     @probleme << text unless @dry_run
   end
 
-  def zusammenfassung(aktiv, beendet, verschwunden)
+  def zusammenfassung(aktiv, beendet, verschwunden, veroeffentlicht = [])
     { active: aktiv, ended: beendet, closed_stale: verschwunden,
+      published: veroeffentlicht,
       notes: @notes, problems: @probleme, dry_run: @dry_run }
   end
 end

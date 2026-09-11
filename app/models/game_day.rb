@@ -108,6 +108,21 @@ class GameDay < ApplicationRecord
     hosting_team&.stream_key
   end
 
+  # Die Sichtbarkeit, mit der eine Übertragung dieses Spieltags angelegt wird.
+  #
+  # Am AUSRICHTER und nicht an der Heimmannschaft, aus demselben Grund wie der
+  # Streamschlüssel: Gesendet wird aus der Halle, und die Zusage gilt dem Verein,
+  # der sie stellt. Ein Ausrichter mit Zusage nimmt damit auch die Partien mit,
+  # in denen er nicht Heim ist -- und das ist beabsichtigt, denn parallel sendet
+  # er sie alle.
+  #
+  # Über `club` und nicht über `hosting_team&.club`: Ausrichter ist der Verein in
+  # `club_id`, und der steht auch dann fest, wenn die Mannschaft mehrdeutig ist
+  # (dann gibt es keinen Schlüssel, aber die Zusage gilt trotzdem).
+  def stream_privacy_default
+    club&.stream_default_unlisted ? 'unlisted' : 'public'
+  end
+
   def deletable?
     !games.present? # TODO: current_season?!
   end

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_09_10_130000) do
+ActiveRecord::Schema[7.2].define(version: 2026_09_11_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -136,6 +136,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_10_130000) do
     t.boolean "team_managers_manage_players", default: false, null: false, comment: "Wenn true: Teammanager dieses Vereins duerfen Spieler anlegen, deaktivieren und reaktivieren"
     t.string "street"
     t.string "house_number"
+    t.boolean "stream_default_unlisted", default: false, null: false
   end
 
   create_table "daily_metrics", force: :cascade do |t|
@@ -995,9 +996,12 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_10_130000) do
     t.string "ended_reason"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "promote_to_public", default: false, null: false
+    t.datetime "promoted_at"
     t.index ["broadcast_id"], name: "index_stream_broadcasts_on_broadcast_id", unique: true
     t.index ["ended_at"], name: "index_stream_broadcasts_on_ended_at"
     t.index ["game_id"], name: "index_stream_broadcasts_on_game_id"
+    t.index ["promote_to_public", "promoted_at"], name: "index_stream_broadcasts_auf_faellige_veroeffentlichung", where: "(promote_to_public AND (promoted_at IS NULL))"
   end
 
   create_table "teams", force: :cascade do |t|
@@ -1053,9 +1057,9 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_10_130000) do
     t.datetime "withdrawn_at"
     t.index ["former_club_id"], name: "index_transfer_requests_on_former_club_id"
     t.index ["player_confirmation_token"], name: "index_transfer_requests_on_player_confirmation_token", unique: true
-    t.index ["player_id", "requesting_club_id"], name: "index_transfer_requests_on_player_id_active_release", unique: true, where: "(((status)::text = ANY (ARRAY[('pending_club'::character varying)::text, ('pending_player'::character varying)::text, ('pending_lv'::character varying)::text, ('scheduled'::character varying)::text])) AND ((request_type)::text = 'release'::text))"
+    t.index ["player_id", "requesting_club_id"], name: "index_transfer_requests_on_player_id_active_release", unique: true, where: "(((status)::text = ANY ((ARRAY['pending_club'::character varying, 'pending_player'::character varying, 'pending_lv'::character varying, 'scheduled'::character varying])::text[])) AND ((request_type)::text = 'release'::text))"
     t.index ["player_id"], name: "index_transfer_requests_on_player_id"
-    t.index ["player_id"], name: "index_transfer_requests_on_player_id_active_transfer", unique: true, where: "(((status)::text = ANY (ARRAY[('pending_club'::character varying)::text, ('pending_player'::character varying)::text, ('pending_lv'::character varying)::text, ('scheduled'::character varying)::text])) AND ((request_type)::text = 'transfer'::text))"
+    t.index ["player_id"], name: "index_transfer_requests_on_player_id_active_transfer", unique: true, where: "(((status)::text = ANY ((ARRAY['pending_club'::character varying, 'pending_player'::character varying, 'pending_lv'::character varying, 'scheduled'::character varying])::text[])) AND ((request_type)::text = 'transfer'::text))"
     t.index ["request_type"], name: "index_transfer_requests_on_request_type"
     t.index ["requesting_club_id"], name: "index_transfer_requests_on_requesting_club_id"
     t.index ["status"], name: "index_transfer_requests_on_status"

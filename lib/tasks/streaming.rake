@@ -89,6 +89,15 @@ namespace :streaming do
       puts "  BEENDET: #{beendet[:title]} -- #{beendet[:reason]}"
     end
 
+    # Die eingeloesten Zusagen. Ohne diese Zeilen waere die einzige Spur der
+    # Freischaltung eine Notiz zwischen dreihundert anderen -- und die Frage
+    # "ist das Video des Vereins inzwischen oeffentlich" liesse sich aus dem Log
+    # nicht beantworten.
+    ergebnis[:published].to_a.each do |veroeffentlicht|
+      puts "  VEROEFFENTLICHT: #{veroeffentlicht[:broadcast_id]} (#{veroeffentlicht[:result]})" \
+           "#{veroeffentlicht[:linked] ? ' -- im Spielplan verlinkt' : ''}"
+    end
+
     # Probleme erreichen einen Menschen, statt in einer Logdatei zu versinken,
     # die alle fünf Minuten um mehrere Zeilen wächst. Der Cronjob meldet damit
     # einen Fehlercode, und Sentry bekommt eine Meldung -- ein hängengebliebener
