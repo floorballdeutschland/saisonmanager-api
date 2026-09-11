@@ -119,6 +119,40 @@ class YoutubeLiveApi
     post('liveBroadcasts/transition', id: broadcast_id, broadcastStatus: 'complete', part: 'id,status')
   end
 
+  # Schaltet eine Uebertragung auf oeffentlich. Antwortet mit :veroeffentlicht,
+  # :schon_oeffentlich oder :verschwunden.
+  #
+  # ZWEI AUFRUFE UND NICHT EINER, und das ist keine Bequemlichkeit: Ein `update`
+  # ERSETZT den angegebenen Teil der Ressource. Was im Koerper fehlt, wird
+  # geloescht -- schickte man nur `privacyStatus`, verloere die Uebertragung
+  # unter anderem `selfDeclaredMadeForKids`, eine Pflichtangabe des Kanals.
+  # Deshalb wird der vorhandene Status erst gelesen und unveraendert
+  # zurueckgeschickt, mit genau einem geaenderten Feld.
+  #
+  # `liveBroadcasts` und nicht `videos`: Solange die Aufzeichnung als Uebertragung
+  # gefuehrt wird, ist das die Ressource, die der Kanal kennt -- und es ist
+  # dieselbe, die #complete! beendet hat.
+  def publish!(broadcast_id)
+    antwort = get('liveBroadcasts', part: 'id,status', id: broadcast_id, maxResults: 1)
+    eintrag = antwort.fetch('items', []).first
+
+    # Kein Eintrag heisst: geloescht oder einem anderen Kanal zugeordnet. Das ist
+    # kein Fehler, ueber den ein Cronjob stolpern soll -- es gibt nur nichts mehr
+    # zu veroeffentlichen. Der Aufrufer haelt das fest, damit er es nicht alle
+    # fuenf Minuten erneut versucht.
+    return :verschwunden if eintrag.nil?
+
+    status = eintrag.fetch('status', {})
+    return :schon_oeffentlich if status['privacyStatus'] == 'public'
+
+    put_json(
+      'liveBroadcasts',
+      { id: broadcast_id, status: status.merge('privacyStatus' => 'public') },
+      part: 'id,status'
+    )
+    :veroeffentlicht
+  end
+
   private
 
   def broadcasts(status)
@@ -178,6 +212,16 @@ class YoutubeLiveApi
     request = Net::HTTP::Post.new(uri)
     request['Authorization'] = "Bearer #{access_token}"
     request['Content-Length'] = '0'
+    ausfuehren(uri, request)
+  end
+
+  def put_json(pfad, koerper, **params)
+    uri = URI("#{API_ROOT}/#{pfad}")
+    uri.query = URI.encode_www_form(params)
+    request = Net::HTTP::Put.new(uri)
+    request['Authorization'] = "Bearer #{access_token}"
+    request['Content-Type'] = 'application/json'
+    request.body = koerper.to_json
     ausfuehren(uri, request)
   end
 

@@ -55,6 +55,17 @@ class StreamWatchdog
   # Spielbericht von gestern zugeordnet.
   GAME_LOOKBACK = 8.hours
 
+  # Wie lange eine "nicht gelistete" Uebertragung nach dem Ende so bleibt, bevor
+  # sie oeffentlich wird (siehe #veroeffentliche_faellige).
+  #
+  # Nicht null: Der Ausrichter sendet parallel selbst, und sein Programm endet
+  # nicht mit dem Schlusspfiff -- Interviews, Abmoderation. Waehrend er noch
+  # live ist, darf unsere Aufzeichnung nicht oeffentlich danebenstehen; genau
+  # das ist die Zusage. Drei Stunden sind der Abstand, auf den sich der Verband
+  # festgelegt hat: am Spieltagabend oeffentlich, aber nicht neben dem laufenden
+  # Stream.
+  PROMOTE_DELAY = 3.hours
+
   attr_reader :notes, :probleme
 
   def initialize(api: nil, dry_run: false, now: Time.current)
@@ -72,8 +83,13 @@ class StreamWatchdog
   def run
     aktive = @api.active_broadcasts
     verschwunden = schliesse_verschwundene(aktive.map { |b| b[:id] })
+    # Vor der Pruefung der laufenden Uebertragungen, und unabhaengig davon, ob
+    # ueberhaupt eine laeuft: Faellig wird die Veroeffentlichung Stunden nach dem
+    # Ende, also typischerweise in einem Lauf, in dem nichts mehr sendet. Stuende
+    # sie hinter dem `return` unten, liefe sie an einem ruhigen Abend nie.
+    veroeffentlicht = veroeffentliche_faellige
 
-    return zusammenfassung(0, [], verschwunden) if aktive.empty?
+    return zusammenfassung(0, [], verschwunden, veroeffentlicht) if aktive.empty?
 
     zustaende, ohne_antwort = @api.streams_mit_luecken(aktive.filter_map { |b| b[:stream_id] })
     melde_luecken(aktive, ohne_antwort)
@@ -89,7 +105,7 @@ class StreamWatchdog
       break
     end
 
-    zusammenfassung(aktive.size, beendet, verschwunden)
+    zusammenfassung(aktive.size, beendet, verschwunden, veroeffentlicht)
   end
 
   private
@@ -423,6 +439,75 @@ class StreamWatchdog
   # ("auf YouTube nicht mehr aktiv") dürfen dagegen zurückkommen.
   BOOKKEEPING_REASON = 'auf YouTube nicht mehr aktiv'
 
+  # Nicht gelistete Uebertragungen, deren Zusage-Frist abgelaufen ist, auf
+  # oeffentlich stellen.
+  #
+  # Der Ausloeser ist `ended_at` und nicht die Anwurfzeit: Was zaehlt, ist das
+  # Ende der SENDUNG. Eine Verlaengerung, ein spaeter Anwurf oder ein
+  # Tagesstream verschieben es, und die Zusage haengt am parallelen Senden, nicht
+  # am Spielplan.
+  #
+  # `promote_to_public` ist der Riegel: Veroeffentlicht wird nur, was wegen einer
+  # Zusage nicht gelistet ist. Eine Aufzeichnung, die jemand aus einem anderen
+  # Grund nicht gelistet hat -- Probelauf, interne Aufnahme -- bleibt, wie sie
+  # ist. Heuristisch "alles Nichtgelistete nach drei Stunden oeffentlich" waere
+  # ein oeffentlich gestelltes Video, das nie oeffentlich werden sollte, und das
+  # ist nicht zurueckzunehmen.
+  def veroeffentliche_faellige
+    faellig = StreamBroadcast.where(promote_to_public: true, promoted_at: nil)
+                             .where.not(ended_at: nil)
+                             .where(ended_at: ..(@now - PROMOTE_DELAY))
+
+    faellig.find_each.filter_map { |satz| veroeffentliche(satz) }
+  end
+
+  def veroeffentliche(satz)
+    if @dry_run
+      notiz("[Probelauf] wuerde veroeffentlichen: #{satz.broadcast_id}")
+      return { broadcast_id: satz.broadcast_id, result: 'dry_run' }
+    end
+
+    ergebnis = @api.publish!(satz.broadcast_id)
+    # Auch `:verschwunden` wird abgehakt: Die Uebertragung gibt es nicht mehr,
+    # ein zweiter Versuch aendert daran nichts. Ohne den Stempel liefe der
+    # Cronjob alle fuenf Minuten in dieselbe leere Antwort.
+    satz.update!(promoted_at: @now)
+    verlinkt = verlinke_aufzeichnung(satz) unless ergebnis == :verschwunden
+    notiz("veroeffentlicht (#{ergebnis}#{verlinkt ? ', im Spielplan verlinkt' : ''}): #{satz.broadcast_id}")
+    { broadcast_id: satz.broadcast_id, result: ergebnis.to_s, linked: verlinkt || false }
+  rescue YoutubeLiveApi::Error => e
+    # Kein Stempel: Ein Netzfehler oder ein erschoepftes Kontingent ist
+    # voruebergehend, und die Veroeffentlichung soll im naechsten Lauf erneut
+    # versucht werden. Gemeldet wird sie trotzdem -- eine Zusage, die still
+    # nicht eingeloest wird, faellt sonst niemandem auf.
+    problem("Veroeffentlichung fehlgeschlagen (#{satz.broadcast_id}): #{e.class} #{e.message}")
+    nil
+  end
+
+  # Den Link der jetzt oeffentlichen Aufzeichnung in den Spielplan schreiben.
+  #
+  # HIER UND NICHT NUR BEIM ANLEGEN: `Admin::StreamingController#link_setzen`
+  # schreibt den Link ausdruecklich NUR fuer oeffentliche Uebertragungen -- ein
+  # nicht gelisteter Link waere fuer Zuschauer tot. Bei einer Zusage ist die
+  # Uebertragung aber genau deshalb nicht gelistet, der Link bliebe also fuer
+  # immer aus, und die Aufzeichnung waere zwar oeffentlich, aber ueber den
+  # Spielplan nicht zu finden. Das ist die zweite Haelfte der Zusage: live nicht
+  # parallel, danach bei uns auffindbar.
+  #
+  # Nur auf ein leeres Feld: Steht dort schon etwas, hat es jemand von Hand
+  # gesetzt oder ein zweiter Lauf war schneller. Ein Ueberschreiben nimmt dem
+  # Spielplan einen Link, den jemand bewusst dorthin gestellt hat.
+  def verlinke_aufzeichnung(satz)
+    spiel = satz.game
+    return false if spiel.nil? || spiel.live_stream_link.present?
+
+    # `update!` wie im Controller, damit `flush_league_caches` laeuft -- sonst
+    # steht der Link in der Datenbank, im oeffentlichen Spielplan aber erst nach
+    # Ablauf des Zwischenspeichers.
+    spiel.update!(live_stream_link: "https://www.youtube.com/watch?v=#{satz.broadcast_id}")
+    true
+  end
+
   def satz_fuer(broadcast)
     satz = StreamBroadcast.find_or_initialize_by(broadcast_id: broadcast[:id])
     satz.assign_attributes(title: broadcast[:title], stream_id: broadcast[:stream_id])
@@ -480,8 +565,9 @@ class StreamWatchdog
     @probleme << text unless @dry_run
   end
 
-  def zusammenfassung(aktiv, beendet, verschwunden)
+  def zusammenfassung(aktiv, beendet, verschwunden, veroeffentlicht = [])
     { active: aktiv, ended: beendet, closed_stale: verschwunden,
+      published: veroeffentlicht,
       notes: @notes, problems: @probleme, dry_run: @dry_run }
   end
 end

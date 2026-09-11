@@ -95,6 +95,17 @@ module Admin
       satz.game_id = spiel.id
       satz.title = params[:title] if params[:title].present?
       satz.stream_id = params[:stream_id] if params[:stream_id].present?
+      # Ob nach dem Spiel veroeffentlicht wird, entscheidet der SERVER und nicht
+      # der Browser: Der Browser meldet nur, womit er angelegt hat. Die Zusage
+      # steht am Ausrichter, und nur beides zusammen ergibt den Auftrag -- wer
+      # aus einem anderen Grund nicht gelistet anlegt (Probelauf), bekommt keine
+      # automatische Veroeffentlichung, und wer bei einem Zusage-Ausrichter
+      # bewusst oeffentlich anlegt, braucht keine.
+      #
+      # Nur beim ERSTEN Melden: Der zweite Aufruf (nach dem Binden) darf einen
+      # inzwischen abgewaehlten Haken nicht nachtraeglich gegen die Uebertragung
+      # wenden, die bereits laeuft.
+      satz.promote_to_public = zusage_greift?(spiel, params[:privacy_status]) if satz.new_record?
       satz.save!
 
       link_hinweis = link_setzen(spiel, broadcast_id)
@@ -137,7 +148,59 @@ module Admin
       render json: templates_hash
     end
 
+    # GET admin/streaming/hosts
+    #
+    # Die Pflegeliste der Zusagen. Enthalten sind die Vereine, die in der
+    # laufenden Saison ueberhaupt ausrichten, plus jeder Verein mit gesetzter
+    # Zusage -- sonst liesse sich eine Zusage nicht mehr abwaehlen, sobald der
+    # Verein einmal keinen Spieltag ausrichtet.
+    def hosts
+      ausrichter_ids = GameDay.joins(:league)
+                              .where(leagues: { season_id: Setting.current_season_id.to_s })
+                              .where.not(club_id: nil)
+                              .distinct
+                              .pluck(:club_id)
+
+      vereine = Club.where(id: ausrichter_ids)
+                    .or(Club.where(stream_default_unlisted: true))
+                    .order(:name)
+
+      render json: vereine.map { |verein| host_hash(verein) }
+    end
+
+    # PUT admin/streaming/hosts/:id
+    def update_host
+      verein = Club.find_by(id: params[:id])
+      return render json: { error: 'Verein nicht gefunden' }, status: :not_found unless verein
+
+      # Ohne den Riegel setzt ein fehlender Parameter die Zusage still auf false
+      # -- ein halbfertiger Aufruf naehme einem Verein seine Zusage, ohne dass es
+      # jemand sieht.
+      wert = params[:stream_default_unlisted]
+      return render json: { error: 'stream_default_unlisted fehlt' }, status: :bad_request if wert.nil?
+
+      verein.update!(stream_default_unlisted: ActiveModel::Type::Boolean.new.cast(wert) || false)
+      render json: host_hash(verein)
+    end
+
     private
+
+    def host_hash(verein)
+      {
+        id: verein.id,
+        name: verein.name,
+        short_name: verein.short_name,
+        stream_default_unlisted: verein.stream_default_unlisted
+      }
+    end
+
+    # Die Zusage greift nur, wenn BEIDES zutrifft: Der Ausrichter hat sie, und
+    # die Uebertragung wurde tatsaechlich nicht gelistet angelegt.
+    def zusage_greift?(spiel, gemeldete_sichtbarkeit)
+      return false unless gemeldete_sichtbarkeit.to_s == 'unlisted'
+
+      spiel.game_day&.stream_privacy_default == 'unlisted'
+    end
 
     def templates_hash
       {
@@ -258,6 +321,12 @@ module Admin
         public_url: spiel.url,
         stream_key: schluessel,
         streamable: schluessel.present?,
+        # Was dieses Spiel bekommt, wenn niemand etwas anderes einstellt. Je
+        # Spiel und nicht einmal je Lauf: Die Zusage haengt am Ausrichter, und
+        # ein Wochenende enthaelt beides. Die Oberflaeche zeigt es an der Zeile
+        # an -- eine stille Abweichung von dem, was oben eingestellt ist, liest
+        # sich wie ein Fehler.
+        privacy_default: spieltag&.stream_privacy_default || 'public',
         game_day: game_day_hash(spieltag),
         league: league_hash(spieltag&.league),
         broadcast: broadcast_hash(satz)
@@ -273,6 +342,8 @@ module Admin
         date: spieltag.date,
         league_id: spieltag.league_id,
         hosting_club: spieltag.hosting_club,
+        hosting_club_id: spieltag.club_id,
+        hosting_club_unlisted: spieltag.club&.stream_default_unlisted || false,
         arena: { name: spieltag.arena&.name, city: spieltag.arena&.city }
       }
     end
@@ -291,7 +362,9 @@ module Admin
         watch_url: "https://www.youtube.com/watch?v=#{satz.broadcast_id}",
         created_at: satz.created_at,
         ended_at: satz.ended_at,
-        ended_reason: satz.ended_reason
+        ended_reason: satz.ended_reason,
+        promote_to_public: satz.promote_to_public,
+        promoted_at: satz.promoted_at
       }
     end
   end
