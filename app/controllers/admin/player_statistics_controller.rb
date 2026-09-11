@@ -101,7 +101,7 @@ module Admin
         as_of: rows.filter_map { |r| r['computed_at'] }.max,
         total: rows.size,
         truncated: rows.size >= MAX_EXPORT_ROWS,
-        players: players_payload(rows)
+        players: players_payload(rows, with_birthdate: true)
       }
     rescue ActiveRecord::StatementInvalid, ActiveRecord::ConnectionNotEstablished => e
       aggregate_unavailable(e, 'export')
@@ -264,6 +264,12 @@ module Admin
           'players.first_name AS first_name',
           'players.last_name AS last_name',
           'players.deactivated_at AS deactivated_at',
+          # Nur der Export gibt das Geburtsdatum aus (siehe #players_payload). Gelesen
+          # wird es trotzdem in beiden Wegen: Die Spalte kostet in der Aggregatabfrage
+          # nichts, und eine zweite, fast gleiche Abfrage nur fuer sie waere teurer als
+          # ein Feld, das #index wegwirft. GROUP BY players.id genuegt dafuer, die
+          # Spalte haengt funktional am Primaerschluessel.
+          'players.birthdate AS birthdate',
           'player_stat_profiles.home_club_id AS home_club_id',
           'SUM(player_game_stats.games) AS games',
           'SUM(player_game_stats.goals) AS goals',
@@ -357,7 +363,13 @@ module Admin
       end
     end
 
-    def players_payload(rows)
+    # `with_birthdate` nur fuer den Export: Die Datei wird weiterverarbeitet
+    # (Abrechnung, Meldung an den Landesverband, Abgleich mit einer eigenen Liste) und
+    # braucht ein Merkmal, das zwei namensgleiche Personen trennt. Die Ansicht selbst
+    # braucht es nicht, und was sie nicht zeigt, soll sie auch nicht ausliefern -- eine
+    # verbandsweite Namensliste ist ohnehin der Grund, warum dieser Endpunkt keinen
+    # Zugang per X-Api-Key hat.
+    def players_payload(rows, with_birthdate: false)
       club_names = club_names_for(rows)
 
       rows.map do |row|
@@ -381,6 +393,7 @@ module Admin
           first_season_id: row['first_season_id']&.to_s,
           last_season_id: row['last_season_id']&.to_s
         }
+        entry[:birthdate] = row['birthdate'] if with_birthdate
         # Der Verein steht nur in der Verbandsansicht; in der Vereinsansicht ist er
         # fuer jede Zeile derselbe.
         entry.merge!(home_club_id:, home_club: club_names[home_club_id]) unless club_id
