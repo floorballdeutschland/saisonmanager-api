@@ -130,6 +130,44 @@ class TransferRequestMailer < ApplicationMailer
     )
   end
 
+  # Der Transfer ist vollstaendig genehmigt, wird aber erst zum Wunschdatum
+  # vollzogen (`approve_lv` mit einem Datum in der Zukunft). Bis hierher war das
+  # der zweite stumme Weg nach „Genehmigt": Der Vorgang stand in der Uebersicht
+  # auf „Transfer geplant", im Detail auf „Genehmigt -- Transfer geplant", und
+  # niemand erfuhr davon. Beide Vereine planen ihre Mannschaften an diesem
+  # Datum, und der abgebende Verein verliert den Spieler zu einem Termin, den
+  # er nicht mitgeteilt bekam.
+  #
+  # Verteiler wie #transfer_completed: Diese Nachricht kuendigt genau die an.
+  # Der Landesverband des abgebenden Vereins ist dabei zugleich der, der gerade
+  # genehmigt hat -- er bleibt trotzdem im Verteiler, denn den Vollzug muss
+  # jemand von Hand ausloesen (siehe unten), und sein Postfach ist der Kanal,
+  # ueber den die Landesverbaende die Vorgaenge nachhalten.
+  #
+  # Die Nachricht behauptet ausdruecklich KEINEN automatischen Vollzug: Es gibt
+  # keinen Job, der `execute_transfer!` zum Wunschdatum ausloest -- aufgerufen
+  # wird es allein aus `approve_lv`, `#execute` und `#direct_assign`. Ein
+  # geplanter Transfer wartet auf den Knopf in der Maske.
+  def transfer_scheduled(transfer_request)
+    @transfer_request = transfer_request
+    former_sa = transfer_request.former_club.state_association
+    recipients = (
+      transfer_request.requesting_club.notification_emails +
+      transfer_request.former_club.notification_emails +
+      [transfer_request.player.email, former_sa&.effective_sbk_email]
+    ).compact.uniq.select(&:present?)
+    return if recipients.empty?
+
+    templated_mail(
+      to: recipients,
+      subject: "Transfer genehmigt, Vollzug am #{effective_date(transfer_request)}: #{player_name(transfer_request)}",
+      placeholders: {
+        player_name: player_name(transfer_request),
+        effective_date: effective_date(transfer_request)
+      }
+    )
+  end
+
   def transfer_completed(transfer_request)
     @transfer_request = transfer_request
     former_sa = transfer_request.former_club.state_association
@@ -271,5 +309,13 @@ class TransferRequestMailer < ApplicationMailer
 
   def request_noun(tr)
     release?(tr) ? 'Spielerfreigabe-Antrag' : 'Transferantrag'
+  end
+
+  # Nur fuer #transfer_scheduled, und dort ist das Datum gesetzt: Ohne Datum in
+  # der Zukunft haette `approve_lv` sofort vollzogen statt zu planen. Der
+  # Rueckfall haelt trotzdem einen Betreff mit „am " ohne Datum von der Leitung
+  # fern, falls die Zeile je aus einem anderen Zustand heraus gerufen wird.
+  def effective_date(tr)
+    tr.effective_date&.strftime('%d.%m.%Y') || 'dem vereinbarten Termin'
   end
 end

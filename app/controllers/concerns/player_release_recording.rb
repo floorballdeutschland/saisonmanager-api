@@ -24,12 +24,34 @@ module PlayerReleaseRecording
   # Vorgangszeilen erzeugen -- derselbe Wettlauf, den der clubs-Hash hier schon
   # immer hatte.
   def save_with_release_record(player, club, former_club_id)
-    ActiveRecord::Base.transaction do
+    vorgang = nil
+
+    erfolg = ActiveRecord::Base.transaction do
       raise ActiveRecord::Rollback unless player.save
 
-      record_direct_release!(player, club, former_club_id)
+      vorgang = record_direct_release!(player, club, former_club_id)
       true
     end
+
+    # Dieselbe Nachricht wie am Antragsweg (`TransferRequest#execute_release!`)
+    # und an dieselben Empfaenger: Fachlich ist beides dieselbe Freigabe, und
+    # wer sie ueber das Profil erteilt bekommt, erfuhr es bisher ueber keinen
+    # Kanal. Der Vorgang stand danach auf `approved` -- in der Uebersicht
+    # „Genehmigt", ohne dass eine Zeile davon rausgegangen waere. Aufgefallen
+    # ist es einem Landesverband, der die Mails auswertet und den stummen
+    # Uebergang fuer einen defekten Ausloeser hielt.
+    #
+    # Erst nach dem Commit, wie in #save_with_release_revocation: Ein Rollback
+    # darf keine Nachricht zu einer Freigabe ausloesen, die es nicht gibt.
+    #
+    # Nur mit Vorgang, und das ist keine Auslassung: Ohne ihn fehlt der
+    # abgebende Verein (siehe #record_direct_release!), und genau den liest
+    # `transfer_completed` fuer Verteiler und Landesverband. Die Freigabe selbst
+    # bleibt in diesem Fall bestehen, sie ist der Zweck; die Nachricht haette
+    # keine Gegenseite zu benennen.
+    TransferRequestMailer.transfer_completed(vorgang).deliver_later if erfolg && vorgang
+
+    erfolg
   end
 
   # Der abgebende Verein ist Pflichtspalte des Vorgangs. Ohne gültige
@@ -66,6 +88,7 @@ module PlayerReleaseRecording
     # gehört zu einem laufenden Antrag; auf jedem anderen Weg nach `approved`
     # wird er beim Abschluss geleert.
     tr.update!(player_confirmation_token: nil)
+    tr
   end
 
   # Gegenstück zu #save_with_release_record: Wird eine Freigabe im Spielerprofil
