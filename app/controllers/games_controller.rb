@@ -972,8 +972,8 @@ class GamesController < ApplicationController
 
           # TMs beider Mannschaften informieren und, falls hinterlegt, den
           # Feedback-Kontakt einladen (idempotent; No-Op ohne
-          # referee_feedback_enabled). Greift hier nur, wenn der Bericht später
-          # als 24 h nach dem Spiel geschlossen wird – im Regelfall ist das
+          # referee_feedback_enabled). Greift hier nur, wenn der Bericht erst
+          # nach Ablauf der Sperrfrist geschlossen wird – im Regelfall ist das
           # Abgabefenster noch zu und der Cron-Lauf von
           # referee_feedback:notify_available verschickt die Mails später.
           #

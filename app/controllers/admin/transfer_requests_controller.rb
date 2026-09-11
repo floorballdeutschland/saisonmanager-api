@@ -390,6 +390,12 @@ module Admin
           approved_by_lv_user_id: current_user.id,
           lv_approved_at: Time.current
         )
+        # Der einzige Genehmigungsweg, der bis hierher stumm blieb: Die beiden
+        # Zweige darueber vollziehen sofort und verschicken dabei
+        # `transfer_completed`, dieser plant nur -- und teilte den Termin
+        # niemandem mit. Beide Vereine planen an diesem Datum ihre
+        # Mannschaften.
+        TransferRequestMailer.transfer_scheduled(tr).deliver_later
       end
 
       render_transfer_request(tr)

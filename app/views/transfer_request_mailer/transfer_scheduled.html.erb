@@ -1,0 +1,31 @@
+<h2>Transfer genehmigt – Vollzug am <%= @transfer_request.effective_date&.strftime('%d.%m.%Y') %></h2>
+
+<p>Hallo,</p>
+
+<p>
+  der folgende Transferantrag wurde vom Landesverband genehmigt. Vollzogen wird er
+  zum vereinbarten Wunschdatum:
+</p>
+
+<p>
+  <strong>Spieler:</strong> <%= @transfer_request.player.first_name %> <%= @transfer_request.player.last_name %><br>
+  <strong>Abgebender Verein:</strong> <%= @transfer_request.former_club.name %><br>
+  <strong>Neuer Verein:</strong> <%= @transfer_request.requesting_club.name %><br>
+  <strong>Wunschdatum:</strong> <%= @transfer_request.effective_date&.strftime('%d.%m.%Y') %>
+</p>
+
+<p>
+  Bis zum Vollzug bleibt der Spieler im abgebenden Verein und behält dessen gültige
+  Lizenzen. Erst mit dem Vollzug werden sie auf „ungültig wg. Transfer" gesetzt, und
+  erst dann kann der neue Verein Lizenzen beantragen.
+</p>
+
+<p>
+  Der Vollzug wird nicht automatisch ausgelöst: Der zuständige Landesverband führt
+  ihn ab dem Wunschdatum in der Transferübersicht durch.
+</p>
+
+<p>
+  Das Saisonmanager-Team<br>
+  <a href="<%= frontend_base_url %>"><%= frontend_host %></a>
+</p>

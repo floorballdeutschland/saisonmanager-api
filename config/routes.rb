@@ -117,6 +117,11 @@ Rails.application.routes.draw do
       get 'admin/leagues/:id/teams', to: 'leagues#admin_league_team_index'
       get 'admin/leagues/:id/game_schedule', to: 'leagues#admin_game_schedule'
       get 'admin/leagues/:id/schedule_import_template', to: 'leagues#admin_schedule_import_template'
+      # defaults: Ohne Endung liefert der Endpunkt die Tabellenkalkulations-Fassung,
+      # wie es die Nachbarroute schedule_import_template seit jeher tut. Ein
+      # unbekanntes Format faengt die Action selbst ab (SCHEDULE_EXPORT_FORMATS).
+      get 'admin/leagues/:id/schedule_export', to: 'leagues#admin_schedule_export',
+                                               defaults: { format: 'xlsx' }
       get 'admin/leagues/:id/additional_references', to: 'leagues#additional_references'
       get 'admin/leagues/:id/licenses', to: 'players#admin_licenses'
       post 'admin/leagues/:id/copy', to: 'leagues#admin_copy'
@@ -145,6 +150,7 @@ Rails.application.routes.draw do
       get 'admin/clubs/role_assignable', to: 'clubs#admin_club_role_assignable'
       get 'admin/clubs', to: 'clubs#admin_club_index'
       get 'admin/clubs/:id/managers', to: 'clubs#admin_club_managers'
+      get 'admin/clubs/:id/teams', to: 'clubs#admin_club_teams'
       get 'admin/clubs/:id', to: 'clubs#admin_club'
       post 'admin/clubs', to: 'clubs#admin_club_update'
       post 'admin/clubs/:id/upload_logo', to: 'clubs#admin_upload_logo'
@@ -152,6 +158,7 @@ Rails.application.routes.draw do
       post 'admin/clubs/:id/reactivate', to: 'clubs#admin_club_reactivate'
 
       post 'admin/teams/:id/upload_logo', to: 'teams#admin_upload_logo'
+      delete 'admin/teams/:id/logo', to: 'teams#admin_delete_logo'
 
       post 'admin/players/:id/transfer', to: 'players#transfer'
       post 'admin/players/:id/add_additional_club', to: 'players#add_additional_club'

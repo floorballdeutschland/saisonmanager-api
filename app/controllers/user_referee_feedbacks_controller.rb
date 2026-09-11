@@ -69,7 +69,7 @@ class UserRefereeFeedbacksController < ApplicationController
   # Spiele mit abgeschlossenem Spielbericht in feedback-pflichtigen Ligen, an
   # denen eine eigene Mannschaft beteiligt ist (Lookback-Fenster). Offene
   # Berichte werden nicht gelistet, weil ohne Abschluss kein Feedback möglich
-  # ist. Spiele, deren 24-Stunden-Frist noch läuft, erscheinen dagegen bereits –
+  # ist. Spiele, deren Sperrfrist noch läuft, erscheinen dagegen bereits –
   # mit fillable_from in der Zukunft, damit die Mannschaft die anstehende
   # Rückmeldung sieht (siehe RefereeFeedbackWindow).
   def eligible_games
@@ -112,8 +112,8 @@ class UserRefereeFeedbacksController < ApplicationController
   end
 
   # Ab wann das Formular ausfüllbar ist (RefereeFeedbackWindow): Bericht
-  # abgeschlossen UND mindestens 24 h nach Anpfiff. Liegt der Zeitpunkt noch in
-  # der Zukunft, zeigt die Übersicht das Spiel als „Möglich ab" statt mit
+  # abgeschlossen UND Sperrfrist nach dem Anpfiff abgelaufen. Liegt der Zeitpunkt
+  # noch in der Zukunft, zeigt die Übersicht das Spiel als „Möglich ab" statt mit
   # Abgabe-Button.
   def fillable_from(game)
     RefereeFeedbackWindow.new(game).opens_at

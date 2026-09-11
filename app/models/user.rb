@@ -527,6 +527,11 @@ class User < ApplicationRecord
     # Direktzuweisung, die intern denselben Weg nimmt. Der Knopf war zudem
     # admin-only, die SBK hat ihn nie gesehen.
     result[:player_delete_license] = ph[:admin].present? || ph[:sbk].present?
+    # Erteilte Lizenz auf `beantragt` zuruecksetzen (License.resettable?), fuer den
+    # Fall "erteilt, obwohl noch etwas fehlte". Eigenes Recht und nicht
+    # player_delete_license mitbenutzt: Loeschen nimmt die Lizenz aus der
+    # Vereinsansicht, Zuruecksetzen gibt den Antrag nur wieder in die Warteschlange.
+    result[:player_reset_license] = ph[:admin].present? || ph[:sbk].present?
     # Erst-/Zweitlizenz-Zuordnung (GF-Erwachsenenbereich) setzen/tauschen
     result[:player_set_gf_role] = ph[:admin].present? || ph[:sbk].present?
     result[:player_merge] = ph[:admin].present? || ph[:sbk].present?
