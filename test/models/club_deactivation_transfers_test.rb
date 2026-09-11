@@ -93,18 +93,24 @@ class ClubDeactivationTransfersTest < ActiveSupport::TestCase
     assert_not TransferRequest.active.where(player_id: @player.id).exists?
   end
 
-  test 'die Mail geht an den Spieler und den abgebenden Verein' do
+  # Spieler und abgebender Verein bekommen dieselbe Nachricht, aber in
+  # getrennten Sendungen: Die private Adresse des Spielers gehoert nicht in den
+  # Verteiler eines Vereinspostfachs (siehe TransferRequestMailer::AUDIENCES).
+  test 'die Nachricht erreicht den Spieler und den abgebenden Verein getrennt' do
     transfer_request(status: 'pending_lv')
 
-    assert_enqueued_emails 1 do
+    assert_enqueued_emails 2 do
       @requesting_club.deactivate!(@admin.id)
     end
     perform_enqueued_jobs
 
-    mail = ActionMailer::Base.deliveries.last
-    assert_equal %w[spieler@test.example abgebend@test.example].sort, mail.to.sort
-    assert_includes mail.subject, 'Transferantrag beendet'
-    assert_includes mail.body.to_s, @requesting_club.name
+    mails = ActionMailer::Base.deliveries.last(2)
+    assert_equal [%w[abgebend@test.example], %w[spieler@test.example]],
+                 mails.map(&:to).sort
+    mails.each do |mail|
+      assert_includes mail.subject, 'Transferantrag beendet'
+      assert_includes mail.body.to_s, @requesting_club.name
+    end
   end
 
   test 'die Freigabe-Mail nennt den Antrag beim richtigen Namen' do

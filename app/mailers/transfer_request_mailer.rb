@@ -1,4 +1,38 @@
 class TransferRequestMailer < ApplicationMailer
+  # Die beiden Empfaengerkreise der Vorgangsmails. Sie bekommen dieselbe
+  # Nachricht, aber in getrennten Sendungen.
+  #
+  # Bis hierher standen Vereinspostfaecher und die private Adresse der
+  # betroffenen Person in einem gemeinsamen `to:`. Damit lag diese Adresse mit
+  # der ersten Nachricht beim aufnehmenden Verein -- bevor der Landesverband
+  # entschieden hatte, im Weg der Direktzuweisung sogar, ohne dass die Person
+  # ueberhaupt gefragt wurde, und ohne dass irgendjemand sie dorthin gegeben
+  # haette.
+  #
+  # Umgekehrt gilt das nicht in derselben Schaerfe, aber es ist auch nicht
+  # nichts: `Club#notification_emails` liefert neben `contact_email` die
+  # Konto-Adressen der Vereinsmanager. Dass die untereinander sichtbar sind,
+  # ist in Kauf genommen -- sie handeln in dieser Rolle fuereinander und haben
+  # den Vorgang selbst angestossen. Nicht in Kauf genommen ist die Adresse der
+  # betroffenen Person.
+  #
+  # Die Trennung ist zugleich die Voraussetzung fuer die Datenschutzinformation:
+  # Sie gehoert an jede Nachricht an die betroffene Person
+  # und an keine an ein Vereinspostfach (siehe #audience_recipients).
+  AUDIENCES = %w[clubs player].freeze
+
+  # Verschickt eine Vorgangsmail an beide Empfaengerkreise.
+  #
+  # Als eine Zeile am Aufrufer und nicht als zwei: Ein spaeterer Aufrufer, der
+  # den zweiten Versand vergisst, faellt durch nichts auf -- die betroffene
+  # Person bekaeme schlicht keine Nachricht, und im Postfach der Vereine sieht
+  # alles richtig aus.
+  def self.deliver_to_all_audiences(action, *args, **kwargs)
+    AUDIENCES.each do |audience|
+      public_send(action, *args, audience:, **kwargs).deliver_later
+    end
+  end
+
   # Absichtlich ohne den Spieler als Empfaenger: der Text richtet sich an den
   # abgebenden Verein und verlinkt in die Verwaltung, wofuer Spieler keinen
   # Zugang haben. Der Spieler wird erst mit #player_confirmation_request
@@ -38,13 +72,14 @@ class TransferRequestMailer < ApplicationMailer
     )
   end
 
-  def clubs_informed_lv_pending(transfer_request)
+  def clubs_informed_lv_pending(transfer_request, audience: 'clubs')
     @transfer_request = transfer_request
-    recipients = (
-      transfer_request.requesting_club.notification_emails +
-      transfer_request.former_club.notification_emails +
-      [transfer_request.player.email]
-    ).compact.uniq.select(&:present?)
+    recipients = audience_recipients(
+      audience,
+      clubs: transfer_request.requesting_club.notification_emails +
+             transfer_request.former_club.notification_emails,
+      player: transfer_request.player.email
+    )
     return if recipients.empty?
 
     templated_mail(
@@ -77,6 +112,12 @@ class TransferRequestMailer < ApplicationMailer
     recipient = transfer_request.player.email
     return unless recipient.present?
 
+    # Ohne Empfaengerkreis-Parameter, die Mail geht ohnehin nur an die Person --
+    # die Datenschutzinformation deshalb hier von Hand. Es ist die erste
+    # Nachricht des Vorgangs, die sie erreicht, und damit die Stelle, an der
+    # Art. 14 Abs. 3 lit. b DSGVO die Unterrichtung spaetestens verlangt.
+    enable_privacy_notice!
+
     subject_prefix = release?(transfer_request) ? 'Spielerfreigabe-Anfrage' : 'Transferanfrage'
     templated_mail(
       to: recipient,
@@ -94,11 +135,13 @@ class TransferRequestMailer < ApplicationMailer
   # behaelt ihn nun doch. Der aufnehmende Verein bekommt bewusst keine Mail, sein
   # Postfach ist bei einem aufgeloesten Verein selten noch besetzt, und die
   # Deaktivierung kam von seiner Seite.
-  def club_deactivated_notification(transfer_request)
+  def club_deactivated_notification(transfer_request, audience: 'clubs')
     @transfer_request = transfer_request
-    recipients = ([transfer_request.player.email] +
-                  transfer_request.former_club.notification_emails)
-                 .map { |mail| mail.to_s.strip }.reject(&:blank?).uniq
+    recipients = audience_recipients(
+      audience,
+      clubs: transfer_request.former_club.notification_emails,
+      player: transfer_request.player.email
+    )
     return if recipients.empty?
 
     templated_mail(
@@ -148,14 +191,21 @@ class TransferRequestMailer < ApplicationMailer
   # keinen Job, der `execute_transfer!` zum Wunschdatum ausloest -- aufgerufen
   # wird es allein aus `approve_lv`, `#execute` und `#direct_assign`. Ein
   # geplanter Transfer wartet auf den Knopf in der Maske.
-  def transfer_scheduled(transfer_request)
+  #
+  # Getrennte Empfaengerkreise wie #transfer_completed: Die Nachricht kuendigt
+  # denselben Vorgang an und ging bis zum Merge mit derselben gemeinsamen
+  # `to:`-Liste raus, in der die private Adresse neben den Vereinspostfaechern
+  # stand.
+  def transfer_scheduled(transfer_request, audience: 'clubs')
     @transfer_request = transfer_request
     former_sa = transfer_request.former_club.state_association
-    recipients = (
-      transfer_request.requesting_club.notification_emails +
-      transfer_request.former_club.notification_emails +
-      [transfer_request.player.email, former_sa&.effective_sbk_email]
-    ).compact.uniq.select(&:present?)
+    recipients = audience_recipients(
+      audience,
+      clubs: transfer_request.requesting_club.notification_emails +
+             transfer_request.former_club.notification_emails +
+             [former_sa&.effective_sbk_email],
+      player: transfer_request.player.email
+    )
     return if recipients.empty?
 
     templated_mail(
@@ -168,14 +218,16 @@ class TransferRequestMailer < ApplicationMailer
     )
   end
 
-  def transfer_completed(transfer_request)
+  def transfer_completed(transfer_request, audience: 'clubs')
     @transfer_request = transfer_request
     former_sa = transfer_request.former_club.state_association
-    recipients = (
-      transfer_request.requesting_club.notification_emails +
-      transfer_request.former_club.notification_emails +
-      [transfer_request.player.email, former_sa&.effective_sbk_email]
-    ).compact.uniq.select(&:present?)
+    recipients = audience_recipients(
+      audience,
+      clubs: transfer_request.requesting_club.notification_emails +
+             transfer_request.former_club.notification_emails +
+             [former_sa&.effective_sbk_email],
+      player: transfer_request.player.email
+    )
     return if recipients.empty?
 
     subject = release?(transfer_request) ? 'Spielerfreigabe erteilt' : 'Transfer vollzogen'
@@ -217,15 +269,15 @@ class TransferRequestMailer < ApplicationMailer
   # wird nur mitgeschrieben, was der Knopf ohnehin tut. Die Nachricht darf
   # nichts behaupten, was nicht passiert ist; die beendete Zweitmitgliedschaft
   # ist beiden Wegen gemeinsam und der Grund fuer die Mail.
-  def release_revoked(transfer_request, licenses_invalidated: true)
+  def release_revoked(transfer_request, licenses_invalidated: true, audience: 'clubs')
     @transfer_request = transfer_request
     @licenses_invalidated = licenses_invalidated
     receiving_sa = transfer_request.requesting_club.state_association
-    recipients = (
-      transfer_request.requesting_club.notification_emails +
-      transfer_request.former_club.notification_emails +
-      [transfer_request.player.email, receiving_sa&.effective_sbk_email]
-    ).compact.uniq.select(&:present?)
+    club_mails = transfer_request.requesting_club.notification_emails +
+                 transfer_request.former_club.notification_emails +
+                 [receiving_sa&.effective_sbk_email]
+    player_mail = transfer_request.player.email
+    recipients = audience_recipients(audience, clubs: club_mails, player: player_mail)
 
     # Nicht stumm zurueckkehren wie die uebrigen Mails dieser Datei: Bei keiner
     # von ihnen ist die Folge, dass ein Verein einen nicht mehr
@@ -234,12 +286,7 @@ class TransferRequestMailer < ApplicationMailer
     # faellt aus beiden Listen, sobald er aus der laufenden Saison heraus ist.
     # Gleiches Muster wie PlayerMailer#express_license_requested.
     if recipients.empty?
-      if defined?(Sentry)
-        Sentry.capture_message(
-          "Widerruf ohne Empfaenger: TransferRequest##{transfer_request.id} -- " \
-          'weder Vereine noch Landesverband noch Spieler haben eine Adresse.'
-        )
-      end
+      report_unreachable_revocation(transfer_request, club_mails, player_mail) if audience.to_s == 'clubs'
       return
     end
 
@@ -265,12 +312,14 @@ class TransferRequestMailer < ApplicationMailer
   #
   # `transfer_request` ist die FREIGABE, `transfer` der vollzogene Transfer:
   # Die Mail nennt den neuen Heimatverein, und der steht nur am Transfer.
-  def release_annulled_by_transfer(transfer_request, transfer)
+  def release_annulled_by_transfer(transfer_request, transfer, audience: 'clubs')
     @transfer_request = transfer_request
     @transfer = transfer
-    recipients = (transfer_request.requesting_club.notification_emails +
-                  [transfer_request.player.email])
-                 .map { |mail| mail.to_s.strip }.reject(&:blank?).uniq
+    recipients = audience_recipients(
+      audience,
+      clubs: transfer_request.requesting_club.notification_emails,
+      player: transfer_request.player.email
+    )
     return if recipients.empty?
 
     templated_mail(
@@ -298,6 +347,88 @@ class TransferRequestMailer < ApplicationMailer
   end
 
   private
+
+  # Waehlt den Verteiler zum Empfaengerkreis und schaltet fuer die betroffene
+  # Person zugleich die Datenschutzinformation frei.
+  #
+  # Beides an einer Stelle und nicht in zwei Aufrufen: Verteiler und
+  # Pflichtangabe haengen an derselben Entscheidung, und ein vergessener
+  # zweiter Aufruf faellt an keiner Stelle auf -- die Nachricht sieht ohne den
+  # Block genauso vollstaendig aus.
+  #
+  # Ein unbekannter Wert bricht ab, statt in den Vereins-Zweig zu fallen: Ein
+  # Tippfehler im Aufruf schickte sonst die als personengerichtet gemeinte
+  # Nachricht an die Vereine -- also genau das, was diese Trennung beseitigt.
+  def audience_recipients(audience, clubs:, player:)
+    raise ArgumentError, "unbekannter Empfaengerkreis: #{audience.inspect}" unless AUDIENCES.include?(audience.to_s)
+
+    if audience.to_s == 'player'
+      enable_privacy_notice!
+      clean_mails(player).tap { |mails| log_unreachable_player if mails.empty? }
+    else
+      clean_mails(clubs)
+    end
+  end
+
+  # Eine Sendung an die Person, die keinen Empfaenger hat, faellt sonst durch
+  # nichts auf: `return if recipients.empty?` liefert eine NullMail, und die
+  # erzeugt weder eine Zustellung noch eine Zeile im EmailLog. Die Vereine
+  # bekommen ihre Nachricht, im Postfach sieht alles vollstaendig aus, und die
+  # Einzige, die auf eine Entscheidung wartet, erfaehrt nichts.
+  #
+  # Nur ins Log und nicht nach Sentry: Eine Person ohne hinterlegte Adresse ist
+  # der haeufige Normalfall (die Adresse ist beim Anlegen freiwillig), das waere
+  # Rauschen. Nach Sentry geht allein der Fall, in dem die Nachricht NIEMANDEN
+  # erreicht -- siehe #report_unreachable_revocation.
+  def log_unreachable_player
+    Rails.logger.warn(
+      "TransferRequestMailer: #{action_name} an die betroffene Person ohne Empfaenger " \
+      "(TransferRequest##{@transfer_request&.id})"
+    )
+  end
+
+  # Das Flag liest das Mailer-Layout (app/views/layouts/mailer.html.erb) und
+  # haengt die kurze Datenschutzinformation an. Der zustaendige Verband wird
+  # darin benannt: `responsible_state_association` und nicht
+  # `state_association`, denn entscheiden darf der Verbund (dieselbe
+  # Unterscheidung wie im Text von #pending_lv_notification).
+  #
+  # Fehlt der Verband, bleibt der Satz "Ueber den Vorgang entscheidet ..." im
+  # Partial ersatzlos weg -- die Mail sieht weiterhin vollstaendig aus. Genau
+  # deshalb die Logzeile: Eine Pflichtangabe, die still verschwindet, ist keine,
+  # und das gilt fuer einen fehlenden Verbandsdatensatz so wie fuer einen
+  # ueberschriebenen Vorlagentext. `responsible_state_association` ist ein
+  # `find_by` und liefert auch dann nil, wenn der Verein einen Verband hat,
+  # dessen Wurzel geloescht wurde.
+  def enable_privacy_notice!
+    @privacy_notice = true
+    @privacy_authority = @transfer_request&.former_club&.responsible_state_association
+    return if @privacy_authority.present?
+
+    Rails.logger.warn(
+      "TransferRequestMailer: Datenschutzinformation ohne zustaendigen Verband " \
+      "(TransferRequest##{@transfer_request&.id}, Club##{@transfer_request&.former_club&.id})"
+    )
+  end
+
+  def clean_mails(list)
+    Array(list).map { |mail| mail.to_s.strip }.reject(&:blank?).uniq
+  end
+
+  # Der Alarm haengt am GESAMTEN Verteiler, nicht am eigenen Durchgang: Seit die
+  # Nachricht getrennt an Vereine und an die Person geht, ist eine leere Haelfte
+  # der Normalfall -- eine Person ohne hinterlegte Adresse, ein aufgeloester
+  # Verein ohne Postfach -- und taugt nicht als Alarmgrund. Gemeldet wird nur,
+  # was der Alarm von Anfang an meinte: Der Widerruf erreicht niemanden.
+  def report_unreachable_revocation(transfer_request, club_mails, player_mail)
+    return unless clean_mails(club_mails + Array(player_mail)).empty?
+    return unless defined?(Sentry)
+
+    Sentry.capture_message(
+      "Widerruf ohne Empfaenger: TransferRequest##{transfer_request.id} -- " \
+      'weder Vereine noch Landesverband noch Spieler haben eine Adresse.'
+    )
+  end
 
   def player_name(tr)
     "#{tr.player.first_name} #{tr.player.last_name}"

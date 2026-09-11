@@ -49,7 +49,7 @@ module PlayerReleaseRecording
     # `transfer_completed` fuer Verteiler und Landesverband. Die Freigabe selbst
     # bleibt in diesem Fall bestehen, sie ist der Zweck; die Nachricht haette
     # keine Gegenseite zu benennen.
-    TransferRequestMailer.transfer_completed(vorgang).deliver_later if erfolg && vorgang
+    TransferRequestMailer.deliver_to_all_audiences(:transfer_completed, vorgang) if erfolg && vorgang
 
     erfolg
   end
@@ -123,7 +123,7 @@ module PlayerReleaseRecording
     # den Spieler nicht mehr einsetzen und erfuhr es bisher ueber keinen Kanal.
     if erfolg
       widerrufen.each do |vorgang|
-        TransferRequestMailer.release_revoked(vorgang, licenses_invalidated: false).deliver_later
+        TransferRequestMailer.deliver_to_all_audiences(:release_revoked, vorgang, licenses_invalidated: false)
       end
     end
 

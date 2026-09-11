@@ -1,0 +1,74 @@
+<%#
+  Kurze Datenschutzinformation an die betroffene Person, angehaengt an jede
+  Nachricht des Transferprozesses, die an sie selbst geht (siehe
+  TransferRequestMailer::AUDIENCES).
+
+  Bewusst im Layout und nicht in den einzelnen Views: Ein gepflegter
+  EmailTemplate-Body ERSETZT das View (siehe TemplatedMailer#templated_mail),
+  erzwingt aber weiterhin `layout: 'mailer'`. Stuende die Information im View,
+  waere sie mit der ersten Textaenderung in der Admin-Oberflaeche still
+  verschwunden -- und niemandem faellt eine fehlende Pflichtangabe auf.
+
+  BEWUSST NUR DIE ERSTE SCHICHT: Zweck, Rechtsgrundlage, Empfaenger,
+  Speicherdauer und die Rechte nach Art. 15-21 DSGVO stehen seit dem 11.09.2026
+  im Kapitel "Saisonmanager" der Datenschutzerklaerung auf floorball.de (Anker
+  #saisonmanager; die Kapitelnummer steht hier bewusst nicht, sie verschiebt
+  sich mit dem naechsten Zusatz).
+
+  Ein zweiter Wortlaut an dieser Stelle laeuft dagegen auseinander, und der
+  erste Entwurf tat es bereits. Stand 11.09.2026 sagte das Kapitel jeweils
+  etwas anderes: Der Entwurf nannte die Spielordnung als Teil der
+  Rechtsgrundlage (das Kapitel laesst sie bewusst weg, weil sie nur den
+  Spielbetrieb von FD betrifft), behauptete eine an den Nachweis gebundene
+  Speicherdauer (das Kapitel speichert den Verlauf der Spielberechtigungen
+  dauerhaft) und schickte Betroffene an den Landesverband (das Kapitel benennt
+  FD als zentrale Anlaufstelle, gerade damit niemand die Zustaendigkeit selbst
+  herausfinden muss). Die Regel haelt der Test fest, nicht dieser Absatz: Die
+  Mail wiederholt Rechtsgrundlage, Herleitung und Drittland-Aussage nicht.
+
+  Hier steht deshalb nur, was die Erklaerung nicht wissen kann: welcher Vorgang
+  laeuft, woher die Daten stammen und welcher Landesverband ueber ihn
+  entscheidet.
+
+  "Art. 13 und 14": Beides trifft zu, aber auf verschiedene Teile. Name, Verein
+  und Adresse hat der Verein eingetragen, nicht die Person -- dafuer gilt
+  Art. 14, und diese Mail ist der Zeitpunkt aus Abs. 3 lit. b. Ihre Zustimmung
+  oder Ablehnung gibt die Person dagegen selbst ab (der Token-Link in der
+  Zustimmungsanfrage); fuer diese Angabe ist es eine Erhebung bei ihr und damit
+  Art. 13. Eine Ueberschrift, die nur eine der beiden nennt, waere fuer die
+  andere Haelfte falsch.
+%>
+<hr style="margin-top:32px;margin-bottom:12px;border:none;border-top:1px solid #dddddd;">
+<div style="font-size:0.8em;color:#555555;line-height:1.5;">
+  <p style="margin-bottom:8px;"><strong>Information zur Datenverarbeitung (Art. 13 und 14 DSGVO)</strong></p>
+
+  <p style="margin-bottom:8px;">
+    Du bekommst diese Nachricht, weil im Saisonmanager ein Vorgang zu deiner
+    Spielberechtigung bearbeitet wird. Verarbeitet werden dabei dein Vor- und
+    Nachname, deine E-Mail-Adresse, dein bisheriger und dein künftiger Verein
+    sowie Datum, Status und Begründung der Entscheidung; die Angaben stammen
+    von deinem Verein. Eine Handlung deinerseits ist allein wegen dieses
+    Hinweises nicht erforderlich.
+  </p>
+
+  <p style="margin-bottom:8px;">
+    <%# Ohne Satzpunkt: Der Name endet in aller Regel selbst auf einen ("e.V."). %>
+    <strong>Verantwortlich</strong> für den Betrieb des Saisonmanagers:
+    <%= PrivacyPolicy.responsible_body %>
+    <% if @privacy_authority.present? %>
+      <% sbk_email = @privacy_authority.effective_sbk_email %>
+      Über den Vorgang selbst entscheidet <%= @privacy_authority.name %>.
+      <% if sbk_email.present? %>
+        Fragen dazu beantwortet <a href="mailto:<%= sbk_email %>"><%= sbk_email %></a>.
+      <% end %>
+    <% end %>
+  </p>
+
+  <p style="margin-bottom:0;">
+    Zweck, Rechtsgrundlage, Empfänger, Speicherdauer und deine Rechte – Auskunft,
+    Berichtigung, Löschung, Einschränkung, Datenübertragbarkeit, Widerspruch und
+    Beschwerde bei einer Aufsichtsbehörde – stehen im Kapitel „Saisonmanager“ der
+    Datenschutzerklärung:
+    <a href="<%= PrivacyPolicy.url %>"><%= PrivacyPolicy.url %></a>
+  </p>
+</div>

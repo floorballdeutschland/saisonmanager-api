@@ -163,6 +163,9 @@ class StateAssociationEffectiveEmailTest < ActiveSupport::TestCase
       tr.execute_release!(create(:user).id)
     end
 
+    # Eine Sendung, weil die Testperson keine Adresse hat: Der Verteiler der
+    # Person faellt als NullMail aus. Geprueft ist ohnehin die Aussage des
+    # Tests -- der fremde Landesverband steht in keiner der Sendungen.
     assert_equal 1, ActionMailer::Base.deliveries.size
     assert_not_includes ActionMailer::Base.deliveries.flat_map(&:to), 'sbk@fremd.example.com'
   end
@@ -181,7 +184,11 @@ class StateAssociationEffectiveEmailTest < ActiveSupport::TestCase
       tr.revoke_release!(create(:user).id, 'Irrtum bei der Freigabe')
     end
 
-    mail = ActionMailer::Base.deliveries.last
+    # Ueber den Empfaenger ausgewaehlt und nicht ueber die Position: Seit die
+    # Nachricht getrennt an die Stellen und an die Person geht, ist
+    # `deliveries.last` die Sendung an die Person -- und die ist heute nur
+    # deshalb leer, weil die Testperson keine Adresse hat.
+    mail = ActionMailer::Base.deliveries.find { |sendung| sendung.to.include?('sbk@fremd.example.com') }
     assert_not_nil mail
     assert_includes mail.subject, 'zurueckgezogen'
     assert_includes mail.body.decoded, 'Irrtum bei der Freigabe',

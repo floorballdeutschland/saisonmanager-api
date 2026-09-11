@@ -203,7 +203,7 @@ class Club < ApplicationRecord
       ended = TransferRequest.end_for_deactivated_club(id, user_id)
     end
 
-    ended.each { |tr| TransferRequestMailer.club_deactivated_notification(tr).deliver_later }
+    ended.each { |tr| TransferRequestMailer.deliver_to_all_audiences(:club_deactivated_notification, tr) }
     ended
   end
 

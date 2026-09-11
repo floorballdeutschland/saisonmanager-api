@@ -395,7 +395,7 @@ module Admin
         # `transfer_completed`, dieser plant nur -- und teilte den Termin
         # niemandem mit. Beide Vereine planen an diesem Datum ihre
         # Mannschaften.
-        TransferRequestMailer.transfer_scheduled(tr).deliver_later
+        TransferRequestMailer.deliver_to_all_audiences(:transfer_scheduled, tr)
       end
 
       render_transfer_request(tr)
@@ -533,7 +533,7 @@ module Admin
       end
 
       TransferRequestMailer.pending_lv_notification(tr).deliver_later
-      TransferRequestMailer.clubs_informed_lv_pending(tr).deliver_later
+      TransferRequestMailer.deliver_to_all_audiences(:clubs_informed_lv_pending, tr)
 
       redirect_to "#{base_url}?result=approved", allow_other_host: true
     end
