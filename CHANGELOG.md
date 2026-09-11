@@ -17,6 +17,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 - **Datenschutzerklärung in der Navigation verlinkt**: Neben dem Impressum steht jetzt ein zweiter Eintrag „Datenschutz", der auf https://floorball.de/datenschutz/ führt. Er erscheint in der Seitenleiste und im mobilen Menü, angemeldet wie abgemeldet. Bisher war das Impressum der einzige Rechtslink der Anwendung; die Datenschutzerklärung war von hier aus überhaupt nicht erreichbar. Aufgefallen ist das durch die Rückmeldung eines Vereins, der vor der Eingabe von Mitgliederdaten wissen wollte, worüber er seine Mitglieder zu informieren hat, und nichts fand, worauf er verweisen könnte. Umgesetzt ist rein die Verlinkung: Die Erklärung selbst wird auf floorball.de gepflegt und beschreibt seit dem 11.09.2026 auch die Verarbeitung im Saisonmanager — Spieler- und Lizenzdaten, Schiedsrichterdaten und die Aufstellungen in den Spielberichten.
 
+- **Transfer und Freigabe: Spielernummer in der Detailansicht**: In der Detailansicht eines Transfer- oder Freigabevorgangs steht die Spielernummer jetzt in Klammern hinter dem Namen. Der abgebende Landesverband stellt zum abgeschlossenen Vorgang die Transferrechnung und muss die Person dafür in seiner eigenen Ablage wiederfinden — namensgleiche Personen gibt es, eine zweite Nummer nicht. Bisher stand die Nummer nur in der Adresszeile der Seite und musste von dort abgelesen werden.
+
 ## [1.112.1] - 2026-09-10
 
 ### Behoben
