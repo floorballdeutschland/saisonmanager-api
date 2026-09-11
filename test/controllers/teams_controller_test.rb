@@ -570,6 +570,48 @@ class TeamsControllerTest < ActionDispatch::IntegrationTest
 
   private
 
+  # Der Streamschlüssel sendet auf den Verbandskanal. Die Sperre sitzt in
+  # `Team#serializable_hash`, wirken muss sie DORT, wo roh serialisiert wird:
+  # `index` rendert `render json: @teams` über den gesamten Bestand, und zwar
+  # für jede angemeldete Person -- der breiteste denkbare Leck-Pfad.
+  test 'die Mannschaftsliste fuehrt keinen stream_key' do
+    @team.update!(stream_key: 'abcd-efgh-ijkl-mnop-qrst')
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    get '/teams.json'
+
+    assert_response :success
+    assert_not_includes response.body, 'abcd-efgh'
+  end
+
+  # Ein Vereinsmanager legt Mannschaften an und bekommt sie roh zurück. Ohne die
+  # Sperre stünde der Schlüssel seiner eigenen Mannschaft im Antwortkörper.
+  test 'das Anlegen einer Mannschaft gibt keinen stream_key zurueck' do
+    @team.update!(stream_key: 'abcd-efgh-ijkl-mnop-qrst')
+    login(create(:user, :admin))
+
+    get "/api/v2/admin/teams/#{@team.id}"
+
+    assert_response :success
+    assert_not_includes response.body, 'abcd-efgh'
+  end
+
+  # Schreibrichtung: `stream_key` steht nicht in `team_params`. Ohne diesen
+  # Prüfsatz reicht ein Feld im nächsten Mannschaftsformular, damit ein Verein
+  # sich selbst auf den Verbandskanal schaltet.
+  test 'stream_key laesst sich nicht ueber die Mannschaftsmaske setzen' do
+    login(create(:user, :admin))
+
+    post '/api/v2/admin/teams',
+         params: { id: @team.id, league_id: @league.id,
+                   team: { name: @team.name, league_id: @league.id, club_id: @club.id,
+                           stream_key: 'fremd-schluessel' } },
+         as: :json
+
+    assert_response :success
+    assert_nil @team.reload.stream_key
+  end
+
   def login(user)
     post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
     assert_response :success

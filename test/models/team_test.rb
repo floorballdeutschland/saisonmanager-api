@@ -296,6 +296,39 @@ class TeamTest < ActiveSupport::TestCase
     assert_empty team.reload.season_leagues
   end
 
+  # Der Streamschlüssel sendet auf den Verbandskanal. Er darf nicht über eine
+  # pauschale Serialisierung in eine Antwort geraten -- die Gegenprobe zeigt,
+  # dass der Wert gesetzt ist und trotzdem nicht auftaucht.
+  test 'stream_key steht nicht in as_json' do
+    team = create(:team, stream_key: 'abcd-efgh-ijkl-mnop-qrst')
+
+    assert_equal 'abcd-efgh-ijkl-mnop-qrst', team.stream_key
+    assert_not_includes team.as_json.keys, 'stream_key'
+    assert_not_includes team.to_json, 'abcd-efgh'
+  end
+
+  test 'stream_key steht nicht in full_hash oder ticker_hash' do
+    team = create(:team, stream_key: 'abcd-efgh-ijkl-mnop-qrst')
+
+    assert_not_includes team.full_hash.to_json, 'abcd-efgh'
+    assert_not_includes team.ticker_hash.to_json, 'abcd-efgh'
+  end
+
+  # Wer den Schlüssel ausdrücklich ausliefern darf, muss ihn weiterhin bekommen
+  # können -- sonst wäre die Sperre nicht eng, sondern kaputt.
+  test 'eine verschachtelte Serialisierung fuehrt keinen stream_key' do
+    team = create(:team, stream_key: 'abcd-efgh-ijkl-mnop-qrst')
+
+    assert_not_includes Team.where(id: team.id).to_json, 'abcd-efgh'
+    assert_not_includes team.club.as_json(include: :teams).to_json, 'abcd-efgh'
+  end
+
+  test 'stream_key laesst sich ausdruecklich serialisieren' do
+    team = create(:team, stream_key: 'abcd-efgh-ijkl-mnop-qrst')
+
+    assert_equal({ 'stream_key' => 'abcd-efgh-ijkl-mnop-qrst' }, team.as_json(only: :stream_key))
+  end
+
   private
 
   # Liga, deren Verband die Expresslizenz erlaubt (oder eben nicht) und deren erster

@@ -311,10 +311,11 @@ class PlayersController < ApplicationController
                       status: :unprocessable_entity
       end
 
-      if params[:license_status_id].to_i == License::DELETED
-        blocked = License.delete_blocked_reason(license, params[:reason])
-        return render json: { message: blocked }, status: :unprocessable_entity if blocked
-      end
+      # Die Regeln je Zielstatus stehen im Modell (License.change_blocked_reason):
+      # Pflicht-Begruendung und Saison-/Statusgrenze beim Loeschen, dieselbe
+      # Pruefung beim Zuruecksetzen einer erteilten Lizenz auf `beantragt`.
+      blocked = License.change_blocked_reason(license, params[:license_status_id].to_i, params[:reason])
+      return render json: { message: blocked }, status: :unprocessable_entity if blocked
 
       # Optionale Erst-/Zweitlizenz-Zuordnung bei der Genehmigung (nur GF-Erwachsenenbereich).
       gf_role = params[:gf_role].presence
@@ -376,6 +377,13 @@ class PlayersController < ApplicationController
             # nicht: Welche jetzt Erstlizenz sein soll, entscheidet der Verband.
             player.assign_gf_role(lic, nil, current_user.id, 'license_deleted')
           end
+          # Das Gueltigkeitsdatum stammt aus der Genehmigung, die mit dem
+          # Zuruecksetzen zurueckgenommen wird. Bliebe es stehen, meldete die
+          # Lizenzliste des Spielsekretariats (PublicSecretaryController) fuer
+          # einen offenen Antrag weiter ein "gueltig bis", und die
+          # Lizenzuebersicht faerbte die Zeile nach einem Datum, das zu keinem
+          # erteilten Status mehr gehoert.
+          lic['valid_until'] = nil if params[:license_status_id].to_i == License::REQUESTED
           if params[:license_status_id].to_i == License::APPROVED
             approved_team_id = lic['team_id']
             lic['valid_until'] = params[:valid_until].presence || default_license_valid_until(lic['season_id']).iso8601
