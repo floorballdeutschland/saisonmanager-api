@@ -2,10 +2,13 @@
 # am einzelnen Vorgang haengen: der Verantwortliche und die Fundstelle der
 # ausfuehrlichen Datenschutzerklaerung.
 #
-# Ueber ENV ueberschreibbar wie FrontendUrl, aus demselben Grund: Zieht die
-# Erklaerung um oder benennt sich der Verband um, soll das keine Codeaenderung
-# und kein Deployment kosten -- die Angabe steht sonst falsch in jeder
-# Nachricht, die schon unterwegs ist.
+# Ueber ENV ueberschreibbar (`PRIVACY_POLICY_URL`, `PRIVACY_RESPONSIBLE_BODY`):
+# Zieht die Erklaerung um oder benennt sich der Verband um, laesst sich die
+# Angabe richtigstellen, ohne auf den naechsten Code-Release zu warten -- bis
+# dahin stuende sie in jeder Nachricht falsch, die noch rausgeht. Gesetzt ist
+# heute keine der beiden; das hiesse einen Commit im saisonmanager-docker-Repo
+# und ein Neuerzeugen des Containers. Anders als bei `FrontendUrl`, wo die
+# Variable die Umgebungen trennt, ist es hier also nur ein Notausgang.
 #
 # Die URL zeigt auf den Anker des Kapitels "Saisonmanager" und nicht auf den
 # Seitenanfang: Das Kapitel steht am Ende einer langen Erklaerung, die mit

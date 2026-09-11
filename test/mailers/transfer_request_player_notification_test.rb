@@ -99,6 +99,39 @@ class TransferRequestPlayerNotificationTest < ActionMailer::TestCase
     [:transfer_scheduled, 1]
   ].freeze
 
+  # Die Handliste oben beweist nichts ueber das, was NICHT drinsteht. Diese
+  # beiden Tests schliessen die Luecke von zwei Seiten -- und sie ist real:
+  # Waehrend dieser PR offen war, kam mit api#648 `transfer_scheduled` dazu, mit
+  # genau dem gemeinsamen Verteiler, den die Trennung beseitigt.
+  def audience_actions
+    TransferRequestMailer.action_methods.select do |name|
+      TransferRequestMailer.instance_method(name).parameters.include?(%i[key audience])
+    end.map(&:to_s).sort
+  end
+
+  test 'die Liste deckt genau die Aktionen mit getrenntem Empfaengerkreis ab' do
+    assert_equal audience_actions, SPLIT_ACTIONS.map { |aktion, _| aktion.to_s }.sort,
+                 'eine Aktion mit `audience:` fehlt in SPLIT_ACTIONS (oder umgekehrt)'
+  end
+
+  # Der Mailer allein hilft nicht: `deliver_to_all_audiences` ist eine
+  # Konvention, die nichts erzwingt, und ein Aufrufer, der nur die Haelfte
+  # verschickt, faellt durch nichts auf -- die Vereine bekommen ihre Nachricht,
+  # im Postfach sieht alles vollstaendig aus.
+  test 'jede Aufrufstelle verschickt an beide Empfaengerkreise' do
+    quellen = Dir.glob(Rails.root.join('app/**/*.rb')).reject { |datei| datei.end_with?('transfer_request_mailer.rb') }
+
+    direkte_aufrufe = quellen.flat_map do |datei|
+      inhalt = File.read(datei)
+      audience_actions.filter_map do |aktion|
+        "#{datei.sub("#{Rails.root}/", '')}: #{aktion}" if inhalt.include?("TransferRequestMailer.#{aktion}(")
+      end
+    end
+
+    assert_empty direkte_aufrufe,
+                 'diese Stellen rufen eine getrennte Aktion direkt auf statt ueber deliver_to_all_audiences'
+  end
+
   test 'keine Vorgangsmail traegt die private Adresse im Verteiler der Vereine' do
     tr = transfer_request
 
@@ -168,15 +201,26 @@ class TransferRequestPlayerNotificationTest < ActionMailer::TestCase
   # nannte eine andere Rechtsgrundlage und eine andere Speicherdauer als das
   # veroeffentlichte Kapitel. Der Test haelt die Aufgabenteilung fest: Die Mail
   # verweist, sie wiederholt nicht.
-  test 'die Datenschutzinformation wiederholt die Datenschutzerklaerung nicht' do
-    body = TransferRequestMailer.player_confirmation_request(transfer_request).body.decoded
+  # Nur der Abschnitt, nicht die ganze Mail: "Spielordnung" ist in
+  # Transferkorrespondenz ein plausibles Wort, und ein in der Verwaltung
+  # gepflegter Vorlagentext darf es benutzen, ohne diesen Test zu kippen.
+  def privacy_notice_section(mail)
+    body = mail.body.decoded
+    index = body.index('Information zur Datenverarbeitung')
 
-    # Die Ueberschriften des Kapitels darf die Mail nennen -- sie verweist
+    assert_not_nil index, 'die Datenschutzinformation fehlt'
+    body[index..]
+  end
+
+  test 'die Datenschutzinformation wiederholt die Datenschutzerklaerung nicht' do
+    abschnitt = privacy_notice_section(TransferRequestMailer.player_confirmation_request(transfer_request))
+
+    # Die Ueberschriften des Kapitels darf der Abschnitt nennen -- er verweist
     # darauf. Geprueft ist deshalb der Inhalt: die Rechtsgrundlage, ihre
     # Herleitung und die Aussage zum Drittlandtransfer.
-    assert_not_includes body, 'Art. 6 Abs. 1'
-    assert_not_includes body, 'Spielordnung'
-    assert_not_includes body, 'Drittland'
+    assert_not_includes abschnitt, 'Art. 6 Abs. 1'
+    assert_not_includes abschnitt, 'Spielordnung'
+    assert_not_includes abschnitt, 'Drittland'
   end
 
   # Das Kapitel steht am Ende einer langen Erklaerung, die mit Website, Cookies
@@ -184,13 +228,65 @@ class TransferRequestPlayerNotificationTest < ActionMailer::TestCase
   test 'der Verweis zeigt auf das Kapitel und nicht auf den Seitenanfang' do
     body = TransferRequestMailer.player_confirmation_request(transfer_request).body.decoded
 
-    assert_includes body, '#saisonmanager'
+    # Am Link festgemacht und nicht am blanken Fragment: Sonst genuegte das Wort
+    # irgendwo im Text. Und ueber PrivacyPolicy.url, damit ein gesetztes
+    # PRIVACY_POLICY_URL den Test nicht kippt -- die Variable ist der Zweck des
+    # Service.
+    assert_includes body, %(href="#{PrivacyPolicy.url}")
+    assert_not_nil URI.parse(PrivacyPolicy.url).fragment,
+                   'die Fundstelle zeigt auf den Seitenanfang statt auf das Kapitel'
   end
 
   test 'die Datenschutzinformation benennt den zustaendigen Landesverband' do
     body = TransferRequestMailer.transfer_completed(transfer_request, audience: 'player').body.decoded
 
     assert_includes body, @state_association.name
+  end
+
+  # Entscheiden darf der Verbund, nicht das Kind -- und der Kommentar an
+  # #enable_privacy_notice! begruendet genau das. Ohne diesen Test bleibt die
+  # Unterscheidung ungeprueft: In den uebrigen Tests hat der Verband keinen
+  # Elternteil, `responsible_state_association` und `state_association` liefern
+  # dort also denselben Datensatz.
+  test 'die Datenschutzinformation nennt den Verbund und nicht den Kind-Verband' do
+    verbund = create(:state_association, name: 'Spielverbund Nord')
+    kind = create(:state_association, name: 'Floorball Bund Beispielstadt', parent: verbund)
+    @former_club.update!(state_association_id: kind.id)
+
+    abschnitt = privacy_notice_section(
+      TransferRequestMailer.transfer_completed(transfer_request, audience: 'player')
+    )
+
+    assert_includes abschnitt, verbund.name
+    assert_not_includes abschnitt, kind.name
+  end
+
+  # Ohne SBK-Adresse am Verbund faellt die Zeile weg; mit einer steht sie als
+  # mailto da. Die Factory setzt keine, der zweite Fall war deshalb bisher der
+  # einzige gepruefte -- unbeabsichtigt.
+  test 'die Datenschutzinformation nennt die Kontaktadresse des Verbands' do
+    @state_association.update!(sbk_email: 'sbk@lv.example')
+
+    abschnitt = privacy_notice_section(
+      TransferRequestMailer.transfer_completed(transfer_request, audience: 'player')
+    )
+
+    assert_includes abschnitt, 'mailto:sbk@lv.example'
+  end
+
+  # Ein Verein ohne Landesverband ist Altbestand, und `find_by` liefert dann
+  # nil. Die Mail muss trotzdem zugestellt werden -- ohne den Satz zum
+  # entscheidenden Verband, aber mit Verantwortlichem und Fundstelle.
+  test 'ohne zustaendigen Verband bleibt die Information zustellbar' do
+    @former_club.update!(state_association_id: nil)
+
+    abschnitt = privacy_notice_section(
+      TransferRequestMailer.transfer_completed(transfer_request, audience: 'player')
+    )
+
+    assert_includes abschnitt, PrivacyPolicy.responsible_body
+    assert_includes abschnitt, PrivacyPolicy.url
+    assert_not_includes abschnitt, 'Über den Vorgang selbst entscheidet'
   end
 
   test 'die Sendung an die Vereine traegt die Datenschutzinformation nicht' do
@@ -233,6 +329,24 @@ class TransferRequestPlayerNotificationTest < ActionMailer::TestCase
     end
 
     assert_empty captured
+  end
+
+  # Die Gegenrichtung, und die eigentliche Daseinsberechtigung der
+  # Gesamtverteiler-Pruefung: Ein aufgeloester Verein ohne Postfach darf keinen
+  # Alarm ausloesen, solange die Person den Widerruf erfaehrt. Ohne diese
+  # Pruefung meldete jeder solche Fall einen Fehlalarm.
+  test 'Vereine ohne Postfach loesen keinen Widerrufs-Alarm aus' do
+    @requesting_club.update!(contact_email: nil)
+    @former_club.update!(contact_email: nil)
+    @state_association.update!(sbk_email: nil)
+    tr = transfer_request(request_type: 'release')
+
+    captured = revocation_messages do
+      TransferRequestMailer.release_revoked(tr).deliver_now
+      TransferRequestMailer.release_revoked(tr, audience: 'player').deliver_now
+    end
+
+    assert_empty captured, 'der Widerruf hat die Person erreicht'
   end
 
   test 'erreicht der Widerruf niemanden, wird genau einmal gemeldet' do

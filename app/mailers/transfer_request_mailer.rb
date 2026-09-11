@@ -4,10 +4,17 @@ class TransferRequestMailer < ApplicationMailer
   #
   # Bis hierher standen Vereinspostfaecher und die private Adresse der
   # betroffenen Person in einem gemeinsamen `to:`. Damit lag diese Adresse mit
-  # der ersten Nachricht beim aufnehmenden Verein -- vor jeder Entscheidung,
-  # ohne dass die Person davon erfaehrt, und ohne dass irgendjemand sie dorthin
-  # gegeben haette. Umgekehrt entsteht das Problem nicht: Vereins- und
-  # Verbandsadressen sind veroeffentlichte Postfaecher.
+  # der ersten Nachricht beim aufnehmenden Verein -- bevor der Landesverband
+  # entschieden hatte, im Weg der Direktzuweisung sogar, ohne dass die Person
+  # ueberhaupt gefragt wurde, und ohne dass irgendjemand sie dorthin gegeben
+  # haette.
+  #
+  # Umgekehrt gilt das nicht in derselben Schaerfe, aber es ist auch nicht
+  # nichts: `Club#notification_emails` liefert neben `contact_email` die
+  # Konto-Adressen der Vereinsmanager. Dass die untereinander sichtbar sind,
+  # ist in Kauf genommen -- sie handeln in dieser Rolle fuereinander und haben
+  # den Vorgang selbst angestossen. Nicht in Kauf genommen ist die Adresse der
+  # betroffenen Person.
   #
   # Die Trennung ist zugleich die Voraussetzung fuer die Datenschutzinformation:
   # Sie gehoert an jede Nachricht an die betroffene Person
@@ -279,7 +286,7 @@ class TransferRequestMailer < ApplicationMailer
     # faellt aus beiden Listen, sobald er aus der laufenden Saison heraus ist.
     # Gleiches Muster wie PlayerMailer#express_license_requested.
     if recipients.empty?
-      report_unreachable_revocation(transfer_request, club_mails, player_mail) if audience == 'clubs'
+      report_unreachable_revocation(transfer_request, club_mails, player_mail) if audience.to_s == 'clubs'
       return
     end
 
@@ -357,10 +364,27 @@ class TransferRequestMailer < ApplicationMailer
 
     if audience.to_s == 'player'
       enable_privacy_notice!
-      clean_mails(player)
+      clean_mails(player).tap { |mails| log_unreachable_player if mails.empty? }
     else
       clean_mails(clubs)
     end
+  end
+
+  # Eine Sendung an die Person, die keinen Empfaenger hat, faellt sonst durch
+  # nichts auf: `return if recipients.empty?` liefert eine NullMail, und die
+  # erzeugt weder eine Zustellung noch eine Zeile im EmailLog. Die Vereine
+  # bekommen ihre Nachricht, im Postfach sieht alles vollstaendig aus, und die
+  # Einzige, die auf eine Entscheidung wartet, erfaehrt nichts.
+  #
+  # Nur ins Log und nicht nach Sentry: Eine Person ohne hinterlegte Adresse ist
+  # der haeufige Normalfall (die Adresse ist beim Anlegen freiwillig), das waere
+  # Rauschen. Nach Sentry geht allein der Fall, in dem die Nachricht NIEMANDEN
+  # erreicht -- siehe #report_unreachable_revocation.
+  def log_unreachable_player
+    Rails.logger.warn(
+      "TransferRequestMailer: #{action_name} an die betroffene Person ohne Empfaenger " \
+      "(TransferRequest##{@transfer_request&.id})"
+    )
   end
 
   # Das Flag liest das Mailer-Layout (app/views/layouts/mailer.html.erb) und
@@ -368,9 +392,23 @@ class TransferRequestMailer < ApplicationMailer
   # darin benannt: `responsible_state_association` und nicht
   # `state_association`, denn entscheiden darf der Verbund (dieselbe
   # Unterscheidung wie im Text von #pending_lv_notification).
+  #
+  # Fehlt der Verband, bleibt der Satz "Ueber den Vorgang entscheidet ..." im
+  # Partial ersatzlos weg -- die Mail sieht weiterhin vollstaendig aus. Genau
+  # deshalb die Logzeile: Eine Pflichtangabe, die still verschwindet, ist keine,
+  # und das gilt fuer einen fehlenden Verbandsdatensatz so wie fuer einen
+  # ueberschriebenen Vorlagentext. `responsible_state_association` ist ein
+  # `find_by` und liefert auch dann nil, wenn der Verein einen Verband hat,
+  # dessen Wurzel geloescht wurde.
   def enable_privacy_notice!
     @privacy_notice = true
     @privacy_authority = @transfer_request&.former_club&.responsible_state_association
+    return if @privacy_authority.present?
+
+    Rails.logger.warn(
+      "TransferRequestMailer: Datenschutzinformation ohne zustaendigen Verband " \
+      "(TransferRequest##{@transfer_request&.id}, Club##{@transfer_request&.former_club&.id})"
+    )
   end
 
   def clean_mails(list)
