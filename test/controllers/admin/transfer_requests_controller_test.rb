@@ -874,6 +874,80 @@ module Admin
       assert_equal 'scheduled', tr.reload.status
     end
 
+    # Der zweite stumme Weg nach „Genehmigt": Die beiden anderen Zweige von
+    # approve_lv vollziehen sofort und verschicken dabei `transfer_completed`,
+    # dieser plant nur -- und teilte den Termin niemandem mit. Beide Vereine
+    # planen an diesem Datum ihre Mannschaften, und der abgebende Verein
+    # verliert den Spieler zu einem Termin, den er nicht erfuhr.
+    test 'approve_lv mit Wunschdatum kuendigt den Vollzug allen Beteiligten an' do
+      termin = Date.today + 10
+      tr = create_transfer_request(status: 'pending_lv', effective_date: termin)
+      login(@sbk)
+
+      # Zwei Sendungen, nicht eine: Die private Adresse der Person steht in
+      # keinem gemeinsamen Verteiler mit den Vereinspostfaechern.
+      assert_emails 2 do
+        patch "/api/v2/admin/transfer_requests/#{tr.id}/approve_lv"
+      end
+      assert_response :success
+
+      an_vereine, an_person = ActionMailer::Base.deliveries.last(2).partition do |mail|
+        mail.to.include?('requesting@test.example.com')
+      end.map(&:first)
+
+      assert_includes an_vereine.subject, "Vollzug am #{termin.strftime('%d.%m.%Y')}"
+      ['former@test.example.com', 'sbk@test.example.com'].each do |adresse|
+        assert_includes an_vereine.to, adresse
+      end
+      assert_not_includes an_vereine.to, 'max.mustermann@example.com'
+      assert_equal ['max.mustermann@example.com'], an_person.to
+
+      [an_vereine, an_person].each do |mail|
+        assert_includes mail.body.decoded, termin.strftime('%d.%m.%Y'),
+                        'der Termin ist der Zweck der Nachricht'
+      end
+    end
+
+    # Es gibt keinen Job, der einen geplanten Transfer zum Wunschdatum vollzieht
+    # -- `execute_transfer!` wird allein aus approve_lv, #execute und
+    # #direct_assign gerufen. Die Nachricht darf deshalb keinen automatischen
+    # Vollzug behaupten, sonst wartet der aufnehmende Verein auf etwas, das
+    # nicht kommt.
+    test 'die Ankuendigung verspricht keinen automatischen Vollzug' do
+      tr = create_transfer_request(status: 'pending_lv', effective_date: Date.today + 10)
+      login(@sbk)
+
+      # Zwei Sendungen: an die Vereinspostfaecher und an die Person, getrennt.
+      assert_emails 2 do
+        patch "/api/v2/admin/transfer_requests/#{tr.id}/approve_lv"
+      end
+
+      ActionMailer::Base.deliveries.last(2).each do |mail|
+        assert_includes mail.body.decoded, 'nicht automatisch ausgelöst',
+                        "#{mail.to.inspect} erfaehrt nicht, dass der Vollzug von Hand kommt"
+      end
+    end
+
+    # Gegenprobe: Der sofortige Vollzug bleibt bei genau einer Nachricht, und
+    # zwar der des Vollzugs. Die Ankuendigung gehoert allein an den geplanten
+    # Transfer.
+    test 'approve_lv ohne Wunschdatum verschickt weiter nur die Vollzugsmail' do
+      tr = create_transfer_request(status: 'pending_lv')
+      login(@sbk)
+
+      # Zwei Sendungen, aber beide dieselbe Nachricht: die des Vollzugs an die
+      # Vereine und an die Person. Keine davon kuendigt einen Termin an.
+      assert_emails 2 do
+        patch "/api/v2/admin/transfer_requests/#{tr.id}/approve_lv"
+      end
+      assert_response :success
+
+      betreffe = ActionMailer::Base.deliveries.last(2).map(&:subject)
+
+      assert(betreffe.all? { |betreff| betreff.include?('Transfer vollzogen') }, betreffe.inspect)
+      assert_not(betreffe.any? { |betreff| betreff.include?('Vollzug am') }, betreffe.inspect)
+    end
+
     test 'VM darf approve_lv nicht ausführen → 403' do
       tr = create_transfer_request(status: 'pending_lv')
       login(@vm_former)

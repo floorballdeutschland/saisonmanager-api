@@ -86,6 +86,83 @@ class PlayersReleaseTransferRequestTest < ActionDispatch::IntegrationTest
     assert_response :unprocessable_entity
   end
 
+  # Die Freigabe ueber das Profil landete auf `approved` -- in der Uebersicht
+  # „Genehmigt" -- ohne dass eine einzige Zeile rausgegangen waere. Der Weg
+  # ueber den Antrag verschickt an genau dieser Stelle `transfer_completed`, und
+  # fachlich ist beides dieselbe Freigabe.
+  #
+  # Verteiler wie am Antragsweg: beide Vereine, der Spieler und der
+  # Landesverband des abgebenden Vereins. Der aufnehmende Verein darf den
+  # Spieler ab jetzt einsetzen, der abgebende behaelt ihn und muss es wissen.
+  test 'die im Profil erteilte Freigabe wird allen Beteiligten mitgeteilt' do
+    @target.update!(contact_email: 'zweitverein@example.org')
+    @home_club.update!(contact_email: 'heimatverein@example.org')
+    @home_club.state_association.update!(sbk_email: 'sbk@example.org')
+    @player.update!(email: 'spieler@example.com')
+    login_as(@admin)
+    ActionMailer::Base.deliveries.clear
+
+    perform_enqueued_jobs do
+      freigabe_erteilen(@target)
+    end
+    assert_response :success
+
+    # Zwei Sendungen: Die private Adresse der Person steht in keinem gemeinsamen
+    # Verteiler mit den Vereins- und Verbandspostfaechern. Ausgewaehlt wird ueber
+    # den Empfaenger und nicht ueber die Position -- `deliveries.last` haette
+    # sonst stillschweigend nur die zweite Haelfte geprueft.
+    an_person = ActionMailer::Base.deliveries.find { |mail| mail.to == ['spieler@example.com'] }
+    an_stellen = ActionMailer::Base.deliveries.find { |mail| mail.to.include?('zweitverein@example.org') }
+
+    assert_not_nil an_person, 'die Person muss die erteilte Freigabe erfahren'
+    assert_not_nil an_stellen, 'Vereine und Landesverband muessen die Freigabe erfahren'
+
+    ['zweitverein@example.org', 'heimatverein@example.org', 'sbk@example.org'].each do |adresse|
+      assert_includes an_stellen.to, adresse
+    end
+    assert_not_includes an_stellen.to, 'spieler@example.com'
+
+    [an_person, an_stellen].each do |mail|
+      assert_includes mail.subject, 'Spielerfreigabe erteilt'
+    end
+  end
+
+  # Ohne Heimat-Zugehoerigkeit gibt es keinen Vorgang (Altbestand, siehe oben) --
+  # und damit auch keinen abgebenden Verein, den die Nachricht benennen koennte.
+  # Die Freigabe selbst bleibt bestehen, sie ist der Zweck; ein 500 an dieser
+  # Stelle naehme genau den Profilen den einzigen Weg zu einer Freigabe, die
+  # diese Luecke haben.
+  test 'ohne Vorgang bleibt die Freigabe stumm, aber wirksam' do
+    ohne_heimat = create(:player, clubs: [])
+    @target.update!(contact_email: 'zweitverein@example.org')
+    login_as(@admin)
+    ActionMailer::Base.deliveries.clear
+
+    perform_enqueued_jobs do
+      post "/api/v2/admin/players/#{ohne_heimat.id}/add_additional_club", params: { club_id: @target.id }
+    end
+
+    assert_response :success
+    assert_includes ohne_heimat.reload.clubs.map { |c| c['club_id'] }, @target.id
+    assert_empty ActionMailer::Base.deliveries
+  end
+
+  # Gegenprobe zur Reihenfolge: Die Nachricht haengt hinter dem Commit. Ein
+  # abgewiesener Aufruf darf keine Freigabe verkuenden, die nicht erteilt wurde.
+  test 'eine abgewiesene Freigabe verschickt keine Nachricht' do
+    deaktiviert = create(:club, game_operation: @go, deactivated_at: Time.current,
+                                contact_email: 'aufgeloest@example.org')
+    login_as(@admin)
+    ActionMailer::Base.deliveries.clear
+
+    perform_enqueued_jobs do
+      freigabe_erteilen(deaktiviert)
+    end
+
+    assert_response :unprocessable_entity
+    assert_empty ActionMailer::Base.deliveries
+  end
+
   test 'wird die Freigabe im Spielerprofil beendet, wird der Vorgang widerrufen' do
     login_as(@admin)
     freigabe_erteilen(@target)

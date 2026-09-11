@@ -95,7 +95,8 @@ class TransferRequestPlayerNotificationTest < ActionMailer::TestCase
     [:transfer_completed, 1],
     [:club_deactivated_notification, 1],
     [:release_revoked, 1],
-    [:release_annulled_by_transfer, 2]
+    [:release_annulled_by_transfer, 2],
+    [:transfer_scheduled, 1]
   ].freeze
 
   test 'keine Vorgangsmail traegt die private Adresse im Verteiler der Vereine' do
