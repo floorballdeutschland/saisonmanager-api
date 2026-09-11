@@ -9,8 +9,8 @@ class TransferRequestMailer < ApplicationMailer
   # gegeben haette. Umgekehrt entsteht das Problem nicht: Vereins- und
   # Verbandsadressen sind veroeffentlichte Postfaecher.
   #
-  # Die Trennung ist zugleich die Voraussetzung fuer die Datenschutzinformation
-  # nach Art. 13 DSGVO: Sie gehoert an jede Nachricht an die betroffene Person
+  # Die Trennung ist zugleich die Voraussetzung fuer die Datenschutzinformation:
+  # Sie gehoert an jede Nachricht an die betroffene Person
   # und an keine an ein Vereinspostfach (siehe #audience_recipients).
   AUDIENCES = %w[clubs player].freeze
 
@@ -108,7 +108,7 @@ class TransferRequestMailer < ApplicationMailer
     # Ohne Empfaengerkreis-Parameter, die Mail geht ohnehin nur an die Person --
     # die Datenschutzinformation deshalb hier von Hand. Es ist die erste
     # Nachricht des Vorgangs, die sie erreicht, und damit die Stelle, an der
-    # Art. 13 DSGVO die Unterrichtung verlangt.
+    # Art. 14 Abs. 3 lit. b DSGVO die Unterrichtung spaetestens verlangt.
     enable_privacy_notice!
 
     subject_prefix = release?(transfer_request) ? 'Spielerfreigabe-Anfrage' : 'Transferanfrage'
@@ -319,7 +319,7 @@ class TransferRequestMailer < ApplicationMailer
   end
 
   # Das Flag liest das Mailer-Layout (app/views/layouts/mailer.html.erb) und
-  # haengt die Information nach Art. 13 DSGVO an. Der zustaendige Verband wird
+  # haengt die kurze Datenschutzinformation an. Der zustaendige Verband wird
   # darin benannt: `responsible_state_association` und nicht
   # `state_association`, denn entscheiden darf der Verbund (dieselbe
   # Unterscheidung wie im Text von #pending_lv_notification).

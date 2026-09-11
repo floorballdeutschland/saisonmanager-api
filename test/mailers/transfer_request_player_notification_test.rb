@@ -151,14 +151,39 @@ class TransferRequestPlayerNotificationTest < ActionMailer::TestCase
     end
   end
 
-  # --- Datenschutzinformation (Art. 13 DSGVO) ---------------------------------
+  # --- Datenschutzinformation -------------------------------------------------
 
   test 'die Zustimmungsanfrage traegt die Datenschutzinformation' do
     body = TransferRequestMailer.player_confirmation_request(transfer_request).body.decoded
 
-    assert_includes body, 'Art. 13 DSGVO'
+    assert_includes body, 'Art. 13 und 14 DSGVO'
     assert_includes body, PrivacyPolicy.url
     assert_includes body, PrivacyPolicy.responsible_body
+  end
+
+  # Zweck, Rechtsgrundlage, Empfaenger, Speicherdauer und die Rechte nach
+  # Art. 15-21 stehen im Kapitel "Saisonmanager" der Datenschutzerklaerung. Ein
+  # zweiter Wortlaut in der Mail laeuft dagegen auseinander -- der erste Entwurf
+  # nannte eine andere Rechtsgrundlage und eine andere Speicherdauer als das
+  # veroeffentlichte Kapitel. Der Test haelt die Aufgabenteilung fest: Die Mail
+  # verweist, sie wiederholt nicht.
+  test 'die Datenschutzinformation wiederholt die Datenschutzerklaerung nicht' do
+    body = TransferRequestMailer.player_confirmation_request(transfer_request).body.decoded
+
+    # Die Ueberschriften des Kapitels darf die Mail nennen -- sie verweist
+    # darauf. Geprueft ist deshalb der Inhalt: die Rechtsgrundlage, ihre
+    # Herleitung und die Aussage zum Drittlandtransfer.
+    assert_not_includes body, 'Art. 6 Abs. 1'
+    assert_not_includes body, 'Spielordnung'
+    assert_not_includes body, 'Drittland'
+  end
+
+  # Das Kapitel steht am Ende einer langen Erklaerung, die mit Website, Cookies
+  # und Newsletter beginnt: Ohne den Anker landet die Person oben und sucht.
+  test 'der Verweis zeigt auf das Kapitel und nicht auf den Seitenanfang' do
+    body = TransferRequestMailer.player_confirmation_request(transfer_request).body.decoded
+
+    assert_includes body, '#saisonmanager'
   end
 
   test 'die Datenschutzinformation benennt den zustaendigen Landesverband' do
@@ -170,7 +195,7 @@ class TransferRequestPlayerNotificationTest < ActionMailer::TestCase
   test 'die Sendung an die Vereine traegt die Datenschutzinformation nicht' do
     body = TransferRequestMailer.transfer_completed(transfer_request).body.decoded
 
-    assert_not_includes body, 'Art. 13 DSGVO'
+    assert_not_includes body, 'Art. 13 und 14 DSGVO'
   end
 
   # Der Grund, warum die Information im Layout steht und nicht im View: Ein
@@ -184,7 +209,7 @@ class TransferRequestPlayerNotificationTest < ActionMailer::TestCase
     body = TransferRequestMailer.transfer_completed(transfer_request, audience: 'player').body.decoded
 
     assert_includes body, 'Eigener Text der Verwaltung'
-    assert_includes body, 'Art. 13 DSGVO'
+    assert_includes body, 'Art. 13 und 14 DSGVO'
   end
 
   # --- Alarm zum unzustellbaren Widerruf --------------------------------------
