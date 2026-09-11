@@ -278,6 +278,12 @@ Rails.application.routes.draw do
       post 'referee/observations',          to: 'referee_observations#create'
 
       namespace :admin do
+        # Streaming-Bereich: die Spiele eines Wochenendes oder eines Spieltags
+        # quer über die Ligen, und die Rückmeldung einer angelegten Übertragung.
+        get  'streaming/games', to: 'streaming#games'
+        post 'streaming/games/:id/broadcast', to: 'streaming#record_broadcast'
+        get  'streaming/settings', to: 'streaming#settings'
+        put  'streaming/settings', to: 'streaming#update_settings'
         resources :leagues, only: [] do
           resources :qualifications, only: %i[create update destroy],
                                      controller: 'league_qualifications'

@@ -429,6 +429,11 @@ class User < ApplicationRecord
     # bekommen den vollen Verbandsverwaltungs-View über alle Landesverbände.
     global_sbk = ph[:sbk].present? && ph[:sbk].include?(0)
     result[:menu_item_state_association_admin] = ph[:admin].present? || global_sbk
+    # Streaming-Bereich: Der Streamschlüssel sendet auf den Verbandskanal, und die
+    # Übertragungen der Bundesligen richtet eine Stelle zentral ein. Deshalb
+    # global -- ein Landesverbands-SBK hat hier nichts zu tun und soll die
+    # Schlüssel fremder Vereine auch nicht sehen.
+    result[:menu_item_streaming_admin] = ph[:admin].present? || global_sbk
     result[:menu_item_state_association_sbk] = sbk_state_association_menu_item?(ph)
     # Anlegen/Löschen ganzer Landesverbände sowie das Umhängen des übergeordneten
     # Verbands bleiben globalen Admins vorbehalten (Backend: authorize_admin! /

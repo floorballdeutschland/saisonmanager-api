@@ -189,6 +189,22 @@ class Team < ApplicationRecord
     club&.logo_small_url
   end
 
+  # Der Streamschlüssel ist ein Geheimnis: Wer ihn hat, sendet auf den
+  # Verbandskanal. Er darf nicht über eine pauschale Serialisierung nach außen
+  # gelangen -- ein `render json: team` irgendwo im Verwaltungsbereich reicht,
+  # und er steht in einer Antwort, die auch ein Vereinsmanager sieht. Deshalb
+  # fliegt er hier grundsätzlich aus as_json/to_json; die gepflegten Hashes
+  # (#full_hash, #ticker_hash) zählen ihre Felder ohnehin einzeln auf und führen
+  # ihn nicht. Wer ihn ausliefern darf, liest ihn ausdrücklich über #stream_key.
+  # Vorbild ist Game#serializable_hash für die Schiedsrichternotiz.
+  STREAM_KEY_ATTRIBUTES = %w[stream_key].freeze
+
+  def serializable_hash(options = nil)
+    options = (options || {}).dup
+    options[:except] = Array(options[:except]) + STREAM_KEY_ATTRIBUTES unless options[:only]
+    super(options)
+  end
+
   def full_hash(with_contact_person = false)
     h = {
       id:,

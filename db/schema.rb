@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_09_09_130000) do
+ActiveRecord::Schema[7.2].define(version: 2026_09_10_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -455,6 +455,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_09_130000) do
     t.jsonb "point_corrections", default: {}, null: false, comment: "Punktekorrekturen je Team ({ team_id => { points: ... } }); ersetzt das globale Setting.point_corrections"
     t.string "league_class_name"
     t.string "league_category_name"
+    t.string "stream_playlist"
     t.index ["game_operation_id"], name: "index_leagues_on_game_operation_id"
     t.index ["legacy_ref"], name: "index_leagues_on_legacy_ref", unique: true, where: "(legacy_ref IS NOT NULL)"
   end
@@ -935,6 +936,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_09_130000) do
     t.jsonb "liveticker", default: {}
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.jsonb "stream_templates", default: {}
   end
 
   create_table "state_association_checklist_items", force: :cascade do |t|
@@ -982,6 +984,22 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_09_130000) do
     t.index ["parent_id"], name: "index_state_associations_on_parent_id"
   end
 
+  create_table "stream_broadcasts", force: :cascade do |t|
+    t.string "broadcast_id", null: false
+    t.string "stream_id"
+    t.bigint "game_id"
+    t.string "title"
+    t.datetime "last_active_at"
+    t.datetime "signal_lost_at"
+    t.datetime "ended_at"
+    t.string "ended_reason"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["broadcast_id"], name: "index_stream_broadcasts_on_broadcast_id", unique: true
+    t.index ["ended_at"], name: "index_stream_broadcasts_on_ended_at"
+    t.index ["game_id"], name: "index_stream_broadcasts_on_game_id"
+  end
+
   create_table "teams", force: :cascade do |t|
     t.bigint "club_id"
     t.bigint "league_id"
@@ -1000,8 +1018,10 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_09_130000) do
     t.boolean "feedback_contact_prefer_captain", default: false, null: false
     t.datetime "feedback_contact_updated_at"
     t.bigint "feedback_contact_updated_by"
+    t.string "stream_key"
     t.index ["club_id"], name: "index_teams_on_club_id"
     t.index ["legacy_ref"], name: "index_teams_on_legacy_ref", unique: true, where: "(legacy_ref IS NOT NULL)"
+    t.index ["stream_key"], name: "index_teams_on_stream_key", where: "(stream_key IS NOT NULL)"
   end
 
   create_table "transfer_requests", force: :cascade do |t|
