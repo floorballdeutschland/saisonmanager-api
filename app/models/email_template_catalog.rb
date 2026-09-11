@@ -55,7 +55,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
     'RefereeFeedbackMailer#form_available' => {
       mailer_class: 'RefereeFeedbackMailer',
       action_name: 'form_available',
-      description: 'Info an Teammanager, dass das Schiri-Feedback-Formular für ein Spiel ausfüllbar ist (Fenster öffnet mit dem Abschluss des Spielberichts, frühestens 24 Stunden nach dem Spiel; die Mail bittet um Abgabe innerhalb der folgenden 24 Stunden).',
+      description: 'Info an Teammanager, dass das Schiri-Feedback-Formular für ein Spiel ausfüllbar ist (Fenster öffnet mit dem Abschluss des Spielberichts, frühestens 12 Stunden nach dem Spiel; die Mail bittet um Abgabe innerhalb der folgenden 24 Stunden).',
       default_subject: 'Schiri-Feedback möglich – {{team_name}}',
       default_from: nil,
       default_reply_to: nil,
@@ -402,6 +402,19 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_reply_to: nil,
       placeholders: [
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' }
+      ]
+    },
+    'TransferRequestMailer#transfer_scheduled' => {
+      mailer_class: 'TransferRequestMailer',
+      action_name: 'transfer_scheduled',
+      description: 'Information an Vereine, Spieler und abgebenden LV, dass der Transfer genehmigt ist und ' \
+                   'zum Wunschdatum vollzogen wird.',
+      default_subject: 'Transfer genehmigt, Vollzug am {{effective_date}}: {{player_name}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'player_name', description: 'Vor- und Nachname des Spielers' },
+        { key: 'effective_date', description: 'Wunschdatum des Transfers (TT.MM.JJJJ)' }
       ]
     },
     'TransferRequestMailer#transfer_completed' => {
