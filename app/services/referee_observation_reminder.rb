@@ -4,9 +4,9 @@
 #
 # Versandzeitpunkt ist der ANPFIFF, nicht das Spielende: Der Coach soll den
 # Bogen schon während des Spiels aufschlagen können, um die Kriterien vor Augen
-# zu haben. Das ist der bewusste Unterschied zum Vereins-Feedback, das erst 24 h
-# nach dem Spiel öffnet, weil eine Mannschaft mit Abstand zum Ergebnis urteilen
-# soll. Ein Coach beobachtet, er reagiert nicht.
+# zu haben. Das ist der bewusste Unterschied zum Vereins-Feedback, das erst
+# Stunden nach dem Spiel öffnet, weil eine Mannschaft mit Abstand zum Ergebnis
+# urteilen soll. Ein Coach beobachtet, er reagiert nicht.
 #
 # Nur angesetzte Coaches. Wer sich ein Spiel selbst aussucht (in Spielbetrieben
 # ohne personenscharfe Ansetzung), bekommt keine Mail -- niemand weiß vorher,
