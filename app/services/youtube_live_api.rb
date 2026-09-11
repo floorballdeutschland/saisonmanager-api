@@ -119,8 +119,8 @@ class YoutubeLiveApi
     post('liveBroadcasts/transition', id: broadcast_id, broadcastStatus: 'complete', part: 'id,status')
   end
 
-  # Schaltet eine Uebertragung auf oeffentlich. Antwortet mit :veroeffentlicht,
-  # :schon_oeffentlich oder :verschwunden.
+  # Schaltet eine nicht gelistete Uebertragung auf oeffentlich. Antwortet mit
+  # :veroeffentlicht, :schon_oeffentlich, :zurueckgezogen oder :verschwunden.
   #
   # ZWEI AUFRUFE UND NICHT EINER, und das ist keine Bequemlichkeit: Ein `update`
   # ERSETZT den angegebenen Teil der Ressource. Was im Koerper fehlt, wird
@@ -142,8 +142,22 @@ class YoutubeLiveApi
     # fuenf Minuten erneut versucht.
     return :verschwunden if eintrag.nil?
 
-    status = eintrag.fetch('status', {})
-    return :schon_oeffentlich if status['privacyStatus'] == 'public'
+    status = eintrag['status']
+    # Ohne gelesenen Status wird NICHT geschrieben: Ein `update` ersetzt den
+    # Teil der Ressource, und was im Koerper fehlt, ist danach weg. Blind zu
+    # veroeffentlichen hiesse, genau die Pflichtangaben zu loeschen, wegen derer
+    # ueberhaupt erst gelesen wird.
+    raise Error, "liveBroadcasts liefert keinen Status zu #{broadcast_id}" if status.blank?
+
+    aktuell = status['privacyStatus']
+    return :schon_oeffentlich if aktuell == 'public'
+
+    # Alles ausser "nicht gelistet" bleibt unangetastet. "private" ist der
+    # naheliegendste Weg, eine Aufzeichnung zurueckzuziehen -- verunglueckte
+    # Aufnahme, Persoenlichkeitsrechte, falsches Spiel. Der Cronjob darf das
+    # nicht drei Stunden spaeter wieder aufdrehen; sichtbar gemacht laesst sich
+    # das nicht zuruecknehmen.
+    return :zurueckgezogen unless aktuell == 'unlisted'
 
     put_json(
       'liveBroadcasts',

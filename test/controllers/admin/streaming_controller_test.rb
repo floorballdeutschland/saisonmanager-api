@@ -472,6 +472,82 @@ module Admin
       assert_equal @club.id, eintrag['game_day']['hosting_club_id']
     end
 
+    # Der Kern der Regel, und bisher nur behauptet: In den uebrigen Tests ist der
+    # Zusage-Verein zugleich Ausrichter UND Heim, die Unterscheidung faellt also
+    # nicht auf. Gesendet wird aus der Halle -- ein Ausrichter mit Zusage nimmt
+    # deshalb auch die Partien mit, in denen er nicht Heim ist.
+    test 'die Zusage folgt dem Ausrichter, nicht der Heimmannschaft' do
+      fremder = create(:club, stream_default_unlisted: true)
+      @game_day.update!(club: fremder)
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/streaming/games', params: { from: '2026-09-12', to: '2026-09-14' }
+
+      assert_equal 'unlisted', response.parsed_body.first['privacy_default']
+    end
+
+    test 'GEGENPROBE: die Zusage der Heimmannschaft allein wirkt nicht' do
+      @club.update!(stream_default_unlisted: true)
+      @game_day.update!(club: create(:club))
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/streaming/games', params: { from: '2026-09-12', to: '2026-09-14' }
+
+      assert_equal 'public', response.parsed_body.first['privacy_default'],
+                   'der Ausrichter hat keine Zusage -- gesendet wird aus seiner Halle'
+    end
+
+    # Zwei Mannschaften desselben Vereins in einer Liga machen den Ausrichter
+    # mehrdeutig: `hosting_team` antwortet dann mit nil, es gibt also keinen
+    # Streamschluessel. Die Zusage haengt trotzdem am Verein und gilt weiter --
+    # genau deshalb liest sie `club` und nicht `hosting_team&.club`.
+    test 'die Zusage gilt auch bei mehrdeutigem Ausrichter' do
+      create(:team, league: @league, club: @club, name: 'MFBC Leipzig II')
+      @club.update!(stream_default_unlisted: true)
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/streaming/games', params: { from: '2026-09-12', to: '2026-09-14' }
+
+      eintrag = response.parsed_body.first
+      assert_equal 'unlisted', eintrag['privacy_default']
+      assert_nil eintrag['stream_key'], 'mehrdeutig heisst: kein Schluessel'
+    end
+
+    # Der einzige nicht rueckholbare Fehler, und die Oberflaeche kann ihn nicht
+    # sehen: Sie entscheidet nach der Liste, die sie geladen hat.
+    test 'oeffentlich trotz Zusage wird in der Antwort vermerkt' do
+      @club.update!(stream_default_unlisted: true)
+      login(create(:user, :admin))
+
+      post "/api/v2/admin/streaming/games/#{@game.id}/broadcast",
+           params: { broadcast_id: 'yt-uebergangen', privacy_status: 'public' }
+
+      assert response.parsed_body['zusage_uebergangen']
+    end
+
+    test 'GEGENPROBE: ohne Zusage ist nichts uebergangen' do
+      login(create(:user, :admin))
+
+      post "/api/v2/admin/streaming/games/#{@game.id}/broadcast",
+           params: { broadcast_id: 'yt-normal', privacy_status: 'public' }
+
+      assert_not response.parsed_body['zusage_uebergangen']
+    end
+
+    # Der Waechter kann den Satz zuerst angelegt haben (erste Meldung
+    # gescheitert, Uebertragung schon live). Ein `if new_record?` liesse die
+    # Zusage dann fuer immer auf false stehen.
+    test 'ein vom Waechter angelegter Satz bekommt die Zusage nachtraeglich' do
+      @club.update!(stream_default_unlisted: true)
+      StreamBroadcast.create!(broadcast_id: 'yt-waechter', title: 'vom Waechter')
+      login(create(:user, :admin))
+
+      post "/api/v2/admin/streaming/games/#{@game.id}/broadcast",
+           params: { broadcast_id: 'yt-waechter', privacy_status: 'unlisted' }
+
+      assert StreamBroadcast.find_by(broadcast_id: 'yt-waechter').promote_to_public
+    end
+
     test 'die Pflegeliste enthaelt die Ausrichter der laufenden Saison' do
       login(create(:user, :admin))
 

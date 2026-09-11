@@ -102,10 +102,13 @@ module Admin
       # automatische Veroeffentlichung, und wer bei einem Zusage-Ausrichter
       # bewusst oeffentlich anlegt, braucht keine.
       #
-      # Nur beim ERSTEN Melden: Der zweite Aufruf (nach dem Binden) darf einen
-      # inzwischen abgewaehlten Haken nicht nachtraeglich gegen die Uebertragung
-      # wenden, die bereits laeuft.
-      satz.promote_to_public = zusage_greift?(spiel, params[:privacy_status]) if satz.new_record?
+      # Einseitig und nie zuruecknehmend: Der zweite Aufruf (nach dem Binden)
+      # darf einen inzwischen abgewaehlten Haken nicht gegen die Uebertragung
+      # wenden, die bereits laeuft. `||=` statt `if new_record?`, weil der
+      # Waechter den Satz zuerst angelegt haben kann (erste Meldung gescheitert,
+      # Uebertragung schon live) -- dann stuende sonst fuer immer `false` darin,
+      # und die Zusage waere still verloren.
+      satz.promote_to_public ||= zusage_greift?(spiel, params[:privacy_status])
       satz.save!
 
       link_hinweis = link_setzen(spiel, broadcast_id)
@@ -116,6 +119,13 @@ module Admin
       # ist "warum steht im Spielplan nichts" von außen nicht zu beantworten.
       antwort[:link_written] = link_hinweis.nil?
       antwort[:link_skipped_reason] = link_hinweis
+      # Der einzige nicht rueckholbare Fehler, und der Server ist die einzige
+      # Stelle, die ihn sehen kann: Die Oberflaeche entscheidet nach der Liste,
+      # die sie geladen hat -- wird die Zusage danach in einer anderen Sitzung
+      # gesetzt, legt sie oeffentlich an, ohne es zu wissen. Geblockt wird
+      # nichts (die Uebertragung existiert bei YouTube bereits), aber sie wird
+      # laut.
+      antwort[:zusage_uebergangen] = zusage_uebergangen?(spiel, params[:privacy_status])
       render json: antwort, status: :created
     end
 
@@ -177,7 +187,11 @@ module Admin
       # -- ein halbfertiger Aufruf naehme einem Verein seine Zusage, ohne dass es
       # jemand sieht.
       wert = params[:stream_default_unlisted]
-      return render json: { error: 'stream_default_unlisted fehlt' }, status: :bad_request if wert.nil?
+      # `blank?` und nicht `nil?`: Ein leerer Wert ist derselbe halbfertige
+      # Aufruf und naehme dem Verein genauso still seine Zusage.
+      if wert.blank? && wert != false
+        return render json: { error: 'stream_default_unlisted fehlt' }, status: :bad_request
+      end
 
       verein.update!(stream_default_unlisted: ActiveModel::Type::Boolean.new.cast(wert) || false)
       render json: host_hash(verein)
@@ -200,6 +214,20 @@ module Admin
       return false unless gemeldete_sichtbarkeit.to_s == 'unlisted'
 
       spiel.game_day&.stream_privacy_default == 'unlisted'
+    end
+
+    def zusage_uebergangen?(spiel, gemeldete_sichtbarkeit)
+      return false unless spiel.game_day&.stream_privacy_default == 'unlisted'
+      return false if gemeldete_sichtbarkeit.to_s == 'unlisted'
+
+      if defined?(Sentry)
+        Sentry.capture_message(
+          'Uebertragung oeffentlich angelegt, obwohl der Ausrichter eine Zusage hat',
+          level: :warning,
+          extra: { game_id: spiel.id, club_id: spiel.game_day&.club_id }
+        )
+      end
+      true
     end
 
     def templates_hash
