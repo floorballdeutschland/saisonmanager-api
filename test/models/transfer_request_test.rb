@@ -145,4 +145,52 @@ class TransferRequestTest < ActiveSupport::TestCase
     assert_not_nil secondary, 'requesting_club muss als sekundärer Club eingetragen sein'
     assert_equal false, secondary['home_club']
   end
+
+  # ---------------------------------------------------------------------------
+  # Kuerzel des Landesverbands in der Ausfuhr (#439)
+  # ---------------------------------------------------------------------------
+
+  test 'as_json fuehrt zu beiden Vereinen das Kuerzel des Landesverbands' do
+    tr = build_transfer_request
+    tr.save!
+
+    json = tr.as_json
+    assert_equal @state_association.short_name, json[:requesting_club][:state_association_short_name]
+    assert_equal @state_association.short_name, json[:former_club][:state_association_short_name]
+  end
+
+  # Der eingetragene Verband, nicht der Spielverbund: Genehmigt wird von der
+  # Wurzel des Verbandsbaums, abgerechnet aber beim Kind-LV -- und die Ausfuhr
+  # ist die Abrechnungsdatei.
+  test 'as_json nennt den eingetragenen Landesverband, nicht dessen Elternverband' do
+    verbund = create(:state_association, short_name: 'VERB')
+    kind    = create(:state_association, short_name: 'KIND', parent: verbund)
+    @requesting_club.update!(state_association_id: kind.id)
+
+    tr = build_transfer_request
+    tr.save!
+
+    assert_equal 'KIND', tr.as_json[:requesting_club][:state_association_short_name]
+  end
+
+  # Kein Rueckfall auf den Verbandsnamen: eine Spalte, die mal ein Kuerzel und
+  # mal einen ausgeschriebenen Namen traegt, ist nicht auswertbar.
+  test 'as_json laesst das Kuerzel leer, wenn der Verband keines traegt' do
+    ohne_kuerzel = create(:state_association, name: 'Verband ohne Kuerzel', short_name: nil)
+    @requesting_club.update!(state_association_id: ohne_kuerzel.id)
+
+    tr = build_transfer_request
+    tr.save!
+
+    assert_nil tr.as_json[:requesting_club][:state_association_short_name]
+  end
+
+  test 'as_json laesst das Kuerzel leer, wenn der Verein keinen Landesverband hat' do
+    @former_club.update!(state_association_id: nil)
+
+    tr = build_transfer_request
+    tr.save!
+
+    assert_nil tr.as_json[:former_club][:state_association_short_name]
+  end
 end

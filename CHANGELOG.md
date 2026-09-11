@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Die Ausfuhr der Transfers und Freigaben nennt die beteiligten Landesverbände**: Aus der CSV-Datei der Transfervorgänge stellen die Landesverbände die Transfergebühr — sie enthielt bisher die beiden beteiligten Vereine, aber nicht deren Verbände, und wer abrechnet, musste jede Zeile über den Verein nachschlagen. Neben dem abgebenden und dem aufnehmenden Verein steht jetzt jeweils dessen Landesverband, als Kürzel, in beiden Ausfuhren (Hauptliste und eingehende Vorgänge). Maßgeblich ist der **im Verein eingetragene** Landesverband, nicht der Spielverbund: Über den Antrag entscheidet zwar die Wurzel des Verbandsbaums, abgerechnet wird aber beim eingetragenen Verband — bei einem Verein unter einem untergeordneten Landesverband wie dem Floorball Bund Hamburg steht also dieser in der Spalte und nicht der übergeordnete Verbund. Die Zelle bleibt bewusst leer, wenn der Verband kein Kürzel gepflegt hat oder der Verein keinem Landesverband zugeordnet ist; ein Rückfall auf den ausgeschriebenen Namen ist unterblieben, weil eine Spalte, die mal das eine und mal das andere trägt, sich nicht auswerten lässt — ein fehlendes Kürzel wird in der Verbandsmaske nachgetragen.
+
 ## [1.113.0] - 2026-09-11
 
 ### Neu

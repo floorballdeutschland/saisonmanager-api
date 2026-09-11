@@ -455,7 +455,19 @@ class TransferRequest < ApplicationRecord
     }
   end
 
+  # `state_association_short_name` ist das Kuerzel des im Verein EINGETRAGENEN
+  # Landesverbands (clubs.state_association_id), nicht das des Spielverbunds:
+  # Genehmigt wird zwar von der Wurzel des Verbandsbaums
+  # (Club#responsible_state_association), abgerechnet aber beim eingetragenen
+  # Verband -- und die Ausfuhr der Vorgaenge ist die Datei, aus der die
+  # Landesverbaende die Transfergebuehr stellen.
+  #
+  # Ohne Rueckfall auf den Verbandsnamen: `short_name` ist ein optionales Feld
+  # der Verbandsmaske, und eine Spalte, die mal ein Kuerzel und mal einen
+  # ausgeschriebenen Namen traegt, laesst sich nicht auswerten. Fehlt das
+  # Kuerzel -- oder hat der Verein gar keinen Landesverband --, bleibt der Wert
+  # leer und wird in der Verbandsmaske nachgetragen.
   def club_hash(club)
-    { id: club.id, name: club.name }
+    { id: club.id, name: club.name, state_association_short_name: club.state_association&.short_name }
   end
 end
