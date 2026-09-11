@@ -300,9 +300,26 @@ class Team < ApplicationRecord
     admin = user.permission_hash[:admin].present? && (global_or_go & user.permission_hash[:admin]).present?
     sbk = user.permission_hash[:sbk].present? && (global_or_go & user.permission_hash[:sbk]).present?
 
+    # Der Verein der Mannschaft, im Spielverbund jeder beteiligte: `all_club_ids`
+    # statt `club_id`. Dass damit jeder Verbund-Verein das gemeinsame Logo
+    # setzen und auch überschreiben kann, ist gewollt – ein Verbund tritt als
+    # eine Mannschaft an, und wer sie gemeinsam stellt, pflegt auch ihr Zeichen.
+    vm = user.permission_hash[:vm].present? && user.permission_hash[:vm].intersect?(all_club_ids)
+
     # # edit league
     perm << :update_team if admin || sbk
     perm << :delete_team if admin || sbk
+
+    # Bewusst getrennt von :update_team: Daran hängen Liga-Zuordnung, Pokal-Ligen
+    # und Kurzname, also der Spielbetrieb – das bleibt beim Verband. Das Zeichen
+    # der Mannschaft ist dagegen Vereinssache, wie das Vereinslogo
+    # (:update_own_club in Club#user_permissions), und der Verband darf es
+    # weiterhin ebenfalls pflegen.
+    #
+    # Kein eigenes Recht zum Entfernen: Wer ein abweichendes Logo setzen darf,
+    # darf es auch zurücknehmen. Danach greift wieder das Vereinslogo
+    # (#logo_url_fallback), ein Zustand ohne Zeichen entsteht dabei nicht.
+    perm << :update_team_logo if admin || sbk || vm
 
     perm
   end
