@@ -37,9 +37,12 @@ pidfile ENV.fetch("PIDFILE") { "tmp/pids/server.pid" }
 # allen Prozessen geteilten Cache zulaessig. Rails.cache.delete raeumt sonst
 # nur den Cache des Workers auf, der die Anfrage zufaellig bearbeitet hat,
 # und die uebrigen liefern bis zu fuenf Minuten alte Tabellen und
-# Spielstaende aus (siehe Game#flush_league_caches). Deshalb steht in
-# config/environments/production.rb ein file_store statt des frueheren
-# memory_store. Wer hier Worker einschaltet, muss das dort pruefen.
+# Spielstaende aus (siehe Game#flush_league_caches). Deshalb waehlt
+# config/environments/production.rb bei gesetztem REDIS_URL einen geteilten
+# Redis-Cache. config/initializers/shared_cache_required.rb bricht den Start
+# ab, falls doch einmal Worker und prozesslokaler Cache zusammenkommen --
+# Puma liest WEB_CONCURRENCY naemlich auch von sich aus, unabhaengig von
+# dieser Datei.
 workers_count = ENV.fetch("WEB_CONCURRENCY") { 0 }.to_i
 
 if workers_count.positive?
@@ -50,12 +53,17 @@ if workers_count.positive?
   # Worker alles erneut.
   preload_app!
 
-  # Nach dem Fork braucht jeder Worker eine eigene Datenbankverbindung: Der
-  # Elternprozess hat seine beim Laden geoeffnet, und ein geforkter Socket
-  # darf nicht von mehreren Prozessen gleichzeitig benutzt werden.
-  on_worker_boot do
-    ActiveRecord::Base.establish_connection if defined?(ActiveRecord::Base)
-  end
+  # Bewusst KEIN on_worker_boot mit establish_connection. Das Idiom stammt aus
+  # Rails 4 und ist hier gleich doppelt gegenstandslos: Der AR-Railtie leert
+  # den Verbindungspool in after_initialize (active_record.clear_active_connections),
+  # der Elternprozess haelt nach dem Boot also gar keine Verbindung, die
+  # geerbt werden koennte. Und selbst wenn, verwirft
+  # ActiveSupport::ForkTracker.after_fork die geerbten Pools von sich aus
+  # (PoolConfig.discard_pools!), ohne die Sockets des Elternprozesses zu
+  # schliessen. Die Rails-7-Vorlage fuer diese Datei enthaelt den Hook
+  # folgerichtig nicht mehr. Ausserdem warnt Puma 8 bei on_worker_boot bereits
+  # auf before_worker_boot -- ein Hook, der nichts tut, waere also nicht nur
+  # nutzlos, sondern auch laut.
 end
 
 # Allow puma to be restarted by `rails restart` command.

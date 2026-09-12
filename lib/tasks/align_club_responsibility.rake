@@ -317,13 +317,16 @@ namespace :clubs do
 
     fbh.update!(parent: flvsh, sbk_email: nil, vsk_email: nil, rsk_email: nil)
 
-    # Bewusst OHNE Rails.cache.delete('settings/init'): Der Cache-Store ist in
-    # Produktion :memory_store, also je Prozess eigen. Ein Rake-Lauf hat seinen
-    # eigenen Store und wuerde damit nichts leeren, was die laufenden
-    # Puma-Arbeiter betrifft -- der Aufruf saehe nur nach einem Riegel aus. Die
-    # Oberflaeche zeigt den alten Verbandsbaum deshalb bis zu 30 Minuten weiter,
-    # sofern nicht ohnehin ein Deploy die Container neu startet. Dieselbe
-    # Begruendung steht in app/models/current.rb.
+    # Der Cache wird geleert, und das wirkt jetzt auch: Seit Produktion einen
+    # geteilten Redis nutzt (config/environments/production.rb), erreicht ein
+    # Rake-Lauf denselben Store wie die laufenden Puma-Arbeiter.
+    #
+    # Frueher stand hier das Gegenteil -- mit :memory_store hatte jeder Prozess
+    # seinen eigenen Cache, ein delete aus einem Rake-Lauf saehe nur nach einem
+    # Riegel aus und die Oberflaeche zeigte den alten Verbandsbaum bis zu 30
+    # Minuten weiter. Das Weglassen war damals richtig und ist es seit dem
+    # Store-Wechsel nicht mehr.
+    Rails.cache.delete('settings/init')
 
     puts "\nGeschrieben. Zustaendig fuer Hamburg ist jetzt: " \
          "#{Club.where(state_association_id: fbh.id).first&.main_game_operation_id.inspect}"

@@ -7,9 +7,10 @@ class Setting < ApplicationRecord
   # geladen wurde (z. B. admin/penalty_codes schreibt über `Setting.current`).
   after_commit :flush_caches
 
-  # Zwei Ebenen, weil ein Treffer im Rails-Cache hier nicht gratis ist: der
-  # MemoryStore serialisiert seine Eintraege (DupCoder) und macht bei JEDEM
-  # Lesen ein Marshal.load. Auf Produktion sind das 0,4 ms je Aufruf — fuer
+  # Zwei Ebenen, weil ein Treffer im Rails-Cache hier nicht gratis ist: Jeder
+  # Store serialisiert seine Eintraege und macht bei JEDEM Lesen ein
+  # Marshal.load — der frueher hier eingesetzte MemoryStore ueber den DupCoder,
+  # der Redis von Haus aus. Auf Produktion sind das 0,4 ms je Aufruf — fuer
   # sich genommen wenig, aber `.current` hat 75 Aufrufstellen, und in Schleifen
   # ueber Spieler oder Ligen multipliziert sich das (Messung 19.08.2026:
   # 0,93 ms je `current_min_team`, mal 41 Lizenzen eines Spielers = 38 ms fuer
@@ -20,7 +21,7 @@ class Setting < ApplicationRecord
   # zwar 0, aber der Aufruf selbst bleibt Arbeit. Beides zusammen wirkt.
   #
   # ACHTUNG, die Rueckgabe ist GETEILT: Vorher lieferte jeder Aufruf ueber den
-  # Marshal-Rundlauf des MemoryStore eine eigene Kopie, eine Aenderung an Ort und
+  # Marshal-Rundlauf des Cache-Stores eine eigene Kopie, eine Aenderung an Ort und
   # Stelle blieb also folgenlos. Jetzt sehen alle Aufrufer einer Anfrage
   # dieselbe Instanz. Wer die Konfiguration veraendern will, arbeitet auf einer
   # Kopie (`.deep_dup`) oder baut neue Hashes (`merge`) — sonst landet die
@@ -30,7 +31,10 @@ class Setting < ApplicationRecord
   # Wer die Konfiguration an den Callbacks vorbei aendert (`update_column(s)`,
   # Raw-SQL, Konsole — so wird z. B. `nations` gepflegt), muss danach
   # `flush_current_cache` aufrufen. Sonst haelt der Prozess bis zu einer Stunde
-  # den alten Stand, und das je Puma-Worker verschieden.
+  # den alten Stand. (Frueher stand hier "je Puma-Worker verschieden" -- das galt
+  # fuer den prozesslokalen :memory_store und trifft seit dem Wechsel auf einen
+  # geteilten Redis nicht mehr zu. Der Punkt selbst bleibt: Ein Cache-Eintrag
+  # haelt den alten Stand bis zum Ablauf seiner Standzeit.)
   def self.current
     Current.setting ||= Rails.cache.fetch('settings/current', expires_in: 1.hour) do
       Setting.first

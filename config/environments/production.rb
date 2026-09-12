@@ -50,38 +50,67 @@ Rails.application.configure do
   # Prepend all log lines with the following tags.
   config.log_tags = [:request_id]
 
-  # In-Process-Cache statt des Rails-Defaults :file_store.
-  # Puma läuft hier im Single-Process-Modus (nur Threads, keine Worker), daher ist
-  # :memory_store prozessweit geteilt und thread-sicher. Der FileStore erzeugte unter
-  # Last eine Race Condition beim Anlegen der Cache-Verzeichnisse
-  # (Errno::ENOENT @ dir_s_mkdir), die den API-Key-Check in Rack::Attack und damit
-  # ganze Public-Requests mit 500 abbrechen ließ. Die Größe ist bewusst deutlich
-  # über dem Default (32 MB) gewählt, damit die langlebigen Statistik-Caches
-  # (Spieler-/Team-Stats, bis zu 1 Woche TTL) nicht durch LRU-Eviction verdrängt
-  # werden und die DB-Last wieder hochtreiben.
-  # Dateibasierter Cache statt memory_store, weil der Cache von allen
-  # Puma-Workern gemeinsam benutzt werden muss (siehe config/puma.rb).
+  # Cache-Store. Mit REDIS_URL ein von allen Puma-Workern geteilter Redis,
+  # ohne ihn der bisherige prozesslokale :memory_store.
   #
-  # Der memory_store liegt im Prozessspeicher. Solange Produktion
-  # einprozessig lief, war das die schnellste Wahl und die
-  # Rails.cache.delete-Aufrufe nach einem Spieleintrag
-  # (Game#flush_league_caches) wirkten zuverlaessig. Mit mehreren Workern
-  # raeumt so ein delete nur den Cache des Prozesses auf, der die Anfrage
-  # zufaellig bearbeitet hat -- Tabelle, Torschuetzenliste, Spielplan und die
-  # Stream-Overlays zeigten dann bis zu fuenf Minuten alte Staende, und zwar
-  # scheinbar zufaellig je nach antwortendem Worker.
+  # Warum ueberhaupt geteilt: Sobald Puma mehrere Worker startet
+  # (WEB_CONCURRENCY, siehe config/puma.rb), raeumt ein Rails.cache.delete nur
+  # den Cache des Prozesses, der die Anfrage zufaellig bearbeitet hat.
+  # Game#flush_league_caches erreichte dann nur einen von vier Workern, und
+  # die uebrigen lieferten bis zu fuenf Minuten alte Tabellen,
+  # Torschuetzenlisten und Spielstaende aus -- mitten im Livebetrieb.
   #
-  # Ein file_store genuegt, weil alle Worker im selben Container laufen und
-  # sich dessen Dateisystem teilen. Ein eigener Cache-Dienst (Redis,
-  # Memcached) wuerde erst gebraucht, wenn die API auf mehrere Container
-  # verteilt wird; bis dahin waere er ein zusaetzlicher Dienst ohne Gewinn.
+  # Warum NICHT :file_store, obwohl alle Worker im selben Container laufen und
+  # sich dessen Dateisystem teilen: Genau das lief hier schon einmal und wurde
+  # am 18.07.2026 mit 17dc2cc8 entfernt ("fix(cache): Produktions-Cache auf
+  # :memory_store (FileStore-Race behoben)", api#156).
+  # ActiveSupport::Cache::FileStore raeumt in delete_empty_directories
+  # Verzeichnisse weg, waehrend ein anderer Prozess hineinschreibt;
+  # write_serialized_entry faengt nichts ab, der Fehler schlaegt bis zum
+  # rescue_from durch. Betroffen war der API-Schluessel-Check in Rack::Attack
+  # (ApiKey.meta_for, Fuenf-Minuten-TTL, bei jedem oeffentlichen Request
+  # gelesen) -- ganze Public-Requests brachen mit 500 ab. Der Fehler steckt
+  # unveraendert in activesupport 7.2.3.2, und mit vier Workern waere die
+  # Nebenlaeufigkeit vervierfacht worden.
   #
-  # Zu beachten: Der file_store raeumt abgelaufene Eintraege nicht von sich
-  # aus weg, sie verschwinden erst beim naechsten Zugriff. Alle Eintraege in
-  # dieser Anwendung tragen ein expires_in, die Menge ist also begrenzt und
-  # klein (Ligatabellen, Einstellungen, API-Schluessel). Waechst das
-  # Verzeichnis dennoch, raeumt Rails.cache.cleanup auf.
-  config.cache_store = :file_store, Rails.root.join('tmp/cache')
+  # Redis loest zugleich zwei Dinge, die ein file_store offen liesse: Es hat
+  # eine Groessengrenze mit Verdraengung, waehrend ein Cache-Verzeichnis
+  # unbegrenzt waechst -- versionierte Schluessel wie
+  # games/<id>/full_hash/<updated_at> werden nie wieder gelesen und deshalb
+  # nie abgeraeumt. Und es liegt ausserhalb des Containers, ueberdauert einen
+  # Deploy also nicht als Datei im gemounteten Git-Checkout.
+  #
+  # Ohne REDIS_URL bleibt es beim :memory_store -- fuer einen einzelnen
+  # Prozess die schnellste und sicherste Wahl. Die 128 MB liegen bewusst ueber
+  # dem Default von 32 MB, damit die langlebigen Statistik-Caches
+  # (Spieler-/Team-Stats, bis zu 1 Woche TTL) nicht durch Verdraengung
+  # herausfallen und die Datenbanklast wieder hochtreiben.
+  #
+  # Dass Worker und prozesslokaler Cache nicht versehentlich zusammenkommen,
+  # sichert config/initializers/shared_cache_required.rb ab.
+  config.cache_store =
+    if ENV['REDIS_URL'].present?
+      [:redis_cache_store, {
+        url: ENV['REDIS_URL'],
+        # Ein haengender oder weggefallener Redis darf keine Anfrage aufhalten.
+        # Bei einem Fehler verhaelt sich der Store wie "nicht im Cache", der
+        # Block wird gerechnet: langsamer, aber nie ein 500er. Genau die
+        # Eigenschaft, die dem file_store fehlte.
+        connect_timeout: 1,
+        read_timeout: 0.5,
+        write_timeout: 0.5,
+        reconnect_attempts: 1,
+        error_handler: lambda { |method:, returning:, exception:|
+          Sentry.capture_exception(
+            exception,
+            level: :warning,
+            tags: { cache_method: method, cache_returning: returning }
+          )
+        }
+      }]
+    else
+      [:memory_store, { size: 128.megabytes }]
+    end
 
   # Use a real queuing backend for Active Job (and separate queues per environment).
   # config.active_job.queue_adapter     = :resque

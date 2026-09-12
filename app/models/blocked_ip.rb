@@ -41,11 +41,13 @@ class BlockedIp < ApplicationRecord
   CACHE_KEY = 'blocked_ips/all'.freeze
 
   # Sicherheitsnetz fuer die Faelle, in denen after_commit nicht feuert oder ins
-  # Leere laeuft. Die Web-Schicht ist NICHT gemeint — Puma laeuft dort im
-  # Single-Process-Modus, der :memory_store ist prozessweit geteilt und eine
-  # Freigabe ueber die Maske wirkt sofort (siehe production.rb). Gemeint sind:
-  #   - Schreibwege aus einem anderen Prozess (rails runner, rake, cron): deren
-  #     Speicher-Cache ist ein eigener, der Webprozess erfaehrt nichts.
+  # Leere laeuft. Die Web-Schicht ist NICHT gemeint — der Cache ist auf Prod ein
+  # geteilter Redis (siehe production.rb), eine Freigabe ueber die Maske wirkt
+  # also sofort und in allen Puma-Workern. Gemeint sind:
+  #   - Schreibwege am Modell vorbei, siehe unten. Schreibwege aus einem anderen
+  #     Prozess (rails runner, rake, cron) erreichen den Webprozess seit dem
+  #     Wechsel auf Redis dagegen sehr wohl; frueher hatte jeder Prozess seinen
+  #     eigenen Speicher-Cache und der Webprozess erfuhr nichts.
   #   - Schreibwege am Modell vorbei (insert_all, update_all, delete_all, Roh-SQL
   #     — auch die Migration dieses Features): dort gibt es kein after_commit.
   # Kurz genug, dass beides zeitnah nachzieht.

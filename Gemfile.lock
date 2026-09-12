@@ -111,7 +111,7 @@ GEM
       committee (>= 5.1.0)
       railties (>= 6.0)
     concurrent-ruby (1.3.8)
-    connection_pool (3.0.2)
+    connection_pool (2.5.5)
     crass (1.0.7)
     creek (2.6.3)
       nokogiri (>= 1.10.0)
@@ -132,6 +132,7 @@ GEM
       factory_bot (~> 6.5)
       railties (>= 6.1.0)
     ffi (1.17.4)
+    ffi (1.17.4-aarch64-linux-gnu)
     ffi (1.17.4-x86_64-linux-gnu)
     formatador (1.2.3)
       reline
@@ -218,6 +219,8 @@ GEM
     nokogiri (1.19.4)
       mini_portile2 (~> 2.8.2)
       racc (~> 1.4)
+    nokogiri (1.19.4-aarch64-linux-gnu)
+      racc (~> 1.4)
     nokogiri (1.19.4-x86_64-linux-gnu)
       racc (~> 1.4)
     notiffany (0.1.3)
@@ -233,6 +236,7 @@ GEM
       ast (~> 2.4.1)
       racc
     pg (1.6.3)
+    pg (1.6.3-aarch64-linux)
     pg (1.6.3-x86_64-linux)
     pp (0.6.4)
       prettyprint
@@ -304,6 +308,10 @@ GEM
       prism (>= 1.6.0)
       rbs (>= 4.0.0)
       tsort
+    redis (5.4.1)
+      redis-client (>= 0.22.0)
+    redis-client (0.30.1)
+      connection_pool
     regexp_parser (2.12.0)
     reline (0.7.0)
       io-console (~> 0.5)
@@ -394,6 +402,7 @@ GEM
     zip_kit (6.3.4)
 
 PLATFORMS
+  aarch64-linux
   ruby
   x86_64-linux
 
@@ -405,6 +414,7 @@ DEPENDENCIES
   caxlsx
   caxlsx_rails
   committee-rails (~> 0.7)
+  connection_pool (~> 2.5)
   creek
   dotenv-rails
   factory_bot_rails
@@ -423,6 +433,7 @@ DEPENDENCIES
   rack-attack
   rack-cors
   rails (~> 7.2.0)
+  redis (~> 5.4)
   request_store
   rubocop
   rubocop-rails
