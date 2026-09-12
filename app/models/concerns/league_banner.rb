@@ -6,7 +6,9 @@ module LeagueBanner
   end
 
   def banner_url
-    Rails.application.routes.url_helpers.rails_blob_path(banner, only_path: true) if banner.attached?
+    # Proxy- statt Redirect-Route: stabile URL, die der Browser behalten kann.
+    # Ausfuehrliche Begruendung in app/models/concerns/league_logo.rb.
+    Rails.application.routes.url_helpers.rails_storage_proxy_path(banner, only_path: true) if banner.attached?
   end
 
   def resolved_banner

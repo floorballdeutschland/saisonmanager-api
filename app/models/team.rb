@@ -165,7 +165,9 @@ class Team < ApplicationRecord
   end
 
   def logo_url
-    Rails.application.routes.url_helpers.rails_blob_path(logo, only_path: true) if logo.attached?
+    # Proxy- statt Redirect-Route: stabile URL, die der Browser behalten kann.
+    # Ausfuehrliche Begruendung in app/models/concerns/league_logo.rb.
+    Rails.application.routes.url_helpers.rails_storage_proxy_path(logo, only_path: true) if logo.attached?
   end
 
   def logo_small_url
