@@ -2,11 +2,15 @@
 #
 # ActiveSupport setzt die Attribute vor jedem Request und vor jedem Testfall
 # zurueck. Damit koennen die Werte nicht veralten, anders als bei Rails.cache:
-# Der Cache-Store ist in Produktion `:memory_store`, also je Puma-Worker eigen.
-# Eine Leerung nach einer Aenderung erreicht nur den Worker, der die Aenderung
-# entgegengenommen hat, alle anderen behielten den alten Stand bis zum Ablauf der
-# Standzeit. Fuer die Zustaendigkeitsableitung am Verein waere das eine falsche
-# Berechtigung auf Zeit.
+# Ein Rails.cache-Eintrag veraltet zwischen zwei Aenderungen innerhalb seiner
+# Standzeit; fuer die Zustaendigkeitsableitung am Verein waere das eine falsche
+# Berechtigung auf Zeit. Current wird dagegen vor jedem Request neu aufgebaut
+# und kann per Definition nicht hinterherhinken.
+#
+# (Frueher stand hier zusaetzlich, der :memory_store sei "je Puma-Worker eigen".
+# Das stimmt weiterhin -- er ist nur nicht mehr der Prod-Store, solange
+# REDIS_URL gesetzt ist, siehe config/environments/production.rb. Der Grund
+# oben traegt ohnehin unabhaengig davon; er ist der eigentliche.)
 #
 # Gespeichert wird hier nur, was innerhalb EINES Requests vielfach gebraucht wird
 # und sich darin nicht aendert:

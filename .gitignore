@@ -39,3 +39,9 @@
 *.xlsx
 referees_stammdaten.csv
 referees_historie.csv
+
+# Git-Worktrees liegen nach Projektvorgabe unter .worktrees/ INNERHALB des
+# Repos. Ohne diesen Eintrag nimmt ein `git add -A` sie als eingebettete
+# Repositories auf ("warning: adding embedded git repository") und der Commit
+# traegt Verweise auf Arbeitsstaende anderer Branches mit.
+/.worktrees/

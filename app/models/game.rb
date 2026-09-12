@@ -1801,8 +1801,17 @@ class Game < ApplicationRecord
     # Spieltag-Schedule gezielt löschen (kein delete_matched: das würde bei
     # jedem Game-Save alle Cache-Keys unter Lock scannen). Wechselt ein Spiel
     # den Spieltag, bleibt der alte Key bis zum TTL-Ablauf (≤5 min) stale –
-    # bewusst in Kauf genommen. Wie alle Deletes hier nur wirksam, weil der
-    # MemoryStore prozesslokal ist und Prod single-process läuft.
+    # bewusst in Kauf genommen.
+    #
+    # Alle Deletes hier setzen voraus, dass sich sämtliche Webprozesse
+    # denselben Cache teilen. Solange Produktion einprozessig mit einem
+    # MemoryStore lief, war das von selbst gegeben. Sobald Puma mehrere Worker
+    # startet (WEB_CONCURRENCY, gesetzt im docker-Repo), leistet es der
+    # geteilte Redis aus config/environments/production.rb. Ein prozesslokaler
+    # Cache würde diese Invalidierung unwirksam machen – dann lieferten die
+    # übrigen Worker bis zu fünf Minuten alte Tabellen und Spielstände aus;
+    # config/initializers/shared_cache_required.rb lässt diese Kombination
+    # deshalb gar nicht erst starten.
     gd_number = game_day&.number
     Rails.cache.delete("leagues/#{league_id}/game_day_schedule/#{gd_number}") if gd_number
   end

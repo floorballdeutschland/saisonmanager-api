@@ -145,11 +145,14 @@ class ApplicationController < ActionController::Base
   # `isLive`.
   #
   # Die Schlüssel werden zusätzlich als String geprüft. Mit den heute
-  # eingesetzten Stores greift das nie: :memory_store serialisiert über DupCoder
-  # und gibt Symbole zurück, und selbst Marshal führte Symbole als Symbole
-  # zurück. Die Absicherung gilt einem Store mit JSON-Kodierung (Redis,
-  # Memcached), der Strings lieferte – ohne sie fiele die Verzögerung dann still
-  # aus, ohne Fehler.
+  # eingesetzten Stores greift das nie, und das gilt auch für den inzwischen
+  # eingeführten Redis: ActiveSupport::Cache::RedisCacheStore serialisiert über
+  # Marshal, nicht über JSON, und gibt Symbole als Symbole zurück – am
+  # 12.09.2026 gegen Redis 7 nachgestellt, verschachtelte Symbole eingeschlossen.
+  # Die Absicherung gilt einem Store mit JSON-Kodierung, der Strings lieferte –
+  # ohne sie fiele die Verzögerung dann still aus, ohne Fehler. Sie bleibt
+  # deshalb stehen, ist heute aber kein toter Code aus Versehen, sondern
+  # Vorsorge für einen Store-Wechsel.
   def running_entry?(entry)
     started = entry.fetch(:started) { entry['started'] }
     ended = entry.fetch(:ended) { entry['ended'] }
