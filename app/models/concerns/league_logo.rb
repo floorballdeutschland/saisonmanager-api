@@ -42,12 +42,27 @@ module LeagueLogo
     # antwortet mit http_cache_forever public: true. Damit gibt es genau eine
     # stabile URL, die der Browser dauerhaft behaelt.
     #
-    # BEWUSST NUR FUER LOGOS UND BANNER. Die Proxy-URL ist dauerhaft gueltig
-    # -- das ist fuer ein Verbandswappen richtig und fuer ein Lizenzdokument
-    # falsch. Lizenzdokumente, Spielberichtsscans, Schiedsrichterberichte und
-    # der Kursimport-CSV bleiben deshalb auf der ablaufenden Redirect-Route
-    # (rails_blob_url in den Controllern, rails_blob_path in
-    # referee_course_import.rb).
+    # BEWUSST NUR FUER LOGOS UND BANNER -- aber NICHT, weil die Redirect-Route
+    # einen Zugriffsschutz haette. Sie hat keinen: Ihre signed_id ist genauso
+    # dauerhaft (siehe oben), und der RedirectController signiert bei jedem
+    # Aufruf eine frische Disk-URL. Wer einen rails_blob_url auf ein
+    # Lizenzdokument einmal besitzt, holt sich das Dokument beliebig oft und
+    # beliebig lange. Keine der beiden Routen ist authentifiziert: Beide
+    # Controller erben von ActiveStorage::BaseController, nicht von
+    # ApplicationController -- weder authenticate_user noch
+    # authenticate_public_request laufen dort je.
+    #
+    # Vertrauliche Anlagen (Lizenzdokumente, Spielberichtsscans,
+    # Schiedsrichterberichte, Kursimport-CSV, Dokumentvorlagen) bleiben aus
+    # zwei anderen Gruenden unangetastet: Es gibt keinen Grund, die
+    # Angriffsflaeche ohne Not zu vergroessern, und http_cache_forever wuerde
+    # ihnen ein Cache-Control ueber hundert Jahre mitgeben -- eine Kopie in
+    # jedem Browser- und Zwischenspeicher, die niemand mehr einsammelt.
+    #
+    # Deshalb wird je Aufrufstelle umgestellt und nicht global. Ein
+    # config.active_storage.resolve_model_to_route = :rails_storage_proxy
+    # waere eine Zeile gewesen und haette die Lizenz-Controller
+    # mitgerissen, weil direct :rails_blob denselben Schalter liest.
     Rails.application.routes.url_helpers.rails_storage_proxy_path(logo, only_path: true)
   end
 

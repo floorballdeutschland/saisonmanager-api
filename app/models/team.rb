@@ -173,7 +173,17 @@ class Team < ApplicationRecord
   def logo_small_url
     return nil unless logo.attached?
 
-    Rails.application.routes.url_helpers.rails_representation_path(
+    # Wie logo_url die Proxy-Route, hier fuer die Variante: Der Direct-Helfer
+    # rails_representation_path folgt ActiveStorage.resolve_model_to_route
+    # (Standard :rails_storage_redirect) und erzeugt damit
+    # representations/redirect -- dasselbe Zwei-Sprung-Muster mit
+    # Fuenf-Minuten-Frist wie bei den grossen Logos.
+    #
+    # Diese kleinen Wappen sind die zahlenmaessig wichtigeren: Spielpaarungen,
+    # Begegnungen, naechste Spiele, Spielhistorie und die Ranglistentabelle
+    # rendern durchweg *_small_logo. Ein Spielplan mit zwoelf Begegnungen
+    # zieht vierundzwanzig davon und nur eine Handvoll grosser.
+    Rails.application.routes.url_helpers.rails_storage_proxy_path(
       logo.variant(resize_to_fit: [100, 100]),
       only_path: true
     )
