@@ -346,4 +346,25 @@ class TeamTest < ActiveSupport::TestCase
     create(:game_day, league: league, date: (Date.current + days_ahead).to_s)
     league
   end
+
+  # Logos gehen ueber die Proxy-Route, nicht ueber die Weiterleitung. Das ist
+  # kein Selbstzweck: Die Redirect-Route kostet zwei Rails-Requests je Wappen
+  # (302 plus Auslieferung) und laesst sich nicht zwischenspeichern, weil der
+  # RedirectController die 302 nur fuenf Minuten gueltig macht. Am 1.
+  # Bundesliga-Spieltag (12.09.2026) waren dadurch 239 von 411 Requests
+  # Logo-Verkehr.
+  #
+  # Der Test prueft die Gestalt der Adresse, weil ein Rueckbau auf
+  # rails_blob_path bzw. rails_representation_path FUNKTIONIEREN wuerde -- er
+  # waere nur wieder langsam und damit unsichtbar. Genau so ist die Variante
+  # beim ersten Anlauf dieser Umstellung durchgerutscht.
+  test 'logo_url und logo_small_url nutzen die Proxy-Route' do
+    team = create(:team)
+    team.logo.attach(io: StringIO.new('x'), filename: 'wappen.png', content_type: 'image/png')
+
+    assert_match %r{/blobs/proxy/}, team.logo_url
+    assert_match %r{/representations/proxy/}, team.logo_small_url
+    assert_no_match %r{/redirect/}, team.logo_url
+    assert_no_match %r{/redirect/}, team.logo_small_url
+  end
 end
