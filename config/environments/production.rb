@@ -59,7 +59,29 @@ Rails.application.configure do
   # über dem Default (32 MB) gewählt, damit die langlebigen Statistik-Caches
   # (Spieler-/Team-Stats, bis zu 1 Woche TTL) nicht durch LRU-Eviction verdrängt
   # werden und die DB-Last wieder hochtreiben.
-  config.cache_store = :memory_store, { size: 128.megabytes }
+  # Dateibasierter Cache statt memory_store, weil der Cache von allen
+  # Puma-Workern gemeinsam benutzt werden muss (siehe config/puma.rb).
+  #
+  # Der memory_store liegt im Prozessspeicher. Solange Produktion
+  # einprozessig lief, war das die schnellste Wahl und die
+  # Rails.cache.delete-Aufrufe nach einem Spieleintrag
+  # (Game#flush_league_caches) wirkten zuverlaessig. Mit mehreren Workern
+  # raeumt so ein delete nur den Cache des Prozesses auf, der die Anfrage
+  # zufaellig bearbeitet hat -- Tabelle, Torschuetzenliste, Spielplan und die
+  # Stream-Overlays zeigten dann bis zu fuenf Minuten alte Staende, und zwar
+  # scheinbar zufaellig je nach antwortendem Worker.
+  #
+  # Ein file_store genuegt, weil alle Worker im selben Container laufen und
+  # sich dessen Dateisystem teilen. Ein eigener Cache-Dienst (Redis,
+  # Memcached) wuerde erst gebraucht, wenn die API auf mehrere Container
+  # verteilt wird; bis dahin waere er ein zusaetzlicher Dienst ohne Gewinn.
+  #
+  # Zu beachten: Der file_store raeumt abgelaufene Eintraege nicht von sich
+  # aus weg, sie verschwinden erst beim naechsten Zugriff. Alle Eintraege in
+  # dieser Anwendung tragen ein expires_in, die Menge ist also begrenzt und
+  # klein (Ligatabellen, Einstellungen, API-Schluessel). Waechst das
+  # Verzeichnis dennoch, raeumt Rails.cache.cleanup auf.
+  config.cache_store = :file_store, Rails.root.join('tmp/cache')
 
   # Use a real queuing backend for Active Job (and separate queues per environment).
   # config.active_job.queue_adapter     = :resque

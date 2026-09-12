@@ -19,20 +19,44 @@ environment ENV.fetch("RAILS_ENV") { "development" }
 # Specifies the `pidfile` that Puma will use.
 pidfile ENV.fetch("PIDFILE") { "tmp/pids/server.pid" }
 
-# Specifies the number of `workers` to boot in clustered mode.
-# Workers are forked web server processes. If using threads and workers together
-# the concurrency of the application would be max `threads` * `workers`.
-# Workers do not work on JRuby or Windows (both of which do not support
-# processes).
+# Anzahl der Worker-Prozesse (clustered mode).
 #
-# workers ENV.fetch("WEB_CONCURRENCY") { 2 }
+# Warum das ueberhaupt noetig ist: MRI-Ruby laesst wegen des GVL je Prozess
+# nur einen Kern Ruby-Code ausfuehren. Die fuenf Threads oben helfen nur,
+# solange auf die Datenbank gewartet wird -- sobald die Arbeit rechnen muss
+# (Tabellen, Serialisierung, GC), stehen die Anfragen an. Am 1.
+# Bundesliga-Spieltag (12.09.2026) stand der Prozess dauerhaft bei 100 %
+# CPU, waehrend sieben der acht Kerne des Servers unbeschaeftigt waren.
+#
+# Standard ist bewusst 0, also unveraendert einprozessig: Das Umschalten
+# gehoert in die Umgebung (WEB_CONCURRENCY in docker-compose.yml) und nicht
+# in den Code, damit diese Datei fuer Entwicklung, Test und Produktion
+# dieselbe bleibt.
+#
+# WICHTIG -- Vorbedingung: Mehrere Worker sind nur zusammen mit einem von
+# allen Prozessen geteilten Cache zulaessig. Rails.cache.delete raeumt sonst
+# nur den Cache des Workers auf, der die Anfrage zufaellig bearbeitet hat,
+# und die uebrigen liefern bis zu fuenf Minuten alte Tabellen und
+# Spielstaende aus (siehe Game#flush_league_caches). Deshalb steht in
+# config/environments/production.rb ein file_store statt des frueheren
+# memory_store. Wer hier Worker einschaltet, muss das dort pruefen.
+workers_count = ENV.fetch("WEB_CONCURRENCY") { 0 }.to_i
 
-# Use the `preload_app!` method when specifying a `workers` number.
-# This directive tells Puma to first boot the application and load code
-# before forking the application. This takes advantage of Copy On Write
-# process behavior so workers use less memory.
-#
-# preload_app!
+if workers_count.positive?
+  workers workers_count
+
+  # Anwendung vor dem Forken laden, damit die Worker sich den Speicher der
+  # geladenen Klassen teilen (copy on write). Ohne preload_app! laedt jeder
+  # Worker alles erneut.
+  preload_app!
+
+  # Nach dem Fork braucht jeder Worker eine eigene Datenbankverbindung: Der
+  # Elternprozess hat seine beim Laden geoeffnet, und ein geforkter Socket
+  # darf nicht von mehreren Prozessen gleichzeitig benutzt werden.
+  on_worker_boot do
+    ActiveRecord::Base.establish_connection if defined?(ActiveRecord::Base)
+  end
+end
 
 # Allow puma to be restarted by `rails restart` command.
 plugin :tmp_restart
