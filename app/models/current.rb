@@ -8,9 +8,9 @@
 # und kann per Definition nicht hinterherhinken.
 #
 # (Frueher stand hier zusaetzlich, der :memory_store sei "je Puma-Worker eigen".
-# Das trifft seit dem Wechsel auf einen geteilten Redis nicht mehr zu, siehe
-# config/environments/production.rb. Der Grund oben traegt aber unabhaengig
-# davon -- er ist der eigentliche.)
+# Das stimmt weiterhin -- er ist nur nicht mehr der Prod-Store, solange
+# REDIS_URL gesetzt ist, siehe config/environments/production.rb. Der Grund
+# oben traegt ohnehin unabhaengig davon; er ist der eigentliche.)
 #
 # Gespeichert wird hier nur, was innerhalb EINES Requests vielfach gebraucht wird
 # und sich darin nicht aendert:

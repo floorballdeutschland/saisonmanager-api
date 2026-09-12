@@ -42,8 +42,9 @@ class BlockedIp < ApplicationRecord
 
   # Sicherheitsnetz fuer die Faelle, in denen after_commit nicht feuert oder ins
   # Leere laeuft. Die Web-Schicht ist NICHT gemeint — der Cache ist auf Prod ein
-  # geteilter Redis (siehe production.rb), eine Freigabe ueber die Maske wirkt
-  # also sofort und in allen Puma-Workern. Gemeint sind:
+  # geteilter Redis (production.rb, sofern REDIS_URL gesetzt ist; im
+  # Prod-Container ist sie das), eine Freigabe ueber die Maske wirkt also
+  # sofort und in allen Puma-Workern. Gemeint sind:
   #   - Schreibwege am Modell vorbei, siehe unten. Schreibwege aus einem anderen
   #     Prozess (rails runner, rake, cron) erreichen den Webprozess seit dem
   #     Wechsel auf Redis dagegen sehr wohl; frueher hatte jeder Prozess seinen

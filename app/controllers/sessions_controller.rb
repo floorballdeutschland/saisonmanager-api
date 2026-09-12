@@ -17,8 +17,12 @@ class SessionsController < ApplicationController
   #
   # Getragen wird die Wartezeit vom Rails.cache. Auf Prod ist das seit der
   # Umstellung auf Puma-Worker ein geteilter Redis (siehe
-  # config/environments/production.rb), die Bremse greift also prozessuebergreifend
-  # und ueberdauert auch einen Deploy. Vorher lag sie im prozesslokalen
+  # config/environments/production.rb), die Bremse greift also
+  # prozessuebergreifend und ueberdauert einen API-Deploy -- "up -d" erzeugt
+  # einen laufenden Redis nicht neu. Nicht ueberdauern tut sie einen
+  # Redis-Neustart oder einen Neustart des Servers: Der Container laeuft ohne
+  # Persistenz. Und unter Speicherdruck kann ein Eintrag verdraengt werden,
+  # denn allkeys-lru entscheidet nach Zugriffszeit und nicht nach Standzeit. Vorher lag sie im prozesslokalen
   # :memory_store: Mit mehreren Workern haette sich die erlaubte Menge lautlos
   # um deren Anzahl vervielfacht, und jeder Neustart haette die Wartezeit
   # zurueckgesetzt. Genau davor warnte dieser Kommentar frueher --

@@ -10,7 +10,11 @@ class Setting < ApplicationRecord
   # Zwei Ebenen, weil ein Treffer im Rails-Cache hier nicht gratis ist: Jeder
   # Store serialisiert seine Eintraege und macht bei JEDEM Lesen ein
   # Marshal.load — der frueher hier eingesetzte MemoryStore ueber den DupCoder,
-  # der Redis von Haus aus. Auf Produktion sind das 0,4 ms je Aufruf — fuer
+  # der Redis von Haus aus. Die 0,4 ms unten sind am 19.08.2026 gegen den
+  # MemoryStore gemessen; mit Redis kommt der Netzweg dazu (nachgemessen
+  # 0,227 ms gegen 0,033 ms je Lesevorgang, Faktor sieben) — die Zahl
+  # untertreibt die Kosten also eher. Auf Produktion sind das 0,4 ms je
+  # Aufruf — fuer
   # sich genommen wenig, aber `.current` hat 75 Aufrufstellen, und in Schleifen
   # ueber Spieler oder Ligen multipliziert sich das (Messung 19.08.2026:
   # 0,93 ms je `current_min_team`, mal 41 Lizenzen eines Spielers = 38 ms fuer

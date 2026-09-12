@@ -317,9 +317,13 @@ namespace :clubs do
 
     fbh.update!(parent: flvsh, sbk_email: nil, vsk_email: nil, rsk_email: nil)
 
-    # Der Cache wird geleert, und das wirkt jetzt auch: Seit Produktion einen
-    # geteilten Redis nutzt (config/environments/production.rb), erreicht ein
-    # Rake-Lauf denselben Store wie die laufenden Puma-Arbeiter.
+    # Der Cache wird geleert, und das wirkt jetzt auch: Bei gesetztem REDIS_URL
+    # (config/environments/production.rb) erreicht ein Rake-Lauf denselben
+    # Store wie die laufenden Puma-Arbeiter. Auf Produktion ist das gegeben --
+    # der Cronjob laeuft per docker exec im selben Container und erbt dessen
+    # Umgebung. Ohne REDIS_URL faellt der Store auf :memory_store zurueck und
+    # der Aufruf ist wieder der stille Leerlauf, den der alte Kommentar hier
+    # zu Recht beschrieb.
     #
     # Frueher stand hier das Gegenteil -- mit :memory_store hatte jeder Prozess
     # seinen eigenen Cache, ein delete aus einem Rake-Lauf saehe nur nach einem

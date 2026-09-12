@@ -26,8 +26,12 @@ gem 'redis', '~> 5.4'
 #   wrong number of arguments (given 1, expected 0) (ArgumentError)
 #   activesupport-7.2.3.2/lib/active_support/cache/redis_cache_store.rb:153
 # Nachgestellt am 12.09.2026. Verlangt wird die 3.x von niemandem --
-# activesupport will >= 2.2.5, redis-client >= 0. Der Riegel kann weg, sobald
-# Rails auf 8 gehoben ist; dort ist der Aufruf korrigiert.
+# activesupport will >= 2.2.5, redis-client >= 0.
+#
+# Der Riegel kann weg, sobald activesupport >= 8.1.2 im Lockfile steht. NICHT
+# schon mit Rails 8.0: Dort steht der positionale Aufruf unveraendert in
+# Zeile 153, und auch 8.1.0/8.1.1 haben ihn (Zeile 163). Erst 8.1.2 schreibt
+# ConnectionPool.new(**pool_options).
 gem 'connection_pool', '~> 2.5'
 # Use ActiveModel has_secure_password
 gem 'bcrypt'

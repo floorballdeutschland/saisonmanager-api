@@ -17,10 +17,19 @@
 # Puma die Variable von sich aus liest (puma/configuration.rb, workers_env), also
 # auch ohne Zutun von config/puma.rb clustert.
 #
-# Deshalb hier ein Abbruch beim Start statt einer stillen Fehlfunktion: Ein
-# Container, der gar nicht erst hochkommt, faellt sofort auf. Falsche Tabellen
-# auf der oeffentlichen Seite faellt erst jemandem im Verband auf, und dann ist
-# unklar, woher sie kommen.
+# Deshalb hier ein Abbruch beim Start statt einer stillen Fehlfunktion.
+#
+# Was er NICHT leistet, damit sich niemand zu sicher fuehlt:
+#   - Er liest nur ENV['WEB_CONCURRENCY']. Ein "puma -w 4" auf der
+#     Kommandozeile oder ein hart gesetztes `workers` in config/puma.rb
+#     erzeugen dieselbe kaputte Kombination und kommen durch.
+#   - Er prueft die Store-KLASSE, nicht die Erreichbarkeit. Ein
+#     RedisCacheStore, dessen Redis gar nicht laeuft, gilt ihm als in Ordnung
+#     -- deshalb traegt rails-api in docker-compose.yml ein depends_on auf den
+#     Redis-Container.
+#   - Mit restart: unless-stopped ergibt der Abbruch ein Neustart-Karussell
+#     statt einer einmaligen lauten Meldung. Sichtbar ist es trotzdem
+#     ("Restarting" in docker ps), aber man muss hinsehen.
 Rails.application.config.after_initialize do
   workers = ENV.fetch('WEB_CONCURRENCY', 0).to_i
   next unless workers > 1
