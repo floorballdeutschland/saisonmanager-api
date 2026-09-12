@@ -296,6 +296,39 @@ class TeamTest < ActiveSupport::TestCase
     assert_empty team.reload.season_leagues
   end
 
+  # Der Streamschlüssel sendet auf den Verbandskanal. Er darf nicht über eine
+  # pauschale Serialisierung in eine Antwort geraten -- die Gegenprobe zeigt,
+  # dass der Wert gesetzt ist und trotzdem nicht auftaucht.
+  test 'stream_key steht nicht in as_json' do
+    team = create(:team, stream_key: 'abcd-efgh-ijkl-mnop-qrst')
+
+    assert_equal 'abcd-efgh-ijkl-mnop-qrst', team.stream_key
+    assert_not_includes team.as_json.keys, 'stream_key'
+    assert_not_includes team.to_json, 'abcd-efgh'
+  end
+
+  test 'stream_key steht nicht in full_hash oder ticker_hash' do
+    team = create(:team, stream_key: 'abcd-efgh-ijkl-mnop-qrst')
+
+    assert_not_includes team.full_hash.to_json, 'abcd-efgh'
+    assert_not_includes team.ticker_hash.to_json, 'abcd-efgh'
+  end
+
+  # Wer den Schlüssel ausdrücklich ausliefern darf, muss ihn weiterhin bekommen
+  # können -- sonst wäre die Sperre nicht eng, sondern kaputt.
+  test 'eine verschachtelte Serialisierung fuehrt keinen stream_key' do
+    team = create(:team, stream_key: 'abcd-efgh-ijkl-mnop-qrst')
+
+    assert_not_includes Team.where(id: team.id).to_json, 'abcd-efgh'
+    assert_not_includes team.club.as_json(include: :teams).to_json, 'abcd-efgh'
+  end
+
+  test 'stream_key laesst sich ausdruecklich serialisieren' do
+    team = create(:team, stream_key: 'abcd-efgh-ijkl-mnop-qrst')
+
+    assert_equal({ 'stream_key' => 'abcd-efgh-ijkl-mnop-qrst' }, team.as_json(only: :stream_key))
+  end
+
   private
 
   # Liga, deren Verband die Expresslizenz erlaubt (oder eben nicht) und deren erster
@@ -312,5 +345,26 @@ class TeamTest < ActiveSupport::TestCase
     league = create(:league, **attrs)
     create(:game_day, league: league, date: (Date.current + days_ahead).to_s)
     league
+  end
+
+  # Logos gehen ueber die Proxy-Route, nicht ueber die Weiterleitung. Das ist
+  # kein Selbstzweck: Die Redirect-Route kostet zwei Rails-Requests je Wappen
+  # (302 plus Auslieferung) und laesst sich nicht zwischenspeichern, weil der
+  # RedirectController die 302 nur fuenf Minuten gueltig macht. Am 1.
+  # Bundesliga-Spieltag (12.09.2026) waren dadurch 239 von 411 Requests
+  # Logo-Verkehr.
+  #
+  # Der Test prueft die Gestalt der Adresse, weil ein Rueckbau auf
+  # rails_blob_path bzw. rails_representation_path FUNKTIONIEREN wuerde -- er
+  # waere nur wieder langsam und damit unsichtbar. Genau so ist die Variante
+  # beim ersten Anlauf dieser Umstellung durchgerutscht.
+  test 'logo_url und logo_small_url nutzen die Proxy-Route' do
+    team = create(:team)
+    team.logo.attach(io: StringIO.new('x'), filename: 'wappen.png', content_type: 'image/png')
+
+    assert_match %r{/blobs/proxy/}, team.logo_url
+    assert_match %r{/representations/proxy/}, team.logo_small_url
+    assert_no_match %r{/redirect/}, team.logo_url
+    assert_no_match %r{/redirect/}, team.logo_small_url
   end
 end

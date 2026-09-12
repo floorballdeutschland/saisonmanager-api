@@ -110,8 +110,12 @@ class PlayersLicenseGracePeriodTest < ActionDispatch::IntegrationTest
       ])
 
       login_as(create(:user, :admin))
+      # Der Freitext geht bei jedem Ausgangsstatus mit: Aus `erteilt` heraus ist
+      # er Pflicht (License.reset_blocked_reason), sonst schadet er nicht. Diese
+      # Tabelle prueft die Markierung, nicht die Regel dahinter.
       post "/api/v2/admin/players/#{@player.id}/handle_license_request",
-           params: { license_id: license_id, license_status_id: License::REQUESTED },
+           params: { license_id: license_id, license_status_id: License::REQUESTED,
+                     reason: 'Korrektur der Verbandsverwaltung' },
            as: :json
       assert_response :ok
 
@@ -135,7 +139,8 @@ class PlayersLicenseGracePeriodTest < ActionDispatch::IntegrationTest
 
     login_as(create(:user, :admin))
     post "/api/v2/admin/players/#{@player.id}/handle_license_request",
-         params: { license_id: license_id, license_status_id: License::REQUESTED },
+         params: { license_id: license_id, license_status_id: License::REQUESTED,
+                   reason: 'zu frueh erteilt, Spielerpass fehlte' },
          as: :json
     assert_response :ok
 

@@ -9,5 +9,11 @@
 
   <body>
     <%= yield %>
+    <%# Datenschutzinformation nur an die betroffene Person. Angehaengt wird sie
+        jedem Mailer, der `@privacy_notice` setzt; heute tut das allein der
+        TransferRequestMailer (siehe dort AUDIENCES und #audience_recipients).
+        Im Layout, damit ein gepflegter EmailTemplate-Body sie nicht mit
+        entfernt -- dieselbe Zeile steht deshalb in mailer.text.erb. %>
+    <%= render 'layouts/privacy_notice' if @privacy_notice %>
   </body>
 </html>

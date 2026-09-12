@@ -165,13 +165,25 @@ class Team < ApplicationRecord
   end
 
   def logo_url
-    Rails.application.routes.url_helpers.rails_blob_path(logo, only_path: true) if logo.attached?
+    # Proxy- statt Redirect-Route: stabile URL, die der Browser behalten kann.
+    # Ausfuehrliche Begruendung in app/models/concerns/league_logo.rb.
+    Rails.application.routes.url_helpers.rails_storage_proxy_path(logo, only_path: true) if logo.attached?
   end
 
   def logo_small_url
     return nil unless logo.attached?
 
-    Rails.application.routes.url_helpers.rails_representation_path(
+    # Wie logo_url die Proxy-Route, hier fuer die Variante: Der Direct-Helfer
+    # rails_representation_path folgt ActiveStorage.resolve_model_to_route
+    # (Standard :rails_storage_redirect) und erzeugt damit
+    # representations/redirect -- dasselbe Zwei-Sprung-Muster mit
+    # Fuenf-Minuten-Frist wie bei den grossen Logos.
+    #
+    # Diese kleinen Wappen sind die zahlenmaessig wichtigeren: Spielpaarungen,
+    # Begegnungen, naechste Spiele, Spielhistorie und die Ranglistentabelle
+    # rendern durchweg *_small_logo. Ein Spielplan mit zwoelf Begegnungen
+    # zieht vierundzwanzig davon und nur eine Handvoll grosser.
+    Rails.application.routes.url_helpers.rails_storage_proxy_path(
       logo.variant(resize_to_fit: [100, 100]),
       only_path: true
     )
@@ -187,6 +199,22 @@ class Team < ApplicationRecord
     return logo_small_url if logo_small_url.present?
 
     club&.logo_small_url
+  end
+
+  # Der Streamschlüssel ist ein Geheimnis: Wer ihn hat, sendet auf den
+  # Verbandskanal. Er darf nicht über eine pauschale Serialisierung nach außen
+  # gelangen -- ein `render json: team` irgendwo im Verwaltungsbereich reicht,
+  # und er steht in einer Antwort, die auch ein Vereinsmanager sieht. Deshalb
+  # fliegt er hier grundsätzlich aus as_json/to_json; die gepflegten Hashes
+  # (#full_hash, #ticker_hash) zählen ihre Felder ohnehin einzeln auf und führen
+  # ihn nicht. Wer ihn ausliefern darf, liest ihn ausdrücklich über #stream_key.
+  # Vorbild ist Game#serializable_hash für die Schiedsrichternotiz.
+  STREAM_KEY_ATTRIBUTES = %w[stream_key].freeze
+
+  def serializable_hash(options = nil)
+    options = (options || {}).dup
+    options[:except] = Array(options[:except]) + STREAM_KEY_ATTRIBUTES unless options[:only]
+    super(options)
   end
 
   def full_hash(with_contact_person = false)
@@ -300,9 +328,26 @@ class Team < ApplicationRecord
     admin = user.permission_hash[:admin].present? && (global_or_go & user.permission_hash[:admin]).present?
     sbk = user.permission_hash[:sbk].present? && (global_or_go & user.permission_hash[:sbk]).present?
 
+    # Der Verein der Mannschaft, im Spielverbund jeder beteiligte: `all_club_ids`
+    # statt `club_id`. Dass damit jeder Verbund-Verein das gemeinsame Logo
+    # setzen und auch überschreiben kann, ist gewollt – ein Verbund tritt als
+    # eine Mannschaft an, und wer sie gemeinsam stellt, pflegt auch ihr Zeichen.
+    vm = user.permission_hash[:vm].present? && user.permission_hash[:vm].intersect?(all_club_ids)
+
     # # edit league
     perm << :update_team if admin || sbk
     perm << :delete_team if admin || sbk
+
+    # Bewusst getrennt von :update_team: Daran hängen Liga-Zuordnung, Pokal-Ligen
+    # und Kurzname, also der Spielbetrieb – das bleibt beim Verband. Das Zeichen
+    # der Mannschaft ist dagegen Vereinssache, wie das Vereinslogo
+    # (:update_own_club in Club#user_permissions), und der Verband darf es
+    # weiterhin ebenfalls pflegen.
+    #
+    # Kein eigenes Recht zum Entfernen: Wer ein abweichendes Logo setzen darf,
+    # darf es auch zurücknehmen. Danach greift wieder das Vereinslogo
+    # (#logo_url_fallback), ein Zustand ohne Zeichen entsteht dabei nicht.
+    perm << :update_team_logo if admin || sbk || vm
 
     perm
   end

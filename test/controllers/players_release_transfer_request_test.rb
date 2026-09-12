@@ -107,12 +107,23 @@ class PlayersReleaseTransferRequestTest < ActionDispatch::IntegrationTest
     end
     assert_response :success
 
-    mail = ActionMailer::Base.deliveries.last
-    assert_not_nil mail, 'die erteilte Freigabe muss mitgeteilt werden'
-    assert_includes mail.subject, 'Spielerfreigabe erteilt'
-    ['zweitverein@example.org', 'heimatverein@example.org',
-     'spieler@example.com', 'sbk@example.org'].each do |adresse|
-      assert_includes mail.to, adresse
+    # Zwei Sendungen: Die private Adresse der Person steht in keinem gemeinsamen
+    # Verteiler mit den Vereins- und Verbandspostfaechern. Ausgewaehlt wird ueber
+    # den Empfaenger und nicht ueber die Position -- `deliveries.last` haette
+    # sonst stillschweigend nur die zweite Haelfte geprueft.
+    an_person = ActionMailer::Base.deliveries.find { |mail| mail.to == ['spieler@example.com'] }
+    an_stellen = ActionMailer::Base.deliveries.find { |mail| mail.to.include?('zweitverein@example.org') }
+
+    assert_not_nil an_person, 'die Person muss die erteilte Freigabe erfahren'
+    assert_not_nil an_stellen, 'Vereine und Landesverband muessen die Freigabe erfahren'
+
+    ['zweitverein@example.org', 'heimatverein@example.org', 'sbk@example.org'].each do |adresse|
+      assert_includes an_stellen.to, adresse
+    end
+    assert_not_includes an_stellen.to, 'spieler@example.com'
+
+    [an_person, an_stellen].each do |mail|
+      assert_includes mail.subject, 'Spielerfreigabe erteilt'
     end
   end
 

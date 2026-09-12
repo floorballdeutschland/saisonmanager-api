@@ -1,1 +1,4 @@
 <%= yield %>
+<%# Siehe mailer.html.erb: Die Datenschutzinformation haengt am Layout und nicht
+    am View, damit ein gepflegter EmailTemplate-Body sie nicht mitnimmt. %>
+<%= render 'layouts/privacy_notice' if @privacy_notice %>

@@ -167,3 +167,64 @@ class GameDayTest < ActiveSupport::TestCase
     assert_equal club.id, game_day.club_id
   end
 end
+
+# `GameDay#hosting_team` ist die EINZIGE Stelle, die "wer richtet aus"
+# beantwortet, und der Streamschlüssel hängt daran. Ein falscher Treffer
+# sendet ein Spiel auf den Kanal eines fremden Vereins.
+class HostingTeamTest < ActiveSupport::TestCase
+  setup do
+    create(:setting)
+    @league = create(:league)
+    @club = create(:club)
+    @arena = create(:arena)
+  end
+
+  def spieltag(club)
+    GameDay.create!(league: @league, arena: @arena, club: club, number: 1, date: '2026-03-07')
+  end
+
+  test 'findet die Mannschaft des ausrichtenden Vereins in dieser Liga' do
+    team = create(:team, league: @league, club: @club, stream_key: 'abcd')
+
+    assert_equal team, spieltag(@club).hosting_team
+    assert_equal 'abcd', spieltag(@club).stream_key
+  end
+
+  # `game_days.club_id` ist wirklich nil-fähig: Die leere Auswahl im Formular
+  # kommt als 0 an und wird zu nil normalisiert. Ohne Riegel liefe
+  # `Team.by_club_id(nil)` in `where(club_id: nil)` -- und `teams.club_id` ist
+  # ebenfalls nullable. Eine vereinslose Mannschaft gälte dann als Ausrichter
+  # und ihr Schlüssel würde herausgegeben.
+  test 'ohne Ausrichter gibt es keine ausrichtende Mannschaft' do
+    # `belongs_to :club` ist Pflicht, `teams.club_id` aber nullable -- eine
+    # vereinslose Mannschaft ist Altbestand und über die Anwendung nicht mehr
+    # herstellbar. Genau darum wird sie hier an der Validierung vorbei
+    # angelegt: Der Riegel muss auch für Zeilen greifen, die niemand mehr
+    # über ein Formular erzeugen kann.
+    Team.new(league: @league, name: 'Ohne Verein', stream_key: 'geheim').save(validate: false)
+
+    assert_nil spieltag(nil).hosting_team
+    assert_nil spieltag(nil).stream_key
+  end
+
+  test 'mehrere Mannschaften desselben Vereins in einer Liga ergeben nil' do
+    create(:team, league: @league, club: @club, stream_key: 'abcd')
+    create(:team, league: @league, club: @club)
+
+    assert_nil spieltag(@club).hosting_team
+  end
+
+  test 'ein Spielverbund richtet ueber einen seiner Vereine aus' do
+    ausrichter = create(:club)
+    verbund = create(:team, league: @league, club: @club, stream_key: 'verbund',
+                            syndicate: true, syndicate_clubs: [ausrichter.id])
+
+    assert_equal verbund, spieltag(ausrichter).hosting_team
+  end
+
+  test 'eine Mannschaft einer anderen Liga richtet nicht aus' do
+    create(:team, league: create(:league), club: @club, stream_key: 'fremd')
+
+    assert_nil spieltag(@club).hosting_team
+  end
+end

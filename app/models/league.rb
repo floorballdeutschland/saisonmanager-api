@@ -294,6 +294,10 @@ class League < ApplicationRecord
       before_deadline:,
       parental_consent_required:,
       referee_feedback_enabled:,
+      # Name der YouTube-Playlist der Übertragungen dieser Liga. Kein Geheimnis --
+      # die Playlists des Verbandskanals sind öffentlich; der Streamschlüssel, der
+      # es ist, hängt dagegen an der Mannschaft und steht in keinem Hash.
+      stream_playlist:,
 
       legacy_league:,
       field_size:,
@@ -1340,12 +1344,13 @@ class League < ApplicationRecord
     # # edit all game info
     # perm << :edit_game_report if admin || sbk || user.permission_hash[:vm].to_a.include?(game_day_club_id)
 
-    # # edit league
-    perm << :update_league if admin || sbk
-    perm << :download_template if admin || sbk
-    perm << :export_schedule if admin || sbk
-    perm << :import_games if admin || sbk
-    perm << :delete_league if admin || sbk
+    # Fuenf Rechte an derselben Bedingung. Zusammengefasst, weil die Klasse mit
+    # fuenf Einzelzeilen die Laengengrenze von 1000 Zeilen reisst: Weder der
+    # Spielplan-Export (:export_schedule) noch die Stream-Playlist weiter oben
+    # kippt sie allein, erst beide zusammen. Eine Bedingung, eine Zeile -- und
+    # ein neues Recht dieser Klasse haengt sich hinten an statt eine Zeile mehr
+    # zu kosten.
+    perm += %i[update_league download_template export_schedule import_games delete_league] if admin || sbk
 
     perm
   end

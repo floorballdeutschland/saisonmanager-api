@@ -348,7 +348,7 @@ module Admin
     # Bevorzugt das ins Event eingefrorene Label (katalogunabhängig) und greift nur
     # für Alt-Ereignisse ohne Label auf den Katalog zurück. Game#penalty_mapping
     # würde dafür je Ereignis `Setting.current` lesen; das geht in Produktion über
-    # den :memory_store, der bei jedem Treffer den kompletten Settings-Datensatz
+    # den Cache-Store, der bei jedem Treffer den kompletten Settings-Datensatz
     # kopiert. Bei bis zu 2000 Spielen mit je etlichen Strafen wäre das der
     # teuerste Teil der Abfrage – daher der Katalog einmal je Request.
     def severe_penalty_count(game)

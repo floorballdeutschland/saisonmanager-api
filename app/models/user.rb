@@ -429,6 +429,11 @@ class User < ApplicationRecord
     # bekommen den vollen Verbandsverwaltungs-View über alle Landesverbände.
     global_sbk = ph[:sbk].present? && ph[:sbk].include?(0)
     result[:menu_item_state_association_admin] = ph[:admin].present? || global_sbk
+    # Streaming-Bereich: Der Streamschlüssel sendet auf den Verbandskanal, und die
+    # Übertragungen der Bundesligen richtet eine Stelle zentral ein. Deshalb
+    # global -- ein Landesverbands-SBK hat hier nichts zu tun und soll die
+    # Schlüssel fremder Vereine auch nicht sehen.
+    result[:menu_item_streaming_admin] = ph[:admin].present? || global_sbk
     result[:menu_item_state_association_sbk] = sbk_state_association_menu_item?(ph)
     # Anlegen/Löschen ganzer Landesverbände sowie das Umhängen des übergeordneten
     # Verbands bleiben globalen Admins vorbehalten (Backend: authorize_admin! /
@@ -522,6 +527,11 @@ class User < ApplicationRecord
     # Direktzuweisung, die intern denselben Weg nimmt. Der Knopf war zudem
     # admin-only, die SBK hat ihn nie gesehen.
     result[:player_delete_license] = ph[:admin].present? || ph[:sbk].present?
+    # Erteilte Lizenz auf `beantragt` zuruecksetzen (License.resettable?), fuer den
+    # Fall "erteilt, obwohl noch etwas fehlte". Eigenes Recht und nicht
+    # player_delete_license mitbenutzt: Loeschen nimmt die Lizenz aus der
+    # Vereinsansicht, Zuruecksetzen gibt den Antrag nur wieder in die Warteschlange.
+    result[:player_reset_license] = ph[:admin].present? || ph[:sbk].present?
     # Erst-/Zweitlizenz-Zuordnung (GF-Erwachsenenbereich) setzen/tauschen
     result[:player_set_gf_role] = ph[:admin].present? || ph[:sbk].present?
     result[:player_merge] = ph[:admin].present? || ph[:sbk].present?

@@ -428,7 +428,9 @@ module Admin
 
     test 'SBK mit zusätzlicher VM-Rolle führt Direkt-Transfer durch → 201' do
       login(@sbk_and_vm)
-      assert_emails 1 do
+      # Zwei Sendungen statt einer: Die Abschlussmail geht getrennt an die
+      # Vereinspostfaecher und an den Spieler (TransferRequestMailer::AUDIENCES).
+      assert_emails 2 do
         post '/api/v2/admin/transfer_requests/direct_assign', params: {
           player_id: @player.id,
           requesting_club_id: @requesting_club.id
@@ -450,7 +452,9 @@ module Admin
       other_club = create_club_in_other_game_operation
 
       login(@sbk) # @sbk ist nur für @game_operation (LV des abgebenden Vereins) zuständig
-      assert_emails 1 do
+      # Zwei Sendungen statt einer: Die Abschlussmail geht getrennt an die
+      # Vereinspostfaecher und an den Spieler (TransferRequestMailer::AUDIENCES).
+      assert_emails 2 do
         post '/api/v2/admin/transfer_requests/direct_assign', params: {
           player_id: @player.id,
           requesting_club_id: other_club.id
@@ -775,7 +779,9 @@ module Admin
     test 'Spieler bestätigt via Token → 302 Redirect, Status pending_lv' do
       tr = create_transfer_request(status: 'pending_player')
       token = tr.player_confirmation_token
-      assert_emails 2 do
+      # Drei Sendungen: an den Landesverband, an die Vereine und -- davon
+      # getrennt -- an den Spieler selbst (TransferRequestMailer::AUDIENCES).
+      assert_emails 3 do
         get "/api/v2/admin/transfer_requests/player_approve", params: { token: token }
       end
       assert_response :redirect
@@ -835,7 +841,9 @@ module Admin
     test 'SBK genehmigt LV → Status approved (sofortiger Transfer)' do
       tr = create_transfer_request(status: 'pending_lv')
       login(@sbk)
-      assert_emails 1 do
+      # Zwei Sendungen statt einer: Die Abschlussmail geht getrennt an die
+      # Vereinspostfaecher und an den Spieler (TransferRequestMailer::AUDIENCES).
+      assert_emails 2 do
         patch "/api/v2/admin/transfer_requests/#{tr.id}/approve_lv"
       end
       assert_response :success
@@ -847,7 +855,9 @@ module Admin
     test 'Admin genehmigt LV → Status approved' do
       tr = create_transfer_request(status: 'pending_lv')
       login(@admin)
-      assert_emails 1 do
+      # Zwei Sendungen statt einer: Die Abschlussmail geht getrennt an die
+      # Vereinspostfaecher und an den Spieler (TransferRequestMailer::AUDIENCES).
+      assert_emails 2 do
         patch "/api/v2/admin/transfer_requests/#{tr.id}/approve_lv"
       end
       assert_response :success
@@ -874,19 +884,28 @@ module Admin
       tr = create_transfer_request(status: 'pending_lv', effective_date: termin)
       login(@sbk)
 
-      assert_emails 1 do
+      # Zwei Sendungen, nicht eine: Die private Adresse der Person steht in
+      # keinem gemeinsamen Verteiler mit den Vereinspostfaechern.
+      assert_emails 2 do
         patch "/api/v2/admin/transfer_requests/#{tr.id}/approve_lv"
       end
       assert_response :success
 
-      mail = ActionMailer::Base.deliveries.last
-      assert_includes mail.subject, "Vollzug am #{termin.strftime('%d.%m.%Y')}"
-      ['requesting@test.example.com', 'former@test.example.com',
-       'max.mustermann@example.com', 'sbk@test.example.com'].each do |adresse|
-        assert_includes mail.to, adresse
+      an_vereine, an_person = ActionMailer::Base.deliveries.last(2).partition do |mail|
+        mail.to.include?('requesting@test.example.com')
+      end.map(&:first)
+
+      assert_includes an_vereine.subject, "Vollzug am #{termin.strftime('%d.%m.%Y')}"
+      ['former@test.example.com', 'sbk@test.example.com'].each do |adresse|
+        assert_includes an_vereine.to, adresse
       end
-      assert_includes mail.body.decoded, termin.strftime('%d.%m.%Y'),
-                      'der Termin ist der Zweck der Nachricht'
+      assert_not_includes an_vereine.to, 'max.mustermann@example.com'
+      assert_equal ['max.mustermann@example.com'], an_person.to
+
+      [an_vereine, an_person].each do |mail|
+        assert_includes mail.body.decoded, termin.strftime('%d.%m.%Y'),
+                        'der Termin ist der Zweck der Nachricht'
+      end
     end
 
     # Es gibt keinen Job, der einen geplanten Transfer zum Wunschdatum vollzieht
@@ -898,12 +917,15 @@ module Admin
       tr = create_transfer_request(status: 'pending_lv', effective_date: Date.today + 10)
       login(@sbk)
 
-      assert_emails 1 do
+      # Zwei Sendungen: an die Vereinspostfaecher und an die Person, getrennt.
+      assert_emails 2 do
         patch "/api/v2/admin/transfer_requests/#{tr.id}/approve_lv"
       end
 
-      assert_includes ActionMailer::Base.deliveries.last.body.decoded,
-                      'nicht automatisch ausgelöst'
+      ActionMailer::Base.deliveries.last(2).each do |mail|
+        assert_includes mail.body.decoded, 'nicht automatisch ausgelöst',
+                        "#{mail.to.inspect} erfaehrt nicht, dass der Vollzug von Hand kommt"
+      end
     end
 
     # Gegenprobe: Der sofortige Vollzug bleibt bei genau einer Nachricht, und
@@ -913,12 +935,17 @@ module Admin
       tr = create_transfer_request(status: 'pending_lv')
       login(@sbk)
 
-      assert_emails 1 do
+      # Zwei Sendungen, aber beide dieselbe Nachricht: die des Vollzugs an die
+      # Vereine und an die Person. Keine davon kuendigt einen Termin an.
+      assert_emails 2 do
         patch "/api/v2/admin/transfer_requests/#{tr.id}/approve_lv"
       end
       assert_response :success
 
-      assert_includes ActionMailer::Base.deliveries.last.subject, 'Transfer vollzogen'
+      betreffe = ActionMailer::Base.deliveries.last(2).map(&:subject)
+
+      assert(betreffe.all? { |betreff| betreff.include?('Transfer vollzogen') }, betreffe.inspect)
+      assert_not(betreffe.any? { |betreff| betreff.include?('Vollzug am') }, betreffe.inspect)
     end
 
     test 'VM darf approve_lv nicht ausführen → 403' do

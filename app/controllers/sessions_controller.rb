@@ -15,12 +15,19 @@ class SessionsController < ApplicationController
   # IP-Throttle 'mail-trigger/ip' in config/initializers/rack_attack.rb, beides
   # gehört zusammen.
   #
-  # Getragen wird die Wartezeit vom Rails.cache, auf Prod ein :memory_store
-  # (siehe config/environments/production.rb). Der ist prozesslokal, was nur
-  # trägt, solange Puma im Single-Process-Modus läuft (`workers` ist in
-  # config/puma.rb auskommentiert). Wird WEB_CONCURRENCY gesetzt, vervielfacht
-  # sich die erlaubte Menge lautlos um die Anzahl der Worker. Zudem leert ein
-  # Deploy den Cache, die Wartezeit beginnt danach neu.
+  # Getragen wird die Wartezeit vom Rails.cache. Auf Prod ist das seit der
+  # Umstellung auf Puma-Worker ein geteilter Redis (siehe
+  # config/environments/production.rb), die Bremse greift also
+  # prozessuebergreifend und ueberdauert einen API-Deploy -- "up -d" erzeugt
+  # einen laufenden Redis nicht neu. Nicht ueberdauern tut sie einen
+  # Redis-Neustart oder einen Neustart des Servers: Der Container laeuft ohne
+  # Persistenz. Und unter Speicherdruck kann ein Eintrag verdraengt werden,
+  # denn allkeys-lru entscheidet nach Zugriffszeit und nicht nach Standzeit. Vorher lag sie im prozesslokalen
+  # :memory_store: Mit mehreren Workern haette sich die erlaubte Menge lautlos
+  # um deren Anzahl vervielfacht, und jeder Neustart haette die Wartezeit
+  # zurueckgesetzt. Genau davor warnte dieser Kommentar frueher --
+  # config/initializers/shared_cache_required.rb sorgt jetzt dafuer, dass die
+  # Kombination gar nicht erst startet.
   FORGOT_USERNAME_INTERVAL = 5.minutes
 
   # POST /login

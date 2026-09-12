@@ -50,16 +50,109 @@ Rails.application.configure do
   # Prepend all log lines with the following tags.
   config.log_tags = [:request_id]
 
-  # In-Process-Cache statt des Rails-Defaults :file_store.
-  # Puma läuft hier im Single-Process-Modus (nur Threads, keine Worker), daher ist
-  # :memory_store prozessweit geteilt und thread-sicher. Der FileStore erzeugte unter
-  # Last eine Race Condition beim Anlegen der Cache-Verzeichnisse
-  # (Errno::ENOENT @ dir_s_mkdir), die den API-Key-Check in Rack::Attack und damit
-  # ganze Public-Requests mit 500 abbrechen ließ. Die Größe ist bewusst deutlich
-  # über dem Default (32 MB) gewählt, damit die langlebigen Statistik-Caches
-  # (Spieler-/Team-Stats, bis zu 1 Woche TTL) nicht durch LRU-Eviction verdrängt
-  # werden und die DB-Last wieder hochtreiben.
-  config.cache_store = :memory_store, { size: 128.megabytes }
+  # Cache-Store. Mit REDIS_URL ein von allen Puma-Workern geteilter Redis,
+  # ohne ihn der bisherige prozesslokale :memory_store.
+  #
+  # Warum ueberhaupt geteilt: Sobald Puma mehrere Worker startet
+  # (WEB_CONCURRENCY, siehe config/puma.rb), raeumt ein Rails.cache.delete nur
+  # den Cache des Prozesses, der die Anfrage zufaellig bearbeitet hat.
+  # Game#flush_league_caches erreichte dann nur einen von vier Workern, und
+  # die uebrigen lieferten bis zu fuenf Minuten alte Tabellen,
+  # Torschuetzenlisten und Spielstaende aus -- mitten im Livebetrieb.
+  #
+  # Warum NICHT :file_store, obwohl alle Worker im selben Container laufen und
+  # sich dessen Dateisystem teilen: Genau das lief hier schon einmal und wurde
+  # am 18.07.2026 mit 17dc2cc8 entfernt ("fix(cache): Produktions-Cache auf
+  # :memory_store (FileStore-Race behoben)", api#156).
+  # ActiveSupport::Cache::FileStore raeumt in delete_empty_directories
+  # Verzeichnisse weg, waehrend ein anderer Prozess hineinschreibt;
+  # write_serialized_entry faengt nichts ab, der Fehler schlaegt bis zum
+  # rescue_from durch. Betroffen war der API-Schluessel-Check in Rack::Attack
+  # (ApiKey.cached_meta, Fuenf-Minuten-TTL, bei jedem oeffentlichen Request
+  # gelesen) -- ganze Public-Requests brachen mit 500 ab. Der Fehler steckt
+  # unveraendert in activesupport 7.2.3.2, und mit vier Workern waere die
+  # Nebenlaeufigkeit vervierfacht worden.
+  #
+  # Redis loest zugleich zwei Dinge, die ein file_store offen liesse. Erstens
+  # die Groesse: Ein Cache-Verzeichnis waechst unbegrenzt, weil versionierte
+  # Schluessel wie games/<id>/full_hash/<variant>/<updated_at> nach einer
+  # Aenderung nie wieder gelesen und deshalb nie abgeraeumt werden. Redis
+  # verdraengt stattdessen -- das ist allerdings KEINE Redis-Eigenschaft von
+  # Haus aus: Der Standard ist maxmemory 0 mit noeviction, ein
+  # unkonfigurierter Redis liefe in denselben Fehler. Die Grenze kommt aus
+  # docker-compose.yml im docker-Repo (maxmemory 256mb, allkeys-lru); bei
+  # einem Umzug auf einen anderen REDIS_URL ist sie neu zu setzen.
+  # Zweitens liegt Redis ausserhalb des Containers und ueberdauert einen
+  # Deploy nicht als Datei im gemounteten Git-Checkout.
+  #
+  # Ohne REDIS_URL bleibt es beim :memory_store -- fuer einen einzelnen
+  # Prozess die schnellste und sicherste Wahl. Die 128 MB liegen bewusst ueber
+  # dem Default von 32 MB, damit die langlebigen Statistik-Caches
+  # (Spieler-/Team-Stats, bis zu 1 Woche TTL) nicht durch Verdraengung
+  # herausfallen und die Datenbanklast wieder hochtreiben.
+  #
+  # Dass Worker und prozesslokaler Cache nicht versehentlich zusammenkommen,
+  # sichert config/initializers/shared_cache_required.rb ab.
+  config.cache_store =
+    if ENV['REDIS_URL'].present?
+      [:redis_cache_store, {
+        url: ENV['REDIS_URL'],
+        # Schluesselraum je Version. Anders als beim frueheren :memory_store
+        # ueberlebt dieser Cache einen Deploy -- und Setting.current legt als
+        # einzige Stelle ein ActiveRecord-OBJEKT hinein (setting.rb), das
+        # seinen Attributsatz mitbringt. Nach einer Migration an der
+        # settings-Tabelle lieferten die Worker sonst bis zu eine Stunde lang
+        # ein Objekt ohne die neuen Spalten: Lesezugriffe still nil,
+        # Schreibzugriffe mit ActiveModel::MissingAttributeError. Nachgestellt
+        # und bestaetigt. Mit dem Namespace faengt jede Version bei null an.
+        #
+        # Als Lambda, nicht als Zeichenkette: SAISONMANAGER_VERSION steht in
+        # config/initializers/version.rb, und Initializer laufen NACH den
+        # Umgebungsdateien -- eine direkte Auswertung hier waere ein NameError
+        # beim Start. ActiveSupport::Cache ruft einen aufrufbaren Namespace
+        # erst beim Bilden des Schluessels auf (cache.rb, respond_to?(:call)).
+        namespace: -> { "sm-#{SAISONMANAGER_VERSION}" },
+        # Ein weggefallener oder haengender Redis darf keine Anfrage
+        # aufhalten. Bei einem Fehler verhaelt sich der Store wie "nicht im
+        # Cache", der Block wird gerechnet: langsamer, aber nie ein 500er --
+        # genau die Eigenschaft, die dem file_store fehlte.
+        #
+        # Die Zeiten sind knapp gewaehlt, weil der SUMMIERTE Wert zaehlt, nicht
+        # der einzelne. Mit connect_timeout 1 und reconnect_attempts 1 (also
+        # zwei Versuchen) kostet eine Operation 2 s, ein fetch als read+write
+        # 4 s -- nachgemessen gegen einen haengenden Redis (Pakete verworfen,
+        # nicht abgelehnt) brauchte eine einzige oeffentliche Anfrage 8,1 s,
+        # ohne je einen Controller zu erreichen: reine Zaehlerarbeit von
+        # Rack::Attack, die auf JEDER Anfrage anfaellt. Mit vier Workern zu
+        # fuenf Threads waeren das 20 blockierte Threads -- unter Spieltagslast
+        # faktisch ein Ausfall. Ein toter Redis (Verbindung abgelehnt) ist
+        # dagegen unkritisch, der faellt in 1 ms durch.
+        #
+        # Deshalb 0,5 s ohne Wiederholung: Eine Operation kostet im
+        # schlimmsten Fall eine halbe Sekunde. Einen Circuit Breaker gibt es
+        # nicht, jede Anfrage laeuft erneut hinein.
+        #
+        # Zu wissen: Waehrend eines Ausfalls drosselt Rack::Attack gar nicht
+        # mehr. Sein Zaehler landet bei "1" und bleibt dort, weil increment
+        # und der write-Rueckfall beide scheitern. Kein 500er -- das ist der
+        # Unterschied zum file_store --, aber die Bremsen sind in dieser Zeit
+        # wirkungslos. Die IP-Sperrliste bleibt wirksam, die faellt auf die
+        # Datenbank durch.
+        connect_timeout: 0.5,
+        read_timeout: 0.5,
+        write_timeout: 0.5,
+        reconnect_attempts: 0,
+        error_handler: lambda { |method:, returning:, exception:|
+          Sentry.capture_exception(
+            exception,
+            level: :warning,
+            tags: { cache_method: method, cache_returning: returning }
+          )
+        }
+      }]
+    else
+      [:memory_store, { size: 128.megabytes }]
+    end
 
   # Use a real queuing backend for Active Job (and separate queues per environment).
   # config.active_job.queue_adapter     = :resque

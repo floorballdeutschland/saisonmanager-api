@@ -129,6 +129,7 @@ class Player < ApplicationRecord
           # Knopf gar nicht erst erscheint, wo handle_license_request gleich ablehnen
           # würde.
           lic[:delete_allowed] = License.deletable?(lic, current_season_id)
+          lic[:reset_allowed] = License.resettable?(lic, current_season_id)
 
           team = Team.find_by(id: lic['team_id'])
           lic[:team] = team&.full_hash

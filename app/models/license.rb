@@ -94,6 +94,76 @@ class License < ApplicationRecord
     end
   end
 
+  # Die eine Stelle, an der steht, welche Lizenz sich auf `beantragt`
+  # zuruecksetzen laesst -- der Fall "erteilt, obwohl noch etwas fehlte".
+  # Player#full_hash setzt danach das Kennzeichen `reset_allowed` fuer den Knopf
+  # im Profil, PlayersController#handle_license_request lehnt danach ab. Fielen
+  # die beiden auseinander, boete die Oberflaeche einen Knopf an, der in ein 422
+  # laeuft.
+  #
+  # Bewusst eng: nur die laufende Saison -- eine abgerechnete Saison ruehrt
+  # niemand per Klick an -- und nur der Status `erteilt`. Der Weg
+  # `abgelehnt -> beantragt` ist der Widerruf einer Ablehnung und hat seinen
+  # eigenen Einstieg in der Lizenzuebersicht; `beantragt` selbst waere ein
+  # Nichts-Wechsel, und `geloescht`, `zurueckgezogen`, `ungueltig wg. Transfer`
+  # oder `gesperrt` wieder zu oeffnen ist kein Zuruecksetzen, sondern das
+  # Aufheben eines anderen Vorgangs.
+  def self.resettable?(license, current_season_id = Setting.current_season_id)
+    return false if license.blank?
+    return false unless license['season_id'].to_s == current_season_id.to_s
+
+    current_status_id(license) == APPROVED
+  end
+
+  # Meldung, warum sich die Lizenz nicht zuruecksetzen laesst -- oder nil, wenn
+  # nichts dagegen spricht.
+  #
+  # Die Begruendung ist Pflicht, aus demselben Grund wie beim Loeschen: Fuer den
+  # Verein verschwindet eine erteilte Spielberechtigung, ohne dass ein Vorgang
+  # dahintersteht, den man nachlesen koennte. Ohne Freitext liest sich das in der
+  # Vereinsansicht wie ein Fehler des Systems. Der Text landet in der History und
+  # ist dort auch fuer den Verein sichtbar.
+  # Die eine Stelle, die PlayersController#handle_license_request fragt, ob der
+  # gewuenschte Statuswechsel erlaubt ist -- Meldung oder nil. Zwei Zielstatus
+  # tragen eine eigene Regel, alle anderen aus HANDLED_STATUSES keine.
+  def self.change_blocked_reason(license, target_status_id, reason, season_id = Setting.current_season_id)
+    case target_status_id
+    when DELETED then delete_blocked_reason(license, reason, season_id)
+    when REQUESTED then request_blocked_reason(license, reason, season_id)
+    end
+  end
+
+  # Der Zielstatus `beantragt` erreicht diesen Endpunkt auf zwei Wegen, und nur
+  # einer davon braucht eine Begruendung:
+  #
+  # * `abgelehnt -> beantragt` ist der Widerruf einer Ablehnung. Er kommt aus der
+  #   Lizenzuebersicht, schickt einen festen Text statt einer Eingabe des Nutzers
+  #   und bleibt deshalb ohne Pflicht-Freitext.
+  # * `erteilt -> beantragt` ist das Zuruecksetzen einer zu frueh erteilten
+  #   Lizenz. Hier ist der Freitext Pflicht, siehe reset_blocked_reason.
+  #
+  # Jeder andere Ausgangsstatus laeuft weiter durch wie bisher (ohne Knopf in der
+  # Oberflaeche, aber ueber diesen Endpunkt erreichbar) -- das ist Altverhalten
+  # und bewusst nicht Teil dieser Aenderung.
+  def self.request_blocked_reason(license, reason, current_season_id = Setting.current_season_id)
+    return 'Lizenz nicht gefunden.' if license.blank?
+    return nil unless current_status_id(license) == APPROVED
+
+    reset_blocked_reason(license, reason, current_season_id)
+  end
+
+  def self.reset_blocked_reason(license, reason, current_season_id = Setting.current_season_id)
+    return 'Lizenz nicht gefunden.' if license.blank?
+    return 'Zum Zurücksetzen einer Lizenz ist eine Begründung erforderlich.' if reason.to_s.strip.blank?
+    return nil if resettable?(license, current_season_id)
+
+    if license['season_id'].to_s == current_season_id.to_s
+      'Nur erteilte Lizenzen lassen sich auf „beantragt“ zurücksetzen.'
+    else
+      'Es lassen sich nur Lizenzen der laufenden Saison zurücksetzen.'
+    end
+  end
+
   NAMES = {
     License::APPROVED => 'erteilt',
     License::REQUESTED => 'beantragt',

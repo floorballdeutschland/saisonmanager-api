@@ -351,6 +351,45 @@ class ClubsController < ApplicationController
     }
   end
 
+  # Mannschaften des Vereins in der laufenden Saison – Grundlage für die
+  # abweichenden Mannschaftslogos im Vereinsformular.
+  #
+  # Gleiches Gate wie #admin_club_managers (`:update_own_club`, also Admin/SBK
+  # des zuständigen Spielbetriebs und der Vereinsmanager) und bewusst enger als
+  # `can_read_admin_club?`: Die Liste ist ein Werkzeug zum Pflegen, kein
+  # Auskunftsdienst. Ein fremder Landesverband mit Vereins-Freigabe darf die
+  # Stammdaten lesen, braucht aber die Logo-Pflege nicht.
+  #
+  # Über `current_teams_by_club` und damit dieselbe Quelle wie
+  # `vm/clubs_and_teams`: Sie nimmt Verbund-Mannschaften über `syndicate_clubs`
+  # mit, für die dieser Verein nicht der führende ist – genau die Mannschaften,
+  # deren Logo ein Verbund-Verein hier ebenfalls setzen darf.
+  #
+  # `manage_logo` pro Mannschaft statt einmal pro Verein: Das Recht am Logo
+  # hängt am Spielbetrieb der LIGA (Team#user_permissions), der Lesezugriff
+  # hier am zuständigen Spielbetrieb des VEREINS. Für einen SBK laufen die
+  # beiden auseinander, sobald eine Mannschaft des Vereins in einer fremden
+  # Liga spielt; der Vereinsmanager darf ohnehin alle.
+  def admin_club_teams
+    return render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized unless current_user
+
+    club = Club.find_by(id: params[:id])
+    return render json: { error: 'Nicht gefunden' }, status: :not_found unless club
+
+    unless club.user_permissions(current_user).include?(:update_own_club)
+      return render json: { message: 'Keine Berechtigung' }, status: :forbidden
+    end
+
+    teams = current_teams_by_club([club.id]).fetch(club.id, [])
+                                            .sort_by { |team| team.name.to_s.downcase }
+
+    render json: teams.map { |team|
+      team.full_hash.merge(
+        manage_logo: team.user_permissions(current_user).include?(:update_team_logo)
+      )
+    }
+  end
+
   def admin_club_update
     if current_user
       # to_i: params[:id] ist nur bei einem JSON-Body eine Zahl. Als
