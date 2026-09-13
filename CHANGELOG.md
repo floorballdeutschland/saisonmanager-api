@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Eine Profil-Zusammenlegung am Tag eines Vereinswechsels ließ den Spieler ohne Verein zurück**: Wird ein Spieler transferiert und noch am selben Tag ein doppelt angelegtes Profil in sein Profil zusammengeführt, konnte die Zusammenlegung die gerade erst gesetzte neue Vereinszugehörigkeit wieder schließen. Das Profil stand danach in gar keiner Vereinsliste mehr, war nicht lizenzierbar und nicht transferierbar — der Verein sah seinen frisch aufgenommenen Spieler nicht. Hintergrund: Die Zusammenlegung darf höchstens einen offenen Heimatverein hinterlassen und schließt dafür die übrigen. Ob eine Zugehörigkeit noch läuft, wird dabei tagesgenau beurteilt, und eine wenige Minuten zuvor beendete zählt bis Mitternacht weiter mit. Am Tag eines Wechsels sah die Zusammenlegung deshalb zwei offene Vereine, wo nur einer offen war. Welcher davon bleibt, entscheidet die zuletzt erteilte Lizenz — und die liegt am Tag des Wechsels naturgemäß noch beim abgebenden Verein, während die des aufnehmenden erst beantragt ist. Behalten wurde damit ein bereits geschlossener Eintrag, geschlossen der richtige. Die Zusammenlegung lässt jetzt jede Zugehörigkeit in Ruhe, die am selben Tag ohnehin schon beendet wurde: Sie beendet nur noch wirklich laufende, und bleibt danach nur eine einzige übrig, greift sie gar nicht erst ein. Damit kann sie ein Profil auch nicht mehr ohne Verein zurücklassen. Nebenbei behoben: Der mitgeschlossene Eintrag bekam den Zeitpunkt der Zusammenlegung eingetragen und überschrieb damit den des Transfers — der Wechsel war hinterher auf die falsche Uhrzeit datiert. Ein Wartungslauf (`players:reopen_home_club_closed_by_merge`) öffnet die betroffene Zugehörigkeit im Bestand wieder; er fasst nur Profile an, die keinen laufenden Verein mehr haben und bei denen der zuletzt begonnene Eintrag nachweislich den Stempel einer Zusammenlegung trägt, und meldet jeden anderen Fall zur Prüfung, statt zu raten.
+
 ## [1.114.0] - 2026-09-12
 
 ### Neu
