@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Das besondere Ereignis steht nicht mehr öffentlich in den Spieldetails**: Der Vermerk, den Schiedsrichter und Spielsekretariat unter „Besonderes Ereignis" in den Spielbericht schreiben, stand auf der öffentlichen Spielseite unter den Spielinformationen — für jeden ohne Anmeldung, einschließlich der Suchmaschinen und aller Abnehmer des öffentlichen API-Schlüssels. Es ist ein interner Vermerk über einen Vorfall: Er nennt regelmäßig Namen und beschreibt das Verhalten einzelner Personen, und über diesen Vorfall entscheidet erst die Spielbetriebskommission. Der Vermerk wird jetzt nur noch angemeldeten Personen angezeigt; das Spielsekretariat sieht ihn über seinen Link weiterhin, weil es ihn selbst einträgt. Für Verbandsrollen ändert sich nichts — im Spielbericht und in der Spielberichtsübersicht steht er unverändert. **Zu beachten für alle, die die öffentliche Schnittstelle auswerten:** Das Feld `special_event_string` fehlt in der Antwort von `games/:id.json` ohne Anmeldung jetzt vollständig.
+
 ## [1.114.0] - 2026-09-12
 
 ### Neu
