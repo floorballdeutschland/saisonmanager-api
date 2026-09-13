@@ -269,14 +269,64 @@ class Game < ApplicationRecord
   # Wertungen die Torart gar nicht ansehen: sie hängen an den Trikotnummern
   # (siehe evaluate_scorer und result).
   #
-  # Bewusst NICHT über eine Pseudo-Strafcode-ID wie beim Strafschuss
-  # (penalty_code_id 23): dieser Sonderweg zwingt jede Stelle, die Tore von
-  # Strafen trennt, zu einer Ausnahme (siehe ticker_events und formatted_events).
+  # Markiert wird es über `goal_type` -- so wie inzwischen auch der Strafschuss,
+  # siehe GOAL_TYPE_PENALTY_SHOT.
   GOAL_TYPE_TECHNICAL = 'technical'.freeze
   TECHNICAL_GOAL_STRING = 'Technisches Tor'.freeze
 
   def self.technical_goal?(event)
     event['goal_type'].to_s == GOAL_TYPE_TECHNICAL
+  end
+
+  # Strafschuss. Ebenfalls eine Torart am Ereignis, aus demselben Grund wie beim
+  # technischen Tor.
+  #
+  # Bis 1.115.0 wurde er stattdessen über den Pseudo-Strafcode 23 markiert. Das
+  # ging schief: Die id im Strafcode-Katalog (Setting#penalty_codes) ist keine
+  # Konstante, sie wurde beim Wechsel auf die 9xx-Codes neu vergeben. Seither
+  # liegt auf der 23 der Code 917 „Bodenspiel" -- und jede Strafe mit diesem
+  # Grund erschien in Ereignisliste und Ticker als Strafschuss, also als Tor
+  # (540 Ereignisse in 505 Spielen). Alt-Ereignisse aus Saison 17 belegen die
+  # Umindizierung: Sie tragen zur selben id den eingefrorenen Code 806 mit der
+  # Bezeichnung „Strafschuss".
+  #
+  # Deshalb entscheidet jetzt `goal_type`. Der Pseudo-Code bleibt nur als
+  # Rückfall für Ereignisse ohne Torart stehen (siehe legacy_penalty_shot?) und
+  # zählt dort ausschließlich ohne `penalty_id`: Eine Strafe ist eine Strafe,
+  # egal welcher Grund an ihr hängt.
+  GOAL_TYPE_PENALTY_SHOT = 'penalty_shot'.freeze
+  LEGACY_PENALTY_SHOT_CODE_ID = 23
+
+  def self.penalty_shot?(event)
+    return true if event['goal_type'].to_s == GOAL_TYPE_PENALTY_SHOT
+
+    legacy_penalty_shot?(event)
+  end
+
+  # Ereignisse, die vor der Umstellung geschrieben wurden und die Migration
+  # nicht erreicht hat (oder die ein noch nicht ausgerollter Client schickt):
+  # Pseudo-Code, keine Torart, keine Strafe.
+  #
+  # Die Torart geht vor, sonst nähme der Rückfall einem technischen Tor mit
+  # anhängendem Pseudo-Code sein Label.
+  def self.legacy_penalty_shot?(event)
+    return false if event['goal_type'].present?
+    return false if event['penalty_id'].present?
+
+    event['penalty_code_id'].present? &&
+      event['penalty_code_id'].to_i == LEGACY_PENALTY_SHOT_CODE_ID
+  end
+
+  # Ist das Ereignis eine Strafe? Ein Strafschuss ist es nie, auch wenn er den
+  # Pseudo-Code noch trägt.
+  #
+  # `penalty_code_id` muss da sein: Eine Strafe ohne Grund wurde hier schon
+  # immer als Tor ausgewiesen, und daran ändert diese Korrektur bewusst nichts
+  # -- das ist ein eigener Befund in Altdaten, kein Teil dieses Fehlers.
+  def self.penalty_event?(event)
+    return false if penalty_shot?(event)
+
+    event['penalty_id'].present? && event['penalty_code_id'].present?
   end
 
   # Der Spielabschnitt des Penalty-Schießens dieser Liga, gelesen aus
@@ -294,7 +344,8 @@ class Game < ApplicationRecord
 
   # Ist dieses Tor die Entscheidung im Penalty-Schießen (und nicht ein
   # Strafschuss während des Spiels)? Beide werden gleich gespeichert, nämlich
-  # als Tor mit penalty_code_id 23, und unterscheiden sich nur am Abschnitt.
+  # als Tor mit `goal_type` „penalty_shot", und unterscheiden sich nur am
+  # Abschnitt.
   #
   # Die feste Uhrzeit „70:00" bleibt als zweites Kriterium stehen. Sie war
   # lange das einzige und trifft nur Großfeld: im Kleinfeld endet die reguläre
@@ -1179,7 +1230,11 @@ class Game < ApplicationRecord
 
   def ticker_events
     (events || []).map do |e|
-      if e['penalty_code_id'] && e['penalty_code_id'].to_i != 23 # penalty_shot should be goal, not penalty.
+      # Der Ticker trennt gröber als formatted_events: Hier reicht ein Strafcode,
+      # eine `penalty_id` verlangt er nicht. Das bleibt so; korrigiert ist nur,
+      # dass der Strafschuss nicht mehr am Strafcode erkannt wird. Eine Torart
+      # am Ereignis heißt immer Tor, sonst entscheidet der Strafcode.
+      if e['goal_type'].blank? && e['penalty_code_id'].present? && !Game.legacy_penalty_shot?(e)
         {
           period: e['period'],
           time: e['time'],
@@ -1299,7 +1354,7 @@ class Game < ApplicationRecord
         next
       end
 
-      if event['penalty_id'].present? && event['penalty_code_id'] && event['penalty_code_id'].to_i != 23 # penalty_shot should be goal, not penalty.
+      if Game.penalty_event?(event)
         e[:event_type] = :penalty
         e[:penalty_id] = event['penalty_id'].to_i
         e[:penalty_code_id] = event['penalty_code_id'].to_i
@@ -1328,7 +1383,7 @@ class Game < ApplicationRecord
         if Game.technical_goal?(event) && !owngoal && !nagoal
           e[:goal_type] = :technical
           e[:goal_type_string] = TECHNICAL_GOAL_STRING
-        elsif event['penalty_code_id'].to_i != 23
+        elsif !Game.penalty_shot?(event)
           if owngoal
             e[:goal_type] = :owngoal
             e[:goal_type_string] = 'Eigentor'
@@ -1350,7 +1405,13 @@ class Game < ApplicationRecord
       end
 
       # penalty code without a penalty
-      if !legacy && !event['penalty_id'].present? && event['penalty_code_id'] && event['penalty_code_id'].to_i != 23
+      #
+      # Der Pseudo-Code bleibt ausgenommen, und zwar am Code selbst und nicht
+      # über penalty_shot?: Ein Alt-Ereignis kann ihn neben einer Torart tragen
+      # (technisches Tor), gemeldet werden soll aber nur ein echter Strafgrund
+      # ohne Strafe.
+      if !legacy && event['penalty_id'].blank? && event['penalty_code_id'].present? &&
+         event['penalty_code_id'].to_i != LEGACY_PENALTY_SHOT_CODE_ID
         Sentry.capture_message("missing penalty code, game: #{id}, event: #{event.to_json}, #{error_meta_info}")
       end
 
