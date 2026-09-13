@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Bei einer kampflosen Wertung lässt sich jetzt ein Ergebnis festsetzen**: Die Spielbetriebskommission konnte ein Spiel schon bisher kampflos werten (Verwaltung → Spielplan, Menü am Spiel: Forfait Heim, Forfait Gast, Forfait beide). Das Ergebnis stand dabei aber fest — die Liga-Vorgabe von 0:5 beziehungsweise 0:8, bei beidseitiger Wertung −8:−8 —, und jeder andere Ausgang musste außerhalb des Systems festgehalten werden. Die Spielordnung kennt jedoch Fälle, in denen ein abweichendes Ergebnis festgesetzt wird: Wurde das Spiel ausgetragen und die nicht schuldige Mannschaft hat es höher gewonnen, als die Vorgabe hergäbe, bleibt das erzielte Ergebnis bestehen. Neben der Wertung stehen deshalb jetzt zwei Torfelder. Wer nichts einträgt, bekommt unverändert die Liga-Vorgabe; sie steht als Vorbelegung in den Feldern, damit sichtbar ist, wovon abgewichen wird. Das festgesetzte Ergebnis zählt überall gleich — Tabelle, Torverhältnis und Spielplan rechnen mit ihm, nicht mit der Vorgabe. Bei beidseitiger Wertung gilt es so, wie es eingetragen wurde: Die negativen Vorgabetore sind ein Mittel, das Torverhältnis zu belasten, und eine Eingabe von 0:0 soll nicht als −0:−0 landen; ohne Punkte bleibt die beidseitige Wertung dabei auch mit eingetragenem Ergebnis. Wird ein Spiel auf die reguläre Wertung zurückgesetzt, verschwindet das festgesetzte Ergebnis mit ihr — sonst stünde es unsichtbar in der Zeile und bei der nächsten kampflosen Wertung ungefragt wieder da. Torschützen und Einsätze bleiben bei einer kampflosen Wertung wie bisher außen vor, denn das Ergebnis ist gesetzt und nicht erspielt.
+
 ## [1.114.0] - 2026-09-12
 
 ### Neu

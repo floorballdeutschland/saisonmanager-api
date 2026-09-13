@@ -28,6 +28,55 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
     )
   end
 
+  # Kampflose Wertung samt festgesetztem Ergebnis ist SBK-Arbeit: der Weg über
+  # games#update muss dem SBK des Spielbetriebs offenstehen und beide Torzahlen
+  # annehmen.
+  test 'der SBK des Spielbetriebs setzt eine kampflose Wertung mit Ergebnis' do
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    put "/api/v2/games/#{@game.id}.json",
+        params: { game: { forfait: 1, forfait_home_goals: 2, forfait_guest_goals: 9 } }
+
+    assert_response :success
+    @game.reload
+    assert_equal 1, @game.forfait
+    assert_equal 2, @game.forfait_home_goals
+    assert_equal 9, @game.forfait_guest_goals
+  end
+
+  test 'ein halbes Forfait-Ergebnis wird abgewiesen' do
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    put "/api/v2/games/#{@game.id}.json",
+        params: { game: { forfait: 1, forfait_home_goals: 2 } }
+
+    assert_response :bad_request
+    assert_nil @game.reload.forfait_home_goals
+  end
+
+  test 'ein SBK aus einem fremden Spielbetrieb setzt keine kampflose Wertung' do
+    other_go = create(:game_operation, state_association_id: create(:state_association).id)
+    login(create(:user, :sbk_scoped, game_operation_id: other_go.id))
+
+    put "/api/v2/games/#{@game.id}.json", params: { game: { forfait: 1 } }
+
+    assert_response :forbidden
+    assert_equal 0, @game.reload.forfait
+  end
+
+  # Die Verwaltungsansicht speist den Spiel-Editor. Sie muss das festgesetzte
+  # Ergebnis und daneben die Liga-Vorgabe liefern, sonst kann der Editor weder
+  # vorbelegen noch anzeigen, was ohne Eingabe gewertet würde.
+  test 'meta_hash liefert Forfait-Ergebnis und Liga-Vorgabe' do
+    @game.update!(forfait: 2, forfait_home_goals: 7, forfait_guest_goals: 1)
+
+    meta = @game.meta_hash
+
+    assert_equal 7, meta[:forfait_home_goals]
+    assert_equal 1, meta[:forfait_guest_goals]
+    assert_equal @league.forfait_goals, meta[:forfait_default_goals]
+  end
+
   # Die Sammelliste aller Spiele (Game.all, ohne Filter und ohne Grenze) ist
   # bewusst weg – weder öffentlich noch für Angemeldete.
   test 'die Sammelliste aller Spiele ist nicht mehr erreichbar' do

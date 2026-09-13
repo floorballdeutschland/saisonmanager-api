@@ -1469,7 +1469,8 @@ class GamesController < ApplicationController
   end
 
   def game_create_update_params
-    params.require(:game).permit(:forfait, :game_day_id, :game_number, :start_time,
+    params.require(:game).permit(:forfait, :forfait_home_goals, :forfait_guest_goals,
+                                 :game_day_id, :game_number, :start_time,
                                  :nominated_referee_string, :person_level_assignment,
                                  :notice_type, :notice_string,
                                  :home_team_id, :guest_team_id,
