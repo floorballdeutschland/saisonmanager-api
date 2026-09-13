@@ -568,6 +568,20 @@ class GameTest < ActiveSupport::TestCase
     assert_equal 'HOME_PENALTY', g.ticker_events.first[:eventType]
   end
 
+  # Ein leerer Strafgrund ist in Ruby truthy, `''.present?` aber false. Die
+  # Unterscheidung entscheidet hier zwischen Strafe und Tor: update_event
+  # schreibt params[:penalty_code_id] im Straf-Zweig ohne `.presence` ins JSONB,
+  # ein Aufruf mit leerem Feld landet also so in den Daten.
+  test 'formatted_events: Strafe mit leerem Strafgrund bleibt eine Strafe' do
+    g = build_game(events: [bodenspiel_penalty('penalty_code_id' => '')])
+    assert_equal :penalty, g.formatted_events.first[:event_type]
+  end
+
+  test 'ticker_events: Strafe mit leerem Strafgrund bleibt eine Strafe' do
+    g = build_game(events: [bodenspiel_penalty('penalty_code_id' => '')])
+    assert_equal 'HOME_PENALTY', g.ticker_events.first[:eventType]
+  end
+
   test 'formatted_events: Strafschuss über die Torart' do
     g = build_game(events: [technical_goal_event('goal_type' => 'penalty_shot')])
     e = g.formatted_events.first

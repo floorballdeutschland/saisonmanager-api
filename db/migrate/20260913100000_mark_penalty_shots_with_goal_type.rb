@@ -26,10 +26,22 @@ class MarkPenaltyShotsWithGoalType < ActiveRecord::Migration[7.2]
     self.table_name = 'games'
   end
 
+  # `event_type = 'penalty'` bleibt ausgenommen, auch ohne `penalty_id`. Solche
+  # Zeilen wurden vor wie nach dieser Änderung als Tor „Strafschuss" angezeigt
+  # (der Straf-Zweig verlangt seit jeher eine `penalty_id`) -- die Migration
+  # dürfte die Fehleinstufung aber nicht dauerhaft in die Daten schreiben und
+  # dabei den `penalty_code_id` löschen, das einzige, woran sich der Strafgrund
+  # später noch erkennen ließe.
+  PENALTY_EXCLUDED = "coalesce(e->>'event_type', '') <> 'penalty'".freeze
+
   def up
     convert(
-      "e->>'penalty_code_id' = '#{LEGACY_CODE}' AND coalesce(e->>'penalty_id', '') = ''",
-      ->(event) { event['penalty_code_id'].to_s == LEGACY_CODE && event['penalty_id'].blank? }
+      "e->>'penalty_code_id' = '#{LEGACY_CODE}' AND coalesce(e->>'penalty_id', '') = '' AND #{PENALTY_EXCLUDED}",
+      lambda { |event|
+        event['penalty_code_id'].to_s == LEGACY_CODE &&
+          event['penalty_id'].blank? &&
+          event['event_type'].to_s != 'penalty'
+      }
     ) do |event|
       event.delete('penalty_code_id')
       # `||=`: Ein technisches Tor mit anhängendem Pseudo-Code behält sein
@@ -61,9 +73,18 @@ class MarkPenaltyShotsWithGoalType < ActiveRecord::Migration[7.2]
   # `sql_filter` sucht die betroffenen Spiele, `match` dieselbe Bedingung noch
   # einmal je Ereignis -- die SQL-Zeile findet das Spiel, nicht das Ereignis.
   def convert(sql_filter, match)
+    # Der Typtest gehört in die FROM-Klausel, nicht ins WHERE: jsonb_array_elements
+    # ist eine mengenwertige Funktion und wird je Zeile ausgewertet, bevor WHERE
+    # filtert. Ein `events`, das kein Array ist, bräche die Migration sonst mit
+    # „cannot extract elements from an object" ab -- und Migrationen laufen beim
+    # Deploy automatisch.
     ids = select_values(<<~SQL.squish)
-      SELECT DISTINCT g.id FROM games g, jsonb_array_elements(g.events) e
-      WHERE jsonb_typeof(g.events) = 'array' AND #{sql_filter}
+      SELECT DISTINCT g.id
+      FROM games g,
+           jsonb_array_elements(
+             CASE WHEN jsonb_typeof(g.events) = 'array' THEN g.events ELSE '[]'::jsonb END
+           ) e
+      WHERE #{sql_filter}
     SQL
 
     say "betroffene Spiele: #{ids.size}"

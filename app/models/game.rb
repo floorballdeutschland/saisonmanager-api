@@ -323,10 +323,16 @@ class Game < ApplicationRecord
   # `penalty_code_id` muss da sein: Eine Strafe ohne Grund wurde hier schon
   # immer als Tor ausgewiesen, und daran ändert diese Korrektur bewusst nichts
   # -- das ist ein eigener Befund in Altdaten, kein Teil dieses Fehlers.
+  #
+  # Bewusst `nil?` und nicht `present?`: Ein leerer String ist in Ruby truthy,
+  # `''.present?` aber false. `update_event` schreibt `params[:penalty_code_id]`
+  # im Straf-Zweig ohne `.presence` ins JSONB, ein Aufruf mit leerem Feld landet
+  # also so in den Daten. Mit `present?` würde aus so einer Strafe hier ein Tor
+  # -- dieselbe Fehlerklasse, die dieser Fix beseitigt, nur an anderer Stelle.
   def self.penalty_event?(event)
     return false if penalty_shot?(event)
 
-    event['penalty_id'].present? && event['penalty_code_id'].present?
+    event['penalty_id'].present? && !event['penalty_code_id'].nil?
   end
 
   # Der Spielabschnitt des Penalty-Schießens dieser Liga, gelesen aus
@@ -1234,7 +1240,7 @@ class Game < ApplicationRecord
       # eine `penalty_id` verlangt er nicht. Das bleibt so; korrigiert ist nur,
       # dass der Strafschuss nicht mehr am Strafcode erkannt wird. Eine Torart
       # am Ereignis heißt immer Tor, sonst entscheidet der Strafcode.
-      if e['goal_type'].blank? && e['penalty_code_id'].present? && !Game.legacy_penalty_shot?(e)
+      if e['goal_type'].blank? && !e['penalty_code_id'].nil? && !Game.legacy_penalty_shot?(e)
         {
           period: e['period'],
           time: e['time'],

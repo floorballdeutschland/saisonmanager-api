@@ -72,6 +72,38 @@ class MarkPenaltyShotsWithGoalTypeTest < ActiveSupport::TestCase
     assert_not event.key?('penalty_code_id')
   end
 
+  # Eine als Strafe erfasste Zeile ohne `penalty_id`: Angezeigt wurde sie vor wie
+  # nach dieser Änderung als Tor „Strafschuss" (der Straf-Zweig verlangt seit
+  # jeher eine penalty_id). Die Migration darf daraus aber keine dauerhafte
+  # Torart machen und dabei den Strafgrund löschen -- er ist das Einzige, woran
+  # sich so eine Zeile später noch als Strafe erkennen ließe.
+  test 'up: als Strafe erfasste Zeile ohne penalty_id bleibt unangetastet' do
+    game = create(:game, events: [penalty_shot('event_type' => 'penalty')])
+
+    run_up
+
+    event = game.reload.events.first
+    assert_equal 23, event['penalty_code_id']
+    assert_not event.key?('goal_type')
+  end
+
+  # Absicherung, kein Regressionsnachweis: Dieser Test lief auch mit dem Typtest
+  # im WHERE durch. Ob er durchläuft, entscheidet aber der Ausführungsplan --
+  # `jsonb_array_elements` steht in der FROM-Klausel und wird je Zeile
+  # ausgewertet; ob PostgreSQL die Einschränkung auf `games` vorher anwendet, ist
+  # nicht zugesichert. Mit dem CASE in der FROM-Klausel hängt es nicht mehr daran.
+  # Migrationen laufen beim Deploy automatisch, ein Abbruch hier legte ihn lahm.
+  test 'up: ein events, das kein Array ist, bricht die Migration nicht ab' do
+    game = create(:game, events: [penalty_shot])
+    krumm = create(:game)
+    krumm.update_columns(events: {})
+
+    run_up
+
+    assert_equal 'penalty_shot', game.reload.events.first['goal_type']
+    assert_equal({}, krumm.reload.events)
+  end
+
   test 'up: Spiel ohne Ereignisse bleibt unangetastet' do
     game = create(:game, events: [])
 
