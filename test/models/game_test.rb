@@ -519,6 +519,92 @@ class GameTest < ActiveSupport::TestCase
   end
 
   # ---------------------------------------------------------------------------
+  # Strafschuss: Torart statt Pseudo-Strafcode
+  #
+  # Der Fehler dahinter: Die id 23 im Strafcode-Katalog wurde beim Wechsel auf
+  # die 9xx-Codes neu vergeben und trägt heute den Code 917 „Bodenspiel". Jede
+  # Strafe mit diesem Grund erschien dadurch als Strafschuss, also als Tor --
+  # 540 Ereignisse in 505 Spielen, gemeldet am 13.09.2026 zu Spiel 57745.
+  # ---------------------------------------------------------------------------
+
+  # Eine Strafe mit Grund 917. Genau die Kombination, die den Fehler auslöste:
+  # `penalty_id` gesetzt UND der Pseudo-Code am selben Ereignis.
+  def bodenspiel_penalty(extra = {})
+    {
+      'id' => 1, 'period' => 2, 'time' => '7:56', 'event_type' => 'penalty', 'event_team' => 'home',
+      'home_goals' => 2, 'guest_goals' => 3, 'home_number' => 77,
+      'penalty_id' => '1', 'penalty_code_id' => '23',
+      'penalty_name' => '2 Minuten', 'penalty_mapping' => 'penalty_2',
+      'penalty_code' => '917', 'penalty_code_description' => 'Bodenspiel'
+    }.merge(extra)
+  end
+
+  test 'penalty_shot?: erkennt die Torart' do
+    assert Game.penalty_shot?('goal_type' => 'penalty_shot')
+    assert_not Game.penalty_shot?('goal_type' => 'regular')
+    assert_not Game.penalty_shot?({})
+  end
+
+  test 'penalty_shot?: Altmarkierung zählt nur ohne Strafe' do
+    assert Game.penalty_shot?('penalty_code_id' => 23)
+    assert_not Game.penalty_shot?('penalty_code_id' => 23, 'penalty_id' => '1')
+    # Torart geht vor, sonst verlöre ein technisches Tor mit anhängendem
+    # Pseudo-Code sein Label.
+    assert_not Game.penalty_shot?('penalty_code_id' => 23, 'goal_type' => 'technical')
+  end
+
+  test 'formatted_events: Strafe mit Grund 917 bleibt eine Strafe' do
+    g = build_game(events: [bodenspiel_penalty])
+    e = g.formatted_events.first
+    assert_equal :penalty, e[:event_type]
+    assert_equal '917', e[:penalty_reason]
+    assert_equal 'Bodenspiel', e[:penalty_reason_string]
+    assert_equal '2 Minuten', e[:penalty_type_string]
+    assert_nil e[:goal_type]
+  end
+
+  test 'ticker_events: Strafe mit Grund 917 ist eine Strafe, kein Tor' do
+    g = build_game(events: [bodenspiel_penalty])
+    assert_equal 'HOME_PENALTY', g.ticker_events.first[:eventType]
+  end
+
+  # Ein leerer Strafgrund ist in Ruby truthy, `''.present?` aber false. Die
+  # Unterscheidung entscheidet hier zwischen Strafe und Tor: update_event
+  # schreibt params[:penalty_code_id] im Straf-Zweig ohne `.presence` ins JSONB,
+  # ein Aufruf mit leerem Feld landet also so in den Daten.
+  test 'formatted_events: Strafe mit leerem Strafgrund bleibt eine Strafe' do
+    g = build_game(events: [bodenspiel_penalty('penalty_code_id' => '')])
+    assert_equal :penalty, g.formatted_events.first[:event_type]
+  end
+
+  test 'ticker_events: Strafe mit leerem Strafgrund bleibt eine Strafe' do
+    g = build_game(events: [bodenspiel_penalty('penalty_code_id' => '')])
+    assert_equal 'HOME_PENALTY', g.ticker_events.first[:eventType]
+  end
+
+  test 'formatted_events: Strafschuss über die Torart' do
+    g = build_game(events: [technical_goal_event('goal_type' => 'penalty_shot')])
+    e = g.formatted_events.first
+    assert_equal :goal, e[:event_type]
+    assert_equal :penalty_shot, e[:goal_type]
+    assert_equal 'Strafschuss', e[:goal_type_string]
+  end
+
+  test 'ticker_events: Strafschuss über die Torart ist ein Tor' do
+    g = build_game(events: [technical_goal_event('goal_type' => 'penalty_shot')])
+    assert_equal 'HOME_GOAL', g.ticker_events.first[:eventType]
+  end
+
+  # Die Unterscheidung Strafschuss / Entscheidung im Penalty-Schießen hängt
+  # weiterhin allein am Abschnitt, nur die Erkennung davor hat gewechselt.
+  test 'formatted_events: Torart im Penalty-Schießen ist die Entscheidung' do
+    events = [technical_goal_event('goal_type' => 'penalty_shot', 'period' => 5, 'time' => '0:30')]
+    game_in_league(modern_league(3), events) do |g|
+      assert_equal :penalty_shots, g.formatted_events.first[:goal_type]
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # Entscheidung im Penalty-Schießen (dasselbe Ereignis wie der Strafschuss,
   # unterschieden nur am Spielabschnitt)
   # ---------------------------------------------------------------------------
@@ -643,7 +729,7 @@ class GameTest < ActiveSupport::TestCase
   end
 
   # Beide Markierungen an einem Ereignis verhindern die Schreibwege
-  # (drop_penalty_shot_marker!, siehe GamesControllerTest). Kommt die
+  # (normalize_goal_markers!, siehe GamesControllerTest). Kommt die
   # Kombination trotzdem aus Altdaten, entscheidet die Reihenfolge der Zweige:
   # die Markierung gewinnt, statt dass die Anzeige zwischen beiden kippt.
   test 'formatted_events: Markierung geht dem Strafschuss vor' do

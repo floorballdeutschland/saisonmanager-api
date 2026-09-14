@@ -90,6 +90,14 @@ class GamesController < ApplicationController
     # dieselbe Grenze wie die Bedienelemente: ein fremder Hallenlink zeigt sie
     # nicht.
     hash.merge!(_checklist_hash(game)) if current_user || secretary
+    # Der Vermerk über ein besonderes Ereignis gehört nicht in die öffentliche
+    # Spielansicht: Er ist ein interner Teil des Spielberichts und nennt
+    # regelmäßig Namen und Verhalten einzelner Personen. Bewusst an jeden Login
+    # und an das Spielsekretariat, nicht nur an die Rollen aus
+    # can_view_hidden_elements? — die Spielseite zeigte ihn bisher allen, und
+    # eingeschränkt wird hier nur die Öffentlichkeit. Anonyme Abrufe sehen ihn
+    # gar nicht mehr, auch nicht über den API-Schlüssel.
+    hash[:special_event_string] = game.special_event_string if current_user || secretary
     if current_user
       ph = current_user.permission_hash
       go_id = game.game_day.league.game_operation_id.to_i
@@ -650,7 +658,7 @@ class GamesController < ApplicationController
       when 'goal'
         item[:goal_type] = params[:goal_type] if params[:goal_type].present?
         item[:penalty_code_id] = params[:penalty_code_id] if params[:penalty_code_id].present?
-        drop_penalty_shot_marker!(item)
+        normalize_goal_markers!(item)
       end
 
       # Straf-Labels einfrieren, damit der Spielbericht ohne Live-Lookup lesbar bleibt.
@@ -754,7 +762,7 @@ class GamesController < ApplicationController
         event['goal_type'] = params[:goal_type].presence
         event['penalty_code_id'] = params[:penalty_code_id].presence
         event.delete('penalty_id')
-        drop_penalty_shot_marker!(event)
+        normalize_goal_markers!(event)
       end
 
       # Straf-Labels neu einfrieren (bzw. bei Wechsel auf 'goal' entfernen).
@@ -1317,27 +1325,32 @@ class GamesController < ApplicationController
     secretary_or_current_user_id
   end
 
-  # Ein Tor ist entweder erzielt oder zugesprochen: technisches Tor und
-  # Strafschuss (Pseudo-Strafcode 23) schließen sich aus.
+  # Der Strafschuss wird seit 1.115.0 über `goal_type` markiert, nicht mehr über
+  # den Pseudo-Strafcode 23 (siehe Game::GOAL_TYPE_PENALTY_SHOT). Ältere Clients
+  # schicken den Code weiterhin -- die API wird vor dem Frontend ausgerollt, das
+  # ist also der Normalfall und kein Sonderweg. Übersetzt wird einmal hier an der
+  # Schreibgrenze, damit im JSONB nur noch eine Schreibweise entsteht.
   #
-  # Greift ausschließlich bei Aufrufen, die beide Markierungen zugleich
-  # schicken. Das Formular tut das nicht, es koppelt die Haken; und beim
-  # Umstellen eines bestehenden Strafschusses ist der Code schon weg, bevor
-  # diese Methode läuft (update_event überschreibt penalty_code_id
-  # unconditional mit `.presence`, also mit nil). Übrig bleibt der Fall, den
-  # sonst nichts abfängt: ein direkter API-Aufruf oder ein veralteter Client
-  # mit beiden Feldern im selben Request. Ohne die Bereinigung stünden im
-  # Ereignis zwei einander ausschließende Markierungen, und welche gewinnt,
-  # entschiede allein die Reihenfolge der Zweige in formatted_events.
+  # Ein Tor ist entweder erzielt oder zugesprochen: technisches Tor und
+  # Strafschuss schließen sich aus. Kommen beide Markierungen im selben Request,
+  # gewinnt das technische Tor -- so wie bisher in formatted_events. Das Formular
+  # schickt die Kombination nicht, es koppelt die Haken; übrig bleibt der direkte
+  # API-Aufruf.
   #
   # Gelöscht wird mit String-Key, das greift in beiden Schreibwegen:
   # update_event ändert den string-keyed Hash aus dem JSONB, add_event einen
   # HashWithIndifferentAccess (der normalisiert Symbol-Keys auf Strings, sonst
   # liefe die Löschung dort ins Leere).
-  def drop_penalty_shot_marker!(event)
-    return unless Game.technical_goal?(event)
+  def normalize_goal_markers!(event)
+    if Game.technical_goal?(event)
+      event.delete('penalty_code_id')
+      return
+    end
+
+    return unless event['penalty_code_id'].to_i == Game::LEGACY_PENALTY_SHOT_CODE_ID
 
     event.delete('penalty_code_id')
+    event['goal_type'] = Game::GOAL_TYPE_PENALTY_SHOT
   end
 
   # Die vier Angaben, die ein Ereignis überhaupt erst zu einem Ereignis machen.
@@ -1469,7 +1482,8 @@ class GamesController < ApplicationController
   end
 
   def game_create_update_params
-    params.require(:game).permit(:forfait, :game_day_id, :game_number, :start_time,
+    params.require(:game).permit(:forfait, :forfait_home_goals, :forfait_guest_goals,
+                                 :game_day_id, :game_number, :start_time,
                                  :nominated_referee_string, :person_level_assignment,
                                  :notice_type, :notice_string,
                                  :home_team_id, :guest_team_id,
