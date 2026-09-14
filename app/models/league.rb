@@ -722,13 +722,23 @@ class League < ApplicationRecord
       results[game.guest_team.id][:goals_scored] += game.result[:guest_goals]
       results[game.guest_team.id][:goals_received] += game.result[:home_goals]
 
+      # Die beidseitige kampflose Wertung gibt keiner Mannschaft Punkte. Das
+      # entscheidet die Wertungsart, nicht die Torzahl -- deshalb der Punktestand
+      # vor der Auswertung und die Ruecknahme danach, statt eines Riegels je
+      # Zweig: Bis hierher genuegte einer am Unentschieden, weil die Vorgabe
+      # immer -8:-8 ergab und die Wertung damit gar nicht anders enden konnte.
+      # Mit einem festgesetzten Ergebnis kann sie ungleich ausgehen und faende
+      # sonst den Weg in den Sieg-Zweig, samt voller Punktzahl fuer die
+      # Mannschaft mit den mehr Toren.
+      punkte_vorher = [results[game.home_team.id][:points], results[game.guest_team.id][:points]]
+
       # won_points won_overtime_points lost_overtime_points draw_points
       if game.result[:home_goals] == game.result[:guest_goals]
         # draw
         results[game.home_team.id][:draw] += 1
         results[game.guest_team.id][:draw] += 1
-        results[game.home_team.id][:points] += draw_points if game.forfait != 3
-        results[game.guest_team.id][:points] += draw_points if game.forfait != 3
+        results[game.home_team.id][:points] += draw_points
+        results[game.guest_team.id][:points] += draw_points
       elsif game.result[:home_goals] > game.result[:guest_goals]
         # home won
         if game.overtime
@@ -758,6 +768,10 @@ class League < ApplicationRecord
           results[game.guest_team.id][:points] += won_points
         end
       end
+
+      # Zurueck auf den Stand vor der Auswertung -- Tore, Siege und Niederlagen
+      # bleiben stehen, nur die Punkte nicht.
+      results[game.home_team.id][:points], results[game.guest_team.id][:points] = punkte_vorher if game.forfait == 3
     end
 
     results.each_key do |team_id|

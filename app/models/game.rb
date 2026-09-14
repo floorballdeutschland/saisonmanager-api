@@ -92,6 +92,11 @@ class Game < ApplicationRecord
                       }
 
   before_save :correct_teams!
+  # Ein von Hand festgesetztes Forfait-Ergebnis gehoert zur kampflosen Wertung.
+  # Faellt die Wertung weg, muss es mit ihr verschwinden -- sonst stuende es
+  # unsichtbar in der Zeile und wuerde bei der naechsten Forfait-Wertung
+  # ungefragt wieder gelten.
+  before_save :clear_forfait_goals_without_forfait
   # Tabelle/Scorer/Spielplan einer Liga werden aus den Spiel-JSONB-Spalten
   # (events/players/game_status …) berechnet und im Controller gecacht. Jede
   # Spieländerung – Ergebniseingabe, Statuswechsel, Autofill, Löschung – muss
@@ -104,8 +109,21 @@ class Game < ApplicationRecord
   # Gespann bestimmt, nie für Mannschaften oder die Öffentlichkeit.
   REFEREE_NOTES_ATTRIBUTES = %w[referee_notes referee_notes_updated_at referee_notes_updated_by].freeze
 
+  # Ein festgesetztes Forfait-Ergebnis wird immer als Paar gefuehrt: nur eine
+  # Seite gesetzt hiesse, die andere aus der Liga-Vorgabe zu ergaenzen -- ein
+  # Mischergebnis, das niemand so beschlossen hat.
+  validate :forfait_goals_are_a_complete_pair
+  validates :forfait_home_goals, :forfait_guest_goals,
+            numericality: { only_integer: true, greater_than_or_equal_to: 0 },
+            allow_nil: true
+
   def match_record_closed?
     %w[match_record_closed finalized].include? game_status
+  end
+
+  # Wurde fuer dieses Spiel ein Forfait-Ergebnis von Hand festgesetzt?
+  def forfait_goals_set?
+    forfait? && forfait_home_goals.present? && forfait_guest_goals.present?
   end
 
   # Die Notiz darf nicht über eine pauschale Serialisierung des Datensatzes
@@ -657,6 +675,23 @@ class Game < ApplicationRecord
     end
   end
 
+  # Ergebnis eines kampflos gewerteten Spiels. Standard ist die Liga-Vorgabe
+  # (League#forfait_goals, bei beidseitiger Wertung negativ, damit die Wertung
+  # das Torverhaeltnis belastet). Hat die SBK ein Ergebnis festgesetzt, gilt
+  # dieses unveraendert -- auch bei beidseitiger Wertung, wo die Vorgabe sonst
+  # negative Tore erzeugt.
+  def forfait_result
+    if forfait_goals_set?
+      return { 'home_goals' => forfait_home_goals, 'guest_goals' => forfait_guest_goals }
+    end
+
+    case forfait
+    when 1 then { 'home_goals' => 0, 'guest_goals' => league.forfait_goals }
+    when 2 then { 'home_goals' => league.forfait_goals, 'guest_goals' => 0 }
+    when 3 then { 'home_goals' => league.forfait_goals * -1, 'guest_goals' => league.forfait_goals * -1 }
+    end
+  end
+
   def result
     return if (legacy && !(events.present? || forfait?)) || (!legacy && !started)
 
@@ -696,22 +731,7 @@ class Game < ApplicationRecord
         }
       end
     else
-      last_item = if forfait == 1
-                    {
-                      'home_goals' => 0,
-                      'guest_goals' => league.forfait_goals
-                    }
-                  elsif forfait == 2
-                    {
-                      'home_goals' => league.forfait_goals,
-                      'guest_goals' => 0
-                    }
-                  elsif forfait == 3
-                    {
-                      'home_goals' => league.forfait_goals * -1,
-                      'guest_goals' => league.forfait_goals * -1
-                    }
-                  end
+      last_item = forfait_result
     end
 
     last_item && {
@@ -1172,6 +1192,12 @@ class Game < ApplicationRecord
       started:,
       ended:,
       forfait:,
+      # Das von Hand festgesetzte Forfait-Ergebnis und daneben die Liga-Vorgabe,
+      # die ohne Festsetzung greift: der Spiel-Editor der SBK zeigt damit an,
+      # was ohne Eingabe gewertet wuerde, ohne die Regel nachbauen zu muessen.
+      forfait_home_goals:,
+      forfait_guest_goals:,
+      forfait_default_goals: game_day&.league&.forfait_goals,
       notice_type:,
       notice_string:,
       current_period_title:,
@@ -1854,6 +1880,22 @@ class Game < ApplicationRecord
   end
 
   private
+
+  # Ohne kampflose Wertung gibt es kein festgesetztes Forfait-Ergebnis. Der
+  # Ruecksprung auf die regulaere Wertung raeumt es deshalb mit ab, statt es
+  # als Karteileiche stehen zu lassen.
+  def clear_forfait_goals_without_forfait
+    return if forfait?
+
+    self.forfait_home_goals = nil
+    self.forfait_guest_goals = nil
+  end
+
+  def forfait_goals_are_a_complete_pair
+    return if forfait_home_goals.nil? == forfait_guest_goals.nil?
+
+    errors.add(:base, 'Ein Forfait-Ergebnis braucht beide Torzahlen.')
+  end
 
   def flush_league_caches
     flush_player_stats_caches

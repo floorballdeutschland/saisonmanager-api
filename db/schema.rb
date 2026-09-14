@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_09_13_100000) do
+ActiveRecord::Schema[7.2].define(version: 2026_09_13_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -391,6 +391,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_13_100000) do
     t.datetime "referee_notes_updated_at"
     t.bigint "referee_notes_updated_by"
     t.boolean "person_level_assignment", default: false, null: false
+    t.integer "forfait_home_goals"
+    t.integer "forfait_guest_goals"
     t.index ["checklist_veto_token_digest"], name: "index_games_on_checklist_veto_token_digest", unique: true, where: "(checklist_veto_token_digest IS NOT NULL)"
     t.index ["game_day_id"], name: "index_games_on_game_day_id"
     t.index ["guest_team_id"], name: "index_games_on_guest_team_id"
