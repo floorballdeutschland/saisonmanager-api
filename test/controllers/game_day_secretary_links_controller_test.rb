@@ -34,6 +34,19 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
     assert_equal [@game_day.id], body['game_day_ids']
   end
 
+  test 'die Antwort traegt den abtippbaren Code und die Adresse zum Eingeben' do
+    login(create(:user, :vm, club_id: @host_club.id))
+
+    post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
+
+    assert_response :created
+    body = JSON.parse(response.body)
+    assert_equal GameDaySecretaryLink::CODE_LENGTH, body['code'].length
+    assert_match %r{/spielsekretariat\z}, body['entry_url'],
+                 'die Eingabeadresse traegt keinen Token -- sie wird abgetippt'
+    assert_not_nil GameDaySecretaryLink.redeem(body['code'])
+  end
+
   test 'Vereinsmanager des Gastvereins bekommt 403' do
     login(create(:user, :vm, club_id: @guest_club.id))
 

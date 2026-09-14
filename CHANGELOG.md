@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Kurzcode für das Spielsekretariat**: Am Spieltisch steht in aller Regel ein Vereinsrechner, auf dem sich bewusst niemand mit seinem Saisonmanager-Konto anmeldet. Der Spielsekretariats-Link wird aber vom Vereinsmanager an einem anderen Gerät erzeugt – und er ist mit über 90 Zeichen nichts, was sich abtippen ließe. Bisher blieb nur, ihn irgendwie auf den Hallenrechner zu bekommen. Zu jedem Link gehört deshalb jetzt ein **achtstelliger Code**: Am Spieltisch wird `saisonmanager.org/spielsekretariat` aufgerufen und der Code eingegeben, fertig. Der Code verzeiht beim Abtippen, was man beim Abtippen falsch macht: Groß- und Kleinschreibung sind gleich, Bindestriche und Leerzeichen dürfen mit, und die Buchstaben O, I und L werden als Null und Eins gelesen – im Code selbst kommen sie gar nicht vor, damit keine Verwechslung entsteht. Gültigkeit und Umfang bleiben unverändert: 72 Stunden, alle Spieltage desselben Tages in derselben Halle, und ein neu erzeugter Code entwertet den vorherigen. Der Code ist ausschließlich für diese Übergabe da – eingelöst wird er genau einmal gegen den regulären Zugang, und zwar an einem eigens gedrosselten Weg, sodass sich Codes nicht durchprobieren lassen. Wer den Code hat, kann Spielbericht und Aufstellung dieser Spiele bearbeiten und sieht die Lizenzlisten mit Name, Geburtsdatum und Lizenzstatus; er gehört deshalb genau wie der Link nur an den Tisch.
+
 ## [1.114.0] - 2026-09-12
 
 ### Neu
