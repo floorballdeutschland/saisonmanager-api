@@ -90,6 +90,14 @@ class GamesController < ApplicationController
     # dieselbe Grenze wie die Bedienelemente: ein fremder Hallenlink zeigt sie
     # nicht.
     hash.merge!(_checklist_hash(game)) if current_user || secretary
+    # Der Vermerk über ein besonderes Ereignis gehört nicht in die öffentliche
+    # Spielansicht: Er ist ein interner Teil des Spielberichts und nennt
+    # regelmäßig Namen und Verhalten einzelner Personen. Bewusst an jeden Login
+    # und an das Spielsekretariat, nicht nur an die Rollen aus
+    # can_view_hidden_elements? — die Spielseite zeigte ihn bisher allen, und
+    # eingeschränkt wird hier nur die Öffentlichkeit. Anonyme Abrufe sehen ihn
+    # gar nicht mehr, auch nicht über den API-Schlüssel.
+    hash[:special_event_string] = game.special_event_string if current_user || secretary
     if current_user
       ph = current_user.permission_hash
       go_id = game.game_day.league.game_operation_id.to_i
