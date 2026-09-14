@@ -9,7 +9,8 @@ module SecretaryTokenAuthenticatable
   # 401, unabhängig von `current_user`. Das ist kein Sonderfall, sondern der
   # Normalfall nach 72 Stunden (`GameDaySecretaryLink::VALIDITY`): Der
   # SecretaryTokenInterceptor im Frontend hängt einen einmal im sessionStorage
-  # abgelegten Token an jede API-Anfrage und löscht ihn nirgends. Wer in dieser
+  # abgelegten Token an jede API-Anfrage; geloescht wird er seit fe#450 nur
+  # dort, wo ein Recht nachweislich tot ist (410/401 im Spielsekretariat). Wer in dieser
   # Registerkarte einmal einen Sekretariats-Link geöffnet hatte, bekam danach
   # angemeldet 401 auf jedem Weg des Spielberichts
   # (`GamesController::SECRETARY_ACTIONS`, dort auch der Lesepfad `show_hidden`),

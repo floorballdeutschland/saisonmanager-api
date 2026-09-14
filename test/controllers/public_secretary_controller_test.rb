@@ -228,8 +228,26 @@ class PublicSecretaryControllerTest < ActionDispatch::IntegrationTest
     assert_response :gone
   end
 
-  test 'POST /public/secretary/redeem antwortet auf Unsinn ohne Serverfehler' do
+  # Fehlendes Feld ist ein kaputter Aufruf, kein falscher Code. Genauso
+  # unterscheidet `show` es beim Token.
+  test 'POST /public/secretary/redeem meldet ein fehlendes Feld getrennt' do
     post '/api/v2/public/secretary/redeem', params: { code: '' }
+
+    assert_response :bad_request
+    assert_equal 'Kein Code angegeben.', JSON.parse(response.body)['message']
+
+    post '/api/v2/public/secretary/redeem'
+
+    assert_response :bad_request
+  end
+
+  # Sonst nimmt redeem den Code an und die Folgeseite meldet eine Sekunde
+  # spaeter das Gegenteil.
+  test 'POST /public/secretary/redeem weist einen Code ohne Spieltage ab' do
+    link, _raw_token, raw_code = GameDaySecretaryLink.generate!(game_days: [@game_day], created_by: @user)
+    link.game_day_secretary_link_game_days.delete_all
+
+    post '/api/v2/public/secretary/redeem', params: { code: raw_code }
 
     assert_response :gone
   end

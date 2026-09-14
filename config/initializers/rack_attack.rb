@@ -86,20 +86,30 @@ module Rack
     # deckelt der Stundentopf eine Adresse auf 1440 Versuche am Tag -- im
     # Mittel rund eine Million Jahre. Der Code gilt ohnehin nur 72 Stunden.
     #
+    # Der Endpunkt verlangt weder Cookie noch API-Key. Diese beiden Toepfe sind
+    # also der EINZIGE Schutz gegen das Durchprobieren, und deshalb steht hier
+    # `start_with?` und kein Vergleich auf Gleichheit: Die Route traegt wie jede
+    # Rails-Route ein `(.:format)`, `…/redeem.json` landet in derselben Action.
+    # Ein exakter Vergleich haette das Geheimnis mit fuenf angehaengten Zeichen
+    # ungebremst ratbar gemacht (im Test nachgestellt, s.
+    # test/controllers/secretary_code_throttle_test.rb).
+    #
     # Eine Grenze je Adresse und nicht je Code: Geraten wird mit wechselnden
     # Codes, ein Topf je Code liefe also leer mit.
     #
     # Grosszuegig bemessen, weil in der Halle alle Rechner hinter derselben
     # Adresse haengen und sich an einem Spieltag mehrere Sekretariate
-    # nacheinander anmelden -- und weil ein Vertipper hier nicht das zweite
-    # Sekretariat aussperren darf. Formfehler zaehlen gar nicht erst mit:
-    # `normalize_code` weist sie vor der Abfrage ab.
+    # nacheinander anmelden. Vertipper zaehlen voll mit -- Rack::Attack sitzt
+    # vor dem Router, `normalize_code` kann sie nicht heraushalten. Deshalb
+    # prueft die Maske Laenge und Alphabet schon vor dem Absenden.
+    SECRETARY_REDEEM_PATH = '/api/v2/public/secretary/redeem'.freeze
+
     throttle('secretary-code/ip', limit: 10, period: 1.minute) do |req|
-      req.ip if req.post? && req.path == '/api/v2/public/secretary/redeem'
+      req.ip if req.post? && req.path.start_with?(SECRETARY_REDEEM_PATH)
     end
 
     throttle('secretary-code/ip/hour', limit: 60, period: 1.hour) do |req|
-      req.ip if req.post? && req.path == '/api/v2/public/secretary/redeem'
+      req.ip if req.post? && req.path.start_with?(SECRETARY_REDEEM_PATH)
     end
 
     # Kalender-Abos (ICS). Der einzige öffentliche Bereich, der WEDER ein Cookie

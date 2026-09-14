@@ -58,10 +58,24 @@ class GameDaySecretaryLink < ApplicationRecord
     normalized = normalize_code(raw_code)
     return nil if normalized.nil?
 
-    link = active.find_by(code_digest: Digest::SHA256.hexdigest(normalized))
-    return nil if link.nil? || link.code_salt.blank?
+    link = active.find_by(code_digest: code_digest_for(normalized))
+    return nil if link.nil?
 
-    [link, token_for(normalized, link.code_salt)]
+    raw_token = link.code_salt.present? && token_for(normalized, link.code_salt)
+    # Der abgeleitete Token wird gegen den gespeicherten Digest gehalten, bevor
+    # er hinausgeht. Ohne diese Pruefung antwortete der Endpunkt mit 200 und
+    # einem Token, den `find_by_token` gleich darauf abweist -- ein Fehlschlag,
+    # ausgeliefert als Erfolg, und das Sekretariat tippt denselben Code endlos
+    # neu. Eintreten kann das nur ueber einen Datenfehler (eine Zeile, der
+    # jemand nachtraeglich einen Code verpasst, waehrend `token_digest` noch aus
+    # der Zufallsausgabe stammt), und genau solche Zeilen sollen laut auffallen
+    # statt als "unbekannter Code" durchzufallen.
+    if raw_token.blank? || Digest::SHA256.hexdigest(raw_token) != link.token_digest
+      Rails.logger.error("GameDaySecretaryLink##{link.id}: Code passt, abgeleiteter Token nicht zu token_digest")
+      return nil
+    end
+
+    [link, raw_token]
   end
 
   # Bringt Eingetipptes auf die gespeicherte Schreibweise oder liefert nil, wenn
@@ -69,9 +83,10 @@ class GameDaySecretaryLink < ApplicationRecord
   # wird in zwei Vierergruppen angezeigt, und wer ihn abschreibt, tippt den
   # Bindestrich oder ein Leerzeichen mit), O/I/L werden auf 0/1/1 abgebildet.
   #
-  # Die Pruefung auf Laenge und Alphabet spart nicht nur die Abfrage: Ohne sie
-  # zaehlte jeder Tippfehler in den Drossel-Topf und das Sekretariat sperrte
-  # sich beim dritten Anlauf selbst aus.
+  # Die Pruefung auf Laenge und Alphabet spart die Abfrage. Aus dem Drossel-Topf
+  # haelt sie einen Tippfehler NICHT heraus -- Rack::Attack sitzt vor dem Router
+  # und zaehlt, bevor diese Methode laeuft. Dafuer prueft die Maske im Frontend
+  # dieselben zwei Bedingungen, bevor sie ueberhaupt absendet.
   def self.normalize_code(raw_code)
     return nil if raw_code.blank?
 
@@ -82,11 +97,25 @@ class GameDaySecretaryLink < ApplicationRecord
     normalized
   end
 
+  # Gepfeffert mit dem Anwendungsschluessel statt blank gehasht. `token_digest`
+  # durfte ein nackter SHA256 sein, weil darunter 256 Zufallsbits liegen; acht
+  # Zeichen aus 32 sind dagegen 40 Bit, und 1,1 Billionen SHA256 sind auf einer
+  # Grafikkarte Minutenarbeit. Ohne den Schluessel stuende nach einer
+  # Datenbankkopie jeder gueltige Code im Klartext da -- und mit ihm ueber
+  # `token_for` der Token, denn `code_salt` liegt offen in derselben Zeile.
+  #
+  # Der Schluessel steckt in den Credentials, nicht in der Tabelle. Wechselt er,
+  # sind laufende Codes unbrauchbar; bei 72 Stunden Gueltigkeit ist das
+  # hinnehmbar.
+  def self.code_digest_for(normalized_code)
+    OpenSSL::HMAC.hexdigest('SHA256', Rails.application.secret_key_base, normalized_code)
+  end
+
   # HMAC statt Zufall: Der Salt steht offen in der Zeile, der Code nicht. Wer
-  # die Datenbank hat, aber den Code nicht, kommt an den Token also nicht
-  # heran -- genau die Eigenschaft, die `token_digest` bisher allein getragen
-  # hat. Base64 in derselben Laenge wie SecureRandom.urlsafe_base64(32), damit
-  # Token aus beiden Wegen ununterscheidbar sind.
+  # die Datenbank hat, kommt an den Token also nur ueber den Code -- und der ist
+  # dank `code_digest_for` daraus nicht zu gewinnen. Base64 in derselben Laenge
+  # wie SecureRandom.urlsafe_base64(32), damit Token aus beiden Wegen
+  # ununterscheidbar sind.
   def self.token_for(normalized_code, code_salt)
     Base64.urlsafe_encode64(
       OpenSSL::HMAC.digest('SHA256', code_salt, normalized_code),
@@ -105,10 +134,10 @@ class GameDaySecretaryLink < ApplicationRecord
   def self.unused_code
     5.times do
       candidate = random_code
-      return candidate unless exists?(code_digest: Digest::SHA256.hexdigest(candidate))
+      return candidate unless exists?(code_digest: code_digest_for(candidate))
     end
 
-    raise 'Kein freier Sekretariats-Code gefunden.'
+    raise "Kein freier Sekretariats-Code nach 5 Versuchen (code_digest-Index pruefen)"
   end
 
   # Erzeugt einen Link über die übergebenen Spieltage und liefert
@@ -141,7 +170,7 @@ class GameDaySecretaryLink < ApplicationRecord
       link = create!(
         created_by: created_by,
         token_digest: Digest::SHA256.hexdigest(raw_token),
-        code_digest: Digest::SHA256.hexdigest(raw_code),
+        code_digest: code_digest_for(raw_code),
         code_salt: code_salt,
         expires_at: VALIDITY.from_now,
         game_days: days

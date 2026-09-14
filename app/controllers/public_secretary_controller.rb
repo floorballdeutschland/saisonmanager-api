@@ -45,8 +45,21 @@ class PublicSecretaryController < ApplicationController
   # zurueckgezogen -- so wenig wie `show` es beim Token tut. Aus der
   # Unterscheidung waere abzulesen, welche Codes es gibt.
   def redeem
+    # Fehlendes Feld ist kein falscher Code, sondern ein kaputter Aufruf --
+    # unterschieden wie in `show` beim Token. Der Einwand gegen ein Orakel weiter
+    # unten gilt der Frage, welche Codes es gibt, nicht der, ob ueberhaupt eines
+    # geschickt wurde.
+    return render json: { message: 'Kein Code angegeben.' }, status: :bad_request if params[:code].blank?
+
     link, raw_token = GameDaySecretaryLink.redeem(params[:code])
     if link.nil?
+      return render json: { message: 'Dieser Code ist ungültig oder abgelaufen.' }, status: :gone
+    end
+
+    # Dieselbe Pruefung wie in `show`: Sind alle Spieltage geloescht, gibt es
+    # nichts mehr zu fuehren. Ohne sie nimmt `redeem` den Code an und die
+    # Folgeseite meldet eine Sekunde spaeter das Gegenteil.
+    if link.game_days.empty?
       return render json: { message: 'Dieser Code ist ungültig oder abgelaufen.' }, status: :gone
     end
 
