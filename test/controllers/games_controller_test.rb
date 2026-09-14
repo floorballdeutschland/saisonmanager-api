@@ -346,6 +346,75 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
     assert_equal '9', event['home_assist'].to_s
   end
 
+  # ---------------------------------------------------------------------------
+  # Strafschuss: Pseudo-Strafcode 23 wird an der Schreibgrenze in die Torart
+  # übersetzt. Die API wird vor dem Frontend ausgerollt, ältere Clients schicken
+  # den Code also noch eine Weile.
+  # ---------------------------------------------------------------------------
+
+  test 'add_event: Pseudo-Strafcode eines älteren Clients wird zur Torart' do
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/games/#{@game.id}/events/add", params: {
+      period: 1, time: '10:00', event_type: 'goal', event_team: 'home',
+      home_goals: 1, guest_goals: 0, home_number: 7, penalty_code_id: 23
+    }
+
+    assert_response :success
+    event = @game.reload.events.first
+    assert_equal 'penalty_shot', event['goal_type']
+    assert_not event.key?('penalty_code_id')
+    assert_equal 'Strafschuss', response.parsed_body.first['goal_type_string']
+  end
+
+  test 'update_event: Pseudo-Strafcode eines älteren Clients wird zur Torart' do
+    @game.update!(events: [{ 'id' => 1, 'period' => 1, 'time' => '10:00', 'event_type' => 'goal',
+                             'event_team' => 'home', 'home_goals' => 1, 'guest_goals' => 0,
+                             'home_number' => 7 }])
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/games/#{@game.id}/events/update", params: {
+      event_id: 1, period: 1, time: '10:00', event_type: 'goal', event_team: 'home',
+      home_goals: 1, guest_goals: 0, home_number: 7, penalty_code_id: 23
+    }
+
+    assert_response :success
+    event = @game.reload.events.first
+    assert_equal 'penalty_shot', event['goal_type']
+    assert_nil event['penalty_code_id']
+  end
+
+  test 'add_event: Torart Strafschuss wird unverändert gespeichert' do
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/games/#{@game.id}/events/add", params: {
+      period: 1, time: '10:00', event_type: 'goal', event_team: 'home',
+      home_goals: 1, guest_goals: 0, home_number: 7, goal_type: 'penalty_shot'
+    }
+
+    assert_response :success
+    event = @game.reload.events.first
+    assert_equal 'penalty_shot', event['goal_type']
+    assert_not event.key?('penalty_code_id')
+  end
+
+  # Der gemeldete Fehler in seinem Schreibweg: Eine Strafe mit Grund 917 trägt
+  # dieselbe id 23 im Strafcode-Katalog. Sie darf dabei nicht zum Tor werden.
+  test 'add_event: Strafe mit Grund 917 bleibt eine Strafe' do
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/games/#{@game.id}/events/add", params: {
+      period: 2, time: '7:56', event_type: 'penalty', event_team: 'home',
+      home_goals: 2, guest_goals: 3, home_number: 77, penalty_id: 1, penalty_code_id: 23
+    }
+
+    assert_response :success
+    event = @game.reload.events.first
+    assert_equal '23', event['penalty_code_id'].to_s
+    assert_not event.key?('goal_type')
+    assert_equal 'penalty', response.parsed_body.first['event_type']
+  end
+
   test 'update_event: Umstellen eines Strafschusses auf technisches Tor' do
     @game.update!(events: [{ 'id' => 1, 'period' => 1, 'time' => '10:00', 'event_type' => 'goal',
                              'event_team' => 'home', 'home_goals' => 1, 'guest_goals' => 0,
