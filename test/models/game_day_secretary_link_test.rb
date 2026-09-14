@@ -14,11 +14,28 @@ class GameDaySecretaryLinkTest < ActiveSupport::TestCase
            "Code #{raw_code} enthaelt Zeichen ausserhalb des Alphabets"
   end
 
-  test 'generate! legt den Code nur als Digest ab' do
+  test 'generate! legt den Code nur als gepfefferten Digest ab' do
     link, _raw_token, raw_code = GameDaySecretaryLink.generate!(game_days: [@game_day], created_by: @user)
 
     assert_not_equal raw_code, link.code_digest
-    assert_equal Digest::SHA256.hexdigest(raw_code), link.code_digest
+    # Kein nackter SHA256: 40 Bit waeren aus einer Datenbankkopie in Minuten
+    # zurueckgerechnet, und `code_salt` liegt offen daneben -- damit haette man
+    # ueber `token_for` den Token.
+    assert_not_equal Digest::SHA256.hexdigest(raw_code), link.code_digest
+    assert_equal GameDaySecretaryLink.code_digest_for(raw_code), link.code_digest
+  end
+
+  # Links aus der Zeit vor der Migration haben weder Code noch Salt. Sie sollen
+  # ihre 72 Stunden mit ihrem Token zu Ende laufen -- das ist das Fenster
+  # unmittelbar nach dem Deploy.
+  test 'ein Link ohne Code laeuft mit seinem Token weiter' do
+    link, raw_token, _raw_code = GameDaySecretaryLink.generate!(game_days: [@game_day], created_by: @user)
+    link.update_columns(code_digest: nil, code_salt: nil)
+
+    found = GameDaySecretaryLink.find_by_token(raw_token)
+
+    assert_equal link.id, found&.id
+    assert_nil GameDaySecretaryLink.redeem('ABCD2345')
   end
 
   test 'redeem liefert genau den Token, den generate! ausgegeben hat' do
@@ -83,6 +100,24 @@ class GameDaySecretaryLinkTest < ActiveSupport::TestCase
 
     assert_nil GameDaySecretaryLink.redeem(first_code)
     assert_not_nil GameDaySecretaryLink.redeem(second_code)
+  end
+
+  # Eine Zeile, der jemand nachtraeglich einen Code verpasst hat, waehrend
+  # `token_digest` noch aus der Zufallsausgabe stammt. Ohne die Gegenpruefung
+  # kaeme eine 200 mit einem Token zurueck, den der naechste Aufruf abweist --
+  # und das Sekretariat tippt denselben Code endlos neu.
+  test 'redeem gibt keinen Token heraus, der nicht zum gespeicherten Digest passt' do
+    link, _raw_token, raw_code = GameDaySecretaryLink.generate!(game_days: [@game_day], created_by: @user)
+    link.update_columns(token_digest: Digest::SHA256.hexdigest('etwas anderes'))
+
+    assert_nil GameDaySecretaryLink.redeem(raw_code)
+  end
+
+  test 'redeem gibt nichts heraus, wenn der Salt fehlt' do
+    link, _raw_token, raw_code = GameDaySecretaryLink.generate!(game_days: [@game_day], created_by: @user)
+    link.update_columns(code_salt: nil)
+
+    assert_nil GameDaySecretaryLink.redeem(raw_code)
   end
 
   test 'normalize_code laesst das gespeicherte Format unveraendert' do
