@@ -183,4 +183,72 @@ class PublicSecretaryControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :gone
   end
+
+  # --- Kurzcode --------------------------------------------------------------
+  #
+  # Am Spieltisch steht ein Vereinsrechner ohne Benutzerkonto. Der Link kommt
+  # dort nicht an, er wird abgetippt -- und 43 Zeichen tippt niemand ab.
+
+  test 'POST /public/secretary/redeem tauscht den Code gegen einen brauchbaren Token' do
+    _link, _raw_token, raw_code = GameDaySecretaryLink.generate!(game_days: [@game_day], created_by: @user)
+
+    post '/api/v2/public/secretary/redeem', params: { code: raw_code }
+
+    assert_response :success
+    token = JSON.parse(response.body)['token']
+
+    get '/api/v2/public/secretary', params: { token: token }
+
+    assert_response :success
+    assert_equal @game_day.id, JSON.parse(response.body).dig('game_day', 'id')
+  end
+
+  test 'POST /public/secretary/redeem nimmt den Code so an, wie er abgetippt wird' do
+    _link, _raw_token, raw_code = GameDaySecretaryLink.generate!(game_days: [@game_day], created_by: @user)
+    typed = "#{raw_code[0, 4]}-#{raw_code[4, 4]}".downcase
+
+    post '/api/v2/public/secretary/redeem', params: { code: typed }
+
+    assert_response :success
+  end
+
+  test 'POST /public/secretary/redeem meldet einen unbekannten Code als ungueltig' do
+    post '/api/v2/public/secretary/redeem', params: { code: '2345ABCD' }
+
+    assert_response :gone
+    assert_equal 'Dieser Code ist ungültig oder abgelaufen.', JSON.parse(response.body)['message']
+  end
+
+  test 'POST /public/secretary/redeem meldet einen abgelaufenen Code als ungueltig' do
+    link, _raw_token, raw_code = GameDaySecretaryLink.generate!(game_days: [@game_day], created_by: @user)
+    link.update!(expires_at: 1.minute.ago)
+
+    post '/api/v2/public/secretary/redeem', params: { code: raw_code }
+
+    assert_response :gone
+  end
+
+  # Fehlendes Feld ist ein kaputter Aufruf, kein falscher Code. Genauso
+  # unterscheidet `show` es beim Token.
+  test 'POST /public/secretary/redeem meldet ein fehlendes Feld getrennt' do
+    post '/api/v2/public/secretary/redeem', params: { code: '' }
+
+    assert_response :bad_request
+    assert_equal 'Kein Code angegeben.', JSON.parse(response.body)['message']
+
+    post '/api/v2/public/secretary/redeem'
+
+    assert_response :bad_request
+  end
+
+  # Sonst nimmt redeem den Code an und die Folgeseite meldet eine Sekunde
+  # spaeter das Gegenteil.
+  test 'POST /public/secretary/redeem weist einen Code ohne Spieltage ab' do
+    link, _raw_token, raw_code = GameDaySecretaryLink.generate!(game_days: [@game_day], created_by: @user)
+    link.game_day_secretary_link_game_days.delete_all
+
+    post '/api/v2/public/secretary/redeem', params: { code: raw_code }
+
+    assert_response :gone
+  end
 end

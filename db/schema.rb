@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_09_13_110000) do
+ActiveRecord::Schema[7.2].define(version: 2026_09_14_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -249,6 +249,9 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_13_110000) do
     t.datetime "expires_at", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "code_digest"
+    t.string "code_salt"
+    t.index ["code_digest"], name: "index_game_day_secretary_links_on_code_digest", unique: true
     t.index ["created_by_id"], name: "index_game_day_secretary_links_on_created_by_id"
     t.index ["token_digest"], name: "index_game_day_secretary_links_on_token_digest", unique: true
   end

@@ -40,9 +40,18 @@ class GameDaySecretaryLinksController < ApplicationController
   # POST /api/v2/user/game_days/:game_day_id/secretary_link
   def create
     game_days = coverable_game_days(@game_day)
-    link, raw_token = GameDaySecretaryLink.generate!(game_days: game_days, created_by: current_user)
+    link, raw_token, raw_code = GameDaySecretaryLink.generate!(game_days: game_days, created_by: current_user)
 
     render json: {
+      # Der Code ist das, was weitergegeben wird: Am Spieltisch steht ein
+      # Vereinsrechner ohne Benutzerkonto, auf den weder Link noch Postfach
+      # kommen -- er wird abgetippt.
+      code: raw_code,
+      entry_url: "#{FrontendUrl.base}/spielsekretariat",
+      # url und token stehen weiter in der Antwort, weil Frontend und API
+      # getrennt ausgerollt werden: Bis die neue Oberflaeche steht, ist das
+      # hier die einzige Ausgabe. Die Oberflaeche zeigt seit fe#450 nur noch
+      # den Code.
       url: "#{FrontendUrl.base}/spielsekretariat?token=#{raw_token}",
       token: raw_token,
       expires_at: link.expires_at.iso8601,
