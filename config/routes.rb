@@ -472,6 +472,7 @@ Rails.application.routes.draw do
 
       get 'public/license_list', to: 'public_license_list#show'
       get 'public/secretary', to: 'public_secretary#show'
+      post 'public/secretary/redeem', to: 'public_secretary#redeem'
 
       post 'user/game_days/:game_day_id/secretary_link', to: 'game_day_secretary_links#create'
       get  'user/game_days/:game_day_id/secretary_link', to: 'game_day_secretary_links#show'

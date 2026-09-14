@@ -81,6 +81,27 @@ module Rack
       req.ip if req.path.start_with?('/api/v2/api_key_applications/reveal')
     end
 
+    # Kurzcode des Spielsekretariats. Acht Zeichen aus 32 sind 40 Bit; ohne
+    # Drossel waere das mit ein paar Tagen Rechenzeit durchzuprobieren, mit ihr
+    # deckelt der Stundentopf eine Adresse auf 1440 Versuche am Tag -- im
+    # Mittel rund eine Million Jahre. Der Code gilt ohnehin nur 72 Stunden.
+    #
+    # Eine Grenze je Adresse und nicht je Code: Geraten wird mit wechselnden
+    # Codes, ein Topf je Code liefe also leer mit.
+    #
+    # Grosszuegig bemessen, weil in der Halle alle Rechner hinter derselben
+    # Adresse haengen und sich an einem Spieltag mehrere Sekretariate
+    # nacheinander anmelden -- und weil ein Vertipper hier nicht das zweite
+    # Sekretariat aussperren darf. Formfehler zaehlen gar nicht erst mit:
+    # `normalize_code` weist sie vor der Abfrage ab.
+    throttle('secretary-code/ip', limit: 10, period: 1.minute) do |req|
+      req.ip if req.post? && req.path == '/api/v2/public/secretary/redeem'
+    end
+
+    throttle('secretary-code/ip/hour', limit: 60, period: 1.hour) do |req|
+      req.ip if req.post? && req.path == '/api/v2/public/secretary/redeem'
+    end
+
     # Kalender-Abos (ICS). Der einzige öffentliche Bereich, der WEDER ein Cookie
     # NOCH einen API-Key verlangt: Kalender-Programme können keine eigene
     # Kopfzeile mitschicken, ein Abo wäre mit Key-Zwang technisch unmöglich.

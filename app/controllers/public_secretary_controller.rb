@@ -33,6 +33,26 @@ class PublicSecretaryController < ApplicationController
     }
   end
 
+  # POST /api/v2/public/secretary/redeem
+  # Tauscht den abgetippten Kurzcode gegen den regulaeren Token.
+  #
+  # Getrennt von `show`: Der Token wird danach ueber `X-Secretary-Token` an
+  # jeder Anfrage mitgefuehrt, der Code dagegen nur hier angenommen. Ein Code,
+  # der ueberall gelten wuerde, waere an jedem Weg des Spielberichts zu raten;
+  # hier ist es ein einzelner Endpunkt, den Rack::Attack drosselt.
+  #
+  # Die Antwort unterscheidet nicht zwischen unbekannt, abgelaufen und
+  # zurueckgezogen -- so wenig wie `show` es beim Token tut. Aus der
+  # Unterscheidung waere abzulesen, welche Codes es gibt.
+  def redeem
+    link, raw_token = GameDaySecretaryLink.redeem(params[:code])
+    if link.nil?
+      return render json: { message: 'Dieser Code ist ungültig oder abgelaufen.' }, status: :gone
+    end
+
+    render json: { token: raw_token, expires_at: link.expires_at.iso8601 }
+  end
+
   private
 
   # Spiele aller Spieltage des Links in der Reihenfolge, in der sie in der Halle
