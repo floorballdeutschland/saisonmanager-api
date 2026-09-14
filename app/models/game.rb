@@ -92,6 +92,11 @@ class Game < ApplicationRecord
                       }
 
   before_save :correct_teams!
+  # Ein von Hand festgesetztes Forfait-Ergebnis gehoert zur kampflosen Wertung.
+  # Faellt die Wertung weg, muss es mit ihr verschwinden -- sonst stuende es
+  # unsichtbar in der Zeile und wuerde bei der naechsten Forfait-Wertung
+  # ungefragt wieder gelten.
+  before_save :clear_forfait_goals_without_forfait
   # Tabelle/Scorer/Spielplan einer Liga werden aus den Spiel-JSONB-Spalten
   # (events/players/game_status …) berechnet und im Controller gecacht. Jede
   # Spieländerung – Ergebniseingabe, Statuswechsel, Autofill, Löschung – muss
@@ -104,8 +109,21 @@ class Game < ApplicationRecord
   # Gespann bestimmt, nie für Mannschaften oder die Öffentlichkeit.
   REFEREE_NOTES_ATTRIBUTES = %w[referee_notes referee_notes_updated_at referee_notes_updated_by].freeze
 
+  # Ein festgesetztes Forfait-Ergebnis wird immer als Paar gefuehrt: nur eine
+  # Seite gesetzt hiesse, die andere aus der Liga-Vorgabe zu ergaenzen -- ein
+  # Mischergebnis, das niemand so beschlossen hat.
+  validate :forfait_goals_are_a_complete_pair
+  validates :forfait_home_goals, :forfait_guest_goals,
+            numericality: { only_integer: true, greater_than_or_equal_to: 0 },
+            allow_nil: true
+
   def match_record_closed?
     %w[match_record_closed finalized].include? game_status
+  end
+
+  # Wurde fuer dieses Spiel ein Forfait-Ergebnis von Hand festgesetzt?
+  def forfait_goals_set?
+    forfait? && forfait_home_goals.present? && forfait_guest_goals.present?
   end
 
   # Die Notiz darf nicht über eine pauschale Serialisierung des Datensatzes
@@ -269,14 +287,70 @@ class Game < ApplicationRecord
   # Wertungen die Torart gar nicht ansehen: sie hängen an den Trikotnummern
   # (siehe evaluate_scorer und result).
   #
-  # Bewusst NICHT über eine Pseudo-Strafcode-ID wie beim Strafschuss
-  # (penalty_code_id 23): dieser Sonderweg zwingt jede Stelle, die Tore von
-  # Strafen trennt, zu einer Ausnahme (siehe ticker_events und formatted_events).
+  # Markiert wird es über `goal_type` -- so wie inzwischen auch der Strafschuss,
+  # siehe GOAL_TYPE_PENALTY_SHOT.
   GOAL_TYPE_TECHNICAL = 'technical'.freeze
   TECHNICAL_GOAL_STRING = 'Technisches Tor'.freeze
 
   def self.technical_goal?(event)
     event['goal_type'].to_s == GOAL_TYPE_TECHNICAL
+  end
+
+  # Strafschuss. Ebenfalls eine Torart am Ereignis, aus demselben Grund wie beim
+  # technischen Tor.
+  #
+  # Bis 1.115.0 wurde er stattdessen über den Pseudo-Strafcode 23 markiert. Das
+  # ging schief: Die id im Strafcode-Katalog (Setting#penalty_codes) ist keine
+  # Konstante, sie wurde beim Wechsel auf die 9xx-Codes neu vergeben. Seither
+  # liegt auf der 23 der Code 917 „Bodenspiel" -- und jede Strafe mit diesem
+  # Grund erschien in Ereignisliste und Ticker als Strafschuss, also als Tor
+  # (540 Ereignisse in 505 Spielen). Alt-Ereignisse aus Saison 17 belegen die
+  # Umindizierung: Sie tragen zur selben id den eingefrorenen Code 806 mit der
+  # Bezeichnung „Strafschuss".
+  #
+  # Deshalb entscheidet jetzt `goal_type`. Der Pseudo-Code bleibt nur als
+  # Rückfall für Ereignisse ohne Torart stehen (siehe legacy_penalty_shot?) und
+  # zählt dort ausschließlich ohne `penalty_id`: Eine Strafe ist eine Strafe,
+  # egal welcher Grund an ihr hängt.
+  GOAL_TYPE_PENALTY_SHOT = 'penalty_shot'.freeze
+  LEGACY_PENALTY_SHOT_CODE_ID = 23
+
+  def self.penalty_shot?(event)
+    return true if event['goal_type'].to_s == GOAL_TYPE_PENALTY_SHOT
+
+    legacy_penalty_shot?(event)
+  end
+
+  # Ereignisse, die vor der Umstellung geschrieben wurden und die Migration
+  # nicht erreicht hat (oder die ein noch nicht ausgerollter Client schickt):
+  # Pseudo-Code, keine Torart, keine Strafe.
+  #
+  # Die Torart geht vor, sonst nähme der Rückfall einem technischen Tor mit
+  # anhängendem Pseudo-Code sein Label.
+  def self.legacy_penalty_shot?(event)
+    return false if event['goal_type'].present?
+    return false if event['penalty_id'].present?
+
+    event['penalty_code_id'].present? &&
+      event['penalty_code_id'].to_i == LEGACY_PENALTY_SHOT_CODE_ID
+  end
+
+  # Ist das Ereignis eine Strafe? Ein Strafschuss ist es nie, auch wenn er den
+  # Pseudo-Code noch trägt.
+  #
+  # `penalty_code_id` muss da sein: Eine Strafe ohne Grund wurde hier schon
+  # immer als Tor ausgewiesen, und daran ändert diese Korrektur bewusst nichts
+  # -- das ist ein eigener Befund in Altdaten, kein Teil dieses Fehlers.
+  #
+  # Bewusst `nil?` und nicht `present?`: Ein leerer String ist in Ruby truthy,
+  # `''.present?` aber false. `update_event` schreibt `params[:penalty_code_id]`
+  # im Straf-Zweig ohne `.presence` ins JSONB, ein Aufruf mit leerem Feld landet
+  # also so in den Daten. Mit `present?` würde aus so einer Strafe hier ein Tor
+  # -- dieselbe Fehlerklasse, die dieser Fix beseitigt, nur an anderer Stelle.
+  def self.penalty_event?(event)
+    return false if penalty_shot?(event)
+
+    event['penalty_id'].present? && !event['penalty_code_id'].nil?
   end
 
   # Der Spielabschnitt des Penalty-Schießens dieser Liga, gelesen aus
@@ -294,7 +368,8 @@ class Game < ApplicationRecord
 
   # Ist dieses Tor die Entscheidung im Penalty-Schießen (und nicht ein
   # Strafschuss während des Spiels)? Beide werden gleich gespeichert, nämlich
-  # als Tor mit penalty_code_id 23, und unterscheiden sich nur am Abschnitt.
+  # als Tor mit `goal_type` „penalty_shot", und unterscheiden sich nur am
+  # Abschnitt.
   #
   # Die feste Uhrzeit „70:00" bleibt als zweites Kriterium stehen. Sie war
   # lange das einzige und trifft nur Großfeld: im Kleinfeld endet die reguläre
@@ -600,6 +675,23 @@ class Game < ApplicationRecord
     end
   end
 
+  # Ergebnis eines kampflos gewerteten Spiels. Standard ist die Liga-Vorgabe
+  # (League#forfait_goals, bei beidseitiger Wertung negativ, damit die Wertung
+  # das Torverhaeltnis belastet). Hat die SBK ein Ergebnis festgesetzt, gilt
+  # dieses unveraendert -- auch bei beidseitiger Wertung, wo die Vorgabe sonst
+  # negative Tore erzeugt.
+  def forfait_result
+    if forfait_goals_set?
+      return { 'home_goals' => forfait_home_goals, 'guest_goals' => forfait_guest_goals }
+    end
+
+    case forfait
+    when 1 then { 'home_goals' => 0, 'guest_goals' => league.forfait_goals }
+    when 2 then { 'home_goals' => league.forfait_goals, 'guest_goals' => 0 }
+    when 3 then { 'home_goals' => league.forfait_goals * -1, 'guest_goals' => league.forfait_goals * -1 }
+    end
+  end
+
   def result
     return if (legacy && !(events.present? || forfait?)) || (!legacy && !started)
 
@@ -639,22 +731,7 @@ class Game < ApplicationRecord
         }
       end
     else
-      last_item = if forfait == 1
-                    {
-                      'home_goals' => 0,
-                      'guest_goals' => league.forfait_goals
-                    }
-                  elsif forfait == 2
-                    {
-                      'home_goals' => league.forfait_goals,
-                      'guest_goals' => 0
-                    }
-                  elsif forfait == 3
-                    {
-                      'home_goals' => league.forfait_goals * -1,
-                      'guest_goals' => league.forfait_goals * -1
-                    }
-                  end
+      last_item = forfait_result
     end
 
     last_item && {
@@ -1119,6 +1196,12 @@ class Game < ApplicationRecord
       started:,
       ended:,
       forfait:,
+      # Das von Hand festgesetzte Forfait-Ergebnis und daneben die Liga-Vorgabe,
+      # die ohne Festsetzung greift: der Spiel-Editor der SBK zeigt damit an,
+      # was ohne Eingabe gewertet wuerde, ohne die Regel nachbauen zu muessen.
+      forfait_home_goals:,
+      forfait_guest_goals:,
+      forfait_default_goals: game_day&.league&.forfait_goals,
       notice_type:,
       notice_string:,
       current_period_title:,
@@ -1183,7 +1266,11 @@ class Game < ApplicationRecord
 
   def ticker_events
     (events || []).map do |e|
-      if e['penalty_code_id'] && e['penalty_code_id'].to_i != 23 # penalty_shot should be goal, not penalty.
+      # Der Ticker trennt gröber als formatted_events: Hier reicht ein Strafcode,
+      # eine `penalty_id` verlangt er nicht. Das bleibt so; korrigiert ist nur,
+      # dass der Strafschuss nicht mehr am Strafcode erkannt wird. Eine Torart
+      # am Ereignis heißt immer Tor, sonst entscheidet der Strafcode.
+      if e['goal_type'].blank? && !e['penalty_code_id'].nil? && !Game.legacy_penalty_shot?(e)
         {
           period: e['period'],
           time: e['time'],
@@ -1303,7 +1390,7 @@ class Game < ApplicationRecord
         next
       end
 
-      if event['penalty_id'].present? && event['penalty_code_id'] && event['penalty_code_id'].to_i != 23 # penalty_shot should be goal, not penalty.
+      if Game.penalty_event?(event)
         e[:event_type] = :penalty
         e[:penalty_id] = event['penalty_id'].to_i
         e[:penalty_code_id] = event['penalty_code_id'].to_i
@@ -1332,7 +1419,7 @@ class Game < ApplicationRecord
         if Game.technical_goal?(event) && !owngoal && !nagoal
           e[:goal_type] = :technical
           e[:goal_type_string] = TECHNICAL_GOAL_STRING
-        elsif event['penalty_code_id'].to_i != 23
+        elsif !Game.penalty_shot?(event)
           if owngoal
             e[:goal_type] = :owngoal
             e[:goal_type_string] = 'Eigentor'
@@ -1354,7 +1441,13 @@ class Game < ApplicationRecord
       end
 
       # penalty code without a penalty
-      if !legacy && !event['penalty_id'].present? && event['penalty_code_id'] && event['penalty_code_id'].to_i != 23
+      #
+      # Der Pseudo-Code bleibt ausgenommen, und zwar am Code selbst und nicht
+      # über penalty_shot?: Ein Alt-Ereignis kann ihn neben einer Torart tragen
+      # (technisches Tor), gemeldet werden soll aber nur ein echter Strafgrund
+      # ohne Strafe.
+      if !legacy && event['penalty_id'].blank? && event['penalty_code_id'].present? &&
+         event['penalty_code_id'].to_i != LEGACY_PENALTY_SHOT_CODE_ID
         Sentry.capture_message("missing penalty code, game: #{id}, event: #{event.to_json}, #{error_meta_info}")
       end
 
@@ -1791,6 +1884,22 @@ class Game < ApplicationRecord
   end
 
   private
+
+  # Ohne kampflose Wertung gibt es kein festgesetztes Forfait-Ergebnis. Der
+  # Ruecksprung auf die regulaere Wertung raeumt es deshalb mit ab, statt es
+  # als Karteileiche stehen zu lassen.
+  def clear_forfait_goals_without_forfait
+    return if forfait?
+
+    self.forfait_home_goals = nil
+    self.forfait_guest_goals = nil
+  end
+
+  def forfait_goals_are_a_complete_pair
+    return if forfait_home_goals.nil? == forfait_guest_goals.nil?
+
+    errors.add(:base, 'Ein Forfait-Ergebnis braucht beide Torzahlen.')
+  end
 
   def flush_league_caches
     flush_player_stats_caches
