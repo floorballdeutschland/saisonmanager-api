@@ -1399,7 +1399,8 @@ class Player < ApplicationRecord
                               merged_licenses)
   end
 
-  # Nach dem Zusammenfuehren darf hoechstens ein Heimatverein offen sein.
+  # Nach dem Zusammenfuehren darf hoechstens ein Heimatverein offen sein -- und mindestens
+  # einer. Zur zweiten Haelfte siehe `_laufende_heimat_eintraege`.
   #
   # Die Entdoppelung darueber greift nur bei DEMSELBEN Verein. Zwei verschiedene offene
   # Heimatvereine -- einer vom Master, einer von der Dublette -- ueberlebten beide, und
@@ -1463,11 +1464,14 @@ class Player < ApplicationRecord
     offen = self.class.open_home_club_entries(entries)
     return entries if offen.size < 2
 
-    widerspruch = offen.select { |c| widerspruch_ids.include?(c['club_id'].to_i) }
-    echte = offen.reject do |c|
+    laufend = _laufende_heimat_eintraege(offen)
+    return entries if laufend.size < 2
+
+    widerspruch = laufend.select { |c| widerspruch_ids.include?(c['club_id'].to_i) }
+    echte = laufend.reject do |c|
       ablage_ids.include?(c['club_id'].to_i) || widerspruch_ids.include?(c['club_id'].to_i)
     end
-    kandidaten = widerspruch.presence || echte.presence || offen
+    kandidaten = widerspruch.presence || echte.presence || laufend
     belegt = _belegter_eintrag(kandidaten, _last_approved_license_club_id(merged_licenses))
     # equal? statt Array-Differenz: Zwei Eintraege desselben Vereins koennen als Hash
     # gleich sein, und dann wuerde `-` beide entfernen.
@@ -1479,13 +1483,46 @@ class Player < ApplicationRecord
     # beantworten. Der Vermerk ist reine Nachvollziehbarkeit, kein Leser wertet ihn aus.
     behalten[HOME_CLUB_DECIDED_BY] = belegt ? DECIDED_BY_LICENSE : DECIDED_BY_DATE
 
-    offen.each do |c|
+    laufend.each do |c|
       next if c.equal?(behalten)
 
       c['valid_until']  = Time.now
       c['valid_set_by'] = user_id if user_id
     end
     entries
+  end
+
+  # Die Eintraege aus `offen`, die WIRKLICH noch laufen -- ohne die, die heute schon
+  # beendet wurden.
+  #
+  # `open_home_club_entries` vergleicht tagesgenau und zaehlt einen heute geschlossenen
+  # Eintrag bis Mitternacht weiter als offen. Fuer den Leser ist das richtig: Wer heute den
+  # Verein gewechselt hat, soll heute nicht aus jeder Vereinsliste fallen, und
+  # `home_club_entry` raeumt dem laufenden Eintrag ohnehin den Vorrang ein. Fuer das
+  # SCHLIESSEN ist es falsch, in beide Richtungen:
+  #
+  #   1. Der heute beendete Eintrag kann als der behaltene gewaehlt werden -- ueber den
+  #      Lizenzbeleg sogar bevorzugt, denn die Lizenzen liegen beim bisherigen Verein und
+  #      die des neuen ist am Tag des Wechsels erst beantragt. Geschlossen wird dann der
+  #      frische Eintrag, der behaltene bleibt geschlossen, und das Profil steht ganz ohne
+  #      Heimatverein da: in keiner Vereinsliste, nicht lizenzierbar, nicht transferierbar.
+  #      Genau so geschehen am 09.09.2026 bei Spieler 1047 -- Transfer um 11:30, Merge um
+  #      11:37, danach null offene Zugehoerigkeiten.
+  #   2. Wird er geschlossen, ueberschreibt `valid_until = Time.now` den Zeitpunkt, den der
+  #      Transfer gesetzt hat. Der Vorgang von 11:30 truege dann 11:37, und die
+  #      Zusammenlegung haette den Transfer nachtraeglich umdatiert.
+  #
+  # Bleibt danach hoechstens ein laufender Eintrag uebrig, ist nichts zu tun: Der Merge
+  # soll den ueberzaehligen offenen Heimatverein beseitigen und nicht einen beenden, der
+  # heute ohnehin schon beendet wurde. Dass `open_home_club_entries` bis Mitternacht zwei
+  # Eintraege meldet, bleibt dabei so -- es ist derselbe Zustand, den der Transfer allein
+  # auch hinterlaesst, und `home_club_entry` loest ihn richtig auf.
+  #
+  # Der Datenlauf vom 18.08.2026 (`players:close_surplus_home_clubs`) hat dieselbe
+  # Unterscheidung von Hand getroffen und 21 Faelle mit einem frischen Wechsel aus der
+  # Liste genommen. Hier steht sie jetzt im Code.
+  def _laufende_heimat_eintraege(offen)
+    offen.reject { |c| _endet_bis_zum_stichtag?(c['valid_until'], Date.current) }
   end
 
   # Der Eintrag des belegten Vereins unter den Kandidaten, oder nil, wenn es keinen Beleg
