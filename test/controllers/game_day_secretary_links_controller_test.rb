@@ -34,6 +34,19 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
     assert_equal [@game_day.id], body['game_day_ids']
   end
 
+  test 'die Antwort traegt den abtippbaren Code und die Adresse zum Eingeben' do
+    login(create(:user, :vm, club_id: @host_club.id))
+
+    post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
+
+    assert_response :created
+    body = JSON.parse(response.body)
+    assert_equal GameDaySecretaryLink::CODE_LENGTH, body['code'].length
+    assert_match %r{/spielsekretariat\z}, body['entry_url'],
+                 'die Eingabeadresse traegt keinen Token -- sie wird abgetippt'
+    assert_not_nil GameDaySecretaryLink.redeem(body['code'])
+  end
+
   test 'Vereinsmanager des Gastvereins bekommt 403' do
     login(create(:user, :vm, club_id: @guest_club.id))
 
@@ -260,6 +273,30 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
     # verliert deshalb genau diesen und behält die fremde Liga – sonst stünde
     # deren Sekretariat mitten am Spieltag ohne Token da, ohne Ersatz.
     get '/api/v2/public/secretary', params: { token: old_token }
+    assert_response :success
+    remaining_ids = JSON.parse(response.body)['game_days'].map { |gd| gd['id'] }
+    assert_equal [second.id], remaining_ids
+  end
+
+  # Dieselbe Eigenschaft ueber den Code statt ueber den Token. Seit fe#450 ist
+  # der Code der einzige Weg zum Sekretariat; wer `revoke_coverage_of` zu einem
+  # `destroy_all` auf dem ganzen Link vereinfacht, nimmt der fremden Liga mitten
+  # am Spieltag den Zugang, und der Test ueber den Token merkt es nicht mehr.
+  test 'der alte Code behaelt die fremde Liga und verliert nur den neu vergebenen Spieltag' do
+    second = build_foreign_game_day
+    _old_link, _old_token, old_code = GameDaySecretaryLink.generate!(game_days: [@game_day, second],
+                                                                     created_by: create(:user, :admin))
+
+    login(create(:user, :vm, club_id: @host_club.id))
+    post "/api/v2/user/game_days/#{@game_day.id}/secretary_link"
+    assert_response :created
+    reset!
+
+    post '/api/v2/public/secretary/redeem', params: { code: old_code }
+    assert_response :success
+    token = JSON.parse(response.body)['token']
+
+    get '/api/v2/public/secretary', params: { token: token }
     assert_response :success
     remaining_ids = JSON.parse(response.body)['game_days'].map { |gd| gd['id'] }
     assert_equal [second.id], remaining_ids
