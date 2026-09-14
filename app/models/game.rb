@@ -789,9 +789,24 @@ class Game < ApplicationRecord
     }
   end
 
+  # Das Ergebnis als kurze Zeichenkette, mitsamt dem Zusatz aus result_postfix.
+  #
+  # Der Zusatz hing frueher an `res[:overtime]`. Damit fiel ausgerechnet der
+  # Fall weg, den `result_postfix` als ERSTEN prueft: Bei einer kampflos
+  # gewerteten Partie ist `overtime` false, der fertige Zusatz „(forfait)" kam
+  # also nie nach draussen. Ueberall, wo die Anzeige `result_string` nimmt statt
+  # `result` (Live-Ansicht, Ergebnisspalte der Spielberichtsuebersicht), stand
+  # ein glattes „0:5" -- ein Ergebnis, das so nicht gespielt wurde.
+  #
+  # `strip` ist noetig und nicht Kosmetik: Der Forfait-Zusatz traegt ein
+  # fuehrendes Leerzeichen, die Verlaengerungs-Zusaetze nicht. Ohne ihn kaeme
+  # „0:5  (forfait)" mit zwei Leerzeichen heraus.
   def result_string
     res = result
-    "#{res[:home_goals]}:#{res[:guest_goals]}#{res[:overtime] ? " #{result_postfix[:short]}" : ''}" if res
+    return unless res
+
+    zusatz = result_postfix[:short].to_s.strip
+    "#{res[:home_goals]}:#{res[:guest_goals]}#{zusatz.present? ? " #{zusatz}" : ''}"
   end
 
   def state
