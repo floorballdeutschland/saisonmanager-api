@@ -64,6 +64,32 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
     assert_equal 0, @game.reload.forfait
   end
 
+  # Die Oberflaeche schickt die Felder flach im JSON-Rumpf, ohne den `game`-
+  # Schluessel -- ParamsWrapper baut ihn aus den Spaltennamen. Faellt eines der
+  # beiden Felder aus der Umhuellung, laeuft `params.require(:game)` ins Leere,
+  # und zwar erst im Betrieb. Deshalb der Weg ueber die Leitung statt ueber den
+  # bereits umhuellten Hash. Das Leeren beider Felder gehoert dazu: nur Nullen
+  # im Rumpf ist genau der Fall, in dem eine leere Umhuellung nicht auffiele.
+  test 'ein flach gesendetes Forfait-Ergebnis kommt an und laesst sich leeren' do
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    put "/api/v2/games/#{@game.id}.json",
+        params: { forfait: 1, forfait_home_goals: 2, forfait_guest_goals: 9 }.to_json,
+        headers: { 'CONTENT_TYPE' => 'application/json' }
+
+    assert_response :success
+    assert_equal 2, @game.reload.forfait_home_goals
+
+    put "/api/v2/games/#{@game.id}.json",
+        params: { forfait_home_goals: nil, forfait_guest_goals: nil }.to_json,
+        headers: { 'CONTENT_TYPE' => 'application/json' }
+
+    assert_response :success
+    assert_nil @game.reload.forfait_home_goals
+    assert_nil @game.forfait_guest_goals
+    assert_equal 1, @game.forfait, 'die Wertung selbst bleibt unberuehrt'
+  end
+
   # Die Verwaltungsansicht speist den Spiel-Editor. Sie muss das festgesetzte
   # Ergebnis und daneben die Liga-Vorgabe liefern, sonst kann der Editor weder
   # vorbelegen noch anzeigen, was ohne Eingabe gewertet würde.

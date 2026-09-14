@@ -93,4 +93,54 @@ class GameForfaitResultTest < ActiveSupport::TestCase
     assert_equal 2, row[:goals_scored]
     assert_equal 9, row[:goals_received]
   end
+
+  # Die beidseitige Wertung gibt keiner Mannschaft Punkte -- das entscheidet die
+  # Wertungsart und nicht die Torzahl. Bis hierher konnte sie gar nicht anders
+  # enden als unentschieden (die Vorgabe ergibt -8:-8), und der Riegel gegen die
+  # Punktvergabe hing genau daran. Mit einem festgesetzten Ergebnis kann sie
+  # ungleich ausgehen, und dann liefe sie ohne diesen Test in den Sieg-Zweig der
+  # Tabelle samt voller Punktzahl.
+  test 'beidseitige Wertung mit ungleichem Ergebnis gibt keine Punkte' do
+    club = create(:club)
+    home = create(:team, league: @league, club:)
+    guest = create(:team, league: @league, club:)
+    forfait_game(forfait: 3, forfait_home_goals: 5, forfait_guest_goals: 3,
+                 home_team: home, guest_team: guest)
+
+    tabelle = @league.table
+    heim = tabelle.find { |item| item[:team_id] == home.id }
+    gast = tabelle.find { |item| item[:team_id] == guest.id }
+
+    assert_equal 0, heim[:points], 'die kampflos gewertete Siegerin bekommt keine Punkte'
+    assert_equal 0, gast[:points]
+    assert_equal 5, heim[:goals_scored], 'das festgesetzte Ergebnis zaehlt trotzdem'
+    assert_equal 3, heim[:goals_received]
+  end
+
+  # Gegenprobe zum Umbau: Der bisherige Fall (kein festgesetztes Ergebnis, also
+  # -8:-8 und damit unentschieden) bleibt ebenfalls ohne Punkte.
+  test 'beidseitige Wertung ohne Festsetzung gibt weiterhin keine Punkte' do
+    club = create(:club)
+    home = create(:team, league: @league, club:)
+    guest = create(:team, league: @league, club:)
+    forfait_game(forfait: 3, home_team: home, guest_team: guest)
+
+    tabelle = @league.table
+
+    assert_equal 0, tabelle.find { |item| item[:team_id] == home.id }[:points]
+    assert_equal 0, tabelle.find { |item| item[:team_id] == guest.id }[:points]
+  end
+
+  # Und die einseitige Wertung vergibt weiter Punkte: Der Riegel darf nur die
+  # beidseitige treffen.
+  test 'einseitige Wertung vergibt weiterhin Punkte' do
+    club = create(:club)
+    home = create(:team, league: @league, club:)
+    guest = create(:team, league: @league, club:)
+    forfait_game(forfait: 1, home_team: home, guest_team: guest)
+
+    gast = @league.table.find { |item| item[:team_id] == guest.id }
+
+    assert_equal @league.won_points, gast[:points]
+  end
 end
