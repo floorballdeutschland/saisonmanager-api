@@ -139,7 +139,7 @@ class RefereeCourseImportServiceTest < ActiveSupport::TestCase
     assert_match(/4711/, warning['reason'])
   end
 
-  test 'Rufform und Schreibvariante des Vornamens bleiben ein Treffer' do
+  test 'Rufform, Doppelname und Schreibvariante des Vornamens bleiben ein Treffer' do
     Referee.create!(
       lizenznummer: 4712, vorname: 'Niclas', nachname: 'Stephan',
       geburtsdatum: Date.new(2005, 1, 30)
@@ -148,13 +148,56 @@ class RefereeCourseImportServiceTest < ActiveSupport::TestCase
       lizenznummer: 4713, vorname: 'Jürgen', nachname: 'Beck',
       geburtsdatum: Date.new(1980, 6, 1)
     )
+    Referee.create!(
+      lizenznummer: 4715, vorname: 'Hans-Peter', nachname: 'Klein',
+      geburtsdatum: Date.new(1975, 3, 3)
+    )
+    Referee.create!(
+      lizenznummer: 4716, vorname: 'José', nachname: 'Ramos',
+      geburtsdatum: Date.new(1992, 12, 4)
+    )
+
+    # Der zerlegt geschriebene Umlaut (u + kombinierender Trema) ist das
+    # uebliche Layout von Excel fuer Mac.
+    juergen_nfd = 'Jürgen'.unicode_normalize(:nfd)
 
     import = call([';Stephan;Nic;30.01.2005;;;G;01.08.2025;G;10;;;;;A',
-                   ';Beck;Juergen;01.06.1980;;;G;01.08.2025;G;10;;;;;A'])
-    results = import.referee_course_results.order(:id).to_a
+                   ';Beck;Juergen;01.06.1980;;;G;01.08.2025;G;10;;;;;A',
+                   ";Beck;#{juergen_nfd};01.06.1980;;;G;01.08.2025;G;10;;;;;A",
+                   ';Klein;Peter;03.03.1975;;;G;01.08.2025;G;10;;;;;A',
+                   ';Ramos;Jose;04.12.1992;;;G;01.08.2025;G;10;;;;;A'])
+    lizenznummern = import.referee_course_results.order(:id).map { |r| r.referee&.lizenznummer }
 
-    assert_equal 4712, results.first.referee&.lizenznummer
-    assert_equal 4713, results.second.referee&.lizenznummer
+    assert_equal [4712, 4713, 4713, 4715, 4716], lizenznummern
+  end
+
+  test 'aehnlicher, aber anderer Vorname bleibt ein Widerspruch' do
+    Referee.create!(
+      lizenznummer: 4717, vorname: 'Lukas', nachname: 'Stephan',
+      geburtsdatum: Date.new(2005, 1, 30)
+    )
+
+    import = call([';Stephan;Luke;30.01.2005;;;G;01.08.2025;G;10;;;;;A'])
+    result = import.referee_course_results.first
+
+    assert_equal 'new_entry', result.match_type
+    assert_nil result.referee_id
+  end
+
+  test 'Lizenznummer in der Datei schlaegt den Widerspruch im Vornamen' do
+    referee = Referee.create!(
+      lizenznummer: 4718, vorname: 'Luke', nachname: 'Stephan',
+      geburtsdatum: Date.new(2005, 1, 30)
+    )
+
+    # Der Weg fuer eine Namenskorrektur am Bestand: Wer die Lizenznummer
+    # mitliefert, trifft weiterhin diesen Datensatz.
+    import = call(['4718;Stephan;Niclas;30.01.2005;;;G;01.08.2025;G;10;;;;;A'])
+    result = import.referee_course_results.first
+
+    assert_equal referee.id, result.referee_id
+    assert_equal 'partial_match', result.match_type
+    assert_empty(result.import_warnings.select { |w| w['field'] == 'vorname' })
   end
 
   test 'Namensvetter ohne Zuordnung laesst die Warnung an der Neuanlage weg' do

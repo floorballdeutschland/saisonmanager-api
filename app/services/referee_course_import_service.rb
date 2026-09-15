@@ -342,8 +342,8 @@ class RefereeCourseImportService
       end
 
     warnings += reactivation_warning(referee)
-    # Nur an der Neuanlage: Hat eine andere Zeile den Bestandsschiri getroffen,
-    # ist der ausgeschlossene Namensvetter keine offene Frage mehr.
+    # Nur an der Neuanlage: Hat die Zeile jemanden getroffen, ist der
+    # ausgeschlossene Namensvetter keine offene Frage mehr.
     warnings += namesake_warning(csv_attrs[:vorname], namesakes) if referee.nil?
 
     matched_club, club_match_type = club_lookup.resolve(csv_verein)
@@ -464,21 +464,37 @@ class RefereeCourseImportService
   def vorname_conflict?(csv_vorname, ref_vorname)
     return false if csv_vorname.blank? || ref_vorname.blank?
 
-    csv_name = normalize_vorname(csv_vorname)
-    ref_name = normalize_vorname(ref_vorname)
-    return false if csv_name.empty? || ref_name.empty?
+    csv_parts = vorname_parts(csv_vorname)
+    ref_parts = vorname_parts(ref_vorname)
+    return false if csv_parts.empty? || ref_parts.empty?
 
-    # Kurz- und Rufformen bleiben ein Treffer: „Nic" zu „Niclas", „Hans" zu
-    # „Hans-Peter". Der Präfixvergleich ist zeichengenau, „Luke" und „Lukas"
+    # Kurz- und Rufformen bleiben ein Treffer, und zwar je Namensbestandteil:
+    # „Nic" zu „Niclas", aber auch „Peter" zu „Hans-Peter", wo der Rufname
+    # hinten steht. Der Präfixvergleich ist zeichengenau, „Luke" und „Lukas"
     # widersprechen sich also weiterhin.
-    !(csv_name.start_with?(ref_name) || ref_name.start_with?(csv_name))
+    csv_parts.none? do |csv_part|
+      ref_parts.any? do |ref_part|
+        csv_part.start_with?(ref_part) || ref_part.start_with?(csv_part)
+      end
+    end
   end
 
-  # Schreibweisen sollen keinen Widerspruch auslösen: Groß-/Kleinschreibung,
-  # Bindestrich gegen Leerzeichen und die Umlaut-Umschrift („Juergen" gegen
-  # „Jürgen") fallen weg.
-  def normalize_vorname(value)
-    value.to_s.downcase.gsub(/[äöüß]/, UMLAUT_FOLD).gsub(/[^[:alnum:]]/, '')
+  # Bestandteile des Vornamens in vergleichbarer Form. Schreibweisen sollen
+  # keinen Widerspruch auslösen: Groß-/Kleinschreibung, Bindestrich gegen
+  # Leerzeichen und die Umlaut-Umschrift („Juergen" gegen „Jürgen") fallen weg.
+  #
+  # Die Normalisierung nach NFC steht vor der Umlaut-Umschrift, weil macOS und
+  # Excel für Mac Umlaute zerlegt schreiben (u + kombinierender Trema). Ohne
+  # sie griffe die Zeichenklasse nicht, das Kombinationszeichen fiele weg und
+  # „Jürgen" ergäbe „jurgen", was gegen „juergen" ein Widerspruch wäre. Der
+  # zweite Durchgang über NFKD entfernt die übrigen Diakritika, damit „José"
+  # und „Jose" dieselbe Person bleiben.
+  def vorname_parts(value)
+    folded = value.to_s.unicode_normalize(:nfc).downcase
+                  .gsub(/[äöüß]/, UMLAUT_FOLD)
+                  .unicode_normalize(:nfkd)
+                  .gsub(/\p{Mn}/, '')
+    folded.split(/[^[:alnum:]]+/).reject(&:empty?)
   end
 
   # Die ausgeschlossenen Namensvettern gehören an die Zeile, sonst ist der
