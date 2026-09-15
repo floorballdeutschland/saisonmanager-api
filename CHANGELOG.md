@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Der Kursergebnis-Import ordnete Zwillinge dem Geschwisterkind zu**: Wurde ein Schiedsrichter in der Kursdatei als neu gemeldet und stand bereits ein Geschwisterkind mit demselben Nachnamen, demselben Geburtsdatum und demselben Verein in den Stammdaten, landete die Meldung auf dessen Datensatz. Gemeldet wurde es für zwei Brüder mit Geburtstag am 30.01.2005. Hintergrund: Der Abgleich vergibt sechs Punkte, einen je Merkmal, und wertet ein Feld, das auf einer der beiden Seiten leer ist, bewusst als Treffer, damit eine unvollständige Zeile nicht gleich durchfällt. Bei einer Neumeldung ist die Lizenznummer aber immer leer, und häufig auch die E-Mail-Adresse. Zusammen mit Nachname, Geburtsdatum und Verein kam das Geschwisterkind damit auf fünf von sechs Punkten, während der abweichende Vorname nur einen einzigen kostete. Bei Zwillingen ist der Vorname jedoch das einzige unterscheidende Merkmal. Wo der Landesverband die Freigabekontrolle nicht eingeschaltet hat, lief die Zeile beim Einreichen durch und schrieb dem Geschwisterkind den Vornamen aus der Datei sowie die neue Kurslizenz auf seine Lizenznummer; der gemeldete Schiedsrichter blieb ohne eigenen Datensatz. Ein Widerspruch im Vornamen schließt den Kandidaten jetzt aus, statt ihn nur einen Punkt zu kosten. Kurz- und Rufformen bleiben dabei ein Treffer, verglichen wird ohne Rücksicht auf Groß- und Kleinschreibung, Bindestriche und die Umlaut-Umschrift, und ein Namensanfang gilt weiter als dieselbe Person: „Nic" findet „Niclas", „Juergen" findet „Jürgen", „Luke" und „Lukas" dagegen nicht mehr. Eine in der Datei angegebene Lizenznummer bleibt wie bisher stärker als jedes Namensmerkmal, eine Namenskorrektur an einem bestehenden Schiedsrichter geht also unverändert. Damit die ausgeschlossene Ähnlichkeit nicht unsichtbar wird, trägt die dann als Neuanlage geführte Zeile einen Hinweis, der das Geschwisterkind mit Geburtsdatum und Lizenznummer benennt, sodass die Prüfung entscheiden kann statt das System zu raten.
+
 ## [1.115.0] - 2026-09-14
 
 ### Neu

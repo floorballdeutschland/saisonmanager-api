@@ -103,6 +103,75 @@ class RefereeCourseImportServiceTest < ActiveSupport::TestCase
     assert_nil result.referee_id
   end
 
+  # --- Zwillinge und Namensvettern (api#685) ------------------------------
+  # Gemeldet fuer Niclas und Luke Stephan, beide 30.01.2005, gleicher Verein:
+  # Der als neu gemeldete Bruder landete auf dem Datensatz des anderen, weil
+  # der abweichende Vorname nur einen von sechs Match-Punkten kostete.
+
+  test 'Zwilling wird nicht dem Geschwisterkind zugeordnet' do
+    club = Club.create!(name: 'FBC Zwillinge')
+    luke = Referee.create!(
+      lizenznummer: 4711, vorname: 'Luke', nachname: 'Stephan',
+      geburtsdatum: Date.new(2005, 1, 30), club_id: club.id
+    )
+
+    import = call([';Stephan;Niclas;30.01.2005;FBC Zwillinge;;G;01.08.2025;G;10;;;;;A'])
+    result = import.referee_course_results.first
+
+    assert_equal 'new_entry', result.match_type
+    assert_nil result.referee_id
+    assert_equal 'Luke', luke.reload.vorname
+  end
+
+  test 'ausgeschlossener Namensvetter wird an der Zeile benannt' do
+    club = Club.create!(name: 'FBC Zwillinge')
+    Referee.create!(
+      lizenznummer: 4711, vorname: 'Luke', nachname: 'Stephan',
+      geburtsdatum: Date.new(2005, 1, 30), club_id: club.id
+    )
+
+    import = call([';Stephan;Niclas;30.01.2005;FBC Zwillinge;;G;01.08.2025;G;10;;;;;A'])
+    warning = import.referee_course_results.first.import_warnings
+                    .find { |w| w['field'] == 'vorname' }
+
+    assert_not_nil warning
+    assert_match(/Luke Stephan/, warning['reason'])
+    assert_match(/4711/, warning['reason'])
+  end
+
+  test 'Rufform und Schreibvariante des Vornamens bleiben ein Treffer' do
+    Referee.create!(
+      lizenznummer: 4712, vorname: 'Niclas', nachname: 'Stephan',
+      geburtsdatum: Date.new(2005, 1, 30)
+    )
+    Referee.create!(
+      lizenznummer: 4713, vorname: 'Jürgen', nachname: 'Beck',
+      geburtsdatum: Date.new(1980, 6, 1)
+    )
+
+    import = call([';Stephan;Nic;30.01.2005;;;G;01.08.2025;G;10;;;;;A',
+                   ';Beck;Juergen;01.06.1980;;;G;01.08.2025;G;10;;;;;A'])
+    results = import.referee_course_results.order(:id).to_a
+
+    assert_equal 4712, results.first.referee&.lizenznummer
+    assert_equal 4713, results.second.referee&.lizenznummer
+  end
+
+  test 'Namensvetter ohne Zuordnung laesst die Warnung an der Neuanlage weg' do
+    Referee.create!(
+      lizenznummer: 4714, vorname: 'Luke', nachname: 'Stephan',
+      geburtsdatum: Date.new(2005, 1, 30)
+    )
+
+    # Andere Person, anderes Geburtsdatum: gar kein Kandidat, also auch kein
+    # Namensvetter-Hinweis.
+    import = call([';Stephan;Niclas;01.02.2007;;;G;01.08.2025;G;10;;;;;A'])
+    result = import.referee_course_results.first
+
+    assert_equal 'new_entry', result.match_type
+    assert_empty(result.import_warnings.select { |w| w['field'] == 'vorname' })
+  end
+
   test 'kursstichtag = max Datum aus Kurs1/Kurs2; gueltigkeit = Stichtag Folgejahr (Regeljahr → 31.07.)' do
     import = call([';X;Y;01.01.2000;;;F;01.08.2025;F;10;G;15.09.2025;G;12;Ausb'])
     result = import.referee_course_results.first

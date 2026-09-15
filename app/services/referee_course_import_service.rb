@@ -52,11 +52,19 @@ class RefereeCourseImportService
   # Logzeile ohne Ende.
   UNMATCHED_LOG_LIMIT = 50
 
+  # Wie viele Namensvettern die Warnung einer Neuanlage benennt. Mehr als drei
+  # helfen bei der Klärung nicht mehr und machen die Zeile unlesbar.
+  NAMESAKE_LIMIT = 3
+
   # Plausibilitätsgrenzen für Datumsangaben. Date.strptime nimmt mit %Y auch
   # zweistellige Jahre an ("03.08.25" → Jahr 25), was aus einem als TT.MM.JJ
   # formatierten Excel-Blatt kommt und sonst unbemerkt eine Lizenz mit
   # Ablaufdatum in der Antike schreibt.
   MIN_PLAUSIBLE_YEAR = 1900
+
+  # Umschrift für den Vornamensvergleich. Nur diese vier: Es geht um deutsche
+  # Schreibvarianten derselben Person, nicht um eine allgemeine Transliteration.
+  UMLAUT_FOLD = { 'ä' => 'ae', 'ö' => 'oe', 'ü' => 'ue', 'ß' => 'ss' }.freeze
 
   FIELD_LABELS = {
     lizenznummer: 'Lizenznummer', nachname: 'Name', vorname: 'Vorname',
@@ -322,7 +330,7 @@ class RefereeCourseImportService
       email:        csv_email
     }
 
-    referee, match_field_count = find_best_match(csv_attrs)
+    referee, match_field_count, namesakes = find_best_match(csv_attrs)
 
     match_type =
       if referee.nil?
@@ -334,6 +342,9 @@ class RefereeCourseImportService
       end
 
     warnings += reactivation_warning(referee)
+    # Nur an der Neuanlage: Hat eine andere Zeile den Bestandsschiri getroffen,
+    # ist der ausgeschlossene Namensvetter keine offene Frage mehr.
+    warnings += namesake_warning(csv_attrs[:vorname], namesakes) if referee.nil?
 
     matched_club, club_match_type = club_lookup.resolve(csv_verein)
     tally_club_match(csv_verein, club_match_type)
@@ -411,25 +422,87 @@ class RefereeCourseImportService
   # trifft, ist immer der Match — unabhängig vom Score. Das verhindert, dass
   # ein Namensvetter mit mehr übereinstimmenden Feldern den Lizenznummer-
   # Träger „überholt" und damit eine kollidierende Neuanlage anstößt.
+  # Rückgabe: [referee, match_field_count, ausgeschlossene Namensvettern].
   def find_best_match(csv_attrs)
     if csv_attrs[:lizenznummer]
       ref = Referee.where(lizenznummer: csv_attrs[:lizenznummer], merged_into_id: nil).first
-      return [ref, count_matches(csv_attrs, ref)] if ref
+      return [ref, count_matches(csv_attrs, ref), []] if ref
     end
 
-    candidates = candidate_referees(csv_attrs)
-    return [nil, 0] if candidates.empty?
+    namesakes, candidates = candidate_referees(csv_attrs)
+                            .partition { |r| vorname_conflict?(csv_attrs[:vorname], r.vorname) }
+    namesakes = namesakes.sort_by(&:id)
+    return [nil, 0, namesakes] if candidates.empty?
 
     scored = candidates.map { |r| [r, count_matches(csv_attrs, r)] }
     scored.select! { |(_, c)| c >= 3 }
-    return [nil, 0] if scored.empty?
+    return [nil, 0, namesakes] if scored.empty?
 
-    scored.max_by do |(r, c)|
+    best = scored.max_by do |(r, c)|
       [c,
        r.lizenznummer && csv_attrs[:lizenznummer] == r.lizenznummer ? 1 : 0,
        r.geburtsdatum && csv_attrs[:geburtsdatum] == r.geburtsdatum ? 1 : 0,
        -r.id]
     end
+
+    [best[0], best[1], namesakes]
+  end
+
+  # Ein widersprechender Vorname schließt den Kandidaten aus, statt nur einen
+  # Match-Punkt zu kosten. Zwillinge teilen Nachname, Geburtsdatum und Verein,
+  # und die leeren Felder einer Neumeldung (Lizenznummer, oft E-Mail) zählen
+  # symmetrisch als Treffer: Der Bruder kam damit auf 5 von 6 und lag weit über
+  # der Schwelle. Beim Anwenden hätte `apply_master_fields` ihn auf den
+  # Vornamen aus der Datei umbenannt und die Lizenz auf seine Nummer
+  # geschrieben.
+  #
+  # Der Lizenznummer-Zweig oben bleibt unberührt: Eine getroffene Lizenznummer
+  # ist die Identität, auch wenn der Vorname korrigiert wird.
+  #
+  # Bewusst keine Ausnahme für eine gleiche E-Mail-Adresse: Geschwister teilen
+  # sich im Kursalter regelmäßig die Adresse eines Elternteils.
+  def vorname_conflict?(csv_vorname, ref_vorname)
+    return false if csv_vorname.blank? || ref_vorname.blank?
+
+    csv_name = normalize_vorname(csv_vorname)
+    ref_name = normalize_vorname(ref_vorname)
+    return false if csv_name.empty? || ref_name.empty?
+
+    # Kurz- und Rufformen bleiben ein Treffer: „Nic" zu „Niclas", „Hans" zu
+    # „Hans-Peter". Der Präfixvergleich ist zeichengenau, „Luke" und „Lukas"
+    # widersprechen sich also weiterhin.
+    !(csv_name.start_with?(ref_name) || ref_name.start_with?(csv_name))
+  end
+
+  # Schreibweisen sollen keinen Widerspruch auslösen: Groß-/Kleinschreibung,
+  # Bindestrich gegen Leerzeichen und die Umlaut-Umschrift („Juergen" gegen
+  # „Jürgen") fallen weg.
+  def normalize_vorname(value)
+    value.to_s.downcase.gsub(/[äöüß]/, UMLAUT_FOLD).gsub(/[^[:alnum:]]/, '')
+  end
+
+  # Die ausgeschlossenen Namensvettern gehören an die Zeile, sonst ist der
+  # Ausschluss nur unsichtbar: Der Reviewer sähe eine Neuanlage und keinen
+  # Grund, nach der Dublette zu suchen.
+  def namesake_warning(csv_vorname, namesakes)
+    return [] if namesakes.blank?
+
+    listed = namesakes.first(NAMESAKE_LIMIT).map { |r| describe_namesake(r) }
+    rest = namesakes.size - listed.size
+    rest_text = rest.positive? ? " und #{rest} weitere" : ''
+
+    [{ 'field' => 'vorname', 'raw' => csv_vorname.to_s,
+       'reason' => "abweichender Vorname gegenüber #{listed.join(', ')}#{rest_text} " \
+                   '(gleicher Nachname, gleiches Geburtsdatum oder gleiche ' \
+                   'E-Mail-Adresse). Die Zeile wird als Neuanlage behandelt, ' \
+                   'bitte auf Dublette prüfen.' }]
+  end
+
+  def describe_namesake(referee)
+    geburtsdatum =
+      referee.geburtsdatum ? referee.geburtsdatum.strftime('%d.%m.%Y') : 'ohne Geburtsdatum'
+    lizenz = referee.lizenznummer.presence || 'ohne Nummer'
+    "#{referee.vorname} #{referee.nachname} (#{geburtsdatum}, Lizenz #{lizenz})"
   end
 
   def candidate_referees(csv_attrs)
