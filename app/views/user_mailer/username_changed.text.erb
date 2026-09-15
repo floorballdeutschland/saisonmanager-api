@@ -1,0 +1,18 @@
+Your username in Saisonmanager has changed
+==========================================
+
+Hello<%= " #{@first_name}" if @first_name %>,
+
+we have changed the username of your Saisonmanager account. Accounts of guest
+referees now use the surname instead of a number.
+
+Your new username: <%= @username %>
+Your previous username: <%= @previous_user_name %>
+
+Your password is unchanged. Please use the new username the next time you sign
+in:
+<%= @link %>
+Please copy this link into your browser.
+
+If you have any questions, please contact the referee committee of Floorball
+Deutschland (rsk@floorball.de).

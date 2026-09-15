@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Gastschiedsrichter bekommen einen sprechenden Benutzernamen**: Das Konto eines Gastschiedsrichters hieß bisher nach seiner Lizenznummer, und wenn er keine hat, nach der internen Datensatznummer (zum Beispiel `sr-g680`). Beides passt nicht mehr: Gäste bekommen seit 1.112.1 gar keine Lizenznummer, und die beiden bestehenden Gastkonten tragen noch Nummern im Namen, die inzwischen wieder für reguläre Schiedsrichter frei sind. Bekommt einer von ihnen eine dieser Nummern, ließe sich sein Konto nicht anlegen, weil der Benutzername schon vergeben wäre. Ein Gastkonto heißt deshalb jetzt nach dem Nachnamen (`sr-nowak`). Tragen zwei Gäste denselben Nachnamen, bekommt der zweite eine Ziffer (`sr-nowak2`); Umlaute werden ausgeschrieben, Leerzeichen und Apostrophe werden zum Bindestrich. Für alle anderen Schiedsrichter bleibt es beim Benutzernamen aus der Lizenznummer. Die bestehenden Gastkonten werden umgestellt, die Betroffenen bekommen darüber eine Mail in englischer Sprache (Gäste kommen in aller Regel aus dem Ausland). Das Passwort bleibt unverändert.
+
 ## [1.115.0] - 2026-09-14
 
 ### Neu
