@@ -27,8 +27,8 @@ class RefereeAccountCreator
   #
   # Gäste sind ausgenommen, weil sie keine eigene Zuständigkeit im Verband haben
   # (Aushilfen, meist aus dem Ausland) und kein Selbstverwaltungskonto brauchen.
-  # Eine Lizenznummer KANN ein Gast tragen, sie ist für ihn nur nicht Pflicht —
-  # der Benutzername hängt an der separaten Bedingung eine Zeile tiefer.
+  # Ihr Benutzername folgte deshalb nie diesem Weg; wird einer einzeln angelegt,
+  # kommt er aus dem Nachnamen (siehe user_name_for).
   #
   # canonical ist bereits in in_career_window enthalten und steht hier nur zur
   # Klarheit: Zusammengeführte Dubletten dürfen kein zweites Konto bekommen.
@@ -43,6 +43,72 @@ class RefereeAccountCreator
            .where.not(email: [nil, ''])
            .where.not(id: User.where.not(referee_id: nil).select(:referee_id))
   end
+
+  # Der Benutzername eines Schiedsrichterkontos.
+  #
+  # Gäste tragen seit api#646 keine Lizenznummer mehr, ihr Name kommt deshalb aus
+  # dem Nachnamen: `sr-nachname`. Das ist nicht nur Kosmetik — die beiden ersten
+  # Gastkonten hießen `sr-8725`/`sr-8726` nach Lizenznummern, die inzwischen
+  # wieder im Pool sind. Sobald ein echter Schiedsrichter die 8725 bekommt,
+  # scheitert dessen Kontoanlage an der Eindeutigkeit des Namens.
+  #
+  # Alle anderen behalten `sr-<lizenznummer>`; `sr-g<id>` bleibt der Notnagel für
+  # einen Datensatz, aus dem sich weder Nummer noch verwertbarer Nachname
+  # gewinnen lässt.
+  #
+  # ignore_user_id: Beim Umbenennen eines bestehenden Kontos zählt der eigene
+  # Name nicht als Kollision, sonst bekäme ein schon passend benanntes Konto bei
+  # jedem Lauf eine weitere Ziffer.
+  def self.user_name_for(referee, ignore_user_id: nil)
+    unless referee.guest?
+      return referee.lizenznummer.present? ? "sr-#{referee.lizenznummer}" : "sr-g#{referee.id}"
+    end
+
+    slug = name_slug(referee.nachname)
+    return "sr-g#{referee.id}" if slug.blank?
+
+    unique_user_name("sr-#{slug}", ignore_user_id: ignore_user_id)
+  end
+
+  # Nachname → Namensbestandteil im erlaubten Zeichensatz (USER_NAME_FORMAT lässt
+  # keine Umlaute zu). Deutsche Umlaute werden ausgeschrieben (ö→oe), bevor
+  # I18n.transliterate sie zu „o" verkürzen könnte; alles Übrige geht den
+  # allgemeinen Weg über die Transliteration. Was danach noch übrig bleibt (das
+  # „?" für nicht abbildbare Zeichen ebenso wie Leerzeichen und Apostrophe),
+  # wird zum Bindestrich zusammengezogen: „van der Berg" → „van-der-berg",
+  # „O'Brien" → „o-brien".
+  def self.name_slug(value)
+    umlauts = value.to_s.unicode_normalize(:nfc).downcase
+                   .gsub('ä', 'ae').gsub('ö', 'oe').gsub('ü', 'ue').gsub('ß', 'ss')
+    I18n.transliterate(umlauts, locale: :de)
+        .downcase
+        .gsub(/[^a-z0-9]+/, '-')
+        .delete_prefix('-')
+        .delete_suffix('-')
+  end
+
+  # Zwei Gäste desselben Nachnamens bekommen sr-nielsen und sr-nielsen2. Die
+  # Prüfung läuft kleinschreibungsneutral, weil der Login das auch tut
+  # (User.login vergleicht gegen LOWER(user_name)) — sonst entstünde ein Name,
+  # der sich zwar speichern lässt, aber auf denselben Login zeigt.
+  def self.unique_user_name(base, ignore_user_id: nil)
+    candidate = base
+    suffix = 1
+
+    while user_name_taken?(candidate, ignore_user_id)
+      suffix += 1
+      candidate = "#{base}#{suffix}"
+    end
+
+    candidate
+  end
+
+  def self.user_name_taken?(candidate, ignore_user_id)
+    scope = User.where('LOWER(user_name) = ?', candidate.downcase)
+    scope = scope.where.not(id: ignore_user_id) if ignore_user_id
+    scope.exists?
+  end
+  private_class_method :name_slug, :unique_user_name, :user_name_taken?
 
   # deliver_later: Für die Massenanlage wird die Begrüßungsmail eingereiht statt im
   # Request verschickt — hundert Zustellungen hintereinander ließen den Request
@@ -87,7 +153,7 @@ class RefereeAccountCreator
 
   def build_user
     User.new(
-      user_name: user_name,
+      user_name: self.class.user_name_for(@referee),
       first_name: @referee.vorname,
       last_name: @referee.nachname,
       email: @referee.email.presence,
@@ -95,10 +161,6 @@ class RefereeAccountCreator
       permissions: [{ 'user_group_id' => REFEREE_USER_GROUP_ID }],
       referee_id: @referee.id
     )
-  end
-
-  def user_name
-    @referee.lizenznummer.present? ? "sr-#{@referee.lizenznummer}" : "sr-g#{@referee.id}"
   end
 
   # Ein Fehlschlag beim Versand darf das Konto nicht wieder wegnehmen: Es ist

@@ -80,6 +80,22 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'link', description: 'Einmal-Link zur Feedback-Abgabe' }
       ]
     },
+    'UserMailer#username_changed' => {
+      mailer_class: 'UserMailer',
+      action_name: 'username_changed',
+      description: 'Hinweis an eine Person, dass sich der Benutzername ihres Kontos geändert hat. Text auf ' \
+                   'ENGLISCH, weil die Vorlage für die Gastschiedsrichter gedacht ist (Aushilfen aus dem ' \
+                   'Ausland). Enthält keinen Passwort-Link, das Passwort bleibt unverändert.',
+      default_subject: 'Your username in Saisonmanager has changed',
+      default_from: nil,
+      default_reply_to: 'rsk@floorball.de',
+      placeholders: [
+        { key: 'first_name', description: 'Vorname des Empfängers (für die Anrede)' },
+        { key: 'username', description: 'Neuer Benutzername (z. B. sr-nowak)' },
+        { key: 'previous_username', description: 'Bisheriger Benutzername (z. B. sr-8725)' },
+        { key: 'link', description: 'Link zur Anmeldung' }
+      ]
+    },
     'UserMailer#referee_account_created' => {
       mailer_class: 'UserMailer',
       action_name: 'referee_account_created',

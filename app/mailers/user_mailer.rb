@@ -41,6 +41,32 @@ class UserMailer < ApplicationMailer
     )
   end
 
+  # Hinweis auf einen geänderten Benutzernamen. Bewusst OHNE Passwort-Link: Am
+  # Passwort ändert sich nichts, und ein Reset-Link in einer Mail, die niemand
+  # angefordert hat, lädt zum Klicken ein.
+  #
+  # Der Text ist ENGLISCH, weil der einzige Anwendungsfall die Gastschiedsrichter
+  # sind — Aushilfen, in aller Regel aus dem Ausland. Der Saisonmanager
+  # verschickt sonst ausschließlich deutsche Mails; sollte diese Vorlage je für
+  # deutschsprachige Konten gebraucht werden, muss sie zweisprachig werden.
+  def username_changed(user, previous_user_name)
+    @username = user.user_name
+    @previous_user_name = previous_user_name
+    @first_name = user.first_name.presence
+    @link = "#{FrontendUrl.base}/login"
+    templated_mail(
+      to: user.email,
+      subject: 'Your username in Saisonmanager has changed',
+      default_reply_to: 'rsk@floorball.de',
+      placeholders: {
+        username: @username,
+        previous_username: previous_user_name.to_s,
+        first_name: @first_name.to_s,
+        link: @link
+      }
+    )
+  end
+
   # Begrüßungs-Mail beim Anlegen eines Schiedsrichter-Benutzerkontos: enthält den
   # Benutzernamen und einen Link zum (erstmaligen) Setzen des Passworts – bewusst
   # KEINE „Passwort vergessen"-Mail, da der Account gerade neu erstellt wurde.
