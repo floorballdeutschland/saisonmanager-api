@@ -9,6 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Vereine pflegen Name und Kürzel ihrer Mannschaften selbst**: Bisher konnte ein Vereinsmanager im Vereinsformular nur das abweichende Mannschaftslogo setzen, jede Namenskorrektur lief über den zuständigen Spielbetrieb. Name und Kürzel (das Kurzzeichen auf Anzeigetafel und Spielbericht, höchstens acht Zeichen) sind jetzt in derselben Liste direkt änderbar. Der Spielbetrieb bleibt davon unberührt: Liga-Zuordnung, Pokalwettbewerbe und der Verein der Mannschaft gehören weiterhin dem Verband, der Verein schreibt ausschließlich diese beiden Felder. Bei einem Spielverbund darf wie beim Logo jeder beteiligte Verein pflegen. Verband und Spielbetriebskommission können Name und Kürzel unverändert jederzeit berichtigen.
+
+- **Neue Verbandseinstellung: Änderungen an Mannschaftsdaten während der Saison**: In der Verbandsmaske (Verwaltung → Verbände) steht jetzt der Schalter „Vereinen während der laufenden Saison das Ändern von Teaminformationen erlauben (Name, Kürzel, Logo)". Er ist überall eingeschaltet. Vor dem ersten Spieltag einer Liga darf der Verein unabhängig davon immer ändern, denn bis dahin steht kein Ergebnis und kein Spielbericht unter dem alten Namen. Ab dem ersten Spieltag entscheidet der Schalter: Ist er aus, sind Name, Kürzel und Logo für die Vereine dieser Liga gesperrt, und in der Mannschaftsliste des Vereinsformulars steht der Grund. Maßgeblich ist der Landesverband, zu dem die Liga der Mannschaft gehört, und die Frist gilt je Liga: Eine Mannschaft, deren Liga noch nicht angefangen hat, bleibt offen, auch wenn eine andere desselben Vereins bereits spielt. Wie bei den übrigen Einstellungen des Blocks erbt ein untergeordneter Landesverband den Wert seines Spielverbunds. Für die bundesweiten Spielbetriebe gibt es die Einstellung nicht, weil an ihnen kein Landesverband hängt; dort bleibt es beim Ändern während der Saison.
+
 ## [1.115.1] - 2026-09-15
 
 ### Behoben

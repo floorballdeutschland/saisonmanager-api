@@ -383,6 +383,34 @@ class TeamsController < ApplicationController
   #
   # `:update_team_logo` und nicht `:update_team`: Der Verein pflegt sein Zeichen
   # selbst, die Spielbetriebsdaten der Mannschaft bleiben beim Verband.
+  # PATCH /admin/teams/:id/info
+  #
+  # Name und Kürzel einer Mannschaft, vereinsseitig gepflegt. Bewusst ein
+  # eigener, enger Weg statt eines Zweigs in #admin_team_update: Dort nimmt
+  # `team_params` Verein, Liga und Pokal-Ligen mit, also den Spielbetrieb. Der
+  # Vereinsmanager schreibt hier genau zwei Felder, und an einer Stelle, die
+  # nicht versehentlich um weitere wachsen kann.
+  def admin_update_info
+    return render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized unless current_user
+
+    team = Team.find(params[:id])
+
+    unless team.user_permissions(current_user).include?(:update_team_info)
+      return render json: { message: 'Keine Berechtigung' }, status: :forbidden
+    end
+
+    if team.update(team_info_params)
+      render json: team.full_hash.merge(
+        manage_logo: team.user_permissions(current_user).include?(:update_team_logo),
+        manage_info: true
+      )
+    else
+      render json: { errors: team.errors.full_messages }, status: :unprocessable_entity
+    end
+  rescue ActiveRecord::RecordNotFound
+    render json: { message: 'Nicht gefunden' }, status: :not_found
+  end
+
   def admin_upload_logo
     if current_user
       team = Team.find(params[:id])
@@ -440,6 +468,11 @@ class TeamsController < ApplicationController
   def team_params
     params.require(:team).permit(:club_id, :contact_email, :contact_person, :league_id, :name, :short_name, :syndicate,
                                  syndicate_clubs: [], cup_leagues: [])
+  end
+
+  # Ausschließlich die beiden Felder aus #admin_update_info.
+  def team_info_params
+    params.require(:team).permit(:name, :short_name)
   end
 
   private

@@ -338,18 +338,55 @@ class Team < ApplicationRecord
     perm << :update_team if admin || sbk
     perm << :delete_team if admin || sbk
 
-    # Bewusst getrennt von :update_team: Daran hängen Liga-Zuordnung, Pokal-Ligen
-    # und Kurzname, also der Spielbetrieb – das bleibt beim Verband. Das Zeichen
-    # der Mannschaft ist dagegen Vereinssache, wie das Vereinslogo
-    # (:update_own_club in Club#user_permissions), und der Verband darf es
-    # weiterhin ebenfalls pflegen.
+    # Beide bewusst getrennt von :update_team: Daran hängen Liga-Zuordnung,
+    # Pokal-Ligen und der Verein, also der Spielbetrieb, und der bleibt beim
+    # Verband. Wie die Mannschaft heißt und welches Zeichen sie trägt, ist
+    # dagegen Vereinssache, wie beim Verein selbst (:update_own_club in
+    # Club#user_permissions); der Verband darf beides weiterhin ebenfalls
+    # pflegen.
     #
-    # Kein eigenes Recht zum Entfernen: Wer ein abweichendes Logo setzen darf,
-    # darf es auch zurücknehmen. Danach greift wieder das Vereinslogo
-    # (#logo_url_fallback), ein Zustand ohne Zeichen entsteht dabei nicht.
-    perm << :update_team_logo if admin || sbk || vm
+    # Für den Verein zusätzlich am Spielkalender: siehe #club_may_edit_info?.
+    #
+    # Kein eigenes Recht zum Entfernen des Logos: Wer ein abweichendes Logo
+    # setzen darf, darf es auch zurücknehmen. Danach greift wieder das
+    # Vereinslogo (#logo_url_fallback), ein Zustand ohne Zeichen entsteht dabei
+    # nicht.
+    vm_info = vm && club_may_edit_info?
+
+    perm << :update_team_logo if admin || sbk || vm_info
+    perm << :update_team_info if admin || sbk || vm_info
 
     perm
+  end
+
+  # Darf der Verein Name, Kürzel und Logo dieser Mannschaft ändern?
+  #
+  # Bis zum ersten Spieltag immer: Bis dahin steht kein Ergebnis und kein
+  # Spielbericht unter dem alten Namen, und die Meldung ist ohnehin noch in
+  # Bewegung. Danach entscheidet der Schalter des zuständigen Landesverbands
+  # (`team_info_editable_during_season`, Standard an). Für Verband und SBK gilt
+  # die Frist nicht, sie müssen eine Mannschaft auch mitten in der Saison
+  # berichtigen können.
+  #
+  # Der Spieltag selbst zählt schon dazu: An dem Tag trägt die Mannschaft ihren
+  # Namen auf Anzeigetafel, Spielbericht und Stream, und genau dort fällt eine
+  # Änderung am spätesten auf.
+  #
+  # Maßgeblich ist die Hauptliga, auch wenn die Mannschaft zusätzlich im Pokal
+  # eines anderen Verbands antritt: Dort ist sie Gast, gemeldet ist sie hier.
+  # Ohne Liga und ohne Landesverband bleibt es erlaubt. Die bundesweiten
+  # Spielbetriebe tragen keinen (`game_operations.state_association_id` ist dort
+  # NULL), für sie gibt es die Einstellung also nicht; das ist bei jedem
+  # Schalter aus diesem Block so.
+  def club_may_edit_info?(today: Date.current)
+    sa = league&.state_association
+    return true if sa.nil?
+    return true if sa.effective_team_info_editable_during_season.present?
+
+    # game_days.date ist eine Textspalte, ein unbrauchbarer Eintrag zählt hier
+    # wie in League#first_game_day_date einfach nicht mit.
+    first_day = league.first_game_day_date
+    first_day.nil? || first_day > today
   end
 
   def self.add_teams_to_cup!(team_ids, cup_id)
