@@ -316,13 +316,11 @@ module Admin
       date.present? && date >= berlin_today
     end
 
-    # Anpfiff als Zeitpunkt, oder nil ohne Datum bzw. ohne Uhrzeit.
-    # `game_days.date` ist eine Textspalte und im Altbestand auch mal unlesbar;
-    # Game#start_date parst sie ohne eigene Absicherung, deshalb der rescue.
+    # Anpfiff als Zeitpunkt, oder nil ohne Datum bzw. ohne Uhrzeit. Der rescue
+    # gegen unlesbare Textspalten sitzt seit SAISONMANAGER-2T in Game#start_date
+    # selbst, wo ihn auch die uebrigen Aufrufer bekommen.
     def game_kickoff(game)
       game.start_date
-    rescue ArgumentError, TypeError
-      nil
     end
 
     # Einmal je Request statt einmal je Zeile: Bei MAX_ROWS = 2000 wurde die Zone

@@ -1600,10 +1600,29 @@ class Game < ApplicationRecord
     nil
   end
 
+  # Anpfiff als Zeitpunkt in Europe/Berlin, oder nil.
+  #
+  # `games.start_time` und `game_days.date` sind Textspalten ohne Validierung,
+  # und der Altbestand enthaelt Werte, die formgerecht aussehen, aber keinen
+  # Zeitpunkt ergeben -- eine Stunde jenseits von 23 etwa. Der Parser meldet das
+  # nicht mit Date::Error wie bei game_date, sondern mit ArgumentError aus
+  # Time.new, und ein einziges solches Spiel riss das Kalender-Abo der GANZEN
+  # Liga mit, nicht nur seinen eigenen Termin (Sentry SAISONMANAGER-2T,
+  # Liga 680).
+  # Dieselbe Klasse wie der fehlende Spieltag eine Ebene weiter oben, und
+  # dieselbe Abwaegung wie bei game_date: ein fehlender Termin ist besser als
+  # eine kaputte Antwort.
+  #
+  # Der Riegel sitzt hier und nicht beim Aufrufer, weil start_date von sechs
+  # Stellen gelesen wird (Kalender, Streaming-Uebersicht, StreamWatchdog,
+  # Arbeitsansicht der Spieltage) und die naechste davon den rescue sonst
+  # wieder vergisst.
   def start_date
     return nil if game_day&.date.blank? || start_time.blank?
 
     ActiveSupport::TimeZone[ICAL_TIMEZONE].parse("#{game_day.date} #{start_time}")
+  rescue ArgumentError, TypeError
+    nil
   end
 
   def end_date

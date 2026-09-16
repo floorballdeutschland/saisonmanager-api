@@ -205,6 +205,49 @@ class CalendarControllerTest < ActionDispatch::IntegrationTest
     assert_not_includes response.body, 'BEGIN:VEVENT'
   end
 
+  # Dritte Stufe derselben Klasse, und die einzige, die auch das LIGA-Abo traf:
+  # Die Anpfiffzeit ist eine Textspalte ohne Validierung, und der Altbestand
+  # enthaelt Werte, die formgerecht aussehen, aber keinen Zeitpunkt ergeben --
+  # eine Stunde jenseits von 23 etwa. Der Parser meldet das mit ArgumentError
+  # aus Time.new, nicht mit dem Date::Error, den Game#game_date bereits
+  # abfaengt. Vorher HTTP 500 fuer das gesamte Abo (Sentry SAISONMANAGER-2T),
+  # also auch fuer jede gesunde Begegnung daneben.
+  #
+  # Nicht jeder unsinnige Wert faellt darunter: Ein 30. Februar wirft nicht,
+  # Time.new rechnet ihn still auf den 2. Maerz um. Der Riegel greift genau
+  # dort, wo sonst die Antwort zerbricht.
+  test 'ein Spiel mit unmöglicher Anpfiffzeit kippt das Liga-Abo nicht' do
+    gesund = game_with(start_time: '14:00')
+    unmoeglich = game_with(start_time: '24:30', number: 2)
+
+    get "/api/v2/calendar/leagues/#{@league.id}.ics"
+
+    assert_response :success
+    assert_includes response.body, "sm_game_#{gesund.id}"
+    assert_not_includes response.body, "sm_game_#{unmoeglich.id}"
+  end
+
+  # Derselbe Concern, aber ein eigener Weg: Beim Fix zu SAISONMANAGER-3Q fehlte
+  # ausgerechnet einer der drei Abo-Adressen, deshalb die Gegenprobe.
+  test 'auch das Mannschafts-Abo übersteht eine unmögliche Anpfiffzeit' do
+    gesund = game_with(start_time: '14:00')
+    unmoeglich = game_with(start_time: '24:30', number: 2)
+
+    get "/api/v2/calendar/teams/#{@home.id}.ics"
+
+    assert_response :success
+    assert_includes response.body, "sm_game_#{gesund.id}"
+    assert_not_includes response.body, "sm_game_#{unmoeglich.id}"
+  end
+
+  # Gegenprobe gegen einen zu breiten rescue: Eine gepflegte Zeit muss weiter
+  # als Zeitpunkt herauskommen, nicht still als nil.
+  test 'Game#start_date liefert für eine gültige Zeit weiterhin den Anpfiff' do
+    game = game_with(start_time: '14:00')
+
+    assert_equal Time.find_zone!('Europe/Berlin').parse('2026-09-05 14:00'), game.start_date
+  end
+
   # Gegenprobe zum Key-Verzicht: Er gilt nur für die Kalender-Actions. Die
   # JSON-Endpunkte derselben Controller müssen weiter einen Key verlangen, sonst
   # hätte der Fix die öffentliche API nebenbei geöffnet.

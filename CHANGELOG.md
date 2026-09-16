@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Eine unmögliche Anpfiffzeit machte das Kalender-Abo einer ganzen Liga unbrauchbar**: Trug ein einzelnes Spiel eine Uhrzeit oder ein Spieltagsdatum, das es nicht geben kann (etwa die Stunde 24 oder den 30. Februar), antwortete das ICS-Abo dieser Liga mit einem Serverfehler. Betroffen war nicht nur der eine Termin, sondern das gesamte Abo: Das Kalender-Programm bekam gar keine Spiele mehr, auch die gesunden daneben nicht. Datum und Uhrzeit liegen als Text in der Datenbank, und der Altbestand enthält solche Werte. Ein Spiel mit unlesbarem Zeitpunkt fällt jetzt aus dem Kalender heraus, so wie ein Spiel ohne Anpfiffzeit es schon vorher tat, und der Rest des Abos bleibt vollständig.
+
 ## [1.115.1] - 2026-09-15
 
 ### Behoben
