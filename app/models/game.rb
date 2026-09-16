@@ -1620,8 +1620,26 @@ class Game < ApplicationRecord
     start_date...end_date
   end
 
+  # Titel eines Kalendertermins (SUMMARY), genutzt von #ical.
+  #
+  # Der Spieltag steht vorn, weil ein Abonnent im Kalender sonst nicht sieht,
+  # welcher Spieltag ihn erwartet: Die Begegnung allein ordnet den Termin dem
+  # Spielplan nicht zu, und viele Kalender-Programme zeigen in der Monats- und
+  # Wochenansicht nur die ersten Zeichen der SUMMARY.
+  #
+  # `game_days.number` ist nullable, und der Spielplan-Import darf sie offen
+  # lassen. Ohne Nummer faellt das Praefix ersatzlos weg, sonst stuende dort
+  # ein nacktes „. Spieltag". Eine 0 ist ebenso wenig ein Spieltag wie gar
+  # keine Nummer, deshalb `positive?` und nicht `present?` — `0.present?` ist
+  # in Ruby wahr.
+  #
+  # Die Schreibweise folgt der oeffentlichen Uebersicht („3. Spieltag"), nicht
+  # der Adminliste („Spieltag 3"): Der Kalender ist ein oeffentliches Abo.
   def game_title
-    "#{home_team_name} - #{guest_team_name} (#{league.name}, #{league.game_operation.short_name})"
+    begegnung = "#{home_team_name} - #{guest_team_name} (#{league.name}, #{league.game_operation.short_name})"
+    return begegnung unless game_day&.number&.positive?
+
+    "#{game_day.number}. Spieltag, #{begegnung}"
   end
 
   # Öffentliche Spielseite; im öffentlichen Bereich sitzt unterhalb des
