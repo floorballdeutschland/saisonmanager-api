@@ -93,6 +93,9 @@ class TeamInfoVmTest < ActionDispatch::IntegrationTest
 
     assert_response :unprocessable_entity
     assert_equal 'ALP', @team.reload.short_name
+    # Der ErrorInterceptor des Frontends liest `message`; ohne das stuende in
+    # der Maske nur sein allgemeiner Satz statt der Grenze.
+    assert_match(/8/, JSON.parse(response.body)['message'])
   end
 
   test 'Ein leerer Name wird abgewiesen' do

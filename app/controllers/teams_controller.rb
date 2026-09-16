@@ -405,7 +405,13 @@ class TeamsController < ApplicationController
         manage_info: true
       )
     else
-      render json: { errors: team.errors.full_messages }, status: :unprocessable_entity
+      # `message` zusaetzlich zu `errors`: Der ErrorInterceptor des Frontends
+      # wertet nur message/error aus und zeigt sonst seinen allgemeinen Satz.
+      # Bei einem zu langen Kuerzel soll aber die Grenze dastehen, und ein
+      # eigener Fehlerzweig in der Maske brauchte es dann doppelt.
+      render json: { message: team.errors.full_messages.join(', '),
+                     errors: team.errors.full_messages },
+             status: :unprocessable_entity
     end
   rescue ActiveRecord::RecordNotFound
     render json: { message: 'Nicht gefunden' }, status: :not_found
