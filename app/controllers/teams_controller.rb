@@ -377,12 +377,6 @@ class TeamsController < ApplicationController
            status: :unprocessable_entity
   end
 
-  # Abweichendes Logo einer Mannschaft. Ohne eigenes Logo zeigt die Mannschaft
-  # überall das Logo ihres Vereins (Team#logo_url_fallback), dieser Endpunkt
-  # setzt also die Ausnahme – der Regelfall bleibt das Vereinslogo.
-  #
-  # `:update_team_logo` und nicht `:update_team`: Der Verein pflegt sein Zeichen
-  # selbst, die Spielbetriebsdaten der Mannschaft bleiben beim Verband.
   # PATCH /admin/teams/:id/info
   #
   # Name und Kürzel einer Mannschaft, vereinsseitig gepflegt. Bewusst ein
@@ -394,15 +388,20 @@ class TeamsController < ApplicationController
     return render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized unless current_user
 
     team = Team.find(params[:id])
+    permissions = team.user_permissions(current_user)
 
-    unless team.user_permissions(current_user).include?(:update_team_info)
+    unless permissions.include?(:update_team_info)
       return render json: { message: 'Keine Berechtigung' }, status: :forbidden
     end
 
     if team.update(team_info_params)
+      # Formgleich mit der Zeile aus ClubsController#admin_club_teams, damit die
+      # Maske die Antwort ohne Lücke an die Stelle der bisherigen Zeile setzen
+      # kann.
       render json: team.full_hash.merge(
-        manage_logo: team.user_permissions(current_user).include?(:update_team_logo),
-        manage_info: true
+        manage_logo: permissions.include?(:update_team_logo),
+        manage_info: true,
+        info_locked_by_season: false
       )
     else
       # `message` zusaetzlich zu `errors`: Der ErrorInterceptor des Frontends
@@ -417,6 +416,12 @@ class TeamsController < ApplicationController
     render json: { message: 'Nicht gefunden' }, status: :not_found
   end
 
+  # Abweichendes Logo einer Mannschaft. Ohne eigenes Logo zeigt die Mannschaft
+  # überall das Logo ihres Vereins (Team#logo_url_fallback), dieser Endpunkt
+  # setzt also die Ausnahme – der Regelfall bleibt das Vereinslogo.
+  #
+  # `:update_team_logo` und nicht `:update_team`: Der Verein pflegt sein Zeichen
+  # selbst, die Spielbetriebsdaten der Mannschaft bleiben beim Verband.
   def admin_upload_logo
     if current_user
       team = Team.find(params[:id])
@@ -476,12 +481,12 @@ class TeamsController < ApplicationController
                                  syndicate_clubs: [], cup_leagues: [])
   end
 
+  private
+
   # Ausschließlich die beiden Felder aus #admin_update_info.
   def team_info_params
     params.require(:team).permit(:name, :short_name)
   end
-
-  private
 
   # Prüft die eingereichten `cup_leagues` (Pokal-/Endrundenwettbewerbe neben der
   # Hauptliga) und gibt die unzulässigen IDs zurück.

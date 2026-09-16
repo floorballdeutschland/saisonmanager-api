@@ -361,32 +361,63 @@ class Team < ApplicationRecord
 
   # Darf der Verein Name, Kürzel und Logo dieser Mannschaft ändern?
   #
-  # Bis zum ersten Spieltag immer: Bis dahin steht kein Ergebnis und kein
-  # Spielbericht unter dem alten Namen, und die Meldung ist ohnehin noch in
-  # Bewegung. Danach entscheidet der Schalter des zuständigen Landesverbands
-  # (`team_info_editable_during_season`, Standard an). Für Verband und SBK gilt
-  # die Frist nicht, sie müssen eine Mannschaft auch mitten in der Saison
-  # berichtigen können.
+  # Nur in der laufenden Saison. Die Maske listet ohnehin nur diese Mannschaften
+  # (`Team.current_season`), der Endpunkt darf sich darauf aber nicht verlassen:
+  # Ohne diese Prüfung benennt ein Verein über einen direkten Aufruf seine
+  # Mannschaften vergangener Saisons um, und damit ändern sich rückwirkend
+  # öffentlich archivierte Tabellen, Spielpläne und Spielberichte. Der Verband
+  # behält den Zugriff über `:update_team`, denn eine Berichtigung im Archiv ist
+  # seine Aufgabe.
+  #
+  # Innerhalb der Saison bis zum ersten Spieltag immer: Bis dahin steht kein
+  # Ergebnis und kein Spielbericht unter dem alten Namen, und die Meldung ist
+  # ohnehin noch in Bewegung. Danach entscheidet der Schalter des zuständigen
+  # Landesverbands (`team_info_editable_during_season`, Standard an). Für
+  # Verband und SBK gilt die Frist nicht, sie müssen eine Mannschaft auch mitten
+  # in der Saison berichtigen können.
   #
   # Der Spieltag selbst zählt schon dazu: An dem Tag trägt die Mannschaft ihren
   # Namen auf Anzeigetafel, Spielbericht und Stream, und genau dort fällt eine
-  # Änderung am spätesten auf.
+  # Änderung am spätesten auf. Gerechnet wird der Tag in `Europe/Berlin` und
+  # nicht in der Serverzeitzone: Der Server läuft auf UTC, zwischen Mitternacht
+  # und zwei Uhr deutscher Zeit wäre sonst noch der Vortag maßgeblich.
   #
   # Maßgeblich ist die Hauptliga, auch wenn die Mannschaft zusätzlich im Pokal
   # eines anderen Verbands antritt: Dort ist sie Gast, gemeldet ist sie hier.
-  # Ohne Liga und ohne Landesverband bleibt es erlaubt. Die bundesweiten
+  # Ohne Landesverband bleibt es innerhalb der Saison erlaubt. Die bundesweiten
   # Spielbetriebe tragen keinen (`game_operations.state_association_id` ist dort
   # NULL), für sie gibt es die Einstellung also nicht; das ist bei jedem
   # Schalter aus diesem Block so.
-  def club_may_edit_info?(today: Date.current)
-    sa = league&.state_association
-    return true if sa.nil?
-    return true if sa.effective_team_info_editable_during_season.present?
+  #
+  # Memoisiert, weil die Vereinsliste den Wert je Mannschaft zweimal braucht
+  # (einmal über #user_permissions, einmal als Sperrbegründung) und beide
+  # Zweige je eine Abfrage kosten: den Verbund über `settings_source` und die
+  # Spieltage über `first_game_day_date`.
+  def club_may_edit_info?(today: nil)
+    berlin_today = Time.find_zone('Europe/Berlin').today
+    today ||= berlin_today
+    return @club_may_edit_info if today == berlin_today && defined?(@club_may_edit_info)
 
-    # game_days.date ist eine Textspalte, ein unbrauchbarer Eintrag zählt hier
-    # wie in League#first_game_day_date einfach nicht mit.
-    first_day = league.first_game_day_date
-    first_day.nil? || first_day > today
+    # Eine Mannschaft ohne Liga hat weder Saison noch Spielplan. Sie steht nicht
+    # in der Vereinsliste, und ihr Speichern liefe an `belongs_to :league`
+    # ohnehin in eine Meldung, mit der ein Verein nichts anfangen kann.
+    result =
+      if league.nil? || league.season_id.to_s != Setting.current_season_id.to_s
+        false
+      else
+        sa = league.state_association
+        if sa.nil? || sa.effective_team_info_editable_during_season.present?
+          true
+        else
+          # Erst hier den Spielplan lesen: Im Regelfall (Schalter an) spart das
+          # die Abfrage ganz.
+          first_day = league.first_game_day_date
+          first_day.nil? || first_day > today
+        end
+      end
+
+    @club_may_edit_info = result if today == berlin_today
+    result
   end
 
   def self.add_teams_to_cup!(team_ids, cup_id)

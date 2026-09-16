@@ -192,6 +192,61 @@ class TeamInfoVmTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
+  # Die Maske listet nur die laufende Saison. Der Endpunkt darf sich darauf
+  # nicht verlassen: Sonst benennt ein direkter Aufruf Mannschaften vergangener
+  # Saisons um, und damit aendern sich rueckwirkend oeffentlich archivierte
+  # Tabellen, Spielplaene und Spielberichte.
+  test 'Vergangene Saisons bleiben dem Verein verschlossen' do
+    alt = create(:team, league: create(:league, :previous_season, game_operation: @go),
+                        club: @club, name: 'Vorsaison')
+    login(create(:user, :vm, club_id: @club.id))
+
+    patch "/api/v2/admin/teams/#{alt.id}/info", params: { team: { name: 'Nachtraeglich' } }
+
+    assert_response :forbidden
+    assert_equal 'Vorsaison', alt.reload.name
+  end
+
+  test 'Der Verband berichtigt auch im Archiv' do
+    alt = create(:team, league: create(:league, :previous_season, game_operation: @go),
+                        club: @club, name: 'Vorsaison')
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    patch "/api/v2/admin/teams/#{alt.id}/info", params: { team: { name: 'Berichtigt' } }
+
+    assert_response :success
+    assert_equal 'Berichtigt', alt.reload.name
+  end
+
+  # Massgeblich ist die Hauptliga. Der Pokal-Verband kann die Meldung des
+  # Vereins nicht sperren, dort ist die Mannschaft Gast.
+  test 'Der Schalter der Pokal-Liga eines fremden Verbands greift nicht' do
+    pokal_sa = create(:state_association, team_info_editable_during_season: false)
+    pokal_go = create(:game_operation, state_association_id: pokal_sa.id)
+    pokal = create(:league, game_operation: pokal_go)
+    create(:game_day, league: pokal, date: (Date.current - 7).to_s)
+    @team.update!(cup_leagues: [pokal.id])
+    login(create(:user, :vm, club_id: @club.id))
+
+    patch "/api/v2/admin/teams/#{@team.id}/info", params: { team: { name: 'Trotz Pokal' } }
+
+    assert_response :success
+    assert_equal 'Trotz Pokal', @team.reload.name
+  end
+
+  # Abgrenzung zum Verbund-Test oben: Ohne gesetztes `syndicate`-Flag zaehlt
+  # `syndicate_clubs` nicht mit (Team#all_club_ids), ein Altbestandseintrag
+  # verschafft dem Ex-Partner also keinen Zugriff.
+  test 'syndicate_clubs ohne Verbund-Flag verschafft keinen Zugriff' do
+    partner = create(:club, game_operation: @go)
+    @team.update!(syndicate: false, syndicate_clubs: [partner.id])
+    login(create(:user, :vm, club_id: partner.id))
+
+    patch "/api/v2/admin/teams/#{@team.id}/info", params: { team: { name: 'Ex-Partner' } }
+
+    assert_response :forbidden
+  end
+
   # --- Mannschaftsliste des Vereins -----------------------------------------
 
   test 'admin_club_teams meldet manage_info je Mannschaft' do
@@ -211,6 +266,23 @@ class TeamInfoVmTest < ActionDispatch::IntegrationTest
     assert by_id[offen.id]['manage_info']
     assert_not by_id[offen.id]['info_locked_by_season']
     assert_equal 'ALP', by_id[gesperrt.id]['short_name']
+  end
+
+  # Die Sperrbegruendung meint „DIESE Person darf gerade deshalb nicht" und
+  # nicht die Sperre an sich. Verband und SBK duerfen trotz gesetzter Sperre,
+  # fuer sie waere die Begruendung genauso falsch herum wie fuer den Verein die
+  # fremde Liga.
+  test 'admin_club_teams meldet dem Verband keine Sperrbegruendung' do
+    @sa.update!(team_info_editable_during_season: false)
+    create(:game_day, league: @league, date: (Date.current - 1).to_s)
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    get "/api/v2/admin/clubs/#{@club.id}/teams"
+
+    assert_response :success
+    entry = JSON.parse(response.body).find { |t| t['id'] == @team.id }
+    assert entry['manage_info']
+    assert_not entry['info_locked_by_season']
   end
 
   private

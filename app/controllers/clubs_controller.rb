@@ -394,7 +394,12 @@ class ClubsController < ApplicationController
         # nicht von der fremden Liga unterscheiden (für einen SBK sind bei einer
         # fremden Liga ebenfalls beide Rechte aus), und der Verein bekäme eine
         # Begründung zu lesen, die nicht seine ist.
-        info_locked_by_season: !team.club_may_edit_info?
+        #
+        # Gemeint ist ausdrücklich „DIESE Person darf gerade deshalb nicht", und
+        # nicht die Sperre an sich: Verband und SBK dürfen trotz gesetzter Sperre
+        # (`manage_info` bleibt für sie wahr), für sie wäre die Begründung
+        # genauso falsch herum.
+        info_locked_by_season: !permissions.include?(:update_team_info) && !team.club_may_edit_info?
       )
     }
   end

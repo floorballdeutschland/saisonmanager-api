@@ -252,7 +252,7 @@ class StateAssociation < ApplicationRecord
   # Duerfen Vereine Name, Kuerzel und Logo ihrer Mannschaften auch dann noch
   # aendern, wenn die Liga bereits laeuft?
   #
-  # Gelesen wird der Wert ueber die Liga der Mannschaft (League#team_info_editable?),
+  # Gelesen wird der Wert ueber die Liga der Mannschaft (Team#club_may_edit_info?),
   # nicht ueber den Verein: Zustaendig fuer den Spielbetrieb einer Liga ist allein
   # deren Verband, und dieselbe Mannschaft kann im Pokal eines anderen Verbands
   # antreten. Vor dem ersten Spieltag ist das Aendern immer erlaubt, der Schalter
