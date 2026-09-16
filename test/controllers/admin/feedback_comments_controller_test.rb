@@ -64,7 +64,22 @@ module Admin
 
       # Ein ausgeschalteter Schalter darf nicht wie ein gesetzter wirken.
       get '/api/v2/admin/feedback_comments', params: { with_comment: 'false' }
+      assert_response :success
       assert_equal 2, response.parsed_body.size
+    end
+
+    # Erst mit dieser Umstellung erreichbar: Vorher deckte `with_comment` den
+    # Fall mit ab, eine ausgeblendete Rueckmeldung ohne Freitext fiel also schon
+    # am Freitext durch. Jetzt haengt alles an `visible`.
+    test 'Ausgeblendet ohne Freitext bleibt ausgeblendet' do
+      r1 = create(:referee)
+      make_feedback(referee1: r1, comment: nil, status: 'hidden')
+
+      login(@admin)
+      get '/api/v2/admin/feedback_comments'
+
+      assert_response :success
+      assert_empty response.parsed_body
     end
 
     test 'Feed nennt den Abgabeweg, aber nicht die abgebende Person' do

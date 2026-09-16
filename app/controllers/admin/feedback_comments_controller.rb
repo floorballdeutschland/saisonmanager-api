@@ -235,7 +235,7 @@ module Admin
     end
 
     # Der Feed zeigt standardmäßig jede sichtbare Rückmeldung, auch die ohne
-    # Freitext. Bis api#689 hing er fest an `with_comment`, und damit war eine
+    # Freitext. Bis api#690 hing er fest an `with_comment`, und damit war eine
     # reine Notenvergabe nirgends einzeln zu sehen: Sie floss nur in die
     # Durchschnitte am Schiri-Profil und in die Auswertung ein. Gerade die
     # unkommentierte Bewertung ist aber der Regelfall, und ohne sie fehlt zu

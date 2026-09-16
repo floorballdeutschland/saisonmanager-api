@@ -9,7 +9,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
-### Verbessert
+### Neu
 
 - **Schiedsrichter-Feedback: einzelne Bewertungen sind jetzt vollständig einsehbar**: Die Übersicht unter Verwaltung → Schiri-Feedback (Kommentare) zeigte bisher nur die Rückmeldungen mit ausgefülltem Freitext. Wer ausschließlich Noten vergeben hat (der Regelfall), tauchte nirgends einzeln auf, sondern nur im Durchschnitt am Schiedsrichter-Profil und in der Auswertung. Damit ließ sich zu einer auffälligen Zahl nicht nachvollziehen, aus welchen Spielen und von welchen Mannschaften sie stammt. Die Übersicht führt deshalb jetzt jede sichtbare Rückmeldung auf, mit Spielnummer, Datum, Liga, Mannschaft, Gespann und beiden Noten; die Freitexte stehen wie bisher dabei, wo es welche gibt. Wer nur die kommentierten Rückmeldungen sehen will, etwa zum Verschlagworten, blendet die übrigen über den neuen Filter „nur mit Kommentar" aus. Ausgeblendete Rückmeldungen bleiben unverändert außen vor, und wer die Übersicht sehen darf, ist ebenfalls unverändert: Admin sowie RSK und Ansetzer auf Bundesebene.
 
