@@ -1627,19 +1627,24 @@ class Game < ApplicationRecord
   # Spielplan nicht zu, und viele Kalender-Programme zeigen in der Monats- und
   # Wochenansicht nur die ersten Zeichen der SUMMARY.
   #
-  # `game_days.number` ist nullable, und der Spielplan-Import darf sie offen
-  # lassen. Ohne Nummer faellt das Praefix ersatzlos weg, sonst stuende dort
-  # ein nacktes „. Spieltag". Eine 0 ist ebenso wenig ein Spieltag wie gar
-  # keine Nummer, deshalb `positive?` und nicht `present?` — `0.present?` ist
-  # in Ruby wahr.
+  # Die Beschriftung kommt aus League#game_day_title, derselben Quelle wie die
+  # oeffentliche Spielseite (Game#full_hash) und der Spielplan. In einer
+  # Pokal-Kategorie heisst der Spieltag dort „Achtelfinale" oder „Runde 3"
+  # statt „7. Spieltag"; der Kalender verweist auf genau diese Ansicht und soll
+  # denselben Namen nennen.
   #
-  # Die Schreibweise folgt der oeffentlichen Uebersicht („3. Spieltag"), nicht
-  # der Adminliste („Spieltag 3"): Der Kalender ist ein oeffentliches Abo.
+  # `game_days.number` ist nullable und hat keine Presence-Validierung: Die
+  # Verwaltung darf einen Spieltag ohne Nummer anlegen, und Altbestaende tragen
+  # sie teils nicht. Ohne Nummer faellt das Praefix ersatzlos weg, sonst stuende
+  # dort ein nacktes „. Spieltag" — genau das liefert `game_day_title` fuer nil.
+  # Die 0 zaehlt wie keine Nummer: Der Spielplan-Import schreibt `row['A'].to_i`,
+  # eine nicht numerische Zelle wird damit zur 0. `positive?` und nicht
+  # `present?`, denn `0.present?` ist in Ruby wahr.
   def game_title
     begegnung = "#{home_team_name} - #{guest_team_name} (#{league.name}, #{league.game_operation.short_name})"
     return begegnung unless game_day&.number&.positive?
 
-    "#{game_day.number}. Spieltag, #{begegnung}"
+    "#{league.game_day_title(game_day.number)}, #{begegnung}"
   end
 
   # Öffentliche Spielseite; im öffentlichen Bereich sitzt unterhalb des
