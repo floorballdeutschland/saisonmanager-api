@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Der Spieltag steht jetzt vorn im Kalender-Abo**: Ein Termin aus dem Kalender-Abo einer Liga, einer Mannschaft oder eines einzelnen Spiels hieß bisher nur nach der Begegnung, also etwa „Tegel Tigers - Berlin Rockets (Regionalliga U15 Großfeld, FVBB)“. Welcher Spieltag das ist, war im Kalender nicht zu sehen, obwohl der Spielplan danach gegliedert ist. Der Titel beginnt deshalb jetzt mit dem Spieltag: „3. Spieltag, Tegel Tigers - Berlin Rockets (Regionalliga U15 Großfeld, FVBB)“. Er steht bewusst an erster Stelle, weil Kalender-Programme in der Monats- und Wochenansicht nur den Anfang des Titels zeigen. Der Spieltag heißt dabei genauso wie im Spielplan: In einem Wettbewerb, der in Runden gespielt wird, steht dort „Finale“ oder „Runde 3“ statt einer Spieltagsnummer, und der Kalender nennt es ebenso. Hat ein Spieltag gar keine Nummer – die Verwaltung darf ihn ohne anlegen, und ältere Spieltage haben teils keine –, bleibt es beim bisherigen Titel ohne Vorspann. Bestehende Abos übernehmen die neue Schreibweise von selbst beim nächsten Abgleich, es muss niemand sein Abo neu einrichten.
+
 ## [1.115.1] - 2026-09-15
 
 ### Behoben

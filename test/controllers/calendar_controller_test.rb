@@ -205,6 +205,83 @@ class CalendarControllerTest < ActionDispatch::IntegrationTest
     assert_not_includes response.body, 'BEGIN:VEVENT'
   end
 
+  # Der Spieltag gehoert an den Anfang der SUMMARY: Kalender-Programme kuerzen
+  # den Titel in der Monats- und Wochenansicht, hinten angehaengt waere die
+  # Nummer dort nicht zu sehen.
+  #
+  # Das Komma steht in der Datei als `\,`: ICS maskiert Kommata im Textwert.
+  # Eine Erwartung mit nacktem Komma ginge an der echten Zeile vorbei.
+  test 'die SUMMARY fuehrt den Spieltag an erster Stelle' do
+    game_with(start_time: '14:00', number: 3)
+
+    get "/api/v2/calendar/teams/#{@home.id}.ics"
+
+    assert_response :success
+    termin = vevents(response.body).first
+    assert_includes termin, "SUMMARY:3. Spieltag\\, #{@home.name} - #{@guest.name} ("
+  end
+
+  # Der Liga- und der Einzelspielkalender laufen ueber denselben Concern, aber
+  # eigene Controller-Pfade; beim letzten Fix an dieser Datei fehlte
+  # ausgerechnet einer der drei.
+  test 'auch Liga- und Einzelspielkalender fuehren den Spieltag' do
+    game = game_with(start_time: '14:00', number: 5)
+
+    get "/api/v2/calendar/leagues/#{@league.id}.ics"
+    assert_response :success
+    assert_includes vevents(response.body).first, 'SUMMARY:5. Spieltag\\, '
+
+    get "/api/v2/calendar/games/#{game.id}.ics"
+    assert_response :success
+    assert_includes vevents(response.body).first, 'SUMMARY:5. Spieltag\\, '
+  end
+
+  # `game_days.number` ist nullable und hat keine Presence-Validierung: Die
+  # Verwaltung darf einen Spieltag ohne Nummer anlegen, Altbestaende tragen sie
+  # teils nicht. Dann faellt das Praefix ersatzlos weg — „. Spieltag", was
+  # League#game_day_title fuer nil liefert, waere schlechter als gar kein
+  # Spieltag im Titel.
+  test 'ein Spieltag ohne Nummer bekommt kein Praefix' do
+    game_with(start_time: '14:00', number: nil)
+
+    get "/api/v2/calendar/teams/#{@home.id}.ics"
+
+    assert_response :success
+    termin = vevents(response.body).first
+    assert_includes termin, "SUMMARY:#{@home.name} - #{@guest.name} ("
+    assert_no_match(/Spieltag/, termin)
+  end
+
+  # Die 0 ist kein Spieltag: Der Spielplan-Import schreibt `row['A'].to_i`, eine
+  # nicht numerische Zelle in der Spieltagsspalte wird damit zur 0. `0.present?`
+  # ist in Ruby wahr, eine Pruefung auf Anwesenheit statt auf eine positive Zahl
+  # schriebe hier „0. Spieltag".
+  test 'die Spieltagsnummer 0 bekommt kein Praefix' do
+    game_with(start_time: '14:00', number: 0)
+
+    get "/api/v2/calendar/teams/#{@home.id}.ics"
+
+    assert_response :success
+    assert_no_match(/Spieltag/, vevents(response.body).first)
+  end
+
+  # Die Beschriftung kommt aus League#game_day_title, derselben Quelle wie die
+  # oeffentliche Spielseite. In einer Pokal-Kategorie (league_category_id 3
+  # oder 4) heisst der siebte Spieltag dort „Finale", nicht „7. Spieltag" — der
+  # Kalender verweist auf genau diese Ansicht und darf sie nicht anders
+  # benennen.
+  test 'eine Pokal-Kategorie nennt die Runde statt der Spieltagsnummer' do
+    @league.update_column(:league_category_id, '3')
+    game_with(start_time: '14:00', number: 7)
+
+    get "/api/v2/calendar/teams/#{@home.id}.ics"
+
+    assert_response :success
+    termin = vevents(response.body).first
+    assert_includes termin, 'SUMMARY:Finale\\, '
+    assert_no_match(/Spieltag/, termin)
+  end
+
   # Gegenprobe zum Key-Verzicht: Er gilt nur für die Kalender-Actions. Die
   # JSON-Endpunkte derselben Controller müssen weiter einen Key verlangen, sonst
   # hätte der Fix die öffentliche API nebenbei geöffnet.
