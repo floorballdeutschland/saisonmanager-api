@@ -1602,26 +1602,48 @@ class Game < ApplicationRecord
 
   # Anpfiff als Zeitpunkt in Europe/Berlin, oder nil.
   #
-  # `games.start_time` und `game_days.date` sind Textspalten ohne Validierung,
-  # und der Altbestand enthaelt Werte, die formgerecht aussehen, aber keinen
-  # Zeitpunkt ergeben -- eine Stunde jenseits von 23 etwa. Der Parser meldet das
-  # nicht mit Date::Error wie bei game_date, sondern mit ArgumentError aus
-  # Time.new, und ein einziges solches Spiel riss das Kalender-Abo der GANZEN
-  # Liga mit, nicht nur seinen eigenen Termin (Sentry SAISONMANAGER-2T,
-  # Liga 680).
-  # Dieselbe Klasse wie der fehlende Spieltag eine Ebene weiter oben, und
-  # dieselbe Abwaegung wie bei game_date: ein fehlender Termin ist besser als
-  # eine kaputte Antwort.
+  # `games.start_time` und `game_days.date` sind Textspalten, weder im Modell
+  # noch in der Datenbank geprueft -- ein unmoeglicher Wert laesst sich also
+  # auch heute noch speichern, die beiden bekannten stammen aber aus dem
+  # Altbestand. `game_date` parst das Datum ueber Date.parse und bekommt dafuer
+  # einen Date::Error; hier prueft niemand vor, und Time.new scheitert mit dem
+  # blanken ArgumentError (Date::Error ist dessen Unterklasse, der rescue deckt
+  # also beides ab).
   #
-  # Der Riegel sitzt hier und nicht beim Aufrufer, weil start_date von sechs
-  # Stellen gelesen wird (Kalender, Streaming-Uebersicht, StreamWatchdog,
-  # Arbeitsansicht der Spieltage) und die naechste davon den rescue sonst
-  # wieder vergisst.
+  # Ein einziges solches Spiel riss das Kalender-Abo der GANZEN Liga mit, nicht
+  # nur seinen eigenen Termin: Sentry SAISONMANAGER-2T meldet `argument out of
+  # range` fuer `/calendar/leagues/680.ics`, und genau dort liegt Spiel 16179
+  # mit "12:585" -- derselbe Wert erzeugt nachgerechnet dieselbe Meldung. Das
+  # zweite betroffene Spiel ist 3864 mit "16:99". Dieselbe Abwaegung wie beim
+  # fehlenden Spieltag in #ical weiter unten: ein fehlender Termin ist besser
+  # als eine kaputte Antwort.
+  #
+  # Die Grenze ist enger, als sie aussieht: Nur was Time.new ablehnt, faellt
+  # hierunter -- Minute ueber 59, Stunde ueber 24, Monat ueber 12. Die Stunde
+  # 24 selbst ist mit Minute 0 zulaessig (Mitternachts-Konvention) und ein
+  # 30. Februar wird still auf den 2. Maerz gerollt. Solche Werte ergeben
+  # weiterhin einen Termin, nur den falschen; dagegen hilft nur eine
+  # Validierung beim Schreiben.
+  #
+  # Der Riegel sitzt hier und nicht beim Aufrufer, weil start_date an sieben
+  # Stellen gelesen wird: Kalender-Abo (#ical), Hallen-Konfliktpruefung ueber
+  # #occupancy_window, Schiedsrichter-Ansetzungskalender, Streaming-Uebersicht,
+  # StreamWatchdog und die Arbeitsansicht der Spieltage. Die naechste davon
+  # vergaesse den rescue sonst wieder.
+  #
+  # Protokolliert wie der Nachbarfall in #ical, und aus demselben Grund: Ohne
+  # Spur faellt der naechste kaputte Wert niemandem mehr auf, weil die 500er
+  # als Melder wegfallen. Kein Sentry-Ereignis, denn der Eintrag traegt keine
+  # Handlung, die nicht auch ein Blick in die Spalte erledigt -- und start_date
+  # laeuft je Spiel und Abruf.
   def start_date
     return nil if game_day&.date.blank? || start_time.blank?
 
     ActiveSupport::TimeZone[ICAL_TIMEZONE].parse("#{game_day.date} #{start_time}")
-  rescue ArgumentError, TypeError
+  rescue ArgumentError, TypeError => e
+    Rails.logger.warn(
+      "[game] Spiel #{id}: Anpfiff #{game_day&.date.inspect} #{start_time.inspect} nicht lesbar (#{e.class}), Termin ausgelassen"
+    )
     nil
   end
 
@@ -1630,11 +1652,19 @@ class Game < ApplicationRecord
   end
 
   # Belegungszeitfenster (Start...Ende) für die Hallen-/Konfliktprüfung.
-  # nil, wenn kein Spieltagsdatum oder keine Startzeit gepflegt ist — ein Spiel
-  # ohne bekannte Startzeit kann nicht zuverlässig auf Überschneidung geprüft
-  # werden und löst daher keinen Konflikt aus.
+  # nil, wenn der Anpfiff nicht als Zeitpunkt feststeht — ein Spiel ohne
+  # bekannte Startzeit kann nicht zuverlässig auf Überschneidung geprüft werden
+  # und löst daher keinen Konflikt aus.
+  #
+  # Geprüft wird das Ergebnis von #start_date, nicht mehr die Rohspalten: Eine
+  # gepflegte, aber unlesbare Zeit kam am `blank?`-Wächter vorbei und ergab
+  # `nil...nil`. Das ist in Ruby ein gültiger, TRUTHY Range (beginless und
+  # endless zugleich), lief also durch die nil-Prüfung in
+  # GameScheduleConflicts#arena_conflicts und starb erst im Vergleich —
+  # als „comparison of TimeWithZone with nil failed", drei Ebenen von der
+  # Ursache entfernt. Siehe SAISONMANAGER-2T.
   def occupancy_window
-    return nil if game_day&.date.blank? || start_time.blank?
+    return nil if start_date.nil?
 
     start_date...end_date
   end

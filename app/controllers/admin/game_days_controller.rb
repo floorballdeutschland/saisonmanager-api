@@ -309,18 +309,11 @@ module Admin
     def upcoming?(game)
       return false unless game.game_status.blank? || game.game_status == 'pregame'
 
-      kickoff = game_kickoff(game)
+      kickoff = game.start_date
       return kickoff > Time.current if kickoff
 
       date = game_day_date(game.game_day)
       date.present? && date >= berlin_today
-    end
-
-    # Anpfiff als Zeitpunkt, oder nil ohne Datum bzw. ohne Uhrzeit. Der rescue
-    # gegen unlesbare Textspalten sitzt seit SAISONMANAGER-2T in Game#start_date
-    # selbst, wo ihn auch die uebrigen Aufrufer bekommen.
-    def game_kickoff(game)
-      game.start_date
     end
 
     # Einmal je Request statt einmal je Zeile: Bei MAX_ROWS = 2000 wurde die Zone

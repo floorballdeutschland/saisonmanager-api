@@ -282,20 +282,25 @@ class CalendarControllerTest < ActionDispatch::IntegrationTest
     assert_no_match(/Spieltag/, termin)
   end
 
-  # Dritte Stufe derselben Klasse, und die einzige, die auch das LIGA-Abo traf:
-  # Die Anpfiffzeit ist eine Textspalte ohne Validierung, und der Altbestand
-  # enthaelt Werte, die formgerecht aussehen, aber keinen Zeitpunkt ergeben --
-  # eine Stunde jenseits von 23 etwa. Der Parser meldet das mit ArgumentError
-  # aus Time.new, nicht mit dem Date::Error, den Game#game_date bereits
-  # abfaengt. Vorher HTTP 500 fuer das gesamte Abo (Sentry SAISONMANAGER-2T),
-  # also auch fuer jede gesunde Begegnung daneben.
+  # Derselbe Ausfall wie bei den fehlenden Verknuepfungen weiter oben, aber eine
+  # andere Ursache: nicht eine leere Fremdschluesselspalte, sondern ein
+  # Textwert, der keinen Zeitpunkt ergibt. Die Anpfiffzeit wird weder im Modell
+  # noch in der Datenbank geprueft; Time.new scheitert dann mit ArgumentError,
+  # und vorher hiess das HTTP 500 fuer das gesamte Abo (Sentry
+  # SAISONMANAGER-2T), also auch fuer jede gesunde Begegnung daneben.
+  #
+  # `16:99` ist einer der beiden echten Werte aus der Produktion (Spiel 3864,
+  # Liga 402; der andere ist `12:585` in Spiel 16179, Liga 680) -- ein
+  # ausgedachter Wert liefe Gefahr, eine andere Fehlerklasse zu treffen als die
+  # gemeldete.
   #
   # Nicht jeder unsinnige Wert faellt darunter: Ein 30. Februar wirft nicht,
-  # Time.new rechnet ihn still auf den 2. Maerz um. Der Riegel greift genau
-  # dort, wo sonst die Antwort zerbricht.
+  # Time.new rechnet ihn still auf den 2. Maerz um, und die Stunde 24 ist mit
+  # Minute 0 sogar zulaessig. Der Riegel greift genau dort, wo sonst die
+  # Antwort zerbricht.
   test 'ein Spiel mit unmöglicher Anpfiffzeit kippt das Liga-Abo nicht' do
     gesund = game_with(start_time: '14:00')
-    unmoeglich = game_with(start_time: '24:30', number: 2)
+    unmoeglich = game_with(start_time: '16:99', number: 2)
 
     get "/api/v2/calendar/leagues/#{@league.id}.ics"
 
@@ -304,11 +309,12 @@ class CalendarControllerTest < ActionDispatch::IntegrationTest
     assert_not_includes response.body, "sm_game_#{unmoeglich.id}"
   end
 
-  # Derselbe Concern, aber ein eigener Weg: Beim Fix zu SAISONMANAGER-3Q fehlte
-  # ausgerechnet einer der drei Abo-Adressen, deshalb die Gegenprobe.
+  # Derselbe Concern, aber ein eigener Controller-Weg. Die Gegenprobe steht
+  # hier, weil an dieser Datei schon einmal ein Fix nur zwei der drei
+  # Abo-Adressen erwischt hat (api#365, fehlender Preload am Einzelspiel).
   test 'auch das Mannschafts-Abo übersteht eine unmögliche Anpfiffzeit' do
     gesund = game_with(start_time: '14:00')
-    unmoeglich = game_with(start_time: '24:30', number: 2)
+    unmoeglich = game_with(start_time: '16:99', number: 2)
 
     get "/api/v2/calendar/teams/#{@home.id}.ics"
 
@@ -317,12 +323,27 @@ class CalendarControllerTest < ActionDispatch::IntegrationTest
     assert_not_includes response.body, "sm_game_#{unmoeglich.id}"
   end
 
+  # Dritte Adresse, damit die Hausregel dieser Datei gewahrt bleibt: Das
+  # Einzelspiel-Abo laeuft ueber denselben Concern, aber einen eigenen
+  # Controller. Hier bleibt der Kalender leer, weil es kein gesundes Spiel
+  # daneben gibt -- gekippt werden darf er trotzdem nicht.
+  test 'auch das Einzelspiel-Abo uebersteht eine unmoegliche Anpfiffzeit' do
+    unmoeglich = game_with(start_time: '16:99')
+
+    get "/api/v2/calendar/games/#{unmoeglich.id}.ics"
+
+    assert_response :success
+    assert_includes response.body, 'BEGIN:VCALENDAR'
+    assert_not_includes response.body, 'BEGIN:VEVENT'
+  end
+
   # Gegenprobe gegen einen zu breiten rescue: Eine gepflegte Zeit muss weiter
   # als Zeitpunkt herauskommen, nicht still als nil.
   test 'Game#start_date liefert für eine gültige Zeit weiterhin den Anpfiff' do
     game = game_with(start_time: '14:00')
 
-    assert_equal Time.find_zone!('Europe/Berlin').parse('2026-09-05 14:00'), game.start_date
+    erwartet = Time.find_zone!('Europe/Berlin').parse("#{game.game_day.date} 14:00")
+    assert_equal erwartet, game.start_date
   end
 
   # Gegenprobe zum Key-Verzicht: Er gilt nur für die Kalender-Actions. Die
