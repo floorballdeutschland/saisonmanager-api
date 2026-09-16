@@ -207,7 +207,9 @@ class TeamInfoVmTest < ActionDispatch::IntegrationTest
     by_id = JSON.parse(response.body).index_by { |t| t['id'] }
     assert_not by_id[gesperrt.id]['manage_info']
     assert_not by_id[gesperrt.id]['manage_logo']
+    assert by_id[gesperrt.id]['info_locked_by_season']
     assert by_id[offen.id]['manage_info']
+    assert_not by_id[offen.id]['info_locked_by_season']
     assert_equal 'ALP', by_id[gesperrt.id]['short_name']
   end
 

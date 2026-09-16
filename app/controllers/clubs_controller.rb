@@ -389,7 +389,12 @@ class ClubsController < ApplicationController
       permissions = team.user_permissions(current_user)
       team.full_hash.merge(
         manage_logo: permissions.include?(:update_team_logo),
-        manage_info: permissions.include?(:update_team_info)
+        manage_info: permissions.include?(:update_team_info),
+        # Warum nicht: Ohne diese Angabe kann die Maske die Sperre des Verbands
+        # nicht von der fremden Liga unterscheiden (für einen SBK sind bei einer
+        # fremden Liga ebenfalls beide Rechte aus), und der Verein bekäme eine
+        # Begründung zu lesen, die nicht seine ist.
+        info_locked_by_season: !team.club_may_edit_info?
       )
     }
   end
