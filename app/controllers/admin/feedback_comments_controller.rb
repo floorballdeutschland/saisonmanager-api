@@ -1,5 +1,5 @@
 module Admin
-  # Übergreifender Feed der Feedback-Freitextkommentare plus manuelles Taggen mit
+  # Übergreifender Feed der einzelnen Rückmeldungen plus manuelles Taggen mit
   # Themen und deren Auswertung (#182). Sichtbarkeit wie das Feedback selbst:
   # Admin sowie die globalen FD-Rollen (RSK/Ansetzer). Ausgeblendete
   # Rückmeldungen (status = 'hidden') bleiben außen vor.
@@ -9,8 +9,9 @@ module Admin
     before_action :authorize_feedback_access!
 
     # GET /api/v2/admin/feedback_comments
-    # Feed aller kommentierten Rückmeldungen, filterbar nach Schiri, Top-Gruppe
-    # (Tag), Liga, Saison, Zeitraum, Notenschwelle und Thema.
+    # Feed der Rückmeldungen, filterbar nach Schiri, Top-Gruppe (Tag), Liga,
+    # Saison, Zeitraum, Notenschwelle und Thema; mit `with_comment=1`
+    # beschränkt auf die mit Freitext.
     def index
       render json: feed.map { |feedback| comment_json(feedback) }
     end
@@ -49,9 +50,10 @@ module Admin
     end
 
     def base_feedbacks
-      rel = RefereeFeedback.visible.with_comment
+      rel = RefereeFeedback.visible
                            .joins(game: { game_day: :league })
                            .includes(:team, :referee1, :referee2, :feedback_themes, game: { game_day: :league })
+      rel = rel.with_comment if only_with_comment?
       rel = rel.where(leagues: { season_id: season_id }) if season_id.present?
       rel = rel.where(leagues: { id: league_id }) if league_id.present?
       rel = rel.for_referee(referee_id) if referee_id.present?
@@ -230,6 +232,19 @@ module Admin
 
     def theme_id
       params[:theme_id].presence
+    end
+
+    # Der Feed zeigt standardmäßig jede sichtbare Rückmeldung, auch die ohne
+    # Freitext. Bis api#689 hing er fest an `with_comment`, und damit war eine
+    # reine Notenvergabe nirgends einzeln zu sehen: Sie floss nur in die
+    # Durchschnitte am Schiri-Profil und in die Auswertung ein. Gerade die
+    # unkommentierte Bewertung ist aber der Regelfall, und ohne sie fehlt zu
+    # einer Zahl im Bericht die Zuordnung zu Spiel und Mannschaft.
+    #
+    # Die Einschränkung bleibt als Filter erhalten, weil sie für das
+    # Verschlagworten der Freitexte die passende Menge ist.
+    def only_with_comment?
+      ActiveModel::Type::Boolean.new.cast(params[:with_comment]) == true
     end
 
     def max_rating

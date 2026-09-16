@@ -21,17 +21,50 @@ module Admin
       assert_response :success
     end
 
-    test 'Feed enthält nur sichtbare, kommentierte Rückmeldungen' do
+    test 'Feed enthält jede sichtbare Rückmeldung, auch die ohne Freitext' do
       r1 = create(:referee)
-      make_feedback(referee1: r1, comment: 'Linie war unsicher')
-      make_feedback(referee1: r1, comment: nil) # ohne Kommentar -> nicht im Feed
+      mit_text = make_feedback(referee1: r1, comment: 'Linie war unsicher')
+      ohne_text = make_feedback(referee1: r1, comment: nil)
       make_feedback(referee1: r1, comment: 'ausgeblendet', status: 'hidden')
 
       login(@admin)
       get '/api/v2/admin/feedback_comments'
 
       assert_response :success
-      assert_equal 1, response.parsed_body.size
+      ids = response.parsed_body.map { |c| c['id'] }
+      assert_equal [mit_text.id, ohne_text.id].sort, ids.sort
+    end
+
+    test 'Rückmeldung ohne Freitext trägt Noten, Spiel und Mannschaft' do
+      r1 = create(:referee)
+      feedback = make_feedback(referee1: r1, comment: nil, line: 4, communication: 6)
+
+      login(@admin)
+      get '/api/v2/admin/feedback_comments'
+
+      entry = response.parsed_body.find { |c| c['id'] == feedback.id }
+      assert_equal 4, entry['line_rating']
+      assert_equal 6, entry['communication_rating']
+      assert_equal feedback.game_id, entry['game_id']
+      assert_equal feedback.team.name, entry['team_name']
+      assert_nil entry['line_comment']
+    end
+
+    test 'with_comment beschränkt den Feed wieder auf die Freitexte' do
+      r1 = create(:referee)
+      mit_text = make_feedback(referee1: r1, comment: 'Linie war unsicher')
+      make_feedback(referee1: r1, comment: nil)
+
+      login(@admin)
+      get '/api/v2/admin/feedback_comments', params: { with_comment: '1' }
+
+      assert_response :success
+      ids = response.parsed_body.map { |c| c['id'] }
+      assert_equal [mit_text.id], ids
+
+      # Ein ausgeschalteter Schalter darf nicht wie ein gesetzter wirken.
+      get '/api/v2/admin/feedback_comments', params: { with_comment: 'false' }
+      assert_equal 2, response.parsed_body.size
     end
 
     test 'Feed nennt den Abgabeweg, aber nicht die abgebende Person' do
