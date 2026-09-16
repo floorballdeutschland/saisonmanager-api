@@ -211,6 +211,8 @@ class TransferRequest < ApplicationRecord
       lock!
       raise ActiveRecord::RecordInvalid, self unless status.in?(%w[pending_lv scheduled])
 
+      normalize_player_collections!
+
       secondary_club_ids = player.clubs.select do |c|
         c['home_club'] == false && c['valid_until'].nil?
       end.map { |c| c['club_id'] }
@@ -242,6 +244,7 @@ class TransferRequest < ApplicationRecord
       lock!
       raise ActiveRecord::RecordInvalid, self unless status == 'pending_lv'
 
+      normalize_player_collections!
       add_secondary_club_membership!(user_id)
       update!(
         status: 'approved',
@@ -264,6 +267,7 @@ class TransferRequest < ApplicationRecord
       lock!
       raise ActiveRecord::RecordInvalid, self unless status == 'approved'
 
+      normalize_player_collections!
       invalidate_release_licenses!(user_id)
       expire_secondary_club_membership!(user_id)
       update!(
@@ -405,6 +409,25 @@ class TransferRequest < ApplicationRecord
       }
     end
     player.save!(validate: false)
+  end
+
+  # players.clubs und players.licenses tragen zwar den Spalten-Default [], bei
+  # Profilen ohne jede Zugehoerigkeit oder Lizenz steht dort aber NULL: Der
+  # Default greift nur beim Insert, und Import wie Altdaten schreiben die Spalte
+  # ausdruecklich leer. Player#full_hash kennt den Fall laengst (dort kippte er
+  # die Spieler-Detailansicht, Sentry SAISONMANAGER-19), die Vollzugswege hier
+  # nicht: Die Direktzuweisung eines lizenzlosen Spielers brach mit
+  # `undefined method 'each' for nil` ab (SAISONMANAGER-56), und weil das in der
+  # Transaktion geschah, liess sich der Spieler ueberhaupt nicht zuweisen --
+  # jeder Versuch endete mit demselben 500er.
+  #
+  # Gesetzt statt beim Lesen ersetzt: invalidate_licenses!,
+  # add_secondary_club_membership! und expire_secondary_club_membership!
+  # arbeiten mit `each`, `<<` und `map!` auf dem Attribut selbst. Ein `|| []` an
+  # der Lesestelle wuerde die Aenderung an einer weggeworfenen Kopie vornehmen.
+  def normalize_player_collections!
+    player.clubs ||= []
+    player.licenses ||= []
   end
 
   def invalidate_licenses!

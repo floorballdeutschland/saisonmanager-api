@@ -399,6 +399,10 @@ class Player < ApplicationRecord
   end
 
   def transfer(new_club_id, user_id)
+    # Siehe TransferRequest#normalize_player_collections!: clubs steht bei
+    # Profilen ohne jede Zugehoerigkeit auf NULL, und map!/<< unten arbeiten
+    # direkt auf dem Attribut.
+    self.clubs ||= []
     player_clubs = clubs
     # Derselbe Leser wie ueberall sonst, statt einer dritten eigenen Auslegung.
     old_club = home_club_entry&.dig('club_id')

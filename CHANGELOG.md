@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Die Direktzuweisung eines Spielers ohne Lizenz schlug fehl**: Wies der Landesverband einen Spieler direkt einem Verein zu, der noch nie eine Lizenz beantragt hatte, antwortete der Saisonmanager mit einem Serverfehler, und zwar bei jedem Versuch aufs Neue. Geschrieben wurde dabei nichts: Der Vollzug lief in einer Transaktion, die der Fehler vollstaendig zuruecknahm. Der Spieler liess sich auf diesem Weg also ueberhaupt nicht zuweisen. Hintergrund: Die Spalten fuer Vereinszugehoerigkeiten und Lizenzen eines Spielers haben zwar eine leere Liste als Vorgabewert, diese greift aber nur beim Anlegen ueber die Oberflaeche. Datenimporte und Altbestaende lassen die Spalten stattdessen leer, und der Vollzug las sie ungeprueft. Betroffen waren neben der Direktzuweisung auch der Vollzug eines regulaeren Transfers, die Erteilung einer Freigabe und deren Widerruf, jeweils fuer Spieler ohne Lizenz beziehungsweise ohne jede Vereinszugehoerigkeit.
+
 ## [1.115.1] - 2026-09-15
 
 ### Behoben
