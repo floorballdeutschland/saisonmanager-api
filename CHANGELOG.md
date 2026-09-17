@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Die Direktzuweisung eines Spielers ohne Lizenz schlug fehl**: Wies der Landesverband einen Spieler direkt einem Verein zu, der noch nie eine Lizenz beantragt hatte, antwortete der Saisonmanager mit einem Serverfehler, und zwar bei jedem Versuch aufs Neue. Geschrieben wurde dabei nichts: Der Vollzug lief in einer Transaktion, die der Fehler vollstaendig zuruecknahm. Der Spieler liess sich auf diesem Weg also ueberhaupt nicht zuweisen. Hintergrund: Ein Teil des Altbestands traegt in der Lizenzspalte keinen leeren Eintrag, sondern gar keinen -- der Vorgabewert der Spalte greift nur, wenn beim Anlegen nichts hineingeschrieben wird. Auf der Produktion sind das 234 von 31.600 Profilen. Betroffen war neben der Direktzuweisung auch der Vollzug eines regulaeren Transfers sowie der Widerruf einer bereits erteilten Freigabe, der sich fuer solche Spieler ebenfalls nicht ausfuehren liess. Die Spalte fuer die Vereinszugehoerigkeiten ist vorsorglich mit abgesichert; dort ist derzeit kein Profil betroffen.
+
 ### Neu
 
 - **Vereine pflegen Name und Kürzel ihrer Mannschaften selbst**: Bisher konnte ein Vereinsmanager im Vereinsformular nur das abweichende Mannschaftslogo setzen, jede Namenskorrektur lief über den zuständigen Spielbetrieb. Name und Kürzel (das Kurzzeichen auf Anzeigetafel und Spielbericht, höchstens acht Zeichen) sind jetzt in derselben Liste direkt änderbar. Der Spielbetrieb bleibt davon unberührt: Liga-Zuordnung, Pokalwettbewerbe und der Verein der Mannschaft gehören weiterhin dem Verband, der Verein schreibt ausschließlich diese beiden Felder. Bei einem Spielverbund darf wie beim Logo jeder beteiligte Verein pflegen. Vereinsseitig geht das nur für die Mannschaften der laufenden Saison, damit sich archivierte Tabellen und Spielberichte vergangener Saisons nicht rückwirkend ändern. Verband und Spielbetriebskommission können Name und Kürzel unverändert jederzeit berichtigen, auch im Archiv.
