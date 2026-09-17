@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Abgelehnte Lizenzanträge fehlten in der Lizenzübersicht des Verbandes**: Die Übersicht (Verwaltung → Lizenzwesen → Verband) bietet einen Statusfilter „abgelehnt" und „zurückgezogen" sowie den Knopf „Ablehnung widerrufen" an, mit dem ein abgelehnter Antrag wieder auf „beantragt" gesetzt wird. Beides lief ins Leere, weil die Liste ausschließlich erteilte und beantragte Lizenzen lieferte: Der Filter fand nie eine Zeile, und der Knopf war nie zu sehen. Für den Verband war ein versehentlich abgelehnter Antrag damit nur noch über die Lizenzliste der Mannschaft erreichbar („erneut beantragen"), und die hat er nicht im Menü — den Menüpunkt tragen Vereinsmanager und Teammanager. Der Anlass war ein Spieler mit zwei Kleinfeld-Anträgen, von denen einer abgelehnt wurde und der Verein sich anschließend für die andere Liga entschied. Die Übersicht zeigt abgelehnte und zurückgezogene Anträge jetzt an. Gelöschte und wegen eines Transfers ungültige Lizenzen bleiben weiterhin draußen: Beides ist ein abgeschlossener Vorgang ohne Weg zurück in die Warteschlange. Die Kaderlisten einer Liga sind unverändert — dort ist ein abgelehnter Antrag kein Teil der Mannschaft. Eine Sperre färbt einen abgelehnten Antrag nicht mehr auf „gesperrt": Eine Sperre setzt die Spielberechtigung aus, und ein abgelehnter Antrag hat keine.
+
 ## [1.116.0] - 2026-09-17
 
 ### Behoben
