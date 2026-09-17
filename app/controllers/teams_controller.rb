@@ -377,6 +377,45 @@ class TeamsController < ApplicationController
            status: :unprocessable_entity
   end
 
+  # PATCH /admin/teams/:id/info
+  #
+  # Name und Kürzel einer Mannschaft, vereinsseitig gepflegt. Bewusst ein
+  # eigener, enger Weg statt eines Zweigs in #admin_team_update: Dort nimmt
+  # `team_params` Verein, Liga und Pokal-Ligen mit, also den Spielbetrieb. Der
+  # Vereinsmanager schreibt hier genau zwei Felder, und an einer Stelle, die
+  # nicht versehentlich um weitere wachsen kann.
+  def admin_update_info
+    return render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized unless current_user
+
+    team = Team.find(params[:id])
+    permissions = team.user_permissions(current_user)
+
+    unless permissions.include?(:update_team_info)
+      return render json: { message: 'Keine Berechtigung' }, status: :forbidden
+    end
+
+    if team.update(team_info_params)
+      # Formgleich mit der Zeile aus ClubsController#admin_club_teams, damit die
+      # Maske die Antwort ohne Lücke an die Stelle der bisherigen Zeile setzen
+      # kann.
+      render json: team.full_hash.merge(
+        manage_logo: permissions.include?(:update_team_logo),
+        manage_info: true,
+        info_locked_by_season: false
+      )
+    else
+      # `message` zusaetzlich zu `errors`: Der ErrorInterceptor des Frontends
+      # wertet nur message/error aus und zeigt sonst seinen allgemeinen Satz.
+      # Bei einem zu langen Kuerzel soll aber die Grenze dastehen, und ein
+      # eigener Fehlerzweig in der Maske brauchte es dann doppelt.
+      render json: { message: team.errors.full_messages.join(', '),
+                     errors: team.errors.full_messages },
+             status: :unprocessable_entity
+    end
+  rescue ActiveRecord::RecordNotFound
+    render json: { message: 'Nicht gefunden' }, status: :not_found
+  end
+
   # Abweichendes Logo einer Mannschaft. Ohne eigenes Logo zeigt die Mannschaft
   # überall das Logo ihres Vereins (Team#logo_url_fallback), dieser Endpunkt
   # setzt also die Ausnahme – der Regelfall bleibt das Vereinslogo.
@@ -443,6 +482,11 @@ class TeamsController < ApplicationController
   end
 
   private
+
+  # Ausschließlich die beiden Felder aus #admin_update_info.
+  def team_info_params
+    params.require(:team).permit(:name, :short_name)
+  end
 
   # Prüft die eingereichten `cup_leagues` (Pokal-/Endrundenwettbewerbe neben der
   # Hauptliga) und gibt die unzulässigen IDs zurück.

@@ -19,6 +19,7 @@ class StateAssociation < ApplicationRecord
     report_form_email_enabled
     manual_proceeding_creation
     requested_license_playable
+    team_info_editable_during_season
   ].freeze
 
   belongs_to :parent, class_name: 'StateAssociation', optional: true
@@ -248,6 +249,18 @@ class StateAssociation < ApplicationRecord
     effective_setting(:requested_license_playable)
   end
 
+  # Duerfen Vereine Name, Kuerzel und Logo ihrer Mannschaften auch dann noch
+  # aendern, wenn die Liga bereits laeuft?
+  #
+  # Gelesen wird der Wert ueber die Liga der Mannschaft (Team#club_may_edit_info?),
+  # nicht ueber den Verein: Zustaendig fuer den Spielbetrieb einer Liga ist allein
+  # deren Verband, und dieselbe Mannschaft kann im Pokal eines anderen Verbands
+  # antreten. Vor dem ersten Spieltag ist das Aendern immer erlaubt, der Schalter
+  # entscheidet nur ueber die Zeit danach.
+  def effective_team_info_editable_during_season
+    effective_setting(:team_info_editable_during_season)
+  end
+
   # Postfach für Schiedsrichteransetzungen. Ohne eigenen Eintrag greift der
   # übergeordnete Verband (Floorball Deutschland pflegt dort die zentrale
   # Adresse), damit Anträge nirgends ins Leere laufen.
@@ -372,11 +385,13 @@ class StateAssociation < ApplicationRecord
       effective_report_form_email_enabled: effective_report_form_email_enabled.present?,
       effective_manual_proceeding_creation: effective_manual_proceeding_creation.present?,
       effective_requested_license_playable: effective_requested_license_playable.present?,
+      effective_team_info_editable_during_season: effective_team_info_editable_during_season.present?,
       effective_vsk_email:,
       effective_sbk_email:,
       effective_rsk_email:,
       manual_proceeding_creation:,
       requested_license_playable:,
+      team_info_editable_during_season:,
       # Die drei gestaffelten Ansetzungs-Schalter. `referee_assignment_enabled`
       # heißt in der Maske jetzt „Ansetzungen auf Personenebene"; der
       # Spaltenname bleibt, um den Bestand nicht anzufassen.
