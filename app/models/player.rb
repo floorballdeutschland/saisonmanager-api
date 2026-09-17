@@ -399,6 +399,12 @@ class Player < ApplicationRecord
   end
 
   def transfer(new_club_id, user_id)
+    # Siehe TransferRequest#normalize_player_collections!: clubs steht bei
+    # einem Teil des Altbestands auf NULL, und map!/<< unten arbeiten direkt
+    # auf dem Attribut. Der einzige Aufrufer (TransferRequest#execute_transfer!)
+    # normalisiert bereits -- die Zeile sichert die Modellgrenze, damit der
+    # naechste Aufrufer sie nicht erneut braucht.
+    self.clubs ||= []
     player_clubs = clubs
     # Derselbe Leser wie ueberall sonst, statt einer dritten eigenen Auslegung.
     old_club = home_club_entry&.dig('club_id')

@@ -16,20 +16,13 @@ module Admin
       login(create(:user, :admin))
 
       patch "/api/v2/admin/state_associations/#{@child.id}",
-            params: { state_association: { scan_required: true,
-                                           report_form_email_enabled: true,
-                                           manual_proceeding_creation: true,
-                                           express_license_enabled: true,
-                                           referee_license_review_enabled: true,
-                                           referee_assignment_external_enabled: true,
-                                           referee_assignment_enabled: true,
-                                           person_level_assignment_default: true,
-                                           requested_license_playable: true } }
+            params: { state_association: flipped_settings }
 
       assert_response :success
       @child.reload
       StateAssociation::INHERITED_SETTINGS.each do |setting|
-        assert_not @child.public_send(setting), "#{setting} wurde am Kind-LV gespeichert"
+        assert_equal default_for(setting), @child.public_send(setting),
+                     "#{setting} wurde am Kind-LV gespeichert"
       end
     end
 
@@ -68,12 +61,13 @@ module Admin
       login(create(:user, :admin))
 
       patch "/api/v2/admin/state_associations/#{@verbund.id}",
-            params: { state_association: StateAssociation::INHERITED_SETTINGS.index_with { true } }
+            params: { state_association: flipped_settings }
 
       assert_response :success
       @verbund.reload
       StateAssociation::INHERITED_SETTINGS.each do |setting|
-        assert @verbund.public_send(setting), "#{setting} wurde nicht gespeichert (fehlt es in der permit-Liste?)"
+        assert_equal !default_for(setting), @verbund.public_send(setting),
+                     "#{setting} wurde nicht gespeichert (fehlt es in der permit-Liste?)"
       end
     end
 
@@ -147,6 +141,18 @@ module Admin
       assert body['effective_scan_required']
       assert_not body['scan_required']
       assert_not body['effective_report_form_email_enabled']
+    end
+
+    # Jede Einstellung auf das GEGENTEIL ihres Spaltenstandards. Ein Schalter,
+    # der standardmaessig an ist (team_info_editable_during_season), bestuende
+    # einen Test, der ueberall `true` schickt und `true` erwartet, auch wenn er
+    # in der permit-Liste fehlt oder gar nicht ankommt.
+    def flipped_settings
+      StateAssociation::INHERITED_SETTINGS.index_with { |setting| !default_for(setting) }
+    end
+
+    def default_for(setting)
+      ActiveModel::Type::Boolean.new.cast(StateAssociation.column_defaults[setting.to_s])
     end
 
     def login(user)

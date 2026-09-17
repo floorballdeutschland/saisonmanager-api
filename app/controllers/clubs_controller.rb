@@ -352,7 +352,7 @@ class ClubsController < ApplicationController
   end
 
   # Mannschaften des Vereins in der laufenden Saison – Grundlage für die
-  # abweichenden Mannschaftslogos im Vereinsformular.
+  # abweichenden Mannschaftslogos und der Mannschaftsnamen im Vereinsformular.
   #
   # Gleiches Gate wie #admin_club_managers (`:update_own_club`, also Admin/SBK
   # des zuständigen Spielbetriebs und der Vereinsmanager) und bewusst enger als
@@ -365,11 +365,13 @@ class ClubsController < ApplicationController
   # mit, für die dieser Verein nicht der führende ist – genau die Mannschaften,
   # deren Logo ein Verbund-Verein hier ebenfalls setzen darf.
   #
-  # `manage_logo` pro Mannschaft statt einmal pro Verein: Das Recht am Logo
-  # hängt am Spielbetrieb der LIGA (Team#user_permissions), der Lesezugriff
-  # hier am zuständigen Spielbetrieb des VEREINS. Für einen SBK laufen die
-  # beiden auseinander, sobald eine Mannschaft des Vereins in einer fremden
-  # Liga spielt; der Vereinsmanager darf ohnehin alle.
+  # `manage_logo` und `manage_info` (Name und Kürzel) pro Mannschaft statt
+  # einmal pro Verein: Die Rechte hängen am Spielbetrieb der LIGA
+  # (Team#user_permissions), der Lesezugriff hier am zuständigen Spielbetrieb
+  # des VEREINS. Für einen SBK laufen die beiden auseinander, sobald eine
+  # Mannschaft des Vereins in einer fremden Liga spielt. Für den Verein kommt
+  # der Spielkalender seiner Liga dazu (Team#club_may_edit_info?), deshalb kann
+  # eine Mannschaft gesperrt sein und die nächste nicht.
   def admin_club_teams
     return render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized unless current_user
 
@@ -384,8 +386,20 @@ class ClubsController < ApplicationController
                                             .sort_by { |team| team.name.to_s.downcase }
 
     render json: teams.map { |team|
+      permissions = team.user_permissions(current_user)
       team.full_hash.merge(
-        manage_logo: team.user_permissions(current_user).include?(:update_team_logo)
+        manage_logo: permissions.include?(:update_team_logo),
+        manage_info: permissions.include?(:update_team_info),
+        # Warum nicht: Ohne diese Angabe kann die Maske die Sperre des Verbands
+        # nicht von der fremden Liga unterscheiden (für einen SBK sind bei einer
+        # fremden Liga ebenfalls beide Rechte aus), und der Verein bekäme eine
+        # Begründung zu lesen, die nicht seine ist.
+        #
+        # Gemeint ist ausdrücklich „DIESE Person darf gerade deshalb nicht", und
+        # nicht die Sperre an sich: Verband und SBK dürfen trotz gesetzter Sperre
+        # (`manage_info` bleibt für sie wahr), für sie wäre die Begründung
+        # genauso falsch herum.
+        info_locked_by_season: !permissions.include?(:update_team_info) && !team.club_may_edit_info?
       )
     }
   end

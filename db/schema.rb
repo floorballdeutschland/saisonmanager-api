@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_09_14_100000) do
+ActiveRecord::Schema[7.2].define(version: 2026_09_16_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -987,6 +987,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_14_100000) do
     t.boolean "person_level_assignment_default", default: false, null: false
     t.string "states", default: [], null: false, comment: "Bundeslaender im Zustaendigkeitsbereich (ISO-Kuerzel, z. B. de-nw)", array: true
     t.boolean "requested_license_playable", default: false, null: false, comment: "Wenn true: Spieler mit Lizenzstatus „beantragt“ duerfen im Spielbetrieb dieses Verbands aufgestellt werden"
+    t.boolean "team_info_editable_during_season", default: true, null: false, comment: "Wenn true: Vereine duerfen Name, Kuerzel und Logo ihrer Mannschaften auch nach dem ersten Spieltag aendern"
     t.index ["parent_id"], name: "index_state_associations_on_parent_id"
   end
 
