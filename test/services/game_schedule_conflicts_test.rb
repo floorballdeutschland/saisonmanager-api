@@ -78,6 +78,21 @@ class GameScheduleConflictsTest < ActiveSupport::TestCase
     assert_empty conflicts
   end
 
+  # Gegenrichtung zum Test darunter: Dort ist der VORSCHLAG unlesbar, und das
+  # faengt GameScheduleConflicts selbst ab. Hier traegt ein BESTANDSSPIEL den
+  # kaputten Wert. Game#occupancy_window prueft seit SAISONMANAGER-2T das
+  # Ergebnis von #start_date statt der Rohspalten -- sonst kommt `nil...nil`
+  # heraus, ein gueltiger truthy Range, und der Vergleich in #overlap? stirbt
+  # mit "comparison of TimeWithZone with nil failed". Die Terminplanung ruft
+  # das beim Tippen, der Verband bekaeme also eine 500 ohne jeden Hinweis.
+  test 'ein Bestandsspiel mit unlesbarer Zeit erzeugt keinen Konflikt statt eines Fehlers' do
+    kaputt = build_game(arena: @arena, start_time: '16:99')
+    conflicts = GameScheduleConflicts.new(
+      game_day: kaputt.game_day, start_time: '14:00'
+    ).arena_conflicts
+    assert_empty conflicts
+  end
+
   test 'unparsebare Startzeit ergibt keine Konflikte' do
     existing = build_game(arena: @arena, start_time: '14:00')
     conflicts = GameScheduleConflicts.new(
