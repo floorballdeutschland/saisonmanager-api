@@ -404,6 +404,80 @@ module Admin
       ActiveSupport::Notifications.unsubscribe(subscriber)
     end
 
+    # Die Verbandsuebersicht bietet einen Statusfilter "abgelehnt" und
+    # "zurueckgezogen" sowie den Knopf "Ablehnung widerrufen" an. Beides lief
+    # ins Leere, weil die Liste nur erteilte und beantragte Lizenzen lieferte:
+    # Ein abgelehnter Antrag war fuer den Verband nur noch ueber die
+    # Lizenzliste der Mannschaft erreichbar, die er nicht im Menue hat.
+    test 'abgelehnte und zurückgezogene Lizenzen stehen in der Verbandsübersicht' do
+      denied = create(:player, with_licenses: [{ team: @team_go1, status: License::DENIED, season_id: '18' }])
+      withdrawn = create(:player, with_licenses: [{ team: @team_go1, status: License::WITHDRAWN, season_id: '18' }])
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses'
+      assert_response :success
+      body = JSON.parse(response.body)
+
+      denied_row = body.find { |r| r['player_id'] == denied.id }
+      assert denied_row, 'ohne die Zeile hat der Widerruf-Knopf nichts, woran er haengen kann'
+      assert_equal License::DENIED, denied_row['license_status_id']
+      assert_equal 'abgelehnt', denied_row['license_status']
+
+      withdrawn_row = body.find { |r| r['player_id'] == withdrawn.id }
+      assert withdrawn_row, 'der Statusfilter bietet "zurueckgezogen" an'
+      assert_equal License::WITHDRAWN, withdrawn_row['license_status_id']
+    end
+
+    # Geloescht, "ungueltig wg. Transfer" und "ignoriert" bleiben draussen:
+    # Alle drei sind abgeschlossene Vorgaenge ohne Weg zurueck in die
+    # Warteschlange, und die Uebersicht bietet dafuer weder Filter noch Knopf.
+    test 'gelöschte, transferungültige und ignorierte Lizenzen bleiben aus der Verbandsübersicht heraus' do
+      deleted = create(:player, with_licenses: [{ team: @team_go1, status: License::DELETED, season_id: '18' }])
+      transfer = create(:player, with_licenses: [{ team: @team_go1, status: License::TRANSFER, season_id: '18' }])
+      ignored = create(:player, with_licenses: [{ team: @team_go1, status: License::IGNORED, season_id: '18' }])
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses'
+
+      player_ids = JSON.parse(response.body).map { |r| r['player_id'] }
+      assert_not_includes player_ids, deleted.id
+      assert_not_includes player_ids, transfer.id, 'der Transfer-Vollzug hat die Lizenz ungültig gemacht'
+      assert_not_includes player_ids, ignored.id, 'reiner Altbestand ohne Schreibweg'
+    end
+
+    # Die Kaderliste einer Liga ist die Gegenprobe: Dort ist ein abgelehnter
+    # Antrag kein Teil der Mannschaft, und die Ausweitung darf nicht
+    # durchschlagen.
+    test 'die Liga-Detailansicht zeigt abgelehnte Lizenzen weiterhin nicht' do
+      denied = create(:player, with_licenses: [{ team: @team_go1, status: License::DENIED, season_id: '18' }])
+
+      login_as(@admin)
+      get "/api/v2/admin/leagues/#{@league_go1.id}/licenses"
+      assert_response :success
+
+      player_ids = JSON.parse(response.body).flat_map { |t| (t['players'] || []).map { |pl| pl['id'] } }
+      assert_includes     player_ids, @player_go1.id, 'die erteilte Lizenz steht weiter im Kader'
+      assert_not_includes player_ids, denied.id
+    end
+
+    # Die Sperre setzt die Spielberechtigung aus, und ein abgelehnter Antrag
+    # hat keine. Ohne diese Grenze traege die Zeile den Status "gesperrt"
+    # statt "abgelehnt", sobald der Spieler irgendwo gesperrt ist -- und der
+    # Widerruf-Knopf haengt am Status.
+    test 'eine Sperre färbt einen abgelehnten Antrag nicht auf gesperrt' do
+      denied = create(:player, with_licenses: [{ team: @team_go1, status: License::DENIED, season_id: '18' }])
+      PlayerSuspension.create!(player: denied, team_id: @team_go1.id,
+                               valid_from: 1.day.ago.to_date, valid_until: 1.month.from_now.to_date)
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses'
+
+      row = JSON.parse(response.body).find { |r| r['player_id'] == denied.id }
+      assert row, 'die abgelehnte Lizenz steht in der Liste'
+      assert_equal License::DENIED, row['license_status_id']
+      assert_equal License::DENIED, row['base_status_id']
+    end
+
     test 'Abfragezahl der Liste wächst nicht mit der Zahl der Ligen' do
       login_as(@admin)
       baseline = sql_counts_for_index
