@@ -897,8 +897,8 @@ class League < ApplicationRecord
   # with_release_dates: false spart die Freigabe-Abfrage. Nur die Lizenzliste
   # einer Liga zeigt das Datum; die Verbandsuebersicht laedt ueber ALLE Ligen
   # einer Saison und wuerde die Abfrage sonst fuer nichts bezahlen.
-  def self.licenses_for(leagues, full_license_hash: true, only_current_licenses: true,
-                        team_hash: :full, with_other_licenses: true, with_release_dates: true)
+  def self.licenses_for(leagues, full_license_hash: true, only_current_licenses: true, team_hash: :full,
+                        with_other_licenses: true, with_release_dates: true, statuses: License::ACTIVE_STATUSES)
     leagues = Array(leagues)
     return {} if leagues.empty?
 
@@ -916,7 +916,7 @@ class League < ApplicationRecord
       [league.id, league.build_license_items(teams_by_league[league.id] || [], team_licenses, teams_by_id,
                                              full_license_hash, only_current_licenses,
                                              team_hash, with_other_licenses,
-                                             lookups: { release_dates:, suspensions: })]
+                                             context: { release_dates:, suspensions:, statuses: })]
     end
   end
 
@@ -1020,13 +1020,24 @@ class League < ApplicationRecord
 
   def build_license_items(league_teams, team_licenses, teams_by_id, full_license_hash,
                           only_current_licenses, team_hash = :full, with_other_licenses = true,
-                          lookups: {})
-    # `lookups` bündelt die beiden vorab geladenen Nachschlage-Tabellen
-    # (:release_dates, :suspensions). Als ein Argument, weil beide denselben
-    # Zweck haben: Sie ersparen der Zeile eine eigene Abfrage.
-    release_dates = lookups[:release_dates] || {}
-    suspensions   = lookups[:suspensions] || {}
-    active_statuses = [License::APPROVED, License::REQUESTED].to_set
+                          context: {})
+    # `context` bündelt, was für alle Zeilen dieses Aufrufs gleich ist: die
+    # beiden vorab geladenen Nachschlage-Tabellen (:release_dates,
+    # :suspensions), die der Zeile je eine eigene Abfrage ersparen, und mit
+    # :statuses die Statusgrenze der Liste.
+    #
+    # Vorgabe der Statusgrenze bleibt erteilt/beantragt: Wer den Kader einer
+    # Liga abfragt, meint die spielberechtigten und die offenen Anträge. Nur
+    # die Verbandsübersicht (Admin::LicensesController) weitet sie aus, weil
+    # sie einen Statusfilter samt Widerruf-Knopf für abgelehnte Anträge
+    # anbietet -- und der lief bis hierher ins Leere.
+    #
+    # License::ACTIVE_STATUSES bleibt davon unberührt: Es steuert weiter die
+    # WEITEREN Lizenzen je Spieler (other_license_items), die als "weitere
+    # aktive Lizenzen" gemeint sind und nicht als vollständige Liste.
+    release_dates = context[:release_dates] || {}
+    suspensions   = context[:suspensions] || {}
+    statuses      = context[:statuses] || License::ACTIVE_STATUSES
 
     result = []
     league_teams.each do |team|
@@ -1056,10 +1067,16 @@ class League < ApplicationRecord
         next unless base_status
 
         base_status_id = base_status['license_status_id']
-        next unless active_statuses.include?(base_status_id.to_i)
+        next unless statuses.include?(base_status_id.to_i)
 
-        # Greift eine aktive Sperre auf diese Lizenz in DIESER Liga?
-        suspension = Array(suspensions[player.id]).find { |s| s.covers_license_in?(self, team) }
+        # Greift eine aktive Sperre auf diese Lizenz in DIESER Liga? Gefragt
+        # wird das nur für eine erteilte oder beantragte Lizenz: Eine Sperre
+        # setzt die Spielberechtigung aus, und ein abgelehnter Antrag hat
+        # keine. Ohne diese Grenze trüge er in der Verbandsübersicht den
+        # Status "gesperrt" statt "abgelehnt", sobald der Spieler irgendwo
+        # gesperrt ist -- und der Widerruf-Knopf hängt am Status.
+        base_active = License::ACTIVE_STATUSES.include?(base_status_id.to_i)
+        suspension = Array(suspensions[player.id]).find { |s| s.covers_license_in?(self, team) } if base_active
         last_status_id = suspension ? License::SUSPENDED : base_status_id
         last_status_code = License::NAMES[last_status_id.to_i]
 
@@ -1091,7 +1108,7 @@ class League < ApplicationRecord
         }
 
         if with_other_licenses
-          player_item[:other_licenses] = other_license_items(player, team.id, teams_by_id, active_statuses)
+          player_item[:other_licenses] = other_license_items(player, team.id, teams_by_id, License::ACTIVE_STATUSES)
           annotate_license_teams!(player_item, teams_by_id)
         end
 
