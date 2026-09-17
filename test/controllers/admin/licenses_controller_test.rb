@@ -428,17 +428,21 @@ module Admin
       assert_equal License::WITHDRAWN, withdrawn_row['license_status_id']
     end
 
-    # Geloescht und "ungueltig wg. Transfer" bleiben draussen: Beides ist ein
-    # abgeschlossener Vorgang ohne Weg zurueck in die Warteschlange, und die
-    # Uebersicht bietet dafuer weder Filter noch Knopf.
-    test 'gelöschte Lizenzen bleiben aus der Verbandsübersicht heraus' do
+    # Geloescht, "ungueltig wg. Transfer" und "ignoriert" bleiben draussen:
+    # Alle drei sind abgeschlossene Vorgaenge ohne Weg zurueck in die
+    # Warteschlange, und die Uebersicht bietet dafuer weder Filter noch Knopf.
+    test 'gelöschte, transferungültige und ignorierte Lizenzen bleiben aus der Verbandsübersicht heraus' do
       deleted = create(:player, with_licenses: [{ team: @team_go1, status: License::DELETED, season_id: '18' }])
+      transfer = create(:player, with_licenses: [{ team: @team_go1, status: License::TRANSFER, season_id: '18' }])
+      ignored = create(:player, with_licenses: [{ team: @team_go1, status: License::IGNORED, season_id: '18' }])
 
       login_as(@admin)
       get '/api/v2/admin/licenses'
 
       player_ids = JSON.parse(response.body).map { |r| r['player_id'] }
       assert_not_includes player_ids, deleted.id
+      assert_not_includes player_ids, transfer.id, 'der Transfer-Vollzug hat die Lizenz ungültig gemacht'
+      assert_not_includes player_ids, ignored.id, 'reiner Altbestand ohne Schreibweg'
     end
 
     # Die Kaderliste einer Liga ist die Gegenprobe: Dort ist ein abgelehnter
