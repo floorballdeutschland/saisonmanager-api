@@ -157,6 +157,7 @@ Rails.application.routes.draw do
       post 'admin/clubs/:id/deactivate', to: 'clubs#admin_club_deactivate'
       post 'admin/clubs/:id/reactivate', to: 'clubs#admin_club_reactivate'
 
+      patch 'admin/teams/:id/info', to: 'teams#admin_update_info'
       post 'admin/teams/:id/upload_logo', to: 'teams#admin_upload_logo'
       delete 'admin/teams/:id/logo', to: 'teams#admin_delete_logo'
 
