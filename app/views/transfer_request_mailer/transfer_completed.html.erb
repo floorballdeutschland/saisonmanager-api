@@ -1,4 +1,5 @@
 <% release = @transfer_request.request_type == 'release' %>
+<% wording = PlayerWording.for(@transfer_request.player) %>
 <h2><%= release ? 'Spielerfreigabe erteilt' : 'Transfer vollzogen' %></h2>
 
 <p>Hallo,</p>
@@ -8,19 +9,20 @@
 </p>
 
 <p>
-  <strong>Spieler:</strong> <%= @transfer_request.player.first_name %> <%= @transfer_request.player.last_name %><br>
+  <strong><%= wording.noun %>:</strong> <%= @transfer_request.player.first_name %> <%= @transfer_request.player.last_name %><br>
   <strong>Heimverein:</strong> <%= @transfer_request.former_club.name %><br>
   <strong><%= release ? 'Freigegeben an' : 'Neuer Verein' %>:</strong> <%= @transfer_request.requesting_club.name %>
 </p>
 
 <% if release %>
   <p>
-    Der Spieler bleibt im Heimverein. Der aufnehmende Verein kann nach der Zuordnung
-    zu einem Team eine Lizenz für den freigegebenen Spieler beantragen.
+    <%= wording.capitalized(:nominative) %> bleibt im Heimverein. Der aufnehmende Verein kann
+    für <%= wording.accusative %> nach der Zuordnung zu einem Team eine Lizenz
+    beantragen.
   </p>
 <% else %>
   <p>
-    Alle bestehenden Lizenzen des Spielers wurden auf „ungültig wg. Transfer" gesetzt.
+    Alle bestehenden Lizenzen <%= wording.genitive %> wurden auf „ungültig wg. Transfer" gesetzt.
     Lizenzen für den neuen Verein können ab sofort beantragt werden.
   </p>
 <% end %>

@@ -25,10 +25,18 @@ class RefereeAccountCreator
   # anlegen geht weiter. Beides ist gewollt: Wer keinen Lizenznachweis hat, ist
   # kein Fall für einen automatisch erzeugten Zugang.
   #
-  # Gäste sind ausgenommen, weil sie keine eigene Zuständigkeit im Verband haben
-  # (Aushilfen, meist aus dem Ausland) und kein Selbstverwaltungskonto brauchen.
-  # Ihr Benutzername folgte deshalb nie diesem Weg; wird einer einzeln angelegt,
-  # kommt er aus dem Nachnamen (siehe user_name_for).
+  # Gäste bleiben aus der Massenanlage heraus, dürfen aber im Einzelfall ein
+  # Konto bekommen (Entscheidung vom 15.09.2026). Sie haben keine eigene
+  # Zuständigkeit im Verband (Aushilfen, meist aus dem Ausland), ein pauschal
+  # erzeugter Zugang geht deshalb an ihnen vorbei; wer einen braucht, bekommt ihn
+  # über den Knopf in der Schiri-Maske. Der Benutzername kommt dann aus dem
+  # Nachnamen (siehe user_name_for).
+  #
+  # where(guest: false) ist heute nicht der einzige Riegel: Ein Gast trägt weder
+  # Lizenznummer noch Ablaufdatum und fiele schon an den beiden Bedingungen
+  # darunter heraus. Die Zeile steht trotzdem hier, weil sie die Entscheidung
+  # trägt und nicht deren Nebenwirkung. Lockert sich der Lizenznachweis je, bleibt
+  # der Ausschluss bestehen.
   #
   # canonical ist bereits in in_career_window enthalten und steht hier nur zur
   # Klarheit: Zusammengeführte Dubletten dürfen kein zweites Konto bekommen.

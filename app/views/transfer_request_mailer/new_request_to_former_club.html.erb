@@ -1,4 +1,5 @@
 <% release = @transfer_request.request_type == 'release' %>
+<% wording = PlayerWording.for(@transfer_request.player) %>
 <h2><%= release ? 'Neue Spielerfreigabe-Anfrage' : 'Neue Transferanfrage' %></h2>
 
 <p>Hallo,</p>
@@ -6,7 +7,7 @@
 <p>
   der Verein <strong><%= @transfer_request.requesting_club.name %></strong> hat
   <%= release ? 'eine Spielerfreigabe (Zweitspielrecht)' : 'eine Transferanfrage' %>
-  für den folgenden Spieler gestellt:
+  für <%= wording.following_accusative %> gestellt:
 </p>
 
 <p>

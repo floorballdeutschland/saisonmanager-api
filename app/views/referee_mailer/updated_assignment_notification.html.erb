@@ -16,9 +16,9 @@
   <% if @game.game_day.arena&.name.present? %>
   <tr><td><strong>Halle</strong></td><td><%= @game.game_day.arena.name %></td></tr>
   <% end %>
-  <tr><td><strong>Schiedsrichter/innen</strong></td><td><%= @official_names.presence || '–' %></td></tr>
+  <tr><td><strong>Schiedsrichter*innen</strong></td><td><%= @official_names.presence || '–' %></td></tr>
   <% if @coach.present? %>
-  <tr><td><strong>Schiedsrichtercoach/in</strong></td><td><%= @coach.vorname %> <%= @coach.nachname %></td></tr>
+  <tr><td><strong>Schiedsrichtercoach*in</strong></td><td><%= @coach.vorname %> <%= @coach.nachname %></td></tr>
   <% end %>
 </table>
 

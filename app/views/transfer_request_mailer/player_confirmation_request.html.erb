@@ -1,11 +1,12 @@
 <% release = @transfer_request.request_type == 'release' %>
+<% wording = PlayerWording.for(@transfer_request.player) %>
 <h2><%= release ? 'Spielerfreigabe-Anfrage' : 'Transferanfrage' %>: Deine Zustimmung wird benötigt</h2>
 
 <p>Hallo <%= @transfer_request.player.first_name %> <%= @transfer_request.player.last_name %>,</p>
 
 <p>
   <strong><%= @transfer_request.requesting_club.name %></strong> möchte dich
-  <%= release ? 'als Spieler mit einer Zusatzlizenz aufnehmen' : 'als Spieler transferieren' %>.
+  <%= release ? "#{wording.as_role} mit einer Zusatzlizenz aufnehmen" : "#{wording.as_role} transferieren" %>.
   Dein bisheriger Verein <strong><%= @transfer_request.former_club.name %></strong> hat dem bereits zugestimmt.
   Damit <%= release ? 'die Freigabe' : 'der Transfer' %> wirksam werden kann, ist auch deine Zustimmung erforderlich.
 </p>

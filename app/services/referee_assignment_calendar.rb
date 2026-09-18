@@ -97,14 +97,14 @@ class RefereeAssignmentCalendar
     "#{prefix}: #{@game.home_team&.name} vs. #{@game.guest_team&.name}"
   end
 
-  # Alles, was der Schiedsrichter am Spieltag im Kalender braucht, ohne die Mail
+  # Alles, was die Schiedsrichter*in am Spieltag im Kalender braucht, ohne die Mail
   # nochmal zu suchen. Leere Angaben fallen heraus statt als „–" mitzulaufen.
   def description
     lines = []
     lines << "Liga: #{@game.game_day.league&.name}" if @game.game_day.league&.name.present?
     lines << "Spielnummer: #{@game.game_number}" if @game.game_number.present?
-    lines << (@role == :coach ? "Schiedsrichter/innen: #{@officials}" : "Schiri-Partner/in: #{@officials}") if @officials.present?
-    lines << "Schiedsrichtercoach/in: #{@coach_name}" if @coach_name.present?
+    lines << (@role == :coach ? "Schiedsrichter*innen: #{@officials}" : "Schiri-Partner*in: #{@officials}") if @officials.present?
+    lines << "Schiedsrichtercoach*in: #{@coach_name}" if @coach_name.present?
     lines << "Kontakt Ausrichter: #{@club_contact_email}" if @club_contact_email.present?
     if @notes.present?
       lines << ''
