@@ -156,9 +156,29 @@ module Admin
     # 'primary', alle weiteren sind Zusatzlizenzen ('secondary'). Unabhängig von
     # der manuellen Erst-/Zweitlizenz-Zuordnung (gf_role), die die
     # Spielberechtigung im GF-Erwachsenenbereich dokumentiert.
+    #
+    # Nur erteilte und beantragte Lizenzen nehmen an der Wahl teil. Die Aussage
+    # ist eine über die Spielberechtigung, und eine gelöschte, abgelehnte,
+    # zurückgezogene oder wegen eines Transfers ungültige Lizenz hat keine.
+    # Vorher zählten sie mit, und weil die Ligaklasse zuerst entscheidet, gewann
+    # eine tote Lizenz in der höheren Klasse: Der Verband sah die tatsächlich
+    # erteilte Lizenz als „Zusatzlizenz", ohne dass die Zeile daneben stand, die
+    # das erklärt hätte -- gelöscht und transferungültig stehen gar nicht in
+    # dieser Liste. Auf der Produktion traf das am 18.09.2026 sieben Spieler der
+    # laufenden Saison.
+    #
+    # Der Basis-Status (ohne Sperre) wie in League#build_license_items und
+    # other_license_items: Eine gesperrte Lizenz ist erteilt und bleibt die
+    # Hauptlizenz, sonst wanderte das Abzeichen für die Dauer der Sperre auf
+    # eine andere Lizenz.
+    #
+    # Eine Zeile, die selbst nicht mitwählt, ist damit 'secondary'. Das ist die
+    # richtige Richtung: „Hauptlizenz" ist eine Zusage, „Zusatzlizenz" nicht.
     def license_type(player_lics, current_lic, all_season_leagues, team_league_id_map)
-      lics = Array(player_lics).select { |l| team_league_id_map.key?(l['team_id'].to_i) }
-      return 'primary' if lics.size <= 1
+      lics = Array(player_lics).select do |l|
+        team_league_id_map.key?(l['team_id'].to_i) &&
+          License::ACTIVE_STATUSES.include?(LicenseEffectiveStatus.base_status_id(l))
+      end
 
       primary_id = lics
         .sort_by do |l|

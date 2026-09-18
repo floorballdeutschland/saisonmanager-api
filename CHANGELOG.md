@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Eine tote Lizenz konnte die Hauptlizenz eines Spielers an sich ziehen**: In der Lizenzübersicht des Verbandes steht an jeder Zeile, ob es die Haupt- oder eine Zusatzlizenz ist; maßgeblich ist die höchste Liga. Mitgewählt hat dabei bisher jede Lizenz der Saison, auch eine gelöschte, abgelehnte, zurückgezogene oder wegen eines Transfers ungültige. Weil die Ligaklasse zuerst entscheidet, gewann eine solche Lizenz in der höheren Klasse — und die tatsächlich erteilte Lizenz stand als „Zusatzlizenz" da, ohne dass die Zeile daneben das erklärt hätte: Gelöschte und transferungültige Lizenzen erscheinen in dieser Liste gar nicht. Betroffen waren sieben Spieler der laufenden Saison. An der Wahl nehmen jetzt nur noch erteilte und beantragte Lizenzen teil, und eine gesperrte bleibt Hauptlizenz, weil sie erteilt ist — sonst wanderte das Abzeichen für die Dauer der Sperre auf eine andere Lizenz. Die Angabe steckt auch in der CSV-Ausfuhr der Übersicht. Unberührt bleibt die manuelle Erst-/Zweitlizenz-Zuordnung im Großfeld-Erwachsenenbereich, die der Verband selbst setzt.
+
 ## [1.116.1] - 2026-09-17
 
 ### Behoben
