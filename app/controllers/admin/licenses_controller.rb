@@ -133,7 +133,7 @@ module Admin
               game_operation_name:  game_op&.name,
               season_id:            league.season_id,
               license_id:           lic['id'],
-              license_type:         license_type(player_data[:licenses], lic, all_season_leagues, team_league_id_map),
+              license_type:         license_type(player_data, lic, all_season_leagues, team_league_id_map),
               # Manuelle Erst-/Zweitlizenz-Zuordnung im GF-Erwachsenenbereich
               # ('erstlizenz' | 'zweitlizenz' | nil = nicht zugeordnet).
               gf_role:              lic['gf_role'],
@@ -184,12 +184,22 @@ module Admin
     # Hauptlizenz, sonst wanderte das Abzeichen für die Dauer der Sperre auf
     # eine andere Lizenz.
     #
-    # Eine Zeile, die selbst nicht mitwählt, ist damit 'secondary'. Das ist die
-    # richtige Richtung: „Hauptlizenz" ist eine Zusage, „Zusatzlizenz" nicht.
-    def license_type(player_lics, current_lic, all_season_leagues, team_league_id_map)
-      return 'secondary' unless active_license?(current_lic)
+    # Eine Zeile, die selbst nicht mitwählt, bekommt `nil`: keine Aussage.
+    # 'secondary' wäre selbst eine -- nämlich, dass die Hauptlizenz woanders
+    # liegt. Das Abzeichen bleibt dabei leer (das Frontend zeigt nur 'primary'
+    # und 'secondary' an), und der Filter „nur Zusatzlizenzen" findet die Zeile
+    # nicht mehr: Er dient der Prüfung der Erst-/Zweitlizenz-Zuordnung, und ein
+    # abgelehnter Antrag gehört dort nicht hinein. Ebenso die CSV-Ausfuhr, aus
+    # der abgerechnet und an den Landesverband gemeldet wird.
+    #
+    # Der Basis-Status dieser Zeile ist schon ermittelt und steht als
+    # `base_status_id` daneben. Ihn hier ein zweites Mal herzuleiten hieße, dass
+    # Abzeichen und Statusspalte derselben Zeile auseinanderlaufen können, wenn
+    # sich eine der beiden Herleitungen je ändert.
+    def license_type(player_data, current_lic, all_season_leagues, team_league_id_map)
+      return nil unless License::ACTIVE_STATUSES.include?(player_data[:team_license][:base_status_id].to_i)
 
-      lics = Array(player_lics).select do |l|
+      lics = Array(player_data[:licenses]).select do |l|
         team_league_id_map.key?(l['team_id'].to_i) && active_license?(l)
       end
 
@@ -205,7 +215,19 @@ module Admin
       # erteilt oder beantragt, und mehr weiß dieser Aufruf nicht.
       return 'primary' if primary.nil?
 
-      primary.fetch('id', current_lic['id']) == current_lic['id'] ? 'primary' : 'secondary'
+      # Über die Kennung, sonst über die Gleichheit des Eintrags selbst: Vorher
+      # stand im Vergleich ein Vorgabewert (`fetch('id', current_lic['id'])`),
+      # der jede Zeile eines Spielers still zur Hauptlizenz machte, sobald die
+      # Gewinnerin keine Kennung trug. Alle Schreiber setzen heute eine, im
+      # Altbestand ist das nicht garantiert -- und zwei Lizenzen desselben
+      # Spielers können Feld für Feld gleich aussehen, ein Wertvergleich taugt
+      # dafür also nicht.
+      if primary.equal?(current_lic) ||
+         (primary['id'].present? && primary['id'] == current_lic['id'])
+        'primary'
+      else
+        'secondary'
+      end
     end
 
     def active_license?(license)

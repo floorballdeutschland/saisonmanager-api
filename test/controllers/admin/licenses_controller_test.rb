@@ -171,10 +171,12 @@ module Admin
                    'die einzige erteilte Lizenz des Spielers ist seine Hauptlizenz'
     end
 
-    # Seit die Uebersicht abgelehnte Antraege zeigt, traegt die Zeile das
-    # Etikett selbst -- "Hauptlizenz" waere hier eine Zusage, die der Status
-    # gerade widerruft.
-    test 'ein abgelehnter Antrag ist keine Hauptlizenz' do
+    # Seit die Uebersicht abgelehnte Antraege zeigt, braucht die Zeile ein
+    # Etikett. Es bleibt LEER: "Hauptlizenz" waere eine Zusage, die der Status
+    # gerade widerruft, "Zusatzlizenz" die Aussage, die Hauptlizenz liege
+    # woanders. Daran haengen der Filter "nur Zusatzlizenzen" und die
+    # CSV-Ausfuhr, aus der abgerechnet wird.
+    test 'ein abgelehnter Antrag traegt kein Etikett' do
       rl_league = create(:league, game_operation: @go1, season_id: '18', league_class_id: 'rl')
       rl_team   = create(:team, league: rl_league, club: @club1)
       vl_league = create(:league, game_operation: @go1, season_id: '18', league_class_id: 'vl')
@@ -189,8 +191,13 @@ module Admin
       get '/api/v2/admin/licenses', params: { season_id: '18' }
       rows = JSON.parse(response.body)
 
-      assert_equal 'secondary', rows.find { |r| r['team_id'] == rl_team.id }['license_type']
-      assert_equal 'primary',   rows.find { |r| r['team_id'] == vl_team.id }['license_type']
+      rl_row = rows.find { |r| r['team_id'] == rl_team.id }
+      vl_row = rows.find { |r| r['team_id'] == vl_team.id }
+      refute_nil rl_row, 'Aufbau: der abgelehnte Antrag steht in der Liste'
+      refute_nil vl_row
+
+      assert_nil rl_row['license_type']
+      assert_equal 'primary', vl_row['license_type']
     end
 
     # Massgeblich ist der Status OHNE Sperre: Eine gesperrte Lizenz ist erteilt.
@@ -259,7 +266,7 @@ module Admin
     # Der Umkehrschluss zum abgelehnten Antrag: Ist er die einzige Lizenz des
     # Spielers, darf die Abkuerzung "eine Lizenz = Hauptlizenz" ihn nicht doch
     # noch dazu machen.
-    test 'ein abgelehnter Antrag ist auch als einzige Lizenz keine Hauptlizenz' do
+    test 'ein abgelehnter Antrag bleibt auch als einzige Lizenz ohne Etikett' do
       rl_league = create(:league, game_operation: @go1, season_id: '18', league_class_id: 'rl')
       rl_team   = create(:team, league: rl_league, club: @club1)
       create(:player, with_licenses: [{ team: rl_team, status: License::DENIED, season_id: '18' }])
@@ -268,7 +275,23 @@ module Admin
       get '/api/v2/admin/licenses', params: { season_id: '18' }
 
       row = JSON.parse(response.body).find { |r| r['team_id'] == rl_team.id }
-      assert_equal 'secondary', row['license_type']
+      refute_nil row, 'Aufbau: der abgelehnte Antrag steht in der Liste'
+      assert_nil row['license_type']
+    end
+
+    # Eine zurueckgezogene Lizenz ist genauso wenig eine Spielberechtigung wie
+    # ein abgelehnter Antrag; auf Produktion sind es sogar die haeufigeren.
+    test 'eine zurueckgezogene Lizenz traegt kein Etikett' do
+      rl_league = create(:league, game_operation: @go1, season_id: '18', league_class_id: 'rl')
+      rl_team   = create(:team, league: rl_league, club: @club1)
+      create(:player, with_licenses: [{ team: rl_team, status: License::WITHDRAWN, season_id: '18' }])
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses', params: { season_id: '18' }
+
+      row = JSON.parse(response.body).find { |r| r['team_id'] == rl_team.id }
+      refute_nil row, 'Aufbau: die zurueckgezogene Lizenz steht in der Liste'
+      assert_nil row['license_type']
     end
 
     # -------------------------------------------------------------------------
