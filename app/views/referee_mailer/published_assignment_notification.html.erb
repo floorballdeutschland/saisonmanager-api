@@ -17,10 +17,10 @@
   <tr><td><strong>Halle</strong></td><td><%= @game.game_day.arena.name %></td></tr>
   <% end %>
   <% if @partner.present? %>
-  <tr><td><strong>Schiri-Partner/in</strong></td><td><%= @partner.vorname %> <%= @partner.nachname %></td></tr>
+  <tr><td><strong>Schiri-Partner*in</strong></td><td><%= @partner.vorname %> <%= @partner.nachname %></td></tr>
   <% end %>
   <% if @coach.present? %>
-  <tr><td><strong>Schiedsrichtercoach/in</strong></td><td><%= @coach.vorname %> <%= @coach.nachname %></td></tr>
+  <tr><td><strong>Schiedsrichtercoach*in</strong></td><td><%= @coach.vorname %> <%= @coach.nachname %></td></tr>
   <% end %>
   <% if @club_contact_email.present? %>
   <tr><td><strong>Kontakt Ausrichter</strong></td><td><a href="mailto:<%= @club_contact_email %>"><%= @club_contact_email %></a></td></tr>

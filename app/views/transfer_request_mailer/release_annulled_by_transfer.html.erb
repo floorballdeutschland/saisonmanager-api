@@ -1,16 +1,17 @@
+<% wording = PlayerWording.for(@transfer_request.player) %>
 <h2>Spielerfreigabe-Antrag beendet</h2>
 
 <p>Hallo,</p>
 
 <p>
-  der folgende Spielerfreigabe-Antrag ist beendet, weil der Spieler in einen anderen Verein
-  transferiert wurde. Ein Vereinswechsel schließt alle bestehenden Zugehörigkeiten des Spielers,
+  der folgende Spielerfreigabe-Antrag ist beendet, weil <%= wording.nominative %> in einen anderen Verein
+  transferiert wurde. Ein Vereinswechsel schließt alle bestehenden Zugehörigkeiten <%= wording.genitive %>,
   auch Zweitspielrechte und Freigaben. Über eine Freigabe entscheidet ab jetzt der neue
   Heimatverein.
 </p>
 
 <p>
-  <strong>Spieler:</strong> <%= @transfer_request.player.first_name %> <%= @transfer_request.player.last_name %><br>
+  <strong><%= wording.noun %>:</strong> <%= @transfer_request.player.first_name %> <%= @transfer_request.player.last_name %><br>
   <strong>Beantragte Freigabe für:</strong> <%= @transfer_request.requesting_club.name %><br>
   <strong>Bisheriger Heimatverein:</strong> <%= @transfer_request.former_club.name %><br>
   <strong>Neuer Heimatverein:</strong> <%= @transfer.requesting_club.name %>

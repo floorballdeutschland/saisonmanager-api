@@ -1,21 +1,22 @@
+<% wording = PlayerWording.for(@transfer_request.player) %>
 <h2>Zusatzlizenz/Freigabe entzogen durch Transfer</h2>
 
 <p>Hallo,</p>
 
 <p>
-  der folgende Spieler, der bei Ihrem Verein eine Zusatzlizenz oder Spielerfreigabe hatte,
+  <%= wording.following_nominative %>, <%= wording.relative_nominative %> bei Ihrem Verein eine Zusatzlizenz oder Spielerfreigabe hatte,
   hat zu einem anderen Verein gewechselt:
 </p>
 
 <p>
-  <strong>Spieler:</strong> <%= @transfer_request.player.first_name %> <%= @transfer_request.player.last_name %><br>
+  <strong><%= wording.noun %>:</strong> <%= @transfer_request.player.first_name %> <%= @transfer_request.player.last_name %><br>
   <strong>Neuer Verein:</strong> <%= @transfer_request.requesting_club.name %>
 </p>
 
 <p>
-  Alle Lizenzen des Spielers wurden mit dem Transfer auf „ungültig wg. Transfer" gesetzt.
+  Alle Lizenzen <%= wording.genitive %> wurden mit dem Transfer auf „ungültig wg. Transfer" gesetzt.
   Falls Sie weiterhin eine Zusatzlizenz oder Spielerfreigabe benötigen, müsste diese beim
-  neuen Heimverein des Spielers neu beantragt werden.
+  neuen Heimverein <%= wording.genitive %> neu beantragt werden.
 </p>
 
 <p>

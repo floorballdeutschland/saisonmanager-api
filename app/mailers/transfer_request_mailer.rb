@@ -47,7 +47,8 @@ class TransferRequestMailer < ApplicationMailer
       subject: "Neue#{release?(transfer_request) ? ' Spielerfreigabe-Anfrage' : ' Transferanfrage'}: #{player_name(transfer_request)}",
       placeholders: {
         request_noun: release?(transfer_request) ? 'Spielerfreigabe-Anfrage' : 'Transferanfrage',
-        player_name: player_name(transfer_request)
+        player_name: player_name(transfer_request),
+        player_noun: player_noun(transfer_request)
       }
     )
   end
@@ -67,7 +68,8 @@ class TransferRequestMailer < ApplicationMailer
       subject: "#{request_noun(transfer_request)} zur Genehmigung: #{player_name(transfer_request)}",
       placeholders: {
         request_noun: request_noun(transfer_request),
-        player_name: player_name(transfer_request)
+        player_name: player_name(transfer_request),
+        player_noun: player_noun(transfer_request)
       }
     )
   end
@@ -87,7 +89,8 @@ class TransferRequestMailer < ApplicationMailer
       subject: "#{request_noun(transfer_request)} liegt beim Landesverband: #{player_name(transfer_request)}",
       placeholders: {
         request_noun: request_noun(transfer_request),
-        player_name: player_name(transfer_request)
+        player_name: player_name(transfer_request),
+        player_noun: player_noun(transfer_request)
       }
     )
   end
@@ -102,7 +105,8 @@ class TransferRequestMailer < ApplicationMailer
       subject: "#{request_noun(transfer_request)} abgelehnt: #{player_name(transfer_request)}",
       placeholders: {
         request_noun: request_noun(transfer_request),
-        player_name: player_name(transfer_request)
+        player_name: player_name(transfer_request),
+        player_noun: player_noun(transfer_request)
       }
     )
   end
@@ -124,7 +128,8 @@ class TransferRequestMailer < ApplicationMailer
       subject: "#{subject_prefix}: Deine Zustimmung wird benoetigt - #{player_name(transfer_request)}",
       placeholders: {
         request_noun: subject_prefix,
-        player_name: player_name(transfer_request)
+        player_name: player_name(transfer_request),
+        player_noun: player_noun(transfer_request)
       }
     )
   end
@@ -150,6 +155,7 @@ class TransferRequestMailer < ApplicationMailer
       placeholders: {
         request_noun: request_noun(transfer_request),
         player_name: player_name(transfer_request),
+        player_noun: player_noun(transfer_request),
         club_name: transfer_request.requesting_club.name
       }
     )
@@ -165,10 +171,11 @@ class TransferRequestMailer < ApplicationMailer
 
     templated_mail(
       to: recipients,
-      subject: "#{request_noun(transfer_request)} abgelehnt durch Spieler: #{player_name(transfer_request)}",
+      subject: "#{request_noun(transfer_request)} abgelehnt durch #{player_noun(transfer_request)}: #{player_name(transfer_request)}",
       placeholders: {
         request_noun: request_noun(transfer_request),
-        player_name: player_name(transfer_request)
+        player_name: player_name(transfer_request),
+        player_noun: player_noun(transfer_request)
       }
     )
   end
@@ -213,6 +220,7 @@ class TransferRequestMailer < ApplicationMailer
       subject: "Transfer genehmigt, Vollzug am #{effective_date(transfer_request)}: #{player_name(transfer_request)}",
       placeholders: {
         player_name: player_name(transfer_request),
+        player_noun: player_noun(transfer_request),
         effective_date: effective_date(transfer_request)
       }
     )
@@ -236,7 +244,8 @@ class TransferRequestMailer < ApplicationMailer
       subject: "#{subject}: #{player_name(transfer_request)}",
       placeholders: {
         completion_noun: subject,
-        player_name: player_name(transfer_request)
+        player_name: player_name(transfer_request),
+        player_noun: player_noun(transfer_request)
       }
     )
   end
@@ -295,6 +304,7 @@ class TransferRequestMailer < ApplicationMailer
       subject: "Spielerfreigabe zurueckgezogen: #{player_name(transfer_request)}",
       placeholders: {
         player_name: player_name(transfer_request),
+        player_noun: player_noun(transfer_request),
         revocation_reason: transfer_request.revocation_reason.to_s
       }
     )
@@ -324,9 +334,10 @@ class TransferRequestMailer < ApplicationMailer
 
     templated_mail(
       to: recipients,
-      subject: "Spielerfreigabe-Antrag beendet, Spieler transferiert: #{player_name(transfer_request)}",
+      subject: "Spielerfreigabe-Antrag beendet, #{player_noun(transfer_request)} transferiert: #{player_name(transfer_request)}",
       placeholders: {
         player_name: player_name(transfer_request),
+        player_noun: player_noun(transfer_request),
         club_name: transfer_request.requesting_club.name,
         new_club_name: transfer.requesting_club.name
       }
@@ -342,7 +353,10 @@ class TransferRequestMailer < ApplicationMailer
     templated_mail(
       to: recipients,
       subject: "Zusatzlizenz/Freigabe entzogen durch Transfer: #{player_name(transfer_request)}",
-      placeholders: { player_name: player_name(transfer_request) }
+      placeholders: {
+        player_name: player_name(transfer_request),
+        player_noun: player_noun(transfer_request)
+      }
     )
   end
 
@@ -432,6 +446,13 @@ class TransferRequestMailer < ApplicationMailer
 
   def player_name(tr)
     "#{tr.player.first_name} #{tr.player.last_name}"
+  end
+
+  # Die Bezeichnung der Person fuer Betreff und Platzhalter. Die Vorlagentexte
+  # selbst greifen direkt auf PlayerWording zu, dort werden mehr Formen als das
+  # nackte Nomen gebraucht (Artikel, Genitiv, Relativpronomen).
+  def player_noun(tr)
+    PlayerWording.for(tr.player).noun
   end
 
   def release?(tr)

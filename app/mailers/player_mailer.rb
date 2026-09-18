@@ -46,6 +46,7 @@ class PlayerMailer < ApplicationMailer
       subject: "Expresslizenz beantragt: #{player.first_name} #{player.last_name} (#{team.name})",
       placeholders: {
         player_name: "#{player.first_name} #{player.last_name}",
+        player_noun: PlayerWording.for(player).noun,
         team_name: team.name
       }
     )

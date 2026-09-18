@@ -148,7 +148,12 @@ module Admin
       end
       assert_response :success
       subjects = ActionMailer::Base.deliveries.map(&:subject)
-      assert(subjects.any? { |subject| subject.include?('Spielerfreigabe-Antrag beendet, Spieler transferiert') },
+      # Der Betreff benennt die Person nach ihrem Geschlecht (PlayerWording).
+      # Deshalb hier nur der geschlechtsneutrale Teil: Sonst haengt der Test am
+      # Vorgabewert der Factory, und ein Profil mit „W" liesse ihn mit „keine
+      # Mail zum beendeten Freigabeantrag" fehlschlagen -- also mit einer
+      # Aussage ueber den Versand statt ueber den Wortlaut.
+      assert(subjects.any? { |subject| subject.include?('Spielerfreigabe-Antrag beendet,') && subject.include?('transferiert') },
              "keine Mail zum beendeten Freigabeantrag, verschickt wurden: #{subjects.inspect}")
     end
 
