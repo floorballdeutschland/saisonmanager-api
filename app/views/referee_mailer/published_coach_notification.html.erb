@@ -1,8 +1,8 @@
-<h2>Ansetzung als Schiedsrichtercoach/in</h2>
+<h2>Ansetzung als Schiedsrichtercoach*in</h2>
 
 <p>Hallo <%= @coach.vorname %>,</p>
 
-<p>du bist als Schiedsrichtercoach/in für folgendes Spiel angesetzt:</p>
+<p>du bist als Schiedsrichtercoach*in für folgendes Spiel angesetzt:</p>
 
 <table>
   <tr><td><strong>Datum</strong></td><td><%= @game.game_day.date %></td></tr>
@@ -17,7 +17,7 @@
   <tr><td><strong>Halle</strong></td><td><%= @game.game_day.arena.name %></td></tr>
   <% end %>
   <% if @official_names.present? %>
-  <tr><td><strong>Schiedsrichter/innen</strong></td><td><%= @official_names %></td></tr>
+  <tr><td><strong>Schiedsrichter*innen</strong></td><td><%= @official_names %></td></tr>
   <% end %>
   <% if @club_contact_email.present? %>
   <tr><td><strong>Kontakt Ausrichter</strong></td><td><a href="mailto:<%= @club_contact_email %>"><%= @club_contact_email %></a></td></tr>
