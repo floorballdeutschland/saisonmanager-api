@@ -70,6 +70,38 @@ class GameDay < ApplicationRecord
     GameDay.where(arena_id: arena_id, date: date)
   end
 
+  # --- Bestätigungsfenster der Gastmannschaften -------------------------------
+  #
+  # Jede Gastmannschaft bestätigt einen Spieltag eigenständig als ordnungsgemäß
+  # durchgeführt oder beanstandet ihn (GameDayTeamConfirmation). Bleibt sie stumm,
+  # gilt der Spieltag nach TEAM_AUTO_CONFIRM_HOURS als bestätigt.
+  TEAM_AUTO_CONFIRM_HOURS = 48
+
+  # Ende dieses Fensters, oder nil, wenn es sich aus dem Datensatz nicht ergibt.
+  #
+  # Gezählt wird ab dem SPÄTEREN von zwei Zeitpunkten: dem Ende des Spieltags und
+  # der Benachrichtigung der Gastmannschaften. Vorher zählte allein das Ende des
+  # Spieltags. Die Mail an die Gastmannschaften geht aber erst raus, wenn der
+  # Ausrichter den Spielbericht abschließt -- tut er das zwei Tage später, war das
+  # Fenster beim Eintreffen der Mail schon zu und der Spieltag automatisch
+  # bestätigt, ohne dass die Gastmannschaft je eine Gelegenheit hatte.
+  #
+  # Ein spät nachgeholter Abschluss öffnet das Fenster damit erneut. Das ist
+  # gewollt: Vor dem Abschluss kann eine Gastmannschaft die Angaben des
+  # Ausrichters nicht beurteilen, weil es sie noch nicht gibt.
+  #
+  # Wirft ArgumentError/TypeError bei unlesbarem `date` (Textspalte, s. oben). Die
+  # Aufrufer fangen das und protokollieren es, statt hier still nil zu liefern --
+  # ein unlesbares Datum ist ein Datenfehler und keine leere Angabe.
+  def team_confirmation_deadline
+    starts = []
+    starts << Date.parse(date).to_datetime.end_of_day.to_time if date.present?
+    starts << team_confirmation_notified_at.to_time if team_confirmation_notified_at.present?
+    return nil if starts.empty?
+
+    starts.max + TEAM_AUTO_CONFIRM_HOURS.hours
+  end
+
   def hosting_club
     club.name if club.present?
   end

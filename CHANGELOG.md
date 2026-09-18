@@ -9,6 +9,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Die Bestätigungsfrist der Gastmannschaften lief, bevor sie davon erfuhren**: Ohne Rückmeldung gilt ein Spieltag nach 48 Stunden automatisch als bestätigt. Gezählt wurde ab dem Ende des Spieltags, die Gastmannschaften erfahren von den Antworten des Ausrichters aber erst mit dem Abschluss des Spielberichts. Wurde der erst zwei Tage später geschlossen, war das Fenster im selben Augenblick zu, in dem die Benachrichtigung ankam. Gezählt wird jetzt ab dem späteren der beiden Zeitpunkte, also ab dem Ende des Spieltags oder ab der Benachrichtigung. Ein spät nachgeholter Abschluss öffnet das Fenster damit erneut, und zwar bewusst: Vor dem Abschluss gibt es die Angaben des Ausrichters noch nicht, eine Gastmannschaft kann ihnen also gar nicht widersprechen. Für die Schiedsrichter bleibt die Frist unverändert am Ende des Spieltags, sie bekommen ihren Portal-Hinweis ebenfalls beim Abschluss. Die Spieltagsliste der Vereine liefert das Fristende jetzt mit (`confirmable_until`), damit die Seite es anzeigen kann, statt weiter pauschal 48 Stunden ab Spieltag zu nennen; die Anzeige selbst folgt im Frontend.
+
+### Neu
+
+- **Gastmannschaften bekommen die Spieltagscheckliste des Ausrichters per E-Mail**: Schließt der Ausrichter den Spielbericht ab, gehen seine Antworten auf die Spieltagscheckliste jetzt auch an die Gastmannschaften, zusammen mit der Frist und dem Weg zum Portal „Meine Auswärtsspieltage". Bisher war für sie überhaupt kein Versand vorgesehen: Der Ausrichterverein bekam seine Bestätigung mit Einspruchs-Link, das Gespann den Portal-Hinweis, die Gastmannschaft nichts. Sie musste von selbst ins Portal schauen, während ihre Frist ablief. Anlass war ein Pokalspiel am 13.09.2026, in dem der Ausrichter die Frage „Die Einladung zum Spiel ist dem Gastteam zugegangen" mit Ja beantwortet hatte, ohne eine Einladung verschickt zu haben. Die Gastmannschaft erfuhr davon nichts und fand den Spieltag zwei Tage später automatisch bestätigt vor. Die Mail führt alle Antworten des Ausrichters auf, nicht nur die verneinten, denn ein falsches Ja ist genau der Fall, dem nur die Gastmannschaft widersprechen kann. Empfänger sind die Vereinspost der Gastmannschaft (Kontaktadresse und die nicht abgewählten Vereinsmanager) sowie deren Teammanager; Teammanager, die Info-Mails abbestellt haben, bleiben außen vor, die Vereinspost geht immer raus. Bei einem Turnierspieltag wird jede Gastmannschaft einzeln angeschrieben. Betreff und Inhalt nennen die Checkliste ausdrücklich: Die Mail an den Ausrichter heißt „Spielbericht Nr. X eingereicht" und war im Protokoll der Ausgangsmails nicht als Checklisten-Mail zu erkennen, eine Suche danach ging ins Leere, obwohl die Mail verschickt worden war. Wie alle Vorlagen ist auch diese unter Verwaltung → E-Mail-Vorlagen pflegbar.
+
 ## [1.116.1] - 2026-09-17
 
 ### Behoben

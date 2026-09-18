@@ -1,12 +1,11 @@
 class TeamGameDayConfirmationsController < ApplicationController
   before_action :authenticate_user
 
-  AUTO_CONFIRM_HOURS = 48
-
   # GET /api/v2/user/team_game_days
   # Spieltage, an denen der/die Benutzer:in mindestens eine Gastmannschaft (Team
   # eines Gastvereins) als TM oder VM verantwortet. Jede Gastmannschaft bestätigt
-  # eigenständig; bleibt die Bestätigung 48 h aus, gilt sie automatisch als erteilt.
+  # eigenständig; bleibt die Bestätigung aus, gilt sie nach Ablauf der Frist
+  # automatisch als erteilt (GameDay#team_confirmation_deadline).
   def index
     return render json: [] if managed_team_ids.empty?
 
@@ -159,17 +158,29 @@ class TeamGameDayConfirmationsController < ApplicationController
     end.max
   end
 
+  # Die Frist selbst steht am Spieltag (GameDay#team_confirmation_deadline): Sie
+  # zählt ab dem Ende des Spieltags ODER ab der Benachrichtigung der
+  # Gastmannschaften, je nachdem, was später liegt.
   def auto_confirmed?(game_day)
     return false if game_day.date.blank?
 
-    date = Date.parse(game_day.date)
-    date.to_datetime.end_of_day + AUTO_CONFIRM_HOURS.hours < Time.current
+    deadline = game_day.team_confirmation_deadline
+    deadline.present? && deadline < Time.current
   rescue ArgumentError, TypeError => e
     Rails.logger.error(
       "[TeamGameDayConfirmations] auto_confirmed? failed for game_day_id=#{game_day.id} " \
       "date=#{game_day.date.inspect}: #{e.class}: #{e.message}"
     )
     false
+  end
+
+  # Ende der Frist für die Anzeige, nil wenn nicht bestimmbar. Die Seite nennt
+  # die Frist im Text, darf sie also nicht selbst ausrechnen -- sonst behauptet
+  # sie 48 h ab Spieltag, während der Server ab der Benachrichtigung zählt.
+  def confirmable_until(game_day)
+    game_day.team_confirmation_deadline
+  rescue ArgumentError, TypeError
+    nil
   end
 
   # Spieltagscheckliste des LV der Liga/des Spielverbunds (nicht des Ausrichtervereins).
@@ -227,6 +238,7 @@ class TeamGameDayConfirmationsController < ApplicationController
       club: game_day.club&.name,
       auto_confirmed: auto_confirmed?(game_day),
       confirmable_from: last_game_start(game_day)&.iso8601,
+      confirmable_until: confirmable_until(game_day)&.iso8601,
       # Bestätigung nur nötig, wenn der LV der Liga eine Checkliste hinterlegt hat.
       checklist_required: items.any?,
       checklist_items: items.map { |i| { id: i.id, question: i.question } },

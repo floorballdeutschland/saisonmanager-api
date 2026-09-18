@@ -32,6 +32,15 @@ module MailerHelper
     "#{value.round(unit.zero? ? 0 : 1).to_s.sub('.', ',')} #{units[unit]}"
   end
 
+  # Zeitpunkt einer Frist in der Zeitzone des Spielbetriebs. Der Server läuft auf
+  # UTC, die Fristen gelten aber in deutscher Zeit – ohne Umrechnung nennt die
+  # Mail im Sommer eine zwei Stunden zu frühe Frist.
+  def format_deadline(value)
+    return '' if value.blank?
+
+    value.in_time_zone('Europe/Berlin').strftime('%d.%m.%Y, %H:%M Uhr')
+  end
+
   # Spieltagsdatum für die Anzeige. Nicht I18n.l, weil game_days.date eine
   # Textspalte ist: I18n.l auf einem String wirft ArgumentError („Object must be
   # a Date, DateTime or Time object"), die Vorlage konnte damit überhaupt nicht
