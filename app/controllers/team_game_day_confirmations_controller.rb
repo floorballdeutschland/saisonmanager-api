@@ -161,9 +161,12 @@ class TeamGameDayConfirmationsController < ApplicationController
   # Die Frist selbst steht am Spieltag (GameDay#team_confirmation_deadline): Sie
   # zählt ab dem Ende des Spieltags ODER ab der Benachrichtigung der
   # Gastmannschaften, je nachdem, was später liegt.
+  # Kein Riegel auf ein leeres Datum: Ein Spieltag ohne Datum, dessen
+  # Gastmannschaften aber benachrichtigt wurden, hat eine Frist -- die aus der
+  # Benachrichtigung. Mit dem Riegel gab `confirmable_until` sie aus, waehrend
+  # `auto_confirmed` auf immer `false` stand, die Liste kuendigte also eine
+  # Frist an, die der Server nie anwandte.
   def auto_confirmed?(game_day)
-    return false if game_day.date.blank?
-
     deadline = game_day.team_confirmation_deadline
     deadline.present? && deadline < Time.current
   rescue ArgumentError, TypeError => e

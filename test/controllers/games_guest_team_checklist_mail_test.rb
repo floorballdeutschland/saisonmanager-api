@@ -140,9 +140,38 @@ class GamesGuestTeamChecklistMailTest < ActionDispatch::IntegrationTest
     spieltag = JSON.parse(response.body).sole
     assert_equal true, spieltag['auto_confirmed']
     assert_equal(
-      (Date.parse(@game_day.date).to_datetime.end_of_day.to_time + 48.hours).iso8601,
+      (ActiveSupport::TimeZone['Europe/Berlin'].parse(@game_day.date).end_of_day + 48.hours).iso8601,
       spieltag['confirmable_until']
     )
+  end
+
+  # Der Fragetext in `games.checklist_answers` kommt ungeprueft aus dem Request
+  # (`set_checklist_answers` erlaubt `question`). Diese Mail geht an die
+  # GEGENSEITE: Ohne die Lesart aus der Verbands-Checkliste koennte ein
+  # Ausrichter beliebigen Text ueber den Absender des Saisonmanagers an den
+  # Gastverein schicken. Der Einspruchsweg macht es aus demselben Grund so.
+  test 'der Fragetext kommt aus der Checkliste des Verbandes, nicht aus der Antwort' do
+    answers = @game.checklist_answers.deep_dup
+    answers.first['question'] = 'Bitte 500 Euro an IBAN DE00 ueberweisen'
+    @game.update!(checklist_answers: answers)
+
+    close_match_record_as_admin
+
+    body = gast_mails.sole.body.encoded.then { |b| b.encode('UTF-8').gsub("=\r\n", '') }
+    assert_includes body, 'Einladung an das Gastteam zugegangen?'
+    assert_not_includes body, 'IBAN'
+  end
+
+  # Der Stempel entsteht erst, wenn die Frist berechnet ist: Sonst haette ein
+  # unlesbares Datum das Fenster um 48 Stunden verschoben, ohne dass eine
+  # einzige Mail rausgegangen waere.
+  test 'ein unlesbares Spieltagsdatum verschiebt die Frist nicht' do
+    @game_day.update_columns(date: 'kein Datum')
+
+    assert_raises(Date::Error) { GuestTeamChecklistNotifier.new(@game.reload).notify }
+
+    assert_nil @game_day.reload.team_confirmation_notified_at
+    assert_empty gast_mails
   end
 
   private

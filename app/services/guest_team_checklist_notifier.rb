@@ -39,24 +39,55 @@ class GuestTeamChecklistNotifier
   # deshalb mehrfach – wie beim Portal-Hinweis an die Schiris.
   def notify
     return 0 if @game_day.nil?
-    return 0 unless checklist?
 
-    answers = @game.checklist_answers || []
+    items = checklist_items
+    return 0 if items.empty?
+
+    answers = answers_for(items)
     return 0 if answers.empty?
 
     verteiler = recipients_by_team
     return 0 if verteiler.empty?
 
-    @game_day.update_column(:team_confirmation_notified_at, Time.current)
-    deadline = @game_day.team_confirmation_deadline
+    # Frist BERECHNEN, dann festschreiben: Ein unlesbares Spieltagsdatum wirft
+    # hier, und dann ist nichts gestempelt und nichts verschickt. In der anderen
+    # Reihenfolge haette es die Frist um 48 Stunden verschoben, ohne dass eine
+    # einzige Mail rausgegangen waere.
+    jetzt = Time.current
+    deadline = @game_day.team_confirmation_deadline(jetzt)
+    @game_day.update_column(:team_confirmation_notified_at, jetzt)
 
     verteiler.sum { |team, emails| deliver(team, emails, answers, deadline) }
   end
 
   private
 
-  def checklist?
-    @game.state_association&.checklist_items&.any?
+  def checklist_items
+    @game.state_association&.checklist_items.to_a
+  end
+
+  # Die Antworten des Ausrichters, mit dem Fragetext AUS DER CHECKLISTE DES
+  # VERBANDS.
+  #
+  # Nicht aus den gespeicherten Antworten: `GamesController#set_checklist_answers`
+  # uebernimmt `question` ungeprueft aus dem Request. Diese Mail geht an die
+  # Gegenseite, ein Ausrichter koennte darin sonst beliebigen Text ueber den
+  # Absender des Saisonmanagers an den Gastverein schicken. Der Einspruchsweg
+  # liest den Text aus demselben Grund aus der Datenbank
+  # (`_normalized_veto_answers`).
+  #
+  # Fragen ohne Antwort fallen heraus: Legt ein Verband eine Frage nach dem
+  # Abschluss eines Spielberichts an, gibt es zu ihr keine Angabe des
+  # Ausrichters, und eine leere Zeile in der Mail waere eine Behauptung.
+  def answers_for(items)
+    gegeben = (@game.checklist_answers || []).index_by { |a| a['item_id'].to_i }
+
+    items.filter_map do |item|
+      antwort = gegeben[item.id]
+      next if antwort.nil?
+
+      { 'item_id' => item.id, 'question' => item.question, 'answer' => antwort['answer'] }
+    end
   end
 
   def guest_teams

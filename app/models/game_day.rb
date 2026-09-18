@@ -77,6 +77,12 @@ class GameDay < ApplicationRecord
   # gilt der Spieltag nach TEAM_AUTO_CONFIRM_HOURS als bestätigt.
   TEAM_AUTO_CONFIRM_HOURS = 48
 
+  # Die Frist gilt in deutscher Zeit, nicht in der des Servers (UTC). Ohne
+  # Umrechnung endete sie fuer einen Spieltag am 13.09. am 16.09. um 01:59
+  # deutscher Zeit, und genau dieser Zeitpunkt stuende in der Mail an die
+  # Gastmannschaften.
+  TEAM_CONFIRMATION_ZONE = ActiveSupport::TimeZone['Europe/Berlin'].freeze
+
   # Ende dieses Fensters, oder nil, wenn es sich aus dem Datensatz nicht ergibt.
   #
   # Gezählt wird ab dem SPÄTEREN von zwei Zeitpunkten: dem Ende des Spieltags und
@@ -93,10 +99,15 @@ class GameDay < ApplicationRecord
   # Wirft ArgumentError/TypeError bei unlesbarem `date` (Textspalte, s. oben). Die
   # Aufrufer fangen das und protokollieren es, statt hier still nil zu liefern --
   # ein unlesbares Datum ist ein Datenfehler und keine leere Angabe.
-  def team_confirmation_deadline
+  #
+  # `notified_at` ist uebergebbar, damit der Versand die Frist BERECHNEN kann,
+  # bevor er sie festschreibt: Wirft das Datum, ist nichts gestempelt und nichts
+  # verschickt. Andernfalls haette ein unlesbares Datum die Frist um 48 Stunden
+  # verschoben, ohne dass jemand benachrichtigt wurde.
+  def team_confirmation_deadline(notified_at = team_confirmation_notified_at)
     starts = []
-    starts << Date.parse(date).to_datetime.end_of_day.to_time if date.present?
-    starts << team_confirmation_notified_at.to_time if team_confirmation_notified_at.present?
+    starts << Date.parse(date).in_time_zone(TEAM_CONFIRMATION_ZONE).end_of_day if date.present?
+    starts << notified_at if notified_at.present?
     return nil if starts.empty?
 
     starts.max + TEAM_AUTO_CONFIRM_HOURS.hours
