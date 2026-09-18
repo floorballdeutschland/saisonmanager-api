@@ -228,6 +228,49 @@ module Admin
       assert_equal 'secondary', rows.find { |r| r['team_id'] == vl_team.id }['license_type']
     end
 
+    # Die Uebersicht laesst eine fruehere Saison abfragen. Player#full_hash
+    # schneidet die Lizenzen dabei an `Setting.current_min_team` ab, also an den
+    # Mannschafts-IDs der LAUFENDEN Saison -- die Lizenzen der Vorsaison liegen
+    # samt der abgefragten darunter. Die Wahl sieht dann keine einzige Lizenz
+    # und darf daraus nicht schliessen, es gebe keine Hauptlizenz.
+    test 'die Vorsaison-Ansicht unterscheidet Haupt- und Zusatzlizenz weiterhin' do
+      rl_league = create(:league, game_operation: @go1, season_id: '17', league_class_id: 'rl')
+      rl_team   = create(:team, league: rl_league, club: @club1)
+      vl_league = create(:league, game_operation: @go1, season_id: '17', league_class_id: 'vl')
+      vl_team   = create(:team, league: vl_league, club: @club1)
+
+      create(:player, with_licenses: [
+        { team: rl_team, status: License::APPROVED, season_id: '17' },
+        { team: vl_team, status: License::APPROVED, season_id: '17' }
+      ])
+      # Wie auf Produktiv: Die laufende Saison 18 hat eine Schwelle, oberhalb
+      # derer ihre Mannschaften liegen. Alles aus Saison 17 liegt darunter.
+      create(:setting, current_season_id: '18', current_min_team: Team.maximum(:id) + 1)
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses', params: { season_id: '17' }
+      assert_response :success
+      rows = JSON.parse(response.body)
+
+      assert_equal 'primary',   rows.find { |r| r['team_id'] == rl_team.id }['license_type']
+      assert_equal 'secondary', rows.find { |r| r['team_id'] == vl_team.id }['license_type']
+    end
+
+    # Der Umkehrschluss zum abgelehnten Antrag: Ist er die einzige Lizenz des
+    # Spielers, darf die Abkuerzung "eine Lizenz = Hauptlizenz" ihn nicht doch
+    # noch dazu machen.
+    test 'ein abgelehnter Antrag ist auch als einzige Lizenz keine Hauptlizenz' do
+      rl_league = create(:league, game_operation: @go1, season_id: '18', league_class_id: 'rl')
+      rl_team   = create(:team, league: rl_league, club: @club1)
+      create(:player, with_licenses: [{ team: rl_team, status: License::DENIED, season_id: '18' }])
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses', params: { season_id: '18' }
+
+      row = JSON.parse(response.body).find { |r| r['team_id'] == rl_team.id }
+      assert_equal 'secondary', row['license_type']
+    end
+
     # -------------------------------------------------------------------------
     # gf_role — manuelle Erst-/Zweitlizenz-Zuordnung (GF-Erwachsenenbereich)
     # -------------------------------------------------------------------------

@@ -60,8 +60,20 @@ module Admin
       # Diese Liste liest weder Logos noch other_licenses noch das Freigabedatum,
       # daher :light und beide Schalter aus. with_release_dates: false spart eine
       # Abfrage ueber die Spieler ALLER Ligen der Saison.
+      #
+      # only_current_licenses: false, obwohl die Liste je Zeile nur eine Lizenz
+      # zeigt: Der Schalter schneidet in Player#full_hash an
+      # `Setting.current_min_team` ab, also an den Mannschafts-IDs der
+      # LAUFENDEN Saison. Fragt die Uebersicht eine fruehere Saison ab, liegen
+      # deren Lizenzen samt der abgefragten darunter, und license_type saehe
+      # keine einzige -- jede Zeile der Vorsaison trueg dann dasselbe Etikett.
+      # Teuer ist der Verzicht nicht: Der Titel-Block in full_hash (eine Abfrage
+      # je Lizenz und History-Eintrag) haengt am dritten Schalter, den dieser
+      # Weg nicht setzt, und license_type grenzt ueber team_league_id_map
+      # ohnehin auf die abgefragte Saison ein.
       licenses_by_league = League.licenses_for(leagues, team_hash: :light, with_other_licenses: false,
-                                               with_release_dates: false, statuses: LISTED_STATUSES)
+                                               with_release_dates: false, statuses: LISTED_STATUSES,
+                                               only_current_licenses: false)
 
       # Pre-load all license documents for players in these leagues (grouped by
       # [player_id, doc_type] – Dokumente gelten pro Spieler, saisonübergreifend)
@@ -175,23 +187,29 @@ module Admin
     # Eine Zeile, die selbst nicht mitwählt, ist damit 'secondary'. Das ist die
     # richtige Richtung: „Hauptlizenz" ist eine Zusage, „Zusatzlizenz" nicht.
     def license_type(player_lics, current_lic, all_season_leagues, team_league_id_map)
+      return 'secondary' unless active_license?(current_lic)
+
       lics = Array(player_lics).select do |l|
-        team_league_id_map.key?(l['team_id'].to_i) &&
-          License::ACTIVE_STATUSES.include?(LicenseEffectiveStatus.base_status_id(l))
+        team_league_id_map.key?(l['team_id'].to_i) && active_license?(l)
       end
 
-      primary_id = lics
-        .sort_by do |l|
-          league_id = team_league_id_map[l['team_id'].to_i]
-          lg        = all_season_leagues[league_id]
-          # Höchste Liga zuerst; bei gleicher Ligastufe die früher genehmigte.
-          # l['id'] als letzter Tiebreaker, damit die Auswahl bei vollständigem
-          # Gleichstand deterministisch ist (sort_by ist nicht stabil).
-          [League.class_rank(lg&.league_class_id), License.approval_time(l), l['id'].to_s]
-        end
-        .first&.fetch('id', current_lic['id'])
+      primary = lics.min_by do |l|
+        league_id = team_league_id_map[l['team_id'].to_i]
+        lg        = all_season_leagues[league_id]
+        # Höchste Liga zuerst; bei gleicher Ligastufe die früher genehmigte.
+        # l['id'] als letzter Tiebreaker, damit die Auswahl bei vollständigem
+        # Gleichstand deterministisch ist.
+        [League.class_rank(lg&.league_class_id), License.approval_time(l), l['id'].to_s]
+      end
+      # Ohne sichtbare Mitbewerberin bleibt es bei der Zeile selbst: Sie ist
+      # erteilt oder beantragt, und mehr weiß dieser Aufruf nicht.
+      return 'primary' if primary.nil?
 
-      primary_id == current_lic['id'] ? 'primary' : 'secondary'
+      primary.fetch('id', current_lic['id']) == current_lic['id'] ? 'primary' : 'secondary'
+    end
+
+    def active_license?(license)
+      License::ACTIVE_STATUSES.include?(LicenseEffectiveStatus.base_status_id(license))
     end
 
     def license_category_name(category_id)
