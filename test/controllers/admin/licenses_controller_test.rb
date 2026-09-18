@@ -146,6 +146,154 @@ module Admin
       assert_equal 'secondary', row_b['license_type'], 'später genehmigte Lizenz ist Zusatzlizenz'
     end
 
+    # Die Ligaklasse entscheidet zuerst, also gewann vor diesem Test eine tote
+    # Lizenz in der hoeheren Klasse die Wahl -- und die geloeschte Zeile steht
+    # gar nicht in der Liste, der Verband sah nur seine erteilte Lizenz grundlos
+    # als "Zusatzlizenz". Auf Produktiv traf das am 18.09.2026 sieben Spieler.
+    test 'eine gelöschte Lizenz in der höheren Liga nimmt der erteilten die Hauptlizenz nicht' do
+      rl_league = create(:league, game_operation: @go1, season_id: '18', league_class_id: 'rl')
+      rl_team   = create(:team, league: rl_league, club: @club1)
+      vl_league = create(:league, game_operation: @go1, season_id: '18', league_class_id: 'vl')
+      vl_team   = create(:team, league: vl_league, club: @club1)
+
+      create(:player, with_licenses: [
+        { team: rl_team, status: License::DELETED,  season_id: '18' },
+        { team: vl_team, status: License::APPROVED, season_id: '18' }
+      ])
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses', params: { season_id: '18' }
+      assert_response :success
+      rows = JSON.parse(response.body)
+
+      assert_nil rows.find { |r| r['team_id'] == rl_team.id }, 'gelöschte Lizenzen stehen nicht in der Liste'
+      assert_equal 'primary', rows.find { |r| r['team_id'] == vl_team.id }['license_type'],
+                   'die einzige erteilte Lizenz des Spielers ist seine Hauptlizenz'
+    end
+
+    # Seit die Uebersicht abgelehnte Antraege zeigt, braucht die Zeile ein
+    # Etikett. Es bleibt LEER: "Hauptlizenz" waere eine Zusage, die der Status
+    # gerade widerruft, "Zusatzlizenz" die Aussage, die Hauptlizenz liege
+    # woanders. Daran haengen der Filter "nur Zusatzlizenzen" und die
+    # CSV-Ausfuhr, aus der abgerechnet wird.
+    test 'ein abgelehnter Antrag traegt kein Etikett' do
+      rl_league = create(:league, game_operation: @go1, season_id: '18', league_class_id: 'rl')
+      rl_team   = create(:team, league: rl_league, club: @club1)
+      vl_league = create(:league, game_operation: @go1, season_id: '18', league_class_id: 'vl')
+      vl_team   = create(:team, league: vl_league, club: @club1)
+
+      create(:player, with_licenses: [
+        { team: rl_team, status: License::DENIED,   season_id: '18' },
+        { team: vl_team, status: License::APPROVED, season_id: '18' }
+      ])
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses', params: { season_id: '18' }
+      rows = JSON.parse(response.body)
+
+      rl_row = rows.find { |r| r['team_id'] == rl_team.id }
+      vl_row = rows.find { |r| r['team_id'] == vl_team.id }
+      refute_nil rl_row, 'Aufbau: der abgelehnte Antrag steht in der Liste'
+      refute_nil vl_row
+
+      assert_nil rl_row['license_type']
+      assert_equal 'primary', vl_row['license_type']
+    end
+
+    # Massgeblich ist der Status OHNE Sperre: Eine gesperrte Lizenz ist erteilt.
+    # Waehlte die Wahl nach dem aktuellen Status, wanderte das Abzeichen fuer
+    # die Dauer der Sperre auf eine andere Lizenz und danach zurueck.
+    test 'eine gesperrte Lizenz bleibt die Hauptlizenz' do
+      rl_league = create(:league, game_operation: @go1, season_id: '18', league_class_id: 'rl')
+      rl_team   = create(:team, league: rl_league, club: @club1)
+      vl_league = create(:league, game_operation: @go1, season_id: '18', league_class_id: 'vl')
+      vl_team   = create(:team, league: vl_league, club: @club1)
+
+      player = create(:player, with_licenses: [
+        { team: rl_team, status: License::APPROVED, season_id: '18' },
+        { team: vl_team, status: License::APPROVED, season_id: '18' }
+      ])
+      # deep_dup + update!: Eine In-Place-Mutation der JSONB-Spalte markiert sie
+      # nicht als geaendert und wuerde von save! stillschweigend verworfen.
+      licenses = player.licenses.deep_dup
+      licenses.first['history'] << { 'license_status_id' => License::SUSPENDED,
+                                     'created_at' => Time.current.iso8601 }
+      player.update!(licenses: licenses)
+      # Die Sperre selbst: Erst sie faerbt die Zeile in der Liste auf
+      # "gesperrt". Der History-Eintrag darueber ist das, was den aktuellen vom
+      # Basis-Status trennt -- genau die Unterscheidung, die hier zaehlt.
+      PlayerSuspension.create!(player:, team_id: rl_team.id,
+                               valid_from: 1.day.ago.to_date, valid_until: 1.month.from_now.to_date)
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses', params: { season_id: '18' }
+      rows = JSON.parse(response.body)
+
+      rl_row = rows.find { |r| r['team_id'] == rl_team.id }
+      assert_equal License::SUSPENDED, rl_row['license_status_id'], 'Aufbau: die Lizenz ist gesperrt'
+      assert_equal 'primary',   rl_row['license_type']
+      assert_equal 'secondary', rows.find { |r| r['team_id'] == vl_team.id }['license_type']
+    end
+
+    # Die Uebersicht laesst eine fruehere Saison abfragen. Player#full_hash
+    # schneidet die Lizenzen dabei an `Setting.current_min_team` ab, also an den
+    # Mannschafts-IDs der LAUFENDEN Saison -- die Lizenzen der Vorsaison liegen
+    # samt der abgefragten darunter. Die Wahl sieht dann keine einzige Lizenz
+    # und darf daraus nicht schliessen, es gebe keine Hauptlizenz.
+    test 'die Vorsaison-Ansicht unterscheidet Haupt- und Zusatzlizenz weiterhin' do
+      rl_league = create(:league, game_operation: @go1, season_id: '17', league_class_id: 'rl')
+      rl_team   = create(:team, league: rl_league, club: @club1)
+      vl_league = create(:league, game_operation: @go1, season_id: '17', league_class_id: 'vl')
+      vl_team   = create(:team, league: vl_league, club: @club1)
+
+      create(:player, with_licenses: [
+        { team: rl_team, status: License::APPROVED, season_id: '17' },
+        { team: vl_team, status: License::APPROVED, season_id: '17' }
+      ])
+      # Wie auf Produktiv: Die laufende Saison 18 hat eine Schwelle, oberhalb
+      # derer ihre Mannschaften liegen. Alles aus Saison 17 liegt darunter.
+      create(:setting, current_season_id: '18', current_min_team: Team.maximum(:id) + 1)
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses', params: { season_id: '17' }
+      assert_response :success
+      rows = JSON.parse(response.body)
+
+      assert_equal 'primary',   rows.find { |r| r['team_id'] == rl_team.id }['license_type']
+      assert_equal 'secondary', rows.find { |r| r['team_id'] == vl_team.id }['license_type']
+    end
+
+    # Der Umkehrschluss zum abgelehnten Antrag: Ist er die einzige Lizenz des
+    # Spielers, darf die Abkuerzung "eine Lizenz = Hauptlizenz" ihn nicht doch
+    # noch dazu machen.
+    test 'ein abgelehnter Antrag bleibt auch als einzige Lizenz ohne Etikett' do
+      rl_league = create(:league, game_operation: @go1, season_id: '18', league_class_id: 'rl')
+      rl_team   = create(:team, league: rl_league, club: @club1)
+      create(:player, with_licenses: [{ team: rl_team, status: License::DENIED, season_id: '18' }])
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses', params: { season_id: '18' }
+
+      row = JSON.parse(response.body).find { |r| r['team_id'] == rl_team.id }
+      refute_nil row, 'Aufbau: der abgelehnte Antrag steht in der Liste'
+      assert_nil row['license_type']
+    end
+
+    # Eine zurueckgezogene Lizenz ist genauso wenig eine Spielberechtigung wie
+    # ein abgelehnter Antrag; auf Produktion sind es sogar die haeufigeren.
+    test 'eine zurueckgezogene Lizenz traegt kein Etikett' do
+      rl_league = create(:league, game_operation: @go1, season_id: '18', league_class_id: 'rl')
+      rl_team   = create(:team, league: rl_league, club: @club1)
+      create(:player, with_licenses: [{ team: rl_team, status: License::WITHDRAWN, season_id: '18' }])
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses', params: { season_id: '18' }
+
+      row = JSON.parse(response.body).find { |r| r['team_id'] == rl_team.id }
+      refute_nil row, 'Aufbau: die zurueckgezogene Lizenz steht in der Liste'
+      assert_nil row['license_type']
+    end
+
     # -------------------------------------------------------------------------
     # gf_role — manuelle Erst-/Zweitlizenz-Zuordnung (GF-Erwachsenenbereich)
     # -------------------------------------------------------------------------
