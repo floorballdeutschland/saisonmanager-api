@@ -90,7 +90,7 @@ class RefereeAssignmentCalendarTest < ActiveSupport::TestCase
     body = ics(role: :coach, officials: 'Ada Adler, Bo Bauer')
 
     assert_includes body, 'SUMMARY:SR-Coach:'
-    assert_includes body, 'Schiedsrichter/innen: Ada Adler'
+    assert_includes body, 'Schiedsrichter*innen: Ada Adler'
   end
 
   # Stabile UID: Eine erneut verschickte Datei aktualisiert den vorhandenen
@@ -107,8 +107,8 @@ class RefereeAssignmentCalendarTest < ActiveSupport::TestCase
   test 'leere Angaben tauchen nicht als leere Zeilen auf' do
     body = ics
 
-    assert_not_includes body, 'Schiri-Partner/in:'
-    assert_not_includes body, 'Schiedsrichtercoach/in:'
+    assert_not_includes body, 'Schiri-Partner*in:'
+    assert_not_includes body, 'Schiedsrichtercoach*in:'
     assert_not_includes body, 'Kontakt Ausrichter:'
   end
 end

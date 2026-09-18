@@ -240,19 +240,19 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'game_time', description: 'Anpfiff (Startzeit des Spiels)' },
         { key: 'home_team', description: 'Name der Heimmannschaft' },
         { key: 'guest_team', description: 'Name der Gastmannschaft' },
-        { key: 'coach_name', description: 'Name des/der Schiedsrichtercoach/in (leer, falls keine/r angesetzt)' },
+        { key: 'coach_name', description: 'Name des*der Schiedsrichtercoach*in (leer, falls niemand angesetzt)' },
         { key: 'referee_notes', description: 'Zusätzliche Spielinformationen des Ansetzers (leer, falls keine hinterlegt)' }
       ]
     },
     'RefereeMailer#observation_due' => {
       mailer_class: 'RefereeMailer',
       action_name: 'observation_due',
-      description: 'Erinnerung an den angesetzten Schiedsrichtercoach, dass sein Beobachtungsbogen bereitsteht. Geht mit dem Anpfiff raus, damit der Bogen schon während des Spiels aufgeschlagen werden kann. Nur an angesetzte Coaches und nur, solange der Bogen nicht abgegeben ist.',
+      description: 'Erinnerung an den*die angesetzte*n Schiedsrichtercoach*in, dass der Beobachtungsbogen bereitsteht. Geht mit dem Anpfiff raus, damit der Bogen schon während des Spiels aufgeschlagen werden kann. Nur an angesetzte Coaches und nur, solange der Bogen nicht abgegeben ist.',
       default_subject: 'Beobachtungsbogen – {{game_date}} {{home_team}} vs. {{guest_team}}',
       default_from: nil,
       default_reply_to: 'sr-ansetzungen@floorball.de',
       placeholders: [
-        { key: 'first_name', description: 'Vorname des/der Schiedsrichtercoach/in (für die Anrede)' },
+        { key: 'first_name', description: 'Vorname des*der Schiedsrichtercoach*in (für die Anrede)' },
         { key: 'game_date', description: 'Datum des Spieltags' },
         { key: 'game_time', description: 'Anpfiff (Startzeit des Spiels)' },
         { key: 'home_team', description: 'Name der Heimmannschaft' },
@@ -263,13 +263,13 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
     'RefereeMailer#observation_available' => {
       mailer_class: 'RefereeMailer',
       action_name: 'observation_available',
-      description: 'Hinweis an die beobachtete Schiedsrichterin bzw. den beobachteten Schiedsrichter, dass eine neue Beobachtung des Schiedsrichtercoaches vorliegt. Nennt bewusst weder Bewertung noch Text – gelesen wird die Rückmeldung im Portal, wo die Skala danebensteht.',
+      description: 'Hinweis an die*den beobachtete*n Schiedsrichter*in, dass eine neue Beobachtung aus dem Coaching vorliegt. Nennt bewusst weder Bewertung noch Text – gelesen wird die Rückmeldung im Portal, wo die Skala danebensteht.',
       default_subject: 'Neue Beobachtung – {{game_date}} {{home_team}} vs. {{guest_team}}',
       default_from: nil,
       default_reply_to: 'rsk@floorball.de',
       placeholders: [
         { key: 'first_name', description: 'Vorname der beobachteten Person (für die Anrede)' },
-        { key: 'coach_name', description: 'Name des/der Schiedsrichtercoach/in' },
+        { key: 'coach_name', description: 'Name des*der Schiedsrichtercoach*in' },
         { key: 'game_date', description: 'Datum des Spieltags' },
         { key: 'home_team', description: 'Name der Heimmannschaft' },
         { key: 'guest_team', description: 'Name der Gastmannschaft' },
@@ -279,17 +279,17 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
     'RefereeMailer#published_coach_notification' => {
       mailer_class: 'RefereeMailer',
       action_name: 'published_coach_notification',
-      description: 'Veröffentlichte Ansetzung an den/die Schiedsrichtercoach/in, mit Spieltag-Details und dem Termin als Kalenderdatei (.ics) im Anhang. Die Lizenzlisten kommen wenige Tage vor dem Spiel in einer eigenen Mail (RefereeMailer#license_lists_notification) und liegen hier nur bei einer kurzfristigen Ansetzung bei.',
+      description: 'Veröffentlichte Ansetzung an den*die Schiedsrichtercoach*in, mit Spieltag-Details und dem Termin als Kalenderdatei (.ics) im Anhang. Die Lizenzlisten kommen wenige Tage vor dem Spiel in einer eigenen Mail (RefereeMailer#license_lists_notification) und liegen hier nur bei einer kurzfristigen Ansetzung bei.',
       default_subject: 'Schiedsrichtercoach-Ansetzung – {{game_date}} {{home_team}} vs. {{guest_team}}',
       default_from: nil,
       default_reply_to: 'sr-ansetzungen@floorball.de',
       placeholders: [
-        { key: 'first_name', description: 'Vorname des/der Schiedsrichtercoach/in (für die Anrede)' },
+        { key: 'first_name', description: 'Vorname des*der Schiedsrichtercoach*in (für die Anrede)' },
         { key: 'game_date', description: 'Datum des Spieltags' },
         { key: 'game_time', description: 'Anpfiff (Startzeit des Spiels)' },
         { key: 'home_team', description: 'Name der Heimmannschaft' },
         { key: 'guest_team', description: 'Name der Gastmannschaft' },
-        { key: 'officials', description: 'Namen der angesetzten Schiedsrichter/innen' },
+        { key: 'officials', description: 'Namen der angesetzten Schiedsrichter*innen' },
         { key: 'referee_notes', description: 'Zusätzliche Spielinformationen des Ansetzers (leer, falls keine hinterlegt)' }
       ]
     },
@@ -297,7 +297,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       mailer_class: 'RefereeMailer',
       action_name: 'license_lists_notification',
       description: 'Lizenzlisten der beteiligten Mannschaften zu den anstehenden Ansetzungen, gebündelt in einer Mail ' \
-                   'je Schiedsrichter/in bzw. Coach. Läuft wöchentlich in der Nacht Donnerstag → Freitag und deckt die ' \
+                   'je Schiedsrichter*in bzw. Coach. Läuft wöchentlich in der Nacht Donnerstag → Freitag und deckt die ' \
                    'kommenden sieben Tage ab; jeder Link gilt bis zum Tag nach dem jeweiligen Spiel. Achtung: Ein hier ' \
                    'gepflegter Body ersetzt die eingebaute Tabelle und damit die anklickbaren Links, {{game_list}} ' \
                    'liefert die Spiele dann nur als Text (Platzhalterwerte werden im gepflegten Body escaped). Für eine ' \
@@ -325,8 +325,8 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'game_time', description: 'Anpfiff (Startzeit des Spiels)' },
         { key: 'home_team', description: 'Name der Heimmannschaft' },
         { key: 'guest_team', description: 'Name der Gastmannschaft' },
-        { key: 'officials', description: 'Namen der aktuell angesetzten Schiedsrichter/innen' },
-        { key: 'coach_name', description: 'Name des/der Schiedsrichtercoach/in (leer, falls keine/r angesetzt)' },
+        { key: 'officials', description: 'Namen der aktuell angesetzten Schiedsrichter*innen' },
+        { key: 'coach_name', description: 'Name des*der Schiedsrichtercoach*in (leer, falls niemand angesetzt)' },
         { key: 'referee_notes', description: 'Zusätzliche Spielinformationen des Ansetzers (leer, falls keine hinterlegt)' }
       ]
     },
@@ -370,7 +370,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_reply_to: nil,
       placeholders: [
         { key: 'request_noun', description: 'Bezeichnung der Anfrage (Transferanfrage/Spielerfreigabe-Anfrage)' },
-        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler:in)' },
+        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler*in)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' }
       ]
     },
@@ -383,7 +383,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_reply_to: nil,
       placeholders: [
         { key: 'request_noun', description: 'Bezeichnung der Anfrage (Transferanfrage/Spielerfreigabe-Anfrage)' },
-        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler:in)' },
+        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler*in)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' }
       ]
     },
@@ -396,7 +396,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_reply_to: nil,
       placeholders: [
         { key: 'request_noun', description: 'Bezeichnung des Antrags (Transferantrag/Spielerfreigabe-Antrag)' },
-        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler:in)' },
+        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler*in)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' }
       ]
     },
@@ -409,7 +409,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_reply_to: nil,
       placeholders: [
         { key: 'request_noun', description: 'Bezeichnung des Antrags (Transferantrag/Spielerfreigabe-Antrag)' },
-        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler:in)' },
+        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler*in)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' }
       ]
     },
@@ -421,7 +421,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_from: nil,
       default_reply_to: nil,
       placeholders: [
-        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler:in)' },
+        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler*in)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' }
       ]
     },
@@ -434,7 +434,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_from: nil,
       default_reply_to: nil,
       placeholders: [
-        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler:in)' },
+        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler*in)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' },
         { key: 'effective_date', description: 'Wunschdatum des Transfers (TT.MM.JJJJ)' }
       ]
@@ -448,7 +448,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_reply_to: nil,
       placeholders: [
         { key: 'completion_noun', description: 'Abschluss-Bezeichnung (Transfer vollzogen/Spielerfreigabe erteilt)' },
-        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler:in)' },
+        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler*in)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' }
       ]
     },
@@ -463,7 +463,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_from: nil,
       default_reply_to: nil,
       placeholders: [
-        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler:in)' },
+        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler*in)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' },
         { key: 'revocation_reason', description: 'Begründung des Widerrufs' }
       ]
@@ -477,7 +477,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_reply_to: nil,
       placeholders: [
         { key: 'request_noun', description: 'Bezeichnung des Antrags (Transferantrag/Spielerfreigabe-Antrag)' },
-        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler:in)' },
+        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler*in)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' }
       ]
     },
@@ -492,7 +492,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_reply_to: nil,
       placeholders: [
         { key: 'request_noun', description: 'Bezeichnung des Antrags (Transferantrag/Spielerfreigabe-Antrag)' },
-        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler:in)' },
+        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler*in)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' },
         { key: 'club_name', description: 'Name des deaktivierten aufnehmenden Vereins' }
       ]
@@ -507,7 +507,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_from: nil,
       default_reply_to: nil,
       placeholders: [
-        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler:in)' },
+        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler*in)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' },
         { key: 'club_name', description: 'Name des Vereins, der die Freigabe beantragt hatte' },
         { key: 'new_club_name', description: 'Name des neuen Heimatvereins aus dem vollzogenen Transfer' }
@@ -522,7 +522,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_reply_to: nil,
       placeholders: [
         { key: 'request_noun', description: 'Bezeichnung des Antrags (Transferantrag/Spielerfreigabe-Antrag)' },
-        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler:in)' },
+        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler*in)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' }
       ]
     },
@@ -621,7 +621,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_from: nil,
       default_reply_to: nil,
       placeholders: [
-        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler:in)' },
+        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler*in)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' },
         { key: 'team_name', description: 'Name der Mannschaft' }
       ]

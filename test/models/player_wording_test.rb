@@ -29,7 +29,7 @@ class PlayerWordingTest < ActiveSupport::TestCase
     %w[D].push(nil, '', '  ').each do |gender|
       w = PlayerWording.new(gender)
 
-      assert_equal 'Spieler:in', w.noun, "gender=#{gender.inspect}"
+      assert_equal 'Spieler*in', w.noun, "gender=#{gender.inspect}"
       assert_equal 'die spielende Person', w.nominative, "gender=#{gender.inspect}"
       assert_equal 'der spielenden Person', w.genitive, "gender=#{gender.inspect}"
     end
@@ -40,7 +40,7 @@ class PlayerWordingTest < ActiveSupport::TestCase
   test 'Kleinschreibung zaehlt, unbekannte Werte fallen auf neutral' do
     assert_equal 'Spielerin', PlayerWording.new('w').noun
     assert_equal 'der Spieler', PlayerWording.new(' m ').nominative
-    assert_equal 'Spieler:in', PlayerWording.new('unbekannt').noun
+    assert_equal 'Spieler*in', PlayerWording.new('unbekannt').noun
   end
 
   test 'capitalized macht nur den ersten Buchstaben gross' do
@@ -52,6 +52,6 @@ class PlayerWordingTest < ActiveSupport::TestCase
     player = create(:player, gender: 'w')
 
     assert_equal 'Spielerin', PlayerWording.for(player).noun
-    assert_equal 'Spieler:in', PlayerWording.for(nil).noun
+    assert_equal 'Spieler*in', PlayerWording.for(nil).noun
   end
 end

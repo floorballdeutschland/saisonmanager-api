@@ -38,7 +38,7 @@ class PlayerWording
       as_role: 'als Spielerin'
     }.freeze,
     NEUTRAL => {
-      noun: 'Spieler:in',
+      noun: 'Spieler*in',
       nominative: 'die spielende Person',
       genitive: 'der spielenden Person',
       by_agent: 'von der spielenden Person',

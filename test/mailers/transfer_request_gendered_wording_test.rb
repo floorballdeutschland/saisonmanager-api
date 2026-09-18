@@ -88,7 +88,7 @@ class TransferRequestGenderedWordingTest < ActionMailer::TestCase
     %w[D].push(nil).each do |gender|
       body = body_of(TransferRequestMailer.transfer_completed(transfer_request(gender)))
 
-      assert_includes body, '<strong>Spieler:in:</strong>', "gender=#{gender.inspect}"
+      assert_includes body, '<strong>Spieler*in:</strong>', "gender=#{gender.inspect}"
       assert_includes body, 'Alle bestehenden Lizenzen der spielenden Person wurden', "gender=#{gender.inspect}"
     end
   end
