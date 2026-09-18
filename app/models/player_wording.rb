@@ -22,6 +22,7 @@ class PlayerWording
       nominative: 'der Spieler',
       genitive: 'des Spielers',
       by_agent: 'vom Spieler',
+      accusative: 'den Spieler',
       following_nominative: 'der folgende Spieler',
       following_accusative: 'den folgenden Spieler',
       relative_nominative: 'der',
@@ -32,6 +33,7 @@ class PlayerWording
       nominative: 'die Spielerin',
       genitive: 'der Spielerin',
       by_agent: 'von der Spielerin',
+      accusative: 'die Spielerin',
       following_nominative: 'die folgende Spielerin',
       following_accusative: 'die folgende Spielerin',
       relative_nominative: 'die',
@@ -42,6 +44,7 @@ class PlayerWording
       nominative: 'die spielende Person',
       genitive: 'der spielenden Person',
       by_agent: 'von der spielenden Person',
+      accusative: 'die spielende Person',
       following_nominative: 'die folgende spielende Person',
       following_accusative: 'die folgende spielende Person',
       relative_nominative: 'die',
@@ -57,8 +60,12 @@ class PlayerWording
     @forms = FORMS.fetch(gender.to_s.strip.upcase, FORMS[NEUTRAL])
   end
 
+  # `fetch` und nicht `[]`: Die Zugriffe entstehen aus den Schluesseln der
+  # neutralen Zeile. Fehlte einer in der maennlichen oder weiblichen (ein
+  # Tippfehler genuegt), lieferte `[]` nil, und in der Mail fehlte das Wort --
+  # nur fuer dieses Geschlecht, also genau dort, wo niemand hinsieht.
   FORMS[NEUTRAL].each_key do |form|
-    define_method(form) { @forms[form] }
+    define_method(form) { @forms.fetch(form) }
   end
 
   # Fuer den Satzanfang. Nicht String#capitalize: das schreibt den Rest klein,

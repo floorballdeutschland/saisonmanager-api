@@ -10,7 +10,7 @@
   <% if @game&.home_team || @game&.guest_team %>
     (<%= @game&.home_team&.name %> vs. <%= @game&.guest_team&.name %>)
   <% end %>
-  liegt eine Rückmeldung aus deinem Coaching vor<%= " (#{@observation.coach_name})" if @observation.coach_name.present? %>.
+  liegt eine Rückmeldung aus deinem Coaching vor<%= " mit #{@observation.coach_name}" if @observation.coach_name.present? %>.
 </p>
 
 <p>
