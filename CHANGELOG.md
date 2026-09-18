@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.117.0] - 2026-09-18
+
 ### Behoben
 
 - **Die Bestätigungsfrist der Gastmannschaften lief, bevor sie davon erfuhren**: Ohne Rückmeldung gilt ein Spieltag nach 48 Stunden automatisch als bestätigt. Gezählt wurde ab dem Ende des Spieltags, die Gastmannschaften erfahren von den Antworten des Ausrichters aber erst mit dem Abschluss des Spielberichts. Wurde der erst zwei Tage später geschlossen, war das Fenster im selben Augenblick zu, in dem die Benachrichtigung ankam. Gezählt wird jetzt ab dem späteren der beiden Zeitpunkte, also ab dem Ende des Spieltags oder ab der Benachrichtigung, und zwar in deutscher Zeit: „Ende des Spieltags" heißt 23:59 und nicht 01:59 am Tag darauf, wie es die Serverzeit ergab. Ein spät nachgeholter Abschluss öffnet das Fenster damit erneut, und zwar bewusst: Vor dem Abschluss gibt es die Angaben des Ausrichters noch nicht, eine Gastmannschaft kann ihnen also gar nicht widersprechen. Für die Schiedsrichter bleibt die Frist unverändert am Ende des Spieltags, sie bekommen ihren Portal-Hinweis ebenfalls beim Abschluss. Die Spieltagsliste der Vereine liefert das Fristende jetzt mit (`confirmable_until`), damit die Seite es anzeigen kann, statt weiter pauschal 48 Stunden ab Spieltag zu nennen; die Anzeige selbst folgt im Frontend.
