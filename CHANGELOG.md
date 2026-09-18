@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **E-Mails benennen Spielerinnen als Spielerinnen**: Die Vorgangsmails rund um Transfer, Spielerfreigabe und Expresslizenz sprachen ausnahmslos von „dem Spieler" — auch dann, wenn am Profil „weiblich" hinterlegt war. Auf der Produktion betrifft das 7246 der 31.635 Profile, also knapp ein Viertel. Alle Stellen, die eine konkrete Person bezeichnen, richten sich jetzt nach `Geschlecht` am Spielerprofil: die Beschriftung im Datenblock der Mail („Spielerin:"), die Fließtexte („Die Spielerin bleibt im abgebenden Verein", „Alle Lizenzen der Spielerin wurden …"), das Relativpronomen („die folgende Spielerin, die bei Ihrem Verein …"), die Anrede in der Zustimmungsanfrage („möchte dich als Spielerin transferieren") sowie zwei Betreffzeilen („Transferantrag abgelehnt durch Spielerin: …"). Profile mit „divers" und Profile ohne Angabe (auf der Produktion 1 bzw. 73) bekommen dieselbe neutrale Form — „Spieler:in" als Bezeichnung, „die spielende Person" im Fließtext. Das ist zugleich Datenschutz: Am Wortlaut der Mail an ein Vereinspostfach lässt sich nicht ablesen, bei welchem Profil „divers" steht. Fachbegriffe bleiben unverändert, „Spielerfreigabe" und „Spielerprofil" bezeichnen den Vorgang und nicht die Person; generische Aussagen im Plural („nimmt keine Spieler mehr auf") ebenso. Für selbst gepflegte Vorlagen (Verwaltung → E-Mail-Vorlagen) steht die Bezeichnung als neuer Platzhalter `{{player_noun}}` in Betreff und Text zur Verfügung. Schiedsrichter-Mails ändern sich nicht: Am Schiedsrichterprofil ist kein Geschlecht hinterlegt.
+
 ## [1.116.1] - 2026-09-17
 
 ### Behoben

@@ -370,6 +370,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_reply_to: nil,
       placeholders: [
         { key: 'request_noun', description: 'Bezeichnung der Anfrage (Transferanfrage/Spielerfreigabe-Anfrage)' },
+        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler:in)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' }
       ]
     },
@@ -382,6 +383,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_reply_to: nil,
       placeholders: [
         { key: 'request_noun', description: 'Bezeichnung der Anfrage (Transferanfrage/Spielerfreigabe-Anfrage)' },
+        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler:in)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' }
       ]
     },
@@ -394,6 +396,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_reply_to: nil,
       placeholders: [
         { key: 'request_noun', description: 'Bezeichnung des Antrags (Transferantrag/Spielerfreigabe-Antrag)' },
+        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler:in)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' }
       ]
     },
@@ -406,6 +409,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_reply_to: nil,
       placeholders: [
         { key: 'request_noun', description: 'Bezeichnung des Antrags (Transferantrag/Spielerfreigabe-Antrag)' },
+        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler:in)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' }
       ]
     },
@@ -417,6 +421,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_from: nil,
       default_reply_to: nil,
       placeholders: [
+        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler:in)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' }
       ]
     },
@@ -429,6 +434,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_from: nil,
       default_reply_to: nil,
       placeholders: [
+        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler:in)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' },
         { key: 'effective_date', description: 'Wunschdatum des Transfers (TT.MM.JJJJ)' }
       ]
@@ -442,6 +448,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_reply_to: nil,
       placeholders: [
         { key: 'completion_noun', description: 'Abschluss-Bezeichnung (Transfer vollzogen/Spielerfreigabe erteilt)' },
+        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler:in)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' }
       ]
     },
@@ -456,6 +463,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_from: nil,
       default_reply_to: nil,
       placeholders: [
+        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler:in)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' },
         { key: 'revocation_reason', description: 'Begründung des Widerrufs' }
       ]
@@ -469,6 +477,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_reply_to: nil,
       placeholders: [
         { key: 'request_noun', description: 'Bezeichnung des Antrags (Transferantrag/Spielerfreigabe-Antrag)' },
+        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler:in)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' }
       ]
     },
@@ -483,6 +492,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_reply_to: nil,
       placeholders: [
         { key: 'request_noun', description: 'Bezeichnung des Antrags (Transferantrag/Spielerfreigabe-Antrag)' },
+        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler:in)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' },
         { key: 'club_name', description: 'Name des deaktivierten aufnehmenden Vereins' }
       ]
@@ -493,10 +503,11 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       description: 'Benachrichtigung an den freigebenden Zielverein und den Spieler, dass ein laufender ' \
                    'Freigabeantrag beendet ist, weil der Spieler in einen anderen Verein transferiert wurde.' \
                    ' Geht in zwei getrennten Sendungen raus (Vereine/Verband und Spieler); die Sendung an den Spieler traegt zusaetzlich die Datenschutzinformation nach Art. 13 DSGVO.',
-      default_subject: 'Spielerfreigabe-Antrag beendet, Spieler transferiert: {{player_name}}',
+      default_subject: 'Spielerfreigabe-Antrag beendet, {{player_noun}} transferiert: {{player_name}}',
       default_from: nil,
       default_reply_to: nil,
       placeholders: [
+        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler:in)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' },
         { key: 'club_name', description: 'Name des Vereins, der die Freigabe beantragt hatte' },
         { key: 'new_club_name', description: 'Name des neuen Heimatvereins aus dem vollzogenen Transfer' }
@@ -506,11 +517,12 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       mailer_class: 'TransferRequestMailer',
       action_name: 'player_rejected_clubs_notification',
       description: 'Benachrichtigung an die Vereine, dass der Spieler den Antrag abgelehnt hat.',
-      default_subject: '{{request_noun}} abgelehnt durch Spieler: {{player_name}}',
+      default_subject: '{{request_noun}} abgelehnt durch {{player_noun}}: {{player_name}}',
       default_from: nil,
       default_reply_to: nil,
       placeholders: [
         { key: 'request_noun', description: 'Bezeichnung des Antrags (Transferantrag/Spielerfreigabe-Antrag)' },
+        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler:in)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' }
       ]
     },
@@ -609,6 +621,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_from: nil,
       default_reply_to: nil,
       placeholders: [
+        { key: 'player_noun', description: 'Bezeichnung der Person nach ihrem hinterlegten Geschlecht (Spieler/Spielerin/Spieler:in)' },
         { key: 'player_name', description: 'Vor- und Nachname des Spielers' },
         { key: 'team_name', description: 'Name der Mannschaft' }
       ]
