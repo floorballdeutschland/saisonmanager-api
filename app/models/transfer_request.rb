@@ -211,6 +211,8 @@ class TransferRequest < ApplicationRecord
       lock!
       raise ActiveRecord::RecordInvalid, self unless status.in?(%w[pending_lv scheduled])
 
+      normalize_player_collections!
+
       secondary_club_ids = player.clubs.select do |c|
         c['home_club'] == false && c['valid_until'].nil?
       end.map { |c| c['club_id'] }
@@ -242,6 +244,7 @@ class TransferRequest < ApplicationRecord
       lock!
       raise ActiveRecord::RecordInvalid, self unless status == 'pending_lv'
 
+      normalize_player_collections!
       add_secondary_club_membership!(user_id)
       update!(
         status: 'approved',
@@ -264,6 +267,7 @@ class TransferRequest < ApplicationRecord
       lock!
       raise ActiveRecord::RecordInvalid, self unless status == 'approved'
 
+      normalize_player_collections!
       invalidate_release_licenses!(user_id)
       expire_secondary_club_membership!(user_id)
       update!(
@@ -405,6 +409,43 @@ class TransferRequest < ApplicationRecord
       }
     end
     player.save!(validate: false)
+  end
+
+  # players.clubs und players.licenses tragen zwar den Spalten-Default [], ein
+  # Teil des Altbestands steht dort aber auf NULL: Der Default greift nur, wenn
+  # ein Insert die Spalte auslaesst, gegen ein ausdruecklich geschriebenes NULL
+  # hilft er nicht. Woher diese Zeilen stammen, ist nicht mehr rekonstruierbar
+  # -- im Repo schreibt sie kein Weg, auch der Altdaten-Import nicht
+  # (LegacyImport::Transformer#player_attrs setzt beide Spalten gar nicht erst).
+  # Auf Produktion sind es 234 von 31.600 Profilen, alle in `licenses`; in
+  # `clubs` kein einziges.
+  #
+  # Player#full_hash faengt den Fall fuer `licenses` laengst ab (dort kippte er
+  # die Spieler-Detailansicht, Sentry SAISONMANAGER-19), die Vollzugswege hier
+  # nicht: Die Direktzuweisung eines lizenzlosen Spielers brach mit
+  # `undefined method 'each' for nil:NilClass` ab (SAISONMANAGER-56). Der
+  # Vollzug laeuft in einer Transaktion, es blieb also nichts halb geschrieben
+  # -- und weil der Datenstand damit unveraendert blieb, endete auch jeder neue
+  # Versuch genauso.
+  #
+  # Ungeprueft gelesen wird an sechs Stellen: invalidate_licenses!,
+  # invalidate_release_licenses!, add_secondary_club_membership!,
+  # expire_secondary_club_membership!, im `player.clubs.select` von
+  # execute_transfer! und in Player#transfer.
+  #
+  # Gesetzt statt beim Lesen ersetzt, und zwar wegen genau einer dieser
+  # Stellen: add_secondary_club_membership! haengt mit `player.clubs << ...`
+  # an das Attribut selbst an. Ein `(player.clubs || []) << ...` schriebe in
+  # ein Wegwerf-Array, `save!` meldete Erfolg, und die Freigabe waere still
+  # wirkungslos. Den lesenden each/map!-Wegen genuegte ein Fallback -- ein
+  # einmal normalisiertes Attribut erspart ihn an jeder einzelnen Stelle.
+  #
+  # Speichert selbst nicht: Die drei Aufrufer schreiben das Profil ohnehin und
+  # raeumen den NULL-Wert dabei mit ab. Ein kuenftiger vierter Aufrufer ohne
+  # eigenen Schreibvorgang muss das mitbedenken.
+  def normalize_player_collections!
+    player.clubs ||= []
+    player.licenses ||= []
   end
 
   def invalidate_licenses!

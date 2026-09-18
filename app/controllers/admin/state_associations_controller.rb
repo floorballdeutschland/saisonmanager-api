@@ -221,6 +221,7 @@ module Admin
                      manual_proceeding_creation referee_assignment_enabled
                      referee_assignment_external_enabled person_level_assignment_default
                      report_form_email_enabled requested_license_playable
+                     team_info_editable_during_season
                      logo banner_link_url]
       # Den übergeordneten Verband darf nur die Bundesebene (um-)hängen, und zwar
       # ausdrücklich strenger als beim übrigen Schreibzugriff: siehe

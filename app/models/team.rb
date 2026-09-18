@@ -338,18 +338,86 @@ class Team < ApplicationRecord
     perm << :update_team if admin || sbk
     perm << :delete_team if admin || sbk
 
-    # Bewusst getrennt von :update_team: Daran hängen Liga-Zuordnung, Pokal-Ligen
-    # und Kurzname, also der Spielbetrieb – das bleibt beim Verband. Das Zeichen
-    # der Mannschaft ist dagegen Vereinssache, wie das Vereinslogo
-    # (:update_own_club in Club#user_permissions), und der Verband darf es
-    # weiterhin ebenfalls pflegen.
+    # Beide bewusst getrennt von :update_team: Daran hängen Liga-Zuordnung,
+    # Pokal-Ligen und der Verein, also der Spielbetrieb, und der bleibt beim
+    # Verband. Wie die Mannschaft heißt und welches Zeichen sie trägt, ist
+    # dagegen Vereinssache, wie beim Verein selbst (:update_own_club in
+    # Club#user_permissions); der Verband darf beides weiterhin ebenfalls
+    # pflegen.
     #
-    # Kein eigenes Recht zum Entfernen: Wer ein abweichendes Logo setzen darf,
-    # darf es auch zurücknehmen. Danach greift wieder das Vereinslogo
-    # (#logo_url_fallback), ein Zustand ohne Zeichen entsteht dabei nicht.
-    perm << :update_team_logo if admin || sbk || vm
+    # Für den Verein zusätzlich am Spielkalender: siehe #club_may_edit_info?.
+    #
+    # Kein eigenes Recht zum Entfernen des Logos: Wer ein abweichendes Logo
+    # setzen darf, darf es auch zurücknehmen. Danach greift wieder das
+    # Vereinslogo (#logo_url_fallback), ein Zustand ohne Zeichen entsteht dabei
+    # nicht.
+    vm_info = vm && club_may_edit_info?
+
+    perm << :update_team_logo if admin || sbk || vm_info
+    perm << :update_team_info if admin || sbk || vm_info
 
     perm
+  end
+
+  # Darf der Verein Name, Kürzel und Logo dieser Mannschaft ändern?
+  #
+  # Nur in der laufenden Saison. Die Maske listet ohnehin nur diese Mannschaften
+  # (`Team.current_season`), der Endpunkt darf sich darauf aber nicht verlassen:
+  # Ohne diese Prüfung benennt ein Verein über einen direkten Aufruf seine
+  # Mannschaften vergangener Saisons um, und damit ändern sich rückwirkend
+  # öffentlich archivierte Tabellen, Spielpläne und Spielberichte. Der Verband
+  # behält den Zugriff über `:update_team`, denn eine Berichtigung im Archiv ist
+  # seine Aufgabe.
+  #
+  # Innerhalb der Saison bis zum ersten Spieltag immer: Bis dahin steht kein
+  # Ergebnis und kein Spielbericht unter dem alten Namen, und die Meldung ist
+  # ohnehin noch in Bewegung. Danach entscheidet der Schalter des zuständigen
+  # Landesverbands (`team_info_editable_during_season`, Standard an). Für
+  # Verband und SBK gilt die Frist nicht, sie müssen eine Mannschaft auch mitten
+  # in der Saison berichtigen können.
+  #
+  # Der Spieltag selbst zählt schon dazu: An dem Tag trägt die Mannschaft ihren
+  # Namen auf Anzeigetafel, Spielbericht und Stream, und genau dort fällt eine
+  # Änderung am spätesten auf. Gerechnet wird der Tag in `Europe/Berlin` und
+  # nicht in der Serverzeitzone: Der Server läuft auf UTC, zwischen Mitternacht
+  # und zwei Uhr deutscher Zeit wäre sonst noch der Vortag maßgeblich.
+  #
+  # Maßgeblich ist die Hauptliga, auch wenn die Mannschaft zusätzlich im Pokal
+  # eines anderen Verbands antritt: Dort ist sie Gast, gemeldet ist sie hier.
+  # Ohne Landesverband bleibt es innerhalb der Saison erlaubt. Die bundesweiten
+  # Spielbetriebe tragen keinen (`game_operations.state_association_id` ist dort
+  # NULL), für sie gibt es die Einstellung also nicht; das ist bei jedem
+  # Schalter aus diesem Block so.
+  #
+  # Memoisiert, weil die Vereinsliste den Wert je Mannschaft zweimal braucht
+  # (einmal über #user_permissions, einmal als Sperrbegründung) und beide
+  # Zweige je eine Abfrage kosten: den Verbund über `settings_source` und die
+  # Spieltage über `first_game_day_date`.
+  def club_may_edit_info?(today: nil)
+    berlin_today = Time.find_zone('Europe/Berlin').today
+    today ||= berlin_today
+    return @club_may_edit_info if today == berlin_today && defined?(@club_may_edit_info)
+
+    # Eine Mannschaft ohne Liga hat weder Saison noch Spielplan. Sie steht nicht
+    # in der Vereinsliste, und ihr Speichern liefe an `belongs_to :league`
+    # ohnehin in eine Meldung, mit der ein Verein nichts anfangen kann.
+    result =
+      if league.nil? || league.season_id.to_s != Setting.current_season_id.to_s
+        false
+      else
+        sa = league.state_association
+        if sa.nil? || sa.effective_team_info_editable_during_season.present?
+          true
+        else
+          # Erst hier den Spielplan lesen: Im Regelfall (Schalter an) spart das
+          # die Abfrage ganz.
+          first_day = league.first_game_day_date
+          first_day.nil? || first_day > today
+        end
+      end
+
+    @club_may_edit_info = result if today == berlin_today
+    result
   end
 
   def self.add_teams_to_cup!(team_ids, cup_id)

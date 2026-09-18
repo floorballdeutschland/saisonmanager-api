@@ -2,6 +2,18 @@ module Admin
   class LicensesController < ApplicationController
     include LicenseDocumentPresentation
 
+    # Diese Liste zeigt mehr als die Kaderlisten einer Liga: Sie ist die
+    # Arbeitsliste des Verbandes über alle Ligen einer Saison und bietet einen
+    # Statusfilter „abgelehnt"/„zurückgezogen" sowie den Knopf „Ablehnung
+    # widerrufen" an. Beides lief ins Leere, solange League#build_license_items
+    # auch hier nur erteilte und beantragte Lizenzen lieferte -- ein
+    # zurückgenommener Antrag war danach nur noch über die Lizenzliste der
+    # Mannschaft erreichbar, die der Verband nicht im Menü hat.
+    #
+    # Die Kaderlisten bleiben bei der Vorgabe: Dort ist ein abgelehnter Antrag
+    # kein Teil der Mannschaft.
+    LISTED_STATUSES = [License::APPROVED, License::REQUESTED, License::DENIED, License::WITHDRAWN].freeze
+
     def index
       ph = current_user.permission_hash
       unless ph[:admin].present? || ph[:sbk].present?
@@ -49,7 +61,7 @@ module Admin
       # daher :light und beide Schalter aus. with_release_dates: false spart eine
       # Abfrage ueber die Spieler ALLER Ligen der Saison.
       licenses_by_league = League.licenses_for(leagues, team_hash: :light, with_other_licenses: false,
-                                               with_release_dates: false)
+                                               with_release_dates: false, statuses: LISTED_STATUSES)
 
       # Pre-load all license documents for players in these leagues (grouped by
       # [player_id, doc_type] – Dokumente gelten pro Spieler, saisonübergreifend)

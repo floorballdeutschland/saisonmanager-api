@@ -193,4 +193,98 @@ class TransferRequestTest < ActiveSupport::TestCase
 
     assert_nil tr.as_json[:former_club][:state_association_short_name]
   end
+
+  # ---------------------------------------------------------------------------
+  # NULL in players.clubs / players.licenses (Sentry SAISONMANAGER-56)
+  #
+  # Nicht jedes Profil ohne Lizenz traegt NULL -- ueber die Oberflaeche angelegte
+  # Spieler bekommen den Spalten-Default []. NULL steht in einem Teil des
+  # Altbestands (auf Prod 234 von 31.600 Profilen, alle in `licenses`).
+  # Zurueckgesetzt wird per update_columns, weil setup und Factory beide Spalten
+  # bereits mit [] fuellen.
+  # ---------------------------------------------------------------------------
+
+  test 'execute_transfer! vollzieht den Wechsel auch ohne Lizenz-Sammlung' do
+    @player.update_columns(licenses: nil)
+
+    tr = build_transfer_request
+    tr.status = 'pending_lv'
+    tr.save!
+
+    TransferRequestMailer.stub(:transfer_completed, OpenStruct.new(deliver_later: nil)) do
+      tr.execute_transfer!(@user.id)
+    end
+
+    assert_equal 'approved', tr.reload.status
+
+    @player.reload
+    active_home_clubs = @player.clubs.select { |c| c['home_club'] == true && c['valid_until'].nil? }
+    club_ids = active_home_clubs.map { |c| c['club_id'] }
+    assert_equal [@requesting_club.id], club_ids
+  end
+
+  test 'execute_transfer! vollzieht den Wechsel auch ohne Vereins-Sammlung' do
+    @player.update_columns(clubs: nil)
+
+    tr = build_transfer_request
+    tr.status = 'pending_lv'
+    tr.save!
+
+    TransferRequestMailer.stub(:transfer_completed, OpenStruct.new(deliver_later: nil)) do
+      tr.execute_transfer!(@user.id)
+    end
+
+    assert_equal 'approved', tr.reload.status
+
+    @player.reload
+    active_home_clubs = @player.clubs.select { |c| c['home_club'] == true && c['valid_until'].nil? }
+    club_ids = active_home_clubs.map { |c| c['club_id'] }
+    assert_equal [@requesting_club.id], club_ids
+  end
+
+  # Der Widerruf ist der Weg, auf dem NULL auch nach diesem Fix noch ankommt:
+  # Er trifft immer eine Freigabe, die frueher erteilt wurde, deren Spieler also
+  # nie durch die Normalisierung gelaufen ist. Deshalb wird hier erst NACH dem
+  # Vollzug genullt. Ueber `invalidate_release_licenses!` lief dabei derselbe
+  # `player.licenses.each`, der SAISONMANAGER-56 ausgeloest hat -- die Freigabe
+  # liess sich schlicht nicht widerrufen.
+  test 'revoke_release! widerruft die Freigabe auch ohne Lizenz-Sammlung' do
+    tr = build_transfer_request(request_type: 'release')
+    tr.status = 'pending_lv'
+    tr.save!
+
+    TransferRequestMailer.stub(:transfer_completed, OpenStruct.new(deliver_later: nil)) do
+      tr.execute_release!(@user.id)
+    end
+
+    @player.update_columns(licenses: nil)
+
+    TransferRequestMailer.stub(:release_revoked, OpenStruct.new(deliver_later: nil)) do
+      tr.revoke_release!(@user.id, 'Testwiderruf')
+    end
+
+    assert_equal 'revoked', tr.reload.status
+
+    @player.reload
+    zweitverein = @player.clubs.find { |c| c['club_id'] == @requesting_club.id }
+    assert_not_nil zweitverein, 'Die Zweitmitgliedschaft muss weiterhin verzeichnet sein'
+    assert zweitverein['valid_until'].present?,
+           'Der Widerruf muss die Zweitmitgliedschaft beenden'
+  end
+
+  test 'execute_release! traegt den sekundaeren Verein auch ohne Vereins-Sammlung ein' do
+    @player.update_columns(clubs: nil)
+
+    tr = build_transfer_request(request_type: 'release')
+    tr.status = 'pending_lv'
+    tr.save!
+
+    TransferRequestMailer.stub(:transfer_completed, OpenStruct.new(deliver_later: nil)) do
+      tr.execute_release!(@user.id)
+    end
+
+    @player.reload
+    secondary = @player.clubs.find { |c| c['club_id'] == @requesting_club.id }
+    assert_not_nil secondary, 'requesting_club muss als sekundaerer Club eingetragen sein'
+  end
 end
