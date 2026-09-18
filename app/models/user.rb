@@ -259,6 +259,26 @@ class User < ApplicationRecord
       .find_by(email_confirmation_token_digest: Digest::SHA256.hexdigest(token))
   end
 
+  # Die Teammanager einer Mannschaft, die Info-Mails nicht abbestellt haben.
+  #
+  # `users.teams` ist die TM-Team-Liste (Vereinsmanager verwalten über den Verein,
+  # nicht über dieses Array), zusätzlich gegen permission_hash[:tm] abgesichert.
+  # Das alte active-Flag wird bewusst nicht geprüft: Es ist seit der Archivierung
+  # nirgends mehr setzbar und würde Bestandskonten mit active=false unsichtbar vom
+  # Versand ausschließen.
+  #
+  # Eine Stelle für zwei Verteiler (Schiri-Feedback und Spieltagsbestätigung der
+  # Gastmannschaften): Beide meinen dieselbe Personengruppe, und eine Kopie der
+  # Abfrage wäre genau die Art Unterschied, die erst auffällt, wenn eine Pflicht-
+  # Mail bei einem der beiden Wege ausbleibt.
+  def self.team_managers(team_id)
+    not_archived
+      .where('? = ANY(teams)', team_id)
+      .where(receive_info_mails: true)
+      .where.not(email: [nil, ''])
+      .select { |user| user.permission_hash[:tm].to_a.include?(team_id) }
+  end
+
   # Wie send_reset_information, aber mit Begrüßungs-Mail (Benutzername + Link zum
   # erstmaligen Passwort-Setzen) für ein frisch angelegtes Schiedsrichter-Konto.
   #

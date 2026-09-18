@@ -1073,12 +1073,31 @@ class GamesController < ApplicationController
   end
 
   def _maybe_send_checklist_confirmation(game)
-    # Beide Mails hängen an derselben Checkliste, nämlich der des LV des
+    # Alle drei Mails hängen an derselben Checkliste, nämlich der des LV des
     # Spielbetriebs (siehe Game#state_association). Sie bleiben dennoch getrennt,
-    # weil sie unterschiedliche Empfänger und Bedingungen haben: die eine den
-    # Ausrichterverein und hinterlegte Antworten, die andere das Gespann.
+    # weil sie unterschiedliche Empfänger und Bedingungen haben: die erste den
+    # Ausrichterverein und hinterlegte Antworten, die zweite das Gespann, die
+    # dritte die Gastmannschaften.
     _send_hosting_club_checklist_mail(game)
     _send_referee_portal_notice(game)
+    _send_guest_team_checklist_mail(game)
+  end
+
+  # Mail an die Gastmannschaften: die Antworten des Ausrichters und die Frist,
+  # ihnen zu widersprechen (GuestTeamChecklistNotifier).
+  #
+  # Der Versand ist eine Nebenwirkung des Abschlusses, nicht Teil davon: Der
+  # Bericht ist gespeichert, bevor das hier läuft, und ein Fehler darf der
+  # Spielleitung nicht als Serverfehler gemeldet werden. Der Notifier fängt
+  # Versandfehler je Mannschaft selbst ab; dieser Riegel steht für alles davor
+  # (etwa ein unlesbares Spieltagsdatum beim Berechnen der Frist).
+  def _send_guest_team_checklist_mail(game)
+    GuestTeamChecklistNotifier.new(game).notify
+  rescue StandardError => e
+    Rails.logger.error(
+      "Spieltagsbestätigung an die Gastmannschaften fehlgeschlagen (Spiel #{game.id}): #{e.class}: #{e.message}"
+    )
+    Sentry.capture_exception(e) if defined?(Sentry)
   end
 
   # Mail an den Ausrichterverein mit Token-Veto-Link. Empfänger ist der Verein,

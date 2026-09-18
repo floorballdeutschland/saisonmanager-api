@@ -1,0 +1,75 @@
+<h2>Spieltagscheckliste bestätigen</h2>
+
+<p>
+  Hallo,
+</p>
+
+<p>
+  für den Spieltag am
+  <strong><%= format_game_day_date(@game_day.date) %></strong>
+  (<%= @game.home_team_name %> vs. <%= @game.guest_team_name %>,
+  Spiel Nr. <%= @game.game_number %>) hat der Ausrichter<% if @game_day.club %>
+  <strong><%= @game_day.club.name %></strong><% end %> den Spielbericht
+  eingereicht und dabei die Spieltagscheckliste des Landesverbands beantwortet.
+</p>
+
+<p>
+  Als Gastmannschaft <strong><%= @team.name %></strong> bestätigen Sie den
+  Spieltag als ordnungsgemäß durchgeführt, oder Sie melden ihn als nicht
+  ordnungsgemäß und beantworten die Checkliste selbst.
+</p>
+
+<% if @deadline %>
+<p>
+  <strong>Frist:</strong> bis <%= format_deadline(@deadline) %>.
+  Ohne Rückmeldung gilt der Spieltag danach automatisch als bestätigt.
+</p>
+<% end %>
+
+<p>
+  <a href="<%= @portal_url %>">Zu „Meine Auswärtsspieltage"</a>
+</p>
+
+<p style="font-size: 0.85em; color: #666;">
+  Die Bestätigung gilt für den ganzen Spieltag. Haben Sie ihn schon bestätigt,
+  ist nichts weiter zu tun, auch wenn zu einem späteren Spiel noch eine Mail
+  kommt.
+</p>
+
+<hr>
+
+<h3>Die Antworten des Ausrichters</h3>
+
+<% if @all_ok %>
+<p>
+  Der Ausrichter hat alle Voraussetzungen für die ordnungsgemäße Durchführung
+  bestätigt:
+</p>
+<% else %>
+<p>
+  Der Ausrichter hat folgende Angaben gemacht:
+</p>
+<% end %>
+
+<table>
+  <tbody>
+    <% @answers.each do |answer| %>
+    <tr>
+      <td style="padding: 2px 8px 2px 0; vertical-align: top;">
+        <strong><%= answer['answer'] == true ? 'Ja' : 'Nein' %></strong>
+      </td>
+      <td style="padding: 2px 0;"><%= answer['question'] %></td>
+    </tr>
+    <% end %>
+  </tbody>
+</table>
+
+<p style="font-size: 0.85em; color: #666;">
+  Trifft eine dieser Angaben nicht zu, melden Sie den Spieltag im Portal als
+  nicht ordnungsgemäß. Die zuständige SBK wird dann informiert.
+</p>
+
+<hr>
+<p style="font-size: 0.85em; color: #666;">
+  Diese E-Mail wurde automatisch vom Floorball Saisonmanager versandt.
+</p>

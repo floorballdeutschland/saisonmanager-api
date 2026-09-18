@@ -551,6 +551,22 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'guest_team', description: 'Name der Gastmannschaft' }
       ]
     },
+    'GameMailer#checklist_guest_team_notice' => {
+      mailer_class: 'GameMailer',
+      action_name: 'checklist_guest_team_notice',
+      description: 'Hinweis an die Gastmannschaften mit den Antworten des Ausrichters und der Frist, ' \
+                   'den Spieltag im Portal zu bestätigen oder zu beanstanden.',
+      default_subject: 'Spieltagscheckliste bestätigen – {{home_team}} vs. {{guest_team}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'game_number', description: 'Spielnummer' },
+        { key: 'home_team', description: 'Name der Heimmannschaft' },
+        { key: 'guest_team', description: 'Name der Gastmannschaft' },
+        { key: 'team_name', description: 'Name der angeschriebenen Gastmannschaft' },
+        { key: 'deadline', description: 'Ende der Bestätigungsfrist in deutscher Zeit' }
+      ]
+    },
     'GameMailer#checklist_veto_notification' => {
       mailer_class: 'GameMailer',
       action_name: 'checklist_veto_notification',
