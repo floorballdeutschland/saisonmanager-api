@@ -422,12 +422,12 @@ class User < ApplicationRecord
     result[:menu_item_player_vm] = ph[:vm].present? || ph[:tm].present?
     # Portal „Meine Auswärtsspieltage" für Gastmannschafts-Bestätigung (TM/VM).
     # Der Menüpunkt erscheint nur, wenn für eine der verantworteten Mannschaften
-    # überhaupt eine Spieltagscheckliste greift, denn ohne Checkliste gibt es
+    # überhaupt ein Spieltagsbericht greift, denn ohne Fragen gibt es
     # nichts zu bestätigen.
     result[:menu_item_team_game_days] = manages_game_day_checklist_team?(ph)
     # Der Zugriff auf die Seite bleibt bewusst rein rollenbasiert (Route-Guard im
     # Frontend). Grund: Der Berechtigungs-Hash entsteht beim Login und liegt
-    # danach im localStorage. Legt ein Landesverband seine erste Checklistenfrage
+    # danach im localStorage. Legt ein Landesverband seine erste Frage
     # mitten in der Saison an, wäre die Seite für bereits angemeldete TM/VM sonst
     # auch per Direktlink gesperrt – und die Bestätigung ist nur 48 Stunden lang
     # möglich, danach gilt ein Spieltag automatisch als bestätigt.
@@ -707,8 +707,8 @@ class User < ApplicationRecord
   end
 
   # True, wenn der/die Nutzer:in mindestens eine Mannschaft verantwortet, die in
-  # der aktuellen Saison in einem Spielbetrieb spielt, dessen Landesverband eine
-  # Spieltagscheckliste hinterlegt hat (mindestens eine Frage). Ohne Checkliste
+  # der aktuellen Saison in einem Spielbetrieb spielt, dessen Landesverband
+  # Fragen für den Spieltagsbericht hinterlegt hat (mindestens eine). Ohne sie
   # gibt es am Spieltag nichts zu bestätigen (siehe
   # TeamGameDayConfirmationsController#checklist_items_for), der Menüpunkt bleibt
   # dann verborgen. Aufbau analog zu manages_referee_feedback_team?, inklusive

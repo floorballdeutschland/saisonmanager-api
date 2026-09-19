@@ -1069,7 +1069,7 @@ class GamesController < ApplicationController
     answered_ids = (game.checklist_answers || []).map { |a| a['item_id'].to_i }.sort
     return nil if answered_ids == required_ids
 
-    'Die Spieltagscheckliste muss vollständig ausgefüllt sein, bevor der Spielbericht abgeschlossen werden kann.'
+    'Der Spieltagsbericht muss vollständig ausgefüllt sein, bevor der Spielbericht abgeschlossen werden kann.'
   end
 
   def _maybe_send_checklist_confirmation(game)
