@@ -76,6 +76,36 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
     assert_equal License::REQUESTED, @player.licenses.first['history'].last['license_status_id']
   end
 
+  # Mindestalter der Liga: tagesgenau am Tag der Beantragung
+  test 'Lizenzantrag unter dem Mindestalter der Liga ergibt 422 mit Mindestalter-Meldung' do
+    @league.update!(minimum_age: 15)
+    @player.update!(birthdate: 15.years.ago.to_date + 1.day)
+
+    login_as create(:user, :admin)
+
+    post "/api/v2/user/players/#{@player.id}/request_license",
+         params: { team_id: @team.id },
+         as: :json
+
+    assert_response :unprocessable_entity
+    assert_match(/Mindestalter.*mindestens 15 Jahre/, JSON.parse(response.body)['message'])
+    assert_equal 0, @player.reload.licenses.length
+  end
+
+  test 'Lizenzantrag am 15. Geburtstag ist trotz Mindestalter erfolgreich' do
+    @league.update!(minimum_age: 15)
+    @player.update!(birthdate: 15.years.ago.to_date)
+
+    login_as create(:user, :admin)
+
+    post "/api/v2/user/players/#{@player.id}/request_license",
+         params: { team_id: @team.id },
+         as: :json
+
+    assert_response :ok
+    assert_equal 1, @player.reload.licenses.length
+  end
+
   # 2. Duplikat: bereits APPROVED Lizenz für gleiche Saison+Team → 422
   test 'Doppelter Lizenzantrag für selbes Team und Saison ergibt 422' do
     existing_license = {
