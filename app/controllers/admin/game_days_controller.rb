@@ -266,8 +266,8 @@ module Admin
     # verlässlichen Text mehr, und der in der Antwort mitgespeicherte taugt
     # dafür nicht (siehe checklist_questions).
     #
-    # `item_id` wird mit `Integer(..., exception: false)` gelesen und nicht mit
-    # `to_i`: `to_i` wirft bei `true`, `[]` und `{}` einen NoMethodError, und
+    # `item_id` wird mit `Integer(..., 10, exception: false)` gelesen und nicht
+    # mit `to_i`: `to_i` wirft bei `true`, `[]` und `{}` einen NoMethodError, und
     # `true` ist über den Schreibweg erreichbar -- `set_checklist_answers`
     # erlaubt `item_id` als Skalar und prüft nur die Antwort, `TrueClass` ist
     # für `permit` ein zulässiger Skalar. Eine einzige solche Antwort hätte die
@@ -278,13 +278,20 @@ module Admin
     #
     # Ein unlesbarer Wert wird zu `nil` und nicht zu `0`: Eine `0` sähe wie eine
     # gültige Kennung aus, und mehrere unlesbare Antworten trügen alle dieselbe.
+    #
+    # Die Basis steht ausdrücklich auf 10, und der Wert geht als Zeichenkette
+    # hinein. Ohne beides liest `Integer` in Basis 0 und legt die
+    # Zeichenketten-Schreibweisen von Ruby aus: `"025"` wäre oktal und ergäbe
+    # 21, `"09"` wäre ein ungültiges Oktal und ergäbe nil. Bei einem
+    # Primärschlüssel ist das kaum zu erreichen, aber es wäre eine stille,
+    # falsche Zuordnung zu einer fremden Frage.
     def negative_answers(answers, questions)
       return [] unless answers.is_a?(Array)
 
       answers.filter_map do |answer|
         next unless answer.is_a?(Hash) && [false, 'false'].include?(answer['answer'])
 
-        item_id = Integer(answer['item_id'], exception: false)
+        item_id = Integer(answer['item_id'].to_s, 10, exception: false)
         { item_id:, question: item_id && questions[item_id] }
       end
     end
