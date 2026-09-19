@@ -134,6 +134,9 @@ module Admin
               season_id:            league.season_id,
               license_id:           lic['id'],
               license_type:         license_type(player_data, lic, all_season_leagues, team_league_id_map),
+              # Wie viele Lizenzen dieser Spieler insgesamt schon erteilt
+              # bekommen hat, ueber alle Saisons und Vereine hinweg.
+              licenses_approved_total: approved_license_count(player_data),
               # Manuelle Erst-/Zweitlizenz-Zuordnung im GF-Erwachsenenbereich
               # ('erstlizenz' | 'zweitlizenz' | nil = nicht zugeordnet).
               gf_role:              lic['gf_role'],
@@ -163,6 +166,40 @@ module Admin
     end
 
     private
+
+    # Die Zahl der bisher erteilten Lizenzen eines Spielers, ueber alle Saisons
+    # hinweg. Gemeint ist die Vorgeschichte der Person, nicht ihr heutiger
+    # Bestand: Eine Lizenz, die spaeter abgelaufen, durch einen Transfer
+    # ungueltig geworden oder geloescht worden ist, war trotzdem einmal erteilt
+    # und zaehlt mit. Ein blosser Antrag, eine Ablehnung und ein Rueckzug
+    # zaehlen nicht -- erteilt wurde da nie etwas.
+    #
+    # Aus `player_data[:licenses]`, das dieser Weg ungefiltert liefert
+    # (`only_current_licenses: false`, siehe oben) und das ohnehin schon
+    # geladen ist -- eine eigene Abfrage ueber die Spieler waere hier der
+    # teuerste Teil der Liste. Je Spieler einmal gerechnet, weil ein Spieler mit
+    # mehreren Lizenzen mehrere Zeilen hat.
+    def approved_license_count(player_data)
+      @approved_license_counts ||= {}
+      @approved_license_counts[player_data[:id]] ||=
+        Array(player_data[:licenses]).count { |lic| ever_approved?(lic) }
+    end
+
+    # Erteilt ist eine Lizenz, wenn ihre History den Status „erteilt" kennt.
+    # Der aktuelle Status allein genuegt nicht: Eine gesperrte, abgelaufene oder
+    # transferungueltige Lizenz traegt ihn nicht mehr, war aber erteilt.
+    #
+    # Der aktuelle Status zaehlt trotzdem mit, fuer den Altbestand: Aus dem
+    # Legacy-Import gibt es erteilte Lizenzen ohne jeden History-Eintrag, die
+    # sonst unter den Tisch fielen.
+    def ever_approved?(license)
+      return false unless license.is_a?(Hash)
+      return true if License.current_status_id(license) == License::APPROVED
+
+      Array(license['history']).any? do |entry|
+        entry.is_a?(Hash) && entry['license_status_id'].to_i == License::APPROVED
+      end
+    end
 
     # Haupt-/Zusatzlizenz (Anzeige-Konzept): die Lizenz in der höchsten Liga ist
     # 'primary', alle weiteren sind Zusatzlizenzen ('secondary'). Unabhängig von
