@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Die Spieltagsübersicht der SBK nennt den verneinten Checklistenpunkt beim Namen**: In der Arbeitsansicht „Spielberichte" stand an einer Zeile bisher nur, dass der Ausrichter mindestens einen Punkt der Spieltagscheckliste verneint hat — welcher es war, musste im Spielbericht nachgeschlagen werden. Die Übersicht liefert die verneinten Punkte jetzt einzeln mit ihrem Fragetext aus, für die Angaben des Ausrichters wie für einen Einspruch des Gespanns. Der Text stammt dabei aus der Checkliste des Verbandes und nicht aus der gespeicherten Antwort: Den Fragetext dort übernimmt der Server ungeprüft aus dem Formular, ein Ausrichter könnte der SBK sonst beliebigen Text in ihre Arbeitsansicht schreiben. Ein Punkt, den der Verband nachträglich gelöscht hat, zählt weiter mit, bleibt aber ohne Text — für ihn gibt es keinen verlässlichen mehr. Die Anzeige selbst folgt im Frontend.
+
 ## [1.117.0] - 2026-09-18
 
 ### Behoben
