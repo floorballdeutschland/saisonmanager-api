@@ -195,6 +195,40 @@ module Admin
       assert_equal [{ 'item_id' => 999_999, 'question' => nil }], data['checklist_negative_items']
     end
 
+    # `set_checklist_answers` laesst `item_id` als Skalar durch und prueft nur
+    # die Antwort -- `true` ueberlebt `permit` und landet so im JSONB. Ein
+    # `to_i` darauf warf, und die Zeile schrumpfte ueber safe_game_row auf ihre
+    # Kennung zusammen: Das Spiel war fuer die SBK praktisch verschwunden, und
+    # jeder Aufruf der Uebersicht meldete erneut an Sentry.
+    test 'eine nicht lesbare item_id setzt die Zeile nicht ausser Gefecht' do
+      @game.update_columns(checklist_answers: [{ 'item_id' => true, 'answer' => false }])
+
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      assert_response :success
+
+      data = row(@game.id)
+      # Die volle Zeile, nicht die vierfeldrige Fehlerzeile aus safe_game_row.
+      assert_nil data['row_error']
+      assert data.key?('flags')
+      assert_equal 1, data['checklist_negative_count']
+      assert_equal [{ 'item_id' => nil, 'question' => nil }], data['checklist_negative_items']
+    end
+
+    # Der Altbestand fuehrt `item_id` auch als Zeichenkette. Die Zuordnung zum
+    # Fragetext muss trotzdem greifen, sonst faellt sie beim naechsten Umbau
+    # still aus.
+    test 'eine item_id als Zeichenkette findet ihren Fragetext' do
+      item = @sa.checklist_items.create!(question: 'Halle in Ordnung?', position: 1)
+      @game.update_columns(checklist_answers: [{ 'item_id' => item.id.to_s, 'answer' => false }])
+
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      assert_response :success
+      assert_equal [{ 'item_id' => item.id, 'question' => 'Halle in Ordnung?' }],
+                   row(@game.id)['checklist_negative_items']
+    end
+
     test 'Statusfelder und Zeitstempel des Berichts' do
       editor = create_user(user_group_id: 2, game_operation_id: @go.id)
       @game.update!(game_status: 'match_record_closed',
@@ -418,8 +452,11 @@ module Admin
       report = @game.build_game_referee_report(uploaded_by: uploader)
       report.file.attach(io: StringIO.new('PDF'), filename: 'r.pdf', content_type: 'application/pdf')
       report.save!
+      item = @sa.checklist_items.create!(question: 'Schiris pünktlich?', position: 1)
       @game.update_columns(checklist_veto_submitted_at: Time.current,
-                           checklist_veto_answers: [{ 'item_id' => 1, 'answer' => false }])
+                           checklist_veto_answers: [
+                             { 'item_id' => item.id, 'question' => 'Aus dem Formular', 'answer' => false }
+                           ])
 
       login(sbk_user(@go.id))
       get OVERVIEW_PATH
@@ -427,8 +464,9 @@ module Admin
       assert data['referee_report']['uploaded_at'].present?
       assert data['checklist_veto_submitted_at'].present?
       assert_equal 1, data['checklist_veto_negative_count']
-      veto_ids = data['checklist_veto_negative_items'].map { |item| item['item_id'] }
-      assert_equal [1], veto_ids
+      # Auch der Einspruch liest den Text aus der Checkliste des Verbandes.
+      assert_equal [{ 'item_id' => item.id, 'question' => 'Schiris pünktlich?' }],
+                   data['checklist_veto_negative_items']
     end
 
     private

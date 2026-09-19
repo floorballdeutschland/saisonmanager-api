@@ -265,14 +265,27 @@ module Admin
     # nicht (mehr) steht: Ein nachträglich gelöschter Punkt hat keinen
     # verlässlichen Text mehr, und der in der Antwort mitgespeicherte taugt
     # dafür nicht (siehe checklist_questions).
+    #
+    # `item_id` wird mit `Integer(..., exception: false)` gelesen und nicht mit
+    # `to_i`: `to_i` wirft bei `true`, `[]` und `{}` einen NoMethodError, und
+    # `true` ist über den Schreibweg erreichbar -- `set_checklist_answers`
+    # erlaubt `item_id` als Skalar und prüft nur die Antwort, `TrueClass` ist
+    # für `permit` ein zulässiger Skalar. Eine einzige solche Antwort hätte die
+    # Zeile über safe_game_row auf ihre Kennung zusammenschrumpfen lassen (das
+    # Spiel verschwindet aus der Arbeitsansicht der SBK) und bei jedem Aufruf
+    # der Übersicht erneut an Sentry gemeldet. Das alte negative_answer_count
+    # hat `item_id` nie angefasst, die Formfestigkeit galt also bis hierher.
+    #
+    # Ein unlesbarer Wert wird zu `nil` und nicht zu `0`: Eine `0` sähe wie eine
+    # gültige Kennung aus, und mehrere unlesbare Antworten trügen alle dieselbe.
     def negative_answers(answers, questions)
       return [] unless answers.is_a?(Array)
 
       answers.filter_map do |answer|
         next unless answer.is_a?(Hash) && [false, 'false'].include?(answer['answer'])
 
-        item_id = answer['item_id'].to_i
-        { item_id:, question: questions[item_id] }
+        item_id = Integer(answer['item_id'], exception: false)
+        { item_id:, question: item_id && questions[item_id] }
       end
     end
 
