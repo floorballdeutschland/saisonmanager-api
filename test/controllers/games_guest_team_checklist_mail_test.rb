@@ -165,6 +165,29 @@ class GamesGuestTeamChecklistMailTest < ActionDispatch::IntegrationTest
     assert_equal ['gastverein@example.de'], gast_mails.sole.to
   end
 
+  # Auf der Produktion tragen Vereine zwei Adressen mit Semikolon in der
+  # Kontaktadresse. Der Mail-Versand zerlegt das in echte Empfaenger -- eine
+  # reine Formatpruefung auf das ganze Feld haette diese Vereine aus dem
+  # letzten Auffangnetz geworfen und damit ganz unerreichbar gemacht.
+  test 'zwei Adressen in einem Feld erreichen beide Postfaecher' do
+    @tm.destroy!
+    @gastverein.update_columns(contact_email: 'vorstand@gast.de; geschaeftsstelle@gast.de')
+
+    close_match_record_as_admin
+
+    assert_equal %w[geschaeftsstelle@gast.de vorstand@gast.de], gast_mails.sole.to.sort
+  end
+
+  # Ein Anzeigename im Adressfeld ist zustellbar. Wuerde er verworfen, verlaere
+  # ausgerechnet die Person den Verteiler, an die sich die Mail richtet.
+  test 'ein Anzeigename im Adressfeld bleibt Teammanager-Stufe' do
+    @tm.update_columns(email: 'Max Muster <max@gast.de>')
+
+    close_match_record_as_admin
+
+    assert_equal ['max@gast.de'], gast_mails.sole.to
+  end
+
   # Abbestellte Info-Mails machen die Stufe leer, nicht die Mannschaft
   # unerreichbar: Die Bestätigung ist eine Pflicht des Vereins und fällt
   # deshalb auf die nächste Stufe durch.

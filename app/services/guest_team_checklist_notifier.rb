@@ -145,9 +145,7 @@ class GuestTeamChecklistNotifier
   # Teammanager, der den Verein verlassen hat, steht oft mit einem längst
   # gelöschten Postfach weiter an der Mannschaft. Ohne die Prüfung besetzte so
   # ein toter Eintrag die erste Stufe, die Mail bounct, und beide Auffangnetze
-  # bleiben ungenutzt, während die Bestätigungsfrist weiterläuft. Dieselbe
-  # Frage beantwortet `Club#reachable_for_requests?` aus demselben Grund gegen
-  # `EMAIL_FORMAT`.
+  # bleiben ungenutzt, während die Bestätigungsfrist weiterläuft.
   # Liefert die gezogene Stufe und ihre Adressen. Die Stufe kommt aus der
   # Ermittlung selbst und wird nicht nachträglich rekonstruiert -- ein zweiter
   # Durchlauf kostete eine weitere Abfrage über die Vereinsmanager.
@@ -163,8 +161,25 @@ class GuestTeamChecklistNotifier
     end
   end
 
+  # Zerlegt wird, was der Mail-Versand ohnehin zerlegt, statt es zu verwerfen:
+  # Ein Feld mit zwei durch Semikolon oder Komma getrennten Adressen und ein
+  # Feld mit Anzeigename (`Max Muster <max@verein.de>`) werden vom Mail-Gem in
+  # echte Empfänger aufgelöst, bis in den SMTP-Umschlag. Beides steht im
+  # Bestand -- auf der Produktion trägt mindestens ein Verein zwei Adressen mit
+  # Semikolon in der Kontaktadresse (siehe Club::EMAIL_FORMAT). Eine reine
+  # Formatprüfung auf das ganze Feld hätte genau diese Vereine aus der letzten
+  # Stufe der Kaskade geworfen, also aus dem Auffangnetz -- und ohne
+  # Empfänger gibt es weder Mail noch Fristverlängerung.
+  #
+  # Der Kommentar an `Club#reachable_for_requests?` behauptet das Gegenteil
+  # („geht als EINE Adresse heraus und erreicht niemanden"). Das ist gemessen
+  # falsch; die Stelle gehört nicht zu diesem Weg und bleibt hier unangetastet.
   def deliverable(emails)
-    emails.map { |mail| mail.to_s.strip }.select { |mail| mail.match?(Club::EMAIL_FORMAT) }.uniq
+    emails.flat_map { |mail| mail.to_s.split(/[;,]/) }
+          .map { |mail| mail[/<([^>]+)>/, 1] || mail }
+          .map(&:strip)
+          .select { |mail| mail.match?(Club::EMAIL_FORMAT) }
+          .uniq
   end
 
   # Ein fehlgeschlagener Versand darf weder die übrigen Mannschaften mitreißen
