@@ -1029,6 +1029,28 @@ class GameTest < ActiveSupport::TestCase
     assert_not spiel.can_edit_lineup?(user)
   end
 
+  # `game_days.club_id` traegt keine Saison. Ohne die Grenze im Helfer koennte
+  # ein heutiger Teammanager den Vermerk der Schiedsrichter in abgeschlossenen
+  # Berichten jahrealter Spieltage seines Vereins ueberschreiben -- set_string
+  # und set_flag sind auch bei geschlossenem Bericht offen.
+  test 'can_edit_lineup?: ein Spieltag einer alten Saison bleibt dem TM verschlossen' do
+    create(:setting, current_season_id: '18')
+    verein = create(:club)
+    create(:team, league: create(:league, game_operation: create(:game_operation), season_id: '18'),
+                  club: verein)
+    alte_liga = create(:league, game_operation: create(:game_operation), season_id: '17')
+    game_day = create(:game_day, league: alte_liga, club: verein)
+    altes_spiel = create(:game, game_day: game_day,
+                                home_team_id: create(:team, league: alte_liga).id,
+                                guest_team_id: create(:team, league: alte_liga).id)
+
+    eigenes_team = Team.where(club_id: verein.id).first
+    user = build_user([{ 'user_group_id' => 5, 'game_operation_id' => 0 }], teams: [eigenes_team.id])
+
+    assert_not altes_spiel.can_edit_lineup?(user)
+    assert_not_includes altes_spiel.user_permissions(user), :edit_game_report
+  end
+
   # Ohne eingetragenen Ausrichter gibt es niemanden, der ausrichtet: Der
   # Spielplan-Import legt Spieltage ohne club_id an, und ein leerer Wert darf
   # nicht jeden Teammanager berechtigen.

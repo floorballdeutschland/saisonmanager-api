@@ -1832,11 +1832,28 @@ class Game < ApplicationRecord
   # laufenden Saison, bei einer Spielgemeinschaft alle beteiligten
   # (Team#all_club_ids). Richtet die Spielgemeinschaft unter dem Partnerverein
   # aus, sitzt derselbe Tisch dort.
+  #
+  # Nur für die laufende Saison. `tm_club_ids` ist zwar auf der Nutzerseite auf
+  # die laufende Saison gefiltert, `game_days.club_id` trägt aber keine Saison:
+  # Ohne diese Grenze könnte ein heutiger Teammanager den Bericht jahrealter
+  # Spieltage seines Vereins anfassen, und `set_string`/`set_flag` sind auch bei
+  # abgeschlossenem Bericht offen -- der Vermerk der Schiedsrichter von 2018
+  # wäre überschreibbar. Der Ausrichter führt den Tisch des laufenden
+  # Spielbetriebs, nicht das Archiv.
   def hosting_club_team_manager?(user)
     host_club_id = game_day&.club_id
     return false if host_club_id.blank?
+    return false unless current_season?
 
     user.tm_club_ids.include?(host_club_id)
+  end
+
+  # `leagues.season_id` ist eine Textspalte, verglichen wird deshalb als Text.
+  # Ohne Liga am Spieltag (nullable) gibt es keine Saison und damit keinen
+  # Zugriff -- fail closed wie beim fehlenden Ausrichter.
+  def current_season?
+    season = game_day&.league&.season_id
+    season.present? && season.to_s == Setting.current_season_id.to_s
   end
 
   def user_permissions(user)
