@@ -57,8 +57,50 @@ class GamesGuestTeamChecklistMailTest < ActionDispatch::IntegrationTest
     close_match_record_as_admin
 
     mail = gast_mails.sole
-    assert_equal %w[gastverein@example.de tm-gast@example.de], mail.to.sort
+    assert_equal ['tm-gast@example.de'], mail.to
     assert_includes mail.subject, 'Spieltagscheckliste bestätigen'
+  end
+
+  # Der Kern der Kaskade: Gibt es einen Teammanager, bleibt der Verein außen
+  # vor. Vorher ging dieselbe Mail zusätzlich an Kontaktadresse und
+  # Vereinsmanager, für jede Mannschaft des Vereins aufs Neue.
+  test 'mit Teammanager bekommt der Verein die Mail nicht' do
+    create(:user, :vm, club_id: @gastverein.id, email: 'vm-gast@example.de')
+
+    close_match_record_as_admin
+
+    assert_equal ['tm-gast@example.de'], gast_mails.sole.to
+  end
+
+  test 'ohne Teammanager geht die Mail an die Vereinsmanager' do
+    @tm.destroy!
+    create(:user, :vm, club_id: @gastverein.id, email: 'vm-gast@example.de')
+    create(:user, :vm, club_id: @gastverein.id, email: 'vm2-gast@example.de')
+
+    close_match_record_as_admin
+
+    assert_equal %w[vm-gast@example.de vm2-gast@example.de], gast_mails.sole.to.sort
+  end
+
+  test 'ohne Teammanager und ohne Vereinsmanager geht die Mail an die Kontaktadresse' do
+    @tm.destroy!
+
+    close_match_record_as_admin
+
+    assert_equal ['gastverein@example.de'], gast_mails.sole.to
+  end
+
+  # Ein Vereinsmanager, der aus der Vereinspost abgewählt ist, zählt für diese
+  # Stufe nicht mit. Bleibt danach niemand übrig, fällt die Mail weiter auf die
+  # Kontaktadresse – sonst verschwände sie durch eine Verteiler-Einstellung.
+  test 'abgewaehlte Vereinsmanager reichen an die Kontaktadresse weiter' do
+    @tm.destroy!
+    vm = create(:user, :vm, club_id: @gastverein.id, email: 'vm-gast@example.de')
+    @gastverein.update!(notify_excluded_user_ids: [vm.id])
+
+    close_match_record_as_admin
+
+    assert_equal ['gastverein@example.de'], gast_mails.sole.to
   end
 
   test 'die Mail nennt alle Antworten des Ausrichters, nicht nur die verneinten' do
@@ -102,7 +144,10 @@ class GamesGuestTeamChecklistMailTest < ActionDispatch::IntegrationTest
     assert_nil @game_day.reload.team_confirmation_notified_at
   end
 
-  test 'ein Teammanager ohne Info-Mails bleibt aussen vor, die Vereinspost nicht' do
+  # Abbestellte Info-Mails machen die Stufe leer, nicht die Mannschaft
+  # unerreichbar: Die Bestätigung ist eine Pflicht des Vereins und fällt
+  # deshalb auf die nächste Stufe durch.
+  test 'ein Teammanager ohne Info-Mails reicht an den Verein weiter' do
     @tm.update!(receive_info_mails: false)
 
     close_match_record_as_admin

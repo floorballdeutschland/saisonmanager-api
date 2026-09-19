@@ -113,16 +113,34 @@ class GuestTeamChecklistNotifier
     end
   end
 
-  # Vereinspost und Teammanager zusammen: Die Bestätigung ist eine Pflicht des
-  # Vereins, deshalb geht sie an dessen Verteiler (Kontaktadresse plus die nicht
-  # abgewählten Vereinsmanager). Die Teammanager stehen zusätzlich drin, weil sie
-  # den Spieltag miterlebt haben – sie können Info-Mails allerdings abbestellen
-  # (receive_info_mails), die Vereinspost kann das nicht.
+  # Eine Kaskade, kein Sammelverteiler: Die Mail geht an die Stufe, die dem
+  # Spieltag am nächsten steht, und erst wenn die leer ist an die nächste.
+  #
+  #   1. die Teammanager DIESER Mannschaft
+  #   2. sonst die Vereinsmanager des Vereins (Vereinspost ohne Kontaktadresse)
+  #   3. sonst die Kontaktadresse des Vereins
+  #
+  # Vorher gingen Vereinspost und Teammanager gemeinsam raus. Für einen Verein
+  # mit vielen Mannschaften heißt das, dass der Vereinsvorstand jede Bestätigung
+  # jeder Mannschaft mitliest, während die Mail tatsächlich an eine einzige
+  # Person gerichtet ist – die, die den Spieltag verantwortet.
+  #
+  # Dass die Stufen sich gegenseitig ausschließen, ist der Punkt der Änderung.
+  # Eine Stufe gilt als leer, wenn sie keine zustellbare Adresse liefert, nicht
+  # wenn es die Rolle nicht gibt: Ein Teammanager, der Info-Mails abbestellt hat
+  # (`receive_info_mails`), lässt die Mail damit an die Vereinsmanager
+  # weiterfallen. Das ist gewollt – die Bestätigung ist eine Pflicht des
+  # Vereins, sie darf nicht dadurch verschwinden, dass niemand sie lesen will.
   def recipients(team)
-    (team.club&.notification_emails.to_a + User.team_managers(team.id).map(&:email))
-      .map { |mail| mail.to_s.strip }
-      .reject(&:blank?)
-      .uniq
+    club = team.club
+
+    normalize(User.team_managers(team.id).map(&:email)).presence ||
+      normalize(club&.notify_manager_emails.to_a).presence ||
+      normalize([club&.contact_email])
+  end
+
+  def normalize(emails)
+    emails.map { |mail| mail.to_s.strip }.reject(&:blank?).uniq
   end
 
   # Ein fehlgeschlagener Versand darf weder die übrigen Mannschaften mitreißen
