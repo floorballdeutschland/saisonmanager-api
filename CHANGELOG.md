@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Eine Liga kann jetzt ein Mindestalter tragen, das tagesgenau ab dem Geburtstag gilt**: Die Altersvoraussetzung einer Liga war bisher allein der Stichtag, ein festes Datum. Er beantwortet die Frage „alt genug am Stichtag", nicht „alt genug heute": Wer im Saisonverlauf 15 wird, blieb damit die ganze Saison gesperrt, auch Monate nach dem Geburtstag, und der Lizenzantrag wurde mit der Meldung zum Stichtag abgewiesen. Für den Erwachsenenbereich ist das die falsche Form, wenn die Spielordnung auf die Vollendung des 15. Lebensjahres abstellt. Neben dem Stichtag steht deshalb jetzt ein zweites Feld „Mindestalter", das am Tag der Lizenzbeantragung gegen das Geburtsdatum gerechnet wird und ab dem Geburtstag greift. Beide Regeln gelten nebeneinander und müssen beide erfüllt sein, damit eine Jugendliga ihre Obergrenze („geboren ab") behalten und zusätzlich ein Mindestalter setzen kann; wer den Stichtag durch das Mindestalter ersetzen will, muss ihn also leeren. Ohne Mindestalter ändert sich nichts, und ein fehlendes oder unlesbares Geburtsdatum blockiert wie bisher nicht. Bei der Liga-Kopie in die neue Saison wandert das Mindestalter unverändert mit, während der Stichtag um ein Jahr verschoben wird — ein Mindestalter altert nicht und muss zum Saisonwechsel nicht nachgezogen werden. Die Ligen selbst bleiben unverändert: Welche Liga welche Regel führt, entscheidet der jeweilige Spielbetrieb im Ligeneditor.
+
 ## [1.117.0] - 2026-09-18
 
 ### Behoben
