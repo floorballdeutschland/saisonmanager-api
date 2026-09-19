@@ -7,6 +7,10 @@ module Admin
       assert_response :success
     end
 
+    def rows_for(player)
+      JSON.parse(response.body).select { |row| row['player_id'] == player.id }
+    end
+
     setup do
       @setting = create(:setting, current_season_id: '18')
 
@@ -38,6 +42,57 @@ module Admin
       @player_go1  = create(:player, with_licenses: [{ team: @team_go1,  status: License::APPROVED, season_id: '18' }])
       @player_go2  = create(:player, with_licenses: [{ team: @team_go2,  status: License::APPROVED, season_id: '18' }])
       @player_prev = create(:player, with_licenses: [{ team: @team_prev, status: License::APPROVED, season_id: '17' }])
+    end
+
+    test 'die Zeile nennt die Zahl der insgesamt erteilten Lizenzen' do
+      zweite_liga = create(:league, game_operation: @go1, season_id: '18')
+      zweites_team = create(:team, league: zweite_liga, club: @club1)
+      spieler = create(:player, with_licenses: [
+        { team: @team_go1,  status: License::APPROVED, season_id: '18' },
+        { team: @team_prev, status: License::APPROVED, season_id: '17' },
+        { team: zweites_team, status: License::DENIED, season_id: '18' }
+      ])
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses'
+      assert_response :success
+
+      # Beide Zeilen der laufenden Saison nennen dieselbe Vorgeschichte: die
+      # erteilte Lizenz dieser Saison und die der Vorsaison. Der abgelehnte
+      # Antrag zaehlt nicht mit, erteilt wurde da nie etwas.
+      zeilen = rows_for(spieler)
+      assert_equal 2, zeilen.size
+      assert_equal [2], zeilen.map { |r| r['licenses_approved_total'] }.uniq
+    end
+
+    test 'eine spaeter ungueltig gewordene Lizenz zaehlt weiter mit' do
+      spieler = create(:player, with_licenses: [
+        { team: @team_go1,  status: License::APPROVED, season_id: '18' },
+        { team: @team_prev, status: License::APPROVED, season_id: '17' }
+      ])
+      # Die Lizenz der Vorsaison ist durch einen Transfer ungueltig geworden.
+      # Erteilt war sie trotzdem, sonst waere die Zahl eine Aussage ueber den
+      # heutigen Bestand statt ueber die Vorgeschichte der Person.
+      lizenzen = spieler.licenses.deep_dup
+      lizenzen.last['history'] << { 'license_status_id' => License::TRANSFER,
+                                    'created_at' => Time.current.iso8601 }
+      spieler.update!(licenses: lizenzen)
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses'
+      assert_response :success
+      assert_equal([2], rows_for(spieler).map { |r| r['licenses_approved_total'] })
+    end
+
+    test 'ein blosser Antrag zaehlt nicht als erteilte Lizenz' do
+      spieler = create(:player, with_licenses: [
+        { team: @team_go1, status: License::REQUESTED, season_id: '18' }
+      ])
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses'
+      assert_response :success
+      assert_equal([0], rows_for(spieler).map { |r| r['licenses_approved_total'] })
     end
 
     test 'GET as admin returns 200 with array' do

@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Die Lizenzübersicht des Verbandes zeigt, wie viele Lizenzen ein Spieler insgesamt schon erteilt bekommen hat**: Jede Zeile führt jetzt die Zahl der über alle Saisons und Vereine hinweg erteilten Lizenzen dieser Person mit (`licenses_approved_total`). Gemeint ist die Vorgeschichte und nicht der heutige Bestand: Eine Lizenz, die später abgelaufen, durch einen Transfer ungültig geworden oder gelöscht worden ist, war trotzdem einmal erteilt und zählt mit; ein bloßer Antrag, eine Ablehnung und ein Rückzug zählen nicht, denn erteilt wurde da nie etwas. Erkannt wird die Erteilung am Verlauf der Lizenz, nicht an ihrem heutigen Status — eine gesperrte Lizenz trägt ihn nicht mehr. Der Altbestand aus dem Übernahmeimport führt teils überhaupt keinen Verlauf; dort zählt der Status selbst. Die Anzeige folgt im Frontend.
+
 ## [1.117.0] - 2026-09-18
 
 ### Behoben
