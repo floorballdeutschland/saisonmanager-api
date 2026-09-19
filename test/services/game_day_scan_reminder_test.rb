@@ -87,6 +87,35 @@ class GameDayScanReminderTest < ActiveSupport::TestCase
     assert_equal 0, GameDayScanReminder.notify_due
   end
 
+  # Ein Greylisting oder ein kurz nicht erreichbarer Mailserver ist beim
+  # naechsten stuendlichen Lauf vorbei. Wuerde der Fehlschlag gestempelt, waere
+  # die Erinnerung an einem Zufall verloren.
+  test 'ein fehlgeschlagener Versand wird beim naechsten Lauf wiederholt' do
+    ClubMailer.stub(:game_day_scan_reminder, ->(*) { raise IOError, 'Mailserver weg' }) do
+      assert_equal 0, GameDayScanReminder.notify_due
+    end
+
+    @game_day.reload
+    assert_nil @game_day.scan_reminder_sent_at
+    assert_equal 1, @game_day.scan_reminder_attempts
+
+    assert_equal 1, GameDayScanReminder.notify_due
+    assert_not_nil @game_day.reload.scan_reminder_sent_at
+  end
+
+  # Eine dauerhaft kaputte Adresse darf den Verein nicht stuendlich in denselben
+  # Fehler laufen lassen.
+  test 'nach MAX_ATTEMPTS Fehlversuchen wird aufgegeben' do
+    ClubMailer.stub(:game_day_scan_reminder, ->(*) { raise IOError, 'Adresse kaputt' }) do
+      GameDayScanReminder::MAX_ATTEMPTS.times { GameDayScanReminder.notify_due }
+    end
+
+    @game_day.reload
+    assert_equal GameDayScanReminder::MAX_ATTEMPTS, @game_day.scan_reminder_attempts
+    assert_not_nil @game_day.scan_reminder_sent_at
+    assert_empty ActionMailer::Base.deliveries
+  end
+
   test 'DRY_RUN zaehlt, verschickt aber nichts und markiert nichts' do
     assert_equal 1, GameDayScanReminder.notify_due(dry_run: true)
     assert_empty ActionMailer::Base.deliveries

@@ -29,6 +29,10 @@ class GameDayScanReminder
 
   CLOSED_STATUSES = %w[match_record_closed finalized].freeze
 
+  # Nach so vielen Fehlversuchen wird aufgegeben. Bei stündlichem Lauf sind das
+  # drei Stunden Nachsicht gegenüber einem vorübergehend gestörten Versand.
+  MAX_ATTEMPTS = 3
+
   def self.notify_due(now: Time.current, dry_run: false)
     due(now: now).sum { |game_day| new(game_day).notify(now: now, dry_run: dry_run) }
   end
@@ -74,9 +78,6 @@ class GameDayScanReminder
 
   # Verschickt die Erinnerung und hält den Versand fest. Gibt 1 zurück, wenn
   # eine Mail rausging, sonst 0.
-  #
-  # Der Stempel wird auch nach einem fehlgeschlagenen Versand gesetzt: Sonst
-  # liefe der Verein bei jedem stündlichen Lauf erneut in denselben Fehler.
   def notify(now: Time.current, dry_run: false)
     return 0 unless due?(now: now)
     return 1 if dry_run
@@ -84,11 +85,7 @@ class GameDayScanReminder
     begin
       ClubMailer.game_day_scan_reminder(@game_day.club, @game_day).deliver_now
     rescue StandardError => e
-      Rails.logger.warn(
-        "Scan-Erinnerung für Spieltag #{@game_day.id} fehlgeschlagen: #{e.class}: #{e.message}"
-      )
-      Sentry.capture_exception(e) if defined?(Sentry)
-      @game_day.update_column(:scan_reminder_sent_at, now)
+      record_failure(e, now)
       return 0
     end
 
@@ -97,6 +94,29 @@ class GameDayScanReminder
   end
 
   private
+
+  # Ein Fehlschlag darf die Erinnerung nicht dauerhaft löschen: Greylisting oder
+  # ein kurz nicht erreichbarer Mailserver ist beim nächsten stündlichen Lauf
+  # vorbei, und ohne einen zweiten Versuch verlöre der Ausrichter seine
+  # Erinnerung an einem Zufall. Eine dauerhaft kaputte Adresse darf den Verein
+  # aber auch nicht stündlich in denselben Fehler laufen lassen — nach
+  # MAX_ATTEMPTS Versuchen wird der Spieltag gestempelt und die Aufgabe steht
+  # im Log.
+  def record_failure(error, now)
+    versuche = @game_day.scan_reminder_attempts.to_i + 1
+    aufgegeben = versuche >= MAX_ATTEMPTS
+
+    updates = { scan_reminder_attempts: versuche }
+    updates[:scan_reminder_sent_at] = now if aufgegeben
+    @game_day.update_columns(updates)
+
+    Rails.logger.warn(
+      "Scan-Erinnerung für Spieltag #{@game_day.id} fehlgeschlagen " \
+      "(Versuch #{versuche} von #{MAX_ATTEMPTS}#{', aufgegeben' if aufgegeben}): " \
+      "#{error.class}: #{error.message}"
+    )
+    Sentry.capture_exception(error) if defined?(Sentry)
+  end
 
   def scan_required?
     @game_day.league&.state_association&.effective_scan_required.present?
