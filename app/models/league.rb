@@ -287,7 +287,21 @@ class League < ApplicationRecord
   # Ohne Mindestalter oder bei fehlendem/unlesbarem Geburtsdatum keine Sperre --
   # dieselbe Linie wie beim Stichtag: Ein unbekanntes Geburtsdatum ist ein
   # Datenproblem und darf den Lizenzantrag nicht blockieren.
-  def minimum_age_met?(birthdate, reference_date = Date.current)
+  #
+  # Der Stichtag ist der deutsche Kalendertag, nicht der des Servers: Die
+  # Anwendung laeuft in UTC (config.time_zone ist nicht gesetzt, der Host steht
+  # auf Etc/UTC), und zwischen 00:00 und 02:00 deutscher Zeit stuende
+  # Date.current noch auf dem Vortag. Ein Antrag in der Nacht des Geburtstags
+  # waere damit an genau diesem Tag abgewiesen worden. Gleiche Ableitung wie in
+  # Team#info_editable_during_season? (Time.find_zone('Europe/Berlin').today).
+  #
+  # Zum 29.02.: Wer an einem Schalttag geboren ist, erreicht das Alter hier erst
+  # am 01.03. eines Nicht-Schaltjahres (2026-02-28 minus 15 Jahre ergibt
+  # 2011-02-28, und der 29.02. liegt danach). DocumentType#age_at rechnet an
+  # dieser einen Stelle andersherum und haelt dieselbe Person am 28.02. bereits
+  # fuer alt genug. Bewusst nicht mit angeglichen: Das waere eine
+  # Verhaltensaenderung an den Pflichtdokumenten und gehoert nicht in diesen PR.
+  def minimum_age_met?(birthdate, reference_date = Time.find_zone('Europe/Berlin').today)
     dob = parsed_birthdate(birthdate)
     return true if minimum_age.blank? || dob.nil?
 
@@ -1525,8 +1539,9 @@ class League < ApplicationRecord
 
   # Geburtsdatum als Date, oder nil, wenn es fehlt oder nicht lesbar ist. Beide
   # Altersregeln behandeln nil als "keine Sperre", deshalb wird hier nicht
-  # geworfen: Im Bestand stehen Geburtsdaten als Date und als String, und aus
-  # dem Altsystem auch als Freitext.
+  # geworfen. players.birthdate ist eine date-Spalte; der String-Zweig ist
+  # Vorsicht fuer Aufrufe mit rohem Parameter- oder Importwert, nicht die
+  # Beschreibung des Bestands. Gleiche Form wie DocumentType#parse_birthdate.
   def parsed_birthdate(birthdate)
     return nil if birthdate.blank?
     return birthdate if birthdate.is_a?(Date)
