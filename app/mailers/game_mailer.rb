@@ -52,7 +52,7 @@ class GameMailer < ApplicationMailer
   end
 
   # Hinweis an eine Gastmannschaft: Der Ausrichter hat den Spieltagsbericht
-  # beantwortet, bestätigen oder beanstanden geht im Portal „Meine
+  # ausgefüllt, bestätigen oder beanstanden geht im Portal „Meine
   # Auswärtsspieltage" (Login, kein Token-Link wie beim Ausrichter).
   #
   # Die Mail führt ALLE Antworten des Ausrichters auf, nicht nur die verneinten.
