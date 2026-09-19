@@ -100,7 +100,7 @@ class GuestTeamChecklistNotifier
   # nie verschickt wurde oder im Postfach des Vereins verloren ging.
   def recipients_by_team
     guest_teams.each_with_object({}) do |team, result|
-      emails = recipients(team)
+      stufe, emails = recipients(team)
       if emails.empty?
         Rails.logger.info(
           "Spieltagsbestätigung: keine Adresse für Gastmannschaft #{team.id} " \
@@ -109,6 +109,14 @@ class GuestTeamChecklistNotifier
         next
       end
 
+      # Welche Stufe gezogen hat, gehört ins Log: Von außen ist der Verteiler
+      # nicht mehr abzulesen, und die häufigste Rückfrage („warum hat der
+      # Verein nichts bekommen?") wäre sonst nur über einen Datenbankabzug zu
+      # beantworten.
+      Rails.logger.info(
+        "Spieltagsbestätigung: #{stufe} für Gastmannschaft #{team.id} " \
+        "(Spiel #{@game.id}, #{emails.size} Adresse(n))"
+      )
       result[team] = emails
     end
   end
@@ -131,16 +139,32 @@ class GuestTeamChecklistNotifier
   # (`receive_info_mails`), lässt die Mail damit an die Vereinsmanager
   # weiterfallen. Das ist gewollt – die Bestätigung ist eine Pflicht des
   # Vereins, sie darf nicht dadurch verschwinden, dass niemand sie lesen will.
+  #
+  # Geprüft wird auf Zustellbarkeit, nicht auf Befülltheit: `users.email` hat
+  # keinerlei Formatvalidierung (anders als `clubs.contact_email`), und ein
+  # Teammanager, der den Verein verlassen hat, steht oft mit einem längst
+  # gelöschten Postfach weiter an der Mannschaft. Ohne die Prüfung besetzte so
+  # ein toter Eintrag die erste Stufe, die Mail bounct, und beide Auffangnetze
+  # bleiben ungenutzt, während die Bestätigungsfrist weiterläuft. Dieselbe
+  # Frage beantwortet `Club#reachable_for_requests?` aus demselben Grund gegen
+  # `EMAIL_FORMAT`.
+  # Liefert die gezogene Stufe und ihre Adressen. Die Stufe kommt aus der
+  # Ermittlung selbst und wird nicht nachträglich rekonstruiert -- ein zweiter
+  # Durchlauf kostete eine weitere Abfrage über die Vereinsmanager.
   def recipients(team)
     club = team.club
 
-    normalize(User.team_managers(team.id).map(&:email)).presence ||
-      normalize(club&.notify_manager_emails.to_a).presence ||
-      normalize([club&.contact_email])
+    if (emails = deliverable(User.team_managers(team.id).map(&:email))).any?
+      ['Teammanager', emails]
+    elsif (emails = deliverable(club&.notify_manager_emails.to_a)).any?
+      ['Vereinsmanager', emails]
+    else
+      ['Vereinskontaktadresse', deliverable([club&.contact_email])]
+    end
   end
 
-  def normalize(emails)
-    emails.map { |mail| mail.to_s.strip }.reject(&:blank?).uniq
+  def deliverable(emails)
+    emails.map { |mail| mail.to_s.strip }.select { |mail| mail.match?(Club::EMAIL_FORMAT) }.uniq
   end
 
   # Ein fehlgeschlagener Versand darf weder die übrigen Mannschaften mitreißen

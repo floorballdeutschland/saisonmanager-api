@@ -144,6 +144,27 @@ class GamesGuestTeamChecklistMailTest < ActionDispatch::IntegrationTest
     assert_nil @game_day.reload.team_confirmation_notified_at
   end
 
+  # `users.email` hat keine Formatvalidierung. Ein Teammanager, der den Verein
+  # verlassen hat, steht oft mit einem kaputten oder gelöschten Postfach weiter
+  # an der Mannschaft -- sonst besetzte er die erste Stufe, die Mail bounct, und
+  # beide Auffangnetze blieben ungenutzt, während die Frist weiterläuft.
+  test 'eine unzustellbare Teammanager-Adresse reicht an den Verein weiter' do
+    @tm.update_columns(email: 'kein-postfach')
+
+    close_match_record_as_admin
+
+    assert_equal ['gastverein@example.de'], gast_mails.sole.to
+  end
+
+  test 'eine unbrauchbare Vereinsmanager-Adresse reicht an die Kontaktadresse weiter' do
+    @tm.destroy!
+    create(:user, :vm, club_id: @gastverein.id, email: 'auch kaputt')
+
+    close_match_record_as_admin
+
+    assert_equal ['gastverein@example.de'], gast_mails.sole.to
+  end
+
   # Abbestellte Info-Mails machen die Stufe leer, nicht die Mannschaft
   # unerreichbar: Die Bestätigung ist eine Pflicht des Vereins und fällt
   # deshalb auf die nächste Stufe durch.
