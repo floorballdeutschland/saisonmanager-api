@@ -257,8 +257,9 @@ class GamesController < ApplicationController
   end
 
   # Interne Spielbericht-Felder (Unterschriften, besondere Vorkommnisse etc.).
-  # Nur für Rollen mit Bezug zum Spiel: Admin/SBK des Spielbetriebs sowie
-  # VM/TM der beteiligten Mannschaften. Andere eingeloggte Nutzer erhalten ein
+  # Nur für Rollen mit Bezug zum Spiel: Admin/SBK des Spielbetriebs, VM/TM der
+  # beteiligten Mannschaften sowie VM und TM des ausrichtenden Vereins, der den
+  # Bericht aller Spiele des Tages führt. Andere eingeloggte Nutzer erhalten ein
   # leeres Objekt statt 403, weil die Spiel-Detailseite den Endpoint für jeden
   # Login aufruft und der Frontend-ErrorInterceptor bei 403 hart umleitet.
   def show_hidden
@@ -1308,8 +1309,8 @@ class GamesController < ApplicationController
   end
 
   # Admin/SBK des Spielbetriebs, VM/TM der beteiligten Mannschaften (inkl.
-  # Spielgemeinschafts-Vereine) sowie der VM des ausrichtenden Vereins dürfen
-  # die internen Felder lesen.
+  # Spielgemeinschafts-Vereine) sowie VM und TM des ausrichtenden Vereins
+  # dürfen die internen Felder lesen.
   def can_view_hidden_elements?(game)
     # Spielsekretariat per Einmal-Link: darf genau die Spiele der Spieltage
     # sehen, die der Link abdeckt (eine Halle an einem Tag, gegebenenfalls
@@ -1329,6 +1330,11 @@ class GamesController < ApplicationController
 
     teams = [game.home_team, game.guest_team].compact
     return true if ph[:tm].present? && ph[:tm].intersect?(teams.map(&:id))
+
+    # Teammanager des ausrichtenden Vereins: Er führt den Bericht aller Spiele
+    # des Tages (Game#hosting_club_team_manager?) und braucht dieselben Felder
+    # wie der Vereinsmanager daneben.
+    return true if game.hosting_club_team_manager?(current_user)
 
     # Der ausrichtende Verein gehört dazu, genau wie in Game#can_edit_lineup?
     # und Game#user_permissions. Ohne ihn bekäme der Ausrichter eines Turniers
