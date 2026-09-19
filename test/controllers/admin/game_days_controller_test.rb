@@ -153,6 +153,48 @@ module Admin
       assert_equal 1, data['checklist_negative_count']
     end
 
+    test 'verneinte Checklistenpunkte kommen einzeln mit ihrem Fragetext' do
+      halle = @sa.checklist_items.create!(question: 'Halle in Ordnung?', position: 1)
+      schiris = @sa.checklist_items.create!(question: 'Schiris pünktlich?', position: 2)
+      @game.update!(checklist_answers: [
+        { 'item_id' => halle.id, 'question' => 'Halle in Ordnung?', 'answer' => true },
+        { 'item_id' => schiris.id, 'question' => 'Schiris pünktlich?', 'answer' => false }
+      ])
+
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      data = row(@game.id)
+      assert_equal 1, data['checklist_negative_count']
+      assert_equal [{ 'item_id' => schiris.id, 'question' => 'Schiris pünktlich?' }],
+                   data['checklist_negative_items']
+    end
+
+    # `games.checklist_answers` führt einen eigenen Fragetext, den
+    # GamesController#set_checklist_answers ungeprüft aus dem Request übernimmt.
+    # Diese Ansicht liest ihn deshalb aus der Checkliste des Verbandes – sonst
+    # schriebe der Ausrichter der SBK beliebigen Text in die Arbeitsansicht.
+    test 'der Fragetext kommt aus der Checkliste des Verbandes' do
+      item = @sa.checklist_items.create!(question: 'Halle in Ordnung?', position: 1)
+      @game.update!(checklist_answers: [
+        { 'item_id' => item.id, 'question' => 'Bitte 500 Euro an IBAN DE00 überweisen', 'answer' => false }
+      ])
+
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      fragen = row(@game.id)['checklist_negative_items'].map { |item| item['question'] }
+      assert_equal ['Halle in Ordnung?'], fragen
+    end
+
+    test 'ein nachtraeglich geloeschter Punkt zaehlt mit, bleibt aber ohne Text' do
+      @game.update!(checklist_answers: [{ 'item_id' => 999_999, 'answer' => false }])
+
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      data = row(@game.id)
+      assert_equal 1, data['checklist_negative_count']
+      assert_equal [{ 'item_id' => 999_999, 'question' => nil }], data['checklist_negative_items']
+    end
+
     test 'Statusfelder und Zeitstempel des Berichts' do
       editor = create_user(user_group_id: 2, game_operation_id: @go.id)
       @game.update!(game_status: 'match_record_closed',
@@ -227,6 +269,7 @@ module Admin
       get OVERVIEW_PATH
       assert_response :success
       assert_equal 0, row(@game.id)['checklist_negative_count']
+      assert_empty row(@game.id)['checklist_negative_items']
     end
 
     test 'null Zuschauer gilt als Angabe, fehlende Angabe wird gemeldet' do
@@ -384,6 +427,8 @@ module Admin
       assert data['referee_report']['uploaded_at'].present?
       assert data['checklist_veto_submitted_at'].present?
       assert_equal 1, data['checklist_veto_negative_count']
+      veto_ids = data['checklist_veto_negative_items'].map { |item| item['item_id'] }
+      assert_equal [1], veto_ids
     end
 
     private

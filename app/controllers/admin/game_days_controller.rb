@@ -102,7 +102,7 @@ module Admin
       scope = Game.joins(game_day: :league).includes(
         :home_team, :guest_team, :game_referee_report, :proceeding_proposal,
         { game_scan: :uploaded_by },
-        game_day: [{ league: { game_operation: :state_association } }, :arena, :club]
+        game_day: [{ league: { game_operation: { state_association: :checklist_items } } }, :arena, :club]
       )
 
       go_ids = scope_go_ids
@@ -172,6 +172,9 @@ module Admin
     def game_row(game, editor_names)
       game_day = game.game_day
       league = game_day.league
+      questions = checklist_questions(game)
+      negative = negative_answers(game.checklist_answers, questions)
+      veto_negative = negative_answers(game.checklist_veto_answers, questions)
 
       {
         id: game.id,
@@ -202,9 +205,11 @@ module Admin
         scan: scan_hash(game, game_day),
         referee_report: referee_report_hash(game),
         proceeding_proposal: proceeding_proposal_hash(game),
-        checklist_negative_count: negative_answer_count(game.checklist_answers),
+        checklist_negative_count: negative.size,
+        checklist_negative_items: negative,
         checklist_veto_submitted_at: game.checklist_veto_submitted_at,
-        checklist_veto_negative_count: negative_answer_count(game.checklist_veto_answers),
+        checklist_veto_negative_count: veto_negative.size,
+        checklist_veto_negative_items: veto_negative,
 
         flags: flags(game)
       }
@@ -248,14 +253,42 @@ module Admin
       nil
     end
 
-    # Zählt verneinte Checklisten-Punkte. Die Schreibpfade erzwingen zwar echte
-    # Booleans, der JSONB-Altbestand ist aber nicht garantiert ein Array aus
-    # Hashes – ohne die Formprüfung würde eine abweichende Form die ganze
-    # Übersicht auf 500 setzen.
-    def negative_answer_count(answers)
-      return 0 unless answers.is_a?(Array)
+    # Die verneinten Checklisten-Punkte, jeder mit seinem Fragetext. Die reine
+    # Anzahl sagte nur, dass irgendwo „Nein" steht – welcher Punkt es war, musste
+    # die SBK im Spielbericht nachschlagen.
+    #
+    # Die Schreibpfade erzwingen zwar echte Booleans, der JSONB-Altbestand ist
+    # aber nicht garantiert ein Array aus Hashes – ohne die Formprüfung würde
+    # eine abweichende Form die ganze Übersicht auf 500 setzen.
+    #
+    # `question` bleibt leer, wenn der Punkt in der Checkliste des Verbandes
+    # nicht (mehr) steht: Ein nachträglich gelöschter Punkt hat keinen
+    # verlässlichen Text mehr, und der in der Antwort mitgespeicherte taugt
+    # dafür nicht (siehe checklist_questions).
+    def negative_answers(answers, questions)
+      return [] unless answers.is_a?(Array)
 
-      answers.count { |a| a.is_a?(Hash) && [false, 'false'].include?(a['answer']) }
+      answers.filter_map do |answer|
+        next unless answer.is_a?(Hash) && [false, 'false'].include?(answer['answer'])
+
+        item_id = answer['item_id'].to_i
+        { item_id:, question: questions[item_id] }
+      end
+    end
+
+    # Fragetexte des Verbandes nach item_id, je Verband einmal aufgelöst.
+    #
+    # Bewusst nicht der Text aus `games.checklist_answers`: Den übernimmt
+    # `GamesController#set_checklist_answers` ungeprüft aus dem Request, ein
+    # Ausrichter könnte der SBK darüber beliebigen Text in die Arbeitsansicht
+    # schreiben. Der Einspruchsweg und die Mail an die Gastmannschaft lesen ihn
+    # aus demselben Grund aus der Datenbank.
+    def checklist_questions(game)
+      sa = game.state_association
+      return {} if sa.nil?
+
+      @checklist_questions ||= {}
+      @checklist_questions[sa.id] ||= sa.checklist_items.to_h { |item| [item.id, item.question] }
     end
 
     def flags(game)
