@@ -1,6 +1,6 @@
 require 'test_helper'
 
-# Einspruch des Ausrichtervereins gegen die von der Spielleitung beantwortete
+# Einspruch des Ausrichtervereins gegen den von der Spielleitung ausgefüllten
 # Spieltagsbericht. Erreichbar ohne Benutzerkonto: der Einmal-Token aus der
 # Bestätigungsmail ist die Berechtigung, dazu der öffentliche API-Key.
 class GamesChecklistVetoTest < ActionDispatch::IntegrationTest

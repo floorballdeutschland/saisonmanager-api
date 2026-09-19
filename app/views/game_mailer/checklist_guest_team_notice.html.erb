@@ -10,13 +10,13 @@
   (<%= @game.home_team_name %> vs. <%= @game.guest_team_name %>,
   Spiel Nr. <%= @game.game_number %>) hat der Ausrichter<% if @game_day.club %>
   <strong><%= @game_day.club.name %></strong><% end %> den Spielbericht
-  eingereicht und dabei den Spieltagsbericht des Landesverbands beantwortet.
+  eingereicht und dabei den Spieltagsbericht des Landesverbands ausgefüllt.
 </p>
 
 <p>
   Als Gastmannschaft <strong><%= @team.name %></strong> bestätigen Sie den
   Spieltag als ordnungsgemäß durchgeführt, oder Sie melden ihn als nicht
-  ordnungsgemäß und beantworten den Spieltagsbericht selbst.
+  ordnungsgemäß und füllen den Spieltagsbericht selbst aus.
 </p>
 
 <% if @deadline %>

@@ -54,7 +54,7 @@ class TeamGameDayConfirmationsController < ApplicationController
 
     items = checklist_items_for(game_day)
     if items.empty?
-      return render json: { error: 'Für diesen Spieltag ist kein Spieltagsbericht hinterlegt.' },
+      return render json: { error: 'Für diesen Spieltag sind keine Fragen für den Spieltagsbericht hinterlegt.' },
                     status: :unprocessable_entity
     end
 

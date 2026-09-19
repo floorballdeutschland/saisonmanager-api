@@ -707,7 +707,7 @@ class User < ApplicationRecord
   end
 
   # True, wenn der/die Nutzer:in mindestens eine Mannschaft verantwortet, die in
-  # der aktuellen Saison in einem Spielbetrieb spielt, dessen Landesverband eine
+  # der aktuellen Saison in einem Spielbetrieb spielt, dessen Landesverband
   # Fragen für den Spieltagsbericht hinterlegt hat (mindestens eine). Ohne sie
   # gibt es am Spieltag nichts zu bestätigen (siehe
   # TeamGameDayConfirmationsController#checklist_items_for), der Menüpunkt bleibt
