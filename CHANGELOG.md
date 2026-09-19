@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Die Erinnerung an den Spielberichtsbogen kommt jetzt erst eine Stunde nach dem Spiel — und nur, wenn er fehlt**: Bisher ging die Mail „Spielbericht-Scans einreichen" in dem Augenblick raus, in dem der letzte Spielbericht des Spieltags geschlossen wurde. Am Tisch wird der Bogen aber genau dann eingescannt: Der Ausrichter bekam die Erinnerung, während er die Datei schon in der Hand hatte, und wer sofort hochlud, wurde trotzdem angeschrieben. Die Mail ist jetzt eine echte Erinnerung: Sie geht frühestens eine Stunde nach dem Abschluss raus und nur dann, wenn zu mindestens einem Spiel des Spieltags kein Bogen hochgeladen wurde. Wer innerhalb der Stunde hochlädt, hört nichts mehr. Gemessen wird ab dem Abschluss des letzten Berichts und nicht ab dem Schlusspfiff — ein Spielende hält der Saisonmanager nirgends fest, und der Abschluss ist ohnehin der Moment, in dem der unterschriebene Bogen vorliegt. Verschickt wird einmal je Spieltag über einen stündlichen Lauf; ein Spieltag mit noch offenem Bericht wartet, bis alle Spiele geschlossen sind.
+
 ## [1.117.0] - 2026-09-18
 
 ### Behoben

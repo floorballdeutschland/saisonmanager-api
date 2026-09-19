@@ -969,7 +969,6 @@ class GamesController < ApplicationController
         if params[:game_status] == 'match_record_closed'
           _maybe_send_incident_report_reminder(game)
           _maybe_send_checklist_confirmation(game)
-          _maybe_send_game_day_scan_reminder(game)
         end
 
         # Platzierungsspiele füllen, sobald ein Spiel einen abgeschlossenen
@@ -1535,20 +1534,5 @@ class GamesController < ApplicationController
       guest_team: game.guest_team_name,
       league_name: game.league.name
     }
-  end
-
-  def _maybe_send_game_day_scan_reminder(game)
-    game_day = game.game_day
-    return unless game.state_association&.effective_scan_required
-
-    all_closed = game_day.games.reload.all? do |g|
-      %w[match_record_closed finalized].include?(g.game_status)
-    end
-    return unless all_closed
-
-    hosting_club = game_day.club
-    return if hosting_club&.notification_emails.blank?
-
-    ClubMailer.game_day_scan_reminder(hosting_club, game_day).deliver_later
   end
 end

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_09_18_100000) do
+ActiveRecord::Schema[7.2].define(version: 2026_09_19_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -283,6 +283,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_18_100000) do
     t.datetime "host_notified_at"
     t.string "legacy_ref"
     t.datetime "team_confirmation_notified_at"
+    t.datetime "scan_reminder_sent_at"
     t.index ["arena_id"], name: "index_game_days_on_arena_id"
     t.index ["club_id"], name: "index_game_days_on_club_id"
     t.index ["date"], name: "index_game_days_on_date"
@@ -1064,9 +1065,9 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_18_100000) do
     t.datetime "withdrawn_at"
     t.index ["former_club_id"], name: "index_transfer_requests_on_former_club_id"
     t.index ["player_confirmation_token"], name: "index_transfer_requests_on_player_confirmation_token", unique: true
-    t.index ["player_id", "requesting_club_id"], name: "index_transfer_requests_on_player_id_active_release", unique: true, where: "(((status)::text = ANY ((ARRAY['pending_club'::character varying, 'pending_player'::character varying, 'pending_lv'::character varying, 'scheduled'::character varying])::text[])) AND ((request_type)::text = 'release'::text))"
+    t.index ["player_id", "requesting_club_id"], name: "index_transfer_requests_on_player_id_active_release", unique: true, where: "(((status)::text = ANY (ARRAY[('pending_club'::character varying)::text, ('pending_player'::character varying)::text, ('pending_lv'::character varying)::text, ('scheduled'::character varying)::text])) AND ((request_type)::text = 'release'::text))"
     t.index ["player_id"], name: "index_transfer_requests_on_player_id"
-    t.index ["player_id"], name: "index_transfer_requests_on_player_id_active_transfer", unique: true, where: "(((status)::text = ANY ((ARRAY['pending_club'::character varying, 'pending_player'::character varying, 'pending_lv'::character varying, 'scheduled'::character varying])::text[])) AND ((request_type)::text = 'transfer'::text))"
+    t.index ["player_id"], name: "index_transfer_requests_on_player_id_active_transfer", unique: true, where: "(((status)::text = ANY (ARRAY[('pending_club'::character varying)::text, ('pending_player'::character varying)::text, ('pending_lv'::character varying)::text, ('scheduled'::character varying)::text])) AND ((request_type)::text = 'transfer'::text))"
     t.index ["request_type"], name: "index_transfer_requests_on_request_type"
     t.index ["requesting_club_id"], name: "index_transfer_requests_on_requesting_club_id"
     t.index ["status"], name: "index_transfer_requests_on_status"
