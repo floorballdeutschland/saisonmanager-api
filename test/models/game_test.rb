@@ -1011,8 +1011,11 @@ class GameTest < ActiveSupport::TestCase
     assert fremdes_spiel.can_edit_lineup?(user)
   end
 
-  # Die Saisongrenze steckt zwei Schichten tief in Team.current_season. Ohne
-  # diesen Test faellt sie bei einer Aenderung dort still weg.
+  # Die Saisongrenze sitzt in User#permission_hash: Es filtert die Teams des
+  # Kontos ueber League.current_season, bevor tm_club_ids ueberhaupt laeuft --
+  # fuer einen TM mit ausschliesslich einer Vorsaison-Mannschaft ist
+  # permission_hash[:tm] schon leer. Das Team.current_season in tm_club_ids ist
+  # die zweite, redundante Sicherung.
   test 'can_edit_lineup?: eine Mannschaft der Vorsaison verschafft keinen Ausrichter-Zugriff' do
     create(:setting, current_season_id: '18')
     verein = create(:club)
