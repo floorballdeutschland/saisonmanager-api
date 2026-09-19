@@ -1330,6 +1330,11 @@ class GamesController < ApplicationController
     teams = [game.home_team, game.guest_team].compact
     return true if ph[:tm].present? && ph[:tm].intersect?(teams.map(&:id))
 
+    # Teammanager des ausrichtenden Vereins: Er führt den Bericht aller Spiele
+    # des Tages (Game#hosting_club_team_manager?) und braucht dieselben Felder
+    # wie der Vereinsmanager daneben.
+    return true if game.hosting_club_team_manager?(current_user)
+
     # Der ausrichtende Verein gehört dazu, genau wie in Game#can_edit_lineup?
     # und Game#user_permissions. Ohne ihn bekäme der Ausrichter eines Turniers
     # an einem Ort ein leeres Formular, in das er zwar schreiben darf (siehe

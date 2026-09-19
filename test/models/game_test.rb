@@ -956,6 +956,59 @@ class GameTest < ActiveSupport::TestCase
     assert game.can_edit_lineup?(user)
   end
 
+  # Gegenstück zum VM oben: Bei einem Turnierspieltag im Nachwuchs stellt der
+  # Ausrichter das Sekretariat, und das ist oft ein Teammanager. Angemeldet sah
+  # er bisher nur die Spiele seiner eigenen Mannschaft und musste sich für die
+  # übrigen erst selbst einen Sekretariatslink ausstellen.
+  test 'can_edit_lineup?: TM des ausrichtenden Vereins darf alle Spiele des Tages bearbeiten' do
+    create(:setting, current_season_id: '18')
+    hosting_club = create(:club)
+    league = create(:league, game_operation: create(:game_operation), season_id: '18')
+    eigenes_team = create(:team, league: league, club: hosting_club)
+    game_day = create(:game_day, league: league, club: hosting_club)
+    # Ein Spiel ohne eigene Beteiligung, zwei fremde Mannschaften.
+    fremdes_spiel = create(:game, game_day: game_day,
+                                  home_team_id: create(:team, league: league).id,
+                                  guest_team_id: create(:team, league: league).id)
+
+    user = build_user([{ 'user_group_id' => 5, 'game_operation_id' => 0 }], teams: [eigenes_team.id])
+
+    assert fremdes_spiel.can_edit_lineup?(user)
+    assert_includes fremdes_spiel.user_permissions(user), :edit_game_report
+  end
+
+  test 'can_edit_lineup?: TM eines Gastvereins bleibt bei den eigenen Spielen' do
+    create(:setting, current_season_id: '18')
+    league = create(:league, game_operation: create(:game_operation), season_id: '18')
+    gast_team = create(:team, league: league, club: create(:club))
+    game_day = create(:game_day, league: league, club: create(:club))
+    fremdes_spiel = create(:game, game_day: game_day,
+                                  home_team_id: create(:team, league: league).id,
+                                  guest_team_id: create(:team, league: league).id)
+
+    user = build_user([{ 'user_group_id' => 5, 'game_operation_id' => 0 }], teams: [gast_team.id])
+
+    assert_not fremdes_spiel.can_edit_lineup?(user)
+    assert_not_includes fremdes_spiel.user_permissions(user), :edit_game_report
+  end
+
+  # Ohne eingetragenen Ausrichter gibt es niemanden, der ausrichtet: Der
+  # Spielplan-Import legt Spieltage ohne club_id an, und ein leerer Wert darf
+  # nicht jeden Teammanager berechtigen.
+  test 'can_edit_lineup?: ohne Ausrichter am Spieltag greift der Ausrichter-Zweig nicht' do
+    create(:setting, current_season_id: '18')
+    league = create(:league, game_operation: create(:game_operation), season_id: '18')
+    team = create(:team, league: league, club: create(:club))
+    game_day = create(:game_day, league: league, club: nil)
+    fremdes_spiel = create(:game, game_day: game_day,
+                                  home_team_id: create(:team, league: league).id,
+                                  guest_team_id: create(:team, league: league).id)
+
+    user = build_user([{ 'user_group_id' => 5, 'game_operation_id' => 0 }], teams: [team.id])
+
+    assert_not fremdes_spiel.can_edit_lineup?(user)
+  end
+
   # Fail closed: ohne auflösbaren Spielbetrieb (Altdaten, Rohimport) greift der
   # SBK-Zweig nicht. Admin bleibt zuständig.
   test 'can_edit_lineup?: ohne Spielbetrieb am Spiel greift der SBK-Zweig nicht' do

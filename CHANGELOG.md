@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Der Ausrichter eines Turnierspieltags kam angemeldet nur an die eigenen Spiele**: An einem Turnierspieltag im Nachwuchs führt der ausrichtende Verein den Bericht für alle Partien des Tages. Wer als Teammanager angemeldet war, sah jedoch nur die Spiele der eigenen Mannschaft und musste sich für die übrigen erst selbst einen Sekretariatslink ausstellen — obwohl er am selben Tisch sitzt. Für den Vereinsmanager des Ausrichters galt das Recht längst. Jetzt gilt es auch für den Teammanager: Richtet einer der Vereine, für deren Mannschaften er zuständig ist, den Spieltag aus, kann er den Bericht jedes Spiels dieses Tages führen und sieht dessen interne Felder (Sekretariat, Zeitnehmer, Betreuer, Vermerk der Schiedsrichter). Maßgeblich ist der eingetragene Ausrichter des Spieltags; bei einer Spielgemeinschaft zählen alle beteiligten Vereine, und ein Spieltag ohne eingetragenen Ausrichter berechtigt niemanden. Der Teammanager einer Gastmannschaft bleibt unverändert bei den Spielen seiner eigenen Mannschaft.
+
 ## [1.117.0] - 2026-09-18
 
 ### Behoben

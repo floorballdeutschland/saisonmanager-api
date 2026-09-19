@@ -1807,7 +1807,36 @@ class Game < ApplicationRecord
       return true if ph[:vm].intersection(team_club_ids + syndicate_ids + hosting_ids).present?
     end
 
+    return true if hosting_club_team_manager?(user)
+
     ph[:tm].present? && (ph[:tm].include?(home_team_id) || ph[:tm].include?(guest_team_id))
+  end
+
+  # Teammanager eines Vereins, der diesen Spieltag ausrichtet.
+  #
+  # Am Tisch sitzt der Ausrichter, und an einem Turnierspieltag im Nachwuchs
+  # führt er den Bericht für alle Spiele des Tages -- auch für die, an denen
+  # keine eigene Mannschaft beteiligt ist. Für den Vereinsmanager gilt das
+  # längst (hosting_ids in can_edit_lineup?), für den Teammanager fehlte es: Er
+  # sah angemeldet nur die Spiele seiner eigenen Mannschaft und kam an die
+  # übrigen nur über den Sekretariatslink heran, den er sich selbst erst
+  # ausstellen musste.
+  #
+  # Über den Verein und nicht über die Mannschaften dieses Spieltags: Gefragt
+  # ist, wer ausrichtet, und das ist eine Eigenschaft des Vereins. Der
+  # Sekretariatslink verlangt zusätzlich eine eigene Mannschaft am Spieltag
+  # (GameDayLinkAuthorization) -- dort geht es darum, einen Zugang an Dritte
+  # auszugeben, hier um den eigenen Zugriff.
+  #
+  # `User#tm_club_ids` zählt die Vereine der eigenen Mannschaften aus der
+  # laufenden Saison, bei einer Spielgemeinschaft alle beteiligten
+  # (Team#all_club_ids). Richtet die Spielgemeinschaft unter dem Partnerverein
+  # aus, sitzt derselbe Tisch dort.
+  def hosting_club_team_manager?(user)
+    host_club_id = game_day&.club_id
+    return false if host_club_id.blank?
+
+    user.tm_club_ids.include?(host_club_id)
   end
 
   def user_permissions(user)
@@ -1841,6 +1870,7 @@ class Game < ApplicationRecord
     tm = user.permission_hash[:tm].to_a
     perm << :edit_game_report if admin || sbk ||
                                  user.permission_hash[:vm].to_a.include?(game_day_club_id) ||
+                                 user.tm_club_ids.include?(game_day_club_id) ||
                                  tm.include?(home_team_id) || tm.include?(guest_team_id)
 
     # edit all game info
