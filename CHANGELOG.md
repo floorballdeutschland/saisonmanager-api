@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Die Spieltagsmail an die Gastmannschaft erreicht die Zuständigen statt den halben Verein**: Beim Abschluss des Spielberichts gingen die Antworten des Ausrichters bisher gleichzeitig an die Vereinspost der Gastmannschaft (Kontaktadresse und Vereinsmanager) und an deren Teammanager. Für einen Verein mit vielen Mannschaften heißt das, dass der Vorstand jede Bestätigung jeder Mannschaft mitliest, obwohl die Mail an genau eine Person gerichtet ist — die, die den Spieltag verantwortet. Die Empfänger stehen jetzt als Kaskade fest: Hat die Mannschaft einen Teammanager, bekommt allein er die Mail; gibt es keinen, gehen sie an die Vereinsmanager des Vereins; gibt es auch die nicht, an die Kontaktadresse. Eine Stufe gilt dabei als leer, wenn sie keine zustellbare Adresse liefert, nicht schon wenn es die Rolle nicht gibt: Ein Teammanager, der Info-Mails abbestellt hat, lässt die Mail an die Vereinsmanager weiterfallen, und ein Vereinsmanager, der aus der Vereinspost abgewählt ist, an die Kontaktadresse. „Zustellbar" heißt dabei wirklich zustellbar und nicht bloß befüllt: Am Benutzerkonto gibt es keine Formatprüfung für die E-Mail-Adresse, und wer den Verein verlassen hat, steht oft mit einem längst gelöschten Postfach weiter an der Mannschaft — eine solche Adresse hätte sonst die erste Stufe besetzt, die Mail wäre zurückgekommen und beide Auffangnetze ungenutzt geblieben, während die Frist weiterläuft. Ein Feld mit zwei durch Semikolon oder Komma getrennten Adressen und ein Feld mit Anzeigename zählen dabei als zustellbar und werden in ihre Empfänger zerlegt, so wie der Versand es ohnehin tut. Welche Stufe eine Mannschaft erreicht hat, steht jetzt im Protokoll des Servers. Die Bestätigung ist eine Pflicht des Vereins, sie darf nicht dadurch verschwinden, dass niemand sie lesen möchte.
+
 ## [1.117.0] - 2026-09-18
 
 ### Behoben
