@@ -7,7 +7,7 @@ class StateAssociation < ApplicationRecord
   # Nicht dabei und bewusst weiterhin eigene Daten des Kind-LV: die Postfaecher
   # (eigene Vererbung mit Rueckfall, siehe effective_vsk_email), der
   # Zustaendigkeitsbereich (vererbt in die andere Richtung, siehe
-  # effective_states), Stammdaten, Logo, Banner, Spieltagscheckliste und
+  # effective_states), Stammdaten, Logo, Banner, Spieltagsbericht und
   # Freigaben.
   INHERITED_SETTINGS = %i[
     express_license_enabled

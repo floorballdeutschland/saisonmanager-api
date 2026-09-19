@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Aus der „Spieltagscheckliste" wird der „Spieltagsbericht"**: Der Vorgang heißt in allen E-Mails und Meldungen der API jetzt einheitlich Spieltagsbericht. Betroffen sind der Betreff der Mail an die Gastmannschaften („Spieltagsbericht bestätigen"), die Texte der Mails an Gastmannschaften, Schiedsrichter und SBK, die Überschrift im Bericht an die VSK sowie die Meldungen beim Abschluss („Der Spieltagsbericht muss vollständig ausgefüllt sein") und bei der Bestätigung im Portal. Die Begriffe bleiben getrennt: Der **Spielbericht** ist der eines einzelnen Spiels und behält seinen Namen, der **Spieltagsbericht** gehört zum ganzen Spieltag. Selbst gepflegte Vorlagen (Verwaltung → E-Mail-Vorlagen) behalten ihren eigenen Wortlaut; geändert hat sich nur die Voreinstellung, die für Vorlagen gilt, die noch nie angefasst wurden.
+
 ## [1.117.0] - 2026-09-18
 
 ### Behoben

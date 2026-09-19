@@ -1,4 +1,4 @@
-<h2>Spieltagscheckliste bestätigen</h2>
+<h2>Spieltagsbericht bestätigen</h2>
 
 <p>
   Hallo,
@@ -10,13 +10,13 @@
   (<%= @game.home_team_name %> vs. <%= @game.guest_team_name %>,
   Spiel Nr. <%= @game.game_number %>) hat der Ausrichter<% if @game_day.club %>
   <strong><%= @game_day.club.name %></strong><% end %> den Spielbericht
-  eingereicht und dabei die Spieltagscheckliste des Landesverbands beantwortet.
+  eingereicht und dabei den Spieltagsbericht des Landesverbands beantwortet.
 </p>
 
 <p>
   Als Gastmannschaft <strong><%= @team.name %></strong> bestätigen Sie den
   Spieltag als ordnungsgemäß durchgeführt, oder Sie melden ihn als nicht
-  ordnungsgemäß und beantworten die Checkliste selbst.
+  ordnungsgemäß und beantworten den Spieltagsbericht selbst.
 </p>
 
 <% if @deadline %>

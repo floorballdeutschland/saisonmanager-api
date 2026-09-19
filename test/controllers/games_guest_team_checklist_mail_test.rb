@@ -58,7 +58,7 @@ class GamesGuestTeamChecklistMailTest < ActionDispatch::IntegrationTest
 
     mail = gast_mails.sole
     assert_equal %w[gastverein@example.de tm-gast@example.de], mail.to.sort
-    assert_includes mail.subject, 'Spieltagscheckliste bestätigen'
+    assert_includes mail.subject, 'Spieltagsbericht bestätigen'
   end
 
   test 'die Mail nennt alle Antworten des Ausrichters, nicht nur die verneinten' do
@@ -177,7 +177,7 @@ class GamesGuestTeamChecklistMailTest < ActionDispatch::IntegrationTest
   private
 
   def gast_mails
-    ActionMailer::Base.deliveries.select { |m| m.subject.to_s.start_with?('Spieltagscheckliste bestätigen') }
+    ActionMailer::Base.deliveries.select { |m| m.subject.to_s.start_with?('Spieltagsbericht bestätigen') }
   end
 
   def close_match_record_as_admin

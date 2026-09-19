@@ -51,7 +51,7 @@ class GameMailer < ApplicationMailer
     )
   end
 
-  # Hinweis an eine Gastmannschaft: Der Ausrichter hat die Spieltagscheckliste
+  # Hinweis an eine Gastmannschaft: Der Ausrichter hat den Spieltagsbericht
   # beantwortet, bestätigen oder beanstanden geht im Portal „Meine
   # Auswärtsspieltage" (Login, kein Token-Link wie beim Ausrichter).
   #
@@ -60,9 +60,9 @@ class GameMailer < ApplicationMailer
   # und die Gastmannschaft ist die einzige Stelle, die einem falschen Ja
   # widersprechen kann. Ohne die Liste müsste sie dafür erst ins Portal.
   #
-  # Der Betreff nennt die Checkliste ausdrücklich. Die Ausrichter-Mail heißt
+  # Der Betreff nennt den Spieltagsbericht ausdrücklich. Die Ausrichter-Mail heißt
   # „Spielbericht Nr. X eingereicht" und war im Protokoll der Ausgangsmails nicht
-  # als Checklisten-Mail zu erkennen – die Suche danach ging ins Leere, obwohl
+  # als Mail zum Spieltagsbericht zu erkennen – die Suche danach ging ins Leere, obwohl
   # die Mail verschickt worden war.
   def checklist_guest_team_notice(game, team, recipients, answers, deadline)
     @game = game
@@ -75,7 +75,7 @@ class GameMailer < ApplicationMailer
 
     templated_mail(
       to: recipients,
-      subject: "Spieltagscheckliste bestätigen – #{game.home_team_name} vs. #{game.guest_team_name}",
+      subject: "Spieltagsbericht bestätigen – #{game.home_team_name} vs. #{game.guest_team_name}",
       placeholders: {
         game_number: game.game_number,
         home_team: game.home_team_name,
