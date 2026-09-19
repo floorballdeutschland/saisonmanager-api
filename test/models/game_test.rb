@@ -992,6 +992,43 @@ class GameTest < ActiveSupport::TestCase
     assert_not_includes fremdes_spiel.user_permissions(user), :edit_game_report
   end
 
+  # Die Zusage aus dem CHANGELOG: Bei einer Spielgemeinschaft zaehlen alle
+  # beteiligten Vereine. Richtet die SG unter dem Partnerverein aus, sitzt
+  # derselbe Tisch dort.
+  test 'can_edit_lineup?: TM einer Spielgemeinschaft erreicht den Spieltag des Partnervereins' do
+    create(:setting, current_season_id: '18')
+    haupt = create(:club)
+    partner = create(:club)
+    league = create(:league, game_operation: create(:game_operation), season_id: '18')
+    sg_team = create(:team, league: league, club: haupt, syndicate: true, syndicate_clubs: [partner.id])
+    game_day = create(:game_day, league: league, club: partner)
+    fremdes_spiel = create(:game, game_day: game_day,
+                                  home_team_id: create(:team, league: league).id,
+                                  guest_team_id: create(:team, league: league).id)
+
+    user = build_user([{ 'user_group_id' => 5, 'game_operation_id' => 0 }], teams: [sg_team.id])
+
+    assert fremdes_spiel.can_edit_lineup?(user)
+  end
+
+  # Die Saisongrenze steckt zwei Schichten tief in Team.current_season. Ohne
+  # diesen Test faellt sie bei einer Aenderung dort still weg.
+  test 'can_edit_lineup?: eine Mannschaft der Vorsaison verschafft keinen Ausrichter-Zugriff' do
+    create(:setting, current_season_id: '18')
+    verein = create(:club)
+    alte_liga = create(:league, game_operation: create(:game_operation), season_id: '17')
+    altes_team = create(:team, league: alte_liga, club: verein)
+    league = create(:league, game_operation: create(:game_operation), season_id: '18')
+    game_day = create(:game_day, league: league, club: verein)
+    spiel = create(:game, game_day: game_day,
+                         home_team_id: create(:team, league: league).id,
+                         guest_team_id: create(:team, league: league).id)
+
+    user = build_user([{ 'user_group_id' => 5, 'game_operation_id' => 0 }], teams: [altes_team.id])
+
+    assert_not spiel.can_edit_lineup?(user)
+  end
+
   # Ohne eingetragenen Ausrichter gibt es niemanden, der ausrichtet: Der
   # Spielplan-Import legt Spieltage ohne club_id an, und ein leerer Wert darf
   # nicht jeden Teammanager berechtigen.

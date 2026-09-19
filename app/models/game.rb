@@ -1870,7 +1870,7 @@ class Game < ApplicationRecord
     tm = user.permission_hash[:tm].to_a
     perm << :edit_game_report if admin || sbk ||
                                  user.permission_hash[:vm].to_a.include?(game_day_club_id) ||
-                                 user.tm_club_ids.include?(game_day_club_id) ||
+                                 hosting_club_team_manager?(user) ||
                                  tm.include?(home_team_id) || tm.include?(guest_team_id)
 
     # edit all game info
