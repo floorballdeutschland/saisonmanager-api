@@ -72,6 +72,20 @@ class GamesGuestTeamChecklistMailTest < ActionDispatch::IntegrationTest
     assert_equal ['tm-gast@example.de'], gast_mails.sole.to
   end
 
+  # Ein Vereinsmanager, der sich die Mannschaft zugeordnet hat, wird fuer sie
+  # wie ein Teammanager behandelt: Er steht auf Stufe 1 und bekommt die Mail
+  # allein -- der uebrige Vorstand liest sie nicht mit.
+  test 'ein VM mit zugeordneter Mannschaft steht auf der Teammanager-Stufe' do
+    @tm.destroy!
+    betreuender_vm = create(:user, :vm, club_id: @gastverein.id, email: 'vm-betreut@example.de')
+    betreuender_vm.update!(teams: [@gast.id])
+    create(:user, :vm, club_id: @gastverein.id, email: 'vm-vorstand@example.de')
+
+    close_match_record_as_admin
+
+    assert_equal ['vm-betreut@example.de'], gast_mails.sole.to
+  end
+
   test 'ohne Teammanager geht die Mail an die Vereinsmanager' do
     @tm.destroy!
     create(:user, :vm, club_id: @gastverein.id, email: 'vm-gast@example.de')

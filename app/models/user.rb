@@ -765,6 +765,28 @@ class User < ApplicationRecord
       end
     end
 
+    # Ein Vereinsmanager kann sich Mannschaften seines Vereins zuordnen und wird
+    # für diese behandelt wie ein Teammanager -- ohne dafür eine zweite Rolle zu
+    # brauchen. Gedacht für den Verein, der seine Mannschaften selbst betreut:
+    # Die Mails, die an den Teammanager gehen (Spieltagsbericht, Schiri-Feedback),
+    # erreichen dann ihn statt über den Sammelverteiler den ganzen Vorstand.
+    #
+    # Rechte kommen dadurch keine dazu: Für die Mannschaften des eigenen Vereins
+    # trägt die VM-Rolle ohnehin schon jede Prüfung. Was sich ändert, ist die
+    # Rolle, in der er dabei auftritt.
+    #
+    # Genau die Mannschaften, die ihm die Benutzerverwaltung zur Auswahl
+    # anbietet (Admin::UsersController#assignable_team_scope): eigener Verein
+    # oder Spielgemeinschaft mit ihm, und nur die laufende Saison. Eine
+    # Zuordnung, die aus dem Verein herausgewachsen ist -- Mannschaft abgegeben,
+    # Verein gewechselt -- fällt damit von selbst heraus.
+    if vm_club_ids.present? && teams.present?
+      tm_team_ids << Team.where(id: teams, league_id: all_league_ids)
+                         .where('teams.club_id IN (:ids) OR teams.syndicate_clubs && ARRAY[:ids]::integer[]',
+                                ids: vm_club_ids)
+                         .pluck(:id)
+    end
+
     tm_team_ids.flatten!
     tm_team_ids.uniq!
     tm_team_ids.sort!
