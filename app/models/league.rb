@@ -1153,7 +1153,7 @@ class League < ApplicationRecord
 
         if with_other_licenses
           player_item[:other_licenses] = other_license_items(player, team.id, teams_by_id, License::ACTIVE_STATUSES)
-          annotate_license_teams!(player_item, teams_by_id)
+          annotate_license_teams!(player_item, teams_by_id, Array(suspensions[player.id]))
         end
 
         team_item[:players] << player_item
@@ -1188,7 +1188,11 @@ class League < ApplicationRecord
   # Aufrufer fehlen, statt einheitlich zu erscheinen. Eine Lizenz ohne
   # auflösbare Mannschaft (geloescht) bleibt ohne Namen; die Karte zeigt dann
   # wie bisher die ID.
-  def annotate_license_teams!(player_item, teams_by_id)
+  #
+  # Dieselbe Schleife setzt `effective_status_id`, den Status einschliesslich
+  # einer Sperre, die in der History gar nicht steht -- Begruendung an der
+  # Methode darunter.
+  def annotate_license_teams!(player_item, teams_by_id, player_suspensions = [])
     Array(player_item[:licenses]).each do |lic|
       next unless lic.is_a?(Hash)
 
@@ -1197,7 +1201,44 @@ class League < ApplicationRecord
 
       lic[:team_name] = team.name
       lic[:league_name] = team.league&.name
+      lic[:effective_status_id] = license_effective_status_id(lic, team, player_suspensions)
     end
+  end
+
+  # Der Status, den diese Lizenz wirklich hat -- Sperre eingerechnet.
+  #
+  # Die Genehmigungskarte liest den Status je Lizenz aus deren roher History.
+  # Zwei Sperrarten stehen dort aber nicht drin:
+  #
+  # * Die Wettbewerbssperre (SCOPE_COMPETITION) schreibt ueberhaupt keinen
+  #   Eintrag, Player#write_suspended_status! nimmt nur SCOPE_ALL und
+  #   SCOPE_TEAM.
+  # * Die Liga-Sperre (SCOPE_LEAGUE) ebenso.
+  #
+  # Das ist dort richtig: Der gespeicherte Status ist EINER je Lizenz, waehrend
+  # diese beiden Sperren nur einen Teil der Wettbewerbe treffen, in denen
+  # dieselbe Lizenz gilt -- eine Mannschaft haengt ueber cup_leagues auch an
+  # ihren Pokalligen (siehe LicenseEffectiveStatus). Wer den Status aus der
+  # History liest, sieht so gesperrte Lizenzen aber als `erteilt`, also als
+  # spielberechtigt. Die Zeile der eigenen Liga traegt die Sperre laengst
+  # (`team_license[:last_status_id]`), die uebrigen Lizenzen desselben Spielers
+  # bis hierher nicht.
+  #
+  # Bewertet wird gegen die Liga der MANNSCHAFT dieser Lizenz, nicht gegen die
+  # Liga dieser Liste: Die Zeile nennt genau diese Mannschaft und Liga
+  # (`team_name`/`league_name` eine Zeile darueber), darauf muss sich die
+  # Aussage beziehen.
+  #
+  # Nur eine aktive Lizenz kann gesperrt sein -- dieselbe Grenze wie in
+  # build_license_items und in Player#write_suspended_status!: Eine abgelehnte
+  # oder zurueckgezogene Lizenz hat keine Spielberechtigung, die eine Sperre
+  # aussetzen koennte.
+  def license_effective_status_id(license, team, player_suspensions)
+    base_status_id = LicenseEffectiveStatus.base_status_id(license)
+    return base_status_id unless License::ACTIVE_STATUSES.include?(base_status_id)
+
+    suspended = player_suspensions.any? { |s| s.covers_license_in?(team.league, team) }
+    suspended ? License::SUSPENDED : base_status_id
   end
 
   # Freigabedatum des Spielers fuer die Mannschaft dieser Liste.

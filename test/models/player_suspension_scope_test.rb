@@ -397,6 +397,82 @@ class PlayerSuspensionScopeTest < ActiveSupport::TestCase
     assert_nil row[:suspension]
   end
 
+  # ---------------------------------------------------------------------------
+  # Lizenzen der Genehmigungskarte (effective_status_id)
+  # ---------------------------------------------------------------------------
+  #
+  # Die Karte listet ALLE Lizenzen des Spielers dieser Saison und las deren
+  # Status bis hierher aus der rohen History. Eine Wettbewerbs- oder Ligasperre
+  # steht dort nicht drin -- write_suspended_status! schreibt nur bei SCOPE_ALL
+  # und SCOPE_TEAM --, die Karte zeigte eine so gesperrte Lizenz also als
+  # erteilt.
+
+  def card_license(list_league, player, team)
+    entry = League.licenses_for([list_league]).fetch(list_league.id, [])
+                  .flat_map { |t| t[:players] }
+                  .find { |p| p[:id] == player.id }
+    entry && Array(entry[:licenses]).find { |l| l['team_id'].to_i == team.id }
+  end
+
+  test 'eine Wettbewerbssperre steht an der Lizenz der Genehmigungskarte' do
+    player = licensed_player
+    player.suspend!(user_id: @user.id, valid_until: Date.current + 30,
+                    scope: { kind: PlayerSuspension::SCOPE_COMPETITION, league: @liga,
+                             competition_groups: [League::GROUP_LIGA] })
+
+    assert_equal License::APPROVED, current_status(player.reload, @team),
+                 'die History bleibt unberührt -- genau deshalb braucht es das Feld'
+    assert_equal License::SUSPENDED, card_license(@liga, player, @team)[:effective_status_id]
+  end
+
+  test 'eine Ligasperre steht an der Lizenz der Genehmigungskarte' do
+    player = licensed_player
+    player.suspend!(user_id: @user.id, valid_until: Date.current + 30,
+                    scope: { kind: PlayerSuspension::SCOPE_LEAGUE, league: @liga })
+
+    assert_equal License::APPROVED, current_status(player.reload, @team)
+    assert_equal License::SUSPENDED, card_license(@liga, player, @team)[:effective_status_id]
+  end
+
+  # Die Zweitlizenz einer anderen Mannschaft wird gegen die Liga IHRER
+  # Mannschaft bewertet, nicht gegen die Liga der Liste. Sonst faerbte eine
+  # Sperre im Ligaspielbetrieb auch die Pokallizenz, in der der Spieler
+  # weiterhin spielen darf.
+  test 'eine Wettbewerbssperre laesst die Lizenz eines nicht betroffenen Wettbewerbs in Ruhe' do
+    pokal_team = create(:team, league: @pokal)
+    player = create(:player, with_licenses: [
+      { team: @team, status: License::APPROVED },
+      { team: pokal_team, status: License::APPROVED }
+    ])
+    player.suspend!(user_id: @user.id, valid_until: Date.current + 30,
+                    scope: { kind: PlayerSuspension::SCOPE_COMPETITION, league: @liga,
+                             competition_groups: [League::GROUP_LIGA] })
+
+    assert_equal License::SUSPENDED, card_license(@liga, player, @team)[:effective_status_id]
+    assert_equal License::APPROVED, card_license(@liga, player, pokal_team)[:effective_status_id],
+                 'der Pokal wird separat gefuehrt'
+  end
+
+  # Dieselbe Grenze wie in build_license_items: Eine Sperre setzt eine
+  # Spielberechtigung aus, ein abgelehnter Antrag hat keine.
+  test 'eine abgelehnte Lizenz bleibt abgelehnt, auch bei spielerweiter Sperre' do
+    denied_team = create(:team, league: @dm)
+    player = create(:player, with_licenses: [
+      { team: @team, status: License::APPROVED },
+      { team: denied_team, status: License::DENIED }
+    ])
+    player.suspend!(user_id: @user.id, valid_until: Date.current + 30)
+
+    assert_equal License::SUSPENDED, card_license(@liga, player, @team)[:effective_status_id]
+    assert_equal License::DENIED, card_license(@liga, player, denied_team)[:effective_status_id]
+  end
+
+  test 'ohne Sperre traegt jede Lizenz der Karte ihren eigenen Status' do
+    player = licensed_player
+
+    assert_equal License::APPROVED, card_license(@liga, player, @team)[:effective_status_id]
+  end
+
   test 'scope_summary benennt den Geltungsbereich im Klartext' do
     player = licensed_player
     suspension = player.suspend!(user_id: @user.id, valid_until: Date.current + 30,
