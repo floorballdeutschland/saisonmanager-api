@@ -775,14 +775,30 @@ class User < ApplicationRecord
     # trägt die VM-Rolle ohnehin schon jede Prüfung. Was sich ändert, ist die
     # Rolle, in der er dabei auftritt.
     #
-    # Genau die Mannschaften, die ihm die Benutzerverwaltung zur Auswahl
-    # anbietet (Admin::UsersController#assignable_team_scope): eigener Verein
-    # oder Spielgemeinschaft mit ihm, und nur die laufende Saison. Eine
-    # Zuordnung, die aus dem Verein herausgewachsen ist -- Mannschaft abgegeben,
-    # Verein gewechselt -- fällt damit von selbst heraus.
+    # Nur Mannschaften, die **vollständig** zu seinen eigenen Vereinen gehören:
+    # der Verein der Mannschaft und jeder Spielgemeinschafts-Partner müssen in
+    # seinen VM-Vereinen liegen. Nur die laufende Saison, eine Zuordnung, die aus
+    # dem Verein herauswächst, fällt damit von selbst heraus.
+    #
+    # Die Teilmengen-Bedingung ist der Punkt, an dem die Zusage „keine neuen
+    # Rechte" hängt, und sie muss beide Richtungen abdecken: `tm_club_ids` löst
+    # eine Mannschaft später über `Team#all_club_ids` auf, also über Verein UND
+    # Spielgemeinschafts-Partner. Eine SG-Mannschaft eines fremden Stammvereins
+    # hätte darüber den ganzen fremden Verein aufgeschlossen -- Spielerprofile,
+    # Lizenzdokumente (bis hin zur Zustimmung der Erziehungsberechtigten),
+    # Spielberichte seiner Spieltage, Sekretariats- und Overlay-Zugang. Und die
+    # umgekehrte Form genügt nicht: Eine Mannschaft des EIGENEN Vereins mit
+    # einem fremden Partner in `syndicate_clubs` schlösse denselben fremden
+    # Verein auf. Deshalb Teilmenge statt Schnittmenge.
+    #
+    # Preis: Für eine echte Spielgemeinschaft zweier Vereine kann sich der
+    # Vereinsmanager nicht eintragen. Der Weg dafür ist die Teammanager-Rolle,
+    # die der Verband vergibt.
     if vm_club_ids.present? && teams.present?
       tm_team_ids << Team.where(id: teams, league_id: all_league_ids)
-                         .where('teams.club_id IN (:ids) OR teams.syndicate_clubs && ARRAY[:ids]::integer[]',
+                         .where('teams.club_id IN (:ids) AND ' \
+                                '(teams.syndicate_clubs IS NULL OR ' \
+                                'teams.syndicate_clubs <@ ARRAY[:ids]::integer[])',
                                 ids: vm_club_ids)
                          .pluck(:id)
     end

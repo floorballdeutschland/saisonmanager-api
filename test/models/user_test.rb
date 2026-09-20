@@ -57,13 +57,44 @@ class UserTest < ActiveSupport::TestCase
     assert_nil u.permission_hash[:tm]
   end
 
-  # Eine Spielgemeinschaft wird von beiden Vereinen betreut.
-  test 'permission_hash: die Mannschaft einer Spielgemeinschaft zaehlt fuer den Partnerverein' do
+  # Die Zuordnung endet am eigenen Verein, und zwar in beide Richtungen: Eine
+  # Mannschaft wird spaeter ueber Team#all_club_ids aufgeloest, also ueber
+  # Verein UND Spielgemeinschafts-Partner. Eine SG-Mannschaft eines fremden
+  # Stammvereins haette darueber den ganzen fremden Verein aufgeschlossen --
+  # Spielerprofile, Lizenzdokumente, Spielberichte seiner Spieltage.
+  test 'permission_hash: die SG-Mannschaft eines fremden Stammvereins zaehlt nicht' do
     create(:setting, current_season_id: '18')
     partner = create(:club)
     sg_team = create(:team, league: create(:league, :current_season), club: create(:club),
                             syndicate: true, syndicate_clubs: [partner.id])
     u = build_user(permissions: [{ 'user_group_id' => 4, 'club_id' => partner.id }], teams: [sg_team.id])
+
+    assert_nil u.permission_hash[:tm]
+  end
+
+  # Gegenstueck: Auch die eigene Mannschaft schliesst nichts Fremdes auf, wenn
+  # sie einen fremden Partner traegt.
+  test 'permission_hash: die eigene Mannschaft mit fremdem SG-Partner zaehlt nicht' do
+    create(:setting, current_season_id: '18')
+    verein = create(:club)
+    team = create(:team, league: create(:league, :current_season), club: verein,
+                         syndicate: true, syndicate_clubs: [create(:club).id])
+    u = build_user(permissions: [{ 'user_group_id' => 4, 'club_id' => verein.id }], teams: [team.id])
+
+    assert_nil u.permission_hash[:tm]
+  end
+
+  # Eine Spielgemeinschaft zweier eigener Vereine bleibt zulaessig -- sie
+  # schliesst nichts auf, was das Konto nicht ohnehin verwaltet.
+  test 'permission_hash: eine SG zweier eigener Vereine zaehlt' do
+    create(:setting, current_season_id: '18')
+    a = create(:club)
+    b = create(:club)
+    sg_team = create(:team, league: create(:league, :current_season), club: a,
+                            syndicate: true, syndicate_clubs: [b.id])
+    u = build_user(permissions: [{ 'user_group_id' => 4, 'club_id' => a.id },
+                                 { 'user_group_id' => 4, 'club_id' => b.id }],
+                   teams: [sg_team.id])
 
     assert_equal [sg_team.id], u.permission_hash[:tm]
   end
