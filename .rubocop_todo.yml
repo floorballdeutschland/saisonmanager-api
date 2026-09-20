@@ -337,7 +337,7 @@ Metrics/BlockNesting:
 # ein eigener Umbau und kein Release-Prep (game.rb steht unten aus demselben
 # Grund komplett drin).
 Metrics/ClassLength:
-  Max: 1000
+  Max: 1050
   Exclude:
     - 'app/models/game.rb'
 

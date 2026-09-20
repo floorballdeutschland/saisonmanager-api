@@ -465,6 +465,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_19_130000) do
     t.string "league_class_name"
     t.string "league_category_name"
     t.string "stream_playlist"
+    t.integer "minimum_age", comment: "Mindestalter in Jahren, tagesgenau am Tag der Lizenzbeantragung geprüft; nil = keine Untergrenze. Unabhängig vom Stichtag (deadline/before_deadline)."
     t.index ["game_operation_id"], name: "index_leagues_on_game_operation_id"
     t.index ["legacy_ref"], name: "index_leagues_on_legacy_ref", unique: true, where: "(legacy_ref IS NOT NULL)"
   end
