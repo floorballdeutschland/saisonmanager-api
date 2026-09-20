@@ -79,7 +79,9 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
   # Mindestalter der Liga: tagesgenau am Tag der Beantragung
   test 'Lizenzantrag unter dem Mindestalter der Liga ergibt 422 mit Mindestalter-Meldung' do
     @league.update!(minimum_age: 15)
-    @player.update!(birthdate: 15.years.ago.to_date + 1.day)
+    # Berliner Kalendertag wie in League#minimum_age_met?, sonst kippt der Test
+    # zwischen 22:00 und 24:00 UTC.
+    @player.update!(birthdate: Time.find_zone('Europe/Berlin').today - 15.years + 1.day)
 
     login_as create(:user, :admin)
 
@@ -94,7 +96,7 @@ class PlayersControllerTest < ActionDispatch::IntegrationTest
 
   test 'Lizenzantrag am 15. Geburtstag ist trotz Mindestalter erfolgreich' do
     @league.update!(minimum_age: 15)
-    @player.update!(birthdate: 15.years.ago.to_date)
+    @player.update!(birthdate: Time.find_zone('Europe/Berlin').today - 15.years)
 
     login_as create(:user, :admin)
 

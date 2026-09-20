@@ -54,11 +54,16 @@ class LeagueTest < ActiveSupport::TestCase
     assert l.minimum_age_met?(dob, Date.new(2026, 9, 16))
   end
 
-  test 'minimum_age_met?: ohne Referenzdatum zaehlt der heutige Tag' do
+  # Der Bezugstag kommt aus derselben Quelle wie in der Methode. Mit
+  # `15.years.ago.to_date` (also Time.current, im Test UTC) laufen Test und
+  # Methode zwischen 22:00 und 24:00 UTC eine Kalenderzeile auseinander und die
+  # zweite Zusicherung kippt -- ein Test, der nachts rot wird.
+  test 'minimum_age_met?: ohne Referenzdatum zaehlt der heutige deutsche Tag' do
     l = League.new(minimum_age: 15)
+    heute = Time.find_zone('Europe/Berlin').today
 
-    assert l.minimum_age_met?(15.years.ago.to_date)
-    assert_not l.minimum_age_met?(15.years.ago.to_date + 1.day)
+    assert l.minimum_age_met?(heute - 15.years)
+    assert_not l.minimum_age_met?(heute - 15.years + 1.day)
   end
 
   # Der Server laeuft in UTC, gemeint ist aber der deutsche Kalendertag: In der
