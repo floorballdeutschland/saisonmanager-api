@@ -198,6 +198,13 @@ class PlayersController < ApplicationController
         raise ActiveRecord::Rollback
       end
 
+      # Zweite, vom Stichtag unabhaengige Altersregel (League#minimum_age_met?):
+      # tagesgenau ab dem Geburtstag statt zu einem festen Datum.
+      unless league.minimum_age_met?(player.birthdate)
+        result = :below_minimum_age
+        raise ActiveRecord::Rollback
+      end
+
       new_license = {
         id: Digest::UUID.uuid_v4,
         team_id: team.id,
@@ -244,6 +251,9 @@ class PlayersController < ApplicationController
     when :age_ineligible
       direction = league.before_deadline ? 'geboren bis' : 'geboren ab'
       render json: { message: "Der Spieler erfüllt die Altersvoraussetzung dieser Liga nicht (spielberechtigt: #{direction} #{league.deadline.strftime('%d.%m.%Y')})." },
+             status: :unprocessable_entity
+    when :below_minimum_age
+      render json: { message: "Der Spieler erfüllt das Mindestalter dieser Liga nicht (mindestens #{league.minimum_age} Jahre am Tag der Beantragung)." },
              status: :unprocessable_entity
     when :save_failed
       render json: { message: player.errors }, status: :unprocessable_entity
