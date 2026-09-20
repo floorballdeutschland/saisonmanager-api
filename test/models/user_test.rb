@@ -211,7 +211,7 @@ class UserTest < ActiveSupport::TestCase
     create(:league, game_operation: create(:game_operation, state_association: sa))
   end
 
-  test 'permissions_items: TM sieht Auswärtsspieltage nur mit Spieltagscheckliste im Landesverband' do
+  test 'permissions_items: TM sieht Auswärtsspieltage nur mit Spieltagsbericht im Landesverband' do
     league = checklist_league(with_checklist: true)
     team = create(:team, league: league)
     u = build_user(permissions: [{ 'user_group_id' => 5, 'game_operation_id' => league.game_operation_id }],
@@ -220,7 +220,7 @@ class UserTest < ActiveSupport::TestCase
     assert u.permissions_items[:menu_item_team_game_days]
   end
 
-  test 'permissions_items: TM ohne Spieltagscheckliste sieht die Auswärtsspieltage nicht' do
+  test 'permissions_items: TM ohne Spieltagsbericht sieht die Auswärtsspieltage nicht' do
     league = checklist_league(with_checklist: false)
     team = create(:team, league: league)
     u = build_user(permissions: [{ 'user_group_id' => 5, 'game_operation_id' => league.game_operation_id }],

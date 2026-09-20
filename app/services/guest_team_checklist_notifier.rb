@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 # Benachrichtigt die Gastmannschaften eines Spiels, sobald der Ausrichter den
-# Spielbericht abgeschlossen hat: Damit stehen seine Antworten auf die
-# Spieltagscheckliste fest, und die Gastmannschaft kann den Spieltag bestätigen
+# Spielbericht abgeschlossen hat: Damit stehen seine Antworten im
+# Spieltagsbericht fest, und die Gastmannschaft kann den Spieltag bestätigen
 # oder als nicht ordnungsgemäß melden (Portal „Meine Auswärtsspieltage").
 #
 # Diese Mail fehlte. Der Ausrichter bekam seine Bestätigung mit Einspruchs-Link
