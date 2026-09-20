@@ -37,6 +37,17 @@ module Admin
       }, status: :created
     end
 
+    # Der Saisonwechsel schließt zugleich die Spielberichte aller vergangenen
+    # Saisons (PastSeasonReportCloser). Ein offen gebliebener Bericht bleibt
+    # sonst dauerhaft bearbeitbar für jeden, der ihn ohnehin bearbeiten darf --
+    # beim ausrichtenden Verein auch Jahre später noch. Der Wechsel ist der
+    # Moment, an dem der Spielbetrieb der alten Saison endet.
+    #
+    # Der Abschluss läuft nach dem Speichern und außerhalb davon: Er ist eine
+    # Folge des Wechsels, keine Bedingung für ihn. Scheitert er, steht die neue
+    # Saison trotzdem, und die Antwort sagt es -- das Gegenteil (Wechsel
+    # zurückgedreht, weil ein Altbestand-Spiel sich querstellt) wäre die
+    # schlechtere Hälfte.
     def update_season
       new_id = params[:season_id].to_i
       setting = Setting.first
@@ -49,10 +60,26 @@ module Admin
       setting.systems = systems
       setting.save!
 
-      render json: { current_season_id: new_id }
+      render json: { current_season_id: new_id }.merge(closed_reports(new_id))
     end
 
     private
+
+    # Idempotent, ein zweiter Wechsel findet nichts mehr. Der Zähler geht mit in
+    # die Antwort, damit die Oberfläche sagen kann, was passiert ist -- ein
+    # stiller Sammelabschluss über Tausende Spiele wäre das Letzte, was man an
+    # dieser Stelle erwartet.
+    def closed_reports(new_id)
+      result = PastSeasonReportCloser.call(current_season_id: new_id)
+      { closed_reports: result.games, closed_report_leagues: result.leagues }
+    rescue StandardError => e
+      Rails.logger.error(
+        "Saisonwechsel auf #{new_id}: Sammelabschluss der Altberichte fehlgeschlagen: " \
+        "#{e.class}: #{e.message}"
+      )
+      Sentry.capture_exception(e) if defined?(Sentry)
+      { closed_reports_error: 'Die Spielberichte der Vorsaisons konnten nicht geschlossen werden.' }
+    end
 
     def require_admin!
       ph = current_user.permission_hash

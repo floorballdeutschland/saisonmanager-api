@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Der Saisonwechsel schließt die Spielberichte der Vorsaisons**: Wer als Admin die laufende Saison umstellt, schließt damit zugleich alle noch offenen Spielberichte aller früheren Saisons. Hintergrund: Ein abgeschlossener Bericht ist gegen Änderungen an Toren, Strafen und am Status geschützt — die lässt der Server nur noch für die SBK des Spielbetriebs und für Administratoren zu. Ein Bericht, der am Saisonende offen geblieben ist, hatte diesen Schutz nie und blieb für jeden bearbeitbar, der ihn ohnehin bearbeiten darf; beim ausrichtenden Verein ist das auch Jahre später noch der Fall. Der Saisonwechsel ist der Moment, an dem der Spielbetrieb der alten Saison endet, und damit der richtige Zeitpunkt dafür. Die Antwort nennt, wie viele Berichte in wie vielen Ligen geschlossen wurden — ein stiller Sammelabschluss über Tausende Spiele wäre an dieser Stelle das Letzte, was man erwartet. Ein bereits abgeschlossener oder gewerteter Bericht bleibt unverändert, ein zweiter Wechsel findet nichts mehr, und der Einreichungszeitpunkt wird nicht erfunden: Die Spalte beantwortet, wann die Beteiligten den Bericht eingereicht haben, und ein Sammelabschluss Jahre später ist keine Einreichung. Ligen, deren Saison in der Saisonliste gar nicht steht (Altbestand, Rohimport), bleiben unangetastet. Einzelne Berichte kann die SBK wie bisher wieder öffnen.
+
 ## [1.117.0] - 2026-09-18
 
 ### Behoben

@@ -40,6 +40,43 @@ module Admin
       assert_equal 18, body['current_season_id']
     end
 
+    # Der Wechsel schliesst zugleich die offenen Berichte der Vorsaisons: Sonst
+    # bliebe ein am Saisonende offen gebliebener Bericht dauerhaft bearbeitbar,
+    # beim ausrichtenden Verein auch Jahre spaeter noch.
+    test 'Admin aktiviert Saison → offene Berichte der Vorsaisons werden geschlossen' do
+      alte_liga = create(:league, season_id: '17')
+      altes_spiel = spiel_in(alte_liga, status: 'aftergame')
+      neue_liga = create(:league, season_id: '18')
+      neues_spiel = spiel_in(neue_liga, status: 'aftergame')
+
+      login(@admin)
+      patch '/api/v2/admin/settings/current_season', params: { season_id: 18 }
+
+      assert_response :ok
+      body = JSON.parse(response.body)
+      assert_equal 1, body['closed_reports']
+      assert_equal 1, body['closed_report_leagues']
+      assert_equal 'match_record_closed', altes_spiel.reload.game_status
+      assert_equal 'aftergame', neues_spiel.reload.game_status
+    end
+
+    # Der Abschluss ist eine Folge des Wechsels, keine Bedingung dafuer. Ein
+    # Altbestand-Spiel, das sich querstellt, darf den Wechsel nicht
+    # zurueckdrehen.
+    test 'ein gescheiterter Sammelabschluss laesst den Saisonwechsel stehen' do
+      login(@admin)
+
+      PastSeasonReportCloser.stub(:call, ->(**) { raise ActiveRecord::StatementInvalid, 'kaputt' }) do
+        patch '/api/v2/admin/settings/current_season', params: { season_id: 18 }
+      end
+
+      assert_response :ok
+      body = JSON.parse(response.body)
+      assert_equal 18, body['current_season_id']
+      assert_equal 18, Setting.current_season_id
+      assert body['closed_reports_error'].present?
+    end
+
     test 'Admin aktiviert nicht-existierende Saison → 422' do
       login(@admin)
       patch '/api/v2/admin/settings/current_season', params: { season_id: 9999 }
@@ -61,6 +98,18 @@ module Admin
     def login(user)
       post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
       assert_response :success
+    end
+
+    def spiel_in(league, status:)
+      game_day = create(:game_day, league: league, club: create(:club))
+      Game.create!(
+        game_day: game_day,
+        home_team: create(:team, league: league),
+        guest_team: create(:team, league: league),
+        game_status: status,
+        forfait: 0, overtime: false, legacy: false,
+        events: [], players: { 'home' => [], 'guest' => [] }
+      )
     end
   end
 end
