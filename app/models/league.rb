@@ -21,6 +21,11 @@ class League < ApplicationRecord
   validates :name, presence: true
   validates :season_id, presence: true
   validates :league_class_id, inclusion: { in: CODES }, allow_blank: true
+  # Mindestalter in Jahren (siehe minimum_age_met?). Obergrenze mit Luft nach
+  # oben; 0 wäre keine Regel, sondern ein leeres Feld, und gehört als NULL
+  # gespeichert, damit "keine Untergrenze" nur eine Schreibweise hat.
+  validates :minimum_age, numericality: { only_integer: true, greater_than: 0, less_than: 100 },
+                          allow_nil: true
 
   default_scope { order(:season_id, :game_operation_id).order('order_key::int') }
   scope :current_season, -> { where(season_id: Setting.current_season_id) }
@@ -257,12 +262,50 @@ class League < ApplicationRecord
   # before_deadline: true = "geboren bis" (<= Stichtag), false = "geboren ab" (>= Stichtag).
   # Ohne Stichtag oder bei fehlendem/unlesbarem Geburtsdatum keine Sperre.
   def age_eligible?(birthdate)
-    return true if deadline.blank? || birthdate.blank?
+    dob = parsed_birthdate(birthdate)
+    return true if deadline.blank? || dob.nil?
 
-    dob = birthdate.is_a?(Date) ? birthdate : Date.parse(birthdate.to_s)
     before_deadline ? dob <= deadline : dob >= deadline
-  rescue ArgumentError, TypeError
-    true
+  end
+
+  # Erfüllt das Geburtsdatum das Mindestalter der Liga?
+  #
+  # Zweite Altersregel neben dem Stichtag, und bewusst unabhängig von ihm: Der
+  # Stichtag ist ein festes Datum und beantwortet damit die Frage "alt genug am
+  # Stichtag", nicht "alt genug heute". Wer im Saisonverlauf 15 wird, bleibt
+  # unter einem Stichtag die ganze Saison gesperrt -- auch Monate nach dem
+  # Geburtstag. Das Mindestalter dagegen wird tagesgenau am Tag der
+  # Lizenzbeantragung gerechnet und greift ab dem Geburtstag; es altert nicht
+  # und muss deshalb zum Saisonwechsel nicht nachgezogen werden (anders als der
+  # Stichtag, den League-Kopie um ein Jahr verschiebt).
+  #
+  # Beide Regeln gelten nebeneinander und müssen beide erfüllt sein: Eine
+  # Jugendliga kann so ihre Obergrenze ("geboren ab") behalten und zusätzlich
+  # ein Mindestalter tragen. Wer den Stichtag durch das Mindestalter ersetzen
+  # will, muss ihn also leeren.
+  #
+  # Ohne Mindestalter oder bei fehlendem/unlesbarem Geburtsdatum keine Sperre --
+  # dieselbe Linie wie beim Stichtag: Ein unbekanntes Geburtsdatum ist ein
+  # Datenproblem und darf den Lizenzantrag nicht blockieren.
+  #
+  # Der Stichtag ist der deutsche Kalendertag, nicht der des Servers: Die
+  # Anwendung laeuft in UTC (config.time_zone ist nicht gesetzt, der Host steht
+  # auf Etc/UTC), und zwischen 00:00 und 02:00 deutscher Zeit stuende
+  # Date.current noch auf dem Vortag. Ein Antrag in der Nacht des Geburtstags
+  # waere damit an genau diesem Tag abgewiesen worden. Gleiche Ableitung wie in
+  # Team#info_editable_during_season? (Time.find_zone('Europe/Berlin').today).
+  #
+  # Zum 29.02.: Wer an einem Schalttag geboren ist, erreicht das Alter hier erst
+  # am 01.03. eines Nicht-Schaltjahres (2026-02-28 minus 15 Jahre ergibt
+  # 2011-02-28, und der 29.02. liegt danach). DocumentType#age_at rechnet an
+  # dieser einen Stelle andersherum und haelt dieselbe Person am 28.02. bereits
+  # fuer alt genug. Bewusst nicht mit angeglichen: Das waere eine
+  # Verhaltensaenderung an den Pflichtdokumenten und gehoert nicht in diesen PR.
+  def minimum_age_met?(birthdate, reference_date = Time.find_zone('Europe/Berlin').today)
+    dob = parsed_birthdate(birthdate)
+    return true if minimum_age.blank? || dob.nil?
+
+    dob <= reference_date.to_date.advance(years: -minimum_age.to_i)
   end
 
   def full_hash(include_similar_leagues = false)
@@ -292,6 +335,7 @@ class League < ApplicationRecord
 
       deadline:,
       before_deadline:,
+      minimum_age:,
       parental_consent_required:,
       referee_feedback_enabled:,
       # Name der YouTube-Playlist der Übertragungen dieser Liga. Kein Geheimnis --
@@ -1492,6 +1536,20 @@ class League < ApplicationRecord
   end
 
   private
+
+  # Geburtsdatum als Date, oder nil, wenn es fehlt oder nicht lesbar ist. Beide
+  # Altersregeln behandeln nil als "keine Sperre", deshalb wird hier nicht
+  # geworfen. players.birthdate ist eine date-Spalte; der String-Zweig ist
+  # Vorsicht fuer Aufrufe mit rohem Parameter- oder Importwert, nicht die
+  # Beschreibung des Bestands. Gleiche Form wie DocumentType#parse_birthdate.
+  def parsed_birthdate(birthdate)
+    return nil if birthdate.blank?
+    return birthdate if birthdate.is_a?(Date)
+
+    Date.parse(birthdate.to_s)
+  rescue ArgumentError, TypeError
+    nil
+  end
 
   # Reihenfolge des Spielplans: Spieltag, Datum, Spielnummer, Uhrzeit.
   #
