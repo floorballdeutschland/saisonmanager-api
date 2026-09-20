@@ -257,8 +257,9 @@ class GamesController < ApplicationController
   end
 
   # Interne Spielbericht-Felder (Unterschriften, besondere Vorkommnisse etc.).
-  # Nur für Rollen mit Bezug zum Spiel: Admin/SBK des Spielbetriebs sowie
-  # VM/TM der beteiligten Mannschaften. Andere eingeloggte Nutzer erhalten ein
+  # Nur für Rollen mit Bezug zum Spiel: Admin/SBK des Spielbetriebs, VM/TM der
+  # beteiligten Mannschaften sowie VM und TM des ausrichtenden Vereins, der den
+  # Bericht aller Spiele des Tages führt. Andere eingeloggte Nutzer erhalten ein
   # leeres Objekt statt 403, weil die Spiel-Detailseite den Endpoint für jeden
   # Login aufruft und der Frontend-ErrorInterceptor bei 403 hart umleitet.
   def show_hidden
@@ -969,7 +970,6 @@ class GamesController < ApplicationController
         if params[:game_status] == 'match_record_closed'
           _maybe_send_incident_report_reminder(game)
           _maybe_send_checklist_confirmation(game)
-          _maybe_send_game_day_scan_reminder(game)
         end
 
         # Platzierungsspiele füllen, sobald ein Spiel einen abgeschlossenen
@@ -1308,8 +1308,8 @@ class GamesController < ApplicationController
   end
 
   # Admin/SBK des Spielbetriebs, VM/TM der beteiligten Mannschaften (inkl.
-  # Spielgemeinschafts-Vereine) sowie der VM des ausrichtenden Vereins dürfen
-  # die internen Felder lesen.
+  # Spielgemeinschafts-Vereine) sowie VM und TM des ausrichtenden Vereins
+  # dürfen die internen Felder lesen.
   def can_view_hidden_elements?(game)
     # Spielsekretariat per Einmal-Link: darf genau die Spiele der Spieltage
     # sehen, die der Link abdeckt (eine Halle an einem Tag, gegebenenfalls
@@ -1329,6 +1329,11 @@ class GamesController < ApplicationController
 
     teams = [game.home_team, game.guest_team].compact
     return true if ph[:tm].present? && ph[:tm].intersect?(teams.map(&:id))
+
+    # Teammanager des ausrichtenden Vereins: Er führt den Bericht aller Spiele
+    # des Tages (Game#hosting_club_team_manager?) und braucht dieselben Felder
+    # wie der Vereinsmanager daneben.
+    return true if game.hosting_club_team_manager?(current_user)
 
     # Der ausrichtende Verein gehört dazu, genau wie in Game#can_edit_lineup?
     # und Game#user_permissions. Ohne ihn bekäme der Ausrichter eines Turniers
@@ -1535,20 +1540,5 @@ class GamesController < ApplicationController
       guest_team: game.guest_team_name,
       league_name: game.league.name
     }
-  end
-
-  def _maybe_send_game_day_scan_reminder(game)
-    game_day = game.game_day
-    return unless game.state_association&.effective_scan_required
-
-    all_closed = game_day.games.reload.all? do |g|
-      %w[match_record_closed finalized].include?(g.game_status)
-    end
-    return unless all_closed
-
-    hosting_club = game_day.club
-    return if hosting_club&.notification_emails.blank?
-
-    ClubMailer.game_day_scan_reminder(hosting_club, game_day).deliver_later
   end
 end

@@ -351,7 +351,7 @@ class LeaguesControllerTest < ActionDispatch::IntegrationTest
                                       field_size: 'GF', periods: 3, period_length: 20,
                                       overtime_length: 10, order_key: '5',
                                       deadline: Date.new(2025, 7, 31), before_deadline: true,
-                                      referee_feedback_enabled: true)
+                                      minimum_age: 15, referee_feedback_enabled: true)
   end
   private :create_copy_source_league
 
@@ -376,7 +376,7 @@ class LeaguesControllerTest < ActionDispatch::IntegrationTest
 
     %w[game_operation_id name short_name league_category_id league_class_id league_system_id
        league_type league_modus table_modus has_preround female enable_scorer field_size
-       periods period_length overtime_length order_key before_deadline
+       periods period_length overtime_length order_key before_deadline minimum_age
        referee_feedback_enabled].each do |attr|
       assert_equal source[attr], copy[attr], "Attribut #{attr} muss kopiert werden"
     end

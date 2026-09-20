@@ -555,7 +555,8 @@ class LeaguesController < ApplicationController
   # Stammdaten-Spalten, die bei der Liga-Kopie (Saisonwechsel, #69) 1:1
   # übernommen werden. Bewusst NICHT kopiert:
   #   - season_id (wird auf die aktuelle Saison gesetzt)
-  #   - deadline (+1 Jahr verschoben)
+  #   - deadline (+1 Jahr verschoben; minimum_age wird dagegen 1:1 kopiert, weil
+  #     ein Mindestalter nicht altert)
   #   - league_id_preseason (zeigt auf die Quell-Liga selbst),
   #     league_id_preround / league_id_direct_encounters (zeigen auf Ligen der
   #     Quellsaison und müssen neu gesetzt werden)
@@ -566,7 +567,7 @@ class LeaguesController < ApplicationController
     game_operation_id name short_name league_category_id league_class_id
     league_system_id league_type league_modus table_modus has_preround
     preround_point_modus preround_scorer_modus female enable_scorer field_size
-    periods period_length overtime_length order_key before_deadline
+    periods period_length overtime_length order_key before_deadline minimum_age
     direct_comparison required_documents age_group parental_consent_required
     game_duration_minutes referee_feedback_enabled
   ].freeze
@@ -1188,7 +1189,7 @@ class LeaguesController < ApplicationController
   end
 
   def league_params
-    params.require(:league).permit(:before_deadline, :deadline, :female, :age_group, :game_operation_id,
+    params.require(:league).permit(:before_deadline, :deadline, :minimum_age, :female, :age_group, :game_operation_id,
                                    :league_category_id, :league_class_id, :league_system_id, :name, :order_key,
                                    :short_name, :enable_scorer, :field_size, :league_modus, :league_id_preseason,
                                    :league_id_preround, :has_preround, :preround_point_modus, :preround_scorer_modus,
