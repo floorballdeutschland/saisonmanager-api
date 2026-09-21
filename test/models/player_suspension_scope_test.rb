@@ -397,6 +397,151 @@ class PlayerSuspensionScopeTest < ActiveSupport::TestCase
     assert_nil row[:suspension]
   end
 
+  # ---------------------------------------------------------------------------
+  # Lizenzen der Genehmigungskarte (effective_status_id)
+  # ---------------------------------------------------------------------------
+  #
+  # Die Karte listet ALLE Lizenzen des Spielers dieser Saison und las deren
+  # Status bis hierher aus der rohen History. Eine Wettbewerbs- oder Ligasperre
+  # steht dort nicht drin -- write_suspended_status! schreibt nur bei SCOPE_ALL
+  # und SCOPE_TEAM --, die Karte zeigte eine so gesperrte Lizenz also als
+  # erteilt.
+
+  def card_license(list_league, player, team)
+    entry = League.licenses_for([list_league]).fetch(list_league.id, [])
+                  .flat_map { |t| t[:players] }
+                  .find { |p| p[:id] == player.id }
+    entry && Array(entry[:licenses]).find { |l| l['team_id'].to_i == team.id }
+  end
+
+  test 'eine Wettbewerbssperre steht an der Lizenz der Genehmigungskarte' do
+    player = licensed_player
+    player.suspend!(user_id: @user.id, valid_until: Date.current + 30,
+                    scope: { kind: PlayerSuspension::SCOPE_COMPETITION, league: @liga,
+                             competition_groups: [League::GROUP_LIGA] })
+
+    assert_equal License::APPROVED, current_status(player.reload, @team),
+                 'die History bleibt unberührt -- genau deshalb braucht es das Feld'
+    assert_equal License::SUSPENDED, card_license(@liga, player, @team)[:effective_status_id]
+  end
+
+  test 'eine Ligasperre steht an der Lizenz der Genehmigungskarte' do
+    player = licensed_player
+    player.suspend!(user_id: @user.id, valid_until: Date.current + 30,
+                    scope: { kind: PlayerSuspension::SCOPE_LEAGUE, league: @liga })
+
+    assert_equal License::APPROVED, current_status(player.reload, @team)
+    assert_equal License::SUSPENDED, card_license(@liga, player, @team)[:effective_status_id]
+  end
+
+  # Die Zweitlizenz einer anderen Mannschaft wird gegen die Liga IHRER
+  # Mannschaft bewertet, nicht gegen die Liga der Liste. Sonst faerbte eine
+  # Sperre im Ligaspielbetrieb auch die Pokallizenz, in der der Spieler
+  # weiterhin spielen darf.
+  test 'eine Wettbewerbssperre laesst die Lizenz eines nicht betroffenen Wettbewerbs in Ruhe' do
+    pokal_team = create(:team, league: @pokal)
+    player = create(:player, with_licenses: [
+      { team: @team, status: License::APPROVED },
+      { team: pokal_team, status: License::APPROVED }
+    ])
+    player.suspend!(user_id: @user.id, valid_until: Date.current + 30,
+                    scope: { kind: PlayerSuspension::SCOPE_COMPETITION, league: @liga,
+                             competition_groups: [League::GROUP_LIGA] })
+
+    assert_equal License::SUSPENDED, card_license(@liga, player, @team)[:effective_status_id]
+    assert_equal License::APPROVED, card_license(@liga, player, pokal_team)[:effective_status_id],
+                 'der Pokal wird separat gefuehrt'
+  end
+
+  # Dieselbe Grenze wie in build_license_items: Eine Sperre setzt eine
+  # Spielberechtigung aus, ein abgelehnter Antrag hat keine.
+  test 'eine abgelehnte Lizenz bleibt abgelehnt, auch bei spielerweiter Sperre' do
+    denied_team = create(:team, league: @dm)
+    player = create(:player, with_licenses: [
+      { team: @team, status: License::APPROVED },
+      { team: denied_team, status: License::DENIED }
+    ])
+    player.suspend!(user_id: @user.id, valid_until: Date.current + 30)
+
+    assert_equal License::SUSPENDED, card_license(@liga, player, @team)[:effective_status_id]
+    assert_equal License::DENIED, card_license(@liga, player, denied_team)[:effective_status_id]
+  end
+
+  # Der Widerspruch, der beim Review auffiel: @team haengt ueber cup_leagues in
+  # beiden Listen. Bewertet man die Lizenz gegen die Stammliga statt gegen die
+  # Liga der Liste, sagt in der Pokalliste die Zeile "erteilt" und ihr eigener
+  # Lizenzeintrag "gesperrt" -- fuer dieselbe Lizenz, in einer Antwort.
+  test 'die eigene Lizenz sagt dasselbe wie ihre Zeile, auch in der Pokalliste' do
+    player = licensed_player
+    player.suspend!(user_id: @user.id, valid_until: Date.current + 30,
+                    scope: { kind: PlayerSuspension::SCOPE_LEAGUE, league: @liga })
+
+    assert_equal License::SUSPENDED, status_in(@liga, player)[:last_status_id].to_i
+    assert_equal License::SUSPENDED, card_license(@liga, player, @team)[:effective_status_id]
+
+    assert_equal License::APPROVED, status_in(@pokal, player)[:last_status_id].to_i
+    assert_equal License::APPROVED, card_license(@pokal, player, @team)[:effective_status_id],
+                 'im Pokal darf er spielen -- die Lizenzzeile darf nichts anderes sagen'
+  end
+
+  # Gegenrichtung: Eine Sperre, die auf die Pokalliga zielt, muss in der
+  # Pokalliste an der Lizenz stehen und in der Ligaliste nicht.
+  test 'eine Sperre auf den Zweitwettbewerb steht in dessen Liste an der Lizenz' do
+    player = licensed_player
+    player.suspend!(user_id: @user.id, valid_until: Date.current + 30,
+                    scope: { kind: PlayerSuspension::SCOPE_LEAGUE, league: @pokal })
+
+    assert_equal License::SUSPENDED, card_license(@pokal, player, @team)[:effective_status_id]
+    assert_equal License::APPROVED, card_license(@liga, player, @team)[:effective_status_id]
+  end
+
+  # SCOPE_TEAM ist der andere Zweig von covers_license_in? und der einzige, bei
+  # dem zusaetzlich ein 9er-Eintrag in der History steht. Hier greifen
+  # base_entry (ueberspringt die 9) und die Sperrbewertung ineinander.
+  test 'eine Team-Sperre trifft die Lizenz dieser Mannschaft und keine andere' do
+    zweitteam = create(:team, league: @dm)
+    player = create(:player, with_licenses: [
+      { team: @team, status: License::APPROVED },
+      { team: zweitteam, status: License::APPROVED }
+    ])
+    player.suspend!(user_id: @user.id, team_id: @team.id, valid_until: Date.current + 30)
+
+    assert_equal License::SUSPENDED, card_license(@liga, player, @team)[:effective_status_id]
+    assert_equal License::APPROVED, card_license(@liga, player, zweitteam)[:effective_status_id]
+  end
+
+  test 'eine abgelaufene Sperre zeigt auch an der Lizenz wieder den Status ohne Sperre' do
+    player = licensed_player
+    suspension = player.suspend!(user_id: @user.id, team_id: @team.id, valid_until: Date.current + 5)
+    suspension.update_columns(valid_from: Date.current - 10, valid_until: Date.current - 1)
+
+    assert_equal License::APPROVED, card_license(@liga, player, @team)[:effective_status_id],
+                 'der 9er-Eintrag steht noch in der History, die Sperre greift aber nicht mehr'
+  end
+
+  # Ohne ermittelbaren Basis-Status kaeme eine 0 heraus, die License::NAMES
+  # nicht kennt. Dann traegt die Lizenz das Feld gar nicht und die Oberflaeche
+  # faellt auf ihre eigene Lesart zurueck.
+  test 'eine Lizenz ohne Basis-Status traegt das Feld nicht' do
+    zweitteam = create(:team, league: @dm)
+    player = create(:player, with_licenses: [
+      { team: @team, status: License::APPROVED },
+      { team: zweitteam, status: License::APPROVED }
+    ])
+    player.licenses.find { |l| l['team_id'].to_i == zweitteam.id }['history'] = []
+    player.save!
+
+    entry = card_license(@liga, player, zweitteam)
+    assert_not_nil entry, 'die Zeile bleibt in der Liste'
+    assert_not entry.key?(:effective_status_id), 'ohne Basis-Status kein Statusfeld'
+  end
+
+  test 'ohne Sperre traegt jede Lizenz der Karte ihren eigenen Status' do
+    player = licensed_player
+
+    assert_equal License::APPROVED, card_license(@liga, player, @team)[:effective_status_id]
+  end
+
   test 'scope_summary benennt den Geltungsbereich im Klartext' do
     player = licensed_player
     suspension = player.suspend!(user_id: @user.id, valid_until: Date.current + 30,
