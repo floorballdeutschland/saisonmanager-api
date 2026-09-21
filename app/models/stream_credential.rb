@@ -25,7 +25,15 @@ class StreamCredential < ApplicationRecord
                             optional: true, inverse_of: false
 
   def self.current
-    first
+    find_by(singleton: 0)
+  end
+
+  # Die eine Zeile, angelegt falls noetig. Der eindeutige Index auf `singleton`
+  # macht eine zweite unmoeglich -- zwei gleichzeitige Verbindungen koennten
+  # sonst zwei Zeilen erzeugen, von denen die Oberflaeche die eine und der
+  # Waechter die andere benutzt.
+  def self.singleton
+    find_or_initialize_by(singleton: 0)
   end
 
   # Kann an dieser Stelle ueberhaupt etwas gespeichert oder gelesen werden?

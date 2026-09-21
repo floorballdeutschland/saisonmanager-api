@@ -91,6 +91,40 @@ class YoutubeOauthTest < ActiveSupport::TestCase
     assert_equal 0, StreamCredential.count
   end
 
+  # Ohne den Widerruf bliebe die Zustimmung bei Google stehen, obwohl nichts
+  # gespeichert wurde -- und der zweite Anlauf, zu dem die Meldung auffordert,
+  # bekaeme keinen Refresh-Token mehr.
+  test 'ein abgewiesener Kanal widerruft den frisch geholten Zugang' do
+    widerrufen = []
+    dienst = YoutubeOauth.new(code: 'code-1', redirect_uri: 'postmessage')
+    dienst.define_singleton_method(:token_abruf) do |_ziel|
+      { 'refresh_token' => '1//0-frisch', 'access_token' => 'zugriff' }
+    end
+    dienst.define_singleton_method(:kanal_lesen) do |_zugriff|
+      { id: 'UC-leer', title: 'floorball deutschland', videos: '0' }
+    end
+    dienst.define_singleton_method(:live_pruefen) do |_zugriff|
+      raise YoutubeOauth::LiveStreamingDisabled
+    end
+
+    YoutubeOauth.stub(:revoke, ->(token) { widerrufen << token }) do
+      assert_raises(YoutubeOauth::LiveStreamingDisabled) { dienst.verbinden! }
+    end
+
+    assert_equal ['1//0-frisch'], widerrufen
+    assert_equal 0, StreamCredential.count
+  end
+
+  # Zwei gleichzeitige Verbindungen duerfen keine zweite Zeile erzeugen: Die
+  # Oberflaeche zeigte sonst die eine und der Waechter benutzte die andere.
+  test 'es bleibt bei genau einer Zeile' do
+    dienst_mit(token: { 'refresh_token' => '1//0-eins', 'access_token' => 'zugriff' }).verbinden!
+    dienst_mit(token: { 'refresh_token' => '1//0-zwei', 'access_token' => 'zugriff' }).verbinden!
+
+    assert_equal 1, StreamCredential.count
+    assert_equal '1//0-zwei', StreamCredential.current.refresh_token
+  end
+
   # Der Token gehoert dem WEB-Client. Ohne die gespeicherte Kennung liesse sich
   # nicht pruefen, ob er noch zu dem Paar passt, gegen das erneuert wird.
   test 'die Kennung des Web-Clients wird mitgeschrieben' do

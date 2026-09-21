@@ -31,7 +31,7 @@ namespace :streaming do
   task watchdog: :environment do
     unless YoutubeLiveApi.configured?
       meldung = 'YouTube-Zugang nicht eingerichtet -- weder im Streaming-Bereich verbunden ' \
-                'noch als YOUTUBE_CLIENT_ID/_SECRET/_REFRESH_TOKEN gesetzt'
+                "noch als Umgebung gesetzt (es fehlt: #{YoutubeLiveApi.fehlende_einstellungen.join(', ')})"
 
       # AUF PRODUKTION IST DAS EIN AUSFALL, sonst der Normalzustand.
       #

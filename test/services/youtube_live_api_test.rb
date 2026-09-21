@@ -144,13 +144,16 @@ class YoutubeLiveApiTest < ActiveSupport::TestCase
     api
   end
 
+  # Sichern und zuruecklegen, nicht loeschen: Auf einem Container, auf dem die
+  # Variablen gesetzt sind, naehme das Loeschen sie dem REST des Laufs weg, und
+  # spaetere Pruefsaetze kippten je nach Dateireihenfolge.
   def mit_web_client
+    vorher = %w[YOUTUBE_WEB_CLIENT_ID YOUTUBE_WEB_CLIENT_SECRET].index_with { |k| ENV.fetch(k, nil) }
     ENV['YOUTUBE_WEB_CLIENT_ID'] = 'web-client'
     ENV['YOUTUBE_WEB_CLIENT_SECRET'] = 'web-geheim'
     yield
   ensure
-    ENV.delete('YOUTUBE_WEB_CLIENT_ID')
-    ENV.delete('YOUTUBE_WEB_CLIENT_SECRET')
+    vorher.each { |k, v| v.nil? ? ENV.delete(k) : ENV[k] = v }
   end
 
   def mit_token_schluessel

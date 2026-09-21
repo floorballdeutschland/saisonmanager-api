@@ -107,13 +107,15 @@ class StreamCredentialTest < ActiveSupport::TestCase
   # DAS WEB-PAAR: Gegen dieses Paar wird der gespeicherte Token erneuert, denn
   # von ihm stammt er. Das Desktop-Paar gehoert zum alten Weg ueber die
   # Umgebungsvariablen.
+  # Sichern und zuruecklegen, nicht loeschen -- sonst fehlen die Variablen dem
+  # Rest des Laufs, und spaetere Pruefsaetze kippen je nach Dateireihenfolge.
   def mit_client(kennung = 'web-client')
+    vorher = %w[YOUTUBE_WEB_CLIENT_ID YOUTUBE_WEB_CLIENT_SECRET].index_with { |k| ENV.fetch(k, nil) }
     ENV['YOUTUBE_WEB_CLIENT_ID'] = kennung
     ENV['YOUTUBE_WEB_CLIENT_SECRET'] = 'web-geheim'
     yield
   ensure
-    ENV.delete('YOUTUBE_WEB_CLIENT_ID')
-    ENV.delete('YOUTUBE_WEB_CLIENT_SECRET')
+    vorher.each { |k, v| v.nil? ? ENV.delete(k) : ENV[k] = v }
   end
 
   def ohne_client
