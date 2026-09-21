@@ -13,6 +13,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 - **Die Lizenzübersicht des Verbandes nennt je Spieler die Zahl seiner Lizenzen in dieser Saison**: Einige Landesverbände genehmigen je Spieler höchstens sechs oder acht Lizenzen. Wer das prüfen wollte, musste die Zeilen der Person in der Liste durchzählen. Jede Zeile führt jetzt zwei Zahlen mit: wie viele Lizenzen dieser Spieler in der angezeigten Saison erteilt bekommen hat (`licenses_approved_season`) und wie viele Anträge davon noch offen sind (`licenses_requested_season`). Gezählt wird über alle Verbände hinweg, nicht nur über die Ligen, die der Betrachter in seiner Liste sieht — eine Lizenz aus einem anderen Verband zählt auf dieselbe Obergrenze ein. Eine Lizenz, die erteilt und später durch einen Transfer ungültig geworden, gelöscht oder gesperrt worden ist, zählt weiter mit: Der Verband hat sie erteilt und sie hat eine Gebühr ausgelöst. Ein abgelehnter oder zurückgezogener Antrag zählt in keiner der beiden Zahlen, denn erteilt wurde da nie etwas; jede andere Lizenz steht in genau einer von beiden. Maßgeblich ist die abgefragte Saison: Stellt man die Übersicht auf eine frühere, zählt diese — auch für den Altbestand, der die Saison nicht an der Lizenz, sondern nur an der Mannschaft führt. Die Anzeige folgt im Frontend.
 
+## [1.118.1] - 2026-09-21
+
+### Verbessert
+
+- **Die Spieltagsmail an die Schiedsrichter erklärt jetzt, was die beiden Knöpfe im Portal auslösen**: Die Mail nach dem eingereichten Spielbericht nannte nur den Weg zu „Meine Spieltage". Was dort nach dem Klick passiert, stand nirgends, und gefragt wurde vor allem nach dem Ablehnen: „Nicht ordnungsgemäß" meldet noch nichts, sondern öffnet zuerst die Spieltagscheckliste des Landesverbands, und erst „Meldung absenden" erreicht die zuständige SBK. Beide Knöpfe sind jetzt mit ihrer Wirkung in der Mail beschrieben, einschließlich des Hinweises, dass eine Bestätigung niemanden weiter benachrichtigt und sich nicht mehr ändern lässt. Dazu kommen die drei Punkte, die in der Rückfrage regelmäßig mitkamen: Die Bewertung ist erst ab Beginn des letzten Spiels möglich, sie gilt für den ganzen Spieltag statt für ein einzelnes Spiel, und ohne Rückmeldung gilt der Spieltag 48 Stunden nach Spieltagsende automatisch als bestätigt.
+
 ## [1.118.0] - 2026-09-21
 
 ### Behoben
