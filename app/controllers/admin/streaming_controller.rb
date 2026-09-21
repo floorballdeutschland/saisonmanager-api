@@ -262,6 +262,10 @@ module Admin
         connected_at: satz&.connected_at&.iso8601,
         connected_by: satz&.connected_by&.fullname.presence,
         can_connect: YoutubeOauth.configured?,
+        # Ob DIESE Person verbinden darf. Die Oberflaeche soll den Knopf nicht
+        # anbieten, wo der Server ihn ablehnt -- und die Rolle steht nicht in
+        # den Berechtigungen, die im Browser liegen (dort stehen Menuepunkte).
+        may_connect: current_user.permission_hash[:admin].present?,
         missing_settings: YoutubeOauth.fehlende_einstellungen,
         # Die Kennung kommt vom Server und nicht aus dem Bundle: Eingeloest wird
         # der Code mit dem Paar, das hier liegt. Weichen beide voneinander ab,

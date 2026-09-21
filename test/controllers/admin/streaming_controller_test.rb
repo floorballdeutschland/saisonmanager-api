@@ -675,6 +675,17 @@ module Admin
       assert_response :success
     end
 
+    # Die Oberflaeche soll den Knopf nicht anbieten, wo der Server ihn ablehnt.
+    test 'may_connect trennt Admin von FD-SBK' do
+      login(create(:user, :admin))
+      get '/api/v2/admin/streaming/youtube'
+      assert response.parsed_body['may_connect']
+
+      login(create(:user, :sbk_global))
+      get '/api/v2/admin/streaming/youtube'
+      assert_not response.parsed_body['may_connect']
+    end
+
     # Verbinden haengt den Verbandskanal dauerhaft an ein Google-Konto. Das ist
     # keine Tageshandlung.
     test 'GEGENPROBE: FD-SBK darf weder verbinden noch trennen' do
