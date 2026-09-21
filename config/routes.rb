@@ -283,6 +283,8 @@ Rails.application.routes.draw do
         # quer über die Ligen, und die Rückmeldung einer angelegten Übertragung.
         get  'streaming/games', to: 'streaming#games'
         post 'streaming/games/:id/broadcast', to: 'streaming#record_broadcast'
+        get  'streaming/teams', to: 'streaming#teams'
+        put  'streaming/teams/:id', to: 'streaming#update_team'
         get  'streaming/hosts', to: 'streaming#hosts'
         put  'streaming/hosts/:id', to: 'streaming#update_host'
         get  'streaming/settings', to: 'streaming#settings'

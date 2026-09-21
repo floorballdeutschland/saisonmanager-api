@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Die Streamschlüssel der Mannschaften lassen sich im Streaming-Bereich pflegen**: Bis hierher kamen sie ausschließlich über den Importtask aus dem Blatt der Spielbetriebskommission in die Datenbank, und der Task ersetzt einen bereits gesetzten Schlüssel bewusst nicht — ein Verein, der seinen Schlüssel bei YouTube neu erzeugt, brauchte deshalb einen Eingriff von Hand auf der Produktion. Admin und die FD-SBK finden die Pflegeliste jetzt im Streaming-Bereich, mit allen Mannschaften der Ligen, in denen schon ein Schlüssel hängt, und über die Ligaauswahl auch mit denen einer Liga, die neu dazukommt. Der gespeicherte Schlüssel wird dabei nicht zurückgeliefert, sondern nur die letzten vier Zeichen: Die Liste ist zum Pflegen da und nicht zum Nachschlagen, und wer den Wert einträgt, hat ihn ohnehin aus der Halle. Zwei Riegel bleiben wie im Importtask: Ein Schlüssel mit Leerzeichen ist ein Kopierfehler aus der Tabelle und wird abgewiesen, und derselbe Schlüssel an zwei Mannschaften derselben Saison ebenfalls, weil der Livestream-Wächter eine Übertragung dann keinem Spiel mehr zuordnen kann. Über Saisongrenzen hinweg bleibt der doppelte Wert erlaubt, denn bei YouTube überlebt der Schlüssel die Saison und die Mannschaft nicht.
+
 ## [1.118.1] - 2026-09-21
 
 ### Verbessert
