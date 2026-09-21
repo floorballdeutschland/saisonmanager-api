@@ -34,6 +34,120 @@ class LeagueTest < ActiveSupport::TestCase
   end
 
   # ---------------------------------------------------------------------------
+  # minimum_age_met? (Mindestalter, tagesgenau)
+  # ---------------------------------------------------------------------------
+
+  test 'minimum_age_met?: greift ab dem Geburtstag, nicht vorher' do
+    l = League.new(minimum_age: 15)
+    reference = Date.new(2026, 9, 19)
+
+    assert l.minimum_age_met?(Date.new(2011, 9, 16), reference), 'drei Tage nach dem 15. Geburtstag'
+    assert l.minimum_age_met?(Date.new(2011, 9, 19), reference), 'der 15. Geburtstag selbst'
+    assert_not l.minimum_age_met?(Date.new(2011, 9, 20), reference), 'einen Tag vor dem 15. Geburtstag'
+  end
+
+  test 'minimum_age_met?: derselbe Spieler ist vor dem Geburtstag gesperrt und danach frei' do
+    l = League.new(minimum_age: 15)
+    dob = Date.new(2011, 9, 16)
+
+    assert_not l.minimum_age_met?(dob, Date.new(2026, 8, 20))
+    assert l.minimum_age_met?(dob, Date.new(2026, 9, 16))
+  end
+
+  # Der Bezugstag kommt aus derselben Quelle wie in der Methode. Mit
+  # `15.years.ago.to_date` (also Time.current, im Test UTC) laufen Test und
+  # Methode zwischen 22:00 und 24:00 UTC eine Kalenderzeile auseinander und die
+  # zweite Zusicherung kippt -- ein Test, der nachts rot wird.
+  test 'minimum_age_met?: ohne Referenzdatum zaehlt der heutige deutsche Tag' do
+    l = League.new(minimum_age: 15)
+    heute = Time.find_zone('Europe/Berlin').today
+
+    assert l.minimum_age_met?(heute - 15.years)
+    assert_not l.minimum_age_met?(heute - 15.years + 1.day)
+  end
+
+  # Der Server laeuft in UTC, gemeint ist aber der deutsche Kalendertag: In der
+  # Nacht des Geburtstags steht Date.current noch auf dem Vortag und haette den
+  # Antrag an genau diesem Tag abgewiesen.
+  test 'minimum_age_met?: der Stichtag ist der deutsche Tag, nicht der UTC-Tag' do
+    l = League.new(minimum_age: 15)
+    dob = Date.new(2011, 9, 16)
+
+    # 00:30 deutscher Zeit am Geburtstag = 22:30 UTC am Vortag.
+    travel_to Time.utc(2026, 9, 15, 22, 30) do
+      assert_equal Date.new(2026, 9, 15), Date.current, 'Annahme des Tests: die Serveruhr steht auf UTC'
+      assert l.minimum_age_met?(dob)
+    end
+  end
+
+  # Wer am Schalttag geboren ist, erreicht das Alter im Nicht-Schaltjahr erst am
+  # 01.03.: 2026-02-28 minus 15 Jahre ergibt 2011-02-28, der 29.02. liegt
+  # danach. Achtung, DocumentType#age_at rechnet an dieser Stelle andersherum
+  # (dort gilt der 28.02. schon als erreicht) -- der Unterschied ist bekannt und
+  # hier festgenagelt, damit er nicht unbemerkt kippt.
+  test 'minimum_age_met?: Geburtstag am 29.02. zaehlt im Nicht-Schaltjahr ab dem 01.03.' do
+    l = League.new(minimum_age: 15)
+    dob = Date.new(2012, 2, 29)
+
+    assert_not l.minimum_age_met?(dob, Date.new(2027, 2, 28))
+    assert l.minimum_age_met?(dob, Date.new(2027, 3, 1))
+    assert l.minimum_age_met?(dob, Date.new(2028, 2, 29)), 'im Schaltjahr am Geburtstag selbst'
+  end
+
+  # Der Schalttag als Referenztag: 2028-02-29 minus 15 Jahre ergibt 2013-02-28,
+  # weil es den 29.02.2013 nicht gibt.
+  test 'minimum_age_met?: Referenztag 29.02. reicht bis zum 28.02. des Jahrgangs' do
+    l = League.new(minimum_age: 15)
+    reference = Date.new(2028, 2, 29)
+
+    assert l.minimum_age_met?(Date.new(2013, 2, 28), reference)
+    assert_not l.minimum_age_met?(Date.new(2013, 3, 1), reference)
+  end
+
+  test 'minimum_age_met?: akzeptiert String-Geburtsdaten' do
+    l = League.new(minimum_age: 15)
+    reference = Date.new(2026, 9, 19)
+
+    assert l.minimum_age_met?('2011-09-16', reference)
+    assert_not l.minimum_age_met?('2011-09-20', reference)
+  end
+
+  test 'minimum_age_met?: ohne Mindestalter oder ohne (lesbares) Geburtsdatum keine Sperre' do
+    assert League.new(minimum_age: nil).minimum_age_met?(Date.new(2020, 1, 1))
+
+    l = League.new(minimum_age: 15)
+    assert l.minimum_age_met?(nil)
+    assert l.minimum_age_met?('unbekannt')
+  end
+
+  # Stichtag und Mindestalter sind zwei Regeln nebeneinander: Das Mindestalter
+  # oeffnet keinen Stichtag, der weiter gesetzt ist (Doku in minimum_age_met?).
+  test 'Stichtag und Mindestalter gelten unabhaengig voneinander' do
+    l = League.new(deadline: Date.new(2011, 9, 1), before_deadline: true, minimum_age: 15)
+    dob = Date.new(2011, 9, 16)
+
+    assert l.minimum_age_met?(dob, Date.new(2026, 9, 19))
+    assert_not l.age_eligible?(dob), 'der Stichtag sperrt unabhaengig vom Mindestalter weiter'
+  end
+
+  test 'minimum_age: 0 und dreistellige Werte sind ungueltig, nil bleibt erlaubt' do
+    l = build(:league)
+
+    l.minimum_age = 0
+    assert_not l.valid?
+    assert_includes l.errors.attribute_names, :minimum_age
+
+    l.minimum_age = 100
+    assert_not l.valid?
+
+    l.minimum_age = 15
+    assert l.valid?, l.errors.full_messages.to_sentence
+
+    l.minimum_age = nil
+    assert l.valid?, l.errors.full_messages.to_sentence
+  end
+
+  # ---------------------------------------------------------------------------
   # Pure point calculation methods (no DB needed)
   # ---------------------------------------------------------------------------
 

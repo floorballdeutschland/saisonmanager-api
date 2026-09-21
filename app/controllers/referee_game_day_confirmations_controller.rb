@@ -54,7 +54,7 @@ class RefereeGameDayConfirmationsController < ApplicationController
 
     items = checklist_items_for(game_day)
     if items.empty?
-      return render json: { error: 'Für diesen Spieltag ist keine Checkliste hinterlegt.' },
+      return render json: { error: 'Für diesen Spieltag sind keine Fragen für den Spieltagsbericht hinterlegt.' },
                     status: :unprocessable_entity
     end
 
@@ -82,7 +82,7 @@ class RefereeGameDayConfirmationsController < ApplicationController
     unless properly
       answers = normalize_answers(params[:answers], items)
       if answers.nil?
-        return render json: { error: 'Bitte alle Checklisten-Fragen mit Ja/Nein beantworten.' },
+        return render json: { error: 'Bitte alle Fragen des Spieltagsberichts mit Ja/Nein beantworten.' },
                       status: :unprocessable_entity
       end
     end
@@ -151,7 +151,7 @@ class RefereeGameDayConfirmationsController < ApplicationController
     false
   end
 
-  # Spieltagscheckliste des LV der Liga/des Sportverbunds (nicht des Ausrichtervereins).
+  # Spieltagsbericht des LV der Liga/des Sportverbunds (nicht des Ausrichtervereins).
   def checklist_items_for(game_day)
     game_day.league&.game_operation&.state_association&.checklist_items&.to_a || []
   end

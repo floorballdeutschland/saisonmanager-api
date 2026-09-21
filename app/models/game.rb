@@ -1807,7 +1807,53 @@ class Game < ApplicationRecord
       return true if ph[:vm].intersection(team_club_ids + syndicate_ids + hosting_ids).present?
     end
 
+    return true if hosting_club_team_manager?(user)
+
     ph[:tm].present? && (ph[:tm].include?(home_team_id) || ph[:tm].include?(guest_team_id))
+  end
+
+  # Teammanager eines Vereins, der diesen Spieltag ausrichtet.
+  #
+  # Am Tisch sitzt der Ausrichter, und an einem Turnierspieltag im Nachwuchs
+  # führt er den Bericht für alle Spiele des Tages -- auch für die, an denen
+  # keine eigene Mannschaft beteiligt ist. Für den Vereinsmanager gilt das
+  # längst (hosting_ids in can_edit_lineup?), für den Teammanager fehlte es: Er
+  # sah angemeldet nur die Spiele seiner eigenen Mannschaft und kam an die
+  # übrigen nur über den Sekretariatslink heran, den er sich selbst erst
+  # ausstellen musste.
+  #
+  # Über den Verein und nicht über die Mannschaften dieses Spieltags: Gefragt
+  # ist, wer ausrichtet, und das ist eine Eigenschaft des Vereins. Der
+  # Sekretariatslink verlangt zusätzlich eine eigene Mannschaft am Spieltag
+  # (GameDayLinkAuthorization) -- dort geht es darum, einen Zugang an Dritte
+  # auszugeben, hier um den eigenen Zugriff.
+  #
+  # `User#tm_club_ids` zählt die Vereine der eigenen Mannschaften aus der
+  # laufenden Saison, bei einer Spielgemeinschaft alle beteiligten
+  # (Team#all_club_ids). Richtet die Spielgemeinschaft unter dem Partnerverein
+  # aus, sitzt derselbe Tisch dort.
+  #
+  # Nur für die laufende Saison. `tm_club_ids` ist zwar auf der Nutzerseite auf
+  # die laufende Saison gefiltert, `game_days.club_id` trägt aber keine Saison:
+  # Ohne diese Grenze könnte ein heutiger Teammanager den Bericht jahrealter
+  # Spieltage seines Vereins anfassen, und `set_string`/`set_flag` sind auch bei
+  # abgeschlossenem Bericht offen -- der Vermerk der Schiedsrichter von 2018
+  # wäre überschreibbar. Der Ausrichter führt den Tisch des laufenden
+  # Spielbetriebs, nicht das Archiv.
+  def hosting_club_team_manager?(user)
+    host_club_id = game_day&.club_id
+    return false if host_club_id.blank?
+    return false unless current_season?
+
+    user.tm_club_ids.include?(host_club_id)
+  end
+
+  # `leagues.season_id` ist eine Textspalte, verglichen wird deshalb als Text.
+  # Ohne Liga am Spieltag (nullable) gibt es keine Saison und damit keinen
+  # Zugriff -- fail closed wie beim fehlenden Ausrichter.
+  def current_season?
+    season = game_day&.league&.season_id
+    season.present? && season.to_s == Setting.current_season_id.to_s
   end
 
   def user_permissions(user)
@@ -1841,6 +1887,7 @@ class Game < ApplicationRecord
     tm = user.permission_hash[:tm].to_a
     perm << :edit_game_report if admin || sbk ||
                                  user.permission_hash[:vm].to_a.include?(game_day_club_id) ||
+                                 hosting_club_team_manager?(user) ||
                                  tm.include?(home_team_id) || tm.include?(guest_team_id)
 
     # edit all game info

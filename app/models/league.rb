@@ -21,6 +21,11 @@ class League < ApplicationRecord
   validates :name, presence: true
   validates :season_id, presence: true
   validates :league_class_id, inclusion: { in: CODES }, allow_blank: true
+  # Mindestalter in Jahren (siehe minimum_age_met?). Obergrenze mit Luft nach
+  # oben; 0 wäre keine Regel, sondern ein leeres Feld, und gehört als NULL
+  # gespeichert, damit "keine Untergrenze" nur eine Schreibweise hat.
+  validates :minimum_age, numericality: { only_integer: true, greater_than: 0, less_than: 100 },
+                          allow_nil: true
 
   default_scope { order(:season_id, :game_operation_id).order('order_key::int') }
   scope :current_season, -> { where(season_id: Setting.current_season_id) }
@@ -257,12 +262,50 @@ class League < ApplicationRecord
   # before_deadline: true = "geboren bis" (<= Stichtag), false = "geboren ab" (>= Stichtag).
   # Ohne Stichtag oder bei fehlendem/unlesbarem Geburtsdatum keine Sperre.
   def age_eligible?(birthdate)
-    return true if deadline.blank? || birthdate.blank?
+    dob = parsed_birthdate(birthdate)
+    return true if deadline.blank? || dob.nil?
 
-    dob = birthdate.is_a?(Date) ? birthdate : Date.parse(birthdate.to_s)
     before_deadline ? dob <= deadline : dob >= deadline
-  rescue ArgumentError, TypeError
-    true
+  end
+
+  # Erfüllt das Geburtsdatum das Mindestalter der Liga?
+  #
+  # Zweite Altersregel neben dem Stichtag, und bewusst unabhängig von ihm: Der
+  # Stichtag ist ein festes Datum und beantwortet damit die Frage "alt genug am
+  # Stichtag", nicht "alt genug heute". Wer im Saisonverlauf 15 wird, bleibt
+  # unter einem Stichtag die ganze Saison gesperrt -- auch Monate nach dem
+  # Geburtstag. Das Mindestalter dagegen wird tagesgenau am Tag der
+  # Lizenzbeantragung gerechnet und greift ab dem Geburtstag; es altert nicht
+  # und muss deshalb zum Saisonwechsel nicht nachgezogen werden (anders als der
+  # Stichtag, den League-Kopie um ein Jahr verschiebt).
+  #
+  # Beide Regeln gelten nebeneinander und müssen beide erfüllt sein: Eine
+  # Jugendliga kann so ihre Obergrenze ("geboren ab") behalten und zusätzlich
+  # ein Mindestalter tragen. Wer den Stichtag durch das Mindestalter ersetzen
+  # will, muss ihn also leeren.
+  #
+  # Ohne Mindestalter oder bei fehlendem/unlesbarem Geburtsdatum keine Sperre --
+  # dieselbe Linie wie beim Stichtag: Ein unbekanntes Geburtsdatum ist ein
+  # Datenproblem und darf den Lizenzantrag nicht blockieren.
+  #
+  # Der Stichtag ist der deutsche Kalendertag, nicht der des Servers: Die
+  # Anwendung laeuft in UTC (config.time_zone ist nicht gesetzt, der Host steht
+  # auf Etc/UTC), und zwischen 00:00 und 02:00 deutscher Zeit stuende
+  # Date.current noch auf dem Vortag. Ein Antrag in der Nacht des Geburtstags
+  # waere damit an genau diesem Tag abgewiesen worden. Gleiche Ableitung wie in
+  # Team#info_editable_during_season? (Time.find_zone('Europe/Berlin').today).
+  #
+  # Zum 29.02.: Wer an einem Schalttag geboren ist, erreicht das Alter hier erst
+  # am 01.03. eines Nicht-Schaltjahres (2026-02-28 minus 15 Jahre ergibt
+  # 2011-02-28, und der 29.02. liegt danach). DocumentType#age_at rechnet an
+  # dieser einen Stelle andersherum und haelt dieselbe Person am 28.02. bereits
+  # fuer alt genug. Bewusst nicht mit angeglichen: Das waere eine
+  # Verhaltensaenderung an den Pflichtdokumenten und gehoert nicht in diesen PR.
+  def minimum_age_met?(birthdate, reference_date = Time.find_zone('Europe/Berlin').today)
+    dob = parsed_birthdate(birthdate)
+    return true if minimum_age.blank? || dob.nil?
+
+    dob <= reference_date.to_date.advance(years: -minimum_age.to_i)
   end
 
   def full_hash(include_similar_leagues = false)
@@ -292,6 +335,7 @@ class League < ApplicationRecord
 
       deadline:,
       before_deadline:,
+      minimum_age:,
       parental_consent_required:,
       referee_feedback_enabled:,
       # Name der YouTube-Playlist der Übertragungen dieser Liga. Kein Geheimnis --
@@ -1109,7 +1153,8 @@ class League < ApplicationRecord
 
         if with_other_licenses
           player_item[:other_licenses] = other_license_items(player, team.id, teams_by_id, License::ACTIVE_STATUSES)
-          annotate_license_teams!(player_item, teams_by_id)
+          annotate_license_teams!(player_item, teams_by_id, Array(suspensions[player.id]),
+                                  row_team_id: team.id, row_status_id: last_status_id)
         end
 
         team_item[:players] << player_item
@@ -1144,16 +1189,87 @@ class League < ApplicationRecord
   # Aufrufer fehlen, statt einheitlich zu erscheinen. Eine Lizenz ohne
   # auflösbare Mannschaft (geloescht) bleibt ohne Namen; die Karte zeigt dann
   # wie bisher die ID.
-  def annotate_license_teams!(player_item, teams_by_id)
-    Array(player_item[:licenses]).each do |lic|
-      next unless lic.is_a?(Hash)
+  #
+  # Dieselbe Schleife setzt `effective_status_id`, den Status einschliesslich
+  # einer Sperre, die in der History gar nicht steht -- Begruendung an der
+  # Methode darunter.
+  #
+  # Gearbeitet wird auf KOPIEN der Lizenz-Hashes. `Player#full_hash` reicht das
+  # JSONB-Attribut unveraendert durch, die Hashes sind also zwischen allen Ligen
+  # eines `licenses_for`-Aufrufs dieselben Objekte -- und `effective_status_id`
+  # haengt fuer die Lizenz der eigenen Zeile an der Liga DIESER Liste. Ohne die
+  # Kopie schriebe die zuletzt gebaute Liste ihren Wert in die vorher gebauten.
+  # `team_license[:license]` zeigt weiter auf den rohen Eintrag; die Oberflaeche
+  # liest daraus nur `id` und `gf_role`.
+  def annotate_license_teams!(player_item, teams_by_id, player_suspensions = [],
+                              row_team_id: nil, row_status_id: nil)
+    player_item[:licenses] = Array(player_item[:licenses]).map do |lic|
+      next lic unless lic.is_a?(Hash)
 
       team = teams_by_id[lic['team_id'].to_i]
-      next unless team
+      next lic unless team
 
-      lic[:team_name] = team.name
-      lic[:league_name] = team.league&.name
+      status_id = if lic['team_id'].to_i == row_team_id.to_i
+                    row_status_id
+                  else
+                    license_effective_status_id(lic, team, player_suspensions)
+                  end
+
+      annotated = lic.dup
+      annotated[:team_name] = team.name
+      annotated[:league_name] = team.league&.name
+      # Ohne ermittelbaren Basis-Status (leere History, oder nur Sperr-Eintraege)
+      # kaeme hier eine 0 heraus, die `License::NAMES` nicht kennt. Dann lieber
+      # kein Feld: Die Oberflaeche faellt auf ihre eigene Lesart zurueck, statt
+      # eine Zahl ohne Namen anzuzeigen. Ebenso bleibt eine Lizenz ohne
+      # aufloesbare Mannschaft ganz ohne das Feld (`next lic` oben).
+      annotated[:effective_status_id] = status_id.to_i if status_id.to_i.positive?
+      annotated
     end
+  end
+
+  # Der Status einer FREMDEN Lizenz -- also einer, die nicht zur Mannschaft
+  # dieser Zeile gehoert -- einschliesslich einer Sperre, die auf ihr liegt.
+  #
+  # Die Genehmigungskarte liest den Status je Lizenz aus deren roher History.
+  # Zwei Sperrarten stehen dort aber nicht drin:
+  #
+  # * Die Wettbewerbssperre (SCOPE_COMPETITION) schreibt ueberhaupt keinen
+  #   Eintrag, Player#write_suspended_status! nimmt nur SCOPE_ALL und
+  #   SCOPE_TEAM.
+  # * Die Liga-Sperre (SCOPE_LEAGUE) ebenso.
+  #
+  # Das ist dort richtig: Der gespeicherte Status ist EINER je Lizenz, waehrend
+  # diese beiden Sperren nur einen Teil der Wettbewerbe treffen, in denen
+  # dieselbe Lizenz gilt -- eine Mannschaft haengt ueber cup_leagues auch an
+  # ihren Pokalligen (siehe LicenseEffectiveStatus). Wer den Status aus der
+  # History liest, sieht so gesperrte Lizenzen aber als `erteilt`, also als
+  # spielberechtigt.
+  #
+  # Die Lizenz der eigenen Zeile laeuft NICHT hier durch: Sie uebernimmt
+  # `last_status_id` der Zeile, den build_license_items gegen die Liga DIESER
+  # Liste bestimmt hat. Andernfalls truege dieselbe Lizenz in der Pokalliste
+  # zwei Antworten -- die Zeile `erteilt` (im Pokal darf er spielen) und ihr
+  # Lizenzeintrag `gesperrt` (die Sperre liegt auf der Stammliga).
+  #
+  # Fuer eine fremde Lizenz entscheidet die Liga IHRER Mannschaft, denn die
+  # nennt die Zeile daneben (`team_name`/`league_name`). Grenze davon: Haengt
+  # jene Mannschaft ueber cup_leagues noch in einem zweiten Wettbewerb, wird
+  # nur die Stammliga bewertet -- eine Sperre, die allein den Zweitwettbewerb
+  # trifft, bleibt an dieser Zeile unsichtbar.
+  #
+  # Nur eine aktive Lizenz kann gesperrt sein -- dieselbe Grenze wie in
+  # build_license_items, das ebenfalls den Basis-Status prueft: Eine abgelehnte
+  # oder zurueckgezogene Lizenz hat keine Spielberechtigung, die eine Sperre
+  # aussetzen koennte. (Player#write_suspended_status! zieht dieselbe Grenze am
+  # AKTUELLEN Status, nicht am Basis-Status -- fuer eine Lizenz, die bereits
+  # einen Sperr-Eintrag traegt, ist das ein Unterschied.)
+  def license_effective_status_id(license, team, player_suspensions)
+    base_status_id = LicenseEffectiveStatus.base_status_id(license)
+    return base_status_id unless License::ACTIVE_STATUSES.include?(base_status_id)
+
+    suspended = player_suspensions.any? { |s| s.covers_license_in?(team.league, team) }
+    suspended ? License::SUSPENDED : base_status_id
   end
 
   # Freigabedatum des Spielers fuer die Mannschaft dieser Liste.
@@ -1492,6 +1608,20 @@ class League < ApplicationRecord
   end
 
   private
+
+  # Geburtsdatum als Date, oder nil, wenn es fehlt oder nicht lesbar ist. Beide
+  # Altersregeln behandeln nil als "keine Sperre", deshalb wird hier nicht
+  # geworfen. players.birthdate ist eine date-Spalte; der String-Zweig ist
+  # Vorsicht fuer Aufrufe mit rohem Parameter- oder Importwert, nicht die
+  # Beschreibung des Bestands. Gleiche Form wie DocumentType#parse_birthdate.
+  def parsed_birthdate(birthdate)
+    return nil if birthdate.blank?
+    return birthdate if birthdate.is_a?(Date)
+
+    Date.parse(birthdate.to_s)
+  rescue ArgumentError, TypeError
+    nil
+  end
 
   # Reihenfolge des Spielplans: Spieltag, Datum, Spielnummer, Uhrzeit.
   #

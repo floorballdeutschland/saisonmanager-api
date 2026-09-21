@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_09_18_100000) do
+ActiveRecord::Schema[7.2].define(version: 2026_09_19_130000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -283,6 +283,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_18_100000) do
     t.datetime "host_notified_at"
     t.string "legacy_ref"
     t.datetime "team_confirmation_notified_at"
+    t.datetime "scan_reminder_sent_at"
+    t.integer "scan_reminder_attempts", default: 0, null: false
     t.index ["arena_id"], name: "index_game_days_on_arena_id"
     t.index ["club_id"], name: "index_game_days_on_club_id"
     t.index ["date"], name: "index_game_days_on_date"
@@ -463,6 +465,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_18_100000) do
     t.string "league_class_name"
     t.string "league_category_name"
     t.string "stream_playlist"
+    t.integer "minimum_age", comment: "Mindestalter in Jahren, tagesgenau am Tag der Lizenzbeantragung geprüft; nil = keine Untergrenze. Unabhängig vom Stichtag (deadline/before_deadline)."
     t.index ["game_operation_id"], name: "index_leagues_on_game_operation_id"
     t.index ["legacy_ref"], name: "index_leagues_on_legacy_ref", unique: true, where: "(legacy_ref IS NOT NULL)"
   end

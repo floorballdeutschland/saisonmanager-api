@@ -40,6 +40,19 @@ module Admin
       updates[:email] = params[:email] if params.key?(:email)
 
       if params.key?(:teams)
+        # Bewusst ohne Selbst-Sperre, anders als jeder andere Schreibweg dieses
+        # Controllers (apply_role_change, apply_club_change, add_role,
+        # remove_role, archive, destroy). Ein Vereinsmanager SOLL sich seine
+        # Mannschaften selbst zuordnen können -- genau dafür gibt es den Weg.
+        #
+        # Tragfähig ist das, weil die Zuordnung nichts aufschließt, was das
+        # Konto nicht ohnehin verwaltet: resolve_team_ids grenzt auf den Scope
+        # des Handelnden ein, und User#permission_hash zählt für eine VM-Rolle
+        # nur Mannschaften, die VOLLSTÄNDIG zu seinen eigenen Vereinen gehören
+        # (Verein und jeder Spielgemeinschafts-Partner). Fiele diese
+        # Teilmengen-Bedingung, wäre dieser Zweig eine Selbstbedienung in einen
+        # fremden Verein.
+        #
         # Manager ohne VM-/SBK-/Admin-Scope (z. B. reiner RSK) darf keine Teams
         # zuweisen – sonst ließen sich beliebige Teams an ein Konto hängen.
         unless ph[:admin].present? || ph[:sbk].present? || ph[:vm].present?
@@ -49,7 +62,9 @@ module Admin
         # Zielverein des Kontos: Die Rollen-Berechtigung ist maßgeblich (die
         # Spalte kann davon abweichen), ein Vereinswechsel im selben Request
         # gewinnt. Ohne Verein am Konto bleibt es beim Scope des Handelnden.
-        target_club_id = params[:club_id].presence&.to_i || tm_club_id(@managed_user)
+        target_club_id = params[:club_id].presence&.to_i ||
+                         tm_club_id(@managed_user) ||
+                         sole_vm_club_id(@managed_user)
         result = resolve_team_ids(params[:teams], ph, target_club_id: target_club_id)
         return render json: { error: result[:error] }, status: result[:status] if result[:error]
 
@@ -574,6 +589,22 @@ module Admin
     # Spalte users.club_id abweichen.
     def tm_club_id(user)
       user.permissions.find { |p| p['user_group_id'].to_i == 5 && p['club_id'].present? }&.dig('club_id')&.to_i
+    end
+
+    # Der Verein eines reinen Vereinsmanager-Kontos, sofern es genau einen
+    # verwaltet. Seit ein Vereinsmanager sich Mannschaften zuordnen kann
+    # (User#permission_hash), muss die Auswahl auch für ihn auf den Zielverein
+    # eingegrenzt werden -- sonst böte die Maske einem Admin jede Mannschaft der
+    # Saison an, der Server nähme sie mit 200 entgegen, und `permission_hash`
+    # verwürfe sie anschließend stumm.
+    #
+    # Bei mehreren Vereinen bleibt es beim Scope des Handelnden: Einen einzelnen
+    # Zielverein gibt es dann nicht, und die Eingrenzung in permission_hash
+    # greift ohnehin.
+    def sole_vm_club_id(user)
+      clubs = user.permissions.select { |p| p['user_group_id'].to_i == 4 && p['club_id'].present? }
+                              .map { |p| p['club_id'].to_i }.uniq
+      clubs.sole if clubs.one?
     end
 
     def apply_go_change(user, new_go_id)

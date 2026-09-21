@@ -232,7 +232,7 @@ class LicenseListsSuspensionTest < ActionDispatch::IntegrationTest
 
   # --- Das Datum des Spieltags, nicht der Tag des Abrufs ------------------
 
-  # Der Link lebt 72 Stunden, und seit der Spieltagscheckliste wird die Liste
+  # Der Link lebt 72 Stunden, und seit dem Spieltagsbericht wird die Liste
   # in der Vorbereitung geoeffnet. Wer am Vorabend nachsieht, muss die Sperre
   # des naechsten Tages sehen.
   test 'die Sperre des Spieltags gilt auch beim Blick am Vorabend' do

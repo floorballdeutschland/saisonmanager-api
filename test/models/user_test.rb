@@ -32,6 +32,95 @@ class UserTest < ActiveSupport::TestCase
     assert_equal({}, u.permission_hash)
   end
 
+  # Ein Vereinsmanager kann sich Mannschaften seines Vereins zuordnen und wird
+  # fuer diese wie ein Teammanager behandelt -- ohne zweite Rolle. Sonst liest
+  # der ganze Vorstand jede Mannschaftsmail mit, oder das Konto braucht den
+  # Umweg ueber ein Downgrade zum TM und zurueck.
+  test 'permission_hash: VM mit zugeordneter Mannschaft zaehlt fuer diese als TM' do
+    create(:setting, current_season_id: '18')
+    verein = create(:club)
+    team = create(:team, league: create(:league, :current_season), club: verein)
+    u = build_user(permissions: [{ 'user_group_id' => 4, 'club_id' => verein.id }], teams: [team.id])
+
+    assert_equal [team.id], u.permission_hash[:tm]
+    assert_equal [verein.id], u.permission_hash[:vm]
+  end
+
+  # Die Zuordnung endet am eigenen Verein: Sonst koennte sich ein
+  # Vereinsmanager ueber das Team-Array fremde Mannschaften anhaengen.
+  test 'permission_hash: die Mannschaft eines fremden Vereins zaehlt nicht' do
+    create(:setting, current_season_id: '18')
+    verein = create(:club)
+    fremdes_team = create(:team, league: create(:league, :current_season), club: create(:club))
+    u = build_user(permissions: [{ 'user_group_id' => 4, 'club_id' => verein.id }], teams: [fremdes_team.id])
+
+    assert_nil u.permission_hash[:tm]
+  end
+
+  # Die Zuordnung endet am eigenen Verein, und zwar in beide Richtungen: Eine
+  # Mannschaft wird spaeter ueber Team#all_club_ids aufgeloest, also ueber
+  # Verein UND Spielgemeinschafts-Partner. Eine SG-Mannschaft eines fremden
+  # Stammvereins haette darueber den ganzen fremden Verein aufgeschlossen --
+  # Spielerprofile, Lizenzdokumente, Spielberichte seiner Spieltage.
+  test 'permission_hash: die SG-Mannschaft eines fremden Stammvereins zaehlt nicht' do
+    create(:setting, current_season_id: '18')
+    partner = create(:club)
+    sg_team = create(:team, league: create(:league, :current_season), club: create(:club),
+                            syndicate: true, syndicate_clubs: [partner.id])
+    u = build_user(permissions: [{ 'user_group_id' => 4, 'club_id' => partner.id }], teams: [sg_team.id])
+
+    assert_nil u.permission_hash[:tm]
+  end
+
+  # Gegenstueck: Auch die eigene Mannschaft schliesst nichts Fremdes auf, wenn
+  # sie einen fremden Partner traegt.
+  test 'permission_hash: die eigene Mannschaft mit fremdem SG-Partner zaehlt nicht' do
+    create(:setting, current_season_id: '18')
+    verein = create(:club)
+    team = create(:team, league: create(:league, :current_season), club: verein,
+                         syndicate: true, syndicate_clubs: [create(:club).id])
+    u = build_user(permissions: [{ 'user_group_id' => 4, 'club_id' => verein.id }], teams: [team.id])
+
+    assert_nil u.permission_hash[:tm]
+  end
+
+  # Eine Spielgemeinschaft zweier eigener Vereine bleibt zulaessig -- sie
+  # schliesst nichts auf, was das Konto nicht ohnehin verwaltet.
+  test 'permission_hash: eine SG zweier eigener Vereine zaehlt' do
+    create(:setting, current_season_id: '18')
+    a = create(:club)
+    b = create(:club)
+    sg_team = create(:team, league: create(:league, :current_season), club: a,
+                            syndicate: true, syndicate_clubs: [b.id])
+    u = build_user(permissions: [{ 'user_group_id' => 4, 'club_id' => a.id },
+                                 { 'user_group_id' => 4, 'club_id' => b.id }],
+                   teams: [sg_team.id])
+
+    assert_equal [sg_team.id], u.permission_hash[:tm]
+  end
+
+  # Wie beim Teammanager auch: Die Zuordnung gilt fuer die laufende Saison.
+  test 'permission_hash: eine Mannschaft der Vorsaison zaehlt nicht mehr' do
+    create(:setting, current_season_id: '18')
+    verein = create(:club)
+    altes_team = create(:team, league: create(:league, game_operation: create(:game_operation), season_id: '17'),
+                               club: verein)
+    u = build_user(permissions: [{ 'user_group_id' => 4, 'club_id' => verein.id }], teams: [altes_team.id])
+
+    assert_nil u.permission_hash[:tm]
+  end
+
+  # Ohne Zuordnung bleibt es beim Vereinsmanager: Die Mannschaftsmails gehen
+  # dann weiter ueber den Vereinsverteiler.
+  test 'permission_hash: ein VM ohne Mannschaften bleibt ohne TM-Scope' do
+    create(:setting, current_season_id: '18')
+    verein = create(:club)
+    create(:team, league: create(:league, :current_season), club: verein)
+    u = build_user(permissions: [{ 'user_group_id' => 4, 'club_id' => verein.id }])
+
+    assert_nil u.permission_hash[:tm]
+  end
+
   test 'permission_hash: Admin mit allen GOs ergibt [0]' do
     perms = perms_fuer_alle_go(1)
     u = build_user(permissions: perms)
@@ -211,7 +300,7 @@ class UserTest < ActiveSupport::TestCase
     create(:league, game_operation: create(:game_operation, state_association: sa))
   end
 
-  test 'permissions_items: TM sieht Auswärtsspieltage nur mit Spieltagscheckliste im Landesverband' do
+  test 'permissions_items: TM sieht Auswärtsspieltage nur mit Spieltagsbericht im Landesverband' do
     league = checklist_league(with_checklist: true)
     team = create(:team, league: league)
     u = build_user(permissions: [{ 'user_group_id' => 5, 'game_operation_id' => league.game_operation_id }],
@@ -220,7 +309,7 @@ class UserTest < ActiveSupport::TestCase
     assert u.permissions_items[:menu_item_team_game_days]
   end
 
-  test 'permissions_items: TM ohne Spieltagscheckliste sieht die Auswärtsspieltage nicht' do
+  test 'permissions_items: TM ohne Spieltagsbericht sieht die Auswärtsspieltage nicht' do
     league = checklist_league(with_checklist: false)
     team = create(:team, league: league)
     u = build_user(permissions: [{ 'user_group_id' => 5, 'game_operation_id' => league.game_operation_id }],

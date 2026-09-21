@@ -422,12 +422,12 @@ class User < ApplicationRecord
     result[:menu_item_player_vm] = ph[:vm].present? || ph[:tm].present?
     # Portal „Meine Auswärtsspieltage" für Gastmannschafts-Bestätigung (TM/VM).
     # Der Menüpunkt erscheint nur, wenn für eine der verantworteten Mannschaften
-    # überhaupt eine Spieltagscheckliste greift, denn ohne Checkliste gibt es
+    # überhaupt ein Spieltagsbericht greift, denn ohne Fragen gibt es
     # nichts zu bestätigen.
     result[:menu_item_team_game_days] = manages_game_day_checklist_team?(ph)
     # Der Zugriff auf die Seite bleibt bewusst rein rollenbasiert (Route-Guard im
     # Frontend). Grund: Der Berechtigungs-Hash entsteht beim Login und liegt
-    # danach im localStorage. Legt ein Landesverband seine erste Checklistenfrage
+    # danach im localStorage. Legt ein Landesverband seine erste Frage
     # mitten in der Saison an, wäre die Seite für bereits angemeldete TM/VM sonst
     # auch per Direktlink gesperrt – und die Bestätigung ist nur 48 Stunden lang
     # möglich, danach gilt ein Spieltag automatisch als bestätigt.
@@ -707,8 +707,8 @@ class User < ApplicationRecord
   end
 
   # True, wenn der/die Nutzer:in mindestens eine Mannschaft verantwortet, die in
-  # der aktuellen Saison in einem Spielbetrieb spielt, dessen Landesverband eine
-  # Spieltagscheckliste hinterlegt hat (mindestens eine Frage). Ohne Checkliste
+  # der aktuellen Saison in einem Spielbetrieb spielt, dessen Landesverband
+  # Fragen für den Spieltagsbericht hinterlegt hat (mindestens eine). Ohne sie
   # gibt es am Spieltag nichts zu bestätigen (siehe
   # TeamGameDayConfirmationsController#checklist_items_for), der Menüpunkt bleibt
   # dann verborgen. Aufbau analog zu manages_referee_feedback_team?, inklusive
@@ -763,6 +763,44 @@ class User < ApplicationRecord
       when 6 # Schiedsrichter (self-service, no go_id needed)
         nil
       end
+    end
+
+    # Ein Vereinsmanager kann sich Mannschaften seines Vereins zuordnen und wird
+    # für diese behandelt wie ein Teammanager -- ohne dafür eine zweite Rolle zu
+    # brauchen. Gedacht für den Verein, der seine Mannschaften selbst betreut:
+    # Die Mails, die an den Teammanager gehen (Spieltagsbericht, Schiri-Feedback),
+    # erreichen dann ihn statt über den Sammelverteiler den ganzen Vorstand.
+    #
+    # Rechte kommen dadurch keine dazu: Für die Mannschaften des eigenen Vereins
+    # trägt die VM-Rolle ohnehin schon jede Prüfung. Was sich ändert, ist die
+    # Rolle, in der er dabei auftritt.
+    #
+    # Nur Mannschaften, die **vollständig** zu seinen eigenen Vereinen gehören:
+    # der Verein der Mannschaft und jeder Spielgemeinschafts-Partner müssen in
+    # seinen VM-Vereinen liegen. Nur die laufende Saison, eine Zuordnung, die aus
+    # dem Verein herauswächst, fällt damit von selbst heraus.
+    #
+    # Die Teilmengen-Bedingung ist der Punkt, an dem die Zusage „keine neuen
+    # Rechte" hängt, und sie muss beide Richtungen abdecken: `tm_club_ids` löst
+    # eine Mannschaft später über `Team#all_club_ids` auf, also über Verein UND
+    # Spielgemeinschafts-Partner. Eine SG-Mannschaft eines fremden Stammvereins
+    # hätte darüber den ganzen fremden Verein aufgeschlossen -- Spielerprofile,
+    # Lizenzdokumente (bis hin zur Zustimmung der Erziehungsberechtigten),
+    # Spielberichte seiner Spieltage, Sekretariats- und Overlay-Zugang. Und die
+    # umgekehrte Form genügt nicht: Eine Mannschaft des EIGENEN Vereins mit
+    # einem fremden Partner in `syndicate_clubs` schlösse denselben fremden
+    # Verein auf. Deshalb Teilmenge statt Schnittmenge.
+    #
+    # Preis: Für eine echte Spielgemeinschaft zweier Vereine kann sich der
+    # Vereinsmanager nicht eintragen. Der Weg dafür ist die Teammanager-Rolle,
+    # die der Verband vergibt.
+    if vm_club_ids.present? && teams.present?
+      tm_team_ids << Team.where(id: teams, league_id: all_league_ids)
+                         .where('teams.club_id IN (:ids) AND ' \
+                                '(teams.syndicate_clubs IS NULL OR ' \
+                                'teams.syndicate_clubs <@ ARRAY[:ids]::integer[])',
+                                ids: vm_club_ids)
+                         .pluck(:id)
     end
 
     tm_team_ids.flatten!
