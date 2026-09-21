@@ -703,6 +703,37 @@ module Admin
       assert_nil(response.parsed_body.find { |e| e['id'] == alt_team.id })
     end
 
+    # Ohne den Playlist-Zweig verschwaende das Loeschen des letzten Schluessels
+    # die ganze Liga aus der Liste -- und ein Umtragen von einer Mannschaft auf
+    # eine andere fuehrte in eine leere Ansicht.
+    test 'die Liga bleibt in der Liste, wenn ihr letzter Schluessel faellt' do
+      login(create(:user, :admin))
+      @home.update!(stream_key: nil)
+
+      get '/api/v2/admin/streaming/teams'
+
+      assert(response.parsed_body.find { |e| e['id'] == @home.id })
+    end
+
+    test 'GEGENPROBE: eine Liga ohne Schluessel und ohne Playlist bleibt draussen' do
+      andere = create(:league, game_operation: @go, name: '3. Liga Nord')
+      team = create(:team, league: andere, club: create(:club), name: 'Ohne Stream')
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/streaming/teams'
+
+      assert_nil(response.parsed_body.find { |e| e['id'] == team.id })
+    end
+
+    # Ein vertippter Parameter ist ein Eingabefehler und keine 500.
+    test 'ein league_id als Feld kippt den Abruf nicht' do
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/streaming/teams', params: { league_id: [5] }
+
+      assert_response :success
+    end
+
     test 'Admin setzt einen Schluessel' do
       login(create(:user, :admin))
 

@@ -211,7 +211,10 @@ module Admin
     # Fall, den `scoped_game_days` fuer den Spieltags-Zuschnitt schon loest.
     def teams
       liga_ids = key_league_ids
-      liga_ids += [params[:league_id].to_i] if params[:league_id].present?
+      # `to_s` vor `to_i`: `?league_id[]=5` liefert ein Array, und `Array#to_i`
+      # gibt es nicht -- ohne den Umweg waere ein vertippter Parameter eine 500
+      # samt Sentry-Ereignis statt einer leeren Zusatzliga.
+      liga_ids += [params[:league_id].to_s.to_i] if params[:league_id].present?
 
       mannschaften = Team.where(league_id: liga_ids)
                          .where(league_id: League.current_season.select(:id))
@@ -293,13 +296,20 @@ module Admin
       }
     end
 
-    # Jede Liga der laufenden Saison, in der schon eine Mannschaft einen
-    # Schluessel traegt.
+    # Die Ligen der laufenden Saison, um die es beim Streaming geht: jede mit
+    # mindestens einem Schluessel -- PLUS jede mit gepflegter Playlist.
+    #
+    # Der Zusatz ist derselbe Gedanke wie bei den Zusagen (`hosts` zaehlt jeden
+    # Verein mit gesetztem Haken mit): Ohne ihn verschwaende das Loeschen des
+    # letzten Schluessels einer Liga die ganze Liga aus der Liste, und wer einen
+    # Schluessel von einer Mannschaft auf eine andere umtraegt, faende die
+    # zweite nicht mehr. Die Playlist steht an genau den Ligen, die auf den
+    # Verbandskanal gehen.
     def key_league_ids
-      Team.where.not(stream_key: nil)
-          .where(league_id: League.current_season.select(:id))
-          .distinct
-          .pluck(:league_id)
+      League.current_season
+            .where(id: streamed_league_ids)
+            .or(League.current_season.where.not(stream_playlist: [nil, '']))
+            .pluck(:id)
     end
 
     def host_hash(verein)
