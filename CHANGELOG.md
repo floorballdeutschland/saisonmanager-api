@@ -17,6 +17,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
   Zwei Prüfungen laufen vor dem Speichern, und beide stammen aus dem Einrichten: Liefert Google keinen dauerhaften Zugang, weil dasselbe Konto schon einmal zugestimmt hat, wird nichts gespeichert und der Hinweis nennt den Weg über `myaccount.google.com/permissions`. Und der zugestimmte Kanal muss senden dürfen — am Verbandskonto hängen zwei gleichnamige Kanäle, von denen der leere auf jeden Live-Endpunkt mit `liveStreamingNotEnabled` antwortet. Ohne diese Prüfung wäre der falsche Zugang gespeichert, die Oberfläche meldete Erfolg, und der Wächter scheiterte erst am Spieltag.
 
+  **Das Trennen widerruft den Zugang zusätzlich bei Google.** Ohne diesen Schritt wäre es eine Sackgasse: Einen dauerhaften Zugang gibt Google nur bei der ersten Zustimmung eines Kontos heraus, ein anschließendes Neuverbinden mit demselben Konto liefe also ins Leere — ausgerechnet auf dem Weg, der den Zugang wieder in Ordnung bringen soll.
+
   Der Zugang liegt verschlüsselt in der Datenbank, mit einem Schlüssel aus `YOUTUBE_TOKEN_KEY` und ausdrücklich nicht aus dem Master-Key. Der Grund ist die Staging-Umgebung: Sie trägt einen 1:1-Klon der Produktionsdatenbank, und ein dort lesbarer Zugang könnte laufende Übertragungen des echten Kanals beenden. Ohne die Variable ist die Zeile dort unlesbar, und der Wächter meldet schlicht „nicht eingerichtet".
 
 ## [1.118.1] - 2026-09-21

@@ -64,12 +64,18 @@ class YoutubeOauth
     refresh = token['refresh_token'].presence
     raise NoRefreshToken if refresh.nil?
 
-    zugriff = token.fetch('access_token')
+    # Kein `fetch`: Ein `KeyError` faenge kein rescue im Controller und
+    # schluege als 500 durch, wo jeder andere Fehlschlag hier eine 422 mit
+    # Begruendung liefert.
+    zugriff = token['access_token'].presence
+    raise Error, 'Antwort der Token-Ausgabe enthaelt kein access_token' if zugriff.nil?
+
     kanal = kanal_lesen(zugriff)
     live_pruefen(zugriff)
 
     satz = StreamCredential.current || StreamCredential.new
     satz.refresh_token = refresh
+    satz.client_id = ENV.fetch('YOUTUBE_WEB_CLIENT_ID', nil)
     satz.channel_id = kanal[:id]
     satz.channel_title = kanal[:title]
     satz.scope = token['scope'].presence || SCOPE
@@ -77,6 +83,32 @@ class YoutubeOauth
     satz.connected_by_user_id = user&.id
     satz.save!
     satz
+  end
+
+  # Widerruft den Zugang bei Google.
+  #
+  # OHNE DIESEN SCHRITT IST DAS TRENNEN EINE SACKGASSE: Google gibt einen
+  # Refresh-Token nur bei der ERSTEN Zustimmung eines Kontos heraus. Wer
+  # trennt und sich danach mit demselben Konto neu verbindet, bekaeme keinen
+  # neuen Token und liefe in `NoRefreshToken` -- ausgerechnet auf dem Weg, der
+  # den Zugang wieder in Ordnung bringen soll.
+  #
+  # Bestmoeglich und nie fatal: Ist der Token schon widerrufen oder Google
+  # nicht erreichbar, bleibt das oertliche Loeschen trotzdem richtig.
+  def self.revoke(refresh_token)
+    return false if refresh_token.blank?
+
+    uri = URI('https://oauth2.googleapis.com/revoke')
+    anfrage = Net::HTTP::Post.new(uri)
+    anfrage.set_form_data(token: refresh_token)
+    antwort = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true,
+                                                      open_timeout: OPEN_TIMEOUT,
+                                                      read_timeout: READ_TIMEOUT) do |http|
+      http.request(anfrage)
+    end
+    antwort.is_a?(Net::HTTPSuccess)
+  rescue StandardError
+    false
   end
 
   private
@@ -173,7 +205,15 @@ class YoutubeOauth
                                                       read_timeout: READ_TIMEOUT) do |http|
       http.request(anfrage)
     end
-    JSON.parse(antwort.body.presence || '{}')
+    koerper = JSON.parse(antwort.body.presence || '{}')
+    # DER STATUS ZAEHLT, nicht nur der Inhalt: Eine 500 mit leerem Koerper kaeme
+    # sonst als `{}` zurueck, und die Livestream-Pruefung -- der Riegel, um den
+    # herum dieser Dienst gebaut ist -- ginge still durch. Ein Fehlerkoerper
+    # darf dagegen zurueck: Google beschreibt darin `redirect_uri_mismatch`,
+    # und genau daran haengt der zweite Anlauf.
+    return koerper if antwort.is_a?(Net::HTTPSuccess) || koerper['error'].present?
+
+    raise Error, "Google antwortete mit #{antwort.code}"
   rescue JSON::ParserError
     raise Error, "Unlesbare Antwort von Google (#{antwort&.code})"
   rescue Timeout::Error, SystemCallError, SocketError, IOError,

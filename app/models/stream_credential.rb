@@ -33,6 +33,22 @@ class StreamCredential < ApplicationRecord
     ENV[KEY_ENV].present?
   end
 
+  # Gemerkt, weil `KeyGenerator` eine PBKDF2-Ableitung ueber 2^16 Runden ist und
+  # ein Zustandsabruf den Token mehrfach liest. Der gemerkte Wert haengt am
+  # SCHLUESSEL und nicht nur an der Klasse: Sonst bliebe nach einem Wechsel der
+  # alte Rechner stehen und entschluesselte Zeilen, die er nicht mehr duerfte --
+  # in Produktion theoretisch, im Test die Gegenprobe zum fremden Schluessel.
+  def self.encryptor
+    schluessel = ENV.fetch(KEY_ENV)
+    if @encryptor_fuer != schluessel
+      @encryptor = ActiveSupport::MessageEncryptor.new(
+        ActiveSupport::KeyGenerator.new(schluessel).generate_key('youtube-refresh-token', 32)
+      )
+      @encryptor_fuer = schluessel
+    end
+    @encryptor
+  end
+
   # Der einsatzbereite Zugang oder nil. Nil heisst hier immer "nimm die
   # Umgebungsvariablen" -- der Aufrufer muss nicht wissen, warum.
   def self.credentials
@@ -42,11 +58,21 @@ class StreamCredential < ApplicationRecord
     token = satz.refresh_token
     return nil if token.blank?
 
-    # Ohne Client-Paar ist der Token wertlos: Google erneuert ihn nur gegen das
-    # Paar, mit dem er ausgegeben wurde.
-    client_id = ENV.fetch('YOUTUBE_CLIENT_ID', nil)
-    client_secret = ENV.fetch('YOUTUBE_CLIENT_SECRET', nil)
+    # DAS WEB-PAAR, NICHT DAS DESKTOP-PAAR: Eingeloest wurde der Code von
+    # `YoutubeOauth` mit `YOUTUBE_WEB_CLIENT_ID`, und Google erneuert einen
+    # Token ausschliesslich gegen den Client, der ihn ausgegeben hat. Stuende
+    # hier das Paar aus `YOUTUBE_CLIENT_ID` (dem Desktop-Client des alten
+    # Weges), meldete die Oberflaeche „verbunden", und der Waechter scheiterte
+    # beim naechsten Lauf an `invalid_grant` -- genau der stille Ausfall bis
+    # zum Spieltag, den dieser Weg abschaffen soll.
+    client_id = ENV.fetch('YOUTUBE_WEB_CLIENT_ID', nil)
+    client_secret = ENV.fetch('YOUTUBE_WEB_CLIENT_SECRET', nil)
     return nil if client_id.blank? || client_secret.blank?
+
+    # Wurde die Kennung in der Google Cloud ausgetauscht, passt der gespeicherte
+    # Token nicht mehr. Lieber auf die Umgebung zurueckfallen und „nicht
+    # verbunden" melden, als in einen Fehlschlag beim naechsten Lauf zu rennen.
+    return nil if satz.client_id.present? && satz.client_id != client_id
 
     { client_id: client_id, client_secret: client_secret, refresh_token: token, source: 'db' }
   end
@@ -85,8 +111,6 @@ class StreamCredential < ApplicationRecord
   private
 
   def encryptor
-    schluessel = ActiveSupport::KeyGenerator.new(ENV.fetch(KEY_ENV))
-                                            .generate_key('youtube-refresh-token', 32)
-    ActiveSupport::MessageEncryptor.new(schluessel)
+    self.class.encryptor
   end
 end

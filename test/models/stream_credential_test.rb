@@ -63,6 +63,19 @@ class StreamCredentialTest < ActiveSupport::TestCase
     end
   end
 
+  # Wird die Kennung in der Google Cloud getauscht, passt der gespeicherte Token
+  # nicht mehr. Lieber „nicht verbunden" melden als beim naechsten Lauf des
+  # Waechters an `invalid_grant` scheitern.
+  test 'GEGENPROBE: eine andere Client-Kennung entwertet den gespeicherten Zugang' do
+    mit_schluessel(SCHLUESSEL) do
+      StreamCredential.create!(refresh_token: '1//0-refresh', client_id: 'web-client')
+
+      mit_client('inzwischen-anderer-client') do
+        assert_nil StreamCredential.credentials
+      end
+    end
+  end
+
   # Der Token allein nuetzt nichts: Google erneuert ihn nur gegen das Paar, mit
   # dem er ausgegeben wurde.
   test 'GEGENPROBE: ohne Client-Paar keine credentials' do
@@ -91,17 +104,20 @@ class StreamCredentialTest < ActiveSupport::TestCase
     ENV['YOUTUBE_TOKEN_KEY'] = vorher unless vorher.nil?
   end
 
-  def mit_client
-    ENV['YOUTUBE_CLIENT_ID'] = 'client-id'
-    ENV['YOUTUBE_CLIENT_SECRET'] = 'client-secret'
+  # DAS WEB-PAAR: Gegen dieses Paar wird der gespeicherte Token erneuert, denn
+  # von ihm stammt er. Das Desktop-Paar gehoert zum alten Weg ueber die
+  # Umgebungsvariablen.
+  def mit_client(kennung = 'web-client')
+    ENV['YOUTUBE_WEB_CLIENT_ID'] = kennung
+    ENV['YOUTUBE_WEB_CLIENT_SECRET'] = 'web-geheim'
     yield
   ensure
-    ENV.delete('YOUTUBE_CLIENT_ID')
-    ENV.delete('YOUTUBE_CLIENT_SECRET')
+    ENV.delete('YOUTUBE_WEB_CLIENT_ID')
+    ENV.delete('YOUTUBE_WEB_CLIENT_SECRET')
   end
 
   def ohne_client
-    vorher = %w[YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET].index_with { |k| ENV.fetch(k, nil) }
+    vorher = %w[YOUTUBE_WEB_CLIENT_ID YOUTUBE_WEB_CLIENT_SECRET].index_with { |k| ENV.fetch(k, nil) }
     vorher.each_key { |k| ENV.delete(k) }
     yield
   ensure

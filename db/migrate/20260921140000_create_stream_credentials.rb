@@ -12,6 +12,11 @@ class CreateStreamCredentials < ActiveRecord::Migration[7.2]
   def change
     create_table :stream_credentials do |t|
       t.text :refresh_token_ciphertext
+      # Mit WELCHEM OAuth-Client der Token ausgegeben wurde. Google erneuert
+      # ihn nur gegen genau dieses Paar, und der Zugang aus dem Browser
+      # stammt vom WEB-Client -- nicht vom Desktop-Client der
+      # YOUTUBE_CLIENT_ID. Ohne diese Spalte liesse sich das nicht pruefen.
+      t.string :client_id
       t.string :channel_id
       t.string :channel_title
       t.string :scope

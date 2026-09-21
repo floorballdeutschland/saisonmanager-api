@@ -1016,6 +1016,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_21_140000) do
 
   create_table "stream_credentials", force: :cascade do |t|
     t.text "refresh_token_ciphertext"
+    t.string "client_id"
     t.string "channel_id"
     t.string "channel_title"
     t.string "scope"

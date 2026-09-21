@@ -102,10 +102,15 @@ class YoutubeLiveApiTest < ActiveSupport::TestCase
   test 'der gespeicherte Zugang hat Vorrang vor den Umgebungsvariablen' do
     mit_env do
       mit_token_schluessel do
-        StreamCredential.create!(refresh_token: '1//0-aus-der-oberflaeche')
+        mit_web_client do
+          StreamCredential.create!(refresh_token: '1//0-aus-der-oberflaeche', client_id: 'web-client')
 
-        assert_equal 'db', YoutubeLiveApi.source
-        assert_equal '1//0-aus-der-oberflaeche', YoutubeLiveApi.credentials[:refresh_token]
+          assert_equal 'db', YoutubeLiveApi.source
+          zugang = YoutubeLiveApi.credentials
+          assert_equal '1//0-aus-der-oberflaeche', zugang[:refresh_token]
+          # Erneuert wird gegen den Client, der den Token ausgegeben hat.
+          assert_equal 'web-client', zugang[:client_id]
+        end
       end
     end
   end
@@ -137,6 +142,15 @@ class YoutubeLiveApiTest < ActiveSupport::TestCase
       {}
     end
     api
+  end
+
+  def mit_web_client
+    ENV['YOUTUBE_WEB_CLIENT_ID'] = 'web-client'
+    ENV['YOUTUBE_WEB_CLIENT_SECRET'] = 'web-geheim'
+    yield
+  ensure
+    ENV.delete('YOUTUBE_WEB_CLIENT_ID')
+    ENV.delete('YOUTUBE_WEB_CLIENT_SECRET')
   end
 
   def mit_token_schluessel

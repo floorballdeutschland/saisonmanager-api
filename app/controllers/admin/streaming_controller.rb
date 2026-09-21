@@ -202,9 +202,16 @@ module Admin
     end
 
     # DELETE admin/streaming/youtube
+    #
+    # Widerruft den Zugang ZUERST bei Google und raeumt ihn dann oertlich ab.
+    # Ohne den Widerruf waere das Trennen eine Sackgasse: Einen Refresh-Token
+    # gibt Google nur bei der ersten Zustimmung eines Kontos heraus, ein
+    # anschliessendes Neuverbinden liefe also in `NoRefreshToken`.
     def disconnect_youtube
-      StreamCredential.current&.update!(refresh_token: nil, channel_id: nil, channel_title: nil,
-                                        connected_at: nil, connected_by_user_id: nil)
+      satz = StreamCredential.current
+      YoutubeOauth.revoke(satz&.refresh_token)
+      satz&.update!(refresh_token: nil, client_id: nil, channel_id: nil, channel_title: nil,
+                    connected_at: nil, connected_by_user_id: nil)
       render json: youtube_hash
     end
 
@@ -251,12 +258,15 @@ module Admin
 
     def youtube_hash(satz = nil)
       satz ||= StreamCredential.current
+      # EINMAL nachschlagen: Jeder Aufruf von `credentials` liest die Zeile und
+      # entschluesselt sie.
+      zugang = YoutubeLiveApi.credentials
       {
-        connected: YoutubeLiveApi.configured?,
+        connected: zugang.present?,
         # 'db' heisst ueber die Oberflaeche verbunden, 'env' ueber die Variablen
         # am Container. Der Unterschied entscheidet, ob ein Neuverbinden hier
         # ueberhaupt etwas aendert.
-        source: YoutubeLiveApi.source,
+        source: zugang&.fetch(:source),
         channel_id: satz&.channel_id,
         channel_title: satz&.channel_title,
         connected_at: satz&.connected_at&.iso8601,

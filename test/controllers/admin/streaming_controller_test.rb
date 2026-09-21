@@ -714,14 +714,22 @@ module Admin
       assert_includes response.parsed_body['error'], 'YOUTUBE_WEB_CLIENT_ID'
     end
 
-    test 'Admin trennt die Verbindung' do
+    # Der Widerruf ist kein Beiwerk: Google gibt einen Refresh-Token nur bei der
+    # ERSTEN Zustimmung eines Kontos heraus. Ohne ihn liefe das Neuverbinden
+    # nach einem Trennen in „kein dauerhafter Zugang" -- ausgerechnet auf dem
+    # Weg, der den Zugang wieder in Ordnung bringen soll.
+    test 'Admin trennt die Verbindung, und der Zugang wird bei Google widerrufen' do
       mit_schluessel do
         satz = StreamCredential.create!(refresh_token: '1//0-alt', channel_title: 'floorball deutschland')
         login(create(:user, :admin))
+        widerrufen = []
 
-        delete '/api/v2/admin/streaming/youtube'
+        YoutubeOauth.stub(:revoke, ->(token) { widerrufen << token }) do
+          delete '/api/v2/admin/streaming/youtube'
+        end
 
         assert_response :success
+        assert_equal ['1//0-alt'], widerrufen
         assert_nil satz.reload.refresh_token
         assert_nil satz.channel_title
       end

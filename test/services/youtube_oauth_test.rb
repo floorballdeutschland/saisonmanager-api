@@ -46,12 +46,58 @@ class YoutubeOauthTest < ActiveSupport::TestCase
 
   # Der Fall, der beim Einrichten eine Stunde gekostet hat: Am Konto haengen
   # zwei gleichnamige Kanaele, und der leere kann nicht senden.
+  #
+  # ERSETZT WIRD HIER NUR DER HTTP-WEG, nicht die Erkennung: Die Antwort ist die
+  # echte von Google, und `rohtext` und der rescue-Zweig laufen mit. Wuerde der
+  # Test `live_pruefen` selbst wegstubben, bliebe er gruen, waehrend der Riegel
+  # ins Leere greift -- und gespeichert wuerde ein Kanal, der nicht senden kann.
   test 'GEGENPROBE: ein Kanal ohne Livestreaming wird nicht gespeichert' do
-    dienst = dienst_mit(token: { 'refresh_token' => '1//0-neu', 'access_token' => 'zugriff' },
-                        live_fehler: YoutubeOauth::Error.new('liveStreamingNotEnabled Not enabled'))
+    dienst = YoutubeOauth.new(code: 'code-1', redirect_uri: 'postmessage')
+    dienst.define_singleton_method(:token_abruf) do |_ziel|
+      { 'refresh_token' => '1//0-neu', 'access_token' => 'zugriff' }
+    end
+    dienst.define_singleton_method(:api_get) do |_zugriff, pfad, **_params|
+      # Wortlaut der echten Antwort, aufbereitet wie in `rohtext`.
+      unless pfad == 'channels'
+        raise YoutubeOauth::Error, 'liveStreamingNotEnabled The user is not enabled for live streaming.'
+      end
+
+      { 'items' => [{ 'id' => 'UC-leer',
+                      'snippet' => { 'title' => 'floorball deutschland' },
+                      'statistics' => { 'videoCount' => '0' } }] }
+    end
 
     assert_raises(YoutubeOauth::LiveStreamingDisabled) { dienst.verbinden! }
     assert_equal 0, StreamCredential.count
+  end
+
+  # Ein Fehler, der NICHT am Livestreaming liegt, darf nicht als der eine
+  # bekannte Fall durchgehen -- sonst schickte die Oberflaeche jeden Ausfall
+  # mit dem Hinweis auf den falschen Kanal weg.
+  test 'GEGENPROBE: ein anderer API-Fehler bleibt ein gewoehnlicher Fehler' do
+    dienst = YoutubeOauth.new(code: 'code-1', redirect_uri: 'postmessage')
+    dienst.define_singleton_method(:token_abruf) do |_ziel|
+      { 'refresh_token' => '1//0-neu', 'access_token' => 'zugriff' }
+    end
+    dienst.define_singleton_method(:api_get) do |_zugriff, pfad, **_params|
+      raise YoutubeOauth::Error, 'backendError Internal error' unless pfad == 'channels'
+
+      { 'items' => [{ 'id' => 'UC-echt', 'snippet' => { 'title' => 'floorball deutschland' } }] }
+    end
+
+    fehler = assert_raises(YoutubeOauth::Error) { dienst.verbinden! }
+
+    assert_not_kind_of YoutubeOauth::LiveStreamingDisabled, fehler
+    assert_equal 0, StreamCredential.count
+  end
+
+  # Der Token gehoert dem WEB-Client. Ohne die gespeicherte Kennung liesse sich
+  # nicht pruefen, ob er noch zu dem Paar passt, gegen das erneuert wird.
+  test 'die Kennung des Web-Clients wird mitgeschrieben' do
+    satz = dienst_mit(token: { 'refresh_token' => '1//0-neu', 'access_token' => 'zugriff' })
+           .verbinden!
+
+    assert_equal 'web-client', satz.client_id
   end
 
   # Im Aufklappfenster setzt Google die Umleitungsadresse selbst. Passt der erste
