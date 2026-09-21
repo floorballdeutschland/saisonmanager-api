@@ -557,6 +557,230 @@ module Admin
     # ins Leere, weil die Liste nur erteilte und beantragte Lizenzen lieferte:
     # Ein abgelehnter Antrag war fuer den Verband nur noch ueber die
     # Lizenzliste der Mannschaft erreichbar, die er nicht im Menue hat.
+    # --- Lizenzanzahl je Spieler und Saison (#713) -------------------------
+    #
+    # Landesverbaende genehmigen je Spieler hoechstens sechs oder acht
+    # Lizenzen. Die Zahl an der Zeile erspart das Durchzaehlen.
+
+    test 'die Zeile nennt erteilte und offen beantragte Lizenzen der Saison' do
+      zweite_liga  = create(:league, game_operation: @go1, season_id: '18')
+      zweites_team = create(:team, league: zweite_liga, club: @club1)
+      dritte_liga  = create(:league, game_operation: @go1, season_id: '18')
+      drittes_team = create(:team, league: dritte_liga, club: @club1)
+
+      spieler = create(:player, with_licenses: [
+        { team: @team_go1, status: License::APPROVED, season_id: '18' },
+        { team: zweites_team, status: License::REQUESTED, season_id: '18' },
+        { team: drittes_team, status: License::DENIED,    season_id: '18' },
+        { team: @team_prev, status: License::APPROVED, season_id: '17' }
+      ])
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses'
+      assert_response :success
+
+      zeilen = JSON.parse(response.body).select { |r| r['player_id'] == spieler.id }
+      assert_equal 3, zeilen.size
+
+      # Die Vorsaison zaehlt nicht mit, der abgelehnte Antrag auch nicht --
+      # erteilt wurde da nie etwas und offen ist er ebenfalls nicht mehr.
+      assert_equal [1], zeilen.map { |r| r['licenses_approved_season'] }.uniq
+      assert_equal [1], zeilen.map { |r| r['licenses_requested_season'] }.uniq
+    end
+
+    test 'die Zahl zaehlt ueber alle Verbaende, nicht nur ueber die sichtbaren Ligen' do
+      spieler = create(:player, with_licenses: [
+        { team: @team_go1, status: License::APPROVED, season_id: '18' },
+        { team: @team_go2, status: License::APPROVED, season_id: '18' }
+      ])
+
+      # Der SBK sieht nur die Zeile seines eigenen Verbandes. Die Lizenz im
+      # anderen Verband zaehlt trotzdem auf dieselbe Obergrenze ein, sonst
+      # genehmigte er die siebte im Glauben, es sei die zweite.
+      login_as(@sbk)
+      get '/api/v2/admin/licenses'
+      assert_response :success
+
+      zeilen = JSON.parse(response.body).select { |r| r['player_id'] == spieler.id }
+      assert_equal 1, zeilen.size
+      assert_equal @go2.id, zeilen.first['game_operation_id']
+      assert_equal 2, zeilen.first['licenses_approved_season']
+    end
+
+    test 'eine spaeter entwertete Lizenz zaehlt weiter mit' do
+      spieler = create(:player, with_licenses: [
+        { team: @team_go1, status: License::APPROVED, season_id: '18' },
+        { team: @team_go2, status: License::APPROVED, season_id: '18' }
+      ])
+      # Die zweite Lizenz ist durch einen Transfer ungueltig geworden. Sie
+      # faellt damit aus der Liste, war aber erteilt und hat eine Gebuehr
+      # ausgeloest -- fuer die Obergrenze zaehlt sie weiter.
+      lizenzen = spieler.licenses.deep_dup
+      lizenzen.last['history'] << { 'license_status_id' => License::TRANSFER,
+                                    'created_at' => Time.zone.now.iso8601 }
+      spieler.update!(licenses: lizenzen)
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses'
+      assert_response :success
+
+      zeilen = JSON.parse(response.body).select { |r| r['player_id'] == spieler.id }
+      assert_equal 1, zeilen.size, 'die transferungueltige Lizenz hat keine eigene Zeile mehr'
+      assert_equal 2, zeilen.first['licenses_approved_season']
+      assert_equal 0, zeilen.first['licenses_requested_season']
+    end
+
+    test 'eine auf beantragt zurueckgesetzte Lizenz zaehlt nur einmal' do
+      spieler = create(:player, with_licenses: [
+        { team: @team_go1, status: License::APPROVED, season_id: '18' }
+      ])
+      lizenzen = spieler.licenses.deep_dup
+      lizenzen.first['history'] << { 'license_status_id' => License::REQUESTED,
+                                     'created_at' => Time.zone.now.iso8601 }
+      spieler.update!(licenses: lizenzen)
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses'
+      assert_response :success
+
+      zeile = JSON.parse(response.body).find { |r| r['player_id'] == spieler.id }
+      # Erteilt war sie, also steht sie dort -- und nicht zusaetzlich unter den
+      # offenen Antraegen. Eine Lizenz, zwei Zahlen: sie darf nur in eine.
+      assert_equal 1, zeile['licenses_approved_season']
+      assert_equal 0, zeile['licenses_requested_season']
+    end
+
+    test 'die Zahl folgt der abgefragten Saison' do
+      # Zwei Saisons am selben Profil, sonst kaeme dieselbe 1 auch heraus,
+      # wenn die Saisonbedingung ganz fehlte.
+      spieler = create(:player, with_licenses: [
+        { team: @team_go1, status: License::APPROVED, season_id: '18' },
+        { team: @team_prev, status: License::APPROVED, season_id: '17' }
+      ])
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses', params: { season_id: '17' }
+      assert_response :success
+
+      zeile = JSON.parse(response.body).find { |r| r['player_id'] == spieler.id }
+      assert_equal 1, zeile['licenses_approved_season']
+      assert_equal 0, zeile['licenses_requested_season']
+    end
+
+    # Der Bestand fuehrt die Saison ueberwiegend NICHT an der Lizenz: Messung
+    # auf Produktion am 21.09.2026 -- in der laufenden Saison tragen alle 8.414
+    # gelisteten Lizenzen eine `season_id`, in jeder frueheren keine einzige.
+    # Die Zeile entsteht trotzdem, weil die Mannschaft die Saison haelt. Ohne
+    # denselben Rueckgriff in der Zaehlung stuende in der Vorsaison-Ansicht
+    # durchgehend eine 0 neben den Zeilen.
+    test 'eine Lizenz ohne eigene Saisonangabe zaehlt ueber ihre Mannschaft' do
+      spieler = create(:player, with_licenses: [
+        { team: @team_go1, status: License::APPROVED, season_id: nil }
+      ])
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses'
+      assert_response :success
+
+      zeilen = JSON.parse(response.body).select { |r| r['player_id'] == spieler.id }
+      assert_equal 1, zeilen.size, 'die Zeile entsteht ueber die Mannschaft'
+      assert_equal 1, zeilen.first['licenses_approved_season'],
+                   'die Zeile darf ihre eigene Lizenz nicht uebersehen'
+    end
+
+    test 'eine Lizenz ohne Saisonangabe zaehlt nur in der Saison ihrer Mannschaft' do
+      spieler = create(:player, with_licenses: [
+        { team: @team_prev, status: License::APPROVED, season_id: nil }
+      ])
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses', params: { season_id: '17' }
+      assert_response :success
+      zeile = JSON.parse(response.body).find { |r| r['player_id'] == spieler.id }
+      assert_equal 1, zeile['licenses_approved_season']
+
+      # In der laufenden Saison taucht dasselbe Profil nicht auf, die Lizenz
+      # der Vorsaison darf dort auch nicht mitzaehlen.
+      get '/api/v2/admin/licenses', params: { season_id: '18' }
+      assert_response :success
+      assert_nil(JSON.parse(response.body).find { |r| r['player_id'] == spieler.id })
+    end
+
+    # Die Factory schreibt genau einen History-Eintrag. Eine so angelegte
+    # zurueckgezogene Lizenz war nie erteilt -- der reale Weg ist
+    # erteilt -> zurueckgezogen bzw. erteilt -> geloescht, und nur der belegt
+    # die Fachregel "die Gebuehr ist entstanden".
+    test 'zurueckgezogene und geloeschte Lizenzen zaehlen weiter als erteilt' do
+      zweite_liga = create(:league, game_operation: @go1, season_id: '18')
+      zweites_team = create(:team, league: zweite_liga, club: @club1)
+      spieler = create(:player, with_licenses: [
+        { team: @team_go1, status: License::APPROVED, season_id: '18' },
+        { team: zweites_team, status: License::APPROVED, season_id: '18' },
+        { team: @team_go2, status: License::APPROVED, season_id: '18' }
+      ])
+
+      lizenzen = spieler.licenses.deep_dup
+      lizenzen[1]['history'] << { 'license_status_id' => License::WITHDRAWN,
+                                  'created_at' => Time.zone.now.iso8601 }
+      lizenzen[2]['history'] << { 'license_status_id' => License::DELETED,
+                                  'created_at' => Time.zone.now.iso8601 }
+      spieler.update!(licenses: lizenzen)
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses'
+      assert_response :success
+
+      zeile = JSON.parse(response.body).find { |r| r['player_id'] == spieler.id }
+      assert_equal 3, zeile['licenses_approved_season']
+      assert_equal 0, zeile['licenses_requested_season']
+    end
+
+    # Die Sperre ist der Grund, warum die Zaehlung die History liest statt den
+    # heutigen Status: Sie legt sich als juengster Eintrag ueber beides.
+    test 'eine Sperre aendert an beiden Zahlen nichts' do
+      zweite_liga = create(:league, game_operation: @go1, season_id: '18')
+      zweites_team = create(:team, league: zweite_liga, club: @club1)
+      spieler = create(:player, with_licenses: [
+        { team: @team_go1, status: License::APPROVED, season_id: '18' },
+        { team: zweites_team, status: License::REQUESTED, season_id: '18' }
+      ])
+
+      lizenzen = spieler.licenses.deep_dup
+      lizenzen.each do |lizenz|
+        lizenz['history'] << { 'license_status_id' => License::SUSPENDED,
+                               'created_at' => Time.zone.now.iso8601 }
+      end
+      spieler.update!(licenses: lizenzen)
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses'
+      assert_response :success
+
+      zeile = JSON.parse(response.body).find { |r| r['player_id'] == spieler.id }
+      assert_equal 1, zeile['licenses_approved_season']
+      assert_equal 1, zeile['licenses_requested_season'],
+                   'die gesperrte Antragslizenz bleibt ein offener Antrag'
+    end
+
+    # Ueber cup_leagues erzeugt EINE Lizenz zwei Zeilen. Gezaehlt werden
+    # Lizenzen, nicht Zeilen -- genau der Fehler, den das Durchzaehlen von Hand
+    # machte.
+    test 'eine Lizenz mit zwei Zeilen zaehlt trotzdem einmal' do
+      pokal = create(:league, game_operation: @go1, season_id: '18', league_type: 'cup')
+      @team_go1.update!(cup_leagues: [pokal.id])
+      spieler = create(:player, with_licenses: [
+        { team: @team_go1, status: License::APPROVED, season_id: '18' }
+      ])
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses'
+      assert_response :success
+
+      zeilen = JSON.parse(response.body).select { |r| r['player_id'] == spieler.id }
+      assert_equal 2, zeilen.size, 'Liga und Pokal ergeben zwei Zeilen'
+      assert_equal [1], zeilen.map { |r| r['licenses_approved_season'] }.uniq
+    end
+
     test 'abgelehnte und zurückgezogene Lizenzen stehen in der Verbandsübersicht' do
       denied = create(:player, with_licenses: [{ team: @team_go1, status: License::DENIED, season_id: '18' }])
       withdrawn = create(:player, with_licenses: [{ team: @team_go1, status: License::WITHDRAWN, season_id: '18' }])
