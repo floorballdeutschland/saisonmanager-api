@@ -197,7 +197,120 @@ module Admin
       render json: host_hash(verein)
     end
 
+    # GET admin/streaming/teams
+    #
+    # Die Pflegeliste der Streamschluessel. Bis hierher war der Schluessel nur
+    # ueber `rake streaming:import_keys` zu setzen, und der Task ersetzt einen
+    # bestehenden Wert bewusst NICHT -- ein geaenderter Schluessel brauchte
+    # deshalb eine Handzeile auf der Produktion.
+    #
+    # Gezeigt werden die Mannschaften der laufenden Saison aus jeder Liga, in
+    # der ueberhaupt schon ein Schluessel haengt, plus auf Wunsch eine weitere
+    # ueber `league_id`. Ohne diesen Zusatz waere die Liste einer neu
+    # gestreamten Liga leer, bevor der erste Schluessel drin ist -- derselbe
+    # Fall, den `scoped_game_days` fuer den Spieltags-Zuschnitt schon loest.
+    def teams
+      liga_ids = key_league_ids
+      # `to_s` vor `to_i`: `?league_id[]=5` liefert ein Array, und `Array#to_i`
+      # gibt es nicht -- ohne den Umweg waere ein vertippter Parameter eine 500
+      # samt Sentry-Ereignis statt einer leeren Zusatzliga.
+      liga_ids += [params[:league_id].to_s.to_i] if params[:league_id].present?
+
+      mannschaften = Team.where(league_id: liga_ids)
+                         .where(league_id: League.current_season.select(:id))
+                         .includes(:league, :club)
+                         .to_a
+
+      # Nach Liga und Mannschaft, damit die Liste dieselbe Ordnung hat wie das
+      # Blatt der Spielbetriebskommission, aus dem die Schluessel kommen.
+      sortiert = mannschaften.sort_by { |team| [team.league&.name.to_s, team.name.to_s] }
+      render json: sortiert.map { |team| team_hash(team) }
+    end
+
+    # PUT admin/streaming/teams/:id
+    def update_team
+      team = Team.find_by(id: params[:id])
+      return render json: { error: 'Mannschaft nicht gefunden' }, status: :not_found unless team
+
+      # Nur die laufende Saison: Ein Schluessel an einer abgelaufenen Mannschaft
+      # aendert nichts mehr an einer Uebertragung, die Verwechslungsgefahr mit
+      # der gleichnamigen Mannschaft der neuen Saison bleibt aber.
+      unless team.league&.season_id.to_s == Setting.current_season_id.to_s
+        return render json: { error: 'Mannschaft gehoert nicht zur laufenden Saison' },
+                      status: :unprocessable_entity
+      end
+
+      # Derselbe Riegel wie bei den Zusagen: Ohne ihn loeschte ein
+      # halbfertiger Aufruf den Schluessel, und der Ausfall faellt erst am
+      # Spieltag auf, wenn der Waechter die Uebertragung keinem Spiel zuordnet.
+      return render json: { error: 'stream_key fehlt' }, status: :bad_request unless params.key?(:stream_key)
+
+      schluessel = params[:stream_key].to_s.strip
+      if schluessel.empty?
+        team.update!(stream_key: nil)
+        return render json: team_hash(team)
+      end
+
+      # Ein Schluessel mit Leerzeichen ist ein Kopierfehler aus der Tabelle.
+      # Er wuerde anstandslos gespeichert und erst bei YouTube auffallen.
+      if schluessel.match?(/\s/)
+        return render json: { error: 'Der Schluessel darf keine Leerzeichen enthalten' },
+                      status: :unprocessable_entity
+      end
+
+      # Dieselbe Sperre wie im Importtask: Zwei Mannschaften mit demselben
+      # Schluessel sind fuer den Waechter mehrdeutig, er ordnet dann NICHTS zu.
+      # Ueber Saisongrenzen hinweg ist der doppelte Wert dagegen normal, denn
+      # bei YouTube ueberlebt der Schluessel die Saison.
+      doppelt = Team.where(stream_key: schluessel)
+                    .where(league_id: League.current_season.select(:id))
+                    .where.not(id: team.id)
+                    .includes(:league).first
+      if doppelt
+        return render json: { error: "Dieser Schluessel haengt schon an #{doppelt.name} " \
+                                     "(#{doppelt.league&.name})" },
+                      status: :unprocessable_entity
+      end
+
+      team.update!(stream_key: schluessel)
+      render json: team_hash(team)
+    end
+
     private
+
+    # Der Wert selbst geht NICHT zurueck. Die Liste dient dem Pflegen, nicht dem
+    # Nachschlagen: Wer den Schluessel braucht, hat ihn aus der Halle oder aus
+    # dem Blatt der Spielbetriebskommission. Die letzten vier Zeichen reichen,
+    # um zu erkennen, ob der eingetragene derselbe ist -- und sie taugen nicht
+    # zum Senden.
+    def team_hash(team)
+      schluessel = team.stream_key.presence
+      {
+        id: team.id,
+        name: team.name,
+        club_name: team.club&.name,
+        league_id: team.league_id,
+        league_name: team.league&.name,
+        has_stream_key: schluessel.present?,
+        stream_key_hint: schluessel&.last(4)
+      }
+    end
+
+    # Die Ligen der laufenden Saison, um die es beim Streaming geht: jede mit
+    # mindestens einem Schluessel -- PLUS jede mit gepflegter Playlist.
+    #
+    # Der Zusatz ist derselbe Gedanke wie bei den Zusagen (`hosts` zaehlt jeden
+    # Verein mit gesetztem Haken mit): Ohne ihn verschwaende das Loeschen des
+    # letzten Schluessels einer Liga die ganze Liga aus der Liste, und wer einen
+    # Schluessel von einer Mannschaft auf eine andere umtraegt, faende die
+    # zweite nicht mehr. Die Playlist steht an genau den Ligen, die auf den
+    # Verbandskanal gehen.
+    def key_league_ids
+      League.current_season
+            .where(id: streamed_league_ids)
+            .or(League.current_season.where.not(stream_playlist: [nil, '']))
+            .pluck(:id)
+    end
 
     def host_hash(verein)
       {
