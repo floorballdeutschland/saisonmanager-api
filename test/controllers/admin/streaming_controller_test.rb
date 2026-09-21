@@ -652,11 +652,313 @@ module Admin
       assert StreamBroadcast.find_by(broadcast_id: 'yt-lauf').promote_to_public
     end
 
+    # --- Pflegeliste der Streamschluessel -------------------------------------
+
+    test 'Admin bekommt die Mannschaften der Ligen mit Schluessel, aber nicht den Schluessel' do
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/streaming/teams'
+
+      assert_response :success
+      eintrag = response.parsed_body.find { |e| e['id'] == @home.id }
+      assert_equal 'MFBC Leipzig', eintrag['name']
+      assert_equal '1. FBL Herren', eintrag['league_name']
+      assert eintrag['has_stream_key']
+      # Die Liste dient dem Pflegen, nicht dem Nachschlagen.
+      assert_not_includes response.body, STREAM_KEY
+      assert_equal 'qrst', eintrag['stream_key_hint']
+    end
+
+    test 'die Mannschaft ohne Schluessel steht mit in ihrer Liga' do
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/streaming/teams'
+
+      eintrag = response.parsed_body.find { |e| e['id'] == @guest.id }
+      assert_not eintrag['has_stream_key']
+      assert_nil eintrag['stream_key_hint']
+    end
+
+    # Ohne league_id waere die Liste einer neu gestreamten Liga leer, bevor der
+    # erste Schluessel drin ist -- und niemand wuesste, warum.
+    test 'league_id holt eine Liga ohne jeden Schluessel dazu' do
+      andere = create(:league, game_operation: @go, name: '1. FBL Damen')
+      team = create(:team, league: andere, club: create(:club), name: 'ETV Lady Piranhhas Hamburg')
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/streaming/teams'
+      assert_nil(response.parsed_body.find { |e| e['id'] == team.id })
+
+      get '/api/v2/admin/streaming/teams', params: { league_id: andere.id }
+      assert(response.parsed_body.find { |e| e['id'] == team.id })
+    end
+
+    test 'GEGENPROBE: die Mannschaft der Vorsaison steht nicht in der Liste' do
+      alt = create(:league, :previous_season, game_operation: @go, name: '1. FBL Herren')
+      alt_team = create(:team, league: alt, club: @club, name: 'MFBC Leipzig', stream_key: 'alt-key')
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/streaming/teams'
+
+      assert_nil(response.parsed_body.find { |e| e['id'] == alt_team.id })
+    end
+
+    # Ohne den Playlist-Zweig verschwaende das Loeschen des letzten Schluessels
+    # die ganze Liga aus der Liste -- und ein Umtragen von einer Mannschaft auf
+    # eine andere fuehrte in eine leere Ansicht.
+    test 'die Liga bleibt in der Liste, wenn ihr letzter Schluessel faellt' do
+      login(create(:user, :admin))
+      @home.update!(stream_key: nil)
+
+      get '/api/v2/admin/streaming/teams'
+
+      assert(response.parsed_body.find { |e| e['id'] == @home.id })
+    end
+
+    test 'GEGENPROBE: eine Liga ohne Schluessel und ohne Playlist bleibt draussen' do
+      andere = create(:league, game_operation: @go, name: '3. Liga Nord')
+      team = create(:team, league: andere, club: create(:club), name: 'Ohne Stream')
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/streaming/teams'
+
+      assert_nil(response.parsed_body.find { |e| e['id'] == team.id })
+    end
+
+    # Ein vertippter Parameter ist ein Eingabefehler und keine 500.
+    test 'ein league_id als Feld kippt den Abruf nicht' do
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/streaming/teams', params: { league_id: [5] }
+
+      assert_response :success
+    end
+
+    test 'Admin setzt einen Schluessel' do
+      login(create(:user, :admin))
+
+      put "/api/v2/admin/streaming/teams/#{@guest.id}", params: { stream_key: 'neuk-eyxx-1234-5678-abcd' }
+
+      assert_response :success
+      assert_equal 'neuk-eyxx-1234-5678-abcd', @guest.reload.stream_key
+      assert response.parsed_body['has_stream_key']
+    end
+
+    test 'ein leerer Wert loescht den Schluessel' do
+      login(create(:user, :admin))
+
+      put "/api/v2/admin/streaming/teams/#{@home.id}", params: { stream_key: '' }
+
+      assert_response :success
+      assert_nil @home.reload.stream_key
+      assert_not response.parsed_body['has_stream_key']
+    end
+
+    # Derselbe Riegel wie bei den Zusagen: Ein halbfertiger Aufruf darf den
+    # Schluessel nicht still abraeumen.
+    test 'GEGENPROBE: ohne stream_key-Parameter bleibt der Schluessel stehen' do
+      login(create(:user, :admin))
+
+      put "/api/v2/admin/streaming/teams/#{@home.id}"
+
+      assert_response :bad_request
+      assert_equal STREAM_KEY, @home.reload.stream_key
+    end
+
+    test 'GEGENPROBE: ein Schluessel mit Leerzeichen wird abgewiesen' do
+      login(create(:user, :admin))
+
+      put "/api/v2/admin/streaming/teams/#{@guest.id}", params: { stream_key: 'abcd efgh' }
+
+      assert_response :unprocessable_entity
+      assert_nil @guest.reload.stream_key
+    end
+
+    # Zwei Mannschaften mit demselben Schluessel sind fuer den Waechter
+    # mehrdeutig -- er ordnet dann NICHTS zu.
+    test 'GEGENPROBE: derselbe Schluessel an einer zweiten Mannschaft der Saison' do
+      login(create(:user, :admin))
+
+      put "/api/v2/admin/streaming/teams/#{@guest.id}", params: { stream_key: STREAM_KEY }
+
+      assert_response :unprocessable_entity
+      assert_includes response.parsed_body['error'], 'MFBC Leipzig'
+      assert_nil @guest.reload.stream_key
+    end
+
+    # Bei YouTube ueberlebt der Schluessel die Saison, die Mannschaft nicht.
+    test 'derselbe Schluessel in der Vorsaison stoert nicht' do
+      alt = create(:league, :previous_season, game_operation: @go, name: '1. FBL Herren')
+      create(:team, league: alt, club: create(:club), name: 'Alte Mannschaft', stream_key: 'saison-uebergreifend')
+      login(create(:user, :admin))
+
+      put "/api/v2/admin/streaming/teams/#{@guest.id}", params: { stream_key: 'saison-uebergreifend' }
+
+      assert_response :success
+      assert_equal 'saison-uebergreifend', @guest.reload.stream_key
+    end
+
+    test 'GEGENPROBE: an einer Mannschaft der Vorsaison wird nichts geschrieben' do
+      alt = create(:league, :previous_season, game_operation: @go, name: '1. FBL Herren')
+      alt_team = create(:team, league: alt, club: @club, name: 'MFBC Leipzig')
+      login(create(:user, :admin))
+
+      put "/api/v2/admin/streaming/teams/#{alt_team.id}", params: { stream_key: 'neuk-eyxx-1234-5678-abcd' }
+
+      assert_response :unprocessable_entity
+      assert_nil alt_team.reload.stream_key
+    end
+
+    test 'GEGENPROBE: regionale SBK kommt an die Schluesselpflege nicht heran' do
+      login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+      get '/api/v2/admin/streaming/teams'
+      assert_response :forbidden
+
+      put "/api/v2/admin/streaming/teams/#{@guest.id}", params: { stream_key: 'fremd-key' }
+      assert_response :forbidden
+      assert_nil @guest.reload.stream_key
+    end
+
+    test 'GEGENPROBE: ohne Anmeldung keine Schluesselpflege' do
+      get '/api/v2/admin/streaming/teams'
+      assert_response :unauthorized
+
+      put "/api/v2/admin/streaming/teams/#{@guest.id}", params: { stream_key: 'fremd-key' }
+      assert_response :unauthorized
+      assert_nil @guest.reload.stream_key
+    end
+
+    test 'global gescopte FD-SBK darf pflegen' do
+      login(create(:user, :sbk_global))
+
+      put "/api/v2/admin/streaming/teams/#{@guest.id}", params: { stream_key: 'fdsb-key1-2345-6789-abcd' }
+
+      assert_response :success
+      assert_equal 'fdsb-key1-2345-6789-abcd', @guest.reload.stream_key
+    end
+
+    # --- YouTube-Verbindung ---------------------------------------------------
+
+    test 'Admin sieht den Zustand der Verbindung' do
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/streaming/youtube'
+
+      assert_response :success
+      antwort = response.parsed_body
+      assert_includes antwort.keys, 'connected'
+      assert_includes antwort.keys, 'can_connect'
+    end
+
+    # Lesen darf die FD-SBK mit: Sie richtet die Uebertragungen ein und muss
+    # sehen, ob der Waechter ueberhaupt haengt.
+    test 'global gescopte FD-SBK sieht den Zustand' do
+      login(create(:user, :sbk_global))
+
+      get '/api/v2/admin/streaming/youtube'
+
+      assert_response :success
+    end
+
+    # „Verbunden" aus der Umgebung, waehrend die gespeicherte Zeile unbrauchbar
+    # ist: Ohne diese Unterscheidung stuende auf der Seite ein Kanal samt
+    # Zeitpunkt aus einem Zugang, den niemand mehr benutzt.
+    test 'eine unbrauchbar gewordene Zeile meldet stored_active false' do
+      mit_schluessel do
+        StreamCredential.create!(refresh_token: '1//0-alt', client_id: 'alte-kennung',
+                                 channel_title: 'floorball deutschland')
+        login(create(:user, :admin))
+
+        get '/api/v2/admin/streaming/youtube'
+
+        antwort = response.parsed_body
+        assert antwort['stored_present']
+        assert_not antwort['stored_active']
+      end
+    end
+
+    # Die Oberflaeche soll den Knopf nicht anbieten, wo der Server ihn ablehnt.
+    test 'may_connect trennt Admin von FD-SBK' do
+      login(create(:user, :admin))
+      get '/api/v2/admin/streaming/youtube'
+      assert response.parsed_body['may_connect']
+
+      login(create(:user, :sbk_global))
+      get '/api/v2/admin/streaming/youtube'
+      assert_not response.parsed_body['may_connect']
+    end
+
+    # Verbinden haengt den Verbandskanal dauerhaft an ein Google-Konto. Das ist
+    # keine Tageshandlung.
+    test 'GEGENPROBE: FD-SBK darf weder verbinden noch trennen' do
+      login(create(:user, :sbk_global))
+
+      post '/api/v2/admin/streaming/youtube', params: { code: 'egal' }
+      assert_response :forbidden
+
+      delete '/api/v2/admin/streaming/youtube'
+      assert_response :forbidden
+    end
+
+    test 'GEGENPROBE: ohne Anmeldung keine Auskunft ueber die Verbindung' do
+      get '/api/v2/admin/streaming/youtube'
+
+      assert_response :unauthorized
+    end
+
+    test 'ohne eingerichteten Verbindungsweg antwortet das Verbinden mit einem Hinweis' do
+      login(create(:user, :admin))
+      ohne_verbindungsweg do
+        post '/api/v2/admin/streaming/youtube', params: { code: 'code-1' }
+      end
+
+      assert_response :unprocessable_entity
+      assert_includes response.parsed_body['error'], 'YOUTUBE_WEB_CLIENT_ID'
+    end
+
+    # Der Widerruf ist kein Beiwerk: Google gibt einen Refresh-Token nur bei der
+    # ERSTEN Zustimmung eines Kontos heraus. Ohne ihn liefe das Neuverbinden
+    # nach einem Trennen in „kein dauerhafter Zugang" -- ausgerechnet auf dem
+    # Weg, der den Zugang wieder in Ordnung bringen soll.
+    test 'Admin trennt die Verbindung, und der Zugang wird bei Google widerrufen' do
+      mit_schluessel do
+        satz = StreamCredential.create!(refresh_token: '1//0-alt', channel_title: 'floorball deutschland')
+        login(create(:user, :admin))
+        widerrufen = []
+
+        YoutubeOauth.stub(:revoke, ->(token) { widerrufen << token }) do
+          delete '/api/v2/admin/streaming/youtube'
+        end
+
+        assert_response :success
+        assert_equal ['1//0-alt'], widerrufen
+        assert_nil satz.reload.refresh_token
+        assert_nil satz.channel_title
+      end
+    end
+
     private
 
     def login(user)
       post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
       assert_response :success
+    end
+
+    def ohne_verbindungsweg
+      vorher = %w[YOUTUBE_WEB_CLIENT_ID YOUTUBE_WEB_CLIENT_SECRET].index_with { |k| ENV.fetch(k, nil) }
+      vorher.each_key { |k| ENV.delete(k) }
+      yield
+    ensure
+      vorher.each { |k, v| ENV[k] = v unless v.nil? }
+    end
+
+    def mit_schluessel
+      vorher = ENV.fetch('YOUTUBE_TOKEN_KEY', nil)
+      ENV['YOUTUBE_TOKEN_KEY'] = 'ein-hinreichend-langer-testschluessel'
+      yield
+    ensure
+      vorher.nil? ? ENV.delete('YOUTUBE_TOKEN_KEY') : ENV['YOUTUBE_TOKEN_KEY'] = vorher
     end
 
     def create_game(start_time)

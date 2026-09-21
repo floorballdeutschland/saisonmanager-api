@@ -96,6 +96,39 @@ class YoutubeLiveApiTest < ActiveSupport::TestCase
     assert_empty gesendet
   end
 
+  # Der ueber die Oberflaeche verbundene Zugang schlaegt die Umgebung. Sonst
+  # bliebe ein abgelaufener Token in der `.env` fuer immer der massgebliche, und
+  # jedes Neuverbinden waere wirkungslos, ohne dass es jemand sieht.
+  test 'der gespeicherte Zugang hat Vorrang vor den Umgebungsvariablen' do
+    mit_env do
+      mit_token_schluessel do
+        mit_web_client do
+          StreamCredential.create!(refresh_token: '1//0-aus-der-oberflaeche', client_id: 'web-client')
+
+          assert_equal 'db', YoutubeLiveApi.source
+          zugang = YoutubeLiveApi.credentials
+          assert_equal '1//0-aus-der-oberflaeche', zugang[:refresh_token]
+          # Erneuert wird gegen den Client, der den Token ausgegeben hat.
+          assert_equal 'web-client', zugang[:client_id]
+        end
+      end
+    end
+  end
+
+  test 'ohne gespeicherten Zugang zaehlen die Umgebungsvariablen' do
+    mit_env do
+      assert YoutubeLiveApi.configured?
+      assert_equal 'env', YoutubeLiveApi.source
+    end
+  end
+
+  test 'GEGENPROBE: ohne beides ist nichts eingerichtet' do
+    ohne_env do
+      assert_not YoutubeLiveApi.configured?
+      assert_nil YoutubeLiveApi.source
+    end
+  end
+
   private
 
   # Ersetzt die beiden HTTP-Wege, nicht die Logik darueber: Geprueft wird, WAS
@@ -109,6 +142,26 @@ class YoutubeLiveApiTest < ActiveSupport::TestCase
       {}
     end
     api
+  end
+
+  # Sichern und zuruecklegen, nicht loeschen: Auf einem Container, auf dem die
+  # Variablen gesetzt sind, naehme das Loeschen sie dem REST des Laufs weg, und
+  # spaetere Pruefsaetze kippten je nach Dateireihenfolge.
+  def mit_web_client
+    vorher = %w[YOUTUBE_WEB_CLIENT_ID YOUTUBE_WEB_CLIENT_SECRET].index_with { |k| ENV.fetch(k, nil) }
+    ENV['YOUTUBE_WEB_CLIENT_ID'] = 'web-client'
+    ENV['YOUTUBE_WEB_CLIENT_SECRET'] = 'web-geheim'
+    yield
+  ensure
+    vorher.each { |k, v| v.nil? ? ENV.delete(k) : ENV[k] = v }
+  end
+
+  def mit_token_schluessel
+    vorher = ENV.fetch('YOUTUBE_TOKEN_KEY', nil)
+    ENV['YOUTUBE_TOKEN_KEY'] = 'ein-hinreichend-langer-testschluessel'
+    yield
+  ensure
+    vorher.nil? ? ENV.delete('YOUTUBE_TOKEN_KEY') : ENV['YOUTUBE_TOKEN_KEY'] = vorher
   end
 
   def ohne_env
