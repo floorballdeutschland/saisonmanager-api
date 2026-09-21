@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.118.0] - 2026-09-21
+
 ### Behoben
 
 - **„Keine Info-Mails" wirkte beim Spieltagsbericht ins Gegenteil**: Wer den Schalter unter „Mein Konto" umlegt, bekommt die Bestätigungsmail zum Spieltagsbericht nicht mehr — bisher galt das nur für Teammanager. Ein Vereinsmanager, der sich eine Mannschaft zugeordnet und den Schalter umgelegt hatte, fiel zwar aus der Teammanager-Stufe heraus, bekam die Mail über die Vereinsstufe aber trotzdem — und zog dabei den ganzen übrigen Vorstand mit hinein, der sie vorher gar nicht sah. Für die übrige Vereinspost bleibt es unverändert: An der Kontaktadresse und den Vereinsmanagern hängen Transfers, Freigaben, Spielverlegungen und die Erinnerung an den Spielberichtsbogen, und das sind Vorgänge, die ein Verein mitbekommen muss.
