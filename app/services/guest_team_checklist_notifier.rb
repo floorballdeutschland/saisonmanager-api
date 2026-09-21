@@ -154,11 +154,27 @@ class GuestTeamChecklistNotifier
 
     if (emails = deliverable(User.team_managers(team.id).map(&:email))).any?
       ['Teammanager', emails]
-    elsif (emails = deliverable(club&.notify_manager_emails.to_a)).any?
+    elsif (emails = deliverable(vereinsmanager_emails(club))).any?
       ['Vereinsmanager', emails]
     else
       ['Vereinskontaktadresse', deliverable([club&.contact_email])]
     end
+  end
+
+  # Die Vereinsmanager der Vereinspost, ohne die, die Info-Mails abbestellt
+  # haben (`receive_info_mails`).
+  #
+  # Die übrige Vereinspost kennt diese Abwahl bewusst nicht: An
+  # `Club#notification_emails` hängen Transfers, Spielverlegungen, Freigaben und
+  # die Erinnerung an den Spielberichtsbogen -- Vorgänge, die ein Verein
+  # mitbekommen muss, ob er mag oder nicht. Für diese eine Mail gilt die Abwahl
+  # dagegen schon auf Stufe 1 (`User.team_managers` filtert danach), und sie auf
+  # Stufe 2 zu übergehen kehrte den Schalter ins Gegenteil: Ein Vereinsmanager,
+  # der sich eine Mannschaft zugeordnet und Info-Mails abbestellt hat, fiel aus
+  # Stufe 1 heraus, bekam die Mail über Stufe 2 trotzdem -- und zog dabei den
+  # ganzen restlichen Vorstand mit hinein, der vorher nichts davon sah.
+  def vereinsmanager_emails(club)
+    club&.notify_managers.to_a.select(&:receive_info_mails).filter_map { |user| user.email.presence }
   end
 
   # Zerlegt wird, was der Mail-Versand ohnehin zerlegt, statt es zu verwerfen:
