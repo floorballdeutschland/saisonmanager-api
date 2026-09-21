@@ -108,6 +108,8 @@ module Admin
               catalog: catalog
             )
 
+            counts = season_license_counts(player_data, season_id)
+
             result << {
               player_id:            player_data[:id],
               player_last_name:     player_data[:last_name],
@@ -134,6 +136,12 @@ module Admin
               season_id:            league.season_id,
               license_id:           lic['id'],
               license_type:         license_type(player_data, lic, all_season_leagues, team_league_id_map),
+              # Wie viele Lizenzen dieser Spieler in der abgefragten Saison
+              # schon erteilt bekommen hat und wie viele davon noch offen
+              # beantragt sind -- verbandsuebergreifend, siehe
+              # season_license_counts.
+              licenses_approved_season:  counts[:approved],
+              licenses_requested_season: counts[:requested],
               # Manuelle Erst-/Zweitlizenz-Zuordnung im GF-Erwachsenenbereich
               # ('erstlizenz' | 'zweitlizenz' | nil = nicht zugeordnet).
               gf_role:              lic['gf_role'],
@@ -163,6 +171,55 @@ module Admin
     end
 
     private
+
+    # Wie viele Lizenzen ein Spieler in dieser Saison hat: erteilte und noch
+    # offene Antraege, getrennt gezaehlt. Landesverbaende genehmigen je Spieler
+    # nur eine begrenzte Zahl von Lizenzen (sechs oder acht, je nach Verband);
+    # die Zahl erspart das Durchzaehlen der Zeilen.
+    #
+    # Bewusst ueber ALLE Verbaende, nicht nur ueber die Ligen, die der
+    # Betrachter in dieser Liste sieht: Eine Lizenz aus einem anderen Verband
+    # zaehlt auf dieselbe Obergrenze ein. Die Zahl kostet nichts extra, weil
+    # `player_data[:licenses]` hier ohnehin ungefiltert geladen ist
+    # (`only_current_licenses: false`, siehe oben).
+    #
+    # Gezaehlt wird die abgefragte Saison, nicht die laufende: Die Uebersicht
+    # laesst sich auf eine fruehere Saison stellen, und dort waere die Zahl der
+    # laufenden Saison eine Aussage ueber etwas ganz anderes.
+    #
+    # Je Spieler einmal gerechnet, weil ein Spieler mit mehreren Lizenzen
+    # mehrere Zeilen hat.
+    def season_license_counts(player_data, season_id)
+      @season_license_counts ||= {}
+      @season_license_counts[player_data[:id]] ||= begin
+        season_licenses = Array(player_data[:licenses]).select do |lic|
+          lic.is_a?(Hash) && lic['season_id'].to_s == season_id.to_s
+        end
+
+        approved = season_licenses.count { |lic| ever_approved?(lic) }
+        # Nur die noch nicht erteilten: Eine Lizenz zaehlt genau einmal, sonst
+        # stuende eine auf `beantragt` zurueckgesetzte Lizenz in beiden Zahlen.
+        requested = season_licenses.count do |lic|
+          !ever_approved?(lic) && LicenseEffectiveStatus.base_status_id(lic) == License::REQUESTED
+        end
+
+        { approved: approved, requested: requested }
+      end
+    end
+
+    # Erteilt ist eine Lizenz, wenn ihre History den Status „erteilt" kennt.
+    # Der heutige Status genuegt nicht: Eine gesperrte, durch einen Transfer
+    # ungueltig gewordene oder geloeschte Lizenz traegt ihn nicht mehr, der
+    # Verband hat sie aber erteilt und sie hat eine Gebuehr ausgeloest.
+    #
+    # Die History reicht als alleinige Quelle: Auf Produktion gibt es keine
+    # Lizenz ohne History-Eintrag (Zaehlung vom 21.09.2026 ueber alle 164.048
+    # Lizenzen, #713).
+    def ever_approved?(license)
+      Array(license['history']).any? do |entry|
+        entry.is_a?(Hash) && entry['license_status_id'].to_i == License::APPROVED
+      end
+    end
 
     # Haupt-/Zusatzlizenz (Anzeige-Konzept): die Lizenz in der höchsten Liga ist
     # 'primary', alle weiteren sind Zusatzlizenzen ('secondary'). Unabhängig von

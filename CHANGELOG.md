@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Die Lizenzübersicht des Verbandes nennt je Spieler die Zahl seiner Lizenzen in dieser Saison**: Einige Landesverbände genehmigen je Spieler höchstens sechs oder acht Lizenzen. Wer das prüfen wollte, musste die Zeilen der Person in der Liste durchzählen. Jede Zeile führt jetzt zwei Zahlen mit: wie viele Lizenzen dieser Spieler in der angezeigten Saison erteilt bekommen hat (`licenses_approved_season`) und wie viele Anträge davon noch offen sind (`licenses_requested_season`). Gezählt wird über alle Verbände hinweg, nicht nur über die Ligen, die der Betrachter in seiner Liste sieht — eine Lizenz aus einem anderen Verband zählt auf dieselbe Obergrenze ein. Eine Lizenz, die erteilt und später durch einen Transfer ungültig geworden, gelöscht oder gesperrt worden ist, zählt weiter mit: Der Verband hat sie erteilt und sie hat eine Gebühr ausgelöst. Ein abgelehnter oder zurückgezogener Antrag zählt nicht, denn erteilt wurde da nie etwas, und jede Lizenz steht in genau einer der beiden Zahlen. Maßgeblich ist die abgefragte Saison: Stellt man die Übersicht auf eine frühere, zählt diese. Die Anzeige folgt im Frontend.
+
 ## [1.118.0] - 2026-09-21
 
 ### Behoben
