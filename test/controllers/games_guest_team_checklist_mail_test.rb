@@ -96,6 +96,31 @@ class GamesGuestTeamChecklistMailTest < ActionDispatch::IntegrationTest
     assert_equal %w[vm-gast@example.de vm2-gast@example.de], gast_mails.sole.to.sort
   end
 
+  # Der Schalter „keine Info-Mails" wirkte fuer einen Vereinsmanager mit
+  # zugeordneter Mannschaft ins Gegenteil: Er fiel aus Stufe 1 heraus, bekam die
+  # Mail ueber Stufe 2 trotzdem -- und zog den ganzen restlichen Vorstand mit
+  # hinein, der vorher nichts davon sah.
+  test 'ein abbestellter VM mit Mannschaft bekommt die Mail nicht ueber die Vereinsstufe' do
+    @tm.destroy!
+    betreuender_vm = create(:user, :vm, club_id: @gastverein.id, email: 'vm-betreut@example.de')
+    betreuender_vm.update!(teams: [@gast.id], receive_info_mails: false)
+
+    close_match_record_as_admin
+
+    assert_equal ['gastverein@example.de'], gast_mails.sole.to
+  end
+
+  test 'ein abbestellter Vereinsmanager faellt aus der Vereinsstufe heraus' do
+    @tm.destroy!
+    create(:user, :vm, club_id: @gastverein.id, email: 'vm-still@example.de')
+      .update!(receive_info_mails: false)
+    create(:user, :vm, club_id: @gastverein.id, email: 'vm-aktiv@example.de')
+
+    close_match_record_as_admin
+
+    assert_equal ['vm-aktiv@example.de'], gast_mails.sole.to
+  end
+
   test 'ohne Teammanager und ohne Vereinsmanager geht die Mail an die Kontaktadresse' do
     @tm.destroy!
 
