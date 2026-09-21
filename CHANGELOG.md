@@ -9,6 +9,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Der YouTube-Zugang des Livestream-Wächters lässt sich im Streaming-Bereich neu verbinden**: Bisher stand der dauerhafte Zugang ausschließlich als `YOUTUBE_REFRESH_TOKEN` am Container. Läuft er ab oder widerruft ihn jemand, steht der Wächter still, und das Erneuern brauchte einen Server-Zugang, eine Zeile in der Umgebungsdatei und einen Neustart. Ein Admin meldet sich jetzt im Streaming-Bereich bei Google an, und der Server löst den Anmeldecode gegen einen dauerhaften Zugang ein. Der Zugang aus der Oberfläche hat Vorrang vor den Umgebungsvariablen, die als Rückfallebene bleiben — andersherum gewänne eine veraltete Zeile in der Umgebung jedes Mal, und das Neuverbinden wäre wirkungslos, ohne dass es jemand sieht. Verbinden und Trennen kann nur ein Admin: Wer hier zustimmt, hängt den Verbandskanal dauerhaft an ein Google-Konto, während das Anlegen einzelner Übertragungen eine Tageshandlung mit einem Token ist, das nach einer Stunde verfällt. Die FD-SBK sieht den Zustand mit, weil sie die Übertragungen einrichtet.
+
+  Zwei Prüfungen laufen vor dem Speichern, und beide stammen aus dem Einrichten: Liefert Google keinen dauerhaften Zugang, weil dasselbe Konto schon einmal zugestimmt hat, wird nichts gespeichert und der Hinweis nennt den Weg über `myaccount.google.com/permissions`. Und der zugestimmte Kanal muss senden dürfen — am Verbandskonto hängen zwei gleichnamige Kanäle, von denen der leere auf jeden Live-Endpunkt mit `liveStreamingNotEnabled` antwortet. Ohne diese Prüfung wäre der falsche Zugang gespeichert, die Oberfläche meldete Erfolg, und der Wächter scheiterte erst am Spieltag.
+
+  Der Zugang liegt verschlüsselt in der Datenbank, mit einem Schlüssel aus `YOUTUBE_TOKEN_KEY` und ausdrücklich nicht aus dem Master-Key. Der Grund ist die Staging-Umgebung: Sie trägt einen 1:1-Klon der Produktionsdatenbank, und ein dort lesbarer Zugang könnte laufende Übertragungen des echten Kanals beenden. Ohne die Variable ist die Zeile dort unlesbar, und der Wächter meldet schlicht „nicht eingerichtet".
+
 ## [1.118.1] - 2026-09-21
 
 ### Verbessert

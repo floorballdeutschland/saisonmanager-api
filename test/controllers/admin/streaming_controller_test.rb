@@ -652,11 +652,91 @@ module Admin
       assert StreamBroadcast.find_by(broadcast_id: 'yt-lauf').promote_to_public
     end
 
+    # --- YouTube-Verbindung ---------------------------------------------------
+
+    test 'Admin sieht den Zustand der Verbindung' do
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/streaming/youtube'
+
+      assert_response :success
+      antwort = response.parsed_body
+      assert_includes antwort.keys, 'connected'
+      assert_includes antwort.keys, 'can_connect'
+    end
+
+    # Lesen darf die FD-SBK mit: Sie richtet die Uebertragungen ein und muss
+    # sehen, ob der Waechter ueberhaupt haengt.
+    test 'global gescopte FD-SBK sieht den Zustand' do
+      login(create(:user, :sbk_global))
+
+      get '/api/v2/admin/streaming/youtube'
+
+      assert_response :success
+    end
+
+    # Verbinden haengt den Verbandskanal dauerhaft an ein Google-Konto. Das ist
+    # keine Tageshandlung.
+    test 'GEGENPROBE: FD-SBK darf weder verbinden noch trennen' do
+      login(create(:user, :sbk_global))
+
+      post '/api/v2/admin/streaming/youtube', params: { code: 'egal' }
+      assert_response :forbidden
+
+      delete '/api/v2/admin/streaming/youtube'
+      assert_response :forbidden
+    end
+
+    test 'GEGENPROBE: ohne Anmeldung keine Auskunft ueber die Verbindung' do
+      get '/api/v2/admin/streaming/youtube'
+
+      assert_response :unauthorized
+    end
+
+    test 'ohne eingerichteten Verbindungsweg antwortet das Verbinden mit einem Hinweis' do
+      login(create(:user, :admin))
+      ohne_verbindungsweg do
+        post '/api/v2/admin/streaming/youtube', params: { code: 'code-1' }
+      end
+
+      assert_response :unprocessable_entity
+      assert_includes response.parsed_body['error'], 'YOUTUBE_WEB_CLIENT_ID'
+    end
+
+    test 'Admin trennt die Verbindung' do
+      mit_schluessel do
+        satz = StreamCredential.create!(refresh_token: '1//0-alt', channel_title: 'floorball deutschland')
+        login(create(:user, :admin))
+
+        delete '/api/v2/admin/streaming/youtube'
+
+        assert_response :success
+        assert_nil satz.reload.refresh_token
+        assert_nil satz.channel_title
+      end
+    end
+
     private
 
     def login(user)
       post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
       assert_response :success
+    end
+
+    def ohne_verbindungsweg
+      vorher = %w[YOUTUBE_WEB_CLIENT_ID YOUTUBE_WEB_CLIENT_SECRET].index_with { |k| ENV.fetch(k, nil) }
+      vorher.each_key { |k| ENV.delete(k) }
+      yield
+    ensure
+      vorher.each { |k, v| ENV[k] = v unless v.nil? }
+    end
+
+    def mit_schluessel
+      vorher = ENV.fetch('YOUTUBE_TOKEN_KEY', nil)
+      ENV['YOUTUBE_TOKEN_KEY'] = 'ein-hinreichend-langer-testschluessel'
+      yield
+    ensure
+      vorher.nil? ? ENV.delete('YOUTUBE_TOKEN_KEY') : ENV['YOUTUBE_TOKEN_KEY'] = vorher
     end
 
     def create_game(start_time)

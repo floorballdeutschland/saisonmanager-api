@@ -96,6 +96,34 @@ class YoutubeLiveApiTest < ActiveSupport::TestCase
     assert_empty gesendet
   end
 
+  # Der ueber die Oberflaeche verbundene Zugang schlaegt die Umgebung. Sonst
+  # bliebe ein abgelaufener Token in der `.env` fuer immer der massgebliche, und
+  # jedes Neuverbinden waere wirkungslos, ohne dass es jemand sieht.
+  test 'der gespeicherte Zugang hat Vorrang vor den Umgebungsvariablen' do
+    mit_env do
+      mit_token_schluessel do
+        StreamCredential.create!(refresh_token: '1//0-aus-der-oberflaeche')
+
+        assert_equal 'db', YoutubeLiveApi.source
+        assert_equal '1//0-aus-der-oberflaeche', YoutubeLiveApi.credentials[:refresh_token]
+      end
+    end
+  end
+
+  test 'ohne gespeicherten Zugang zaehlen die Umgebungsvariablen' do
+    mit_env do
+      assert YoutubeLiveApi.configured?
+      assert_equal 'env', YoutubeLiveApi.source
+    end
+  end
+
+  test 'GEGENPROBE: ohne beides ist nichts eingerichtet' do
+    ohne_env do
+      assert_not YoutubeLiveApi.configured?
+      assert_nil YoutubeLiveApi.source
+    end
+  end
+
   private
 
   # Ersetzt die beiden HTTP-Wege, nicht die Logik darueber: Geprueft wird, WAS
@@ -109,6 +137,14 @@ class YoutubeLiveApiTest < ActiveSupport::TestCase
       {}
     end
     api
+  end
+
+  def mit_token_schluessel
+    vorher = ENV.fetch('YOUTUBE_TOKEN_KEY', nil)
+    ENV['YOUTUBE_TOKEN_KEY'] = 'ein-hinreichend-langer-testschluessel'
+    yield
+  ensure
+    vorher.nil? ? ENV.delete('YOUTUBE_TOKEN_KEY') : ENV['YOUTUBE_TOKEN_KEY'] = vorher
   end
 
   def ohne_env

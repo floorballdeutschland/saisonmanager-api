@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_09_19_130000) do
+ActiveRecord::Schema[7.2].define(version: 2026_09_21_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1012,6 +1012,17 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_19_130000) do
     t.index ["ended_at"], name: "index_stream_broadcasts_on_ended_at"
     t.index ["game_id"], name: "index_stream_broadcasts_on_game_id"
     t.index ["promote_to_public", "promoted_at"], name: "index_stream_broadcasts_auf_faellige_veroeffentlichung", where: "(promote_to_public AND (promoted_at IS NULL))"
+  end
+
+  create_table "stream_credentials", force: :cascade do |t|
+    t.text "refresh_token_ciphertext"
+    t.string "channel_id"
+    t.string "channel_title"
+    t.string "scope"
+    t.datetime "connected_at"
+    t.integer "connected_by_user_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
   end
 
   create_table "teams", force: :cascade do |t|
