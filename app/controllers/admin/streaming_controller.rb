@@ -22,6 +22,11 @@ module Admin
   class StreamingController < ApplicationController
     before_action :authenticate_user
     before_action :authorize!
+    # Verbinden und Trennen sind ADMIN ALLEIN: Wer hier zustimmt, haengt den
+    # Verbandskanal an ein Google-Konto, und der Zugang ueberlebt jede Sitzung.
+    # Das Anlegen einzelner Uebertragungen (FD-SBK) ist demgegenueber eine
+    # Tageshandlung mit einem Token, das nach einer Stunde verfaellt.
+    before_action :authorize_admin!, only: %i[connect_youtube disconnect_youtube]
 
     # Ein Zeitraum ist zum Einrichten eines Spieltags oder Wochenendes gedacht.
     # Ohne Deckel holt ein vertipptes Jahr die halbe Saison in einer Antwort, mit
@@ -156,6 +161,58 @@ module Admin
 
       setting.update!(stream_templates: neu.compact_blank)
       render json: templates_hash
+    end
+
+    # GET admin/streaming/youtube
+    #
+    # Woran der Waechter haengt und ob er ueberhaupt haengt. Ohne diese Auskunft
+    # ist ein abgelaufener Zugang von aussen nicht zu sehen: Der Waechter laeuft
+    # als Cronjob, und sein Scheitern faellt sonst erst auf, wenn eine
+    # Uebertragung nach dem Spiel weiterlaeuft.
+    def youtube
+      render json: youtube_hash
+    end
+
+    # POST admin/streaming/youtube
+    #
+    # Der Code stammt aus dem Anmeldedialog im Browser. Nur der Server kann ihn
+    # einloesen, und nur dabei entsteht der dauerhafte Zugang.
+    def connect_youtube
+      unless YoutubeOauth.configured?
+        return render json: { error: 'Der Verbindungsweg ist nicht eingerichtet, es fehlt: ' \
+                                     "#{YoutubeOauth.fehlende_einstellungen.join(', ')}" },
+                      status: :unprocessable_entity
+      end
+
+      satz = YoutubeOauth.new(code: params[:code], redirect_uri: params[:redirect_uri])
+                         .verbinden!(user: current_user)
+      render json: youtube_hash(satz)
+    rescue YoutubeOauth::NoRefreshToken
+      render json: { error: 'Google hat keinen dauerhaften Zugang ausgegeben. Das passiert, wenn ' \
+                            'dieses Konto der Anwendung schon zugestimmt hat: Den Zugriff unter ' \
+                            'myaccount.google.com/permissions entfernen und erneut verbinden.' },
+             status: :unprocessable_entity
+    rescue YoutubeOauth::LiveStreamingDisabled
+      render json: { error: 'Der gewaehlte Kanal ist nicht fuer Livestreaming freigeschaltet. Am ' \
+                            'Konto haengen zwei gleichnamige Kanaele -- bitte den mit den Videos ' \
+                            'waehlen.' },
+             status: :unprocessable_entity
+    rescue YoutubeOauth::Error => e
+      render json: { error: e.message }, status: :unprocessable_entity
+    end
+
+    # DELETE admin/streaming/youtube
+    #
+    # Widerruft den Zugang ZUERST bei Google und raeumt ihn dann oertlich ab.
+    # Ohne den Widerruf waere das Trennen eine Sackgasse: Einen Refresh-Token
+    # gibt Google nur bei der ersten Zustimmung eines Kontos heraus, ein
+    # anschliessendes Neuverbinden liefe also in `NoRefreshToken`.
+    def disconnect_youtube
+      satz = StreamCredential.current
+      YoutubeOauth.revoke(satz&.refresh_token)
+      satz&.update!(refresh_token: nil, client_id: nil, channel_id: nil, channel_title: nil,
+                    connected_at: nil, connected_by_user_id: nil)
+      render json: youtube_hash
     end
 
     # GET admin/streaming/hosts
@@ -312,6 +369,34 @@ module Admin
             .pluck(:id)
     end
 
+    def youtube_hash(satz = nil)
+      satz ||= StreamCredential.current
+      # EINMAL nachschlagen: Jeder Aufruf von `credentials` liest die Zeile und
+      # entschluesselt sie.
+      zugang = YoutubeLiveApi.credentials
+      {
+        connected: zugang.present?,
+        # 'db' heisst ueber die Oberflaeche verbunden, 'env' ueber die Variablen
+        # am Container. Der Unterschied entscheidet, ob ein Neuverbinden hier
+        # ueberhaupt etwas aendert.
+        source: zugang&.fetch(:source),
+        channel_id: satz&.channel_id,
+        channel_title: satz&.channel_title,
+        connected_at: satz&.connected_at&.iso8601,
+        connected_by: satz&.connected_by&.fullname.presence,
+        can_connect: YoutubeOauth.configured?,
+        # Ob DIESE Person verbinden darf. Die Oberflaeche soll den Knopf nicht
+        # anbieten, wo der Server ihn ablehnt -- und die Rolle steht nicht in
+        # den Berechtigungen, die im Browser liegen (dort stehen Menuepunkte).
+        may_connect: current_user.permission_hash[:admin].present?,
+        missing_settings: YoutubeOauth.fehlende_einstellungen,
+        # Die Kennung kommt vom Server und nicht aus dem Bundle: Eingeloest wird
+        # der Code mit dem Paar, das hier liegt. Weichen beide voneinander ab,
+        # scheiterte die Anmeldung erst beim Einloesen und niemand saehe, warum.
+        client_id: ENV.fetch('YOUTUBE_WEB_CLIENT_ID', nil)
+      }
+    end
+
     def host_hash(verein)
       {
         id: verein.id,
@@ -355,6 +440,12 @@ module Admin
     def authorize!
       ph = current_user.permission_hash
       return if ph[:admin].present? || (ph[:sbk].present? && ph[:sbk].include?(0))
+
+      render json: { error: 'Nicht berechtigt' }, status: :forbidden
+    end
+
+    def authorize_admin!
+      return if current_user.permission_hash[:admin].present?
 
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end

@@ -30,7 +30,8 @@ namespace :streaming do
   desc 'Laufende YouTube-Übertragungen ohne Signal beenden, wenn der Spielbericht geschlossen ist'
   task watchdog: :environment do
     unless YoutubeLiveApi.configured?
-      meldung = 'YouTube-Zugang nicht eingerichtet (YOUTUBE_CLIENT_ID/_SECRET/_REFRESH_TOKEN)'
+      meldung = 'YouTube-Zugang nicht eingerichtet -- weder im Streaming-Bereich verbunden ' \
+                'noch als YOUTUBE_CLIENT_ID/_SECRET/_REFRESH_TOKEN gesetzt'
 
       # AUF PRODUKTION IST DAS EIN AUSFALL, sonst der Normalzustand.
       #

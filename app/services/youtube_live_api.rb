@@ -61,15 +61,45 @@ class YoutubeLiveApi
 
   ENV_KEYS = %w[YOUTUBE_CLIENT_ID YOUTUBE_CLIENT_SECRET YOUTUBE_REFRESH_TOKEN].freeze
 
+  # ZWEI QUELLEN, DATENBANK ZUERST: Der ueber die Oberflaeche verbundene Zugang
+  # (`StreamCredential`) schlaegt die Umgebungsvariablen. Andersherum liesse sich
+  # ein abgelaufener Token nicht mehr ueber die Oberflaeche ersetzen -- die alte
+  # `.env`-Zeile gewaenne jedes Mal, und das Neuverbinden waere wirkungslos,
+  # ohne dass es jemand sieht.
+  #
+  # Die Variablen bleiben als Rueckfallebene: Sie tragen den Betrieb heute, und
+  # ein Deploy soll den Waechter nicht anhalten, nur weil noch niemand auf den
+  # neuen Weg gewechselt ist.
+  def self.credentials
+    StreamCredential.credentials || env_credentials
+  end
+
+  def self.env_credentials
+    return nil unless ENV_KEYS.all? { |key| ENV[key].present? }
+
+    { client_id: ENV.fetch('YOUTUBE_CLIENT_ID'),
+      client_secret: ENV.fetch('YOUTUBE_CLIENT_SECRET'),
+      refresh_token: ENV.fetch('YOUTUBE_REFRESH_TOKEN'),
+      source: 'env' }
+  end
+
   def self.configured?
-    ENV_KEYS.all? { |key| ENV[key].present? }
+    credentials.present?
+  end
+
+  # Woher der benutzte Zugang stammt -- fuer die Anzeige im Streaming-Bereich.
+  def self.source
+    credentials&.fetch(:source)
   end
 
   def initialize
-    return if self.class.configured?
+    @credentials = self.class.credentials
+    return if @credentials
 
     fehlend = ENV_KEYS.reject { |key| ENV[key].present? }
-    raise NotConfigured, "YouTube-Zugang nicht eingerichtet, es fehlt: #{fehlend.join(', ')}"
+    raise NotConfigured,
+          'YouTube-Zugang nicht eingerichtet: weder ueber die Oberflaeche verbunden noch ' \
+          "als Umgebung gesetzt (es fehlt: #{fehlend.join(', ')})"
   end
 
   # Alle laufenden Übertragungen des angemeldeten Kanals.
@@ -203,9 +233,9 @@ class YoutubeLiveApi
   def access_token
     @access_token ||= begin
       antwort = form_post(URI(TOKEN_URL),
-                          client_id: ENV.fetch('YOUTUBE_CLIENT_ID'),
-                          client_secret: ENV.fetch('YOUTUBE_CLIENT_SECRET'),
-                          refresh_token: ENV.fetch('YOUTUBE_REFRESH_TOKEN'),
+                          client_id: @credentials.fetch(:client_id),
+                          client_secret: @credentials.fetch(:client_secret),
+                          refresh_token: @credentials.fetch(:refresh_token),
                           grant_type: 'refresh_token')
       antwort['access_token'].presence ||
         raise(Error, 'Antwort der Token-Ausgabe enthält kein access_token')

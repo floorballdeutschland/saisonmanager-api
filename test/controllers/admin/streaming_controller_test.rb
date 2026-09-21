@@ -838,11 +838,110 @@ module Admin
       assert_equal 'fdsb-key1-2345-6789-abcd', @guest.reload.stream_key
     end
 
+    # --- YouTube-Verbindung ---------------------------------------------------
+
+    test 'Admin sieht den Zustand der Verbindung' do
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/streaming/youtube'
+
+      assert_response :success
+      antwort = response.parsed_body
+      assert_includes antwort.keys, 'connected'
+      assert_includes antwort.keys, 'can_connect'
+    end
+
+    # Lesen darf die FD-SBK mit: Sie richtet die Uebertragungen ein und muss
+    # sehen, ob der Waechter ueberhaupt haengt.
+    test 'global gescopte FD-SBK sieht den Zustand' do
+      login(create(:user, :sbk_global))
+
+      get '/api/v2/admin/streaming/youtube'
+
+      assert_response :success
+    end
+
+    # Die Oberflaeche soll den Knopf nicht anbieten, wo der Server ihn ablehnt.
+    test 'may_connect trennt Admin von FD-SBK' do
+      login(create(:user, :admin))
+      get '/api/v2/admin/streaming/youtube'
+      assert response.parsed_body['may_connect']
+
+      login(create(:user, :sbk_global))
+      get '/api/v2/admin/streaming/youtube'
+      assert_not response.parsed_body['may_connect']
+    end
+
+    # Verbinden haengt den Verbandskanal dauerhaft an ein Google-Konto. Das ist
+    # keine Tageshandlung.
+    test 'GEGENPROBE: FD-SBK darf weder verbinden noch trennen' do
+      login(create(:user, :sbk_global))
+
+      post '/api/v2/admin/streaming/youtube', params: { code: 'egal' }
+      assert_response :forbidden
+
+      delete '/api/v2/admin/streaming/youtube'
+      assert_response :forbidden
+    end
+
+    test 'GEGENPROBE: ohne Anmeldung keine Auskunft ueber die Verbindung' do
+      get '/api/v2/admin/streaming/youtube'
+
+      assert_response :unauthorized
+    end
+
+    test 'ohne eingerichteten Verbindungsweg antwortet das Verbinden mit einem Hinweis' do
+      login(create(:user, :admin))
+      ohne_verbindungsweg do
+        post '/api/v2/admin/streaming/youtube', params: { code: 'code-1' }
+      end
+
+      assert_response :unprocessable_entity
+      assert_includes response.parsed_body['error'], 'YOUTUBE_WEB_CLIENT_ID'
+    end
+
+    # Der Widerruf ist kein Beiwerk: Google gibt einen Refresh-Token nur bei der
+    # ERSTEN Zustimmung eines Kontos heraus. Ohne ihn liefe das Neuverbinden
+    # nach einem Trennen in „kein dauerhafter Zugang" -- ausgerechnet auf dem
+    # Weg, der den Zugang wieder in Ordnung bringen soll.
+    test 'Admin trennt die Verbindung, und der Zugang wird bei Google widerrufen' do
+      mit_schluessel do
+        satz = StreamCredential.create!(refresh_token: '1//0-alt', channel_title: 'floorball deutschland')
+        login(create(:user, :admin))
+        widerrufen = []
+
+        YoutubeOauth.stub(:revoke, ->(token) { widerrufen << token }) do
+          delete '/api/v2/admin/streaming/youtube'
+        end
+
+        assert_response :success
+        assert_equal ['1//0-alt'], widerrufen
+        assert_nil satz.reload.refresh_token
+        assert_nil satz.channel_title
+      end
+    end
+
     private
 
     def login(user)
       post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
       assert_response :success
+    end
+
+    def ohne_verbindungsweg
+      vorher = %w[YOUTUBE_WEB_CLIENT_ID YOUTUBE_WEB_CLIENT_SECRET].index_with { |k| ENV.fetch(k, nil) }
+      vorher.each_key { |k| ENV.delete(k) }
+      yield
+    ensure
+      vorher.each { |k, v| ENV[k] = v unless v.nil? }
+    end
+
+    def mit_schluessel
+      vorher = ENV.fetch('YOUTUBE_TOKEN_KEY', nil)
+      ENV['YOUTUBE_TOKEN_KEY'] = 'ein-hinreichend-langer-testschluessel'
+      yield
+    ensure
+      vorher.nil? ? ENV.delete('YOUTUBE_TOKEN_KEY') : ENV['YOUTUBE_TOKEN_KEY'] = vorher
     end
 
     def create_game(start_time)
