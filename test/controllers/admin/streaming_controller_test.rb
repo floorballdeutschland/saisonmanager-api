@@ -861,6 +861,23 @@ module Admin
       assert_response :success
     end
 
+    # „Verbunden" aus der Umgebung, waehrend die gespeicherte Zeile unbrauchbar
+    # ist: Ohne diese Unterscheidung stuende auf der Seite ein Kanal samt
+    # Zeitpunkt aus einem Zugang, den niemand mehr benutzt.
+    test 'eine unbrauchbar gewordene Zeile meldet stored_active false' do
+      mit_schluessel do
+        StreamCredential.create!(refresh_token: '1//0-alt', client_id: 'alte-kennung',
+                                 channel_title: 'floorball deutschland')
+        login(create(:user, :admin))
+
+        get '/api/v2/admin/streaming/youtube'
+
+        antwort = response.parsed_body
+        assert antwort['stored_present']
+        assert_not antwort['stored_active']
+      end
+    end
+
     # Die Oberflaeche soll den Knopf nicht anbieten, wo der Server ihn ablehnt.
     test 'may_connect trennt Admin von FD-SBK' do
       login(create(:user, :admin))

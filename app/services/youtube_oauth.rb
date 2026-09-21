@@ -70,10 +70,20 @@ class YoutubeOauth
     zugriff = token['access_token'].presence
     raise Error, 'Antwort der Token-Ausgabe enthaelt kein access_token' if zugriff.nil?
 
-    kanal = kanal_lesen(zugriff)
-    live_pruefen(zugriff)
+    # SCHEITERT DIE PRUEFUNG, MUSS DER FRISCHE TOKEN WIEDER WEG. Sonst bleibt
+    # die Zustimmung bei Google stehen, obwohl hier nichts gespeichert wurde --
+    # und der zweite Anlauf, zu dem die Fehlermeldung auffordert, bekaeme keinen
+    # Refresh-Token mehr (Google gibt ihn nur bei der ERSTEN Zustimmung).
+    # Genau die Sackgasse, die `disconnect_youtube` mit dem Widerruf vermeidet.
+    begin
+      kanal = kanal_lesen(zugriff)
+      live_pruefen(zugriff)
+    rescue StandardError
+      self.class.revoke(refresh)
+      raise
+    end
 
-    satz = StreamCredential.current || StreamCredential.new
+    satz = StreamCredential.singleton
     satz.refresh_token = refresh
     satz.client_id = ENV.fetch('YOUTUBE_WEB_CLIENT_ID', nil)
     satz.channel_id = kanal[:id]

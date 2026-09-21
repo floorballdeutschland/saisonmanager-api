@@ -87,6 +87,17 @@ class YoutubeLiveApi
     credentials.present?
   end
 
+  # WAS genau fehlt -- beide Wege, nicht nur der alte. Nennte die Meldung nur
+  # die drei Desktop-Variablen, schickte sie den Betrieb auf die falsche
+  # Faehrte: Wer ueber die Oberflaeche verbunden hat und die alten Zeilen
+  # entfernt hat, liest dann „es fehlt YOUTUBE_CLIENT_ID" -- eine Variable, die
+  # absichtlich weg ist und deren Fehlen nicht die Ursache ist.
+  def self.fehlende_einstellungen
+    return YoutubeOauth.fehlende_einstellungen if StreamCredential.current&.refresh_token_ciphertext.present?
+
+    ENV_KEYS.reject { |key| ENV[key].present? }
+  end
+
   # Woher der benutzte Zugang stammt -- fuer die Anzeige im Streaming-Bereich.
   def self.source
     credentials&.fetch(:source)
@@ -96,10 +107,9 @@ class YoutubeLiveApi
     @credentials = self.class.credentials
     return if @credentials
 
-    fehlend = ENV_KEYS.reject { |key| ENV[key].present? }
     raise NotConfigured,
           'YouTube-Zugang nicht eingerichtet: weder ueber die Oberflaeche verbunden noch ' \
-          "als Umgebung gesetzt (es fehlt: #{fehlend.join(', ')})"
+          "als Umgebung gesetzt (es fehlt: #{self.class.fehlende_einstellungen.join(', ')})"
   end
 
   # Alle laufenden Übertragungen des angemeldeten Kanals.

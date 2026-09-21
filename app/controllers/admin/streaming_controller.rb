@@ -374,8 +374,17 @@ module Admin
       # EINMAL nachschlagen: Jeder Aufruf von `credentials` liest die Zeile und
       # entschluesselt sie.
       zugang = YoutubeLiveApi.credentials
+      # Liegt eine gespeicherte Zeile vor, wird aber NICHT benutzt? Das
+      # passiert, wenn die Kennung in der Google Cloud getauscht oder
+      # `YOUTUBE_TOKEN_KEY` geaendert wurde: `credentials` faellt dann still auf
+      # die Umgebung zurueck. Ohne diese Angabe stuende auf der Seite
+      # „verbunden" samt Kanal und Zeitpunkt aus einer Zeile, die niemand mehr
+      # benutzt -- genau der unsichtbare Zustand, den dieser Abruf aufdecken soll.
+      satz_aktiv = zugang&.fetch(:source) == 'db'
       {
         connected: zugang.present?,
+        stored_present: satz.present? && satz.connected?,
+        stored_active: satz_aktiv,
         # 'db' heisst ueber die Oberflaeche verbunden, 'env' ueber die Variablen
         # am Container. Der Unterschied entscheidet, ob ein Neuverbinden hier
         # ueberhaupt etwas aendert.
