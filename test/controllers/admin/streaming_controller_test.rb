@@ -730,25 +730,6 @@ module Admin
       login(create(:user, :admin))
 
       get '/api/v2/admin/streaming/teams', params: { league_id: [5] }
-    # --- YouTube-Verbindung ---------------------------------------------------
-
-    test 'Admin sieht den Zustand der Verbindung' do
-      login(create(:user, :admin))
-
-      get '/api/v2/admin/streaming/youtube'
-
-      assert_response :success
-      antwort = response.parsed_body
-      assert_includes antwort.keys, 'connected'
-      assert_includes antwort.keys, 'can_connect'
-    end
-
-    # Lesen darf die FD-SBK mit: Sie richtet die Uebertragungen ein und muss
-    # sehen, ob der Waechter ueberhaupt haengt.
-    test 'global gescopte FD-SBK sieht den Zustand' do
-      login(create(:user, :sbk_global))
-
-      get '/api/v2/admin/streaming/youtube'
 
       assert_response :success
     end
@@ -855,6 +836,31 @@ module Admin
 
       assert_response :success
       assert_equal 'fdsb-key1-2345-6789-abcd', @guest.reload.stream_key
+    end
+
+    # --- YouTube-Verbindung ---------------------------------------------------
+
+    test 'Admin sieht den Zustand der Verbindung' do
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/streaming/youtube'
+
+      assert_response :success
+      antwort = response.parsed_body
+      assert_includes antwort.keys, 'connected'
+      assert_includes antwort.keys, 'can_connect'
+    end
+
+    # Lesen darf die FD-SBK mit: Sie richtet die Uebertragungen ein und muss
+    # sehen, ob der Waechter ueberhaupt haengt.
+    test 'global gescopte FD-SBK sieht den Zustand' do
+      login(create(:user, :sbk_global))
+
+      get '/api/v2/admin/streaming/youtube'
+
+      assert_response :success
+    end
+
     # Die Oberflaeche soll den Knopf nicht anbieten, wo der Server ihn ablehnt.
     test 'may_connect trennt Admin von FD-SBK' do
       login(create(:user, :admin))

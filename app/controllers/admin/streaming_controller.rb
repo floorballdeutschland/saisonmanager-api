@@ -396,6 +396,7 @@ module Admin
         client_id: ENV.fetch('YOUTUBE_WEB_CLIENT_ID', nil)
       }
     end
+
     def host_hash(verein)
       {
         id: verein.id,
