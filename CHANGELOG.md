@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Die Spieltagsmail an die Schiedsrichter erklärt jetzt, was die beiden Knöpfe im Portal auslösen**: Die Mail nach dem eingereichten Spielbericht nannte nur den Weg zu „Meine Spieltage". Was dort nach dem Klick passiert, stand nirgends, und gefragt wurde vor allem nach dem Ablehnen: „Nicht ordnungsgemäß" meldet noch nichts, sondern öffnet zuerst die Spieltagscheckliste des Landesverbands, und erst „Meldung absenden" erreicht die zuständige SBK. Beide Knöpfe sind jetzt mit ihrer Wirkung in der Mail beschrieben, einschließlich des Hinweises, dass eine Bestätigung niemanden weiter benachrichtigt und sich nicht mehr ändern lässt. Dazu kommen die drei Punkte, die in der Rückfrage regelmäßig mitkamen: Die Bewertung ist erst ab Beginn des letzten Spiels möglich, sie gilt für den ganzen Spieltag statt für ein einzelnes Spiel, und ohne Rückmeldung gilt der Spieltag 48 Stunden nach Spieltagsende automatisch als bestätigt.
+
 ## [1.118.0] - 2026-09-21
 
 ### Behoben
