@@ -9,7 +9,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.119.1] - 2026-09-22
+
 ### Verbessert
+
+- **Die Aufstellung der öffentlichen Spielansicht steht auf dem Handy nach Mannschaft zusammen**: Einspaltig standen erst beide Aufstellungen, dann beide Starting six, dann beide Auszeichnungen untereinander. Wer die Heimmannschaft lesen wollte, scrollte je Abschnitt an der Gastmannschaft vorbei. Jetzt folgen Aufstellung, Betreuer, Starting six und Auszeichnungen einer Mannschaft aufeinander, und erst danach kommt die andere. Zweispaltig auf dem Desktop bleibt die Anordnung unverändert, Heim links und Gast rechts. Die Zwischenüberschriften sind dabei kleiner und grau abgesetzt, damit sie sich vom Mannschaftsnamen darüber unterscheiden — vorher trugen beide Ebenen dieselbe Schrift. Auf dem Handy steht neben jeder von ihnen zusätzlich das Mannschaftskürzel, weil der Mannschaftsname beim Scrollen längst aus dem Bild ist.
 
 - **Die öffentliche Spielansicht bekommt die Mannschaftskürzel mitgeliefert**: Der Spielabruf führt neben `home_team_name`/`guest_team_name` jetzt auch `home_team_short_name`/`guest_team_short_name`. Das Frontend setzt sie auf dem Handy neben die Zwischenüberschriften der Aufstellung (Betreuer, Starting six, Auszeichnungen), wo einspaltig sonst nicht mehr zu erkennen ist, zu welcher Mannschaft ein Abschnitt gehört und der volle Name die Zeile sprengen würde. Das Kürzel entsteht wie beim Ticker und beim Livestream-Overlay: die Mannschaft, sonst der Verein, sonst der Name, in jedem Fall auf acht Zeichen gekappt. Der Umweg über den Verein ist nötig, weil ein großer Teil der Mannschaften gar kein eigenes Kürzel trägt. Leer bleibt das Feld nur bei einer Paarung, deren Mannschaft noch nicht feststeht; dort zeigt die Ansicht weiter den Mannschaftsnamen.
 
