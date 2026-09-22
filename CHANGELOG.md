@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.120.0] - 2026-09-22
+
 ### Neu
 
 - **Der Verband kann den Nachnamen eines Spielers aus der öffentlichen Anzeige nehmen**: Wer nicht mehr am Spielbetrieb teilnimmt, kann nach Art. 17 und 21 DSGVO verlangen, dass er nicht länger über eine Suche nach seinem Namen im Netz auffindbar ist. Dafür gibt es in der Spielerverwaltung jetzt einen Schalter. Ist er gesetzt, entfällt der Nachname überall dort, wo bisher der volle Name stand: in der Scorerliste der Liga, in der Aufstellung, der Startaufstellung und den Auszeichnungen der Spielansicht, in der Torschützenliste der Mannschaft, auf der öffentlichen Spielerseite, in der öffentlichen Transferliste und in den Livestream-Overlays. Stehen bleiben Vorname, Mannschaft, Trikotnummer, Spiele und Tore. Die Spielerseite und die Statistik bleiben also erhalten und lesbar, nur eben ohne Nachnamen.
