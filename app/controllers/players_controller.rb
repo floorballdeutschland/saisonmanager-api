@@ -98,6 +98,7 @@ class PlayersController < ApplicationController
       # Verein oder in keinem, und beides wäre falsch. Vorbild: `manage_players`
       # in vm/clubs_and_teams.
       hash[:can_deactivate] = can_toggle_deactivation?(result)
+      hash[:can_hide_public_name] = can_hide_public_name?
       render json: hash
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
@@ -1047,11 +1048,17 @@ class PlayersController < ApplicationController
     # erreichbar und die Spieler-ID frei durchzählbar, ein Geburtsdatum je Name
     # wäre damit für den gesamten Spielerbestand abrufbar. Die öffentliche
     # Spielerseite zeigt beides ohnehin nicht an.
+    # Der Endpunkt ist die oeffentliche Spielerseite; ein anonymisiertes Profil
+    # traegt hier den Platzhalter. Die Zahlen bleiben, sie sind ohne den Namen
+    # keiner Person mehr zuzuordnen.
+    public_first_name, public_last_name =
+      PublicPlayerNames.mask_names(player.id, player.first_name, player.last_name)
+
     render json: {
       player: {
         id:             player.id,
-        first_name:     player.first_name,
-        last_name:      player.last_name,
+        first_name:     public_first_name,
+        last_name:      public_last_name,
         deactivated_at: player.deactivated_at
       },
       seasons:,
@@ -1131,6 +1138,46 @@ class PlayersController < ApplicationController
 
     player.reactivate!
     render json: deactivation_toggle_hash(player)
+  end
+
+  # POST /admin/players/:id/hide_public_name
+  #
+  # Nimmt den Namen aus der oeffentlichen Spiel- und Statistikausgabe. Antrag
+  # nach Art. 17/21 DSGVO einer Person, die nicht mehr am Spielbetrieb
+  # teilnimmt; was dabei bleibt und warum, steht in PublicPlayerNames.
+  def hide_public_name
+    player = Player.find_by(id: params[:id])
+    return render json: { message: 'Spieler nicht gefunden.' }, status: :not_found unless player
+    unless can_hide_public_name?
+      return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+    if player.public_name_hidden?
+      return render json: { message: 'Dieses Profil ist bereits anonymisiert.' }, status: :unprocessable_entity
+    end
+
+    reason = params[:reason].to_s.strip
+    if reason.length > PUBLIC_NAME_REASON_LIMIT
+      return render json: { message: "Der Vermerk darf hoechstens #{PUBLIC_NAME_REASON_LIMIT} Zeichen lang sein." },
+                    status: :unprocessable_entity
+    end
+
+    player.hide_public_name!(current_user.id, reason: reason)
+    render json: public_name_toggle_hash(player)
+  end
+
+  # POST /admin/players/:id/show_public_name
+  def show_public_name
+    player = Player.find_by(id: params[:id])
+    return render json: { message: 'Spieler nicht gefunden.' }, status: :not_found unless player
+    unless can_hide_public_name?
+      return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+    unless player.public_name_hidden?
+      return render json: { message: 'Dieses Profil ist nicht anonymisiert.' }, status: :unprocessable_entity
+    end
+
+    player.show_public_name!(current_user.id)
+    render json: public_name_toggle_hash(player)
   end
 
   def vm_players_index
@@ -1507,6 +1554,27 @@ class PlayersController < ApplicationController
   # vor api#472 die Heimat-Zugehörigkeit gestempelt hat und die reguläre
   # Prüfung ab dem Tag danach nein sagt. Ohne diesen Zweig verschwände für die
   # SBK genau an den Profilen der Knopf, für die der Endpunkt ihn hat.
+  # Laenge der `players.public_name_hidden_reason`-Spalte; der Vermerk ist ein
+  # internes Aktenzeichen, kein Freitextfeld.
+  PUBLIC_NAME_REASON_LIMIT = 255
+
+  # Ausdruecklich nur die Verbandsverwaltung: Die Anonymisierung ist die Antwort
+  # auf einen Betroffenenantrag und wird an der Geschaeftsstelle entschieden,
+  # nicht in der SBK eines einzelnen Spielbetriebs und erst recht nicht im
+  # Verein. Sie wirkt ausserdem ueber alle Spielbetriebe hinweg, ein auf einen
+  # Verband gescoptes Recht passte nicht dazu.
+  def can_hide_public_name?
+    user_permission_hash[:admin].present?
+  end
+
+  # Antwort auf beide Schalter, in der Form des Profils: Die Maske uebernimmt
+  # sie unveraendert (`this.player = updated`), wie bei deactivation_toggle_hash.
+  def public_name_toggle_hash(player)
+    player.full_hash(false, false, false)
+          .merge(can_deactivate: can_toggle_deactivation?(player),
+                 can_hide_public_name: can_hide_public_name?)
+  end
+
   def can_toggle_deactivation?(player)
     return can_deactivate_player?(player) if player.deactivated_at.nil?
 

@@ -643,6 +643,7 @@ class TeamsController < ApplicationController
   def scorer_entries(store)
     entries = store.values
     players = Player.where(id: entries.map { |s| s[:player_id] }).index_by(&:id)
+    hidden = PublicPlayerNames.hidden_ids
 
     entries
       .sort_by { |s| [-(s[:goals] + s[:assists]), -s[:goals], -s[:games]] }
@@ -650,10 +651,13 @@ class TeamsController < ApplicationController
         player = players[s[:player_id]]
         next if player.nil?
 
+        first_name, last_name =
+          PublicPlayerNames.mask_names(player.id, player.first_name, player.last_name, hidden)
+
         {
           player_id:    s[:player_id],
-          first_name:   player.first_name,
-          last_name:    player.last_name,
+          first_name:,
+          last_name:,
           games:        s[:games],
           goals:        s[:goals],
           assists:      s[:assists],

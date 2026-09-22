@@ -61,6 +61,10 @@ class Player < ApplicationRecord
 
   scope :active, -> { where(deactivated_at: nil) }
 
+  # Profile, deren Name in der oeffentlichen Ausgabe maskiert wird. Siehe
+  # PublicPlayerNames.
+  scope :public_name_hidden, -> { where.not(public_name_hidden_at: nil) }
+
   def meta_hash
     attributes.with_indifferent_access.slice(:id, :last_name, :first_name, :birthdate, :gender, :security_id, :deactivated_at)
   end
@@ -94,7 +98,12 @@ class Player < ApplicationRecord
       security_id:,
       email:,
       deactivated_at:,
-      deactivation_reason:
+      deactivation_reason:,
+      # Die Maske der Spielerverwaltung zeigt daran den Hinweis und den
+      # Gegenknopf. Der Name im selben Hash bleibt der echte: Maskiert wird die
+      # Spiel- und Statistikausgabe, nicht die Verwaltung (PublicPlayerNames).
+      public_name_hidden_at:,
+      public_name_hidden_reason:
     }
 
     if with_licenses
@@ -686,6 +695,37 @@ class Player < ApplicationRecord
   #
   # Die offene Zugehoerigkeit ist dabei nicht Kosmetik, sondern das Mittel: Sie ist
   # es, die das Profil transferierbar haelt.
+  def public_name_hidden?
+    public_name_hidden_at.present?
+  end
+
+  # Nimmt den Namen dieses Profils aus der oeffentlichen Spiel- und
+  # Statistikausgabe (DSGVO-Loeschantrag, siehe PublicPlayerNames). Der
+  # Datensatz behaelt Namen und Geburtsdatum: Ohne sie waere dieselbe Person
+  # jederzeit ein zweites Mal anlegbar, und Sperren wie Lizenzhistorie haengen
+  # daran.
+  #
+  # `validate: false` wie bei #deactivate!: Altbestand erfuellt die heutigen
+  # Validierungen nicht durchgaengig (etwa nation_id), und daran darf ein
+  # Betroffenenantrag nicht scheitern.
+  def hide_public_name!(user_id, reason: nil)
+    self.public_name_hidden_at = Time.current
+    self.public_name_hidden_by = user_id
+    self.public_name_hidden_reason = reason.presence
+    save!(validate: false)
+    PublicPlayerNames.flush_for!(self)
+  end
+
+  # Umkehrbar, und das ist Absicht: Ein Widerruf oder eine Rueckkehr in den
+  # Spielbetrieb laesst sich sonst nur ueber einen Datenlauf abbilden.
+  def show_public_name!(user_id)
+    self.public_name_hidden_at = nil
+    self.public_name_hidden_by = user_id
+    self.public_name_hidden_reason = nil
+    save!(validate: false)
+    PublicPlayerNames.flush_for!(self)
+  end
+
   def deactivate!(user_id, reason: nil)
     self.deactivated_at = Time.current
     self.deactivated_by = user_id

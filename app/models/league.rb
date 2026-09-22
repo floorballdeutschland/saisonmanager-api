@@ -535,12 +535,19 @@ class League < ApplicationRecord
     # Spielerfotos liefert die Scorerliste bewusst nicht: Der Endpunkt ist per
     # X-Api-Key erreichbar, ein Porträt gehört nicht auf die offene Fläche.
     player_lookup = Player.where(id: player_ids).index_by(&:id)
+    hidden = PublicPlayerNames.hidden_ids
 
     next_position_diff = 1
     sorted_results.each_with_index do |player_result, index|
       player = player_lookup[player_result[:player_id]]
       player_result[:first_name] = player_result[:first_name].presence || player&.first_name
       player_result[:last_name] = player_result[:last_name].presence || player&.last_name
+      # Nach dem Rueckfall auf den Spielerdatensatz, nicht davor: Der maskierte
+      # Vorname ist leer, `presence` wuerde sonst genau daran den echten Vornamen
+      # aus dem Profil nachziehen.
+      player_result[:first_name], player_result[:last_name] =
+        PublicPlayerNames.mask_names(player_result[:player_id], player_result[:first_name],
+                                     player_result[:last_name], hidden)
       player_result[:sort] = index
       if last_entry.nil?
         player_result[:position] = 1
