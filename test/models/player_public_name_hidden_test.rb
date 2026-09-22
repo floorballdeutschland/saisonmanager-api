@@ -22,14 +22,13 @@ class PlayerPublicNameHiddenTest < ActiveSupport::TestCase
     assert_equal 'DSGVO 2026-09-22', @player.public_name_hidden_reason
   end
 
-  test 'Zuruecknehmen raeumt Kennzeichnung und Vermerk ab' do
+  test 'Zuruecknehmen raeumt die Kennzeichnung ab' do
     @player.hide_public_name!(@user.id, reason: 'DSGVO 2026-09-22')
     @player.show_public_name!(@user.id)
 
     @player.reload
     assert_not @player.public_name_hidden?
     assert_nil @player.public_name_hidden_at
-    assert_nil @player.public_name_hidden_reason
   end
 
   test 'ein Profil, das die heutigen Validierungen nicht erfuellt, laesst sich anonymisieren' do
@@ -75,6 +74,57 @@ class PlayerPublicNameHiddenTest < ActiveSupport::TestCase
   test 'ohne anonymisiertes Profil kommt die Aufstellung unveraendert zurueck' do
     entries = [{ 'player_id' => @player.id, 'player_name' => 'Beispiel' }]
 
-    assert_same entries, PublicPlayerNames.mask_lineup(entries)
+    assert_equal entries, PublicPlayerNames.mask_lineup(entries)
+  end
+
+  test 'die ganze Aufstellungsseite wird maskiert' do
+    other = create(:player, first_name: 'Anna', last_name: 'Meier')
+    @player.hide_public_name!(@user.id)
+    entries = [
+      { 'player_id' => @player.id, 'player_firstname' => 'Pierre', 'player_name' => 'Beispiel' },
+      { 'player_id' => other.id, 'player_firstname' => 'Anna', 'player_name' => 'Meier' }
+    ]
+
+    masked = PublicPlayerNames.mask_lineup(entries)
+
+    assert_equal [PublicPlayerNames::HIDDEN_LAST_NAME, 'Meier'], masked.pluck('player_name')
+  end
+
+  # Der Altbestand traegt die Spieler-ID im JSONB teils als Zeichenkette. Genau
+  # dieser Bestand ist bei einem Loeschantrag gemeint, denn es geht um Spiele von
+  # frueher. Ohne die Normalisierung in #hidden? liefe die Maskierung daran
+  # vorbei, und die Testreihe bliebe trotzdem gruen.
+  test 'auch eine Spieler-ID als Zeichenkette wird getroffen' do
+    @player.hide_public_name!(@user.id)
+    entry = { 'player_id' => @player.id.to_s, 'player_firstname' => 'Pierre', 'player_name' => 'Beispiel' }
+
+    assert_equal PublicPlayerNames::HIDDEN_LAST_NAME,
+                 PublicPlayerNames.mask_lineup_entry(entry)['player_name']
+  end
+
+  # Mit dem Null-Store der Testumgebung laeuft der Block jedes Mal neu, das
+  # Leeren waere also nicht pruefbar. Bleibt es aus, steht der Klarname bis zum
+  # Ablauf von CACHE_TTL weiter an JEDER oeffentlichen Stelle.
+  test 'das Umschalten leert den Satz der anonymisierten IDs' do
+    with_real_cache do
+      assert_empty PublicPlayerNames.hidden_ids
+
+      @player.hide_public_name!(@user.id)
+      Current.public_name_hidden_ids = nil
+
+      assert_includes PublicPlayerNames.hidden_ids, @player.id
+    end
+  end
+
+  test 'die Ruecknahme laesst den Vermerk als Beleg stehen' do
+    @player.hide_public_name!(@user.id, reason: 'DSGVO 2026-09-22')
+    @player.show_public_name!(@user.id)
+
+    @player.reload
+    assert_not @player.public_name_hidden?
+    # Nach Art. 5 Abs. 2 DSGVO muss belegbar bleiben, dass und warum einmal
+    # anonymisiert wurde. Sichtbar ist der Vermerk nur am anonymisierten Profil.
+    assert_equal 'DSGVO 2026-09-22', @player.public_name_hidden_reason
+    assert_equal @user.id, @player.public_name_hidden_by
   end
 end

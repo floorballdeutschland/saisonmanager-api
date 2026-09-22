@@ -339,7 +339,8 @@ class GamesController < ApplicationController
         game.record_updated_by = author_user_id
 
         if game.save
-          render json: { players: game.players[side], warning: lineup_license_warning(game, player, side) }
+          render json: { players: PublicPlayerNames.mask_lineup(game.players[side]),
+                         warning: lineup_license_warning(game, player, side) }
         else
           render json: { message: game.errors }, status: :unprocessable_entity
         end
@@ -495,7 +496,7 @@ class GamesController < ApplicationController
       game.record_updated_by = author_user_id
 
       if game.save
-        render json: game.players[side]
+        render json: PublicPlayerNames.mask_lineup(game.players[side])
       else
         render json: { message: game.errors }, status: :unprocessable_entity
       end
@@ -539,7 +540,7 @@ class GamesController < ApplicationController
       game.record_updated_by = author_user_id
 
       if captain_set && game.save
-        render json: game.players[side]
+        render json: PublicPlayerNames.mask_lineup(game.players[side])
       else
         render json: { message: game.errors }, status: :unprocessable_entity
       end
@@ -572,7 +573,7 @@ class GamesController < ApplicationController
       game.record_updated_by = author_user_id
 
       if game.save
-        render json: game.players[side]
+        render json: PublicPlayerNames.mask_lineup(game.players[side])
       else
         render json: { message: game.errors }, status: :unprocessable_entity
       end
@@ -607,7 +608,7 @@ class GamesController < ApplicationController
       game.record_updated_by = author_user_id
 
       if game.save
-        render json: game.players[side]
+        render json: PublicPlayerNames.mask_lineup(game.players[side])
       else
         render json: { message: game.errors }, status: :unprocessable_entity
       end

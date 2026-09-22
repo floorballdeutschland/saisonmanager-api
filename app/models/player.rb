@@ -695,6 +695,30 @@ class Player < ApplicationRecord
   #
   # Die offene Zugehoerigkeit ist dabei nicht Kosmetik, sondern das Mittel: Sie ist
   # es, die das Profil transferierbar haelt.
+  def deactivate!(user_id, reason: nil)
+    self.deactivated_at = Time.current
+    self.deactivated_by = user_id
+    self.deactivation_reason = reason
+    save!(validate: false)
+  end
+
+  # Nimmt die Deaktivierung samt ihrer Nebenwirkungen im Bestand zurueck: die von
+  # ihr geschlossenen Zugehoerigkeiten gehen wieder auf, die von ihr geschriebenen
+  # DELETED-Eintraege verschwinden aus dem Lizenz-Verlauf. Fuer alles, was seit
+  # api#472 deaktiviert wurde, sind beide Schritte ein No-op, weil es diese
+  # Nebenwirkungen nicht mehr gibt.
+  def reactivate!
+    # Vor dem Loeschen der Kennzeichnung: beide Schritte lesen `deactivated_at` und
+    # `deactivated_by`.
+    self.licenses ||= []
+    pop_deactivation_license_entries!
+    reopen_memberships_closed_by_deactivation!(persist: false)
+
+    self.deactivated_at = nil
+    self.deactivated_by = nil
+    save!(validate: false)
+  end
+
   def public_name_hidden?
     public_name_hidden_at.present?
   end
@@ -718,36 +742,18 @@ class Player < ApplicationRecord
 
   # Umkehrbar, und das ist Absicht: Ein Widerruf oder eine Rueckkehr in den
   # Spielbetrieb laesst sich sonst nur ueber einen Datenlauf abbilden.
-  def show_public_name!(user_id)
+  #
+  # Vermerk und setzendes Konto bleiben stehen. Sie beschreiben den Antrag, auf
+  # den hin anonymisiert wurde, und der hat auch nach der Ruecknahme
+  # stattgefunden: Nach Art. 5 Abs. 2 DSGVO muss der Verband belegen koennen,
+  # dass und warum er einem Betroffenenantrag gefolgt ist. Sie zu ueberschreiben
+  # hiesse, den Beleg mit der Ruecknahme zu loeschen. Sichtbar sind sie nur am
+  # anonymisierten Profil, ein erneutes Setzen ueberschreibt sie mit dem neuen
+  # Vorgang.
+  def show_public_name!(_user_id)
     self.public_name_hidden_at = nil
-    self.public_name_hidden_by = user_id
-    self.public_name_hidden_reason = nil
     save!(validate: false)
     PublicPlayerNames.flush_for!(self)
-  end
-
-  def deactivate!(user_id, reason: nil)
-    self.deactivated_at = Time.current
-    self.deactivated_by = user_id
-    self.deactivation_reason = reason
-    save!(validate: false)
-  end
-
-  # Nimmt die Deaktivierung samt ihrer Nebenwirkungen im Bestand zurueck: die von
-  # ihr geschlossenen Zugehoerigkeiten gehen wieder auf, die von ihr geschriebenen
-  # DELETED-Eintraege verschwinden aus dem Lizenz-Verlauf. Fuer alles, was seit
-  # api#472 deaktiviert wurde, sind beide Schritte ein No-op, weil es diese
-  # Nebenwirkungen nicht mehr gibt.
-  def reactivate!
-    # Vor dem Loeschen der Kennzeichnung: beide Schritte lesen `deactivated_at` und
-    # `deactivated_by`.
-    self.licenses ||= []
-    pop_deactivation_license_entries!
-    reopen_memberships_closed_by_deactivation!(persist: false)
-
-    self.deactivated_at = nil
-    self.deactivated_by = nil
-    save!(validate: false)
   end
 
   # Oeffnet die Vereinszugehoerigkeiten, die eine Deaktivierung vor api#472

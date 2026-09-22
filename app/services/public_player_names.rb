@@ -4,13 +4,19 @@
 #
 # Warum die Anzeige und nicht der Datensatz geaendert wird:
 #
-# Die Namen in Scorerlisten, Aufstellungen und Spielberichten stammen NICHT aus
-# `players`, sondern aus dem Spielbericht-Schnappschuss in `games.players`
-# (`player_firstname` / `player_name`, siehe Game#lineup_player_names). Ein
-# umbenanntes oder geloeschtes Spielerprofil aendert an den oeffentlichen Seiten
-# deshalb nichts -- der Name bliebe stehen. Umgekehrt ist der Schnappschuss der
-# Nachweis darueber, wer laut Spielbericht auf dem Feld stand; ihn zu
-# ueberschreiben waere nicht umkehrbar und wuerde den Bericht verfaelschen.
+# Die Namen in Scorerlisten, Aufstellungen und Spielberichten stammen
+# ueberwiegend nicht aus `players`, sondern aus dem Spielbericht-Schnappschuss
+# in `games.players` (`player_firstname` / `player_name`, siehe
+# Game#lineup_player_names). Ein umbenanntes oder geloeschtes Spielerprofil
+# aendert an diesen Seiten deshalb nichts -- der Name bliebe stehen. Umgekehrt
+# ist der Schnappschuss der Nachweis darueber, wer laut Spielbericht auf dem
+# Feld stand; ihn zu ueberschreiben waere nicht umkehrbar und wuerde den Bericht
+# verfaelschen.
+#
+# Zwei Wege lesen den Namen doch aus dem Profil, und zwar absichtlich, damit eine
+# Umbenennung dort sofort durchschlaegt: TeamsController#scorer_entries und der
+# Rueckfall in League#scorer fuer Schnappschuesse ohne Namen (sehr alte
+# Importe). Beide sind hier ebenfalls maskiert.
 #
 # Also bleibt der Bestand unangetastet und die Maskierung sitzt an den Stellen,
 # die Namen herausgeben. Gesteuert wird sie ueber `players.public_name_hidden_at`
@@ -18,13 +24,23 @@
 # Schnappschuss.
 #
 # Bewusst nicht nach Anmeldung unterschieden: Maskiert werden die Spiel- und
-# Statistikdaten fuer jeden Abruf, den vollen Namen fuehrt allein die
-# Spielerverwaltung (Profil, Suche, Lizenzen, Sperren). Das ist die Grenze, die
-# sich gegenueber der betroffenen Person begruenden laesst, und sie kommt ohne
-# zweite, nur fuer angemeldete Abrufe gueltige Fassung jeder Nutzlast aus --
-# eine solche Fassung wuerde frueher oder spaeter in einen der gemeinsamen
-# Caches geraten. Die Spieler-ID bleibt ueberall stehen, intern ist die Zuordnung
-# damit weiter moeglich.
+# Statistikdaten fuer jeden Abruf, auch fuer den angemeldeten und fuer das
+# Spielsekretariat. Den vollen Namen fuehrt die Spielerverwaltung (Profil,
+# Suche, Lizenzen, Sperren). Das ist die Grenze, die sich gegenueber der
+# betroffenen Person begruenden laesst, und sie kommt ohne eine zweite, nur fuer
+# angemeldete Abrufe gueltige Fassung jeder Nutzlast aus -- eine solche Fassung
+# wuerde frueher oder spaeter in einen der gemeinsamen Caches geraten. Die
+# Spieler-ID bleibt ueberall stehen, intern ist die Zuordnung damit weiter
+# moeglich.
+#
+# AUSDRUECKLICH NICHT maskiert sind die Lizenzlisten am Spieltag:
+# PublicLicenseListController, PublicSecretaryController und der Kader in
+# ClubsController. Die tragen zwar "public" im Namen und kommen ohne Cookie aus,
+# haengen aber an einem signierten Link beziehungsweise am Sekretariats-Token
+# und dienen der Feststellung der Spielberechtigung am Kampfgericht. Dort muss
+# die Person benennbar bleiben, sonst laesst sich nicht pruefen, wer spielen
+# darf. Wer diese Stellen fuer eine Luecke haelt und zumacht, legt das
+# Kampfgericht lahm.
 #
 # Keine Initialen und kein Namensrest: In einer Liga mit ein paar Dutzend
 # Beteiligten waere "P. Labuch" oder "Pierre L." trivial zurueckzufuehren und
@@ -33,36 +49,42 @@ module PublicPlayerNames
   HIDDEN_FIRST_NAME = ''.freeze
   HIDDEN_LAST_NAME = 'Anonymisiert'.freeze
 
-  # Die Menge ist klein (Einzelfaelle) und wird auf jeder oeffentlichen
-  # Spielseite gebraucht, deshalb gecacht. Geleert wird beim Umschalten
-  # (Player#hide_public_name!), die TTL ist nur die zweite Sicherung.
   CACHE_KEY = 'players/public_name_hidden_ids'.freeze
-  CACHE_TTL = 1.hour
+
+  # Kurz gehalten, und das ist hier kein Geschmack: Die TTL ist nicht die
+  # Ersparnis, sondern die Obergrenze des Schadens. Scheitert das Leeren beim
+  # Umschalten (Redis weg, siehe #flush!), steht der Klarname genau so lange
+  # weiter oeffentlich. Fuenf Minuten sind der Wert der uebrigen Liga-Caches,
+  # und die Abfrage dahinter ist ein `pluck` auf einem Teilindex ueber eine
+  # Handvoll Zeilen.
+  CACHE_TTL = 5.minutes
 
   class << self
     # Menge statt Liste: Die Aufrufer schlagen je Aufstellungseintrag nach.
+    #
+    # Der Wert haelt sich fuer die Dauer der Anfrage in Current, weil die
+    # Scorerliste einer Liga ihn je Spiel braucht. Ohne diesen Halt waeren das
+    # so viele Redis-Zugriffe wie die Liga Spiele hat.
     def hidden_ids
-      Array(cached_ids).to_set
+      Current.public_name_hidden_ids ||= Array(cached_ids).to_set
     end
 
     def hidden?(player_id, hidden = hidden_ids)
       player_id.present? && hidden.include?(player_id.to_i)
     end
 
-    # Eine Aufstellungsliste aus dem Spielbericht-Schnappschuss.
-    #
-    # Ohne betroffenen Spieler kommt die Liste unveraendert zurueck, inklusive
-    # der urspruenglichen Hash-Objekte: Game#players_with_position schreibt in
-    # die Eintraege (`position`) und verlaesst sich darauf, dass es dieselben
-    # sind.
+    # Eine ganze Aufstellungsseite aus dem Schnappschuss, fuer die Wege, die sie
+    # roh herausgeben (die Schreibwege des Spielberichts in GamesController).
     def mask_lineup(entries, hidden = hidden_ids)
-      return entries if hidden.empty? || !entries.is_a?(Array)
+      return entries unless entries.is_a?(Array)
 
       entries.map { |entry| mask_lineup_entry(entry, hidden) }
     end
 
-    # Ein einzelner Schnappschuss-Eintrag. Kopiert nur im Trefferfall, damit der
-    # Regelfall ohne Allokation auskommt.
+    # Ein einzelner Eintrag aus dem Spielbericht-Schnappschuss. Kopiert nur im
+    # Trefferfall, damit der Regelfall ohne Allokation auskommt und der Aufrufer
+    # weiter mit denselben Hash-Objekten arbeitet (Game#players_with_position
+    # schreibt `position` hinein).
     def mask_lineup_entry(entry, hidden = hidden_ids)
       return entry unless entry.is_a?(Hash) && hidden?(entry['player_id'], hidden)
 
@@ -70,49 +92,81 @@ module PublicPlayerNames
     end
 
     # Fuer die Wege, die den Namen aus dem Spielerdatensatz oder aus einem
-    # bereits aufgeloesten Ergebnis nehmen (Scorerliste, Spielerstatistik).
+    # bereits aufgeloesten Ergebnis nehmen (Scorerliste, Spielerstatistik,
+    # Transferliste).
     def mask_names(player_id, first_name, last_name, hidden = hidden_ids)
       return [first_name, last_name] unless hidden?(player_id, hidden)
 
       [HIDDEN_FIRST_NAME, HIDDEN_LAST_NAME]
     end
 
+    # Leert den Satz der anonymisierten IDs.
+    #
+    # `Rails.cache.delete` wirft nicht: Der `error_handler` des Redis-Stores
+    # (config/environments/production.rb) verwandelt jeden Verbindungsfehler in
+    # einen Rueckgabewert. Das unterscheidet zwei Faelle, die gleich aussehen:
+    # `false` heisst "Schluessel war gar nicht da" und ist der Normalfall bei
+    # kaltem Cache, `nil` heisst "Loeschung ist ausgefallen". Nur der zweite ist
+    # meldenswert, denn dann steht der Klarname bis zum Ablauf von CACHE_TTL
+    # weiter in Scorerliste, Aufstellung und Overlay, waehrend die
+    # Geschaeftsstelle eine gruene Erfolgsmeldung sieht.
     def flush!
-      Rails.cache.delete(CACHE_KEY)
+      Current.public_name_hidden_ids = nil
+      result = Rails.cache.delete(CACHE_KEY)
+      return unless result.nil?
+
+      Sentry.capture_message(
+        "PublicPlayerNames: #{CACHE_KEY} konnte nicht geleert werden, ein anonymisierter " \
+        "Name bleibt bis zu #{CACHE_TTL.inspect} oeffentlich sichtbar",
+        level: :error
+      )
     end
 
     # Nach dem Umschalten: die Caches, die bereits aufgeloeste Namen halten.
     #
     # `leagues/:id/scorer` ist der einzige Liga-Cache mit Namen (table und
-    # schedule fuehren nur Mannschaften). Die Spielerstatistik cacht zwar nur
-    # Zahlen, der Kopf der Antwort traegt aber den Namen -- er wird frisch
-    # gelesen, deshalb reicht dort der Eintrag des Spielers selbst nicht, er ist
-    # gar nicht betroffen. Er steht hier trotzdem, weil die Liste der Ligen aus
-    # derselben Abfrage faellt und ein Eintrag zu wenig teurer waere als einer
-    # zu viel.
+    # schedule fuehren nur Mannschaften). `transfers` traegt die Namen der
+    # Vereinswechsel dieser Saison. Die Spielerstatistik cacht nur Zahlen, der
+    # Name im Kopf der Antwort wird frisch gelesen -- die beiden Schluessel
+    # stehen hier nur, weil sie nichts kosten.
     #
-    # `games/:id/full_hash/*` bleibt aussen vor: Der Key traegt `updated_at` des
-    # Spiels, liesse sich also nur ueber alle Spiele des Profils aufzaehlen, und
-    # die TTL betraegt dort eine Minute.
+    # Nicht geleert werden `games/:id/full_hash/*` und `games/:id/overlay/*`:
+    # Beide tragen `updated_at` des Spiels im Schluessel, waeren also nur ueber
+    # alle Spiele des Profils aufzuzaehlen, und ihre TTL betraegt eine Minute.
+    #
+    # `flush!` steht bewusst als erste Zeile: Platzt das Nachraeumen darunter,
+    # greift die Maskierung trotzdem. Deshalb faengt der Rettungszweig auch nur
+    # den Rest ab -- ein 500er an dieser Stelle wuerde einen erledigten Vorgang
+    # als gescheitert melden, und der naechste Versuch antwortete dann mit
+    # "ist bereits anonymisiert".
     def flush_for!(player)
       flush!
 
       season_id = Setting.current_season_id.to_i
       Rails.cache.delete("players/#{player.id}/stats/closed/#{season_id}")
       Rails.cache.delete("players/#{player.id}/stats/current/#{season_id}")
+      Rails.cache.delete('transfers')
 
+      # `referencing_player` vergleicht die Spieler-ID als Integer, waehrend die
+      # Maskierung ueber `to_i` auch die als Zeichenkette abgelegten IDs des
+      # Altbestands trifft. Ein solches Spiel faellt hier also aus der Liste:
+      # gerendert wird richtig maskiert, nur der Scorer-Cache seiner Liga laeuft
+      # ueber die TTL aus statt sofort. Das ist die billigere Seite der
+      # Abweichung und kein Fehler.
       Game.referencing_player(player.id)
           .joins(game_day: :league)
           .distinct
           .pluck('leagues.id')
           .each { |league_id| Rails.cache.delete("leagues/#{league_id}/scorer") }
+    rescue StandardError => e
+      Sentry.capture_exception(e, level: :error, tags: { public_name_flush: 'partial' })
     end
 
     private
 
     def cached_ids
       Rails.cache.fetch(CACHE_KEY, expires_in: CACHE_TTL) do
-        Player.where.not(public_name_hidden_at: nil).pluck(:id)
+        Player.public_name_hidden.pluck(:id)
       end
     end
   end

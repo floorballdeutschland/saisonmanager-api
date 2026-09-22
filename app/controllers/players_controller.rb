@@ -1554,15 +1554,28 @@ class PlayersController < ApplicationController
   # vor api#472 die Heimat-Zugehörigkeit gestempelt hat und die reguläre
   # Prüfung ab dem Tag danach nein sagt. Ohne diesen Zweig verschwände für die
   # SBK genau an den Profilen der Knopf, für die der Endpunkt ihn hat.
-  # Laenge der `players.public_name_hidden_reason`-Spalte; der Vermerk ist ein
-  # internes Aktenzeichen, kein Freitextfeld.
+  def can_toggle_deactivation?(player)
+    return can_deactivate_player?(player) if player.deactivated_at.nil?
+
+    can_deactivate_player?(player) || sbk_can_undo_deactivation?(user_permission_hash, player)
+  end
+
+  # Obergrenze des internen Vermerks zur Anonymisierung. Eine reine
+  # Anwendungsregel, die Spalte selbst ist ein unbegrenztes `character varying`:
+  # Der Vermerk ist ein Aktenzeichen, kein Freitextfeld, und die Maske begrenzt
+  # dasselbe ueber `maxlength`.
   PUBLIC_NAME_REASON_LIMIT = 255
 
   # Ausdruecklich nur die Verbandsverwaltung: Die Anonymisierung ist die Antwort
   # auf einen Betroffenenantrag und wird an der Geschaeftsstelle entschieden,
   # nicht in der SBK eines einzelnen Spielbetriebs und erst recht nicht im
-  # Verein. Sie wirkt ausserdem ueber alle Spielbetriebe hinweg, ein auf einen
-  # Verband gescoptes Recht passte nicht dazu.
+  # Verein.
+  #
+  # Gemeint ist die Rolle, nicht ihr Spielbetrieb: Auch ein auf einen Verband
+  # gescoptes Admin-Konto darf schalten, und es schaltet dann verbandsuebergreifend
+  # -- die Anonymisierung wirkt ueber alle Spielbetriebe hinweg, ein auf einen
+  # Verband begrenzter Schalter ergaebe keinen Sinn. Das ist dieselbe
+  # Schreibweise wie an den uebrigen rund zwanzig Admin-Pruefungen im Bestand.
   def can_hide_public_name?
     user_permission_hash[:admin].present?
   end
@@ -1575,20 +1588,22 @@ class PlayersController < ApplicationController
                  can_hide_public_name: can_hide_public_name?)
   end
 
-  def can_toggle_deactivation?(player)
-    return can_deactivate_player?(player) if player.deactivated_at.nil?
-
-    can_deactivate_player?(player) || sbk_can_undo_deactivation?(user_permission_hash, player)
-  end
-
   # Die Antwort auf `deactivate` und `reactivate`. Sie trägt dasselbe
   # `can_deactivate` wie das Profil selbst, weil die Maske sie ungefiltert
   # übernimmt (`this.player = updated`) und daraus den Gegenknopf ableitet.
   # Ohne das Feld griff dort der Rückfall auf das globale Rollen-Flag
   # `player_deactivate`, und das ist für einen reinen Teammanager false: Nach
   # dem Deaktivieren fehlte ihm „Reaktivieren" bis zum nächsten Seitenaufruf.
+  # `can_hide_public_name` faehrt mit, obwohl dieser Weg mit der Anonymisierung
+  # nichts zu tun hat: Die Maske uebernimmt die Antwort ungefiltert, und die
+  # Pruefung dort hat bewusst KEINEN Rueckfall auf ein Rollen-Flag (anders als
+  # `can_deactivate`, siehe oben). Ohne das Feld verschwaende der
+  # Anonymisierungsabschnitt nach einem Klick auf Deaktivieren still aus dem
+  # geoeffneten Profil, bis jemand die Seite neu laedt.
   def deactivation_toggle_hash(player)
-    player.full_hash(false, false, false).merge(can_deactivate: can_toggle_deactivation?(player))
+    player.full_hash(false, false, false)
+          .merge(can_deactivate: can_toggle_deactivation?(player),
+                 can_hide_public_name: can_hide_public_name?)
   end
 
   # Hat der Verein Anlegen, Deaktivieren und Reaktivieren seinen
