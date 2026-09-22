@@ -1058,6 +1058,13 @@ class Game < ApplicationRecord
       audience:,
       home_team_name: home_team&.name,
       guest_team_name: guest_team&.name,
+      # Dasselbe Kürzel, das Ticker und Overlay schon benutzen
+      # (Team#ticker_short_name): Mannschaft, sonst Verein, sonst Name, in
+      # jedem Fall auf acht Zeichen gekappt. Anlass war die öffentliche
+      # Spielansicht, die es auf schmalen Geräten neben die
+      # Zwischenüberschriften der Aufstellung setzt.
+      home_team_short_name: home_team&.ticker_short_name,
+      guest_team_short_name: guest_team&.ticker_short_name,
       home_team_id:,
       guest_team_id:,
       home_team_logo: home_team&.logo_url_fallback,
