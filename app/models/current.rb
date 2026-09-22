@@ -23,6 +23,9 @@
 #   state_association_tree                    der Verbandsbaum (Wurzeln, Teilbaeume)
 #   game_operation_id_by_state_association    Spielbetrieb je Landesverband
 #   game_operations_by_id                     die Spielbetriebe selbst, nach ID
+#   public_last_name_hidden_ids                    die anonymisierten Spieler-IDs, je
+#                                             Spiel der Liga einmal gebraucht
+#                                             (siehe unten)
 #
 # Die beiden mittleren loesen `Club#main_game_operation_id` auf, das in den
 # Vereins- und Spielerlisten je Datensatz laeuft. Das letzte haelt die
@@ -40,6 +43,15 @@ class Current < ActiveSupport::CurrentAttributes
   attribute :state_association_tree
   attribute :game_operation_id_by_state_association
   attribute :game_operations_by_id
+
+  # Die Spieler-IDs, deren Name aus der oeffentlichen Anzeige genommen ist
+  # (PublicPlayerNames). Ohne diesen Halt liest die Scorerliste einer Liga den
+  # Satz einmal JE SPIEL: League#evaluate_scorer ruft Game#evaluate_scorer fuer
+  # jedes beendete Spiel, und das braucht die Namen der Aufstellung. Bei 150
+  # Spielen waeren das 150 Redis-Zugriffe fuer einen Wert, der sich waehrend der
+  # Anfrage nicht aendert -- und bei einem haengenden Redis je Zugriff bis zu
+  # read_timeout Sekunden, ohne eine einzige Fehlermeldung.
+  attribute :public_last_name_hidden_ids
 
   # Aufzurufen, wenn ein Request die Verbandsstruktur selbst aendert. Ohne das
   # arbeitete der Rest desselben Requests mit dem Stand von vorher. Die Haken
