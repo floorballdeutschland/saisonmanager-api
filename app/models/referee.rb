@@ -524,9 +524,8 @@ class Referee < ApplicationRecord
   # aneinander.
   def _adopt_license_fields(master)
     if _license_newer_than?(master)
-      # lizenzstufe kann am Zweitprofil fehlen (Altbestand, Handanlage). Dann
-      # bleibt die Stufe des Masters stehen, statt sie zu leeren.
-      master.lizenzstufe = lizenzstufe if lizenzstufe.present?
+      _log_downgrade(master)
+      master.lizenzstufe = lizenzstufe
       master.gueltigkeit = gueltigkeit
     else
       master.lizenzstufe = lizenzstufe if master.lizenzstufe.blank? && lizenzstufe.present?
@@ -534,10 +533,33 @@ class Referee < ApplicationRecord
     end
   end
 
+  # Die spaetere Gueltigkeit gewinnt nur MIT ihrer Stufe. Ein Zweitprofil, das
+  # eine Gueltigkeit ohne Stufe traegt (Altbestand, Handanlage), verlaengert
+  # sonst die Stufe des Masters auf ein Datum, das nie fuer sie erteilt wurde --
+  # aus einer abgelaufenen L2 wuerde eine gueltige, und die Person waere wieder
+  # ansetzbar. Ohne Stufe greift deshalb weiter nur die Blank-Regel.
   def _license_newer_than?(master)
-    return false if gueltigkeit.blank?
+    return false if gueltigkeit.blank? || lizenzstufe.blank?
 
     master.gueltigkeit.blank? || gueltigkeit > master.gueltigkeit
+  end
+
+  # Eine spaetere Gueltigkeit kann eine NIEDRIGERE Stufe mitbringen, etwa wenn ein
+  # Zweitprofil aus einem Grundkurs entstanden ist, waehrend der Master eine hoehere
+  # Lizenz traegt. Das ist zulaessig (die juengste Abnahme gilt), aber es soll
+  # nachvollziehbar sein -- genauso haelt es der Kursimport in
+  # RefereeCourseResultApplier#log_downgrade_if_any.
+  def _log_downgrade(master)
+    return if master.lizenzstufe.blank? || master.lizenzstufe == lizenzstufe
+
+    positions = RefereeCourseResultApplier.license_level_positions
+    alt = positions[master.lizenzstufe]
+    neu = positions[lizenzstufe]
+    return unless alt && neu && neu > alt
+
+    Rails.logger.warn("[Referee#merge_into!] Lizenz-Downgrade Master ##{master.id}: " \
+                      "#{master.lizenzstufe} (pos #{alt}) -> #{lizenzstufe} (pos #{neu}) " \
+                      "aus Dublette ##{id}")
   end
 
   # Datensaetze, die am Zweitprofil haengen und sonst mit ihm verschwinden. Bis
@@ -545,38 +567,81 @@ class Referee < ApplicationRecord
   # Schiedsrichter: Es kann Kursergebnisse, Ansetzungen, Rueckmeldungen und
   # Spieltagsbestaetigungen tragen.
   def _repoint_referee_records(master)
-    # Kursergebnisse: Die Kurshistorie gehoert ans verbleibende Profil. Eine noch
-    # offene Zeile schriebe ihre Lizenz beim Freigeben sonst auf das deaktivierte
-    # Profil (RefereeCourseResultApplier arbeitet auf result.referee). Die
-    # master_*-Spalten bleiben unangetastet -- sie halten fest, was der Import
-    # damals entschieden hat.
+    _repoint_course_results(master)
+
+    # Rueckmeldungen: gleicher Riegel wie bei den Ansetzungen -- stuenden beide
+    # Profile in einer Zeile, zaehlte die Auswertung die Person doppelt und
+    # fuehrte sie als eigenen Gespannpartner.
+    _repoint_slot(RefereeFeedback, 'referee1_id', 'referee2_id', master)
+    _repoint_slot(RefereeFeedback, 'referee2_id', 'referee1_id', master)
+
+    _repoint_assignments(master)
+    _repoint_confirmations(master)
+  end
+
+  # Kursergebnisse: Die Kurshistorie gehoert ans verbleibende Profil, und eine noch
+  # offene Zeile schriebe ihre Lizenz beim Freigeben sonst auf das deaktivierte
+  # Profil (RefereeCourseResultApplier arbeitet auf result.referee).
+  #
+  # Bei offenen Zeilen muss der Stammdaten-Schnappschuss mitwandern: Beim Freigeben
+  # schreibt `apply_master_fields` die `master_*_final`-Spalten auf den Schiri,
+  # `geburtsdatum`, `email` und `club_id` ausdruecklich auch als nil. Der
+  # Schnappschuss stammt aber vom Zweitprofil (haeufig eine CSV-Zeile ohne
+  # Geburtsdatum) -- unveraendert uebernommen wuerde die Freigabe die Stammdaten des
+  # Masters leeren. Angewendete Zeilen bleiben unberuehrt, sie sind Historie.
+  def _repoint_course_results(master)
+    offen = RefereeCourseResult.where(referee_id: id).where.not(status: 'applied')
+    offen.update_all(
+      referee_id: master.id,
+      master_vorname_final: master.vorname, master_nachname_final: master.nachname,
+      master_geburtsdatum_final: master.geburtsdatum, master_email_final: master.email,
+      master_club_id_final: master.club_id, master_lizenznummer_final: master.lizenznummer,
+      updated_at: Time.current
+    )
     RefereeCourseResult.where(referee_id: id).update_all(referee_id: master.id)
+  end
 
-    RefereeFeedback.where(referee1_id: id).update_all(referee1_id: master.id)
-    RefereeFeedback.where(referee2_id: id).update_all(referee2_id: master.id)
-
-    # Ansetzungen: Steht der Master schon im anderen Feld desselben Spiels, bliebe
-    # er sonst zweimal im selben Gespann. Solche Zeilen bleiben stehen und werden
-    # protokolliert, statt sie stillschweigend zu leeren -- dieselbe Person auf
-    # beiden Plaetzen ist ein Datenfehler, den die RSK sehen soll.
-    %w[referee1_id referee2_id].each do |slot|
-      other = slot == 'referee1_id' ? 'referee2_id' : 'referee1_id'
-      scope = RefereeAssignment.where(slot => id)
-      conflicting = scope.where(other => master.id).pluck(:game_id)
-      if conflicting.any?
-        Rails.logger.warn("[Referee#merge_into!] Ansetzung mit beiden Profilen (##{id}/##{master.id}) " \
-                          "bleibt unveraendert, Spiele: #{conflicting.join(', ')}")
-      end
-      scope.where("#{other} IS DISTINCT FROM ?", master.id).update_all(slot => master.id)
+  # Haengt eine Zeile von der Dublette auf den Master um, laesst aber die Zeilen
+  # stehen, in denen der Master schon im anderen Feld steht.
+  def _repoint_slot(klass, slot, other, master)
+    scope = klass.where(slot => id)
+    kollisionen = scope.where(other => master.id).pluck(:id)
+    if kollisionen.any?
+      Rails.logger.warn("[Referee#merge_into!] #{klass.name} mit beiden Profilen " \
+                        "(##{id}/##{master.id}) bleibt unveraendert: #{kollisionen.join(', ')}")
     end
-    RefereeAssignment.where(coach_id: id).update_all(coach_id: master.id)
+    scope.where("#{other} IS DISTINCT FROM ?", master.id).update_all(slot => master.id)
+  end
 
-    # Spieltagsbestaetigungen: Unique auf [game_day_id, referee_id] -- hat der
-    # Master zum selben Spieltag schon eine, faellt die der Dublette weg.
-    master_confirmed_day_ids = GameDayRefereeConfirmation.where(referee_id: master.id).pluck(:game_day_id)
-    game_day_referee_confirmations.where.not(game_day_id: master_confirmed_day_ids)
-                                  .update_all(referee_id: master.id)
-    game_day_referee_confirmations.reload.destroy_all
+  def _repoint_assignments(master)
+    _repoint_slot(RefereeAssignment, 'referee1_id', 'referee2_id', master)
+    _repoint_slot(RefereeAssignment, 'referee2_id', 'referee1_id', master)
+    # Coach: Wer im selben Spiel schon als Schiri steht, darf sich nicht selbst
+    # beobachten -- dieselbe Zeile bleibt dann unveraendert.
+    RefereeAssignment.where(coach_id: id)
+                     .where('referee1_id IS DISTINCT FROM ? AND referee2_id IS DISTINCT FROM ?',
+                            master.id, master.id)
+                     .update_all(coach_id: master.id)
+  end
+
+  # Spieltagsbestaetigungen: Unique auf [game_day_id, referee_id]. Bei zwei Zeilen
+  # zum selben Spieltag bleibt die mit ausgefuellter Checkliste -- die Antworten
+  # gehoeren zum Spielbericht und sind sonst spurlos weg. Hat der Master eine leere
+  # und die Dublette eine ausgefuellte, weicht die leere.
+  def _repoint_confirmations(master)
+    master_rows = GameDayRefereeConfirmation.where(referee_id: master.id).index_by(&:game_day_id)
+
+    game_day_referee_confirmations.reload.each do |eigene|
+      vorhanden = master_rows[eigene.game_day_id]
+      if vorhanden.nil?
+        eigene.update_columns(referee_id: master.id, updated_at: Time.current)
+      elsif vorhanden.checklist_answers.blank? && eigene.checklist_answers.present?
+        vorhanden.destroy
+        eigene.update_columns(referee_id: master.id, updated_at: Time.current)
+      else
+        eigene.destroy
+      end
+    end
   end
 
   def _rewrite_referee_game_references(master, secondary_lizenznummer: lizenznummer)

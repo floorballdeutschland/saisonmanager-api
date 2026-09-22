@@ -17,10 +17,29 @@
 # Vorschau ohne Schreiben:
 #   docker exec -e DRY_RUN=1 saisonmanager_rails_api bundle exec rake referees:fix_merge_leftovers RAILS_ENV=production
 namespace :referees do
+  # Folgt einer Merge-Kette bis zum letzten nicht zusammengefuehrten Profil.
+  # `merge_into!` verbietet nur einen bereits zusammengefuehrten MASTER, A->B und
+  # spaeter B->C sind also moeglich. Ohne diesen Schritt schriebe der Lauf die Lizenz
+  # von A auf das tote B und erzeugte genau den Rest, den er beseitigen soll.
+  def endgueltiger_master(referee)
+    gesehen = [referee.id]
+    aktuell = referee
+    while aktuell.merged_into_id.present?
+      naechster = Referee.find_by(id: aktuell.merged_into_id)
+      return nil if naechster.nil? || gesehen.include?(naechster.id)
+
+      gesehen << naechster.id
+      aktuell = naechster
+    end
+    aktuell
+  end
+
   desc 'Lizenz und Kursergebnisse zusammengefuehrter Schiri-Profile auf den Master nachziehen (DRY_RUN=1 fuer Vorschau)'
   task fix_merge_leftovers: :environment do
     dry_run = ENV['DRY_RUN'].present?
     puts "== Schiri-Merge nacharbeiten#{' (DRY RUN, es wird nichts geschrieben)' if dry_run} =="
+    puts 'Umgehaengt werden Kursergebnisse, Ansetzungen, Rueckmeldungen und Spieltagsbestaetigungen;'
+    puts 'bei offenen Kurszeilen wandert der Stammdaten-Schnappschuss auf den Master mit.'
 
     secondaries = Referee.where.not(merged_into_id: nil).order(:id)
     puts "Zusammengefuehrte Profile: #{secondaries.count}"
@@ -29,37 +48,42 @@ namespace :referees do
     kursergebnisse = 0
 
     secondaries.each do |secondary|
-      master = Referee.find_by(id: secondary.merged_into_id)
-      unless master
-        puts "  ## #{secondary.id}: Master ##{secondary.merged_into_id} existiert nicht -- uebersprungen"
+      master = endgueltiger_master(secondary)
+      if master.nil? || master.id == secondary.id
+        puts "  ## #{secondary.id}: Master ##{secondary.merged_into_id} fehlt oder Kette ist zirkulaer -- uebersprungen"
         next
       end
+      puts "  Kette ##{secondary.id} -> ##{master.id} (ueber #{secondary.merged_into_id})" if master.id != secondary.merged_into_id
 
       vorher = [master.lizenzstufe, master.gueltigkeit]
       secondary.send(:_adopt_license_fields, master)
       nachher = [master.lizenzstufe, master.gueltigkeit]
-      offene_kurse = RefereeCourseResult.where(referee_id: secondary.id).count
+      lizenz_neu = vorher != nachher
 
-      if vorher != nachher
+      kurse = RefereeCourseResult.where(referee_id: secondary.id)
+      kurse_offen = kurse.where.not(status: 'applied').count
+
+      if lizenz_neu
         lizenz_korrekturen += 1
         puts "  Master ##{master.id} #{master.nachname}, #{master.vorname}: " \
-             "#{vorher[0] || '-'}/#{vorher[1] || '-'} -> #{nachher[0] || '-'}/#{nachher[1] || '-'} " \
+             "#{vorher[0] || '-'}/#{vorher[1] || '-'} => #{nachher[0] || '-'}/#{nachher[1] || '-'} " \
              "(aus Dublette ##{secondary.id})"
       end
-      if offene_kurse.positive?
-        kursergebnisse += offene_kurse
-        puts "  Master ##{master.id}: #{offene_kurse} Kursergebnis(se) von Dublette ##{secondary.id} umgehaengt"
+      if kurse.any?
+        kursergebnisse += kurse.count
+        puts "  Master ##{master.id}: #{kurse.count} Kursergebnis(se) (#{kurse_offen} davon offen) " \
+             "von Dublette ##{secondary.id}#{dry_run ? ' umzuhaengen' : ' umgehaengt'}"
       end
 
       next if dry_run
 
       ActiveRecord::Base.transaction do
-        master.save!(validate: false) if vorher != nachher
+        master.save!(validate: false) if lizenz_neu
         secondary.send(:_repoint_referee_records, master)
       end
     end
 
-    puts "Ergebnis: #{lizenz_korrekturen} Lizenz(en) nachgezogen, #{kursergebnisse} Kursergebnis(se) umgehaengt" \
-         "#{' -- DRY RUN, nichts geschrieben' if dry_run}"
+    puts "Ergebnis: #{lizenz_korrekturen} Lizenz(en), #{kursergebnisse} Kursergebnis(se)" \
+         "#{dry_run ? ' -- DRY RUN, nichts geschrieben' : ' geschrieben'}"
   end
 end

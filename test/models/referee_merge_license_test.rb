@@ -48,9 +48,9 @@ class RefereeMergeLicenseTest < ActiveSupport::TestCase
     assert_equal Date.new(2028, 9, 30), master.gueltigkeit
   end
 
-  test 'Stufe und Gueltigkeit wandern nur gemeinsam' do
-    # Ohne Stufe am Zweitprofil bleibt die des Masters stehen, statt geleert zu
-    # werden -- eine Gueltigkeit ohne Stufe waere keine Lizenz.
+  test 'eine Gueltigkeit ohne Stufe verlaengert die Lizenz des Masters NICHT' do
+    # Sonst wuerde aus einer abgelaufenen L2 eine gueltige L2 auf einem Datum, das
+    # nie fuer diese Stufe erteilt wurde -- die Person waere wieder ansetzbar.
     master    = create(:referee, lizenzstufe: 'L2', gueltigkeit: Date.new(2024, 9, 30))
     secondary = create(:referee, lizenzstufe: nil, gueltigkeit: Date.new(2027, 9, 30))
 
@@ -58,7 +58,33 @@ class RefereeMergeLicenseTest < ActiveSupport::TestCase
 
     master.reload
     assert_equal 'L2', master.lizenzstufe
-    assert_equal Date.new(2027, 9, 30), master.gueltigkeit
+    assert_equal Date.new(2024, 9, 30), master.gueltigkeit
+  end
+
+  test 'ein Master ganz ohne Lizenz nimmt auch eine stufenlose Gueltigkeit an' do
+    master    = create(:referee, lizenzstufe: nil, gueltigkeit: nil)
+    secondary = create(:referee, lizenzstufe: nil, gueltigkeit: Date.new(2027, 9, 30))
+
+    secondary.merge_into!(master)
+
+    assert_equal Date.new(2027, 9, 30), master.reload.gueltigkeit
+  end
+
+  test 'eine spaetere, aber niedrigere Stufe wird uebernommen und protokolliert' do
+    RefereeLicenseLevel.create!(name: 'A', position: 1, validity_years: 4)
+    RefereeLicenseLevel.create!(name: 'G', position: 4, validity_years: 2)
+    RefereeCourseResultApplier.reset_license_level_positions_cache!
+    master    = create(:referee, lizenzstufe: 'A', gueltigkeit: Date.new(2027, 7, 31))
+    secondary = create(:referee, lizenzstufe: 'G', gueltigkeit: Date.new(2028, 9, 30))
+    meldungen = []
+    Rails.logger.stub(:warn, ->(m) { meldungen << m }) do
+      secondary.merge_into!(master)
+    end
+
+    assert_equal 'G', master.reload.lizenzstufe
+    assert(meldungen.any? { |m| m.include?('Lizenz-Downgrade') }, meldungen.inspect)
+  ensure
+    RefereeCourseResultApplier.reset_license_level_positions_cache!
   end
 
   test 'die Lizenznummer des Masters bleibt, auch wenn seine Lizenz getauscht wird' do
@@ -119,5 +145,72 @@ class RefereeMergeLicenseTest < ActiveSupport::TestCase
 
     assert_equal master.id, normal.reload.referee1_id
     assert_equal secondary.id, beide.reload.referee2_id
+  end
+
+  test 'eine offene Kurszeile bekommt den Stammdaten-Schnappschuss des Masters' do
+    master    = create(:referee, vorname: 'Michaela', nachname: 'Erber-Dachselt',
+                                 geburtsdatum: Date.new(1990, 5, 4), club_id: 203)
+    secondary = create(:referee)
+    offen = course_result(referee: secondary, stufe: nil, status: 'pending_review')
+    offen.update!(master_vorname_final: 'Michaela', master_nachname_final: 'Erber-Dachselt',
+                  master_geburtsdatum_final: nil, master_club_id_final: nil)
+
+    secondary.merge_into!(master)
+
+    offen.reload
+    assert_equal master.id, offen.referee_id
+    assert_equal Date.new(1990, 5, 4), offen.master_geburtsdatum_final
+    assert_equal 203, offen.master_club_id_final
+  end
+
+  test 'eine angewendete Kurszeile behaelt ihren Schnappschuss' do
+    master    = create(:referee, geburtsdatum: Date.new(1990, 5, 4))
+    secondary = create(:referee)
+    angewendet = course_result(referee: secondary)
+    angewendet.update!(master_geburtsdatum_final: nil)
+
+    secondary.merge_into!(master)
+
+    assert_equal master.id, angewendet.reload.referee_id
+    assert_nil angewendet.master_geburtsdatum_final
+  end
+
+  test 'eine Rueckmeldung mit beiden Profilen bleibt unveraendert' do
+    master    = create(:referee)
+    secondary = create(:referee)
+    beide = create(:referee_feedback, referee1_id: master.id, referee2_id: secondary.id)
+
+    secondary.merge_into!(master)
+
+    assert_equal secondary.id, beide.reload.referee2_id
+  end
+
+  test 'der Coach wandert nicht auf ein Spiel, in dem der Master schon pfeift' do
+    master    = create(:referee)
+    secondary = create(:referee)
+    eigenes = RefereeAssignment.create!(game: create(:game), referee1_id: master.id, coach_id: secondary.id)
+    fremdes = RefereeAssignment.create!(game: create(:game), coach_id: secondary.id)
+
+    secondary.merge_into!(master)
+
+    assert_equal secondary.id, eigenes.reload.coach_id
+    assert_equal master.id, fremdes.reload.coach_id
+  end
+
+  test 'von zwei Spieltagsbestaetigungen bleibt die mit ausgefuellter Checkliste' do
+    master    = create(:referee)
+    secondary = create(:referee)
+    game_day  = create(:game_day)
+    leer = GameDayRefereeConfirmation.create!(game_day: game_day, referee: master,
+                                              confirmed_at: Time.current, checklist_answers: [])
+    gefuellt = GameDayRefereeConfirmation.create!(game_day: game_day, referee: secondary,
+                                                  confirmed_at: Time.current,
+                                                  checklist_answers: [{ 'frage' => 'Halle', 'antwort' => 'ja' }])
+
+    secondary.merge_into!(master)
+
+    assert_nil GameDayRefereeConfirmation.find_by(id: leer.id)
+    assert_equal master.id, gefuellt.reload.referee_id
+    assert_equal 1, gefuellt.checklist_answers.size
   end
 end
