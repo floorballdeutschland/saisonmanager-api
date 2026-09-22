@@ -346,13 +346,17 @@ class Referee < ApplicationRecord
     merged_label = "#{nachname}, #{vorname}"
 
     ActiveRecord::Base.transaction do
+      # Lizenzstufe und Gueltigkeit stehen bewusst NICHT in dieser Liste, siehe
+      # _adopt_license_fields.
       scalar_fields = %w[
         vorname nachname geburtsdatum email club_id game_operation_id
-        lizenzstufe gueltigkeit strasse hausnummer plz ort
+        strasse hausnummer plz ort
       ]
       scalar_fields.each do |field|
         master[field] = self[field] if master[field].blank? && self[field].present?
       end
+
+      _adopt_license_fields(master)
 
       # Falls Master keine Lizenznummer hat, übertrage die der Secondary.
       # Wegen UNIQUE-Index auf lizenznummer muss die Secondary erst geleert werden.
@@ -372,6 +376,8 @@ class Referee < ApplicationRecord
       referee_taggings.where.not(referee_tag_id: existing_tag_ids).update_all(referee_id: master.id)
 
       referee_availabilities.update_all(referee_id: master.id)
+
+      _repoint_referee_records(master)
 
       # Ausschlussliste und Antragshistorie wandern mit; Dubletten (gleicher
       # Verein bzw. zwei offene Anträge zum selben Verein) fallen weg, sonst
@@ -501,6 +507,76 @@ class Referee < ApplicationRecord
 
     partner = Referee.where(lizenznummer: partner_lizenznummer).where(partner_lizenznummer: nil).first
     partner&.update_column(:partner_lizenznummer, lizenznummer)
+  end
+
+  # Lizenzstufe und Gueltigkeit gehoeren zusammen und folgen nicht der
+  # Blank-Regel der uebrigen Stammdaten. Ein Zweitprofil entsteht typischerweise
+  # dadurch, dass der Kursimport den neuen Namen (Heirat) nicht wiedererkennt und
+  # neu anlegt -- es traegt dann die FRISCHE Lizenz, waehrend der Master seine
+  # alte, oft abgelaufene behaelt. Mit der Blank-Regel blieb die neue Lizenz auf
+  # dem gleich darauf deaktivierten Profil liegen, und die Person stand nach der
+  # Zusammenlegung ohne gueltige Lizenz da (gemeldet 20.09.2026).
+  #
+  # Uebernommen wird deshalb die spaetere Gueltigkeit, und zwar als Paar mit ihrer
+  # Stufe: ein Datum aus dem einen und eine Stufe aus dem anderen Profil ergaeben
+  # eine Lizenz, die es nie gab. Die Lizenznummer folgt weiter der Gegenregel
+  # (die aeltere, bereits kommunizierte bleibt) -- Nummer und Stufe haengen nicht
+  # aneinander.
+  def _adopt_license_fields(master)
+    if _license_newer_than?(master)
+      # lizenzstufe kann am Zweitprofil fehlen (Altbestand, Handanlage). Dann
+      # bleibt die Stufe des Masters stehen, statt sie zu leeren.
+      master.lizenzstufe = lizenzstufe if lizenzstufe.present?
+      master.gueltigkeit = gueltigkeit
+    else
+      master.lizenzstufe = lizenzstufe if master.lizenzstufe.blank? && lizenzstufe.present?
+      master.gueltigkeit = gueltigkeit if master.gueltigkeit.blank? && gueltigkeit.present?
+    end
+  end
+
+  def _license_newer_than?(master)
+    return false if gueltigkeit.blank?
+
+    master.gueltigkeit.blank? || gueltigkeit > master.gueltigkeit
+  end
+
+  # Datensaetze, die am Zweitprofil haengen und sonst mit ihm verschwinden. Bis
+  # zur Zusammenlegung ist ein zweites Profil ein ganz normaler, ansetzbarer
+  # Schiedsrichter: Es kann Kursergebnisse, Ansetzungen, Rueckmeldungen und
+  # Spieltagsbestaetigungen tragen.
+  def _repoint_referee_records(master)
+    # Kursergebnisse: Die Kurshistorie gehoert ans verbleibende Profil. Eine noch
+    # offene Zeile schriebe ihre Lizenz beim Freigeben sonst auf das deaktivierte
+    # Profil (RefereeCourseResultApplier arbeitet auf result.referee). Die
+    # master_*-Spalten bleiben unangetastet -- sie halten fest, was der Import
+    # damals entschieden hat.
+    RefereeCourseResult.where(referee_id: id).update_all(referee_id: master.id)
+
+    RefereeFeedback.where(referee1_id: id).update_all(referee1_id: master.id)
+    RefereeFeedback.where(referee2_id: id).update_all(referee2_id: master.id)
+
+    # Ansetzungen: Steht der Master schon im anderen Feld desselben Spiels, bliebe
+    # er sonst zweimal im selben Gespann. Solche Zeilen bleiben stehen und werden
+    # protokolliert, statt sie stillschweigend zu leeren -- dieselbe Person auf
+    # beiden Plaetzen ist ein Datenfehler, den die RSK sehen soll.
+    %w[referee1_id referee2_id].each do |slot|
+      other = slot == 'referee1_id' ? 'referee2_id' : 'referee1_id'
+      scope = RefereeAssignment.where(slot => id)
+      conflicting = scope.where(other => master.id).pluck(:game_id)
+      if conflicting.any?
+        Rails.logger.warn("[Referee#merge_into!] Ansetzung mit beiden Profilen (##{id}/##{master.id}) " \
+                          "bleibt unveraendert, Spiele: #{conflicting.join(', ')}")
+      end
+      scope.where("#{other} IS DISTINCT FROM ?", master.id).update_all(slot => master.id)
+    end
+    RefereeAssignment.where(coach_id: id).update_all(coach_id: master.id)
+
+    # Spieltagsbestaetigungen: Unique auf [game_day_id, referee_id] -- hat der
+    # Master zum selben Spieltag schon eine, faellt die der Dublette weg.
+    master_confirmed_day_ids = GameDayRefereeConfirmation.where(referee_id: master.id).pluck(:game_day_id)
+    game_day_referee_confirmations.where.not(game_day_id: master_confirmed_day_ids)
+                                  .update_all(referee_id: master.id)
+    game_day_referee_confirmations.reload.destroy_all
   end
 
   def _rewrite_referee_game_references(master, secondary_lizenznummer: lizenznummer)
