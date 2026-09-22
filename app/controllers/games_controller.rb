@@ -167,6 +167,11 @@ class GamesController < ApplicationController
               end
 
     game.created_by ||= current_user.id
+    # Ein direkt kampflos angelegtes Spiel braucht die Marken genauso wie ein
+    # nachtraeglich gewertetes -- sonst haette es von Anfang an ein Ergebnis,
+    # das der Spielplan nicht ausgibt. Die Maske schickt beim Anlegen immer
+    # `forfait: 0`, der Fall kommt also nur ueber die Schnittstelle.
+    game.assign_attributes(_forfait_flag_attributes(game, game_create_update_params))
 
     if allowed
       if game.save
@@ -206,6 +211,7 @@ class GamesController < ApplicationController
        !Game.person_level_assignment_allowed_for?(game.league)
       update_attrs = update_attrs.merge(person_level_assignment: false)
     end
+    update_attrs = update_attrs.merge(_forfait_flag_attributes(game, update_attrs))
 
     if allowed
       if game.update(update_attrs)
@@ -1504,6 +1510,55 @@ class GamesController < ApplicationController
     params.require(:game).permit(:audience, :actual_start_time, :live_stream_link, :vod_link,
                                  :home_timeout_string, :guest_timeout_string,
                                  :time_keeper_string, :record_keeper_string, :record_comment, :special_event_string)
+  end
+
+  # Eine kampflose Wertung braucht die Spielmarken: Game#result gibt ohne
+  # `started` gar kein Ergebnis aus, das Forfait bliebe im Spielplan also
+  # unsichtbar. Das Frontend hat sie deshalb vor der Wertung ueber set_flag
+  # gesetzt und lief dabei in die Startpruefung des Spielberichts -- Aufstellung
+  # beider Mannschaften und Schiedsrichter 1, Bedingungen, die ein kampflos
+  # gewertetes Spiel nie erfuellt. Die Wertung war damit ueberhaupt nicht
+  # setzbar (#738). Die Marken gehoeren zur Wertung, also setzt sie die Wertung
+  # selbst.
+  #
+  # `started` wirkt ueber den Spielplan hinaus, und zwar gewollt: Ein kampflos
+  # gewertetes Spiel ist damit nicht mehr loeschbar (Game#deletable?), es faellt
+  # in den Scope `played_or_started` und sperrt dadurch den Spielplan-Re-Import
+  # und das Loeschen seiner Liga, und der Vereins-Weg der Schiedsrichter-
+  # eintragung ist fuer es zu. Eine entschiedene Partie ist Historie, all das
+  # ist richtig so -- aber es sind Entscheidungen, keine Zufaelle. Der Weg
+  # zurueck ist in jedem Fall die Ruecknahme der Wertung.
+  #
+  # Beim Zuruecknehmen werden die Marken geraeumt, wenn das Spiel nie
+  # tatsaechlich angepfiffen wurde. Ein wirklich gespieltes Spiel, das
+  # nachtraeglich regulaer gewertet wird, behaelt sie -- sonst waere sein
+  # Ergebnis weg. Genau das tat das Frontend bisher bedingungslos.
+  #
+  # Beleg fuer den Anpfiff sind Ereignisse, `actual_start_time` (setzt das
+  # Frontend beim Start des Berichts) und ein `game_status` jenseits von
+  # `pregame`. Ausdruecklich NICHT die Aufstellung: die steht per Konstruktion
+  # VOR dem Anpfiff -- set_flag verlangt sie ja, bevor es `started` zulaesst.
+  # Bei einer kampflosen Wertung ist der Normalfall sogar, dass eine Seite sie
+  # eingetragen hat: Die Heimmannschaft ist da und meldet ihren Kader, der Gast
+  # erscheint nicht. Haette die Aufstellung als Beleg gezaehlt, bliebe genau
+  # dieses Spiel nach der Ruecknahme mit einem Phantom-0:0 und ohne
+  # Loeschmoeglichkeit stehen, aus der Oberflaeche heraus nicht mehr zu heilen.
+  def _forfait_flag_attributes(game, attrs)
+    return {} unless attrs.key?(:forfait)
+
+    return { started: true, ended: true } if attrs[:forfait].to_i.positive?
+
+    return {} unless game.forfait.to_i.positive?
+    return {} if _game_kicked_off?(game)
+
+    { started: false, ended: false }
+  end
+
+  def _game_kicked_off?(game)
+    return true if game.events.present?
+    return true if game.actual_start_time.present?
+
+    game.game_status.present? && game.game_status != 'pregame'
   end
 
   def game_create_update_params

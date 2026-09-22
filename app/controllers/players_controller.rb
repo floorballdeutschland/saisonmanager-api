@@ -342,6 +342,65 @@ class PlayersController < ApplicationController
         end
       end
 
+      # Expresszuschlag bei der Genehmigung streichen (#740). `express` entsteht
+      # einmalig beim Antrag (request_license) und wurde danach nie wieder
+      # geschrieben: Ein wegen fehlender Unterlagen abgelehnter Expressantrag
+      # blieb auch dann eine Expresslizenz, wenn der Verband ihn spaeter als
+      # gewoehnliche Lizenz erteilt. Abgerechnet wird aber genau dieses Flag
+      # (Admin::LicensesController#index und die CSV-Ausfuhr der Lizenzliste).
+      #
+      # Nur die Richtung "Zuschlag weg" ist vorgesehen. Ein nachtraegliches
+      # Hochstufen bliebe ohne Gegenstueck, denn die Expressbearbeitung loest
+      # schon der Antrag aus (PlayerMailer#express_license_requested an die SBK).
+      #
+      # Und nur zusammen mit der Genehmigung: Die Streichung haengt an deren
+      # History-Eintrag. Eine bereits erteilte Lizenz bekaeme hier keinen
+      # Eintrag mehr (derselbe Status schreibt keinen zweiten), der Zuschlag
+      # fiele also lautlos weg statt belegbar -- deshalb eine Absage.
+      waive_express = false
+      unless params[:express].nil?
+        # Ueber den Typ-Caster und nicht ueber `== true || == 'true'`: Der Wert
+        # entscheidet hier ueber Geld, und die Kurzform macht aus JEDEM nicht
+        # erkannten Wert (1, "1", "on") ein Streichen. In request_license ist
+        # dasselbe Idiom harmlos, weil "unbekannt" dort kein Express bedeutet;
+        # hier kehrt sich die Bedeutung um und im Zweifel faellt eine Gebuehr weg.
+        #
+        # Der Caster kennt eine feste Liste von Nein-Werten und liest alles
+        # andere als Ja. Die Streichung braucht also ein ausdrueckliches Nein,
+        # und ein unklarer Wert landet auf der umkehrbaren Seite -- zurueck geht
+        # es nicht, Absage 2 unten sperrt das Hochstufen. Leer ist als einziges
+        # weder Ja noch Nein und wird abgewiesen statt ausgelegt.
+        express_param = ActiveModel::Type::Boolean.new.cast(params[:express])
+
+        if express_param.nil?
+          return render json: { message: 'Der Wert für den Expresszuschlag ist nicht auswertbar.' },
+                        status: :unprocessable_entity
+        end
+
+        if params[:license_status_id].to_i != License::APPROVED
+          return render json: { message: 'Der Expresszuschlag lässt sich nur beim Erteilen der Lizenz ändern.' },
+                        status: :unprocessable_entity
+        end
+
+        if express_param && license['express'].blank?
+          return render json: { message: 'Eine Lizenz lässt sich nachträglich nicht zur Expresslizenz machen.' },
+                        status: :unprocessable_entity
+        end
+
+        # Ueber LicenseEffectiveStatus.base_status_id und nicht ueber
+        # License.current_status_id: Bei einer gesperrten Lizenz ist der juengste
+        # Eintrag die Sperre, die erteilte Lizenz darunter bliebe ungeschuetzt.
+        # Sie ist aber laengst abgerechnet. base_status_id beantwortet genau die
+        # Frage "welcher Status gaelte ohne Sperre", und der Rest des Hauses
+        # fragt an dieser Stelle auch danach.
+        if !express_param && LicenseEffectiveStatus.base_status_id(license) == License::APPROVED
+          return render json: { message: 'Diese Lizenz ist bereits erteilt. Der Expresszuschlag lässt sich dabei nicht mehr streichen.' },
+                        status: :unprocessable_entity
+        end
+
+        waive_express = !express_param
+      end
+
       approved_team_id = nil
 
       player.licenses.map!.with_index do |lic, idx|
@@ -398,6 +457,14 @@ class PlayersController < ApplicationController
           if params[:license_status_id].to_i == License::APPROVED
             approved_team_id = lic['team_id']
             lic['valid_until'] = params[:valid_until].presence || default_license_valid_until(lic['season_id']).iso8601
+            # Das Flag umschreiben und die Entscheidung am selben Eintrag
+            # festhalten: Die Abrechnung liest nur das Flag, ein halbes Jahr
+            # spaeter belegt aber allein die Markierung, wer den Zuschlag
+            # gestrichen hat.
+            if waive_express && lic['express'].present?
+              lic['express'] = false
+              entry[License::EXPRESS_WAIVED_KEY] = true
+            end
           end
         end
 
