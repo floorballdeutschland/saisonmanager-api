@@ -39,6 +39,14 @@ class License < ApplicationRecord
   # wieder offen. Ein Test hält ihn deshalb fest.
   REVOKED_REJECTION_KEY = 'revoked_rejection'.freeze
 
+  # Markierung an dem `erteilt`-Eintrag, mit dem der Verband den Expresszuschlag
+  # gestrichen hat (PlayersController#handle_license_request). Das Flag
+  # `express` selbst kennt danach nur noch `false`, und die Abrechnung liest
+  # allein dieses Flag -- wer die Streichung wann veranlasst hat, steht deshalb
+  # nur hier. Wie REVOKED_REJECTION_KEY Bestandsdaten in JSONB: Eine Umbenennung
+  # entwertet jede vorhandene Markierung, ein Test haelt den Wert fest.
+  EXPRESS_WAIVED_KEY = 'express_waived'.freeze
+
   # Zielstatus, die PlayersController#handle_license_request setzen kann. Alles
   # andere lehnt der Endpunkt ab, statt still nichts zu tun.
   #

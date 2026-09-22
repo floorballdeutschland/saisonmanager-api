@@ -583,6 +583,7 @@ class Game < ApplicationRecord
 
   def players_with_position
     result = {}
+    hidden = PublicPlayerNames.hidden_ids
 
     if players.present?
       %w[home guest].each do |team|
@@ -590,7 +591,9 @@ class Game < ApplicationRecord
 
         result[team] = players[team].map do |player|
           player['position'] = player['goalkeeper'].present? && player['goalkeeper'] == true ? 'Tor' : 'Feld' # ['Sturm', 'Center', 'Verteidigung'].sample
-          player
+          # Nach dem Setzen von `position`: Maskiert wird eine Kopie, die
+          # Position steht sonst nur im Original und fehlte in der Ausgabe.
+          PublicPlayerNames.mask_lineup_entry(player, hidden)
         end
       end
     end
@@ -600,6 +603,7 @@ class Game < ApplicationRecord
 
   def starting_players_with_numbers
     result = {}
+    hidden = PublicPlayerNames.hidden_ids
 
     if players.present?
       %w[home guest].each do |team|
@@ -610,6 +614,8 @@ class Game < ApplicationRecord
             player_id = starting_players[team][position]
             lineup_player = players[team]&.find { |player| player["player_id"] == player_id } if player_id
           end
+
+          lineup_player = PublicPlayerNames.mask_lineup_entry(lineup_player, hidden) if lineup_player
 
           lineup << {
             position: position,
@@ -648,6 +654,7 @@ class Game < ApplicationRecord
     # durch, ein gefülltes schon.
     lineups = players.is_a?(Hash) ? players : {}
     awarded = awards.is_a?(Hash) ? awards : {}
+    hidden = PublicPlayerNames.hidden_ids
 
     %w[home guest].each_with_object({}) do |team, result|
       result[team] = %w[mvp].map do |award_key|
@@ -661,6 +668,7 @@ class Game < ApplicationRecord
         if team_awards.is_a?(Hash) && (player_id = team_awards[award_key])
           lineup = lineups[team].is_a?(Array) ? lineups[team] : []
           awards_player = lineup.find { |player| player.is_a?(Hash) && player["player_id"] == player_id }
+          awards_player = PublicPlayerNames.mask_lineup_entry(awards_player, hidden) if awards_player
         end
 
         {
@@ -955,11 +963,14 @@ class Game < ApplicationRecord
   # (players-JSONB). Damit ist die Scorerliste self-contained für Altsaisons –
   # ein nachträglich umbenannter oder gelöschter Spieler verfälscht sie nicht.
   def lineup_player_names
+    hidden = PublicPlayerNames.hidden_ids
+
     %w[home guest].each_with_object({}) do |side, names|
       (players[side] || []).each do |p|
         next if p['player_id'].blank?
 
-        names[p['player_id']] = { first_name: p['player_firstname'], last_name: p['player_name'] }
+        entry = PublicPlayerNames.mask_lineup_entry(p, hidden)
+        names[p['player_id']] = { first_name: entry['player_firstname'], last_name: entry['player_name'] }
       end
     end
   end

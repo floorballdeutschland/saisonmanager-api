@@ -171,17 +171,32 @@ module Admin
     def destroy
       return forbidden_response unless can_edit_full?
 
-      # Benutzerkonten löschen ist Admin-only (wie users#destroy/destroy_user).
-      # Ein FD-RSK löscht nur den Schiri-Datensatz; ein verknüpftes Konto wird
-      # entkoppelt (users.referee_id ist FK-geschützt) und bleibt bestehen.
-      user = @referee.user
-      if user && user.id != current_user.id && current_user.permission_hash[:admin].present?
-        user.destroy
-      elsif user
-        user.update_column(:referee_id, nil)
+      blocker = deletion_blocker(@referee)
+      return render json: { error: blocker }, status: :unprocessable_entity if blocker
+
+      ActiveRecord::Base.transaction do
+        # Benutzerkonten löschen ist Admin-only (wie users#destroy/destroy_user).
+        # Ein FD-RSK löscht nur den Schiri-Datensatz; ein verknüpftes Konto wird
+        # entkoppelt (users.referee_id ist FK-geschützt) und bleibt bestehen.
+        user = @referee.user
+        if user && user.id != current_user.id && current_user.permission_hash[:admin].present?
+          user.destroy!
+        elsif user
+          user.update_column(:referee_id, nil)
+        end
+        @referee.destroy!
       end
-      @referee.destroy
+
       head :no_content
+    rescue ActiveRecord::InvalidForeignKey => e
+      # Auffangnetz für alles, was deletion_blocker nicht kennt – etwa
+      # Fremdschlüssel am Benutzerkonto (Kursimporte, Schiri-Berichte). Ohne
+      # dieses rescue wurde daraus eine 500, und die Maske zeigte nur
+      # „Fehler beim Löschen.".
+      Rails.logger.info("Referee##{@referee.id} destroy blocked by FK: #{e.message}")
+      render json: { error: 'Schiedsrichter kann nicht gelöscht werden: Es existieren noch verknüpfte ' \
+                            'Einträge (z.B. am Benutzerkonto).' },
+             status: :unprocessable_entity
     end
 
     # POST /api/v2/admin/referees/:id/merge
@@ -678,6 +693,51 @@ module Admin
 
     def forbidden_response
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
+    end
+
+    # Benennt vor dem Löschen, was den Datensatz festhält. Die drei
+    # Fremdschlüssel auf `referees` stehen in der Datenbank auf RESTRICT, im
+    # Modell gibt es dazu aber kein `dependent:` – `destroy` lief deshalb
+    # ungebremst hinein, und aus ActiveRecord::InvalidForeignKey wurde eine 500.
+    # Die Maske zeigt in dem Fall nur „Fehler beim Löschen.", niemand konnte
+    # also sehen, woran es lag (gemeldet am 22.09.2026 zur Lizenznummer 8768,
+    # festgehalten von genau einem Kursergebnis).
+    #
+    # Nichts davon wird mitgelöscht: Kursergebnisse, Ansetzungen und Feedback
+    # sind Historie, genau wie bei teams#destroy. Für den Regelfall zweier
+    # Profile derselben Person zieht merge_into! die Anhänge stattdessen auf das
+    # Masterprofil um; `destroy` ist für Fehlanlagen gedacht.
+    #
+    # Schiri-Feedback trägt keinen Fremdschlüssel und würde beim Löschen still
+    # auf eine tote ID zeigen. Es steht hier trotzdem – teams#destroy sperrt aus
+    # demselben Grund, und ein stiller Verlust ist schlechter als eine Absage,
+    # die man lesen kann.
+    def deletion_blocker(referee)
+      if RefereeCourseResult.where(referee_id: referee.id).exists?
+        return 'Schiedsrichter kann nicht gelöscht werden: Es existieren noch Kursergebnisse aus einem ' \
+               'Lizenzkurs-Import. Zwei Profile derselben Person werden stattdessen zusammengeführt.'
+      end
+
+      if RefereeAssignment.where(referee1_id: referee.id)
+                          .or(RefereeAssignment.where(referee2_id: referee.id))
+                          .or(RefereeAssignment.where(coach_id: referee.id))
+                          .exists?
+        return 'Schiedsrichter kann nicht gelöscht werden: Es existieren noch Ansetzungen zu Spielen.'
+      end
+
+      if Referee.where(merged_into_id: referee.id).exists?
+        return 'Schiedsrichter kann nicht gelöscht werden: Es wurden bereits andere Profile auf diesen ' \
+               'Datensatz zusammengeführt.'
+      end
+
+      if RefereeFeedback.where(referee1_id: referee.id)
+                        .or(RefereeFeedback.where(referee2_id: referee.id))
+                        .exists?
+        return 'Schiedsrichter kann nicht gelöscht werden: Es existiert noch Schiedsrichter-Feedback ' \
+               'zu dieser Person.'
+      end
+
+      nil
     end
 
     # include_vm: false schließt den VM-Zweig aus – VM darf die Schiris seines

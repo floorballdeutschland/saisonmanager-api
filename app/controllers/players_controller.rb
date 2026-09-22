@@ -98,6 +98,7 @@ class PlayersController < ApplicationController
       # Verein oder in keinem, und beides wäre falsch. Vorbild: `manage_players`
       # in vm/clubs_and_teams.
       hash[:can_deactivate] = can_toggle_deactivation?(result)
+      hash[:can_hide_public_last_name] = can_hide_public_last_name?
       render json: hash
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
@@ -341,6 +342,65 @@ class PlayersController < ApplicationController
         end
       end
 
+      # Expresszuschlag bei der Genehmigung streichen (#740). `express` entsteht
+      # einmalig beim Antrag (request_license) und wurde danach nie wieder
+      # geschrieben: Ein wegen fehlender Unterlagen abgelehnter Expressantrag
+      # blieb auch dann eine Expresslizenz, wenn der Verband ihn spaeter als
+      # gewoehnliche Lizenz erteilt. Abgerechnet wird aber genau dieses Flag
+      # (Admin::LicensesController#index und die CSV-Ausfuhr der Lizenzliste).
+      #
+      # Nur die Richtung "Zuschlag weg" ist vorgesehen. Ein nachtraegliches
+      # Hochstufen bliebe ohne Gegenstueck, denn die Expressbearbeitung loest
+      # schon der Antrag aus (PlayerMailer#express_license_requested an die SBK).
+      #
+      # Und nur zusammen mit der Genehmigung: Die Streichung haengt an deren
+      # History-Eintrag. Eine bereits erteilte Lizenz bekaeme hier keinen
+      # Eintrag mehr (derselbe Status schreibt keinen zweiten), der Zuschlag
+      # fiele also lautlos weg statt belegbar -- deshalb eine Absage.
+      waive_express = false
+      unless params[:express].nil?
+        # Ueber den Typ-Caster und nicht ueber `== true || == 'true'`: Der Wert
+        # entscheidet hier ueber Geld, und die Kurzform macht aus JEDEM nicht
+        # erkannten Wert (1, "1", "on") ein Streichen. In request_license ist
+        # dasselbe Idiom harmlos, weil "unbekannt" dort kein Express bedeutet;
+        # hier kehrt sich die Bedeutung um und im Zweifel faellt eine Gebuehr weg.
+        #
+        # Der Caster kennt eine feste Liste von Nein-Werten und liest alles
+        # andere als Ja. Die Streichung braucht also ein ausdrueckliches Nein,
+        # und ein unklarer Wert landet auf der umkehrbaren Seite -- zurueck geht
+        # es nicht, Absage 2 unten sperrt das Hochstufen. Leer ist als einziges
+        # weder Ja noch Nein und wird abgewiesen statt ausgelegt.
+        express_param = ActiveModel::Type::Boolean.new.cast(params[:express])
+
+        if express_param.nil?
+          return render json: { message: 'Der Wert für den Expresszuschlag ist nicht auswertbar.' },
+                        status: :unprocessable_entity
+        end
+
+        if params[:license_status_id].to_i != License::APPROVED
+          return render json: { message: 'Der Expresszuschlag lässt sich nur beim Erteilen der Lizenz ändern.' },
+                        status: :unprocessable_entity
+        end
+
+        if express_param && license['express'].blank?
+          return render json: { message: 'Eine Lizenz lässt sich nachträglich nicht zur Expresslizenz machen.' },
+                        status: :unprocessable_entity
+        end
+
+        # Ueber LicenseEffectiveStatus.base_status_id und nicht ueber
+        # License.current_status_id: Bei einer gesperrten Lizenz ist der juengste
+        # Eintrag die Sperre, die erteilte Lizenz darunter bliebe ungeschuetzt.
+        # Sie ist aber laengst abgerechnet. base_status_id beantwortet genau die
+        # Frage "welcher Status gaelte ohne Sperre", und der Rest des Hauses
+        # fragt an dieser Stelle auch danach.
+        if !express_param && LicenseEffectiveStatus.base_status_id(license) == License::APPROVED
+          return render json: { message: 'Diese Lizenz ist bereits erteilt. Der Expresszuschlag lässt sich dabei nicht mehr streichen.' },
+                        status: :unprocessable_entity
+        end
+
+        waive_express = !express_param
+      end
+
       approved_team_id = nil
 
       player.licenses.map!.with_index do |lic, idx|
@@ -397,6 +457,14 @@ class PlayersController < ApplicationController
           if params[:license_status_id].to_i == License::APPROVED
             approved_team_id = lic['team_id']
             lic['valid_until'] = params[:valid_until].presence || default_license_valid_until(lic['season_id']).iso8601
+            # Das Flag umschreiben und die Entscheidung am selben Eintrag
+            # festhalten: Die Abrechnung liest nur das Flag, ein halbes Jahr
+            # spaeter belegt aber allein die Markierung, wer den Zuschlag
+            # gestrichen hat.
+            if waive_express && lic['express'].present?
+              lic['express'] = false
+              entry[License::EXPRESS_WAIVED_KEY] = true
+            end
           end
         end
 
@@ -1047,11 +1115,17 @@ class PlayersController < ApplicationController
     # erreichbar und die Spieler-ID frei durchzählbar, ein Geburtsdatum je Name
     # wäre damit für den gesamten Spielerbestand abrufbar. Die öffentliche
     # Spielerseite zeigt beides ohnehin nicht an.
+    # Der Endpunkt ist die oeffentliche Spielerseite; ein anonymisiertes Profil
+    # traegt hier den Platzhalter. Die Zahlen bleiben, sie sind ohne den Namen
+    # keiner Person mehr zuzuordnen.
+    public_first_name, public_last_name =
+      PublicPlayerNames.mask_names(player.id, player.first_name, player.last_name)
+
     render json: {
       player: {
         id:             player.id,
-        first_name:     player.first_name,
-        last_name:      player.last_name,
+        first_name:     public_first_name,
+        last_name:      public_last_name,
         deactivated_at: player.deactivated_at
       },
       seasons:,
@@ -1131,6 +1205,46 @@ class PlayersController < ApplicationController
 
     player.reactivate!
     render json: deactivation_toggle_hash(player)
+  end
+
+  # POST /admin/players/:id/hide_public_last_name
+  #
+  # Nimmt den Namen aus der oeffentlichen Spiel- und Statistikausgabe. Antrag
+  # nach Art. 17/21 DSGVO einer Person, die nicht mehr am Spielbetrieb
+  # teilnimmt; was dabei bleibt und warum, steht in PublicPlayerNames.
+  def hide_public_last_name
+    player = Player.find_by(id: params[:id])
+    return render json: { message: 'Spieler nicht gefunden.' }, status: :not_found unless player
+    unless can_hide_public_last_name?
+      return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+    if player.public_last_name_hidden?
+      return render json: { message: 'Dieses Profil ist bereits anonymisiert.' }, status: :unprocessable_entity
+    end
+
+    reason = params[:reason].to_s.strip
+    if reason.length > PUBLIC_LAST_NAME_REASON_LIMIT
+      return render json: { message: "Der Vermerk darf hoechstens #{PUBLIC_LAST_NAME_REASON_LIMIT} Zeichen lang sein." },
+                    status: :unprocessable_entity
+    end
+
+    player.hide_public_last_name!(current_user.id, reason: reason)
+    render json: public_last_name_toggle_hash(player)
+  end
+
+  # POST /admin/players/:id/show_public_last_name
+  def show_public_last_name
+    player = Player.find_by(id: params[:id])
+    return render json: { message: 'Spieler nicht gefunden.' }, status: :not_found unless player
+    unless can_hide_public_last_name?
+      return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+    unless player.public_last_name_hidden?
+      return render json: { message: 'Dieses Profil ist nicht anonymisiert.' }, status: :unprocessable_entity
+    end
+
+    player.show_public_last_name!(current_user.id)
+    render json: public_last_name_toggle_hash(player)
   end
 
   def vm_players_index
@@ -1513,14 +1627,50 @@ class PlayersController < ApplicationController
     can_deactivate_player?(player) || sbk_can_undo_deactivation?(user_permission_hash, player)
   end
 
+  # Obergrenze des internen Vermerks zur Anonymisierung. Eine reine
+  # Anwendungsregel, die Spalte selbst ist ein unbegrenztes `character varying`:
+  # Der Vermerk ist ein Aktenzeichen, kein Freitextfeld, und die Maske begrenzt
+  # dasselbe ueber `maxlength`.
+  PUBLIC_LAST_NAME_REASON_LIMIT = 255
+
+  # Ausdruecklich nur die Verbandsverwaltung: Die Anonymisierung ist die Antwort
+  # auf einen Betroffenenantrag und wird an der Geschaeftsstelle entschieden,
+  # nicht in der SBK eines einzelnen Spielbetriebs und erst recht nicht im
+  # Verein.
+  #
+  # Gemeint ist die Rolle, nicht ihr Spielbetrieb: Auch ein auf einen Verband
+  # gescoptes Admin-Konto darf schalten, und es schaltet dann verbandsuebergreifend
+  # -- die Anonymisierung wirkt ueber alle Spielbetriebe hinweg, ein auf einen
+  # Verband begrenzter Schalter ergaebe keinen Sinn. Das ist dieselbe
+  # Schreibweise wie an den uebrigen rund zwanzig Admin-Pruefungen im Bestand.
+  def can_hide_public_last_name?
+    user_permission_hash[:admin].present?
+  end
+
+  # Antwort auf beide Schalter, in der Form des Profils: Die Maske uebernimmt
+  # sie unveraendert (`this.player = updated`), wie bei deactivation_toggle_hash.
+  def public_last_name_toggle_hash(player)
+    player.full_hash(false, false, false)
+          .merge(can_deactivate: can_toggle_deactivation?(player),
+                 can_hide_public_last_name: can_hide_public_last_name?)
+  end
+
   # Die Antwort auf `deactivate` und `reactivate`. Sie trägt dasselbe
   # `can_deactivate` wie das Profil selbst, weil die Maske sie ungefiltert
   # übernimmt (`this.player = updated`) und daraus den Gegenknopf ableitet.
   # Ohne das Feld griff dort der Rückfall auf das globale Rollen-Flag
   # `player_deactivate`, und das ist für einen reinen Teammanager false: Nach
   # dem Deaktivieren fehlte ihm „Reaktivieren" bis zum nächsten Seitenaufruf.
+  # `can_hide_public_last_name` faehrt mit, obwohl dieser Weg mit der Anonymisierung
+  # nichts zu tun hat: Die Maske uebernimmt die Antwort ungefiltert, und die
+  # Pruefung dort hat bewusst KEINEN Rueckfall auf ein Rollen-Flag (anders als
+  # `can_deactivate`, siehe oben). Ohne das Feld verschwaende der
+  # Anonymisierungsabschnitt nach einem Klick auf Deaktivieren still aus dem
+  # geoeffneten Profil, bis jemand die Seite neu laedt.
   def deactivation_toggle_hash(player)
-    player.full_hash(false, false, false).merge(can_deactivate: can_toggle_deactivation?(player))
+    player.full_hash(false, false, false)
+          .merge(can_deactivate: can_toggle_deactivation?(player),
+                 can_hide_public_last_name: can_hide_public_last_name?)
   end
 
   # Hat der Verein Anlegen, Deaktivieren und Reaktivieren seinen

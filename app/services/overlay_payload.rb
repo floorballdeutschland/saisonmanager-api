@@ -128,13 +128,19 @@ class OverlayPayload
   def roster
     @roster ||= begin
       players = @game.players || {}
+      hidden = PublicPlayerNames.hidden_ids
       %w[home guest].index_with do |side|
         # Ohne Trikotnummer aussortieren: `nil.to_i` ergibt 0, und damit
         # bekäme ein Tor mit der Nummer 0 einen beliebigen nummernlosen
         # Spieler zugeschrieben. Mehrere solche Einträge lägen zudem auf
         # demselben Schlüssel.
+        #
+        # Die Maskierung sitzt hier und nicht an #display_name/#full_name: So
+        # traegt jeder Weg, der die Aufstellung nachschlaegt, denselben Namen --
+        # Bauchbinde, Torschuetzenliste und Anzeigetafel.
         (players[side] || [])
           .select { |p| p['trikot_number'].present? }
+          .map { |p| PublicPlayerNames.mask_lineup_entry(p, hidden) }
           .index_by { |p| p['trikot_number'].to_i }
       end
     end

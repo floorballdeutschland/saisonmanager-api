@@ -166,6 +166,8 @@ Rails.application.routes.draw do
       post 'admin/players/:id/remove_additional_club', to: 'players#remove_additional_club'
       post 'admin/players/:id/deactivate', to: 'players#deactivate'
       post 'admin/players/:id/reactivate', to: 'players#reactivate'
+      post 'admin/players/:id/hide_public_last_name', to: 'players#hide_public_last_name'
+      post 'admin/players/:id/show_public_last_name', to: 'players#show_public_last_name'
       post 'admin/players/:id/merge', to: 'players#merge'
       get   'admin/vm/players', to: 'players#vm_players_index'
       patch 'admin/vm/players/:id/email', to: 'players#update_email'

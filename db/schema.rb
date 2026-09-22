@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_09_21_160000) do
+ActiveRecord::Schema[7.2].define(version: 2026_09_22_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -607,7 +607,11 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_21_160000) do
     t.integer "deactivated_by"
     t.integer "merged_into_id"
     t.string "deactivation_reason"
+    t.datetime "public_last_name_hidden_at", comment: "Gesetzt = Name wird in der oeffentlichen Ausgabe (Scorer, Aufstellung, Statistik, Overlay) durch einen Platzhalter ersetzt. Der Datensatz selbst behaelt den Namen, damit Dubletten- und Sperrpruefung weiter greifen."
+    t.bigint "public_last_name_hidden_by", comment: "Konto, das die Anonymisierung gesetzt hat."
+    t.string "public_last_name_hidden_reason", comment: "Interner Vermerk, etwa das Aktenzeichen des Loeschantrags."
     t.index ["deactivated_at"], name: "index_players_on_deactivated_at"
+    t.index ["public_last_name_hidden_at"], name: "index_players_on_public_last_name_hidden_at", where: "(public_last_name_hidden_at IS NOT NULL)"
   end
 
   create_table "proceeding_proposals", force: :cascade do |t|

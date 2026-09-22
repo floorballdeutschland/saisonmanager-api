@@ -336,8 +336,13 @@ Metrics/BlockNesting:
 # inzwischen gewachsen war. League gehoert wirklich aufgeteilt, das ist aber
 # ein eigener Umbau und kein Release-Prep (game.rb steht unten aus demselben
 # Grund komplett drin).
+#
+# 1150 seit api#740 und api#741: Genau der beschriebene Fall ist wieder
+# eingetreten, diesmal an PlayersController (1070 Zeilen). Beide PRs waren
+# einzeln gruen, erst zusammen rissen sie die Grenze. Auch dieser Controller
+# gehoert aufgeteilt, und auch das ist ein eigener Umbau.
 Metrics/ClassLength:
-  Max: 1050
+  Max: 1150
   Exclude:
     - 'app/models/game.rb'
 
