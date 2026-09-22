@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Die öffentliche Spielansicht bekommt die Mannschaftskürzel mitgeliefert**: Der Spielabruf führt neben `home_team_name`/`guest_team_name` jetzt auch `home_team_short_name`/`guest_team_short_name`. Das Frontend setzt sie auf dem Handy neben die Zwischenüberschriften der Aufstellung (Betreuer, Starting six, Auszeichnungen), wo einspaltig sonst nicht mehr zu erkennen ist, zu welcher Mannschaft ein Abschnitt gehört und der volle Name die Zeile sprengen würde. Das Kürzel entsteht wie beim Ticker und beim Livestream-Overlay: die Mannschaft, sonst der Verein, sonst der Name, in jedem Fall auf acht Zeichen gekappt. Der Umweg über den Verein ist nötig, weil ein großer Teil der Mannschaften gar kein eigenes Kürzel trägt. Leer bleibt das Feld nur bei einer Paarung, deren Mannschaft noch nicht feststeht; dort zeigt die Ansicht weiter den Mannschaftsnamen.
+
 ## [1.119.0] - 2026-09-21
 
 ### Neu
