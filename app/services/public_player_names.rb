@@ -1,6 +1,23 @@
-# Anonymisierung einzelner Spielerprofile in der Ausgabe von Spiel- und
-# Statistikdaten (DSGVO Art. 17/21: Antrag auf Loeschung der oeffentlich
-# zugaenglichen Daten einer Person, die nicht mehr am Spielbetrieb teilnimmt).
+# Der Nachname eines Spielerprofils wird in der Ausgabe von Spiel- und
+# Statistikdaten weggelassen (DSGVO Art. 17/21: Antrag einer Person, die nicht
+# mehr am Spielbetrieb teilnimmt und nicht laenger ueber eine Suche nach ihrem
+# Namen auffindbar sein will).
+#
+# Welche Stufe das ist, und welche nicht:
+#
+# Stehen bleiben Vorname, Mannschaft, Spiele und Tore. Das erfuellt genau das,
+# worum es im Antrag geht -- eine Suche nach "Vorname Nachname" findet eine
+# Seite nicht mehr, auf der nur der Vorname steht -- und erhaelt zugleich eine
+# lesbare Statistik. Es ist damit ausdruecklich eine PSEUDONYMISIERUNG und keine
+# Anonymisierung: Innerhalb einer Liga mit ein paar Dutzend Beteiligten bleibt
+# der Vorname zusammen mit Mannschaft und Saison fuer das Umfeld zuordenbar, es
+# sind also weiterhin personenbezogene Daten. Wer eine schaerfere Stufe braucht,
+# baut sie nicht in diesen Schalter hinein, sondern daneben: Der Datenbestand
+# kennt genau einen Zustand, und der heisst "Nachname faellt weg".
+#
+# Keine Initiale: "Pierre L." waere in derselben Liga trivial
+# zurueckzufuehren und wuerde den Antrag nicht erfuellen. Der Nachname faellt
+# ersatzlos weg, die Anzeige zeigt dann den Vornamen allein.
 #
 # Warum die Anzeige und nicht der Datensatz geaendert wird:
 #
@@ -8,24 +25,24 @@
 # ueberwiegend nicht aus `players`, sondern aus dem Spielbericht-Schnappschuss
 # in `games.players` (`player_firstname` / `player_name`, siehe
 # Game#lineup_player_names). Ein umbenanntes oder geloeschtes Spielerprofil
-# aendert an diesen Seiten deshalb nichts -- der Name bliebe stehen. Umgekehrt
-# ist der Schnappschuss der Nachweis darueber, wer laut Spielbericht auf dem
-# Feld stand; ihn zu ueberschreiben waere nicht umkehrbar und wuerde den Bericht
-# verfaelschen.
+# aendert an diesen Seiten deshalb nichts -- der Nachname bliebe stehen.
+# Umgekehrt ist der Schnappschuss der Nachweis darueber, wer laut Spielbericht
+# auf dem Feld stand; ihn zu ueberschreiben waere nicht umkehrbar und wuerde den
+# Bericht verfaelschen.
 #
 # Zwei Wege lesen den Namen doch aus dem Profil, und zwar absichtlich, damit eine
 # Umbenennung dort sofort durchschlaegt: TeamsController#scorer_entries und der
 # Rueckfall in League#scorer fuer Schnappschuesse ohne Namen (sehr alte
-# Importe). Beide sind hier ebenfalls maskiert.
+# Importe). Beide sind hier ebenfalls behandelt.
 #
 # Also bleibt der Bestand unangetastet und die Maskierung sitzt an den Stellen,
-# die Namen herausgeben. Gesteuert wird sie ueber `players.public_name_hidden_at`
-# und damit ueber die Spieler-ID -- die traegt jeder dieser Wege mit, auch der
-# Schnappschuss.
+# die Namen herausgeben. Gesteuert wird sie ueber
+# `players.public_last_name_hidden_at` und damit ueber die Spieler-ID -- die
+# traegt jeder dieser Wege mit, auch der Schnappschuss.
 #
-# Bewusst nicht nach Anmeldung unterschieden: Maskiert werden die Spiel- und
-# Statistikdaten fuer jeden Abruf, auch fuer den angemeldeten und fuer das
-# Spielsekretariat. Den vollen Namen fuehrt die Spielerverwaltung (Profil,
+# Bewusst nicht nach Anmeldung unterschieden: Der Nachname faellt in den Spiel-
+# und Statistikdaten fuer jeden Abruf weg, auch fuer den angemeldeten und fuer
+# das Spielsekretariat. Den vollen Namen fuehrt die Spielerverwaltung (Profil,
 # Suche, Lizenzen, Sperren). Das ist die Grenze, die sich gegenueber der
 # betroffenen Person begruenden laesst, und sie kommt ohne eine zweite, nur fuer
 # angemeldete Abrufe gueltige Fassung jeder Nutzlast aus -- eine solche Fassung
@@ -33,7 +50,7 @@
 # Spieler-ID bleibt ueberall stehen, intern ist die Zuordnung damit weiter
 # moeglich.
 #
-# AUSDRUECKLICH NICHT maskiert sind die Lizenzlisten am Spieltag:
+# AUSDRUECKLICH NICHT behandelt sind die Lizenzlisten am Spieltag:
 # PublicLicenseListController, PublicSecretaryController und der Kader in
 # ClubsController. Die tragen zwar "public" im Namen und kommen ohne Cookie aus,
 # haengen aber an einem signierten Link beziehungsweise am Sekretariats-Token
@@ -41,19 +58,19 @@
 # die Person benennbar bleiben, sonst laesst sich nicht pruefen, wer spielen
 # darf. Wer diese Stellen fuer eine Luecke haelt und zumacht, legt das
 # Kampfgericht lahm.
-#
-# Keine Initialen und kein Namensrest: In einer Liga mit ein paar Dutzend
-# Beteiligten waere "P. Labuch" oder "Pierre L." trivial zurueckzufuehren und
-# wuerde den Antrag nicht erfuellen.
 module PublicPlayerNames
-  HIDDEN_FIRST_NAME = ''.freeze
-  HIDDEN_LAST_NAME = 'Anonymisiert'.freeze
+  # Der Nachname faellt ersatzlos weg, es tritt kein Platzhalter an seine
+  # Stelle: Die oeffentlichen Ansichten setzen den Namen als "Vorname Nachname"
+  # zusammen, ein leerer zweiter Teil ergibt dort den Vornamen allein. Ein Wort
+  # wie "anonymisiert" stuende stattdessen als Nachname in jeder Zeile und
+  # laese sich schlecht sortieren.
+  HIDDEN_LAST_NAME = ''.freeze
 
-  CACHE_KEY = 'players/public_name_hidden_ids'.freeze
+  CACHE_KEY = 'players/public_last_name_hidden_ids'.freeze
 
   # Kurz gehalten, und das ist hier kein Geschmack: Die TTL ist nicht die
   # Ersparnis, sondern die Obergrenze des Schadens. Scheitert das Leeren beim
-  # Umschalten (Redis weg, siehe #flush!), steht der Klarname genau so lange
+  # Umschalten (Redis weg, siehe #flush!), steht der Nachname genau so lange
   # weiter oeffentlich. Fuenf Minuten sind der Wert der uebrigen Liga-Caches,
   # und die Abfrage dahinter ist ein `pluck` auf einem Teilindex ueber eine
   # Handvoll Zeilen.
@@ -66,7 +83,7 @@ module PublicPlayerNames
     # Scorerliste einer Liga ihn je Spiel braucht. Ohne diesen Halt waeren das
     # so viele Redis-Zugriffe wie die Liga Spiele hat.
     def hidden_ids
-      Current.public_name_hidden_ids ||= Array(cached_ids).to_set
+      Current.public_last_name_hidden_ids ||= Array(cached_ids).to_set
     end
 
     def hidden?(player_id, hidden = hidden_ids)
@@ -85,10 +102,13 @@ module PublicPlayerNames
     # Trefferfall, damit der Regelfall ohne Allokation auskommt und der Aufrufer
     # weiter mit denselben Hash-Objekten arbeitet (Game#players_with_position
     # schreibt `position` hinein).
+    #
+    # `player_name` ist im Schnappschuss der NACHname, `player_firstname` der
+    # Vorname. Angefasst wird nur der erste.
     def mask_lineup_entry(entry, hidden = hidden_ids)
       return entry unless entry.is_a?(Hash) && hidden?(entry['player_id'], hidden)
 
-      entry.merge('player_firstname' => HIDDEN_FIRST_NAME, 'player_name' => HIDDEN_LAST_NAME)
+      entry.merge('player_name' => HIDDEN_LAST_NAME)
     end
 
     # Fuer die Wege, die den Namen aus dem Spielerdatensatz oder aus einem
@@ -97,7 +117,7 @@ module PublicPlayerNames
     def mask_names(player_id, first_name, last_name, hidden = hidden_ids)
       return [first_name, last_name] unless hidden?(player_id, hidden)
 
-      [HIDDEN_FIRST_NAME, HIDDEN_LAST_NAME]
+      [first_name, HIDDEN_LAST_NAME]
     end
 
     # Leert den Satz der anonymisierten IDs.
@@ -111,13 +131,13 @@ module PublicPlayerNames
     # weiter in Scorerliste, Aufstellung und Overlay, waehrend die
     # Geschaeftsstelle eine gruene Erfolgsmeldung sieht.
     def flush!
-      Current.public_name_hidden_ids = nil
+      Current.public_last_name_hidden_ids = nil
       result = Rails.cache.delete(CACHE_KEY)
       return unless result.nil?
 
       Sentry.capture_message(
-        "PublicPlayerNames: #{CACHE_KEY} konnte nicht geleert werden, ein anonymisierter " \
-        "Name bleibt bis zu #{CACHE_TTL.inspect} oeffentlich sichtbar",
+        "PublicPlayerNames: #{CACHE_KEY} konnte nicht geleert werden, ein weggelassener " \
+        "Nachname bleibt bis zu #{CACHE_TTL.inspect} oeffentlich sichtbar",
         level: :error
       )
     end
@@ -166,7 +186,7 @@ module PublicPlayerNames
 
     def cached_ids
       Rails.cache.fetch(CACHE_KEY, expires_in: CACHE_TTL) do
-        Player.public_name_hidden.pluck(:id)
+        Player.public_last_name_hidden.pluck(:id)
       end
     end
   end

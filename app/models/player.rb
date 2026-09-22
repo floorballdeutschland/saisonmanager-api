@@ -63,7 +63,7 @@ class Player < ApplicationRecord
 
   # Profile, deren Name in der oeffentlichen Ausgabe maskiert wird. Siehe
   # PublicPlayerNames.
-  scope :public_name_hidden, -> { where.not(public_name_hidden_at: nil) }
+  scope :public_last_name_hidden, -> { where.not(public_last_name_hidden_at: nil) }
 
   def meta_hash
     attributes.with_indifferent_access.slice(:id, :last_name, :first_name, :birthdate, :gender, :security_id, :deactivated_at)
@@ -102,8 +102,8 @@ class Player < ApplicationRecord
       # Die Maske der Spielerverwaltung zeigt daran den Hinweis und den
       # Gegenknopf. Der Name im selben Hash bleibt der echte: Maskiert wird die
       # Spiel- und Statistikausgabe, nicht die Verwaltung (PublicPlayerNames).
-      public_name_hidden_at:,
-      public_name_hidden_reason:
+      public_last_name_hidden_at:,
+      public_last_name_hidden_reason:
     }
 
     if with_licenses
@@ -719,8 +719,8 @@ class Player < ApplicationRecord
     save!(validate: false)
   end
 
-  def public_name_hidden?
-    public_name_hidden_at.present?
+  def public_last_name_hidden?
+    public_last_name_hidden_at.present?
   end
 
   # Nimmt den Namen dieses Profils aus der oeffentlichen Spiel- und
@@ -732,10 +732,10 @@ class Player < ApplicationRecord
   # `validate: false` wie bei #deactivate!: Altbestand erfuellt die heutigen
   # Validierungen nicht durchgaengig (etwa nation_id), und daran darf ein
   # Betroffenenantrag nicht scheitern.
-  def hide_public_name!(user_id, reason: nil)
-    self.public_name_hidden_at = Time.current
-    self.public_name_hidden_by = user_id
-    self.public_name_hidden_reason = reason.presence
+  def hide_public_last_name!(user_id, reason: nil)
+    self.public_last_name_hidden_at = Time.current
+    self.public_last_name_hidden_by = user_id
+    self.public_last_name_hidden_reason = reason.presence
     save!(validate: false)
     PublicPlayerNames.flush_for!(self)
   end
@@ -750,8 +750,8 @@ class Player < ApplicationRecord
   # hiesse, den Beleg mit der Ruecknahme zu loeschen. Sichtbar sind sie nur am
   # anonymisierten Profil, ein erneutes Setzen ueberschreibt sie mit dem neuen
   # Vorgang.
-  def show_public_name!(_user_id)
-    self.public_name_hidden_at = nil
+  def show_public_last_name!(_user_id)
+    self.public_last_name_hidden_at = nil
     save!(validate: false)
     PublicPlayerNames.flush_for!(self)
   end

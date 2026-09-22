@@ -23,7 +23,7 @@
 #   state_association_tree                    der Verbandsbaum (Wurzeln, Teilbaeume)
 #   game_operation_id_by_state_association    Spielbetrieb je Landesverband
 #   game_operations_by_id                     die Spielbetriebe selbst, nach ID
-#   public_name_hidden_ids                    die anonymisierten Spieler-IDs, je
+#   public_last_name_hidden_ids                    die anonymisierten Spieler-IDs, je
 #                                             Spiel der Liga einmal gebraucht
 #                                             (siehe unten)
 #
@@ -51,7 +51,7 @@ class Current < ActiveSupport::CurrentAttributes
   # Spielen waeren das 150 Redis-Zugriffe fuer einen Wert, der sich waehrend der
   # Anfrage nicht aendert -- und bei einem haengenden Redis je Zugriff bis zu
   # read_timeout Sekunden, ohne eine einzige Fehlermeldung.
-  attribute :public_name_hidden_ids
+  attribute :public_last_name_hidden_ids
 
   # Aufzurufen, wenn ein Request die Verbandsstruktur selbst aendert. Ohne das
   # arbeitete der Rest desselben Requests mit dem Stand von vorher. Die Haken

@@ -98,7 +98,7 @@ class PlayersController < ApplicationController
       # Verein oder in keinem, und beides wäre falsch. Vorbild: `manage_players`
       # in vm/clubs_and_teams.
       hash[:can_deactivate] = can_toggle_deactivation?(result)
-      hash[:can_hide_public_name] = can_hide_public_name?
+      hash[:can_hide_public_last_name] = can_hide_public_last_name?
       render json: hash
     else
       render json: { message: 'Nicht eingeloggt.' }, status: :unauthorized
@@ -1140,44 +1140,44 @@ class PlayersController < ApplicationController
     render json: deactivation_toggle_hash(player)
   end
 
-  # POST /admin/players/:id/hide_public_name
+  # POST /admin/players/:id/hide_public_last_name
   #
   # Nimmt den Namen aus der oeffentlichen Spiel- und Statistikausgabe. Antrag
   # nach Art. 17/21 DSGVO einer Person, die nicht mehr am Spielbetrieb
   # teilnimmt; was dabei bleibt und warum, steht in PublicPlayerNames.
-  def hide_public_name
+  def hide_public_last_name
     player = Player.find_by(id: params[:id])
     return render json: { message: 'Spieler nicht gefunden.' }, status: :not_found unless player
-    unless can_hide_public_name?
+    unless can_hide_public_last_name?
       return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
     end
-    if player.public_name_hidden?
+    if player.public_last_name_hidden?
       return render json: { message: 'Dieses Profil ist bereits anonymisiert.' }, status: :unprocessable_entity
     end
 
     reason = params[:reason].to_s.strip
-    if reason.length > PUBLIC_NAME_REASON_LIMIT
-      return render json: { message: "Der Vermerk darf hoechstens #{PUBLIC_NAME_REASON_LIMIT} Zeichen lang sein." },
+    if reason.length > PUBLIC_LAST_NAME_REASON_LIMIT
+      return render json: { message: "Der Vermerk darf hoechstens #{PUBLIC_LAST_NAME_REASON_LIMIT} Zeichen lang sein." },
                     status: :unprocessable_entity
     end
 
-    player.hide_public_name!(current_user.id, reason: reason)
-    render json: public_name_toggle_hash(player)
+    player.hide_public_last_name!(current_user.id, reason: reason)
+    render json: public_last_name_toggle_hash(player)
   end
 
-  # POST /admin/players/:id/show_public_name
-  def show_public_name
+  # POST /admin/players/:id/show_public_last_name
+  def show_public_last_name
     player = Player.find_by(id: params[:id])
     return render json: { message: 'Spieler nicht gefunden.' }, status: :not_found unless player
-    unless can_hide_public_name?
+    unless can_hide_public_last_name?
       return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
     end
-    unless player.public_name_hidden?
+    unless player.public_last_name_hidden?
       return render json: { message: 'Dieses Profil ist nicht anonymisiert.' }, status: :unprocessable_entity
     end
 
-    player.show_public_name!(current_user.id)
-    render json: public_name_toggle_hash(player)
+    player.show_public_last_name!(current_user.id)
+    render json: public_last_name_toggle_hash(player)
   end
 
   def vm_players_index
@@ -1564,7 +1564,7 @@ class PlayersController < ApplicationController
   # Anwendungsregel, die Spalte selbst ist ein unbegrenztes `character varying`:
   # Der Vermerk ist ein Aktenzeichen, kein Freitextfeld, und die Maske begrenzt
   # dasselbe ueber `maxlength`.
-  PUBLIC_NAME_REASON_LIMIT = 255
+  PUBLIC_LAST_NAME_REASON_LIMIT = 255
 
   # Ausdruecklich nur die Verbandsverwaltung: Die Anonymisierung ist die Antwort
   # auf einen Betroffenenantrag und wird an der Geschaeftsstelle entschieden,
@@ -1576,16 +1576,16 @@ class PlayersController < ApplicationController
   # -- die Anonymisierung wirkt ueber alle Spielbetriebe hinweg, ein auf einen
   # Verband begrenzter Schalter ergaebe keinen Sinn. Das ist dieselbe
   # Schreibweise wie an den uebrigen rund zwanzig Admin-Pruefungen im Bestand.
-  def can_hide_public_name?
+  def can_hide_public_last_name?
     user_permission_hash[:admin].present?
   end
 
   # Antwort auf beide Schalter, in der Form des Profils: Die Maske uebernimmt
   # sie unveraendert (`this.player = updated`), wie bei deactivation_toggle_hash.
-  def public_name_toggle_hash(player)
+  def public_last_name_toggle_hash(player)
     player.full_hash(false, false, false)
           .merge(can_deactivate: can_toggle_deactivation?(player),
-                 can_hide_public_name: can_hide_public_name?)
+                 can_hide_public_last_name: can_hide_public_last_name?)
   end
 
   # Die Antwort auf `deactivate` und `reactivate`. Sie trägt dasselbe
@@ -1594,7 +1594,7 @@ class PlayersController < ApplicationController
   # Ohne das Feld griff dort der Rückfall auf das globale Rollen-Flag
   # `player_deactivate`, und das ist für einen reinen Teammanager false: Nach
   # dem Deaktivieren fehlte ihm „Reaktivieren" bis zum nächsten Seitenaufruf.
-  # `can_hide_public_name` faehrt mit, obwohl dieser Weg mit der Anonymisierung
+  # `can_hide_public_last_name` faehrt mit, obwohl dieser Weg mit der Anonymisierung
   # nichts zu tun hat: Die Maske uebernimmt die Antwort ungefiltert, und die
   # Pruefung dort hat bewusst KEINEN Rueckfall auf ein Rollen-Flag (anders als
   # `can_deactivate`, siehe oben). Ohne das Feld verschwaende der
@@ -1603,7 +1603,7 @@ class PlayersController < ApplicationController
   def deactivation_toggle_hash(player)
     player.full_hash(false, false, false)
           .merge(can_deactivate: can_toggle_deactivation?(player),
-                 can_hide_public_name: can_hide_public_name?)
+                 can_hide_public_last_name: can_hide_public_last_name?)
   end
 
   # Hat der Verein Anlegen, Deaktivieren und Reaktivieren seinen

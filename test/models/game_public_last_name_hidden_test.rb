@@ -1,10 +1,10 @@
 require 'test_helper'
 
-# Die Wege, auf denen ein Name oeffentlich herausfaellt. Alle lesen ihn aus dem
-# Spielbericht-Schnappschuss (`games.players`) und nicht aus dem
+# Die Wege, auf denen der Nachname oeffentlich herausfaellt. Alle lesen ihn aus
+# dem Spielbericht-Schnappschuss (`games.players`) und nicht aus dem
 # Spielerdatensatz -- ein umbenanntes Profil wuerde hier nichts aendern, deshalb
-# haengt die Maskierung an der Spieler-ID.
-class GamePublicNameHiddenTest < ActiveSupport::TestCase
+# haengt die Behandlung an der Spieler-ID. Der Vorname bleibt ueberall stehen.
+class GamePublicLastNameHiddenTest < ActiveSupport::TestCase
   PLACEHOLDER = PublicPlayerNames::HIDDEN_LAST_NAME
 
   setup do
@@ -42,17 +42,18 @@ class GamePublicNameHiddenTest < ActiveSupport::TestCase
   end
 
   def hide!
-    @player.hide_public_name!(@user.id)
+    @player.hide_public_last_name!(@user.id)
     @game.reload
   end
 
-  test 'die Aufstellung im Spielbericht nennt den Platzhalter' do
+  test 'die Aufstellung im Spielbericht laesst den Nachnamen weg' do
     hide!
     lineup = @game.full_hash[:players]['home']
 
     entry = lineup.find { |p| p['player_id'] == @player.id }
     assert_equal PLACEHOLDER, entry['player_name']
-    assert_equal '', entry['player_firstname']
+    # Der Vorname bleibt: Er ist die Stufe, auf die dieser Schalter reduziert.
+    assert_equal 'Pierre', entry['player_firstname']
     # Trikotnummer und Position stehen weiter, der Bericht bleibt lesbar.
     assert_equal '7', entry['trikot_number']
     assert_equal 'Feld', entry['position']
@@ -61,20 +62,20 @@ class GamePublicNameHiddenTest < ActiveSupport::TestCase
     assert_equal 'Meier', mate['player_name']
   end
 
-  test 'Startaufstellung und Auszeichnung nennen den Platzhalter' do
+  test 'Startaufstellung und Auszeichnung lassen den Nachnamen weg' do
     hide!
     hash = @game.full_hash
 
     center = hash[:starting_players]['home'].find { |p| p[:position] == 'center' }
     assert_equal PLACEHOLDER, center[:player_name]
-    assert_equal '', center[:player_firstname]
+    assert_equal 'Pierre', center[:player_firstname]
 
     mvp = hash[:awards]['home'].first
     assert_equal PLACEHOLDER, mvp[:player_name]
-    assert_equal '', mvp[:player_firstname]
+    assert_equal 'Pierre', mvp[:player_firstname]
   end
 
-  test 'ohne Anonymisierung bleibt der Spielbericht unveraendert' do
+  test 'ohne den Schalter bleibt der Spielbericht unveraendert' do
     hash = @game.full_hash
 
     entry = hash[:players]['home'].find { |p| p['player_id'] == @player.id }
@@ -83,23 +84,23 @@ class GamePublicNameHiddenTest < ActiveSupport::TestCase
     assert_equal 'Beispiel', hash[:awards]['home'].first[:player_name]
   end
 
-  test 'die Scorerliste der Liga nennt den Platzhalter' do
+  test 'die Scorerliste der Liga fuehrt nur noch den Vornamen' do
     hide!
     entry = @league.scorer.find { |s| s[:player_id] == @player.id }
 
     assert_equal PLACEHOLDER, entry[:last_name]
-    assert_equal '', entry[:first_name]
+    assert_equal 'Pierre', entry[:first_name]
     assert_equal 1, entry[:goals]
 
     mate = @league.scorer.find { |s| s[:player_id] == @mate.id }
     assert_equal 'Meier', mate[:last_name]
   end
 
-  test 'die Scorerliste zieht den Vornamen nicht aus dem Spielerdatensatz nach' do
+  test 'die Scorerliste zieht den Nachnamen nicht aus dem Spielerdatensatz nach' do
     # Der Rueckfall auf den Datensatz greift, wenn der Schnappschuss keinen
-    # Namen traegt (sehr alte Importe). Der maskierte Vorname ist leer und
+    # Namen traegt (sehr alte Importe). Der weggelassene Nachname ist leer und
     # sieht damit genauso aus -- ohne die Reihenfolge in League#scorer holte
-    # `presence` an dieser Stelle den echten Vornamen zurueck.
+    # `presence` an dieser Stelle den echten Nachnamen zurueck.
     @game.update_column(:players, {
                           'home' => [{ 'player_id' => @player.id, 'player_firstname' => nil,
                                        'player_name' => nil, 'trikot_number' => '7' }],
@@ -108,20 +109,21 @@ class GamePublicNameHiddenTest < ActiveSupport::TestCase
     hide!
 
     entry = @league.scorer.find { |s| s[:player_id] == @player.id }
-    assert_equal '', entry[:first_name]
     assert_equal PLACEHOLDER, entry[:last_name]
-    assert_not_includes @league.scorer.to_json, 'Pierre'
+    assert_not_includes @league.scorer.to_json, 'Beispiel'
   end
 
-  test 'die Overlay-Nutzlast nennt den Platzhalter' do
+  test 'die Overlay-Nutzlast zeigt nur noch den Vornamen' do
     hide!
     payload = OverlayPayload.new(@game).as_json
     goal = payload[:events].find { |e| e[:event_type] == :goal }
 
-    assert_equal PLACEHOLDER, goal[:scorer_name]
-    assert_equal PLACEHOLDER, goal[:scorer_full_name]
-    assert_not_includes payload.to_json, 'Pierre'
-    # Der Vorlagengeber steht weiter mit Namen da.
+    # Die Bauchbinde kuerzt den Vornamen sonst zur Initiale ("P. Beispiel").
+    # Ohne Nachnamen faellt sie auf den vollen Vornamen zurueck.
+    assert_equal 'Pierre', goal[:scorer_name]
+    assert_equal 'Pierre', goal[:scorer_full_name]
+    assert_not_includes payload.to_json, 'Beispiel'
+    # Der Vorlagengeber steht weiter mit vollem Namen da.
     assert_equal 'A. Meier', goal[:assist_name]
   end
 end

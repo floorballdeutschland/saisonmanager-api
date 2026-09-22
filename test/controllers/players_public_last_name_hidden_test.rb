@@ -1,9 +1,9 @@
 require 'test_helper'
 
-# Die Schalter der Spielerverwaltung und die Grenze, an der die Maskierung
-# endet: In der Verwaltung steht weiter der echte Name, in der oeffentlichen
-# Ausgabe der Platzhalter.
-class PlayersPublicNameHiddenTest < ActionDispatch::IntegrationTest
+# Die Schalter der Spielerverwaltung und die Grenze, an der die Behandlung
+# endet: In der Verwaltung steht weiter der volle Name, in der oeffentlichen
+# Ausgabe nur noch der Vorname.
+class PlayersPublicLastNameHiddenTest < ActionDispatch::IntegrationTest
   API_KEY = 'test-key-for-smoke-tests'.freeze # test/fixtures/api_keys.yml
   PLACEHOLDER = PublicPlayerNames::HIDDEN_LAST_NAME
 
@@ -33,82 +33,83 @@ class PlayersPublicNameHiddenTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
-  test 'die Verbandsverwaltung schaltet die Anonymisierung und nimmt sie zurueck' do
+  test 'die Verbandsverwaltung schaltet den Nachnamen weg und wieder an' do
     login(create(:user, :admin))
 
-    post "/api/v2/admin/players/#{@player.id}/hide_public_name", params: { reason: 'DSGVO 2026-09-22' }
+    post "/api/v2/admin/players/#{@player.id}/hide_public_last_name", params: { reason: 'DSGVO 2026-09-22' }
     assert_response :success
-    assert_not_nil response.parsed_body['public_name_hidden_at']
-    assert @player.reload.public_name_hidden?
+    assert_not_nil response.parsed_body['public_last_name_hidden_at']
+    assert @player.reload.public_last_name_hidden?
     # In der Verwaltung bleibt der echte Name stehen.
     assert_equal 'Beispiel', response.parsed_body['last_name']
 
-    post "/api/v2/admin/players/#{@player.id}/show_public_name"
+    post "/api/v2/admin/players/#{@player.id}/show_public_last_name"
     assert_response :success
-    assert_nil response.parsed_body['public_name_hidden_at']
-    assert_not @player.reload.public_name_hidden?
+    assert_nil response.parsed_body['public_last_name_hidden_at']
+    assert_not @player.reload.public_last_name_hidden?
   end
 
-  test 'die SBK darf nicht anonymisieren' do
+  test 'die SBK darf den Schalter nicht bedienen' do
     login(create(:user, :sbk_global))
 
-    post "/api/v2/admin/players/#{@player.id}/hide_public_name"
+    post "/api/v2/admin/players/#{@player.id}/hide_public_last_name"
 
     assert_response :forbidden
-    assert_not @player.reload.public_name_hidden?
+    assert_not @player.reload.public_last_name_hidden?
   end
 
   test 'ohne Anmeldung ist der Schalter nicht erreichbar' do
-    post "/api/v2/admin/players/#{@player.id}/hide_public_name", headers: { 'X-Api-Key' => API_KEY }
+    post "/api/v2/admin/players/#{@player.id}/hide_public_last_name", headers: { 'X-Api-Key' => API_KEY }
 
     assert_response :unauthorized
-    assert_not @player.reload.public_name_hidden?
+    assert_not @player.reload.public_last_name_hidden?
   end
 
-  test 'ein zweites Anonymisieren wird abgewiesen' do
+  test 'ein zweites Schalten wird abgewiesen' do
     login(create(:user, :admin))
-    post "/api/v2/admin/players/#{@player.id}/hide_public_name"
+    post "/api/v2/admin/players/#{@player.id}/hide_public_last_name"
     assert_response :success
 
-    post "/api/v2/admin/players/#{@player.id}/hide_public_name"
+    post "/api/v2/admin/players/#{@player.id}/hide_public_last_name"
     assert_response :unprocessable_entity
   end
 
   test 'ein zu langer Vermerk wird abgewiesen statt abgeschnitten' do
     login(create(:user, :admin))
 
-    post "/api/v2/admin/players/#{@player.id}/hide_public_name", params: { reason: 'x' * 256 }
+    post "/api/v2/admin/players/#{@player.id}/hide_public_last_name", params: { reason: 'x' * 256 }
 
     assert_response :unprocessable_entity
-    assert_not @player.reload.public_name_hidden?
+    assert_not @player.reload.public_last_name_hidden?
   end
 
-  test 'die oeffentliche Spielseite nennt den Platzhalter' do
-    @player.hide_public_name!(create(:user, :admin).id)
+  test 'die oeffentliche Spielseite fuehrt nur noch den Vornamen' do
+    @player.hide_public_last_name!(create(:user, :admin).id)
 
     get "/api/v2/games/#{@game.id}.json", headers: { 'X-Api-Key' => API_KEY }
 
     assert_response :success
     assert_not_includes response.body, 'Beispiel'
-    assert_not_includes response.body, 'Pierre'
-    assert_includes response.body, PLACEHOLDER
+    assert_includes response.body, 'Pierre'
   end
 
-  test 'die oeffentliche Spielerstatistik nennt den Platzhalter' do
-    @player.hide_public_name!(create(:user, :admin).id)
+  # Die oeffentliche Spielerseite bleibt bestehen, sie fuehrt nur keinen
+  # Nachnamen mehr. Die Statistik dahinter ist damit weiter lesbar.
+  test 'die oeffentliche Spielerstatistik fuehrt nur noch den Vornamen' do
+    @player.hide_public_last_name!(create(:user, :admin).id)
 
     get "/api/v2/players/#{@player.id}/stats", headers: { 'X-Api-Key' => API_KEY }
 
     assert_response :success
     assert_equal PLACEHOLDER, response.parsed_body['player']['last_name']
-    assert_equal '', response.parsed_body['player']['first_name']
+    assert_equal 'Pierre', response.parsed_body['player']['first_name']
   end
 
   # Die Mannschafts-Scorerliste ist die einzige der maskierten Stellen, die den
   # Namen aus dem Spielerdatensatz liest statt aus dem Spielbericht. Die
   # bestehenden Tests dieses Endpunkts pruefen nur Laengen und Zahlen, eine
   # entfernte Maskierung fiele dort also nicht auf.
-  test 'die oeffentliche Mannschaftsstatistik nennt den Platzhalter' do
+  test 'die oeffentliche Mannschaftsstatistik fuehrt nur noch den Vornamen' do
     league = create(:league, game_operation: @go, enable_scorer: true)
     team = create(:team, league: league, club: @club)
     guest = create(:team, league: league, club: @club)
@@ -120,32 +121,32 @@ class PlayersPublicNameHiddenTest < ActionDispatch::IntegrationTest
                  'home_goals' => 1, 'guest_goals' => 0 }],
       players: { 'home' => [{ 'trikot_number' => '7', 'player_id' => @player.id }], 'guest' => [] }
     )
-    @player.hide_public_name!(create(:user, :admin).id)
+    @player.hide_public_last_name!(create(:user, :admin).id)
 
     get "/api/v2/teams/#{team.id}/stats", headers: { 'X-Api-Key' => API_KEY }
 
     assert_response :success
     assert_not_includes response.body, 'Beispiel'
     assert_equal PLACEHOLDER, response.parsed_body['scorer'].first['last_name']
-    assert_equal '', response.parsed_body['scorer'].first['first_name']
+    assert_equal 'Pierre', response.parsed_body['scorer'].first['first_name']
   end
 
   # Die oeffentliche Transferliste zieht den Namen aus dem Spielerdatensatz,
   # nicht aus dem Spielbericht, und faellt deshalb leicht durch die Durchsicht.
   # Betroffen ist, wer mitten in der Saison aufhoert.
-  test 'die oeffentliche Transferliste nennt den Platzhalter' do
+  test 'die oeffentliche Transferliste fuehrt nur noch den Vornamen' do
     Transfer.create!(player_id: @player.id, former_club_id: @club.id, new_club_id: @club.id,
                      season_id: Setting.current_season_id)
-    @player.hide_public_name!(create(:user, :admin).id)
+    @player.hide_public_last_name!(create(:user, :admin).id)
 
     get '/api/v2/transfers/public', headers: { 'X-Api-Key' => API_KEY }
 
     assert_response :success
     assert_not_includes response.body, 'Beispiel'
-    assert_not_includes response.body, 'Pierre'
     entry = response.parsed_body.first
     assert_equal PLACEHOLDER, entry['player_last_name']
-    assert_equal PLACEHOLDER, entry['player_name']
+    assert_equal 'Pierre', entry['player_first_name']
+    assert_equal 'Pierre', entry['player_name']
   end
 
   # Der Cache dieser Liste steht 30 Minuten und haelt bereits aufgeloeste Namen.
@@ -158,7 +159,7 @@ class PlayersPublicNameHiddenTest < ActionDispatch::IntegrationTest
       get '/api/v2/transfers/public', headers: { 'X-Api-Key' => API_KEY }
       assert_includes response.body, 'Beispiel'
 
-      @player.hide_public_name!(create(:user, :admin).id)
+      @player.hide_public_last_name!(create(:user, :admin).id)
 
       get '/api/v2/transfers/public', headers: { 'X-Api-Key' => API_KEY }
       assert_not_includes response.body, 'Beispiel'
@@ -169,17 +170,17 @@ class PlayersPublicNameHiddenTest < ActionDispatch::IntegrationTest
   # Pruefung auf den Anonymisierungs-Schalter hat bewusst keinen Rueckfall auf
   # ein Rollen-Flag. Fehlt das Feld hier, verschwindet der ganze Abschnitt aus
   # dem geoeffneten Profil.
-  test 'die Antwort auf das Deaktivieren traegt can_hide_public_name mit' do
+  test 'die Antwort auf das Deaktivieren traegt can_hide_public_last_name mit' do
     login(create(:user, :admin))
 
     post "/api/v2/admin/players/#{@player.id}/deactivate", params: { reason: 'Karriereende' }
 
     assert_response :success
-    assert response.parsed_body['can_hide_public_name']
+    assert response.parsed_body['can_hide_public_last_name']
   end
 
-  test 'die Spielerverwaltung zeigt den echten Namen weiter' do
-    @player.hide_public_name!(create(:user, :admin).id)
+  test 'die Spielerverwaltung zeigt den vollen Namen weiter' do
+    @player.hide_public_last_name!(create(:user, :admin).id)
     login(create(:user, :admin))
 
     get "/api/v2/admin/players/#{@player.id}"
@@ -187,7 +188,7 @@ class PlayersPublicNameHiddenTest < ActionDispatch::IntegrationTest
     assert_response :success
     assert_equal 'Beispiel', response.parsed_body['last_name']
     assert_equal 'Pierre', response.parsed_body['first_name']
-    assert response.parsed_body['can_hide_public_name']
-    assert_not_nil response.parsed_body['public_name_hidden_at']
+    assert response.parsed_body['can_hide_public_last_name']
+    assert_not_nil response.parsed_body['public_last_name_hidden_at']
   end
 end
