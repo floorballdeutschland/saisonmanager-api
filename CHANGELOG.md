@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Ein Expressantrag lässt sich als gewöhnliche Lizenz erteilen**: Wird eine Expresslizenz beantragt und wegen fehlender Unterlagen abgelehnt, entscheidet der Verband oft erst Wochen später über den nachgebesserten Antrag. Die Eilbearbeitung, für die der Zuschlag gedacht ist, hat dann nie stattgefunden. Bisher half das nichts: Das Merkmal `express` entstand einmalig beim Antrag und wurde danach von keiner Stelle mehr geändert, die Lizenz blieb also eine Expresslizenz und wurde als solche abgerechnet. Die Genehmigung nimmt jetzt ein Merkmal `express` entgegen. Steht es auf `false`, trägt die Lizenz den Zuschlag nicht mehr, und der Genehmigungseintrag im Verlauf hält mit `express_waived` fest, wer ihn gestrichen hat. Abgerechnet wird nur das Merkmal, belegen lässt sich die Entscheidung danach allein über den Verlauf. Möglich ist nur diese Richtung: Eine gewöhnliche Lizenz wird nachträglich nicht zur Expresslizenz, denn die Eilbearbeitung löst schon der Antrag mit seiner Benachrichtigung an die SBK aus. Und nur zusammen mit der Genehmigung, weil die Streichung an deren Verlaufseintrag hängt; eine bereits erteilte Lizenz wird mit einer Meldung abgewiesen, statt den Zuschlag ohne Beleg fallen zu lassen. Ohne das Merkmal bleibt alles wie bisher. Die beiden Schaltflächen dazu folgen im Frontend.
+
 ## [1.119.1] - 2026-09-22
 
 ### Verbessert
