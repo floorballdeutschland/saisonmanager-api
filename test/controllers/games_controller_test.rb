@@ -108,10 +108,11 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
     assert_equal @league.forfait_goals, @game.result[:guest_goals]
   end
 
-  # Gegenprobe zur Startpruefung: die Aufstellung fehlt hier auf beiden Seiten,
-  # ein Schiedsrichter ist nicht eingetragen. Genau so sieht jedes kampflos
-  # gewertete Spiel aus.
-  test 'die Wertung braucht weder Aufstellung noch Schiedsrichter' do
+  # Die beidseitige Wertung ueber denselben Weg, an einem Spiel ohne jede
+  # Aufstellung und ohne Schiedsrichter -- so sieht ein kampflos gewertetes
+  # Spiel aus. Die Startpruefung, an der das frueher scheiterte, sitzt in
+  # set_flag; dieser Weg kommt gar nicht mehr an ihr vorbei.
+  test 'die beidseitige Wertung kommt ohne Aufstellung und Schiedsrichter aus' do
     login(create(:user, :sbk_scoped, game_operation_id: @go.id))
     @game.update!(players: { 'home' => [], 'guest' => [] }, referee1_string: nil)
 
@@ -134,7 +135,7 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
   end
 
   # Ein tatsaechlich gespieltes Spiel, das nachtraeglich regulaer gewertet wird,
-  # behaelt seine Marken -- sonst verschwaende die Ruecknahme das Ergebnis.
+  # behaelt seine Marken -- sonst waere sein Ergebnis weg.
   test 'die Ruecknahme der Wertung laesst ein gespieltes Spiel angepfiffen' do
     login(create(:user, :sbk_scoped, game_operation_id: @go.id))
     @game.update!(
@@ -152,6 +153,47 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
     assert @game.ended
   end
 
+  # Der Normalfall einer kampflosen Wertung: Die Heimmannschaft ist da und traegt
+  # ihren Kader ein, der Gast erscheint nicht. Die Aufstellung steht damit VOR
+  # dem Anpfiff und belegt ihn gerade nicht. Zaehlte sie als Beleg, bliebe dieses
+  # Spiel nach der Ruecknahme mit einem Phantom-0:0 stehen -- und waere ueber
+  # Game#deletable? nicht einmal mehr loeschbar.
+  test 'die Ruecknahme raeumt die Marken auch bei eingetragener Aufstellung' do
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+    @game.update!(
+      forfait: 2,
+      started: true,
+      ended: true,
+      players: { 'home' => [{ 'player_id' => 1, 'number' => '7' }], 'guest' => [] }
+    )
+
+    put "/api/v2/games/#{@game.id}.json", params: { game: { forfait: 0 } }
+
+    assert_response :success
+    @game.reload
+    assert_not @game.started
+    assert_not @game.ended
+  end
+
+  # Ein torloses Spiel hat keine Ereignisse. Belegt ist der Anpfiff dann ueber
+  # actual_start_time und den game_status, die der Spielbericht beim Start setzt.
+  test 'die Ruecknahme laesst ein angepfiffenes Spiel ohne Ereignisse angepfiffen' do
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+    @game.update!(forfait: 1, started: true, ended: true, actual_start_time: '19:30')
+
+    put "/api/v2/games/#{@game.id}.json", params: { game: { forfait: 0 } }
+
+    assert_response :success
+    assert @game.reload.started
+
+    @game.update!(forfait: 1, started: true, ended: true, actual_start_time: nil, game_status: 'ingame')
+
+    put "/api/v2/games/#{@game.id}.json", params: { game: { forfait: 0 } }
+
+    assert_response :success
+    assert @game.reload.started
+  end
+
   # Ein Update ohne Wertungsfeld darf die Marken nicht anfassen: der Spiel-Editor
   # speichert dort auch Anwurfzeit, Mannschaften und Ansetzung.
   test 'ein Update ohne Wertung laesst die Spielmarken stehen' do
@@ -164,6 +206,40 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
     @game.reload
     assert @game.started
     assert_equal '77', @game.game_number
+  end
+
+  # Der Spiel-Editor schickt `forfait` bei JEDEM Speichern mit, auch wenn nur die
+  # Anwurfzeit geaendert wurde. Ein laufendes Spiel ohne Wertung darf dabei nicht
+  # entstartet werden -- sonst raeumte jedes Speichern im Spielplan das Ergebnis
+  # eines gerade laufenden Spiels ab.
+  test 'ein Editor-Speichern mit forfait 0 entstartet kein laufendes Spiel' do
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+    @game.update!(forfait: 0, started: true, ended: false)
+
+    put "/api/v2/games/#{@game.id}.json", params: { game: { forfait: 0, start_time: '2026-01-01 19:30' } }
+
+    assert_response :success
+    @game.reload
+    assert @game.started
+    assert_not @game.ended
+  end
+
+  # Wie beim festgesetzten Ergebnis schickt die Oberflaeche auch die Wertung flach
+  # im JSON-Rumpf, ParamsWrapper umhuellt sie erst. Faellt `forfait` aus der
+  # Umhuellung, laeuft `params.require(:game)` ins Leere -- und zwar erst im
+  # Betrieb. Deshalb der Weg ueber die Leitung.
+  test 'eine flach gesendete Wertung setzt die Spielmarken mit' do
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    put "/api/v2/games/#{@game.id}.json",
+        params: { forfait: 1 }.to_json,
+        headers: { 'CONTENT_TYPE' => 'application/json' }
+
+    assert_response :success
+    @game.reload
+    assert_equal 1, @game.forfait
+    assert @game.started
+    assert @game.ended
   end
 
   # Die Verwaltungsansicht speist den Spiel-Editor. Sie muss das festgesetzte
