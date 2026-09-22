@@ -1178,6 +1178,48 @@ class GameTest < ActiveSupport::TestCase
     create(:game, { game_day: create(:game_day, league: league), events: events }.merge(attrs))
   end
 
+  # Die oeffentliche Spielansicht setzt das Kuerzel auf dem Handy neben jede
+  # Zwischenueberschrift der Aufstellung, deshalb darf es nie leer sein. Hier
+  # steht die volle Kette aus Team#ticker_short_name: eigenes Kuerzel, sonst
+  # das des Vereins, sonst der Name -- und der wird auf Team::SHORT_NAME_MAX
+  # gekappt, weshalb aus 'Hamburg Crocodiles' 'Hamburg' wird und nicht der
+  # ganze Name.
+  test 'full_hash nennt die Mannschaftskuerzel' do
+    league = create(:league, season_id: '18')
+    home = create(:team, league: league, short_name: 'FBB 2',
+                         club: create(:club, short_name: 'FBB'))
+    guest = create(:team, league: league, name: 'Hamburg Crocodiles', short_name: nil,
+                          club: create(:club, short_name: nil))
+    game = create(:game, game_day: create(:game_day, league: league), home_team: home, guest_team: guest)
+
+    hash = game.full_hash
+
+    assert_equal 'FBB 2', hash[:home_team_short_name]
+    assert_equal 'Hamburg', hash[:guest_team_short_name]
+    assert_equal 'Hamburg Crocodiles', hash[:guest_team_name]
+  end
+
+  test 'full_hash faellt beim Mannschaftskuerzel auf den Verein zurueck' do
+    league = create(:league, season_id: '18')
+    team = create(:team, league: league, short_name: nil, club: create(:club, short_name: 'FBB'))
+    game = create(:game, game_day: create(:game_day, league: league), home_team: team)
+
+    assert_equal 'FBB', game.full_hash[:home_team_short_name]
+  end
+
+  # Eine Paarung, deren Mannschaft noch nicht ausgelost ist, traegt gar keine
+  # Mannschaft. Das Frontend faellt dann auf den Mannschaftsnamen zurueck, der
+  # hier ebenfalls leer ist -- der Aufruf darf daran jedenfalls nicht sterben.
+  test 'full_hash bleibt ohne Mannschaft beim Kuerzel leer' do
+    league = create(:league, season_id: '18')
+    game = create(:game, game_day: create(:game_day, league: league), home_team: nil, guest_team: nil)
+
+    hash = game.full_hash
+
+    assert_nil hash[:home_team_short_name]
+    assert_nil hash[:guest_team_short_name]
+  end
+
   def capture_sentry_messages(&block)
     messages = []
     Sentry.stub(:capture_message, ->(message, *) { messages << message }, &block)
