@@ -38,6 +38,13 @@ class PlayersLicenseExpressWaiverTest < ActionDispatch::IntegrationTest
                  express: express)
   end
 
+  def rejected(express: true)
+    license_with([
+      { 'license_status_id' => License::REQUESTED, 'created_at' => 30.days.ago.iso8601 },
+      { 'license_status_id' => License::DENIED, 'created_at' => 29.days.ago.iso8601 }
+    ], express: express)
+  end
+
   def approved(express: true)
     license_with([
       { 'license_status_id' => License::REQUESTED, 'created_at' => 3.days.ago.iso8601 },
@@ -146,5 +153,106 @@ class PlayersLicenseExpressWaiverTest < ActionDispatch::IntegrationTest
 
     assert_response :forbidden
     assert_equal true, license['express']
+  end
+  # Der Anlassfall: Expressantrag, wegen fehlender Unterlagen abgelehnt, Wochen
+  # spaeter nachgebessert und ohne Eilbearbeitung erteilt.
+  test 'der nachgebesserte Antrag wird ohne Zuschlag erteilt' do
+    license_id = rejected
+
+    handle(license_id, License::APPROVED, express: false)
+
+    assert_response :success
+    assert_equal false, license['express']
+    assert_equal License::APPROVED, License.current_status_id(license)
+    assert_equal true, license['history'].last[License::EXPRESS_WAIVED_KEY]
+  end
+
+  # Ein leerer Wert sagt nichts aus und darf nicht als "streichen" gelesen
+  # werden: Die Absage gegen das Hochstufen macht den Schritt unumkehrbar.
+  test 'ein leerer Wert wird abgewiesen' do
+    license_id = requested
+
+    handle(license_id, License::APPROVED, express: '')
+
+    assert_response :unprocessable_entity
+    assert_equal true, license['express']
+    assert_equal License::REQUESTED, License.current_status_id(license)
+  end
+
+  # Alles, was nicht als Nein gemeint ist, faellt auf die teure, aber
+  # umkehrbare Seite: Der Zuschlag bleibt stehen. Mit dem alten Vergleich
+  # `== true || == 'true'` war es genau umgekehrt, und 1 oder "1" haben die
+  # Gebuehr gestrichen.
+  test 'ein nicht als Nein gemeinter Wert laesst den Zuschlag stehen' do
+    [1, '1', 'on', 'vielleicht'].each do |value|
+      @player.update!(licenses: [])
+      license_id = requested
+
+      handle(license_id, License::APPROVED, express: value)
+
+      assert_response :success, "Wert #{value.inspect}"
+      assert_equal true, license['express'], "Wert #{value.inspect}"
+      assert_nil license['history'].last[License::EXPRESS_WAIVED_KEY], "Wert #{value.inspect}"
+    end
+  end
+
+  # Die gaengigen Schreibweisen fuer Nein muessen dagegen greifen, sonst
+  # bestellt die Oberflaeche eine Streichung, die stumm nicht stattfindet.
+  test 'die Schreibweisen fuer nein streichen den Zuschlag' do
+    [false, 'false', 0, '0'].each do |value|
+      @player.update!(licenses: [])
+      license_id = requested
+
+      handle(license_id, License::APPROVED, express: value)
+
+      assert_response :success, "Wert #{value.inspect}"
+      assert_equal false, license['express'], "Wert #{value.inspect}"
+    end
+  end
+
+  # Bei einer gesperrten Lizenz ist der juengste Eintrag die Sperre. Die
+  # darunter liegende Genehmigung ist trotzdem abgerechnet, der Zuschlag darf
+  # also auch hier nicht mehr fallen.
+  test 'an einer gesperrten, zuvor erteilten Lizenz bleibt der Zuschlag stehen' do
+    license_id = license_with([
+      { 'license_status_id' => License::REQUESTED, 'created_at' => 30.days.ago.iso8601 },
+      { 'license_status_id' => License::APPROVED, 'created_at' => 29.days.ago.iso8601 },
+      { 'license_status_id' => License::SUSPENDED, 'created_at' => 2.days.ago.iso8601 }
+    ], express: true)
+
+    handle(license_id, License::APPROVED, express: false)
+
+    assert_response :unprocessable_entity
+    assert_equal true, license['express']
+    assert_equal 3, license['history'].size
+  end
+
+  # Gegenstueck zur Absage weiter unten: Der zustaendige SBK muss durchkommen,
+  # sonst faellt ein Fehler in die andere Richtung nicht auf.
+  test 'der zustaendige SBK darf den Zuschlag streichen' do
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+    license_id = requested
+
+    handle(license_id, License::APPROVED, express: false)
+
+    assert_response :success
+    assert_equal false, license['express']
+  end
+
+  # Die Klammer zur Abrechnung: Die Verbands-Lizenzliste ist die Quelle der
+  # CSV-Ausfuhr, aus der abgerechnet wird. `false` muss dort als "kein
+  # Zuschlag" ankommen, nicht nur ein fehlender Schluessel.
+  test 'die Verbandsliste meldet die gestrichene Lizenz als gewoehnliche' do
+    license_id = requested
+
+    handle(license_id, License::APPROVED, express: false)
+    assert_response :success
+
+    get '/api/v2/admin/licenses', params: { season_id: @league.season_id }
+
+    assert_response :success
+    entry = JSON.parse(response.body).find { |e| e['license_id'] == license_id }
+    assert_not_nil entry, 'die erteilte Lizenz muss in der Verbandsliste stehen'
+    assert_equal false, entry['express']
   end
 end

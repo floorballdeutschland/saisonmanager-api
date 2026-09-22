@@ -358,7 +358,23 @@ class PlayersController < ApplicationController
       # fiele also lautlos weg statt belegbar -- deshalb eine Absage.
       waive_express = false
       unless params[:express].nil?
-        express_param = params[:express] == true || params[:express] == 'true'
+        # Ueber den Typ-Caster und nicht ueber `== true || == 'true'`: Der Wert
+        # entscheidet hier ueber Geld, und die Kurzform macht aus JEDEM nicht
+        # erkannten Wert (1, "1", "on") ein Streichen. In request_license ist
+        # dasselbe Idiom harmlos, weil "unbekannt" dort kein Express bedeutet;
+        # hier kehrt sich die Bedeutung um und im Zweifel faellt eine Gebuehr weg.
+        #
+        # Der Caster kennt eine feste Liste von Nein-Werten und liest alles
+        # andere als Ja. Die Streichung braucht also ein ausdrueckliches Nein,
+        # und ein unklarer Wert landet auf der umkehrbaren Seite -- zurueck geht
+        # es nicht, Absage 2 unten sperrt das Hochstufen. Leer ist als einziges
+        # weder Ja noch Nein und wird abgewiesen statt ausgelegt.
+        express_param = ActiveModel::Type::Boolean.new.cast(params[:express])
+
+        if express_param.nil?
+          return render json: { message: 'Der Wert für den Expresszuschlag ist nicht auswertbar.' },
+                        status: :unprocessable_entity
+        end
 
         if params[:license_status_id].to_i != License::APPROVED
           return render json: { message: 'Der Expresszuschlag lässt sich nur beim Erteilen der Lizenz ändern.' },
@@ -370,7 +386,13 @@ class PlayersController < ApplicationController
                         status: :unprocessable_entity
         end
 
-        if !express_param && License.current_status_id(license) == License::APPROVED
+        # Ueber LicenseEffectiveStatus.base_status_id und nicht ueber
+        # License.current_status_id: Bei einer gesperrten Lizenz ist der juengste
+        # Eintrag die Sperre, die erteilte Lizenz darunter bliebe ungeschuetzt.
+        # Sie ist aber laengst abgerechnet. base_status_id beantwortet genau die
+        # Frage "welcher Status gaelte ohne Sperre", und der Rest des Hauses
+        # fragt an dieser Stelle auch danach.
+        if !express_param && LicenseEffectiveStatus.base_status_id(license) == License::APPROVED
           return render json: { message: 'Diese Lizenz ist bereits erteilt. Der Expresszuschlag lässt sich dabei nicht mehr streichen.' },
                         status: :unprocessable_entity
         end
