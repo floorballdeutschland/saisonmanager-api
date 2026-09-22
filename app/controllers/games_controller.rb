@@ -206,6 +206,7 @@ class GamesController < ApplicationController
        !Game.person_level_assignment_allowed_for?(game.league)
       update_attrs = update_attrs.merge(person_level_assignment: false)
     end
+    update_attrs = update_attrs.merge(_forfait_flag_attributes(game, update_attrs))
 
     if allowed
       if game.update(update_attrs)
@@ -1503,6 +1504,31 @@ class GamesController < ApplicationController
     params.require(:game).permit(:audience, :actual_start_time, :live_stream_link, :vod_link,
                                  :home_timeout_string, :guest_timeout_string,
                                  :time_keeper_string, :record_keeper_string, :record_comment, :special_event_string)
+  end
+
+  # Eine kampflose Wertung braucht die Spielmarken: Game#result gibt ohne
+  # `started` gar kein Ergebnis aus, das Forfait bliebe im Spielplan also
+  # unsichtbar. Das Frontend hat sie deshalb vor der Wertung ueber set_flag
+  # gesetzt und lief dabei in die Startpruefung des Spielberichts -- Aufstellung
+  # beider Mannschaften und Schiedsrichter 1, Bedingungen, die ein kampflos
+  # gewertetes Spiel nie erfuellt. Die Wertung war damit ueberhaupt nicht
+  # setzbar (#738). Die Marken gehoeren zur Wertung, also setzt sie die Wertung
+  # selbst.
+  #
+  # Beim Zuruecknehmen der Wertung werden sie nur geraeumt, wenn im Spiel nichts
+  # erfasst ist. Ein tatsaechlich gespieltes Spiel, das nachtraeglich regulaer
+  # gewertet wird, behaelt seine Marken -- sonst verschwaende die Ruecknahme das
+  # Ergebnis. Genau das tat das Frontend bisher bedingungslos.
+  def _forfait_flag_attributes(game, attrs)
+    return {} unless attrs.key?(:forfait)
+
+    return { started: true, ended: true } if attrs[:forfait].to_i.positive?
+
+    return {} unless game.forfait.to_i.positive?
+    lineup_present = game.players&.dig('home').present? || game.players&.dig('guest').present?
+    return {} if game.events.present? || lineup_present
+
+    { started: false, ended: false }
   end
 
   def game_create_update_params
