@@ -206,6 +206,70 @@ module Admin
       assert_response :no_content
     end
 
+    # Gemeldet am 22.09.2026 zur Lizenznummer 8768: Löschen scheiterte, ohne zu
+    # sagen woran. `referee_course_results.referee_id` steht in der Datenbank auf
+    # RESTRICT, im Modell gibt es kein `dependent:` – aus dem
+    # ActiveRecord::InvalidForeignKey wurde eine 500, und die Maske zeigte nur
+    # „Fehler beim Löschen.". Ausgerechnet der Kursimport, der den Schiri
+    # angelegt hatte, hielt ihn fest.
+    test 'destroy benennt das Kursergebnis, statt mit einem Serverfehler abzubrechen' do
+      referee = create(:referee)
+      import  = RefereeCourseImport.create!(
+        uploaded_by_user: @admin, filename: 'kurs.csv', total_rows: 1, status: 'submitted'
+      )
+      RefereeCourseResult.create!(
+        referee_course_import: import, referee: referee, status: 'applied',
+        match_type: 'new_entry', match_field_count: 0,
+        csv_vorname: 'V', csv_nachname: 'N', kursstichtag: Date.new(2026, 7, 5)
+      )
+      login(@admin)
+
+      assert_no_difference -> { Referee.count } do
+        delete "/api/v2/admin/referees/#{referee.id}"
+      end
+
+      assert_response :unprocessable_entity
+      assert_includes JSON.parse(response.body)['error'], 'Kursergebnisse'
+    end
+
+    test 'destroy benennt eine bestehende Ansetzung' do
+      referee = create(:referee)
+      RefereeAssignment.create!(game: create(:game), referee1_id: referee.id)
+      login(@admin)
+
+      assert_no_difference -> { Referee.count } do
+        delete "/api/v2/admin/referees/#{referee.id}"
+      end
+
+      assert_response :unprocessable_entity
+      assert_includes JSON.parse(response.body)['error'], 'Ansetzungen'
+    end
+
+    # Die Reihenfolge der alten Fassung war gefährlich: Erst wurde das
+    # Benutzerkonto gelöscht, dann der Schiri – scheiterte der zweite Schritt am
+    # Fremdschlüssel, war das Konto weg und der Schiri noch da. Sichtbar wurde
+    # davon nichts, weil die 500 wie ein folgenloser Fehlschlag aussah.
+    test 'destroy laesst das Benutzerkonto stehen, wenn der Schiri nicht loeschbar ist' do
+      referee     = create(:referee)
+      linked_user = referee_login_user(referee)
+      import      = RefereeCourseImport.create!(
+        uploaded_by_user: @admin, filename: 'kurs.csv', total_rows: 1, status: 'submitted'
+      )
+      RefereeCourseResult.create!(
+        referee_course_import: import, referee: referee, status: 'applied',
+        match_type: 'new_entry', match_field_count: 0,
+        csv_vorname: 'V', csv_nachname: 'N', kursstichtag: Date.new(2026, 7, 5)
+      )
+      login(@admin)
+
+      assert_no_difference -> { User.count } do
+        delete "/api/v2/admin/referees/#{referee.id}"
+      end
+
+      assert_response :unprocessable_entity
+      assert_equal referee.id, linked_user.reload.referee_id
+    end
+
     test 'index: season_game_count zählt Spiele kanonisch über officiating_referee_ids (PK)' do
       referee = create(:referee, lizenznummer: 700_123)
       go      = create(:game_operation)
