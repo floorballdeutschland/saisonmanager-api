@@ -214,10 +214,12 @@ class License < ApplicationRecord
   #
   # Der jüngste Antrag nach Zeitpunkt, nicht nach Text: Mit gemischten Offsets
   # läge sonst ein älterer Antrag vorn und verschöbe das Fenster (#725).
+  # „Verwertbar" heißt dabei lesbar nach LicenseEffectiveStatus.parse_time,
+  # nicht bloß nicht leer: Ein Bruchstück wie "12:00" eröffnet kein Fenster.
   def self.grace_period_anchor(history)
     Array(history)
       .select { |h| h['license_status_id'].to_i == REQUESTED && !h[REVOKED_REJECTION_KEY] }
-      .reject { |h| h['created_at'].blank? }
+      .select { |h| LicenseEffectiveStatus.parse_time(h['created_at']) }
       .max_by { |h| LicenseEffectiveStatus.sort_key(h) }
   end
 

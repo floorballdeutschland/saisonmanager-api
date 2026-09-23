@@ -188,10 +188,12 @@ class PlayersController < ApplicationController
            next false unless l['team_id'].to_i == team.id && l['season_id'].to_s == league.season_id.to_s
 
            # Basisstatus: Auch eine gesperrte Lizenz fuer dieses Team zaehlt als
-           # vorhanden. Eine laufende Sperre faengt suspension_for_team oben
-           # schon ab, der Sperr-Eintrag kann aber stehen bleiben, bis die Sperre
-           # aufgehoben wird. Ein zweiter Antrag waere dann eine Doppelung ohne
-           # Sperr-Eintrag (#725).
+           # vorhanden. Erreichbar ist das bei einer vorgemerkten Team-Sperre:
+           # write_suspended_status! stempelt den Sperr-Eintrag sofort, die
+           # Sperre gilt aber erst ab valid_from, suspension_for_team oben
+           # greift also noch nicht. Mit dem aktuellen Status liesse sich dann
+           # ein zweiter Antrag ohne Sperr-Eintrag stellen und die Sperre per
+           # Doppellizenz umgehen (#725).
            active_statuses.include?(LicenseEffectiveStatus.base_status_id(l).to_s)
          end
         result = :duplicate

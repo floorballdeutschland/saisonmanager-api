@@ -33,7 +33,9 @@ class LicenseStatusRemainingReadersTest < ActiveSupport::TestCase
     assert_equal License::APPROVED, License.current_status_id(license([younger(License::APPROVED), older(License::DELETED)]))
   end
 
-  # Ein ungespeicherter Eintrag haelt ein Time-Objekt neben Zeichenketten.
+  # Absicherung, kein Regressionstest: Ein ungespeicherter Eintrag haelt ein
+  # Time-Objekt neben Zeichenketten. Auch der alte Vergleich kam damit zurecht,
+  # weil ActiveSupport Time und ISO-Zeichenkette vergleichbar macht.
   test 'License.current_status_id ordnet einen ungespeicherten Time-Eintrag richtig ein' do
     l = license([older(License::APPROVED), entry(License::DELETED, Time.utc(2026, 8, 3, 18, 30))])
 
@@ -57,8 +59,9 @@ class LicenseStatusRemainingReadersTest < ActiveSupport::TestCase
     assert_equal License::APPROVED, status['license_status_id']
   end
 
-  # Ohne reload haelt der gerade geschriebene Sperr-Eintrag ein Time-Objekt,
-  # die uebrigen sind Zeichenketten.
+  # Absicherung, kein Regressionstest: Ohne reload haelt der gerade
+  # geschriebene Sperr-Eintrag ein Time-Objekt, die uebrigen sind
+  # Zeichenketten. Auch der alte Vergleich kam damit zurecht (ActiveSupport).
   test 'lift_suspension! direkt nach suspend! stellt den Status wieder her' do
     player = create(:player, licenses: [license([entry(License::APPROVED, '2026-08-03T10:00:00+02:00')])])
     suspension = player.suspend!(user_id: @user.id, reason: 'Test', games_total: 2)
@@ -84,5 +87,15 @@ class LicenseStatusRemainingReadersTest < ActiveSupport::TestCase
 
     assert_not_nil item, 'der Spieler muss in der Lizenzliste stehen'
     assert_equal License::APPROVED, item[:team_license][:last_status_id]
+  end
+
+  # Ein Bruchstueck ohne Datum waere fuer Time.zone.parse heute und eroeffnete
+  # damit eine Gratis-Loeschung. Es zaehlt nicht als verwertbarer Antrag.
+  test 'grace_period_anchor uebergeht einen Antrag mit unlesbarem Zeitstempel' do
+    history = [entry(License::REQUESTED, '12:00')]
+
+    assert_nil License.grace_period_anchor(history)
+    assert_equal '2026-01-05T10:00:00Z',
+                 License.grace_period_anchor(history + [entry(License::REQUESTED, '2026-01-05T10:00:00Z')])['created_at']
   end
 end

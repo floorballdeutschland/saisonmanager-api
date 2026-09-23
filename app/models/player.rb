@@ -1261,9 +1261,10 @@ class Player < ApplicationRecord
       # Speichern stabilisieren, damit lift_suspension! exakt dieselbe Lizenz findet.
       license['id'] ||= license.delete('_id') || Digest::UUID.uuid_v4
 
-      # Aktueller Status: Eine schon gesperrte Lizenz bekommt keinen zweiten
-      # Sperr-Eintrag, sonst holte lift_suspension! den Sperrstatus als
-      # vorherigen Status zurueck.
+      # Aktueller Status statt Basisstatus: Mit dem Basisstatus galte eine schon
+      # gesperrte Lizenz als erteilt. Sie bekaeme einen zweiten, gestapelten
+      # Sperr-Eintrag mit `previous_status_id` erteilt, und das Aufheben der
+      # ersten Sperre stellte `erteilt` her, waehrend die zweite noch laeuft.
       last_status_id = LicenseEffectiveStatus.current_status_id(license)
       next unless License::ACTIVE_STATUSES.include?(last_status_id)
 

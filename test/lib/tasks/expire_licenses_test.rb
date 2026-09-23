@@ -42,4 +42,17 @@ class ExpireLicensesTest < ActiveSupport::TestCase
 
     assert_equal License::DELETED, License.current_status_id(player.reload.licenses.first)
   end
+
+  # Begruendet den Basisstatus: Nach dem Ablauf bleibt DELETED oben, das Ende
+  # der Sperre holt die Lizenz nicht auf `erteilt` zurueck.
+  test 'nach Ablauf bleibt die Lizenz auch beim Aufheben der Sperre geloescht' do
+    player = player_with([{ 'license_status_id' => License::APPROVED, 'created_at' => '2025-08-01T10:00:00+00:00' }])
+    suspension = player.suspend!(user_id: @admin.id, reason: 'Test', games_total: 2)
+
+    run_task
+    player.reload.lift_suspension!(suspension.reload, user_id: @admin.id)
+
+    statuses = player.reload.licenses.first['history'].map { |h| h['license_status_id'].to_i }
+    assert_equal [License::APPROVED, License::SUSPENDED, License::DELETED], statuses
+  end
 end
