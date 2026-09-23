@@ -175,6 +175,18 @@ class LeaguesScheduleExportTest < ActionDispatch::IntegrationTest
     assert_equal %w[5 9], export_csv.drop(1).map { |r| r[1] }.first(2)
   end
 
+  # Ein Spieltag ganz ohne Spielnummer stand im Export bis #658 vorne (`|| 0`),
+  # jetzt wie in der Spielplanverwaltung hinter denen mit Nummer.
+  test 'ein Spieltag ganz ohne Spielnummer steht hinter denen mit Nummer' do
+    blank = create_game_day(number: 1, date: '2026-04-06')
+    create_game(blank, game_number: '')
+    numbered = create_game_day(number: 1, date: '2026-04-06')
+    create_game(numbered, game_number: '3')
+    login(admin_user)
+
+    assert_equal(['3', ''], export_csv.drop(1).map { |r| r[1] })
+  end
+
   # Altbestand: die Datumsspalte ist Text, die ISO-Pruefung greift nur bei
   # Aenderungen. Als Rohtext sortierte "11.08.2026" vor jedem ISO-Datum,
   # waehrend in der Datumszelle der geparste Wert steht.
