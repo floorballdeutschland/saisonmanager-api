@@ -9,6 +9,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Transfer, Freigabewiderruf und Spieler-Merge lesen den Lizenzstatus aus dem jüngsten Eintrag** (#725): Bisher entschied das letzte Element der Lizenz-History, ob eine Lizenz beim Transfer ungültig wird, beim Widerruf einer Freigabe zurückgezogen wird oder beim Zusammenführen einer Dublette gelöscht wird. Nach einem Spieler-Merge steht dort aber die History der Dublette, also oft ein alter Löscheintrag, und die erteilte Lizenz blieb nach einem Transfer beim alten Verein gültig. Entschieden wird jetzt über den Zeitpunkt, wie es die Lizenzlisten schon tun. Dasselbe gilt für die Wahl der Hauptlizenz in der Spieleransicht und für die Prüfung auf laufende Lizenzen beim Verschieben eines Spielers durch die SBK. Eine gesperrte Lizenz wird dabei jetzt ebenfalls ungültig; bisher blieb sie stehen und kam mit dem Ende der Sperre als erteilt zurück.
+- **Zeitstempel mit unterschiedlichem Offset werden als Zeitpunkt verglichen** (#725): Der jüngste Eintrag einer Lizenz-History wurde als Text bestimmt. `23:59+02:00` lag dabei hinter `18:25+00:00`, obwohl es der frühere Zeitpunkt ist.
+
 ## [1.120.0] - 2026-09-22
 
 ### Neu

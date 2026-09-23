@@ -1351,7 +1351,7 @@ class League < ApplicationRecord
           lic_season.nil? || lic_season.to_s == season_id.to_s
         end
 
-        last_status = license['history'].last
+        last_status = LicenseEffectiveStatus.current_entry(license)
         last_status_id = last_status['license_status_id']
         last_status_code = status[last_status_id.to_s]
 

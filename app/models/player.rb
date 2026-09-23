@@ -1147,8 +1147,9 @@ class Player < ApplicationRecord
     end
 
     licenses.each do |license|
-      last_status = license['history']&.last&.dig('license_status_id').to_i
-      next unless last_status.in?([License::APPROVED, License::REQUESTED])
+      # Basis-Status: Auch eine gesperrte Lizenz der Dublette wird geloescht,
+      # sonst holte lift_suspension! sie spaeter auf `erteilt` zurueck.
+      next unless License::ACTIVE_STATUSES.include?(LicenseEffectiveStatus.base_status_id(license))
 
       license['history'] << {
         'license_status_id' => License::DELETED,
@@ -1385,8 +1386,11 @@ class Player < ApplicationRecord
   end
 
   def select_license(licenses)
+    # Der aktuelle Eintrag, Sperre eingeschlossen: Die Anzeige soll zeigen,
+    # was zuletzt gesetzt wurde. Der juengste und nicht der letzte, siehe
+    # LicenseEffectiveStatus (#725).
     licenses.map! do |license|
-      last_status = license['history']&.last
+      last_status = LicenseEffectiveStatus.current_entry(license)
       last_status ? license.merge(last_status) : license
     end
 

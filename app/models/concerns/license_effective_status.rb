@@ -16,12 +16,21 @@
 #
 # Gelesen wird ueber den Zeitstempel und nicht ueber die Position im Array:
 # Angehaengt wird die History an vielen Stellen, sortiert ist sie nirgends
-# garantiert.
+# garantiert. Der Spieler-Merge etwa haengt die History der Dublette hinter die
+# des Masters (`existing['history'] + lic['history']`), der letzte Eintrag ist
+# danach der juengste der Dublette, nicht der juengste insgesamt (#725).
+#
+# Verglichen wird der Zeitpunkt, nicht die Zeichenkette. Die Eintraege tragen
+# ihren Offset mit (`Time#as_json`), und `…T23:59+02:00` sortiert als Text
+# hinter `…T18:25+00:00`, obwohl es der fruehere Zeitpunkt ist. Ein noch nicht
+# gespeicherter Eintrag haelt ausserdem ein Time-Objekt statt einer
+# Zeichenkette, dessen `to_s` (`2026-09-23 10:00:00 +0200`) als Text vor jedem
+# ISO-Wert landet.
 module LicenseEffectiveStatus
   module_function
 
   def current_entry(license)
-    Array(license && license['history']).max_by { |h| h['created_at'].to_s }
+    Array(license && license['history']).max_by { |h| sort_key(h) }
   end
 
   def current_status_id(license)
@@ -33,7 +42,7 @@ module LicenseEffectiveStatus
   def base_entry(license)
     Array(license && license['history'])
       .reject { |h| h['license_status_id'].to_i == License::SUSPENDED }
-      .max_by { |h| h['created_at'].to_s }
+      .max_by { |h| sort_key(h) }
   end
 
   def base_status_id(license)
@@ -46,5 +55,26 @@ module LicenseEffectiveStatus
   # zaehlt also auch kein Spiel einer Sperre ab.
   def eligible?(license)
     base_status_id(license) == License::APPROVED
+  end
+
+  # Ein Eintrag ohne lesbaren Zeitstempel sortiert vor jeden lesbaren und
+  # untereinander wie bisher als Text. Er darf nicht werfen: Im Altbestand
+  # fehlt der Zeitstempel an einzelnen Eintraegen ganz.
+  def sort_key(entry)
+    time = entry_time(entry['created_at'])
+    time ? [1, time.to_r] : [0, entry['created_at'].to_s]
+  end
+
+  def entry_time(value)
+    return value.to_time if value.is_a?(Time) || value.is_a?(DateTime) || value.is_a?(ActiveSupport::TimeWithZone)
+    return nil if value.blank?
+
+    Time.iso8601(value.to_s)
+  rescue ArgumentError
+    begin
+      Time.zone.parse(value.to_s)
+    rescue ArgumentError
+      nil
+    end
   end
 end
