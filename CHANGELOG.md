@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.120.1] - 2026-09-23
+
 ### Behoben
 
 - **Auch die übrigen Stellen bestimmen den aktuellen Lizenzstatus über den Zeitpunkt** (#725): Löschknopf und Rückzug eines Antrags, Karenzzeit, Doppelantrags-Prüfung, Erst-/Zweitlizenz-Zuordnung, Aufstellungsprüfung am Spiel, Übernahme aus der Vorrunde, Lizenzstatus in Vereins-, Mannschafts- und Spielerlisten, Setzen und Aufheben einer Sperre sowie die Aufgaben `licenses:expire`, `seasons:invalidate_stale_licenses` und die Datenprüfung lesen den jüngsten Eintrag jetzt nach Zeitpunkt statt als Text. Bei Einträgen mit unterschiedlichem Offset entschied bisher mitunter ein älterer Eintrag. Eine gesperrte Lizenz läuft über `licenses:expire` und den Saisonwechsel jetzt ebenfalls ab, statt mit dem Ende der Sperre als erteilt zurückzukommen. Ein zweiter Lizenzantrag für dieselbe Mannschaft ist auch dann nicht mehr möglich, wenn die Lizenz wegen einer vorgemerkten Sperre schon als gesperrt gilt; damit lässt sich eine Sperre nicht mehr über eine Doppellizenz umgehen.
