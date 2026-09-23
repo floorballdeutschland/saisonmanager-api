@@ -387,11 +387,12 @@ class Player < ApplicationRecord
   end
 
   def current_license_status(license)
-    # `to_s` wie in LicenseEffectiveStatus: Ein Verlaufseintrag ohne
-    # `created_at` -- im Altbestand vorhanden -- liess den Vergleich mit
-    # „comparison of NilClass with String failed" auffliegen. Das ist eine 500
-    # in der Antragsuebersicht des Vereins, nicht bloss eine schiefe
-    # Sortierung.
+    # `to_s`, weil ein Verlaufseintrag ohne `created_at` -- im Altbestand
+    # vorhanden -- sonst mit „comparison of NilClass with String failed"
+    # aufflog. Das ist eine 500 in der Antragsuebersicht des Vereins, nicht
+    # bloss eine schiefe Sortierung. Anders als LicenseEffectiveStatus
+    # sortiert diese Stelle noch als Text, gemischte Offsets ordnet sie also
+    # falsch ein (#725, Folgeschritt).
     status = license['history']&.sort_by { |h| h['created_at'].to_s }&.last
     return unless status
 
@@ -562,8 +563,10 @@ class Player < ApplicationRecord
       next false if l['id'] == license['id']
       next false unless l['season_id'].to_s == license['season_id'].to_s
 
-      last_status = l['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
-      next false unless License::ACTIVE_STATUSES.include?(last_status)
+      # Aktueller Status, Sperre eingeschlossen, und ueber den Zeitpunkt statt
+      # als Text (#725). Das Frontend spiegelt genau diese Partnerlogik in der
+      # Spielermaske; beide muessen dieselbe Regel haben.
+      next false unless License::ACTIVE_STATUSES.include?(LicenseEffectiveStatus.current_status_id(l))
 
       other_league = Team.find_by(id: l['team_id'])&.league
       other_league.present? && other_league.gf_adult? && other_league.female == league.female
@@ -1674,21 +1677,9 @@ class Player < ApplicationRecord
   end
 
   # Der Zeitstempel eines Verlaufseintrags, oder nil, wenn er sich nicht einordnen laesst.
-  #
-  # Der Formatriegel ist nicht kosmetisch. `Time.zone.parse` lehnt Bruchstuecke nicht ab,
-  # sondern ERGAENZT sie aus dem heutigen Datum: "12x" wird zum 12. des laufenden Monats,
-  # "18:25" zu heute um 18:25. Ein solcher Wert wirft nichts, sieht gueltig aus und liegt
-  # naturgemaess ganz vorn -- er schluege damit jede echte Erteilung und bestimmte den
-  # Heimatverein aus einem erfundenen Zeitpunkt.
-  ISO_DATUM = /\A\d{4}-\d{2}-\d{2}/
-
+  # Der Formatriegel und seine Begruendung stehen in LicenseEffectiveStatus.parse_time.
   def _parse_zeitpunkt(wert)
-    return wert.to_time if wert.respond_to?(:to_time) && !wert.is_a?(String)
-    return nil unless wert.to_s.match?(ISO_DATUM)
-
-    Time.zone.parse(wert.to_s)
-  rescue ArgumentError, TypeError
-    nil
+    LicenseEffectiveStatus.parse_time(wert)
   end
 
   # Lizenzen zusammenführen: bei gleichem team_id UND season_id die History-Arrays
@@ -1702,8 +1693,9 @@ class Player < ApplicationRecord
         l['team_id'].to_s == lic['team_id'].to_s && l['season_id'].to_s == lic['season_id'].to_s
       end
       if existing
-        # Sortiert wird nach geparstem Zeitpunkt und erst bei Gleichstand nach der
-        # Zeichenkette. Genau hier treffen die Verlaufseintraege zweier Profile aufeinander,
+        # Sortiert wird ueber LicenseEffectiveStatus.sort_key, also nach geparstem
+        # Zeitpunkt und erst bei Gleichstand nach der Zeichenkette -- derselbe
+        # Schluessel, mit dem die Leser den juengsten Eintrag bestimmen. Genau hier treffen die Verlaufseintraege zweier Profile aufeinander,
         # und damit die Stelle im Bestand, an der verschiedene UTC-Offsets am
         # wahrscheinlichsten sind: "…T23:59+02:00" steht lexikalisch VOR "…T22:25+00:00" und
         # ist doch der spaetere Zeitpunkt. Da der geltende Lizenzstatus ueberall als der
@@ -1712,7 +1704,7 @@ class Player < ApplicationRecord
         # nach vorn, wie vorher auch.
         existing['history'] = ((existing['history'] || []) + (lic['history'] || []))
                               .uniq { |h| [h['created_at'].to_s, h['license_status_id'].to_s] }
-                              .sort_by { |h| [_parse_zeitpunkt(h['created_at']) || Time.at(0), h['created_at'].to_s] }
+                              .sort_by { |h| LicenseEffectiveStatus.sort_key(h) }
       else
         result << lic
       end

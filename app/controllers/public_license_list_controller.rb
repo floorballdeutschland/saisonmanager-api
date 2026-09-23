@@ -60,8 +60,8 @@ class PublicLicenseListController < ApplicationController
       # erteilt sein kann. Wer nur die History liest, sieht sie nicht -- am
       # Spieltisch stand der Gesperrte deshalb als spielberechtigt.
       #
-      # LicenseEffectiveStatus.base_entry vergleicht `created_at.to_s`: Ein
-      # Verlaufseintrag ohne Zeitstempel liess `max_by` mit „comparison of
+      # LicenseEffectiveStatus.base_entry wirft bei einem Verlaufseintrag ohne
+      # Zeitstempel nicht. Frueher liess er `max_by` mit „comparison of
       # NilClass with String failed" platzen, und das ist eine 500 auf dem
       # oeffentlichen Lizenzlink, kurz vor Anwurf.
       base_status = LicenseEffectiveStatus.base_entry(license)
