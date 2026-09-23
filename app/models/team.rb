@@ -260,14 +260,14 @@ class Team < ApplicationRecord
       # Status-Felder nil statt die Team-Lizenzliste abzubrechen.
       history = license&.dig('history') || []
 
-      last_status = history.sort_by { |h| h['created_at'] }.last
+      # Anzeige: der juengste Eintrag, Sperre eingeschlossen (#725).
+      last_status = LicenseEffectiveStatus.current_entry(license)
       last_status_id = last_status&.dig('license_status_id')
       last_status_code = last_status_id && License::NAMES[last_status_id.to_i]
 
       approved_at = (last_status['created_at'].to_datetime if last_status_id == 1)
-      requested_at = history.select do |lh|
-                       lh['license_status_id'] == 2
-                     end.last&.dig('created_at')&.to_datetime
+      requests = history.select { |lh| lh['license_status_id'] == 2 }
+      requested_at = requests.max_by { |h| LicenseEffectiveStatus.sort_key(h) }&.dig('created_at')&.to_datetime
 
       player_item[:team_license] = {
         license:,

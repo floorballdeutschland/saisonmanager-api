@@ -187,8 +187,14 @@ class PlayersController < ApplicationController
       if player.licenses.any? do |l|
            next false unless l['team_id'].to_i == team.id && l['season_id'].to_s == league.season_id.to_s
 
-           last = l['history']&.max_by { |h| h['created_at'] }
-           last && active_statuses.include?(last['license_status_id'].to_s)
+           # Basisstatus: Auch eine gesperrte Lizenz fuer dieses Team zaehlt als
+           # vorhanden. Erreichbar ist das bei einer vorgemerkten Team-Sperre:
+           # write_suspended_status! stempelt den Sperr-Eintrag sofort, die
+           # Sperre gilt aber erst ab valid_from, suspension_for_team oben
+           # greift also noch nicht. Mit dem aktuellen Status liesse sich dann
+           # ein zweiter Antrag ohne Sperr-Eintrag stellen und die Sperre per
+           # Doppellizenz umgehen (#725).
+           active_statuses.include?(LicenseEffectiveStatus.base_status_id(l).to_s)
          end
         result = :duplicate
         raise ActiveRecord::Rollback
@@ -518,7 +524,9 @@ class PlayersController < ApplicationController
                     status: :unprocessable_entity
     end
 
-    last_status = license['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
+    # Aktueller Status wie in Player#gf_competition_licenses, damit Endpunkt und
+    # Partner-Gegenbuchung dieselbe Lizenz fuer aktiv halten.
+    last_status = LicenseEffectiveStatus.current_status_id(license)
     unless License::ACTIVE_STATUSES.include?(last_status)
       return render json: { message: 'Nur aktive Lizenzen (erteilt oder beantragt) können zugeordnet werden.' },
                     status: :unprocessable_entity
@@ -630,7 +638,7 @@ class PlayersController < ApplicationController
     allowed = may_manage_team?(ph, team)
     return render json: { message: 'Keine Berechtigung für dieses Team!' }, status: :forbidden unless allowed
 
-    last_status_id = found_license['history'].max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
+    last_status_id = LicenseEffectiveStatus.current_status_id(found_license)
     unless last_status_id == License::REQUESTED
       return render json: { message: 'Nur beantragte Lizenzen können zurückgezogen werden.' },
                     status: :unprocessable_entity
@@ -1303,7 +1311,7 @@ class PlayersController < ApplicationController
         # der erste Eintrag speist die bestehenden current_license_status-Felder.
         sorted = current_lics.sort_by { |l| [League.class_rank(l['league_class_id']), License.approval_time(l)] }
         entries = sorted.filter_map do |l|
-          status_id = l['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id')&.to_i
+          status_id = LicenseEffectiveStatus.current_entry(l)&.dig('license_status_id')&.to_i
           next unless status_id && License::NAMES.key?(status_id)
 
           league = leagues_by_team[l['team_id'].to_i]

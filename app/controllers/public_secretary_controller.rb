@@ -176,8 +176,10 @@ class PublicSecretaryController < ApplicationController
 
         # to_i wie zwei Zeilen darueber: als String gespeicherte Status liessen
         # das Erteilungsdatum sonst leer – genau die Spalte, an der das
-        # Sekretariat die Spielberechtigung abliest.
-        approved_entry = license['history']&.select { |h| h['license_status_id'].to_i == License::APPROVED }&.last
+        # Sekretariat die Spielberechtigung abliest. Die juengste Erteilung nach
+        # Zeitpunkt, nicht nach Array-Position (#725).
+        approved_entry = license['history']&.select { |h| h['license_status_id'].to_i == License::APPROVED }
+                                           &.max_by { |h| LicenseEffectiveStatus.sort_key(h) }
 
         {
           name: "#{player.first_name} #{player.last_name}",

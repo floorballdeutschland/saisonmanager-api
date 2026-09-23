@@ -24,8 +24,8 @@ namespace :seasons do
     Player.where.not(licenses: nil).find_each do |player|
       changed = false
       (player.licenses || []).each do |license|
-        last = (license['history'] || []).max_by { |h| h['created_at'] }
-        next unless last && active_statuses.include?(last['license_status_id'].to_i)
+        # Basisstatus aus demselben Grund wie in expire_licenses (#725).
+        next unless active_statuses.include?(LicenseEffectiveStatus.base_status_id(license))
 
         tid = license['team_id'].to_i
         sid = team_season[tid]
