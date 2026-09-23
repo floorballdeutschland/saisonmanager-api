@@ -398,8 +398,12 @@ class TransferRequest < ApplicationRecord
     player.licenses.each do |license|
       next unless team_ids.include?(license['team_id'].to_i)
 
-      last_status = license['history']&.last&.dig('license_status_id').to_i
-      next unless last_status.in?([License::APPROVED, License::REQUESTED])
+      # Basis- statt aktueller Status: Eine gesperrte Lizenz wird genauso
+      # zurueckgezogen. Bliebe sie stehen, holte lift_suspension! sie nach
+      # Ablauf der Sperre auf `erteilt` zurueck, fuer einen Verein, dessen
+      # Freigabe es nicht mehr gibt. Der Rueckzug danach verhindert das, weil
+      # lift_suspension! nur auf einen obersten Sperr-Eintrag reagiert.
+      next unless License::ACTIVE_STATUSES.include?(LicenseEffectiveStatus.base_status_id(license))
 
       license['history'] << {
         'license_status_id' => License::WITHDRAWN,
@@ -454,8 +458,8 @@ class TransferRequest < ApplicationRecord
     player.licenses.each do |license|
       next if requesting_team_ids.include?(license['team_id'].to_i)
 
-      last_status = license['history']&.last&.dig('license_status_id').to_i
-      next unless last_status.in?([License::APPROVED, License::REQUESTED])
+      # Basis-Status aus demselben Grund wie in invalidate_release_licenses!.
+      next unless License::ACTIVE_STATUSES.include?(LicenseEffectiveStatus.base_status_id(license))
 
       license['history'] << {
         'license_status_id' => License::TRANSFER,

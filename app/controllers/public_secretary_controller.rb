@@ -147,8 +147,8 @@ class PublicSecretaryController < ApplicationController
         # Pokal erteilt sein kann. Wer nur die History liest, sieht sie nicht
         # -- am Spieltisch stand der Gesperrte deshalb als spielberechtigt.
         #
-        # LicenseEffectiveStatus.base_entry vergleicht `created_at.to_s`: ein
-        # Historieneintrag ohne Zeitstempel liess `max_by` mit „comparison of
+        # LicenseEffectiveStatus.base_entry wirft bei einem Historieneintrag
+        # ohne Zeitstempel nicht. Frueher liess er `max_by` mit „comparison of
         # NilClass with String failed" auffliegen, und seit ein Link mehrere
         # Ligen umfasst, risse ein einziger solcher Datensatz die Lizenzlisten
         # aller Mannschaften der Halle mit.
