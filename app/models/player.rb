@@ -387,13 +387,12 @@ class Player < ApplicationRecord
   end
 
   def current_license_status(license)
-    # `to_s`, weil ein Verlaufseintrag ohne `created_at` -- im Altbestand
-    # vorhanden -- sonst mit „comparison of NilClass with String failed"
-    # aufflog. Das ist eine 500 in der Antragsuebersicht des Vereins, nicht
-    # bloss eine schiefe Sortierung. Anders als LicenseEffectiveStatus
-    # sortiert diese Stelle noch als Text, gemischte Offsets ordnet sie also
-    # falsch ein (#725, Folgeschritt).
-    status = license['history']&.sort_by { |h| h['created_at'].to_s }&.last
+    # Ueber LicenseEffectiveStatus: Ein Verlaufseintrag ohne `created_at` --
+    # im Altbestand vorhanden -- liess den Vergleich frueher mit „comparison of
+    # NilClass with String failed" auffliegen, eine 500 in der
+    # Antragsuebersicht des Vereins. Seit #725 zaehlt ausserdem der Zeitpunkt
+    # statt des Textes.
+    status = LicenseEffectiveStatus.current_entry(license)
     return unless status
 
     status[:created_by_name] = User.find_by(id: status['created_by'])&.full_with_username
@@ -893,7 +892,9 @@ class Player < ApplicationRecord
         license = licenses.find { |l| l['id'] == entry['license_id'] }
         next unless license
 
-        last_status_id = license['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
+        # Aktueller Status, weil genau der oberste Sperr-Eintrag gesucht ist,
+        # ueber dieselbe Regel wie alle Leser: Zeitpunkt statt Text (#725).
+        last_status_id = LicenseEffectiveStatus.current_status_id(license)
         # Nur reaktivieren, wenn die Lizenz seit der Sperre nicht manuell anders gesetzt wurde.
         next unless last_status_id == License::SUSPENDED
 
@@ -1260,7 +1261,10 @@ class Player < ApplicationRecord
       # Speichern stabilisieren, damit lift_suspension! exakt dieselbe Lizenz findet.
       license['id'] ||= license.delete('_id') || Digest::UUID.uuid_v4
 
-      last_status_id = license['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
+      # Aktueller Status: Eine schon gesperrte Lizenz bekommt keinen zweiten
+      # Sperr-Eintrag, sonst holte lift_suspension! den Sperrstatus als
+      # vorherigen Status zurueck.
+      last_status_id = LicenseEffectiveStatus.current_status_id(license)
       next unless License::ACTIVE_STATUSES.include?(last_status_id)
 
       license['history'] << {

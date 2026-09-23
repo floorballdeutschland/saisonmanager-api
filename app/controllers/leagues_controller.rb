@@ -526,7 +526,7 @@ class LeaguesController < ApplicationController
         preround_players.each do |player|
           preround_license = (player.licenses || []).find do |l|
             l['team_id'].to_i == preround_team.id &&
-              l['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i == License::APPROVED
+              LicenseEffectiveStatus.current_status_id(l) == License::APPROVED
           end
           next unless preround_license
           next if (player.licenses || []).any? { |l| l['team_id'].to_i == current_team.id }

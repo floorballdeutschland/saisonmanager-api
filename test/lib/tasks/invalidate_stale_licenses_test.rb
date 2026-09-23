@@ -123,4 +123,31 @@ class InvalidateStaleLicensesTest < ActiveSupport::TestCase
     assert_equal history_before.size, player.licenses.first['history'].size,
                  'DRY_RUN darf keinen save! auslösen'
   end
+
+  # Basisstatus (#725): Eine gesperrte Vorsaison-Lizenz wird ebenfalls
+  # bereinigt, sonst holte das Ende der Sperre sie auf `erteilt` zurueck.
+  test 'gesperrte Lizenz im Vorsaison-Team wird DELETED markiert' do
+    player = create(:player, with_licenses: [{ team: @previous_team, status: License::APPROVED }])
+    player.licenses.first['history'] << { 'license_status_id' => License::SUSPENDED,
+                                          'created_at' => Time.current.iso8601 }
+    player.save!(validate: false)
+
+    run_task('ADMIN_USER_ID' => @admin.id.to_s)
+
+    assert_equal License::DELETED, License.current_status_id(player.reload.licenses.first)
+  end
+
+  # Offset-Unordnung: Der juengere Eintrag ist `erteilt`, als Text steht der
+  # aeltere `geloescht` hinten.
+  test 'erteilte Lizenz wird trotz Offset-Unordnung erkannt' do
+    player = create(:player, with_licenses: [{ team: @previous_team, status: License::APPROVED,
+                                               created_at: '2026-08-03T18:25:00+00:00' }])
+    player.licenses.first['history'] << { 'license_status_id' => License::DELETED,
+                                          'created_at' => '2026-08-03T19:59:00+02:00' }
+    player.save!(validate: false)
+
+    run_task('ADMIN_USER_ID' => @admin.id.to_s)
+
+    assert_equal 3, player.reload.licenses.first['history'].size
+  end
 end

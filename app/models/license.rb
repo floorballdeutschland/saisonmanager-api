@@ -56,11 +56,11 @@ class License < ApplicationRecord
   # Laufzeit und wird über Player#suspend! gesetzt, nicht über diesen Endpunkt.
   HANDLED_STATUSES = [APPROVED, DENIED, REQUESTED, DELETED].freeze
 
-  # Jüngster History-Eintrag = aktueller Status. Über den Zeitstempel und nicht
-  # über die Position im Array: Angehängt wird die History an vielen Stellen,
-  # sortiert ist sie nirgends garantiert.
+  # Jüngster History-Eintrag = aktueller Status, Sperre eingeschlossen.
+  # Delegiert an LicenseEffectiveStatus, damit es eine Regel für „jüngster
+  # Eintrag" gibt: Zeitpunkt statt Text (#725).
   def self.current_status_id(license)
-    license['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
+    LicenseEffectiveStatus.current_status_id(license)
   end
 
   # Die eine Stelle, an der steht, welche Lizenz sich löschen lässt. Player#full_hash
@@ -211,11 +211,14 @@ class License < ApplicationRecord
   # also kostenpflichtig, und die Vereinsansicht liefert kein Fristende. Das ist
   # die sichere Richtung – ein unlesbarer Antragszeitpunkt darf keine
   # Gratis-Löschung auslösen, und ohne den Filter würfe `max_by` hier.
+  #
+  # Der jüngste Antrag nach Zeitpunkt, nicht nach Text: Mit gemischten Offsets
+  # läge sonst ein älterer Antrag vorn und verschöbe das Fenster (#725).
   def self.grace_period_anchor(history)
     Array(history)
       .select { |h| h['license_status_id'].to_i == REQUESTED && !h[REVOKED_REJECTION_KEY] }
       .reject { |h| h['created_at'].blank? }
-      .max_by { |h| h['created_at'].to_s }
+      .max_by { |h| LicenseEffectiveStatus.sort_key(h) }
   end
 
   # Frühester Genehmigungszeitpunkt (APPROVED) eines Lizenz-Hashes als Tiebreaker

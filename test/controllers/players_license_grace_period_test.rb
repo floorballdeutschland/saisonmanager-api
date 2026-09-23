@@ -288,4 +288,19 @@ class PlayersLicenseGracePeriodTest < ActionDispatch::IntegrationTest
     assert_nil JSON.parse(response.body)['grace_period_deletion']
     assert_equal 1, @player.reload.licenses.length
   end
+
+  # Offset-Unordnung (#725): Der Antrag um 18:25 UTC ist juenger als die
+  # Ablehnung um 17:59 UTC (`19:59+02:00`), als Text lag die Ablehnung vorn und
+  # der Rueckzug lief in ein 422.
+  test 'Rueckzug erkennt den beantragten Status trotz Offset-Unordnung' do
+    license_id = license_with([
+      { 'license_status_id' => License::REQUESTED, 'created_at' => '2026-08-03T18:25:00+00:00', 'created_by' => nil },
+      { 'license_status_id' => License::DENIED, 'created_at' => '2026-08-03T19:59:00+02:00', 'created_by' => nil }
+    ])
+
+    login_as(create(:user, :vm, club_id: @club.id))
+    withdraw(license_id)
+
+    assert_response :ok
+  end
 end
