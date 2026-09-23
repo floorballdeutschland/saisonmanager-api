@@ -1460,7 +1460,7 @@ class GamesController < ApplicationController
     license = player.licenses_by_team(team_id)
     return "Kein Lizenzantrag für #{player.first_name} #{player.last_name} im aufstellenden Team" if license.blank?
 
-    last_status = license['history']&.max_by { |h| h['created_at'].to_s }&.dig('license_status_id').to_i
+    last_status = LicenseEffectiveStatus.current_status_id(license)
     unless game.license_status_playable?(last_status)
       status_name = License::NAMES[last_status] || 'unbekannt'
       return "Lizenz von #{player.first_name} #{player.last_name} ist nicht erteilt (Status: #{status_name})"

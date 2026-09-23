@@ -147,8 +147,8 @@ class PublicSecretaryController < ApplicationController
         # Pokal erteilt sein kann. Wer nur die History liest, sieht sie nicht
         # -- am Spieltisch stand der Gesperrte deshalb als spielberechtigt.
         #
-        # LicenseEffectiveStatus.base_entry vergleicht `created_at.to_s`: ein
-        # Historieneintrag ohne Zeitstempel liess `max_by` mit „comparison of
+        # LicenseEffectiveStatus.base_entry wirft bei einem Historieneintrag
+        # ohne Zeitstempel nicht. Frueher liess er `max_by` mit „comparison of
         # NilClass with String failed" auffliegen, und seit ein Link mehrere
         # Ligen umfasst, risse ein einziger solcher Datensatz die Lizenzlisten
         # aller Mannschaften der Halle mit.
@@ -176,8 +176,10 @@ class PublicSecretaryController < ApplicationController
 
         # to_i wie zwei Zeilen darueber: als String gespeicherte Status liessen
         # das Erteilungsdatum sonst leer – genau die Spalte, an der das
-        # Sekretariat die Spielberechtigung abliest.
-        approved_entry = license['history']&.select { |h| h['license_status_id'].to_i == License::APPROVED }&.last
+        # Sekretariat die Spielberechtigung abliest. Die juengste Erteilung nach
+        # Zeitpunkt, nicht nach Array-Position (#725).
+        approved_entry = license['history']&.select { |h| h['license_status_id'].to_i == License::APPROVED }
+                                           &.max_by { |h| LicenseEffectiveStatus.sort_key(h) }
 
         {
           name: "#{player.first_name} #{player.last_name}",

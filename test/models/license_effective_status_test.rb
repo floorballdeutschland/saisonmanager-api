@@ -97,4 +97,51 @@ class LicenseEffectiveStatusTest < ActiveSupport::TestCase
               entry(License::SUSPENDED, '2026-02-01T10:00:00Z'))
     )
   end
+
+  # Die Eintraege tragen ihren Offset mit. Als Text sortiert `19:59+02:00`
+  # hinter `18:25+00:00`, gemeint ist aber 17:59 UTC, also der fruehere
+  # Zeitpunkt (#725).
+  test 'gemischte Offsets werden als Zeitpunkt verglichen, nicht als Text' do
+    l = license(entry(License::APPROVED, '2026-09-01T18:25:00+00:00'),
+                entry(License::WITHDRAWN, '2026-09-01T19:59:00+02:00'))
+
+    assert_equal License::APPROVED, LicenseEffectiveStatus.current_status_id(l)
+    assert_equal License::APPROVED, LicenseEffectiveStatus.base_status_id(l)
+  end
+
+  # Ein eben angehaengter, noch nicht gespeicherter Eintrag haelt ein
+  # Time-Objekt. Dessen `to_s` beginnt mit `2026-09-23 ` und laege als Text vor
+  # jedem ISO-Wert desselben Tages.
+  test 'ein ungespeicherter Eintrag mit Time-Objekt gilt als juengster' do
+    l = license(entry(License::APPROVED, '2026-09-23T08:00:00+00:00'),
+                entry(License::TRANSFER, Time.utc(2026, 9, 23, 9, 0)))
+
+    assert_equal License::TRANSFER, LicenseEffectiveStatus.current_status_id(l)
+  end
+
+  test 'ein unlesbarer Zeitstempel wirft nicht und verliert gegen einen lesbaren' do
+    l = license(entry(License::APPROVED, '2026-01-05T10:00:00Z'),
+                entry(License::WITHDRAWN, 'kein Datum'))
+
+    assert_equal License::APPROVED, LicenseEffectiveStatus.current_status_id(l)
+  end
+
+  # `Time.zone.parse` ergaenzt Bruchstuecke aus dem heutigen Datum: "12:00"
+  # waere heute 12 Uhr und schluege jede echte Erteilung.
+  test 'ein Bruchstueck ohne Datum gilt als unlesbar und nicht als heute' do
+    l = license(entry(License::APPROVED, '2026-01-05T10:00:00Z'),
+                entry(License::WITHDRAWN, '12:00'))
+
+    assert_equal License::APPROVED, LicenseEffectiveStatus.current_status_id(l)
+  end
+
+  # Derselbe Zeitpunkt mit anderem Offset: Ohne dritten Schluessel entschiede
+  # die Position im Array. Hier gewinnt in beiden Reihenfolgen derselbe.
+  test 'bei gleichem Zeitpunkt entscheidet nicht die Array-Position' do
+    a = entry(License::APPROVED, '2026-09-01T20:00:00+02:00')
+    b = entry(License::WITHDRAWN, '2026-09-01T18:00:00+00:00')
+
+    assert_equal LicenseEffectiveStatus.current_status_id(license(a, b)),
+                 LicenseEffectiveStatus.current_status_id(license(b, a))
+  end
 end

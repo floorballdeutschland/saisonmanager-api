@@ -93,7 +93,7 @@ module LicenseDocumentPresentation
   def license_requested_at(license)
     entry = Array(license && license['history'])
             .select { |h| h['license_status_id'].to_i == License::REQUESTED }
-            .max_by { |h| h['created_at'].to_s }
+            .max_by { |h| LicenseEffectiveStatus.sort_key(h) }
     entry && entry['created_at']&.to_time
   rescue ArgumentError
     Rails.logger.warn("license_requested_at: unlesbares created_at in Lizenz #{license && license['id']}")

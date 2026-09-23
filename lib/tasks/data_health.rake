@@ -187,7 +187,9 @@ namespace :data_health do
           team = Team.find_by(id: lic['team_id'])
           next unless team
 
-          last_status = lic['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
+          # Basisstatus wie in licenses:invalidate_stale, damit der Befund zeigt,
+          # was der Task bereinigen wuerde (#725).
+          last_status = LicenseEffectiveStatus.base_status_id(lic)
           next unless License::ACTIVE_STATUSES.include?(last_status)
           next if team.league&.season_id.to_i == current_season
 
@@ -261,8 +263,8 @@ namespace :data_health do
       Player.where("licenses IS NOT NULL AND licenses != '[]'").find_each do |player|
         counts = Hash.new(0)
         player.licenses.each do |lic|
-          last_status = lic['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
-          next unless last_status == License::APPROVED
+          # Basisstatus: Eine gesperrte erteilte Lizenz ist genauso eine Doppelung.
+          next unless LicenseEffectiveStatus.base_status_id(lic) == License::APPROVED
 
           counts[[lic['season_id'], lic['team_id']]] += 1
         end

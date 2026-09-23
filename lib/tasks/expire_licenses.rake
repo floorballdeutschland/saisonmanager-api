@@ -35,8 +35,9 @@ namespace :licenses do
         end
         next if valid_until.nil? || valid_until >= today
 
-        last = (license['history'] || []).max_by { |h| h['created_at'] }
-        next unless last && last['license_status_id'].to_i == License::APPROVED
+        # Basisstatus: Auch eine gesperrte Lizenz laeuft ab. Sonst holte
+        # lift_suspension! sie nach der Sperre auf `erteilt` zurueck (#725).
+        next unless LicenseEffectiveStatus.base_status_id(license) == License::APPROVED
 
         license['history'] << {
           'license_status_id' => License::DELETED,

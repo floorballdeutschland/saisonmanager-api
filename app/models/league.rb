@@ -1140,9 +1140,10 @@ class League < ApplicationRecord
         # Das Erteilungsdatum kommt aus dem Basis-Eintrag: Eine gesperrte Lizenz
         # ist erteilt, und ohne den Rückgriff stünde die Zeile ohne Datum da.
         approved_at = (base_status['created_at'].to_datetime if base_status_id.to_i == 1)
-        requested_at = license['history'].select do |lh|
-                         lh['license_status_id'].to_i == 2
-                       end.last&.dig('created_at')&.then { |ts| ts.to_datetime }
+        # Juengster Antrag nach Zeitpunkt wie in Team#licenses, sonst zeigen
+        # Mannschafts- und Ligaliste verschiedene Antragsdaten (#725).
+        requests = license['history'].select { |lh| lh['license_status_id'].to_i == 2 }
+        requested_at = requests.max_by { |h| LicenseEffectiveStatus.sort_key(h) }&.dig('created_at')&.then(&:to_datetime)
 
         player_item[:team_license] = {
           license:,
@@ -1351,14 +1352,14 @@ class League < ApplicationRecord
           lic_season.nil? || lic_season.to_s == season_id.to_s
         end
 
-        last_status = license['history'].last
+        last_status = LicenseEffectiveStatus.current_entry(license)
         last_status_id = last_status['license_status_id']
         last_status_code = status[last_status_id.to_s]
 
         approved_at = (last_status['created_at'].to_datetime.strftime('%d.%m.%Y %H:%M:%S') if last_status_id == 1)
-        requested_at = license['history'].select do |lh|
-                         lh['license_status_id'] == 2
-                       end.last&.dig('created_at')&.then { |ts| ts.to_datetime }.strftime('%d.%m.%Y %H:%M:%S')
+        requests = license['history'].select { |lh| lh['license_status_id'] == 2 }
+        requested_at = requests.max_by { |h| LicenseEffectiveStatus.sort_key(h) }
+                               &.dig('created_at')&.then(&:to_datetime)&.strftime('%d.%m.%Y %H:%M:%S')
 
         puts "#{player.last_name},#{player.first_name},#{last_status_code},#{requested_at},#{approved_at || '-'},#{team.name}"
       end

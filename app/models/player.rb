@@ -387,12 +387,12 @@ class Player < ApplicationRecord
   end
 
   def current_license_status(license)
-    # `to_s` wie in LicenseEffectiveStatus: Ein Verlaufseintrag ohne
-    # `created_at` -- im Altbestand vorhanden -- liess den Vergleich mit
-    # „comparison of NilClass with String failed" auffliegen. Das ist eine 500
-    # in der Antragsuebersicht des Vereins, nicht bloss eine schiefe
-    # Sortierung.
-    status = license['history']&.sort_by { |h| h['created_at'].to_s }&.last
+    # Ueber LicenseEffectiveStatus: Ein Verlaufseintrag ohne `created_at` --
+    # im Altbestand vorhanden -- liess den Vergleich frueher mit „comparison of
+    # NilClass with String failed" auffliegen, eine 500 in der
+    # Antragsuebersicht des Vereins. Seit #725 zaehlt ausserdem der Zeitpunkt
+    # statt des Textes.
+    status = LicenseEffectiveStatus.current_entry(license)
     return unless status
 
     status[:created_by_name] = User.find_by(id: status['created_by'])&.full_with_username
@@ -562,8 +562,10 @@ class Player < ApplicationRecord
       next false if l['id'] == license['id']
       next false unless l['season_id'].to_s == license['season_id'].to_s
 
-      last_status = l['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
-      next false unless License::ACTIVE_STATUSES.include?(last_status)
+      # Aktueller Status, Sperre eingeschlossen, und ueber den Zeitpunkt statt
+      # als Text (#725). Das Frontend spiegelt genau diese Partnerlogik in der
+      # Spielermaske; beide muessen dieselbe Regel haben.
+      next false unless License::ACTIVE_STATUSES.include?(LicenseEffectiveStatus.current_status_id(l))
 
       other_league = Team.find_by(id: l['team_id'])&.league
       other_league.present? && other_league.gf_adult? && other_league.female == league.female
@@ -890,7 +892,9 @@ class Player < ApplicationRecord
         license = licenses.find { |l| l['id'] == entry['license_id'] }
         next unless license
 
-        last_status_id = license['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
+        # Aktueller Status, weil genau der oberste Sperr-Eintrag gesucht ist,
+        # ueber dieselbe Regel wie alle Leser: Zeitpunkt statt Text (#725).
+        last_status_id = LicenseEffectiveStatus.current_status_id(license)
         # Nur reaktivieren, wenn die Lizenz seit der Sperre nicht manuell anders gesetzt wurde.
         next unless last_status_id == License::SUSPENDED
 
@@ -1147,8 +1151,9 @@ class Player < ApplicationRecord
     end
 
     licenses.each do |license|
-      last_status = license['history']&.last&.dig('license_status_id').to_i
-      next unless last_status.in?([License::APPROVED, License::REQUESTED])
+      # Basis-Status: Auch eine gesperrte Lizenz der Dublette wird geloescht,
+      # sonst holte lift_suspension! sie spaeter auf `erteilt` zurueck.
+      next unless License::ACTIVE_STATUSES.include?(LicenseEffectiveStatus.base_status_id(license))
 
       license['history'] << {
         'license_status_id' => License::DELETED,
@@ -1256,7 +1261,11 @@ class Player < ApplicationRecord
       # Speichern stabilisieren, damit lift_suspension! exakt dieselbe Lizenz findet.
       license['id'] ||= license.delete('_id') || Digest::UUID.uuid_v4
 
-      last_status_id = license['history']&.max_by { |h| h['created_at'] }&.dig('license_status_id').to_i
+      # Aktueller Status statt Basisstatus: Mit dem Basisstatus galte eine schon
+      # gesperrte Lizenz als erteilt. Sie bekaeme einen zweiten, gestapelten
+      # Sperr-Eintrag mit `previous_status_id` erteilt, und das Aufheben der
+      # ersten Sperre stellte `erteilt` her, waehrend die zweite noch laeuft.
+      last_status_id = LicenseEffectiveStatus.current_status_id(license)
       next unless License::ACTIVE_STATUSES.include?(last_status_id)
 
       license['history'] << {
@@ -1385,8 +1394,11 @@ class Player < ApplicationRecord
   end
 
   def select_license(licenses)
+    # Der aktuelle Eintrag, Sperre eingeschlossen: Die Anzeige soll zeigen,
+    # was zuletzt gesetzt wurde. Der juengste und nicht der letzte, siehe
+    # LicenseEffectiveStatus (#725).
     licenses.map! do |license|
-      last_status = license['history']&.last
+      last_status = LicenseEffectiveStatus.current_entry(license)
       last_status ? license.merge(last_status) : license
     end
 
@@ -1670,21 +1682,9 @@ class Player < ApplicationRecord
   end
 
   # Der Zeitstempel eines Verlaufseintrags, oder nil, wenn er sich nicht einordnen laesst.
-  #
-  # Der Formatriegel ist nicht kosmetisch. `Time.zone.parse` lehnt Bruchstuecke nicht ab,
-  # sondern ERGAENZT sie aus dem heutigen Datum: "12x" wird zum 12. des laufenden Monats,
-  # "18:25" zu heute um 18:25. Ein solcher Wert wirft nichts, sieht gueltig aus und liegt
-  # naturgemaess ganz vorn -- er schluege damit jede echte Erteilung und bestimmte den
-  # Heimatverein aus einem erfundenen Zeitpunkt.
-  ISO_DATUM = /\A\d{4}-\d{2}-\d{2}/
-
+  # Der Formatriegel und seine Begruendung stehen in LicenseEffectiveStatus.parse_time.
   def _parse_zeitpunkt(wert)
-    return wert.to_time if wert.respond_to?(:to_time) && !wert.is_a?(String)
-    return nil unless wert.to_s.match?(ISO_DATUM)
-
-    Time.zone.parse(wert.to_s)
-  rescue ArgumentError, TypeError
-    nil
+    LicenseEffectiveStatus.parse_time(wert)
   end
 
   # Lizenzen zusammenführen: bei gleichem team_id UND season_id die History-Arrays
@@ -1698,8 +1698,9 @@ class Player < ApplicationRecord
         l['team_id'].to_s == lic['team_id'].to_s && l['season_id'].to_s == lic['season_id'].to_s
       end
       if existing
-        # Sortiert wird nach geparstem Zeitpunkt und erst bei Gleichstand nach der
-        # Zeichenkette. Genau hier treffen die Verlaufseintraege zweier Profile aufeinander,
+        # Sortiert wird ueber LicenseEffectiveStatus.sort_key, also nach geparstem
+        # Zeitpunkt und erst bei Gleichstand nach der Zeichenkette -- derselbe
+        # Schluessel, mit dem die Leser den juengsten Eintrag bestimmen. Genau hier treffen die Verlaufseintraege zweier Profile aufeinander,
         # und damit die Stelle im Bestand, an der verschiedene UTC-Offsets am
         # wahrscheinlichsten sind: "…T23:59+02:00" steht lexikalisch VOR "…T22:25+00:00" und
         # ist doch der spaetere Zeitpunkt. Da der geltende Lizenzstatus ueberall als der
@@ -1708,7 +1709,7 @@ class Player < ApplicationRecord
         # nach vorn, wie vorher auch.
         existing['history'] = ((existing['history'] || []) + (lic['history'] || []))
                               .uniq { |h| [h['created_at'].to_s, h['license_status_id'].to_s] }
-                              .sort_by { |h| [_parse_zeitpunkt(h['created_at']) || Time.at(0), h['created_at'].to_s] }
+                              .sort_by { |h| LicenseEffectiveStatus.sort_key(h) }
       else
         result << lic
       end
