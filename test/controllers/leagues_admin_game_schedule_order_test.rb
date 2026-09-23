@@ -46,6 +46,26 @@ class LeaguesAdminGameScheduleOrderTest < ActionDispatch::IntegrationTest
     assert_equal [iso.id, german.id], schedule_ids
   end
 
+  # Ohne nummerierte Spiele ist der Spielnummer-Schlüssel bei allen gleich,
+  # dann entscheidet die ID. Die Updates schreiben die Zeilen in Postgres in
+  # umgekehrter Reihenfolge ans Ende der Tabelle, ohne ORDER BY kämen sie also
+  # verkehrt herum.
+  test 'Gleichstand ohne Spielnummern entscheidet die ID' do
+    game_days = Array.new(5) { create_game_day(number: 1, date: '2026-04-06') }
+    game_days.reverse_each { |game_day| game_day.update_column(:updated_at, 1.minute.from_now) }
+
+    assert_equal game_days.map(&:id), schedule_ids
+  end
+
+  # Date.parse wirft bei mehr als 128 Zeichen ArgumentError, nicht Date::Error.
+  test 'ein ueberlanger Datumstext fuehrt nicht zum Serverfehler' do
+    odd = create_game_day(number: 1, date: '2026-04-06')
+    odd.update_column(:date, 'x' * 200)
+    create_game_day(number: 1, date: '2026-04-06')
+
+    assert_equal 2, schedule_ids.length
+  end
+
   private
 
   def schedule_ids

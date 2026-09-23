@@ -176,7 +176,7 @@ class LeaguesController < ApplicationController
         items = league.game_days.includes(:arena, :club).map do |gd|
                   gd.full_hash(true)
                 end.sort_by do |gd|
-                  game_day_sort_key(gd[:number], gd[:date], gd[:games].map { |game| game[:game_number] })
+                  game_day_sort_key(gd[:id], gd[:number], gd[:date], gd[:games].map { |game| game[:game_number] })
                 end
         render json: items
       else
@@ -1208,7 +1208,7 @@ class LeaguesController < ApplicationController
     game_days = league.game_days.includes(:arena, :club, games: %i[home_team guest_team]).to_a
 
     ordered = game_days.sort_by do |game_day|
-      game_day_sort_key(game_day.number, game_day.date, game_day.games.map(&:game_number))
+      game_day_sort_key(game_day.id, game_day.number, game_day.date, game_day.games.map(&:game_number))
     end
 
     # Die Gruppierung fasst im Import die Spiele eines Spieltags zusammen. Nach
@@ -1235,9 +1235,13 @@ class LeaguesController < ApplicationController
   # Spiele ohne Nummer zählen für den dritten Schlüssel nicht mit: `''.to_i` ist
   # 0 und zog einen Spieltag sonst vor alle anderen. Ein Spieltag ganz ohne
   # Spielnummer steht deshalb hinter denen mit Nummer, wie NULLS LAST.
-  def game_day_sort_key(number, date, game_numbers)
+  #
+  # Die ID entscheidet zuletzt, damit auch zwei Spieltage ohne nummerierte
+  # Spiele bei gleicher Nummer und gleichem Datum stabil stehen statt in der
+  # Reihenfolge, die Postgres gerade liefert.
+  def game_day_sort_key(id, number, date, game_numbers)
     lowest = game_numbers.filter_map { |game_number| game_number.presence&.to_i }.min
-    [number.to_i, schedule_export_sort_date(date), lowest || Float::INFINITY]
+    [number.to_i, game_day_sort_date(date), lowest || Float::INFINITY, id]
   end
   private :game_day_sort_key
 
@@ -1284,7 +1288,10 @@ class LeaguesController < ApplicationController
     return nil if raw.blank?
 
     Date.parse(raw.to_s)
-  rescue Date::Error
+  # ArgumentError statt Date::Error: Date.parse weist Eingaben über 128 Zeichen
+  # mit einem schlichten ArgumentError ab (Date::Error ist dessen Unterklasse),
+  # und über #game_day_sort_key träfe das auch die Spielplanverwaltung.
+  rescue ArgumentError
     raw.to_s
   end
   private :schedule_export_date
@@ -1294,12 +1301,12 @@ class LeaguesController < ApplicationController
   # ISO normalisiert und sortiert damit chronologisch; was sich nicht parsen
   # lässt, behält seinen Rohtext und landet nach seiner Schreibweise – falsch
   # sortieren kann nur noch, was ohnehin keine erkennbare Datumsangabe ist.
-  def schedule_export_sort_date(raw)
+  def game_day_sort_date(raw)
     value = schedule_export_date(raw)
 
     value.is_a?(Date) ? value.iso8601 : value.to_s
   end
-  private :schedule_export_sort_date
+  private :game_day_sort_date
 
   def schedule_export_csv(columns, rows)
     CSV.generate do |csv|
