@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Spielplanverwaltung ordnet Spieltage mit gleicher Nummer und gleichem Datum nach der kleinsten Spielnummer**: Mehrere Turnierspieltage am selben Tag an verschiedenen Orten standen bisher in beliebiger Reihenfolge, weil der dritte Sortierschlüssel die Spielnummer unter einem falschen Namen las und immer leer war. Ein Altdatum wie „11.08.2026“ sortiert nach seinem echten Wert statt als Text, und bei vollständigem Gleichstand ist die Reihenfolge jetzt fest. Spielplanverwaltung und Spielplan-Export teilen sich dafür denselben Sortierschlüssel. Im Export steht ein Spieltag ganz ohne Spielnummer dadurch jetzt hinter denen mit Nummer statt vorne (#658).
+
 ## [1.120.0] - 2026-09-22
 
 ### Neu
