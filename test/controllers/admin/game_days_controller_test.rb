@@ -110,6 +110,25 @@ module Admin
       assert_not data['scan']['expired']
     end
 
+    test 'Uploader ohne Namen liefert uploaded_by_name null statt Leerzeichen' do
+      # User#fullname fuegt leere Namensteile mit Leerzeichen zusammen.
+      uploader = create_user(user_group_id: 3, game_operation_id: 0)
+      uploader.update_columns(first_name: '', last_name: '', email: 'ohne-name@example.org')
+      scan = GameScan.new(game: @game, uploaded_by: uploader, expires_at: 12.months.from_now)
+      scan.scan_file.attach(io: StringIO.new('PDF'), filename: 'bogen.pdf', content_type: 'application/pdf')
+      scan.save!
+      report = @game.build_game_referee_report(uploaded_by: uploader)
+      report.file.attach(io: StringIO.new('PDF'), filename: 'r.pdf', content_type: 'application/pdf')
+      report.save!
+
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      data = row(@game.id)
+      assert_nil data['scan']['uploaded_by_name']
+      assert_nil data['referee_report']['uploaded_by_name']
+      assert_equal 'ohne-name@example.org', data['referee_report']['uploaded_by_email']
+    end
+
     test 'Scan ohne Uploader-Adresse liefert uploaded_by_email null' do
       uploader = create_user(user_group_id: 3, game_operation_id: 0)
       uploader.update_column(:email, '')

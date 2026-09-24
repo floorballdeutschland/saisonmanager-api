@@ -221,7 +221,7 @@ module Admin
 
       {
         uploaded_at: scan.created_at,
-        uploaded_by_name: scan.uploaded_by&.fullname,
+        uploaded_by_name: scan.uploaded_by&.fullname&.strip.presence,
         uploaded_by_email: scan.uploaded_by&.email.presence,
         days_after_game_day: days_after(game_day.date, scan.created_at),
         expired: scan.expires_at <= Time.current
@@ -232,7 +232,7 @@ module Admin
       report = game.game_referee_report
       report && {
         uploaded_at: report.created_at,
-        uploaded_by_name: report.uploaded_by&.fullname,
+        uploaded_by_name: report.uploaded_by&.fullname&.strip.presence,
         uploaded_by_email: report.uploaded_by&.email.presence
       }
     end
