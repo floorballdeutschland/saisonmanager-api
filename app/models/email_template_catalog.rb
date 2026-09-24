@@ -589,7 +589,8 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_reply_to: nil,
       placeholders: [
         { key: 'league_name', description: 'Name der Liga' },
-        { key: 'game_day_date', description: 'Datum des Spieltags' }
+        { key: 'game_day_date', description: 'Datum des Spieltags' },
+        { key: 'games', description: 'Betroffene Spiele mit Spielnummer, Anwurf und Mannschaften' }
       ]
     },
     'GameDayMailer#team_checklist_veto' => {
@@ -601,7 +602,8 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       default_reply_to: nil,
       placeholders: [
         { key: 'league_name', description: 'Name der Liga' },
-        { key: 'game_day_date', description: 'Datum des Spieltags' }
+        { key: 'game_day_date', description: 'Datum des Spieltags' },
+        { key: 'games', description: 'Betroffene Spiele mit Spielnummer, Anwurf und Mannschaften' }
       ]
     },
     'GameDayMailer#published_referees_to_host' => {

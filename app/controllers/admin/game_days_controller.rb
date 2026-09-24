@@ -7,10 +7,11 @@ module Admin
     before_action :authorize_sbk_access!
 
     # Straf-Kategorien, die eine SBK-Prüfung nach sich ziehen. Die Schlüssel sind
-    # die Mappings aus Setting.penalties (vgl. Game#empty_score); 2-Minuten- und
-    # 2+2-Strafen sind bewusst nicht dabei.
-    SEVERE_PENALTY_MAPPINGS = %w[
-      penalty_5 penalty_10 penalty_ms_tech penalty_ms_full penalty_ms1 penalty_ms2 penalty_ms3
+    # die Mappings aus Setting.penalties (vgl. Game#empty_score). Auf Wunsch der
+    # SBK nur Matchstrafen (inkl. der alten Spielstrafen 1-3); Zeitstrafen, auch
+    # die 5- und 10-Minuten-Strafe, sind bewusst nicht dabei.
+    MATCH_PENALTY_MAPPINGS = %w[
+      penalty_ms_tech penalty_ms_full penalty_ms1 penalty_ms2 penalty_ms3
     ].freeze
 
     # Obergrenze je Abfrage. Die Liste wird komplett ans Frontend geliefert (dort
@@ -100,8 +101,8 @@ module Admin
 
     def filtered_scope(apply_league: true)
       scope = Game.joins(game_day: :league).includes(
-        :home_team, :guest_team, :game_referee_report, :proceeding_proposal,
-        { game_scan: :uploaded_by },
+        :home_team, :guest_team, :proceeding_proposal,
+        { game_scan: :uploaded_by }, { game_referee_report: :uploaded_by },
         game_day: [{ league: { game_operation: { state_association: :checklist_items } } }, :arena, :club]
       )
 
@@ -221,7 +222,8 @@ module Admin
 
       {
         uploaded_at: scan.created_at,
-        uploaded_by_name: scan.uploaded_by&.fullname,
+        uploaded_by_name: scan.uploaded_by&.fullname&.strip.presence,
+        uploaded_by_email: scan.uploaded_by&.email.presence,
         days_after_game_day: days_after(game_day.date, scan.created_at),
         expired: scan.expires_at <= Time.current
       }
@@ -229,7 +231,11 @@ module Admin
 
     def referee_report_hash(game)
       report = game.game_referee_report
-      report && { uploaded_at: report.created_at }
+      report && {
+        uploaded_at: report.created_at,
+        uploaded_by_name: report.uploaded_by&.fullname&.strip.presence,
+        uploaded_by_email: report.uploaded_by&.email.presence
+      }
     end
 
     def proceeding_proposal_hash(game)
@@ -387,7 +393,7 @@ module Admin
       nil
     end
 
-    # Zählt Strafen ab 5 Minuten inkl. Matchstrafen.
+    # Zählt die Matchstrafen eines Spiels (Flag-Name aus Kompatibilität unverändert).
     #
     # Bevorzugt das ins Event eingefrorene Label (katalogunabhängig) und greift nur
     # für Alt-Ereignisse ohne Label auf den Katalog zurück. Game#penalty_mapping
@@ -405,7 +411,7 @@ module Admin
 
         mapping = event['penalty_mapping'].presence ||
                   penalties_catalog.dig(event['penalty_id'].to_s, 'mapping')
-        SEVERE_PENALTY_MAPPINGS.include?(mapping.to_s)
+        MATCH_PENALTY_MAPPINGS.include?(mapping.to_s)
       end
     end
 
