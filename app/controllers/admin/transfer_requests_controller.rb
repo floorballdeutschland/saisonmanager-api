@@ -388,7 +388,7 @@ module Admin
 
       if tr.request_type == 'release'
         tr.execute_release!(current_user.id)
-      elsif tr.effective_date.nil? || tr.effective_date <= Date.today
+      elsif tr.effective_date.nil? || tr.effective_date <= TransferRequest.today
         tr.execute_transfer!(current_user.id)
       else
         tr.update!(
@@ -446,7 +446,7 @@ module Admin
         return render json: { error: 'Nicht berechtigt' }, status: :forbidden
       end
 
-      if tr.effective_date.present? && tr.effective_date > Date.today
+      if tr.effective_date.present? && tr.effective_date > TransferRequest.today
         return render json: { error: "Transfer wird erst am #{tr.effective_date.strftime('%d.%m.%Y')} wirksam" }, status: :unprocessable_entity
       end
 
@@ -580,10 +580,32 @@ module Admin
     # SBK/Admin weist einen Spieler direkt einem anderen Verein zu (ohne den
     # mehrstufigen Genehmigungsprozess). Es entsteht ein TransferRequest
     # (direct: true), der sofort vollzogen wird und in der Liste erscheint.
+    #
+    # Mit `effective_date` in der Zukunft wird er stattdessen geplant (Status
+    # `scheduled`, wie ein vom LV genehmigter Antrag mit Wunschdatum) und von
+    # `rake transfers:execute_scheduled` am Wunschdatum vollzogen. Anders als
+    # im Antrag des Vereins (#create) gilt keine Mindestfrist von 7 Tagen: Die
+    # Direktzuweisung ist der Weg fuer Sonderfaelle, und der Verband setzt den
+    # Termin selbst. Heute oder leer vollzieht sofort, ein vergangenes Datum
+    # wird abgewiesen statt still als "sofort" gelesen.
     def direct_assign
       ph = current_user.permission_hash
       unless ph[:admin].present? || ph[:sbk].present?
         return render json: { error: 'Nicht berechtigt' }, status: :forbidden
+      end
+
+      effective_date = nil
+      if params[:effective_date].present?
+        begin
+          effective_date = Date.iso8601(params[:effective_date].to_s)
+        rescue ArgumentError
+          return render json: { error: 'Ungültiges Datum' }, status: :unprocessable_entity
+        end
+        if effective_date < TransferRequest.today
+          return render json: { error: 'Wunschdatum darf nicht in der Vergangenheit liegen' },
+                        status: :unprocessable_entity
+        end
+        effective_date = nil if effective_date == TransferRequest.today
       end
 
       player = Player.find_by(id: params[:player_id])
@@ -621,6 +643,26 @@ module Admin
       if TransferRequest.active_transfers.where(player_id: player.id).exists?
         return render json: { error: 'Für diesen Spieler ist bereits ein Transfer aktiv. Bitte zuerst annullieren.' },
                       status: :unprocessable_entity
+      end
+
+      if effective_date
+        tr = TransferRequest.create!(
+          player_id: player.id,
+          requesting_club_id: requesting_club.id,
+          former_club_id: former_club_id,
+          status: 'scheduled',
+          direct: true,
+          created_by: current_user.id,
+          approved_by_lv_user_id: current_user.id,
+          lv_approved_at: Time.current,
+          season_id: Setting.current_season_id,
+          effective_date:,
+          request_type: 'transfer'
+        )
+        # Wie approve_lv beim Planen: Beide Vereine planen an diesem Datum ihre
+        # Mannschaften und erfuehren den Termin sonst erst mit dem Vollzug.
+        TransferRequestMailer.deliver_to_all_audiences(:transfer_scheduled, tr)
+        return render_transfer_request(tr, status: :created)
       end
 
       tr = nil

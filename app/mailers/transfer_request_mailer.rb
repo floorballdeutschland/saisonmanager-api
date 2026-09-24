@@ -190,14 +190,14 @@ class TransferRequestMailer < ApplicationMailer
   #
   # Verteiler wie #transfer_completed: Diese Nachricht kuendigt genau die an.
   # Der Landesverband des abgebenden Vereins ist dabei zugleich der, der gerade
-  # genehmigt hat -- er bleibt trotzdem im Verteiler, denn den Vollzug muss
-  # jemand von Hand ausloesen (siehe unten), und sein Postfach ist der Kanal,
-  # ueber den die Landesverbaende die Vorgaenge nachhalten.
+  # genehmigt hat -- er bleibt trotzdem im Verteiler, denn bis zum Vollzug
+  # annulliert nur er, und sein Postfach ist der Kanal, ueber den die
+  # Landesverbaende die Vorgaenge nachhalten.
   #
-  # Die Nachricht behauptet ausdruecklich KEINEN automatischen Vollzug: Es gibt
-  # keinen Job, der `execute_transfer!` zum Wunschdatum ausloest -- aufgerufen
-  # wird es allein aus `approve_lv`, `#execute` und `#direct_assign`. Ein
-  # geplanter Transfer wartet auf den Knopf in der Maske.
+  # Die Nachricht kuendigt den automatischen Vollzug an: `rake
+  # transfers:execute_scheduled` vollzieht geplante Transfers am Wunschdatum.
+  # Das stimmt nur, solange der Job in der Crontab des Prod-Servers steht.
+  # Geplant wird aus `approve_lv` und aus `#direct_assign` mit Wunschdatum.
   #
   # Getrennte Empfaengerkreise wie #transfer_completed: Die Nachricht kuendigt
   # denselben Vorgang an und ging bis zum Merge mit derselben gemeinsamen
