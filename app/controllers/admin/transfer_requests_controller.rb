@@ -388,7 +388,7 @@ module Admin
 
       if tr.request_type == 'release'
         tr.execute_release!(current_user.id)
-      elsif tr.effective_date.nil? || tr.effective_date <= Date.today
+      elsif tr.effective_date.nil? || tr.effective_date <= TransferRequest.today
         tr.execute_transfer!(current_user.id)
       else
         tr.update!(
@@ -446,7 +446,7 @@ module Admin
         return render json: { error: 'Nicht berechtigt' }, status: :forbidden
       end
 
-      if tr.effective_date.present? && tr.effective_date > Date.today
+      if tr.effective_date.present? && tr.effective_date > TransferRequest.today
         return render json: { error: "Transfer wird erst am #{tr.effective_date.strftime('%d.%m.%Y')} wirksam" }, status: :unprocessable_entity
       end
 
@@ -601,11 +601,11 @@ module Admin
         rescue ArgumentError
           return render json: { error: 'Ungültiges Datum' }, status: :unprocessable_entity
         end
-        if effective_date < Date.today
+        if effective_date < TransferRequest.today
           return render json: { error: 'Wunschdatum darf nicht in der Vergangenheit liegen' },
                         status: :unprocessable_entity
         end
-        effective_date = nil if effective_date == Date.today
+        effective_date = nil if effective_date == TransferRequest.today
       end
 
       player = Player.find_by(id: params[:player_id])

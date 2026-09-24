@@ -65,6 +65,18 @@ module Admin
       assert_equal @requesting_club.id, home_club_id
     end
 
+    # 25.09. 01:00 deutscher Zeit ist auf dem Server noch der 24.09. (UTC).
+    # Die Maske bietet dann den 25.09. als heute an, und so muss ihn auch die
+    # API lesen: sofort vollziehen, nicht planen.
+    test 'heute zaehlt nach deutscher Zeit, nicht nach der Serverzeit' do
+      travel_to Time.utc(2026, 9, 24, 23, 0) do
+        login(@sbk)
+        direct_assign(effective_date: '2026-09-25')
+        assert_response :created
+        assert_equal 'approved', JSON.parse(response.body)['status']
+      end
+    end
+
     test 'leeres Wunschdatum vollzieht sofort wie bisher' do
       login(@sbk)
       direct_assign(effective_date: '')
