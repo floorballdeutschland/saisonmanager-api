@@ -12,6 +12,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Verbessert
 
 - **Meldung „Spieltag nicht ordnungsgemäß“ nennt die betroffenen Spiele**: Die Mail an die SBK, wenn ein*e Schiedsrichter*in oder eine Gastmannschaft einen Spieltag als nicht ordnungsgemäß meldet, führt jetzt Spielnummer, Anwurf und beide Mannschaften auf. Bisher standen nur Liga und Datum drin, bei mehreren Spielen am Spieltag ließ sich die Meldung kaum zuordnen. Aufgeführt werden die Spiele, an denen die meldende Seite beteiligt war (lässt sich das nicht bestimmen, alle Spiele des Spieltags mit entsprechendem Hinweis); gespeicherte Mailvorlagen können sie über den neuen Platzhalter `{{games}}` einsetzen.
+- **SBK erreicht den Uploader eines Spielberichtsbogens direkt per E-Mail**: In der Spieltagsübersicht der SBK ist der Name dessen, der den Papierbogen oder das Schiedsrichter-Berichtsformular hochgeladen hat, jetzt ein Mail-Link. Beim Berichtsformular steht zusätzlich der Name, bisher nur der Zeitpunkt. Die öffentliche Upload-Ansicht zeigt weiterhin keine Adresse.
+- **Spieltagsübersicht der SBK weist nur noch Matchstrafen als Auffälligkeit aus**: Bisher zählte der Hinweis alle Strafen ab 5 Minuten, also auch die 10-Minuten-Strafe. Auf Wunsch der SBK zählen jetzt nur noch Matchstrafen (inklusive technischer Matchstrafe und der alten Spielstrafen 1 bis 3), Zeitstrafen lösen keinen Hinweis mehr aus.
 
 ## [1.120.1] - 2026-09-23
 
