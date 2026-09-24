@@ -7,7 +7,7 @@ class GameDayMailer < ApplicationMailer
     @answers = answers || []
     @failed_items = @answers.select { |a| a['answer'] == false }
     @league_name = game_day.league&.name
-    @games = veto_games(game_day) do |game|
+    @games, @games_matched = veto_games(game_day) do |game|
       assignment = game.referee_assignment
       assignment&.status == 'published' &&
         [assignment.referee1_id, assignment.referee2_id].include?(referee.id)
@@ -62,7 +62,7 @@ class GameDayMailer < ApplicationMailer
     @answers = answers || []
     @failed_items = @answers.select { |a| a['answer'] == false }
     @league_name = game_day.league&.name
-    @games = veto_games(game_day) { |game| [game.home_team_id, game.guest_team_id].include?(team.id) }
+    @games, @games_matched = veto_games(game_day) { |game| [game.home_team_id, game.guest_team_id].include?(team.id) }
 
     templated_mail(
       to: state_association.effective_sbk_email,
@@ -82,14 +82,16 @@ class GameDayMailer < ApplicationMailer
   private
 
   # Die Spiele, um die es in einer Spieltagsmeldung geht: die, an denen die
-  # meldende Seite beteiligt war. Ohne Treffer (z. B. Ansetzung inzwischen
-  # geändert) alle Spiele des Spieltags, damit die SBK die Meldung trotzdem
-  # zuordnen kann.
+  # meldende Seite beteiligt war, samt der Angabe, ob das gelungen ist. Ohne
+  # Treffer (z. B. Ansetzung inzwischen geändert) alle Spiele des Spieltags,
+  # damit die SBK die Meldung trotzdem zuordnen kann; die View kennzeichnet sie
+  # dann als solche.
   def veto_games(game_day, &involved)
     games = game_day.games
                     .includes(:home_team, :guest_team, :referee_assignment)
                     .sort_by { |g| [g.start_time.to_s, g.game_number.to_s.to_i] }
-    games.select(&involved).presence || games
+    involved_games = games.select(&involved)
+    involved_games.any? ? [involved_games, true] : [games, false]
   end
 
   def games_line(games)

@@ -8,7 +8,11 @@
 </p>
 
 <% if @games.any? %>
-  <p><%= @games.one? ? 'Spiel' : 'Spiele' %>:</p>
+  <p><%= if @games_matched
+            @games.one? ? 'Spiel' : 'Spiele'
+          else
+            'Spiele des Spieltags (keinem Spiel direkt zuzuordnen)'
+          end %>:</p>
   <ul>
     <% @games.each do |game| %>
       <li><%= GameDayMailer.game_label(game) %></li>

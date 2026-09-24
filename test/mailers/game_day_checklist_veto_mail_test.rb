@@ -30,6 +30,32 @@ class GameDayChecklistVetoMailTest < ActionMailer::TestCase
 
     assert_includes body, 'Adler Nord vs. Falken Sued'
     assert_includes body, 'Baeren West vs. Woelfe Ost'
+    assert_includes body, 'Spiele des Spieltags', 'Fallback muss als solcher erkennbar sein'
+  end
+
+  test 'nur veroeffentlichte Ansetzungen zaehlen, Schiri 2 ebenso' do
+    third = build_game('14', '18:30', 'Luchse Mitte', 'Otter Sued')
+    RefereeAssignment.create!(game: third, referee1: create(:referee), referee2: @referee,
+                              status: 'published', published_at: Time.current)
+    @other.referee_assignment.update!(referee2: @referee, status: 'tentative')
+
+    body = GameDayMailer.referee_checklist_veto(@game_day, @referee, [], @sa).body.encoded
+
+    assert_includes body, 'Adler Nord vs. Falken Sued'
+    assert_includes body, 'Luchse Mitte vs. Otter Sued'
+    assert_not_includes body, 'Baeren West', 'nur vorlaeufig angesetzt'
+    assert_not_includes body, 'Spiele des Spieltags'
+  end
+
+  test 'Teamname wird in einer gespeicherten Vorlage genau einmal maskiert' do
+    @own.home_team.update!(name: 'A & B')
+    EmailTemplate.create!(mailer_class: 'GameDayMailer', action_name: 'referee_checklist_veto',
+                          body: 'Betroffen: {{games}}')
+
+    body = GameDayMailer.referee_checklist_veto(@game_day, @referee, [], @sa).body.decoded
+
+    assert_includes body, 'A &amp; B vs. Falken Sued'
+    assert_not_includes body, '&amp;amp;'
   end
 
   test 'Mannschafts-Meldung nennt die Spiele der meldenden Mannschaft' do
