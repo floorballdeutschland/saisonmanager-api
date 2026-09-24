@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.122.0] - 2026-09-24
+
 ### Neu
 
 - **Direktzuweisung mit Wunschdatum**: SBK und Admins können bei einer Direktzuweisung jetzt ein Datum angeben, an dem der Transfer vollzogen werden soll. Bis dahin bleibt die Person im abgebenden Verein, beide Vereine, der abgebende Landesverband und die Person selbst erhalten eine Ankündigung mit dem Termin. Anders als beim Antrag des Vereins gilt keine Mindestfrist, ein Datum in der Vergangenheit wird abgewiesen, ohne Datum (oder mit dem heutigen) wird wie bisher sofort vollzogen. Bis zum Stichtag lässt sich der Vorgang in der Transferübersicht annullieren.
