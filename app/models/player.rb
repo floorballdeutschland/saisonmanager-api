@@ -443,8 +443,6 @@ class Player < ApplicationRecord
       'created_by' => user_id
     }
 
-    updated_by_user = User.find user_id
-
     Transfer.create({
                       created_by: user_id,
                       former_club_id: old_club,

@@ -908,12 +908,10 @@ module Admin
       end
     end
 
-    # Es gibt keinen Job, der einen geplanten Transfer zum Wunschdatum vollzieht
-    # -- `execute_transfer!` wird allein aus approve_lv, #execute und
-    # #direct_assign gerufen. Die Nachricht darf deshalb keinen automatischen
-    # Vollzug behaupten, sonst wartet der aufnehmende Verein auf etwas, das
-    # nicht kommt.
-    test 'die Ankuendigung verspricht keinen automatischen Vollzug' do
+    # rake transfers:execute_scheduled vollzieht den geplanten Transfer am
+    # Wunschdatum. Die Nachricht sagt das, damit niemand auf einen Knopf wartet
+    # -- und keiner der Beteiligten glaubt, er muesse noch etwas freigeben.
+    test 'die Ankuendigung nennt den automatischen Vollzug' do
       tr = create_transfer_request(status: 'pending_lv', effective_date: Date.today + 10)
       login(@sbk)
 
@@ -923,8 +921,9 @@ module Admin
       end
 
       ActionMailer::Base.deliveries.last(2).each do |mail|
-        assert_includes mail.body.decoded, 'nicht automatisch ausgelöst',
-                        "#{mail.to.inspect} erfaehrt nicht, dass der Vollzug von Hand kommt"
+        assert_includes mail.body.decoded, 'automatisch',
+                        "#{mail.to.inspect} erfaehrt nicht, dass der Vollzug von selbst kommt"
+        assert_not_includes mail.body.decoded, 'nicht automatisch'
       end
     end
 

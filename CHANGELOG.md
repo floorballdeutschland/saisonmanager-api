@@ -9,6 +9,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Direktzuweisung mit Wunschdatum**: SBK und Admins können bei einer Direktzuweisung jetzt ein Datum angeben, an dem der Transfer vollzogen werden soll. Bis dahin bleibt die Person im abgebenden Verein, beide Vereine, der abgebende Landesverband und die Person selbst erhalten eine Ankündigung mit dem Termin. Anders als beim Antrag des Vereins gilt keine Mindestfrist, ein Datum in der Vergangenheit wird abgewiesen, ohne Datum (oder mit dem heutigen) wird wie bisher sofort vollzogen. Bis zum Stichtag lässt sich der Vorgang in der Transferübersicht annullieren.
+- **Geplante Transfers werden am Wunschdatum automatisch vollzogen**: Ein neuer täglicher Job (`rake transfers:execute_scheduled`) vollzieht alle geplanten Transfers, deren Wunschdatum erreicht ist, auch die vom Landesverband genehmigten Anträge mit Wunschdatum. Bisher musste der Landesverband dafür in der Transferübersicht auf „Transfer jetzt vollziehen" klicken, der Knopf bleibt als Rückfall erhalten. Vorgänge in einen inzwischen deaktivierten Verein oder für ein zusammengeführtes Profil werden nicht vollzogen und bleiben stehen. Die Ankündigungsmail nennt den automatischen Vollzug.
+
 ## [1.121.0] - 2026-09-24
 
 ### Verbessert
