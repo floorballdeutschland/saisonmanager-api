@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Spieltagsübersicht der SBK weist nur noch Matchstrafen als Auffälligkeit aus**: Bisher zählte der Hinweis alle Strafen ab 5 Minuten, also auch die 10-Minuten-Strafe. Auf Wunsch der SBK zählen jetzt nur noch Matchstrafen (inklusive technischer Matchstrafe und der alten Spielstrafen 1 bis 3), Zeitstrafen lösen keinen Hinweis mehr aus.
+
 ## [1.120.1] - 2026-09-23
 
 ### Behoben
