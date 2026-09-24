@@ -634,9 +634,10 @@ class ClubsController < ApplicationController
       # Spieler nicht fuer einen neuen Antrag. Kehrt er per Freigabe in den
       # Verein zurueck, muss der Verein neu beantragen koennen, und dafuer gibt
       # es nur die Auswahl aus `other_players`: Einen Knopf „erneut beantragen"
-      # bietet die Maske bewusst nur fuer abgelehnt und zurueckgezogen an.
-      # request_license prueft die Mitgliedschaft und zaehlt die alte Lizenz
-      # nicht als Doppelantrag (nur ACTIVE_STATUSES).
+      # bietet die Maske nur fuer abgelehnt und zurueckgezogen an.
+      # request_license prueft die Mitgliedschaft (Admins ausgenommen) und
+      # zaehlt als Doppelantrag nur eine Lizenz derselben Saison, deren
+      # Basisstatus aktiv ist -- die Transferlizenz also nicht.
       if l.present? && License.current_status_id(l) != License::TRANSFER
         item = p.full_hash
         # Die Lizenz OHNE die Begruendung der Sperre. Der ganze Lizenz-Hash

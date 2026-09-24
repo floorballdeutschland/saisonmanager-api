@@ -1305,7 +1305,13 @@ class PlayersController < ApplicationController
       # einem eigenen Recht, siehe darueber.
       base[:nation_id] = p.nation_id
       base[:nation_string] = p.nation_string
-      current_lics = (p.licenses || []).select { |l| leagues_by_team.key?(l['team_id'].to_i) }
+      # Je Mannschaft nur die massgebliche Lizenz (Player#license_for_team):
+      # Neben einer neuen Lizenz steht nach Transfer und Freigabe zurueck noch
+      # die alte „ungültig wg. Transfer". Sie ist frueher erteilt und sortierte
+      # unten nach vorn, die Liste zeigte dann ihren Status statt des aktuellen.
+      current_lics = (p.licenses || []).filter_map { |l| l.is_a?(Hash) && l['team_id'].to_i }
+                                       .uniq.select { |tid| leagues_by_team.key?(tid) }
+                                       .map { |tid| p.license_for_team(tid) }
       if current_lics.present?
         # Ein Eintrag pro Liga-Lizenz der laufenden Saison, höchste Liga zuerst;
         # der erste Eintrag speist die bestehenden current_license_status-Felder.
