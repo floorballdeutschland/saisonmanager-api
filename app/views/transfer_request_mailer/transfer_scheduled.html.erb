@@ -4,8 +4,13 @@
 <p>Hallo,</p>
 
 <p>
+  <% if @transfer_request.direct %>
+  der Landesverband hat den folgenden Transfer direkt zugewiesen. Vollzogen wird er
+  zum festgelegten Datum:
+  <% else %>
   der folgende Transferantrag wurde vom Landesverband genehmigt. Vollzogen wird er
   zum vereinbarten Wunschdatum:
+  <% end %>
 </p>
 
 <p>
@@ -22,8 +27,9 @@
 </p>
 
 <p>
-  Der Vollzug wird nicht automatisch ausgelöst: Der zuständige Landesverband führt
-  ihn ab dem Wunschdatum in der Transferübersicht durch.
+  Der Vollzug erfolgt am Wunschdatum automatisch, eine weitere Freigabe ist nicht
+  nötig. Bis dahin kann der zuständige Landesverband den Transfer in der
+  Transferübersicht noch annullieren.
 </p>
 
 <p>

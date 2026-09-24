@@ -66,6 +66,12 @@ class TransferRequest < ApplicationRecord
     where(status: %w[pending_club pending_player pending_lv])
       .where('created_at < ?', EXPIRE_AFTER_DAYS.days.ago)
   }
+  # Geplante Transfers, deren Wunschdatum erreicht ist (rake
+  # transfers:execute_scheduled). `date` wird uebergeben, damit der Job den
+  # Tag in deutscher Zeit bestimmt und nicht in der UTC-Zeit des Servers.
+  scope :due_for_execution, lambda { |date|
+    where(status: 'scheduled', request_type: 'transfer').where('effective_date <= ?', date)
+  }
   scope :pending_for_club, ->(club_id) { where(former_club_id: club_id, status: 'pending_club') }
   scope :pending_for_lv, lambda { |go_ids|
     club_ids = go_ids.include?(0) ? Club.pluck(:id) : Club.home_clubs_of(go_ids).pluck(:id)
