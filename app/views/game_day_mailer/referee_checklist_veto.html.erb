@@ -7,6 +7,15 @@
   als <strong>nicht ordnungsgemäß durchgeführt</strong> gemeldet.
 </p>
 
+<% if @games.any? %>
+  <p><%= @games.one? ? 'Spiel' : 'Spiele' %>:</p>
+  <ul>
+    <% @games.each do |game| %>
+      <li><%= GameDayMailer.game_label(game) %></li>
+    <% end %>
+  </ul>
+<% end %>
+
 <p>Antworten des Spieltagsberichts:</p>
 <ul>
   <% @answers.each do |a| %>
