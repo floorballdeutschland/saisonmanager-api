@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.121.0] - 2026-09-24
+
 ### Verbessert
 
 - **Meldung „Spieltag nicht ordnungsgemäß“ nennt die betroffenen Spiele**: Die Mail an die SBK, wenn ein*e Schiedsrichter*in oder eine Gastmannschaft einen Spieltag als nicht ordnungsgemäß meldet, führt jetzt Spielnummer, Anwurf und beide Mannschaften auf. Bisher standen nur Liga und Datum drin, bei mehreren Spielen am Spieltag ließ sich die Meldung kaum zuordnen. Aufgeführt werden die Spiele, an denen die meldende Seite beteiligt war (lässt sich das nicht bestimmen, alle Spiele des Spieltags mit entsprechendem Hinweis); gespeicherte Mailvorlagen können sie über den neuen Platzhalter `{{games}}` einsetzen.
