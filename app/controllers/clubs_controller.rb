@@ -630,7 +630,14 @@ class ClubsController < ApplicationController
 
     all_players.each do |p|
       l = p.licenses_by_team(team.id)
-      if l.present?
+      # Eine Lizenz, die ein Transfer ungueltig gemacht hat, sperrt den
+      # Spieler nicht fuer einen neuen Antrag. Kehrt er per Freigabe in den
+      # Verein zurueck, muss der Verein neu beantragen koennen, und dafuer gibt
+      # es nur die Auswahl aus `other_players`: Einen Knopf „erneut beantragen"
+      # bietet die Maske bewusst nur fuer abgelehnt und zurueckgezogen an.
+      # request_license prueft die Mitgliedschaft und zaehlt die alte Lizenz
+      # nicht als Doppelantrag (nur ACTIVE_STATUSES).
+      if l.present? && License.current_status_id(l) != License::TRANSFER
         item = p.full_hash
         # Die Lizenz OHNE die Begruendung der Sperre. Der ganze Lizenz-Hash
         # geht hier an Verein und Mannschaft, und `write_suspended_status!`

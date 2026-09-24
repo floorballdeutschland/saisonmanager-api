@@ -376,14 +376,27 @@ class Player < ApplicationRecord
     end
   end
 
+  # Ein Spieler kann fuer dieselbe Mannschaft mehrere Lizenzen tragen: Der
+  # Transfer setzt die alte auf „ungültig wg. Transfer", und kehrt er per
+  # Freigabe zurueck, beantragt der Verein eine neue daneben. Massgeblich ist
+  # dann die aktive. Ohne aktive gilt die zuletzt geaenderte, damit etwa eine
+  # abgelehnte Neubeantragung mit ihrem Knopf „erneut beantragen" sichtbar
+  # bleibt statt hinter der alten Transferlizenz zu verschwinden.
+  #
+  # Vorher kam die erste Lizenz im Array zurueck, und das war die alte: Die
+  # Antragsmaske, der Spielbericht und das Spielsekretariat sahen den Spieler
+  # dann weiter als „ungültig wg. Transfer", obwohl die neue erteilt war.
   def licenses_by_team(team_id)
-    if licenses
-      licenses.each do |l|
-        return l if team_id.to_i == l['team_id'].to_i
-      end
-    end
+    candidates = Array(licenses).select { |l| l.is_a?(Hash) && l['team_id'].to_i == team_id.to_i }
 
-    nil
+    candidates.find { |l| License::ACTIVE_STATUSES.include?(License.current_status_id(l)) } ||
+      candidates.max_by { |l| last_change_sort_key(l) }
+  end
+
+  # Lizenz ohne jeden Verlaufseintrag sortiert vor jede mit Eintrag.
+  def last_change_sort_key(license)
+    entry = LicenseEffectiveStatus.current_entry(license)
+    entry ? LicenseEffectiveStatus.sort_key(entry) : [-1, 0, '']
   end
 
   def current_license_status(license)
