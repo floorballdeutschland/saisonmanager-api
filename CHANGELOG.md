@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **SBK erreicht den Uploader eines Spielberichtsbogens direkt per E-Mail**: In der Spieltagsübersicht der SBK ist der Name dessen, der den Papierbogen oder das Schiedsrichter-Berichtsformular hochgeladen hat, jetzt ein Mail-Link. Beim Berichtsformular steht zusätzlich der Name, bisher nur der Zeitpunkt. Die öffentliche Upload-Ansicht zeigt weiterhin keine Adresse.
+
 ## [1.120.1] - 2026-09-23
 
 ### Behoben

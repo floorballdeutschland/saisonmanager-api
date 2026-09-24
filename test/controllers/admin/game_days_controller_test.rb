@@ -94,6 +94,7 @@ module Admin
 
     test 'Scan-Metadaten inklusive Abstand zum Spieltag' do
       uploader = create_user(user_group_id: 3, game_operation_id: 0)
+      uploader.update_column(:email, 'uploader@example.org')
       scan = GameScan.new(game: @game, uploaded_by: uploader, expires_at: 12.months.from_now)
       scan.scan_file.attach(io: StringIO.new('PDF'), filename: 'bogen.pdf', content_type: 'application/pdf')
       scan.save!
@@ -105,7 +106,20 @@ module Admin
       assert data['scan_required']
       assert_equal 3, data['scan']['days_after_game_day']
       assert_equal uploader.fullname, data['scan']['uploaded_by_name']
+      assert_equal 'uploader@example.org', data['scan']['uploaded_by_email']
       assert_not data['scan']['expired']
+    end
+
+    test 'Scan ohne Uploader-Adresse liefert uploaded_by_email null' do
+      uploader = create_user(user_group_id: 3, game_operation_id: 0)
+      uploader.update_column(:email, '')
+      scan = GameScan.new(game: @game, uploaded_by: uploader, expires_at: 12.months.from_now)
+      scan.scan_file.attach(io: StringIO.new('PDF'), filename: 'bogen.pdf', content_type: 'application/pdf')
+      scan.save!
+
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      assert_nil row(@game.id)['scan']['uploaded_by_email']
     end
 
     test 'ohne Scan ist scan null' do
@@ -449,6 +463,7 @@ module Admin
 
     test 'Berichtsformular und Ausrichter-Einspruch werden ausgeliefert' do
       uploader = create_user(user_group_id: 6, game_operation_id: 0)
+      uploader.update_column(:email, 'schiri@example.org')
       report = @game.build_game_referee_report(uploaded_by: uploader)
       report.file.attach(io: StringIO.new('PDF'), filename: 'r.pdf', content_type: 'application/pdf')
       report.save!
@@ -462,6 +477,8 @@ module Admin
       get OVERVIEW_PATH
       data = row(@game.id)
       assert data['referee_report']['uploaded_at'].present?
+      assert_equal uploader.fullname, data['referee_report']['uploaded_by_name']
+      assert_equal 'schiri@example.org', data['referee_report']['uploaded_by_email']
       assert data['checklist_veto_submitted_at'].present?
       assert_equal 1, data['checklist_veto_negative_count']
       # Auch der Einspruch liest den Text aus der Checkliste des Verbandes.
