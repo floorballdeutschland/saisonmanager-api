@@ -147,10 +147,12 @@ module Admin
       assert_nil row(@game.id)['scan']
     end
 
-    test 'severe_penalty_count zählt ab 5 Minuten, nicht 2 Minuten' do
+    test 'severe_penalty_count zählt nur Matchstrafen, keine Zeitstrafen' do
       @game.update!(events: [
         { 'penalty_id' => 1, 'penalty_mapping' => 'penalty_2', 'home_number' => 7 },
         { 'penalty_id' => 2, 'penalty_mapping' => 'penalty_5', 'home_number' => 8 },
+        { 'penalty_id' => 4, 'penalty_mapping' => 'penalty_10', 'home_number' => 5 },
+        { 'penalty_id' => 5, 'penalty_mapping' => 'penalty_ms_full', 'home_number' => 6 },
         { 'penalty_id' => 3, 'penalty_mapping' => 'penalty_ms1', 'guest_number' => 9 },
         { 'home_goals' => 1, 'guest_goals' => 0, 'home_number' => 4 }
       ])
@@ -322,7 +324,7 @@ module Admin
 
     test 'eine kaputte Zeile setzt nicht die ganze Uebersicht auf 500' do
       # Ereignis-JSONB aus Alt-Importen ist nicht formstabil.
-      @game.update_columns(events: [42, nil, { 'penalty_id' => 2, 'penalty_mapping' => 'penalty_5' }])
+      @game.update_columns(events: [42, nil, { 'penalty_id' => 2, 'penalty_mapping' => 'penalty_ms_full' }])
 
       login(sbk_user(@go.id))
       get OVERVIEW_PATH
