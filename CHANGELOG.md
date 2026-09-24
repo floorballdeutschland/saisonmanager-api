@@ -11,6 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Verbessert
 
+- **SBK erreicht den Uploader eines Spielberichtsbogens direkt per E-Mail**: In der Spieltagsübersicht der SBK ist der Name dessen, der den Papierbogen oder das Schiedsrichter-Berichtsformular hochgeladen hat, jetzt ein Mail-Link. Beim Berichtsformular steht zusätzlich der Name, bisher nur der Zeitpunkt. Die öffentliche Upload-Ansicht zeigt weiterhin keine Adresse.
 - **Spieltagsübersicht der SBK weist nur noch Matchstrafen als Auffälligkeit aus**: Bisher zählte der Hinweis alle Strafen ab 5 Minuten, also auch die 10-Minuten-Strafe. Auf Wunsch der SBK zählen jetzt nur noch Matchstrafen (inklusive technischer Matchstrafe und der alten Spielstrafen 1 bis 3), Zeitstrafen lösen keinen Hinweis mehr aus.
 
 ## [1.120.1] - 2026-09-23

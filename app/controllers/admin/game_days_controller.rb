@@ -101,8 +101,8 @@ module Admin
 
     def filtered_scope(apply_league: true)
       scope = Game.joins(game_day: :league).includes(
-        :home_team, :guest_team, :game_referee_report, :proceeding_proposal,
-        { game_scan: :uploaded_by },
+        :home_team, :guest_team, :proceeding_proposal,
+        { game_scan: :uploaded_by }, { game_referee_report: :uploaded_by },
         game_day: [{ league: { game_operation: { state_association: :checklist_items } } }, :arena, :club]
       )
 
@@ -222,7 +222,8 @@ module Admin
 
       {
         uploaded_at: scan.created_at,
-        uploaded_by_name: scan.uploaded_by&.fullname,
+        uploaded_by_name: scan.uploaded_by&.fullname&.strip.presence,
+        uploaded_by_email: scan.uploaded_by&.email.presence,
         days_after_game_day: days_after(game_day.date, scan.created_at),
         expired: scan.expires_at <= Time.current
       }
@@ -230,7 +231,11 @@ module Admin
 
     def referee_report_hash(game)
       report = game.game_referee_report
-      report && { uploaded_at: report.created_at }
+      report && {
+        uploaded_at: report.created_at,
+        uploaded_by_name: report.uploaded_by&.fullname&.strip.presence,
+        uploaded_by_email: report.uploaded_by&.email.presence
+      }
     end
 
     def proceeding_proposal_hash(game)
