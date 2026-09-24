@@ -377,13 +377,7 @@ class Player < ApplicationRecord
   end
 
   def licenses_by_team(team_id)
-    if licenses
-      licenses.each do |l|
-        return l if team_id.to_i == l['team_id'].to_i
-      end
-    end
-
-    nil
+    license_for_team(team_id)
   end
 
   def current_license_status(license)
@@ -966,14 +960,29 @@ class Player < ApplicationRecord
   end
 
   # Die Lizenz dieses Teams in dieser Saison – ohne Statusfilter.
+  #
+  # Ein Spieler kann fuer dieselbe Mannschaft mehrere Lizenzen tragen: Der
+  # Transfer setzt die alte auf „ungültig wg. Transfer", und kehrt er per
+  # Freigabe zurueck, beantragt der Verein eine neue daneben (angehaengt, die
+  # alte steht also vorn). Massgeblich ist dann die aktive, gemessen am
+  # Basisstatus, damit eine gesperrte erteilte Lizenz als aktiv zaehlt. Ohne
+  # aktive gilt die zuletzt geaenderte, damit etwa eine abgelehnte
+  # Neubeantragung mit ihrem Knopf „erneut beantragen" sichtbar bleibt.
+  #
+  # Vorher kam die erste im Array zurueck, also die alte Transferlizenz, und
+  # die neue fehlte in Antragsmaske, Spielbericht, Spielsekretariat,
+  # Lizenzliste der Liga und beim Abzaehlen einer Sperre.
   def license_for_team(team_id, season_id: nil)
-    (licenses || []).find do |l|
-      next false unless l['team_id'].to_i == team_id.to_i
+    candidates = Array(licenses).select do |l|
+      next false unless l.is_a?(Hash) && l['team_id'].to_i == team_id.to_i
       next true if season_id.blank?
 
       lic_season = l['season_id'] || l.dig('league', 'season_id')
       lic_season.nil? || lic_season.to_s == season_id.to_s
     end
+
+    candidates.find { |l| License::ACTIVE_STATUSES.include?(LicenseEffectiveStatus.base_status_id(l)) } ||
+      candidates.max_by { |l| last_change_sort_key(l) }
   end
 
   # Wäre der Spieler für dieses Team spielberechtigt, wenn es keine Sperre gäbe?
@@ -1241,6 +1250,12 @@ class Player < ApplicationRecord
   end
 
   private
+
+  # Lizenz ohne jeden Verlaufseintrag sortiert vor jede mit Eintrag.
+  def last_change_sort_key(license)
+    entry = LicenseEffectiveStatus.current_entry(license)
+    entry ? LicenseEffectiveStatus.sort_key(entry) : [-1, 0, '']
+  end
 
   # Setzt die betroffenen Lizenzen auf "gesperrt" und liefert die Liste, aus der
   # lift_suspension! den vorherigen Status zurückholt.

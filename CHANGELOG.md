@@ -9,6 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.122.1] - 2026-09-24
+
+### Behoben
+
+- **Lizenz nach Transfer und Freigabe zurück neu beantragen**: Hatte ein Spieler für eine Mannschaft schon eine Lizenz, die ein Transfer auf „ungültig wg. Transfer" gesetzt hat, konnte der Verein für diese Mannschaft keine neue beantragen, auch wenn der Spieler per Freigabe wieder Mitglied war. Die alte Lizenz hielt ihn aus der Auswahl für neue Anträge heraus, und einen Knopf „erneut beantragen" gibt es für diesen Status nicht. Jetzt steht der Spieler wieder in der Auswahl. Hat er für dieselbe Mannschaft mehrere Lizenzen, gilt überall die aktive statt der ersten im Profil: in Antragsmaske, Lizenzliste der Liga (aus der der Verband genehmigt), Spielbericht, Spielsekretariat, Spielerliste des Vereins und beim Abzählen einer Sperre über Spiele.
+
 ## [1.122.0] - 2026-09-24
 
 ### Neu

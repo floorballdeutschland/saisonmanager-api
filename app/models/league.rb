@@ -1097,12 +1097,7 @@ class League < ApplicationRecord
 
       team_item[:players] = []
       (team_licenses[team.id] || []).each do |player|
-        license = player.licenses.find do |l|
-          next false unless l['team_id'].to_i == team.id
-
-          lic_season = l['season_id'] || l.dig('league', 'season_id')
-          lic_season.nil? || lic_season.to_s == season_id.to_s
-        end
+        license = player.license_for_team(team.id, season_id:)
         next unless license
 
         player_item = player.full_hash(full_license_hash, only_current_licenses)
@@ -1345,12 +1340,7 @@ class League < ApplicationRecord
     league_teams.each do |team|
       puts team.name
       team_licenses[team.id].each do |player|
-        license = player.licenses.find do |l|
-          next false unless l['team_id'].to_i == team.id
-
-          lic_season = l['season_id'] || l.dig('league', 'season_id')
-          lic_season.nil? || lic_season.to_s == season_id.to_s
-        end
+        license = player.license_for_team(team.id, season_id:)
 
         last_status = LicenseEffectiveStatus.current_entry(license)
         last_status_id = last_status['license_status_id']
