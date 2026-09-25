@@ -139,8 +139,15 @@ class Player < ApplicationRecord
           # würde.
           lic[:delete_allowed] = License.deletable?(lic, current_season_id)
           lic[:reset_allowed] = License.resettable?(lic, current_season_id)
-          lic[:reactivate_allowed] = License.current_status_id(lic) == License::TRANSFER &&
-                                     license_reactivation_blocked_reason(lic, current_season_id).nil?
+          # Fuer eine Transferlizenz auch der Grund, warum es (noch) nicht geht:
+          # Ohne ihn verschwindet nur der Knopf, und der naheliegende naechste
+          # Schritt waere ein Neuantrag, also genau die zweite Gebuehr.
+          if License.current_status_id(lic) == License::TRANSFER
+            lic[:reactivate_blocked_reason] = license_reactivation_blocked_reason(lic, current_season_id)
+            lic[:reactivate_allowed] = lic[:reactivate_blocked_reason].nil?
+          else
+            lic[:reactivate_allowed] = false
+          end
 
           team = Team.find_by(id: lic['team_id'])
           lic[:team] = team&.full_hash
@@ -968,11 +975,14 @@ class Player < ApplicationRecord
   #
   # Der Fall: Transfer von A nach B, danach Freigabe von B zurueck an A. Die
   # Lizenz von A wieder zu erteilen statt neu zu beantragen haelt es bei EINEM
-  # Lizenzeintrag. Die Gebuehrenrechnung zaehlt je Eintrag der Saison, ohne
-  # Statusfilter (Player#main_license_hash); ein Neuantrag daneben kostete ein
-  # zweites Mal.
+  # Lizenzeintrag. Die Gebuehrenrechnung zaehlt jeden Eintrag auf einer
+  # Mannschaft der Saison, ohne Statusfilter (LicenseFeeCalculation:
+  # main_license_hash + secondary_license_hash ueber current_licenses); ein
+  # Neuantrag daneben kostete ein zweites Mal.
   #
-  # Zwei Pruefungen laufen nur mit `writing: true`, also im Endpunkt:
+  # Zwei Pruefungen laufen nur mit `writing: true`, also im Endpunkt. Fuer
+  # beide erscheint der Knopf trotzdem: Die Zuordnung fragt die Maske ab, an
+  # der Sperre scheitert erst der Endpunkt mit 422.
   # * die Sperre fuer die Mannschaft. suspension_for_team laesst faellige
   #   Sperren ablaufen und schreibt dabei, das gehoert nicht in den Aufbau der
   #   Profilansicht. Die Sperre des ganzen Spielers (application_blocked?)
@@ -980,8 +990,7 @@ class Player < ApplicationRecord
   # * die Erst-/Zweitlizenz. Die reaktivierte Lizenz bringt ihre alte
   #   Zuordnung mit, der Spieler hat beim anderen Verein aber meist eine Lizenz
   #   im selben Wettbewerb, oft inzwischen die Erstlizenz. Ohne Festlegung
-  #   stuenden zwei Erstlizenzen nebeneinander. Der Knopf erscheint trotzdem,
-  #   die Maske fragt die Zuordnung dann ab.
+  #   stuenden zwei Erstlizenzen nebeneinander.
   def license_reactivation_blocked_reason(license, current_season_id = Setting.current_season_id,
                                           gf_role: nil, writing: false)
     return 'Lizenz nicht gefunden.' if license.blank?
@@ -995,11 +1004,24 @@ class Player < ApplicationRecord
     team = Team.find_by(id: license['team_id'])
     return 'Die Mannschaft dieser Lizenz gibt es nicht mehr.' if team.nil?
 
-    # Dieselbe Mitgliedschaftsregel wie beim Antrag
-    # (LicenseAccessScope#player_in_team_clubs?): Verein der Mannschaft oder
-    # ein Verein ihrer Spielgemeinschaft, Zugehoerigkeit nicht abgelaufen.
+    # Vereinskreis wie beim Antrag (LicenseAccessScope#player_in_team_clubs?):
+    # Verein der Mannschaft oder ein Verein ihrer Spielgemeinschaft,
+    # Zugehoerigkeit nicht abgelaufen. Zusaetzlich muss sie NACH dem Transfer
+    # entstanden sein, also aus der Freigabe zurueck stammen: Player#transfer
+    # schliesst die alte Zugehoerigkeit mit `valid_until = Time.now`, und die
+    # tagesgenaue Ablaufregel liest sie bis Mitternacht noch als gueltig.
+    # Ohne diese Schranke liesse sich die Lizenz direkt nach dem Wechsel
+    # wieder erteilen, und der Spieler hielte aktive Lizenzen in beiden
+    # Vereinen.
+    transfer_at = LicenseEffectiveStatus.parse_time(LicenseEffectiveStatus.current_entry(license)&.dig('created_at'))
     team_club_ids = ([team.club_id] + team.syndicate_clubs.to_a).compact.map(&:to_i)
-    unless valid_clubs(Date.current).any? { |c| team_club_ids.include?(c['club_id'].to_i) }
+    returned = valid_clubs(Date.current).any? do |c|
+      next false unless team_club_ids.include?(c['club_id'].to_i)
+
+      joined_at = LicenseEffectiveStatus.parse_time(c['created_at'])
+      transfer_at && joined_at && joined_at > transfer_at
+    end
+    unless returned
       return 'Der Spieler ist nicht wieder Mitglied im Verein dieser Mannschaft. ' \
              'Die Lizenz lässt sich erst nach vollzogener Freigabe reaktivieren.'
     end

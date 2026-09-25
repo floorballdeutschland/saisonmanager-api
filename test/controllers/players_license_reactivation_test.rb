@@ -163,20 +163,122 @@ class PlayersLicenseReactivationTest < ActionDispatch::IntegrationTest
     assert_response :forbidden
   end
 
+  # Player#transfer schliesst die alte Zugehoerigkeit mit `valid_until =
+  # Time.now`, und die tagesgenaue Ablaufregel liest sie bis Mitternacht als
+  # gueltig. Ohne die Zeitschranke liesse sich die Lizenz am Tag des Wechsels
+  # sofort wieder erteilen.
+  test 'am Tag des Transfers ohne Freigabe zurueck keine Reaktivierung' do
+    @player.update!(clubs: [
+      { 'club_id' => @club.id, 'home_club' => true, 'created_at' => 1.year.ago.iso8601 }
+    ])
+    licenses = [transfer_license]
+    licenses.first['history'].last['created_at'] = Time.current.iso8601
+    @player.update!(licenses:)
+    @player.transfer(@other_club.id, nil)
+    @player.save!(validate: false)
+    login_as(@sbk)
+    lic = profile_license
+    assert_equal false, lic['reactivate_allowed']
+    assert_match(/nicht wieder Mitglied/, lic['reactivate_blocked_reason'])
+
+    reactivate
+
+    assert_response :unprocessable_entity
+    assert_equal License::TRANSFER, License.current_status_id(@player.reload.licenses.first)
+  end
+
+  test 'eine Mitgliedschaft von vor dem Transfer zaehlt nicht' do
+    clubs = @player.clubs.deep_dup
+    clubs.last['created_at'] = 3.days.ago.iso8601
+    @player.update!(clubs:)
+    login_as(@sbk)
+
+    reactivate
+
+    assert_response :unprocessable_entity
+  end
+
+  test 'Mitgliedschaft in einem Verein der Spielgemeinschaft genuegt' do
+    partner_club = create(:club, game_operation: @game_operation)
+    @team.update!(syndicate: true, syndicate_clubs: [partner_club.id])
+    @player.update!(clubs: [
+      { 'club_id' => @other_club.id, 'home_club' => true, 'created_at' => 2.days.ago.iso8601 },
+      { 'club_id' => partner_club.id, 'home_club' => false, 'created_at' => 1.day.ago.iso8601 }
+    ])
+    login_as(@sbk)
+    assert profile_license['reactivate_allowed']
+
+    reactivate
+
+    assert_response :ok
+  end
+
+  test 'eine erteilte zweite Lizenz derselben Mannschaft sperrt, eine der Vorsaison nicht' do
+    vorjahr = { 'id' => 'vorjahr', 'team_id' => @team.id, 'season_id' => '17',
+                'history' => [{ 'license_status_id' => License::APPROVED, 'created_at' => 1.year.ago.iso8601 }] }
+    @player.update!(licenses: [transfer_license, vorjahr])
+    login_as(@sbk)
+    assert profile_license['reactivate_allowed'], 'die Vorsaison zaehlt nicht als Doppellizenz'
+
+    erteilt = vorjahr.merge('id' => 'erteilt', 'season_id' => @league.season_id)
+    @player.update!(licenses: [transfer_license, erteilt])
+    assert_equal false, profile_license['reactivate_allowed']
+  end
+
+  # Der Umweg: erst ablehnen oder beantragen, dann erteilen. Das `erteilt`
+  # traefe keine Transferlizenz mehr und liefe an allen Pruefungen vorbei.
+  test 'aus einer Transferlizenz fuehrt kein Weg ausser der Reaktivierung' do
+    @player.update!(clubs: [{ 'club_id' => @other_club.id, 'home_club' => true,
+                              'created_at' => 2.days.ago.iso8601 }])
+    login_as(@sbk)
+
+    [License::DENIED, License::REQUESTED].each do |status|
+      post "/api/v2/admin/players/#{@player.id}/handle_license_request",
+           params: { license_id: 'alt', license_status_id: status, reason: 'Umweg' }, as: :json
+      assert_response :unprocessable_entity
+      assert_match(/nur reaktivieren/, error_message)
+    end
+    assert_equal License::TRANSFER, License.current_status_id(@player.reload.licenses.first)
+  end
+
+  # Die Lizenz war vor dem Transfer schon erteilt und abgerechnet.
+  test 'bei der Reaktivierung laesst sich der Expresszuschlag nicht streichen' do
+    @player.update!(licenses: [transfer_license(extra: { 'express' => true })])
+    login_as(@sbk)
+
+    reactivate('alt', express: false)
+
+    assert_response :unprocessable_entity
+    assert_equal true, @player.reload.licenses.first['express']
+  end
+
+  test 'Admin reaktiviert ebenso' do
+    login_as(create(:user, :admin))
+    assert profile_license['reactivate_allowed']
+
+    reactivate
+
+    assert_response :ok
+  end
+
+  # Der Knopf haengt am Spielbetrieb der Liga, nicht nur am flachen Recht.
+  test 'reactivate_allowed folgt dem Verbands-Scope je Lizenz' do
+    fremde_liga = create(:league, :current_season, game_operation: create(:game_operation))
+    fremdes_team = create(:team, league: fremde_liga, club: @club)
+    @player.update!(licenses: [transfer_license, transfer_license(id: 'fremd', team: fremdes_team)])
+    login_as(@sbk)
+    get "/api/v2/admin/players/#{@player.id}.json"
+    lizenzen = JSON.parse(response.body)['licenses'].index_by { |l| l['id'] }
+
+    assert lizenzen['alt']['reactivate_allowed']
+    assert_equal false, lizenzen['fremd']['reactivate_allowed']
+    assert_nil lizenzen['fremd']['reactivate_blocked_reason']
+  end
+
   # --- Erst-/Zweitlizenz ------------------------------------------------------
 
   test 'mit Partnerlizenz im GF-Wettbewerb muss die Zuordnung festgelegt werden' do
-    gf_league = create(:league, :current_season, game_operation: @game_operation,
-                                                 field_size: 'GF', age_group: 'Herren')
-    gf_team = create(:team, league: gf_league, club: @club)
-    other_team = create(:team, league: create(:league, :current_season, game_operation: @game_operation,
-                                                                        field_size: 'GF', age_group: 'Herren'),
-                               club: @other_club)
-    partner = { 'id' => 'partner', 'team_id' => other_team.id, 'season_id' => gf_league.season_id,
-                'gf_role' => 'erstlizenz',
-                'history' => [{ 'license_status_id' => License::APPROVED, 'created_at' => 1.day.ago.iso8601 }] }
-    @player.update!(licenses: [transfer_license(team: gf_team, season_id: gf_league.season_id,
-                                                extra: { 'gf_role' => 'erstlizenz' }), partner])
+    setup_gf_partner
     login_as(@sbk)
 
     reactivate
@@ -189,5 +291,31 @@ class PlayersLicenseReactivationTest < ActionDispatch::IntegrationTest
     assert_response :ok
     roles = @player.reload.licenses.to_h { |l| [l['id'], l['gf_role']] }
     assert_equal({ 'alt' => 'zweitlizenz', 'partner' => 'erstlizenz' }, roles)
+  end
+
+  test 'als Erstlizenz reaktiviert, wird die Partnerlizenz zur Zweitlizenz' do
+    setup_gf_partner
+    login_as(@sbk)
+
+    reactivate('alt', gf_role: 'erstlizenz')
+
+    assert_response :ok
+    partner = @player.reload.licenses.find { |l| l['id'] == 'partner' }
+    assert_equal 'zweitlizenz', partner['gf_role']
+    assert_equal 'auto', partner['gf_role_history'].last['source']
+  end
+
+  def setup_gf_partner
+    gf_league = create(:league, :current_season, game_operation: @game_operation,
+                                                 field_size: 'GF', age_group: 'Herren')
+    gf_team = create(:team, league: gf_league, club: @club)
+    other_team = create(:team, league: create(:league, :current_season, game_operation: @game_operation,
+                                                                        field_size: 'GF', age_group: 'Herren'),
+                               club: @other_club)
+    partner = { 'id' => 'partner', 'team_id' => other_team.id, 'season_id' => gf_league.season_id,
+                'gf_role' => 'erstlizenz',
+                'history' => [{ 'license_status_id' => License::APPROVED, 'created_at' => 1.day.ago.iso8601 }] }
+    @player.update!(licenses: [transfer_license(team: gf_team, season_id: gf_league.season_id,
+                                                extra: { 'gf_role' => 'erstlizenz' }), partner])
   end
 end

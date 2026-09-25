@@ -42,11 +42,14 @@ module LicenseScopeAnnotation
       # 422 ab.
       im_scope = go_id.present? && (admin || sbk_global || ph[:sbk].to_a.include?(go_id))
       lic[:gf_role_editable] = im_scope
-      # Nur einschraenken, nie ausweiten: Was die Saison- und Statusregel in
-      # Player#full_hash bereits ablehnt, bleibt abgelehnt.
+      # Nur einschraenken, nie ausweiten: Was die Regeln in Player#full_hash
+      # bereits ablehnen, bleibt abgelehnt.
       lic[:delete_allowed] &&= im_scope
       lic[:reset_allowed] &&= im_scope
       lic[:reactivate_allowed] &&= im_scope
+      # Den Grund sieht nur, wer reaktivieren duerfte; fuer alle anderen
+      # ist die Lizenz schlicht nicht ihr Vorgang.
+      lic[:reactivate_blocked_reason] = nil unless im_scope
     end
   end
 end

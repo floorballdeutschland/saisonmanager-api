@@ -402,7 +402,10 @@ class PlayersController < ApplicationController
         # Sie ist aber laengst abgerechnet. base_status_id beantwortet genau die
         # Frage "welcher Status gaelte ohne Sperre", und der Rest des Hauses
         # fragt an dieser Stelle auch danach.
-        if !express_param && LicenseEffectiveStatus.base_status_id(license) == License::APPROVED
+        #
+        # Eine Lizenz „ungültig wg. Transfer" war vor dem Transfer schon erteilt
+        # und abgerechnet; ihre Reaktivierung ist keine erste Erteilung.
+        if !express_param && [License::APPROVED, License::TRANSFER].include?(LicenseEffectiveStatus.base_status_id(license))
           return render json: { message: 'Diese Lizenz ist bereits erteilt. Der Expresszuschlag lässt sich dabei nicht mehr streichen.' },
                         status: :unprocessable_entity
         end
