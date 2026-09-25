@@ -13,6 +13,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 - **Lizenz nach Transfer und Freigabe zurück reaktivieren**: Kehrt ein Spieler per Freigabe in den Verein zurück, für den er vor dem Transfer schon lizenziert war, kann der Verband die Lizenz „ungültig wg. Transfer" im Spielerprofil wieder erteilen, statt den Verein neu beantragen zu lassen. Es bleibt bei einem Lizenzeintrag, eine zweite Lizenzgebühr fällt damit nicht an. Möglich nur in der laufenden Saison, bei einer nach dem Transfer (per Freigabe) entstandenen Mitgliedschaft im Verein der Mannschaft, ohne Sperre und solange für die Mannschaft kein weiterer Antrag läuft. Hat der Spieler im selben Großfeld-Erwachsenenwettbewerb eine weitere Lizenz, legt der Verband dabei Erst- oder Zweitlizenz fest. Bisher ließ sich derselbe Statuswechsel über die Schnittstelle ohne Saison-, Mitgliedschafts- und Doppelantragsprüfung setzen, sogar am Tag des Transfers selbst. Geht die Reaktivierung (noch) nicht, nennt das Profil den Grund, etwa die noch nicht vollzogene Freigabe. Eine Transferlizenz lässt sich außerdem nicht mehr auf „abgelehnt“ oder „beantragt“ setzen, weil eine anschließende Erteilung sonst an allen Prüfungen vorbeiliefe.
 
+### Behoben
+
+- **Spielplan wieder nach Uhrzeit**: Innerhalb eines Spieltags standen die Spiele im öffentlichen Spielplan nach Spielnummer. Bei Pokal- und Playoff-Spieltagen folgen die Nummern aber der Paarung und nicht dem Ablauf, sodass der Tag zeitlich hin- und hersprang. Jetzt gilt wieder: Spieltag, Datum, Uhrzeit, und erst bei gleicher Uhrzeit die Spielnummer. Laufen mehrere Hallen parallel, wechselt die Halle dadurch wieder von Zeile zu Zeile. Eine Uhrzeit wie „9:00" steht dabei korrekt vor „10:00", Spiele ohne Uhrzeit stehen am Ende ihres Tages.
+
 ## [1.122.1] - 2026-09-24
 
 ### Behoben
