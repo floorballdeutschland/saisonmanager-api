@@ -552,10 +552,6 @@ class User < ApplicationRecord
     # player_delete_license mitbenutzt: Loeschen nimmt die Lizenz aus der
     # Vereinsansicht, Zuruecksetzen gibt den Antrag nur wieder in die Warteschlange.
     result[:player_reset_license] = ph[:admin].present? || ph[:sbk].present?
-    # Lizenz „ungültig wg. Transfer" nach einer Freigabe zurueck wieder
-    # erteilen (Player#license_reactivation_blocked_reason), statt den Verein
-    # neu beantragen zu lassen: ein Lizenzeintrag, eine Gebuehr.
-    result[:player_reactivate_license] = ph[:admin].present? || ph[:sbk].present?
     # Erst-/Zweitlizenz-Zuordnung (GF-Erwachsenenbereich) setzen/tauschen
     result[:player_set_gf_role] = ph[:admin].present? || ph[:sbk].present?
     result[:player_merge] = ph[:admin].present? || ph[:sbk].present?

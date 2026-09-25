@@ -139,15 +139,6 @@ class Player < ApplicationRecord
           # würde.
           lic[:delete_allowed] = License.deletable?(lic, current_season_id)
           lic[:reset_allowed] = License.resettable?(lic, current_season_id)
-          # Fuer eine Transferlizenz auch der Grund, warum es (noch) nicht geht:
-          # Ohne ihn verschwindet nur der Knopf, und der naheliegende naechste
-          # Schritt waere ein Neuantrag, also genau die zweite Gebuehr.
-          if License.current_status_id(lic) == License::TRANSFER
-            lic[:reactivate_blocked_reason] = license_reactivation_blocked_reason(lic, current_season_id)
-            lic[:reactivate_allowed] = lic[:reactivate_blocked_reason].nil?
-          else
-            lic[:reactivate_allowed] = false
-          end
 
           team = Team.find_by(id: lic['team_id'])
           lic[:team] = team&.full_hash
@@ -207,8 +198,9 @@ class Player < ApplicationRecord
       club ? club.id : nil
     end.compact
 
-    if current_licenses(season_id)
-      sorted_licenses = current_licenses(season_id).map! do |x|
+    season_licenses = billable_licenses(season_id)
+    if season_licenses
+      sorted_licenses = season_licenses.map! do |x|
         x['sorting'] = League.class_rank(x['league_class_id'])
         x
       end
@@ -231,8 +223,9 @@ class Player < ApplicationRecord
       club ? club.id : nil
     end.compact
 
-    if current_licenses(season_id)
-      sorted_licenses = current_licenses(season_id).map! do |x|
+    season_licenses = billable_licenses(season_id)
+    if season_licenses
+      sorted_licenses = season_licenses.map! do |x|
         x['sorting'] = League.class_rank(x['league_class_id'])
         x
       end
@@ -968,87 +961,106 @@ class Player < ApplicationRecord
     suspension_for_team(team_id, date:).present?
   end
 
-  # Die eine Stelle, an der steht, ob sich eine Lizenz „ungültig wg. Transfer"
-  # wieder erteilen laesst -- Meldung oder nil. Player#full_hash setzt danach
-  # das Kennzeichen `reactivate_allowed` fuer den Knopf im Profil,
-  # PlayersController#handle_license_request lehnt danach ab.
+  # Reaktivierung einer Lizenz „ungültig wg. Transfer".
   #
-  # Der Fall: Transfer von A nach B, danach Freigabe von B zurueck an A. Die
-  # Lizenz von A wieder zu erteilen statt neu zu beantragen haelt es bei EINEM
-  # Lizenzeintrag. Die Gebuehrenrechnung zaehlt jeden Eintrag auf einer
-  # Mannschaft der Saison, ohne Statusfilter (LicenseFeeCalculation:
-  # main_license_hash + secondary_license_hash ueber current_licenses); ein
-  # Neuantrag daneben kostete ein zweites Mal.
+  # Der Fall: Transfer von A nach B, danach Freigabe von B zurueck an A (oder
+  # an einen Verein C, fuer den schon vor dem Transfer eine Freigabe galt). Die
+  # Freigabe lebt nicht von selbst wieder auf, der neue Stammverein muss sie
+  # erteilen. Beantragt der Verein danach fuer dieselbe Mannschaft in
+  # derselben Saison, ist das keine neue Lizenz, sondern die Reaktivierung der
+  # alten: Der Antrag haengt an deren Eintrag an (PlayersController#
+  # request_license), der Verband genehmigt wie jeden Antrag, und es bleibt
+  # bei einem Eintrag. Die Gebuehrenrechnung zaehlt je Eintrag, die
+  # Reaktivierung ist damit kostenfrei (Daniel, 25.09.2026).
+
+  # Die Transferlizenz dieser Mannschaft in dieser Saison, die ein neuer
+  # Antrag reaktiviert -- oder nil.
+  def reactivatable_license_for(team_id, season_id)
+    candidates = Array(licenses).select do |l|
+      l.is_a?(Hash) && l['team_id'].to_i == team_id.to_i && l['season_id'].to_s == season_id.to_s &&
+        License.current_status_id(l) == License::TRANSFER
+    end
+    candidates.max_by { |l| last_change_sort_key(l) }
+  end
+
+  # Ist der Spieler nach dem Transfer wieder in den Verein der Mannschaft
+  # (oder einen Verein ihrer Spielgemeinschaft) gekommen?
   #
-  # Zwei Pruefungen laufen nur mit `writing: true`, also im Endpunkt. Fuer
-  # beide erscheint der Knopf trotzdem: Die Zuordnung fragt die Maske ab, an
-  # der Sperre scheitert erst der Endpunkt mit 422.
-  # * die Sperre fuer die Mannschaft. suspension_for_team laesst faellige
-  #   Sperren ablaufen und schreibt dabei, das gehoert nicht in den Aufbau der
-  #   Profilansicht. Die Sperre des ganzen Spielers (application_blocked?)
-  #   prueft der Endpunkt fuer jede Erteilung ohnehin.
-  # * die Erst-/Zweitlizenz. Die reaktivierte Lizenz bringt ihre alte
-  #   Zuordnung mit, der Spieler hat beim anderen Verein aber meist eine Lizenz
-  #   im selben Wettbewerb, oft inzwischen die Erstlizenz. Ohne Festlegung
-  #   stuenden zwei Erstlizenzen nebeneinander.
-  def license_reactivation_blocked_reason(license, current_season_id = Setting.current_season_id,
-                                          gf_role: nil, writing: false)
-    return 'Lizenz nicht gefunden.' if license.blank?
-    unless License.current_status_id(license) == License::TRANSFER
-      return 'Nur Lizenzen „ungültig wg. Transfer“ lassen sich reaktivieren.'
-    end
-    unless license['season_id'].to_s == current_season_id.to_s
-      return 'Es lassen sich nur Lizenzen der laufenden Saison reaktivieren.'
-    end
+  # Die Mitgliedschaft muss NACH dem Transfer entstanden sein. Player#transfer
+  # schliesst die alte mit `valid_until = Time.now`, und die tagesgenaue
+  # Ablaufregel (valid_clubs, ebenso LicenseAccessScope#membership_current?)
+  # liest sie bis Mitternacht noch als gueltig. Ohne diese Schranke liesse
+  # sich die Lizenz am Tag des Wechsels sofort wieder beantragen, und der
+  # Spieler hielte Lizenzen in beiden Vereinen.
+  def returned_after_transfer?(transfer_license, team)
+    # Der Transfer selbst, nicht ein zurueckgezogener Reaktivierungsantrag:
+    # Der setzt ebenfalls TRANSFER, aendert an der Mitgliedschaft aber nichts.
+    transfer_at = Array(transfer_license['history'])
+                  .select { |h| h['license_status_id'].to_i == License::TRANSFER && !h[License::REACTIVATION_WITHDRAWN_KEY] }
+                  .filter_map { |h| LicenseEffectiveStatus.parse_time(h['created_at']) }
+                  .max
+    return false unless transfer_at
 
-    team = Team.find_by(id: license['team_id'])
-    return 'Die Mannschaft dieser Lizenz gibt es nicht mehr.' if team.nil?
-
-    # Vereinskreis wie beim Antrag (LicenseAccessScope#player_in_team_clubs?):
-    # Verein der Mannschaft oder ein Verein ihrer Spielgemeinschaft,
-    # Zugehoerigkeit nicht abgelaufen. Zusaetzlich muss sie NACH dem Transfer
-    # entstanden sein, also aus der Freigabe zurueck stammen: Player#transfer
-    # schliesst die alte Zugehoerigkeit mit `valid_until = Time.now`, und die
-    # tagesgenaue Ablaufregel liest sie bis Mitternacht noch als gueltig.
-    # Ohne diese Schranke liesse sich die Lizenz direkt nach dem Wechsel
-    # wieder erteilen, und der Spieler hielte aktive Lizenzen in beiden
-    # Vereinen.
-    transfer_at = LicenseEffectiveStatus.parse_time(LicenseEffectiveStatus.current_entry(license)&.dig('created_at'))
     team_club_ids = ([team.club_id] + team.syndicate_clubs.to_a).compact.map(&:to_i)
-    returned = valid_clubs(Date.current).any? do |c|
+    valid_clubs(Date.current).any? do |c|
       next false unless team_club_ids.include?(c['club_id'].to_i)
 
       joined_at = LicenseEffectiveStatus.parse_time(c['created_at'])
-      transfer_at && joined_at && joined_at > transfer_at
+      joined_at.present? && joined_at > transfer_at
     end
-    unless returned
-      return 'Der Spieler ist nicht wieder Mitglied im Verein dieser Mannschaft. ' \
-             'Die Lizenz lässt sich erst nach vollzogener Freigabe reaktivieren.'
-    end
+  end
 
-    # Steht daneben schon ein Neuantrag, haette die Mannschaft nach der
-    # Reaktivierung zwei aktive Lizenzen. Welche bleibt, entscheidet der
-    # Verband: den Neuantrag zuruecknehmen, dann reaktivieren.
-    duplicate = Array(licenses).any? do |l|
-      next false unless l.is_a?(Hash) && l['id'] != license['id']
-      next false unless l['team_id'].to_i == team.id && l['season_id'].to_s == license['season_id'].to_s
+  # Haengt den Antrag an die Transferlizenz an (mutiert nur, speichert nicht).
+  #
+  # Die Erst-/Zweitlizenz-Zuordnung faellt dabei weg: Sie stammt aus der Zeit
+  # vor dem Transfer, und inzwischen hat der Spieler beim anderen Verein meist
+  # eine Lizenz im selben Wettbewerb, oft als Erstlizenz. Der Verband legt sie
+  # bei der Genehmigung fest wie bei jeder neuen Lizenz; stehen gelassen,
+  # stuenden zwei Erstlizenzen nebeneinander. Das Gueltigkeitsdatum geht aus
+  # demselben Grund wie beim Zuruecksetzen: Es gehoert zur frueheren Erteilung.
+  def request_reactivation!(license, user_id, guardian_email: nil, minor_consent_at: nil)
+    assign_gf_role(license, nil, user_id, 'reactivation') if license['gf_role'].present?
+    license['valid_until'] = nil
+    license['guardian_email'] = guardian_email if guardian_email
+    license['minor_consent_at'] = minor_consent_at if minor_consent_at
+    (license['history'] ||= []) << {
+      'license_status_id' => License::REQUESTED,
+      'reason' => 'Reaktivierung nach Transfer (kostenfrei)',
+      'created_by' => user_id,
+      'created_at' => Time.current.iso8601(3),
+      License::REACTIVATION_KEY => true
+    }
+  end
 
-      License::ACTIVE_STATUSES.include?(LicenseEffectiveStatus.base_status_id(l))
-    end
-    return 'Für diese Mannschaft gibt es in dieser Saison schon eine beantragte oder erteilte Lizenz.' if duplicate
-    return nil unless writing
+  # Nimmt den Reaktivierungsantrag zurueck: wieder „ungültig wg. Transfer".
+  # Nicht loeschen wie einen frischen Antrag in der Karenzzeit, denn der
+  # Eintrag ist die frueher erteilte Lizenz; und nicht `zurueckgezogen`, denn
+  # dann liesse sie sich nicht erneut reaktivieren.
+  def withdraw_reactivation!(license, user_id)
+    (license['history'] ||= []) << {
+      'license_status_id' => License::TRANSFER,
+      'reason' => 'Reaktivierung zurückgezogen',
+      'created_by' => user_id,
+      'created_at' => Time.current.iso8601(3),
+      License::REACTIVATION_WITHDRAWN_KEY => true
+    }
+  end
 
-    if suspension_for_team(team.id).present?
-      return 'Für diesen Spieler besteht eine Sperre für diese Mannschaft. Die Lizenz lässt sich nicht reaktivieren.'
-    end
+  # Die Lizenzen der Saison fuer die Gebuehrenrechnung.
+  #
+  # Eine Transferlizenz faellt heraus, wenn fuer dieselbe Mannschaft noch ein
+  # weiterer Eintrag besteht: Das ist der Neuantrag nach Transfer und Freigabe
+  # zurueck aus der Zeit vor der Reaktivierung per Antrag (api#756 bis
+  # api#759). Fachlich ist das dieselbe Lizenz, und die gleiche Kombination
+  # aus Saison und Mannschaft nach einem Transfer ist kostenfrei. Neue Faelle
+  # entstehen so nicht mehr, weil der Antrag den alten Eintrag reaktiviert.
+  def billable_licenses(season_id)
+    all = current_licenses(season_id)
+    return all if all.blank?
 
-    league = team.league
-    if gf_role.blank? && league&.gf_adult? && gf_competition_licenses(license, league).any?
-      return 'Der Spieler hat im selben Wettbewerb eine weitere Lizenz. ' \
-             'Bitte festlegen, ob die reaktivierte Lizenz Erst- oder Zweitlizenz ist.'
-    end
-
-    nil
+    transfer = ->(l) { License.current_status_id(l) == License::TRANSFER }
+    teams_with_other_entry = all.reject(&transfer).map { |l| l['team_id'].to_i }.to_set
+    all.reject { |l| transfer.call(l) && teams_with_other_entry.include?(l['team_id'].to_i) }
   end
 
   # Die Lizenz dieses Teams in dieser Saison – ohne Statusfilter.

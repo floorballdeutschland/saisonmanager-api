@@ -163,6 +163,9 @@ module Admin
               base_status:          License::NAMES[player_data[:team_license][:base_status_id].to_i],
               suspension:           player_data[:team_license][:suspension],
               express:              lic['express'] || false,
+              # Antrag nach Transfer und Freigabe zurueck auf dieselbe
+              # Mannschaft: derselbe Eintrag, keine neue Gebuehr.
+              reactivation:         License.reactivation?(lic),
               requested_at:         player_data[:team_license][:requested_at],
               approved_at:          player_data[:team_license][:approved_at],
               # Datum der Vereins-Freigabe (genehmigter Freigabe-Antrag), leer

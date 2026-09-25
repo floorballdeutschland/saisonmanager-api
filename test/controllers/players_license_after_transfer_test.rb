@@ -52,10 +52,18 @@ class PlayersLicenseAfterTransferTest < ActionDispatch::IntegrationTest
     JSON.parse(response.body)
   end
 
+  # Seit api#759 reaktiviert ein Antrag die Transferlizenz, statt einen
+  # zweiten Eintrag anzulegen (players_license_reactivation_test.rb). Der
+  # Doppeleintrag bleibt aber Bestand aus der Zeit davor, und jeder Leser muss
+  # ihn weiter richtig lesen. Er wird deshalb direkt angelegt, im Zustand
+  # eines frisch gestellten Antrags.
   def request_new_license
     login_as(@vm)
-    post "/api/v2/user/players/#{@player.id}/request_license", params: { team_id: @team.id }, as: :json
-    assert_response :success
+    fresh = { 'id' => 'neu', 'team_id' => @team.id, 'season_id' => @league.season_id,
+              'league_class_id' => @league.league_class_id, 'express' => false,
+              'history' => [{ 'license_status_id' => License::REQUESTED, 'created_by' => @vm.id,
+                              'created_at' => Time.current.iso8601 }] }
+    @player.update!(licenses: @player.reload.licenses + [fresh])
     @player.reload.licenses.find { |l| l['id'] != 'alt' }
   end
 
