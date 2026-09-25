@@ -328,12 +328,6 @@ class PlayersController < ApplicationController
                       status: :unprocessable_entity
       end
 
-      # Die Regeln je Zielstatus stehen im Modell (License.change_blocked_reason):
-      # Pflicht-Begruendung und Saison-/Statusgrenze beim Loeschen, dieselbe
-      # Pruefung beim Zuruecksetzen einer erteilten Lizenz auf `beantragt`.
-      blocked = License.change_blocked_reason(license, params[:license_status_id].to_i, params[:reason])
-      return render json: { message: blocked }, status: :unprocessable_entity if blocked
-
       # Optionale Erst-/Zweitlizenz-Zuordnung bei der Genehmigung (nur GF-Erwachsenenbereich).
       gf_role = params[:gf_role].presence
       if gf_role
@@ -347,6 +341,15 @@ class PlayersController < ApplicationController
                         status: :unprocessable_entity
         end
       end
+
+      # Die Regeln je Zielstatus stehen im Modell (License.change_blocked_reason):
+      # Pflicht-Begruendung und Saison-/Statusgrenze beim Loeschen, dieselbe
+      # Pruefung beim Zuruecksetzen einer erteilten Lizenz auf `beantragt`, und
+      # die Reaktivierung einer Lizenz „ungültig wg. Transfer". Nach der
+      # Erst-/Zweitlizenz-Pruefung, weil die Reaktivierung die Zuordnung braucht.
+      blocked = License.change_blocked_reason(license, params[:license_status_id].to_i, params[:reason],
+                                              player:, gf_role:)
+      return render json: { message: blocked }, status: :unprocessable_entity if blocked
 
       # Expresszuschlag bei der Genehmigung streichen (#740). `express` entsteht
       # einmalig beim Antrag (request_license) und wurde danach nie wieder
@@ -399,7 +402,10 @@ class PlayersController < ApplicationController
         # Sie ist aber laengst abgerechnet. base_status_id beantwortet genau die
         # Frage "welcher Status gaelte ohne Sperre", und der Rest des Hauses
         # fragt an dieser Stelle auch danach.
-        if !express_param && LicenseEffectiveStatus.base_status_id(license) == License::APPROVED
+        #
+        # Eine Lizenz „ungültig wg. Transfer" war vor dem Transfer schon erteilt
+        # und abgerechnet; ihre Reaktivierung ist keine erste Erteilung.
+        if !express_param && [License::APPROVED, License::TRANSFER].include?(LicenseEffectiveStatus.base_status_id(license))
           return render json: { message: 'Diese Lizenz ist bereits erteilt. Der Expresszuschlag lässt sich dabei nicht mehr streichen.' },
                         status: :unprocessable_entity
         end

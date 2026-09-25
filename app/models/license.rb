@@ -116,6 +116,7 @@ class License < ApplicationRecord
   # Nichts-Wechsel, und `geloescht`, `zurueckgezogen`, `ungueltig wg. Transfer`
   # oder `gesperrt` wieder zu oeffnen ist kein Zuruecksetzen, sondern das
   # Aufheben eines anderen Vorgangs.
+  # Fuer die Transferlizenz: Player#license_reactivation_blocked_reason.
   def self.resettable?(license, current_season_id = Setting.current_season_id)
     return false if license.blank?
     return false unless license['season_id'].to_s == current_season_id.to_s
@@ -132,9 +133,33 @@ class License < ApplicationRecord
   # Vereinsansicht wie ein Fehler des Systems. Der Text landet in der History und
   # ist dort auch fuer den Verein sichtbar.
   # Die eine Stelle, die PlayersController#handle_license_request fragt, ob der
-  # gewuenschte Statuswechsel erlaubt ist -- Meldung oder nil. Zwei Zielstatus
-  # tragen eine eigene Regel, alle anderen aus HANDLED_STATUSES keine.
-  def self.change_blocked_reason(license, target_status_id, reason, season_id = Setting.current_season_id)
+  # gewuenschte Statuswechsel erlaubt ist -- Meldung oder nil. Eigene Regeln
+  # tragen geloescht, beantragt und jeder Wechsel aus einer Transferlizenz.
+  #
+  # `erteilt` auf eine Lizenz „ungültig wg. Transfer" ist die Reaktivierung nach
+  # einer Freigabe zurueck. Ihre Regel haengt am Spieler (Mitgliedschaft,
+  # Nachbarlizenzen, Sperre), deshalb steht sie in
+  # Player#license_reactivation_blocked_reason, und ohne `player:` gibt es
+  # keine Antwort statt einer stillen Freigabe.
+  #
+  # Jeder andere Weg aus TRANSFER heraus ist gesperrt. `abgelehnt` oder
+  # `beantragt` dazwischen waere sonst ein Umweg: Das anschliessende `erteilt`
+  # traefe keine Transferlizenz mehr und liefe an allen Pruefungen der
+  # Reaktivierung vorbei. Loeschen sperrt schon deletable? (nur aktive Status).
+  def self.change_blocked_reason(license, target_status_id, reason, season_id = Setting.current_season_id,
+                                 player: nil, gf_role: nil)
+    if current_status_id(license) == TRANSFER
+      if [DENIED, REQUESTED].include?(target_status_id)
+        return 'Eine Lizenz „ungültig wg. Transfer“ lässt sich nur reaktivieren.'
+      end
+
+      if target_status_id == APPROVED
+        raise ArgumentError, 'change_blocked_reason: Reaktivierung braucht player:' if player.nil?
+
+        return player.license_reactivation_blocked_reason(license, season_id, gf_role:, writing: true)
+      end
+    end
+
     case target_status_id
     when DELETED then delete_blocked_reason(license, reason, season_id)
     when REQUESTED then request_blocked_reason(license, reason, season_id)

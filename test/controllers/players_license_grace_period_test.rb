@@ -98,8 +98,10 @@ class PlayersLicenseGracePeriodTest < ActionDispatch::IntegrationTest
   {
     'abgelehnt' => License::DENIED,
     'erteilt' => License::APPROVED,
-    'zurueckgezogen' => License::WITHDRAWN,
-    'ungueltig wg. Transfer' => License::TRANSFER
+    # `ungueltig wg. Transfer` fehlt bewusst: Aus einer Transferlizenz fuehrt
+    # seit api#758 nur die Reaktivierung heraus (License.change_blocked_reason),
+    # siehe players_license_reactivation_test.rb.
+    'zurueckgezogen' => License::WITHDRAWN
   }.each do |label, from_status|
     test "Wechsel von #{label} auf beantragt wird als Korrektur markiert" do
       license_id = license_with([
