@@ -2,9 +2,8 @@
 
 # Verbands-Scope je Lizenz fuer die Anzeige im Spielerprofil.
 #
-# Vier Knoepfe haengen an einem flachen Recht (`player_set_gf_role`,
-# `player_delete_license`, `player_reset_license`, `player_reactivate_license`),
-# waehrend die Endpunkte
+# Drei Knoepfe haengen an einem flachen Recht (`player_set_gf_role`,
+# `player_delete_license`, `player_reset_license`), waehrend die Endpunkte
 # dahinter zusaetzlich auf den Spielbetrieb der Liga scopen. Ohne diese Stelle verspraeche die Maske etwas,
 # das der Schreibweg mit 403 abweist: Eine Landes-SBK saehe den roten
 # Loeschknopf auch an der Bundesliga-Lizenz eines ihrer Heimatspieler.
@@ -42,14 +41,10 @@ module LicenseScopeAnnotation
       # 422 ab.
       im_scope = go_id.present? && (admin || sbk_global || ph[:sbk].to_a.include?(go_id))
       lic[:gf_role_editable] = im_scope
-      # Nur einschraenken, nie ausweiten: Was die Regeln in Player#full_hash
-      # bereits ablehnen, bleibt abgelehnt.
+      # Nur einschraenken, nie ausweiten: Was die Saison- und Statusregel in
+      # Player#full_hash bereits ablehnt, bleibt abgelehnt.
       lic[:delete_allowed] &&= im_scope
       lic[:reset_allowed] &&= im_scope
-      lic[:reactivate_allowed] &&= im_scope
-      # Den Grund sieht nur, wer reaktivieren duerfte; fuer alle anderen
-      # ist die Lizenz schlicht nicht ihr Vorgang.
-      lic[:reactivate_blocked_reason] = nil unless im_scope
     end
   end
 end

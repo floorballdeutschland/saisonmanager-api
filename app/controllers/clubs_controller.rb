@@ -632,12 +632,10 @@ class ClubsController < ApplicationController
       l = p.licenses_by_team(team.id)
       # Eine Lizenz, die ein Transfer ungueltig gemacht hat, sperrt den
       # Spieler nicht fuer einen neuen Antrag. Kehrt er per Freigabe in den
-      # Verein zurueck, muss der Verein neu beantragen koennen, und dafuer gibt
-      # es nur die Auswahl aus `other_players`: Einen Knopf „erneut beantragen"
-      # bietet die Maske nur fuer abgelehnt und zurueckgezogen an.
-      # request_license prueft die Mitgliedschaft (Admins ausgenommen) und
-      # zaehlt als Doppelantrag nur eine Lizenz derselben Saison, deren
-      # Basisstatus aktiv ist -- die Transferlizenz also nicht.
+      # Verein zurueck, beantragt der Verein aus `other_players` heraus, und
+      # request_license reaktiviert dann den alten Eintrag, kostenfrei
+      # (Player#reactivatable_license_for). `reactivation` sagt der Maske, dass
+      # der Antrag genau das wird.
       if l.present? && License.current_status_id(l) != License::TRANSFER
         item = p.full_hash
         # Die Lizenz OHNE die Begruendung der Sperre. Der ganze Lizenz-Hash
@@ -668,6 +666,10 @@ class ClubsController < ApplicationController
                                             games_total: suspension.games_total,
                                             remaining_games: suspension.remaining_games }
         item[:can_withdraw] = (cs['license_status_id'] == License::REQUESTED)
+        # Der Rueckzug einer Reaktivierung kostet nichts und laesst sich
+        # wiederholen (PlayersController#withdraw_license_request), der Dialog
+        # soll das sagen statt vor einem kostenpflichtigen Rueckzug zu warnen.
+        item[:reactivation] = License.pending_reactivation?(l)
         # Dieselbe Auswahl wie in PlayersController#withdraw_license_request. Liefe
         # die Anzeige nach einer anderen Regel, versprach die Seite ein
         # kostenfreies Zurückziehen ("kostenfrei bis …", eigener Linktext), das
@@ -689,7 +691,12 @@ class ClubsController < ApplicationController
         )
         result[:current_requests] << item
       else
-        result[:other_players] << p.meta_hash
+        item = p.meta_hash
+        # Dieselbe Auswahl wie request_license (Saison der Mannschaft), sonst
+        # verspraeche die Maske „kostenfrei" fuer einen Antrag, den die API
+        # als neue Lizenz anlegt.
+        item[:reactivation] = true if p.reactivatable_license_for(team.id, team.league&.season_id)
+        result[:other_players] << item
       end
     end
 
