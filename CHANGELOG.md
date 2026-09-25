@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.123.0] - 2026-09-25
+
 ### Neu
 
 - **Lizenz nach Transfer und Freigabe zurück kostenfrei reaktivieren**: Kehrt ein Spieler per Freigabe in einen Verein zurück, für dessen Mannschaft er vor dem Transfer schon lizenziert war, ist das keine neue Lizenz mehr. Der Verein beantragt wie gewohnt, der Antrag reaktiviert die Lizenz „ungültig wg. Transfer“, und der Verband genehmigt ihn wie jeden Antrag. Es bleibt bei einem Lizenzeintrag, eine zweite Lizenzgebühr fällt nicht an. Die Antragsmaske und die Lizenzverwaltung kennzeichnen solche Anträge als Reaktivierung. Voraussetzung ist eine Mitgliedschaft, die nach dem Transfer entstanden ist: Die Freigabe lebt nicht von selbst wieder auf, der neue Stammverein muss sie erteilen. Eine Reaktivierung lässt sich nicht als Expresslizenz beantragen. Zieht der Verein sie zurück, steht die Lizenz wieder auf „ungültig wg. Transfer“, statt gelöscht zu werden. Die Erst-/Zweitlizenz-Zuordnung legt der Verband bei der Genehmigung neu fest.
