@@ -139,6 +139,8 @@ class Player < ApplicationRecord
           # würde.
           lic[:delete_allowed] = License.deletable?(lic, current_season_id)
           lic[:reset_allowed] = License.resettable?(lic, current_season_id)
+          lic[:reactivate_allowed] = License.current_status_id(lic) == License::TRANSFER &&
+                                     license_reactivation_blocked_reason(lic, current_season_id).nil?
 
           team = Team.find_by(id: lic['team_id'])
           lic[:team] = team&.full_hash
@@ -957,6 +959,74 @@ class Player < ApplicationRecord
 
   def suspended_for_team?(team_id, date: Date.current)
     suspension_for_team(team_id, date:).present?
+  end
+
+  # Die eine Stelle, an der steht, ob sich eine Lizenz „ungültig wg. Transfer"
+  # wieder erteilen laesst -- Meldung oder nil. Player#full_hash setzt danach
+  # das Kennzeichen `reactivate_allowed` fuer den Knopf im Profil,
+  # PlayersController#handle_license_request lehnt danach ab.
+  #
+  # Der Fall: Transfer von A nach B, danach Freigabe von B zurueck an A. Die
+  # Lizenz von A wieder zu erteilen statt neu zu beantragen haelt es bei EINEM
+  # Lizenzeintrag. Die Gebuehrenrechnung zaehlt je Eintrag der Saison, ohne
+  # Statusfilter (Player#main_license_hash); ein Neuantrag daneben kostete ein
+  # zweites Mal.
+  #
+  # Zwei Pruefungen laufen nur mit `writing: true`, also im Endpunkt:
+  # * die Sperre fuer die Mannschaft. suspension_for_team laesst faellige
+  #   Sperren ablaufen und schreibt dabei, das gehoert nicht in den Aufbau der
+  #   Profilansicht. Die Sperre des ganzen Spielers (application_blocked?)
+  #   prueft der Endpunkt fuer jede Erteilung ohnehin.
+  # * die Erst-/Zweitlizenz. Die reaktivierte Lizenz bringt ihre alte
+  #   Zuordnung mit, der Spieler hat beim anderen Verein aber meist eine Lizenz
+  #   im selben Wettbewerb, oft inzwischen die Erstlizenz. Ohne Festlegung
+  #   stuenden zwei Erstlizenzen nebeneinander. Der Knopf erscheint trotzdem,
+  #   die Maske fragt die Zuordnung dann ab.
+  def license_reactivation_blocked_reason(license, current_season_id = Setting.current_season_id,
+                                          gf_role: nil, writing: false)
+    return 'Lizenz nicht gefunden.' if license.blank?
+    unless License.current_status_id(license) == License::TRANSFER
+      return 'Nur Lizenzen „ungültig wg. Transfer“ lassen sich reaktivieren.'
+    end
+    unless license['season_id'].to_s == current_season_id.to_s
+      return 'Es lassen sich nur Lizenzen der laufenden Saison reaktivieren.'
+    end
+
+    team = Team.find_by(id: license['team_id'])
+    return 'Die Mannschaft dieser Lizenz gibt es nicht mehr.' if team.nil?
+
+    # Dieselbe Mitgliedschaftsregel wie beim Antrag
+    # (LicenseAccessScope#player_in_team_clubs?): Verein der Mannschaft oder
+    # ein Verein ihrer Spielgemeinschaft, Zugehoerigkeit nicht abgelaufen.
+    team_club_ids = ([team.club_id] + team.syndicate_clubs.to_a).compact.map(&:to_i)
+    unless valid_clubs(Date.current).any? { |c| team_club_ids.include?(c['club_id'].to_i) }
+      return 'Der Spieler ist nicht wieder Mitglied im Verein dieser Mannschaft. ' \
+             'Die Lizenz lässt sich erst nach vollzogener Freigabe reaktivieren.'
+    end
+
+    # Steht daneben schon ein Neuantrag, haette die Mannschaft nach der
+    # Reaktivierung zwei aktive Lizenzen. Welche bleibt, entscheidet der
+    # Verband: den Neuantrag zuruecknehmen, dann reaktivieren.
+    duplicate = Array(licenses).any? do |l|
+      next false unless l.is_a?(Hash) && l['id'] != license['id']
+      next false unless l['team_id'].to_i == team.id && l['season_id'].to_s == license['season_id'].to_s
+
+      License::ACTIVE_STATUSES.include?(LicenseEffectiveStatus.base_status_id(l))
+    end
+    return 'Für diese Mannschaft gibt es in dieser Saison schon eine beantragte oder erteilte Lizenz.' if duplicate
+    return nil unless writing
+
+    if suspension_for_team(team.id).present?
+      return 'Für diesen Spieler besteht eine Sperre für diese Mannschaft. Die Lizenz lässt sich nicht reaktivieren.'
+    end
+
+    league = team.league
+    if gf_role.blank? && league&.gf_adult? && gf_competition_licenses(license, league).any?
+      return 'Der Spieler hat im selben Wettbewerb eine weitere Lizenz. ' \
+             'Bitte festlegen, ob die reaktivierte Lizenz Erst- oder Zweitlizenz ist.'
+    end
+
+    nil
   end
 
   # Die Lizenz dieses Teams in dieser Saison – ohne Statusfilter.

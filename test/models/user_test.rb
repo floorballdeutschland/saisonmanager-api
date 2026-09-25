@@ -569,6 +569,17 @@ class UserTest < ActiveSupport::TestCase
     assert sbk.permissions_items[:player_reset_license]
   end
 
+  test 'permissions_items: nur Admin und SBK dürfen Lizenzen reaktivieren' do
+    admin = build_user(permissions: [{ 'user_group_id' => 1, 'game_operation_id' => 0 }])
+    assert admin.permissions_items[:player_reactivate_license]
+
+    sbk = build_user(permissions: [{ 'user_group_id' => 2, 'game_operation_id' => 3 }])
+    assert sbk.permissions_items[:player_reactivate_license]
+
+    vm = build_user(permissions: [{ 'user_group_id' => 4, 'club_id' => 99 }])
+    assert_not vm.permissions_items[:player_reactivate_license]
+  end
+
   test 'permissions_items: Vereins- und Teammanager dürfen KEINE Lizenzen zurücksetzen' do
     vm = build_user(permissions: [{ 'user_group_id' => 4, 'club_id' => 99 }])
     assert_not vm.permissions_items[:player_reset_license]

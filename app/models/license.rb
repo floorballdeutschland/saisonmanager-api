@@ -134,10 +134,20 @@ class License < ApplicationRecord
   # Die eine Stelle, die PlayersController#handle_license_request fragt, ob der
   # gewuenschte Statuswechsel erlaubt ist -- Meldung oder nil. Zwei Zielstatus
   # tragen eine eigene Regel, alle anderen aus HANDLED_STATUSES keine.
-  def self.change_blocked_reason(license, target_status_id, reason, season_id = Setting.current_season_id)
+  #
+  # `erteilt` auf eine Lizenz „ungültig wg. Transfer" ist die Reaktivierung nach
+  # einer Freigabe zurueck. Ihre Regel haengt am Spieler (Mitgliedschaft,
+  # Nachbarlizenzen, Sperre), deshalb steht sie in
+  # Player#license_reactivation_blocked_reason.
+  def self.change_blocked_reason(license, target_status_id, reason, season_id = Setting.current_season_id,
+                                 player: nil, gf_role: nil)
     case target_status_id
     when DELETED then delete_blocked_reason(license, reason, season_id)
     when REQUESTED then request_blocked_reason(license, reason, season_id)
+    when APPROVED
+      return nil unless player && current_status_id(license) == TRANSFER
+
+      player.license_reactivation_blocked_reason(license, season_id, gf_role:, writing: true)
     end
   end
 
