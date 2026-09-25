@@ -1651,7 +1651,7 @@ class League < ApplicationRecord
   end
 
   def schedule_sort_time(time)
-    match = time.to_s.strip.match(/\A(\d{1,2}):(\d{2})/)
+    match = time.to_s.strip.match(/\A(\d{1,2})[:.](\d{2})/)
     return [1, time.to_s] unless match
 
     [0, format('%<hour>02d:%<minute>s', hour: match[1].to_i, minute: match[2])]

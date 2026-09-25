@@ -1237,15 +1237,15 @@ class LeagueTest < ActiveSupport::TestCase
   end
 
   # Pokalrunde: Nummern folgen der Paarung. Zeitgleiche Spiele ordnet die
-  # Spielnummer, „9:00" steht trotz Textspalte vor „10:00", ein Spiel ohne
-  # Uhrzeit am Tagesende.
+  # Spielnummer, „9:00" steht trotz Textspalte vor „10:00", „14.00" mit Punkt
+  # wird als Uhrzeit gelesen, ein Spiel ohne Uhrzeit steht am Tagesende.
   test 'schedule ordnet gleiche Uhrzeit nach Spielnummer und liest einstellige Stunden' do
     league = build_league(build_go)
     club = build_club
     game_day = GameDay.create!(league: league, arena: build_arena, club: club,
                                number: 1, date: '2025-01-01')
 
-    { '4' => '10:00', '3' => '10:00', '1' => '14:00', '2' => '9:00', '5' => nil }.each do |number, time|
+    { '4' => '10:00', '3' => '10:00', '1' => '14.00', '2' => '9:00', '5' => nil }.each do |number, time|
       build_game(game_day,
                  build_team(league, club, "Heim #{number}"),
                  build_team(league, club, "Gast #{number}"),
@@ -1265,9 +1265,9 @@ class LeagueTest < ActiveSupport::TestCase
     assert_equal league.game_day_schedule(1).map { |game| game[:game_number] }, numbers
   end
 
-  # Altbestand ohne Spielnummer: schedule_item liefert dort 0, alle Spiele sind
-  # im ersten Kriterium gleich. Datum und Uhrzeit müssen deshalb als
-  # Rückfallebene erhalten bleiben.
+  # Altbestand ohne Spielnummer: schedule_item liefert dort 0. Die Reihenfolge
+  # ergibt sich dann allein aus Datum und Uhrzeit, die ohnehin vor der
+  # Spielnummer stehen.
   test 'schedule sortiert Spiele ohne Spielnummer weiter nach Uhrzeit' do
     league = build_league(build_go)
     club = build_club
