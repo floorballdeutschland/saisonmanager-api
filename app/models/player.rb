@@ -1051,7 +1051,7 @@ class Player < ApplicationRecord
   # Eine Transferlizenz faellt heraus, wenn fuer dieselbe Mannschaft noch ein
   # weiterer Eintrag besteht: Das ist der Neuantrag nach Transfer und Freigabe
   # zurueck aus der Zeit vor der Reaktivierung per Antrag (api#756 bis
-  # api#759). Fachlich ist das dieselbe Lizenz, und die gleiche Kombination
+  # api#760). Fachlich ist das dieselbe Lizenz, und die gleiche Kombination
   # aus Saison und Mannschaft nach einem Transfer ist kostenfrei. Neue Faelle
   # entstehen so nicht mehr, weil der Antrag den alten Eintrag reaktiviert.
   def billable_licenses(season_id)

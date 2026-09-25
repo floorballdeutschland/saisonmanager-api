@@ -52,7 +52,7 @@ class PlayersLicenseAfterTransferTest < ActionDispatch::IntegrationTest
     JSON.parse(response.body)
   end
 
-  # Seit api#759 reaktiviert ein Antrag die Transferlizenz, statt einen
+  # Seit api#760 reaktiviert ein Antrag die Transferlizenz, statt einen
   # zweiten Eintrag anzulegen (players_license_reactivation_test.rb). Der
   # Doppeleintrag bleibt aber Bestand aus der Zeit davor, und jeder Leser muss
   # ihn weiter richtig lesen. Er wird deshalb direkt angelegt, im Zustand
