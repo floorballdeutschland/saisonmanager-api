@@ -1048,19 +1048,28 @@ class Player < ApplicationRecord
 
   # Die Lizenzen der Saison fuer die Gebuehrenrechnung.
   #
-  # Eine Transferlizenz faellt heraus, wenn fuer dieselbe Mannschaft noch ein
-  # weiterer Eintrag besteht: Das ist der Neuantrag nach Transfer und Freigabe
-  # zurueck aus der Zeit vor der Reaktivierung per Antrag (api#756 bis
-  # api#760). Fachlich ist das dieselbe Lizenz, und die gleiche Kombination
-  # aus Saison und Mannschaft nach einem Transfer ist kostenfrei. Neue Faelle
-  # entstehen so nicht mehr, weil der Antrag den alten Eintrag reaktiviert.
+  # Traegt eine Mannschaft neben einer Transferlizenz weitere Eintraege, ist
+  # das der Neuantrag nach Transfer und Freigabe zurueck aus der Zeit vor der
+  # Reaktivierung per Antrag (1.122.1 bis api#760). Gleiche Saison und
+  # Mannschaft nach einem Transfer ist dieselbe Lizenz und kostenfrei, die
+  # Mannschaft zaehlt also einmal. Stehen bleibt der Eintrag, der die
+  # Spielberechtigung traegt (beantragt oder erteilt), sonst die
+  # Transferlizenz: Die war erteilt, ein abgelehnter oder zurueckgezogener
+  # Neuantrag nie. Mannschaften ohne Transferlizenz bleiben unberuehrt, und
+  # eine Transferlizenz ohne weiteren Eintrag bleibt berechnet: Wer mitten in
+  # der Saison wegwechselt, hatte die Lizenz beim alten Verein trotzdem.
   def billable_licenses(season_id)
     all = current_licenses(season_id)
     return all if all.blank?
 
-    transfer = ->(l) { License.current_status_id(l) == License::TRANSFER }
-    teams_with_other_entry = all.reject(&transfer).map { |l| l['team_id'].to_i }.to_set
-    all.reject { |l| transfer.call(l) && teams_with_other_entry.include?(l['team_id'].to_i) }
+    all.group_by { |l| l['team_id'].to_i }.values.flat_map do |group|
+      transfers = group.select { |l| License.current_status_id(l) == License::TRANSFER }
+      next group if transfers.empty? || group.size == 1
+
+      kept = group.find { |l| License::ACTIVE_STATUSES.include?(LicenseEffectiveStatus.base_status_id(l)) } ||
+             transfers.max_by { |l| last_change_sort_key(l) }
+      [kept]
+    end
   end
 
   # Die Lizenz dieses Teams in dieser Saison – ohne Statusfilter.

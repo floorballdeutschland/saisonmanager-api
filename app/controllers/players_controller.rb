@@ -665,7 +665,7 @@ class PlayersController < ApplicationController
 
     # Vor der Karenzzeit: Die loeschte den ganzen Eintrag, und bei einer
     # Reaktivierung ist das die frueher erteilte Lizenz.
-    if LicenseEffectiveStatus.current_entry(found_license)&.dig(License::REACTIVATION_KEY)
+    if License.pending_reactivation?(found_license)
       player.withdraw_reactivation!(found_license, current_user.id)
       return render json: { success: true } if player.save
 
@@ -687,6 +687,19 @@ class PlayersController < ApplicationController
   end
 
   def reenable_license_request
+    # Eine Lizenz „ungültig wg. Transfer" stellt der Verein nicht wieder ein,
+    # er reaktiviert sie mit einem neuen Antrag (request_license). Sonst waere
+    # das ein Weg an dessen Pruefungen vorbei: Der abgebende Verein koennte die
+    # Lizenz direkt nach dem Wegtransfer wieder auf `beantragt` setzen, ohne
+    # Freigabe zurueck. Die Maske bietet den Knopf nur fuer abgelehnt und
+    # zurueckgezogen an; die Schnittstelle hatte bisher keine Vorbedingung.
+    license = Player.find(params[:id]).licenses&.find { |l| l.is_a?(Hash) && l['id'] == params[:license_id] }
+    if license && License.current_status_id(license) == License::TRANSFER
+      return render json: { message: 'Eine Lizenz „ungültig wg. Transfer“ lässt sich nur mit einem neuen Antrag ' \
+                                     'für die Mannschaft reaktivieren.' },
+                    status: :unprocessable_entity
+    end
+
     meta_user_license_change(License::REQUESTED)
   end
 

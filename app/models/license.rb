@@ -75,6 +75,26 @@ class License < ApplicationRecord
     LicenseEffectiveStatus.current_status_id(license)
   end
 
+  # Laeuft gerade ein Reaktivierungsantrag, auch nach Ablehnung und
+  # Wiedereinstellung? Massgeblich ist nicht der juengste Eintrag allein: Stellt
+  # der Verein eine abgelehnte Reaktivierung wieder ein oder widerruft die SBK
+  # die Ablehnung, traegt der neue `beantragt`-Eintrag das Kennzeichen nicht.
+  # Es zaehlt deshalb jeder Reaktivierungsantrag seit dem letzten Transfer.
+  # Das Zurueckziehen setzt dann wieder auf TRANSFER statt auf zurueckgezogen;
+  # sonst liesse sich die Lizenz nicht mehr reaktivieren, und ein neuer Antrag
+  # legte eine zweite, berechnete an.
+  def self.pending_reactivation?(license)
+    return false unless LicenseEffectiveStatus.base_status_id(license) == REQUESTED
+
+    entries = Array(license && license['history']).select { |h| h.is_a?(Hash) }
+    last_transfer = entries.select { |h| h['license_status_id'].to_i == TRANSFER }
+                           .max_by { |h| LicenseEffectiveStatus.sort_key(h) }
+    return false unless last_transfer
+
+    anchor = LicenseEffectiveStatus.sort_key(last_transfer)
+    entries.any? { |h| h[REACTIVATION_KEY] && (LicenseEffectiveStatus.sort_key(h) <=> anchor) == 1 }
+  end
+
   # Wurde diese Lizenz nach einem Transfer per Antrag reaktiviert
   # (REACTIVATION_KEY)? Fuer die Kennzeichnung „kostenfrei" in der
   # Lizenzverwaltung.

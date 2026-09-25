@@ -666,6 +666,10 @@ class ClubsController < ApplicationController
                                             games_total: suspension.games_total,
                                             remaining_games: suspension.remaining_games }
         item[:can_withdraw] = (cs['license_status_id'] == License::REQUESTED)
+        # Der Rueckzug einer Reaktivierung kostet nichts und laesst sich
+        # wiederholen (PlayersController#withdraw_license_request), der Dialog
+        # soll das sagen statt vor einem kostenpflichtigen Rueckzug zu warnen.
+        item[:reactivation] = License.pending_reactivation?(l)
         # Dieselbe Auswahl wie in PlayersController#withdraw_license_request. Liefe
         # die Anzeige nach einer anderen Regel, versprach die Seite ein
         # kostenfreies Zurückziehen ("kostenfrei bis …", eigener Linktext), das
@@ -688,7 +692,10 @@ class ClubsController < ApplicationController
         result[:current_requests] << item
       else
         item = p.meta_hash
-        item[:reactivation] = true if l.present?
+        # Dieselbe Auswahl wie request_license (Saison der Mannschaft), sonst
+        # verspraeche die Maske „kostenfrei" fuer einen Antrag, den die API
+        # als neue Lizenz anlegt.
+        item[:reactivation] = true if p.reactivatable_license_for(team.id, team.league&.season_id)
         result[:other_players] << item
       end
     end

@@ -60,4 +60,35 @@ class PlayerBillableLicensesTest < ActiveSupport::TestCase
 
     assert_equal %w[alt anders], player.billable_licenses(@league.season_id).map { |l| l['id'] }.sort
   end
+
+  # Ein abgelehnter oder zurueckgezogener Neuantrag war nie eine Spielberechtigung:
+  # Stehen bleibt die Transferlizenz, die erteilt war.
+  test 'neben einem abgelehnten Neuantrag bleibt die Transferlizenz stehen' do
+    player = create(:player, licenses: [
+      entry('alt', @team, License::REQUESTED, License::APPROVED, License::TRANSFER),
+      entry('neu', @team, License::REQUESTED, License::DENIED)
+    ])
+
+    assert_equal(['alt'], player.billable_licenses(@league.season_id).map { |l| l['id'] })
+  end
+
+  test 'zwei Transferlizenzen derselben Mannschaft zaehlen einmal' do
+    player = create(:player, licenses: [
+      entry('alt', @team, License::REQUESTED, License::APPROVED, License::TRANSFER),
+      entry('neu', @team, License::REQUESTED, License::APPROVED, License::TRANSFER)
+    ])
+
+    assert_equal 1, player.billable_licenses(@league.season_id).size
+  end
+
+  # Die zweite Datei der Gebuehrenrechnung (weitere Lizenzen) laeuft ueber
+  # dieselbe Auswahl.
+  test 'die weiteren Lizenzen der Gebuehrenrechnung enthalten die Transferlizenz nicht' do
+    player = create(:player, licenses: [
+      entry('alt', @team, License::REQUESTED, License::APPROVED, License::TRANSFER),
+      entry('neu', @team, License::REQUESTED, License::APPROVED)
+    ])
+
+    assert_equal [], player.secondary_license_hash(@league.season_id)
+  end
 end
