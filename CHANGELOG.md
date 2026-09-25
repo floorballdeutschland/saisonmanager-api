@@ -18,9 +18,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 - **Gebührenrechnung berechnet Transferlizenz und Neuantrag derselben Mannschaft nur einmal**: Seit 1.122.1 konnte ein Verein nach Transfer und Freigabe zurück eine zweite Lizenz für dieselbe Mannschaft beantragen, die Gebührenrechnung zählte dann beide. Die Lizenz „ungültig wg. Transfer“ fällt jetzt heraus, wenn für dieselbe Mannschaft in der Saison ein weiterer Eintrag besteht. Eine Transferlizenz ohne solchen Eintrag bleibt berechnet.
 - **Lizenz „ungültig wg. Transfer“ nicht mehr direkt umsetzbar**: Admin und SBK konnten sie über die Schnittstelle ohne jede Prüfung auf „erteilt“, „abgelehnt“ oder „beantragt“ setzen. Der Weg führt jetzt nur über den Antrag des Vereins.
 - **Expresszuschlag nach einer früheren Erteilung nicht mehr streichbar**: Beim Erteilen ließ sich der Zuschlag auch an einer Lizenz streichen, die schon einmal erteilt war und damit abgerechnet ist, etwa nach dem Zurücksetzen auf „beantragt“.
-
-### Behoben
-
 - **Spielplan wieder nach Uhrzeit**: Innerhalb eines Spieltags standen die Spiele im öffentlichen Spielplan nach Spielnummer. Bei Pokal- und Playoff-Spieltagen folgen die Nummern aber der Paarung und nicht dem Ablauf, sodass der Tag zeitlich hin- und hersprang. Jetzt gilt wieder: Spieltag, Datum, Uhrzeit, und erst bei gleicher Uhrzeit die Spielnummer. Laufen mehrere Hallen parallel, wechselt die Halle dadurch wieder von Zeile zu Zeile. Eine Uhrzeit wie „9:00" steht dabei korrekt vor „10:00" (auch in der Schreibweise „9.00"), Spiele ohne Uhrzeit stehen am Ende ihres Tages. K.-o.-Spiele ohne Nummer (etwa „FIN", „Pl. 3") stehen damit nicht mehr pauschal am Tagesende wie seit 1.82.0, sondern bei ihrer Uhrzeit; nur bei gleicher Uhrzeit folgen sie den nummerierten Spielen.
 
 ## [1.122.1] - 2026-09-24
