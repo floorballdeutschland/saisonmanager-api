@@ -1195,13 +1195,12 @@ class LeagueTest < ActiveSupport::TestCase
   #
   # Die Liga-Ansicht bedient sich aus drei Methoden: current_schedule beim
   # Erstaufruf, game_day_schedule beim Blättern, schedule bei „Alle Anzeigen".
-  # Sortierten die beiden letzten nach Datum und Uhrzeit vor der Spielnummer,
-  # verzahnten sie die parallel angesetzten Hallen eines Spieltags ineinander,
-  # und dieselbe Liga sah je nach Weg anders aus.
+  # Alle drei sortieren gleich (Spieltag, Datum, Uhrzeit, Spielnummer), sonst
+  # sah dieselbe Liga je nach Weg anders aus (#430).
   # ---------------------------------------------------------------------------
 
-  # Ein Spieltag, zwei Hallen, zeitlich verschränkt: Nach Uhrzeit ergäbe das die
-  # Reihenfolge 1, 3, 2, 4 und damit einen Hallenwechsel in jeder Zeile.
+  # Ein Spieltag, zwei Hallen, zeitlich verschränkt: Nach Spielnummer ergäbe das
+  # 1, 2, 3, 4 und damit einen Tag, der zeitlich hin- und herspringt.
   def parallel_game_day_league
     league = build_league(build_go)
     club = build_club
@@ -1221,20 +1220,41 @@ class LeagueTest < ActiveSupport::TestCase
     league
   end
 
-  test 'schedule sortiert nach Spielnummer, nicht nach Uhrzeit' do
+  test 'schedule sortiert nach Uhrzeit, nicht nach Spielnummer' do
     league = parallel_game_day_league
 
     numbers = league.schedule.map { |game| game[:game_number] }
 
-    assert_equal [1, 2, 3, 4], numbers
+    assert_equal [1, 3, 2, 4], numbers
   end
 
-  test 'game_day_schedule sortiert nach Spielnummer, nicht nach Uhrzeit' do
+  test 'game_day_schedule sortiert nach Uhrzeit, nicht nach Spielnummer' do
     league = parallel_game_day_league
 
     numbers = league.game_day_schedule(1).map { |game| game[:game_number] }
 
-    assert_equal [1, 2, 3, 4], numbers
+    assert_equal [1, 3, 2, 4], numbers
+  end
+
+  # Pokalrunde: Nummern folgen der Paarung. Zeitgleiche Spiele ordnet die
+  # Spielnummer, „9:00" steht trotz Textspalte vor „10:00", „14.00" mit Punkt
+  # wird als Uhrzeit gelesen, ein Spiel ohne Uhrzeit steht am Tagesende.
+  test 'schedule ordnet gleiche Uhrzeit nach Spielnummer und liest einstellige Stunden' do
+    league = build_league(build_go)
+    club = build_club
+    game_day = GameDay.create!(league: league, arena: build_arena, club: club,
+                               number: 1, date: '2025-01-01')
+
+    { '4' => '10:00', '3' => '10:00', '1' => '14.00', '2' => '9:00', '5' => nil }.each do |number, time|
+      build_game(game_day,
+                 build_team(league, club, "Heim #{number}"),
+                 build_team(league, club, "Gast #{number}"),
+                 game_number: number, start_time: time)
+    end
+
+    numbers = league.schedule.map { |game| game[:game_number] }
+
+    assert_equal [2, 3, 4, 1, 5], numbers
   end
 
   test 'current_schedule liefert dieselbe Reihenfolge wie game_day_schedule' do
@@ -1245,9 +1265,9 @@ class LeagueTest < ActiveSupport::TestCase
     assert_equal league.game_day_schedule(1).map { |game| game[:game_number] }, numbers
   end
 
-  # Altbestand ohne Spielnummer: schedule_item liefert dort 0, alle Spiele sind
-  # im ersten Kriterium gleich. Datum und Uhrzeit müssen deshalb als
-  # Rückfallebene erhalten bleiben.
+  # Altbestand ohne Spielnummer: schedule_item liefert dort 0. Die Reihenfolge
+  # ergibt sich dann allein aus Datum und Uhrzeit, die ohnehin vor der
+  # Spielnummer stehen.
   test 'schedule sortiert Spiele ohne Spielnummer weiter nach Uhrzeit' do
     league = build_league(build_go)
     club = build_club
@@ -1290,25 +1310,27 @@ class LeagueTest < ActiveSupport::TestCase
   end
 
   # K.-o.-Runden tragen „HF1", „FIN" oder „Pl. 3" als Spielnummer; schedule_item
-  # macht daraus 0. Sie gehören ans Ende ihres Spieltags, nicht davor.
-  test 'schedule stellt nicht-numerische Spielnummern ans Ende des Spieltags' do
+  # macht daraus 0. Sie stehen nach ihrer Uhrzeit, und bei gleicher Uhrzeit
+  # hinter den durchnummerierten Spielen statt davor.
+  test 'schedule sortiert nicht-numerische Spielnummern nach Uhrzeit ein' do
     league = build_league(build_go)
     club = build_club
     game_day = GameDay.create!(league: league, arena: build_arena, club: club,
                                number: 1, date: '2025-01-01')
 
-    # Das Finale liegt zeitlich zwischen den Gruppenspielen und käme nach
-    # Uhrzeit in die Mitte, nach roher Nummer (0) an den Anfang.
-    { '1' => '10:00', 'FIN' => '11:00', '2' => '12:00' }.each do |number, time|
+    # Das Spiel um Platz 3 läuft zeitgleich mit Nummer 2 und käme nach roher
+    # Nummer (0) davor.
+    { '1' => '10:00', 'FIN' => '11:00', 'Pl. 3' => '12:00', '2' => '12:00' }.each do |number, time|
       build_game(game_day,
                  build_team(league, club, "Heim #{number}"),
                  build_team(league, club, "Gast #{number}"),
                  game_number: number, start_time: time)
     end
 
-    times = league.schedule.map { |game| game[:time] }
+    schedule = league.schedule
 
-    assert_equal %w[10:00 12:00 11:00], times
+    assert_equal([1, 0, 2, 0], schedule.map { |game| game[:game_number] })
+    assert_equal(%w[10:00 11:00 12:00 12:00], schedule.map { |game| game[:time] })
   end
 
   # Die Tabellenseite liest dieselben beiden Logo-Methoden, nur je Team statt je
