@@ -39,6 +39,18 @@ class License < ApplicationRecord
   # wieder offen. Ein Test hält ihn deshalb fest.
   REVOKED_REJECTION_KEY = 'revoked_rejection'.freeze
 
+  # Markierung an einem `beantragt`-Eintrag, mit dem der Verein eine Lizenz
+  # „ungültig wg. Transfer" reaktiviert (Player#reactivatable_license_for).
+  # Startet keine Karenzzeit: Das kostenfreie Zurueckziehen loescht den
+  # Eintrag ersatzlos, und hier ist das die frueher erteilte Lizenz. Der
+  # Rueckzug setzt stattdessen wieder auf TRANSFER. Bestandsdaten in JSONB,
+  # der Wert bleibt deshalb fest.
+  REACTIVATION_KEY = 'reactivation'.freeze
+  # Am TRANSFER-Eintrag, den das Zurueckziehen einer Reaktivierung schreibt.
+  # Er ist kein Transfer: Player#returned_after_transfer? misst die
+  # Mitgliedschaft am eigentlichen Wechsel, nicht an diesem Eintrag.
+  REACTIVATION_WITHDRAWN_KEY = 'reactivation_withdrawn'.freeze
+
   # Markierung an dem `erteilt`-Eintrag, mit dem der Verband den Expresszuschlag
   # gestrichen hat (PlayersController#handle_license_request). Das Flag
   # `express` selbst kennt danach nur noch `false`, und die Abrechnung liest
@@ -61,6 +73,39 @@ class License < ApplicationRecord
   # Eintrag" gibt: Zeitpunkt statt Text (#725).
   def self.current_status_id(license)
     LicenseEffectiveStatus.current_status_id(license)
+  end
+
+  # Laeuft gerade ein Reaktivierungsantrag, auch nach Ablehnung und
+  # Wiedereinstellung? Massgeblich ist nicht der juengste Eintrag allein: Stellt
+  # der Verein eine abgelehnte Reaktivierung wieder ein oder widerruft die SBK
+  # die Ablehnung, traegt der neue `beantragt`-Eintrag das Kennzeichen nicht.
+  # Es zaehlt deshalb jeder Reaktivierungsantrag seit dem letzten Transfer.
+  # Das Zurueckziehen setzt dann wieder auf TRANSFER statt auf zurueckgezogen;
+  # sonst liesse sich die Lizenz nicht mehr reaktivieren, und ein neuer Antrag
+  # legte eine zweite, berechnete an.
+  def self.pending_reactivation?(license)
+    return false unless LicenseEffectiveStatus.base_status_id(license) == REQUESTED
+
+    entries = Array(license && license['history']).select { |h| h.is_a?(Hash) }
+    last_transfer = entries.select { |h| h['license_status_id'].to_i == TRANSFER }
+                           .max_by { |h| LicenseEffectiveStatus.sort_key(h) }
+    return false unless last_transfer
+
+    anchor = LicenseEffectiveStatus.sort_key(last_transfer)
+    entries.any? { |h| h[REACTIVATION_KEY] && (LicenseEffectiveStatus.sort_key(h) <=> anchor) == 1 }
+  end
+
+  # Wurde diese Lizenz nach einem Transfer per Antrag reaktiviert
+  # (REACTIVATION_KEY)? Fuer die Kennzeichnung „kostenfrei" in der
+  # Lizenzverwaltung.
+  def self.reactivation?(license)
+    Array(license && license['history']).any? { |h| h.is_a?(Hash) && h[REACTIVATION_KEY] }
+  end
+
+  # War die Lizenz schon einmal erteilt? Dann ist sie abgerechnet, samt
+  # Expresszuschlag (PlayersController#handle_license_request).
+  def self.ever_approved?(license)
+    Array(license && license['history']).any? { |h| h.is_a?(Hash) && h['license_status_id'].to_i == APPROVED }
   end
 
   # Die eine Stelle, an der steht, welche Lizenz sich löschen lässt. Player#full_hash
@@ -116,6 +161,7 @@ class License < ApplicationRecord
   # Nichts-Wechsel, und `geloescht`, `zurueckgezogen`, `ungueltig wg. Transfer`
   # oder `gesperrt` wieder zu oeffnen ist kein Zuruecksetzen, sondern das
   # Aufheben eines anderen Vorgangs.
+  # Fuer die Transferlizenz: Player#reactivatable_license_for.
   def self.resettable?(license, current_season_id = Setting.current_season_id)
     return false if license.blank?
     return false unless license['season_id'].to_s == current_season_id.to_s
@@ -132,9 +178,20 @@ class License < ApplicationRecord
   # Vereinsansicht wie ein Fehler des Systems. Der Text landet in der History und
   # ist dort auch fuer den Verein sichtbar.
   # Die eine Stelle, die PlayersController#handle_license_request fragt, ob der
-  # gewuenschte Statuswechsel erlaubt ist -- Meldung oder nil. Zwei Zielstatus
-  # tragen eine eigene Regel, alle anderen aus HANDLED_STATUSES keine.
+  # gewuenschte Statuswechsel erlaubt ist -- Meldung oder nil. Eigene Regeln
+  # tragen geloescht, beantragt und jeder Wechsel aus einer Transferlizenz.
+  #
+  # Aus einer Lizenz „ungültig wg. Transfer" fuehrt hier kein Weg heraus. Sie
+  # reaktiviert der Verein per Antrag (request_license), den der Verband dann
+  # wie jeden Antrag genehmigt. `abgelehnt`, `beantragt` oder `erteilt` von
+  # hier aus waere ein Umweg an den Pruefungen dieses Antrags vorbei
+  # (Mitgliedschaft nach dem Transfer, Sperre, Doppelantrag). Loeschen sperrt
+  # schon deletable? (nur aktive Status).
   def self.change_blocked_reason(license, target_status_id, reason, season_id = Setting.current_season_id)
+    if current_status_id(license) == TRANSFER
+      return 'Eine Lizenz „ungültig wg. Transfer“ reaktiviert der Verein mit einem neuen Antrag für die Mannschaft.'
+    end
+
     case target_status_id
     when DELETED then delete_blocked_reason(license, reason, season_id)
     when REQUESTED then request_blocked_reason(license, reason, season_id)
@@ -218,7 +275,7 @@ class License < ApplicationRecord
   # nicht bloß nicht leer: Ein Bruchstück wie "12:00" eröffnet kein Fenster.
   def self.grace_period_anchor(history)
     Array(history)
-      .select { |h| h['license_status_id'].to_i == REQUESTED && !h[REVOKED_REJECTION_KEY] }
+      .select { |h| h['license_status_id'].to_i == REQUESTED && !h[REVOKED_REJECTION_KEY] && !h[REACTIVATION_KEY] }
       .select { |h| LicenseEffectiveStatus.parse_time(h['created_at']) }
       .max_by { |h| LicenseEffectiveStatus.sort_key(h) }
   end

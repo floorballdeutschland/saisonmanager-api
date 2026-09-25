@@ -1621,20 +1621,23 @@ class League < ApplicationRecord
     nil
   end
 
-  # Reihenfolge des Spielplans: Spieltag, Datum, Spielnummer, Uhrzeit.
+  # Reihenfolge des Spielplans: Spieltag, Datum, Uhrzeit, Spielnummer.
   #
-  # Die Spielnummer musste vor die Uhrzeit, weil ein Spieltag, der parallel in
-  # mehreren Hallen läuft, sonst nach Uhrzeit quer über die Hallen verzahnt
-  # wurde, statt sie als zusammenhängende Blöcke zu zeigen. Vor das Datum darf
-  # sie nicht: Ein Spieltag erstreckt sich häufig über mehrere Tage (Playoffs,
-  # Pokalrunden, Nachholspiele), und die Nummern folgen dort der Paarung, nicht
-  # dem Kalender. Der Spielplan liefe sonst zeitlich rückwärts.
+  # Die Uhrzeit steht vor der Spielnummer, weil die Nummern bei Pokal- und
+  # Playoff-Spieltagen der Paarung folgen, nicht dem Ablauf; nach Nummer
+  # sortiert sprang der Tag zeitlich hin und her. Laufen mehrere Hallen
+  # parallel, wechselt die Halle dafür von Zeile zu Zeile. #431 hatte die
+  # Nummer deswegen vor die Uhrzeit gezogen; beim FD-Pokal las sich der Tag
+  # dadurch durcheinander. Das Datum bleibt davor, weil sich ein Spieltag über
+  # mehrere Tage erstrecken kann.
   #
-  # game_number ist eine Textspalte und trägt auch nicht-numerische Werte
-  # („HF1", „FIN", „Pl. 3" in K.-o.-Runden), die schedule_item alle zu 0 macht.
-  # Solche Spiele stehen am Ende ihres Tages und dort nach Uhrzeit, statt vor
-  # die durchnummerierten Spiele zu rutschen. Gleiche Regel wie GAME_ORDER in
-  # Admin::GameDaysController, das nicht-numerische Nummern ans Ende stellt.
+  # start_time ist eine Textspalte; die Uhrzeit wird deshalb zweistellig
+  # normalisiert, sonst sortierte „9:00" als Text hinter „10:00". Spiele ohne
+  # lesbare Uhrzeit stehen am Ende ihres Tages.
+  #
+  # Bei gleicher Uhrzeit entscheidet die Spielnummer. game_number ist eine
+  # Textspalte und trägt auch „HF1", „FIN" oder „Pl. 3", die schedule_item zu 0
+  # macht; solche Spiele stehen hinter den durchnummerierten gleicher Uhrzeit.
   #
   # game_id zuletzt, damit die Reihenfolge eindeutig ist: sort_by ist nicht
   # stabil, und schedule sortiert ein ganzes Saison-Array, game_day_schedule
@@ -1643,8 +1646,15 @@ class League < ApplicationRecord
   def schedule_sort_key(game)
     number = game[:game_number].to_i
 
-    [game[:game_day].to_i, game[:date].to_s, number.positive? ? 0 : 1, number,
-     game[:time].to_s, game[:game_id].to_i]
+    [game[:game_day].to_i, game[:date].to_s, schedule_sort_time(game[:time]),
+     number.positive? ? 0 : 1, number, game[:game_id].to_i]
+  end
+
+  def schedule_sort_time(time)
+    match = time.to_s.strip.match(/\A(\d{1,2})[:.](\d{2})/)
+    return [1, time.to_s] unless match
+
+    [0, format('%<hour>02d:%<minute>s', hour: match[1].to_i, minute: match[2])]
   end
 
   def group_template(group_identifier)

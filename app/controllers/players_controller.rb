@@ -3,6 +3,7 @@ class PlayersController < ApplicationController
   include PlayerReleaseRecording
   include LicenseDocumentPresentation
   include LicenseAccessScope
+  include LicenseReactivationRequest
   include CsvUploadValidation
   include ClubListAccess
   include PlayerMasterDataAccess
@@ -212,6 +213,16 @@ class PlayersController < ApplicationController
         raise ActiveRecord::Rollback
       end
 
+      # Gleiche Mannschaft und Saison wie eine Lizenz „ungültig wg. Transfer":
+      # keine neue Lizenz, sondern deren Reaktivierung (reactivation_request).
+      # Ohne Rollback bei einer Absage: reactivation_request schreibt nur im
+      # Erfolgsfall, sonst liegt nichts in der Datenbank.
+      reactivated = player.reactivatable_license_for(team.id, league.season_id)
+      if reactivated
+        next result = reactivation_request(player, reactivated, team, ph, express_requested,
+                                           guardian_email, minor_consent_at)
+      end
+
       new_license = {
         id: Digest::UUID.uuid_v4,
         team_id: team.id,
@@ -261,6 +272,15 @@ class PlayersController < ApplicationController
              status: :unprocessable_entity
     when :below_minimum_age
       render json: { message: "Der Spieler erfüllt das Mindestalter dieser Liga nicht (mindestens #{league.minimum_age} Jahre am Tag der Beantragung)." },
+             status: :unprocessable_entity
+    when :not_returned
+      render json: { message: 'Der Spieler war für diese Mannschaft schon lizenziert, die Lizenz ist durch einen Transfer ' \
+                              'ungültig geworden. Reaktivieren lässt sie sich erst, wenn der neue Stammverein die ' \
+                              'Freigabe erteilt hat.' },
+             status: :unprocessable_entity
+    when :reactivation_express
+      render json: { message: 'Dieser Antrag reaktiviert eine durch Transfer ungültig gewordene Lizenz und ist kostenfrei. ' \
+                              'Als Expresslizenz lässt er sich nicht stellen.' },
              status: :unprocessable_entity
     when :save_failed
       render json: { message: player.errors }, status: :unprocessable_entity
@@ -393,14 +413,13 @@ class PlayersController < ApplicationController
                         status: :unprocessable_entity
         end
 
-        # Ueber LicenseEffectiveStatus.base_status_id und nicht ueber
-        # License.current_status_id: Bei einer gesperrten Lizenz ist der juengste
-        # Eintrag die Sperre, die erteilte Lizenz darunter bliebe ungeschuetzt.
-        # Sie ist aber laengst abgerechnet. base_status_id beantwortet genau die
-        # Frage "welcher Status gaelte ohne Sperre", und der Rest des Hauses
-        # fragt an dieser Stelle auch danach.
-        if !express_param && LicenseEffectiveStatus.base_status_id(license) == License::APPROVED
-          return render json: { message: 'Diese Lizenz ist bereits erteilt. Der Expresszuschlag lässt sich dabei nicht mehr streichen.' },
+        # Ueber den ganzen Verlauf statt ueber den aktuellen Status: Eine einmal
+        # erteilte Lizenz ist abgerechnet, samt Zuschlag. Das deckt die
+        # gesperrte erteilte Lizenz (juengster Eintrag ist die Sperre) ebenso
+        # ab wie die Reaktivierung nach Transfer, die denselben Eintrag ein
+        # zweites Mal genehmigt, und die zurueckgesetzte Lizenz.
+        if !express_param && License.ever_approved?(license)
+          return render json: { message: 'Diese Lizenz war bereits erteilt. Der Expresszuschlag lässt sich dabei nicht mehr streichen.' },
                         status: :unprocessable_entity
         end
 
@@ -644,6 +663,15 @@ class PlayersController < ApplicationController
                     status: :unprocessable_entity
     end
 
+    # Vor der Karenzzeit: Die loeschte den ganzen Eintrag, und bei einer
+    # Reaktivierung ist das die frueher erteilte Lizenz.
+    if License.pending_reactivation?(found_license)
+      player.withdraw_reactivation!(found_license, current_user.id)
+      return render json: { success: true } if player.save
+
+      return render json: { message: player.errors }, status: :unprocessable_entity
+    end
+
     last_requested = License.grace_period_anchor(found_license['history'])
 
     if last_requested && (Time.now - last_requested['created_at'].to_time) < License::GRACE_PERIOD
@@ -659,6 +687,19 @@ class PlayersController < ApplicationController
   end
 
   def reenable_license_request
+    # Eine Lizenz „ungültig wg. Transfer" stellt der Verein nicht wieder ein,
+    # er reaktiviert sie mit einem neuen Antrag (request_license). Sonst waere
+    # das ein Weg an dessen Pruefungen vorbei: Der abgebende Verein koennte die
+    # Lizenz direkt nach dem Wegtransfer wieder auf `beantragt` setzen, ohne
+    # Freigabe zurueck. Die Maske bietet den Knopf nur fuer abgelehnt und
+    # zurueckgezogen an; die Schnittstelle hatte bisher keine Vorbedingung.
+    license = Player.find(params[:id]).licenses&.find { |l| l.is_a?(Hash) && l['id'] == params[:license_id] }
+    if license && License.current_status_id(license) == License::TRANSFER
+      return render json: { message: 'Eine Lizenz „ungültig wg. Transfer“ lässt sich nur mit einem neuen Antrag ' \
+                                     'für die Mannschaft reaktivieren.' },
+                    status: :unprocessable_entity
+    end
+
     meta_user_license_change(License::REQUESTED)
   end
 
