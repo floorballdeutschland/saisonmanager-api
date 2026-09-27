@@ -12,6 +12,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Behoben
 
 - **Kader ließ sich nach dem Abschluss des Spielberichts weiter ändern**: Im Spiel 61889 stand der Schiedsrichter nach dem Abschluss im Heimkader, obwohl er für die Mannschaft gar keine Lizenz hat. Das Gerät am Kampfgericht hatte im Folgespiel die Kadermaske einer anderen Mannschaft geöffnet; beim Zurückwechseln blieb sie offen und schrieb den angeklickten Spieler in das bereits abgeschlossene Spiel. Die Ereignisse eines abgeschlossenen Berichts waren längst gesperrt, Kader, Kapitän, Betreuer, Starting Six und Auszeichnungen dagegen nicht. Jetzt gilt für sie dieselbe Sperre: Nach dem Abschluss ändern nur noch Admin und SBK des Spielbetriebs. Die Kopfdaten (Zuschauer, Zeitnehmer usw.) bleiben für den Ausrichter wie bisher berichtigbar.
+- **Spieler ohne Lizenz für die Mannschaft kommen nicht mehr in den Kader**: Bisher nahm die Aufstellung auch eine Person an, die für die aufstellende Mannschaft gar keinen Lizenzeintrag hat, und gab nur eine Warnung aus. So stand im Spiel 61889 der Schiedsrichter, ein Spieler einer anderen Mannschaft, im Heimkader. Ohne Lizenzeintrag wird die Aufstellung jetzt abgewiesen. Alle anderen Fälle bleiben wie bisher: Eine erteilte Lizenz ist spielberechtigt, ein gestellter Antrag ebenfalls, wenn der Landesverband das in den Verbandseinstellungen erlaubt; abgelehnte, zurückgezogene oder gesperrte Lizenzen werden weiter mit einer Warnung aufgestellt.
 
 ## [1.123.0] - 2026-09-25
 

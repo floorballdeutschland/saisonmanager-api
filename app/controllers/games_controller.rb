@@ -318,6 +318,8 @@ class GamesController < ApplicationController
       # check if we have a entry for that player
       if game.players[side].map { |p| p['player_id'] }.include?(params[:player_id].to_i)
         render json: { message: 'Spieler bereits vorhanden' }, status: :unprocessable_entity
+      elsif (error = lineup_license_missing_error(game, player, side))
+        render json: { message: error }, status: :unprocessable_entity
       else
         item = {
           trikot_number: params[:trikot_number].to_i
@@ -1463,6 +1465,23 @@ class GamesController < ApplicationController
   # ausdruecklich zugelassen hat. Alle uebrigen Status bleiben eine Warnung, auch
   # „abgelehnt", „zurueckgezogen" und „gesperrt": Zugelassen ist der offene
   # Antrag, nicht der entschiedene.
+  # Ohne jeden Lizenzeintrag fuer die aufstellende Mannschaft wird nicht mehr
+  # nur gewarnt, sondern abgewiesen. Die Kadermaske bietet nur Personen mit
+  # Lizenz an, eine solche Anfrage kommt also nicht aus der regulaeren
+  # Bedienung: Im Spiel 61889 schrieb eine beim Spielwechsel offen gebliebene
+  # Maske einen Spieler der Heimmannschaft des Folgespiels in den Heimkader.
+  # Jeder vorhandene Eintrag bleibt beim bisherigen Weg (lineup_license_warning):
+  # beantragt ohne Verbandsschalter, abgelehnt oder gesperrt heisst Warnung.
+  def lineup_license_missing_error(game, player, side)
+    return nil if player.nil?
+
+    team_id = side == 'home' ? game.home_team_id : game.guest_team_id
+    return nil if team_id.blank?
+    return nil if player.licenses_by_team(team_id).present?
+
+    "Kein Lizenzantrag für #{player.first_name} #{player.last_name} im aufstellenden Team"
+  end
+
   def lineup_license_warning(game, player, side)
     return nil if player.nil?
 
@@ -1470,7 +1489,7 @@ class GamesController < ApplicationController
     return nil if team_id.blank?
 
     license = player.licenses_by_team(team_id)
-    return "Kein Lizenzantrag für #{player.first_name} #{player.last_name} im aufstellenden Team" if license.blank?
+    return nil if license.blank?
 
     last_status = LicenseEffectiveStatus.current_status_id(license)
     unless game.license_status_playable?(last_status)
