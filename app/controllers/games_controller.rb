@@ -1455,16 +1455,6 @@ class GamesController < ApplicationController
     end
   end
 
-  # Weicher Lizenz-Check: erzeugt eine Warnmeldung, wenn der Spieler keine erteilte
-  # Lizenz fuer das Team in der Liga des Spiels hat. Blockiert das Hinzufuegen nicht.
-  #
-  # Erlaubt der Landesverband der Liga das Aufstellen mit einem gestellten Antrag
-  # (`requested_license_playable`, siehe Game#requested_license_playable?), zaehlt
-  # der Status „beantragt" wie „erteilt" -- ohne den Zusatz meldete die Maske
-  # jeden dieser Spieler als nicht spielberechtigt, obwohl der Verband ihn
-  # ausdruecklich zugelassen hat. Alle uebrigen Status bleiben eine Warnung, auch
-  # „abgelehnt", „zurueckgezogen" und „gesperrt": Zugelassen ist der offene
-  # Antrag, nicht der entschiedene.
   # Ohne jeden Lizenzeintrag fuer die aufstellende Mannschaft wird nicht mehr
   # nur gewarnt, sondern abgewiesen. Die Kadermaske bietet nur Personen mit
   # Lizenz an, eine solche Anfrage kommt also nicht aus der regulaeren
@@ -1482,6 +1472,16 @@ class GamesController < ApplicationController
     "Kein Lizenzantrag für #{player.first_name} #{player.last_name} im aufstellenden Team"
   end
 
+  # Weicher Lizenz-Check: erzeugt eine Warnmeldung, wenn der Spieler keine erteilte
+  # Lizenz fuer das Team in der Liga des Spiels hat. Blockiert das Hinzufuegen nicht.
+  #
+  # Erlaubt der Landesverband der Liga das Aufstellen mit einem gestellten Antrag
+  # (`requested_license_playable`, siehe Game#requested_license_playable?), zaehlt
+  # der Status „beantragt" wie „erteilt" -- ohne den Zusatz meldete die Maske
+  # jeden dieser Spieler als nicht spielberechtigt, obwohl der Verband ihn
+  # ausdruecklich zugelassen hat. Alle uebrigen Status bleiben eine Warnung, auch
+  # „abgelehnt", „zurueckgezogen" und „gesperrt": Zugelassen ist der offene
+  # Antrag, nicht der entschiedene.
   def lineup_license_warning(game, player, side)
     return nil if player.nil?
 

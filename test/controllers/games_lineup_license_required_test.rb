@@ -46,6 +46,30 @@ class GamesLineupLicenseRequiredTest < ActionDispatch::IntegrationTest
     assert_empty @game.reload.players['home']
   end
 
+  # Die Mannschaft ergibt sich aus der Seite. Eine Heimlizenz traegt nicht
+  # in den Gastkader.
+  test 'eine Heimlizenz reicht nicht fuer den Gastkader' do
+    player = create(:player, clubs: [{ 'club_id' => @club.id, 'home_club' => true }],
+                             with_licenses: [{ team: @home_team, status: License::APPROVED }])
+
+    post "/api/v2/user/games/#{@game.id}/lineup/guest/add_player",
+         params: { player_id: player.id, trikot_number: 7 }
+
+    assert_response :unprocessable_entity
+    assert_empty @game.reload.players['guest']
+  end
+
+  test 'eine Gastlizenz traegt in den Gastkader' do
+    player = create(:player, clubs: [{ 'club_id' => @game.guest_team.club_id, 'home_club' => true }],
+                             with_licenses: [{ team: @game.guest_team, status: License::APPROVED }])
+
+    post "/api/v2/user/games/#{@game.id}/lineup/guest/add_player",
+         params: { player_id: player.id, trikot_number: 7 }
+
+    assert_response :success
+    assert_equal([player.id], @game.reload.players['guest'].map { |p| p['player_id'] })
+  end
+
   test 'mit erteilter Lizenz fuer die Mannschaft wird aufgestellt' do
     player = create(:player, clubs: [{ 'club_id' => @club.id, 'home_club' => true }],
                              with_licenses: [{ team: @home_team, status: License::APPROVED }])
