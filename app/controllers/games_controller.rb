@@ -1433,10 +1433,15 @@ class GamesController < ApplicationController
   # sort_events! sortiert über [period, time, id, row], und ein Array neben einer
   # Zeichenkette lässt den Vergleich mit "comparison of Array with Array failed"
   # abbrechen – ein 500er, ausgelöst allein durch die Nutzlast.
+  #
+  # Die Abschnitte beginnen bei 1 (League#period_titles). Eine 0 schickte das
+  # Formular, wenn ein Tor vor dem ersten Abschnitt erfasst wurde: Das Tor zählte
+  # im Spielstand mit, stand aber unter keinem Abschnitt, und das Sekretariat trug
+  # es ein zweites Mal ein (Spiel 63201, 27.09.2026, Stand 0:2 statt 0:1).
   def valid_period?(value)
     case value
-    when Integer then true
-    when String then value.present?
+    when Integer then value >= 1
+    when String then value.to_i >= 1
     else false
     end
   end

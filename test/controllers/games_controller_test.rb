@@ -756,6 +756,38 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
     assert_equal 2, @game.reload.events.size
   end
 
+  # Die Abschnitte beginnen bei 1. Ein Tor in Abschnitt 0 zählte im Spielstand
+  # mit, erschien aber unter keinem Abschnitt und wurde deshalb doppelt erfasst
+  # (Spiel 63201).
+  test 'add_event: ein Abschnitt 0 wird abgelehnt' do
+    two_goals!
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    [0, '0'].each do |period|
+      post "/api/v2/user/games/#{@game.id}/events/add", params: {
+        period:, time: '0:19', event_type: 'goal', event_team: 'home',
+        home_goals: 3, guest_goals: 0
+      }, as: :json
+
+      assert_response :unprocessable_entity
+      assert_equal 'Spielabschnitt fehlt.', response.parsed_body['message']
+    end
+    assert_equal 2, @game.reload.events.size
+  end
+
+  test 'update_event: ein Abschnitt 0 wird abgelehnt' do
+    two_goals!
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    post "/api/v2/user/games/#{@game.id}/events/update", params: {
+      event_id: 2, period: 0, time: '20:00', event_type: 'goal', event_team: 'home',
+      home_goals: 2, guest_goals: 0
+    }, as: :json
+
+    assert_response :unprocessable_entity
+    refute_equal 0, @game.reload.events.find { |e| e['id'].to_i == 2 }['period'].to_i
+  end
+
   # Gegenrichtung, und der Grund, warum für den Abschnitt KEINE Zeichenkette
   # erzwungen wird: Das Spielbericht-Formular schickt JSON, `parseInt` macht
   # daraus eine Zahl. Ein String-Zwang hätte die Erfassung am Spieltag zerlegt.

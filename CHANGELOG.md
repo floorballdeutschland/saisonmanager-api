@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Kein Tor mehr in einem Spielabschnitt 0**: Wurde ein Tor erfasst, bevor der erste Abschnitt im Spielbericht angekommen war, landete es in Abschnitt 0. Es zählte im Spielstand mit, stand aber unter keinem Abschnitt, und wurde deshalb leicht ein zweites Mal eingetragen (Spielstand 0:2 statt 0:1). Die API lehnt einen Abschnitt kleiner 1 jetzt ab.
+
 ## [1.123.0] - 2026-09-25
 
 ### Neu
