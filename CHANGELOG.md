@@ -12,6 +12,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 ### Behoben
 
 - **Kein Tor mehr in einem Spielabschnitt 0**: Wurde ein Tor erfasst, bevor der erste Abschnitt im Spielbericht angekommen war, landete es in Abschnitt 0. Es zählte im Spielstand mit, stand aber unter keinem Abschnitt, und wurde deshalb leicht ein zweites Mal eingetragen (Spielstand 0:2 statt 0:1). Die API lehnt einen Abschnitt kleiner 1 jetzt ab.
+- **Kader ließ sich nach dem Abschluss des Spielberichts weiter ändern**: Eine Kadermaske, die beim Wechsel in ein anderes Spiel offen geblieben war, konnte einen Spieler einer fremden Mannschaft in ein bereits abgeschlossenes Spiel schreiben. Die Ereignisse eines abgeschlossenen Berichts waren längst gesperrt, Kader, Kapitän, Betreuer, Starting Six und Auszeichnungen dagegen nicht. Jetzt gilt für sie dieselbe Sperre: Nach dem Abschluss ändern nur noch Admin und SBK des Spielbetriebs. Die Kopfdaten (Zuschauer, Zeitnehmer usw.) bleiben für den Ausrichter wie bisher berichtigbar. Im Frontend schließt sich die Kadermaske beim Spielwechsel und schreibt immer in das Spiel, dessen Kader sie zeigt.
+- **Spieler ohne Lizenz für die Mannschaft kommen nicht mehr in den Kader**: Bisher nahm die Aufstellung auch eine Person an, die für die aufstellende Mannschaft gar keinen Lizenzeintrag hat, und gab nur eine Warnung aus. Ohne Lizenzeintrag wird die Aufstellung jetzt abgewiesen. Alle anderen Fälle bleiben wie bisher: Eine erteilte Lizenz ist spielberechtigt, ein gestellter Antrag ebenfalls, wenn der Landesverband das in den Verbandseinstellungen erlaubt; abgelehnte, zurückgezogene oder gesperrte Lizenzen werden weiter mit einer Warnung aufgestellt.
 
 ## [1.123.0] - 2026-09-25
 

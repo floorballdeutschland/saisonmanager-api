@@ -304,7 +304,7 @@ class GamesController < ApplicationController
     game = Game.find(params[:id])
     player = Player.find(params[:player_id]) if params[:player_id].present?
 
-    allowed = can_edit_game?(game)
+    allowed = can_edit_lineup_of?(game)
 
     if allowed
       # ensure we have the hash set
@@ -318,6 +318,8 @@ class GamesController < ApplicationController
       # check if we have a entry for that player
       if game.players[side].map { |p| p['player_id'] }.include?(params[:player_id].to_i)
         render json: { message: 'Spieler bereits vorhanden' }, status: :unprocessable_entity
+      elsif (error = lineup_license_missing_error(game, player, side))
+        render json: { message: error }, status: :unprocessable_entity
       else
         item = {
           trikot_number: params[:trikot_number].to_i
@@ -360,7 +362,7 @@ class GamesController < ApplicationController
     game = Game.find(params[:id])
     player = Player.find(params[:player_id]) if params[:player_id].present?
 
-    allowed = can_edit_game?(game)
+    allowed = can_edit_lineup_of?(game)
 
     if allowed
       # Ensure we have the hash set
@@ -418,7 +420,7 @@ class GamesController < ApplicationController
     game = Game.find(params[:id])
     player = Player.find(params[:player_id]) if params[:player_id].present?
 
-    allowed = can_edit_game?(game)
+    allowed = can_edit_lineup_of?(game)
 
     if allowed
       # Ensure we have the hash set
@@ -463,7 +465,7 @@ class GamesController < ApplicationController
   def add_coach
     game = Game.find(params[:id])
 
-    allowed = can_edit_game?(game)
+    allowed = can_edit_lineup_of?(game)
 
     if allowed
       side = params[:side]
@@ -514,7 +516,7 @@ class GamesController < ApplicationController
   def set_captain
     game = Game.find(params[:id])
 
-    allowed = can_edit_game?(game)
+    allowed = can_edit_lineup_of?(game)
 
     if allowed
       # ensure we have the hash set
@@ -558,7 +560,7 @@ class GamesController < ApplicationController
   def remove_player
     game = Game.find(params[:id])
 
-    allowed = can_edit_game?(game)
+    allowed = can_edit_lineup_of?(game)
 
     if allowed
       # ensure we have the hash set
@@ -591,7 +593,7 @@ class GamesController < ApplicationController
   def remove_coach
     game = Game.find(params[:id])
 
-    allowed = can_edit_game?(game)
+    allowed = can_edit_lineup_of?(game)
 
     if allowed
       side = params[:side]
@@ -1299,6 +1301,18 @@ class GamesController < ApplicationController
     game.can_edit_lineup?(current_user)
   end
 
+  # Kader, Kapitän, Betreuer, Starting Six und Auszeichnungen: nach dem
+  # Abschluss des Spielberichts nur noch Admin und SBK des Spielbetriebs, wie bei
+  # den Ereignissen (add_event & Co.). Ohne die Sperre schrieb eine Kadermaske,
+  # die beim Wechsel in ein anderes Spiel offen geblieben war, einen Spieler der
+  # fremden Mannschaft in den längst abgeschlossenen Bericht (Spiel 61889: der
+  # Schiedsrichter stand danach im Heimkader).
+  def can_edit_lineup_of?(game)
+    return false if game.match_record_closed? && !admin_or_scoped_sbk?(game)
+
+    can_edit_game?(game)
+  end
+
   # Admin oder SBK *des Spielbetriebs dieses Spiels*. Entscheidet, wer die
   # Sperre bei abgeschlossenem Spielbericht übergehen und ihn wieder öffnen
   # darf. Bewusst auf den Spielbetrieb gescopt (#214): sonst hebelt eine
@@ -1446,6 +1460,23 @@ class GamesController < ApplicationController
     end
   end
 
+  # Ohne jeden Lizenzeintrag fuer die aufstellende Mannschaft wird nicht mehr
+  # nur gewarnt, sondern abgewiesen. Die Kadermaske bietet nur Personen mit
+  # Lizenz an, eine solche Anfrage kommt also nicht aus der regulaeren
+  # Bedienung: Im Spiel 61889 schrieb eine beim Spielwechsel offen gebliebene
+  # Maske einen Spieler der Heimmannschaft des Folgespiels in den Heimkader.
+  # Jeder vorhandene Eintrag bleibt beim bisherigen Weg (lineup_license_warning):
+  # beantragt ohne Verbandsschalter, abgelehnt oder gesperrt heisst Warnung.
+  def lineup_license_missing_error(game, player, side)
+    return nil if player.nil?
+
+    team_id = side == 'home' ? game.home_team_id : game.guest_team_id
+    return nil if team_id.blank?
+    return nil if player.licenses_by_team(team_id).present?
+
+    "Kein Lizenzantrag für #{player.first_name} #{player.last_name} im aufstellenden Team"
+  end
+
   # Weicher Lizenz-Check: erzeugt eine Warnmeldung, wenn der Spieler keine erteilte
   # Lizenz fuer das Team in der Liga des Spiels hat. Blockiert das Hinzufuegen nicht.
   #
@@ -1463,7 +1494,7 @@ class GamesController < ApplicationController
     return nil if team_id.blank?
 
     license = player.licenses_by_team(team_id)
-    return "Kein Lizenzantrag für #{player.first_name} #{player.last_name} im aufstellenden Team" if license.blank?
+    return nil if license.blank?
 
     last_status = LicenseEffectiveStatus.current_status_id(license)
     unless game.license_status_playable?(last_status)
