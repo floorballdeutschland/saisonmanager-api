@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Kader ließ sich nach dem Abschluss des Spielberichts weiter ändern**: Im Spiel 61889 stand der Schiedsrichter nach dem Abschluss im Heimkader, obwohl er für die Mannschaft gar keine Lizenz hat. Das Gerät am Kampfgericht hatte im Folgespiel die Kadermaske einer anderen Mannschaft geöffnet; beim Zurückwechseln blieb sie offen und schrieb den angeklickten Spieler in das bereits abgeschlossene Spiel. Die Ereignisse eines abgeschlossenen Berichts waren längst gesperrt, Kader, Kapitän, Betreuer, Starting Six und Auszeichnungen dagegen nicht. Jetzt gilt für sie dieselbe Sperre: Nach dem Abschluss ändern nur noch Admin und SBK des Spielbetriebs. Die Kopfdaten (Zuschauer, Zeitnehmer usw.) bleiben für den Ausrichter wie bisher berichtigbar.
+
 ## [1.123.0] - 2026-09-25
 
 ### Neu

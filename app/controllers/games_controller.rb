@@ -304,7 +304,7 @@ class GamesController < ApplicationController
     game = Game.find(params[:id])
     player = Player.find(params[:player_id]) if params[:player_id].present?
 
-    allowed = can_edit_game?(game)
+    allowed = can_edit_lineup_of?(game)
 
     if allowed
       # ensure we have the hash set
@@ -360,7 +360,7 @@ class GamesController < ApplicationController
     game = Game.find(params[:id])
     player = Player.find(params[:player_id]) if params[:player_id].present?
 
-    allowed = can_edit_game?(game)
+    allowed = can_edit_lineup_of?(game)
 
     if allowed
       # Ensure we have the hash set
@@ -418,7 +418,7 @@ class GamesController < ApplicationController
     game = Game.find(params[:id])
     player = Player.find(params[:player_id]) if params[:player_id].present?
 
-    allowed = can_edit_game?(game)
+    allowed = can_edit_lineup_of?(game)
 
     if allowed
       # Ensure we have the hash set
@@ -463,7 +463,7 @@ class GamesController < ApplicationController
   def add_coach
     game = Game.find(params[:id])
 
-    allowed = can_edit_game?(game)
+    allowed = can_edit_lineup_of?(game)
 
     if allowed
       side = params[:side]
@@ -514,7 +514,7 @@ class GamesController < ApplicationController
   def set_captain
     game = Game.find(params[:id])
 
-    allowed = can_edit_game?(game)
+    allowed = can_edit_lineup_of?(game)
 
     if allowed
       # ensure we have the hash set
@@ -558,7 +558,7 @@ class GamesController < ApplicationController
   def remove_player
     game = Game.find(params[:id])
 
-    allowed = can_edit_game?(game)
+    allowed = can_edit_lineup_of?(game)
 
     if allowed
       # ensure we have the hash set
@@ -591,7 +591,7 @@ class GamesController < ApplicationController
   def remove_coach
     game = Game.find(params[:id])
 
-    allowed = can_edit_game?(game)
+    allowed = can_edit_lineup_of?(game)
 
     if allowed
       side = params[:side]
@@ -1297,6 +1297,18 @@ class GamesController < ApplicationController
     return false unless current_user
 
     game.can_edit_lineup?(current_user)
+  end
+
+  # Kader, Kapitän, Betreuer, Starting Six und Auszeichnungen: nach dem
+  # Abschluss des Spielberichts nur noch Admin und SBK des Spielbetriebs, wie bei
+  # den Ereignissen (add_event & Co.). Ohne die Sperre schrieb eine Kadermaske,
+  # die beim Wechsel in ein anderes Spiel offen geblieben war, einen Spieler der
+  # fremden Mannschaft in den längst abgeschlossenen Bericht (Spiel 61889: der
+  # Schiedsrichter stand danach im Heimkader).
+  def can_edit_lineup_of?(game)
+    return false if game.match_record_closed? && !admin_or_scoped_sbk?(game)
+
+    can_edit_game?(game)
   end
 
   # Admin oder SBK *des Spielbetriebs dieses Spiels*. Entscheidet, wer die
