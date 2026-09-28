@@ -9,6 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.123.2] - 2026-09-28
+
+### Behoben
+
+- **Besonderes Ereignis nur noch für die Berichtspflege und die RSK**: Der Vermerk unter „Besonderes Ereignis" auf der Spielseite war seit 1.115.0 zwar nicht mehr öffentlich, aber für jeden Login sichtbar, also auch für Vereins- und Teammanager unbeteiligter Vereine. Jetzt sehen ihn nur noch die, die den Spielbericht pflegen können (Admin und SBK des Spielbetriebs, Vereins- und Teammanager der beteiligten Mannschaften und des Ausrichters, das Spielsekretariat über seinen Link), sowie die RSK des Spielbetriebs.
+
 ## [1.123.1] - 2026-09-27
 
 ### Behoben

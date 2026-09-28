@@ -1121,8 +1121,8 @@ class Game < ApplicationRecord
       # `special_event_string` steht hier bewusst NICHT: Der Vermerk über ein
       # besonderes Ereignis ist ein interner Teil des Spielberichts (er steht
       # deshalb auch in #hidden_elements) und beschreibt regelmäßig das
-      # Verhalten benannter Personen. GamesController#show hängt ihn nur an
-      # angemeldete Abrufe an, öffentlich bleibt er weg.
+      # Verhalten benannter Personen. GamesController#show hängt ihn nur für
+      # den Kreis aus can_view_special_event? an.
       referees:,
       # Ausdrücklich als Flag, nicht aus `referees` ableitbar: Dort fehlt die
       # Platznummer, und zwar auf zwei verschiedene Weisen, je nachdem ob Platz 1
