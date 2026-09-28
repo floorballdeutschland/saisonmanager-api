@@ -1362,9 +1362,12 @@ class GamesController < ApplicationController
     ph[:vm].present? && ph[:vm].intersect?(club_ids)
   end
 
-  # Wer den Spielbericht pflegt (can_view_hidden_elements?: Admin/SBK des
-  # Spielbetriebs, VM/TM der beteiligten Mannschaften und des Ausrichters,
-  # Spielsekretariat per Link) und zusätzlich die RSK des Spielbetriebs.
+  # Den Vermerk über ein besonderes Ereignis sieht, wer den Spielbericht pflegt
+  # (can_view_hidden_elements?: Admin/SBK des Spielbetriebs oder global, VM/TM
+  # der beteiligten Mannschaften und des Ausrichters, Spielsekretariat per
+  # Link), und zusätzlich die RSK des Spielbetriebs oder global. Die RSK steht
+  # bewusst außerhalb von can_view_hidden_elements?: Sie pflegt den Bericht
+  # nicht, soll den Vermerk aber lesen.
   #
   # Bis #679 sah ihn die Öffentlichkeit, danach jeder Login. Das war zu weit:
   # Jeder Vereinsmanager und Teammanager eines fremden Vereins las mit.
