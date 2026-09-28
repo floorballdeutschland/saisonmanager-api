@@ -3,8 +3,8 @@ require 'test_helper'
 # Der Vermerk über ein besonderes Ereignis ist ein interner Teil des
 # Spielberichts: Er nennt regelmäßig Namen und beschreibt das Verhalten
 # einzelner Personen. Die öffentliche Spieldetailseite zeigte ihn bisher jedem,
-# auch anonym und über den API-Schlüssel. Jetzt gibt es ihn nur noch mit Login
-# (oder Sekretariats-Link).
+# auch anonym und über den API-Schlüssel, danach (#679) jedem Login. Jetzt sieht
+# ihn nur, wer den Spielbericht pflegt, dazu die RSK des Spielbetriebs.
 class GamesSpecialEventVisibilityTest < ActionDispatch::IntegrationTest
   API_KEY = 'test-key-for-smoke-tests'.freeze # test/fixtures/api_keys.yml
   VERMERK = 'Zuschauer X hat den Schiedsrichter beleidigt'.freeze
@@ -50,16 +50,78 @@ class GamesSpecialEventVisibilityTest < ActionDispatch::IntegrationTest
     assert_equal VERMERK, response.parsed_body['special_event_string']
   end
 
-  # Bewusst jeder Login, nicht nur die Rollen aus can_view_hidden_elements?:
-  # Eingeschränkt wird hier die Öffentlichkeit, nicht der angemeldete Betrieb.
-  test 'auch ein Login ohne Bezug zum Spiel sieht den Vermerk' do
+  test 'ein Login ohne Bezug zum Spiel sieht den Vermerk nicht' do
     other_go = create(:game_operation, state_association_id: create(:state_association).id)
     login(create(:user, :sbk_scoped, game_operation_id: other_go.id))
 
     get "/api/v2/games/#{@game.id}.json"
 
     assert_response :success
+    assert_not response.parsed_body.key?('special_event_string')
+    assert_not_includes response.body, VERMERK
+  end
+
+  test 'Vereinsmanager eines fremden Vereins sieht den Vermerk nicht' do
+    login(create(:user, :vm, club_id: create(:club, state_association_id: @sa.id).id))
+
+    get "/api/v2/games/#{@game.id}.json"
+
+    assert_response :success
+    assert_not_includes response.body, VERMERK
+  end
+
+  test 'Teammanager einer unbeteiligten Mannschaft sieht den Vermerk nicht' do
+    other = create(:team, league: @league, club: create(:club, state_association_id: @sa.id))
+    login(create(:user, :tm, team_id: other.id))
+
+    get "/api/v2/games/#{@game.id}.json"
+
+    assert_response :success
+    assert_not_includes response.body, VERMERK
+  end
+
+  test 'SBK des Spielbetriebs sieht den Vermerk' do
+    login(create(:user, :sbk_scoped, game_operation_id: @go.id))
+
+    get "/api/v2/games/#{@game.id}.json"
+
     assert_equal VERMERK, response.parsed_body['special_event_string']
+  end
+
+  test 'Vereinsmanager eines beteiligten Vereins sieht den Vermerk' do
+    guest_club = create(:club, state_association_id: @sa.id)
+    @guest.update!(club: guest_club)
+    login(create(:user, :vm, club_id: guest_club.id))
+
+    get "/api/v2/games/#{@game.id}.json"
+
+    assert_equal VERMERK, response.parsed_body['special_event_string']
+  end
+
+  test 'Teammanager einer beteiligten Mannschaft sieht den Vermerk' do
+    login(create(:user, :tm, team_id: @guest.id))
+
+    get "/api/v2/games/#{@game.id}.json"
+
+    assert_equal VERMERK, response.parsed_body['special_event_string']
+  end
+
+  test 'RSK des Spielbetriebs sieht den Vermerk' do
+    login(create(:user, :rsk_scoped, game_operation_id: @go.id))
+
+    get "/api/v2/games/#{@game.id}.json"
+
+    assert_equal VERMERK, response.parsed_body['special_event_string']
+  end
+
+  test 'RSK eines fremden Spielbetriebs sieht den Vermerk nicht' do
+    other_go = create(:game_operation, state_association_id: create(:state_association).id)
+    login(create(:user, :rsk_scoped, game_operation_id: other_go.id))
+
+    get "/api/v2/games/#{@game.id}.json"
+
+    assert_response :success
+    assert_not_includes response.body, VERMERK
   end
 
   test 'das Spielsekretariat sieht den Vermerk über seinen Link' do

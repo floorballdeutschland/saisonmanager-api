@@ -90,14 +90,10 @@ class GamesController < ApplicationController
     # dieselbe Grenze wie die Bedienelemente: ein fremder Hallenlink zeigt sie
     # nicht.
     hash.merge!(_checklist_hash(game)) if current_user || secretary
-    # Der Vermerk über ein besonderes Ereignis gehört nicht in die öffentliche
-    # Spielansicht: Er ist ein interner Teil des Spielberichts und nennt
-    # regelmäßig Namen und Verhalten einzelner Personen. Bewusst an jeden Login
-    # und an das Spielsekretariat, nicht nur an die Rollen aus
-    # can_view_hidden_elements? — die Spielseite zeigte ihn bisher allen, und
-    # eingeschränkt wird hier nur die Öffentlichkeit. Anonyme Abrufe sehen ihn
-    # gar nicht mehr, auch nicht über den API-Schlüssel.
-    hash[:special_event_string] = game.special_event_string if current_user || secretary
+    # Der Vermerk über ein besonderes Ereignis ist ein interner Teil des
+    # Spielberichts und nennt regelmäßig Namen und Verhalten einzelner Personen.
+    # Siehe can_view_special_event? für den Kreis, der ihn sieht.
+    hash[:special_event_string] = game.special_event_string if can_view_special_event?(game)
     if current_user
       ph = current_user.permission_hash
       go_id = game.game_day.league.game_operation_id.to_i
@@ -1364,6 +1360,20 @@ class GamesController < ApplicationController
     # Schiedsrichter. Das war die zweite Hälfte des Fehlers vom 15.08.
     club_ids = teams.flat_map(&:all_club_ids).compact + [game.game_day&.club_id].compact
     ph[:vm].present? && ph[:vm].intersect?(club_ids)
+  end
+
+  # Wer den Spielbericht pflegt (can_view_hidden_elements?: Admin/SBK des
+  # Spielbetriebs, VM/TM der beteiligten Mannschaften und des Ausrichters,
+  # Spielsekretariat per Link) und zusätzlich die RSK des Spielbetriebs.
+  #
+  # Bis #679 sah ihn die Öffentlichkeit, danach jeder Login. Das war zu weit:
+  # Jeder Vereinsmanager und Teammanager eines fremden Vereins las mit.
+  def can_view_special_event?(game)
+    return true if can_view_hidden_elements?(game)
+    return false unless current_user
+
+    go_id = game.league&.game_operation_id.to_i
+    current_user.permission_hash[:rsk].to_a.intersect?([0, go_id])
   end
 
   def author_user_id
