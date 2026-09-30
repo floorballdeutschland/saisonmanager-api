@@ -9,9 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.123.3] - 2026-09-30
+
 ### Behoben
 
 - **Spielgemeinschaft: Spieler nicht mehr doppelt in „Meine Lizenzen"**: Wer in mehreren Vereinen einer Spielgemeinschaft Mitglied ist, etwa im Stammverein und per Freigabe im Partnerverein, stand in der Lizenzübersicht der Mannschaft einmal je Verein, unter den Anträgen ebenso wie in der Auswahl für neue Anträge. Gespeichert war die Lizenz immer nur einmal. Jetzt erscheint jeder Spieler genau einmal.
+- **Hinweis „Spiel verschoben" am Handy nicht mehr über Datum und Uhrzeit**: In der Spieltagsliste lag der rote Hinweis mobil über Datum und Uhrzeit, die trotzdem angezeigt wurden und darunter hervorschauten. In der Leiste „Nächste Spiele" sprang er bis in den Seitenkopf. Jetzt steht der Hinweis am Handy in der Spalte, Datum und Uhrzeit richten sich wie in den anderen Ansichten nach der Art des Hinweises, und bei sonstigen Hinweisen wächst die Zeile mit, statt in die nächste Paarung zu ragen.
 
 ## [1.123.2] - 2026-09-28
 
