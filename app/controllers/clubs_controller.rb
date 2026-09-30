@@ -617,7 +617,11 @@ class ClubsController < ApplicationController
     result[:document_types] = catalog.values.sort_by(&:name).map { |dt| document_type_json(dt) }
 
     clubs = Club.find(team.all_club_ids)
-    all_players = clubs.map(&:players).flatten.compact
+    # `uniq`: Bei einer Spielgemeinschaft steht, wer Mitglied in mehreren ihrer
+    # Vereine ist (Stammverein plus Freigabe), in jeder dieser Vereinslisten.
+    # Ohne `uniq` erschien er je Verein einmal unter den Antraegen bzw. in der
+    # Auswahl, obwohl es nur einen Lizenzeintrag gibt.
+    all_players = clubs.map(&:players).flatten.compact.uniq
     # Eine Abfrage fuer alle Spieler des Vereins statt einer je Zeile.
     suspensions = PlayerSuspension.active_by_player(all_players.map(&:id))
     # Ebenso die Wettbewerbe der Mannschaft: Sie haengen an `team` und nicht am
