@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Spielgemeinschaft: Spieler nicht mehr doppelt in „Meine Lizenzen"**: Wer in mehreren Vereinen einer Spielgemeinschaft Mitglied ist, etwa im Stammverein und per Freigabe im Partnerverein, stand in der Lizenzübersicht der Mannschaft einmal je Verein, unter den Anträgen ebenso wie in der Auswahl für neue Anträge. Gespeichert war die Lizenz immer nur einmal. Jetzt erscheint jeder Spieler genau einmal.
+
 ## [1.123.2] - 2026-09-28
 
 ### Behoben
