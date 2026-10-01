@@ -553,6 +553,9 @@ class User < ApplicationRecord
     # Vereinsansicht, Zuruecksetzen gibt den Antrag nur wieder in die Warteschlange.
     result[:player_reset_license] = ph[:admin].present? || ph[:sbk].present?
     # Erst-/Zweitlizenz-Zuordnung (GF-Erwachsenenbereich) setzen/tauschen
+    # Antrag kostenfrei ablehnen (License.free_rejectable?): fällt aus der
+    # Gebührenrechnung. Vorerst nur Admin, Entscheidung 01.10.2026.
+    result[:player_free_reject_license] = ph[:admin].present?
     result[:player_set_gf_role] = ph[:admin].present? || ph[:sbk].present?
     result[:player_merge] = ph[:admin].present? || ph[:sbk].present?
     result[:player_suspend] = ph[:admin].present? || ph[:sbk].present?

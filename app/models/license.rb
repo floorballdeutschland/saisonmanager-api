@@ -59,6 +59,17 @@ class License < ApplicationRecord
   # entwertet jede vorhandene Markierung, ein Test haelt den Wert fest.
   EXPRESS_WAIVED_KEY = 'express_waived'.freeze
 
+  # Markierung an dem `abgelehnt`-Eintrag, mit dem ein Admin einen Antrag
+  # kostenfrei abgelehnt hat (PlayersController#handle_license_request mit
+  # `free_of_charge`). Fall: Ein Verein beantragt in gutem Glauben Lizenzen
+  # fuer eine Mannschaft, die es lizenzrechtlich so nicht geben kann. Eine
+  # gewoehnliche Ablehnung ist kostenpflichtig, die Karenzzeit ist dann laengst
+  # vorbei. Die Lizenz faellt damit aus der Gebuehrenrechnung
+  # (Player#billable_licenses) und aus dem Expresszuschlag
+  # (Admin::LicensesController#index), bleibt aber samt Begruendung in der
+  # History stehen. Bestandsdaten in JSONB, der Wert bleibt deshalb fest.
+  FREE_REJECTION_KEY = 'free_rejection'.freeze
+
   # Zielstatus, die PlayersController#handle_license_request setzen kann. Alles
   # andere lehnt der Endpunkt ab, statt still nichts zu tun.
   #
@@ -187,10 +198,12 @@ class License < ApplicationRecord
   # hier aus waere ein Umweg an den Pruefungen dieses Antrags vorbei
   # (Mitgliedschaft nach dem Transfer, Sperre, Doppelantrag). Loeschen sperrt
   # schon deletable? (nur aktive Status).
-  def self.change_blocked_reason(license, target_status_id, reason, season_id = Setting.current_season_id)
+  def self.change_blocked_reason(license, target_status_id, reason, season_id = Setting.current_season_id,
+                                 free_of_charge: false)
     if current_status_id(license) == TRANSFER
       return 'Eine Lizenz „ungültig wg. Transfer“ reaktiviert der Verein mit einem neuen Antrag für die Mannschaft.'
     end
+    return free_rejection_blocked_reason(license, target_status_id, reason, season_id) if free_of_charge
 
     case target_status_id
     when DELETED then delete_blocked_reason(license, reason, season_id)
@@ -227,6 +240,40 @@ class License < ApplicationRecord
     else
       'Es lassen sich nur Lizenzen der laufenden Saison zurücksetzen.'
     end
+  end
+
+  # Laesst sich dieser Antrag kostenfrei ablehnen? Bewusst eng: nur die
+  # laufende Saison, nur ein offener Antrag und nur eine Lizenz, die nie
+  # erteilt war. Eine einmal erteilte Lizenz ist abgerechnet und bleibt es,
+  # sonst waere der Knopf ein Weg an der Gebuehr vorbei (wie beim Loeschen).
+  def self.free_rejectable?(license, current_season_id = Setting.current_season_id)
+    return false if license.blank?
+    return false unless license['season_id'].to_s == current_season_id.to_s
+
+    current_status_id(license) == REQUESTED && !ever_approved?(license)
+  end
+
+  def self.free_rejection_blocked_reason(license, target_status_id, reason, current_season_id = Setting.current_season_id)
+    return 'Lizenz nicht gefunden.' if license.blank?
+    return 'Kostenfrei lässt sich ein Antrag nur ablehnen.' unless target_status_id == DENIED
+    return 'Zum kostenfreien Ablehnen ist eine Begründung erforderlich.' if reason.to_s.strip.blank?
+    return nil if free_rejectable?(license, current_season_id)
+
+    if license['season_id'].to_s != current_season_id.to_s
+      'Es lassen sich nur Anträge der laufenden Saison kostenfrei ablehnen.'
+    elsif ever_approved?(license)
+      'Diese Lizenz war bereits erteilt und ist damit abgerechnet. Sie lässt sich nicht kostenfrei ablehnen.'
+    else
+      'Nur beantragte Lizenzen lassen sich kostenfrei ablehnen.'
+    end
+  end
+
+  # Steht die Lizenz gerade auf einer kostenfreien Ablehnung? Massgeblich ist
+  # der juengste Eintrag: Widerruft die SBK die Ablehnung, ist der Antrag
+  # wieder offen und wieder kostenpflichtig.
+  def self.free_rejection?(license)
+    entry = LicenseEffectiveStatus.current_entry(license)
+    entry.is_a?(Hash) && entry['license_status_id'].to_i == DENIED && entry[FREE_REJECTION_KEY] == true
   end
 
   NAMES = {

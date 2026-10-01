@@ -1058,8 +1058,11 @@ class Player < ApplicationRecord
   # Neuantrag nie. Mannschaften ohne Transferlizenz bleiben unberuehrt, und
   # eine Transferlizenz ohne weiteren Eintrag bleibt berechnet: Wer mitten in
   # der Saison wegwechselt, hatte die Lizenz beim alten Verein trotzdem.
+  #
+  # Kostenfrei abgelehnte Antraege (License.free_rejection?) fallen vorher
+  # heraus: Sie stehen nur noch zur Nachvollziehbarkeit in der History.
   def billable_licenses(season_id)
-    all = current_licenses(season_id)
+    all = current_licenses(season_id)&.reject { |l| License.free_rejection?(l) }
     return all if all.blank?
 
     all.group_by { |l| l['team_id'].to_i }.values.flat_map do |group|
