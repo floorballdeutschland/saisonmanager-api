@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Lizenzantrag kostenfrei ablehnen**: Admins können einen offenen Lizenzantrag in der Lizenzverwaltung jetzt kostenfrei ablehnen, mit Pflichtbegründung. Gedacht für Anträge, die ein Verein in gutem Glauben gestellt hat und die lizenzrechtlich nicht möglich sind. Bisher war jede Ablehnung kostenpflichtig. Die Lizenz fällt aus der Gebührenrechnung, ein Expresszuschlag entfällt, und die Lizenzübersicht zeigt sie als „Kostenfrei abgelehnt“, auch in der CSV-Ausfuhr. In der History bleibt sie samt Begründung stehen. Möglich nur für Anträge der laufenden Saison, die nie erteilt waren. Wird die Ablehnung widerrufen, ist der Antrag wieder kostenpflichtig.
+
 ## [1.123.3] - 2026-09-30
 
 ### Behoben
