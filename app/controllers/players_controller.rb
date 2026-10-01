@@ -352,9 +352,10 @@ class PlayersController < ApplicationController
       # Pflicht-Begruendung und Saison-/Statusgrenze beim Loeschen, dieselbe
       # Pruefung beim Zuruecksetzen einer erteilten Lizenz auf `beantragt`.
       # Kostenfrei ablehnen (License::FREE_REJECTION_KEY) ist eine
-      # Geldentscheidung und vorerst dem Admin vorbehalten. Ueber den
-      # Typ-Caster mit `== true`: Nur ein ausdrueckliches Ja nimmt die Gebuehr weg.
-      free_of_charge = ActiveModel::Type::Boolean.new.cast(params[:free_of_charge]) == true
+      # Geldentscheidung und vorerst dem Admin vorbehalten. Nur ein
+      # ausdrueckliches Ja nimmt die Gebuehr weg: `true` (JSON) oder "true"
+      # (Formular). Der Typ-Caster laese jeden unbekannten Text als Ja.
+      free_of_charge = [true, 'true'].include?(params[:free_of_charge])
       return render json: { message: 'Kostenfrei ablehnen darf nur ein Admin.' }, status: :forbidden if
         free_of_charge && ph[:admin].blank?
 
@@ -449,20 +450,6 @@ class PlayersController < ApplicationController
         if idx == license_index &&
            License.current_status_id(lic) != params[:license_status_id].to_i
           entry = license_request_entry(free_of_charge)
-          # Jeder `beantragt`-Eintrag von hier aus wird markiert und startet die
-          # Karenzzeit damit nicht neu. Dieser Endpunkt ist Admin und SBK
-          # vorbehalten (siehe Rechteprüfung oben), ein Verein beantragt hier
-          # also nie: Was hier entsteht, ist immer eine Verwaltungskorrektur.
-          # Die erste Beantragung läuft über request_license und bleibt
-          # unmarkiert.
-          #
-          # Bewusst nicht auf `abgelehnt -> beantragt` eingeengt. Der Weg aus
-          # `erteilt` heraus ist der teurere Fall – dort ist die Gebühr sicher
-          # angefallen –, und er ist real erreichbar: Die Lizenzübersicht wird
-          # einmal geladen und nicht nachgeführt, ein Widerruf-Klick auf einer
-          # veralteten Zeile schickt also `beantragt` auf eine inzwischen
-          # erteilte Lizenz. Siehe License.grace_period_anchor.
-          # Beide Markierungen setzt license_request_entry.
           (lic['history'] ||= []) << entry
           if params[:license_status_id].to_i == License::DELETED && lic['gf_role'].present?
             # Eine gelöschte Lizenz gehört nicht mehr zum Wettbewerb.
@@ -484,7 +471,8 @@ class PlayersController < ApplicationController
             approved_team_id = lic['team_id']
             lic['valid_until'] = params[:valid_until].presence || default_license_valid_until(lic['season_id']).iso8601
             # Das Flag umschreiben und die Entscheidung am selben Eintrag
-            # festhalten: Die Abrechnung liest nur das Flag, ein halbes Jahr
+            # festhalten: Die Abrechnung liest nur das Flag (und
+            # License.free_rejection?), ein halbes Jahr
             # spaeter belegt aber allein die Markierung, wer den Zuschlag
             # gestrichen hat.
             if waive_express && lic['express'].present?
@@ -1435,9 +1423,25 @@ class PlayersController < ApplicationController
 
   private
 
-  # Der History-Eintrag fuer handle_license_request samt seinen Markierungen
-  # (REVOKED_REJECTION_KEY fuer jedes `beantragt`, FREE_REJECTION_KEY fuer die
-  # kostenfreie Ablehnung). Ausgelagert wegen Metrics/CyclomaticComplexity.
+  # Der History-Eintrag fuer handle_license_request, ausgelagert wegen
+  # Metrics/CyclomaticComplexity. EXPRESS_WAIVED_KEY setzt erst der
+  # Genehmigungszweig dort.
+  #
+  # FREE_REJECTION_KEY markiert die kostenfreie Ablehnung (nur Admin, oben
+  # geprueft).
+  #
+  # REVOKED_REJECTION_KEY: Jeder `beantragt`-Eintrag von hier aus wird markiert
+  # und startet die Karenzzeit damit nicht neu. Dieser Endpunkt ist Admin und
+  # SBK vorbehalten, ein Verein beantragt hier also nie: Was hier entsteht, ist
+  # immer eine Verwaltungskorrektur. Die erste Beantragung läuft über
+  # request_license und bleibt unmarkiert.
+  #
+  # Bewusst nicht auf `abgelehnt -> beantragt` eingeengt. Der Weg aus
+  # `erteilt` heraus ist der teurere Fall – dort ist die Gebühr sicher
+  # angefallen –, und er ist real erreichbar: Die Lizenzübersicht wird einmal
+  # geladen und nicht nachgeführt, ein Widerruf-Klick auf einer veralteten
+  # Zeile schickt also `beantragt` auf eine inzwischen erteilte Lizenz. Siehe
+  # License.grace_period_anchor.
   def license_request_entry(free_of_charge)
     status = params[:license_status_id].to_i
     entry = { license_status_id: status, reason: params[:reason] || '',

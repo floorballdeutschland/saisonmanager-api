@@ -163,7 +163,7 @@ module Admin
               base_status:          License::NAMES[player_data[:team_license][:base_status_id].to_i],
               suspension:           player_data[:team_license][:suspension],
               # Eine kostenfreie Ablehnung nimmt auch den Expresszuschlag mit.
-              # Am Flag selbst bleibt nichts geaendert: Widerruft die SBK die
+              # Am Flag selbst bleibt nichts geaendert: Widerruft der Verband die
               # Ablehnung, gilt der Antrag wieder so, wie er gestellt wurde.
               express:              (lic['express'] || false) && !License.free_rejection?(lic),
               free_rejection:       License.free_rejection?(lic),

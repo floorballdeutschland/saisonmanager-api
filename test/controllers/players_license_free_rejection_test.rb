@@ -163,6 +163,34 @@ class PlayersLicenseFreeRejectionTest < ActionDispatch::IntegrationTest
     assert_equal true, row['free_rejection']
   end
 
+  # Formularwerte: Nur "true" nimmt die Gebuehr weg. Der Typ-Caster laese
+  # jeden unbekannten Text als Ja.
+  test 'ein anderer Wert als true lehnt gewoehnlich ab' do
+    login_as(create(:user, :admin))
+    %w[false 0 garbage].each do |value|
+      license_id = requested
+      post "/api/v2/admin/players/#{@player.id}/handle_license_request",
+           params: { license_id: license_id, license_status_id: License::DENIED, reason: 'Grund',
+                     free_of_charge: value }
+
+      assert_response :success, value
+      assert_nil license['history'].last[License::FREE_REJECTION_KEY], value
+      assert_equal [license_id], billable_ids, value
+    end
+  end
+
+  # Die SBK lehnt weiter gewoehnlich ab, auch wenn das Feld mitkommt.
+  test 'die SBK lehnt mit free_of_charge false gewoehnlich ab' do
+    login_as(create(:user, :sbk_scoped, game_operation_id: @game_operation.id))
+    license_id = requested
+
+    handle(license_id, License::DENIED, free_of_charge: false)
+
+    assert_response :success
+    assert_equal License::DENIED, License.current_status_id(license)
+    assert_equal [license_id], billable_ids
+  end
+
   # Bestandsdaten in JSONB: Eine Umbenennung entwertet jede Markierung.
   test 'der Schluessel der Markierung liegt fest' do
     assert_equal 'free_rejection', License::FREE_REJECTION_KEY

@@ -54,7 +54,7 @@ class License < ApplicationRecord
   # Markierung an dem `erteilt`-Eintrag, mit dem der Verband den Expresszuschlag
   # gestrichen hat (PlayersController#handle_license_request). Das Flag
   # `express` selbst kennt danach nur noch `false`, und die Abrechnung liest
-  # allein dieses Flag -- wer die Streichung wann veranlasst hat, steht deshalb
+  # neben License.free_rejection? nur dieses Flag -- wer die Streichung wann veranlasst hat, steht deshalb
   # nur hier. Wie REVOKED_REJECTION_KEY Bestandsdaten in JSONB: Eine Umbenennung
   # entwertet jede vorhandene Markierung, ein Test haelt den Wert fest.
   EXPRESS_WAIVED_KEY = 'express_waived'.freeze
@@ -142,8 +142,9 @@ class License < ApplicationRecord
   # der einzige Weg, auf dem eine erteilte Lizenz aus der Vereinsansicht
   # verschwindet, ohne dass ein Vorgang dahinterstünde, den man nachlesen könnte.
   # Der Freitext IST die Begründung. Er landet in der History und über die
-  # Gebührenrechnung, die jede Lizenz der Saison mitsamt History exportiert
-  # (Player#main_license_hash → select_license, ohne Statusfilter), auch bei der
+  # Gebührenrechnung (Player#billable_licenses), die jede Lizenz der Saison
+  # mitsamt History exportiert, ausser kostenfrei abgelehnten
+  # (License.free_rejection?), auch bei der
   # Abrechnungsstelle: Eine gelöschte Lizenz fällt nicht aus der Gebühr, und das
   # soll sie auch nicht – sonst wäre der Knopf ein Weg daran vorbei.
   def self.delete_blocked_reason(license, reason, current_season_id = Setting.current_season_id)
@@ -190,7 +191,8 @@ class License < ApplicationRecord
   # ist dort auch fuer den Verein sichtbar.
   # Die eine Stelle, die PlayersController#handle_license_request fragt, ob der
   # gewuenschte Statuswechsel erlaubt ist -- Meldung oder nil. Eigene Regeln
-  # tragen geloescht, beantragt und jeder Wechsel aus einer Transferlizenz.
+  # tragen geloescht, beantragt, jeder Wechsel aus einer Transferlizenz und die
+  # kostenfreie Ablehnung (`free_of_charge:`, vor dem Zielstatus geprueft).
   #
   # Aus einer Lizenz „ungültig wg. Transfer" fuehrt hier kein Weg heraus. Sie
   # reaktiviert der Verein per Antrag (request_license), den der Verband dann
@@ -269,8 +271,8 @@ class License < ApplicationRecord
   end
 
   # Steht die Lizenz gerade auf einer kostenfreien Ablehnung? Massgeblich ist
-  # der juengste Eintrag: Widerruft die SBK die Ablehnung, ist der Antrag
-  # wieder offen und wieder kostenpflichtig.
+  # der juengste Eintrag: Widerruft der Verband die Ablehnung oder stellt der
+  # Verein den Antrag wieder ein, ist er wieder offen und kostenpflichtig.
   def self.free_rejection?(license)
     entry = LicenseEffectiveStatus.current_entry(license)
     entry.is_a?(Hash) && entry['license_status_id'].to_i == DENIED && entry[FREE_REJECTION_KEY] == true
