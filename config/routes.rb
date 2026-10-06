@@ -332,6 +332,8 @@ Rails.application.routes.draw do
         resources :referee_observations, only: %i[update]
         get 'referee_feedback_analytics', to: 'referee_feedback_analytics#index'
         get 'referee_feedback_analytics/export', to: 'referee_feedback_analytics#export'
+        get 'referee_observation_report', to: 'referee_observation_reports#index'
+        get 'referee_observation_report/export', to: 'referee_observation_reports#export'
         resources :feedback_themes, only: %i[index create update destroy]
         get 'feedback_comments', to: 'feedback_comments#index'
         get 'feedback_comments/stats', to: 'feedback_comments#stats'
