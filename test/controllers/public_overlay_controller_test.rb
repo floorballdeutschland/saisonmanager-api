@@ -290,6 +290,20 @@ class PublicOverlayControllerTest < ActionDispatch::IntegrationTest
     assert_response :gone
   end
 
+  # 403 statt 410: Bühne und Bedienfeld hören nur bei 400/410 auf zu fragen.
+  # Eine Tage vorher eingerichtete Browser-Quelle soll am Spieltag von selbst
+  # anspringen (Feedback #70).
+  test 'ein Token vor seinem Fenster wird mit dem Beginn abgewiesen' do
+    @game_day.update!(date: 10.days.from_now.to_date.iso8601)
+
+    get '/api/v2/public/overlay/live', params: { token: @token }
+
+    assert_response :forbidden
+    body = JSON.parse(response.body)
+    assert_predicate body['valid_from'], :present?
+    assert_nil body['game']
+  end
+
   test 'ein zurueckgezogenes Token wird abgewiesen' do
     login(@user)
     delete "/api/v2/user/game_days/#{@game_day.id}/overlay_link"

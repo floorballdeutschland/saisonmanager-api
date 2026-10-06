@@ -77,6 +77,7 @@ class PublicOverlayController < ApplicationController
           game_status: g.game_status
         }
       end,
+      valid_from: @link.valid_from&.iso8601,
       expires_at: @link.expires_at.iso8601
     }
   end
@@ -197,10 +198,18 @@ class PublicOverlayController < ApplicationController
     raw_token = params[:token]
     return render json: { message: 'Kein Token angegeben.' }, status: :bad_request if raw_token.blank?
 
-    @link = GameDayOverlayLink.find_by_token(raw_token)
-    return if @link
+    @link = GameDayOverlayLink.find_unexpired_by_token(raw_token)
+    if @link.nil?
+      return render json: { message: 'Dieser Link ist ungültig oder abgelaufen.' }, status: :gone
+    end
+    return if @link.started?
 
-    render json: { message: 'Dieser Link ist ungültig oder abgelaufen.' }, status: :gone
+    # 403 und nicht 410: Bühne und Bedienfeld behandeln 400/410 als endgültig
+    # und hören auf zu fragen. Eine Browser-Quelle, die Tage vorher in OBS
+    # eingerichtet wurde, soll dagegen weiterfragen und am Spieltag von selbst
+    # anspringen.
+    render json: { message: @link.not_started_message, valid_from: @link.valid_from.iso8601 },
+           status: :forbidden
   end
 
   # Ohne game_id das Spiel, das das Dock zuletzt gewählt hat; ohne diese Wahl

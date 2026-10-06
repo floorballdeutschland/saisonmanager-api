@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Spielsekretariats-Code und Overlay-Zugang gelten rund um den Spieltag**: Beide Zugänge galten bisher eine feste Zeit ab dem Erzeugen (Sekretariat 72 Stunden, Overlays 36 Stunden). Wer sie ein paar Tage vorher ausdruckte, hatte am Spieltag einen abgelaufenen Zettel in der Hand. Jetzt gelten sie von 72 Stunden vor dem Spieltag bis zum Ende des Folgetags, egal wann sie erzeugt wurden. Vorher berechtigen sie zu nichts: Das Spielsekretariat und die Overlays melden dann, ab wann der Zugang gilt, und eine früh eingerichtete OBS-Quelle springt am Spieltag von selbst an. Wird der Spieltag verschoben, wandert das Fenster mit. Wer einen Zugang erst nach dem Spieltag erzeugt, etwa zum Nachtragen des Berichts, bekommt wie bisher die volle Laufzeit ab dem Erzeugen.
+
 ## [1.124.1] - 2026-10-06
 
 ### Verbessert
