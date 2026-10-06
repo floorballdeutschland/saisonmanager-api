@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Aufstellung aus dem letzten Spiel übernehmen** (feedback#69): Im Spielbericht lässt sich die Aufstellung einer Mannschaft aus ihrem jüngsten früheren Spiel derselben Saison übernehmen, mit Trikotnummern und Torwart-Kennung (ohne Kapitän und Starting Six). Danach trägt man nur noch die Abwesenden aus. Personen ohne Lizenzantrag für die Mannschaft, bereits Aufgestellte und schon vergebene Nummern werden übersprungen und gesammelt gemeldet, Lizenzwarnungen wie beim einzelnen Hinzufügen.
+
 ## [1.124.1] - 2026-10-06
 
 ### Verbessert

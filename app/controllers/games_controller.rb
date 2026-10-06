@@ -3,7 +3,7 @@ class GamesController < ApplicationController
   include IcalRenderable
 
   SECRETARY_ACTIONS = %i[
-    add_player_to_lineup remove_player add_coach remove_coach set_captain
+    add_player_to_lineup copy_lineup_from_last_game remove_player add_coach remove_coach set_captain
     set_starting_player set_player_award
     add_event remove_event update_event
     set_referee set_game_status set_flag set_string
@@ -324,12 +324,7 @@ class GamesController < ApplicationController
         item[:goalkeeper] = true if params[:goalkeeper].present?
 
         if params[:player_id].present?
-          item[:player_id] = player.id
-          item[:player_firstname] = player.first_name
-          item[:player_name] = player.last_name
-          item[:gender] = player.gender
-          birthdate = player.birthdate
-          item[:youth] = birthdate.present? && birthdate > 18.years.ago.to_date
+          item.merge!(lineup_player_snapshot(player))
         else
           item[:player_firstname] = params[:player_firstname]
           item[:player_name] = params[:player_name]
@@ -352,6 +347,100 @@ class GamesController < ApplicationController
     else
       render json: { message: 'Keine Berechtigung.' }, status: :forbidden
     end
+  end
+
+  # Übernimmt die Aufstellung einer Mannschaft aus ihrem letzten Spiel
+  # (feedback#69): Meist läuft fast derselbe Kader auf, und ohne Übernahme muss
+  # jede Person einzeln mit Nummer eingetragen werden. Danach trägt man die
+  # Abwesenden in der Kadermaske wieder aus.
+  #
+  # Quelle ist das jüngste Spiel DERSELBEN Mannschaft (team_id) in der Saison
+  # des Zielspiels, das vor dem Zielspiel liegt und auf ihrer Seite eine
+  # Aufstellung hat. Pokal oder andere Ligen zählen mit, solange die
+  # Mannschaft dieselbe ist.
+  #
+  # Übernommen werden Person, Trikotnummer und Torwart-Kennung. Kapitän,
+  # Starting Six und Auszeichnungen nicht: Die gehören zum einzelnen Spiel.
+  # Für jede Person gelten dieselben Regeln wie bei add_player_to_lineup, nur
+  # gesammelt: ohne Lizenzeintrag für die Mannschaft wird übersprungen statt
+  # abgewiesen, jede andere Lizenzlage ergibt eine Warnung. Was im Zielspiel
+  # schon steht (Person oder Nummer), bleibt unangetastet. Freitext-Einträge
+  # ohne player_id kommen nicht mit, ihre Lizenz lässt sich nicht prüfen.
+  def copy_lineup_from_last_game
+    game = Game.find(params[:id])
+    side = params[:side]
+
+    return render json: { message: 'Keine Berechtigung.' }, status: :forbidden unless can_edit_lineup_of?(game)
+    unless LINEUP_SIDES.include?(side)
+      return render json: { message: 'Seite fehlt oder ist unbekannt (erlaubt: Heim oder Gast).' },
+                    status: :unprocessable_entity
+    end
+
+    team_id = side == 'home' ? game.home_team_id : game.guest_team_id
+    source = team_id.present? && last_game_with_lineup(game, team_id)
+    unless source
+      return render json: { message: 'Kein früheres Spiel dieser Mannschaft mit Aufstellung in dieser Saison gefunden.' },
+                    status: :not_found
+    end
+
+    source_side = source.home_team_id == team_id ? 'home' : 'guest'
+
+    game.players ||= {}
+    game.players[side] ||= []
+    taken_players = game.players[side].map { |p| p['player_id'] }.compact
+    taken_numbers = game.players[side].map { |p| p['trikot_number'].to_i }
+
+    hidden = PublicPlayerNames.hidden_ids
+    added = []
+    skipped = []
+
+    source.players[source_side].each do |entry|
+      number = entry['trikot_number'].to_i
+      player = Player.find_by(id: entry['player_id']) if entry['player_id'].present?
+      reason =
+        if player.nil? then 'kein Spielerprofil'
+        elsif taken_players.include?(player.id) then 'bereits aufgestellt'
+        elsif taken_numbers.include?(number) then "Nummer #{number} bereits vergeben"
+        elsif lineup_license_missing_error(game, player, side) then 'kein Lizenzantrag für diese Mannschaft'
+        end
+
+      if reason
+        first_name, last_name = PublicPlayerNames.mask_names(
+          entry['player_id'], entry['player_firstname'], entry['player_name'], hidden
+        )
+        skipped << { player_id: entry['player_id'], player_firstname: first_name, player_name: last_name,
+                     trikot_number: number, reason: }
+        next
+      end
+
+      item = { trikot_number: number }
+      item[:goalkeeper] = true if entry['goalkeeper'].present?
+      game.players[side] << item.merge(lineup_player_snapshot(player))
+      taken_players << player.id
+      taken_numbers << number
+      added << player
+    end
+
+    if added.any?
+      game.record_created_at ||= Time.now
+      game.record_updated_at = Time.now
+      game.record_created_by ||= author_user_id
+      game.record_updated_by = author_user_id
+
+      unless game.save
+        return render json: { message: game.errors }, status: :unprocessable_entity
+      end
+    end
+
+    warnings = added.filter_map { |player| lineup_license_warning(game, player, side) }
+
+    render json: {
+      players: PublicPlayerNames.mask_lineup(game.players[side], hidden),
+      added_count: added.size,
+      skipped:,
+      warnings:,
+      source_game: { id: source.id, game_number: source.game_number, date: source.game_day&.date }
+    }
   end
 
   def set_starting_player
@@ -1431,6 +1520,7 @@ class GamesController < ApplicationController
   # Schnittstelle liest nur.
   EVENT_TYPES = %w[goal penalty].freeze
   EVENT_TEAMS = %w[home guest].freeze
+  LINEUP_SIDES = %w[home guest].freeze
 
   # Gibt eine erklärende Meldung zurück oder nil, wenn die Angaben tragen
   # (gleiche Form wie logo_upload_error).
@@ -1471,6 +1561,50 @@ class GamesController < ApplicationController
     when String then value.to_i >= 1
     else false
     end
+  end
+
+  # Personenangaben eines Kadereintrags, wie sie zum Zeitpunkt der Aufstellung
+  # im Profil stehen (Spielbericht-Schnappschuss, siehe PublicPlayerNames).
+  def lineup_player_snapshot(player)
+    birthdate = player.birthdate
+    {
+      player_id: player.id,
+      player_firstname: player.first_name,
+      player_name: player.last_name,
+      gender: player.gender,
+      youth: birthdate.present? && birthdate > 18.years.ago.to_date
+    }
+  end
+
+  # Jüngstes Spiel der Mannschaft vor `game` in derselben Saison, das auf ihrer
+  # Seite eine Aufstellung hat. Datum und Anpfiff sind Textspalten, sortiert
+  # wird deshalb in Ruby über das geparste Datum; die Kandidaten sind die Spiele
+  # einer Mannschaft in einer Saison, also wenige Dutzend. `leagues.season_id`
+  # ist Text und wird als Text verglichen.
+  def last_game_with_lineup(game, team_id)
+    season_id = game.league&.season_id
+    return nil if season_id.blank?
+
+    candidates = Game.by_team_id(team_id)
+                     .where.not(id: game.id)
+                     .joins(game_day: :league)
+                     .where(leagues: { season_id: season_id.to_s })
+                     .includes(:game_day)
+                     .select do |g|
+                       source_side = g.home_team_id == team_id ? 'home' : 'guest'
+                       g.players.is_a?(Hash) && g.players[source_side].present?
+                     end
+
+    target_key = lineup_source_sort_key(game)
+    candidates.select { |g| (lineup_source_sort_key(g) <=> target_key) == -1 }
+              .max_by { |g| lineup_source_sort_key(g) }
+  end
+
+  # Ein Spiel ohne lesbares Datum steht vorn, damit es nie als „letztes"
+  # gewählt wird, solange es datierte Spiele gibt. Der Anpfiff wird auf fünf
+  # Stellen aufgefüllt, damit "9:00" vor "10:00" sortiert.
+  def lineup_source_sort_key(game)
+    [game.game_date || Date.new(1), game.start_time.to_s.rjust(5, '0'), game.id]
   end
 
   # Ohne jeden Lizenzeintrag fuer die aufstellende Mannschaft wird nicht mehr
