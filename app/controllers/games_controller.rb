@@ -376,21 +376,25 @@ class GamesController < ApplicationController
                     status: :unprocessable_entity
     end
 
+    game.players ||= {}
+    game.players[side] ||= []
+    hidden = PublicPlayerNames.hidden_ids
+
+    # Kein Quellspiel ist kein Fehler, sondern die Lage am ersten Spieltag. Ein
+    # 404 bliebe im Spielbericht als „Nicht gefunden" stehen (ErrorInterceptor,
+    # autoClose: false); die Maske meldet den Fall stattdessen selbst.
     team_id = side == 'home' ? game.home_team_id : game.guest_team_id
-    source = team_id.present? && last_game_with_lineup(game, team_id)
+    source = last_game_with_lineup(game, team_id) if team_id.present?
     unless source
-      return render json: { message: 'Kein früheres Spiel dieser Mannschaft mit Aufstellung in dieser Saison gefunden.' },
-                    status: :not_found
+      return render json: { players: PublicPlayerNames.mask_lineup(game.players[side], hidden),
+                            added_count: 0, skipped: [], warnings: [], source_game: nil }
     end
 
     source_side = source.home_team_id == team_id ? 'home' : 'guest'
 
-    game.players ||= {}
-    game.players[side] ||= []
     taken_players = game.players[side].map { |p| p['player_id'] }.compact
     taken_numbers = game.players[side].map { |p| p['trikot_number'].to_i }
 
-    hidden = PublicPlayerNames.hidden_ids
     added = []
     skipped = []
 

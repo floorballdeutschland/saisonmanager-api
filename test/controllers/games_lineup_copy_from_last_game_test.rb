@@ -100,12 +100,15 @@ class GamesLineupCopyFromLastGameTest < ActionDispatch::IntegrationTest
                  @game.reload.players['home'].map { |p| [p['player_id'], p['trikot_number']] })
   end
 
-  test 'meldet nicht gefunden, wenn es kein früheres Spiel mit Aufstellung gibt' do
+  test 'ohne früheres Spiel mit Aufstellung kommt eine leere Übernahme zurück' do
     game_on('2026-01-10', '12:00', home: @team, guest: @opponent)
 
     post copy_path('home')
 
-    assert_response :not_found
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_nil body['source_game']
+    assert_equal 0, body['added_count']
     assert_empty @game.reload.players['home']
   end
 
