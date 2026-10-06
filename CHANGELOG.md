@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.124.1] - 2026-10-06
+
 ### Verbessert
 
 - **Zusammenlegen von Spielorten wird protokolliert**: Wie bei Spielern und Schiedsrichtern steht jetzt auch beim Zusammenführen zweier Spielorte ein Eintrag im Merge-Protokoll, mit beiden Spielorten samt Adresse (bei Altdatensätzen aus dem alten Adressfeld) und dem Benutzer, der zusammengelegt hat. Bisher war hinterher nicht mehr nachvollziehbar, welche Halle in welche aufgegangen ist, weil der aufgelöste Spielort gelöscht wird.
