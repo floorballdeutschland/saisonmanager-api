@@ -172,6 +172,18 @@ module Admin
       assert_equal 'Hamburg, Halle am Pfeilshof (Waldingstr. 91, Hamburg)', log.merged_label
     end
 
+    test 'Zusammenführen mit sich selbst ergibt 422 und keinen MergeLog-Eintrag' do
+      arena = create(:arena)
+      login(create(:user, :admin))
+
+      assert_no_difference -> { MergeLog.count } do
+        post "/api/v2/admin/arenas/#{arena.id}/merge", params: { secondary_id: arena.id }
+      end
+
+      assert_response :unprocessable_entity
+      assert Arena.exists?(arena.id)
+    end
+
     # Erst mit dem erlaubten `active` ist POST mit `active: false` überhaupt
     # erreichbar. Die Zusicherung aus #449 hängt daran, dass create den Wert
     # nach arena_params setzt und nicht davor.
