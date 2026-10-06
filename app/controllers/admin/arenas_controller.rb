@@ -66,7 +66,7 @@ module Admin
       secondary = Arena.find_by(id: params[:secondary_id])
       return render json: { error: 'Quell-Spielort nicht gefunden' }, status: :not_found unless secondary
 
-      moved = secondary.merge_into!(master)
+      moved = secondary.merge_into!(master, current_user.id)
       render json: { message: 'Spielorte zusammengeführt.', master: master.full_hash, moved_game_days: moved }
     rescue ArgumentError => e
       render json: { error: e.message }, status: :unprocessable_entity

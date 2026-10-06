@@ -147,6 +147,31 @@ module Admin
       assert_equal master.id, game_day.reload.arena_id
     end
 
+    # Der aufgelöste Spielort wird gelöscht. Ohne Protokoll ist danach nicht mehr
+    # erkennbar, wer welche Halle in welche zusammengelegt hat. Gleichnamige
+    # Hallen unterscheiden sich oft nur in der Adresse, deshalb steht sie im Label.
+    test 'Zusammenführen schreibt einen MergeLog-Eintrag' do
+      master = create(:arena, name: 'Halle am Pfeilshof', city: 'Hamburg',
+                              street: 'Am Pfeilshof', housenumber: '20', postcode: '22393')
+      secondary = create(:arena, name: 'Hamburg, Halle am Pfeilshof', city: 'Hamburg',
+                                 street: 'Waldingstr.', housenumber: '91', postcode: nil)
+      admin = create(:user, :admin)
+      login(admin)
+
+      assert_difference -> { MergeLog.count }, 1 do
+        post "/api/v2/admin/arenas/#{master.id}/merge", params: { secondary_id: secondary.id }
+      end
+
+      assert_response :success
+      log = MergeLog.last
+      assert_equal 'arena', log.object_type
+      assert_equal master.id, log.master_id
+      assert_equal secondary.id, log.merged_id
+      assert_equal admin.id, log.performed_by_user_id
+      assert_equal 'Halle am Pfeilshof (Am Pfeilshof 20, 22393 Hamburg)', log.master_label
+      assert_equal 'Hamburg, Halle am Pfeilshof (Waldingstr. 91, Hamburg)', log.merged_label
+    end
+
     # Erst mit dem erlaubten `active` ist POST mit `active: false` überhaupt
     # erreichbar. Die Zusicherung aus #449 hängt daran, dass create den Wert
     # nach arena_params setzt und nicht davor.
