@@ -268,6 +268,70 @@ class PublicOverlayControllerTest < ActionDispatch::IntegrationTest
     assert_response :gone
   end
 
+  # ── Nächste Spiele ────────────────────────────────────────────────────────
+
+  test 'die naechsten Spiele kommen nach dem uebertragenen, frueheste zuerst' do
+    spaeter = anstehendes_spiel(@home, '2026-02-01', '15:00')
+    frueher = anstehendes_spiel(@home, '2026-01-22', '19:00', heim: false)
+    selber_tag_danach = anstehendes_spiel(@home, '2026-01-15', '20:00')
+    selber_tag_davor = anstehendes_spiel(@home, '2026-01-15', '12:00')
+    vorher = anstehendes_spiel(@home, '2026-01-08', '18:00')
+    beendet = anstehendes_spiel(@home, '2026-01-29', '18:00')
+    beendet.update!(started: true, ended: true)
+
+    get '/api/v2/public/overlay/upcoming', params: { token: @token }
+
+    assert_response :success
+    upcoming = JSON.parse(response.body)['upcoming']
+    heim = upcoming['home']
+
+    assert_equal @home.id, heim['id']
+    ids = heim['games'].map { |g| g['game_id'] }
+    assert_equal [selber_tag_danach.id, frueher.id, spaeter.id], ids
+    assert_not_includes ids, selber_tag_davor.id, 'am selben Tag zaehlt nur, was danach angepfiffen wird'
+    assert_not_includes ids, vorher.id, 'ein frueheres Spiel ist kein naechstes, auch unbeendet nicht'
+    assert_not_includes ids, beendet.id
+    assert_not_includes ids, @game.id, 'das uebertragene Spiel ist nicht sein eigenes naechstes'
+
+    auswaerts = heim['games'].find { |g| g['game_id'] == frueher.id }
+    assert_equal false, auswaerts['home']
+    assert_equal '2026-01-22', auswaerts['date']
+    assert_equal '19:00', auswaerts['time']
+    assert auswaerts['opponent'].present?
+
+    assert_equal [], upcoming['guest']['games'], 'die Gastmannschaft hat nichts angesetzt'
+  end
+
+  test 'die naechsten Spiele nennen hoechstens drei Partien' do
+    5.times { |i| anstehendes_spiel(@home, format('2026-02-%02d', i + 1), '18:00') }
+
+    get '/api/v2/public/overlay/upcoming', params: { token: @token }
+
+    assert_response :success
+    assert_equal 3, JSON.parse(response.body)['upcoming']['home']['games'].size
+  end
+
+  test 'die naechsten Spiele zeigen nur Partien derselben Liga' do
+    eigene = anstehendes_spiel(@home, '2026-02-01', '18:00')
+    fremde_liga = create(:league, game_operation: @go, name: 'Pokal')
+    fremdes = create(:game, game_day: create(:game_day, league: fremde_liga, date: '2026-01-20'),
+                            home_team: @home, guest_team: create(:team, league: fremde_liga),
+                            start_time: '18:00', started: false, ended: false)
+
+    get '/api/v2/public/overlay/upcoming', params: { token: @token }
+
+    assert_response :success
+    ids = JSON.parse(response.body)['upcoming']['home']['games'].map { |g| g['game_id'] }
+    assert_includes ids, eigene.id
+    assert_not_includes ids, fremdes.id, 'eine Partie einer anderen Liga gehoert nicht dazu'
+  end
+
+  test 'die naechsten Spiele brauchen ein gueltiges Token' do
+    get '/api/v2/public/overlay/upcoming', params: { token: 'gibtesnicht' }
+
+    assert_response :gone
+  end
+
   # ── Zugang ────────────────────────────────────────────────────────────────
 
   test 'ohne Token gibt es keine Daten' do
@@ -849,6 +913,14 @@ class PublicOverlayControllerTest < ActionDispatch::IntegrationTest
   # Ein beendetes Spiel der Mannschaft, an einem eigenen Spieltag mit Datum.
   # `game_days.date` ist eine Zeichenkette, deshalb wird hier ISO geschrieben --
   # danach sortiert der Endpunkt.
+  def anstehendes_spiel(team, datum, anstoss, heim: true)
+    gegner = create(:team, league: @league)
+    create(:game, game_day: create(:game_day, league: @league, date: datum),
+                  home_team: heim ? team : gegner,
+                  guest_team: heim ? gegner : team,
+                  start_time: anstoss, started: false, ended: false)
+  end
+
   def beendetes_spiel(team, datum, eigene, fremde, heim: true)
     gegner = create(:team, league: @league)
     tag = create(:game_day, league: @league, date: datum)
