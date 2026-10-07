@@ -280,6 +280,10 @@ Rails.application.routes.draw do
       get  'referee/observations/received', to: 'referee_observations#received'
       post 'referee/observations',          to: 'referee_observations#create'
 
+      # Vereins-Feedback zur eigenen Person, nur als Kennzahlen ab fuenf
+      # Rueckmeldungen (siehe RefereeFeedbackSummariesController).
+      get 'referee/feedback_summary', to: 'referee_feedback_summaries#show'
+
       namespace :admin do
         # Streaming-Bereich: die Spiele eines Wochenendes oder eines Spieltags
         # quer über die Ligen, und die Rückmeldung einer angelegten Übertragung.

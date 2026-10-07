@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Schiedsrichter*innen sehen ihr Feedback der Mannschaften**: Unter „Mein Feedback" (bisher „Mein Coaching-Feedback") steht neben den Beobachtungen der Coaches jetzt ein Abschnitt mit dem Feedback der Mannschaften: Anzahl der Rückmeldungen sowie die Durchschnitte für Linie und Kommunikation. Wie am Profil in der Schiedsrichterverwaltung erst ab fünf Rückmeldungen; die Schwelle setzt die API durch, darunter liefert sie nur die Anzahl. Einzelne Rückmeldungen, Freitexte und Mannschaften bleiben der Schiedsrichterverwaltung vorbehalten.
+
 ## [1.124.1] - 2026-10-06
 
 ### Verbessert
