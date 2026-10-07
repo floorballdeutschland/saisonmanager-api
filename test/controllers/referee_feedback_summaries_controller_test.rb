@@ -66,6 +66,58 @@ class RefereeFeedbackSummariesControllerTest < ActionDispatch::IntegrationTest
     assert_nil body['avg_communication_rating']
   end
 
+  test 'neue Rueckmeldungen zaehlen erst im vollen Fuenferblock' do
+    5.times { create(:referee_feedback, referee1_id: @referee.id, line_rating: 6, communication_rating: 6) }
+    login(@user)
+
+    # Die sechste Rueckmeldung darf weder Anzahl noch Schnitt bewegen, sonst
+    # liesse sie sich aus der Differenz zweier Abrufe zurueckrechnen.
+    create(:referee_feedback, referee1_id: @referee.id, line_rating: 10, communication_rating: 1)
+    get '/api/v2/referee/feedback_summary'
+    body = response.parsed_body
+    assert_equal 5, body['count']
+    assert_in_delta 6.0, body['avg_line_rating']
+    assert_in_delta 6.0, body['avg_communication_rating']
+
+    3.times { create(:referee_feedback, referee1_id: @referee.id, line_rating: 8, communication_rating: 8) }
+    get '/api/v2/referee/feedback_summary'
+    assert_equal 5, response.parsed_body['count']
+
+    create(:referee_feedback, referee1_id: @referee.id, line_rating: 8, communication_rating: 8)
+    get '/api/v2/referee/feedback_summary'
+    body = response.parsed_body
+    assert_equal 10, body['count']
+    assert_in_delta 7.2, body['avg_line_rating']
+    assert_in_delta 6.3, body['avg_communication_rating']
+  end
+
+  test 'Ausblenden durch die Moderation wirkt nur blockweise' do
+    hidden = create(:referee_feedback, referee1_id: @referee.id, line_rating: 1, communication_rating: 1)
+    5.times { create(:referee_feedback, referee1_id: @referee.id, line_rating: 7, communication_rating: 7) }
+    login(@user)
+
+    get '/api/v2/referee/feedback_summary'
+    body = response.parsed_body
+    assert_equal 5, body['count']
+    assert_in_delta 5.8, body['avg_line_rating']
+
+    # Nach dem Ausblenden ruecken die naechsten sichtbaren in den Block nach:
+    # Anzahl bleibt 5, der Schnitt ist der eines vollen Blocks, nicht die
+    # alte Summe ohne die eine ausgeblendete Bewertung.
+    hidden.update!(status: 'hidden')
+    get '/api/v2/referee/feedback_summary'
+    body = response.parsed_body
+    assert_equal 5, body['count']
+    assert_in_delta 7.0, body['avg_line_rating']
+
+    # Faellt der Bestand unter die Schwelle, verschwinden die Mittelwerte ganz.
+    RefereeFeedback.for_referee(@referee.id).visible.first.update!(status: 'hidden')
+    get '/api/v2/referee/feedback_summary'
+    body = response.parsed_body
+    assert_equal 4, body['count']
+    assert_nil body['avg_line_rating']
+  end
+
   test 'ohne Anmeldung kein Zugriff' do
     get '/api/v2/referee/feedback_summary'
     assert_response :unauthorized
