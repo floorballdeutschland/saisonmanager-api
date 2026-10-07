@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_09_22_100000) do
+ActiveRecord::Schema[7.2].define(version: 2026_10_07_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -931,6 +931,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_09_22_100000) do
     t.integer "merged_into_id"
     t.string "telefonnummer"
     t.boolean "kurzfristig_mobil", default: false, null: false
+    t.boolean "share_contact_with_officials", comment: "Einwilligung: Telefonnummer und E-Mail sind fuer die am selben Spiel angesetzten Schiris und den Coach sichtbar. NULL = noch nicht gefragt."
     t.index ["club_id"], name: "index_referees_on_club_id"
     t.index ["game_operation_id"], name: "index_referees_on_game_operation_id"
     t.index ["lizenznummer"], name: "index_referees_on_lizenznummer", unique: true, where: "(lizenznummer IS NOT NULL)"

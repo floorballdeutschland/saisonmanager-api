@@ -86,6 +86,21 @@ class RefereeProfileControllerTest < ActionDispatch::IntegrationTest
     assert_equal 'schiri@example.com', @referee.email, 'email darf über das Profil nicht mehr änderbar sein'
   end
 
+  test 'Kontaktfreigabe fuers Gespann ist anfangs ungefragt und laesst sich setzen und zuruecknehmen' do
+    login(@user)
+
+    get '/api/v2/referee/profile'
+    assert_nil JSON.parse(response.body)['share_contact_with_officials'], 'NULL = noch nie gefragt'
+
+    put '/api/v2/referee/profile', params: { referee: { share_contact_with_officials: true } }, as: :json
+    assert_response :success
+    assert_equal true, JSON.parse(response.body)['share_contact_with_officials']
+
+    put '/api/v2/referee/profile', params: { referee: { share_contact_with_officials: false } }, as: :json
+    assert_response :success
+    assert_equal false, @referee.reload.share_contact_with_officials
+  end
+
   test 'update ignoriert mitgeschickte Namensfelder (Name steht auf dem Ausweis)' do
     login(@user)
 

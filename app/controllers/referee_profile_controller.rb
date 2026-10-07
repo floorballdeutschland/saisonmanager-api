@@ -45,7 +45,8 @@ class RefereeProfileController < ApplicationController
     params.require(:referee).permit(
       :telefonnummer,
       :strasse, :hausnummer, :plz, :ort,
-      :partner_lizenznummer, :kurzfristig_mobil
+      :partner_lizenznummer, :kurzfristig_mobil,
+      :share_contact_with_officials
     )
   end
 
@@ -67,6 +68,9 @@ class RefereeProfileController < ApplicationController
       ort: @referee.ort,
       partner_lizenznummer: @referee.partner_lizenznummer,
       kurzfristig_mobil: @referee.kurzfristig_mobil,
+      # nil = noch nie gefragt (das Portal fragt dann einmal nach), siehe
+      # RefereeGameDayConfirmationsController#officials_json.
+      share_contact_with_officials: @referee.share_contact_with_officials,
       lizenzstufe: @referee.lizenzstufe,
       gueltigkeit: @referee.gueltigkeit&.strftime('%d.%m.%Y'),
       geburtsdatum: @referee.geburtsdatum&.strftime('%d.%m.%Y'),

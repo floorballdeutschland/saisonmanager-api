@@ -4,6 +4,11 @@ class RefereeGameDayConfirmationsController < ApplicationController
 
   AUTO_CONFIRM_HOURS = 48
 
+  # Kontaktdaten der Mit-Angesetzten gibt es zur Absprache vor dem Spiel. Nach
+  # dem Spieltag bleibt der Eintrag noch einen Tag sichtbar (Rückfragen zum
+  # Spielbericht), danach nur noch die Namen.
+  CONTACT_DAYS_AFTER_GAME_DAY = 1
+
   # GET /api/v2/referee/game_days
   def index
     # Schritt 1: gefilterte Spieltag-IDs über den Assignment-Join ermitteln.
@@ -27,7 +32,7 @@ class RefereeGameDayConfirmationsController < ApplicationController
                 .where(id: game_day_ids)
                 .includes(
                   :arena, :club,
-                  games: %i[home_team guest_team referee_assignment],
+                  games: [:home_team, :guest_team, { referee_assignment: %i[referee1 referee2 coach] }],
                   league: { game_operation: { state_association: :checklist_items } }
                 )
                 .order('game_days.date DESC')
@@ -228,6 +233,7 @@ class RefereeGameDayConfirmationsController < ApplicationController
     partner_confirmation = partner_id ? day_confirmations.find { |c| c.referee_id == partner_id } : nil
     auto_conf = auto_confirmed?(game_day)
     items = checklist_items_for(game_day)
+    contact_open = contact_window_open?(game_day)
 
     {
       id: game_day.id,
@@ -265,9 +271,42 @@ class RefereeGameDayConfirmationsController < ApplicationController
                  result: g.result_string,
                  # Zusätzliche Spielinformationen des Ansetzers – nur für das
                  # angesetzte Gespann bzw. den Coach, nie für die Mannschaften.
-                 referee_notes: g.referee_notes_visible_to?(@referee) ? g.referee_notes : nil
+                 referee_notes: g.referee_notes_visible_to?(@referee) ? g.referee_notes : nil,
+                 officials: officials_json(g.referee_assignment, contact_open)
                }
              end
     }
+  end
+
+  # Die übrigen am Spiel Angesetzten (Schiri 1/2, Coach) ohne die eigene
+  # Person. Der Name steht ohnehin in der Ansetzungsmail; Telefonnummer und
+  # E-Mail nur, wenn die jeweilige Person selbst zugestimmt hat
+  # (share_contact_with_officials, NULL zählt als Nein) und nur rund um den
+  # Spieltag. Zweckbindung: Die Nummer wurde für die Ansetzer erhoben, siehe
+  # Admin::RefereesController#can_view_contact_data?.
+  def officials_json(assignment, contact_open)
+    { 'referee1' => assignment.referee1, 'referee2' => assignment.referee2, 'coach' => assignment.coach }
+      .filter_map do |role, official|
+        next if official.nil? || official.id == @referee.id
+
+        shared = official.share_contact_with_officials == true
+        visible = shared && contact_open
+        {
+          role: role,
+          name: "#{official.vorname} #{official.nachname}",
+          contact_shared: shared,
+          telefonnummer: visible ? official.telefonnummer.presence : nil,
+          email: visible ? official.email.presence : nil
+        }
+      end
+  end
+
+  def contact_window_open?(game_day)
+    return false if game_day.date.blank?
+
+    today = Time.current.in_time_zone('Europe/Berlin').to_date
+    Date.parse(game_day.date) + CONTACT_DAYS_AFTER_GAME_DAY >= today
+  rescue ArgumentError, TypeError
+    false
   end
 end
