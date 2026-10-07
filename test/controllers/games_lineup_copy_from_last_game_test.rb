@@ -100,6 +100,44 @@ class GamesLineupCopyFromLastGameTest < ActionDispatch::IntegrationTest
                  @game.reload.players['home'].map { |p| [p['player_id'], p['trikot_number']] })
   end
 
+  test 'erkennt eine schon aufgestellte Person auch, wenn ihre ID als Text abgelegt ist' do
+    @game.update!(players: { 'home' => [entry(@anna, 4).merge('player_id' => @anna.id.to_s)], 'guest' => [] })
+    game_on('2026-01-10', '12:00', home: @team, guest: @opponent, home_players: [entry(@anna, 10)])
+
+    post copy_path('home')
+
+    assert_response :success
+    assert_equal(['bereits aufgestellt'], JSON.parse(response.body)['skipped'].map { |s| s['reason'] })
+    assert_equal 1, @game.reload.players['home'].size
+  end
+
+  # Die Kadermaske listet nur aktive Vereinsmitglieder ohne erloschene
+  # Transfer-Lizenz (ClubsController#user_team_licenses). Wer sonst übernommen
+  # würde, stünde in der Aufstellung, ohne dass die Maske eine Zeile zum
+  # Austragen zeigt.
+  test 'übernimmt niemanden, den die Kadermaske nicht zum Austragen anbietet' do
+    transferred = create(:player, first_name: 'Erna', last_name: 'Eck',
+                                  clubs: [{ 'club_id' => @club.id, 'home_club' => true }],
+                                  with_licenses: [{ team: @team, status: License::TRANSFER }])
+    left = create(:player, first_name: 'Frida', last_name: 'Fuchs',
+                           clubs: [{ 'club_id' => @club.id, 'valid_until' => '2025-12-31' }],
+                           with_licenses: [{ team: @team, status: License::APPROVED }])
+    deactivated = licensed_player('Gerda', 'Gans')
+    deactivated.update_columns(deactivated_at: Time.current)
+    game_on('2026-01-10', '12:00', home: @team, guest: @opponent,
+                                   home_players: [entry(@anna, 4), entry(transferred, 5), entry(left, 6),
+                                                  entry(deactivated, 7)])
+
+    post copy_path('home')
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal([[5, 'Lizenz durch Transfer erloschen'], [6, 'nicht mehr Mitglied im Verein der Mannschaft'],
+                  [7, 'Profil deaktiviert']],
+                 body['skipped'].map { |s| [s['trikot_number'], s['reason']] })
+    assert_equal([@anna.id], @game.reload.players['home'].map { |p| p['player_id'] })
+  end
+
   test 'ohne früheres Spiel mit Aufstellung kommt eine leere Übernahme zurück' do
     game_on('2026-01-10', '12:00', home: @team, guest: @opponent)
 

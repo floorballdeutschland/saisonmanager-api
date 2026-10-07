@@ -392,8 +392,11 @@ class GamesController < ApplicationController
 
     source_side = source.home_team_id == team_id ? 'home' : 'guest'
 
-    taken_players = game.players[side].map { |p| p['player_id'] }.compact
+    # to_i: JSONB-IDs sind nicht typgarantiert, ein als Text abgelegter Eintrag
+    # liesse dieselbe Person sonst ein zweites Mal hinein.
+    taken_players = game.players[side].filter_map { |p| p['player_id'].presence&.to_i }
     taken_numbers = game.players[side].map { |p| p['trikot_number'].to_i }
+    mask_player_ids = lineup_mask_player_ids(team_id)
 
     added = []
     skipped = []
@@ -406,6 +409,7 @@ class GamesController < ApplicationController
         elsif taken_players.include?(player.id) then 'bereits aufgestellt'
         elsif taken_numbers.include?(number) then "Nummer #{number} bereits vergeben"
         elsif lineup_license_missing_error(game, player, side) then 'kein Lizenzantrag für diese Mannschaft'
+        else lineup_mask_skip_reason(player, team_id, mask_player_ids)
         end
 
       if reason
@@ -1578,6 +1582,29 @@ class GamesController < ApplicationController
       gender: player.gender,
       youth: birthdate.present? && birthdate > 18.years.ago.to_date
     }
+  end
+
+  # Personen, die die Kadermaske der Mannschaft auflistet: aktive Mitglieder
+  # ihrer Vereine (bei einer Spielgemeinschaft aller), dieselbe Auswahl wie
+  # ClubsController#user_team_licenses. Nur wer dort eine Zeile hat, lässt sich
+  # in der Maske wieder austragen. Das einzelne Hinzufügen kommt ohnehin nur aus
+  # dieser Liste, die Übernahme aus einem älteren Spiel dagegen nicht.
+  def lineup_mask_player_ids(team_id)
+    team = Team.find_by(id: team_id)
+    return Set.new unless team
+
+    Club.where(id: team.all_club_ids).flat_map(&:players).to_set(&:id)
+  end
+
+  # Grund, eine Person mit Lizenzeintrag trotzdem nicht zu übernehmen, oder
+  # nil. Wer nicht in der Kadermaske steht (siehe lineup_mask_player_ids), wäre
+  # danach in der Aufstellung, ließe sich dort aber nicht mehr austragen.
+  def lineup_mask_skip_reason(player, team_id, mask_player_ids)
+    return 'Profil deaktiviert' if player.deactivated_at.present?
+    return 'nicht mehr Mitglied im Verein der Mannschaft' unless mask_player_ids.include?(player.id)
+    return 'Lizenz durch Transfer erloschen' if License.current_status_id(player.licenses_by_team(team_id)) == License::TRANSFER
+
+    nil
   end
 
   # Jüngstes Spiel der Mannschaft vor `game` in derselben Saison, das auf ihrer
