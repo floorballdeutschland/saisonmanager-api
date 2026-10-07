@@ -11,7 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Verbessert
 
-- **Overlay „Nächste Spiele“**: Das Vollbild zeigt jetzt die nächsten drei anstehenden Spiele beider Mannschaften des übertragenen Spiels (Datum, Anstoß, Gegner, Heim/Auswärts, Halle), statt der parallelen Partien des Spieltags. Die bisherige Spieltagsübersicht bleibt als eigene Szene `spieltag` erhalten. Neuer Endpunkt `GET /api/v2/public/overlay/upcoming`, wie die Formkurve auf die Liga des Tokens begrenzt (#773, saisonmanager-feedback#72).
+- **Overlay „Nächste Spiele“**: Das Vollbild zeigt jetzt die nächsten drei anstehenden Spiele beider Mannschaften des übertragenen Spiels (Datum, Anstoß, Gegner, Heim/Auswärts), statt der parallelen Partien des Spieltags. Die bisherige Spieltagsübersicht bleibt als eigene Szene `spieltag` erhalten. Neuer Endpunkt `GET /api/v2/public/overlay/upcoming`, wie die Formkurve auf die Liga des Tokens begrenzt (#773, saisonmanager-feedback#72).
 
 ## [1.124.1] - 2026-10-06
 

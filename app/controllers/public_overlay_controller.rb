@@ -518,23 +518,34 @@ class PublicOverlayController < ApplicationController
   # sind Zeichenketten, siehe #recent_games). Für die Schreibweisen, die die
   # Anwendung anlegt (2026-09-19, 18:00), ist das chronologisch. Ein Spiel ohne
   # Datum oder ohne Anstoßzeit am selben Tag fällt heraus, statt mit einer
-  # geratenen Zeit einsortiert zu werden.
+  # geratenen Zeit einsortiert zu werden. Dasselbe gilt umgekehrt: Fehlt dem
+  # übertragenen Spiel der Anstoß, ist am selben Tag nichts sicher „danach“,
+  # und `start_time > ''` ließe jede Partie des Tages durch, auch die vom
+  # Vormittag.
+  #
+  # `ended` ist nullable. `where.not(ended: true)` würde zu `ended != TRUE`
+  # und ließe ein Spiel mit NULL still weg, deshalb ausdrücklich beide Werte.
   def upcoming_games(team, current_game)
     datum = current_game.game_day&.date
     return Game.none if datum.blank?
 
-    anstoss = current_game.start_time.to_s
+    anstoss = current_game.start_time.presence
 
-    Game.by_team_id(team.id)
-        .where.not(ended: true)
-        .where.not(id: current_game.id)
-        .joins(game_day: :league)
-        .where(game_days: { league_id: league.id })
-        .where('game_days.date > :datum OR (game_days.date = :datum AND games.start_time > :anstoss)',
-               datum: datum, anstoss: anstoss)
-        .includes(game_day: :arena, home_team: :club, guest_team: :club)
-        .order(Arel.sql('game_days.date ASC, games.start_time ASC NULLS LAST'))
-        .limit(UPCOMING_GAMES)
+    scope = Game.by_team_id(team.id)
+                .where(ended: [false, nil])
+                .where.not(id: current_game.id)
+                .joins(game_day: :league)
+                .where(game_days: { league_id: league.id })
+    scope = if anstoss
+              scope.where('game_days.date > :datum OR (game_days.date = :datum AND games.start_time > :anstoss)',
+                          datum: datum, anstoss: anstoss)
+            else
+              scope.where('game_days.date > :datum', datum: datum)
+            end
+
+    scope.includes(game_day: :arena, home_team: :club, guest_team: :club)
+         .order(Arel.sql('game_days.date ASC, games.start_time ASC NULLS LAST'))
+         .limit(UPCOMING_GAMES)
   end
 
   def upcoming_entry(game, team)

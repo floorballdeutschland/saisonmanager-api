@@ -326,6 +326,34 @@ class PublicOverlayControllerTest < ActionDispatch::IntegrationTest
     assert_not_includes ids, fremdes.id, 'eine Partie einer anderen Liga gehoert nicht dazu'
   end
 
+  test 'die naechsten Spiele nehmen ein Spiel mit ended NULL mit' do
+    # Die Spalte ist nullable. `where.not(ended: true)` waere `ended != TRUE`
+    # und liesse genau diese Zeile still weg.
+    offen = anstehendes_spiel(@home, '2026-02-01', '18:00')
+    offen.update_column(:ended, nil)
+
+    get '/api/v2/public/overlay/upcoming', params: { token: @token }
+
+    assert_response :success
+    ids = JSON.parse(response.body)['upcoming']['home']['games'].map { |g| g['game_id'] }
+    assert_includes ids, offen.id
+  end
+
+  test 'ohne Anstoss des uebertragenen Spiels zaehlt der selbe Tag nicht' do
+    # Mit leerem Anstoss waere `start_time > ''` fuer jede Partie des Tages
+    # wahr, also auch fuer die vom Vormittag, die laengst gespielt ist.
+    @game.update_column(:start_time, '')
+    vormittag = anstehendes_spiel(@home, @game_day.date, '10:00')
+    naechste_woche = anstehendes_spiel(@home, '2099-01-01', '18:00')
+
+    get '/api/v2/public/overlay/upcoming', params: { token: @token }
+
+    assert_response :success
+    ids = JSON.parse(response.body)['upcoming']['home']['games'].map { |g| g['game_id'] }
+    assert_not_includes ids, vormittag.id
+    assert_includes ids, naechste_woche.id
+  end
+
   test 'die naechsten Spiele brauchen ein gueltiges Token' do
     get '/api/v2/public/overlay/upcoming', params: { token: 'gibtesnicht' }
 
@@ -910,9 +938,7 @@ class PublicOverlayControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
-  # Ein beendetes Spiel der Mannschaft, an einem eigenen Spieltag mit Datum.
-  # `game_days.date` ist eine Zeichenkette, deshalb wird hier ISO geschrieben --
-  # danach sortiert der Endpunkt.
+  # Ein noch nicht beendetes Spiel der Mannschaft, an einem eigenen Spieltag.
   def anstehendes_spiel(team, datum, anstoss, heim: true)
     gegner = create(:team, league: @league)
     create(:game, game_day: create(:game_day, league: @league, date: datum),
@@ -921,6 +947,9 @@ class PublicOverlayControllerTest < ActionDispatch::IntegrationTest
                   start_time: anstoss, started: false, ended: false)
   end
 
+  # Ein beendetes Spiel der Mannschaft, an einem eigenen Spieltag mit Datum.
+  # `game_days.date` ist eine Zeichenkette, deshalb wird hier ISO geschrieben --
+  # danach sortiert der Endpunkt.
   def beendetes_spiel(team, datum, eigene, fremde, heim: true)
     gegner = create(:team, league: @league)
     tag = create(:game_day, league: @league, date: datum)
