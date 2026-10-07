@@ -13,6 +13,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 - **Overlay „Nächste Spiele“**: Das Vollbild zeigt jetzt die nächsten drei anstehenden Spiele beider Mannschaften des übertragenen Spiels (Datum, Anstoß, Gegner, Heim/Auswärts, Halle), statt der parallelen Partien des Spieltags. Die bisherige Spieltagsübersicht bleibt als eigene Szene `spieltag` erhalten. Neuer Endpunkt `GET /api/v2/public/overlay/upcoming`, wie die Formkurve auf die Liga des Tokens begrenzt (#773, saisonmanager-feedback#72).
 
+## [1.124.1] - 2026-10-06
+
+### Verbessert
+
+- **Zusammenlegen von Spielorten wird protokolliert**: Wie bei Spielern und Schiedsrichtern steht jetzt auch beim Zusammenführen zweier Spielorte ein Eintrag im Merge-Protokoll, mit beiden Spielorten samt Adresse (bei Altdatensätzen aus dem alten Adressfeld) und dem Benutzer, der zusammengelegt hat. Bisher war hinterher nicht mehr nachvollziehbar, welche Halle in welche aufgegangen ist, weil der aufgelöste Spielort gelöscht wird.
+
 ## [1.124.0] - 2026-10-01
 
 ### Neu
