@@ -9,7 +9,9 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
     @go = create(:game_operation)
     @other_go = create(:game_operation)
     @arena = create(:arena, name: 'Sporthalle Nord')
-    @date = 20.days.from_now.to_date.to_s
+    # Innerhalb des Gültigkeitsfensters (GameDayLinkWindow, ab 72 Stunden
+    # vorher): Mehrere Tests lösen den erzeugten Link gleich ein.
+    @date = 2.days.from_now.to_date.to_s
 
     @host_club = create(:club)
     @guest_club = create(:club)
