@@ -207,6 +207,7 @@ Rails.application.routes.draw do
       post 'user/games/:id/award/:side/:award/set_player', to: 'games#set_player_award'
 
       post 'user/games/:id/lineup/:side/add_player', to: 'games#add_player_to_lineup'
+      post 'user/games/:id/lineup/:side/copy_from_last_game', to: 'games#copy_lineup_from_last_game'
       post 'user/games/:id/lineup/:side/remove_player', to: 'games#remove_player'
       post 'user/games/:id/lineup/:side/add_coach/:number', to: 'games#add_coach'
       post 'user/games/:id/lineup/:side/remove_coach/:number', to: 'games#remove_coach'
@@ -279,6 +280,10 @@ Rails.application.routes.draw do
       get  'referee/observations/games',    to: 'referee_observations#games'
       get  'referee/observations/received', to: 'referee_observations#received'
       post 'referee/observations',          to: 'referee_observations#create'
+
+      # Vereins-Feedback zur eigenen Person, nur als Kennzahlen ab fuenf
+      # Rueckmeldungen (siehe RefereeFeedbackSummariesController).
+      get 'referee/feedback_summary', to: 'referee_feedback_summaries#show'
 
       namespace :admin do
         # Streaming-Bereich: die Spiele eines Wochenendes oder eines Spieltags

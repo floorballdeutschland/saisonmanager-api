@@ -157,6 +157,37 @@ class RefereeTest < ActiveSupport::TestCase
     assert_equal [master.id, 0], game.reload.officiating_referee_ids
   end
 
+  test 'merge_into!: Kontaktfreigabe und Telefonnummer wandern mit, eine Ablehnung gewinnt' do
+    # [Zweitprofil, Master, erwartet]
+    [[true, nil, true], [false, true, false], [nil, true, true], [true, false, false]]
+      .each_with_index do |(secondary_share, master_share, expected), i|
+        secondary = make_referee(lizenznummer: 42_001 + (2 * i))
+        master    = make_referee(lizenznummer: 42_002 + (2 * i))
+        secondary.update!(share_contact_with_officials: secondary_share, telefonnummer: '0170 42')
+        master.update!(share_contact_with_officials: master_share)
+
+        secondary.merge_into!(master)
+
+        assert_equal expected, master.reload.share_contact_with_officials,
+                     "Zweitprofil #{secondary_share.inspect}, Master #{master_share.inspect}"
+        assert_equal '0170 42', master.telefonnummer
+      end
+  end
+
+  test 'merge_into!: der Zeitpunkt der Kontaktfreigabe wandert mit der uebernommenen Entscheidung' do
+    secondary = make_referee(lizenznummer: 42_101)
+    master    = make_referee(lizenznummer: 42_102)
+    decided = Time.zone.parse('2026-09-01 12:00')
+    travel_to(decided) { secondary.update!(share_contact_with_officials: false) }
+    travel_to(decided + 1.day) { master.update!(share_contact_with_officials: true) }
+
+    travel_to(decided + 10.days) { secondary.merge_into!(master) }
+
+    master.reload
+    assert_equal false, master.share_contact_with_officials
+    assert_equal decided, master.share_contact_decided_at
+  end
+
   test 'merge_into!: Vereins-Ausschluesse wandern mit, Dubletten fallen weg' do
     secondary = make_referee(lizenznummer: 41_001)
     master    = make_referee(lizenznummer: 41_002)
