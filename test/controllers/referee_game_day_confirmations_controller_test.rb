@@ -91,6 +91,7 @@ class RefereeGameDayConfirmationsControllerTest < ActionDispatch::IntegrationTes
                      telefonnummer: '0170 1234567', share_contact_with_officials: true)
     @coach.update!(vorname: 'Carl', nachname: 'Coach', email: 'carl@example.com',
                    telefonnummer: '0171 7654321', share_contact_with_officials: nil)
+    @referee.update!(share_contact_with_officials: true)
     publish_assignment(referee1: @referee, referee2: @partner, coach: @coach)
 
     login(referee_user(@referee))
@@ -115,6 +116,7 @@ class RefereeGameDayConfirmationsControllerTest < ActionDispatch::IntegrationTes
   test 'Coach sieht die Kontaktdaten des Gespanns, eine Ablehnung bleibt verborgen' do
     @referee.update!(email: 'schiri@example.com', telefonnummer: '0170 1', share_contact_with_officials: true)
     @partner.update!(email: 'partner@example.com', telefonnummer: '0170 2', share_contact_with_officials: false)
+    @coach.update!(share_contact_with_officials: true)
     publish_assignment(referee1: @referee, referee2: @partner, coach: @coach)
 
     login(referee_user(@coach))
@@ -131,6 +133,7 @@ class RefereeGameDayConfirmationsControllerTest < ActionDispatch::IntegrationTes
 
   test 'Kontaktdaten verschwinden nach dem Tag nach dem Spieltag, die Namen bleiben' do
     @partner.update!(email: 'partner@example.com', telefonnummer: '0170 2', share_contact_with_officials: true)
+    @referee.update!(share_contact_with_officials: true)
     @game_day.update!(date: (Date.today - 2).to_s)
     publish_assignment(referee1: @referee, referee2: @partner)
 
@@ -146,6 +149,7 @@ class RefereeGameDayConfirmationsControllerTest < ActionDispatch::IntegrationTes
 
   test 'kommender Spieltag liefert die freigegebenen Kontaktdaten' do
     @partner.update!(email: 'partner@example.com', share_contact_with_officials: true)
+    @referee.update!(share_contact_with_officials: true)
     @game_day.update!(date: (Date.today + 5).to_s)
     publish_assignment(referee1: @referee, referee2: @partner)
 
@@ -153,6 +157,22 @@ class RefereeGameDayConfirmationsControllerTest < ActionDispatch::IntegrationTes
     get '/api/v2/referee/game_days'
 
     assert_equal 'partner@example.com', officials_for(JSON.parse(response.body)).first['email']
+  end
+
+  [nil, false].each do |own|
+    test "wer selbst nicht teilt (#{own.inspect}), sieht auch fremde Kontaktdaten nicht" do
+      @referee.update!(share_contact_with_officials: own)
+      @partner.update!(email: 'partner@example.com', telefonnummer: '0170 2', share_contact_with_officials: true)
+      publish_assignment(referee1: @referee, referee2: @partner)
+
+      login(referee_user(@referee))
+      get '/api/v2/referee/game_days'
+
+      partner = officials_for(JSON.parse(response.body)).first
+      assert_equal true, partner['contact_shared'], 'die Freigabe selbst bleibt sichtbar'
+      assert_nil partner['email']
+      assert_nil partner['telefonnummer']
+    end
   end
 
   private
