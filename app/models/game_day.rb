@@ -4,7 +4,7 @@ class GameDay < ApplicationRecord
   has_many :game_day_team_confirmations, dependent: :destroy
   # Seit der Link mehrere Spieltage abdecken kann, hängt er nicht mehr an einem
   # einzelnen: gelöscht wird nur die Zuordnung. Ein Link, der dadurch keinen
-  # Spieltag mehr abdeckt, erlaubt nichts und läuft ohnehin nach 72 h ab.
+  # Spieltag mehr abdeckt, erlaubt nichts und läuft ohnehin bald ab.
   has_many :game_day_secretary_link_game_days, dependent: :destroy
   has_many :game_day_secretary_links, through: :game_day_secretary_link_game_days
   belongs_to :league
@@ -44,6 +44,16 @@ class GameDay < ApplicationRecord
   # als 500 zurück (PG::ForeignKeyViolation, Sentry SAISONMANAGER-3F). Gemeint
   # ist "nicht gesetzt", also wird sie dazu gemacht.
   before_validation :normalize_blank_references
+
+  # Die Zugangslinks gelten im Fenster um den Spieltag (GameDayLinkWindow).
+  # Wird er verschoben, zieht das Fenster mit: Ein vorab ausgedruckter Zettel
+  # soll am neuen Termin gelten und nicht am alten verfallen. Nur laufende
+  # Links, ein abgelaufener kommt dadurch nicht zurück.
+  #
+  # `update_all` und `update_column` umgehen den Hook. Die Spieltagsmaske
+  # (GameDaysController#update) speichert über `update`, der Spielplan-Import
+  # legt nur neu an. Ein Massenumbau per SQL müsste die Links selbst nachziehen.
+  after_update :refresh_link_windows, if: :saved_change_to_date?
 
   # `optional: true` erlaubt nil, prüft aber nicht, ob eine gesetzte ID
   # existiert. Ohne diese Prüfung entscheidet das erst die Datenbank, und dann
@@ -195,6 +205,11 @@ class GameDay < ApplicationRecord
   end
 
   private
+
+  def refresh_link_windows
+    GameDayOverlayLink.active.where(game_day_id: id).find_each(&:refresh_window!)
+    game_day_secretary_links.merge(GameDaySecretaryLink.active).find_each(&:refresh_window!)
+  end
 
   def normalize_blank_references
     self.club_id = nil if club_id.to_i.zero?

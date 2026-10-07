@@ -333,6 +333,8 @@ Rails.application.routes.draw do
         resources :referee_observations, only: %i[update]
         get 'referee_feedback_analytics', to: 'referee_feedback_analytics#index'
         get 'referee_feedback_analytics/export', to: 'referee_feedback_analytics#export'
+        get 'referee_observation_report', to: 'referee_observation_reports#index'
+        get 'referee_observation_report/export', to: 'referee_observation_reports#export'
         resources :feedback_themes, only: %i[index create update destroy]
         get 'feedback_comments', to: 'feedback_comments#index'
         get 'feedback_comments/stats', to: 'feedback_comments#stats'
@@ -499,6 +501,7 @@ Rails.application.routes.draw do
       get  'public/overlay/scorer',   to: 'public_overlay#scorer'
       get  'public/overlay/schedule', to: 'public_overlay#schedule'
       get  'public/overlay/form',     to: 'public_overlay#form'
+      get  'public/overlay/upcoming', to: 'public_overlay#upcoming'
 
       post   'user/game_days/:game_day_id/overlay_link', to: 'game_day_overlay_links#create'
       get    'user/game_days/:game_day_id/overlay_link', to: 'game_day_overlay_links#show'

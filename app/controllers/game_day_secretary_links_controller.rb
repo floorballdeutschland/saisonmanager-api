@@ -5,10 +5,12 @@ class GameDaySecretaryLinksController < ApplicationController
   before_action :load_game_day, only: %i[create show]
   before_action :authorize_vm_or_tm!, only: %i[create show]
 
-  # Zeitfenster der Übersicht: ein paar Tage zurück, damit ein Link während
-  # seiner Gültigkeit (GameDaySecretaryLink::VALIDITY, 72 Stunden) noch einmal
-  # ausgegeben werden kann, und weit genug nach vorn für die Vorbereitung.
-  # Wird VALIDITY verlängert, gehört dieser Wert mit angehoben.
+  # Zeitfenster der Übersicht: ein paar Tage zurück, damit ein Link nach dem
+  # Spieltag noch einmal ausgegeben werden kann (Bericht nachtragen, Untergrenze
+  # GameDaySecretaryLink::VALIDITY), und weit genug nach vorn für die
+  # Vorbereitung. Ein früh erzeugter Link gilt seit GameDayLinkWindow ab
+  # 72 Stunden vor dem Spieltag, er ist also auch für die fernen Spieltage der
+  # Liste brauchbar.
   LIST_PAST_DAYS = 3
   LIST_FUTURE_DAYS = 60
 
@@ -54,6 +56,7 @@ class GameDaySecretaryLinksController < ApplicationController
       # den Code.
       url: "#{FrontendUrl.base}/spielsekretariat?token=#{raw_token}",
       token: raw_token,
+      valid_from: link.valid_from&.iso8601,
       expires_at: link.expires_at.iso8601,
       created_by: current_user.fullname,
       # Der angefragte Spieltag, für Abwärtskompatibilität erhalten. Welche
@@ -77,6 +80,7 @@ class GameDaySecretaryLinksController < ApplicationController
     link = GameDaySecretaryLink.active.covering([@game_day.id]).order(:created_at).last
     if link
       render json: {
+        valid_from: link.valid_from&.iso8601,
         expires_at: link.expires_at.iso8601,
         created_by: link.created_by&.fullname,
         game_day_ids: link.covered_game_day_ids
@@ -270,6 +274,7 @@ class GameDaySecretaryLinksController < ApplicationController
       game_days: covered.map { |gd| game_day_stub(gd).merge(overlay_link: overlay_link_json(overlays_by_game_day[gd.id])) },
       other_game_days_in_hall: (game_days - covered).map { |gd| game_day_stub(gd) },
       link: link && {
+        valid_from: link.valid_from&.iso8601,
         expires_at: link.expires_at.iso8601,
         created_by: link.created_by&.fullname,
         game_day_ids: link.covered_game_day_ids
@@ -288,6 +293,7 @@ class GameDaySecretaryLinksController < ApplicationController
 
     {
       active: true,
+      valid_from: link.valid_from&.iso8601,
       expires_at: link.expires_at.iso8601,
       created_by: link.created_by&.fullname
     }

@@ -184,6 +184,34 @@ class PublicSecretaryControllerTest < ActionDispatch::IntegrationTest
     assert_response :gone
   end
 
+  # Ein vorab ausgedruckter Zugang (Feedback #70) wird gern gleich
+  # ausprobiert. „Ungültig" hieße, sich einen neuen geben zu lassen, und der
+  # entwertet den gedruckten. Deshalb 403 mit dem Beginn statt 410.
+  test 'GET /public/secretary vor dem Fenster sagt, ab wann der Link gilt' do
+    @game_day.update!(date: 10.days.from_now.to_date.iso8601)
+    link, raw_token = GameDaySecretaryLink.generate!(game_days: [@game_day], created_by: @user)
+
+    get '/api/v2/public/secretary', params: { token: raw_token }
+
+    assert_response :forbidden
+    body = JSON.parse(response.body)
+    assert_equal link.valid_from.iso8601, body['valid_from']
+    assert_match(/\ADieser Zugang gilt erst ab \d{2}\.\d{2}\.\d{4}, \d{2}:\d{2} Uhr\.\z/, body['message'])
+    assert_nil body['games'], 'vor dem Fenster darf nichts vom Spieltag herausgehen'
+  end
+
+  test 'POST /public/secretary/redeem vor dem Fenster sagt, ab wann der Code gilt' do
+    @game_day.update!(date: 10.days.from_now.to_date.iso8601)
+    link, _raw_token, raw_code = GameDaySecretaryLink.generate!(game_days: [@game_day], created_by: @user)
+
+    post '/api/v2/public/secretary/redeem', params: { code: raw_code }
+
+    assert_response :forbidden
+    body = JSON.parse(response.body)
+    assert_equal link.valid_from.iso8601, body['valid_from']
+    assert_nil body['token']
+  end
+
   # --- Kurzcode --------------------------------------------------------------
   #
   # Am Spieltisch steht ein Vereinsrechner ohne Benutzerkonto. Der Link kommt

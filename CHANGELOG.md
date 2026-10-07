@@ -11,7 +11,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Neu
 
+- **Übersicht aller Coach-Beobachtungen mit Export**: Unter „Auswertungen" gibt es jetzt die Seite „Schiri-Beobachtungen" mit allen Beobachtungsbögen der Schiedsrichtercoaches, filterbar nach Saison, Spielbetrieb, Coach, Schiedsrichter, Zeitraum und Status. Jeder Bogen lässt sich aufklappen und vollständig lesen. Bisher waren die Bögen nur einzeln am Profil des jeweiligen Schiedsrichters erreichbar. Der Export als CSV oder Excel umfasst wahlweise die ausgewählten oder alle gefilterten Bögen, mit Kopfdaten und allen Noten, aber ohne die Freitexte. Sichtbar wie am Profil: FD-RSK und FD-Ansetzer sehen alle Bögen, Landesverbände die ihres Spielbetriebs. Zurückgenommene Bögen erscheinen nur, wenn der Statusfilter sie ausdrücklich einschließt.
+
 - **Aufstellung aus dem letzten Spiel übernehmen** (feedback#69): Im Spielbericht lässt sich die Aufstellung einer Mannschaft aus ihrem jüngsten früheren Spiel derselben Saison übernehmen, mit Trikotnummern und Torwart-Kennung (ohne Kapitän und Starting Six). Danach trägt man nur noch die Abwesenden aus. Personen ohne Lizenzantrag für die Mannschaft, bereits Aufgestellte und schon vergebene Nummern werden übersprungen und gesammelt gemeldet, Lizenzwarnungen wie beim einzelnen Hinzufügen.
+
+### Verbessert
+
+- **Overlay „Nächste Spiele“**: Das Vollbild zeigt jetzt die nächsten drei anstehenden Spiele beider Mannschaften des übertragenen Spiels (Datum, Anstoß, Gegner, Heim/Auswärts), statt der parallelen Partien des Spieltags. Die bisherige Spieltagsübersicht bleibt als eigene Szene `spieltag` erhalten. Neuer Endpunkt `GET /api/v2/public/overlay/upcoming`, wie die Formkurve auf die Liga des Tokens begrenzt (#773, saisonmanager-feedback#72).
+- **Spielsekretariats-Code und Overlay-Zugang gelten rund um den Spieltag**: Beide Zugänge galten bisher eine feste Zeit ab dem Erzeugen (Sekretariat 72 Stunden, Overlays 36 Stunden). Wer sie ein paar Tage vorher ausdruckte, hatte am Spieltag einen abgelaufenen Zettel in der Hand. Jetzt gelten sie von 72 Stunden vor dem Spieltag bis zum Ende des Folgetags, egal wann sie erzeugt wurden. Vorher berechtigen sie zu nichts: Das Spielsekretariat und die Overlays melden dann, ab wann der Zugang gilt, und eine früh eingerichtete OBS-Quelle springt am Spieltag von selbst an. Wird der Spieltag verschoben, wandert das Fenster mit. Wer einen Zugang erst nach dem Spieltag erzeugt, etwa zum Nachtragen des Berichts, bekommt wie bisher die volle Laufzeit ab dem Erzeugen.
 
 ## [1.124.1] - 2026-10-06
 
