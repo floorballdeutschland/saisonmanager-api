@@ -47,6 +47,18 @@ class GameDayLinkWindowTest < ActiveSupport::TestCase
     assert_nil GameDaySecretaryLink.find_by_token(redeemed_token)
   end
 
+  # Sommerzeit ab 29.03.2026. 72 absolute Stunden vor dem 30.03. 00:00 MESZ
+  # wären der 26.03. um 23:00 MEZ, und so stünde es in „gilt erst ab".
+  test 'über die Zeitumstellung beginnt das Fenster um Mitternacht deutscher Zeit' do
+    after_switch = create(:game_day, date: '2026-03-30')
+
+    link, = GameDaySecretaryLink.generate!(game_days: [after_switch], created_by: @user)
+
+    # 27.03. 00:00 MEZ = 26.03. 23:00 UTC
+    assert_equal Time.utc(2026, 3, 26, 23, 0), link.valid_from
+    assert_includes link.not_started_message, '27.03.2026, 00:00 Uhr'
+  end
+
   test 'ein Link über mehrere Spieltage reicht vom frühesten bis zum spätesten' do
     later = create(:game_day, date: '2026-03-22')
 

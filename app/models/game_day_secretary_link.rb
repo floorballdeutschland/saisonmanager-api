@@ -111,8 +111,9 @@ class GameDaySecretaryLink < ApplicationRecord
   # `token_for` der Token, denn `code_salt` liegt offen in derselben Zeile.
   #
   # Der Schluessel steckt in den Credentials, nicht in der Tabelle. Wechselt er,
-  # sind laufende Codes unbrauchbar; bei 72 Stunden Gueltigkeit ist das
-  # hinnehmbar.
+  # sind laufende Codes unbrauchbar. Seit GameDayLinkWindow trifft das auch
+  # Zettel, die fuer Spieltage der naechsten Wochen schon ausgedruckt sind;
+  # vor einem Schluesselwechsel also die Vereine vorwarnen.
   def self.code_digest_for(normalized_code)
     OpenSSL::HMAC.hexdigest('SHA256', Rails.application.secret_key_base, normalized_code)
   end

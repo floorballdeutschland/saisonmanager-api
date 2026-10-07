@@ -22,7 +22,11 @@ module GameDayLinkWindow
   # `game_days.date` ist Text ohne Zeitzone, die Anwendung läuft in UTC.
   # Gerechnet wird deshalb im Kalender des Spielbetriebs.
   ZONE = ActiveSupport::TimeZone['Europe/Berlin'].freeze
-  LEAD_TIME = 72.hours
+  # Drei Kalendertage, nicht 72.hours: Von Mitternacht deutscher Zeit
+  # abgezogen bleibt `3.days` auf Mitternacht, 72 Stunden landeten über einer
+  # Zeitumstellung auf 23:00 oder 01:00 Uhr, und genau diese Uhrzeit nennt
+  # `not_started_message` dem Sekretariat.
+  LEAD_TIME = 3.days
 
   included do
     # Nicht abgelaufen. Bewusst OHNE den Beginn: Die Übersichten sollen einen
