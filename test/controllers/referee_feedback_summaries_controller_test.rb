@@ -53,6 +53,24 @@ class RefereeFeedbackSummariesControllerTest < ActionDispatch::IntegrationTest
     assert_not_includes response.body, 'Geheim'
   end
 
+  test 'ausgeblendete Rueckmeldungen heben nicht ueber die Schwelle' do
+    4.times { create(:referee_feedback, referee1_id: @referee.id) }
+    create(:referee_feedback, referee1_id: @referee.id, status: 'hidden')
+
+    login(@user)
+    get '/api/v2/referee/feedback_summary'
+
+    body = response.parsed_body
+    assert_equal 4, body['count']
+    assert_nil body['avg_line_rating']
+    assert_nil body['avg_communication_rating']
+  end
+
+  test 'ohne Anmeldung kein Zugriff' do
+    get '/api/v2/referee/feedback_summary'
+    assert_response :unauthorized
+  end
+
   test 'Konto ohne Schiedsrichterprofil wird abgewiesen' do
     login(create(:user))
     get '/api/v2/referee/feedback_summary'
