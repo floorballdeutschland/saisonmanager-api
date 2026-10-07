@@ -147,9 +147,14 @@ module Admin
     # Ohne Angabe nur sichtbare Bögen: Ein zurückgenommener Bogen ist der
     # Notausgang für eine entgleiste Rückmeldung und gehört nicht unbemerkt in
     # eine Auswertung. `all` zeigt beide.
+    # Ein unbekannter Wert (Tippfehler, andere Schreibweise) fällt auf
+    # `visible` zurück statt auf „kein Filter“: Sonst lieferte er still auch die
+    # zurückgenommenen Bögen.
     def status
       value = params[:status].presence || 'visible'
-      STATUSES.include?(value) ? value : nil
+      return nil if value == 'all'
+
+      STATUSES.include?(value) ? value : 'visible'
     end
 
     def from_date
@@ -233,8 +238,18 @@ module Admin
     def to_csv(rows)
       CSV.generate(headers: true) do |csv|
         csv << export_headers
-        rows.each { |o| csv << export_row(o) }
+        rows.each { |o| csv << export_row(o).map { |value| csv_cell(value) } }
       end
+    end
+
+    # Entschärft Zellen, die eine Tabellenkalkulation als Formel läse (Team-,
+    # Coach- und Schiri-Namen; Teamnamen pflegen die Vereine selbst).
+    # Wie LeaguesController#schedule_export_csv_cell; die xlsx-Fassung erledigt
+    # caxlsx von sich aus (escape_formulas).
+    def csv_cell(value)
+      return value unless value.is_a?(String) && value.match?(/\A[=+\-@\t\r]/)
+
+      "'#{value}"
     end
 
     def to_xlsx(rows)

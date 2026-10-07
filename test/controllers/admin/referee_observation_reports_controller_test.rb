@@ -62,6 +62,19 @@ module Admin
       assert_equal [@fd_obs.id, @lv_obs.id], ids_of(response)
     end
 
+    test 'unbekannter Statuswert faellt auf sichtbare Boegen zurueck, nicht auf alle' do
+      @lv_obs.update!(status: 'hidden')
+      login(create(:user, :admin))
+
+      %w[Hidden xyz].each do |value|
+        get '/api/v2/admin/referee_observation_report', params: { status: value }
+        assert_equal [@fd_obs.id], ids_of(response), "status=#{value}"
+      end
+
+      get '/api/v2/admin/referee_observation_report/export.csv', params: { status: 'xyz' }
+      assert_equal 1, CSV.parse(response.body, headers: true).size
+    end
+
     test 'filtert nach Coach, Schiedsrichter, Spielbetrieb, Zeitraum und Saison' do
       login(create(:user, :admin))
 
@@ -101,6 +114,17 @@ module Admin
       RefereeObservation::TEXT_ATTRIBUTES.each do |field|
         assert_not_includes response.body, @fd_obs[field], "Freitext #{field} gehoert nicht in den Export"
       end
+    end
+
+    # Namen (Coach, Schiris, Teams) sind Freitext; eine Zelle mit = + - @ am
+    # Anfang liefe beim Oeffnen in Excel als Formel.
+    test 'CSV-Export entschaerft Zellen, die als Formel gelesen wuerden' do
+      @fd_obs.update_column(:coach_name, '=HYPERLINK("http://x","y")')
+      login(create(:user, :admin))
+      get '/api/v2/admin/referee_observation_report/export.csv'
+
+      row = CSV.parse(response.body, headers: true).find { |r| r['Datum'] == '2026-10-04' }
+      assert_equal %q('=HYPERLINK("http://x","y")), row['Coach']
     end
 
     test 'Export nur der ausgewaehlten Boegen' do
