@@ -7,7 +7,7 @@ module SecretaryTokenAuthenticatable
   # **Login ODER Link genügt, abgewiesen wird nur, wenn beides fehlt.** Vorher
   # entschied ein mitgeschickter Token allein: ließ er sich nicht auflösen, gab es
   # 401, unabhängig von `current_user`. Das ist kein Sonderfall, sondern der
-  # Normalfall nach 72 Stunden (`GameDaySecretaryLink::VALIDITY`): Der
+  # Normalfall nach Ablauf des Links (`GameDayLinkWindow`): Der
   # SecretaryTokenInterceptor im Frontend hängt einen einmal im sessionStorage
   # abgelegten Token an jede API-Anfrage; geloescht wird er seit fe#450 nur
   # dort, wo ein Recht nachweislich tot ist (410/401 im Spielsekretariat). Wer in dieser

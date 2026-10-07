@@ -12,6 +12,7 @@ class GameDayOverlayLinksController < ApplicationController
     link, raw_token = GameDayOverlayLink.generate!(game_day: @game_day, created_by: current_user)
 
     render json: link_urls(raw_token).merge(
+      valid_from: link.valid_from&.iso8601,
       expires_at: link.expires_at.iso8601,
       created_by: current_user.fullname,
       game_day_id: @game_day.id
@@ -28,6 +29,7 @@ class GameDayOverlayLinksController < ApplicationController
     if link
       render json: {
         active: true,
+        valid_from: link.valid_from&.iso8601,
         expires_at: link.expires_at.iso8601,
         created_by: link.created_by&.fullname
       }
