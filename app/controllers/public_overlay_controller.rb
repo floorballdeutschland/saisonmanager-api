@@ -116,8 +116,9 @@ class PublicOverlayController < ApplicationController
   # GET /api/v2/public/overlay/schedule?token=XXX
   #
   # Die Partien desselben Spieltags in der ganzen Liga, also auch die in anderen
-  # Hallen. Grundlage für „nächste Spiele" und für den Hinweis, dass die Tabelle
-  # noch nicht vollständig ist.
+  # Hallen. Grundlage für die Spieltagsübersicht und für den Hinweis, dass die
+  # Tabelle noch nicht vollständig ist. Die nächsten Spiele der beiden
+  # Mannschaften liefert #upcoming.
   def schedule
     return if render_missing_league
 
@@ -143,6 +144,30 @@ class PublicOverlayController < ApplicationController
       form: {
         home: team_form(game.home_team, game),
         guest: team_form(game.guest_team, game)
+      }
+    )
+  end
+
+  # GET /api/v2/public/overlay/upcoming?token=XXX&game_id=123
+  #
+  # Die nächsten anstehenden Partien beider Mannschaften des aktiven Spiels,
+  # früheste zuerst. Das Gegenstück zur Formkurve und unter denselben Grenzen
+  # (nur die Liga des Tokens, siehe #recent_games). Bis hierher zeigte das
+  # Vollbild „Nächste Spiele" die parallelen Partien des Spieltags; erwartet
+  # wird nach dem Namen aber, wann und gegen wen es für beide weitergeht
+  # (saisonmanager-feedback#72).
+  def upcoming
+    return if render_missing_league
+
+    game = resolve_game
+    return render json: { message: 'Kein Spiel für diesen Spieltag.' }, status: :not_found if game.nil?
+
+    expires_in 30.seconds
+    render json: league_frame.merge(
+      game_id: game.id,
+      upcoming: {
+        home: team_upcoming(game.home_team, game),
+        guest: team_upcoming(game.guest_team, game)
       }
     )
   end
@@ -469,6 +494,82 @@ class PublicOverlayController < ApplicationController
     return 'loss' if eigene < fremde
 
     'draw'
+  end
+
+  # Drei je Mannschaft: Ein Abspann nennt die nächsten Termine, keinen
+  # Restspielplan, und zwei Spalten mit je drei Zeilen bleiben auch in einer
+  # kleinen Szene lesbar.
+  UPCOMING_GAMES = 3
+
+  def team_upcoming(team, current_game)
+    return nil if team.nil?
+
+    {
+      id: team.id,
+      name: team.name,
+      short_name: team.ticker_short_name,
+      # Wie bei der Formkurve hängt das Spiel im Schlüssel: „nach diesem Spiel"
+      # ist für zwei Spiele desselben Spieltags eine andere Liste.
+      games: Rails.cache.fetch(
+        "teams/#{team.id}/overlay_upcoming/#{league.id}/#{current_game.id}",
+        expires_in: 30.seconds
+      ) do
+        upcoming_games(team, current_game).map { |game| upcoming_entry(game, team) }
+      end
+    }
+  end
+
+  # Spätere Partien derselben Liga, die noch nicht beendet sind. „Später" heißt
+  # nach Datum und Anstoß des übertragenen Spiels, nicht nach heute: Das Bild
+  # soll auch dann stimmen, wenn ein Spiel nachträglich oder vorab gezeigt wird.
+  #
+  # Beide Vergleiche laufen als TEXT (`game_days.date` und `games.start_time`
+  # sind Zeichenketten, siehe #recent_games). Für die Schreibweisen, die die
+  # Anwendung anlegt (2026-09-19, 18:00), ist das chronologisch. Ein Spiel ohne
+  # Datum oder ohne Anstoßzeit am selben Tag fällt heraus, statt mit einer
+  # geratenen Zeit einsortiert zu werden. Dasselbe gilt umgekehrt: Fehlt dem
+  # übertragenen Spiel der Anstoß, ist am selben Tag nichts sicher „danach“,
+  # und `start_time > ''` ließe jede Partie des Tages durch, auch die vom
+  # Vormittag.
+  #
+  # `ended` ist nullable. `where.not(ended: true)` würde zu `ended != TRUE`
+  # und ließe ein Spiel mit NULL still weg, deshalb ausdrücklich beide Werte.
+  def upcoming_games(team, current_game)
+    datum = current_game.game_day&.date
+    return Game.none if datum.blank?
+
+    anstoss = current_game.start_time.presence
+
+    scope = Game.by_team_id(team.id)
+                .where(ended: [false, nil])
+                .where.not(id: current_game.id)
+                .joins(game_day: :league)
+                .where(game_days: { league_id: league.id })
+    scope = if anstoss
+              scope.where('game_days.date > :datum OR (game_days.date = :datum AND games.start_time > :anstoss)',
+                          datum: datum, anstoss: anstoss)
+            else
+              scope.where('game_days.date > :datum', datum: datum)
+            end
+
+    scope.includes(game_day: :arena, home_team: :club, guest_team: :club)
+         .order(Arel.sql('game_days.date ASC, games.start_time ASC NULLS LAST'))
+         .limit(UPCOMING_GAMES)
+  end
+
+  def upcoming_entry(game, team)
+    heim = game.home_team_id == team.id
+    gegner = heim ? game.guest_team : game.home_team
+
+    {
+      game_id: game.id,
+      date: game.game_day&.date,
+      time: game.start_time,
+      home: heim,
+      opponent: gegner&.name,
+      opponent_short: gegner&.ticker_short_name,
+      arena_name: game.game_day&.arena&.name
+    }
   end
 
   def entry_value(entry, key)

@@ -498,6 +498,7 @@ Rails.application.routes.draw do
       get  'public/overlay/scorer',   to: 'public_overlay#scorer'
       get  'public/overlay/schedule', to: 'public_overlay#schedule'
       get  'public/overlay/form',     to: 'public_overlay#form'
+      get  'public/overlay/upcoming', to: 'public_overlay#upcoming'
 
       post   'user/game_days/:game_day_id/overlay_link', to: 'game_day_overlay_links#create'
       get    'user/game_days/:game_day_id/overlay_link', to: 'game_day_overlay_links#show'
