@@ -101,6 +101,38 @@ class RefereeProfileControllerTest < ActionDispatch::IntegrationTest
     assert_equal false, @referee.reload.share_contact_with_officials
   end
 
+  test 'Kontaktfreigabe: Zustimmung und Widerruf stempeln den Zeitpunkt' do
+    login(@user)
+
+    travel_to Time.zone.parse('2026-10-01 10:00') do
+      put '/api/v2/referee/profile', params: { referee: { share_contact_with_officials: true } }, as: :json
+    end
+    assert_equal Time.zone.parse('2026-10-01 10:00'), @referee.reload.share_contact_decided_at
+
+    travel_to Time.zone.parse('2026-10-05 18:30') do
+      put '/api/v2/referee/profile', params: { referee: { telefonnummer: '0170 9' } }, as: :json
+    end
+    assert_equal Time.zone.parse('2026-10-01 10:00'), @referee.reload.share_contact_decided_at,
+                 'ohne Aenderung der Entscheidung bleibt der Zeitpunkt'
+
+    travel_to Time.zone.parse('2026-10-06 08:15') do
+      put '/api/v2/referee/profile', params: { referee: { share_contact_with_officials: false } }, as: :json
+    end
+    assert_response :success
+    assert_equal Time.zone.parse('2026-10-06 08:15'), @referee.reload.share_contact_decided_at
+    assert_equal Time.zone.parse('2026-10-06 08:15'), Time.zone.parse(JSON.parse(response.body)['share_contact_decided_at'])
+  end
+
+  test 'Kontaktfreigabe: eine getroffene Entscheidung laesst sich nicht auf ungefragt zuruecksetzen' do
+    @referee.update!(share_contact_with_officials: false)
+    login(@user)
+
+    put '/api/v2/referee/profile', params: { referee: { share_contact_with_officials: nil } }, as: :json
+
+    assert_response :unprocessable_entity
+    assert_equal false, @referee.reload.share_contact_with_officials
+  end
+
   test 'update ignoriert mitgeschickte Namensfelder (Name steht auf dem Ausweis)' do
     login(@user)
 

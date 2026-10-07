@@ -174,6 +174,20 @@ class RefereeTest < ActiveSupport::TestCase
       end
   end
 
+  test 'merge_into!: der Zeitpunkt der Kontaktfreigabe wandert mit der uebernommenen Entscheidung' do
+    secondary = make_referee(lizenznummer: 42_101)
+    master    = make_referee(lizenznummer: 42_102)
+    decided = Time.zone.parse('2026-09-01 12:00')
+    travel_to(decided) { secondary.update!(share_contact_with_officials: false) }
+    travel_to(decided + 1.day) { master.update!(share_contact_with_officials: true) }
+
+    travel_to(decided + 10.days) { secondary.merge_into!(master) }
+
+    master.reload
+    assert_equal false, master.share_contact_with_officials
+    assert_equal decided, master.share_contact_decided_at
+  end
+
   test 'merge_into!: Vereins-Ausschluesse wandern mit, Dubletten fallen weg' do
     secondary = make_referee(lizenznummer: 41_001)
     master    = make_referee(lizenznummer: 41_002)

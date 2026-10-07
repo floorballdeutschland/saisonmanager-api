@@ -71,6 +71,7 @@ class RefereeProfileController < ApplicationController
       # nil = noch nie gefragt (das Portal fragt dann einmal nach), siehe
       # RefereeGameDayConfirmationsController#officials_json.
       share_contact_with_officials: @referee.share_contact_with_officials,
+      share_contact_decided_at: @referee.share_contact_decided_at&.iso8601,
       lizenzstufe: @referee.lizenzstufe,
       gueltigkeit: @referee.gueltigkeit&.strftime('%d.%m.%Y'),
       geburtsdatum: @referee.geburtsdatum&.strftime('%d.%m.%Y'),

@@ -11,7 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Neu
 
-- **Kontaktdaten im Gespann**: Schiedsrichter können im Profil zustimmen, dass die mit ihnen am selben Spiel angesetzten Schiris und der SR-Coach unter „Meine Spieltage“ ihre Telefonnummer und E-Mail-Adresse sehen, um sich vor dem Spiel abzusprechen. Standardmäßig aus; wer noch nie gefragt wurde, wird im Portal einmal gefragt. Auf Gegenseitigkeit: Nur wer die eigenen Daten teilt, sieht auch die der anderen. Sichtbar nur für die Mit-Angesetzten einer veröffentlichten Ansetzung und nur bis zum Tag nach dem Spieltag, danach stehen dort nur noch die Namen.
+- **Kontaktdaten im Gespann**: Schiedsrichter können im Profil zustimmen, dass die mit ihnen am selben Spiel angesetzten Schiris und der SR-Coach unter „Meine Spieltage“ ihre Telefonnummer und E-Mail-Adresse sehen, um sich vor dem Spiel abzusprechen. Standardmäßig aus; wer noch nie gefragt wurde, wird im Portal einmal gefragt. Auf Gegenseitigkeit: Nur wer die eigenen Daten teilt, sieht auch die der anderen. Sichtbar nur für die Mit-Angesetzten einer veröffentlichten Ansetzung und nur bis zum Tag nach dem Spieltag, danach stehen dort nur noch die Namen. Der Zeitpunkt jeder Entscheidung (Zustimmung wie Widerruf) wird gespeichert; eine getroffene Entscheidung lässt sich ändern, aber nicht mehr auf „nie gefragt“ zurücksetzen.
 
 ## [1.124.1] - 2026-10-06
 
