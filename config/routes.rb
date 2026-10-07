@@ -207,6 +207,7 @@ Rails.application.routes.draw do
       post 'user/games/:id/award/:side/:award/set_player', to: 'games#set_player_award'
 
       post 'user/games/:id/lineup/:side/add_player', to: 'games#add_player_to_lineup'
+      post 'user/games/:id/lineup/:side/copy_from_last_game', to: 'games#copy_lineup_from_last_game'
       post 'user/games/:id/lineup/:side/remove_player', to: 'games#remove_player'
       post 'user/games/:id/lineup/:side/add_coach/:number', to: 'games#add_coach'
       post 'user/games/:id/lineup/:side/remove_coach/:number', to: 'games#remove_coach'
@@ -336,6 +337,8 @@ Rails.application.routes.draw do
         resources :referee_observations, only: %i[update]
         get 'referee_feedback_analytics', to: 'referee_feedback_analytics#index'
         get 'referee_feedback_analytics/export', to: 'referee_feedback_analytics#export'
+        get 'referee_observation_report', to: 'referee_observation_reports#index'
+        get 'referee_observation_report/export', to: 'referee_observation_reports#export'
         resources :feedback_themes, only: %i[index create update destroy]
         get 'feedback_comments', to: 'feedback_comments#index'
         get 'feedback_comments/stats', to: 'feedback_comments#stats'
@@ -502,6 +505,7 @@ Rails.application.routes.draw do
       get  'public/overlay/scorer',   to: 'public_overlay#scorer'
       get  'public/overlay/schedule', to: 'public_overlay#schedule'
       get  'public/overlay/form',     to: 'public_overlay#form'
+      get  'public/overlay/upcoming', to: 'public_overlay#upcoming'
 
       post   'user/game_days/:game_day_id/overlay_link', to: 'game_day_overlay_links#create'
       get    'user/game_days/:game_day_id/overlay_link', to: 'game_day_overlay_links#show'
