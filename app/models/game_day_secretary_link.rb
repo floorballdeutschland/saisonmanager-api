@@ -1,4 +1,6 @@
 class GameDaySecretaryLink < ApplicationRecord
+  include GameDayLinkWindow
+
   belongs_to :created_by, class_name: 'User'
   has_many :game_day_secretary_link_game_days, dependent: :destroy
   has_many :game_days, through: :game_day_secretary_link_game_days
@@ -8,14 +10,19 @@ class GameDaySecretaryLink < ApplicationRecord
   # GameDay) – deshalb nur `on: :create`.
   validates :game_days, presence: true, on: :create
 
-  scope :active, -> { where('expires_at > ?', Time.current) }
   scope :covering, lambda { |game_day_ids|
     joins(:game_day_secretary_link_game_days)
       .where(game_day_secretary_link_game_days: { game_day_id: game_day_ids })
       .distinct
   }
 
+  # Mindestdauer ab Ausgabe, siehe GameDayLinkWindow. Das eigentliche Fenster
+  # hängt am Spieltag.
   VALIDITY = 72.hours
+
+  def self.minimum_validity
+    VALIDITY
+  end
 
   # Kurzcode zum Abtippen. Der Vereinsrechner am Spieltisch hat kein
   # Benutzerkonto und meist auch kein Postfach, in dem der Link laege -- er wird
@@ -30,15 +37,14 @@ class GameDaySecretaryLink < ApplicationRecord
   CODE_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'.freeze
   CODE_LENGTH = 8
 
-  def self.find_by_token(raw_token)
-    return nil if raw_token.blank?
-
-    digest = Digest::SHA256.hexdigest(raw_token)
-    active.find_by(token_digest: digest)
-  end
-
   # Loest den abgetippten Code gegen den regulaeren Token ein und liefert
   # [link, raw_token] oder nil.
+  #
+  # Ein Link, dessen Fenster noch nicht begonnen hat, kommt hier MIT heraus:
+  # Der Aufrufer meldet dann „gilt erst ab" statt „ungültig", damit niemand
+  # wegen eines zu früh ausprobierten Zettels einen neuen Code holt und den
+  # gedruckten damit entwertet. Der Token selbst trägt erst ab `valid_from`,
+  # `find_by_token` lässt ihn vorher nicht durch.
   #
   # Der Code ist bewusst NICHT das Geheimnis, mit dem am Tisch gearbeitet wird:
   # Er wird einmal eingeloest, danach haengt wie bisher der 43-Zeichen-Token an
@@ -105,8 +111,9 @@ class GameDaySecretaryLink < ApplicationRecord
   # `token_for` der Token, denn `code_salt` liegt offen in derselben Zeile.
   #
   # Der Schluessel steckt in den Credentials, nicht in der Tabelle. Wechselt er,
-  # sind laufende Codes unbrauchbar; bei 72 Stunden Gueltigkeit ist das
-  # hinnehmbar.
+  # sind laufende Codes unbrauchbar. Seit GameDayLinkWindow trifft das auch
+  # Zettel, die fuer Spieltage der naechsten Wochen schon ausgedruckt sind;
+  # vor einem Schluesselwechsel also die Vereine vorwarnen.
   def self.code_digest_for(normalized_code)
     OpenSSL::HMAC.hexdigest('SHA256', Rails.application.secret_key_base, normalized_code)
   end
@@ -166,13 +173,15 @@ class GameDaySecretaryLink < ApplicationRecord
 
       raw_code = unused_code
       raw_token = token_for(raw_code, code_salt)
+      valid_from, expires_at = window_for(days, issued_at: Time.current)
 
       link = create!(
         created_by: created_by,
         token_digest: Digest::SHA256.hexdigest(raw_token),
         code_digest: code_digest_for(raw_code),
         code_salt: code_salt,
-        expires_at: VALIDITY.from_now,
+        valid_from: valid_from,
+        expires_at: expires_at,
         game_days: days
       )
     end
@@ -208,6 +217,10 @@ class GameDaySecretaryLink < ApplicationRecord
   # würde dann veraltete Rechte behaupten.
   def covered_game_day_ids
     game_day_secretary_link_game_days.pluck(:game_day_id)
+  end
+
+  def window_game_days
+    game_days.to_a
   end
 
   def covers_game_day?(game_day_id)

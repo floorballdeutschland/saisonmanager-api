@@ -9,22 +9,21 @@
 # der Regel mehrere Partien hintereinander zeigt und das Dock ohne neues Token
 # zwischen ihnen wechseln soll.
 class GameDayOverlayLink < ApplicationRecord
+  include GameDayLinkWindow
+
   belongs_to :game_day
   belongs_to :created_by, class_name: 'User'
 
-  # Reicht für Anwurf am Vorabend einrichten bis Abbau nach dem letzten Spiel.
-  # Bewusst kürzer als beim Sekretariatslink (72 h): Das Token hebt die
-  # Verzögerung für Live-Daten auf, es soll nicht länger gelten als die
-  # Übertragung dauert.
+  # Mindestdauer ab Ausgabe, siehe GameDayLinkWindow. Das eigentliche Fenster
+  # hängt am Spieltag und ist dasselbe wie beim Sekretariatslink. Früher galt
+  # der Zugang bewusst kürzer (36 h ab Ausgabe), weil das Token die Verzögerung
+  # für Live-Daten aufhebt. Vor dem Spieltag gibt es aber noch keine Live-Daten
+  # und nach seinem Ende keine mehr, das längere Fenster gibt also nichts preis,
+  # was nicht ohnehin öffentlich ist.
   LIFETIME = 36.hours
 
-  scope :active, -> { where('expires_at > ?', Time.current) }
-
-  def self.find_by_token(raw_token)
-    return nil if raw_token.blank?
-
-    digest = Digest::SHA256.hexdigest(raw_token)
-    active.find_by(token_digest: digest)
+  def self.minimum_validity
+    LIFETIME
   end
 
   # Ein aktiver Link je Spieltag: Ein erneutes Erzeugen zieht den alten zurück.
@@ -32,6 +31,7 @@ class GameDayOverlayLink < ApplicationRecord
   # weitergegebener Link über „neu erzeugen" entwertet werden kann.
   def self.generate!(game_day:, created_by:)
     raw_token = SecureRandom.urlsafe_base64(32)
+    valid_from, expires_at = window_for([game_day], issued_at: Time.current)
 
     # Löschen und Anlegen gehören zusammen: Ohne Transaktion gibt es dazwischen
     # ein Fenster ohne Zugang, in dem die Übersicht „kein Zugang" meldet. Den
@@ -45,10 +45,15 @@ class GameDayOverlayLink < ApplicationRecord
         game_day: game_day,
         created_by: created_by,
         token_digest: Digest::SHA256.hexdigest(raw_token),
-        expires_at: LIFETIME.from_now
+        valid_from: valid_from,
+        expires_at: expires_at
       )
     end
 
     [link, raw_token]
+  end
+
+  def window_game_days
+    [game_day]
   end
 end
