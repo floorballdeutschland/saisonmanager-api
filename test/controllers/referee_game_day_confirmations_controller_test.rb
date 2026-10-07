@@ -86,7 +86,112 @@ class RefereeGameDayConfirmationsControllerTest < ActionDispatch::IntegrationTes
     assert_nil days.first['games'].first['referee_notes']
   end
 
+  test 'Mit-Angesetzte erscheinen mit Namen, Kontaktdaten nur bei eigener Freigabe' do
+    @partner.update!(vorname: 'Paula', nachname: 'Partner', email: 'paula@example.com',
+                     telefonnummer: '0170 1234567', share_contact_with_officials: true)
+    @coach.update!(vorname: 'Carl', nachname: 'Coach', email: 'carl@example.com',
+                   telefonnummer: '0171 7654321', share_contact_with_officials: nil)
+    @referee.update!(share_contact_with_officials: true)
+    publish_assignment(referee1: @referee, referee2: @partner, coach: @coach)
+
+    login(referee_user(@referee))
+    get '/api/v2/referee/game_days'
+
+    officials = officials_for(JSON.parse(response.body))
+    assert_equal %w[referee2 coach], officials.pluck('role'), 'die eigene Person fehlt in der Liste'
+
+    partner = officials.find { |o| o['role'] == 'referee2' }
+    assert_equal 'Paula Partner', partner['name']
+    assert_equal true, partner['contact_shared']
+    assert_equal '0170 1234567', partner['telefonnummer']
+    assert_equal 'paula@example.com', partner['email']
+
+    coach = officials.find { |o| o['role'] == 'coach' }
+    assert_equal 'Carl Coach', coach['name']
+    assert_equal false, coach['contact_shared'], 'nie gefragt zaehlt als Nein'
+    assert_nil coach['telefonnummer']
+    assert_nil coach['email']
+  end
+
+  test 'Coach sieht die Kontaktdaten des Gespanns, eine Ablehnung bleibt verborgen' do
+    @referee.update!(email: 'schiri@example.com', telefonnummer: '0170 1', share_contact_with_officials: true)
+    @partner.update!(email: 'partner@example.com', telefonnummer: '0170 2', share_contact_with_officials: false)
+    @coach.update!(share_contact_with_officials: true)
+    publish_assignment(referee1: @referee, referee2: @partner, coach: @coach)
+
+    login(referee_user(@coach))
+    get '/api/v2/referee/game_days'
+
+    officials = officials_for(JSON.parse(response.body))
+    assert_equal %w[referee1 referee2], officials.pluck('role')
+    assert_equal 'schiri@example.com', officials.first['email']
+    assert_equal '0170 1', officials.first['telefonnummer']
+    assert_equal false, officials.last['contact_shared']
+    assert_nil officials.last['email']
+    assert_nil officials.last['telefonnummer']
+  end
+
+  test 'Kontaktdaten verschwinden nach dem Tag nach dem Spieltag, die Namen bleiben' do
+    @partner.update!(email: 'partner@example.com', telefonnummer: '0170 2', share_contact_with_officials: true)
+    @referee.update!(share_contact_with_officials: true)
+    @game_day.update!(date: (Date.today - 2).to_s)
+    publish_assignment(referee1: @referee, referee2: @partner)
+
+    login(referee_user(@referee))
+    get '/api/v2/referee/game_days'
+
+    partner = officials_for(JSON.parse(response.body)).first
+    assert_equal true, partner['contact_shared']
+    assert_nil partner['email']
+    assert_nil partner['telefonnummer']
+    assert_not_nil partner['name']
+  end
+
+  test 'am Tag nach dem Spieltag (Berliner Datum) sind die Kontaktdaten noch sichtbar' do
+    @partner.update!(email: 'partner@example.com', share_contact_with_officials: true)
+    @referee.update!(share_contact_with_officials: true)
+    @game_day.update!(date: (Time.current.in_time_zone('Europe/Berlin').to_date - 1).to_s)
+    publish_assignment(referee1: @referee, referee2: @partner)
+
+    login(referee_user(@referee))
+    get '/api/v2/referee/game_days'
+
+    assert_equal 'partner@example.com', officials_for(JSON.parse(response.body)).first['email']
+  end
+
+  test 'kommender Spieltag liefert die freigegebenen Kontaktdaten' do
+    @partner.update!(email: 'partner@example.com', share_contact_with_officials: true)
+    @referee.update!(share_contact_with_officials: true)
+    @game_day.update!(date: (Date.today + 5).to_s)
+    publish_assignment(referee1: @referee, referee2: @partner)
+
+    login(referee_user(@referee))
+    get '/api/v2/referee/game_days'
+
+    assert_equal 'partner@example.com', officials_for(JSON.parse(response.body)).first['email']
+  end
+
+  [nil, false].each do |own|
+    test "wer selbst nicht teilt (#{own.inspect}), sieht auch fremde Kontaktdaten nicht" do
+      @referee.update!(share_contact_with_officials: own)
+      @partner.update!(email: 'partner@example.com', telefonnummer: '0170 2', share_contact_with_officials: true)
+      publish_assignment(referee1: @referee, referee2: @partner)
+
+      login(referee_user(@referee))
+      get '/api/v2/referee/game_days'
+
+      partner = officials_for(JSON.parse(response.body)).first
+      assert_equal true, partner['contact_shared'], 'die Freigabe selbst bleibt sichtbar'
+      assert_nil partner['email']
+      assert_nil partner['telefonnummer']
+    end
+  end
+
   private
+
+  def officials_for(days)
+    days.find { |d| d['id'] == @game_day.id }['games'].first['officials']
+  end
 
   def publish_assignment(referee1:, referee2: nil, coach: nil)
     RefereeAssignment.create!(

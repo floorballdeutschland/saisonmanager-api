@@ -38,6 +38,13 @@ class Referee < ApplicationRecord
   validates :partner_lizenznummer,
             numericality: { only_integer: true, greater_than: 0, allow_nil: true }
 
+  # Kontaktfreigabe fuers Gespann: Eine getroffene Entscheidung (true/false)
+  # laesst sich aendern, aber nicht mehr auf "nie gefragt" (NULL) zuruecksetzen,
+  # sonst verschwaende eine Ablehnung spurlos. Jede Aenderung stempelt den
+  # Zeitpunkt als Nachweis (Erteilung wie Widerruf).
+  validate :share_contact_decision_not_reset
+  before_save :stamp_share_contact_decision, if: :will_save_change_to_share_contact_with_officials?
+
   after_save :sync_partner_lizenznummer, if: :saved_change_to_partner_lizenznummer?
 
   def lizenznummer_display
@@ -349,11 +356,21 @@ class Referee < ApplicationRecord
       # Lizenzstufe und Gueltigkeit stehen bewusst NICHT in dieser Liste, siehe
       # _adopt_license_fields.
       scalar_fields = %w[
-        vorname nachname geburtsdatum email club_id game_operation_id
+        vorname nachname geburtsdatum email telefonnummer club_id game_operation_id
         strasse hausnummer plz ort
       ]
       scalar_fields.each do |field|
         master[field] = self[field] if master[field].blank? && self[field].present?
+      end
+
+      # Kontaktfreigabe fuers Gespann: Das Konto haengt danach am Master, die
+      # Entscheidung muss mitwandern. Bei Widerspruch gewinnt die Ablehnung,
+      # eine Zustimmung darf nicht aus dem anderen Profil "nachwachsen".
+      # Der Zeitpunkt wandert mit der Entscheidung, die der Master uebernimmt.
+      unless share_contact_with_officials.nil? || master.share_contact_with_officials == false ||
+             master.share_contact_with_officials == share_contact_with_officials
+        master.share_contact_with_officials = share_contact_with_officials
+        master.share_contact_decided_at = share_contact_decided_at
       end
 
       _adopt_license_fields(master)
@@ -447,6 +464,20 @@ class Referee < ApplicationRecord
   end
 
   private
+
+  def share_contact_decision_not_reset
+    return unless share_contact_with_officials.nil? && !share_contact_with_officials_was.nil?
+
+    errors.add(:share_contact_with_officials, 'kann nach einer Entscheidung nur noch ja oder nein sein')
+  end
+
+  # Uebernimmt der Merge die Entscheidung samt Zeitpunkt des Zweitprofils,
+  # bleibt dessen Zeitpunkt stehen.
+  def stamp_share_contact_decision
+    return if share_contact_with_officials.nil? || will_save_change_to_share_contact_decided_at?
+
+    self.share_contact_decided_at = Time.current
+  end
 
   # Zählt je Partner-PK die gemeinsamen Einsätze. Ein Spiel zählt pro Partner
   # genau einmal (uniq), der Schiri selbst wird übersprungen.
