@@ -215,6 +215,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_07_150000) do
     t.datetime "state_updated_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.datetime "valid_from", comment: "Beginn des Gueltigkeitsfensters (72 h vor dem Spieltag). NULL = gilt ab Ausgabe (Altbestand)."
     t.index ["created_by_id"], name: "index_game_day_overlay_links_on_created_by_id"
     t.index ["game_day_id"], name: "index_game_day_overlay_links_on_game_day_id", unique: true
     t.index ["token_digest"], name: "index_game_day_overlay_links_on_token_digest", unique: true
@@ -251,6 +252,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_07_150000) do
     t.datetime "updated_at", null: false
     t.string "code_digest"
     t.string "code_salt"
+    t.datetime "valid_from", comment: "Beginn des Gueltigkeitsfensters (72 h vor dem Spieltag). NULL = gilt ab Ausgabe (Altbestand)."
     t.index ["code_digest"], name: "index_game_day_secretary_links_on_code_digest", unique: true
     t.index ["created_by_id"], name: "index_game_day_secretary_links_on_created_by_id"
     t.index ["token_digest"], name: "index_game_day_secretary_links_on_token_digest", unique: true

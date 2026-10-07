@@ -7,7 +7,7 @@ class PublicSecretaryController < ApplicationController
     raw_token = params[:token]
     return render json: { message: 'Kein Token angegeben.' }, status: :bad_request unless raw_token.present?
 
-    link = GameDaySecretaryLink.find_by_token(raw_token)
+    link = GameDaySecretaryLink.find_unexpired_by_token(raw_token)
     return render json: { message: 'Dieser Link ist ungültig oder abgelaufen.' }, status: :gone if link.nil?
 
     game_days = link.game_days
@@ -19,6 +19,9 @@ class PublicSecretaryController < ApplicationController
     # Ohne diesen Zweig käme eine 200 mit game_day: null zurück und die Seite
     # liefe in einen Fehler, statt den Link als ungültig zu melden.
     return render json: { message: 'Dieser Link ist ungültig oder abgelaufen.' }, status: :gone if game_days.empty?
+    # Nach der Prüfung auf leere Spieltage: Ein Link ohne Spieltag gilt nie
+    # mehr, „gilt erst ab" wäre eine falsche Zusage.
+    return render_not_started(link) unless link.started?
 
     games = games_for(game_days)
 
@@ -28,6 +31,7 @@ class PublicSecretaryController < ApplicationController
       game_days: game_days.map { |gd| game_day_json(gd) },
       games: games.map { |g| game_json(g) },
       license_lists: build_license_lists(games),
+      valid_from: link.valid_from&.iso8601,
       expires_at: link.expires_at.iso8601,
       created_by: link.created_by&.fullname
     }
@@ -63,10 +67,22 @@ class PublicSecretaryController < ApplicationController
       return render json: { message: 'Dieser Code ist ungültig oder abgelaufen.' }, status: :gone
     end
 
-    render json: { token: raw_token, expires_at: link.expires_at.iso8601 }
+    return render_not_started(link) unless link.started?
+
+    render json: { token: raw_token, valid_from: link.valid_from&.iso8601, expires_at: link.expires_at.iso8601 }
   end
 
   private
+
+  # Ein ausgedruckter Zettel wird gern vorab ausprobiert. „Ungültig" hieße dann,
+  # sich einen neuen Code geben zu lassen, und der entwertet den gedruckten.
+  # Deshalb ein eigener Status mit Datum: 403 statt 410, weil der Zugang nicht
+  # weg ist, sondern noch nicht dran. Wer den Code richtig hat, erfährt damit
+  # nichts, was nicht ohnehin auf dem Zettel steht.
+  def render_not_started(link)
+    render json: { message: link.not_started_message, valid_from: link.valid_from.iso8601 },
+           status: :forbidden
+  end
 
   # Spiele aller Spieltage des Links in der Reihenfolge, in der sie in der Halle
   # laufen. start_time ist Text (HH:MM); Spiele ohne Zeit hängen sich hinten an.
