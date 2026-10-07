@@ -349,11 +349,18 @@ class Referee < ApplicationRecord
       # Lizenzstufe und Gueltigkeit stehen bewusst NICHT in dieser Liste, siehe
       # _adopt_license_fields.
       scalar_fields = %w[
-        vorname nachname geburtsdatum email club_id game_operation_id
+        vorname nachname geburtsdatum email telefonnummer club_id game_operation_id
         strasse hausnummer plz ort
       ]
       scalar_fields.each do |field|
         master[field] = self[field] if master[field].blank? && self[field].present?
+      end
+
+      # Kontaktfreigabe fuers Gespann: Das Konto haengt danach am Master, die
+      # Entscheidung muss mitwandern. Bei Widerspruch gewinnt die Ablehnung,
+      # eine Zustimmung darf nicht aus dem anderen Profil "nachwachsen".
+      unless share_contact_with_officials.nil? || master.share_contact_with_officials == false
+        master.share_contact_with_officials = share_contact_with_officials
       end
 
       _adopt_license_fields(master)
