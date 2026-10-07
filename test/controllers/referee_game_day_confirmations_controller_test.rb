@@ -147,6 +147,18 @@ class RefereeGameDayConfirmationsControllerTest < ActionDispatch::IntegrationTes
     assert_not_nil partner['name']
   end
 
+  test 'am Tag nach dem Spieltag (Berliner Datum) sind die Kontaktdaten noch sichtbar' do
+    @partner.update!(email: 'partner@example.com', share_contact_with_officials: true)
+    @referee.update!(share_contact_with_officials: true)
+    @game_day.update!(date: (Time.current.in_time_zone('Europe/Berlin').to_date - 1).to_s)
+    publish_assignment(referee1: @referee, referee2: @partner)
+
+    login(referee_user(@referee))
+    get '/api/v2/referee/game_days'
+
+    assert_equal 'partner@example.com', officials_for(JSON.parse(response.body)).first['email']
+  end
+
   test 'kommender Spieltag liefert die freigegebenen Kontaktdaten' do
     @partner.update!(email: 'partner@example.com', share_contact_with_officials: true)
     @referee.update!(share_contact_with_officials: true)

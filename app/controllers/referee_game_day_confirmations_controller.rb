@@ -281,8 +281,8 @@ class RefereeGameDayConfirmationsController < ApplicationController
   # Die übrigen am Spiel Angesetzten (Schiri 1/2, Coach) ohne die eigene
   # Person. Der Name steht ohnehin in der Ansetzungsmail; Telefonnummer und
   # E-Mail nur, wenn die jeweilige Person selbst zugestimmt hat
-  # (share_contact_with_officials, NULL zählt als Nein), nur rund um den
-  # Spieltag und nur auf Gegenseitigkeit: Wer die eigenen Daten nicht teilt,
+  # (share_contact_with_officials, NULL zählt als Nein), ab der
+  # Veröffentlichung bis zum Tag nach dem Spieltag und nur auf Gegenseitigkeit: Wer die eigenen Daten nicht teilt,
   # sieht auch die der anderen nicht. Zweckbindung: Die Nummer wurde für die Ansetzer erhoben, siehe
   # Admin::RefereesController#can_view_contact_data?.
   def officials_json(assignment, contact_open)
