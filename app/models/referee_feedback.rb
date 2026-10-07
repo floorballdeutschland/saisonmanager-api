@@ -1,8 +1,9 @@
 # Rückmeldung einer am Spiel beteiligten Mannschaft (TM/VM) zum Schiedsrichter-
 # gespann eines Spiels. Verpflichtend nach jedem Spiel der dafür freigeschalteten
 # Ligen (League#referee_feedback_enabled). Pro Spiel und Team genau eine Abgabe
-# (siehe Unique-Index game_id+team_id). Sichtbar ausschließlich in der
-# Schiriverwaltung am Schiri-Profil (Admin / RSK-FD / Ansetzer-FD).
+# (siehe Unique-Index game_id+team_id). Einzeln sichtbar ausschließlich in der
+# Schiriverwaltung am Schiri-Profil (Admin / RSK-FD / Ansetzer-FD); die
+# bewertete Person sieht nur die Kennzahlen (RefereeFeedbackSummariesController).
 class RefereeFeedback < ApplicationRecord
   RATING_RANGE = (1..10)
 
