@@ -68,6 +68,44 @@ module Admin
       assert_not sa.person_level_assignment_default
     end
 
+    test 'Coach-Ansetzung im reduzierten Modus bleibt stehen' do
+      sa = create(:state_association)
+
+      patch "/api/v2/admin/state_associations/#{sa.id}",
+            params: { state_association: { referee_assignment_external_enabled: true,
+                                           referee_assignment_enabled: false,
+                                           coach_assignment_enabled: true } }
+
+      assert_response :success
+      sa.reload
+      assert sa.coach_assignment_enabled
+      assert sa.club_level_coach_assignment_active?
+    end
+
+    # Im Personen-Weg setzt die Ansetzer-Rolle den Coach ohnehin mit an; ein
+    # liegengebliebener Haken tauchte sonst beim Wechsel zurück in den
+    # reduzierten Modus unerwartet aktiv wieder auf.
+    test 'Coach-Ansetzung faellt beim Wechsel auf die Personenebene weg' do
+      sa = create(:state_association, referee_assignment_external_enabled: true,
+                                      coach_assignment_enabled: true)
+
+      patch "/api/v2/admin/state_associations/#{sa.id}",
+            params: { state_association: { referee_assignment_enabled: true } }
+
+      assert_response :success
+      assert_not sa.reload.coach_assignment_enabled
+    end
+
+    test 'Coach-Ansetzung ohne Hauptschalter wird nicht gespeichert' do
+      sa = create(:state_association)
+
+      patch "/api/v2/admin/state_associations/#{sa.id}",
+            params: { state_association: { coach_assignment_enabled: true } }
+
+      assert_response :success
+      assert_not sa.reload.coach_assignment_enabled
+    end
+
     def login(user)
       post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
       assert_response :success

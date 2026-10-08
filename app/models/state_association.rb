@@ -16,6 +16,7 @@ class StateAssociation < ApplicationRecord
     referee_assignment_external_enabled
     referee_assignment_enabled
     person_level_assignment_default
+    coach_assignment_enabled
     report_form_email_enabled
     manual_proceeding_creation
     requested_license_playable
@@ -229,6 +230,10 @@ class StateAssociation < ApplicationRecord
     effective_setting(:person_level_assignment_default)
   end
 
+  def effective_coach_assignment_enabled
+    effective_setting(:coach_assignment_enabled)
+  end
+
   def effective_report_form_email_enabled
     effective_setting(:report_form_email_enabled)
   end
@@ -325,6 +330,15 @@ class StateAssociation < ApplicationRecord
     referee_assignment_mode == :club
   end
 
+  # Im reduzierten Modus setzt die RSK zusätzlich Schiedsrichtercoaches an.
+  # Der Schalter ist eine Unteroption von Weg 3 und wirkt nur dort: im
+  # Personen-Weg setzt die Ansetzer-Rolle den Coach ohnehin mit an, ohne
+  # Hauptschalter gibt es gar keine Ansetzung außerhalb der SBK. Wie die
+  # übrigen Ansetzungsschalter wird er an `settings_source` gelesen.
+  def club_level_coach_assignment_active?
+    club_level_assignment_active? && settings_source.coach_assignment_enabled?
+  end
+
   def logo_url
     # Proxy- statt Redirect-Route: stabile URL, die der Browser behalten kann.
     # Ausfuehrliche Begruendung in app/models/concerns/league_logo.rb.
@@ -382,6 +396,7 @@ class StateAssociation < ApplicationRecord
       effective_referee_assignment_external_enabled: effective_referee_assignment_external_enabled.present?,
       effective_referee_assignment_enabled: effective_referee_assignment_enabled.present?,
       effective_person_level_assignment_default: effective_person_level_assignment_default.present?,
+      effective_coach_assignment_enabled: effective_coach_assignment_enabled.present?,
       effective_report_form_email_enabled: effective_report_form_email_enabled.present?,
       effective_manual_proceeding_creation: effective_manual_proceeding_creation.present?,
       effective_requested_license_playable: effective_requested_license_playable.present?,
@@ -398,6 +413,8 @@ class StateAssociation < ApplicationRecord
       referee_assignment_external_enabled:,
       referee_assignment_enabled:,
       person_level_assignment_default:,
+      # Unteroption des reduzierten Modus: die RSK setzt auch Coaches an.
+      coach_assignment_enabled:,
       report_form_email_enabled:,
       logo_url:,
       banner_url:,
