@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Kurshistorie am Schiedsrichterprofil in der Verwaltung:** Admin, RSK und Ansetzung sehen unter `/verwaltung/schiedsrichter/:id` neben der Spielhistorie die eingereichten Kursergebnisse der Person (Kursdaten, Stufe, Punkte, Status). Neuer Endpunkt `GET admin/referees/:id/courses`, Recht `referee_course_history_view`.
+
 ## [1.128.0] - 2026-10-08
 
 ### Verbessert

@@ -137,6 +137,23 @@ class RefereeCourseResult < ApplicationRecord
     end
   end
 
+  # Kurshistorie am Schiri-Profil: was die Person absolviert hat, ohne den
+  # Abgleich mit der CSV-Zeile. Gemeinsame Form fuer die Eigensicht
+  # (RefereeHistoryController#tests) und die Verwaltung
+  # (Admin::RefereesController#courses).
+  def history_hash
+    {
+      id:,
+      lizenzstufe:,
+      gueltigkeit: gueltigkeit&.strftime('%d.%m.%Y'),
+      kursstichtag: kursstichtag&.strftime('%d.%m.%Y'),
+      status:,
+      applied_at: applied_at&.iso8601,
+      rejection_reason:,
+      course_data: course_data || {}
+    }
+  end
+
   def short_hash
     {
       id:,

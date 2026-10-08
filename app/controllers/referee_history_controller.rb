@@ -47,7 +47,7 @@ class RefereeHistoryController < ApplicationController
               .where(referee: @referee)
               .order(kursstichtag: :desc, created_at: :desc)
 
-    render json: results.map { |r| course_result_summary(r) }
+    render json: results.map(&:history_hash)
   end
 
   private
@@ -71,19 +71,6 @@ class RefereeHistoryController < ApplicationController
       game_operation_slug: game.league&.game_operation&.slug,
       season_id: game.game_day.league&.season_id&.to_i,
       result: game.result_string
-    }
-  end
-
-  def course_result_summary(result)
-    {
-      id: result.id,
-      lizenzstufe: result.lizenzstufe,
-      gueltigkeit: result.gueltigkeit&.strftime('%d.%m.%Y'),
-      kursstichtag: result.kursstichtag&.strftime('%d.%m.%Y'),
-      status: result.status,
-      applied_at: result.applied_at&.iso8601,
-      rejection_reason: result.rejection_reason,
-      course_data: result.course_data || {}
     }
   end
 end

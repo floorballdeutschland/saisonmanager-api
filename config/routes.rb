@@ -307,6 +307,7 @@ Rails.application.routes.draw do
           get :games, on: :member
           get :club_stats, on: :member
           get :partners, on: :member
+          get :courses, on: :member
           post :merge, on: :member
           post :create_user, on: :member
           delete :destroy_user, on: :member
