@@ -9,9 +9,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.128.0] - 2026-10-08
+
 ### Verbessert
 
-- **Kursimport überspringt bereits importierte Zeilen**: Wird eine fortgeschriebene Kursdatei erneut hochgeladen, legt der Import nur noch die neuen Zeilen an. Eine Zeile wird übersprungen, wenn dieselbe Person (Lizenznummer, sonst Name und Geburtsdatum) mit denselben Kursergebnissen (Stufe, Datum und Punkte von Kurs 1 und 2) schon in einem früheren Import angewendet oder noch offen ist. Abgelehnte oder verworfene Zeilen und offene Zeilen abgebrochener Importe kommen wieder. Die übersprungenen Zeilen stehen namentlich am Import; sind alle Zeilen schon bekannt, wird kein Import angelegt.
+- **Kursimport überspringt bereits importierte Zeilen**: Wird eine fortgeschriebene Kursdatei erneut hochgeladen, legt der Import nur noch die neuen Zeilen an. Eine Zeile wird übersprungen, wenn dieselbe Person (Lizenznummer zusammen mit Nachname oder Geburtsdatum, sonst Name und Geburtsdatum) mit denselben Kursergebnissen (Stufe, Datum und Punkte von Kurs 1 und 2, saisonmanager-api#794, saisonmanager#534) schon in einem früheren Import angewendet oder noch offen ist. Abgelehnte oder verworfene Zeilen und offene Zeilen abgebrochener Importe kommen wieder. Die übersprungenen Zeilen stehen namentlich am Import; sind alle Zeilen schon bekannt, wird kein Import angelegt.
 - **Kursimport-Übersicht trennt offene Zeilen** (saisonmanager#533): Statt einer Spalte „Offene Reviews“ zeigt die Übersicht „Zu bearbeiten“ (Zeilen, die der Importeur noch einreichen oder klären muss) und „Offene Reviews beim LV“ (eingereichte Zeilen ohne Entscheidung des Landesverbands).
 
 ## [1.127.0] - 2026-10-08
