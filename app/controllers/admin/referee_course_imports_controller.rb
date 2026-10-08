@@ -6,6 +6,12 @@ module Admin
     MAX_CSV_BYTES = 5 * 1024 * 1024
     ALLOWED_CSV_CONTENT_TYPES = %w[text/csv text/plain application/vnd.ms-excel application/csv].freeze
 
+    # Spalte „Vorsaison": nur Spiele ab U15, Einsaetze in U13 und juenger sagen
+    # fuer die Einstufung nach dem Kurs nichts aus. Ausgeschlossen statt
+    # eingeschlossen, damit eine Liga ohne `age_group` (in Saison 17 bei einigen
+    # Playoff-Ligen leer) weiter zaehlt.
+    YOUNGER_THAN_U15 = '^U(9|11|13)( |$)'.freeze
+
     SubmitRowError = Class.new(StandardError) do
       attr_reader :row, :result_id
 
@@ -349,7 +355,9 @@ module Admin
       prev = Setting.current_season_id.to_i - 1
       return 0 if prev <= 0
 
-      referee.games(season_id: prev).count
+      referee.games(season_id: prev)
+             .where("COALESCE(leagues.age_group, '') !~ ?", YOUNGER_THAN_U15)
+             .count
     end
   end
 end
