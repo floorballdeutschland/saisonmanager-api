@@ -195,9 +195,9 @@ module Admin
       assert_equal 'in_review', @import.reload.status
     end
 
-    # Eine zurueckgestellte, eingereichte oder fremde Zeile wird nicht ueber
-    # die Hintertuer der ID doch angewendet.
-    test 'eine nicht einreichbare Zeile reicht result_ids nicht ein' do
+    # Eine zurueckgestellte oder fremde Zeile wird nicht ueber die Hintertuer
+    # der ID doch angewendet.
+    test 'eine zurueckgestellte oder fremde Zeile reicht result_ids nicht ein' do
       zurueck = row(deferred: true)
       andere = row
       fremder_import = RefereeCourseImport.create!(
@@ -210,11 +210,91 @@ module Admin
            params: { result_ids: [zurueck.id, fremd.id] }, as: :json
 
       assert_response :unprocessable_entity
-      assert_match(/nicht einreichbar/, response.parsed_body['error'])
+      assert_match(/Nicht einreichbar/, response.parsed_body['error'])
       assert_nil zurueck.reload.submitted_at
       assert_nil andere.reload.submitted_at
       assert_nil fremd.reload.submitted_at
       assert_equal 'in_review', @import.reload.status
+    end
+
+    # Alles oder nichts: Eine angewendete Lizenz laesst sich nicht
+    # zuruecknehmen, also auch keine halbe Auswahl anwenden.
+    test 'ist eine der genannten Zeilen nicht einreichbar, wird keine eingereicht' do
+      gueltig = row
+      zurueck = row(deferred: true)
+      login(@admin)
+
+      assert_no_enqueued_emails do
+        post "/api/v2/admin/referee_course_imports/#{@import.id}/submit",
+             params: { result_ids: [gueltig.id, zurueck.id] }, as: :json
+      end
+
+      assert_response :unprocessable_entity
+      assert_includes response.parsed_body['error'], "##{zurueck.id}"
+      assert_not_includes response.parsed_body['error'], "##{gueltig.id}"
+      assert_equal 'pending_review', gueltig.reload.status
+      assert_nil gueltig.submitted_at
+      assert_equal 'in_review', @import.reload.status
+    end
+
+    # Ein leeres oder ausdrueckliches `null` darf nie zu „alle einreichen"
+    # werden. Nur ein fehlender Parameter meint die ganze Datei.
+    test 'leere, null oder unlesbare result_ids reichen nichts ein' do
+      zeile = row
+      login(@admin)
+
+      [[], nil, ['abc'], 'x', [{ 'id' => zeile.id }]].each do |ids|
+        post "/api/v2/admin/referee_course_imports/#{@import.id}/submit",
+             params: { result_ids: ids }, as: :json
+
+        assert_response :unprocessable_entity, "result_ids=#{ids.inspect}"
+        assert_match(/nicht leere Liste/, response.parsed_body['error'])
+      end
+      assert_nil zeile.reload.submitted_at
+      assert_equal 'in_review', @import.reload.status
+    end
+
+    # Eine einzeln eingereichte Zeile mit LV-Kontrolle wartet in der
+    # Warteschlange; ihre offene Nachbarzeile gehoert dort nicht hinein. Dieser
+    # Zustand (teilweise eingereicht mit offener, nicht zurueckgestellter
+    # Zeile) entsteht erst durch das Einzel-Einreichen.
+    test 'eine einzeln eingereichte Zeile mit LV-Kontrolle wartet allein in der Warteschlange' do
+      wartet = row(match_type: 'partial_match', state_association_id: nil)
+      nachbar = row(match_type: 'partial_match', state_association_id: nil)
+      login(@admin)
+
+      assert_no_enqueued_emails do
+        post "/api/v2/admin/referee_course_imports/#{@import.id}/submit",
+             params: { result_ids: [wartet.id] }, as: :json
+        assert_response :success
+      end
+      assert_equal 'pending_review', wartet.reload.status
+      assert wartet.submitted_at.present?
+      assert_equal 'partially_submitted', @import.reload.status
+
+      get '/api/v2/admin/referee_course_results'
+      ids = response.parsed_body.map { |r| r['id'] }
+      assert_includes ids, wartet.id
+      assert_not_includes ids, nachbar.id
+
+      post "/api/v2/admin/referee_course_results/#{nachbar.id}/approve"
+      assert_response :unprocessable_entity
+      assert_equal 'pending_review', nachbar.reload.status
+      assert_nil nachbar.submitted_at
+    end
+
+    test 'der Einzelweg schliesst einen haengengebliebenen Import ab' do
+      zeile = row
+      login(@admin)
+      post "/api/v2/admin/referee_course_imports/#{@import.id}/submit"
+      assert_response :success
+      @import.update!(status: 'partially_submitted')
+
+      post "/api/v2/admin/referee_course_imports/#{@import.id}/submit",
+           params: { result_ids: [zeile.id] }, as: :json
+
+      assert_response :unprocessable_entity
+      assert_equal 'submitted', @import.reload.status
     end
 
     test 'die letzte offene Zeile einzeln eingereicht schliesst den Import ab' do

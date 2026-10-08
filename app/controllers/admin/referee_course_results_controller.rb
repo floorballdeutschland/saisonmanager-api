@@ -38,39 +38,16 @@ module Admin
     def update
       return forbidden_response unless importer_can_edit?(@result)
 
-      attrs = update_params
+      # Unter der Sperre des Imports und mit frisch gelesener Zeile: Ein
+      # laufender Submit haelt den Import gesperrt. Ohne die Sperre las die
+      # Pruefung oben den Stand vor dessen Commit, und ein „Zurueckstellen"
+      # oder eine andere Lizenzstufe landete auf einer schon angewendeten Zeile.
+      @result.referee_course_import.with_lock do
+        @result.reload
+        return forbidden_response unless importer_can_edit?(@result)
 
-      # `|| false`, weil die Spalte NOT NULL ist: `cast('')` und `cast(nil)`
-      # ergeben `nil`, und das schluege als NotNullViolation im 500er auf
-      # (kein RecordInvalid, also auch kein 422).
-      if attrs.key?(:deferred)
-        @result.deferred = ActiveModel::Type::Boolean.new.cast(attrs[:deferred]) || false
+        apply_update(update_params)
       end
-
-      if attrs.key?(:referee_id)
-        new_id = attrs[:referee_id].presence
-        new_id = Integer(new_id, 10) if new_id.is_a?(String) && new_id.match?(/\A\d+\z/)
-        @result.referee_id = new_id
-      end
-
-      apply_importer_master_fields(@result, attrs[:master_by_importer])
-      sync_final_with_importer(@result)
-      sync_state_association(@result)
-
-      if attrs.key?(:lizenzstufe)
-        @result.lizenzstufe = attrs[:lizenzstufe]
-        # Gültigkeit aus der Dauer der Stufe ableiten, sofern nicht explizit
-        # mitgesendet (manueller Wert hat Vorrang, siehe unten).
-        unless attrs.key?(:gueltigkeit)
-          derived = RefereeLicenseLevel.gueltigkeit_for(@result.lizenzstufe, @result.kursstichtag)
-          @result.gueltigkeit = derived if derived
-        end
-      end
-      @result.gueltigkeit = parse_date(attrs[:gueltigkeit]) if attrs.key?(:gueltigkeit)
-      @result.match_field_count = recompute_match_field_count(@result)
-      @result.match_type = recompute_match_type(@result)
-
-      @result.save!
       render json: @result.short_hash
     end
 
@@ -94,6 +71,11 @@ module Admin
       # einreichbar, nicht abbrechbar.
       import = @result.referee_course_import
       import.with_lock do
+        # Die Pruefung oben las vor der Sperre; ein Submit kann die Zeile seither
+        # eingereicht haben.
+        @result.reload
+        return forbidden_response unless importer_can_edit?(@result)
+
         @result.update!(
           status: 'rejected',
           deferred: false,
@@ -180,6 +162,40 @@ module Admin
     end
 
     private
+
+    def apply_update(attrs)
+      # `|| false`, weil die Spalte NOT NULL ist: `cast('')` und `cast(nil)`
+      # ergeben `nil`, und das schluege als NotNullViolation im 500er auf
+      # (kein RecordInvalid, also auch kein 422).
+      if attrs.key?(:deferred)
+        @result.deferred = ActiveModel::Type::Boolean.new.cast(attrs[:deferred]) || false
+      end
+
+      if attrs.key?(:referee_id)
+        new_id = attrs[:referee_id].presence
+        new_id = Integer(new_id, 10) if new_id.is_a?(String) && new_id.match?(/\A\d+\z/)
+        @result.referee_id = new_id
+      end
+
+      apply_importer_master_fields(@result, attrs[:master_by_importer])
+      sync_final_with_importer(@result)
+      sync_state_association(@result)
+
+      if attrs.key?(:lizenzstufe)
+        @result.lizenzstufe = attrs[:lizenzstufe]
+        # Gültigkeit aus der Dauer der Stufe ableiten, sofern nicht explizit
+        # mitgesendet (manueller Wert hat Vorrang, siehe unten).
+        unless attrs.key?(:gueltigkeit)
+          derived = RefereeLicenseLevel.gueltigkeit_for(@result.lizenzstufe, @result.kursstichtag)
+          @result.gueltigkeit = derived if derived
+        end
+      end
+      @result.gueltigkeit = parse_date(attrs[:gueltigkeit]) if attrs.key?(:gueltigkeit)
+      @result.match_field_count = recompute_match_field_count(@result)
+      @result.match_type = recompute_match_type(@result)
+
+      @result.save!
+    end
 
     def set_result
       @result = RefereeCourseResult.find(params[:id])

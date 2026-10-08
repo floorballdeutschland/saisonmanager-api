@@ -12,6 +12,8 @@ module Admin
     # Playoff-Ligen leer) weiter zaehlt.
     YOUNGER_THAN_U15 = '^U(9|11|13)( |$)'.freeze
 
+    InvalidResultIds = Class.new(StandardError)
+
     SubmitRowError = Class.new(StandardError) do
       attr_reader :row, :result_id
 
@@ -109,12 +111,23 @@ module Admin
     # Mit `result_ids` reicht der Importeur nur diese Zeilen ein (einzelne
     # Freigabe aus der Tabelle heraus), statt erst alle uebrigen
     # zurueckzustellen. Die anderen offenen Zeilen halten den Import auf
-    # `partially_submitted`, genau wie zurueckgestellte.
+    # `partially_submitted`, genau wie zurueckgestellte. Alles oder nichts:
+    # Ist eine der genannten Zeilen nicht einreichbar, wird keine eingereicht --
+    # eine angewendete Lizenz laesst sich nicht zuruecknehmen.
     def submit
       return render(json: { error: 'Import nicht im Review-Status' }, status: :unprocessable_entity) \
         unless @import.editable?
 
-      if submit_scope.none?
+      if requested_result_ids
+        missing = requested_result_ids - submit_scope.pluck(:id)
+        if missing.any?
+          # Hat ein Verwerfen in einem anderen Tab die letzte offene Zeile
+          # genommen, steht der Import sonst mit nichts Offenem auf
+          # `partially_submitted`.
+          @import.close_if_done!
+          return render(json: { error: not_submittable_error(missing) }, status: :unprocessable_entity)
+        end
+      elsif submit_scope.none?
         return render(json: { error: nothing_to_submit_error }, status: :unprocessable_entity)
       end
 
@@ -124,6 +137,7 @@ module Admin
       RefereeCourseResultApplier.reset_license_level_positions_cache!
 
       already_submitted = false
+      taken_ids = []
       appliers = []
       ActiveRecord::Base.transaction do
         @import.lock!
@@ -132,6 +146,12 @@ module Admin
           # Zweiter paralleler Submit hat uns ueberholt.
           already_submitted = true
           raise ActiveRecord::Rollback
+        end
+        if requested_result_ids
+          # Zwischen Vorpruefung und Sperre hat ein anderer Request eine der
+          # genannten Zeilen eingereicht, verworfen oder zurueckgestellt.
+          taken_ids = requested_result_ids - rows.map(&:id)
+          raise ActiveRecord::Rollback if taken_ids.any?
         end
 
         rows.each_with_index do |result, idx|
@@ -164,6 +184,9 @@ module Admin
       if already_submitted
         return render(json: { error: 'Import wurde bereits eingereicht' }, status: :unprocessable_entity)
       end
+      if taken_ids.any?
+        return render(json: { error: not_submittable_error(taken_ids) }, status: :unprocessable_entity)
+      end
 
       # Erst nach dem Commit, damit ein Fehler in einer späteren Zeile keine Mails
       # zu zurückgerollten Lizenzen hinterlässt. Zeilen, die auf das LV-Review
@@ -191,36 +214,51 @@ module Admin
         row: e.row,
         result_id: e.result_id
       }, status: :unprocessable_entity
+    rescue InvalidResultIds
+      render json: { error: 'result_ids muss eine nicht leere Liste von Zeilen-IDs sein' },
+             status: :unprocessable_entity
     end
 
     private
 
     # Die Zeilen, die dieser Submit anwendet: alle einreichbaren oder, mit
-    # `result_ids`, nur die genannten davon. Eine genannte Zeile, die nicht
-    # (mehr) einreichbar ist, faellt still heraus; bleibt keine uebrig, greift
-    # `nothing_to_submit_error`.
+    # `result_ids`, die genannten davon. Dass alle genannten dabei sind, prueft
+    # `submit` (alles oder nichts).
     def submit_scope
       scope = @import.referee_course_results.submittable
       scope = scope.where(id: requested_result_ids) if requested_result_ids
       scope
     end
 
+    # `nil` nur, wenn der Parameter fehlt. Ein ausdrueckliches `null`, eine
+    # leere Liste oder etwas anderes als Zahlen weist `submit` ab, statt es als
+    # „alle einreichen" zu lesen.
     def requested_result_ids
       return @requested_result_ids if defined?(@requested_result_ids)
 
-      ids = params[:result_ids]
-      @requested_result_ids = ids.nil? ? nil : Array(ids).map(&:to_i)
+      @requested_result_ids = (parse_result_ids(params[:result_ids]) if params.key?(:result_ids))
     end
 
-    # Zwei Lagen, die denselben leeren `submittable`-Scope erzeugen und dem
-    # Importeur Verschiedenes sagen muessen. „Nichts mehr offen" heisst zudem:
-    # Ein teilweise eingereichter Import ist fertig -- das zieht
-    # `close_if_done!` hier nach, falls sich ein Verwerfen und ein Submit
+    def parse_result_ids(raw)
+      raise InvalidResultIds unless raw.is_a?(Array) && raw.any?
+
+      raw.map { |id| Integer(id.to_s, 10) }.uniq
+    rescue ArgumentError
+      raise InvalidResultIds
+    end
+
+    def not_submittable_error(ids)
+      'Nicht einreichbar (bereits eingereicht, verworfen, zurückgestellt oder nicht in diesem Import), ' \
+        "es wurde nichts eingereicht: Zeile #{ids.map { |id| "##{id}" }.join(', ')}"
+    end
+
+    # Zwei Lagen, die ohne `result_ids` denselben leeren `submittable`-Scope
+    # erzeugen und dem Importeur Verschiedenes sagen muessen. „Nichts mehr
+    # offen" heisst zudem: Ein teilweise eingereichter Import ist fertig -- das
+    # zieht `close_if_done!` hier nach, falls sich ein Verwerfen und ein Submit
     # ueberholt haben.
     def nothing_to_submit_error
-      if requested_result_ids
-        'Die gewählte Zeile ist nicht einreichbar: bereits eingereicht, verworfen oder zurückgestellt'
-      elsif @import.referee_course_results.open_for_importer.exists?
+      if @import.referee_course_results.open_for_importer.exists?
         'Keine einreichbaren Zeilen: alle offenen Zeilen sind zurückgestellt'
       else
         @import.close_if_done!
