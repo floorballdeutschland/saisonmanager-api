@@ -137,6 +137,182 @@ module Admin
       assert_equal applied_at, erste.reload.applied_at
     end
 
+    # Einzelne Zeile freigeben, ohne erst die uebrigen zurueckzustellen: Bei
+    # einem Kurs mit 147 Zeilen soll der Importeur nicht warten muessen, bis
+    # die letzte geklaert ist.
+    test 'mit result_ids reicht der Submit nur die genannte Zeile ein' do
+      gewaehlt = row
+      uebrig = row
+      zurueck = row(deferred: true)
+      login(@admin)
+
+      assert_enqueued_emails 1 do
+        post "/api/v2/admin/referee_course_imports/#{@import.id}/submit",
+             params: { result_ids: [gewaehlt.id] }, as: :json
+        assert_response :success
+      end
+
+      assert_equal 'applied', gewaehlt.reload.status
+      assert gewaehlt.submitted_at.present?
+      assert_equal 'pending_review', uebrig.reload.status
+      assert_nil uebrig.submitted_at
+      assert_nil zurueck.reload.submitted_at
+      assert_equal 'partially_submitted', @import.reload.status
+
+      # Der normale Submit reicht danach den Rest nach, ohne die erste Zeile
+      # noch einmal anzufassen.
+      post "/api/v2/admin/referee_course_imports/#{@import.id}/submit"
+      assert_response :success
+      assert_equal 'applied', uebrig.reload.status
+      assert_equal 'partially_submitted', @import.reload.status
+    end
+
+    # Die Vorpruefung gilt nur den gewaehlten Zeilen: Eine andere ohne
+    # Lizenzstufe darf die Einzelfreigabe nicht blockieren.
+    test 'die Einzelfreigabe uebergeht unvollstaendige andere Zeilen' do
+      gewaehlt = row
+      row(lizenzstufe: nil)
+      login(@admin)
+
+      post "/api/v2/admin/referee_course_imports/#{@import.id}/submit",
+           params: { result_ids: [gewaehlt.id] }, as: :json
+
+      assert_response :success
+      assert_equal 'applied', gewaehlt.reload.status
+    end
+
+    test 'die Einzelfreigabe einer Zeile ohne Lizenzstufe wird abgewiesen' do
+      gewaehlt = row(lizenzstufe: nil)
+      andere = row
+      login(@admin)
+
+      post "/api/v2/admin/referee_course_imports/#{@import.id}/submit",
+           params: { result_ids: [gewaehlt.id] }, as: :json
+
+      assert_response :unprocessable_entity
+      assert_match(/Lizenzstufe/, response.parsed_body['error'])
+      assert_nil andere.reload.submitted_at
+      assert_equal 'in_review', @import.reload.status
+    end
+
+    # Eine zurueckgestellte oder fremde Zeile wird nicht ueber die Hintertuer
+    # der ID doch angewendet.
+    test 'eine zurueckgestellte oder fremde Zeile reicht result_ids nicht ein' do
+      zurueck = row(deferred: true)
+      andere = row
+      fremder_import = RefereeCourseImport.create!(
+        uploaded_by_user: @admin, filename: 'anderer.csv', total_rows: 1, status: 'in_review'
+      )
+      fremd = row(referee_course_import: fremder_import)
+      login(@admin)
+
+      post "/api/v2/admin/referee_course_imports/#{@import.id}/submit",
+           params: { result_ids: [zurueck.id, fremd.id] }, as: :json
+
+      assert_response :unprocessable_entity
+      assert_match(/Nicht einreichbar/, response.parsed_body['error'])
+      assert_nil zurueck.reload.submitted_at
+      assert_nil andere.reload.submitted_at
+      assert_nil fremd.reload.submitted_at
+      assert_equal 'in_review', @import.reload.status
+    end
+
+    # Alles oder nichts: Eine angewendete Lizenz laesst sich nicht
+    # zuruecknehmen, also auch keine halbe Auswahl anwenden.
+    test 'ist eine der genannten Zeilen nicht einreichbar, wird keine eingereicht' do
+      gueltig = row
+      zurueck = row(deferred: true)
+      login(@admin)
+
+      assert_no_enqueued_emails do
+        post "/api/v2/admin/referee_course_imports/#{@import.id}/submit",
+             params: { result_ids: [gueltig.id, zurueck.id] }, as: :json
+      end
+
+      assert_response :unprocessable_entity
+      assert_includes response.parsed_body['error'], "##{zurueck.id}"
+      assert_not_includes response.parsed_body['error'], "##{gueltig.id}"
+      assert_equal 'pending_review', gueltig.reload.status
+      assert_nil gueltig.submitted_at
+      assert_equal 'in_review', @import.reload.status
+    end
+
+    # Ein leeres oder ausdrueckliches `null` darf nie zu „alle einreichen"
+    # werden. Nur ein fehlender Parameter meint die ganze Datei.
+    test 'leere, null oder unlesbare result_ids reichen nichts ein' do
+      zeile = row
+      login(@admin)
+
+      [[], nil, ['abc'], 'x', [{ 'id' => zeile.id }]].each do |ids|
+        post "/api/v2/admin/referee_course_imports/#{@import.id}/submit",
+             params: { result_ids: ids }, as: :json
+
+        assert_response :unprocessable_entity, "result_ids=#{ids.inspect}"
+        assert_match(/nicht leere Liste/, response.parsed_body['error'])
+      end
+      assert_nil zeile.reload.submitted_at
+      assert_equal 'in_review', @import.reload.status
+    end
+
+    # Eine einzeln eingereichte Zeile mit LV-Kontrolle wartet in der
+    # Warteschlange; ihre offene Nachbarzeile gehoert dort nicht hinein. Dieser
+    # Zustand (teilweise eingereicht mit offener, nicht zurueckgestellter
+    # Zeile) entsteht erst durch das Einzel-Einreichen.
+    test 'eine einzeln eingereichte Zeile mit LV-Kontrolle wartet allein in der Warteschlange' do
+      wartet = row(match_type: 'partial_match', state_association_id: nil)
+      nachbar = row(match_type: 'partial_match', state_association_id: nil)
+      login(@admin)
+
+      assert_no_enqueued_emails do
+        post "/api/v2/admin/referee_course_imports/#{@import.id}/submit",
+             params: { result_ids: [wartet.id] }, as: :json
+        assert_response :success
+      end
+      assert_equal 'pending_review', wartet.reload.status
+      assert wartet.submitted_at.present?
+      assert_equal 'partially_submitted', @import.reload.status
+
+      get '/api/v2/admin/referee_course_results'
+      ids = response.parsed_body.map { |r| r['id'] }
+      assert_includes ids, wartet.id
+      assert_not_includes ids, nachbar.id
+
+      post "/api/v2/admin/referee_course_results/#{nachbar.id}/approve"
+      assert_response :unprocessable_entity
+      assert_equal 'pending_review', nachbar.reload.status
+      assert_nil nachbar.submitted_at
+    end
+
+    test 'der Einzelweg schliesst einen haengengebliebenen Import ab' do
+      zeile = row
+      login(@admin)
+      post "/api/v2/admin/referee_course_imports/#{@import.id}/submit"
+      assert_response :success
+      @import.update!(status: 'partially_submitted')
+
+      post "/api/v2/admin/referee_course_imports/#{@import.id}/submit",
+           params: { result_ids: [zeile.id] }, as: :json
+
+      assert_response :unprocessable_entity
+      assert_equal 'submitted', @import.reload.status
+    end
+
+    test 'die letzte offene Zeile einzeln eingereicht schliesst den Import ab' do
+      erste = row
+      letzte = row
+      login(@admin)
+
+      post "/api/v2/admin/referee_course_imports/#{@import.id}/submit",
+           params: { result_ids: [erste.id] }, as: :json
+      assert_response :success
+      assert_equal 'partially_submitted', @import.reload.status
+
+      post "/api/v2/admin/referee_course_imports/#{@import.id}/submit",
+           params: { result_ids: [letzte.id] }, as: :json
+      assert_response :success
+      assert_equal 'submitted', @import.reload.status
+    end
+
     # Gegenprobe zur Freigabe-Warteschlange: Zwischen der Zeile, die auf den LV
     # wartet, und der zurueckgestellten steht in einem teilweise eingereichten
     # Import nur `submitted_at`. Der Import-Status trennt sie nicht mehr.
