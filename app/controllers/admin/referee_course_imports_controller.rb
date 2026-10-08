@@ -31,7 +31,9 @@ module Admin
       imports = RefereeCourseImport.includes(:uploaded_by_user)
                                    .order(created_at: :desc)
       imports = imports.where(uploaded_by_user_id: current_user.id) unless admin_user?
-      render json: imports.map(&:full_hash)
+      # Die Liste der beim Upload uebersprungenen Zeilen waechst mit jedem
+      # erneuten Hochladen und wird nur in der Pruefmaske gebraucht (show).
+      render json: imports.map { |import| import.full_hash.except(:skipped_duplicates) }
     end
 
     # GET /api/v2/admin/referee_course_imports/:id

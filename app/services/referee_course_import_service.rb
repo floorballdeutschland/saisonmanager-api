@@ -355,9 +355,15 @@ class RefereeCourseImportService
   end
 
   # Eine Person trifft über die Lizenznummer oder über Name und Geburtsdatum.
-  # Zwei verschiedene Lizenznummern sind aber nie dieselbe Person, auch bei
-  # gleichem Namen und Geburtsdatum. Deshalb gleicht eine Zeile MIT Nummer
-  # über den Namen nur gegen frühere Zeilen OHNE Nummer ab (die Nummer wurde
+  #
+  # Die Nummer allein reicht nicht: Ein Zahlendreher würde sonst eine andere
+  # Person mit gleichem Kurs still verschlucken, während er in der Prüfmaske
+  # als Abweichung auffällt. Zur Nummer muss deshalb der Nachname ODER das
+  # Geburtsdatum passen.
+  #
+  # Zwei verschiedene Lizenznummern sind nie dieselbe Person, auch bei
+  # gleichem Namen und Geburtsdatum. Eine Zeile MIT Nummer gleicht über den
+  # Namen deshalb nur gegen frühere Zeilen OHNE Nummer ab (die Nummer wurde
   # nachgetragen), eine Zeile ohne Nummer gegen alle.
   #
   # `side: :known` erzeugt die Schlüssel eines früheren Ergebnisses,
@@ -366,7 +372,10 @@ class RefereeCourseImportService
     nr = attrs[:lizenznummer]
     person = name_key(attrs)
     keys = []
-    keys << [:nr, nr, course] if nr
+    if nr
+      keys << [:nr_nachname, nr, attrs[:nachname].downcase, course] if attrs[:nachname]
+      keys << [:nr_geburtsdatum, nr, attrs[:geburtsdatum], course] if attrs[:geburtsdatum]
+    end
     return keys unless person
 
     if side == :known
@@ -390,8 +399,21 @@ class RefereeCourseImportService
   def course_signature(data)
     data ||= {}
     %w[kurs_1 kurs_2].flat_map do |kurs|
-      %w[stufe datum punkte].map { |field| data.dig(kurs, field).to_s.strip.downcase }
+      raw = %w[stufe datum punkte].map { |field| data.dig(kurs, field).to_s.strip.downcase }
+      # Das Datum steht roh in course_data. Speichert Excel die Vorlage in
+      # einem anderen Format („1.8.2025" statt „01.08.2025"), kämen sonst alle
+      # Zeilen wieder; ebenso bei „10,0" statt „10" Punkten.
+      raw[1] = parse_date(raw[1], field: nil, warnings: nil)&.iso8601 || raw[1]
+      raw[2] = normalize_points(raw[2])
+      raw
     end
+  end
+
+  def normalize_points(value)
+    number = Float(value.tr(',', '.'), exception: false)
+    return value unless number
+
+    number == number.to_i ? number.to_i.to_s : number.to_s
   end
 
   def create_result(import, row, columns)

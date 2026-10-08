@@ -741,4 +741,25 @@ class RefereeCourseImportServiceTest < ActiveSupport::TestCase
 
     assert_equal 1, second.skipped_duplicates.size
   end
+
+  test 'Lizenznummer allein reicht nicht: andere Person mit Zahlendreher bleibt neu' do
+    call([ANNA])
+    second = call(['700;Ben;Bernd;05.05.1990;;;G;01.08.2025;G;10;;;;;A'])
+
+    assert_empty second.skipped_duplicates
+  end
+
+  test 'Lizenznummer mit geändertem Nachnamen trifft über das Geburtsdatum' do
+    call([ANNA])
+    second = call(['700;Neu-Alt;Anna;01.01.1995;;;G;01.08.2025;G;10;;;;;A', CARL])
+
+    assert_equal 1, second.skipped_duplicates.size
+  end
+
+  test 'anders formatiertes Kursdatum und Punkte mit Komma bleiben dieselben Kursergebnisse' do
+    call([ANNA])
+    second = call(['700;Alt;Anna;01.01.1995;;;G;2025-08-01;G;10,0;;;;;A', CARL])
+
+    assert_equal 1, second.skipped_duplicates.size
+  end
 end
