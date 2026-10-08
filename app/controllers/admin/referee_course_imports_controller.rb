@@ -99,15 +99,20 @@ module Admin
     # `partially_submitted` und kann nach deren Klaerung erneut eingereicht
     # werden. Der Scope `submittable` haelt den zweiten Lauf von den Zeilen des
     # ersten fern.
+    #
+    # Mit `result_ids` reicht der Importeur nur diese Zeilen ein (einzelne
+    # Freigabe aus der Tabelle heraus), statt erst alle uebrigen
+    # zurueckzustellen. Die anderen offenen Zeilen halten den Import auf
+    # `partially_submitted`, genau wie zurueckgestellte.
     def submit
       return render(json: { error: 'Import nicht im Review-Status' }, status: :unprocessable_entity) \
         unless @import.editable?
 
-      if @import.referee_course_results.submittable.none?
+      if submit_scope.none?
         return render(json: { error: nothing_to_submit_error }, status: :unprocessable_entity)
       end
 
-      validation_error = preflight_validation_error(@import.referee_course_results.submittable)
+      validation_error = preflight_validation_error(submit_scope)
       return render(json: { error: validation_error }, status: :unprocessable_entity) if validation_error
 
       RefereeCourseResultApplier.reset_license_level_positions_cache!
@@ -116,7 +121,7 @@ module Admin
       appliers = []
       ActiveRecord::Base.transaction do
         @import.lock!
-        rows = @import.referee_course_results.submittable.order(:id).to_a
+        rows = submit_scope.order(:id).to_a
         if !@import.editable? || rows.empty?
           # Zweiter paralleler Submit hat uns ueberholt.
           already_submitted = true
@@ -184,13 +189,32 @@ module Admin
 
     private
 
+    # Die Zeilen, die dieser Submit anwendet: alle einreichbaren oder, mit
+    # `result_ids`, nur die genannten davon. Eine genannte Zeile, die nicht
+    # (mehr) einreichbar ist, faellt still heraus; bleibt keine uebrig, greift
+    # `nothing_to_submit_error`.
+    def submit_scope
+      scope = @import.referee_course_results.submittable
+      scope = scope.where(id: requested_result_ids) if requested_result_ids
+      scope
+    end
+
+    def requested_result_ids
+      return @requested_result_ids if defined?(@requested_result_ids)
+
+      ids = params[:result_ids]
+      @requested_result_ids = ids.nil? ? nil : Array(ids).map(&:to_i)
+    end
+
     # Zwei Lagen, die denselben leeren `submittable`-Scope erzeugen und dem
     # Importeur Verschiedenes sagen muessen. „Nichts mehr offen" heisst zudem:
     # Ein teilweise eingereichter Import ist fertig -- das zieht
     # `close_if_done!` hier nach, falls sich ein Verwerfen und ein Submit
     # ueberholt haben.
     def nothing_to_submit_error
-      if @import.referee_course_results.open_for_importer.exists?
+      if requested_result_ids
+        'Die gewählte Zeile ist nicht einreichbar: bereits eingereicht, verworfen oder zurückgestellt'
+      elsif @import.referee_course_results.open_for_importer.exists?
         'Keine einreichbaren Zeilen: alle offenen Zeilen sind zurückgestellt'
       else
         @import.close_if_done!

@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Kursimport: Zeilen einzeln einreichen**: In der Prüfmaske eines Schiedsrichterkurses lässt sich jetzt jede Zeile für sich einreichen, sobald sie geklärt ist. Bisher ging das nur für alle offenen Zeilen auf einmal; wer einzelne Schiedsrichter vorziehen wollte, musste alle übrigen zurückstellen. Eine einzeln eingereichte Zeile wird wie gewohnt direkt angewendet oder geht in die Freigabe des Landesverbands; der Import steht danach auf „teilweise eingereicht“ und lässt sich nicht mehr abbrechen.
+
 ## [1.126.0] - 2026-10-08
 
 ### Neu

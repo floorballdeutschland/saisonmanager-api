@@ -137,6 +137,102 @@ module Admin
       assert_equal applied_at, erste.reload.applied_at
     end
 
+    # Einzelne Zeile freigeben, ohne erst die uebrigen zurueckzustellen: Bei
+    # einem Kurs mit 147 Zeilen soll der Importeur nicht warten muessen, bis
+    # die letzte geklaert ist.
+    test 'mit result_ids reicht der Submit nur die genannte Zeile ein' do
+      gewaehlt = row
+      uebrig = row
+      zurueck = row(deferred: true)
+      login(@admin)
+
+      assert_enqueued_emails 1 do
+        post "/api/v2/admin/referee_course_imports/#{@import.id}/submit",
+             params: { result_ids: [gewaehlt.id] }, as: :json
+        assert_response :success
+      end
+
+      assert_equal 'applied', gewaehlt.reload.status
+      assert gewaehlt.submitted_at.present?
+      assert_equal 'pending_review', uebrig.reload.status
+      assert_nil uebrig.submitted_at
+      assert_nil zurueck.reload.submitted_at
+      assert_equal 'partially_submitted', @import.reload.status
+
+      # Der normale Submit reicht danach den Rest nach, ohne die erste Zeile
+      # noch einmal anzufassen.
+      post "/api/v2/admin/referee_course_imports/#{@import.id}/submit"
+      assert_response :success
+      assert_equal 'applied', uebrig.reload.status
+      assert_equal 'partially_submitted', @import.reload.status
+    end
+
+    # Die Vorpruefung gilt nur den gewaehlten Zeilen: Eine andere ohne
+    # Lizenzstufe darf die Einzelfreigabe nicht blockieren.
+    test 'die Einzelfreigabe uebergeht unvollstaendige andere Zeilen' do
+      gewaehlt = row
+      row(lizenzstufe: nil)
+      login(@admin)
+
+      post "/api/v2/admin/referee_course_imports/#{@import.id}/submit",
+           params: { result_ids: [gewaehlt.id] }, as: :json
+
+      assert_response :success
+      assert_equal 'applied', gewaehlt.reload.status
+    end
+
+    test 'die Einzelfreigabe einer Zeile ohne Lizenzstufe wird abgewiesen' do
+      gewaehlt = row(lizenzstufe: nil)
+      andere = row
+      login(@admin)
+
+      post "/api/v2/admin/referee_course_imports/#{@import.id}/submit",
+           params: { result_ids: [gewaehlt.id] }, as: :json
+
+      assert_response :unprocessable_entity
+      assert_match(/Lizenzstufe/, response.parsed_body['error'])
+      assert_nil andere.reload.submitted_at
+      assert_equal 'in_review', @import.reload.status
+    end
+
+    # Eine zurueckgestellte, eingereichte oder fremde Zeile wird nicht ueber
+    # die Hintertuer der ID doch angewendet.
+    test 'eine nicht einreichbare Zeile reicht result_ids nicht ein' do
+      zurueck = row(deferred: true)
+      andere = row
+      fremder_import = RefereeCourseImport.create!(
+        uploaded_by_user: @admin, filename: 'anderer.csv', total_rows: 1, status: 'in_review'
+      )
+      fremd = row(referee_course_import: fremder_import)
+      login(@admin)
+
+      post "/api/v2/admin/referee_course_imports/#{@import.id}/submit",
+           params: { result_ids: [zurueck.id, fremd.id] }, as: :json
+
+      assert_response :unprocessable_entity
+      assert_match(/nicht einreichbar/, response.parsed_body['error'])
+      assert_nil zurueck.reload.submitted_at
+      assert_nil andere.reload.submitted_at
+      assert_nil fremd.reload.submitted_at
+      assert_equal 'in_review', @import.reload.status
+    end
+
+    test 'die letzte offene Zeile einzeln eingereicht schliesst den Import ab' do
+      erste = row
+      letzte = row
+      login(@admin)
+
+      post "/api/v2/admin/referee_course_imports/#{@import.id}/submit",
+           params: { result_ids: [erste.id] }, as: :json
+      assert_response :success
+      assert_equal 'partially_submitted', @import.reload.status
+
+      post "/api/v2/admin/referee_course_imports/#{@import.id}/submit",
+           params: { result_ids: [letzte.id] }, as: :json
+      assert_response :success
+      assert_equal 'submitted', @import.reload.status
+    end
+
     # Gegenprobe zur Freigabe-Warteschlange: Zwischen der Zeile, die auf den LV
     # wartet, und der zurueckgestellten steht in einem teilweise eingereichten
     # Import nur `submitted_at`. Der Import-Status trennt sie nicht mehr.
