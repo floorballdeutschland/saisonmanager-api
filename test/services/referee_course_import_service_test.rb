@@ -663,4 +663,103 @@ class RefereeCourseImportServiceTest < ActiveSupport::TestCase
     result = import.referee_course_results.first
     assert_equal club.id, result.master_club_id_by_importer
   end
+
+  # Erneuter Upload einer fortgeschriebenen LV-Vorlage: Was schon in einem
+  # früheren Import angewendet oder offen ist, kommt nicht noch einmal.
+  ANNA = '700;Alt;Anna;01.01.1995;;;G;01.08.2025;G;10;;;;;A'.freeze
+  BERT = ';Bert;Bruno;02.02.1996;;;G;01.08.2025;G;12;;;;;A'.freeze
+  CARL = '702;Neu;Carl;03.03.1997;;;G;15.09.2025;G;11;;;;;A'.freeze
+
+  test 'erneuter Upload überspringt Zeilen, die im früheren Import offen sind' do
+    first = call([ANNA, BERT])
+    second = call([ANNA, BERT, CARL])
+
+    assert_equal 1, second.total_rows
+    assert_equal ['Carl'], second.referee_course_results.map(&:csv_vorname)
+    assert_equal [first.id, first.id], second.skipped_duplicates.pluck('import_id')
+    assert_equal %w[Anna Bruno], second.skipped_duplicates.pluck('vorname')
+  end
+
+  test 'angewendete Zeilen werden übersprungen, auch aus abgebrochenen Importen' do
+    first = call([ANNA])
+    first.referee_course_results.update_all(status: 'applied')
+    first.update!(status: 'cancelled')
+
+    second = call([ANNA, CARL])
+
+    assert_equal ['Carl'], second.referee_course_results.map(&:csv_vorname)
+  end
+
+  test 'abgelehnte Zeilen und offene Zeilen abgebrochener Importe kommen wieder' do
+    rejected = call([ANNA])
+    rejected.referee_course_results.update_all(status: 'rejected')
+    cancelled = call([BERT])
+    cancelled.update!(status: 'cancelled')
+
+    second = call([ANNA, BERT])
+
+    assert_equal 2, second.total_rows
+    assert_empty second.skipped_duplicates
+  end
+
+  test 'geänderte Kursergebnisse derselben Person sind kein Duplikat' do
+    call([ANNA])
+    # Kurs 2 nachgeholt
+    second = call(['700;Alt;Anna;01.01.1995;;;G;01.08.2025;G;10;F;10.09.2025;F;40;A'])
+
+    assert_equal 1, second.total_rows
+    assert_empty second.skipped_duplicates
+  end
+
+  test 'Person trifft ohne Lizenznummer über Name und Geburtsdatum, unabhängig von Groß-/Kleinschreibung' do
+    call([BERT])
+    second = call([';BERT;bruno;02.02.1996;;;G;01.08.2025;G;12;;;;;Andere', CARL])
+
+    assert_equal 1, second.skipped_duplicates.size
+  end
+
+  test 'sind alle Zeilen schon bekannt, wird kein Import angelegt' do
+    call([ANNA, BERT])
+    service = service_for("#{HEADER}#{ANNA}\n#{BERT}\n")
+
+    assert_no_difference -> { RefereeCourseImport.count } do
+      assert_nil service.call
+    end
+    assert_match(/Alle 2 Zeilen sind bereits/, service.errors.join)
+  end
+
+  test 'gleicher Name und Geburtsdatum mit anderer Lizenznummer ist kein Duplikat' do
+    call([ANNA])
+    second = call(['701;Alt;Anna;01.01.1995;;;G;01.08.2025;G;10;;;;;A'])
+
+    assert_empty second.skipped_duplicates
+  end
+
+  test 'nachgetragene Lizenznummer macht die Zeile nicht neu' do
+    call([BERT])
+    second = call(['705;Bert;Bruno;02.02.1996;;;G;01.08.2025;G;12;;;;;A', CARL])
+
+    assert_equal 1, second.skipped_duplicates.size
+  end
+
+  test 'Lizenznummer allein reicht nicht: andere Person mit Zahlendreher bleibt neu' do
+    call([ANNA])
+    second = call(['700;Ben;Bernd;05.05.1990;;;G;01.08.2025;G;10;;;;;A'])
+
+    assert_empty second.skipped_duplicates
+  end
+
+  test 'Lizenznummer mit geändertem Nachnamen trifft über das Geburtsdatum' do
+    call([ANNA])
+    second = call(['700;Neu-Alt;Anna;01.01.1995;;;G;01.08.2025;G;10;;;;;A', CARL])
+
+    assert_equal 1, second.skipped_duplicates.size
+  end
+
+  test 'anders formatiertes Kursdatum und Punkte mit Komma bleiben dieselben Kursergebnisse' do
+    call([ANNA])
+    second = call(['700;Alt;Anna;01.01.1995;;;G;2025-08-01;G;10,0;;;;;A', CARL])
+
+    assert_equal 1, second.skipped_duplicates.size
+  end
 end
