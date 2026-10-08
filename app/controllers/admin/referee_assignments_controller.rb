@@ -270,6 +270,12 @@ module Admin
     # sondern nur ein Hinweis (`available`): In Verbänden ohne Personenebene
     # melden die Schiedsrichter:innen in der Regel keine Verfügbarkeiten, die
     # Liste wäre sonst leer.
+    #
+    # Zweiter Unterschied, bewusst: Die Qualifikation läuft über
+    # Referee.coach_qualified, das eine Qualifikation ohne Ablaufdatum nicht
+    # zählt. Dieselbe Regel gilt für den Beobachtungsbogen
+    # (RefereeObservationPolicy); ein so angesetzter Coach könnte ihn sonst
+    # nicht abgeben.
     def club_coaches
       game = Game.includes(game_day: { league: :game_operation }).find_by(id: params[:game_id])
       return render json: { error: 'Spiel nicht gefunden' }, status: :not_found unless game
@@ -303,7 +309,14 @@ module Admin
     def update_club_coach
       game = Game.includes(:referee_assignment, game_day: { league: :game_operation }).find_by(id: params[:game_id])
       return render json: { error: 'Spiel nicht gefunden' }, status: :not_found unless game
-      return unless authorize_club_coach_game!(game)
+      # Entfernen bleibt auch nach dem Abschalten des Verbandsschalters
+      # möglich. Sonst blieben angesetzte Coaches mit Erinnerung und
+      # Lizenzlisten stehen, und nur ein Admin käme noch an sie heran.
+      if params[:coach_id].present?
+        return unless authorize_club_coach_game!(game)
+      else
+        return unless authorize_club_game_operation!(game.game_day.league&.game_operation_id)
+      end
 
       reason = club_assignment_block_reason(game)
       return render json: { error: reason }, status: :unprocessable_entity if reason

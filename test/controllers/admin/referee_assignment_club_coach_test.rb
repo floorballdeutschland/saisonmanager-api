@@ -181,6 +181,66 @@ module Admin
       assert_response :forbidden
     end
 
+    test 'Coach aus einem fremden Verband wird abgelehnt' do
+      fremd = create(:referee, club_id: create(:club, state_association_id: create(:state_association).id).id)
+      RefereeQualification.create!(referee: fremd, referee_qualification_type: @b_type, valid_until: @date + 365)
+      login(@rsk)
+
+      patch "/api/v2/admin/referee_assignments/games/#{@game.id}/club_coach", params: { coach_id: fremd.id }
+
+      assert_response :not_found
+      assert_nil @game.reload.referee_assignment
+    end
+
+    test 'RSK eines anderen Spielbetriebs bleibt draussen' do
+      other_sa = create(:state_association, referee_assignment_external_enabled: true,
+                                            coach_assignment_enabled: true)
+      other_go = create(:game_operation, state_association_id: other_sa.id)
+      login(create(:user, :rsk_scoped, game_operation_id: other_go.id))
+
+      get '/api/v2/admin/referee_assignments/club_coaches', params: { game_id: @game.id }
+      assert_response :forbidden
+
+      patch "/api/v2/admin/referee_assignments/games/#{@game.id}/club_coach", params: { coach_id: @coach.id }
+      assert_response :forbidden
+    end
+
+    test 'Verein ansetzen behaelt den Coach' do
+      RefereeAssignment.create!(game: @game, coach: @coach, status: 'published')
+      login(@rsk)
+
+      patch "/api/v2/admin/referee_assignments/games/#{@game.id}/club_assignment", params: { club_id: @club.id }
+
+      assignment = @game.reload.referee_assignment
+      assert_equal @club.id, assignment.club_id
+      assert_equal @coach.id, assignment.coach_id
+    end
+
+    # Nach dem Abschalten des Schalters muss die RSK angesetzte Coaches noch
+    # loswerden können, sonst bekämen sie weiter Erinnerung und Lizenzlisten.
+    test 'Coach entfernen geht auch nach dem Abschalten des Schalters' do
+      RefereeAssignment.create!(game: @game, club: @club, coach: @coach, status: 'published')
+      @sa.update!(coach_assignment_enabled: false)
+      login(@rsk)
+
+      patch "/api/v2/admin/referee_assignments/games/#{@game.id}/club_coach", params: { coach_id: '' }
+
+      assert_response :success
+      assert_nil @game.reload.referee_assignment.coach_id
+    end
+
+    test 'kurzfristige Ansetzung schickt die Lizenzlisten gleich mit' do
+      @game_day.update!(date: (Date.today + 1).to_s)
+      login(@rsk)
+
+      assert_enqueued_email_with RefereeMailer, :published_coach_notification,
+                                 args: ->(args) { args.first == @coach && args.last[:license_list_url].present? } do
+        patch "/api/v2/admin/referee_assignments/games/#{@game.id}/club_coach", params: { coach_id: @coach.id }
+      end
+
+      assert_not_nil @game.reload.referee_assignment.license_lists_notified_at
+    end
+
     private
 
     def login(user)

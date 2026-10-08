@@ -9,8 +9,11 @@
 # müssen daher nur entscheiden, ob sich ein relevantes Feld geändert hat (z. B.
 # per Dirty-Tracking), nicht aber den Ansetzungsstatus prüfen.
 #
-# Bewusst KEINE Mail bei Vereins-Ansetzungen (club_assignment?), weil dort keine
-# persönlich benachrichtigten Schiris existieren, und nur bei status 'published':
+# Ansetzungen ohne Schiedsrichter (Vereins-Ansetzung oder Freitext im
+# reduzierten Modus der RSK) haben keine persönlich benachrichtigten Schiris.
+# Hängt dort ein Coach, bekommt nur er die Update-Mail, mit dem Verein bzw.
+# dem Freitext als Gespann; der Ausrichter nicht, denn an der Besetzung hat
+# sich nichts geändert. Gemailt wird nur bei status 'published':
 # vorläufige oder noch rohe Ansetzungen wurden den Beteiligten noch nicht
 # kommuniziert, ihre Änderung soll also auch keine Update-Mail auslösen.
 class GameChangeNotifier
@@ -27,7 +30,7 @@ class GameChangeNotifier
   def notify
     assignment = @game.referee_assignment
     return unless assignment&.status == 'published'
-    return if assignment.club_assignment?
+    return notify_coach_only(assignment) if assignment.referees.empty?
 
     # Format identisch zur Umbesetzungs-Mail (notify_published_lineup_change):
     # eine Update-Mail an jede/n angesetzte/n Schiri und den Coach, jeweils mit
@@ -44,5 +47,19 @@ class GameChangeNotifier
     return if @game.game_day.club&.notification_emails.blank?
 
     GameDayMailer.updated_referees_to_host(@game).deliver_later
+  end
+
+  private
+
+  def notify_coach_only(assignment)
+    coach = assignment.coach
+    return if coach.nil? || coach.email.blank?
+
+    official_names = if assignment.club_assignment?
+                       assignment.club&.name.to_s
+                     else
+                       @game.nominated_referee_string.to_s
+                     end
+    RefereeMailer.updated_assignment_notification(coach, @game, official_names, coach).deliver_later
   end
 end
