@@ -9,10 +9,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.127.0] - 2026-10-08
+
 ### Verbessert
 
 - **Kursimport: Zeilen einzeln einreichen**: In der Prüfmaske eines Schiedsrichterkurses lässt sich jetzt jede Zeile für sich einreichen, sobald sie geklärt ist. Bisher ging das nur für alle offenen Zeilen auf einmal; wer einzelne Schiedsrichter vorziehen wollte, musste alle übrigen zurückstellen. Eine einzeln eingereichte Zeile wird wie gewohnt direkt angewendet oder geht in die Freigabe des Landesverbands; der Import steht danach auf „teilweise eingereicht“ und lässt sich nicht mehr abbrechen.
 - **Kursimport zählt Vorsaison-Spiele erst ab U15**: Die Spalte „Vorsaison“ in der Prüfmaske eines Schiedsrichterkurses zählt nur noch Einsätze in Ligen ab U15 (U15, U17, U19, Damen, Herren, Ü30). Spiele in U13 und jünger fließen nicht mehr ein, weil sie für die Einstufung nach dem Kurs nichts aussagen. Ligen ohne hinterlegte Altersklasse zählen weiter mit.
+- **Kursimport-Übersicht blendet Abgeschlossenes aus** (saisonmanager#532): Eingereichte Importe, bei denen keine Zeile mehr auf die Freigabe des Landesverbands wartet, und abgebrochene Importe stehen nicht mehr standardmäßig in der Liste. Ein Häkchen „Abgeschlossene Importe anzeigen“ blendet sie wieder ein.
 
 ## [1.126.0] - 2026-10-08
 
