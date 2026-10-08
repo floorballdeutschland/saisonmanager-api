@@ -71,6 +71,7 @@ class RefereeCourseImport < ApplicationRecord
   end
 
   def full_hash
-    short_hash.merge(progress: progress_counts, source_csv_url: source_csv_url)
+    short_hash.merge(progress: progress_counts, source_csv_url: source_csv_url,
+                     skipped_duplicates: skipped_duplicates)
   end
 end

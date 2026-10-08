@@ -85,12 +85,20 @@ class RefereeCourseImportService
     rows, columns = parse_csv
     return nil if rows.nil?
 
+    rows, skipped = split_known_rows(rows, columns)
+    if rows.empty?
+      @errors << "Alle #{skipped.size} Zeilen sind bereits in früheren Importen enthalten " \
+                 '(angewendet oder noch offen). Es wurde kein Import angelegt.'
+      return nil
+    end
+
     ActiveRecord::Base.transaction do
       import = RefereeCourseImport.create!(
         uploaded_by_user: @uploaded_by_user,
         filename: @filename,
         status: 'in_review',
-        total_rows: rows.size
+        total_rows: rows.size,
+        skipped_duplicates: skipped
       )
 
       @club_match_tally = Hash.new(0)
@@ -299,6 +307,113 @@ class RefereeCourseImportService
       "#{unresolved.presence&.join(', ') || '—'}" \
       "#{ambiguous.any? ? "; mehrdeutig (verworfen): #{ambiguous.join(', ')}" : ''}"
     )
+  end
+
+  # Die LV-Vorlage wird über die Saison fortgeschrieben und dann erneut
+  # hochgeladen. Zeilen, die schon in einem früheren Import stehen, kämen sonst
+  # ein zweites Mal in die Prüfmaske. Übersprungen wird nur, was dieselbe Person
+  # mit denselben Kursergebnissen ist UND dort angewendet oder noch offen ist:
+  # Hat jemand inzwischen Kurs 2 nachgeholt, ist es ein neues Ergebnis. Eine
+  # abgelehnte oder verworfene Zeile kommt wieder, damit sie korrigiert
+  # nachgereicht werden kann, ebenso die offenen Zeilen abgebrochener Importe.
+  def split_known_rows(rows, columns)
+    known = known_course_keys
+    return [rows, []] if known.empty?
+
+    rows.each_with_object([[], []]) do |row, (fresh, skipped)|
+      attrs = {
+        lizenznummer: parse_integer(cell(row, columns, :lizenznummer), field: nil, warnings: nil),
+        vorname:      presence(cell(row, columns, :vorname)),
+        nachname:     presence(cell(row, columns, :nachname)),
+        geburtsdatum: parse_date(cell(row, columns, :geburtsdatum), field: nil, warnings: nil)
+      }
+      course = course_signature(build_course_data(row, columns, warnings: nil))
+      import_id = course_keys(attrs, course, side: :row).lazy.filter_map { |key| known[key] }.first
+
+      if import_id
+        skipped << attrs.slice(:lizenznummer, :vorname, :nachname).stringify_keys
+                        .merge('import_id' => import_id)
+      else
+        fresh << row
+      end
+    end
+  end
+
+  # Schlüssel → ID des Imports, in dem das Ergebnis schon steht.
+  def known_course_keys
+    RefereeCourseResult
+      .joins(:referee_course_import)
+      .where("referee_course_results.status = 'applied' OR " \
+             "(referee_course_results.status = 'pending_review' AND " \
+             "referee_course_imports.status <> 'cancelled')")
+      .pluck(:csv_lizenznummer, :csv_vorname, :csv_nachname, :csv_geburtsdatum,
+             :course_data, :referee_course_import_id)
+      .each_with_object({}) do |(nr, vorname, nachname, geburtsdatum, data, import_id), known|
+        attrs = { lizenznummer: nr, vorname:, nachname:, geburtsdatum: }
+        course_keys(attrs, course_signature(data), side: :known).each { |key| known[key] ||= import_id }
+      end
+  end
+
+  # Eine Person trifft über die Lizenznummer oder über Name und Geburtsdatum.
+  #
+  # Die Nummer allein reicht nicht: Ein Zahlendreher würde sonst eine andere
+  # Person mit gleichem Kurs still verschlucken, während er in der Prüfmaske
+  # als Abweichung auffällt. Zur Nummer muss deshalb der Nachname ODER das
+  # Geburtsdatum passen.
+  #
+  # Zwei verschiedene Lizenznummern sind nie dieselbe Person, auch bei
+  # gleichem Namen und Geburtsdatum. Eine Zeile MIT Nummer gleicht über den
+  # Namen deshalb nur gegen frühere Zeilen OHNE Nummer ab (die Nummer wurde
+  # nachgetragen), eine Zeile ohne Nummer gegen alle.
+  #
+  # `side: :known` erzeugt die Schlüssel eines früheren Ergebnisses,
+  # `side: :row` die Suchschlüssel der neuen Zeile.
+  def course_keys(attrs, course, side:)
+    nr = attrs[:lizenznummer]
+    person = name_key(attrs)
+    keys = []
+    if nr
+      keys << [:nr_nachname, nr, attrs[:nachname].downcase, course] if attrs[:nachname]
+      keys << [:nr_geburtsdatum, nr, attrs[:geburtsdatum], course] if attrs[:geburtsdatum]
+    end
+    return keys unless person
+
+    if side == :known
+      keys << [:name, *person, course]
+      keys << [:name_without_nr, *person, course] unless nr
+    else
+      keys << [nr ? :name_without_nr : :name, *person, course]
+    end
+    keys
+  end
+
+  def name_key(attrs)
+    return unless attrs[:vorname] && attrs[:nachname] && attrs[:geburtsdatum]
+
+    [attrs[:vorname].downcase, attrs[:nachname].downcase, attrs[:geburtsdatum]]
+  end
+
+  # Stufe, Datum und Punkte beider Kurse. Testversion und Ausbilder bleiben
+  # draußen: Sie ändern nichts am Ergebnis, und eine nachgetragene Testversion
+  # soll die Zeile nicht erneut in die Prüfung bringen.
+  def course_signature(data)
+    data ||= {}
+    %w[kurs_1 kurs_2].flat_map do |kurs|
+      raw = %w[stufe datum punkte].map { |field| data.dig(kurs, field).to_s.strip.downcase }
+      # Das Datum steht roh in course_data. Speichert Excel die Vorlage in
+      # einem anderen Format („1.8.2025" statt „01.08.2025"), kämen sonst alle
+      # Zeilen wieder; ebenso bei „10,0" statt „10" Punkten.
+      raw[1] = parse_date(raw[1], field: nil, warnings: nil)&.iso8601 || raw[1]
+      raw[2] = normalize_points(raw[2])
+      raw
+    end
+  end
+
+  def normalize_points(value)
+    number = Float(value.tr(',', '.'), exception: false)
+    return value unless number
+
+    number == number.to_i ? number.to_i.to_s : number.to_s
   end
 
   def create_result(import, row, columns)
