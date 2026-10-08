@@ -12,7 +12,8 @@ module Admin
     ALLOWED_CSV_CONTENT_TYPES = %w[text/csv text/plain application/vnd.ms-excel application/csv
                                    text/comma-separated-values application/octet-stream].freeze
     before_action :set_referee,
-                  only: %i[show update destroy games club_stats partners merge create_user destroy_user feedbacks]
+                  only: %i[show update destroy games club_stats partners merge create_user destroy_user feedbacks
+                           courses]
 
     # Tranchengröße der Massenanlage. Bewusst klein: Der Aufruf legt höchstens so
     # viele Konten an und meldet zurück, wie viele offen bleiben — ein zweiter
@@ -224,6 +225,24 @@ module Admin
                       .order('game_days.date DESC')
 
       render json: games.map { |g| game_summary(g) }
+    end
+
+    # GET /api/v2/admin/referees/:id/courses
+    # Kurshistorie aus dem CSV-Kursimport. Nur eingereichte Zeilen: Vor dem
+    # Einreichen ist die Zuordnung zum Schiri ein Vorschlag des Imports, eine
+    # vom Importeur verworfene Zeile war womoeglich gar nicht diese Person.
+    # Wartende und vom LV abgelehnte Zeilen bleiben mit ihrem Status drin.
+    # include_vm: false wie bei partners -- Testpunkte und Ablehnungsgruende
+    # sind keine Sicht auf den eigenen Verein.
+    def courses
+      return forbidden_response unless can_access_referee?(@referee, include_vm: false)
+
+      results = RefereeCourseResult
+                .awaiting_lv_review
+                .where(referee_id: @referee.id)
+                .order(kursstichtag: :desc, created_at: :desc)
+
+      render json: results.map(&:history_hash)
     end
 
     # GET /api/v2/admin/referees/:id/partners

@@ -411,6 +411,11 @@ class User < ApplicationRecord
     # Spielbetrieb (RefereeObservationPolicy#admin_scope).
     result[:referee_observation_view] =
       ph[:admin].present? || ph[:rsk].present? || ph[:ansetzer].present?
+    # Kurshistorie am Schiri-Profil (Admin::RefereesController#courses). Der
+    # Vereinsmanager sieht das Profil seiner Vereinsschiris, die Kursergebnisse
+    # aber nicht.
+    result[:referee_course_history_view] =
+      ph[:admin].present? || ph[:rsk].present? || ph[:ansetzer].present?
     # Zuruecknehmen und Wiederherstellen eines Bogens. Enger als das Lesen: Die
     # Ansetzung sieht die Boegen, greift aber nicht in sie ein
     # (RefereeObservationPolicy#can_moderate?). Ohne eigenen Schluessel stuende

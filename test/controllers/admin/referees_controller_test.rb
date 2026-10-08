@@ -607,7 +607,100 @@ module Admin
       assert_equal 10_000, response.parsed_body['next_lizenznummer']
     end
 
+    test 'courses liefert die eingereichten Kursergebnisse, neueste zuerst' do
+      referee = create(:referee)
+      import  = course_import
+      alt = course_result(import, referee, status: 'applied', kursstichtag: Date.new(2024, 8, 1))
+      neu = course_result(import, referee, status: 'pending_review', kursstichtag: Date.new(2026, 8, 1))
+      abgelehnt = course_result(import, referee, status: 'rejected', kursstichtag: Date.new(2025, 8, 1),
+                                                 rejection_reason: 'Falsche Person')
+      login(@admin)
+
+      get "/api/v2/admin/referees/#{referee.id}/courses"
+
+      assert_response :success
+      body = response.parsed_body
+      assert_equal([neu.id, abgelehnt.id, alt.id], body.map { |r| r['id'] })
+      assert_equal '01.08.2026', body.first['kursstichtag']
+      assert_equal '42', body.first.dig('course_data', 'kurs_1', 'punkte')
+      assert_equal 'Falsche Person', body.second['rejection_reason']
+    end
+
+    # Vor dem Einreichen ist die Zuordnung ein Vorschlag des Imports, eine
+    # verworfene Zeile war womoeglich eine andere Person.
+    test 'courses laesst nicht eingereichte Zeilen und abgebrochene Importe weg' do
+      referee = create(:referee)
+      course_result(course_import, referee, status: 'pending_review', submitted_at: nil)
+      course_result(course_import, referee, status: 'rejected', submitted_at: nil)
+      course_result(course_import(status: 'cancelled'), referee, status: 'pending_review')
+      course_result(course_import, create(:referee), status: 'applied')
+      login(@admin)
+
+      get "/api/v2/admin/referees/#{referee.id}/courses"
+
+      assert_response :success
+      assert_empty response.parsed_body
+    end
+
+    test 'courses ist fuer den Vereinsmanager gesperrt, auch beim eigenen Vereinsschiri' do
+      club    = create(:club)
+      referee = create(:referee, club_id: club.id)
+      login(vm_user(club.id))
+
+      get "/api/v2/admin/referees/#{referee.id}/courses"
+
+      assert_response :forbidden
+    end
+
+    test 'courses steht dem LV-RSK fuer Schiris seines Verbands offen' do
+      sa      = create(:state_association)
+      go      = create(:game_operation, state_association_id: sa.id)
+      referee = create(:referee, club_id: create(:club, state_association_id: sa.id).id)
+      course_result(course_import, referee, status: 'applied')
+      login(rsk_user(go.id))
+
+      get "/api/v2/admin/referees/#{referee.id}/courses"
+
+      assert_response :success
+      assert_equal 1, response.parsed_body.size
+    end
+
+    test 'courses ist fuer einen LV-RSK ausserhalb seines Verbands gesperrt' do
+      referee = create(:referee, club_id: create(:club, state_association_id: create(:state_association).id).id)
+      login(lv_rsk_user)
+
+      get "/api/v2/admin/referees/#{referee.id}/courses"
+
+      assert_response :forbidden
+    end
+
+    # Das Frontend blendet den Abschnitt ueber diesen Schluessel ein. Bekaeme ihn
+    # der Vereinsmanager, liefe seine Profilansicht in eine 403-Meldung.
+    test 'referee_course_history_view haben Admin, RSK und Ansetzung, der Vereinsmanager nicht' do
+      go = create(:game_operation)
+
+      assert @admin.permissions_items[:referee_course_history_view]
+      assert rsk_user(go.id).permissions_items[:referee_course_history_view]
+      assert create(:user, :assigner_scoped, game_operation_id: go.id).permissions_items[:referee_course_history_view]
+      assert_not vm_user(create(:club).id).permissions_items[:referee_course_history_view]
+    end
+
     private
+
+    def course_import(status: 'submitted')
+      RefereeCourseImport.create!(uploaded_by_user: @admin, filename: 'kurs.csv', total_rows: 0, status: status)
+    end
+
+    def course_result(import, referee, status:, kursstichtag: Date.new(2026, 8, 1),
+                      submitted_at: Time.current, rejection_reason: nil)
+      RefereeCourseResult.create!(
+        referee_course_import: import, referee: referee, status: status, submitted_at: submitted_at,
+        match_type: 'exact_match', match_field_count: 6, lizenzstufe: 'L2',
+        kursstichtag: kursstichtag, gueltigkeit: Date.new(2028, 9, 30), rejection_reason: rejection_reason,
+        course_data: { 'kurs_1' => { 'stufe' => 'L2', 'datum' => kursstichtag.strftime('%d.%m.%Y'),
+                                     'testversion' => 'A', 'punkte' => '42' } }
+      )
+    end
 
     # Spiel mit tatsächlich eingesetzten Schiris (officiating_referee_ids).
     def partner_game(referee_ids, season_id: '18', game_operation: nil)
