@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.126.0] - 2026-10-08
+
 ### Neu
 
 - **RSK setzt Schiedsrichtercoaches an, ohne personenscharfe Ansetzung**: Neue Verbandseinstellung „Auch Schiedsrichtercoach*innen ansetzen" für Verbände, in denen die RSK Verein oder Freitext einträgt. Ist sie an, wählt die RSK in derselben Ansicht je Spiel einen Coach. Zur Auswahl stehen alle Coaches des Landesverbands mit am Spieltag gültiger B-Qualifikation; wer für den Tag eine Verfügbarkeit gemeldet hat, ist markiert, Pflicht ist das nicht. Die Ansetzung gilt sofort: Der Coach bekommt die Ansetzungsmail, ein abberufener die Änderungsmail, und die Erinnerung an den Beobachtungsbogen zum Anpfiff läuft wie bei personenscharfen Ansetzungen. Wird das Spiel verlegt oder abgesagt, bekommt der Coach die Änderungsmail, der Ausrichter nicht, weil sich an der Besetzung nichts geändert hat. Ein Speichern ohne Änderung schickt nichts mehr, der Knopf ist dann gesperrt. Im Personen-Weg ändert sich nichts, dort setzt weiter die Ansetzer*in den Coach mit an.
