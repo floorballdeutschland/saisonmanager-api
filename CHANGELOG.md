@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Kursimport zählt Vorsaison-Spiele erst ab U15**: Die Spalte „Vorsaison“ in der Prüfmaske eines Schiedsrichterkurses zählt nur noch Einsätze in Ligen ab U15 (U15, U17, U19, Damen, Herren, Ü30). Spiele in U13 und jünger fließen nicht mehr ein, weil sie für die Einstufung nach dem Kurs nichts aussagen. Ligen ohne hinterlegte Altersklasse zählen weiter mit.
+
 ## [1.126.0] - 2026-10-08
 
 ### Neu
