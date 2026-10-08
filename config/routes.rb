@@ -376,6 +376,9 @@ Rails.application.routes.draw do
           # Verein bzw. Freitext am Spiel.
           get :league_clubs, on: :collection
           patch 'games/:game_id/club_assignment', action: :update_club_assignment, on: :collection
+          # Coach-Ansetzung im reduzierten Modus (Schalter am Landesverband).
+          get :club_coaches, on: :collection
+          patch 'games/:game_id/club_coach', action: :update_club_coach, on: :collection
           patch 'games/:game_id/notes', action: :update_notes, on: :collection
         end
         resources :game_days, only: [] do

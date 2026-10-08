@@ -65,10 +65,25 @@ module Admin
 
       assert_response :success
       @verbund.reload
-      StateAssociation::INHERITED_SETTINGS.each do |setting|
+      (StateAssociation::INHERITED_SETTINGS - [:coach_assignment_enabled]).each do |setting|
         assert_equal !default_for(setting), @verbund.public_send(setting),
                      "#{setting} wurde nicht gespeichert (fehlt es in der permit-Liste?)"
       end
+    end
+
+    # Die Coach-Ansetzung gehört zum reduzierten Modus und schließt die
+    # Personenebene aus, die der Test oben einschaltet. Deshalb hier für sich,
+    # mit derselben Frage: kommt der Wert durch die permit-Liste?
+    test 'ohne Verbund laesst sich die Coach-Ansetzung setzen' do
+      login(create(:user, :admin))
+
+      patch "/api/v2/admin/state_associations/#{@verbund.id}",
+            params: { state_association: { referee_assignment_external_enabled: true,
+                                           referee_assignment_enabled: false,
+                                           coach_assignment_enabled: true } }
+
+      assert_response :success
+      assert @verbund.reload.coach_assignment_enabled
     end
 
     # parent_id darf nur ein globaler Admin schicken; für alle anderen streicht
