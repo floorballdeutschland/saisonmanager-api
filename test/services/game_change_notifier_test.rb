@@ -52,6 +52,32 @@ class GameChangeNotifierTest < ActiveSupport::TestCase
     end
   end
 
+  # Reduzierter Modus mit Coach-Ansetzung: Der Coach muss von einer Verlegung
+  # erfahren, sonst fährt er zur alten Zeit. Der Ausrichter nicht, an der
+  # Besetzung hat sich nichts geändert.
+  test 'Vereins-Ansetzung mit Coach: nur der Coach, mit dem Verein als Gespann' do
+    RefereeAssignment.create!(game: @game, club_id: @club.id, coach_id: @coach.id, status: 'published')
+
+    assert_enqueued_emails 1 do
+      assert_enqueued_email_with RefereeMailer, :updated_assignment_notification,
+                                 args: [@coach, @game, @club.name, @coach] do
+        GameChangeNotifier.notify(@game.reload)
+      end
+    end
+  end
+
+  test 'Freitext mit Coach: nur der Coach, mit dem Freitext als Gespann' do
+    @game.update!(nominated_referee_string: 'Müller / Schmidt')
+    RefereeAssignment.create!(game: @game, coach_id: @coach.id, status: 'published')
+
+    assert_enqueued_emails 1 do
+      assert_enqueued_email_with RefereeMailer, :updated_assignment_notification,
+                                 args: [@coach, @game, 'Müller / Schmidt', @coach] do
+        GameChangeNotifier.notify(@game.reload)
+      end
+    end
+  end
+
   test 'kein Ausrichter-Versand ohne contact_email' do
     @club.update!(contact_email: nil)
     RefereeAssignment.create!(game: @game, referee1_id: @referee.id, status: 'published')

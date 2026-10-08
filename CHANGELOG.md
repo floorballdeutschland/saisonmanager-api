@@ -9,6 +9,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **RSK setzt Schiedsrichtercoaches an, ohne personenscharfe Ansetzung**: Neue Verbandseinstellung „Auch Schiedsrichtercoach*innen ansetzen" für Verbände, in denen die RSK Verein oder Freitext einträgt. Ist sie an, wählt die RSK in derselben Ansicht je Spiel einen Coach. Zur Auswahl stehen alle Coaches des Landesverbands mit am Spieltag gültiger B-Qualifikation; wer für den Tag eine Verfügbarkeit gemeldet hat, ist markiert, Pflicht ist das nicht. Die Ansetzung gilt sofort: Der Coach bekommt die Ansetzungsmail, ein abberufener die Änderungsmail, und die Erinnerung an den Beobachtungsbogen zum Anpfiff läuft wie bei personenscharfen Ansetzungen. Wird das Spiel verlegt oder abgesagt, bekommt der Coach die Änderungsmail, der Ausrichter nicht, weil sich an der Besetzung nichts geändert hat. Ein Speichern ohne Änderung schickt nichts mehr, der Knopf ist dann gesperrt. Im Personen-Weg ändert sich nichts, dort setzt weiter die Ansetzer*in den Coach mit an.
+
+### Verbessert
+
+- **Verbandseinstellungen übersichtlicher**: Die drei gestaffelten Ansetzungs-Haken sind jetzt eine Auswahl aus drei Wegen: „Nur die SBK“, „RSK trägt Verein oder Freitext ein“ oder „Ansetzer*in setzt Personen an“. Die Unteroptionen (Coach-Ansetzung, neue Spiele standardmäßig personenscharf) erscheinen nur unter ihrem Weg. Die übrigen Einstellungen stehen gegliedert unter „Lizenzen und Mannschaften“, „Spielbericht und Verfahren“ und „Schiedsrichterlizenzen“. Gespeichert wird wie bisher, an den Werten der Verbände ändert sich nichts.
+- **Lizenzverwaltung merkt sich die Filter** (saisonmanager#527): Wer nach „beantragt“ filtert, einen Antrag öffnet und genehmigt, kommt mit derselben Auswahl und auf derselben Seite zurück, statt wieder bei „Alle Status“ zu landen. Die Auswahl gilt bis zum Neuladen der Seite und nur für das Konto, das sie getroffen hat; ein Verband oder eine Liga ohne Einträge in der neu geladenen Liste wird verworfen.
+
+### Behoben
+
+- **Overlay-Bedienfeld zeigt nur, was wirklich gespeichert ist**: Die Markierung der laufenden Einblendung folgte bisher dem Druck, nicht der Bestätigung durch den Server; bei einer Störung stand eine Einblendung als „in der Bühne“ da, die nie angekommen war. Jetzt zeigt das Bedienfeld „Wird gespeichert …“ bzw. „Nicht gespeichert“, bis der Server bestätigt. Drücke während eines laufenden Schreibvorgangs gehen nicht mehr verloren (bisher konnte die Korrektur auf eine andere Person still auf die erste zurückfallen). Die Interview-Auswahl ist eine Knopfliste und fällt bei einem Spielwechsel weg, damit Taste 5 keine Nummer aus dem vorigen Spiel einblendet.
+
 ## [1.125.0] - 2026-10-07
 
 ### Neu

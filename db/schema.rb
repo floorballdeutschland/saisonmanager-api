@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_10_07_150000) do
+ActiveRecord::Schema[7.2].define(version: 2026_10_08_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1000,6 +1000,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_07_150000) do
     t.string "states", default: [], null: false, comment: "Bundeslaender im Zustaendigkeitsbereich (ISO-Kuerzel, z. B. de-nw)", array: true
     t.boolean "requested_license_playable", default: false, null: false, comment: "Wenn true: Spieler mit Lizenzstatus „beantragt“ duerfen im Spielbetrieb dieses Verbands aufgestellt werden"
     t.boolean "team_info_editable_during_season", default: true, null: false, comment: "Wenn true: Vereine duerfen Name, Kuerzel und Logo ihrer Mannschaften auch nach dem ersten Spieltag aendern"
+    t.boolean "coach_assignment_enabled", default: false, null: false, comment: "Reduzierter Ansetzungsmodus: die RSK setzt zusätzlich Schiedsrichtercoaches an. Wirkt nur bei Hauptschalter an und Personenebene aus."
     t.index ["parent_id"], name: "index_state_associations_on_parent_id"
   end
 

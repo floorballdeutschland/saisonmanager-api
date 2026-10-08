@@ -26,6 +26,9 @@ class StateAssociationInheritedSettingsTest < ActiveSupport::TestCase
                      scan_required: true,
                      referee_assignment_enabled: true,
                      person_level_assignment_default: true,
+                     # Am Modell nicht gestaffelt; die Aufräumregel sitzt im
+                     # Controller. Hier zählt nur, dass jeder Wert vererbt wird.
+                     coach_assignment_enabled: true,
                      report_form_email_enabled: true,
                      manual_proceeding_creation: true,
                      requested_license_playable: true)

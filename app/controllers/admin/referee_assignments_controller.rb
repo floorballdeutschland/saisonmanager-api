@@ -11,7 +11,8 @@ module Admin
     before_action :authorize_person_level!, only: %i[create update notify publish
                                                      available available_coaches availability
                                                      update_notes]
-    before_action :authorize_club_level!, only: %i[league_clubs update_club_assignment]
+    before_action :authorize_club_level!, only: %i[league_clubs update_club_assignment
+                                                   club_coaches update_club_coach]
 
     # Welche Reihenfolge gilt, entscheidet die Rolle (club_level_view?), nicht ein
     # Parameter: die beiden Ansichten liegen hinter einem Menüpunkt.
@@ -88,8 +89,8 @@ module Admin
       go_ids = view_scope_go_ids
 
       scope = Game.not_started.includes(
-        :home_team, :guest_team, :referee_assignment,
-        game_day: [{ league: :game_operation }, :arena, :club]
+        :home_team, :guest_team, { referee_assignment: :coach },
+        game_day: [{ league: { game_operation: :state_association } }, :arena, :club]
       ).joins(game_day: :league)
 
       scope = scope.where(leagues: { game_operation_id: go_ids }) if go_ids
@@ -166,6 +167,12 @@ module Admin
           # Eingabefeld, das die RSK pflegt.
           nominated_referee_string: g.nominated_referee_string,
           assignment_club_id: a&.club_id,
+          # Reduzierter Modus mit Coach-Ansetzung (Schalter am Landesverband).
+          # Je Spiel, weil ein RSK-Scope mehrere Verbände mit verschiedenem
+          # Schalterstand umfassen kann.
+          coach_assignable: club_level_view? && club_coach_assignment_allowed?(g),
+          coach_id: a&.coach_id,
+          coach_name: a&.coach && "#{a.coach.vorname} #{a.coach.nachname}",
           # Bundesspielbetrieb (national markiert) → für die clientseitige
           # Lizenz-Vorauswahl (FD-Spiele defaulten auf N-Lizenz).
           national: go.present? && go.national?,
@@ -237,15 +244,116 @@ module Admin
         # Freitext (oder Leeren) ersetzt eine zuvor gewählte Vereins-Ansetzung.
         # Der Datensatz muss weg, sonst hält ihn der Verlauf und die
         # Spieleliste (Filter „… ODER hat Ansetzung") als Geist weiter fest.
+        # Ausnahme: Hängt ein Coach daran, bleibt der Datensatz und verliert
+        # nur den Verein. Sonst würfe ein Freitext den angesetzten (und
+        # benachrichtigten) Coach kommentarlos aus dem Spiel.
         # Zusammen in einer Transaktion: sonst bliebe die Ansetzung gelöscht,
         # wenn das Schreiben des Freitextes scheitert.
         ActiveRecord::Base.transaction do
-          game.referee_assignment&.destroy!
+          assignment = game.referee_assignment
+          if assignment&.coach_id.present?
+            assignment.update!(club_id: nil, updated_by: current_user.id)
+          else
+            assignment&.destroy!
+          end
           game.update!(nominated_referee_string: free_text.to_s)
         end
       end
 
       render json: club_assignment_json(game.reload)
+    end
+
+    # GET /api/v2/admin/referee_assignments/club_coaches?game_id=X
+    # Reduzierter Modus mit Coach-Ansetzung: alle Coaches des Landesverbands
+    # mit am Spieltag gültiger Beobachtungs-Qualifikation. Anders als
+    # #available_coaches ist eine gemeldete Verfügbarkeit keine Voraussetzung,
+    # sondern nur ein Hinweis (`available`): In Verbänden ohne Personenebene
+    # melden die Schiedsrichter:innen in der Regel keine Verfügbarkeiten, die
+    # Liste wäre sonst leer.
+    #
+    # Zweiter Unterschied, bewusst: Die Qualifikation läuft über
+    # Referee.coach_qualified, das eine Qualifikation ohne Ablaufdatum nicht
+    # zählt. Dieselbe Regel gilt für den Beobachtungsbogen
+    # (RefereeObservationPolicy); ein so angesetzter Coach könnte ihn sonst
+    # nicht abgeben.
+    def club_coaches
+      game = Game.includes(game_day: { league: :game_operation }).find_by(id: params[:game_id])
+      return render json: { error: 'Spiel nicht gefunden' }, status: :not_found unless game
+      return unless authorize_club_coach_game!(game)
+
+      referees = club_coach_candidates(game).order(:nachname, :vorname).to_a
+      available_ids = RefereeAvailability.where(date: game.game_date || Date.current, referee_id: referees.map(&:id))
+                                         .pluck(:referee_id).to_set
+      excluded_clubs = RefereeClubExclusion.club_ids_by_referee(referees)
+
+      render json: referees.map { |r|
+        {
+          id: r.id,
+          vorname: r.vorname,
+          nachname: r.nachname,
+          lizenzstufe: r.lizenzstufe,
+          club_id: r.club_id,
+          available: available_ids.include?(r.id),
+          excluded_club_ids: excluded_clubs[r.id] || []
+        }
+      }
+    end
+
+    # PATCH /api/v2/admin/referee_assignments/games/:game_id/club_coach
+    # Reduzierter Modus mit Coach-Ansetzung: Coach setzen, tauschen oder mit
+    # leerer coach_id entfernen. Wie Verein und Freitext gilt die Ansetzung
+    # sofort, ohne Schritt „Veröffentlichen". Deshalb gehen die Mails hier
+    # direkt raus: die Ansetzungsmail an den neuen Coach, die Änderungsmail an
+    # einen abberufenen. Die Erinnerung zum Anpfiff (RefereeObservationReminder)
+    # greift über Status „published" von selbst.
+    def update_club_coach
+      game = Game.includes(:referee_assignment, game_day: { league: :game_operation }).find_by(id: params[:game_id])
+      return render json: { error: 'Spiel nicht gefunden' }, status: :not_found unless game
+      # Entfernen bleibt auch nach dem Abschalten des Verbandsschalters
+      # möglich. Sonst blieben angesetzte Coaches mit Erinnerung und
+      # Lizenzlisten stehen, und nur ein Admin käme noch an sie heran.
+      if params[:coach_id].present?
+        return unless authorize_club_coach_game!(game)
+      else
+        return unless authorize_club_game_operation!(game.game_day.league&.game_operation_id)
+      end
+
+      reason = club_assignment_block_reason(game)
+      return render json: { error: reason }, status: :unprocessable_entity if reason
+
+      coach = nil
+      if params[:coach_id].present?
+        coach = club_coach_candidates(game).find_by(id: params[:coach_id])
+        return render json: { error: 'Coach nicht gefunden' }, status: :not_found unless coach
+      end
+
+      assignment = game.referee_assignment
+      previous_coach = assignment&.coach
+      return render json: club_assignment_json(game) if previous_coach&.id == coach&.id
+
+      ActiveRecord::Base.transaction do
+        if coach
+          assignment ||= game.build_referee_assignment(created_by: current_user.id)
+          assignment.assign_attributes(coach_id: coach.id, status: 'published',
+                                       published_at: assignment.published_at || Time.current,
+                                       # Beide Marken galten dem bisherigen Coach;
+                                       # der neue soll Lizenzlisten und
+                                       # Erinnerung selbst bekommen.
+                                       observation_reminder_sent_at: nil,
+                                       license_lists_notified_at: nil,
+                                       updated_by: current_user.id)
+          assignment.save!
+        elsif assignment.club_id.present?
+          assignment.update!(coach_id: nil, updated_by: current_user.id)
+        else
+          # Nur der Coach hielt den Datensatz (Freitext oder nichts eingetragen):
+          # ohne ihn ist er leer und muss weg, siehe #update_club_assignment.
+          assignment.destroy!
+        end
+      end
+
+      notify_club_coach_change(game.reload, previous_coach, coach)
+      render json: club_assignment_json(game)
     end
 
     # GET /api/v2/admin/referee_assignments/available?date=YYYY-MM-DD&game_id=X
@@ -952,13 +1060,78 @@ module Admin
       end
     end
 
+    # Darf in diesem Spiel ein Coach im reduzierten Modus angesetzt werden?
+    # Liegt der Spielbetrieb im Scope der RSK und hat sein Landesverband die
+    # Coach-Ansetzung eingeschaltet?
+    #
+    # Je Spielbetrieb zwischengespeichert: Die Spieleliste fragt für jede Zeile,
+    # und bei einem Kind-LV liest der Schalter am Verbund.
+    def club_coach_assignment_allowed?(game)
+      go = game.game_day&.league&.game_operation
+      return false unless go && club_mode_scope_go_ids.include?(go.id)
+
+      @club_coach_assignment_allowed ||= {}
+      return @club_coach_assignment_allowed[go.id] if @club_coach_assignment_allowed.key?(go.id)
+
+      @club_coach_assignment_allowed[go.id] = go.state_association&.club_level_coach_assignment_active? || false
+    end
+
+    def authorize_club_coach_game!(game)
+      return true if club_coach_assignment_allowed?(game)
+
+      render json: { error: 'Nicht berechtigt' }, status: :forbidden
+      false
+    end
+
+    # Wählbare Coaches für ein Spiel, dieselbe Regel wie #club_coaches.
+    def club_coach_candidates(game)
+      date = game.game_date || Date.current
+      go_id = game.game_day.league.game_operation_id
+      base = Referee.canonical.coach_qualified(date)
+      base.where(club_id: lv_club_ids([go_id])).or(base.where(game_operation_id: go_id))
+    end
+
+    # Öffentlicher Eintrag des Gespanns, wie ihn der Coach in seiner Mail sieht:
+    # der angesetzte Verein oder der Freitext im Spielplan.
+    def club_official_names(game)
+      assignment = game.referee_assignment
+      return assignment.club.name.to_s if assignment&.club_assignment? && assignment.club
+
+      game.nominated_referee_string.to_s
+    end
+
+    def notify_club_coach_change(game, previous_coach, coach)
+      official_names = club_official_names(game)
+      if previous_coach&.email.present?
+        RefereeMailer.updated_assignment_notification(previous_coach, game, official_names, coach).deliver_later
+      end
+      return unless coach&.email.present?
+
+      link = LicenseListLink.new(game)
+      imminent = RefereeLicenseListNotifier.window_covers?(game.game_date)
+      license_list_url = imminent ? link.url : nil
+      RefereeMailer.published_coach_notification(
+        coach,
+        game,
+        official_names,
+        game.game_day.club&.contact_email,
+        license_list_url:,
+        license_expires_at: license_list_url.present? ? link.expires_at : nil
+      ).deliver_later
+      # Wie in #publish: Die Listen sind schon mitgereist, der Wochenlauf
+      # soll sie nicht ein zweites Mal schicken.
+      game.referee_assignment.update_column(:license_lists_notified_at, Time.current) if license_list_url.present?
+    end
+
     def club_assignment_json(game)
       assignment = game.referee_assignment
       {
         game_id: game.id,
         nominated_referee_string: game.nominated_referee_string,
         assignment_club_id: assignment&.club_id,
-        assignment_id: assignment&.id
+        assignment_id: assignment&.id,
+        coach_id: assignment&.coach_id,
+        coach_name: assignment&.coach && "#{assignment.coach.vorname} #{assignment.coach.nachname}"
       }
     end
 
