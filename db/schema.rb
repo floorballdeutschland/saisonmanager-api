@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_10_08_120000) do
+ActiveRecord::Schema[7.2].define(version: 2026_10_08_200000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -727,6 +727,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_08_120000) do
     t.integer "total_rows", default: 0, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.jsonb "skipped_duplicates", default: [], null: false, comment: "Beim Upload uebersprungene Zeilen, die schon in einem frueheren Import angewendet oder offen sind: [{lizenznummer, vorname, nachname, import_id}]"
     t.index ["uploaded_by_user_id"], name: "index_referee_course_imports_on_uploaded_by_user_id"
   end
 
