@@ -111,7 +111,7 @@ class RefereeCourseRegistrar
     was_seated = RefereeCourseRegistration::SEAT_STATUSES.include?(registration.status)
     registration.skip_required_answers = true
     registration.update!(status: by_organizer ? 'cancelled_by_organizer' : 'cancelled_by_participant',
-                         cancelled_at: Time.current, guardian_token_digest: nil)
+                         cancelled_at: Time.current, guardian_token_digest: nil, held_seat_at_cancel: was_seated)
     RefereeCourseMailer.cancelled(registration).deliver_later if RefereeCourseMailer.recipient(registration)
     promote_waitlist if was_seated
     Result.new(registration: registration)

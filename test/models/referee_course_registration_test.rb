@@ -90,8 +90,13 @@ class RefereeCourseRegistrationTest < ActiveSupport::TestCase
     @course.update!(cancellation_deadline: Time.zone.parse('2026-11-14 23:59'))
     r = build
     r.save!
-    r.update!(status: 'cancelled_by_participant', cancelled_at: Time.zone.parse('2026-11-18 10:00'))
+    r.update!(status: 'cancelled_by_participant', cancelled_at: Time.zone.parse('2026-11-18 10:00'),
+              held_seat_at_cancel: true)
     assert r.late_cancellation?
+    r.update!(held_seat_at_cancel: false)
+    assert_not r.late_cancellation?, 'von der Warteliste abgesprungen: keine Gebuehr'
+    r.update!(status: 'cancelled_by_organizer', held_seat_at_cancel: true)
+    assert_not r.late_cancellation?, 'von den Veranstaltern abgemeldet: keine Gebuehr'
   end
 
   test 'Alter am ersten Kurstag' do

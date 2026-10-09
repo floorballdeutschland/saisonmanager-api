@@ -72,9 +72,13 @@ class RefereeCourseRegistration < ApplicationRecord
   end
 
   # Abmeldung nach der Abmeldefrist: Die Gebuehr bleibt faellig.
+  # Abmeldung nach der Frist, fuer die die Gebuehr faellig bleibt: nur eine
+  # eigene Abmeldung (oder durch den eigenen Verein), und nur wenn die
+  # Anmeldung einen Platz hielt. Warteliste und Absage durch die
+  # Veranstalter kosten nichts.
   def late_cancellation?
-    cancelled? && cancelled_at.present? && referee_course.cancellation_deadline.present? &&
-      cancelled_at > referee_course.cancellation_deadline
+    status == 'cancelled_by_participant' && held_seat_at_cancel && cancelled_at.present? &&
+      referee_course.cancellation_deadline.present? && cancelled_at > referee_course.cancellation_deadline
   end
 
   def age_on(date)
