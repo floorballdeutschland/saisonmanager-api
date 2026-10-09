@@ -45,7 +45,10 @@ class CourseLeadCoursesController < ApplicationController
     if attrs.key?('status') && LEAD_STATUSES.exclude?(attrs['status'])
       return render json: { error: 'Status nicht erlaubt' }, status: :unprocessable_entity
     end
-    if registration.cancelled? || registration.status == 'waitlisted'
+    # Nur Anmeldungen mit Platz: wartende (Warteliste, E-Mail- oder
+    # Eltern-Bestaetigung offen) darf die Kursleitung nicht umstellen, sonst
+    # liesse sich die Einwilligung umgehen und ein voller Kurs ueberbuchen.
+    unless RefereeCourseRegistration::SEAT_STATUSES.include?(registration.status)
       return render json: { error: 'Diese Anmeldung hält keinen Platz' }, status: :unprocessable_entity
     end
 

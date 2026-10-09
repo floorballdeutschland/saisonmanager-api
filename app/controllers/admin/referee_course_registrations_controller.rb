@@ -56,6 +56,7 @@ module Admin
         return render(json: { error: 'Schiedsrichter nicht gefunden' }, status: :not_found) if referee.nil?
 
         @registration.referee = referee
+        @registration.user_id = User.where(referee_id: referee.id).pick(:id)
         @registration.identity_match = 'confirmed_existing'
       end
       if @registration.status_changed?
@@ -77,10 +78,12 @@ module Admin
 
     # DELETE /api/v2/admin/referee_courses/:referee_course_id/registrations/:id
     # Absage durch die Veranstalter. Die Zeile bleibt fuer die Nachvollziehbarkeit.
+    # Ohne Validierung: Eine Absage darf nicht an Angaben scheitern, die erst
+    # nachtraeglich ungueltig wurden (etwa eine aus dem Kurs entfernte Stufe).
     def destroy
       was_seated = RefereeCourseRegistration::SEAT_STATUSES.include?(@registration.status)
-      @registration.skip_required_answers = true
-      @registration.update!(status: 'cancelled_by_organizer', cancelled_at: Time.current)
+      @registration.update_columns(status: 'cancelled_by_organizer', cancelled_at: Time.current,
+                                   updated_at: Time.current)
       RefereeCourseRegistrar.new(@course).promote_waitlist if was_seated
       head :no_content
     end
