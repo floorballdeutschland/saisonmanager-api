@@ -359,6 +359,7 @@ Rails.application.routes.draw do
         resources :penalty_codes, only: %i[index create update destroy]
         resource :referee_course_settings, only: %i[show update]
         resources :referee_courses, only: %i[index show create update destroy] do
+          get :options, on: :collection
           resources :fields, controller: 'referee_course_fields', only: %i[create update destroy]
           resources :registrations, controller: 'referee_course_registrations',
                                     only: %i[index create update destroy]

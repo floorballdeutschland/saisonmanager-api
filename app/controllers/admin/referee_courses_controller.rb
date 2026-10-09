@@ -34,6 +34,22 @@ module Admin
       render json: { error: 'Ungültiges Datum' }, status: :unprocessable_entity
     end
 
+    # GET /api/v2/admin/referee_courses/options
+    # Auswahllisten fuer die Kursmaske: die LV, denen das Konto Kurse zuordnen
+    # darf (bundesweit nur Admin/FD-RSK), alle LV fuer die Partnerwahl und die
+    # aktiven Lizenzstufen.
+    def options
+      all = StateAssociation.order(:name).map { |sa| { id: sa.id, name: sa.name } }
+      assignable = all.select { |sa| @policy.assign_state_association?(sa[:id]) }
+      render json: {
+        state_associations: assignable,
+        partner_state_associations: all,
+        national_allowed: @policy.assign_state_association?(nil),
+        license_levels: RefereeLicenseLevel.where(active: true).ordered.map { |l| { id: l.id, name: l.name } },
+        course_types: RefereeCourse::COURSE_TYPES
+      }
+    end
+
     # GET /api/v2/admin/referee_courses/:id
     def show
       render json: course_json(@course)

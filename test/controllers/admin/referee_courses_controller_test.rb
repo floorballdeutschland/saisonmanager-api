@@ -248,5 +248,20 @@ module Admin
       get "/api/v2/admin/referee_courses/#{course.id}/registrations"
       assert_response :forbidden
     end
+
+    test 'Auswahllisten: LV-RSK bekommt nur den eigenen LV zum Zuordnen' do
+      login(@rsk_a)
+      get '/api/v2/admin/referee_courses/options'
+      assert_response :success
+      body = response.parsed_body
+      assert_equal [@lv_a.id], body['state_associations'].pluck('id')
+      assert_includes body['partner_state_associations'].pluck('id'), @lv_b.id
+      assert_equal false, body['national_allowed']
+      assert_equal ['L2'], body['license_levels'].pluck('name')
+
+      login(@admin)
+      get '/api/v2/admin/referee_courses/options'
+      assert_equal true, response.parsed_body['national_allowed']
+    end
   end
 end
