@@ -17,6 +17,8 @@
 class RefereeCourseRegistrar
   GUARDIAN_AGE = 16
   GUARDIAN_TOKEN_VALIDITY = 14.days
+  # Oeffentliche Anmeldung: so lange gilt der Bestaetigungslink.
+  EMAIL_TOKEN_VALIDITY = 3.days
 
   Error = Class.new(StandardError)
 
@@ -47,12 +49,16 @@ class RefereeCourseRegistrar
 
   # attrs: Personendaten und Antworten (siehe RefereeCourseRegistration).
   # source: 'portal', 'club' oder 'public'.
-  def register(attrs, source:, registered_by: nil)
+  # confirm_email: Die Anmeldung gilt erst nach Klick auf den Link in der
+  # Bestaetigungsmail (oeffentliches Formular). Bis dahin haelt sie keinen
+  # Platz; geprueft wird alles Uebrige trotzdem sofort.
+  def register(attrs, source:, registered_by: nil, confirm_email: false)
     reason = closed_reason
     return Result.new(error: reason) if reason
 
     registration = nil
     guardian_token = nil
+    email_token = nil
     RefereeCourse.transaction do
       # Sperre auf dem Kurs: Zwei gleichzeitige Anmeldungen duerfen nicht beide
       # den letzten Platz bekommen.
@@ -61,7 +67,17 @@ class RefereeCourseRegistrar
       error = age_error(registration)
       raise Error, error if error
 
-      if needs_guardian?(registration)
+      if confirm_email
+        raise Error, 'Bitte eine E-Mail-Adresse angeben' if registration.email.blank?
+        if needs_guardian?(registration) && (registration.guardian_name.blank? || registration.guardian_email.blank?)
+          raise Error, 'Für Personen unter 16 braucht es Name und E-Mail der Erziehungsberechtigten'
+        end
+
+        email_token = SecureRandom.urlsafe_base64(32)
+        registration.assign_attributes(status: 'pending_email',
+                                       email_confirmation_token_digest: digest(email_token),
+                                       email_confirmation_expires_at: Time.current + EMAIL_TOKEN_VALIDITY)
+      elsif needs_guardian?(registration)
         raise Error, 'Für Personen unter 16 braucht es Name und E-Mail der Erziehungsberechtigten' if
           registration.guardian_name.blank? || registration.guardian_email.blank?
 
@@ -74,7 +90,11 @@ class RefereeCourseRegistrar
       end
       registration.save!
     end
-    notify_registered(registration, guardian_token)
+    if email_token
+      RefereeCourseMailer.confirm_email(registration, email_token).deliver_later
+    else
+      notify_registered(registration, guardian_token)
+    end
     Result.new(registration: registration, guardian_token: guardian_token)
   rescue Error => e
     Result.new(error: e.message)
@@ -97,6 +117,68 @@ class RefereeCourseRegistrar
     Result.new(registration: registration)
   end
 
+  # Bestaetigung der E-Mail-Adresse (oeffentliche Anmeldung). Unter 16 folgt
+  # danach die Einwilligung der Erziehungsberechtigten, sonst wird eingeplant.
+  def self.confirm_email(raw_token)
+    registration = find_pending(raw_token, status: 'pending_email', digest_column: :email_confirmation_token_digest,
+                                           expiry_column: :email_confirmation_expires_at)
+    return Result.new(error: 'Der Link ist ungültig oder abgelaufen') if registration.nil?
+
+    registrar = new(registration.referee_course)
+    guardian_token = nil
+    duplicate = false
+    RefereeCourse.transaction do
+      registration.referee_course.lock!
+      registration.skip_required_answers = true
+      attrs = { email_confirmed_at: Time.current, email_confirmation_token_digest: nil }
+      if registrar.needs_guardian?(registration)
+        guardian_token = SecureRandom.urlsafe_base64(32)
+        attrs.merge!(status: 'pending_guardian', guardian_token_digest: Digest::SHA256.hexdigest(guardian_token),
+                     guardian_token_expires_at: Time.current + GUARDIAN_TOKEN_VALIDITY)
+      else
+        attrs[:status] = registrar.seat_available? ? 'registered' : 'waitlisted'
+      end
+      # Inzwischen anders angemeldet (Portal, Verein, zweites Formular)? Dann
+      # ist diese Zeile ueberfluessig.
+      duplicate = registration.same_person_scope.blocking.exists?
+      registration.update!(attrs) unless duplicate
+    end
+    if duplicate
+      registration.destroy!
+      return Result.new(error: 'Diese Person ist für den Kurs bereits angemeldet')
+    end
+
+    registrar.notify_registered(registration, guardian_token)
+    Result.new(registration: registration)
+  end
+
+  # Abmeldung ueber den Link aus der Bestaetigungsmail (Anmeldung ohne Konto).
+  def self.cancel_by_token(raw_token)
+    registration = find_by_cancel_token(raw_token)
+    return Result.new(error: 'Der Link ist ungültig') if registration.nil?
+
+    new(registration.referee_course).cancel(registration)
+  end
+
+  def self.find_by_cancel_token(raw_token)
+    return nil if raw_token.blank?
+
+    RefereeCourseRegistration.active.find_by(cancel_token_digest: Digest::SHA256.hexdigest(raw_token))
+  end
+
+  def self.find_pending(raw_token, status:, digest_column:, expiry_column:)
+    return nil if raw_token.blank?
+
+    # Nur fuer Kurse, die noch bevorstehen: Nach Absage oder Durchfuehrung darf
+    # ein alter Link (E-Mail oder Eltern) niemanden mehr einplanen.
+    RefereeCourseRegistration.where(status: status)
+                             .where("referee_course_registrations.#{expiry_column} IS NULL OR " \
+                                    "referee_course_registrations.#{expiry_column} > ?", Time.current)
+                             .joins(:referee_course)
+                             .where(referee_courses: { status: OPEN_COURSE_STATUSES })
+                             .find_by(digest_column => Digest::SHA256.hexdigest(raw_token))
+  end
+
   # Einwilligung der Erziehungsberechtigten. Danach regulaer einplanen.
   def self.confirm_guardian(raw_token)
     registration = find_by_guardian_token(raw_token)
@@ -117,13 +199,8 @@ class RefereeCourseRegistrar
   # Nur fuer Kurse, die noch bevorstehen: Nach einer Absage oder Durchfuehrung
   # darf ein alter Link niemanden mehr einplanen.
   def self.find_by_guardian_token(raw_token)
-    return nil if raw_token.blank?
-
-    RefereeCourseRegistration.where(status: 'pending_guardian')
-                             .where('guardian_token_expires_at IS NULL OR guardian_token_expires_at > ?', Time.current)
-                             .joins(:referee_course)
-                             .where(referee_courses: { status: OPEN_COURSE_STATUSES })
-                             .find_by(guardian_token_digest: Digest::SHA256.hexdigest(raw_token))
+    find_pending(raw_token, status: 'pending_guardian', digest_column: :guardian_token_digest,
+                            expiry_column: :guardian_token_expires_at)
   end
 
   # Freie Plaetze an die Warteliste vergeben, aelteste Anmeldung zuerst. Laeuft
@@ -152,14 +229,30 @@ class RefereeCourseRegistrar
     @course.max_participants.nil? || @course.registrations.seated.count < @course.max_participants
   end
 
+  # Anmeldungen ohne Konto (oeffentlich) bekommen mit der Bestaetigung einen
+  # Abmeldelink; Portal und Verein melden in ihrer Ansicht ab.
   def notify_registered(registration, guardian_token)
     if guardian_token
       RefereeCourseMailer.guardian_consent(registration, guardian_token).deliver_later
     elsif RefereeCourseMailer.recipient(registration)
-      RefereeCourseMailer.registered(registration).deliver_later
+      cancel_token = issue_cancel_token(registration) if registration.source == 'public'
+      RefereeCourseMailer.registered(registration, cancel_token).deliver_later
     end
   rescue StandardError => e
     Rails.logger.warn("RefereeCourseRegistrar: Mail fuer Anmeldung #{registration.id} fehlgeschlagen: #{e.message}")
+  end
+
+  def needs_guardian?(registration)
+    return false if registration.referee_id.present?
+
+    age = registration.age_at_course
+    age.present? && age < GUARDIAN_AGE
+  end
+
+  def issue_cancel_token(registration)
+    raw = SecureRandom.urlsafe_base64(32)
+    registration.update_columns(cancel_token_digest: digest(raw))
+    raw
   end
 
   private
@@ -169,13 +262,6 @@ class RefereeCourseRegistrar
 
     age = registration.age_at_course
     "Mindestalter für diesen Kurs: #{@course.min_age} Jahre" if age && age < @course.min_age
-  end
-
-  def needs_guardian?(registration)
-    return false if registration.referee_id.present?
-
-    age = registration.age_at_course
-    age.present? && age < GUARDIAN_AGE
   end
 
   def guardian_token_expiry

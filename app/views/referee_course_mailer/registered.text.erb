@@ -11,3 +11,6 @@ Termine:
 <% if @cancellation_deadline %>
 Abmelden ist bis <%= @cancellation_deadline %> kostenfrei möglich, danach bleibt die Kursgebühr fällig.
 <% end %>
+<% if @cancel_link %>
+Abmelden: <%= @cancel_link %>
+<% end %>

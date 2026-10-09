@@ -11,8 +11,22 @@ class RefereeCourseMailer < ApplicationMailer
       registration.registered_by_user&.email.presence
   end
 
-  def registered(registration)
+  # cancel_token: nur bei Anmeldungen ohne Konto, dann mit Abmeldelink.
+  def registered(registration, cancel_token = nil)
+    @cancel_link = "#{FrontendUrl.base}/kurs-anmeldung/abmelden/#{cancel_token}" if cancel_token
     course_mail(registration, waitlisted: registration.status == 'waitlisted')
+  end
+
+  # Oeffentliche Anmeldung: Adresse bestaetigen, erst danach gilt sie.
+  def confirm_email(registration, raw_token)
+    setup(registration)
+    @link = "#{FrontendUrl.base}/kurs-anmeldung/bestaetigen/#{raw_token}"
+    templated_mail(
+      to: registration.email,
+      subject: "Bitte Anmeldung bestätigen: #{@course.title}",
+      default_reply_to: @course.contact_email.presence,
+      placeholders: placeholders.merge(link: @link)
+    )
   end
 
   def promoted(registration)
@@ -75,7 +89,8 @@ class RefereeCourseMailer < ApplicationMailer
 
   def placeholders
     { first_name: @first_name.to_s, name: @name, course_title: @course.title,
-      dates: @sessions.join("\n"), cancellation_deadline: @cancellation_deadline.to_s }
+      dates: @sessions.join("\n"), cancellation_deadline: @cancellation_deadline.to_s,
+      cancel_link: @cancel_link.to_s }
   end
 
   # Ein Termin als Textzeile. Den Online-Link bekommen nur Angemeldete, also nur

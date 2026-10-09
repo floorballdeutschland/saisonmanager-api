@@ -59,6 +59,11 @@ module Admin
         @registration.user_id = User.where(referee_id: referee.id).pick(:id)
         @registration.identity_match = 'confirmed_existing'
       end
+      # Hinweis auf moegliche Bestandsschiris gesehen und bewusst als neue
+      # Person bestaetigt.
+      if params.dig(:registration, :identity_match) == 'new_person' && @registration.referee_id.nil?
+        @registration.identity_match = 'new_person'
+      end
       if @registration.status_changed?
         unless SETTABLE_STATUSES.include?(@registration.status)
           return render json: { error: 'Status nicht erlaubt' }, status: :unprocessable_entity
@@ -164,6 +169,7 @@ module Admin
         match_candidates: registration.match_candidates,
         custom_answers: registration.custom_answers,
         fee_cents: registration.fee_cents,
+        source: registration.source,
         created_at: registration.created_at
       }
     end
