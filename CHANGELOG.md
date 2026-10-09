@@ -18,6 +18,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
   - Zusatzfelder der Anmeldung je Kurs, mit Vorlagen je Landesverband.
   - Teilnehmerliste: Bestandsschiris oder neue Personen eintragen, Warteliste bei vollem Kurs, Teilnahme, Ergebnis und Punkte erfassen.
   - Eine LV-RSK sieht nur Kurse, an denen ihr Landesverband beteiligt ist. Alles hängt am Schalter „Kurse im System“.
+- **Rolle „Kursleitung“** (Paket 1b): Die RSK ordnet einem Kurs eine Kursleitung zu, als Schiri aus dem Bestand, über den Benutzernamen eines vorhandenen Kontos oder als neue Person mit Einladungsmail (Konto `kl-nachname`).
+  - Die Kursleitung sieht unter „Meine Kurse“ nur ihre Kurse und die Teilnehmenden ohne Kontakt- und Rechnungsdaten.
+  - Sie trägt Anwesenheit, Testversion, Punkte und Ergebnis ein.
+  - Die Rolle lässt sich mit der Schiri-Rolle kombinieren und fällt mit der letzten Kurszuordnung wieder weg.
 - **Schalter für die Kursprozesse in den Schiri-Einstellungen**: Unter `/verwaltung/schiedsrichter/einstellungen` schaltet der Admin den CSV-Import von Kursergebnissen und die Kurse im System getrennt an und aus; die Kurse auf Wunsch nur für einzelne Landesverbände. Ein abgeschalteter Import sperrt nur neue Uploads: Offene Importe lassen sich weiter bearbeiten und einreichen, und die LV-Freigabe läuft weiter. Der Menüpunkt „Kursergebnisse“ bleibt sichtbar, bis keine offenen Zeilen mehr da sind. Vorgabe ohne Eingriff: Import an, Kurse aus. Vorbereitung für die Kurse im System, die den CSV-Import zum Jahresende ablösen.
 
 ## [1.129.0] - 2026-10-08

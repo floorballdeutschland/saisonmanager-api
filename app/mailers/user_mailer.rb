@@ -82,4 +82,20 @@ class UserMailer < ApplicationMailer
       placeholders: { username: @username, link: @link, first_name: @first_name.to_s }
     )
   end
+
+  # Einladung einer neu angelegten Kursleitung (RefereeCourseLeadAssigner). Wie
+  # bei referee_account_created verlaesst das Passwort den Server nur ueber den
+  # Link.
+  def course_lead_invited(user, course)
+    @link = "#{FrontendUrl.base}/neues-passwort/#{user.password_reset_token}"
+    @username = user.user_name
+    @first_name = user.first_name.presence
+    @course_title = course.title
+    templated_mail(
+      to: user.email,
+      subject: "Kursleitung im Saisonmanager: #{course.title}",
+      default_reply_to: course.contact_email.presence,
+      placeholders: { username: @username, link: @link, first_name: @first_name.to_s, course_title: @course_title }
+    )
+  end
 end

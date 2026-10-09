@@ -17,6 +17,12 @@ class User < ApplicationRecord
   # referee_role_not_combined).
   REFEREE_ROLE_ID = 6
 
+  # Kursleitung eines Schiedsrichterkurses. Ohne Verbandsscope: Die Rechte
+  # ergeben sich allein aus der Zuordnung zu Kursen (RefereeCourseLead). Als
+  # einzige Rolle mit der Schiedsrichter-Rolle kombinierbar, weil viele
+  # Kursleitungen selbst pfeifen.
+  COURSE_LEAD_ROLE_ID = 8
+
   # Welche Rollen ein Konto anderen Konten zuweisen darf, je eigener Rolle.
   # Quelle für die Rollenprüfung im Admin::UsersController und für die Auswahl
   # in der Benutzermaske (permissions_items). Die Admin-Rolle (1) darf nur Admin
@@ -29,7 +35,7 @@ class User < ApplicationRecord
   # Verbund baut. Eine Rolle mit Verbund-Scope darf dort nicht durchlaufen, sie
   # landete sonst ohne game_operation_id und damit global im Konto.
   ASSIGNABLE_ROLE_IDS = {
-    admin: [1, 2, 3, 4, 5, 6, 7],
+    admin: [1, 2, 3, 4, 5, 6, 7, 8],
     sbk: [2, 3, 4, 5, 7],
     rsk: [3, 7],
     vm: [4, 5]
@@ -330,6 +336,9 @@ class User < ApplicationRecord
     # Hier oben gelten sie für beide Wege.
     result[:show_page_referee_observations] = referee_id.present?
     result[:menu_item_referee_observations] = referee_coach_qualified?
+    # Kursleitung – ebenfalls vor dem Early-Return, weil die Rolle mit der
+    # Schiedsrichter-Rolle kombinierbar ist.
+    result[:menu_item_referee_courses_lead] = ph[:course_lead].present? && course_lead_access?
 
     if has_schiri_role && !ph[:admin].present? && !ph[:sbk].present? && !ph[:rsk].present? && !ph[:ansetzer].present? && !ph[:vm].present? && !ph[:tm].present?
       result[:menu_item_referee_profile] = true
@@ -791,6 +800,8 @@ class User < ApplicationRecord
         admin_go_ids << go_id
       when 6 # Schiedsrichter (self-service, no go_id needed)
         nil
+      when COURSE_LEAD_ROLE_ID # Kursleitung, Rechte ueber RefereeCourseLead
+        result[:course_lead] = true
       end
     end
 
@@ -874,6 +885,12 @@ class User < ApplicationRecord
     result[:admin] = (all_go == admin_go_ids ? [0] : admin_go_ids) if admin_go_ids.present?
 
     result
+  end
+
+  # Ob die Kursleitung mindestens einen Kurs hat, fuer den der Schalter „Kurse
+  # im System" an ist. Steuert den Menuepunkt „Meine Kurse".
+  def course_lead_access?
+    RefereeCourse.joins(:leads).where(referee_course_leads: { user_id: id }).distinct.any?(&:process_enabled?)
   end
 
   def self.login(login, password)
@@ -968,7 +985,7 @@ class User < ApplicationRecord
   # Verwaltungsrechte (bzw. umgekehrt), und permissions_items müsste zwei
   # widersprüchliche Menüs bedienen.
   def referee_role_not_combined
-    role_ids = Array(permissions).map { |p| p['user_group_id'].to_i }.uniq
+    role_ids = Array(permissions).map { |p| p['user_group_id'].to_i }.uniq - [COURSE_LEAD_ROLE_ID]
     return unless role_ids.include?(REFEREE_ROLE_ID) && role_ids.length > 1
 
     errors.add(:permissions, 'Die Schiedsrichter-Rolle kann nicht mit anderen Rollen kombiniert werden')

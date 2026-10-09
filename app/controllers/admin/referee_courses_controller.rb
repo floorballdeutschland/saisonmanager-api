@@ -167,7 +167,7 @@ module Admin
         fields: course.fields.map { |f| f.definition_hash.merge(archived: f.archived_at.present?) },
         leads: course.leads.includes(:user).map do |lead|
           { id: lead.id, user_id: lead.user_id, name: lead.user.fullname.strip.presence || lead.user.user_name,
-            lead: lead.lead }
+            user_name: lead.user.user_name, lead: lead.lead }
         end,
         taken_seats: course.taken_seats,
         free_seats: course.free_seats,
