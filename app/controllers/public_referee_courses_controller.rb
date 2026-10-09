@@ -41,6 +41,13 @@ class PublicRefereeCoursesController < ApplicationController
     }
   end
 
+  # GET /api/v2/public/referee_courses/clubs
+  # Vereinsauswahl fuer das Anmeldeformular: aktive Vereine, nur Name und LV.
+  def clubs
+    list = Club.where(deactivated_at: nil).order(:name)
+    render json: list.map { |c| { id: c.id, name: c.name, state_association_id: c.state_association_id } }
+  end
+
   # GET /api/v2/public/referee_courses/:id
   def show
     render json: @course.offer_hash.merge(consent_version: CONSENT_VERSION)

@@ -540,6 +540,7 @@ Rails.application.routes.draw do
       post   'club/referee_courses/:id/registrations',               to: 'club_referee_courses#register'
       delete 'club/referee_courses/registrations/:registration_id',  to: 'club_referee_courses#cancel'
       get    'public/referee_courses',                    to: 'public_referee_courses#index'
+      get    'public/referee_courses/clubs',              to: 'public_referee_courses#clubs'
       get    'public/referee_courses/:id',                to: 'public_referee_courses#show'
       post   'public/referee_courses/:id/registrations',  to: 'public_referee_courses#register'
       get    'public/course_registrations/confirm/:token', to: 'public_course_registrations#show_confirm'

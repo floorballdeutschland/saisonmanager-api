@@ -48,6 +48,15 @@ class PublicRefereeCoursesTest < ActionDispatch::IntegrationTest
     assert_response :not_found
   end
 
+  test 'Vereinsauswahl ohne deaktivierte Vereine' do
+    gone = create(:club, state_association: @lv, deactivated_at: 1.day.ago)
+    get '/api/v2/public/referee_courses/clubs'
+    assert_response :success
+    ids = response.parsed_body.pluck('id')
+    assert_includes ids, @club.id
+    assert_not_includes ids, gone.id
+  end
+
   test 'Schalter aus: Liste leer, Anmeldung nicht moeglich' do
     @setting.update!(referee_course_processes: { 'courses_enabled' => false })
     get '/api/v2/public/referee_courses'
