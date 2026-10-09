@@ -134,14 +134,13 @@ class RefereeCourseRegistration < ApplicationRecord
     errors.add(:base, 'Diese Person ist bereits angemeldet') if scope.exists?
   end
 
+  # Nur die angestrebte Stufe ist an den Kurs gebunden. Die erteilte legt FD
+  # frei fest (Admin::RefereeCourseLicensingController), auch abweichend.
   def license_levels_belong_to_course
-    allowed = Array(referee_course&.license_level_ids)
-    { desired_license_level_id: desired_license_level_id,
-      awarded_license_level_id: awarded_license_level_id }.each do |attr, value|
-      next if value.nil? || allowed.include?(value)
+    return if desired_license_level_id.nil?
+    return if Array(referee_course&.license_level_ids).include?(desired_license_level_id)
 
-      errors.add(attr, 'gehört nicht zu den Lizenzstufen des Kurses')
-    end
+    errors.add(:desired_license_level_id, 'gehört nicht zu den Lizenzstufen des Kurses')
   end
 
   def custom_answers_match_fields
