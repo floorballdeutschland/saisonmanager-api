@@ -72,11 +72,7 @@ module Admin
     # PATCH /api/v2/admin/referee_courses/:id
     def update
       attrs = course_params
-      if attrs.key?(:state_association_id) &&
-         attrs[:state_association_id].presence&.to_i != @course.state_association_id &&
-         !@policy.assign_state_association?(attrs[:state_association_id].presence)
-        return forbidden
-      end
+      return forbidden unless ownership_change_allowed?(attrs)
       unless @course.editable? || attrs.keys == ['status']
         return render json: { error: 'Der Kurs ist abgeschlossen und lässt sich nicht mehr ändern' },
                       status: :unprocessable_entity
@@ -113,6 +109,11 @@ module Admin
     # durch eine hoehere Hoechstzahl frei werden, an die Warteliste geben.
     def after_course_update
       if @course.saved_change_to_status? && @course.status == 'cancelled'
+        # Noch unbestaetigte Anmeldungen fallen mit der Absage weg, ihre Links
+        # werden ungueltig. Eine Absage-Mail bekommen nur bestaetigte.
+        @course.registrations.where(status: %w[pending_email pending_guardian])
+               .update_all(status: 'cancelled_by_organizer', cancelled_at: Time.current,
+                           guardian_token_digest: nil, updated_at: Time.current)
         @course.registrations.active.find_each do |registration|
           next unless RefereeCourseMailer.recipient(registration)
 
@@ -136,6 +137,25 @@ module Admin
 
     def forbidden
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
+    end
+
+    # Verantwortlichen LV und Partner-LV aendert nur, wer den Kurs als
+    # Verantwortlicher fuehrt (oder global ist). Ein Partner-LV koennte den Kurs
+    # sonst auf sich umhaengen, und der eigentliche LV verloere den Zugriff.
+    def ownership_change_allowed?(attrs)
+      new_sa = attrs['state_association_id'].presence&.to_i if attrs.key?('state_association_id')
+      sa_changed = attrs.key?('state_association_id') && new_sa != @course.state_association_id
+      partners_changed = attrs.key?('partner_state_association_ids') &&
+                         Array(attrs['partner_state_association_ids']).compact_blank.map(&:to_i).sort !=
+                         @course.partner_state_association_ids.sort
+      return true unless sa_changed || partners_changed
+
+      ids = @policy.state_association_ids
+      owner = ids == :all || (@course.state_association_id && ids.include?(@course.state_association_id))
+      return false unless owner
+      return true unless sa_changed
+
+      @policy.assign_state_association?(new_sa)
     end
 
     def course_params

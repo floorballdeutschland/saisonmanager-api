@@ -23,7 +23,9 @@ module Admin
       return forbidden unless @policy.assign_state_association?(sa_id)
 
       template = RefereeCourseFieldTemplate.new(template_params.merge(state_association_id: sa_id))
-      template.position ||= (RefereeCourseFieldTemplate.where(state_association_id: sa_id).maximum(:position) || 0) + 1
+      unless template_params.key?(:position)
+        template.position = (RefereeCourseFieldTemplate.where(state_association_id: sa_id).maximum(:position) || 0) + 1
+      end
       unless template.save
         return render json: { error: template.errors.full_messages.join(', ') }, status: :unprocessable_entity
       end

@@ -71,7 +71,7 @@ module Admin
       user = User.find_by(id: user_id)
       return nil if user.nil?
 
-      user.fullname.strip.presence || user.username
+      user.fullname.strip.presence || user.user_name
     end
 
     def authorize_admin!
