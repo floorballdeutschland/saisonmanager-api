@@ -213,6 +213,38 @@ class RefereeCourseRegistrationFlowsTest < ActionDispatch::IntegrationTest
     assert_response :not_found
   end
 
+  test 'Einwilligungslink nach Kursabsage ist ungueltig, Absage raeumt Wartende ab' do
+    @course.update!(max_participants: 5)
+    login(@vm)
+    post "/api/v2/club/referee_courses/#{@course.id}/registrations",
+         params: { registration: { vorname: 'Kim', nachname: 'Klein', geburtsdatum: 12.years.ago.to_date.iso8601,
+                                   guardian_name: 'Eva', guardian_email: 'eva@example.org',
+                                   custom_answers: answers } }, as: :json
+    token = enqueued_jobs.find { |j| j[:args].include?('guardian_consent') }[:args].last['args'].last
+    reg = RefereeCourseRegistration.last
+
+    login(create(:user, :admin))
+    assert_no_enqueued_emails do
+      patch "/api/v2/admin/referee_courses/#{@course.id}", params: { referee_course: { status: 'cancelled' } },
+                                                            as: :json
+    end
+    assert_equal 'cancelled_by_organizer', reg.reload.status
+
+    get "/api/v2/public/course_guardian_consents/#{token}"
+    assert_response :not_found
+    post "/api/v2/public/course_guardian_consents/#{token}"
+    assert_response :not_found
+  end
+
+  test 'Portal ohne Geburtsdatum am Profil: verstaendliche Meldung' do
+    @referee.update_columns(geburtsdatum: nil)
+    login(@referee_user)
+    post "/api/v2/referee/courses/#{@course.id}/registration",
+         params: { registration: { custom_answers: answers } }, as: :json
+    assert_response :unprocessable_entity
+    assert_match(/Geburtsdatum/, response.parsed_body['error'])
+  end
+
   test 'Verein meldet nur fuer eigene Vereine an' do
     login(@vm)
     other = create(:club, state_association: @lv)

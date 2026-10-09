@@ -22,6 +22,11 @@ class RefereeCoursesPortalController < ApplicationController
 
   # POST /api/v2/referee/courses/:id/registration
   def register
+    if @referee.geburtsdatum.nil?
+      return error_json('Bei deinem Schiedsrichterprofil fehlt das Geburtsdatum. ' \
+                        'Bitte melde es über „Korrektur beantragen“ im Profil oder an die RSK.')
+    end
+
     attrs = {
       referee: @referee, user: current_user, identity_match: 'account',
       vorname: @referee.vorname, nachname: @referee.nachname, geburtsdatum: @referee.geburtsdatum,

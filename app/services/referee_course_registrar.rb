@@ -20,6 +20,9 @@ class RefereeCourseRegistrar
 
   Error = Class.new(StandardError)
 
+  # Kurse, fuer die eine Anmeldung noch bestaetigt werden kann.
+  OPEN_COURSE_STATUSES = %w[published registration_closed].freeze
+
   Result = Struct.new(:registration, :error, :guardian_token, keyword_init: true) do
     def success?
       error.nil?
@@ -111,11 +114,15 @@ class RefereeCourseRegistrar
     Result.new(registration: registration)
   end
 
+  # Nur fuer Kurse, die noch bevorstehen: Nach einer Absage oder Durchfuehrung
+  # darf ein alter Link niemanden mehr einplanen.
   def self.find_by_guardian_token(raw_token)
     return nil if raw_token.blank?
 
     RefereeCourseRegistration.where(status: 'pending_guardian')
                              .where('guardian_token_expires_at IS NULL OR guardian_token_expires_at > ?', Time.current)
+                             .joins(:referee_course)
+                             .where(referee_courses: { status: OPEN_COURSE_STATUSES })
                              .find_by(guardian_token_digest: Digest::SHA256.hexdigest(raw_token))
   end
 

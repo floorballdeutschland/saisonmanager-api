@@ -109,6 +109,11 @@ module Admin
     # durch eine hoehere Hoechstzahl frei werden, an die Warteliste geben.
     def after_course_update
       if @course.saved_change_to_status? && @course.status == 'cancelled'
+        # Noch unbestaetigte Anmeldungen fallen mit der Absage weg, ihre Links
+        # werden ungueltig. Eine Absage-Mail bekommen nur bestaetigte.
+        @course.registrations.where(status: %w[pending_email pending_guardian])
+               .update_all(status: 'cancelled_by_organizer', cancelled_at: Time.current,
+                           guardian_token_digest: nil, updated_at: Time.current)
         @course.registrations.active.find_each do |registration|
           next unless RefereeCourseMailer.recipient(registration)
 
