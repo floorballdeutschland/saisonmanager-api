@@ -36,8 +36,9 @@ class RefereeCourseRegistration < ApplicationRecord
   validates :status, inclusion: { in: STATUSES }
   validates :result, inclusion: { in: RESULTS }, allow_nil: true
   validates :identity_match, inclusion: { in: IDENTITY_MATCHES }
-  validates :referee_id, uniqueness: { scope: :referee_course_id, message: 'ist bereits angemeldet' },
-                         allow_nil: true
+  validates :referee_id, uniqueness: { scope: :referee_course_id, message: 'ist bereits angemeldet',
+                                      conditions: -> { where.not(status: CANCELLED_STATUSES) } },
+                         allow_nil: true, unless: :cancelled?
   validates :points, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
   validate :unique_person_without_referee
   validate :license_levels_belong_to_course
@@ -105,9 +106,10 @@ class RefereeCourseRegistration < ApplicationRecord
   # Spiegelt den Unique-Index (Kurs, E-Mail, Geburtsdatum, Vorname), damit die
   # Doppelung als Meldung und nicht als 500 ankommt.
   def unique_person_without_referee
-    return if email.blank? || geburtsdatum.blank? || vorname.blank?
+    return if email.blank? || geburtsdatum.blank? || vorname.blank? || cancelled?
 
-    scope = RefereeCourseRegistration.where(referee_course_id: referee_course_id, geburtsdatum: geburtsdatum)
+    scope = RefereeCourseRegistration.active
+                                     .where(referee_course_id: referee_course_id, geburtsdatum: geburtsdatum)
                                      .where('lower(email) = ? AND lower(vorname) = ?', email.downcase, vorname.downcase)
     scope = scope.where.not(id: id) if persisted?
     errors.add(:base, 'Diese Person ist bereits angemeldet') if scope.exists?

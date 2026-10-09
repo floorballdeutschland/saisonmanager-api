@@ -67,9 +67,13 @@ module Admin
         @registration.cancelled_at = @registration.cancelled? ? Time.current : nil
       end
 
+      freed = @registration.status_changed? &&
+              RefereeCourseRegistration::SEAT_STATUSES.include?(@registration.status_was) &&
+              RefereeCourseRegistration::SEAT_STATUSES.exclude?(@registration.status)
       return validation_error(@registration) unless @registration.save
 
-      render json: registration_json(@registration)
+      RefereeCourseRegistrar.new(@course).promote_waitlist if freed
+      render json: registration_json(@registration.reload)
     end
 
     # DELETE /api/v2/admin/referee_courses/:referee_course_id/registrations/:id
@@ -77,8 +81,10 @@ module Admin
     # Ohne Validierung: Eine Absage darf nicht an Angaben scheitern, die erst
     # nachtraeglich ungueltig wurden (etwa eine aus dem Kurs entfernte Stufe).
     def destroy
+      was_seated = RefereeCourseRegistration::SEAT_STATUSES.include?(@registration.status)
       @registration.update_columns(status: 'cancelled_by_organizer', cancelled_at: Time.current,
                                    updated_at: Time.current)
+      RefereeCourseRegistrar.new(@course).promote_waitlist if was_seated
       head :no_content
     end
 

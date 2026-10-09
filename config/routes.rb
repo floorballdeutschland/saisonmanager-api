@@ -530,6 +530,17 @@ Rails.application.routes.draw do
       get  'user/referee_feedbacks', to: 'user_referee_feedbacks#index'
       post 'user/referee_feedbacks', to: 'user_referee_feedbacks#create'
 
+      # Schiedsrichterkurse: Schiri-Portal, Verein, Einwilligung Erziehungsberechtigte
+      get    'referee/courses',                  to: 'referee_courses_portal#index'
+      post   'referee/courses/:id/registration', to: 'referee_courses_portal#register'
+      patch  'referee/courses/:id/registration', to: 'referee_courses_portal#update_registration'
+      delete 'referee/courses/:id/registration', to: 'referee_courses_portal#cancel'
+      get    'club/referee_courses',                                 to: 'club_referee_courses#index'
+      get    'club/referee_courses/referees',                        to: 'club_referee_courses#referees'
+      post   'club/referee_courses/:id/registrations',               to: 'club_referee_courses#register'
+      delete 'club/referee_courses/registrations/:registration_id',  to: 'club_referee_courses#cancel'
+      get    'public/course_guardian_consents/:token', to: 'public_course_guardian_consents#show'
+      post   'public/course_guardian_consents/:token', to: 'public_course_guardian_consents#create'
       # Kursleitung: „Meine Kurse" (CourseLeadCoursesController)
       get   'course_lead/courses',     to: 'course_lead_courses#index'
       get   'course_lead/courses/:id', to: 'course_lead_courses#show'
