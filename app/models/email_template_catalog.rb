@@ -135,7 +135,8 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
         { key: 'course_title', description: 'Titel des Kurses' },
         { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
-        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' }
+        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' },
+        { key: 'cancel_link', description: 'Abmeldelink (nur bei Anmeldung ohne Konto, sonst leer)' }
       ]
     },
     'RefereeCourseMailer#promoted' => {
@@ -150,7 +151,8 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
         { key: 'course_title', description: 'Titel des Kurses' },
         { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
-        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' }
+        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' },
+        { key: 'cancel_link', description: 'Abmeldelink (nur bei Anmeldung ohne Konto, sonst leer)' }
       ]
     },
     'RefereeCourseMailer#cancelled' => {
@@ -165,7 +167,8 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
         { key: 'course_title', description: 'Titel des Kurses' },
         { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
-        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' }
+        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' },
+        { key: 'cancel_link', description: 'Abmeldelink (nur bei Anmeldung ohne Konto, sonst leer)' }
       ]
     },
     'RefereeCourseMailer#course_cancelled' => {
@@ -180,7 +183,23 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
         { key: 'course_title', description: 'Titel des Kurses' },
         { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
-        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' }
+        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' },
+        { key: 'cancel_link', description: 'Abmeldelink (nur bei Anmeldung ohne Konto, sonst leer)' }
+      ]
+    },
+    'RefereeCourseMailer#confirm_email' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'confirm_email',
+      description: 'Öffentliche Kursanmeldung: Bitte um Bestätigung der E-Mail-Adresse (Double-Opt-in).',
+      default_subject: 'Bitte Anmeldung bestätigen: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der angemeldeten Person' },
+        { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'dates', description: 'Termine (ohne Online-Link)' },
+        { key: 'link', description: 'Link zur Bestätigung' }
       ]
     },
     'RefereeCourseMailer#guardian_consent' => {
@@ -196,6 +215,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'course_title', description: 'Titel des Kurses' },
         { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
         { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' },
+        { key: 'cancel_link', description: 'Abmeldelink (nur bei Anmeldung ohne Konto, sonst leer)' },
         { key: 'guardian_name', description: 'Name der Erziehungsberechtigten' },
         { key: 'link', description: 'Link zur Einwilligung' }
       ]

@@ -74,6 +74,20 @@ module Rack
       req.ip if req.path.start_with?('/api/v2/public/course_guardian_consents')
     end
 
+    # Oeffentliche Kursanmeldung: jede Anmeldung loest eine Mail aus, die
+    # Links aus den Mails sind die Berechtigung. Die Liste selbst ist ohne
+    # API-Key erreichbar (Einbettung auf Verbandsseiten) und bekommt eine
+    # grosszuegige Drossel gegen Abgrasen.
+    throttle('course-registration/ip', limit: 10, period: 1.hour) do |req|
+      req.ip if req.post? && req.path.match?(%r{\A/api/v2/public/referee_courses/\d+/registrations})
+    end
+    throttle('course-registration-link/ip', limit: 30, period: 1.hour) do |req|
+      req.ip if req.path.start_with?('/api/v2/public/course_registrations')
+    end
+    throttle('course-list/ip', limit: 120, period: 1.minute) do |req|
+      req.ip if req.get? && req.path.start_with?('/api/v2/public/referee_courses')
+    end
+
     throttle('api-key-application/ip', limit: 10, period: 1.hour) do |req|
       req.ip if req.post? && req.path == '/api/v2/api_key_applications'
     end

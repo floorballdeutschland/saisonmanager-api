@@ -58,6 +58,11 @@ module Admin
         @registration.referee = referee
         @registration.identity_match = 'confirmed_existing'
       end
+      # Hinweis auf moegliche Bestandsschiris gesehen und bewusst als neue
+      # Person bestaetigt.
+      if params.dig(:registration, :identity_match) == 'new_person' && @registration.referee_id.nil?
+        @registration.identity_match = 'new_person'
+      end
       if @registration.status_changed?
         unless SETTABLE_STATUSES.include?(@registration.status)
           return render json: { error: 'Status nicht erlaubt' }, status: :unprocessable_entity
