@@ -22,6 +22,9 @@ class RefereeCourseRegistrar
 
   Error = Class.new(StandardError)
 
+  # Kurse, fuer die eine Anmeldung noch bestaetigt werden kann.
+  OPEN_COURSE_STATUSES = %w[published registration_closed].freeze
+
   Result = Struct.new(:registration, :error, :guardian_token, keyword_init: true) do
     def success?
       error.nil?
@@ -123,6 +126,7 @@ class RefereeCourseRegistrar
 
     registrar = new(registration.referee_course)
     guardian_token = nil
+    duplicate = false
     RefereeCourse.transaction do
       registration.referee_course.lock!
       registration.skip_required_answers = true
@@ -134,8 +138,16 @@ class RefereeCourseRegistrar
       else
         attrs[:status] = registrar.seat_available? ? 'registered' : 'waitlisted'
       end
-      registration.update!(attrs)
+      # Inzwischen anders angemeldet (Portal, Verein, zweites Formular)? Dann
+      # ist diese Zeile ueberfluessig.
+      duplicate = registration.same_person_scope.blocking.exists?
+      registration.update!(attrs) unless duplicate
     end
+    if duplicate
+      registration.destroy!
+      return Result.new(error: 'Diese Person ist für den Kurs bereits angemeldet')
+    end
+
     registrar.notify_registered(registration, guardian_token)
     Result.new(registration: registration)
   end
@@ -157,8 +169,13 @@ class RefereeCourseRegistrar
   def self.find_pending(raw_token, status:, digest_column:, expiry_column:)
     return nil if raw_token.blank?
 
+    # Nur fuer Kurse, die noch bevorstehen: Nach Absage oder Durchfuehrung darf
+    # ein alter Link (E-Mail oder Eltern) niemanden mehr einplanen.
     RefereeCourseRegistration.where(status: status)
-                             .where("#{expiry_column} IS NULL OR #{expiry_column} > ?", Time.current)
+                             .where("referee_course_registrations.#{expiry_column} IS NULL OR " \
+                                    "referee_course_registrations.#{expiry_column} > ?", Time.current)
+                             .joins(:referee_course)
+                             .where(referee_courses: { status: OPEN_COURSE_STATUSES })
                              .find_by(digest_column => Digest::SHA256.hexdigest(raw_token))
   end
 
@@ -179,6 +196,8 @@ class RefereeCourseRegistrar
     Result.new(registration: registration)
   end
 
+  # Nur fuer Kurse, die noch bevorstehen: Nach einer Absage oder Durchfuehrung
+  # darf ein alter Link niemanden mehr einplanen.
   def self.find_by_guardian_token(raw_token)
     find_pending(raw_token, status: 'pending_guardian', digest_column: :guardian_token_digest,
                             expiry_column: :guardian_token_expires_at)

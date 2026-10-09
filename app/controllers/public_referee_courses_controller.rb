@@ -60,7 +60,25 @@ class PublicRefereeCoursesController < ApplicationController
       return render json: { error: 'Bitte der Datenverarbeitung zustimmen' }, status: :unprocessable_entity
     end
 
-    attrs = person_attrs(input).merge(
+    # Pflichtangaben pruefen, BEVOR nach der Lizenznummer gesucht wird: Die
+    # Antwort darf nicht verraten, ob Nummer und Geburtsdatum zusammenpassen.
+    input_error = submitted_input_error(input)
+    return render json: { error: input_error }, status: :unprocessable_entity if input_error
+
+    person = person_attrs(input)
+    if person[:referee]
+      # Schon angemeldet? Gleiche Antwort wie sonst, aber keine neue Zeile und
+      # keine Mail.
+      if @course.registrations.blocking.exists?(referee_id: person[:referee].id)
+        return render json: { status: 'pending_email' }, status: :created
+      end
+
+      @course.registrations.where(referee_id: person[:referee].id, status: 'pending_email').destroy_all
+    else
+      replace_stale_pending(person)
+    end
+
+    attrs = person.merge(
       desired_license_level_id: input[:desired_license_level_id], remarks: input[:remarks],
       custom_answers: answers_param || {},
       consent_version: CONSENT_VERSION, consent_at: Time.current, consent_ip: request.remote_ip
@@ -91,6 +109,33 @@ class PublicRefereeCoursesController < ApplicationController
     return if @course&.process_enabled?
 
     render json: { error: 'Kurs nicht gefunden' }, status: :not_found
+  end
+
+  # Nur aus den eingegebenen Angaben, nie aus dem Bestand: gleiche Pruefung fuer
+  # Bestandsschiris und neue Personen.
+  def submitted_input_error(input)
+    return 'Bitte Vor- und Nachnamen angeben' if input[:vorname].blank? || input[:nachname].blank?
+
+    birth = parse_date(input[:geburtsdatum])
+    return 'Bitte ein gültiges Geburtsdatum angeben' if birth.nil?
+    return 'Bitte eine gültige E-Mail-Adresse angeben' unless input[:email].to_s.strip.match?(URI::MailTo::EMAIL_REGEXP)
+
+    start = @course.starts_on || Time.zone.today
+    age = start.year - birth.year - (start < birth + (start.year - birth.year).years ? 1 : 0)
+    if age < RefereeCourseRegistrar::GUARDIAN_AGE &&
+       (input[:guardian_name].blank? || !input[:guardian_email].to_s.strip.match?(URI::MailTo::EMAIL_REGEXP))
+      return 'Für Personen unter 16 braucht es Name und E-Mail der Erziehungsberechtigten'
+    end
+
+    nil
+  end
+
+  # Eine liegengebliebene, nie bestaetigte Anmeldung derselben Person ersetzen.
+  def replace_stale_pending(person)
+    @course.registrations.where(status: 'pending_email', geburtsdatum: parse_date(person[:geburtsdatum]))
+           .where('lower(email) = ? AND lower(vorname) = ?', person[:email].to_s.strip.downcase,
+                  person[:vorname].to_s.strip.downcase)
+           .destroy_all
   end
 
   def answers_param

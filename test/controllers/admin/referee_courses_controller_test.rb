@@ -263,5 +263,81 @@ module Admin
       get '/api/v2/admin/referee_courses/options'
       assert_equal true, response.parsed_body['national_allowed']
     end
+
+    test 'Partner-LV darf den Kurs nicht auf sich umhaengen oder die Partner aendern' do
+      course = course_for(@lv_b, partner_state_association_ids: [@lv_a.id])
+      login(@rsk_a)
+      patch "/api/v2/admin/referee_courses/#{course.id}",
+            params: { referee_course: { state_association_id: @lv_a.id } }, as: :json
+      assert_response :forbidden
+      patch "/api/v2/admin/referee_courses/#{course.id}",
+            params: { referee_course: { partner_state_association_ids: [] } }, as: :json
+      assert_response :forbidden
+      patch "/api/v2/admin/referee_courses/#{course.id}", params: { referee_course: { title: 'Neu' } }, as: :json
+      assert_response :success
+      assert_equal @lv_b.id, course.reload.state_association_id
+    end
+
+    test 'Absage geht auch, wenn die Anmeldung inzwischen ungueltig ist' do
+      l1 = RefereeLicenseLevel.create!(name: 'L1', validity_years: 1, position: 1)
+      course = course_for(@lv_a, license_level_ids: [l1.id, @l2.id])
+      r = course.registrations.create!(vorname: 'A', nachname: 'B', geburtsdatum: Date.new(2000, 1, 1),
+                                       desired_license_level_id: @l2.id)
+      course.update!(license_level_ids: [l1.id])
+      login(@rsk_a)
+      delete "/api/v2/admin/referee_courses/#{course.id}/registrations/#{r.id}"
+      assert_response :no_content
+      assert_equal 'cancelled_by_organizer', r.reload.status
+    end
+
+    test 'Umzuordnen setzt auch das Konto des neuen Schiris' do
+      x = create(:referee)
+      y = create(:referee)
+      y_user = create(:user, referee: y, permissions: [{ 'user_group_id' => User::REFEREE_ROLE_ID }])
+      course = course_for(@lv_a)
+      r = course.registrations.create!(vorname: 'A', nachname: 'B', geburtsdatum: Date.new(2000, 1, 1), referee: x)
+      login(@rsk_a)
+      patch "/api/v2/admin/referee_courses/#{course.id}/registrations/#{r.id}",
+            params: { registration: { referee_id: y.id } }, as: :json
+      assert_response :success
+      assert_equal y_user.id, r.reload.user_id
+    end
+
+    test 'Pilot-Freigabe eines Verbands gilt fuer seine Unterverbaende' do
+      child = create(:state_association, parent: @lv_a)
+      @setting.update!(referee_course_processes: { 'courses_enabled' => true,
+                                                   'courses_state_association_ids' => [@lv_a.id] })
+      assert Setting.referee_courses_enabled?(child.id)
+      assert_not Setting.referee_courses_enabled?(@lv_b.id)
+    end
+
+    test 'Schiri-Merge nimmt Kursanmeldungen mit' do
+      master = create(:referee)
+      secondary = create(:referee)
+      course = course_for(@lv_a)
+      other = course_for(@lv_a, title: 'zweiter')
+      course.registrations.create!(vorname: 'A', nachname: 'B', geburtsdatum: Date.new(2000, 1, 1), referee: master)
+      dup = course.registrations.create!(vorname: 'A', nachname: 'C', geburtsdatum: Date.new(2000, 1, 2),
+                                         referee: secondary)
+      moved = other.registrations.create!(vorname: 'A', nachname: 'D', geburtsdatum: Date.new(2000, 1, 3),
+                                          referee: secondary)
+      secondary.merge_into!(master)
+      assert_equal master.id, moved.reload.referee_id
+      assert_nil dup.reload.referee_id
+    end
+
+    test 'Kurs laesst sich nicht direkt als eingereicht anlegen' do
+      course = RefereeCourse.new(title: 'x', course_type: 'g', status: 'results_submitted')
+      assert_not course.valid?
+    end
+
+    test 'neues Feld haengt sich hinten an' do
+      course = course_for(@lv_a)
+      course.fields.create!(label: 'Erstes', field_type: 'text', position: 5)
+      login(@rsk_a)
+      post "/api/v2/admin/referee_courses/#{course.id}/fields",
+           params: { field: { label: 'Zweites', field_type: 'text' } }, as: :json
+      assert_equal 6, response.parsed_body['position']
+    end
   end
 end

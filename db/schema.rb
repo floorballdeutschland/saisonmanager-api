@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_10_09_200000) do
+ActiveRecord::Schema[7.2].define(version: 2026_10_09_210000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -815,7 +815,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_09_200000) do
     t.string "source", default: "admin", null: false, comment: "admin, portal, club, public"
     t.datetime "email_confirmation_expires_at"
     t.datetime "email_confirmed_at"
-    t.index "referee_course_id, lower((email)::text), geburtsdatum, lower((vorname)::text)", name: "idx_course_registrations_unique_person", unique: true, where: "((email IS NOT NULL) AND ((status)::text <> ALL (ARRAY[('cancelled_by_participant'::character varying)::text, ('cancelled_by_organizer'::character varying)::text])))"
+    t.index "referee_course_id, lower((email)::text), geburtsdatum, lower((vorname)::text)", name: "idx_course_registrations_unique_person", unique: true, where: "((email IS NOT NULL) AND ((status)::text <> ALL ((ARRAY['cancelled_by_participant'::character varying, 'cancelled_by_organizer'::character varying, 'pending_email'::character varying])::text[])))"
     t.index ["awarded_license_level_id"], name: "index_referee_course_registrations_on_awarded_license_level_id"
     t.index ["billing_club_id"], name: "index_referee_course_registrations_on_billing_club_id"
     t.index ["cancel_token_digest"], name: "index_referee_course_registrations_on_cancel_token_digest", unique: true
@@ -823,7 +823,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_09_200000) do
     t.index ["desired_license_level_id"], name: "index_referee_course_registrations_on_desired_license_level_id"
     t.index ["email_confirmation_token_digest"], name: "idx_on_email_confirmation_token_digest_ab16d1dcc9", unique: true
     t.index ["guardian_token_digest"], name: "index_referee_course_registrations_on_guardian_token_digest", unique: true
-    t.index ["referee_course_id", "referee_id"], name: "idx_course_registrations_unique_referee", unique: true, where: "((referee_id IS NOT NULL) AND ((status)::text <> ALL (ARRAY[('cancelled_by_participant'::character varying)::text, ('cancelled_by_organizer'::character varying)::text])))"
+    t.index ["referee_course_id", "referee_id"], name: "idx_course_registrations_unique_referee", unique: true, where: "((referee_id IS NOT NULL) AND ((status)::text <> ALL ((ARRAY['cancelled_by_participant'::character varying, 'cancelled_by_organizer'::character varying, 'pending_email'::character varying])::text[])))"
     t.index ["referee_course_id"], name: "index_referee_course_registrations_on_referee_course_id"
     t.index ["referee_id"], name: "index_referee_course_registrations_on_referee_id"
     t.index ["registered_by_user_id"], name: "index_referee_course_registrations_on_registered_by_user_id"
