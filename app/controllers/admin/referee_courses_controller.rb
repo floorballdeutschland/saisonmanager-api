@@ -4,7 +4,7 @@ module Admin
   class RefereeCoursesController < ApplicationController
     before_action :set_policy
     before_action :require_access!
-    before_action :set_course, only: %i[show update destroy submit_results]
+    before_action :set_course, only: %i[show update destroy submit_results participants]
 
     PERMITTED = [
       :title, :course_type, :state_association_id, :hosting_club_id, :prerequisite_course_id,
@@ -104,6 +104,16 @@ module Admin
       end
 
       render json: course_json(@course.reload).merge(submitted_results: result.results.size)
+    end
+
+    # GET /api/v2/admin/referee_courses/:id/participants
+    # Teilnehmerliste als CSV mit allen Angaben und Zusatzfeldern, fuer Orga,
+    # Verpflegung und Unterkunft. Enthaelt Kontaktdaten, deshalb nur fuer die
+    # Kursverwaltung und nicht fuer die Kursleitung.
+    def participants
+      send_data RefereeCourseParticipantList.new(@course).to_csv,
+                filename: "teilnehmende-#{@course.id}-#{@course.title.parameterize}.csv",
+                type: 'text/csv; charset=utf-8'
     end
 
     # DELETE /api/v2/admin/referee_courses/:id

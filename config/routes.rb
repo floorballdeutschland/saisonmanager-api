@@ -361,12 +361,17 @@ Rails.application.routes.draw do
         resources :referee_courses, only: %i[index show create update destroy] do
           get :options, on: :collection
           post :submit_results, on: :member
+          get :participants, on: :member
           resources :fields, controller: 'referee_course_fields', only: %i[create update destroy]
           resources :registrations, controller: 'referee_course_registrations',
                                     only: %i[index create update destroy]
           resources :leads, controller: 'referee_course_leads', only: %i[create update destroy]
         end
         resources :referee_course_field_templates, only: %i[index create update destroy]
+        resources :referee_course_billing_exports, only: %i[index create] do
+          get :preview, on: :collection
+          get :download, on: :member
+        end
         resources :referee_course_licensing, only: %i[index update] do
           post :approve, on: :member
           post :reject, on: :member
