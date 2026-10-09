@@ -44,6 +44,17 @@ module Admin
       assert_not Setting.referee_courses_enabled?(sa.id + 1)
     end
 
+    test 'Bearbeiter ohne Namen: Anzeige faellt auf den Benutzernamen zurueck' do
+      nameless = create(:user, :admin, first_name: nil, last_name: nil)
+      login(nameless)
+      patch '/api/v2/admin/referee_course_settings',
+            params: { referee_course_settings: { courses_enabled: true } }, as: :json
+      assert_response :success
+      assert_equal nameless.user_name, response.parsed_body['updated_by']
+      get '/api/v2/admin/referee_course_settings'
+      assert_response :success
+    end
+
     test 'Teilaenderung laesst den anderen Schalter stehen' do
       login(@admin)
       patch '/api/v2/admin/referee_course_settings',
