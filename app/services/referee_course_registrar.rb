@@ -126,6 +126,7 @@ class RefereeCourseRegistrar
 
     registrar = new(registration.referee_course)
     guardian_token = nil
+    duplicate = false
     RefereeCourse.transaction do
       registration.referee_course.lock!
       registration.skip_required_answers = true
@@ -137,8 +138,16 @@ class RefereeCourseRegistrar
       else
         attrs[:status] = registrar.seat_available? ? 'registered' : 'waitlisted'
       end
-      registration.update!(attrs)
+      # Inzwischen anders angemeldet (Portal, Verein, zweites Formular)? Dann
+      # ist diese Zeile ueberfluessig.
+      duplicate = registration.same_person_scope.blocking.exists?
+      registration.update!(attrs) unless duplicate
     end
+    if duplicate
+      registration.destroy!
+      return Result.new(error: 'Diese Person ist für den Kurs bereits angemeldet')
+    end
+
     registrar.notify_registered(registration, guardian_token)
     Result.new(registration: registration)
   end
