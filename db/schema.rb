@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_10_08_200000) do
+ActiveRecord::Schema[7.2].define(version: 2026_10_09_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -956,6 +956,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_08_200000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.jsonb "stream_templates", default: {}
+    t.jsonb "referee_course_processes", default: {}, null: false, comment: "Schalter fuer die Kursprozesse: CSV-Import der Kursergebnisse und Kurse im System. Leer heisst Vorgabe (Import an, Kurse aus), siehe Setting.referee_course_processes."
   end
 
   create_table "state_association_checklist_items", force: :cascade do |t|

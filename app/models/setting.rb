@@ -53,6 +53,51 @@ class Setting < ApplicationRecord
     Rails.cache.delete('settings/current')
   end
 
+  # Schalter fuer die beiden Wege, auf denen Kursergebnisse ins System kommen:
+  # der CSV-Import (Admin::RefereeCourseImportsController) und die Kurse im
+  # System. Gepflegt in den Schiri-Einstellungen
+  # (Admin::RefereeCourseSettingsController).
+  #
+  # Die Vorgabe gilt fuer jeden fehlenden Schluessel, also auch fuer die leere
+  # Spalte nach der Migration: Import an, Kurse aus. So aendert das Einspielen
+  # nichts am laufenden Betrieb.
+  #
+  # `courses_state_association_ids` begrenzt die Kurse auf einzelne
+  # Landesverbaende (Pilotbetrieb). Leer heisst: alle.
+  REFEREE_COURSE_PROCESS_DEFAULTS = {
+    'csv_import_enabled' => true,
+    'courses_enabled' => false,
+    'courses_state_association_ids' => []
+  }.freeze
+
+  # Immer ein neuer Hash (merge), nie die gespeicherte Spalte selbst: Die
+  # Rueckgabe von `.current` ist geteilt, siehe oben.
+  def self.referee_course_processes
+    stored = current&.referee_course_processes
+    stored = {} unless stored.is_a?(Hash)
+    REFEREE_COURSE_PROCESS_DEFAULTS
+      .merge(stored.slice(*REFEREE_COURSE_PROCESS_DEFAULTS.keys))
+      .merge(stored.slice('updated_by_user_id', 'updated_at'))
+  end
+
+  def self.referee_course_csv_import_enabled?
+    referee_course_processes['csv_import_enabled'] == true
+  end
+
+  # Ohne Landesverband: ob der Prozess ueberhaupt an ist (Menue, oeffentliche
+  # Seite). Mit Landesverband: ob er fuer diesen LV freigeschaltet ist. Ein
+  # bundesweiter Kurs (FD, state_association_id nil) haengt nur am
+  # Hauptschalter.
+  def self.referee_courses_enabled?(state_association_id = nil)
+    processes = referee_course_processes
+    return false unless processes['courses_enabled'] == true
+
+    allowed = Array(processes['courses_state_association_ids']).map(&:to_i)
+    return true if allowed.empty? || state_association_id.nil?
+
+    allowed.include?(state_association_id.to_i)
+  end
+
   # Vorlage für den Titel einer Übertragung.
   #
   # Die Vorgabe ist die Form, die die Excel-Formel bisher gebaut hat:

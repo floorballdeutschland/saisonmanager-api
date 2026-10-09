@@ -2,6 +2,9 @@ module Admin
   class RefereeCourseImportsController < ApplicationController
     before_action :authorize_importer!
     before_action :set_import, only: %i[show destroy submit]
+    # Abgeschaltet sperrt nur neue Uploads. Offene Importe bleiben bearbeitbar
+    # und einreichbar, siehe Admin::RefereeCourseSettingsController.
+    before_action :ensure_csv_import_enabled!, only: :create
 
     MAX_CSV_BYTES = 5 * 1024 * 1024
     ALLOWED_CSV_CONTENT_TYPES = %w[text/csv text/plain application/vnd.ms-excel application/csv].freeze
@@ -292,6 +295,14 @@ module Admin
       @import = RefereeCourseImport.find(params[:id])
     rescue ActiveRecord::RecordNotFound
       render json: { error: 'Import nicht gefunden' }, status: :not_found
+    end
+
+    def ensure_csv_import_enabled!
+      return if Setting.referee_course_csv_import_enabled?
+
+      render json: { error: 'Der CSV-Import von Kursergebnissen ist abgeschaltet. ' \
+                            'Kurse und Ergebnisse werden im Saisonmanager erfasst.' },
+             status: :forbidden
     end
 
     def authorize_importer!

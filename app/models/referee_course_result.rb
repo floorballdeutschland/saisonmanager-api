@@ -32,6 +32,12 @@ class RefereeCourseResult < ApplicationRecord
   # Alles, was der Importeur noch in der Hand hat -- einreichbar oder
   # zurueckgestellt. Daran haengt, ob ein Import abgeschlossen ist.
   scope :open_for_importer, -> { where(submitted_at: nil, status: 'pending_review') }
+  # Dasselbe ohne abgebrochene Importe. Daran haengt, ob der Menuepunkt
+  # „Kursergebnisse" bei abgeschaltetem CSV-Import noch gebraucht wird.
+  scope :open_in_active_import, lambda {
+    open_for_importer.joins(:referee_course_import)
+                     .where.not(referee_course_imports: { status: 'cancelled' })
+  }
 
   # Nur eingereichte Zeilen warten wirklich auf die LV-Freigabe. Der
   # Import-Service legt JEDE Zeile sofort beim Upload mit `pending_review` an --
