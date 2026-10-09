@@ -363,6 +363,7 @@ Rails.application.routes.draw do
           resources :fields, controller: 'referee_course_fields', only: %i[create update destroy]
           resources :registrations, controller: 'referee_course_registrations',
                                     only: %i[index create update destroy]
+          resources :leads, controller: 'referee_course_leads', only: %i[create update destroy]
         end
         resources :referee_course_field_templates, only: %i[index create update destroy]
         resources :referee_course_imports, only: %i[index show create destroy] do
@@ -529,6 +530,10 @@ Rails.application.routes.draw do
       get  'user/referee_feedbacks', to: 'user_referee_feedbacks#index'
       post 'user/referee_feedbacks', to: 'user_referee_feedbacks#create'
 
+      # Kursleitung: „Meine Kurse" (CourseLeadCoursesController)
+      get   'course_lead/courses',     to: 'course_lead_courses#index'
+      get   'course_lead/courses/:id', to: 'course_lead_courses#show'
+      patch 'course_lead/courses/:id/registrations/:registration_id', to: 'course_lead_courses#update_registration'
       get   'user/referee_feedback_settings',     to: 'user_referee_feedback_settings#index'
       patch 'user/referee_feedback_settings/:id', to: 'user_referee_feedback_settings#update'
 

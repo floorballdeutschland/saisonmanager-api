@@ -109,6 +109,20 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'link', description: 'Link zum (erstmaligen) Setzen des Passworts' }
       ]
     },
+    'UserMailer#course_lead_invited' => {
+      mailer_class: 'UserMailer',
+      action_name: 'course_lead_invited',
+      description: 'Einladung einer neuen Kursleitung für einen Schiedsrichterkurs (Benutzername + Link zum Passwort-Setzen).',
+      default_subject: 'Kursleitung im Saisonmanager: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname des Empfängers (für die Anrede)' },
+        { key: 'username', description: 'Benutzername des Kontos' },
+        { key: 'link', description: 'Link zum (erstmaligen) Setzen des Passworts' },
+        { key: 'course_title', description: 'Titel des Kurses' }
+      ]
+    },
     'ClubMailer#game_day_scan_reminder' => {
       mailer_class: 'ClubMailer',
       action_name: 'game_day_scan_reminder',

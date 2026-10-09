@@ -1,0 +1,22 @@
+<h2>Kursleitung im Saisonmanager</h2>
+
+<p>Hallo<%= " #{@first_name}" if @first_name %>,</p>
+
+<p>
+  du bist als Kursleitung für den Schiedsrichterkurs
+  <strong><%= @course_title %></strong> eingetragen. Dafür wurde ein
+  Benutzerkonto im Saisonmanager angelegt.
+</p>
+
+<p>Dein Benutzername: <strong><%= @username %></strong></p>
+
+<p>Hier setzt du dein Passwort:</p>
+
+<p>
+  <a href="<%= @link %>"><%= @link %></a>
+</p>
+
+<p>
+  Nach der Anmeldung findest du unter „Meine Kurse“ die Teilnehmerliste und
+  trägst Anwesenheit und Testergebnisse ein.
+</p>
