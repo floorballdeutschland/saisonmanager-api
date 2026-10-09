@@ -97,4 +97,17 @@ class GameDaysControllerTest < ActionDispatch::IntegrationTest
     post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
     assert_response :success
   end
+
+  test 'spielfreier Spieltag mit Overlay-Zugang lässt sich löschen' do
+    admin = create(:user, :admin)
+    empty_day = GameDay.create!(league: @league, arena: @arena, club: @club, number: 9, date: '')
+    GameDayOverlayLink.generate!(game_day: empty_day, created_by: admin)
+    login(admin)
+
+    delete "/api/v2/game_days/#{empty_day.id}"
+
+    assert_response :success
+    assert_not GameDay.exists?(empty_day.id)
+    assert_not GameDayOverlayLink.exists?(game_day_id: empty_day.id)
+  end
 end
