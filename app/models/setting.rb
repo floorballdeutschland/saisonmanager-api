@@ -95,7 +95,9 @@ class Setting < ApplicationRecord
     allowed = Array(processes['courses_state_association_ids']).map(&:to_i)
     return true if allowed.empty? || state_association_id.nil?
 
-    allowed.include?(state_association_id.to_i)
+    # Ein freigeschalteter Verband schliesst seine Unterverbaende ein (gleiche
+    # Baumlogik wie die RSK-Zustaendigkeit).
+    (allowed | StateAssociation.ids_under(allowed)).include?(state_association_id.to_i)
   end
 
   # Vorlage für den Titel einer Übertragung.
