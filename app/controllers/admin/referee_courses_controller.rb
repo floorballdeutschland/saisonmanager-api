@@ -4,7 +4,7 @@ module Admin
   class RefereeCoursesController < ApplicationController
     before_action :set_policy
     before_action :require_access!
-    before_action :set_course, only: %i[show update destroy]
+    before_action :set_course, only: %i[show update destroy submit_results]
 
     PERMITTED = [
       :title, :course_type, :state_association_id, :hosting_club_id, :prerequisite_course_id,
@@ -77,6 +77,10 @@ module Admin
          !@policy.assign_state_association?(attrs[:state_association_id].presence)
         return forbidden
       end
+      if attrs['status'] == 'results_submitted'
+        return render json: { error: 'Ergebnisse bitte über „An FD einreichen“ übermitteln' },
+                      status: :unprocessable_entity
+      end
       unless @course.editable? || attrs.keys == ['status']
         return render json: { error: 'Der Kurs ist abgeschlossen und lässt sich nicht mehr ändern' },
                       status: :unprocessable_entity
@@ -88,6 +92,18 @@ module Admin
       else
         render json: { error: @course.errors.full_messages.join(', ') }, status: :unprocessable_entity
       end
+    end
+
+    # POST /api/v2/admin/referee_courses/:id/submit_results
+    # Teilnehmerliste fertig, Ergebnisse an FD zur Lizenzvergabe.
+    def submit_results
+      result = RefereeCourseSubmission.new(@course, submitted_by: current_user).call
+      unless result.success?
+        return render json: { error: result.errors.join(' · '), problems: result.errors },
+                      status: :unprocessable_entity
+      end
+
+      render json: course_json(@course.reload).merge(submitted_results: result.results.size)
     end
 
     # DELETE /api/v2/admin/referee_courses/:id
@@ -186,6 +202,7 @@ module Admin
         end,
         taken_seats: course.taken_seats,
         free_seats: course.free_seats,
+        submission_problems: course.status == 'held' ? RefereeCourseSubmission.new(course, submitted_by: nil).problems : [],
         created_at: course.created_at,
         updated_at: course.updated_at
       )

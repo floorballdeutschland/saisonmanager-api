@@ -14,12 +14,13 @@ class RefereeCourse < ApplicationRecord
   # gelaufen, Ergebnisse werden erfasst. results_submitted: Lizenzen vergeben.
   STATUSES = %w[draft published registration_closed held results_submitted cancelled].freeze
   # Statusuebergaenge, die die Verwaltung von Hand ausloesen darf. Der Weg nach
-  # results_submitted laeuft ueber das Einreichen der Ergebnisse (Paket 4).
+  # results_submitted laeuft nur ueber das Einreichen der Ergebnisse
+  # (RefereeCourseSubmission), die Verwaltung setzt ihn nicht von Hand.
   TRANSITIONS = {
     'draft' => %w[published cancelled],
     'published' => %w[registration_closed held cancelled draft],
     'registration_closed' => %w[published held cancelled],
-    'held' => %w[registration_closed],
+    'held' => %w[registration_closed results_submitted],
     'results_submitted' => [],
     'cancelled' => %w[draft]
   }.freeze
