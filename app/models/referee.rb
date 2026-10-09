@@ -423,6 +423,14 @@ class Referee < ApplicationRecord
       referee_change_requests.pending.where(correction_type: master_pending_types).destroy_all
       referee_change_requests.reload.update_all(referee_id: master.id)
 
+      # Kursanmeldungen wandern mit, sonst vergaebe die Lizenzvergabe die
+      # Lizenz spaeter an das tote Zweitprofil. Ist der Master im selben Kurs
+      # schon angemeldet, bleibt die doppelte Zeile ohne Schiri stehen
+      # (Eindeutigkeit Kurs+Schiri).
+      master_course_ids = master.referee_course_registrations.pluck(:referee_course_id)
+      referee_course_registrations.where(referee_course_id: master_course_ids).update_all(referee_id: nil)
+      referee_course_registrations.reload.update_all(referee_id: master.id)
+
       # Beobachtungsbögen: Der Coach-Bezug und die erhaltenen Bewertungen wandern
       # aufs Masterprofil, sonst hinge die Entwicklungshistorie am toten
       # Zweitprofil und wäre für die betroffene Person unsichtbar (ihr Konto

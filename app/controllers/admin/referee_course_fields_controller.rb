@@ -12,7 +12,8 @@ module Admin
     # POST /api/v2/admin/referee_courses/:referee_course_id/fields
     def create
       field = @course.fields.new(field_params)
-      field.position ||= (@course.fields.maximum(:position) || 0) + 1
+      # Die Spalte hat den Vorgabewert 0, ||= griffe also nie.
+      field.position = (@course.fields.maximum(:position) || 0) + 1 unless field_params.key?(:position)
       return validation_error(field) unless field.save
 
       render json: field.definition_hash, status: :created
