@@ -51,6 +51,7 @@ class RefereeCourse < ApplicationRecord
   validate :license_levels_exist
   validate :bundesweite_rechnung_nur_ohne_lv
   validate :status_transition, if: :status_changed?, on: :update
+  validate :initial_status, on: :create
   validate :prerequisite_not_self
 
   before_validation :normalize_arrays
@@ -192,6 +193,15 @@ class RefereeCourse < ApplicationRecord
     return if TRANSITIONS.fetch(from, []).include?(status)
 
     errors.add(:status, "Wechsel von #{from} nach #{status} ist nicht möglich")
+  end
+
+  # „Ergebnisse eingereicht" entsteht nur ueber RefereeCourseSubmission, auch
+  # nicht beim Anlegen. (Die Verwaltung legt ohnehin nur Entwuerfe an; Tests und
+  # Konsole duerfen andere Startzustaende setzen.)
+  def initial_status
+    return unless status == 'results_submitted'
+
+    errors.add(:status, 'Ergebnisse lassen sich nur über das Einreichen übermitteln')
   end
 
   def prerequisite_not_self
