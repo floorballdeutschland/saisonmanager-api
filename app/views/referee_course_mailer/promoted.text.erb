@@ -1,0 +1,9 @@
+Hallo <%= @first_name %>,
+
+im Kurs „<%= @course.title %>“ ist ein Platz frei geworden. <%= @name %> ist jetzt fest angemeldet.
+
+Termine:
+<%= render 'sessions' %>
+<% if @cancellation_deadline %>
+Abmelden ist bis <%= @cancellation_deadline %> kostenfrei möglich, danach bleibt die Kursgebühr fällig.
+<% end %>

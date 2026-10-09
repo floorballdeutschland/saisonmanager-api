@@ -1,0 +1,5 @@
+<p>Hallo <%= @first_name %>,</p>
+<p><%= @name %> ist vom Kurs <strong><%= @course.title %></strong> abgemeldet.</p>
+<% if @registration.late_cancellation? %>
+  <p>Die Abmeldung kam nach der Abmeldefrist, die Kursgebühr bleibt deshalb fällig.</p>
+<% end %>

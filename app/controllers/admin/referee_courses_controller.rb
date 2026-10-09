@@ -83,6 +83,7 @@ module Admin
       end
 
       if @course.update(attrs)
+        after_course_update
         render json: course_json(@course)
       else
         render json: { error: @course.errors.full_messages.join(', ') }, status: :unprocessable_entity
@@ -106,6 +107,20 @@ module Admin
 
     def set_policy
       @policy = RefereeCoursePolicy.new(current_user)
+    end
+
+    # Abgesagt: alle aktiven Anmeldungen benachrichtigen. Sonst: Plaetze, die
+    # durch eine hoehere Hoechstzahl frei werden, an die Warteliste geben.
+    def after_course_update
+      if @course.saved_change_to_status? && @course.status == 'cancelled'
+        @course.registrations.active.find_each do |registration|
+          next unless RefereeCourseMailer.recipient(registration)
+
+          RefereeCourseMailer.course_cancelled(registration).deliver_later
+        end
+      elsif @course.saved_change_to_max_participants? || @course.saved_change_to_status?
+        RefereeCourseRegistrar.new(@course).promote_waitlist
+      end
     end
 
     def require_access!

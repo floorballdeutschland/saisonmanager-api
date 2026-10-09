@@ -116,6 +116,51 @@ class RefereeCourse < ApplicationRecord
     }
   end
 
+  # Kurse, fuer die sich Personen anmelden oder die angekuendigt werden:
+  # veroeffentlicht oder mit geschlossener Anmeldung, noch nicht vorbei.
+  scope :upcoming_offers, lambda {
+    where(status: %w[published registration_closed])
+      .where('ends_on IS NULL OR ends_on >= ?', Time.zone.today)
+  }
+
+  # Darstellung fuer Anmeldende (Portal, Verein, oeffentliche Seite). Ohne
+  # Online-Link: Den bekommen nur Angemeldete per Mail. Ohne Teilnehmerliste.
+  def offer_hash(levels_by_id: nil)
+    levels_by_id ||= RefereeLicenseLevel.where(id: license_level_ids).index_by(&:id)
+    {
+      id: id,
+      title: title,
+      course_type: course_type,
+      format: format,
+      status: status,
+      registration_mode: registration_mode,
+      state_association: state_association && { id: state_association.id, name: state_association.name },
+      partner_state_association_ids: partner_state_association_ids,
+      hosting_club: hosting_club && { id: hosting_club.id, name: hosting_club.name },
+      starts_on: starts_on,
+      ends_on: ends_on,
+      sessions: Array(sessions).map { |s| s.except('online_url') },
+      online_platform: online_platform,
+      min_participants: min_participants,
+      max_participants: max_participants,
+      free_seats: free_seats,
+      registration_opens_at: registration_opens_at,
+      registration_deadline: registration_deadline,
+      cancellation_deadline: cancellation_deadline,
+      registration_closed_reason: RefereeCourseRegistrar.new(self).closed_reason,
+      min_age: min_age,
+      fee_member_cents: fee_member_cents,
+      fee_non_member_cents: fee_non_member_cents,
+      fee_only_on_license: fee_only_on_license,
+      fee_note: fee_note,
+      prerequisites_note: prerequisites_note,
+      contact_email: contact_email,
+      description: description,
+      license_levels: license_level_ids.filter_map { |lid| levels_by_id[lid] }.map { |l| { id: l.id, name: l.name } },
+      fields: fields.select { |f| f.archived_at.nil? }.map(&:definition_hash)
+    }
+  end
+
   private
 
   def normalize_arrays
