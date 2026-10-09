@@ -129,6 +129,18 @@ class RefereeCourseLeadsTest < ActionDispatch::IntegrationTest
     assert_response :unprocessable_entity
   end
 
+  test 'Kursleitung kann wartende Anmeldungen nicht umstellen' do
+    lead_user = create(:user)
+    RefereeCourseLeadAssigner.new(@course).assign(user_name: lead_user.user_name)
+    pending = @course.registrations.create!(vorname: 'Kim', nachname: 'Klein', geburtsdatum: Date.new(2014, 1, 1),
+                                            status: 'pending_guardian', skip_required_answers: true)
+    login(lead_user)
+    patch "/api/v2/course_lead/courses/#{@course.id}/registrations/#{pending.id}",
+          params: { registration: { status: 'attended' } }, as: :json
+    assert_response :unprocessable_entity
+    assert_equal 'pending_guardian', pending.reload.status
+  end
+
   test 'Schalter aus: Kursleitung sieht nichts' do
     lead_user = create(:user)
     RefereeCourseLeadAssigner.new(@course).assign(user_name: lead_user.user_name)
