@@ -15,6 +15,9 @@ class Referee < ApplicationRecord
   has_many :referee_club_exclusions, dependent: :destroy
   has_many :referee_club_exclusion_requests, dependent: :destroy
   has_many :referee_change_requests, dependent: :destroy
+  # Kursanmeldungen bleiben beim Loeschen des Schiris erhalten (Abrechnung,
+  # Teilnehmerliste), nur die Zuordnung faellt weg.
+  has_many :referee_course_registrations, dependent: :nullify
   has_many :game_day_referee_confirmations, dependent: :destroy
   has_many :referee_qualification_types, through: :referee_qualifications
   has_many :referee_tags, through: :referee_taggings
