@@ -134,19 +134,38 @@ module Admin
     def grant(result)
       return 'Bitte zuerst eine Lizenzstufe wählen' if result.lizenzstufe.blank?
 
-      result.gueltigkeit ||= RefereeLicenseLevel.gueltigkeit_for(result.lizenzstufe, result.kursstichtag)
       applier = RefereeCourseResultApplier.new(result, performed_by_user: current_user)
       RefereeCourseResult.transaction do
+        # Erst sperren, dann aendern: lock! verweigert ungespeicherte Aenderungen.
         result.lock!
         return 'Diese Zeile ist bereits entschieden' unless result.status == 'pending_review'
+
+        result.gueltigkeit ||= RefereeLicenseLevel.gueltigkeit_for(result.lizenzstufe, result.kursstichtag)
+
+        refresh_master_from_referee(result)
 
         applier.call(review_required: false)
         sync_registration(result)
       end
       notification = applier.deliver_pending_license_notification
-      { license_mail: notification.to_s, account: create_account(result.referee) }
+      account = result.new_referee_created ? create_account(result.referee) : 'exists'
+      { license_mail: notification.to_s, account: account }
     rescue RefereeCourseResultApplier::Error, ActiveRecord::RecordInvalid => e
       e.message
+    end
+
+    # Der Applier schreibt die finalen Stammdaten auf den Schiri zurueck. Bei
+    # einem Bestandsschiri sind das die aktuellen Werte, nicht die vom Tag des
+    # Einreichens: Ein Vereinswechsel dazwischen wuerde sonst rueckgaengig.
+    def refresh_master_from_referee(result)
+      referee = result.referee&.reload
+      return if referee.nil?
+
+      result.assign_attributes(
+        master_lizenznummer_final: referee.lizenznummer, master_vorname_final: referee.vorname,
+        master_nachname_final: referee.nachname, master_geburtsdatum_final: referee.geburtsdatum,
+        master_email_final: referee.email, master_club_id_final: referee.club_id
+      )
     end
 
     def sync_registration(result)
@@ -159,7 +178,8 @@ module Admin
                            identity_match: registration.identity_match == 'account' ? 'account' : 'confirmed_existing')
     end
 
-    # Neue Schiris mit Adresse bekommen gleich ein Konto. Ein Fehlschlag nimmt
+    # Neu angelegte Schiris mit Adresse bekommen gleich ein Konto (Bestandsschiris
+    # ohne Konto nicht: das bleibt der Massen- bzw. Einzelanlage vorbehalten). Ein Fehlschlag nimmt
     # die Lizenz nicht zurueck; das Konto laesst sich in der Schiri-Maske anlegen.
     def create_account(referee)
       return 'exists' if referee.nil? || referee.user
