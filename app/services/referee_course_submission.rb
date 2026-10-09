@@ -41,6 +41,12 @@ class RefereeCourseSubmission
     results = []
     RefereeCourse.transaction do
       @course.lock!
+      # Nach der Sperre erneut pruefen: Ein Doppelklick oder zwei parallele
+      # Aufrufe sahen beide noch `held` und legten jede Ergebniszeile doppelt an.
+      unless @course.status == 'held'
+        return Result.new(results: [], errors: ['Der Kurs ist bereits eingereicht'])
+      end
+
       @course.registrations.where(status: 'attended', result: 'passed').includes(:referee, :club).find_each do |reg|
         results << RefereeCourseResult.create!(result_attrs(reg))
       end
@@ -49,6 +55,8 @@ class RefereeCourseSubmission
     Result.new(results: results, errors: [])
   rescue ActiveRecord::RecordInvalid => e
     Result.new(results: [], errors: [e.record.errors.full_messages.to_sentence])
+  rescue ActiveRecord::RecordNotUnique
+    Result.new(results: [], errors: ['Für diesen Kurs gibt es schon eingereichte Ergebnisse'])
   end
 
   private

@@ -199,6 +199,61 @@ class PublicRefereeCoursesTest < ActionDispatch::IntegrationTest
     assert_not_includes ids, fresh.id
   end
 
+  test 'Lizenznummer-Probe ohne Pflichtangaben verraet nichts' do
+    create(:referee, geburtsdatum: Date.new(1999, 5, 6), email: 'ada@hinterlegt.example', lizenznummer: 4711)
+    probe = lambda do |datum|
+      post "/api/v2/public/referee_courses/#{@course.id}/registrations",
+           params: { registration: { lizenznummer: '4711', geburtsdatum: datum, consent: true } }, as: :json
+      [response.status, response.parsed_body]
+    end
+    assert_equal probe.call('1999-05-06'), probe.call('1999-05-07')
+    assert_equal 0, RefereeCourseRegistration.count
+  end
+
+  test 'bereits angemeldeter Schiri: gleiche Antwort, keine neue Zeile, keine Mail' do
+    referee = create(:referee, vorname: 'Ada', nachname: 'M', geburtsdatum: Date.new(1999, 5, 6),
+                               email: 'ada@hinterlegt.example', lizenznummer: 4711)
+    @course.registrations.create!(referee: referee, vorname: 'Ada', nachname: 'M', geburtsdatum: referee.geburtsdatum,
+                                  status: 'registered', skip_required_answers: true)
+    assert_no_enqueued_emails do
+      post "/api/v2/public/referee_courses/#{@course.id}/registrations",
+           params: { registration: person(lizenznummer: '4711', geburtsdatum: '1999-05-06') }, as: :json
+    end
+    assert_response :created
+    assert_equal 1, @course.registrations.count
+  end
+
+  test 'nie bestaetigte Anmeldung sperrt nicht: erneut anmelden ersetzt sie, Portal geht auch' do
+    post "/api/v2/public/referee_courses/#{@course.id}/registrations", params: { registration: person }, as: :json
+    post "/api/v2/public/referee_courses/#{@course.id}/registrations", params: { registration: person }, as: :json
+    assert_response :created
+    assert_equal 1, @course.registrations.where(status: 'pending_email').count
+
+    referee = create(:referee, vorname: 'Ada', nachname: 'M', geburtsdatum: Date.new(1999, 5, 6),
+                               email: 'ada@hinterlegt.example', lizenznummer: 4711)
+    post "/api/v2/public/referee_courses/#{@course.id}/registrations",
+         params: { registration: person(lizenznummer: '4711', geburtsdatum: '1999-05-06') }, as: :json
+    stale_token = token_from_last_mail('confirm_email')
+    portal = @course.registrations.create!(referee: referee, vorname: 'Ada', nachname: 'M',
+                                           geburtsdatum: referee.geburtsdatum, status: 'registered',
+                                           source: 'portal', skip_required_answers: true)
+    assert portal.persisted?
+
+    post "/api/v2/public/course_registrations/confirm/#{stale_token}"
+    assert_response :not_found
+    assert_equal 1, @course.registrations.where(referee: referee).count
+  end
+
+  test 'Bestaetigungslink nach Kursabsage ist ungueltig' do
+    post "/api/v2/public/referee_courses/#{@course.id}/registrations", params: { registration: person }, as: :json
+    token = token_from_last_mail('confirm_email')
+    @course.update_columns(status: 'cancelled')
+    get "/api/v2/public/course_registrations/confirm/#{token}"
+    assert_response :not_found
+    post "/api/v2/public/course_registrations/confirm/#{token}"
+    assert_response :not_found
+  end
+
   private
 
   def login_admin

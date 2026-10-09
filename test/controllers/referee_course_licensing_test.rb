@@ -170,6 +170,43 @@ class RefereeCourseLicensingTest < ActionDispatch::IntegrationTest
     assert_empty response.parsed_body
   end
 
+  test 'zweites Einreichen legt nichts doppelt an' do
+    ready_course
+    first = RefereeCourseSubmission.new(@course, submitted_by: @rsk).call
+    assert first.success?
+    @course.update_columns(status: 'held')
+    second = RefereeCourseSubmission.new(@course.reload, submitted_by: @rsk).call
+    assert_not second.success?
+    assert_equal 2, RefereeCourseResult.where(referee_course: @course).count
+  end
+
+  test 'Eine Ergebniszeile je Anmeldung (Datenbank)' do
+    r = reg(status: 'attended', result: 'passed')
+    RefereeCourseResult.create!(referee_course: @course, referee_course_registration: r, status: 'pending_review',
+                                match_type: 'new_entry', match_field_count: 0)
+    assert_raises(ActiveRecord::RecordNotUnique) do
+      RefereeCourseResult.create!(referee_course: @course, referee_course_registration: r, status: 'pending_review',
+                                  match_type: 'new_entry', match_field_count: 0)
+    end
+  end
+
+  test 'Freigabe schreibt die aktuellen Stammdaten, nicht die vom Einreichen' do
+    ready_course
+    RefereeCourseSubmission.new(@course, submitted_by: @rsk).call
+    new_club = create(:club, state_association: @lv)
+    @referee.update!(club: new_club)
+    row = RefereeCourseResult.find_by(referee: @referee)
+    # Stufe ohne Gueltigkeit, wie sie etwa ueber die Konsole entsteht: die
+    # Freigabe leitet sie selbst ab.
+    row.update!(lizenzstufe: 'L3', gueltigkeit: nil)
+    login(@fd)
+    post "/api/v2/admin/referee_course_licensing/#{row.id}/approve"
+    assert_response :success
+    assert_equal new_club.id, @referee.reload.club_id
+    assert_equal 'exists', response.parsed_body['account']
+    assert_nil @referee.user, 'Bestandsschiri ohne Konto bekommt keins bei der Lizenzvergabe'
+  end
+
   test 'Menuepunkt Lizenzvergabe nur fuer FD' do
     assert @fd.permissions_items[:menu_item_referee_course_licensing]
     assert_not @rsk.permissions_items[:menu_item_referee_course_licensing]
