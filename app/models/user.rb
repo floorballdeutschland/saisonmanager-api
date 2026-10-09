@@ -421,7 +421,15 @@ class User < ApplicationRecord
     # (RefereeObservationPolicy#can_moderate?). Ohne eigenen Schluessel stuende
     # der Knopf auch bei ihr in der Maske und liefe in eine Absage.
     result[:referee_observation_moderate] = ph[:admin].present? || ph[:rsk].present?
-    result[:menu_item_referee_course_import] = has_full_referee_access
+    # Bei abgeschaltetem CSV-Import bleibt der Menuepunkt, solange der Importeur
+    # noch offene Zeilen hat -- die muessen sich abarbeiten lassen. Die Abfrage
+    # laeuft nur fuer die wenigen Konten mit vollem Schiri-Zugriff.
+    csv_import_enabled = Setting.referee_course_csv_import_enabled?
+    result[:menu_item_referee_course_import] =
+      has_full_referee_access &&
+      (csv_import_enabled || RefereeCourseResult.open_in_active_import.exists?)
+    # Steuert den Upload-Knopf in der Importliste (die API sperrt ohnehin).
+    result[:referee_course_import_upload] = has_full_referee_access && csv_import_enabled
     result[:menu_item_referee_course_review] = has_full_referee_access || lv_rsk_review_enabled?(ph)
     result[:menu_item_referee_vm] = ph[:vm].present?
     result[:menu_item_player_vm] = ph[:vm].present? || ph[:tm].present?
