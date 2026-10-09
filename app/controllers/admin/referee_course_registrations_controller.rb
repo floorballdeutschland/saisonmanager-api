@@ -166,6 +166,7 @@ module Admin
         match_candidates: registration.match_candidates,
         custom_answers: registration.custom_answers,
         fee_cents: registration.fee_cents,
+        source: registration.source,
         created_at: registration.created_at
       }
     end
