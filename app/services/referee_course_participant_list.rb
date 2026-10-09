@@ -22,7 +22,10 @@ class RefereeCourseParticipantList
                            .order(:nachname, :vorname)
     body = CSV.generate(col_sep: ';', row_sep: "\r\n", force_quotes: true) do |csv|
       csv << (headers + fields.map(&:label))
-      registrations.each { |reg| csv << (values(reg) + fields.map { |f| answer(reg.custom_answers[f.id.to_s]) }) }
+      registrations.each do |reg|
+        row = values(reg) + fields.map { |f| answer(reg.custom_answers[f.id.to_s]) }
+        csv << row.map { |v| RefereeCourseBilling.safe_cell(v) }
+      end
     end
     "\uFEFF#{body}"
   end

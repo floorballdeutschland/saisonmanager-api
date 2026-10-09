@@ -45,7 +45,11 @@ class RefereeCourseBillingTest < ActionDispatch::IntegrationTest
         custom_answers: { @tshirt.id.to_s => 'Kostenstelle 7' })
     reg(vorname: 'Fremd', club: @foreign_club, status: 'attended')
     reg(vorname: 'Weg', club: @club, status: 'no_show')
-    reg(vorname: 'Spaet', club: @club, status: 'cancelled_by_participant',
+    reg(vorname: 'Spaet', club: @club, status: 'cancelled_by_participant', held_seat_at_cancel: true,
+        cancelled_at: Time.zone.parse('2026-11-18 10:00'))
+    reg(vorname: 'Warteliste', club: @club, status: 'cancelled_by_participant', held_seat_at_cancel: false,
+        cancelled_at: Time.zone.parse('2026-11-18 10:00'))
+    reg(vorname: 'Rausgeworfen', club: @club, status: 'cancelled_by_organizer', held_seat_at_cancel: true,
         cancelled_at: Time.zone.parse('2026-11-18 10:00'))
     reg(vorname: 'Frueh', club: @club, status: 'cancelled_by_participant',
         cancelled_at: Time.zone.parse('2026-11-01 10:00'))
@@ -83,6 +87,34 @@ class RefereeCourseBillingTest < ActionDispatch::IntegrationTest
     get '/api/v2/admin/referee_course_billing_exports/preview',
         params: { state_association_id: @lv.id, include_billed: true }
     assert_equal 4, response.parsed_body['row_count']
+  end
+
+  test 'kein zweiter Export ueber include_billed, kein Export ueber veraltete Vorschau' do
+    reg(vorname: 'Ada', club: @club, status: 'attended')
+    login(@rsk)
+    post '/api/v2/admin/referee_course_billing_exports', params: { state_association_id: @lv.id }, as: :json
+    assert_response :created
+    post '/api/v2/admin/referee_course_billing_exports',
+         params: { state_association_id: @lv.id, include_billed: true }, as: :json
+    assert_response :unprocessable_entity
+    assert_equal 1, RefereeCourseBillingExport.count
+
+    stale = RefereeCourseBilling.new(state_association_id: @lv.id)
+    reg(vorname: 'Bo', club: @club, status: 'attended')
+    stale.rows
+    RefereeCourseBilling.new(state_association_id: @lv.id).create!(user: @rsk)
+    assert_raises(RefereeCourseBilling::StaleRows) { stale.create!(user: @rsk) }
+  end
+
+  test 'Formeln aus Namen werden in der CSV entschaerft' do
+    reg(vorname: '=HYPERLINK("https://evil.example";"x")', nachname: '+1', club: @club, status: 'attended')
+    csv = RefereeCourseBilling.new(state_association_id: @lv.id).to_csv
+    row = parse(csv).first
+    assert row['Vorname'].start_with?("'=")
+    assert_equal "'+1", row['Name']
+    assert_equal '25,00', row['Betrag']
+    participants = parse(RefereeCourseParticipantList.new(@course).to_csv).first
+    assert participants['Vorname'].start_with?("'=")
   end
 
   test 'Warnung bei fehlender Vereinsanschrift' do

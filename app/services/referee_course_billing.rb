@@ -78,6 +78,15 @@ class RefereeCourseBilling
     COLUMNS + extra_fields.map(&:label)
   end
 
+  # Excel fuehrt Zellen, die mit = + - @ (oder Tab/CR) beginnen, als Formel
+  # aus. Namen, Anschriften und Freitexte kommen auch aus dem oeffentlichen
+  # Formular, deshalb wird solchen Zellen ein Apostroph vorangestellt.
+  def self.safe_cell(value)
+    return value unless value.is_a?(String) && value.match?(/\A[=+\-@\t\r]/)
+
+    "'#{value}"
+  end
+
   def csv_values(row)
     reg = row.registration
     course = reg.referee_course
@@ -97,25 +106,34 @@ class RefereeCourseBilling
   def to_csv
     body = CSV.generate(col_sep: ';', row_sep: "\r\n", force_quotes: true) do |csv|
       csv << headers
-      rows.each { |row| csv << csv_values(row) }
+      rows.each { |row| csv << csv_values(row).map { |v| self.class.safe_cell(v) } }
     end
     "\uFEFF#{body}"
   end
 
+  StaleRows = Class.new(StandardError)
+
   # Erzeugt den Export, haengt die Datei an und markiert die Zeilen als
-  # abgerechnet. Alles in einer Transaktion: Ohne gespeicherte Datei gilt
-  # nichts als abgerechnet.
+  # abgerechnet, in einer Transaktion. Die Zeilen werden gesperrt und duerfen
+  # noch nicht abgerechnet sein: Zwei gleichzeitige Exporte oder ein Export
+  # mit include_billed rechneten sonst dieselben Anmeldungen doppelt ab.
   def create!(user:)
+    raise ArgumentError, 'Bereits Abgerechnetes laesst sich nur ansehen, nicht erneut exportieren' if @include_billed
+
     content = to_csv
     export = nil
+    ids = rows.map { |r| r.registration.id }
     RefereeCourseBillingExport.transaction do
+      locked = RefereeCourseRegistration.where(id: ids, billed_at: nil).lock.pluck(:id)
+      raise StaleRows, 'Inzwischen wurde ein Teil davon abgerechnet. Bitte die Vorschau neu laden.' if
+        locked.size != ids.size
+
       export = RefereeCourseBillingExport.create!(
         state_association_id: @state_association_id, created_by_user: user, from_date: @from, to_date: @to,
         row_count: rows.size, total_cents: total_cents
       )
       export.file.attach(io: StringIO.new(content), filename: filename(export), content_type: 'text/csv')
-      RefereeCourseRegistration.where(id: rows.map { |r| r.registration.id })
-                               .update_all(billed_at: Time.current, billing_export_id: export.id)
+      RefereeCourseRegistration.where(id: ids).update_all(billed_at: Time.current, billing_export_id: export.id)
     end
     export
   end

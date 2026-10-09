@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_10_09_220000) do
+ActiveRecord::Schema[7.2].define(version: 2026_10_09_230000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -828,6 +828,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_09_220000) do
     t.string "source", default: "admin", null: false, comment: "admin, portal, club, public"
     t.datetime "email_confirmation_expires_at"
     t.datetime "email_confirmed_at"
+    t.boolean "held_seat_at_cancel", default: false, null: false
     t.index "referee_course_id, lower((email)::text), geburtsdatum, lower((vorname)::text)", name: "idx_course_registrations_unique_person", unique: true, where: "((email IS NOT NULL) AND ((status)::text <> ALL (ARRAY[('cancelled_by_participant'::character varying)::text, ('cancelled_by_organizer'::character varying)::text, ('pending_email'::character varying)::text])))"
     t.index ["awarded_license_level_id"], name: "index_referee_course_registrations_on_awarded_license_level_id"
     t.index ["billing_club_id"], name: "index_referee_course_registrations_on_billing_club_id"

@@ -34,12 +34,17 @@ module Admin
     end
 
     # POST /api/v2/admin/referee_course_billing_exports
+    # Immer ohne include_billed: Abgerechnetes laesst sich in der Vorschau
+    # ansehen und ueber den alten Export erneut herunterladen, aber nicht ein
+    # zweites Mal abrechnen.
     def create
-      billing = build_billing
+      billing = build_billing(include_billed: false)
       return render json: { error: 'Nichts abzurechnen' }, status: :unprocessable_entity if billing.rows.empty?
 
       export = billing.create!(user: current_user)
       render json: export.summary_hash, status: :created
+    rescue RefereeCourseBilling::StaleRows => e
+      render json: { error: e.message }, status: :conflict
     end
 
     # GET /api/v2/admin/referee_course_billing_exports/:id/download
@@ -76,11 +81,11 @@ module Admin
       render json: { error: 'Nicht berechtigt' }, status: :forbidden
     end
 
-    def build_billing
+    def build_billing(include_billed: ActiveModel::Type::Boolean.new.cast(params[:include_billed]) == true)
       RefereeCourseBilling.new(
         state_association_id: @state_association_id,
         from: parse_date(params[:from]), to: parse_date(params[:to]),
-        include_billed: ActiveModel::Type::Boolean.new.cast(params[:include_billed]) == true
+        include_billed: include_billed
       )
     end
 
