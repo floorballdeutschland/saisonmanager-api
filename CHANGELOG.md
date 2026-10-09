@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Spieltag mit Overlay-Zugang ließ sich nicht löschen**: Ein spielfreier Spieltag, für den einmal ein Livestream-Overlay-Zugang erzeugt wurde, brach beim Löschen mit einem Server-Fehler ab. Der Zugang wird jetzt mit dem Spieltag gelöscht.
+
 ## [1.129.0] - 2026-10-08
 
 ### Neu
