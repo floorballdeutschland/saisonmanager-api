@@ -303,10 +303,17 @@ class GamesController < ApplicationController
     allowed = can_edit_lineup_of?(game)
 
     if allowed
+      side = params[:side]
+      # Wie copy_lineup_from_last_game: Eine unbekannte Seite legte bisher einen
+      # eigenen Schluessel in game.players an, den weder Kader noch Kadergrenze
+      # kennen.
+      unless LINEUP_SIDES.include?(side)
+        return render json: { message: 'Seite fehlt oder ist unbekannt (erlaubt: Heim oder Gast).' },
+                      status: :unprocessable_entity
+      end
+
       # ensure we have the hash set
       game.players ||= {}
-
-      side = params[:side]
 
       # ensure we have the hash set
       game.players[side] ||= []
@@ -1644,13 +1651,6 @@ class GamesController < ApplicationController
     [game.game_date || Date.new(1), game.start_time.to_s.rjust(5, '0'), game.id]
   end
 
-  # Ohne jeden Lizenzeintrag fuer die aufstellende Mannschaft wird nicht mehr
-  # nur gewarnt, sondern abgewiesen. Die Kadermaske bietet nur Personen mit
-  # Lizenz an, eine solche Anfrage kommt also nicht aus der regulaeren
-  # Bedienung: Im Spiel 61889 schrieb eine beim Spielwechsel offen gebliebene
-  # Maske einen Spieler der Heimmannschaft des Folgespiels in den Heimkader.
-  # Jeder vorhandene Eintrag bleibt beim bisherigen Weg (lineup_license_warning):
-  # beantragt ohne Verbandsschalter, abgelehnt oder gesperrt heisst Warnung.
   # Kadergroesse (api#784): Grossfeld 20, Kleinfeld 14 Spieler je Mannschaft,
   # fuer alle Rollen. Freitext-Eintraege ohne player_id zaehlen mit, Trainer
   # und Betreuer stehen nicht in game.players und zaehlen nicht.
@@ -1662,6 +1662,13 @@ class GamesController < ApplicationController
       "sind höchstens #{max_players} Spieler erlaubt."
   end
 
+  # Ohne jeden Lizenzeintrag fuer die aufstellende Mannschaft wird nicht mehr
+  # nur gewarnt, sondern abgewiesen. Die Kadermaske bietet nur Personen mit
+  # Lizenz an, eine solche Anfrage kommt also nicht aus der regulaeren
+  # Bedienung: Im Spiel 61889 schrieb eine beim Spielwechsel offen gebliebene
+  # Maske einen Spieler der Heimmannschaft des Folgespiels in den Heimkader.
+  # Jeder vorhandene Eintrag bleibt beim bisherigen Weg (lineup_license_warning):
+  # beantragt ohne Verbandsschalter, abgelehnt oder gesperrt heisst Warnung.
   def lineup_license_missing_error(game, player, side)
     return nil if player.nil?
 

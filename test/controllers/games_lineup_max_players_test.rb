@@ -43,6 +43,36 @@ class GamesLineupMaxPlayersTest < ActionDispatch::IntegrationTest
     post add_path('home'), params: { player_firstname: 'Frei', player_name: 'Text', trikot_number: 99 }, as: :json
 
     assert_response :unprocessable_entity
+    assert_equal 'Kader voll: Im Kleinfeld sind höchstens 14 Spieler erlaubt.',
+                 JSON.parse(response.body)['message']
+    assert_equal 14, @game.reload.players['home'].size
+  end
+
+  test 'eine unbekannte Seite wird abgewiesen statt neben dem Kader abgelegt' do
+    post add_path('heim'), params: { player_id: licensed_player.id, trikot_number: 99 }, as: :json
+
+    assert_response :unprocessable_entity
+    assert_equal 'Seite fehlt oder ist unbekannt (erlaubt: Heim oder Gast).', JSON.parse(response.body)['message']
+    assert_equal %w[guest home], @game.reload.players.keys.sort
+  end
+
+  test 'eine Playoff-Liga ohne Feldgröße erbt die Grenze der Hauptrunde' do
+    playoff = create(:league, :current_season, game_operation: @go, league_modus: 'playoff', field_size: nil,
+                                               league_id_preround: @league.id)
+    playoff_team = create(:team, league: playoff, club: @club)
+    game_day = GameDay.create!(league: playoff, arena: create(:arena), club: @club, number: 1, date: '2026-03-14')
+    game = Game.create!(game_day:, home_team: playoff_team, guest_team: create(:team, league: playoff),
+                        start_time: '14:00', forfait: 0, overtime: false, legacy: false, events: [],
+                        players: { 'home' => free_text_entries(14), 'guest' => [] })
+    player = create(:player, clubs: [{ 'club_id' => @club.id, 'home_club' => true }],
+                             with_licenses: [{ team: playoff_team, status: License::APPROVED }])
+
+    post "/api/v2/user/games/#{game.id}/lineup/home/add_player",
+         params: { player_id: player.id, trikot_number: 99 }, as: :json
+
+    assert_response :unprocessable_entity
+    assert_equal 'Kader voll: Im Kleinfeld sind höchstens 14 Spieler erlaubt.',
+                 JSON.parse(response.body)['message']
   end
 
   test 'die Gegenseite zählt nicht mit' do
@@ -88,6 +118,23 @@ class GamesLineupMaxPlayersTest < ActionDispatch::IntegrationTest
     assert_equal([[52, 'Kader voll (höchstens 14)'], [53, 'Kader voll (höchstens 14)']],
                  body['skipped'].map { |s| [s['trikot_number'], s['reason']] })
     assert_equal 14, @game.reload.players['home'].size
+  end
+
+  test 'bei der Übernahme schlägt der eigentliche Grund das volle Kader' do
+    @game.update!(players: { 'home' => free_text_entries(13), 'guest' => [] })
+    unlicensed = create(:player, last_name: 'OhneLizenz', clubs: [{ 'club_id' => @club.id, 'home_club' => true }])
+    game_on('2026-01-10', home_players: [entry(licensed_player('Erster'), 50), entry(unlicensed, 51),
+                                         entry(licensed_player('Doppelnummer'), 1),
+                                         entry(licensed_player('Letzter'), 52)])
+
+    post "/api/v2/user/games/#{@game.id}/lineup/home/copy_from_last_game"
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal 1, body['added_count']
+    assert_equal([[51, 'kein Lizenzantrag für diese Mannschaft'], [1, 'Nummer 1 bereits vergeben'],
+                  [52, 'Kader voll (höchstens 14)']],
+                 body['skipped'].map { |s| [s['trikot_number'], s['reason']] })
   end
 
   test 'das Spiel-JSON nennt die Grenze' do
