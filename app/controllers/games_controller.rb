@@ -1345,8 +1345,9 @@ class GamesController < ApplicationController
     # (Papierbericht) – dann ist auch keine 24h-Frist zu melden.
     return unless game.report_form_workflow_enabled?
 
-    has_spielausschluss = (game.events || []).any? { |e| e['penalty_id'].to_s == '5' }
-    return unless game.special_event? || has_spielausschluss
+    # Volle Matchstrafe, technische Matchstrafe oder besonderes Ereignis,
+    # erkannt über das Mapping der Strafe (api#789).
+    return unless game.report_form_required?
 
     assignment = game.referee_assignment
     return unless assignment

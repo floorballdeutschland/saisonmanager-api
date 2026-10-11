@@ -345,13 +345,15 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         # ERB-View vollständig (siehe TemplatedMailer), und nur dort stehen
         # @upload_url und @deadline.
         { key: 'upload_url', description: 'Adresse der Spielseite mit dem Upload des Berichtsformulars' },
-        { key: 'deadline', description: 'Frist für die Abgabe (Datum und Uhrzeit)' }
+        { key: 'deadline', description: 'Frist für die Abgabe (Datum und Uhrzeit)' },
+        { key: 'report_reasons', description: 'Anlass des Berichts, z. B. „eine Matchstrafe und ein besonderes Ereignis“' },
+        { key: 'report_recipient', description: 'Wohin der Bericht nach dem Upload geht, z. B. „die zuständige VSK“' }
       ]
     },
     'RefereeMailer#referee_report_to_vsk' => {
       mailer_class: 'RefereeMailer',
       action_name: 'referee_report_to_vsk',
-      description: 'Weiterleitung des eingereichten Berichtsformulars an die VSK/SBK (mit PDF-Anhang).',
+      description: 'Weiterleitung des eingereichten Berichtsformulars an die VSK bei einer Matchstrafe (mit PDF-Anhang).',
       default_subject: 'Berichtsformular eingereicht – Spielnummer {{game_number}}',
       default_from: nil,
       default_reply_to: nil,
@@ -359,6 +361,22 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'game_number', description: 'Spielnummer' },
         { key: 'opened_by_name', description: 'Vor- und Nachname der Person, die den Verfahrensvorschlag ' \
                                               'angenommen hat (leer beim automatischen Versand)' }
+      ]
+    },
+    'RefereeMailer#referee_report_to_sbk' => {
+      mailer_class: 'RefereeMailer',
+      action_name: 'referee_report_to_sbk',
+      description: 'Weiterleitung des eingereichten Berichtsformulars an die SBK: zur Kenntnis bei technischer ' \
+                   'Matchstrafe oder besonderem Ereignis, im manuellen Modus auch bei einer Matchstrafe mit ' \
+                   'der Aufforderung, das VSK-Verfahren einzuleiten (mit PDF-Anhang).',
+      default_subject: 'Berichtsformular eingereicht – Spielnummer {{game_number}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'game_number', description: 'Spielnummer' },
+        { key: 'report_reasons', description: 'Anlass des Berichts, z. B. „eine technische Matchstrafe“' },
+        { key: 'proceedings_url', description: 'Link auf die Verfahrensvorschläge (nur bei Matchstrafe im ' \
+                                               'manuellen Modus, sonst leer)' }
       ]
     },
     'TransferRequestMailer#new_request_to_former_club' => {

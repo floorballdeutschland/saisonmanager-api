@@ -398,6 +398,70 @@ class Game < ApplicationRecord
     Setting.current.penalties.dig(event['penalty_id'].to_s, 'name')
   end
 
+  # Erkannt wird über das Mapping, nicht über die id: Bis api#789 hing der
+  # Berichtsworkflow an `penalty_id == '5'`, und das ist auf Prod die
+  # TECHNISCHE Matchstrafe. Die volle Matchstrafe (id 6) löste weder die
+  # Erinnerung noch den Upload aus.
+  MATCH_PENALTY_MAPPING = 'penalty_ms_full'.freeze
+  TECHNICAL_MATCH_PENALTY_MAPPING = 'penalty_ms_tech'.freeze
+
+  def match_penalty?
+    penalty_event_mappings.include?(MATCH_PENALTY_MAPPING)
+  end
+
+  def technical_match_penalty?
+    penalty_event_mappings.include?(TECHNICAL_MATCH_PENALTY_MAPPING)
+  end
+
+  # Verlangt das Spiel ein Berichtsformular der Schiris? Unabhängig vom
+  # Schalter des Landesverbands; der entscheidet erst über Erinnerung und
+  # Versand (#report_form_recipient).
+  def report_form_required?
+    match_penalty? || technical_match_penalty? || special_event? || false
+  end
+
+  # Gründe, aus denen ein Berichtsformular verlangt ist, in fester Reihenfolge.
+  def report_form_reasons
+    reasons = []
+    reasons << :match_penalty if match_penalty?
+    reasons << :technical_match_penalty if technical_match_penalty?
+    reasons << :special_event if special_event?
+    reasons
+  end
+
+  # Wohin das hochgeladene Berichtsformular geht:
+  #
+  #   'vsk'          volle Matchstrafe (VSK-Verfahren)
+  #   'sbk'          technische Matchstrafe oder besonderes Ereignis, zur Kenntnis
+  #   'vsk_and_sbk'  beides, je eine eigene Mail
+  #
+  # Im manuellen Modus geht alles an die SBK: Sie leitet ein VSK-Verfahren
+  # selbst über den Verfahrensvorschlag ein. nil, wenn kein Bericht verlangt ist
+  # oder der Landesverband den digitalen Berichtsworkflow aus hat.
+  def report_form_recipient
+    return nil unless report_form_workflow_enabled? && report_form_required?
+    return 'sbk' if state_association.effective_manual_proceeding_creation
+
+    sbk_case = technical_match_penalty? || special_event?
+    return 'vsk_and_sbk' if match_penalty? && sbk_case
+
+    match_penalty? ? 'vsk' : 'sbk'
+  end
+
+  # Mappings aller Strafen des Spiels. Wie #penalty_mapping zuerst das
+  # eingefrorene Label, sonst der Katalog; der aber nur einmal gelesen, nicht
+  # je Ereignis.
+  def penalty_event_mappings
+    catalog = nil
+    Array(events).filter_map do |event|
+      next unless event.is_a?(Hash) && event['penalty_id'].present?
+      next event['penalty_mapping'].to_s if event['penalty_mapping'].present?
+
+      catalog ||= Setting.current&.penalties || {}
+      catalog.dig(event['penalty_id'].to_s, 'mapping')
+    end
+  end
+
   # Bevorzugt eingefrorene Label; sonst Live-Auflösung aus Setting. Alt-Codes
   # tragen die Bezeichnung nur unter 'name' – daher als description-Fallback.
   def penalty_reason(event)
