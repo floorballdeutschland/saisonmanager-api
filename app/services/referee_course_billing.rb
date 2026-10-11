@@ -124,7 +124,7 @@ class RefereeCourseBilling
     export = nil
     ids = rows.map { |r| r.registration.id }
     RefereeCourseBillingExport.transaction do
-      locked = RefereeCourseRegistration.where(id: ids, billed_at: nil).lock.pluck(:id)
+      locked = RefereeCourseRegistration.where(id: ids, billed_at: nil).order(:id).lock.pluck(:id)
       raise StaleRows, 'Inzwischen wurde ein Teil davon abgerechnet. Bitte die Vorschau neu laden.' if
         locked.size != ids.size
 
