@@ -7,6 +7,7 @@ require 'csv'
 class RefereeCourseParticipantList
   STATUS_LABELS = {
     'pending_email' => 'E-Mail unbestätigt', 'pending_guardian' => 'Einwilligung offen',
+    'pending_club' => 'Verein bestätigt noch', 'declined_by_club' => 'vom Verein abgelehnt',
     'registered' => 'angemeldet', 'waitlisted' => 'Warteliste',
     'cancelled_by_participant' => 'selbst abgemeldet', 'cancelled_by_organizer' => 'abgemeldet',
     'attended' => 'teilgenommen', 'no_show' => 'nicht erschienen'

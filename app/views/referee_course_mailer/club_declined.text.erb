@@ -4,4 +4,4 @@ Hallo <%= @first_name %>,
 <% if @reason.present? %>
 Begründung des Vereins: <%= @reason %>
 <% end %>
-Du kannst dich ohne Verein neu anmelden und die Gebühr selbst tragen, oder dich direkt an deinen Verein wenden.
+Wenn du trotzdem teilnehmen möchtest, wende dich bitte an die Kursverantwortlichen<% if @course.contact_email.present? %> (<%= @course.contact_email %>, du kannst auch einfach auf diese Mail antworten)<% end %>.

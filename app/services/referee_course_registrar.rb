@@ -24,6 +24,7 @@ class RefereeCourseRegistrar
 
   # Kurse, fuer die eine Anmeldung noch bestaetigt werden kann.
   OPEN_COURSE_STATUSES = %w[published registration_closed].freeze
+  NOT_PENDING_CLUB = 'Diese Anmeldung wartet nicht auf den Verein'.freeze
 
   Result = Struct.new(:registration, :error, :guardian_token, keyword_init: true) do
     def success?
@@ -256,30 +257,49 @@ class RefereeCourseRegistrar
   end
 
   # Der zahlende Verein bestaetigt: jetzt auf einen Platz oder die Warteliste.
+  # Nur solange der Kurs bevorsteht. Kurs und Anmeldung werden gesperrt und der
+  # Status danach erneut geprueft: Ein Doppelklick oder zwei Vereinsmanager
+  # setzten die Person sonst beim zweiten Mal auf die Warteliste, und eine
+  # inzwischen abgemeldete oder abgelehnte Anmeldung kaeme zurueck.
   def confirm_club(registration, user:)
-    return Result.new(error: 'Diese Anmeldung wartet nicht auf den Verein') unless registration.status == 'pending_club'
+    error = club_decision_error(registration)
+    return Result.new(error: error) if error
 
     RefereeCourse.transaction do
       @course.lock!
+      registration.lock!
+      raise Error, NOT_PENDING_CLUB unless registration.status == 'pending_club'
+
       registration.skip_required_answers = true
       registration.update!(status: seat_available? ? 'registered' : 'waitlisted',
                            club_confirmed_at: Time.current, club_confirmed_by_user: user)
     end
     notify_registered(registration, nil)
     Result.new(registration: registration)
+  rescue Error => e
+    Result.new(error: e.message)
   end
 
-  # Der Verein lehnt ab (zahlt nicht). Die Person erfaehrt es mit Grund und kann
-  # sich ohne Verein, also als Selbstzahler, neu anmelden.
+  # Der Verein lehnt ab (zahlt nicht). Die Person erfaehrt es mit Grund und
+  # wendet sich bei Bedarf an die Kursverantwortlichen; eine Selbstzahler-
+  # Anmeldung gibt es nicht (Entscheidung 11.10.).
   def decline_club(registration, user:, reason:)
-    return Result.new(error: 'Diese Anmeldung wartet nicht auf den Verein') unless registration.status == 'pending_club'
+    error = club_decision_error(registration)
+    return Result.new(error: error) if error
     return Result.new(error: 'Bitte einen Grund angeben') if reason.to_s.strip.blank?
 
-    registration.update_columns(status: 'declined_by_club', cancelled_at: Time.current,
-                                club_decline_reason: reason.to_s.strip, club_confirmed_by_user_id: user&.id,
-                                updated_at: Time.current)
+    RefereeCourse.transaction do
+      registration.lock!
+      raise Error, NOT_PENDING_CLUB unless registration.status == 'pending_club'
+
+      registration.update_columns(status: 'declined_by_club', cancelled_at: Time.current,
+                                  club_decline_reason: reason.to_s.strip, club_confirmed_by_user_id: user&.id,
+                                  updated_at: Time.current)
+    end
     RefereeCourseMailer.club_declined(registration).deliver_later if RefereeCourseMailer.recipient(registration)
     Result.new(registration: registration)
+  rescue Error => e
+    Result.new(error: e.message)
   end
 
   def notify_registered(registration, guardian_token)
@@ -290,7 +310,7 @@ class RefereeCourseRegistrar
       RefereeCourseMailer.club_confirmation_request(registration, recipients).deliver_later if recipients.any?
       if RefereeCourseMailer.recipient(registration)
         cancel_token = issue_cancel_token(registration) if registration.source == 'public'
-        RefereeCourseMailer.registered(registration, cancel_token).deliver_later
+        RefereeCourseMailer.awaiting_club(registration, cancel_token).deliver_later
       end
     elsif RefereeCourseMailer.recipient(registration)
       cancel_token = issue_cancel_token(registration) if registration.source == 'public'
@@ -314,6 +334,13 @@ class RefereeCourseRegistrar
   end
 
   private
+
+  def club_decision_error(registration)
+    return NOT_PENDING_CLUB unless registration.status == 'pending_club'
+    return 'Der Kurs nimmt keine Anmeldungen mehr an' unless OPEN_COURSE_STATUSES.include?(@course.status)
+
+    nil
+  end
 
   def age_error(registration)
     return nil if @course.min_age.nil? || registration.geburtsdatum.nil?

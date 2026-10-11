@@ -1,7 +1,5 @@
 <p>Hallo <%= @first_name %>,</p>
-<% if @registration.status == 'pending_club' %>
-  <p>deine Anmeldung zum Kurs <strong><%= @course.title %></strong> ist eingegangen. Weil <%= @registration.billing_club&.name %> die Kursgebühr übernehmen soll, muss der Verein sie noch bestätigen. Danach bekommst du eine weitere Mail.</p>
-<% elsif @waitlisted %>
+<% if @waitlisted %>
   <p>der Kurs <strong><%= @course.title %></strong> ist voll. <%= @name %> steht auf der Warteliste. Wird ein Platz frei, rückt die Anmeldung automatisch nach und du bekommst eine weitere Mail.</p>
 <% else %>
   <p>die Anmeldung von <%= @name %> zum Kurs <strong><%= @course.title %></strong> ist bestätigt.</p>

@@ -3,4 +3,4 @@
 <% if @reason.present? %>
   <p>Begründung des Vereins: <%= @reason %></p>
 <% end %>
-<p>Du kannst dich ohne Verein neu anmelden und die Gebühr selbst tragen, oder dich direkt an deinen Verein wenden.</p>
+<p>Wenn du trotzdem teilnehmen möchtest, wende dich bitte an die Kursverantwortlichen<% if @course.contact_email.present? %> (<a href="mailto:<%= @course.contact_email %>"><%= @course.contact_email %></a>, du kannst auch einfach auf diese Mail antworten)<% end %>.</p>

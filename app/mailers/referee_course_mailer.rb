@@ -29,6 +29,20 @@ class RefereeCourseMailer < ApplicationMailer
     )
   end
 
+  # Selbstanmeldung, die noch auf den zahlenden Verein wartet. Eigene Vorlage,
+  # damit eine angepasste Bestaetigungsvorlage nie einen Platz zusagt.
+  def awaiting_club(registration, cancel_token = nil)
+    @cancel_link = "#{FrontendUrl.base}/kurs-anmeldung/abmelden/#{cancel_token}" if cancel_token
+    setup(registration)
+    @club = registration.billing_club || registration.club
+    templated_mail(
+      to: self.class.recipient(registration),
+      subject: "Anmeldung eingegangen: #{@course.title}",
+      default_reply_to: @course.contact_email.presence,
+      placeholders: placeholders.merge(club: @club&.name.to_s)
+    )
+  end
+
   def promoted(registration)
     course_mail(registration)
   end
@@ -116,8 +130,6 @@ class RefereeCourseMailer < ApplicationMailer
   end
 
   def registered_subject
-    return 'Anmeldung eingegangen' if @registration.status == 'pending_club'
-
     @waitlisted ? 'Warteliste' : 'Anmeldung bestätigt'
   end
 

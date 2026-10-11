@@ -1,4 +1,5 @@
 require 'test_helper'
+require 'csv'
 
 # Vereinsbestaetigung: Selbstanmeldungen, bei denen ein Verein zahlt, muss der
 # Verein bestaetigen, wenn der Landesverband das eingestellt hat.
@@ -124,5 +125,55 @@ class RefereeCourseClubConfirmationTest < ActionDispatch::IntegrationTest
           params: { state_association: { course_club_confirmation_required: false } }, as: :json
     assert_response :success
     assert_not @lv.reload.course_club_confirmation_required
+  end
+  test 'nach einer Ablehnung kann sich die Person wieder anmelden' do
+    referee = create(:referee, club: @club, email: 'sr@example.org', geburtsdatum: Date.new(2000, 1, 1))
+    user = create(:user, referee: referee, permissions: [{ 'user_group_id' => User::REFEREE_ROLE_ID }])
+    login(user)
+    post "/api/v2/referee/courses/#{@course.id}/registration", params: { registration: {} }, as: :json
+    reg = RefereeCourseRegistration.find(response.parsed_body['id'])
+    RefereeCourseRegistrar.new(@course).decline_club(reg, user: @vm, reason: 'Nein')
+
+    login(user)
+    post "/api/v2/referee/courses/#{@course.id}/registration", params: { registration: {} }, as: :json
+    assert_response :created
+    assert_equal 'pending_club', response.parsed_body['status']
+  end
+
+  test 'doppelte Bestaetigung nimmt den Platz nicht wieder weg' do
+    reg = public_registration
+    stale = RefereeCourseRegistration.find(reg.id)
+    registrar = RefereeCourseRegistrar.new(@course)
+    assert registrar.confirm_club(reg, user: @vm).success?
+    stale.status = 'pending_club' # Stand vor der ersten Bestaetigung, wie ein paralleler Request
+    second = RefereeCourseRegistrar.new(@course.reload).confirm_club(stale, user: @vm)
+    assert_not second.success?
+    assert_equal 'registered', reg.reload.status
+  end
+
+  test 'nach dem Kurs laesst sich nicht mehr bestaetigen; Loeschlauf raeumt liegengebliebene ab' do
+    reg = public_registration
+    @course.update_columns(status: 'held', ends_on: 10.days.ago.to_date)
+    login(@vm)
+    post "/api/v2/club/referee_courses/registrations/#{reg.id}/confirm"
+    assert_response :unprocessable_entity
+    assert_equal 'pending_club', reg.reload.status
+    assert_includes RefereeCourseRegistrationPurge.scopes.values.flat_map(&:ids), reg.id
+  end
+
+  test 'Mails: Eingang ohne Platzzusage, Ablehnung verweist an die Kursverantwortlichen' do
+    @course.update!(contact_email: 'rsk@lv.example')
+    reg = public_registration
+    waiting = RefereeCourseMailer.awaiting_club(reg)
+    assert_match 'eingegangen', waiting.subject
+    assert_no_match(/bestätigt/, waiting.text_part.body.to_s)
+    reg.update_columns(status: 'declined_by_club', club_decline_reason: 'Kein Mitglied')
+    declined = RefereeCourseMailer.club_declined(reg).text_part.body.to_s
+    assert_match 'Kursverantwortlichen', declined
+    assert_match 'rsk@lv.example', declined
+    assert_no_match(/selbst tragen/, declined)
+    rows = CSV.parse(RefereeCourseParticipantList.new(@course).to_csv.delete_prefix("\uFEFF"), col_sep: ';',
+                                                                                              headers: true)
+    assert_equal 'vom Verein abgelehnt', rows.first['Status']
   end
 end
