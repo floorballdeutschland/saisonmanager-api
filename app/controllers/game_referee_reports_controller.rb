@@ -108,14 +108,30 @@ class GameRefereeReportsController < ApplicationController
     sbk_reasons = reasons - [:match_penalty]
 
     if state_association.effective_manual_proceeding_creation
-      # Idempotent bei erneutem Upload; nur eine Matchstrafe führt vor die VSK.
-      _create_proceeding_proposal(state_association) if match_penalty
-      _send_to_sbk(report, state_association, reasons, proceeding_required: match_penalty)
+      _forward_manually(report, state_association, reasons, match_penalty)
       return
     end
 
     _send_to_vsk(report, state_association) if match_penalty
     _send_to_sbk(report, state_association, sbk_reasons) if sbk_reasons.any?
+  end
+
+  # Manueller Modus: Nur eine Matchstrafe führt vor die VSK, und dann über den
+  # Verfahrensvorschlag. Ein erneuter Upload richtet sich nach dessen Stand:
+  #
+  #   pending   bleibt offen, die SBK-Mail fordert erneut zur Eröffnung auf
+  #   rejected  wird wieder offen (pending): neuer Bericht, neue Entscheidung
+  #   opened    das Verfahren läuft, der neue Bericht geht direkt an die VSK,
+  #             die SBK bekommt ihn nur zur Kenntnis
+  def _forward_manually(report, state_association, reasons, match_penalty)
+    proposal = _pending_or_opened_proposal(state_association) if match_penalty
+
+    if proposal&.status == 'opened'
+      _send_to_vsk(report, state_association)
+      _send_to_sbk(report, state_association, reasons, proceeding: 'opened')
+    else
+      _send_to_sbk(report, state_association, reasons, proceeding: proposal && 'pending')
+    end
   end
 
   def _send_to_vsk(report, state_association)
@@ -128,24 +144,35 @@ class GameRefereeReportsController < ApplicationController
     ).deliver_later
   end
 
-  def _send_to_sbk(report, state_association, reasons, proceeding_required: false)
+  def _send_to_sbk(report, state_association, reasons, proceeding: nil)
     return if reasons.empty?
 
-    sbk_email = state_association.effective_sbk_email
-    return if sbk_email.blank?
+    # Wie RefereeMailer#sbk_reply_to: Ohne SBK-Adresse (auch nicht geerbt)
+    # landet der Bericht im Ansetzungs-Postfach statt nirgends. Gerade im
+    # manuellen Modus wäre er sonst verloren, weil die VSK ihn nicht bekommt.
+    sbk_email = state_association.effective_sbk_email.presence
+    unless sbk_email
+      Rails.logger.warn("GameRefereeReportsController: keine SBK-Adresse für LV #{state_association.id}, " \
+                        "Berichtsformular zu Spiel #{@game.id} geht an #{RefereeMailer::REPLY_TO}")
+      sbk_email = RefereeMailer::REPLY_TO
+    end
 
     RefereeMailer.referee_report_to_sbk(
       sbk_email, current_user, @game, report,
-      reasons: reasons, proceeding_required: proceeding_required,
+      reasons: reasons, proceeding: proceeding,
       game_url: @game.url, checklist_answers: @game.checklist_answers || []
     ).deliver_later
   end
 
-  def _create_proceeding_proposal(state_association)
-    ProceedingProposal.find_or_create_by(game_id: @game.id) do |proposal|
-      proposal.state_association = state_association
-      proposal.status = 'pending'
-      proposal.created_by_id = current_user.id
-    end
+  # Ein abgelehnter Vorschlag wird bei einem neuen Bericht wieder offen; die
+  # Entscheidung von damals galt dem verworfenen Bericht. Ein offener oder
+  # eröffneter bleibt unverändert.
+  def _pending_or_opened_proposal(state_association)
+    proposal = ProceedingProposal.find_or_initialize_by(game_id: @game.id)
+    return proposal unless proposal.new_record? || proposal.status == 'rejected'
+
+    proposal.update!(state_association: state_association, status: 'pending',
+                     created_by_id: current_user.id, decided_by_id: nil, decided_at: nil)
+    proposal
   end
 end

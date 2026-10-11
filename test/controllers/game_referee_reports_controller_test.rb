@@ -157,6 +157,49 @@ class GameRefereeReportsControllerTest < ActionDispatch::IntegrationTest
     assert_forwarded_to %w[dach-sbk@example.de], proposals: 0
   end
 
+  # --- Erneuter Upload im manuellen Modus ------------------------------------
+
+  test 'manuell: erneuter Upload bei offenem Vorschlag fordert erneut zur Eröffnung auf' do
+    @sa.update!(manual_proceeding_creation: true)
+    assert_forwarded_to %w[sbk@example.de], proposals: 1
+    mails = assert_forwarded_to %w[sbk@example.de], proposals: 0
+    assert_includes body_of(mails.first), 'Verfahren vor der VSK einzuleiten'
+    assert_equal 'pending', ProceedingProposal.find_by(game_id: @game.id).status
+  end
+
+  test 'manuell: erneuter Upload nach Ablehnung macht den Vorschlag wieder offen' do
+    @sa.update!(manual_proceeding_creation: true)
+    sbk = User.create!(user_name: "sbk_#{SecureRandom.hex(4)}", password: 'password123',
+                       password_confirmation: 'password123', permissions: [], teams: [])
+    ProceedingProposal.create!(game: @game, state_association: @sa, status: 'rejected',
+                               decided_by_id: sbk.id, decided_at: 1.day.ago)
+
+    mails = assert_forwarded_to %w[sbk@example.de], proposals: 0
+    assert_includes body_of(mails.first), 'Verfahren vor der VSK einzuleiten'
+    proposal = ProceedingProposal.find_by(game_id: @game.id)
+    assert_equal 'pending', proposal.status
+    assert_nil proposal.decided_by_id
+    assert_nil proposal.decided_at
+    assert_equal @user.id, proposal.created_by_id
+  end
+
+  test 'manuell: erneuter Upload bei eröffnetem Verfahren geht direkt an die VSK, SBK nur zur Kenntnis' do
+    @sa.update!(manual_proceeding_creation: true)
+    ProceedingProposal.create!(game: @game, state_association: @sa, status: 'opened', decided_at: 1.day.ago)
+
+    mails = assert_forwarded_to %w[vsk@example.de sbk@example.de], proposals: 0
+    sbk_body = body_of(mails.find { |m| m.to == ['sbk@example.de'] })
+    assert_includes sbk_body, 'bereits eröffnet'
+    assert_not_includes sbk_body, 'Verfahren vor der VSK einzuleiten'
+    assert_equal 'opened', ProceedingProposal.find_by(game_id: @game.id).status
+  end
+
+  test 'ohne SBK-Adresse geht der Bericht ans Ansetzungs-Postfach' do
+    @sa.update!(sbk_email: nil)
+    @game.update!(events: [TECH])
+    assert_forwarded_to [RefereeMailer::REPLY_TO], proposals: 0
+  end
+
   # --- GET: Upload-Bereich ---------------------------------------------------
 
   test 'GET nennt angesetzten Schiris Pflicht und Empfänger' do

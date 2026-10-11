@@ -376,7 +376,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'game_number', description: 'Spielnummer' },
         { key: 'report_reasons', description: 'Anlass des Berichts, z. B. „eine technische Matchstrafe“' },
         { key: 'proceedings_url', description: 'Link auf die Verfahrensvorschläge (nur bei Matchstrafe im ' \
-                                               'manuellen Modus, sonst leer)' }
+                                               'manuellen Modus mit offenem Vorschlag, sonst leer)' }
       ]
     },
     'TransferRequestMailer#new_request_to_former_club' => {

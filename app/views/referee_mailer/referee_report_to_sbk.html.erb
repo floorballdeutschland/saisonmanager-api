@@ -8,12 +8,17 @@
   Anlass: <%= @reasons_text %>.
 </p>
 
-<% if @proceeding_required %>
+<% if @proceeding == 'pending' %>
 <p>
   <strong>Wegen der Matchstrafe ist ein Verfahren vor der VSK einzuleiten.</strong>
   Der Landesverband leitet Verfahren manuell ein, der Bericht geht deshalb nicht automatisch an die VSK.
   Bitte prüft den Verfahrensvorschlag und eröffnet das Verfahren; erst dann erhält die VSK den Bericht:
   <a href="<%= @proceedings_url %>"><%= @proceedings_url %></a>
+</p>
+<% elsif @proceeding == 'opened' %>
+<p>
+  Das Verfahren vor der VSK ist bereits eröffnet. Dieser Bericht wurde deshalb direkt an die VSK
+  weitergeleitet und geht euch zur Kenntnis zu.
 </p>
 <% else %>
 <p>Der Bericht geht euch zur Kenntnis zu. Ein Verfahren vor der VSK ist dafür nicht vorgesehen.</p>

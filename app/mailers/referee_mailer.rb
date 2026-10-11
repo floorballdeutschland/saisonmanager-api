@@ -328,15 +328,18 @@ class RefereeMailer < ApplicationMailer
   #
   # * zur Kenntnis: technische Matchstrafe oder besonderes Ereignis. Beides
   #   zieht kein VSK-Verfahren nach sich, die VSK bekommt den Bericht nicht.
-  # * `proceeding_required`: volle Matchstrafe im manuellen Modus des
-  #   Landesverbands. Die SBK muss das Verfahren vor der VSK selbst einleiten;
-  #   die Mail verlinkt deshalb die Verfahrensvorschläge, über die der Bericht
-  #   erst mit der Eröffnung an die VSK geht.
+  # * `proceeding: 'pending'`: volle Matchstrafe im manuellen Modus des
+  #   Landesverbands, der Verfahrensvorschlag ist offen. Die SBK muss das
+  #   Verfahren vor der VSK selbst einleiten; die Mail verlinkt deshalb die
+  #   Verfahrensvorschläge, über die der Bericht erst mit der Eröffnung an die
+  #   VSK geht.
+  # * `proceeding: 'opened'`: das Verfahren ist schon eröffnet, ein neuer
+  #   Bericht ging direkt an die VSK. Die SBK bekommt ihn zur Kenntnis.
   #
   # `reasons` nennt die Gründe, die DIESE Mail betreffen. Im automatischen
   # Mischfall geht die Matchstrafe getrennt an die VSK und fehlt hier.
   def referee_report_to_sbk(sbk_email, uploader, game, report, reasons:,
-                            proceeding_required: false, game_url: nil, checklist_answers: [])
+                            proceeding: nil, game_url: nil, checklist_answers: [])
     assignment = game.referee_assignment
 
     @uploader = uploader
@@ -345,7 +348,7 @@ class RefereeMailer < ApplicationMailer
     @referee2 = assignment&.referee2
     @game_url = game_url
     @reasons_text = report_reasons_text(reasons)
-    @proceeding_required = proceeding_required
+    @proceeding = proceeding.to_s
     @proceedings_url = "#{FrontendUrl.base}/verwaltung/verfahrensvorschlaege"
     @checklist_answers = checklist_answers
     @checklist_all_ok = checklist_answers.all? { |a| a['answer'] == true }
@@ -360,7 +363,7 @@ class RefereeMailer < ApplicationMailer
       placeholders: {
         game_number: game.game_number,
         report_reasons: @reasons_text,
-        proceedings_url: proceeding_required ? @proceedings_url : ''
+        proceedings_url: @proceeding == 'pending' ? @proceedings_url : ''
       }
     )
   end
