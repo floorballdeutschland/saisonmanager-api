@@ -238,7 +238,8 @@ module Admin
       return forbidden_response unless can_access_referee?(@referee, include_vm: false)
 
       results = RefereeCourseResult
-                .awaiting_lv_review
+                .in_history
+                .includes(:referee_course)
                 .where(referee_id: @referee.id)
                 .order(kursstichtag: :desc, created_at: :desc)
 

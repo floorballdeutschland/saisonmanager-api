@@ -116,7 +116,7 @@ class RefereeAccountCreator
     scope = scope.where.not(id: ignore_user_id) if ignore_user_id
     scope.exists?
   end
-  private_class_method :name_slug, :unique_user_name, :user_name_taken?
+  private_class_method :unique_user_name, :user_name_taken?
 
   # deliver_later: Für die Massenanlage wird die Begrüßungsmail eingereiht statt im
   # Request verschickt — hundert Zustellungen hintereinander ließen den Request

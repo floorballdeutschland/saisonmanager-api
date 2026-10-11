@@ -109,6 +109,163 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'link', description: 'Link zum (erstmaligen) Setzen des Passworts' }
       ]
     },
+    'UserMailer#course_lead_invited' => {
+      mailer_class: 'UserMailer',
+      action_name: 'course_lead_invited',
+      description: 'Einladung einer neuen Kursleitung für einen Schiedsrichterkurs (Benutzername + Link zum Passwort-Setzen).',
+      default_subject: 'Kursleitung im Saisonmanager: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname des Empfängers (für die Anrede)' },
+        { key: 'username', description: 'Benutzername des Kontos' },
+        { key: 'link', description: 'Link zum (erstmaligen) Setzen des Passworts' },
+        { key: 'course_title', description: 'Titel des Kurses' }
+      ]
+    },
+    'RefereeCourseMailer#registered' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'registered',
+      description: 'Bestätigung einer Kursanmeldung oder Platz auf der Warteliste.',
+      default_subject: 'Anmeldung bestätigt: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der angemeldeten Person' },
+        { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
+        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' },
+        { key: 'cancel_link', description: 'Abmeldelink (nur bei Anmeldung ohne Konto, sonst leer)' }
+      ]
+    },
+    'RefereeCourseMailer#promoted' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'promoted',
+      description: 'Nachgerückt: Ein Platz ist frei geworden, die Anmeldung von der Warteliste gilt jetzt.',
+      default_subject: 'Platz frei geworden: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der angemeldeten Person' },
+        { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
+        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' },
+        { key: 'cancel_link', description: 'Abmeldelink (nur bei Anmeldung ohne Konto, sonst leer)' }
+      ]
+    },
+    'RefereeCourseMailer#cancelled' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'cancelled',
+      description: 'Bestätigung einer Abmeldung vom Kurs.',
+      default_subject: 'Abmeldung bestätigt: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der angemeldeten Person' },
+        { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
+        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' },
+        { key: 'cancel_link', description: 'Abmeldelink (nur bei Anmeldung ohne Konto, sonst leer)' }
+      ]
+    },
+    'RefereeCourseMailer#course_cancelled' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'course_cancelled',
+      description: 'Der Kurs wurde abgesagt (an alle aktiven Anmeldungen).',
+      default_subject: 'Kurs abgesagt: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der angemeldeten Person' },
+        { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
+        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' },
+        { key: 'cancel_link', description: 'Abmeldelink (nur bei Anmeldung ohne Konto, sonst leer)' }
+      ]
+    },
+    'RefereeCourseMailer#awaiting_club' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'awaiting_club',
+      description: 'An die angemeldete Person: Anmeldung eingegangen, der zahlende Verein muss noch bestätigen.',
+      default_subject: 'Anmeldung eingegangen: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der angemeldeten Person' },
+        { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'club', description: 'Name des zahlenden Vereins' },
+        { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
+        { key: 'cancel_link', description: 'Abmeldelink (nur bei Anmeldung ohne Konto, sonst leer)' }
+      ]
+    },
+    'RefereeCourseMailer#club_confirmation_request' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'club_confirmation_request',
+      description: 'An den zahlenden Verein: Selbstanmeldung zu einem Schiedsrichterkurs bestätigen (Verbandseinstellung).',
+      default_subject: 'Kursanmeldung bestätigen: {{name}}, {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'dates', description: 'Termine' },
+        { key: 'club', description: 'Name des Vereins' },
+        { key: 'fee', description: 'Kursgebühr für den Verein' },
+        { key: 'link', description: 'Link zur Vereinsansicht der Kurse' }
+      ]
+    },
+    'RefereeCourseMailer#club_declined' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'club_declined',
+      description: 'An die angemeldete Person: Der Verein übernimmt die Kursgebühr nicht.',
+      default_subject: 'Anmeldung nicht bestätigt: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'club', description: 'Name des Vereins' },
+        { key: 'reason', description: 'Begründung des Vereins' }
+      ]
+    },
+    'RefereeCourseMailer#confirm_email' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'confirm_email',
+      description: 'Öffentliche Kursanmeldung: Bitte um Bestätigung der E-Mail-Adresse (Double-Opt-in).',
+      default_subject: 'Bitte Anmeldung bestätigen: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der angemeldeten Person' },
+        { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'dates', description: 'Termine (ohne Online-Link)' },
+        { key: 'link', description: 'Link zur Bestätigung' }
+      ]
+    },
+    'RefereeCourseMailer#guardian_consent' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'guardian_consent',
+      description: 'Bitte um Einwilligung der Erziehungsberechtigten bei Anmeldungen unter 16 Jahren.',
+      default_subject: 'Einwilligung zur Anmeldung: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der angemeldeten Person' },
+        { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
+        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' },
+        { key: 'cancel_link', description: 'Abmeldelink (nur bei Anmeldung ohne Konto, sonst leer)' },
+        { key: 'guardian_name', description: 'Name der Erziehungsberechtigten' },
+        { key: 'link', description: 'Link zur Einwilligung' }
+      ]
+    },
     'ClubMailer#game_day_scan_reminder' => {
       mailer_class: 'ClubMailer',
       action_name: 'game_day_scan_reminder',

@@ -357,6 +357,26 @@ Rails.application.routes.draw do
         resources :referee_tags, only: %i[index create update destroy]
         resources :referee_license_levels, only: %i[index create update destroy]
         resources :penalty_codes, only: %i[index create update destroy]
+        resource :referee_course_settings, only: %i[show update]
+        resources :referee_courses, only: %i[index show create update destroy] do
+          get :options, on: :collection
+          post :submit_results, on: :member
+          get :participants, on: :member
+          resources :fields, controller: 'referee_course_fields', only: %i[create update destroy]
+          resources :registrations, controller: 'referee_course_registrations',
+                                    only: %i[index create update destroy]
+          resources :leads, controller: 'referee_course_leads', only: %i[create update destroy]
+        end
+        resources :referee_course_field_templates, only: %i[index create update destroy]
+        resources :referee_course_billing_exports, only: %i[index create] do
+          get :preview, on: :collection
+          get :download, on: :member
+        end
+        resources :referee_course_licensing, only: %i[index update] do
+          post :approve, on: :member
+          post :reject, on: :member
+          post :approve_many, on: :collection
+        end
         resources :referee_course_imports, only: %i[index show create destroy] do
           post :submit, on: :member
         end
@@ -521,6 +541,31 @@ Rails.application.routes.draw do
       get  'user/referee_feedbacks', to: 'user_referee_feedbacks#index'
       post 'user/referee_feedbacks', to: 'user_referee_feedbacks#create'
 
+      # Schiedsrichterkurse: Schiri-Portal, Verein, Einwilligung Erziehungsberechtigte
+      get    'referee/courses',                  to: 'referee_courses_portal#index'
+      post   'referee/courses/:id/registration', to: 'referee_courses_portal#register'
+      patch  'referee/courses/:id/registration', to: 'referee_courses_portal#update_registration'
+      delete 'referee/courses/:id/registration', to: 'referee_courses_portal#cancel'
+      get    'club/referee_courses',                                 to: 'club_referee_courses#index'
+      get    'club/referee_courses/referees',                        to: 'club_referee_courses#referees'
+      post   'club/referee_courses/:id/registrations',               to: 'club_referee_courses#register'
+      delete 'club/referee_courses/registrations/:registration_id',  to: 'club_referee_courses#cancel'
+      post   'club/referee_courses/registrations/:registration_id/confirm', to: 'club_referee_courses#confirm'
+      post   'club/referee_courses/registrations/:registration_id/decline', to: 'club_referee_courses#decline'
+      get    'public/referee_courses',                    to: 'public_referee_courses#index'
+      get    'public/referee_courses/clubs',              to: 'public_referee_courses#clubs'
+      get    'public/referee_courses/:id',                to: 'public_referee_courses#show'
+      post   'public/referee_courses/:id/registrations',  to: 'public_referee_courses#register'
+      get    'public/course_registrations/confirm/:token', to: 'public_course_registrations#show_confirm'
+      post   'public/course_registrations/confirm/:token', to: 'public_course_registrations#confirm'
+      get    'public/course_registrations/cancel/:token',  to: 'public_course_registrations#show_cancel'
+      post   'public/course_registrations/cancel/:token',  to: 'public_course_registrations#cancel'
+      get    'public/course_guardian_consents/:token', to: 'public_course_guardian_consents#show'
+      post   'public/course_guardian_consents/:token', to: 'public_course_guardian_consents#create'
+      # Kursleitung: „Meine Kurse" (CourseLeadCoursesController)
+      get   'course_lead/courses',     to: 'course_lead_courses#index'
+      get   'course_lead/courses/:id', to: 'course_lead_courses#show'
+      patch 'course_lead/courses/:id/registrations/:registration_id', to: 'course_lead_courses#update_registration'
       get   'user/referee_feedback_settings',     to: 'user_referee_feedback_settings#index'
       patch 'user/referee_feedback_settings/:id', to: 'user_referee_feedback_settings#update'
 

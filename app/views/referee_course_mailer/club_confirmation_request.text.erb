@@ -1,0 +1,11 @@
+Hallo,
+
+<%= @name %> hat sich zum Schiedsrichterkurs „<%= @course.title %>“ angemeldet und <%= @club&.name %> als zahlenden Verein angegeben.<% if @fee %> Die Kursgebühr beträgt <%= @fee %> €.<% end %>
+
+Termine:
+<%= render 'sessions' %>
+
+Bitte bestätigt die Anmeldung oder lehnt sie ab:
+<%= @link %>
+
+Erst mit eurer Bestätigung bekommt die Anmeldung einen Platz.

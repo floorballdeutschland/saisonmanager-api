@@ -17,6 +17,12 @@ class User < ApplicationRecord
   # referee_role_not_combined).
   REFEREE_ROLE_ID = 6
 
+  # Kursleitung eines Schiedsrichterkurses. Ohne Verbandsscope: Die Rechte
+  # ergeben sich allein aus der Zuordnung zu Kursen (RefereeCourseLead). Als
+  # einzige Rolle mit der Schiedsrichter-Rolle kombinierbar, weil viele
+  # Kursleitungen selbst pfeifen.
+  COURSE_LEAD_ROLE_ID = 8
+
   # Welche Rollen ein Konto anderen Konten zuweisen darf, je eigener Rolle.
   # Quelle für die Rollenprüfung im Admin::UsersController und für die Auswahl
   # in der Benutzermaske (permissions_items). Die Admin-Rolle (1) darf nur Admin
@@ -29,7 +35,7 @@ class User < ApplicationRecord
   # Verbund baut. Eine Rolle mit Verbund-Scope darf dort nicht durchlaufen, sie
   # landete sonst ohne game_operation_id und damit global im Konto.
   ASSIGNABLE_ROLE_IDS = {
-    admin: [1, 2, 3, 4, 5, 6, 7],
+    admin: [1, 2, 3, 4, 5, 6, 7, 8],
     sbk: [2, 3, 4, 5, 7],
     rsk: [3, 7],
     vm: [4, 5]
@@ -62,6 +68,18 @@ class User < ApplicationRecord
   validate :referee_role_not_combined, if: -> { permissions_changed? }
 
   belongs_to :referee, optional: true
+  # Schiedsrichterkurse: Kursleitungen fallen mit dem Konto weg, Kurse und
+  # Anmeldungen bleiben und verlieren nur den Verweis.
+  has_many :referee_course_leads, dependent: :destroy
+  has_many :referee_course_registrations, dependent: :nullify
+  has_many :created_referee_courses, class_name: 'RefereeCourse', foreign_key: :created_by_user_id,
+                                     inverse_of: :created_by_user, dependent: :nullify
+  has_many :club_confirmed_referee_course_registrations, class_name: 'RefereeCourseRegistration',
+                                                         foreign_key: :club_confirmed_by_user_id,
+                                                         inverse_of: :club_confirmed_by_user, dependent: :nullify
+  has_many :registered_referee_course_registrations, class_name: 'RefereeCourseRegistration',
+                                                     foreign_key: :registered_by_user_id,
+                                                     inverse_of: :registered_by_user, dependent: :nullify
 
   scope :not_archived, -> { where(archived_at: nil) }
 
@@ -321,6 +339,11 @@ class User < ApplicationRecord
     # Hier oben gelten sie für beide Wege.
     result[:show_page_referee_observations] = referee_id.present?
     result[:menu_item_referee_observations] = referee_coach_qualified?
+    # Kursleitung – ebenfalls vor dem Early-Return, weil die Rolle mit der
+    # Schiedsrichter-Rolle kombinierbar ist.
+    result[:menu_item_referee_courses_lead] = ph[:course_lead].present? && course_lead_access?
+    # Kursanmeldung im Schiri-Portal, ebenfalls vor dem Early-Return.
+    result[:menu_item_referee_courses_portal] = referee_id.present? && Setting.referee_courses_enabled?
 
     if has_schiri_role && !ph[:admin].present? && !ph[:sbk].present? && !ph[:rsk].present? && !ph[:ansetzer].present? && !ph[:vm].present? && !ph[:tm].present?
       result[:menu_item_referee_profile] = true
@@ -421,9 +444,27 @@ class User < ApplicationRecord
     # (RefereeObservationPolicy#can_moderate?). Ohne eigenen Schluessel stuende
     # der Knopf auch bei ihr in der Maske und liefe in eine Absage.
     result[:referee_observation_moderate] = ph[:admin].present? || ph[:rsk].present?
-    result[:menu_item_referee_course_import] = has_full_referee_access
+    # Bei abgeschaltetem CSV-Import bleibt der Menuepunkt, solange der Importeur
+    # noch offene Zeilen hat -- die muessen sich abarbeiten lassen. Die Abfrage
+    # laeuft nur fuer die wenigen Konten mit vollem Schiri-Zugriff.
+    csv_import_enabled = Setting.referee_course_csv_import_enabled?
+    result[:menu_item_referee_course_import] =
+      has_full_referee_access &&
+      (csv_import_enabled || RefereeCourseResult.open_in_active_import.exists?)
+    # Steuert den Upload-Knopf in der Importliste (die API sperrt ohnehin).
+    result[:referee_course_import_upload] = has_full_referee_access && csv_import_enabled
     result[:menu_item_referee_course_review] = has_full_referee_access || lv_rsk_review_enabled?(ph)
+    # Lizenzvergabe fuer Kurse im System: nur FD (Admin, FD-RSK).
+    result[:menu_item_referee_course_licensing] = has_full_referee_access && Setting.referee_courses_enabled?
+    # Kurse im System: Admin und RSK, sofern der Schalter fuer mindestens einen
+    # ihrer Landesverbaende an ist (RefereeCoursePolicy#any_access?).
+    result[:menu_item_referee_courses] =
+      (ph[:admin].present? || ph[:rsk].present?) && RefereeCoursePolicy.new(self).any_access?
+    # Rechnungsexport der Kurse: wer Kurse verwaltet, exportiert fuer seine LV.
+    result[:menu_item_referee_course_billing] = result[:menu_item_referee_courses]
     result[:menu_item_referee_vm] = ph[:vm].present?
+    # Kursanmeldung durch den Verein (ClubRefereeCoursesController).
+    result[:menu_item_club_referee_courses] = ph[:vm].present? && Setting.referee_courses_enabled?
     result[:menu_item_player_vm] = ph[:vm].present? || ph[:tm].present?
     # Portal „Meine Auswärtsspieltage" für Gastmannschafts-Bestätigung (TM/VM).
     # Der Menüpunkt erscheint nur, wenn für eine der verantworteten Mannschaften
@@ -770,6 +811,8 @@ class User < ApplicationRecord
         admin_go_ids << go_id
       when 6 # Schiedsrichter (self-service, no go_id needed)
         nil
+      when COURSE_LEAD_ROLE_ID # Kursleitung, Rechte ueber RefereeCourseLead
+        result[:course_lead] = true
       end
     end
 
@@ -853,6 +896,12 @@ class User < ApplicationRecord
     result[:admin] = (all_go == admin_go_ids ? [0] : admin_go_ids) if admin_go_ids.present?
 
     result
+  end
+
+  # Ob die Kursleitung mindestens einen Kurs hat, fuer den der Schalter „Kurse
+  # im System" an ist. Steuert den Menuepunkt „Meine Kurse".
+  def course_lead_access?
+    RefereeCourse.joins(:leads).where(referee_course_leads: { user_id: id }).distinct.any?(&:process_enabled?)
   end
 
   def self.login(login, password)
@@ -947,7 +996,7 @@ class User < ApplicationRecord
   # Verwaltungsrechte (bzw. umgekehrt), und permissions_items müsste zwei
   # widersprüchliche Menüs bedienen.
   def referee_role_not_combined
-    role_ids = Array(permissions).map { |p| p['user_group_id'].to_i }.uniq
+    role_ids = Array(permissions).map { |p| p['user_group_id'].to_i }.uniq - [COURSE_LEAD_ROLE_ID]
     return unless role_ids.include?(REFEREE_ROLE_ID) && role_ids.length > 1
 
     errors.add(:permissions, 'Die Schiedsrichter-Rolle kann nicht mit anderen Rollen kombiniert werden')
