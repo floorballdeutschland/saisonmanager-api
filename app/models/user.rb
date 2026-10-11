@@ -457,6 +457,8 @@ class User < ApplicationRecord
     # ihrer Landesverbaende an ist (RefereeCoursePolicy#any_access?).
     result[:menu_item_referee_courses] =
       (ph[:admin].present? || ph[:rsk].present?) && RefereeCoursePolicy.new(self).any_access?
+    # Rechnungsexport der Kurse: wer Kurse verwaltet, exportiert fuer seine LV.
+    result[:menu_item_referee_course_billing] = result[:menu_item_referee_courses]
     result[:menu_item_referee_vm] = ph[:vm].present?
     # Kursanmeldung durch den Verein (ClubRefereeCoursesController).
     result[:menu_item_club_referee_courses] = ph[:vm].present? && Setting.referee_courses_enabled?

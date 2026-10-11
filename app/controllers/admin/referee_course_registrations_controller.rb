@@ -95,6 +95,9 @@ module Admin
       if @registration.cancelled?
         return render json: { error: 'Die Anmeldung ist bereits abgemeldet' }, status: :unprocessable_entity
       end
+      if @registration.billed_at
+        return render json: { error: 'Die Anmeldung ist bereits abgerechnet' }, status: :unprocessable_entity
+      end
 
       was_seated = RefereeCourseRegistration::SEAT_STATUSES.include?(@registration.status)
       @registration.update_columns(status: 'cancelled_by_organizer', cancelled_at: Time.current,
