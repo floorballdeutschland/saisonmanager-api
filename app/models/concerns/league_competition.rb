@@ -90,4 +90,15 @@ module LeagueCompetition
   def effective_field_size
     field_size.presence || preround_league&.field_size.presence
   end
+
+  # Hoechstzahl Spieler je Mannschaft im Spielbericht (api#784): Grossfeld 20,
+  # Kleinfeld 14. Feste Werte je Feldgroesse, keine Ueberschreibung je Liga.
+  # Ueber effective_field_size, damit Playoff-Ligen ohne eigene Feldgroesse die
+  # Grenze der Hauptrunde erben. Ohne bekannte Feldgroesse `nil`: Dann wird
+  # nicht geprueft und das Frontend zeigt keinen Zaehler.
+  MAX_LINEUP_PLAYERS = { 'GF' => 20, 'KF' => 14 }.freeze
+
+  def max_lineup_players
+    MAX_LINEUP_PLAYERS[effective_field_size]
+  end
 end

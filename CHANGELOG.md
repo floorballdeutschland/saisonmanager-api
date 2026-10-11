@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Kadergröße im Spielbericht begrenzt** (saisonmanager-api#784, saisonmanager#522): Je Mannschaft und Spiel stehen höchstens 20 Spieler/innen (Großfeld) bzw. 14 (Kleinfeld) im Spielbericht, für alle Rollen einschließlich Admin und SBK. Freitext-Einträge zählen mit, Trainer/Betreuer nicht. Playoff-Ligen ohne eigene Feldgröße erben die Grenze der Hauptrunde, Ligen ohne Feldgröße bleiben unbegrenzt. „Aufstellung aus letztem Spiel“ übernimmt nur bis zur Grenze und meldet den Rest als „Kader voll“. Die Kadermaske zeigt den Zähler (z. B. „13 / 14“) und sperrt das Eintragen neuer Personen, sobald der Kader voll ist; Austragen und Nummern ändern bleiben möglich.
+
 ### Behoben
 
 - **Direkter Vergleich erst, wenn alle Punktgleichen gegeneinander gespielt haben**: In Ligen mit direktem Vergleich zählte bisher jedes schon gespielte Spiel unter den punktgleichen Teams, auch wenn einzelne Duelle noch fehlten. Bei drei Teams auf gleichen Punkten konnte so ein Team, das gegen keins der anderen gespielt hatte, vor einem Team mit deutlich besserer Tordifferenz stehen, nur weil dieses sein Duell gegen das dritte verloren hatte (Verbandsliga U13 Kleinfeld des NWFV am 11.10.2026). Fehlt unter den Punktgleichen noch ein Duell, entscheiden jetzt Tordifferenz und erzielte Tore.
