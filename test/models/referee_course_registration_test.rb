@@ -99,4 +99,43 @@ class RefereeCourseRegistrationTest < ActiveSupport::TestCase
     assert_equal 21, build(geburtsdatum: Date.new(2005, 11, 21)).age_at_course
     assert_equal 20, build(geburtsdatum: Date.new(2005, 11, 22)).age_at_course
   end
+  test 'Schiri-Zusammenfuehrung: im selben Kurs bleibt nur eine aktive Anmeldung' do
+    master = create(:referee)
+    secondary = create(:referee)
+    other = RefereeCourse.create!(title: 'G-Kurs', course_type: 'g', state_association: @lv,
+                                  sessions: [{ 'starts_at' => '2026-12-05T09:00:00+01:00' }])
+    third = RefereeCourse.create!(title: 'J-Kurs', course_type: 'j', state_association: @lv,
+                                  sessions: [{ 'starts_at' => '2026-12-12T09:00:00+01:00' }])
+    both_active_m = build(referee: master, status: 'registered', skip_required_answers: true).tap(&:save!)
+    both_active_s = build(referee: secondary, vorname: 'Zweit', status: 'registered', skip_required_answers: true)
+                    .tap(&:save!)
+    m_cancelled = other.registrations.create!(vorname: 'A', nachname: 'B', geburtsdatum: Date.new(2000, 1, 1),
+                                              referee: master, status: 'cancelled_by_participant')
+    s_active = other.registrations.create!(vorname: 'A', nachname: 'B', geburtsdatum: Date.new(2000, 1, 1),
+                                           referee: secondary, status: 'registered')
+    s_only = third.registrations.create!(vorname: 'A', nachname: 'B', geburtsdatum: Date.new(2000, 1, 1),
+                                         referee: secondary, status: 'registered')
+
+    secondary.merge_into!(master)
+
+    assert_equal [master.id, 'registered'], [both_active_m.reload.referee_id, both_active_m.status]
+    assert_equal [nil, 'cancelled_by_organizer'], [both_active_s.reload.referee_id, both_active_s.status]
+    assert_equal [master.id, 'registered'], [s_active.reload.referee_id, s_active.status]
+    assert_equal [nil, 'cancelled_by_participant'], [m_cancelled.reload.referee_id, m_cancelled.status]
+    assert_equal master.id, s_only.reload.referee_id
+  end
+
+  test 'Schiri-Zusammenfuehrung gibt den Platz der doppelten Anmeldung an die Warteliste' do
+    master = create(:referee)
+    secondary = create(:referee)
+    @course.update!(status: 'published', max_participants: 2)
+    build(referee: master, status: 'registered', skip_required_answers: true).save!
+    build(referee: secondary, vorname: 'Zweit', status: 'registered', skip_required_answers: true).save!
+    waiting = build(vorname: 'Warte', email: 'w@example.org', status: 'waitlisted', skip_required_answers: true)
+    waiting.save!
+
+    secondary.merge_into!(master)
+
+    assert_equal 'registered', waiting.reload.status
+  end
 end
