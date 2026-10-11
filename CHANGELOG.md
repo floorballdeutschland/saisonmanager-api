@@ -22,6 +22,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
   - Die Kursleitung sieht unter „Meine Kurse“ nur ihre Kurse und die Teilnehmenden ohne Kontakt- und Rechnungsdaten.
   - Sie trägt Anwesenheit, Testversion, Punkte und Ergebnis ein.
   - Die Rolle lässt sich mit der Schiri-Rolle kombinieren und fällt mit der letzten Kurszuordnung wieder weg.
+- **Kursanmeldung im Schiri-Portal und durch den Verein** (Paket 2):
+  - Schiris sehen unter „Kurse“ das Angebot und melden sich selbst an und ab; angestrebte Stufe, Bemerkung und Zusatzfelder lassen sich bis zum Anmeldeschluss ändern.
+  - Vereinsmanager melden eigene Schiris oder neue Personen ihres Vereins an. Die Rechnung geht an den Verein.
+  - Bei vollem Kurs geht die Anmeldung auf die Warteliste. Wird ein Platz frei (Abmeldung oder höhere Höchstzahl), rückt die älteste Anmeldung automatisch nach, mit Mail.
+  - Eine neue Person unter 16 ist erst angemeldet, wenn die Erziehungsberechtigten per Link einwilligen.
+  - Neue Mails (Bestätigung, Warteliste, Nachrücken, Abmeldung, Kursabsage, Einwilligung) sind als Vorlagen editierbar. Den Online-Link bekommen nur Angemeldete per Mail.
+  - Eine Abmeldung nach der Abmeldefrist bleibt möglich, die Gebühr bleibt dann fällig.
 - **Schalter für die Kursprozesse in den Schiri-Einstellungen**: Unter `/verwaltung/schiedsrichter/einstellungen` schaltet der Admin den CSV-Import von Kursergebnissen und die Kurse im System getrennt an und aus; die Kurse auf Wunsch nur für einzelne Landesverbände. Ein abgeschalteter Import sperrt nur neue Uploads: Offene Importe lassen sich weiter bearbeiten und einreichen, und die LV-Freigabe läuft weiter. Der Menüpunkt „Kursergebnisse“ bleibt sichtbar, bis keine offenen Zeilen mehr da sind. Vorgabe ohne Eingriff: Import an, Kurse aus. Vorbereitung für die Kurse im System, die den CSV-Import zum Jahresende ablösen.
 
 ## [1.129.0] - 2026-10-08

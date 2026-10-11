@@ -123,6 +123,83 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'course_title', description: 'Titel des Kurses' }
       ]
     },
+    'RefereeCourseMailer#registered' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'registered',
+      description: 'Bestätigung einer Kursanmeldung oder Platz auf der Warteliste.',
+      default_subject: 'Anmeldung bestätigt: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der angemeldeten Person' },
+        { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
+        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' }
+      ]
+    },
+    'RefereeCourseMailer#promoted' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'promoted',
+      description: 'Nachgerückt: Ein Platz ist frei geworden, die Anmeldung von der Warteliste gilt jetzt.',
+      default_subject: 'Platz frei geworden: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der angemeldeten Person' },
+        { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
+        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' }
+      ]
+    },
+    'RefereeCourseMailer#cancelled' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'cancelled',
+      description: 'Bestätigung einer Abmeldung vom Kurs.',
+      default_subject: 'Abmeldung bestätigt: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der angemeldeten Person' },
+        { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
+        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' }
+      ]
+    },
+    'RefereeCourseMailer#course_cancelled' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'course_cancelled',
+      description: 'Der Kurs wurde abgesagt (an alle aktiven Anmeldungen).',
+      default_subject: 'Kurs abgesagt: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der angemeldeten Person' },
+        { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
+        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' }
+      ]
+    },
+    'RefereeCourseMailer#guardian_consent' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'guardian_consent',
+      description: 'Bitte um Einwilligung der Erziehungsberechtigten bei Anmeldungen unter 16 Jahren.',
+      default_subject: 'Einwilligung zur Anmeldung: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der angemeldeten Person' },
+        { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
+        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' },
+        { key: 'guardian_name', description: 'Name der Erziehungsberechtigten' },
+        { key: 'link', description: 'Link zur Einwilligung' }
+      ]
+    },
     'ClubMailer#game_day_scan_reminder' => {
       mailer_class: 'ClubMailer',
       action_name: 'game_day_scan_reminder',

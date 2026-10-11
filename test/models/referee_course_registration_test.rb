@@ -124,4 +124,18 @@ class RefereeCourseRegistrationTest < ActiveSupport::TestCase
     assert_equal [nil, 'cancelled_by_participant'], [m_cancelled.reload.referee_id, m_cancelled.status]
     assert_equal master.id, s_only.reload.referee_id
   end
+
+  test 'Schiri-Zusammenfuehrung gibt den Platz der doppelten Anmeldung an die Warteliste' do
+    master = create(:referee)
+    secondary = create(:referee)
+    @course.update!(status: 'published', max_participants: 2)
+    build(referee: master, status: 'registered', skip_required_answers: true).save!
+    build(referee: secondary, vorname: 'Zweit', status: 'registered', skip_required_answers: true).save!
+    waiting = build(vorname: 'Warte', email: 'w@example.org', status: 'waitlisted', skip_required_answers: true)
+    waiting.save!
+
+    secondary.merge_into!(master)
+
+    assert_equal 'registered', waiting.reload.status
+  end
 end

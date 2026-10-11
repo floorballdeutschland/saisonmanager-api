@@ -339,6 +339,8 @@ class User < ApplicationRecord
     # Kursleitung – ebenfalls vor dem Early-Return, weil die Rolle mit der
     # Schiedsrichter-Rolle kombinierbar ist.
     result[:menu_item_referee_courses_lead] = ph[:course_lead].present? && course_lead_access?
+    # Kursanmeldung im Schiri-Portal, ebenfalls vor dem Early-Return.
+    result[:menu_item_referee_courses_portal] = referee_id.present? && Setting.referee_courses_enabled?
 
     if has_schiri_role && !ph[:admin].present? && !ph[:sbk].present? && !ph[:rsk].present? && !ph[:ansetzer].present? && !ph[:vm].present? && !ph[:tm].present?
       result[:menu_item_referee_profile] = true
@@ -454,6 +456,8 @@ class User < ApplicationRecord
     result[:menu_item_referee_courses] =
       (ph[:admin].present? || ph[:rsk].present?) && RefereeCoursePolicy.new(self).any_access?
     result[:menu_item_referee_vm] = ph[:vm].present?
+    # Kursanmeldung durch den Verein (ClubRefereeCoursesController).
+    result[:menu_item_club_referee_courses] = ph[:vm].present? && Setting.referee_courses_enabled?
     result[:menu_item_player_vm] = ph[:vm].present? || ph[:tm].present?
     # Portal „Meine Auswärtsspieltage" für Gastmannschafts-Bestätigung (TM/VM).
     # Der Menüpunkt erscheint nur, wenn für eine der verantworteten Mannschaften

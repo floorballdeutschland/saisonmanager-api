@@ -1,0 +1,11 @@
+<p>Hallo <%= @first_name %>,</p>
+<% if @waitlisted %>
+  <p>der Kurs <strong><%= @course.title %></strong> ist voll. <%= @name %> steht auf der Warteliste. Wird ein Platz frei, rückt die Anmeldung automatisch nach und du bekommst eine weitere Mail.</p>
+<% else %>
+  <p>die Anmeldung von <%= @name %> zum Kurs <strong><%= @course.title %></strong> ist bestätigt.</p>
+<% end %>
+<p>Termine:</p>
+<%= render 'sessions' %>
+<% if @cancellation_deadline %>
+  <p>Abmelden ist bis <%= @cancellation_deadline %> kostenfrei möglich, danach bleibt die Kursgebühr fällig.</p>
+<% end %>
