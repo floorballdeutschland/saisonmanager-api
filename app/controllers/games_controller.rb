@@ -303,10 +303,17 @@ class GamesController < ApplicationController
     allowed = can_edit_lineup_of?(game)
 
     if allowed
+      side = params[:side]
+      # Wie copy_lineup_from_last_game: Eine unbekannte Seite legte bisher einen
+      # eigenen Schluessel in game.players an, den weder Kader noch Kadergrenze
+      # kennen.
+      unless LINEUP_SIDES.include?(side)
+        return render json: { message: 'Seite fehlt oder ist unbekannt (erlaubt: Heim oder Gast).' },
+                      status: :unprocessable_entity
+      end
+
       # ensure we have the hash set
       game.players ||= {}
-
-      side = params[:side]
 
       # ensure we have the hash set
       game.players[side] ||= []
@@ -314,6 +321,8 @@ class GamesController < ApplicationController
       # check if we have a entry for that player
       if game.players[side].map { |p| p['player_id'] }.include?(params[:player_id].to_i)
         render json: { message: 'Spieler bereits vorhanden' }, status: :unprocessable_entity
+      elsif (error = lineup_full_error(game, side))
+        render json: { message: error }, status: :unprocessable_entity
       elsif (error = lineup_license_missing_error(game, player, side))
         render json: { message: error }, status: :unprocessable_entity
       else
@@ -366,6 +375,8 @@ class GamesController < ApplicationController
   # abgewiesen, jede andere Lizenzlage ergibt eine Warnung. Was im Zielspiel
   # schon steht (Person oder Nummer), bleibt unangetastet. Freitext-Einträge
   # ohne player_id kommen nicht mit, ihre Lizenz lässt sich nicht prüfen.
+  # Ist die Kadergrenze der Liga erreicht (api#784), wird der Rest mit „Kader
+  # voll" übersprungen.
   def copy_lineup_from_last_game
     game = Game.find(params[:id])
     side = params[:side]
@@ -397,6 +408,7 @@ class GamesController < ApplicationController
     taken_players = game.players[side].filter_map { |p| p['player_id'].presence&.to_i }
     taken_numbers = game.players[side].map { |p| p['trikot_number'].to_i }
     mask_player_ids = lineup_mask_player_ids(team_id)
+    max_players = game.league.max_lineup_players
 
     added = []
     skipped = []
@@ -409,7 +421,8 @@ class GamesController < ApplicationController
         elsif taken_players.include?(player.id) then 'bereits aufgestellt'
         elsif taken_numbers.include?(number) then "Nummer #{number} bereits vergeben"
         elsif lineup_license_missing_error(game, player, side) then 'kein Lizenzantrag für diese Mannschaft'
-        else lineup_mask_skip_reason(player, team_id, mask_player_ids)
+        elsif (mask_reason = lineup_mask_skip_reason(player, team_id, mask_player_ids)) then mask_reason
+        elsif max_players && game.players[side].size >= max_players then "Kader voll (höchstens #{max_players})"
         end
 
       if reason
@@ -1345,8 +1358,9 @@ class GamesController < ApplicationController
     # (Papierbericht) – dann ist auch keine 24h-Frist zu melden.
     return unless game.report_form_workflow_enabled?
 
-    has_spielausschluss = (game.events || []).any? { |e| e['penalty_id'].to_s == '5' }
-    return unless game.special_event? || has_spielausschluss
+    # Volle Matchstrafe, technische Matchstrafe oder besonderes Ereignis,
+    # erkannt über das Mapping der Strafe (api#789).
+    return unless game.report_form_required?
 
     assignment = game.referee_assignment
     return unless assignment
@@ -1636,6 +1650,17 @@ class GamesController < ApplicationController
   # Stellen aufgefüllt, damit "9:00" vor "10:00" sortiert.
   def lineup_source_sort_key(game)
     [game.game_date || Date.new(1), game.start_time.to_s.rjust(5, '0'), game.id]
+  end
+
+  # Kadergroesse (api#784): Grossfeld 20, Kleinfeld 14 Spieler je Mannschaft,
+  # fuer alle Rollen. Freitext-Eintraege ohne player_id zaehlen mit, Trainer
+  # und Betreuer stehen nicht in game.players und zaehlen nicht.
+  def lineup_full_error(game, side)
+    max_players = game.league.max_lineup_players
+    return nil if max_players.nil? || game.players[side].size < max_players
+
+    "Kader voll: Im #{game.league.effective_field_size == 'GF' ? 'Großfeld' : 'Kleinfeld'} " \
+      "sind höchstens #{max_players} Spieler erlaubt."
   end
 
   # Ohne jeden Lizenzeintrag fuer die aufstellende Mannschaft wird nicht mehr
