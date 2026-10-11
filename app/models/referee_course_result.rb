@@ -6,6 +6,8 @@ class RefereeCourseResult < ApplicationRecord
   CSV_FIELDS    = %i[lizenznummer vorname nachname geburtsdatum verein email].freeze
 
   belongs_to :referee_course_import
+  belongs_to :referee_course, optional: true
+  belongs_to :referee_course_registration, optional: true
   belongs_to :referee, optional: true
   belongs_to :state_association, optional: true
   belongs_to :reviewed_by_user, class_name: 'User', optional: true

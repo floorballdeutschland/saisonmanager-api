@@ -62,6 +62,15 @@ class User < ApplicationRecord
   validate :referee_role_not_combined, if: -> { permissions_changed? }
 
   belongs_to :referee, optional: true
+  # Schiedsrichterkurse: Kursleitungen fallen mit dem Konto weg, Kurse und
+  # Anmeldungen bleiben und verlieren nur den Verweis.
+  has_many :referee_course_leads, dependent: :destroy
+  has_many :referee_course_registrations, dependent: :nullify
+  has_many :created_referee_courses, class_name: 'RefereeCourse', foreign_key: :created_by_user_id,
+                                     inverse_of: :created_by_user, dependent: :nullify
+  has_many :registered_referee_course_registrations, class_name: 'RefereeCourseRegistration',
+                                                     foreign_key: :registered_by_user_id,
+                                                     inverse_of: :registered_by_user, dependent: :nullify
 
   scope :not_archived, -> { where(archived_at: nil) }
 
@@ -431,6 +440,10 @@ class User < ApplicationRecord
     # Steuert den Upload-Knopf in der Importliste (die API sperrt ohnehin).
     result[:referee_course_import_upload] = has_full_referee_access && csv_import_enabled
     result[:menu_item_referee_course_review] = has_full_referee_access || lv_rsk_review_enabled?(ph)
+    # Kurse im System: Admin und RSK, sofern der Schalter fuer mindestens einen
+    # ihrer Landesverbaende an ist (RefereeCoursePolicy#any_access?).
+    result[:menu_item_referee_courses] =
+      (ph[:admin].present? || ph[:rsk].present?) && RefereeCoursePolicy.new(self).any_access?
     result[:menu_item_referee_vm] = ph[:vm].present?
     result[:menu_item_player_vm] = ph[:vm].present? || ph[:tm].present?
     # Portal „Meine Auswärtsspieltage" für Gastmannschafts-Bestätigung (TM/VM).

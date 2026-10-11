@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_10_09_120000) do
+ActiveRecord::Schema[7.2].define(version: 2026_10_09_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -720,6 +720,37 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_09_120000) do
     t.index ["referee_id"], name: "index_referee_club_exclusions_on_referee_id"
   end
 
+  create_table "referee_course_field_templates", force: :cascade do |t|
+    t.bigint "state_association_id"
+    t.string "label", null: false
+    t.string "field_type", null: false
+    t.jsonb "options", default: [], null: false
+    t.boolean "required", default: false, null: false
+    t.integer "position", default: 0, null: false
+    t.string "help_text"
+    t.boolean "visible_to_lead", default: true, null: false
+    t.boolean "include_in_billing_export", default: false, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["state_association_id"], name: "index_referee_course_field_templates_on_state_association_id"
+  end
+
+  create_table "referee_course_fields", force: :cascade do |t|
+    t.bigint "referee_course_id", null: false
+    t.string "label", null: false
+    t.string "field_type", null: false
+    t.jsonb "options", default: [], null: false
+    t.boolean "required", default: false, null: false
+    t.integer "position", default: 0, null: false
+    t.string "help_text"
+    t.boolean "visible_to_lead", default: true, null: false
+    t.boolean "include_in_billing_export", default: false, null: false
+    t.datetime "archived_at", comment: "Ausgeblendet statt geloescht, damit vorhandene Antworten lesbar bleiben."
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["referee_course_id"], name: "index_referee_course_fields_on_referee_course_id"
+  end
+
   create_table "referee_course_imports", force: :cascade do |t|
     t.bigint "uploaded_by_user_id", null: false
     t.string "filename"
@@ -731,8 +762,70 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_09_120000) do
     t.index ["uploaded_by_user_id"], name: "index_referee_course_imports_on_uploaded_by_user_id"
   end
 
+  create_table "referee_course_leads", force: :cascade do |t|
+    t.bigint "referee_course_id", null: false
+    t.bigint "user_id", null: false
+    t.boolean "lead", default: false, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["referee_course_id", "user_id"], name: "index_referee_course_leads_on_referee_course_id_and_user_id", unique: true
+    t.index ["referee_course_id"], name: "index_referee_course_leads_on_referee_course_id"
+    t.index ["user_id"], name: "index_referee_course_leads_on_user_id"
+  end
+
+  create_table "referee_course_registrations", force: :cascade do |t|
+    t.bigint "referee_course_id", null: false
+    t.bigint "referee_id"
+    t.bigint "user_id"
+    t.string "vorname", null: false
+    t.string "nachname", null: false
+    t.date "geburtsdatum", null: false
+    t.string "email"
+    t.string "telefon"
+    t.bigint "club_id", comment: "NULL: kein Verein"
+    t.bigint "billing_club_id", comment: "Kostenuebernehmender Verein, Vorgabe = club_id"
+    t.text "billing_address", comment: "Nur ohne Verein"
+    t.text "remarks"
+    t.bigint "desired_license_level_id"
+    t.bigint "awarded_license_level_id"
+    t.string "stated_lizenznummer"
+    t.string "guardian_name"
+    t.string "guardian_email"
+    t.datetime "guardian_confirmed_at"
+    t.string "status", default: "registered", null: false
+    t.datetime "cancelled_at"
+    t.string "result"
+    t.string "test_version"
+    t.decimal "points", precision: 6, scale: 2
+    t.string "identity_match", default: "new_person", null: false
+    t.jsonb "match_candidates", default: [], null: false
+    t.jsonb "custom_answers", default: {}, null: false
+    t.string "email_confirmation_token_digest"
+    t.string "cancel_token_digest"
+    t.string "consent_version"
+    t.datetime "consent_at"
+    t.string "consent_ip"
+    t.datetime "billed_at"
+    t.bigint "billing_export_id"
+    t.bigint "registered_by_user_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index "referee_course_id, lower((email)::text), geburtsdatum, lower((vorname)::text)", name: "idx_course_registrations_unique_person", unique: true, where: "(email IS NOT NULL)"
+    t.index ["awarded_license_level_id"], name: "index_referee_course_registrations_on_awarded_license_level_id"
+    t.index ["billing_club_id"], name: "index_referee_course_registrations_on_billing_club_id"
+    t.index ["cancel_token_digest"], name: "index_referee_course_registrations_on_cancel_token_digest", unique: true
+    t.index ["club_id"], name: "index_referee_course_registrations_on_club_id"
+    t.index ["desired_license_level_id"], name: "index_referee_course_registrations_on_desired_license_level_id"
+    t.index ["email_confirmation_token_digest"], name: "idx_on_email_confirmation_token_digest_ab16d1dcc9", unique: true
+    t.index ["referee_course_id", "referee_id"], name: "idx_course_registrations_unique_referee", unique: true, where: "(referee_id IS NOT NULL)"
+    t.index ["referee_course_id"], name: "index_referee_course_registrations_on_referee_course_id"
+    t.index ["referee_id"], name: "index_referee_course_registrations_on_referee_id"
+    t.index ["registered_by_user_id"], name: "index_referee_course_registrations_on_registered_by_user_id"
+    t.index ["user_id"], name: "index_referee_course_registrations_on_user_id"
+  end
+
   create_table "referee_course_results", force: :cascade do |t|
-    t.bigint "referee_course_import_id", null: false
+    t.bigint "referee_course_import_id"
     t.bigint "referee_id"
     t.bigint "state_association_id"
     t.integer "csv_lizenznummer"
@@ -771,13 +864,59 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_09_120000) do
     t.boolean "license_notification_pending", default: false, null: false
     t.boolean "deferred", default: false, null: false
     t.datetime "submitted_at"
+    t.bigint "referee_course_id"
+    t.bigint "referee_course_registration_id"
+    t.index ["referee_course_id"], name: "index_referee_course_results_on_referee_course_id"
     t.index ["referee_course_import_id"], name: "index_referee_course_results_on_referee_course_import_id"
+    t.index ["referee_course_registration_id"], name: "index_referee_course_results_on_referee_course_registration_id"
     t.index ["referee_id"], name: "index_referee_course_results_on_referee_id"
     t.index ["reviewed_by_user_id"], name: "index_referee_course_results_on_reviewed_by_user_id"
     t.index ["state_association_id", "status"], name: "index_referee_course_results_on_state_association_id_and_status"
     t.index ["state_association_id"], name: "index_referee_course_results_on_state_association_id"
     t.index ["status"], name: "index_referee_course_results_on_status"
     t.index ["submitted_at"], name: "index_referee_course_results_on_submitted_at"
+  end
+
+  create_table "referee_courses", force: :cascade do |t|
+    t.string "title", null: false
+    t.string "course_type", null: false
+    t.integer "license_level_ids", default: [], null: false, comment: "Erlaubte Ziel-Lizenzstufen (referee_license_levels). Leer: keine Lizenz.", array: true
+    t.bigint "state_association_id", comment: "Verantwortlicher LV. NULL: bundesweiter Kurs (FD)."
+    t.integer "partner_state_association_ids", default: [], null: false, comment: "Weitere LV, die den Kurs mitverwalten.", array: true
+    t.bigint "hosting_club_id"
+    t.bigint "prerequisite_course_id"
+    t.text "prerequisites_note"
+    t.string "format", default: "in_person", null: false
+    t.jsonb "sessions", default: [], null: false, comment: "[{starts_at, ends_at, format, location, online_url}]"
+    t.date "starts_on"
+    t.date "ends_on"
+    t.string "online_platform"
+    t.string "registration_mode", default: "open", null: false
+    t.integer "min_participants"
+    t.integer "max_participants"
+    t.datetime "registration_opens_at"
+    t.datetime "registration_deadline"
+    t.datetime "cancellation_deadline"
+    t.integer "min_age"
+    t.integer "fee_member_cents"
+    t.integer "fee_non_member_cents"
+    t.boolean "fee_only_on_license", default: false, null: false
+    t.boolean "no_show_billable", default: false, null: false
+    t.boolean "bill_state_association", default: false, null: false
+    t.string "fee_note"
+    t.boolean "public", default: true, null: false
+    t.string "status", default: "draft", null: false
+    t.string "contact_email"
+    t.text "description"
+    t.bigint "created_by_user_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_by_user_id"], name: "index_referee_courses_on_created_by_user_id"
+    t.index ["hosting_club_id"], name: "index_referee_courses_on_hosting_club_id"
+    t.index ["prerequisite_course_id"], name: "index_referee_courses_on_prerequisite_course_id"
+    t.index ["starts_on"], name: "index_referee_courses_on_starts_on"
+    t.index ["state_association_id"], name: "index_referee_courses_on_state_association_id"
+    t.index ["status"], name: "index_referee_courses_on_status"
   end
 
   create_table "referee_feedback_invitations", force: :cascade do |t|
@@ -1196,11 +1335,29 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_09_120000) do
   add_foreign_key "referee_club_exclusion_requests", "referees"
   add_foreign_key "referee_club_exclusions", "clubs"
   add_foreign_key "referee_club_exclusions", "referees"
+  add_foreign_key "referee_course_field_templates", "state_associations"
+  add_foreign_key "referee_course_fields", "referee_courses"
   add_foreign_key "referee_course_imports", "users", column: "uploaded_by_user_id"
+  add_foreign_key "referee_course_leads", "referee_courses"
+  add_foreign_key "referee_course_leads", "users"
+  add_foreign_key "referee_course_registrations", "clubs"
+  add_foreign_key "referee_course_registrations", "clubs", column: "billing_club_id"
+  add_foreign_key "referee_course_registrations", "referee_courses"
+  add_foreign_key "referee_course_registrations", "referee_license_levels", column: "awarded_license_level_id"
+  add_foreign_key "referee_course_registrations", "referee_license_levels", column: "desired_license_level_id"
+  add_foreign_key "referee_course_registrations", "referees"
+  add_foreign_key "referee_course_registrations", "users"
+  add_foreign_key "referee_course_registrations", "users", column: "registered_by_user_id"
   add_foreign_key "referee_course_results", "referee_course_imports"
+  add_foreign_key "referee_course_results", "referee_course_registrations"
+  add_foreign_key "referee_course_results", "referee_courses"
   add_foreign_key "referee_course_results", "referees"
   add_foreign_key "referee_course_results", "state_associations"
   add_foreign_key "referee_course_results", "users", column: "reviewed_by_user_id"
+  add_foreign_key "referee_courses", "clubs", column: "hosting_club_id"
+  add_foreign_key "referee_courses", "referee_courses", column: "prerequisite_course_id"
+  add_foreign_key "referee_courses", "state_associations"
+  add_foreign_key "referee_courses", "users", column: "created_by_user_id"
   add_foreign_key "referee_feedbacks", "games"
   add_foreign_key "referee_observation_ratings", "referee_observations"
   add_foreign_key "referee_observations", "games"

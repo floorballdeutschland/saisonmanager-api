@@ -15,6 +15,9 @@ class Referee < ApplicationRecord
   has_many :referee_club_exclusions, dependent: :destroy
   has_many :referee_club_exclusion_requests, dependent: :destroy
   has_many :referee_change_requests, dependent: :destroy
+  # Kursanmeldungen bleiben beim Loeschen des Schiris erhalten (Abrechnung,
+  # Teilnehmerliste), nur die Zuordnung faellt weg.
+  has_many :referee_course_registrations, dependent: :nullify
   has_many :game_day_referee_confirmations, dependent: :destroy
   has_many :referee_qualification_types, through: :referee_qualifications
   has_many :referee_tags, through: :referee_taggings
@@ -420,6 +423,8 @@ class Referee < ApplicationRecord
       referee_change_requests.pending.where(correction_type: master_pending_types).destroy_all
       referee_change_requests.reload.update_all(referee_id: master.id)
 
+      _repoint_course_registrations(master)
+
       # Beobachtungsbögen: Der Coach-Bezug und die erhaltenen Bewertungen wandern
       # aufs Masterprofil, sonst hinge die Entwicklungshistorie am toten
       # Zweitprofil und wäre für die betroffene Person unsichtbar (ihr Konto
@@ -630,6 +635,27 @@ class Referee < ApplicationRecord
       updated_at: Time.current
     )
     RefereeCourseResult.where(referee_id: id).update_all(referee_id: master.id)
+  end
+
+  # Kursanmeldungen wandern mit, sonst vergaebe die Lizenzvergabe die Lizenz
+  # spaeter an das tote Zweitprofil. Sind beide Profile im selben Kurs, bleibt
+  # nur eine aktive Anmeldung (bevorzugt die des Masters). Die andere wird
+  # abgesagt und verliert den Schiri (Eindeutigkeit Kurs+Schiri). Bliebe sie
+  # aktiv ohne Schiri, wuerde sie beim Einreichen zur neuen Person, und FD
+  # legte einen zweiten Schiri samt Konto an; sie hielte zudem einen Platz und
+  # wuerde doppelt abgerechnet.
+  def _repoint_course_registrations(master)
+    cancelled = RefereeCourseRegistration::CANCELLED_STATUSES
+    master_rows = master.referee_course_registrations.index_by(&:referee_course_id)
+    referee_course_registrations.where(referee_course_id: master_rows.keys).find_each do |row|
+      master_row = master_rows[row.referee_course_id]
+      keep_master = !cancelled.include?(master_row.status) || cancelled.include?(row.status)
+      loser = keep_master ? row : master_row
+      attrs = { referee_id: nil, updated_at: Time.current }
+      attrs.merge!(status: 'cancelled_by_organizer', cancelled_at: Time.current) unless cancelled.include?(loser.status)
+      loser.update_columns(attrs)
+    end
+    referee_course_registrations.update_all(referee_id: master.id)
   end
 
   # Haengt eine Zeile von der Dublette auf den Master um, laesst aber die Zeilen
