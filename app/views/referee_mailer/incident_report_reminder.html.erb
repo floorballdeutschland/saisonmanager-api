@@ -5,7 +5,7 @@
 <p>
   für Spielnummer <strong><%= @game.game_number %></strong>
   (<%= @game.home_team_name %> vs. <%= @game.guest_team_name %>, <%= Date.parse(@game.game_day.date).strftime('%d.%m.%Y') %>)
-  ist ein besonderes Ereignis oder ein Spielausschluss vermerkt worden.
+  ist <%= @reasons_text %> vermerkt worden.
 </p>
 
 <p>
@@ -20,7 +20,9 @@
 <p>
   Der Link führt auf die Spielseite. Nach dem Login mit dem eigenen Schiedsrichterkonto erscheint dort unterhalb
   des Spielberichts der Abschnitt <em>Berichtsformular hochladen</em> (PDF, PNG oder JPEG, max. 5 MB).
-  Nach dem Upload wird das Formular automatisch an die zuständige VSK weitergeleitet.
+  <% if @recipient_text.present? %>
+  Nach dem Upload wird das Formular automatisch an <%= @recipient_text %> weitergeleitet.
+  <% end %>
 </p>
 
 <p>
