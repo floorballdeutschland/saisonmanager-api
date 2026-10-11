@@ -9,12 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
-## [1.130.0] - 2026-10-11
-
 ### Neu
 
-- **Lizenzverwaltung zeigt auch ungültige Lizenzen** (#787): Die Verbandsübersicht (`GET /api/v2/admin/licenses`) liefert zusätzlich gelöschte, wegen Transfer ungültige und ignorierte Lizenzen. Hat ein Spieler bei derselben Mannschaft mehrere Lizenzen, etwa eine gelöschte neben einer neueren erteilten, steht jede in einer eigenen Zeile. Jede Zeile nennt Zeitpunkt, Person und Grund der letzten Statusänderung. Die Kaderlisten der Ligen bleiben unverändert. Hart gelöschte Lizenzen (Rückzug innerhalb der Stunde, Entfernen der Teams einer Liga, Dublettenbereinigung) erscheinen weiterhin nicht.
-- **Kadergröße im Spielbericht begrenzt** (saisonmanager-api#784, saisonmanager#522): Je Mannschaft und Spiel stehen höchstens 20 Spieler/innen (Großfeld) bzw. 14 (Kleinfeld) im Spielbericht, für alle Rollen einschließlich Admin und SBK. Freitext-Einträge zählen mit, Trainer/Betreuer nicht. Playoff-Ligen ohne eigene Feldgröße erben die Grenze der Hauptrunde, Ligen ohne Feldgröße bleiben unbegrenzt. „Aufstellung aus letztem Spiel“ übernimmt nur bis zur Grenze und meldet den Rest als „Kader voll“. Die Kadermaske zeigt den Zähler (z. B. „13 / 14“) und sperrt das Eintragen neuer Personen, sobald der Kader voll ist; Austragen und Nummern ändern bleiben möglich.
 - **Schiedsrichterkurse im System, Verwaltung** (Paket 1a): RSK und Admin legen Kurse an und pflegen sie, statt Ergebnisse per CSV einzuspielen:
   - Kursangaben: Kurstyp (J, G, F, Kombi, Modul, Fortbildung, N, A, Nachtest), ein oder mehrere Ziel-Lizenzstufen (F-Kurs: L2 oder L1), verantwortlicher LV oder bundesweit sowie Partner-LV für gemeinsame Kurse.
   - Durchführung: Präsenz, digital oder gemischt mit mehreren Terminen; Mindest- und Höchstteilnehmerzahl, Fristen, Mindestalter, Voraussetzungen und ausrichtender Verein.
@@ -54,6 +50,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
   - Der Verein bekommt eine Mail und bestätigt oder lehnt in seiner Kursansicht ab; eine Ablehnung braucht einen Grund, die Person wird benachrichtigt und an die Kursverantwortlichen verwiesen.
   - Meldet der Verein selbst an oder trägt die RSK ein, entfällt der Schritt. Unterverbände übernehmen die Einstellung ihres Verbunds.
 - **Schalter für die Kursprozesse in den Schiri-Einstellungen**: Unter `/verwaltung/schiedsrichter/einstellungen` schaltet der Admin den CSV-Import von Kursergebnissen und die Kurse im System getrennt an und aus; die Kurse auf Wunsch nur für einzelne Landesverbände. Ein abgeschalteter Import sperrt nur neue Uploads: Offene Importe lassen sich weiter bearbeiten und einreichen, und die LV-Freigabe läuft weiter. Der Menüpunkt „Kursergebnisse“ bleibt sichtbar, bis keine offenen Zeilen mehr da sind. Vorgabe ohne Eingriff: Import an, Kurse aus. Vorbereitung für die Kurse im System, die den CSV-Import zum Jahresende ablösen.
+
+## [1.130.0] - 2026-10-11
+
+### Neu
+
+- **Lizenzverwaltung zeigt auch ungültige Lizenzen** (#787): Die Verbandsübersicht (`GET /api/v2/admin/licenses`) liefert zusätzlich gelöschte, wegen Transfer ungültige und ignorierte Lizenzen. Hat ein Spieler bei derselben Mannschaft mehrere Lizenzen, etwa eine gelöschte neben einer neueren erteilten, steht jede in einer eigenen Zeile. Jede Zeile nennt Zeitpunkt, Person und Grund der letzten Statusänderung. Die Kaderlisten der Ligen bleiben unverändert. Hart gelöschte Lizenzen (Rückzug innerhalb der Stunde, Entfernen der Teams einer Liga, Dublettenbereinigung) erscheinen weiterhin nicht.
+- **Kadergröße im Spielbericht begrenzt** (saisonmanager-api#784, saisonmanager#522): Je Mannschaft und Spiel stehen höchstens 20 Spieler/innen (Großfeld) bzw. 14 (Kleinfeld) im Spielbericht, für alle Rollen einschließlich Admin und SBK. Freitext-Einträge zählen mit, Trainer/Betreuer nicht. Playoff-Ligen ohne eigene Feldgröße erben die Grenze der Hauptrunde, Ligen ohne Feldgröße bleiben unbegrenzt. „Aufstellung aus letztem Spiel“ übernimmt nur bis zur Grenze und meldet den Rest als „Kader voll“. Die Kadermaske zeigt den Zähler (z. B. „13 / 14“) und sperrt das Eintragen neuer Personen, sobald der Kader voll ist; Austragen und Nummern ändern bleiben möglich.
 
 ### Behoben
 
