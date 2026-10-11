@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Kadergröße im Spielbericht begrenzt** (saisonmanager-api#784, saisonmanager#522): Je Mannschaft und Spiel stehen höchstens 20 Spieler/innen (Großfeld) bzw. 14 (Kleinfeld) im Spielbericht, für alle Rollen einschließlich Admin und SBK. Freitext-Einträge zählen mit, Trainer/Betreuer nicht. Playoff-Ligen ohne eigene Feldgröße erben die Grenze der Hauptrunde, Ligen ohne Feldgröße bleiben unbegrenzt. „Aufstellung aus letztem Spiel“ übernimmt nur bis zur Grenze und meldet den Rest als „Kader voll“. Die Kadermaske zeigt den Zähler (z. B. „13 / 14“) und sperrt das Eintragen neuer Personen, sobald der Kader voll ist; Austragen und Nummern ändern bleiben möglich.
+
 ### Behoben
 
 - **Berichtsformular auch bei voller Matchstrafe, Weiterleitung je nach Strafart** (saisonmanager-api#789): Erinnerungsmail und Upload-Bereich hingen an der Straf-id 5, und das ist die technische Matchstrafe. Bei einer vollen Matchstrafe wurden die Schiris nicht aufgefordert (in zwölf Monaten 40 von 42 Spielen). Erkannt wird jetzt über die Strafart: Matchstrafe, technische Matchstrafe und besonderes Ereignis verlangen einen Bericht. Der Bericht geht bei einer Matchstrafe an die VSK, bei technischer Matchstrafe und besonderem Ereignis an die SBK, im Mischfall mit je eigener Mail an beide. Leitet der Landesverband Verfahren manuell ein, geht der Bericht immer an die SBK, bei einer Matchstrafe mit Verfahrensvorschlag und der Aufforderung, das Verfahren einzuleiten; vorher entstand dort bei jedem Upload ein Verfahrensvorschlag ohne Mail. Ein erneuter Upload öffnet einen abgelehnten Vorschlag wieder; ist das Verfahren schon eröffnet, geht der neue Bericht direkt an die VSK. Fehlt die SBK-Adresse, geht die Mail an das Ansetzungs-Postfach. Die Erinnerungsmail nennt den tatsächlichen Empfänger, und `GET games/:id/referee_report` liefert Admin, SBK und angesetzten Schiris, ob ein Bericht verlangt ist und an wen er geht (bei abgeschaltetem Berichtsworkflow: nicht verlangt). Bereits gespielte Spiele bleiben unberührt.
