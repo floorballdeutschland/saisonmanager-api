@@ -1523,6 +1523,20 @@ class LeagueTest < ActiveSupport::TestCase
     assert_equal 'KF', playoff.effective_field_size
   end
 
+  test 'max_lineup_players: Großfeld 20, Kleinfeld 14, sonst keine Grenze' do
+    assert_equal 20, build(:league, field_size: 'GF').max_lineup_players
+    assert_equal 14, build(:league, field_size: 'KF').max_lineup_players
+    assert_nil build(:league, field_size: nil).max_lineup_players
+    assert_nil build(:league, field_size: 'XX').max_lineup_players
+  end
+
+  test 'max_lineup_players: Playoff ohne Feldgröße erbt die Grenze der Hauptrunde' do
+    haupt = create(:league, field_size: 'KF')
+    playoff = create(:league, league_modus: 'playoff', field_size: nil, league_id_preround: haupt.id)
+
+    assert_equal 14, playoff.max_lineup_players
+  end
+
   test 'preround_league: kein Selbstbezug und keine Endlosschleife' do
     league = create(:league, age_group: 'Herren')
     league.update_column(:league_id_preround, league.id)

@@ -1107,6 +1107,9 @@ class Game < ApplicationRecord
       # Gehoert an das Spiel und nicht an die Mannschaft: Entschieden wird es
       # vom Verband der Liga, in der gespielt wird.
       requested_license_playable: requested_license_playable?,
+      # Obergrenze je Mannschaft fuer den Zaehler der Kadermaske, `nil` bei
+      # Ligen ohne Feldgroesse (siehe LeagueCompetition#max_lineup_players).
+      max_lineup_players: league.max_lineup_players,
       period_titles: league.period_titles,
       current_period_title:,
       arena: game_day.arena_id,

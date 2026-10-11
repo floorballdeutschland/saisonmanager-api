@@ -314,6 +314,8 @@ class GamesController < ApplicationController
       # check if we have a entry for that player
       if game.players[side].map { |p| p['player_id'] }.include?(params[:player_id].to_i)
         render json: { message: 'Spieler bereits vorhanden' }, status: :unprocessable_entity
+      elsif (error = lineup_full_error(game, side))
+        render json: { message: error }, status: :unprocessable_entity
       elsif (error = lineup_license_missing_error(game, player, side))
         render json: { message: error }, status: :unprocessable_entity
       else
@@ -366,6 +368,8 @@ class GamesController < ApplicationController
   # abgewiesen, jede andere Lizenzlage ergibt eine Warnung. Was im Zielspiel
   # schon steht (Person oder Nummer), bleibt unangetastet. Freitext-Einträge
   # ohne player_id kommen nicht mit, ihre Lizenz lässt sich nicht prüfen.
+  # Ist die Kadergrenze der Liga erreicht (api#784), wird der Rest mit „Kader
+  # voll" übersprungen.
   def copy_lineup_from_last_game
     game = Game.find(params[:id])
     side = params[:side]
@@ -397,6 +401,7 @@ class GamesController < ApplicationController
     taken_players = game.players[side].filter_map { |p| p['player_id'].presence&.to_i }
     taken_numbers = game.players[side].map { |p| p['trikot_number'].to_i }
     mask_player_ids = lineup_mask_player_ids(team_id)
+    max_players = game.league.max_lineup_players
 
     added = []
     skipped = []
@@ -409,7 +414,8 @@ class GamesController < ApplicationController
         elsif taken_players.include?(player.id) then 'bereits aufgestellt'
         elsif taken_numbers.include?(number) then "Nummer #{number} bereits vergeben"
         elsif lineup_license_missing_error(game, player, side) then 'kein Lizenzantrag für diese Mannschaft'
-        else lineup_mask_skip_reason(player, team_id, mask_player_ids)
+        elsif (mask_reason = lineup_mask_skip_reason(player, team_id, mask_player_ids)) then mask_reason
+        elsif max_players && game.players[side].size >= max_players then "Kader voll (höchstens #{max_players})"
         end
 
       if reason
@@ -1645,6 +1651,17 @@ class GamesController < ApplicationController
   # Maske einen Spieler der Heimmannschaft des Folgespiels in den Heimkader.
   # Jeder vorhandene Eintrag bleibt beim bisherigen Weg (lineup_license_warning):
   # beantragt ohne Verbandsschalter, abgelehnt oder gesperrt heisst Warnung.
+  # Kadergroesse (api#784): Grossfeld 20, Kleinfeld 14 Spieler je Mannschaft,
+  # fuer alle Rollen. Freitext-Eintraege ohne player_id zaehlen mit, Trainer
+  # und Betreuer stehen nicht in game.players und zaehlen nicht.
+  def lineup_full_error(game, side)
+    max_players = game.league.max_lineup_players
+    return nil if max_players.nil? || game.players[side].size < max_players
+
+    "Kader voll: Im #{game.league.effective_field_size == 'GF' ? 'Großfeld' : 'Kleinfeld'} " \
+      "sind höchstens #{max_players} Spieler erlaubt."
+  end
+
   def lineup_license_missing_error(game, player, side)
     return nil if player.nil?
 
