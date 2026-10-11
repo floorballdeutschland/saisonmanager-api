@@ -147,9 +147,10 @@ module Admin
     end
 
     # Die Ligaklasse entscheidet zuerst, also gewann vor diesem Test eine tote
-    # Lizenz in der hoeheren Klasse die Wahl -- und die geloeschte Zeile steht
-    # gar nicht in der Liste, der Verband sah nur seine erteilte Lizenz grundlos
-    # als "Zusatzlizenz". Auf Produktiv traf das am 18.09.2026 sieben Spieler.
+    # Lizenz in der hoeheren Klasse die Wahl, und der Verband sah seine
+    # erteilte Lizenz grundlos als "Zusatzlizenz". Auf Produktiv traf das am
+    # 18.09.2026 sieben Spieler. Seit #787 steht die geloeschte Zeile in der
+    # Liste, traegt aber kein Etikett.
     test 'eine gelöschte Lizenz in der höheren Liga nimmt der erteilten die Hauptlizenz nicht' do
       rl_league = create(:league, game_operation: @go1, season_id: '18', league_class_id: 'rl')
       rl_team   = create(:team, league: rl_league, club: @club1)
@@ -166,7 +167,8 @@ module Admin
       assert_response :success
       rows = JSON.parse(response.body)
 
-      assert_nil rows.find { |r| r['team_id'] == rl_team.id }, 'gelöschte Lizenzen stehen nicht in der Liste'
+      assert_nil rows.find { |r| r['team_id'] == rl_team.id }['license_type'],
+                 'eine gelöschte Lizenz nimmt an der Wahl nicht teil'
       assert_equal 'primary', rows.find { |r| r['team_id'] == vl_team.id }['license_type'],
                    'die einzige erteilte Lizenz des Spielers ist seine Hauptlizenz'
     end
@@ -613,8 +615,8 @@ module Admin
         { team: @team_go2, status: License::APPROVED, season_id: '18' }
       ])
       # Die zweite Lizenz ist durch einen Transfer ungueltig geworden. Sie
-      # faellt damit aus der Liste, war aber erteilt und hat eine Gebuehr
-      # ausgeloest -- fuer die Obergrenze zaehlt sie weiter.
+      # war aber erteilt und hat eine Gebuehr ausgeloest, fuer die Obergrenze
+      # zaehlt sie also weiter.
       lizenzen = spieler.licenses.deep_dup
       lizenzen.last['history'] << { 'license_status_id' => License::TRANSFER,
                                     'created_at' => Time.zone.now.iso8601 }
@@ -625,9 +627,10 @@ module Admin
       assert_response :success
 
       zeilen = JSON.parse(response.body).select { |r| r['player_id'] == spieler.id }
-      assert_equal 1, zeilen.size, 'die transferungueltige Lizenz hat keine eigene Zeile mehr'
-      assert_equal 2, zeilen.first['licenses_approved_season']
-      assert_equal 0, zeilen.first['licenses_requested_season']
+      assert_equal 2, zeilen.size, 'die transferungueltige Lizenz steht mit eigener Zeile in der Liste (#787)'
+      assert_equal [License::APPROVED, License::TRANSFER], zeilen.map { |r| r['license_status_id'] }.sort
+      assert_equal [2], zeilen.map { |r| r['licenses_approved_season'] }.uniq
+      assert_equal [0], zeilen.map { |r| r['licenses_requested_season'] }.uniq
     end
 
     test 'eine auf beantragt zurueckgesetzte Lizenz zaehlt nur einmal' do
@@ -800,21 +803,64 @@ module Admin
       assert_equal License::WITHDRAWN, withdrawn_row['license_status_id']
     end
 
-    # Geloescht, "ungueltig wg. Transfer" und "ignoriert" bleiben draussen:
-    # Alle drei sind abgeschlossene Vorgaenge ohne Weg zurueck in die
-    # Warteschlange, und die Uebersicht bietet dafuer weder Filter noch Knopf.
-    test 'gelöschte, transferungültige und ignorierte Lizenzen bleiben aus der Verbandsübersicht heraus' do
+    # Wenn jede beantragte Lizenz Geld kostet, muss die Uebersicht auch die
+    # spaeter ungueltigen zeigen (#787).
+    test 'gelöschte, transferungültige und ignorierte Lizenzen stehen in der Verbandsübersicht' do
       deleted = create(:player, with_licenses: [{ team: @team_go1, status: License::DELETED, season_id: '18' }])
       transfer = create(:player, with_licenses: [{ team: @team_go1, status: License::TRANSFER, season_id: '18' }])
       ignored = create(:player, with_licenses: [{ team: @team_go1, status: License::IGNORED, season_id: '18' }])
 
       login_as(@admin)
       get '/api/v2/admin/licenses'
+      body = JSON.parse(response.body)
 
-      player_ids = JSON.parse(response.body).map { |r| r['player_id'] }
-      assert_not_includes player_ids, deleted.id
-      assert_not_includes player_ids, transfer.id, 'der Transfer-Vollzug hat die Lizenz ungültig gemacht'
-      assert_not_includes player_ids, ignored.id, 'reiner Altbestand ohne Schreibweg'
+      { deleted => License::DELETED, transfer => License::TRANSFER, ignored => License::IGNORED }.each do |player, status|
+        row = body.find { |r| r['player_id'] == player.id }
+        assert row, "Lizenz mit Status #{status} fehlt"
+        assert_equal status, row['license_status_id']
+        assert_equal License::NAMES[status], row['license_status']
+        assert_nil row['license_type'], 'eine ungueltige Lizenz nimmt an der Hauptlizenz-Wahl nicht teil'
+      end
+    end
+
+    # Neben einer neueren erteilten Lizenz blieb die geloeschte unsichtbar,
+    # weil Player#license_for_team nur eine Lizenz je Mannschaft liefert.
+    test 'mehrere Lizenzen desselben Spielers bei derselben Mannschaft stehen je in einer Zeile' do
+      spieler = create(:player, with_licenses: [
+        { team: @team_go1, status: License::DELETED, season_id: '18', created_at: 3.days.ago.iso8601 },
+        { team: @team_go1, status: License::APPROVED, season_id: '18', created_at: 2.days.ago.iso8601 }
+      ])
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses'
+
+      zeilen = JSON.parse(response.body).select { |r| r['player_id'] == spieler.id }
+      assert_equal 2, zeilen.size
+      assert_equal [License::APPROVED, License::DELETED], zeilen.map { |r| r['license_status_id'] },
+                   'die aktive Lizenz steht vorn'
+      assert_equal spieler.licenses.map { |l| l['id'] }.sort, zeilen.map { |r| r['license_id'] }.sort
+      assert_equal %w[primary], zeilen.map { |r| r['license_type'] }.compact
+      assert_equal [1], zeilen.map { |r| r['licenses_approved_season'] }.uniq,
+                   'die geloeschte, nie erteilte Lizenz zaehlt nicht als erteilt'
+    end
+
+    test 'die Zeile nennt Grund, Zeitpunkt und Person der letzten Statusänderung' do
+      sbk_user = create(:user, :admin, first_name: 'Erika', last_name: 'Muster')
+      spieler = create(:player, with_licenses: [{ team: @team_go1, status: License::APPROVED, season_id: '18' }])
+      lic = spieler.licenses.first
+      lic['history'] << { 'license_status_id' => License::DELETED, 'reason' => 'Doppelt beantragt',
+                          'created_by' => sbk_user.id, 'created_at' => 1.hour.ago.iso8601 }
+      spieler.save!(validate: false)
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses'
+
+      row = JSON.parse(response.body).find { |r| r['player_id'] == spieler.id }
+      assert_equal License::DELETED, row['license_status_id']
+      assert_equal 'Doppelt beantragt', row['status_reason']
+      assert_equal sbk_user.id, row['status_changed_by_id']
+      assert_equal 'Erika Muster', row['status_changed_by_name']
+      assert row['status_changed_at'].present?
     end
 
     # Die Kaderliste einer Liga ist die Gegenprobe: Dort ist ein abgelehnter
@@ -822,6 +868,11 @@ module Admin
     # durchschlagen.
     test 'die Liga-Detailansicht zeigt abgelehnte Lizenzen weiterhin nicht' do
       denied = create(:player, with_licenses: [{ team: @team_go1, status: License::DENIED, season_id: '18' }])
+      deleted = create(:player, with_licenses: [{ team: @team_go1, status: License::DELETED, season_id: '18' }])
+      doppelt = create(:player, with_licenses: [
+        { team: @team_go1, status: License::DELETED, season_id: '18' },
+        { team: @team_go1, status: License::APPROVED, season_id: '18' }
+      ])
 
       login_as(@admin)
       get "/api/v2/admin/leagues/#{@league_go1.id}/licenses"
@@ -830,6 +881,8 @@ module Admin
       player_ids = JSON.parse(response.body).flat_map { |t| (t['players'] || []).map { |pl| pl['id'] } }
       assert_includes     player_ids, @player_go1.id, 'die erteilte Lizenz steht weiter im Kader'
       assert_not_includes player_ids, denied.id
+      assert_not_includes player_ids, deleted.id
+      assert_equal 1, player_ids.count(doppelt.id), 'im Kader steht der Spieler einmal, nicht je Lizenz'
     end
 
     # Die Sperre setzt die Spielberechtigung aus, und ein abgelehnter Antrag
