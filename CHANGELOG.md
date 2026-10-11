@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- **Direkter Vergleich erst, wenn alle Punktgleichen gegeneinander gespielt haben**: In Ligen mit direktem Vergleich zählte bisher jedes schon gespielte Spiel unter den punktgleichen Teams, auch wenn einzelne Duelle noch fehlten. Bei drei Teams auf gleichen Punkten konnte so ein Team, das gegen keins der anderen gespielt hatte, vor einem Team mit deutlich besserer Tordifferenz stehen, nur weil dieses sein Duell gegen das dritte verloren hatte (Verbandsliga U13 Kleinfeld des NWFV am 11.10.2026). Fehlt unter den Punktgleichen noch ein Duell, entscheiden jetzt Tordifferenz und erzielte Tore.
+
 ## [1.129.0] - 2026-10-08
 
 ### Neu

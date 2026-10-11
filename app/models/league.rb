@@ -1686,6 +1686,18 @@ class League < ApplicationRecord
           group_ids.include?(g.guest_team_id)
       end
 
+      # Der direkte Vergleich zählt erst, wenn jedes Paar der Punktgleichen
+      # mindestens einmal gegeneinander gespielt hat. Sonst vergleicht die
+      # Mini-Tabelle ungleich viele Duelle, und ein Team ohne Duell geht mit
+      # 0:0 neutral ein: Bei drei Teams auf gleichen Punkten, von denen eins
+      # noch gegen keins der anderen gespielt hatte, stand dieses vor dem Team,
+      # das ein Duell verloren hatte, auch bei viel schlechterer Tordifferenz
+      # (Liga 2599 am 11.10.2026).
+      unless all_pairs_played?(group_ids, h2h_games)
+        sorted.concat(group.sort_by { |r| [-r[:goals_diff], -r[:goals_scored]] })
+        next
+      end
+
       h2h = group.each_with_object({}) do |r, h|
         h[r[:team_id]] = { points: 0, goals_scored: 0, goals_received: 0 }
       end
@@ -1727,5 +1739,11 @@ class League < ApplicationRecord
     end
 
     sorted
+  end
+
+  def all_pairs_played?(team_ids, h2h_games)
+    played = h2h_games.to_set { |g| [g.home_team_id, g.guest_team_id].sort }
+
+    team_ids.to_a.combination(2).all? { |pair| played.include?(pair.sort) }
   end
 end
