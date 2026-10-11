@@ -221,6 +221,13 @@ class PublicRefereeCoursesTest < ActionDispatch::IntegrationTest
     end
     assert_response :created
     assert_equal 1, @course.registrations.count
+
+    # Geschlossene Anmeldung: dieselbe 422 wie fuer alle anderen
+    @course.update!(registration_deadline: 1.day.ago)
+    post "/api/v2/public/referee_courses/#{@course.id}/registrations",
+         params: { registration: person(lizenznummer: '4711', geburtsdatum: '1999-05-06') }, as: :json
+    assert_response :unprocessable_entity
+    assert_match(/Anmeldeschluss/, response.parsed_body['error'])
   end
 
   test 'nie bestaetigte Anmeldung sperrt nicht: erneut anmelden ersetzt sie, Portal geht auch' do

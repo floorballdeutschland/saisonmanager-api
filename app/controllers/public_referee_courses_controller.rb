@@ -65,6 +65,11 @@ class PublicRefereeCoursesController < ApplicationController
     input_error = submitted_input_error(input)
     return render json: { error: input_error }, status: :unprocessable_entity if input_error
 
+    # Ebenso vor der Suche: Bei geschlossener Anmeldung bekaeme sonst nur ein
+    # schon angemeldeter Schiri eine 201, alle anderen eine 422.
+    closed = RefereeCourseRegistrar.new(@course).closed_reason
+    return render json: { error: closed }, status: :unprocessable_entity if closed
+
     person = person_attrs(input)
     if person[:referee]
       # Schon angemeldet? Gleiche Antwort wie sonst, aber keine neue Zeile und
