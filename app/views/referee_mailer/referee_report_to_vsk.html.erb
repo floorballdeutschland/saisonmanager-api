@@ -7,50 +7,7 @@
   <%= Date.parse(@game.game_day.date).strftime('%d.%m.%Y') %>) hochgeladen.
 </p>
 
-<p><strong>Hochgeladen von:</strong> <%= @uploader.fullname %></p>
-
-<% official_names = [[@referee1&.vorname, @referee1&.nachname].compact.join(' '),
-                     [@referee2&.vorname, @referee2&.nachname].compact.join(' ')].reject(&:blank?) %>
-<%# Ueber die NAMEN und nicht ueber die Datensaetze: Game#referees fuehrt den
-    leeren Platz mit, ein Eintrag ohne Vor- und Nachnamen ergaebe sonst die
-    Zeile „Schiedsrichter*in:" ohne alles dahinter. %>
-<% if official_names.any? %>
-<p>
-  <strong><%= official_names.size > 1 ? 'Schiedsrichter*innen' : 'Schiedsrichter*in' %>:</strong>
-  <%= official_names.join(' / ') %>
-</p>
-<% end %>
-
-<% if @game_url %>
-<p>
-  <strong>Spielverlauf:</strong>
-  <a href="<%= @game_url %>"><%= @game_url %></a>
-</p>
-<% end %>
-
-<% if @checklist_answers.any? %>
-<h3>Spieltagsbericht</h3>
-<% if @checklist_all_ok %>
-<p>Alle Punkte wurden als erfüllt bestätigt.</p>
-<% else %>
-<p>Folgende Punkte wurden als <strong>nicht erfüllt</strong> angegeben:</p>
-<ul>
-  <% @checklist_failed_items.each do |item| %>
-  <li><%= item['question'] %></li>
-  <% end %>
-</ul>
-<% end %>
-<table style="border-collapse: collapse; width: 100%;">
-  <tbody>
-    <% @checklist_answers.each do |a| %>
-    <tr>
-      <td style="padding: 3px 8px;"><%= a['question'] %></td>
-      <td style="padding: 3px 8px; font-weight: bold; color: <%= a['answer'] ? '#2d6a2d' : '#b91c1c' %>;"><%= a['answer'] ? 'Ja' : 'Nein' %></td>
-    </tr>
-    <% end %>
-  </tbody>
-</table>
-<% end %>
+<%= render 'referee_report_details' %>
 
 <p>Das Berichtsformular ist dieser E-Mail als Anhang beigefügt.</p>
 
