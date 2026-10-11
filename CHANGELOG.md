@@ -36,6 +36,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
   - Neue Personen werden nie automatisch einem Bestandsschiri zugeordnet; mögliche Treffer stehen als Hinweis für die RSK an der Anmeldung (Zwillingsregel wie im Kursimport).
   - Unter 16 folgt nach der E-Mail-Bestätigung die Einwilligung der Erziehungsberechtigten.
   - Löschlauf `referee_course_registrations:purge` (mit `DRY_RUN=1`): Anmeldungen ohne Schiri 12 Monate nach Kursende, nie bestätigte eine Woche nach Ablauf des Links.
+- **Ergebnisse einreichen und Lizenzvergabe durch FD** (Paket 4): Die Lizenz legt immer FD fest.
+  - Die RSK reicht einen durchgeführten Kurs ein, sobald Anwesenheit, Ergebnisse und alle Zuordnungen geklärt sind; der Kurs ist danach gesperrt.
+  - Jede bestandene Teilnahme landet in der neuen Lizenzvergabe für Admin und FD-RSK. Dort wird die Zuordnung geprüft oder geändert, die Lizenzstufe gewählt (die angestrebte Stufe der Person ist nur Hinweis), die Lizenz erteilt (einzeln oder gesammelt) oder mit Pflichtgrund abgelehnt.
+  - Erteilen legt neue Schiris mit Lizenznummer an, schreibt Stufe und Gültigkeit, schickt die Lizenzmail und richtet neuen Schiris mit Adresse ein Konto ein.
+  - Die RSK sieht am Kurs je Person, ob die Lizenz erteilt oder mit welchem Grund sie abgelehnt wurde. Die Kurshistorie am Schiri-Profil zeigt auch Kurse aus dem System.
 - **Schalter für die Kursprozesse in den Schiri-Einstellungen**: Unter `/verwaltung/schiedsrichter/einstellungen` schaltet der Admin den CSV-Import von Kursergebnissen und die Kurse im System getrennt an und aus; die Kurse auf Wunsch nur für einzelne Landesverbände. Ein abgeschalteter Import sperrt nur neue Uploads: Offene Importe lassen sich weiter bearbeiten und einreichen, und die LV-Freigabe läuft weiter. Der Menüpunkt „Kursergebnisse“ bleibt sichtbar, bis keine offenen Zeilen mehr da sind. Vorgabe ohne Eingriff: Import an, Kurse aus. Vorbereitung für die Kurse im System, die den CSV-Import zum Jahresende ablösen.
 
 ## [1.129.0] - 2026-10-08

@@ -451,6 +451,8 @@ class User < ApplicationRecord
     # Steuert den Upload-Knopf in der Importliste (die API sperrt ohnehin).
     result[:referee_course_import_upload] = has_full_referee_access && csv_import_enabled
     result[:menu_item_referee_course_review] = has_full_referee_access || lv_rsk_review_enabled?(ph)
+    # Lizenzvergabe fuer Kurse im System: nur FD (Admin, FD-RSK).
+    result[:menu_item_referee_course_licensing] = has_full_referee_access && Setting.referee_courses_enabled?
     # Kurse im System: Admin und RSK, sofern der Schalter fuer mindestens einen
     # ihrer Landesverbaende an ist (RefereeCoursePolicy#any_access?).
     result[:menu_item_referee_courses] =
