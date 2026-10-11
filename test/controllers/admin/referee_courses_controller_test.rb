@@ -290,6 +290,18 @@ module Admin
       assert_equal 'cancelled_by_organizer', r.reload.status
     end
 
+    test 'Absage ueberschreibt keine Abmeldung der Person' do
+      course = course_for(@lv_a)
+      cancelled_at = 2.days.ago.change(usec: 0)
+      r = course.registrations.create!(vorname: 'A', nachname: 'B', geburtsdatum: Date.new(2000, 1, 1),
+                                       status: 'cancelled_by_participant', cancelled_at: cancelled_at)
+      login(@rsk_a)
+      delete "/api/v2/admin/referee_courses/#{course.id}/registrations/#{r.id}"
+      assert_response :unprocessable_entity
+      assert_equal 'cancelled_by_participant', r.reload.status
+      assert_equal cancelled_at, r.cancelled_at
+    end
+
     test 'Umzuordnen setzt auch das Konto des neuen Schiris' do
       x = create(:referee)
       y = create(:referee)

@@ -40,13 +40,19 @@ class RefereeCourseParticipantList
 
   def values(reg)
     [
-      reg.nachname, reg.vorname, reg.geburtsdatum&.strftime('%d.%m.%Y'), reg.age_at_course, reg.email, reg.telefon,
+      reg.nachname, reg.vorname, reg.geburtsdatum&.strftime('%d.%m.%Y'), reg.age_at_course, reg.email, phone(reg.telefon),
       reg.club&.name, reg.referee&.lizenznummer || reg.stated_lizenznummer, reg.referee&.lizenzstufe,
       reg.desired_license_level&.name, STATUS_LABELS[reg.status], { 'passed' => 'bestanden', 'failed' => 'nicht bestanden' }[reg.result],
       reg.test_version, reg.points&.to_s&.tr('.', ','), reg.billing_club&.name, reg.billing_address,
       [reg.guardian_name, reg.guardian_email].compact_blank.join(', ').presence, reg.remarks,
       reg.created_at.in_time_zone('Europe/Berlin').strftime('%d.%m.%Y %H:%M'), reg.source
     ]
+  end
+
+  # +49 ... wuerde der Formelschutz mit einem sichtbaren Apostroph versehen;
+  # die gleichwertige Schreibweise 0049 ... braucht keinen.
+  def phone(value)
+    value.to_s.match?(%r{\A\+[\d\s/().-]+\z}) ? value.sub(/\A\+/, '00') : value
   end
 
   def answer(value)

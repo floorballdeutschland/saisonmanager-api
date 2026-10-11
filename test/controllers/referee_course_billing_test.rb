@@ -117,6 +117,23 @@ class RefereeCourseBillingTest < ActionDispatch::IntegrationTest
     assert participants['Vorname'].start_with?("'=")
   end
 
+  test 'Teilnehmerliste: Telefonnummer mit Landesvorwahl ohne Apostroph' do
+    reg(vorname: 'Ada', club: @club, status: 'registered', telefon: '+49 30 1234-56')
+    reg(vorname: 'Bo', club: @club, status: 'registered', telefon: '+49 =SUMME(A1)')
+    rows = parse(RefereeCourseParticipantList.new(@course).to_csv)
+    assert_equal '0049 30 1234-56', rows.find { |r| r['Vorname'] == 'Ada' }['Telefon']
+    assert_equal "'+49 =SUMME(A1)", rows.find { |r| r['Vorname'] == 'Bo' }['Telefon']
+  end
+
+  test 'Abgerechnete Anmeldung laesst sich nicht mehr absagen' do
+    r = reg(vorname: 'Ada', club: @club, status: 'attended')
+    RefereeCourseBilling.new(state_association_id: @lv.id).create!(user: @rsk)
+    login(@rsk)
+    delete "/api/v2/admin/referee_courses/#{@course.id}/registrations/#{r.id}"
+    assert_response :unprocessable_entity
+    assert_equal 'attended', r.reload.status
+  end
+
   test 'Warnung bei fehlender Vereinsanschrift' do
     reg(club: @bare_club, status: 'attended')
     login(@rsk)
