@@ -12,6 +12,10 @@ class RefereeCourseRegistration < ApplicationRecord
   # Diese Zustaende belegen einen Platz.
   SEAT_STATUSES = %w[registered attended no_show].freeze
   CANCELLED_STATUSES = %w[cancelled_by_participant cancelled_by_organizer].freeze
+  # Diese Zeilen sperren keine weitere Anmeldung derselben Person: abgemeldete
+  # und nie bestaetigte (pending_email). Sonst koennte eine liegengebliebene
+  # oder von Fremden ausgeloeste Anmeldung die Person wochenlang aussperren.
+  NON_BLOCKING_STATUSES = (CANCELLED_STATUSES + %w[pending_email]).freeze
   RESULTS = %w[passed failed].freeze
   IDENTITY_MATCHES = %w[account confirmed_existing new_person needs_review].freeze
 
@@ -37,8 +41,8 @@ class RefereeCourseRegistration < ApplicationRecord
   validates :result, inclusion: { in: RESULTS }, allow_nil: true
   validates :identity_match, inclusion: { in: IDENTITY_MATCHES }
   validates :referee_id, uniqueness: { scope: :referee_course_id, message: 'ist bereits angemeldet',
-                                      conditions: -> { where.not(status: CANCELLED_STATUSES) } },
-                         allow_nil: true, unless: :cancelled?
+                                      conditions: -> { where.not(status: NON_BLOCKING_STATUSES) } },
+                         allow_nil: true, unless: :non_blocking?
   validates :points, numericality: { greater_than_or_equal_to: 0 }, allow_nil: true
   validate :unique_person_without_referee
   validate :license_levels_belong_to_course
@@ -46,10 +50,25 @@ class RefereeCourseRegistration < ApplicationRecord
   validate :billing_address_without_club
 
   scope :active, -> { where.not(status: CANCELLED_STATUSES) }
+  scope :blocking, -> { where.not(status: NON_BLOCKING_STATUSES) }
   scope :seated, -> { where(status: SEAT_STATUSES) }
 
   def cancelled?
     CANCELLED_STATUSES.include?(status)
+  end
+
+  def non_blocking?
+    NON_BLOCKING_STATUSES.include?(status)
+  end
+
+  # Gleiche Person im selben Kurs: ueber den Schiri oder ueber
+  # E-Mail + Geburtsdatum + Vorname (wie der Unique-Index).
+  def same_person_scope
+    scope = RefereeCourseRegistration.where(referee_course_id: referee_course_id).where.not(id: id)
+    return scope.where(referee_id: referee_id) if referee_id
+
+    scope.where(geburtsdatum: geburtsdatum)
+         .where('lower(email) = ? AND lower(vorname) = ?', email.to_s.downcase, vorname.to_s.downcase)
   end
 
   # Abmeldung nach der Abmeldefrist: Die Gebuehr bleibt faellig.
@@ -106,9 +125,9 @@ class RefereeCourseRegistration < ApplicationRecord
   # Spiegelt den Unique-Index (Kurs, E-Mail, Geburtsdatum, Vorname), damit die
   # Doppelung als Meldung und nicht als 500 ankommt.
   def unique_person_without_referee
-    return if email.blank? || geburtsdatum.blank? || vorname.blank? || cancelled?
+    return if email.blank? || geburtsdatum.blank? || vorname.blank? || non_blocking?
 
-    scope = RefereeCourseRegistration.active
+    scope = RefereeCourseRegistration.blocking
                                      .where(referee_course_id: referee_course_id, geburtsdatum: geburtsdatum)
                                      .where('lower(email) = ? AND lower(vorname) = ?', email.downcase, vorname.downcase)
     scope = scope.where.not(id: id) if persisted?
