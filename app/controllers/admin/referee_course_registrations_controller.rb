@@ -86,6 +86,12 @@ module Admin
     # Ohne Validierung: Eine Absage darf nicht an Angaben scheitern, die erst
     # nachtraeglich ungueltig wurden (etwa eine aus dem Kurs entfernte Stufe).
     def destroy
+      # Eine schon abgemeldete Zeile bleibt, wie sie ist: Aus einer spaeten
+      # Abmeldung durch die Person wuerde sonst eine kostenfreie Absage.
+      if @registration.cancelled?
+        return render json: { error: 'Die Anmeldung ist bereits abgemeldet' }, status: :unprocessable_entity
+      end
+
       was_seated = RefereeCourseRegistration::SEAT_STATUSES.include?(@registration.status)
       @registration.update_columns(status: 'cancelled_by_organizer', cancelled_at: Time.current,
                                    updated_at: Time.current)
