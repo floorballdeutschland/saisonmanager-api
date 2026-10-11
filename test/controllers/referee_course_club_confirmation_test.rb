@@ -125,6 +125,11 @@ class RefereeCourseClubConfirmationTest < ActionDispatch::IntegrationTest
           params: { state_association: { course_club_confirmation_required: false } }, as: :json
     assert_response :success
     assert_not @lv.reload.course_club_confirmation_required
+    assert response.parsed_body['referee_courses_enabled']
+
+    @setting.update!(referee_course_processes: { 'courses_enabled' => false })
+    get "/api/v2/admin/state_associations/#{@lv.id}"
+    assert_equal false, response.parsed_body['referee_courses_enabled']
   end
   test 'nach einer Ablehnung kann sich die Person wieder anmelden' do
     referee = create(:referee, club: @club, email: 'sr@example.org', geburtsdatum: Date.new(2000, 1, 1))

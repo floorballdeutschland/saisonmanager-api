@@ -405,6 +405,9 @@ class StateAssociation < ApplicationRecord
       effective_person_level_assignment_default: effective_person_level_assignment_default.present?,
       effective_coach_assignment_enabled: effective_coach_assignment_enabled.present?,
       effective_course_club_confirmation_required: effective_course_club_confirmation_required.present?,
+      # Ob Kurse im System fuer diesen Verband freigeschaltet sind. Die Maske
+      # zeigt die Vereinsbestaetigung nur dann, ohne Kurse bewirkt sie nichts.
+      referee_courses_enabled: Setting.referee_courses_enabled?(id),
       effective_report_form_email_enabled: effective_report_form_email_enabled.present?,
       effective_manual_proceeding_creation: effective_manual_proceeding_creation.present?,
       effective_requested_license_playable: effective_requested_license_playable.present?,
