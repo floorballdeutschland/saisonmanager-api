@@ -583,7 +583,52 @@ class LeagueTest < ActiveSupport::TestCase
 
     # Weiss +10, Hochdahl +5, Alphas -5. Bisher stand Alphas mit 0:0 Toren im
     # direkten Vergleich vor Weiss, das sein Duell gegen Hochdahl verloren hatte.
+    # Dass Hochdahl trotz gewonnenem Duell hinter Weiss steht, ist gewollt:
+    # Solange Alphas gegen keins der beiden gespielt hat, gilt für alle drei
+    # die Tordifferenz.
     assert_equal [rabbits, weiss, hochdahl, alphas].map(&:id), order.first(4)
+  end
+
+  test 'table: ein fehlendes Duell unter drei Punktgleichen genügt für die Tordifferenz' do
+    league = build_league(build_go)
+    league.update!(direct_comparison: true)
+    club = build_club
+    game_day = build_game_day(league, build_arena, club)
+    team_a, team_b, team_c, team_x = %w[A B C X].map { |name| build_team(league, club, name) }
+
+    build_game(game_day, team_a, team_b, score(1, 0))
+    build_game(game_day, team_c, team_b, score(0, 1))
+    build_game(game_day, team_c, team_x, score(5, 0))
+    # A gegen C ist angesetzt, aber noch nicht gespielt.
+    build_game(game_day, team_a, team_c, started: false, ended: false)
+
+    order = league.table.map { |r| r[:team_id] }
+
+    # A, B und C je 3 Punkte. Mit zwei von drei Duellen hätte die Mini-Tabelle
+    # A, B, C ergeben; nach Tordifferenz ist es C (+4), A (+1), B (0).
+    assert_equal [team_c, team_a, team_b, team_x].map(&:id), order
+  end
+
+  test 'table: direkter Vergleich entscheidet unter drei Punktgleichen gegen die Tordifferenz' do
+    league = build_league(build_go)
+    league.update!(direct_comparison: true)
+    club = build_club
+    game_day = build_game_day(league, build_arena, club)
+    team_y, team_a, team_b, team_c = %w[Y A B C].map { |name| build_team(league, club, name) }
+
+    build_game(game_day, team_a, team_b, score(3, 0))
+    # Heimteams mit der höheren ID, damit die Paarprüfung beide Richtungen sieht.
+    build_game(game_day, team_c, team_b, score(0, 1))
+    build_game(game_day, team_c, team_a, score(1, 0))
+    build_game(game_day, team_y, team_a, score(10, 0))
+    build_game(game_day, team_y, team_b, score(1, 0))
+    build_game(game_day, team_y, team_c, score(1, 0))
+
+    order = league.table.map { |r| r[:team_id] }
+
+    # A, B und C je 3 Punkte. Tordifferenz: C -1, B -3, A -8. Im direkten
+    # Vergleich: A 3:1, C 1:1, B 1:3.
+    assert_equal [team_y, team_a, team_c, team_b].map(&:id), order
   end
 
   test 'table: direkter Vergleich entscheidet, wenn alle Punktgleichen gegeneinander gespielt haben' do

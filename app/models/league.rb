@@ -1687,11 +1687,12 @@ class League < ApplicationRecord
       end
 
       # Der direkte Vergleich zählt erst, wenn jedes Paar der Punktgleichen
-      # mindestens einmal gegeneinander gespielt hat. Sonst wertet die
-      # Mini-Tabelle Spiele gegen Dritte: Bei drei Teams auf gleichen Punkten,
-      # von denen eins noch gegen keins der anderen gespielt hat, stand dieses
-      # mit 0:0 Toren vor dem Team, das ein Duell verloren hatte, auch bei viel
-      # schlechterer Tordifferenz (Liga 2599 am 11.10.2026).
+      # mindestens einmal gegeneinander gespielt hat. Sonst vergleicht die
+      # Mini-Tabelle ungleich viele Duelle, und ein Team ohne Duell geht mit
+      # 0:0 neutral ein: Bei drei Teams auf gleichen Punkten, von denen eins
+      # noch gegen keins der anderen gespielt hatte, stand dieses vor dem Team,
+      # das ein Duell verloren hatte, auch bei viel schlechterer Tordifferenz
+      # (Liga 2599 am 11.10.2026).
       unless all_pairs_played?(group_ids, h2h_games)
         sorted.concat(group.sort_by { |r| [-r[:goals_diff], -r[:goals_scored]] })
         next
