@@ -1089,16 +1089,20 @@ class Player < ApplicationRecord
   # die neue fehlte in Antragsmaske, Spielbericht, Spielsekretariat,
   # Lizenzliste der Liga und beim Abzaehlen einer Sperre.
   def license_for_team(team_id, season_id: nil)
-    candidates = Array(licenses).select do |l|
-      next false unless l.is_a?(Hash) && l['team_id'].to_i == team_id.to_i
-      next true if season_id.blank?
+    pick_team_license(team_license_candidates(team_id, season_id))
+  end
 
-      lic_season = l['season_id'] || l.dig('league', 'season_id')
-      lic_season.nil? || lic_season.to_s == season_id.to_s
-    end
+  # Alle Lizenzen des Spielers fuer diese Mannschaft, nicht nur die eine aus
+  # license_for_team. Die steht vorn, dahinter die uebrigen, die zuletzt
+  # geaenderte zuerst. Fuer die Verbandsuebersicht, die jede beantragte Lizenz
+  # als eigene Zeile zeigt (#787).
+  def licenses_for_team(team_id, season_id: nil)
+    candidates = team_license_candidates(team_id, season_id)
+    primary = pick_team_license(candidates)
+    return [] unless primary
 
-    candidates.find { |l| License::ACTIVE_STATUSES.include?(LicenseEffectiveStatus.base_status_id(l)) } ||
-      candidates.max_by { |l| last_change_sort_key(l) }
+    rest = candidates.reject { |l| l.equal?(primary) }.sort_by { |l| last_change_sort_key(l) }.reverse
+    [primary, *rest]
   end
 
   # Wäre der Spieler für dieses Team spielberechtigt, wenn es keine Sperre gäbe?
@@ -1366,6 +1370,25 @@ class Player < ApplicationRecord
   end
 
   private
+
+  # Alle Lizenzen fuer diese Mannschaft, eingegrenzt auf die Saison. Eine
+  # Lizenz ohne Saisonangabe zaehlt dazu (Altbestand).
+  def team_license_candidates(team_id, season_id)
+    Array(licenses).select do |l|
+      next false unless l.is_a?(Hash) && l['team_id'].to_i == team_id.to_i
+      next true if season_id.blank?
+
+      lic_season = l['season_id'] || l.dig('league', 'season_id')
+      lic_season.nil? || lic_season.to_s == season_id.to_s
+    end
+  end
+
+  # Die aktive Lizenz (Basisstatus erteilt oder beantragt), sonst die zuletzt
+  # geaenderte. Siehe license_for_team.
+  def pick_team_license(candidates)
+    candidates.find { |l| License::ACTIVE_STATUSES.include?(LicenseEffectiveStatus.base_status_id(l)) } ||
+      candidates.max_by { |l| last_change_sort_key(l) }
+  end
 
   # Lizenz ohne jeden Verlaufseintrag sortiert vor jede mit Eintrag.
   def last_change_sort_key(license)
