@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.130.0] - 2026-10-11
+
 ### Neu
 
 - **Lizenzverwaltung zeigt auch ungültige Lizenzen** (#787): Die Verbandsübersicht (`GET /api/v2/admin/licenses`) liefert zusätzlich gelöschte, wegen Transfer ungültige und ignorierte Lizenzen. Hat ein Spieler bei derselben Mannschaft mehrere Lizenzen, etwa eine gelöschte neben einer neueren erteilten, steht jede in einer eigenen Zeile. Jede Zeile nennt Zeitpunkt, Person und Grund der letzten Statusänderung. Die Kaderlisten der Ligen bleiben unverändert. Hart gelöschte Lizenzen (Rückzug innerhalb der Stunde, Entfernen der Teams einer Liga, Dublettenbereinigung) erscheinen weiterhin nicht.
