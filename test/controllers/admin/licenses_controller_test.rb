@@ -823,6 +823,22 @@ module Admin
       end
     end
 
+    # Die Status-ID liegt in der JSONB-History nicht typgarantiert vor.
+    test 'eine gelöschte Lizenz mit Status-ID als Zeichenkette steht in der Verbandsübersicht' do
+      spieler = create(:player, with_licenses: [{ team: @team_go1, status: License::APPROVED, season_id: '18' }])
+      lizenzen = spieler.licenses.deep_dup
+      lizenzen.first['history'] << { 'license_status_id' => '4', 'created_at' => Time.zone.now.iso8601 }
+      spieler.update!(licenses: lizenzen)
+
+      login_as(@admin)
+      get '/api/v2/admin/licenses'
+
+      row = JSON.parse(response.body).find { |r| r['player_id'] == spieler.id }
+      assert row, 'die geloeschte Lizenz fehlt'
+      assert_equal License::DELETED, row['license_status_id'].to_i
+      assert_equal License::NAMES[License::DELETED], row['license_status']
+    end
+
     # Neben einer neueren erteilten Lizenz blieb die geloeschte unsichtbar,
     # weil Player#license_for_team nur eine Lizenz je Mannschaft liefert.
     test 'mehrere Lizenzen desselben Spielers bei derselben Mannschaft stehen je in einer Zeile' do

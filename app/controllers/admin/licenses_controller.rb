@@ -302,9 +302,9 @@ module Admin
     # Vorher zählten sie mit, und weil die Ligaklasse zuerst entscheidet, gewann
     # eine tote Lizenz in der höheren Klasse: Der Verband sah die tatsächlich
     # erteilte Lizenz als „Zusatzlizenz", ohne dass die Zeile daneben stand, die
-    # das erklärt hätte -- gelöscht und transferungültig stehen gar nicht in
-    # dieser Liste. Auf der Produktion traf das am 18.09.2026 sieben Spieler der
-    # laufenden Saison.
+    # das erklärt hätte. Auf der Produktion traf das am 18.09.2026 sieben
+    # Spieler der laufenden Saison. Seit #787 stehen gelöschte und
+    # transferungültige Lizenzen in der Liste, tragen aber kein Etikett.
     #
     # Der Basis-Status (ohne Sperre) wie in League#build_license_items und
     # other_license_items: Eine gesperrte Lizenz ist erteilt und bleibt die

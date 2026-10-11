@@ -1371,7 +1371,8 @@ class Player < ApplicationRecord
 
   private
 
-  # Lizenz ohne jeden Verlaufseintrag sortiert vor jede mit Eintrag.
+  # Alle Lizenzen fuer diese Mannschaft, eingegrenzt auf die Saison. Eine
+  # Lizenz ohne Saisonangabe zaehlt dazu (Altbestand).
   def team_license_candidates(team_id, season_id)
     Array(licenses).select do |l|
       next false unless l.is_a?(Hash) && l['team_id'].to_i == team_id.to_i
@@ -1382,11 +1383,14 @@ class Player < ApplicationRecord
     end
   end
 
+  # Die aktive Lizenz (Basisstatus erteilt oder beantragt), sonst die zuletzt
+  # geaenderte. Siehe license_for_team.
   def pick_team_license(candidates)
     candidates.find { |l| License::ACTIVE_STATUSES.include?(LicenseEffectiveStatus.base_status_id(l)) } ||
       candidates.max_by { |l| last_change_sort_key(l) }
   end
 
+  # Lizenz ohne jeden Verlaufseintrag sortiert vor jede mit Eintrag.
   def last_change_sort_key(license)
     entry = LicenseEffectiveStatus.current_entry(license)
     entry ? LicenseEffectiveStatus.sort_key(entry) : [-1, 0, '']
