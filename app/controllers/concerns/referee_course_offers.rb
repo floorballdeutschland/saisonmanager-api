@@ -40,6 +40,9 @@ module RefereeCourseOffers
       custom_answers: registration.custom_answers,
       fee_cents: registration.fee_cents,
       source: registration.source,
+      billing_club: registration.billing_club && { id: registration.billing_club.id,
+                                                   name: registration.billing_club.name },
+      club_decline_reason: registration.club_decline_reason,
       cancellable: !registration.cancelled? && %w[published registration_closed].include?(course.status)
     }
   end

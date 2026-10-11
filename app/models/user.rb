@@ -74,6 +74,9 @@ class User < ApplicationRecord
   has_many :referee_course_registrations, dependent: :nullify
   has_many :created_referee_courses, class_name: 'RefereeCourse', foreign_key: :created_by_user_id,
                                      inverse_of: :created_by_user, dependent: :nullify
+  has_many :club_confirmed_referee_course_registrations, class_name: 'RefereeCourseRegistration',
+                                                         foreign_key: :club_confirmed_by_user_id,
+                                                         inverse_of: :club_confirmed_by_user, dependent: :nullify
   has_many :registered_referee_course_registrations, class_name: 'RefereeCourseRegistration',
                                                      foreign_key: :registered_by_user_id,
                                                      inverse_of: :registered_by_user, dependent: :nullify

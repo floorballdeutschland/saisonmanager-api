@@ -29,6 +29,20 @@ class RefereeCourseMailer < ApplicationMailer
     )
   end
 
+  # Selbstanmeldung, die noch auf den zahlenden Verein wartet. Eigene Vorlage,
+  # damit eine angepasste Bestaetigungsvorlage nie einen Platz zusagt.
+  def awaiting_club(registration, cancel_token = nil)
+    @cancel_link = "#{FrontendUrl.base}/kurs-anmeldung/abmelden/#{cancel_token}" if cancel_token
+    setup(registration)
+    @club = registration.billing_club || registration.club
+    templated_mail(
+      to: self.class.recipient(registration),
+      subject: "Anmeldung eingegangen: #{@course.title}",
+      default_reply_to: @course.contact_email.presence,
+      placeholders: placeholders.merge(club: @club&.name.to_s)
+    )
+  end
+
   def promoted(registration)
     course_mail(registration)
   end
@@ -39,6 +53,34 @@ class RefereeCourseMailer < ApplicationMailer
 
   def course_cancelled(registration)
     course_mail(registration)
+  end
+
+  # An den zahlenden Verein: Selbstanmeldung bestaetigen (Verbandseinstellung
+  # course_club_confirmation_required).
+  def club_confirmation_request(registration, recipients)
+    setup(registration)
+    @club = registration.billing_club
+    @link = "#{FrontendUrl.base}/verein/schiri-kurse"
+    @fee = registration.fee_cents && format('%.2f', registration.fee_cents / 100.0).tr('.', ',')
+    templated_mail(
+      to: recipients,
+      subject: "Kursanmeldung bestätigen: #{@name}, #{@course.title}",
+      default_reply_to: @course.contact_email.presence,
+      placeholders: placeholders.merge(link: @link, club: @club&.name.to_s, fee: @fee.to_s)
+    )
+  end
+
+  # An die Person: Der Verein uebernimmt die Kosten nicht.
+  def club_declined(registration)
+    setup(registration)
+    @club = registration.billing_club
+    @reason = registration.club_decline_reason
+    templated_mail(
+      to: self.class.recipient(registration),
+      subject: "Anmeldung nicht bestätigt: #{@course.title}",
+      default_reply_to: @course.contact_email.presence,
+      placeholders: placeholders.merge(club: @club&.name.to_s, reason: @reason.to_s)
+    )
   end
 
   # An die Erziehungsberechtigten: Einwilligung per Link. Erst danach ist die
@@ -80,11 +122,15 @@ class RefereeCourseMailer < ApplicationMailer
 
   def subject_prefix
     {
-      'registered' => @waitlisted ? 'Warteliste' : 'Anmeldung bestätigt',
+      'registered' => registered_subject,
       'promoted' => 'Platz frei geworden',
       'cancelled' => 'Abmeldung bestätigt',
       'course_cancelled' => 'Kurs abgesagt'
     }.fetch(action_name, 'Schiedsrichterkurs')
+  end
+
+  def registered_subject
+    @waitlisted ? 'Warteliste' : 'Anmeldung bestätigt'
   end
 
   def placeholders

@@ -11,6 +11,7 @@ class ClubRefereeCoursesController < ApplicationController
   before_action :require_vm!
   before_action :set_course, only: %i[register]
   before_action :set_registration, only: %i[cancel]
+  before_action :set_pending_registration, only: %i[confirm decline]
 
   # GET /api/v2/club/referee_courses
   def index
@@ -18,7 +19,7 @@ class ClubRefereeCoursesController < ApplicationController
     registrations = RefereeCourseRegistration.where(club_id: @club_ids).or(
       RefereeCourseRegistration.where(billing_club_id: @club_ids)
     ).joins(:referee_course).merge(RefereeCourse.where('ends_on IS NULL OR ends_on >= ?', 1.year.ago.to_date))
-                                             .includes(:referee_course, :club).order(created_at: :desc)
+                                             .includes(:referee_course, :club, :billing_club).order(created_at: :desc)
     render json: {
       clubs: Club.where(id: @club_ids).order(:name).map { |c| { id: c.id, name: c.name } },
       courses: courses.map { |c| c.offer_hash(levels_by_id: levels) },
@@ -55,7 +56,31 @@ class ClubRefereeCoursesController < ApplicationController
     render json: own_registration_json(@registration)
   end
 
+  # POST /api/v2/club/referee_courses/registrations/:registration_id/confirm
+  # Der Verein uebernimmt die Kosten einer Selbstanmeldung.
+  def confirm
+    result = RefereeCourseRegistrar.new(@registration.referee_course).confirm_club(@registration, user: current_user)
+    return error_json(result.error) unless result.success?
+
+    render json: own_registration_json(@registration.reload)
+  end
+
+  # POST /api/v2/club/referee_courses/registrations/:registration_id/decline
+  def decline
+    result = RefereeCourseRegistrar.new(@registration.referee_course)
+                                   .decline_club(@registration, user: current_user, reason: params[:reason])
+    return error_json(result.error) unless result.success?
+
+    render json: own_registration_json(@registration.reload)
+  end
+
   private
+
+  # Bestaetigen darf der zahlende Verein, nicht zwingend der Mitgliedsverein.
+  def set_pending_registration
+    @registration = RefereeCourseRegistration.where(billing_club_id: @club_ids).find_by(id: params[:registration_id])
+    error_json('Anmeldung nicht gefunden', :not_found) if @registration.nil?
+  end
 
   def require_vm!
     @club_ids = Array(current_user&.club_ids).map(&:to_i)
