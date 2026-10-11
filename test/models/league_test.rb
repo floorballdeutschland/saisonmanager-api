@@ -559,6 +559,52 @@ class LeagueTest < ActiveSupport::TestCase
     assert_equal 0, sorted.find { |r| r[:team_id] == team_c.id }[:games]
   end
 
+  def score(home_goals, guest_goals)
+    { events: [{ 'period' => 1, 'home_goals' => home_goals, 'guest_goals' => guest_goals, 'row' => 1 }] }
+  end
+
+  # Nachbau von Liga 2599 am 11.10.2026 nach dem fünften Spiel: drei Teams auf
+  # 3 Punkten, nur eins der drei Duelle ist gespielt.
+  test 'table: direkter Vergleich greift nicht, solange Duelle der Punktgleichen fehlen' do
+    league = build_league(build_go)
+    league.update!(direct_comparison: true)
+    club = build_club
+    game_day = build_game_day(league, build_arena, club)
+    weiss, hochdahl, alphas, rabbits, sigmas, juniorinnen =
+      %w[Weiss Hochdahl Alphas Rabbits Sigmas Juniorinnen].map { |name| build_team(league, club, name) }
+
+    build_game(game_day, rabbits, alphas, score(10, 4))
+    build_game(game_day, weiss, sigmas, score(17, 2))
+    build_game(game_day, rabbits, juniorinnen, score(13, 2))
+    build_game(game_day, weiss, hochdahl, score(8, 13))
+    build_game(game_day, alphas, sigmas, score(6, 5))
+
+    order = league.table.map { |r| r[:team_id] }
+
+    # Weiss +10, Hochdahl +5, Alphas -5. Bisher stand Alphas mit 0:0 Toren im
+    # direkten Vergleich vor Weiss, das sein Duell gegen Hochdahl verloren hatte.
+    assert_equal [rabbits, weiss, hochdahl, alphas].map(&:id), order.first(4)
+  end
+
+  test 'table: direkter Vergleich entscheidet, wenn alle Punktgleichen gegeneinander gespielt haben' do
+    league = build_league(build_go)
+    league.update!(direct_comparison: true)
+    club = build_club
+    game_day = build_game_day(league, build_arena, club)
+    team_a, team_b, team_c, team_d = %w[A B C D].map { |name| build_team(league, club, name) }
+
+    build_game(game_day, team_a, team_b, score(1, 0))
+    build_game(game_day, team_b, team_c, score(10, 0))
+    build_game(game_day, team_d, team_a, score(5, 0))
+    build_game(game_day, team_d, team_c, score(1, 0))
+
+    order = league.table.map { |r| r[:team_id] }
+
+    # A und B je 3 Punkte, B mit der besseren Tordifferenz (+9 zu -4), aber A
+    # hat das Duell gewonnen.
+    assert_equal [team_d, team_a, team_b, team_c].map(&:id), order
+  end
+
   test 'grouped_table: Gruppentabellen enthalten nur die Teams der jeweiligen Gruppe' do
     go = build_go
     league = build_league(go)
