@@ -41,6 +41,34 @@ class RefereeCourseMailer < ApplicationMailer
     course_mail(registration)
   end
 
+  # An den zahlenden Verein: Selbstanmeldung bestaetigen (Verbandseinstellung
+  # course_club_confirmation_required).
+  def club_confirmation_request(registration, recipients)
+    setup(registration)
+    @club = registration.billing_club
+    @link = "#{FrontendUrl.base}/verein/schiri-kurse"
+    @fee = registration.fee_cents && format('%.2f', registration.fee_cents / 100.0).tr('.', ',')
+    templated_mail(
+      to: recipients,
+      subject: "Kursanmeldung bestätigen: #{@name}, #{@course.title}",
+      default_reply_to: @course.contact_email.presence,
+      placeholders: placeholders.merge(link: @link, club: @club&.name.to_s, fee: @fee.to_s)
+    )
+  end
+
+  # An die Person: Der Verein uebernimmt die Kosten nicht.
+  def club_declined(registration)
+    setup(registration)
+    @club = registration.billing_club
+    @reason = registration.club_decline_reason
+    templated_mail(
+      to: self.class.recipient(registration),
+      subject: "Anmeldung nicht bestätigt: #{@course.title}",
+      default_reply_to: @course.contact_email.presence,
+      placeholders: placeholders.merge(club: @club&.name.to_s, reason: @reason.to_s)
+    )
+  end
+
   # An die Erziehungsberechtigten: Einwilligung per Link. Erst danach ist die
   # Anmeldung eingeplant.
   def guardian_consent(registration, raw_token)
@@ -80,11 +108,17 @@ class RefereeCourseMailer < ApplicationMailer
 
   def subject_prefix
     {
-      'registered' => @waitlisted ? 'Warteliste' : 'Anmeldung bestätigt',
+      'registered' => registered_subject,
       'promoted' => 'Platz frei geworden',
       'cancelled' => 'Abmeldung bestätigt',
       'course_cancelled' => 'Kurs abgesagt'
     }.fetch(action_name, 'Schiedsrichterkurs')
+  end
+
+  def registered_subject
+    return 'Anmeldung eingegangen' if @registration.status == 'pending_club'
+
+    @waitlisted ? 'Warteliste' : 'Anmeldung bestätigt'
   end
 
   def placeholders

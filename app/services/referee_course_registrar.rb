@@ -86,7 +86,7 @@ class RefereeCourseRegistrar
                                        guardian_token_digest: digest(guardian_token),
                                        guardian_token_expires_at: guardian_token_expiry)
       else
-        registration.status = seat_available? ? 'registered' : 'waitlisted'
+        registration.status = placement_status(registration)
       end
       registration.save!
     end
@@ -136,7 +136,7 @@ class RefereeCourseRegistrar
         attrs.merge!(status: 'pending_guardian', guardian_token_digest: Digest::SHA256.hexdigest(guardian_token),
                      guardian_token_expires_at: Time.current + GUARDIAN_TOKEN_VALIDITY)
       else
-        attrs[:status] = registrar.seat_available? ? 'registered' : 'waitlisted'
+        attrs[:status] = registrar.placement_status(registration)
       end
       # Inzwischen anders angemeldet (Portal, Verein, zweites Formular)? Dann
       # ist diese Zeile ueberfluessig.
@@ -188,7 +188,7 @@ class RefereeCourseRegistrar
     RefereeCourse.transaction do
       registration.referee_course.lock!
       registration.skip_required_answers = true
-      registration.update!(status: registrar.seat_available? ? 'registered' : 'waitlisted',
+      registration.update!(status: registrar.placement_status(registration),
                            guardian_confirmed_at: Time.current,
                            guardian_token_digest: nil)
     end
@@ -231,9 +231,67 @@ class RefereeCourseRegistrar
 
   # Anmeldungen ohne Konto (oeffentlich) bekommen mit der Bestaetigung einen
   # Abmeldelink; Portal und Verein melden in ihrer Ansicht ab.
+  # Wohin eine bestaetigte Anmeldung kommt: zur Bestaetigung an den zahlenden
+  # Verein (Verbandseinstellung), sonst auf einen Platz oder die Warteliste.
+  def placement_status(registration)
+    return 'pending_club' if club_confirmation_required?(registration)
+
+    seat_available? ? 'registered' : 'waitlisted'
+  end
+
+  # Selbstanmeldungen (Portal, oeffentlich), bei denen ein Verein zahlt, muss
+  # dieser Verein bestaetigen, wenn der Landesverband des Kurses das so
+  # eingestellt hat (bundesweite Kurse: der LV des Vereins). Meldet der Verein
+  # selbst an oder traegt die RSK ein, entfaellt der Schritt.
+  def club_confirmation_required?(registration)
+    return false unless %w[portal public].include?(registration.source)
+
+    # Vor dem ersten Speichern ist billing_club noch nicht aus club abgeleitet
+    # (before_validation), daher der Rueckfall.
+    club = registration.billing_club || registration.club
+    return false if club.nil?
+
+    sa = @course.state_association || club.state_association
+    sa&.effective_course_club_confirmation_required.present?
+  end
+
+  # Der zahlende Verein bestaetigt: jetzt auf einen Platz oder die Warteliste.
+  def confirm_club(registration, user:)
+    return Result.new(error: 'Diese Anmeldung wartet nicht auf den Verein') unless registration.status == 'pending_club'
+
+    RefereeCourse.transaction do
+      @course.lock!
+      registration.skip_required_answers = true
+      registration.update!(status: seat_available? ? 'registered' : 'waitlisted',
+                           club_confirmed_at: Time.current, club_confirmed_by_user: user)
+    end
+    notify_registered(registration, nil)
+    Result.new(registration: registration)
+  end
+
+  # Der Verein lehnt ab (zahlt nicht). Die Person erfaehrt es mit Grund und kann
+  # sich ohne Verein, also als Selbstzahler, neu anmelden.
+  def decline_club(registration, user:, reason:)
+    return Result.new(error: 'Diese Anmeldung wartet nicht auf den Verein') unless registration.status == 'pending_club'
+    return Result.new(error: 'Bitte einen Grund angeben') if reason.to_s.strip.blank?
+
+    registration.update_columns(status: 'declined_by_club', cancelled_at: Time.current,
+                                club_decline_reason: reason.to_s.strip, club_confirmed_by_user_id: user&.id,
+                                updated_at: Time.current)
+    RefereeCourseMailer.club_declined(registration).deliver_later if RefereeCourseMailer.recipient(registration)
+    Result.new(registration: registration)
+  end
+
   def notify_registered(registration, guardian_token)
     if guardian_token
       RefereeCourseMailer.guardian_consent(registration, guardian_token).deliver_later
+    elsif registration.status == 'pending_club'
+      recipients = (registration.billing_club || registration.club)&.notification_emails.to_a
+      RefereeCourseMailer.club_confirmation_request(registration, recipients).deliver_later if recipients.any?
+      if RefereeCourseMailer.recipient(registration)
+        cancel_token = issue_cancel_token(registration) if registration.source == 'public'
+        RefereeCourseMailer.registered(registration, cancel_token).deliver_later
+      end
     elsif RefereeCourseMailer.recipient(registration)
       cancel_token = issue_cancel_token(registration) if registration.source == 'public'
       RefereeCourseMailer.registered(registration, cancel_token).deliver_later

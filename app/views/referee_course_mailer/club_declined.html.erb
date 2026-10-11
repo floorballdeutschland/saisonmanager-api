@@ -1,0 +1,6 @@
+<p>Hallo <%= @first_name %>,</p>
+<p><%= @club&.name %> übernimmt die Kursgebühr für den Kurs <strong><%= @course.title %></strong> nicht, die Anmeldung ist damit nicht zustande gekommen.</p>
+<% if @reason.present? %>
+  <p>Begründung des Vereins: <%= @reason %></p>
+<% end %>
+<p>Du kannst dich ohne Verein neu anmelden und die Gebühr selbst tragen, oder dich direkt an deinen Verein wenden.</p>

@@ -187,6 +187,36 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'cancel_link', description: 'Abmeldelink (nur bei Anmeldung ohne Konto, sonst leer)' }
       ]
     },
+    'RefereeCourseMailer#club_confirmation_request' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'club_confirmation_request',
+      description: 'An den zahlenden Verein: Selbstanmeldung zu einem Schiedsrichterkurs bestätigen (Verbandseinstellung).',
+      default_subject: 'Kursanmeldung bestätigen: {{name}}, {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'dates', description: 'Termine' },
+        { key: 'club', description: 'Name des Vereins' },
+        { key: 'fee', description: 'Kursgebühr für den Verein' },
+        { key: 'link', description: 'Link zur Vereinsansicht der Kurse' }
+      ]
+    },
+    'RefereeCourseMailer#club_declined' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'club_declined',
+      description: 'An die angemeldete Person: Der Verein übernimmt die Kursgebühr nicht.',
+      default_subject: 'Anmeldung nicht bestätigt: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'club', description: 'Name des Vereins' },
+        { key: 'reason', description: 'Begründung des Vereins' }
+      ]
+    },
     'RefereeCourseMailer#confirm_email' => {
       mailer_class: 'RefereeCourseMailer',
       action_name: 'confirm_email',
