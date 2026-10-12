@@ -9,6 +9,8 @@
 class RefereeObservationSubmission
   NO_REFEREES_ERROR = 'Zu diesem Spiel ist kein Schiedsrichter hinterlegt, ' \
                       'eine Beobachtung kann deshalb niemandem zugeordnet werden.'
+  ONLY_GUESTS_ERROR = 'Im Gespann dieses Spiels steht niemand mit regulärem Schiedsrichterprofil. ' \
+                      'Gastschiedsrichter werden im Beobachtungsbogen nicht bewertet.'
   NO_GAME_OPERATION_ERROR = 'Das Spiel gehört zu keinem Spielbetrieb.'
   # Eine eigene deutsche Meldung statt errors.full_messages: Letztere wären
   # englische ActiveRecord-Texte mitten in einer deutschen Maske.
@@ -30,10 +32,10 @@ class RefereeObservationSubmission
     go_id = @game.league&.game_operation_id
     return [nil, NO_GAME_OPERATION_ERROR] if go_id.blank?
 
-    referees, names = @game.feedback_referees
-    return [nil, NO_REFEREES_ERROR] if referees.empty?
+    crew = RefereeObservationCrew.new(@game)
+    return [nil, crew.unrated_names.any? ? ONLY_GUESTS_ERROR : NO_REFEREES_ERROR] if crew.empty?
 
-    observation = build(go_id, referees, names)
+    observation = build(go_id, crew)
     return [observation, nil] if observation.save
 
     # Zwei Geräte gleichzeitig: Die Modell-Validierung auf Einmaligkeit greift vor
@@ -55,7 +57,7 @@ class RefereeObservationSubmission
 
   private
 
-  def build(go_id, referees, names)
+  def build(go_id, crew)
     observation = RefereeObservation.new(
       game: @game,
       coach: @coach,
@@ -71,22 +73,25 @@ class RefereeObservationSubmission
     RefereeObservation::PAIR_RATING_ATTRIBUTES.each do |field|
       observation[field] = rating(@attributes[field])
     end
-    build_ratings(observation, referees, names)
+    build_ratings(observation, crew)
     observation
   end
 
   # Nur die Personen, für die der Bogen auch Bewertungen mitschickt. Ein Gespann
   # kann unvollständig sein (ein Schiri allein), und ein Coach kann bewusst nur
-  # eine Person bewerten – dann entsteht auch nur für diese eine Zeile.
-  def build_ratings(observation, referees, names)
-    referees.each_with_index do |referee, index|
+  # eine Person bewerten – dann entsteht auch nur für diese eine Zeile. Gäste
+  # stehen gar nicht erst in der Crew (RefereeObservationCrew): Eine
+  # mitgeschickte Bewertung für sie wird verworfen.
+  def build_ratings(observation, crew)
+    crew.entries.each do |entry|
+      referee = entry[:referee]
       submitted = referee_attributes(referee.id)
       next if submitted.blank?
 
       observation.ratings.build(
         referee: referee,
-        referee_name: names[index].presence,
-        position: index + 1,
+        referee_name: entry[:name].presence,
+        position: entry[:position],
         **RefereeObservationRating::RATING_ATTRIBUTES.index_with { |f| rating(submitted[f]) }
       )
     end

@@ -132,7 +132,7 @@ class RefereeObservationsController < ApplicationController
   end
 
   def candidate_json(game, observation, crew = nil)
-    referees, referee_names = crew || game.feedback_referees
+    crew = RefereeObservationCrew.new(game, crew)
     {
       game_id: game.id,
       game_number: game.game_number,
@@ -145,9 +145,12 @@ class RefereeObservationsController < ApplicationController
       league_level: league_level(game.league),
       game_operation_slug: game.league&.game_operation&.slug,
       assigned_as_coach: game.referee_assignment&.coach_id == @referee.id,
-      referees: referees.each_with_index.map do |referee, index|
-        { referee_id: referee.id, name: referee_names[index], position: index + 1 }
+      referees: crew.entries.map do |entry|
+        { referee_id: entry[:referee].id, name: entry[:name], position: entry[:position] }
       end,
+      # Im Gespann, aber nicht einzeln bewertbar (Gastschiedsrichter, Freitext
+      # ohne Profil). Nur fuer den Hinweis im Bogen.
+      unrated_referee_names: crew.unrated_names,
       done: observation.present?,
       observation_id: observation&.id
     }

@@ -176,6 +176,61 @@ class RefereeObservationsControllerTest < ActionDispatch::IntegrationTest
     assert_not_includes ids, other.id
   end
 
+  # Gast im Spielbericht: Freitext mit Lizenznummer 0, kein Referee-Datensatz.
+  test 'Gast im Spielbericht wird nicht bewertet und steht als Hinweis im Gespann' do
+    @game.update!(referee1_string: "#{@referee1.lizenznummer} Schiri, Anna",
+                  referee2_string: '0 Gast, Gustav',
+                  officiating_referee_ids: [@referee1.id, 0])
+    login(@coach_user)
+
+    get '/api/v2/referee/observations/games'
+    entry = JSON.parse(response.body).find { |g| g['game_id'] == @game.id }
+    assert_equal([@referee1.id], entry['referees'].map { |r| r['referee_id'] })
+    assert_equal ['Gustav Gast'], entry['unrated_referee_names']
+
+    post '/api/v2/referee/observations', params: payload, as: :json
+    assert_response :created
+    assert_equal [@referee1.id], RefereeObservation.last.ratings.map(&:referee_id)
+  end
+
+  # Ohne auflösbaren Bericht greift die Ansetzung, und dort kann ein Gast als
+  # Datensatz stehen. Bewertet wird er trotzdem nicht, auch wenn der Client eine
+  # Bewertung für ihn mitschickt.
+  test 'angesetzter Gast wird nicht bewertet, der Partner behaelt seinen Slot' do
+    guest = create(:referee, vorname: 'Kamil', nachname: 'Gast', guest: true, lizenznummer: nil)
+    @game.update!(officiating_referee_ids: [], nominated_referee_ids: [guest.id, @referee2.id])
+    login(@coach_user)
+
+    get '/api/v2/referee/observations/games'
+    entry = JSON.parse(response.body).find { |g| g['game_id'] == @game.id }
+    assert_equal([[@referee2.id, 2]], entry['referees'].map { |r| [r['referee_id'], r['position']] })
+    assert_equal ['Kamil Gast'], entry['unrated_referee_names']
+
+    body = payload
+    body[:ratings].first[:referee_id] = guest.id
+    post '/api/v2/referee/observations', params: body, as: :json
+    assert_response :created
+    rating = RefereeObservation.last.ratings.sole
+    assert_equal [@referee2.id, 2], [rating.referee_id, rating.position]
+  end
+
+  test 'Spiel mit reinem Gast-Gespann wird mit eigener Meldung abgewiesen' do
+    guest = create(:referee, vorname: 'Kamil', nachname: 'Gast', guest: true, lizenznummer: nil)
+    @game.update!(officiating_referee_ids: [], nominated_referee_ids: [guest.id])
+    login(@coach_user)
+
+    get '/api/v2/referee/observations/games'
+    entry = JSON.parse(response.body).find { |g| g['game_id'] == @game.id }
+    assert_empty entry['referees']
+    assert_equal ['Kamil Gast'], entry['unrated_referee_names']
+
+    assert_no_difference 'RefereeObservation.count' do
+      post '/api/v2/referee/observations', params: payload, as: :json
+    end
+    assert_response :unprocessable_entity
+    assert_includes response.body, 'Gastschiedsrichter werden im Beobachtungsbogen nicht bewertet'
+  end
+
   test 'Konto ohne Schiedsrichterprofil bekommt 403' do
     login(create(:user, :admin))
     get '/api/v2/referee/observations'
