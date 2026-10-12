@@ -9,8 +9,11 @@
 class RefereeObservationSubmission
   NO_REFEREES_ERROR = 'Zu diesem Spiel ist kein Schiedsrichter hinterlegt, ' \
                       'eine Beobachtung kann deshalb niemandem zugeordnet werden.'
-  ONLY_GUESTS_ERROR = 'Im Gespann dieses Spiels steht niemand mit regulärem Schiedsrichterprofil. ' \
-                      'Gastschiedsrichter werden im Beobachtungsbogen nicht bewertet.'
+  # Gespann eingetragen, aber niemand davon einzeln bewertbar (Gäste, Freitext
+  # ohne zugeordnetes Profil). Siehe RefereeObservationCrew.
+  NO_RATEABLE_REFEREES_ERROR = 'Im Gespann dieses Spiels ist niemand einem regulären ' \
+                               'Schiedsrichterprofil zugeordnet (Gastschiedsrichter werden ' \
+                               'nicht einzeln bewertet). Eine Beobachtung ist hier nicht möglich.'
   NO_GAME_OPERATION_ERROR = 'Das Spiel gehört zu keinem Spielbetrieb.'
   # Eine eigene deutsche Meldung statt errors.full_messages: Letztere wären
   # englische ActiveRecord-Texte mitten in einer deutschen Maske.
@@ -33,7 +36,7 @@ class RefereeObservationSubmission
     return [nil, NO_GAME_OPERATION_ERROR] if go_id.blank?
 
     crew = RefereeObservationCrew.new(@game)
-    return [nil, crew.unrated_names.any? ? ONLY_GUESTS_ERROR : NO_REFEREES_ERROR] if crew.empty?
+    return [nil, crew.unrated_names.any? ? NO_RATEABLE_REFEREES_ERROR : NO_REFEREES_ERROR] if crew.empty?
 
     observation = build(go_id, crew)
     return [observation, nil] if observation.save

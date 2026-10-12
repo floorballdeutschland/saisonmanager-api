@@ -11,7 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Verbessert
 
-- **Gastschiedsrichter werden im Beobachtungsbogen nicht bewertet**: Pfeift ein Gastschiedsrichter mit einem regulären Partner, bietet der Bogen nur den Partner zur Einzelbewertung an; die Gespann-Bewertung bleibt. Das gilt jetzt auch, wenn der Gast über die Ansetzung als Datensatz auflösbar wäre, und eine mitgeschickte Bewertung für ihn wird verworfen. Die Spielauswahl (`GET referee/observations/games`) liefert neu `unrated_referee_names` mit den Namen im Gespann ohne reguläres Schiedsrichterprofil, damit der Bogen einen Hinweis zeigen kann. Besteht das Gespann nur aus Gästen, weist die Abgabe das mit einer eigenen Meldung ab.
+- **Gastschiedsrichter werden im Beobachtungsbogen nicht bewertet**: Pfeift ein Gastschiedsrichter mit einem regulären Partner, bietet der Bogen nur den Partner zur Einzelbewertung an, auf seinem Platz aus dem Spielbericht; die Gespann-Bewertung bleibt. Das gilt auch, wenn der Gast als Datensatz auflösbar wäre (etwa über die Ansetzung), und eine mitgeschickte Bewertung für ihn wird verworfen. Die Spielauswahl (`GET referee/observations/games`) liefert neu `unrated_referee_names` mit den Namen im Gespann, die nicht einzeln bewertet werden, damit Spielauswahl und Bogen einen Hinweis zeigen können. Ist im Gespann niemand einem regulären Profil zugeordnet (nur Gäste oder Freitext ohne bekannte Lizenznummer), weist die Abgabe das mit einer eigenen Meldung ab.
 
 ## [1.130.0] - 2026-10-11
 

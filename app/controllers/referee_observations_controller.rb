@@ -148,8 +148,9 @@ class RefereeObservationsController < ApplicationController
       referees: crew.entries.map do |entry|
         { referee_id: entry[:referee].id, name: entry[:name], position: entry[:position] }
       end,
-      # Im Gespann, aber nicht einzeln bewertbar (Gastschiedsrichter, Freitext
-      # ohne Profil). Nur fuer den Hinweis im Bogen.
+      # Im Gespann, aber nicht einzeln bewertet (Gastschiedsrichter,
+      # Spielbericht-Eintraege ohne zugeordnetes regulaeres Profil). Nur fuer die
+      # Hinweise in Spielauswahl und Bogen.
       unrated_referee_names: crew.unrated_names,
       done: observation.present?,
       observation_id: observation&.id
