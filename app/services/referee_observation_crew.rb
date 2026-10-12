@@ -11,6 +11,10 @@
 # zurück). Pfeift ein Gast mit einem regulären Partner, wird nur der Partner
 # bewertet; die Gespann-Bewertung bleibt davon unberührt.
 #
+# Die Ansetzung zählt nur, solange der Spielbericht keine Schiris nennt. Stehen
+# dort welche (auch nur als Freitext-Gäste), wird nur bewertet, wer im Bericht
+# steht: Ein angesetzter Schiri, der dort fehlt, hat das Spiel nicht gepfiffen.
+#
 # unrated_names sind die Namen für die Hinweise in Spielauswahl und Bogen: Gäste
 # mit Datensatz und Einträge des Spielberichts, denen keine einzeln bewertete
 # Person zugeordnet ist.
@@ -26,6 +30,7 @@ class RefereeObservationCrew
       { referee: referee, name: names[index], position: index + 1 }
     end
     @entries = all.reject { |entry| entry[:referee].guest }
+    drop_nominated_not_in_report
     assign_report_slots
     @unrated_names = collect_unrated(all.select { |entry| entry[:referee].guest })
   end
@@ -40,12 +45,25 @@ class RefereeObservationCrew
 
   private
 
+  # Game#feedback_referees fällt auf die Ansetzung zurück, sobald im Bericht
+  # niemand auflösbar ist, also auch dann, wenn dort nur Gäste stehen. Hier
+  # bleibt aus der Ansetzung nur, wer im Bericht wiederzufinden ist.
+  def drop_nominated_not_in_report
+    # Nicht Game#referees: Ein geleerter Platz ('0 , ') ergäbe dort einen
+    # Phantom-Eintrag, und die Ansetzung fiele weg, obwohl der Bericht niemanden nennt.
+    return unless [@game.referee1_string, @game.referee2_string].any? { |slot| Game.referee_slot_present?(slot) }
+
+    @entries.select! { |entry| report_slot(entry[:referee]) || named_slot(entry[:name]) }
+  end
+
   # Position = Slot im Spielbericht. Game#officiating_referees verdichtet nicht
   # auflösbare Slots (Freitext-Gäste) weg; ohne diesen Schritt rückte der Partner
   # eines Gastes auf Slot 1 auf. Ohne Bericht (Ansetzung) bleibt der Index aus
   # feedback_referees, vor dem Gast-Filter gezählt.
   def assign_report_slots
-    slots = @entries.map { |entry| report_slot(entry[:referee]) || entry[:position] }
+    slots = @entries.map do |entry|
+      report_slot(entry[:referee]) || named_slot(entry[:name]) || entry[:position]
+    end
     return unless slots.uniq.size == slots.size
 
     @entries.each_with_index { |entry, index| entry[:position] = slots[index] }
@@ -55,6 +73,19 @@ class RefereeObservationCrew
     index = Array(@game.officiating_referee_ids).first(2).map(&:to_i).index(referee.id)
     if index.nil? && referee.lizenznummer.to_i.positive?
       index = @game.officiating_referee_licenses.index(referee.lizenznummer.to_i)
+    end
+    index && (index + 1)
+  end
+
+  # Slot eines Berichtseintrags mit diesem Namen. Positionstreu über die beiden
+  # Spalten, weil Game#referees leere Slots überspringt; dasselbe Muster wie dort.
+  def named_slot(name)
+    wanted = normalize(name)
+    return nil if wanted.empty?
+
+    index = [@game.referee1_string, @game.referee2_string].index do |raw|
+      match = raw.to_s.match(/\d+\s(?<last_name>.*),\s(?<first_name>.*)/)
+      match && normalize("#{match[:first_name]} #{match[:last_name]}") == wanted
     end
     index && (index + 1)
   end

@@ -297,6 +297,48 @@ class RefereeObservationsControllerTest < ActionDispatch::IntegrationTest
     assert_equal RefereeObservationSubmission::NO_REFEREES_ERROR, JSON.parse(response.body)['error']
   end
 
+  # Nennt der Bericht nur Gaeste, loest Game#feedback_referees niemanden auf und
+  # faellt auf die Ansetzung zurueck. Die angesetzten Schiris haben dann aber
+  # nicht gepfiffen und duerfen nicht bewertet werden.
+  test 'angesetzte Schiris ohne Eintrag im Bericht werden nicht bewertet' do
+    @game.update!(referee1_string: '0 Gast, Gustav', referee2_string: '0 Gast, Gerda',
+                  officiating_referee_ids: [0, 0],
+                  nominated_referee_ids: [@referee1.id, @referee2.id])
+    login(@coach_user)
+
+    get '/api/v2/referee/observations/games'
+    entry = JSON.parse(response.body).find { |g| g['game_id'] == @game.id }
+    assert_empty entry['referees']
+    assert_equal ['Gustav Gast', 'Gerda Gast'], entry['unrated_referee_names']
+
+    post '/api/v2/referee/observations', params: payload, as: :json
+    assert_response :unprocessable_entity
+    assert_equal RefereeObservationSubmission::NO_RATEABLE_REFEREES_ERROR, JSON.parse(response.body)['error']
+  end
+
+  test 'angesetzter Schiri, der im Bericht als Freitext steht, bleibt bewertbar auf seinem Slot' do
+    @game.update!(referee1_string: '0 Gast, Gustav', referee2_string: '0 Pfiff, Bo',
+                  officiating_referee_ids: [0, 0],
+                  nominated_referee_ids: [@referee1.id, @referee2.id])
+    login(@coach_user)
+
+    get '/api/v2/referee/observations/games'
+    entry = JSON.parse(response.body).find { |g| g['game_id'] == @game.id }
+    assert_equal([[@referee2.id, 2]], entry['referees'].map { |r| [r['referee_id'], r['position']] })
+    assert_equal ['Gustav Gast'], entry['unrated_referee_names']
+  end
+
+  # '0 , ' ist ein gesetzter und wieder geleerter Platz, kein Schiri.
+  test 'ohne Schiris im Bericht bleibt die Ansetzung massgeblich, auch bei geleerten Plaetzen' do
+    @game.update!(referee1_string: '0 , ', referee2_string: '0 , ',
+                  officiating_referee_ids: [], nominated_referee_ids: [@referee1.id, @referee2.id])
+    login(@coach_user)
+
+    get '/api/v2/referee/observations/games'
+    entry = JSON.parse(response.body).find { |g| g['game_id'] == @game.id }
+    assert_equal([@referee1.id, @referee2.id], entry['referees'].map { |r| r['referee_id'] })
+  end
+
   test 'Konto ohne Schiedsrichterprofil bekommt 403' do
     login(create(:user, :admin))
     get '/api/v2/referee/observations'
