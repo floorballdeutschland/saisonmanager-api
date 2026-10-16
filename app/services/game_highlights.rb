@@ -11,8 +11,8 @@
 # selbst steht in StreamTimeline#scene, dieselbe Stelle wie für die
 # Sprungmarken.
 #
-# Hat ein Spiel mehrere Übertragungen (Neustart nach einem Abbruch), gilt die
-# mit den meisten Szenen. `video_id` ist nil, solange keine Übertragung mit
+# Nur verlinkte Übertragungen (siehe #oeffentliche_uebertragungen). Hat ein
+# Spiel mehrere (Neustart nach einem Abbruch), gilt die mit den meisten Szenen. `video_id` ist nil, solange keine Übertragung mit
 # bekanntem Start existiert; dann gibt es auch keine Szenen.
 class GameHighlights
   CACHE_TTL = 1.minute
@@ -34,16 +34,29 @@ class GameHighlights
   end
 
   def as_json(*)
-    beste = StreamBroadcast.where(game_id: @game.id).where.not(actual_start_at: nil)
-                           .order(actual_start_at: :desc)
-                           .map { |broadcast| [broadcast, scenes_for(broadcast)] }
-                           .max_by { |_broadcast, scenes| scenes.size }
+    beste = oeffentliche_uebertragungen.map { |broadcast| [broadcast, scenes_for(broadcast)] }
+                                       .max_by { |_broadcast, scenes| scenes.size }
     return { video_id: nil, scenes: [] } if beste.nil?
 
     { video_id: beste[0].broadcast_id, scenes: beste[1] }
   end
 
   private
+
+  # Nur Übertragungen, die das Spiel selbst verlinkt (`live_stream_link`,
+  # `vod_link`). Eine nicht gelistete Aufzeichnung (Probelauf, Zusage an den
+  # Verein, noch nicht freigegeben) steht dort nicht; ihre ID herauszugeben
+  # hieße, sie öffentlich zu machen. Dieselbe Grenze wie
+  # StreamWatchdog#verlinke_aufzeichnung, das den Link erst beim
+  # Veröffentlichen setzt.
+  def oeffentliche_uebertragungen
+    links = [@game.live_stream_link, @game.vod_link].compact_blank
+    return [] if links.empty?
+
+    StreamBroadcast.where(game_id: @game.id).where.not(actual_start_at: nil)
+                   .order(actual_start_at: :desc)
+                   .select { |broadcast| links.any? { |link| link.include?(broadcast.broadcast_id) } }
+  end
 
   def scenes_for(broadcast)
     timeline = StreamTimeline.new(@game, broadcast)

@@ -18,6 +18,7 @@ class GameHighlightsTest < ActionDispatch::IntegrationTest
                                    goal(3, 'guest', 2000, nil, 2, 1, @start + 60.minutes)])
     @broadcast = StreamBroadcast.create!(broadcast_id: 'vid-1', game: @game, actual_start_at: @start,
                                          vod_duration_seconds: 7200)
+    @game.update_columns(live_stream_link: 'https://www.youtube.com/watch?v=vid-1')
     shot('s1', 'home', @start + 38.minutes, 1)
     shot('s3', 'guest', @start + 58.minutes, 3)
   end
@@ -77,9 +78,36 @@ class GameHighlightsTest < ActionDispatch::IntegrationTest
     assert_not_includes response.body, 'Müller'
   end
 
+  test 'nicht verlinkte (nicht gelistete) Aufzeichnung: video_id null' do
+    @game.update_columns(live_stream_link: nil, vod_link: nil)
+
+    get "/api/v2/games/#{@game.id}/highlights.json", headers: { 'X-Api-Key' => API_KEY }
+
+    assert_equal({ 'video_id' => nil, 'scenes' => [] }, response.parsed_body)
+    assert_not_includes response.body, 'vid-1'
+  end
+
+  test 'ohne bekannte Länge der Aufzeichnung gibt es Szenen, nur ohne Abschneiden' do
+    @broadcast.update!(vod_duration_seconds: nil)
+
+    get "/api/v2/games/#{@game.id}/highlights.json", headers: { 'X-Api-Key' => API_KEY }
+
+    assert_equal([1, 3], response.parsed_body['scenes'].map { |s| s['event_id'] })
+    assert_equal 3480 + 5, response.parsed_body['scenes'].last['end']
+  end
+
+  test 'ein Schuss weniger als 15 s nach Streamstart fällt weg' do
+    GameShot.find_by(client_uuid: 's1').update_columns(tapped_at: @start + 10.seconds)
+
+    get "/api/v2/games/#{@game.id}/highlights.json", headers: { 'X-Api-Key' => API_KEY }
+
+    assert_equal([3], response.parsed_body['scenes'].map { |s| s['event_id'] })
+  end
+
   test 'bei mehreren Übertragungen gilt die mit den meisten Szenen' do
     StreamBroadcast.create!(broadcast_id: 'vid-2', game: @game, actual_start_at: @start + 55.minutes,
                             vod_duration_seconds: 3600)
+    @game.update_columns(vod_link: 'https://youtu.be/vid-2')
 
     get "/api/v2/games/#{@game.id}/highlights.json", headers: { 'X-Api-Key' => API_KEY }
 
@@ -92,7 +120,7 @@ class GameHighlightsTest < ActionDispatch::IntegrationTest
       assert_equal 2, response.parsed_body['scenes'].size
 
       neu = shot('s2', 'home', @start + 49.minutes, nil)
-      GameShotLinker.link_new_goal(@game, { event_team: 'home', id: 2 })
+      GameShotLinker.link_new_goal(@game, { event_team: 'home', id: 2, period: 1, time: '12:00' })
       assert_equal 2, neu.reload.event_id
 
       get "/api/v2/games/#{@game.id}/highlights.json", headers: { 'X-Api-Key' => API_KEY }
