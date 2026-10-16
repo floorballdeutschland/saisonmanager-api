@@ -34,6 +34,8 @@ class StreamTimeline
   SCENE_LEAD = 15
   SCENE_TAIL = 5
 
+  # Ein Tor oder eine Strafe mit Anker. Der Name stammt aus der Zeit, als nur
+  # Tore markiert wurden.
   Goal = Struct.new(:event, :anchor_at, :source, keyword_init: true) do
     def shot?
       source == :shot
@@ -60,15 +62,12 @@ class StreamTimeline
   # Schütze genau so gelesen werden wie auf der öffentlichen Spielseite; der
   # Anker steht nur im Rohereignis.
   def goals
-    @goals ||= begin
-      roh = (game.events || []).index_by { |event| event['id'].to_i }
-      game.formatted_events.filter_map do |event|
-        next unless event[:event_type] == :goal
+    @goals ||= anchored(:goal) { |event, roh| anchor_for(event, roh) }
+  end
 
-        anker = anchor_for(event, roh[event[:event_id].to_i])
-        anker && Goal.new(event: event, anchor_at: anker[0], source: anker[1])
-      end.sort_by(&:anchor_at)
-    end
+  # Die Strafen, Anker immer `added_at` (eine Strafe hat keinen Schuss).
+  def penalties
+    @penalties ||= anchored(:penalty) { |_event, roh| added_at_anchor(roh) }
   end
 
   # Sekunde im Video für einen Anker, oder nil, wenn sie außerhalb der
@@ -82,7 +81,7 @@ class StreamTimeline
     sekunde
   end
 
-  # Vorlauf einer Sprungmarke für dieses Tor.
+  # Vorlauf einer Sprungmarke für dieses Tor (oder diese Strafe).
   def chapter_position(goal)
     position(goal.anchor_at, goal.shot? ? CHAPTER_LEAD_SHOT : CHAPTER_LEAD_ADDED_AT)
   end
@@ -120,12 +119,27 @@ class StreamTimeline
 
   private
 
+  def anchored(type)
+    roh = (game.events || []).index_by { |event| event['id'].to_i }
+    treffer = game.formatted_events.filter_map do |event|
+      next unless event[:event_type] == type
+
+      anker = yield(event, roh[event[:event_id].to_i])
+      anker && Goal.new(event: event, anchor_at: anker[0], source: anker[1])
+    end
+    treffer.sort_by(&:anchor_at)
+  end
+
   # [Zeitpunkt, Quelle] oder nil. Der angetippte Schuss geht vor: Er liegt im
   # Moment des Tores, die Eingabe erst nach dem Bully.
   def anchor_for(event, roh)
     shot_at = shot_times[event[:event_id].to_i]
     return [shot_at, :shot] if shot_at
 
+    added_at_anchor(roh)
+  end
+
+  def added_at_anchor(roh)
     added_at = roh && roh['added_at']
     return nil if added_at.blank?
 
