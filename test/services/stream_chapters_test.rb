@@ -169,6 +169,45 @@ class StreamChaptersTest < ActiveSupport::TestCase
     assert_nil @broadcast.reload.chapters_digest
   end
 
+  test 'Strafen bekommen eine Marke mit Strafart, Name und Teamkürzel, Vorlauf 120 s' do
+    mannschaften!
+    tore([@start + 1152.seconds, 'home', 7, nil, 1, 0])
+    strafen([@start + 2170.seconds, 'guest', 11], [@start + 3000.seconds, 'home', 2001], [@start + 3500.seconds, 'home', 99])
+    api = FakeApi.new(details: details)
+    lauf(api)
+
+    beschreibung = api.description
+    assert_includes beschreibung, "17:12 1:0 Müller\n34:10 Strafe 2 Min. Weber (GAST)\n"
+    assert_includes beschreibung, '48:00 Strafe 2 Min. Betreuer (HEIM)'
+    assert_includes beschreibung, '56:20 Strafe 2 Min. (HEIM)', 'ohne Spieler im Bericht nur das Team'
+  end
+
+  test 'Tor und Strafe unter 10 s Abstand: eine Marke, Tor zuerst' do
+    mannschaften!
+    tore([@start + 1158.seconds, 'home', 7, nil, 1, 0])
+    strafen([@start + 1152.seconds, 'guest', 11])
+    api = FakeApi.new(details: details)
+    lauf(api)
+
+    assert_includes api.description, '17:12 1:0 Müller, Strafe 2 Min. Weber (GAST)'
+  end
+
+  test 'Nachtrag wird nur an Toren erkannt und nimmt dann auch die Strafen heraus' do
+    # Viele Strafen in kurzer Zeit machen noch keinen Nachtrag.
+    tore([@start + 1152.seconds, 'home', 7, nil, 1, 0])
+    strafen([@start + 2000.seconds, 'guest', 11], [@start + 2010.seconds, 'guest', 11],
+            [@start + 2030.seconds, 'guest', 11])
+    api = FakeApi.new(details: details)
+    lauf(api)
+    assert_equal 1, api.written.size
+
+    tore([@start + 1.hour, 'home', 7, nil, 1, 0], [@start + 1.hour + 40.seconds, 'home', 9, nil, 2, 0],
+         [@start + 1.hour + 90.seconds, 'guest', 11, nil, 2, 1])
+    strafen([@start + 1.hour + 100.seconds, 'guest', 11])
+    lauf(api)
+    assert_not_includes api.description, StreamChapters::BLOCK_START, 'Block entfernt'
+  end
+
   test 'beschreibung_mit ersetzt nur den Block und lässt Text davor und danach stehen' do
     alt = "Oben\n\n#{StreamChapters::BLOCK_START}\n0:00 Streamstart\n#{StreamChapters::BLOCK_END}\nUnten"
     neu = StreamChapters.beschreibung_mit(alt, "#{StreamChapters::BLOCK_START}\nX\n#{StreamChapters::BLOCK_END}")
@@ -197,6 +236,23 @@ class StreamChaptersTest < ActiveSupport::TestCase
 
   def lineup(number, first, last)
     { 'trikot_number' => number, 'player_firstname' => first, 'player_name' => last }
+  end
+
+  def mannschaften!
+    liga = @game.game_day.league
+    @game.update!(home_team: create(:team, league: liga, short_name: 'HEIM'),
+                  guest_team: create(:team, league: liga, short_name: 'GAST'))
+  end
+
+  # [added_at, Team, Nummer]: zwei Minuten, an die vorhandenen Tore angehängt.
+  def strafen(*liste)
+    basis = @game.events.size
+    @game.events += liste.each_with_index.map do |(zeit, team, nummer), i|
+      { 'id' => basis + i + 1, 'event_type' => 'penalty', 'event_team' => team, 'period' => 1,
+        'time' => '30:00', "#{team}_number" => nummer, 'penalty_id' => 1, 'penalty_code_id' => 1,
+        'penalty_name' => '2 Min.', 'added_at' => zeit.to_i }
+    end
+    @game.save!
   end
 
   # [added_at, Team, Schütze, Vorlage, Heimtore, Gasttore]
