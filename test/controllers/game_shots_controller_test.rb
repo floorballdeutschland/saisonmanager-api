@@ -43,6 +43,7 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test 'erneutes Schicken derselben client_uuid aktualisiert statt zu verdoppeln' do
+    aufstellung!
     post_shots([shot('a', result: 'saved')])
     post_shots([shot('a', result: 'goal', shooter: 77), shot('b')])
 
@@ -113,6 +114,7 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
   # --- Ändern, Löschen ------------------------------------------------------------
 
   test 'PATCH ändert Teilfelder; aus Tor wird gehalten, die Verknüpfung fällt weg' do
+    aufstellung!
     post_shots([shot('a', result: 'goal')])
     GameShot.find_by(client_uuid: 'a').update!(event_id: 1)
 
@@ -140,19 +142,75 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
 
   # --- Verknüpfung ------------------------------------------------------------------
 
-  test 'add_event verknüpft den jüngsten unverknüpften Tor-Schuss desselben Teams' do
-    post_shots([shot('alt', result: 'goal', at: @t0), shot('neu', result: 'goal', at: @t0 + 60),
-                shot('gast', result: 'goal', team: 'guest', at: @t0 + 90), shot('vorbei', result: 'missed', at: @t0 + 95)])
+  test 'add_event verknüpft im selben Team und Abschnitt den Schuss mit der nächsten Spielzeit' do
+    post_shots([shot('frueh', result: 'goal', game_time: '03:10', at: @t0),
+                shot('nah', result: 'goal', game_time: '14:40', at: @t0 + 60),
+                shot('anderer_abschnitt', result: 'goal', game_time: '15:00', period: 2, at: @t0 + 70),
+                shot('gast', result: 'goal', team: 'guest', game_time: '15:00', at: @t0 + 90),
+                shot('vorbei', result: 'missed', game_time: '15:00', at: @t0 + 95)])
+
+    add_goal('home', 1, 0, time: '15:00')
+
+    assert_response :success
+    assert_equal 1, GameShot.find_by(client_uuid: 'nah').event_id
+    %w[frueh anderer_abschnitt gast vorbei].each { |uuid| assert_nil GameShot.find_by(client_uuid: uuid).event_id }
+  end
+
+  test 'mehrere nachgetragene Tore werden nach Spielzeit gepaart, nicht nach Reihenfolge' do
+    post_shots([shot('s1', result: 'goal', game_time: '05:00', at: @t0),
+                shot('s2', result: 'goal', game_time: '11:00', at: @t0 + 360),
+                shot('s3', result: 'goal', game_time: '18:00', at: @t0 + 780)])
+
+    # Vom Papier, in umgekehrter Reihenfolge eingetragen.
+    add_goal('home', 3, 0, time: '18:05')
+    add_goal('home', 1, 0, time: '05:10')
+    add_goal('home', 2, 0, time: '11:20')
+
+    assert_equal({ 's1' => 2, 's2' => 3, 's3' => 1 },
+                 GameShot.where(game: @game).order(:client_uuid).to_h { |shot| [shot.client_uuid, shot.event_id] })
+  end
+
+  test 'ohne Spielzeit gewinnt der älteste unverknüpfte Schuss' do
+    post_shots([shot('alt', result: 'goal', game_time: nil, at: @t0),
+                shot('neu', result: 'goal', game_time: nil, at: @t0 + 60)])
 
     add_goal('home', 1, 0)
 
-    assert_response :success
-    assert_equal 1, GameShot.find_by(client_uuid: 'neu').event_id
-    assert_nil GameShot.find_by(client_uuid: 'alt').event_id
-    assert_nil GameShot.find_by(client_uuid: 'gast').event_id
+    assert_equal 1, GameShot.find_by(client_uuid: 'alt').event_id
+  end
 
+  test 'nachgereichte Tor-Schüsse finden das schon eingetragene Tor' do
+    add_goal('home', 1, 0, time: '04:00')
+    add_goal('home', 2, 0, time: '09:00')
+    add_goal('guest', 2, 1, time: '09:30')
+
+    post_shots([shot('spaet2', result: 'goal', game_time: '08:50', at: @t0 + 300),
+                shot('spaet1', result: 'goal', game_time: '03:55', at: @t0)])
+
+    assert_response :success
+    shots = response.parsed_body['shots'].to_h { |s| [s['client_uuid'], s['event_id']] }
+    assert_equal({ 'spaet1' => 1, 'spaet2' => 2 }, shots)
+  end
+
+  test 'Umwandlung des Tores in eine Strafe und Teamwechsel lösen die Verknüpfung' do
+    post_shots([shot('a', result: 'goal'), shot('b', result: 'goal', at: @t0 + 1)])
+    add_goal('home', 1, 0)
     add_goal('home', 2, 0)
-    assert_equal 2, GameShot.find_by(client_uuid: 'alt').event_id
+    assert_equal [1, 2], GameShot.where(game: @game).order(:client_uuid).pluck(:event_id)
+
+    post "/api/v2/user/games/#{@game.id}/events/update",
+         params: { event_id: 1, event_type: 'penalty', event_team: 'home', period: 1, time: '15:00',
+                   home_goals: 0, guest_goals: 0, home_number: 2000, penalty_id: 1, penalty_code_id: 1 },
+         headers: token_header, as: :json
+    assert_response :success
+    assert_nil GameShot.find_by(client_uuid: 'a').event_id
+
+    post "/api/v2/user/games/#{@game.id}/events/update",
+         params: { event_id: 2, event_type: 'goal', event_team: 'guest', period: 1, time: '15:00',
+                   home_goals: 0, guest_goals: 1, guest_number: 2000 },
+         headers: token_header, as: :json
+    assert_response :success
+    assert_nil GameShot.find_by(client_uuid: 'b').event_id
   end
 
   test 'ohne passenden Schuss bleibt das Tor unverknüpft und wird trotzdem gespeichert' do
@@ -177,8 +235,9 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test 'manuell verknüpfen, umhängen und lösen' do
-    post_shots([shot('a', result: 'goal'), shot('b', result: 'goal', at: @t0 + 5)])
-    add_goal('home', 1, 0) # verknüpft b
+    post_shots([shot('a', result: 'goal', game_time: '02:00'), shot('b', result: 'goal', at: @t0 + 5)])
+    add_goal('home', 1, 0) # verknüpft b (12:34 liegt näher an 15:00)
+    assert_equal 1, GameShot.find_by(client_uuid: 'b').event_id
 
     post "/api/v2/games/#{@game.id}/shots/a/link.json", params: { event_id: 1 }, headers: token_header, as: :json
     assert_response :success
@@ -198,6 +257,64 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
 
     post "/api/v2/games/#{@game.id}/shots/b/link.json", params: { event_id: 99 }, headers: token_header, as: :json
     assert_response :unprocessable_entity
+  end
+
+  test 'link und PATCH verlangen gleiches Team bei Schuss und Tor' do
+    add_goal('guest', 0, 1)
+    post_shots([shot('a', result: 'goal')])
+
+    post "/api/v2/games/#{@game.id}/shots/a/link.json", params: { event_id: 1 }, headers: token_header, as: :json
+    assert_response :unprocessable_entity
+
+    post_shots([shot('g', result: 'goal', team: 'guest')])
+    assert_equal 1, GameShot.find_by(client_uuid: 'g').event_id
+    patch "/api/v2/games/#{@game.id}/shots/g.json", params: { team: 'home' }, headers: token_header, as: :json
+    assert_response :unprocessable_entity
+    assert_equal 'guest', GameShot.find_by(client_uuid: 'g').team
+  end
+
+  # --- Eingabeprüfung (Review api#818) -----------------------------------------
+
+  test 'Einträge, die keine Objekte sind, sind 422 und kein 500' do
+    post "/api/v2/games/#{@game.id}/shots.json", params: { shots: ['x', 3] }, headers: token_header, as: :json
+
+    assert_response :unprocessable_entity
+  end
+
+  test 'Schütze und Torhüter müssen in der Aufstellung des richtigen Teams stehen' do
+    aufstellung!
+    post_shots([shot('a', shooter: 5)])
+    assert_response :unprocessable_entity
+
+    post_shots([shot('a', goalie: 77)])
+    assert_response :unprocessable_entity
+
+    post_shots([shot('a', shooter: 77, goalie: 5)])
+    assert_response :success
+  end
+
+  test 'gleichzeitiges Anlegen derselben client_uuid: der Stapel wird einmal wiederholt' do
+    eingaben = [shot('a', result: 'goal')]
+    versuche = 0
+    original = GameShot.method(:find_or_initialize_by)
+    GameShot.stub(:find_or_initialize_by, lambda { |**args|
+      versuche += 1
+      if versuche == 1
+        # Ein zweiter Request war schneller: Die Validierung sah den Schuss
+        # noch nicht, der eindeutige Index schon.
+        GameShot.create!(shot('a', result: 'saved').merge(game: @game))
+        verlierer = GameShot.new(client_uuid: 'a')
+        verlierer.define_singleton_method(:save) { |*| raise ActiveRecord::RecordNotUnique, 'doppelt' }
+        return verlierer
+      end
+      original.call(**args)
+    }) do
+      post_shots(eingaben)
+    end
+
+    assert_response :success
+    assert_equal 1, GameShot.where(client_uuid: 'a').count
+    assert_equal 'goal', GameShot.find_by(client_uuid: 'a').result
   end
 
   # --- Vollständigkeit und Spiel-JSON --------------------------------------------
@@ -297,6 +414,13 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
                  players: { 'home' => [], 'guest' => [] })
   end
 
+  def aufstellung!
+    @game.update!(players: {
+                    'home' => [{ 'player_id' => 77, 'trikot_number' => 7, 'player_firstname' => 'A', 'player_name' => 'B' }],
+                    'guest' => [{ 'player_id' => 5, 'trikot_number' => 1, 'player_firstname' => 'C', 'player_name' => 'D' }]
+                  })
+  end
+
   def login_as(user)
     post '/api/v2/login', params: { username: user.user_name, password: 'password123' }, as: :json
     assert_response :success
@@ -310,14 +434,19 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
     post "/api/v2/games/#{game.id}/shots.json", params: { shots: shots }, headers: token_header, as: :json
   end
 
-  def shot(uuid, result: 'saved', team: 'home', at: @t0, pos_x: 0.8, period: 1, shooter: nil, goalie: nil)
-    { client_uuid: uuid, team: team, period: period, game_time: '12:34', tapped_at: at.utc.iso8601(3),
-      x: pos_x, y: 0.4, result: result, shooter_player_id: shooter, goalkeeper_player_id: goalie }
+  SHOT_DEFAULTS = { result: 'saved', team: 'home', pos_x: 0.8, period: 1, shooter: nil, goalie: nil,
+                    game_time: '12:34' }.freeze
+
+  def shot(uuid, at: @t0, **optionen)
+    o = SHOT_DEFAULTS.merge(optionen)
+    { client_uuid: uuid, team: o[:team], period: o[:period], game_time: o[:game_time],
+      tapped_at: at.utc.iso8601(3), x: o[:pos_x], y: 0.4, result: o[:result],
+      shooter_player_id: o[:shooter], goalkeeper_player_id: o[:goalie] }
   end
 
-  def add_goal(team, home, guest)
+  def add_goal(team, home, guest, time: '15:00', period: 1)
     post "/api/v2/user/games/#{@game.id}/events/add",
-         params: { event_type: 'goal', event_team: team, period: 1, time: '15:00', home_goals: home,
+         params: { event_type: 'goal', event_team: team, period: period, time: time, home_goals: home,
                    guest_goals: guest, "#{team}_number": 2000 },
          headers: token_header, as: :json
   end

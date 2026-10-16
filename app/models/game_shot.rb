@@ -37,6 +37,13 @@ class GameShot < ApplicationRecord
   validates :tapped_at, presence: true
   validates :x, :y, numericality: { greater_than_or_equal_to: 0, less_than_or_equal_to: 1 }
 
+  # Schütze aus der Aufstellung des schießenden Teams, Torhüter aus der des
+  # verteidigenden. Geprüft nur beim Ändern: Wird die Aufstellung später
+  # korrigiert, sollen vorhandene Schüsse weiter speicherbar bleiben.
+  validate :shooter_in_lineup, if: -> { shooter_player_id.present? && (shooter_player_id_changed? || team_changed?) }
+  validate :goalkeeper_in_lineup,
+           if: -> { goalkeeper_player_id.present? && (goalkeeper_player_id_changed? || team_changed?) }
+
   # Nur ein Tor-Schuss kann an einem Tor hängen. Wird aus dem Tor nachträglich
   # ein gehaltener Schuss, fällt die Verknüpfung weg.
   before_validation { self.event_id = nil unless result == 'goal' }
@@ -45,6 +52,10 @@ class GameShot < ApplicationRecord
 
   def on_goal?
     ON_GOAL.include?(result)
+  end
+
+  def defending_team
+    team == 'home' ? 'guest' : 'home'
   end
 
   def as_api_json
@@ -62,5 +73,22 @@ class GameShot < ApplicationRecord
       goalkeeper_player_id:,
       event_id:
     }
+  end
+
+  private
+
+  def shooter_in_lineup
+    errors.add(:shooter_player_id, 'steht nicht in der Aufstellung des schießenden Teams') \
+      unless lineup_ids(team).include?(shooter_player_id.to_i)
+  end
+
+  def goalkeeper_in_lineup
+    errors.add(:goalkeeper_player_id, 'steht nicht in der Aufstellung des verteidigenden Teams') \
+      unless lineup_ids(defending_team).include?(goalkeeper_player_id.to_i)
+  end
+
+  def lineup_ids(side)
+    players = game&.players.is_a?(Hash) ? game.players : {}
+    Array(players[side]).filter_map { |entry| entry['player_id'].presence&.to_i }
   end
 end

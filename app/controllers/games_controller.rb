@@ -843,6 +843,7 @@ class GamesController < ApplicationController
         return render json: { message: error }, status: :unprocessable_entity
       end
 
+      alt_team = event['event_team']
       event['time'] = params[:time]
       event['period'] = params[:period]
       event['home_goals'] = params[:home_goals]
@@ -882,8 +883,9 @@ class GamesController < ApplicationController
       game.record_updated_by = author_user_id
 
       if game.save
-        # Ist aus dem Tor eine Strafe geworden, hängt kein Schuss mehr daran.
-        GameShotLinker.unlink_event(game, event['id']) unless event['event_type'] == 'goal'
+        # Ist aus dem Tor eine Strafe geworden oder hat es das Team gewechselt,
+        # passt der verknüpfte Schuss nicht mehr.
+        GameShotLinker.unlink_event(game, event['id']) if event['event_type'] != 'goal' || event['event_team'] != alt_team
         render json: game.formatted_events
       else
         render json: { message: game.errors }, status: :unprocessable_entity
