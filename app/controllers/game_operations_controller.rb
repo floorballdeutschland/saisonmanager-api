@@ -5,10 +5,12 @@ class GameOperationsController < ApplicationController
 
   # GET /api/v2/game_operations
   def index
-    @game_operations = GameOperation.all.order(:id)
+    # meta_hash wie in init.json: die rohe Zeile traegt `national` und
+    # Zeitstempel, die nicht in oeffentliche Antworten gehoeren.
+    @game_operations = GameOperation.includes(:state_association).order(:id)
 
     expires_in 60.seconds, public: true
-    render json: @game_operations
+    render json: @game_operations.map(&:meta_hash)
   end
 
   # GET /game_operations/1/leagues
@@ -64,7 +66,7 @@ class GameOperationsController < ApplicationController
     @game_operation = GameOperation.find_by path: params[:name]
     return render json: { error: 'Spielbetrieb nicht gefunden' }, status: :not_found unless @game_operation
 
-    render json: @game_operation
+    render json: @game_operation.meta_hash
   end
 
   def admin_game_operations

@@ -15,7 +15,11 @@ class GameOperationsPublicTest < ActionDispatch::IntegrationTest
     get '/api/v2/game_operations', headers: { 'X-Api-Key' => API_KEY }
 
     assert_response :success
-    assert_includes response.parsed_body.map { |g| g['id'] }, @go.id
+    assert_includes(response.parsed_body.map { |g| g['id'] }, @go.id)
+    eintrag = response.parsed_body.find { |g| g['id'] == @go.id }
+    assert_equal 'ost', eintrag['path']
+    assert_not eintrag.key?('national'), 'national gehoert nicht in oeffentliche Antworten'
+    assert_not eintrag.key?('created_at')
   end
 
   test 'Liste ohne Key 401' do
@@ -29,6 +33,7 @@ class GameOperationsPublicTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     assert_equal @go.id, response.parsed_body['id']
+    assert_not response.parsed_body.key?('national')
   end
 
   test 'unbekannter Kurzname 404 statt null' do
