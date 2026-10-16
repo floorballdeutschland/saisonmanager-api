@@ -3,12 +3,14 @@ class GameOperationsController < ApplicationController
   skip_before_action :authenticate_user, except: %i[admin_game_operations admin_upload_banner admin_delete_banner admin_update_banner_link]
   before_action :authenticate_public_request, except: %i[admin_game_operations admin_upload_banner admin_delete_banner admin_update_banner_link]
 
-  # GET /game_operations
+  # GET /api/v2/game_operations
   def index
-    @game_operations = GameOperation.all.order(:id)
+    # meta_hash wie in init.json: die rohe Zeile traegt `national` und
+    # Zeitstempel, die nicht in oeffentliche Antworten gehoeren.
+    @game_operations = GameOperation.includes(:state_association).order(:id)
 
     expires_in 60.seconds, public: true
-    render json: @game_operations
+    render json: @game_operations.map(&:meta_hash)
   end
 
   # GET /game_operations/1/leagues
@@ -58,10 +60,13 @@ class GameOperationsController < ApplicationController
     render json: result
   end
 
-  # GET /game_operations/by_shortname/:name
+  # GET /api/v2/game_operations/by_shortname/:name
+  # Gesucht wird ueber `path` (z. B. `fd`, `ost`), nicht ueber `short_name`.
   def by_shortname
     @game_operation = GameOperation.find_by path: params[:name]
-    render json: @game_operation
+    return render json: { error: 'Spielbetrieb nicht gefunden' }, status: :not_found unless @game_operation
+
+    render json: @game_operation.meta_hash
   end
 
   def admin_game_operations

@@ -193,6 +193,11 @@ Rails.application.routes.draw do
       get 'admin/players/:id', to: 'players#admin_player'
       post 'admin/players', to: 'players#admin_player_update'
 
+      # Liste und Kurzname auch unter api/v2: Nur dieser Praefix ist von aussen
+      # erreichbar, die gleichnamigen Routen oben sind es (bis auf nginx-Umwege)
+      # nicht. Die API-Doku nennt seit jeher diese Pfade.
+      get 'game_operations', to: 'game_operations#index'
+      get 'game_operations/by_shortname/:name', to: 'game_operations#by_shortname'
       get 'game_operations/:id/leagues/:season_id', to: 'game_operations#index_leagues'
       get 'game_operations/:id/leagues', to: 'game_operations#index_leagues'
 

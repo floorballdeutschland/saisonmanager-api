@@ -54,6 +54,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
   - Meldet der Verein selbst an oder trägt die RSK ein, entfällt der Schritt. Unterverbände übernehmen die Einstellung ihres Verbunds.
 - **Schalter für die Kursprozesse in den Schiri-Einstellungen**: Unter `/verwaltung/schiedsrichter/einstellungen` schaltet der Admin den CSV-Import von Kursergebnissen und die Kurse im System getrennt an und aus; die Kurse auf Wunsch nur für einzelne Landesverbände. Ein abgeschalteter Import sperrt nur neue Uploads: Offene Importe lassen sich weiter bearbeiten und einreichen, und die LV-Freigabe läuft weiter. Der Menüpunkt „Kursergebnisse“ bleibt sichtbar, bis keine offenen Zeilen mehr da sind. Vorgabe ohne Eingriff: Import an, Kurse aus. Vorbereitung für die Kurse im System, die den CSV-Import zum Jahresende ablösen.
 
+### Behoben
+
+- **Gepfiffene Spiele je Lizenznummer öffentlich abrufbar**: `GET /api/v2/referees/:lizenznummer/games` (optional `?season_id=`) antwortet wie in der API-Doku beschrieben mit API-Key, bisher kam trotz gültigem Key 401. Der Endpunkt lief auch mit Login in einen Fehler und liefert jetzt Datum des Spieltags, Liga mit `league_id`, `game_operation_slug` und Saison. Laufende Spiele unterliegen für API-Keys derselben 10-Minuten-Verzögerung wie `games/:id`, Schiedsrichter mit beendeter Karriere antworten wie im Lizenzcheck mit 404.
+- **API antwortet ohne Accept-Header mit JSON statt 500**: Ohne Accept-Header oder mit dem eines Browsers liefen `leagues`, `leagues/:id` und `games/:id` in einen Serverfehler. Unter `/api/` gilt ohne Endung jetzt JSON; `.ics`, `.xlsx` und `.csv` behalten Vorrang.
+- **Spielbetriebe unter `/api/v2` abrufbar**: `GET /api/v2/game_operations` und `GET /api/v2/game_operations/by_shortname/:name` antworteten mit 404, weil es beide Routen nur ohne den `api/v2`-Präfix gab. Gesucht wird weiter über `path` (z. B. `fd`, `ost`); ein unbekannter Name liefert 404 statt `null`. Beide liefern die Spielbetriebe in derselben Form wie `init`.
+
 ## [1.130.1] - 2026-10-12
 
 ### Verbessert
