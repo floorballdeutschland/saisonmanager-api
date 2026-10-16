@@ -4,9 +4,10 @@
 # Anzeigeform (DSGVO, siehe PublicPlayerNames): Vorname und Nachname, der
 # Nachname fällt bei einem Antrag weg.
 #
-# Quelle ist der Spielbericht-Schnappschuss (`games.players`), wie auf der
-# öffentlichen Spielseite. Nur wer dort nicht steht, wird im Spielerprofil
-# nachgeschlagen, dann ohne Trikotnummer.
+# Quelle ist allein der Spielbericht-Schnappschuss (`games.players`), wie auf
+# der öffentlichen Spielseite. Wer dort nicht (mehr) steht, bekommt keinen
+# Namen; ein Nachschlagen im Spielerprofil gäbe Personen heraus, die laut
+# Bericht nicht gespielt haben.
 class PublicPersonRefs
   def initialize(game)
     @game = game
@@ -18,13 +19,7 @@ class PublicPersonRefs
     return nil if player_id.blank?
 
     entry = lineup(side).find { |p| p['player_id'].to_i == player_id.to_i }
-    return from_entry(entry) if entry
-
-    player = Player.find_by(id: player_id)
-    return nil if player.nil?
-
-    first, last = PublicPlayerNames.mask_names(player.id, player.first_name, player.last_name, @hidden)
-    { trikot_number: nil, name: "#{first} #{last}".squish }
+    entry && from_entry(entry)
   end
 
   # Über die Trikotnummer (Ereignisse).

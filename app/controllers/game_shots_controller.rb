@@ -43,35 +43,27 @@ class GameShotsController < ApplicationController
                     status: :unprocessable_entity
     end
 
-    fehler = nil
-    GameShot.transaction do
-      eingaben.each do |eingabe|
-        attrs = shot_attributes(eingabe)
-        shot = GameShot.find_or_initialize_by(client_uuid: attrs['client_uuid'].to_s)
-        if shot.persisted? && shot.game_id != @game.id
-          fehler = "Schuss #{attrs['client_uuid']} gehört zu einem anderen Spiel."
-          raise ActiveRecord::Rollback
-        end
-
-        shot.game = @game
-        shot.created_by ||= secretary_or_current_user_id
-        shot.assign_attributes(attrs)
-        next if shot.save
-
-        fehler = "Schuss #{attrs['client_uuid']}: #{shot.errors.full_messages.join(', ')}"
-        raise ActiveRecord::Rollback
-      end
+    unless eingaben.all? { |eingabe| eingabe.is_a?(ActionController::Parameters) || eingabe.is_a?(Hash) }
+      return render json: { message: 'Jeder Eintrag in shots muss ein Objekt sein.' }, status: :unprocessable_entity
     end
+
+    fehler, gespeichert = schuesse_speichern(eingaben)
     return render json: { message: fehler }, status: :unprocessable_entity if fehler
 
     mark_tablet_capture! if eingaben.any?
+    GameShotLinker.link_new_shots(@game, gespeichert)
     GameShotStats.flush!(@game)
     render_shots
   end
 
   # PATCH games/:id/shots/:client_uuid
   def update
-    unless @shot.update(shot_attributes(params).except('client_uuid'))
+    @shot.assign_attributes(shot_attributes(params).except('client_uuid'))
+    if @shot.event_id && @shot.team_changed? && (fehler = team_mismatch(@shot.event_id))
+      return render json: { message: fehler }, status: :unprocessable_entity
+    end
+
+    unless @shot.save
       return render json: { message: @shot.errors.full_messages.join(', ') }, status: :unprocessable_entity
     end
 
@@ -158,12 +150,54 @@ class GameShotsController < ApplicationController
 
   def link_error(event_id)
     return 'Nur ein Tor-Schuss kann mit einem Tor verknüpft werden.' unless @shot.result == 'goal'
+    return 'Tor nicht gefunden.' if goal_event(event_id).nil?
 
-    'Tor nicht gefunden.' unless goal_event_ids.include?(event_id)
+    team_mismatch(event_id)
   end
 
-  def goal_event_ids
-    @game.formatted_events.select { |event| event[:event_type] == :goal }.map { |event| event[:event_id].to_i }
+  def team_mismatch(event_id)
+    tor = goal_event(event_id)
+    return nil if tor.nil? || tor[:event_team].to_s == @shot.team
+
+    'Schuss und Tor gehören zu verschiedenen Teams.'
+  end
+
+  def goal_event(event_id)
+    @goal_events ||= @game.formatted_events.select { |event| event[:event_type] == :goal }
+    @goal_events.find { |event| event[:event_id].to_i == event_id.to_i }
+  end
+
+  # Ein Stapel in einer Transaktion. Schicken zwei Geräte (oder ein Gerät nach
+  # einem Abbruch doppelt) gleichzeitig dieselbe client_uuid, verliert einer
+  # das Rennen um den eindeutigen Index; dann wird der Stapel einmal
+  # wiederholt und trifft den inzwischen vorhandenen Schuss als Aktualisierung.
+  def schuesse_speichern(eingaben, wiederholt: false)
+    fehler = nil
+    gespeichert = []
+    GameShot.transaction do
+      eingaben.each do |eingabe|
+        fehler = schuss_speichern(shot_attributes(eingabe), gespeichert)
+        raise ActiveRecord::Rollback if fehler
+      end
+    end
+    [fehler, fehler ? [] : gespeichert]
+  rescue ActiveRecord::RecordNotUnique
+    raise if wiederholt
+
+    schuesse_speichern(eingaben, wiederholt: true)
+  end
+
+  def schuss_speichern(attrs, gespeichert)
+    shot = GameShot.find_or_initialize_by(client_uuid: attrs['client_uuid'].to_s)
+    return "Schuss #{attrs['client_uuid']} gehört zu einem anderen Spiel." if shot.persisted? && shot.game_id != @game.id
+
+    shot.game = @game
+    shot.created_by ||= secretary_or_current_user_id
+    shot.assign_attributes(attrs)
+    return "Schuss #{attrs['client_uuid']}: #{shot.errors.full_messages.join(', ')}" unless shot.save
+
+    gespeichert << shot
+    nil
   end
 
   # Gesetzt beim ersten Schuss. `update_columns` mit `updated_at`, damit der
