@@ -251,7 +251,7 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
     assert_nil stats['complete']
     assert_equal 5, stats['shots'].size
     assert_equal({ 'trikot_number' => 7, 'name' => 'Max' }, stats['shots'].first['shooter'])
-    assert stats['shots'].all? { |s| s.key?('event_id') }
+    assert(stats['shots'].all? { |s| s.key?('event_id') })
     assert_not_includes response.body, 'Geheim'
 
     heim = stats['teams']['home']
