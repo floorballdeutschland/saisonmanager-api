@@ -30,6 +30,9 @@ class StreamTimeline
   # Vorlauf einer Sprungmarke, deren Anker ein im Tabletmodus angetippter Schuss
   # ist (ab api#816).
   CHAPTER_LEAD_SHOT = 10
+  # Highlights: 15 s vor dem Schuss bis 5 s danach (fe#555).
+  SCENE_LEAD = 15
+  SCENE_TAIL = 5
 
   # Ein Tor oder eine Strafe mit Anker. Der Name stammt aus der Zeit, als nur
   # Tore markiert wurden.
@@ -81,6 +84,27 @@ class StreamTimeline
   # Vorlauf einer Sprungmarke für dieses Tor (oder diese Strafe).
   def chapter_position(goal)
     position(goal.anchor_at, goal.shot? ? CHAPTER_LEAD_SHOT : CHAPTER_LEAD_ADDED_AT)
+  end
+
+  # Szene für die virtuellen Highlights (fe#555): [start, end] in Sekunden,
+  # SCENE_LEAD vor dem Antippen bis SCENE_TAIL danach. Braucht nur den
+  # Streamstart; ist die Länge der Aufzeichnung schon bekannt, muss die Szene
+  # darin beginnen und wird am Ende abgeschnitten. Sonst nil.
+  def scene(anchor_at)
+    return nil if broadcast.actual_start_at.blank? || anchor_at.nil?
+
+    sekunde = (anchor_at - broadcast.actual_start_at).floor
+    start = sekunde - SCENE_LEAD
+    ende = sekunde + SCENE_TAIL
+    return nil if start.negative?
+
+    dauer = broadcast.vod_duration_seconds.to_i
+    if dauer.positive?
+      return nil if start >= dauer
+
+      ende = [ende, dauer].min
+    end
+    [start, ende]
   end
 
   # 754 -> "12:34", 4321 -> "1:12:01". So erkennt YouTube Zeitangaben in der

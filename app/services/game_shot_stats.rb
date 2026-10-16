@@ -20,7 +20,10 @@ class GameShotStats
   end
 
   def self.flush!(game)
-    VARIANTS.each { |variant| Rails.cache.delete(cache_key(game, variant)) }
+    VARIANTS.each do |variant|
+      Rails.cache.delete(cache_key(game, variant))
+      Rails.cache.delete(GameHighlights.cache_key(game, variant))
+    end
   end
 
   # `cutoff`: nur Schüsse vor diesem Zeitpunkt (verzögerte API-Schlüssel bei

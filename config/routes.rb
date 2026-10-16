@@ -552,6 +552,7 @@ Rails.application.routes.draw do
           post   'shots/:client_uuid/link', to: 'game_shots#link'
           put    'tablet_capture', to: 'game_shots#tablet_capture'
           get    'detailed_stats', to: 'game_shots#detailed_stats'
+          get    'highlights', to: 'game_shots#highlights'
         end
       end
       # Serverzeit für den Uhrenabgleich des Tablets, ganz offen.

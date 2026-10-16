@@ -20,7 +20,7 @@ class GameShotsController < ApplicationController
 
   skip_before_action :authenticate_user
   before_action :authenticate_with_secretary_token_or_user, only: EDIT_ACTIONS
-  before_action :authenticate_public_request, only: %i[detailed_stats]
+  before_action :authenticate_public_request, only: %i[detailed_stats highlights]
   before_action :set_game
   before_action :require_read, only: %i[index]
   before_action :require_write, only: %i[create update destroy link tablet_capture]
@@ -120,6 +120,21 @@ class GameShotsController < ApplicationController
     delayed = delay_live_data? && !@game.ended?
     cutoff = delayed ? Time.current - LIVE_DATA_DELAY : nil
     render json: GameShotStats.cached(@game, delayed: delayed, cutoff: cutoff)
+  end
+
+  # GET games/:id/highlights (öffentlich, fe#555)
+  #
+  # Szenen der Tore mit verknüpftem Schuss in der Stream-Aufzeichnung. Fragt
+  # YouTube nicht, sondern liest Start und Länge, die der Wächter an
+  # `stream_broadcasts` gespeichert hat (StreamChapters).
+  def highlights
+    unless @game.tablet_capture?
+      return render json: { message: 'Keine Highlights für dieses Spiel.' }, status: :not_found
+    end
+
+    delayed = delay_live_data? && !@game.ended?
+    cutoff = delayed ? Time.current - LIVE_DATA_DELAY : nil
+    render json: GameHighlights.cached(@game, delayed: delayed, cutoff: cutoff)
   end
 
   private
