@@ -1,6 +1,7 @@
 class ApplicationController < ActionController::Base
   include ActionController::MimeResponds
   protect_from_forgery with: :exception
+  before_action :default_api_format_to_json
   before_action :authenticate_user
   before_action :save_current_user # https://gist.github.com/kule/9425fb7d4c2a13e556ef
   before_action :set_paper_trail_whodunnit
@@ -44,6 +45,18 @@ class ApplicationController < ActionController::Base
   end
 
   private
+
+  # Ohne Accept-Header oder mit dem eines Browsers nimmt Rails HTML an. Die API
+  # hat kein HTML: Endpunkte mit jbuilder-Vorlage oder `respond_to` ohne
+  # HTML-Zweig (leagues, leagues/:id, games/:id) antworteten dann mit 500.
+  # Eine Endung (.ics, .xlsx, .csv oder `defaults: { format: … }` in den
+  # Routen) behält Vorrang.
+  def default_api_format_to_json
+    return unless request.path.start_with?('/api/')
+    return if params[:format].present?
+
+    request.format = :json if request.format.html?
+  end
 
   # CSRF nur für authentifizierte Requests erzwingen
   def verified_request?

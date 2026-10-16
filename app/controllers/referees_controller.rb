@@ -1,6 +1,6 @@
 class RefereesController < ApplicationController
-  skip_before_action :authenticate_user, only: %i[show search]
-  before_action :authenticate_public_request, only: %i[show search]
+  skip_before_action :authenticate_user, only: %i[show search games]
+  before_action :authenticate_public_request, only: %i[show search games]
 
   # GET /api/v2/user/referees/:id
   # Returns public license info by Lizenznummer (no personal data)
@@ -66,16 +66,21 @@ class RefereesController < ApplicationController
   end
 
   # GET /api/v2/referees/:id/games
+  # Gepfiffene Spiele zu einer Lizenznummer, öffentlich wie der Lizenzcheck
+  # (in der API-Doku seit jeher so beschrieben, verlangte aber ein Login).
+  # Karriere-Beendete antworten wie in #show als unbekannte Nummer.
   def games
-    referee = Referee.find_by(lizenznummer: params[:id].to_i)
+    referee = Referee.not_career_ended.find_by(lizenznummer: params[:id].to_i)
     return render json: { error: 'Lizenz nicht gefunden' }, status: :not_found unless referee
 
-    season_id = params[:season_id]
-    games = referee.games(season_id: season_id)
-                   .includes(:league, :home_team, :guest_team)
-                   .order(date: :desc)
+    games = referee.games(season_id: params[:season_id].presence)
+                   .includes(:home_team, :guest_team, game_day: :league)
+                   .joins(:game_day)
+                   .order('game_days.date DESC')
 
-    render json: games.map { |g| game_summary(g) }
+    # Laufende Spiele unterliegen fuer API-Keys derselben Verzoegerung wie
+    # GET games/:id, sonst waere das hier ein Umweg zum Echtzeit-Spielstand.
+    render json: games.map { |g| game_summary(strip_delayed_events!(g)) }
   end
 
   private
@@ -84,11 +89,13 @@ class RefereesController < ApplicationController
     {
       id: game.id,
       game_number: game.game_number,
-      date: game.date,
+      date: game.game_day.date,
       home_team: game.home_team&.name,
       guest_team: game.guest_team&.name,
       league: game.league&.name,
-      season_id: game.season_id,
+      league_id: game.league&.id,
+      game_operation_slug: GameOperation.by_id[game.league&.game_operation_id]&.slug,
+      season_id: game.league&.season_id,
       result: game.result_string
     }
   end
