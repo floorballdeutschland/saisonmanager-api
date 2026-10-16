@@ -113,6 +113,34 @@ class StreamWatchdogTest < ActiveSupport::TestCase
     assert_includes beschreibungen.first, '28:00 1:0 Mueller'
   end
 
+  test 'ein Fehler in den Sprungmarken bricht den Lauf nicht ab, beendet wird trotzdem' do
+    @game.update!(game_status: 'match_record_closed')
+    satz_anlegen(signal_lost_at: @now - 20.minutes)
+    api = api_mit(status: 'inactive')
+
+    ergebnis = StreamChapters.stub(:new, ->(**) { raise ActiveRecord::StatementInvalid, 'DB weg' }) do
+      StreamWatchdog.new(api: api, now: @now).run
+    end
+
+    assert_equal [BROADCAST_ID], api.completed
+    assert_equal 1, ergebnis[:ended].size
+    assert(ergebnis[:problems].any? { |p| p.include?('Sprungmarken abgebrochen') })
+  end
+
+  test 'erschöpftes Kontingent beim Lesen der Videodaten ist nur ein Problem' do
+    @game.update!(game_status: 'match_record_closed')
+    satz_anlegen(signal_lost_at: @now - 20.minutes)
+    StreamBroadcast.create!(broadcast_id: 'bc-alt', game: @game, last_active_at: @now - 2.hours,
+                            ended_at: @now - 1.hour)
+    api = api_mit(status: 'inactive')
+    api.define_singleton_method(:videos) { |_ids| raise YoutubeLiveApi::QuotaExceeded, 'quotaExceeded' }
+
+    ergebnis = StreamWatchdog.new(api: api, now: @now).run
+
+    assert_equal [BROADCAST_ID], api.completed
+    assert(ergebnis[:problems].any? { |p| p.include?('QuotaExceeded') })
+  end
+
   # --- Regel: 15 Minuten ohne Signal UND Spielbericht geschlossen ------------
 
   test 'beendet, wenn seit 15 Minuten kein Signal anliegt und der Spielbericht geschlossen ist' do

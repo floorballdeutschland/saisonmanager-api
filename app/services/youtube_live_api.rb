@@ -43,6 +43,9 @@ class YoutubeLiveApi
   class TransportError < Error; end
   class QuotaExceeded < Error; end
   class AuthError < Error; end
+  # Sonstige 4xx-Antwort (ungültige Beschreibung, fehlendes Video, falsche
+  # Parameter): Ein zweiter Versuch mit derselben Anfrage scheitert genauso.
+  class ClientError < Error; end
 
   API_ROOT = 'https://www.googleapis.com/youtube/v3'
   TOKEN_URL = 'https://oauth2.googleapis.com/token'
@@ -222,7 +225,7 @@ class YoutubeLiveApi
   def videos(ids)
     ergebnis = {}
     Array(ids).compact.uniq.each_slice(50) do |block|
-      antwort = get('videos', part: 'id,liveStreamingDetails,contentDetails', id: block.join(','), maxResults: 50)
+      antwort = get('videos', part: 'id,liveStreamingDetails,contentDetails', id: block.join(','))
       antwort.fetch('items', []).each do |item|
         start = item.dig('liveStreamingDetails', 'actualStartTime')
         ergebnis[item['id']] = {
@@ -245,7 +248,7 @@ class YoutubeLiveApi
   # neu. Frisch und nicht aus einem früheren Lauf: Von Hand ergänzter Text soll
   # erhalten bleiben.
   def update_description!(video_id)
-    antwort = get('videos', part: 'id,snippet', id: video_id, maxResults: 1)
+    antwort = get('videos', part: 'id,snippet', id: video_id)
     eintrag = antwort.fetch('items', []).first
     return :verschwunden if eintrag.nil?
 
@@ -361,6 +364,7 @@ class YoutubeLiveApi
     koerper = antwort.body.to_s
     return QuotaExceeded if koerper.include?('quotaExceeded') || koerper.include?('rateLimitExceeded')
     return AuthError if koerper.match?(/invalid_grant|insufficientPermissions|forbidden|authError/)
+    return ClientError if antwort.code.to_i.between?(400, 499)
 
     Error
   end

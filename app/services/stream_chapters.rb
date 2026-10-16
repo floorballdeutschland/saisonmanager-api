@@ -18,7 +18,9 @@ require 'digest'
 # WELCHE ÜBERTRAGUNGEN: beendet, einem Spiel zugeordnet, Spielbericht
 # `match_record_closed` oder `finalized`, Ende nicht länger als MAX_AGE her. Nach
 # dem Abschluss korrigieren Admin und SBK noch, deshalb läuft es bis zum
-# Freigeben und darüber hinaus bis MAX_AGE weiter. Geschrieben wird nur, wenn
+# Freigeben und darüber hinaus bis MAX_AGE weiter. Schon beschriebene
+# Aufzeichnungen werden danach unbefristet einmal täglich nachgerechnet
+# (#nachzurechnen), damit eine spätere DSGVO-Anonymisierung durchschlägt. Geschrieben wird nur, wenn
 # sich der Markenblock geändert hat (`chapters_digest`); der Normalfall eines
 # Laufs kostet damit kein Kontingent.
 #
@@ -27,9 +29,9 @@ require 'digest'
 # gespeichert. Erst ein geänderter Block kostet etwas: eine Einheit für das
 # frische Lesen der Beschreibung, 50 für das Schreiben.
 #
-# NICHT GESCHRIEBEN wird für nachgetragene Berichte: Liegen mindestens
-# NACHTRAG_MIN_GOALS Tore mit Eingabezeit als Anker innerhalb von
-# NACHTRAG_SPAN, wurde der Bericht offensichtlich in einem Rutsch vom Papier
+# NICHT GESCHRIEBEN wird für nachgetragene Berichte: Liegen bei mindestens
+# NACHTRAG_MIN_GOALS Toren mit Eingabezeit als Anker die Eingaben im Mittel
+# weniger als NACHTRAG_MEAN_GAP Sekunden auseinander, wurde der Bericht offensichtlich in einem Rutsch vom Papier
 # übertragen, und `added_at` sagt nichts über den Torzeitpunkt. Tore, die erst
 # nach dem Ende der Aufzeichnung eingetragen wurden, fallen schon über die
 # Längenprüfung in StreamTimeline heraus.
@@ -47,15 +49,25 @@ class StreamChapters
   # Kapitelleiste ganz.
   MIN_CHAPTER_GAP = 10
 
+  # Nachgetragen: mindestens so viele Tore, und im Mittel liegen zwischen zwei
+  # aufeinanderfolgenden Eingaben weniger als NACHTRAG_MEAN_GAP. Im echten
+  # Spiel liegen Minuten dazwischen, beim Abtippen vom Papier Sekunden.
   NACHTRAG_MIN_GOALS = 3
-  NACHTRAG_SPAN = 10.minutes
+  NACHTRAG_MEAN_GAP = 60
 
-  # Wie lange nach dem Ende einer Übertragung noch geschrieben wird.
+  # Wie lange nach dem Ende einer Übertragung zum ersten Mal geschrieben wird.
+  # Schon beschriebene Aufzeichnungen werden danach weiter nachgerechnet,
+  # einmal am Tag (RECHECK_INTERVAL), höchstens ALT_BATCH je Lauf.
   MAX_AGE = 14.days
+  RECHECK_INTERVAL = 1.day
+  ALT_BATCH = 100
 
-  # Die Beschreibung fasst bei YouTube 5000 Zeichen, und spitze Klammern weist
+  # Nach so vielen Fehlversuchen für denselben Inhalt wird aufgegeben.
+  MAX_ATTEMPTS = 3
+
+  # Die Beschreibung fasst bei YouTube 5000 Bytes, und spitze Klammern weist
   # `videos.update` ab.
-  MAX_DESCRIPTION = 5000
+  MAX_DESCRIPTION_BYTES = 5000
 
   attr_reader :notes, :probleme, :written
 
@@ -69,16 +81,22 @@ class StreamChapters
   end
 
   def run
-    saetze = kandidaten.to_a
+    saetze = kandidaten
     return self if saetze.empty?
 
     details_nachladen(saetze)
     saetze.each do |satz|
       verarbeite(satz)
-    rescue YoutubeLiveApi::QuotaExceeded => e
-      problem("Kontingent erschöpft, Sprungmarken abgebrochen: #{e.message}")
+    rescue YoutubeLiveApi::QuotaExceeded, YoutubeLiveApi::AuthError => e
+      # Ein Zustand, kein Einzelfall: Jeder weitere Satz scheitert genauso.
+      # Gezählt wird das nicht als Fehlversuch, sonst wären nach einem
+      # widerrufenen Token alle Übertragungen als gescheitert markiert.
+      problem("Sprungmarken abgebrochen (#{e.class}): #{e.message}")
       break
     end
+    self
+  rescue YoutubeLiveApi::QuotaExceeded, YoutubeLiveApi::AuthError => e
+    problem("Sprungmarken abgebrochen (#{e.class}): #{e.message}")
     self
   end
 
@@ -157,7 +175,7 @@ class StreamChapters
     eingaben = tore.reject(&:shot?).map(&:anchor_at)
     return false if eingaben.size < NACHTRAG_MIN_GOALS
 
-    eingaben.max - eingaben.min < NACHTRAG_SPAN
+    (eingaben.max - eingaben.min) / (eingaben.size - 1) < NACHTRAG_MEAN_GAP
   end
 
   # "1:0 Müller (Schmidt)". Der Nachname wie auf der öffentlichen Spielseite,
@@ -196,10 +214,25 @@ class StreamChapters
   private
 
   def kandidaten
-    StreamBroadcast.joins(:game)
-                   .where(games: { game_status: %w[match_record_closed finalized] })
-                   .where(ended_at: (@now - MAX_AGE)..@now)
-                   .order(:ended_at)
+    geschlossen = StreamBroadcast.joins(:game).where(games: { game_status: %w[match_record_closed finalized] })
+    frisch = geschlossen.where(ended_at: (@now - MAX_AGE)..@now).order(:ended_at).to_a
+    frisch + nachzurechnen(geschlossen)
+  end
+
+  # Schon beschriebene Aufzeichnungen bleiben UNBEFRISTET in der Pflicht: Wird
+  # ein Nachname später DSGVO-halber weggelassen, muss er auch aus der
+  # Beschreibung verschwinden. Nachgerechnet wird lokal (Digest), YouTube wird
+  # erst bei geändertem Block angefasst. Damit die Datenbank nicht alle fünf
+  # Minuten jede je beschriebene Übertragung neu rechnet, kommt jede höchstens
+  # einmal am Tag dran, höchstens ALT_BATCH je Lauf.
+  def nachzurechnen(geschlossen)
+    geschlossen.where.not(chapters_written_at: nil)
+               .where(ended_at: ...(@now - MAX_AGE))
+               .where('stream_broadcasts.chapters_checked_at IS NULL OR stream_broadcasts.chapters_checked_at < ?',
+                      @now - RECHECK_INTERVAL)
+               .order(Arel.sql('stream_broadcasts.chapters_checked_at ASC NULLS FIRST'))
+               .limit(ALT_BATCH)
+               .to_a
   end
 
   # Start und Länge für die Sätze, denen sie noch fehlen. Die Länge steht bei
@@ -209,49 +242,91 @@ class StreamChapters
     offen = saetze.reject { |satz| satz.actual_start_at.present? && satz.vod_duration_seconds.to_i.positive? }
     return if offen.empty?
 
-    details = @api.videos(offen.map(&:broadcast_id))
-    offen.each do |satz|
-      werte = details[satz.broadcast_id]
-      next if werte.nil?
-
-      satz.actual_start_at = werte[:actual_start_at] if werte[:actual_start_at]
-      satz.vod_duration_seconds = werte[:duration_seconds] if werte[:duration_seconds].to_i.positive?
-      satz.save! if !@dry_run && satz.changed?
+    begin
+      details = @api.videos(offen.map(&:broadcast_id))
+    rescue YoutubeLiveApi::QuotaExceeded, YoutubeLiveApi::AuthError
+      raise
+    rescue YoutubeLiveApi::Error => e
+      notiz("Sprungmarken: Videodaten nicht abrufbar (#{e.class}): #{e.message}")
+      return
     end
-  rescue YoutubeLiveApi::QuotaExceeded
-    raise
-  rescue YoutubeLiveApi::Error => e
-    notiz("Sprungmarken: Videodaten nicht abrufbar (#{e.class}): #{e.message}")
+
+    offen.each { |satz| details_speichern(satz, details[satz.broadcast_id]) }
+  end
+
+  def details_speichern(satz, werte)
+    return if werte.nil?
+
+    satz.actual_start_at = werte[:actual_start_at] if werte[:actual_start_at]
+    satz.vod_duration_seconds = werte[:duration_seconds] if werte[:duration_seconds].to_i.positive?
+    satz.save! if !@dry_run && satz.changed?
+  rescue StandardError => e
+    problem("Sprungmarken: Videodaten für #{satz.broadcast_id} nicht gespeichert: #{e.class} #{e.message}")
   end
 
   def verarbeite(satz)
+    stempel_pruefung(satz)
     block = self.class.block_for(satz.game, satz)
     digest = block && Digest::SHA256.hexdigest(block)
     return if digest == satz.chapters_digest
     # Noch nie geschrieben und nichts zu schreiben: kein Aufruf.
     return if block.nil? && satz.chapters_written_at.nil?
+    # Für genau diesen Inhalt schon endgültig gescheitert und gemeldet.
+    return if satz.chapters_failed_at.present? && satz.chapters_attempt_digest == digest.to_s
 
     if @dry_run
       notiz("[Probelauf] würde Sprungmarken schreiben: #{satz.broadcast_id}\n#{block}")
       return
     end
 
+    schreibe(satz, block, digest)
+  rescue YoutubeLiveApi::QuotaExceeded, YoutubeLiveApi::AuthError
+    raise
+  rescue StandardError => e
+    # Ein einzelnes Spiel (kaputter Altdatensatz, Netzfehler) darf weder die
+    # übrigen Übertragungen noch den Wächter aufhalten.
+    fehlversuch(satz, digest, e)
+  end
+
+  def schreibe(satz, block, digest)
     ergebnis = @api.update_description!(satz.broadcast_id) do |beschreibung|
       neu = self.class.beschreibung_mit(beschreibung, block)
-      raise YoutubeLiveApi::Error, "Beschreibung zu lang (#{neu.length} Zeichen)" if neu.length > MAX_DESCRIPTION
+      if neu.bytesize > MAX_DESCRIPTION_BYTES
+        raise YoutubeLiveApi::ClientError, "Beschreibung zu lang (#{neu.bytesize} Bytes)"
+      end
 
       neu
     end
-    satz.update!(chapters_digest: digest, chapters_written_at: @now)
+    satz.update!(chapters_digest: digest, chapters_written_at: @now, chapters_attempts: 0,
+                 chapters_attempt_digest: nil, chapters_failed_at: nil)
     @written << { broadcast_id: satz.broadcast_id, result: ergebnis, markers: block.to_s.lines.size - 2 }
     notiz("Sprungmarken (#{ergebnis}): #{satz.broadcast_id}")
-  rescue YoutubeLiveApi::QuotaExceeded
-    raise
-  rescue YoutubeLiveApi::Error, ActiveRecord::ActiveRecordError => e
-    # Kein Stempel: Der nächste Lauf versucht es erneut. Sprungmarken sind ein
-    # Komfort; ein Fehlschlag darf den Wächter nicht aufhalten, gemeldet wird er
-    # trotzdem.
-    problem("Sprungmarken für #{satz.broadcast_id} fehlgeschlagen: #{e.class} #{e.message}")
+  end
+
+  # Zählt Fehlversuche je Inhalt. Vorübergehende Fehler bleiben Notizen, bis
+  # MAX_ATTEMPTS erreicht ist; eine 4xx-Antwort ist sofort endgültig. Gemeldet
+  # wird genau einmal, beim Markieren. Ein geänderter Inhalt beginnt von vorn.
+  def fehlversuch(satz, digest, fehler)
+    versuche = satz.chapters_attempt_digest == digest.to_s ? satz.chapters_attempts + 1 : 1
+    endgueltig = versuche >= MAX_ATTEMPTS || fehler.is_a?(YoutubeLiveApi::ClientError)
+    text = "Sprungmarken für #{satz.broadcast_id}: #{fehler.class} #{fehler.message}"
+    if endgueltig
+      problem("#{text} -- aufgegeben nach #{versuche} Versuch(en)")
+    else
+      notiz("#{text} (Versuch #{versuche}, wird wiederholt)")
+    end
+    return if @dry_run
+
+    satz.update_columns(chapters_attempts: versuche, chapters_attempt_digest: digest.to_s,
+                        chapters_failed_at: endgueltig ? @now : nil)
+  rescue StandardError => e
+    problem("Sprungmarken für #{satz.broadcast_id}: Fehlversuch nicht vermerkt: #{e.class} #{e.message}")
+  end
+
+  def stempel_pruefung(satz)
+    return if @dry_run || satz.ended_at.nil? || satz.ended_at >= @now - MAX_AGE
+
+    satz.update_columns(chapters_checked_at: @now)
   end
 
   def notiz(text)
