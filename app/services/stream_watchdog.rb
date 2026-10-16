@@ -97,6 +97,17 @@ class StreamWatchdog
     veroeffentlicht = veroeffentliche_faellige
     melde_offene_zusagen
 
+    ergebnis = pruefe_laufende(veroeffentlicht)
+    # HINTEN, nach dem Abschalten: Die Sprungmarken sind Komfort, das Beenden
+    # haengender Uebertragungen nicht. Ein erschoepftes Kontingent soll erst
+    # dort zuschlagen, wo es nur die Marken trifft.
+    ergebnis[:chapters] = schreibe_sprungmarken
+    ergebnis
+  end
+
+  private
+
+  def pruefe_laufende(veroeffentlicht)
     aktive = @api.active_broadcasts
     verschwunden = schliesse_verschwundene(aktive.map { |b| b[:id] })
 
@@ -119,7 +130,23 @@ class StreamWatchdog
     zusammenfassung(aktive.size, beendet, verschwunden, veroeffentlicht)
   end
 
-  private
+  # Sprungmarken zu den Toren in die Beschreibung beendeter Aufzeichnungen
+  # (siehe StreamChapters). Laeuft hier mit, damit es keinen zweiten Cronjob
+  # braucht. Notizen und Probleme landen in derselben Ausgabe wie der Rest des
+  # Laufs.
+  def schreibe_sprungmarken
+    marken = StreamChapters.new(api: @api, dry_run: @dry_run, now: @now).run
+    @notes.concat(marken.notes)
+    @probleme.concat(marken.probleme)
+    marken.written
+  rescue StandardError => e
+    # StreamChapters faengt Fehler je Uebertragung selbst ab. Was trotzdem
+    # hier ankommt (etwa ein Datenbankfehler bei der Auswahl), darf den Lauf
+    # nicht mehr abbrechen: Er ist an dieser Stelle durch, und die Ausgabe von
+    # BEENDET und VEROEFFENTLICHT samt Sentry-Meldung steht noch aus.
+    problem("Sprungmarken abgebrochen: #{e.class} #{e.message}")
+    []
+  end
 
   # Eine einzelne Übertragung. Gibt den Beendigungsgrund zurück, wenn beendet
   # wurde, sonst nil.

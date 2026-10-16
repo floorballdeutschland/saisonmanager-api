@@ -28,6 +28,9 @@ class Game < ApplicationRecord
   # Re-Import löscht Spieltage samt Spielen) Einladungen mit gültigem Token und
   # personenbezogener Adresse zurück, deren Aufruf am fehlenden Spiel scheitert.
   has_many :referee_feedback_invitations, dependent: :destroy
+  # Tabletmodus (api#816). Der Fremdschlüssel löscht ohnehin mit, das hier
+  # deckt den Weg über `destroy` ohne Einzelabfragen ab.
+  has_many :game_shots, dependent: :delete_all
 
   # Spiele eines Schiris. Kanonisch über die stabile Referee-PK in
   # officiating_referee_ids (Fundament #45); referee_ids (Lizenznummer) bleibt als
@@ -119,6 +122,13 @@ class Game < ApplicationRecord
 
   def match_record_closed?
     %w[match_record_closed finalized].include? game_status
+  end
+
+  # Im Tabletmodus erfasst? Davon hängt ab, ob die öffentliche Spielseite die
+  # ausführliche Statistik und die Highlights zeigt, nicht von einer
+  # Einstellung (fe#344).
+  def tablet_capture?
+    tablet_capture_at.present?
   end
 
   # Wurde fuer dieses Spiel ein Forfait-Ergebnis von Hand festgesetzt?
@@ -1023,6 +1033,19 @@ class Game < ApplicationRecord
     item
   end
 
+  # Der Aufstellungseintrag zu einer Trikotnummer, in öffentlicher Anzeigeform
+  # (DSGVO, siehe PublicPlayerNames). Für Ausgaben außerhalb der Spielseite,
+  # die Namen zu Ereignissen nennen: Sprungmarken in der YouTube-Beschreibung,
+  # Highlights, Schussstatistik. Die Pseudo-Nummern 1000 (Eigentor) und 2000
+  # (nicht angegeben) haben keinen Eintrag.
+  def public_lineup_entry(side, number)
+    return nil if number.blank? || [1000, 2000].include?(number.to_i)
+    return nil unless players.is_a?(Hash)
+
+    entry = Array(players[side.to_s]).find { |p| p['trikot_number'].to_i == number.to_i }
+    entry && PublicPlayerNames.mask_lineup_entry(entry)
+  end
+
   # player_id => { first_name:, last_name: } aus dem Spielbericht-Snapshot
   # (players-JSONB). Damit ist die Scorerliste self-contained für Altsaisons –
   # ein nachträglich umbenannter oder gelöschter Spieler verfälscht sie nicht.
@@ -1148,6 +1171,10 @@ class Game < ApplicationRecord
       guest_team_small_logo: guest_team&.logo_small_url_fallback,
       live_stream_link:,
       vod_link:,
+      # Tabletmodus (api#816): ob Schüsse erfasst wurden, und ob sie beim
+      # Abschluss als vollständig gemeldet wurden (nil: nicht gefragt).
+      tablet_capture: tablet_capture?,
+      tablet_shots_complete:,
       events: formatted_events,
       players: players_with_position,
       starting_players: starting_players_with_numbers,

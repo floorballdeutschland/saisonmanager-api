@@ -588,7 +588,20 @@ Rails.application.routes.draw do
           # Hallen-Belegungskonflikte für ein (geplantes) Spiel prüfen, ohne zu speichern.
           get :scheduling_conflicts
         end
+        # Tabletmodus (api#816): Schüsse, Verknüpfung mit Toren, öffentliche Statistik.
+        member do
+          get    'shots', to: 'game_shots#index'
+          post   'shots', to: 'game_shots#create'
+          patch  'shots/:client_uuid', to: 'game_shots#update'
+          delete 'shots/:client_uuid', to: 'game_shots#destroy'
+          post   'shots/:client_uuid/link', to: 'game_shots#link'
+          put    'tablet_capture', to: 'game_shots#tablet_capture'
+          get    'detailed_stats', to: 'game_shots#detailed_stats'
+          get    'highlights', to: 'game_shots#highlights'
+        end
       end
+      # Serverzeit für den Uhrenabgleich des Tablets, ganz offen.
+      get 'server_time', to: 'server_time#show'
       resources :game_days
 
       get 'init', to: 'settings#init'
