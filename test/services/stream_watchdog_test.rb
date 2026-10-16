@@ -45,6 +45,16 @@ class StreamWatchdogTest < ActiveSupport::TestCase
 
       @publish_result
     end
+
+    # Sprungmarken laufen im selben Lauf mit (StreamChapters). Ohne Videodaten
+    # bleibt es dort still; geprueft wird das in stream_chapters_test.rb.
+    def videos(_ids)
+      {}
+    end
+
+    def update_description!(_video_id)
+      :unveraendert
+    end
   end
 
   STREAM_ID = 'stream-1'.freeze
@@ -73,6 +83,34 @@ class StreamWatchdogTest < ActiveSupport::TestCase
     # Anwurf 18:00 Berlin, "jetzt" zwei Stunden später -- das Spiel läuft oder
     # ist eben zu Ende.
     @now = Time.zone.parse('2026-03-07 20:00:00 +01:00')
+  end
+
+  # --- Sprungmarken laufen im selben Lauf mit (api#815) -----------------------
+
+  test 'schreibt Sprungmarken fuer eine beendete Aufzeichnung mit geschlossenem Bericht' do
+    @game.update!(game_status: 'match_record_closed',
+                  players: { 'home' => [{ 'trikot_number' => 7, 'player_firstname' => 'Max',
+                                          'player_name' => 'Mueller' }], 'guest' => [] },
+                  events: [{ 'id' => 1, 'event_type' => 'goal', 'event_team' => 'home', 'period' => 1,
+                             'time' => '05:00', 'home_goals' => 1, 'guest_goals' => 0, 'home_number' => 7,
+                             'added_at' => (@now - 90.minutes).to_i }])
+    StreamBroadcast.create!(broadcast_id: 'bc-alt', game: @game, title: 'Heim vs Gast',
+                            last_active_at: @now - 30.minutes, ended_at: @now - 10.minutes)
+    api = FakeApi.new
+    beschreibungen = []
+    jetzt = @now
+    api.define_singleton_method(:videos) do |_ids|
+      { 'bc-alt' => { actual_start_at: jetzt - 2.hours, duration_seconds: 6000 } }
+    end
+    api.define_singleton_method(:update_description!) do |_id, &block|
+      beschreibungen << block.call('')
+      :geschrieben
+    end
+
+    ergebnis = StreamWatchdog.new(api: api, now: @now).run
+
+    assert_equal 1, ergebnis[:chapters].size
+    assert_includes beschreibungen.first, '28:00 1:0 Mueller'
   end
 
   # --- Regel: 15 Minuten ohne Signal UND Spielbericht geschlossen ------------

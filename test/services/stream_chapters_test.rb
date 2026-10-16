@@ -1,0 +1,214 @@
+require 'test_helper'
+
+# Sprungmarken zu den Toren in der Beschreibung der Aufzeichnung (api#815).
+class StreamChaptersTest < ActiveSupport::TestCase
+  # Ersetzt YoutubeLiveApi. Hält fest, was gelesen und geschrieben wurde.
+  class FakeApi
+    attr_reader :video_requests, :written
+    attr_accessor :description
+
+    def initialize(details: {}, description: "Livestream vom Spieltag\nKamera: Verein")
+      @details = details
+      @description = description
+      @video_requests = []
+      @written = []
+    end
+
+    def videos(ids)
+      @video_requests << ids
+      @details.slice(*ids)
+    end
+
+    def update_description!(video_id)
+      neu = yield(@description)
+      return :unveraendert if neu == @description
+
+      @written << [video_id, neu]
+      @description = neu
+      :geschrieben
+    end
+  end
+
+  BROADCAST_ID = 'bc-tore'.freeze
+
+  setup do
+    create(:setting)
+    @start = Time.zone.parse('2026-10-11 17:50:00')
+    @now = @start + 4.hours
+    @game = create(:game, game_status: 'match_record_closed', started: true,
+                          players: {
+                            'home' => [lineup(7, 'Max', 'Müller'), lineup(9, 'Tom', 'Schmidt')],
+                            'guest' => [lineup(11, 'Ben', 'Weber')]
+                          })
+    @broadcast = StreamBroadcast.create!(broadcast_id: BROADCAST_ID, game: @game, title: 'Heim vs Gast',
+                                         last_active_at: @start + 2.hours, ended_at: @start + 2.hours + 20.minutes)
+  end
+
+  test 'schreibt Streamstart und je Tor eine Marke mit Vorlauf 120 s, Text bleibt erhalten' do
+    tore([@start + 1152.seconds, 'home', 7, 9, 1, 0], [@start + 1482.seconds, 'guest', 11, nil, 1, 1])
+    api = FakeApi.new(details: details)
+
+    lauf(api)
+
+    assert_equal 1, api.written.size
+    _id, beschreibung = api.written.first
+    assert beschreibung.start_with?("Livestream vom Spieltag\nKamera: Verein\n\n"), 'Text von Hand bleibt stehen'
+    assert_includes beschreibung, "0:00 Streamstart\n17:12 1:0 Müller (Schmidt)\n22:42 1:1 Weber\n"
+    @broadcast.reload
+    assert_equal @start, @broadcast.actual_start_at
+    assert_equal 7200, @broadcast.vod_duration_seconds
+    assert @broadcast.chapters_digest.present?
+    assert_equal @now.to_i, @broadcast.chapters_written_at.to_i
+  end
+
+  test 'ein zweiter Lauf ohne Änderung schreibt nicht und fragt YouTube nicht erneut' do
+    tore([@start + 1152.seconds, 'home', 7, nil, 1, 0])
+    api = FakeApi.new(details: details)
+    lauf(api)
+    lauf(api)
+
+    assert_equal 1, api.written.size
+    assert_equal 1, api.video_requests.size, 'Start und Länge liegen gespeichert vor'
+  end
+
+  test 'eine Korrektur ersetzt den Block, statt ihn zu verdoppeln' do
+    tore([@start + 1152.seconds, 'home', 7, nil, 1, 0])
+    api = FakeApi.new(details: details)
+    lauf(api)
+
+    @game.events.first['home_number'] = 9
+    @game.save!
+    lauf(api)
+
+    assert_equal 2, api.written.size
+    beschreibung = api.description
+    assert_equal 1, beschreibung.scan(StreamChapters::BLOCK_START).size
+    assert_includes beschreibung, '17:12 1:0 Schmidt'
+    assert_not_includes beschreibung, 'Müller'
+  end
+
+  test 'Tore unter 10 s Abstand werden zu einer Marke zusammengelegt' do
+    tore([@start + 1152.seconds, 'home', 7, nil, 1, 0], [@start + 1158.seconds, 'home', 9, nil, 2, 0],
+         [@start + 3000.seconds, 'guest', 11, nil, 2, 1])
+    api = FakeApi.new(details: details)
+    lauf(api)
+
+    assert_includes api.description, '17:12 1:0 Müller, 2:0 Schmidt'
+  end
+
+  test 'Tore außerhalb der Aufzeichnung (nach dem Ende des Bildes) fallen weg' do
+    # VOD 2 h; das zweite Tor wurde 2 h 30 min nach Streamstart eingetragen.
+    tore([@start + 1152.seconds, 'home', 7, nil, 1, 0], [@start + 9000.seconds, 'guest', 11, nil, 1, 1])
+    api = FakeApi.new(details: details)
+    lauf(api)
+
+    assert_includes api.description, '17:12 1:0 Müller'
+    assert_not_includes api.description, 'Weber'
+  end
+
+  test 'nachgetragener Bericht: alle Tore in wenigen Minuten eingetragen, keine Marken' do
+    tore([@start + 1.hour, 'home', 7, nil, 1, 0], [@start + 1.hour + 40.seconds, 'home', 9, nil, 2, 0],
+         [@start + 1.hour + 90.seconds, 'guest', 11, nil, 2, 1])
+    api = FakeApi.new(details: details)
+    lauf(api)
+
+    assert_empty api.written
+    assert_nil @broadcast.reload.chapters_digest
+  end
+
+  test 'der Nachname einer anonymisierten Person erscheint nicht' do
+    spieler = create(:player, first_name: 'Max', last_name: 'Müller', public_last_name_hidden_at: Time.current)
+    @game.players['home'][0]['player_id'] = spieler.id
+    @game.save!
+    PublicPlayerNames.flush!
+    tore([@start + 1152.seconds, 'home', 7, nil, 1, 0])
+    api = FakeApi.new(details: details)
+    lauf(api)
+
+    assert_includes api.description, '17:12 1:0 Max'
+    assert_not_includes api.description, 'Müller'
+  end
+
+  test 'offener Spielbericht: nichts wird gelesen oder geschrieben' do
+    @game.update!(game_status: 'running')
+    tore([@start + 1152.seconds, 'home', 7, nil, 1, 0])
+    api = FakeApi.new(details: details)
+    lauf(api)
+
+    assert_empty api.video_requests
+    assert_empty api.written
+  end
+
+  test 'ohne fertige Aufzeichnung (P0D) wird nicht geschrieben und später erneut gefragt' do
+    tore([@start + 1152.seconds, 'home', 7, nil, 1, 0])
+    api = FakeApi.new(details: { BROADCAST_ID => { actual_start_at: @start, duration_seconds: nil } })
+    lauf(api)
+    lauf(api)
+
+    assert_empty api.written
+    assert_equal 2, api.video_requests.size
+  end
+
+  test 'Probelauf schreibt weder bei YouTube noch in die Datenbank' do
+    tore([@start + 1152.seconds, 'home', 7, nil, 1, 0])
+    api = FakeApi.new(details: details)
+    marken = StreamChapters.new(api: api, dry_run: true, now: @now).run
+
+    assert_empty api.written
+    assert_nil @broadcast.reload.actual_start_at
+    assert(marken.notes.any? { |n| n.include?('17:12 1:0 Müller') })
+  end
+
+  test 'ein Fehler beim Schreiben ist ein Problem, der Stempel bleibt aus' do
+    tore([@start + 1152.seconds, 'home', 7, nil, 1, 0])
+    api = FakeApi.new(details: details)
+    api.define_singleton_method(:update_description!) { |_id| raise YoutubeLiveApi::TransportError, 'weg' }
+    marken = lauf(api)
+
+    assert_equal 1, marken.probleme.size
+    assert_nil @broadcast.reload.chapters_digest
+  end
+
+  test 'beschreibung_mit ersetzt nur den Block und lässt Text davor und danach stehen' do
+    alt = "Oben\n\n#{StreamChapters::BLOCK_START}\n0:00 Streamstart\n#{StreamChapters::BLOCK_END}\nUnten"
+    neu = StreamChapters.beschreibung_mit(alt, "#{StreamChapters::BLOCK_START}\nX\n#{StreamChapters::BLOCK_END}")
+
+    assert_includes neu, 'Oben'
+    assert_includes neu, 'Unten'
+    assert_includes neu, "\nX\n"
+    assert_not_includes neu, 'Streamstart'
+  end
+
+  test 'Zeitformat ab einer Stunde mit Stunden' do
+    assert_equal '0:00', StreamTimeline.timestamp(0)
+    assert_equal '17:12', StreamTimeline.timestamp(1032)
+    assert_equal '1:02:03', StreamTimeline.timestamp(3723)
+  end
+
+  private
+
+  def lauf(api)
+    StreamChapters.new(api: api, now: @now).run
+  end
+
+  def details
+    { BROADCAST_ID => { actual_start_at: @start, duration_seconds: 7200 } }
+  end
+
+  def lineup(number, first, last)
+    { 'trikot_number' => number, 'player_firstname' => first, 'player_name' => last }
+  end
+
+  # [added_at, Team, Schütze, Vorlage, Heimtore, Gasttore]
+  def tore(*liste)
+    @game.events = liste.each_with_index.map do |(zeit, team, nummer, vorlage, heim, gast), i|
+      event = { 'id' => i + 1, 'event_type' => 'goal', 'event_team' => team, 'period' => 1,
+                'time' => format('%02d:00', i + 1), 'home_goals' => heim, 'guest_goals' => gast,
+                'added_at' => zeit.to_i }
+      event["#{team}_number"] = nummer
+      event["#{team}_assist"] = vorlage if vorlage
+      event
+    end
+    @game.save!
+  end
+end

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_10_08_200000) do
+ActiveRecord::Schema[7.2].define(version: 2026_10_16_140100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -1018,6 +1018,10 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_08_200000) do
     t.datetime "updated_at", null: false
     t.boolean "promote_to_public", default: false, null: false
     t.datetime "promoted_at"
+    t.datetime "actual_start_at", comment: "liveStreamingDetails.actualStartTime: Sekunde 0 der Aufzeichnung"
+    t.integer "vod_duration_seconds", comment: "contentDetails.duration der Aufzeichnung in Sekunden (nicht actualEndTime)"
+    t.string "chapters_digest", comment: "SHA256 des zuletzt geschriebenen Markenblocks; gleich heißt: nichts zu schreiben"
+    t.datetime "chapters_written_at"
     t.index ["broadcast_id"], name: "index_stream_broadcasts_on_broadcast_id", unique: true
     t.index ["ended_at"], name: "index_stream_broadcasts_on_ended_at"
     t.index ["game_id"], name: "index_stream_broadcasts_on_game_id"

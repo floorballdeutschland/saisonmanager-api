@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Sprungmarken zu den Toren in der Stream-Aufzeichnung**: Nach dem Abschluss eines gestreamten Spiels schreibt der Livestream-Wächter die Tore als Zeitmarken in die Beschreibung des YouTube-Videos (`0:00 Streamstart`, danach je Tor Zeit, Spielstand, Schütze und Vorlage). Gerechnet wird ab dem Streamstart mit der Eingabezeit des Tores und 120 s Vorlauf; Marken außerhalb der Aufzeichnung (Länge aus `contentDetails.duration`) fallen weg, Tore unter 10 s Abstand werden zusammengelegt, nachgetragene Berichte bekommen keine Marken. Der Block ist klar abgegrenzt, ein zweiter Lauf ersetzt ihn, von Hand ergänzter Text bleibt stehen, und geschrieben wird nur bei geändertem Inhalt. Namen erscheinen wie auf der öffentlichen Spielseite (DSGVO-Anonymisierung). Neue Spalten an `stream_broadcasts`: `actual_start_at`, `vod_duration_seconds`, `chapters_digest`, `chapters_written_at`.
+
 ## [1.130.1] - 2026-10-12
 
 ### Verbessert

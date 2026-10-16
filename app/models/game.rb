@@ -1023,6 +1023,19 @@ class Game < ApplicationRecord
     item
   end
 
+  # Der Aufstellungseintrag zu einer Trikotnummer, in öffentlicher Anzeigeform
+  # (DSGVO, siehe PublicPlayerNames). Für Ausgaben außerhalb der Spielseite,
+  # die Namen zu Ereignissen nennen: Sprungmarken in der YouTube-Beschreibung,
+  # Highlights, Schussstatistik. Die Pseudo-Nummern 1000 (Eigentor) und 2000
+  # (nicht angegeben) haben keinen Eintrag.
+  def public_lineup_entry(side, number)
+    return nil if number.blank? || [1000, 2000].include?(number.to_i)
+    return nil unless players.is_a?(Hash)
+
+    entry = Array(players[side.to_s]).find { |p| p['trikot_number'].to_i == number.to_i }
+    entry && PublicPlayerNames.mask_lineup_entry(entry)
+  end
+
   # player_id => { first_name:, last_name: } aus dem Spielbericht-Snapshot
   # (players-JSONB). Damit ist die Scorerliste self-contained für Altsaisons –
   # ein nachträglich umbenannter oder gelöschter Spieler verfälscht sie nicht.
