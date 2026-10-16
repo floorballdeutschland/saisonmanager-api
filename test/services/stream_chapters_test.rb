@@ -159,14 +159,16 @@ class StreamChaptersTest < ActiveSupport::TestCase
     assert(marken.notes.any? { |n| n.include?('17:12 1:0 Müller') })
   end
 
-  test 'ein Fehler beim Schreiben ist ein Problem, der Stempel bleibt aus' do
+  test 'ein vorübergehender Fehler beim Schreiben ist eine Notiz, der Stempel bleibt aus' do
     tore([@start + 1152.seconds, 'home', 7, nil, 1, 0])
     api = FakeApi.new(details: details)
     api.define_singleton_method(:update_description!) { |_id| raise YoutubeLiveApi::TransportError, 'weg' }
     marken = lauf(api)
 
-    assert_equal 1, marken.probleme.size
+    assert_empty marken.probleme
+    assert(marken.notes.any? { |n| n.include?('wird wiederholt') })
     assert_nil @broadcast.reload.chapters_digest
+    assert_equal 1, @broadcast.chapters_attempts
   end
 
   test 'Strafen bekommen eine Marke mit Strafart, Name und Teamkürzel, Vorlauf 120 s' do
@@ -206,6 +208,116 @@ class StreamChaptersTest < ActiveSupport::TestCase
     strafen([@start + 1.hour + 100.seconds, 'guest', 11])
     lauf(api)
     assert_not_includes api.description, StreamChapters::BLOCK_START, 'Block entfernt'
+  end
+
+  test 'Nachtrag erst bei kurzem mittlerem Abstand: drei Tore in vier Minuten bekommen Marken' do
+    tore([@start + 1.hour, 'home', 7, nil, 1, 0], [@start + 1.hour + 2.minutes, 'home', 9, nil, 2, 0],
+         [@start + 1.hour + 4.minutes, 'guest', 11, nil, 2, 1])
+    api = FakeApi.new(details: details)
+    lauf(api)
+
+    assert_equal 1, api.written.size
+  end
+
+  # --- Fehler je Übertragung, Backoff (Review api#817) -------------------------
+
+  test 'ein kaputtes Spiel hält die übrigen Übertragungen nicht auf' do
+    tore([@start + 1152.seconds, 'home', 7, nil, 1, 0])
+    kaputt = create(:game, game_status: 'match_record_closed')
+    StreamBroadcast.create!(broadcast_id: 'bc-kaputt', game: kaputt, last_active_at: @start,
+                            ended_at: @broadcast.ended_at - 1.minute, actual_start_at: @start,
+                            vod_duration_seconds: 7200)
+    api = FakeApi.new(details: details)
+    original = StreamChapters.method(:block_for)
+    marken = nil
+    StreamChapters.stub(:block_for, lambda { |game, broadcast|
+      raise TypeError, 'kaputter Altdatensatz' if broadcast.broadcast_id == 'bc-kaputt'
+
+      original.call(game, broadcast)
+    }) do
+      marken = lauf(api)
+    end
+
+    assert_equal [BROADCAST_ID], api.written.map(&:first)
+    assert(marken.notes.any? { |n| n.include?('bc-kaputt') && n.include?('TypeError') })
+  end
+
+  test 'vorübergehende Fehler: zwei Notizen, beim dritten Versuch ein Problem, danach Ruhe' do
+    tore([@start + 1152.seconds, 'home', 7, nil, 1, 0])
+    api = FakeApi.new(details: details)
+    aufrufe = 0
+    api.define_singleton_method(:update_description!) do |_id|
+      aufrufe += 1
+      raise YoutubeLiveApi::TransportError, 'Zeitüberschreitung'
+    end
+
+    ergebnisse = Array.new(4) { lauf(api) }
+
+    assert_equal 3, aufrufe, 'nach dem dritten Fehlversuch wird nicht mehr gefragt'
+    assert_equal [0, 0, 1, 0], ergebnisse.map { |m| m.probleme.size }, 'genau einmal gemeldet'
+    assert @broadcast.reload.chapters_failed_at.present?
+  end
+
+  test 'eine 4xx-Antwort ist sofort endgültig, ein neuer Inhalt versucht es erneut' do
+    tore([@start + 1152.seconds, 'home', 7, nil, 1, 0])
+    api = FakeApi.new(details: details)
+    api.define_singleton_method(:update_description!) { |_id| raise YoutubeLiveApi::ClientError, '400 invalidDescription' }
+    erste = lauf(api)
+    assert_equal 1, erste.probleme.size
+    assert_empty lauf(api).probleme
+
+    api.singleton_class.send(:remove_method, :update_description!)
+    @game.events.first['home_number'] = 9
+    @game.save!
+    lauf(api)
+    assert_equal 1, api.written.size
+  end
+
+  test 'die Länge der Beschreibung zählt in Bytes' do
+    tore([@start + 1152.seconds, 'home', 7, nil, 1, 0])
+    api = FakeApi.new(details: details, description: 'ä' * 2450)
+    marken = lauf(api)
+
+    assert_empty api.written
+    assert_equal 1, marken.probleme.size
+    assert_match(/Bytes/, marken.probleme.first)
+  end
+
+  # --- Unbefristetes Nachrechnen beschriebener Aufzeichnungen (DSGVO) ------------
+
+  test 'nach Ablauf der Frist wird eine beschriebene Aufzeichnung täglich nachgerechnet' do
+    tore([@start + 1152.seconds, 'home', 7, nil, 1, 0])
+    api = FakeApi.new(details: details)
+    lauf(api)
+    assert_includes api.description, 'Müller'
+
+    spieler = create(:player, public_last_name_hidden_at: Time.current)
+    @game.players['home'][0]['player_id'] = spieler.id
+    @game.save!
+    PublicPlayerNames.flush!
+
+    spaeter = @now + 30.days
+    StreamChapters.new(api: api, now: spaeter).run
+    assert_not_includes api.description, 'Müller', 'Anonymisierung schlägt auch nach 30 Tagen durch'
+    assert_equal spaeter.to_i, @broadcast.reload.chapters_checked_at.to_i
+
+    # Am selben Tag nicht noch einmal: ein erneuter Wechsel wartet bis morgen.
+    @game.players['home'][0]['player_name'] = 'Neu'
+    @game.players['home'][0]['player_id'] = nil
+    @game.save!
+    StreamChapters.new(api: api, now: spaeter + 1.hour).run
+    assert_equal 2, api.written.size
+    StreamChapters.new(api: api, now: spaeter + 25.hours).run
+    assert_equal 3, api.written.size
+  end
+
+  test 'nie beschriebene Aufzeichnungen bleiben nach Ablauf der Frist unberührt' do
+    tore([@start + 1152.seconds, 'home', 7, nil, 1, 0])
+    api = FakeApi.new(details: details)
+    StreamChapters.new(api: api, now: @now + 30.days).run
+
+    assert_empty api.video_requests
+    assert_empty api.written
   end
 
   test 'beschreibung_mit ersetzt nur den Block und lässt Text davor und danach stehen' do

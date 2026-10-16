@@ -139,10 +139,11 @@ class StreamWatchdog
     @notes.concat(marken.notes)
     @probleme.concat(marken.probleme)
     marken.written
-  rescue YoutubeLiveApi::Error => e
-    # Was StreamChapters nicht selbst abfaengt, ist ein Kontingent- oder
-    # Zugangsproblem beim Nachladen. Gemeldet wird es, der Lauf selbst ist zu
-    # diesem Zeitpunkt aber schon durch.
+  rescue StandardError => e
+    # StreamChapters faengt Fehler je Uebertragung selbst ab. Was trotzdem
+    # hier ankommt (etwa ein Datenbankfehler bei der Auswahl), darf den Lauf
+    # nicht mehr abbrechen: Er ist an dieser Stelle durch, und die Ausgabe von
+    # BEENDET und VEROEFFENTLICHT samt Sentry-Meldung steht noch aus.
     problem("Sprungmarken abgebrochen: #{e.class} #{e.message}")
     []
   end
