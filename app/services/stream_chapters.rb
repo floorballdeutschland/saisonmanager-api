@@ -34,7 +34,9 @@ require 'digest'
 # nach dem Ende der Aufzeichnung eingetragen wurden, fallen schon über die
 # Längenprüfung in StreamTimeline heraus.
 #
-# NUR TORE, keine Strafen (offener Punkt im Issue, bewusst schmal begonnen).
+# TORE UND STRAFEN. Strafen haben keinen Schuss, ihr Anker ist immer die
+# Eingabezeit mit demselben Vorlauf von 120 s. Liegen Marken weniger als 10 s
+# auseinander, werden sie zusammengelegt, das Tor zuerst.
 class StreamChapters
   BLOCK_START = 'Sprungmarken zu den Toren (automatisch aus dem Saisonmanager):'
   BLOCK_END = '(Ende der Sprungmarken)'
@@ -87,31 +89,68 @@ class StreamChapters
     timeline = StreamTimeline.new(game, broadcast)
     return nil unless timeline.ready?
 
-    tore = gueltige_tore(timeline)
-    return nil if tore.empty?
+    eintraege = gueltige_eintraege(timeline)
+    return nil if eintraege.empty?
 
-    marken = [[0, 'Streamstart']]
-    tore.each do |sekunde, text|
+    # Eine Marke ist [Sekunde, [[Rang, Text], …]]. Rang 0 Streamstart, 1 Tor,
+    # 2 Strafe: Innerhalb einer zusammengelegten Marke steht das Tor vorn.
+    marken = [[0, [[0, 'Streamstart']]]]
+    eintraege.each do |sekunde, rang, text|
       if sekunde - marken.last[0] < MIN_CHAPTER_GAP
-        marken.last[1] = "#{marken.last[1]}, #{text}"
+        marken.last[1] << [rang, text]
       else
-        marken << [sekunde, text]
+        marken << [sekunde, [[rang, text]]]
       end
     end
 
-    zeilen = marken.map { |sekunde, text| "#{StreamTimeline.timestamp(sekunde)} #{text}" }
+    zeilen = marken.map { |sekunde, texte| "#{StreamTimeline.timestamp(sekunde)} #{marken_zeile(texte)}" }
     [BLOCK_START, *zeilen, BLOCK_END].join("\n")
   end
 
-  # [[Sekunde, Text], …] in Reihenfolge des Videos.
-  def self.gueltige_tore(timeline)
-    tore = timeline.goals
-    tore = tore.select(&:shot?) if nachgetragen?(tore)
+  # Nach Rang, bei gleichem Rang in der Reihenfolge des Videos.
+  def self.marken_zeile(texte)
+    texte.each_with_index.sort_by { |(rang, _text), index| [rang, index] }.map { |(_rang, text), _| text }.join(', ')
+  end
 
-    tore.filter_map do |goal|
-      sekunde = timeline.chapter_position(goal)
-      sekunde && [sekunde, marken_text(timeline.game, goal.event)]
-    end.sort_by(&:first)
+  # [[Sekunde, Rang, Text], …] in Reihenfolge des Videos, Tore und Strafen.
+  #
+  # Ein nachgetragener Bericht wird an den Toren erkannt. Er trifft dann auch
+  # die Strafen: Deren einziger Anker ist dieselbe Eingabezeit.
+  def self.gueltige_eintraege(timeline)
+    tore = timeline.goals
+    strafen = timeline.penalties
+    if nachgetragen?(tore)
+      tore = tore.select(&:shot?)
+      strafen = []
+    end
+
+    game = timeline.game
+    eintraege = tore.map { |goal| [goal, 1, marken_text(game, goal.event)] } +
+                strafen.map { |strafe| [strafe, 2, strafen_text(game, strafe.event)] }
+    gueltige = eintraege.filter_map do |eintrag, rang, text|
+      sekunde = timeline.chapter_position(eintrag)
+      sekunde && [sekunde, rang, text]
+    end
+    gueltige.sort_by { |sekunde, rang, _| [sekunde, rang] }
+  end
+
+  # "Strafe 2 Min. Weber (KÜRZEL)". Strafart wie auf der öffentlichen
+  # Spielseite (`penalty_type_string`, also der eingefrorene `penalty_name`
+  # oder der Katalog), der Name nach derselben Regel wie bei den Toren. Das
+  # Teamkürzel sagt, wer bestraft wurde, auch wenn kein Spieler dasteht:
+  # Strafen gegen Betreuer (Nummer 2001 bis 2005) und Mannschaftsstrafen.
+  def self.strafen_text(game, event)
+    nummer = event[:number].to_i
+    name = if nummer > 2000 && nummer <= 2000 + Game::MAX_COACHES
+             'Betreuer'
+           else
+             kurzname(game.public_lineup_entry(event[:event_team], event[:number]))
+           end
+    team = event[:event_team] == 'guest' ? game.guest_team : game.home_team
+    kuerzel = team&.ticker_short_name.presence
+    text = ['Strafe', event[:penalty_type_string].to_s.strip.presence, name].compact.join(' ')
+    text = "#{text} (#{kuerzel})" if kuerzel
+    text.delete('<>')
   end
 
   def self.nachgetragen?(tore)
