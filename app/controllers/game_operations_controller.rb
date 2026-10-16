@@ -3,7 +3,7 @@ class GameOperationsController < ApplicationController
   skip_before_action :authenticate_user, except: %i[admin_game_operations admin_upload_banner admin_delete_banner admin_update_banner_link]
   before_action :authenticate_public_request, except: %i[admin_game_operations admin_upload_banner admin_delete_banner admin_update_banner_link]
 
-  # GET /game_operations
+  # GET /api/v2/game_operations
   def index
     @game_operations = GameOperation.all.order(:id)
 
@@ -58,9 +58,12 @@ class GameOperationsController < ApplicationController
     render json: result
   end
 
-  # GET /game_operations/by_shortname/:name
+  # GET /api/v2/game_operations/by_shortname/:name
+  # Gesucht wird ueber `path` (z. B. `fd`, `ost`), nicht ueber `short_name`.
   def by_shortname
     @game_operation = GameOperation.find_by path: params[:name]
+    return render json: { error: 'Spielbetrieb nicht gefunden' }, status: :not_found unless @game_operation
+
     render json: @game_operation
   end
 
