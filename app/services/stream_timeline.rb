@@ -14,7 +14,8 @@
 # spielt deshalb keine Rolle. Sekunde 0 ist `liveStreamingDetails.actualStartTime`
 # der Übertragung.
 #
-# DER ANKER: `added_at` des Ereignisses, also der Zeitpunkt der Eingabe. Das Tor
+# DER ANKER: der verknüpfte Tablet-Schuss (`game_shots.tapped_at`, api#816),
+# sonst `added_at` des Ereignisses, also der Zeitpunkt der Eingabe. Das Tor
 # wird regelgemäß erst mit dem Bully eingetragen, dazu kommt die Ausfüllzeit;
 # die Stichprobe vom 11.10.2026 (sechs Bundesligaspiele, 72 Tore) lag mit 30 s
 # Vorlauf durchweg zu spät. 120 s landen zuverlässig vor dem Tor, dafür grob.
@@ -105,8 +106,12 @@ class StreamTimeline
     treffer.sort_by(&:anchor_at)
   end
 
-  # [Zeitpunkt, Quelle] oder nil.
-  def anchor_for(_event, roh)
+  # [Zeitpunkt, Quelle] oder nil. Der angetippte Schuss geht vor: Er liegt im
+  # Moment des Tores, die Eingabe erst nach dem Bully.
+  def anchor_for(event, roh)
+    shot_at = shot_times[event[:event_id].to_i]
+    return [shot_at, :shot] if shot_at
+
     added_at_anchor(roh)
   end
 
@@ -115,5 +120,10 @@ class StreamTimeline
     return nil if added_at.blank?
 
     [Time.zone.at(added_at.to_i), :added_at]
+  end
+
+  # event_id => tapped_at der verknüpften Tor-Schüsse (api#816).
+  def shot_times
+    @shot_times ||= game.game_shots.linked.where(result: 'goal').pluck(:event_id, :tapped_at).to_h
   end
 end

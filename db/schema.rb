@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_10_16_140100) do
+ActiveRecord::Schema[7.2].define(version: 2026_10_16_140200) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -325,6 +325,26 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_16_140100) do
     t.index ["uploaded_by_id"], name: "index_game_scans_on_uploaded_by_id"
   end
 
+  create_table "game_shots", force: :cascade do |t|
+    t.bigint "game_id", null: false
+    t.string "client_uuid", null: false, comment: "Vom Tablet vergeben, macht das Nachreichen idempotent"
+    t.string "team", null: false, comment: "home / guest: das schießende Team"
+    t.integer "period", null: false
+    t.string "game_time", comment: "Spielzeit m:ss wie bei den Ereignissen"
+    t.datetime "tapped_at", null: false, comment: "Erstes Antippen, Serverzeit (um die Abweichung der Geräteuhr korrigiert)"
+    t.decimal "x", precision: 6, scale: 5, null: false, comment: "Ganzes Feld Bande zu Bande: 0 hinter dem eigenen Tor, 1 hinter dem gegnerischen (Angriffsrichtung)"
+    t.decimal "y", precision: 6, scale: 5, null: false, comment: "0 linke, 1 rechte Seitenbande aus Sicht des Angreifers"
+    t.string "result", null: false, comment: "goal / saved / missed / blocked"
+    t.bigint "shooter_player_id"
+    t.bigint "goalkeeper_player_id", comment: "Torhüter des verteidigenden Teams"
+    t.integer "event_id", comment: "id des verknüpften Tores in games.events"
+    t.integer "created_by"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["client_uuid"], name: "index_game_shots_on_client_uuid", unique: true
+    t.index ["game_id", "tapped_at"], name: "index_game_shots_on_game_id_and_tapped_at"
+  end
+
   create_table "games", force: :cascade do |t|
     t.bigint "game_day_id"
     t.bigint "home_team_id"
@@ -401,6 +421,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_16_140100) do
     t.boolean "person_level_assignment", default: false, null: false
     t.integer "forfait_home_goals"
     t.integer "forfait_guest_goals"
+    t.datetime "tablet_capture_at", comment: "Erster im Tabletmodus erfasster Schuss"
+    t.boolean "tablet_shots_complete", comment: "Beim Abschluss erfragt: Schüsse vollständig erfasst?"
     t.index ["checklist_veto_token_digest"], name: "index_games_on_checklist_veto_token_digest", unique: true, where: "(checklist_veto_token_digest IS NOT NULL)"
     t.index ["game_day_id"], name: "index_games_on_game_day_id"
     t.index ["guest_team_id"], name: "index_games_on_guest_team_id"
@@ -1182,6 +1204,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_16_140100) do
   add_foreign_key "game_referee_reports", "users", column: "uploaded_by_id"
   add_foreign_key "game_scans", "games"
   add_foreign_key "game_scans", "users", column: "uploaded_by_id"
+  add_foreign_key "game_shots", "games", on_delete: :cascade
   add_foreign_key "games", "game_days"
   add_foreign_key "league_qualifications", "leagues", column: "source_league_id"
   add_foreign_key "league_qualifications", "leagues", column: "target_league_id"

@@ -1,5 +1,6 @@
 class GamesController < ApplicationController
   include SecretaryTokenAuthenticatable
+  include GameReportPermissions
   include IcalRenderable
 
   SECRETARY_ACTIONS = %i[
@@ -734,11 +735,7 @@ class GamesController < ApplicationController
   def add_event
     game = Game.find(params[:id])
 
-    allowed = if !admin_or_scoped_sbk?(game) && game.match_record_closed?
-                false
-              else
-                can_edit_game?(game)
-              end
+    allowed = can_write_events?(game)
 
     if allowed
       if (error = event_input_error)
@@ -790,6 +787,7 @@ class GamesController < ApplicationController
       game.record_updated_by = author_user_id
 
       if game.save
+        GameShotLinker.link_new_goal(game, item) if item[:event_type] == 'goal'
         render json: game.formatted_events
       else
         render json: { message: game.errors }, status: :unprocessable_entity
@@ -802,11 +800,7 @@ class GamesController < ApplicationController
   def remove_event
     game = Game.find(params[:id])
 
-    allowed = if !admin_or_scoped_sbk?(game) && game.match_record_closed?
-                false
-              else
-                can_edit_game?(game)
-              end
+    allowed = can_write_events?(game)
 
     if allowed
       # ensure we have the hash set
@@ -824,6 +818,9 @@ class GamesController < ApplicationController
       game.record_updated_by = author_user_id
 
       if game.save
+        # Gelöscht wird das Tor, nicht der Schuss: Die Verknüpfung fällt weg,
+        # der Schuss bleibt in der Statistik.
+        GameShotLinker.unlink_event(game, params[:event_id])
         render json: game.formatted_events
       else
         render json: { message: game.errors }, status: :unprocessable_entity
@@ -835,11 +832,7 @@ class GamesController < ApplicationController
 
   def update_event
     game = Game.find(params[:id])
-    allowed = if !admin_or_scoped_sbk?(game) && game.match_record_closed?
-                false
-              else
-                can_edit_game?(game)
-              end
+    allowed = can_write_events?(game)
 
     if allowed
       game.events ||= []
@@ -850,6 +843,7 @@ class GamesController < ApplicationController
         return render json: { message: error }, status: :unprocessable_entity
       end
 
+      alt_team = event['event_team']
       event['time'] = params[:time]
       event['period'] = params[:period]
       event['home_goals'] = params[:home_goals]
@@ -889,6 +883,9 @@ class GamesController < ApplicationController
       game.record_updated_by = author_user_id
 
       if game.save
+        # Ist aus dem Tor eine Strafe geworden oder hat es das Team gewechselt,
+        # passt der verknüpfte Schuss nicht mehr.
+        GameShotLinker.unlink_event(game, event['id']) if event['event_type'] != 'goal' || event['event_team'] != alt_team
         render json: game.formatted_events
       else
         render json: { message: game.errors }, status: :unprocessable_entity
@@ -1395,19 +1392,6 @@ class GamesController < ApplicationController
     }
   end
 
-  # Rolle und Token sind additiv, nicht alternativ (#428). Vorher entschied ein
-  # gesetzter `@secretary_link` allein: Ein Vereinsmanager mit einem gültigen
-  # Hallen-Token in der Registerkarte verlor damit seine normalen Rechte an jedem
-  # Spiel AUSSERHALB der vom Link abgedeckten Spieltage. Weil `show` es umgekehrt
-  # hielt (dort gewann der Login), zeigte die Oberfläche die Bedienelemente der
-  # eigenen Rolle, und der Schreibweg dahinter sagte nein.
-  def can_edit_game?(game)
-    return true if secretary_token_permits_game?(game)
-    return false unless current_user
-
-    game.can_edit_lineup?(current_user)
-  end
-
   # Kader, Kapitän, Betreuer, Starting Six und Auszeichnungen: nach dem
   # Abschluss des Spielberichts nur noch Admin und SBK des Spielbetriebs, wie bei
   # den Ereignissen (add_event & Co.). Ohne die Sperre schrieb eine Kadermaske,
@@ -1418,21 +1402,6 @@ class GamesController < ApplicationController
     return false if game.match_record_closed? && !admin_or_scoped_sbk?(game)
 
     can_edit_game?(game)
-  end
-
-  # Admin oder SBK *des Spielbetriebs dieses Spiels*. Entscheidet, wer die
-  # Sperre bei abgeschlossenem Spielbericht übergehen und ihn wieder öffnen
-  # darf. Bewusst auf den Spielbetrieb gescopt (#214): sonst hebelt eine
-  # fachfremde SBK-Rolle die Sperre aus, sobald der Nutzer über eine andere
-  # Rolle (VM/TM einer beteiligten Mannschaft) ohnehin Zugriff auf das Spiel
-  # hat. Muster übernommen aus reopen_game, das das bereits richtig machte.
-  def admin_or_scoped_sbk?(game)
-    ph = current_user&.permission_hash || {}
-    gos = [ph[:admin], ph[:sbk]].flatten.compact.map(&:to_i)
-    return true if gos.include?(0)
-
-    go_id = game.game_day&.league&.game_operation_id
-    go_id.present? && gos.include?(go_id.to_i)
   end
 
   # Admin/SBK des Spielbetriebs, VM/TM der beteiligten Mannschaften (inkl.

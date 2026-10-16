@@ -28,6 +28,9 @@ class Game < ApplicationRecord
   # Re-Import löscht Spieltage samt Spielen) Einladungen mit gültigem Token und
   # personenbezogener Adresse zurück, deren Aufruf am fehlenden Spiel scheitert.
   has_many :referee_feedback_invitations, dependent: :destroy
+  # Tabletmodus (api#816). Der Fremdschlüssel löscht ohnehin mit, das hier
+  # deckt den Weg über `destroy` ohne Einzelabfragen ab.
+  has_many :game_shots, dependent: :delete_all
 
   # Spiele eines Schiris. Kanonisch über die stabile Referee-PK in
   # officiating_referee_ids (Fundament #45); referee_ids (Lizenznummer) bleibt als
@@ -119,6 +122,13 @@ class Game < ApplicationRecord
 
   def match_record_closed?
     %w[match_record_closed finalized].include? game_status
+  end
+
+  # Im Tabletmodus erfasst? Davon hängt ab, ob die öffentliche Spielseite die
+  # ausführliche Statistik und die Highlights zeigt, nicht von einer
+  # Einstellung (fe#344).
+  def tablet_capture?
+    tablet_capture_at.present?
   end
 
   # Wurde fuer dieses Spiel ein Forfait-Ergebnis von Hand festgesetzt?
@@ -1161,6 +1171,10 @@ class Game < ApplicationRecord
       guest_team_small_logo: guest_team&.logo_small_url_fallback,
       live_stream_link:,
       vod_link:,
+      # Tabletmodus (api#816): ob Schüsse erfasst wurden, und ob sie beim
+      # Abschluss als vollständig gemeldet wurden (nil: nicht gefragt).
+      tablet_capture: tablet_capture?,
+      tablet_shots_complete:,
       events: formatted_events,
       players: players_with_position,
       starting_players: starting_players_with_numbers,
