@@ -277,18 +277,10 @@ module Admin
       team_league_id_map.key?(license['team_id'].to_i)
     end
 
-    # Erteilt ist eine Lizenz, wenn ihre History den Status „erteilt" kennt.
-    # Der heutige Status genuegt nicht: Eine gesperrte, durch einen Transfer
-    # ungueltig gewordene oder geloeschte Lizenz traegt ihn nicht mehr, der
-    # Verband hat sie aber erteilt und sie hat eine Gebuehr ausgeloest.
-    #
-    # Die History reicht als alleinige Quelle: Auf Produktion gibt es keine
-    # Lizenz ohne History-Eintrag (Zaehlung vom 21.09.2026 ueber alle 164.048
-    # Lizenzen, #713).
+    # Dieselbe Lesart wie die Lizenzuebersicht des Vereins
+    # (ClubsController#vm_license_summary), daher im gemeinsamen Modul.
     def ever_approved?(license)
-      Array(license['history']).any? do |entry|
-        entry.is_a?(Hash) && entry['license_status_id'].to_i == License::APPROVED
-      end
+      LicenseEffectiveStatus.ever_approved?(license)
     end
 
     # Haupt-/Zusatzlizenz (Anzeige-Konzept): die Lizenz in der höchsten Liga ist
