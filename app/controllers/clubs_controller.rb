@@ -101,6 +101,11 @@ class ClubsController < ApplicationController
       # zwischenzeitlich geändertes Recht steht im localStorage des Browsers
       # noch alt. Vorbild: admin/clubs/role_assignable.
       item[:manage_players] = club.user_permissions(current_user).include?(:create_player)
+      # Dieselbe Pruefung wie in `vm_license_summary`, aus den Rechten von
+      # jetzt: Das Frontend fragt die Uebersicht nur hier an. Aus `club_ids`
+      # im localStorage stuende sie nach einem Rollenentzug alt, und die 403
+      # leitet der ErrorInterceptor auf die Startseite um.
+      item[:license_summary] = may_read_license_summary?(ph, club)
       item
     }
   end
@@ -123,7 +128,7 @@ class ClubsController < ApplicationController
   def vm_license_summary
     club = Club.find(params[:id])
     ph = current_user.permission_hash
-    unless ph[:admin].present? || ph[:vm].to_a.include?(club.id)
+    unless may_read_license_summary?(ph, club)
       return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
     end
 
@@ -139,9 +144,13 @@ class ClubsController < ApplicationController
     players_by_team = Player.find_by_team_ids(teams.map(&:id))
 
     rows = teams.map do |team|
+      # `uniq` ueber die Lizenz-ID: Alte Spieler-Merges haben dieselbe Lizenz
+      # teils doppelt hinterlassen (siehe PlayersController#handle_license_request),
+      # sie ist aber nur einmal erteilt worden. Ein Eintrag ohne ID zaehlt.
       licenses = players_by_team[team.id].flat_map do |player|
         Array(player.licenses).select { |lic| lic.is_a?(Hash) && lic['team_id'].to_i == team.id }
       end
+      licenses = licenses.uniq { |lic| lic['id'].presence || lic.object_id }
       { id: team.id, name: team.name, league_name: team.league&.name, counts: license_counts(licenses) }
     end
 
@@ -504,6 +513,10 @@ class ClubsController < ApplicationController
   private
 
   LICENSE_COUNT_KEYS = %i[approved requested denied withdrawn other total].freeze
+
+  def may_read_license_summary?(ph, club)
+    ph[:admin].present? || ph[:vm].to_a.include?(club.id)
+  end
 
   # Jede Lizenz in genau einer Zahl, `total` ist ihre Summe.
   def license_counts(licenses)

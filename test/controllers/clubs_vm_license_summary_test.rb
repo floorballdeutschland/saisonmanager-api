@@ -83,4 +83,57 @@ class ClubsVmLicenseSummaryTest < ActionDispatch::IntegrationTest
 
     assert_response :forbidden
   end
+
+  test 'zaehlt eine durch Spieler-Merge doppelte Lizenz einmal' do
+    lic = license(@team, License::APPROVED)
+    create(:player, licenses: [lic, lic.merge('season_id' => '18')])
+
+    assert_equal 1, summary['totals']['approved']
+  end
+
+  test 'fuehrt Mannschaften, in denen der Verein SG-Partner ist' do
+    partner_team = create(:team, league: @league, club: @other_club, syndicate: true,
+                                 syndicate_clubs: [@club.id])
+    create(:player, licenses: [license(partner_team, License::REQUESTED)])
+
+    row = summary['teams'].find { |t| t['id'] == partner_team.id }
+
+    assert_equal 1, row['counts']['requested']
+  end
+
+  test 'laesst Admin zu' do
+    login_as(create(:user, :admin))
+    get "/api/v2/vm/clubs/#{@club.id}/license_summary"
+
+    assert_response :success
+  end
+
+  test 'verweigert den Teammanager ohne VM-Rolle' do
+    login_as(create(:user, :tm, team_id: @team.id))
+    get "/api/v2/vm/clubs/#{@club.id}/license_summary"
+
+    assert_response :forbidden
+  end
+
+  test 'antwortet auf eine unbekannte Saison mit leerer Liste' do
+    result = summary(season_id: 'abc')
+
+    assert_equal [], result['teams']
+    assert_equal 0, result['totals']['total']
+  end
+
+  # Das Frontend fragt die Uebersicht nur fuer Vereine mit diesem Flag an.
+  test 'vm/clubs_and_teams sagt je Verein, ob die Uebersicht abrufbar ist' do
+    # VM des eigenen Vereins und zugleich Teammanager einer fremden Mannschaft.
+    user = create(:user, :vm, club_id: @club.id, teams: [@foreign_team.id])
+    user.update!(permissions: user.permissions + [{ 'user_group_id' => 5, 'game_operation_id' => 0 }])
+    login_as(user)
+    get '/api/v2/vm/clubs_and_teams'
+    assert_response :success
+
+    flags = JSON.parse(response.body).to_h { |c| [c['id'], c['license_summary']] }
+
+    assert flags[@club.id]
+    assert_equal false, flags[@other_club.id]
+  end
 end
