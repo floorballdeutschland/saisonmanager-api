@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [1.131.0] - 2026-10-19
+
 ### Neu
 
 - **Lizenzübersicht des Vereins je Saison**: Neuer Endpunkt `GET vm/clubs/:id/license_summary` (optional `?season_id=`) für den Vereinsmanager des Vereins und Admin. Er zählt die Lizenzen jeder Mannschaft der gewählten Saison nach erteilt, beantragt, abgelehnt, zurückgezogen und sonstige, dazu die Summe über den Verein, und nennt die Saisons, in denen der Verein Mannschaften hatte. „Erteilt“ heißt wie in der Lizenzzahl der Verbandsübersicht, dass die Lizenz einmal erteilt war, auch wenn sie später gelöscht oder durch einen Transfer ungültig wurde. Doppelt gespeicherte Lizenzeinträge aus alten Spieler-Zusammenführungen zählen einmal. `vm/clubs_and_teams` sagt je Verein mit `license_summary`, ob die Übersicht abrufbar ist. Im Lizenzwesen des Vereins steht die Übersicht mit Saisonauswahl über den Mannschaften.
