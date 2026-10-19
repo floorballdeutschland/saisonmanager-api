@@ -206,6 +206,7 @@ Rails.application.routes.draw do
 
       get 'user/clubs_and_teams', to: 'clubs#user_clubs_and_teams'
       get 'vm/clubs_and_teams', to: 'clubs#vm_clubs_and_teams'
+      get 'vm/clubs/:id/license_summary', to: 'clubs#vm_license_summary'
       get 'user/team/:id/licenses', to: 'clubs#user_team_licenses'
 
       post 'user/games/:id/starting/:side/:position/set_player', to: 'games#set_starting_player'
