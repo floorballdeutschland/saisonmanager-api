@@ -4,6 +4,8 @@ module Admin
   # (games.record_comment), dem Papierspielberichtsbogen sowie Auffälligkeiten und
   # verknüpften Vorgängen (Berichtsformular, Verfahrensvorschlag, Checkliste).
   class GameDaysController < ApplicationController
+    include GameReportReviewScope
+
     before_action :authorize_sbk_access!
 
     # Straf-Kategorien, die eine SBK-Prüfung nach sich ziehen. Die Schlüssel sind
@@ -72,14 +74,6 @@ module Admin
       return if ph[:admin].present? || ph[:sbk].present?
 
       render json: { message: 'Keine Berechtigung.' }, status: :forbidden
-    end
-
-    # nil = global (Admin oder SBK mit Spielbetrieb 0) -> kein Spielbetriebs-Filter.
-    def scope_go_ids
-      ph = current_user.permission_hash
-      return nil if ph[:admin]&.include?(0) || ph[:sbk]&.include?(0)
-
-      [ph[:admin], ph[:sbk]].compact.flatten.map(&:to_i)
     end
 
     # Alle Ligen des Zeitraums, unabhaengig von der Ligaauswahl UND von der
@@ -163,8 +157,10 @@ module Admin
     end
 
     # Namen der zuletzt bearbeitenden Nutzer in einem Query auflösen statt je Zeile.
+    # Bearbeiter des Berichts und wer ihn als erledigt markiert hat, in einer
+    # Abfrage.
     def editor_names_for(games)
-      ids = games.filter_map(&:record_updated_by).uniq
+      ids = games.flat_map { |g| [g.record_updated_by, g.report_reviewed_by_user_id] }.compact.uniq
       return {} if ids.empty?
 
       User.where(id: ids).pluck(:id, :first_name, :last_name)
@@ -215,6 +211,15 @@ module Admin
         checklist_veto_negative_items: veto_negative,
         checklist_objection_count: objection_rows.size,
         checklist_objections: objection_rows,
+
+        # Erledigt-Vermerk der SBK (Admin::GameReportReviewsController). Wer die
+        # Zeile sieht, darf sie abhaken; can_review steht trotzdem einzeln da,
+        # damit das Frontend den Knopf nicht aus der Rolle ableiten muss.
+        can_review: game_operation_in_scope?(league&.game_operation_id),
+        report_reviewed_at: game.report_reviewed_at,
+        report_reviewed_by_name: editor_names[game.report_reviewed_by_user_id].presence,
+        report_review_comment: game.report_review_comment,
+        report_changed_since_review: changed_since_review?(game, objection_rows),
 
         flags: flags(game)
       }
@@ -304,6 +309,22 @@ module Admin
         item_id = Integer(answer['item_id'].to_s, 10, exception: false)
         { item_id:, question: item_id && questions[item_id] }
       end
+    end
+
+    # Ist nach dem Erledigt-Vermerk etwas Neues dazugekommen? Dann gehört die
+    # Zeile wieder vor die SBK, auch wenn der Vermerk stehen bleibt: ein
+    # nachträglich geänderter Bericht, ein Einspruch des Ausrichters oder ein
+    # Widerspruch von Gastmannschaft oder Schiedsrichter.
+    #
+    # Der Vermerk selbst setzt record_updated_at nicht (update_columns im
+    # GameReportReviewsController), sonst wäre jede Zeile gleich nach dem
+    # Abhaken wieder „geändert".
+    def changed_since_review?(game, objection_rows)
+      reviewed_at = game.report_reviewed_at
+      return false if reviewed_at.nil?
+
+      [game.record_updated_at, game.checklist_veto_submitted_at, *objection_rows.pluck(:confirmed_at)]
+        .compact.any? { |t| t > reviewed_at }
     end
 
     # Widersprüche von Gastmannschaften und Schiedsrichtern gegen den
