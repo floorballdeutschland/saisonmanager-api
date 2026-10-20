@@ -41,11 +41,12 @@ module Admin
       games = games.first(MAX_ROWS) if truncated
 
       editor_names = editor_names_for(games)
+      objections = checklist_objections_for(games)
 
       render json: {
         truncated:,
         leagues: leagues_in_scope,
-        games: games.filter_map { |game| safe_game_row(game, editor_names) }
+        games: games.filter_map { |game| safe_game_row(game, editor_names, objections) }
       }
     end
 
@@ -54,8 +55,8 @@ module Admin
     # Eine einzelne kaputte Altlast (heterogene JSONB-Spalten, Alt-Importe) darf
     # nicht die komplette Übersicht auf 500 setzen. Die Zeile wird stattdessen
     # als fehlerhaft markiert ausgeliefert und der Fall an Sentry gemeldet.
-    def safe_game_row(game, editor_names)
-      game_row(game, editor_names)
+    def safe_game_row(game, editor_names, objections)
+      game_row(game, editor_names, objections)
     rescue StandardError => e
       Sentry.capture_exception(e, extra: { game_id: game.id, endpoint: 'admin/game_days#report_overview' })
       {
@@ -170,12 +171,13 @@ module Admin
           .to_h { |id, first, last| [id, [first, last].join(' ').strip] }
     end
 
-    def game_row(game, editor_names)
+    def game_row(game, editor_names, objections)
       game_day = game.game_day
       league = game_day.league
       questions = checklist_questions(game)
       negative = negative_answers(game.checklist_answers, questions)
       veto_negative = negative_answers(game.checklist_veto_answers, questions)
+      objection_rows = objection_rows(objections[game.game_day_id], questions)
 
       {
         id: game.id,
@@ -211,6 +213,8 @@ module Admin
         checklist_veto_submitted_at: game.checklist_veto_submitted_at,
         checklist_veto_negative_count: veto_negative.size,
         checklist_veto_negative_items: veto_negative,
+        checklist_objection_count: objection_rows.size,
+        checklist_objections: objection_rows,
 
         flags: flags(game)
       }
@@ -299,6 +303,58 @@ module Admin
 
         item_id = Integer(answer['item_id'].to_s, 10, exception: false)
         { item_id:, question: item_id && questions[item_id] }
+      end
+    end
+
+    # Widersprüche von Gastmannschaften und Schiedsrichtern gegen den
+    # Spieltagsbericht des Ausrichters, je Spieltag. Sie kamen bisher nur als
+    # Mail bei der SBK an (GameDayMailer#team_checklist_veto und
+    # #referee_checklist_veto) und gingen dort zwischen gleich aussehenden
+    # Mails unter. Die Mail bleibt, die Arbeitsansicht zeigt sie zusätzlich.
+    #
+    # Eine Bestätigung gilt für den ganzen Spieltag, nicht für ein Spiel. Sie
+    # steht deshalb an jedem Spiel des Spieltags, so fällt sie auch dann auf,
+    # wenn die SBK nur eine einzelne Partie aufklappt.
+    #
+    # Eine Abfrage je Tabelle für alle Zeilen statt einer je Spiel: Bei
+    # MAX_ROWS = 2000 wären es sonst bis zu 4000 zusätzliche Abfragen.
+    #
+    # Nur Name und Zeitpunkt, keine Kontaktdaten: Wer die Mannschaft oder den
+    # Schiedsrichter erreichen will, findet das an der gewohnten Stelle.
+    def checklist_objections_for(games)
+      game_day_ids = games.map(&:game_day_id).uniq
+      return {} if game_day_ids.empty?
+
+      teams = GameDayTeamConfirmation.where(game_day_id: game_day_ids, properly_conducted: false)
+                                     .includes(:team)
+                                     .map do |c|
+        { game_day_id: c.game_day_id, kind: 'team', name: c.team&.name, confirmed_at: c.confirmed_at,
+          answers: c.checklist_answers }
+      end
+      referees = GameDayRefereeConfirmation.where(game_day_id: game_day_ids, properly_conducted: false)
+                                           .includes(:referee)
+                                           .map do |c|
+        name = [c.referee&.vorname, c.referee&.nachname].compact.join(' ').strip.presence
+        { game_day_id: c.game_day_id, kind: 'referee', name:, confirmed_at: c.confirmed_at,
+          answers: c.checklist_answers }
+      end
+
+      (teams + referees).group_by { |o| o[:game_day_id] }
+    end
+
+    # Die Fragetexte kommen wie beim Ausrichter-Einspruch aus der Checkliste
+    # des Verbandes und nicht aus den gespeicherten Antworten (siehe
+    # checklist_questions). `nil` statt Zeitstempel sortiert ans Ende.
+    def objection_rows(objections, questions)
+      return [] if objections.blank?
+
+      objections.sort_by { |o| [o[:confirmed_at] ? 0 : 1, o[:confirmed_at].to_i] }.map do |o|
+        {
+          kind: o[:kind],
+          name: o[:name],
+          confirmed_at: o[:confirmed_at],
+          negative_items: negative_answers(o[:answers], questions)
+        }
       end
     end
 

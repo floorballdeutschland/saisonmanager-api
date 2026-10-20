@@ -507,6 +507,82 @@ module Admin
                    data['checklist_veto_negative_items']
     end
 
+    # Widersprüche von Gastmannschaft und Schiedsrichter gegen den
+    # Spieltagsbericht kamen bisher nur als Mail bei der SBK an. Sie gelten für
+    # den ganzen Spieltag und stehen deshalb an jedem seiner Spiele.
+    test 'Widerspruch von Gastmannschaft und Schiedsrichter steht an jedem Spiel des Spieltags' do
+      item = @sa.checklist_items.create!(question: 'Halle in Ordnung?', position: 1)
+      zweites = create_game(@game_day, game_number: '11')
+      referee = create(:referee, vorname: 'Erika', nachname: 'Pfeife')
+      GameDayTeamConfirmation.create!(
+        game_day: @game_day, team: @game.guest_team, confirmed_at: 2.hours.ago, properly_conducted: false,
+        checklist_answers: [{ 'item_id' => item.id, 'question' => 'Aus dem Formular', 'answer' => false }]
+      )
+      GameDayRefereeConfirmation.create!(
+        game_day: @game_day, referee:, confirmed_at: 1.hour.ago, properly_conducted: false,
+        checklist_answers: [{ 'item_id' => item.id, 'answer' => true }]
+      )
+
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+
+      [@game.id, zweites.id].each do |id|
+        data = row(id)
+        assert_equal 2, data['checklist_objection_count']
+        team, schiri = data['checklist_objections']
+        assert_equal 'team', team['kind']
+        assert_equal @game.guest_team.name, team['name']
+        assert team['confirmed_at'].present?
+        # Der Fragetext kommt aus der Checkliste des Verbandes, nicht aus der
+        # gespeicherten Antwort.
+        assert_equal [{ 'item_id' => item.id, 'question' => 'Halle in Ordnung?' }], team['negative_items']
+        assert_equal 'referee', schiri['kind']
+        assert_equal 'Erika Pfeife', schiri['name']
+        assert_equal [], schiri['negative_items']
+      end
+    end
+
+    test 'bestätigte Spieltage tragen keinen Widerspruch' do
+      GameDayTeamConfirmation.create!(game_day: @game_day, team: @game.guest_team,
+                                      confirmed_at: 1.hour.ago, properly_conducted: true)
+      GameDayRefereeConfirmation.create!(game_day: @game_day, referee: create(:referee),
+                                         confirmed_at: 1.hour.ago, properly_conducted: true)
+
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+
+      data = row(@game.id)
+      assert_equal 0, data['checklist_objection_count']
+      assert_equal [], data['checklist_objections']
+    end
+
+    test 'Widersprüche werden für alle Zeilen gemeinsam geladen' do
+      3.times do |i|
+        tag = GameDay.create!(league: @league, arena: @arena, club: @club, number: 30 + i, date: '2026-02-01')
+        game = create_game(tag, game_number: (40 + i).to_s)
+        GameDayTeamConfirmation.create!(game_day: tag, team: game.guest_team,
+                                        confirmed_at: 1.hour.ago, properly_conducted: false)
+        GameDayRefereeConfirmation.create!(game_day: tag, referee: create(:referee),
+                                           confirmed_at: 1.hour.ago, properly_conducted: false)
+      end
+
+      login(sbk_user(@go.id))
+      sqls = []
+      subscriber = ActiveSupport::Notifications.subscribe('sql.active_record') do |*, payload|
+        sqls << payload[:sql]
+      end
+      begin
+        get OVERVIEW_PATH
+      ensure
+        ActiveSupport::Notifications.unsubscribe(subscriber)
+      end
+
+      assert_response :success
+      assert_equal(1, sqls.count { |sql| sql.include?('FROM "game_day_team_confirmations"') })
+      assert_equal(1, sqls.count { |sql| sql.include?('FROM "game_day_referee_confirmations"') })
+      assert_equal(1, sqls.count { |sql| sql.include?('FROM "referees"') })
+    end
+
     private
 
     def body

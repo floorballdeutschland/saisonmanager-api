@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Widersprüche zum Spieltagsbericht in der Arbeitsansicht „Spielberichte“**: Meldet eine Gastmannschaft oder ein Schiedsrichter den Spieltag als nicht ordnungsgemäß durchgeführt, steht das jetzt auch in `admin/game_days/report_overview` und nicht mehr nur in der Mail an die SBK. Jede Zeile trägt `checklist_objection_count` und `checklist_objections` mit Art (`team` oder `referee`), Name, Zeitpunkt und den verneinten Punkten. Der Widerspruch gilt für den ganzen Spieltag und steht deshalb an jedem seiner Spiele. Die Fragetexte kommen aus der Checkliste des Verbandes, nicht aus der gespeicherten Antwort. Die Mail an die SBK bleibt.
+
 ## [1.131.0] - 2026-10-19
 
 ### Neu
