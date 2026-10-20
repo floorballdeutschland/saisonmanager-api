@@ -1,4 +1,6 @@
 class TeamGameDayConfirmationsController < ApplicationController
+  include GameDayConfirmationComment
+
   before_action :authenticate_user
 
   # GET /api/v2/user/team_game_days
@@ -87,12 +89,16 @@ class TeamGameDayConfirmationsController < ApplicationController
       end
     end
 
+    comment, comment_error = confirmation_comment(properly)
+    return render json: { error: comment_error }, status: :unprocessable_entity if comment_error
+
     confirmation = GameDayTeamConfirmation.create!(
       game_day: game_day,
       team: team,
       confirmed_at: Time.current,
       properly_conducted: properly,
       checklist_answers: answers,
+      comment: comment,
       confirmed_by_user_id: current_user.id
     )
 
@@ -215,7 +221,8 @@ class TeamGameDayConfirmationsController < ApplicationController
       team_id: confirmation.team_id,
       confirmed_at: confirmation.confirmed_at.iso8601,
       properly_conducted: confirmation.properly_conducted,
-      checklist_answers: confirmation.checklist_answers
+      checklist_answers: confirmation.checklist_answers,
+      comment: confirmation.comment
     }
   end
 
@@ -225,7 +232,8 @@ class TeamGameDayConfirmationsController < ApplicationController
     sa = game_day.league&.game_operation&.state_association
     return if sa&.effective_sbk_email.blank?
 
-    GameDayMailer.team_checklist_veto(game_day, team, confirmation.checklist_answers, sa).deliver_later
+    GameDayMailer.team_checklist_veto(game_day, team, confirmation.checklist_answers, sa,
+                                      comment: confirmation.comment).deliver_later
   rescue StandardError => e
     Rails.logger.warn("notify_sbk_of_veto(team) failed for game_day_id=#{game_day.id}: #{e.class}: #{e.message}")
   end
@@ -252,7 +260,8 @@ class TeamGameDayConfirmationsController < ApplicationController
           team_name: t.name,
           confirmed_at: c&.confirmed_at&.iso8601,
           properly_conducted: c&.properly_conducted,
-          checklist_answers: c&.checklist_answers || []
+          checklist_answers: c&.checklist_answers || [],
+          comment: c&.comment
         }
       end,
       games: game_day.games

@@ -112,6 +112,12 @@ class Game < ApplicationRecord
   # Gespann bestimmt, nie für Mannschaften oder die Öffentlichkeit.
   REFEREE_NOTES_ATTRIBUTES = %w[referee_notes referee_notes_updated_at referee_notes_updated_by].freeze
 
+  # Erledigt-Vermerk der SBK (Admin::GameReportReviewsController): ein
+  # Arbeitsvermerk der Spielleitung, nicht Teil des Spielberichts. Der
+  # Kommentar kann Einschätzungen zum Ausrichter enthalten und geht nur über
+  # die Arbeitsansicht „Spielberichte" an Admin und SBK.
+  REPORT_REVIEW_ATTRIBUTES = %w[report_reviewed_at report_reviewed_by_user_id report_review_comment].freeze
+
   # Ein festgesetztes Forfait-Ergebnis wird immer als Paar gefuehrt: nur eine
   # Seite gesetzt hiesse, die andere aus der Liga-Vorgabe zu ergaenzen -- ein
   # Mischergebnis, das niemand so beschlossen hat.
@@ -141,10 +147,13 @@ class Game < ApplicationRecord
   # Spielleitung des Heimvereins bedient. Deshalb fliegt sie hier grundsätzlich
   # aus as_json/to_json; wer sie ausliefern darf, liest sie explizit über
   # #referee_notes (siehe Admin::RefereeAssignmentsController,
-  # RefereeGameDayConfirmationsController).
+  # RefereeGameDayConfirmationsController). Für den Erledigt-Vermerk der SBK
+  # gilt dasselbe, ihn liefert nur Admin::GameDaysController#report_overview.
   def serializable_hash(options = nil)
     options = (options || {}).dup
-    options[:except] = Array(options[:except]) + REFEREE_NOTES_ATTRIBUTES unless options[:only]
+    unless options[:only]
+      options[:except] = Array(options[:except]) + REFEREE_NOTES_ATTRIBUTES + REPORT_REVIEW_ATTRIBUTES
+    end
     super(options)
   end
 
