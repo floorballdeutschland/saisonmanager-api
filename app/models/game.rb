@@ -112,6 +112,12 @@ class Game < ApplicationRecord
   # Gespann bestimmt, nie für Mannschaften oder die Öffentlichkeit.
   REFEREE_NOTES_ATTRIBUTES = %w[referee_notes referee_notes_updated_at referee_notes_updated_by].freeze
 
+  # Prüfwert des Einspruchslinks an den Ausrichter. Er ist nur ein Hash, aber
+  # mit ihm allein ließe sich ein erratener oder anderswo mitgelesener Token
+  # gegenprüfen, und niemand außerhalb von GamesController#valid_veto_token?
+  # braucht ihn.
+  SECRET_ATTRIBUTES = %w[checklist_veto_token_digest].freeze
+
   # Erledigt-Vermerk der SBK (Admin::GameReportReviewsController): ein
   # Arbeitsvermerk der Spielleitung, nicht Teil des Spielberichts. Der
   # Kommentar kann Einschätzungen zum Ausrichter enthalten und geht nur über
@@ -182,10 +188,12 @@ class Game < ApplicationRecord
   # #referee_notes (siehe Admin::RefereeAssignmentsController,
   # RefereeGameDayConfirmationsController). Für den Erledigt-Vermerk der SBK
   # gilt dasselbe, ihn liefert nur Admin::GameDaysController#report_overview.
+  # Ebenso für SECRET_ATTRIBUTES.
   def serializable_hash(options = nil)
     options = (options || {}).dup
     unless options[:only]
-      options[:except] = Array(options[:except]) + REFEREE_NOTES_ATTRIBUTES + REPORT_REVIEW_ATTRIBUTES
+      options[:except] = Array(options[:except]) + REFEREE_NOTES_ATTRIBUTES + REPORT_REVIEW_ATTRIBUTES +
+                         SECRET_ATTRIBUTES
     end
     super(options)
   end
