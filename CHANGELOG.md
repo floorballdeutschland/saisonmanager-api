@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Spieldokumente nur noch als PDF**: Der Scan des Papierspielberichtsbogens (`user/games/:id/scan`) und das Berichtsformular der Schiedsrichter (`games/:id/referee_report`) nehmen nur noch PDF-Dateien an, Fotos (PNG, JPEG) werden mit 422 abgewiesen. Fotos ließen sich in der Browseransicht nicht drehen. Geprüft werden der Dateityp und die PDF-Kennung im Dateikopf, eine umbenannte Datei kommt also nicht durch. Vorher hochgeladene Fotos bleiben gültig und abrufbar. Die Erinnerungsmails an Vereine (Scans einreichen) und Schiedsrichter (Berichtsformular) nennen jetzt PDF als einziges Format.
+
 ## [1.131.0] - 2026-10-19
 
 ### Neu

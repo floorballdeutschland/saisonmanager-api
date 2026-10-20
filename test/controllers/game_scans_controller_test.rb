@@ -81,6 +81,30 @@ class GameScansControllerTest < ActionDispatch::IntegrationTest
     assert_response :forbidden
   end
 
+  # --- Nur PDF -----------------------------------------------------------
+
+  test 'Foto als Scan wird abgewiesen' do
+    login_as(create(:user, :tm, team_id: @guest.id))
+
+    upload(file: fixture_file_upload('foto.png', 'image/png'))
+
+    assert_response :unprocessable_entity
+    assert_match 'PDF', response.parsed_body['errors'].join
+    assert_nil @game.reload.game_scan
+  end
+
+  # Der content_type kommt aus dem Multipart-Kopf und ist frei wählbar. Ein
+  # Foto erkennt ActiveStorage an seinen Magic Bytes und korrigiert den Typ
+  # selbst, eine Datei ohne solche Kennung behält den angegebenen.
+  test 'als PDF ausgegebene Nicht-PDF-Datei wird abgewiesen' do
+    login_as(create(:user, :tm, team_id: @guest.id))
+
+    upload(file: fixture_file_upload('notiz.txt', 'application/pdf'))
+
+    assert_response :unprocessable_entity
+    assert_nil @game.reload.game_scan
+  end
+
   # --- Lesen ----------------------------------------------------------------
   #
   # Der Lesepfad hing an derselben Prüfung. Die Berichtsansicht ruft ihn bei
@@ -134,10 +158,10 @@ class GameScansControllerTest < ActionDispatch::IntegrationTest
 
   # Der Token kommt im Betrieb als Header, so wie ihn der
   # SecretaryTokenInterceptor anhängt.
-  def upload(token: nil)
+  def upload(token: nil, file: fixture_file_upload('dokument.pdf', 'application/pdf'))
     headers = token ? { 'X-Secretary-Token' => token } : {}
     post "/api/v2/user/games/#{@game.id}/scan",
-         params: { file: fixture_file_upload('dokument.pdf', 'application/pdf') },
+         params: { file: file },
          headers: headers
   end
 end

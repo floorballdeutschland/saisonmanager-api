@@ -96,7 +96,7 @@ module Admin
       uploader = create_user(user_group_id: 3, game_operation_id: 0)
       uploader.update_column(:email, 'uploader@example.org')
       scan = GameScan.new(game: @game, uploaded_by: uploader, expires_at: 12.months.from_now)
-      scan.scan_file.attach(io: StringIO.new('PDF'), filename: 'bogen.pdf', content_type: 'application/pdf')
+      scan.scan_file.attach(io: StringIO.new('%PDF-1.4'), filename: 'bogen.pdf', content_type: 'application/pdf')
       scan.save!
       scan.update_column(:created_at, Time.zone.parse('2026-02-04 10:00'))
 
@@ -115,10 +115,10 @@ module Admin
       uploader = create_user(user_group_id: 3, game_operation_id: 0)
       uploader.update_columns(first_name: '', last_name: '', email: 'ohne-name@example.org')
       scan = GameScan.new(game: @game, uploaded_by: uploader, expires_at: 12.months.from_now)
-      scan.scan_file.attach(io: StringIO.new('PDF'), filename: 'bogen.pdf', content_type: 'application/pdf')
+      scan.scan_file.attach(io: StringIO.new('%PDF-1.4'), filename: 'bogen.pdf', content_type: 'application/pdf')
       scan.save!
       report = @game.build_game_referee_report(uploaded_by: uploader)
-      report.file.attach(io: StringIO.new('PDF'), filename: 'r.pdf', content_type: 'application/pdf')
+      report.file.attach(io: StringIO.new('%PDF-1.4'), filename: 'r.pdf', content_type: 'application/pdf')
       report.save!
 
       login(sbk_user(@go.id))
@@ -133,7 +133,7 @@ module Admin
       uploader = create_user(user_group_id: 3, game_operation_id: 0)
       uploader.update_column(:email, '')
       scan = GameScan.new(game: @game, uploaded_by: uploader, expires_at: 12.months.from_now)
-      scan.scan_file.attach(io: StringIO.new('PDF'), filename: 'bogen.pdf', content_type: 'application/pdf')
+      scan.scan_file.attach(io: StringIO.new('%PDF-1.4'), filename: 'bogen.pdf', content_type: 'application/pdf')
       scan.save!
 
       login(sbk_user(@go.id))
@@ -486,7 +486,7 @@ module Admin
       uploader = create_user(user_group_id: 6, game_operation_id: 0)
       uploader.update_column(:email, 'schiri@example.org')
       report = @game.build_game_referee_report(uploaded_by: uploader)
-      report.file.attach(io: StringIO.new('PDF'), filename: 'r.pdf', content_type: 'application/pdf')
+      report.file.attach(io: StringIO.new('%PDF-1.4'), filename: 'r.pdf', content_type: 'application/pdf')
       report.save!
       item = @sa.checklist_items.create!(question: 'Schiris pünktlich?', position: 1)
       @game.update_columns(checklist_veto_submitted_at: Time.current,

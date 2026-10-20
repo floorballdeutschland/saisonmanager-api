@@ -1,4 +1,6 @@
 class GameRefereeReport < ApplicationRecord
+  include PdfOnlyAttachment
+
   belongs_to :game
   belongs_to :uploaded_by, class_name: 'User'
 
@@ -12,9 +14,7 @@ class GameRefereeReport < ApplicationRecord
   def acceptable_file
     return unless file.attached?
 
-    unless file.content_type.in?(%w[application/pdf image/png image/jpeg])
-      errors.add(:file, 'muss PDF, PNG oder JPEG sein')
-    end
+    validate_new_pdf_attachment(:file)
 
     if file.byte_size > 5.megabytes
       errors.add(:file, 'darf maximal 5 MB groß sein')
