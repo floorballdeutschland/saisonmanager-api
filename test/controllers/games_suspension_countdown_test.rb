@@ -16,7 +16,7 @@ class GamesSuspensionCountdownTest < ActionDispatch::IntegrationTest
     @home = create(:team, league: @league, club: @club)
     @guest = create(:team, league: @league, club: @club)
     @game = Game.create!(game_day: @game_day, home_team: @home, guest_team: @guest,
-                         started: true, ended: true, forfait: 0, overtime: false, legacy: false,
+                         started: true, ended: true, forfait: 0, overtime: false, legacy: false, **all_signatures,
                          events: [], players: { 'home' => [], 'guest' => [] },
                          special_event: true, referee1_string: '12345 Eree, Ref')
     RefereeAssignment.create!(game: @game, referee1_id: create(:referee).id,

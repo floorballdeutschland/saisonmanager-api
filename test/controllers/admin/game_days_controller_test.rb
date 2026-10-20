@@ -172,7 +172,27 @@ module Admin
       assert_equal 'Hallenausfall', flags['special_event_string']
       assert flags['missing_referee2']
       assert flags['missing_audience']
-      assert flags['missing_signatures']
+      # Ein Forfait-Spiel wurde nicht gespielt, auf seinem Bogen unterschreibt
+      # niemand (Game#missing_signatures).
+      assert_not flags['missing_signatures']
+    end
+
+    test 'fehlende Unterschriften werden gemeldet' do
+      @game.update!(**all_signatures, home_captain_signed: false)
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      assert row(@game.id)['flags']['missing_signatures']
+    end
+
+    test 'ohne zweiten Schiedsrichter fehlt seine Unterschrift nicht' do
+      @game.update!(**all_signatures, referee2_signed: false, referee2_string: '')
+      login(sbk_user(@go.id))
+      get OVERVIEW_PATH
+      assert_not row(@game.id)['flags']['missing_signatures']
+
+      @game.update!(referee2_string: '123 MUSTER, Max')
+      get OVERVIEW_PATH
+      assert row(@game.id)['flags']['missing_signatures']
     end
 
     test 'verknüpfte Vorgänge: Verfahrensvorschlag und verneinte Checklistenpunkte' do
@@ -354,7 +374,7 @@ module Admin
 
     test 'vollstaendig gezeichnetes Spiel meldet keine fehlenden Angaben' do
       @game.update!(referee1_signed: true, time_keeper_signed: true, record_keeper_signed: true,
-                    home_captain_signed: true, guest_captain_signed: true,
+                    home_captain_signed: true, guest_captain_signed: true, referee2_signed: true,
                     referee2_string: '123 MUSTER, Max', audience: 120)
       login(sbk_user(@go.id))
       get OVERVIEW_PATH

@@ -410,7 +410,7 @@ module Admin
         # nil? statt blank?: 0 Zuschauer ist eine gültige Angabe, aber `0.blank?`
         # ist in Rails false – blank? würde die fehlende Angabe also nie melden.
         missing_audience: !pending && game.audience.nil?,
-        missing_signatures: !pending && !signatures_complete?(game),
+        missing_signatures: !pending && game.missing_signatures.any?,
         missing_referee2: !pending && game.referee2_string.blank?
       }
     end
@@ -490,11 +490,6 @@ module Admin
 
     def penalties_catalog
       @penalties_catalog ||= Setting.current.penalties || {}
-    end
-
-    def signatures_complete?(game)
-      game.referee1_signed && game.time_keeper_signed && game.record_keeper_signed &&
-        game.home_captain_signed && game.guest_captain_signed
     end
   end
 end
