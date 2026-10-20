@@ -1,4 +1,6 @@
 class RefereeGameDayConfirmationsController < ApplicationController
+  include GameDayConfirmationComment
+
   before_action :authenticate_user
   before_action :require_referee_account
 
@@ -92,12 +94,16 @@ class RefereeGameDayConfirmationsController < ApplicationController
       end
     end
 
+    comment, comment_error = confirmation_comment(properly)
+    return render json: { error: comment_error }, status: :unprocessable_entity if comment_error
+
     confirmation = GameDayRefereeConfirmation.create!(
       game_day: game_day,
       referee: @referee,
       confirmed_at: Time.current,
       properly_conducted: properly,
-      checklist_answers: answers
+      checklist_answers: answers,
+      comment: comment
     )
 
     notify_sbk_of_veto(game_day, confirmation) unless properly
@@ -184,7 +190,8 @@ class RefereeGameDayConfirmationsController < ApplicationController
     {
       confirmed_at: confirmation.confirmed_at.iso8601,
       properly_conducted: confirmation.properly_conducted,
-      checklist_answers: confirmation.checklist_answers
+      checklist_answers: confirmation.checklist_answers,
+      comment: confirmation.comment
     }
   end
 
@@ -194,7 +201,8 @@ class RefereeGameDayConfirmationsController < ApplicationController
     sa = game_day.league&.game_operation&.state_association
     return if sa&.effective_sbk_email.blank?
 
-    GameDayMailer.referee_checklist_veto(game_day, @referee, confirmation.checklist_answers, sa).deliver_later
+    GameDayMailer.referee_checklist_veto(game_day, @referee, confirmation.checklist_answers, sa,
+                                         comment: confirmation.comment).deliver_later
   rescue StandardError => e
     Rails.logger.warn("notify_sbk_of_veto failed for game_day_id=#{game_day.id}: #{e.class}: #{e.message}")
   end
@@ -257,6 +265,9 @@ class RefereeGameDayConfirmationsController < ApplicationController
       checklist_items: items.map { |i| { id: i.id, question: i.question } },
       properly_conducted: my_confirmation&.properly_conducted,
       my_checklist_answers: my_confirmation&.checklist_answers || [],
+      # Nur der eigene Text: Die Anmerkung richtet sich an die SBK, das
+      # Gespann sieht vom Partner weiterhin nur, ob er widersprochen hat.
+      my_comment: my_confirmation&.comment,
       partner_properly_conducted: partner_confirmation&.properly_conducted,
       games: game_day.games
                      .select { |g| assigned_game_ids.include?(g.id) }

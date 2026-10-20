@@ -516,7 +516,8 @@ module Admin
       referee = create(:referee, vorname: 'Erika', nachname: 'Pfeife')
       GameDayTeamConfirmation.create!(
         game_day: @game_day, team: @game.guest_team, confirmed_at: 2.hours.ago, properly_conducted: false,
-        checklist_answers: [{ 'item_id' => item.id, 'question' => 'Aus dem Formular', 'answer' => false }]
+        checklist_answers: [{ 'item_id' => item.id, 'question' => 'Aus dem Formular', 'answer' => false }],
+        comment: 'Halle war um 13 Uhr noch zu.'
       )
       GameDayRefereeConfirmation.create!(
         game_day: @game_day, referee:, confirmed_at: 1.hour.ago, properly_conducted: false,
@@ -536,9 +537,11 @@ module Admin
         # Der Fragetext kommt aus der Checkliste des Verbandes, nicht aus der
         # gespeicherten Antwort.
         assert_equal [{ 'item_id' => item.id, 'question' => 'Halle in Ordnung?' }], team['negative_items']
+        assert_equal 'Halle war um 13 Uhr noch zu.', team['comment']
         assert_equal 'referee', schiri['kind']
         assert_equal 'Erika Pfeife', schiri['name']
         assert_equal [], schiri['negative_items']
+        assert_nil schiri['comment']
       end
     end
 
