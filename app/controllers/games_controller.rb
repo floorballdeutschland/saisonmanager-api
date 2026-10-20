@@ -1060,7 +1060,7 @@ class GamesController < ApplicationController
         end
 
         if params[:game_status] == 'match_record_closed'
-          signatures_error = _signatures_incomplete_error(game)
+          signatures_error = _signatures_incomplete_error(game) unless sbk
           return render json: { message: signatures_error }, status: :unprocessable_entity if signatures_error
 
           checklist_error = _checklist_incomplete_error(game)
@@ -1176,12 +1176,18 @@ class GamesController < ApplicationController
     end
   end
 
-  # Nur beim Abschließen durch den Verein (match_record_closed), nicht beim
-  # Kontrollieren durch die SBK (finalized). Nach dem Abschluss zeigt die Maske
+  # Beim Abschließen (match_record_closed). Nach dem Abschluss zeigt die Maske
   # die Haken nicht mehr, und der Verein kann den Bericht nicht selbst wieder
-  # öffnen: Ein vergessener Haken war dann nicht mehr nachzuholen. Fehlt eine
-  # Unterschrift wirklich (verweigert, Person schon abgereist), entscheidet die
-  # SBK und schließt den Bericht direkt ab.
+  # öffnen: Ein vergessener Haken war dann nicht mehr nachzuholen.
+  #
+  # Fehlt eine Unterschrift wirklich (verweigert, Person schon abgereist),
+  # schließt die SBK des Spielbetriebs (oder ein Admin) den Bericht ab: Für sie
+  # entfällt nur diese Prüfung, die Checkliste und alle Folgen des Abschlusses
+  # (Erinnerung an den Bericht, Checklistenmails samt Widerspruchsfrist der
+  # Gastmannschaft) laufen wie sonst. Die Haken setzt sie dafür nicht selbst,
+  # das wäre die Behauptung einer Unterschrift, die es nicht gibt. Der Weg über
+  # `finalized` wäre kein Ersatz: Er überspringt die Checkliste und die Mails.
+  # Der Sekretariats-Link hat keine Rolle und wird immer geprüft.
   def _signatures_incomplete_error(game)
     missing = game.missing_signature_labels
     return nil if missing.empty?
