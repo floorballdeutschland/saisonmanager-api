@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_10_16_140200) do
+ActiveRecord::Schema[7.2].define(version: 2026_10_20_183000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -229,6 +229,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_16_140200) do
     t.datetime "updated_at", null: false
     t.boolean "properly_conducted", default: true, null: false
     t.jsonb "checklist_answers", default: [], null: false
+    t.text "comment"
     t.index ["game_day_id", "referee_id"], name: "index_game_day_referee_confirmations_unique", unique: true
     t.index ["game_day_id"], name: "index_game_day_referee_confirmations_on_game_day_id"
     t.index ["referee_id"], name: "index_game_day_referee_confirmations_on_referee_id"
@@ -267,6 +268,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_16_140200) do
     t.bigint "confirmed_by_user_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.text "comment"
     t.index ["game_day_id", "team_id"], name: "index_game_day_team_confirmations_unique", unique: true
     t.index ["game_day_id"], name: "index_game_day_team_confirmations_on_game_day_id"
     t.index ["team_id"], name: "index_game_day_team_confirmations_on_team_id"

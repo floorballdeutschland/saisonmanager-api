@@ -329,14 +329,14 @@ module Admin
                                      .includes(:team)
                                      .map do |c|
         { game_day_id: c.game_day_id, kind: 'team', name: c.team&.name, confirmed_at: c.confirmed_at,
-          answers: c.checklist_answers }
+          answers: c.checklist_answers, comment: c.comment }
       end
       referees = GameDayRefereeConfirmation.where(game_day_id: game_day_ids, properly_conducted: false)
                                            .includes(:referee)
                                            .map do |c|
         name = [c.referee&.vorname, c.referee&.nachname].compact.join(' ').strip.presence
         { game_day_id: c.game_day_id, kind: 'referee', name:, confirmed_at: c.confirmed_at,
-          answers: c.checklist_answers }
+          answers: c.checklist_answers, comment: c.comment }
       end
 
       (teams + referees).group_by { |o| o[:game_day_id] }
@@ -353,7 +353,8 @@ module Admin
           kind: o[:kind],
           name: o[:name],
           confirmed_at: o[:confirmed_at],
-          negative_items: negative_answers(o[:answers], questions)
+          negative_items: negative_answers(o[:answers], questions),
+          comment: o[:comment]
         }
       end
     end
