@@ -174,6 +174,7 @@ module Admin
       negative = negative_answers(game.checklist_answers, questions)
       veto_negative = negative_answers(game.checklist_veto_answers, questions)
       objection_rows = objection_rows(objections[game.game_day_id], questions)
+      last_change_at = GameReportLastChange.for(game, objection_times: objection_rows.pluck(:confirmed_at))
 
       {
         id: game.id,
@@ -219,7 +220,10 @@ module Admin
         report_reviewed_at: game.report_reviewed_at,
         report_reviewed_by_name: editor_names[game.report_reviewed_by_user_id].presence,
         report_review_comment: game.report_review_comment,
-        report_changed_since_review: changed_since_review?(game, objection_rows),
+        report_changed_since_review: changed_since_review?(game.report_reviewed_at, last_change_at),
+        # Das Frontend schickt den Wert beim Abhaken als seen_until zurück. Ist
+        # serverseitig inzwischen etwas Neueres da, lehnt der Vermerk mit 409 ab.
+        last_change_at:,
 
         flags: flags(game)
       }
@@ -312,19 +316,10 @@ module Admin
     end
 
     # Ist nach dem Erledigt-Vermerk etwas Neues dazugekommen? Dann gehört die
-    # Zeile wieder vor die SBK, auch wenn der Vermerk stehen bleibt: ein
-    # nachträglich geänderter Bericht, ein Einspruch des Ausrichters oder ein
-    # Widerspruch von Gastmannschaft oder Schiedsrichter.
-    #
-    # Der Vermerk selbst setzt record_updated_at nicht (update_columns im
-    # GameReportReviewsController), sonst wäre jede Zeile gleich nach dem
-    # Abhaken wieder „geändert".
-    def changed_since_review?(game, objection_rows)
-      reviewed_at = game.report_reviewed_at
-      return false if reviewed_at.nil?
-
-      [game.record_updated_at, game.checklist_veto_submitted_at, *objection_rows.pluck(:confirmed_at)]
-        .compact.any? { |t| t > reviewed_at }
+    # Zeile wieder vor die SBK, auch wenn der Vermerk stehen bleibt. Was als
+    # neu zählt, steht in GameReportLastChange.
+    def changed_since_review?(reviewed_at, last_change_at)
+      reviewed_at.present? && last_change_at.present? && last_change_at > reviewed_at
     end
 
     # Widersprüche von Gastmannschaften und Schiedsrichtern gegen den

@@ -16,11 +16,22 @@ module Admin
     # POST /api/v2/admin/games/:game_id/report_review
     # Setzt den Vermerk neu, auch wenn schon einer steht: Wer erneut abhakt,
     # hat den aktuellen Stand gesehen, und sein Kommentar ersetzt den alten.
+    #
+    # seen_until: der last_change_at der Zeile, die die SBK vor sich hatte. Ist
+    # seitdem etwas Neues eingegangen (ein Einspruch, ein ersetzter Bericht),
+    # würde der Vermerk etwas abhaken, das niemand gesehen hat. Dann 409.
+    # Fehlt der Wert (älteres Frontend), wird wie bisher gespeichert.
     def create
       comment = params[:comment].to_s.strip.presence
       if comment && comment.length > COMMENT_MAX_LENGTH
         return render json: { message: "Der Kommentar darf höchstens #{COMMENT_MAX_LENGTH} Zeichen lang sein." },
                       status: :unprocessable_entity
+      end
+
+      if stale_view?
+        return render json: { message: 'Der Bericht hat sich seit dem Laden geändert. Bitte lade die Übersicht neu ' \
+                                       'und prüfe den aktuellen Stand, bevor du ihn als erledigt markierst.' },
+                      status: :conflict
       end
 
       write_review(report_reviewed_at: Time.current, report_reviewed_by_user_id: current_user.id,
@@ -37,7 +48,8 @@ module Admin
     private
 
     def load_game_and_authorize!
-      @game = Game.includes(game_day: :league).find_by(id: params[:game_id])
+      @game = Game.includes(:game_scan, :game_referee_report, :proceeding_proposal, game_day: :league)
+                  .find_by(id: params[:game_id])
       return head :not_found if @game.nil?
 
       ph = current_user.permission_hash
@@ -56,14 +68,32 @@ module Admin
       @game.update_columns(attributes)
     end
 
+    def last_change_at
+      @last_change_at ||= GameReportLastChange.for(@game)
+    end
+
+    # Auf Millisekunden verglichen: So genau gibt die Übersicht den Zeitpunkt
+    # im JSON aus, die Datenbank hält Mikrosekunden. Ohne das Abrunden wäre
+    # jeder Vermerk ein Konflikt mit sich selbst.
+    def stale_view?
+      return false if params[:seen_until].blank? || last_change_at.nil?
+
+      seen_until = Time.zone.parse(params[:seen_until].to_s)
+      seen_until.nil? || last_change_at.floor(3) > seen_until
+    rescue ArgumentError
+      true
+    end
+
     def review_payload
       reviewer = @game.report_reviewed_by_user_id && User.find_by(id: @game.report_reviewed_by_user_id)
+      reviewed_at = @game.report_reviewed_at
       {
         id: @game.id,
-        report_reviewed_at: @game.report_reviewed_at,
+        report_reviewed_at: reviewed_at,
         report_reviewed_by_name: reviewer&.fullname&.strip.presence,
         report_review_comment: @game.report_review_comment,
-        report_changed_since_review: false
+        report_changed_since_review: reviewed_at.present? && last_change_at.present? && last_change_at > reviewed_at,
+        last_change_at:
       }
     end
   end

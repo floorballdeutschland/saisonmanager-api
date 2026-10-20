@@ -121,6 +121,109 @@ module Admin
       assert_equal true, overview_row['report_changed_since_review']
     end
 
+    # Der Vermerk ist ein Arbeitsvermerk der SBK. Über `render json: game`
+    # (set_game_status) bekäme ihn sonst der Ausrichter oder der
+    # Sekretariats-Link zu sehen.
+    test 'die Spiel-JSON aus set_game_status enthält den Vermerk nicht' do
+      @game.update_columns(report_reviewed_at: Time.current, report_reviewed_by_user_id: 1,
+                           report_review_comment: 'Ausrichter unzuverlaessig')
+      login(create(:user, :admin))
+
+      post "/api/v2/user/games/#{@game.id}/game_status", params: { ingame_status: 'break' }, as: :json
+
+      assert_response :success
+      json = JSON.parse(response.body)
+      assert_equal @game.id, json['id']
+      Game::REPORT_REVIEW_ATTRIBUTES.each { |key| assert_not json.key?(key), "#{key} darf nicht ausgeliefert werden" }
+      assert_not_includes response.body, 'Ausrichter unzuverlaessig'
+    end
+
+    test 'Papierbogen, Schiedsrichterbericht, Verfahrensvorschlag und Abschluss nach dem Vermerk holen die Zeile zurück' do
+      login(create(:user, :admin))
+      steps = {
+        'Papierbogen' => lambda {
+          scan = GameScan.new(game: @game, uploaded_by: User.first, expires_at: 1.year.from_now)
+          scan.scan_file.attach(io: StringIO.new('%PDF-1.4'), filename: 's.pdf', content_type: 'application/pdf')
+          scan.save!
+        },
+        'Schiedsrichterbericht' => lambda {
+          report = @game.build_game_referee_report(uploaded_by: User.first)
+          report.file.attach(io: StringIO.new('%PDF-1.4'), filename: 'r.pdf', content_type: 'application/pdf')
+          report.save!
+        },
+        'Verfahrensvorschlag' => -> { ProceedingProposal.create!(game: @game, state_association: @sa, status: 'pending') },
+        'Abschluss' => -> { @game.update_columns(match_record_closed_at: Time.current) }
+      }
+
+      steps.each do |label, step|
+        GameScan.where(game: @game).destroy_all
+        GameRefereeReport.where(game: @game).destroy_all
+        ProceedingProposal.where(game: @game).delete_all
+        @game.update_columns(match_record_closed_at: nil, report_reviewed_at: 1.minute.ago,
+                             report_reviewed_by_user_id: 1)
+        get OVERVIEW_PATH
+        assert_equal false, overview_row['report_changed_since_review'], "#{label}: vorher"
+
+        step.call
+        get OVERVIEW_PATH
+        assert_equal true, overview_row['report_changed_since_review'], label
+      end
+    end
+
+    test 'ein ersetzter Schiedsrichterbericht zählt als neu' do
+      report = @game.build_game_referee_report(uploaded_by: create(:user, :admin))
+      report.file.attach(io: StringIO.new('%PDF-1.4'), filename: 'r.pdf', content_type: 'application/pdf')
+      report.save!
+      report.update_columns(updated_at: 1.day.ago)
+      @game.update_columns(report_reviewed_at: 1.hour.ago, report_reviewed_by_user_id: 1)
+      login(create(:user, :admin))
+
+      report.reload.file.attach(io: StringIO.new('%PDF-1.5'), filename: 'r2.pdf', content_type: 'application/pdf')
+      report.save!
+
+      get OVERVIEW_PATH
+      assert_equal true, overview_row['report_changed_since_review']
+    end
+
+    test 'mit dem Stand aus der Übersicht wird gespeichert' do
+      login(create(:user, :admin))
+      get OVERVIEW_PATH
+      seen_until = overview_row['last_change_at']
+      assert seen_until.present?
+
+      post review_path, params: { seen_until: }, as: :json
+
+      assert_response :success
+      json = JSON.parse(response.body)
+      assert_equal false, json['report_changed_since_review']
+      assert json['last_change_at'].present?
+    end
+
+    # Zwischen Laden und Abhaken kam ein Widerspruch: Der Vermerk würde etwas
+    # abhaken, das niemand gesehen hat.
+    test 'eine veraltete Ansicht wird mit 409 abgewiesen' do
+      login(create(:user, :admin))
+      get OVERVIEW_PATH
+      seen_until = overview_row['last_change_at']
+
+      GameDayTeamConfirmation.create!(game_day: @game_day, team: @game.guest_team, confirmed_at: Time.current,
+                                      properly_conducted: false)
+      post review_path, params: { seen_until: }, as: :json
+
+      assert_response :conflict
+      assert_match(/seit dem Laden geändert/, JSON.parse(response.body)['message'])
+      assert_nil @game.reload.report_reviewed_at
+    end
+
+    test 'ohne seen_until wird wie bisher gespeichert' do
+      login(create(:user, :admin))
+
+      post review_path, as: :json
+
+      assert_response :success
+      assert_not_nil @game.reload.report_reviewed_at
+    end
+
     test 'unbekanntes Spiel liefert 404' do
       login(create(:user, :admin))
 
