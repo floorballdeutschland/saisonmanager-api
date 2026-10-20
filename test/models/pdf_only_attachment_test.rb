@@ -29,7 +29,25 @@ class PdfOnlyAttachmentTest < ActiveSupport::TestCase
     scan = scan_with(io: StringIO.new(PNG_BYTES), content_type: 'image/png', filename: 'foto.png')
 
     assert_not scan.valid?
-    assert_includes scan.errors[:scan_file].join, 'PDF'
+    assert_equal ['Nur PDF-Dateien bis 5 MB sind zulässig, Fotos werden nicht angenommen.'],
+                 scan.errors.full_messages
+  end
+
+  # Zu groß und falsches Format sagen dasselbe: was zulässig ist.
+  test 'zu großes PDF nennt dieselbe Meldung' do
+    io = StringIO.new("%PDF-1.7 #{'x' * GameScan::MAX_FILE_SIZE}")
+    scan = scan_with(io: io, content_type: 'application/pdf')
+
+    assert_not scan.valid?
+    assert_equal [GameScan.pdf_only_message(GameScan::MAX_FILE_SIZE)], scan.errors.full_messages
+  end
+
+  test 'Foto, das zugleich zu groß ist, meldet nur einmal' do
+    io = StringIO.new(PNG_BYTES + ('x' * GameScan::MAX_FILE_SIZE))
+    scan = scan_with(io: io, content_type: 'image/png', filename: 'foto.png')
+
+    assert_not scan.valid?
+    assert_equal 1, scan.errors.count
   end
 
   test 'Foto mit PDF-Typ im Kopf ist ungültig' do
@@ -65,7 +83,8 @@ class PdfOnlyAttachmentTest < ActiveSupport::TestCase
     report.file.attach(io: StringIO.new(PNG_BYTES), filename: 'formular.jpg', content_type: 'image/jpeg')
 
     assert_not report.valid?
-    assert_includes report.errors[:file].join, 'PDF'
+    assert_equal [GameRefereeReport.pdf_only_message(GameRefereeReport::MAX_FILE_SIZE)],
+                 report.errors.full_messages
   end
 
   private

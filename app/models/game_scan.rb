@@ -21,9 +21,6 @@ class GameScan < ApplicationRecord
   end
 
   def scan_file_valid
-    validate_new_pdf_attachment(:scan_file)
-    if scan_file.byte_size > MAX_FILE_SIZE
-      errors.add(:scan_file, 'darf maximal 5 MB groß sein')
-    end
+    validate_pdf_attachment(:scan_file, max_size: MAX_FILE_SIZE)
   end
 end

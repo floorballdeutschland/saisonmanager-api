@@ -6,18 +6,14 @@ class GameRefereeReport < ApplicationRecord
 
   has_one_attached :file
 
+  MAX_FILE_SIZE = 5.megabytes
+
   validates :file, presence: true
   validate :acceptable_file
 
   private
 
   def acceptable_file
-    return unless file.attached?
-
-    validate_new_pdf_attachment(:file)
-
-    if file.byte_size > 5.megabytes
-      errors.add(:file, 'darf maximal 5 MB groß sein')
-    end
+    validate_pdf_attachment(:file, max_size: MAX_FILE_SIZE)
   end
 end

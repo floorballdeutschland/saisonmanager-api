@@ -89,7 +89,8 @@ class GameScansControllerTest < ActionDispatch::IntegrationTest
     upload(file: fixture_file_upload('foto.png', 'image/png'))
 
     assert_response :unprocessable_entity
-    assert_match 'PDF', response.parsed_body['errors'].join
+    assert_equal ['Nur PDF-Dateien bis 5 MB sind zulässig, Fotos werden nicht angenommen.'],
+                 response.parsed_body['errors']
     assert_nil @game.reload.game_scan
   end
 

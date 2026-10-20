@@ -63,7 +63,8 @@ class GameRefereeReportsControllerTest < ActionDispatch::IntegrationTest
       upload_report(file: fixture_file_upload('foto.png', 'image/png'))
     end
     assert_response :unprocessable_entity
-    assert_match 'PDF', response.parsed_body['errors'].join
+    assert_equal ['Nur PDF-Dateien bis 5 MB sind zulässig, Fotos werden nicht angenommen.'],
+                 response.parsed_body['errors']
     assert_nil @game.reload.game_referee_report
   end
 

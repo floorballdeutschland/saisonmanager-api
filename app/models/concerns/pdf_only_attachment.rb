@@ -13,6 +13,11 @@
 # behält den angegebenen Typ. Deshalb zusätzlich die PDF-Kennung `%PDF-` im
 # Dateikopf. Die Spezifikation erlaubt Vorspann davor, Acrobat sucht sie in
 # den ersten 1024 Bytes, also hier genauso.
+#
+# Falscher Typ und zu große Datei ergeben dieselbe Meldung, und zwar auf
+# :base: Die Controller geben `full_messages` aus, und am Attribut stünde der
+# Spaltenname davor („Scan file muss …“). Wer ein Foto oder ein zu großes PDF
+# hochlädt, soll in beiden Fällen lesen, was zulässig ist.
 module PdfOnlyAttachment
   extend ActiveSupport::Concern
 
@@ -20,18 +25,30 @@ module PdfOnlyAttachment
   PDF_SIGNATURE = '%PDF-'.b.freeze
   SIGNATURE_WINDOW = 1024
 
+  class_methods do
+    def pdf_only_message(max_size)
+      "Nur PDF-Dateien bis #{max_size / 1.megabyte} MB sind zulässig, Fotos werden nicht angenommen."
+    end
+  end
+
   private
 
-  def validate_new_pdf_attachment(name)
+  # Die Größe gilt wie bisher für jedes Speichern, das Format nur für ein neu
+  # angehängtes Dokument.
+  def validate_pdf_attachment(name, max_size:)
     attachment = public_send(name)
     return unless attachment.attached?
 
+    return unless new_attachment_not_pdf?(name, attachment) || attachment.byte_size > max_size
+
+    errors.add(:base, self.class.pdf_only_message(max_size))
+  end
+
+  def new_attachment_not_pdf?(name, attachment)
     change = attachment_changes[name.to_s]
-    return if change.nil?
+    return false if change.nil?
 
-    return if attachment.content_type == PDF_CONTENT_TYPE && pdf_signature?(change.attachable) != false
-
-    errors.add(name, 'muss eine PDF-Datei sein, Fotos werden nicht angenommen')
+    !(attachment.content_type == PDF_CONTENT_TYPE && pdf_signature?(change.attachable) != false)
   end
 
   # true/false, wenn sich der Dateikopf lesen lässt, sonst nil. Ein
