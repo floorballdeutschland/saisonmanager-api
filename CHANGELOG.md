@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Behoben
+
+- Die Antwort beim Statuswechsel eines Spielberichts enthält den Prüfwert des Einspruchslinks an den Ausrichter nicht mehr.
+
 ## [1.131.0] - 2026-10-19
 
 ### Neu

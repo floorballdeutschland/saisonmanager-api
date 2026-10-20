@@ -112,6 +112,12 @@ class Game < ApplicationRecord
   # Gespann bestimmt, nie für Mannschaften oder die Öffentlichkeit.
   REFEREE_NOTES_ATTRIBUTES = %w[referee_notes referee_notes_updated_at referee_notes_updated_by].freeze
 
+  # Prüfwert des Einspruchslinks an den Ausrichter. Er ist nur ein Hash, aber
+  # mit ihm allein ließe sich ein erratener oder anderswo mitgelesener Token
+  # gegenprüfen, und niemand außerhalb von GamesController#valid_veto_token?
+  # braucht ihn.
+  SECRET_ATTRIBUTES = %w[checklist_veto_token_digest].freeze
+
   # Ein festgesetztes Forfait-Ergebnis wird immer als Paar gefuehrt: nur eine
   # Seite gesetzt hiesse, die andere aus der Liga-Vorgabe zu ergaenzen -- ein
   # Mischergebnis, das niemand so beschlossen hat.
@@ -141,10 +147,10 @@ class Game < ApplicationRecord
   # Spielleitung des Heimvereins bedient. Deshalb fliegt sie hier grundsätzlich
   # aus as_json/to_json; wer sie ausliefern darf, liest sie explizit über
   # #referee_notes (siehe Admin::RefereeAssignmentsController,
-  # RefereeGameDayConfirmationsController).
+  # RefereeGameDayConfirmationsController). Dasselbe gilt für SECRET_ATTRIBUTES.
   def serializable_hash(options = nil)
     options = (options || {}).dup
-    options[:except] = Array(options[:except]) + REFEREE_NOTES_ATTRIBUTES unless options[:only]
+    options[:except] = Array(options[:except]) + REFEREE_NOTES_ATTRIBUTES + SECRET_ATTRIBUTES unless options[:only]
     super(options)
   end
 
