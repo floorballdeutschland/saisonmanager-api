@@ -40,7 +40,7 @@ class GamesGuestTeamChecklistMailTest < ActionDispatch::IntegrationTest
       ended: true,
       forfait: 0,
       overtime: false,
-      legacy: false,
+      legacy: false, **all_signatures,
       events: [],
       players: { 'home' => [], 'guest' => [] },
       referee1_string: '12345 Eree, Ref'

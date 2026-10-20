@@ -112,6 +112,18 @@ class Game < ApplicationRecord
   # Gespann bestimmt, nie für Mannschaften oder die Öffentlichkeit.
   REFEREE_NOTES_ATTRIBUTES = %w[referee_notes referee_notes_updated_at referee_notes_updated_by].freeze
 
+  # Prüfwert des Einspruchslinks an den Ausrichter. Er ist nur ein Hash, aber
+  # mit ihm allein ließe sich ein erratener oder anderswo mitgelesener Token
+  # gegenprüfen, und niemand außerhalb von GamesController#valid_veto_token?
+  # braucht ihn.
+  SECRET_ATTRIBUTES = %w[checklist_veto_token_digest].freeze
+
+  # Erledigt-Vermerk der SBK (Admin::GameReportReviewsController): ein
+  # Arbeitsvermerk der Spielleitung, nicht Teil des Spielberichts. Der
+  # Kommentar kann Einschätzungen zum Ausrichter enthalten und geht nur über
+  # die Arbeitsansicht „Spielberichte" an Admin und SBK.
+  REPORT_REVIEW_ATTRIBUTES = %w[report_reviewed_at report_reviewed_by_user_id report_review_comment].freeze
+
   # Ein festgesetztes Forfait-Ergebnis wird immer als Paar gefuehrt: nur eine
   # Seite gesetzt hiesse, die andere aus der Liga-Vorgabe zu ergaenzen -- ein
   # Mischergebnis, das niemand so beschlossen hat.
@@ -122,6 +134,39 @@ class Game < ApplicationRecord
 
   def match_record_closed?
     %w[match_record_closed finalized].include? game_status
+  end
+
+  # Unterschriften auf dem Spielberichtsbogen, die im Bericht abgehakt sein
+  # müssen, mit der Bezeichnung aus der Berichtsmaske. Die Reihenfolge ist die
+  # der Maske, damit die Absage die Haken in derselben Folge nennt.
+  REQUIRED_SIGNATURES = {
+    'time_keeper_signed' => 'Zeitnehmer/in',
+    'record_keeper_signed' => 'Schriftführer/in',
+    'home_captain_signed' => 'Heim',
+    'guest_captain_signed' => 'Gast',
+    'referee1_signed' => 'Schiedsrichter 1',
+    'referee2_signed' => 'Schiedsrichter 2'
+  }.freeze
+
+  # Die fehlenden Unterschriften als Spaltennamen, leer wenn nichts fehlt.
+  # Eine Regel für beide Stellen: die Sperre beim Abschließen des Berichts
+  # (GamesController#set_game_status) und den Hinweis „Unterschriften fehlen"
+  # in der Arbeitsansicht der SBK (Admin::GameDaysController#flags).
+  #
+  # Schiedsrichter 2 nur, wenn er eingetragen ist: Leitet eine Person das Spiel
+  # allein, gibt es die zweite Unterschrift nicht, und der Bericht ließe sich
+  # sonst nie abschließen. Ein Forfait-Spiel wurde nicht gespielt, auf seinem
+  # Bogen unterschreibt niemand.
+  def missing_signatures
+    return [] if forfait?
+
+    REQUIRED_SIGNATURES.keys.reject do |field|
+      (field == 'referee2_signed' && !referee2_present?) || self[field]
+    end
+  end
+
+  def missing_signature_labels
+    missing_signatures.map { |field| REQUIRED_SIGNATURES[field] }
   end
 
   # Im Tabletmodus erfasst? Davon hängt ab, ob die öffentliche Spielseite die
@@ -141,10 +186,15 @@ class Game < ApplicationRecord
   # Spielleitung des Heimvereins bedient. Deshalb fliegt sie hier grundsätzlich
   # aus as_json/to_json; wer sie ausliefern darf, liest sie explizit über
   # #referee_notes (siehe Admin::RefereeAssignmentsController,
-  # RefereeGameDayConfirmationsController).
+  # RefereeGameDayConfirmationsController). Für den Erledigt-Vermerk der SBK
+  # gilt dasselbe, ihn liefert nur Admin::GameDaysController#report_overview.
+  # Ebenso für SECRET_ATTRIBUTES.
   def serializable_hash(options = nil)
     options = (options || {}).dup
-    options[:except] = Array(options[:except]) + REFEREE_NOTES_ATTRIBUTES unless options[:only]
+    unless options[:only]
+      options[:except] = Array(options[:except]) + REFEREE_NOTES_ATTRIBUTES + REPORT_REVIEW_ATTRIBUTES +
+                         SECRET_ATTRIBUTES
+    end
     super(options)
   end
 
@@ -1285,6 +1335,11 @@ class Game < ApplicationRecord
 
       home_captain_signed:,
       guest_captain_signed:,
+      # Die Haken, die vor dem Abschluss noch fehlen. Die Berichtsmaske markiert
+      # damit genau die Felder, an denen GamesController#set_game_status den
+      # Abschluss ablehnt, statt die Regel (Schiedsrichter 2, Forfait) selbst
+      # nachzubauen.
+      missing_signatures:,
 
       protest:,
       special_event:,

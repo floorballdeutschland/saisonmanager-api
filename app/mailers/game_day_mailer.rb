@@ -1,8 +1,9 @@
 class GameDayMailer < ApplicationMailer
   # Informiert die SBK des Landesverbands, wenn ein:e Schiedsrichter:in einen
   # Spieltag über das Portal als nicht ordnungsgemäß durchgeführt meldet.
-  def referee_checklist_veto(game_day, referee, answers, state_association)
+  def referee_checklist_veto(game_day, referee, answers, state_association, comment: nil)
     @game_day = game_day
+    @comment = comment
     @referee = referee
     @answers = answers || []
     @failed_items = @answers.select { |a| a['answer'] == false }
@@ -16,7 +17,8 @@ class GameDayMailer < ApplicationMailer
     templated_mail(
       to: state_association.effective_sbk_email,
       subject: "Spieltag nicht ordnungsgemäß gemeldet – #{@league_name} am #{game_day.date}",
-      placeholders: { league_name: @league_name, game_day_date: game_day.date, games: games_line(@games) }
+      placeholders: { league_name: @league_name, game_day_date: game_day.date, games: games_line(@games),
+                      comment: @comment.to_s }
     )
   end
 
@@ -56,8 +58,9 @@ class GameDayMailer < ApplicationMailer
 
   # Informiert die SBK des Landesverbands, wenn eine Gastmannschaft einen
   # Spieltag über das Portal als nicht ordnungsgemäß durchgeführt meldet.
-  def team_checklist_veto(game_day, team, answers, state_association)
+  def team_checklist_veto(game_day, team, answers, state_association, comment: nil)
     @game_day = game_day
+    @comment = comment
     @team = team
     @answers = answers || []
     @failed_items = @answers.select { |a| a['answer'] == false }
@@ -67,7 +70,8 @@ class GameDayMailer < ApplicationMailer
     templated_mail(
       to: state_association.effective_sbk_email,
       subject: "Spieltag nicht ordnungsgemäß gemeldet – #{@league_name} am #{game_day.date}",
-      placeholders: { league_name: @league_name, game_day_date: game_day.date, games: games_line(@games) }
+      placeholders: { league_name: @league_name, game_day_date: game_day.date, games: games_line(@games),
+                      comment: @comment.to_s }
     )
   end
 

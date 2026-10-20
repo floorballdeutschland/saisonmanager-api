@@ -138,7 +138,7 @@ class GameDayScanReminderTest < ActiveSupport::TestCase
 
   def attach_scan(game)
     scan = game.build_game_scan(expires_at: 30.days.from_now)
-    scan.scan_file.attach(io: StringIO.new('PDF'), filename: 'bogen.pdf', content_type: 'application/pdf')
+    scan.scan_file.attach(io: StringIO.new('%PDF-1.4'), filename: 'bogen.pdf', content_type: 'application/pdf')
     scan.save!
   end
 end

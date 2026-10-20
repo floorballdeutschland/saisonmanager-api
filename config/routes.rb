@@ -411,6 +411,9 @@ Rails.application.routes.draw do
         resources :game_days, only: [] do
           get :report_overview, on: :collection
         end
+        # Erledigt-Vermerk der SBK in der Arbeitsansicht „Spielberichte".
+        post   'games/:game_id/report_review', to: 'game_report_reviews#create'
+        delete 'games/:game_id/report_review', to: 'game_report_reviews#destroy'
         resources :state_associations, only: %i[index show create update destroy] do
           resources :checklist_items, only: %i[create update destroy],
                                       controller: 'state_association_checklist_items'

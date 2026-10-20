@@ -34,7 +34,7 @@ class GamesIncidentReportReminderTest < ActionDispatch::IntegrationTest
       ended: true,
       forfait: 0,
       overtime: false,
-      legacy: false,
+      legacy: false, **all_signatures,
       events: [],
       players: { 'home' => [], 'guest' => [] },
       special_event: true,

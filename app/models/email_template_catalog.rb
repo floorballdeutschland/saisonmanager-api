@@ -765,7 +765,8 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       placeholders: [
         { key: 'league_name', description: 'Name der Liga' },
         { key: 'game_day_date', description: 'Datum des Spieltags' },
-        { key: 'games', description: 'Betroffene Spiele mit Spielnummer, Anwurf und Mannschaften' }
+        { key: 'games', description: 'Betroffene Spiele mit Spielnummer, Anwurf und Mannschaften' },
+        { key: 'comment', description: 'Anmerkung zum Einspruch (leer, wenn keine angegeben wurde)' }
       ]
     },
     'GameDayMailer#team_checklist_veto' => {
@@ -778,7 +779,8 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       placeholders: [
         { key: 'league_name', description: 'Name der Liga' },
         { key: 'game_day_date', description: 'Datum des Spieltags' },
-        { key: 'games', description: 'Betroffene Spiele mit Spielnummer, Anwurf und Mannschaften' }
+        { key: 'games', description: 'Betroffene Spiele mit Spielnummer, Anwurf und Mannschaften' },
+        { key: 'comment', description: 'Anmerkung zum Einspruch (leer, wenn keine angegeben wurde)' }
       ]
     },
     'GameDayMailer#published_referees_to_host' => {
