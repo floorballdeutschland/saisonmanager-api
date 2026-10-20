@@ -106,6 +106,38 @@ class GameScansControllerTest < ActionDispatch::IntegrationTest
     assert_nil @game.reload.game_scan
   end
 
+  # Der alte Scan wurde vor der Prüfung gelöscht: Ein abgewiesener Upload nahm
+  # den gültigen Bogen mit.
+  test 'abgewiesener Upload laesst den vorhandenen Scan stehen' do
+    login_as(create(:user, :tm, team_id: @guest.id))
+    upload
+    old_scan = @game.reload.game_scan
+    old_blob_id = old_scan.scan_file.blob.id
+
+    assert_no_enqueued_jobs(only: ActiveStorage::PurgeJob) do
+      upload(file: fixture_file_upload('foto.png', 'image/png'))
+    end
+
+    assert_response :unprocessable_entity
+    scan = @game.reload.game_scan
+    assert_equal old_scan.id, scan.id
+    assert_equal old_blob_id, scan.scan_file.blob.id
+    assert ActiveStorage::Blob.exists?(old_blob_id)
+  end
+
+  test 'gueltiger Upload ersetzt den vorhandenen Scan' do
+    login_as(create(:user, :tm, team_id: @guest.id))
+    upload
+    old_scan = @game.reload.game_scan
+
+    upload
+
+    assert_response :created
+    assert_equal 1, GameScan.where(game_id: @game.id).count
+    assert_not_equal old_scan.id, @game.reload.game_scan.id
+    assert_not GameScan.exists?(old_scan.id)
+  end
+
   # --- Lesen ----------------------------------------------------------------
   #
   # Der Lesepfad hing an derselben Prüfung. Die Berichtsansicht ruft ihn bei
