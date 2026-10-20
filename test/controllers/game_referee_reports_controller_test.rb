@@ -57,6 +57,17 @@ class GameRefereeReportsControllerTest < ActionDispatch::IntegrationTest
   # prueft: Vorher gab der Controller referee1/referee2 mit, jetzt liest der
   # Mailer sie selbst aus `game.referee_assignment`. Waere die Ableitung leer,
   # bliebe der Schiedsrichter-Block im View still leer.
+  test 'Foto als Berichtsformular wird abgewiesen und nicht weitergeleitet' do
+    login(@user)
+    assert_no_enqueued_emails do
+      upload_report(file: fixture_file_upload('foto.png', 'image/png'))
+    end
+    assert_response :unprocessable_entity
+    assert_equal ['Nur PDF-Dateien bis 5 MB sind zulässig, Fotos werden nicht angenommen.'],
+                 response.parsed_body['errors']
+    assert_nil @game.reload.game_referee_report
+  end
+
   test 'die zugestellte VSK-Mail nennt das Gespann und traegt keine Unterschrift' do
     login(@user)
 
@@ -301,9 +312,8 @@ class GameRefereeReportsControllerTest < ActionDispatch::IntegrationTest
     (mail.html_part || mail).decoded
   end
 
-  def upload_report
-    post "/api/v2/games/#{@game.id}/referee_report",
-         params: { file: fixture_file_upload('dokument.pdf', 'application/pdf') }
+  def upload_report(file: fixture_file_upload('dokument.pdf', 'application/pdf'))
+    post "/api/v2/games/#{@game.id}/referee_report", params: { file: file }
   end
 
   def login(user)

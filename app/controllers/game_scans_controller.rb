@@ -23,9 +23,9 @@ class GameScansController < ApplicationController
   def create
     return render json: { errors: ['Datei fehlt'] }, status: :unprocessable_entity if params[:file].blank?
 
+    # Vor dem Anlegen lesen: `GameScan.new(game: @game)` setzt über die
+    # Gegenseite `@game.game_scan` auf den neuen, noch ungespeicherten Scan.
     existing = @game.game_scan
-    existing&.scan_file&.purge
-    existing&.destroy
 
     scan = GameScan.new(
       game: @game,
@@ -37,7 +37,7 @@ class GameScansController < ApplicationController
     )
     scan.scan_file.attach(params[:file])
 
-    if scan.save
+    if replace_scan(existing, scan)
       render json: scan_json(scan), status: :created
     else
       render json: { errors: scan.errors.full_messages }, status: :unprocessable_entity
@@ -67,6 +67,33 @@ class GameScansController < ApplicationController
   end
 
   private
+
+  # Der vorhandene Scan geht erst, wenn der neue gültig ist. Vorher wurde er
+  # gelöscht, bevor die neue Datei geprüft war: Ein abgewiesenes Foto nahm den
+  # gültigen Scan mit, und das Spiel stand ohne Bogen da.
+  #
+  # Beides in einer Transaktion, weil `game_id` eindeutig ist und der neue
+  # Datensatz erst nach dem Löschen des alten gespeichert werden kann. Scheitert
+  # die Prüfung, rollt das Löschen mit zurück. Die Datei des alten Scans
+  # entfernt ActiveStorage erst nach dem Commit (`purge_later` am
+  # has_one_attached), ein Rollback lässt sie also unberührt.
+  def replace_scan(existing, scan)
+    return false unless new_scan_valid?(scan)
+
+    GameScan.transaction do
+      existing&.destroy!
+      scan.save || raise(ActiveRecord::Rollback)
+    end
+  end
+
+  # Die Prüfung ohne die Eindeutigkeit von `game_id`: Die schlägt an, solange
+  # der alte Scan noch steht, und sagt über die Datei nichts.
+  def new_scan_valid?(scan)
+    return true if scan.valid?
+
+    scan.errors.delete(:game_id, :taken)
+    scan.errors.empty?
+  end
 
   def set_game
     @game = Game.find(params[:game_id])
