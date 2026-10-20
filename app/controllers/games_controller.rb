@@ -1060,6 +1060,9 @@ class GamesController < ApplicationController
         end
 
         if params[:game_status] == 'match_record_closed'
+          signatures_error = _signatures_incomplete_error(game)
+          return render json: { message: signatures_error }, status: :unprocessable_entity if signatures_error
+
           checklist_error = _checklist_incomplete_error(game)
           return render json: { message: checklist_error }, status: :unprocessable_entity if checklist_error
         end
@@ -1171,6 +1174,21 @@ class GamesController < ApplicationController
     else
       "Es muss mindestens Schiedsrichter 1 eingetragen sein, bevor #{action} werden kann."
     end
+  end
+
+  # Nur beim Abschließen durch den Verein (match_record_closed), nicht beim
+  # Kontrollieren durch die SBK (finalized). Nach dem Abschluss zeigt die Maske
+  # die Haken nicht mehr, und der Verein kann den Bericht nicht selbst wieder
+  # öffnen: Ein vergessener Haken war dann nicht mehr nachzuholen. Fehlt eine
+  # Unterschrift wirklich (verweigert, Person schon abgereist), entscheidet die
+  # SBK und schließt den Bericht direkt ab.
+  def _signatures_incomplete_error(game)
+    missing = game.missing_signature_labels
+    return nil if missing.empty?
+
+    'Auf dem Spielbericht fehlen noch Unterschriften: ' \
+      "#{missing.join(', ')}. Erst wenn alle Unterschriften abgehakt sind, " \
+      'kann der Spielbericht abgeschlossen werden.'
   end
 
   def _checklist_incomplete_error(game)

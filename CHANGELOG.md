@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Unterschriften sind Pflicht vor dem Abschluss des Spielberichts**: `user/games/:id/game_status` lehnt `match_record_closed` mit 422 ab, solange nicht alle Unterschriften abgehakt sind, und nennt die fehlenden in der Meldung (Zeitnehmer/in, Schriftführer/in, Heim, Gast, Schiedsrichter 1, Schiedsrichter 2). Schiedsrichter 2 ist nur Pflicht, wenn er eingetragen ist; Forfait-Spiele brauchen keine Unterschriften. Bisher konnte ein Bericht mit vergessenem Haken abgeschlossen werden, danach zeigte die Maske die Haken nicht mehr und der Verein konnte nichts nachtragen. Die SBK kann weiterhin direkt kontrolliert abschließen (`finalized`) und so eine Unterschrift übergehen, die es tatsächlich nicht gibt. Die Zusatzfelder (`user/games/:id/additional_fields`) liefern `missing_signatures`, damit die Berichtsmaske die fehlenden Haken markiert. Der Hinweis „Unterschriften fehlen“ unter Spielberichte folgt derselben Regel (`Game#missing_signatures`): Er meldet jetzt auch eine fehlende Unterschrift von Schiedsrichter 2 und keine mehr bei Forfait-Spielen.
+
 ## [1.131.0] - 2026-10-19
 
 ### Neu

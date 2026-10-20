@@ -124,6 +124,39 @@ class Game < ApplicationRecord
     %w[match_record_closed finalized].include? game_status
   end
 
+  # Unterschriften auf dem Spielberichtsbogen, die im Bericht abgehakt sein
+  # müssen, mit der Bezeichnung aus der Berichtsmaske. Die Reihenfolge ist die
+  # der Maske, damit die Absage die Haken in derselben Folge nennt.
+  REQUIRED_SIGNATURES = {
+    'time_keeper_signed' => 'Zeitnehmer/in',
+    'record_keeper_signed' => 'Schriftführer/in',
+    'home_captain_signed' => 'Heim',
+    'guest_captain_signed' => 'Gast',
+    'referee1_signed' => 'Schiedsrichter 1',
+    'referee2_signed' => 'Schiedsrichter 2'
+  }.freeze
+
+  # Die fehlenden Unterschriften als Spaltennamen, leer wenn nichts fehlt.
+  # Eine Regel für beide Stellen: die Sperre beim Abschließen des Berichts
+  # (GamesController#set_game_status) und den Hinweis „Unterschriften fehlen"
+  # in der Arbeitsansicht der SBK (Admin::GameDaysController#flags).
+  #
+  # Schiedsrichter 2 nur, wenn er eingetragen ist: Leitet eine Person das Spiel
+  # allein, gibt es die zweite Unterschrift nicht, und der Bericht ließe sich
+  # sonst nie abschließen. Ein Forfait-Spiel wurde nicht gespielt, auf seinem
+  # Bogen unterschreibt niemand.
+  def missing_signatures
+    return [] if forfait?
+
+    REQUIRED_SIGNATURES.keys.reject do |field|
+      (field == 'referee2_signed' && !referee2_present?) || self[field]
+    end
+  end
+
+  def missing_signature_labels
+    missing_signatures.map { |field| REQUIRED_SIGNATURES[field] }
+  end
+
   # Im Tabletmodus erfasst? Davon hängt ab, ob die öffentliche Spielseite die
   # ausführliche Statistik und die Highlights zeigt, nicht von einer
   # Einstellung (fe#344).
@@ -1285,6 +1318,11 @@ class Game < ApplicationRecord
 
       home_captain_signed:,
       guest_captain_signed:,
+      # Die Haken, die vor dem Abschluss noch fehlen. Die Berichtsmaske markiert
+      # damit genau die Felder, an denen GamesController#set_game_status den
+      # Abschluss ablehnt, statt die Regel (Schiedsrichter 2, Forfait) selbst
+      # nachzubauen.
+      missing_signatures:,
 
       protest:,
       special_event:,
