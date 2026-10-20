@@ -36,4 +36,12 @@
   </ul>
 <% end %>
 
+<%# Erst h, dann simple_format: simple_format allein sanitisiert nur und lässt
+    Tags wie <b> oder <a> durch. Die Anmerkung ist Freitext aus dem Portal und
+    soll bei der SBK genau so ankommen, wie sie getippt wurde. %>
+<% if @comment.present? %>
+  <p>Anmerkung:</p>
+  <blockquote><%= simple_format(h(@comment)) %></blockquote>
+<% end %>
+
 <p>Bitte prüfen.</p>

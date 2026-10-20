@@ -20,6 +20,13 @@ class ActiveSupport::TestCase
   # Team, Player, User bereit (siehe test/README.md).
   include FactoryBot::Syntax::Methods
 
+  # Alle Unterschriften abgehakt. Ohne sie lehnt GamesController#set_game_status
+  # den Abschluss des Spielberichts ab (Game#missing_signatures); Tests, die
+  # etwas anderes am Abschluss prüfen, legen ihr Spiel damit an.
+  def all_signatures
+    Game::REQUIRED_SIGNATURES.keys.index_with(true)
+  end
+
   # `Rails.cache` ist im Test-Env ein :null_store, `fetch` fuehrt seinen Block
   # also IMMER aus. Wer Cache-Verhalten prueft — dass eine Invalidierung greift,
   # dass ein Wert wirklich zwischengespeichert wird — testet damit nichts: Der
