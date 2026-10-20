@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_10_20_183000) do
+ActiveRecord::Schema[7.2].define(version: 2026_10_20_190000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -425,6 +425,9 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_20_183000) do
     t.integer "forfait_guest_goals"
     t.datetime "tablet_capture_at", comment: "Erster im Tabletmodus erfasster Schuss"
     t.boolean "tablet_shots_complete", comment: "Beim Abschluss erfragt: Schüsse vollständig erfasst?"
+    t.datetime "report_reviewed_at"
+    t.integer "report_reviewed_by_user_id"
+    t.text "report_review_comment"
     t.index ["checklist_veto_token_digest"], name: "index_games_on_checklist_veto_token_digest", unique: true, where: "(checklist_veto_token_digest IS NOT NULL)"
     t.index ["game_day_id"], name: "index_games_on_game_day_id"
     t.index ["guest_team_id"], name: "index_games_on_guest_team_id"
