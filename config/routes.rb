@@ -607,6 +607,7 @@ Rails.application.routes.draw do
           put    'tablet_capture', to: 'game_shots#tablet_capture'
           get    'detailed_stats', to: 'game_shots#detailed_stats'
           get    'highlights', to: 'game_shots#highlights'
+          post   'tablet_feedback', to: 'game_shots#feedback'
         end
       end
       # Serverzeit für den Uhrenabgleich des Tablets, ganz offen.

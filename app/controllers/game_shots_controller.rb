@@ -16,13 +16,14 @@ class GameShotsController < ApplicationController
   include SecretaryTokenAuthenticatable
   include GameReportPermissions
 
-  EDIT_ACTIONS = %i[index create update destroy link tablet_capture].freeze
+  EDIT_ACTIONS = %i[index create update destroy link tablet_capture feedback].freeze
+  FEEDBACK_MAX_LENGTH = 4000
 
   skip_before_action :authenticate_user
   before_action :authenticate_with_secretary_token_or_user, only: EDIT_ACTIONS
   before_action :authenticate_public_request, only: %i[detailed_stats highlights]
   before_action :set_game
-  before_action :require_read, only: %i[index]
+  before_action :require_read, only: %i[index feedback]
   before_action :require_write, only: %i[create update destroy link tablet_capture]
   before_action :set_shot, only: %i[update destroy link]
 
@@ -137,7 +138,38 @@ class GameShotsController < ApplicationController
     render json: GameHighlights.cached(@game, delayed: delayed, cutoff: cutoff)
   end
 
+  # POST games/:id/tablet_feedback  { message:, reply_to?, device? } (fe#560)
+  #
+  # Freitext zur Beta, geht per Mail an die Administration und wird nicht
+  # gespeichert. Erlaubt ist, wer die Schüsse lesen darf, also auch nach dem
+  # Abschluss: Rückmeldungen kommen oft erst nach dem Spiel. Ohne Antwortadresse
+  # nimmt die Mail die des angemeldeten Kontos; beim Sekretariats-Link gibt es
+  # keine, dann bleibt die Rückmeldung anonym.
+  def feedback
+    message = params[:message].to_s.strip
+    if message.blank? || message.length > FEEDBACK_MAX_LENGTH
+      return render json: { message: "Bitte gib eine Rückmeldung mit höchstens #{FEEDBACK_MAX_LENGTH} Zeichen ein." },
+                    status: :unprocessable_entity
+    end
+
+    reply_to = params[:reply_to].to_s.strip.presence
+    if reply_to && !reply_to.match?(URI::MailTo::EMAIL_REGEXP)
+      return render json: { message: 'Die Antwortadresse ist keine gültige E-Mail-Adresse.' },
+                    status: :unprocessable_entity
+    end
+
+    TabletFeedbackMailer.feedback(@game, message, reply_to || current_user&.email.presence,
+                                  feedback_sender, params[:device].to_s.strip.first(300)).deliver_later
+    head :accepted
+  end
+
   private
+
+  def feedback_sender
+    return "#{current_user.full_with_username.strip} (Konto #{current_user.id})" if current_user
+
+    "Sekretariats-Link ##{@secretary_link.id}"
+  end
 
   def set_game
     @game = Game.find(params[:id])
