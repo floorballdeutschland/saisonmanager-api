@@ -647,15 +647,18 @@ class Referee < ApplicationRecord
   def _repoint_course_registrations(master)
     cancelled = RefereeCourseRegistration::CANCELLED_STATUSES
     master_rows = master.referee_course_registrations.index_by(&:referee_course_id)
+    freed_courses = []
     referee_course_registrations.where(referee_course_id: master_rows.keys).find_each do |row|
       master_row = master_rows[row.referee_course_id]
       keep_master = !cancelled.include?(master_row.status) || cancelled.include?(row.status)
       loser = keep_master ? row : master_row
       attrs = { referee_id: nil, updated_at: Time.current }
       attrs.merge!(status: 'cancelled_by_organizer', cancelled_at: Time.current) unless cancelled.include?(loser.status)
+      freed_courses << loser.referee_course if RefereeCourseRegistration::SEAT_STATUSES.include?(loser.status)
       loser.update_columns(attrs)
     end
     referee_course_registrations.update_all(referee_id: master.id)
+    freed_courses.each { |course| RefereeCourseRegistrar.new(course).promote_waitlist }
   end
 
   # Haengt eine Zeile von der Dublette auf den Master um, laesst aber die Zeilen
