@@ -1733,8 +1733,25 @@ class Game < ApplicationRecord
   # `to_i` räumt zugleich einen Ordnungsfehler weg: Als Zeichenkette sortierte
   # '10' vor '9'. Bei `row` ist es zusätzlich nil-sicher (eine frisch angehängte
   # Zeile hat noch keine).
+  def self.event_sort_key(event)
+    [event['period'].to_i, event['time'].to_s.rjust(5, '0'), event['id'].to_i, event['row'].to_i]
+  end
+
+  # Spielstand nach jedem Tor, wie sort_events! ihn rechnen würde, ohne die
+  # Ereignisse anzufassen: { id => [heim, gast] }.
+  def goal_score_history
+    home_score = 0
+    guest_score = 0
+    (events || []).sort_by { |e| Game.event_sort_key(e) }.each_with_object({}) do |e, history|
+      next unless e['event_type'] == 'goal'
+
+      e['event_team'] == 'home' ? home_score += 1 : guest_score += 1
+      history[e['id'].to_i] = [home_score, guest_score]
+    end
+  end
+
   def sort_events!
-    events.sort_by! { |e| [e['period'].to_i, e['time'].to_s.rjust(5, '0'), e['id'].to_i, e['row'].to_i] }
+    events.sort_by! { |e| Game.event_sort_key(e) }
     home_score = 0
     guest_score = 0
 
