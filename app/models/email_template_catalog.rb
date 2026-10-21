@@ -757,23 +757,6 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'organisation', description: 'Name der antragstellenden Organisation' },
         { key: 'decision_note', description: 'Begründung der Ablehnung' }
       ]
-    },
-    'TabletFeedbackMailer#feedback' => {
-      mailer_class: 'TabletFeedbackMailer',
-      action_name: 'feedback',
-      description: 'Rückmeldung zur Beta des Tabletmodus, abgeschickt aus der Schusserfassung im ' \
-                   'Spielbericht. Geht an das Postfach der Administration (Standard it@floorball.de, ' \
-                   'über die Umgebungsvariable TABLET_FEEDBACK_NOTIFY_EMAIL überschreibbar). Reply-To ' \
-                   'ist die angegebene Antwortadresse, sonst die des angemeldeten Kontos.',
-      default_subject: 'Tabletmodus-Rückmeldung – Spiel {{game_number}} {{home_team}} – {{guest_team}}',
-      default_from: nil,
-      # Reply-To wird zur Laufzeit auf die Adresse der schreibenden Person gesetzt.
-      default_reply_to: nil,
-      placeholders: [
-        { key: 'game_number', description: 'Spielnummer' },
-        { key: 'home_team', description: 'Name der Heimmannschaft' },
-        { key: 'guest_team', description: 'Name der Gastmannschaft' }
-      ]
     }
   }.freeze
 

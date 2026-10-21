@@ -461,16 +461,44 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
-  # Gezählt wird vor der Anmeldung, also auch mit angehängtem `.json`
-  # (rack_attack.rb, Topf 'tablet-feedback/ip').
-  test 'Rückmeldung: nach zehn Anfragen in der Stunde wird gebremst' do
+  # Gezählt wird vor der Anmeldung (rack_attack.rb, Topf 'tablet-feedback/ip').
+  # Alle Schreibweisen, die der Router in die Action lässt, zählen in denselben
+  # Topf: mit und ohne Endung, fremde Endung, Schrägstrich am Ende.
+  test 'Rückmeldung: nach zehn Anfragen in der Stunde wird gebremst, gleich in welcher Schreibweise' do
+    basis = "/api/v2/games/#{@game.id}/tablet_feedback"
+    varianten = ["#{basis}.json", basis, "#{basis}/", "#{basis}.xml", "#{basis}.txt"]
     travel_to Time.zone.now.beginning_of_hour do
-      10.times { post "/api/v2/games/#{@game.id}/tablet_feedback.json", params: { message: 'x' }, as: :json }
+      10.times { |i| post varianten[i % varianten.size], params: { message: 'x' }, as: :json }
       assert_response :unauthorized
 
-      post "/api/v2/games/#{@game.id}/tablet_feedback", params: { message: 'x' }, as: :json
-      assert_response :too_many_requests
+      varianten.each do |pfad|
+        post pfad, params: { message: 'x' }, as: :json
+        assert_response :too_many_requests, pfad
+      end
     end
+  end
+
+  test 'Rückmeldung: angemeldet ohne Recht am Spiel ist 403' do
+    login_as(create(:user, :vm, club_id: create(:club).id))
+
+    assert_no_emails do
+      post "/api/v2/games/#{@game.id}/tablet_feedback.json", params: { message: 'x' }, as: :json
+    end
+    assert_response :forbidden
+  end
+
+  # Kein pflegbarer Body: Eine Vorlage in der Verwaltung darf weder den Freitext
+  # verdrängen noch das Reply-To umbiegen (Review api#832).
+  test 'Rückmeldung: gepflegte Mailvorlagen greifen nicht' do
+    assert_nil EmailTemplateCatalog.find('TabletFeedbackMailer', 'feedback')
+
+    assert_emails 1 do
+      post "/api/v2/games/#{@game.id}/tablet_feedback.json",
+           params: { message: 'Knöpfe zu klein', reply_to: 'erfasser@example.de' }, headers: token_header, as: :json
+    end
+    mail = ActionMailer::Base.deliveries.last
+    assert_equal ['erfasser@example.de'], mail.reply_to
+    assert_includes mail.subject, 'Tabletmodus-Rückmeldung'
   end
 
   private

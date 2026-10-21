@@ -74,10 +74,11 @@ module Rack
 
     # Rückmeldung zum Tabletmodus (fe#560). Braucht zwar Login oder
     # Sekretariats-Link, schreibt aber in ein festes Postfach; ein Link, der in
-    # falsche Hände gerät, soll es nicht fluten können. Regex statt Vergleich,
-    # weil das Frontend mit `.json` anfragt.
+    # falsche Hände gerät, soll es nicht fluten können. Offen gegen Endung und
+    # Schrägstrich am Ende: Der Router nimmt jedes `(.:format)` und räumt `/`
+    # weg, ein exakter Vergleich liesse `…/tablet_feedback.xml` ungezählt durch.
     throttle('tablet-feedback/ip', limit: 10, period: 1.hour) do |req|
-      req.ip if req.post? && req.path.match?(%r{\A/api/v2/games/\d+/tablet_feedback(\.json)?\z})
+      req.ip if req.post? && req.path.match?(%r{\A/+api/+v2/+games/+[^/]+/+tablet_feedback(\.[^/]*)?/*\z})
     end
 
     # Abholen des genehmigten Keys über den Einmal-Link. Bewusst ein eigener,

@@ -11,7 +11,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Neu
 
-- **Rückmeldung zur Beta des Tabletmodus**: Wer die Schüsse eines Spiels erfassen darf (Login oder Sekretariats-Link), kann über `POST games/:id/tablet_feedback` einen Freitext `message` (höchstens 4000 Zeichen) schicken, optional mit Antwortadresse `reply_to` und einer Gerätebeschreibung `device`. Die Rückmeldung wird nicht gespeichert, sondern geht als Mail an it@floorball.de (über `TABLET_FEEDBACK_NOTIFY_EMAIL` änderbar), mit Spiel, Absender, Zahl der erfassten Schüsse und Link zur Spielseite. Reply-To ist die angegebene Adresse, sonst die des angemeldeten Kontos. Erlaubt auch nach dem Abschluss des Spielberichts; gedrosselt auf zehn Anfragen pro Stunde und Adresse. Neue Mailvorlage `TabletFeedbackMailer#feedback`.
+- **Rückmeldung zur Beta des Tabletmodus**: Wer die Schüsse eines Spiels erfassen darf (Login oder Sekretariats-Link), kann über `POST games/:id/tablet_feedback` einen Freitext `message` (höchstens 4000 Zeichen) schicken, optional mit Antwortadresse `reply_to` und einer Gerätebeschreibung `device`. Die Rückmeldung wird nicht gespeichert, sondern geht als Mail an it@floorball.de (über `TABLET_FEEDBACK_NOTIFY_EMAIL` änderbar), mit Spiel, Absender, Zahl der erfassten Schüsse und Link zur Spielseite. Reply-To ist die angegebene Adresse, sonst die des angemeldeten Kontos. Erlaubt auch nach dem Abschluss des Spielberichts; gedrosselt auf zehn Anfragen pro Stunde und Adresse. Die Mail hat bewusst keine pflegbare Vorlage, damit ein gepflegter Text den Freitext nicht verdrängt.
 
 ## [1.132.0] - 2026-10-20
 
