@@ -360,12 +360,23 @@ Rails.application.routes.draw do
         resource :referee_course_settings, only: %i[show update]
         resources :referee_courses, only: %i[index show create update destroy] do
           get :options, on: :collection
+          post :submit_results, on: :member
+          get :participants, on: :member
           resources :fields, controller: 'referee_course_fields', only: %i[create update destroy]
           resources :registrations, controller: 'referee_course_registrations',
                                     only: %i[index create update destroy]
           resources :leads, controller: 'referee_course_leads', only: %i[create update destroy]
         end
         resources :referee_course_field_templates, only: %i[index create update destroy]
+        resources :referee_course_billing_exports, only: %i[index create] do
+          get :preview, on: :collection
+          get :download, on: :member
+        end
+        resources :referee_course_licensing, only: %i[index update] do
+          post :approve, on: :member
+          post :reject, on: :member
+          post :approve_many, on: :collection
+        end
         resources :referee_course_imports, only: %i[index show create destroy] do
           post :submit, on: :member
         end
@@ -539,6 +550,8 @@ Rails.application.routes.draw do
       get    'club/referee_courses/referees',                        to: 'club_referee_courses#referees'
       post   'club/referee_courses/:id/registrations',               to: 'club_referee_courses#register'
       delete 'club/referee_courses/registrations/:registration_id',  to: 'club_referee_courses#cancel'
+      post   'club/referee_courses/registrations/:registration_id/confirm', to: 'club_referee_courses#confirm'
+      post   'club/referee_courses/registrations/:registration_id/decline', to: 'club_referee_courses#decline'
       get    'public/referee_courses',                    to: 'public_referee_courses#index'
       get    'public/referee_courses/clubs',              to: 'public_referee_courses#clubs'
       get    'public/referee_courses/:id',                to: 'public_referee_courses#show'

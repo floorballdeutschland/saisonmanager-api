@@ -6,12 +6,13 @@
 # Bestandsschiri zugeordnet ist (Konto, Lizenznummer+Geburtsdatum oder Wahl der
 # RSK).
 class RefereeCourseRegistration < ApplicationRecord
-  # pending_email / pending_guardian: wartet auf Bestaetigung, haelt keinen Platz.
-  STATUSES = %w[pending_email pending_guardian registered waitlisted
-                cancelled_by_participant cancelled_by_organizer attended no_show].freeze
+  # pending_email / pending_guardian / pending_club: wartet auf Bestaetigung
+  # (Adresse, Erziehungsberechtigte, zahlender Verein), haelt keinen Platz.
+  STATUSES = %w[pending_email pending_guardian pending_club registered waitlisted
+                cancelled_by_participant cancelled_by_organizer declined_by_club attended no_show].freeze
   # Diese Zustaende belegen einen Platz.
   SEAT_STATUSES = %w[registered attended no_show].freeze
-  CANCELLED_STATUSES = %w[cancelled_by_participant cancelled_by_organizer].freeze
+  CANCELLED_STATUSES = %w[cancelled_by_participant cancelled_by_organizer declined_by_club].freeze
   # Diese Zeilen sperren keine weitere Anmeldung derselben Person: abgemeldete
   # und nie bestaetigte (pending_email). Sonst koennte eine liegengebliebene
   # oder von Fremden ausgeloeste Anmeldung die Person wochenlang aussperren.
@@ -27,6 +28,7 @@ class RefereeCourseRegistration < ApplicationRecord
   belongs_to :desired_license_level, class_name: 'RefereeLicenseLevel', optional: true
   belongs_to :awarded_license_level, class_name: 'RefereeLicenseLevel', optional: true
   belongs_to :registered_by_user, class_name: 'User', optional: true
+  belongs_to :club_confirmed_by_user, class_name: 'User', optional: true
 
   # Von der Verwaltung von Hand eingetragen: Pflicht-Zusatzfelder duerfen dann
   # leer bleiben, die RSK kennt die Antworten oft nicht.
@@ -72,9 +74,13 @@ class RefereeCourseRegistration < ApplicationRecord
   end
 
   # Abmeldung nach der Abmeldefrist: Die Gebuehr bleibt faellig.
+  # Abmeldung nach der Frist, fuer die die Gebuehr faellig bleibt: nur eine
+  # eigene Abmeldung (oder durch den eigenen Verein), und nur wenn die
+  # Anmeldung einen Platz hielt. Warteliste und Absage durch die
+  # Veranstalter kosten nichts.
   def late_cancellation?
-    cancelled? && cancelled_at.present? && referee_course.cancellation_deadline.present? &&
-      cancelled_at > referee_course.cancellation_deadline
+    status == 'cancelled_by_participant' && held_seat_at_cancel && cancelled_at.present? &&
+      referee_course.cancellation_deadline.present? && cancelled_at > referee_course.cancellation_deadline
   end
 
   def age_on(date)
@@ -134,14 +140,13 @@ class RefereeCourseRegistration < ApplicationRecord
     errors.add(:base, 'Diese Person ist bereits angemeldet') if scope.exists?
   end
 
+  # Nur die angestrebte Stufe ist an den Kurs gebunden. Die erteilte legt FD
+  # frei fest (Admin::RefereeCourseLicensingController), auch abweichend.
   def license_levels_belong_to_course
-    allowed = Array(referee_course&.license_level_ids)
-    { desired_license_level_id: desired_license_level_id,
-      awarded_license_level_id: awarded_license_level_id }.each do |attr, value|
-      next if value.nil? || allowed.include?(value)
+    return if desired_license_level_id.nil?
+    return if Array(referee_course&.license_level_ids).include?(desired_license_level_id)
 
-      errors.add(attr, 'gehört nicht zu den Lizenzstufen des Kurses')
-    end
+    errors.add(:desired_license_level_id, 'gehört nicht zu den Lizenzstufen des Kurses')
   end
 
   def custom_answers_match_fields
