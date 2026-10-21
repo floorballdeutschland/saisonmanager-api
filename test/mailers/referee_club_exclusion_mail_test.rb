@@ -1,6 +1,6 @@
 require 'test_helper'
 
-# Anträge zur Vereins-Ausschlussliste entscheidet die Ansetzung von Floorball
+# Anträge zur Vereins-Ausschlussliste entscheidet die RSK von Floorball
 # Deutschland. Die Mails dürfen deshalb nicht mehr beim Landesverband landen,
 # der sie in keiner Maske sieht.
 class RefereeClubExclusionMailTest < ActionMailer::TestCase
@@ -12,18 +12,18 @@ class RefereeClubExclusionMailTest < ActionMailer::TestCase
                                 email: 'schiri@example.de', club: @club)
   end
 
-  test 'Antrag geht an das zentrale Ansetzungs-Postfach und nicht an den Landesverband' do
+  test 'Antrag geht an das RSK-Postfach von FD und nicht an den Landesverband' do
     mail = RefereeMailer.club_exclusion_requested(exclusion_request)
 
     empfaenger = Array(mail.to) + Array(mail.cc) + Array(mail.bcc)
-    assert_equal ['sr-ansetzungen@floorball.de'], empfaenger
+    assert_equal ['rsk@floorball.de'], empfaenger
   end
 
-  test 'Rueckfragen zum Antrag gehen an den Schiri, ersatzweise an das zentrale Postfach' do
+  test 'Rueckfragen zum Antrag gehen an den Schiri, ersatzweise an das RSK-Postfach' do
     assert_equal ['schiri@example.de'], RefereeMailer.club_exclusion_requested(exclusion_request).reply_to
 
     @referee.update!(email: nil)
-    assert_equal ['sr-ansetzungen@floorball.de'], RefereeMailer.club_exclusion_requested(exclusion_request).reply_to
+    assert_equal ['rsk@floorball.de'], RefereeMailer.club_exclusion_requested(exclusion_request).reply_to
   end
 
   test 'Entscheidung antwortet an die entscheidende Stelle statt an den Landesverband' do
@@ -32,7 +32,7 @@ class RefereeClubExclusionMailTest < ActionMailer::TestCase
     mail = RefereeMailer.club_exclusion_decision(request)
 
     assert_equal ['schiri@example.de'], mail.to
-    assert_equal ['sr-ansetzungen@floorball.de'], mail.reply_to
+    assert_equal ['rsk@floorball.de'], mail.reply_to
   end
 
   private

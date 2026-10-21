@@ -345,11 +345,11 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       mailer_class: 'RefereeMailer',
       action_name: 'club_exclusion_requested',
       description: 'Antrag eines Schiris auf Aufnahme oder Streichung eines Vereins in seiner ' \
-                   'Ausschlussliste. Geht immer an das zentrale Ansetzungs-Postfach von Floorball ' \
-                   'Deutschland, weil dort über die Anträge entschieden wird.',
+                   'Ausschlussliste. Geht immer an das RSK-Postfach von Floorball Deutschland, ' \
+                   'weil dort über die Anträge entschieden wird.',
       default_subject: 'Antrag Vereins-Ausschluss – {{referee_name}}',
       default_from: nil,
-      # Reply-To wird zur Laufzeit gesetzt (Schiri bzw. zentrales Postfach).
+      # Reply-To wird zur Laufzeit gesetzt (Schiri bzw. RSK-Postfach).
       default_reply_to: nil,
       placeholders: [
         { key: 'referee_name', description: 'Vor- und Nachname des Schiris' },
@@ -360,10 +360,10 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
     'RefereeMailer#club_exclusion_decision' => {
       mailer_class: 'RefereeMailer',
       action_name: 'club_exclusion_decision',
-      description: 'Entscheidung der Ansetzung über einen Antrag zur Vereins-Ausschlussliste.',
+      description: 'Entscheidung der RSK über einen Antrag zur Vereins-Ausschlussliste.',
       default_subject: 'Vereins-Ausschluss {{decision}} – {{club_name}}',
       default_from: nil,
-      # Reply-To wird zur Laufzeit gesetzt (zentrales Ansetzungs-Postfach).
+      # Reply-To wird zur Laufzeit gesetzt (RSK-Postfach).
       default_reply_to: nil,
       placeholders: [
         { key: 'first_name', description: 'Vorname des Empfängers (für die Anrede)' },
