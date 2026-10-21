@@ -101,7 +101,67 @@ class ClubsController < ApplicationController
       # zwischenzeitlich geändertes Recht steht im localStorage des Browsers
       # noch alt. Vorbild: admin/clubs/role_assignable.
       item[:manage_players] = club.user_permissions(current_user).include?(:create_player)
+      # Dieselbe Pruefung wie in `vm_license_summary`, aus den Rechten von
+      # jetzt: Das Frontend fragt die Uebersicht nur hier an. Aus `club_ids`
+      # im localStorage stuende sie nach einem Rollenentzug alt, und die 403
+      # leitet der ErrorInterceptor auf die Startseite um.
+      item[:license_summary] = may_read_license_summary?(ph, club)
       item
+    }
+  end
+
+  # Zahl der Lizenzen eines Vereins je Mannschaft und Status, fuer eine
+  # waehlbare Saison. Bisher musste der Verein dafuer die Antragslisten seiner
+  # Mannschaften durchzaehlen, und fuer fruehere Saisons kam er gar nicht mehr
+  # an sie heran: `vm_clubs_and_teams` kennt nur die laufende.
+  #
+  # Nur VM des Vereins und Admin. Die Verbandssicht hat dafuer die
+  # Lizenzverwaltung (Admin::LicensesController), die zusaetzlich je Spieler
+  # zaehlt.
+  #
+  # Gezaehlt wird jeder Lizenzeintrag einer Mannschaft der Saison genau einmal:
+  # `approved` heisst, die History kennt „erteilt" (gleiche Lesart wie die
+  # Lizenzzahl der Verbandsuebersicht, auch spaeter geloeschte oder durch einen
+  # Transfer ungueltige), die uebrigen Zahlen gehen nach dem Status ohne Sperre.
+  # Bei einer Spielgemeinschaft stehen die Lizenzen der Partnervereine mit in
+  # der Zeile, wie in der Antragsliste der Mannschaft.
+  def vm_license_summary
+    club = Club.find(params[:id])
+    ph = current_user.permission_hash
+    unless may_read_license_summary?(ph, club)
+      return render json: { message: 'Keine Berechtigung.' }, status: :forbidden
+    end
+
+    club_teams = Team.where(club_id: club.id).or(Team.where('syndicate_clubs && ARRAY[?]::integer[]', [club.id]))
+    # `leagues.season_id` ist varchar, daher als Text verglichen und in Ruby
+    # sortiert.
+    season_ids = club_teams.joins(:league).distinct.pluck('leagues.season_id').compact.map(&:to_i)
+    season_id = (params[:season_id].presence || Setting.current_season_id).to_i
+    season_names = Setting.seasons.to_h { |s| [s[:id], s[:name]] }
+
+    teams = club_teams.where(league_id: League.where(season_id: season_id.to_s).select(:id))
+                      .includes(:league).order(:name).to_a
+    players_by_team = Player.find_by_team_ids(teams.map(&:id))
+
+    rows = teams.map do |team|
+      # `uniq` ueber die Lizenz-ID: Alte Spieler-Merges haben dieselbe Lizenz
+      # teils doppelt hinterlassen (siehe PlayersController#handle_license_request),
+      # sie ist aber nur einmal erteilt worden. Ein Eintrag ohne ID zaehlt.
+      licenses = players_by_team[team.id].flat_map do |player|
+        Array(player.licenses).select { |lic| lic.is_a?(Hash) && lic['team_id'].to_i == team.id }
+      end
+      licenses = licenses.uniq { |lic| lic['id'].presence || lic.object_id }
+      { id: team.id, name: team.name, league_name: team.league&.name, counts: license_counts(licenses) }
+    end
+
+    render json: {
+      club: { id: club.id, name: club.name },
+      season_id: season_id,
+      seasons: (season_ids | [Setting.current_season_id.to_i]).sort.reverse.map do |id|
+        { id: id, name: season_names[id] || id.to_s }
+      end,
+      teams: rows,
+      totals: LICENSE_COUNT_KEYS.index_with { |key| rows.sum { |r| r[:counts][key] } }
     }
   end
 
@@ -451,6 +511,32 @@ class ClubsController < ApplicationController
   end
 
   private
+
+  LICENSE_COUNT_KEYS = %i[approved requested denied withdrawn other total].freeze
+
+  def may_read_license_summary?(ph, club)
+    ph[:admin].present? || ph[:vm].to_a.include?(club.id)
+  end
+
+  # Jede Lizenz in genau einer Zahl, `total` ist ihre Summe.
+  def license_counts(licenses)
+    counts = LICENSE_COUNT_KEYS.index_with { 0 }
+    licenses.each do |lic|
+      key = if LicenseEffectiveStatus.ever_approved?(lic)
+              :approved
+            else
+              case LicenseEffectiveStatus.base_status_id(lic)
+              when License::REQUESTED then :requested
+              when License::DENIED then :denied
+              when License::WITHDRAWN then :withdrawn
+              else :other
+              end
+            end
+      counts[key] += 1
+      counts[:total] += 1
+    end
+    counts
+  end
 
   # Der Token wird gelesen, aber nicht erzwungen (`set_secretary_link_if_present`
   # statt `authenticate_with_secretary_token_or_user`): Der

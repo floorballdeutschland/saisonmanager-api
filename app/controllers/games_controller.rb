@@ -1,5 +1,6 @@
 class GamesController < ApplicationController
   include SecretaryTokenAuthenticatable
+  include GameReportPermissions
   include IcalRenderable
 
   SECRETARY_ACTIONS = %i[
@@ -303,10 +304,17 @@ class GamesController < ApplicationController
     allowed = can_edit_lineup_of?(game)
 
     if allowed
+      side = params[:side]
+      # Wie copy_lineup_from_last_game: Eine unbekannte Seite legte bisher einen
+      # eigenen Schluessel in game.players an, den weder Kader noch Kadergrenze
+      # kennen.
+      unless LINEUP_SIDES.include?(side)
+        return render json: { message: 'Seite fehlt oder ist unbekannt (erlaubt: Heim oder Gast).' },
+                      status: :unprocessable_entity
+      end
+
       # ensure we have the hash set
       game.players ||= {}
-
-      side = params[:side]
 
       # ensure we have the hash set
       game.players[side] ||= []
@@ -314,6 +322,8 @@ class GamesController < ApplicationController
       # check if we have a entry for that player
       if game.players[side].map { |p| p['player_id'] }.include?(params[:player_id].to_i)
         render json: { message: 'Spieler bereits vorhanden' }, status: :unprocessable_entity
+      elsif (error = lineup_full_error(game, side))
+        render json: { message: error }, status: :unprocessable_entity
       elsif (error = lineup_license_missing_error(game, player, side))
         render json: { message: error }, status: :unprocessable_entity
       else
@@ -366,6 +376,8 @@ class GamesController < ApplicationController
   # abgewiesen, jede andere Lizenzlage ergibt eine Warnung. Was im Zielspiel
   # schon steht (Person oder Nummer), bleibt unangetastet. Freitext-Einträge
   # ohne player_id kommen nicht mit, ihre Lizenz lässt sich nicht prüfen.
+  # Ist die Kadergrenze der Liga erreicht (api#784), wird der Rest mit „Kader
+  # voll" übersprungen.
   def copy_lineup_from_last_game
     game = Game.find(params[:id])
     side = params[:side]
@@ -397,6 +409,7 @@ class GamesController < ApplicationController
     taken_players = game.players[side].filter_map { |p| p['player_id'].presence&.to_i }
     taken_numbers = game.players[side].map { |p| p['trikot_number'].to_i }
     mask_player_ids = lineup_mask_player_ids(team_id)
+    max_players = game.league.max_lineup_players
 
     added = []
     skipped = []
@@ -409,7 +422,8 @@ class GamesController < ApplicationController
         elsif taken_players.include?(player.id) then 'bereits aufgestellt'
         elsif taken_numbers.include?(number) then "Nummer #{number} bereits vergeben"
         elsif lineup_license_missing_error(game, player, side) then 'kein Lizenzantrag für diese Mannschaft'
-        else lineup_mask_skip_reason(player, team_id, mask_player_ids)
+        elsif (mask_reason = lineup_mask_skip_reason(player, team_id, mask_player_ids)) then mask_reason
+        elsif max_players && game.players[side].size >= max_players then "Kader voll (höchstens #{max_players})"
         end
 
       if reason
@@ -721,11 +735,7 @@ class GamesController < ApplicationController
   def add_event
     game = Game.find(params[:id])
 
-    allowed = if !admin_or_scoped_sbk?(game) && game.match_record_closed?
-                false
-              else
-                can_edit_game?(game)
-              end
+    allowed = can_write_events?(game)
 
     if allowed
       if (error = event_input_error)
@@ -777,6 +787,7 @@ class GamesController < ApplicationController
       game.record_updated_by = author_user_id
 
       if game.save
+        GameShotLinker.link_new_goal(game, item) if item[:event_type] == 'goal'
         render json: game.formatted_events
       else
         render json: { message: game.errors }, status: :unprocessable_entity
@@ -789,11 +800,7 @@ class GamesController < ApplicationController
   def remove_event
     game = Game.find(params[:id])
 
-    allowed = if !admin_or_scoped_sbk?(game) && game.match_record_closed?
-                false
-              else
-                can_edit_game?(game)
-              end
+    allowed = can_write_events?(game)
 
     if allowed
       # ensure we have the hash set
@@ -811,6 +818,9 @@ class GamesController < ApplicationController
       game.record_updated_by = author_user_id
 
       if game.save
+        # Gelöscht wird das Tor, nicht der Schuss: Die Verknüpfung fällt weg,
+        # der Schuss bleibt in der Statistik.
+        GameShotLinker.unlink_event(game, params[:event_id])
         render json: game.formatted_events
       else
         render json: { message: game.errors }, status: :unprocessable_entity
@@ -822,11 +832,7 @@ class GamesController < ApplicationController
 
   def update_event
     game = Game.find(params[:id])
-    allowed = if !admin_or_scoped_sbk?(game) && game.match_record_closed?
-                false
-              else
-                can_edit_game?(game)
-              end
+    allowed = can_write_events?(game)
 
     if allowed
       game.events ||= []
@@ -837,6 +843,7 @@ class GamesController < ApplicationController
         return render json: { message: error }, status: :unprocessable_entity
       end
 
+      alt_team = event['event_team']
       event['time'] = params[:time]
       event['period'] = params[:period]
       event['home_goals'] = params[:home_goals]
@@ -876,6 +883,9 @@ class GamesController < ApplicationController
       game.record_updated_by = author_user_id
 
       if game.save
+        # Ist aus dem Tor eine Strafe geworden oder hat es das Team gewechselt,
+        # passt der verknüpfte Schuss nicht mehr.
+        GameShotLinker.unlink_event(game, event['id']) if event['event_type'] != 'goal' || event['event_team'] != alt_team
         render json: game.formatted_events
       else
         render json: { message: game.errors }, status: :unprocessable_entity
@@ -1050,6 +1060,9 @@ class GamesController < ApplicationController
         end
 
         if params[:game_status] == 'match_record_closed'
+          signatures_error = _signatures_incomplete_error(game) unless sbk
+          return render json: { message: signatures_error }, status: :unprocessable_entity if signatures_error
+
           checklist_error = _checklist_incomplete_error(game)
           return render json: { message: checklist_error }, status: :unprocessable_entity if checklist_error
         end
@@ -1161,6 +1174,27 @@ class GamesController < ApplicationController
     else
       "Es muss mindestens Schiedsrichter 1 eingetragen sein, bevor #{action} werden kann."
     end
+  end
+
+  # Beim Abschließen (match_record_closed). Nach dem Abschluss zeigt die Maske
+  # die Haken nicht mehr, und der Verein kann den Bericht nicht selbst wieder
+  # öffnen: Ein vergessener Haken war dann nicht mehr nachzuholen.
+  #
+  # Fehlt eine Unterschrift wirklich (verweigert, Person schon abgereist),
+  # schließt die SBK des Spielbetriebs (oder ein Admin) den Bericht ab: Für sie
+  # entfällt nur diese Prüfung, die Checkliste und alle Folgen des Abschlusses
+  # (Erinnerung an den Bericht, Checklistenmails samt Widerspruchsfrist der
+  # Gastmannschaft) laufen wie sonst. Die Haken setzt sie dafür nicht selbst,
+  # das wäre die Behauptung einer Unterschrift, die es nicht gibt. Der Weg über
+  # `finalized` wäre kein Ersatz: Er überspringt die Checkliste und die Mails.
+  # Der Sekretariats-Link hat keine Rolle und wird immer geprüft.
+  def _signatures_incomplete_error(game)
+    missing = game.missing_signature_labels
+    return nil if missing.empty?
+
+    'Auf dem Spielbericht fehlen noch Unterschriften: ' \
+      "#{missing.join(', ')}. Erst wenn alle Unterschriften abgehakt sind, " \
+      'kann der Spielbericht abgeschlossen werden.'
   end
 
   def _checklist_incomplete_error(game)
@@ -1345,8 +1379,9 @@ class GamesController < ApplicationController
     # (Papierbericht) – dann ist auch keine 24h-Frist zu melden.
     return unless game.report_form_workflow_enabled?
 
-    has_spielausschluss = (game.events || []).any? { |e| e['penalty_id'].to_s == '5' }
-    return unless game.special_event? || has_spielausschluss
+    # Volle Matchstrafe, technische Matchstrafe oder besonderes Ereignis,
+    # erkannt über das Mapping der Strafe (api#789).
+    return unless game.report_form_required?
 
     assignment = game.referee_assignment
     return unless assignment
@@ -1381,19 +1416,6 @@ class GamesController < ApplicationController
     }
   end
 
-  # Rolle und Token sind additiv, nicht alternativ (#428). Vorher entschied ein
-  # gesetzter `@secretary_link` allein: Ein Vereinsmanager mit einem gültigen
-  # Hallen-Token in der Registerkarte verlor damit seine normalen Rechte an jedem
-  # Spiel AUSSERHALB der vom Link abgedeckten Spieltage. Weil `show` es umgekehrt
-  # hielt (dort gewann der Login), zeigte die Oberfläche die Bedienelemente der
-  # eigenen Rolle, und der Schreibweg dahinter sagte nein.
-  def can_edit_game?(game)
-    return true if secretary_token_permits_game?(game)
-    return false unless current_user
-
-    game.can_edit_lineup?(current_user)
-  end
-
   # Kader, Kapitän, Betreuer, Starting Six und Auszeichnungen: nach dem
   # Abschluss des Spielberichts nur noch Admin und SBK des Spielbetriebs, wie bei
   # den Ereignissen (add_event & Co.). Ohne die Sperre schrieb eine Kadermaske,
@@ -1404,21 +1426,6 @@ class GamesController < ApplicationController
     return false if game.match_record_closed? && !admin_or_scoped_sbk?(game)
 
     can_edit_game?(game)
-  end
-
-  # Admin oder SBK *des Spielbetriebs dieses Spiels*. Entscheidet, wer die
-  # Sperre bei abgeschlossenem Spielbericht übergehen und ihn wieder öffnen
-  # darf. Bewusst auf den Spielbetrieb gescopt (#214): sonst hebelt eine
-  # fachfremde SBK-Rolle die Sperre aus, sobald der Nutzer über eine andere
-  # Rolle (VM/TM einer beteiligten Mannschaft) ohnehin Zugriff auf das Spiel
-  # hat. Muster übernommen aus reopen_game, das das bereits richtig machte.
-  def admin_or_scoped_sbk?(game)
-    ph = current_user&.permission_hash || {}
-    gos = [ph[:admin], ph[:sbk]].flatten.compact.map(&:to_i)
-    return true if gos.include?(0)
-
-    go_id = game.game_day&.league&.game_operation_id
-    go_id.present? && gos.include?(go_id.to_i)
   end
 
   # Admin/SBK des Spielbetriebs, VM/TM der beteiligten Mannschaften (inkl.
@@ -1636,6 +1643,17 @@ class GamesController < ApplicationController
   # Stellen aufgefüllt, damit "9:00" vor "10:00" sortiert.
   def lineup_source_sort_key(game)
     [game.game_date || Date.new(1), game.start_time.to_s.rjust(5, '0'), game.id]
+  end
+
+  # Kadergroesse (api#784): Grossfeld 20, Kleinfeld 14 Spieler je Mannschaft,
+  # fuer alle Rollen. Freitext-Eintraege ohne player_id zaehlen mit, Trainer
+  # und Betreuer stehen nicht in game.players und zaehlen nicht.
+  def lineup_full_error(game, side)
+    max_players = game.league.max_lineup_players
+    return nil if max_players.nil? || game.players[side].size < max_players
+
+    "Kader voll: Im #{game.league.effective_field_size == 'GF' ? 'Großfeld' : 'Kleinfeld'} " \
+      "sind höchstens #{max_players} Spieler erlaubt."
   end
 
   # Ohne jeden Lizenzeintrag fuer die aufstellende Mannschaft wird nicht mehr

@@ -10,9 +10,18 @@ module Admin
     # zurückgenommener Antrag war danach nur noch über die Lizenzliste der
     # Mannschaft erreichbar, die der Verband nicht im Menü hat.
     #
+    # Seit #787 auch gelöscht, ungültig wg. Transfer und ignoriert: Wenn jede
+    # beantragte Lizenz eine Gebühr auslöst, muss der Verband auch die später
+    # ungültigen sehen, filtern und ausführen können. Gesperrt braucht keinen
+    # eigenen Eintrag, die Sperre setzt den Status einer erteilten oder
+    # beantragten Lizenz.
+    #
     # Die Kaderlisten bleiben bei der Vorgabe: Dort ist ein abgelehnter Antrag
     # kein Teil der Mannschaft.
-    LISTED_STATUSES = [License::APPROVED, License::REQUESTED, License::DENIED, License::WITHDRAWN].freeze
+    LISTED_STATUSES = [
+      License::APPROVED, License::REQUESTED, License::DENIED, License::WITHDRAWN,
+      License::DELETED, License::TRANSFER, License::IGNORED
+    ].freeze
 
     def index
       ph = current_user.permission_hash
@@ -73,7 +82,7 @@ module Admin
       # ohnehin auf die abgefragte Saison ein.
       licenses_by_league = League.licenses_for(leagues, team_hash: :light, with_other_licenses: false,
                                                with_release_dates: false, statuses: LISTED_STATUSES,
-                                               only_current_licenses: false)
+                                               only_current_licenses: false, all_team_licenses: true)
 
       # Pre-load all license documents for players in these leagues (grouped by
       # [player_id, doc_type] – Dokumente gelten pro Spieler, saisonübergreifend)
@@ -172,6 +181,11 @@ module Admin
               reactivation:         License.reactivation?(lic),
               requested_at:         player_data[:team_license][:requested_at],
               approved_at:          player_data[:team_license][:approved_at],
+              # Letzte Statusänderung samt Grund (#787); die Person setzt
+              # `annotate_status_changers!` unten in einem Rutsch ein.
+              status_changed_at:    player_data[:team_license][:status_changed_at],
+              status_changed_by_id: player_data[:team_license][:status_changed_by],
+              status_reason:        player_data[:team_license][:status_reason],
               # Datum der Vereins-Freigabe (genehmigter Freigabe-Antrag), leer
               # bei Spielern, die keine brauchten.
               released_at:          player_data[:team_license][:released_at],
@@ -183,10 +197,19 @@ module Admin
         end
       end
 
+      annotate_status_changers!(result)
       render json: result
     end
 
     private
+
+    # Name der Person, die den Status zuletzt geändert hat, mit einer Abfrage
+    # für die ganze Liste statt einer je Zeile.
+    def annotate_status_changers!(rows)
+      ids = rows.filter_map { |r| r[:status_changed_by_id] }.uniq
+      names = User.where(id: ids).to_h { |u| [u.id, u.fullname.strip.presence || u.user_name] }
+      rows.each { |r| r[:status_changed_by_name] = names[r[:status_changed_by_id]] }
+    end
 
     # Wie viele Lizenzen ein Spieler in dieser Saison hat: erteilte und noch
     # offene Antraege, getrennt gezaehlt. Landesverbaende genehmigen je Spieler
@@ -254,18 +277,10 @@ module Admin
       team_league_id_map.key?(license['team_id'].to_i)
     end
 
-    # Erteilt ist eine Lizenz, wenn ihre History den Status „erteilt" kennt.
-    # Der heutige Status genuegt nicht: Eine gesperrte, durch einen Transfer
-    # ungueltig gewordene oder geloeschte Lizenz traegt ihn nicht mehr, der
-    # Verband hat sie aber erteilt und sie hat eine Gebuehr ausgeloest.
-    #
-    # Die History reicht als alleinige Quelle: Auf Produktion gibt es keine
-    # Lizenz ohne History-Eintrag (Zaehlung vom 21.09.2026 ueber alle 164.048
-    # Lizenzen, #713).
+    # Dieselbe Lesart wie die Lizenzuebersicht des Vereins
+    # (ClubsController#vm_license_summary), daher im gemeinsamen Modul.
     def ever_approved?(license)
-      Array(license['history']).any? do |entry|
-        entry.is_a?(Hash) && entry['license_status_id'].to_i == License::APPROVED
-      end
+      LicenseEffectiveStatus.ever_approved?(license)
     end
 
     # Haupt-/Zusatzlizenz (Anzeige-Konzept): die Lizenz in der höchsten Liga ist
@@ -279,9 +294,9 @@ module Admin
     # Vorher zählten sie mit, und weil die Ligaklasse zuerst entscheidet, gewann
     # eine tote Lizenz in der höheren Klasse: Der Verband sah die tatsächlich
     # erteilte Lizenz als „Zusatzlizenz", ohne dass die Zeile daneben stand, die
-    # das erklärt hätte -- gelöscht und transferungültig stehen gar nicht in
-    # dieser Liste. Auf der Produktion traf das am 18.09.2026 sieben Spieler der
-    # laufenden Saison.
+    # das erklärt hätte. Auf der Produktion traf das am 18.09.2026 sieben
+    # Spieler der laufenden Saison. Seit #787 stehen gelöschte und
+    # transferungültige Lizenzen in der Liste, tragen aber kein Etikett.
     #
     # Der Basis-Status (ohne Sperre) wie in League#build_license_items und
     # other_license_items: Eine gesperrte Lizenz ist erteilt und bleibt die

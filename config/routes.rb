@@ -193,6 +193,11 @@ Rails.application.routes.draw do
       get 'admin/players/:id', to: 'players#admin_player'
       post 'admin/players', to: 'players#admin_player_update'
 
+      # Liste und Kurzname auch unter api/v2: Nur dieser Praefix ist von aussen
+      # erreichbar, die gleichnamigen Routen oben sind es (bis auf nginx-Umwege)
+      # nicht. Die API-Doku nennt seit jeher diese Pfade.
+      get 'game_operations', to: 'game_operations#index'
+      get 'game_operations/by_shortname/:name', to: 'game_operations#by_shortname'
       get 'game_operations/:id/leagues/:season_id', to: 'game_operations#index_leagues'
       get 'game_operations/:id/leagues', to: 'game_operations#index_leagues'
 
@@ -201,6 +206,7 @@ Rails.application.routes.draw do
 
       get 'user/clubs_and_teams', to: 'clubs#user_clubs_and_teams'
       get 'vm/clubs_and_teams', to: 'clubs#vm_clubs_and_teams'
+      get 'vm/clubs/:id/license_summary', to: 'clubs#vm_license_summary'
       get 'user/team/:id/licenses', to: 'clubs#user_team_licenses'
 
       post 'user/games/:id/starting/:side/:position/set_player', to: 'games#set_starting_player'
@@ -405,6 +411,9 @@ Rails.application.routes.draw do
         resources :game_days, only: [] do
           get :report_overview, on: :collection
         end
+        # Erledigt-Vermerk der SBK in der Arbeitsansicht „Spielberichte".
+        post   'games/:game_id/report_review', to: 'game_report_reviews#create'
+        delete 'games/:game_id/report_review', to: 'game_report_reviews#destroy'
         resources :state_associations, only: %i[index show create update destroy] do
           resources :checklist_items, only: %i[create update destroy],
                                       controller: 'state_association_checklist_items'
@@ -588,7 +597,20 @@ Rails.application.routes.draw do
           # Hallen-Belegungskonflikte für ein (geplantes) Spiel prüfen, ohne zu speichern.
           get :scheduling_conflicts
         end
+        # Tabletmodus (api#816): Schüsse, Verknüpfung mit Toren, öffentliche Statistik.
+        member do
+          get    'shots', to: 'game_shots#index'
+          post   'shots', to: 'game_shots#create'
+          patch  'shots/:client_uuid', to: 'game_shots#update'
+          delete 'shots/:client_uuid', to: 'game_shots#destroy'
+          post   'shots/:client_uuid/link', to: 'game_shots#link'
+          put    'tablet_capture', to: 'game_shots#tablet_capture'
+          get    'detailed_stats', to: 'game_shots#detailed_stats'
+          get    'highlights', to: 'game_shots#highlights'
+        end
       end
+      # Serverzeit für den Uhrenabgleich des Tablets, ganz offen.
+      get 'server_time', to: 'server_time#show'
       resources :game_days
 
       get 'init', to: 'settings#init'

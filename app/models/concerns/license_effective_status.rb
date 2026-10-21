@@ -52,6 +52,20 @@ module LicenseEffectiveStatus
     base_entry(license)&.dig('license_status_id').to_i
   end
 
+  # Erteilt ist eine Lizenz, wenn ihre History den Status „erteilt" kennt.
+  # Der heutige Status genuegt nicht: Eine gesperrte, durch einen Transfer
+  # ungueltig gewordene oder geloeschte Lizenz traegt ihn nicht mehr, der
+  # Verband hat sie aber erteilt und sie hat eine Gebuehr ausgeloest.
+  #
+  # Die History reicht als alleinige Quelle: Auf Produktion gibt es keine
+  # Lizenz ohne History-Eintrag (Zaehlung vom 21.09.2026 ueber alle 164.048
+  # Lizenzen, #713).
+  def ever_approved?(license)
+    Array(license && license['history']).any? do |entry|
+      entry.is_a?(Hash) && entry['license_status_id'].to_i == License::APPROVED
+    end
+  end
+
   # Wuerde diese Lizenz ohne Sperre Spielberechtigung geben?
   #
   # Bewusst nur `erteilt`: Ein beantragter Antrag berechtigt nicht zum Einsatz,
