@@ -46,6 +46,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
   - Abgerechnet werden Teilnahmen, Nichterscheinen nur wenn der Kurs es vorsieht, und Abmeldungen nach der Frist. Bei „Gebühr nur bei Lizenzerteilung“ erst nach erteilter Lizenz.
   - Die Vorschau warnt bei unvollständiger Vereinsanschrift oder fehlender Kontakt-E-Mail. Abgerechnete Zeilen werden markiert und erscheinen im nächsten Export nicht wieder; frühere Exporte lassen sich erneut herunterladen.
   - Teilnehmerliste je Kurs als CSV mit Kontaktdaten und allen Zusatzfeldern.
+- **Vereinsbestätigung bei Kursanmeldungen** (Verbandseinstellung): Jeder Landesverband kann festlegen, dass Selbstanmeldungen (Portal und öffentliche Seite), bei denen ein Verein die Kursgebühr übernehmen soll, erst vom Verein bestätigt werden müssen. Bis dahin hält die Anmeldung keinen Platz.
+  - Der Verein bekommt eine Mail und bestätigt oder lehnt in seiner Kursansicht ab; eine Ablehnung braucht einen Grund, die Person wird benachrichtigt und an die Kursverantwortlichen verwiesen.
+  - Meldet der Verein selbst an oder trägt die RSK ein, entfällt der Schritt. Unterverbände übernehmen die Einstellung ihres Verbunds.
 - **Schalter für die Kursprozesse in den Schiri-Einstellungen**: Unter `/verwaltung/schiedsrichter/einstellungen` schaltet der Admin den CSV-Import von Kursergebnissen und die Kurse im System getrennt an und aus; die Kurse auf Wunsch nur für einzelne Landesverbände. Ein abgeschalteter Import sperrt nur neue Uploads: Offene Importe lassen sich weiter bearbeiten und einreichen, und die LV-Freigabe läuft weiter. Der Menüpunkt „Kursergebnisse“ bleibt sichtbar, bis keine offenen Zeilen mehr da sind. Vorgabe ohne Eingriff: Import an, Kurse aus. Vorbereitung für die Kurse im System, die den CSV-Import zum Jahresende ablösen.
 
 ## [1.129.0] - 2026-10-08
