@@ -404,6 +404,75 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 1, response.parsed_body['shots'].size
   end
 
+  # --- Rückmeldung zur Beta (fe#560) ------------------------------------------------
+
+  test 'Rückmeldung per Sekretariats-Link geht an das Postfach, Reply-To ist die angegebene Adresse' do
+    post_shots([shot('a')])
+    assert_emails 1 do
+      post "/api/v2/games/#{@game.id}/tablet_feedback.json",
+           params: { message: "Knöpfe zu klein\n<b>fett</b>", reply_to: 'erfasser@example.de', device: 'iPad 1024x768' },
+           headers: token_header, as: :json
+      assert_response :accepted
+    end
+
+    mail = ActionMailer::Base.deliveries.last
+    assert_equal [TabletFeedbackMailer::NOTIFY_EMAIL], mail.to
+    assert_equal ['erfasser@example.de'], mail.reply_to
+    body = mail.html_part&.body&.to_s || mail.body.to_s
+    assert_includes body, 'Knöpfe zu klein'
+    assert_includes body, '&lt;b&gt;fett&lt;/b&gt;', 'Freitext wird escaped'
+    assert_includes body, "Sekretariats-Link ##{@link.id}"
+    assert_includes body, 'iPad 1024x768'
+    assert_includes body, @game.url
+    assert_match(%r{Erfasste Schüsse:</strong> 1}, body)
+  end
+
+  test 'Rückmeldung ohne Antwortadresse nimmt die des Kontos, auch nach dem Abschluss' do
+    vm = create(:user, :vm, club_id: @club.id, email: 'vm@example.de')
+    @game.update!(game_status: 'match_record_closed')
+    login_as(vm)
+
+    assert_emails 1 do
+      post "/api/v2/games/#{@game.id}/tablet_feedback.json", params: { message: 'Lief gut' }, as: :json
+      assert_response :accepted
+    end
+    assert_equal ['vm@example.de'], ActionMailer::Base.deliveries.last.reply_to
+  end
+
+  test 'Rückmeldung: leer, zu lang oder ungültige Adresse ist 422' do
+    [{ message: '  ' },
+     { message: 'x' * (GameShotsController::FEEDBACK_MAX_LENGTH + 1) },
+     { message: 'ok', reply_to: 'keine-adresse' }].each do |eingabe|
+      assert_no_emails do
+        post "/api/v2/games/#{@game.id}/tablet_feedback.json", params: eingabe, headers: token_header, as: :json
+      end
+      assert_response :unprocessable_entity
+    end
+  end
+
+  test 'Rückmeldung nur mit Zugriff auf den Spielbericht' do
+    assert_no_emails do
+      post "/api/v2/games/#{@game.id}/tablet_feedback.json", params: { message: 'x' }, as: :json
+      assert_response :unauthorized
+
+      post "/api/v2/games/#{@foreign_game.id}/tablet_feedback.json", params: { message: 'x' },
+                                                                      headers: token_header, as: :json
+      assert_response :forbidden
+    end
+  end
+
+  # Gezählt wird vor der Anmeldung, also auch mit angehängtem `.json`
+  # (rack_attack.rb, Topf 'tablet-feedback/ip').
+  test 'Rückmeldung: nach zehn Anfragen in der Stunde wird gebremst' do
+    travel_to Time.zone.now.beginning_of_hour do
+      10.times { post "/api/v2/games/#{@game.id}/tablet_feedback.json", params: { message: 'x' }, as: :json }
+      assert_response :unauthorized
+
+      post "/api/v2/games/#{@game.id}/tablet_feedback", params: { message: 'x' }, as: :json
+      assert_response :too_many_requests
+    end
+  end
+
   private
 
   def build_game(game_day)

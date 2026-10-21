@@ -72,6 +72,14 @@ module Rack
       req.ip if req.post? && req.path == '/api/v2/api_key_applications'
     end
 
+    # Rückmeldung zum Tabletmodus (fe#560). Braucht zwar Login oder
+    # Sekretariats-Link, schreibt aber in ein festes Postfach; ein Link, der in
+    # falsche Hände gerät, soll es nicht fluten können. Regex statt Vergleich,
+    # weil das Frontend mit `.json` anfragt.
+    throttle('tablet-feedback/ip', limit: 10, period: 1.hour) do |req|
+      req.ip if req.post? && req.path.match?(%r{\A/api/v2/games/\d+/tablet_feedback(\.json)?\z})
+    end
+
     # Abholen des genehmigten Keys über den Einmal-Link. Bewusst ein eigener,
     # größerer Topf: Das Durchprobieren von Tokens soll gedrosselt sein, aber ein
     # Antragsteller, der die Seite mehrfach lädt oder neu aufruft, darf sich nicht
