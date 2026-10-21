@@ -411,11 +411,11 @@ class User < ApplicationRecord
     # gebunden; im reduzierten Modus gibt es keine Verfügbarkeiten zu sichten.
     result[:menu_item_referee_availability] = ph[:admin].present? || ansetzer_active
     # Anträge der Schiris auf Vereins-Ausschlüsse und deren Pflege am Schiri-Profil.
-    # Bewusst enger als die Ansetzung selbst: Entschieden wird bundesweit von der
-    # Ansetzung von Floorball Deutschland, dorthin geht auch die Antragsmail. Ein
-    # Landesverband soll die Anträge weder sehen noch entscheiden.
+    # Entschieden wird bundesweit von der RSK von Floorball Deutschland (bis 2.0
+    # von der FD-Ansetzung), dorthin geht auch die Antragsmail. Ein Landesverband
+    # soll die Anträge weder sehen noch entscheiden.
     result[:menu_item_referee_exclusions] =
-      ph[:admin].present? || (ph[:ansetzer].present? && ph[:ansetzer].include?(0))
+      ph[:admin].present? || (ph[:rsk].present? && ph[:rsk].include?(0))
     # Korrekturanträge zu den Stammdaten (Name, Geburtsdatum, Verein) entscheidet
     # dagegen die RSK des zuständigen Landesverbands: Es geht um Stammdaten und
     # nicht um Ansetzbarkeit.
