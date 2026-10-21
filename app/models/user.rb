@@ -74,6 +74,9 @@ class User < ApplicationRecord
   has_many :referee_course_registrations, dependent: :nullify
   has_many :created_referee_courses, class_name: 'RefereeCourse', foreign_key: :created_by_user_id,
                                      inverse_of: :created_by_user, dependent: :nullify
+  has_many :club_confirmed_referee_course_registrations, class_name: 'RefereeCourseRegistration',
+                                                         foreign_key: :club_confirmed_by_user_id,
+                                                         inverse_of: :club_confirmed_by_user, dependent: :nullify
   has_many :registered_referee_course_registrations, class_name: 'RefereeCourseRegistration',
                                                      foreign_key: :registered_by_user_id,
                                                      inverse_of: :registered_by_user, dependent: :nullify
@@ -457,6 +460,8 @@ class User < ApplicationRecord
     # ihrer Landesverbaende an ist (RefereeCoursePolicy#any_access?).
     result[:menu_item_referee_courses] =
       (ph[:admin].present? || ph[:rsk].present?) && RefereeCoursePolicy.new(self).any_access?
+    # Rechnungsexport der Kurse: wer Kurse verwaltet, exportiert fuer seine LV.
+    result[:menu_item_referee_course_billing] = result[:menu_item_referee_courses]
     result[:menu_item_referee_vm] = ph[:vm].present?
     # Kursanmeldung durch den Verein (ClubRefereeCoursesController).
     result[:menu_item_club_referee_courses] = ph[:vm].present? && Setting.referee_courses_enabled?
