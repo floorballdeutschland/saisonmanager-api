@@ -369,11 +369,11 @@ class RefereeMailer < ApplicationMailer
   end
 
   # Neuer Antrag eines Schiris auf einen Vereins-Ausschluss. Empfänger ist
-  # ausnahmslos das zentrale Ansetzungs-Postfach von Floorball Deutschland.
+  # ausnahmslos das RSK-Postfach von Floorball Deutschland.
   #
   # Bewusst NICHT an das rsk_email des Landesverbands: Entschieden werden die
-  # Anträge von der Ansetzer-Rolle (menu_item_referee_exclusions), und die liegt
-  # bundesweit bei der RSK von Floorball Deutschland. Ein Landesverband bekam die
+  # Anträge bundesweit von der RSK von Floorball Deutschland
+  # (menu_item_referee_exclusions). Ein Landesverband bekam die
   # Mail zwar, fand den Antrag aber in keiner Maske wieder, konnte ihn also weder
   # bestätigen noch ablehnen.
   def club_exclusion_requested(exclusion_request)
@@ -382,9 +382,9 @@ class RefereeMailer < ApplicationMailer
     @club = exclusion_request.club
 
     templated_mail(
-      to: REPLY_TO,
+      to: RSK_REPLY_TO,
       subject: "Antrag Vereins-Ausschluss – #{@referee.vorname} #{@referee.nachname}",
-      default_reply_to: @referee.email.presence || REPLY_TO,
+      default_reply_to: @referee.email.presence || RSK_REPLY_TO,
       placeholders: {
         referee_name: "#{@referee.vorname} #{@referee.nachname}",
         club_name: @club&.name.to_s,
@@ -393,7 +393,7 @@ class RefereeMailer < ApplicationMailer
     )
   end
 
-  # Entscheidung der Ansetzung über einen Antrag – geht an den Schiri.
+  # Entscheidung der RSK über einen Antrag, geht an den Schiri.
   def club_exclusion_decision(exclusion_request)
     @exclusion_request = exclusion_request
     @referee = exclusion_request.referee
@@ -405,7 +405,7 @@ class RefereeMailer < ApplicationMailer
       subject: "Vereins-Ausschluss #{@approved ? 'genehmigt' : 'abgelehnt'} – #{@club&.name}",
       # Wie beim Antrag selbst: Eine Rückfrage zur Entscheidung gehört zu der
       # Stelle, die entschieden hat, und nicht zum Landesverband.
-      default_reply_to: REPLY_TO,
+      default_reply_to: RSK_REPLY_TO,
       placeholders: {
         referee_name: "#{@referee.vorname} #{@referee.nachname}",
         first_name: @referee.vorname,

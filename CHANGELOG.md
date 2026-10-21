@@ -9,6 +9,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-10-21
+
 ### Neu
 
 - **Rückmeldung zur Beta des Tabletmodus**: Wer die Schüsse eines Spiels erfassen darf (Login oder Sekretariats-Link), kann über `POST games/:id/tablet_feedback` einen Freitext `message` (höchstens 4000 Zeichen) schicken, optional mit Antwortadresse `reply_to` und einer Gerätebeschreibung `device`. Die Rückmeldung wird nicht gespeichert, sondern geht als Mail an it@floorball.de (über `TABLET_FEEDBACK_NOTIFY_EMAIL` änderbar), mit Spiel, Absender, Zahl der erfassten Schüsse und Link zur Spielseite. Reply-To ist die angegebene Adresse, sonst die des angemeldeten Kontos. Erlaubt auch nach dem Abschluss des Spielberichts; gedrosselt auf zehn Anfragen pro Stunde und Adresse. Die Mail hat bewusst keine pflegbare Vorlage, damit ein gepflegter Text den Freitext nicht verdrängt.
@@ -51,6 +53,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
   - Der Verein bekommt eine Mail und bestätigt oder lehnt in seiner Kursansicht ab; eine Ablehnung braucht einen Grund, die Person wird benachrichtigt und an die Kursverantwortlichen verwiesen.
   - Meldet der Verein selbst an oder trägt die RSK ein, entfällt der Schritt. Unterverbände übernehmen die Einstellung ihres Verbunds.
 - **Schalter für die Kursprozesse in den Schiri-Einstellungen**: Unter `/verwaltung/schiedsrichter/einstellungen` schaltet der Admin den CSV-Import von Kursergebnissen und die Kurse im System getrennt an und aus; die Kurse auf Wunsch nur für einzelne Landesverbände. Ein abgeschalteter Import sperrt nur neue Uploads: Offene Importe lassen sich weiter bearbeiten und einreichen, und die LV-Freigabe läuft weiter. Der Menüpunkt „Kursergebnisse“ bleibt sichtbar, bis keine offenen Zeilen mehr da sind. Vorgabe ohne Eingriff: Import an, Kurse aus. Vorbereitung für die Kurse im System, die den CSV-Import zum Jahresende ablösen.
+
+### Verbessert
+
+- **Vereins-Ausschlüsse der Schiedsrichter pflegt die RSK von Floorball Deutschland**: Anträge auf Aufnahme oder Streichung eines Vereins entscheidet und die Liste am Schiri-Profil pflegt jetzt die RSK mit bundesweiter Zuständigkeit (Spielbetrieb 0) statt der FD-Ansetzung. Die Antragsmail geht an rsk@floorball.de statt an sr-ansetzungen@floorball.de, Rückfragen zur Entscheidung ebenso. Die Liste gilt weiter bundesweit und erscheint in jeder Ansetzung als Warnung. Landesverbände sehen die Anträge wie bisher nicht.
 
 ## [1.132.0] - 2026-10-20
 
