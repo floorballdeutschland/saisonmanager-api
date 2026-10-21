@@ -15,12 +15,14 @@ module Admin
       @club_other = create(:club, state_association_id: @sa_other.id)
       @referee_other = create(:referee, club: @club_other)
 
-      # Entscheidungsstelle ist die bundesweite Ansetzung (Spielbetrieb 0).
-      @assigner = create(:user, :assigner_scoped, game_operation_id: 0)
-      @lv_assigner = create(:user, :assigner_scoped, game_operation_id: @go_own.id)
+      # Entscheidungsstelle ist die RSK von FD (Spielbetrieb 0), seit 2.0 nicht
+      # mehr die FD-Ansetzung.
+      @assigner = create(:user, :rsk_scoped, game_operation_id: 0)
+      @lv_assigner = create(:user, :rsk_scoped, game_operation_id: @go_own.id)
+      @fd_ansetzer = create(:user, :assigner_scoped, game_operation_id: 0)
     end
 
-    test 'FD-Ansetzer sieht die Antraege aller Verbaende' do
+    test 'RSK FD sieht die Antraege aller Verbaende' do
       own = pending_request(@referee, @club_other)
       foreign = pending_request(@referee_other, @club_own)
 
@@ -33,10 +35,10 @@ module Admin
       assert_includes ids, foreign.id
     end
 
-    # Die Antragsmail geht an die bundesweite Ansetzung, dort wird entschieden.
-    # Ein LV-Ansetzer soll die Antraege deshalb gar nicht erst sehen, auch nicht
-    # die seiner eigenen Schiris.
-    test 'LV-Ansetzer hat keinen Zugriff auf die Antraege' do
+    # Die Antragsmail geht an die RSK von FD, dort wird entschieden. Eine LV-RSK
+    # soll die Antraege deshalb gar nicht erst sehen, auch nicht die ihrer
+    # eigenen Schiris.
+    test 'LV-RSK hat keinen Zugriff auf die Antraege' do
       request = pending_request(@referee, @club_other)
 
       login(@lv_assigner)
@@ -48,7 +50,7 @@ module Admin
       assert_equal 'pending', request.reload.status
     end
 
-    test 'LV-Ansetzer pflegt die Liste auch nicht direkt' do
+    test 'LV-RSK pflegt die Liste auch nicht direkt' do
       login(@lv_assigner)
 
       post "/api/v2/admin/referees/#{@referee.id}/club_exclusions",
@@ -56,6 +58,31 @@ module Admin
 
       assert_response :forbidden
       assert_not RefereeClubExclusion.exists?(referee_id: @referee.id, club_id: @club_other.id)
+    end
+
+    # Bis 2.0 entschied die FD-Ansetzung. Sie liest die Liste weiter als
+    # Warnung in der Ansetzung, pflegt und entscheidet aber nicht mehr.
+    test 'FD-Ansetzer entscheidet und pflegt nicht mehr' do
+      request = pending_request(@referee, @club_other)
+      login(@fd_ansetzer)
+
+      get '/api/v2/admin/referee_club_exclusion_requests?status=pending'
+      assert_response :forbidden
+
+      post "/api/v2/admin/referee_club_exclusion_requests/#{request.id}/approve"
+      assert_response :forbidden
+      assert_equal 'pending', request.reload.status
+
+      post "/api/v2/admin/referees/#{@referee.id}/club_exclusions",
+           params: { exclusion: { club_id: @club_other.id, reason: 'Absprache' } }
+      assert_response :forbidden
+      assert_not RefereeClubExclusion.exists?(referee_id: @referee.id, club_id: @club_other.id)
+    end
+
+    test 'Menuepunkt nur fuer Admin und RSK FD' do
+      assert @assigner.permissions_items[:menu_item_referee_exclusions]
+      assert_not @fd_ansetzer.permissions_items[:menu_item_referee_exclusions]
+      assert_not @lv_assigner.permissions_items[:menu_item_referee_exclusions]
     end
 
     test 'SBK hat keinen Zugriff' do
