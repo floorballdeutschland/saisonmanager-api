@@ -1,0 +1,11 @@
+Hallo<%= " #{@guardian_name}" if @guardian_name.present? %>,
+
+<%= @name %> wurde zum Schiedsrichterkurs „<%= @course.title %>“ angemeldet. Weil <%= @first_name %> jünger als 16 Jahre ist, brauchen wir Ihre Einwilligung, bevor die Anmeldung gilt.
+
+Termine:
+<%= render 'sessions' %>
+
+Hier können Sie einwilligen:
+<%= @link %>
+
+Ohne Einwilligung verfällt die Anmeldung. Falls Sie von dieser Anmeldung nichts wissen, können Sie diese Mail ignorieren.

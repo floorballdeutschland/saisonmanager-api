@@ -90,8 +90,13 @@ class RefereeCourseRegistrationTest < ActiveSupport::TestCase
     @course.update!(cancellation_deadline: Time.zone.parse('2026-11-14 23:59'))
     r = build
     r.save!
-    r.update!(status: 'cancelled_by_participant', cancelled_at: Time.zone.parse('2026-11-18 10:00'))
+    r.update!(status: 'cancelled_by_participant', cancelled_at: Time.zone.parse('2026-11-18 10:00'),
+              held_seat_at_cancel: true)
     assert r.late_cancellation?
+    r.update!(held_seat_at_cancel: false)
+    assert_not r.late_cancellation?, 'von der Warteliste abgesprungen: keine Gebuehr'
+    r.update!(status: 'cancelled_by_organizer', held_seat_at_cancel: true)
+    assert_not r.late_cancellation?, 'von den Veranstaltern abgemeldet: keine Gebuehr'
   end
 
   test 'Alter am ersten Kurstag' do
@@ -123,5 +128,19 @@ class RefereeCourseRegistrationTest < ActiveSupport::TestCase
     assert_equal [master.id, 'registered'], [s_active.reload.referee_id, s_active.status]
     assert_equal [nil, 'cancelled_by_participant'], [m_cancelled.reload.referee_id, m_cancelled.status]
     assert_equal master.id, s_only.reload.referee_id
+  end
+
+  test 'Schiri-Zusammenfuehrung gibt den Platz der doppelten Anmeldung an die Warteliste' do
+    master = create(:referee)
+    secondary = create(:referee)
+    @course.update!(status: 'published', max_participants: 2)
+    build(referee: master, status: 'registered', skip_required_answers: true).save!
+    build(referee: secondary, vorname: 'Zweit', status: 'registered', skip_required_answers: true).save!
+    waiting = build(vorname: 'Warte', email: 'w@example.org', status: 'waitlisted', skip_required_answers: true)
+    waiting.save!
+
+    secondary.merge_into!(master)
+
+    assert_equal 'registered', waiting.reload.status
   end
 end

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_10_09_140000) do
+ActiveRecord::Schema[7.2].define(version: 2026_10_11_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -720,6 +720,19 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_09_140000) do
     t.index ["referee_id"], name: "index_referee_club_exclusions_on_referee_id"
   end
 
+  create_table "referee_course_billing_exports", force: :cascade do |t|
+    t.bigint "state_association_id", comment: "NULL: bundesweite Kurse (FD)"
+    t.bigint "created_by_user_id"
+    t.date "from_date"
+    t.date "to_date"
+    t.integer "row_count", default: 0, null: false
+    t.integer "total_cents", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_by_user_id"], name: "index_referee_course_billing_exports_on_created_by_user_id"
+    t.index ["state_association_id"], name: "index_referee_course_billing_exports_on_state_association_id"
+  end
+
   create_table "referee_course_field_templates", force: :cascade do |t|
     t.bigint "state_association_id"
     t.string "label", null: false
@@ -810,14 +823,26 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_09_140000) do
     t.bigint "registered_by_user_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index "referee_course_id, lower((email)::text), geburtsdatum, lower((vorname)::text)", name: "idx_course_registrations_unique_person", unique: true, where: "(email IS NOT NULL)"
+    t.string "guardian_token_digest"
+    t.datetime "guardian_token_expires_at"
+    t.string "source", default: "admin", null: false, comment: "admin, portal, club, public"
+    t.datetime "email_confirmation_expires_at"
+    t.datetime "email_confirmed_at"
+    t.boolean "held_seat_at_cancel", default: false, null: false
+    t.datetime "club_confirmed_at"
+    t.bigint "club_confirmed_by_user_id"
+    t.text "club_decline_reason"
+    t.index "referee_course_id, lower((email)::text), geburtsdatum, lower((vorname)::text)", name: "idx_course_registrations_unique_person", unique: true, where: "((email IS NOT NULL) AND ((status)::text <> ALL ((ARRAY['cancelled_by_participant'::character varying, 'cancelled_by_organizer'::character varying, 'pending_email'::character varying, 'declined_by_club'::character varying])::text[])))"
     t.index ["awarded_license_level_id"], name: "index_referee_course_registrations_on_awarded_license_level_id"
     t.index ["billing_club_id"], name: "index_referee_course_registrations_on_billing_club_id"
+    t.index ["billing_export_id"], name: "index_referee_course_registrations_on_billing_export_id"
     t.index ["cancel_token_digest"], name: "index_referee_course_registrations_on_cancel_token_digest", unique: true
+    t.index ["club_confirmed_by_user_id"], name: "idx_on_club_confirmed_by_user_id_fc5da1b134"
     t.index ["club_id"], name: "index_referee_course_registrations_on_club_id"
     t.index ["desired_license_level_id"], name: "index_referee_course_registrations_on_desired_license_level_id"
     t.index ["email_confirmation_token_digest"], name: "idx_on_email_confirmation_token_digest_ab16d1dcc9", unique: true
-    t.index ["referee_course_id", "referee_id"], name: "idx_course_registrations_unique_referee", unique: true, where: "(referee_id IS NOT NULL)"
+    t.index ["guardian_token_digest"], name: "index_referee_course_registrations_on_guardian_token_digest", unique: true
+    t.index ["referee_course_id", "referee_id"], name: "idx_course_registrations_unique_referee", unique: true, where: "((referee_id IS NOT NULL) AND ((status)::text <> ALL ((ARRAY['cancelled_by_participant'::character varying, 'cancelled_by_organizer'::character varying, 'pending_email'::character varying, 'declined_by_club'::character varying])::text[])))"
     t.index ["referee_course_id"], name: "index_referee_course_registrations_on_referee_course_id"
     t.index ["referee_id"], name: "index_referee_course_registrations_on_referee_id"
     t.index ["registered_by_user_id"], name: "index_referee_course_registrations_on_registered_by_user_id"
@@ -868,7 +893,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_09_140000) do
     t.bigint "referee_course_registration_id"
     t.index ["referee_course_id"], name: "index_referee_course_results_on_referee_course_id"
     t.index ["referee_course_import_id"], name: "index_referee_course_results_on_referee_course_import_id"
-    t.index ["referee_course_registration_id"], name: "index_referee_course_results_on_referee_course_registration_id"
+    t.index ["referee_course_registration_id"], name: "index_referee_course_results_on_referee_course_registration_id", unique: true, where: "(referee_course_registration_id IS NOT NULL)"
     t.index ["referee_id"], name: "index_referee_course_results_on_referee_id"
     t.index ["reviewed_by_user_id"], name: "index_referee_course_results_on_reviewed_by_user_id"
     t.index ["state_association_id", "status"], name: "index_referee_course_results_on_state_association_id_and_status"
@@ -1142,6 +1167,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_09_140000) do
     t.boolean "requested_license_playable", default: false, null: false, comment: "Wenn true: Spieler mit Lizenzstatus „beantragt“ duerfen im Spielbetrieb dieses Verbands aufgestellt werden"
     t.boolean "team_info_editable_during_season", default: true, null: false, comment: "Wenn true: Vereine duerfen Name, Kuerzel und Logo ihrer Mannschaften auch nach dem ersten Spieltag aendern"
     t.boolean "coach_assignment_enabled", default: false, null: false, comment: "Reduzierter Ansetzungsmodus: die RSK setzt zusätzlich Schiedsrichtercoaches an. Wirkt nur bei Hauptschalter an und Personenebene aus."
+    t.boolean "course_club_confirmation_required", default: false, null: false, comment: "Schiri-Kurse: Selbstanmeldungen (Portal, oeffentlich) mit Verein als Zahler muss der Verein bestaetigen, bevor sie einen Platz bekommen."
     t.index ["parent_id"], name: "index_state_associations_on_parent_id"
   end
 
@@ -1335,6 +1361,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_09_140000) do
   add_foreign_key "referee_club_exclusion_requests", "referees"
   add_foreign_key "referee_club_exclusions", "clubs"
   add_foreign_key "referee_club_exclusions", "referees"
+  add_foreign_key "referee_course_billing_exports", "state_associations"
+  add_foreign_key "referee_course_billing_exports", "users", column: "created_by_user_id"
   add_foreign_key "referee_course_field_templates", "state_associations"
   add_foreign_key "referee_course_fields", "referee_courses"
   add_foreign_key "referee_course_imports", "users", column: "uploaded_by_user_id"
@@ -1342,11 +1370,13 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_09_140000) do
   add_foreign_key "referee_course_leads", "users"
   add_foreign_key "referee_course_registrations", "clubs"
   add_foreign_key "referee_course_registrations", "clubs", column: "billing_club_id"
+  add_foreign_key "referee_course_registrations", "referee_course_billing_exports", column: "billing_export_id"
   add_foreign_key "referee_course_registrations", "referee_courses"
   add_foreign_key "referee_course_registrations", "referee_license_levels", column: "awarded_license_level_id"
   add_foreign_key "referee_course_registrations", "referee_license_levels", column: "desired_license_level_id"
   add_foreign_key "referee_course_registrations", "referees"
   add_foreign_key "referee_course_registrations", "users"
+  add_foreign_key "referee_course_registrations", "users", column: "club_confirmed_by_user_id"
   add_foreign_key "referee_course_registrations", "users", column: "registered_by_user_id"
   add_foreign_key "referee_course_results", "referee_course_imports"
   add_foreign_key "referee_course_results", "referee_course_registrations"
