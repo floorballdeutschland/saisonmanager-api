@@ -135,7 +135,8 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
         { key: 'course_title', description: 'Titel des Kurses' },
         { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
-        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' }
+        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' },
+        { key: 'cancel_link', description: 'Abmeldelink (nur bei Anmeldung ohne Konto, sonst leer)' }
       ]
     },
     'RefereeCourseMailer#promoted' => {
@@ -150,7 +151,8 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
         { key: 'course_title', description: 'Titel des Kurses' },
         { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
-        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' }
+        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' },
+        { key: 'cancel_link', description: 'Abmeldelink (nur bei Anmeldung ohne Konto, sonst leer)' }
       ]
     },
     'RefereeCourseMailer#cancelled' => {
@@ -165,7 +167,8 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
         { key: 'course_title', description: 'Titel des Kurses' },
         { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
-        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' }
+        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' },
+        { key: 'cancel_link', description: 'Abmeldelink (nur bei Anmeldung ohne Konto, sonst leer)' }
       ]
     },
     'RefereeCourseMailer#course_cancelled' => {
@@ -180,7 +183,69 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
         { key: 'course_title', description: 'Titel des Kurses' },
         { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
-        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' }
+        { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' },
+        { key: 'cancel_link', description: 'Abmeldelink (nur bei Anmeldung ohne Konto, sonst leer)' }
+      ]
+    },
+    'RefereeCourseMailer#awaiting_club' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'awaiting_club',
+      description: 'An die angemeldete Person: Anmeldung eingegangen, der zahlende Verein muss noch bestätigen.',
+      default_subject: 'Anmeldung eingegangen: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der angemeldeten Person' },
+        { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'club', description: 'Name des zahlenden Vereins' },
+        { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
+        { key: 'cancel_link', description: 'Abmeldelink (nur bei Anmeldung ohne Konto, sonst leer)' }
+      ]
+    },
+    'RefereeCourseMailer#club_confirmation_request' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'club_confirmation_request',
+      description: 'An den zahlenden Verein: Selbstanmeldung zu einem Schiedsrichterkurs bestätigen (Verbandseinstellung).',
+      default_subject: 'Kursanmeldung bestätigen: {{name}}, {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'dates', description: 'Termine' },
+        { key: 'club', description: 'Name des Vereins' },
+        { key: 'fee', description: 'Kursgebühr für den Verein' },
+        { key: 'link', description: 'Link zur Vereinsansicht der Kurse' }
+      ]
+    },
+    'RefereeCourseMailer#club_declined' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'club_declined',
+      description: 'An die angemeldete Person: Der Verein übernimmt die Kursgebühr nicht.',
+      default_subject: 'Anmeldung nicht bestätigt: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'club', description: 'Name des Vereins' },
+        { key: 'reason', description: 'Begründung des Vereins' }
+      ]
+    },
+    'RefereeCourseMailer#confirm_email' => {
+      mailer_class: 'RefereeCourseMailer',
+      action_name: 'confirm_email',
+      description: 'Öffentliche Kursanmeldung: Bitte um Bestätigung der E-Mail-Adresse (Double-Opt-in).',
+      default_subject: 'Bitte Anmeldung bestätigen: {{course_title}}',
+      default_from: nil,
+      default_reply_to: nil,
+      placeholders: [
+        { key: 'first_name', description: 'Vorname der angemeldeten Person' },
+        { key: 'name', description: 'Vor- und Nachname der angemeldeten Person' },
+        { key: 'course_title', description: 'Titel des Kurses' },
+        { key: 'dates', description: 'Termine (ohne Online-Link)' },
+        { key: 'link', description: 'Link zur Bestätigung' }
       ]
     },
     'RefereeCourseMailer#guardian_consent' => {
@@ -196,6 +261,7 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'course_title', description: 'Titel des Kurses' },
         { key: 'dates', description: 'Termine mit Ort bzw. Online-Link, je Zeile einer' },
         { key: 'cancellation_deadline', description: 'Abmeldefrist (leer, wenn keine gesetzt ist)' },
+        { key: 'cancel_link', description: 'Abmeldelink (nur bei Anmeldung ohne Konto, sonst leer)' },
         { key: 'guardian_name', description: 'Name der Erziehungsberechtigten' },
         { key: 'link', description: 'Link zur Einwilligung' }
       ]

@@ -10,7 +10,9 @@ module Admin
 
     PERSON = %i[vorname nachname geburtsdatum email telefon club_id billing_club_id billing_address
                 remarks desired_license_level_id stated_lizenznummer guardian_name guardian_email].freeze
-    MANAGED = %i[status result test_version points awarded_license_level_id].freeze
+    # Die Lizenzstufe legt FD in der Lizenzvergabe fest
+    # (Admin::RefereeCourseLicensingController), nicht die Teilnehmerliste.
+    MANAGED = %i[status result test_version points].freeze
     # Zustaende, die die Verwaltung von Hand setzen darf. Die Bestaetigungs-
     # zustaende (pending_*) entstehen nur ueber die Selbstanmeldung.
     SETTABLE_STATUSES = %w[registered waitlisted attended no_show cancelled_by_organizer].freeze
@@ -20,6 +22,8 @@ module Admin
       registrations = @course.registrations
                              .includes(:club, :billing_club, :referee, :desired_license_level, :awarded_license_level)
                              .order(:created_at, :id)
+      @license_results = RefereeCourseResult.where(referee_course_registration_id: registrations.map(&:id))
+                                            .index_by(&:referee_course_registration_id)
       render json: registrations.map { |r| registration_json(r) }
     end
 
@@ -59,6 +63,11 @@ module Admin
         @registration.user_id = User.where(referee_id: referee.id).pick(:id)
         @registration.identity_match = 'confirmed_existing'
       end
+      # Hinweis auf moegliche Bestandsschiris gesehen und bewusst als neue
+      # Person bestaetigt.
+      if params.dig(:registration, :identity_match) == 'new_person' && @registration.referee_id.nil?
+        @registration.identity_match = 'new_person'
+      end
       if @registration.status_changed?
         unless SETTABLE_STATUSES.include?(@registration.status)
           return render json: { error: 'Status nicht erlaubt' }, status: :unprocessable_entity
@@ -85,6 +94,9 @@ module Admin
       # Abmeldung durch die Person wuerde sonst eine kostenfreie Absage.
       if @registration.cancelled?
         return render json: { error: 'Die Anmeldung ist bereits abgemeldet' }, status: :unprocessable_entity
+      end
+      if @registration.billed_at
+        return render json: { error: 'Die Anmeldung ist bereits abgerechnet' }, status: :unprocessable_entity
       end
 
       was_seated = RefereeCourseRegistration::SEAT_STATUSES.include?(@registration.status)
@@ -136,6 +148,16 @@ module Admin
       registration.stated_lizenznummer = referee.lizenznummer&.to_s
     end
 
+    # Stand der Lizenzvergabe bei FD, sobald der Kurs eingereicht ist.
+    def license_json(registration)
+      result = (@license_results || {})[registration.id] ||
+               (@license_results.nil? && RefereeCourseResult.find_by(referee_course_registration_id: registration.id))
+      return nil unless result
+
+      { status: result.status, lizenzstufe: result.lizenzstufe, gueltigkeit: result.gueltigkeit,
+        rejection_reason: result.rejection_reason }
+    end
+
     def registration_json(registration)
       {
         id: registration.id,
@@ -170,6 +192,8 @@ module Admin
         match_candidates: registration.match_candidates,
         custom_answers: registration.custom_answers,
         fee_cents: registration.fee_cents,
+        source: registration.source,
+        license: license_json(registration),
         created_at: registration.created_at
       }
     end

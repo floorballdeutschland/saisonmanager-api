@@ -5,7 +5,9 @@ class RefereeCourseResult < ApplicationRecord
   MASTER_FIELDS = %i[lizenznummer vorname nachname geburtsdatum club_id email].freeze
   CSV_FIELDS    = %i[lizenznummer vorname nachname geburtsdatum verein email].freeze
 
-  belongs_to :referee_course_import
+  # Eine Zeile stammt entweder aus einem CSV-Import oder aus einem Kurs im
+  # System (RefereeCourseSubmission), nie aus beidem.
+  belongs_to :referee_course_import, optional: true
   belongs_to :referee_course, optional: true
   belongs_to :referee_course_registration, optional: true
   belongs_to :referee, optional: true
@@ -13,6 +15,7 @@ class RefereeCourseResult < ApplicationRecord
   belongs_to :reviewed_by_user, class_name: 'User', optional: true
 
   validates :match_type, inclusion: { in: MATCH_TYPES }
+  validate :one_origin
   validates :status, inclusion: { in: STATUSES }
   validates :match_field_count, numericality: { in: 0..6, only_integer: true }
 
@@ -52,6 +55,18 @@ class RefereeCourseResult < ApplicationRecord
   # Abgebrochene Importe bleiben ausgeschlossen; deren Zeilen tragen zwar kein
   # `submitted_at`, aber der Riegel ist bewusst doppelt (auf Produktion sind
   # Statusaenderungen an der Datenbank vorgekommen).
+  # Fuer die Kurshistorie: eingereichte Zeilen aus Importen (ohne abgebrochene)
+  # und aus Kursen im System. awaiting_lv_review darunter erfasst nur Importe,
+  # weil es die Freigabe-Warteschlange der Landesverbaende ist.
+  scope :in_history, lambda {
+    left_joins(:referee_course_import)
+      .where.not(submitted_at: nil)
+      .where('referee_course_imports.id IS NULL OR referee_course_imports.status <> ?', 'cancelled')
+  }
+
+  # Kursergebnisse aus dem System, die auf die Lizenzvergabe durch FD warten.
+  scope :awaiting_fd_licensing, -> { where.not(referee_course_id: nil).where(status: 'pending_review') }
+
   scope :awaiting_lv_review, lambda {
     joins(:referee_course_import)
       .where.not(submitted_at: nil)
@@ -158,6 +173,7 @@ class RefereeCourseResult < ApplicationRecord
       status:,
       applied_at: applied_at&.iso8601,
       rejection_reason:,
+      course_title: referee_course&.title,
       course_data: course_data || {}
     }
   end
@@ -221,5 +237,13 @@ class RefereeCourseResult < ApplicationRecord
       club_id:      master_club_id_by_importer,
       email:        master_email_by_importer
     }
+  end
+
+  private
+
+  def one_origin
+    return if referee_course_import_id.present? ^ referee_course_id.present?
+
+    errors.add(:base, 'Eine Ergebniszeile gehört entweder zu einem Import oder zu einem Kurs')
   end
 end

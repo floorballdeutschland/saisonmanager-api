@@ -4,7 +4,7 @@ module Admin
   class RefereeCoursesController < ApplicationController
     before_action :set_policy
     before_action :require_access!
-    before_action :set_course, only: %i[show update destroy]
+    before_action :set_course, only: %i[show update destroy submit_results participants]
 
     PERMITTED = [
       :title, :course_type, :state_association_id, :hosting_club_id, :prerequisite_course_id,
@@ -73,6 +73,10 @@ module Admin
     def update
       attrs = course_params
       return forbidden unless ownership_change_allowed?(attrs)
+      if attrs['status'] == 'results_submitted'
+        return render json: { error: 'Ergebnisse bitte über „An FD einreichen“ übermitteln' },
+                      status: :unprocessable_entity
+      end
       unless @course.editable? || attrs.keys == ['status']
         return render json: { error: 'Der Kurs ist abgeschlossen und lässt sich nicht mehr ändern' },
                       status: :unprocessable_entity
@@ -84,6 +88,28 @@ module Admin
       else
         render json: { error: @course.errors.full_messages.join(', ') }, status: :unprocessable_entity
       end
+    end
+
+    # POST /api/v2/admin/referee_courses/:id/submit_results
+    # Teilnehmerliste fertig, Ergebnisse an FD zur Lizenzvergabe.
+    def submit_results
+      result = RefereeCourseSubmission.new(@course, submitted_by: current_user).call
+      unless result.success?
+        return render json: { error: result.errors.join(' · '), problems: result.errors },
+                      status: :unprocessable_entity
+      end
+
+      render json: course_json(@course.reload).merge(submitted_results: result.results.size)
+    end
+
+    # GET /api/v2/admin/referee_courses/:id/participants
+    # Teilnehmerliste als CSV mit allen Angaben und Zusatzfeldern, fuer Orga,
+    # Verpflegung und Unterkunft. Enthaelt Kontaktdaten, deshalb nur fuer die
+    # Kursverwaltung und nicht fuer die Kursleitung.
+    def participants
+      send_data RefereeCourseParticipantList.new(@course).to_csv,
+                filename: "teilnehmende-#{@course.id}-#{@course.title.parameterize}.csv",
+                type: 'text/csv; charset=utf-8'
     end
 
     # DELETE /api/v2/admin/referee_courses/:id
@@ -111,7 +137,7 @@ module Admin
       if @course.saved_change_to_status? && @course.status == 'cancelled'
         # Noch unbestaetigte Anmeldungen fallen mit der Absage weg, ihre Links
         # werden ungueltig. Eine Absage-Mail bekommen nur bestaetigte.
-        @course.registrations.where(status: %w[pending_email pending_guardian])
+        @course.registrations.where(status: %w[pending_email pending_guardian pending_club])
                .update_all(status: 'cancelled_by_organizer', cancelled_at: Time.current,
                            guardian_token_digest: nil, updated_at: Time.current)
         @course.registrations.active.find_each do |registration|
@@ -206,6 +232,7 @@ module Admin
         end,
         taken_seats: course.taken_seats,
         free_seats: course.free_seats,
+        submission_problems: course.status == 'held' ? RefereeCourseSubmission.new(course, submitted_by: nil).problems : [],
         created_at: course.created_at,
         updated_at: course.updated_at
       )
