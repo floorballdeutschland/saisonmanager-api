@@ -31,7 +31,8 @@ class StateAssociationInheritedSettingsTest < ActiveSupport::TestCase
                      coach_assignment_enabled: true,
                      report_form_email_enabled: true,
                      manual_proceeding_creation: true,
-                     requested_license_playable: true)
+                     requested_license_playable: true,
+                     course_club_confirmation_required: true)
     child = create(:state_association, parent: verbund)
 
     assert_equal verbund, child.settings_source

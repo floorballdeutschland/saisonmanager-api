@@ -11,6 +11,44 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ### Neu
 
+- **Schiedsrichterkurse im System, Verwaltung** (Paket 1a): RSK und Admin legen Kurse an und pflegen sie, statt Ergebnisse per CSV einzuspielen:
+  - Kursangaben: Kurstyp (J, G, F, Kombi, Modul, Fortbildung, N, A, Nachtest), ein oder mehrere Ziel-Lizenzstufen (F-Kurs: L2 oder L1), verantwortlicher LV oder bundesweit sowie Partner-LV für gemeinsame Kurse.
+  - Durchführung: Präsenz, digital oder gemischt mit mehreren Terminen; Mindest- und Höchstteilnehmerzahl, Fristen, Mindestalter, Voraussetzungen und ausrichtender Verein.
+  - Gebühr für Mitglieder und Nichtmitglieder, auf Wunsch nur bei Lizenzerteilung.
+  - Zusatzfelder der Anmeldung je Kurs, mit Vorlagen je Landesverband.
+  - Teilnehmerliste: Bestandsschiris oder neue Personen eintragen, Warteliste bei vollem Kurs, Teilnahme, Ergebnis und Punkte erfassen.
+  - Eine LV-RSK sieht nur Kurse, an denen ihr Landesverband beteiligt ist. Alles hängt am Schalter „Kurse im System“.
+- **Rolle „Kursleitung“** (Paket 1b): Die RSK ordnet einem Kurs eine Kursleitung zu, als Schiri aus dem Bestand, über den Benutzernamen eines vorhandenen Kontos oder als neue Person mit Einladungsmail (Konto `kl-nachname`).
+  - Die Kursleitung sieht unter „Meine Kurse“ nur ihre Kurse und die Teilnehmenden ohne Kontakt- und Rechnungsdaten.
+  - Sie trägt Anwesenheit, Testversion, Punkte und Ergebnis ein.
+  - Die Rolle lässt sich mit der Schiri-Rolle kombinieren und fällt mit der letzten Kurszuordnung wieder weg.
+- **Kursanmeldung im Schiri-Portal und durch den Verein** (Paket 2):
+  - Schiris sehen unter „Kurse“ das Angebot und melden sich selbst an und ab; angestrebte Stufe, Bemerkung und Zusatzfelder lassen sich bis zum Anmeldeschluss ändern.
+  - Vereinsmanager melden eigene Schiris oder neue Personen ihres Vereins an. Die Rechnung geht an den Verein.
+  - Bei vollem Kurs geht die Anmeldung auf die Warteliste. Wird ein Platz frei (Abmeldung oder höhere Höchstzahl), rückt die älteste Anmeldung automatisch nach, mit Mail.
+  - Eine neue Person unter 16 ist erst angemeldet, wenn die Erziehungsberechtigten per Link einwilligen.
+  - Neue Mails (Bestätigung, Warteliste, Nachrücken, Abmeldung, Kursabsage, Einwilligung) sind als Vorlagen editierbar. Den Online-Link bekommen nur Angemeldete per Mail.
+  - Eine Abmeldung nach der Abmeldefrist bleibt möglich, die Gebühr bleibt dann fällig.
+- **Öffentliche Kursseite und Anmeldung ohne Konto** (Paket 3):
+  - Kursangebot ohne Login, filterbar nach Landesverband, Format und Kurstyp, auch zum Einbetten auf Verbandsseiten.
+  - Anmeldung mit Bestätigung per E-Mail (Link drei Tage gültig), Einwilligung in die Datenverarbeitung mit Version, Zeitpunkt und IP, Abmeldelink in der Bestätigung.
+  - Wer Lizenznummer und passendes Geburtsdatum angibt, bekommt den Bestätigungslink an die beim Schiri hinterlegte Adresse; so kann niemand fremde Schiris anmelden.
+  - Neue Personen werden nie automatisch einem Bestandsschiri zugeordnet; mögliche Treffer stehen als Hinweis für die RSK an der Anmeldung (Zwillingsregel wie im Kursimport).
+  - Unter 16 folgt nach der E-Mail-Bestätigung die Einwilligung der Erziehungsberechtigten.
+  - Löschlauf `referee_course_registrations:purge` (mit `DRY_RUN=1`): Anmeldungen ohne Schiri 12 Monate nach Kursende, nie bestätigte eine Woche nach Ablauf des Links.
+- **Ergebnisse einreichen und Lizenzvergabe durch FD** (Paket 4): Die Lizenz legt immer FD fest.
+  - Die RSK reicht einen durchgeführten Kurs ein, sobald Anwesenheit, Ergebnisse und alle Zuordnungen geklärt sind; der Kurs ist danach gesperrt.
+  - Jede bestandene Teilnahme landet in der neuen Lizenzvergabe für Admin und FD-RSK. Dort wird die Zuordnung geprüft oder geändert, die Lizenzstufe gewählt (die angestrebte Stufe der Person ist nur Hinweis), die Lizenz erteilt (einzeln oder gesammelt) oder mit Pflichtgrund abgelehnt.
+  - Erteilen legt neue Schiris mit Lizenznummer an, schreibt Stufe und Gültigkeit, schickt die Lizenzmail und richtet neuen Schiris mit Adresse ein Konto ein.
+  - Die RSK sieht am Kurs je Person, ob die Lizenz erteilt oder mit welchem Grund sie abgelehnt wurde. Die Kurshistorie am Schiri-Profil zeigt auch Kurse aus dem System.
+- **Rechnungsexport und Teilnehmerliste der Kurse** (Paket 5):
+  - Jeder Landesverband exportiert seine Kurse als CSV fürs Rechnungswesen, FD die bundesweiten. Eine Zeile pro abzurechnender Teilnahme mit Vorname, Name, Kursdatum, Kurstyp, Kurstitel, Rechnungsempfänger, Verein samt Anschrift und Kontakt-E-Mail, Rechnungsanschrift (ohne Verein), Betrag und Teilnahme; dazu die als „in den Rechnungsexport“ markierten Zusatzfelder.
+  - Abgerechnet werden Teilnahmen, Nichterscheinen nur wenn der Kurs es vorsieht, und Abmeldungen nach der Frist. Bei „Gebühr nur bei Lizenzerteilung“ erst nach erteilter Lizenz.
+  - Die Vorschau warnt bei unvollständiger Vereinsanschrift oder fehlender Kontakt-E-Mail. Abgerechnete Zeilen werden markiert und erscheinen im nächsten Export nicht wieder; frühere Exporte lassen sich erneut herunterladen.
+  - Teilnehmerliste je Kurs als CSV mit Kontaktdaten und allen Zusatzfeldern.
+- **Vereinsbestätigung bei Kursanmeldungen** (Verbandseinstellung): Jeder Landesverband kann festlegen, dass Selbstanmeldungen (Portal und öffentliche Seite), bei denen ein Verein die Kursgebühr übernehmen soll, erst vom Verein bestätigt werden müssen. Bis dahin hält die Anmeldung keinen Platz.
+  - Der Verein bekommt eine Mail und bestätigt oder lehnt in seiner Kursansicht ab; eine Ablehnung braucht einen Grund, die Person wird benachrichtigt und an die Kursverantwortlichen verwiesen.
+  - Meldet der Verein selbst an oder trägt die RSK ein, entfällt der Schritt. Unterverbände übernehmen die Einstellung ihres Verbunds.
 - **Schalter für die Kursprozesse in den Schiri-Einstellungen**: Unter `/verwaltung/schiedsrichter/einstellungen` schaltet der Admin den CSV-Import von Kursergebnissen und die Kurse im System getrennt an und aus; die Kurse auf Wunsch nur für einzelne Landesverbände. Ein abgeschalteter Import sperrt nur neue Uploads: Offene Importe lassen sich weiter bearbeiten und einreichen, und die LV-Freigabe läuft weiter. Der Menüpunkt „Kursergebnisse“ bleibt sichtbar, bis keine offenen Zeilen mehr da sind. Vorgabe ohne Eingriff: Import an, Kurse aus. Vorbereitung für die Kurse im System, die den CSV-Import zum Jahresende ablösen.
 
 ## [1.129.0] - 2026-10-08

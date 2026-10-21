@@ -21,6 +21,7 @@ class StateAssociation < ApplicationRecord
     manual_proceeding_creation
     requested_license_playable
     team_info_editable_during_season
+    course_club_confirmation_required
   ].freeze
 
   belongs_to :parent, class_name: 'StateAssociation', optional: true
@@ -234,6 +235,12 @@ class StateAssociation < ApplicationRecord
     effective_setting(:coach_assignment_enabled)
   end
 
+  # Schiri-Kurse: Der als Zahler angegebene Verein bestaetigt Selbstanmeldungen
+  # (RefereeCourseRegistrar#club_confirmation_required?).
+  def effective_course_club_confirmation_required
+    effective_setting(:course_club_confirmation_required)
+  end
+
   def effective_report_form_email_enabled
     effective_setting(:report_form_email_enabled)
   end
@@ -397,6 +404,10 @@ class StateAssociation < ApplicationRecord
       effective_referee_assignment_enabled: effective_referee_assignment_enabled.present?,
       effective_person_level_assignment_default: effective_person_level_assignment_default.present?,
       effective_coach_assignment_enabled: effective_coach_assignment_enabled.present?,
+      effective_course_club_confirmation_required: effective_course_club_confirmation_required.present?,
+      # Ob Kurse im System fuer diesen Verband freigeschaltet sind. Die Maske
+      # zeigt die Vereinsbestaetigung nur dann, ohne Kurse bewirkt sie nichts.
+      referee_courses_enabled: Setting.referee_courses_enabled?(id),
       effective_report_form_email_enabled: effective_report_form_email_enabled.present?,
       effective_manual_proceeding_creation: effective_manual_proceeding_creation.present?,
       effective_requested_license_playable: effective_requested_license_playable.present?,
@@ -415,6 +426,8 @@ class StateAssociation < ApplicationRecord
       person_level_assignment_default:,
       # Unteroption des reduzierten Modus: die RSK setzt auch Coaches an.
       coach_assignment_enabled:,
+      # Schiri-Kurse: Verein bestaetigt Selbstanmeldungen, bei denen er zahlt.
+      course_club_confirmation_required:,
       report_form_email_enabled:,
       logo_url:,
       banner_url:,
