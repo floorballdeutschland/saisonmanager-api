@@ -13,7 +13,11 @@
 #
 # Der Versatz wirkt über StreamTimeline auf Highlights UND Sprungmarken. Die
 # Marken schreibt der Wächter beim nächsten Lauf neu, weil sich ihr Block und
-# damit `chapters_digest` ändert; hier wird YouTube nicht angefasst.
+# damit `chapters_digest` ändert; hier wird YouTube nicht angefasst. Liegt das
+# Streamende schon länger als StreamChapters::MAX_AGE zurück, holt das
+# Zurücksetzen von `chapters_checked_at` die Aufzeichnung in den nächsten Lauf
+# (StreamChapters#nachzurechnen nimmt kalibrierte Aufzeichnungen mit, auch wenn
+# sie noch nie beschrieben wurden).
 class HighlightEditor
   class Invalid < StandardError; end
 
@@ -112,10 +116,11 @@ class HighlightEditor
     end
 
     if versatz.nil?
-      broadcast.update!(offset_seconds: nil, calibrated_at: nil, calibrated_by_user_id: nil, calibrated_via: nil)
+      broadcast.update!(offset_seconds: nil, calibrated_at: nil, calibrated_by_user_id: nil, calibrated_via: nil,
+                        chapters_checked_at: nil)
     else
       broadcast.update!(offset_seconds: versatz, calibrated_at: Time.current, calibrated_by_user_id: user&.id,
-                        calibrated_via: user ? 'user' : 'link')
+                        calibrated_via: user ? 'user' : 'link', chapters_checked_at: nil)
     end
   end
 
@@ -124,6 +129,7 @@ class HighlightEditor
   def auswahl_aus(eintraege)
     return [] if eintraege.nil?
     raise Invalid, 'scenes muss eine Liste sein.' unless eintraege.is_a?(Array)
+    raise Invalid, 'Jede Szene braucht client_uuid und in_highlights.' unless eintraege.all?(Hash)
 
     erlaubt = best.last.to_h { |scene| [scene[:client_uuid], true] }
     shots = game.game_shots.where(client_uuid: eintraege.map { |e| e[:client_uuid].to_s }).index_by(&:client_uuid)

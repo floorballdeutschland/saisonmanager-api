@@ -179,6 +179,26 @@ class HighlightEditorControllerTest < ActionDispatch::IntegrationTest
     assert_response :gone
   end
 
+  test 'abgelaufen bleibt 410, auch nachdem der Wächter aufgeräumt hat' do
+    token = gesendeter_token
+    TabletHighlightRequest.last.update!(expires_at: 1.day.ago)
+
+    TabletHighlightLinks.new.run
+    get "/api/v2/highlight_editor.json?token=#{token}"
+
+    assert_response :gone
+  end
+
+  test 'kaputte Einträge in scenes: 422 statt 500' do
+    token = gesendeter_token
+
+    put "/api/v2/highlight_editor.json?token=#{token}", params: { scenes: ['m1'] }, as: :json
+    assert_response :unprocessable_entity
+
+    put "/api/v2/highlight_editor.json?token=#{token}", params: { scenes: [1] }, as: :json
+    assert_response :unprocessable_entity
+  end
+
   # --- Admin und SBK -------------------------------------------------------------
 
   test 'SBK des Spielbetriebs korrigiert ohne Link, mit Konto vermerkt' do

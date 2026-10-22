@@ -225,8 +225,13 @@ class StreamChapters
   # erst bei geändertem Block angefasst. Damit die Datenbank nicht alle fünf
   # Minuten jede je beschriebene Übertragung neu rechnet, kommt jede höchstens
   # einmal am Tag dran, höchstens ALT_BATCH je Lauf.
+  #
+  # Kalibrierte Aufzeichnungen (fe#560) zählen mit, auch wenn sie noch nie
+  # beschrieben wurden: Erst der Versatz kann Marken in die Aufzeichnung
+  # schieben. HighlightEditor setzt dazu `chapters_checked_at` zurück, damit der
+  # nächste Lauf sie sofort nimmt.
   def nachzurechnen(geschlossen)
-    geschlossen.where.not(chapters_written_at: nil)
+    geschlossen.where('stream_broadcasts.chapters_written_at IS NOT NULL OR stream_broadcasts.calibrated_at IS NOT NULL')
                .where(ended_at: ...(@now - MAX_AGE))
                .where('stream_broadcasts.chapters_checked_at IS NULL OR stream_broadcasts.chapters_checked_at < ?',
                       @now - RECHECK_INTERVAL)

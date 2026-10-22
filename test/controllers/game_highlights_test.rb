@@ -124,6 +124,21 @@ class GameHighlightsTest < ActionDispatch::IntegrationTest
     assert_not_includes response.body, 'vid-1'
   end
 
+  test 'Abwählen schaltet nicht auf eine andere Übertragung um (fe#560)' do
+    # Neustart: vid-2 beginnt später und enthält nur das dritte Tor.
+    StreamBroadcast.create!(broadcast_id: 'vid-2', game: @game, actual_start_at: @start + 55.minutes,
+                            vod_duration_seconds: 3600)
+    @game.update_columns(vod_link: 'https://www.youtube.com/watch?v=vid-2')
+    GameShot.find_by(client_uuid: 's1').update!(in_highlights: false)
+
+    get "/api/v2/games/#{@game.id}/highlights.json", headers: { 'X-Api-Key' => API_KEY }
+
+    body = response.parsed_body
+    assert_equal 'vid-1', body['video_id'], 'dieselbe Übertragung wie im Editor'
+    assert_equal([3], body['scenes'].map { |s| s['event_id'] })
+    assert_equal 'vid-1', HighlightEditor.new(@game).as_json[:video_id]
+  end
+
   test 'ohne bekannte Länge der Aufzeichnung gibt es Szenen, nur ohne Abschneiden' do
     @broadcast.update!(vod_duration_seconds: nil)
 

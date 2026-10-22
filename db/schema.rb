@@ -1250,7 +1250,9 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_22_120000) do
     t.bigint "game_id", null: false
     t.bigint "user_id", comment: "Angemeldet: Mail an die Kontoadresse, keine Adresse gespeichert"
     t.string "email", comment: "Eingegebene Adresse, nach dem Versand gelöscht"
+    t.string "token_nonce", comment: "Zufallsanteil des Links; der Link selbst entsteht per HMAC erst beim Versand"
     t.string "token_digest", comment: "SHA256 des Links, erst beim Versand erzeugt"
+    t.integer "send_attempts", default: 0, null: false, comment: "Fehlgeschlagene Versandversuche"
     t.datetime "sent_at"
     t.datetime "expires_at"
     t.datetime "created_at", null: false
@@ -1457,7 +1459,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_22_120000) do
   add_foreign_key "state_association_checklist_items", "state_associations"
   add_foreign_key "state_association_releases", "game_operations", column: "recipient_game_operation_id"
   add_foreign_key "state_association_releases", "state_associations", column: "grantor_state_association_id"
-  add_foreign_key "tablet_highlight_requests", "games"
+  add_foreign_key "tablet_highlight_requests", "games", on_delete: :cascade
   add_foreign_key "teams", "clubs"
   add_foreign_key "teams", "leagues"
   add_foreign_key "transfer_requests", "clubs", column: "former_club_id"

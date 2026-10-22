@@ -12,9 +12,14 @@
 # wartet die Anfrage.
 #
 # `deliver_now`: Der Wächter läuft als Rake-Task; eine eingereihte Mail ginge
-# mit dem Ende des Prozesses verloren. Die Anfrage gilt erst nach einem
-# erfolgreichen Versand als verschickt, ein Fehler versucht es im nächsten Lauf
-# erneut.
+# mit dem Ende des Prozesses verloren.
+#
+# GENAU EINMAL: Beanspruchen und Versand stehen in EINER Transaktion
+# (TabletHighlightRequest#claim!). Ein paralleler Lauf (langsamer Wächterlauf,
+# Handstart) wartet auf die Zeile und findet sie danach verschickt. Scheitert
+# der Versand, rollt alles zurück, auch das Löschen der Adresse; der nächste
+# Lauf schickt denselben Link (der Rohtoken ist wiederholbar). Nach
+# MAX_SEND_ATTEMPTS Fehlversuchen wird die Anfrage verworfen und gemeldet.
 class TabletHighlightLinks
   attr_reader :notes, :probleme, :sent
 
@@ -31,7 +36,7 @@ class TabletHighlightLinks
     TabletHighlightRequest.pending.includes(:game, :user).order(:created_at).each do |anfrage|
       verschicke(anfrage)
     rescue StandardError => e
-      @probleme << "Highlight-Link für Spiel #{anfrage.game_id}: #{e.class} #{e.message}"
+      fehlversuch(anfrage, e)
     end
     self
   end
@@ -53,11 +58,39 @@ class TabletHighlightLinks
       return
     end
 
-    TabletHighlightRequest.transaction do
-      token = anfrage.issue_token!(@now)
+    verschickt = TabletHighlightRequest.transaction do
+      token = anfrage.claim!(@now)
+      next false if token.nil?
+
       TabletHighlightMailer.calibration_link(anfrage.game, empfaenger, token, anfrage.expires_at).deliver_now
+      true
     end
+    return unless verschickt
+
     @sent << anfrage.game_id
+  end
+
+  # Zählt außerhalb der zurückgerollten Transaktion. Beim letzten Versuch wird
+  # die Anfrage gelöscht, mit ihr eine eingegebene Adresse.
+  def fehlversuch(anfrage, fehler)
+    versuche = anfrage.send_attempts + 1
+    if versuche >= TabletHighlightRequest::MAX_SEND_ATTEMPTS
+      TabletHighlightRequest.where(id: anfrage.id).delete_all
+      problem("Highlight-Link für Spiel #{anfrage.game_id} nach #{versuche} Fehlversuchen verworfen: " \
+              "#{fehler.class} #{fehler.message}")
+    else
+      TabletHighlightRequest.where(id: anfrage.id).update_all(send_attempts: versuche)
+      problem("Highlight-Link für Spiel #{anfrage.game_id}, Versuch #{versuche}: #{fehler.class} #{fehler.message}")
+    end
+  rescue StandardError => e
+    problem("Highlight-Link für Spiel #{anfrage.game_id}: Fehlversuch nicht vermerkt: #{e.class} #{e.message}")
+  end
+
+  # Wie StreamChapters#problem: in die Notizen (der Rake-Task schreibt sie nach
+  # stderr) und in die Problemliste (Exit-Code, Sentry).
+  def problem(text)
+    @notes << "PROBLEM: #{text}"
+    @probleme << text unless @dry_run
   end
 
   def bereit?(game)
@@ -72,6 +105,6 @@ class TabletHighlightLinks
     return if @dry_run
 
     TabletHighlightRequest.pending.where(created_at: ...(@now - TabletHighlightRequest::PENDING_MAX_AGE)).delete_all
-    TabletHighlightRequest.where(expires_at: ...@now).delete_all
+    TabletHighlightRequest.where(expires_at: ...(@now - TabletHighlightRequest::EXPIRED_RETENTION)).delete_all
   end
 end

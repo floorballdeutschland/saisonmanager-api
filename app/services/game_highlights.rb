@@ -18,8 +18,12 @@
 # mit `include_hidden: true` auch die abgewählten.
 #
 # Nur verlinkte Übertragungen (siehe #oeffentliche_uebertragungen). Hat ein
-# Spiel mehrere (Neustart nach einem Abbruch), gilt die mit den meisten Szenen. `video_id` ist nil, solange keine Übertragung mit
-# bekanntem Start existiert; dann gibt es auch keine Szenen.
+# Spiel mehrere (Neustart nach einem Abbruch), gilt die mit den meisten Szenen,
+# gezählt OHNE Auswahl und Verzögerung. Öffentliche Highlights und Editor
+# landen so immer auf derselben Übertragung; sonst könnte das Abwählen von
+# Szenen öffentlich auf eine andere, unkalibrierte Übertragung umschalten.
+# `video_id` ist nil, solange keine Übertragung mit bekanntem Start existiert;
+# dann gibt es auch keine Szenen.
 class GameHighlights
   CACHE_TTL = 1.minute
 
@@ -62,30 +66,34 @@ class GameHighlights
     { video_id: beste[0].broadcast_id, scenes: beste[1] }
   end
 
-  # [Übertragung, Szenen] mit den meisten Szenen, oder nil.
+  # [Übertragung, Szenen] mit den meisten Szenen, oder nil. Gewählt wird nach
+  # allen Szenen (siehe Kopf), gefiltert erst danach.
   def best
-    self.class.oeffentliche_uebertragungen(@game)
-        .map { |broadcast| [broadcast, scenes_for(broadcast)] }
-        .max_by { |_broadcast, scenes| scenes.size }
+    gewaehlt = self.class.oeffentliche_uebertragungen(@game)
+                   .map { |broadcast| [broadcast, scenes_for(broadcast)] }
+                   .max_by { |_broadcast, scenes| scenes.size }
+    return nil if gewaehlt.nil?
+
+    broadcast, szenen = gewaehlt
+    [broadcast, szenen.reject { |_scene, shot, anker| versteckt?(anker, shot) }.map(&:first)]
   end
 
   private
 
+  # [[Szene, GameShot, Anker], …] aller Szenen innerhalb der Aufzeichnung,
+  # nach Start sortiert.
   def scenes_for(broadcast)
     timeline = StreamTimeline.new(@game, broadcast)
     tore = timeline.goals.select(&:shot?).filter_map do |goal|
-      next if versteckt?(goal.anchor_at, goal_shots[goal.event[:event_id].to_i])
-
+      shot = goal_shots[goal.event[:event_id].to_i]
       fenster = timeline.scene(goal.anchor_at)
-      fenster && editor_felder(goal_json(goal.event, *fenster), goal_shots[goal.event[:event_id].to_i])
+      fenster && [editor_felder(goal_json(goal.event, *fenster), shot), shot, goal.anchor_at]
     end
     marken = timeline.marks.filter_map do |mark|
-      next if versteckt?(mark.anchor_at, mark.shot)
-
       fenster = timeline.scene(mark.anchor_at)
-      fenster && editor_felder(mark_json(mark.shot, *fenster), mark.shot)
+      fenster && [editor_felder(mark_json(mark.shot, *fenster), mark.shot), mark.shot, mark.anchor_at]
     end
-    (tore + marken).sort_by { |scene| scene[:start] }
+    (tore + marken).sort_by { |scene, _shot, _anker| scene[:start] }
   end
 
   def versteckt?(anchor_at, shot)

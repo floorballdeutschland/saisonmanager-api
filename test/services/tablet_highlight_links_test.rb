@@ -59,14 +59,17 @@ class TabletHighlightLinksTest < ActiveSupport::TestCase
     assert_equal 1, lauf.notes.size
   end
 
-  test 'räumt verfallene Anfragen und abgelaufene Links weg' do
+  test 'räumt verfallene Anfragen weg, abgelaufene Links erst nach 30 Tagen' do
     @anfrage.update_columns(created_at: @now - 15.days)
-    abgelaufen = TabletHighlightRequest.create!(game: @game, email: 'x@y.de')
-    abgelaufen.issue_token!(@now - 15.days)
+    kuerzlich = TabletHighlightRequest.create!(game: @game, email: 'x@y.de')
+    kuerzlich.issue_token!(@now - 15.days)
+    alt = TabletHighlightRequest.create!(game: @game, email: 'z@y.de')
+    alt.issue_token!(@now - 45.days)
 
     TabletHighlightLinks.new(now: @now).run
 
-    assert_equal 0, TabletHighlightRequest.count
+    assert_equal [kuerzlich.id], TabletHighlightRequest.pluck(:id),
+                 'seit einem Tag abgelaufen: bleibt für die Antwort "abgelaufen" stehen'
   end
 
   test 'ein Fehler beim Versand bleibt offen und wird gemeldet' do
@@ -79,5 +82,39 @@ class TabletHighlightLinksTest < ActiveSupport::TestCase
     @anfrage.reload
     assert_nil @anfrage.sent_at
     assert_equal 'kamera@verein.de', @anfrage.email, 'Transaktion zurückgerollt, nächster Lauf versucht es erneut'
+    assert_equal 1, @anfrage.send_attempts
+  end
+
+  test 'Fehler nach der Annahme: der nächste Lauf schickt DENSELBEN Link' do
+    @broadcast.update!(vod_duration_seconds: 7200)
+    erster_token = nil
+    TabletHighlightMailer.stub(:calibration_link, lambda { |_game, _to, token, _expires|
+      erster_token = token
+      raise Net::ReadTimeout
+    }) do
+      TabletHighlightLinks.new(now: @now).run
+    end
+
+    TabletHighlightLinks.new(now: @now + 5.minutes).run
+
+    mail = ActionMailer::Base.deliveries.last
+    body = mail.html_part ? mail.html_part.body.to_s : mail.body.to_s
+    assert_equal erster_token, body[/token=([\w-]+)/, 1], 'eine schon zugestellte erste Mail bleibt gültig'
+    assert_equal @anfrage, TabletHighlightRequest.find_by_token(erster_token)
+  end
+
+  test 'Fehler stehen als PROBLEM in den Notizen, nach fünf Versuchen wird verworfen' do
+    @broadcast.update!(vod_duration_seconds: 7200)
+    laeufe = []
+    TabletHighlightMailer.stub(:calibration_link, ->(*) { raise 'SendAsDenied' }) do
+      5.times { |i| laeufe << TabletHighlightLinks.new(now: @now + (i * 5).minutes).run }
+    end
+
+    assert_match(/\APROBLEM: .*Versuch 1: .*SendAsDenied/, laeufe.first.notes.first)
+    assert_match(/verworfen/, laeufe.last.probleme.first)
+    assert_not TabletHighlightRequest.exists?(@anfrage.id), 'Anfrage samt Adresse weg'
+
+    sechster = TabletHighlightLinks.new(now: @now + 30.minutes).run
+    assert_empty sechster.probleme, 'danach Ruhe'
   end
 end

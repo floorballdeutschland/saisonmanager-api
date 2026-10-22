@@ -11,7 +11,8 @@
 #   Schüsse und Freischläge.
 # - `tablet_highlight_requests`: "Link zum Kalibrieren schicken", gestellt beim
 #   Beenden des Tabletmodus, verschickt vom Wächter, sobald die Aufzeichnung
-#   fertig ist.
+#   fertig ist. Gehört zum Spiel und geht mit ihm (`on_delete: :cascade`), sonst
+#   blockiert eine offene Anfrage das Löschen eines Spiels oder Spieltags.
 class AddStreamCalibrationAndHighlightSelection < ActiveRecord::Migration[7.2]
   def change
     change_table :stream_broadcasts, bulk: true do |t|
@@ -30,10 +31,12 @@ class AddStreamCalibrationAndHighlightSelection < ActiveRecord::Migration[7.2]
     change_column_comment :game_shots, :kind, from: 'shot / free_hit', to: 'shot / free_hit / mark'
 
     create_table :tablet_highlight_requests do |t|
-      t.references :game, null: false, foreign_key: true
+      t.references :game, null: false, foreign_key: { on_delete: :cascade }
       t.bigint :user_id, comment: 'Angemeldet: Mail an die Kontoadresse, keine Adresse gespeichert'
       t.string :email, comment: 'Eingegebene Adresse, nach dem Versand gelöscht'
+      t.string :token_nonce, comment: 'Zufallsanteil des Links; der Link selbst entsteht per HMAC erst beim Versand'
       t.string :token_digest, comment: 'SHA256 des Links, erst beim Versand erzeugt'
+      t.integer :send_attempts, null: false, default: 0, comment: 'Fehlgeschlagene Versandversuche'
       t.datetime :sent_at
       t.datetime :expires_at
       t.timestamps
