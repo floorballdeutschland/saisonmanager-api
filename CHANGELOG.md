@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Feldgröße samt Erbe der Hauptrunde im Liga-JSON**: `GET leagues/:id` und die Ligenliste `GET game_operations/:id/leagues` liefern zusätzlich `effective_field_size`. Hat eine Zwischen- oder Endrunde keine eigene `field_size`, steht dort die der Hauptrunde (`league_id_preround`), sonst `null`. `field_size` selbst bleibt unverändert. Das Frontend zeichnet damit das Spielfeld im Tabletmodus und im Schussbild auch für Endrunden ohne eigene Angabe in der richtigen Größe.
+
 ## [2.0.0] - 2026-10-21
 
 ### Neu
