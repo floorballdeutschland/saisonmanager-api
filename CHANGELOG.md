@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Tabletmodus: Freischläge** (fe#589): Die Schuss-Endpunkte (`games/:id/shots`) nehmen mit `kind: "free_hit"` auch Freischläge an: Team (das ausführende), Abschnitt, Spielzeit, Antippzeitpunkt und Position, ohne Ergebnis und ohne Spieler. Ohne `kind` bleibt es ein Schuss. Ein Schuss kann `from_free_hit: true` tragen („aus Freischlag", am Tablet geschaltet). Die ausführliche Statistik liefert zusätzlich die Freischlagpositionen (`free_hits`) und je Team und Abschnitt `free_hits`, `shots_from_free_hit` und `goals_from_free_hit`. Freischläge zählen nirgends als Schuss, werden nie mit einem Tor verknüpft und fließen weder in Highlight-Szenen noch in Sprungmarken der Stream-Aufzeichnung ein. Mit Strafen wird nichts verknüpft. Die Rückmeldungs-Mail nennt die Zahl der Freischläge getrennt.
+
 ## [2.0.0] - 2026-10-21
 
 ### Neu

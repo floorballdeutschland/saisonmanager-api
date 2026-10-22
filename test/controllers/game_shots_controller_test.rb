@@ -372,7 +372,8 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
     assert_not_includes response.body, 'Geheim'
 
     heim = stats['teams']['home']
-    assert_equal({ 'shots' => 4, 'on_goal' => 3, 'goals' => 1, 'blocked' => 1, 'missed' => 0 }, heim.except('by_period'))
+    assert_equal({ 'shots' => 4, 'on_goal' => 3, 'goals' => 1, 'blocked' => 1, 'missed' => 0, 'free_hits' => 0,
+                   'shots_from_free_hit' => 0, 'goals_from_free_hit' => 0 }, heim.except('by_period'))
     assert_equal 2, heim['by_period']['2']['shots']
     assert_equal 0, stats['teams']['guest']['by_period']['2']['shots'], 'gleiche Abschnitte für beide Teams'
 
@@ -404,6 +405,83 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
     assert_equal 1, response.parsed_body['shots'].size
   end
 
+  # --- Freischläge (fe#589) ----------------------------------------------------------
+
+  test 'Freischlag: Team und Position ohne Ergebnis, in derselben Liste wie die Schüsse' do
+    post_shots([shot('s'), free_hit('f', at: @t0 + 5)])
+
+    assert_response :success
+    body = response.parsed_body['shots']
+    assert_equal(%w[shot free_hit], body.map { |s| s['kind'] })
+    assert_nil body.last['result']
+    assert_equal false, body.last['from_free_hit']
+    assert_equal false, body.first['from_free_hit'], 'Schüsse ohne Angabe sind nicht aus Freischlag'
+    assert @game.reload.tablet_capture?
+  end
+
+  test 'Freischlag mit Ergebnis, Spieler oder Freischlag-Schalter ist 422, Schuss ohne Ergebnis auch' do
+    aufstellung!
+    [{ result: 'goal' }, { shooter_player_id: 77 }, { goalkeeper_player_id: 5 }, { from_free_hit: true },
+     { kind: 'corner' }].each do |falsch|
+      post_shots([free_hit('f').merge(falsch)])
+      assert_response :unprocessable_entity, falsch.inspect
+    end
+
+    post_shots([shot('s').merge(result: nil)])
+    assert_response :unprocessable_entity
+    assert_equal 0, GameShot.count
+  end
+
+  test 'Schuss aus Freischlag wird gespeichert und per PATCH geschaltet' do
+    post_shots([shot('s', from_free_hit: true)])
+    assert response.parsed_body['shots'].first['from_free_hit']
+
+    patch "/api/v2/games/#{@game.id}/shots/s.json", params: { from_free_hit: false }, headers: token_header, as: :json
+
+    assert_response :success
+    assert_equal false, response.parsed_body['shots'].first['from_free_hit']
+  end
+
+  test 'ein Freischlag wird nie mit einem Tor verknüpft' do
+    post_shots([free_hit('f', game_time: '15:00')])
+    add_goal('home', 1, 0, time: '15:00')
+
+    assert_response :success
+    assert_nil GameShot.find_by(client_uuid: 'f').event_id
+
+    post "/api/v2/games/#{@game.id}/shots/f/link.json", params: { event_id: 1 }, headers: token_header, as: :json
+    assert_response :unprocessable_entity
+  end
+
+  test 'detailed_stats: Freischläge zählen nicht als Schuss, Schüsse und Tore aus Freischlag getrennt' do
+    @game.update!(ended: true)
+    post_shots([
+      free_hit('f1'),
+      shot('s1', result: 'goal', from_free_hit: true, at: @t0 + 5),
+      shot('s2', result: 'saved', from_free_hit: true, at: @t0 + 10),
+      shot('s3', result: 'missed', at: @t0 + 15),
+      free_hit('f2', at: @t0 + 20, period: 3, team: 'guest')
+    ])
+
+    get "/api/v2/games/#{@game.id}/detailed_stats.json", headers: { 'X-Api-Key' => API_KEY }
+
+    assert_response :success
+    stats = response.parsed_body
+    assert_equal 3, stats['shots'].size
+    assert_equal [true, true, false], stats['shots'].pluck('from_free_hit')
+    assert_equal [{ 'team' => 'home', 'period' => 1, 'game_time' => '12:34', 'x' => 0.8, 'y' => 0.4 },
+                  { 'team' => 'guest', 'period' => 3, 'game_time' => '12:34', 'x' => 0.8, 'y' => 0.4 }],
+                 stats['free_hits']
+
+    heim = stats['teams']['home']
+    assert_equal({ 'shots' => 3, 'on_goal' => 2, 'goals' => 1, 'blocked' => 0, 'missed' => 1, 'free_hits' => 1,
+                   'shots_from_free_hit' => 2, 'goals_from_free_hit' => 1 }, heim.except('by_period'))
+    assert_equal %w[1 3], heim['by_period'].keys, 'Abschnitte nur mit Freischlag zählen mit'
+    assert_equal 1, stats['teams']['guest']['by_period']['3']['free_hits']
+    assert_equal 0, stats['teams']['guest']['shots']
+    assert_empty stats['goalkeepers']
+  end
+
   # --- Rückmeldung zur Beta (fe#560) ------------------------------------------------
 
   test 'Rückmeldung per Sekretariats-Link geht an das Postfach, Reply-To ist die angegebene Adresse' do
@@ -425,6 +503,7 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
     assert_includes body, 'iPad 1024x768'
     assert_includes body, @game.url
     assert_match(%r{Erfasste Schüsse:</strong> 1}, body)
+    assert_match(%r{Erfasste Freischläge:</strong> 0}, body)
   end
 
   test 'Rückmeldung ohne Antwortadresse nimmt die des Kontos, auch nach dem Abschluss' do
@@ -538,7 +617,12 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
     o = SHOT_DEFAULTS.merge(optionen)
     { client_uuid: uuid, team: o[:team], period: o[:period], game_time: o[:game_time],
       tapped_at: at.utc.iso8601(3), x: o[:pos_x], y: 0.4, result: o[:result],
-      shooter_player_id: o[:shooter], goalkeeper_player_id: o[:goalie] }
+      shooter_player_id: o[:shooter], goalkeeper_player_id: o[:goalie] }.merge(optionen.slice(:from_free_hit))
+  end
+
+  # Optionen wie bei `shot`, nur ohne Ergebnis und Spieler.
+  def free_hit(uuid, at: @t0, **optionen)
+    shot(uuid, at: at, **optionen).except(:result, :shooter_player_id, :goalkeeper_player_id).merge(kind: 'free_hit')
   end
 
   def add_goal(team, home, guest, time: '15:00', period: 1)

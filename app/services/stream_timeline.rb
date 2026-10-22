@@ -146,8 +146,11 @@ class StreamTimeline
     [Time.zone.at(added_at.to_i), :added_at]
   end
 
-  # event_id => tapped_at der verknüpften Tor-Schüsse (api#816).
+  # event_id => tapped_at der verknüpften Tor-Schüsse (api#816). Ausdrücklich
+  # nur Schüsse: Freischläge (fe#589) sind reine Statistik und dürfen weder
+  # Sprungmarken noch Highlight-Szenen (GameHighlights) verschieben, selbst
+  # wenn ein Datensatz fälschlich eine Verknüpfung trüge.
   def shot_times
-    @shot_times ||= game.game_shots.linked.where(result: 'goal').pluck(:event_id, :tapped_at).to_h
+    @shot_times ||= game.game_shots.shots.linked.where(result: 'goal').pluck(:event_id, :tapped_at).to_h
   end
 end

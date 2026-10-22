@@ -39,6 +39,17 @@ class GameHighlightsTest < ActionDispatch::IntegrationTest
     assert_nil body['scenes'].last['scorer'], 'nicht angegebener Schütze'
   end
 
+  test 'Freischläge erzeugen keine Szenen, auch nicht mit fälschlicher Verknüpfung (fe#589)' do
+    GameShot.create!(game: @game, client_uuid: 'f1', kind: 'free_hit', team: 'home', period: 1,
+                     tapped_at: @start + 49.minutes, x: 0.6, y: 0.5)
+    shot('f2', 'home', @start + 49.minutes, 2).update_columns(kind: 'free_hit')
+
+    get "/api/v2/games/#{@game.id}/highlights.json", headers: { 'X-Api-Key' => API_KEY }
+
+    assert_response :success
+    assert_equal([1, 3], response.parsed_body['scenes'].map { |s| s['event_id'] })
+  end
+
   test 'ohne Tabletmodus 404, ohne Schlüssel 401' do
     @game.update_columns(tablet_capture_at: nil)
     get "/api/v2/games/#{@game.id}/highlights.json", headers: { 'X-Api-Key' => API_KEY }

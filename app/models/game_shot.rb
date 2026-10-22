@@ -15,8 +15,16 @@
 # und bereits um die Abweichung der Geräteuhr korrigiert. Er ist die einzige
 # Quelle für den genauen Torzeitpunkt (Sprungmarken, Highlights): Das
 # offizielle Tor wird regelgemäß erst mit dem Bully eingetragen.
+#
+# FREISCHLÄGE (fe#589) liegen in derselben Tabelle mit `kind: 'free_hit'`:
+# gleiche Grunddaten, gleiche Normierung (Angriffsrichtung des AUSFÜHRENDEN,
+# also des gefoulten Teams), aber ohne Ergebnis, Spieler und Tor. Jede
+# Auswertung von Schüssen muss sich deshalb auf `shots` beschränken. Ein
+# Schuss kann `from_free_hit` tragen; das schaltet das Tablet, die API
+# verknüpft nichts selbst. Mit Strafen wird nichts verbunden.
 class GameShot < ApplicationRecord
   TEAMS = %w[home guest].freeze
+  KINDS = %w[shot free_hit].freeze
   RESULTS = %w[goal saved missed blocked].freeze
   # Auf das Tor: Tor oder vom Torhüter gehalten.
   ON_GOAL = %w[goal saved].freeze
@@ -24,14 +32,17 @@ class GameShot < ApplicationRecord
   # Was der Client schreiben darf. `event_id` gehört nicht dazu, die
   # Verknüpfung läuft über einen eigenen Weg (GameShotsController#link) und
   # automatisch über GamesController#add_event.
-  INPUT_FIELDS = %w[client_uuid team period game_time tapped_at x y result
-                    shooter_player_id goalkeeper_player_id].freeze
+  INPUT_FIELDS = %w[client_uuid kind team period game_time tapped_at x y result
+                    shooter_player_id goalkeeper_player_id from_free_hit].freeze
 
   belongs_to :game
 
   validates :client_uuid, presence: true, uniqueness: true, length: { maximum: 64 }
+  validates :kind, inclusion: { in: KINDS }
   validates :team, inclusion: { in: TEAMS }
-  validates :result, inclusion: { in: RESULTS }
+  validates :result, inclusion: { in: RESULTS }, if: :shot?
+  validates :result, :shooter_player_id, :goalkeeper_player_id, absence: true, if: :free_hit?
+  validates :from_free_hit, inclusion: { in: [false], message: 'gibt es nur bei Schüssen' }, if: :free_hit?
   validates :period, numericality: { only_integer: true, greater_than_or_equal_to: 1 }
   validates :game_time, format: { with: /\A\d{1,3}:\d{2}\z/ }, allow_blank: true
   validates :tapped_at, presence: true
@@ -40,15 +51,26 @@ class GameShot < ApplicationRecord
   # Schütze aus der Aufstellung des schießenden Teams, Torhüter aus der des
   # verteidigenden. Geprüft nur beim Ändern: Wird die Aufstellung später
   # korrigiert, sollen vorhandene Schüsse weiter speicherbar bleiben.
-  validate :shooter_in_lineup, if: -> { shooter_player_id.present? && (shooter_player_id_changed? || team_changed?) }
+  validate :shooter_in_lineup, if: -> { shot? && shooter_player_id.present? && (shooter_player_id_changed? || team_changed?) }
   validate :goalkeeper_in_lineup,
-           if: -> { goalkeeper_player_id.present? && (goalkeeper_player_id_changed? || team_changed?) }
+           if: -> { shot? && goalkeeper_player_id.present? && (goalkeeper_player_id_changed? || team_changed?) }
 
   # Nur ein Tor-Schuss kann an einem Tor hängen. Wird aus dem Tor nachträglich
   # ein gehaltener Schuss, fällt die Verknüpfung weg.
   before_validation { self.event_id = nil unless result == 'goal' }
+  before_validation { self.from_free_hit = false if from_free_hit.nil? }
 
   scope :linked, -> { where.not(event_id: nil) }
+  scope :shots, -> { where(kind: 'shot') }
+  scope :free_hits, -> { where(kind: 'free_hit') }
+
+  def shot?
+    kind == 'shot'
+  end
+
+  def free_hit?
+    kind == 'free_hit'
+  end
 
   def on_goal?
     ON_GOAL.include?(result)
@@ -62,6 +84,7 @@ class GameShot < ApplicationRecord
     {
       id:,
       client_uuid:,
+      kind:,
       team:,
       period:,
       game_time:,
@@ -71,6 +94,7 @@ class GameShot < ApplicationRecord
       result:,
       shooter_player_id:,
       goalkeeper_player_id:,
+      from_free_hit:,
       event_id:
     }
   end

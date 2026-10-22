@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_10_20_190000) do
+ActiveRecord::Schema[7.2].define(version: 2026_10_22_100000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -330,19 +330,21 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_20_190000) do
   create_table "game_shots", force: :cascade do |t|
     t.bigint "game_id", null: false
     t.string "client_uuid", null: false, comment: "Vom Tablet vergeben, macht das Nachreichen idempotent"
-    t.string "team", null: false, comment: "home / guest: das schießende Team"
+    t.string "team", null: false, comment: "home / guest: das schießende bzw. den Freischlag ausführende Team"
     t.integer "period", null: false
     t.string "game_time", comment: "Spielzeit m:ss wie bei den Ereignissen"
     t.datetime "tapped_at", null: false, comment: "Erstes Antippen, Serverzeit (um die Abweichung der Geräteuhr korrigiert)"
     t.decimal "x", precision: 6, scale: 5, null: false, comment: "Ganzes Feld Bande zu Bande: 0 hinter dem eigenen Tor, 1 hinter dem gegnerischen (Angriffsrichtung)"
     t.decimal "y", precision: 6, scale: 5, null: false, comment: "0 linke, 1 rechte Seitenbande aus Sicht des Angreifers"
-    t.string "result", null: false, comment: "goal / saved / missed / blocked"
+    t.string "result", comment: "goal / saved / missed / blocked, leer bei Freischlägen"
     t.bigint "shooter_player_id"
     t.bigint "goalkeeper_player_id", comment: "Torhüter des verteidigenden Teams"
     t.integer "event_id", comment: "id des verknüpften Tores in games.events"
     t.integer "created_by"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "kind", default: "shot", null: false, comment: "shot / free_hit"
+    t.boolean "from_free_hit", default: false, null: false, comment: "Schuss aus einem Freischlag (am Tablet geschaltet)"
     t.index ["client_uuid"], name: "index_game_shots_on_client_uuid", unique: true
     t.index ["game_id", "tapped_at"], name: "index_game_shots_on_game_id_and_tapped_at"
   end
