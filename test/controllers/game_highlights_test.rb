@@ -50,6 +50,32 @@ class GameHighlightsTest < ActionDispatch::IntegrationTest
     assert_equal([1, 3], response.parsed_body['scenes'].map { |s| s['event_id'] })
   end
 
+  test 'abgewählte Szenen fehlen öffentlich, vorgemerkte erscheinen als kind mark (fe#560)' do
+    GameShot.find_by(client_uuid: 's1').update!(in_highlights: false)
+    GameShot.create!(game: @game, client_uuid: 'm1', kind: 'mark', period: 2, game_time: '03:10',
+                     tapped_at: @start + 45.minutes)
+    GameShot.create!(game: @game, client_uuid: 'm2', kind: 'mark', period: 2, tapped_at: @start + 46.minutes,
+                     in_highlights: false)
+
+    get "/api/v2/games/#{@game.id}/highlights.json", headers: { 'X-Api-Key' => API_KEY }
+
+    scenes = response.parsed_body['scenes']
+    assert_equal(%w[mark goal], scenes.map { |s| s['kind'] })
+    assert_equal [2700 - 15, 2700 + 5, 2, '03:10'], scenes.first.values_at('start', 'end', 'period', 'game_time')
+    assert_equal 3, scenes.last['event_id']
+    assert_not_includes response.body, 'client_uuid', 'Schreibschlüssel des Tablets bleibt intern'
+    assert_not_includes response.body, 'm2'
+  end
+
+  test 'kalibriert: 20-s-Fenster um die verschobene Stelle (fe#560)' do
+    @broadcast.update!(offset_seconds: 20)
+
+    get "/api/v2/games/#{@game.id}/highlights.json", headers: { 'X-Api-Key' => API_KEY }
+
+    erste = response.parsed_body['scenes'].first
+    assert_equal [2280 + 20 - 12, 2280 + 20 + 8], erste.values_at('start', 'end')
+  end
+
   test 'ohne Tabletmodus 404, ohne Schlüssel 401' do
     @game.update_columns(tablet_capture_at: nil)
     get "/api/v2/games/#{@game.id}/highlights.json", headers: { 'X-Api-Key' => API_KEY }

@@ -87,6 +87,29 @@ class StreamChaptersTest < ActiveSupport::TestCase
     assert_not_includes beschreibung, 'Müller'
   end
 
+  test 'eine Kalibrierung verschiebt die Marken und schreibt den Block neu (fe#560)' do
+    tore([@start + 1152.seconds, 'home', 7, nil, 1, 0])
+    api = FakeApi.new(details: details)
+    lauf(api)
+    assert_includes api.description, '17:12 1:0 Müller'
+
+    @broadcast.reload.update!(offset_seconds: 20)
+    lauf(api)
+
+    assert_equal 2, api.written.size, 'geänderter Block, also neu geschrieben'
+    assert_includes api.description, '17:32 1:0 Müller'
+    assert_not_includes api.description, '17:12'
+  end
+
+  test 'vorgemerkte Szenen werden keine Sprungmarken (fe#560)' do
+    tore([@start + 1152.seconds, 'home', 7, nil, 1, 0])
+    GameShot.create!(game: @game, client_uuid: 'm1', kind: 'mark', period: 1, tapped_at: @start + 30.minutes)
+    api = FakeApi.new(details: details)
+    lauf(api)
+
+    assert_equal 1, api.description.scan(/^\d+:\d{2} /).size - 1, 'nur Streamstart und das Tor'
+  end
+
   test 'Tore unter 10 s Abstand werden zu einer Marke zusammengelegt' do
     tore([@start + 1152.seconds, 'home', 7, nil, 1, 0], [@start + 1158.seconds, 'home', 9, nil, 2, 0],
          [@start + 3000.seconds, 'guest', 11, nil, 2, 1])

@@ -482,6 +482,45 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
     assert_empty stats['goalkeepers']
   end
 
+  # --- Szene vormerken (fe#560) ------------------------------------------------------
+
+  test 'vorgemerkte Szene ohne Team und Position, zählt nirgends in der Statistik' do
+    post_shots([shot('a', result: 'goal'),
+                { client_uuid: 'm', kind: 'mark', period: 1, game_time: '05:00', tapped_at: @t0.utc.iso8601(3) }])
+
+    assert_response :success
+    marke = response.parsed_body['shots'].find { |s| s['client_uuid'] == 'm' }
+    assert_equal ['mark', nil, nil, nil, true], marke.values_at('kind', 'team', 'x', 'result', 'in_highlights')
+
+    get "/api/v2/games/#{@game.id}/detailed_stats.json", headers: { 'X-Api-Key' => API_KEY }
+    body = response.parsed_body
+    assert_equal 1, body['shots'].size
+    assert_empty body['free_hits']
+  end
+
+  test 'vorgemerkte Szene mit Ergebnis oder Spieler wird abgewiesen' do
+    post_shots([{ client_uuid: 'm', kind: 'mark', period: 1, tapped_at: @t0.utc.iso8601(3), result: 'goal' }])
+
+    assert_response :unprocessable_entity
+  end
+
+  test 'ein Schuss braucht weiter Team und Position' do
+    post_shots([shot('a').except(:team)])
+    assert_response :unprocessable_entity
+
+    post_shots([shot('a').except(:x)])
+    assert_response :unprocessable_entity
+  end
+
+  test 'das Tablet überschreibt die Highlight-Auswahl nicht' do
+    post_shots([shot('a', result: 'goal')])
+    GameShot.find_by(client_uuid: 'a').update!(in_highlights: false)
+
+    post_shots([shot('a', result: 'goal').merge(in_highlights: true)])
+
+    assert_not GameShot.find_by(client_uuid: 'a').in_highlights
+  end
+
   # --- Rückmeldung zur Beta (fe#560) ------------------------------------------------
 
   test 'Rückmeldung per Sekretariats-Link geht an das Postfach, Reply-To ist die angegebene Adresse' do

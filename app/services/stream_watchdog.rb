@@ -102,6 +102,9 @@ class StreamWatchdog
     # haengender Uebertragungen nicht. Ein erschoepftes Kontingent soll erst
     # dort zuschlagen, wo es nur die Marken trifft.
     ergebnis[:chapters] = schreibe_sprungmarken
+    # Danach die Links zum Kalibrieren (fe#560): Sie warten auf die Länge der
+    # Aufzeichnung, die StreamChapters eben erst gespeichert haben kann.
+    ergebnis[:highlight_links] = verschicke_highlight_links
     ergebnis
   end
 
@@ -145,6 +148,17 @@ class StreamWatchdog
     # nicht mehr abbrechen: Er ist an dieser Stelle durch, und die Ausgabe von
     # BEENDET und VEROEFFENTLICHT samt Sentry-Meldung steht noch aus.
     problem("Sprungmarken abgebrochen: #{e.class} #{e.message}")
+    []
+  end
+
+  # Wie die Sprungmarken: Ein Fehler hier darf den Lauf nicht abbrechen.
+  def verschicke_highlight_links
+    links = TabletHighlightLinks.new(dry_run: @dry_run, now: @now).run
+    @notes.concat(links.notes)
+    @probleme.concat(links.probleme)
+    links.sent
+  rescue StandardError => e
+    problem("Highlight-Links abgebrochen: #{e.class} #{e.message}")
     []
   end
 

@@ -4,7 +4,8 @@
 # fe#344): Schüsse mit Position und Ergebnis, Summen je Team und Abschnitt,
 # Paraden und Fangquote je Torhüter, Schüsse je Spieler. Dazu Freischläge
 # (fe#589) mit Position und Summen je Team und Abschnitt sowie Schüsse und
-# Tore aus Freischlägen. Freischläge zählen nirgends als Schuss.
+# Tore aus Freischlägen. Freischläge zählen nirgends als Schuss, vorgemerkte
+# Szenen gehen gar nicht ein.
 #
 # NAMEN IN ÖFFENTLICHER ANZEIGEFORM: aus dem Spielbericht-Schnappschuss und
 # über PublicPlayerNames maskiert, genau wie auf der öffentlichen Spielseite.
@@ -39,7 +40,7 @@ class GameShotStats
 
   def initialize(game, cutoff: nil)
     @game = game
-    scope = game.game_shots.order(:tapped_at, :id)
+    scope = game.game_shots.where(kind: GameShot::STAT_KINDS).order(:tapped_at, :id)
     scope = scope.where(tapped_at: ...cutoff) if cutoff
     @shots, @free_hits = scope.to_a.partition(&:shot?)
     @names = PublicPersonRefs.new(game)
