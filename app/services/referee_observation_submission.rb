@@ -4,6 +4,10 @@
 # nicht kennen muss: die Auflösung des Gespanns, die Idempotenz (ein Bogen je
 # Spiel und Coach) und die Zuordnung zum Spielbetrieb.
 #
+# Auch die nachträgliche Bearbeitung durch den Coach (#update, feedback#74) läuft
+# hier durch: Freitexte und Noten werden mit denselben Methoden übernommen und
+# mit denselben Modell-Validierungen geprüft wie bei der Abgabe.
+#
 # Die Berechtigung prüft der Controller über RefereeObservationPolicy, nicht
 # dieser Service – wie bei RefereeFeedbackSubmission.
 class RefereeObservationSubmission
@@ -18,6 +22,13 @@ class RefereeObservationSubmission
   # Eine eigene deutsche Meldung statt errors.full_messages: Letztere wären
   # englische ActiveRecord-Texte mitten in einer deutschen Maske.
   INVALID_ERROR = 'Bitte alle Bewertungen (1 bis 7) und alle Textfelder ausfüllen.'
+
+  # Die Bearbeitung nimmt Spiel und Coach aus dem Bogen selbst, nicht aus den
+  # Parametern: Ein Bogen wandert dabei weder in ein anderes Spiel noch zu einer
+  # anderen Person.
+  def self.for_edit(observation, user:, attributes:)
+    new(game: observation.game, coach: observation.coach, user: user, attributes: attributes)
+  end
 
   def initialize(game:, coach:, user:, attributes:)
     @game = game
@@ -58,6 +69,32 @@ class RefereeObservationSubmission
     [nil, 'Beobachtung konnte nicht gespeichert werden.']
   end
 
+  # Bearbeitung eines abgegebenen Bogens durch seinen Coach. Liefert
+  # [observation, error] wie #call.
+  #
+  # Bewertet bleiben genau die Personen, die bei der Abgabe bewertet wurden. Das
+  # Gespann wird nicht neu aufgelöst: Ein inzwischen geänderter Spielbericht soll
+  # keine Bewertung verschwinden lassen, über die die Person schon per Mail
+  # informiert wurde. Fehlen für eine dieser Personen Noten, ist der Bogen
+  # ungültig wie bei der Abgabe.
+  #
+  # edited_at wird nur gesetzt, wenn sich wirklich etwas geändert hat; ein
+  # unverändert gespeicherter Bogen bekommt keinen Vermerk.
+  def update(observation)
+    assign_contents(observation)
+    observation.ratings.each { |row| assign_ratings(row, referee_attributes(row.referee_id)) }
+    return [observation, nil] unless observation.changed? || observation.ratings.any?(&:changed?)
+
+    observation.edited_at = Time.current
+    return [observation, nil] if observation.save
+
+    Rails.logger.warn(
+      "RefereeObservationSubmission#update ungültig: observation=#{observation.id} " \
+      "errors=#{observation.errors.full_messages.join(', ')}"
+    )
+    [nil, INVALID_ERROR]
+  end
+
   private
 
   def build(go_id, crew)
@@ -70,14 +107,27 @@ class RefereeObservationSubmission
       coach_name: "#{@coach.vorname} #{@coach.nachname}".strip.presence,
       submitted_at: Time.current
     )
+    assign_contents(observation)
+    build_ratings(observation, crew)
+    observation
+  end
+
+  # Freitexte und Gespann-Noten, gemeinsam für Abgabe und Bearbeitung.
+  def assign_contents(observation)
     RefereeObservation::TEXT_ATTRIBUTES.each do |field|
       observation[field] = @attributes[field].to_s.strip.presence
     end
     RefereeObservation::PAIR_RATING_ATTRIBUTES.each do |field|
       observation[field] = rating(@attributes[field])
     end
-    build_ratings(observation, crew)
-    observation
+  end
+
+  # Einzelnoten einer Person, gemeinsam für Abgabe und Bearbeitung. Ohne
+  # mitgeschickte Noten bleiben die Felder leer und die Validierung meldet sie.
+  def assign_ratings(row, submitted)
+    RefereeObservationRating::RATING_ATTRIBUTES.each do |field|
+      row[field] = rating(submitted&.dig(field))
+    end
   end
 
   # Nur die Personen, für die der Bogen auch Bewertungen mitschickt. Ein Gespann
@@ -91,12 +141,12 @@ class RefereeObservationSubmission
       submitted = referee_attributes(referee.id)
       next if submitted.blank?
 
-      observation.ratings.build(
+      row = observation.ratings.build(
         referee: referee,
         referee_name: entry[:name].presence,
-        position: entry[:position],
-        **RefereeObservationRating::RATING_ATTRIBUTES.index_with { |f| rating(submitted[f]) }
+        position: entry[:position]
       )
+      assign_ratings(row, submitted)
     end
   end
 

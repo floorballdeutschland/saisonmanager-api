@@ -339,6 +339,12 @@ class User < ApplicationRecord
     # Hier oben gelten sie für beide Wege.
     result[:show_page_referee_observations] = referee_id.present?
     result[:menu_item_referee_observations] = referee_coach_qualified?
+    # Eigene abgegebene Bögen ansehen und korrigieren (feedback#74). Bleibt auch
+    # nach Ablauf der B-Qualifikation, solange es Bögen dieses Coaches gibt; die
+    # Spielauswahl ist dann leer (RefereeObservationsController#games).
+    result[:menu_item_referee_observations_own] =
+      result[:menu_item_referee_observations] ||
+      (referee_id.present? && RefereeObservation.for_coach(referee_id).exists?)
     # Kursleitung – ebenfalls vor dem Early-Return, weil die Rolle mit der
     # Schiedsrichter-Rolle kombinierbar ist.
     result[:menu_item_referee_courses_lead] = ph[:course_lead].present? && course_lead_access?

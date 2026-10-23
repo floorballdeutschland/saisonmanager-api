@@ -1069,4 +1069,116 @@ class GamesControllerTest < ActionDispatch::IntegrationTest
     post '/api/v2/login', params: { username: user.user_name, password: 'password123' }
     assert_response :success
   end
+
+  # ---------------------------------------------------------------------------
+  # Tor vor bereits erfassten Toren nur mit Bestätigung (#835)
+  # ---------------------------------------------------------------------------
+
+  def goal_event(id, time, team, period: 1)
+    { 'id' => id, 'period' => period, 'time' => time, 'event_type' => 'goal', 'event_team' => team,
+      'home_goals' => 0, 'guest_goals' => 0, "#{team}_number" => 7 }
+  end
+
+  def guest_goal_params(time, **extra)
+    { period: 1, time: time, event_type: 'goal', event_team: 'guest',
+      home_goals: 0, guest_goals: 1, guest_number: 82 }.merge(extra)
+  end
+
+  # Spiel 58665: Heimtor 6:33 erfasst, danach das Gasttor 9:13 als 3:13.
+  test 'add_event: Tor vor einem erfassten Tor wird ohne Bestätigung abgewiesen' do
+    @game.update!(events: [goal_event(1, '6:33', 'home')])
+    @game.sort_events!
+    @game.save!
+    login(create(:user, :admin))
+
+    post "/api/v2/user/games/#{@game.id}/events/add", params: guest_goal_params('3:13'), as: :json
+
+    assert_response :unprocessable_entity
+    assert_equal 'score_change_unconfirmed', response.parsed_body['code']
+    assert_equal 1, response.parsed_body['changed_goals']
+    assert_equal [1], @game.reload.events.pluck('id')
+    assert_equal [1, 0], @game.events.first.values_at('home_goals', 'guest_goals')
+  end
+
+  test 'add_event: Tor vor einem erfassten Tor wird mit Bestätigung eingetragen' do
+    @game.update!(events: [goal_event(1, '6:33', 'home')])
+    login(create(:user, :admin))
+
+    post "/api/v2/user/games/#{@game.id}/events/add",
+         params: guest_goal_params('3:13', confirm_score_change: true), as: :json
+
+    assert_response :success
+    assert_equal([[0, 1], [1, 1]], @game.reload.events.map { |e| e.values_at('home_goals', 'guest_goals') })
+  end
+
+  test 'add_event: Tor nach dem letzten Tor und Strafe davor brauchen keine Bestätigung' do
+    @game.update!(events: [goal_event(1, '6:33', 'home')])
+    login(create(:user, :admin))
+
+    post "/api/v2/user/games/#{@game.id}/events/add", params: guest_goal_params('9:13'), as: :json
+    assert_response :success
+
+    post "/api/v2/user/games/#{@game.id}/events/add",
+         params: { period: 1, time: '2:00', event_type: 'penalty', event_team: 'home',
+                   home_number: 7, penalty_id: '1', penalty_code_id: '7' }, as: :json
+    assert_response :success
+    assert_equal 3, @game.reload.events.size
+  end
+
+  test 'add_event: gleiche Zeit wie das letzte Tor ändert nichts und braucht keine Bestätigung' do
+    @game.update!(events: [goal_event(1, '6:33', 'home')])
+    login(create(:user, :admin))
+
+    post "/api/v2/user/games/#{@game.id}/events/add", params: guest_goal_params('6:33'), as: :json
+
+    assert_response :success
+  end
+
+  test 'add_event: Altdaten ohne Spielstandrechnung werden nicht geprüft' do
+    @game.update!(legacy: true, events: [goal_event(1, '6:33', 'home')])
+    login(create(:user, :admin))
+
+    post "/api/v2/user/games/#{@game.id}/events/add", params: guest_goal_params('3:13'), as: :json
+
+    assert_response :success
+  end
+
+  test 'update_event: Tor hinter ein anderes Tor verschieben braucht eine Bestätigung' do
+    @game.update!(events: [goal_event(1, '3:13', 'guest'), goal_event(2, '6:33', 'home')])
+    login(create(:user, :admin))
+
+    post "/api/v2/user/games/#{@game.id}/events/update",
+         params: guest_goal_params('9:13', event_id: 1), as: :json
+    assert_response :unprocessable_entity
+    assert_equal '3:13', @game.reload.events.find { |e| e['id'] == 1 }['time']
+
+    post "/api/v2/user/games/#{@game.id}/events/update",
+         params: guest_goal_params('9:13', event_id: 1, confirm_score_change: true), as: :json
+    assert_response :success
+    assert_equal '9:13', @game.reload.events.find { |e| e['id'] == 1 }['time']
+  end
+
+  # Nummer oder Zeit innerhalb der eigenen Lücke ändern lässt die übrigen Tore
+  # stehen. Der Stand des bearbeiteten Tors selbst zählt nicht.
+  test 'update_event: Korrektur ohne Wirkung auf andere Tore braucht keine Bestätigung' do
+    @game.update!(events: [goal_event(1, '3:13', 'guest'), goal_event(2, '6:33', 'home')])
+    login(create(:user, :admin))
+
+    post "/api/v2/user/games/#{@game.id}/events/update",
+         params: guest_goal_params('4:00', event_id: 1, guest_number: 11), as: :json
+
+    assert_response :success
+  end
+
+  test 'update_event: Mannschaft eines früheren Tors tauschen braucht eine Bestätigung' do
+    @game.update!(events: [goal_event(1, '3:13', 'guest'), goal_event(2, '6:33', 'home')])
+    login(create(:user, :admin))
+
+    post "/api/v2/user/games/#{@game.id}/events/update",
+         params: { event_id: 1, period: 1, time: '3:13', event_type: 'goal', event_team: 'home',
+                   home_number: 7 }, as: :json
+
+    assert_response :unprocessable_entity
+    assert_equal 'guest', @game.reload.events.find { |e| e['id'] == 1 }['event_team']
+  end
 end
