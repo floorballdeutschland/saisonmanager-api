@@ -39,6 +39,40 @@ class GameDaySecretaryLinksController < ApplicationController
     render json: payload.sort_by { |g| g[:date].to_s }
   end
 
+  # GET /api/v2/user/secretary_game_days/season?season_id=18
+  #
+  # Alle Spieltage einer Saison, die der eigene Verein ausrichtet, samt
+  # Spielen, Wappen und Endstand: der Stoff für den Stapel der
+  # YouTube-Thumbnails je Saison (feedback#77). Highlightvideos entstehen oft
+  # Tage nach dem Spiel, wenn das Overlay-Token des Spieltags längst abgelaufen
+  # ist; deshalb hängt dieser Weg am Benutzerkonto und nicht am Token.
+  #
+  # Dieselbe Linie wie die Übersicht oben: nur ausgerichtete Spieltage, je
+  # Spieltag geprüft über may_manage_game_day_link?. Gestreamt wird aus der
+  # eigenen Halle, und genau diese Spiele schneidet der Verein danach.
+  #
+  # Ein Abruf für die ganze Saison statt einer je Spieltag: Ein Verein mit
+  # mehreren Mannschaften richtet leicht zwanzig Spieltage und mehr aus.
+  def season
+    season_id = (params[:season_id].presence || Setting.current_season_id).to_i
+    allowed = permitted_hosted_game_days
+
+    # Die Saisonliste kommt aus den GEPRÜFTEN Spieltagen: Ein Teammanager
+    # bekäme sonst Saisons angeboten, in denen er nichts sieht, weil der
+    # Verein dort nur mit fremden Mannschaften ausgerichtet hat.
+    season_ids = allowed.map { |gd| gd.league.season_id.to_i }.uniq
+    # `leagues.season_id` ist Text: als Zeichenkette vergleichen, nie per Range.
+    game_days = season_game_days(allowed.select { |gd| gd.league.season_id.to_s == season_id.to_s })
+
+    render json: {
+      season_id: season_id,
+      seasons: (season_ids | [Setting.current_season_id.to_i]).sort.reverse.map do |id|
+        { id: id, name: Setting.season_name(id) || id.to_s }
+      end,
+      game_days: game_days.map { |gd| thumbnail_game_day_json(gd) }
+    }
+  end
+
   # POST /api/v2/user/game_days/:game_day_id/secretary_link
   def create
     game_days = coverable_game_days(@game_day)
@@ -184,10 +218,78 @@ class GameDaySecretaryLinksController < ApplicationController
   # Spieltag dann wirklich eine seiner Mannschaften enthält, entscheidet
   # may_manage_game_day_link? je Spieltag – hier wird nur vorausgewählt.
   def candidate_game_day_ids
-    club_ids = (vm_club_ids + tm_team_club_ids).uniq
+    club_ids = candidate_club_ids
     return [] if club_ids.empty?
 
     GameDay.where(club_id: club_ids).pluck(:id)
+  end
+
+  def candidate_club_ids
+    (vm_club_ids + tm_team_club_ids).uniq
+  end
+
+  # Ausgerichtete Spieltage über alle Saisons, auf die der/die Angemeldete
+  # Zugriff hat: dieselbe Prüfung je Spieltag wie in der Übersicht. Für den
+  # Vereinsmanager entscheidet der Ausrichter allein; die Spiele werden nur
+  # für den Teammanager-Zweig nachgeladen (eigene Mannschaft am Spieltag).
+  def permitted_hosted_game_days
+    club_ids = candidate_club_ids
+    return [] if club_ids.empty?
+
+    GameDay.where(club_id: club_ids).joins(:league).includes(:league)
+           .to_a
+           .select { |gd| may_manage_game_day_link?(gd) }
+  end
+
+  TEAM_LOGO_INCLUDES = [{ logo_attachment: :blob }, { club: { logo_attachment: :blob } }].freeze
+
+  def season_game_days(permitted)
+    return [] if permitted.empty?
+
+    GameDay.where(id: permitted.map(&:id))
+           .includes(:arena, :league,
+                     games: { home_team: TEAM_LOGO_INCLUDES, guest_team: TEAM_LOGO_INCLUDES })
+           .to_a
+           .sort_by { |gd| [gd.date.to_s, gd.id] }
+  end
+
+  # Die Form von ThumbnailBatchGameDayWithGames im Frontend.
+  def thumbnail_game_day_json(game_day)
+    {
+      id: game_day.id,
+      number: game_day.number,
+      date: game_day.date,
+      league_id: game_day.league_id,
+      league: game_day.league&.name,
+      arena: { name: game_day.arena&.name },
+      games: game_day.games.sort_by { |g| [g.start_time.to_s, g.id] }.map { |g| thumbnail_game_json(g) }
+    }
+  end
+
+  def thumbnail_game_json(game)
+    {
+      id: game.id,
+      game_number: game.game_number,
+      start_time: game.start_time,
+      home_team_name: game.home_team&.name,
+      guest_team_name: game.guest_team&.name,
+      # Dieselben Rückfälle wie in Game#meta_hash: ohne Mannschaftswappen das
+      # des Vereins.
+      home_team_logo: team_logo(game.home_team),
+      guest_team_logo: team_logo(game.guest_team),
+      ended: game.ended,
+      # Nur nach dem Schlusspfiff, das Highlight-Bild trägt den Endstand.
+      result: game.ended ? game.result&.slice(:home_goals, :guest_goals, :postfix) : nil
+    }
+  end
+
+  # Dieselbe Mannschaft spielt eine Saison lang immer wieder; der Pfad wird je
+  # Mannschaft nur einmal gebaut.
+  def team_logo(team)
+    return nil if team.nil?
+
+    @team_logos ||= {}
+    @team_logos.fetch(team.id) { @team_logos[team.id] = team.logo_url_fallback }
   end
 
   # `all_club_ids` statt `club_id`: Eine Spielgemeinschaft richtet auch unter
