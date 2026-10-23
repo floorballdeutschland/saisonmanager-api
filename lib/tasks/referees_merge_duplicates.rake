@@ -9,12 +9,14 @@
 # Die Liste steht NICHT im Repo (Namen, Geburtsdaten), sondern kommt als CSV mit
 # Semikolon und Kopfzeile:
 #
-#   ids;vorname;nachname;geburtsdatum;lizenzstufe
-#   7956 9156 22258;Kurt;Nörlich;2010-11-21;
-#   5319 6269;;;;L2
+#   ids;vorname;nachname;geburtsdatum;lizenzstufe;club_id
+#   7956 9156 22258;Kurt;Nörlich;2010-11-21;;
+#   5319 6269;;;;L2;
+#   5838 9104;;;;;96
 #
 # - ids: Referee-IDs einer Person, mit Leerzeichen getrennt (zwei oder mehr)
-# - vorname/nachname/geburtsdatum: optional, die richtigen Werte. Sie werden VOR dem
+# - vorname/nachname/geburtsdatum/club_id: optional, die richtigen Werte (den Verein
+#   liest man am besten am Heimatverein des Spielerprofils ab). Sie werden VOR dem
 #   Zusammenfuehren an alle noch lebenden Profile der Gruppe geschrieben, damit der
 #   Master sie unabhaengig davon traegt, welches Profil die Stammdaten liefert, und
 #   damit die Nummern-Mail schon den richtigen Namen nennt.
@@ -95,7 +97,8 @@ namespace :referees do
       stammdaten = {
         vorname: row['vorname'].presence&.strip,
         nachname: row['nachname'].presence&.strip,
-        geburtsdatum: row['geburtsdatum'].presence && Date.iso8601(row['geburtsdatum'].strip)
+        geburtsdatum: row['geburtsdatum'].presence && Date.iso8601(row['geburtsdatum'].strip),
+        club_id: row['club_id'].presence && Club.find(Integer(row['club_id'].strip)).id
       }.compact
       lizenzstufe = row['lizenzstufe'].presence&.strip
 

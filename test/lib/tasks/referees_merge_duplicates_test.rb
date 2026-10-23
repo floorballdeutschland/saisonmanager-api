@@ -15,7 +15,7 @@ class RefereesMergeDuplicatesTest < ActiveSupport::TestCase
 
   def run_task(csv, env = {})
     file = Tempfile.new(['dubletten', '.csv'])
-    file.write("ids;vorname;nachname;geburtsdatum;lizenzstufe\n#{csv}")
+    file.write("ids;vorname;nachname;geburtsdatum;lizenzstufe;club_id\n#{csv}")
     file.close
     env = env.merge('FILE' => file.path)
     saved = ENV.to_hash.slice(*env.keys)
@@ -78,6 +78,22 @@ class RefereesMergeDuplicatesTest < ActiveSupport::TestCase
 
     assert_equal a.id, b.reload.merged_into_id
     assert_equal 'L2', a.reload.lizenzstufe
+  end
+
+  test 'setzt einen angegebenen Verein, und ein unbekannter Verein laesst die Gruppe aus' do
+    club = create(:club)
+    a = create(:referee, lizenznummer: 100, club_id: create(:club).id)
+    b = create(:referee, lizenznummer: 200, club_id: create(:club).id,
+                         lizenzstufe: 'L2', gueltigkeit: Date.new(2028, 9, 30))
+    c = create(:referee, lizenznummer: 300)
+    d = create(:referee, lizenznummer: 400)
+
+    out = run_task("#{a.id} #{b.id};;;;;#{club.id}\n#{c.id} #{d.id};;;;;999999")
+
+    assert_equal club.id, a.reload.club_id
+    assert_equal a.id, b.reload.merged_into_id
+    assert_includes out, 'Zeile 3: FEHLER ActiveRecord::RecordNotFound'
+    assert_nil d.reload.merged_into_id
   end
 
   test 'ein zweiter Lauf macht eine abgebrochene Gruppe fertig, ohne Erledigtes anzufassen' do
