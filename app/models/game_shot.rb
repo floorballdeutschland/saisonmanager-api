@@ -37,6 +37,8 @@
 #   keine Fangquote.
 # - `extra_attacker`: das schießende Team spielt ohne eigenen Torhüter
 #   (6 gegen 5).
+# Widersprüche gleicht `align_situation_flags` an (Ergebnis und Torhüter
+# gewinnen), damit ältere Tablets ohne diese Kennungen nie mit 422 hängen.
 # Der normale Spielbericht (`games.events`, `goal_type`) weiß davon nichts.
 #
 # PARADEN OHNE POSITION (Feedback #62): Der Schnellzähler am Tablet erfasst
@@ -99,6 +101,7 @@ class GameShot < ApplicationRecord
   # ein gehaltener Schuss, fällt die Verknüpfung weg.
   before_validation { self.event_id = nil unless result == 'goal' }
   before_validation { SHOT_FLAGS.each { |flag| self[flag] = false if self[flag].nil? } }
+  before_validation :align_situation_flags, if: :shot?
 
   scope :linked, -> { where.not(event_id: nil) }
   scope :shots, -> { where(kind: 'shot') }
@@ -158,6 +161,22 @@ class GameShot < ApplicationRecord
   end
 
   private
+
+  # Widersprüche angleichen statt abweisen, wie `consistentShotFlags` im
+  # Tablet: Das Ergebnis und der gewählte Torhüter gewinnen. Nötig, weil
+  # das Tablet nur die gesendeten Schlüssel überschreibt: Setzt ein neues
+  # Gerät `empty_net` und wählt ein älteres, das die Kennungen nicht kennt,
+  # danach "gehalten" oder einen Torhüter, bliebe der Serverwert stehen. Ein
+  # 422 hielte dann den ganzen Puffer des älteren Geräts an. Die
+  # Validierungen darunter bleiben als Absicherung.
+  def align_situation_flags
+    self.from_penalty_shot = false if result == 'blocked' || from_free_hit
+    if from_penalty_shot
+      self.empty_net = false
+      self.extra_attacker = false
+    end
+    self.empty_net = false if result == 'saved' || goalkeeper_player_id.present?
+  end
 
   def penalty_shot_consistent
     errors.add(:from_penalty_shot, 'und aus Freischlag schließen sich aus') if from_free_hit

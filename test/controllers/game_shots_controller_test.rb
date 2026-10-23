@@ -538,25 +538,42 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
     assert GameShot.find_by(client_uuid: 'e').extra_attacker
   end
 
-  test 'Strafschuss nicht aus Freischlag, nicht geblockt, nicht bei herausgenommenem Torhüter' do
-    [{ from_free_hit: true }, { result: 'blocked' }, { empty_net: true, result: 'goal' },
-     { extra_attacker: true }].each do |falsch|
-      post_shots([shot('p', from_penalty_shot: true).merge(falsch)])
-      assert_response :unprocessable_entity, falsch.inspect
-    end
-    assert_equal 0, GameShot.count
+  test 'Strafschuss: Widersprüche werden angeglichen, das Ergebnis gewinnt' do
+    post_shots([shot('a', from_penalty_shot: true, from_free_hit: true),
+                shot('b', from_penalty_shot: true, result: 'blocked', at: @t0 + 1),
+                shot('c', from_penalty_shot: true, result: 'goal', empty_net: true, extra_attacker: true, at: @t0 + 2)])
+
+    assert_response :success
+    flags = GameShot.order(:client_uuid).map { |s| [s.from_penalty_shot, s.from_free_hit, s.empty_net, s.extra_attacker] }
+    assert_equal [[false, true, false, false], [false, false, false, false], [true, false, false, false]], flags
   end
 
-  test 'leeres Tor: kein Torhüter am Schuss und keine Parade' do
+  test 'leeres Tor: gesetzter Torhüter oder gehalten nehmen es zurück' do
     aufstellung!
-    post_shots([shot('e', result: 'goal', empty_net: true, goalie: 5)])
-    assert_response :unprocessable_entity
+    post_shots([shot('e', result: 'goal', empty_net: true, goalie: 5),
+                shot('f', result: 'saved', empty_net: true, at: @t0 + 1),
+                shot('g', result: 'missed', empty_net: true, at: @t0 + 2)])
 
-    post_shots([shot('e', result: 'saved', empty_net: true)])
-    assert_response :unprocessable_entity
-
-    post_shots([shot('e', result: 'missed', empty_net: true)])
     assert_response :success
+    assert_equal({ 'e' => false, 'f' => false, 'g' => true }, GameShot.pluck(:client_uuid, :empty_net).to_h)
+  end
+
+  test 'älteres Tablet ohne die Kennungen hängt nicht an einem Serverwert fest' do
+    aufstellung!
+    post_shots([shot('e', result: 'goal', empty_net: true)])
+    assert_response :success
+
+    # Gerät ohne die neuen Schlüssel schickt denselben Schuss als gehalten mit Torhüter.
+    post_shots([shot('e', result: 'saved', goalie: 5)])
+
+    assert_response :success
+    schuss = GameShot.find_by(client_uuid: 'e')
+    assert_equal ['saved', 5, false], [schuss.result, schuss.goalkeeper_player_id, schuss.empty_net]
+
+    post_shots([shot('p', result: 'saved', from_penalty_shot: true, at: @t0 + 1)])
+    post_shots([shot('p', result: 'blocked', at: @t0 + 1)])
+    assert_response :success
+    assert_equal false, GameShot.find_by(client_uuid: 'p').from_penalty_shot
   end
 
   test 'Kennungen der Schüsse gibt es an Freischlag und vorgemerkter Szene nicht' do
@@ -621,6 +638,24 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
     assert_equal({ '1' => { 'saves' => 1, 'shots_against' => 2, 'save_pct' => 0.5 },
                    '2' => { 'saves' => 2, 'shots_against' => 2, 'save_pct' => 1.0 },
                    '3' => { 'saves' => 0, 'shots_against' => 1, 'save_pct' => 0.0 } }, torhueter['by_period'])
+  end
+
+  test 'detailed_stats: Torhüterwechsel, Abschnitt ohne Einsatz ist 0 von 0 ohne Quote' do
+    @game.update!(ended: true, players: {
+                    'home' => [{ 'player_id' => 77, 'trikot_number' => 7, 'player_firstname' => 'A', 'player_name' => 'B' }],
+                    'guest' => [{ 'player_id' => 5, 'trikot_number' => 1, 'player_firstname' => 'C', 'player_name' => 'D' },
+                                { 'player_id' => 6, 'trikot_number' => 30, 'player_firstname' => 'E', 'player_name' => 'F' }]
+                  })
+    post_shots([shot('a', goalie: 5), shot('b', result: 'goal', goalie: 5, at: @t0 + 5),
+                shot('c', goalie: 6, at: @t0 + 10, period: 2)])
+
+    get "/api/v2/games/#{@game.id}/detailed_stats.json", headers: { 'X-Api-Key' => API_KEY }
+
+    torhueter = response.parsed_body['goalkeepers'].index_by { |gk| gk['trikot_number'] }
+    assert_equal({ '1' => { 'saves' => 1, 'shots_against' => 2, 'save_pct' => 0.5 },
+                   '2' => { 'saves' => 0, 'shots_against' => 0, 'save_pct' => nil } }, torhueter[1]['by_period'])
+    assert_equal({ '1' => { 'saves' => 0, 'shots_against' => 0, 'save_pct' => nil },
+                   '2' => { 'saves' => 1, 'shots_against' => 1, 'save_pct' => 1.0 } }, torhueter[30]['by_period'])
   end
 
   test 'das Tablet überschreibt die Highlight-Auswahl nicht' do
