@@ -14,13 +14,15 @@
 # Ein Fehler hier darf das Eintragen des Tores nicht scheitern lassen: Das Tor
 # ist gespeichert, wenn diese Methoden laufen, und der Spielbericht ist das
 # Wichtigere. Er wird gemeldet, nicht geworfen.
+#
+# Freischläge (fe#589) werden nie gepaart, auch nicht über #link.
 module GameShotLinker
   module_function
 
   def link_new_goal(game, event)
     team = event[:event_team].to_s
     periode = event[:period].to_i
-    kandidaten = game.game_shots.where(team: team, period: periode, result: 'goal', event_id: nil).to_a
+    kandidaten = game.game_shots.shots.where(team: team, period: periode, result: 'goal', event_id: nil).to_a
     shot = naechster(kandidaten, sekunden(event[:time])) { |kandidat| [kandidat.game_time, kandidat.tapped_at] }
     return nil if shot.nil?
 
@@ -36,7 +38,7 @@ module GameShotLinker
   # womöglich schon eingetragen. Ältere Schüsse zuerst, damit zwei Tore
   # desselben Abschnitts in ihrer Reihenfolge gepaart werden.
   def link_new_shots(game, shots)
-    offen = shots.select { |shot| shot.result == 'goal' && shot.event_id.nil? }
+    offen = shots.select { |shot| shot.shot? && shot.result == 'goal' && shot.event_id.nil? }
     return if offen.empty?
 
     vergeben = game.game_shots.linked.pluck(:event_id).to_set

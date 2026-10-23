@@ -31,6 +31,20 @@ class StreamTimelineTest < ActiveSupport::TestCase
     assert_equal 1680 - 10, timeline.chapter_position(goal)
   end
 
+  test 'Freischläge setzen nie den Anker, auch nicht mit fälschlicher Verknüpfung (fe#589)' do
+    GameShot.create!(game: @game, client_uuid: 'f1', kind: 'free_hit', team: 'home', period: 1,
+                     tapped_at: @start + 27.minutes, x: 0.6, y: 0.5)
+    verbogen = GameShot.create!(game: @game, client_uuid: 'f2', team: 'home', period: 1,
+                                tapped_at: @start + 28.minutes, x: 0.8, y: 0.5, result: 'goal', event_id: 1)
+    verbogen.update_columns(kind: 'free_hit')
+
+    timeline = StreamTimeline.new(@game, @broadcast)
+    goal = timeline.goals.first
+
+    assert_not goal.shot?
+    assert_equal 1800 - 120, timeline.chapter_position(goal)
+  end
+
   test 'Positionen außerhalb der Aufzeichnung sind nil' do
     timeline = StreamTimeline.new(@game, @broadcast)
 

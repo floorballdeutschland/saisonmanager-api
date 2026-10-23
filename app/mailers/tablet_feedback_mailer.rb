@@ -17,7 +17,8 @@ class TabletFeedbackMailer < ApplicationMailer
     @reply_to = reply_to
     @sender = sender
     @device = device
-    @shot_count = game.game_shots.count
+    @shot_count = game.game_shots.shots.count
+    @free_hit_count = game.game_shots.free_hits.count
 
     mail(
       to: NOTIFY_EMAIL,
