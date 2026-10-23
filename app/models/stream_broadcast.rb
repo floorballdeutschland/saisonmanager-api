@@ -14,6 +14,17 @@ class StreamBroadcast < ApplicationRecord
 
   scope :running, -> { where(ended_at: nil) }
 
+  # Versatz zwischen Halle und Bild, gesetzt über die Kalibrierung (fe#560).
+  # Spannweite großzügig um die beobachteten 10 bis 30 s; negativ ist erlaubt,
+  # falls eine Kamera mit falscher Uhr oder ein später Streamstart das Bild
+  # vorlaufen lässt.
+  OFFSET_RANGE = (-120..120)
+  validates :offset_seconds, numericality: { only_integer: true, in: OFFSET_RANGE }, allow_nil: true
+
+  def calibrated?
+    !offset_seconds.nil?
+  end
+
   def ended?
     ended_at.present?
   end

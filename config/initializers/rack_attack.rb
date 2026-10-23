@@ -101,6 +101,20 @@ module Rack
       req.ip if req.post? && req.path.match?(%r{\A/+api/+v2/+games/+[^/]+/+tablet_feedback(\.[^/]*)?/*\z})
     end
 
+    # Highlights bearbeiten (fe#560). Die Anfrage beim Beenden des Tabletmodus
+    # verschickt später eine Mail an eine frei eingegebene Adresse; der
+    # Mail-Link selbst ist die einzige Berechtigung und soll sich nicht
+    # durchprobieren lassen. Laden, Abspielen und mehrmaliges Speichern einer
+    # Kalibrierung bleiben weit unter der Grenze. Pfade offen gegen Endung und
+    # Schrägstrich, wie beim Feedback oben.
+    throttle('highlight-request/ip', limit: 10, period: 1.hour) do |req|
+      req.ip if req.post? && req.path.match?(%r{\A/+api/+v2/+games/+[^/]+/+highlight_request(\.[^/]*)?/*\z})
+    end
+
+    throttle('highlight-editor/ip', limit: 120, period: 1.hour) do |req|
+      req.ip if req.path.match?(%r{\A/+api/+v2/+highlight_editor(\.[^/]*)?/*\z})
+    end
+
     # Abholen des genehmigten Keys über den Einmal-Link. Bewusst ein eigener,
     # größerer Topf: Das Durchprobieren von Tokens soll gedrosselt sein, aber ein
     # Antragsteller, der die Seite mehrfach lädt oder neu aufruft, darf sich nicht

@@ -22,9 +22,20 @@
 # Auswertung von Schüssen muss sich deshalb auf `shots` beschränken. Ein
 # Schuss kann `from_free_hit` tragen; das schaltet das Tablet, die API
 # verknüpft nichts selbst. Mit Strafen wird nichts verbunden.
+#
+# VORGEMERKTE SZENEN (`kind: 'mark'`) sind ein Tipp auf "Szene vormerken": nur
+# Abschnitt, Spielzeit und Zeitpunkt, Team und Position freiwillig. Sie zählen
+# nie als Schuss, werden aber Highlight-Szenen (GameHighlights).
+#
+# `in_highlights` ist die Auswahl für die öffentlichen Highlights, je Tor-Schuss
+# und vorgemerkter Szene. Sie gehört nicht zu INPUT_FIELDS: Das Tablet gleicht
+# seinen Puffer mit vollen Datensätzen ab und soll die Auswahl, die später über
+# den Mail-Link oder von der SBK getroffen wird, nicht überschreiben.
 class GameShot < ApplicationRecord
   TEAMS = %w[home guest].freeze
-  KINDS = %w[shot free_hit].freeze
+  KINDS = %w[shot free_hit mark].freeze
+  # Was in die Statistik eingeht. Vorgemerkte Szenen gehören nicht dazu.
+  STAT_KINDS = %w[shot free_hit].freeze
   RESULTS = %w[goal saved missed blocked].freeze
   # Auf das Tor: Tor oder vom Torhüter gehalten.
   ON_GOAL = %w[goal saved].freeze
@@ -39,14 +50,17 @@ class GameShot < ApplicationRecord
 
   validates :client_uuid, presence: true, uniqueness: true, length: { maximum: 64 }
   validates :kind, inclusion: { in: KINDS }
-  validates :team, inclusion: { in: TEAMS }
+  validates :team, inclusion: { in: TEAMS }, unless: :mark?
+  validates :team, inclusion: { in: TEAMS }, allow_nil: true, if: :mark?
   validates :result, inclusion: { in: RESULTS }, if: :shot?
-  validates :result, :shooter_player_id, :goalkeeper_player_id, absence: true, if: :free_hit?
-  validates :from_free_hit, inclusion: { in: [false], message: 'gibt es nur bei Schüssen' }, if: :free_hit?
+  validates :result, :shooter_player_id, :goalkeeper_player_id, absence: true, unless: :shot?
+  validates :from_free_hit, inclusion: { in: [false], message: 'gibt es nur bei Schüssen' }, unless: :shot?
   validates :period, numericality: { only_integer: true, greater_than_or_equal_to: 1 }
   validates :game_time, format: { with: /\A\d{1,3}:\d{2}\z/ }, allow_blank: true
   validates :tapped_at, presence: true
-  validates :x, :y, numericality: { greater_than_or_equal_to: 0, less_than_or_equal_to: 1 }
+  validates :x, :y, numericality: { greater_than_or_equal_to: 0, less_than_or_equal_to: 1 }, unless: :mark?
+  validates :x, :y, numericality: { greater_than_or_equal_to: 0, less_than_or_equal_to: 1 }, allow_nil: true,
+                    if: :mark?
 
   # Schütze aus der Aufstellung des schießenden Teams, Torhüter aus der des
   # verteidigenden. Geprüft nur beim Ändern: Wird die Aufstellung später
@@ -63,6 +77,7 @@ class GameShot < ApplicationRecord
   scope :linked, -> { where.not(event_id: nil) }
   scope :shots, -> { where(kind: 'shot') }
   scope :free_hits, -> { where(kind: 'free_hit') }
+  scope :marks, -> { where(kind: 'mark') }
 
   def shot?
     kind == 'shot'
@@ -70,6 +85,10 @@ class GameShot < ApplicationRecord
 
   def free_hit?
     kind == 'free_hit'
+  end
+
+  def mark?
+    kind == 'mark'
   end
 
   def on_goal?
@@ -95,6 +114,7 @@ class GameShot < ApplicationRecord
       shooter_player_id:,
       goalkeeper_player_id:,
       from_free_hit:,
+      in_highlights:,
       event_id:
     }
   end

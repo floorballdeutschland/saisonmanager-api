@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_10_22_100000) do
+ActiveRecord::Schema[7.2].define(version: 2026_10_22_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -330,12 +330,12 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_22_100000) do
   create_table "game_shots", force: :cascade do |t|
     t.bigint "game_id", null: false
     t.string "client_uuid", null: false, comment: "Vom Tablet vergeben, macht das Nachreichen idempotent"
-    t.string "team", null: false, comment: "home / guest: das schießende bzw. den Freischlag ausführende Team"
+    t.string "team", comment: "home / guest: das schießende bzw. den Freischlag ausführende Team"
     t.integer "period", null: false
     t.string "game_time", comment: "Spielzeit m:ss wie bei den Ereignissen"
     t.datetime "tapped_at", null: false, comment: "Erstes Antippen, Serverzeit (um die Abweichung der Geräteuhr korrigiert)"
-    t.decimal "x", precision: 6, scale: 5, null: false, comment: "Ganzes Feld Bande zu Bande: 0 hinter dem eigenen Tor, 1 hinter dem gegnerischen (Angriffsrichtung)"
-    t.decimal "y", precision: 6, scale: 5, null: false, comment: "0 linke, 1 rechte Seitenbande aus Sicht des Angreifers"
+    t.decimal "x", precision: 6, scale: 5, comment: "Ganzes Feld Bande zu Bande: 0 hinter dem eigenen Tor, 1 hinter dem gegnerischen (Angriffsrichtung)"
+    t.decimal "y", precision: 6, scale: 5, comment: "0 linke, 1 rechte Seitenbande aus Sicht des Angreifers"
     t.string "result", comment: "goal / saved / missed / blocked, leer bei Freischlägen"
     t.bigint "shooter_player_id"
     t.bigint "goalkeeper_player_id", comment: "Torhüter des verteidigenden Teams"
@@ -343,8 +343,9 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_22_100000) do
     t.integer "created_by"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.string "kind", default: "shot", null: false, comment: "shot / free_hit"
+    t.string "kind", default: "shot", null: false, comment: "shot / free_hit / mark"
     t.boolean "from_free_hit", default: false, null: false, comment: "Schuss aus einem Freischlag (am Tablet geschaltet)"
+    t.boolean "in_highlights", default: true, null: false, comment: "Szene erscheint in den öffentlichen Highlights"
     t.index ["client_uuid"], name: "index_game_shots_on_client_uuid", unique: true
     t.index ["game_id", "tapped_at"], name: "index_game_shots_on_game_id_and_tapped_at"
   end
@@ -1221,6 +1222,10 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_22_100000) do
     t.integer "chapters_attempts", default: 0, null: false, comment: "Fehlversuche für chapters_attempt_digest"
     t.string "chapters_attempt_digest"
     t.datetime "chapters_failed_at", comment: "Endgültig gescheitert für chapters_attempt_digest; ein neuer Inhalt versucht es erneut"
+    t.integer "offset_seconds", comment: "Versatz Bild zu Hallenzeit in s (positiv: Bild liegt dahinter); NULL = nicht kalibriert"
+    t.datetime "calibrated_at"
+    t.bigint "calibrated_by_user_id", comment: "NULL bei Kalibrierung über den Mail-Link"
+    t.string "calibrated_via", comment: "link / user"
     t.index ["broadcast_id"], name: "index_stream_broadcasts_on_broadcast_id", unique: true
     t.index ["ended_at"], name: "index_stream_broadcasts_on_ended_at"
     t.index ["game_id"], name: "index_stream_broadcasts_on_game_id"
@@ -1239,6 +1244,22 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_22_100000) do
     t.datetime "updated_at", null: false
     t.integer "singleton", default: 0, null: false
     t.index ["singleton"], name: "index_stream_credentials_on_singleton", unique: true
+  end
+
+  create_table "tablet_highlight_requests", force: :cascade do |t|
+    t.bigint "game_id", null: false
+    t.bigint "user_id", comment: "Angemeldet: Mail an die Kontoadresse, keine Adresse gespeichert"
+    t.string "email", comment: "Eingegebene Adresse, nach dem Versand gelöscht"
+    t.string "token_nonce", comment: "Zufallsanteil des Links; der Link selbst entsteht per HMAC erst beim Versand"
+    t.string "token_digest", comment: "SHA256 des Links, erst beim Versand erzeugt"
+    t.integer "send_attempts", default: 0, null: false, comment: "Fehlgeschlagene Versandversuche"
+    t.datetime "sent_at"
+    t.datetime "expires_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["game_id"], name: "index_tablet_highlight_requests_on_game_id"
+    t.index ["sent_at"], name: "index_tablet_highlight_requests_on_sent_at"
+    t.index ["token_digest"], name: "index_tablet_highlight_requests_on_token_digest", unique: true
   end
 
   create_table "teams", force: :cascade do |t|
@@ -1438,6 +1459,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_22_100000) do
   add_foreign_key "state_association_checklist_items", "state_associations"
   add_foreign_key "state_association_releases", "game_operations", column: "recipient_game_operation_id"
   add_foreign_key "state_association_releases", "state_associations", column: "grantor_state_association_id"
+  add_foreign_key "tablet_highlight_requests", "games", on_delete: :cascade
   add_foreign_key "teams", "clubs"
   add_foreign_key "teams", "leagues"
   add_foreign_key "transfer_requests", "clubs", column: "former_club_id"
