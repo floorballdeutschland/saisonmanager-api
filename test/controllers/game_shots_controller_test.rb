@@ -375,12 +375,16 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
 
     heim = stats['teams']['home']
     assert_equal({ 'shots' => 4, 'on_goal' => 3, 'goals' => 1, 'blocked' => 1, 'missed' => 0, 'free_hits' => 0,
-                   'shots_from_free_hit' => 0, 'goals_from_free_hit' => 0 }, heim.except('by_period'))
+                   'shots_from_free_hit' => 0, 'goals_from_free_hit' => 0, 'penalty_shots' => 0, 'goals_from_penalty_shot' => 0, 'goals_empty_net' => 0, 'goals_extra_attacker' => 0 },
+                 heim.except('by_period'))
     assert_equal 2, heim['by_period']['2']['shots']
     assert_equal 0, stats['teams']['guest']['by_period']['2']['shots'], 'gleiche Abschnitte für beide Teams'
 
     assert_equal [{ 'team' => 'guest', 'trikot_number' => 1, 'name' => 'Tim Hüter', 'saves' => 2,
-                    'shots_against' => 3, 'save_pct' => 0.667 }], stats['goalkeepers']
+                    'shots_against' => 3, 'save_pct' => 0.667,
+                    'by_period' => { '1' => { 'saves' => 1, 'shots_against' => 2, 'save_pct' => 0.5 },
+                                     '2' => { 'saves' => 1, 'shots_against' => 1, 'save_pct' => 1.0 } } }],
+                 stats['goalkeepers']
     assert_equal [{ 'team' => 'home', 'trikot_number' => 7, 'name' => 'Max', 'shots' => 2, 'on_goal' => 2,
                     'goals' => 1 }], stats['players']
   end
@@ -477,7 +481,8 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
 
     heim = stats['teams']['home']
     assert_equal({ 'shots' => 3, 'on_goal' => 2, 'goals' => 1, 'blocked' => 0, 'missed' => 1, 'free_hits' => 1,
-                   'shots_from_free_hit' => 2, 'goals_from_free_hit' => 1 }, heim.except('by_period'))
+                   'shots_from_free_hit' => 2, 'goals_from_free_hit' => 1, 'penalty_shots' => 0, 'goals_from_penalty_shot' => 0, 'goals_empty_net' => 0, 'goals_extra_attacker' => 0 },
+                 heim.except('by_period'))
     assert_equal %w[1 3], heim['by_period'].keys, 'Abschnitte nur mit Freischlag zählen mit'
     assert_equal 1, stats['teams']['guest']['by_period']['3']['free_hits']
     assert_equal 0, stats['teams']['guest']['shots']
@@ -512,6 +517,147 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
 
     post_shots([shot('a').except(:x)])
     assert_response :unprocessable_entity
+  end
+
+  # --- Strafschüsse, Torwartsituation, Paraden ohne Position (Feedback #61-#64) ---
+
+  test 'Strafschuss und Torwartsituation werden gespeichert, ausgegeben und per PATCH geschaltet' do
+    post_shots([shot('p', result: 'saved', from_penalty_shot: true),
+                shot('e', result: 'goal', empty_net: true, extra_attacker: true, at: @t0 + 5),
+                shot('n', at: @t0 + 10)])
+
+    assert_response :success
+    body = response.parsed_body['shots'].index_by { |s| s['client_uuid'] }
+    assert_equal [true, false, false], body['p'].values_at('from_penalty_shot', 'empty_net', 'extra_attacker')
+    assert_equal [false, true, true], body['e'].values_at('from_penalty_shot', 'empty_net', 'extra_attacker')
+    assert_equal [false, false, false], body['n'].values_at('from_penalty_shot', 'empty_net', 'extra_attacker'),
+                 'ohne Angabe gilt keine Kennung'
+
+    patch "/api/v2/games/#{@game.id}/shots/e.json", params: { empty_net: false }, headers: token_header, as: :json
+
+    assert_response :success
+    assert_equal false, GameShot.find_by(client_uuid: 'e').empty_net
+    assert GameShot.find_by(client_uuid: 'e').extra_attacker
+  end
+
+  test 'Strafschuss: Widersprüche werden angeglichen, das Ergebnis gewinnt' do
+    post_shots([shot('a', from_penalty_shot: true, from_free_hit: true),
+                shot('b', from_penalty_shot: true, result: 'blocked', at: @t0 + 1),
+                shot('c', from_penalty_shot: true, result: 'goal', empty_net: true, extra_attacker: true, at: @t0 + 2)])
+
+    assert_response :success
+    flags = GameShot.order(:client_uuid).map { |s| [s.from_penalty_shot, s.from_free_hit, s.empty_net, s.extra_attacker] }
+    assert_equal [[false, true, false, false], [false, false, false, false], [true, false, false, false]], flags
+  end
+
+  test 'leeres Tor: gesetzter Torhüter oder gehalten nehmen es zurück' do
+    aufstellung!
+    post_shots([shot('e', result: 'goal', empty_net: true, goalie: 5),
+                shot('f', result: 'saved', empty_net: true, at: @t0 + 1),
+                shot('g', result: 'missed', empty_net: true, at: @t0 + 2)])
+
+    assert_response :success
+    assert_equal({ 'e' => false, 'f' => false, 'g' => true }, GameShot.pluck(:client_uuid, :empty_net).to_h)
+  end
+
+  test 'älteres Tablet ohne die Kennungen hängt nicht an einem Serverwert fest' do
+    aufstellung!
+    post_shots([shot('e', result: 'goal', empty_net: true)])
+    assert_response :success
+
+    # Gerät ohne die neuen Schlüssel schickt denselben Schuss als gehalten mit Torhüter.
+    post_shots([shot('e', result: 'saved', goalie: 5)])
+
+    assert_response :success
+    schuss = GameShot.find_by(client_uuid: 'e')
+    assert_equal ['saved', 5, false], [schuss.result, schuss.goalkeeper_player_id, schuss.empty_net]
+
+    post_shots([shot('p', result: 'saved', from_penalty_shot: true, at: @t0 + 1)])
+    post_shots([shot('p', result: 'blocked', at: @t0 + 1)])
+    assert_response :success
+    assert_equal false, GameShot.find_by(client_uuid: 'p').from_penalty_shot
+  end
+
+  test 'Kennungen der Schüsse gibt es an Freischlag und vorgemerkter Szene nicht' do
+    %i[from_penalty_shot empty_net extra_attacker].each do |flag|
+      post_shots([free_hit('f').merge(flag => true)])
+      assert_response :unprocessable_entity, flag.to_s
+
+      post_shots([{ client_uuid: 'm', kind: 'mark', period: 1, tapped_at: @t0.utc.iso8601(3), flag => true }])
+      assert_response :unprocessable_entity, flag.to_s
+    end
+  end
+
+  test 'Parade ohne Position nur bei gehaltenem Schuss ohne Strafschuss' do
+    post_shots([shot('s').merge(x: nil, y: nil)])
+    assert_response :success
+    assert_nil response.parsed_body['shots'].first['x']
+
+    post_shots([shot('g', result: 'goal').merge(x: nil, y: nil)])
+    assert_response :unprocessable_entity
+
+    post_shots([shot('p', from_penalty_shot: true).merge(x: nil, y: nil)])
+    assert_response :unprocessable_entity
+
+    post_shots([shot('h').merge(y: nil)])
+    assert_response :unprocessable_entity, 'nur eine Koordinate ist keine Parade ohne Position'
+  end
+
+  test 'detailed_stats: Strafschüsse, leeres Tor und 6 gegen 5 je Team, Paraden ohne Position beim Torhüter' do
+    aufstellung!
+    @game.update!(ended: true)
+    post_shots([
+      shot('p1', result: 'goal', from_penalty_shot: true, goalie: 5),
+      shot('p2', result: 'saved', from_penalty_shot: true, goalie: 5, at: @t0 + 5),
+      shot('e1', result: 'goal', empty_net: true, at: @t0 + 10, period: 3),
+      shot('x1', result: 'goal', extra_attacker: true, goalie: 5, at: @t0 + 15, period: 3),
+      shot('u1', goalie: 5, at: @t0 + 20, period: 2).merge(x: nil, y: nil),
+      shot('u2', goalie: 5, at: @t0 + 25, period: 2).merge(x: nil, y: nil)
+    ])
+    assert_response :success
+
+    get "/api/v2/games/#{@game.id}/detailed_stats.json", headers: { 'X-Api-Key' => API_KEY }
+
+    assert_response :success
+    stats = response.parsed_body
+    assert_equal 6, stats['shots'].size
+    assert_equal 2, stats['shots'].count { |s| s['x'].nil? && s['y'].nil? }, 'Paraden ohne Position ohne Koordinaten'
+    assert_equal [true, true, false, false, false, false], stats['shots'].pluck('from_penalty_shot')
+    assert_equal [false, false, true, false, false, false], stats['shots'].pluck('empty_net')
+    assert_equal [false, false, false, true, false, false], stats['shots'].pluck('extra_attacker')
+
+    heim = stats['teams']['home']
+    assert_equal({ 'shots' => 6, 'on_goal' => 6, 'goals' => 3, 'penalty_shots' => 2, 'goals_from_penalty_shot' => 1,
+                   'goals_empty_net' => 1, 'goals_extra_attacker' => 1 },
+                 heim.slice('shots', 'on_goal', 'goals', 'penalty_shots', 'goals_from_penalty_shot',
+                            'goals_empty_net', 'goals_extra_attacker'))
+    assert_equal [1, 1], heim['by_period']['3'].values_at('goals_empty_net', 'goals_extra_attacker')
+    assert_equal 0, heim['by_period']['1']['goals_empty_net']
+
+    torhueter = stats['goalkeepers'].sole
+    assert_equal ['guest', 3, 5, 0.6], torhueter.values_at('team', 'saves', 'shots_against', 'save_pct'),
+                 'das Tor aufs leere Tor belastet den Torhüter nicht, Paraden ohne Position zählen'
+    assert_equal({ '1' => { 'saves' => 1, 'shots_against' => 2, 'save_pct' => 0.5 },
+                   '2' => { 'saves' => 2, 'shots_against' => 2, 'save_pct' => 1.0 },
+                   '3' => { 'saves' => 0, 'shots_against' => 1, 'save_pct' => 0.0 } }, torhueter['by_period'])
+  end
+
+  test 'detailed_stats: Torhüterwechsel, Abschnitt ohne Einsatz ist 0 von 0 ohne Quote' do
+    @game.update!(ended: true, players: {
+                    'home' => [{ 'player_id' => 77, 'trikot_number' => 7, 'player_firstname' => 'A', 'player_name' => 'B' }],
+                    'guest' => [{ 'player_id' => 5, 'trikot_number' => 1, 'player_firstname' => 'C', 'player_name' => 'D' },
+                                { 'player_id' => 6, 'trikot_number' => 30, 'player_firstname' => 'E', 'player_name' => 'F' }]
+                  })
+    post_shots([shot('a', goalie: 5), shot('b', result: 'goal', goalie: 5, at: @t0 + 5),
+                shot('c', goalie: 6, at: @t0 + 10, period: 2)])
+
+    get "/api/v2/games/#{@game.id}/detailed_stats.json", headers: { 'X-Api-Key' => API_KEY }
+
+    torhueter = response.parsed_body['goalkeepers'].index_by { |gk| gk['trikot_number'] }
+    assert_equal({ '1' => { 'saves' => 1, 'shots_against' => 2, 'save_pct' => 0.5 },
+                   '2' => { 'saves' => 0, 'shots_against' => 0, 'save_pct' => nil } }, torhueter[1]['by_period'])
+    assert_equal({ '1' => { 'saves' => 0, 'shots_against' => 0, 'save_pct' => nil },
+                   '2' => { 'saves' => 1, 'shots_against' => 1, 'save_pct' => 1.0 } }, torhueter[30]['by_period'])
   end
 
   test 'das Tablet überschreibt die Highlight-Auswahl nicht' do
@@ -651,6 +797,8 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
     post "/api/v2/games/#{game.id}/shots.json", params: { shots: shots }, headers: token_header, as: :json
   end
 
+  SHOT_FLAGS = %i[from_free_hit from_penalty_shot empty_net extra_attacker].freeze
+
   SHOT_DEFAULTS = { result: 'saved', team: 'home', pos_x: 0.8, period: 1, shooter: nil, goalie: nil,
                     game_time: '12:34' }.freeze
 
@@ -658,7 +806,7 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
     o = SHOT_DEFAULTS.merge(optionen)
     { client_uuid: uuid, team: o[:team], period: o[:period], game_time: o[:game_time],
       tapped_at: at.utc.iso8601(3), x: o[:pos_x], y: 0.4, result: o[:result],
-      shooter_player_id: o[:shooter], goalkeeper_player_id: o[:goalie] }.merge(optionen.slice(:from_free_hit))
+      shooter_player_id: o[:shooter], goalkeeper_player_id: o[:goalie] }.merge(optionen.slice(*SHOT_FLAGS))
   end
 
   # Optionen wie bei `shot`, nur ohne Ergebnis und Spieler.

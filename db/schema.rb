@@ -346,6 +346,9 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_23_110000) do
     t.string "kind", default: "shot", null: false, comment: "shot / free_hit / mark"
     t.boolean "from_free_hit", default: false, null: false, comment: "Schuss aus einem Freischlag (am Tablet geschaltet)"
     t.boolean "in_highlights", default: true, null: false, comment: "Szene erscheint in den öffentlichen Highlights"
+    t.boolean "from_penalty_shot", default: false, null: false, comment: "Strafschuss (am Tablet geschaltet)"
+    t.boolean "empty_net", default: false, null: false, comment: "Schuss aufs leere Tor: Gegner ohne Torhüter"
+    t.boolean "extra_attacker", default: false, null: false, comment: "Schießendes Team ohne eigenen Torhüter (6 gegen 5)"
     t.index ["client_uuid"], name: "index_game_shots_on_client_uuid", unique: true
     t.index ["game_id", "tapped_at"], name: "index_game_shots_on_game_id_and_tapped_at"
   end
