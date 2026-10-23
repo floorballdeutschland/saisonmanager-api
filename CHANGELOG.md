@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Tabletmodus: Strafschüsse, leeres Tor, 6 gegen 5 und Paraden ohne Position** (Feedback #61 bis #64, fe#344): Ein Schuss an den Schuss-Endpunkten (`games/:id/shots`) kann zusätzlich `from_penalty_shot` (Strafschuss), `empty_net` (aufs leere Tor, der Gegner spielt ohne Torhüter) und `extra_attacker` (das schießende Team spielt ohne eigenen Torhüter, 6 gegen 5) tragen, am Tablet geschaltet wie „aus Freischlag“. Ein Strafschuss ist nie zugleich aus Freischlag, nie geblockt und nie bei herausgenommenem Torhüter; ein Schuss aufs leere Tor hat keinen Torhüter und kann nicht gehalten werden. Ein gehaltener Schuss darf ohne Position (`x`/`y` leer) kommen, für den Schnellzähler „Parade“. Die ausführliche Statistik (`GET games/:id/detailed_stats`) gibt die drei Kennungen am Schuss aus (`x`/`y` dort `null` bei Paraden ohne Position) und zählt je Team und Abschnitt `penalty_shots`, `goals_from_penalty_shot`, `goals_empty_net` und `goals_extra_attacker`. Die Torhüter haben ihre Paraden, Schüsse aufs Tor und Fangquote zusätzlich je Abschnitt (`by_period`); Schüsse aufs leere Tor belasten keine Fangquote. Der normale Spielbericht (`games.events`) bleibt unverändert.
+
 ## [2.1.0] - 2026-10-23
 
 ### Neu

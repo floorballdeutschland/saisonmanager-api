@@ -27,6 +27,23 @@
 # Abschnitt, Spielzeit und Zeitpunkt, Team und Position freiwillig. Sie zählen
 # nie als Schuss, werden aber Highlight-Szenen (GameHighlights).
 #
+# STRAFSCHÜSSE UND TORWARTSITUATION (Feedback #61, #63, #64) sind Kennungen
+# am Schuss wie `from_free_hit`, geschaltet am Tablet:
+# - `from_penalty_shot`: Strafschuss. Nie zugleich aus Freischlag, nie
+#   geblockt und nie bei herausgenommenem Torhüter, der Strafschuss geht
+#   immer auf den Torhüter.
+# - `empty_net`: aufs leere Tor, der Gegner spielt ohne Torhüter. Dann gibt
+#   es keinen Torhüter am Schuss und keine Parade; der Schuss belastet so
+#   keine Fangquote.
+# - `extra_attacker`: das schießende Team spielt ohne eigenen Torhüter
+#   (6 gegen 5).
+# Der normale Spielbericht (`games.events`, `goal_type`) weiß davon nichts.
+#
+# PARADEN OHNE POSITION (Feedback #62): Der Schnellzähler am Tablet erfasst
+# einen gehaltenen Schuss ohne Feldposition. `x` und `y` fehlen dann beide;
+# das gibt es nur bei `result: 'saved'` ohne Strafschuss. Solche Schüsse
+# zählen in Summen, Paraden und Fangquote, aber in keiner Schussgrafik.
+#
 # `in_highlights` ist die Auswahl für die öffentlichen Highlights, je Tor-Schuss
 # und vorgemerkter Szene. Sie gehört nicht zu INPUT_FIELDS: Das Tablet gleicht
 # seinen Puffer mit vollen Datensätzen ab und soll die Auswahl, die später über
@@ -44,7 +61,10 @@ class GameShot < ApplicationRecord
   # Verknüpfung läuft über einen eigenen Weg (GameShotsController#link) und
   # automatisch über GamesController#add_event.
   INPUT_FIELDS = %w[client_uuid kind team period game_time tapped_at x y result
-                    shooter_player_id goalkeeper_player_id from_free_hit].freeze
+                    shooter_player_id goalkeeper_player_id from_free_hit
+                    from_penalty_shot empty_net extra_attacker].freeze
+  # Kennungen, die es nur an Schüssen gibt.
+  SHOT_FLAGS = %w[from_free_hit from_penalty_shot empty_net extra_attacker].freeze
 
   belongs_to :game
 
@@ -54,11 +74,17 @@ class GameShot < ApplicationRecord
   validates :team, inclusion: { in: TEAMS }, allow_nil: true, if: :mark?
   validates :result, inclusion: { in: RESULTS }, if: :shot?
   validates :result, :shooter_player_id, :goalkeeper_player_id, absence: true, unless: :shot?
-  validates :from_free_hit, inclusion: { in: [false], message: 'gibt es nur bei Schüssen' }, unless: :shot?
+  validates(*SHOT_FLAGS, inclusion: { in: [false], message: 'gibt es nur bei Schüssen' }, unless: :shot?)
+  validate :penalty_shot_consistent, if: -> { shot? && from_penalty_shot }
+  validates :goalkeeper_player_id, absence: { message: 'gibt es bei einem Schuss aufs leere Tor nicht' },
+                                   if: -> { shot? && empty_net }
+  validates :result, exclusion: { in: %w[saved], message: 'gehalten geht nicht aufs leere Tor' },
+                     if: -> { shot? && empty_net }
   validates :period, numericality: { only_integer: true, greater_than_or_equal_to: 1 }
   validates :game_time, format: { with: /\A\d{1,3}:\d{2}\z/ }, allow_blank: true
   validates :tapped_at, presence: true
-  validates :x, :y, numericality: { greater_than_or_equal_to: 0, less_than_or_equal_to: 1 }, unless: :mark?
+  validates :x, :y, numericality: { greater_than_or_equal_to: 0, less_than_or_equal_to: 1 },
+                    unless: -> { mark? || unplaced_save? }
   validates :x, :y, numericality: { greater_than_or_equal_to: 0, less_than_or_equal_to: 1 }, allow_nil: true,
                     if: :mark?
 
@@ -72,7 +98,7 @@ class GameShot < ApplicationRecord
   # Nur ein Tor-Schuss kann an einem Tor hängen. Wird aus dem Tor nachträglich
   # ein gehaltener Schuss, fällt die Verknüpfung weg.
   before_validation { self.event_id = nil unless result == 'goal' }
-  before_validation { self.from_free_hit = false if from_free_hit.nil? }
+  before_validation { SHOT_FLAGS.each { |flag| self[flag] = false if self[flag].nil? } }
 
   scope :linked, -> { where.not(event_id: nil) }
   scope :shots, -> { where(kind: 'shot') }
@@ -95,6 +121,15 @@ class GameShot < ApplicationRecord
     ON_GOAL.include?(result)
   end
 
+  # Parade aus dem Schnellzähler: gehalten, ohne Feldposition.
+  def unplaced_save?
+    shot? && result == 'saved' && !from_penalty_shot && x.nil? && y.nil?
+  end
+
+  def placed?
+    !x.nil? && !y.nil?
+  end
+
   def defending_team
     team == 'home' ? 'guest' : 'home'
   end
@@ -114,12 +149,22 @@ class GameShot < ApplicationRecord
       shooter_player_id:,
       goalkeeper_player_id:,
       from_free_hit:,
+      from_penalty_shot:,
+      empty_net:,
+      extra_attacker:,
       in_highlights:,
       event_id:
     }
   end
 
   private
+
+  def penalty_shot_consistent
+    errors.add(:from_penalty_shot, 'und aus Freischlag schließen sich aus') if from_free_hit
+    errors.add(:from_penalty_shot, 'geht immer auf den Torhüter, nicht bei herausgenommenem Torhüter') \
+      if empty_net || extra_attacker
+    errors.add(:from_penalty_shot, 'kann nicht geblockt werden') if result == 'blocked'
+  end
 
   def shooter_in_lineup
     errors.add(:shooter_player_id, 'steht nicht in der Aufstellung des schießenden Teams') \
