@@ -162,6 +162,18 @@ class RefereeObservationPolicyTest < ActiveSupport::TestCase
                         observation.id
   end
 
+  test 'nur der abgebende Coach darf den Bogen bearbeiten, ohne Frist und ohne Qualifikation' do
+    coach = coach_referee(valid_until: 1.day.ago.to_date)
+    rated = create(:referee)
+    observation = create(:referee_observation, :with_rating, coach: coach, rated_referee: rated,
+                                                             submitted_at: 2.years.ago)
+
+    assert policy_for(coach).can_edit?(observation)
+    assert_not policy_for(rated).can_edit?(observation)
+    assert_not policy_for(coach_referee).can_edit?(observation)
+    assert_not RefereeObservationPolicy.new(create(:user, :admin)).can_edit?(observation)
+  end
+
   private
 
   def policy_for(referee)

@@ -127,6 +127,20 @@ module Admin
       assert_equal %q('=HYPERLINK("http://x","y")), row['Coach']
     end
 
+    test 'Bericht und Export zeigen den Vermerk bearbeitet am' do
+      @fd_obs.update_column(:edited_at, Time.utc(2026, 10, 6, 18, 30))
+      login(create(:user, :admin))
+
+      get '/api/v2/admin/referee_observation_report'
+      entry = JSON.parse(response.body)['observations'].find { |o| o['id'] == @fd_obs.id }
+      assert_equal '2026-10-06T18:30:00Z', entry['edited_at']
+
+      get '/api/v2/admin/referee_observation_report/export.csv'
+      rows = CSV.parse(response.body, headers: true)
+      assert_equal '2026-10-06 20:30', rows.find { |r| r['Datum'] == '2026-10-04' }['Bearbeitet am']
+      assert_nil rows.find { |r| r['Datum'] == '2026-09-20' }['Bearbeitet am']
+    end
+
     test 'Export nur der ausgewaehlten Boegen' do
       login(create(:user, :admin))
       get '/api/v2/admin/referee_observation_report/export.csv', params: { ids: [@lv_obs.id] }

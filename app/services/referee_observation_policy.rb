@@ -62,6 +62,18 @@ class RefereeObservationPolicy
     free_choice_allowed?(game)
   end
 
+  # Darf dieses Konto den Inhalt des Bogens ändern? Nur der Coach, der ihn
+  # abgegeben hat (feedback#74), und ohne Frist. Bewusst nicht an
+  # can_observe? gebunden: Eine inzwischen abgelaufene B-Qualifikation oder eine
+  # geänderte Ansetzung soll die Korrektur eines Tippfehlers nicht verhindern.
+  # Die Verwaltung ändert Inhalte nie, sie nimmt einen Bogen höchstens zurück
+  # (moderation_scope).
+  def can_edit?(observation)
+    return false if referee.nil? || observation.nil?
+
+    observation.coach_id == referee.id
+  end
+
   # Bögen, die die VERWALTUNGSSICHT dieses Kontos zeigen darf – die Rollensicht
   # am Schiri-Profil. Ausschließlich über den Spielbetrieb der Rolle.
   #
