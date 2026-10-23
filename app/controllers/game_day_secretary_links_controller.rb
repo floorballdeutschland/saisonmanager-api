@@ -55,11 +55,14 @@ class GameDaySecretaryLinksController < ApplicationController
   # mehreren Mannschaften richtet leicht zwanzig Spieltage und mehr aus.
   def season
     season_id = (params[:season_id].presence || Setting.current_season_id).to_i
-    hosted = hosted_game_days_scope
+    allowed = permitted_hosted_game_days
 
+    # Die Saisonliste kommt aus den GEPRÜFTEN Spieltagen: Ein Teammanager
+    # bekäme sonst Saisons angeboten, in denen er nichts sieht, weil der
+    # Verein dort nur mit fremden Mannschaften ausgerichtet hat.
+    season_ids = allowed.map { |gd| gd.league.season_id.to_i }.uniq
     # `leagues.season_id` ist Text: als Zeichenkette vergleichen, nie per Range.
-    season_ids = hosted ? hosted.distinct.pluck('leagues.season_id').map(&:to_i) : []
-    game_days = hosted ? season_game_days(hosted, season_id) : []
+    game_days = season_game_days(allowed.select { |gd| gd.league.season_id.to_s == season_id.to_s })
 
     render json: {
       season_id: season_id,
@@ -225,22 +228,28 @@ class GameDaySecretaryLinksController < ApplicationController
     (vm_club_ids + tm_team_club_ids).uniq
   end
 
-  # Ausgerichtete Spieltage über alle Saisons, mit Liga. nil ohne Verein.
-  def hosted_game_days_scope
+  # Ausgerichtete Spieltage über alle Saisons, auf die der/die Angemeldete
+  # Zugriff hat: dieselbe Prüfung je Spieltag wie in der Übersicht. Für den
+  # Vereinsmanager entscheidet der Ausrichter allein; die Spiele werden nur
+  # für den Teammanager-Zweig nachgeladen (eigene Mannschaft am Spieltag).
+  def permitted_hosted_game_days
     club_ids = candidate_club_ids
-    return nil if club_ids.empty?
+    return [] if club_ids.empty?
 
-    GameDay.where(club_id: club_ids).joins(:league)
+    GameDay.where(club_id: club_ids).joins(:league).includes(:league)
+           .to_a
+           .select { |gd| may_manage_game_day_link?(gd) }
   end
 
   TEAM_LOGO_INCLUDES = [{ logo_attachment: :blob }, { club: { logo_attachment: :blob } }].freeze
 
-  def season_game_days(hosted, season_id)
-    GameDay.where(id: hosted.where(leagues: { season_id: season_id.to_s }).select(:id))
+  def season_game_days(permitted)
+    return [] if permitted.empty?
+
+    GameDay.where(id: permitted.map(&:id))
            .includes(:arena, :league,
                      games: { home_team: TEAM_LOGO_INCLUDES, guest_team: TEAM_LOGO_INCLUDES })
            .to_a
-           .select { |gd| may_manage_game_day_link?(gd) }
            .sort_by { |gd| [gd.date.to_s, gd.id] }
   end
 

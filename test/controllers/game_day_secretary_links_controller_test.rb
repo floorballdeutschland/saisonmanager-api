@@ -748,6 +748,35 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
     assert_equal([18, 9], body['seasons'].map { |season| season['id'] })
   end
 
+  # Ein Teammanager sieht nur ausgerichtete Spieltage, an denen seine eigene
+  # Mannschaft spielt, nicht jeden Spieltag seines Vereins.
+  test 'season zeigt dem Teammanager nur Spieltage mit seiner Mannschaft' do
+    second = create(:team, league: @league, club: @host_club)
+    other_day = create_game_day(@league, @host_club, date: 9.days.from_now.to_date.to_s)
+    Game.create!(game_day: other_day, home_team: second, guest_team: @guest, start_time: '10:00')
+    login(create(:user, :tm, team_id: @home.id))
+
+    get '/api/v2/user/secretary_game_days/season'
+
+    assert_response :success
+    assert_equal([@game_day.id], JSON.parse(response.body)['game_days'].map { |gd| gd['id'] })
+  end
+
+  test 'season bietet dem Teammanager nur Saisons an, in denen er etwas sieht' do
+    old_league = create(:league, game_operation: @go, season_id: '9')
+    foreign = create(:team, league: old_league, club: @host_club)
+    old_day = create_game_day(old_league, @host_club)
+    Game.create!(game_day: old_day, home_team: foreign, guest_team: @guest, start_time: '12:00')
+    own_old_league = create(:league, game_operation: @go, season_id: '8')
+    own_old_day = create_game_day(own_old_league, @host_club)
+    Game.create!(game_day: own_old_day, home_team: @home, guest_team: @guest, start_time: '12:00')
+    login(create(:user, :tm, team_id: @home.id))
+
+    get '/api/v2/user/secretary_game_days/season'
+
+    assert_equal([18, 8], JSON.parse(response.body)['seasons'].map { |season| season['id'] })
+  end
+
   test 'season verlangt eine Anmeldung' do
     get '/api/v2/user/secretary_game_days/season'
 
