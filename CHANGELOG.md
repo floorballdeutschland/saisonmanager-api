@@ -13,6 +13,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 - **Coach bearbeitet den eigenen Beobachtungsbogen** (feedback#74): Mit `PATCH referee/observations/:id` korrigiert ein Schiedsrichtercoach seinen abgegebenen Bogen, ohne Frist und auch nach Ablauf seiner B-Qualifikation. Nur der Coach, der den Bogen abgegeben hat, darf das; alle anderen bekommen 403. Felder und Validierungen sind dieselben wie bei der Abgabe (`RefereeObservationSubmission`). Bewertet bleiben genau die Personen, die bei der Abgabe bewertet wurden; eine neue Person kommt dabei nicht hinzu. Hat sich etwas geändert, trägt der Bogen den Vermerk `edited_at`, der in allen Sichten mitkommt (Coach, beobachtete Person, Verwaltung) und im Export als Spalte „Bearbeitet am" steht. Eine Änderung verschickt keine neue Mail an die Schiedsrichter*innen. Neuer Berechtigungsschlüssel `menu_item_referee_observations_own`: wahr bei gültiger B-Qualifikation oder sobald es eigene Bögen als Coach gibt, damit Liste und Bearbeiten auch nach Ablauf der Qualifikation erreichbar bleiben.
 
+### Verbessert
+
+- **Tor vor bereits erfassten Toren nur mit Bestätigung** (#835): `events/add` und `events/update` lehnen eine Eingabe mit 422 (`code: score_change_unconfirmed`, `changed_goals`) ab, wenn sie den Spielstand schon erfasster Tore ändert, etwa ein Tor mit früherer Zeit oder ein Mannschaftswechsel bei einem früheren Tor. Mit `confirm_score_change: true` wird sie wie bisher eingetragen. Anlass war Spiel 58665: 9:13 wurde als 3:13 erfasst, und aus einem 1:0 wurde still ein 0:1. Gilt für alle Rollen, Altdaten ausgenommen. Löschen bleibt ohne Rückfrage.
+
 ## [2.1.0] - 2026-10-23
 
 ### Neu
