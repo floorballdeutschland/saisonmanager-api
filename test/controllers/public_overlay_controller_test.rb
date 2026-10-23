@@ -563,6 +563,29 @@ class PublicOverlayControllerTest < ActionDispatch::IntegrationTest
     assert_equal [@game.id], game_ids
   end
 
+  # Die Thumbnail-Seite hinter dem Bedienfeld zeichnet aus dieser Antwort die
+  # YouTube-Bilder: Wappen fuer beide Bilder, Endstand nur fuer das
+  # Highlight-Bild und nur nach dem Schlusspfiff.
+  test 'game_day traegt Wappen und erst nach dem Schlusspfiff den Endstand' do
+    @home.logo.attach(io: StringIO.new('x'), filename: 'wappen.png', content_type: 'image/png')
+
+    get '/api/v2/public/overlay/game_day', params: { token: @token }
+
+    game = JSON.parse(response.body)['games'].first
+    assert_match %r{\A/.*/wappen\.png\z}, game['home_team_logo'], 'pfadrelativ, also dieselbe Herkunft wie die Seite'
+    assert_nil game['result'], 'ein laufendes Spiel hat noch keinen Endstand'
+
+    @game.update!(ended: true)
+    get '/api/v2/public/overlay/game_day', params: { token: @token }
+
+    game = JSON.parse(response.body)['games'].first
+    expected = @game.reload.result
+    assert_equal expected[:home_goals], game.dig('result', 'home_goals')
+    assert_equal expected[:guest_goals], game.dig('result', 'guest_goals')
+    assert game['result'].key?('postfix')
+    assert_equal 'Heimverein', game['home_team'], 'das Dock liest den Namen weiter hier'
+  end
+
   # ── Steuerzustand ─────────────────────────────────────────────────────────
 
   test 'das Dock schreibt den Zustand und das Overlay liest ihn' do

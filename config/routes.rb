@@ -525,6 +525,7 @@ Rails.application.routes.draw do
       post 'user/game_days/:game_day_id/secretary_link', to: 'game_day_secretary_links#create'
       get  'user/game_days/:game_day_id/secretary_link', to: 'game_day_secretary_links#show'
       get  'user/secretary_game_days',                   to: 'game_day_secretary_links#index'
+      get  'user/secretary_game_days/season',            to: 'game_day_secretary_links#season'
 
       # Livestream-Overlays: Datenquelle der OBS-Browser-Quellen und des
       # Steuer-Docks (nur Token, keine Anmeldung, siehe
