@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
-# Schüsse des Tabletmodus (api#816, fe#344).
+# Schüsse des Tabletmodus (api#816, fe#344), seit fe#589 auch Freischläge
+# (`kind: 'free_hit'`). Beide laufen über dieselben Endpunkte und dieselbe
+# Liste, damit das Tablet nur einen Puffer abgleicht.
 #
 # Schreiben mit denselben Rechten wie die Ereignisse (GamesController#add_event):
 # wer den Spielbericht bearbeiten darf, inklusive Sekretariats-Link; nach dem
@@ -196,7 +198,7 @@ class GameShotsController < ApplicationController
   end
 
   def link_error(event_id)
-    return 'Nur ein Tor-Schuss kann mit einem Tor verknüpft werden.' unless @shot.result == 'goal'
+    return 'Nur ein Tor-Schuss kann mit einem Tor verknüpft werden.' unless @shot.shot? && @shot.result == 'goal'
     return 'Tor nicht gefunden.' if goal_event(event_id).nil?
 
     team_mismatch(event_id)

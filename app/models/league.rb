@@ -345,6 +345,11 @@ class League < ApplicationRecord
 
       legacy_league:,
       field_size:,
+      # Feldgroesse samt Erbe der Hauptrunde (LeagueCompetition): Zwischen- und
+      # Endrunden bleiben oft ohne eigene `field_size`. Das Frontend zeichnet
+      # damit das Spielfeld im Tabletmodus und im Schussbild (fe#592). Kostet nur
+      # bei leerer `field_size` mit Hauptrunde eine Abfrage.
+      effective_field_size:,
       league_modus:,
       competition_group:,
       has_preround:,

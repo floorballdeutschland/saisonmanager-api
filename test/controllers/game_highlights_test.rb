@@ -39,6 +39,43 @@ class GameHighlightsTest < ActionDispatch::IntegrationTest
     assert_nil body['scenes'].last['scorer'], 'nicht angegebener Schütze'
   end
 
+  test 'Freischläge erzeugen keine Szenen, auch nicht mit fälschlicher Verknüpfung (fe#589)' do
+    GameShot.create!(game: @game, client_uuid: 'f1', kind: 'free_hit', team: 'home', period: 1,
+                     tapped_at: @start + 49.minutes, x: 0.6, y: 0.5)
+    shot('f2', 'home', @start + 49.minutes, 2).update_columns(kind: 'free_hit')
+
+    get "/api/v2/games/#{@game.id}/highlights.json", headers: { 'X-Api-Key' => API_KEY }
+
+    assert_response :success
+    assert_equal([1, 3], response.parsed_body['scenes'].map { |s| s['event_id'] })
+  end
+
+  test 'abgewählte Szenen fehlen öffentlich, vorgemerkte erscheinen als kind mark (fe#560)' do
+    GameShot.find_by(client_uuid: 's1').update!(in_highlights: false)
+    GameShot.create!(game: @game, client_uuid: 'm1', kind: 'mark', period: 2, game_time: '03:10',
+                     tapped_at: @start + 45.minutes)
+    GameShot.create!(game: @game, client_uuid: 'm2', kind: 'mark', period: 2, tapped_at: @start + 46.minutes,
+                     in_highlights: false)
+
+    get "/api/v2/games/#{@game.id}/highlights.json", headers: { 'X-Api-Key' => API_KEY }
+
+    scenes = response.parsed_body['scenes']
+    assert_equal(%w[mark goal], scenes.map { |s| s['kind'] })
+    assert_equal [2700 - 15, 2700 + 5, 2, '03:10'], scenes.first.values_at('start', 'end', 'period', 'game_time')
+    assert_equal 3, scenes.last['event_id']
+    assert_not_includes response.body, 'client_uuid', 'Schreibschlüssel des Tablets bleibt intern'
+    assert_not_includes response.body, 'm2'
+  end
+
+  test 'kalibriert: 20-s-Fenster um die verschobene Stelle (fe#560)' do
+    @broadcast.update!(offset_seconds: 20)
+
+    get "/api/v2/games/#{@game.id}/highlights.json", headers: { 'X-Api-Key' => API_KEY }
+
+    erste = response.parsed_body['scenes'].first
+    assert_equal [2280 + 20 - 12, 2280 + 20 + 8], erste.values_at('start', 'end')
+  end
+
   test 'ohne Tabletmodus 404, ohne Schlüssel 401' do
     @game.update_columns(tablet_capture_at: nil)
     get "/api/v2/games/#{@game.id}/highlights.json", headers: { 'X-Api-Key' => API_KEY }
@@ -85,6 +122,21 @@ class GameHighlightsTest < ActionDispatch::IntegrationTest
 
     assert_equal({ 'video_id' => nil, 'scenes' => [] }, response.parsed_body)
     assert_not_includes response.body, 'vid-1'
+  end
+
+  test 'Abwählen schaltet nicht auf eine andere Übertragung um (fe#560)' do
+    # Neustart: vid-2 beginnt später und enthält nur das dritte Tor.
+    StreamBroadcast.create!(broadcast_id: 'vid-2', game: @game, actual_start_at: @start + 55.minutes,
+                            vod_duration_seconds: 3600)
+    @game.update_columns(vod_link: 'https://www.youtube.com/watch?v=vid-2')
+    GameShot.find_by(client_uuid: 's1').update!(in_highlights: false)
+
+    get "/api/v2/games/#{@game.id}/highlights.json", headers: { 'X-Api-Key' => API_KEY }
+
+    body = response.parsed_body
+    assert_equal 'vid-1', body['video_id'], 'dieselbe Übertragung wie im Editor'
+    assert_equal([3], body['scenes'].map { |s| s['event_id'] })
+    assert_equal 'vid-1', HighlightEditor.new(@game).as_json[:video_id]
   end
 
   test 'ohne bekannte Länge der Aufzeichnung gibt es Szenen, nur ohne Abschneiden' do

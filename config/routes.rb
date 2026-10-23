@@ -608,8 +608,16 @@ Rails.application.routes.draw do
           get    'detailed_stats', to: 'game_shots#detailed_stats'
           get    'highlights', to: 'game_shots#highlights'
           post   'tablet_feedback', to: 'game_shots#feedback'
+          # Kalibrierung und Szenenauswahl (fe#560)
+          post   'highlight_request', to: 'highlight_editor#request_link'
+          get    'highlight_editor', to: 'highlight_editor#show'
+          put    'highlight_editor', to: 'highlight_editor#update'
         end
       end
+      # Mail-Link zum Kalibrieren und Auswählen der Highlights (fe#560), Token
+      # im Query-String.
+      get 'highlight_editor', to: 'highlight_editor#show_by_token'
+      put 'highlight_editor', to: 'highlight_editor#update_by_token'
       # Serverzeit für den Uhrenabgleich des Tablets, ganz offen.
       get 'server_time', to: 'server_time#show'
       resources :game_days
