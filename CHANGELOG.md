@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Neu
+
+- **Coach bearbeitet den eigenen Beobachtungsbogen** (feedback#74): Mit `PATCH referee/observations/:id` korrigiert ein Schiedsrichtercoach seinen abgegebenen Bogen, ohne Frist und auch nach Ablauf seiner B-Qualifikation. Nur der Coach, der den Bogen abgegeben hat, darf das; alle anderen bekommen 403. Felder und Validierungen sind dieselben wie bei der Abgabe (`RefereeObservationSubmission`). Bewertet bleiben genau die Personen, die bei der Abgabe bewertet wurden; eine neue Person kommt dabei nicht hinzu. Hat sich etwas geändert, trägt der Bogen den Vermerk `edited_at`, der in allen Sichten mitkommt (Coach, beobachtete Person, Verwaltung) und im Export als Spalte „Bearbeitet am" steht. Eine Änderung verschickt keine neue Mail an die Schiedsrichter*innen.
+
 ## [2.1.0] - 2026-10-23
 
 ### Neu

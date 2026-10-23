@@ -40,6 +40,10 @@ class RefereeObservationSerializer
       coach_name: @observation.coach_name,
       status: @observation.status,
       submitted_at: @observation.submitted_at&.iso8601,
+      # Vermerk „bearbeitet am": gesetzt, sobald der Coach den Bogen nach der
+      # Abgabe geändert hat. Steht in allen Sichten, auch bei der beobachteten
+      # Person, damit eine geänderte Rückmeldung als solche erkennbar bleibt.
+      edited_at: @observation.edited_at&.iso8601,
       assigned_as_coach: @observation.referee_assignment_id.present?
     }.merge(texts).merge(pair_ratings)
   end
