@@ -31,6 +31,9 @@ class Game < ApplicationRecord
   # Tabletmodus (api#816). Der Fremdschlüssel löscht ohnehin mit, das hier
   # deckt den Weg über `destroy` ohne Einzelabfragen ab.
   has_many :game_shots, dependent: :delete_all
+  # Links zum Kalibrieren (fe#560): gehen mit dem Spiel, sonst blockiert der
+  # Fremdschlüssel das Löschen.
+  has_many :tablet_highlight_requests, dependent: :delete_all
 
   # Spiele eines Schiris. Kanonisch über die stabile Referee-PK in
   # officiating_referee_ids (Fundament #45); referee_ids (Lizenznummer) bleibt als

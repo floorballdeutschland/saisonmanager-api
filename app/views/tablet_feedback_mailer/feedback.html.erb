@@ -8,6 +8,7 @@
     Spieltag vom <%= format_game_day_date(@game.game_day.date) %><br>
   <% end %>
   <strong>Erfasste Schüsse:</strong> <%= @shot_count %><br>
+  <strong>Erfasste Freischläge:</strong> <%= @free_hit_count %><br>
   <strong>Von:</strong> <%= @sender %><br>
   <strong>Antwort an:</strong> <%= @reply_to.presence || 'keine Adresse angegeben' %><br>
   <% if @device.present? %>

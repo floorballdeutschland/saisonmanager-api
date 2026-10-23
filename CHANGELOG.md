@@ -13,6 +13,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 - **Tor vor bereits erfassten Toren nur mit Bestätigung** (#835): `events/add` und `events/update` lehnen eine Eingabe mit 422 (`code: score_change_unconfirmed`, `changed_goals`) ab, wenn sie den Spielstand schon erfasster Tore ändert, etwa ein Tor mit früherer Zeit oder ein Mannschaftswechsel bei einem früheren Tor. Mit `confirm_score_change: true` wird sie wie bisher eingetragen. Anlass war Spiel 58665: 9:13 wurde als 3:13 erfasst, und aus einem 1:0 wurde still ein 0:1. Gilt für alle Rollen, Altdaten ausgenommen. Löschen bleibt ohne Rückfrage.
 
+## [2.1.0] - 2026-10-23
+
+### Neu
+
+- **Tabletmodus: Freischläge** (fe#589): Die Schuss-Endpunkte (`games/:id/shots`) nehmen mit `kind: "free_hit"` auch Freischläge an: Team (das ausführende), Abschnitt, Spielzeit, Antippzeitpunkt und Position, ohne Ergebnis und ohne Spieler. Ohne `kind` bleibt es ein Schuss. Ein Schuss kann `from_free_hit: true` tragen („aus Freischlag", am Tablet geschaltet). Die ausführliche Statistik liefert zusätzlich die Freischlagpositionen (`free_hits`) und je Team und Abschnitt `free_hits`, `shots_from_free_hit` und `goals_from_free_hit`. Freischläge zählen nirgends als Schuss, werden nie mit einem Tor verknüpft und fließen weder in Highlight-Szenen noch in Sprungmarken der Stream-Aufzeichnung ein. Mit Strafen wird nichts verknüpft. Die Rückmeldungs-Mail nennt die Zahl der Freischläge getrennt.
+- **Tabletmodus: Highlights kalibrieren und auswählen, Szene vormerken** (fe#560): Das Bild der Aufzeichnung läuft der Halle je Spiel 10 bis 30 s hinterher. Ein Versatz je Übertragung (`stream_broadcasts.offset_seconds`) verschiebt jetzt Highlight-Szenen und Sprungmarken gemeinsam; die Sprungmarken in der YouTube-Beschreibung schreibt der Wächter danach von selbst neu. Kalibrierte Szenen sind 20 s lang (12 s vor dem Antippen, 8 s danach), unkalibrierte bleiben wie bisher. Beim Beenden des Tabletmodus kann man sich mit `POST games/:id/highlight_request` einen Link schicken lassen (an das angemeldete Konto oder eine eingegebene Adresse). Der Wächter verschickt ihn, sobald die Aufzeichnung verarbeitet und veröffentlicht ist; die eingegebene Adresse wird dabei gelöscht, der Link gilt 14 Tage. Über den Link (`GET/PUT highlight_editor?token=…`) stellt man den Versatz ein und wählt, welche Tore und vorgemerkten Szenen öffentlich in den Highlights erscheinen. Admin und die SBK des Spielbetriebs können das jederzeit über `GET/PUT games/:id/highlight_editor` korrigieren. Neu ist außerdem „Szene vormerken“ (`kind: "mark"` an den Schuss-Endpunkten, ohne Team und Position): Solche Szenen erscheinen in den Highlights, aber nicht in der Statistik und nicht als Sprungmarke. Freischläge bleiben weiter aus allem heraus, was mit dem Video zu tun hat.
+
+### Verbessert
+
+- **Feldgröße samt Erbe der Hauptrunde im Liga-JSON**: `GET leagues/:id` und die Ligenliste `GET game_operations/:id/leagues` liefern zusätzlich `effective_field_size`. Hat eine Zwischen- oder Endrunde keine eigene `field_size`, steht dort die der Hauptrunde (`league_id_preround`), sonst `null`. `field_size` selbst bleibt unverändert. Das Frontend zeichnet damit das Spielfeld im Tabletmodus und im Schussbild auch für Endrunden ohne eigene Angabe in der richtigen Größe.
+
 ## [2.0.0] - 2026-10-21
 
 ### Neu
