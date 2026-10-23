@@ -9,6 +9,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+### Verbessert
+
+- **Tor vor bereits erfassten Toren nur mit Bestätigung** (#835): `events/add` und `events/update` lehnen eine Eingabe mit 422 (`code: score_change_unconfirmed`, `changed_goals`) ab, wenn sie den Spielstand schon erfasster Tore ändert, etwa ein Tor mit früherer Zeit oder ein Mannschaftswechsel bei einem früheren Tor. Mit `confirm_score_change: true` wird sie wie bisher eingetragen. Anlass war Spiel 58665: 9:13 wurde als 3:13 erfasst, und aus einem 1:0 wurde still ein 0:1. Gilt für alle Rollen, Altdaten ausgenommen. Löschen bleibt ohne Rückfrage.
+
 ## [2.1.0] - 2026-10-23
 
 ### Neu

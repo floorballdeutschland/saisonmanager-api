@@ -161,10 +161,11 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
                 shot('s2', result: 'goal', game_time: '11:00', at: @t0 + 360),
                 shot('s3', result: 'goal', game_time: '18:00', at: @t0 + 780)])
 
-    # Vom Papier, in umgekehrter Reihenfolge eingetragen.
+    # Vom Papier, in umgekehrter Reihenfolge eingetragen. Jedes Tor schiebt sich
+    # vor ein erfasstes und braucht deshalb die Bestätigung (#835).
     add_goal('home', 3, 0, time: '18:05')
-    add_goal('home', 1, 0, time: '05:10')
-    add_goal('home', 2, 0, time: '11:20')
+    add_goal('home', 1, 0, time: '05:10', confirm: true)
+    add_goal('home', 2, 0, time: '11:20', confirm: true)
 
     assert_equal({ 's1' => 2, 's2' => 3, 's3' => 1 },
                  GameShot.where(game: @game).order(:client_uuid).to_h { |shot| [shot.client_uuid, shot.event_id] })
@@ -200,14 +201,15 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
 
     post "/api/v2/user/games/#{@game.id}/events/update",
          params: { event_id: 1, event_type: 'penalty', event_team: 'home', period: 1, time: '15:00',
-                   home_goals: 0, guest_goals: 0, home_number: 2000, penalty_id: 1, penalty_code_id: 1 },
+                   home_goals: 0, guest_goals: 0, home_number: 2000, penalty_id: 1, penalty_code_id: 1,
+                   confirm_score_change: true },
          headers: token_header, as: :json
     assert_response :success
     assert_nil GameShot.find_by(client_uuid: 'a').event_id
 
     post "/api/v2/user/games/#{@game.id}/events/update",
          params: { event_id: 2, event_type: 'goal', event_team: 'guest', period: 1, time: '15:00',
-                   home_goals: 0, guest_goals: 1, guest_number: 2000 },
+                   home_goals: 0, guest_goals: 1, guest_number: 2000, confirm_score_change: true },
          headers: token_header, as: :json
     assert_response :success
     assert_nil GameShot.find_by(client_uuid: 'b').event_id
@@ -664,10 +666,10 @@ class GameShotsControllerTest < ActionDispatch::IntegrationTest
     shot(uuid, at: at, **optionen).except(:result, :shooter_player_id, :goalkeeper_player_id).merge(kind: 'free_hit')
   end
 
-  def add_goal(team, home, guest, time: '15:00', period: 1)
+  def add_goal(team, home, guest, time: '15:00', period: 1, confirm: false)
     post "/api/v2/user/games/#{@game.id}/events/add",
          params: { event_type: 'goal', event_team: team, period: period, time: time, home_goals: home,
-                   guest_goals: guest, "#{team}_number": 2000 },
+                   guest_goals: guest, "#{team}_number": 2000, confirm_score_change: confirm },
          headers: token_header, as: :json
   end
 end
