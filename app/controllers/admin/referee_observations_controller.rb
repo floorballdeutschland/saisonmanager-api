@@ -38,9 +38,10 @@ module Admin
     end
 
     # PATCH /api/v2/admin/referee_observations/:id
-    # Nur der Status. Inhalte bleiben unveränderlich – eine nachträglich
-    # umgeschriebene Rückmeldung wäre für die beobachtete Person nicht mehr
-    # nachvollziehbar.
+    # Nur der Status. Inhalte ändert die Verwaltung nie; das darf allein der
+    # Coach, der den Bogen abgegeben hat (RefereeObservationsController#update),
+    # und dann trägt der Bogen den Vermerk edited_at, damit die beobachtete
+    # Person die Änderung erkennt.
     def update
       return forbidden unless policy.can_moderate?
 

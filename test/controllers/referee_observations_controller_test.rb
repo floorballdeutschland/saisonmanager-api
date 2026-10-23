@@ -345,7 +345,141 @@ class RefereeObservationsControllerTest < ActionDispatch::IntegrationTest
     assert_response :forbidden
   end
 
+  # Bearbeitung des eigenen Bogens (feedback#74)
+
+  test 'Coach bearbeitet den eigenen Bogen, der Bogen traegt den Vermerk' do
+    observation = submit_as_coach
+    assert_nil observation.edited_at
+
+    changed = payload
+    changed[:final_comments] = 'Korrigiert: Laufwege im Gespann abstimmen.'
+    changed[:pair_overall_rating] = 6
+    changed[:ratings][1][:overall_rating] = 4
+    patch "/api/v2/referee/observations/#{observation.id}", params: changed, as: :json
+    assert_response :success
+
+    observation.reload
+    assert_equal 'Korrigiert: Laufwege im Gespann abstimmen.', observation.final_comments
+    assert_equal 6, observation.pair_overall_rating
+    assert_equal 4, observation.ratings.find { |r| r.referee_id == @referee2.id }.overall_rating
+    assert_not_nil observation.edited_at
+    assert_equal observation.edited_at.iso8601, JSON.parse(response.body)['edited_at']
+    assert_equal 1, RefereeObservation.count
+  end
+
+  test 'beobachtete Person sieht den Vermerk' do
+    observation = submit_as_coach
+    changed = payload
+    changed[:other_matters] = 'Nachtrag zur Halle.'
+    patch "/api/v2/referee/observations/#{observation.id}", params: changed, as: :json
+    assert_response :success
+
+    login(referee_user(@referee1))
+    get '/api/v2/referee/observations/received'
+    entry = JSON.parse(response.body).first
+    assert_equal 'Nachtrag zur Halle.', entry['other_matters']
+    assert entry['edited_at'].present?
+  end
+
+  test 'Bearbeitung verschickt keine Mail an die beobachteten Schiedsrichter' do
+    referee_user(@referee1)
+    referee_user(@referee2)
+    observation = submit_as_coach
+
+    changed = payload
+    changed[:final_comments] = 'Anders formuliert.'
+    assert_no_difference 'ActionMailer::Base.deliveries.size' do
+      perform_enqueued_jobs do
+        patch "/api/v2/referee/observations/#{observation.id}", params: changed, as: :json
+      end
+    end
+    assert_response :success
+  end
+
+  test 'unveraendert gespeicherter Bogen bekommt keinen Vermerk' do
+    observation = submit_as_coach
+    patch "/api/v2/referee/observations/#{observation.id}", params: payload, as: :json
+    assert_response :success
+    assert_nil observation.reload.edited_at
+  end
+
+  test 'unvollstaendige Bearbeitung wird abgewiesen und laesst den Bogen unveraendert' do
+    observation = submit_as_coach
+    broken = payload
+    broken[:final_comments] = ''
+    broken[:match_description] = 'Neu'
+    patch "/api/v2/referee/observations/#{observation.id}", params: broken, as: :json
+    assert_response :unprocessable_entity
+
+    observation.reload
+    assert_equal 'Kopf-an-Kopf-Spiel.', observation.match_description
+    assert_nil observation.edited_at
+  end
+
+  test 'fehlende Noten einer bewerteten Person werden abgewiesen' do
+    observation = submit_as_coach
+    broken = payload
+    broken[:ratings] = broken[:ratings].first(1)
+    patch "/api/v2/referee/observations/#{observation.id}", params: broken, as: :json
+    assert_response :unprocessable_entity
+    assert_equal 3, observation.reload.ratings.find { |r| r.referee_id == @referee2.id }.overall_rating
+  end
+
+  test 'Bearbeitung fuegt keine neue bewertete Person hinzu' do
+    login(@coach_user)
+    single = payload
+    single[:ratings] = single[:ratings].first(1)
+    post '/api/v2/referee/observations', params: single, as: :json
+    assert_response :created
+    observation = RefereeObservation.last
+
+    patch "/api/v2/referee/observations/#{observation.id}", params: payload, as: :json
+    assert_response :success
+    assert_equal [@referee1.id], observation.reload.ratings.map(&:referee_id)
+  end
+
+  test 'Bearbeitung bleibt ohne Frist und nach Ablauf der Qualifikation moeglich' do
+    observation = submit_as_coach
+    observation.update_columns(submitted_at: 2.years.ago)
+    RefereeQualification.where(referee: @coach).update_all(valid_until: 1.day.ago.to_date)
+
+    changed = payload
+    changed[:final_comments] = 'Spaete Korrektur.'
+    patch "/api/v2/referee/observations/#{observation.id}", params: changed, as: :json
+    assert_response :success
+    assert_equal 'Spaete Korrektur.', observation.reload.final_comments
+  end
+
+  test 'nur der abgebende Coach darf bearbeiten' do
+    observation = submit_as_coach
+    other_coach = create(:referee)
+    RefereeQualification.create!(referee: other_coach, referee_qualification_type: @b_type,
+                                 valid_until: 1.year.from_now.to_date)
+    changed = payload
+    changed[:final_comments] = 'Fremd ueberschrieben.'
+
+    [referee_user(other_coach), referee_user(@referee1)].each do |user|
+      login(user)
+      patch "/api/v2/referee/observations/#{observation.id}", params: changed, as: :json
+      assert_response :forbidden
+    end
+    assert_equal 'Kommunikation im Gespann ausbauen.', observation.reload.final_comments
+  end
+
+  test 'unbekannter Bogen liefert 404' do
+    login(@coach_user)
+    patch '/api/v2/referee/observations/0', params: payload, as: :json
+    assert_response :not_found
+  end
+
   private
+
+  def submit_as_coach
+    login(@coach_user)
+    post '/api/v2/referee/observations', params: payload, as: :json
+    assert_response :created
+    RefereeObservation.find(JSON.parse(response.body)['id'])
+  end
 
   def payload
     {

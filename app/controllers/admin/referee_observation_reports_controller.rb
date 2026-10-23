@@ -203,7 +203,7 @@ module Admin
 
     def export_headers
       ['Datum', 'Spielnummer', 'Liga', 'Spielbetrieb', 'Heim', 'Gast', 'Coach', 'Angesetzt',
-       'Status', 'Abgegeben am'] +
+       'Status', 'Abgegeben am', 'Bearbeitet am'] +
         rated_headers('Schiedsrichter 1') + rated_headers('Schiedsrichter 2') +
         RefereeObservation::DIMENSIONS.map { |d| "Gespann #{DIMENSION_LABELS.fetch(d)}" }
     end
@@ -220,7 +220,8 @@ module Admin
         game&.home_team&.name, game&.guest_team&.name, observation.coach_name,
         observation.referee_assignment_id.present? ? 'ja' : 'nein',
         observation.visible? ? 'sichtbar' : 'zurückgenommen',
-        observation.submitted_at&.in_time_zone('Europe/Berlin')&.strftime('%Y-%m-%d %H:%M')
+        observation.submitted_at&.in_time_zone('Europe/Berlin')&.strftime('%Y-%m-%d %H:%M'),
+        observation.edited_at&.in_time_zone('Europe/Berlin')&.strftime('%Y-%m-%d %H:%M')
       ] + rated_cells(observation, 1) + rated_cells(observation, 2) +
         RefereeObservation::PAIR_RATING_ATTRIBUTES.map { |field| observation[field] }
     end

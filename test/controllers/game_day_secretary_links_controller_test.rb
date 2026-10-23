@@ -689,6 +689,100 @@ class GameDaySecretaryLinksControllerTest < ActionDispatch::IntegrationTest
     end
   end
 
+  # --- Saisonstapel der Thumbnails (feedback#77) ------------------------------
+
+  test 'season liefert die ausgerichteten Spieltage der Saison samt Spielen' do
+    @home.logo.attach(io: StringIO.new('x'), filename: 'wappen.png', content_type: 'image/png')
+    # Weit ausserhalb des Fensters der Uebersicht: Der Stapel gilt der Saison.
+    late = create_game_day(@league, @host_club, date: 100.days.from_now.to_date.to_s)
+    Game.create!(game_day: late, home_team: @home, guest_team: @guest, start_time: '16:00')
+    login(create(:user, :vm, club_id: @host_club.id))
+
+    get '/api/v2/user/secretary_game_days/season'
+
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal 18, body['season_id']
+    assert_equal([@game_day.id, late.id], body['game_days'].map { |gd| gd['id'] })
+    game = body['game_days'].first['games'].first
+    assert_equal @game.id, game['id']
+    assert_equal '14:00', game['start_time']
+    assert_match %r{\A/.*/wappen\.png\z}, game['home_team_logo'], 'pfadrelativ, also dieselbe Herkunft wie die Seite'
+    assert_equal 'Sporthalle Nord', body['game_days'].first.dig('arena', 'name')
+    assert_nil game['result']
+  end
+
+  test 'season traegt den Endstand beendeter Spiele' do
+    @game.update!(started: true, ended: true,
+                  events: [{ 'row' => 1, 'period' => 1, 'time' => '05:00', 'event_type' => 'goal',
+                             'event_team' => 'guest', 'home_goals' => 0, 'guest_goals' => 1 }])
+    login(create(:user, :vm, club_id: @host_club.id))
+
+    get '/api/v2/user/secretary_game_days/season'
+
+    game = JSON.parse(response.body)['game_days'].first['games'].first
+    assert_equal 0, game.dig('result', 'home_goals')
+    assert_equal 1, game.dig('result', 'guest_goals')
+  end
+
+  test 'season zeigt dem Gastverein keine fremden Spieltage' do
+    login(create(:user, :vm, club_id: @guest_club.id))
+
+    get '/api/v2/user/secretary_game_days/season'
+
+    assert_response :success
+    assert_empty JSON.parse(response.body)['game_days']
+  end
+
+  test 'season filtert nach der gewaehlten Saison und nennt die Saisons des Vereins' do
+    old_league = create(:league, game_operation: @go, season_id: '9')
+    old_day = create_game_day(old_league, @host_club)
+    Game.create!(game_day: old_day, home_team: @home, guest_team: @guest, start_time: '12:00')
+    login(create(:user, :vm, club_id: @host_club.id))
+
+    get '/api/v2/user/secretary_game_days/season', params: { season_id: 9 }
+
+    body = JSON.parse(response.body)
+    assert_equal [old_day.id], body['game_days'].map { |gd| gd['id'] },
+                 'season_id ist Text; Saison 9 darf nicht die 18 mitnehmen und umgekehrt'
+    assert_equal([18, 9], body['seasons'].map { |season| season['id'] })
+  end
+
+  # Ein Teammanager sieht nur ausgerichtete Spieltage, an denen seine eigene
+  # Mannschaft spielt, nicht jeden Spieltag seines Vereins.
+  test 'season zeigt dem Teammanager nur Spieltage mit seiner Mannschaft' do
+    second = create(:team, league: @league, club: @host_club)
+    other_day = create_game_day(@league, @host_club, date: 9.days.from_now.to_date.to_s)
+    Game.create!(game_day: other_day, home_team: second, guest_team: @guest, start_time: '10:00')
+    login(create(:user, :tm, team_id: @home.id))
+
+    get '/api/v2/user/secretary_game_days/season'
+
+    assert_response :success
+    assert_equal([@game_day.id], JSON.parse(response.body)['game_days'].map { |gd| gd['id'] })
+  end
+
+  test 'season bietet dem Teammanager nur Saisons an, in denen er etwas sieht' do
+    old_league = create(:league, game_operation: @go, season_id: '9')
+    foreign = create(:team, league: old_league, club: @host_club)
+    old_day = create_game_day(old_league, @host_club)
+    Game.create!(game_day: old_day, home_team: foreign, guest_team: @guest, start_time: '12:00')
+    own_old_league = create(:league, game_operation: @go, season_id: '8')
+    own_old_day = create_game_day(own_old_league, @host_club)
+    Game.create!(game_day: own_old_day, home_team: @home, guest_team: @guest, start_time: '12:00')
+    login(create(:user, :tm, team_id: @home.id))
+
+    get '/api/v2/user/secretary_game_days/season'
+
+    assert_equal([18, 8], JSON.parse(response.body)['seasons'].map { |season| season['id'] })
+  end
+
+  test 'season verlangt eine Anmeldung' do
+    get '/api/v2/user/secretary_game_days/season'
+
+    assert_response :unauthorized
+  end
+
   private
 
   def login(user)
