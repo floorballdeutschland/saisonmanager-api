@@ -170,13 +170,20 @@ class RefereeEmailImport
 
   # Alle betroffenen Schiedsrichter in EINER Query. Zusammengeführte Dubletten
   # bleiben bewusst außen vor (canonical): Eine Adresse am aufgelösten Datensatz
-  # erreicht niemanden mehr. Sie landen im Report unter not_found, dessen Label
-  # deshalb „ohne aktiven Schiedsrichter" lautet und nicht „gibt es nicht".
+  # erreicht niemanden mehr. Steht in der Liste noch die aufgegebene Nummer einer
+  # Dublette, gilt die Zeile ihrem Master. Was dann noch fehlt, landet im Report
+  # unter not_found, dessen Label deshalb „ohne aktiven Schiedsrichter" lautet
+  # und nicht „gibt es nicht".
   def load_referees(rows, columns)
     numbers = rows.filter_map { |row| license_number(row.cells[columns[:lizenznummer]]) }.uniq
     return {} if numbers.empty?
 
-    Referee.canonical.where(lizenznummer: numbers).index_by(&:lizenznummer)
+    found = Referee.canonical.where(lizenznummer: numbers).index_by(&:lizenznummer)
+    (numbers - found.keys).each do |number|
+      master = Referee.canonical_for_lizenznummer(number)
+      found[number] = master if master
+    end
+    found
   end
 
   def apply_row(report, referees, row, columns)

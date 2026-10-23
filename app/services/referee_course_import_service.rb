@@ -535,10 +535,12 @@ class RefereeCourseImportService
   # trifft, ist immer der Match — unabhängig vom Score. Das verhindert, dass
   # ein Namensvetter mit mehr übereinstimmenden Feldern den Lizenznummer-
   # Träger „überholt" und damit eine kollidierende Neuanlage anstößt.
+  # Eine Nummer, die nach einer Zusammenlegung an der Dublette blieb, zählt
+  # genauso und trifft den Master.
   # Rückgabe: [referee, match_field_count, ausgeschlossene Namensvettern].
   def find_best_match(csv_attrs)
     if csv_attrs[:lizenznummer]
-      ref = Referee.where(lizenznummer: csv_attrs[:lizenznummer], merged_into_id: nil).first
+      ref = Referee.canonical_for_lizenznummer(csv_attrs[:lizenznummer])
       return [ref, count_matches(csv_attrs, ref), []] if ref
     end
 

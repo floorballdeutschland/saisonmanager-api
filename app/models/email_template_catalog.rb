@@ -291,6 +291,22 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
         { key: 'referee_name', description: 'Vor- und Nachname des Schiris' }
       ]
     },
+    'RefereeMailer#number_change' => {
+      mailer_class: 'RefereeMailer',
+      action_name: 'number_change',
+      description: 'Benachrichtigung an Schiri, dessen Nummer sich nach dem Zusammenführen zweier Profile ändert: ' \
+                   'Die Person behält die kleinere Nummer. Mit Konto nennt die Mail auch den neuen Login.',
+      default_subject: 'Deine Schiedsrichternummer hat sich geändert – {{referee_name}}',
+      default_from: nil,
+      default_reply_to: 'rsk@floorball.de',
+      placeholders: [
+        { key: 'first_name', description: 'Vorname des Empfängers (für die Anrede)' },
+        { key: 'referee_name', description: 'Vor- und Nachname des Schiris' },
+        { key: 'previous_number', description: 'Bisherige Schiedsrichternummer' },
+        { key: 'new_number', description: 'Neue Schiedsrichternummer' },
+        { key: 'user_name', description: 'Login des Schiri-Kontos (leer, wenn es keines gibt)' }
+      ]
+    },
     'RefereeMailer#qualification_notification' => {
       mailer_class: 'RefereeMailer',
       action_name: 'qualification_notification',

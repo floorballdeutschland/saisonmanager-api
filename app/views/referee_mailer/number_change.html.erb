@@ -1,0 +1,26 @@
+<h2>Deine Schiedsrichternummer hat sich geändert</h2>
+
+<p>Hallo <%= @referee.vorname %>,</p>
+
+<p>
+  im Saisonmanager warst du doppelt geführt. Wir haben die beiden Einträge zusammengeführt.
+  Dabei behältst du die Nummer, unter der du zuerst geführt wurdest. Deine Schiedsrichternummer lautet ab sofort
+  <strong><%= @referee.lizenznummer %></strong> (bisher <%= @previous_number %>).
+</p>
+
+<p>
+  Lizenz, Spiele und Kurse aus beiden Einträgen stehen jetzt unter der neuen Nummer.
+  Bitte gib bei Kursanmeldungen künftig diese Nummer an.
+</p>
+
+<% if @user_name.present? %>
+  <p>
+    Dein Login für das <a href="<%= frontend_base_url %>/schiedsrichter/profil">Schiedsrichter-Profil</a>
+    lautet ab sofort <strong><%= @user_name %></strong>. Dein Passwort bleibt gleich.
+  </p>
+<% end %>
+
+<p>
+  Bei Fragen oder Unstimmigkeiten wende dich bitte an die Regel- und Schiedsrichterkommission von Floorball Deutschland (rsk@floorball.de).<br>
+  <a href="<%= frontend_base_url %>"><%= frontend_host %></a>
+</p>

@@ -55,6 +55,15 @@ module RefereeNotification
     end
   end
 
+  # Nach einer Zusammenlegung fuehrt die Person die (kleinere) Nummer des
+  # Masters statt der bisherigen. `user_name` ist der Login des Kontos, falls es
+  # eines gibt; die Mail nennt ihn, weil er sich mit der Nummer aendert.
+  def self.number_change(referee, previous_number:, user_name: nil)
+    deliver(referee, 'Nummernmail') do
+      RefereeMailer.number_change(referee, previous_number: previous_number, user_name: user_name)
+    end
+  end
+
   def self.deliver(referee, label)
     return UNREACHABLE unless reachable?(referee)
 
