@@ -16,7 +16,12 @@
 <% if @user_name.present? %>
   <p>
     Dein Login für das <a href="<%= frontend_base_url %>/schiedsrichter/profil">Schiedsrichter-Profil</a>
-    lautet ab sofort <strong><%= @user_name %></strong>. Dein Passwort bleibt gleich.
+    lautet ab sofort <strong><%= @user_name %></strong>.
+    <% if @own_account %>
+      Dein Passwort bleibt gleich.
+    <% else %>
+      Kennst du das Passwort dazu nicht, setze es über „Passwort vergessen" auf der Anmeldeseite neu.
+    <% end %>
   </p>
 <% end %>
 

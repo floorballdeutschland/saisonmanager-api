@@ -455,6 +455,7 @@ class RefereeCourseImportService
       end
 
     warnings += reactivation_warning(referee)
+    warnings += merged_number_warning(csv_lizenznummer, referee)
     # Nur an der Neuanlage: Hat die Zeile jemanden getroffen, ist der
     # ausgeschlossene Namensvetter keine offene Frage mehr.
     warnings += namesake_warning(csv_attrs[:vorname], namesakes) if referee.nil?
@@ -463,7 +464,7 @@ class RefereeCourseImportService
     tally_club_match(csv_verein, club_match_type)
 
     importer_attrs = {
-      master_lizenznummer_by_importer: csv_lizenznummer || referee&.lizenznummer,
+      master_lizenznummer_by_importer: effective_lizenznummer(csv_lizenznummer, referee) || referee&.lizenznummer,
       master_vorname_by_importer:      csv_vorname      || referee&.vorname,
       master_nachname_by_importer:     csv_nachname     || referee&.nachname,
       master_geburtsdatum_by_importer: csv_geburtsdatum || referee&.geburtsdatum,
@@ -505,6 +506,28 @@ class RefereeCourseImportService
     )
   end
 
+  # Kam der Treffer ueber eine Nummer, die nach einer Zusammenlegung an der
+  # Dublette blieb, gilt die Nummer des Masters: als Uebereinstimmung beim
+  # Bewerten und als vorgeschlagener Wert in der Pruefansicht.
+  def effective_lizenznummer(csv_lizenznummer, referee)
+    return csv_lizenznummer if referee&.lizenznummer.nil? || csv_lizenznummer.nil?
+    return csv_lizenznummer if csv_lizenznummer == referee.lizenznummer
+
+    via_merge = Referee.canonical_for_lizenznummer(csv_lizenznummer)&.id == referee.id
+    via_merge ? referee.lizenznummer : csv_lizenznummer
+  end
+
+  # Der Landesverband meldet noch die alte Nummer. Die Zeile trifft trotzdem
+  # die richtige Person, aber die Liste des LV sollte nachgezogen werden.
+  def merged_number_warning(csv_lizenznummer, referee)
+    effective = effective_lizenznummer(csv_lizenznummer, referee)
+    return [] if referee.nil? || effective == csv_lizenznummer
+
+    [{ 'field' => 'lizenznummer', 'raw' => csv_lizenznummer.to_s,
+       'reason' => "Nummer #{csv_lizenznummer} gehört zu einem zusammengeführten Profil, " \
+                   "aktuelle Nummer ist #{effective}" }]
+  end
+
   # Trifft ein Kursergebnis einen Schiedsrichter, dessen Lizenz vier Lizenzjahre
   # oder länger abgelaufen ist, ist das eine Reaktivierung: Die Karriere gilt als
   # beendet, fachlich ist der Grundkurs fällig und keine Fortbildung. In der
@@ -541,7 +564,10 @@ class RefereeCourseImportService
   def find_best_match(csv_attrs)
     if csv_attrs[:lizenznummer]
       ref = Referee.canonical_for_lizenznummer(csv_attrs[:lizenznummer])
-      return [ref, count_matches(csv_attrs, ref), []] if ref
+      if ref
+        attrs = csv_attrs.merge(lizenznummer: effective_lizenznummer(csv_attrs[:lizenznummer], ref))
+        return [ref, count_matches(attrs, ref), []]
+      end
     end
 
     namesakes, candidates = candidate_referees(csv_attrs)

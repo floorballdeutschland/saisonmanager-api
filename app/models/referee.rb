@@ -387,7 +387,41 @@ class Referee < ApplicationRecord
     current
   end
 
-  def merge_into!(master, user_id = nil)
+  # Ergebnis einer Zusammenlegung fuer Aufrufer, die es protokollieren (der
+  # Rake-Lauf): was mit dem Konto passiert ist und wie die Nummern-Mail ausging
+  # (RefereeNotification-Status, nil ohne Nummernwechsel).
+  MergeOutcome = Struct.new(:account, :mail, keyword_init: true)
+
+  # Was beim Zusammenfuehren mit dem Konto dieser Dublette passiert. Eine Stelle
+  # fuer merge_into! und die Vorschau im Rake-Lauf, damit beide dasselbe sagen.
+  # - :none   keine Dublette mit Konto
+  # - :detach der Master hat schon ein Konto; das der Dublette wird abgehaengt,
+  #           die Person meldet sich kuenftig mit dem des Masters an
+  # - :move   das Konto wandert auf den Master; rename_to ist der neue Name oder
+  #           nil, blocked der gewuenschte, aber schon vergebene Name
+  #
+  # Frisch aus der Datenbank, nicht ueber has_one :user. Zum einen ist die
+  # Assoziation nach dem Anlegen eines Profils oft schon als nil
+  # zwischengespeichert. Zum anderen schrieb das Autosave der Assoziation beim
+  # abschliessenden save! referee_id eines darueber umgehaengten Kontos wieder
+  # auf die Dublette zurueck; so blieb bis Oktober 2026 jedes Konto am toten
+  # Profil haengen. Ein eigenes Objekt beruehrt die Assoziation nicht.
+  def merge_account_plan(master)
+    account = User.find_by(referee_id: id)
+    return { action: :none } if account.nil?
+
+    master_account = User.find_by(referee_id: master.id)
+    return { action: :detach, user: account, master_user: master_account } if master_account
+
+    target = _rename_target(account, master)
+    if target && RefereeAccountCreator.user_name_taken?(target, account.id)
+      { action: :move, user: account, rename_to: nil, blocked: target }
+    else
+      { action: :move, user: account, rename_to: target }
+    end
+  end
+
+  def merge_into!(master, user_id = nil, deliver_now: false)
     raise ArgumentError, 'Master und Secondary dürfen nicht identisch sein' if id == master.id
     raise ArgumentError, 'Secondary ist bereits zusammengeführt' if merged_into_id.present?
     raise ArgumentError, 'Master ist bereits zusammengeführt' if master.merged_into_id.present?
@@ -399,6 +433,8 @@ class Referee < ApplicationRecord
     # bestimmen, das den Master angleicht.
     secondary_current = _license_newer_than?(master)
     previous_number = lizenznummer
+    account_plan = merge_account_plan(master)
+    account_note = _describe_account_plan(account_plan)
 
     ActiveRecord::Base.transaction do
       # Lizenzstufe und Gueltigkeit stehen bewusst NICHT in dieser Liste, siehe
@@ -407,6 +443,9 @@ class Referee < ApplicationRecord
         vorname nachname geburtsdatum email telefonnummer club_id game_operation_id
         strasse hausnummer plz ort
       ]
+      # Hat der Master ein Konto, gehoert die Adresse dem Konto (User#confirm_email_change!
+      # haelt beide gleich, der Kursimport ueberschreibt sie dann auch nicht).
+      scalar_fields -= %w[email] if User.exists?(referee_id: master.id)
       scalar_fields.each do |field|
         next if self[field].blank?
 
@@ -491,18 +530,15 @@ class Referee < ApplicationRecord
         .update_all(referee_id: master.id)
       referee_observation_ratings.reload.destroy_all
 
-      if (moved_user = user).present?
-        if master.user.nil?
+      if (moved_user = account_plan[:user])
+        if account_plan[:action] == :move
           moved_user.update!(referee_id: master.id)
-          _rename_moved_user(moved_user, master)
+          moved_user.update!(user_name: account_plan[:rename_to]) if account_plan[:rename_to]
         else
+          Rails.logger.info("Referee#merge_into!: Konto #{moved_user.user_name} von Dublette #{id} abgehaengt, " \
+                            "Master #{master.id} behaelt #{account_plan[:master_user].user_name}")
           moved_user.update!(referee_id: nil)
         end
-        # Die geladene has_one-Assoziation vergessen: Sonst setzt das save! am Ende
-        # (Autosave) referee_id des Kontos wieder auf diese Dublette zurueck, und
-        # das Konto haengt am toten Profil. So war es bis Oktober 2026 bei jeder
-        # Zusammenlegung mit Konto.
-        association(:user).reset
       end
 
       _rewrite_referee_game_references(master, secondary_lizenznummer: transferred_lizenznummer || lizenznummer)
@@ -520,7 +556,8 @@ class Referee < ApplicationRecord
       )
     end
 
-    _notify_number_change(master, previous_number) if secondary_current
+    mail = _notify_number_change(master, previous_number, account_plan, deliver_now) if secondary_current
+    MergeOutcome.new(account: account_note, mail: mail)
   end
 
   private
@@ -615,33 +652,48 @@ class Referee < ApplicationRecord
   # aneinander.
   # Ein Konto, das vom Zweitprofil auf den Master wandert, heisst danach wie
   # jedes Schiri-Konto nach der Nummer seines Profils. Nur automatisch vergebene
-  # Namen (sr-<alte Nummer>) werden umbenannt; ein von Hand gesetzter Name bleibt.
-  # Ist der neue Name schon vergeben (etwa durch ein frueher abgehaengtes Konto),
-  # bleibt der alte stehen, der Login funktioniert dann unveraendert weiter.
-  def _rename_moved_user(user, master)
-    return if guest? || lizenznummer.blank? || master.lizenznummer.blank?
-    return if lizenznummer == master.lizenznummer
-    return unless user.user_name.to_s.casecmp?("sr-#{lizenznummer}")
+  # Namen (sr-<alte Nummer>) werden umbenannt, ein von Hand gesetzter Name bleibt.
+  # Und nur, wenn die Person ihre Nummer wechselt (die Dublette ist ihr aktuelles
+  # Profil): Nur dann geht die Mail raus, die den neuen Login nennt. Sonst
+  # wuerde ein Login still verschwinden.
+  def _rename_target(account, master)
+    return nil if guest? || lizenznummer.blank? || master.lizenznummer.blank?
+    return nil if lizenznummer == master.lizenznummer || !_license_newer_than?(master)
+    return nil unless account.user_name.to_s.casecmp?("sr-#{lizenznummer}")
 
-    target = RefereeAccountCreator.user_name_for(master, ignore_user_id: user.id)
-    if RefereeAccountCreator.user_name_taken?(target, user.id)
-      Rails.logger.warn("Referee#merge_into!: Konto #{user.id} behaelt #{user.user_name}, #{target} ist vergeben")
-      return
+    RefereeAccountCreator.user_name_for(master, ignore_user_id: account.id)
+  end
+
+  def _describe_account_plan(plan)
+    case plan[:action]
+    when :detach
+      "Konto #{plan[:user].user_name} abgehaengt, Login ist #{plan[:master_user].user_name} (Konto des Masters)"
+    when :move
+      if plan[:rename_to]
+        "Konto #{plan[:user].user_name} -> #{plan[:rename_to]}"
+      elsif plan[:blocked]
+        "Konto #{plan[:user].user_name} bleibt so, #{plan[:blocked]} ist schon vergeben"
+      else
+        "Konto #{plan[:user].user_name} wandert mit, Name bleibt"
+      end
     end
-
-    user.update!(user_name: target)
   end
 
   # Die Person war unter der Nummer der Dublette unterwegs und fuehrt ab jetzt
   # die des Masters. Nach dem Commit, damit eine zurueckgerollte Zusammenlegung
-  # keine Mail ausloest.
-  # Das Konto frisch lesen: master.user ist seit der Pruefung oben als nil
-  # zwischengespeichert, wenn es erst mit dieser Zusammenlegung kam.
-  def _notify_number_change(master, previous_number)
-    return if previous_number.blank? || master.lizenznummer.blank? || previous_number == master.lizenznummer
+  # keine Mail ausloest. Rueckgabe: Status aus RefereeNotification oder nil.
+  #
+  # Login: bei :move das mitgewanderte Konto (Passwort unveraendert), bei
+  # :detach das des Masters, dessen Passwort die Person womoeglich nie kannte;
+  # die Mail verweist dann auf „Passwort vergessen".
+  def _notify_number_change(master, previous_number, account_plan, deliver_now)
+    return nil if previous_number.blank? || master.lizenznummer.blank? || previous_number == master.lizenznummer
 
+    login = User.find_by(referee_id: master.id)
     RefereeNotification.number_change(master, previous_number: previous_number,
-                                              user_name: User.find_by(referee_id: master.id)&.user_name)
+                                              user_name: login&.user_name,
+                                              own_account: account_plan[:action] != :detach,
+                                              deliver_now: deliver_now)
   end
 
   def _adopt_license_fields(master)

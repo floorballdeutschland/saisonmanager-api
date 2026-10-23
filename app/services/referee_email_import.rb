@@ -179,9 +179,12 @@ class RefereeEmailImport
     return {} if numbers.empty?
 
     found = Referee.canonical.where(lizenznummer: numbers).index_by(&:lizenznummer)
+    # Dasselbe Objekt, wenn alte und neue Nummer in einer Datei stehen: Eine
+    # zweite Kopie haette die Adresse der ersten Zeile nicht gesehen.
+    by_id = found.values.index_by(&:id)
     (numbers - found.keys).each do |number|
       master = Referee.canonical_for_lizenznummer(number)
-      found[number] = master if master
+      found[number] = by_id[master.id] ||= master if master
     end
     found
   end

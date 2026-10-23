@@ -295,7 +295,8 @@ module EmailTemplateCatalog # rubocop:disable Metrics/ModuleLength -- reine Date
       mailer_class: 'RefereeMailer',
       action_name: 'number_change',
       description: 'Benachrichtigung an Schiri, dessen Nummer sich nach dem Zusammenführen zweier Profile ändert: ' \
-                   'Die Person behält die kleinere Nummer. Mit Konto nennt die Mail auch den neuen Login.',
+                   'Die Person behält die kleinere Nummer. Mit Konto nennt die Mail auch den neuen Login. ' \
+                   'Ein gepflegter Text sieht nicht, ob das Konto neu ist (Hinweis auf „Passwort vergessen“).',
       default_subject: 'Deine Schiedsrichternummer hat sich geändert – {{referee_name}}',
       default_from: nil,
       default_reply_to: 'rsk@floorball.de',

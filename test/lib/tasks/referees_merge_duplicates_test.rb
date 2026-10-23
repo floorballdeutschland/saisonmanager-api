@@ -45,17 +45,23 @@ class RefereesMergeDuplicatesTest < ActiveSupport::TestCase
     out = run_task("#{current.id} #{middle.id} #{oldest.id};;Nörlich;;", 'DRY_RUN' => '1')
 
     assert_includes out, "Master ##{oldest.id} (Nr. 8016)"
-    assert_includes out, 'Nummer aendert sich: 9052 -> 8016'
+    assert_includes out, 'Nummer 9052 -> 8016, Konto sr-9052 -> sr-8016, Mail an kurt@example.org'
     assert_nil current.reload.merged_into_id
     assert_equal 'Noerlich', current.nachname
   end
 
   test 'fuehrt die Gruppe in die kleinste Nummer zusammen, korrigiert und mailt nur einmal' do
     oldest, middle, current, user = triple
+    current.update_columns(geburtsdatum: Date.new(2010, 11, 12))
 
-    assert_enqueued_emails 1 do
-      run_task("#{current.id} #{middle.id} #{oldest.id};;Nörlich;2010-11-21;")
+    out = nil
+    # Sofort verschickt, nicht eingereiht: Der Rake-Prozess endet, bevor der
+    # :async-Threadpool eingereihte Mails abarbeitet.
+    assert_emails 1 do
+      out = run_task("#{current.id} #{middle.id} #{oldest.id};;Nörlich;2010-11-21;")
     end
+    assert_no_enqueued_emails
+    assert_includes out, 'Nummern-Mails: 1 verschickt, 0 ohne Adresse, 0 FEHLGESCHLAGEN'
 
     oldest.reload
     assert_equal [oldest.id, oldest.id], [middle.reload.merged_into_id, current.reload.merged_into_id]
@@ -74,13 +80,72 @@ class RefereesMergeDuplicatesTest < ActiveSupport::TestCase
     assert_equal 'L2', a.reload.lizenzstufe
   end
 
-  test 'ueberspringt eine Gruppe mit bereits zusammengefuehrtem Profil' do
+  test 'ein zweiter Lauf macht eine abgebrochene Gruppe fertig, ohne Erledigtes anzufassen' do
+    a = create(:referee, lizenznummer: 100)
+    b = create(:referee, lizenznummer: 200)
+    c = create(:referee, lizenznummer: 300)
+    b.merge_into!(a)
+
+    out = run_task("#{a.id} #{b.id} #{c.id};;;;L2")
+
+    assert_includes out, "<- ##{c.id} (Nr. 300) zusammengefuehrt"
+    assert_equal a.id, c.reload.merged_into_id
+    assert_equal 'L2', a.reload.lizenzstufe
+  end
+
+  test 'eine fertige Gruppe setzt beim zweiten Lauf nur noch die Korrekturen' do
     a = create(:referee, lizenznummer: 100)
     b = create(:referee, lizenznummer: 200)
     b.merge_into!(a)
 
+    out = run_task("#{a.id} #{b.id};;;;L2")
+
+    assert_includes out, 'bereits zusammengefuehrt, nur Korrekturen'
+    assert_equal 'L2', a.reload.lizenzstufe
+  end
+
+  test 'eine ID, deren Master nicht in der Gruppe steht, laesst die Gruppe aus' do
+    fremd = create(:referee, lizenznummer: 50)
+    a = create(:referee, lizenznummer: 100)
+    b = create(:referee, lizenznummer: 200)
+    a.merge_into!(fremd)
+
     out = run_task("#{a.id} #{b.id};;;;")
 
-    assert_includes out, 'bereits zusammengefuehrtes Profil'
+    assert_includes out, 'gehoeren nicht zur Gruppe'
+    assert_nil b.reload.merged_into_id
+  end
+
+  test 'ein Fehler in einer Gruppe haelt die naechste nicht auf' do
+    a = create(:referee, lizenznummer: 100)
+    b = create(:referee, lizenznummer: 200)
+    c = create(:referee, lizenznummer: 300)
+    d = create(:referee, lizenznummer: 400)
+
+    out = run_task("#{a.id} #{b.id};;;kein-datum;\n#{c.id} #{d.id};;;;")
+
+    assert_includes out, 'Zeile 2: FEHLER'
+    assert_nil b.reload.merged_into_id
+    assert_equal c.id, d.reload.merged_into_id
+    assert_includes out, '1 Fehler'
+  end
+
+  test 'die Vorschau sagt, wenn der Master schon ein Konto hat' do
+    oldest, middle, current, = triple
+    create(:user, user_name: 'sr-8016', referee_id: oldest.id, permissions: [{ 'user_group_id' => 6 }])
+
+    out = run_task("#{current.id} #{middle.id} #{oldest.id};;;;", 'DRY_RUN' => '1')
+
+    assert_includes out, 'Konto sr-9052 abgehaengt, Login ist sr-8016 (Konto des Masters)'
+  end
+
+  test 'ADMIN_USER_ID landet im Merge-Protokoll' do
+    admin = create(:user, :admin)
+    a = create(:referee, lizenznummer: 100)
+    b = create(:referee, lizenznummer: 200)
+
+    run_task("#{a.id} #{b.id};;;;", 'ADMIN_USER_ID' => admin.id.to_s)
+
+    assert_equal admin.id, MergeLog.where(object_type: 'referee', merged_id: b.id).last.performed_by_user_id
   end
 end

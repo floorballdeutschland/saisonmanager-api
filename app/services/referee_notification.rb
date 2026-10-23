@@ -58,20 +58,29 @@ module RefereeNotification
   # Nach einer Zusammenlegung fuehrt die Person die (kleinere) Nummer des
   # Masters statt der bisherigen. `user_name` ist der Login des Kontos, falls es
   # eines gibt; die Mail nennt ihn, weil er sich mit der Nummer aendert.
-  def self.number_change(referee, previous_number:, user_name: nil)
-    deliver(referee, 'Nummernmail') do
-      RefereeMailer.number_change(referee, previous_number: previous_number, user_name: user_name)
+  # deliver_now fuer den Rake-Lauf: Dort endet der Prozess, bevor der
+  # :async-Threadpool die eingereihten Mails verschickt hat.
+  def self.number_change(referee, previous_number:, user_name: nil, own_account: true, deliver_now: false)
+    deliver(referee, 'Nummernmail', deliver_now: deliver_now) do
+      RefereeMailer.number_change(referee, previous_number: previous_number, user_name: user_name,
+                                           own_account: own_account)
     end
   end
 
-  def self.deliver(referee, label)
+  def self.deliver(referee, label, deliver_now: false)
     return UNREACHABLE unless reachable?(referee)
 
     # deliver_later wirft nicht, wenn das Einreihen abgebrochen wird (
     # ActiveJob::EnqueueError, throw(:abort) in einem before_enqueue) — es gibt
     # dann false zurück. Ohne diese Prüfung würde der Aufrufer eine Mail zählen,
     # die nie in der Warteschlange stand.
-    yield.deliver_later ? SENT : FAILED
+    message = yield
+    if deliver_now
+      message.deliver_now
+      return SENT
+    end
+
+    message.deliver_later ? SENT : FAILED
   rescue StandardError => e
     Rails.logger.error("RefereeNotification: #{label} für Referee #{referee.id} " \
                        "fehlgeschlagen: #{e.class}: #{e.message}")

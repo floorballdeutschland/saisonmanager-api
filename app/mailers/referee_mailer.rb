@@ -42,10 +42,14 @@ class RefereeMailer < ApplicationMailer
   # Zwei Profile derselben Person wurden zusammengelegt, und die Person fuehrt
   # ab jetzt die kleinere Nummer des Masters (Referee.merge_roles). Mit Konto
   # nennt die Mail auch den neuen Login, denn der heisst sr-<Nummer>.
-  def number_change(referee, previous_number:, user_name: nil)
+  # `own_account`: Das Konto ist das, mit dem die Person sich bisher angemeldet
+  # hat (Passwort bleibt). false heisst, der Master brachte ein eigenes Konto
+  # mit; dessen Passwort kennt die Person womoeglich nicht.
+  def number_change(referee, previous_number:, user_name: nil, own_account: true)
     @referee = referee
     @previous_number = previous_number
     @user_name = user_name
+    @own_account = own_account
 
     templated_mail(
       to: referee.email,

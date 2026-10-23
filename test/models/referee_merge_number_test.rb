@@ -42,7 +42,7 @@ class RefereeMergeNumberTest < ActiveSupport::TestCase
   end
 
   test 'die Stammdaten kommen vom Profil mit der spaeteren Lizenz' do
-    master = old_profile
+    master = old_profile(email: 'alt@example.org')
     current = current_profile
 
     current.reload.merge_into!(master)
@@ -68,10 +68,12 @@ class RefereeMergeNumberTest < ActiveSupport::TestCase
     master = current_profile(lizenznummer: 500)
     older = old_profile(lizenznummer: 600, telefonnummer: '0171 123')
 
+    club_id = master.club_id
+    refute_equal club_id, older.club_id
+
     older.merge_into!(master)
 
     master.reload
-    club_id = master.club_id
     assert_equal 'Kürbis', master.nachname
     assert_equal club_id, master.club_id
     assert_equal '0171 123', master.telefonnummer
@@ -83,7 +85,7 @@ class RefereeMergeNumberTest < ActiveSupport::TestCase
     user = referee_user(current)
 
     assert_enqueued_email_with RefereeMailer, :number_change,
-                               args: [master, { previous_number: 3454, user_name: 'sr-921' }] do
+                               args: [master, { previous_number: 3454, user_name: 'sr-921', own_account: true }] do
       current.reload.merge_into!(master)
     end
 
@@ -97,7 +99,7 @@ class RefereeMergeNumberTest < ActiveSupport::TestCase
     current = current_profile
 
     assert_enqueued_email_with RefereeMailer, :number_change,
-                               args: [master, { previous_number: 3454, user_name: nil }] do
+                               args: [master, { previous_number: 3454, user_name: nil, own_account: true }] do
       current.reload.merge_into!(master)
     end
   end
@@ -108,7 +110,7 @@ class RefereeMergeNumberTest < ActiveSupport::TestCase
     user = referee_user(current, user_name: 'jens.kuerbis')
 
     assert_enqueued_email_with RefereeMailer, :number_change,
-                               args: [master, { previous_number: 3454, user_name: 'jens.kuerbis' }] do
+                               args: [master, { previous_number: 3454, user_name: 'jens.kuerbis', own_account: true }] do
       current.reload.merge_into!(master)
     end
 
@@ -128,15 +130,46 @@ class RefereeMergeNumberTest < ActiveSupport::TestCase
   end
 
   test 'hat der Master schon ein Konto, wird das der Dublette abgehaengt und bleibt nicht am toten Profil' do
-    master = old_profile
+    master = old_profile(email: 'konto@example.org')
     current = current_profile
     master_user = referee_user(master)
     secondary_user = referee_user(current)
 
-    current.reload.merge_into!(master)
+    assert_enqueued_email_with RefereeMailer, :number_change,
+                               args: [master, { previous_number: 3454, user_name: 'sr-921', own_account: false }] do
+      current.reload.merge_into!(master)
+    end
 
     assert_equal master.id, master_user.reload.referee_id
     assert_nil secondary_user.reload.referee_id
+    assert_equal 'sr-3454', secondary_user.user_name
+  end
+
+  test 'hat der Master ein Konto, bleibt seine Adresse, weil sie dem Konto gehoert' do
+    master = old_profile(email: 'konto@example.org')
+    current = current_profile
+    referee_user(master)
+
+    current.reload.merge_into!(master)
+
+    master.reload
+    assert_equal 'konto@example.org', master.email
+    assert_equal 'Kürbis', master.nachname
+  end
+
+  test 'merge_into! meldet Konto und Mailstatus zurueck und kann sofort senden' do
+    master = old_profile
+    current = current_profile
+    referee_user(current)
+
+    outcome = nil
+    assert_emails 1 do
+      outcome = current.reload.merge_into!(master, nil, deliver_now: true)
+    end
+    assert_no_enqueued_emails
+
+    assert_equal 'Konto sr-3454 -> sr-921', outcome.account
+    assert_equal RefereeNotification::SENT, outcome.mail
   end
 
   test 'aendert sich die Nummer der Person nicht, geht keine Mail raus' do
@@ -147,7 +180,42 @@ class RefereeMergeNumberTest < ActiveSupport::TestCase
     assert_no_enqueued_emails do
       older.reload.merge_into!(master)
     end
-    assert_equal 'sr-500', user.reload.user_name
+    # Ohne Mail kein neuer Login: Die Person erfuehre sonst nie, dass sr-600 weg ist.
+    user.reload
+    assert_equal master.id, user.referee_id
+    assert_equal 'sr-600', user.user_name
+  end
+
+  test 'das Konto bleibt am Master, auch wenn der Aufrufer die Konto-Assoziation schon geladen hat' do
+    master = old_profile
+    current = current_profile
+    user = referee_user(current)
+    current.reload
+    assert_equal user, current.user
+
+    current.merge_into!(master)
+
+    assert_equal master.id, user.reload.referee_id
+  end
+
+  test 'ein Gast-Konto wird nie umbenannt' do
+    master = old_profile
+    guest = current_profile(guest: true)
+    user = referee_user(guest, user_name: 'sr-3454')
+
+    guest.reload.merge_into!(master)
+
+    assert_equal 'sr-3454', user.reload.user_name
+  end
+
+  test 'der Login wird ohne Ruecksicht auf Gross-/Kleinschreibung erkannt' do
+    master = old_profile
+    current = current_profile
+    user = referee_user(current, user_name: 'SR-3454')
+
+    current.reload.merge_into!(master)
+
+    assert_equal 'sr-921', user.reload.user_name
   end
 
   test 'die oeffentliche Kursanmeldung erkennt die Person an der aufgegebenen Nummer' do
@@ -157,6 +225,8 @@ class RefereeMergeNumberTest < ActiveSupport::TestCase
 
     assert_equal master, controller.send(:known_referee, '3454', '1995-07-13')
     assert_nil controller.send(:known_referee, '3454', '1995-07-14')
+    master.update_columns(email: nil)
+    assert_nil controller.send(:known_referee, '3454', '1995-07-13')
   end
 
   test 'die aufgegebene Nummer fuehrt zum Master, auch ueber eine Kette' do
@@ -188,6 +258,9 @@ class RefereeMergeNumberTest < ActiveSupport::TestCase
     ref, = service.send(:find_best_match, { lizenznummer: 3454, vorname: 'Jens', nachname: 'Kürbis' })
 
     assert_equal master, ref
+    assert_equal 921, service.send(:effective_lizenznummer, 3454, ref)
+    assert_equal 'lizenznummer', service.send(:merged_number_warning, 3454, ref).first['field']
+    assert_empty service.send(:merged_number_warning, 921, ref)
   end
 
   test 'der E-Mail-Import schreibt eine Zeile mit aufgegebener Nummer an den Master' do
@@ -198,5 +271,17 @@ class RefereeMergeNumberTest < ActiveSupport::TestCase
 
     assert_equal 'jens@example.org', master.reload.email
     assert_empty report[:not_found]
+  end
+
+  test 'der E-Mail-Import behandelt alte und neue Nummer in einer Datei als dieselbe Person' do
+    master = old_profile
+    current_profile(email: nil).merge_into!(master)
+
+    report = RefereeEmailImport.new(
+      csv_content: "Lizenznummer;E-Mailadresse\n921;erste@example.org\n3454;zweite@example.org"
+    ).call
+
+    assert_equal 'erste@example.org', master.reload.email
+    assert_equal 1, report[:updated].size
   end
 end
