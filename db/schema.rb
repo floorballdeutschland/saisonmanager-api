@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_10_22_120000) do
+ActiveRecord::Schema[7.2].define(version: 2026_10_23_110000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -346,6 +346,9 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_22_120000) do
     t.string "kind", default: "shot", null: false, comment: "shot / free_hit / mark"
     t.boolean "from_free_hit", default: false, null: false, comment: "Schuss aus einem Freischlag (am Tablet geschaltet)"
     t.boolean "in_highlights", default: true, null: false, comment: "Szene erscheint in den öffentlichen Highlights"
+    t.boolean "from_penalty_shot", default: false, null: false, comment: "Strafschuss (am Tablet geschaltet)"
+    t.boolean "empty_net", default: false, null: false, comment: "Schuss aufs leere Tor: Gegner ohne Torhüter"
+    t.boolean "extra_attacker", default: false, null: false, comment: "Schießendes Team ohne eigenen Torhüter (6 gegen 5)"
     t.index ["client_uuid"], name: "index_game_shots_on_client_uuid", unique: true
     t.index ["game_id", "tapped_at"], name: "index_game_shots_on_game_id_and_tapped_at"
   end
@@ -1063,6 +1066,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_10_22_120000) do
     t.datetime "submitted_at", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.datetime "edited_at"
     t.index ["coach_id"], name: "index_referee_observations_on_coach_id"
     t.index ["game_id", "coach_id"], name: "index_referee_observations_on_game_id_and_coach_id", unique: true
     t.index ["game_id"], name: "index_referee_observations_on_game_id"

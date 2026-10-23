@@ -286,6 +286,7 @@ Rails.application.routes.draw do
       get  'referee/observations/games',    to: 'referee_observations#games'
       get  'referee/observations/received', to: 'referee_observations#received'
       post 'referee/observations',          to: 'referee_observations#create'
+      patch 'referee/observations/:id',     to: 'referee_observations#update'
 
       # Vereins-Feedback zur eigenen Person, nur als Kennzahlen ab fuenf
       # Rueckmeldungen (siehe RefereeFeedbackSummariesController).

@@ -7,6 +7,12 @@
 # Tore aus Freischlägen. Freischläge zählen nirgends als Schuss, vorgemerkte
 # Szenen gehen gar nicht ein.
 #
+# Strafschüsse, Schüsse aufs leere Tor und Schüsse in 6 gegen 5 (Feedback
+# #61, #63, #64) tragen ihre Kennung am Schuss und werden je Team und
+# Abschnitt gezählt. Paraden ohne Feldposition (#62, Schnellzähler) stehen in
+# `shots` mit `x`/`y` = nil: Sie zählen überall mit, gehören aber in keine
+# Schussgrafik. Die Torhüter haben ihre Werte zusätzlich je Abschnitt.
+#
 # NAMEN IN ÖFFENTLICHER ANZEIGEFORM: aus dem Spielbericht-Schnappschuss und
 # über PublicPlayerNames maskiert, genau wie auf der öffentlichen Spielseite.
 # Steht ein Schütze nicht in der Aufstellung, kommt der Name aus dem
@@ -65,10 +71,14 @@ class GameShotStats
       team: shot.team,
       period: shot.period,
       game_time: shot.game_time,
-      x: shot.x.to_f,
-      y: shot.y.to_f,
+      # nil bei einer Parade ohne Feldposition.
+      x: shot.x&.to_f,
+      y: shot.y&.to_f,
       result: shot.result,
       from_free_hit: shot.from_free_hit,
+      from_penalty_shot: shot.from_penalty_shot,
+      empty_net: shot.empty_net,
+      extra_attacker: shot.extra_attacker,
       shooter: @names.ref(shot.team, shot.shooter_player_id)
     }
   end
@@ -95,6 +105,8 @@ class GameShotStats
   def summen(eintraege)
     shots, free_hits = eintraege.partition(&:shot?)
     aus_freischlag = shots.select(&:from_free_hit)
+    tore = shots.select { |shot| shot.result == 'goal' }
+    strafschuesse = shots.select(&:from_penalty_shot)
     {
       shots: shots.size,
       on_goal: shots.count(&:on_goal?),
@@ -103,28 +115,43 @@ class GameShotStats
       missed: shots.count { |shot| shot.result == 'missed' },
       free_hits: free_hits.size,
       shots_from_free_hit: aus_freischlag.size,
-      goals_from_free_hit: aus_freischlag.count { |shot| shot.result == 'goal' }
+      goals_from_free_hit: aus_freischlag.count { |shot| shot.result == 'goal' },
+      penalty_shots: strafschuesse.size,
+      goals_from_penalty_shot: strafschuesse.count { |shot| shot.result == 'goal' },
+      goals_empty_net: tore.count(&:empty_net),
+      goals_extra_attacker: tore.count(&:extra_attacker)
     }
   end
 
   # Je Torhüter des verteidigenden Teams. Schüsse ohne erfassten Torhüter
-  # zählen in den Teamsummen, aber bei keinem Torhüter.
+  # zählen in den Teamsummen, aber bei keinem Torhüter. Schüsse aufs leere
+  # Tor haben nie einen (GameShot prüft das) und bleiben so aus der
+  # Fangquote heraus; die Abfrage schließt sie trotzdem ausdrücklich aus.
   def goalkeepers
-    aufs_tor = @shots.select { |shot| shot.on_goal? && shot.goalkeeper_player_id.present? }
+    aufs_tor = @shots.select { |shot| shot.on_goal? && !shot.empty_net && shot.goalkeeper_player_id.present? }
+    perioden = aufs_tor.map(&:period).uniq.sort
     aufs_tor.group_by { |shot| [gegner(shot.team), shot.goalkeeper_player_id] }.map do |(team, player_id), shots|
       ref = @names.ref(team, player_id)
-      paraden = shots.count { |shot| shot.result == 'saved' }
       {
         team: team,
         trikot_number: ref&.dig(:trikot_number),
-        name: ref&.dig(:name).to_s,
-        saves: paraden,
-        shots_against: shots.size,
-        # Anteil 0..1, nicht Prozent. Gruppen entstehen nur aus Schüssen aufs
-        # Tor, `shots.size` ist hier also nie 0.
-        save_pct: shots.empty? ? nil : (paraden.to_f / shots.size).round(3)
-      }
+        name: ref&.dig(:name).to_s
+      }.merge(paraden(shots)).merge(
+        # Alle Abschnitte mit einem Schuss auf irgendeinen Torhüter, damit
+        # ein Abschnitt auf der Bank als 0 von 0 erscheint statt zu fehlen.
+        by_period: perioden.to_h { |period| [period.to_s, paraden(shots.select { |shot| shot.period == period })] }
+      )
     end
+  end
+
+  def paraden(shots)
+    gehalten = shots.count { |shot| shot.result == 'saved' }
+    {
+      saves: gehalten,
+      shots_against: shots.size,
+      # Anteil 0..1, nicht Prozent; nil ohne Schuss aufs Tor.
+      save_pct: shots.empty? ? nil : (gehalten.to_f / shots.size).round(3)
+    }
   end
 
   def players

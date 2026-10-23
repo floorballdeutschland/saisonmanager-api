@@ -744,6 +744,7 @@ class GamesController < ApplicationController
 
       # ensure we have the hash set
       game.events ||= []
+      scores_before = game.goal_score_history
 
       max_id = game.events.map { |e| e['id'] }.max || 0
 
@@ -778,6 +779,10 @@ class GamesController < ApplicationController
       Game.freeze_penalty_labels(item)
 
       game.events << item
+
+      if (error = unconfirmed_score_change_error(game, scores_before))
+        return render json: error, status: :unprocessable_entity
+      end
 
       game.sort_events!
 
@@ -843,6 +848,7 @@ class GamesController < ApplicationController
         return render json: { message: error }, status: :unprocessable_entity
       end
 
+      scores_before = game.goal_score_history.except(event['id'].to_i)
       alt_team = event['event_team']
       event['time'] = params[:time]
       event['period'] = params[:period]
@@ -877,6 +883,10 @@ class GamesController < ApplicationController
 
       # Straf-Labels neu einfrieren (bzw. bei Wechsel auf 'goal' entfernen).
       Game.freeze_penalty_labels(event)
+
+      if (error = unconfirmed_score_change_error(game, scores_before))
+        return render json: error, status: :unprocessable_entity
+      end
 
       game.sort_events!
       game.record_updated_at = Time.now
@@ -1576,6 +1586,28 @@ class GamesController < ApplicationController
     when String then value.to_i >= 1
     else false
     end
+  end
+
+  # Ein Tor, das vor bereits erfasste Tore rutscht, schreibt deren Spielstand
+  # um. Das kann ein nachgetragenes Tor sein, aber ebenso ein Tippfehler in der
+  # Zeit: In Spiel 58665 wurde 9:13 als 3:13 erfasst, und aus einem 1:0 wurde
+  # still ein 0:1, das es nie gab (#835). Deshalb nur mit ausdrücklicher
+  # Bestätigung (`confirm_score_change`). Gilt auch für Admin und SBK; das
+  # Formular fragt vorher selbst nach, die Prüfung hier fängt andere Clients ab.
+  # Altdaten rechnen keinen Spielstand (siehe sort_events!).
+  def unconfirmed_score_change_error(game, scores_before)
+    return if game.legacy || ActiveModel::Type::Boolean.new.cast(params[:confirm_score_change])
+
+    scores_after = game.goal_score_history
+    changed = scores_before.count { |id, score| scores_after[id] != score }
+    return if changed.zero?
+
+    {
+      message: "Diese Eingabe ändert den Spielstand von #{changed} bereits erfassten " \
+               "#{changed == 1 ? 'Tor' : 'Toren'}. Bitte Abschnitt und Zeit prüfen.",
+      code: 'score_change_unconfirmed',
+      changed_goals: changed
+    }
   end
 
   # Personenangaben eines Kadereintrags, wie sie zum Zeitpunkt der Aufstellung

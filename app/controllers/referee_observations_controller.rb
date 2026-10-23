@@ -2,7 +2,7 @@
 #
 # Zwei Rollen desselben Kontos, deshalb ein Controller:
 #   * als Coach – Spiele finden (#games), Bogen abgeben (#create), eigene Bögen
-#     wiederfinden (#index)
+#     wiederfinden (#index) und nachträglich korrigieren (#update)
 #   * als beobachtete Person – erhaltene Rückmeldungen lesen (#received)
 #
 # Anders als beim Vereins-Feedback sieht die beobachtete Person den vollen Text.
@@ -59,6 +59,25 @@ class RefereeObservationsController < ApplicationController
 
     render json: observation_json(observation),
            status: observation.previously_new_record? ? :created : :ok
+  rescue ActiveRecord::RecordNotFound
+    head :not_found
+  end
+
+  # PATCH /api/v2/referee/observations/:id
+  # Der Coach korrigiert seinen eigenen Bogen, ohne Frist (feedback#74). Gleiche
+  # Felder und gleiche Validierungen wie bei der Abgabe; der Bogen trägt danach
+  # den Vermerk edited_at. Die beobachteten Personen bekommen bewusst KEINE neue
+  # Mail: Sie haben die Rückmeldung schon, und eine Korrektur ist kein neuer Bogen.
+  def update
+    observation = RefereeObservation.includes(:ratings).find(params[:id])
+    return render json: { error: 'Nicht berechtigt' }, status: :forbidden unless policy.can_edit?(observation)
+
+    observation, error = RefereeObservationSubmission.for_edit(
+      observation, user: current_user, attributes: params
+    ).update(observation)
+    return render json: { error: error }, status: :unprocessable_entity if error
+
+    render json: observation_json(observation)
   rescue ActiveRecord::RecordNotFound
     head :not_found
   end
