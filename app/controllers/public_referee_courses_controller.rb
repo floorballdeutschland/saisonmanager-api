@@ -171,15 +171,18 @@ class PublicRefereeCoursesController < ApplicationController
     base.merge(identity_match: hints.any? ? 'needs_review' : 'new_person', match_candidates: hints)
   end
 
-  # Nur mit Lizenznummer, passendem Geburtsdatum und hinterlegter Adresse.
+  # Nur mit Lizenznummer, passendem Geburtsdatum und hinterlegter Adresse. Eine
+  # nach einer Zusammenlegung aufgegebene Nummer fuehrt zum Master.
   def known_referee(lizenznummer, geburtsdatum)
     return nil if lizenznummer.blank? || !lizenznummer.match?(/\A\d+\z/)
 
     date = parse_date(geburtsdatum)
     return nil if date.nil?
 
-    Referee.where(merged_into_id: nil, lizenznummer: lizenznummer.to_i, geburtsdatum: date)
-           .where.not(email: [nil, '']).first
+    referee = Referee.canonical_for_lizenznummer(lizenznummer.to_i)
+    return nil if referee.nil? || referee.geburtsdatum != date || referee.email.blank?
+
+    referee
   end
 
   def parse_date(value)

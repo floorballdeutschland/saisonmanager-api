@@ -9,6 +9,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), Versioning: [S
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-10-23
+
+### Neu
+
+- **Schiri-Zusammenführung: die kleinste Nummer bleibt**: Beim Zusammenführen zweier Schiri-Profile wird immer das Profil mit der kleinsten Schiedsrichternummer Master, egal aus welchem Profil heraus die Maske aufgerufen wird (`Referee.merge_roles`). `POST admin/referees/:id/merge` meldet den tatsächlichen Master mit `master_id` und `master_lizenznummer_display` zurück. Die Stammdaten (Name, Geburtsdatum, E-Mail, Telefon, Verein, Adresse) kommen vom Profil mit der späteren Lizenz, leere Werte überschreiben dabei nichts. Ändert sich dadurch die Nummer, unter der die Person bisher lief, heißt ein mitwanderndes Konto danach `sr-<neue Nummer>` (nur automatisch vergebene Namen, und nur wenn der Name frei ist), und die Person bekommt die neue Mail `RefereeMailer#number_change` mit neuer Nummer und Login. Ohne diese Mail wird kein Login umbenannt. Hat der Master schon ein eigenes Konto, behält er es samt Adresse, das Konto der Dublette wird abgehängt, und die Mail verweist für dessen Passwort auf „Passwort vergessen“. Die aufgegebene Nummer führt weiter zum Master: Kursimport, öffentliche Kursanmeldung und E-Mail-Import folgen der Merge-Kette (`Referee.canonical_for_lizenznummer`), statt die Nummer nicht zu finden oder im Kursimport eine neue Dublette anzustoßen. Der Kursimport wertet die alte Nummer dabei als Übereinstimmung und weist in der Prüfansicht darauf hin, dass der Landesverband noch die alte Nummer meldet. Für den Dubletten-Durchgang vom 23.10.2026 führt `rake referees:merge_duplicates FILE=<csv>` eine geprüfte Liste zusammen (mit `DRY_RUN=1` als Vorschau). Die CSV kann je Gruppe Vorname, Nachname, Geburtsdatum, Verein (`club_id`) und Lizenzstufe korrigieren. Er verschickt die Mails sofort, protokolliert je Zusammenlegung Konto und Mailstatus und macht beim zweiten Lauf eine abgebrochene Gruppe fertig.
+
+### Behoben
+
+- **Konto wandert beim Zusammenführen von Schiri-Profilen wirklich mit**: `Referee#merge_into!` hängte das Konto der Dublette auf den Master um, das abschließende Speichern der Dublette schrieb es aber über das Autosave der `has_one :user`-Beziehung sofort zurück. Das Konto blieb damit am stillgelegten Profil hängen, auch wenn der Master schon ein eigenes hatte. Der Merge liest das Konto jetzt frisch aus der Datenbank.
+
 ## [2.2.0] - 2026-10-23
 
 ### Neu
